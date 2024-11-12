@@ -1,0 +1,35 @@
+cc_library(
+    name = "netcdf_io",
+    srcs = ["netcdf_io.cc"],
+    hdrs = ["netcdf_io.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/log:log",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+    ],
+    linkopts = [
+        "-lnetcdf",
+    ],
+)
+
+filegroup(
+    name = "example_netcdf_files",
+    visibility = ["//util/netcdf_io:__subpackages__"],
+    srcs = [
+        "example_netcdf.nc",
+    ],
+)
+
+cc_test(
+    name = "netcdf_io_test",
+    srcs = ["netcdf_io_test.cc"],
+    data = [
+        ":example_netcdf_files",
+    ],
+    deps = [
+        ":netcdf_io",
+        "@googletest//:gtest_main",
+    ],
+)

@@ -1,0 +1,33 @@
+cc_library(
+    name = "sizes",
+    srcs = ["sizes.cc"],
+    hdrs = ["sizes.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings:str_format",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+)
+
+cc_test(
+    name = "sizes_test",
+    srcs = ["sizes_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:solovev_analytical",
+        "//vmecpp/test_data:solovev_no_axis",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        ":sizes",
+        "@googletest//:gtest_main",
+        "@bazel_tools//tools/cpp/runfiles",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+    ],
+    size = "small",
+)

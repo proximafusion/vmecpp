@@ -1,0 +1,31 @@
+cc_library(
+    name = "laplace_solver",
+    srcs = ["laplace_solver.cc"],
+    hdrs = ["laplace_solver.h"],
+    visibility = ["//vmecpp:__subpackages__"],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+    ],
+    linkopts = [
+        "-llapacke",
+    ],
+)
+
+cc_test(
+    name = "laplace_solver_test",
+    srcs = ["laplace_solver_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        ":laplace_solver",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+)

@@ -1,0 +1,32 @@
+cc_library(
+    name = "surface_geometry",
+    srcs = ["surface_geometry.cc"],
+    hdrs = ["surface_geometry.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+        "@abseil-cpp//absl/algorithm:container"
+    ],
+)
+
+
+cc_test(
+    name = "surface_geometry_test",
+    srcs = ["surface_geometry_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        ":surface_geometry",
+        "@googletest//:gtest_main",
+        "@abseil-cpp//absl/log:log",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/free_boundary/surface_geometry_mockup:surface_geometry_mockup",
+    ],
+    size = "small",
+)

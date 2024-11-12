@@ -1,0 +1,19 @@
+cc_library(
+    name = "numerical_comparison_lib",
+    hdrs = ["numerical_comparison_lib.h"],
+    srcs = ["numerical_comparison_lib.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/strings:str_format",
+        "@eigen",
+    ]
+)
+
+cc_test(
+    name = "numerical_comparison_test",
+    srcs = ["numerical_comparison_test.cc"],
+    deps = [
+        ":numerical_comparison_lib",
+        "@googletest//:gtest_main",
+    ]
+)

@@ -1,0 +1,42 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
+
+cc_library(
+    name = "vmec_indata_pywrapper",
+    hdrs = ["vmec_indata_pywrapper.h"],
+    srcs = ["vmec_indata_pywrapper.cc"],
+    deps = [
+        "@eigen",
+        "//util/file_io",
+        "//vmecpp/common/util",
+        "//vmecpp/common/vmec_indata",
+    ],
+)
+
+cc_test(
+    name = "vmec_indata_pywrapper_test",
+    srcs = ["vmec_indata_pywrapper_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//util/file_io",
+        "//vmecpp/common/util",
+        "//vmecpp/common/vmec_indata",
+        ":vmec_indata_pywrapper",
+    ],
+    data = [
+        "//vmecpp/test_data:cth_like_free_bdy",
+    ],
+    size = "small",
+)
+
+# NOTE: the important target produced by pybind_extension is ":{name}.so".
+pybind_extension(
+    name = "_vmecpp",
+    srcs = ["pybind_vmec.cc"],
+    deps = [
+        "//vmecpp/common/vmec_indata",
+        "//vmecpp/vmec/output_quantities",
+        "//vmecpp/vmec/vmec",
+        ":vmec_indata_pywrapper",
+    ],
+)

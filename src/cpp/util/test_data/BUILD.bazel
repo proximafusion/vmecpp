@@ -1,0 +1,8 @@
+filegroup(
+    name = "test_files",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "empty.txt",
+        "lorem.txt",
+    ],
+)

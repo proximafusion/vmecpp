@@ -1,0 +1,20 @@
+cc_library(
+    name = "json_io",
+    srcs = ["json_io.cc"],
+    hdrs = ["json_io.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:str_format",
+        "@nlohmann_json//:json",
+    ],
+)
+
+cc_test(
+    name = "json_io_test",
+    srcs = ["json_io_test.cc"],
+    deps = [
+        ":json_io",
+        "@googletest//:gtest_main",
+    ]
+)

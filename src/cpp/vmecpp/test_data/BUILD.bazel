@@ -1,0 +1,110 @@
+filegroup(
+    name = "solovev",
+    visibility = ["//vmecpp:__subpackages__"],
+    srcs = [
+        "solovev.json",
+        # "axis_coefficients_solovev.csv",
+        # "boundary_coefficients_solovev.csv",
+        # "input.solovev",
+        # "jxbout_solovev.nc",
+        # "mercier.solovev",
+        # "threed1.solovev",
+        # "wout_solovev.nc",
+        # "solovev.out.h5",
+    ] + glob(["solovev/**/*.json"]),
+)
+
+filegroup(
+    name = "solovev_analytical",
+    visibility = ["//vmecpp:__subpackages__"],
+    srcs = [
+        "solovev_analytical.json",
+        # "axis_coefficients_solovev_analytical.csv",
+        # "boundary_coefficients_solovev_analytical.csv",
+        # "input.solovev_analytical",
+        # "jxbout_solovev_analytical.nc",
+        # "mercier.solovev_analytical",
+        # "threed1.solovev_analytical",
+        # "wout_solovev_analytical.nc",
+    ],
+)
+
+filegroup(
+    name = "solovev_no_axis",
+    visibility = ["//vmecpp:__subpackages__"],
+    srcs = [
+        "solovev_no_axis.json",
+        # "axis_coefficients_solovev_no_axis.csv",
+        # "boundary_coefficients_solovev_no_axis.csv",
+        # "input.solovev_no_axis",
+        # "jxbout_solovev_no_axis.nc",
+        # "mercier.solovev_no_axis",
+        # "threed1.solovev_no_axis",
+        # "wout_solovev_no_axis.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_fixed_bdy",
+    visibility = ["//vmecpp:__subpackages__"],
+    srcs = [
+        "cth_like_fixed_bdy.json",
+        # "axis_coefficients_cth_like_fixed_bdy.csv",
+        # "boundary_coefficients_cth_like_fixed_bdy.csv",
+        # "input.cth_like_fixed_bdy",
+        # "jxbout_cth_like_fixed_bdy.nc",
+        # "mercier.cth_like_fixed_bdy",
+        # "threed1.cth_like_fixed_bdy",
+        # "wout_cth_like_fixed_bdy.nc",
+        # "cth_like_fixed_bdy.out.h5",
+    ],
+)
+
+filegroup(
+    name = "cth_like_fixed_bdy_nzeta_37",
+    visibility = ["//vmecpp:__subpackages__"],
+    srcs = [
+        "cth_like_fixed_bdy_nzeta_37.json",
+        # "axis_coefficients_cth_like_fixed_bdy_nzeta_37.csv",
+        # "boundary_coefficients_cth_like_fixed_bdy_nzeta_37.csv",
+        # "input.cth_like_fixed_bdy_nzeta_37",
+        # "jxbout_cth_like_fixed_bdy_nzeta_37.nc",
+        # "mercier.cth_like_fixed_bdy_nzeta_37",
+        # "threed1.cth_like_fixed_bdy_nzeta_37",
+        # "wout_cth_like_fixed_bdy_nzeta_37.nc",
+    ],
+)
+
+filegroup(
+    name = "cma",
+    visibility = ["//vmecpp:__subpackages__"],
+    srcs = [
+        "cma.json",
+        # "axis_coefficients_cma.csv",
+        # "boundary_coefficients_cma.csv",
+        # "input.cma",
+        # "jxbout_cma.nc",
+        # "mercier.cma",
+        # "threed1.cma",
+        # "wout_cma.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_free_bdy",
+    visibility = ["//vmecpp:__subpackages__"],
+    srcs = [
+        # "coils.cth_like",
+        # "mgrid_cth_like.nc",
+        # "extcur.cth_like",
+        "cth_like_free_bdy.json",
+        # "axis_coefficients_cth_like_free_bdy.csv",
+        # "boundary_coefficients_cth_like_free_bdy.csv",
+        # "input.cth_like_free_bdy",
+        # "jxbout_cth_like_free_bdy.nc",
+        # "mercier.cth_like_free_bdy",
+        # "threed1.cth_like_free_bdy",
+        # "wout_cth_like_free_bdy.nc",
+        "makegrid_parameters_cth_like.json",
+    ],
+)

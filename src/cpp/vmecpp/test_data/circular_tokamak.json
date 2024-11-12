@@ -1,0 +1,66 @@
+{
+    "lasym": false,
+    "nfp": 1,
+    "mpol": 8,
+    "ntor": 0,
+    "ntheta": 0,
+    "nzeta": 0,
+    "ns_array": [
+        17
+    ],
+    "ftol_array": [
+        1e-20
+    ],
+    "niter_array": [
+        3000
+    ],
+    "delt": 0.9,
+    "tcon0": 1.0,
+    "aphi": [
+        1.0
+    ],
+    "phiedge": 67.86,
+    "nstep": 200,
+    "pmass_type": "power_series",
+    "am": [
+        0.0
+    ],
+    "pres_scale": 1.0,
+    "gamma": 0.0,
+    "spres_ped": 1.0,
+    "ncurr": 0,
+    "piota_type": "power_series",
+    "ai": [
+        0.9,
+        -0.65
+    ],
+    "lfreeb": false,
+    "mgrid_file": "NONE",
+    "nvacskip": 3,
+    "lforbal": false,
+    "raxis_c": [
+        6.0
+    ],
+    "zaxis_s": [
+        0.0
+    ],
+    "rbc": [
+        {
+            "n": 0,
+            "m": 0,
+            "value": 6.0
+        },
+        {
+            "n": 0,
+            "m": 1,
+            "value": 2.0
+        }
+    ],
+    "zbs": [
+        {
+            "n": 0,
+            "m": 1,
+            "value": 2.0
+        }
+    ]
+}

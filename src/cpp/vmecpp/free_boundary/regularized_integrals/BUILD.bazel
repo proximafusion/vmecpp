@@ -1,0 +1,29 @@
+cc_library(
+    name = "regularized_integrals",
+    srcs = ["regularized_integrals.cc"],
+    hdrs = ["regularized_integrals.h"],
+    visibility = ["//vmecpp:__subpackages__"],
+    deps = [
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/free_boundary/surface_geometry:surface_geometry",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+    ],
+)
+
+cc_test(
+    name = "regularized_integrals_test",
+    srcs = ["regularized_integrals_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        ":regularized_integrals",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "small",
+)

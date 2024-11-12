@@ -1,0 +1,31 @@
+cc_library(
+    name = "external_magnetic_field",
+    srcs = ["external_magnetic_field.cc"],
+    hdrs = ["external_magnetic_field.h"],
+    visibility = ["//vmecpp:__subpackages__"],
+    deps = [
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/free_boundary/surface_geometry:surface_geometry",
+        "//vmecpp/free_boundary/mgrid_provider:mgrid_provider",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+        "@abscab_cpp//abscab:abscab",
+        "@abseil-cpp//absl/algorithm:container",
+    ],
+)
+
+cc_test(
+    name = "external_magnetic_field_test",
+    srcs = ["external_magnetic_field_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        ":external_magnetic_field",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "small",
+)

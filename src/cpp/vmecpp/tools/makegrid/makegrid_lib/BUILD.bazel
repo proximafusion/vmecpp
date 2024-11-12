@@ -1,0 +1,35 @@
+cc_library(
+    name = "makegrid_lib",
+    srcs = ["makegrid_lib.cc"],
+    hdrs = ["makegrid_lib.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/strings:str_format",
+        "@nlohmann_json//:json",
+        "//util/json_io",
+        "//util/file_io",
+        "//vmecpp/tools/composed_types_lib",
+        "//vmecpp/tools/magnetic_configuration_lib",
+        "//vmecpp/tools/magnetic_field_provider:magnetic_field_provider_lib",
+    ],
+    linkopts = [
+        "-lnetcdf",
+    ],
+)
+
+cc_test(
+    name = "makegrid_lib_test",
+    srcs = ["makegrid_lib_test.cc"],
+    data = [
+        "//vmecpp/tools/makegrid/test_data:mgrid_non_symmetric",
+        "//vmecpp/tools/makegrid/test_data:mgrid_symmetric_even",
+        "//vmecpp/tools/makegrid/test_data:mgrid_symmetric_odd",
+    ],
+    deps = [
+        ":makegrid_lib",
+        "@googletest//:gtest_main",
+        "//util/file_io",
+        "//util/netcdf_io",
+        "//util/testing:numerical_comparison_lib",
+    ],
+)

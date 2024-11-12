@@ -1,0 +1,31 @@
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+
+cmake(
+    name = "hdf5",
+    lib_source = "@hdf5//:all_srcs",
+    # to automatically get a multi-core build
+    generate_args = ["-GNinja"],
+    cache_entries = {
+        # enable C++ API (slightly more friendly wrapper around the C API)
+        "HDF5_BUILD_CPP_LIB": "ON",
+        # disable ZLIB support so we don't bring in the extra dependency
+        "HDF5_ENABLE_Z_LIB_SUPPORT" : "OFF",
+        "BUILD_TESTING": "OFF",
+        "HDF5_BUILD_TOOLS": "OFF",
+    },
+    # When building in dbg mode the artifact is called libhdf5_debug.a.
+    # This is controlled by the CMAKE_DEBUG_POSTFIX cmake variable but
+    # unfortunately setting it to the empty string counts as leaving it
+    # unset, so I don't know how to stop cmake from appending the postfix.
+    # Instead we change the expected static lib name here in Bazel.
+    out_static_libs = select({
+        "//conditions:default": ["libhdf5_cpp.a", "libhdf5.a"],
+        ":debug": ["libhdf5_cpp_debug.a", "libhdf5_debug.a"],
+    }),
+    visibility = [ "//visibility:public" ],
+)
+
+config_setting(
+  name = "debug",
+  values = {"compilation_mode": "dbg"}
+)

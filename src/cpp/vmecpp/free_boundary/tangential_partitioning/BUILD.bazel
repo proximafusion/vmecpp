@@ -1,0 +1,10 @@
+cc_library(
+    name = "tangential_partitioning",
+    srcs = ["tangential_partitioning.cc"],
+    hdrs = ["tangential_partitioning.h"],
+    visibility = ["//vmecpp/free_boundary:__subpackages__"],
+    deps = [
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+    ],
+)

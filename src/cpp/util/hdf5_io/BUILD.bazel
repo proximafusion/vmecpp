@@ -1,0 +1,10 @@
+cc_library(
+    name = "hdf5_io",
+    srcs = ["hdf5_io.cc"],
+    hdrs = ["hdf5_io.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@eigen",
+        "//third_party/hdf5",
+    ],
+)

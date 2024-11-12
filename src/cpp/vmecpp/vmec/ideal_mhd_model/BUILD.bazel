@@ -1,0 +1,87 @@
+cc_library(
+    name = "vectorized_dft_functions",
+    srcs = ["vectorized_dft_functions.cc"],
+    hdrs = ["vectorized_dft_functions.h", "dft_data.h"],
+    visibility = ["//vmecpp/vmec:__subpackages__"],
+    #  This library is using AVX intrinsics and it is meant to be compiled for a specific target architecture.
+    # The `-march` target below must match the one used when dispatching to this code
+    # in `IdealMHDModel`.
+    # In practice we want to target a CPU architecture that gives us a good speed-up when
+    # running jobs on GCP.
+    # Do not use the generic `-march=native` as that causes problems with caching artifacts in our CI pipelines!
+    copts = ["-march=skylake-avx512"],
+    deps = [
+        "//vmecpp/common/flow_control",
+        "//vmecpp/common/sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal",
+        "//vmecpp/vmec/boundaries",
+        "//vmecpp/vmec/fourier_geometry",
+        "//vmecpp/vmec/fourier_forces",
+        "//vmecpp/vmec/radial_profiles",
+        "//vmecpp/vmec/radial_partitioning",
+        "@abseil-cpp//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "ideal_mhd_model",
+    srcs = ["ideal_mhd_model.cc"],
+    hdrs = ["ideal_mhd_model.h", "dft_data.h"],
+    visibility = ["//vmecpp/vmec:__subpackages__"],
+    deps = [
+        "//vmecpp/common/flow_control:flow_control",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal",
+        "//vmecpp/vmec/boundaries:boundaries",
+        "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+        "//vmecpp/vmec/fourier_forces:fourier_forces",
+        "//vmecpp/vmec/radial_profiles:radial_profiles",
+        "//vmecpp/vmec/thread_local_storage:thread_local_storage",
+        "//vmecpp/vmec/handover_storage:handover_storage",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "//vmecpp/free_boundary/free_boundary_base:free_boundary_base",
+        "//vmecpp/vmec/ideal_mhd_model:vectorized_dft_functions",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status",
+    ],
+)
+
+cc_test(
+    name = "ideal_mhd_model_test",
+    srcs = ["ideal_mhd_model_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:solovev_analytical",
+        "//vmecpp/test_data:solovev_no_axis",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        ":ideal_mhd_model",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)
+
+cc_test(
+    name = "ideal_mhd_model_hot_restart_test",
+    srcs = ["ideal_mhd_model_hot_restart_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+    ],
+    deps = [
+        ":ideal_mhd_model",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+)

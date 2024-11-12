@@ -1,0 +1,6 @@
+cc_library(
+    name = "profile_parameterization_data",
+    srcs = ["profile_parameterization_data.cc"],
+    hdrs = ["profile_parameterization_data.h"],
+    visibility = ["//vmecpp/vmec:__subpackages__"],
+)

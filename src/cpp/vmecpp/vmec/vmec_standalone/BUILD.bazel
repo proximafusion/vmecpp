@@ -1,0 +1,11 @@
+cc_binary(
+    name = "vmec_standalone",
+    srcs = ["vmec_standalone.cc"],
+    deps = [
+        "@abseil-cpp//absl/strings:strings",
+        "//util/file_io:file_io",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/vmec/output_quantities:output_quantities",
+    ],
+)

@@ -1,0 +1,32 @@
+cc_library(
+    name = "mgrid_provider",
+    srcs = ["mgrid_provider.cc"],
+    hdrs = ["mgrid_provider.h"],
+    visibility = ["//vmecpp:__subpackages__"],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings:str_format",
+        "//util/netcdf_io:netcdf_io",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+        "//vmecpp/tools/makegrid/makegrid_lib",
+    ],
+)
+
+cc_test(
+    name = "mgrid_provider_test",
+    srcs = ["mgrid_provider_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        ":mgrid_provider",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/tools/magnetic_configuration_lib:magnetic_configuration_lib",
+        "//vmecpp/tools/magnetic_field_provider:magnetic_field_provider_lib",
+    ],
+)

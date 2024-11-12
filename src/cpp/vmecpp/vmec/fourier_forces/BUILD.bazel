@@ -1,0 +1,13 @@
+cc_library(
+    name = "fourier_forces",
+    srcs = ["fourier_forces.cc"],
+    hdrs = ["fourier_forces.h"],
+    visibility = ["//vmecpp/vmec:__subpackages__"],
+    deps = [
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "//vmecpp/vmec/handover_storage:handover_storage",
+        "//vmecpp/vmec/fourier_coefficients:fourier_coefficients",
+    ],
+)

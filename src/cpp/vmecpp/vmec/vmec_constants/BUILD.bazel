@@ -1,0 +1,7 @@
+cc_library(
+    name = "vmec_constants",
+    srcs = ["vmec_constants.cc"],
+    hdrs = ["vmec_constants.h"],
+    visibility = ["//vmecpp:__subpackages__"],
+    deps = [],
+)

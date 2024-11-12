@@ -1,0 +1,22 @@
+cc_library(
+    name = "composed_types_lib",
+    srcs = ["composed_types_lib.cc"],
+    hdrs = ["composed_types_lib.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/tools/composed_types_definition:composed_types_cc_proto",
+        "@abseil-cpp//absl/strings:strings",
+        "@abseil-cpp//absl/status:status",
+        "@abseil-cpp//absl/log:check",
+    ]
+)
+
+cc_test(
+    name = "composed_types_lib_test",
+    srcs = ["composed_types_lib_test.cc"],
+    deps = [
+        ":composed_types_lib",
+        "@googletest//:gtest_main",
+        "//util/testing:numerical_comparison_lib",
+    ]
+)

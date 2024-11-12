@@ -1,0 +1,15 @@
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+proto_library(
+    name = "composed_types_proto",
+    srcs = ["composed_types.proto"],
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "composed_types_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":composed_types_proto",
+    ],
+)
