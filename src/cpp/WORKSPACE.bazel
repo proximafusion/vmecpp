@@ -1,0 +1,35 @@
+# NOTE: prefer adding dependencies to MODULE.bazel instead if possible.
+
+workspace(name = "vmecpp")
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Accurate Biot-Savart routines with Correct Asymptotic Behaviour (C++)
+# https://github.com/jonathanschilling/abscab
+http_archive(
+  name = "abscab_cpp",
+  urls = [ "https://github.com/jonathanschilling/abscab-cpp/archive/refs/tags/v1.0.3.tar.gz" ],
+  strip_prefix = "abscab-cpp-1.0.3",
+  sha256 = "d7d4d8060117ac047ca7a3c5824f79cc7d8f42c538e542946650b188c7d2e145",
+)
+
+# HDF5
+# The following only downloads the archive, the actual build file is in third_party/hdf5.
+# See also https://bazelbuild.github.io/rules_foreign_cc/main/cmake.html.
+# Switch this to a bazel module when avaiable: https://github.com/bazelbuild/bazel-central-registry/issues/1327
+_ALL_CONTENT = """\
+filegroup(
+    name = "all_srcs",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+"""
+
+http_archive(
+    name = "hdf5",
+    build_file_content = _ALL_CONTENT,
+    sha256 = "df5ee33c74d5efb59738075ef96f4201588e1f1eeb233f047ac7fd1072dee1f6",
+    urls = [ "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_3.tar.gz" ],
+    strip_prefix = "hdf5-hdf5-1_14_3",
+)
+

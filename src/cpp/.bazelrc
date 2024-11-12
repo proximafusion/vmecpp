@@ -1,0 +1,25 @@
+# general compilation options
+build --cxxopt="-std=c++20" --copt="-fdiagnostics-color=always" --copt="-fopenmp" --linkopt="-lgomp" 
+
+# workaround for a Bazel 7 issue with rules_foreign_cc: https://github.com/bazelbuild/rules_foreign_cc/issues/1129
+build --sandbox_add_mount_pair=/tmp
+
+# protobuf 23 and 26 cause a "maybe uninitialized" error in gcc 14, demote to warning
+build --copt="-Wno-error=maybe-uninitialized"
+
+# -fno-math-errno yields a few % of performance improvements and we don't check errno anyways
+build:opt   -c opt --copt="-O3" --copt="-fno-math-errno"
+build:perf  -c opt --copt="-O3" --copt="-fno-math-errno" --copt="-g" --strip=never --copt="-fno-omit-frame-pointer"
+build:dbg   -c dbg --copt="-O0"
+
+# As per https://stackoverflow.com/questions/57733527/how-to-configure-bazel-to-run-address-memory-sanitizer.
+# In order to use this just pass `--config=asan` to Bazel when building and runnnig.
+# NOTE: this is gcc-only: clang needs slightly different flags
+build:asan   -c dbg --copt="-O1" --copt="-fsanitize=address" --linkopt="-fsanitize=address" --copt="-DADDRESS_SANITIZER"
+
+# We observe CPU overloads when having too many OpenMP threads in parallel on the CI machines.
+# So far, it looks similar to this issue: https://stackoverflow.com/q/70126350
+# As of now, we use the solution to run the tests one after another,
+# as suggested here: https://stackoverflow.com/a/70084246.
+test --local_test_jobs=1
+
