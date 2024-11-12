@@ -1,2 +1,5 @@
 # bazel output directories
 bazel-*
+src/cpp/bazel_artifacts
+src/cpp/_vmecpp.so
+dist/
