@@ -3,3 +3,4 @@ bazel-*
 src/cpp/bazel_artifacts
 src/vmecpp/_vmecpp.so
 dist/
+__pycache__
