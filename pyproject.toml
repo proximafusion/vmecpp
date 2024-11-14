@@ -24,7 +24,14 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: Implementation :: CPython",
 ]
-dependencies = []
+dependencies = [
+  "jaxtyping",
+  "mpi4py",
+  "netCDF4",
+  "numpy",
+  "pydantic",
+  "simsopt",
+]
 
 [project.urls]
 Documentation = "https://github.com/proximafusion/vmecpp#readme"
