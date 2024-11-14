@@ -130,6 +130,7 @@ ignore = [
   "PTH123",   # We don't want to substitute `open("fname")` with `Path("fname").open()`
   "PTH107",   # We don't want to substitute `os.remove("foo")` with `Path("foo").unlink().`
   "G004",     # We are ok with f-strings as logging messages
+  "RET504",   # We are ok with assignments before returns (as a way to document what we are returning)
 ]
 typing-modules = ["mypackage._compat.typing"]
 
