@@ -109,6 +109,7 @@ ignore = [
   "PLR2004",  # Magic value used in comparison
   "F722",     # Disable 'forward-annotation-syntax-error' for jaxtyping compatibility, see https://docs.kidger.site/jaxtyping/faq/#flake8-or-ruff-are-throwing-an-error
   "UP037",    # Incompatible with jaxtyping type annotations
+  "PGH003",   # We don't want to use specific code rules in `pyright: ignore`, too much of a hassle
 ]
 typing-modules = ["mypackage._compat.typing"]
 
