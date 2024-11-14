@@ -33,6 +33,11 @@ dependencies = [
   "simsopt",
 ]
 
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+
 [project.urls]
 Documentation = "https://github.com/proximafusion/vmecpp#readme"
 Issues = "https://github.com/proximafusion/vmecpp/issues"
@@ -60,6 +65,11 @@ artifacts = [
 [tool.hatch.build.targets.wheel]
 artifacts = [
   "src/vmecpp/cpp/_vmecpp.so",
+]
+
+[tool.hatch.envs.test]
+dependencies = [
+  "pytest"
 ]
 
 [tool.coverage.run]
