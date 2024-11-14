@@ -139,3 +139,6 @@ ignore = [
 
 [tool.docformatter]
 black = true  # Enables mode that plays nice with black, e.g. sets line length to 88.
+
+[tool.pyright]
+ignore = ["src/cpp/bazel-*"]
