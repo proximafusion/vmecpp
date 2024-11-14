@@ -15,7 +15,7 @@
 ### Python package
 
 ```console
-sudo apt-get install libnetcdf-dev liblapacke-dev
+sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev
 git clone https://github.com/proximafusion/vmecpp
 pip install ./vmecpp
 ```
