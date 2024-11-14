@@ -1,6 +1,6 @@
+#include <fstream>  // std::ifstream
 #include <string>
 #include <vector>
-#include <fstream>  // ifstream
 
 #include "absl/status/statusor.h"
 #include "gmock/gmock.h"
