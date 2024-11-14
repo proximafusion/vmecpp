@@ -4,6 +4,7 @@ from pathlib import Path
 
 import netCDF4
 import numpy as np
+
 from vmecpp.simsopt_compat import (
     VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER,
     FortranWOutAdapter,
@@ -41,7 +42,7 @@ def test_save_to_netcdf():
         assert test_value.dimensions == expected_dims, error_msg
 
         # scalar
-        if expected_dims == tuple():
+        if expected_dims == ():
             assert math.isclose(
                 test_value[:], expected_value[:], abs_tol=1e-7
             ), error_msg

@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 from netCDF4 import Dataset
+
 from vmecpp.vmec.pybind11 import simsopt_vmecpp
 
 
@@ -70,8 +71,8 @@ def test_mean_shear(vmec, wout):
 
 
 @pytest.mark.parametrize(
-    "attribute_name, mnmax_size_name",
-    (
+    tuple("attribute_name, mnmax_size_name"),
+    [
         ("rmnc", "mnmax"),
         ("zmns", "mnmax"),
         ("lmns", "mnmax"),
@@ -85,7 +86,7 @@ def test_mean_shear(vmec, wout):
         # NOTE: VMEC++ does not implement these and they are not used anywhere
         # ("currumnc", "mnmax_nyq"),
         # ("currvmnc", "mnmax_nyq"),
-    ),
+    ],
 )
 def test_wout_attributes_shape(vmec, attribute_name, mnmax_size_name):
     vmec.run()

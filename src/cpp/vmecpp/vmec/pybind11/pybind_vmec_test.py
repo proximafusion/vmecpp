@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 from netCDF4 import Dataset
+
 from vmecpp.vmec.pybind11 import _vmecpp as vmec  # pants: no-infer-dep
 
 
@@ -20,10 +21,7 @@ def is_close_ra(actual, expected, tolerance, context=""):
 
     if len(actual_shape) > 0:
         if not np.array_equal(actual_shape, expected_shape):
-            print(
-                "size mismatch: shape of actual is %s, shape of expected is %s"
-                % (str(actual_shape), str(expected_shape))
-            )
+            print(f"size mismatch: actual: {actual_shape}, expected :{expected_shape}")
             return False
 
         for i, a in enumerate(actual):
@@ -108,7 +106,6 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.jxbout.pprim, jxbout["pprime"][()], 1.0e-6)
     assert is_close_ra(output_quantities.jxbout.aminfor, jxbout["aminfor"][()], 1.0e-6)
     assert is_close_ra(output_quantities.jxbout.amaxfor, jxbout["amaxfor"][()], 1.0e-6)
-    #
     (n_theta, n_zeta, ns) = np.shape(jxbout["sqrt_g__bdotk"][()])
     jkl_shape = (ns, n_zeta, n_theta)
     assert is_close_ra(
@@ -234,7 +231,6 @@ def test_output_quantities():
     assert is_close_ra(
         output_quantities.wout.am, wout["am"][()][: last_zero + 1], 1.0e-15
     )
-    #
     last_zero = 0
     while wout["am_aux_s"][()][last_zero] != -1.0:
         last_zero += 1
@@ -243,7 +239,6 @@ def test_output_quantities():
         wout["am_aux_s"][()][: last_zero + 1],
         1.0e-15,
     )
-    #
     last_zero = 0
     while wout["am_aux_f"][()][last_zero] != 0.0:
         last_zero += 1
@@ -260,7 +255,6 @@ def test_output_quantities():
     assert is_close_ra(
         output_quantities.wout.ac, wout["ac"][()][: last_zero + 1], 1.0e-15
     )
-    #
     last_zero = 0
     while wout["ac_aux_s"][()][last_zero] != -1.0:
         last_zero += 1
@@ -269,7 +263,6 @@ def test_output_quantities():
         wout["ac_aux_s"][()][: last_zero + 1],
         1.0e-15,
     )
-    #
     last_zero = 0
     while wout["ac_aux_f"][()][last_zero] != 0.0:
         last_zero += 1
@@ -286,7 +279,6 @@ def test_output_quantities():
     assert is_close_ra(
         output_quantities.wout.ai, wout["ai"][()][: last_zero + 1], 1.0e-15
     )
-    #
     last_zero = 0
     while wout["ai_aux_s"][()][last_zero] != -1.0:
         last_zero += 1
@@ -295,7 +287,6 @@ def test_output_quantities():
         wout["ai_aux_s"][()][: last_zero + 1],
         1.0e-15,
     )
-    #
     last_zero = 0
     while wout["ai_aux_f"][()][last_zero] != 0.0:
         last_zero += 1

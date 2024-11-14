@@ -5,6 +5,7 @@ from pathlib import Path
 from simsopt import geo
 from third_party.indata2json import indata_to_json
 from util import workspace
+
 from vmecpp.simsopt_compat import surfacerzfourier_from_vmecppindata
 
 
@@ -23,7 +24,8 @@ def test_surfacerzfourier_from_vmecppindata_no_ntheta_nphi():
         vmecpp_indata_file = indata_to_json.indata_to_json(fortran_indata_file)
         test_surface = surfacerzfourier_from_vmecppindata(Path(vmecpp_indata_file))
 
-    assert reference_surface.stellsym and test_surface.stellsym
+    assert reference_surface.stellsym
+    assert test_surface.stellsym
 
     # NOTE: SIMSOPT's SurfaceRZFourier implementation takes into account
     # poloidal modes up to m == mpol, although VMEC2000 and VMEC++ only

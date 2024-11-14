@@ -197,16 +197,14 @@ def _int_array_to_namelist(varname: str, vmecpp_json: dict[str, Any]) -> str:
     if varname in vmecpp_json and len(vmecpp_json[varname]) > 0:
         elements = ", ".join(map(str, vmecpp_json[varname]))
         return f"  {varname} = {elements}\n"
-    else:
-        return ""
+    return ""
 
 
 def _float_array_to_namelist(varname: str, vmecpp_json: dict[str, Any]) -> str:
     if varname in vmecpp_json and len(vmecpp_json[varname]) > 0:
         elements = ", ".join([f"{x:.20e}" for x in vmecpp_json[varname]])
         return f"  {varname} = {elements}\n"
-    else:
-        return ""
+    return ""
 
 
 def _fourier_coefficients_to_namelist(varname: str, vmecpp_json: dict[str, Any]) -> str:
@@ -218,5 +216,4 @@ def _fourier_coefficients_to_namelist(varname: str, vmecpp_json: dict[str, Any])
             value = coefficient["value"]
             out += f"  {varname}({n}, {m}) = {value:.20e}\n"
         return out
-    else:
-        return ""
+    return ""

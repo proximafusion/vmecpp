@@ -5,19 +5,20 @@
 
 import logging
 import math
-import os
+from pathlib import Path
 
 import numpy as np
 import pytest
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
+
 from vmecpp.vmec.pybind11.simsopt_vmecpp import Vmec
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def test_dir() -> str:
-    return "vmecpp/test_data/"
+def test_dir() -> Path:
+    return Path("vmecpp/test_data/")
 
 
 ########################################################################
@@ -35,7 +36,7 @@ def test_vacuum_well(test_dir):
     considered in the 2020 paper. We increase the mean field B0 to 2T in that
     configuration to make sure all the factors of B0 are correct.
     """
-    filename = os.path.join(
+    filename = Path(
         test_dir, "wout_LandremanSengupta2019_section5.4_B2_A80_reference.nc"
     )
     vmec = Vmec(filename)
@@ -60,7 +61,7 @@ def test_vacuum_well(test_dir):
 
 def test_iota(test_dir):
     """Test the functions related to iota."""
-    filename = os.path.join(
+    filename = Path(
         test_dir, "wout_LandremanSengupta2019_section5.4_B2_A80_reference.nc"
     )
     vmec = Vmec(filename)
@@ -85,7 +86,7 @@ def test_iota(test_dir):
 
 def test_external_current(test_dir):
     """Test the external_current() function."""
-    filename = os.path.join(
+    filename = Path(
         test_dir,
         "wout_20220102-01-053-003_QH_nfp4_aspect6p5_beta0p05"
         "_iteratedWithSfincs_reference.nc",
@@ -146,7 +147,7 @@ def test_external_current(test_dir):
 def test_error_on_rerun(test_dir):
     """If a vmec object is initialized from a wout file, and if the dofs are then
     changed, vmec output functions should raise an exception."""
-    filename = os.path.join(test_dir, "wout_li383_low_res_reference.nc")
+    filename = Path(test_dir, "wout_li383_low_res_reference.nc")
     vmec = Vmec(filename)
     _ = vmec.mean_iota()
     vmec.boundary.set_rc(1, 0, 2.0)
@@ -162,7 +163,7 @@ def test_error_on_rerun(test_dir):
 def test_init_from_file(test_dir):
     """Try creating a Vmec instance from a specified input file."""
 
-    filename = os.path.join(test_dir, "li383_low_res.json")
+    filename = Path(test_dir, "li383_low_res.json")
     v = Vmec(filename)
     assert v.indata is not None
     assert v.indata.nfp == 3
@@ -225,8 +226,8 @@ def test_surface_4_ways(test_dir):
                 assert math.isclose(s1.get_zc(m, n), s2.get_zc(m, n))
 
     # First try a stellarator-symmetric example:
-    filename1 = os.path.join(test_dir, "li383_low_res.json")
-    filename2 = os.path.join(test_dir, "wout_li383_low_res_reference.nc")
+    filename1 = Path(test_dir, "li383_low_res.json")
+    filename2 = Path(test_dir, "wout_li383_low_res_reference.nc")
     v = Vmec(filename1)
     s1 = v.boundary
     # Compare initializing a Vmec object from an input file vs from a wout file:
@@ -238,7 +239,7 @@ def test_surface_4_ways(test_dir):
     compare_surfaces_sym(s1, s2)
     # Now try from_vmec_input() instead of from_wout():
     # NOTE: here we use the Fortran input from which VMEC++'s JSON input was derived
-    s2 = SurfaceRZFourier.from_vmec_input(os.path.join(test_dir, "input.li383_low_res"))
+    s2 = SurfaceRZFourier.from_vmec_input(Path(test_dir, "input.li383_low_res"))
     compare_surfaces_sym(s1, s2)
 
     # TODO(eguiraud): the input file for the following test,
@@ -341,8 +342,8 @@ def test_write_input(test_dir):
         "circular_tokamak",
     ]
     for config in configs:
-        infilename = os.path.join(test_dir, f"{config}.json")
-        outfilename = os.path.join(test_dir, f"wout_{config}_reference.nc")
+        infilename = Path(test_dir, f"{config}.json")
+        outfilename = Path(test_dir, f"wout_{config}_reference.nc")
         vmec1 = Vmec(infilename)
         newfile = "input.test"
         vmec1.write_input(newfile)

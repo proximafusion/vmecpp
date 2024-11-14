@@ -101,13 +101,12 @@ def surfacerzfourier_from_vmecppindata(
     See also https://github.com/hiddenSymmetries/simsopt/pull/437.
     """
 
-    with open(input_file) as indata_file:
+    with open(input_file, encoding="utf-8") as indata_file:
         indata = json.load(indata_file)
 
     if indata["lasym"]:
-        raise NotImplementedError(
-            "Inputs without stellarator symmetry are not supported."
-        )
+        msg = "Inputs without stellarator symmetry are not supported."
+        raise NotImplementedError(msg)
 
     return surfacerzfourier_from_fourier_coeffs(
         mpol=indata["mpol"],
