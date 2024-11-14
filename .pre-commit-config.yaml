@@ -16,7 +16,7 @@ repos:
     hooks:
       - id: docformatter
         additional_dependencies: [tomli]
-        args: [--in-place --config ./pyproject.toml]
+        args: ["--in-place", "--config", "./pyproject.toml"]
   - repo: https://github.com/RobertCraigie/pyright-python
     rev: v1.1.389
     hooks:
