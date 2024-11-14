@@ -128,6 +128,7 @@ ignore = [
   "UP037",    # Incompatible with jaxtyping type annotations
   "PGH003",   # We don't want to use specific code rules in `pyright: ignore`, too much of a hassle
   "PTH123",   # We don't want to substitute `open("fname")` with `Path("fname").open()`
+  "PTH107",   # We don't want to substitute `os.remove("foo")` with `Path("foo").unlink().`
 ]
 typing-modules = ["mypackage._compat.typing"]
 
