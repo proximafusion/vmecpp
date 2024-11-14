@@ -132,7 +132,6 @@ ignore = [
   "G004",     # We are ok with f-strings as logging messages
   "RET504",   # We are ok with assignments before returns (as a way to document what we are returning)
 ]
-typing-modules = ["mypackage._compat.typing"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["T20"]
