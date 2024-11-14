@@ -82,6 +82,7 @@ exclude_lines = [
 ]
 
 [tool.ruff.lint]
+line-length = 88
 extend-select = [
   "ARG",      # flake8-unused-arguments
   "B",        # flake8-bugbear
