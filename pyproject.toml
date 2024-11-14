@@ -114,6 +114,7 @@ ignore = [
   "ISC001",   # Conflicts with formatter
   "PLR09",    # Too many <...>
   "PLR2004",  # Magic value used in comparison
+  "F722",     # Disable 'forward-annotation-syntax-error' for jaxtyping compatibility, see https://docs.kidger.site/jaxtyping/faq/#flake8-or-ruff-are-throwing-an-error
 ]
 typing-modules = ["mypackage._compat.typing"]
 isort.required-imports = ["from __future__ import annotations"]
