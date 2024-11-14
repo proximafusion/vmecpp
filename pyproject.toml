@@ -55,13 +55,6 @@ artifacts = [
   "src/vmecpp/cpp/_vmecpp.so",
 ]
 
-[tool.hatch.envs.types]
-extra-dependencies = [
-  "mypy>=1.0.0",
-]
-[tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/vmecpp tests}"
-
 [tool.coverage.run]
 source_pkgs = ["vmecpp", "tests"]
 branch = true
