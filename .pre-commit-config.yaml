@@ -12,7 +12,7 @@ repos:
       additional_dependencies:
       - black==22.12.0
   - repo: https://github.com/PyCQA/docformatter
-    rev: 06907d0
+    rev: eb1df34
     hooks:
       - id: docformatter
         additional_dependencies: [tomli]
