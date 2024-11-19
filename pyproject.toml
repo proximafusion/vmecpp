@@ -38,21 +38,21 @@ path = "src/vmecpp/__about__.py"
 # but I could not convince hatch to do otherwise. We only copy one
 # of the two into the wheel.
 [[tool.hatch.build.hooks.build-scripts.scripts]]
-work_dir = "src/cpp/"
-out_dir = "src/cpp/bazel_artifacts/"
+work_dir = "src/vmecpp/cpp/"
+out_dir = "src/vmecpp/cpp/bazel_artifacts/"
 commands = [
   # the build is CPU-intensive, so we limit the amount of jobs to less
   # than the number of CPUs in order to not completely hog the machine 
   "bazel build --jobs='HOST_CPUS*.75' //...",
-  "cp -f bazel-bin/vmecpp/vmec/pybind11/_vmecpp.so ../vmecpp/_vmecpp.so",
+  "cp -f bazel-bin/vmecpp/vmec/pybind11/_vmecpp.so _vmecpp.so",
 ]
 artifacts = [
-    "../vmecpp/_vmecpp.so",
+    "_vmecpp.so",
 ]
 
 [tool.hatch.build.targets.wheel]
 artifacts = [
-  "src/vmecpp/_vmecpp.so",
+  "src/vmecpp/cpp/_vmecpp.so",
 ]
 
 [tool.hatch.envs.types]
