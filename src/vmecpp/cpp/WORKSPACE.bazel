@@ -32,4 +32,3 @@ http_archive(
     urls = [ "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_3.tar.gz" ],
     strip_prefix = "hdf5-hdf5-1_14_3",
 )
-

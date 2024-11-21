@@ -1,5 +1,5 @@
 # general compilation options
-build --cxxopt="-std=c++20" --copt="-fdiagnostics-color=always" --copt="-fopenmp" --linkopt="-lgomp" 
+build --cxxopt="-std=c++20" --copt="-fdiagnostics-color=always" --copt="-fopenmp" --linkopt="-lgomp"
 
 # workaround for a Bazel 7 issue with rules_foreign_cc: https://github.com/bazelbuild/rules_foreign_cc/issues/1129
 build --sandbox_add_mount_pair=/tmp
@@ -22,4 +22,3 @@ build:asan   -c dbg --copt="-O1" --copt="-fsanitize=address" --linkopt="-fsaniti
 # As of now, we use the solution to run the tests one after another,
 # as suggested here: https://stackoverflow.com/a/70084246.
 test --local_test_jobs=1
-
