@@ -13,9 +13,10 @@ from simsopt._core.optimizable import Optimizable
 from simsopt._core.util import ObjectiveFailure, Struct
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
 from simsopt.util.mpi import MpiPartition
-from vmecpp import simsopt_compat
-from vmecpp.simsopt_compat import FortranWOutAdapter
-from vmecpp.vmec.pybind11 import _vmecpp as vmec  # pants: no-infer-dep
+
+from vmecpp.cpp import _vmecpp as vmec
+from vmecpp.cpp.vmecpp import simsopt_compat
+from vmecpp.cpp.vmecpp.simsopt_compat import FortranWOutAdapter
 
 logger = logging.getLogger(__name__)
 
