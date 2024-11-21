@@ -1,0 +1,93 @@
+! based on the analytical Solov'ev equilibrium
+! mentioned in Hirshman & Whitson (1983)
+
+&INDATA
+
+  mpol = 13
+
+  ns_array    = 31
+  ftol_array  = 1.0e-16
+  niter_array = 2000
+
+  nstep = 100
+
+  pmass_type = 'power_series'
+  pres_scale =  9.947183943243e+04
+  am = 1.0, -1.0
+
+  phiedge = 3.141592653590e+00
+
+  ncurr = 1
+  curtor = 2.823753282890e+06
+  pcurr_type = 'power_series'
+  ac( 0) =  9.798989768026e-01
+  ac( 1) =  3.499639202867e-02
+  ac( 2) =  6.561823505375e-03
+  ac( 3) =  1.367046563620e-03
+  ac( 4) =  2.990414357918e-04
+  ac( 5) =  6.728432305316e-05
+  ac( 6) =  1.541932403302e-05
+  ac( 7) =  3.579485936236e-06
+  ac( 8) =  8.389420163053e-07
+  ac( 9) =  1.980835316276e-07
+  ac(10) =  4.704483876156e-08
+  ac(11) =  1.122660924992e-08
+  ac(12) =  2.689708466126e-09
+  ac(13) =  6.465645351265e-10
+
+  rbc(0, 0) =  3.933370603101e+00
+  rbc(0, 1) = -1.025899678142e+00
+  rbc(0, 2) = -6.809124378642e-02
+  rbc(0, 3) = -9.080031777300e-03
+  rbc(0, 4) = -1.516336810656e-03
+  rbc(0, 5) = -2.838744594993e-04
+  rbc(0, 6) = -5.697082348932e-05
+  rbc(0, 7) = -1.198195946489e-05
+  rbc(0, 8) = -2.606510095840e-06
+  rbc(0, 9) = -5.816406878883e-07
+  rbc(0,10) = -1.324037181689e-07
+  rbc(0,11) = -3.062633595619e-08
+  rbc(0,12) = -7.177875393912e-09
+
+  zbs(0, 1) =  1.581138830084e+00
+
+  ! checkpoints along iterations
+  dump_add_fluxes            = .true.
+  dump_metric                = .true.
+  dump_volume                = .true.
+  dump_bcontrav              = .true.
+  dump_bcov                  = .true.
+  dump_lambda_forces         = .true.
+  dump_bcov_full             = .true.
+  dump_precondn              = .true.
+  dump_forceNorms_tcon       = .true.
+  dump_lulv_comb             = .true.
+  dump_calc_fbal             = .true.
+  dump_evolve                = .true.
+  dump_fixaray               = .true.
+  dump_spectral_constraint   = .true.
+  dump_forces                = .true.
+  dump_totzsp_input          = .true.
+  dump_funct3d_geometry      = .true.
+  dump_constraint_force      = .true.
+  dump_guess_axis            = .true.
+  dump_interp                = .true.
+  dump_jacobian              = .true.
+  dump_lamcal                = .true.
+  dump_profil1d              = .true.
+  dump_profil3d              = .true.
+  dump_readin_boundary       = .true.
+  dump_phys_gc               = .true.
+  dump_fsq                   = .true.
+  dump_scale_m1              = .true.
+  dump_scalfor_out           = .true.
+  dump_fsq1                  = .true.
+  dump_scalfor_R             = .true.
+  dump_scalfor_Z             = .true.
+  dump_symforce              = .true.
+  dump_tomnsps               = .true.
+  dump_tomnspa               = .true.
+  dump_multigrid_result      = .true.
+  dump_rbsq                  = .true.
+  dump_printout              = .true.
+/

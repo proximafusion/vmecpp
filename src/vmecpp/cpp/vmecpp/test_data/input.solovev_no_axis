@@ -1,0 +1,79 @@
+&INDATA
+DELT = 0.9
+LASYM = F
+NFP = 1
+NCURR = 0
+NSTEP = 250
+GAMMA = 0
+PHIEDGE = 1
+BLOAT = 1
+CURTOR = 0
+SPRES_PED = 1
+PRES_SCALE = 1
+PMASS_TYPE = "power_series"
+MPOL = 6
+NTOR = 0
+NS_ARRAY    =     5    11
+NITER_ARRAY =  1000  2000
+FTOL_ARRAY  = 1E-12 1E-12
+AM = 0.125 -0.125
+AI = 1
+RBC(0,0) =  3.999  ZBS(0,0) =  0.000
+RBC(0,1) =  1.026  ZBS(0,1) =  1.580
+RBC(0,2) = -0.068  ZBS(0,2) =  0.010
+
+! checkpoints along iterations
+dump_add_fluxes            = .true.
+dump_metric                = .true.
+dump_volume                = .true.
+dump_bcontrav              = .true.
+dump_bcov                  = .true.
+dump_lambda_forces         = .true.
+dump_bcov_full             = .true.
+dump_precondn              = .true.
+dump_forceNorms_tcon       = .true.
+dump_lulv_comb             = .true.
+dump_calc_fbal             = .true.
+dump_evolve                = .true.
+dump_fixaray               = .true.
+dump_spectral_constraint   = .true.
+dump_forces                = .true.
+dump_totzsp_input          = .true.
+dump_funct3d_geometry      = .true.
+dump_constraint_force      = .true.
+dump_guess_axis            = .true.
+dump_interp                = .true.
+dump_jacobian              = .true.
+dump_lamcal                = .true.
+dump_profil1d              = .true.
+dump_profil3d              = .true.
+dump_readin_boundary       = .true.
+dump_phys_gc               = .true.
+dump_fsq                   = .true.
+dump_scale_m1              = .true.
+dump_scalfor_out           = .true.
+dump_fsq1                  = .true.
+dump_scalfor_R             = .true.
+dump_scalfor_Z             = .true.
+dump_symforce              = .true.
+dump_tomnsps               = .true.
+dump_tomnspa               = .true.
+dump_multigrid_result      = .true.
+dump_rbsq                  = .true.
+dump_printout              = .true.
+
+! fileout
+dump_bcovar_fileout        = .true.
+dump_bss                   = .true.
+dump_jxbforce_bsub_lowpass = .true.
+dump_jxbout                = .true.
+dump_mercier               = .true.
+dump_threed1_firstTable    = .true.
+dump_threed1_geomag        = .true.
+dump_threed1_volquant      = .true.
+dump_threed1_axis          = .true.
+dump_threed1_beta          = .true.
+dump_threed1_shafrint      = .true.
+dump_freeb_data            = .true.
+
+/

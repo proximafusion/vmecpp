@@ -1,0 +1,139 @@
+&INDATA
+
+LASYM = F,
+NFP = 5,
+MPOL = 5,
+NTOR = 4,
+! ntheta not specified
+NZETA = 37,
+
+NS_ARRAY = 25,
+FTOL_ARRAY = 1.0E-6,
+NITER_array = 25000,
+
+PHIEDGE = -0.035,
+NCURR = 1,
+
+pmass_type = 'two_power',
+AM = 1.0, 5.0, 10.0,
+PRES_SCALE = 432.29080924603676,
+GAMMA = 0.0,
+SPRES_PED = 1.0,
+
+! no iota profile specified
+
+PCURR_TYPE = 'two_power',
+AC = 1.0, 5.0, 10.0,
+CURTOR = 43229.08092460368,
+BLOAT = 1.0,
+
+! Initial Position.
+RAXIS_CC(:) = 0.786037734951267, -0.0302978726119071, 0.000915258048528683, -1.91959906744039e-05, 1.45930777845745e-06,
+ZAXIS_CS(:) = 0.0, 0.0273158409510113, -0.000937096584979097, 1.741833421328e-05, -5.91222841432118e-07,
+
+RBC( 0,0) =  0.780906309727434    ZBS( 0,0) =  0.0
+RBC( 1,0) = -0.046151739531816    ZBS( 1,0) =  0.0449223151020507
+RBC( 2,0) =  0.0025346622908875   ZBS( 2,0) = -0.00157959039976886
+RBC( 3,0) = -0.000294570027126834 ZBS( 3,0) =  0.000110096448338774
+RBC( 4,0) =  4.87628905278232e-05 ZBS( 4,0) = -3.41523759959853e-05
+
+RBC(-4,1) =  1.10991985982551e-05 ZBS(-4,1) =  8.86243753757977e-06
+RBC(-3,1) = -6.69760263500533e-05 ZBS(-3,1) = -7.61994068511444e-06
+RBC(-2,1) =  0.000344811566716634 ZBS(-2,1) = -0.000102387369227698
+RBC(-1,1) = -0.00566091264003757  ZBS(-1,1) = -0.00308184739411174
+RBC( 0,1) =  0.131435746235883    ZBS( 0,1) =  0.164601748843378
+RBC( 1,1) = -0.039386399008392    ZBS( 1,1) =  0.0303393558516301
+RBC( 2,1) =  0.00488869740987901  ZBS( 2,1) = -0.00451585182685075
+RBC( 3,1) = -0.000438124054375238 ZBS( 3,1) =  0.000322392099487897
+RBC( 4,1) =  4.81645985535357e-05 ZBS( 4,1) = -3.48737658782808e-05
+
+RBC(-4,2) = -1.53011178035308e-06 ZBS(-4,2) = -1.28442261664991e-06
+RBC(-3,2) =  2.35413167655254e-05 ZBS(-3,2) =  2.93065492924715e-05
+RBC(-2,2) = -8.83026333729552e-05 ZBS(-2,2) = -0.000193078473966611
+RBC(-1,2) =  0.000146058452530242 ZBS(-1,2) =  0.000917965755419898
+RBC( 0,2) =  0.00147170066093047  ZBS( 0,2) = -0.00272248379340565
+RBC( 1,2) = -0.00320611057583166  ZBS( 1,2) =  0.00355657869194155
+RBC( 2,2) =  0.00228943846580024  ZBS( 2,2) = -0.00205297288922009
+RBC( 3,2) = -0.000319173467542497 ZBS( 3,2) =  0.000328755917997435
+RBC( 4,2) =  2.60138638307058e-05 ZBS( 4,2) = -3.57925786395997e-05
+
+RBC(-4,3) = -2.22269133805289e-06 ZBS(-4,3) =  3.83110072934457e-06
+RBC(-3,3) =  8.93182437579942e-07 ZBS(-3,3) = -3.24731939556698e-06
+RBC(-2,3) = -1.86926512003518e-05 ZBS(-2,3) = -3.77850265219013e-06
+RBC(-1,3) = -0.000103222718482529 ZBS(-1,3) = -7.43052945541678e-07
+RBC( 0,3) = -0.00010590693425821  ZBS( 0,3) =  0.000120213894931637
+RBC( 1,3) = -3.70460344545912e-05 ZBS( 1,3) =  9.70588501764729e-05
+RBC( 2,3) =  0.000384952481942609 ZBS( 2,3) = -0.000305563766958157
+RBC( 3,3) = -8.73464736915271e-05 ZBS( 3,3) =  7.12819152728525e-05
+RBC( 4,3) =  1.70559212798558e-05 ZBS( 4,3) = -1.14192148882868e-05
+
+RBC(-4,4) = -4.11611838328142e-06 ZBS(-4,4) =  2.79111955871817e-06
+RBC(-3,4) = -3.670147571078e-06   ZBS(-3,4) = -1.0123457043081e-06
+RBC(-2,4) =  3.27663252086114e-06 ZBS(-2,4) =  1.33742394885452e-05
+RBC(-1,4) = -5.49897884990649e-05 ZBS(-1,4) = -6.56302557453055e-05
+RBC( 0,4) =  0.000611036997986113 ZBS( 0,4) =  0.000408527289143525
+RBC( 1,4) =  0.000157752536759372 ZBS( 1,4) = -0.00113568343044368
+RBC( 2,4) =  0.000238939203660074 ZBS( 2,4) =  0.000453498195180046
+RBC( 3,4) = -7.45864378517666e-05 ZBS( 3,4) = -5.07003662052117e-05
+RBC( 4,4) =  1.0767515627784e-05  ZBS( 4,4) =  5.22398328609138e-06
+
+LFREEB = F,
+
+NSTEP = 200,
+DELT = 0.7,
+
+! checkpoints along iterations
+dump_add_fluxes            = .true.
+dump_metric                = .true.
+dump_volume                = .true.
+dump_bcontrav              = .true.
+dump_bcov                  = .true.
+dump_lambda_forces         = .true.
+dump_bcov_full             = .true.
+dump_precondn              = .true.
+dump_forceNorms_tcon       = .true.
+dump_lulv_comb             = .true.
+dump_calc_fbal             = .true.
+dump_evolve                = .true.
+dump_fixaray               = .true.
+dump_spectral_constraint   = .true.
+dump_totzsp_input          = .true.
+dump_forces                = .true.
+dump_funct3d_geometry      = .true.
+dump_constraint_force      = .true.
+dump_guess_axis            = .true.
+dump_interp                = .true.
+dump_jacobian              = .true.
+dump_lamcal                = .true.
+dump_profil1d              = .true.
+dump_profil3d              = .true.
+dump_readin_boundary       = .true.
+dump_phys_gc               = .true.
+dump_fsq                   = .true.
+dump_scale_m1              = .true.
+dump_scalfor_out           = .true.
+dump_fsq1                  = .true.
+dump_scalfor_R             = .true.
+dump_scalfor_Z             = .true.
+dump_symforce              = .true.
+dump_tomnsps               = .true.
+dump_tomnspa               = .true.
+dump_multigrid_result      = .true.
+dump_rbsq                  = .true.
+dump_printout              = .true.
+
+! fileout
+dump_bcovar_fileout        = .true.
+dump_bss                   = .true.
+dump_jxbforce_bsub_lowpass = .true.
+dump_jxbout                = .true.
+dump_mercier               = .true.
+dump_threed1_firstTable    = .true.
+dump_threed1_geomag        = .true.
+dump_threed1_volquant      = .true.
+dump_threed1_axis          = .true.
+dump_threed1_beta          = .true.
+dump_threed1_shafrint      = .true.
+dump_freeb_data            = .true.
+
+/
