@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
 
-from vmecpp.vmec.pybind11.simsopt_vmecpp import Vmec
+from vmecpp.cpp.vmecpp.vmec.pybind11.simsopt_vmecpp import Vmec
 
 logger = logging.getLogger(__name__)
 
