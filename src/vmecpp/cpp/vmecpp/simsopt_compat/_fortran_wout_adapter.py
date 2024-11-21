@@ -7,7 +7,7 @@ import jaxtyping as jt
 import netCDF4
 import numpy as np
 import pydantic
-from util.types import runtime_check_array_sizes
+from beartype import beartype
 
 VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER = [
     "input_extension",
@@ -36,7 +36,7 @@ VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER = [
 not exposed by FortranWOutAdapter."""
 
 
-@runtime_check_array_sizes
+@jt.jaxtyped(typechecker=beartype)
 def pad_and_transpose(
     arr: jt.Float[np.ndarray, "ns_minus_one mn"], mnsize: int
 ) -> jt.Float[np.ndarray, "mn ns_minus_one+1"]:
