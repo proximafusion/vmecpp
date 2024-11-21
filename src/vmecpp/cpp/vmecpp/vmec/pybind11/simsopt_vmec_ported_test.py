@@ -118,7 +118,7 @@ def test_external_current(test_dir):
 #         """
 #         # The code that follows is extracted from
 #         # stage_two_optimization_finite_beta.py
-#         ncoils = 5
+#         n_coils_per_half_period = 5
 #         R0 = 5.5
 #         R1 = 1.25
 #         order = 6
@@ -128,9 +128,17 @@ def test_external_current(test_dir):
 #         s = vmec.boundary
 #         total_current = vmec.external_current() / (2 * s.nfp)
 #         base_curves = create_equally_spaced_curves(
-#            ncoils, s.nfp, stellsym=True, R0=R0, R1=R1, order=order, numquadpoints=128)
+#            n_coils_per_half_period,
+#            s.nfp,
+#            stellsym=True,
+#            R0=R0,
+#            R1=R1,
+#            order=order,
+#            numquadpoints=128)
 #         base_currents = [
-#              Current(total_current / ncoils * 1e-5) * 1e5 for _ in range(ncoils-1)
+#              Current(total_current
+#              / n_coils_per_half_period * 1e-5)
+#              * 1e5 for _ in range(n_coils_per_half_period-1)
 #         ]
 #         total_current = Current(total_current)
 #         total_current.fix_all()
