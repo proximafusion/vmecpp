@@ -56,8 +56,8 @@ def indata_to_json(filename: pathlib.Path) -> pathlib.Path:
 
         if not output_file.is_file():
             msg = (
-                f"The indata2json command was executed with no errors but output file "
-                "{output_file} is missing. This should never happen!"
+                "The indata2json command was executed with no errors but output file "
+                f"{output_file} is missing. This should never happen!"
             )
             raise RuntimeError(msg)
 
