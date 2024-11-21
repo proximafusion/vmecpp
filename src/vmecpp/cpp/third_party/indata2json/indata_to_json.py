@@ -5,8 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from starfinder.common import path_utils
-from util import working_directory, workspace
+from vmecpp import _util
 
 
 def indata_to_json(filename: pathlib.Path) -> pathlib.Path:
@@ -23,20 +22,22 @@ def indata_to_json(filename: pathlib.Path) -> pathlib.Path:
         The path to the newly created JSON file.
     """
     if not filename.exists():
-        raise FileNotFoundError(f"{filename} does not exist.")
+        msg = f"{filename} does not exist."
+        raise FileNotFoundError(msg)
 
-    workspace_dir = workspace.workspace_root()
     indata_to_json_exe = pathlib.Path(
-        workspace_dir, "third_party/indata2json/indata2json"
+        _util.package_root(), "cpp", "third_party", "indata2json", "indata2json"
     )
     if not indata_to_json_exe.is_file():
-        raise FileNotFoundError(f"{indata_to_json_exe} is not a file.")
+        msg = f"{indata_to_json_exe} is not a file."
+        raise FileNotFoundError(msg)
     if not os.access(indata_to_json_exe, os.X_OK):
-        raise PermissionError(f"Missing permission to execute {indata_to_json_exe}.")
+        msg = f"Missing permission to execute {indata_to_json_exe}."
+        raise PermissionError(msg)
 
     original_input_file = filename.absolute()
-    original_cwd = os.getcwd()
-    with tempfile.TemporaryDirectory() as tmpdir, working_directory.change_working_directory_to(
+    original_cwd = Path.cwd()
+    with tempfile.TemporaryDirectory() as tmpdir, _util.change_working_directory_to(
         Path(tmpdir)
     ):
         # The Fortran indata2json supports a limited length of the path to the input file.
@@ -51,8 +52,8 @@ def indata_to_json(filename: pathlib.Path) -> pathlib.Path:
                 result.returncode, [indata_to_json_exe, local_input_file]
             )
 
-        vmec_id = path_utils.filepath_to_vmec_id(filename.name)
-        output_file = pathlib.Path(f"{vmec_id}.json")
+        configuration_name = _util.get_vmec_configuration_name(filename)
+        output_file = pathlib.Path(f"{configuration_name}.json")
 
         if not output_file.is_file():
             msg = (
