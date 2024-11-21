@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from netCDF4 import Dataset
 
-from vmecpp.vmec.pybind11 import _vmecpp as vmec  # pants: no-infer-dep
+from vmecpp.cpp import _vmecpp as vmec  # pants: no-infer-dep
 
 
 def is_close_ra(actual, expected, tolerance, context=""):

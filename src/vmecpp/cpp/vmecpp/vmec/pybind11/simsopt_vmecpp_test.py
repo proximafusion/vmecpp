@@ -1,15 +1,18 @@
 # Basic execution tests for SIMSOPT-compatible Python wrapper of VMEC++
 
+from pathlib import Path
+
+import netCDF4
 import numpy as np
 import pytest
-from netCDF4 import Dataset
 
-from vmecpp.vmec.pybind11 import simsopt_vmecpp
+from vmecpp import _util
+from vmecpp.cpp.vmecpp.vmec.pybind11 import simsopt_vmecpp
 
 
 @pytest.fixture
-def json_input_filepath() -> str:
-    return "vmecpp/test_data/solovev.json"
+def json_input_filepath() -> Path:
+    return _util.package_root() / "cpp/vmecpp/test_data/solovev.json"
 
 
 @pytest.fixture
@@ -18,8 +21,10 @@ def vmec(json_input_filepath) -> simsopt_vmecpp.Vmec:
 
 
 @pytest.fixture
-def wout() -> Dataset:
-    return Dataset("vmecpp/test_data/wout_solovev.nc", "r")
+def wout() -> netCDF4.Dataset:
+    return netCDF4.Dataset(
+        _util.package_root() / "cpp/vmecpp/test_data/wout_solovev.nc", "r"
+    )
 
 
 def test_aspect(vmec, wout):
@@ -71,7 +76,7 @@ def test_mean_shear(vmec, wout):
 
 
 @pytest.mark.parametrize(
-    tuple("attribute_name, mnmax_size_name"),
+    "attribute_name,mnmax_size_name",  # noqa: PT006 what ruff wants does not work
     [
         ("rmnc", "mnmax"),
         ("zmns", "mnmax"),
@@ -98,7 +103,9 @@ def test_wout_attributes_shape(vmec, attribute_name, mnmax_size_name):
 
 def test_changing_boundary():
     # this test only makes sense for a circular tokamak setup
-    vmec = simsopt_vmecpp.Vmec("vmecpp/test_data/circular_tokamak.json")
+    vmec = simsopt_vmecpp.Vmec(
+        _util.package_root() / "cpp/vmecpp/test_data/circular_tokamak.json"
+    )
     original_rc00 = vmec.boundary.get_rc(0, 0)
     vmec.run()
     assert vmec.wout is not None
