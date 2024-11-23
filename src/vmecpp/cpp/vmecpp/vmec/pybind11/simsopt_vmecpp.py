@@ -223,7 +223,7 @@ class Vmec(Optimizable):
             # since that calls recompute_bell()
             self.need_to_run_code = False
 
-    def recompute_bell(self, _parent=None) -> None:
+    def recompute_bell(self, parent=None) -> None:
         self.need_to_run_code = True
 
     def run(self, initial_state=None, max_threads=None) -> None:
