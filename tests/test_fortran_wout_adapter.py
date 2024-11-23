@@ -6,7 +6,7 @@ import netCDF4
 import numpy as np
 
 from vmecpp import _util
-from vmecpp.cpp import _vmecpp as vmec  # pants: no-infer-dep
+from vmecpp.cpp import _vmecpp as vmec
 from vmecpp.cpp.vmecpp.simsopt_compat import (
     VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER,
     FortranWOutAdapter,
