@@ -84,6 +84,10 @@ def test_iota(test_dir):
     assert math.isclose(mean_shear, mean_shear_alt, abs_tol=1e-4)
 
 
+# TODO(eguiraud): move this test to standalone vmecpp-tests repo once we have it
+@pytest.mark.skip(
+    reason="test file is too large to be included in standalone VMEC++ repo"
+)
 def test_external_current(test_dir):
     """Test the external_current() function."""
     filename = Path(
