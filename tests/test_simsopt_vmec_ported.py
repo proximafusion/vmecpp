@@ -11,22 +11,20 @@ import numpy as np
 import pytest
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
 
+from vmecpp import _util
 from vmecpp.cpp.vmecpp.vmec.pybind11.simsopt_vmecpp import Vmec
 
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def test_dir() -> Path:
-    return Path("vmecpp/test_data/")
-
+TEST_DATA_DIR = Path(_util.package_root(), "cpp", "vmecpp", "test_data")
 
 ########################################################################
 # Tests for VMEC initialized from an output file
 ########################################################################
 
 
-def test_vacuum_well(test_dir):
+def test_vacuum_well():
     """Test the calculation of magnetic well.
 
     This is done by comparison to a high-aspect-ratio configuration, in which case the
@@ -36,10 +34,10 @@ def test_vacuum_well(test_dir):
     considered in the 2020 paper. We increase the mean field B0 to 2T in that
     configuration to make sure all the factors of B0 are correct.
     """
-    filename = Path(
-        test_dir, "wout_LandremanSengupta2019_section5.4_B2_A80_reference.nc"
+    filename = (
+        TEST_DATA_DIR / "wout_LandremanSengupta2019_section5.4_B2_A80_reference.nc"
     )
-    vmec = Vmec(filename)
+    vmec = Vmec(str(filename))
     assert vmec.wout is not None
     well_vmec = vmec.vacuum_well()
     # Let psi be the toroidal flux divided by (2 pi)
@@ -59,12 +57,12 @@ def test_vacuum_well(test_dir):
     assert np.allclose(well_vmec, well_analytic, rtol=2e-2, atol=0)
 
 
-def test_iota(test_dir):
+def test_iota():
     """Test the functions related to iota."""
-    filename = Path(
-        test_dir, "wout_LandremanSengupta2019_section5.4_B2_A80_reference.nc"
+    filename = (
+        TEST_DATA_DIR / "wout_LandremanSengupta2019_section5.4_B2_A80_reference.nc"
     )
-    vmec = Vmec(filename)
+    vmec = Vmec(str(filename))
 
     iota_axis = vmec.iota_axis()
     iota_edge = vmec.iota_edge()
@@ -88,14 +86,13 @@ def test_iota(test_dir):
 @pytest.mark.skip(
     reason="test file is too large to be included in standalone VMEC++ repo"
 )
-def test_external_current(test_dir):
+def test_external_current():
     """Test the external_current() function."""
-    filename = Path(
-        test_dir,
-        "wout_20220102-01-053-003_QH_nfp4_aspect6p5_beta0p05"
-        "_iteratedWithSfincs_reference.nc",
+    filename = (
+        TEST_DATA_DIR
+        / "wout_20220102-01-053-003_QH_nfp4_aspect6p5_beta0p05_iteratedWithSfincs_reference.nc"
     )
-    vmec = Vmec(filename)
+    vmec = Vmec(str(filename))
     assert vmec.wout is not None
     bsubvmnc = 1.5 * vmec.wout.bsubvmnc[0, -1] - 0.5 * vmec.wout.bsubvmnc[0, -2]
     mu0 = 4 * np.pi * (1.0e-7)
@@ -156,11 +153,11 @@ def test_external_current(test_dir):
 #         self.assertGreater(B[0, 1], 0)
 
 
-def test_error_on_rerun(test_dir):
+def test_error_on_rerun():
     """If a vmec object is initialized from a wout file, and if the dofs are then
     changed, vmec output functions should raise an exception."""
-    filename = Path(test_dir, "wout_li383_low_res_reference.nc")
-    vmec = Vmec(filename)
+    filename = TEST_DATA_DIR / "wout_li383_low_res_reference.nc"
+    vmec = Vmec(str(filename))
     _ = vmec.mean_iota()
     vmec.boundary.set_rc(1, 0, 2.0)
     with pytest.raises(RuntimeError):
@@ -172,11 +169,11 @@ def test_error_on_rerun(test_dir):
 # ########################################################################
 
 
-def test_init_from_file(test_dir):
+def test_init_from_file():
     """Try creating a Vmec instance from a specified input file."""
 
-    filename = Path(test_dir, "li383_low_res.json")
-    v = Vmec(filename)
+    filename = TEST_DATA_DIR / "li383_low_res.json"
+    v = Vmec(str(filename))
     assert v.indata is not None
     assert v.indata.nfp == 3
     assert v.indata.mpol == 4
@@ -200,7 +197,7 @@ def test_init_from_file(test_dir):
     assert v.need_to_run_code
 
 
-def test_surface_4_ways(test_dir):
+def test_surface_4_ways():
     """If we initialize a Vmec object, the boundary surface object should be (almost)
     the same as if we initialize a SurfaceRZFourier using SurfaceRZFourier.from_wout()
     or SurfaceRZFourier.from_vmec_input().
@@ -238,20 +235,20 @@ def test_surface_4_ways(test_dir):
                 assert math.isclose(s1.get_zc(m, n), s2.get_zc(m, n))
 
     # First try a stellarator-symmetric example:
-    filename1 = Path(test_dir, "li383_low_res.json")
-    filename2 = Path(test_dir, "wout_li383_low_res_reference.nc")
-    v = Vmec(filename1)
+    filename1 = TEST_DATA_DIR / "li383_low_res.json"
+    filename2 = TEST_DATA_DIR / "wout_li383_low_res_reference.nc"
+    v = Vmec(str(filename1))
     s1 = v.boundary
     # Compare initializing a Vmec object from an input file vs from a wout file:
-    v2 = Vmec(filename2)
+    v2 = Vmec(str(filename2))
     s2 = v2.boundary
     compare_surfaces_sym(s1, s2)
     # Compare to initializing a surface using from_wout()
-    s2 = SurfaceRZFourier.from_wout(filename2)
+    s2 = SurfaceRZFourier.from_wout(str(filename2))
     compare_surfaces_sym(s1, s2)
     # Now try from_vmec_input() instead of from_wout():
     # NOTE: here we use the Fortran input from which VMEC++'s JSON input was derived
-    s2 = SurfaceRZFourier.from_vmec_input(Path(test_dir, "input.li383_low_res"))
+    s2 = SurfaceRZFourier.from_vmec_input(str(TEST_DATA_DIR / "input.li383_low_res"))
     compare_surfaces_sym(s1, s2)
 
     # TODO(eguiraud): the input file for the following test,
@@ -346,7 +343,7 @@ def test_surface_4_ways(test_dir):
 #         Vmec(filename, verbose=verbose).run()
 
 
-def test_write_input(test_dir):
+def test_write_input():
     """Check that working input files can be written."""
     # TODO(eguiraud): the original SIMSOPT test was testing two
     # more configurations that are currently not supported by VMEC++.
@@ -354,9 +351,9 @@ def test_write_input(test_dir):
         "circular_tokamak",
     ]
     for config in configs:
-        infilename = Path(test_dir, f"{config}.json")
-        outfilename = Path(test_dir, f"wout_{config}_reference.nc")
-        vmec1 = Vmec(infilename)
+        infilename = TEST_DATA_DIR / f"{config}.json"
+        outfilename = TEST_DATA_DIR / f"wout_{config}_reference.nc"
+        vmec1 = Vmec(str(infilename))
         newfile = "input.test"
         vmec1.write_input(newfile)
         # Now read in the newly created input file and run:
@@ -364,6 +361,6 @@ def test_write_input(test_dir):
         vmec2.run()
         assert vmec2.wout is not None
         # Read in reference values and compare:
-        vmec3 = Vmec(outfilename)
+        vmec3 = Vmec(str(outfilename))
         assert vmec3.wout is not None
         np.testing.assert_allclose(vmec2.wout.rmnc, vmec3.wout.rmnc, atol=1e-10)
