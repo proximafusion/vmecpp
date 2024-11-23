@@ -5,15 +5,18 @@ from pathlib import Path
 import netCDF4
 import numpy as np
 
+from vmecpp import _util
 from vmecpp.cpp import _vmecpp as vmec  # pants: no-infer-dep
 from vmecpp.cpp.vmecpp.simsopt_compat import (
     VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER,
     FortranWOutAdapter,
 )
 
+TEST_DATA_DIR = Path(_util.package_root(), "cpp", "vmecpp", "test_data")
+
 
 def test_save_to_netcdf():
-    indata = vmec.VmecINDATAPyWrapper.from_file("vmecpp/test_data/cma.json")
+    indata = vmec.VmecINDATAPyWrapper.from_file(TEST_DATA_DIR / "cma.json")
     cpp_wout = vmec.run(indata).wout
 
     fortran_wout = FortranWOutAdapter.from_vmecpp_wout(cpp_wout)
@@ -24,7 +27,7 @@ def test_save_to_netcdf():
 
         test_dataset = netCDF4.Dataset(out_path, "r")
 
-    expected_dataset = netCDF4.Dataset("vmecpp/test_data/wout_cma.nc", "r")
+    expected_dataset = netCDF4.Dataset(TEST_DATA_DIR / "wout_cma.nc", "r")
 
     for varname, expected_value in expected_dataset.variables.items():
         if varname in VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER:
