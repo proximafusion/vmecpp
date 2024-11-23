@@ -5,11 +5,11 @@ from pathlib import Path
 import netCDF4
 import numpy as np
 
-from vmecpp.simsopt_compat import (
+from vmecpp.cpp import _vmecpp as vmec  # pants: no-infer-dep
+from vmecpp.cpp.vmecpp.simsopt_compat import (
     VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER,
     FortranWOutAdapter,
 )
-from vmecpp.vmec.pybind11 import _vmecpp as vmec  # pants: no-infer-dep
 
 
 def test_save_to_netcdf():

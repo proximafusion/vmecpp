@@ -2,39 +2,39 @@ import math
 from pathlib import Path
 
 import numpy as np
-from starfinder.mhd import vmec2000_wrapper, vmecpp_wrapper
-from util import workspace
+from simsopt import mhd as simsopt_mhd
 
-from vmecpp import simsopt_compat
+from vmecpp import _util
+from vmecpp.cpp.vmecpp import simsopt_compat
+from vmecpp.cpp.vmecpp.vmec.pybind11 import simsopt_vmecpp
+
+TEST_DATA_DIR = Path(_util.package_root(), "cpp", "vmecpp", "test_data")
 
 
 def test_is_vmec2000_input():
-    repo_root = Path(workspace.workspace_root())
-    vmec2000_input_file = repo_root / "vmecpp/test_data/input.cma"
-    vmecpp_input_file = repo_root / "vmecpp/test_data/cma.json"
+    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
+    vmecpp_input_file = TEST_DATA_DIR / "cma.json"
 
     assert simsopt_compat.is_vmec2000_input(vmec2000_input_file)
     assert not simsopt_compat.is_vmec2000_input(vmecpp_input_file)
 
 
 def test_ensure_vmec2000_input_noop():
-    repo_root = Path(workspace.workspace_root())
-    vmec2000_input_file = repo_root / "vmecpp/test_data/input.cma"
+    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
 
     with simsopt_compat.ensure_vmec2000_input(vmec2000_input_file) as indata_file:
         assert indata_file == vmec2000_input_file
 
 
 def test_ensure_vmec2000_input_from_vmecpp_input():
-    repo_root = Path(workspace.workspace_root())
-    vmecpp_input_file = repo_root / "vmecpp/test_data/cma.json"
+    vmecpp_input_file = TEST_DATA_DIR / "cma.json"
 
     with simsopt_compat.ensure_vmec2000_input(
         vmecpp_input_file
     ) as converted_indata_file:
-        vmec2000 = vmec2000_wrapper.Vmec(str(converted_indata_file))
+        vmec2000 = simsopt_mhd.Vmec(str(converted_indata_file))
 
-    vmecpp = vmecpp_wrapper.Vmec(str(vmecpp_input_file))
+    vmecpp = simsopt_vmecpp.Vmec(str(vmecpp_input_file))
 
     # vmec2000.indata has way many more variables than vmecpp.indata, so we test
     # the common subset.

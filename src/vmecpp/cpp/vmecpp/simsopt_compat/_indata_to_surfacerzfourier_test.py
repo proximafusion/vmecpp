@@ -3,10 +3,10 @@ import tempfile
 from pathlib import Path
 
 from simsopt import geo
-from third_party.indata2json import indata_to_json
-from util import workspace
 
-from vmecpp.simsopt_compat import surfacerzfourier_from_vmecppindata
+from vmecpp import _util
+from vmecpp.cpp.third_party.indata2json import indata_to_json
+from vmecpp.cpp.vmecpp import simsopt_compat
 
 
 def test_surfacerzfourier_from_vmecppindata_no_ntheta_nphi():
@@ -15,14 +15,16 @@ def test_surfacerzfourier_from_vmecppindata_no_ntheta_nphi():
     surfacerzfourier_from_vmecppindata after converting the Fortran indata file
     to the VMEC++ indata file using indata2json."""
     fortran_indata_file = Path(
-        workspace.workspace_root(), "vmecpp", "test_data", "input.cma"
+        _util.package_root(), "cpp", "vmecpp", "test_data", "input.cma"
     )
 
     reference_surface = geo.SurfaceRZFourier.from_vmec_input(str(fortran_indata_file))
 
     with tempfile.TemporaryDirectory():
         vmecpp_indata_file = indata_to_json.indata_to_json(fortran_indata_file)
-        test_surface = surfacerzfourier_from_vmecppindata(Path(vmecpp_indata_file))
+        test_surface = simsopt_compat.surfacerzfourier_from_vmecppindata(
+            Path(vmecpp_indata_file)
+        )
 
     assert reference_surface.stellsym
     assert test_surface.stellsym
