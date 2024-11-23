@@ -1,10 +1,15 @@
 # Tests for VMEC++ pybind11 Python bindings
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 from netCDF4 import Dataset
 
+from vmecpp import _util
 from vmecpp.cpp import _vmecpp as vmec  # pants: no-infer-dep
+
+TEST_DATA_DIR = Path(_util.package_root(), "cpp", "vmecpp", "test_data")
 
 
 def is_close_ra(actual, expected, tolerance, context=""):
@@ -48,7 +53,7 @@ def is_close_ra(actual, expected, tolerance, context=""):
 
 def test_indata_readwrite():
     """Test that we can read in an VmecINDATA object and then modify its contents."""
-    indata = vmec.VmecINDATAPyWrapper.from_file("vmecpp/test_data/solovev.json")
+    indata = vmec.VmecINDATAPyWrapper.from_file(TEST_DATA_DIR / "solovev.json")
     assert indata.ntor == 0
     assert indata.mpol == 6
     assert len(indata.ns_array) == 3
@@ -90,11 +95,11 @@ def test_indata_readwrite():
 def test_output_quantities():
     case_name = "cma"
 
-    indata = vmec.VmecINDATAPyWrapper.from_file(f"vmecpp/test_data/{case_name}.json")
+    indata = vmec.VmecINDATAPyWrapper.from_file(TEST_DATA_DIR / f"{case_name}.json")
     output_quantities = vmec.run(indata)
 
     # jxbout
-    jxbout = Dataset(f"vmecpp/test_data/jxbout_{case_name}.nc", "r")
+    jxbout = Dataset(TEST_DATA_DIR / f"jxbout_{case_name}.nc", "r")
     assert is_close_ra(output_quantities.jxbout.phin, jxbout["phin"][()], 1.0e-12)
     assert is_close_ra(output_quantities.jxbout.avforce, jxbout["avforce"][()], 1.0e-6)
     assert is_close_ra(
@@ -191,7 +196,7 @@ def test_output_quantities():
     # threed1_betas
     # threed1_shafranov_integrals
 
-    wout = Dataset(f"vmecpp/test_data/wout_{case_name}.nc", "r")
+    wout = Dataset(TEST_DATA_DIR / f"wout_{case_name}.nc", "r")
 
     # mercier
     # The Mercier stability outputs are also written in the wout file,
@@ -487,9 +492,9 @@ def test_output_quantities():
 
 
 def test_vmecpp_run_from_inmemory_mgrid():
-    indata_fname = "vmecpp/test_data/cth_like_free_bdy.json"
-    coils_fname = "vmecpp/test_data/coils.cth_like"
-    makegrid_params_fname = "vmecpp/test_data/makegrid_parameters_cth_like.json"
+    indata_fname = TEST_DATA_DIR / "cth_like_free_bdy.json"
+    coils_fname = TEST_DATA_DIR / "coils.cth_like"
+    makegrid_params_fname = TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
 
     indata = vmec.VmecINDATAPyWrapper.from_file(indata_fname)
     indata.niter_array = np.array([1])  # to speed up the test
