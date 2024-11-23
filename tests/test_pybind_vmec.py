@@ -7,7 +7,7 @@ import pytest
 from netCDF4 import Dataset
 
 from vmecpp import _util
-from vmecpp.cpp import _vmecpp as vmec  # pants: no-infer-dep
+from vmecpp.cpp import _vmecpp as vmec
 
 TEST_DATA_DIR = Path(_util.package_root(), "cpp", "vmecpp", "test_data")
 
