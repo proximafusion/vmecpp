@@ -16,13 +16,19 @@ def parse_arguments() -> argparse.Namespace:
         help="A VMEC input file either in the classic Fortran 'indata' format or in VMEC++'s JSON format.",
         type=Path,
     )
+    p.add_argument(
+        "-t",
+        "--max-threads",
+        help="maximum number of threads that VMEC++ should spawn. The actual number might still be lower that this in case there are too few flux surfaces to keep these many threads busy.",
+        type=int,
+    )
     return p.parse_args()
 
 
 args = parse_arguments()
 
 input = vmecpp.VmecInput.from_file(args.input_file)
-output = vmecpp.run(input)
+output = vmecpp.run(input, args.max_threads)
 
 configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)
 wout_file = Path(f"wout_{configuration_name}.nc")
