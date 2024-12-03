@@ -9,7 +9,7 @@ from vmecpp._util import package_root
 TEST_DATA_DIR = package_root() / "cpp" / "vmecpp" / "test_data"
 
 
-def simple_run():
+def run_vmecpp():
     # We need a VmecInput, a Python object that corresponds
     # to the classic "input.*" files.
     # We can construct it from such a classic VMEC++ input file:
@@ -37,4 +37,4 @@ def simple_run():
 
 
 if __name__ == "__main__":
-    simple_run()
+    run_vmecpp()
