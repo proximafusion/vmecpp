@@ -3,15 +3,34 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/vmecpp.svg)](https://pypi.org/project/vmecpp)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/vmecpp.svg)](https://pypi.org/project/vmecpp)
 
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/proximafusion/vmecpp?tab=MIT-1-ov-file#readme)
+
+VMEC++ is a Python-friendly, from-scratch reimplementation of the Variational Moments Equilibrium Code (VMEC),
+a free-boundary ideal-MHD equilibrium solver for stellarators and Tokamaks.
+
+The original version was written by Steven Hirshman and colleagues in the 1980s and 1990s.
+The latest version of the original code is called `PARVMEC` and is available [here](https://github.com/ORNL-Fusion/PARVMEC).
+
+VMEC++ is typically just as fast or faster than its Fortran predecessor, prefers a lighter-weight
+multi-thread parallelization scheme to Fortran VMEC's MPI parallelization and implements
+some extra features such as hot-restart. As a result it can run on a laptop, but it is a suitable component
+for large-scale stellarator search pipelines.
+
+On the other hand, some features of the original Fotran VMEC are not available in VMEC++.
+See [below](#known-differences-with-respect-to-parvmecvmec2000) for more details.
+
 -----
 
 ## Table of Contents
 
-- [Installation](#installation)
 - [Usage](#usage)
   - [As a Python package](#as-a-python-package)
   - [With SIMSOPT](#with-simsopt)
   - [As a command line tool](#as-a-command-line-tool)
+- [Installation](#installation)
+- [Known differences with respect to PARVMEC/VMEC2000](#known-differences-with-respect-to-parvmecvmec2000)
 - [License](#license)
 
 ## Usage
@@ -89,7 +108,7 @@ sudo chmod u+x /usr/local/bin/bazel
 Assuming git has access to the SSH key you use to log into GitHub (only until we make the repo public and publish official wheels to PyPI):
 
 ```console
-pip install git+ssh://git@github.com/proximafusion/vmecpp-dev.git
+pip install git+ssh://git@github.com/proximafusion/vmecpp.git
 ```
 
 The procedure will take a few minutes as it will build VMEC++ and some dependencies from source.
@@ -101,12 +120,34 @@ Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 ### C++ build from source
 
 ```console
-git clone https://github.com/proximafusion/vmecpp-dev
-cd vmecpp-dev/src/vmecpp/cpp
+git clone https://github.com/proximafusion/vmecpp
+cd vmecpp/src/vmecpp/cpp
 bazel build --config=opt //...
 ```
 
 All artifacts are now under `./bazel-bin/vmecpp`.
+
+## Known differences with respect to PARVMEC/VMEC2000
+
+- VMEC++ has a zero-crash policy and reports issues via standard Python exceptions
+- VMEC++ allows hot-restarting a run from a previous converged state (see [#hot-restart])
+- VMEC++'s parallelization strategy is the same as Fortran VMEC, but it leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization
+- VMEC++ implements the iteration algorithm of Fortran VMEC 8.52, which has sometimes different convergence behavior from (PAR)VMEC9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
+- VMEC++ supports inputs in the classic INDATA format as well as JSON files; it is also simple to construct input objects programmatically in Python
+
+### Known limitations with respect to the Fortran implementations
+- non-stellarator-symmetric terms (`lasym == true`) are not supported
+- `lforbal` logic for non-variational forces near the magnetic axis is not implemented
+- `lgivenup`/`fgiveup` logic for early termination of a multi-grid sequence is not implemented
+- 2D preconditioner / `bcyclic` 2D preconditioning is not implemented
+- several profile parameterizations are not fully implemented yet
+- `lrfp` is not implemented yet - only Stellarators/Tokamaks for now
+- free-boundary works only for `ntor > 0` - axisymmetric (`ntor = 0`) free-boundary runs don't work yet
+- `lbsubs` logic in computing outputs is not implemented yet
+- VMEC++ only computes the output quantities if the run converged
+- some (rarely used) free-boundary-related output quantities are not implemented yet
+- the Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead
+- the Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid full filename or full path to an existing input file
 
 ## License
 
