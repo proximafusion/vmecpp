@@ -407,12 +407,13 @@ class VmecWout(pydantic.BaseModel):
         """This is how the attribute is called in the Fortran wout file."""
         return self.lfreeb
 
-    def save(self, out_path: Path) -> None:
+    def save(self, out_path: str | Path) -> None:
         """Save contents in NetCDF3 format.
 
         This is the format used by Fortran VMEC implementations and the one expected by
         SIMSOPT.
         """
+        out_path = Path(out_path)
         with netCDF4.Dataset(out_path, "w", format="NETCDF3_CLASSIC") as fnc:
             # scalar ints
             for varname in [
