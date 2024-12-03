@@ -149,6 +149,20 @@ All artifacts are now under `./bazel-bin/vmecpp`.
 - the Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead
 - the Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid full filename or full path to an existing input file
 
+## Roadmap
+
+Some of the things we are planning for VMEC++'s future:
+- VMEC++ usable as a C++ bazel module
+- readthedocs docs
+- free-boundary hot-restart in Python
+- open-sourcing the full VMEC++ test suite (including the V&V part that compares wout contents)
+- open-sourcing the source code to reproduce VMEC++'s performance benchmarks
+
+Some items we do not plan to work on, but where community ownership is welcome:
+- adding cmake as an alternative C++ build system, making VMEC++ a well-behaved CMake dependency
+- packaging VMEC++ for other platforms or package managers (e.g. conda, homebrew, ...)
+- macOS support
+
 ## License
 
 `vmecpp` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
