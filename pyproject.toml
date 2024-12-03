@@ -146,6 +146,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["T20"]
 "**/*_test.py" = ["T20"]
+"examples/**" = ["T201"]
 
 [tool.docformatter]
 black = true  # Enables mode that plays nice with black, e.g. sets line length to 88.
