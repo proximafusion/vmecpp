@@ -8,7 +8,58 @@
 ## Table of Contents
 
 - [Installation](#installation)
+- [Usage](#usage)
+  - [As a Python package](#as-a-python-package)
+  - [With SIMSOPT](#with-simsopt)
+  - [As a command line tool](#as-a-command-line-tool)
 - [License](#license)
+
+## Usage
+
+This is a quick overview of the three main ways in which you can use VMEC++.
+See [examples/](examples/) for some actual example scripts.
+
+### As a Python package
+
+VMEC++ offers a simple Python API:
+
+```python
+import vmecpp
+
+# construct a VmecInput object, e.g. from a classic Fortran input file
+input = vmecpp.VmecInput.from_file("input.w7x")
+
+# run VMEC++
+output = vmecpp.run(input)
+
+# inspect the results or save them as a classic wout file
+output.wout.save("wout_solovev.nc")
+```
+
+### With SIMSOPT
+
+[SIMSOPT](https://simsopt.readthedocs.io) is a popular stellarator optimization framework.
+VMEC++ implements a SIMSOPT-friendly wrapper that makes it possible to use it with SIMSOPT.
+
+```python
+import vmecpp.simsopt_compat
+
+vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
+print(f"Computed plasma volume: {vmec.volume()}")
+```
+
+### As a command line tool
+
+You can use VMEC++ directly as a CLI tool.
+In a terminal in which Python has access to the VMEC++ package:
+
+```console
+# run on a given input file -> produce corresponding wout_w7x.nc
+python -m vmecpp "input.w7x"
+
+# check all options
+python -m vmecpp --help
+```
 
 ## Installation
 
