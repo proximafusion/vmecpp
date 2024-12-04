@@ -10,12 +10,12 @@
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/proximafusion/vmecpp?tab=MIT-1-ov-file#readme)
 
 VMEC++ is a Python-friendly, from-scratch reimplementation in C++ of the Variational Moments Equilibrium Code (VMEC),
-a free-boundary ideal-MHD equilibrium solver for stellarators and Tokamaks.
+a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks.
 
 The original version was written by Steven P. Hirshman and colleagues in the 1980s and 1990s.
 The latest version of the original code is called `PARVMEC` and is available [here](https://github.com/ORNL-Fusion/PARVMEC).
 
-VMEC++ is typically just as fast or faster than its Fortran predecessor, prefers a lighter-weight
+VMEC++ is typically just as fast or faster than its Fortran predecessor, uses a lighter-weight
 multi-thread (OpenMP) parallelization scheme to Fortran VMEC's MPI parallelization and implements
 some extra features such as hot-restart. As a result it can run on a laptop, but it is a suitable component
 for large-scale stellarator optimization pipelines.
@@ -92,12 +92,17 @@ The only supported platform at the moment is Ubuntu 22.04, but installation on a
 
 ### Pre-requisites
 
-Some libraries are required even when installing VMEC++ as a Python package.
+Some libraries are required even when installing VMEC++ as a Python package:
+* python (tested with python 3.10)
+* NetCDF
+* LAPACK
+* MPI
+* A C++ compiler (e.g. g++)
 
 On Ubuntu 22.04, they are available as these system packages:
 
 ```console
-sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev
+sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev build-essential
 ```
 
 You also need [bazelisk](https://github.com/bazelbuild/bazelisk), see link for up to date installation instructions.
