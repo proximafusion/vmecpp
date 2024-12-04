@@ -702,7 +702,7 @@ def run(input: VmecInput, max_threads: int | None = None) -> VmecOutput:
             busy.
     """
     cpp_indata = input._to_cpp_vmecindatapywrapper()
-    cpp_output_quantities = _vmecpp.run(cpp_indata, max_threads)
+    cpp_output_quantities = _vmecpp.run(cpp_indata, max_threads=max_threads)
     cpp_wout = cpp_output_quantities.wout
     wout = VmecWout._from_cpp_wout(cpp_wout)
     return VmecOutput(wout=wout, input=input)
