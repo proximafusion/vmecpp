@@ -46,7 +46,7 @@ void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
 // Check preconditions on (initial_state, indata) pair passed to Vmec::run
 // in order to make sure that the state to hot-restart from can be copied over
 // 1:1.
-void CheckInitialState(const vmecpp::OutputQuantities& initial_state,
+void CheckInitialState(const vmecpp::HotRestartState& initial_state,
                        const vmecpp::VmecINDATA& indata) {
   const auto msg_start = "Mismatch in variable '";
   const auto msg_end =
@@ -85,7 +85,7 @@ void CheckInitialState(const vmecpp::OutputQuantities& initial_state,
 }  // namespace
 
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
-    const VmecINDATA& indata, std::optional<OutputQuantities> initial_state,
+    const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, bool verbose) {
   Vmec v(indata, nullptr, max_threads, verbose);
 
@@ -103,7 +103,7 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
-    std::optional<OutputQuantities> initial_state,
+    std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, bool verbose) {
   Vmec v(indata, &magnetic_response_table, max_threads, verbose);
 
@@ -196,7 +196,7 @@ Vmec::Vmec(const VmecINDATA& indata,
 absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                const int iterations_before_checkpointing,
                                const int maximum_multi_grid_step,
-                               std::optional<OutputQuantities> initial_state) {
+                               std::optional<HotRestartState> initial_state) {
   auto is_indata_consistent =
       IsConsistent(indata_, /*enable_info_messages=*/verbose_);
   if (!is_indata_consistent.ok()) {
@@ -343,7 +343,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
-    const std::optional<OutputQuantities>& initial_state) {
+    const std::optional<HotRestartState>& initial_state) {
   if (verbose_) {
     std::cout << absl::StrFormat(
         "\n NS = %d   NO. FOURIER MODES = %d   FTOLV = %9.3e   NITER = %d\n",

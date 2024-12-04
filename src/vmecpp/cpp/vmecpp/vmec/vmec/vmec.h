@@ -4,6 +4,7 @@
 #include <climits>
 #include <memory>
 #include <optional>
+#include <utility>  // std::move
 #include <vector>
 
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -27,10 +28,26 @@
 
 namespace vmecpp {
 
+// The state we need to hot-restart a VMEC++ run.
+struct HotRestartState {
+  WOutFileContents wout;
+  VmecINDATA indata;
+
+  HotRestartState(WOutFileContents wout, VmecINDATA indata)
+      : wout(std::move(wout)), indata(std::move(indata)) {}
+
+  explicit HotRestartState(const OutputQuantities& output_quantities)
+      : wout(output_quantities.wout), indata(output_quantities.indata) {}
+
+  explicit HotRestartState(OutputQuantities&& output_quantities)
+      : wout(std::move(output_quantities.wout)),
+        indata(std::move(output_quantities.indata)) {}
+};
+
 // This is the preferred way to run VMEC++.
 absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
-    std::optional<OutputQuantities> initial_state = std::nullopt,
+    std::optional<HotRestartState> initial_state = std::nullopt,
     std::optional<int> max_threads = std::nullopt, bool verbose = true);
 
 // This overload enables free-boundary runs with an in-memory mgrid file.
@@ -40,7 +57,7 @@ absl::StatusOr<OutputQuantities> run(
 absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
-    std::optional<OutputQuantities> initial_state = std::nullopt,
+    std::optional<HotRestartState> initial_state = std::nullopt,
     std::optional<int> max_threads = std::nullopt, bool verbose = true);
 
 class Vmec {
@@ -64,14 +81,14 @@ class Vmec {
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       int iterations_before_checkpointing = INT_MAX,
       int maximum_multi_grid_step = 500,
-      std::optional<OutputQuantities> initial_state = std::nullopt);
+      std::optional<HotRestartState> initial_state = std::nullopt);
 
   // -------------------
 
   bool InitializeRadial(
       VmecCheckpoint checkpoint, int maximum_iterations, int nsval, int ns_old,
       double& m_delt0,
-      const std::optional<OutputQuantities>& initial_state = std::nullopt);
+      const std::optional<HotRestartState>& initial_state = std::nullopt);
   absl::StatusOr<bool> SolveEquilibrium(VmecCheckpoint checkpoint,
                                         int maximum_iterations);
   void RestartIteration(double& m_delt0r, int thread_id);

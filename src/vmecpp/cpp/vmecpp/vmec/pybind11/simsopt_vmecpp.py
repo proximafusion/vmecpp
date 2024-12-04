@@ -110,7 +110,7 @@ class Vmec(Optimizable):
         self.verbose = verbose
 
         if mpi is not None:
-            logging.warn(
+            logging.warning(
                 "self.mpi is not None: note however that it is unused, "
                 "only kept for compatibility with VMEC2000."
             )

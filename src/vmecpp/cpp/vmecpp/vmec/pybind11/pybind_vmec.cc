@@ -90,6 +90,12 @@ makegrid::MagneticFieldResponseTable MakeMagneticFieldResponseTable(
   };
 }
 
+vmecpp::HotRestartState MakeHotRestartState(
+    vmecpp::WOutFileContents wout, vmecpp::VmecINDATAPyWrapper indata) {
+  return vmecpp::HotRestartState(std::move(wout),
+                                 vmecpp::VmecINDATA(std::move(indata)));
+}
+
 }  // anonymous namespace
 
 // IMPORTANT: The first argument must be the name of the module, else
@@ -637,10 +643,15 @@ PYBIND11_MODULE(_vmecpp, m) {
         return maybe_oq.value();
       });
 
+  py::class_<vmecpp::HotRestartState>(m, "HotRestartState")
+      .def(py::init(&MakeHotRestartState), "wout"_a, "indata"_a)
+      .def_readwrite("wout", &vmecpp::HotRestartState::wout)
+      .def_readwrite("indata", &vmecpp::HotRestartState::indata);
+
   m.def(
       "run",
       [](const VmecINDATAPyWrapper &indata,
-         std::optional<vmecpp::OutputQuantities> initial_state,
+         std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads,
          bool verbose = true) -> vmecpp::OutputQuantities {
         auto ret = vmecpp::run(vmecpp::VmecINDATA(indata),
@@ -729,7 +740,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       "run",
       [](const VmecINDATAPyWrapper &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
-         std::optional<vmecpp::OutputQuantities> initial_state = std::nullopt,
+         std::optional<vmecpp::HotRestartState> initial_state = std::nullopt,
          std::optional<int> max_threads = std::nullopt, bool verbose = true) {
         auto ret =
             vmecpp::run(vmecpp::VmecINDATA(indata), magnetic_response_table,
