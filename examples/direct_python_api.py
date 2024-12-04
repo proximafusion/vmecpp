@@ -6,29 +6,32 @@
 import vmecpp
 from vmecpp._util import package_root
 
+# NOTE: This resolves to src/vmecpp/cpp/vmecpp/test_data in the repo.
 TEST_DATA_DIR = package_root() / "cpp" / "vmecpp" / "test_data"
 
 
 def run_vmecpp():
     # We need a VmecInput, a Python object that corresponds
     # to the classic "input.*" files.
-    # We can construct it from such a classic VMEC++ input file:
+    # We can construct it from such a classic VMEC input file
+    # (Fortran namelist called INDATA):
     input_file = TEST_DATA_DIR / "input.solovev"
     input = vmecpp.VmecInput.from_file(input_file)
 
     # Now we can run VMEC++:
     output = vmecpp.run(input)
+    # An optional parameter max_threads=N controls
+    # the level of parallelism in VMEC++.
     # By default, VMEC++ runs with max_threads equal
     # to the number of logical cores on the machine.
-    # The optional parameter max_threads=N controls
-    # the level of parallelism in VMEC++. Note that
-    # the actual level of parallelism is limited so
-    # that each thread operates on at least two flux
-    # surfaces, so VMEC++ might use less threads than
-    # max_threads if there are few flux surfaces.
+    # Note that the actual level of parallelism is
+    # limited so that each thread operates on at
+    # least two flux surfaces, so VMEC++ might use
+    # less threads than max_threads if there are
+    # few flux surfaces.
 
-    # We can save the output wout as a classic wout
-    # file if needed:
+    # We can save the output wout as a classic NetCDF
+    # wout file if needed:
     output.wout.save("wout_solovev.nc")
 
     # Free-boundary runs work just the same, in which
