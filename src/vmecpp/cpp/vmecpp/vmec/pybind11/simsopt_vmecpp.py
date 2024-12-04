@@ -1,5 +1,6 @@
 # SIMSOPT-style VMEC++ wrapper from pybind11 wrapping C++ code
 import logging
+import os
 from pathlib import Path
 from typing import Optional, Union, cast
 
@@ -12,7 +13,6 @@ from simsopt._core.optimizable import Optimizable
 from simsopt._core.util import ObjectiveFailure, Struct
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
 from simsopt.util.mpi import MpiPartition
-
 from vmecpp import simsopt_compat
 from vmecpp.simsopt_compat import FortranWOutAdapter
 from vmecpp.vmec.pybind11 import _vmecpp as vmec  # pants: no-infer-dep
@@ -48,8 +48,9 @@ def _make_wout_filename(input_file: str) -> str:
     elif input_file_basename.startswith("input."):
         out = input_file_basename.removeprefix("input.")
     else:
-        msg = f"Input file name {input_file} cannot be converted to output file name"
-        raise RuntimeError(msg)
+        raise RuntimeError(
+            f"Input file name {input_file} cannot be converted to output file name"
+        )
 
     return f"wout_{out}.nc"
 
@@ -107,11 +108,9 @@ class Vmec(Optimizable):
         keep_all_files: bool = False,
     ):
         self.verbose = verbose
-        if not verbose:
-            logging.warning("verbose=False is currently ignored (unimplemented).")
 
         if mpi is not None:
-            logging.warning(
+            logging.warn(
                 "self.mpi is not None: note however that it is unused, "
                 "only kept for compatibility with VMEC2000."
             )
@@ -135,7 +134,7 @@ class Vmec(Optimizable):
         # NOTE: this behavior is for compatibility with SIMSOPT's VMEC wrapper,
         # which supports initialization from an input.* file or from a wout.*file
         # and sets `self.runnable` depending on this.
-        basename = Path(filename).name
+        basename = os.path.basename(filename)
 
         # Original VMEC follows the convention that all input files start with `input`,
         # but VMEC++ does not (see e.g. the contents of vmecpp/test_data).
@@ -266,11 +265,13 @@ class Vmec(Optimizable):
             max_threads = 1
         try:
             output_quantities = vmec.run(
-                indata, initial_state=initial_state, max_threads=max_threads
+                indata,
+                initial_state=initial_state,
+                max_threads=max_threads,
+                verbose=self.verbose,
             )
         except RuntimeError as e:
-            msg = "Error while running VMEC++"
-            raise ObjectiveFailure(msg) from e
+            raise ObjectiveFailure(f"Error while running VMEC++: {e}")
         self.output_quantities = output_quantities
         self.wout = FortranWOutAdapter.from_vmecpp_wout(output_quantities.wout)
 
@@ -302,12 +303,11 @@ class Vmec(Optimizable):
 
             if self.wout.ier_flag != 0:
                 logger.warning("VMEC did not succeed!")
-                msg = "VMEC did not succeed"
-                raise ObjectiveFailure(msg)
+                raise ObjectiveFailure("VMEC did not succeed")
 
             # Shorthands for long variable names:
             self.wout.lasym = f.variables["lasym__logical__"][()]
-            self.wout.volume = self.wout.volume_p
+            setattr(self.wout, "volume", self.wout.volume_p)
 
         self._set_grid()
 
@@ -370,16 +370,17 @@ class Vmec(Optimizable):
         if not self.runnable:
             # Use default values from vmec_input (copied from SIMSOPT)
             return np.array([1, 1, 1, 0, 0])
-        assert self.indata is not None
-        return np.array(
-            [
-                self.indata.delt,
-                self.indata.tcon0,
-                self.indata.phiedge,
-                self.indata.curtor,
-                self.indata.gamma,
-            ]
-        )
+        else:
+            assert self.indata is not None
+            return np.array(
+                [
+                    self.indata.delt,
+                    self.indata.tcon0,
+                    self.indata.phiedge,
+                    self.indata.curtor,
+                    self.indata.gamma,
+                ]
+            )
 
     def set_dofs(self, x: list[float]) -> None:
         if self.runnable:
@@ -470,11 +471,10 @@ class Vmec(Optimizable):
         converted to ``SurfaceRZFourier`` is returned.
         """
         if not self.runnable:
-            msg = (
+            raise RuntimeError(
                 "Cannot access indata for a Vmec object that was initialized"
                 "from a wout file."
             )
-            raise RuntimeError(msg)
         assert self.indata is not None
         vi = self.indata  # Shorthand
         # Convert boundary to RZFourier if needed:

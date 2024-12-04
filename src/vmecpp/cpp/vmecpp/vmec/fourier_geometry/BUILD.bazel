@@ -2,7 +2,7 @@ cc_library(
     name = "fourier_geometry",
     srcs = ["fourier_geometry.cc"],
     hdrs = ["fourier_geometry.h"],
-    visibility = ["//vmecpp/vmec:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",
@@ -12,26 +12,4 @@ cc_library(
         "//vmecpp/vmec/radial_profiles:radial_profiles",
         "//vmecpp/vmec/fourier_coefficients:fourier_coefficients",
     ],
-)
-
-cc_test(
-    name = "fourier_geometry_test",
-    srcs = ["fourier_geometry_test.cc"],
-    data = [
-        "//vmecpp/test_data:solovev",
-        "//vmecpp/test_data:solovev_no_axis",
-        "//vmecpp/test_data:cth_like_fixed_bdy",
-        "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
-        "//vmecpp/test_data:cma",
-        "//vmecpp/test_data:cth_like_free_bdy",
-    ],
-    deps = [
-        ":fourier_geometry",
-        "@googletest//:gtest_main",
-        "//util/file_io:file_io",
-        "//util/testing:numerical_comparison_lib",
-        "//vmecpp/common/flow_control:flow_control",
-        "//vmecpp/vmec/vmec:vmec",
-    ],
-    size = "small",
 )

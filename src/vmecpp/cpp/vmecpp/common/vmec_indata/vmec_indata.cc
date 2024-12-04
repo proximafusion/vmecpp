@@ -35,6 +35,8 @@ absl::StatusOr<FreeBoundaryMethod> FreeBoundaryMethodFromString(
     const std::string& free_boundary_method_string) {
   if (free_boundary_method_string == "nestor") {
     return FreeBoundaryMethod::NESTOR;
+  } else if (free_boundary_method_string == "biest") {
+    return FreeBoundaryMethod::BIEST;
   }
   return absl::NotFoundError(absl::StrCat("free boundary method named '",
                                           free_boundary_method_string,
@@ -45,6 +47,8 @@ std::string ToString(FreeBoundaryMethod free_boundary_method) {
   switch (free_boundary_method) {
     case FreeBoundaryMethod::NESTOR:
       return "nestor";
+    case FreeBoundaryMethod::BIEST:
+      return "biest";
     default:
       LOG(FATAL)
           << "no string conversion implemented yet for FreeBoundaryMethod code "
@@ -1239,8 +1243,14 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     }
 
     // free_boundary_method
-    // nothing to check here: free_boundary_method can take on
-    // any value of the enum and all are valid...
+    // For the current state of the code, we only accept NESTOR,
+    // but in the future [TODO(jons)] also all other (implemented) enum values
+    // are valid.
+    if (vmec_indata.free_boundary_method != FreeBoundaryMethod::NESTOR) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "input variable 'free_boundary_method' must be 'nestor', but is %s\n",
+          ToString(vmec_indata.free_boundary_method)));
+    }
   }
 
   /* --------------------------------- */
@@ -1277,7 +1287,7 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // are valid.
   if (vmec_indata.iteration_style != IterationStyle::VMEC_8_52) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'iteration_style' must be VMEC_8_52, but is %s\n",
+        "input variable 'iteration_style' must be 'vmec_8_52', but is %s\n",
         ToString(vmec_indata.iteration_style)));
   }
 

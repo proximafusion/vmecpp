@@ -2,7 +2,7 @@ cc_library(
     name = "nestor",
     srcs = ["nestor.cc"],
     hdrs = ["nestor.h"],
-    visibility = ["//vmecpp:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",
@@ -14,20 +14,4 @@ cc_library(
         "//vmecpp/free_boundary/laplace_solver:laplace_solver",
         "//vmecpp/free_boundary/free_boundary_base:free_boundary_base",
     ],
-)
-
-cc_test(
-    name = "nestor_test",
-    srcs = ["nestor_test.cc"],
-    data = [
-        "//vmecpp/test_data:cth_like_free_bdy",
-    ],
-    deps = [
-        ":nestor",
-        "@googletest//:gtest_main",
-        "//util/file_io:file_io",
-        "//util/testing:numerical_comparison_lib",
-        "//vmecpp/vmec/vmec:vmec",
-    ],
-    size = "small",
 )

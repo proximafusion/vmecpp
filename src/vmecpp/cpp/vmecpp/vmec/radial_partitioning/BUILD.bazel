@@ -2,7 +2,7 @@ cc_library(
     name = "radial_partitioning",
     srcs = ["radial_partitioning.cc"],
     hdrs = ["radial_partitioning.h"],
-    visibility = ["//vmecpp/vmec:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/vmec_indata:vmec_indata",
         "@abseil-cpp//absl/log",

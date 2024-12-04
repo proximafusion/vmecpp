@@ -1,0 +1,18 @@
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+proto_library(
+    name = "magnetic_configuration_proto",
+    srcs = ["magnetic_configuration.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/composed_types_definition:composed_types_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "magnetic_configuration_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":magnetic_configuration_proto",
+    ],
+)

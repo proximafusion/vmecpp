@@ -27,7 +27,7 @@ cc_library(
     name = "ideal_mhd_model",
     srcs = ["ideal_mhd_model.cc"],
     hdrs = ["ideal_mhd_model.h", "dft_data.h"],
-    visibility = ["//vmecpp/vmec:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/flow_control:flow_control",
         "//vmecpp/common/util:util",
@@ -45,43 +45,5 @@ cc_library(
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",
-    ],
-)
-
-cc_test(
-    name = "ideal_mhd_model_test",
-    srcs = ["ideal_mhd_model_test.cc"],
-    data = [
-        "//vmecpp/test_data:solovev",
-        "//vmecpp/test_data:solovev_analytical",
-        "//vmecpp/test_data:solovev_no_axis",
-        "//vmecpp/test_data:cth_like_fixed_bdy",
-        "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
-        "//vmecpp/test_data:cma",
-        "//vmecpp/test_data:cth_like_free_bdy",
-    ],
-    deps = [
-        ":ideal_mhd_model",
-        "@googletest//:gtest_main",
-        "//util/file_io:file_io",
-        "//util/testing:numerical_comparison_lib",
-        "//vmecpp/vmec/vmec:vmec",
-    ],
-    size = "large",
-)
-
-cc_test(
-    name = "ideal_mhd_model_hot_restart_test",
-    srcs = ["ideal_mhd_model_hot_restart_test.cc"],
-    data = [
-        "//vmecpp/test_data:solovev",
-        "//vmecpp/test_data:cth_like_fixed_bdy",
-    ],
-    deps = [
-        ":ideal_mhd_model",
-        "@googletest//:gtest_main",
-        "//util/file_io:file_io",
-        "//util/testing:numerical_comparison_lib",
-        "//vmecpp/vmec/vmec:vmec",
     ],
 )

@@ -8,7 +8,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "util/file_io/file_io.h"
-#include "vmecpp/tools/composed_types_lib/composed_types_lib.h"
+#include "vmecpp/common/composed_types_lib/composed_types_lib.h"
 
 using composed_types::SurfaceRZFourier;
 using composed_types::SurfaceRZFourierFromCsv;

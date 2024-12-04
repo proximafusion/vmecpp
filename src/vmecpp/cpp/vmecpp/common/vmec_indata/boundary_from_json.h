@@ -30,6 +30,16 @@ struct BoundaryCoefficient {
   FromJson(const nlohmann::json& j, const std::string& name);
 };  // BoundaryCoefficient
 
+// Read the desired boundary coefficient array (`key` = `rbc`,
+// `zbs`, `rbs`, `zbc`)
+// from the given JSON obect and put the populated coefficients
+// in fast-toroidal order into a vector.
+// The indexing is `m * (2 * ntor + 1) + (ntor + n)`
+// and the size of the returned vector is `mpol * (2 * ntor + 1)`.
+std::vector<double> BoundaryFromJson(const nlohmann::json& json,
+                                     const std::string& key, int mpol,
+                                     int ntor);
+
 }  // namespace vmecpp
 
 #endif  // VMECPP_COMMON_VMEC_INDATA_BOUNDARY_FROM_JSON_H_

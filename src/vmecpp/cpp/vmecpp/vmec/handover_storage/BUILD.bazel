@@ -2,21 +2,11 @@ cc_library(
     name = "handover_storage",
     srcs = ["handover_storage.cc"],
     hdrs = ["handover_storage.h"],
-    visibility = ["//vmecpp/vmec:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",
         "//vmecpp/common/flow_control:flow_control",
         "//vmecpp/vmec/radial_partitioning:radial_partitioning",
     ],
-)
-
-cc_test(
-    name = "handover_storage_test",
-    srcs = ["handover_storage_test.cc"],
-    deps = [
-        ":handover_storage",
-        "@googletest//:gtest_main",
-        ],
-    size = "small",
 )

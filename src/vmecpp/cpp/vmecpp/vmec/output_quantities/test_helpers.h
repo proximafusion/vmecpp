@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 
+// check for equality of two `WOutFileContents` using the Google test framework
 inline void CheckWoutEquality(const vmecpp::WOutFileContents& wout1,
                               const vmecpp::WOutFileContents& wout2) {
   EXPECT_EQ(wout1.version, wout2.version);

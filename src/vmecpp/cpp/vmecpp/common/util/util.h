@@ -2,7 +2,8 @@
 #define VMECPP_COMMON_UTIL_UTIL_H_
 
 #include <Eigen/Dense>  // VectorXd, Matrix
-#include <cctype>       // isdigit()
+#include <cassert>
+#include <cctype>  // isdigit()
 #include <cmath>
 #include <cstdbool>
 #include <cstdio>
@@ -13,6 +14,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "absl/log/check.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -43,6 +46,27 @@ inline vmecpp::RowMatrixXd ToEigenMatrix(const std::vector<double> &v,
                                          Eigen::Index size1,
                                          Eigen::Index size2) {
   return Eigen::Map<const vmecpp::RowMatrixXd>(v.data(), size1, size2);
+}
+
+// Convert a rectangular nested STL vector to the corresponding Eigen matrix
+inline vmecpp::RowMatrixXd ToEigenMatrix(
+    const std::vector<std::vector<double>> &v) {
+  const std::size_t outer_size = v.size();
+  CHECK_GT(outer_size, 0);
+  const std::size_t inner_size = v[0].size();
+  for (const auto &row : v) {
+    CHECK_EQ(row.size(), inner_size);
+  }
+
+  vmecpp::RowMatrixXd m(outer_size, inner_size);
+
+  for (int i = 0; i < m.rows(); ++i) {
+    for (int j = 0; j < m.cols(); ++j) {
+      m(i, j) = v[i][j];
+    }
+  }
+
+  return m;
 }
 
 enum class VmecCheckpoint {

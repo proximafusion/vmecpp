@@ -1,10 +1,12 @@
 cc_library(
-  name = "boundary_coefficient",
+  name = "boundary_from_json",
   srcs = ["boundary_from_json.cc"],
   hdrs = ["boundary_from_json.h"],
+  visibility = ["//visibility:public"],
   deps = [
     "//util/json_io:json_io",
-    "@abseil-cpp//absl/log:log",
+    "@abseil-cpp//absl/log",
+    "@abseil-cpp//absl/log:check",
     "@abseil-cpp//absl/strings:str_format",
     "@abseil-cpp//absl/status:statusor",
   ],
@@ -14,9 +16,9 @@ cc_library(
     name = "vmec_indata",
     srcs = ["vmec_indata.cc"],
     hdrs = ["vmec_indata.h"],
-    visibility = ["//vmecpp:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
-        ":boundary_coefficient",
+        ":boundary_from_json",
         "//vmecpp/common/util:util",
         "//util/hdf5_io",
         "@abseil-cpp//absl/algorithm:container",
@@ -43,11 +45,11 @@ cc_test(
     ],
     deps = [
         ":vmec_indata",
-        ":boundary_coefficient",
+        ":boundary_from_json",
         "@googletest//:gtest_main",
         "@bazel_tools//tools/cpp/runfiles",
         "//util/file_io:file_io",
-        "//vmecpp/tools/composed_types_lib:composed_types_lib",
+        "//vmecpp/common/composed_types_lib:composed_types_lib",
     ],
     size = "small",
 )

@@ -2,7 +2,7 @@ cc_library(
     name = "flow_control",
     srcs = ["flow_control.cc"],
     hdrs = ["flow_control.h"],
-    visibility = ["//vmecpp:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/util:util",
     ]

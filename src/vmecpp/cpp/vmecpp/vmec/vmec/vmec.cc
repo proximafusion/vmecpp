@@ -18,9 +18,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
-#include "vmecpp/tools/makegrid/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 
 namespace {
@@ -86,8 +86,8 @@ void CheckInitialState(const vmecpp::OutputQuantities& initial_state,
 
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<OutputQuantities> initial_state,
-    std::optional<int> max_threads) {
-  Vmec v(indata, nullptr, max_threads);
+    std::optional<int> max_threads, bool verbose) {
+  Vmec v(indata, nullptr, max_threads, verbose);
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -104,8 +104,8 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<OutputQuantities> initial_state,
-    std::optional<int> max_threads) {
-  Vmec v(indata, &magnetic_response_table, max_threads);
+    std::optional<int> max_threads, bool verbose) {
+  Vmec v(indata, &magnetic_response_table, max_threads, verbose);
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -131,13 +131,14 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
 
 namespace vmecpp {
 
-Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads)
-    : Vmec(indata, nullptr, max_threads) {}
+Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
+           bool verbose)
+    : Vmec(indata, nullptr, max_threads, verbose) {}
 
 // initialize based on input file contents
 Vmec::Vmec(const VmecINDATA& indata,
            const makegrid::MagneticFieldResponseTable* magnetic_response_table,
-           std::optional<int> max_threads)
+           std::optional<int> max_threads, bool verbose)
     : indata_(indata),
       s_(indata_),
       t_(&s_),
@@ -145,6 +146,7 @@ Vmec::Vmec(const VmecINDATA& indata,
       h_(&s_),
       fc_(indata_.lfreeb, indata_.delt,
           static_cast<int>(indata_.ns_array.size()) + 1, max_threads),
+      verbose_(verbose),
       ivac_(-1),
       status_(VmecStatus::NORMAL_TERMINATION),
       liter_flag_(false),
@@ -154,7 +156,7 @@ Vmec::Vmec(const VmecINDATA& indata,
       last_preconditioner_update_(0),
       last_full_update_nestor_(0) {
   // remainder of readin()
-  fc_.haveToFlipTheta = b_.setupFromIndata(indata_);
+  fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
 
   if (fc_.lfreeb) {
     if (magnetic_response_table == nullptr) {
@@ -196,7 +198,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                const int maximum_multi_grid_step,
                                std::optional<OutputQuantities> initial_state) {
   auto is_indata_consistent =
-      IsConsistent(indata_, /*enable_info_messages=*/true);
+      IsConsistent(indata_, /*enable_info_messages=*/verbose_);
   if (!is_indata_consistent.ok()) {
     return is_indata_consistent;
   }
@@ -205,8 +207,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     CheckInitialState(*initial_state, indata_);
   }
 
-  // Info about vectorization (default = none, or skylake with avx)
-  LogArchitecture();
+  if (verbose_) {
+    // Info about vectorization (default = none, or skylake with avx)
+    LogArchitecture();
+  }
 
   // !!! THIS must be the ONLY place where this gets set to zero !!!
   num_eqsolve_retries_ = 0;
@@ -328,7 +332,9 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       kSignOfJacobian, indata_, s_, fc_, constants_, t_, h_, mgrid_.mgrid_mode,
       r_, decomposed_x_, m_, p_, checkpoint, ivac_, status_, iter2_);
 
-  std::cout << "\nNUMBER OF JACOBIAN RESETS = " << fc_.ijacob << '\n';
+  if (verbose_) {
+    std::cout << "\nNUMBER OF JACOBIAN RESETS = " << fc_.ijacob << '\n';
+  }
 
   return false;
 }  // run
@@ -338,9 +344,11 @@ bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
     const std::optional<OutputQuantities>& initial_state) {
-  std::cout << absl::StrFormat(
-      "\n NS = %d   NO. FOURIER MODES = %d   FTOLV = %9.3e   NITER = %d\n",
-      nsval, s_.mnmax, fc_.ftolv, fc_.niterv);
+  if (verbose_) {
+    std::cout << absl::StrFormat(
+        "\n NS = %d   NO. FOURIER MODES = %d   FTOLV = %9.3e   NITER = %d\n",
+        nsval, s_.mnmax, fc_.ftolv, fc_.niterv);
+  }
 
   // Set timestep control parameters
   fc_.fsq = 1.0;
@@ -418,10 +426,9 @@ bool Vmec::InitializeRadial(
     for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
       r_[thread_id] = std::make_unique<RadialPartitioning>();
 
-      const bool printout_radial_partitioning = false;
       r_[thread_id]->adjustRadialPartitioning(num_threads_, thread_id, nsval,
                                               fc_.lfreeb,
-                                              printout_radial_partitioning);
+                                              /*printout=*/verbose_);
 
       h_.allocate(*r_[thread_id], fc_.ns);
 
@@ -580,21 +587,27 @@ bool Vmec::InitializeRadial(
 // resetting the time step.
 absl::StatusOr<bool> Vmec::SolveEquilibrium(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing) {
-  std::cout << '\n';
-  if (fc_.lfreeb) {
-    std::cout << " ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz      "
-                 "fsql   |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  "
-                 "<M>  |  DELBSQ  \n";
-    std::cout << "------+------------------------------+-----------------------"
-                 "-------+----------+-----------+------------+------------+----"
-                 "---+----------\n";
-  } else {
-    std::cout << " ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz    "
-                 "  fsql  "
-                 " |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  <M>  \n";
-    std::cout << "------+------------------------------+---------------------"
-                 "--------"
-                 "-+----------+-----------+------------+------------+-------\n";
+  if (verbose_) {
+    std::cout << '\n';
+    if (fc_.lfreeb) {
+      std::cout
+          << " ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz      "
+             "fsql   |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  "
+             "<M>  |  DELBSQ  \n";
+      std::cout
+          << "------+------------------------------+-----------------------"
+             "-------+----------+-----------+------------+------------+----"
+             "---+----------\n";
+    } else {
+      std::cout
+          << " ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz    "
+             "  fsql  "
+             " |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  <M>  \n";
+      std::cout
+          << "------+------------------------------+---------------------"
+             "--------"
+             "-+----------+-----------+------------+------------+-------\n";
+    }
   }
 
   absl::Status status_of_all_threads = absl::OkStatus();
@@ -643,7 +656,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     return status_of_all_threads;
   }
 
-  if (!any_checkpoint_reached) {
+  if (!any_checkpoint_reached && verbose_) {
     // write MHD energy at end of iterations for current number of surfaces
     std::cout << absl::StrFormat("MHD Energy = %12.6e\n",
                                  fc_.w0 * 4.0 * M_PI * M_PI);
@@ -712,14 +725,16 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp barrier
 #pragma omp single
       {
-        // Only warn about bad jacobian if that is actually the reason.
-        // The other reason could be restart_reason == HUGE_INITIAL_FORCES,
-        // which means that the initial forces are huge (but the Jacbian is
-        // fine, i.e., flux surfaces don't overlap yet).
-        if (status_ == VmecStatus::BAD_JACOBIAN) {
-          std::cout << " INITIAL JACOBIAN CHANGED SIGN!\n";
+        if (verbose_) {
+          // Only warn about bad jacobian if that is actually the reason.
+          // The other reason could be restart_reason == HUGE_INITIAL_FORCES,
+          // which means that the initial forces are huge (but the Jacbian is
+          // fine, i.e., flux surfaces don't overlap yet).
+          if (status_ == VmecStatus::BAD_JACOBIAN) {
+            std::cout << " INITIAL JACOBIAN CHANGED SIGN!\n";
+          }
+          std::cout << " TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS\n";
         }
-        std::cout << " TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS\n";
 
         b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, kSignOfJacobian);
         fc_.ijacob = 1;
@@ -777,11 +792,14 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       {
         const double scale = fc_.ijacob == 25 ? 0.98 : 0.96;
         fc_.delt0r = scale * indata_.delt;
-        std::cout << absl::StrFormat(
-            "HAVING A CONVERGENCE PROBLEM: RESETTING DELT TO %8.3f. "
-            " If this does NOT resolve the problem,"
-            " try changing (decrease OR increase) the value of DELT\n",
-            fc_.delt0r);
+
+        if (verbose_) {
+          std::cout << absl::StrFormat(
+              "HAVING A CONVERGENCE PROBLEM: RESETTING DELT TO %8.3f. "
+              " If this does NOT resolve the problem,"
+              " try changing (decrease OR increase) the value of DELT\n",
+              fc_.delt0r);
+        }
 
         // done by restart_iter already...
         fc_.restart_reason = RestartReason::NO_RESTART;
@@ -861,6 +879,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // gc (== physical xc) --> <M> includes scalxc ???
         physical_x_backup_[thread_id]->ComputeSpectralWidth(t_, *p_[thread_id]);
 
+        // NOTE: IIRC, this still needs to be called to keep the spectral width
+        // updated. Screen output will be controlled by checking the `verbose_`
+        // flag inside `Printout`.
         Printout(fc_.delt0r, fc_.w0, thread_id);
 
         if (checkpoint == VmecCheckpoint::PRINTOUT &&
@@ -882,9 +903,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // ivac gets set to 1 in vacuum() of NESTOR
       if (ivac_ == 1) {
         // vacuum pressure turned on at iter2 iterations (here)
-        std::cout << absl::StrFormat(
-                         "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS", iter2_)
-                  << "\n\n";
+
+        if (verbose_) {
+          std::cout << absl::StrFormat(
+                           "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS",
+                           iter2_)
+                    << "\n\n";
+        }
 
         ivac_ = 2;
       }
@@ -1040,7 +1065,7 @@ void Vmec::Printout(double delt0r, double w0, int thread_id) {
   p_[thread_id]->AccumulateVolumeAveragedSpectralWidth();
 #pragma omp barrier
 
-  if (r_[thread_id]->nsMaxF1 == fc_.ns) {
+  if (verbose_ && r_[thread_id]->nsMaxF1 == fc_.ns) {
     // only the thread that computes the free-boundary force can compute
     // delbsq
 

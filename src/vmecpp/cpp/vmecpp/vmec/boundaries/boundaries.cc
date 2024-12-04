@@ -33,12 +33,14 @@ Boundaries::Boundaries(const Sizes* s, const FourierBasisFastPoloidal* t,
   }
 }
 
-bool Boundaries::setupFromIndata(const VmecINDATA& id) {
-  parseToInternalArrays(id);
+bool Boundaries::setupFromIndata(const VmecINDATA& id, bool verbose) {
+  parseToInternalArrays(id, verbose);
 
   bool haveToFlipTheta = checkSignOfJacobian();
   if (haveToFlipTheta) {
-    std::cout << "need to flip theta definition of input boundary shape\n";
+    if (verbose) {
+      std::cout << "need to flip theta definition of input boundary shape\n";
+    }
     flipTheta();
   }
 
@@ -48,7 +50,7 @@ bool Boundaries::setupFromIndata(const VmecINDATA& id) {
   return haveToFlipTheta;
 }
 
-void Boundaries::parseToInternalArrays(const VmecINDATA& id) {
+void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
   // copy over axis from INDATA to this class
   for (int n = 0; n < s_.ntor + 1; ++n) {
     raxis_c[n] = id.raxis_c[n];
@@ -82,7 +84,7 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id) {
 
     delta = atan2(id.rbs[idx] - id.zbc[idx], id.rbc[idx] + id.zbs[idx]);
 
-    if (delta != 0.0) {
+    if (verbose && delta != 0.0) {
       std::cout << "need to shift theta by delta = " << delta << "\n";
       // In this implementation, the theta-shift will be done during sorting of
       // coefficients below.

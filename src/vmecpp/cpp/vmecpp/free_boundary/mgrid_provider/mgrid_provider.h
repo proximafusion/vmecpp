@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/sizes/sizes.h"
-#include "vmecpp/tools/makegrid/makegrid_lib/makegrid_lib.h"
 
 namespace vmecpp {
 

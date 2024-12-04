@@ -10,10 +10,12 @@
 #include <string>
 #include <type_traits>  // std::is_same_v
 #include <utility>      // std::move
+#include <vector>
 
+#include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
+#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
-#include "vmecpp/tools/makegrid/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/pybind11/vmec_indata_pywrapper.h"
 #include "vmecpp/vmec/vmec/vmec.h"
@@ -22,6 +24,7 @@ namespace py = pybind11;
 using Eigen::VectorXd;
 using Eigen::VectorXi;
 using vmecpp::VmecINDATAPyWrapper;
+using pybind11::literals::operator""_a;
 
 namespace {
 
@@ -57,6 +60,34 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
     throw std::runtime_error(std::string(s.status().message()));
   }
   return s.value();
+}
+
+// convert a RowMatrixXd to the corresponding STL vector<vector<double>>
+std::vector<std::vector<double>> RowMatrixXdToVector(
+    const vmecpp::RowMatrixXd &m) {
+  std::vector<std::vector<double>> v(m.rows(), std::vector<double>(m.cols()));
+  for (int i = 0; i < m.rows(); ++i) {
+    for (int j = 0; j < m.cols(); ++j) {
+      v[i][j] = m(i, j);
+    }
+  }
+  return v;
+}
+
+// The data members of MagneticFieldResponseTable are STL nested vectors,
+// but pybind11 prefers converting between Eigen matrices and numpy arrays.
+// So we take in Eigen matrices and convert them to STL vectors before
+// constructing a MagneticFieldResponseTable.
+makegrid::MagneticFieldResponseTable MakeMagneticFieldResponseTable(
+    const makegrid::MakegridParameters &parameters,
+    const vmecpp::RowMatrixXd &b_r, const vmecpp::RowMatrixXd &b_p,
+    const vmecpp::RowMatrixXd &b_z) {
+  return makegrid::MagneticFieldResponseTable{
+      parameters,
+      RowMatrixXdToVector(b_r),
+      RowMatrixXdToVector(b_p),
+      RowMatrixXdToVector(b_z),
+  };
 }
 
 }  // anonymous namespace
@@ -610,15 +641,22 @@ PYBIND11_MODULE(_vmecpp, m) {
       "run",
       [](const VmecINDATAPyWrapper &indata,
          std::optional<vmecpp::OutputQuantities> initial_state,
-         std::optional<int> max_threads) -> vmecpp::OutputQuantities {
+         std::optional<int> max_threads,
+         bool verbose = true) -> vmecpp::OutputQuantities {
         auto ret = vmecpp::run(vmecpp::VmecINDATA(indata),
-                               std::move(initial_state), max_threads);
+                               std::move(initial_state), max_threads, verbose);
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
-      py::arg("max_threads") = std::nullopt);
+      py::arg("max_threads") = std::nullopt, py::arg("verbose") = true);
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
+      .def(py::init<bool, bool, int, double, double, int, double, double, int,
+                    int>(),
+           "normalize_by_currents"_a, "assume_stellarator_symmetry"_a,
+           "number_of_field_periods"_a, "r_grid_minimum"_a, "r_grid_maximum"_a,
+           "number_of_r_grid_points"_a, "z_grid_minimum"_a, "z_grid_maximum"_a,
+           "number_of_z_grid_points"_a, "number_of_phi_grid_points"_a)
       .def_static(
           "from_file",
           [](const std::filesystem::path &file) {
@@ -626,7 +664,27 @@ PYBIND11_MODULE(_vmecpp, m) {
                 makegrid::ImportMakegridParametersFromFile(file);
             return GetValueOrThrow(maybe_params);
           },
-          py::arg("file"));
+          py::arg("file"))
+      .def_readonly("normalize_by_currents",
+                    &makegrid::MakegridParameters::normalize_by_currents)
+      .def_readonly("assume_stellarator_symmetry",
+                    &makegrid::MakegridParameters::assume_stellarator_symmetry)
+      .def_readonly("number_of_field_periods",
+                    &makegrid::MakegridParameters::number_of_field_periods)
+      .def_readonly("r_grid_minimum",
+                    &makegrid::MakegridParameters::r_grid_minimum)
+      .def_readonly("r_grid_maximum",
+                    &makegrid::MakegridParameters::r_grid_maximum)
+      .def_readonly("number_of_r_grid_points",
+                    &makegrid::MakegridParameters::number_of_r_grid_points)
+      .def_readonly("z_grid_minimum",
+                    &makegrid::MakegridParameters::z_grid_minimum)
+      .def_readonly("z_grid_maximum",
+                    &makegrid::MakegridParameters::z_grid_maximum)
+      .def_readonly("number_of_z_grid_points",
+                    &makegrid::MakegridParameters::number_of_z_grid_points)
+      .def_readonly("number_of_phi_grid_points",
+                    &makegrid::MakegridParameters::number_of_phi_grid_points);
 
   py::class_<magnetics::MagneticConfiguration>(m, "MagneticConfiguration")
       .def_static(
@@ -638,8 +696,24 @@ PYBIND11_MODULE(_vmecpp, m) {
           },
           py::arg("file"));
 
-  py::class_<makegrid::MagneticFieldResponseTable>(
-      m, "MagneticFieldResponseTable");
+  py::class_<makegrid::MagneticFieldResponseTable>(m,
+                                                   "MagneticFieldResponseTable")
+      .def(py::init(&MakeMagneticFieldResponseTable), "parameters"_a,
+           "b_r"_a.noconvert(), "b_p"_a.noconvert(), "b_z"_a.noconvert())
+      .def_readonly("parameters",
+                    &makegrid::MagneticFieldResponseTable::parameters)
+      .def_property_readonly("b_r",
+                             [](const makegrid::MagneticFieldResponseTable &t) {
+                               return vmecpp::ToEigenMatrix(t.b_r);
+                             })
+      .def_property_readonly("b_p",
+                             [](const makegrid::MagneticFieldResponseTable &t) {
+                               return vmecpp::ToEigenMatrix(t.b_p);
+                             })
+      .def_property_readonly("b_z",
+                             [](const makegrid::MagneticFieldResponseTable &t) {
+                               return vmecpp::ToEigenMatrix(t.b_z);
+                             });
 
   m.def(
       "compute_magnetic_field_response_table",
@@ -656,13 +730,13 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATAPyWrapper &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
          std::optional<vmecpp::OutputQuantities> initial_state = std::nullopt,
-         std::optional<int> max_threads = std::nullopt) {
+         std::optional<int> max_threads = std::nullopt, bool verbose = true) {
         auto ret =
             vmecpp::run(vmecpp::VmecINDATA(indata), magnetic_response_table,
-                        std::move(initial_state), max_threads);
+                        std::move(initial_state), max_threads, verbose);
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("magnetic_response_table"),
       py::arg("initial_state") = std::nullopt,
-      py::arg("max_threads") = std::nullopt);
+      py::arg("max_threads") = std::nullopt, py::arg("verbose") = true);
 }  // NOLINT(readability/fn_size)

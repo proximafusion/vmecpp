@@ -1,7 +1,7 @@
 cc_library(
     name = "free_boundary_base",
     hdrs = ["free_boundary_base.h"],
-    visibility = ["//vmecpp:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/fourier_basis_fast_toroidal:fourier_basis_fast_toroidal",
         "//vmecpp/common/sizes:sizes",

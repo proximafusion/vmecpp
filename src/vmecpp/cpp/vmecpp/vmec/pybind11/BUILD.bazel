@@ -35,6 +35,7 @@ pybind_extension(
     srcs = ["pybind_vmec.cc"],
     deps = [
         "//vmecpp/common/vmec_indata",
+        "//vmecpp/common/magnetic_configuration_lib",
         "//vmecpp/vmec/output_quantities",
         "//vmecpp/vmec/vmec",
         ":vmec_indata_pywrapper",

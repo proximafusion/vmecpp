@@ -16,7 +16,7 @@ class Boundaries {
   Boundaries(const Sizes* s, const FourierBasisFastPoloidal* t,
              int sign_of_jacobian);
 
-  bool setupFromIndata(const VmecINDATA& id);
+  bool setupFromIndata(const VmecINDATA& id, bool verbose = true);
   void ensureM1Constrained(double scaling_factor);
 
   // This object is initialized with an initial guess for the magnetic axis
@@ -64,7 +64,7 @@ class Boundaries {
   // </pre>
   //
   // id: contents of INDATA namelist (VMEC input)
-  void parseToInternalArrays(const VmecINDATA& id);
+  void parseToInternalArrays(const VmecINDATA& id, bool verbose = true);
 
   // Check if the sign of the Jacobian of the given input boundary coefficient
   // matches the expected internal sign of the Jacobian.

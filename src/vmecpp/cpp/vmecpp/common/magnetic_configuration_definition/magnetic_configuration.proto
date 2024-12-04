@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+// Vector3d, FourierCoefficient
+import "vmecpp/common/composed_types_definition/composed_types.proto";
+
+package magnetics;
+
+message MagneticConfiguration {
+  // a human-readable name, e.g., for plotting
+  optional string name = 1;
+
+  // number of field periods of this coil set
+  optional int32 num_field_periods = 2;
+
+  // objects that specify geometry and currents of coils
+  repeated SerialCircuit serial_circuits = 3;
+}
+
+message SerialCircuit {
+  // a human-readable name, e.g., for plotting
+  optional string name = 1;
+
+  // current along each of the current carriers
+  optional double current = 2;
+
+  // objects that define the geometry of coils
+  repeated Coil coils = 3;
+}
+
+message Coil {
+  // a human-readable name, e.g., for plotting
+  optional string name = 1;
+
+  // number of windings == multiplier for current along geometry;
+  // num_windings == 1 is assumed if this field is not populated
+  optional double num_windings = 2;
+
+  // objects that define the single-turn geometry of the coil
+  repeated CurrentCarrier current_carriers = 3;
+}
+
+message CurrentCarrier {
+  oneof type {
+    InfiniteStraightFilament infinite_straight_filament = 1;
+    CircularFilament circular_filament = 2;
+    PolygonFilament polygon_filament = 3;
+    FourierFilament fourier_filament = 4;
+  }
+}
+
+message InfiniteStraightFilament {
+  // a human-readable name, e.g., for plotting
+  optional string name = 1;
+
+  // Cartesian coordinates of a point on the filament
+  composed_types.Vector3d origin = 2;
+
+  // Cartesian components of the direction along the filament
+  composed_types.Vector3d direction = 3;
+}
+
+message CircularFilament {
+  // a human-readable name, e.g., for plotting
+  optional string name = 1;
+
+  // Cartesian coordinates of the center point of the loop
+  composed_types.Vector3d center = 2;
+
+  // Cartesian components of a vector pointing along the normal of the circle
+  // around which the current flows
+  composed_types.Vector3d normal = 3;
+
+  // radius of the loop
+  optional double radius = 4;
+}
+
+message PolygonFilament {
+  // a human-readable name, e.g., for plotting
+  optional string name = 1;
+
+  // Cartesian components of filament geometry
+  repeated composed_types.Vector3d vertices = 2;
+}
+
+message FourierFilament {
+  // a human-readable name, e.g., for plotting
+  optional string name = 1;
+
+  // Fourier coefficients of Cartesian x component of filament geometry
+  repeated composed_types.FourierCoefficient1D x = 2;
+
+  // Fourier coefficients of Cartesian y component of filament geometry
+  repeated composed_types.FourierCoefficient1D y = 3;
+
+  // Fourier coefficients of Cartesian z component of filament geometry
+  repeated composed_types.FourierCoefficient1D z = 4;
+}

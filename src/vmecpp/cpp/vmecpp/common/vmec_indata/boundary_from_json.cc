@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "nlohmann/json.hpp"
 
@@ -73,5 +74,31 @@ BoundaryCoefficient::FromJson(const json& j, const std::string& name) {
 
   return entries;
 }  // JsonReadBoundary
+
+std::vector<double> BoundaryFromJson(const nlohmann::json& json,
+                                     const std::string& key, int mpol,
+                                     int ntor) {
+  std::vector<double> coeffs(mpol * (2 * ntor + 1));
+
+  const auto maybe_entries = vmecpp::BoundaryCoefficient::FromJson(json, key);
+  CHECK_OK(maybe_entries);
+  CHECK(maybe_entries->has_value());
+
+  const std::vector<vmecpp::BoundaryCoefficient> entries =
+      maybe_entries->value();
+  for (const vmecpp::BoundaryCoefficient& entry : entries) {
+    // Fortran order along n: -ntor, -ntor+1, ..., -1, 0, 1, ..., ntor-1, ntor
+    if (entry.m < 0 || entry.m >= mpol || entry.n < -ntor || entry.n > ntor) {
+      // invalid indices for boundary coefficients in the json input are ignore
+      continue;
+    }
+
+    const int index_along_n = ntor + entry.n;
+    const int flat_index = entry.m * (2 * ntor + 1) + index_along_n;
+    coeffs[flat_index] = entry.value;
+  }
+
+  return coeffs;
+}
 
 }  // namespace vmecpp

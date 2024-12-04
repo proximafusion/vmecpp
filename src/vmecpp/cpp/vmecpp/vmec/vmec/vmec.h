@@ -6,13 +6,13 @@
 #include <optional>
 #include <vector>
 
+#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/free_boundary/free_boundary_base/free_boundary_base.h"
 #include "vmecpp/free_boundary/nestor/nestor.h"
 #include "vmecpp/free_boundary/tangential_partitioning/tangential_partitioning.h"
-#include "vmecpp/tools/makegrid/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/vmec/boundaries/boundaries.h"
 #include "vmecpp/vmec/fourier_forces/fourier_forces.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
@@ -31,7 +31,7 @@ namespace vmecpp {
 absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
     std::optional<OutputQuantities> initial_state = std::nullopt,
-    std::optional<int> max_threads = std::nullopt);
+    std::optional<int> max_threads = std::nullopt, bool verbose = true);
 
 // This overload enables free-boundary runs with an in-memory mgrid file.
 // The mgrid_file entry in `indata` will be ignored.
@@ -41,19 +41,24 @@ absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<OutputQuantities> initial_state = std::nullopt,
-    std::optional<int> max_threads = std::nullopt);
+    std::optional<int> max_threads = std::nullopt, bool verbose = true);
 
 class Vmec {
  public:
+  // sign of Jacobian between cylindrical and flux coordinates
+  // This is called `signgs` in Fortran VMEC.
   static constexpr int kSignOfJacobian = -1;
+
+  // scaling factor for blending between two different ways to compute B^zeta
   static constexpr double kPDamp = 0.05;
 
   explicit Vmec(const VmecINDATA& indata,
-                std::optional<int> max_threads = std::nullopt);
+                std::optional<int> max_threads = std::nullopt,
+                bool verbose = true);
 
   Vmec(const VmecINDATA& indata,
        const makegrid::MagneticFieldResponseTable* magnetic_response_table,
-       std::optional<int> max_threads = std::nullopt);
+       std::optional<int> max_threads = std::nullopt, bool verbose = true);
 
   absl::StatusOr<bool> run(
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
@@ -165,6 +170,9 @@ class Vmec {
   absl::StatusOr<SolveEqLoopStatus> SolveEquilibriumLoop(
       int thread_id, int maximum_iterations, VmecCheckpoint checkpoint,
       bool& lreset_internal);
+
+  // flag to enable or disable ALL screen output from VMEC++
+  bool verbose_;
 
   // initialization state counter for Nestor
   // TODO(eguiraud): make this an enum and document the various states

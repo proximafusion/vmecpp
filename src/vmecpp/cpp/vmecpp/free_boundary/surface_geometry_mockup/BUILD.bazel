@@ -17,7 +17,7 @@ cc_library(
     "//vmecpp/common/fourier_basis_fast_toroidal",
     "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
     "//vmecpp/free_boundary/surface_geometry:surface_geometry",
-    "//vmecpp/tools/composed_types_lib:composed_types_lib",
+    "//vmecpp/common/composed_types_lib:composed_types_lib",
     "@abseil-cpp//absl/log:log",
   ],
 )

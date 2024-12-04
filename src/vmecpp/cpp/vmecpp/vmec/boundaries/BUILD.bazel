@@ -12,7 +12,7 @@ cc_library(
     name = "boundaries",
     srcs = ["boundaries.cc"],
     hdrs = ["boundaries.h"],
-    visibility = ["//vmecpp/vmec:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":guess_magnetic_axis",
         "//vmecpp/common/util:util",
@@ -21,25 +21,4 @@ cc_library(
         "//vmecpp/common/vmec_indata:vmec_indata",
         "@abseil-cpp//absl/algorithm:container",
     ],
-)
-
-cc_test(
-    name = "boundaries_test",
-    srcs = ["boundaries_test.cc"],
-    data = [
-        "//vmecpp/test_data:solovev",
-        "//vmecpp/test_data:solovev_analytical",
-        "//vmecpp/test_data:solovev_no_axis",
-        "//vmecpp/test_data:cth_like_fixed_bdy",
-        "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
-        "//vmecpp/test_data:cma",
-        "//vmecpp/test_data:cth_like_free_bdy",
-    ],
-    deps = [
-        ":boundaries",
-        "@googletest//:gtest_main",
-        "//util/file_io:file_io",
-        "//util/testing:numerical_comparison_lib",
-    ],
-    size = "small",
 )

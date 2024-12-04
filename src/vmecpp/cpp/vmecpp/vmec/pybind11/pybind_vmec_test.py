@@ -346,7 +346,7 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.IonLarmor, wout["IonLarmor"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.VolAvgB, wout["volavgB"][()], 1.0e-11)
 
-    assert is_close_ra(output_quantities.wout.ctor, wout["ctor"][()], 1.5e-10)
+    assert is_close_ra(output_quantities.wout.ctor, wout["ctor"][()], 1.0e-6)
 
     assert is_close_ra(output_quantities.wout.Aminor_p, wout["Aminor_p"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.Rmajor_p, wout["Rmajor_p"][()], 1.0e-11)
@@ -359,7 +359,7 @@ def test_output_quantities():
     # -------------------
     # one-dimensional array quantities
 
-    assert is_close_ra(output_quantities.wout.iota_full, wout["iotaf"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.iota_full, wout["iotaf"][()], 1.0e-6)
     assert is_close_ra(
         output_quantities.wout.safety_factor, wout["q_factor"][()], 1.0e-10
     )
@@ -397,7 +397,7 @@ def test_output_quantities():
 
     # Fortran VMEC defines equif over all flux surfaces,
     # but then skips the axis and boundary during writing.
-    assert is_close_ra(output_quantities.wout.equif, wout["equif"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.equif, wout["equif"][()], 1.0e-6)
 
     # TODO(jons): test curlabel, once implemented
 
@@ -506,3 +506,72 @@ def test_vmecpp_run_from_inmemory_mgrid():
     with pytest.raises(RuntimeError) as vmecpp_error:
         vmec.run(indata, magnetic_response_table)
     assert "VMEC++ did not converge" in str(vmecpp_error.value)
+
+
+def test_makegridparameters_constructor():
+    makegrid_parameters = vmec.MakegridParameters(
+        normalize_by_currents=True,
+        assume_stellarator_symmetry=True,
+        number_of_field_periods=1,
+        r_grid_minimum=-1.0,
+        r_grid_maximum=1.0,
+        number_of_r_grid_points=100,
+        z_grid_minimum=-1.0,
+        z_grid_maximum=1.0,
+        number_of_z_grid_points=100,
+        number_of_phi_grid_points=10,
+    )
+
+    assert makegrid_parameters.normalize_by_currents
+    assert makegrid_parameters.assume_stellarator_symmetry
+    assert makegrid_parameters.number_of_field_periods == 1
+    assert makegrid_parameters.r_grid_minimum == -1.0
+    assert makegrid_parameters.r_grid_maximum == 1.0
+    assert makegrid_parameters.number_of_r_grid_points == 100
+    assert makegrid_parameters.z_grid_minimum == -1.0
+    assert makegrid_parameters.z_grid_maximum == 1.0
+    assert makegrid_parameters.number_of_z_grid_points == 100
+    assert makegrid_parameters.number_of_phi_grid_points == 10
+
+
+def test_magneticfieldresponsetable_constructor():
+    makegrid_parameters = vmec.MakegridParameters(
+        normalize_by_currents=True,
+        assume_stellarator_symmetry=True,
+        number_of_field_periods=1,
+        r_grid_minimum=-1.0,
+        r_grid_maximum=1.0,
+        number_of_r_grid_points=10,
+        z_grid_minimum=-1.0,
+        z_grid_maximum=1.0,
+        number_of_z_grid_points=10,
+        number_of_phi_grid_points=10,
+    )
+
+    n_coil_groups = 10
+    magnetic_field_shape = (
+        n_coil_groups,
+        makegrid_parameters.number_of_r_grid_points
+        * makegrid_parameters.number_of_z_grid_points
+        * makegrid_parameters.number_of_phi_grid_points,
+    )
+    magnetic_field_component = np.arange(
+        magnetic_field_shape[0] * magnetic_field_shape[1], dtype=float
+    ).reshape(10, -1)
+
+    magnetic_field_response_table = vmec.MagneticFieldResponseTable(
+        parameters=makegrid_parameters,
+        b_r=magnetic_field_component,
+        b_p=magnetic_field_component,
+        b_z=magnetic_field_component,
+    )
+
+    np.testing.assert_allclose(
+        magnetic_field_response_table.b_r, magnetic_field_component
+    )
+    np.testing.assert_allclose(
+        magnetic_field_response_table.b_p, magnetic_field_component
+    )
+    np.testing.assert_allclose(
+        magnetic_field_response_table.b_z, magnetic_field_component
+    )

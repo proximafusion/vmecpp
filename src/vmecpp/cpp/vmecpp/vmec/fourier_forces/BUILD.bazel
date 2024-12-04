@@ -2,7 +2,7 @@ cc_library(
     name = "fourier_forces",
     srcs = ["fourier_forces.cc"],
     hdrs = ["fourier_forces.h"],
-    visibility = ["//vmecpp/vmec:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",

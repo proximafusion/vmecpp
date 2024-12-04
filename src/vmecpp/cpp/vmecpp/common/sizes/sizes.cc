@@ -44,6 +44,8 @@ void Sizes::computeDerivedSizes() {
   if (ntheta < 2 * mpol + 6) {
     ntheta = 2 * mpol + 6;
 #ifdef DEBUG
+    // NOTE: not suppressing this by `verbose` flag (vmec.cc:Vmec), since only
+    // enabled when a `DEBUG` build is requested
     std::cout << absl::StrFormat(
         "adjusting 'ntheta' to %d in order to satisfy Nyquist criterion\n",
         ntheta);
@@ -63,6 +65,8 @@ void Sizes::computeDerivedSizes() {
     if (nZeta < 2 * ntor + 4) {
       nZeta = 2 * ntor + 4;
 #ifdef DEBUG
+      // NOTE: not suppressing this by `verbose` flag (vmec.cc:Vmec), since only
+      // enabled when a `DEBUG` build is requested
       std::cout << absl::StrFormat(
           "adjusting 'nzeta' to %d in order to satisfy Nyquist criterion\n",
           nZeta);

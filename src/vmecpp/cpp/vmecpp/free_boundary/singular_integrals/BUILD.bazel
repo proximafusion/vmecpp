@@ -2,7 +2,7 @@ cc_library(
     name = "singular_integrals",
     srcs = ["singular_integrals.cc"],
     hdrs = ["singular_integrals.h"],
-    visibility = ["//vmecpp:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",

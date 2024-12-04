@@ -690,7 +690,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
     int& m_last_preconditioner_update, int& m_last_full_update_nestor,
     const RadialPartitioning& r, FlowControl& m_fc, const int thread_id,
     const int iter1, const int iter2, const VmecCheckpoint& checkpoint,
-    const int iterations_before_checkpointing) {
+    const int iterations_before_checkpointing, bool verbose) {
   // preprocess Fourier coefficients of geometry
   m_decomposed_x.decomposeInto(m_physical_x, m_p_.scalxc);
   if (checkpoint == VmecCheckpoint::FOURIER_GEOMETRY_TO_START_WITH &&
@@ -921,25 +921,28 @@ absl::StatusOr<bool> IdealMhdModel::update(
         if (m_ivac_ == 0) {
           m_ivac_++;
 
-          // bSubUVac and cTor contain 2*pi already; see Nestor.cc for bSubUVac
-          // and above for cTor
-          double fac = 1.0e-6 / MU_0;  // in MA
-          std::cout << "\n";
-          std::cout << absl::StrFormat(
-              "2*pi * a * -BPOL(vac) = %10.2e MA       R * BTOR(vacuum) = "
-              "%10.2e\n",
-              m_h_.bSubUVac * fac, m_h_.bSubVVac);
-          std::cout << absl::StrFormat(
-              "     TOROIDAL CURRENT = %10.2e MA       R * BTOR(plasma) = "
-              "%10.2e\n",
-              m_h_.cTor * fac, m_h_.rBtor);
+          if (verbose) {
+            // bSubUVac and cTor contain 2*pi already; see Nestor.cc for
+            // bSubUVac and above for cTor
+            const double fac = 1.0e-6 / MU_0;  // in MA
+            std::cout << "\n";
+            std::cout << absl::StrFormat(
+                "2*pi * a * -BPOL(vac) = %10.2e MA       R * BTOR(vacuum) = "
+                "%10.2e\n",
+                m_h_.bSubUVac * fac, m_h_.bSubVVac);
+            std::cout << absl::StrFormat(
+                "     TOROIDAL CURRENT = %10.2e MA       R * BTOR(plasma) = "
+                "%10.2e\n",
+                m_h_.cTor * fac, m_h_.rBtor);
+          }
         }  // fullUpdate printout
       }
 
       if (m_h_.rBtor * m_h_.bSubVVac < 0.0) {
         return absl::InternalError(
             "IdealMHDModel::update: rbtor and bsubvvac must have the same "
-            "sign");
+            "sign - maybe flip the sign of phiedge or the sign of the coil "
+            "currents");
       } else if (fabs((m_h_.cTor - m_h_.bSubUVac) / m_h_.rBtor) > 0.01) {
         return absl::InternalError(
             "IdealMHDModel::update: VAC-VMEC I_TOR MISMATCH : BOUNDARY MAY "

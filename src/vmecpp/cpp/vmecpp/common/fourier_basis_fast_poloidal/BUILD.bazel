@@ -15,15 +15,6 @@ cc_library(
 cc_test(
     name = "fourier_basis_fast_poloidal_test",
     srcs = ["fourier_basis_fast_poloidal_test.cc"],
-    data = [
-        "//vmecpp/test_data:solovev",
-        "//vmecpp/test_data:solovev_analytical",
-        "//vmecpp/test_data:solovev_no_axis",
-        "//vmecpp/test_data:cth_like_fixed_bdy",
-        "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
-        "//vmecpp/test_data:cma",
-        "//vmecpp/test_data:cth_like_free_bdy",
-    ],
     deps = [
         ":fourier_basis_fast_poloidal",
         "@googletest//:gtest_main",

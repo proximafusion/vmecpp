@@ -13,8 +13,8 @@
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "util/netcdf_io/netcdf_io.h"
+#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
-#include "vmecpp/tools/makegrid/makegrid_lib/makegrid_lib.h"
 
 namespace vmecpp {
 
@@ -282,7 +282,9 @@ void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
     // --> will only get slower, but more robust (and accurate?)
     // --> would also require to always have coil geometry inside mgrid file for
     // on-the-fly re-evaluation...
-    std::cout << "WARNING: Plasma Boundary exceeded Vacuum Grid Size\n";
+    // NOTE: This is not suppressed by the `verbose` flag (vmec.cc:Vmec), since
+    // it is considered an error message.
+    std::cerr << "WARNING: Plasma Boundary exceeded Vacuum Grid Size\n";
 
     if (exceedGridSizeR) {
       std::cout << absl::StrFormat("  R: min = % .3e  max = % .3e\n", min_r,

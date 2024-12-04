@@ -2,7 +2,7 @@ cc_library(
     name = "thread_local_storage",
     srcs = ["thread_local_storage.cc"],
     hdrs = ["thread_local_storage.h"],
-    visibility = ["//vmecpp/vmec:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",

@@ -86,7 +86,7 @@ class IdealMhdModel {
       const RadialPartitioning& r, FlowControl& m_fc, const int thread_id,
       const int iter1, const int iter2,
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
-      const int iterations_before_checkpointing = INT_MAX);
+      const int iterations_before_checkpointing = INT_MAX, bool verbose = true);
 
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
