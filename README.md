@@ -135,6 +135,8 @@ bazel build --config=opt //...
 
 All artifacts are now under `./bazel-bin/vmecpp`.
 
+The main C++ source code tree starts in [`src/vmecpp/cpp/vmecpp`](src/vmecpp/cpp/vmecpp).
+
 ## Known differences with respect to PARVMEC/VMEC2000
 
 - VMEC++ has a zero-crash policy and reports issues via standard Python exceptions
