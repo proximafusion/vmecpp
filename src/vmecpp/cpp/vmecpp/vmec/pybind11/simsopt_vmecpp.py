@@ -98,7 +98,7 @@ class Vmec(Optimizable):
 
     def __init__(
         self,
-        filename: str,
+        filename: str | Path,
         verbose: bool = True,
         ntheta: int = 50,
         nphi: int = 50,
@@ -150,7 +150,7 @@ class Vmec(Optimizable):
             # intentionally using the original `filename` and not the potentially
             # different `vmecpp_filename` here: we want to behave as if the input
             # was `filename`, even if internally we converted it.
-            self.input_file = filename
+            self.input_file = str(filename)
             self.iter = -1
 
             # NOTE: SurfaceRZFourier uses m up to mpol _inclusive_,
@@ -193,7 +193,7 @@ class Vmec(Optimizable):
             self._boundary = SurfaceRZFourier.from_wout(
                 filename, nphi=nphi, ntheta=ntheta, range=range_surface
             )
-            self.output_file = filename
+            self.output_file = str(filename)
             self.load_wout_from_outfile()
 
         else:  # bad input filename
