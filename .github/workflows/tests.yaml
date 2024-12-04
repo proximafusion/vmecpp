@@ -31,6 +31,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+      - name: Setup Bazel Cache
+        uses: actions/cache/restore@v4
+        id: restore-cache
+        with:
+          path: |
+            ~/.cache/bazel
+          key: |
+            ${{ runner.os }}-bazel-${{ hashFiles('src/vmecpp/cpp/.bazelrc', 'src/vmecpp/cpp/WORKSPACE.bazel', 'src/vmecpp/cpp/MODULE.bazel') }}-${{ hashFiles('**/*.h', '**/*.cc') }}
+          restore-keys: |
+            ${{ runner.os }}-bazel-${{ hashFiles('src/vmecpp/cpp/.bazelrc', 'src/vmecpp/cpp/WORKSPACE.bazel', 'src/vmecpp/cpp/MODULE.bazel') }}
+            ${{ runner.os }}-bazel-
       - name: Install package
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
@@ -40,3 +51,15 @@ jobs:
           python -m pip install vmec@https://storage.googleapis.com/proxima-hosting/wheels/vmec-0.0.4-cp310-cp310-linux_x86_64.whl
       - name: Test package
         run: python -m pytest tests/
+      - name: Save Bazel Cache (only in main)
+        uses: actions/cache/save@v4
+        # only save the cache if this branch is main and there was no entry with this exact key already
+        if: ${{ github.ref_name == 'main' && steps.restore-cache.outputs.cache-hit != 'true' }}
+        with:
+          path: |
+            ~/.cache/bazel
+          # Create a new key whenever the Bazel configuration _or a C++ header or source file_ changes:
+          # This updates the cache more frequently than as suggested at https://github.com/actions/cache/blob/main/examples.md#linux-2,
+          # which should result in shorter build times for every CI run.
+          key: |
+            ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel') }}-${{ hashFiles('**/*.h', '**/*.cc') }}
