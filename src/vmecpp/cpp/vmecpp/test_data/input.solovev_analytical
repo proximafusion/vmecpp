@@ -51,43 +51,4 @@
 
   zbs(0, 1) =  1.581138830084e+00
 
-  ! checkpoints along iterations
-  dump_add_fluxes            = .true.
-  dump_metric                = .true.
-  dump_volume                = .true.
-  dump_bcontrav              = .true.
-  dump_bcov                  = .true.
-  dump_lambda_forces         = .true.
-  dump_bcov_full             = .true.
-  dump_precondn              = .true.
-  dump_forceNorms_tcon       = .true.
-  dump_lulv_comb             = .true.
-  dump_calc_fbal             = .true.
-  dump_evolve                = .true.
-  dump_fixaray               = .true.
-  dump_spectral_constraint   = .true.
-  dump_forces                = .true.
-  dump_totzsp_input          = .true.
-  dump_funct3d_geometry      = .true.
-  dump_constraint_force      = .true.
-  dump_guess_axis            = .true.
-  dump_interp                = .true.
-  dump_jacobian              = .true.
-  dump_lamcal                = .true.
-  dump_profil1d              = .true.
-  dump_profil3d              = .true.
-  dump_readin_boundary       = .true.
-  dump_phys_gc               = .true.
-  dump_fsq                   = .true.
-  dump_scale_m1              = .true.
-  dump_scalfor_out           = .true.
-  dump_fsq1                  = .true.
-  dump_scalfor_R             = .true.
-  dump_scalfor_Z             = .true.
-  dump_symforce              = .true.
-  dump_tomnsps               = .true.
-  dump_tomnspa               = .true.
-  dump_multigrid_result      = .true.
-  dump_rbsq                  = .true.
-  dump_printout              = .true.
 /
