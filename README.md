@@ -59,7 +59,7 @@ output = vmecpp.run(input)
 output.wout.save("wout_solovev.nc")
 ```
 
-Note that other output files are accessible via the `threed1`, `jxbout` and `mercier` members of the `output` object.
+Note that other output files are planned to be accessible via members of the `output` object called `threed1`, `jxbout` and `mercier` soon.
 
 ### With SIMSOPT
 
@@ -99,8 +99,6 @@ On Ubuntu 22.04, they are available as these system packages:
 ```console
 sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev
 ```
-
-Note that `libopenmpi-dev` is only required for the Simsopt compatibility wrapper, which in turn requires the `mpi4py` Python package.
 
 You also need [bazelisk](https://github.com/bazelbuild/bazelisk), see link for up to date installation instructions.
 For convenience, here is one possible way to install bazelisk on a Linux amd64 machine (please make sure this makes sense for your setup before running the commands):
@@ -143,7 +141,7 @@ The main C++ source code tree starts in [`src/vmecpp/cpp/vmecpp`](src/vmecpp/cpp
 - VMEC++ allows hot-restarting a run from a previous converged state (see [#hot-restart])
 - VMEC++'s parallelization strategy is the same as Fortran VMEC, but it leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization
 - VMEC++ implements the iteration algorithm of Fortran VMEC 8.52, which has sometimes different convergence behavior from (PAR)VMEC9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
-- VMEC++ supports inputs in the classic INDATA format (via a statically-linked executable of [`indata2json`](https://github.com/jonathanschilling/indata2json) that is shipped in this repository) as well as JSON files; it is also simple to construct input objects programmatically in Python
+- VMEC++ supports inputs in the classic INDATA format as well as JSON files; it is also simple to construct input objects programmatically in Python
 
 ### Known limitations with respect to the Fortran implementations
 - non-stellarator-symmetric terms (`lasym == true`) are not supported yet
