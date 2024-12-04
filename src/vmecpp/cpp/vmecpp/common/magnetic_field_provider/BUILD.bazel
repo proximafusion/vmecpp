@@ -19,7 +19,8 @@ cc_test(
     name = "magnetic_field_provider_lib_test",
     srcs = ["magnetic_field_provider_lib_test.cc"],
     data = [
-      "//vmec_validation/coils",
+      # we don't copy these files in the repo
+      # "//vmec_validation/coils",
     ],
     deps = [
         ":magnetic_field_provider_lib",
