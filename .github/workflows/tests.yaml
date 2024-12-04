@@ -36,4 +36,4 @@ jobs:
           sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev
           python -m pip install -e .[test]
       - name: Test package
-        run: python -m pytest
+        run: python -m pytest tests/
