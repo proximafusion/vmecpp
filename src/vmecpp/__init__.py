@@ -692,7 +692,9 @@ class VmecOutput(pydantic.BaseModel):
     """The input to the VMEC run that produced this output."""
 
 
-def run(input: VmecInput, max_threads: int | None = None) -> VmecOutput:
+def run(
+    input: VmecInput, max_threads: int | None = None, verbose: bool = True
+) -> VmecOutput:
     """Run VMEC++ using the provided input.
 
     Args:
@@ -700,9 +702,12 @@ def run(input: VmecInput, max_threads: int | None = None) -> VmecOutput:
         max_threads: maximum number of threads that VMEC++ should spawn. The actual number might still
             be lower that this in case there are too few flux surfaces to keep these many threads
             busy.
+        verbose: if True, VMEC++ logs its progress to standard output.
     """
     cpp_indata = input._to_cpp_vmecindatapywrapper()
-    cpp_output_quantities = _vmecpp.run(cpp_indata, max_threads=max_threads)
+    cpp_output_quantities = _vmecpp.run(
+        cpp_indata, max_threads=max_threads, verbose=verbose
+    )
     cpp_wout = cpp_output_quantities.wout
     wout = VmecWout._from_cpp_wout(cpp_wout)
     return VmecOutput(wout=wout, input=input)
