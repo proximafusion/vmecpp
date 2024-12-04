@@ -7,8 +7,8 @@
 
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/proximafusion/vmecpp?tab=MIT-1-ov-file#readme)
-[![CI](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/jons-pf/vmecpp?tab=MIT-1-ov-file#readme)
+[![CI](https://github.com/jons-pf/vmecpp/actions/workflows/tests.yaml/badge.svg)](https://github.com/jons-pf/vmecpp/actions/workflows/tests.yaml)
 [![Python version](https://img.shields.io/badge/python-3.10-blue)]()
 
 VMEC++ is a Python-friendly, from-scratch reimplementation in C++ of the Variational Moments Equilibrium Code (VMEC),
@@ -116,7 +116,7 @@ sudo chmod u+x /usr/local/bin/bazel
 Assuming git has access to the SSH key you use to log into GitHub (only until we make the repo public and publish official wheels to PyPI):
 
 ```console
-pip install git+ssh://git@github.com/proximafusion/vmecpp.git
+pip install git+ssh://git@github.com/jons-pf/vmecpp.git
 ```
 
 The procedure will take a few minutes as it will build VMEC++ and some dependencies from source.
@@ -128,7 +128,7 @@ Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 ### C++ build from source
 
 ```console
-git clone https://github.com/proximafusion/vmecpp
+git clone https://github.com/jons-pf/vmecpp
 cd vmecpp/src/vmecpp/cpp
 bazel build --config=opt //...
 ```
