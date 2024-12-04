@@ -65,7 +65,8 @@ filegroup(
     srcs = [
         "coils.cth_like",
         "makegrid_parameters_cth_like.json",
-        "mgrid_cth_like.nc",
+        # this file is annoyingly large
+        # "mgrid_cth_like.nc",
         "cth_like_free_bdy.json",
         "input.cth_like_free_bdy",
         "wout_cth_like_free_bdy.nc",
