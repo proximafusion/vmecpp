@@ -32,6 +32,8 @@ jobs:
         with:
           python-version: "3.x"
       - name: Install package
-        run: python -m pip install -e .[test]
+        run: |
+          sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev
+          python -m pip install -e .[test]
       - name: Test package
         run: python -m pytest
