@@ -692,7 +692,7 @@ class VmecOutput(pydantic.BaseModel):
     """The input to the VMEC run that produced this output."""
 
 
-def run(input: VmecInput, max_threads=None) -> VmecOutput:
+def run(input: VmecInput, max_threads: int | None = None) -> VmecOutput:
     """Run VMEC++ using the provided input.
 
     Args:
