@@ -6,6 +6,7 @@
 import vmecpp.simsopt_compat
 from vmecpp._util import package_root
 
+# NOTE: This resolves to src/vmecpp/cpp/vmecpp/test_data in the repo.
 TEST_DATA_DIR = package_root() / "cpp" / "vmecpp" / "test_data"
 
 
