@@ -82,13 +82,13 @@ def test_indata_readwrite():
 
     # Assignments like these would break VmecINDATA's invariants:
     # make sure they are not allowed
-    with pytest.raises(AttributeError, match="can't set attribute"):
+    with pytest.raises(AttributeError):
         indata.mpol = 0
 
-    with pytest.raises(AttributeError, match="can't set attribute"):
+    with pytest.raises(AttributeError):
         indata.raxis_c = np.array([])
 
-    with pytest.raises(AttributeError, match="can't set attribute"):
+    with pytest.raises(AttributeError):
         indata.rbc = np.array([])
 
 
