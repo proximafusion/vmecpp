@@ -56,7 +56,7 @@ out_dir = "src/vmecpp/cpp/bazel_artifacts/"
 commands = [
   # the build is CPU-intensive, so we limit the amount of jobs to less
   # than the number of CPUs in order to not completely hog the machine
-  "bazel build --jobs='HOST_CPUS*.75' //...",
+  "bazel build -c opt --jobs='HOST_CPUS*.75' //...",
   "cp -f bazel-bin/vmecpp/vmec/pybind11/_vmecpp.so _vmecpp.so",
 ]
 artifacts = [
