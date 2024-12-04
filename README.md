@@ -100,6 +100,8 @@ On Ubuntu 22.04, they are available as these system packages:
 sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev
 ```
 
+Note that `libopenmpi-dev` is only required for the Simsopt compatibility wrapper, which in turn requires the `mpi4py` Python package.
+
 You also need [bazelisk](https://github.com/bazelbuild/bazelisk), see link for up to date installation instructions.
 For convenience, here is one possible way to install bazelisk on a Linux amd64 machine (please make sure this makes sense for your setup before running the commands):
 
