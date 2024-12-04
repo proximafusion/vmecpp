@@ -19,8 +19,14 @@ def parse_arguments() -> argparse.Namespace:
     p.add_argument(
         "-t",
         "--max-threads",
-        help="maximum number of threads that VMEC++ should spawn. The actual number might still be lower that this in case there are too few flux surfaces to keep these many threads busy.",
+        help="Maximum number of threads that VMEC++ should spawn. The actual number might still be lower that this in case there are too few flux surfaces to keep these many threads busy.",
         type=int,
+    )
+    p.add_argument(
+        "-q",
+        "--quiet",
+        help="If present, silences the printing of VMEC++ logs to standard output.",
+        action="store_true",
     )
     return p.parse_args()
 
@@ -28,7 +34,7 @@ def parse_arguments() -> argparse.Namespace:
 args = parse_arguments()
 
 input = vmecpp.VmecInput.from_file(args.input_file)
-output = vmecpp.run(input, args.max_threads)
+output = vmecpp.run(input, max_threads=args.max_threads, verbose=not args.quiet)
 
 configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)
 wout_file = Path(f"wout_{configuration_name}.nc")
