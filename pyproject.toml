@@ -76,6 +76,7 @@ artifacts = [
 [tool.hatch.build.targets.wheel.force-include]
 "src/vmecpp/cpp/vmecpp/vmec/pybind11/simsopt_vmecpp.py" = "vmecpp/cpp/vmecpp/vmec/pybind11/simsopt_vmecpp.py"
 "src/vmecpp/cpp/vmecpp/simsopt_compat" = "vmecpp/cpp/vmecpp/simsopt_compat"
+"src/vmecpp/cpp/third_party/indata2json" = "vmecpp/cpp/third_party/indata2json"
 
 [tool.hatch.envs.test]
 dependencies = [
