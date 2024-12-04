@@ -21,6 +21,8 @@ for large-scale stellarator search pipelines.
 On the other hand, some features of the original Fotran VMEC are not available in VMEC++.
 See [below](#known-differences-with-respect-to-parvmecvmec2000) for more details.
 
+⚠️ VMEC++ is a production-ready physics simulator but still in beta as a standalone Python package ⚠️ 
+
 -----
 
 ## Table of Contents
