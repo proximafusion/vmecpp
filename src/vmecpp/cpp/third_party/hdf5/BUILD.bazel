@@ -3,8 +3,7 @@ load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
 cmake(
     name = "hdf5",
     lib_source = "@hdf5//:all_srcs",
-    # to automatically get a multi-core build
-    generate_args = ["-GNinja"],
+    build_args = ["--parallel"],
     cache_entries = {
         # enable C++ API (slightly more friendly wrapper around the C API)
         "HDF5_BUILD_CPP_LIB": "ON",
