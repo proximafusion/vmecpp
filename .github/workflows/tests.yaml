@@ -62,4 +62,4 @@ jobs:
           # This updates the cache more frequently than as suggested at https://github.com/actions/cache/blob/main/examples.md#linux-2,
           # which should result in shorter build times for every CI run.
           key: |
-            ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel') }}-${{ hashFiles('**/*.h', '**/*.cc') }}
+            ${{ runner.os }}-bazel-${{ hashFiles('src/vmecpp/cpp/.bazelrc', 'src/vmecpp/cpp/WORKSPACE.bazel', 'src/vmecpp/cpp/MODULE.bazel') }}-${{ hashFiles('**/*.h', '**/*.cc') }}
