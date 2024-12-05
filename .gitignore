@@ -4,3 +4,4 @@ src/vmecpp/cpp/bazel_artifacts
 src/vmecpp/cpp/_vmecpp.so
 dist/
 __pycache__
+build/
