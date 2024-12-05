@@ -25,7 +25,10 @@ jobs:
 
   tests:
     name: Install and run tests
-    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,14 +45,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bazel-${{ hashFiles('src/vmecpp/cpp/.bazelrc', 'src/vmecpp/cpp/WORKSPACE.bazel', 'src/vmecpp/cpp/MODULE.bazel') }}
             ${{ runner.os }}-bazel-
-      - name: Install package
+      - if: ${{ matrix.os == 'macos-latest' }}
+        name: Install system packages with brew
+        run: |
+          brew install netcdf ninja cmake gcc
+      - if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        name: Install system packages with apt
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
           sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev libnetcdff-dev libscalapack-openmpi-dev
+      - name: Pip-install VMEC++
+        run: |
           python -m pip install -vvv -e .[test]
           # needed for some VMEC++/VMEC2000 compatibility tests
           python -m pip install vmec@https://storage.googleapis.com/proxima-hosting/wheels/vmec-0.0.4-cp310-cp310-linux_x86_64.whl
-      - name: Test package
+      - name: Test VMEC++
         run: python -m pytest tests/
       - name: Save Bazel Cache (only in main)
         uses: actions/cache/save@v4
