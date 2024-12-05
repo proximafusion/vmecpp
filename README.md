@@ -175,7 +175,7 @@ The main C++ source code tree starts in [`src/vmecpp/cpp/vmecpp`](src/vmecpp/cpp
    * `potvac` - declared but not populated yet
    * `xmpot` - not declared yet
    * `xnpot` - not declared yet
-- 2D preconditioning using block-tridiagonal solver (`BCYCLIC`) is not implemented
+- 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented
 - VMEC++ only computes the output quantities if the run converged
 - The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
 - The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
@@ -193,6 +193,7 @@ Some items we do not plan to work on, but where community ownership is welcome:
 - adding cmake as an alternative C++ build system, making VMEC++ a well-behaved CMake dependency
 - packaging VMEC++ for other platforms or package managers (e.g. conda, homebrew, ...)
 - macOS and native Windows support
+- 2D preconditioner using [`bcyclic_plus_plus`](https://code.ornl.gov/m4c/bcyclic_plus_plus)
 
 ## License
 
