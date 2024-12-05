@@ -142,19 +142,40 @@ The main C++ source code tree starts in [`src/vmecpp/cpp/vmecpp`](src/vmecpp/cpp
 - VMEC++ has a zero-crash policy and reports issues via standard Python exceptions
 - VMEC++ allows hot-restarting a run from a previous converged state (see [#hot-restart])
 - VMEC++'s parallelization strategy is the same as Fortran VMEC, but it leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization
-- VMEC++ implements the iteration algorithm of Fortran VMEC 8.52, which has sometimes different convergence behavior from (PAR)VMEC9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
+- VMEC++ implements the iteration algorithm of Fortran VMEC 8.52, which has sometimes different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
 - VMEC++ supports inputs in the classic INDATA format as well as JSON files; it is also simple to construct input objects programmatically in Python
 
 ### Known limitations with respect to the Fortran implementations
 - non-stellarator-symmetric terms (`lasym == true`) are not supported yet
-- `lforbal` logic for non-variational forces near the magnetic axis is not implemented yet
-- `lgivenup`/`fgiveup` logic for early termination of a multi-grid sequence is not implemented yet
-- several profile parameterizations are not fully implemented yet
-- 2D preconditioner / `bcyclic` 2D preconditioning is not implemented
 - free-boundary works only for `ntor > 0` - axisymmetric (`ntor = 0`) free-boundary runs don't work yet
-- `lrfp` is not implemented yet - only stellarators/Tokamaks for now
+- `lgiveup`/`fgiveup` logic for early termination of a multi-grid sequence is not implemented yet
 - `lbsubs` logic in computing outputs is not implemented yet
-- some (rarely used) free-boundary-related output quantities are not implemented yet
+- `lforbal` logic for non-variational forces near the magnetic axis is not implemented yet
+- `lrfp` is not implemented yet - only stellarators/Tokamaks for now
+- several profile parameterizations are not fully implemented yet:
+   * `gauss_trunc`
+   * `two_power_gs`
+   * `akima_spline`
+   * `akima_spline_i`
+   * `akima_spline_ip`
+   * `cubic_spline`
+   * `cubic_spline_i`
+   * `cubic_spline_ip`
+   * `pedestal`
+   * `rational`
+   * `line_segment`
+   * `line_segment_i`
+   * `line_segment_ip`
+   * `nice_quadratic`
+   * `sum_cossq_s`
+   * `sum_cossq_sqrts`
+   * `sum_cossq_s_free`
+- some (rarely used) free-boundary-related output quantities are not implemented yet:
+   * `curlabel` - declared but not populated yet
+   * `potvac` - declared but not populated yet
+   * `xmpot` - not declared yet
+   * `xnpot` - not declared yet
+- 2D preconditioning using block-tridiagonal solver (`BCYCLIC`) is not implemented
 - VMEC++ only computes the output quantities if the run converged
 - The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
 - The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
