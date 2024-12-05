@@ -7,6 +7,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "nlohmann/json.hpp"
 #include "util/file_io/file_io.h"

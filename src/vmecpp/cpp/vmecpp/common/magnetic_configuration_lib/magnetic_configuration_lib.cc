@@ -15,6 +15,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "util/file_io/file_io.h"
 #include "vmecpp/common/composed_types_definition/composed_types.h"

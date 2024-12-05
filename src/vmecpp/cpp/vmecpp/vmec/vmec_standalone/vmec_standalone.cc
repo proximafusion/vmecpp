@@ -3,6 +3,7 @@
 
 #include "absl/log/check.h"
 #include "absl/strings/strip.h"
+#include "absl/strings/str_cat.h"
 #include "util/file_io/file_io.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
