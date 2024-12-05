@@ -46,7 +46,7 @@ jobs:
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
           sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev libnetcdff-dev libscalapack-openmpi-dev
-          python -m pip install -e .[test]
+          python -m pip install -vvv -e .[test]
           # needed for some VMEC++/VMEC2000 compatibility tests
           python -m pip install vmec@https://storage.googleapis.com/proxima-hosting/wheels/vmec-0.0.4-cp310-cp310-linux_x86_64.whl
       - name: Test package
