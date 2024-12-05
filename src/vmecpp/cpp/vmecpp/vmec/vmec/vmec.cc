@@ -426,9 +426,13 @@ bool Vmec::InitializeRadial(
     for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
       r_[thread_id] = std::make_unique<RadialPartitioning>();
 
+      // Set this to `true` if you want to have the distribution
+      // of radial grid points over threads to be printed out.
+      // Disabled for now to reduce noise.
+      const bool printout_radial_partitioning = false;
       r_[thread_id]->adjustRadialPartitioning(num_threads_, thread_id, nsval,
                                               fc_.lfreeb,
-                                              /*printout=*/verbose_);
+                                              printout_radial_partitioning);
 
       h_.allocate(*r_[thread_id], fc_.ns);
 
