@@ -3,11 +3,14 @@
 # SPDX-License-Identifier: MIT
 """How to run VMEC++ via the Python API."""
 
+from pathlib import Path
+
 import vmecpp
-from vmecpp._util import package_root
 
 # NOTE: This resolves to src/vmecpp/cpp/vmecpp/test_data in the repo.
-TEST_DATA_DIR = package_root() / "cpp" / "vmecpp" / "test_data"
+TEST_DATA_DIR = (
+    Path(__file__).parent.parent / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
+)
 
 
 def run_vmecpp():
