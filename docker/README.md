@@ -9,8 +9,8 @@ While the repo is still private, you need a GitHub token to pull this image:
 3. tick read:packages and generate token
 4. copy the token ("ghp_...") -- this is your one chance
 5. tell docker to log into the GitHub container registry using that token:
-  - `echo YOUR_GITHUB_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin`
-6. you can now pull the image: `docker pull ghcr.io/jons-pf/vmecpp:latest`
+   `echo YOUR_GITHUB_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin`
+7. you can now pull the image: `docker pull ghcr.io/jons-pf/vmecpp:latest`
 
 ## Use the image
 
@@ -34,15 +34,10 @@ python -m vmecpp /data_dir/input.xyz
 
 ## For developers: manually pushing a new image
 
-1. create a GitHub token
-  - go to https://github.com/settings/tokens
-  - generate new token -> generate new token (classic)
-  - tick repo and write:packages
-  - click "generate token"
-  - copy the token (this is your one chance)
-2. log into the GitHub container registry with that token, e.g.:
-  - echo ghp_xyz | docker login ghcr.io -u jons-pf --password-stdin
+1. create a GitHub token like in [Get the image](#get-the-image), but check the `write:packages` and `repo` permissions
+2. log into the GitHub container registry like in [Get the image](#get-the-image)
 3. build the docker image
-  - env GITHUB_TOKEN=ghp_xyz docker build --tag=ghcr.io/jons-pf/vmecpp:latest --secret id=GITHUB_TOKEN .
+  - `env GITHUB_TOKEN=ghp_xyz docker build --tag=ghcr.io/jons-pf/vmecpp:latest --secret id=GITHUB_TOKEN .`
+  - on systems with newer docker, you might need `docker buildx build` instead of just `docker build`
 4. push the docker image
-  - docker push ghcr.io/jons-pf/vmecpp:latest
+  - `docker push ghcr.io/jons-pf/vmecpp:latest`
