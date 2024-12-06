@@ -35,6 +35,7 @@ See [below](#known-differences-with-respect-to-parvmecvmec2000) for more details
   - [As a Python package](#as-a-python-package)
   - [With SIMSOPT](#with-simsopt)
   - [As a command line tool](#as-a-command-line-tool)
+  - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
 - [Known differences with respect to PARVMEC/VMEC2000](#known-differences-with-respect-to-parvmecvmec2000)
 - [License](#license)
@@ -87,6 +88,10 @@ python -m vmecpp "input.w7x"
 # check all options
 python -m vmecpp --help
 ```
+
+### As a Docker image
+
+See [here](https://github.com/proximafusion/vmecpp/tree/main/docker).
 
 ## Installation
 
