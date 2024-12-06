@@ -4,10 +4,10 @@
 """How to run VMEC++ within SIMSOPT."""
 
 import vmecpp.simsopt_compat
-from vmecpp._util import package_root
+from pathlib import Path
 
 # NOTE: This resolves to src/vmecpp/cpp/vmecpp/test_data in the repo.
-TEST_DATA_DIR = package_root() / "cpp" / "vmecpp" / "test_data"
+TEST_DATA_DIR = Path(__file__).parent.parent / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
 def run_vmecpp_with_simsopt():
