@@ -91,7 +91,7 @@ python -m vmecpp --help
 
 ### As a Docker image
 
-See [here](https://github.com/proximafusion/vmecpp/tree/main/docker).
+See [here](https://github.com/jons-pf/vmecpp/tree/main/docker).
 
 ## Installation
 
