@@ -14,7 +14,7 @@ While the repo is still private, you need a GitHub token to pull this image:
 
 ## Use the image
 
-Simple test: run SIMSOPT's ["QH fixed resolution" example](https://github.com/jons-pf/vmecpp/blob/main/examples/simsopt_qh_fixed_resolution.py) with VMEC++:
+Simple test: run SIMSOPT's ["QH fixed resolution" example](/examples/simsopt_qh_fixed_resolution.py) with VMEC++:
 
 ```shell
 docker run -it --rm ghcr.io/jons-pf/vmecpp:latest
