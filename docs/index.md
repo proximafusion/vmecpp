@@ -7,7 +7,7 @@
 Reference <api/vmecpp>
 ```
 
-[![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/jons-pf/vmecpp/blob/main/LICENSE.txt)
+![MIT license](https://img.shields.io/badge/license-MIT-blue)
 ![Python version](https://img.shields.io/badge/python-3.10-blue)
 
 VMEC++ is a Python-friendly, from-scratch reimplementation in C++ of the Variational Moments Equilibrium Code (VMEC),
