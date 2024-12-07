@@ -40,10 +40,12 @@ See [below](#known-differences-with-respect-to-parvmecvmec2000) for more details
 - [Known differences with respect to PARVMEC/VMEC2000](#known-differences-with-respect-to-parvmecvmec2000)
 - [License](#license)
 
+<!-- SPHINX-START -->
+
 ## Usage
 
 This is a quick overview of the three main ways in which you can use VMEC++.
-See [examples/](examples/) for some actual example scripts.
+See [examples/](https://github.com/jons-pf/vmecpp/blob/main/examples/) for some actual example scripts.
 
 ### As a Python package
 
@@ -91,7 +93,7 @@ python -m vmecpp --help
 
 ### As a Docker image
 
-See [docker/README.md](/docker/README.md).
+See [docker/README.md](https://github.com/jons-pf/vmecpp/blob/main/docker/README.md).
 
 ## Installation
 
@@ -140,7 +142,7 @@ bazel build --config=opt //...
 
 All artifacts are now under `./bazel-bin/vmecpp`.
 
-The main C++ source code tree starts in [`src/vmecpp/cpp/vmecpp`](src/vmecpp/cpp/vmecpp).
+The main C++ source code tree starts in [`src/vmecpp/cpp/vmecpp`](https://github.com/jons-pf/vmecpp/blob/main/src/vmecpp/cpp/vmecpp).
 
 ## Known differences with respect to PARVMEC/VMEC2000
 
