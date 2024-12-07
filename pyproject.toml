@@ -38,6 +38,13 @@ dependencies = [
 test = [
   "pytest",
 ]
+docs = [
+  "furo",
+  "myst_parser >=0.13",
+  "sphinx >=4.0",
+  "sphinx-copybutton",
+  "sphinx-autodoc-typehints",
+]
 
 [project.urls]
 Documentation = "https://github.com/proximafusion/vmecpp#readme"
