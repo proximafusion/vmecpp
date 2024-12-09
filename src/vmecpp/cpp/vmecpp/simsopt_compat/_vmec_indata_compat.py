@@ -28,7 +28,7 @@ def ensure_vmecpp_input(input_path: Path) -> Generator[Path, None, None]:
     Otherwise assume it is a VMEC++ json input: simply return the input_path unchanged.
     """
     if is_vmec2000_input(input_path):
-        logger.warning(
+        logger.debug(
             f"VMEC++ is being run with input file '{input_path}', which looks like "
             "a Fortran INDATA file. It will be converted to a VMEC++ JSON input "
             "on the fly. Please consider permanently converting the input to a "
