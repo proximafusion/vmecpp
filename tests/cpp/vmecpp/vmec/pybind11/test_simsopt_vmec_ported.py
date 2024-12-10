@@ -1,7 +1,10 @@
-####################################################################################
-# These are ports of (some of) SIMSOPT's VMEC tests, taken from:
-# https://github.com/hiddenSymmetries/simsopt/blob/50f41d6b020d09d9a13f179a42752487ef0ed911/tests/mhd/test_vmec.py
-###################################################################################
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+"""Ports of (some of) SIMSOPT's VMEC tests, taken from:
+
+https://github.com/hiddenSymmetries/simsopt/blob/50f41d6b020d09d9a13f179a42752487ef0ed911/tests/mhd/test_vmec.py
+"""
 
 import logging
 import math

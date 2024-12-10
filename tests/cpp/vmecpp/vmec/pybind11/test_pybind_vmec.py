@@ -1,4 +1,7 @@
-# Tests for VMEC++ pybind11 Python bindings
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+"""Tests for VMEC++ pybind11 Python bindings."""
 
 from pathlib import Path
 
