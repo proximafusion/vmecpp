@@ -29,7 +29,7 @@ dependencies = [
   "jaxtyping",
   "mpi4py",
   "netCDF4",
-  "numpy",
+  "numpy<2",  # otherwise SIMSOPT breaks (ideally they would put the cap in SIMSOPT)
   "pydantic",
   "simsopt",
 ]
