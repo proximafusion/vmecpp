@@ -1,0 +1,1 @@
+vmecpp/test_data/mgrid_cth_like.nc filter=lfs diff=lfs merge=lfs -text
