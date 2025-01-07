@@ -27,7 +27,7 @@ TEST(TestFileIO, CheckReadFile) {
   // read simple text file
   absl::StatusOr<std::string> lorem = ReadFile("util/test_data/lorem.txt");
   ASSERT_TRUE(lorem.ok()) << lorem.status().message();
-  EXPECT_EQ(*lorem, "lorem ipsum");
+  EXPECT_EQ(*lorem, "lorem ipsum\n");
 }  // CheckReadFile
 
 // rely on file_io::ReadFile for checking if test was successful
