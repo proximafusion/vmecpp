@@ -5,17 +5,6 @@ import "vmecpp/common/composed_types_definition/composed_types.proto";
 
 package magnetics;
 
-message InfiniteStraightFilament {
-  // a human-readable name, e.g., for plotting
-  optional string name = 1;
-
-  // Cartesian coordinates of a point on the filament
-  composed_types.Vector3d origin = 2;
-
-  // Cartesian components of the direction along the filament
-  composed_types.Vector3d direction = 3;
-}
-
 message CircularFilament {
   // a human-readable name, e.g., for plotting
   optional string name = 1;
