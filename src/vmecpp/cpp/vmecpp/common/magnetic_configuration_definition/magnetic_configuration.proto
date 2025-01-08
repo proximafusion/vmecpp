@@ -5,18 +5,6 @@ import "vmecpp/common/composed_types_definition/composed_types.proto";
 
 package magnetics;
 
-message Coil {
-  // a human-readable name, e.g., for plotting
-  optional string name = 1;
-
-  // number of windings == multiplier for current along geometry;
-  // num_windings == 1 is assumed if this field is not populated
-  optional double num_windings = 2;
-
-  // objects that define the single-turn geometry of the coil
-  repeated CurrentCarrier current_carriers = 3;
-}
-
 message CurrentCarrier {
   oneof type {
     InfiniteStraightFilament infinite_straight_filament = 1;
