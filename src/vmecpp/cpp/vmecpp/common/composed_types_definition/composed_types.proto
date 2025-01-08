@@ -39,11 +39,3 @@ message FourierCoefficient2D {
   // toroidal mode number (typically called n)
   optional int32 toroidal_mode_number = 4;
 }
-
-message CurveRZFourier {
-  // Fourier coefficients for R
-  repeated FourierCoefficient1D r = 1;
-
-  // Fourier coefficients for Z
-  repeated FourierCoefficient1D z = 2;
-}
