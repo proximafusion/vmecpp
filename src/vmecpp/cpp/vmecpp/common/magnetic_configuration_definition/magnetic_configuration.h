@@ -9,6 +9,86 @@
 
 namespace magnetics {
 
+struct SerialCircuit {
+  // a human-readable name, e.g., for plotting
+  bool has_name_ = false;
+  std::string name_;
+
+  // current along each of the current carriers
+  bool has_current_ = false;
+  double current_ = 0.0;
+
+  // objects that define the geometry of coils
+  std::list<Coil> coils_;
+
+  // name
+  bool has_name() const { return has_name_; }
+  const std::string& name() const { return name_; }
+  void set_name(const std::string& value) {
+    name_ = value;
+    has_name_ = true;
+  }
+  void set_name(std::string&& value) {
+    name_ = std::move(value);
+    has_name_ = true;
+  }
+  void clear_name() {
+    name_.clear();
+    has_name_ = false;
+  }
+
+  // current
+  bool has_current() const { return has_current_; }
+  double current() const { return current_; }
+  void set_current(double value) {
+    current_ = value;
+    has_current_ = true;
+  }
+  void clear_current() {
+    current_ = 0.0;
+    has_current_ = false;
+  }
+
+  // coils
+  int coils_size() const {
+    return static_cast<int>(coils_.size());
+  }
+  const Coil& coils(int index) const {
+    auto it = coils_.cbegin();
+    // No bounds checks here for brevity
+    std::advance(it, index);
+    return *it;
+  }
+  Coil* mutable_coils(int index) {
+    auto it = coils_.begin();
+    // No bounds checks here for brevity
+    std::advance(it, index);
+    return &(*it);
+  }
+  Coil* add_coils() {
+    coils_.emplace_back();
+    auto it = coils_.end();
+    --it;
+    return &(*it);
+  }
+  const std::list<Coil>& coils() const {
+    return coils_;
+  }
+  std::list<Coil>* mutable_coils() {
+    return &coils_;
+  }
+  void clear_coils() {
+    coils_.clear();
+  }
+
+  // Clear the entire structure
+  void Clear() {
+    clear_name();
+    clear_current();
+    clear_coils();
+  }
+}; // SerialCircuit
+
 struct MagneticConfiguration {
   // a human-readable name, e.g., for plotting
   bool has_name_ = false;
