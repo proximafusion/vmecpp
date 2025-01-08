@@ -9,6 +9,272 @@
 
 namespace magnetics {
 
+struct CurrentCarrier {
+  // oneof type
+  enum TypeCase {
+    kInfiniteStraightFilament = 1,
+    kCircularFilament         = 2,
+    kPolygonFilament          = 3,
+    kFourierFilament          = 4,
+    TYPE_NOT_SET              = 0
+  };
+
+private:
+  TypeCase type_case_ = TYPE_NOT_SET;
+
+  union {
+    InfiniteStraightFilament infinite_straight_filament_;
+    CircularFilament         circular_filament_;
+    PolygonFilament          polygon_filament_;
+    FourierFilament          fourier_filament_;
+  };
+
+public:
+  CurrentCarrier() : type_case_(TYPE_NOT_SET) {}
+
+  ~CurrentCarrier() {
+    Clear();
+  }
+
+  // Copy constructor
+  CurrentCarrier(const CurrentCarrier& other)
+    : type_case_(TYPE_NOT_SET)
+  {
+    switch (other.type_case_) {
+      case kInfiniteStraightFilament: {
+        type_case_ = kInfiniteStraightFilament;
+        std::construct_at(std::addressof(infinite_straight_filament_),
+                          other.infinite_straight_filament_);
+      } break;
+      case kCircularFilament: {
+        type_case_ = kCircularFilament;
+        std::construct_at(std::addressof(circular_filament_),
+                          other.circular_filament_);
+      } break;
+      case kPolygonFilament: {
+        type_case_ = kPolygonFilament;
+        std::construct_at(std::addressof(polygon_filament_),
+                          other.polygon_filament_);
+      } break;
+      case kFourierFilament: {
+        type_case_ = kFourierFilament;
+        std::construct_at(std::addressof(fourier_filament_),
+                          other.fourier_filament_);
+      } break;
+      default:
+        type_case_ = TYPE_NOT_SET;
+        break;
+    }
+  }
+
+  // Move constructor
+  CurrentCarrier(CurrentCarrier&& other) noexcept
+    : type_case_(TYPE_NOT_SET)
+  {
+    switch (other.type_case_) {
+      case kInfiniteStraightFilament: {
+        type_case_ = kInfiniteStraightFilament;
+        std::construct_at(std::addressof(infinite_straight_filament_),
+                          std::move(other.infinite_straight_filament_));
+      } break;
+      case kCircularFilament: {
+        type_case_ = kCircularFilament;
+        std::construct_at(std::addressof(circular_filament_),
+                          std::move(other.circular_filament_));
+      } break;
+      case kPolygonFilament: {
+        type_case_ = kPolygonFilament;
+        std::construct_at(std::addressof(polygon_filament_),
+                          std::move(other.polygon_filament_));
+      } break;
+      case kFourierFilament: {
+        type_case_ = kFourierFilament;
+        std::construct_at(std::addressof(fourier_filament_),
+                          std::move(other.fourier_filament_));
+      } break;
+      default:
+        type_case_ = TYPE_NOT_SET;
+        break;
+    }
+    other.Clear();
+  }
+
+  // Copy assignment
+  CurrentCarrier& operator=(const CurrentCarrier& other) {
+    if (this != &other) {
+      Clear();
+      switch (other.type_case_) {
+        case kInfiniteStraightFilament: {
+          type_case_ = kInfiniteStraightFilament;
+          std::construct_at(std::addressof(infinite_straight_filament_),
+                            other.infinite_straight_filament_);
+        } break;
+        case kCircularFilament: {
+          type_case_ = kCircularFilament;
+          std::construct_at(std::addressof(circular_filament_),
+                            other.circular_filament_);
+        } break;
+        case kPolygonFilament: {
+          type_case_ = kPolygonFilament;
+          std::construct_at(std::addressof(polygon_filament_),
+                            other.polygon_filament_);
+        } break;
+        case kFourierFilament: {
+          type_case_ = kFourierFilament;
+          std::construct_at(std::addressof(fourier_filament_),
+                            other.fourier_filament_);
+        } break;
+        default:
+          type_case_ = TYPE_NOT_SET;
+          break;
+      }
+    }
+    return *this;
+  }
+
+  // Move assignment
+  CurrentCarrier& operator=(CurrentCarrier&& other) noexcept {
+    if (this != &other) {
+      Clear();
+      switch (other.type_case_) {
+        case kInfiniteStraightFilament: {
+          type_case_ = kInfiniteStraightFilament;
+          std::construct_at(std::addressof(infinite_straight_filament_),
+                            std::move(other.infinite_straight_filament_));
+        } break;
+        case kCircularFilament: {
+          type_case_ = kCircularFilament;
+          std::construct_at(std::addressof(circular_filament_),
+                            std::move(other.circular_filament_));
+        } break;
+        case kPolygonFilament: {
+          type_case_ = kPolygonFilament;
+          std::construct_at(std::addressof(polygon_filament_),
+                            std::move(other.polygon_filament_));
+        } break;
+        case kFourierFilament: {
+          type_case_ = kFourierFilament;
+          std::construct_at(std::addressof(fourier_filament_),
+                            std::move(other.fourier_filament_));
+        } break;
+        default:
+          type_case_ = TYPE_NOT_SET;
+          break;
+      }
+      other.Clear();
+    }
+    return *this;
+  }
+
+  void Clear() {
+    switch (type_case_) {
+      case kInfiniteStraightFilament:
+        infinite_straight_filament_.~InfiniteStraightFilament();
+        break;
+      case kCircularFilament:
+        circular_filament_.~CircularFilament();
+        break;
+      case kPolygonFilament:
+        polygon_filament_.~PolygonFilament();
+        break;
+      case kFourierFilament:
+        fourier_filament_.~FourierFilament();
+        break;
+      default:
+        break;
+    }
+    type_case_ = TYPE_NOT_SET;
+  }
+
+  // InfiniteStraightFilament
+  bool has_infinite_straight_filament() const {
+    return type_case_ == kInfiniteStraightFilament;
+  }
+  const InfiniteStraightFilament& infinite_straight_filament() const {
+    return infinite_straight_filament_;
+  }
+  InfiniteStraightFilament* mutable_infinite_straight_filament() {
+    if (type_case_ != kInfiniteStraightFilament) {
+      Clear();
+      type_case_ = kInfiniteStraightFilament;
+      std::construct_at(std::addressof(infinite_straight_filament_));
+    }
+    return &infinite_straight_filament_;
+  }
+  void set_infinite_straight_filament(const InfiniteStraightFilament& value) {
+    Clear();
+    type_case_ = kInfiniteStraightFilament;
+    std::construct_at(std::addressof(infinite_straight_filament_), value);
+  }
+
+  // CircularFilament
+  bool has_circular_filament() const {
+    return type_case_ == kCircularFilament;
+  }
+  const CircularFilament& circular_filament() const {
+    return circular_filament_;
+  }
+  CircularFilament* mutable_circular_filament() {
+    if (type_case_ != kCircularFilament) {
+      Clear();
+      type_case_ = kCircularFilament;
+      std::construct_at(std::addressof(circular_filament_));
+    }
+    return &circular_filament_;
+  }
+  void set_circular_filament(const CircularFilament& value) {
+    Clear();
+    type_case_ = kCircularFilament;
+    std::construct_at(std::addressof(circular_filament_), value);
+  }
+
+  // PolygonFilament
+  bool has_polygon_filament() const {
+    return type_case_ == kPolygonFilament;
+  }
+  const PolygonFilament& polygon_filament() const {
+    return polygon_filament_;
+  }
+  PolygonFilament* mutable_polygon_filament() {
+    if (type_case_ != kPolygonFilament) {
+      Clear();
+      type_case_ = kPolygonFilament;
+      std::construct_at(std::addressof(polygon_filament_));
+    }
+    return &polygon_filament_;
+  }
+  void set_polygon_filament(const PolygonFilament& value) {
+    Clear();
+    type_case_ = kPolygonFilament;
+    std::construct_at(std::addressof(polygon_filament_), value);
+  }
+
+  // FourierFilament
+  bool has_fourier_filament() const {
+    return type_case_ == kFourierFilament;
+  }
+  const FourierFilament& fourier_filament() const {
+    return fourier_filament_;
+  }
+  FourierFilament* mutable_fourier_filament() {
+    if (type_case_ != kFourierFilament) {
+      Clear();
+      type_case_ = kFourierFilament;
+      std::construct_at(std::addressof(fourier_filament_));
+    }
+    return &fourier_filament_;
+  }
+  void set_fourier_filament(const FourierFilament& value) {
+    Clear();
+    type_case_ = kFourierFilament;
+    std::construct_at(std::addressof(fourier_filament_), value);
+  }
+
+  TypeCase type_case() const {
+    return type_case_;
+  }
+}; // CurrentCarrier
+
 struct Coil {
   // a human-readable name, e.g., for plotting
   bool has_name_ = false;
