@@ -5,15 +5,6 @@ import "vmecpp/common/composed_types_definition/composed_types.proto";
 
 package magnetics;
 
-message CurrentCarrier {
-  oneof type {
-    InfiniteStraightFilament infinite_straight_filament = 1;
-    CircularFilament circular_filament = 2;
-    PolygonFilament polygon_filament = 3;
-    FourierFilament fourier_filament = 4;
-  }
-}
-
 message InfiniteStraightFilament {
   // a human-readable name, e.g., for plotting
   optional string name = 1;
