@@ -4,6 +4,7 @@ cc_library(
     hdrs = ["composed_types_lib.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//vmecpp/common/composed_types_definition:composed_types",
         "//vmecpp/common/composed_types_definition:composed_types_cc_proto",
         "@abseil-cpp//absl/strings:strings",
         "@abseil-cpp//absl/status:status",

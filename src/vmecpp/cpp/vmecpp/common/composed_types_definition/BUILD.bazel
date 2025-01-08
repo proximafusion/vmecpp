@@ -13,3 +13,9 @@ cc_proto_library(
         ":composed_types_proto",
     ],
 )
+
+cc_library(
+  name="composed_types",
+  visibility = ["//visibility:public"],
+  hdrs=["composed_types.h"],
+)
