@@ -47,11 +47,3 @@ message CurveRZFourier {
   // Fourier coefficients for Z
   repeated FourierCoefficient1D z = 2;
 }
-
-message SurfaceRZFourier {
-  // Fourier coefficients for R
-  repeated FourierCoefficient2D r = 1;
-
-  // Fourier coefficients for Z
-  repeated FourierCoefficient2D z = 2;
-}
