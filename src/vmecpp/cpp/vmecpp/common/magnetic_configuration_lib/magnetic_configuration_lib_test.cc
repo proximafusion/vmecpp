@@ -7,7 +7,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "util/testing/numerical_comparison_lib.h"
-#include "vmecpp/common/composed_types_definition/composed_types.pb.h"
+#include "vmecpp/common/composed_types_definition/composed_types.h"
 
 namespace magnetics {
 
