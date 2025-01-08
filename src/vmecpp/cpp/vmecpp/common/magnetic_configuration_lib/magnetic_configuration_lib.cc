@@ -19,7 +19,6 @@
 #include "util/file_io/file_io.h"
 #include "vmecpp/common/composed_types_definition/composed_types.pb.h"
 #include "vmecpp/common/composed_types_lib/composed_types_lib.h"
-#include "vmecpp/common/magnetic_configuration_definition/magnetic_configuration.pb.h"
 
 namespace magnetics {
 

@@ -6,9 +6,137 @@
 
 // FIXME(jons): to be replaced in the end
 #include "vmecpp/common/composed_types_definition/composed_types.pb.h"
-#include "vmecpp/common/magnetic_configuration_definition/magnetic_configuration.pb.h"
 
 namespace magnetics {
+
+struct FourierFilament {
+  // a human-readable name, e.g., for plotting
+  bool has_name_ = false;
+  std::string name_;
+
+  // Fourier coefficients of Cartesian x component of filament geometry
+  std::list<composed_types::FourierCoefficient1D> x_;
+
+  // Fourier coefficients of Cartesian y component of filament geometry
+  std::list<composed_types::FourierCoefficient1D> y_;
+
+  // Fourier coefficients of Cartesian z component of filament geometry
+  std::list<composed_types::FourierCoefficient1D> z_;
+
+  // name
+  bool has_name() const { return has_name_; }
+  const std::string& name() const { return name_; }
+  void set_name(const std::string& value) {
+    name_ = value;
+    has_name_ = true;
+  }
+  void set_name(std::string&& value) {
+    name_ = std::move(value);
+    has_name_ = true;
+  }
+  void clear_name() {
+    name_.clear();
+    has_name_ = false;
+  }
+
+  // x
+  int x_size() const {
+    return static_cast<int>(x_.size());
+  }
+  const composed_types::FourierCoefficient1D& x(int index) const {
+    auto it = x_.cbegin();
+    std::advance(it, index); // no explicit bounds-check for brevity
+    return *it;
+  }
+  composed_types::FourierCoefficient1D* mutable_x(int index) {
+    auto it = x_.begin();
+    std::advance(it, index); // no explicit bounds-check for brevity
+    return &(*it);
+  }
+  composed_types::FourierCoefficient1D* add_x() {
+    x_.emplace_back();
+    auto it = x_.end();
+    --it;
+    return &(*it);
+  }
+  const std::list<composed_types::FourierCoefficient1D>& x() const {
+    return x_;
+  }
+  std::list<composed_types::FourierCoefficient1D>* mutable_x() {
+    return &x_;
+  }
+  void clear_x() {
+    x_.clear();
+  }
+
+  // y
+  int y_size() const {
+    return static_cast<int>(y_.size());
+  }
+  const composed_types::FourierCoefficient1D& y(int index) const {
+    auto it = y_.cbegin();
+    std::advance(it, index);
+    return *it;
+  }
+  composed_types::FourierCoefficient1D* mutable_y(int index) {
+    auto it = y_.begin();
+    std::advance(it, index);
+    return &(*it);
+  }
+  composed_types::FourierCoefficient1D* add_y() {
+    y_.emplace_back();
+    auto it = y_.end();
+    --it;
+    return &(*it);
+  }
+  const std::list<composed_types::FourierCoefficient1D>& y() const {
+    return y_;
+  }
+  std::list<composed_types::FourierCoefficient1D>* mutable_y() {
+    return &y_;
+  }
+  void clear_y() {
+    y_.clear();
+  }
+
+  // z
+  int z_size() const {
+    return static_cast<int>(z_.size());
+  }
+  const composed_types::FourierCoefficient1D& z(int index) const {
+    auto it = z_.cbegin();
+    std::advance(it, index);
+    return *it;
+  }
+  composed_types::FourierCoefficient1D* mutable_z(int index) {
+    auto it = z_.begin();
+    std::advance(it, index);
+    return &(*it);
+  }
+  composed_types::FourierCoefficient1D* add_z() {
+    z_.emplace_back();
+    auto it = z_.end();
+    --it;
+    return &(*it);
+  }
+  const std::list<composed_types::FourierCoefficient1D>& z() const {
+    return z_;
+  }
+  std::list<composed_types::FourierCoefficient1D>* mutable_z() {
+    return &z_;
+  }
+  void clear_z() {
+    z_.clear();
+  }
+
+  // Clear the entire structure
+  void Clear() {
+    clear_name();
+    clear_x();
+    clear_y();
+    clear_z();
+  }
+}; // FourierFilament
 
 struct PolygonFilament {
   // a human-readable name, e.g., for plotting
