@@ -5,17 +5,6 @@ import "vmecpp/common/composed_types_definition/composed_types.proto";
 
 package magnetics;
 
-message SerialCircuit {
-  // a human-readable name, e.g., for plotting
-  optional string name = 1;
-
-  // current along each of the current carriers
-  optional double current = 2;
-
-  // objects that define the geometry of coils
-  repeated Coil coils = 3;
-}
-
 message Coil {
   // a human-readable name, e.g., for plotting
   optional string name = 1;
