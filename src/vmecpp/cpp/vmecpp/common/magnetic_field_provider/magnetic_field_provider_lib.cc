@@ -8,7 +8,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "vmecpp/common/composed_types_definition/composed_types.pb.h"
+#include "vmecpp/common/composed_types_definition/composed_types.h"
 #include "vmecpp/common/composed_types_lib/composed_types_lib.h"
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 

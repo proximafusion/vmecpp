@@ -1,10 +1,135 @@
 #ifndef VMECPP_COMMON_COMPOSED_TYPES_DEFINITION_COMPOSED_TYPES_H_
 #define VMECPP_COMMON_COMPOSED_TYPES_DEFINITION_COMPOSED_TYPES_H_
 
-// FIXME(jons): to be removed in the end
-#include "vmecpp/common/composed_types_definition/composed_types.pb.h"
+#include <list>
 
 namespace composed_types {
+
+struct Vector3d {
+  // Cartesian x component
+  bool has_x_ = false;
+  double x_ = 0.0;
+
+  // Cartesian y component
+  bool has_y_ = false;
+  double y_ = 0.0;
+
+  // Cartesian z component
+  bool has_z_ = false;
+  double z_ = 0.0;
+
+  // x
+  bool has_x() const { return has_x_; }
+  double x() const { return x_; }
+  void set_x(double value) {
+    x_ = value;
+    has_x_ = true;
+  }
+  void clear_x() {
+    x_ = 0.0;
+    has_x_ = false;
+  }
+
+  // y
+  bool has_y() const { return has_y_; }
+  double y() const { return y_; }
+  void set_y(double value) {
+    y_ = value;
+    has_y_ = true;
+  }
+  void clear_y() {
+    y_ = 0.0;
+    has_y_ = false;
+  }
+
+  // z
+  bool has_z() const { return has_z_; }
+  double z() const { return z_; }
+  void set_z(double value) {
+    z_ = value;
+    has_z_ = true;
+  }
+  void clear_z() {
+    z_ = 0.0;
+    has_z_ = false;
+  }
+
+  // Clear the entire structure
+  void Clear() {
+    clear_x();
+    clear_y();
+    clear_z();
+  }
+
+  // Copies all fields (including presence flags) from another Vector3d
+  void CopyFrom(const Vector3d& other) {
+    has_x_ = other.has_x_;
+    x_ = other.x_;
+
+    has_y_ = other.has_y_;
+    y_ = other.y_;
+
+    has_z_ = other.has_z_;
+    z_ = other.z_;
+  }
+}; // Vector3d
+
+struct FourierCoefficient1D {
+  // Fourier coefficients for cosine basis
+  bool has_fc_cos_ = false;
+  double fc_cos_ = 0.0;
+
+  // Fourier coefficients for sine basis
+  bool has_fc_sin_ = false;
+  double fc_sin_ = 0.0;
+
+  // mode number
+  bool has_mode_number_ = false;
+  int mode_number_ = 0;
+
+  // fc_cos
+  bool has_fc_cos() const { return has_fc_cos_; }
+  double fc_cos() const { return fc_cos_; }
+  void set_fc_cos(double value) {
+    fc_cos_ = value;
+    has_fc_cos_ = true;
+  }
+  void clear_fc_cos() {
+    fc_cos_ = 0.0;
+    has_fc_cos_ = false;
+  }
+
+  // fc_sin
+  bool has_fc_sin() const { return has_fc_sin_; }
+  double fc_sin() const { return fc_sin_; }
+  void set_fc_sin(double value) {
+    fc_sin_ = value;
+    has_fc_sin_ = true;
+  }
+  void clear_fc_sin() {
+    fc_sin_ = 0.0;
+    has_fc_sin_ = false;
+  }
+
+  // mode_number
+  bool has_mode_number() const { return has_mode_number_; }
+  int mode_number() const { return mode_number_; }
+  void set_mode_number(int value) {
+    mode_number_ = value;
+    has_mode_number_ = true;
+  }
+  void clear_mode_number() {
+    mode_number_ = 0;
+    has_mode_number_ = false;
+  }
+
+  // Clear the entire structure
+  void Clear() {
+    clear_fc_cos();
+    clear_fc_sin();
+    clear_mode_number();
+  }
+}; // FourierCoefficient1D
 
 struct FourierCoefficient2D {
   // Fourier coefficients for cosine basis

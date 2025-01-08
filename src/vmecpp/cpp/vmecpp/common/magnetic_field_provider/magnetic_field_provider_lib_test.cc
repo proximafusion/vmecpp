@@ -11,7 +11,7 @@
 #include "gtest/gtest.h"
 #include "util/file_io/file_io.h"
 #include "util/testing/numerical_comparison_lib.h"
-#include "vmecpp/common/composed_types_definition/composed_types.pb.h"
+#include "vmecpp/common/composed_types_definition/composed_types.h"
 #include "vmecpp/common/composed_types_lib/composed_types_lib.h"
 #include "vmecpp/common/magnetic_configuration_definition/magnetic_configuration.h"
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"

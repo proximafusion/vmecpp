@@ -3,6 +3,6 @@ cc_library(
   visibility = ["//visibility:public"],
   hdrs=["magnetic_configuration.h"],
   deps = [
-    "//vmecpp/common/composed_types_lib:composed_types_lib",
+    "//vmecpp/common/composed_types_definition:composed_types",
   ],
 )

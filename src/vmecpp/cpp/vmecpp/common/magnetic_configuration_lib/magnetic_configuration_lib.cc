@@ -17,7 +17,7 @@
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_split.h"
 #include "util/file_io/file_io.h"
-#include "vmecpp/common/composed_types_definition/composed_types.pb.h"
+#include "vmecpp/common/composed_types_definition/composed_types.h"
 #include "vmecpp/common/composed_types_lib/composed_types_lib.h"
 
 namespace magnetics {
