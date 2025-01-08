@@ -6,6 +6,80 @@
 
 namespace composed_types {
 
+struct FourierCoefficient2D {
+  // Fourier coefficients for cosine basis
+  bool has_fc_cos_ = false;
+  double fc_cos_ = 0.0;
+
+  // Fourier coefficients for sine basis
+  bool has_fc_sin_ = false;
+  double fc_sin_ = 0.0;
+
+  // poloidal mode number (typically called m)
+  bool has_poloidal_mode_number_ = false;
+  int poloidal_mode_number_ = 0;
+
+  // toroidal mode number (typically called n)
+  bool has_toroidal_mode_number_ = false;
+  int toroidal_mode_number_ = 0;
+
+  // fc_cos
+  bool has_fc_cos() const { return has_fc_cos_; }
+  double fc_cos() const { return fc_cos_; }
+  void set_fc_cos(double value) {
+    fc_cos_ = value;
+    has_fc_cos_ = true;
+  }
+  void clear_fc_cos() {
+    fc_cos_ = 0.0;
+    has_fc_cos_ = false;
+  }
+
+  // fc_sin
+  bool has_fc_sin() const { return has_fc_sin_; }
+  double fc_sin() const { return fc_sin_; }
+  void set_fc_sin(double value) {
+    fc_sin_ = value;
+    has_fc_sin_ = true;
+  }
+  void clear_fc_sin() {
+    fc_sin_ = 0.0;
+    has_fc_sin_ = false;
+  }
+
+  // poloidal_mode_number
+  bool has_poloidal_mode_number() const { return has_poloidal_mode_number_; }
+  int poloidal_mode_number() const { return poloidal_mode_number_; }
+  void set_poloidal_mode_number(int value) {
+    poloidal_mode_number_ = value;
+    has_poloidal_mode_number_ = true;
+  }
+  void clear_poloidal_mode_number() {
+    poloidal_mode_number_ = 0;
+    has_poloidal_mode_number_ = false;
+  }
+
+  // toroidal_mode_number
+  bool has_toroidal_mode_number() const { return has_toroidal_mode_number_; }
+  int toroidal_mode_number() const { return toroidal_mode_number_; }
+  void set_toroidal_mode_number(int value) {
+    toroidal_mode_number_ = value;
+    has_toroidal_mode_number_ = true;
+  }
+  void clear_toroidal_mode_number() {
+    toroidal_mode_number_ = 0;
+    has_toroidal_mode_number_ = false;
+  }
+
+  // Clear the entire structure
+  void Clear() {
+    clear_fc_cos();
+    clear_fc_sin();
+    clear_poloidal_mode_number();
+    clear_toroidal_mode_number();
+  }
+}; // FourierCoefficient2D
+
 struct CurveRZFourier {
   // Fourier coefficients for R
   std::list<composed_types::FourierCoefficient1D> r_;
