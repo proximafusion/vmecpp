@@ -25,17 +25,3 @@ message FourierCoefficient1D {
   // mode number
   optional int32 mode_number = 3;
 }
-
-message FourierCoefficient2D {
-  // Fourier coefficients for cosine basis
-  optional double fc_cos = 1;
-
-  // Fourier coefficients for sine basis
-  optional double fc_sin = 2;
-
-  // poloidal mode number (typically called m)
-  optional int32 poloidal_mode_number = 3;
-
-  // toroidal mode number (typically called n)
-  optional int32 toroidal_mode_number = 4;
-}
