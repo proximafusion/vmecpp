@@ -10,6 +10,93 @@
 
 namespace magnetics {
 
+struct CircularFilament {
+  // a human-readable name, e.g., for plotting
+  bool has_name_ = false;
+  std::string name_;
+
+  // Cartesian coordinates of the center point of the loop
+  bool has_center_ = false;
+  composed_types::Vector3d center_;
+
+  // Cartesian components of a vector pointing along the normal of the circle
+  // around which the current flows
+  bool has_normal_ = false;
+  composed_types::Vector3d normal_;
+
+  // radius of the loop
+  bool has_radius_ = false;
+  double radius_ = 0.0;
+
+  // name
+  bool has_name() const { return has_name_; }
+  const std::string& name() const { return name_; }
+  void set_name(const std::string& value) {
+    name_ = value;
+    has_name_ = true;
+  }
+  void set_name(std::string&& value) {
+    name_ = std::move(value);
+    has_name_ = true;
+  }
+  void clear_name() {
+    name_.clear();
+    has_name_ = false;
+  }
+
+  // center
+  bool has_center() const { return has_center_; }
+  const composed_types::Vector3d& center() const { return center_; }
+  composed_types::Vector3d* mutable_center() {
+    has_center_ = true;
+    return &center_;
+  }
+  void set_center(const composed_types::Vector3d& value) {
+    center_ = value;
+    has_center_ = true;
+  }
+  void clear_center() {
+    center_ = composed_types::Vector3d();
+    has_center_ = false;
+  }
+
+  // normal
+  bool has_normal() const { return has_normal_; }
+  const composed_types::Vector3d& normal() const { return normal_; }
+  composed_types::Vector3d* mutable_normal() {
+    has_normal_ = true;
+    return &normal_;
+  }
+  void set_normal(const composed_types::Vector3d& value) {
+    normal_ = value;
+    has_normal_ = true;
+  }
+  void clear_normal() {
+    normal_ = composed_types::Vector3d();
+    has_normal_ = false;
+  }
+
+  // radius
+  bool has_radius() const { return has_radius_; }
+  double radius() const { return radius_; }
+  void set_radius(double value) {
+    radius_ = value;
+    has_radius_ = true;
+  }
+  void clear_radius() {
+    radius_ = 0.0;
+    has_radius_ = false;
+  }
+
+  // Clear the entire structure
+  void Clear() {
+    clear_name();
+    clear_center();
+    clear_normal();
+    clear_radius();
+  }
+}; // CircularFilament
+
 struct InfiniteStraightFilament {
   // a human-readable name, e.g., for plotting
   bool has_name_ = false;
