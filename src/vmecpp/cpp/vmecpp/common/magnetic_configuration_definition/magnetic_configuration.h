@@ -10,6 +10,67 @@
 
 namespace magnetics {
 
+struct PolygonFilament {
+  // a human-readable name, e.g., for plotting
+  bool has_name_ = false;
+  std::string name_;
+
+  // Cartesian components of filament geometry
+  std::list<composed_types::Vector3d> vertices_;
+
+  // name
+  bool has_name() const { return has_name_; }
+  const std::string& name() const { return name_; }
+  void set_name(const std::string& value) {
+    name_ = value;
+    has_name_ = true;
+  }
+  void set_name(std::string&& value) {
+    name_ = std::move(value);
+    has_name_ = true;
+  }
+  void clear_name() {
+    name_.clear();
+    has_name_ = false;
+  }
+
+  // vertices
+  int vertices_size() const {
+    return static_cast<int>(vertices_.size());
+  }
+  const composed_types::Vector3d& vertices(int index) const {
+    auto it = vertices_.cbegin();
+    std::advance(it, index); // no explicit bounds-check for brevity
+    return *it;
+  }
+  composed_types::Vector3d* mutable_vertices(int index) {
+    auto it = vertices_.begin();
+    std::advance(it, index); // no explicit bounds-check for brevity
+    return &(*it);
+  }
+  composed_types::Vector3d* add_vertices() {
+    vertices_.emplace_back();
+    auto it = vertices_.end();
+    --it;
+    return &(*it);
+  }
+  const std::list<composed_types::Vector3d>& vertices() const {
+    return vertices_;
+  }
+  std::list<composed_types::Vector3d>* mutable_vertices() {
+    return &vertices_;
+  }
+  void clear_vertices() {
+    vertices_.clear();
+  }
+
+  // Clear the entire structure
+  void Clear() {
+    clear_name();
+    clear_vertices();
+  }
+}; // PolygonFilament
+
 struct CircularFilament {
   // a human-readable name, e.g., for plotting
   bool has_name_ = false;

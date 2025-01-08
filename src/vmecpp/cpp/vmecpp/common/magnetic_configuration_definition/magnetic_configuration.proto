@@ -5,14 +5,6 @@ import "vmecpp/common/composed_types_definition/composed_types.proto";
 
 package magnetics;
 
-message PolygonFilament {
-  // a human-readable name, e.g., for plotting
-  optional string name = 1;
-
-  // Cartesian components of filament geometry
-  repeated composed_types.Vector3d vertices = 2;
-}
-
 message FourierFilament {
   // a human-readable name, e.g., for plotting
   optional string name = 1;
