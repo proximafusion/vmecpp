@@ -5,17 +5,6 @@ import "vmecpp/common/composed_types_definition/composed_types.proto";
 
 package magnetics;
 
-message MagneticConfiguration {
-  // a human-readable name, e.g., for plotting
-  optional string name = 1;
-
-  // number of field periods of this coil set
-  optional int32 num_field_periods = 2;
-
-  // objects that specify geometry and currents of coils
-  repeated SerialCircuit serial_circuits = 3;
-}
-
 message SerialCircuit {
   // a human-readable name, e.g., for plotting
   optional string name = 1;

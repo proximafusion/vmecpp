@@ -7,6 +7,7 @@
 
 #include "absl/status/statusor.h"
 #include "vmecpp/common/magnetic_configuration_definition/magnetic_configuration.pb.h"
+#include "vmecpp/common/magnetic_configuration_definition/magnetic_configuration.h"
 
 namespace magnetics {
 
