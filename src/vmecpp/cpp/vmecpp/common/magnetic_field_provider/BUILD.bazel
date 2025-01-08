@@ -6,7 +6,6 @@ cc_library(
     deps = [
         "//vmecpp/common/composed_types_definition:composed_types_cc_proto",
         "//vmecpp/common/composed_types_lib:composed_types_lib",
-        "//vmecpp/common/magnetic_configuration_definition:magnetic_configuration_cc_proto",
         "//vmecpp/common/magnetic_configuration_definition:magnetic_configuration",
         "//vmecpp/common/magnetic_configuration_lib:magnetic_configuration_lib",
         "@abscab_cpp//abscab:abscab",

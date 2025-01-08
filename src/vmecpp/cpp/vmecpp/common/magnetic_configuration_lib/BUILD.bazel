@@ -4,7 +4,6 @@ cc_library(
     srcs = ["magnetic_configuration_lib.cc"],
     hdrs = ["magnetic_configuration_lib.h"],
     deps = [
-        "//vmecpp/common/magnetic_configuration_definition:magnetic_configuration_cc_proto",
         "//vmecpp/common/magnetic_configuration_definition:magnetic_configuration",
         "//vmecpp/common/composed_types_lib:composed_types_lib",
         "//util/file_io",

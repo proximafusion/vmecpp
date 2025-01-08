@@ -1,28 +1,8 @@
-load("@rules_proto//proto:defs.bzl", "proto_library")
-
-proto_library(
-    name = "magnetic_configuration_proto",
-    srcs = ["magnetic_configuration.proto"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//vmecpp/common/composed_types_definition:composed_types_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "magnetic_configuration_cc_proto",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":magnetic_configuration_proto",
-    ],
-)
-
 cc_library(
   name="magnetic_configuration",
   visibility = ["//visibility:public"],
   hdrs=["magnetic_configuration.h"],
   deps = [
-    "//vmecpp/common/magnetic_configuration_definition:magnetic_configuration_cc_proto",
     "//vmecpp/common/composed_types_lib:composed_types_lib",
   ],
 )
