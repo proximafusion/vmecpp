@@ -5,9 +5,79 @@
 #include <list>
 
 // FIXME(jons): to be replaced in the end
+#include "vmecpp/common/composed_types_definition/composed_types.pb.h"
 #include "vmecpp/common/magnetic_configuration_definition/magnetic_configuration.pb.h"
 
 namespace magnetics {
+
+struct InfiniteStraightFilament {
+  // a human-readable name, e.g., for plotting
+  bool has_name_ = false;
+  std::string name_;
+
+  // Cartesian coordinates of a point on the filament
+  bool has_origin_ = false;
+  composed_types::Vector3d origin_;
+
+  // Cartesian components of the direction along the filament
+  bool has_direction_ = false;
+  composed_types::Vector3d direction_;
+
+  // name
+  bool has_name() const { return has_name_; }
+  const std::string& name() const { return name_; }
+  void set_name(const std::string& value) {
+    name_ = value;
+    has_name_ = true;
+  }
+  void set_name(std::string&& value) {
+    name_ = std::move(value);
+    has_name_ = true;
+  }
+  void clear_name() {
+    name_.clear();
+    has_name_ = false;
+  }
+
+  // origin
+  bool has_origin() const { return has_origin_; }
+  const composed_types::Vector3d& origin() const { return origin_; }
+  composed_types::Vector3d* mutable_origin() {
+    has_origin_ = true;
+    return &origin_;
+  }
+  void set_origin(const composed_types::Vector3d& value) {
+    origin_ = value;
+    has_origin_ = true;
+  }
+  void clear_origin() {
+    origin_ = composed_types::Vector3d();
+    has_origin_ = false;
+  }
+
+  // direction
+  bool has_direction() const { return has_direction_; }
+  const composed_types::Vector3d& direction() const { return direction_; }
+  composed_types::Vector3d* mutable_direction() {
+    has_direction_ = true;
+    return &direction_;
+  }
+  void set_direction(const composed_types::Vector3d& value) {
+    direction_ = value;
+    has_direction_ = true;
+  }
+  void clear_direction() {
+    direction_ = composed_types::Vector3d();
+    has_direction_ = false;
+  }
+
+  // Clear the entire structure
+  void Clear() {
+    clear_name();
+    clear_origin();
+    clear_direction();
+  }
+}; // InfiniteStraightFilament
 
 struct CurrentCarrier {
   // oneof type
