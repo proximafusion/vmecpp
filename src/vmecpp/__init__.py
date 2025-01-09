@@ -691,6 +691,113 @@ class VmecWout(pydantic.BaseModel):
 
         return VmecWout(**attrs)
 
+    def _to_cpp_wout(self) -> _vmecpp.WOutFileContents:
+        cpp_wout = _vmecpp.WOutFileContents()
+
+        # These attributes are the same in VMEC++ and in Fortran VMEC
+        cpp_wout.ier_flag = self.ier_flag
+        cpp_wout.nfp = self.nfp
+        cpp_wout.ns = self.ns
+        cpp_wout.mpol = self.mpol
+        cpp_wout.ntor = self.ntor
+        cpp_wout.mnmax = self.mnmax
+        cpp_wout.mnmax_nyq = self.mnmax_nyq
+        cpp_wout.lasym = self.lasym
+        cpp_wout.lfreeb = self.lfreeb
+        cpp_wout.wb = self.wb
+        cpp_wout.wp = self.wp
+        cpp_wout.rmax_surf = self.rmax_surf
+        cpp_wout.rmin_surf = self.rmin_surf
+        cpp_wout.zmax_surf = self.zmax_surf
+        cpp_wout.aspect = self.aspect
+        cpp_wout.betapol = self.betapol
+        cpp_wout.betator = self.betator
+        cpp_wout.betaxis = self.betaxis
+        cpp_wout.b0 = self.b0
+        cpp_wout.rbtor0 = self.rbtor0
+        cpp_wout.rbtor = self.rbtor
+        cpp_wout.IonLarmor = self.IonLarmor
+        cpp_wout.ctor = self.ctor
+        cpp_wout.Aminor_p = self.Aminor_p
+        cpp_wout.Rmajor_p = self.Rmajor_p
+        cpp_wout.volume_p = self.volume_p
+        cpp_wout.fsqr = self.fsqr
+        cpp_wout.fsqz = self.fsqz
+        cpp_wout.fsql = self.fsql
+        cpp_wout.phipf = self.phipf
+        cpp_wout.chipf = self.chipf
+        cpp_wout.jcuru = self.jcuru
+        cpp_wout.jcurv = self.jcurv
+        cpp_wout.jdotb = self.jdotb
+        cpp_wout.bdotgradv = self.bdotgradv
+        cpp_wout.DMerc = self.DMerc
+        cpp_wout.equif = self.equif
+        cpp_wout.xm = self.xm
+        cpp_wout.xn = self.xn
+        cpp_wout.xm_nyq = self.xm_nyq
+        cpp_wout.xn_nyq = self.xn_nyq
+        cpp_wout.ftolv = self.ftolv
+        cpp_wout.pcurr_type = self.pcurr_type
+        cpp_wout.pmass_type = self.pmass_type
+        cpp_wout.piota_type = self.piota_type
+        cpp_wout.gamma = self.gamma
+        cpp_wout.mgrid_file = self.mgrid_file
+
+        # These attributes are called differently
+        cpp_wout.maximum_iterations = self.niter
+        cpp_wout.sign_of_jacobian = self.signgs
+        cpp_wout.betatot = self.betatotal
+        cpp_wout.VolAvgB = self.volavgB
+        cpp_wout.iota_full = self.iotaf
+        cpp_wout.safety_factor = self.q_factor
+        cpp_wout.pressure_full = self.presf
+        cpp_wout.toroidal_flux = self.phi
+        cpp_wout.poloidal_flux = self.chi
+        cpp_wout.beta = self.beta_vol
+        cpp_wout.spectral_width = self.specw
+        cpp_wout.Dshear = self.DShear
+        cpp_wout.Dwell = self.DWell
+        cpp_wout.Dcurr = self.DCurr
+        cpp_wout.Dgeod = self.DGeod
+        cpp_wout.raxis_c = self.raxis_cc
+        cpp_wout.zaxis_s = self.zaxis_cs
+        cpp_wout.version = str(self.version_)  # also needs a float -> str conversion
+
+        # These attributes have one element more in VMEC2000
+        # (i.e. they have size ns instead of ns - 1).
+        # VMEC2000 then indexes them as with [1:], so we pad VMEC++'s.
+        # And they might be called differently.
+        cpp_wout.bvco = self.bvco[1:]
+        cpp_wout.buco = self.buco[1:]
+        cpp_wout.dVds = self.vp[1:]
+        cpp_wout.pressure_half = self.pres[1:]
+        cpp_wout.mass = self.mass[1:]
+        cpp_wout.beta = self.beta_vol[1:]
+        cpp_wout.phips = self.phips[1:]
+        cpp_wout.overr = self.over_r[1:]
+        cpp_wout.iota_half = self.iotas[1:]
+
+        # These attributes are transposed in SIMSOPT
+        cpp_wout.rmnc = self.rmnc.T
+        cpp_wout.zmns = self.zmns.T
+        cpp_wout.bsubsmns = self.bsubsmns.T
+
+        # This is a VMEC++-only quantity but it's transposed when
+        # stored in a wout file for consistency with lmns.
+        cpp_wout.lmns_full = self.lmns_full.T
+
+        # These attributes have one column less and their elements are transposed
+        # in VMEC++ with respect to SIMSOPT/VMEC2000
+        cpp_wout.lmns = self.lmns.T[1:, :]
+        cpp_wout.bmnc = self.bmnc.T[1:, :]
+        cpp_wout.bsubumnc = self.bsubumnc.T[1:, :]
+        cpp_wout.bsubvmnc = self.bsubvmnc.T[1:, :]
+        cpp_wout.bsupumnc = self.bsupumnc.T[1:, :]
+        cpp_wout.bsupvmnc = self.bsupvmnc.T[1:, :]
+        cpp_wout.gmnc = self.gmnc.T[1:, :]
+
+        return cpp_wout
+
     # TODO(eguiraud): implement from_wout_file
 
 
