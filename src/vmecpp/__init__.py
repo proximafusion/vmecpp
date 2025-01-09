@@ -315,7 +315,12 @@ class VmecWout(pydantic.BaseModel):
     bsupvmnc: jt.Float[np.ndarray, "dim1 dim2"]
     rmnc: jt.Float[np.ndarray, "dim1 dim2"]
     zmns: jt.Float[np.ndarray, "dim1 dim2"]
-    lmns: jt.Float[np.ndarray, "dim1 dim2"]
+    lmns: jt.Float[np.ndarray, "mnmax n_surfaces"]
+    # lmns_full is not present in a typical Fortran wout file,
+    # but we need to save it for fixed-boundary hot restart
+    # to work properly. We store it with the Fortran convention
+    # for the order of the dimensions for consistency with lmns.
+    lmns_full: jt.Float[np.ndarray, "mnmax n_surfaces"]
     pcurr_type: str
     pmass_type: str
     piota_type: str
@@ -532,6 +537,9 @@ class VmecWout(pydantic.BaseModel):
                 fnc.createVariable(varname, np.float64, ("radius", "mn_mode"))
                 fnc[varname][:] = getattr(self, varname).T[:]
 
+            fnc.createVariable("lmns_full", np.float64, ("radius", "mn_mode"))
+            fnc["lmns_full"][:] = self.lmns_full[:]
+
             # version_ is required to make COBRAVMEC work correctly:
             # it changes its behavior depending on the VMEC version (>6 or not)
             fnc.createVariable("version_", np.float64)
@@ -660,10 +668,14 @@ class VmecWout(pydantic.BaseModel):
         attrs["over_r"] = np.concatenate(([0.0], cpp_wout.overr))
         attrs["iotas"] = np.concatenate(([0.0], cpp_wout.iota_half))
 
-        # These attributes are transposed in SIMSOPT
+        # These attributes are transposed in SIMSOPT/Fortran VMEC
         attrs["rmnc"] = cpp_wout.rmnc.T
         attrs["zmns"] = cpp_wout.zmns.T
         attrs["bsubsmns"] = cpp_wout.bsubsmns.T
+
+        # This is a VMEC++-only quantity but it's transposed when
+        # stored in a wout file for consistency with lmns.
+        attrs["lmns_full"] = cpp_wout.lmns_full.T
 
         # These attributes have one column less and their elements are transposed
         # in VMEC++ with respect to SIMSOPT/VMEC2000
