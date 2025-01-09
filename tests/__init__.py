@@ -26,3 +26,21 @@ def test_run(max_threads, input_file, verbose):
     out = vmecpp.run(input, max_threads=max_threads, verbose=verbose)
 
     assert out.wout is not None
+
+
+# We trust the C++ tests to cover the hot restart functionality properly,
+# here we just want to test that the Python API for it works.
+def test_run_with_hot_restart():
+    input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+
+    # base run
+    out = vmecpp.run(input, verbose=False)
+
+    # now with hot restart
+    # (only a single multigrid step is supported)
+    input.ns_array = input.ns_array[-1:]
+    input.ftol_array = input.ftol_array[-1:]
+    input.niter_array = input.niter_array[-1:]
+    hot_restarted_out = vmecpp.run(input, verbose=False, restart_from=out)
+
+    assert hot_restarted_out.wout.niter == 1

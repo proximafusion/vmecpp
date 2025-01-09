@@ -812,7 +812,10 @@ class VmecOutput(pydantic.BaseModel):
 
 
 def run(
-    input: VmecInput, max_threads: int | None = None, verbose: bool = True
+    input: VmecInput,
+    max_threads: int | None = None,
+    verbose: bool = True,
+    restart_from: VmecOutput | None = None,
 ) -> VmecOutput:
     """Run VMEC++ using the provided input.
 
@@ -820,12 +823,27 @@ def run(
         input: a VmecInput instance, corresponding to the contents of a classic VMEC input file
         max_threads: maximum number of threads that VMEC++ should spawn. The actual number might still
             be lower that this in case there are too few flux surfaces to keep these many threads
-            busy.
+            busy. If None, a number of threads equal to the number of logical cores is used.
         verbose: if True, VMEC++ logs its progress to standard output.
+        restart_from: if present, VMEC++ is initialized using the converged equilibrium from the
+            provided VmecOutput. This can dramatically decrease the number of iterations to
+            convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
     """
     cpp_indata = input._to_cpp_vmecindatapywrapper()
+
+    if restart_from is None:
+        initial_state = None
+    else:
+        initial_state = _vmecpp.HotRestartState(
+            wout=restart_from.wout._to_cpp_wout(),
+            indata=restart_from.input._to_cpp_vmecindatapywrapper(),
+        )
+
     cpp_output_quantities = _vmecpp.run(
-        cpp_indata, max_threads=max_threads, verbose=verbose
+        cpp_indata,
+        initial_state=initial_state,
+        max_threads=max_threads,
+        verbose=verbose,
     )
     cpp_wout = cpp_output_quantities.wout
     wout = VmecWout._from_cpp_wout(cpp_wout)
