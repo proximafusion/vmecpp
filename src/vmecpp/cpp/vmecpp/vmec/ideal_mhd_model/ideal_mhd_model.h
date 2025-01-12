@@ -97,28 +97,7 @@ class IdealMhdModel {
 
   // Inverse-DFT for flux surface geometry and lambda, 3D (Stellarator) case
   // Dispatching dft_FourierToReal_3d_symm
-  /*
-  Explanation:
-  With compiler directive '[[gnu::target("architecture")]]' (or
-  the equal '__attribute__((target("architecture"))) ), an arbitrary
-  number of functions with the same name, but different targets (i.e.
-  architectures) can be declared/defined.
-  The respective function is selected at runtime automatically
-  if the respective processor capability is found. If it is not
-  found, the 'default' target is addressed, which must be
-  implemented in any case.
-  The default functions are defined in this module (ideal_mhd_model),
-  whereas the architecture specific functions are defined in a separate
-  library (vectorized_dft_functions) which was built with architecture
-  specific compiler flags, e.g. -march=skylake-avx512.
-  The artifact may contain illegal instructions for processors that do
-  not have the respective compute capabilities, but this is not a problem
-  as long as they are not called.
-  */
-  [[gnu::target("arch=skylake-avx512")]] void dft_FourierToReal_3d_symm(
-      const FourierGeometry& physical_x);
-  [[gnu::target("default")]] void dft_FourierToReal_3d_symm(
-      const FourierGeometry& physical_x);
+  void dft_FourierToReal_3d_symm(const FourierGeometry& physical_x);
 
   // Inverse-DFT for flux surface geometry and lambda, 2D axisymmetric (Tokamak)
   // case
@@ -183,8 +162,7 @@ class IdealMhdModel {
   // De-aliases the effective constraint force by bandpass filtering in Fourier
   // space. Think of aliasing in terms of Fourier components higher than the
   // Nyquist frequency.
-  [[gnu::target("default")]] void deAliasConstraintForce();
-  [[gnu::target("arch=skylake-avx512")]] void deAliasConstraintForce();
+  void deAliasConstraintForce();
 
   // Assembles the total forces (MHD, spectral constraint, free-boundary).
   void assembleTotalForces();
@@ -195,10 +173,7 @@ class IdealMhdModel {
 
   // Computes the forward-DFT of forces for the 3D (Stellarator) case.
   // Dispatching dft_ForcesToFourier_3d_symm
-  [[gnu::target("default")]] void dft_ForcesToFourier_3d_symm(
-      FourierForces& m_physical_f);
-  [[gnu::target("arch=skylake-avx512")]] void dft_ForcesToFourier_3d_symm(
-      FourierForces& m_physical_f);
+  void dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f);
 
   // Computes the forward-DFT of forces for the 2D axisymmetric (Tokamak) case.
   void dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f);
