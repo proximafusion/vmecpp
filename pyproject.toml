@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-build-scripts"]
+requires = ["hatchling", "scikit-build-core~=0.10.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -54,31 +54,8 @@ Source = "https://github.com/proximafusion/vmecpp"
 [tool.hatch.version]
 path = "src/vmecpp/__about__.py"
 
-# NOTE(eguiraud): this produces two copies of the extension module,
-# but I could not convince hatch to do otherwise. We only copy one
-# of the two into the wheel.
-[[tool.hatch.build.hooks.build-scripts.scripts]]
-work_dir = "src/vmecpp/cpp/"
-out_dir = "src/vmecpp/cpp/bazel_artifacts/"
-commands = [
-  # the build is CPU-intensive, so we limit the amount of jobs to less
-  # than the number of CPUs in order to not completely hog the machine
-  "bazel build -c opt --jobs='HOST_CPUS*.75' //...",
-  "cp -f bazel-bin/vmecpp/vmec/pybind11/_vmecpp.so _vmecpp.so",
-]
-artifacts = [
-    "_vmecpp.so",
-]
-
-[tool.hatch.build]
-packages = [
-  "src/vmecpp",
-]
-
-[tool.hatch.build.targets.wheel]
-artifacts = [
-  "src/vmecpp/cpp/_vmecpp.so",
-]
+[tool.hatch.build.targets.wheel.hooks.scikit-build]
+experimental = true
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/vmecpp/cpp/vmecpp/vmec/pybind11/simsopt_vmecpp.py" = "vmecpp/cpp/vmecpp/vmec/pybind11/simsopt_vmecpp.py"
@@ -158,6 +135,3 @@ ignore = [
 
 [tool.docformatter]
 black = true  # Enables mode that plays nice with black, e.g. sets line length to 88.
-
-[tool.pyright]
-ignore = ["src/cpp/bazel-*"]

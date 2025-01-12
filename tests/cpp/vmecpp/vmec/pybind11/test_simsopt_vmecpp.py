@@ -9,13 +9,20 @@ import netCDF4
 import numpy as np
 import pytest
 
-from vmecpp import _util
 from vmecpp.cpp.vmecpp.vmec.pybind11 import simsopt_vmecpp
+
+# We don't want to install tests and test data as part of the package,
+# but scikit-build-core + hatchling does not support editable installs,
+# so the tests live in the sources but the vmecpp module lives in site_packages.
+# Therefore, in order to find the test data we use the relative path to this file.
+# I'm very open to alternative solutions :)
+REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
+TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
 @pytest.fixture
 def json_input_filepath() -> Path:
-    return _util.package_root() / "cpp/vmecpp/test_data/solovev.json"
+    return TEST_DATA_DIR / "solovev.json"
 
 
 @pytest.fixture
@@ -25,9 +32,7 @@ def vmec(json_input_filepath) -> simsopt_vmecpp.Vmec:
 
 @pytest.fixture
 def wout() -> netCDF4.Dataset:
-    return netCDF4.Dataset(
-        _util.package_root() / "cpp/vmecpp/test_data/wout_solovev.nc", "r"
-    )
+    return netCDF4.Dataset(TEST_DATA_DIR / "wout_solovev.nc", "r")
 
 
 def test_aspect(vmec, wout):
@@ -106,9 +111,7 @@ def test_wout_attributes_shape(vmec, attribute_name, mnmax_size_name):
 
 def test_changing_boundary():
     # this test only makes sense for a circular tokamak setup
-    vmec = simsopt_vmecpp.Vmec(
-        _util.package_root() / "cpp/vmecpp/test_data/circular_tokamak.json"
-    )
+    vmec = simsopt_vmecpp.Vmec(TEST_DATA_DIR / "circular_tokamak.json")
     original_rc00 = vmec.boundary.get_rc(0, 0)
     vmec.run()
     assert vmec.wout is not None
