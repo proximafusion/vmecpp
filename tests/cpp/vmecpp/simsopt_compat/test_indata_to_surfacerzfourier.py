@@ -7,9 +7,16 @@ from pathlib import Path
 
 from simsopt import geo
 
-from vmecpp import _util
 from vmecpp.cpp.third_party.indata2json import indata_to_json
 from vmecpp.cpp.vmecpp import simsopt_compat
+
+# We don't want to install tests and test data as part of the package,
+# but scikit-build-core + hatchling does not support editable installs,
+# so the tests live in the sources but the vmecpp module lives in site_packages.
+# Therefore, in order to find the test data we use the relative path to this file.
+# I'm very open to alternative solutions :)
+REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
+TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
 def test_surfacerzfourier_from_vmecppindata_no_ntheta_nphi():
@@ -17,9 +24,7 @@ def test_surfacerzfourier_from_vmecppindata_no_ntheta_nphi():
     simsopt.geo.SurfaceRZFourier.from_vmec_input with one obtained with
     surfacerzfourier_from_vmecppindata after converting the Fortran indata file
     to the VMEC++ indata file using indata2json."""
-    fortran_indata_file = Path(
-        _util.package_root(), "cpp", "vmecpp", "test_data", "input.cma"
-    )
+    fortran_indata_file = Path(TEST_DATA_DIR / "input.cma")
 
     reference_surface = geo.SurfaceRZFourier.from_vmec_input(str(fortran_indata_file))
 
