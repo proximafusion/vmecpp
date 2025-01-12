@@ -119,17 +119,6 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
   return std::move(v.output_quantities_);
 }
 
-// Logging used architecture variant for DFT: Dispatching
-[[gnu::target("default")]] void LogArchitecture() {
-  LOG(INFO) << "* Using DEFAULT architecture (non vectorized DFT functions)";
-}
-
-[[gnu::target("arch=skylake-avx512")]] void LogArchitecture() {
-  LOG(INFO) << absl::StrFormat(
-      "* Using arch=skylake-avx512 architecture (avx256 vectorized DFT "
-      "functions)");
-}
-
 namespace vmecpp {
 
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
@@ -206,11 +195,6 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 
   if (initial_state.has_value()) {
     CheckInitialState(*initial_state, indata_);
-  }
-
-  if (verbose_) {
-    // Info about vectorization (default = none, or skylake with avx)
-    LogArchitecture();
   }
 
   // !!! THIS must be the ONLY place where this gets set to zero !!!
