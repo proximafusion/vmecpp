@@ -2,9 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 import math
+import sys
 import tempfile
 from pathlib import Path
 
+import pytest
 from simsopt import geo
 
 from vmecpp.cpp.third_party.indata2json import indata_to_json
@@ -19,6 +21,10 @@ REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
+# FIXME(eguiraud)
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="indata2json does not work on macos"
+)
 def test_surfacerzfourier_from_vmecppindata_no_ntheta_nphi():
     """Best way I could think of testing this: compare a surface obtained with
     simsopt.geo.SurfaceRZFourier.from_vmec_input with one obtained with

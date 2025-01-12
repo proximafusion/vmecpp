@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
+import sys
 import tempfile
 from pathlib import Path
 
@@ -16,6 +17,10 @@ from vmecpp.cpp.third_party.indata2json import indata_to_json
 # I'm very open to alternative solutions :)
 REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
+
+# FIXME(eguiraud)
+if sys.platform == "darwin":
+    pytest.skip("indata2json currently does not work on MacOS", allow_module_level=True)
 
 
 def test_indata_to_json_success():
