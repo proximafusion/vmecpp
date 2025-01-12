@@ -1,29 +1,4 @@
 cc_library(
-    name = "vectorized_dft_functions",
-    srcs = ["vectorized_dft_functions.cc"],
-    hdrs = ["vectorized_dft_functions.h", "dft_data.h"],
-    visibility = ["//vmecpp/vmec:__subpackages__"],
-    #  This library is using AVX intrinsics and it is meant to be compiled for a specific target architecture.
-    # The `-march` target below must match the one used when dispatching to this code
-    # in `IdealMHDModel`.
-    # In practice we want to target a CPU architecture that gives us a good speed-up when
-    # running jobs on GCP.
-    # Do not use the generic `-march=native` as that causes problems with caching artifacts in our CI pipelines!
-    copts = ["-march=skylake-avx512"],
-    deps = [
-        "//vmecpp/common/flow_control",
-        "//vmecpp/common/sizes",
-        "//vmecpp/common/fourier_basis_fast_poloidal",
-        "//vmecpp/vmec/boundaries",
-        "//vmecpp/vmec/fourier_geometry",
-        "//vmecpp/vmec/fourier_forces",
-        "//vmecpp/vmec/radial_profiles",
-        "//vmecpp/vmec/radial_partitioning",
-        "@abseil-cpp//absl/algorithm:container",
-    ],
-)
-
-cc_library(
     name = "ideal_mhd_model",
     srcs = ["ideal_mhd_model.cc"],
     hdrs = ["ideal_mhd_model.h", "dft_data.h"],
@@ -41,7 +16,6 @@ cc_library(
         "//vmecpp/vmec/handover_storage:handover_storage",
         "//vmecpp/vmec/radial_partitioning:radial_partitioning",
         "//vmecpp/free_boundary/free_boundary_base:free_boundary_base",
-        "//vmecpp/vmec/ideal_mhd_model:vectorized_dft_functions",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",

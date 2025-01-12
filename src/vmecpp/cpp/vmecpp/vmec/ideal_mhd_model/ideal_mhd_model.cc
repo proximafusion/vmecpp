@@ -15,7 +15,6 @@
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
-#include "vmecpp/vmec/ideal_mhd_model/vectorized_dft_functions.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
@@ -1187,8 +1186,7 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
 }
 
 // compute inv-DFTs on unique radial grid points
-[[gnu::target("default")]] void IdealMhdModel::dft_FourierToReal_3d_symm(
-    const FourierGeometry& physical_x) {
+void IdealMhdModel::dft_FourierToReal_3d_symm(const FourierGeometry& physical_x) {
   auto geometry = RealSpaceGeometry{.r1_e = r1_e,
                                     .r1_o = r1_o,
                                     .ru_e = ru_e,
@@ -1209,31 +1207,6 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
                                     .zCon = zCon};
 
   FourierToReal3DSymmFastPoloidal(physical_x, xmpq, r_, s_, m_p_, t_, geometry);
-}
-
-[[gnu::target("arch=skylake-avx512")]] void
-IdealMhdModel::dft_FourierToReal_3d_symm(const FourierGeometry& physical_x) {
-  auto geometry = RealSpaceGeometry{.r1_e = r1_e,
-                                    .r1_o = r1_o,
-                                    .ru_e = ru_e,
-                                    .ru_o = ru_o,
-                                    .rv_e = rv_e,
-                                    .rv_o = rv_o,
-                                    .z1_e = z1_e,
-                                    .z1_o = z1_o,
-                                    .zu_e = zu_e,
-                                    .zu_o = zu_o,
-                                    .zv_e = zv_e,
-                                    .zv_o = zv_o,
-                                    .lu_e = lu_e,
-                                    .lu_o = lu_o,
-                                    .lv_e = lv_e,
-                                    .lv_o = lv_o,
-                                    .rCon = rCon,
-                                    .zCon = zCon};
-
-  FourierToReal3DSymmFastPoloidal_avx(physical_x, xmpq, r_, s_, m_p_, t_,
-                                      geometry);
 }
 
 // compute inv-DFTs on unique radial grid points
@@ -2898,14 +2871,9 @@ void IdealMhdModel::effectiveConstraintForce() {
 
 // perform Fourier-space bandpass filtering of constraint force
 // and apply scaling (tcon[j]) and preconditioning (faccon[m])
-[[gnu::target("default")]] void IdealMhdModel::deAliasConstraintForce() {
+void IdealMhdModel::deAliasConstraintForce() {
   vmecpp::deAliasConstraintForce(r_, t_, s_, faccon, tcon, gConEff, gsc, gcs,
                                  gCon);
-}
-[[gnu::target("arch=skylake-avx512")]] void
-IdealMhdModel::deAliasConstraintForce() {
-  vmecpp::deAliasConstraintForce_avx(r_, t_, s_, faccon, tcon, gConEff, gsc,
-                                     gcs, gCon);
 }
 
 // add constraint force to MHD force
@@ -2967,8 +2935,7 @@ void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
   }     // lasym
 }
 
-[[gnu::target("default")]] void IdealMhdModel::dft_ForcesToFourier_3d_symm(
-    FourierForces& m_physical_f) {
+void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
   const auto input_data = RealSpaceForces{
       .armn_e = armn_e,
       .armn_o = armn_o,
@@ -2994,35 +2961,6 @@ void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
 
   ForcesToFourier3DSymmFastPoloidal(input_data, xmpq, r_, m_fc_, s_, t_,
                                     m_ivac_, m_physical_f);
-}
-
-[[gnu::target("arch=skylake-avx512")]] void
-IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
-  const auto input_data = RealSpaceForces{
-      .armn_e = armn_e,
-      .armn_o = armn_o,
-      .azmn_e = azmn_e,
-      .azmn_o = azmn_o,
-      .blmn_e = blmn_e,
-      .blmn_o = blmn_o,
-      .brmn_e = brmn_e,
-      .brmn_o = brmn_o,
-      .bzmn_e = bzmn_e,
-      .bzmn_o = bzmn_o,
-      .clmn_e = clmn_e,
-      .clmn_o = clmn_o,
-      .crmn_e = crmn_e,
-      .crmn_o = crmn_o,
-      .czmn_e = czmn_e,
-      .czmn_o = czmn_o,
-      .frcon_e = frcon_e,
-      .frcon_o = frcon_o,
-      .fzcon_e = fzcon_e,
-      .fzcon_o = fzcon_o,
-  };
-
-  ForcesToFourier3DSymmFastPoloidal_avx(input_data, xmpq, r_, m_fc_, s_, t_,
-                                        m_ivac_, m_physical_f);
 }
 
 void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
