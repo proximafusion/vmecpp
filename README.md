@@ -106,7 +106,7 @@ Some libraries are required even when installing VMEC++ as a Python package.
 On Ubuntu 22.04, they are available as these system packages:
 
 ```console
-sudo apt-get install build-essential libnetcdf-dev liblapacke-dev libopenmpi-dev
+sudo apt-get install build-essential libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
 ```
 
 You also need [bazelisk](https://github.com/bazelbuild/bazelisk), see link for up to date installation instructions.

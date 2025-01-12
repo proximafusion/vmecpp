@@ -28,6 +28,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
@@ -46,10 +48,10 @@ jobs:
       - name: Install package
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
-          sudo apt-get update && sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev libnetcdff-dev libscalapack-openmpi-dev
-          python -m pip install -vvv -e .[test]
+          sudo apt-get update && sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev libnetcdff-dev libscalapack-openmpi-dev
           # needed for some VMEC++/VMEC2000 compatibility tests
           python -m pip install vmec@https://storage.googleapis.com/proxima-hosting/wheels/vmec-0.0.4-cp310-cp310-linux_x86_64.whl
+          python -m pip install -vvv .[test]
       - name: Test package
         run: python -m pytest tests/
       # TODO(eguiraud): see above

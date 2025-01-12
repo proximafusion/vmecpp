@@ -8,14 +8,19 @@ from pathlib import Path
 import netCDF4
 import numpy as np
 
-from vmecpp import _util
 from vmecpp.cpp import _vmecpp as vmec
 from vmecpp.cpp.vmecpp.simsopt_compat import (
     VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER,
     FortranWOutAdapter,
 )
 
-TEST_DATA_DIR = Path(_util.package_root(), "cpp", "vmecpp", "test_data")
+# We don't want to install tests and test data as part of the package,
+# but scikit-build-core + hatchling does not support editable installs,
+# so the tests live in the sources but the vmecpp module lives in site_packages.
+# Therefore, in order to find the test data we use the relative path to this file.
+# I'm very open to alternative solutions :)
+REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
+TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
 def test_save_to_netcdf():

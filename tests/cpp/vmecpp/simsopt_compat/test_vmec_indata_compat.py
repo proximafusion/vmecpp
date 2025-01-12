@@ -7,11 +7,16 @@ from pathlib import Path
 import numpy as np
 from simsopt import mhd as simsopt_mhd
 
-from vmecpp import _util
 from vmecpp.cpp.vmecpp import simsopt_compat
 from vmecpp.cpp.vmecpp.vmec.pybind11 import simsopt_vmecpp
 
-TEST_DATA_DIR = Path(_util.package_root(), "cpp", "vmecpp", "test_data")
+# We don't want to install tests and test data as part of the package,
+# but scikit-build-core + hatchling does not support editable installs,
+# so the tests live in the sources but the vmecpp module lives in site_packages.
+# Therefore, in order to find the test data we use the relative path to this file.
+# I'm very open to alternative solutions :)
+REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
+TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
 def test_is_vmec2000_input():

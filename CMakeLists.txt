@@ -67,5 +67,7 @@ set (vmecpp_pybind11_sources
   ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/pybind11/vmec_indata_pywrapper.cc
   ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/pybind11/vmec_indata_pywrapper.h
 )
-pybind11_add_module(vmecpp ${vmecpp_pybind11_sources})
-target_link_libraries(vmecpp PRIVATE vmecpp_core)
+pybind11_add_module(_vmecpp ${vmecpp_pybind11_sources})
+target_link_libraries(_vmecpp PRIVATE vmecpp_core)
+
+install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
