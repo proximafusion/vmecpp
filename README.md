@@ -19,7 +19,7 @@ The latest version of the original code is called `PARVMEC` and is available [he
 
 Compared to its Fortran predecessors, VMEC++:
 - has a zero-crash policy and reports issues via standard Python exceptions
-- allows hot-restarting a run from a previous converged state (see [#hot-restart])
+- allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
 - typically runs just as fast or faster
 
