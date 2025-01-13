@@ -40,6 +40,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [As a command line tool](#as-a-command-line-tool)
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
+- [Hot restart](#hot-restart)
 - [Known differences with respect to PARVMEC/VMEC2000](#known-differences-with-respect-to-parvmecvmec2000)
 - [License](#license)
 
