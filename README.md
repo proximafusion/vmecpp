@@ -187,7 +187,7 @@ VMEC++:
 - allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
 - employs the same parallelization strategy as Fortran VMEC, but VMEC++ leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization: as a consequence it cannot parallelize over multiple nodes
-- VMEC++ implements the iteration algorithm of Fortran VMEC 8.52, which has sometimes different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
+- implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
 
 ### Limitations with respect to the Fortran implementations
 - non-stellarator-symmetric terms (`lasym == true`) are not supported yet
