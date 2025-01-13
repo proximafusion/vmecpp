@@ -17,13 +17,16 @@ a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks.
 The original version was written by Steven P. Hirshman and colleagues in the 1980s and 1990s.
 The latest version of the original code is called `PARVMEC` and is available [here](https://github.com/ORNL-Fusion/PARVMEC).
 
-VMEC++ is typically just as fast or faster than its Fortran predecessor, uses a lighter-weight
-multi-thread (OpenMP) parallelization scheme to Fortran VMEC's MPI parallelization and implements
-some extra features such as hot-restart. As a result it can run on a laptop, but it is a suitable component
-for large-scale stellarator optimization pipelines.
+Compared to its Fortran predecessors, VMEC++:
+- has a zero-crash policy and reports issues via standard Python exceptions
+- allows hot-restarting a run from a previous converged state (see [#hot-restart])
+- supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
+- typically runs just as fast or faster
+
+VMEC++ can run on a laptop, but it is a suitable component for large-scale stellarator optimization pipelines.
 
 On the other hand, some features of the original Fortran VMEC are not available in VMEC++.
-See [below](#known-differences-with-respect-to-parvmecvmec2000) for more details.
+See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 
 ⚠️ VMEC++ is a production-ready physics simulator but still in beta as a standalone Python package ⚠️
 
@@ -144,15 +147,44 @@ All artifacts are now under `./bazel-bin/vmecpp`.
 
 The main C++ source code tree starts in [`src/vmecpp/cpp/vmecpp`](https://github.com/jons-pf/vmecpp/blob/main/src/vmecpp/cpp/vmecpp).
 
-## Known differences with respect to PARVMEC/VMEC2000
+## Hot restart
 
-- VMEC++ has a zero-crash policy and reports issues via standard Python exceptions
-- VMEC++ allows hot-restarting a run from a previous converged state (see [#hot-restart])
-- VMEC++'s parallelization strategy is the same as Fortran VMEC, but it leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization
+By passing the output of a VMEC++ run as inital state for a subsequent one,
+VMEC++ is initialized using the previosly converged equilibrium.
+This can dramatically decrease the number of iterations to convergence when running
+VMEC++ on a configuration that is very similar to the converged equilibrium.
+
+### Example
+
+```python
+import vmecpp
+
+input = vmecpp.VmecInput.from_file("w7x.json")
+
+# Base run
+output = vmecpp.run(input)
+
+# Now let's perturb the plasma boundary a little bit...
+input.rbc[0, 0] *= 0.8
+input.rbc[1, 0] *= 1.2
+# ...and fix up the multigrid steps: hot-restarted runs only allow a single step
+input.ns_array = input.ns_array[-1:]
+input.ftol_array = input.ftol_array[-1:]
+input.niter_array = input.niter_array[-1:]
+
+# We can now run with hot restart:
+# passing the previously obtained output ensures that
+# the run starts already close to the equilibrium, so it will take
+# very few iterations to converge this time!
+hot_restarted_output = vmecpp.run(input, restart_from=output)
+```
+
+## Differences with respect to PARVMEC/VMEC2000
+
+- VMEC++'s parallelization strategy is the same as Fortran VMEC, but it leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization: as a consequence it cannot parallelize over multiple nodes
 - VMEC++ implements the iteration algorithm of Fortran VMEC 8.52, which has sometimes different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
-- VMEC++ supports inputs in the classic INDATA format as well as JSON files; it is also simple to construct input objects programmatically in Python
 
-### Known limitations with respect to the Fortran implementations
+### Limitations with respect to the Fortran implementations
 - non-stellarator-symmetric terms (`lasym == true`) are not supported yet
 - free-boundary works only for `ntor > 0` - axisymmetric (`ntor = 0`) free-boundary runs don't work yet
 - `lgiveup`/`fgiveup` logic for early termination of a multi-grid sequence is not implemented yet
