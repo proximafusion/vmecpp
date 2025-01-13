@@ -41,7 +41,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
 - [Hot restart](#hot-restart)
-- [Known differences with respect to PARVMEC/VMEC2000](#known-differences-with-respect-to-parvmecvmec2000)
+- [Differences with respect to PARVMEC/VMEC2000](#differences-with-respect-to-parvmecvmec2000)
 - [License](#license)
 
 <!-- SPHINX-START -->
