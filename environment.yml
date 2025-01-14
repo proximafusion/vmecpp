@@ -1,0 +1,92 @@
+# Create the env with:
+# conda env create -f environment.yml
+#
+# N.B. We use a relative path to pip-install
+# the vmecpp repo, so you must execute the
+# command from the root of the vmecpp repo.
+
+name: vmecpp
+channels:
+  - conda-forge
+dependencies:
+  - _libgcc_mutex=0.1=conda_forge
+  - _openmp_mutex=4.5=2_gnu
+  - binutils_impl_linux-64=2.43=h4bf12b8_2
+  - blas=2.123=blis
+  - blas-devel=3.9.0=23_linux64_blis
+  - blis=0.9.0=h4ab18f5_2
+  - blosc=1.21.6=he440d0b_1
+  - bzip2=1.0.8=h4bc722e_7
+  - c-ares=1.34.4=hb9d3cd8_0
+  - ca-certificates=2024.12.14=hbcca054_0
+  - certifi=2024.12.14=pyhd8ed1ab_0
+  - cftime=1.6.4=py310hf462985_1
+  - eigen=3.4.0=h00ab1b0_0
+  - gcc=14.2.0=h96c4ede_1
+  - gcc_impl_linux-64=14.2.0=h6b349bd_1
+  - gfortran=14.2.0=h96c4ede_1
+  - gfortran_impl_linux-64=14.2.0=hc73f493_1
+  - gxx=14.2.0=h96c4ede_1
+  - gxx_impl_linux-64=14.2.0=h2c03514_1
+  - hdf4=4.2.15=h2a13503_7
+  - hdf5=1.14.3=nompi_hdf9ad27_105
+  - kernel-headers_linux-64=5.14.0=h8bc681e_0
+  - keyutils=1.6.1=h166bdaf_0
+  - krb5=1.21.3=h659f571_0
+  - ld_impl_linux-64=2.43=h712a8e2_2
+  - libaec=1.1.3=h59595ed_0
+  - libblas=3.9.0=23_linux64_blis
+  - libcblas=3.9.0=23_linux64_blis
+  - libcurl=8.11.1=h332b0f4_0
+  - libedit=3.1.20240808=pl5321h7949ede_0
+  - libev=4.33=hd590300_2
+  - libffi=3.4.2=h7f98852_5
+  - libgcc=14.2.0=h77fa898_1
+  - libgcc-devel_linux-64=14.2.0=h41c2201_101
+  - libgcc-ng=14.2.0=h69a702a_1
+  - libgfortran-ng=7.5.0=h14aa051_20
+  - libgfortran4=7.5.0=h14aa051_20
+  - libgfortran5=14.2.0=hd5240d6_1
+  - libgomp=14.2.0=h77fa898_1
+  - libiconv=1.17=hd590300_2
+  - libjpeg-turbo=3.0.0=hd590300_1
+  - liblapack=3.9.0=6_ha36c22a_netlib
+  - liblapacke=3.9.0=0_h6e990d7_netlib
+  - liblzma=5.6.3=hb9d3cd8_1
+  - libnetcdf=4.9.2=nompi_h00e09a9_116
+  - libnghttp2=1.64.0=h161d5f1_0
+  - libnsl=2.0.1=hd590300_0
+  - libsanitizer=14.2.0=h2a3dede_1
+  - libsqlite=3.47.2=hee588c1_0
+  - libssh2=1.11.1=hf672d98_0
+  - libstdcxx=14.2.0=hc0a3c3a_1
+  - libstdcxx-devel_linux-64=14.2.0=h41c2201_101
+  - libstdcxx-ng=14.2.0=h4852527_1
+  - libuuid=2.38.1=h0b41bf4_0
+  - libxcrypt=4.4.36=hd590300_1
+  - libxml2=2.13.5=h0d44e9d_1
+  - libzip=1.11.2=h6991a6a_0
+  - libzlib=1.3.1=hb9d3cd8_2
+  - lz4-c=1.10.0=h5888daf_1
+  - ncurses=6.5=h2d0b736_2
+  - netcdf-fortran=4.6.1=nompi_h228c76a_104
+  - netcdf4=1.7.2=nompi_py310h9f0ad05_101
+  - numpy=1.26.4=py310hb13e2d6_0
+  - openssl=3.4.0=h7b32b05_1
+  - pip=24.3.1=pyh8b19718_2
+  - python=3.10.16=he725a3c_1_cpython
+  - python_abi=3.10=5_cp310
+  - readline=8.2=h8228510_1
+  - setuptools=75.8.0=pyhff2d567_0
+  - snappy=1.2.1=h8bd8927_1
+  - sysroot_linux-64=2.34=h8bc681e_0
+  - tk=8.6.13=noxft_h4845f30_101
+  - tzdata=2024b=hc8b5060_0
+  - wheel=0.45.1=pyhd8ed1ab_1
+  - zlib=1.3.1=hb9d3cd8_2
+  - zstd=1.5.6=ha6fb4c9_0
+  - binutils
+  - nlohmann_json
+  - mpi4py
+  - pip:
+    - ./.
