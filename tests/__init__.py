@@ -7,6 +7,7 @@ Here we just test that the Python bindings and the general API works as expected
 Physics correctness is checked at the level of the C++ core.
 """
 
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -51,3 +52,13 @@ def test_run_with_hot_restart():
     hot_restarted_out = vmecpp.run(input, verbose=False, restart_from=out)
 
     assert hot_restarted_out.wout.niter == 1
+
+
+def test_vmecwout_save():
+    input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    out = vmecpp.run(input, verbose=False)
+
+    with tempfile.NamedTemporaryFile() as tmp_file:
+        out.wout.save(tmp_file.name)
+
+        assert Path(tmp_file.name).exists()

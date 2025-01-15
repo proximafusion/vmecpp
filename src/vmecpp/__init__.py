@@ -538,7 +538,7 @@ class VmecWout(pydantic.BaseModel):
                 fnc[varname][:] = getattr(self, varname).T[:]
 
             fnc.createVariable("lmns_full", np.float64, ("radius", "mn_mode"))
-            fnc["lmns_full"][:] = self.lmns_full[:]
+            fnc["lmns_full"][:] = self.lmns_full.T[:]
 
             # version_ is required to make COBRAVMEC work correctly:
             # it changes its behavior depending on the VMEC version (>6 or not)
