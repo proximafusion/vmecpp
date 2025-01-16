@@ -26,6 +26,8 @@ jobs:
       - name: Install package
         run: |
           brew install gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json protobuf lapack git open-mpi
+          ln -s $(which gfortran-14) /usr/local/bin/gfortran
+          ln -s $(which gcc-14) /usr/local/bin/gcc
           python -m pip install -vvv .[test]
       - name: Test package
         run: python -m pytest tests/
