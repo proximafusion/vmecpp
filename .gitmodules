@@ -9,4 +9,4 @@
 	url = git@github.com:abseil/abseil-cpp.git
 [submodule "indata2json"]
 	path = indata2json
-	url = git@github.com:vsiska-pf/indata2json.git
+	url = git@github.com:jonathanschilling/indata2json.git
