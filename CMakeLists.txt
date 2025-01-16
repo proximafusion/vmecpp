@@ -33,6 +33,8 @@ set (abscab_sources "abscab-cpp/abscab/abscab.cc" "abscab-cpp/abscab/abscab.hh")
 include_directories(${PROJECT_SOURCE_DIR}/abseil-cpp)
 add_subdirectory(${PROJECT_SOURCE_DIR}/abseil-cpp)
 
+add_subdirectory(${PROJECT_SOURCE_DIR}/indata2json)
+
 # Allow to retain include paths as used for Bazel build.
 # This needs to be defined before add_subdirectory(src) is called,
 # which starts including files that want to pull in header files
@@ -79,3 +81,4 @@ pybind11_add_module(_vmecpp ${vmecpp_pybind11_sources})
 target_link_libraries(_vmecpp PRIVATE vmecpp_core)
 
 install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
+install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
