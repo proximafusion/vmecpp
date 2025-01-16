@@ -2,9 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 import math
+import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 from simsopt import mhd as simsopt_mhd
 
 from vmecpp.cpp.vmecpp import simsopt_compat
@@ -34,6 +36,9 @@ def test_ensure_vmec2000_input_noop():
         assert indata_file == vmec2000_input_file
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="we cannot install VMEC2000 on macos"
+)
 def test_ensure_vmec2000_input_from_vmecpp_input():
     vmecpp_input_file = TEST_DATA_DIR / "cma.json"
 
