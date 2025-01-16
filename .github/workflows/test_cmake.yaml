@@ -15,14 +15,25 @@ concurrency:
 jobs:
   tests:
     name: Build using CMake
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+        matrix:
+            os: [ubuntu-22.04, macos-latest]
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Install required system packages
+      - name: Install required system packages for Ubuntu
+        if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential cmake gcc g++ libeigen3-dev libhdf5-dev liblapacke-dev libnetcdf-dev libopenmpi-dev nlohmann-json3-dev python3-pip python-is-python3
+      - name: Install required system packages for MacOS
+        if: ${{ contains(matrix.os, 'macos') }}
+        run: |
+          brew install gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json protobuf lapack git open-mpi
+          # Add missing symbolic links for gfortran
+          ln -s $(which gfortran-14) /usr/local/bin/gfortran
+          ln -s $(which gcc-14) /usr/local/bin/gcc
       - name: Build VMEC++
         run: |
           cmake -B build
