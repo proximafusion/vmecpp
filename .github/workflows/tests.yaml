@@ -40,9 +40,6 @@ jobs:
         if: ${{ contains(matrix.os, 'macos') }}
         run: |
           brew install gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json protobuf lapack git open-mpi
-          # Add missing symbolic links for gfortran
-          ln -s $(which gfortran-14) /usr/local/bin/gfortran
-          ln -s $(which gcc-14) /usr/local/bin/gcc
       - name: Install required packages for Ubuntu
         if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
