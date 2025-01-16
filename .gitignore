@@ -1,25 +1,12 @@
-# bazel output directories
-bazel-*
-src/vmecpp/cpp/bazel_artifacts
-src/vmecpp/cpp/_vmecpp.so
-dist/
-__pycache__
+**/compile_commands.json
+venv/
+.vscode
 build/
 
-# CMake
-**/cmake-build-debug
-**/CMakeCache.txt
-**/cmake_install.cmake
-**/install_manifest.txt
-**/CMakeFiles/
-**/CTestTestfile.cmake
-**/Makefile
-**/*.cbp
-**/CMakeScripts
-**/compile_commands.json
+# python build outputs
+dist/
+__pycache__
 
-# VSCode
-.vscode
-
-# Python venv
-venv
+# bazel output directories
+bazel-*
+src/vmecpp/cpp/_vmecpp.so
