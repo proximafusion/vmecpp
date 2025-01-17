@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pre-commit:
-    name: Pre-commit checks
+  test-conda-env:
+    name: Test conda env
     runs-on: ubuntu-22.04
     container:
       image: continuumio/miniconda3
@@ -28,3 +28,11 @@ jobs:
       - name: Create conda env
         run: |
           conda env create --yes --quiet --file environment.yml
+      - name: Test conda env
+        run: |
+          . "/opt/conda/etc/profile.d/conda.sh"
+          conda activate vmecpp
+          conda install --yes --quiet pytest
+          # exclude test that requires VMEC2000 to be installed:
+          # it's not available as a conda package
+          python -m pytest -k 'not test_ensure_vmec2000_input_from_vmecpp_input' tests/
