@@ -25,9 +25,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
       - name: Build docs
         run: |
-          sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev
+          sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
           # must actually install the package otherwise sphinx can't autogenerate the API reference
           python -m pip install -vvv .[docs]
           sphinx-apidoc --module-first --no-toc --force --separate -o docs/api src/vmecpp/ && sphinx-build docs html_docs
