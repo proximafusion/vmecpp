@@ -59,6 +59,7 @@ VmecINDATAPyWrapper::VmecINDATAPyWrapper(const VmecINDATA& indata)
       delt(indata.delt),
       tcon0(indata.tcon0),
       lforbal(indata.lforbal),
+      return_outputs_even_if_not_converged(indata.return_outputs_even_if_not_converged),
       raxis_c(ToEigenVector(indata.raxis_c)),
       zaxis_s(ToEigenVector(indata.zaxis_s)),
       rbc(ToEigenMatrix(indata.rbc, mpol, 2 * ntor + 1)),
@@ -112,6 +113,7 @@ VmecINDATAPyWrapper::operator VmecINDATA() const {
   indata.delt = delt;
   indata.tcon0 = tcon0;
   indata.lforbal = lforbal;
+  indata.return_outputs_even_if_not_converged = return_outputs_even_if_not_converged;
   indata.raxis_c.assign(raxis_c.begin(), raxis_c.end());
   indata.zaxis_s.assign(zaxis_s.begin(), zaxis_s.end());
   indata.raxis_s.assign(raxis_s.begin(), raxis_s.end());

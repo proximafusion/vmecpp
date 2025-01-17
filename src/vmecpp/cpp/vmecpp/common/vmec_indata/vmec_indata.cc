@@ -141,6 +141,7 @@ VmecINDATA::VmecINDATA() {
   tcon0 = 1.0;
   lforbal = false;
   iteration_style = IterationStyle::VMEC_8_52;
+  return_outputs_even_if_not_converged = false;
 
   // zero-initialized magnetic axis
   raxis_c.resize(ntor + 1);
@@ -195,6 +196,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
+  WriteH5Dataset(return_outputs_even_if_not_converged, "/indata/return_outputs_even_if_not_converged", file);
 
   // 1D arrays
   WriteH5Dataset(ns_array, "/indata/ns_array", file);
@@ -291,6 +293,11 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& indata, H5::H5File& from_file) {
   ReadH5Dataset(indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(indata.lforbal, "/indata/lforbal", from_file);
+  if (from_file.nameExists("/indata/return_outputs_even_if_not_converged")) {
+    ReadH5Dataset(indata.return_outputs_even_if_not_converged, "/indata/return_outputs_even_if_not_converged", from_file);
+  } else {
+    indata.return_outputs_even_if_not_converged = false;
+  }
 
   // 1D arrays
   ReadH5Dataset(indata.ns_array, "/indata/ns_array", from_file);
@@ -730,6 +737,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     }
   }
 
+  auto maybe_return_outputs_even_if_not_converged = JsonReadBool(j, "return_outputs_even_if_not_converged");
+  if (!maybe_return_outputs_even_if_not_converged.ok()) {
+    return maybe_return_outputs_even_if_not_converged.status();
+  }
+  if (maybe_return_outputs_even_if_not_converged->has_value()) {
+    vmec_indata.return_outputs_even_if_not_converged = maybe_return_outputs_even_if_not_converged->value();
+  }
+
   // -----------------------------------------------
 
   auto maybe_raxis_c = JsonReadVectorDouble(j, "raxis_c");
@@ -1001,6 +1016,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
   output["iteration_style"] = ToString(iteration_style);
+  output["return_outputs_even_if_not_converged"] = return_outputs_even_if_not_converged;
 
   // Initial Guess for Magnetic Axis Geometry
   output["raxis_c"] = raxis_c;
@@ -1291,6 +1307,9 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         "input variable 'iteration_style' must be 'vmec_8_52', but is %s\n",
         ToString(vmec_indata.iteration_style)));
   }
+
+  // return_outputs_even_if_not_converged
+  // nothing to check here: return_outputs_even_if_not_converged can be true or false and both are valid...
 
   /* --------------------------------- */
 

@@ -306,7 +306,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     // if ier_flag .eq. bad_jacobian_flag, repeat once again with ns=3 before
   }  // jacob_off
 
-  if (status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
+  if (status_ != VmecStatus::SUCCESSFUL_TERMINATION && !indata_.return_outputs_even_if_not_converged) {
     const auto msg = "VMEC++ did not converge";
     return absl::InternalError(msg);
   }

@@ -181,6 +181,7 @@ PYBIND11_MODULE(_vmecpp, m) {
   pyindata.def_readwrite("delt", &VmecINDATAPyWrapper::delt)
       .def_readwrite("tcon0", &VmecINDATAPyWrapper::tcon0)
       .def_readwrite("lforbal", &VmecINDATAPyWrapper::lforbal)
+      .def_readwrite("return_outputs_even_if_not_converged", &VmecINDATAPyWrapper::return_outputs_even_if_not_converged)
 
       // initial guess for magnetic axis
       // disallow re-assignment of the whole vector (to preserve sizes
