@@ -8,7 +8,7 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE.txt)
-[![CI](https://github.com/jons-pf/vmecpp/actions/workflows/tests.yaml/badge.svg)](https://github.com/jons-pf/vmecpp/actions/workflows/tests.yaml)
+[![CI](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml)
 ![Python version](https://img.shields.io/badge/python-3.10-blue)
 
 VMEC++ is a Python-friendly, from-scratch reimplementation in C++ of the Variational Moments Equilibrium Code (VMEC),
@@ -49,7 +49,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 ## Usage
 
 This is a quick overview of the three main ways in which you can use VMEC++.
-See [examples/](https://github.com/jons-pf/vmecpp/blob/main/examples/) for some actual example scripts.
+See [examples/](https://github.com/proximafusion/vmecpp/blob/main/examples/) for some actual example scripts.
 
 ### As a Python package
 
@@ -97,7 +97,7 @@ python -m vmecpp --help
 
 ### As a Docker image
 
-See [docker/README.md](https://github.com/jons-pf/vmecpp/blob/main/docker/README.md).
+See [docker/README.md](https://github.com/proximafusion/vmecpp/blob/main/docker/README.md).
 
 ## Installation
 
@@ -127,7 +127,7 @@ sudo chmod u+x /usr/local/bin/bazel
 Assuming git has access to the SSH key you use to log into GitHub (only until we make the repo public and publish official wheels to PyPI):
 
 ```console
-pip install git+ssh://git@github.com/jons-pf/vmecpp.git
+pip install git+ssh://git@github.com/proximafusion/vmecpp.git
 ```
 
 The procedure will take a few minutes as it will build VMEC++ and some dependencies from source.
@@ -139,14 +139,14 @@ Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 ### C++ build from source
 
 ```console
-git clone https://github.com/jons-pf/vmecpp
+git clone https://github.com/proximafusion/vmecpp
 cd vmecpp/src/vmecpp/cpp
 bazel build --config=opt //...
 ```
 
 All artifacts are now under `./bazel-bin/vmecpp`.
 
-The main C++ source code tree starts in [`src/vmecpp/cpp/vmecpp`](https://github.com/jons-pf/vmecpp/blob/main/src/vmecpp/cpp/vmecpp).
+The main C++ source code tree starts in [`src/vmecpp/cpp/vmecpp`](https://github.com/proximafusion/vmecpp/blob/main/src/vmecpp/cpp/vmecpp).
 
 ## Hot restart
 
