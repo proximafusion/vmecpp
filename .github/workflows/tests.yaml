@@ -40,9 +40,6 @@ jobs:
         if: ${{ contains(matrix.os, 'macos') }}
         run: |
           brew install gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json protobuf lapack git open-mpi
-          # Add missing symbolic links for gfortran
-          ln -s $(which gfortran-14) /usr/local/bin/gfortran
-          ln -s $(which gcc-14) /usr/local/bin/gcc
       - name: Install required packages for Ubuntu
         if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
@@ -51,6 +48,10 @@ jobs:
           # needed for some VMEC++/VMEC2000 compatibility tests
           python -m pip install vmec@https://storage.googleapis.com/proxima-hosting/wheels/vmec-0.0.4-cp310-cp310-linux_x86_64.whl
       - name: Install package
-        run: python -m pip install -vvv .[test]
+        run: |
+          # on Ubuntu we would not need this, but on MacOS we need to point CMake to gfortran-14 and gcc-14
+          export FC=$(which gfortran-14 || which gfortran)
+          export CC=$(which gcc-14 || which gcc)
+          python -m pip install -vvv .[test]
       - name: Test package
         run: python -m pytest tests/
