@@ -1,4 +1,4 @@
-name: CI
+name: Install and test Python package
 
 on:
   pull_request:
