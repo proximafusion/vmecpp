@@ -101,32 +101,17 @@ See [docker/README.md](https://github.com/proximafusion/vmecpp/blob/main/docker/
 
 ## Installation
 
-The only supported platform at the moment is Ubuntu 22.04, but installation on any sufficiently recent Linux machine should work fine following a very similar process.
+## Ubuntu 22.04
 
-### Pre-requisites
-
-Some libraries are required even when installing VMEC++ as a Python package.
-
-On Ubuntu 22.04, they are available as these system packages:
-
-```console
-sudo apt-get install build-essential libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
+1. Install required system packages:
+```shell
+sudo apt-get install build-essential cmake libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
 ```
 
-You also need [bazelisk](https://github.com/bazelbuild/bazelisk), see link for up to date installation instructions.
-For convenience, here is one possible way to install bazelisk on a Linux amd64 machine (please make sure this makes sense for your setup before running the commands):
+2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment).
+   This requires that git has access to the SSH key you use to log into GitHub (only until we make the repo public and publish official wheels to PyPI):
 
-```console
-wget https://github.com/bazelbuild/bazelisk/releases/download/v1.24.1/bazelisk-linux-amd64
-sudo mv bazelisk-linux-amd64 /usr/local/bin/bazel
-sudo chmod u+x /usr/local/bin/bazel
-```
-
-### Python package
-
-Assuming git has access to the SSH key you use to log into GitHub (only until we make the repo public and publish official wheels to PyPI):
-
-```console
+```shell
 pip install git+ssh://git@github.com/proximafusion/vmecpp.git
 ```
 
@@ -136,17 +121,54 @@ A common issue on Ubuntu 22.04 is a build failure due to no `python` executable 
 When installing in a virtual environment (which is always a good idea anyways) `python` will be present.
 Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 
-### C++ build from source
+## MacOS
 
-```console
-git clone https://github.com/proximafusion/vmecpp
-cd vmecpp/src/vmecpp/cpp
-bazel build --config=opt //...
+1. Install dependencies via [Homebrew](https://brew.sh/):
+
+```shell
+brew install gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json protobuf lapack git open-mpi
 ```
 
-All artifacts are now under `./bazel-bin/vmecpp`.
+2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
 
-The main C++ source code tree starts in [`src/vmecpp/cpp/vmecpp`](https://github.com/proximafusion/vmecpp/blob/main/src/vmecpp/cpp/vmecpp).
+```shell
+# tell cmake where to find gfortra and gcc as they have non-standard names
+export FC=$(which gfortran-14)
+export CC=$(which gcc-14)
+python -m pip install git+ssh://git@github.com/proximafusion/vmecpp.git
+```
+
+## As part of a conda environment
+
+VMEC++ is currently not packaged for conda, but all its dependencies are and VMEC++
+can be installed inside a conda environment. An example `environment.yml` file is
+provided [here](https://github.com/proximafusion/vmecpp/blob/main/environment.yml) that
+can be used, after cloning the `vmecpp` repository, as:
+
+```shell
+git clone --recurse-submodules git@github.com:proximafusion/vmecpp
+cd vmecpp
+# this creates a "vmecpp" conda environment
+conda env create --file environment.yml
+# use the environment as usual
+conda activate vmecpp
+```
+
+### C++ build from source
+
+After having installed the build dependencies as shows above, you can compile
+the C++ core of VMEC++ via CMake or Bazel. E.g. with CMake:
+
+```shell
+git clone --recurse-submodules git@github.com:proximafusion/vmecpp
+cd vmecpp
+cmake -B build  # create and configure build directory
+cmake --build build --parallel  # build VMEC++
+# you can now use the vmec_standalone C++ executable to run VMEC on a VMEC++ input JSON file, e.g.
+./build/vmec_standalone ./src/vmecpp/cpp/vmecpp/test_data/solovev.json
+```
+
+The main C++ source code tree is located at [`src/vmecpp/cpp/vmecpp`](https://github.com/proximafusion/vmecpp/blob/main/src/vmecpp/cpp/vmecpp).
 
 ## Hot restart
 
