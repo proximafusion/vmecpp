@@ -136,7 +136,7 @@ brew install gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json protobuf lapa
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
 
 ```shell
-# tell cmake where to find gfortra and gcc as they have non-standard names
+# tell cmake where to find gfortran and gcc as they have non-standard names
 export FC=$(which gfortran-14)
 export CC=$(which gcc-14)
 python -m pip install git+ssh://git@github.com/proximafusion/vmecpp.git
@@ -160,7 +160,7 @@ conda activate vmecpp
 
 ### C++ build from source
 
-After having installed the build dependencies as shows above, you can compile
+After having installed the build dependencies as shown above, you can compile
 the C++ core of VMEC++ via CMake or Bazel. E.g. with CMake:
 
 ```shell
@@ -176,8 +176,8 @@ The main C++ source code tree is located at [`src/vmecpp/cpp/vmecpp`](https://gi
 
 ## Hot restart
 
-By passing the output of a VMEC++ run as inital state for a subsequent one,
-VMEC++ is initialized using the previosly converged equilibrium.
+By passing the output of a VMEC++ run as initial state for a subsequent one,
+VMEC++ is initialized using the previously converged equilibrium.
 This can dramatically decrease the number of iterations to convergence when running
 VMEC++ on a configuration that is very similar to the converged equilibrium.
 
@@ -254,16 +254,14 @@ VMEC++:
 ## Roadmap
 
 Some of the things we are planning for VMEC++'s future:
-- VMEC++ usable as a C++ bazel module
-- readthedocs docs
 - free-boundary hot-restart in Python
 - open-sourcing the full VMEC++ test suite (including the Verification&Validation part that compares `wout` contents)
 - open-sourcing the source code to reproduce VMEC++'s performance benchmarks
+- VMEC++ usable as a C++ bazel module
 
 Some items we do not plan to work on, but where community ownership is welcome:
-- adding cmake as an alternative C++ build system, making VMEC++ a well-behaved CMake dependency
 - packaging VMEC++ for other platforms or package managers (e.g. conda, homebrew, ...)
-- macOS and native Windows support
+- native Windows support
 - 2D preconditioner using [`bcyclic_plus_plus`](https://code.ornl.gov/m4c/bcyclic_plus_plus)
 
 ## License
