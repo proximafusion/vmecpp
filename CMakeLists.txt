@@ -81,4 +81,4 @@ pybind11_add_module(_vmecpp ${vmecpp_pybind11_sources})
 target_link_libraries(_vmecpp PRIVATE vmecpp_core)
 
 install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
-install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
+install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/.)

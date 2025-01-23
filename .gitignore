@@ -10,3 +10,4 @@ __pycache__
 # bazel output directories
 bazel-*
 src/vmecpp/cpp/_vmecpp.so
+src/vmecpp/cpp/bazel_artifacts
