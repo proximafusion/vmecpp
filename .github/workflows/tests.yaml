@@ -44,9 +44,10 @@ jobs:
         if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
-          sudo apt-get update && sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev libnetcdff-dev libscalapack-openmpi-dev
-          # needed for some VMEC++/VMEC2000 compatibility tests
-          python -m pip install vmec@https://storage.googleapis.com/proxima-hosting/wheels/vmec-0.0.4-cp310-cp310-linux_x86_64.whl
+          sudo apt-get update && sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev libnetcdff-dev libscalapack-openmpi-dev libopenblas-dev
+          # custom wheel for VMEC2000, needed for some VMEC++/VMEC2000 compatibility tests
+          # NOTE: this wheel is only guaranteed to work on Ubuntu 22.04
+          python -m pip install vmec@https://anaconda.org/eguiraud-pf/vmec/0.0.6/download/vmec-0.0.6-cp310-cp310-linux_x86_64.whl
       - name: Install package
         run: |
           # on Ubuntu we would not need this, but on MacOS we need to point CMake to gfortran-14 and gcc-14
