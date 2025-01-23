@@ -105,7 +105,7 @@ See [docker/README.md](https://github.com/proximafusion/vmecpp/blob/main/docker/
 
 ## Installation
 
-## Ubuntu 22.04
+### Ubuntu 22.04
 
 1. Install required system packages:
 ```shell
@@ -125,7 +125,7 @@ A common issue on Ubuntu 22.04 is a build failure due to no `python` executable 
 When installing in a virtual environment (which is always a good idea anyways) `python` will be present.
 Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 
-## MacOS
+### MacOS
 
 1. Install dependencies via [Homebrew](https://brew.sh/):
 
@@ -142,7 +142,7 @@ export CC=$(which gcc-14)
 python3.10 -m pip install git+ssh://git@github.com/proximafusion/vmecpp.git
 ```
 
-## As part of a conda environment
+### As part of a conda environment
 
 VMEC++ is currently not packaged for conda, but all its dependencies are and VMEC++
 can be installed inside a conda environment. An example `environment.yml` file is
