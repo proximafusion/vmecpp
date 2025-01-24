@@ -7,7 +7,7 @@ from pathlib import Path
 
 from simsopt import geo
 
-from vmecpp.cpp.third_party.indata2json import indata_to_json
+from vmecpp import _util
 from vmecpp.cpp.vmecpp import simsopt_compat
 
 # We don't want to install tests and test data as part of the package,
@@ -29,7 +29,7 @@ def test_surfacerzfourier_from_vmecppindata_no_ntheta_nphi():
     reference_surface = geo.SurfaceRZFourier.from_vmec_input(str(fortran_indata_file))
 
     with tempfile.TemporaryDirectory():
-        vmecpp_indata_file = indata_to_json.indata_to_json(fortran_indata_file)
+        vmecpp_indata_file = _util.indata_to_json(fortran_indata_file)
         test_surface = simsopt_compat.surfacerzfourier_from_vmecppindata(
             Path(vmecpp_indata_file)
         )
