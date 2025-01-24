@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Generator
 
-from vmecpp.cpp.third_party.indata2json import indata_to_json as i2j
+from vmecpp import _util
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def ensure_vmecpp_input(input_path: Path) -> Generator[Path, None, None]:
             " VMEC++ input JSON using the //third_party/indata2json tool."
         )
 
-        vmecpp_input_path = i2j.indata_to_json(input_path)
+        vmecpp_input_path = _util.indata_to_json(input_path)
         try:
             yield vmecpp_input_path
         finally:
