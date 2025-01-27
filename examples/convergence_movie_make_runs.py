@@ -17,17 +17,24 @@ TEST_DATA_DIR = (
     Path(__file__).parent.parent / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 )
 
-input_file = TEST_DATA_DIR / "w7x.json"
+# input_file = TEST_DATA_DIR / "w7x.json"
+input_file = TEST_DATA_DIR / "w7x_generic_initial_guess.json"
 input = vmecpp.VmecInput.from_file(input_file)
 
 # adjust as needed - we don't vendor the mgrid file, since it is too large
 input.mgrid_file = "/home/jons/results/vmec_w7x/mgrid_w7x.nc"
+# input.mgrid_file = "/home/jons/results/vmec_w7x/mgrid_w7x_nv72.nc"
 
 input.return_outputs_even_if_not_converged = True
 
+# # higher-res for nicer plots
+# input.ntheta = 100
+# input.nzeta = 72
+
 maximum_iterations = 20000
 
-step = 100
+# step = 100
+step = 10
 
 verbose = False
 max_threads = 6
