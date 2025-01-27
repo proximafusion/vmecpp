@@ -1101,7 +1101,7 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
       *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
       last_preconditioner_update_, last_full_update_nestor_, *r_[thread_id],
       fc_, thread_id, iter1_, iter2_, checkpoint,
-      iterations_before_checkpointing);
+      iterations_before_checkpointing, verbose_);
   if (!reached_checkpoint.ok()) {
     return reached_checkpoint;
   }
