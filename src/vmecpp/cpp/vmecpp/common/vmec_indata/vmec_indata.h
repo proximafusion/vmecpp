@@ -202,6 +202,10 @@ class VmecINDATA {
   // based on)
   IterationStyle iteration_style;
 
+  // If true, return the outputs even if VMEC++ did not converge.
+  // Otherwise (default = false), an absl::InternalError will be returned.
+  bool return_outputs_even_if_not_converged;
+
   // ---------------------------------
   // initial guess for magnetic axis
 
