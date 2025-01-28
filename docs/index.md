@@ -1,3 +1,5 @@
+<img src="proxima_logo.png" alt="Proxima Fusion logo" width="400px">
+
 # VMEC++
 
 ```{toctree}
@@ -22,7 +24,7 @@ some extra features such as hot-restart. As a result it can run on a laptop, but
 for large-scale stellarator optimization pipelines.
 
 On the other hand, some features of the original Fortran VMEC are not available in VMEC++.
-See [below](#known-differences-with-respect-to-parvmec-vmec2000) for more details.
+See [below](#differences-with-respect-to-parvmec-vmec2000) for more details.
 
 ```{include} ../README.md
 :start-after: <!-- SPHINX-START -->
