@@ -57,6 +57,8 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 
 This is a quick overview of the three main ways in which you can use VMEC++.
 See [examples/](https://github.com/proximafusion/vmecpp/blob/main/examples/) for some actual example scripts.
+Suitable input files are found in [`examples/data`](https://github.com/proximafusion/vmecpp/blob/main/examples/data).
+If unsure where to start, we suggest to give the [`w7x`](https://github.com/proximafusion/vmecpp/blob/main/examples/data/w7x.json) case a try, which is a five-field-period stellarator case for the [Wendelstein 7-X](https://www.ipp.mpg.de/w7x) stellarator.
 
 ### As a Python package
 
@@ -72,7 +74,7 @@ vmec_input = vmecpp.VmecInput.from_file("input.w7x")
 vmec_output = vmecpp.run(vmec_input)
 
 # inspect the results or save them as a classic wout file
-vmec_output.wout.save("wout_solovev.nc")
+vmec_output.wout.save("wout_w7x.nc")
 ```
 
 Note that other output files are planned to be accessible via members of the `output` object called `threed1`, `jxbout` and `mercier` soon.
@@ -96,7 +98,7 @@ In a terminal in which Python has access to the VMEC++ package:
 
 ```console
 # run on a given input file -> produce corresponding wout_w7x.nc
-python -m vmecpp "input.w7x"
+python -m vmecpp examples/data/input.w7x
 
 # check all options
 python -m vmecpp --help
@@ -172,7 +174,7 @@ cd vmecpp
 cmake -B build  # create and configure build directory
 cmake --build build --parallel  # build VMEC++
 # you can now use the vmec_standalone C++ executable to run VMEC on a VMEC++ input JSON file, e.g.
-./build/vmec_standalone ./src/vmecpp/cpp/vmecpp/test_data/solovev.json
+./build/vmec_standalone ./examples/data/solovev.json
 ```
 
 The main C++ source code tree is located at [`src/vmecpp/cpp/vmecpp`](https://github.com/proximafusion/vmecpp/blob/main/src/vmecpp/cpp/vmecpp).
