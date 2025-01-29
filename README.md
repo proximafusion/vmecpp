@@ -65,13 +65,13 @@ VMEC++ offers a simple Python API:
 import vmecpp
 
 # construct a VmecInput object, e.g. from a classic Fortran input file
-input = vmecpp.VmecInput.from_file("input.w7x")
+vmec_input = vmecpp.VmecInput.from_file("input.w7x")
 
 # run VMEC++
-output = vmecpp.run(input)
+vmec_output = vmecpp.run(vmec_input)
 
 # inspect the results or save them as a classic wout file
-output.wout.save("wout_solovev.nc")
+vmec_output.wout.save("wout_solovev.nc")
 ```
 
 Note that other output files are planned to be accessible via members of the `output` object called `threed1`, `jxbout` and `mercier` soon.
