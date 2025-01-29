@@ -687,10 +687,10 @@ void IdealMhdModel::evalFResPrecd(const std::vector<double>& localFResPrecd) {
 
 absl::StatusOr<bool> IdealMhdModel::update(
     FourierGeometry& m_decomposed_x, FourierGeometry& m_physical_x,
-    HandoverStorage& m_h, FourierForces& m_decomposed_f,
+    FourierForces& m_decomposed_f,
     FourierForces& m_physical_f, bool& m_need_restart,
     int& m_last_preconditioner_update, int& m_last_full_update_nestor,
-    const RadialPartitioning& r, FlowControl& m_fc, const int thread_id,
+    FlowControl& m_fc,
     const int iter1, const int iter2, const VmecCheckpoint& checkpoint,
     const int iterations_before_checkpointing, bool verbose) {
   // preprocess Fourier coefficients of geometry
@@ -3306,10 +3306,10 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   // call serial Thomas solver for every mode number individually
   for (int mn = mnmin; mn < mnmax; ++mn) {
     TridiagonalSolveSerial(m_h_.all_ar[mn], m_h_.all_dr[mn], m_h_.all_br[mn],
-                           m_h_.all_cr[mn], m_fc_.ns, jMin[mn], jMax,
+                           m_h_.all_cr[mn], jMin[mn], jMax,
                            s_.num_basis);
     TridiagonalSolveSerial(m_h_.all_az[mn], m_h_.all_dz[mn], m_h_.all_bz[mn],
-                           m_h_.all_cz[mn], m_fc_.ns, jMin[mn], jMax,
+                           m_h_.all_cz[mn], jMin[mn], jMax,
                            s_.num_basis);
   }  // mn
 #pragma omp barrier

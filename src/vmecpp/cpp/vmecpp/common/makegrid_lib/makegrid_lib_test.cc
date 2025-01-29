@@ -38,7 +38,6 @@ using magnetics::ImportMagneticConfigurationFromCoilsFile;
 using magnetics::CircularFilament;
 using magnetics::Coil;
 using magnetics::CurrentCarrier;
-using magnetics::FourierFilament;
 using magnetics::InfiniteStraightFilament;
 using magnetics::MagneticConfiguration;
 using magnetics::PolygonFilament;

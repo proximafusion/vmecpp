@@ -104,6 +104,13 @@ void SurfaceGeometry::inverseDFT(
     const std::span<const double> zSC, const std::span<const double> zCS,
     const std::span<const double> zCC, const std::span<const double> zSS,
     bool fullUpdate) {
+
+  // TODO(jons): implement lasym-related code
+  (void)rSC;
+  (void)rCS;
+  (void)zCC;
+  (void)zSS;
+
   // ----------------
 
   absl::c_fill_n(r1b, s_.nThetaEven * s_.nZeta, 0);

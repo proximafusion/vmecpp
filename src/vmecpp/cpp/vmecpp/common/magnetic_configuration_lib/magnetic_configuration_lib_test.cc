@@ -873,126 +873,6 @@ INSTANTIATE_TEST_SUITE_P(TestMagneticConfigurationLib,
 
 // -------------------
 
-class IsFourierFilamentFullyPopulatedTest
-    : public TestWithParam< ::std::tuple<bool, bool, bool, bool, bool, bool,
-                                         bool, bool, bool, bool> > {
- protected:
-  void SetUp() override {
-    std::tie(specify_name_, specify_x_cos_, specify_x_sin_,
-             specify_x_mode_number_, specify_y_cos_, specify_y_sin_,
-             specify_y_mode_number_, specify_z_cos_, specify_z_sin_,
-             specify_z_mode_number_) = GetParam();
-  }
-  bool specify_name_;
-  bool specify_x_cos_;
-  bool specify_x_sin_;
-  bool specify_x_mode_number_;
-  bool specify_y_cos_;
-  bool specify_y_sin_;
-  bool specify_y_mode_number_;
-  bool specify_z_cos_;
-  bool specify_z_sin_;
-  bool specify_z_mode_number_;
-};
-
-TEST_P(IsFourierFilamentFullyPopulatedTest,
-       CheckIsFourierFilamentFullyPopulated) {
-  FourierFilament fourier_filament;
-  if (specify_name_) {
-    fourier_filament.set_name("filament_4");
-  }
-  if (specify_x_cos_ || specify_x_sin_ || specify_x_mode_number_) {
-    FourierCoefficient1D *x = fourier_filament.add_x();
-    if (specify_x_cos_) {
-      x->set_fc_cos(1.23);
-    }
-    if (specify_x_sin_) {
-      x->set_fc_sin(4.56);
-    }
-    if (specify_x_mode_number_) {
-      x->set_mode_number(1);
-    }
-  }
-  if (specify_y_cos_ || specify_y_sin_ || specify_y_mode_number_) {
-    FourierCoefficient1D *y = fourier_filament.add_y();
-    if (specify_y_cos_) {
-      y->set_fc_cos(3.14);
-    }
-    if (specify_y_sin_) {
-      y->set_fc_sin(2.71);
-    }
-    if (specify_y_mode_number_) {
-      y->set_mode_number(3);
-    }
-  }
-  if (specify_z_cos_ || specify_z_sin_ || specify_z_mode_number_) {
-    FourierCoefficient1D *z = fourier_filament.add_z();
-    if (specify_z_cos_) {
-      z->set_fc_cos(3.21);
-    }
-    if (specify_z_sin_) {
-      z->set_fc_sin(6.54);
-    }
-    if (specify_z_mode_number_) {
-      z->set_mode_number(5);
-    }
-  }
-
-  absl::Status status = IsFourierFilamentFullyPopulated(fourier_filament);
-
-  if (fourier_filament.x_size() < 1 || fourier_filament.y_size() < 1 ||
-      fourier_filament.z_size() < 1) {
-    EXPECT_FALSE(status.ok());
-  }
-
-  int num_x_coefficients = 0;
-  bool has_x_mode_numbers = true;
-  for (const FourierCoefficient1D &x : fourier_filament.x()) {
-    if (x.has_fc_cos()) {
-      num_x_coefficients++;
-    }
-    if (x.has_fc_sin()) {
-      num_x_coefficients++;
-    }
-    has_x_mode_numbers &= x.has_mode_number();
-  }
-  int num_y_coefficients = 0;
-  bool has_y_mode_numbers = true;
-  for (const FourierCoefficient1D &y : fourier_filament.y()) {
-    if (y.has_fc_cos()) {
-      num_y_coefficients++;
-    }
-    if (y.has_fc_sin()) {
-      num_y_coefficients++;
-    }
-    has_y_mode_numbers &= y.has_mode_number();
-  }
-  int num_z_coefficients = 0;
-  bool has_z_mode_numbers = true;
-  for (const FourierCoefficient1D &z : fourier_filament.z()) {
-    if (z.has_fc_cos()) {
-      num_z_coefficients++;
-    }
-    if (z.has_fc_sin()) {
-      num_z_coefficients++;
-    }
-    has_z_mode_numbers &= z.has_mode_number();
-  }
-  if (num_x_coefficients < 1 || !has_x_mode_numbers || num_y_coefficients < 1 ||
-      !has_y_mode_numbers || num_z_coefficients < 1 || !has_z_mode_numbers) {
-    EXPECT_FALSE(status.ok());
-  } else {
-    EXPECT_TRUE(status.ok());
-  }
-}  // CheckIsFourierFilamentFullyPopulated
-
-INSTANTIATE_TEST_SUITE_P(TestMagneticConfigurationLib,
-                         IsFourierFilamentFullyPopulatedTest,
-                         Combine(Bool(), Bool(), Bool(), Bool(), Bool(), Bool(),
-                                 Bool(), Bool(), Bool(), Bool()));
-
-// -------------------
-
 class IsMagneticConfigurationFullyPopulatedTest : public Test {
  protected:
   void SetUp() override {
@@ -1072,27 +952,6 @@ TEST_F(IsMagneticConfigurationFullyPopulatedTest,
 
   EXPECT_TRUE(status.ok());
 }  // CheckIsMagneticConfigurationFullyPopulatedWithPolygonFilament
-
-TEST_F(IsMagneticConfigurationFullyPopulatedTest,
-       CheckIsMagneticConfigurationFullyPopulatedWithFourierFilament) {
-  FourierFilament *fourier_filament =
-      current_carrier_->mutable_fourier_filament();
-  FourierCoefficient1D *x = fourier_filament->add_x();
-  x->set_fc_cos(3.14);
-  x->set_mode_number(1);
-  FourierCoefficient1D *y = fourier_filament->add_y();
-  y->set_fc_sin(2.71);
-  y->set_mode_number(3);
-  FourierCoefficient1D *z = fourier_filament->add_z();
-  z->set_fc_cos(3.14);
-  z->set_fc_sin(2.71);
-  z->set_mode_number(5);
-
-  absl::Status status =
-      IsMagneticConfigurationFullyPopulated(magnetic_configuration_);
-
-  EXPECT_TRUE(status.ok());
-}  // CheckIsMagneticConfigurationFullyPopulatedWithFourierFilament
 
 // -------------------
 
@@ -1273,73 +1132,6 @@ INSTANTIATE_TEST_SUITE_P(TestMagneticConfigurationLib, PrintPolygonFilamentTest,
                          Combine(Bool(), Bool()));
 
 // -------------------
-
-class PrintFourierFilamentTest
-    : public TestWithParam< ::std::tuple<bool, bool, bool, bool> > {
- protected:
-  void SetUp() override {
-    std::tie(specify_name_, specify_x_, specify_y_, specify_z_) = GetParam();
-  }
-  bool specify_name_;
-  bool specify_x_;
-  bool specify_y_;
-  bool specify_z_;
-};
-
-TEST_P(PrintFourierFilamentTest, CheckPrintFourierFilament) {
-  FourierFilament fourier_filament;
-  if (specify_name_) {
-    fourier_filament.set_name("filament_4");
-  }
-  if (specify_x_) {
-    fourier_filament.add_x();
-  }
-  if (specify_y_) {
-    FourierCoefficient1D *y0 = fourier_filament.add_y();
-    y0->set_fc_cos(1.23);
-    FourierCoefficient1D *y1 = fourier_filament.add_y();
-    y1->set_fc_sin(4.56);
-  }
-  if (specify_z_) {
-    fourier_filament.add_z();
-    FourierCoefficient1D *z1 = fourier_filament.add_z();
-    z1->set_fc_cos(3.14);
-    z1->set_fc_sin(2.71);
-  }
-
-  // https://stackoverflow.com/a/33186201
-  testing::internal::CaptureStdout();
-  PrintFourierFilament(fourier_filament);
-  std::string output = testing::internal::GetCapturedStdout();
-
-  std::string expected_output = "FourierFilament {\n";
-  if (specify_name_) {
-    expected_output += "  name: 'filament_4'\n";
-  } else {
-    expected_output += "  name: none\n";
-  }
-  if (specify_x_) {
-    expected_output += "  x: [0]\n";
-  } else {
-    expected_output += "  x: none\n";
-  }
-  if (specify_y_) {
-    expected_output += "  y: [2]\n";
-  } else {
-    expected_output += "  y: none\n";
-  }
-  if (specify_z_) {
-    expected_output += "  z: [2]\n";
-  } else {
-    expected_output += "  z: none\n";
-  }
-  expected_output += "}\n";
-
-  EXPECT_TRUE(output == expected_output);
-}  // CheckPrintFourierFilament
-
-INSTANTIATE_TEST_SUITE_P(TestMagneticConfigurationLib, PrintFourierFilamentTest,
-                         Combine(Bool(), Bool(), Bool(), Bool()));
 
 TEST(TestMagneticConfigurationLib, CheckMoveRadiallyOutwardCircularFilament) {
   const double initial_radius = 3.14;
@@ -1536,20 +1328,18 @@ TEST(TestMagneticConfigurationLib,
                             kTolerance));
   EXPECT_EQ(vertex_3->z(), 3.3);
 
-  // Add a FourierFilament (which is not supported yet to be radially moved).
+  // Add an InfiniteStraightFilament (which is not supported to be radially moved).
   CurrentCarrier *current_carrier_2 = coil->add_current_carriers();
-  FourierFilament *fourier_filament =
-      current_carrier_2->mutable_fourier_filament();
-  FourierCoefficient1D *x0 = fourier_filament->add_x();
-  x0->set_mode_number(0);
-  x0->set_fc_cos(1.23);
-  FourierCoefficient1D *y0 = fourier_filament->add_y();
-  y0->set_mode_number(1);
-  y0->set_fc_sin(4.56);
-  FourierCoefficient1D *z0 = fourier_filament->add_z();
-  z0->set_mode_number(2);
-  z0->set_fc_cos(3.14);
-  z0->set_fc_sin(2.71);
+  InfiniteStraightFilament *infinite_straight_filament =
+      current_carrier_2->mutable_infinite_straight_filament();
+  Vector3d *origin = infinite_straight_filament->mutable_origin();
+  origin->set_x(1.23);
+  origin->set_y(4.56);
+  origin->set_z(7.89);
+  Vector3d *direction = infinite_straight_filament->mutable_direction();
+  direction->set_x(9.87);
+  direction->set_y(6.54);
+  direction->set_z(3.21);
 
   // Check that the MagneticConfiguration is fully populated.
   status = IsMagneticConfigurationFullyPopulated(magnetic_configuration);
@@ -1560,7 +1350,7 @@ TEST(TestMagneticConfigurationLib,
                         /*m_magnetic_configuration=*/magnetic_configuration);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.message(),
-            "Cannot perform radial movement if an FourierFilament is present "
+            "Cannot perform radial movement if an InfiniteStraightFilament is present "
             "in the MagneticConfiguration");
 }  // CheckMoveRadiallyOutwardMagneticConfiguration
 

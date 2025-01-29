@@ -83,10 +83,10 @@ class IdealMhdModel {
   // or an error status if something went wrong.
   absl::StatusOr<bool> update(
       FourierGeometry& m_decomposed_x, FourierGeometry& m_physical_x,
-      HandoverStorage& m_h, FourierForces& m_decomposed_f,
+      FourierForces& m_decomposed_f,
       FourierForces& m_physical_f, bool& m_need_restart,
       int& m_last_preconditioner_update, int& m_last_full_update_nestor,
-      const RadialPartitioning& r, FlowControl& m_fc, const int thread_id,
+      FlowControl& m_fc,
       const int iter1, const int iter2,
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       const int iterations_before_checkpointing = INT_MAX, bool verbose = true);

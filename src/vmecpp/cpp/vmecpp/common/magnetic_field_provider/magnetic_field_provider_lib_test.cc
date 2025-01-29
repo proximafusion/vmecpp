@@ -1184,10 +1184,6 @@ TEST(TestMagneticField, CheckFullyPopulatedMagneticConfiguration) {
             CHECK_OK(MagneticField(current_carrier.polygon_filament(), current,
                                    evaluation_positions, magnetic_field));
             break;
-          case CurrentCarrier::TypeCase::kFourierFilament:
-            CHECK_OK(MagneticField(current_carrier.fourier_filament(), current,
-                                   evaluation_positions, magnetic_field));
-            break;
           case CurrentCarrier::TypeCase::TYPE_NOT_SET:
             // consider as empty CurrentCarrier -> ignore
             break;
@@ -1530,11 +1526,6 @@ TEST(TestVectorPotential, CheckFullyPopulatedMagneticConfiguration) {
             break;
           case CurrentCarrier::TypeCase::kPolygonFilament:
             CHECK_OK(VectorPotential(current_carrier.polygon_filament(),
-                                     current, evaluation_positions,
-                                     vector_potential));
-            break;
-          case CurrentCarrier::TypeCase::kFourierFilament:
-            CHECK_OK(VectorPotential(current_carrier.fourier_filament(),
                                      current, evaluation_positions,
                                      vector_potential));
             break;

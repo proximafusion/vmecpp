@@ -1270,7 +1270,7 @@ OutputQuantities ComputeOutputQuantities(
 // gather data from all threads into the main thread
 VmecInternalResults GatherDataFromThreads(
     int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
-    const VmecConstants& constants, const HandoverStorage& h,
+    const VmecConstants& constants,
     const std::vector<std::unique_ptr<RadialPartitioning> >&
         radial_partitioning,
     const std::vector<std::unique_ptr<FourierGeometry> >& decomposed_x,
@@ -1339,7 +1339,7 @@ MercierStabilityIntermediateQuantities ComputeIntermediateMercierQuantities(
     const JxBOutFileContents& jxbout);
 
 MercierFileContents ComputeMercierStability(
-    const Sizes& s, const FlowControl& fc,
+    const FlowControl& fc,
     const VmecInternalResults& vmec_internal_results,
     const MercierStabilityIntermediateQuantities& mercier_intermediate);
 
@@ -1348,7 +1348,7 @@ Threed1FirstTableIntermediate ComputeIntermediateThreed1FirstTableQuantities(
     const VmecInternalResults& vmec_internal_results);
 
 Threed1FirstTable ComputeThreed1FirstTable(
-    const Sizes& s, const FlowControl& fc,
+    const FlowControl& fc,
     const VmecInternalResults& vmec_internal_results,
     const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate);
@@ -1391,8 +1391,6 @@ Threed1ShafranovIntegrals ComputeThreed1ShafranovIntegrals(
     const Sizes& s, const FlowControl& fc,
     const HandoverStorage& handover_storage,
     const VmecInternalResults& vmec_internal_results,
-    const JxBOutFileContents& jxbout,
-    const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
     const Threed1GeometricAndMagneticQuantitiesIntermediate&
         threed1_geometric_magnetic_intermediate,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag, int ivac);
