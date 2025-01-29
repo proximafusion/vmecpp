@@ -24,6 +24,7 @@ Compared to its Fortran predecessors, VMEC++:
 - allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
 - typically runs just as fast or faster
+- comes with [substantial documentation of its internal numerics](https://github.com/proximafusion/vmecpp/blob/main/docs/the_numerics_of_vmecpp.pdf)
 
 VMEC++ can run on a laptop, but it is a suitable component for large-scale stellarator optimization pipelines.
 
