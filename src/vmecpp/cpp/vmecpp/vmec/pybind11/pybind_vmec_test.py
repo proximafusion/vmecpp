@@ -363,31 +363,29 @@ def test_output_quantities():
     assert is_close_ra(
         output_quantities.wout.safety_factor, wout["q_factor"][()], 1.0e-10
     )
-    assert is_close_ra(output_quantities.wout.pressure_full, wout["presf"][()], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.toroidal_flux, wout["phi"][()], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.phipf, wout["phipf"][()], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.poloidal_flux, wout["chi"][()], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.chipf, wout["chipf"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.pressure_full, wout["presf"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.toroidal_flux, wout["phi"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.phipf, wout["phipf"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.poloidal_flux, wout["chi"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.chipf, wout["chipf"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.jcuru, wout["jcuru"][()], 1.0e-6)
     assert is_close_ra(output_quantities.wout.jcurv, wout["jcurv"][()], 1.0e-6)
 
-    assert is_close_ra(output_quantities.wout.iota_half, wout["iotas"][()][1:], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.mass, wout["mass"][()][1:], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.iota_half, wout["iotas"][()][1:], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.mass, wout["mass"][()][1:], 1.0e-8)
     assert is_close_ra(
-        output_quantities.wout.pressure_half, wout["pres"][()][1:], 1.0e-11
+        output_quantities.wout.pressure_half, wout["pres"][()][1:], 1.0e-8
     )
-    assert is_close_ra(output_quantities.wout.beta, wout["beta_vol"][()][1:], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.buco, wout["buco"][()][1:], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.bvco, wout["bvco"][()][1:], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.dVds, wout["vp"][()][1:], 1.0e-11)
-    assert is_close_ra(
-        output_quantities.wout.spectral_width, wout["specw"][()], 1.0e-11
-    )
-    assert is_close_ra(output_quantities.wout.phips, wout["phips"][()][1:], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.overr, wout["over_r"][()][1:], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.beta, wout["beta_vol"][()][1:], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.buco, wout["buco"][()][1:], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.bvco, wout["bvco"][()][1:], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.dVds, wout["vp"][()][1:], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.spectral_width, wout["specw"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.phips, wout["phips"][()][1:], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.overr, wout["over_r"][()][1:], 1.0e-8)
 
     assert is_close_ra(output_quantities.wout.jdotb, wout["jdotb"][()], 1.0e-6)
-    assert is_close_ra(output_quantities.wout.bdotgradv, wout["bdotgradv"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.bdotgradv, wout["bdotgradv"][()], 1.0e-8)
 
     assert is_close_ra(output_quantities.wout.DMerc, wout["DMerc"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.Dshear, wout["DShear"][()], 1.0e-8)

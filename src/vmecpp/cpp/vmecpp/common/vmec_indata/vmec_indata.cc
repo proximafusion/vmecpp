@@ -7,6 +7,7 @@
 
 #include "H5Cpp.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "nlohmann/json.hpp"
 #include "util/hdf5_io/hdf5_io.h"
