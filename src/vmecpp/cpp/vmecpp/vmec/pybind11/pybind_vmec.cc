@@ -32,7 +32,7 @@ using pybind11::literals::operator""_a;
 namespace {
 
 // Add a property that gets/sets an Eigen data members to a Pybind11 wrapper.
-// Simply using e.g. def_readwrite("mat", &WoutFileContents::mat) does
+// Simply using e.g. def_readwrite("mat", &WOutFileContents::mat) does
 // not work because, under the hood, def_readwrite casts the data member to
 // const before returning it from the getter (so the "write" part of
 // "readwrite" refers to the data member itself, but not its contents). The

@@ -249,10 +249,10 @@ class VmecInput(pydantic.BaseModel):
 # NOTE: in the future we want to change the C++ WOutFileContents layout so that it
 # matches the classic Fortran one, so most of the compatibility layer here could
 # disappear.
-class VmecWout(pydantic.BaseModel):
+class VmecWOut(pydantic.BaseModel):
     """Python equivalent of a VMEC "wout file".
 
-    VmecWout exposes the layout that SIMSOPT expects.
+    VmecWOut exposes the layout that SIMSOPT expects.
     The `save` method produces a NetCDF file compatible with SIMSOPT/Fortran VMEC.
     """
 
@@ -583,7 +583,7 @@ class VmecWout(pydantic.BaseModel):
             string_variable[:] = padded_value_as_netcdf3_compatible_chararray
 
     @staticmethod
-    def _from_cpp_wout(cpp_wout: _vmecpp.VmecppWOut) -> VmecWout:
+    def _from_cpp_wout(cpp_wout: _vmecpp.VmecppWOut) -> VmecWOut:
         attrs = {}
 
         # These attributes are the same in VMEC++ and in Fortran VMEC
@@ -689,7 +689,7 @@ class VmecWout(pydantic.BaseModel):
 
         attrs["version_"] = float(cpp_wout.version)
 
-        return VmecWout(**attrs)
+        return VmecWOut(**attrs)
 
     def _to_cpp_wout(self) -> _vmecpp.WOutFileContents:
         cpp_wout = _vmecpp.WOutFileContents()
@@ -804,7 +804,7 @@ class VmecWout(pydantic.BaseModel):
 class VmecOutput(pydantic.BaseModel):
     """Container for the full output of a VMEC run."""
 
-    wout: VmecWout
+    wout: VmecWOut
     """Python equivalent of VMEC's "wout file"."""
 
     input: VmecInput
@@ -846,7 +846,7 @@ def run(
         verbose=verbose,
     )
     cpp_wout = cpp_output_quantities.wout
-    wout = VmecWout._from_cpp_wout(cpp_wout)
+    wout = VmecWOut._from_cpp_wout(cpp_wout)
     return VmecOutput(wout=wout, input=input)
 
 
@@ -857,4 +857,4 @@ def _pad_and_transpose(
     return np.vstack((np.zeros(mnsize), arr)).T
 
 
-__all__ = ["VmecInput", "VmecOutput", "VmecWout", "run"]
+__all__ = ["VmecInput", "VmecOutput", "VmecWOut", "run"]
