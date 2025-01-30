@@ -249,10 +249,10 @@ class VmecInput(pydantic.BaseModel):
 # NOTE: in the future we want to change the C++ WOutFileContents layout so that it
 # matches the classic Fortran one, so most of the compatibility layer here could
 # disappear.
-class VmecWout(pydantic.BaseModel):
+class VmecWOut(pydantic.BaseModel):
     """Python equivalent of a VMEC "wout file".
 
-    VmecWout exposes the layout that SIMSOPT expects.
+    VmecWOut exposes the layout that SIMSOPT expects.
     The `save` method produces a NetCDF file compatible with SIMSOPT/Fortran VMEC.
     """
 
@@ -327,71 +327,71 @@ class VmecWout(pydantic.BaseModel):
     gamma: float
     mgrid_file: str
 
+    # In the C++ WOutFileContents this is called iota_half.
     iotas: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called iota_half."""
 
+    # In the C++ WOutFileContents this is called iota_full.
     iotaf: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called iota_full."""
 
+    # In the C++ WOutFileContents this is called betatot.
     betatotal: float
-    """In VMEC++ this is called betatot."""
 
+    # In the C++ WOutFileContents this is called raxis_c.
     raxis_cc: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called raxis_c."""
 
+    # In the C++ WOutFileContents this is called zaxis_s.
     zaxis_cs: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called zaxis_s."""
 
+    # In the C++ WOutFileContents this is called dVds.
     vp: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called dVds."""
 
+    # In the C++ WOutFileContents this is called pressure_full.
     presf: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called pressure_full."""
 
+    # In the C++ WOutFileContents this is called pressure_half.
     pres: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called pressure_half."""
 
+    # In the C++ WOutFileContents this is called toroidal_flux.
     phi: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called toroidal_flux."""
 
+    # In the C++ WOutFileContents this is called sign_of_jacobian.
     signgs: int
-    """In VMEC++ this is called sign_of_jacobian."""
 
+    # In the C++ WOutFileContents this is called VolAvgB.
     volavgB: float
-    """In VMEC++ this is called VolAvgB."""
 
+    # In the C++ WOutFileContents this is called safety_factor.
     q_factor: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called safety_factor."""
 
+    # In the C++ WOutFileContents this is called poloidal_flux.
     chi: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called poloidal_flux."""
 
+    # In the C++ WOutFileContents this is called spectral_width.
     specw: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called spectral_width."""
 
+    # In the C++ WOutFileContents this is called overr.
     over_r: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called overr."""
 
+    # In the C++ WOutFileContents this is called Dshear.
     DShear: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called Dshear."""
 
+    # In the C++ WOutFileContents this is called Dwell.
     DWell: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called Dwell."""
 
+    # In the C++ WOutFileContents this is called Dcurr.
     DCurr: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called Dcurr."""
 
+    # In the C++ WOutFileContents this is called Dgeod.
     DGeod: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called Dgeod."""
 
+    # In the C++ WOutFileContents this is called maximum_iterations.
     niter: int
-    """In VMEC++ this is called maximum_iterations."""
 
+    # In the C++ WOutFileContents this is called beta.
     beta_vol: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called beta."""
 
+    # In the C++ WOutFileContents this is called 'version' and it is a string.
     version_: float
-    """In VMEC++ this is called 'version' and it is a string."""
 
     @property
     def volume_p(self):
@@ -583,7 +583,7 @@ class VmecWout(pydantic.BaseModel):
             string_variable[:] = padded_value_as_netcdf3_compatible_chararray
 
     @staticmethod
-    def _from_cpp_wout(cpp_wout: _vmecpp.VmecppWOut) -> VmecWout:
+    def _from_cpp_wout(cpp_wout: _vmecpp.VmecppWOut) -> VmecWOut:
         attrs = {}
 
         # These attributes are the same in VMEC++ and in Fortran VMEC
@@ -689,7 +689,7 @@ class VmecWout(pydantic.BaseModel):
 
         attrs["version_"] = float(cpp_wout.version)
 
-        return VmecWout(**attrs)
+        return VmecWOut(**attrs)
 
     def _to_cpp_wout(self) -> _vmecpp.WOutFileContents:
         cpp_wout = _vmecpp.WOutFileContents()
@@ -804,7 +804,7 @@ class VmecWout(pydantic.BaseModel):
 class VmecOutput(pydantic.BaseModel):
     """Container for the full output of a VMEC run."""
 
-    wout: VmecWout
+    wout: VmecWOut
     """Python equivalent of VMEC's "wout file"."""
 
     input: VmecInput
@@ -846,7 +846,7 @@ def run(
         verbose=verbose,
     )
     cpp_wout = cpp_output_quantities.wout
-    wout = VmecWout._from_cpp_wout(cpp_wout)
+    wout = VmecWOut._from_cpp_wout(cpp_wout)
     return VmecOutput(wout=wout, input=input)
 
 
@@ -857,4 +857,4 @@ def _pad_and_transpose(
     return np.vstack((np.zeros(mnsize), arr)).T
 
 
-__all__ = ["VmecInput", "VmecOutput", "VmecWout", "run"]
+__all__ = ["VmecInput", "VmecOutput", "VmecWOut", "run"]

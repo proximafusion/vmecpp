@@ -129,7 +129,7 @@ TEST_F(OutputQuantitiesIO, WOut) {
       vmecpp::WOutFileContents::LoadInto(wout_fromfile, h5file);
   ASSERT_TRUE(status2.ok());
 
-  CheckWoutEquality(wout, wout_fromfile);
+  CheckWOutEquality(wout, wout_fromfile);
 }
 
 TEST_F(OutputQuantitiesIO, OutputQuantities) {
@@ -182,5 +182,5 @@ TEST_F(OutputQuantitiesIO, OutputQuantities) {
   EXPECT_EQ(read_oq.threed1_shafranov_integrals,
             cth_output_quantities_->threed1_shafranov_integrals);
 
-  CheckWoutEquality(read_oq.wout, cth_output_quantities_->wout);
+  CheckWOutEquality(read_oq.wout, cth_output_quantities_->wout);
 }
