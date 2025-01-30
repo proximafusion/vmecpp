@@ -54,7 +54,9 @@ def get_vmec_configuration_name(vmec_file: Path) -> str:
     return case_name
 
 
-def indata_to_json(filename: pathlib.Path) -> pathlib.Path:
+def indata_to_json(
+    filename: pathlib.Path, use_mgrid_file_absolute_path: bool = False
+) -> pathlib.Path:
     """Convert a VMEC2000 INDATA file to a VMEC++ JSON input file.
 
     The new file is created in the current working directory. Given
@@ -63,6 +65,9 @@ def indata_to_json(filename: pathlib.Path) -> pathlib.Path:
 
     Args:
         filename: The path to the VMEC2000 INDATA file.
+        use_mgrid_file_absolute_path: If True, the absolute path to
+            the parent directory of `filename` will be prepended to
+            the output mgrid_file path.
 
     Returns:
         The path to the newly created JSON file.
@@ -91,7 +96,16 @@ def indata_to_json(filename: pathlib.Path) -> pathlib.Path:
         local_input_file = original_input_file.name
         shutil.copyfile(original_input_file, local_input_file)
 
-        result = subprocess.run([indata_to_json_exe, local_input_file], check=True)
+        if use_mgrid_file_absolute_path:
+            command = [
+                indata_to_json_exe,
+                "--mgrid_folder",
+                original_input_file.parent.absolute(),
+                local_input_file,
+            ]
+        else:
+            command = [indata_to_json_exe, local_input_file]
+        result = subprocess.run(command, check=True)
 
         if result.returncode != 0:
             raise subprocess.CalledProcessError(
