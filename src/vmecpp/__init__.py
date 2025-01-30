@@ -801,6 +801,34 @@ class VmecWOut(pydantic.BaseModel):
     # TODO(eguiraud): implement from_wout_file
 
 
+class Mercier(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    s: jt.Float[np.ndarray, " dim1"]
+    toroidal_flux: jt.Float[np.ndarray, " dim1"]
+    iota: jt.Float[np.ndarray, " dim1"]
+    shear: jt.Float[np.ndarray, " dim1"]
+    d_volume_d_s: jt.Float[np.ndarray, " dim1"]
+    well: jt.Float[np.ndarray, " dim1"]
+    toroidal_current: jt.Float[np.ndarray, " dim1"]
+    d_toroidal_current_d_s: jt.Float[np.ndarray, " dim1"]
+    pressure: jt.Float[np.ndarray, " dim1"]
+    d_pressure_d_s: jt.Float[np.ndarray, " dim1"]
+    DMerc: jt.Float[np.ndarray, " dim1"]
+    Dshear: jt.Float[np.ndarray, " dim1"]
+    Dwell: jt.Float[np.ndarray, " dim1"]
+    Dcurr: jt.Float[np.ndarray, " dim1"]
+    Dgeod: jt.Float[np.ndarray, " dim1"]
+
+    @staticmethod
+    def _from_cpp_mercier(cpp_mercier: _vmecpp.Mercier) -> JxBOut:
+        mercier = Mercier(
+            **{attr: getattr(cpp_mercier, attr) for attr in Mercier.model_fields}
+        )
+
+        return mercier
+
+
 class JxBOut(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
@@ -852,6 +880,9 @@ class VmecOutput(pydantic.BaseModel):
     jxbout: JxBOut
     """Python equivalent of VMEC's "jxbout" file."""
 
+    mercier: Mercier
+    """Python equivalent of VMEC's "mercier" file."""
+
     wout: VmecWOut
     """Python equivalent of VMEC's "wout" file."""
 
@@ -890,10 +921,12 @@ def run(
         max_threads=max_threads,
         verbose=verbose,
     )
+
     cpp_wout = cpp_output_quantities.wout
     wout = VmecWOut._from_cpp_wout(cpp_wout)
     jxbout = JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout)
-    return VmecOutput(input=input, wout=wout, jxbout=jxbout)
+    mercier = Mercier._from_cpp_mercier(cpp_output_quantities.mercier)
+    return VmecOutput(input=input, wout=wout, jxbout=jxbout, mercier=mercier)
 
 
 @jt.jaxtyped(typechecker=beartype)
@@ -903,4 +936,4 @@ def _pad_and_transpose(
     return np.vstack((np.zeros(mnsize), arr)).T
 
 
-__all__ = ["VmecInput", "VmecOutput", "VmecWOut", "JxBOut", "run"]
+__all__ = ["JxBOut", "Mercier", "VmecInput", "VmecOutput", "VmecWOut", "run"]

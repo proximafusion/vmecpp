@@ -101,3 +101,24 @@ def test_jxbout_bindings(cma_output):
         "phin",
     ]:
         assert len(getattr(cma_output.jxbout, varname).shape) == 1
+
+
+def test_mercier_bindings(cma_output):
+    for varname in [
+        "s",
+        "toroidal_flux",
+        "iota",
+        "shear",
+        "d_volume_d_s",
+        "well",
+        "toroidal_current",
+        "d_toroidal_current_d_s",
+        "pressure",
+        "d_pressure_d_s",
+        "DMerc",
+        "Dshear",
+        "Dwell",
+        "Dcurr",
+        "Dgeod",
+    ]:
+        assert len(getattr(cma_output.mercier, varname).shape) == 1
