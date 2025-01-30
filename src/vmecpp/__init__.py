@@ -801,14 +801,59 @@ class VmecWOut(pydantic.BaseModel):
     # TODO(eguiraud): implement from_wout_file
 
 
+class JxBOut(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    itheta: jt.Float[np.ndarray, "num_full nZnT"]
+    izeta: jt.Float[np.ndarray, "num_full nZnT"]
+    bdotk: jt.Float[np.ndarray, "num_full nZnT"]
+
+    amaxfor: jt.Float[np.ndarray, " dim1"]
+    aminfor: jt.Float[np.ndarray, " dim1"]
+    avforce: jt.Float[np.ndarray, " dim1"]
+    pprim: jt.Float[np.ndarray, " dim1"]
+    jdotb: jt.Float[np.ndarray, " dim1"]
+    bdotb: jt.Float[np.ndarray, " dim1"]
+    bdotgradv: jt.Float[np.ndarray, " dim1"]
+    jpar2: jt.Float[np.ndarray, " dim1"]
+    jperp2: jt.Float[np.ndarray, " dim1"]
+    phin: jt.Float[np.ndarray, " dim1"]
+
+    jsupu3: jt.Float[np.ndarray, "num_full nZnT"]
+    jsupv3: jt.Float[np.ndarray, "num_full nZnT"]
+    jsups3: jt.Float[np.ndarray, "num_half nZnT"]
+
+    bsupu3: jt.Float[np.ndarray, "num_full nZnT"]
+    bsupv3: jt.Float[np.ndarray, "num_full nZnT"]
+    jcrossb: jt.Float[np.ndarray, "num_full nZnT"]
+    jxb_gradp: jt.Float[np.ndarray, "num_full nZnT"]
+    jdotb_sqrtg: jt.Float[np.ndarray, "num_full nZnT"]
+    sqrtg3: jt.Float[np.ndarray, "num_full nZnT"]
+
+    bsubu3: jt.Float[np.ndarray, "num_half nZnT"]
+    bsubv3: jt.Float[np.ndarray, "num_half nZnT"]
+    bsubs3: jt.Float[np.ndarray, "num_full nZnT"]
+
+    @staticmethod
+    def _from_cpp_jxbout(cpp_jxbout: _vmecpp.JxBOutFileContents) -> JxBOut:
+        jxbout = JxBOut(
+            **{attr: getattr(cpp_jxbout, attr) for attr in JxBOut.model_fields}
+        )
+
+        return jxbout
+
+
 class VmecOutput(pydantic.BaseModel):
     """Container for the full output of a VMEC run."""
 
-    wout: VmecWOut
-    """Python equivalent of VMEC's "wout file"."""
-
     input: VmecInput
     """The input to the VMEC run that produced this output."""
+
+    jxbout: JxBOut
+    """Python equivalent of VMEC's "jxbout" file."""
+
+    wout: VmecWOut
+    """Python equivalent of VMEC's "wout" file."""
 
 
 def run(
@@ -847,7 +892,8 @@ def run(
     )
     cpp_wout = cpp_output_quantities.wout
     wout = VmecWOut._from_cpp_wout(cpp_wout)
-    return VmecOutput(wout=wout, input=input)
+    jxbout = JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout)
+    return VmecOutput(input=input, wout=wout, jxbout=jxbout)
 
 
 @jt.jaxtyped(typechecker=beartype)
@@ -857,4 +903,4 @@ def _pad_and_transpose(
     return np.vstack((np.zeros(mnsize), arr)).T
 
 
-__all__ = ["VmecInput", "VmecOutput", "VmecWOut", "run"]
+__all__ = ["VmecInput", "VmecOutput", "VmecWOut", "JxBOut", "run"]

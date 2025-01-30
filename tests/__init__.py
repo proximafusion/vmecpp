@@ -54,11 +54,50 @@ def test_run_with_hot_restart():
     assert hot_restarted_out.wout.niter == 1
 
 
-def test_vmecwout_save():
+@pytest.fixture(scope="module")
+def cma_output() -> vmecpp.VmecOutput:
     input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
     out = vmecpp.run(input, verbose=False)
+    return out
 
+
+def test_vmecwout_save(cma_output):
     with tempfile.NamedTemporaryFile() as tmp_file:
-        out.wout.save(tmp_file.name)
+        cma_output.wout.save(tmp_file.name)
 
         assert Path(tmp_file.name).exists()
+
+
+def test_jxbout_bindings(cma_output):
+    for varname in [
+        "itheta",
+        "izeta",
+        "bdotk",
+        "jsupu3",
+        "jsupv3",
+        "jsups3",
+        "bsupu3",
+        "bsupv3",
+        "jcrossb",
+        "jxb_gradp",
+        "jdotb_sqrtg",
+        "sqrtg3",
+        "bsubu3",
+        "bsubv3",
+        "bsubs3",
+    ]:
+        assert len(getattr(cma_output.jxbout, varname).shape) == 2
+
+    for varname in [
+        "amaxfor",
+        "aminfor",
+        "avforce",
+        "pprim",
+        "jdotb",
+        "bdotb",
+        "bdotgradv",
+        "jpar2",
+        "jperp2",
+        "phin",
+    ]:
+        assert len(getattr(cma_output.jxbout, varname).shape) == 1
