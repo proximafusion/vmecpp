@@ -1248,7 +1248,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
   OutputQuantities output_quantities;
 
   output_quantities.vmec_internal_results = GatherDataFromThreads(
-      sign_of_jacobian, s, fc, constants, h, radial_partitioning, decomposed_x,
+      sign_of_jacobian, s, fc, constants, radial_partitioning, decomposed_x,
       models_from_threads, radial_profiles);
 
   if (vmec_status == VmecStatus::NORMAL_TERMINATION ||
@@ -1327,7 +1327,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
             output_quantities.jxbout);
 
     output_quantities.mercier =
-        ComputeMercierStability(s, fc, output_quantities.vmec_internal_results,
+        ComputeMercierStability(fc, output_quantities.vmec_internal_results,
                                 output_quantities.mercier_intermediate);
 
     if (checkpoint == VmecCheckpoint::MERCIER) {
@@ -1339,7 +1339,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
             s, fc, output_quantities.vmec_internal_results);
 
     output_quantities.threed1_first_table = ComputeThreed1FirstTable(
-        s, fc, output_quantities.vmec_internal_results,
+        fc, output_quantities.vmec_internal_results,
         output_quantities.jxbout,
         output_quantities.threed1_first_table_intermediate);
 
@@ -1391,8 +1391,6 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     output_quantities.threed1_shafranov_integrals =
         ComputeThreed1ShafranovIntegrals(
             s, fc, h, output_quantities.vmec_internal_results,
-            output_quantities.jxbout,
-            output_quantities.threed1_first_table_intermediate,
             output_quantities.threed1_geometric_magnetic_intermediate,
             output_quantities.threed1_geometric_magnetic, ivac);
 
@@ -1431,7 +1429,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
 
 vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
     const int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
-    const VmecConstants& constants, const HandoverStorage& h,
+    const VmecConstants& constants,
     const std::vector<std::unique_ptr<RadialPartitioning>>& radial_partitioning,
     const std::vector<std::unique_ptr<FourierGeometry>>& decomposed_x,
     const std::vector<std::unique_ptr<IdealMhdModel>>& models_from_threads,
@@ -2943,7 +2941,7 @@ vmecpp::ComputeIntermediateMercierQuantities(
 }  // ComputeIntermediateMercierQuantities
 
 vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
-    const Sizes& s, const FlowControl& fc,
+    const FlowControl& fc,
     const VmecInternalResults& vmec_internal_results,
     const MercierStabilityIntermediateQuantities& mercier_intermediate) {
   MercierFileContents mercier;
@@ -3303,7 +3301,7 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
 }  // ComputeIntermediateThreed1FirstTableQuantities
 
 vmecpp::Threed1FirstTable vmecpp::ComputeThreed1FirstTable(
-    const Sizes& s, const FlowControl& fc,
+    const FlowControl& fc,
     const VmecInternalResults& vmec_internal_results,
     const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate) {
@@ -4038,10 +4036,7 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
     const Sizes& s, const FlowControl& fc,
     const HandoverStorage& handover_storage,
     const VmecInternalResults& vmec_internal_results,
-    const JxBOutFileContents& jxbout,
-    const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
-    const Threed1GeometricAndMagneticQuantitiesIntermediate&
-        threed1_geometric_magnetic_intermediate,
+    const Threed1GeometricAndMagneticQuantitiesIntermediate& threed1_geometric_magnetic_intermediate,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag, int ivac) {
   Threed1ShafranovIntegrals result;
 

@@ -456,6 +456,9 @@ double RadialProfiles::evalPowerSeriesI(const std::vector<double>& coeffs,
 
 double RadialProfiles::evalGaussTrunc(const std::vector<double>& coeffs,
                                       double x) {
+  // TODO(jons): implement `gauss_trunc`
+  (void)coeffs;
+  (void)x;
   return 0.0;
 }
 
@@ -581,61 +584,100 @@ double RadialProfiles::evalTwoPower(const std::vector<double>& coeffs, double x,
 
 double RadialProfiles::evalTwoPowerGs(const std::vector<double>& coeffs,
                                       double x) {
+  // TODO(jons): implement `two_power_gs`
+  (void)coeffs;
+  (void)x;
   return 0.0;
 }
 
 double RadialProfiles::evalAkima(const std::vector<double>& splineKnots,
                                  const std::vector<double>& splineValues,
                                  double x) {
+  // TODO(jons): implement `akima_spline`
+  (void)splineKnots;
+  (void)splineValues;
+  (void)x;
   return 0.0;
 }
 
 double RadialProfiles::evalAkimaIntegrated(
     const std::vector<double>& splineKnots,
     const std::vector<double>& splineValues, double x) {
+  // TODO(jons): implement `akima_spline_i`
+  (void)splineKnots;
+  (void)splineValues;
+  (void)x;
   return 0.0;
 }
 
 double RadialProfiles::evalCubic(const std::vector<double>& splineKnots,
                                  const std::vector<double>& splineValues,
                                  double x) {
+  // TODO(jons): implement `cubic_spline`
+  (void)splineKnots;
+  (void)splineValues;
+  (void)x;
   return 0.0;
 }
 
 double RadialProfiles::evalCubicIntegrated(
     const std::vector<double>& splineKnots,
-    const std::vector<double>& splineValues, double x) {
+    const std::vector<double>& splineValues,
+    double x) {
+  // TODO(jons): implement `cubic_spline_i`
+  (void)splineKnots;
+  (void)splineValues;
+  (void)x;
+
   return 0.0;
 }
 
 double RadialProfiles::evalPedestal(const std::vector<double>& coeffs,
                                     double x) {
+  // TODO(jons): implement `pedestal`
+  (void)coeffs;
+  (void)x;
   return 0.0;
 }
 
 double RadialProfiles::evalRational(const std::vector<double>& coeffs,
                                     double x) {
+  // TODO(jons): implement `rational`
+  (void)coeffs;
+  (void)x;
   return 0.0;
 }
 
 double RadialProfiles::evalLineSegment(const std::vector<double>& splineKnots,
                                        const std::vector<double>& splineValues,
                                        double x) {
+  // TODO(jons): implement `line_segment`
+  (void)splineKnots;
+  (void)splineValues;
+  (void)x;
   return 0.0;
 }
 
 double RadialProfiles::evalLineSegmentIntegrated(
     const std::vector<double>& splineKnots,
-    const std::vector<double>& splineValues, double x) {
+    const std::vector<double>& splineValues,
+    double x) {
+  // TODO(jons): implement `line_segment_i`
+  (void)splineKnots;
+  (void)splineValues;
+  (void)x;
   return 0.0;
 }
 
 double RadialProfiles::evalNiceQuadratic(const std::vector<double>& coeffs,
                                          double x) {
+  // TODO(jons): implement `nice_quadratic`
+  (void)coeffs;
+  (void)x;
   return 0.0;
 }
 
-void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta, int thread_id,
+void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
                                         VmecConstants& m_vmecconst) {
   // R_00 of initial boundary is ~ major radius
   // and used as normalization factor for mass profile

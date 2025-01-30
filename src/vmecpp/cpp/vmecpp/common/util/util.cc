@@ -66,7 +66,7 @@ int signum(int x) {
 
 void TridiagonalSolveSerial(std::vector<double> &m_a, std::vector<double> &m_d,
                             std::vector<double> &m_b,
-                            std::vector<std::vector<double>> &m_c, int ns,
+                            std::vector<std::vector<double>> &m_c,
                             int jMin, int jMax, int nRHS) {
   // If jMin > 0, need to fill in the upper left corner of the matrix
   // with non-intrusive variables that do not change the solution of the system.

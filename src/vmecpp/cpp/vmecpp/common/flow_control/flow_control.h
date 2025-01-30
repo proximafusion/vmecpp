@@ -81,7 +81,6 @@ class FlowControl {
   int ns_old;
 
   double delt0r;
-  double w0;
 
   double fsqr, fsqz, fsql;
   double fsqr1, fsqz1, fsql1;

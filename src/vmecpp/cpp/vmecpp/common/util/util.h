@@ -195,7 +195,7 @@ int signum(int x);
 // c     contains the RHS on entry and the solution vectors on exit
 void TridiagonalSolveSerial(std::vector<double> &m_a, std::vector<double> &m_d,
                             std::vector<double> &m_b,
-                            std::vector<std::vector<double>> &m_c, int ns,
+                            std::vector<std::vector<double>> &m_c,
                             int jMin, int jMax, int nRHS);
 
 // OpenMP-enabled tri-diagonal solver

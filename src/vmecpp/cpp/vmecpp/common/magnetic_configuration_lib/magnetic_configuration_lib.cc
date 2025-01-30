@@ -350,7 +350,7 @@ absl::Status MoveRadially(double radial_step,
         switch (m_current_carrier->type_case()) {
           case CurrentCarrier::TypeCase::kInfiniteStraightFilament:
             return absl::InvalidArgumentError(
-                "Cannot perform radial movement if an InfiniteStraightSegment "
+                "Cannot perform radial movement if an InfiniteStraightFilament "
                 "is present in the MagneticConfiguration");
           case CurrentCarrier::TypeCase::kCircularFilament:
             CHECK_OK(MoveRadially(
@@ -409,15 +409,6 @@ std::string CurrentCarrierIdentifier(const PolygonFilament& polygon_filament) {
   current_carrier_identifier << "PolygonFilament";
   if (polygon_filament.has_name()) {
     current_carrier_identifier << " " << polygon_filament.name();
-  }
-  return current_carrier_identifier.str();
-}
-
-std::string CurrentCarrierIdentifier(const FourierFilament& fourier_filament) {
-  std::stringstream current_carrier_identifier;
-  current_carrier_identifier << "FourierFilament";
-  if (fourier_filament.has_name()) {
-    current_carrier_identifier << " " << fourier_filament.name();
   }
   return current_carrier_identifier.str();
 }
@@ -529,75 +520,6 @@ absl::Status IsPolygonFilamentFullyPopulated(
   return absl::OkStatus();
 }  // IsPolygonFilamentFullyPopulated
 
-absl::Status IsFourierFilamentFullyPopulated(
-    const FourierFilament& fourier_filament) {
-  if (fourier_filament.x_size() < 1) {
-    std::stringstream error_message;
-    error_message << CurrentCarrierIdentifier(fourier_filament);
-    error_message << " has no Fourier coefficients for x.";
-    return absl::NotFoundError(error_message.str());
-  }
-
-  for (int i = 0; i < fourier_filament.x_size(); ++i) {
-    const FourierCoefficient1D& x_coefficient = fourier_filament.x(i);
-    std::stringstream coefficient_name;
-    coefficient_name << "x[" << i << "]";
-    absl::Status status = IsFourierCoefficient1DFullyPopulated(
-        x_coefficient,
-        absl::StrCat(coefficient_name.str(), " of ",
-                     CurrentCarrierIdentifier(fourier_filament)));
-    if (!status.ok()) {
-      return status;
-    }
-  }
-
-  // ----------------
-
-  if (fourier_filament.y_size() < 1) {
-    std::stringstream error_message;
-    error_message << CurrentCarrierIdentifier(fourier_filament);
-    error_message << " has no Fourier coefficients for y.";
-    return absl::NotFoundError(error_message.str());
-  }
-
-  for (int i = 0; i < fourier_filament.y_size(); ++i) {
-    const FourierCoefficient1D& y_coefficient = fourier_filament.y(i);
-    std::stringstream coefficient_name;
-    coefficient_name << "y[" << i << "]";
-    absl::Status status = IsFourierCoefficient1DFullyPopulated(
-        y_coefficient,
-        absl::StrCat(coefficient_name.str(), " of ",
-                     CurrentCarrierIdentifier(fourier_filament)));
-    if (!status.ok()) {
-      return status;
-    }
-  }
-
-  // ----------------
-
-  if (fourier_filament.z_size() < 1) {
-    std::stringstream error_message;
-    error_message << CurrentCarrierIdentifier(fourier_filament);
-    error_message << " has no Fourier coefficients for z.";
-    return absl::NotFoundError(error_message.str());
-  }
-
-  for (int i = 0; i < fourier_filament.z_size(); ++i) {
-    const FourierCoefficient1D& z_coefficient = fourier_filament.z(i);
-    std::stringstream coefficient_name;
-    coefficient_name << "z[" << i << "]";
-    absl::Status status = IsFourierCoefficient1DFullyPopulated(
-        z_coefficient,
-        absl::StrCat(coefficient_name.str(), " of ",
-                     CurrentCarrierIdentifier(fourier_filament)));
-    if (!status.ok()) {
-      return status;
-    }
-  }
-
-  return absl::OkStatus();
-}  // IsFourierFilamentFullyPopulated
-
 absl::Status IsMagneticConfigurationFullyPopulated(
     const MagneticConfiguration& magnetic_configuration) {
   for (const SerialCircuit& serial_circuit :
@@ -617,10 +539,6 @@ absl::Status IsMagneticConfigurationFullyPopulated(
           case CurrentCarrier::TypeCase::kPolygonFilament:
             status = IsPolygonFilamentFullyPopulated(
                 current_carrier.polygon_filament());
-            break;
-          case CurrentCarrier::TypeCase::kFourierFilament:
-            status = IsFourierFilamentFullyPopulated(
-                current_carrier.fourier_filament());
             break;
           case CurrentCarrier::TypeCase::TYPE_NOT_SET:
             // consider as empty CurrentCarrier -> ignore
@@ -747,73 +665,6 @@ void PrintPolygonFilament(const PolygonFilament& polygon_filament,
   std::cout << prefix << "}" << std::endl;
 }  // PrintPolygonFilament
 
-void PrintFourierFilament(const FourierFilament& fourier_filament,
-                          int indentation) {
-  std::string prefix;
-  for (int i = 0; i < indentation; ++i) {
-    prefix += " ";
-  }
-
-  std::cout << prefix << "FourierFilament {" << std::endl;
-
-  if (fourier_filament.has_name()) {
-    std::cout << prefix << "  name: '" << fourier_filament.name() << "'"
-              << std::endl;
-  } else {
-    std::cout << prefix << "  name: none" << std::endl;
-  }
-
-  if (fourier_filament.x_size() > 0) {
-    int num_specified_coefficients = 0;
-    for (const FourierCoefficient1D& x : fourier_filament.x()) {
-      if (x.has_fc_cos()) {
-        num_specified_coefficients++;
-      }
-      if (x.has_fc_sin()) {
-        num_specified_coefficients++;
-      }
-    }
-    std::cout << prefix << "  x: [" << num_specified_coefficients << "]"
-              << std::endl;
-  } else {
-    std::cout << prefix << "  x: none" << std::endl;
-  }
-
-  if (fourier_filament.y_size() > 0) {
-    int num_specified_coefficients = 0;
-    for (const FourierCoefficient1D& y : fourier_filament.y()) {
-      if (y.has_fc_cos()) {
-        num_specified_coefficients++;
-      }
-      if (y.has_fc_sin()) {
-        num_specified_coefficients++;
-      }
-    }
-    std::cout << prefix << "  y: [" << num_specified_coefficients << "]"
-              << std::endl;
-  } else {
-    std::cout << prefix << "  y: none" << std::endl;
-  }
-
-  if (fourier_filament.z_size() > 0) {
-    int num_specified_coefficients = 0;
-    for (const FourierCoefficient1D& z : fourier_filament.z()) {
-      if (z.has_fc_cos()) {
-        num_specified_coefficients++;
-      }
-      if (z.has_fc_sin()) {
-        num_specified_coefficients++;
-      }
-    }
-    std::cout << prefix << "  z: [" << num_specified_coefficients << "]"
-              << std::endl;
-  } else {
-    std::cout << prefix << "  z: none" << std::endl;
-  }
-
-  std::cout << prefix << "}" << std::endl;
-}  // PrintFourierFilament
-
 void PrintCurrentCarrier(const CurrentCarrier& current_carrier,
                          int indentation) {
   std::string prefix;
@@ -834,9 +685,6 @@ void PrintCurrentCarrier(const CurrentCarrier& current_carrier,
       break;
     case CurrentCarrier::TypeCase::kPolygonFilament:
       PrintPolygonFilament(current_carrier.polygon_filament(), indentation + 2);
-      break;
-    case CurrentCarrier::TypeCase::kFourierFilament:
-      PrintFourierFilament(current_carrier.fourier_filament(), indentation + 2);
       break;
     case CurrentCarrier::TypeCase::TYPE_NOT_SET:
       // consider as empty CurrentCarrier -> ignore

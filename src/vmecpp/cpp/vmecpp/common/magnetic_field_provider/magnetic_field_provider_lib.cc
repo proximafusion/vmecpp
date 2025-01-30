@@ -43,8 +43,6 @@ absl::Status MagneticField(
   }
   const double magnetic_field_scale = abscab::MU_0 * current / (2.0 * M_PI);
 
-  Vector3d normalized_direction =
-      Normalize(infinite_straight_filament.direction());
   const Vector3d &direction = infinite_straight_filament.direction();
   const double direction_x = direction.x();
   const double direction_y = direction.y();
@@ -267,25 +265,6 @@ absl::Status MagneticField(
 }  // MagneticField for PolygonFilament
 
 absl::Status MagneticField(
-    const FourierFilament &fourier_filament, double current,
-    const std::vector<std::vector<double>> &evaluation_positions,
-    std::vector<std::vector<double>> &m_magnetic_field,
-    bool check_current_carrier) {
-  if (check_current_carrier) {
-    absl::Status status = IsFourierFilamentFullyPopulated(fourier_filament);
-    if (!status.ok()) {
-      // Do not modify m_magnetic_field if the current carrier is not
-      // well-defined.
-      return status;
-    }
-  }
-
-  // FIXME(jons): implement contribution from FourierFilament
-
-  return absl::OkStatus();
-}  // MagneticField for FourierFilament
-
-absl::Status MagneticField(
     const MagneticConfiguration &magnetic_configuration,
     const std::vector<std::vector<double>> &evaluation_positions,
     std::vector<std::vector<double>> &m_magnetic_field,
@@ -333,11 +312,6 @@ absl::Status MagneticField(
             break;
           case CurrentCarrier::TypeCase::kPolygonFilament:
             CHECK_OK(MagneticField(current_carrier.polygon_filament(), current,
-                                   evaluation_positions, m_magnetic_field,
-                                   false));
-            break;
-          case CurrentCarrier::TypeCase::kFourierFilament:
-            CHECK_OK(MagneticField(current_carrier.fourier_filament(), current,
                                    evaluation_positions, m_magnetic_field,
                                    false));
             break;
@@ -484,25 +458,6 @@ absl::Status VectorPotential(
 }  // VectorPotential for PolygonFilament
 
 absl::Status VectorPotential(
-    const FourierFilament &fourier_filament, double current,
-    const std::vector<std::vector<double>> &evaluation_positions,
-    std::vector<std::vector<double>> &m_vector_potential,
-    bool check_current_carrier) {
-  if (check_current_carrier) {
-    absl::Status status = IsFourierFilamentFullyPopulated(fourier_filament);
-    if (!status.ok()) {
-      // Do not modify m_vector_potential if the current carrier is not
-      // well-defined.
-      return status;
-    }
-  }
-
-  // FIXME(jons): implement contribution from FourierFilament
-
-  return absl::OkStatus();
-}  // VectorPotential for FourierFilament
-
-absl::Status VectorPotential(
     const MagneticConfiguration &magnetic_configuration,
     const std::vector<std::vector<double>> &evaluation_positions,
     std::vector<std::vector<double>> &m_vector_potential,
@@ -569,11 +524,6 @@ absl::Status VectorPotential(
             break;
           case CurrentCarrier::TypeCase::kPolygonFilament:
             CHECK_OK(VectorPotential(current_carrier.polygon_filament(),
-                                     current, evaluation_positions,
-                                     m_vector_potential, false));
-            break;
-          case CurrentCarrier::TypeCase::kFourierFilament:
-            CHECK_OK(VectorPotential(current_carrier.fourier_filament(),
                                      current, evaluation_positions,
                                      m_vector_potential, false));
             break;

@@ -47,16 +47,6 @@ absl::Status MagneticField(
     std::vector<std::vector<double> > &m_magnetic_field,
     bool check_current_carrier = true);
 
-// Compute the magnetic field due to a given FourierFilament and a given current
-// at given set of evaluation locations. The magnetic field result is added to
-// the contents of the provided vector for easy computation of superpositions.
-// The magnetic field only has been modified if an ok status is returned.
-absl::Status MagneticField(
-    const FourierFilament &fourier_filament, double current,
-    const std::vector<std::vector<double> > &evaluation_positions,
-    std::vector<std::vector<double> > &m_magnetic_field,
-    bool check_current_carrier = true);
-
 // Compute the net magnetic field due to a given MagneticConfiguration at given
 // set of evaluation locations. The magnetic field result is added to the
 // contents of the provided vector for easy computation of superpositions. The
@@ -90,17 +80,6 @@ absl::Status VectorPotential(
 // modified if an ok status is returned.
 absl::Status VectorPotential(
     const PolygonFilament &polygon_filament, double current,
-    const std::vector<std::vector<double> > &evaluation_positions,
-    std::vector<std::vector<double> > &m_vector_potential,
-    bool check_current_carrier = true);
-
-// Compute the magnetic vector potential due to a given FourierFilament and a
-// given current at given set of evaluation locations. The magnetic vector
-// potential result is added to the contents of the provided vector for easy
-// computation of superpositions. The magnetic vector potential only has been
-// modified if an ok status is returned.
-absl::Status VectorPotential(
-    const FourierFilament &fourier_filament, double current,
     const std::vector<std::vector<double> > &evaluation_positions,
     std::vector<std::vector<double> > &m_vector_potential,
     bool check_current_carrier = true);

@@ -501,8 +501,7 @@ bool Vmec::InitializeRadial(
 
     // COMPUTE INITIAL R, Z AND MAGNETIC FLUX PROFILES
     for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
-      p_[thread_id]->evalRadialProfiles(fc_.haveToFlipTheta, thread_id,
-                                        constants_);
+      p_[thread_id]->evalRadialProfiles(fc_.haveToFlipTheta, constants_);
     }
 
     // Now that all contributions to lamscale have been accumulated in
@@ -651,7 +650,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   if (!any_checkpoint_reached && verbose_) {
     // write MHD energy at end of iterations for current number of surfaces
     std::cout << absl::StrFormat("MHD Energy = %12.6e\n",
-                                 fc_.w0 * 4.0 * M_PI * M_PI);
+                                 h_.mhdEnergy * 4.0 * M_PI * M_PI);
   }
 
   return any_checkpoint_reached;
@@ -760,12 +759,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       return SolveEqLoopStatus::CHECKPOINT_REACHED;
     }
 
-#pragma omp single
-    {
-      // (compute MHD energy)
-      // has been done in updateFwdModel already
-      fc_.w0 = h_.mhdEnergy;
-    }
+    // (compute MHD energy)
+    // (has been done in updateFwdModel already: `h_.mhdEnergy`)
 
     // ADDITIONAL STOPPING CRITERION (set liter_flag to FALSE)
 
@@ -874,7 +869,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // NOTE: IIRC, this still needs to be called to keep the spectral width
         // updated. Screen output will be controlled by checking the `verbose_`
         // flag inside `Printout`.
-        Printout(fc_.delt0r, fc_.w0, thread_id);
+        Printout(fc_.delt0r, thread_id);
 
         if (checkpoint == VmecCheckpoint::PRINTOUT &&
             iter2_ >= iterations_before_checkpointing) {
@@ -1051,7 +1046,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   return false;
 }
 
-void Vmec::Printout(double delt0r, double w0, int thread_id) {
+void Vmec::Printout(double delt0r, int thread_id) {
 #pragma omp single
   { h_.ResetSpectralWidthAccumulators(); }
   p_[thread_id]->AccumulateVolumeAveragedSpectralWidth();
@@ -1100,11 +1095,11 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
   bool need_restart = false;
 
   absl::StatusOr<bool> reached_checkpoint = m_[thread_id]->update(
-      *decomposed_x_[thread_id], *physical_x_[thread_id], h_,
+      *decomposed_x_[thread_id], *physical_x_[thread_id],
       *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
-      last_preconditioner_update_, last_full_update_nestor_, *r_[thread_id],
-      fc_, thread_id, iter1_, iter2_, checkpoint,
-      iterations_before_checkpointing, verbose_);
+      last_preconditioner_update_, last_full_update_nestor_,
+      fc_, iter1_, iter2_, checkpoint,
+      iterations_before_checkpointing);
   if (!reached_checkpoint.ok()) {
     return reached_checkpoint;
   }

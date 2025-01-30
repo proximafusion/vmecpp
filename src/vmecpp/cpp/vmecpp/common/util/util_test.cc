@@ -94,7 +94,7 @@ TEST_P(TridiagonalSolverSerialTest, CheckTridiagonalSolverSerial) {
 
   int jMin = 0;
   int jMax = kMatrixDimension;
-  TridiagonalSolveSerial(matDiagUp, matDiag, matDiagLow, rhs, kMatrixDimension,
+  TridiagonalSolveSerial(matDiagUp, matDiag, matDiagLow, rhs,
                          jMin, jMax, kNumberOfRightHandSides);
 
   // check that solution is correct

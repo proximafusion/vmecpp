@@ -32,7 +32,7 @@ class RadialProfiles {
   // Call this for every thread, one after another (ideally from a single
   // thread), providing thread_id = 0, 1, ..., (num_threads-1), where
   // num_threads is what is used in RadialPartitioning.
-  void evalRadialProfiles(bool haveToFlipTheta, int thread_id,
+  void evalRadialProfiles(bool haveToFlipTheta,
                           VmecConstants& m_vmecconst);
 
   ProfileParameterization findParameterization(const std::string& name,
