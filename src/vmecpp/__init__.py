@@ -801,6 +801,38 @@ class VmecWOut(pydantic.BaseModel):
     # TODO(eguiraud): implement from_wout_file
 
 
+class Threed1Volumetrics(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    int_p: float
+    avg_p: float
+
+    int_bpol: float
+    avg_bpol: float
+
+    int_btor: float
+    avg_btor: float
+
+    int_modb: float
+    avg_modb: float
+
+    int_ekin: float
+    avg_ekin: float
+
+    @staticmethod
+    def _from_cpp_threed1volumetrics(
+        cpp_threed1volumetrics: _vmecpp.Threed1Volumetrics,
+    ) -> Threed1Volumetrics:
+        threed1volumetrics = Threed1Volumetrics(
+            **{
+                attr: getattr(cpp_threed1volumetrics, attr)
+                for attr in Threed1Volumetrics.model_fields
+            }
+        )
+
+        return threed1volumetrics
+
+
 class Mercier(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
@@ -883,6 +915,9 @@ class VmecOutput(pydantic.BaseModel):
     mercier: Mercier
     """Python equivalent of VMEC's "mercier" file."""
 
+    threed1_volumetrics: Threed1Volumetrics
+    """Python equivalent of VMEC's volumetrics section in the "threed1" file."""
+
     wout: VmecWOut
     """Python equivalent of VMEC's "wout" file."""
 
@@ -926,7 +961,16 @@ def run(
     wout = VmecWOut._from_cpp_wout(cpp_wout)
     jxbout = JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout)
     mercier = Mercier._from_cpp_mercier(cpp_output_quantities.mercier)
-    return VmecOutput(input=input, wout=wout, jxbout=jxbout, mercier=mercier)
+    threed1_volumetrics = Threed1Volumetrics._from_cpp_threed1volumetrics(
+        cpp_output_quantities.threed1_volumetrics
+    )
+    return VmecOutput(
+        input=input,
+        wout=wout,
+        jxbout=jxbout,
+        mercier=mercier,
+        threed1_volumetrics=threed1_volumetrics,
+    )
 
 
 @jt.jaxtyped(typechecker=beartype)
@@ -936,4 +980,12 @@ def _pad_and_transpose(
     return np.vstack((np.zeros(mnsize), arr)).T
 
 
-__all__ = ["JxBOut", "Mercier", "VmecInput", "VmecOutput", "VmecWOut", "run"]
+__all__ = [
+    "JxBOut",
+    "Mercier",
+    "Threed1Volumetrics",
+    "VmecInput",
+    "VmecOutput",
+    "VmecWOut",
+    "run",
+]

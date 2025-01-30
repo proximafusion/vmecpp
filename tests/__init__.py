@@ -122,3 +122,19 @@ def test_mercier_bindings(cma_output):
         "Dgeod",
     ]:
         assert len(getattr(cma_output.mercier, varname).shape) == 1
+
+
+def test_threed1volumetrics_bindings(cma_output):
+    for varname in [
+        "int_p",
+        "avg_p",
+        "int_bpol",
+        "avg_bpol",
+        "int_btor",
+        "avg_btor",
+        "int_modb",
+        "avg_modb",
+        "int_ekin",
+        "avg_ekin",
+    ]:
+        assert isinstance(getattr(cma_output.threed1_volumetrics, varname), float)
