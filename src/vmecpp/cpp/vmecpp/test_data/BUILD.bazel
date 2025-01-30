@@ -12,16 +12,6 @@ filegroup(
 )
 
 filegroup(
-    name = "solovev_analytical",
-    visibility = ["//visibility:public"],
-    srcs = [
-        "solovev_analytical.json",
-        "input.solovev_analytical",
-        "wout_solovev_analytical.nc",
-    ],
-)
-
-filegroup(
     name = "solovev_no_axis",
     visibility = ["//visibility:public"],
     srcs = [

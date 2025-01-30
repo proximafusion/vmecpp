@@ -39,7 +39,6 @@ cc_test(
     srcs = ["vmec_indata_test.cc"],
     data = [
         "//vmecpp/test_data:solovev",
-        "//vmecpp/test_data:solovev_analytical",
         "//vmecpp/test_data:solovev_no_axis",
         "//vmecpp/test_data:cth_like_fixed_bdy",
         "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
