@@ -327,71 +327,71 @@ class VmecWout(pydantic.BaseModel):
     gamma: float
     mgrid_file: str
 
+    # In the C++ WOutFileContents this is called iota_half.
     iotas: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called iota_half."""
 
+    # In the C++ WOutFileContents this is called iota_full.
     iotaf: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called iota_full."""
 
+    # In the C++ WOutFileContents this is called betatot.
     betatotal: float
-    """In VMEC++ this is called betatot."""
 
+    # In the C++ WOutFileContents this is called raxis_c.
     raxis_cc: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called raxis_c."""
 
+    # In the C++ WOutFileContents this is called zaxis_s.
     zaxis_cs: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called zaxis_s."""
 
+    # In the C++ WOutFileContents this is called dVds.
     vp: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called dVds."""
 
+    # In the C++ WOutFileContents this is called pressure_full.
     presf: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called pressure_full."""
 
+    # In the C++ WOutFileContents this is called pressure_half.
     pres: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called pressure_half."""
 
+    # In the C++ WOutFileContents this is called toroidal_flux.
     phi: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called toroidal_flux."""
 
+    # In the C++ WOutFileContents this is called sign_of_jacobian.
     signgs: int
-    """In VMEC++ this is called sign_of_jacobian."""
 
+    # In the C++ WOutFileContents this is called VolAvgB.
     volavgB: float
-    """In VMEC++ this is called VolAvgB."""
 
+    # In the C++ WOutFileContents this is called safety_factor.
     q_factor: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called safety_factor."""
 
+    # In the C++ WOutFileContents this is called poloidal_flux.
     chi: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called poloidal_flux."""
 
+    # In the C++ WOutFileContents this is called spectral_width.
     specw: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called spectral_width."""
 
+    # In the C++ WOutFileContents this is called overr.
     over_r: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called overr."""
 
+    # In the C++ WOutFileContents this is called Dshear.
     DShear: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called Dshear."""
 
+    # In the C++ WOutFileContents this is called Dwell.
     DWell: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called Dwell."""
 
+    # In the C++ WOutFileContents this is called Dcurr.
     DCurr: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called Dcurr."""
 
+    # In the C++ WOutFileContents this is called Dgeod.
     DGeod: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called Dgeod."""
 
+    # In the C++ WOutFileContents this is called maximum_iterations.
     niter: int
-    """In VMEC++ this is called maximum_iterations."""
 
+    # In the C++ WOutFileContents this is called beta.
     beta_vol: jt.Float[np.ndarray, "..."]
-    """In VMEC++ this is called beta."""
 
+    # In the C++ WOutFileContents this is called 'version' and it is a string.
     version_: float
-    """In VMEC++ this is called 'version' and it is a string."""
 
     @property
     def volume_p(self):
