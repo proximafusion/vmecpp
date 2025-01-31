@@ -43,7 +43,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [As a command line tool](#as-a-command-line-tool)
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
-  - [Ubuntu 22.04](#ubuntu-2204)
+  - [Ubuntu](#ubuntu)
   - [MacOS](#macos)
   - [As part of a conda environment](#as-part-of-a-conda-environment)
   - [C++ build from source](#c-build-from-source)
@@ -110,7 +110,9 @@ See [docker/README.md](https://github.com/proximafusion/vmecpp/blob/main/docker/
 
 ## Installation
 
-### Ubuntu 22.04
+### Ubuntu
+
+Ubuntu 22.04 and 24.04 are both supported.
 
 1. Install required system packages:
 ```shell
@@ -125,7 +127,7 @@ pip install git+https://github.com/proximafusion/vmecpp
 
 The procedure will take a few minutes as it will build VMEC++ and some dependencies from source.
 
-A common issue on Ubuntu 22.04 is a build failure due to no `python` executable being available in PATH, since on Ubuntu 22.04 the executable is called `python3`.
+A common issue on Ubuntu is a build failure due to no `python` executable being available in PATH, since on Ubuntu the executable is called `python3`.
 When installing in a virtual environment (which is always a good idea anyways) `python` will be present.
 Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 
