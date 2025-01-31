@@ -28,7 +28,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
         matrix:
-            os: [ubuntu-22.04, macos-latest]
+            os: [ubuntu-22.04, ubuntu-24.04, macos-latest]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,6 +45,9 @@ jobs:
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
           sudo apt-get update && sudo apt-get install libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev libnetcdff-dev libscalapack-openmpi-dev libopenblas-dev
+      - name: Also install VMEC2000 (only on Ubuntu 22.04)
+        if: ${{ matrix.os == 'ubuntu-22.04' }}
+        run: |
           # custom wheel for VMEC2000, needed for some VMEC++/VMEC2000 compatibility tests
           # NOTE: this wheel is only guaranteed to work on Ubuntu 22.04
           python -m pip install vmec@https://anaconda.org/eguiraud-pf/vmec/0.0.6/download/vmec-0.0.6-cp310-cp310-linux_x86_64.whl

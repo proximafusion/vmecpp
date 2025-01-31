@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: MIT
 import math
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -36,10 +35,10 @@ def test_ensure_vmec2000_input_noop():
         assert indata_file == vmec2000_input_file
 
 
-@pytest.mark.skipif(
-    sys.platform == "darwin", reason="we cannot install VMEC2000 on macos"
-)
 def test_ensure_vmec2000_input_from_vmecpp_input():
+    # we only install VMEC2000 on Ubu 22.04, not on MacOS and Ubuntu 24.04
+    pytest.importorskip("vmec")
+
     vmecpp_input_file = TEST_DATA_DIR / "cma.json"
 
     with simsopt_compat.ensure_vmec2000_input(
