@@ -143,7 +143,7 @@ brew install python@3.10 gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json p
 # tell cmake where to find gfortran and gcc as they have non-standard names
 export FC=$(which gfortran-14)
 export CC=$(which gcc-14)
-python3.10 -m pip install git+ssh://git@github.com/proximafusion/vmecpp.git
+python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
 ```
 
 ### As part of a conda environment
