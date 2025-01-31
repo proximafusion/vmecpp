@@ -117,11 +117,10 @@ See [docker/README.md](https://github.com/proximafusion/vmecpp/blob/main/docker/
 sudo apt-get install build-essential cmake libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
 ```
 
-2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment).
-   This requires that git has access to the SSH key you use to log into GitHub (only until we make the repo public and publish official wheels to PyPI):
+2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
 
 ```shell
-pip install git+ssh://git@github.com/proximafusion/vmecpp.git
+pip install git+https://github.com/proximafusion/vmecpp
 ```
 
 The procedure will take a few minutes as it will build VMEC++ and some dependencies from source.
