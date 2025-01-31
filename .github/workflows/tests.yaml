@@ -56,6 +56,6 @@ jobs:
           # on Ubuntu we would not need this, but on MacOS we need to point CMake to gfortran-14 and gcc-14
           export FC=$(which gfortran-14 || which gfortran)
           export CC=$(which gcc-14 || which gcc)
-          python -m pip install -vvv .[test]
+          python -m pip install -v .[test]
       - name: Test package
         run: python -m pytest tests/
