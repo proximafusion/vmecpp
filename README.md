@@ -31,6 +31,8 @@ VMEC++ can run on a laptop, but it is a suitable component for large-scale stell
 On the other hand, some features of the original Fortran VMEC are not available in VMEC++.
 See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 
+<!-- NOTE: if you change the intro above, remember to also adapt docs/index.md! -->
+
 -----
 
 ## Table of Contents
