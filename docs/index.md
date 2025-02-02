@@ -1,4 +1,5 @@
-<img src="proxima_logo.png" alt="Proxima Fusion logo" width="400px">
+<img class="only-light" src="proxima_logo_light_mode.png" alt="Proxima Fusion logo" width="400px">
+<img class="only-dark" src="proxima_logo_dark_mode.png" alt="Proxima Fusion logo" width="400px">
 
 # VMEC++
 
