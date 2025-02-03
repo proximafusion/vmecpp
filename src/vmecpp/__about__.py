@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-__version__ = "0.0.1"
+# NOTE: must also update src/vmecpp/cpp/MODULE.bazel
+__version__ = "0.1.0"
