@@ -12,6 +12,7 @@ Reference <api/vmecpp>
 
 ![MIT license](https://img.shields.io/badge/license-MIT-blue)
 ![Python version](https://img.shields.io/badge/python-3.10-blue)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14800158.svg)](https://doi.org/10.5281/zenodo.14800158)
 
 VMEC++ is a Python-friendly, from-scratch reimplementation in C++ of the Variational Moments Equilibrium Code (VMEC),
 a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks.
