@@ -187,7 +187,12 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
     # vmec2000.indata has way many more variables than vmecpp.indata, so we test
     # the common subset.
     for varname in dir(vmecpp.indata):
-        if varname.startswith("_") or varname == "free_boundary_method":
+        # These are not present in the legacy VMEC2000 INDATA namelist,
+        # therefore skip them.
+        if varname.startswith("_") or varname in [
+            "free_boundary_method",
+            "return_outputs_even_if_not_converged",
+        ]:
             continue
 
         vmecpp_var = getattr(vmecpp.indata, varname)
