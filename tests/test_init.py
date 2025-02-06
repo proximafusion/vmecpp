@@ -88,11 +88,15 @@ def cma_output() -> vmecpp.VmecOutput:
     return vmec_output
 
 
-def test_vmecwout_save(cma_output):
+def test_vmecwout_io(cma_output):
     with tempfile.NamedTemporaryFile() as tmp_file:
         cma_output.wout.save(tmp_file.name)
 
         assert Path(tmp_file.name).exists()
+
+        # check that from_wout_file can load the file as well
+        loaded_wout = vmecpp.VmecWOut.from_wout_file(tmp_file.name)
+        assert loaded_wout is not None
 
         test_dataset = netCDF4.Dataset(tmp_file.name, "r")
 
