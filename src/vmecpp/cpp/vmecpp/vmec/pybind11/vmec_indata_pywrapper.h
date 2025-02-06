@@ -62,6 +62,7 @@ class VmecINDATAPyWrapper {
   double delt;
   double tcon0;
   bool lforbal;
+  bool return_outputs_even_if_not_converged;
   Eigen::VectorXd raxis_c;
   Eigen::VectorXd zaxis_s;
   Eigen::VectorXd raxis_s;
