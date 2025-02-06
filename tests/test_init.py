@@ -39,6 +39,23 @@ def test_run(max_threads, input_file, verbose):
     assert out.wout is not None
 
 
+def test_get_outputs_if_non_converged_if_wanted():
+    """Test that one can get the VMEC++ outputs even if a run did not converge."""
+
+    input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+
+    # only allow one iteration - VMEC++ will not converge that fast
+    input.niter_array[-1] = 1
+
+    # instruct VMEC++ to return the outputs, even if it did not converge
+    input.return_outputs_even_if_not_converged = True
+
+    out = vmecpp.run(input)
+
+    assert out.wout is not None
+    assert out.wout.niter == 2
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():

@@ -47,7 +47,7 @@ VectorXd NonEmptyVectorOr(const std::vector<double>& vec, const double val) {
 // Write object to the specified HDF5 file, under key "vmecinternalresults".
 absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
   file.createGroup(H5key);
-
+  WRITEMEMBER(return_outputs_even_if_not_converged);
   WRITEMEMBER(sign_of_jacobian);
   WRITEMEMBER(num_full);
   WRITEMEMBER(num_half);
@@ -115,6 +115,11 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
 
 absl::Status vmecpp::VmecInternalResults::LoadInto(
     vmecpp::VmecInternalResults& obj, H5::H5File& from_file) {
+  if (from_file.exists("return_outputs_even_if_not_converged")) {
+    READMEMBER(return_outputs_even_if_not_converged);
+  } else {
+    obj.return_outputs_even_if_not_converged = false;
+  }
   READMEMBER(sign_of_jacobian);
   READMEMBER(num_full);
   READMEMBER(num_half);
@@ -1250,6 +1255,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
   output_quantities.vmec_internal_results = GatherDataFromThreads(
       sign_of_jacobian, s, fc, constants, radial_partitioning, decomposed_x,
       models_from_threads, radial_profiles);
+  output_quantities.vmec_internal_results.return_outputs_even_if_not_converged = indata.return_outputs_even_if_not_converged;
 
   if (vmec_status == VmecStatus::NORMAL_TERMINATION ||
       vmec_status == VmecStatus::SUCCESSFUL_TERMINATION) {
