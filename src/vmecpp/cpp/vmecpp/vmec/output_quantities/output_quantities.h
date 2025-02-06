@@ -1331,6 +1331,7 @@ JxBOutFileContents ComputeJxBOutputFileContents(
     const VmecInternalResults& vmec_internal_results,
     const BSubSFull& bsubs_full,
     const CovariantBDerivatives& covariant_b_derivatives,
+    const bool return_outputs_even_if_not_converged,
     VmecStatus vmec_status);
 
 MercierStabilityIntermediateQuantities ComputeIntermediateMercierQuantities(

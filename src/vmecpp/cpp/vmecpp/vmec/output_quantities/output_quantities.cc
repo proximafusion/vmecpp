@@ -1251,7 +1251,8 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
       models_from_threads, radial_profiles);
 
   if (vmec_status == VmecStatus::NORMAL_TERMINATION ||
-      vmec_status == VmecStatus::SUCCESSFUL_TERMINATION) {
+      vmec_status == VmecStatus::SUCCESSFUL_TERMINATION ||
+      indata.return_outputs_even_if_not_converged) {
     MeshBledingBSubZeta(
         s, fc,
         /*m_vmec_internal_results=*/output_quantities.vmec_internal_results);
@@ -1314,6 +1315,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     output_quantities.jxbout = ComputeJxBOutputFileContents(
         s, fc, output_quantities.vmec_internal_results,
         output_quantities.bsubs_full, output_quantities.covariant_b_derivatives,
+        indata.return_outputs_even_if_not_converged,
         vmec_status);
 
     if (checkpoint == VmecCheckpoint::JXBOUT) {
@@ -2360,6 +2362,7 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     const VmecInternalResults& vmec_internal_results,
     const BSubSFull& bsubs_full,
     const CovariantBDerivatives& covariant_b_derivatives,
+    const bool return_outputs_even_if_not_converged,
     VmecStatus vmec_status) {
   JxBOutFileContents jxbout;
 
@@ -2598,7 +2601,7 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     jxbout.jperp2[jF] = dnorm1 * tjnorm * average_jperp2;
 
     // Some quantities are only computed if VMEC++ actually converged.
-    if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION) {
+    if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION || return_outputs_even_if_not_converged) {
       // normalized toroidal magnetic flux
       jxbout.phin[jF] = vmec_internal_results.phiF[jF] /
                         vmec_internal_results.phiF[fc.ns - 1];
@@ -2635,7 +2638,7 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
   }  // jF
 
   // Some quantities are only computed if VMEC++ actually converged.
-  if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION) {
+  if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION || return_outputs_even_if_not_converged) {
     // The loop in jxbforce.f90:594 goes over js=2,ns1,
     // which means that the last half-grid point is not touched.
     for (int jH = 0; jH < vmec_internal_results.num_half - 1; ++jH) {

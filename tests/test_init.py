@@ -55,6 +55,11 @@ def test_get_outputs_if_non_converged_if_wanted():
     assert vmec_output.wout is not None
     assert vmec_output.wout.niter == 2
 
+    # actually check that some arrays,
+    # which were previously only filled if VMEC converged,
+    # also get populated now
+    assert not np.all(vmec_output.jxbout.jxb_gradp == 0.0)
+
 
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
