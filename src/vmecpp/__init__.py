@@ -154,6 +154,12 @@ class VmecInput(pydantic.BaseModel):
     lforbal: bool
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
+    return_outputs_even_if_not_converged: bool
+    """If true, return the outputs even if VMEC++ did not converge.
+
+    Otherwise (default = false), a RuntimeError will be raised in that case.
+    """
+
     raxis_c: jt.Float[np.ndarray, " ntor_plus_1"]
     """Magnetic axis coefficients for R ~ cos(n*v); stellarator-symmetric."""
 
