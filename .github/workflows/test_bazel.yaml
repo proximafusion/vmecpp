@@ -1,4 +1,4 @@
-name: Build using bazel
+name: C++ core tests
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   tests:
-    name: Build using bazel
+    name: Build and run tests
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,16 @@ jobs:
         run: |
           cd src/vmecpp/cpp
           bazel build -- //...
-      - name: Run C++ tests via bazel
+      - uses: actions/checkout@v4
+        with:
+          repository: proximafusion/vmecpp_large_cpp_tests
+          path: src/vmecpp/cpp/vmecpp_large_cpp_tests
+          lfs: true
+      - name: Build VMEC++ C++ tests via bazel
+        run: |
+          cd src/vmecpp/cpp
+          bazel build -- //vmecpp_large_cpp_tests/...
+      - name: Run full C++ test suite
         run: |
           cd src/vmecpp/cpp
           bazel test --jobs=1 --test_output=errors -- //...
