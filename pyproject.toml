@@ -29,9 +29,9 @@ dependencies = [
   "jaxtyping",
   "mpi4py",
   "netCDF4",
-  "numpy<2",  # otherwise SIMSOPT breaks (ideally they would put the cap in SIMSOPT)
+  "numpy",
   "pydantic",
-  "simsopt",
+  "simsopt>=1.8.1",
 ]
 
 [project.optional-dependencies]
