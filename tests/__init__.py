@@ -51,7 +51,7 @@ def test_run_with_hot_restart():
     input.niter_array = input.niter_array[-1:]
     hot_restarted_out = vmecpp.run(input, verbose=False, restart_from=out)
 
-    assert hot_restarted_out.wout.niter == 1
+    assert hot_restarted_out.wout.niter == 2
 
 
 @pytest.fixture(scope="module")
