@@ -32,3 +32,8 @@ def test_indata_to_json_not_found_file():
     test_file = Path("input.i_do_not_exist")
     with pytest.raises(FileNotFoundError):
         _util.indata_to_json(test_file)
+
+
+def test_package_root():
+    # check we can find a file that should be there from the repo root
+    assert Path(_util.package_root(), "_util.py").is_file()
