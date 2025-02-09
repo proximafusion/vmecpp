@@ -7,9 +7,12 @@ Here we just test that the Python bindings and the general API works as expected
 Physics correctness is checked at the level of the C++ core.
 """
 
+import math
 import tempfile
 from pathlib import Path
 
+import netCDF4
+import numpy as np
 import pytest
 
 import vmecpp
@@ -66,6 +69,41 @@ def test_vmecwout_save(cma_output):
         cma_output.wout.save(tmp_file.name)
 
         assert Path(tmp_file.name).exists()
+
+        test_dataset = netCDF4.Dataset(tmp_file.name, "r")
+
+    expected_dataset = netCDF4.Dataset(TEST_DATA_DIR / "wout_cma.nc", "r")
+
+    for varname, expected_value in expected_dataset.variables.items():
+        if varname in vmecpp.VmecWOut._MISSING_FORTRAN_VARIABLES:
+            continue
+
+        test_value = test_dataset[varname]
+        error_msg = f"mismatch in {varname}"
+
+        # string
+        if expected_value.dtype == np.dtype("S1"):
+            np.testing.assert_equal(test_value[:], expected_value[:], err_msg=error_msg)
+            continue
+
+        expected_dims = expected_value.dimensions
+        assert test_value.dimensions == expected_dims, error_msg
+
+        # scalar
+        if expected_dims == ():
+            assert math.isclose(
+                test_value[:], expected_value[:], abs_tol=1e-7
+            ), error_msg
+            continue
+
+        # array or tensor
+        for d in expected_dims:
+            assert (
+                test_dataset.dimensions[d].size == expected_dataset.dimensions[d].size
+            )
+        np.testing.assert_allclose(
+            test_value[:], expected_value[:], err_msg=error_msg, rtol=1e-6, atol=1e-7
+        )
 
 
 def test_jxbout_bindings(cma_output):
