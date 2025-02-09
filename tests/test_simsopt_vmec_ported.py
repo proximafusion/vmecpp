@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
 
-from vmecpp.cpp.vmecpp.vmec.pybind11.simsopt_vmecpp import Vmec
+from vmecpp.simsopt_compat import Vmec
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # so the tests live in the sources but the vmecpp module lives in site_packages.
 # Therefore, in order to find the test data we use the relative path to this file.
 # I'm very open to alternative solutions :)
-REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
+REPO_ROOT = Path(__file__).parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 ########################################################################

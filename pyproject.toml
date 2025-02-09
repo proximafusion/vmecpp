@@ -59,7 +59,6 @@ path = "src/vmecpp/__about__.py"
 experimental = true
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/vmecpp/cpp/vmecpp/vmec/pybind11/simsopt_vmecpp.py" = "vmecpp/cpp/vmecpp/vmec/pybind11/simsopt_vmecpp.py"
 "src/vmecpp/cpp/vmecpp/simsopt_compat" = "vmecpp/cpp/vmecpp/simsopt_compat"
 
 [tool.hatch.envs.test]
