@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import tempfile
+import typing
 from pathlib import Path
 
 import jaxtyping as jt
@@ -256,6 +257,32 @@ class VmecWOut(pydantic.BaseModel):
     """
 
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    _MISSING_FORTRAN_VARIABLES: typing.ClassVar[list[str]] = [
+        "input_extension",
+        "nextcur",
+        "extcur",
+        "mgrid_mode",
+        "am",
+        "ac",
+        "ai",
+        "am_aux_s",
+        "am_aux_f",
+        "ai_aux_s",
+        "ai_aux_f",
+        "ac_aux_s",
+        "ac_aux_f",
+        "itfsq",
+        "lrecon__logical__",
+        "lrfp__logical__",
+        "bdotb",
+        "fsqt",
+        "wdot",
+        "currumnc",
+        "currvmnc",
+    ]
+    """The complete list of variables that can be found in Fortran VMEC wout files but
+    not in wout files produced by VMEC++."""
 
     ier_flag: int
     nfp: int
