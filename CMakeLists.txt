@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.4...3.18)
+project(vmecpp C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -10,7 +11,14 @@ set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -fno-math-errno")
 
-project(vmecpp C CXX)
+# use ccache if available
+find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
+if(EXISTS ${CCACHE_COMMAND})
+  message(STATUS "Found ccache: ${CCACHE_COMMAND}")
+  set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_COMMAND})
+else()
+  message(STATUS "Could NOT find ccache")
+endif()
 
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
