@@ -853,7 +853,7 @@ class Mercier(pydantic.BaseModel):
     Dgeod: jt.Float[np.ndarray, " dim1"]
 
     @staticmethod
-    def _from_cpp_mercier(cpp_mercier: _vmecpp.Mercier) -> JxBOut:
+    def _from_cpp_mercier(cpp_mercier: _vmecpp.Mercier) -> Mercier:
         mercier = Mercier(
             **{attr: getattr(cpp_mercier, attr) for attr in Mercier.model_fields}
         )
