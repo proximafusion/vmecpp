@@ -219,6 +219,16 @@ input.niter_array = input.niter_array[-1:]
 hot_restarted_output = vmecpp.run(input, restart_from=output)
 ```
 
+## Full tests and validation against the reference Fortran VMEC v8.52
+
+When developing the C++ core, it's advisable to locally run the full C++ tests for debugging or to validate changes before submitting them.
+The full tests are not stored in the sources of this repo, but in a separate repo: https://github.com/proximafusion/vmecpp_large_cpp_tests .
+See the instructions there for how to run those tests locally. The CI of this repo includes those tests too.
+
+The single-thread runtimes as well as the contents of the "wout" file produced by VMEC++ can be compared with those of Fortran VMEC v8.52.
+The full validation test can be found at https://github.com/proximafusion/vmecpp-validation, including a set of sensible input configurations,
+parametr scan values and tolerances that make the comparison pass. See that repo for more information.
+
 ## Differences with respect to PARVMEC/VMEC2000
 
 VMEC++:
@@ -267,15 +277,15 @@ VMEC++:
 ## Roadmap
 
 Some of the things we are planning for VMEC++'s future:
-- free-boundary hot-restart in Python
-- open-sourcing the full VMEC++ test suite (including the Verification&Validation part that compares `wout` contents)
-- open-sourcing the source code to reproduce VMEC++'s performance benchmarks
-- VMEC++ usable as a C++ bazel module
+- [ ] free-boundary hot-restart in Python
+- [X] open-sourcing the full VMEC++ test suite (including the Verification&Validation part that compares `wout` contents)
+- [ ] open-sourcing the source code to reproduce VMEC++'s performance benchmarks
+- [ ] VMEC++ usable as a C++ bazel module
 
 Some items we do not plan to work on, but where community ownership is welcome:
-- packaging VMEC++ for other platforms or package managers (e.g. conda, homebrew, ...)
-- native Windows support
-- 2D preconditioner using [`bcyclic_plus_plus`](https://code.ornl.gov/m4c/bcyclic_plus_plus)
+- [ ] packaging VMEC++ for other platforms or package managers (e.g. conda, homebrew, ...)
+- [ ] native Windows support
+- [ ] 2D preconditioner using [`bcyclic_plus_plus`](https://code.ornl.gov/m4c/bcyclic_plus_plus)
 
 ## License
 
