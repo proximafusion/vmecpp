@@ -227,7 +227,7 @@ See the instructions there for how to run those tests locally. The CI of this re
 
 The single-thread runtimes as well as the contents of the "wout" file produced by VMEC++ can be compared with those of Fortran VMEC v8.52.
 The full validation test can be found at https://github.com/proximafusion/vmecpp-validation, including a set of sensible input configurations,
-parametr scan values and tolerances that make the comparison pass. See that repo for more information.
+parameter scan values and tolerances that make the comparison pass. See that repo for more information.
 
 ## Differences with respect to PARVMEC/VMEC2000
 
