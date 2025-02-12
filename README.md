@@ -56,6 +56,8 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [C++ build from source](#c-build-from-source)
 - [Hot restart](#hot-restart)
 - [Differences with respect to PARVMEC/VMEC2000](#differences-with-respect-to-parvmecvmec2000)
+- [Roadmap](#roadmap)
+- [Related repositories](#related-repositories)
 - [License](#license)
 
 <!-- SPHINX-START -->
@@ -286,6 +288,12 @@ Some items we do not plan to work on, but where community ownership is welcome:
 - [ ] packaging VMEC++ for other platforms or package managers (e.g. conda, homebrew, ...)
 - [ ] native Windows support
 - [ ] 2D preconditioner using [`bcyclic_plus_plus`](https://code.ornl.gov/m4c/bcyclic_plus_plus)
+
+## Related repositories
+
+* [`proximafusion/vmecpp-validation`](https://github.com/proximafusion/vmecpp-validation) - Validation tests for VMEC++
+* [`proximafusion/vmecpp_large_cpp_tests`](https://github.com/proximafusion/vmecpp_large_cpp_tests) - Large C++ tests for VMEC++
+* [`proximafusion/the_numerics_of_vmecpp`](https://github.com/proximafusion/the_numerics_of_vmecpp) - Documentation of the numerical details of VMEC++
 
 ## License
 
