@@ -9,6 +9,24 @@
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 
+///  LU factorization of a general M-by-N matrix A
+extern "C" void dgetrf_(int *m,
+                        int *n,
+                        double *a,
+                        int *lda,
+                        int *ipiv,
+                        int *info);
+///  Solves a system of linear equations using the LU factorization.
+extern "C" void dgetrs_(char *transpose,
+                        int *num_rows,
+                        int *num_columns,
+                        double *matrix,
+                        int *leading_dim,
+                        int *pivot,
+                        double *y,
+                        int *y_leading_dim,
+                        int *info);
+
 namespace vmecpp {
 
 LaplaceSolver::LaplaceSolver(const Sizes* s, const FourierBasisFastToroidal* fb,
@@ -313,7 +331,7 @@ void LaplaceSolver::BuildMatrix() {
 void LaplaceSolver::DecomposeMatrix() {
   // use OPENBLAS_NUM_THREADS to set parallelism in OpenBLAS
 
-  const int mnpd = (mf + 1) * (2 * nf + 1);
+  int mnpd = (mf + 1) * (2 * nf + 1);
 
   // NOTE:
   // As soon as LAPACK starts working on `matrixShare`,
@@ -322,8 +340,8 @@ void LaplaceSolver::DecomposeMatrix() {
 
   // perform LU factorization of the matrix
   // (only needed when matrix is updated --> every nvacskip iterations)
-  int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, mnpd, mnpd, matrixShare.data(),
-                            mnpd, iPiv.data());
+  int info;
+  dgetrf_(&mnpd, &mnpd, matrixShare.data(), &mnpd, iPiv.data(), &info);
 
   if (info < 0) {
     std::cout << -info << "-th argument to dgetrf is wrong\n";
@@ -338,7 +356,7 @@ void LaplaceSolver::DecomposeMatrix() {
 
 void LaplaceSolver::SolveForPotential(
     const std::vector<double>& bvec_sin_singular) {
-  const int mnpd = (mf + 1) * (2 * nf + 1);
+  int mnpd = (mf + 1) * (2 * nf + 1);
 #pragma omp single
   absl::c_fill_n(bvecShare, mnpd, 0);
 #pragma omp barrier
@@ -365,9 +383,11 @@ void LaplaceSolver::SolveForPotential(
     // use OPENBLAS_NUM_THREADS to set parallelism in OpenBLAS
 
     // solve for given RHS
-    int info =
-        LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', mnpd, 1, matrixShare.data(), mnpd,
-                       iPiv.data(), bvecShare.data(), mnpd);
+    int one = 1;
+    int info;
+    char no_transpose = 'N';
+    dgetrs_(&no_transpose, &mnpd, &one, matrixShare.data(), &mnpd,
+            iPiv.data(), bvecShare.data(), &mnpd, &info);
 
     if (info < 0) {
       std::cout << -info << "-th argument to dgetrs wrong\n";
