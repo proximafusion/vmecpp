@@ -1074,14 +1074,14 @@ void Vmec::Printout(double delt0r, int thread_id) {
 
     if (fc_.lfreeb) {
       std::cout << absl::StrFormat(
-          " %4d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
+          "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
           "%.3e | %.4e | %.4e | %5.3f | %.3e\n",
           iter2_, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
           delt0r, r00, energy, betaVolAvg, volAvgM, delbsq);
     } else {
       // omit DELBSQ column in fixed-boundary case
       std::cout << absl::StrFormat(
-          " %4d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
+          "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
           "%.3e | %.4e | %.4e | %5.3f\n",
           iter2_, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
           delt0r, r00, energy, betaVolAvg, volAvgM);
