@@ -80,6 +80,7 @@ int MGridProvider::loadFromMGrid(const std::string& filename,
   numPhi = NetcdfReadInt(ncid, "kp");
 
   nextcur = NetcdfReadInt(ncid, "nextcur");
+  CHECK_EQ(coilCurrents.size(), nextcur) << "Number of currents does not match number of mgrid fields.";
 
   mgrid_mode = NetcdfReadString(ncid, "mgrid_mode");
 
