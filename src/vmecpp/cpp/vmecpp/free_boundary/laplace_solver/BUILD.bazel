@@ -14,6 +14,6 @@ cc_library(
         "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
     ],
     linkopts = [
-        "-llapacke",
+        "-llapack",
     ],
 )

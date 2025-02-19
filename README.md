@@ -145,7 +145,7 @@ Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 1. Install dependencies via [Homebrew](https://brew.sh/):
 
 ```shell
-brew install python@3.10 gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json protobuf lapack git open-mpi
+brew install python@3.10 gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json protobuf git open-mpi
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
