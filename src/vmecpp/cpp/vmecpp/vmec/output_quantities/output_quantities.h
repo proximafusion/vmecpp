@@ -25,11 +25,6 @@ namespace vmecpp {
 // This is the data from inside VMEC, gathered from all threads,
 // that form the basis of computing the output quantities.
 struct VmecInternalResults {
-  // copy of corresponding VmecINDATA variable
-  // if true, compute full outputs even if VMEC did not converge
-  // defaults to false
-  bool return_outputs_even_if_not_converged;
-
   int sign_of_jacobian;
 
   // total number of full-grid points
