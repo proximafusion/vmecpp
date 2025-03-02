@@ -23,9 +23,23 @@ def test_indata_to_json_success():
     ):
         test_file = TEST_DATA_DIR / "input.cma"
         json_input_file = _util.indata_to_json(test_file)
-        expected_json_input_file = Path("cma.json")
+        expected_json_input_file = Path(tmpdir, "cma.json").resolve()
         assert json_input_file.exists()
         assert json_input_file == expected_json_input_file
+
+
+def test_indata_to_json_output_override():
+    with tempfile.TemporaryDirectory() as tmpdir, _util.change_working_directory_to(
+        Path(tmpdir)
+    ):
+        test_file = TEST_DATA_DIR / "input.cma"
+        json_input_file = _util.indata_to_json(
+            test_file, output_override=Path("override_path")
+        )
+        expected_json_input_file = Path("override_path").resolve()
+        assert json_input_file.exists()
+        assert json_input_file == expected_json_input_file
+        assert json_input_file.parent == Path.cwd()
 
 
 def test_indata_to_json_not_found_file():
