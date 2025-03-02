@@ -55,22 +55,29 @@ def get_vmec_configuration_name(vmec_file: Path) -> str:
 
 
 def indata_to_json(
-    filename: pathlib.Path, use_mgrid_file_absolute_path: bool = False
+    filename: pathlib.Path,
+    use_mgrid_file_absolute_path: bool = False,
+    output_override: pathlib.Path | None = None,
 ) -> pathlib.Path:
     """Convert a VMEC2000 INDATA file to a VMEC++ JSON input file.
 
     The new file is created in the current working directory. Given
     `input.name`, the corresponding JSON file will be called
-    `name.json`.
+    `name.json` if `output_override` is None, otherwise that Path
+    is used as output path.
 
     Args:
         filename: The path to the VMEC2000 INDATA file.
         use_mgrid_file_absolute_path: If True, the absolute path to
             the parent directory of `filename` will be prepended to
             the output mgrid_file path.
+        output_override: If present, indata_to_json writes the output
+            to this Path. Otherwise for an input file called "input.XYZ"
+            the output file will be placed in the same directory as
+            the input and will have name "XYZ.json".
 
     Returns:
-        The path to the newly created JSON file.
+        The absolute path to the newly created JSON file.
     """
     if not filename.exists():
         msg = f"{filename} does not exist."
@@ -88,6 +95,13 @@ def indata_to_json(
 
     original_input_file = filename.absolute()
     original_cwd = Path.cwd()
+
+    if output_override is not None:
+        # in case output_override is a relative path, we must resolve it
+        # before we cd into the temporary working directory otherwise we
+        # won't know where to copy the final output to anymore.
+        output_override = output_override.resolve()
+
     with tempfile.TemporaryDirectory() as tmpdir, change_working_directory_to(
         Path(tmpdir)
     ):
@@ -113,16 +127,21 @@ def indata_to_json(
             )
 
         configuration_name = get_vmec_configuration_name(filename)
-        output_file = pathlib.Path(f"{configuration_name}.json")
+        i2j_output_file = pathlib.Path(f"{configuration_name}.json")
 
-        if not output_file.is_file():
+        if not i2j_output_file.is_file():
             msg = (
                 "The indata2json command was executed with no errors but output file "
-                f"{output_file} is missing. This should never happen!"
+                f"{i2j_output_file} is missing. This should never happen!"
             )
             raise RuntimeError(msg)
 
-        # copy output back
-        shutil.copyfile(output_file, Path(original_cwd, output_file))
+        if output_override is None:
+            # copy output back
+            path_to_vmecpp_input_file = Path(original_cwd, i2j_output_file)
+            shutil.copyfile(i2j_output_file, path_to_vmecpp_input_file)
+            return path_to_vmecpp_input_file
 
-    return output_file
+        # otherwise copy output to desired output override
+        shutil.copyfile(i2j_output_file, output_override)
+        return output_override
