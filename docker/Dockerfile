@@ -3,7 +3,7 @@
 FROM ubuntu:22.04
 
 RUN apt-get -q update && \
-    apt-get -q -y install build-essential libnetcdf-dev liblapacke-dev libopenmpi-dev python3-pip python-is-python3 git wget
+    apt-get -q -y install build-essential libnetcdf-dev liblapacke-dev libopenmpi-dev python3-pip python-is-python3 git wget ninja-build
 RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.24.1/bazelisk-linux-amd64 \
     && mv bazelisk-linux-amd64 /usr/local/bin/bazel \
     && chmod u+x /usr/local/bin/bazel
