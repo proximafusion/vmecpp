@@ -554,7 +554,17 @@ def ensure_vmecpp_input(input_path: Path) -> Generator[Path, None, None]:
             " VMEC++ input JSON using the //third_party/indata2json tool."
         )
 
-        vmecpp_input_path = _util.indata_to_json(input_path)
+        # We also add the PID to the output file to ensure that the output file
+        # is different for multiple processes that run indata_to_json
+        # concurrently on the same input, as it happens e.g. when the SIMSOPT
+        # wrapper is run under `mpirun`.
+        configuration_name = _util.get_vmec_configuration_name(input_path)
+        output_file = input_path.with_name(f"{configuration_name}.{os.getpid()}.json")
+
+        vmecpp_input_path = _util.indata_to_json(
+            input_path, output_override=output_file
+        )
+        assert vmecpp_input_path == output_file
         try:
             yield vmecpp_input_path
         finally:
