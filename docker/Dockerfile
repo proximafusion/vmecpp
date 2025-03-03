@@ -1,5 +1,5 @@
 # run as:
-# docker build -t ghcr.io/jons-pf/vmecpp:latest  .
+# docker build -t ghcr.io/proximafusion/vmecpp:latest  .
 FROM ubuntu:22.04
 
 RUN apt-get -q update && \
