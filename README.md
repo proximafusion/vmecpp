@@ -115,7 +115,11 @@ python -m vmecpp --help
 
 ### As a Docker image
 
-See [docker/README.md](https://github.com/proximafusion/vmecpp/blob/main/docker/README.md).
+A pre-built Docker image is available at https://github.com/proximafusion/vmecpp/pkgs/container/vmecpp.
+Note that at present it is only updated occasionally.
+
+See [docker/README.md](https://github.com/proximafusion/vmecpp/blob/main/docker/README.md) for
+more information and instructions on how to build a new image.
 
 ## Installation
 
