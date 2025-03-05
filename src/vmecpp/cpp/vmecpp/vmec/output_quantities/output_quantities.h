@@ -185,7 +185,7 @@ struct VmecInternalResults {
   // WriteTo.
   static absl::Status LoadInto(VmecInternalResults& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/vmec_internal_results";
+  static constexpr char H5key[] = "/vmec_internal_results"; // NOLINT 
 };
 
 struct PoloidalCurrentToFixBSubV {
@@ -226,7 +226,7 @@ struct RemainingMetric {
   // WriteTo.
   static absl::Status LoadInto(RemainingMetric& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/remaining_metric";
+  static constexpr char H5key[] = "/remaining_metric"; // NOLINT
 };
 
 struct CylindricalComponentsOfB {
@@ -250,7 +250,7 @@ struct CylindricalComponentsOfB {
   static absl::Status LoadInto(CylindricalComponentsOfB& obj,
                                H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/cylindrical_components_of_b";
+  static constexpr char H5key[] = "/cylindrical_components_of_b"; // NOLINT
 };
 
 struct BSubSHalf {
@@ -269,7 +269,7 @@ struct BSubSHalf {
   // WriteTo.
   static absl::Status LoadInto(BSubSHalf& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/bsubs_half";
+  static constexpr char H5key[] = "/bsubs_half"; // NOLINT
 };
 
 struct BSubSFull {
@@ -288,7 +288,7 @@ struct BSubSFull {
   // WriteTo.
   static absl::Status LoadInto(BSubSFull& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/bsubs_full";
+  static constexpr char H5key[] = "/bsubs_full"; // NOLINT
 };
 
 struct SymmetryDecomposedCovariantB {
@@ -348,7 +348,7 @@ struct CovariantBDerivatives {
   static absl::Status LoadInto(CovariantBDerivatives& obj,
                                H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/covariant_b_derivatives";
+  static constexpr char H5key[] = "/covariant_b_derivatives"; // NOLINT
 };
 
 struct JxBOutFileContents {
@@ -401,7 +401,7 @@ struct JxBOutFileContents {
   // WriteTo.
   static absl::Status LoadInto(JxBOutFileContents& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/jxbout";
+  static constexpr char H5key[] = "/jxbout"; // NOLINT
 };
 
 struct MercierStabilityIntermediateQuantities {
@@ -474,7 +474,7 @@ struct MercierStabilityIntermediateQuantities {
   static absl::Status LoadInto(MercierStabilityIntermediateQuantities& obj,
                                H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/mercier_intermediate";
+  static constexpr char H5key[] = "/mercier_intermediate"; // NOLINT
 };
 
 struct MercierFileContents {
@@ -538,7 +538,7 @@ struct MercierFileContents {
   // WriteTo.
   static absl::Status LoadInto(MercierFileContents& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/mercier";
+  static constexpr char H5key[] = "/mercier"; // NOLINT
 };
 
 struct Threed1FirstTableIntermediate {
@@ -609,7 +609,7 @@ struct Threed1FirstTableIntermediate {
   static absl::Status LoadInto(Threed1FirstTableIntermediate& obj,
                                H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/threed1_first_table_intermediate";
+  static constexpr char H5key[] = "/threed1_first_table_intermediate"; // NOLINT
 };
 
 struct Threed1FirstTable {
@@ -666,7 +666,7 @@ struct Threed1FirstTable {
   // WriteTo.
   static absl::Status LoadInto(Threed1FirstTable& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/threed1_first_table";
+  static constexpr char H5key[] = "/threed1_first_table"; // NOLINT
 };
 
 struct Threed1GeometricAndMagneticQuantitiesIntermediate {
@@ -820,7 +820,7 @@ struct Threed1GeometricAndMagneticQuantities {
   static absl::Status LoadInto(Threed1GeometricAndMagneticQuantities& obj,
                                H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/threed1_geometric_and_magnetic_quantities";
+  static constexpr char H5key[] = "/threed1_geometric_and_magnetic_quantities"; // NOLINT
 };
 
 // Volume Integrals (Joules) and Volume Averages (Pascals)
@@ -851,7 +851,7 @@ struct Threed1Volumetrics {
   // WriteTo.
   static absl::Status LoadInto(Threed1Volumetrics& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/threed1_volumetrics";
+  static constexpr char H5key[] = "/threed1_volumetrics"; // NOLINT
 };
 
 // geometry of the magnetic axis, as written to the threed1 file by Fortran VMEC
@@ -883,7 +883,7 @@ struct Threed1AxisGeometry {
   // WriteTo.
   static absl::Status LoadInto(Threed1AxisGeometry& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/threed1_axis_geometry";
+  static constexpr char H5key[] = "/threed1_axis_geometry"; // NOLINT
 };
 
 // beta values from volume averages over plasma
@@ -917,7 +917,7 @@ struct Threed1Betas {
   // WriteTo.
   static absl::Status LoadInto(Threed1Betas& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/threed1_betas";
+  static constexpr char H5key[] = "/threed1_betas"; // NOLINT
 };
 
 // Shafranov Surface Integrals
@@ -965,7 +965,7 @@ struct Threed1ShafranovIntegrals {
   static absl::Status LoadInto(Threed1ShafranovIntegrals& obj,
                                H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/threed1_shafranov_integrals";
+  static constexpr char H5key[] = "/threed1_shafranov_integrals"; // NOLINT
 };
 
 struct WOutFileContents {
@@ -1210,7 +1210,7 @@ struct WOutFileContents {
   // WriteTo.
   static absl::Status LoadInto(WOutFileContents& obj, H5::H5File& from_file);
 
-  static constexpr char H5key[] = "/wout";
+  static constexpr char H5key[] = "/wout"; // NOLINT
 };
 
 // Output quantities from VMEC++

@@ -53,7 +53,7 @@ void FourierBasisFastPoloidal::computeFourierBasisFastPoloidal(int nfp) {
   // over the reduced theta interval from [0, pi].
   // Thus, need a fixed normalization factor (cannot use dnorm3 or wInt in
   // Sizes) here.
-  const double intNorm = 1.0 / (s_.nZeta * (s_.nThetaReduced - 1));
+  const double int_norm = 1.0 / (s_.nZeta * (s_.nThetaReduced - 1));
 
   // poloidal
   for (int m = 0; m < s_.mnyq2 + 1; ++m) {
@@ -64,7 +64,7 @@ void FourierBasisFastPoloidal::computeFourierBasisFastPoloidal(int nfp) {
     if (m == 0) {
       mscale[m] = 1.0;
     } else {
-      mscale[m] = std::sqrt(2.0);
+      mscale[m] = std::numbers::sqrt2;
     }
   }  // m
 
@@ -81,8 +81,8 @@ void FourierBasisFastPoloidal::computeFourierBasisFastPoloidal(int nfp) {
       sinmu[idx_ml] = std::sin(arg) * mscale[m];
 
       // integration
-      cosmui[idx_ml] = cosmu[idx_ml] * intNorm;
-      sinmui[idx_ml] = sinmu[idx_ml] * intNorm;
+      cosmui[idx_ml] = cosmu[idx_ml] * int_norm;
+      sinmui[idx_ml] = sinmu[idx_ml] * int_norm;
 
       if (l == 0 || l == s_.nThetaReduced - 1) {
         cosmui[idx_ml] /= 2.0;
@@ -106,7 +106,7 @@ void FourierBasisFastPoloidal::computeFourierBasisFastPoloidal(int nfp) {
     if (n == 0) {
       nscale[n] = 1.0;
     } else {
-      nscale[n] = std::sqrt(2.0);
+      nscale[n] = std::numbers::sqrt2;
     }
   }  // n
 
@@ -150,9 +150,9 @@ int FourierBasisFastPoloidal::cos_to_cc_ss(const std::span<const double> fcCos,
 
     double basis_norm = 1.0 / (mscale[m] * nscale[abs_n]);
 
-    double normedFC = basis_norm * fcCos[mn];
+    double normed_fc = basis_norm * fcCos[mn];
 
-    m_fcCC[m * (n_size + 1) + abs_n] += normedFC;
+    m_fcCC[m * (n_size + 1) + abs_n] += normed_fc;
     // no contribution to fcSS where (m == 0 || n == 0)
 
     mn++;
@@ -165,11 +165,11 @@ int FourierBasisFastPoloidal::cos_to_cc_ss(const std::span<const double> fcCos,
 
       double basis_norm = 1.0 / (mscale[m] * nscale[abs_n]);
 
-      double normedFC = basis_norm * fcCos[mn];
+      double normed_fc = basis_norm * fcCos[mn];
 
-      m_fcCC[m * (n_size + 1) + abs_n] += normedFC;
+      m_fcCC[m * (n_size + 1) + abs_n] += normed_fc;
       if (s_.lthreed && abs_n > 0) {
-        m_fcSS[m * (n_size + 1) + abs_n] += sgn_n * normedFC;
+        m_fcSS[m * (n_size + 1) + abs_n] += sgn_n * normed_fc;
       }
 
       mn++;
@@ -205,11 +205,11 @@ int FourierBasisFastPoloidal::sin_to_sc_cs(const std::span<const double> fcSin,
 
     double basis_norm = 1.0 / (mscale[m] * nscale[abs_n]);
 
-    double normedFC = basis_norm * fcSin[mn];
+    double normed_fc = basis_norm * fcSin[mn];
 
     // no contribution to fcSC where m == 0
     if (s_.lthreed) {  // check for n > 0 is redundant when starting loop at n=1
-      m_fcCS[m * (n_size + 1) + abs_n] = -sgn_n * normedFC;
+      m_fcCS[m * (n_size + 1) + abs_n] = -sgn_n * normed_fc;
     }
 
     mn++;
@@ -222,11 +222,11 @@ int FourierBasisFastPoloidal::sin_to_sc_cs(const std::span<const double> fcSin,
 
       double basis_norm = 1.0 / (mscale[m] * nscale[abs_n]);
 
-      double normedFC = basis_norm * fcSin[mn];
+      double normed_fc = basis_norm * fcSin[mn];
 
-      m_fcSC[m * (n_size + 1) + abs_n] += normedFC;
+      m_fcSC[m * (n_size + 1) + abs_n] += normed_fc;
       if (s_.lthreed && abs_n > 0) {
-        m_fcCS[m * (n_size + 1) + abs_n] += -sgn_n * normedFC;
+        m_fcCS[m * (n_size + 1) + abs_n] += -sgn_n * normed_fc;
       }
 
       mn++;

@@ -41,15 +41,15 @@ TEST(TestSingularIntegrals, CheckConstants) {
         // Note: n! = gamma(n + 1)
         // Note: lgamma(n + 1) == log(n!)
         // exp(lgamma(n +1) - lgamma(m+1)) == n! / m!
-        const double numFac = std::lgamma((m + n + l) / 2 + 1);
-        const double denFac1 = std::lgamma((m + n - l) / 2 + 1);
-        const double denFac2 = std::lgamma((l + std::abs(m - n)) / 2 + 1);
-        const double denFac3 = std::lgamma((l - std::abs(m - n)) / 2 + 1);
+        const double num_fac = std::lgamma((m + n + l) / 2 + 1);
+        const double den_fac1 = std::lgamma((m + n - l) / 2 + 1);
+        const double den_fac2 = std::lgamma((l + std::abs(m - n)) / 2 + 1);
+        const double den_fac3 = std::lgamma((l - std::abs(m - n)) / 2 + 1);
 
-        const double cmnRef =
-            sign * std::exp(numFac - denFac1 - denFac2 - denFac3);
+        const double cmn_ref =
+            sign * std::exp(num_fac - den_fac1 - den_fac2 - den_fac3);
 
-        EXPECT_TRUE(IsCloseRelAbs(cmnRef, si.cmn[lnm], kTolerance));
+        EXPECT_TRUE(IsCloseRelAbs(cmn_ref, si.cmn[lnm], kTolerance));
       }  // l
     }    // m
   }      // n

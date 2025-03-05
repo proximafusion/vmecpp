@@ -220,24 +220,24 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundaryAllActive) {
     num_surfaces_to_distribute = ns;
   }
 
-  int numPlasma = std::min(ncpu, num_surfaces_to_distribute / 2);
+  int num_plasma = std::min(ncpu, num_surfaces_to_distribute / 2);
 
-  std::vector<int> nsMinF(numPlasma);
-  std::vector<int> nsMaxF(numPlasma);
-  std::vector<int> nsMinF1(numPlasma);
-  std::vector<int> nsMaxF1(numPlasma);
-  std::vector<int> nsMinH(numPlasma);
-  std::vector<int> nsMaxH(numPlasma);
-  std::vector<int> nsMinFi(numPlasma);
-  std::vector<int> nsMaxFi(numPlasma);
+  std::vector<int> ns_min_f(num_plasma);
+  std::vector<int> ns_max_f(num_plasma);
+  std::vector<int> ns_min_f1(num_plasma);
+  std::vector<int> ns_max_f1(num_plasma);
+  std::vector<int> ns_min_h(num_plasma);
+  std::vector<int> ns_max_h(num_plasma);
+  std::vector<int> ns_min_fi(num_plasma);
+  std::vector<int> ns_max_fi(num_plasma);
 
   std::vector<std::vector<int> > visited_forces(num_surfaces_to_distribute);
   std::vector<std::vector<int> > visited_geometry(ns);
   std::vector<std::vector<int> > visited_fields(ns - 1);
   std::vector<std::vector<int> > visited_internal(ns - 2);
 
-  int work_per_CPU = num_surfaces_to_distribute / numPlasma;
-  int work_remainder = num_surfaces_to_distribute % numPlasma;
+  int work_per_cpu = num_surfaces_to_distribute / num_plasma;
+  int work_remainder = num_surfaces_to_distribute % num_plasma;
 
   for (int myid = 0; myid < ncpu; ++myid) {
     r.adjustRadialPartitioning(ncpu, myid, ns, lfreeb);
@@ -249,18 +249,18 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundaryAllActive) {
 
     // --------------
 
-    nsMinF[myid] = myid * work_per_CPU;
-    nsMaxF[myid] = (myid + 1) * work_per_CPU;
+    ns_min_f[myid] = myid * work_per_cpu;
+    ns_max_f[myid] = (myid + 1) * work_per_cpu;
     if (myid < work_remainder) {
-      nsMinF[myid] += myid;
-      nsMaxF[myid] += myid + 1;
+      ns_min_f[myid] += myid;
+      ns_max_f[myid] += myid + 1;
     } else {
-      nsMinF[myid] += work_remainder;
-      nsMaxF[myid] += work_remainder;
+      ns_min_f[myid] += work_remainder;
+      ns_max_f[myid] += work_remainder;
     }
 
-    EXPECT_EQ(nsMinF[myid], r.nsMinF);
-    EXPECT_EQ(nsMaxF[myid], r.nsMaxF);
+    EXPECT_EQ(ns_min_f[myid], r.nsMinF);
+    EXPECT_EQ(ns_max_f[myid], r.nsMaxF);
 
     for (int j = r.nsMinF; j < r.nsMaxF; ++j) {
       visited_forces[j].push_back(myid);
@@ -268,25 +268,25 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundaryAllActive) {
 
     // --------------------------------
 
-    nsMinF1[myid] = std::max(0, nsMinF[myid] - 1);
-    nsMaxF1[myid] = std::min(ns, nsMaxF[myid] + 1);
+    ns_min_f1[myid] = std::max(0, ns_min_f[myid] - 1);
+    ns_max_f1[myid] = std::min(ns, ns_max_f[myid] + 1);
 
-    EXPECT_EQ(nsMinF1[myid], r.nsMinF1);
-    EXPECT_EQ(nsMaxF1[myid], r.nsMaxF1);
+    EXPECT_EQ(ns_min_f1[myid], r.nsMinF1);
+    EXPECT_EQ(ns_max_f1[myid], r.nsMaxF1);
 
     for (int j = r.nsMinF1; j < r.nsMaxF1; ++j) {
       visited_geometry[j].push_back(myid);
     }
 
-    EXPECT_EQ(r.has_boundary(), nsMaxF1[myid] == ns);
+    EXPECT_EQ(r.has_boundary(), ns_max_f1[myid] == ns);
 
     // --------------------------------
 
-    nsMinH[myid] = nsMinF1[myid];
-    nsMaxH[myid] = nsMaxF1[myid] - 1;
+    ns_min_h[myid] = ns_min_f1[myid];
+    ns_max_h[myid] = ns_max_f1[myid] - 1;
 
-    EXPECT_EQ(nsMinH[myid], r.nsMinH);
-    EXPECT_EQ(nsMaxH[myid], r.nsMaxH);
+    EXPECT_EQ(ns_min_h[myid], r.nsMinH);
+    EXPECT_EQ(ns_max_h[myid], r.nsMaxH);
 
     for (int j = r.nsMinH; j < r.nsMaxH; ++j) {
       visited_fields[j].push_back(myid);
@@ -294,11 +294,11 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundaryAllActive) {
 
     // --------------------------------
 
-    nsMinFi[myid] = std::max(1, nsMinF[myid]);
-    nsMaxFi[myid] = std::min(ns - 1, nsMaxF[myid]);
+    ns_min_fi[myid] = std::max(1, ns_min_f[myid]);
+    ns_max_fi[myid] = std::min(ns - 1, ns_max_f[myid]);
 
-    EXPECT_EQ(nsMinFi[myid], r.nsMinFi);
-    EXPECT_EQ(nsMaxFi[myid], r.nsMaxFi);
+    EXPECT_EQ(ns_min_fi[myid], r.nsMinFi);
+    EXPECT_EQ(ns_max_fi[myid], r.nsMaxFi);
 
     for (int j = r.nsMinFi; j < r.nsMaxFi; ++j) {
       visited_internal[j - 1].push_back(myid);
@@ -309,21 +309,21 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundaryAllActive) {
   for (int j = 0; j < num_surfaces_to_distribute; ++j) {
     ASSERT_EQ(1, visited_forces[j].size());
     int visitor_id = visited_forces[j][0];
-    EXPECT_TRUE(nsMinF[visitor_id] <= j && j < nsMaxF[visitor_id]);
+    EXPECT_TRUE(ns_min_f[visitor_id] <= j && j < ns_max_f[visitor_id]);
   }
 
   // ...F1
   for (int j = 0; j < ns; ++j) {
     int num_visitors = 0;
     for (int myid = 0; myid < ncpu; ++myid) {
-      if (nsMinF1[myid] <= j && j < nsMaxF1[myid]) {
+      if (ns_min_f1[myid] <= j && j < ns_max_f1[myid]) {
         num_visitors++;
       }
     }
     ASSERT_EQ(num_visitors, visited_geometry[j].size());
     for (int visitor = 0; visitor < num_visitors; ++visitor) {
       int visitor_id = visited_geometry[j][visitor];
-      EXPECT_TRUE(nsMinF1[visitor_id] <= j && j < nsMaxF1[visitor_id]);
+      EXPECT_TRUE(ns_min_f1[visitor_id] <= j && j < ns_max_f1[visitor_id]);
     }
   }
 
@@ -331,14 +331,14 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundaryAllActive) {
   for (int j = 0; j < ns - 1; ++j) {
     int num_visitors = 0;
     for (int myid = 0; myid < ncpu; ++myid) {
-      if (nsMinH[myid] <= j && j < nsMaxH[myid]) {
+      if (ns_min_h[myid] <= j && j < ns_max_h[myid]) {
         num_visitors++;
       }
     }
     ASSERT_EQ(num_visitors, visited_fields[j].size());
     for (int visitor = 0; visitor < num_visitors; ++visitor) {
       int visitor_id = visited_fields[j][visitor];
-      EXPECT_TRUE(nsMinH[visitor_id] <= j && j < nsMaxH[visitor_id]);
+      EXPECT_TRUE(ns_min_h[visitor_id] <= j && j < ns_max_h[visitor_id]);
     }
   }
 
@@ -346,14 +346,14 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundaryAllActive) {
   for (int j = 1; j < ns - 1; ++j) {
     int num_visitors = 0;
     for (int myid = 0; myid < ncpu; ++myid) {
-      if (nsMinFi[myid] <= j && j < nsMaxFi[myid]) {
+      if (ns_min_fi[myid] <= j && j < ns_max_fi[myid]) {
         num_visitors++;
       }
     }
     ASSERT_EQ(num_visitors, visited_internal[j - 1].size());
     for (int visitor = 0; visitor < num_visitors; ++visitor) {
       int visitor_id = visited_internal[j - 1][visitor];
-      EXPECT_TRUE(nsMinFi[visitor_id] <= j && j < nsMaxFi[visitor_id]);
+      EXPECT_TRUE(ns_min_fi[visitor_id] <= j && j < ns_max_fi[visitor_id]);
     }
   }
 }  // CheckMultiThreadedFixedBoundaryAllActive
@@ -390,21 +390,21 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundarySomeActive) {
 
   RadialPartitioning r;
 
-  std::vector<int> nsMinF(num_threads);
-  std::vector<int> nsMaxF(num_threads);
-  std::vector<int> nsMinF1(num_threads);
-  std::vector<int> nsMaxF1(num_threads);
-  std::vector<int> nsMinH(num_threads);
-  std::vector<int> nsMaxH(num_threads);
-  std::vector<int> nsMinFi(num_threads);
-  std::vector<int> nsMaxFi(num_threads);
+  std::vector<int> ns_min_f(num_threads);
+  std::vector<int> ns_max_f(num_threads);
+  std::vector<int> ns_min_f1(num_threads);
+  std::vector<int> ns_max_f1(num_threads);
+  std::vector<int> ns_min_h(num_threads);
+  std::vector<int> ns_max_h(num_threads);
+  std::vector<int> ns_min_fi(num_threads);
+  std::vector<int> ns_max_fi(num_threads);
 
   std::vector<std::vector<int> > visited_forces(num_surfaces_to_distribute);
   std::vector<std::vector<int> > visited_geometry(ns);
   std::vector<std::vector<int> > visited_fields(ns - 1);
   std::vector<std::vector<int> > visited_internal(ns - 2);
 
-  int work_per_CPU = num_surfaces_to_distribute / num_threads;
+  int work_per_cpu = num_surfaces_to_distribute / num_threads;
   int work_remainder = num_surfaces_to_distribute % num_threads;
 
   for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
@@ -417,18 +417,18 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundarySomeActive) {
 
     // --------------
 
-    nsMinF[thread_id] = thread_id * work_per_CPU;
-    nsMaxF[thread_id] = (thread_id + 1) * work_per_CPU;
+    ns_min_f[thread_id] = thread_id * work_per_cpu;
+    ns_max_f[thread_id] = (thread_id + 1) * work_per_cpu;
     if (thread_id < work_remainder) {
-      nsMinF[thread_id] += thread_id;
-      nsMaxF[thread_id] += thread_id + 1;
+      ns_min_f[thread_id] += thread_id;
+      ns_max_f[thread_id] += thread_id + 1;
     } else {
-      nsMinF[thread_id] += work_remainder;
-      nsMaxF[thread_id] += work_remainder;
+      ns_min_f[thread_id] += work_remainder;
+      ns_max_f[thread_id] += work_remainder;
     }
 
-    EXPECT_EQ(nsMinF[thread_id], r.nsMinF);
-    EXPECT_EQ(nsMaxF[thread_id], r.nsMaxF);
+    EXPECT_EQ(ns_min_f[thread_id], r.nsMinF);
+    EXPECT_EQ(ns_max_f[thread_id], r.nsMaxF);
 
     for (int j = r.nsMinF; j < r.nsMaxF; ++j) {
       visited_forces[j].push_back(thread_id);
@@ -436,25 +436,25 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundarySomeActive) {
 
     // --------------------------------
 
-    nsMinF1[thread_id] = std::max(0, nsMinF[thread_id] - 1);
-    nsMaxF1[thread_id] = std::min(ns, nsMaxF[thread_id] + 1);
+    ns_min_f1[thread_id] = std::max(0, ns_min_f[thread_id] - 1);
+    ns_max_f1[thread_id] = std::min(ns, ns_max_f[thread_id] + 1);
 
-    EXPECT_EQ(nsMinF1[thread_id], r.nsMinF1);
-    EXPECT_EQ(nsMaxF1[thread_id], r.nsMaxF1);
+    EXPECT_EQ(ns_min_f1[thread_id], r.nsMinF1);
+    EXPECT_EQ(ns_max_f1[thread_id], r.nsMaxF1);
 
     for (int j = r.nsMinF1; j < r.nsMaxF1; ++j) {
       visited_geometry[j].push_back(thread_id);
     }
 
-    EXPECT_EQ(r.has_boundary(), nsMaxF1[thread_id] == ns);
+    EXPECT_EQ(r.has_boundary(), ns_max_f1[thread_id] == ns);
 
     // --------------------------------
 
-    nsMinH[thread_id] = nsMinF1[thread_id];
-    nsMaxH[thread_id] = nsMaxF1[thread_id] - 1;
+    ns_min_h[thread_id] = ns_min_f1[thread_id];
+    ns_max_h[thread_id] = ns_max_f1[thread_id] - 1;
 
-    EXPECT_EQ(nsMinH[thread_id], r.nsMinH);
-    EXPECT_EQ(nsMaxH[thread_id], r.nsMaxH);
+    EXPECT_EQ(ns_min_h[thread_id], r.nsMinH);
+    EXPECT_EQ(ns_max_h[thread_id], r.nsMaxH);
 
     for (int j = r.nsMinH; j < r.nsMaxH; ++j) {
       visited_fields[j].push_back(thread_id);
@@ -462,11 +462,11 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundarySomeActive) {
 
     // --------------------------------
 
-    nsMinFi[thread_id] = std::max(1, nsMinF[thread_id]);
-    nsMaxFi[thread_id] = std::min(ns - 1, nsMaxF[thread_id]);
+    ns_min_fi[thread_id] = std::max(1, ns_min_f[thread_id]);
+    ns_max_fi[thread_id] = std::min(ns - 1, ns_max_f[thread_id]);
 
-    EXPECT_EQ(nsMinFi[thread_id], r.nsMinFi);
-    EXPECT_EQ(nsMaxFi[thread_id], r.nsMaxFi);
+    EXPECT_EQ(ns_min_fi[thread_id], r.nsMinFi);
+    EXPECT_EQ(ns_max_fi[thread_id], r.nsMaxFi);
 
     for (int j = r.nsMinFi; j < r.nsMaxFi; ++j) {
       visited_internal[j - 1].push_back(thread_id);
@@ -477,21 +477,21 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundarySomeActive) {
   for (int j = 0; j < num_surfaces_to_distribute; ++j) {
     ASSERT_EQ(1, visited_forces[j].size());
     int visitor_id = visited_forces[j][0];
-    EXPECT_TRUE(nsMinF[visitor_id] <= j && j < nsMaxF[visitor_id]);
+    EXPECT_TRUE(ns_min_f[visitor_id] <= j && j < ns_max_f[visitor_id]);
   }
 
   // ...F1
   for (int j = 0; j < ns; ++j) {
     int num_visitors = 0;
     for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
-      if (nsMinF1[thread_id] <= j && j < nsMaxF1[thread_id]) {
+      if (ns_min_f1[thread_id] <= j && j < ns_max_f1[thread_id]) {
         num_visitors++;
       }
     }
     ASSERT_EQ(num_visitors, visited_geometry[j].size());
     for (int visitor = 0; visitor < num_visitors; ++visitor) {
       int visitor_id = visited_geometry[j][visitor];
-      EXPECT_TRUE(nsMinF1[visitor_id] <= j && j < nsMaxF1[visitor_id]);
+      EXPECT_TRUE(ns_min_f1[visitor_id] <= j && j < ns_max_f1[visitor_id]);
     }
   }
 
@@ -499,14 +499,14 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundarySomeActive) {
   for (int j = 0; j < ns - 1; ++j) {
     int num_visitors = 0;
     for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
-      if (nsMinH[thread_id] <= j && j < nsMaxH[thread_id]) {
+      if (ns_min_h[thread_id] <= j && j < ns_max_h[thread_id]) {
         num_visitors++;
       }
     }
     ASSERT_EQ(num_visitors, visited_fields[j].size());
     for (int visitor = 0; visitor < num_visitors; ++visitor) {
       int visitor_id = visited_fields[j][visitor];
-      EXPECT_TRUE(nsMinH[visitor_id] <= j && j < nsMaxH[visitor_id]);
+      EXPECT_TRUE(ns_min_h[visitor_id] <= j && j < ns_max_h[visitor_id]);
     }
   }
 
@@ -514,14 +514,14 @@ TEST(TestRadialPartitioning, CheckMultiThreadedFixedBoundarySomeActive) {
   for (int j = 1; j < ns - 1; ++j) {
     int num_visitors = 0;
     for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
-      if (nsMinFi[thread_id] <= j && j < nsMaxFi[thread_id]) {
+      if (ns_min_fi[thread_id] <= j && j < ns_max_fi[thread_id]) {
         num_visitors++;
       }
     }
     ASSERT_EQ(num_visitors, visited_internal[j - 1].size());
     for (int visitor = 0; visitor < num_visitors; ++visitor) {
       int visitor_id = visited_internal[j - 1][visitor];
-      EXPECT_TRUE(nsMinFi[visitor_id] <= j && j < nsMaxFi[visitor_id]);
+      EXPECT_TRUE(ns_min_fi[visitor_id] <= j && j < ns_max_fi[visitor_id]);
     }
   }
 }  // CheckMultiThreadedFixedBoundarySomeActive

@@ -472,26 +472,26 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
   const int nfp = NetcdfReadInt(ncid, "nfp");
   EXPECT_EQ(nfp, makegrid_parameters.number_of_field_periods);
 
-  const int numR = NetcdfReadInt(ncid, "ir");
-  EXPECT_EQ(numR, makegrid_parameters.number_of_r_grid_points);
+  const int num_r = NetcdfReadInt(ncid, "ir");
+  EXPECT_EQ(num_r, makegrid_parameters.number_of_r_grid_points);
 
-  const double minR = NetcdfReadDouble(ncid, "rmin");
-  EXPECT_EQ(minR, makegrid_parameters.r_grid_minimum);
+  const double min_r = NetcdfReadDouble(ncid, "rmin");
+  EXPECT_EQ(min_r, makegrid_parameters.r_grid_minimum);
 
-  const double maxR = NetcdfReadDouble(ncid, "rmax");
-  EXPECT_EQ(maxR, makegrid_parameters.r_grid_maximum);
+  const double max_r = NetcdfReadDouble(ncid, "rmax");
+  EXPECT_EQ(max_r, makegrid_parameters.r_grid_maximum);
 
-  const int numZ = NetcdfReadInt(ncid, "jz");
-  EXPECT_EQ(numZ, makegrid_parameters.number_of_z_grid_points);
+  const int num_z = NetcdfReadInt(ncid, "jz");
+  EXPECT_EQ(num_z, makegrid_parameters.number_of_z_grid_points);
 
-  const double minZ = NetcdfReadDouble(ncid, "zmin");
-  EXPECT_EQ(minZ, makegrid_parameters.z_grid_minimum);
+  const double min_z = NetcdfReadDouble(ncid, "zmin");
+  EXPECT_EQ(min_z, makegrid_parameters.z_grid_minimum);
 
-  const double maxZ = NetcdfReadDouble(ncid, "zmax");
-  EXPECT_EQ(maxZ, makegrid_parameters.z_grid_maximum);
+  const double max_z = NetcdfReadDouble(ncid, "zmax");
+  EXPECT_EQ(max_z, makegrid_parameters.z_grid_maximum);
 
-  const int numPhi = NetcdfReadInt(ncid, "kp");
-  EXPECT_EQ(numPhi, makegrid_parameters.number_of_phi_grid_points);
+  const int num_phi = NetcdfReadInt(ncid, "kp");
+  EXPECT_EQ(num_phi, makegrid_parameters.number_of_phi_grid_points);
 
   const int nextcur = NetcdfReadInt(ncid, "nextcur");
   EXPECT_EQ(nextcur, number_of_serial_circuits);
@@ -627,26 +627,26 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
   const int nfp = NetcdfReadInt(ncid, "nfp");
   EXPECT_EQ(nfp, makegrid_parameters.number_of_field_periods);
 
-  const int numR = NetcdfReadInt(ncid, "ir");
-  EXPECT_EQ(numR, makegrid_parameters.number_of_r_grid_points);
+  const int num_r = NetcdfReadInt(ncid, "ir");
+  EXPECT_EQ(num_r, makegrid_parameters.number_of_r_grid_points);
 
-  const double minR = NetcdfReadDouble(ncid, "rmin");
-  EXPECT_EQ(minR, makegrid_parameters.r_grid_minimum);
+  const double min_r = NetcdfReadDouble(ncid, "rmin");
+  EXPECT_EQ(min_r, makegrid_parameters.r_grid_minimum);
 
-  const double maxR = NetcdfReadDouble(ncid, "rmax");
-  EXPECT_EQ(maxR, makegrid_parameters.r_grid_maximum);
+  const double max_r = NetcdfReadDouble(ncid, "rmax");
+  EXPECT_EQ(max_r, makegrid_parameters.r_grid_maximum);
 
-  const int numZ = NetcdfReadInt(ncid, "jz");
-  EXPECT_EQ(numZ, makegrid_parameters.number_of_z_grid_points);
+  const int num_z = NetcdfReadInt(ncid, "jz");
+  EXPECT_EQ(num_z, makegrid_parameters.number_of_z_grid_points);
 
-  const double minZ = NetcdfReadDouble(ncid, "zmin");
-  EXPECT_EQ(minZ, makegrid_parameters.z_grid_minimum);
+  const double min_z = NetcdfReadDouble(ncid, "zmin");
+  EXPECT_EQ(min_z, makegrid_parameters.z_grid_minimum);
 
-  const double maxZ = NetcdfReadDouble(ncid, "zmax");
-  EXPECT_EQ(maxZ, makegrid_parameters.z_grid_maximum);
+  const double max_z = NetcdfReadDouble(ncid, "zmax");
+  EXPECT_EQ(max_z, makegrid_parameters.z_grid_maximum);
 
-  const int numPhi = NetcdfReadInt(ncid, "kp");
-  EXPECT_EQ(numPhi, makegrid_parameters.number_of_phi_grid_points);
+  const int num_phi = NetcdfReadInt(ncid, "kp");
+  EXPECT_EQ(num_phi, makegrid_parameters.number_of_phi_grid_points);
 
   const int nextcur = NetcdfReadInt(ncid, "nextcur");
   EXPECT_EQ(nextcur, number_of_serial_circuits);

@@ -39,8 +39,8 @@ Boundaries::Boundaries(const Sizes* s, const FourierBasisFastPoloidal* t,
 bool Boundaries::setupFromIndata(const VmecINDATA& id, bool verbose) {
   parseToInternalArrays(id, verbose);
 
-  bool haveToFlipTheta = checkSignOfJacobian();
-  if (haveToFlipTheta) {
+  bool have_to_flip_theta = checkSignOfJacobian();
+  if (have_to_flip_theta) {
     if (verbose) {
       std::cout << "need to flip theta definition of input boundary shape\n";
     }
@@ -50,7 +50,7 @@ bool Boundaries::setupFromIndata(const VmecINDATA& id, bool verbose) {
   // activate m=1-constraint
   ensureM1Constrained(0.5);
 
-  return haveToFlipTheta;
+  return have_to_flip_theta;
 }
 
 void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
@@ -80,10 +80,10 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
     int n = 0;
 
     // Fortran layout along n in rbc, zbs, ...
-    int nIdx = s_.ntor + n;
+    int n_idx = s_.ntor + n;
 
     // m slow, n fast
-    int idx = m * (2 * s_.ntor + 1) + nIdx;
+    int idx = m * (2 * s_.ntor + 1) + n_idx;
 
     delta = atan2(id.rbs[idx] - id.zbc[idx], id.rbc[idx] + id.zbs[idx]);
 
@@ -110,11 +110,11 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
   }
 
   for (int m = 0; m < s_.mpol; ++m) {
-    double cosMDelta = 1.0;
-    double sinMDelta = 0.0;
+    double cos_m_delta = 1.0;
+    double sin_m_delta = 0.0;
     if (delta != 0.0) {
-      cosMDelta = cos(m * delta);
-      sinMDelta = sin(m * delta);
+      cos_m_delta = cos(m * delta);
+      sin_m_delta = sin(m * delta);
     }
 
     for (int n = -s_.ntor; n <= s_.ntor; ++n) {
@@ -131,10 +131,10 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
         zbs = id.zbs[m * (2 * s_.ntor + 1) + source_n];
       } else {
         // lasym && delta != 0.0
-        rbc = id.rbc[m * (2 * s_.ntor + 1) + source_n] * cosMDelta +
-              id.rbs[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
-        zbs = id.zbs[m * (2 * s_.ntor + 1) + source_n] * cosMDelta -
-              id.zbc[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
+        rbc = id.rbc[m * (2 * s_.ntor + 1) + source_n] * cos_m_delta +
+              id.rbs[m * (2 * s_.ntor + 1) + source_n] * sin_m_delta;
+        zbs = id.zbs[m * (2 * s_.ntor + 1) + source_n] * cos_m_delta -
+              id.zbc[m * (2 * s_.ntor + 1) + source_n] * sin_m_delta;
       }
 
       const int idx_mn = m * (s_.ntor + 1) + target_n;
@@ -156,10 +156,10 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
           rbs = id.rbs[m * (2 * s_.ntor + 1) + source_n];
           zbc = id.zbc[m * (2 * s_.ntor + 1) + source_n];
         } else {
-          rbs = id.rbs[m * (2 * s_.ntor + 1) + source_n] * cosMDelta -
-                id.rbc[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
-          zbc = id.zbc[m * (2 * s_.ntor + 1) + source_n] * cosMDelta +
-                id.zbs[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
+          rbs = id.rbs[m * (2 * s_.ntor + 1) + source_n] * cos_m_delta -
+                id.rbc[m * (2 * s_.ntor + 1) + source_n] * sin_m_delta;
+          zbc = id.zbc[m * (2 * s_.ntor + 1) + source_n] * cos_m_delta +
+                id.zbs[m * (2 * s_.ntor + 1) + source_n] * sin_m_delta;
         }
 
         if (m > 0) {
@@ -186,13 +186,13 @@ bool Boundaries::checkSignOfJacobian() {
    * clockwise.
    */
 
-  double rTest = 0.0;
-  double zTest = 0.0;
+  double r_test = 0.0;
+  double z_test = 0.0;
   for (int n = 0; n < s_.ntor + 1; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
-    rTest += rbcc[idx_mn];
-    zTest += zbsc[idx_mn];
+    r_test += rbcc[idx_mn];
+    z_test += zbsc[idx_mn];
   }
 
   // TODO(jons): potentially more robust version of this
@@ -203,7 +203,7 @@ bool Boundaries::checkSignOfJacobian() {
 
   // for signOfJacobian == -1, need to flip when rTest*zTest < 0
   // ---> this is true when the total sign is positive
-  return (rTest * zTest * sign_of_jacobian_ > 0.0);
+  return (r_test * z_test * sign_of_jacobian_ > 0.0);
 }
 
 void Boundaries::flipTheta() {

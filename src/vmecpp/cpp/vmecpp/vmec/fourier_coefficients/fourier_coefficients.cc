@@ -16,30 +16,30 @@ FourierCoeffs::FourierCoeffs(const Sizes* s, const RadialPartitioning* r,
                              int nsMin, int nsMax, int ns)
     : s_(*s), r_(*r), nsMin_(nsMin), nsMax_(nsMax), ns(ns) {
   // cannot use r_.nsMaxFIncludingLcfs since need to still obey nsMax
-  int jMaxIncludingBoundary = nsMax;
+  int j_max_including_boundary = nsMax;
   if (r_.nsMaxF1 == ns) {
-    jMaxIncludingBoundary = ns;
+    j_max_including_boundary = ns;
   }
 
-  int num_fc_RZ = (jMaxIncludingBoundary - nsMin) * s_.mpol * (s_.ntor + 1);
-  int num_fc_L = (jMaxIncludingBoundary - nsMin) * s_.mpol * (s_.ntor + 1);
+  int num_fc_rz = (j_max_including_boundary - nsMin) * s_.mpol * (s_.ntor + 1);
+  int num_fc_l = (j_max_including_boundary - nsMin) * s_.mpol * (s_.ntor + 1);
 
-  rcc.resize(num_fc_RZ);
-  zsc.resize(num_fc_RZ);
-  lsc.resize(num_fc_L);
+  rcc.resize(num_fc_rz);
+  zsc.resize(num_fc_rz);
+  lsc.resize(num_fc_l);
   if (s_.lthreed) {
-    rss.resize(num_fc_RZ);
-    zcs.resize(num_fc_RZ);
-    lcs.resize(num_fc_L);
+    rss.resize(num_fc_rz);
+    zcs.resize(num_fc_rz);
+    lcs.resize(num_fc_l);
   }
   if (s_.lasym) {
-    rsc.resize(num_fc_RZ);
-    zcc.resize(num_fc_RZ);
-    lcc.resize(num_fc_L);
+    rsc.resize(num_fc_rz);
+    zcc.resize(num_fc_rz);
+    lcc.resize(num_fc_l);
     if (s_.lthreed) {
-      rcs.resize(num_fc_RZ);
-      zss.resize(num_fc_RZ);
-      lss.resize(num_fc_L);
+      rcs.resize(num_fc_rz);
+      zss.resize(num_fc_rz);
+      lss.resize(num_fc_l);
     }
   }
 }
@@ -73,44 +73,44 @@ void FourierCoeffs::setZero() {
 void FourierCoeffs::decomposeInto(FourierCoeffs& x,
                                   const std::vector<double>& scalxc) const {
   // TODO(jons): understand correct limits in fixed-boundary vs. free-boundary
-  int jMaxIncludingBoundary = nsMax_;
+  int j_max_including_boundary = nsMax_;
   if (r_.nsMaxF1 == ns) {
-    jMaxIncludingBoundary = ns;
+    j_max_including_boundary = ns;
   }
 
   // int jMaxRZ = nsMax;
-  int jMaxRZ = jMaxIncludingBoundary;
+  int j_max_rz = j_max_including_boundary;
 
-  for (int jF = nsMin_; jF < jMaxIncludingBoundary; ++jF) {
+  for (int j_f = nsMin_; j_f < j_max_including_boundary; ++j_f) {
     for (int m = 0; m < s_.mpol; ++m) {
       for (int n = 0; n < s_.ntor + 1; ++n) {
-        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+        int idx_fc = ((j_f - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
 
         int m_parity = m % 2;
 
         // scalxc is always defined on numFull1
-        double scal = scalxc[(jF - r_.nsMinF1) * 2 + m_parity];
+        double scal = scalxc[(j_f - r_.nsMinF1) * 2 + m_parity];
 
-        if (jF < jMaxRZ) {
+        if (j_f < j_max_rz) {
           x.rcc[idx_fc] = rcc[idx_fc] * scal;
           x.zsc[idx_fc] = zsc[idx_fc] * scal;
         }
         x.lsc[idx_fc] = lsc[idx_fc] * scal;
         if (s_.lthreed) {
-          if (jF < jMaxRZ) {
+          if (j_f < j_max_rz) {
             x.rss[idx_fc] = rss[idx_fc] * scal;
             x.zcs[idx_fc] = zcs[idx_fc] * scal;
           }
           x.lcs[idx_fc] = lcs[idx_fc] * scal;
         }
         if (s_.lasym) {
-          if (jF < jMaxRZ) {
+          if (j_f < j_max_rz) {
             x.rsc[idx_fc] = rsc[idx_fc] * scal;
             x.zcc[idx_fc] = zcc[idx_fc] * scal;
           }
           x.lcc[idx_fc] = lcc[idx_fc] * scal;
           if (s_.lthreed) {
-            if (jF < jMaxRZ) {
+            if (j_f < j_max_rz) {
               x.rcs[idx_fc] = rcs[idx_fc] * scal;
               x.zss[idx_fc] = zss[idx_fc] * scal;
             }
@@ -125,15 +125,15 @@ void FourierCoeffs::decomposeInto(FourierCoeffs& x,
 /** (un)do m=1 constraint to couple R_ss,Z_cs as well as R_sc,Z_cc */
 void FourierCoeffs::m1Constraint(double scalingFactor,
                                  std::optional<int> jMax) {
-  int nsMaxToUse = nsMax_;
+  int ns_max_to_use = nsMax_;
   if (jMax.has_value()) {
-    nsMaxToUse = std::min(jMax.value(), nsMaxToUse);
+    ns_max_to_use = std::min(jMax.value(), ns_max_to_use);
   }
 
-  for (int jF = nsMin_; jF < nsMaxToUse; ++jF) {
+  for (int j_f = nsMin_; j_f < ns_max_to_use; ++j_f) {
     for (int n = 0; n < s_.ntor + 1; ++n) {
       int m = 1;
-      int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      int idx_fc = ((j_f - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
       if (s_.lthreed) {
         double old_rss = rss[idx_fc];
         rss[idx_fc] = (old_rss + zcs[idx_fc]) * scalingFactor;
@@ -153,10 +153,10 @@ double FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
   // accumulator for local thread
   double local_norm2 = 0.0;
 
-  for (int jF = nsMinHere; jF < nsMaxHere; ++jF) {
+  for (int j_f = nsMinHere; j_f < nsMaxHere; ++j_f) {
     for (int m = 0; m < s_.mpol; ++m) {
       for (int n = 0; n < s_.ntor + 1; ++n) {
-        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+        int idx_fc = ((j_f - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
 
         if (n > 0 || m > 0 || include_offset) {
           local_norm2 += rcc[idx_fc] * rcc[idx_fc];

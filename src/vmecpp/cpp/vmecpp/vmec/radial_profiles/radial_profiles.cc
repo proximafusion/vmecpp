@@ -192,16 +192,16 @@ ProfileParameterization RadialProfiles::findParameterization(
     const std::string& name, ProfileType intendedType) {
   for (int i = 0; i < NUM_PARAM; ++i) {
     if (name == ALL_PARAMS[i].Name()) {
-      bool isApplicable = false;
+      bool is_applicable = false;
       switch (intendedType) {
         case ProfileType::PRESSURE:
-          isApplicable = ALL_PARAMS[i].IsAllowedFor().pres;
+          is_applicable = ALL_PARAMS[i].IsAllowedFor().pres;
           break;
         case ProfileType::CURRENT:
-          isApplicable = ALL_PARAMS[i].IsAllowedFor().curr;
+          is_applicable = ALL_PARAMS[i].IsAllowedFor().curr;
           break;
         case ProfileType::IOTA:
-          isApplicable = ALL_PARAMS[i].IsAllowedFor().iota;
+          is_applicable = ALL_PARAMS[i].IsAllowedFor().iota;
           break;
         default:
           std::cerr << absl::StrFormat("unknown profile: %s",
@@ -210,7 +210,7 @@ ProfileParameterization RadialProfiles::findParameterization(
           break;
       }
 
-      if (!isApplicable) {
+      if (!is_applicable) {
         std::cerr << absl::StrFormat(
                          "profile name '%s' is not applicable for %s profile",
                          ALL_PARAMS[i].Name(),
@@ -241,18 +241,18 @@ std::string RadialProfiles::profileTypeToString(ProfileType profileType) {
 /** Compute the maximum toroidal and poloidal magnetic fluxes. */
 void RadialProfiles::computeMagneticFluxes() {
   maxToroidalFlux = signOfJacobian * id_.phiedge / (2.0 * M_PI);
-  double edgeToroidalFluxFromProfile = torflux(1.0);
-  if (edgeToroidalFluxFromProfile != 0.0) {
-    maxToroidalFlux /= edgeToroidalFluxFromProfile;
+  double edge_toroidal_flux_from_profile = torflux(1.0);
+  if (edge_toroidal_flux_from_profile != 0.0) {
+    maxToroidalFlux /= edge_toroidal_flux_from_profile;
   }
 
   // only required for lRFP == true (TODO) ...later...
   // This assumes that the same scaling factor (=phiedge) is used for phi' and
   // chi'.
   maxPoloidalFlux = maxToroidalFlux;
-  double edgePoloidalFluxFromProfile = polflux(1.0);
-  if (edgePoloidalFluxFromProfile != 0.0) {
-    maxPoloidalFlux /= edgePoloidalFluxFromProfile;
+  double edge_poloidal_flux_from_profile = polflux(1.0);
+  if (edge_poloidal_flux_from_profile != 0.0) {
+    maxPoloidalFlux /= edge_poloidal_flux_from_profile;
   }
 }
 
@@ -279,13 +279,13 @@ double RadialProfiles::torfluxDeriv(double x) {
  */
 double RadialProfiles::torflux(double x) {
   //  trapezoidal integration outwards from 0 to x in N=100 steps
-  const int N = 100;
-  double delta_x = x / N;
+  const int n = 100;
+  double delta_x = x / n;
 
   double torflux = 0.0;
-  for (int i = 0; i <= N; ++i) {
+  for (int i = 0; i <= n; ++i) {
     double contribution = torfluxDeriv(i * delta_x);
-    if (i == 0 || i == N) {
+    if (i == 0 || i == n) {
       torflux += 0.5 * contribution;
     } else {
       torflux += contribution;
@@ -323,13 +323,13 @@ double RadialProfiles::polfluxDeriv(double x) {
  */
 double RadialProfiles::polflux(double x) {
   // trapezoidal integration outwards from 0 to x in N=100 steps
-  const int N = 100;
-  double delta_x = x / N;
+  const int n = 100;
+  double delta_x = x / n;
 
   double polflux = 0.0;
-  for (int i = 0; i <= N; ++i) {
+  for (int i = 0; i <= n; ++i) {
     double contribution = polfluxDeriv(i * delta_x);
-    if (i == 0 || i == N) {
+    if (i == 0 || i == n) {
       polflux += 0.5 * contribution;
     } else {
       polflux += contribution;
@@ -344,10 +344,10 @@ double RadialProfiles::evalMassProfile(double x) {
   // apply bloating factor
   // only allowed for current and pressure profile (checked in
   // VmecIndata.sanitize())
-  double normX = std::min(fabs(x * id_.bloat), 1.0);
+  double norm_x = std::min(fabs(x * id_.bloat), 1.0);
 
   double p = evalProfileFunction(pmassType, id_.am, id_.am_aux_s, id_.am_aux_f,
-                                 /*shouldIntegrate=*/false, normX);
+                                 /*shouldIntegrate=*/false, norm_x);
 
   return p * pressureScalingFactor;
 }
@@ -363,10 +363,10 @@ double RadialProfiles::evalCurrProfile(double x) {
   // apply bloating factor
   // only allowed for current and pressure profile (checked in
   // VmecIndata.sanitize())
-  double normX = std::min(std::abs(x * id_.bloat), 1.0);
+  double norm_x = std::min(std::abs(x * id_.bloat), 1.0);
 
   double p = evalProfileFunction(pcurrType, id_.ac, id_.ac_aux_s, id_.ac_aux_f,
-                                 /*shouldIntegrate=*/true, normX);
+                                 /*shouldIntegrate=*/true, norm_x);
 
   return p;
 }
@@ -689,97 +689,97 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
 
   // only scale current profile if value at edge is "sufficiently non-zero"
   // outermost value of enclosed current profile -->
-  const double edgeCurrent = evalCurrProfile(1.0);
+  const double edge_current = evalCurrProfile(1.0);
   Itor = 0.0;
   // TODO(jons): eps*currv instead of eps*curtor?
-  if (std::abs(edgeCurrent) > std::abs(DBL_EPSILON * id_.curtor)) {
+  if (std::abs(edge_current) > std::abs(DBL_EPSILON * id_.curtor)) {
     // FACTOR OF SIGNGS NEEDED HERE, SINCE MATCH IS MADE TO LINE INTEGRAL OF
     // BSUBU (IN GETIOTA) ~ SIGNGS * CURTOR
-    Itor = signOfJacobian * currv / (2.0 * M_PI * edgeCurrent);
+    Itor = signOfJacobian * currv / (2.0 * M_PI * edge_current);
   }
 
-  double local_rmsPhiP = 0.0;
+  double local_rms_phi_p = 0.0;
 
   // half-grid
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    const double halfGridPos = (jH + 0.5) / (fc_.ns - 1.0);
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
+    const double half_grid_pos = (j_h + 0.5) / (fc_.ns - 1.0);
 
     // normalized toroidal flux array
-    sqrtSH[jH - r_.nsMinH] = std::sqrt(halfGridPos);
+    sqrtSH[j_h - r_.nsMinH] = std::sqrt(half_grid_pos);
 
-    phipH[jH - r_.nsMinH] = maxToroidalFlux * torfluxDeriv(halfGridPos);
-    chipH[jH - r_.nsMinH] = maxToroidalFlux * polfluxDeriv(halfGridPos);
+    phipH[j_h - r_.nsMinH] = maxToroidalFlux * torfluxDeriv(half_grid_pos);
+    chipH[j_h - r_.nsMinH] = maxToroidalFlux * polfluxDeriv(half_grid_pos);
 
-    const double toroidalFlux = std::min(torflux(halfGridPos), 1.0);
-    iotaH[jH - r_.nsMinH] = evalIotaProfile(toroidalFlux);
-    currH[jH - r_.nsMinH] = evalCurrProfile(toroidalFlux);
+    const double toroidal_flux = std::min(torflux(half_grid_pos), 1.0);
+    iotaH[j_h - r_.nsMinH] = evalIotaProfile(toroidal_flux);
+    currH[j_h - r_.nsMinH] = evalCurrProfile(toroidal_flux);
 
     if (haveToFlipTheta) {
-      chipH[jH - r_.nsMinH] *= -1.0;
-      iotaH[jH - r_.nsMinH] *= -1.0;
+      chipH[j_h - r_.nsMinH] *= -1.0;
+      iotaH[j_h - r_.nsMinH] *= -1.0;
     }
 
     // here effectively:
     // Itor == mu0/(2 * pi) * curtor * signgs
     // and then includes also 1/edgeCurrent to normalize profile of enclosed
     // toroidal current
-    currH[jH - r_.nsMinH] *= Itor;
+    currH[j_h - r_.nsMinH] *= Itor;
 
     // mass profile
 
     // effectively vpnorm == phipH[jH]
-    const double vpnorm = maxToroidalFlux * torfluxDeriv(halfGridPos);
-    const double massEvalPos = std::min(halfGridPos, id_.spres_ped);
+    const double vpnorm = maxToroidalFlux * torfluxDeriv(half_grid_pos);
+    const double mass_eval_pos = std::min(half_grid_pos, id_.spres_ped);
     // if (massEvalPos > id_.spres_ped) {
     //     massEvalPos = id_.spres_ped;
     // }
-    const double massEvalTorFlux = std::min(torflux(massEvalPos), 1.0);
-    const double mass = evalMassProfile(massEvalTorFlux);
-    massH[jH - r_.nsMinH] = mass * std::pow(std::abs(vpnorm) * r00, id_.gamma);
+    const double mass_eval_tor_flux = std::min(torflux(mass_eval_pos), 1.0);
+    const double mass = evalMassProfile(mass_eval_tor_flux);
+    massH[j_h - r_.nsMinH] = mass * std::pow(std::abs(vpnorm) * r00, id_.gamma);
 
     // This must be done over UNIQUE half-grid points !!!
     // --> The standard partitioning has half-grid points between
     //     neighboring ranks that are handled by both ranks.
-    if (jH < r_.nsMaxH - 1 || jH == fc_.ns - 2) {
-      local_rmsPhiP += phipH[jH - r_.nsMinH] * phipH[jH - r_.nsMinH];
+    if (j_h < r_.nsMaxH - 1 || j_h == fc_.ns - 2) {
+      local_rms_phi_p += phipH[j_h - r_.nsMinH] * phipH[j_h - r_.nsMinH];
     }
   }
 
   // global accumulation of rmsPhiP
-  m_vmecconst.rmsPhiP += local_rmsPhiP;
+  m_vmecconst.rmsPhiP += local_rms_phi_p;
 
   // ------------------------------------------
 
-  const double sqrtS1 = sqrt(1.0 / (fc_.ns - 1));
+  const double sqrt_s1 = sqrt(1.0 / (fc_.ns - 1));
 
   // full-grid
-  for (int jF1 = r_.nsMinF1; jF1 < r_.nsMaxF1; ++jF1) {
-    const double fullGridPos = jF1 / (fc_.ns - 1.0);
+  for (int j_f1 = r_.nsMinF1; j_f1 < r_.nsMaxF1; ++j_f1) {
+    const double full_grid_pos = j_f1 / (fc_.ns - 1.0);
 
     // normalized toroidal flux array
-    sqrtSF[jF1 - r_.nsMinF1] = std::sqrt(fullGridPos);
+    sqrtSF[j_f1 - r_.nsMinF1] = std::sqrt(full_grid_pos);
 
-    phipF[jF1 - r_.nsMinF1] = maxToroidalFlux * torfluxDeriv(fullGridPos);
-    chipF[jF1 - r_.nsMinF1] = maxToroidalFlux * polfluxDeriv(fullGridPos);
+    phipF[j_f1 - r_.nsMinF1] = maxToroidalFlux * torfluxDeriv(full_grid_pos);
+    chipF[j_f1 - r_.nsMinF1] = maxToroidalFlux * polfluxDeriv(full_grid_pos);
 
-    const double toroidalFlux = std::min(torflux(fullGridPos), 1.0);
-    iotaF[jF1 - r_.nsMinF1] = evalIotaProfile(toroidalFlux);
+    const double toroidal_flux = std::min(torflux(full_grid_pos), 1.0);
+    iotaF[j_f1 - r_.nsMinF1] = evalIotaProfile(toroidal_flux);
 
     // TODO(jons): this is still weird
     // TODO(jons): The particular amount of 2*pDamp can sometimes be adjusted in
     // the range 0...1 to yield faster convergence.
-    radialBlending[jF1 - r_.nsMinF1] = 2.0 * pDamp * (1.0 - fullGridPos);
+    radialBlending[j_f1 - r_.nsMinF1] = 2.0 * pDamp * (1.0 - full_grid_pos);
 
     // even-m: no scaling
-    scalxc[(jF1 - r_.nsMinF1) * 2 + m_evn] = 1.0;
+    scalxc[(j_f1 - r_.nsMinF1) * 2 + m_evn] = 1.0;
 
     // odd-m: factor out 1/sqrt(s)
     // This is Eqn. (8c) in Hirshman, Schwenn & Nührenberg (1990).
     // The innermost full-grid point (== magnetic axis)
     // gets sqrt(s) of the innermost actual flux surface at j=1.
     // This is a constant extrapolation towards the axis.
-    scalxc[(jF1 - r_.nsMinF1) * 2 + m_odd] =
-        1.0 / std::max(sqrtSF[jF1 - r_.nsMinF1], sqrtS1);
+    scalxc[(j_f1 - r_.nsMinF1) * 2 + m_odd] =
+        1.0 / std::max(sqrtSF[j_f1 - r_.nsMinF1], sqrt_s1);
   }
 
   // avoid round-off errors
@@ -787,12 +787,12 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     sqrtSF[fc_.ns - 1 - r_.nsMinF1] = 1.0;
   }
 
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    const int jFi = jH;
-    const int jFo = jH + 1;
-    sm[jH - r_.nsMinH] = sqrtSH[jH - r_.nsMinH] / sqrtSF[jFo - r_.nsMinF1];
-    if (jH > 0) {
-      sp[jH - r_.nsMinH] = sqrtSH[jH - r_.nsMinH] / sqrtSF[jFi - r_.nsMinF1];
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
+    const int j_fi = j_h;
+    const int j_fo = j_h + 1;
+    sm[j_h - r_.nsMinH] = sqrtSH[j_h - r_.nsMinH] / sqrtSF[j_fo - r_.nsMinF1];
+    if (j_h > 0) {
+      sp[j_h - r_.nsMinH] = sqrtSH[j_h - r_.nsMinH] / sqrtSF[j_fi - r_.nsMinF1];
     }
   }  // jH
   if (r_.nsMinH == 0) {
@@ -805,22 +805,22 @@ void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
   SpectralWidthContribution spectral_width_contribution = {.numerator = 0.0,
                                                            .denominator = 0.0};
 
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     // This must be done over UNIQUE half-grid points !!!
     // --> The standard partitioning has half-grid points between
     //     neighboring ranks that are handled by both ranks.
-    if (jH < r_.nsMaxH - 1 || jH == fc_.ns - 2) {
-      const int jFi = jH;
-      const int jFo = jH + 1;
+    if (j_h < r_.nsMaxH - 1 || j_h == fc_.ns - 2) {
+      const int j_fi = j_h;
+      const int j_fo = j_h + 1;
 
       const double spectral_width_on_half_grid =
-          (spectral_width[jFo - r_.nsMinF1] +
-           spectral_width[jFi - r_.nsMinF1]) /
+          (spectral_width[j_fo - r_.nsMinF1] +
+           spectral_width[j_fi - r_.nsMinF1]) /
           2.0;
       spectral_width_contribution.numerator +=
-          spectral_width_on_half_grid * dVdsH[jH - r_.nsMinH];
+          spectral_width_on_half_grid * dVdsH[j_h - r_.nsMinH];
 
-      spectral_width_contribution.denominator += dVdsH[jH - r_.nsMinH];
+      spectral_width_contribution.denominator += dVdsH[j_h - r_.nsMinH];
     }
   }  // jH
 

@@ -27,33 +27,33 @@ SurfaceGeometry::SurfaceGeometry(const Sizes* s,
   rzb2.resize(s_.nThetaEven * s_.nZeta);
 
   // thread-local tangential grid point range
-  int numLocal = tp_.ztMax - tp_.ztMin;
+  int num_local = tp_.ztMax - tp_.ztMin;
 
-  rub.resize(numLocal);
-  rvb.resize(numLocal);
-  zub.resize(numLocal);
-  zvb.resize(numLocal);
+  rub.resize(num_local);
+  rvb.resize(num_local);
+  zub.resize(num_local);
+  zvb.resize(num_local);
 
-  ruu.resize(numLocal);
-  ruv.resize(numLocal);
-  rvv.resize(numLocal);
-  zuu.resize(numLocal);
-  zuv.resize(numLocal);
-  zvv.resize(numLocal);
+  ruu.resize(num_local);
+  ruv.resize(num_local);
+  rvv.resize(num_local);
+  zuu.resize(num_local);
+  zuv.resize(num_local);
+  zvv.resize(num_local);
 
-  snr.resize(numLocal);
-  snv.resize(numLocal);
-  snz.resize(numLocal);
+  snr.resize(num_local);
+  snv.resize(num_local);
+  snz.resize(num_local);
 
-  guu.resize(numLocal);
-  guv.resize(numLocal);
-  gvv.resize(numLocal);
+  guu.resize(num_local);
+  guv.resize(num_local);
+  gvv.resize(num_local);
 
-  auu.resize(numLocal);
-  auv.resize(numLocal);
-  avv.resize(numLocal);
+  auu.resize(num_local);
+  auv.resize(num_local);
+  avv.resize(num_local);
 
-  drv.resize(numLocal);
+  drv.resize(num_local);
 
   // -----------------
 
@@ -117,28 +117,28 @@ void SurfaceGeometry::inverseDFT(
   absl::c_fill_n(z1b, s_.nThetaEven * s_.nZeta, 0);
 
   // ----------------
-  int numLocal = tp_.ztMax - tp_.ztMin;
+  int num_local = tp_.ztMax - tp_.ztMin;
 
-  absl::c_fill_n(rub, numLocal, 0);
-  absl::c_fill_n(rvb, numLocal, 0);
-  absl::c_fill_n(zub, numLocal, 0);
-  absl::c_fill_n(zvb, numLocal, 0);
+  absl::c_fill_n(rub, num_local, 0);
+  absl::c_fill_n(rvb, num_local, 0);
+  absl::c_fill_n(zub, num_local, 0);
+  absl::c_fill_n(zvb, num_local, 0);
 
   if (fullUpdate) {
-    absl::c_fill_n(ruu, numLocal, 0);
-    absl::c_fill_n(ruv, numLocal, 0);
-    absl::c_fill_n(rvv, numLocal, 0);
-    absl::c_fill_n(zuu, numLocal, 0);
-    absl::c_fill_n(zuv, numLocal, 0);
-    absl::c_fill_n(zvv, numLocal, 0);
+    absl::c_fill_n(ruu, num_local, 0);
+    absl::c_fill_n(ruv, num_local, 0);
+    absl::c_fill_n(rvv, num_local, 0);
+    absl::c_fill_n(zuu, num_local, 0);
+    absl::c_fill_n(zuv, num_local, 0);
+    absl::c_fill_n(zvv, num_local, 0);
   }
 
   for (int n = 0; n < s_.ntor + 1; ++n) {
     // needed for second-order toroidal derivatives
-    int nSq = n * s_.nfp * n * s_.nfp;
+    int n_sq = n * s_.nfp * n * s_.nfp;
 
-    int lMin = tp_.ztMin / s_.nZeta;
-    int lMax = tp_.ztMax / s_.nZeta;
+    int l_min = tp_.ztMin / s_.nZeta;
+    int l_max = tp_.ztMax / s_.nZeta;
 
     for (int l = 0; l < s_.nThetaReduced; ++l) {
       double rmkcc = 0.0;
@@ -162,7 +162,7 @@ void SurfaceGeometry::inverseDFT(
         int idx_mn = n * s_.mpol + m;
 
         // needed for second-order poloidal derivatives
-        int mSq = m * m;
+        int m_sq = m * m;
 
         double cosmu = fb_.cosmu[l * (s_.mnyq2 + 1) + m];
         double sinmu = fb_.sinmu[l * (s_.mnyq2 + 1) + m];
@@ -174,7 +174,7 @@ void SurfaceGeometry::inverseDFT(
 
         // ----------------
 
-        if (lMin <= l && l <= lMax) {
+        if (l_min <= l && l <= l_max) {
           // TODO(jons): in asymmetric case, some processors will have local
           // poloidal ranges outside the first half-module
           // --> these would be excluded here, but they still need to do some
@@ -182,8 +182,8 @@ void SurfaceGeometry::inverseDFT(
 
           double cosmum = fb_.cosmum[l * (s_.mnyq2 + 1) + m];
           double sinmum = fb_.sinmum[l * (s_.mnyq2 + 1) + m];
-          double cosmumm = -mSq * fb_.cosmu[l * (s_.mnyq2 + 1) + m];
-          double sinmumm = -mSq * fb_.sinmu[l * (s_.mnyq2 + 1) + m];
+          double cosmumm = -m_sq * fb_.cosmu[l * (s_.mnyq2 + 1) + m];
+          double sinmumm = -m_sq * fb_.sinmu[l * (s_.mnyq2 + 1) + m];
 
           rmkcc_m += rCC[idx_mn] * sinmum;
           rmkcc_mm += rCC[idx_mn] * cosmumm;
@@ -218,8 +218,8 @@ void SurfaceGeometry::inverseDFT(
           zvb[idx_kl - tp_.ztMin] += zmksc * sinnvn + zmkcs * cosnvn;
 
           if (fullUpdate) {
-            double cosnvnn = -nSq * fb_.cosnv[n * s_.nZeta + k];
-            double sinnvnn = -nSq * fb_.sinnv[n * s_.nZeta + k];
+            double cosnvnn = -n_sq * fb_.cosnv[n * s_.nZeta + k];
+            double sinnvnn = -n_sq * fb_.sinnv[n * s_.nZeta + k];
 
             ruu[idx_kl - tp_.ztMin] += rmkcc_mm * cosnv + rmkss_mm * sinnv;
             ruv[idx_kl - tp_.ztMin] += rmkcc_m * sinnvn + rmkss_m * cosnvn;
@@ -294,17 +294,17 @@ void SurfaceGeometry::derivedSurfaceQuantities(int signOfJacobian,
     if (!s_.lasym) {
       // mirror into non-stellarator-symmetric half of poloidal range
       for (int l = 1; l < s_.nThetaReduced - 1; ++l) {
-        int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
+        int l_rev = (s_.nThetaEven - l) % s_.nThetaEven;
         for (int k = 0; k < s_.nZeta; ++k) {
-          int kRev = (s_.nZeta - k) % s_.nZeta;
+          int k_rev = (s_.nZeta - k) % s_.nZeta;
 
           int kl = l * s_.nZeta + k;
-          int klRev = lRev * s_.nZeta + kRev;
+          int kl_rev = l_rev * s_.nZeta + k_rev;
 
-          r1b[klRev] = r1b[kl];
-          z1b[klRev] = -z1b[kl];
+          r1b[kl_rev] = r1b[kl];
+          z1b[kl_rev] = -z1b[kl];
 
-          rzb2[klRev] = rzb2[kl];
+          rzb2[kl_rev] = rzb2[kl];
         }  // k
       }    // l
     }

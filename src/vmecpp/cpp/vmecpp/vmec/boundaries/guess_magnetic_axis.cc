@@ -85,7 +85,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
       (number_of_flux_surfaces - 1 - ns12) / (number_of_flux_surfaces - 1.0);
 
   // sqrt(s_j) at j = ns12, where s is the normalized radial coordinate
-  const double sqrtSF12 = std::sqrt(ns12 / (number_of_flux_surfaces - 1.0));
+  const double sqrt_s_f12 = std::sqrt(ns12 / (number_of_flux_surfaces - 1.0));
 
   // start: interpolate Fourier coefficients between initial guess for axis and
   // boundary
@@ -112,7 +112,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   }
 
   // undo m=1 constraint
-  const double scalingFactor = 1.0;
+  const double scaling_factor = 1.0;
   std::vector<std::vector<double> > rss_boundary;  // lthreed
   std::vector<std::vector<double> > zcs_boundary;  // lthreed
   std::vector<std::vector<double> > rsc_boundary;  // lasym
@@ -126,8 +126,8 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
       for (int n = 0; n <= s.ntor; ++n) {
         int idx_mn = m * (s.ntor + 1) + n;
         if (m == 1) {
-          rss_boundary[m][n] = (rbss[idx_mn] + zbcs[idx_mn]) * scalingFactor;
-          zcs_boundary[m][n] = (rbss[idx_mn] - zbcs[idx_mn]) * scalingFactor;
+          rss_boundary[m][n] = (rbss[idx_mn] + zbcs[idx_mn]) * scaling_factor;
+          zcs_boundary[m][n] = (rbss[idx_mn] - zbcs[idx_mn]) * scaling_factor;
         } else {
           rss_boundary[m][n] = rbss[idx_mn];
           zcs_boundary[m][n] = zbcs[idx_mn];
@@ -144,8 +144,8 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
       for (int n = 0; n <= s.ntor; ++n) {
         int idx_mn = m * (s.ntor + 1) + n;
         if (m == 1) {
-          rsc_boundary[m][n] = (rbsc[idx_mn] + zbcc[idx_mn]) * scalingFactor;
-          zcc_boundary[m][n] = (rbsc[idx_mn] - zbcc[idx_mn]) * scalingFactor;
+          rsc_boundary[m][n] = (rbsc[idx_mn] + zbcc[idx_mn]) * scaling_factor;
+          zcc_boundary[m][n] = (rbsc[idx_mn] - zbcc[idx_mn]) * scaling_factor;
         } else {
           rsc_boundary[m][n] = rbsc[idx_mn];
           zcc_boundary[m][n] = zbcc[idx_mn];
@@ -175,7 +175,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
 
       if (m == 0) {
         // m = 0: linear interpolation in s between axis and boundary
-        const double interpolation_weight = sqrtSF12 * sqrtSF12;
+        const double interpolation_weight = sqrt_s_f12 * sqrt_s_f12;
 
         rcc_half[m][n] = (interpolation_weight * rbcc[idx_mn] +
                           (1.0 - interpolation_weight) * raxis_c[n]);
@@ -201,7 +201,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
         }
       } else {
         // m > 0: scale boundary into volume by s^(m/2) == sqrt(s)^m == rho^m
-        const double interpolation_weight = std::pow(sqrtSF12, m);
+        const double interpolation_weight = std::pow(sqrt_s_f12, m);
 
         rcc_half[m][n] = interpolation_weight * rbcc[idx_mn];
         zsc_half[m][n] = interpolation_weight * zbsc[idx_mn];

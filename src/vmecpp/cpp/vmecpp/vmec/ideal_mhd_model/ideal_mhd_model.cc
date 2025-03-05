@@ -74,18 +74,18 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
   // fill target force arrays with zeros
   physical_forces.setZero();
 
-  int jMaxRZ = std::min(rp.nsMaxF, fc.ns - 1);
+  int j_max_rz = std::min(rp.nsMaxF, fc.ns - 1);
 
   if (fc.lfreeb && ivac >= 1) {
     // free-boundary: up to jMaxRZ=ns
-    jMaxRZ = std::min(rp.nsMaxF, fc.ns);
+    j_max_rz = std::min(rp.nsMaxF, fc.ns);
   }
 
   // axis lambda stays zero (no contribution from any m)
-  const int jMinL = 1;
+  const int j_min_l = 1;
 
-  for (int jF = rp.nsMinF; jF < jMaxRZ; ++jF) {
-    const int mmax = jF == 0 ? 1 : s.mpol;
+  for (int j_f = rp.nsMinF; j_f < j_max_rz; ++j_f) {
+    const int mmax = j_f == 0 ? 1 : s.mpol;
     for (int m = 0; m < mmax; ++m) {
       const bool m_even = m % 2 == 0;
 
@@ -114,7 +114,7 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         double lmkcs = 0.0;
         double lmkcs_n = 0.0;
 
-        const int idx_kl_base = ((jF - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
+        const int idx_kl_base = ((j_f - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
         const int idx_ml_base = m * s.nThetaReduced;
 
         // NOTE: nThetaReduced is usually pretty small, 9 for cma.json
@@ -142,17 +142,17 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
 
           // assemble effective R and Z forces from MHD and spectral
           // condensation contributions
-          const double tempR = armn[idx_kl] + xmpq[m] * frcon[idx_kl];
-          const double tempZ = azmn[idx_kl] + xmpq[m] * fzcon[idx_kl];
+          const double temp_r = armn[idx_kl] + xmpq[m] * frcon[idx_kl];
+          const double temp_z = azmn[idx_kl] + xmpq[m] * fzcon[idx_kl];
 
-          rmkcc += tempR * cosmui + brmn[idx_kl] * sinmumi;  // --> frcc
-          rmkss += tempR * sinmui + brmn[idx_kl] * cosmumi;  // --> frss
-          zmksc += tempZ * sinmui + bzmn[idx_kl] * cosmumi;  // --> fzsc
-          zmkcs += tempZ * cosmui + bzmn[idx_kl] * sinmumi;  // --> fzcs
+          rmkcc += temp_r * cosmui + brmn[idx_kl] * sinmumi;  // --> frcc
+          rmkss += temp_r * sinmui + brmn[idx_kl] * cosmumi;  // --> frss
+          zmksc += temp_z * sinmui + bzmn[idx_kl] * cosmumi;  // --> fzsc
+          zmkcs += temp_z * cosmui + bzmn[idx_kl] * sinmumi;  // --> fzcs
         }                                                    // l
 
         for (int n = 0; n < s.ntor + 1; ++n) {
-          const int idx_mn = ((jF - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
+          const int idx_mn = ((j_f - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
           const int idx_kn = k * (s.nnyq2 + 1) + n;
 
           const double cosnv = fb.cosnv[idx_kn];
@@ -165,7 +165,7 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
           physical_forces.fzsc[idx_mn] += zmksc * cosnv + zmksc_n * sinnvn;
           physical_forces.fzcs[idx_mn] += zmkcs * sinnv + zmkcs_n * cosnvn;
 
-          if (jMinL <= jF) {
+          if (j_min_l <= j_f) {
             physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
             physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
           }
@@ -176,7 +176,7 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
 
   // repeat the above just for jMaxRZ to nsMaxFIncludingLcfs, just for flsc,
   // flcs
-  for (int jF = jMaxRZ; jF < rp.nsMaxFIncludingLcfs; ++jF) {
+  for (int j_f = j_max_rz; j_f < rp.nsMaxFIncludingLcfs; ++j_f) {
     for (int m = 0; m < s.mpol; ++m) {
       const bool m_even = m % 2 == 0;
 
@@ -189,7 +189,7 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         double lmkcs = 0.0;
         double lmkcs_n = 0.0;
 
-        const int idx_kl_base = ((jF - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
+        const int idx_kl_base = ((j_f - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
         const int idx_ml_base = m * s.nThetaReduced;
 
         for (int l = 0; l < s.nThetaReduced; ++l) {
@@ -208,7 +208,7 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         }                                    // l
 
         for (int n = 0; n < s.ntor + 1; ++n) {
-          const int idx_mn = ((jF - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
+          const int idx_mn = ((j_f - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
           const int idx_kn = k * (s.nnyq2 + 1) + n;
 
           const double cosnv = fb.cosnv[idx_kn];
@@ -251,16 +251,16 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
   absl::c_fill(g.zCon, 0);
 
   // NOTE: fix on old VMEC++: need to transform geometry for nsMinF1 ... nsMaxF1
-  const int nsMinF1 = r.nsMinF1;
-  const int nsMinF = r.nsMinF;
-  for (int jF = nsMinF1; jF < r.nsMaxF1; ++jF) {
+  const int ns_min_f1 = r.nsMinF1;
+  const int ns_min_f = r.nsMinF;
+  for (int j_f = ns_min_f1; j_f < r.nsMaxF1; ++j_f) {
     for (int m = 0; m < s.mpol; ++m) {
       const bool m_even = m % 2 == 0;
       const int idx_ml_base = m * s.nThetaReduced;
 
       // with sqrtS for odd-m
       const double con_factor =
-          m_even ? xmpq[m] : xmpq[m] * rp.sqrtSF[jF - nsMinF1];
+          m_even ? xmpq[m] : xmpq[m] * rp.sqrtSF[j_f - ns_min_f1];
 
       auto& r1 = m_even ? g.r1_e : g.r1_o;
       auto& ru = m_even ? g.ru_e : g.ru_o;
@@ -274,12 +274,12 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
       // axis only gets contributions up to m=1
       // --> all larger m contributions enter only from j=1 onwards
       // TODO(jons): why does the axis need m=1?
-      int jMin = 1;
+      int j_min = 1;
       if (m == 0 || m == 1) {
-        jMin = 0;
+        j_min = 0;
       }
 
-      if (jF < jMin) {
+      if (j_f < j_min) {
         continue;
       }
 
@@ -307,7 +307,7 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
           double sinnvn = fb.sinnvn[idx_kn];
           double cosnvn = fb.cosnvn[idx_kn];
 
-          int idx_mn = ((jF - nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
+          int idx_mn = ((j_f - ns_min_f1) * s.mpol + m) * (s.ntor + 1) + n;
 
           rmkcc += physical_x.rmncc[idx_mn] * cosnv;
           rmkcc_n += physical_x.rmncc[idx_mn] * sinnvn;
@@ -324,7 +324,7 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
         }  // n
 
         // INVERSE TRANSFORM IN M-THETA, FOR ALL RADIAL, ZETA VALUES
-        const int idx_kl_base = ((jF - nsMinF1) * s.nZeta + k) * s.nThetaEff;
+        const int idx_kl_base = ((j_f - ns_min_f1) * s.nZeta + k) * s.nThetaEff;
 
         // the loop over l is split to help compiler auto-vectorization
         for (int l = 0; l < s.nThetaReduced; ++l) {
@@ -363,7 +363,7 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
           z1[idx_kl] += zmksc * sinmu + zmkcs * cosmu;
         }  // l
 
-        if (nsMinF <= jF && jF < r.nsMaxFIncludingLcfs) {
+        if (ns_min_f <= j_f && j_f < r.nsMaxFIncludingLcfs) {
           for (int l = 0; l < s.nThetaReduced; ++l) {
             const int idx_ml = idx_ml_base + l;
             const double cosmu = fb.cosmu[idx_ml];
@@ -371,7 +371,7 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
 
             // spectral condensation is local per flux surface
             // --> no need for numFull1
-            const int idx_con = ((jF - nsMinF) * s.nZeta + k) * s.nThetaEff + l;
+            const int idx_con = ((j_f - ns_min_f) * s.nZeta + k) * s.nThetaEff + l;
             g.rCon[idx_con] += (rmkcc * cosmu + rmkss * sinmu) * con_factor;
             g.zCon[idx_con] += (zmksc * sinmu + zmkcs * cosmu) * con_factor;
           }
@@ -391,12 +391,12 @@ void vmecpp::deAliasConstraintForce(
   absl::c_fill_n(gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
 
   // no constraint on axis --> has no poloidal angle
-  int jMin = 0;
+  int j_min = 0;
   if (rp.nsMinF == 0) {
-    jMin = 1;
+    j_min = 1;
   }
 
-  for (int jF = std::max(jMin, rp.nsMinF); jF < rp.nsMaxF; ++jF) {
+  for (int j_f = std::max(j_min, rp.nsMinF); j_f < rp.nsMaxF; ++j_f) {
     for (int m = 1; m < s_.mpol - 1; ++m) {
       absl::c_fill_n(gsc, s_.ntor + 1, 0);
       absl::c_fill_n(gcs, s_.ntor + 1, 0);
@@ -410,7 +410,7 @@ void vmecpp::deAliasConstraintForce(
         for (int l = 0; l < s_.nThetaReduced; ++l) {
           const int idx_ml = m * s_.nThetaReduced + l;
 
-          int idx_kl = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          int idx_kl = ((j_f - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
           w0 += gConEff[idx_kl] * fb.sinmui[idx_ml];
           w1 += gConEff[idx_kl] * fb.cosmui[idx_ml];
         }  // l
@@ -421,8 +421,8 @@ void vmecpp::deAliasConstraintForce(
           int idx_kn = k * (s_.nnyq2 + 1) + n;
 
           // NOTE: `tcon` comes into play here
-          gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
-          gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
+          gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[j_f - rp.nsMinF];
+          gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[j_f - rp.nsMinF];
         }
       }  // k
 
@@ -445,7 +445,7 @@ void vmecpp::deAliasConstraintForce(
 
         // inv transform in poloidal direction
         for (int l = 0; l < s_.nThetaReduced; ++l) {
-          int idx_kl = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          int idx_kl = ((j_f - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
           const int idx_ml = m * s_.nThetaReduced + l;
 
           // NOTE: `faccon` comes into play here
@@ -519,16 +519,16 @@ IdealMhdModel::IdealMhdModel(
     lv_o.resize(nrzt1);
   }
 
-  int nrztIncludingBoundary = s_.nZnT * (r_.nsMaxFIncludingLcfs - r_.nsMinF);
+  int nrzt_including_boundary = s_.nZnT * (r_.nsMaxFIncludingLcfs - r_.nsMinF);
 
-  ruFull.resize(nrztIncludingBoundary);
-  zuFull.resize(nrztIncludingBoundary);
+  ruFull.resize(nrzt_including_boundary);
+  zuFull.resize(nrzt_including_boundary);
 
-  rCon.resize(nrztIncludingBoundary);
-  zCon.resize(nrztIncludingBoundary);
+  rCon.resize(nrzt_including_boundary);
+  zCon.resize(nrzt_including_boundary);
 
-  rCon0.resize(nrztIncludingBoundary);
-  zCon0.resize(nrztIncludingBoundary);
+  rCon0.resize(nrzt_including_boundary);
+  zCon0.resize(nrzt_including_boundary);
 
   r12.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
   ru12.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
@@ -565,16 +565,16 @@ IdealMhdModel::IdealMhdModel(
   azmn_o.resize(nrzt);
   bzmn_e.resize(nrzt);
   bzmn_o.resize(nrzt);
-  blmn_e.resize(nrztIncludingBoundary);
-  blmn_o.resize(nrztIncludingBoundary);
+  blmn_e.resize(nrzt_including_boundary);
+  blmn_o.resize(nrzt_including_boundary);
 
   if (s_.lthreed) {
     crmn_e.resize(nrzt);
     crmn_o.resize(nrzt);
     czmn_e.resize(nrzt);
     czmn_o.resize(nrzt);
-    clmn_e.resize(nrztIncludingBoundary);
-    clmn_o.resize(nrztIncludingBoundary);
+    clmn_e.resize(nrzt_including_boundary);
+    clmn_o.resize(nrzt_including_boundary);
   }
 
   // TODO(jons): +1 only if at LCFS
@@ -610,10 +610,10 @@ IdealMhdModel::IdealMhdModel(
 
   tcon.resize(r_.nsMaxFIncludingLcfs - r_.nsMinF);
 
-  gConEff.resize(nrztIncludingBoundary);
+  gConEff.resize(nrzt_including_boundary);
   gsc.resize(s_.ntor + 1);
   gcs.resize(s_.ntor + 1);
-  gCon.resize(nrztIncludingBoundary);
+  gCon.resize(nrzt_including_boundary);
 
   frcon_e.resize(nrzt);
   frcon_o.resize(nrzt);
@@ -653,10 +653,10 @@ void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
   {
     // set new values
     // TODO(jons): what is `r1scale`?
-    constexpr double r1scale = 0.25;
+    constexpr double kR1scale = 0.25;
 
-    m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * r1scale;
-    m_fc_.fsqz = m_fc_.fResInvar[1] * m_h_.fNormRZ * r1scale;
+    m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * kR1scale;
+    m_fc_.fsqz = m_fc_.fResInvar[1] * m_h_.fNormRZ * kR1scale;
     m_fc_.fsql = m_fc_.fResInvar[2] * m_h_.fNormL;
   }
 }
@@ -877,9 +877,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
     if (m_ivac_ >= 0) {
       // IF INITIALLY ON, MUST TURN OFF rcon0, zcon0 SLOWLY
-      for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
+      for (int j_f = r_.nsMinF; j_f < r_.nsMaxF; ++j_f) {
         for (int kl = 0; kl < s_.nZnT; ++kl) {
-          int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
+          int idx_kl = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
           // gradually turn off rcon0, zcon0
           rCon0[idx_kl] *= 0.9;
@@ -906,12 +906,12 @@ absl::StatusOr<bool> IdealMhdModel::update(
 // protect reads of magnetic axis, boundary geometry below from writes above
 #pragma omp barrier
 
-      const double netToroidalCurrent = m_h_.cTor / MU_0;
+      const double net_toroidal_current = m_h_.cTor / MU_0;
       bool reached_checkpoint = m_fb_.update(
           m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
           m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
           signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
-          &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
+          &(m_h_.bSubVVac), net_toroidal_current, ivacskip, checkpoint,
           iter2 >= iterations_before_checkpointing);
       if (reached_checkpoint) {
         return true;
@@ -964,10 +964,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
         // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS PRECONDITIONER!
         // double edgePressure = 1.5 * p.presH[r.nsMaxH-1 - r.nsMinH] - 0.5 *
         // p.presH[r.nsMinH - r.nsMinH];
-        double edgePressure =
+        double edge_pressure =
             m_p_.evalMassProfile((m_fc_.ns - 1.5) / (m_fc_.ns - 1.0));
-        if (edgePressure != 0.0) {
-          edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
+        if (edge_pressure != 0.0) {
+          edge_pressure = m_p_.evalMassProfile(1.0) / edge_pressure *
                          m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH];
         }
 
@@ -985,16 +985,16 @@ absl::StatusOr<bool> IdealMhdModel::update(
           const int k = kl / s_.nThetaEff;
           const int l = kl % s_.nThetaEff;
           const int idx_lk = l * s_.nZeta + k;
-          double outsideEdgePressure =
-              m_h_.vacuum_magnetic_pressure[idx_lk] + edgePressure;
+          double outside_edge_pressure =
+              m_h_.vacuum_magnetic_pressure[idx_lk] + edge_pressure;
 
           // term to enter MHD forces
           int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
-          rBSq[kl] = outsideEdgePressure * (r1_e[idx_kl] + r1_o[idx_kl]) /
+          rBSq[kl] = outside_edge_pressure * (r1_e[idx_kl] + r1_o[idx_kl]) /
                      m_fc_.deltaS;
 
           // for printout: global mismatch between inside and outside pressure
-          delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
+          delBSq[kl] = fabs(outside_edge_pressure - insideTotalPressure[kl]);
         }
 
         if (m_ivac_ == 1) {
@@ -1046,7 +1046,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // re-establish m=1 constraint
   // TODO(jons): why 1/sqrt(2) and not 1/2 ?
-  m_decomposed_f.m1Constraint(1.0 / sqrt(2));
+  m_decomposed_f.m1Constraint(1.0 / std::numbers::sqrt2);
 
   // v8.50: ADD iter2<2 so reset=<WOUT_FILE> works
   if (m_fc.fsqz < 1.0e-6 || iter2 < 2) {
@@ -1065,13 +1065,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // COMPUTE INVARIANT RESIDUALS
 
   // include edge contribution only if converged well enough fast enough (?)
-  bool includeEdgeRZForces =
+  bool include_edge_rz_forces =
       ((iter2 - iter1) < 50 && (m_fc.fsqr + m_fc.fsqz) < 1.0e-6);
 
-  std::vector<double> localFResInvar(3, 0.0);
-  m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
+  std::vector<double> local_f_res_invar(3, 0.0);
+  m_decomposed_f.residuals(local_f_res_invar, include_edge_rz_forces);
 
-  evalFResInvar(localFResInvar);
+  evalFResInvar(local_f_res_invar);
 
   if (checkpoint == VmecCheckpoint::INVARIANT_RESIDUALS &&
       iter2 >= iterations_before_checkpointing) {
@@ -1103,10 +1103,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  std::vector<double> localFResPrecd(3, 0.0);
-  m_decomposed_f.residuals(localFResPrecd, true);
+  std::vector<double> local_f_res_precd(3, 0.0);
+  m_decomposed_f.residuals(local_f_res_precd, true);
 
-  evalFResPrecd(localFResPrecd);
+  evalFResPrecd(local_f_res_precd);
 
   if (checkpoint == VmecCheckpoint::PRECONDITIONED_RESIDUALS &&
       iter2 >= iterations_before_checkpointing) {
@@ -1156,14 +1156,14 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
 
   // related post-processing:
   // combine even-m and odd-m to ru, zu into ruFull, zuFull
-  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+  for (int j_f = r_.nsMinF; j_f < r_.nsMaxFIncludingLcfs; ++j_f) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int idx_kl1 = (jF - r_.nsMinF1) * s_.nZnT + kl;
-      int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_kl1 = (j_f - r_.nsMinF1) * s_.nZnT + kl;
+      int idx_kl = (j_f - r_.nsMinF) * s_.nZnT + kl;
       ruFull[idx_kl] =
-          ru_e[idx_kl1] + m_p_.sqrtSF[jF - r_.nsMinF1] * ru_o[idx_kl1];
+          ru_e[idx_kl1] + m_p_.sqrtSF[j_f - r_.nsMinF1] * ru_o[idx_kl1];
       zuFull[idx_kl] =
-          zu_e[idx_kl1] + m_p_.sqrtSF[jF - r_.nsMinF1] * zu_o[idx_kl1];
+          zu_e[idx_kl1] + m_p_.sqrtSF[j_f - r_.nsMinF1] * zu_o[idx_kl1];
     }  // kl
   }    // jF
 
@@ -1231,10 +1231,10 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
 // need to wait for other threads to have filled _i and _o arrays above
 #pragma omp barrier
 
-  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
-    double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
-    double* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
-    double* src_lsc = &(physical_x.lmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+  for (int j_f = r_.nsMinF1; j_f < r_.nsMaxF1; ++j_f) {
+    double* src_rcc = &(physical_x.rmncc[(j_f - r_.nsMinF1) * s_.mnsize]);
+    double* src_zsc = &(physical_x.zmnsc[(j_f - r_.nsMinF1) * s_.mnsize]);
+    double* src_lsc = &(physical_x.lmnsc[(j_f - r_.nsMinF1) * s_.mnsize]);
 
     for (int l = 0; l < s_.nThetaReduced; ++l) {
       std::array<double, 2> rnkcc = {0.0, 0.0};
@@ -1252,7 +1252,7 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
       //
       // Regular case: all poloidal contributions up to m = mpol - 1.
       int num_m = s_.mpol;
-      if (jF == 0) {
+      if (j_f == 0) {
         // axis: num_m = 2 -> m = 0, 1
         num_m = 2;
       }
@@ -1296,7 +1296,7 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
         lnksc_m[m_parity] += src_lsc[m] * cosmum;
       }
 
-      const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
+      const int idx_jl = (j_f - r_.nsMinF1) * s_.nThetaEff + l;
       r1_e[idx_jl] += rnkcc[m_evn];
       ru_e[idx_jl] += rnkcc_m[m_evn];
       z1_e[idx_jl] += znksc[m_evn];
@@ -1314,9 +1314,9 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
   // since this allows to remove the condition on the radial range from the
   // innermost loops.
 
-  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
-    double* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+  for (int j_f = r_.nsMinF; j_f < r_.nsMaxFIncludingLcfs; ++j_f) {
+    double* src_rcc = &(physical_x.rmncc[(j_f - r_.nsMinF1) * s_.mnsize]);
+    double* src_zsc = &(physical_x.zmnsc[(j_f - r_.nsMinF1) * s_.mnsize]);
 
     // NOTE: The axis only gets contributions up to m=1.
     // This is counterintuitive on its own, since the axis is a
@@ -1327,7 +1327,7 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
     //
     // Regular case: all poloidal contributions up to m = mpol - 1.
     int num_m = s_.mpol;
-    if (jF == 0) {
+    if (j_f == 0) {
       // axis: num_m = 2 -> m = 0, 1
       num_m = 2;
     }
@@ -1360,19 +1360,19 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
     for (int m = 0; m < num_m; ++m) {
       const int m_parity = m % 2;
       const double scale =
-          xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]);
+          xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[j_f - r_.nsMinF1]);
 
       for (int l = 0; l < s_.nThetaReduced; ++l) {
         const int idx_ml = m * s_.nThetaReduced + l;
         const double cosmu = t_.cosmu[idx_ml];
-        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        const int idx_con = (j_f - r_.nsMinF) * s_.nThetaEff + l;
         rCon[idx_con] += src_rcc[m] * cosmu * scale;
       }  // l
 
       for (int l = 0; l < s_.nThetaReduced; ++l) {
         const int idx_ml = m * s_.nThetaReduced + l;
         const double sinmu = t_.sinmu[idx_ml];
-        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        const int idx_con = (j_f - r_.nsMinF) * s_.nThetaEff + l;
         zCon[idx_con] += src_zsc[m] * sinmu * scale;
       }  // l
     }    // m
@@ -1397,12 +1397,12 @@ void IdealMhdModel::rzConIntoVolume() {
 #pragma omp barrier
 
   // step 2: all threads interpolate into volume
-  for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    double sFull = m_p_.sqrtSF[jF - r_.nsMinF1] * m_p_.sqrtSF[jF - r_.nsMinF1];
+  for (int j_f = std::max(1, r_.nsMinF); j_f < r_.nsMaxFIncludingLcfs; ++j_f) {
+    double s_full = m_p_.sqrtSF[j_f - r_.nsMinF1] * m_p_.sqrtSF[j_f - r_.nsMinF1];
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
-      rCon0[idx_kl] = m_h_.rCon_LCFS[kl] * sFull;
-      zCon0[idx_kl] = m_h_.zCon_LCFS[kl] * sFull;
+      int idx_kl = (j_f - r_.nsMinF) * s_.nZnT + kl;
+      rCon0[idx_kl] = m_h_.rCon_LCFS[kl] * s_full;
+      zCon0[idx_kl] = m_h_.zCon_LCFS[kl] * s_full;
     }  // kl
   }    // j
 }
@@ -1410,8 +1410,8 @@ void IdealMhdModel::rzConIntoVolume() {
 void IdealMhdModel::computeJacobian() {
   // r12, ru12, zu12, rs, zs, tau
 
-  double minTau = 0.0;
-  double maxTau = 0.0;
+  double min_tau = 0.0;
+  double max_tau = 0.0;
 
   // contributions from full-grid surface _i_nside j-th half-grid surface
   int j0 = r_.nsMinF1;
@@ -1426,62 +1426,62 @@ void IdealMhdModel::computeJacobian() {
     m_ls_.zuo_i[kl] = zu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
   }
 
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
+    double sqrt_sh = m_p_.sqrtSH[j_h - r_.nsMinH];
 
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // contributions from full-grid surface _o_utside j-th half-grid surface
-      double r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double z1e_o = z1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double z1o_o = z1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double rue_o = ru_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double ruo_o = ru_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zue_o = zu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zuo_o = zu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double r1e_o = r1_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double r1o_o = r1_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double z1e_o = z1_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double z1o_o = z1_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double rue_o = ru_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double ruo_o = ru_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double zue_o = zu_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double zuo_o = zu_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
 
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
+      int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
 
       // R on half-grid
-      r12[iHalf] = 0.5 * ((m_ls_.r1e_i[kl] + r1e_o) +
-                          sqrtSH * (m_ls_.r1o_i[kl] + r1o_o));
+      r12[i_half] = 0.5 * ((m_ls_.r1e_i[kl] + r1e_o) +
+                          sqrt_sh * (m_ls_.r1o_i[kl] + r1o_o));
 
       // dRdTheta on half-grid
-      ru12[iHalf] = 0.5 * ((m_ls_.rue_i[kl] + rue_o) +
-                           sqrtSH * (m_ls_.ruo_i[kl] + ruo_o));
+      ru12[i_half] = 0.5 * ((m_ls_.rue_i[kl] + rue_o) +
+                           sqrt_sh * (m_ls_.ruo_i[kl] + ruo_o));
 
       // dZdTheta on half-grid
-      zu12[iHalf] = 0.5 * ((m_ls_.zue_i[kl] + zue_o) +
-                           sqrtSH * (m_ls_.zuo_i[kl] + zuo_o));
+      zu12[i_half] = 0.5 * ((m_ls_.zue_i[kl] + zue_o) +
+                           sqrt_sh * (m_ls_.zuo_i[kl] + zuo_o));
 
       // \tilde{dRds} on half-grid
-      rs[iHalf] =
-          ((r1e_o - m_ls_.r1e_i[kl]) + sqrtSH * (r1o_o - m_ls_.r1o_i[kl])) /
+      rs[i_half] =
+          ((r1e_o - m_ls_.r1e_i[kl]) + sqrt_sh * (r1o_o - m_ls_.r1o_i[kl])) /
           m_fc_.deltaS;
 
       // \tilde{dZds} on half-grid
-      zs[iHalf] =
-          ((z1e_o - m_ls_.z1e_i[kl]) + sqrtSH * (z1o_o - m_ls_.z1o_i[kl])) /
+      zs[i_half] =
+          ((z1e_o - m_ls_.z1e_i[kl]) + sqrt_sh * (z1o_o - m_ls_.z1o_i[kl])) /
           m_fc_.deltaS;
 
       // sqrt(g)/R on half-grid: assemble as governed by product rule
-      double tau1 = ru12[iHalf] * zs[iHalf] - rs[iHalf] * zu12[iHalf];
+      double tau1 = ru12[i_half] * zs[i_half] - rs[i_half] * zu12[i_half];
       double tau2 = ruo_o * z1o_o + m_ls_.ruo_i[kl] * m_ls_.z1o_i[kl] -
                     zuo_o * r1o_o - m_ls_.zuo_i[kl] * m_ls_.r1o_i[kl] +
                     (rue_o * z1o_o + m_ls_.rue_i[kl] * m_ls_.z1o_i[kl] -
                      zue_o * r1o_o - m_ls_.zue_i[kl] * m_ls_.r1o_i[kl]) /
-                        sqrtSH;
+                        sqrt_sh;
       double tau_val = tau1 + dSHalfDsInterp * tau2;
 
-      if (tau_val < minTau || minTau == 0.0) {
-        minTau = tau_val;
+      if (tau_val < min_tau || min_tau == 0.0) {
+        min_tau = tau_val;
       }
-      if (tau_val > maxTau || maxTau == 0.0) {
-        maxTau = tau_val;
+      if (tau_val > max_tau || max_tau == 0.0) {
+        max_tau = tau_val;
       }
 
-      tau[iHalf] = tau_val;
+      tau[i_half] = tau_val;
 
       // hand over to next iteration of radial loop
       // --> what was outside in this loop iteration will be inside for next
@@ -1497,9 +1497,9 @@ void IdealMhdModel::computeJacobian() {
     }  // kl
   }    // j
 
-  bool localBadJacobian = (minTau * maxTau < 0.0);
+  bool local_bad_jacobian = (min_tau * max_tau < 0.0);
 
-  if (localBadJacobian) {
+  if (local_bad_jacobian) {
 #pragma omp critical
     { m_fc_.restart_reason = RestartReason::BAD_JACOBIAN; }
   }
@@ -1530,66 +1530,66 @@ void IdealMhdModel::computeMetricElements() {
   }
 
   // s on inner full-grid pos
-  double sF_i =
+  double s_f_i =
       m_p_.sqrtSF[r_.nsMinH - r_.nsMinF1] * m_p_.sqrtSF[r_.nsMinH - r_.nsMinF1];
 
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     // s on outside full-grid pos
-    double sF_o =
-        m_p_.sqrtSF[jH + 1 - r_.nsMinF1] * m_p_.sqrtSF[jH + 1 - r_.nsMinF1];
+    double s_f_o =
+        m_p_.sqrtSF[j_h + 1 - r_.nsMinF1] * m_p_.sqrtSF[j_h + 1 - r_.nsMinF1];
 
     // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
+    double sqrt_sh = m_p_.sqrtSH[j_h - r_.nsMinH];
 
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
+      int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
 
       // Re-use this loop to compute Jacobian gsqrt=tau*R
       // only tau needed to be checked for a sign change,
       // so skip the last part where gsqrt is computed
       // if a sign changed happened by computing it only here
       // (which will only be reached when tau did not change sign).
-      gsqrt[iHalf] = tau[iHalf] * r12[iHalf];
+      gsqrt[i_half] = tau[i_half] * r12[i_half];
 
       // contributions from full-grid surface _o_utside j-th half-grid surface
-      double r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double rue_o = ru_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double ruo_o = ru_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zue_o = zu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zuo_o = zu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double r1e_o = r1_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double r1o_o = r1_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double rue_o = ru_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double ruo_o = ru_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double zue_o = zu_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double zuo_o = zu_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
 
       // g_{\theta,\theta} is needed for both 2D and 3D cases
-      guu[iHalf] = 0.5 * ((m_ls_.rue_i[kl] * m_ls_.rue_i[kl] +
+      guu[i_half] = 0.5 * ((m_ls_.rue_i[kl] * m_ls_.rue_i[kl] +
                            m_ls_.zue_i[kl] * m_ls_.zue_i[kl]) +
                           (rue_o * rue_o + zue_o * zue_o) +
-                          sF_i * (m_ls_.ruo_i[kl] * m_ls_.ruo_i[kl] +
+                          s_f_i * (m_ls_.ruo_i[kl] * m_ls_.ruo_i[kl] +
                                   m_ls_.zuo_i[kl] * m_ls_.zuo_i[kl]) +
-                          sF_o * (ruo_o * ruo_o + zuo_o * zuo_o)) +
-                   sqrtSH * ((m_ls_.rue_i[kl] * m_ls_.ruo_i[kl] +
+                          s_f_o * (ruo_o * ruo_o + zuo_o * zuo_o)) +
+                   sqrt_sh * ((m_ls_.rue_i[kl] * m_ls_.ruo_i[kl] +
                               m_ls_.zue_i[kl] * m_ls_.zuo_i[kl]) +
                              (rue_o * ruo_o + zue_o * zuo_o));
 
       // g_{\zeta,\zeta} reduces to R^2 in the 2D case, so compute this always
-      gvv[iHalf] = 0.5 * (m_ls_.r1e_i[kl] * m_ls_.r1e_i[kl] + r1e_o * r1e_o +
-                          sF_i * m_ls_.r1o_i[kl] * m_ls_.r1o_i[kl] +
-                          sF_o * r1o_o * r1o_o) +
-                   sqrtSH * (m_ls_.r1e_i[kl] * m_ls_.r1o_i[kl] + r1e_o * r1o_o);
+      gvv[i_half] = 0.5 * (m_ls_.r1e_i[kl] * m_ls_.r1e_i[kl] + r1e_o * r1e_o +
+                          s_f_i * m_ls_.r1o_i[kl] * m_ls_.r1o_i[kl] +
+                          s_f_o * r1o_o * r1o_o) +
+                   sqrt_sh * (m_ls_.r1e_i[kl] * m_ls_.r1o_i[kl] + r1e_o * r1o_o);
 
       if (s_.lthreed) {
-        double rve_o = rv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double rvo_o = rv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double zve_o = zv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double zvo_o = zv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+        double rve_o = rv_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+        double rvo_o = rv_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+        double zve_o = zv_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+        double zvo_o = zv_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
 
         // g_{\theta,\zeta} is only needed for the 3D case
-        guv[iHalf] = 0.5 * ((m_ls_.rue_i[kl] * m_ls_.rve_i[kl] +
+        guv[i_half] = 0.5 * ((m_ls_.rue_i[kl] * m_ls_.rve_i[kl] +
                              m_ls_.zue_i[kl] * m_ls_.zve_i[kl]) +
                             (rue_o * rve_o + zue_o * zve_o) +
-                            sF_i * (m_ls_.ruo_i[kl] * m_ls_.rvo_i[kl] +
+                            s_f_i * (m_ls_.ruo_i[kl] * m_ls_.rvo_i[kl] +
                                     m_ls_.zuo_i[kl] * m_ls_.zvo_i[kl]) +
-                            sF_o * (ruo_o * rvo_o + zuo_o * zvo_o) +
-                            sqrtSH * ((m_ls_.rue_i[kl] * m_ls_.rvo_i[kl] +
+                            s_f_o * (ruo_o * rvo_o + zuo_o * zvo_o) +
+                            sqrt_sh * ((m_ls_.rue_i[kl] * m_ls_.rvo_i[kl] +
                                        m_ls_.zue_i[kl] * m_ls_.zvo_i[kl]) +
                                       (rue_o * rvo_o + zue_o * zvo_o) +
                                       (m_ls_.rve_i[kl] * m_ls_.ruo_i[kl] +
@@ -1597,13 +1597,13 @@ void IdealMhdModel::computeMetricElements() {
                                       (rve_o * ruo_o + zve_o * zuo_o)));
 
         // compute remaining contribution for 3D to g_{\zeta,\zeta}
-        gvv[iHalf] += 0.5 * ((m_ls_.rve_i[kl] * m_ls_.rve_i[kl] +
+        gvv[i_half] += 0.5 * ((m_ls_.rve_i[kl] * m_ls_.rve_i[kl] +
                               m_ls_.zve_i[kl] * m_ls_.zve_i[kl]) +
                              (rve_o * rve_o + zve_o * zve_o) +
-                             sF_i * (m_ls_.rvo_i[kl] * m_ls_.rvo_i[kl] +
+                             s_f_i * (m_ls_.rvo_i[kl] * m_ls_.rvo_i[kl] +
                                      m_ls_.zvo_i[kl] * m_ls_.zvo_i[kl]) +
-                             sF_o * (rvo_o * rvo_o + zvo_o * zvo_o)) +
-                      sqrtSH * ((m_ls_.rve_i[kl] * m_ls_.rvo_i[kl] +
+                             s_f_o * (rvo_o * rvo_o + zvo_o * zvo_o)) +
+                      sqrt_sh * ((m_ls_.rve_i[kl] * m_ls_.rvo_i[kl] +
                                  m_ls_.zve_i[kl] * m_ls_.zvo_i[kl]) +
                                 (rve_o * rvo_o + zve_o * zvo_o));
 
@@ -1630,7 +1630,7 @@ void IdealMhdModel::computeMetricElements() {
     // hand over to next iteration of radial loop
     // --> what was outside in this loop iteration will be inside for next
     // half-grid location
-    sF_i = sF_o;
+    s_f_i = s_f_o;
   }  // jH
 }
 
@@ -1642,62 +1642,62 @@ void IdealMhdModel::computeMetricElements() {
 void IdealMhdModel::updateDifferentialVolume() {
   // dVdsH
 
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    m_p_.dVdsH[jH - r_.nsMinH] = 0.0;
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
+    m_p_.dVdsH[j_h - r_.nsMinH] = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int l = kl % s_.nThetaEff;
       // multiply by surface differential
-      m_p_.dVdsH[jH - r_.nsMinH] +=
-          gsqrt[(jH - r_.nsMinH) * s_.nZnT + kl] * s_.wInt[l];
+      m_p_.dVdsH[j_h - r_.nsMinH] +=
+          gsqrt[(j_h - r_.nsMinH) * s_.nZnT + kl] * s_.wInt[l];
     }  // kl
 
     // cancel signgs contained in gsqrt so that dVds is always positive
-    m_p_.dVdsH[jH - r_.nsMinH] *= signOfJacobian;
+    m_p_.dVdsH[j_h - r_.nsMinH] *= signOfJacobian;
   }  // jH
 }  // updateDifferentialVolume
 
 // first iteration of a multi-grid step
 void IdealMhdModel::computeInitialVolume() {
-  double localPlasmaVolume = 0.0;
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  double local_plasma_volume = 0.0;
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     // radial integral to get plasma volume
     // This must be done over UNIQUE half-grid points !!!
     // --> The standard partitioning has half-grid points between
     //     neighboring ranks that are handled by both ranks.
-    if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
-      localPlasmaVolume += m_p_.dVdsH[jH - r_.nsMinH];
+    if (j_h < r_.nsMaxH - 1 || j_h == m_fc_.ns - 2) {
+      local_plasma_volume += m_p_.dVdsH[j_h - r_.nsMinH];
     }
   }
-  localPlasmaVolume *= m_fc_.deltaS;
+  local_plasma_volume *= m_fc_.deltaS;
 
 #pragma omp single
   m_h_.voli = 0.0;
 #pragma omp barrier
 
 #pragma omp critical
-  m_h_.voli += localPlasmaVolume * (2.0 * M_PI) * (2.0 * M_PI);
+  m_h_.voli += local_plasma_volume * (2.0 * M_PI) * (2.0 * M_PI);
 #pragma omp barrier
 }  // computeInitialVolume
 
 void IdealMhdModel::updateVolume() {
-  double localPlasmaVolume = 0.0;
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  double local_plasma_volume = 0.0;
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     // radial integral to get plasma volume
     // This must be done over UNIQUE half-grid points !!!
     // --> The standard partitioning has half-grid points between
     //     neighboring ranks that are handled by both ranks.
-    if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
-      localPlasmaVolume += m_p_.dVdsH[jH - r_.nsMinH];
+    if (j_h < r_.nsMaxH - 1 || j_h == m_fc_.ns - 2) {
+      local_plasma_volume += m_p_.dVdsH[j_h - r_.nsMinH];
     }
   }
-  localPlasmaVolume *= m_fc_.deltaS;
+  local_plasma_volume *= m_fc_.deltaS;
 
 #pragma omp single
   m_h_.plasmaVolume = 0.0;
 #pragma omp barrier
 
 #pragma omp critical
-  m_h_.plasmaVolume += localPlasmaVolume;
+  m_h_.plasmaVolume += local_plasma_volume;
 #pragma omp barrier
 }  // updateVolume
 
@@ -1733,49 +1733,49 @@ void IdealMhdModel::computeBContra() {
     }
   }  // kl
 
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
+    double sqrt_sh = m_p_.sqrtSH[j_h - r_.nsMinH];
 
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
+      int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
 
       // undo lambda normalization for next full-grid radial location
-      lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-      lu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+      lu_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+      lu_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
       if (s_.lthreed) {
-        lv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-        lv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        lv_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        lv_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
       }
 
       // add phi' to d(lambda)/d(theta) for preparing B^v
-      lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] +=
-          m_p_.phipF[jH + 1 - r_.nsMinH];
+      lu_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl] +=
+          m_p_.phipF[j_h + 1 - r_.nsMinH];
 
       // contributions from full-grid surface _o_utside j-th half-grid surface
-      double lue_o = lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double luo_o = lu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double lue_o = lu_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      double luo_o = lu_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
       double lve_o = 0.0;
       double lvo_o = 0.0;
       if (s_.lthreed) {
-        lve_o = lv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        lvo_o = lv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+        lve_o = lv_e[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
+        lvo_o = lv_o[(j_h + 1 - r_.nsMinF1) * s_.nZnT + kl];
 
         // first part for B^\theta
-        bsupu[iHalf] =
+        bsupu[i_half] =
             0.5 *
-            ((m_ls_.lve_i[kl] + lve_o) + sqrtSH * (m_ls_.lvo_i[kl] + lvo_o)) /
-            gsqrt[iHalf];
+            ((m_ls_.lve_i[kl] + lve_o) + sqrt_sh * (m_ls_.lvo_i[kl] + lvo_o)) /
+            gsqrt[i_half];
       } else {
         // will get a contribution from chip'/sqrt(g) below
-        bsupu[iHalf] = 0.0;
+        bsupu[i_half] = 0.0;
       }
 
       // first part for B^\zeta
-      bsupv[iHalf] =
+      bsupv[i_half] =
           0.5 *
-          ((m_ls_.lue_i[kl] + lue_o) + sqrtSH * (m_ls_.luo_i[kl] + luo_o)) /
-          gsqrt[iHalf];
+          ((m_ls_.lue_i[kl] + lue_o) + sqrt_sh * (m_ls_.luo_i[kl] + luo_o)) /
+          gsqrt[i_half];
 
       // hand over to next iteration of radial loop
       // --> what was outside in this loop iteration will be inside for next
@@ -1793,46 +1793,46 @@ void IdealMhdModel::computeBContra() {
     // constrained toroidal current profile
     // --> compute chi' consistent with prescribed toroidal current
 
-    for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-      double jvPlasma = 0.0;
+    for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
+      double jv_plasma = 0.0;
       double avg_guu_gsqrt = 0.0;
       for (int kl = 0; kl < s_.nZnT; ++kl) {
-        int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
+        int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
         int l = kl % s_.nThetaEff;
         if (s_.lthreed) {
-          jvPlasma += (guu[iHalf] * bsupu[iHalf] + guv[iHalf] * bsupv[iHalf]) *
+          jv_plasma += (guu[i_half] * bsupu[i_half] + guv[i_half] * bsupv[i_half]) *
                       s_.wInt[l];
         } else {
-          jvPlasma += guu[iHalf] * bsupu[iHalf] * s_.wInt[l];
+          jv_plasma += guu[i_half] * bsupu[i_half] * s_.wInt[l];
         }
-        avg_guu_gsqrt += guu[iHalf] / gsqrt[iHalf] * s_.wInt[l];
+        avg_guu_gsqrt += guu[i_half] / gsqrt[i_half] * s_.wInt[l];
       }  // kl
 
       // add in prescribed toroidal current profile and re-compute chi' and iota
       if (avg_guu_gsqrt != 0.0) {
-        m_p_.chipH[jH - r_.nsMinH] =
-            (m_p_.currH[jH - r_.nsMinH] - jvPlasma) / avg_guu_gsqrt;
+        m_p_.chipH[j_h - r_.nsMinH] =
+            (m_p_.currH[j_h - r_.nsMinH] - jv_plasma) / avg_guu_gsqrt;
       }
 
-      if (m_p_.phipH[jH - r_.nsMinH] != 0.0) {
-        m_p_.iotaH[jH - r_.nsMinH] =
-            m_p_.chipH[jH - r_.nsMinH] / m_p_.phipH[jH - r_.nsMinH];
+      if (m_p_.phipH[j_h - r_.nsMinH] != 0.0) {
+        m_p_.iotaH[j_h - r_.nsMinH] =
+            m_p_.chipH[j_h - r_.nsMinH] / m_p_.phipH[j_h - r_.nsMinH];
       }
     }  // jH
   } else {
     // constrained iota profile
 
     // evaluate chi' profile from phi' and prescribed iota profile
-    for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-      m_p_.chipH[jH - r_.nsMinH] =
-          m_p_.iotaH[jH - r_.nsMinH] * m_p_.phipH[jH - r_.nsMinH];
+    for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
+      m_p_.chipH[j_h - r_.nsMinH] =
+          m_p_.iotaH[j_h - r_.nsMinH] * m_p_.phipH[j_h - r_.nsMinH];
     }  // jH
   }
 
   // update full-grid chi'
-  for (int jFi = r_.nsMinFi; jFi < r_.nsMaxFi; ++jFi) {
-    m_p_.chipF[jFi - r_.nsMinF1] =
-        0.5 * (m_p_.chipH[jFi - r_.nsMinH] + m_p_.chipH[jFi - 1 - r_.nsMinH]);
+  for (int j_fi = r_.nsMinFi; j_fi < r_.nsMaxFi; ++j_fi) {
+    m_p_.chipF[j_fi - r_.nsMinF1] =
+        0.5 * (m_p_.chipH[j_fi - r_.nsMinH] + m_p_.chipH[j_fi - 1 - r_.nsMinH]);
   }
   if (r_.nsMaxF1 == m_fc_.ns) {
     // TODO(jons): inconsistent extrapolation ??? (see below)
@@ -1845,9 +1845,9 @@ void IdealMhdModel::computeBContra() {
   if (r_.nsMinF1 == 0) {
     m_p_.iotaF[0] = 1.5 * m_p_.iotaH[0] - 0.5 * m_p_.iotaH[1];
   }
-  for (int jFi = r_.nsMinFi; jFi < r_.nsMaxFi; ++jFi) {
-    m_p_.iotaF[jFi - r_.nsMinF1] =
-        0.5 * (m_p_.iotaH[jFi - r_.nsMinH] + m_p_.iotaH[jFi - 1 - r_.nsMinH]);
+  for (int j_fi = r_.nsMinFi; j_fi < r_.nsMaxFi; ++j_fi) {
+    m_p_.iotaF[j_fi - r_.nsMinF1] =
+        0.5 * (m_p_.iotaH[j_fi - r_.nsMinH] + m_p_.iotaH[j_fi - 1 - r_.nsMinH]);
   }
   if (r_.nsMaxF1 == m_fc_.ns) {
     // TODO(jons): inconsistent extrapolation ??? (see above)
@@ -1858,10 +1858,10 @@ void IdealMhdModel::computeBContra() {
 
   // bsupu contains -dLambda/dZeta and now needs to get chip/sqrt(g) added,
   // as outlined in bcovar above the call to this routine.
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-      bsupu[iHalf] += m_p_.chipH[jH - r_.nsMinH] / gsqrt[iHalf];
+      int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
+      bsupu[i_half] += m_p_.chipH[j_h - r_.nsMinH] / gsqrt[i_half];
     }  // kl
   }    // jH
 }
@@ -1872,20 +1872,20 @@ void IdealMhdModel::computeBCo() {
 
   if (s_.lthreed) {
     // 3D case: need all of guu, guv, gvv
-    for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+    for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
       for (int kl = 0; kl < s_.nZnT; ++kl) {
-        int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-        bsubu[iHalf] = guu[iHalf] * bsupu[iHalf] + guv[iHalf] * bsupv[iHalf];
-        bsubv[iHalf] = guv[iHalf] * bsupu[iHalf] + gvv[iHalf] * bsupv[iHalf];
+        int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
+        bsubu[i_half] = guu[i_half] * bsupu[i_half] + guv[i_half] * bsupv[i_half];
+        bsubv[i_half] = guv[i_half] * bsupu[i_half] + gvv[i_half] * bsupv[i_half];
       }  // kl
     }    // jH
   } else {
     // 2D case: can ignore guv (not even allocated)
-    for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+    for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
       for (int kl = 0; kl < s_.nZnT; ++kl) {
-        int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-        bsubu[iHalf] = guu[iHalf] * bsupu[iHalf];
-        bsubv[iHalf] = gvv[iHalf] * bsupv[iHalf];
+        int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
+        bsubu[i_half] = guu[i_half] * bsupu[i_half];
+        bsubv[i_half] = gvv[i_half] * bsupv[i_half];
       }  // kl
     }    // jH
   }      // lthreed
@@ -1895,54 +1895,54 @@ void IdealMhdModel::pressureAndEnergies() {
   // presH, totalPressure
   // thermalEnergy, magneticEnergy, mhdEnergy
 
-  double localThermalEnergy = 0.0;
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  double local_thermal_energy = 0.0;
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     // compute pressure from mass, dV/ds and adiabatic index (gamma)
-    m_p_.presH[jH - r_.nsMinH] =
-        m_p_.massH[jH - r_.nsMinH] /
-        pow(m_p_.dVdsH[jH - r_.nsMinH], adiabaticIndex);
+    m_p_.presH[j_h - r_.nsMinH] =
+        m_p_.massH[j_h - r_.nsMinH] /
+        pow(m_p_.dVdsH[j_h - r_.nsMinH], adiabaticIndex);
 
     // perform volume integral over kinetic pressure for thermal energy
     // This must be done over UNIQUE half-grid points !!!
     // --> The standard partitioning has half-grid points between
     //     neighboring ranks that are handled by both ranks.
-    if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
-      localThermalEnergy +=
-          m_p_.presH[jH - r_.nsMinH] * m_p_.dVdsH[jH - r_.nsMinH];
+    if (j_h < r_.nsMaxH - 1 || j_h == m_fc_.ns - 2) {
+      local_thermal_energy +=
+          m_p_.presH[j_h - r_.nsMinH] * m_p_.dVdsH[j_h - r_.nsMinH];
     }
   }  // jH
 
   // 1/(ns-1) is the radial integration differential
   // --> multiply it in here for thermal energy
-  localThermalEnergy *= m_fc_.deltaS;
+  local_thermal_energy *= m_fc_.deltaS;
 
-  double localMagneticEnergy = 0.0;
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  double local_magnetic_energy = 0.0;
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
+      int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
 
       // magnetic pressure is |B|^2/2 = 0.5*(B^u*B_u + B^v*B_v)
-      double magneticPressure =
-          0.5 * (bsupu[iHalf] * bsubu[iHalf] + bsupv[iHalf] * bsubv[iHalf]);
+      double magnetic_pressure =
+          0.5 * (bsupu[i_half] * bsubu[i_half] + bsupv[i_half] * bsubv[i_half]);
 
       // perform volume integral over magnetic pressure for magnetic energy
       // This must be done over UNIQUE half-grid points !!!
       // --> The standard partitioning has half-grid points between
       //     neighboring ranks that are handled by both ranks.
-      if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
+      if (j_h < r_.nsMaxH - 1 || j_h == m_fc_.ns - 2) {
         int l = kl % s_.nThetaEff;
-        localMagneticEnergy += gsqrt[iHalf] * magneticPressure * s_.wInt[l];
+        local_magnetic_energy += gsqrt[i_half] * magnetic_pressure * s_.wInt[l];
       }
 
       // now can ADD KINETIC PRESSURE TO MAGNETIC PRESSURE
       // to compute the total pressure
-      totalPressure[iHalf] = magneticPressure + m_p_.presH[jH - r_.nsMinH];
+      totalPressure[i_half] = magnetic_pressure + m_p_.presH[j_h - r_.nsMinH];
     }  // kl
   }    // jH
 
   // magneticEnergy could be negative due to negative sign of Jacobian (gsqrt)
   // --> could introduce signOfJacobian, but abs() does the job here as well
-  localMagneticEnergy = fabs(localMagneticEnergy) * m_fc_.deltaS;
+  local_magnetic_energy = fabs(local_magnetic_energy) * m_fc_.deltaS;
 
 #pragma omp single
   {
@@ -1953,8 +1953,8 @@ void IdealMhdModel::pressureAndEnergies() {
 
 #pragma omp critical
   {
-    m_h_.thermalEnergy += localThermalEnergy;
-    m_h_.magneticEnergy += localMagneticEnergy;
+    m_h_.thermalEnergy += local_thermal_energy;
+    m_h_.magneticEnergy += local_magnetic_energy;
   }
 #pragma omp barrier
 
@@ -1969,46 +1969,46 @@ void IdealMhdModel::pressureAndEnergies() {
 void IdealMhdModel::radialForceBalance() {
   // Compute profiles of enclosed toroidal current and enclosed poloidal current
   // on half-grid.
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    m_p_.bucoH[jH - r_.nsMinH] = 0.0;
-    m_p_.bvcoH[jH - r_.nsMinH] = 0.0;
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
+    m_p_.bucoH[j_h - r_.nsMinH] = 0.0;
+    m_p_.bvcoH[j_h - r_.nsMinH] = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
+      int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
       int l = kl % s_.nThetaEff;
-      m_p_.bucoH[jH - r_.nsMinH] += bsubu[iHalf] * s_.wInt[l];
-      m_p_.bvcoH[jH - r_.nsMinH] += bsubv[iHalf] * s_.wInt[l];
+      m_p_.bucoH[j_h - r_.nsMinH] += bsubu[i_half] * s_.wInt[l];
+      m_p_.bvcoH[j_h - r_.nsMinH] += bsubv[i_half] * s_.wInt[l];
     }  // kl
   }    // jH
 
-  double signByDeltaS = signOfJacobian / m_fc_.deltaS;
+  double sign_by_delta_s = signOfJacobian / m_fc_.deltaS;
 
   // Compute derivatives on interior full-grid knots
   // and from them, evaluate radial force balance residual.
-  for (int jFi = r_.nsMinFi; jFi < r_.nsMaxFi; ++jFi) {
+  for (int j_fi = r_.nsMinFi; j_fi < r_.nsMaxFi; ++j_fi) {
     // radial derivatives from half-grid to full-grid
-    m_p_.jcurvF[jFi - r_.nsMinFi] =
-        signByDeltaS *
-        (m_p_.bucoH[jFi - r_.nsMinH] - m_p_.bucoH[jFi - 1 - r_.nsMinH]);
-    m_p_.jcuruF[jFi - r_.nsMinFi] =
-        -signByDeltaS *
-        (m_p_.bvcoH[jFi - r_.nsMinH] - m_p_.bvcoH[jFi - 1 - r_.nsMinH]);
+    m_p_.jcurvF[j_fi - r_.nsMinFi] =
+        sign_by_delta_s *
+        (m_p_.bucoH[j_fi - r_.nsMinH] - m_p_.bucoH[j_fi - 1 - r_.nsMinH]);
+    m_p_.jcuruF[j_fi - r_.nsMinFi] =
+        -sign_by_delta_s *
+        (m_p_.bvcoH[j_fi - r_.nsMinH] - m_p_.bvcoH[j_fi - 1 - r_.nsMinH]);
 
     // prescribed pressure gradient from user input
-    m_p_.presgradF[jFi - r_.nsMinFi] =
-        (m_p_.presH[jFi - r_.nsMinH] - m_p_.presH[jFi - 1 - r_.nsMinH]) /
+    m_p_.presgradF[j_fi - r_.nsMinFi] =
+        (m_p_.presH[j_fi - r_.nsMinH] - m_p_.presH[j_fi - 1 - r_.nsMinH]) /
         m_fc_.deltaS;
 
     // interpolate dVds onto full grid
-    m_p_.dVdsF[jFi - r_.nsMinFi] =
-        0.5 * (m_p_.dVdsH[jFi - r_.nsMinH] + m_p_.dVdsH[jFi - 1 - r_.nsMinH]);
+    m_p_.dVdsF[j_fi - r_.nsMinFi] =
+        0.5 * (m_p_.dVdsH[j_fi - r_.nsMinH] + m_p_.dVdsH[j_fi - 1 - r_.nsMinH]);
 
     // total resulting radial force-imbalance:
     // <F> = <-j x B + grad(p)>/V'
-    m_p_.equiF[jFi - r_.nsMinFi] =
-        (m_p_.chipF[jFi - r_.nsMinF1] * m_p_.jcurvF[jFi - r_.nsMinFi] -
-         m_p_.phipF[jFi - r_.nsMinF1] * m_p_.jcuruF[jFi - r_.nsMinFi]) /
-            m_p_.dVdsF[jFi - r_.nsMinFi] +
-        m_p_.presgradF[jFi - r_.nsMinFi];
+    m_p_.equiF[j_fi - r_.nsMinFi] =
+        (m_p_.chipF[j_fi - r_.nsMinF1] * m_p_.jcurvF[j_fi - r_.nsMinFi] -
+         m_p_.phipF[j_fi - r_.nsMinF1] * m_p_.jcuruF[j_fi - r_.nsMinFi]) /
+            m_p_.dVdsF[j_fi - r_.nsMinFi] +
+        m_p_.presgradF[j_fi - r_.nsMinFi];
   }
 }
 
@@ -2017,9 +2017,9 @@ void IdealMhdModel::hybridLambdaForce() {
 
   // obtain first inside point
   int j0 = r_.nsMinF;
-  double sqrtSHi = 0.0;
+  double sqrt_s_hi = 0.0;
   if (j0 > 0) {
-    sqrtSHi = m_p_.sqrtSH[j0 - 1 - r_.nsMinH];
+    sqrt_s_hi = m_p_.sqrtSH[j0 - 1 - r_.nsMinH];
   }
   for (int kl = 0; kl < s_.nZnT; ++kl) {
     if (j0 == 0) {
@@ -2031,20 +2031,20 @@ void IdealMhdModel::hybridLambdaForce() {
     } else {
       // for the j-th forces full-grid point, the (j-1)-th half-grid point is
       // inside
-      int iHalf = (j0 - 1 - r_.nsMinH) * s_.nZnT + kl;
-      m_ls_.bsubu_i[kl] = bsubu[iHalf];
-      m_ls_.bsubv_i[kl] = bsubv[iHalf];
-      m_ls_.gvv_gsqrt_i[kl] = gvv[iHalf] / gsqrt[iHalf];
+      int i_half = (j0 - 1 - r_.nsMinH) * s_.nZnT + kl;
+      m_ls_.bsubu_i[kl] = bsubu[i_half];
+      m_ls_.bsubv_i[kl] = bsubv[i_half];
+      m_ls_.gvv_gsqrt_i[kl] = gvv[i_half] / gsqrt[i_half];
       if (s_.lthreed) {
-        m_ls_.guv_bsupu_i[kl] = guv[iHalf] * bsupu[iHalf];
+        m_ls_.guv_bsupu_i[kl] = guv[i_half] * bsupu[i_half];
       }
     }
   }  // kl
 
-  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    double sqrtSHo = 0.0;
-    if (jF < r_.nsMaxH) {
-      sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
+  for (int j_f = r_.nsMinF; j_f < r_.nsMaxFIncludingLcfs; ++j_f) {
+    double sqrt_s_ho = 0.0;
+    if (j_f < r_.nsMaxH) {
+      sqrt_s_ho = m_p_.sqrtSH[j_f - r_.nsMinH];
     }
 
     for (int kl = 0; kl < s_.nZnT; ++kl) {
@@ -2055,23 +2055,23 @@ void IdealMhdModel::hybridLambdaForce() {
       double gvv_gsqrt_o = 0.0;
       // guv * bsupu
       double guv_bsupu_o = 0.0;
-      if (jF < r_.nsMaxH) {
+      if (j_f < r_.nsMaxH) {
         // for the j-th forces full-grid point, the j-th half-grid point is
         // outside
-        int iHalf = (jF - r_.nsMinH) * s_.nZnT + kl;
-        bsubv_o = bsubv[iHalf];
-        gvv_gsqrt_o = gvv[iHalf] / gsqrt[iHalf];
+        int i_half = (j_f - r_.nsMinH) * s_.nZnT + kl;
+        bsubv_o = bsubv[i_half];
+        gvv_gsqrt_o = gvv[i_half] / gsqrt[i_half];
         if (s_.lthreed) {
-          guv_bsupu_o = guv[iHalf] * bsupu[iHalf];
+          guv_bsupu_o = guv[i_half] * bsupu[i_half];
         }
       }
 
       // alternative way to interpolate bsubv onto the full-grid
       double gvv_gsqrt_lu_e = 0.5 * (m_ls_.gvv_gsqrt_i[kl] + gvv_gsqrt_o) *
-                              lu_e[(jF - r_.nsMinF1) * s_.nZnT + kl];
+                              lu_e[(j_f - r_.nsMinF1) * s_.nZnT + kl];
       double gvv_gsqrt_lu_o =
-          0.5 * (m_ls_.gvv_gsqrt_i[kl] * sqrtSHi + gvv_gsqrt_o * sqrtSHo) *
-          lu_o[(jF - r_.nsMinF1) * s_.nZnT + kl];
+          0.5 * (m_ls_.gvv_gsqrt_i[kl] * sqrt_s_hi + gvv_gsqrt_o * sqrt_s_ho) *
+          lu_o[(j_f - r_.nsMinF1) * s_.nZnT + kl];
 
       double gvv_gsqrt_lu = gvv_gsqrt_lu_e + gvv_gsqrt_lu_o;
       double bsubv_alternative = gvv_gsqrt_lu;
@@ -2083,39 +2083,39 @@ void IdealMhdModel::hybridLambdaForce() {
       const double bsubv_average = 0.5 * (bsubv_o + m_ls_.bsubv_i[kl]);
 
       // blend together two ways of interpolating bsubv
-      double _blmn =
-          bsubv_average * (1.0 - m_p_.radialBlending[jF - r_.nsMinF1]) +
-          bsubv_alternative * m_p_.radialBlending[jF - r_.nsMinF1];
+      double blmn =
+          bsubv_average * (1.0 - m_p_.radialBlending[j_f - r_.nsMinF1]) +
+          bsubv_alternative * m_p_.radialBlending[j_f - r_.nsMinF1];
 
-      if (jF > 0) {
+      if (j_f > 0) {
         // TODO(jons): no lamscale and (-1) factor for axis lambda force?
         // MINUS SIGN => HESSIAN DIAGONALS ARE POSITIVE
-        _blmn *= -constants_.lamscale;
+        blmn *= -constants_.lamscale;
       }
 
-      blmn_e[(jF - r_.nsMinF) * s_.nZnT + kl] = _blmn;
-      blmn_o[(jF - r_.nsMinF) * s_.nZnT + kl] =
-          _blmn * m_p_.sqrtSF[jF - r_.nsMinF1];
+      blmn_e[(j_f - r_.nsMinF) * s_.nZnT + kl] = blmn;
+      blmn_o[(j_f - r_.nsMinF) * s_.nZnT + kl] =
+          blmn * m_p_.sqrtSF[j_f - r_.nsMinF1];
 
       if (s_.lthreed) {
         // obtain next outside point
         // defaults to 0 for half-grid point outside LCFS
         double bsubu_o = 0.0;
-        if (jF < r_.nsMaxH) {
-          bsubu_o = bsubu[(jF - r_.nsMinH) * s_.nZnT + kl];
+        if (j_f < r_.nsMaxH) {
+          bsubu_o = bsubu[(j_f - r_.nsMinH) * s_.nZnT + kl];
         }
 
-        double _clmn = 0.5 * (bsubu_o + m_ls_.bsubu_i[kl]);
+        double clmn = 0.5 * (bsubu_o + m_ls_.bsubu_i[kl]);
 
-        if (jF > 0) {
+        if (j_f > 0) {
           // TODO(jons): no lamscale and (-1) factor for axis lambda force?
           // MINUS SIGN => HESSIAN DIAGONALS ARE POSITIVE
-          _clmn *= -constants_.lamscale;
+          clmn *= -constants_.lamscale;
         }
 
-        clmn_e[(jF - r_.nsMinF) * s_.nZnT + kl] = _clmn;
-        clmn_o[(jF - r_.nsMinF) * s_.nZnT + kl] =
-            _clmn * m_p_.sqrtSF[jF - r_.nsMinF1];
+        clmn_e[(j_f - r_.nsMinF) * s_.nZnT + kl] = clmn;
+        clmn_o[(j_f - r_.nsMinF) * s_.nZnT + kl] =
+            clmn * m_p_.sqrtSF[j_f - r_.nsMinF1];
 
         // shift to next point
         m_ls_.bsubu_i[kl] = bsubu_o;
@@ -2128,7 +2128,7 @@ void IdealMhdModel::hybridLambdaForce() {
         m_ls_.guv_bsupu_i[kl] = guv_bsupu_o;
       }
     }  // kl
-    sqrtSHi = sqrtSHo;
+    sqrt_s_hi = sqrt_s_ho;
   }  // jF
 
 // }
@@ -2138,25 +2138,25 @@ void IdealMhdModel::hybridLambdaForce() {
 // Compute normalization factors for force residuals.
 void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
   // r2 in Fortran VMEC
-  double energyDensity =
+  double energy_density =
       std::max(m_h_.magneticEnergy, m_h_.thermalEnergy) / m_h_.plasmaVolume;
 
-  double localForceNormSumRZ = 0.0;
-  double localForceNormSumL = 0.0;
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  double local_force_norm_sum_rz = 0.0;
+  double local_force_norm_sum_l = 0.0;
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
+      int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
 
       // perform volume integral over magnetic pressure for magnetic energy
       // This must be done over UNIQUE half-grid points !!!
       // --> The standard partitioning has half-grid points between
       //     neighboring ranks that are handled by both ranks.
-      if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
+      if (j_h < r_.nsMaxH - 1 || j_h == m_fc_.ns - 2) {
         int l = kl % s_.nThetaEff;
-        localForceNormSumRZ +=
-            guu[iHalf] * r12[iHalf] * r12[iHalf] * s_.wInt[l];
-        localForceNormSumL +=
-            (bsubu[iHalf] * bsubu[iHalf] + bsubv[iHalf] * bsubv[iHalf]) *
+        local_force_norm_sum_rz +=
+            guu[i_half] * r12[i_half] * r12[i_half] * s_.wInt[l];
+        local_force_norm_sum_l +=
+            (bsubu[i_half] * bsubu[i_half] + bsubv[i_half] * bsubv[i_half]) *
             s_.wInt[l];
       }
     }  // kl
@@ -2166,9 +2166,9 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
   // only unique radial points here;
   // decomposed_x is over nsMinF1 ... nsMaxF1 --> would count overlapping
   // elements twice !!!
-  const int nsMinHere = r_.nsMinF;
-  double localForceNorm1 =
-      decomposed_x.rzNorm(false, nsMinHere, r_.nsMaxFIncludingLcfs);
+  const int ns_min_here = r_.nsMinF;
+  double local_force_norm1 =
+      decomposed_x.rzNorm(false, ns_min_here, r_.nsMaxFIncludingLcfs);
 
 #pragma omp single
   {
@@ -2181,15 +2181,15 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
 
 #pragma omp critical
   {
-    m_h_.fNormRZ += localForceNormSumRZ;
-    m_h_.fNormL += localForceNormSumL;
-    m_h_.fNorm1 += localForceNorm1;
+    m_h_.fNormRZ += local_force_norm_sum_rz;
+    m_h_.fNormL += local_force_norm_sum_l;
+    m_h_.fNorm1 += local_force_norm1;
   }
 #pragma omp barrier
 
 #pragma omp single
   {
-    m_h_.fNormRZ = 1.0 / (m_h_.fNormRZ * energyDensity * energyDensity);
+    m_h_.fNormRZ = 1.0 / (m_h_.fNormRZ * energy_density * energy_density);
     m_h_.fNormL =
         1.0 / (m_h_.fNormL * constants_.lamscale * constants_.lamscale);
     m_h_.fNorm1 = 1.0 / m_h_.fNorm1;
@@ -2198,31 +2198,31 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
 }
 
 void IdealMhdModel::computeMHDForces() {
-  int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  int j_max_rz = std::min(r_.nsMaxF, m_fc_.ns - 1);
   if (m_fc_.lfreeb) {
-    jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
+    j_max_rz = std::min(r_.nsMaxF, m_fc_.ns);
   }
 
   // obtain first inside point
   // stuff gets divided by sqrtSHi, so cannot be 0
-  double sqrtSHi = 1.0;
+  double sqrt_s_hi = 1.0;
   if (r_.nsMinF > 0) {
     // for the rel-0-th forces full-grid point, the rel-0-th half-grid point is
     // inside
     int j0 = r_.nsMinH;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (j0 - r_.nsMinH) * s_.nZnT + kl;
-      m_ls_.P_i[kl] = r12[iHalf] * totalPressure[iHalf];
-      m_ls_.rup_i[kl] = ru12[iHalf] * m_ls_.P_i[kl];
-      m_ls_.zup_i[kl] = zu12[iHalf] * m_ls_.P_i[kl];
-      m_ls_.rsp_i[kl] = rs[iHalf] * m_ls_.P_i[kl];
-      m_ls_.zsp_i[kl] = zs[iHalf] * m_ls_.P_i[kl];
-      m_ls_.taup_i[kl] = tau[iHalf] * totalPressure[iHalf];
-      m_ls_.gbubu_i[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupu[iHalf];
-      m_ls_.gbubv_i[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupv[iHalf];
-      m_ls_.gbvbv_i[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
+      int i_half = (j0 - r_.nsMinH) * s_.nZnT + kl;
+      m_ls_.P_i[kl] = r12[i_half] * totalPressure[i_half];
+      m_ls_.rup_i[kl] = ru12[i_half] * m_ls_.P_i[kl];
+      m_ls_.zup_i[kl] = zu12[i_half] * m_ls_.P_i[kl];
+      m_ls_.rsp_i[kl] = rs[i_half] * m_ls_.P_i[kl];
+      m_ls_.zsp_i[kl] = zs[i_half] * m_ls_.P_i[kl];
+      m_ls_.taup_i[kl] = tau[i_half] * totalPressure[i_half];
+      m_ls_.gbubu_i[kl] = gsqrt[i_half] * bsupu[i_half] * bsupu[i_half];
+      m_ls_.gbubv_i[kl] = gsqrt[i_half] * bsupu[i_half] * bsupv[i_half];
+      m_ls_.gbvbv_i[kl] = gsqrt[i_half] * bsupv[i_half] * bsupv[i_half];
     }  // kl
-    sqrtSHi = m_p_.sqrtSH[j0 - r_.nsMinH];
+    sqrt_s_hi = m_p_.sqrtSH[j0 - r_.nsMinH];
   } else {
     // defaults to 0: no contribution from half-grid point inside the axis
     absl::c_fill_n(m_ls_.P_i, s_.nZnT, 0);
@@ -2236,7 +2236,7 @@ void IdealMhdModel::computeMHDForces() {
     absl::c_fill_n(m_ls_.gbvbv_i, s_.nZnT, 0);
   }
 
-  std::vector<double> P_o(s_.nZnT);      //  r12 * totalPressure = P
+  std::vector<double> p_o(s_.nZnT);      //  r12 * totalPressure = P
   std::vector<double> rup_o(s_.nZnT);    // ru12 * P
   std::vector<double> zup_o(s_.nZnT);    // zu12 * P
   std::vector<double> rsp_o(s_.nZnT);    //   rs * P
@@ -2246,39 +2246,39 @@ void IdealMhdModel::computeMHDForces() {
   std::vector<double> gbubv_o(s_.nZnT);  // gsqrt * bsupu * bsupv
   std::vector<double> gbvbv_o(s_.nZnT);  // gsqrt * bsupv * bsupv
 
-  for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
-    const double sFull =
-        m_p_.sqrtSF[jF - r_.nsMinF1] * m_p_.sqrtSF[jF - r_.nsMinF1];
+  for (int j_f = r_.nsMinF; j_f < j_max_rz; ++j_f) {
+    const double s_full =
+        m_p_.sqrtSF[j_f - r_.nsMinF1] * m_p_.sqrtSF[j_f - r_.nsMinF1];
     // stuff gets divided by sqrtSHo, so cannot be 0
-    double sqrtSHo = 1.0;
-    if (jF < r_.nsMaxH) {
-      sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
+    double sqrt_s_ho = 1.0;
+    if (j_f < r_.nsMaxH) {
+      sqrt_s_ho = m_p_.sqrtSH[j_f - r_.nsMinH];
     }
 
-    if (jF < r_.nsMaxH) {
-      const int iHalf_base = (jF - r_.nsMinH) * s_.nZnT;
+    if (j_f < r_.nsMaxH) {
+      const int i_half_base = (j_f - r_.nsMinH) * s_.nZnT;
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         // obtain next outside point
         // defaults to 0: no contribution from half-grid point outside LCFS
-        int iHalf = iHalf_base + kl;
-        P_o[kl] = r12[iHalf] * totalPressure[iHalf];
-        rup_o[kl] = ru12[iHalf] * P_o[kl];
-        zup_o[kl] = zu12[iHalf] * P_o[kl];
-        rsp_o[kl] = rs[iHalf] * P_o[kl];
-        zsp_o[kl] = zs[iHalf] * P_o[kl];
-        taup_o[kl] = tau[iHalf] * totalPressure[iHalf];
+        int i_half = i_half_base + kl;
+        p_o[kl] = r12[i_half] * totalPressure[i_half];
+        rup_o[kl] = ru12[i_half] * p_o[kl];
+        zup_o[kl] = zu12[i_half] * p_o[kl];
+        rsp_o[kl] = rs[i_half] * p_o[kl];
+        zsp_o[kl] = zs[i_half] * p_o[kl];
+        taup_o[kl] = tau[i_half] * totalPressure[i_half];
       }  // kl
 
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         // obtain next outside point
         // defaults to 0: no contribution from half-grid point outside LCFS
-        int iHalf = iHalf_base + kl;
-        gbubu_o[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupu[iHalf];
-        gbubv_o[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupv[iHalf];
-        gbvbv_o[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
+        int i_half = i_half_base + kl;
+        gbubu_o[kl] = gsqrt[i_half] * bsupu[i_half] * bsupu[i_half];
+        gbubv_o[kl] = gsqrt[i_half] * bsupu[i_half] * bsupv[i_half];
+        gbvbv_o[kl] = gsqrt[i_half] * bsupv[i_half] * bsupv[i_half];
       }  // kl
     } else {
-      absl::c_fill(P_o, 0.);
+      absl::c_fill(p_o, 0.);
       absl::c_fill(rup_o, 0.);
       absl::c_fill(zup_o, 0.);
       absl::c_fill(rsp_o, 0.);
@@ -2295,235 +2295,235 @@ void IdealMhdModel::computeMHDForces() {
     // A_R force
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+      int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
       // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
       // A_R force
       armn_e[idx_f] =
           (zup_o[kl] - m_ls_.zup_i[kl]) / m_fc_.deltaS +
           0.5 * (taup_o[kl] + m_ls_.taup_i[kl]) -
           0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * r1_e[idx_g] -
-          0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
+          0.5 * (gbvbv_o[kl] * sqrt_s_ho + m_ls_.gbvbv_i[kl] * sqrt_s_hi) *
               r1_o[idx_g];
     }
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+      int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
       // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
       armn_o[idx_f] =
-          (zup_o[kl] * sqrtSHo - m_ls_.zup_i[kl] * sqrtSHi) / m_fc_.deltaS -
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * zu_e[idx_g] -
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * zu_o[idx_g] +
-          0.5 * (taup_o[kl] * sqrtSHo + m_ls_.taup_i[kl] * sqrtSHi) -
-          0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
+          (zup_o[kl] * sqrt_s_ho - m_ls_.zup_i[kl] * sqrt_s_hi) / m_fc_.deltaS -
+          0.25 * (p_o[kl] / sqrt_s_ho + m_ls_.P_i[kl] / sqrt_s_hi) * zu_e[idx_g] -
+          0.25 * (p_o[kl] + m_ls_.P_i[kl]) * zu_o[idx_g] +
+          0.5 * (taup_o[kl] * sqrt_s_ho + m_ls_.taup_i[kl] * sqrt_s_hi) -
+          0.5 * (gbvbv_o[kl] * sqrt_s_ho + m_ls_.gbvbv_i[kl] * sqrt_s_hi) *
               r1_e[idx_g] -
-          0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * r1_o[idx_g] * sFull;
+          0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * r1_o[idx_g] * s_full;
     }
 
     // A_Z force
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
       azmn_e[idx_f] = -(rup_o[kl] - m_ls_.rup_i[kl]) / m_fc_.deltaS;
     }
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+      int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
       // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
       azmn_o[idx_f] =
-          -(rup_o[kl] * sqrtSHo - m_ls_.rup_i[kl] * sqrtSHi) / m_fc_.deltaS +
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * ru_e[idx_g] +
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * ru_o[idx_g];
+          -(rup_o[kl] * sqrt_s_ho - m_ls_.rup_i[kl] * sqrt_s_hi) / m_fc_.deltaS +
+          0.25 * (p_o[kl] / sqrt_s_ho + m_ls_.P_i[kl] / sqrt_s_hi) * ru_e[idx_g] +
+          0.25 * (p_o[kl] + m_ls_.P_i[kl]) * ru_o[idx_g];
     }
 
     // B_R force
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+      int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
       // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
       brmn_e[idx_f] =
           0.5 * (zsp_o[kl] + m_ls_.zsp_i[kl]) +
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * z1_o[idx_g] -
+          0.25 * (p_o[kl] / sqrt_s_ho + m_ls_.P_i[kl] / sqrt_s_hi) * z1_o[idx_g] -
           0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * ru_e[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
+          0.5 * (gbubu_o[kl] * sqrt_s_ho + m_ls_.gbubu_i[kl] * sqrt_s_hi) *
               ru_o[idx_g];
     }
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+      int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
       // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
       brmn_o[idx_f] =
-          0.5 * (zsp_o[kl] * sqrtSHo + m_ls_.zsp_i[kl] * sqrtSHi) +
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * z1_o[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
+          0.5 * (zsp_o[kl] * sqrt_s_ho + m_ls_.zsp_i[kl] * sqrt_s_hi) +
+          0.25 * (p_o[kl] + m_ls_.P_i[kl]) * z1_o[idx_g] -
+          0.5 * (gbubu_o[kl] * sqrt_s_ho + m_ls_.gbubu_i[kl] * sqrt_s_hi) *
               ru_e[idx_g] -
-          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * ru_o[idx_g] * sFull;
+          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * ru_o[idx_g] * s_full;
     }
 
     // B_Z force
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+      int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
       // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
       bzmn_e[idx_f] =
           -0.5 * (rsp_o[kl] + m_ls_.rsp_i[kl]) -
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * r1_o[idx_g] -
+          0.25 * (p_o[kl] / sqrt_s_ho + m_ls_.P_i[kl] / sqrt_s_hi) * r1_o[idx_g] -
           0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * zu_e[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
+          0.5 * (gbubu_o[kl] * sqrt_s_ho + m_ls_.gbubu_i[kl] * sqrt_s_hi) *
               zu_o[idx_g];
     }
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+      int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
       // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
       bzmn_o[idx_f] =
-          -0.5 * (rsp_o[kl] * sqrtSHo + m_ls_.rsp_i[kl] * sqrtSHi) -
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * r1_o[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
+          -0.5 * (rsp_o[kl] * sqrt_s_ho + m_ls_.rsp_i[kl] * sqrt_s_hi) -
+          0.25 * (p_o[kl] + m_ls_.P_i[kl]) * r1_o[idx_g] -
+          0.5 * (gbubu_o[kl] * sqrt_s_ho + m_ls_.gbubu_i[kl] * sqrt_s_hi) *
               zu_e[idx_g] -
-          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * zu_o[idx_g] * sFull;
+          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * zu_o[idx_g] * s_full;
     }
 
     if (s_.lthreed) {
       // B_R force
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+        int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
         // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+        int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
         brmn_e[idx_f] +=
             -0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * rv_e[idx_g] -
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
+            0.5 * (gbubv_o[kl] * sqrt_s_ho + m_ls_.gbubv_i[kl] * sqrt_s_hi) *
                 rv_o[idx_g];
       }
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+        int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
         // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+        int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
         brmn_o[idx_f] +=
-            -0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
+            -0.5 * (gbubv_o[kl] * sqrt_s_ho + m_ls_.gbubv_i[kl] * sqrt_s_hi) *
                 rv_e[idx_g] -
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * rv_o[idx_g] * sFull;
+            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * rv_o[idx_g] * s_full;
       }
 
       // B_Z force
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+        int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
         // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+        int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
         bzmn_e[idx_f] +=
             -0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zv_e[idx_g] -
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
+            0.5 * (gbubv_o[kl] * sqrt_s_ho + m_ls_.gbubv_i[kl] * sqrt_s_hi) *
                 zv_o[idx_g];
       }
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+        int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
         // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+        int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
         bzmn_o[idx_f] +=
-            -0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
+            -0.5 * (gbubv_o[kl] * sqrt_s_ho + m_ls_.gbubv_i[kl] * sqrt_s_hi) *
                 zv_e[idx_g] -
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zv_o[idx_g] * sFull;
+            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zv_o[idx_g] * s_full;
       }
 
       // C_R force
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+        int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
         // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+        int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
         crmn_e[idx_f] =
             0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * ru_e[idx_g] +
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
+            0.5 * (gbubv_o[kl] * sqrt_s_ho + m_ls_.gbubv_i[kl] * sqrt_s_hi) *
                 ru_o[idx_g] +
             0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * rv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
+            0.5 * (gbvbv_o[kl] * sqrt_s_ho + m_ls_.gbvbv_i[kl] * sqrt_s_hi) *
                 rv_o[idx_g];
       }
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+        int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
         // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+        int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
         crmn_o[idx_f] =
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
+            0.5 * (gbubv_o[kl] * sqrt_s_ho + m_ls_.gbubv_i[kl] * sqrt_s_hi) *
                 ru_e[idx_g] +
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * ru_o[idx_g] * sFull +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
+            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * ru_o[idx_g] * s_full +
+            0.5 * (gbvbv_o[kl] * sqrt_s_ho + m_ls_.gbvbv_i[kl] * sqrt_s_hi) *
                 rv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * rv_o[idx_g] * sFull;
+            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * rv_o[idx_g] * s_full;
       }
 
       // C_Z force
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+        int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
         // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+        int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
         czmn_e[idx_f] =
             0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zu_e[idx_g] +
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
+            0.5 * (gbubv_o[kl] * sqrt_s_ho + m_ls_.gbubv_i[kl] * sqrt_s_hi) *
                 zu_o[idx_g] +
             0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * zv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
+            0.5 * (gbvbv_o[kl] * sqrt_s_ho + m_ls_.gbvbv_i[kl] * sqrt_s_hi) *
                 zv_o[idx_g];
       }
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+        int idx_g = (j_f - r_.nsMinF1) * s_.nZnT + kl;
 
         // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+        int idx_f = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
         czmn_o[idx_f] =
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
+            0.5 * (gbubv_o[kl] * sqrt_s_ho + m_ls_.gbubv_i[kl] * sqrt_s_hi) *
                 zu_e[idx_g] +
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zu_o[idx_g] * sFull +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
+            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zu_o[idx_g] * s_full +
+            0.5 * (gbvbv_o[kl] * sqrt_s_ho + m_ls_.gbvbv_i[kl] * sqrt_s_hi) *
                 zv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * zv_o[idx_g] * sFull;
+            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * zv_o[idx_g] * s_full;
       }
     }  // lthreed
 
     // shift to next point
-    m_ls_.P_i = P_o;
+    m_ls_.P_i = p_o;
     m_ls_.rup_i = rup_o;
     m_ls_.zup_i = zup_o;
     m_ls_.rsp_i = rsp_o;
@@ -2533,7 +2533,7 @@ void IdealMhdModel::computeMHDForces() {
     m_ls_.gbubv_i = gbubv_o;
     m_ls_.gbvbv_i = gbvbv_o;
 
-    sqrtSHi = sqrtSHo;
+    sqrt_s_hi = sqrt_s_ho;
   }  // jF
 }
 
@@ -2563,28 +2563,28 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // lambdaPreconditioner
 
   // TODO(jons): what is this ?
-  const double pFactor =
+  const double p_factor =
       dampingFactor / (4.0 * constants_.lamscale * constants_.lamscale);
 
   // evaluate preconditioning matrix elements on half-grid
   // on every accessible half-grid point
   // indices are shifted up by 1 to make room at 0 for first target point
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    bLambda[jH + 1 - r_.nsMinH] = 0.0;
-    dLambda[jH + 1 - r_.nsMinH] = 0.0;
-    cLambda[jH + 1 - r_.nsMinH] = 0.0;
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
+    bLambda[j_h + 1 - r_.nsMinH] = 0.0;
+    dLambda[j_h + 1 - r_.nsMinH] = 0.0;
+    cLambda[j_h + 1 - r_.nsMinH] = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int idx_kl = (jH - r_.nsMinH) * s_.nZnT + kl;
+      int idx_kl = (j_h - r_.nsMinH) * s_.nZnT + kl;
       int l = kl % s_.nThetaEff;
-      bLambda[jH + 1 - r_.nsMinH] += guu[idx_kl] / gsqrt[idx_kl] * s_.wInt[l];
-      cLambda[jH + 1 - r_.nsMinH] += gvv[idx_kl] / gsqrt[idx_kl] * s_.wInt[l];
+      bLambda[j_h + 1 - r_.nsMinH] += guu[idx_kl] / gsqrt[idx_kl] * s_.wInt[l];
+      cLambda[j_h + 1 - r_.nsMinH] += gvv[idx_kl] / gsqrt[idx_kl] * s_.wInt[l];
     }  // kl
 
     if (s_.lthreed) {
       for (int kl = 0; kl < s_.nZnT; ++kl) {
-        int idx_kl = (jH - r_.nsMinH) * s_.nZnT + kl;
+        int idx_kl = (j_h - r_.nsMinH) * s_.nZnT + kl;
         int l = kl % s_.nThetaEff;
-        dLambda[jH + 1 - r_.nsMinH] += guv[idx_kl] / gsqrt[idx_kl] * s_.wInt[l];
+        dLambda[j_h + 1 - r_.nsMinH] += guv[idx_kl] / gsqrt[idx_kl] * s_.wInt[l];
       }  // kl
     }
   }  // jH
@@ -2598,19 +2598,19 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   }
 
   // average onto full grid points
-  int jMin = 0;
+  int j_min = 0;
   if (r_.nsMinF == 0) {
     // skip axis, since constant extrapolation done already above
-    jMin = 1;
+    j_min = 1;
   }
 
-  for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    bLambda[jF - r_.nsMinF] =
-        0.5 * (bLambda[jF + 1 - r_.nsMinH] + bLambda[jF - r_.nsMinH]);
-    dLambda[jF - r_.nsMinF] =
-        0.5 * (dLambda[jF + 1 - r_.nsMinH] + dLambda[jF - r_.nsMinH]);
-    cLambda[jF - r_.nsMinF] =
-        0.5 * (cLambda[jF + 1 - r_.nsMinH] + cLambda[jF - r_.nsMinH]);
+  for (int j_f = std::max(j_min, r_.nsMinF); j_f < r_.nsMaxFIncludingLcfs; ++j_f) {
+    bLambda[j_f - r_.nsMinF] =
+        0.5 * (bLambda[j_f + 1 - r_.nsMinH] + bLambda[j_f - r_.nsMinH]);
+    dLambda[j_f - r_.nsMinF] =
+        0.5 * (dLambda[j_f + 1 - r_.nsMinH] + dLambda[j_f - r_.nsMinH]);
+    cLambda[j_f - r_.nsMinF] =
+        0.5 * (cLambda[j_f + 1 - r_.nsMinH] + cLambda[j_f - r_.nsMinH]);
   }
 
   // assemble lambda preconditioning matrix
@@ -2619,7 +2619,7 @@ void IdealMhdModel::updateLambdaPreconditioner() {
                  (r_.nsMaxFIncludingLcfs - r_.nsMinF) * (s_.ntor + 1) * s_.mpol,
                  0);
 
-  for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
+  for (int j_f = std::max(j_min, r_.nsMinF); j_f < r_.nsMaxFIncludingLcfs; ++j_f) {
     for (int n = 0; n < s_.ntor + 1; ++n) {
       double tnn = n * s_.nfp * n * s_.nfp;
 
@@ -2628,7 +2628,7 @@ void IdealMhdModel::updateLambdaPreconditioner() {
           continue;
         }
 
-        int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+        int idx_mn = ((j_f - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
 
         int tmm = m * m;
 
@@ -2637,9 +2637,9 @@ void IdealMhdModel::updateLambdaPreconditioner() {
         double tmn = 2.0 * m * n * s_.nfp;
 
         double faclam =
-            tnn * bLambda[jF - r_.nsMinF] +
-            tmn * copysign(dLambda[jF - r_.nsMinF], bLambda[jF - r_.nsMinF]) +
-            tmm * cLambda[jF - r_.nsMinF];
+            tnn * bLambda[j_f - r_.nsMinF] +
+            tmn * copysign(dLambda[j_f - r_.nsMinF], bLambda[j_f - r_.nsMinF]) +
+            tmm * cLambda[j_f - r_.nsMinF];
 
         // avoid zero eigenvalue (TODO(jons): what is this ?)
         if (faclam == 0.0) {
@@ -2650,7 +2650,7 @@ void IdealMhdModel::updateLambdaPreconditioner() {
         // NOTE: This also computes the inverse of each entry in
         // lambdaPreconditioner !
         lambdaPreconditioner[idx_mn] =
-            pFactor / faclam * pow(m_p_.sqrtSF[jF - r_.nsMinF1], pwr);
+            p_factor / faclam * pow(m_p_.sqrtSF[j_f - r_.nsMinF1], pwr);
       }  // m
     }    // n
   }      // jF
@@ -2675,7 +2675,7 @@ void IdealMhdModel::computePreconditioningMatrix(
 
   // restored in v8.51
   // TODO(jons): what is this?
-  double pFactor = -4.0;
+  double p_factor = -4.0;
 
   // zero intermediate work arrays
   absl::c_fill_n(ax, (r_.nsMaxH - r_.nsMinH) * 4, 0);
@@ -2683,67 +2683,67 @@ void IdealMhdModel::computePreconditioningMatrix(
   absl::c_fill_n(cx, (r_.nsMaxH - r_.nsMinH), 0);
 
   // all of ax, bx and cxd are on the half-grid here
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-      int iFull_0 = (jH - r_.nsMinF1) * s_.nZnT + kl;
-      int iFull_1 = (jH + 1 - r_.nsMinF1) * s_.nZnT + kl;
+      int i_half = (j_h - r_.nsMinH) * s_.nZnT + kl;
+      int i_full_0 = (j_h - r_.nsMinF1) * s_.nZnT + kl;
+      int i_full_1 = (j_h + 1 - r_.nsMinF1) * s_.nZnT + kl;
 
       int l = kl % s_.nThetaEff;
 
-      double pTau =
-          pFactor * r12[iHalf] * totalPressure[iHalf] / tau[iHalf] * s_.wInt[l];
+      double p_tau =
+          p_factor * r12[i_half] * totalPressure[i_half] / tau[i_half] * s_.wInt[l];
 
       // COMPUTE DOMINANT (1/DELTA-S)**2 PRECONDITIONING MATRIX ELEMENTS
 
-      double t1a = xu12[iHalf] / m_fc_.deltaS;
+      double t1a = xu12[i_half] / m_fc_.deltaS;
       double t2a =
-          0.25 * (xu_e[iFull_1] / m_p_.sqrtSH[jH - r_.nsMinH] + xu_o[iFull_1]) /
-          m_p_.sqrtSH[jH - r_.nsMinH];
+          0.25 * (xu_e[i_full_1] / m_p_.sqrtSH[j_h - r_.nsMinH] + xu_o[i_full_1]) /
+          m_p_.sqrtSH[j_h - r_.nsMinH];
       double t3a =
-          0.25 * (xu_e[iFull_0] / m_p_.sqrtSH[jH - r_.nsMinH] + xu_o[iFull_0]) /
-          m_p_.sqrtSH[jH - r_.nsMinH];
+          0.25 * (xu_e[i_full_0] / m_p_.sqrtSH[j_h - r_.nsMinH] + xu_o[i_full_0]) /
+          m_p_.sqrtSH[j_h - r_.nsMinH];
 
       // only even-m
       // both off-diagonal and diagonal
-      ax[(jH - r_.nsMinH) * 4 + 0] += pTau * t1a * t1a;
+      ax[(j_h - r_.nsMinH) * 4 + 0] += p_tau * t1a * t1a;
 
       // only odd-m
 
       // off-diagonal: mixed
-      ax[(jH - r_.nsMinH) * 4 + 1] += pTau * (t1a + t2a) * (-t1a + t3a);
+      ax[(j_h - r_.nsMinH) * 4 + 1] += p_tau * (t1a + t2a) * (-t1a + t3a);
 
       // diagonal: squared
-      ax[(jH - r_.nsMinH) * 4 + 2] += pTau * (t1a + t2a) * (t1a + t2a);
+      ax[(j_h - r_.nsMinH) * 4 + 2] += p_tau * (t1a + t2a) * (t1a + t2a);
 
       // diagonal: squared
-      ax[(jH - r_.nsMinH) * 4 + 3] += pTau * (-t1a + t3a) * (-t1a + t3a);
+      ax[(j_h - r_.nsMinH) * 4 + 3] += p_tau * (-t1a + t3a) * (-t1a + t3a);
 
       // COMPUTE PRECONDITIONING MATRIX ELEMENTS FOR M**2, N**2 TERMS
 
       // assemble full radial derivative; incl radial interpolation of odd-m X
       // contrib (?)
       double t1b =
-          0.5 * (xs[iHalf] + 0.5 / m_p_.sqrtSH[jH - r_.nsMinH] * x1_o[iFull_1]);
+          0.5 * (xs[i_half] + 0.5 / m_p_.sqrtSH[j_h - r_.nsMinH] * x1_o[i_full_1]);
       double t2b =
-          0.5 * (xs[iHalf] + 0.5 / m_p_.sqrtSH[jH - r_.nsMinH] * x1_o[iFull_0]);
+          0.5 * (xs[i_half] + 0.5 / m_p_.sqrtSH[j_h - r_.nsMinH] * x1_o[i_full_0]);
 
       // even-m and odd-m
       // off-diagonal: mixed
-      bx[(jH - r_.nsMinH) * 3 + 0] += pTau * t1b * t2b;
+      bx[(j_h - r_.nsMinH) * 3 + 0] += p_tau * t1b * t2b;
 
       // diagonal: squared
-      bx[(jH - r_.nsMinH) * 3 + 1] += pTau * t1b * t1b;
+      bx[(j_h - r_.nsMinH) * 3 + 1] += p_tau * t1b * t1b;
 
       // diagonal: squared
-      bx[(jH - r_.nsMinH) * 3 + 2] += pTau * t2b * t2b;
+      bx[(j_h - r_.nsMinH) * 3 + 2] += p_tau * t2b * t2b;
 
       // even-m and odd-m
       // both off-diagonal and diagonal
       // 0.25 cancels 4 in pFactor; r0scale == 1
       // --> essentially, 0.25 * pFactor simply introduces a (-1) here!
-      cx[jH - r_.nsMinH] += 0.25 * pFactor * bsupv[iHalf] * bsupv[iHalf] *
-                            gsqrt[iHalf] * s_.wInt[l];
+      cx[j_h - r_.nsMinH] += 0.25 * p_factor * bsupv[i_half] * bsupv[i_half] *
+                            gsqrt[i_half] * s_.wInt[l];
     }  // kl
   }    // jH
 
@@ -2752,43 +2752,43 @@ void IdealMhdModel::computePreconditioningMatrix(
 
   // radial assembly of preconditioning matrix element components
   // All this sm, sp logic seems to be related to the odd-m scaling factors...
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+  for (int j_h = r_.nsMinH; j_h < r_.nsMaxH; ++j_h) {
     // off-diagonal, d^2/ds^2 (radial), on half-grid
-    m_axm[(jH - r_.nsMinH) * 2 + m_evn] = -ax[(jH - r_.nsMinH) * 4 + 0];
-    m_axm[(jH - r_.nsMinH) * 2 + m_odd] =
-        ax[(jH - r_.nsMinH) * 4 + 1] * sm[jH - r_.nsMinH] * sp[jH - r_.nsMinH];
+    m_axm[(j_h - r_.nsMinH) * 2 + m_evn] = -ax[(j_h - r_.nsMinH) * 4 + 0];
+    m_axm[(j_h - r_.nsMinH) * 2 + m_odd] =
+        ax[(j_h - r_.nsMinH) * 4 + 1] * sm[j_h - r_.nsMinH] * sp[j_h - r_.nsMinH];
 
     // off-diagonal, m^2 (poloidal), on half-grid
-    m_bxm[(jH - r_.nsMinH) * 2 + m_evn] = bx[(jH - r_.nsMinH) * 3 + 0];
-    m_bxm[(jH - r_.nsMinH) * 2 + m_odd] =
-        bx[(jH - r_.nsMinH) * 3 + 0] * sm[jH - r_.nsMinH] * sp[jH - r_.nsMinH];
+    m_bxm[(j_h - r_.nsMinH) * 2 + m_evn] = bx[(j_h - r_.nsMinH) * 3 + 0];
+    m_bxm[(j_h - r_.nsMinH) * 2 + m_odd] =
+        bx[(j_h - r_.nsMinH) * 3 + 0] * sm[j_h - r_.nsMinH] * sp[j_h - r_.nsMinH];
   }
 
-  for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
-    int jH_i = jF - 1 - r_.nsMinH;
-    int jH_o = jF - r_.nsMinH;
+  for (int j_f = r_.nsMinF; j_f < r_.nsMaxF; ++j_f) {
+    int j_h_i = j_f - 1 - r_.nsMinH;
+    int j_h_o = j_f - r_.nsMinH;
 
     // diagonal, d^2/ds^2 (radial), on forces full-grid
-    m_axd[(jF - r_.nsMinF) * 2 + m_evn] =
-        (jF > 0 ? ax[jH_i * 4 + 0] : 0.0) +
-        (jF < m_fc_.ns - 1 ? ax[jH_o * 4 + 0] : 0.0);
-    m_axd[(jF - r_.nsMinF) * 2 + m_odd] =
-        (jF > 0 ? ax[jH_i * 4 + 2] * sm[jH_i] * sm[jH_i] : 0.0) +
-        (jF < m_fc_.ns - 1 ? ax[jH_o * 4 + 3] * sp[jH_o] * sp[jH_o] : 0.0);
+    m_axd[(j_f - r_.nsMinF) * 2 + m_evn] =
+        (j_f > 0 ? ax[j_h_i * 4 + 0] : 0.0) +
+        (j_f < m_fc_.ns - 1 ? ax[j_h_o * 4 + 0] : 0.0);
+    m_axd[(j_f - r_.nsMinF) * 2 + m_odd] =
+        (j_f > 0 ? ax[j_h_i * 4 + 2] * sm[j_h_i] * sm[j_h_i] : 0.0) +
+        (j_f < m_fc_.ns - 1 ? ax[j_h_o * 4 + 3] * sp[j_h_o] * sp[j_h_o] : 0.0);
 
     // diagonal, m^2 (poloidal), on forces full-grid
-    m_bxd[(jF - r_.nsMinF) * 2 + m_evn] =
-        (jF > 0 ? bx[jH_i * 3 + 1] : 0.0) +
-        (jF < m_fc_.ns - 1 ? bx[jH_o * 3 + 2] : 0.0);
-    m_bxd[(jF - r_.nsMinF) * 2 + m_odd] =
-        (jF > 0 ? bx[jH_i * 3 + 1] * sm[jH_i] * sm[jH_i] : 0.0) +
-        (jF < m_fc_.ns - 1 ? bx[jH_o * 3 + 2] * sp[jH_o] * sp[jH_o] : 0.0);
+    m_bxd[(j_f - r_.nsMinF) * 2 + m_evn] =
+        (j_f > 0 ? bx[j_h_i * 3 + 1] : 0.0) +
+        (j_f < m_fc_.ns - 1 ? bx[j_h_o * 3 + 2] : 0.0);
+    m_bxd[(j_f - r_.nsMinF) * 2 + m_odd] =
+        (j_f > 0 ? bx[j_h_i * 3 + 1] * sm[j_h_i] * sm[j_h_i] : 0.0) +
+        (j_f < m_fc_.ns - 1 ? bx[j_h_o * 3 + 2] * sp[j_h_o] * sp[j_h_o] : 0.0);
 
     // -------------------------
 
     // diagonal, n^2 (toroidal), on forces full-grid
-    m_cxd[jF - r_.nsMinF] =
-        (jF > 0 ? cx[jH_i] : 0.0) + (jF < m_fc_.ns - 1 ? cx[jH_o] : 0.0);
+    m_cxd[j_f - r_.nsMinF] =
+        (j_f > 0 ? cx[j_h_i] : 0.0) + (j_f < m_fc_.ns - 1 ? cx[j_h_o] : 0.0);
   }
 }
 
@@ -2810,36 +2810,36 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
   tcon_multiplier /= (4.0 * 4.0);
 
   // compute constraint force multiplier profile on forces full-grid except axis
-  int jMin = 0;
+  int j_min = 0;
   if (r_.nsMinF == 0) {
-    jMin = 1;
+    j_min = 1;
   }
 
-  for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxF; ++jF) {
-    double arNorm = 0.0;
-    double azNorm = 0.0;
+  for (int j_f = std::max(j_min, r_.nsMinF); j_f < r_.nsMaxF; ++j_f) {
+    double ar_norm = 0.0;
+    double az_norm = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_kl = (j_f - r_.nsMinF) * s_.nZnT + kl;
       int l = kl % s_.nThetaEff;
-      arNorm += ruFull[idx_kl] * ruFull[idx_kl] * s_.wInt[l];
-      azNorm += zuFull[idx_kl] * zuFull[idx_kl] * s_.wInt[l];
+      ar_norm += ruFull[idx_kl] * ruFull[idx_kl] * s_.wInt[l];
+      az_norm += zuFull[idx_kl] * zuFull[idx_kl] * s_.wInt[l];
     }
 
-    if (arNorm == 0.0) {
+    if (ar_norm == 0.0) {
       return absl::InternalError("arNorm should never be 0.0.");
     }
-    if (azNorm == 0.0) {
+    if (az_norm == 0.0) {
       return absl::InternalError("azNorm should never be 0.0.");
     }
 
     double tcon_base =
-        std::min(fabs(ard[(jF - r_.nsMinF) * 2 + m_evn] / arNorm),
-                 fabs(azd[(jF - r_.nsMinF) * 2 + m_evn] / azNorm));
+        std::min(fabs(ard[(j_f - r_.nsMinF) * 2 + m_evn] / ar_norm),
+                 fabs(azd[(j_f - r_.nsMinF) * 2 + m_evn] / az_norm));
 
     // TODO(jons): why the last term ?
     // --> could be to cancel some terms in ard, azd
     // 32 == 4*4 * 2
-    tcon[jF - r_.nsMinF] =
+    tcon[j_f - r_.nsMinF] =
         tcon_base * tcon_multiplier * 32 * m_fc_.deltaS * 32 * m_fc_.deltaS;
   }  // j
 
@@ -2858,14 +2858,14 @@ void IdealMhdModel::effectiveConstraintForce() {
   // gConEff
 
   // no constraint on axis --> has no poloidal angle
-  int jMin = 0;
+  int j_min = 0;
   if (r_.nsMinF == 0) {
-    jMin = 1;
+    j_min = 1;
   }
 
-  for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
+  for (int j_f = std::max(j_min, r_.nsMinF); j_f < r_.nsMaxFIncludingLcfs; ++j_f) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_kl = (j_f - r_.nsMinF) * s_.nZnT + kl;
       gConEff[idx_kl] = (rCon[idx_kl] - rCon0[idx_kl]) * ruFull[idx_kl] +
                         (zCon[idx_kl] - zCon0[idx_kl]) * zuFull[idx_kl];
     }  // kl
@@ -2895,22 +2895,22 @@ void IdealMhdModel::assembleTotalForces() {
     }
   }
 
-  for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
+  for (int j_f = r_.nsMinF; j_f < r_.nsMaxF; ++j_f) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
+      int idx_kl = (j_f - r_.nsMinF) * s_.nZnT + kl;
 
       double brcon = (rCon[idx_kl] - rCon0[idx_kl]) * gCon[idx_kl];
       double bzcon = (zCon[idx_kl] - zCon0[idx_kl]) * gCon[idx_kl];
 
       brmn_e[idx_kl] += brcon;
       bzmn_e[idx_kl] += bzcon;
-      brmn_o[idx_kl] += brcon * m_p_.sqrtSF[jF - r_.nsMinF1];
-      bzmn_o[idx_kl] += bzcon * m_p_.sqrtSF[jF - r_.nsMinF1];
+      brmn_o[idx_kl] += brcon * m_p_.sqrtSF[j_f - r_.nsMinF1];
+      bzmn_o[idx_kl] += bzcon * m_p_.sqrtSF[j_f - r_.nsMinF1];
 
       frcon_e[idx_kl] = ruFull[idx_kl] * gCon[idx_kl];
       fzcon_e[idx_kl] = zuFull[idx_kl] * gCon[idx_kl];
-      frcon_o[idx_kl] = frcon_e[idx_kl] * m_p_.sqrtSF[jF - r_.nsMinF1];
-      fzcon_o[idx_kl] = fzcon_e[idx_kl] * m_p_.sqrtSF[jF - r_.nsMinF1];
+      frcon_o[idx_kl] = frcon_e[idx_kl] * m_p_.sqrtSF[j_f - r_.nsMinF1];
+      fzcon_o[idx_kl] = fzcon_e[idx_kl] * m_p_.sqrtSF[j_f - r_.nsMinF1];
     }
   }
 }
@@ -2974,25 +2974,25 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
 
 #pragma omp barrier
 
-  int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  int j_max_rz = std::min(r_.nsMaxF, m_fc_.ns - 1);
   if (m_fc_.lfreeb && m_ivac_ >= 1) {
     // free-boundary: up to jMaxRZ=ns
-    jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
+    j_max_rz = std::min(r_.nsMaxF, m_fc_.ns);
   }
 
-  for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
+  for (int j_f = r_.nsMinF; j_f < j_max_rz; ++j_f) {
     // maximum m depends on current surface:
     // --> axis R,Z gets only m=0 contributions
     // --> all other surfaces get the full Fourier spectrum
     int num_m = s_.mpol;
-    if (jF == 0) {
+    if (j_f == 0) {
       // axis only gets m = 0
       num_m = 1;
     }
 
     for (int m = 0; m < num_m; ++m) {
       const bool m_even = m % 2 == 0;
-      const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
+      const int idx_jm = (j_f - r_.nsMinF) * s_.mpol + m;
 
       const auto& armn = m_even ? armn_e : armn_o;
       const auto& brmn = m_even ? brmn_e : brmn_o;
@@ -3002,7 +3002,7 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
       const auto& fzcon = m_even ? fzcon_e : fzcon_o;
 
       for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        const int idx_jl = (j_f - r_.nsMinF) * s_.nThetaEff + l;
 
         const double rnkcc = armn[idx_jl];
         const double rnkcc_m = brmn[idx_jl];
@@ -3019,11 +3019,11 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
         const double cosmumi = t_.cosmumi[idx_ml];
         // assemble effective R and Z forces from MHD and spectral condensation
         // contributions
-        const double _rcc = rnkcc + xmpq[m] * rcon_cc;
-        m_physical_f.frcc[idx_jm] += _rcc * cosmui + rnkcc_m * sinmumi;
+        const double rcc = rnkcc + xmpq[m] * rcon_cc;
+        m_physical_f.frcc[idx_jm] += rcc * cosmui + rnkcc_m * sinmumi;
 
-        const double _zsc = znksc + xmpq[m] * zcon_sc;
-        m_physical_f.fzsc[idx_jm] += _zsc * sinmui + znksc_m * cosmumi;
+        const double zsc = znksc + xmpq[m] * zcon_sc;
+        m_physical_f.fzsc[idx_jm] += zsc * sinmui + znksc_m * cosmumi;
       }  // m
     }    // l
   }      // jF
@@ -3032,14 +3032,14 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
   // ranges.
 
   // --> axis lambda stays zero (no contribution from any m)
-  for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
+  for (int j_f = std::max(1, r_.nsMinF); j_f < r_.nsMaxFIncludingLcfs; ++j_f) {
     for (int m = 0; m < s_.mpol; ++m) {
       const int m_even = m % 2 == 0;
       const auto& blmn = m_even ? blmn_e : blmn_o;
-      const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
+      const int idx_jm = (j_f - r_.nsMinF) * s_.mpol + m;
 
       for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        const int idx_jl = (j_f - r_.nsMinF) * s_.nThetaEff + l;
         const double lnksc_m = blmn[idx_jl];
 
         const double cosmumi = t_.cosmumi[m * s_.nThetaReduced + l];
@@ -3058,30 +3058,30 @@ void IdealMhdModel::applyM1Preconditioner(FourierForces& m_decomposed_f) {
     return;
   }
 
-  for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
+  for (int j_f = r_.nsMinF; j_f < r_.nsMaxF; ++j_f) {
     for (int n = 0; n < s_.ntor + 1; ++n) {
       int m = 1;
-      int mPar = m % 2;
+      int m_par = m % 2;
 
       double denom =
-          ard[(jF - r_.nsMinF) * 2 + mPar] + brd[(jF - r_.nsMinF) * 2 + mPar] +
-          azd[(jF - r_.nsMinF) * 2 + mPar] + bzd[(jF - r_.nsMinF) * 2 + mPar];
-      double forceScaleR = (ard[(jF - r_.nsMinF) * 2 + mPar] +
-                            brd[(jF - r_.nsMinF) * 2 + mPar]) /
+          ard[(j_f - r_.nsMinF) * 2 + m_par] + brd[(j_f - r_.nsMinF) * 2 + m_par] +
+          azd[(j_f - r_.nsMinF) * 2 + m_par] + bzd[(j_f - r_.nsMinF) * 2 + m_par];
+      double force_scale_r = (ard[(j_f - r_.nsMinF) * 2 + m_par] +
+                            brd[(j_f - r_.nsMinF) * 2 + m_par]) /
                            denom;
-      double forceScaleZ = (azd[(jF - r_.nsMinF) * 2 + mPar] +
-                            bzd[(jF - r_.nsMinF) * 2 + mPar]) /
+      double force_scale_z = (azd[(j_f - r_.nsMinF) * 2 + m_par] +
+                            bzd[(j_f - r_.nsMinF) * 2 + m_par]) /
                            denom;
 
-      int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+      int idx_mn = ((j_f - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
 
       if (s_.lthreed) {
-        m_decomposed_f.frss[idx_mn] *= forceScaleR;
-        m_decomposed_f.fzcs[idx_mn] *= forceScaleZ;
+        m_decomposed_f.frss[idx_mn] *= force_scale_r;
+        m_decomposed_f.fzcs[idx_mn] *= force_scale_z;
       }
       if (s_.lasym) {
-        m_decomposed_f.frsc[idx_mn] *= forceScaleR;
-        m_decomposed_f.fzcc[idx_mn] *= forceScaleZ;
+        m_decomposed_f.frsc[idx_mn] *= force_scale_r;
+        m_decomposed_f.fzcc[idx_mn] *= force_scale_z;
       }
     }  // n
   }    // jF
@@ -3093,54 +3093,54 @@ void IdealMhdModel::assembleRZPreconditioner() {
   for (int m = 0; m < s_.mpol; ++m) {
     // magnetic axis only gets m=0 contributions
     // since it has no poloidal dimension/coordinate
-    int jMin = 0;
+    int j_min = 0;
     if (m > 0) {
-      jMin = 1;
+      j_min = 1;
     }
 
     for (int n = 0; n < s_.ntor + 1; ++n) {
       int mn = m * (s_.ntor + 1) + n;
-      this->jMin[mn] = jMin;
+      this->jMin[mn] = j_min;
     }
   }
 
-  int jMax = m_fc_.ns - 1;
+  int j_max = m_fc_.ns - 1;
   if (m_fc_.lfreeb && m_ivac_ >= 1) {
-    jMax = m_fc_.ns;
+    j_max = m_fc_.ns;
   }
 
-  for (int jF = r_.nsMinF; jF < std::min(r_.nsMaxF, jMax); ++jF) {
+  for (int j_f = r_.nsMinF; j_f < std::min(r_.nsMaxF, j_max); ++j_f) {
     for (int m = 0; m < s_.mpol; ++m) {
       const int m_parity = m % 2;
       for (int n = 0; n < s_.ntor + 1; ++n) {
         int mn = m * (s_.ntor + 1) + n;
-        int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
-        if (jF >= jMin[mn]) {
+        int idx_mn = ((j_f - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+        if (j_f >= jMin[mn]) {
           // sup-diagonal: half-grid pos outside jF-th forces full-grid point
-          if (jF < r_.nsMaxH) {
-            ar[idx_mn] = -(arm[(jF - r_.nsMinH) * 2 + m_parity] +
-                           brm[(jF - r_.nsMinH) * 2 + m_parity] * m * m);
-            az[idx_mn] = -(azm[(jF - r_.nsMinH) * 2 + m_parity] +
-                           bzm[(jF - r_.nsMinH) * 2 + m_parity] * m * m);
+          if (j_f < r_.nsMaxH) {
+            ar[idx_mn] = -(arm[(j_f - r_.nsMinH) * 2 + m_parity] +
+                           brm[(j_f - r_.nsMinH) * 2 + m_parity] * m * m);
+            az[idx_mn] = -(azm[(j_f - r_.nsMinH) * 2 + m_parity] +
+                           bzm[(j_f - r_.nsMinH) * 2 + m_parity] * m * m);
           }
 
           // diagonal: jF-th forces full-grid pos
-          dr[idx_mn] = -(ard[(jF - r_.nsMinF) * 2 + m_parity] +
-                         brd[(jF - r_.nsMinF) * 2 + m_parity] * m * m +
-                         cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp);
-          dz[idx_mn] = -(azd[(jF - r_.nsMinF) * 2 + m_parity] +
-                         bzd[(jF - r_.nsMinF) * 2 + m_parity] * m * m +
-                         cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp);
+          dr[idx_mn] = -(ard[(j_f - r_.nsMinF) * 2 + m_parity] +
+                         brd[(j_f - r_.nsMinF) * 2 + m_parity] * m * m +
+                         cxd[j_f - r_.nsMinF] * n * s_.nfp * n * s_.nfp);
+          dz[idx_mn] = -(azd[(j_f - r_.nsMinF) * 2 + m_parity] +
+                         bzd[(j_f - r_.nsMinF) * 2 + m_parity] * m * m +
+                         cxd[j_f - r_.nsMinF] * n * s_.nfp * n * s_.nfp);
 
           // sub-diagonal: half-grid pos inside jF-th forces full-grid point
-          if (jF > 0) {
-            br[idx_mn] = -(arm[(jF - 1 - r_.nsMinH) * 2 + m_parity] +
-                           brm[(jF - 1 - r_.nsMinH) * 2 + m_parity] * m * m);
-            bz[idx_mn] = -(azm[(jF - 1 - r_.nsMinH) * 2 + m_parity] +
-                           bzm[(jF - 1 - r_.nsMinH) * 2 + m_parity] * m * m);
+          if (j_f > 0) {
+            br[idx_mn] = -(arm[(j_f - 1 - r_.nsMinH) * 2 + m_parity] +
+                           brm[(j_f - 1 - r_.nsMinH) * 2 + m_parity] * m * m);
+            bz[idx_mn] = -(azm[(j_f - 1 - r_.nsMinH) * 2 + m_parity] +
+                           bzm[(j_f - 1 - r_.nsMinH) * 2 + m_parity] * m * m);
           }
 
-          if (jF == 1 && m == 1) {
+          if (j_f == 1 && m == 1) {
             // TODO(jons): maybe this is not actually needed ???
             // related to m=1 constraint ???
             // only at innermost flux surface ???
@@ -3196,13 +3196,13 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // FIELD INDEX) DEPENDS ON THE EQUILIBRIUM MAGNETIC FIELD AND CURRENT,
     // AND zeq IS THE EQUILIBRIUM EDGE VALUE OF Z00
     double fac = 0.25;
-    double multFact = std::min(fac, fac * m_fc_.deltaS * 15.0);
+    double mult_fact = std::min(fac, fac * m_fc_.deltaS * 15.0);
 
     // METHOD 1: SUBTRACT (INSTABILITY) Pedge ~ fac*z/hs FROM PRECONDITIONER AT
     // EDGE iflag parameter is used in Fortran VMEC to enable this feature only
     // for Z forces !
     int idx_00 = (m_fc_.ns - 1 - r_.nsMinF) * s_.mpol * (s_.ntor + 1);
-    dz[idx_00] *= (1.0 - multFact) / (1.0 + edge_pedestal);
+    dz[idx_00] *= (1.0 - mult_fact) / (1.0 + edge_pedestal);
   }
 
   // ACCELERATE (IMPROVE) CONVERGENCE OF FREE BOUNDARY.
@@ -3232,26 +3232,26 @@ void IdealMhdModel::assembleRZPreconditioner() {
 // serial variant
 absl::Status IdealMhdModel::applyRZPreconditioner(
     FourierForces& m_decomposed_f) {
-  std::vector<std::span<double>> cR(s_.num_basis);
-  std::vector<std::span<double>> cZ(s_.num_basis);
+  std::vector<std::span<double>> c_r(s_.num_basis);
+  std::vector<std::span<double>> c_z(s_.num_basis);
   {
     int idx_basis = 0;
 
-    cR[idx_basis] = m_decomposed_f.frcc;
-    cZ[idx_basis] = m_decomposed_f.fzsc;
+    c_r[idx_basis] = m_decomposed_f.frcc;
+    c_z[idx_basis] = m_decomposed_f.fzsc;
     idx_basis++;
     if (s_.lthreed) {
-      cR[idx_basis] = m_decomposed_f.frss;
-      cZ[idx_basis] = m_decomposed_f.fzcs;
+      c_r[idx_basis] = m_decomposed_f.frss;
+      c_z[idx_basis] = m_decomposed_f.fzcs;
       idx_basis++;
     }
     if (s_.lasym) {
-      cR[idx_basis] = m_decomposed_f.frsc;
-      cZ[idx_basis] = m_decomposed_f.fzcc;
+      c_r[idx_basis] = m_decomposed_f.frsc;
+      c_z[idx_basis] = m_decomposed_f.fzcc;
       idx_basis++;
       if (s_.lthreed) {
-        cR[idx_basis] = m_decomposed_f.frcs;
-        cZ[idx_basis] = m_decomposed_f.fzss;
+        c_r[idx_basis] = m_decomposed_f.frcs;
+        c_z[idx_basis] = m_decomposed_f.fzss;
         idx_basis++;
       }
     }
@@ -3263,24 +3263,24 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
     }
   }
 
-  int jMax = m_fc_.ns - 1;
+  int j_max = m_fc_.ns - 1;
   if (m_fc_.lfreeb && m_ivac_ >= 1) {
-    jMax = m_fc_.ns;
+    j_max = m_fc_.ns;
   }
 
   // gather everything into HandoverStorage
-  for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
+  for (int j_f = r_.nsMinF; j_f < r_.nsMaxF; ++j_f) {
     for (int mn = 0; mn < s_.mnsize; ++mn) {
-      int idx_mn = (jF - r_.nsMinF) * s_.mnsize + mn;
-      m_h_.all_ar[mn][jF] = ar[idx_mn];
-      m_h_.all_az[mn][jF] = az[idx_mn];
-      m_h_.all_dr[mn][jF] = dr[idx_mn];
-      m_h_.all_dz[mn][jF] = dz[idx_mn];
-      m_h_.all_br[mn][jF] = br[idx_mn];
-      m_h_.all_bz[mn][jF] = bz[idx_mn];
+      int idx_mn = (j_f - r_.nsMinF) * s_.mnsize + mn;
+      m_h_.all_ar[mn][j_f] = ar[idx_mn];
+      m_h_.all_az[mn][j_f] = az[idx_mn];
+      m_h_.all_dr[mn][j_f] = dr[idx_mn];
+      m_h_.all_dz[mn][j_f] = dz[idx_mn];
+      m_h_.all_br[mn][j_f] = br[idx_mn];
+      m_h_.all_bz[mn][j_f] = bz[idx_mn];
       for (int idx_basis = 0; idx_basis < s_.num_basis; ++idx_basis) {
-        m_h_.all_cr[mn][idx_basis][jF] = cR[idx_basis][idx_mn];
-        m_h_.all_cz[mn][idx_basis][jF] = cZ[idx_basis][idx_mn];
+        m_h_.all_cr[mn][idx_basis][j_f] = c_r[idx_basis][idx_mn];
+        m_h_.all_cz[mn][idx_basis][j_f] = c_z[idx_basis][idx_mn];
       }  // idx_basis
     }    // mn
   }      // jF
@@ -3306,21 +3306,21 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   // call serial Thomas solver for every mode number individually
   for (int mn = mnmin; mn < mnmax; ++mn) {
     TridiagonalSolveSerial(m_h_.all_ar[mn], m_h_.all_dr[mn], m_h_.all_br[mn],
-                           m_h_.all_cr[mn], jMin[mn], jMax,
+                           m_h_.all_cr[mn], jMin[mn], j_max,
                            s_.num_basis);
     TridiagonalSolveSerial(m_h_.all_az[mn], m_h_.all_dz[mn], m_h_.all_bz[mn],
-                           m_h_.all_cz[mn], jMin[mn], jMax,
+                           m_h_.all_cz[mn], jMin[mn], j_max,
                            s_.num_basis);
   }  // mn
 #pragma omp barrier
 
   // re-distribute solution back into threads
-  for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
+  for (int j_f = r_.nsMinF; j_f < r_.nsMaxF; ++j_f) {
     for (int mn = 0; mn < s_.mnsize; ++mn) {
-      int idx_mn = (jF - r_.nsMinF) * s_.mnsize + mn;
+      int idx_mn = (j_f - r_.nsMinF) * s_.mnsize + mn;
       for (int idx_basis = 0; idx_basis < s_.num_basis; ++idx_basis) {
-        cR[idx_basis][idx_mn] = m_h_.all_cr[mn][idx_basis][jF];
-        cZ[idx_basis][idx_mn] = m_h_.all_cz[mn][idx_basis][jF];
+        c_r[idx_basis][idx_mn] = m_h_.all_cr[mn][idx_basis][j_f];
+        c_z[idx_basis][idx_mn] = m_h_.all_cz[mn][idx_basis][j_f];
       }  // idx_basis
     }    // mn
   }      // jF
@@ -3385,10 +3385,10 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
  * Here, the lambda preconditioner is applied. --> see BETAS article for details
  */
 void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
-  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+  for (int j_f = r_.nsMinF; j_f < r_.nsMaxFIncludingLcfs; ++j_f) {
     for (int m = 0; m < s_.mpol; ++m) {
       for (int n = 0; n <= s_.ntor; ++n) {
-        int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+        int idx_mn = ((j_f - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
 
         m_decomposed_f.flsc[idx_mn] *= lambdaPreconditioner[idx_mn];
         if (s_.lthreed) {
@@ -3406,17 +3406,17 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
 }
 
 double IdealMhdModel::get_delbsq() const {
-  double delBSqAvg = 0.0;
+  double del_b_sq_avg = 0.0;
   if (m_fc_.lfreeb && m_ivac_ > 1) {
-    double delBSqNorm = 0.0;
+    double del_b_sq_norm = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int l = kl % s_.nThetaEff;
-      delBSqAvg += delBSq[kl] * s_.wInt[l];
-      delBSqNorm += insideTotalPressure[kl] * s_.wInt[l];
+      del_b_sq_avg += delBSq[kl] * s_.wInt[l];
+      del_b_sq_norm += insideTotalPressure[kl] * s_.wInt[l];
     }
-    delBSqAvg /= delBSqNorm;
+    del_b_sq_avg /= del_b_sq_norm;
   }
-  return delBSqAvg;
+  return del_b_sq_avg;
 }
 
 int IdealMhdModel::get_ivacskip() const { return ivacskip; }

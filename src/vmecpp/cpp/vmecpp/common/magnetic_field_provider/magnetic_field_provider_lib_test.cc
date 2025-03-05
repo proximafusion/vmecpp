@@ -976,8 +976,8 @@ struct IntroducedErrorsInMagneticConfiguration {
     no_errors.circular_filament_normal_omitted_components = 0;
     no_errors.circular_filament_omit_radius = false;
 
-    no_errors.polygon_filament_vertex_1_omitted_components = 0;
-    no_errors.polygon_filament_vertex_2_omitted_components = 0;
+    no_errors.polygon_filament_vertex_1_omitted_components = false;
+    no_errors.polygon_filament_vertex_2_omitted_components = false;
 
     return no_errors;
   }

@@ -179,9 +179,9 @@ TEST(TestVmecINDATA, ToJson) {
       ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> indata_ = VmecINDATA::FromJson(*indata_json);
-  ASSERT_TRUE(indata_.ok());
-  auto& indata = indata_.value();
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  auto& indata = maybe_indata.value();
   ASSERT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 
   const absl::StatusOr<std::string> indata_as_json = indata.ToJson();

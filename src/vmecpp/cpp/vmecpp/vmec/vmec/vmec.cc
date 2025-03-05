@@ -153,8 +153,8 @@ Vmec::Vmec(const VmecINDATA& indata,
 
   if (fc_.lfreeb) {
     if (magnetic_response_table == nullptr) {
-      int loadStatus = mgrid_.loadFromMGrid(indata_.mgrid_file, indata_.extcur);
-      if (loadStatus != 0) {
+      int load_status = mgrid_.loadFromMGrid(indata_.mgrid_file, indata_.extcur);
+      if (load_status != 0) {
         LOG(FATAL) << "Could not load mgrid file '" << indata_.mgrid_file
                    << "'. Now aborting.";
       }
@@ -1064,10 +1064,10 @@ void Vmec::Printout(double delt0r, int thread_id) {
     double energy = h_.mhdEnergy * 4.0 * M_PI * M_PI;
 
     // volume-averaged beta
-    double betaVolAvg = h_.thermalEnergy / h_.magneticEnergy;
+    double beta_vol_avg = h_.thermalEnergy / h_.magneticEnergy;
 
     // volume-averaged spectral width <M>
-    double volAvgM = h_.VolumeAveragedSpectralWidth();
+    double vol_avg_m = h_.VolumeAveragedSpectralWidth();
 
     // mismatch in |B|^2 at LCFS for free-boundary
     double delbsq = m_[thread_id]->get_delbsq();
@@ -1077,14 +1077,14 @@ void Vmec::Printout(double delt0r, int thread_id) {
           "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
           "%.3e | %.4e | %.4e | %5.3f | %.3e\n",
           iter2_, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
-          delt0r, r00, energy, betaVolAvg, volAvgM, delbsq);
+          delt0r, r00, energy, beta_vol_avg, vol_avg_m, delbsq);
     } else {
       // omit DELBSQ column in fixed-boundary case
       std::cout << absl::StrFormat(
           "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
           "%.3e | %.4e | %.4e | %5.3f\n",
           iter2_, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
-          delt0r, r00, energy, betaVolAvg, volAvgM);
+          delt0r, r00, energy, beta_vol_avg, vol_avg_m);
     }
   }  // thread which has boundary
 }
@@ -1141,16 +1141,16 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
                            FourierGeometry& m_decomposed_x,
                            FourierVelocity& m_decomposed_v,
                            const FourierForces& decomposed_f,
-                           HandoverStorage& m_h_) {
+                           HandoverStorage& m_h_) const {
   // THIS IS THE TIME-STEP ALGORITHM. IT IS ESSENTIALLY A CONJUGATE
   // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
   // BASED ON A METHOD GIVEN BY P. GARABEDIAN
 
-  for (int jF = r.nsMinF; jF < r.nsMaxFIncludingLcfs; ++jF) {
+  for (int j_f = r.nsMinF; j_f < r.nsMaxFIncludingLcfs; ++j_f) {
     for (int m = 0; m < s.mpol; ++m) {
       for (int n = 0; n < s.ntor + 1; ++n) {
-        const int idx_mn = ((jF - r.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
-        const int idx_mn1 = ((jF - r.nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
+        const int idx_mn = ((j_f - r.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
+        const int idx_mn1 = ((j_f - r.nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
 
         // update velocity
         m_decomposed_v.vrcc[idx_mn] =
@@ -1246,11 +1246,11 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
 
   // also evolve satellite radial locations: nsMinF1, nsMaxF1-1 in case
   // inside, outside threads exist
-  bool hasInside = (r.nsMinF1 > 0);
-  bool hasOutside = (r.nsMaxF1 < fc.ns);
+  bool has_inside = (r.nsMinF1 > 0);
+  bool has_outside = (r.nsMaxF1 < fc.ns);
 
   // get Full1-specific elements from neighboring threads
-  if (hasInside) {
+  if (has_inside) {
     // put innermost grid point into _o storage of previous rank
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
@@ -1271,7 +1271,7 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
     // TODO(jons) : non-stellarator-symmetric terms!
   }
 
-  if (hasOutside) {
+  if (has_outside) {
     // put outermost grid point into _i storage of next rank
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
@@ -1297,7 +1297,7 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
   // Now that the crossover data is in the HandoverStorge,
   // put it locally into the correct satellite locations.
 
-  if (hasOutside) {
+  if (has_outside) {
     // put _o storage filled by thread_id-1 into nsMaxF1-1
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
@@ -1316,7 +1316,7 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
     }  // lthreed
   }
 
-  if (hasInside) {
+  if (has_inside) {
     // put _i storage filled by thread_id-1 into nsMinF1
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
@@ -1362,15 +1362,15 @@ void Vmec::InterpolateToNextMultigridStep(
   int thread_with_ns_1 = 0;
   int thread_with_ns_2 = 0;
   for (int thread_id = 0; thread_id < num_threads_old; ++thread_id) {
-    const int nsMinF = r_old[thread_id]->nsMinF;
-    const int nsMaxFIncludingLcfs = r_old[thread_id]->nsMaxFIncludingLcfs;
-    if (nsMinF <= 0 && 0 < nsMaxFIncludingLcfs) {
+    const int ns_min_f = r_old[thread_id]->nsMinF;
+    const int ns_max_f_including_lcfs = r_old[thread_id]->nsMaxFIncludingLcfs;
+    if (ns_min_f <= 0 && 0 < ns_max_f_including_lcfs) {
       thread_with_ns_0 = thread_id;
     }
-    if (nsMinF <= 1 && 1 < nsMaxFIncludingLcfs) {
+    if (ns_min_f <= 1 && 1 < ns_max_f_including_lcfs) {
       thread_with_ns_1 = thread_id;
     }
-    if (nsMinF <= 2 && 2 < nsMaxFIncludingLcfs) {
+    if (ns_min_f <= 2 && 2 < ns_max_f_including_lcfs) {
       thread_with_ns_2 = thread_id;
     }
   }  // thread_id
@@ -1447,20 +1447,20 @@ void Vmec::InterpolateToNextMultigridStep(
   xint.resize(ns_new);
 
   for (int thread_id = 0; thread_id < num_threads_new; ++thread_id) {
-    for (int jNew = r_new[thread_id]->nsMinF1; jNew < r_new[thread_id]->nsMaxF1;
-         ++jNew) {
-      sj[jNew] = jNew / (ns_new - 1.0);
+    for (int j_new = r_new[thread_id]->nsMinF1; j_new < r_new[thread_id]->nsMaxF1;
+         ++j_new) {
+      sj[j_new] = j_new / (ns_new - 1.0);
 
       // entries around radial position of jNew on old grid
-      js1[jNew] = (jNew * (ns_old - 1)) / (ns_new - 1);
-      js2[jNew] = std::min(js1[jNew] + 1, ns_old - 1);
+      js1[j_new] = (j_new * (ns_old - 1)) / (ns_new - 1);
+      js2[j_new] = std::min(js1[j_new] + 1, ns_old - 1);
 
-      s1[jNew] = js1[jNew] * hs_old;
+      s1[j_new] = js1[j_new] * hs_old;
 
       // interpolation weight
-      xint[jNew] = (sj[jNew] - s1[jNew]) / hs_old;
-      xint[jNew] = std::min(1.0, xint[jNew]);
-      xint[jNew] = std::max(0.0, xint[jNew]);
+      xint[j_new] = (sj[j_new] - s1[j_new]) / hs_old;
+      xint[j_new] = std::min(1.0, xint[j_new]);
+      xint[j_new] = std::max(0.0, xint[j_new]);
 
       // now need to figure out source threads, which have js1 and js2
       // and the target thread that has jNew
@@ -1468,12 +1468,12 @@ void Vmec::InterpolateToNextMultigridStep(
       int thread_with_js2 = 0;
       for (int old_thread_id = 0; old_thread_id < num_threads_old;
            ++old_thread_id) {
-        const int nsMinF1 = r_old[old_thread_id]->nsMinF1;
-        const int nsMaxF1 = r_old[old_thread_id]->nsMaxF1;
-        if (nsMinF1 <= js1[jNew] && js1[jNew] < nsMaxF1) {
+        const int ns_min_f1 = r_old[old_thread_id]->nsMinF1;
+        const int ns_max_f1 = r_old[old_thread_id]->nsMaxF1;
+        if (ns_min_f1 <= js1[j_new] && js1[j_new] < ns_max_f1) {
           thread_with_js1 = old_thread_id;
         }
-        if (nsMinF1 <= js2[jNew] && js2[jNew] < nsMaxF1) {
+        if (ns_min_f1 <= js2[j_new] && js2[j_new] < ns_max_f1) {
           thread_with_js2 = old_thread_id;
         }
       }  // old_thread_id
@@ -1484,85 +1484,85 @@ void Vmec::InterpolateToNextMultigridStep(
           const int m_parity = m % 2;
 
           const int idx_fc_js1 =
-              ((js1[jNew] - m_x_old[thread_with_js1]->nsMin()) * s_.mpol + m) *
+              ((js1[j_new] - m_x_old[thread_with_js1]->nsMin()) * s_.mpol + m) *
                   (s_.ntor + 1) +
               n;
           const int idx_fc_js2 =
-              ((js2[jNew] - m_x_old[thread_with_js2]->nsMin()) * s_.mpol + m) *
+              ((js2[j_new] - m_x_old[thread_with_js2]->nsMin()) * s_.mpol + m) *
                   (s_.ntor + 1) +
               n;
-          const int idx_fc_jNew =
-              ((jNew - m_x_new[thread_id]->nsMin()) * s_.mpol + m) *
+          const int idx_fc_j_new =
+              ((j_new - m_x_new[thread_id]->nsMin()) * s_.mpol + m) *
                   (s_.ntor + 1) +
               n;
 
           const double scalxc =
               p[thread_id]
-                  ->scalxc[(jNew - r_new[thread_id]->nsMinF1) * 2 + m_parity];
+                  ->scalxc[(j_new - r_new[thread_id]->nsMinF1) * 2 + m_parity];
 
-          m_x_new[thread_id]->rmncc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
+          m_x_new[thread_id]->rmncc[idx_fc_j_new] =
+              ((1.0 - xint[j_new]) *
                    m_x_old[thread_with_js1]->rmncc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->rmncc[idx_fc_js2]) /
+               xint[j_new] * m_x_old[thread_with_js2]->rmncc[idx_fc_js2]) /
               scalxc;
-          m_x_new[thread_id]->zmnsc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
+          m_x_new[thread_id]->zmnsc[idx_fc_j_new] =
+              ((1.0 - xint[j_new]) *
                    m_x_old[thread_with_js1]->zmnsc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->zmnsc[idx_fc_js2]) /
+               xint[j_new] * m_x_old[thread_with_js2]->zmnsc[idx_fc_js2]) /
               scalxc;
-          m_x_new[thread_id]->lmnsc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
+          m_x_new[thread_id]->lmnsc[idx_fc_j_new] =
+              ((1.0 - xint[j_new]) *
                    m_x_old[thread_with_js1]->lmnsc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->lmnsc[idx_fc_js2]) /
+               xint[j_new] * m_x_old[thread_with_js2]->lmnsc[idx_fc_js2]) /
               scalxc;
           if (s_.lthreed) {
-            m_x_new[thread_id]->rmnss[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
+            m_x_new[thread_id]->rmnss[idx_fc_j_new] =
+                ((1.0 - xint[j_new]) *
                      m_x_old[thread_with_js1]->rmnss[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->rmnss[idx_fc_js2]) /
+                 xint[j_new] * m_x_old[thread_with_js2]->rmnss[idx_fc_js2]) /
                 scalxc;
-            m_x_new[thread_id]->zmncs[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
+            m_x_new[thread_id]->zmncs[idx_fc_j_new] =
+                ((1.0 - xint[j_new]) *
                      m_x_old[thread_with_js1]->zmncs[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->zmncs[idx_fc_js2]) /
+                 xint[j_new] * m_x_old[thread_with_js2]->zmncs[idx_fc_js2]) /
                 scalxc;
-            m_x_new[thread_id]->lmncs[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
+            m_x_new[thread_id]->lmncs[idx_fc_j_new] =
+                ((1.0 - xint[j_new]) *
                      m_x_old[thread_with_js1]->lmncs[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->lmncs[idx_fc_js2]) /
+                 xint[j_new] * m_x_old[thread_with_js2]->lmncs[idx_fc_js2]) /
                 scalxc;
           }
           if (s_.lasym) {
-            m_x_new[thread_id]->rmnsc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
+            m_x_new[thread_id]->rmnsc[idx_fc_j_new] =
+                ((1.0 - xint[j_new]) *
                      m_x_old[thread_with_js1]->rmnsc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->rmnsc[idx_fc_js2]) /
+                 xint[j_new] * m_x_old[thread_with_js2]->rmnsc[idx_fc_js2]) /
                 scalxc;
-            m_x_new[thread_id]->zmncc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
+            m_x_new[thread_id]->zmncc[idx_fc_j_new] =
+                ((1.0 - xint[j_new]) *
                      m_x_old[thread_with_js1]->zmncc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->zmncc[idx_fc_js2]) /
+                 xint[j_new] * m_x_old[thread_with_js2]->zmncc[idx_fc_js2]) /
                 scalxc;
-            m_x_new[thread_id]->lmncc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
+            m_x_new[thread_id]->lmncc[idx_fc_j_new] =
+                ((1.0 - xint[j_new]) *
                      m_x_old[thread_with_js1]->lmncc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->lmncc[idx_fc_js2]) /
+                 xint[j_new] * m_x_old[thread_with_js2]->lmncc[idx_fc_js2]) /
                 scalxc;
             if (s_.lthreed) {
-              m_x_new[thread_id]->rmncs[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
+              m_x_new[thread_id]->rmncs[idx_fc_j_new] =
+                  ((1.0 - xint[j_new]) *
                        m_x_old[thread_with_js1]->rmncs[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->rmncs[idx_fc_js2]) /
+                   xint[j_new] * m_x_old[thread_with_js2]->rmncs[idx_fc_js2]) /
                   scalxc;
-              m_x_new[thread_id]->zmnss[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
+              m_x_new[thread_id]->zmnss[idx_fc_j_new] =
+                  ((1.0 - xint[j_new]) *
                        m_x_old[thread_with_js1]->zmnss[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->zmnss[idx_fc_js2]) /
+                   xint[j_new] * m_x_old[thread_with_js2]->zmnss[idx_fc_js2]) /
                   scalxc;
-              m_x_new[thread_id]->lmnss[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
+              m_x_new[thread_id]->lmnss[idx_fc_j_new] =
+                  ((1.0 - xint[j_new]) *
                        m_x_old[thread_with_js1]->lmnss[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->lmnss[idx_fc_js2]) /
+                   xint[j_new] * m_x_old[thread_with_js2]->lmnss[idx_fc_js2]) /
                   scalxc;
             }
           }

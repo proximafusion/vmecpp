@@ -41,9 +41,9 @@ TEST_P(TridiagonalSolverSerialTest, CheckTridiagonalSolverSerial) {
   static constexpr int kNumberOfRightHandSides = 1;
 
   // matrix and right-hand-side
-  std::vector<double> matDiagLow(kMatrixDimension, 0.0);
-  std::vector<double> matDiag(kMatrixDimension, 0.0);
-  std::vector<double> matDiagUp(kMatrixDimension, 0.0);
+  std::vector<double> mat_diag_low(kMatrixDimension, 0.0);
+  std::vector<double> mat_diag(kMatrixDimension, 0.0);
+  std::vector<double> mat_diag_up(kMatrixDimension, 0.0);
 
   std::vector<std::vector<double>> rhs(kNumberOfRightHandSides);
   rhs[0].resize(kMatrixDimension);
@@ -55,22 +55,22 @@ TEST_P(TridiagonalSolverSerialTest, CheckTridiagonalSolverSerial) {
   if (random_test_data_) {
     for (int i = 0; i < kMatrixDimension; ++i) {
       if (i > 0) {
-        matDiagLow[i] = dist(rng);
+        mat_diag_low[i] = dist(rng);
       }
-      matDiag[i] = dist(rng);
+      mat_diag[i] = dist(rng);
       if (i < kMatrixDimension - 1) {
-        matDiagUp[i] = dist(rng);
+        mat_diag_up[i] = dist(rng);
       }
       x[i] = dist(rng);
     }
   } else {
     for (int i = 0; i < kMatrixDimension; ++i) {
       if (i > 0) {
-        matDiagLow[i] = 2 * i;
+        mat_diag_low[i] = 2 * i;
       }
-      matDiag[i] = (i + 1) * 10;
+      mat_diag[i] = (i + 1) * 10;
       if (i + 1 < kMatrixDimension) {
-        matDiagUp[i] = i + 1;
+        mat_diag_up[i] = i + 1;
       }
       x[i] = 2 * abs(i - 4) + 1;
     }
@@ -80,22 +80,22 @@ TEST_P(TridiagonalSolverSerialTest, CheckTridiagonalSolverSerial) {
   for (int i = 0; i < kMatrixDimension; ++i) {
     if (i < kMatrixDimension - 1) {
       // sup-diagonal
-      rhs[0][i] += matDiagUp[i] * x[i + 1];
+      rhs[0][i] += mat_diag_up[i] * x[i + 1];
     }
 
     // diagonal
-    rhs[0][i] += matDiag[i] * x[i];
+    rhs[0][i] += mat_diag[i] * x[i];
 
     if (i > 0) {
       // sub-diagonal
-      rhs[0][i] += matDiagLow[i] * x[i - 1];
+      rhs[0][i] += mat_diag_low[i] * x[i - 1];
     }
   }
 
-  int jMin = 0;
-  int jMax = kMatrixDimension;
-  TridiagonalSolveSerial(matDiagUp, matDiag, matDiagLow, rhs,
-                         jMin, jMax, kNumberOfRightHandSides);
+  int j_min = 0;
+  int j_max = kMatrixDimension;
+  TridiagonalSolveSerial(mat_diag_up, mat_diag, mat_diag_low, rhs,
+                         j_min, j_max, kNumberOfRightHandSides);
 
   // check that solution is correct
   for (int i = 0; i < kMatrixDimension; ++i) {
@@ -165,8 +165,8 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
     }    // j
   }      // k
 
-  std::vector<int> jMin(mnmax);
-  int jMax = ns;
+  std::vector<int> j_min(mnmax);
+  int j_max = ns;
 
 #ifdef _OPENMP
   int max_threads = omp_get_max_threads();
@@ -200,33 +200,33 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
     all_cr[myid].resize(num_basis);
     all_cz[myid].resize(num_basis);
 
-    int work_per_CPU = ns / ncpu;
+    int work_per_cpu = ns / ncpu;
     int work_remainder = ns % ncpu;
 
-    int nsMinF = myid * work_per_CPU;
-    int nsMaxF = (myid + 1) * work_per_CPU;
+    int ns_min_f = myid * work_per_cpu;
+    int ns_max_f = (myid + 1) * work_per_cpu;
     if (myid < work_remainder) {
-      nsMinF += myid;
-      nsMaxF += myid + 1;
+      ns_min_f += myid;
+      ns_max_f += myid + 1;
     } else {
-      nsMinF += work_remainder;
-      nsMaxF += work_remainder;
+      ns_min_f += work_remainder;
+      ns_max_f += work_remainder;
     }
 
     // last entry is never referenced
-    all_ar[myid].resize((nsMaxF - nsMinF) * mnmax);
-    all_az[myid].resize((nsMaxF - nsMinF) * mnmax);
+    all_ar[myid].resize((ns_max_f - ns_min_f) * mnmax);
+    all_az[myid].resize((ns_max_f - ns_min_f) * mnmax);
 
-    all_dr[myid].resize((nsMaxF - nsMinF) * mnmax);
-    all_dz[myid].resize((nsMaxF - nsMinF) * mnmax);
+    all_dr[myid].resize((ns_max_f - ns_min_f) * mnmax);
+    all_dz[myid].resize((ns_max_f - ns_min_f) * mnmax);
 
     // first entry is never referenced
-    all_br[myid].resize((nsMaxF - nsMinF) * mnmax);
-    all_bz[myid].resize((nsMaxF - nsMinF) * mnmax);
+    all_br[myid].resize((ns_max_f - ns_min_f) * mnmax);
+    all_bz[myid].resize((ns_max_f - ns_min_f) * mnmax);
 
     for (int k = 0; k < num_basis; ++k) {
-      all_cr[myid][k].resize((nsMaxF - nsMinF) * mnmax);
-      all_cz[myid][k].resize((nsMaxF - nsMinF) * mnmax);
+      all_cr[myid][k].resize((ns_max_f - ns_min_f) * mnmax);
+      all_cz[myid][k].resize((ns_max_f - ns_min_f) * mnmax);
     }  // k
 
     std::vector<double>& ar = all_ar[myid];
@@ -243,9 +243,9 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
     // do not use all_... below here
 
     // fill tri-diagonal matrix
-    for (int j = nsMinF; j < nsMaxF; ++j) {
+    for (int j = ns_min_f; j < ns_max_f; ++j) {
       for (int mn = 0; mn < mnmax; ++mn) {
-        int idx_mn = (j - nsMinF) * mnmax + mn;
+        int idx_mn = (j - ns_min_f) * mnmax + mn;
         if (j < ns - 1) {
           ar[idx_mn] = 0.1 * dist(rng) + 1.0e-12;
           az[idx_mn] = 0.1 * dist(rng) + 1.0e-12;
@@ -260,9 +260,9 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
     }    // j
 
     // compute RHS for known solution
-    for (int j = nsMinF; j < nsMaxF; ++j) {
+    for (int j = ns_min_f; j < ns_max_f; ++j) {
       for (int mn = 0; mn < mnmax; ++mn) {
-        int local_idx = (j - nsMinF) * mnmax + mn;
+        int local_idx = (j - ns_min_f) * mnmax + mn;
 
         int idx_mn_p = (j + 1) * mnmax + mn;  // +1
         int idx_mn_0 = j * mnmax + mn;        //  0
@@ -291,16 +291,16 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
 #pragma omp barrier
 
     // solve tri-diagonal system
-    TridiagonalSolveOpenMP(ar, dr, br, cr, az, dz, bz, cz, jMin, jMax, mnmax,
-                           num_basis, mutices, ncpu, myid, nsMinF, nsMaxF,
+    TridiagonalSolveOpenMP(ar, dr, br, cr, az, dz, bz, cz, j_min, j_max, mnmax,
+                           num_basis, mutices, ncpu, myid, ns_min_f, ns_max_f,
                            handover_ar, handover_cr, handover_az, handover_cz);
 
 #pragma omp barrier
 
     // check that solution is correct
-    for (int j = nsMinF; j < nsMaxF; ++j) {
+    for (int j = ns_min_f; j < ns_max_f; ++j) {
       for (int mn = 0; mn < mnmax; ++mn) {
-        int local_idx = (j - nsMinF) * mnmax + mn;
+        int local_idx = (j - ns_min_f) * mnmax + mn;
         int idx_mn = j * mnmax + mn;
         for (int k = 0; k < num_basis; ++k) {
           EXPECT_TRUE(

@@ -225,8 +225,8 @@ void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
   double min_z = DBL_MAX;
   double max_z = -DBL_MAX;
 
-  bool exceedGridSizeR = false;
-  bool exceedGridSizeZ = false;
+  bool exceed_grid_size_r = false;
+  bool exceed_grid_size_z = false;
   for (int kl = ztMin; kl < ztMax; ++kl) {
     int k = kl % nZeta;
 
@@ -238,10 +238,10 @@ void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
 
     // check if plasma boundary exceeds pre-computed grid
     if (rLCFS[kl] < minR || rLCFS[kl] > maxR) {
-      exceedGridSizeR = true;
+      exceed_grid_size_r = true;
     }
     if (zLCFS[kl] < minZ || zLCFS[kl] > maxZ) {
-      exceedGridSizeZ = true;
+      exceed_grid_size_z = true;
     }
 
     // crop to available grid
@@ -267,20 +267,20 @@ void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
     double w11 = 1.0 + w22 - (pr + qz);  // (1-p)*(1-q) = 1 + p*q - (p + q)
 
     // COMPUTE B FIELD AT R, PHI, Z BY INTERPOLATION
-    int kj_i_ = (k * numZ + jz) * numR + ir;
-    int kj1i_ = (k * numZ + jz1) * numR + ir;
+    int kj_i = (k * numZ + jz) * numR + ir;
+    int kj1i = (k * numZ + jz1) * numR + ir;
     int kj_i1 = (k * numZ + jz) * numR + ir1;
     int kj1i1 = (k * numZ + jz1) * numR + ir1;
 
     m_interpBr[kl - ztMin] =
-        w11 * bR[kj_i_] + w12 * bR[kj1i_] + w21 * bR[kj_i1] + w22 * bR[kj1i1];
+        w11 * bR[kj_i] + w12 * bR[kj1i] + w21 * bR[kj_i1] + w22 * bR[kj1i1];
     m_interpBp[kl - ztMin] =
-        w11 * bP[kj_i_] + w12 * bP[kj1i_] + w21 * bP[kj_i1] + w22 * bP[kj1i1];
+        w11 * bP[kj_i] + w12 * bP[kj1i] + w21 * bP[kj_i1] + w22 * bP[kj1i1];
     m_interpBz[kl - ztMin] =
-        w11 * bZ[kj_i_] + w12 * bZ[kj1i_] + w21 * bZ[kj_i1] + w22 * bZ[kj1i1];
+        w11 * bZ[kj_i] + w12 * bZ[kj1i] + w21 * bZ[kj_i1] + w22 * bZ[kj1i1];
   }  // kl
 
-  if (exceedGridSizeR || exceedGridSizeZ) {
+  if (exceed_grid_size_r || exceed_grid_size_z) {
     // TODO(jons): automatically evaluate B outside of grid based on coil
     // definitions and Biot-Savart
     // --> will only get slower, but more robust (and accurate?)
@@ -290,12 +290,12 @@ void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
     // it is considered an error message.
     std::cerr << "WARNING: Plasma Boundary exceeded Vacuum Grid Size\n";
 
-    if (exceedGridSizeR) {
+    if (exceed_grid_size_r) {
       std::cout << absl::StrFormat("  R: min = % .3e  max = % .3e\n", min_r,
                                    max_r);
     }
 
-    if (exceedGridSizeZ) {
+    if (exceed_grid_size_z) {
       std::cout << absl::StrFormat("  Z: min = % .3e  max = % .3e\n", min_z,
                                    max_z);
     }

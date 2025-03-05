@@ -33,7 +33,7 @@ using ::testing::TestWithParam;
 using ::testing::Values;
 
 TEST(TestSurfaceGeometry, CheckConstants) {
-  const double tolerance = 1.0e-12;
+  constexpr double kTolerance = 1.0e-12;
 
   const SurfaceGeometryMockup& surface_geometry_mockup =
       SurfaceGeometryMockup::InitializeFromFile();
@@ -45,18 +45,18 @@ TEST(TestSurfaceGeometry, CheckConstants) {
   for (int k = 0; k < s.nZeta; ++k) {
     const double phi = omega_phi * k;
 
-    EXPECT_TRUE(IsCloseRelAbs(std::cos(phi), sg.cos_phi[k], tolerance))
+    EXPECT_TRUE(IsCloseRelAbs(std::cos(phi), sg.cos_phi[k], kTolerance))
         << "at k=" << k;
-    EXPECT_TRUE(IsCloseRelAbs(std::sin(phi), sg.sin_phi[k], tolerance))
+    EXPECT_TRUE(IsCloseRelAbs(std::sin(phi), sg.sin_phi[k], kTolerance))
         << "at k=" << k;
   }
 }
 
 TEST(TestSurfaceGeometry, CheckInvDFT) {
-  const double tolerance = 1.0e-12;
+  constexpr double kTolerance = 1.0e-12;
 
   // tolerance for finite-difference derivative approximations
-  const double fdTol = 1.0e-6;
+  constexpr double kFdTol = 1.0e-6;
 
   SurfaceGeometryMockup surface_geometry_mockup =
       SurfaceGeometryMockup::InitializeFromFile();
@@ -66,39 +66,39 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
   const FourierBasisFastToroidal& fb = surface_geometry_mockup.fb;
 
   // reference inv-DFT
-  std::vector<double> refR(s.nThetaEven * s.nZeta);  // full surface
-  std::vector<double> refZ(s.nThetaEven * s.nZeta);  // full surface
+  std::vector<double> ref_r(s.nThetaEven * s.nZeta);  // full surface
+  std::vector<double> ref_z(s.nThetaEven * s.nZeta);  // full surface
 
-  std::vector<double> refR_tp(s.nZnT);     // theta + eps
-  std::vector<double> refR_tm(s.nZnT);     // theta - eps
-  std::vector<double> refR_zp(s.nZnT);     //  phi + eps
-  std::vector<double> refR_zm(s.nZnT);     //  phi - eps
-  std::vector<double> refR_tp_zp(s.nZnT);  // theta + eps, phi + eps
-  std::vector<double> refR_tp_zm(s.nZnT);  // theta + eps, phi - eps
-  std::vector<double> refR_tm_zp(s.nZnT);  // theta - eps, phi + eps
-  std::vector<double> refR_tm_zm(s.nZnT);  // theta - eps, phi - eps
-  std::vector<double> refRu(s.nZnT);
-  std::vector<double> refRv(s.nZnT);
-  std::vector<double> refRuu(s.nZnT);
-  std::vector<double> refRuv(s.nZnT);
-  std::vector<double> refRvv(s.nZnT);
+  std::vector<double> ref_r_tp(s.nZnT);     // theta + eps
+  std::vector<double> ref_r_tm(s.nZnT);     // theta - eps
+  std::vector<double> ref_r_zp(s.nZnT);     //  phi + eps
+  std::vector<double> ref_r_zm(s.nZnT);     //  phi - eps
+  std::vector<double> ref_r_tp_zp(s.nZnT);  // theta + eps, phi + eps
+  std::vector<double> ref_r_tp_zm(s.nZnT);  // theta + eps, phi - eps
+  std::vector<double> ref_r_tm_zp(s.nZnT);  // theta - eps, phi + eps
+  std::vector<double> ref_r_tm_zm(s.nZnT);  // theta - eps, phi - eps
+  std::vector<double> ref_ru(s.nZnT);
+  std::vector<double> ref_rv(s.nZnT);
+  std::vector<double> ref_ruu(s.nZnT);
+  std::vector<double> ref_ruv(s.nZnT);
+  std::vector<double> ref_rvv(s.nZnT);
 
-  std::vector<double> refZ_tp(s.nZnT);     // theta + eps
-  std::vector<double> refZ_tm(s.nZnT);     // theta - eps
-  std::vector<double> refZ_zp(s.nZnT);     //  phi + eps
-  std::vector<double> refZ_zm(s.nZnT);     //  phi - eps
-  std::vector<double> refZ_tp_zp(s.nZnT);  // theta + eps, phi + eps
-  std::vector<double> refZ_tp_zm(s.nZnT);  // theta + eps, phi - eps
-  std::vector<double> refZ_tm_zp(s.nZnT);  // theta - eps, phi + eps
-  std::vector<double> refZ_tm_zm(s.nZnT);  // theta - eps, phi - eps
-  std::vector<double> refZu(s.nZnT);
-  std::vector<double> refZv(s.nZnT);
-  std::vector<double> refZuu(s.nZnT);
-  std::vector<double> refZuv(s.nZnT);
-  std::vector<double> refZvv(s.nZnT);
+  std::vector<double> ref_z_tp(s.nZnT);     // theta + eps
+  std::vector<double> ref_z_tm(s.nZnT);     // theta - eps
+  std::vector<double> ref_z_zp(s.nZnT);     //  phi + eps
+  std::vector<double> ref_z_zm(s.nZnT);     //  phi - eps
+  std::vector<double> ref_z_tp_zp(s.nZnT);  // theta + eps, phi + eps
+  std::vector<double> ref_z_tp_zm(s.nZnT);  // theta + eps, phi - eps
+  std::vector<double> ref_z_tm_zp(s.nZnT);  // theta - eps, phi + eps
+  std::vector<double> ref_z_tm_zm(s.nZnT);  // theta - eps, phi - eps
+  std::vector<double> ref_zu(s.nZnT);
+  std::vector<double> ref_zv(s.nZnT);
+  std::vector<double> ref_zuu(s.nZnT);
+  std::vector<double> ref_zuv(s.nZnT);
+  std::vector<double> ref_zvv(s.nZnT);
 
   // relative finite-difference step
-  const double eps = 1.0e-5;
+  constexpr double kEps = 1.0e-5;
 
   std::vector<double> theta(s.nThetaEven * s.nZeta);
   std::vector<double> phi(s.nThetaEven * s.nZeta);
@@ -113,15 +113,15 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
       theta[kl] = omega_theta * l;
       phi[kl] = omega_phi * k;
 
-      refR[kl] = 0.0;
-      refZ[kl] = 0.0;
+      ref_r[kl] = 0.0;
+      ref_z[kl] = 0.0;
       for (int mn = 0; mn < s.mnmax; ++mn) {
         const double kernel = fb.xm[mn] * theta[kl] - fb.xn[mn] * phi[kl];
-        refR[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel);
-        refZ[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel);
+        ref_r[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel);
+        ref_z[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel);
         if (s.lasym) {
-          refR[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel);
-          refZ[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel);
+          ref_r[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel);
+          ref_z[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel);
         }  // lasym
       }    // mn
     }      // k
@@ -134,135 +134,135 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
       theta[kl] = omega_theta * l;
       phi[kl] = omega_phi * k;
 
-      refR_tp[kl] = 0.0;
-      refR_tm[kl] = 0.0;
-      refR_zp[kl] = 0.0;
-      refR_zm[kl] = 0.0;
-      refR_tp_zp[kl] = 0.0;
-      refR_tp_zm[kl] = 0.0;
-      refR_tm_zp[kl] = 0.0;
-      refR_tm_zm[kl] = 0.0;
-      refRu[kl] = 0.0;
-      refRv[kl] = 0.0;
-      refRuu[kl] = 0.0;
-      refRuv[kl] = 0.0;
-      refRvv[kl] = 0.0;
+      ref_r_tp[kl] = 0.0;
+      ref_r_tm[kl] = 0.0;
+      ref_r_zp[kl] = 0.0;
+      ref_r_zm[kl] = 0.0;
+      ref_r_tp_zp[kl] = 0.0;
+      ref_r_tp_zm[kl] = 0.0;
+      ref_r_tm_zp[kl] = 0.0;
+      ref_r_tm_zm[kl] = 0.0;
+      ref_ru[kl] = 0.0;
+      ref_rv[kl] = 0.0;
+      ref_ruu[kl] = 0.0;
+      ref_ruv[kl] = 0.0;
+      ref_rvv[kl] = 0.0;
 
-      refZ_tp[kl] = 0.0;
-      refZ_tm[kl] = 0.0;
-      refZ_zp[kl] = 0.0;
-      refZ_zm[kl] = 0.0;
-      refZ_tp_zp[kl] = 0.0;
-      refZ_tp_zm[kl] = 0.0;
-      refZ_tm_zp[kl] = 0.0;
-      refZ_tm_zm[kl] = 0.0;
-      refZu[kl] = 0.0;
-      refZv[kl] = 0.0;
-      refZuu[kl] = 0.0;
-      refZuv[kl] = 0.0;
-      refZvv[kl] = 0.0;
+      ref_z_tp[kl] = 0.0;
+      ref_z_tm[kl] = 0.0;
+      ref_z_zp[kl] = 0.0;
+      ref_z_zm[kl] = 0.0;
+      ref_z_tp_zp[kl] = 0.0;
+      ref_z_tp_zm[kl] = 0.0;
+      ref_z_tm_zp[kl] = 0.0;
+      ref_z_tm_zm[kl] = 0.0;
+      ref_zu[kl] = 0.0;
+      ref_zv[kl] = 0.0;
+      ref_zuu[kl] = 0.0;
+      ref_zuv[kl] = 0.0;
+      ref_zvv[kl] = 0.0;
 
       for (int mn = 0; mn < s.mnmax; ++mn) {
         const double kernel = fb.xm[mn] * theta[kl] - fb.xn[mn] * phi[kl];
         const double kernel_tp =
-            fb.xm[mn] * (theta[kl] + eps) - fb.xn[mn] * phi[kl];
+            fb.xm[mn] * (theta[kl] + kEps) - fb.xn[mn] * phi[kl];
         const double kernel_tm =
-            fb.xm[mn] * (theta[kl] - eps) - fb.xn[mn] * phi[kl];
+            fb.xm[mn] * (theta[kl] - kEps) - fb.xn[mn] * phi[kl];
         const double kernel_zp =
-            fb.xm[mn] * theta[kl] - fb.xn[mn] * (phi[kl] + eps);
+            fb.xm[mn] * theta[kl] - fb.xn[mn] * (phi[kl] + kEps);
         const double kernel_zm =
-            fb.xm[mn] * theta[kl] - fb.xn[mn] * (phi[kl] - eps);
+            fb.xm[mn] * theta[kl] - fb.xn[mn] * (phi[kl] - kEps);
 
         const double kernel_tp_zp =
-            fb.xm[mn] * (theta[kl] + eps) - fb.xn[mn] * (phi[kl] + eps);
+            fb.xm[mn] * (theta[kl] + kEps) - fb.xn[mn] * (phi[kl] + kEps);
         const double kernel_tp_zm =
-            fb.xm[mn] * (theta[kl] + eps) - fb.xn[mn] * (phi[kl] - eps);
+            fb.xm[mn] * (theta[kl] + kEps) - fb.xn[mn] * (phi[kl] - kEps);
         const double kernel_tm_zp =
-            fb.xm[mn] * (theta[kl] - eps) - fb.xn[mn] * (phi[kl] + eps);
+            fb.xm[mn] * (theta[kl] - kEps) - fb.xn[mn] * (phi[kl] + kEps);
         const double kernel_tm_zm =
-            fb.xm[mn] * (theta[kl] - eps) - fb.xn[mn] * (phi[kl] - eps);
+            fb.xm[mn] * (theta[kl] - kEps) - fb.xn[mn] * (phi[kl] - kEps);
 
-        refR_tp[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tp);
-        refR_tm[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tm);
-        refR_zp[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_zp);
-        refR_zm[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_zm);
-        refR_tp_zp[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tp_zp);
-        refR_tp_zm[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tp_zm);
-        refR_tm_zp[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tm_zp);
-        refR_tm_zm[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tm_zm);
-        refRu[kl] +=
+        ref_r_tp[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tp);
+        ref_r_tm[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tm);
+        ref_r_zp[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_zp);
+        ref_r_zm[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_zm);
+        ref_r_tp_zp[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tp_zp);
+        ref_r_tp_zm[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tp_zm);
+        ref_r_tm_zp[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tm_zp);
+        ref_r_tm_zm[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel_tm_zm);
+        ref_ru[kl] +=
             surface_geometry_mockup.rmnc[mn] * sin(kernel) * (-fb.xm[mn]);
-        refRv[kl] += surface_geometry_mockup.rmnc[mn] * sin(kernel) * fb.xn[mn];
-        refRuu[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
+        ref_rv[kl] += surface_geometry_mockup.rmnc[mn] * sin(kernel) * fb.xn[mn];
+        ref_ruu[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
                       (-fb.xm[mn] * fb.xm[mn]);
-        refRuv[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
+        ref_ruv[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
                       fb.xn[mn] * fb.xm[mn];
-        refRvv[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
+        ref_rvv[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
                       (-fb.xn[mn] * fb.xn[mn]);
 
-        refZ_tp[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tp);
-        refZ_tm[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tm);
-        refZ_zp[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_zp);
-        refZ_zm[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_zm);
-        refZ_tp_zp[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tp_zp);
-        refZ_tp_zm[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tp_zm);
-        refZ_tm_zp[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tm_zp);
-        refZ_tm_zm[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tm_zm);
-        refZu[kl] += surface_geometry_mockup.zmns[mn] * cos(kernel) * fb.xm[mn];
-        refZv[kl] +=
+        ref_z_tp[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tp);
+        ref_z_tm[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tm);
+        ref_z_zp[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_zp);
+        ref_z_zm[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_zm);
+        ref_z_tp_zp[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tp_zp);
+        ref_z_tp_zm[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tp_zm);
+        ref_z_tm_zp[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tm_zp);
+        ref_z_tm_zm[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel_tm_zm);
+        ref_zu[kl] += surface_geometry_mockup.zmns[mn] * cos(kernel) * fb.xm[mn];
+        ref_zv[kl] +=
             surface_geometry_mockup.zmns[mn] * cos(kernel) * (-fb.xn[mn]);
-        refZuu[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
+        ref_zuu[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
                       (-fb.xm[mn] * fb.xm[mn]);
-        refZuv[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
+        ref_zuv[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
                       fb.xn[mn] * fb.xm[mn];
-        refZvv[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
+        ref_zvv[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
                       (-fb.xn[mn] * fb.xn[mn]);
 
         if (s.lasym) {
-          refR_tp[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel_tp);
-          refR_tm[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel_tm);
-          refR_zp[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel_zp);
-          refR_zm[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel_zm);
-          refR_tp_zp[kl] +=
+          ref_r_tp[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel_tp);
+          ref_r_tm[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel_tm);
+          ref_r_zp[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel_zp);
+          ref_r_zm[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel_zm);
+          ref_r_tp_zp[kl] +=
               surface_geometry_mockup.rmns[mn] * sin(kernel_tp_zp);
-          refR_tp_zm[kl] +=
+          ref_r_tp_zm[kl] +=
               surface_geometry_mockup.rmns[mn] * sin(kernel_tp_zm);
-          refR_tm_zp[kl] +=
+          ref_r_tm_zp[kl] +=
               surface_geometry_mockup.rmns[mn] * sin(kernel_tm_zp);
-          refR_tm_zm[kl] +=
+          ref_r_tm_zm[kl] +=
               surface_geometry_mockup.rmns[mn] * sin(kernel_tm_zm);
-          refRu[kl] +=
+          ref_ru[kl] +=
               surface_geometry_mockup.rmns[mn] * cos(kernel) * (-fb.xm[mn]);
-          refRv[kl] +=
+          ref_rv[kl] +=
               surface_geometry_mockup.rmns[mn] * cos(kernel) * fb.xn[mn];
-          refRuu[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
+          ref_ruu[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
                         (-fb.xm[mn] * fb.xm[mn]);
-          refRuv[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
+          ref_ruv[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
                         fb.xn[mn] * fb.xm[mn];
-          refRvv[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
+          ref_rvv[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
                         (-fb.xn[mn] * fb.xn[mn]);
 
-          refZ_tp[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel_tp);
-          refZ_tm[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel_tm);
-          refZ_zp[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel_zp);
-          refZ_zm[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel_zm);
-          refZ_tp_zp[kl] +=
+          ref_z_tp[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel_tp);
+          ref_z_tm[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel_tm);
+          ref_z_zp[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel_zp);
+          ref_z_zm[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel_zm);
+          ref_z_tp_zp[kl] +=
               surface_geometry_mockup.zmnc[mn] * cos(kernel_tp_zp);
-          refZ_tp_zm[kl] +=
+          ref_z_tp_zm[kl] +=
               surface_geometry_mockup.zmnc[mn] * cos(kernel_tp_zm);
-          refZ_tm_zp[kl] +=
+          ref_z_tm_zp[kl] +=
               surface_geometry_mockup.zmnc[mn] * cos(kernel_tm_zp);
-          refZ_tm_zm[kl] +=
+          ref_z_tm_zm[kl] +=
               surface_geometry_mockup.zmnc[mn] * cos(kernel_tm_zm);
-          refZu[kl] +=
+          ref_zu[kl] +=
               surface_geometry_mockup.zmnc[mn] * sin(kernel) * fb.xm[mn];
-          refZv[kl] +=
+          ref_zv[kl] +=
               surface_geometry_mockup.zmnc[mn] * sin(kernel) * (-fb.xn[mn]);
-          refZuu[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
+          ref_zuu[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
                         (-fb.xm[mn] * fb.xm[mn]);
-          refZuv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
+          ref_zuv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
                         fb.xn[mn] * fb.xm[mn];
-          refZvv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
+          ref_zvv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
                         (-fb.xn[mn] * fb.xn[mn]);
         }  // lasym
       }    // mn
@@ -277,11 +277,11 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
       const int kl = l * s.nZeta + k;
 
       // R
-      EXPECT_TRUE(IsCloseRelAbs(refR[kl], sg.r1b[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_r[kl], sg.r1b[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
       // Z
-      EXPECT_TRUE(IsCloseRelAbs(refZ[kl], sg.z1b[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_z[kl], sg.z1b[kl], kTolerance))
           << "at k=" << k << " l=" << l;
     }  // k
   }    // l
@@ -293,67 +293,67 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
       const int kl = l * s.nZeta + k;
 
       // dR/dTheta
-      double ru_approx = (refR_tp[kl] - refR_tm[kl]) / (2.0 * eps);
-      EXPECT_TRUE(IsCloseRelAbs(ru_approx, sg.rub[kl], fdTol))
+      double ru_approx = (ref_r_tp[kl] - ref_r_tm[kl]) / (2.0 * kEps);
+      EXPECT_TRUE(IsCloseRelAbs(ru_approx, sg.rub[kl], kFdTol))
           << "at k=" << k << " l=" << l;
 
       // dR/dZeta
-      double rv_approx = (refR_zp[kl] - refR_zm[kl]) / (2.0 * eps);
-      EXPECT_TRUE(IsCloseRelAbs(rv_approx, sg.rvb[kl], fdTol))
+      double rv_approx = (ref_r_zp[kl] - ref_r_zm[kl]) / (2.0 * kEps);
+      EXPECT_TRUE(IsCloseRelAbs(rv_approx, sg.rvb[kl], kFdTol))
           << "at k=" << k << " l=" << l;
 
       // ----------------
 
       // dZ/dTheta
-      double zu_approx = (refZ_tp[kl] - refZ_tm[kl]) / (2.0 * eps);
-      EXPECT_TRUE(IsCloseRelAbs(zu_approx, sg.zub[kl], fdTol))
+      double zu_approx = (ref_z_tp[kl] - ref_z_tm[kl]) / (2.0 * kEps);
+      EXPECT_TRUE(IsCloseRelAbs(zu_approx, sg.zub[kl], kFdTol))
           << "at k=" << k << " l=" << l;
 
       // dZ/dZeta
-      double zv_approx = (refZ_zp[kl] - refZ_zm[kl]) / (2.0 * eps);
-      EXPECT_TRUE(IsCloseRelAbs(zv_approx, sg.zvb[kl], fdTol))
+      double zv_approx = (ref_z_zp[kl] - ref_z_zm[kl]) / (2.0 * kEps);
+      EXPECT_TRUE(IsCloseRelAbs(zv_approx, sg.zvb[kl], kFdTol))
           << "at k=" << k << " l=" << l;
 
       // --------------
 
       // d^2R/dTheta^2
       double ruu_approx =
-          (refR_tp[kl] - 2.0 * refR[kl] + refR_tm[kl]) / (eps * eps);
-      EXPECT_TRUE(IsCloseRelAbs(ruu_approx, sg.ruu[kl], sqrt(fdTol)))
+          (ref_r_tp[kl] - 2.0 * ref_r[kl] + ref_r_tm[kl]) / (kEps * kEps);
+      EXPECT_TRUE(IsCloseRelAbs(ruu_approx, sg.ruu[kl], sqrt(kFdTol)))
           << "at k=" << k << " l=" << l;
 
       // d^2R/(dTheta dZeta)
       double ruv_approx =
-          (refR_tp_zp[kl] + refR_tm_zm[kl] - refR_tp_zm[kl] - refR_tm_zp[kl]) /
-          (4.0 * eps * eps);
-      EXPECT_TRUE(IsCloseRelAbs(ruv_approx, sg.ruv[kl], sqrt(fdTol)))
+          (ref_r_tp_zp[kl] + ref_r_tm_zm[kl] - ref_r_tp_zm[kl] - ref_r_tm_zp[kl]) /
+          (4.0 * kEps * kEps);
+      EXPECT_TRUE(IsCloseRelAbs(ruv_approx, sg.ruv[kl], sqrt(kFdTol)))
           << "at k=" << k << " l=" << l;
 
       // d^2R/dZeta^2
       double rvv_approx =
-          (refR_zp[kl] - 2.0 * refR[kl] + refR_zm[kl]) / (eps * eps);
-      EXPECT_TRUE(IsCloseRelAbs(rvv_approx, sg.rvv[kl], sqrt(fdTol)))
+          (ref_r_zp[kl] - 2.0 * ref_r[kl] + ref_r_zm[kl]) / (kEps * kEps);
+      EXPECT_TRUE(IsCloseRelAbs(rvv_approx, sg.rvv[kl], sqrt(kFdTol)))
           << "at k=" << k << " l=" << l;
 
       // ----------------
 
       // d^2Z/dTheta^2
       double zuu_approx =
-          (refZ_tp[kl] - 2.0 * refZ[kl] + refZ_tm[kl]) / (eps * eps);
-      EXPECT_TRUE(IsCloseRelAbs(zuu_approx, sg.zuu[kl], sqrt(fdTol)))
+          (ref_z_tp[kl] - 2.0 * ref_z[kl] + ref_z_tm[kl]) / (kEps * kEps);
+      EXPECT_TRUE(IsCloseRelAbs(zuu_approx, sg.zuu[kl], sqrt(kFdTol)))
           << "at k=" << k << " l=" << l;
 
       // d^2Z/(dTheta dZeta)
       double zuv_approx =
-          (refZ_tp_zp[kl] + refZ_tm_zm[kl] - refZ_tp_zm[kl] - refZ_tm_zp[kl]) /
-          (4.0 * eps * eps);
-      EXPECT_TRUE(IsCloseRelAbs(zuv_approx, sg.zuv[kl], sqrt(fdTol)))
+          (ref_z_tp_zp[kl] + ref_z_tm_zm[kl] - ref_z_tp_zm[kl] - ref_z_tm_zp[kl]) /
+          (4.0 * kEps * kEps);
+      EXPECT_TRUE(IsCloseRelAbs(zuv_approx, sg.zuv[kl], sqrt(kFdTol)))
           << "at k=" << k << " l=" << l;
 
       // d^2Z/dZeta^2
       double zvv_approx =
-          (refZ_zp[kl] - 2.0 * refZ[kl] + refZ_zm[kl]) / (eps * eps);
-      EXPECT_TRUE(IsCloseRelAbs(zvv_approx, sg.zvv[kl], sqrt(fdTol)))
+          (ref_z_zp[kl] - 2.0 * ref_z[kl] + ref_z_zm[kl]) / (kEps * kEps);
+      EXPECT_TRUE(IsCloseRelAbs(zvv_approx, sg.zvv[kl], sqrt(kFdTol)))
           << "at k=" << k << " l=" << l;
     }  // k
   }    // l
@@ -364,56 +364,56 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
       const int kl = l * s.nZeta + k;
 
       // dR/dTheta
-      EXPECT_TRUE(IsCloseRelAbs(refRu[kl], sg.rub[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_ru[kl], sg.rub[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
       // dR/dZeta
-      EXPECT_TRUE(IsCloseRelAbs(refRv[kl], sg.rvb[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_rv[kl], sg.rvb[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
       // -----------------
 
       // dZ/dTheta
-      EXPECT_TRUE(IsCloseRelAbs(refZu[kl], sg.zub[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_zu[kl], sg.zub[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
       // dZ/dZeta
-      EXPECT_TRUE(IsCloseRelAbs(refZv[kl], sg.zvb[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_zv[kl], sg.zvb[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
       // -----------------
 
       // d^2R/dTheta^2
-      EXPECT_TRUE(IsCloseRelAbs(refRuu[kl], sg.ruu[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_ruu[kl], sg.ruu[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
       // d^2R/(dTheta dZeta)
-      EXPECT_TRUE(IsCloseRelAbs(refRuv[kl], sg.ruv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_ruv[kl], sg.ruv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
       // d^2R/dZeta^2
-      EXPECT_TRUE(IsCloseRelAbs(refRvv[kl], sg.rvv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_rvv[kl], sg.rvv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
       // -----------------
 
       // d^2Z/dTheta^2
-      EXPECT_TRUE(IsCloseRelAbs(refZuu[kl], sg.zuu[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_zuu[kl], sg.zuu[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
       // d^2Z/(dTheta dZeta)
-      EXPECT_TRUE(IsCloseRelAbs(refZuv[kl], sg.zuv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_zuv[kl], sg.zuv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
       // d^2Z/dZeta^2
-      EXPECT_TRUE(IsCloseRelAbs(refZvv[kl], sg.zvv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_zvv[kl], sg.zvv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
     }  // k
   }    // l
 }
 
 TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
-  double tolerance = 1.0e-12;
+  constexpr double kTolerance = 1.0e-12;
 
   SurfaceGeometryMockup surface_geometry_mockup =
       SurfaceGeometryMockup::InitializeFromFile();
@@ -426,20 +426,20 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
   // for verification
 
   // reference inv-DFT
-  std::vector<double> refR(s.nThetaEven * s.nZeta);
-  std::vector<double> refZ(s.nThetaEven * s.nZeta);
+  std::vector<double> ref_r(s.nThetaEven * s.nZeta);
+  std::vector<double> ref_z(s.nThetaEven * s.nZeta);
 
-  std::vector<double> refRu(s.nZnT);
-  std::vector<double> refRv(s.nZnT);
-  std::vector<double> refRuu(s.nZnT);
-  std::vector<double> refRuv(s.nZnT);
-  std::vector<double> refRvv(s.nZnT);
+  std::vector<double> ref_ru(s.nZnT);
+  std::vector<double> ref_rv(s.nZnT);
+  std::vector<double> ref_ruu(s.nZnT);
+  std::vector<double> ref_ruv(s.nZnT);
+  std::vector<double> ref_rvv(s.nZnT);
 
-  std::vector<double> refZu(s.nZnT);
-  std::vector<double> refZv(s.nZnT);
-  std::vector<double> refZuu(s.nZnT);
-  std::vector<double> refZuv(s.nZnT);
-  std::vector<double> refZvv(s.nZnT);
+  std::vector<double> ref_zu(s.nZnT);
+  std::vector<double> ref_zv(s.nZnT);
+  std::vector<double> ref_zuu(s.nZnT);
+  std::vector<double> ref_zuv(s.nZnT);
+  std::vector<double> ref_zvv(s.nZnT);
 
   std::vector<double> theta(s.nThetaEven * s.nZeta);
   std::vector<double> phi(s.nThetaEven * s.nZeta);
@@ -454,15 +454,15 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
       theta[kl] = omega_theta * l;
       phi[kl] = omega_phi * k;
 
-      refR[kl] = 0.0;
-      refZ[kl] = 0.0;
+      ref_r[kl] = 0.0;
+      ref_z[kl] = 0.0;
       for (int mn = 0; mn < s.mnmax; ++mn) {
         const double kernel = fb.xm[mn] * theta[kl] - fb.xn[mn] * phi[kl];
-        refR[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel);
-        refZ[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel);
+        ref_r[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel);
+        ref_z[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel);
         if (s.lasym) {
-          refR[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel);
-          refZ[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel);
+          ref_r[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel);
+          ref_z[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel);
         }  // lasym
       }    // mn
     }      // k
@@ -472,62 +472,62 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
     for (int k = 0; k < s.nZeta; ++k) {
       const int kl = l * s.nZeta + k;
 
-      refRu[kl] = 0.0;
-      refRv[kl] = 0.0;
-      refRuu[kl] = 0.0;
-      refRuv[kl] = 0.0;
-      refRvv[kl] = 0.0;
+      ref_ru[kl] = 0.0;
+      ref_rv[kl] = 0.0;
+      ref_ruu[kl] = 0.0;
+      ref_ruv[kl] = 0.0;
+      ref_rvv[kl] = 0.0;
 
-      refZu[kl] = 0.0;
-      refZv[kl] = 0.0;
-      refZuu[kl] = 0.0;
-      refZuv[kl] = 0.0;
-      refZvv[kl] = 0.0;
+      ref_zu[kl] = 0.0;
+      ref_zv[kl] = 0.0;
+      ref_zuu[kl] = 0.0;
+      ref_zuv[kl] = 0.0;
+      ref_zvv[kl] = 0.0;
 
       for (int mn = 0; mn < s.mnmax; ++mn) {
         const double kernel = fb.xm[mn] * theta[kl] - fb.xn[mn] * phi[kl];
 
-        refRu[kl] +=
+        ref_ru[kl] +=
             surface_geometry_mockup.rmnc[mn] * sin(kernel) * (-fb.xm[mn]);
-        refRv[kl] += surface_geometry_mockup.rmnc[mn] * sin(kernel) * fb.xn[mn];
-        refRuu[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
+        ref_rv[kl] += surface_geometry_mockup.rmnc[mn] * sin(kernel) * fb.xn[mn];
+        ref_ruu[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
                       (-fb.xm[mn] * fb.xm[mn]);
-        refRuv[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
+        ref_ruv[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
                       fb.xn[mn] * fb.xm[mn];
-        refRvv[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
+        ref_rvv[kl] += surface_geometry_mockup.rmnc[mn] * cos(kernel) *
                       (-fb.xn[mn] * fb.xn[mn]);
 
-        refZu[kl] += surface_geometry_mockup.zmns[mn] * cos(kernel) * fb.xm[mn];
-        refZv[kl] +=
+        ref_zu[kl] += surface_geometry_mockup.zmns[mn] * cos(kernel) * fb.xm[mn];
+        ref_zv[kl] +=
             surface_geometry_mockup.zmns[mn] * cos(kernel) * (-fb.xn[mn]);
-        refZuu[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
+        ref_zuu[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
                       (-fb.xm[mn] * fb.xm[mn]);
-        refZuv[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
+        ref_zuv[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
                       fb.xn[mn] * fb.xm[mn];
-        refZvv[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
+        ref_zvv[kl] += surface_geometry_mockup.zmns[mn] * sin(kernel) *
                       (-fb.xn[mn] * fb.xn[mn]);
 
         if (s.lasym) {
-          refRu[kl] +=
+          ref_ru[kl] +=
               surface_geometry_mockup.rmns[mn] * cos(kernel) * (-fb.xm[mn]);
-          refRv[kl] +=
+          ref_rv[kl] +=
               surface_geometry_mockup.rmns[mn] * cos(kernel) * fb.xn[mn];
-          refRuu[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
+          ref_ruu[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
                         (-fb.xm[mn] * fb.xm[mn]);
-          refRuv[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
+          ref_ruv[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
                         fb.xn[mn] * fb.xm[mn];
-          refRvv[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
+          ref_rvv[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
                         (-fb.xn[mn] * fb.xn[mn]);
 
-          refZu[kl] +=
+          ref_zu[kl] +=
               surface_geometry_mockup.zmnc[mn] * sin(kernel) * fb.xm[mn];
-          refZv[kl] +=
+          ref_zv[kl] +=
               surface_geometry_mockup.zmnc[mn] * sin(kernel) * (-fb.xn[mn]);
-          refZuu[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
+          ref_zuu[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
                         (-fb.xm[mn] * fb.xm[mn]);
-          refZuv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
+          ref_zuv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
                         fb.xn[mn] * fb.xm[mn];
-          refZvv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
+          ref_zvv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
                         (-fb.xn[mn] * fb.xn[mn]);
         }  // lasym
       }    // mn
@@ -539,12 +539,12 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
     for (int k = 0; k < s.nZeta; ++k) {
       const int kl = l * s.nZeta + k;
 
-      const std::array<double, 3> dXdTheta = {
-          refRu[kl] * sg.cos_phi[k], refRu[kl] * sg.sin_phi[k], refZu[kl]};
+      const std::array<double, 3> d_xd_theta = {
+          ref_ru[kl] * sg.cos_phi[k], ref_ru[kl] * sg.sin_phi[k], ref_zu[kl]};
 
-      const double ref_guu = dot3x3(dXdTheta, dXdTheta);
+      const double ref_guu = dot3x3(d_xd_theta, d_xd_theta);
 
-      EXPECT_TRUE(IsCloseRelAbs(ref_guu, sg.guu[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_guu, sg.guu[kl], kTolerance))
           << "at k=" << k << " l=" << l;
     }  // k
   }    // l
@@ -554,16 +554,16 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
     for (int k = 0; k < s.nZeta; ++k) {
       const int kl = l * s.nZeta + k;
 
-      const std::array<double, 3> dXdTheta = {
-          refRu[kl] * sg.cos_phi[k], refRu[kl] * sg.sin_phi[k], refZu[kl]};
+      const std::array<double, 3> d_xd_theta = {
+          ref_ru[kl] * sg.cos_phi[k], ref_ru[kl] * sg.sin_phi[k], ref_zu[kl]};
 
-      const std::array<double, 3> dXdPhi = {
-          refRv[kl] * sg.cos_phi[k] - refR[kl] * sg.sin_phi[k],
-          refRv[kl] * sg.sin_phi[k] + refR[kl] * sg.cos_phi[k], refZv[kl]};
+      const std::array<double, 3> d_xd_phi = {
+          ref_rv[kl] * sg.cos_phi[k] - ref_r[kl] * sg.sin_phi[k],
+          ref_rv[kl] * sg.sin_phi[k] + ref_r[kl] * sg.cos_phi[k], ref_zv[kl]};
 
-      const double ref_2guv = 2.0 * dot3x3(dXdTheta, dXdPhi) / s.nfp;
+      const double ref_2guv = 2.0 * dot3x3(d_xd_theta, d_xd_phi) / s.nfp;
 
-      EXPECT_TRUE(IsCloseRelAbs(ref_2guv, sg.guv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_2guv, sg.guv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
     }  // k
   }    // l
@@ -573,13 +573,13 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
     for (int k = 0; k < s.nZeta; ++k) {
       const int kl = l * s.nZeta + k;
 
-      const std::array<double, 3> dXdPhi = {
-          refRv[kl] * sg.cos_phi[k] - refR[kl] * sg.sin_phi[k],
-          refRv[kl] * sg.sin_phi[k] + refR[kl] * sg.cos_phi[k], refZv[kl]};
+      const std::array<double, 3> d_xd_phi = {
+          ref_rv[kl] * sg.cos_phi[k] - ref_r[kl] * sg.sin_phi[k],
+          ref_rv[kl] * sg.sin_phi[k] + ref_r[kl] * sg.cos_phi[k], ref_zv[kl]};
 
-      const double ref_gvv = dot3x3(dXdPhi, dXdPhi) / (s.nfp * s.nfp);
+      const double ref_gvv = dot3x3(d_xd_phi, d_xd_phi) / (s.nfp * s.nfp);
 
-      EXPECT_TRUE(IsCloseRelAbs(ref_gvv, sg.gvv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_gvv, sg.gvv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
     }  // k
   }    // l
@@ -591,30 +591,30 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
 
       // need to compute cross product in cylindrical coordinates
       // to get cylindrical components of normal vector
-      const std::array<double, 3> dXdTheta_cyl = {refRu[kl], 0.0, refZu[kl]};
+      const std::array<double, 3> d_xd_theta_cyl = {ref_ru[kl], 0.0, ref_zu[kl]};
 
-      const std::array<double, 3> dXdPhi_cyl = {refRv[kl], refR[kl], refZv[kl]};
+      const std::array<double, 3> d_xd_phi_cyl = {ref_rv[kl], ref_r[kl], ref_zv[kl]};
 
-      std::array<double, 3> N_cyl = {0.0, 0.0, 0.0};
+      std::array<double, 3> n_cyl = {0.0, 0.0, 0.0};
 
       // -(X_u cross X_v) == (X_v cross X_u)
-      cross3x3(/*m_result=*/N_cyl, dXdPhi_cyl, dXdTheta_cyl);
+      cross3x3(/*m_result=*/n_cyl, d_xd_phi_cyl, d_xd_theta_cyl);
 
       // include sign of Jacobian
-      N_cyl[0] *= surface_geometry_mockup.signOfJacobian;
-      N_cyl[1] *= surface_geometry_mockup.signOfJacobian;
-      N_cyl[2] *= surface_geometry_mockup.signOfJacobian;
+      n_cyl[0] *= surface_geometry_mockup.signOfJacobian;
+      n_cyl[1] *= surface_geometry_mockup.signOfJacobian;
+      n_cyl[2] *= surface_geometry_mockup.signOfJacobian;
 
-      const double ref_drv = -(refR[kl] * N_cyl[0] + refZ[kl] * N_cyl[2]);
+      const double ref_drv = -(ref_r[kl] * n_cyl[0] + ref_z[kl] * n_cyl[2]);
 
-      EXPECT_TRUE(IsCloseRelAbs(N_cyl[0], sg.snr[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(n_cyl[0], sg.snr[kl], kTolerance))
           << "at k=" << k << " l=" << l;
-      EXPECT_TRUE(IsCloseRelAbs(N_cyl[1], sg.snv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(n_cyl[1], sg.snv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
-      EXPECT_TRUE(IsCloseRelAbs(N_cyl[2], sg.snz[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(n_cyl[2], sg.snz[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
-      EXPECT_TRUE(IsCloseRelAbs(ref_drv, sg.drv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_drv, sg.drv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
     }  // k
   }    // l
@@ -624,26 +624,26 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
     for (int k = 0; k < s.nZeta; ++k) {
       const int kl = l * s.nZeta + k;
 
-      const std::array<double, 3> d2XdTheta2 = {refRuu[kl], 0.0, refZuu[kl]};
+      const std::array<double, 3> d2_xd_theta2 = {ref_ruu[kl], 0.0, ref_zuu[kl]};
 
-      const std::array<double, 3> d2XdThetaDZeta = {refRuv[kl], refRu[kl],
-                                                    refZuv[kl]};
+      const std::array<double, 3> d2_xd_theta_d_zeta = {ref_ruv[kl], ref_ru[kl],
+                                                    ref_zuv[kl]};
 
-      const std::array<double, 3> d2XdZeta2 = {refRvv[kl] - refR[kl],
-                                               2 * refRv[kl], refZvv[kl]};
+      const std::array<double, 3> d2_xd_zeta2 = {ref_rvv[kl] - ref_r[kl],
+                                               2 * ref_rv[kl], ref_zvv[kl]};
 
       // already tested above
-      const std::array<double, 3> N_cyl = {sg.snr[kl], sg.snv[kl], sg.snz[kl]};
+      const std::array<double, 3> n_cyl = {sg.snr[kl], sg.snv[kl], sg.snz[kl]};
 
-      const double ref_auu = dot3x3(d2XdTheta2, N_cyl) / 2;
-      const double ref_auv = dot3x3(d2XdThetaDZeta, N_cyl) / s.nfp;
-      const double ref_avv = dot3x3(d2XdZeta2, N_cyl) / (2 * s.nfp * s.nfp);
+      const double ref_auu = dot3x3(d2_xd_theta2, n_cyl) / 2;
+      const double ref_auv = dot3x3(d2_xd_theta_d_zeta, n_cyl) / s.nfp;
+      const double ref_avv = dot3x3(d2_xd_zeta2, n_cyl) / (2 * s.nfp * s.nfp);
 
-      EXPECT_TRUE(IsCloseRelAbs(ref_auu, sg.auu[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_auu, sg.auu[kl], kTolerance))
           << "at k=" << k << " l=" << l;
-      EXPECT_TRUE(IsCloseRelAbs(ref_auv, sg.auv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_auv, sg.auv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
-      EXPECT_TRUE(IsCloseRelAbs(ref_avv, sg.avv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_avv, sg.avv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
     }  // k
   }    // l
@@ -653,17 +653,17 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
     for (int k = 0; k < s.nZeta; ++k) {
       const int kl = l * s.nZeta + k;
 
-      const double ref_rzb2 = refR[kl] * refR[kl] + refZ[kl] * refZ[kl];
+      const double ref_rzb2 = ref_r[kl] * ref_r[kl] + ref_z[kl] * ref_z[kl];
 
-      const double ref_x = refR[kl] * sg.cos_phi[k];
-      const double ref_y = refR[kl] * sg.sin_phi[k];
+      const double ref_x = ref_r[kl] * sg.cos_phi[k];
+      const double ref_y = ref_r[kl] * sg.sin_phi[k];
 
-      EXPECT_TRUE(IsCloseRelAbs(ref_rzb2, sg.rzb2[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_rzb2, sg.rzb2[kl], kTolerance))
           << "at k=" << k << " l=" << l;
 
-      EXPECT_TRUE(IsCloseRelAbs(ref_x, sg.rcosuv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_x, sg.rcosuv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
-      EXPECT_TRUE(IsCloseRelAbs(ref_y, sg.rsinuv[kl], tolerance))
+      EXPECT_TRUE(IsCloseRelAbs(ref_y, sg.rsinuv[kl], kTolerance))
           << "at k=" << k << " l=" << l;
     }  // k
   }    // l
