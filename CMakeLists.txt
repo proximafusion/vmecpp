@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.4...3.18)
+cmake_minimum_required(VERSION 3.18)
 project(vmecpp C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -23,8 +23,20 @@ endif()
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
 
-find_package (netCDF REQUIRED)
-include_directories(${NETCDF_INCLUDES})
+find_package (netCDF)
+if (NOT netCDF_FOUND)
+  # Finds the netCDF installation using CMake's PkgConfig
+  set(netCDF_PC_FILE netcdf)
+  find_package(PkgConfig REQUIRED)
+  set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH TRUE)
+  pkg_check_modules(netCDF REQUIRED ${netCDF_PC_FILE}>=4.6.0 IMPORTED_TARGET)
+  pkg_get_variable(netCDF_PREFIX ${netCDF_PC_FILE} prefix)
+  message(STATUS "netCDF prefix: ${netCDF_PREFIX}")
+  message(STATUS "netCDF include dirs: ${netCDF_INCLUDE_DIRS}")
+  message(STATUS "netCDF libraries: ${netCDF_LIBRARIES}")
+endif()
+
+include_directories(${netCDF_INCLUDE_DIRS})
 
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
@@ -57,7 +69,7 @@ add_subdirectory(src)
 # Define a static library for the actual computation core of VMEC++.
 add_library (vmecpp_core STATIC ${vmecpp_sources})
 target_link_libraries(vmecpp_core PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES})
-target_link_libraries(vmecpp_core PRIVATE netCDF::netcdf)
+target_link_libraries(vmecpp_core PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
 target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synchronization absl::strings absl::str_format absl::log absl::string_view absl::check absl::status absl::statusor)
