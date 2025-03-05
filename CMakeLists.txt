@@ -38,6 +38,7 @@ find_package(OpenMP)
 include_directories(${PROJECT_SOURCE_DIR}/abscab-cpp)
 set (abscab_sources "abscab-cpp/abscab/abscab.cc" "abscab-cpp/abscab/abscab.hh")
 
+set(ABSL_PROPAGATE_CXX_STD "ON")
 include_directories(${PROJECT_SOURCE_DIR}/abseil-cpp)
 add_subdirectory(${PROJECT_SOURCE_DIR}/abseil-cpp)
 

@@ -1,54 +1,31 @@
-# cmake -B build
-# cmake -DCMAKE_EXPORT_COMPILE_COMMANDS:STRING=ON build
-# find ./src/vmecpp/cpp/vmecpp/ -name "*.cc" -print0 | parallel -0 clang-tidy -p build/ {} --fix --fix-errors --use-color
-# cmake --build build --parallel
-
 Checks: >
-  -*,
-  abseil-*,
+  clang-diagnostic-*,
+  clang-analyzer-*,
   bugprone-*,
-  google-*,
-  misc-*,
-  modernize-*,
   performance-*,
-  portability-*,
-  readability-*,
-  -google-readability-braces-around-statements,
-  -google-readability-namespace-comments,
-  -google-runtime-references,
-  -misc-non-private-member-variables-in-classes,
-  -misc-const-correctness,
-  -misc-include-cleaner,
-  -modernize-return-braced-init-list,
-  -modernize-concat-nested-namespaces,
-  -modernize-use-nodiscard,
-  -modernize-avoid-c-arrays,
-  -modernize-type-traits,
-  -modernize-use-trailing-return-type,
-  -modernize-unary-static-assert,
-  -performance-move-const-arg,
-  -performance-avoid-endl,
-  -performance-enum-size,
-  -readability-braces-around-statements,
-  -readability-identifier-length,
-  -readability-magic-numbers,
-  -readability-named-parameter,
-  -readability-redundant-declaration,
-  -readability-avoid-return-with-void-value,
-  -readability-function-cognitive-complexity,
-  -bugprone-narrowing-conversions,
+  readability-identifier-naming,
+  readability-make-member-function-const,
+  bugprone-use-after-move,
+  modernize-use-std-numbers,
+  modernize-avoid-c-arrays,
+  modernize-use-nullptr,
+  modernize-use-default,
+  modernize-use-override,
+  modernize-use-using,
+  cppcoreguidelines-no-malloc,
+  cppcoreguidelines-owning-memory,
+  cppcoreguidelines-avoid-const-or-ref-data-members,
+  cppcoreguidelines-missing-std-forward,
+  cppcoreguidelines-avoid-non-const-global-variables,
+  cppcoreguidelines-virtual-class-destructor,
   -bugprone-easily-swappable-parameters,
-  -bugprone-inc-dec-in-conditions,
   -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-unchecked-optional-access,
-  -bugprone-unused-local-non-trivial-variable,
-  -bugprone-unused-return-value,
-# Turn all the warnings from the checks above into errors.
-WarningsAsErrors: "*"
+  -clang-diagnostic-builtin-macro-redefined'
 
-HeaderFilterRegex: "(google/cloud/|generator/).*\\.h$"
-
+WarningsAsErrors: "*,-cppcoreguidelines-avoid-const-or-ref-data-members"
 CheckOptions:
+  - { key: modernize-avoid-c-arrays.AllowStringArrays,           value: true       }
   - { key: readability-identifier-naming.NamespaceCase,          value: lower_case }
   - { key: readability-identifier-naming.ClassCase,              value: CamelCase  }
   - { key: readability-identifier-naming.StructCase,             value: CamelCase  }
@@ -59,8 +36,8 @@ CheckOptions:
   - { key: readability-identifier-naming.ClassMemberSuffix,      value: _          }
   - { key: readability-identifier-naming.PrivateMemberSuffix,    value: _          }
   - { key: readability-identifier-naming.ProtectedMemberSuffix,  value: _          }
-  - { key: readability-identifier-naming.EnumConstantCase,         value: CamelCase }
-  - { key: readability-identifier-naming.EnumConstantPrefix,       value: k         }
+#  - { key: readability-identifier-naming.EnumConstantCase,         value: CamelCase }
+#  - { key: readability-identifier-naming.EnumConstantPrefix,       value: k         }
   - { key: readability-identifier-naming.ConstexprVariableCase,    value: CamelCase }
   - { key: readability-identifier-naming.ConstexprVariablePrefix,  value: k         }
   - { key: readability-identifier-naming.GlobalConstantCase,       value: CamelCase }
@@ -72,16 +49,3 @@ CheckOptions:
   - { key: readability-implicit-bool-conversion.AllowIntegerConditions,  value: 1   }
   - { key: readability-implicit-bool-conversion.AllowPointerConditions,  value: 1   }
   - { key: readability-function-cognitive-complexity.IgnoreMacros,  value: 1   }
-
-#Checks: 'your-custom-check'
-#WarningsAsErrors: '*'
-#HeaderFilterRegex: '.*'
-#Fix-errors: 
-#
-#CheckOptions:
-#  your-custom-check.Matchers: |
-#    callExpr(callee(functionDecl(hasName("oldFunction"))))
-#  your-custom-check.Replacements: |
-#    callExpr(callee(functionDecl(hasName("oldFunction"))),
-#             unless(hasAncestor(stmt(hasDescendant(callExpr(callee(functionDecl(hasName("newFunction"))))))))).
-#      replaceWith("newFunction")
