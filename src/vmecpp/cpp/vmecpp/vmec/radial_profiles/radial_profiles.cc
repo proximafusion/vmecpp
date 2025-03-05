@@ -206,7 +206,7 @@ ProfileParameterization RadialProfiles::findParameterization(
         default:
           std::cerr << absl::StrFormat("unknown profile: %s",
                                        profileTypeToString(intendedType))
-                    << std::endl;
+                    << '\n';
           break;
       }
 
@@ -215,7 +215,7 @@ ProfileParameterization RadialProfiles::findParameterization(
                          "profile name '%s' is not applicable for %s profile",
                          ALL_PARAMS[i].Name(),
                          profileTypeToString(intendedType))
-                  << std::endl;
+                  << '\n';
         return ProfileParameterization::INVALID_PARAM;
       }
 
