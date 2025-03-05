@@ -33,7 +33,7 @@ jobs:
         env:
           CIBW_BUILD: "cp*-${{ matrix.arch }}"
           CIBW_ARCHS_LINUX: "x86_64"
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_34_x86_64
           CIBW_ARCHS_MACOS: "native"
           CIBW_BEFORE_BUILD_LINUX: |
             dnf install -y libomp-devel eigen3-devel lapack-devel json-devel netcdf-devel hdf5-devel
