@@ -1,0 +1,37 @@
+name: Address sanitizer
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  asan:
+    name: Address sanitizer
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true  # for the mgrid test data
+      - name: Install required system packages for Ubuntu
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential cmake gcc g++ libeigen3-dev libhdf5-dev liblapacke-dev libnetcdf-dev libopenmpi-dev nlohmann-json3-dev python3-pip python-is-python3
+      - name: Build VMEC++ via bazel
+        run: |
+          cd src/vmecpp/cpp
+          bazel build --config=asan -- //...
+      - uses: actions/checkout@v4
+        with:
+          repository: proximafusion/vmecpp_large_cpp_tests
+          path: src/vmecpp/cpp/vmecpp_large_cpp_tests
+          lfs: true
+      - name: Build VMEC++ C++ tests via bazel
+        run: |
+          cd src/vmecpp/cpp
+          bazel build --config=asan -- //vmecpp_large_cpp_tests/...
+      - name: Test with ASAN
+        run: |
+          cd src/vmecpp/cpp
+          bazel test --test_timeout=3600 --jobs=1 --config=asan --test_output=errors -- //...
