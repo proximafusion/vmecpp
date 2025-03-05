@@ -18,7 +18,7 @@ ProfileParameterizationData::ProfileParameterizationData(
 
 const std::string& ProfileParameterizationData::Name() { return name_; }
 
-bool ProfileParameterizationData::NeedsSplineData() { return needsSplineData_; }
+bool ProfileParameterizationData::NeedsSplineData() const { return needsSplineData_; }
 
 AllowedFor ProfileParameterizationData::IsAllowedFor() { return allowedFor_; }
 

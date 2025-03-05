@@ -569,32 +569,32 @@ void PrintInfiniteStraightFilament(
     prefix += " ";
   }
 
-  std::cout << prefix << "InfiniteStraightFilament {" << std::endl;
+  std::cout << prefix << "InfiniteStraightFilament {" << '\n';
 
   if (infinite_straight_filament.has_name()) {
     std::cout << prefix << "  name: '" << infinite_straight_filament.name()
-              << "'" << std::endl;
+              << "'" << '\n';
   } else {
-    std::cout << prefix << "  name: none" << std::endl;
+    std::cout << prefix << "  name: none" << '\n';
   }
 
   if (infinite_straight_filament.has_origin()) {
     const Vector3d& origin = infinite_straight_filament.origin();
     std::cout << prefix << "  origin: [" << origin.x() << ", " << origin.y()
-              << ", " << origin.z() << "]" << std::endl;
+              << ", " << origin.z() << "]" << '\n';
   } else {
-    std::cout << prefix << "  origin: none" << std::endl;
+    std::cout << prefix << "  origin: none" << '\n';
   }
 
   if (infinite_straight_filament.has_direction()) {
     const Vector3d& direction = infinite_straight_filament.direction();
     std::cout << prefix << "  direction: [" << direction.x() << ", "
-              << direction.y() << ", " << direction.z() << "]" << std::endl;
+              << direction.y() << ", " << direction.z() << "]" << '\n';
   } else {
-    std::cout << prefix << "  direction: none" << std::endl;
+    std::cout << prefix << "  direction: none" << '\n';
   }
 
-  std::cout << prefix << "}" << std::endl;
+  std::cout << prefix << "}" << '\n';
 }  // PrintInfiniteStraightFilament
 
 void PrintCircularFilament(const CircularFilament& circular_filament,
@@ -604,39 +604,39 @@ void PrintCircularFilament(const CircularFilament& circular_filament,
     prefix += " ";
   }
 
-  std::cout << prefix << "CircularFilament {" << std::endl;
+  std::cout << prefix << "CircularFilament {" << '\n';
 
   if (circular_filament.has_name()) {
     std::cout << prefix << "  name: '" << circular_filament.name() << "'"
-              << std::endl;
+              << '\n';
   } else {
-    std::cout << prefix << "  name: none" << std::endl;
+    std::cout << prefix << "  name: none" << '\n';
   }
 
   if (circular_filament.has_center()) {
     const Vector3d& center = circular_filament.center();
     std::cout << prefix << "  center: [" << center.x() << ", " << center.y()
-              << ", " << center.z() << "]" << std::endl;
+              << ", " << center.z() << "]" << '\n';
   } else {
-    std::cout << prefix << "  center: none" << std::endl;
+    std::cout << prefix << "  center: none" << '\n';
   }
 
   if (circular_filament.has_normal()) {
     const Vector3d& normal = circular_filament.normal();
     std::cout << prefix << "  normal: [" << normal.x() << ", " << normal.y()
-              << ", " << normal.z() << "]" << std::endl;
+              << ", " << normal.z() << "]" << '\n';
   } else {
-    std::cout << prefix << "  normal: none" << std::endl;
+    std::cout << prefix << "  normal: none" << '\n';
   }
 
   if (circular_filament.has_radius()) {
     const double radius = circular_filament.radius();
-    std::cout << prefix << "  radius: " << radius << std::endl;
+    std::cout << prefix << "  radius: " << radius << '\n';
   } else {
-    std::cout << prefix << "  radius: none" << std::endl;
+    std::cout << prefix << "  radius: none" << '\n';
   }
 
-  std::cout << prefix << "}" << std::endl;
+  std::cout << prefix << "}" << '\n';
 }  // PrintCircularFilament
 
 void PrintPolygonFilament(const PolygonFilament& polygon_filament,
@@ -646,23 +646,23 @@ void PrintPolygonFilament(const PolygonFilament& polygon_filament,
     prefix += " ";
   }
 
-  std::cout << prefix << "PolygonFilament {" << std::endl;
+  std::cout << prefix << "PolygonFilament {" << '\n';
 
   if (polygon_filament.has_name()) {
     std::cout << prefix << "  name: '" << polygon_filament.name() << "'"
-              << std::endl;
+              << '\n';
   } else {
-    std::cout << prefix << "  name: none" << std::endl;
+    std::cout << prefix << "  name: none" << '\n';
   }
 
   if (polygon_filament.vertices_size() > 0) {
     std::cout << prefix << "  vertices: [" << polygon_filament.vertices_size()
-              << "]" << std::endl;
+              << "]" << '\n';
   } else {
-    std::cout << prefix << "  vertices: none" << std::endl;
+    std::cout << prefix << "  vertices: none" << '\n';
   }
 
-  std::cout << prefix << "}" << std::endl;
+  std::cout << prefix << "}" << '\n';
 }  // PrintPolygonFilament
 
 void PrintCurrentCarrier(const CurrentCarrier& current_carrier,
@@ -672,7 +672,7 @@ void PrintCurrentCarrier(const CurrentCarrier& current_carrier,
     prefix += " ";
   }
 
-  std::cout << prefix << "CurrentCarrier {" << std::endl;
+  std::cout << prefix << "CurrentCarrier {" << '\n';
 
   switch (current_carrier.type_case()) {
     case CurrentCarrier::TypeCase::kInfiniteStraightFilament:
@@ -697,7 +697,7 @@ void PrintCurrentCarrier(const CurrentCarrier& current_carrier,
       LOG(FATAL) << error_message.str();
   }
 
-  std::cout << prefix << "}" << std::endl;
+  std::cout << prefix << "}" << '\n';
 }  // PrintCurrentCarrier
 
 void PrintCoil(const Coil& coil, int indentation) {
@@ -706,26 +706,26 @@ void PrintCoil(const Coil& coil, int indentation) {
     prefix += " ";
   }
 
-  std::cout << prefix << "Coil {" << std::endl;
+  std::cout << prefix << "Coil {" << '\n';
 
   if (coil.has_name()) {
-    std::cout << prefix << "  name: '" << coil.name() << "'" << std::endl;
+    std::cout << prefix << "  name: '" << coil.name() << "'" << '\n';
   } else {
-    std::cout << prefix << "  name: none" << std::endl;
+    std::cout << prefix << "  name: none" << '\n';
   }
 
   if (coil.has_num_windings()) {
     std::cout << prefix << "  num_windings: " << coil.num_windings()
-              << std::endl;
+              << '\n';
   } else {
-    std::cout << prefix << "  num_windings: none" << std::endl;
+    std::cout << prefix << "  num_windings: none" << '\n';
   }
 
   for (const CurrentCarrier& current_carrier : coil.current_carriers()) {
     PrintCurrentCarrier(current_carrier, indentation + 2);
   }
 
-  std::cout << prefix << "}" << std::endl;
+  std::cout << prefix << "}" << '\n';
 }  // PrintCoil
 
 void PrintSerialCircuit(const SerialCircuit& serial_circuit, int indentation) {
@@ -734,27 +734,27 @@ void PrintSerialCircuit(const SerialCircuit& serial_circuit, int indentation) {
     prefix += " ";
   }
 
-  std::cout << prefix << "SerialCircuit {" << std::endl;
+  std::cout << prefix << "SerialCircuit {" << '\n';
 
   if (serial_circuit.has_name()) {
     std::cout << prefix << "  name: '" << serial_circuit.name() << "'"
-              << std::endl;
+              << '\n';
   } else {
-    std::cout << prefix << "  name: none" << std::endl;
+    std::cout << prefix << "  name: none" << '\n';
   }
 
   if (serial_circuit.has_current()) {
     std::cout << prefix << "  current: " << serial_circuit.current()
-              << std::endl;
+              << '\n';
   } else {
-    std::cout << prefix << "  current: none" << std::endl;
+    std::cout << prefix << "  current: none" << '\n';
   }
 
   for (const Coil& coil : serial_circuit.coils()) {
     PrintCoil(coil, indentation + 2);
   }
 
-  std::cout << prefix << "}" << std::endl;
+  std::cout << prefix << "}" << '\n';
 }  // PrintSerialCircuit
 
 void PrintMagneticConfiguration(
@@ -764,20 +764,20 @@ void PrintMagneticConfiguration(
     prefix += " ";
   }
 
-  std::cout << prefix << "MagneticConfiguration {" << std::endl;
+  std::cout << prefix << "MagneticConfiguration {" << '\n';
 
   if (magnetic_configuration.has_name()) {
     std::cout << prefix << "  name: '" << magnetic_configuration.name() << "'"
-              << std::endl;
+              << '\n';
   } else {
-    std::cout << prefix << "  name: none" << std::endl;
+    std::cout << prefix << "  name: none" << '\n';
   }
 
   if (magnetic_configuration.has_num_field_periods()) {
     std::cout << prefix << "  num_field_periods: "
-              << magnetic_configuration.num_field_periods() << std::endl;
+              << magnetic_configuration.num_field_periods() << '\n';
   } else {
-    std::cout << prefix << "  num_field_periods: none" << std::endl;
+    std::cout << prefix << "  num_field_periods: none" << '\n';
   }
 
   for (const SerialCircuit& serial_circuit :
@@ -785,7 +785,7 @@ void PrintMagneticConfiguration(
     PrintSerialCircuit(serial_circuit, indentation + 2);
   }
 
-  std::cout << prefix << "}" << std::endl;
+  std::cout << prefix << "}" << '\n';
 }  // PrintMagneticConfiguration
 
 }  // namespace magnetics

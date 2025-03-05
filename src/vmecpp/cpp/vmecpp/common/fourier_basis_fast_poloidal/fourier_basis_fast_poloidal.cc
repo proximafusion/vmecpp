@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <vector>
+#include <numbers>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -64,7 +65,7 @@ void FourierBasisFastPoloidal::computeFourierBasisFastPoloidal(int nfp) {
     if (m == 0) {
       mscale[m] = 1.0;
     } else {
-      mscale[m] = std::sqrt(2.0);
+      mscale[m] = std::numbers::sqrt2;
     }
   }  // m
 
@@ -106,7 +107,7 @@ void FourierBasisFastPoloidal::computeFourierBasisFastPoloidal(int nfp) {
     if (n == 0) {
       nscale[n] = 1.0;
     } else {
-      nscale[n] = std::sqrt(2.0);
+      nscale[n] = std::numbers::sqrt2;
     }
   }  // n
 

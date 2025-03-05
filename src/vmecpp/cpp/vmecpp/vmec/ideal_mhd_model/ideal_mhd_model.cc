@@ -9,6 +9,7 @@
 #include <iostream>
 #include <span>
 #include <vector>
+#include <numbers>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -1046,7 +1047,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // re-establish m=1 constraint
   // TODO(jons): why 1/sqrt(2) and not 1/2 ?
-  m_decomposed_f.m1Constraint(1.0 / sqrt(2));
+  m_decomposed_f.m1Constraint(1.0 / std::numbers::sqrt2);
 
   // v8.50: ADD iter2<2 so reset=<WOUT_FILE> works
   if (m_fc.fsqz < 1.0e-6 || iter2 < 2) {

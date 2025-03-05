@@ -1,9 +1,11 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/composed_types_lib/composed_types_lib.h"
 
 #include <cmath>
+#include <numbers>
 #include <string>
 
 #include "absl/status/statusor.h"
@@ -15,14 +17,14 @@ namespace composed_types {
 
 using testing::IsCloseRelAbs;
 
+using std::numbers::inv_sqrt3;
+using std::numbers::sqrt2;
+using std::numbers::sqrt3;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 
 TEST(ComposedTypesLibTest, CheckLength) {
   static constexpr double kTolerance = 1.0e-15;
-
-  const double kSqrt2 = std::sqrt(2.0);
-  const double kSqrt3 = std::sqrt(3.0);
 
   Vector3d vector_x;
   vector_x.set_x(1.0);
@@ -46,25 +48,25 @@ TEST(ComposedTypesLibTest, CheckLength) {
   vector_xy.set_x(1.0);
   vector_xy.set_y(1.0);
   vector_xy.set_z(0.0);
-  EXPECT_TRUE(IsCloseRelAbs(kSqrt2, Length(vector_xy), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(sqrt2, Length(vector_xy), kTolerance));
 
   Vector3d vector_xz;
   vector_xz.set_x(1.0);
   vector_xz.set_y(0.0);
   vector_xz.set_z(1.0);
-  EXPECT_TRUE(IsCloseRelAbs(kSqrt2, Length(vector_xz), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(sqrt2, Length(vector_xz), kTolerance));
 
   Vector3d vector_yz;
   vector_yz.set_x(0.0);
   vector_yz.set_y(1.0);
   vector_yz.set_z(1.0);
-  EXPECT_TRUE(IsCloseRelAbs(kSqrt2, Length(vector_yz), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(sqrt2, Length(vector_yz), kTolerance));
 
   Vector3d vector_xyz;
   vector_xyz.set_x(1.0);
   vector_xyz.set_y(1.0);
   vector_xyz.set_z(1.0);
-  EXPECT_TRUE(IsCloseRelAbs(kSqrt3, Length(vector_xyz), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(sqrt3, Length(vector_xyz), kTolerance));
 }  // CheckLength
 
 TEST(ComposedTypesLibTest, CheckScaleToInPlane) {
@@ -72,7 +74,7 @@ TEST(ComposedTypesLibTest, CheckScaleToInPlane) {
 
   static constexpr double kDesiredLength = 1.23;
 
-  const double kExpectedComponent = kDesiredLength / std::sqrt(2.0);
+  const double kExpectedComponent = kDesiredLength / sqrt2;
 
   Vector3d vector_xy;
   vector_xy.set_x(1.0);
@@ -107,7 +109,7 @@ TEST(ComposedTypesLibTest, CheckScaleToInVolume) {
 
   static constexpr double kDesiredLength = 1.23;
 
-  const double kExpectedComponent = kDesiredLength / std::sqrt(3.0);
+  const double kExpectedComponent = kDesiredLength / sqrt3;
 
   Vector3d vector_xyz;
   vector_xyz.set_x(1.0);
@@ -125,8 +127,7 @@ TEST(ComposedTypesLibTest, CheckScaleToInVolume) {
 TEST(ComposedTypesLibTest, CheckNormalize) {
   static constexpr double kTolerance = 1.0e-15;
 
-  const double kInverseSqrt2 = 1.0 / std::sqrt(2.0);
-  const double kInverseSqrt3 = 1.0 / std::sqrt(3.0);
+  static constexpr double kInverseSqrt2 = 1.0 / sqrt2;
 
   Vector3d vector_xy;
   vector_xy.set_x(1.0);
@@ -160,9 +161,9 @@ TEST(ComposedTypesLibTest, CheckNormalize) {
   vector_xyz.set_y(1.0);
   vector_xyz.set_z(1.0);
   Vector3d normalized_xyz = Normalize(vector_xyz);
-  EXPECT_TRUE(IsCloseRelAbs(kInverseSqrt3, normalized_xyz.x(), kTolerance));
-  EXPECT_TRUE(IsCloseRelAbs(kInverseSqrt3, normalized_xyz.y(), kTolerance));
-  EXPECT_TRUE(IsCloseRelAbs(kInverseSqrt3, normalized_xyz.z(), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(inv_sqrt3, normalized_xyz.x(), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(inv_sqrt3, normalized_xyz.y(), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(inv_sqrt3, normalized_xyz.z(), kTolerance));
 }  // CheckNormalize
 
 TEST(ComposedTypesLibTest, CheckAdd) {
