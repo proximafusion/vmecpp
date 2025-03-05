@@ -94,7 +94,7 @@ makegrid::MagneticFieldResponseTable MakeMagneticFieldResponseTable(
 }
 
 vmecpp::HotRestartState MakeHotRestartState(
-    vmecpp::WOutFileContents wout, vmecpp::VmecINDATAPyWrapper indata) {
+    vmecpp::WOutFileContents wout, const vmecpp::VmecINDATAPyWrapper& indata) {
   return vmecpp::HotRestartState(std::move(wout),
                                  vmecpp::VmecINDATA(std::move(indata)));
 }
@@ -222,7 +222,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .value("NESTOR", vmecpp::FreeBoundaryMethod::NESTOR)
       .value("BIEST", vmecpp::FreeBoundaryMethod::BIEST);
 
-  py::class_<vmecpp::VmecCheckpoint>(m, "VmecCheckpoint");
+  py::class_<vmecpp::VmecCheckpoint> give_me_a_name(m, "VmecCheckpoint");
 
   py::class_<vmecpp::JxBOutFileContents>(m, "JxBOutFileContents")
       .def_readonly("itheta", &vmecpp::JxBOutFileContents::itheta)

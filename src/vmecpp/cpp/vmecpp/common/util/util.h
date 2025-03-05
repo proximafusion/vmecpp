@@ -72,7 +72,7 @@ inline vmecpp::RowMatrixXd ToEigenMatrix(
   return m;
 }
 
-enum class VmecCheckpoint {
+enum class VmecCheckpoint:std::uint8_t {
   NONE = 0,
 
   // ------ initial guess and static members
@@ -145,7 +145,7 @@ enum class VmecCheckpoint {
   THREED1_SHAFRANOV_INTEGRALS
 };
 
-enum class VmecStatus {
+enum class VmecStatus:std::uint8_t {
   // no fatal error but convergence was not reached
   NORMAL_TERMINATION = 0,
   BAD_JACOBIAN = 1,

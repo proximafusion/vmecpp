@@ -6,13 +6,14 @@
 
 #include <cstdlib>
 #include <string>
+#include <cstdint>
 
 namespace vmecpp {
 
 // number of profile parameterizations
 #define NUM_PARAM 23
 
-enum class ProfileType { PRESSURE, CURRENT, IOTA };
+enum class ProfileType:std::uint8_t { PRESSURE, CURRENT, IOTA };
 
 struct AllowedFor {
   bool pres;
@@ -36,7 +37,7 @@ class ProfileParameterizationData {
   AllowedFor allowedFor_;
 };
 
-enum class ProfileParameterization {
+enum class ProfileParameterization:std::uint8_t {
   INVALID_PARAM = 0,
   POWER_SERIES = 1,
   POWER_SERIES_I = 2,

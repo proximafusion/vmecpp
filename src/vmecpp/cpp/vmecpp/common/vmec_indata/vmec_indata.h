@@ -22,7 +22,7 @@ static constexpr double kFTolDefault = 1.0e-10;
 // default maximum number of iterations
 static constexpr int kNIterDefault = 100;
 
-enum class FreeBoundaryMethod {
+enum class FreeBoundaryMethod:std::uint8_t {
   // use the NEumann Solver for TORoidal systems
   // for the free-boundary force contribution
   NESTOR,
@@ -40,7 +40,7 @@ std::string ToString(FreeBoundaryMethod free_boundary_method);
 // Use this to switch the overall program flow/iteration style
 // between VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
 // based on) and PARVMEC (~same as hiddenSymmetries/VMEC2000) - version 9.0.
-enum class IterationStyle {
+enum class IterationStyle:std::uint8_t {
   // VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is based on)
   VMEC_8_52,
 

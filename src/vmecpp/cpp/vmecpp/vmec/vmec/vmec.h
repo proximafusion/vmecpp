@@ -180,7 +180,7 @@ class Vmec {
   std::vector<double> bvecShare;
 
  private:
-  enum class SolveEqLoopStatus {
+  enum class SolveEqLoopStatus:std::uint8_t {
     NORMAL_TERMINATION,
     CHECKPOINT_REACHED,
     MUST_RETRY
