@@ -33,52 +33,59 @@ TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 def test_run(max_threads, input_file, verbose):
     """Test that the Python API works with different combinations of parameters."""
 
-    input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / input_file)
-    out = vmecpp.run(input, max_threads=max_threads, verbose=verbose)
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / input_file)
+    vmec_output = vmecpp.run(vmec_input, max_threads=max_threads, verbose=verbose)
 
-    assert out.wout is not None
+    assert vmec_output.wout is not None
 
 
 def test_get_outputs_if_non_converged_if_wanted():
     """Test that one can get the VMEC++ outputs even if a run did not converge."""
 
-    input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
 
     # only allow one iteration - VMEC++ will not converge that fast
-    input.niter_array[-1] = 1
+    vmec_input.niter_array[-1] = 1
 
     # instruct VMEC++ to return the outputs, even if it did not converge
-    input.return_outputs_even_if_not_converged = True
+    vmec_input.return_outputs_even_if_not_converged = True
 
-    out = vmecpp.run(input)
+    vmec_output = vmecpp.run(vmec_input)
 
-    assert out.wout is not None
-    assert out.wout.niter == 2
+    assert vmec_output.wout is not None
+    assert vmec_output.wout.niter == 2
+
+    # actually check that some arrays,
+    # which were previously only filled if VMEC converged,
+    # also get populated now
+    assert not np.all(vmec_output.jxbout.jxb_gradp == 0.0)
 
 
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
-    input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
 
     # base run
-    out = vmecpp.run(input, verbose=False)
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
 
     # now with hot restart
     # (only a single multigrid step is supported)
-    input.ns_array = input.ns_array[-1:]
-    input.ftol_array = input.ftol_array[-1:]
-    input.niter_array = input.niter_array[-1:]
-    hot_restarted_out = vmecpp.run(input, verbose=False, restart_from=out)
+    vmec_input.ns_array = vmec_input.ns_array[-1:]
+    vmec_input.ftol_array = vmec_input.ftol_array[-1:]
+    vmec_input.niter_array = vmec_input.niter_array[-1:]
+    vmec_output_hot_restarted = vmecpp.run(
+        vmec_input, verbose=False, restart_from=vmec_output
+    )
 
-    assert hot_restarted_out.wout.niter == 2
+    assert vmec_output_hot_restarted.wout.niter == 2
 
 
 @pytest.fixture(scope="module")
 def cma_output() -> vmecpp.VmecOutput:
-    input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
-    out = vmecpp.run(input, verbose=False)
-    return out
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
+    return vmec_output
 
 
 def test_vmecwout_save(cma_output):
