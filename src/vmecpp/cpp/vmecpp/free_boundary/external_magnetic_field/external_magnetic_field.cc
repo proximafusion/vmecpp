@@ -18,22 +18,22 @@ ExternalMagneticField::ExternalMagneticField(const Sizes* s,
   axisXYZ.resize(3 * (s_.nZeta * s_.nfp + 1));
 
   // thread-local tangential grid point range
-  const int numLocal = tp_.ztMax - tp_.ztMin;
+  const int num_local = tp_.ztMax - tp_.ztMin;
 
-  surfaceXYZ.resize(3 * numLocal);
-  bCoilsXYZ.resize(3 * numLocal);
+  surfaceXYZ.resize(3 * num_local);
+  bCoilsXYZ.resize(3 * num_local);
 
-  interpBr.resize(numLocal);
-  interpBp.resize(numLocal);
-  interpBz.resize(numLocal);
+  interpBr.resize(num_local);
+  interpBp.resize(num_local);
+  interpBz.resize(num_local);
 
-  curtorBr.resize(numLocal);
-  curtorBp.resize(numLocal);
-  curtorBz.resize(numLocal);
+  curtorBr.resize(num_local);
+  curtorBp.resize(num_local);
+  curtorBz.resize(num_local);
 
-  bSubU.resize(numLocal);
-  bSubV.resize(numLocal);
-  bDotN.resize(numLocal);
+  bSubU.resize(num_local);
+  bSubV.resize(num_local);
+  bDotN.resize(num_local);
 }
 
 // rAxis, zAxis are provided over a single module
@@ -113,30 +113,30 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
   // since ABSCAB only adds to whatever is in there.
   // If we don't do this, the axis current contributions effectively pile up,
   // iteration after iteration (don't ask how I know about this...).
-  const int numLocal = tp_.ztMax - tp_.ztMin;
-  absl::c_fill_n(bCoilsXYZ, 3 * numLocal, 0);
+  const int num_local = tp_.ztMax - tp_.ztMin;
+  absl::c_fill_n(bCoilsXYZ, 3 * num_local, 0);
 
   // compute magnetic field due to line current along magnetic axis
-  int numProcessors = 1;  // Nestor itself is already parallelized via OpenMP
+  int num_processors = 1;  // Nestor itself is already parallelized via OpenMP
   abscab::magneticFieldPolygonFilament(s_.nZeta * s_.nfp + 1, axisXYZ.data(),
                                        axis_current, tp_.ztMax - tp_.ztMin,
                                        surfaceXYZ.data(), bCoilsXYZ.data(),
-                                       numProcessors);
+                                       num_processors);
 
   // transform bCoilsXYZ into cylindrical coordinates
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
     int k = kl % s_.nZeta;
 
-    double _bX = bCoilsXYZ[3 * (kl - tp_.ztMin) + 0];
-    double _bY = bCoilsXYZ[3 * (kl - tp_.ztMin) + 1];
-    double _bZ = bCoilsXYZ[3 * (kl - tp_.ztMin) + 2];
+    double b_x = bCoilsXYZ[3 * (kl - tp_.ztMin) + 0];
+    double b_y = bCoilsXYZ[3 * (kl - tp_.ztMin) + 1];
+    double b_z = bCoilsXYZ[3 * (kl - tp_.ztMin) + 2];
 
-    double _bR = sg_.cos_phi[k] * _bX + sg_.sin_phi[k] * _bY;
-    double _bP = sg_.cos_phi[k] * _bY - sg_.sin_phi[k] * _bX;
+    double b_r = sg_.cos_phi[k] * b_x + sg_.sin_phi[k] * b_y;
+    double b_p = sg_.cos_phi[k] * b_y - sg_.sin_phi[k] * b_x;
 
-    curtorBr[kl - tp_.ztMin] = _bR;
-    curtorBp[kl - tp_.ztMin] = _bP;
-    curtorBz[kl - tp_.ztMin] = _bZ;
+    curtorBr[kl - tp_.ztMin] = b_r;
+    curtorBp[kl - tp_.ztMin] = b_p;
+    curtorBz[kl - tp_.ztMin] = b_z;
   }  // kl
 }
 
@@ -194,8 +194,8 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
   // Initialize target storage for axis-current magnetic field to zero.
   // If we don't do this, the axis current contributions effectively pile up,
   // iteration after iteration (don't ask how I know about this...).
-  const int numLocal = tp_.ztMax - tp_.ztMin;
-  absl::c_fill_n(bCoilsXYZ, 3 * numLocal, 0);
+  const int num_local = tp_.ztMax - tp_.ztMin;
+  absl::c_fill_n(bCoilsXYZ, 3 * num_local, 0);
 
   // 1.0e-7 == mu0/4 pi
   // NOTE: The factor of 2 comes from the Hanson-Hirshman Biot-Savart formula,
@@ -261,16 +261,16 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
     int k = kl % s_.nZeta;
 
-    double _bX = bCoilsXYZ[3 * (kl - tp_.ztMin) + 0];
-    double _bY = bCoilsXYZ[3 * (kl - tp_.ztMin) + 1];
-    double _bZ = bCoilsXYZ[3 * (kl - tp_.ztMin) + 2];
+    double b_x = bCoilsXYZ[3 * (kl - tp_.ztMin) + 0];
+    double b_y = bCoilsXYZ[3 * (kl - tp_.ztMin) + 1];
+    double b_z = bCoilsXYZ[3 * (kl - tp_.ztMin) + 2];
 
-    double _bR = sg_.cos_phi[k] * _bX + sg_.sin_phi[k] * _bY;
-    double _bP = sg_.cos_phi[k] * _bY - sg_.sin_phi[k] * _bX;
+    double b_r = sg_.cos_phi[k] * b_x + sg_.sin_phi[k] * b_y;
+    double b_p = sg_.cos_phi[k] * b_y - sg_.sin_phi[k] * b_x;
 
-    curtorBr[kl - tp_.ztMin] = _bR;
-    curtorBp[kl - tp_.ztMin] = _bP;
-    curtorBz[kl - tp_.ztMin] = _bZ;
+    curtorBr[kl - tp_.ztMin] = b_r;
+    curtorBp[kl - tp_.ztMin] = b_p;
+    curtorBz[kl - tp_.ztMin] = b_z;
   }  // kl
 }
 
@@ -280,21 +280,21 @@ void ExternalMagneticField::covariantAndNormalComponents() {
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
     // add contributions together
     // --> helps in debugging to have them separate until here
-    double fullBr = interpBr[kl - tp_.ztMin] + curtorBr[kl - tp_.ztMin];
-    double fullBp = interpBp[kl - tp_.ztMin] + curtorBp[kl - tp_.ztMin];
-    double fullBz = interpBz[kl - tp_.ztMin] + curtorBz[kl - tp_.ztMin];
+    double full_br = interpBr[kl - tp_.ztMin] + curtorBr[kl - tp_.ztMin];
+    double full_bp = interpBp[kl - tp_.ztMin] + curtorBp[kl - tp_.ztMin];
+    double full_bz = interpBz[kl - tp_.ztMin] + curtorBz[kl - tp_.ztMin];
 
     // covariant components
     bSubU[kl - tp_.ztMin] =
-        fullBr * sg_.rub[kl - tp_.ztMin] + fullBz * sg_.zub[kl - tp_.ztMin];
-    bSubV[kl - tp_.ztMin] = fullBr * sg_.rvb[kl - tp_.ztMin] +
-                            fullBz * sg_.zvb[kl - tp_.ztMin] +
-                            fullBp * sg_.r1b[kl];
+        full_br * sg_.rub[kl - tp_.ztMin] + full_bz * sg_.zub[kl - tp_.ztMin];
+    bSubV[kl - tp_.ztMin] = full_br * sg_.rvb[kl - tp_.ztMin] +
+                            full_bz * sg_.zvb[kl - tp_.ztMin] +
+                            full_bp * sg_.r1b[kl];
 
     // normal component
     bDotN[kl - tp_.ztMin] =
-        -(fullBr * sg_.snr[kl - tp_.ztMin] + fullBp * sg_.snv[kl - tp_.ztMin] +
-          fullBz * sg_.snz[kl - tp_.ztMin]);
+        -(full_br * sg_.snr[kl - tp_.ztMin] + full_bp * sg_.snv[kl - tp_.ztMin] +
+          full_bz * sg_.snz[kl - tp_.ztMin]);
   }  // kl
 }
 

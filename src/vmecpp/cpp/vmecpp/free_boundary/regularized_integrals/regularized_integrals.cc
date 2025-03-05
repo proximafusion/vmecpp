@@ -22,8 +22,8 @@ RegularizedIntegrals::RegularizedIntegrals(const Sizes* s,
   tanv.resize(s_.nZeta);
 
   // thread-local tangential grid point range
-  int numLocal = tp_.ztMax - tp_.ztMin;
-  greenp.resize(numLocal * s_.nThetaEven * s_.nZeta);
+  int num_local = tp_.ztMax - tp_.ztMin;
+  greenp.resize(num_local * s_.nThetaEven * s_.nZeta);
 
   gstore.resize(s_.nThetaEven * s_.nZeta);
 
@@ -33,14 +33,14 @@ RegularizedIntegrals::RegularizedIntegrals(const Sizes* s,
 }
 
 void RegularizedIntegrals::computeConstants() {
-  const double epsTan = 1.0e-15;
-  const double bigNo = 1.0e50;
+  constexpr double kEpsTan = 1.0e-15;
+  constexpr double kBigNo = 1.0e50;
 
   for (int l = 0; l < s_.nThetaEven; ++l) {
     const double argu = M_PI / s_.nThetaEven * l;
-    if (std::abs(argu - 0.5 * M_PI) < epsTan) {
+    if (std::abs(argu - 0.5 * M_PI) < kEpsTan) {
       // mask singularities at pi/2
-      tanu[l] = bigNo;
+      tanu[l] = kBigNo;
     } else {
       tanu[l] = 2.0 * std::tan(argu);
     }
@@ -48,9 +48,9 @@ void RegularizedIntegrals::computeConstants() {
 
   for (int k = 0; k < s_.nZeta; ++k) {
     const double argv = M_PI / s_.nZeta * k;
-    if (std::abs(argv - 0.5 * M_PI) < epsTan) {
+    if (std::abs(argv - 0.5 * M_PI) < kEpsTan) {
       // mask singularity at pi/2
-      tanv[k] = bigNo;
+      tanv[k] = kBigNo;
     } else {
       tanv[k] = 2.0 * std::tan(argv);
     }
@@ -59,11 +59,11 @@ void RegularizedIntegrals::computeConstants() {
 
 void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
   // thread-local tangential grid point range
-  const int numLocal = tp_.ztMax - tp_.ztMin;
+  const int num_local = tp_.ztMax - tp_.ztMin;
   const int theta_by_nzeta = s_.nThetaEven * s_.nZeta;
   const double twopidivnfp = 2.0 * M_PI / s_.nfp;
 
-  absl::c_fill_n(greenp, numLocal * theta_by_nzeta, 0);
+  absl::c_fill_n(greenp, num_local * theta_by_nzeta, 0);
   absl::c_fill_n(gstore, theta_by_nzeta, 0);
 
   // storage for intermediate results

@@ -1,5 +1,7 @@
 Checks: >
-  clang-diagnostic-*,
+  google-readability-casting,
+  google-readability-todo,
+  misc-static-assert,
   clang-analyzer-*,
   bugprone-*,
   performance-*,
@@ -8,6 +10,7 @@ Checks: >
   bugprone-use-after-move,
   modernize-use-std-numbers,
   modernize-avoid-c-arrays,
+  modernize-use-bool-literals,
   modernize-use-nullptr,
   modernize-use-default,
   modernize-use-override,

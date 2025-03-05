@@ -28,7 +28,7 @@ class ProfileParameterizationData {
                               bool needsSplineData);
 
   const std::string& Name();
-  bool NeedsSplineData();
+  bool NeedsSplineData() const;
   AllowedFor IsAllowedFor();
 
  private:

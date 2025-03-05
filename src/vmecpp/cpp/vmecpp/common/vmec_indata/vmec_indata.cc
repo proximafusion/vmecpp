@@ -1080,7 +1080,7 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
 
   /* --------------------------------- */
 
-  const int NS_MIN = 3;
+  constexpr int kNsMin = 3;
 
   // ns_array
   // * needs to have non-zero element count
@@ -1089,25 +1089,25 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // * entries need to be monotonically increasing or stay constant
   if (vmec_indata.ns_array.size() >
       0) {  // make sure that at least one multigrid step is specified
-    int largestNumSurfacesSoFar = -1;
+    int largest_num_surfaces_so_far = -1;
     for (size_t idx = 0; idx < vmec_indata.ns_array.size(); ++idx) {
       int ns = vmec_indata.ns_array[idx];
-      if (ns >= NS_MIN) {  // ensure minimum number of surfaces
-        if (ns < largestNumSurfacesSoFar) {  // make sure that ns is
+      if (ns >= kNsMin) {  // ensure minimum number of surfaces
+        if (ns < largest_num_surfaces_so_far) {  // make sure that ns is
                                              // monotonically increasing
           return absl::InvalidArgumentError(
               absl::StrFormat("input variable 'ns_array' needs to increase "
                               "monotonically or stay constant, but entries %ld "
                               "and %ld are %d and %d, respectively",
                               idx - 1, idx, vmec_indata.ns_array[idx - 1], ns));
-        } else if (ns > largestNumSurfacesSoFar) {
-          largestNumSurfacesSoFar = ns;
+        } else if (ns > largest_num_surfaces_so_far) {
+          largest_num_surfaces_so_far = ns;
         }
       } else {
         return absl::InvalidArgumentError(
             absl::StrFormat("values in input variable 'ns_array' need to be at "
                             "least %d, but value %d was found at index %ld\n",
-                            NS_MIN, ns, idx));
+                            kNsMin, ns, idx));
       }
     }
   } else {

@@ -21,13 +21,13 @@ Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
       ri_(s, tp, &sg_),
       ls_(s, &fb_, tp, nf, mf, matrixShare, iPiv, bvecShare),
       bvecShare(bvecShare) {
-  int numLocal = tp_.ztMax - tp_.ztMin;
+  int num_local = tp_.ztMax - tp_.ztMin;
 
-  potU.resize(numLocal);
-  potV.resize(numLocal);
+  potU.resize(num_local);
+  potV.resize(num_local);
 
-  bSubU.resize(numLocal);
-  bSubV.resize(numLocal);
+  bSubU.resize(num_local);
+  bSubV.resize(num_local);
 }
 
 bool Nestor::update(
@@ -44,10 +44,10 @@ bool Nestor::update(
     return true;
   }
 
-  bool fullUpdate = (ivacskip == 0);
+  bool full_update = (ivacskip == 0);
 
   sg_.update(rCC, rSS, rSC, rCS, zSC, zCS, zCC, zSS, signOfJacobian,
-             fullUpdate);
+             full_update);
   if (vmec_checkpoint == VmecCheckpoint::VAC1_SURFACE &&
       at_checkpoint_iteration) {
     return true;
@@ -59,13 +59,13 @@ bool Nestor::update(
     return true;
   }
 
-  si_.update(ef_.bDotN, fullUpdate);
+  si_.update(ef_.bDotN, full_update);
   if (vmec_checkpoint == VmecCheckpoint::VAC1_ANALYT &&
       at_checkpoint_iteration) {
     return true;
   }
 
-  if (fullUpdate) {
+  if (full_update) {
     ri_.update(ef_.bDotN);
     if (vmec_checkpoint == VmecCheckpoint::VAC1_GREENF &&
         at_checkpoint_iteration) {
@@ -123,10 +123,10 @@ bool Nestor::update(
 
   // thread-local tangential grid point range
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  const int numLocal = tp_.ztMax - tp_.ztMin;
+  const int num_local = tp_.ztMax - tp_.ztMin;
 
-  absl::c_fill_n(potU, numLocal, 0);
-  absl::c_fill_n(potV, numLocal, 0);
+  absl::c_fill_n(potU, num_local, 0);
+  absl::c_fill_n(potV, num_local, 0);
 
   // inv-DFT with tangential derivatives
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
@@ -155,17 +155,17 @@ bool Nestor::update(
   }    // kl
 
   // compute net covariant magnetic field components on surface
-  double local_bSubUVac = 0.0;
-  double local_bSubVVac = 0.0;
+  double local_b_sub_u_vac = 0.0;
+  double local_b_sub_v_vac = 0.0;
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
     bSubU[kl - tp_.ztMin] = potU[kl - tp_.ztMin] + ef_.bSubU[kl - tp_.ztMin];
     bSubV[kl - tp_.ztMin] = potV[kl - tp_.ztMin] + ef_.bSubV[kl - tp_.ztMin];
 
     int l = kl / s_.nZeta;
-    local_bSubUVac += bSubU[kl - tp_.ztMin] * s_.wInt[l];
-    local_bSubVVac += bSubV[kl - tp_.ztMin] * s_.wInt[l];
+    local_b_sub_u_vac += bSubU[kl - tp_.ztMin] * s_.wInt[l];
+    local_b_sub_v_vac += bSubV[kl - tp_.ztMin] * s_.wInt[l];
   }
-  local_bSubUVac *= signOfJacobian * 2.0 * M_PI;
+  local_b_sub_u_vac *= signOfJacobian * 2.0 * M_PI;
 
 #pragma omp single
   {
@@ -176,8 +176,8 @@ bool Nestor::update(
 
 #pragma omp critical
   {
-    *bSubUVac += local_bSubUVac;
-    *bSubVVac += local_bSubVVac;
+    *bSubUVac += local_b_sub_u_vac;
+    *bSubVVac += local_b_sub_v_vac;
   }
 #pragma omp barrier
 
@@ -193,21 +193,21 @@ bool Nestor::update(
     // compute contravariant magnetic field components
     // by inverting the inverse transform (as used in VMEC to go from bContra to
     // bCov)
-    double bSupU =
+    double b_sup_u =
         (gvv * bSubU[kl - tp_.ztMin] - guv * bSubV[kl - tp_.ztMin]) / det;
-    double bSupV =
+    double b_sup_v =
         (-guv * bSubU[kl - tp_.ztMin] + guu * bSubV[kl - tp_.ztMin]) / det;
 
     // magnetic pressure from vacuum: |B|^2/2
     bSqVacShare[kl] =
-        (bSubU[kl - tp_.ztMin] * bSupU + bSubV[kl - tp_.ztMin] * bSupV) * 0.5;
+        (bSubU[kl - tp_.ztMin] * b_sup_u + bSubV[kl - tp_.ztMin] * b_sup_v) * 0.5;
 
     // cylindrical components of vacuum magnetic field
     vacuum_b_r_share_[kl] =
-        sg_.rub[kl - tp_.ztMin] * bSupU + sg_.rvb[kl - tp_.ztMin] * bSupV;
-    vacuum_b_phi_share_[kl] = sg_.r1b[kl] * bSupV;
+        sg_.rub[kl - tp_.ztMin] * b_sup_u + sg_.rvb[kl - tp_.ztMin] * b_sup_v;
+    vacuum_b_phi_share_[kl] = sg_.r1b[kl] * b_sup_v;
     vacuum_b_z_share_[kl] =
-        sg_.zub[kl - tp_.ztMin] * bSupU + sg_.zvb[kl - tp_.ztMin] * bSupV;
+        sg_.zub[kl - tp_.ztMin] * b_sup_u + sg_.zvb[kl - tp_.ztMin] * b_sup_v;
   }  // kl
 
   // ... done ...

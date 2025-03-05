@@ -65,14 +65,14 @@ TEST(TestFourierBasisFastToroidal, CheckCos2CCSS) {
 
   // linearly-indexed FCs: cos(xm[mn] theta - xn[mn] zeta), mn = 0, 1, ...,
   // (mnmax-1)
-  std::vector<double> fcCosIn(s.mnmax);
-  std::vector<double> fcCosOut(s.mnmax);
+  std::vector<double> fc_cos_in(s.mnmax);
+  std::vector<double> fc_cos_out(s.mnmax);
 
   // 2D Fourier coefficients
   // cos(m theta) * cos(n zeta)
-  std::vector<double> fcCC(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_cc(s.mpol * (s.ntor + 1));
   // sin(m theta) * sin(n zeta)
-  std::vector<double> fcSS(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_ss(s.mpol * (s.ntor + 1));
 
   // random test data...
   // standard mersenne_twister_engine
@@ -80,11 +80,11 @@ TEST(TestFourierBasisFastToroidal, CheckCos2CCSS) {
   std::uniform_real_distribution<> dist(-1., 1.);
 
   for (int mn = 0; mn < s.mnmax; ++mn) {
-    fcCosIn[mn] = dist(rng);
+    fc_cos_in[mn] = dist(rng);
   }
 
   // convert to 2D arrays
-  fb.cos_to_cc_ss(fcCosIn, fcCC, fcSS, ntor, mpol);
+  fb.cos_to_cc_ss(fc_cos_in, fc_cc, fc_ss, ntor, mpol);
 
   // check fcCC and fcSS
   for (int m = 0; m < s.mpol; ++m) {
@@ -92,36 +92,36 @@ TEST(TestFourierBasisFastToroidal, CheckCos2CCSS) {
     {
       int n = 0;
 
-      double basisNorm = fb.mscale[m] * fb.nscale[n];
+      double basis_norm = fb.mscale[m] * fb.nscale[n];
 
-      int mnPos = fb.mnIdx(m, n);
-      double toTest = fcCC[n * s.mpol + m] * basisNorm;
-      EXPECT_TRUE(IsCloseRelAbs(fcCosIn[mnPos], toTest, kTolerance))
+      int mn_pos = fb.mnIdx(m, n);
+      double to_test = fc_cc[n * s.mpol + m] * basis_norm;
+      EXPECT_TRUE(IsCloseRelAbs(fc_cos_in[mn_pos], to_test, kTolerance))
           << absl::StrFormat("m=%d n=%d", m, n);
     }
 
     for (int n = 1; n < s.ntor + 1; ++n) {
-      double basisNorm = fb.mscale[m] * fb.nscale[n];
+      double basis_norm = fb.mscale[m] * fb.nscale[n];
 
       {
         // test +n
-        int mnPos = fb.mnIdx(m, n);
-        double toTest = fcCC[n * s.mpol + m] * basisNorm;
+        int mn_pos = fb.mnIdx(m, n);
+        double to_test = fc_cc[n * s.mpol + m] * basis_norm;
         if (m > 0) {
-          toTest += fcSS[n * s.mpol + m] * basisNorm;
-          toTest /= 2.0;
+          to_test += fc_ss[n * s.mpol + m] * basis_norm;
+          to_test /= 2.0;
         }
-        EXPECT_TRUE(IsCloseRelAbs(fcCosIn[mnPos], toTest, kTolerance))
+        EXPECT_TRUE(IsCloseRelAbs(fc_cos_in[mn_pos], to_test, kTolerance))
             << absl::StrFormat("m=%d n=%d", m, n);
       }
 
       if (m > 0) {
         // only m=1, 2, ... has negative-n coefficients
         // test -n
-        int mnNeg = fb.mnIdx(m, -n);
-        double toTest =
-            0.5 * (fcCC[n * s.mpol + m] - fcSS[n * s.mpol + m]) * basisNorm;
-        EXPECT_TRUE(IsCloseRelAbs(fcCosIn[mnNeg], toTest, kTolerance))
+        int mn_neg = fb.mnIdx(m, -n);
+        double to_test =
+            0.5 * (fc_cc[n * s.mpol + m] - fc_ss[n * s.mpol + m]) * basis_norm;
+        EXPECT_TRUE(IsCloseRelAbs(fc_cos_in[mn_neg], to_test, kTolerance))
             << absl::StrFormat("m=%d n=%d", m, n);
       }
     }  // n
@@ -145,14 +145,14 @@ TEST(TestFourierBasisFastToroidal, CheckSin2SCCS) {
   // linearly-indexed FCs: sin(xm[mn] theta - xn[mn] zeta) for
   // mn = 0, 1, ..., (mnmax-1)
   // --> first one (m=0, n=0) is fixed at 0
-  std::vector<double> fcSinIn(s.mnmax);
-  std::vector<double> fcSinOut(s.mnmax);
+  std::vector<double> fc_sin_in(s.mnmax);
+  std::vector<double> fc_sin_out(s.mnmax);
 
   // 2D Fourier coefficients
   // sin(m theta) * cos(n zeta)
-  std::vector<double> fcSC(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_sc(s.mpol * (s.ntor + 1));
   // cos(m theta) * sin(n zeta)
-  std::vector<double> fcCS(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_cs(s.mpol * (s.ntor + 1));
 
   // random test data...
   // standard mersenne_twister_engine
@@ -161,60 +161,60 @@ TEST(TestFourierBasisFastToroidal, CheckSin2SCCS) {
 
   for (int mn = 0; mn < s.mnmax; ++mn) {
     if (mn > 0) {
-      fcSinIn[mn] = dist(rng);
+      fc_sin_in[mn] = dist(rng);
     }
   }
   // sin-(0,0) mode HAS to be zero; just to be sure...
-  fcSinIn[0] = 0.0;
+  fc_sin_in[0] = 0.0;
 
   // back ...
-  fb.sin_to_sc_cs(fcSinIn, fcSC, fcCS, ntor, mpol);
+  fb.sin_to_sc_cs(fc_sin_in, fc_sc, fc_cs, ntor, mpol);
 
   // check fcSC and fcCS
   for (int m = 0; m < s.mpol; ++m) {
     int n = 0;
     if (m == 0) {
       // m = 0, n = 0 should be zero
-      EXPECT_TRUE(IsCloseRelAbs(0.0, fcSC[n * s.mpol + m], kTolerance))
+      EXPECT_TRUE(IsCloseRelAbs(0.0, fc_sc[n * s.mpol + m], kTolerance))
           << absl::StrFormat("m=%d n=%d", m, n);
     } else {
       // test m > 0, n = 0 separately: only one contrib from fcSC
-      double basisNorm = fb.mscale[m] * fb.nscale[n];
+      double basis_norm = fb.mscale[m] * fb.nscale[n];
 
-      int mnPos = fb.mnIdx(m, n);
-      double toTest = fcSC[n * s.mpol + m] * basisNorm;
-      EXPECT_TRUE(IsCloseRelAbs(fcSinIn[mnPos], toTest, kTolerance))
+      int mn_pos = fb.mnIdx(m, n);
+      double to_test = fc_sc[n * s.mpol + m] * basis_norm;
+      EXPECT_TRUE(IsCloseRelAbs(fc_sin_in[mn_pos], to_test, kTolerance))
           << absl::StrFormat("m=%d n=%d", m, n);
     }
 
     for (n = 1; n < s.ntor + 1; ++n) {
-      double basisNorm = fb.mscale[m] * fb.nscale[n];
+      double basis_norm = fb.mscale[m] * fb.nscale[n];
 
       if (m == 0) {
         // test m = 0 separately: only one contrib from fcCS
         {
           // test +n
-          int mnPos = fb.mnIdx(m, n);
-          double toTest = -fcCS[n * s.mpol + m] * basisNorm;
-          EXPECT_TRUE(IsCloseRelAbs(fcSinIn[mnPos], toTest, kTolerance))
+          int mn_pos = fb.mnIdx(m, n);
+          double to_test = -fc_cs[n * s.mpol + m] * basis_norm;
+          EXPECT_TRUE(IsCloseRelAbs(fc_sin_in[mn_pos], to_test, kTolerance))
               << absl::StrFormat("m=%d n=%d", m, n);
         }
       } else {
         {
           // test +n
-          int mnPos = fb.mnIdx(m, n);
-          double toTest =
-              0.5 * (fcSC[n * s.mpol + m] - fcCS[n * s.mpol + m]) * basisNorm;
-          EXPECT_TRUE(IsCloseRelAbs(fcSinIn[mnPos], toTest, kTolerance))
+          int mn_pos = fb.mnIdx(m, n);
+          double to_test =
+              0.5 * (fc_sc[n * s.mpol + m] - fc_cs[n * s.mpol + m]) * basis_norm;
+          EXPECT_TRUE(IsCloseRelAbs(fc_sin_in[mn_pos], to_test, kTolerance))
               << absl::StrFormat("m=%d n=%d", m, n);
         }
 
         {
           // test -n
-          int mnNeg = fb.mnIdx(m, -n);
-          double toTest =
-              0.5 * (fcSC[n * s.mpol + m] + fcCS[n * s.mpol + m]) * basisNorm;
-          EXPECT_TRUE(IsCloseRelAbs(fcSinIn[mnNeg], toTest, kTolerance))
+          int mn_neg = fb.mnIdx(m, -n);
+          double to_test =
+              0.5 * (fc_sc[n * s.mpol + m] + fc_cs[n * s.mpol + m]) * basis_norm;
+          EXPECT_TRUE(IsCloseRelAbs(fc_sin_in[mn_neg], to_test, kTolerance))
               << absl::StrFormat("m=%d n=%d", m, n);
         }
       }
@@ -238,14 +238,14 @@ TEST(TestFourierBasisFastToroidal, CheckCCSS2Cos) {
 
   // linearly-indexed FCs: cos(xm[mn] theta - xn[mn] zeta),
   // mn = 0, 1, ..., (mnmax-1)
-  std::vector<double> fcCosIn(s.mnmax);
-  std::vector<double> fcCosOut(s.mnmax);
+  std::vector<double> fc_cos_in(s.mnmax);
+  std::vector<double> fc_cos_out(s.mnmax);
 
   // 2D Fourier coefficients
   // cos(m theta) * cos(n zeta)
-  std::vector<double> fcCC(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_cc(s.mpol * (s.ntor + 1));
   // sin(m theta) * sin(n zeta)
-  std::vector<double> fcSS(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_ss(s.mpol * (s.ntor + 1));
 
   // random test data...
   // standard mersenne_twister_engine
@@ -253,18 +253,18 @@ TEST(TestFourierBasisFastToroidal, CheckCCSS2Cos) {
   std::uniform_real_distribution<> dist(-1., 1.);
 
   for (int mn = 0; mn < s.mnmax; ++mn) {
-    fcCosIn[mn] = dist(rng);
+    fc_cos_in[mn] = dist(rng);
   }
 
   // back ...
-  fb.cos_to_cc_ss(fcCosIn, fcCC, fcSS, ntor, mpol);
+  fb.cos_to_cc_ss(fc_cos_in, fc_cc, fc_ss, ntor, mpol);
 
   // ... and forth
-  fb.cc_ss_to_cos(fcCC, fcSS, fcCosOut, ntor, mpol);
+  fb.cc_ss_to_cos(fc_cc, fc_ss, fc_cos_out, ntor, mpol);
 
   // now check for equality
   for (int mn = 0; mn < s.mnmax; ++mn) {
-    EXPECT_TRUE(IsCloseRelAbs(fcCosIn[mn], fcCosOut[mn], kTolerance))
+    EXPECT_TRUE(IsCloseRelAbs(fc_cos_in[mn], fc_cos_out[mn], kTolerance))
         << absl::StrFormat("m=%d n=%d", fb.xm[mn], fb.xn[mn] / s.nfp);
   }
 }  // CheckCCSS2Cos
@@ -286,14 +286,14 @@ TEST(TestFourierBasisFastToroidal, CheckSCCS2Sin) {
   // linearly-indexed FCs: // sin(xm[mn] theta - xn[mn] zeta) for
   // mn = 0, 1, ..., (mnmax-1)
   // --> first one (m=0, n=0) is fixed at 0
-  std::vector<double> fcSinIn(s.mnmax);
-  std::vector<double> fcSinOut(s.mnmax);
+  std::vector<double> fc_sin_in(s.mnmax);
+  std::vector<double> fc_sin_out(s.mnmax);
 
   // 2D Fourier coefficients
   // sin(m theta) * cos(n zeta)
-  std::vector<double> fcSC(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_sc(s.mpol * (s.ntor + 1));
   // cos(m theta) * sin(n zeta)
-  std::vector<double> fcCS(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_cs(s.mpol * (s.ntor + 1));
 
   // random test data...
   // standard mersenne_twister_engine
@@ -302,21 +302,21 @@ TEST(TestFourierBasisFastToroidal, CheckSCCS2Sin) {
 
   for (int mn = 0; mn < s.mnmax; ++mn) {
     if (mn > 0) {
-      fcSinIn[mn] = dist(rng);
+      fc_sin_in[mn] = dist(rng);
     }
   }
   // sin-(0,0) mode HAS to be zero; just to be sure...
-  fcSinIn[0] = 0.0;
+  fc_sin_in[0] = 0.0;
 
   // back ...
-  fb.sin_to_sc_cs(fcSinIn, fcSC, fcCS, ntor, mpol);
+  fb.sin_to_sc_cs(fc_sin_in, fc_sc, fc_cs, ntor, mpol);
 
   // ... and forth
-  fb.sc_cs_to_sin(fcSC, fcCS, fcSinOut, ntor, mpol);
+  fb.sc_cs_to_sin(fc_sc, fc_cs, fc_sin_out, ntor, mpol);
 
   // now check for equality
   for (int mn = 0; mn < s.mnmax; ++mn) {
-    EXPECT_TRUE(IsCloseRelAbs(fcSinIn[mn], fcSinOut[mn], kTolerance))
+    EXPECT_TRUE(IsCloseRelAbs(fc_sin_in[mn], fc_sin_out[mn], kTolerance))
         << absl::StrFormat("m=%d n=%d", fb.xm[mn], fb.xn[mn] / s.nfp);
   }
 }  // CheckSCCS2Sin
@@ -337,13 +337,13 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTEvn) {
 
   // originals: linearly-indexed FCs
   // cos(m theta - n zeta)
-  std::vector<double> fcCosIn(s.mnmax);
+  std::vector<double> fc_cos_in(s.mnmax);
 
   // 2D Fourier coefficients
   // cos(m theta) * cos(n zeta)
-  std::vector<double> fcCC(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_cc(s.mpol * (s.ntor + 1));
   // sin(m theta) * sin(n zeta)
-  std::vector<double> fcSS(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_ss(s.mpol * (s.ntor + 1));
 
   // reduced poloidal range
   std::vector<double> realspace_evn(s.nThetaReduced * s.nZeta);
@@ -354,11 +354,11 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTEvn) {
   std::uniform_real_distribution<> dist(-1., 1.);
 
   for (int mn = 0; mn < s.mnmax; ++mn) {
-    fcCosIn[mn] = dist(rng);
+    fc_cos_in[mn] = dist(rng);
   }
 
   // convert to 2D arrays
-  fb.cos_to_cc_ss(fcCosIn, fcCC, fcSS, s.ntor, s.mpol);
+  fb.cos_to_cc_ss(fc_cos_in, fc_cc, fc_ss, s.ntor, s.mpol);
 
   // perform inv-DFT from 2D arrays to realspace
   // now perform inv-DFT again and check against original data
@@ -374,8 +374,8 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTEvn) {
         double cosmu = fb.cosmu[l * (s.mnyq2 + 1) + m];
         double sinmu = fb.sinmu[l * (s.mnyq2 + 1) + m];
 
-        rnkcc += fcCC[idx_mn] * cosmu;
-        rnkss += fcSS[idx_mn] * sinmu;
+        rnkcc += fc_cc[idx_mn] * cosmu;
+        rnkss += fc_ss[idx_mn] * sinmu;
       }  // m
 
       for (int k = 0; k < s.nZeta; ++k) {
@@ -401,7 +401,7 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTEvn) {
       double ref_evn = 0.0;
       for (int mn = 0; mn < s.mnmax; ++mn) {
         double kernel = fb.xm[mn] * theta - fb.xn[mn] * zeta;
-        ref_evn += fcCosIn[mn] * cos(kernel);
+        ref_evn += fc_cos_in[mn] * cos(kernel);
       }
 
       EXPECT_TRUE(IsCloseRelAbs(ref_evn, realspace_evn[idx_kl], kTolerance))
@@ -426,13 +426,13 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTOdd) {
 
   // originals: linearly-indexed FCs
   // sin(m theta - n zeta) --> first one is fixed at 0
-  std::vector<double> fcSinIn(s.mnmax);
+  std::vector<double> fc_sin_in(s.mnmax);
 
   // 2D Fourier coefficients
   // sin(m theta) * cos(n zeta)
-  std::vector<double> fcSC(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_sc(s.mpol * (s.ntor + 1));
   // cos(m theta) * sin(n zeta)
-  std::vector<double> fcCS(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_cs(s.mpol * (s.ntor + 1));
 
   // reduced poloidal range
   std::vector<double> realspace_odd(s.nThetaReduced * s.nZeta);
@@ -444,14 +444,14 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTOdd) {
 
   for (int mn = 0; mn < s.mnmax; ++mn) {
     if (mn > 0) {
-      fcSinIn[mn] = dist(rng);
+      fc_sin_in[mn] = dist(rng);
     }
   }
   // sin-(0,0) mode HAS to be zero; just to be sure...
-  fcSinIn[0] = 0.0;
+  fc_sin_in[0] = 0.0;
 
   // convert to 2D arrays
-  fb.sin_to_sc_cs(fcSinIn, fcSC, fcCS, ntor, mpol);
+  fb.sin_to_sc_cs(fc_sin_in, fc_sc, fc_cs, ntor, mpol);
 
   // perform inv-DFT from 2D arrays to realspace
   // now perform inv-DFT again and check against original data
@@ -467,8 +467,8 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTOdd) {
         double cosmu = fb.cosmu[l * (s.mnyq2 + 1) + m];
         double sinmu = fb.sinmu[l * (s.mnyq2 + 1) + m];
 
-        rnksc += fcSC[idx_mn] * sinmu;
-        rnkcs += fcCS[idx_mn] * cosmu;
+        rnksc += fc_sc[idx_mn] * sinmu;
+        rnkcs += fc_cs[idx_mn] * cosmu;
       }  // m
 
       for (int k = 0; k < s.nZeta; ++k) {
@@ -494,7 +494,7 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTOdd) {
       double ref_odd = 0.0;
       for (int mn = 0; mn < s.mnmax; ++mn) {
         double kernel = fb.xm[mn] * theta - fb.xn[mn] * zeta;
-        ref_odd += fcSinIn[mn] * sin(kernel);
+        ref_odd += fc_sin_in[mn] * sin(kernel);
       }
 
       EXPECT_TRUE(IsCloseRelAbs(ref_odd, realspace_odd[idx_kl], kTolerance))
@@ -519,19 +519,19 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTCombined) {
 
   // originals: linearly-indexed FCs
   // cos(m theta - n zeta)
-  std::vector<double> fcCosIn(s.mnmax);
+  std::vector<double> fc_cos_in(s.mnmax);
   // sin(m theta - n zeta) --> first one is fixed at 0
-  std::vector<double> fcSinIn(s.mnmax);
+  std::vector<double> fc_sin_in(s.mnmax);
 
   // 2D Fourier coefficients
   // cos(m theta) * cos(n zeta)
-  std::vector<double> fcCC(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_cc(s.mpol * (s.ntor + 1));
   // sin(m theta) * sin(n zeta)
-  std::vector<double> fcSS(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_ss(s.mpol * (s.ntor + 1));
   // sin(m theta) * cos(n zeta)
-  std::vector<double> fcSC(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_sc(s.mpol * (s.ntor + 1));
   // cos(m theta) * sin(n zeta)
-  std::vector<double> fcCS(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_cs(s.mpol * (s.ntor + 1));
 
   // reduced poloidal range
   std::vector<double> realspace_evn(s.nThetaReduced * s.nZeta);
@@ -546,17 +546,17 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTCombined) {
   std::uniform_real_distribution<> dist(-1., 1.);
 
   for (int mn = 0; mn < s.mnmax; ++mn) {
-    fcCosIn[mn] = dist(rng);
+    fc_cos_in[mn] = dist(rng);
     if (mn > 0) {
-      fcSinIn[mn] = dist(rng);
+      fc_sin_in[mn] = dist(rng);
     }
   }
   // sin-(0,0) mode HAS to be zero; just to be sure...
-  fcSinIn[0] = 0.0;
+  fc_sin_in[0] = 0.0;
 
   // convert to 2D arrays
-  fb.cos_to_cc_ss(fcCosIn, fcCC, fcSS, ntor, mpol);
-  fb.sin_to_sc_cs(fcSinIn, fcSC, fcCS, ntor, mpol);
+  fb.cos_to_cc_ss(fc_cos_in, fc_cc, fc_ss, ntor, mpol);
+  fb.sin_to_sc_cs(fc_sin_in, fc_sc, fc_cs, ntor, mpol);
 
   // perform inv-DFT from 2D arrays to realspace
   // now perform inv-DFT again and check against original data
@@ -575,10 +575,10 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTCombined) {
         double cosmu = fb.cosmu[l * (s.mnyq2 + 1) + m];
         double sinmu = fb.sinmu[l * (s.mnyq2 + 1) + m];
 
-        rnkcc += fcCC[idx_mn] * cosmu;
-        rnkss += fcSS[idx_mn] * sinmu;
-        rnksc += fcSC[idx_mn] * sinmu;
-        rnkcs += fcCS[idx_mn] * cosmu;
+        rnkcc += fc_cc[idx_mn] * cosmu;
+        rnkss += fc_ss[idx_mn] * sinmu;
+        rnksc += fc_sc[idx_mn] * sinmu;
+        rnkcs += fc_cs[idx_mn] * cosmu;
       }  // m
 
       for (int k = 0; k < s.nZeta; ++k) {
@@ -596,16 +596,16 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTCombined) {
   // compose full realspace from even- and odd-parity contributions
   absl::c_fill_n(realspace, s.nThetaEven * s.nZeta, 0);
   for (int l = 0; l < s.nThetaReduced; ++l) {
-    int lReversed = (s.nThetaEven - l) % s.nThetaEven;
+    int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
     for (int k = 0; k < s.nZeta; ++k) {
-      int kReversed = (s.nZeta - k) % s.nZeta;
+      int k_reversed = (s.nZeta - k) % s.nZeta;
 
       int kl = l * s.nZeta + k;
-      int klReversed = lReversed * s.nZeta + kReversed;
+      int kl_reversed = l_reversed * s.nZeta + k_reversed;
 
       realspace[kl] = realspace_evn[kl] + realspace_odd[kl];
-      if (kl != klReversed) {
-        realspace[klReversed] = realspace_evn[kl] - realspace_odd[kl];
+      if (kl != kl_reversed) {
+        realspace[kl_reversed] = realspace_evn[kl] - realspace_odd[kl];
       }
     }  // l
   }    // k
@@ -622,7 +622,7 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTCombined) {
       double ref = 0.0;
       for (int mn = 0; mn < s.mnmax; ++mn) {
         double kernel = fb.xm[mn] * theta - fb.xn[mn] * zeta;
-        ref += fcCosIn[mn] * cos(kernel) + fcSinIn[mn] * sin(kernel);
+        ref += fc_cos_in[mn] * cos(kernel) + fc_sin_in[mn] * sin(kernel);
       }
 
       EXPECT_TRUE(IsCloseRelAbs(ref, realspace[idx_kl], kTolerance))
@@ -647,25 +647,25 @@ TEST(TestFourierBasisFastToroidal, CheckOrthogonality) {
 
   // originals: linearly-indexed FCs
   // cos(m theta - n zeta)
-  std::vector<double> fcCosIn(s.mnmax);
+  std::vector<double> fc_cos_in(s.mnmax);
   // sin(m theta - n zeta) --> first one is fixed at 0
-  std::vector<double> fcSinIn(s.mnmax);
+  std::vector<double> fc_sin_in(s.mnmax);
 
   // reproductions: linearly-indexed FCs
   // cos(m theta - n zeta)
-  std::vector<double> fcCosOut(s.mnmax);
+  std::vector<double> fc_cos_out(s.mnmax);
   // sin(m theta - n zeta) --> first one is fixed at 0
-  std::vector<double> fcSinOut(s.mnmax);
+  std::vector<double> fc_sin_out(s.mnmax);
 
   // 2D Fourier coefficients
   // cos(m theta) * cos(n zeta)
-  std::vector<double> fcCC(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_cc(s.mpol * (s.ntor + 1));
   // sin(m theta) * sin(n zeta)
-  std::vector<double> fcSS(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_ss(s.mpol * (s.ntor + 1));
   // sin(m theta) * cos(n zeta)
-  std::vector<double> fcSC(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_sc(s.mpol * (s.ntor + 1));
   // cos(m theta) * sin(n zeta)
-  std::vector<double> fcCS(s.mpol * (s.ntor + 1));
+  std::vector<double> fc_cs(s.mpol * (s.ntor + 1));
 
   // reduced poloidal range
   std::vector<double> realspace_evn(s.nThetaReduced * s.nZeta);
@@ -680,17 +680,17 @@ TEST(TestFourierBasisFastToroidal, CheckOrthogonality) {
   std::uniform_real_distribution<> dist(-1., 1.);
 
   for (int mn = 0; mn < s.mnmax; ++mn) {
-    fcCosIn[mn] = dist(rng);
+    fc_cos_in[mn] = dist(rng);
     if (mn > 0) {
-      fcSinIn[mn] = dist(rng);
+      fc_sin_in[mn] = dist(rng);
     }
   }
   // sin-(0,0) mode HAS to be zero; just to be sure...
-  fcSinIn[0] = 0.0;
+  fc_sin_in[0] = 0.0;
 
   // convert to 2D arrays
-  fb.cos_to_cc_ss(fcCosIn, fcCC, fcSS, ntor, mpol);
-  fb.sin_to_sc_cs(fcSinIn, fcSC, fcCS, ntor, mpol);
+  fb.cos_to_cc_ss(fc_cos_in, fc_cc, fc_ss, ntor, mpol);
+  fb.sin_to_sc_cs(fc_sin_in, fc_sc, fc_cs, ntor, mpol);
 
   // perform inv-DFT from 2D arrays to realspace
   // now perform inv-DFT again and check against original data
@@ -709,10 +709,10 @@ TEST(TestFourierBasisFastToroidal, CheckOrthogonality) {
         double cosmu = fb.cosmu[l * (s.mnyq2 + 1) + m];
         double sinmu = fb.sinmu[l * (s.mnyq2 + 1) + m];
 
-        rnkcc += fcCC[idx_mn] * cosmu;
-        rnkss += fcSS[idx_mn] * sinmu;
-        rnksc += fcSC[idx_mn] * sinmu;
-        rnkcs += fcCS[idx_mn] * cosmu;
+        rnkcc += fc_cc[idx_mn] * cosmu;
+        rnkss += fc_ss[idx_mn] * sinmu;
+        rnksc += fc_sc[idx_mn] * sinmu;
+        rnkcs += fc_cs[idx_mn] * cosmu;
       }  // m
 
       for (int k = 0; k < s.nZeta; ++k) {
@@ -730,39 +730,39 @@ TEST(TestFourierBasisFastToroidal, CheckOrthogonality) {
   // compose full realspace from even- and odd-parity contributions
   absl::c_fill_n(realspace, s.nThetaEven * s.nZeta, 0);
   for (int l = 0; l < s.nThetaReduced; ++l) {
-    int lReversed = (s.nThetaEven - l) % s.nThetaEven;
+    int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
     for (int k = 0; k < s.nZeta; ++k) {
-      int kReversed = (s.nZeta - k) % s.nZeta;
+      int k_reversed = (s.nZeta - k) % s.nZeta;
 
       int kl = l * s.nZeta + k;
-      int klReversed = lReversed * s.nZeta + kReversed;
+      int kl_reversed = l_reversed * s.nZeta + k_reversed;
 
       realspace[kl] = realspace_evn[kl] + realspace_odd[kl];
-      if (kl != klReversed) {
-        realspace[klReversed] = realspace_evn[kl] - realspace_odd[kl];
+      if (kl != kl_reversed) {
+        realspace[kl_reversed] = realspace_evn[kl] - realspace_odd[kl];
       }
     }  // l
   }    // k
 
   // decompose back into even- and odd-parity contributions
   for (int l = 0; l < s.nThetaReduced; ++l) {
-    int lReversed = (s.nThetaEven - l) % s.nThetaEven;
+    int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
     for (int k = 0; k < s.nZeta; ++k) {
-      int kReversed = (s.nZeta - k) % s.nZeta;
+      int k_reversed = (s.nZeta - k) % s.nZeta;
 
       int kl = l * s.nZeta + k;
-      int klReversed = lReversed * s.nZeta + kReversed;
+      int kl_reversed = l_reversed * s.nZeta + k_reversed;
 
-      realspace_evn[kl] = 0.5 * (realspace[kl] + realspace[klReversed]);
-      realspace_odd[kl] = 0.5 * (realspace[kl] - realspace[klReversed]);
+      realspace_evn[kl] = 0.5 * (realspace[kl] + realspace[kl_reversed]);
+      realspace_odd[kl] = 0.5 * (realspace[kl] - realspace[kl_reversed]);
     }
   }
 
   // perform fwd-DFT separately for even- and odd-parity contributions
-  absl::c_fill_n(fcCC, s.mpol * (s.ntor + 1), 0);
-  absl::c_fill_n(fcSS, s.mpol * (s.ntor + 1), 0);
-  absl::c_fill_n(fcSC, s.mpol * (s.ntor + 1), 0);
-  absl::c_fill_n(fcCS, s.mpol * (s.ntor + 1), 0);
+  absl::c_fill_n(fc_cc, s.mpol * (s.ntor + 1), 0);
+  absl::c_fill_n(fc_ss, s.mpol * (s.ntor + 1), 0);
+  absl::c_fill_n(fc_sc, s.mpol * (s.ntor + 1), 0);
+  absl::c_fill_n(fc_cs, s.mpol * (s.ntor + 1), 0);
   for (int n = 0; n < s.ntor + 1; ++n) {
     for (int l = 0; l < s.nThetaReduced; ++l) {
       double rnkcc = 0.0;
@@ -788,23 +788,23 @@ TEST(TestFourierBasisFastToroidal, CheckOrthogonality) {
         double cosmui = fb.cosmui[l * (s.mnyq2 + 1) + m];
         double sinmui = fb.sinmui[l * (s.mnyq2 + 1) + m];
 
-        fcCC[idx_mn] += rnkcc * cosmui;
-        fcSS[idx_mn] += rnkss * sinmui;
-        fcSC[idx_mn] += rnksc * sinmui;
-        fcCS[idx_mn] += rnkcs * cosmui;
+        fc_cc[idx_mn] += rnkcc * cosmui;
+        fc_ss[idx_mn] += rnkss * sinmui;
+        fc_sc[idx_mn] += rnksc * sinmui;
+        fc_cs[idx_mn] += rnkcs * cosmui;
       }  // m
     }    // l
   }      // n
 
   // combine back into linear-indexed Fourier coefficient arrays
-  fb.cc_ss_to_cos(fcCC, fcSS, fcCosOut, ntor, mpol);
-  fb.sc_cs_to_sin(fcSC, fcCS, fcSinOut, ntor, mpol);
+  fb.cc_ss_to_cos(fc_cc, fc_ss, fc_cos_out, ntor, mpol);
+  fb.sc_cs_to_sin(fc_sc, fc_cs, fc_sin_out, ntor, mpol);
 
   // check for equality with initial data
   for (int mn = 0; mn < s.mnmax; ++mn) {
-    EXPECT_TRUE(IsCloseRelAbs(fcCosIn[mn], fcCosOut[mn], kTolerance))
+    EXPECT_TRUE(IsCloseRelAbs(fc_cos_in[mn], fc_cos_out[mn], kTolerance))
         << absl::StrFormat("m=%d n=%d", fb.xm[mn], fb.xn[mn] / s.nfp);
-    EXPECT_TRUE(IsCloseRelAbs(fcSinIn[mn], fcSinOut[mn], kTolerance))
+    EXPECT_TRUE(IsCloseRelAbs(fc_sin_in[mn], fc_sin_out[mn], kTolerance))
         << absl::StrFormat("m=%d n=%d", fb.xm[mn], fb.xn[mn] / s.nfp);
   }
 }  // CheckOrthogonality

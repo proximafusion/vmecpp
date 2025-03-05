@@ -1531,32 +1531,32 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
     const IdealMhdModel& m = *models_from_threads[thread_id];
     const RadialProfiles& p = *radial_profiles[thread_id];
 
-    const int nsMinH = r.nsMinH;
-    const int nsMaxH = r.nsMaxH;
+    const int ns_min_h = r.nsMinH;
+    const int ns_max_h = r.nsMaxH;
 
-    const int nsMinF = r.nsMinF;
-    const int nsMaxFIncludingLcfs = r.nsMaxFIncludingLcfs;
+    const int ns_min_f = r.nsMinF;
+    const int ns_max_f_including_lcfs = r.nsMaxFIncludingLcfs;
 
-    const int nsMinF1 = r.nsMinF1;
+    const int ns_min_f1 = r.nsMinF1;
 
-    for (int jH = nsMinH; jH < nsMaxH; ++jH) {
+    for (int j_h = ns_min_h; j_h < ns_max_h; ++j_h) {
       // half-grid points are overlapping --> only take unique ones !
-      if (jH < nsMaxH - 1 || jH == fc.ns - 2) {
-        results.sqrtSH[jH] = p.sqrtSH[jH - nsMinH];
+      if (j_h < ns_max_h - 1 || j_h == fc.ns - 2) {
+        results.sqrtSH[j_h] = p.sqrtSH[j_h - ns_min_h];
 
-        results.sm[jH] = p.sm[jH - nsMinH];
-        results.sp[jH] = p.sp[jH - nsMinH];
+        results.sm[j_h] = p.sm[j_h - ns_min_h];
+        results.sp[j_h] = p.sp[j_h - ns_min_h];
 
-        results.phipH[jH] = p.phipH[jH - nsMinH];
-        results.bvcoH[jH] = p.bvcoH[jH - nsMinH];
-        results.dVdsH[jH] = p.dVdsH[jH - nsMinH];
-        results.massH[jH] = p.massH[jH - nsMinH];
-        results.presH[jH] = p.presH[jH - nsMinH];
-        results.iotaH[jH] = p.iotaH[jH - nsMinH];
+        results.phipH[j_h] = p.phipH[j_h - ns_min_h];
+        results.bvcoH[j_h] = p.bvcoH[j_h - ns_min_h];
+        results.dVdsH[j_h] = p.dVdsH[j_h - ns_min_h];
+        results.massH[j_h] = p.massH[j_h - ns_min_h];
+        results.presH[j_h] = p.presH[j_h - ns_min_h];
+        results.iotaH[j_h] = p.iotaH[j_h - ns_min_h];
 
         for (int kl = 0; kl < s.nZnT; ++kl) {
-          int idx_global = jH * s.nZnT + kl;
-          int idx_local = (jH - nsMinH) * s.nZnT + kl;
+          int idx_global = j_h * s.nZnT + kl;
+          int idx_local = (j_h - ns_min_h) * s.nZnT + kl;
 
           // from Jacobian
           results.r12(idx_global) = m.r12[idx_local];
@@ -1583,24 +1583,24 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
       }
     }  // jH
 
-    for (int jF = nsMinF; jF < nsMaxFIncludingLcfs; ++jF) {
-      results.sqrtSF[jF] = p.sqrtSF[jF - nsMinF1];
+    for (int j_f = ns_min_f; j_f < ns_max_f_including_lcfs; ++j_f) {
+      results.sqrtSF[j_f] = p.sqrtSF[j_f - ns_min_f1];
 
       // phipF is computed in RecomputeToroidalFlux here!
-      results.phipF[jF] = p.phipF[jF - r.nsMinF1];
+      results.phipF[j_f] = p.phipF[j_f - r.nsMinF1];
 
-      results.chipF[jF] = p.chipF[jF - r.nsMinF1];
+      results.chipF[j_f] = p.chipF[j_f - r.nsMinF1];
 
-      results.iotaF[jF] = p.iotaF[jF - r.nsMinF1];
-      results.spectral_width[jF] = p.spectral_width[jF - r.nsMinF1];
+      results.iotaF[j_f] = p.iotaF[j_f - r.nsMinF1];
+      results.spectral_width[j_f] = p.spectral_width[j_f - r.nsMinF1];
 
       // state vector
       for (int n = 0; n < s.ntor + 1; ++n) {
         for (int m = 0; m < s.mpol; ++m) {
           // FIXME(eguiraud) slow loop
           const int source_index =
-              ((jF - nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
-          const int target_index = (jF * (s.ntor + 1) + n) * s.mpol + m;
+              ((j_f - ns_min_f1) * s.mpol + m) * (s.ntor + 1) + n;
+          const int target_index = (j_f * (s.ntor + 1) + n) * s.mpol + m;
 
           results.rmncc(target_index) =
               decomposed_x[thread_id]->rmncc[source_index];
@@ -1636,14 +1636,14 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
       }    // n
 
       double unlamscale = 1.0;
-      if (jF > 0) {
+      if (j_f > 0) {
         unlamscale = -1.0 / constants.lamscale;
       }
 
       for (int kl = 0; kl < s.nZnT; ++kl) {
-        int idx_global = jF * s.nZnT + kl;
-        int idx_local = (jF - nsMinF) * s.nZnT + kl;
-        int idx_local1 = (jF - nsMinF1) * s.nZnT + kl;
+        int idx_global = j_f * s.nZnT + kl;
+        int idx_local = (j_f - ns_min_f) * s.nZnT + kl;
+        int idx_local1 = (j_f - ns_min_f1) * s.nZnT + kl;
 
         results.bsubvF(idx_global) = m.blmn_e[idx_local] * unlamscale;
 
@@ -1686,17 +1686,17 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
 void vmecpp::MeshBledingBSubZeta(const Sizes& s, const FlowControl& fc,
                                  VmecInternalResults& m_vmec_internal_results) {
   // COMPUTE COVARIANT BSUBU,V (EVEN, ODD) ON HALF RADIAL MESH FOR FORCE BALANCE
-  for (int jH = fc.ns - 3; jH >= 0; jH--) {
+  for (int j_h = fc.ns - 3; j_h >= 0; j_h--) {
     // jF is the full-grid point outside jH-th half-grid point
-    int jF = jH + 1;
+    int j_f = j_h + 1;
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      int idx_sourceH = (jH + 1) * s.nZnT + kl;
-      int idx_sourceF = jF * s.nZnT + kl;
-      int idx_targetH = jH * s.nZnT + kl;
+      int idx_source_h = (j_h + 1) * s.nZnT + kl;
+      int idx_source_f = j_f * s.nZnT + kl;
+      int idx_target_h = j_h * s.nZnT + kl;
 
-      m_vmec_internal_results.bsubv(idx_targetH) =
-          2.0 * m_vmec_internal_results.bsubvF(idx_sourceF) -
-          m_vmec_internal_results.bsubv(idx_sourceH);
+      m_vmec_internal_results.bsubv(idx_target_h) =
+          2.0 * m_vmec_internal_results.bsubvF(idx_source_f) -
+          m_vmec_internal_results.bsubv(idx_source_h);
     }  // kl
   }    // jH
 }  // MeshBledingBSubZeta
@@ -1708,18 +1708,18 @@ vmecpp::PoloidalCurrentToFixBSubV vmecpp::ComputePoloidalCurrentToFixBSubV(
   poloidal_current_to_fix_bsubv.poloidal_current_deviation =
       VectorXd::Zero(vmec_internal_results.num_half);
 
-  for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
+  for (int j_h = 0; j_h < vmec_internal_results.num_half; ++j_h) {
     double poloidal_current_from_bsubv = 0.0;
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      int iHalf = jH * s.nZnT + kl;
+      int i_half = j_h * s.nZnT + kl;
       int l = kl % s.nThetaEff;
       poloidal_current_from_bsubv +=
-          vmec_internal_results.bsubv(iHalf) * s.wInt[l];
+          vmec_internal_results.bsubv(i_half) * s.wInt[l];
     }  // kl
 
     // deviation = actual value - expected value
-    poloidal_current_to_fix_bsubv.poloidal_current_deviation[jH] =
-        poloidal_current_from_bsubv - vmec_internal_results.bvcoH[jH];
+    poloidal_current_to_fix_bsubv.poloidal_current_deviation[j_h] =
+        poloidal_current_from_bsubv - vmec_internal_results.bvcoH[j_h];
   }  // jH
 
   return poloidal_current_to_fix_bsubv;
@@ -1729,13 +1729,13 @@ void vmecpp::FixupPoloidalCurrent(
     const Sizes& s,
     const PoloidalCurrentToFixBSubV& poloidal_current_to_fix_bsubv,
     VmecInternalResults& m_vmec_internal_results) {
-  for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
+  for (int j_h = 0; j_h < m_vmec_internal_results.num_half; ++j_h) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      int iHalf = jH * s.nZnT + kl;
+      int i_half = j_h * s.nZnT + kl;
 
       // fix bsubv by subtracting the deviation in poloidal current
-      m_vmec_internal_results.bsubv(iHalf) -=
-          poloidal_current_to_fix_bsubv.poloidal_current_deviation[jH];
+      m_vmec_internal_results.bsubv(i_half) -=
+          poloidal_current_to_fix_bsubv.poloidal_current_deviation[j_h];
     }  // kl
   }    // jH
 }  // FixupPoloidalCurrent
@@ -1744,16 +1744,16 @@ void vmecpp::RecomputeToroidalFlux(
     const FlowControl& fc, VmecInternalResults& m_vmec_internal_results) {
   // quadrature in radial direction
   m_vmec_internal_results.phiF[0] = 0.0;
-  for (int jF = 1; jF < fc.ns; ++jF) {
-    m_vmec_internal_results.phiF[jF] = m_vmec_internal_results.phiF[jF - 1] +
-                                       m_vmec_internal_results.phipF[jF - 1];
+  for (int j_f = 1; j_f < fc.ns; ++j_f) {
+    m_vmec_internal_results.phiF[j_f] = m_vmec_internal_results.phiF[j_f - 1] +
+                                       m_vmec_internal_results.phipF[j_f - 1];
   }  // jF
 
   // now apply scaling
   const double scaling_factor =
       m_vmec_internal_results.sign_of_jacobian * 2.0 * M_PI * fc.deltaS;
-  for (int jF = 0; jF < fc.ns; ++jF) {
-    m_vmec_internal_results.phiF[jF] *= scaling_factor;
+  for (int j_f = 0; j_f < fc.ns; ++j_f) {
+    m_vmec_internal_results.phiF[j_f] *= scaling_factor;
   }  // jF
 }  // RecomputeToroidalFlux
 
@@ -1775,49 +1775,49 @@ vmecpp::RemainingMetric vmecpp::ComputeRemainingMetric(
   remaining_metric.gsv =
       RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
 
-  for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
+  for (int j_h = 0; j_h < vmec_internal_results.num_half; ++j_h) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      int idxH = jH * s.nZnT + kl;
-      int idxFi = idxH;
-      int idxFo = (jH + 1) * s.nZnT + kl;
+      int idx_h = j_h * s.nZnT + kl;
+      int idx_fi = idx_h;
+      int idx_fo = (j_h + 1) * s.nZnT + kl;
 
-      double rv_e12 = (vmec_internal_results.rv_e(idxFo) +
-                       vmec_internal_results.rv_e(idxFi)) /
+      double rv_e12 = (vmec_internal_results.rv_e(idx_fo) +
+                       vmec_internal_results.rv_e(idx_fi)) /
                       2.0;
-      double rv_o12 = (vmec_internal_results.rv_o(idxFo) +
-                       vmec_internal_results.rv_o(idxFi)) /
+      double rv_o12 = (vmec_internal_results.rv_o(idx_fo) +
+                       vmec_internal_results.rv_o(idx_fi)) /
                       2.0;
-      remaining_metric.rv12(idxH) =
-          rv_e12 + vmec_internal_results.sqrtSH[jH] * rv_o12;
+      remaining_metric.rv12(idx_h) =
+          rv_e12 + vmec_internal_results.sqrtSH[j_h] * rv_o12;
 
-      double zv_e12 = (vmec_internal_results.zv_e(idxFo) +
-                       vmec_internal_results.zv_e(idxFi)) /
+      double zv_e12 = (vmec_internal_results.zv_e(idx_fo) +
+                       vmec_internal_results.zv_e(idx_fi)) /
                       2.0;
-      double zv_o12 = (vmec_internal_results.zv_o(idxFo) +
-                       vmec_internal_results.zv_o(idxFi)) /
+      double zv_o12 = (vmec_internal_results.zv_o(idx_fo) +
+                       vmec_internal_results.zv_o(idx_fi)) /
                       2.0;
-      remaining_metric.zv12(idxH) =
-          zv_e12 + vmec_internal_results.sqrtSH[jH] * zv_o12;
+      remaining_metric.zv12(idx_h) =
+          zv_e12 + vmec_internal_results.sqrtSH[j_h] * zv_o12;
 
-      double r_o12 = (vmec_internal_results.r_o(idxFo) +
-                      vmec_internal_results.r_o(idxFi)) /
+      double r_o12 = (vmec_internal_results.r_o(idx_fo) +
+                      vmec_internal_results.r_o(idx_fi)) /
                      2.0;
-      double z_o12 = (vmec_internal_results.z_o(idxFo) +
-                      vmec_internal_results.z_o(idxFi)) /
+      double z_o12 = (vmec_internal_results.z_o(idx_fo) +
+                      vmec_internal_results.z_o(idx_fi)) /
                      2.0;
-      remaining_metric.rs12(idxH) =
-          vmec_internal_results.rs(idxH) +
-          r_o12 / (2.0 * vmec_internal_results.sqrtSH[jH]);
-      remaining_metric.zs12(idxH) =
-          vmec_internal_results.zs(idxH) +
-          z_o12 / (2.0 * vmec_internal_results.sqrtSH[jH]);
+      remaining_metric.rs12(idx_h) =
+          vmec_internal_results.rs(idx_h) +
+          r_o12 / (2.0 * vmec_internal_results.sqrtSH[j_h]);
+      remaining_metric.zs12(idx_h) =
+          vmec_internal_results.zs(idx_h) +
+          z_o12 / (2.0 * vmec_internal_results.sqrtSH[j_h]);
 
-      remaining_metric.gsu(idxH) =
-          remaining_metric.rs12(idxH) * vmec_internal_results.ru12(idxH) +
-          remaining_metric.zs12(idxH) * vmec_internal_results.zu12(idxH);
-      remaining_metric.gsv(idxH) =
-          remaining_metric.rs12(idxH) * remaining_metric.rv12(idxH) +
-          remaining_metric.zs12(idxH) * remaining_metric.zv12(idxH);
+      remaining_metric.gsu(idx_h) =
+          remaining_metric.rs12(idx_h) * vmec_internal_results.ru12(idx_h) +
+          remaining_metric.zs12(idx_h) * vmec_internal_results.zu12(idx_h);
+      remaining_metric.gsv(idx_h) =
+          remaining_metric.rs12(idx_h) * remaining_metric.rv12(idx_h) +
+          remaining_metric.zs12(idx_h) * remaining_metric.zv12(idx_h);
     }  // kl
   }    // jH
 
@@ -1834,18 +1834,18 @@ vmecpp::CylindricalComponentsOfB vmecpp::BCylindricalComponents(
       RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
   b_cylindrical.b_z = RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
 
-  for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
+  for (int j_h = 0; j_h < vmec_internal_results.num_half; ++j_h) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      int idxH = jH * s.nZnT + kl;
+      int idx_h = j_h * s.nZnT + kl;
 
-      b_cylindrical.b_r(idxH) =
-          vmec_internal_results.bsupu(idxH) * vmec_internal_results.ru12(idxH) +
-          vmec_internal_results.bsupv(idxH) * remaining_metric.rv12(idxH);
-      b_cylindrical.b_phi(idxH) =
-          vmec_internal_results.bsupv(idxH) * vmec_internal_results.r12(idxH);
-      b_cylindrical.b_z(idxH) =
-          vmec_internal_results.bsupu(idxH) * vmec_internal_results.zu12(idxH) +
-          vmec_internal_results.bsupv(idxH) * remaining_metric.zv12(idxH);
+      b_cylindrical.b_r(idx_h) =
+          vmec_internal_results.bsupu(idx_h) * vmec_internal_results.ru12(idx_h) +
+          vmec_internal_results.bsupv(idx_h) * remaining_metric.rv12(idx_h);
+      b_cylindrical.b_phi(idx_h) =
+          vmec_internal_results.bsupv(idx_h) * vmec_internal_results.r12(idx_h);
+      b_cylindrical.b_z(idx_h) =
+          vmec_internal_results.bsupu(idx_h) * vmec_internal_results.zu12(idx_h) +
+          vmec_internal_results.bsupv(idx_h) * remaining_metric.zv12(idx_h);
     }  // kl
   }    // jH
 
@@ -1859,12 +1859,12 @@ vmecpp::BSubSHalf vmecpp::ComputeBSubSOnHalfGrid(
   bsubs_half.bsubs_half =
       RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
 
-  for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
+  for (int j_h = 0; j_h < vmec_internal_results.num_half; ++j_h) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      int idxH = jH * s.nZnT + kl;
-      bsubs_half.bsubs_half(idxH) =
-          vmec_internal_results.bsupu(idxH) * remaining_metric.gsu(idxH) +
-          vmec_internal_results.bsupv(idxH) * remaining_metric.gsv(idxH);
+      int idx_h = j_h * s.nZnT + kl;
+      bsubs_half.bsubs_half(idx_h) =
+          vmec_internal_results.bsupu(idx_h) * remaining_metric.gsu(idx_h) +
+          vmec_internal_results.bsupv(idx_h) * remaining_metric.gsv(idx_h);
     }  // kl
   }    // jH
 
@@ -1879,13 +1879,13 @@ vmecpp::BSubSFull vmecpp::PutBSubSOnFullGrid(
       RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
 
   // ignore axis and boundary for now
-  for (int jF = 1; jF < vmec_internal_results.num_full - 1; ++jF) {
-    const int jHi = jF - 1;
-    const int jHo = jF;
+  for (int j_f = 1; j_f < vmec_internal_results.num_full - 1; ++j_f) {
+    const int j_hi = j_f - 1;
+    const int j_ho = j_f;
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      bsubs_full.bsubs_full(jF * s.nZnT + kl) =
-          (bsubs_half.bsubs_half(jHo * s.nZnT + kl) +
-           bsubs_half.bsubs_half(jHi * s.nZnT + kl)) /
+      bsubs_full.bsubs_full(j_f * s.nZnT + kl) =
+          (bsubs_half.bsubs_half(j_ho * s.nZnT + kl) +
+           bsubs_half.bsubs_half(j_hi * s.nZnT + kl)) /
           2.0;
     }  // kl
   }    // jF
@@ -1918,9 +1918,9 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
     // SO COS,SIN INTEGRALS CAN BE PERFORMED ON HALF-U INTERVAL
     // bs_s(v,u) = .5*( bs(v,u) - bs(-v,-u) )     ! * SIN(mu - nv)
     // bs_a(v,u) = .5*( bs(v,u) + bs(-v,-u) )     ! * COS(mu - nv)
-    for (int jF = 0; jF < vmec_internal_results.num_full; ++jF) {
+    for (int j_f = 0; j_f < vmec_internal_results.num_full; ++j_f) {
       for (int kl = 0; kl < vmec_internal_results.nZnT_reduced; ++kl) {
-        const int source_index = jF * s.nZnT + kl;
+        const int source_index = j_f * s.nZnT + kl;
 
         const int k = kl / s.nThetaReduced;
         const int l = kl % s.nThetaReduced;
@@ -1929,9 +1929,9 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         const int k_reversed = (s.nZeta - k) % s.nZeta;
         const int kl_reversed = k_reversed * s.nThetaEven + l_reversed;
 
-        const int source_index_reversed = jF * s.nZnT + kl_reversed;
+        const int source_index_reversed = j_f * s.nZnT + kl_reversed;
 
-        const int target_index = jF * vmec_internal_results.nZnT_reduced + kl;
+        const int target_index = j_f * vmec_internal_results.nZnT_reduced + kl;
 
         decomposed_bcov.bsubs_s(target_index) =
             bsubs_full.bsubs_full(source_index) -
@@ -1941,9 +1941,9 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
             bsubs_full.bsubs_full(source_index_reversed);
       }  // kl
     }    // jF
-    for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
+    for (int j_h = 0; j_h < vmec_internal_results.num_half; ++j_h) {
       for (int kl = 0; kl < s.nZnT; ++kl) {
-        const int source_index = jH * s.nZnT + kl;
+        const int source_index = j_h * s.nZnT + kl;
 
         const int k = kl / s.nThetaEff;
         const int l = kl % s.nThetaEff;
@@ -1952,9 +1952,9 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         const int k_reversed = (s.nZeta - k) % s.nZeta;
         const int kl_reversed = k_reversed * s.nThetaEven + l_reversed;
 
-        const int source_index_reversed = jH * s.nZnT + kl_reversed;
+        const int source_index_reversed = j_h * s.nZnT + kl_reversed;
 
-        const int target_index = jH * vmec_internal_results.nZnT_reduced + kl;
+        const int target_index = j_h * vmec_internal_results.nZnT_reduced + kl;
 
         decomposed_bcov.bsubu_s(target_index) =
             vmec_internal_results.bsubu(source_index) +
@@ -1972,18 +1972,18 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
     }    // jH
   } else {
     // stellarator-symmetric case: simply copy over data
-    for (int jF = 0; jF < vmec_internal_results.num_full; ++jF) {
+    for (int j_f = 0; j_f < vmec_internal_results.num_full; ++j_f) {
       for (int kl = 0; kl < vmec_internal_results.nZnT_reduced; ++kl) {
-        const int source_index = jF * s.nZnT + kl;
-        const int target_index = jF * vmec_internal_results.nZnT_reduced + kl;
+        const int source_index = j_f * s.nZnT + kl;
+        const int target_index = j_f * vmec_internal_results.nZnT_reduced + kl;
         decomposed_bcov.bsubs_s(target_index) =
             bsubs_full.bsubs_full(source_index);
       }  // kl
     }    // jF
-    for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
+    for (int j_h = 0; j_h < vmec_internal_results.num_half; ++j_h) {
       for (int kl = 0; kl < s.nZnT; ++kl) {
-        const int source_index = jH * s.nZnT + kl;
-        const int target_index = jH * vmec_internal_results.nZnT_reduced + kl;
+        const int source_index = j_h * s.nZnT + kl;
+        const int target_index = j_h * vmec_internal_results.nZnT_reduced + kl;
         decomposed_bcov.bsubu_s(target_index) =
             vmec_internal_results.bsubu(source_index);
         decomposed_bcov.bsubv_s(target_index) =
@@ -2033,7 +2033,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
   }
 
   // FOURIER LOW-PASS FILTER bsubs
-  for (int jF = 0; jF < m_vmec_internal_results.num_full; ++jF) {
+  for (int j_f = 0; j_f < m_vmec_internal_results.num_full; ++j_f) {
     for (int m = 0; m < s.mpol; ++m) {
       for (int n = 0; n <= s.ntor; ++n) {
         // FOURIER TRANSFORM
@@ -2060,7 +2060,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
             const int kl = k * s.nThetaReduced + l;
 
             const int source_index =
-                jF * m_vmec_internal_results.nZnT_reduced + kl;
+                j_f * m_vmec_internal_results.nZnT_reduced + kl;
 
             // sin-cos
             const double tsini1 = t.sinmui[idx_ml] * t.cosnv[idx_kn] * dnorm1;
@@ -2097,7 +2097,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
             const int kl = k * s.nThetaReduced + l;
             const int target_index =
-                jF * m_vmec_internal_results.nZnT_reduced + kl;
+                j_f * m_vmec_internal_results.nZnT_reduced + kl;
 
             const double tcosm1 = t.cosmum[idx_ml] * t.cosnv[idx_kn];
             const double tcosm2 = t.sinmum[idx_ml] * t.sinnv[idx_kn];
@@ -2123,7 +2123,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
   }            // jF
 
   // FOURIER LOW-PASS FILTER bsubu AND bsubv
-  for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
+  for (int j_h = 0; j_h < m_vmec_internal_results.num_half; ++j_h) {
     for (int m = 0; m < s.mpol; ++m) {
       for (int n = 0; n <= s.ntor; ++n) {
         // FOURIER TRANSFORM
@@ -2154,7 +2154,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
             const int kl = k * s.nThetaReduced + l;
             const int source_index =
-                jH * m_vmec_internal_results.nZnT_reduced + kl;
+                j_h * m_vmec_internal_results.nZnT_reduced + kl;
 
             // cos-cos
             const double tcosi1 = t.cosmui[idx_ml] * t.cosnv[idx_kn] * dnorm1;
@@ -2198,7 +2198,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
             const int kl = k * s.nThetaReduced + l;
             const int target_index =
-                jH * m_vmec_internal_results.nZnT_reduced + kl;
+                j_h * m_vmec_internal_results.nZnT_reduced + kl;
 
             const double tcos1 = t.cosmu[idx_ml] * t.cosnv[idx_kn];
             const double tcos2 = t.sinmu[idx_ml] * t.sinnv[idx_kn];
@@ -2244,13 +2244,13 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
   if (s.lasym) {
     // EXTEND FILTERED bsubu, bsubv TO NTHETA3 MESH
     // fext_fft
-    for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
+    for (int j_h = 0; j_h < m_vmec_internal_results.num_half; ++j_h) {
       for (int k = 0; k < s.nZeta; ++k) {
         for (int l = 0; l < s.nThetaReduced; ++l) {
           const int kl = k * s.nThetaReduced + l;
           const int source_index =
-              jH * m_vmec_internal_results.nZnT_reduced + kl;
-          const int target_index = jH * s.nZnT + kl;
+              j_h * m_vmec_internal_results.nZnT_reduced + kl;
+          const int target_index = j_h * s.nZnT + kl;
 
           m_vmec_internal_results.bsubu(target_index) =
               bsubu_filtered_s[source_index] + bsubu_filtered_a[source_index];
@@ -2264,9 +2264,9 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
           const int k_reversed = (s.nZeta - k) % s.nZeta;
           const int kl_reversed = k_reversed * s.nThetaEven + l_reversed;
 
-          const int source_index_reversed = jH * s.nZnT + kl_reversed;
+          const int source_index_reversed = j_h * s.nZnT + kl_reversed;
 
-          const int target_index = jH * s.nZnT + kl;
+          const int target_index = j_h * s.nZnT + kl;
 
           m_vmec_internal_results.bsubu(target_index) =
               bsubu_filtered_s[source_index_reversed] -
@@ -2279,9 +2279,9 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
     }      // jH
   } else {
     // simply overwrite non-filtered data in-place
-    for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
+    for (int j_h = 0; j_h < m_vmec_internal_results.num_half; ++j_h) {
       for (int kl = 0; kl < s.nZnT; ++kl) {
-        const int idx_kl = jH * s.nZnT + kl;
+        const int idx_kl = j_h * s.nZnT + kl;
         m_vmec_internal_results.bsubu(idx_kl) = bsubu_filtered_s[idx_kl];
         m_vmec_internal_results.bsubv(idx_kl) = bsubv_filtered_s[idx_kl];
       }  // kl
@@ -2291,7 +2291,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
   // EXTEND bsubsu, bsubsv TO NTHETA3 MESH
   if (s.lasym) {
     // fsym_invfft
-    for (int jF = 0; jF < m_vmec_internal_results.num_full; ++jF) {
+    for (int j_f = 0; j_f < m_vmec_internal_results.num_full; ++j_f) {
       for (int k = 0; k < s.nZeta; ++k) {
         for (int l = s.nThetaReduced; l < s.nThetaEven; ++l) {
           const int kl = k * s.nThetaEven + l;
@@ -2300,9 +2300,9 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
           const int k_reversed = (s.nZeta - k) % s.nZeta;
           const int kl_reversed = k_reversed * s.nThetaEven + l_reversed;
 
-          const int source_index_reversed = jF * s.nZnT + kl_reversed;
+          const int source_index_reversed = j_f * s.nZnT + kl_reversed;
 
-          const int target_index = jF * s.nZnT + kl;
+          const int target_index = j_f * s.nZnT + kl;
 
           covariant_b_derivatives.bsubsu(target_index) =
               bsubsu_s[source_index_reversed] - bsubsu_a[source_index_reversed];
@@ -2312,8 +2312,8 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
         for (int l = 0; l < s.nThetaReduced; ++l) {
           const int kl = k * s.nThetaReduced + l;
           const int source_index =
-              jF * m_vmec_internal_results.nZnT_reduced + kl;
-          const int target_index = jF * s.nZnT + kl;
+              j_f * m_vmec_internal_results.nZnT_reduced + kl;
+          const int target_index = j_f * s.nZnT + kl;
 
           covariant_b_derivatives.bsubsu(target_index) =
               bsubsu_s[source_index] + bsubsu_a[source_index];
@@ -2324,9 +2324,9 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
     }      // jH
   } else {
     // simply copy over data
-    for (int jF = 0; jF < m_vmec_internal_results.num_full; ++jF) {
+    for (int j_f = 0; j_f < m_vmec_internal_results.num_full; ++j_f) {
       for (int kl = 0; kl < s.nZnT; ++kl) {
-        const int idx_kl = jF * s.nZnT + kl;
+        const int idx_kl = j_f * s.nZnT + kl;
         covariant_b_derivatives.bsubsu(idx_kl) = bsubsu_s[idx_kl];
         covariant_b_derivatives.bsubsv(idx_kl) = bsubsv_s[idx_kl];
       }  // kl
@@ -2418,26 +2418,26 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
 
   std::vector<double> jxb(s.nZnT, 0.0);
 
-  static constexpr double dnorm1 = 4.0 * M_PI * M_PI;
+  static constexpr double kDnorm1 = 4.0 * M_PI * M_PI;
 
-  for (int jF = 1; jF < fc.ns - 1; ++jF) {
-    const int jHi = jF - 1;
-    const int jHo = jF;
+  for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
+    const int j_hi = j_f - 1;
+    const int j_ho = j_f;
 
     // "over-vp"
     // 1/V' on full grid
     // and 4 pi^2 divided out
     const double ovp =
         2.0 /
-        (vmec_internal_results.dVdsH[jHo] + vmec_internal_results.dVdsH[jHi]) /
-        dnorm1;
+        (vmec_internal_results.dVdsH[j_ho] + vmec_internal_results.dVdsH[j_hi]) /
+        kDnorm1;
 
     const double tjnorm = ovp * vmec_internal_results.sign_of_jacobian;
 
     // dp/ds here
     double pprime =
         1.0 / MU_0 *
-        (vmec_internal_results.presH[jHo] - vmec_internal_results.presH[jHi]) /
+        (vmec_internal_results.presH[j_ho] - vmec_internal_results.presH[j_hi]) /
         fc.deltaS;
 
     const double pprime_ovp = pprime * ovp;
@@ -2457,49 +2457,49 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
 
     for (int kl = 0; kl < s.nZnT; ++kl) {
       const int l = kl % s.nThetaEff;
-      const int target_index = jF * s.nZnT + kl;
+      const int target_index = j_f * s.nZnT + kl;
 
       // --------
 
       const double gsqrt_outside =
-          vmec_internal_results.gsqrt(jHo * s.nZnT + kl);
+          vmec_internal_results.gsqrt(j_ho * s.nZnT + kl);
       const double gsqrt_inside =
-          vmec_internal_results.gsqrt(jHi * s.nZnT + kl);
+          vmec_internal_results.gsqrt(j_hi * s.nZnT + kl);
 
       const double bsq_outside =
-          vmec_internal_results.total_pressure(jHo * s.nZnT + kl) -
-          vmec_internal_results.presH[jHo];
+          vmec_internal_results.total_pressure(j_ho * s.nZnT + kl) -
+          vmec_internal_results.presH[j_ho];
       const double bsq_inside =
-          vmec_internal_results.total_pressure(jHi * s.nZnT + kl) -
-          vmec_internal_results.presH[jHi];
+          vmec_internal_results.total_pressure(j_hi * s.nZnT + kl) -
+          vmec_internal_results.presH[j_hi];
 
       sqgb2[kl] = gsqrt_outside * bsq_outside + gsqrt_inside * bsq_inside;
 
       // --------
 
       const double bsubu_outside =
-          vmec_internal_results.bsubu(jHo * s.nZnT + kl);
+          vmec_internal_results.bsubu(j_ho * s.nZnT + kl);
       const double bsubu_inside =
-          vmec_internal_results.bsubu(jHi * s.nZnT + kl);
+          vmec_internal_results.bsubu(j_hi * s.nZnT + kl);
 
       const double bsubv_outside =
-          vmec_internal_results.bsubv(jHo * s.nZnT + kl);
+          vmec_internal_results.bsubv(j_ho * s.nZnT + kl);
       const double bsubv_inside =
-          vmec_internal_results.bsubv(jHi * s.nZnT + kl);
+          vmec_internal_results.bsubv(j_hi * s.nZnT + kl);
 
       kperpu[kl] = 0.5 * (bsubv_outside + bsubv_inside) * pprime / sqgb2[kl];
       kperpv[kl] = 0.5 * (bsubu_outside + bsubu_inside) * pprime / sqgb2[kl];
 
       // --------
 
-      const double guu_o = vmec_internal_results.guu(jHo * s.nZnT + kl);
-      const double guu_i = vmec_internal_results.guu(jHi * s.nZnT + kl);
+      const double guu_o = vmec_internal_results.guu(j_ho * s.nZnT + kl);
+      const double guu_i = vmec_internal_results.guu(j_hi * s.nZnT + kl);
 
-      const double guv_o = vmec_internal_results.guv(jHo * s.nZnT + kl);
-      const double guv_i = vmec_internal_results.guv(jHi * s.nZnT + kl);
+      const double guv_o = vmec_internal_results.guv(j_ho * s.nZnT + kl);
+      const double guv_i = vmec_internal_results.guv(j_hi * s.nZnT + kl);
 
-      const double gvv_o = vmec_internal_results.gvv(jHo * s.nZnT + kl);
-      const double gvv_i = vmec_internal_results.gvv(jHi * s.nZnT + kl);
+      const double gvv_o = vmec_internal_results.gvv(j_ho * s.nZnT + kl);
+      const double gvv_i = vmec_internal_results.gvv(j_hi * s.nZnT + kl);
 
       const double term_uu = kperpu[kl] * kperpu[kl] * (guu_o + guu_i) / 2.0;
       const double term_uv = kperpu[kl] * kperpv[kl] * (guv_o + guv_i) / 2.0;
@@ -2509,8 +2509,8 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
 
       // --------
 
-      const double bsubsu = covariant_b_derivatives.bsubsu(jF * s.nZnT + kl);
-      const double bsubsv = covariant_b_derivatives.bsubsv(jF * s.nZnT + kl);
+      const double bsubsu = covariant_b_derivatives.bsubsu(j_f * s.nZnT + kl);
+      const double bsubsv = covariant_b_derivatives.bsubsv(j_f * s.nZnT + kl);
 
       const double bsubus = (bsubu_outside - bsubu_inside) / fc.deltaS;
       const double bsubvs = (bsubv_outside - bsubv_inside) / fc.deltaS;
@@ -2525,14 +2525,14 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
       // --------
 
       const double bsupu_outside =
-          vmec_internal_results.bsupu(jHo * s.nZnT + kl);
+          vmec_internal_results.bsupu(j_ho * s.nZnT + kl);
       const double bsupu_inside =
-          vmec_internal_results.bsupu(jHi * s.nZnT + kl);
+          vmec_internal_results.bsupu(j_hi * s.nZnT + kl);
 
       const double bsupv_outside =
-          vmec_internal_results.bsupv(jHo * s.nZnT + kl);
+          vmec_internal_results.bsupv(j_ho * s.nZnT + kl);
       const double bsupv_inside =
-          vmec_internal_results.bsupv(jHi * s.nZnT + kl);
+          vmec_internal_results.bsupv(j_hi * s.nZnT + kl);
 
       bsupu1[kl] =
           (bsupu_outside * gsqrt_outside + bsupu_inside * gsqrt_inside) /
@@ -2580,32 +2580,32 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
       average_jperp2 += kp2[kl] * sqrtg[kl] * s.wInt[l];
     }  // kl
 
-    jxbout.amaxfor[jF] = 100.0 * std::min(force_residual_max, 9.999);
-    jxbout.aminfor[jF] = 100.0 * std::max(force_residual_min, -9.999);
+    jxbout.amaxfor[j_f] = 100.0 * std::min(force_residual_max, 9.999);
+    jxbout.aminfor[j_f] = 100.0 * std::max(force_residual_min, -9.999);
 
-    jxbout.avforce[jF] = average_force_residual;
-    jxbout.pprim[jF] = average_pressure_gradient;
+    jxbout.avforce[j_f] = average_force_residual;
+    jxbout.pprim[j_f] = average_pressure_gradient;
 
-    jxbout.jdotb[jF] = dnorm1 * tjnorm * average_jdotb;
-    jxbout.bdotb[jF] = dnorm1 * tjnorm * average_bdotb;
+    jxbout.jdotb[j_f] = kDnorm1 * tjnorm * average_jdotb;
+    jxbout.bdotb[j_f] = kDnorm1 * tjnorm * average_bdotb;
 
-    const double phipH_outside = vmec_internal_results.phipH[jHo];
-    const double phipH_inside = vmec_internal_results.phipH[jHi];
+    const double phip_h_outside = vmec_internal_results.phipH[j_ho];
+    const double phip_h_inside = vmec_internal_results.phipH[j_hi];
 
-    jxbout.bdotgradv[jF] =
-        dnorm1 * tjnorm * (phipH_outside + phipH_inside) / 2.0;
+    jxbout.bdotgradv[j_f] =
+        kDnorm1 * tjnorm * (phip_h_outside + phip_h_inside) / 2.0;
 
-    jxbout.jpar2[jF] = dnorm1 * tjnorm * average_jpar2;
-    jxbout.jperp2[jF] = dnorm1 * tjnorm * average_jperp2;
+    jxbout.jpar2[j_f] = kDnorm1 * tjnorm * average_jpar2;
+    jxbout.jperp2[j_f] = kDnorm1 * tjnorm * average_jperp2;
 
     // Some quantities are only computed if VMEC++ actually converged.
     if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION) {
       // normalized toroidal magnetic flux
-      jxbout.phin[jF] = vmec_internal_results.phiF[jF] /
+      jxbout.phin[j_f] = vmec_internal_results.phiF[j_f] /
                         vmec_internal_results.phiF[fc.ns - 1];
 
       for (int kl = 0; kl < s.nZnT; ++kl) {
-        const int target_index = jF * s.nZnT + kl;
+        const int target_index = j_f * s.nZnT + kl;
 
         // --------
 
@@ -2639,11 +2639,11 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
   if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION) {
     // The loop in jxbforce.f90:594 goes over js=2,ns1,
     // which means that the last half-grid point is not touched.
-    for (int jH = 0; jH < vmec_internal_results.num_half - 1; ++jH) {
-      const double ovp = 1.0 / vmec_internal_results.dVdsH[jH] / dnorm1;
+    for (int j_h = 0; j_h < vmec_internal_results.num_half - 1; ++j_h) {
+      const double ovp = 1.0 / vmec_internal_results.dVdsH[j_h] / kDnorm1;
 
       for (int kl = 0; kl < s.nZnT; ++kl) {
-        const int target_index = jH * s.nZnT + kl;
+        const int target_index = j_h * s.nZnT + kl;
 
         const double bsubuv = covariant_b_derivatives.bsubuv(target_index);
         const double bsubvu = covariant_b_derivatives.bsubvu(target_index);
@@ -2757,59 +2757,59 @@ vmecpp::ComputeIntermediateMercierQuantities(
   mercier_intermediate.tjb = VectorXd::Zero(fc.ns);
   mercier_intermediate.tjj = VectorXd::Zero(fc.ns);
 
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     // NOTE: phip_real should be > 0 to get the correct physical sign of
     // REAL-space gradients, for example, grad-p, grad-Ip, etc. However, with
     // phip_real defined this way, Mercier will be correct.
-    mercier_intermediate.phip_realH[jH] =
-        2.0 * M_PI * vmec_internal_results.phipH[jH] *
+    mercier_intermediate.phip_realH[j_h] =
+        2.0 * M_PI * vmec_internal_results.phipH[j_h] *
         vmec_internal_results.sign_of_jacobian;
 
     // dV/d(PHI) on half mesh
-    mercier_intermediate.vp_real[jH] =
+    mercier_intermediate.vp_real[j_h] =
         vmec_internal_results.sign_of_jacobian * (4.0 * M_PI * M_PI) *
-        vmec_internal_results.dVdsH[jH] / mercier_intermediate.phip_realH[jH];
+        vmec_internal_results.dVdsH[j_h] / mercier_intermediate.phip_realH[j_h];
 
     // COMPUTE INTEGRATED TOROIDAL CURRENT
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int idx_kl = jH * s.nZnT + kl;
+      const int idx_kl = j_h * s.nZnT + kl;
       const int l = kl % s.nThetaEff;
-      mercier_intermediate.torcur[jH] +=
+      mercier_intermediate.torcur[j_h] +=
           vmec_internal_results.bsubu(idx_kl) * s.wInt[l];
     }  // kl
-    mercier_intermediate.torcur[jH] *=
+    mercier_intermediate.torcur[j_h] *=
         vmec_internal_results.sign_of_jacobian * 2.0 * M_PI;
   }  // jH
 
   // COMPUTE SURFACE AVERAGE VARIABLES ON FULL RADIAL MESH
-  for (int jF = 1; jF < fc.ns - 1; ++jF) {
-    const int jHi = jF - 1;
-    const int jHo = jF;
+  for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
+    const int j_hi = j_f - 1;
+    const int j_ho = j_f;
 
-    mercier_intermediate.phip_realF[jF] =
-        (mercier_intermediate.phip_realH[jHo] +
-         mercier_intermediate.phip_realH[jHi]) /
+    mercier_intermediate.phip_realF[j_f] =
+        (mercier_intermediate.phip_realH[j_ho] +
+         mercier_intermediate.phip_realH[j_hi]) /
         2.0;
-    const double denom = mercier_intermediate.phip_realF[jF] * fc.deltaS;
+    const double denom = mercier_intermediate.phip_realF[j_f] * fc.deltaS;
 
     // d(iota)/d(PHI)
-    mercier_intermediate.shear[jF] =
-        (vmec_internal_results.iotaH[jHo] - vmec_internal_results.iotaH[jHi]) /
+    mercier_intermediate.shear[j_f] =
+        (vmec_internal_results.iotaH[j_ho] - vmec_internal_results.iotaH[j_hi]) /
         denom;
 
     // d(VP)/d(PHI)
-    mercier_intermediate.vpp[jF] = (mercier_intermediate.vp_real[jHo] -
-                                    mercier_intermediate.vp_real[jHi]) /
+    mercier_intermediate.vpp[j_f] = (mercier_intermediate.vp_real[j_ho] -
+                                    mercier_intermediate.vp_real[j_hi]) /
                                    denom;
 
     // d(p)/d(PHI)
-    mercier_intermediate.d_pressure_d_s[jF] =
-        (vmec_internal_results.presH[jHo] - vmec_internal_results.presH[jHi]) /
+    mercier_intermediate.d_pressure_d_s[j_f] =
+        (vmec_internal_results.presH[j_ho] - vmec_internal_results.presH[j_hi]) /
         denom;
 
     // d(Itor)/d(PHI)
-    mercier_intermediate.d_toroidal_current_d_s[jF] =
-        (mercier_intermediate.torcur[jHo] - mercier_intermediate.torcur[jHi]) /
+    mercier_intermediate.d_toroidal_current_d_s[j_f] =
+        (mercier_intermediate.torcur[j_ho] - mercier_intermediate.torcur[j_hi]) /
         denom;
 
     // -------------------
@@ -2818,12 +2818,12 @@ vmecpp::ComputeIntermediateMercierQuantities(
     // GPP == |grad-phi|**2 = PHIP**2*|grad-s|**2           (on full mesh)
     // Gsqrt_FULL = JACOBIAN/PHIP == jacobian based on flux (on full mesh)
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int index_full = jF * s.nZnT + kl;
+      const int index_full = j_f * s.nZnT + kl;
 
       const double gsqrt_outside =
-          vmec_internal_results.gsqrt(jHo * s.nZnT + kl);
+          vmec_internal_results.gsqrt(j_ho * s.nZnT + kl);
       const double gsqrt_inside =
-          vmec_internal_results.gsqrt(jHi * s.nZnT + kl);
+          vmec_internal_results.gsqrt(j_hi * s.nZnT + kl);
       mercier_intermediate.gsqrt_full(index_full) =
           (gsqrt_outside + gsqrt_inside) / 2.0;
 
@@ -2835,34 +2835,34 @@ vmecpp::ComputeIntermediateMercierQuantities(
           mercier_intermediate.gsqrt_full(index_full);
 
       mercier_intermediate.gsqrt_full(index_full) /=
-          mercier_intermediate.phip_realF[jF];
+          mercier_intermediate.phip_realF[j_f];
     }  // kl
 
-    mercier_intermediate.s[jF] = jF * fc.deltaS;
-    const double sqrtSF = std::sqrt(mercier_intermediate.s[jF]);
+    mercier_intermediate.s[j_f] = j_f * fc.deltaS;
+    const double sqrt_sf = std::sqrt(mercier_intermediate.s[j_f]);
 
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int index_full = jF * s.nZnT + kl;
+      const int index_full = j_f * s.nZnT + kl;
 
       // dR/dTheta
       const double rtf = vmec_internal_results.ru_e(index_full) +
-                         sqrtSF * vmec_internal_results.ru_o(index_full);
+                         sqrt_sf * vmec_internal_results.ru_o(index_full);
 
       // dZ/dTheta
       const double ztf = vmec_internal_results.zu_e(index_full) +
-                         sqrtSF * vmec_internal_results.zu_o(index_full);
+                         sqrt_sf * vmec_internal_results.zu_o(index_full);
 
       // dR/dZeta
       const double rzf = vmec_internal_results.rv_e(index_full) +
-                         sqrtSF * vmec_internal_results.rv_o(index_full);
+                         sqrt_sf * vmec_internal_results.rv_o(index_full);
 
       // dZ/dZeta
       const double zzf = vmec_internal_results.zv_e(index_full) +
-                         sqrtSF * vmec_internal_results.zv_o(index_full);
+                         sqrt_sf * vmec_internal_results.zv_o(index_full);
 
       // R
       const double r1f = vmec_internal_results.r_e(index_full) +
-                         sqrtSF * vmec_internal_results.r_o(index_full);
+                         sqrt_sf * vmec_internal_results.r_o(index_full);
 
       // g_uu
       const double gtt = rtf * rtf + ztf * ztf;
@@ -2881,29 +2881,29 @@ vmecpp::ComputeIntermediateMercierQuantities(
 
   // COMPUTE SURFACE AVERAGES OVER dS/|grad-PHI|**3 => |Jac| du dv /
   // |grad-PHI|**2 WHERE Jac = gsqrt/phip_real
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int index_half = jH * s.nZnT + kl;
+      const int index_half = j_h * s.nZnT + kl;
 
       // total pressure = (|B|^2/2 + mu_0 * p)
       // presH = mu_0 * p
       // --> |B|^2 = 2 * (|B|^2/2 + mu_0 * p - mu_0 * p)
       mercier_intermediate.b2(index_half) =
           2.0 * (vmec_internal_results.total_pressure(index_half) -
-                 vmec_internal_results.presH[jH]);
+                 vmec_internal_results.presH[j_h]);
     }  // kl
   }    // jH
 
   const double four_pi_squared = 4.0 * M_PI * M_PI;
-  for (int jF = 1; jF < fc.ns - 1; ++jF) {
-    const int jHi = jF - 1;
-    const int jHo = jF;
+  for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
+    const int j_hi = j_f - 1;
+    const int j_ho = j_f;
 
     for (int kl = 0; kl < s.nZnT; ++kl) {
       const int l = kl % s.nThetaEff;
-      const int index_full = jF * s.nZnT + kl;
-      const int index_half_o = jHo * s.nZnT + kl;
-      const int index_half_i = jHi * s.nZnT + kl;
+      const int index_full = j_f * s.nZnT + kl;
+      const int index_half_o = j_ho * s.nZnT + kl;
+      const int index_half_i = j_hi * s.nZnT + kl;
 
       const double b2i = (mercier_intermediate.b2(index_half_o) +
                           mercier_intermediate.b2(index_half_i)) /
@@ -2911,30 +2911,30 @@ vmecpp::ComputeIntermediateMercierQuantities(
 
       // <1/B**2>
       const double ob2 = mercier_intermediate.gsqrt_full(index_full) / b2i;
-      mercier_intermediate.tpp[jF] += ob2 * s.wInt[l];
+      mercier_intermediate.tpp[j_f] += ob2 * s.wInt[l];
 
       // <b*b/|grad-phi|**3>
       const double ob2_reused = b2i *
                                 mercier_intermediate.gsqrt_full(index_full) *
                                 mercier_intermediate.gpp(index_full);
-      mercier_intermediate.tbb[jF] += ob2_reused * s.wInt[l];
+      mercier_intermediate.tbb[j_f] += ob2_reused * s.wInt[l];
 
       // <j*b/|grad-phi|**3>
       const double jdotb = mercier_intermediate.bdotj(index_full) *
                            mercier_intermediate.gpp(index_full) *
                            mercier_intermediate.gsqrt_full(index_full);
-      mercier_intermediate.tjb[jF] += jdotb * s.wInt[l];
+      mercier_intermediate.tjb[j_f] += jdotb * s.wInt[l];
 
       // <(j*b)2/b**2*|grad-phi|**3>
       const double jdotb_reused =
           jdotb * mercier_intermediate.bdotj(index_full) / b2i;
-      mercier_intermediate.tjj[jF] += jdotb_reused * s.wInt[l];
+      mercier_intermediate.tjj[j_f] += jdotb_reused * s.wInt[l];
     }  // kl
 
-    mercier_intermediate.tpp[jF] *= four_pi_squared;
-    mercier_intermediate.tbb[jF] *= four_pi_squared;
-    mercier_intermediate.tjb[jF] *= four_pi_squared;
-    mercier_intermediate.tjj[jF] *= four_pi_squared;
+    mercier_intermediate.tpp[j_f] *= four_pi_squared;
+    mercier_intermediate.tbb[j_f] *= four_pi_squared;
+    mercier_intermediate.tjb[j_f] *= four_pi_squared;
+    mercier_intermediate.tjj[j_f] *= four_pi_squared;
   }  // jF
 
   return mercier_intermediate;
@@ -2966,15 +2966,15 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
   mercier.Dgeod = VectorXd::Zero(fc.ns);
 
   // first table in Mercier output file
-  for (int jF = 1; jF < fc.ns - 1; ++jF) {
-    const int jHi = jF - 1;
-    const int jHo = jF;
+  for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
+    const int j_hi = j_f - 1;
+    const int j_ho = j_f;
 
     // S
-    mercier.s[jF] = mercier_intermediate.s[jF];
+    mercier.s[j_f] = mercier_intermediate.s[j_f];
 
-    const double vp_full = (mercier_intermediate.vp_real[jHo] +
-                            mercier_intermediate.vp_real[jHi]) /
+    const double vp_full = (mercier_intermediate.vp_real[j_ho] +
+                            mercier_intermediate.vp_real[j_hi]) /
                            2.0;
     if (vp_full == 0.0) {
       // skip this surface
@@ -2982,70 +2982,70 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
     }
 
     // PHI
-    mercier.toroidal_flux[jF] = 0.0;
-    for (int jF_prime = 1; jF_prime <= jF; ++jF_prime) {
-      mercier.toroidal_flux[jF] += mercier_intermediate.phip_realF[jF_prime];
+    mercier.toroidal_flux[j_f] = 0.0;
+    for (int j_f_prime = 1; j_f_prime <= j_f; ++j_f_prime) {
+      mercier.toroidal_flux[j_f] += mercier_intermediate.phip_realF[j_f_prime];
     }  // jF_prime
-    mercier.toroidal_flux[jF] *= fc.deltaS;
+    mercier.toroidal_flux[j_f] *= fc.deltaS;
 
     // IOTA
-    mercier.iota[jF] =
-        (vmec_internal_results.iotaH[jHo] + vmec_internal_results.iotaH[jHi]) /
+    mercier.iota[j_f] =
+        (vmec_internal_results.iotaH[j_ho] + vmec_internal_results.iotaH[j_hi]) /
         2.0;
 
     // SHEAR
-    mercier.shear[jF] = mercier_intermediate.shear[jF] / vp_full;
+    mercier.shear[j_f] = mercier_intermediate.shear[j_f] / vp_full;
 
     // VP
-    mercier.d_volume_d_s[jF] = vp_full;
+    mercier.d_volume_d_s[j_f] = vp_full;
 
     // WELL
-    mercier.well[jF] =
-        -mercier_intermediate.vpp[jF] * vmec_internal_results.sign_of_jacobian;
+    mercier.well[j_f] =
+        -mercier_intermediate.vpp[j_f] * vmec_internal_results.sign_of_jacobian;
 
     // ITOR
-    mercier.toroidal_current[jF] =
-        (mercier_intermediate.torcur[jHo] + mercier_intermediate.torcur[jHi]) /
+    mercier.toroidal_current[j_f] =
+        (mercier_intermediate.torcur[j_ho] + mercier_intermediate.torcur[j_hi]) /
         2.0;
 
     // ITOR'
-    mercier.d_toroidal_current_d_s[jF] =
-        mercier_intermediate.d_toroidal_current_d_s[jF] / vp_full;
+    mercier.d_toroidal_current_d_s[j_f] =
+        mercier_intermediate.d_toroidal_current_d_s[j_f] / vp_full;
 
     // PRES
-    mercier.pressure[jF] =
-        (vmec_internal_results.presH[jHo] + vmec_internal_results.presH[jHi]) /
+    mercier.pressure[j_f] =
+        (vmec_internal_results.presH[j_ho] + vmec_internal_results.presH[j_hi]) /
         2.0;
 
     // PRES'
-    mercier.d_pressure_d_s[jF] =
-        mercier_intermediate.d_pressure_d_s[jF] / vp_full;
+    mercier.d_pressure_d_s[j_f] =
+        mercier_intermediate.d_pressure_d_s[j_f] / vp_full;
   }  // jF
 
   // second table in Mercier output file
-  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+  for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
     // scaling by (2 pi)^2 already done above where those are computed
-    const double tpp = mercier_intermediate.tpp[jF];
-    const double tjb = mercier_intermediate.tjb[jF];
-    const double tbb = mercier_intermediate.tbb[jF];
-    const double tjj = mercier_intermediate.tjj[jF];
+    const double tpp = mercier_intermediate.tpp[j_f];
+    const double tjb = mercier_intermediate.tjb[j_f];
+    const double tbb = mercier_intermediate.tbb[j_f];
+    const double tjj = mercier_intermediate.tjj[j_f];
 
-    mercier.Dshear[jF] =
-        mercier_intermediate.shear[jF] * mercier_intermediate.shear[jF] / 4.0;
+    mercier.Dshear[j_f] =
+        mercier_intermediate.shear[j_f] * mercier_intermediate.shear[j_f] / 4.0;
 
-    mercier.Dcurr[jF] =
-        -mercier_intermediate.shear[jF] *
-        (tjb - mercier_intermediate.d_toroidal_current_d_s[jF] * tbb);
+    mercier.Dcurr[j_f] =
+        -mercier_intermediate.shear[j_f] *
+        (tjb - mercier_intermediate.d_toroidal_current_d_s[j_f] * tbb);
 
-    mercier.Dwell[jF] = mercier_intermediate.d_pressure_d_s[jF] *
-                        (mercier_intermediate.vpp[jF] -
-                         mercier_intermediate.d_pressure_d_s[jF] * tpp) *
+    mercier.Dwell[j_f] = mercier_intermediate.d_pressure_d_s[j_f] *
+                        (mercier_intermediate.vpp[j_f] -
+                         mercier_intermediate.d_pressure_d_s[j_f] * tpp) *
                         tbb;
 
-    mercier.Dgeod[jF] = tjb * tjb - tbb * tjj;
+    mercier.Dgeod[j_f] = tjb * tjb - tbb * tjj;
 
-    mercier.DMerc[jF] = mercier.Dshear[jF] + mercier.Dcurr[jF] +
-                        mercier.Dwell[jF] + mercier.Dgeod[jF];
+    mercier.DMerc[j_f] = mercier.Dshear[j_f] + mercier.Dcurr[j_f] +
+                        mercier.Dwell[j_f] + mercier.Dgeod[j_f];
   }  // jF
 
   // fixup for comparison
@@ -3093,12 +3093,12 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
   //                       TERMS)
 
   // HALF-MESH VOLUME-AVERAGED BETA
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     double s2 = 0.0;
     double avg_tau_over_r12 = 0.0;
     for (int kl = 0; kl < s.nZnT; ++kl) {
       const int l = kl % s.nThetaEff;
-      const int index_half = jH * s.nZnT + kl;
+      const int index_half = j_h * s.nZnT + kl;
 
       threed1_first_table_intermediate.tau(index_half) =
           vmec_internal_results.sign_of_jacobian * s.wInt[l] *
@@ -3110,14 +3110,14 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
       avg_tau_over_r12 += threed1_first_table_intermediate.tau(index_half) /
                           vmec_internal_results.r12(index_half);
     }  // kl
-    s2 /= vmec_internal_results.dVdsH[jH];
-    s2 -= vmec_internal_results.presH[jH];
+    s2 /= vmec_internal_results.dVdsH[j_h];
+    s2 -= vmec_internal_results.presH[j_h];
 
-    threed1_first_table_intermediate.beta_vol[jH] =
-        vmec_internal_results.presH[jH] / s2;
+    threed1_first_table_intermediate.beta_vol[j_h] =
+        vmec_internal_results.presH[j_h] / s2;
 
-    threed1_first_table_intermediate.overr[jH] =
-        avg_tau_over_r12 / vmec_internal_results.dVdsH[jH];
+    threed1_first_table_intermediate.overr[j_h] =
+        avg_tau_over_r12 / vmec_internal_results.dVdsH[j_h];
   }  // jH
 
   // extrapolate surface-averaged beta profile to magnetic axis
@@ -3133,16 +3133,16 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
       2.0 * M_PI * vmec_internal_results.sign_of_jacobian *
       (1.5 * vmec_internal_results.phipH[0] -
        0.5 * vmec_internal_results.phipH[1]);
-  for (int jF = 1; jF < fc.ns - 1; ++jF) {
-    const int jHi = jF - 1;
-    const int jHo = jF;
+  for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
+    const int j_hi = j_f - 1;
+    const int j_ho = j_f;
 
-    threed1_first_table_intermediate.presf[jF] =
-        (vmec_internal_results.presH[jHo] + vmec_internal_results.presH[jHi]) /
+    threed1_first_table_intermediate.presf[j_f] =
+        (vmec_internal_results.presH[j_ho] + vmec_internal_results.presH[j_hi]) /
         2.0;
-    threed1_first_table_intermediate.phipf_loc[jF] =
+    threed1_first_table_intermediate.phipf_loc[j_f] =
         2.0 * M_PI * vmec_internal_results.sign_of_jacobian *
-        (vmec_internal_results.phipH[jHo] + vmec_internal_results.phipH[jHi]) /
+        (vmec_internal_results.phipH[j_ho] + vmec_internal_results.phipH[j_hi]) /
         2.0;
   }  // jF
   threed1_first_table_intermediate.presf[fc.ns - 1] =
@@ -3156,19 +3156,19 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
   // integrate flux differentials to get flux profiles
   threed1_first_table_intermediate.phi1[0] = 0.0;
   threed1_first_table_intermediate.chi1[0] = 0.0;
-  for (int jF = 1; jF < fc.ns; ++jF) {
-    const int jHi = jF - 1;
+  for (int j_f = 1; j_f < fc.ns; ++j_f) {
+    const int j_hi = j_f - 1;
 
-    threed1_first_table_intermediate.phi1[jF] =
-        threed1_first_table_intermediate.phi1[jF - 1] +
-        vmec_internal_results.phipH[jHi] * fc.deltaS;
-    threed1_first_table_intermediate.chi1[jF] =
-        threed1_first_table_intermediate.chi1[jF - 1] +
-        (vmec_internal_results.phipH[jHi] * vmec_internal_results.iotaH[jHi]) *
+    threed1_first_table_intermediate.phi1[j_f] =
+        threed1_first_table_intermediate.phi1[j_f - 1] +
+        vmec_internal_results.phipH[j_hi] * fc.deltaS;
+    threed1_first_table_intermediate.chi1[j_f] =
+        threed1_first_table_intermediate.chi1[j_f - 1] +
+        (vmec_internal_results.phipH[j_hi] * vmec_internal_results.iotaH[j_hi]) *
             fc.deltaS;
 
-    threed1_first_table_intermediate.chi[jF] =
-        2.0 * M_PI * threed1_first_table_intermediate.chi1[jF];
+    threed1_first_table_intermediate.chi[j_f] =
+        2.0 * M_PI * threed1_first_table_intermediate.chi1[j_f];
   }  // jF
 
   // calc_fbal
@@ -3177,52 +3177,52 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
   // on half-grid.
   threed1_first_table_intermediate.bucoH.resize(fc.ns - 1);
   threed1_first_table_intermediate.bvcoH.resize(fc.ns - 1);
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      int iHalf = jH * s.nZnT + kl;
+      int i_half = j_h * s.nZnT + kl;
       int l = kl % s.nThetaEff;
-      threed1_first_table_intermediate.bucoH[jH] +=
-          vmec_internal_results.bsubu(iHalf) * s.wInt[l];
-      threed1_first_table_intermediate.bvcoH[jH] +=
-          vmec_internal_results.bsubv(iHalf) * s.wInt[l];
+      threed1_first_table_intermediate.bucoH[j_h] +=
+          vmec_internal_results.bsubu(i_half) * s.wInt[l];
+      threed1_first_table_intermediate.bvcoH[j_h] +=
+          vmec_internal_results.bsubv(i_half) * s.wInt[l];
     }  // kl
   }    // jH
 
-  double signByDeltaS = vmec_internal_results.sign_of_jacobian / fc.deltaS;
+  double sign_by_delta_s = vmec_internal_results.sign_of_jacobian / fc.deltaS;
 
   // Compute derivatives on interior full-grid knots
   // and from them, evaluate radial force balance residual.
-  for (int jF = 1; jF < fc.ns - 1; ++jF) {
-    const int jHi = jF - 1;
-    const int jHo = jF;
+  for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
+    const int j_hi = j_f - 1;
+    const int j_ho = j_f;
 
     // radial derivatives from half-grid to full-grid
-    threed1_first_table_intermediate.jcurv[jF] =
-        signByDeltaS * (threed1_first_table_intermediate.bucoH[jHo] -
-                        threed1_first_table_intermediate.bucoH[jHi]);
-    threed1_first_table_intermediate.jcuru[jF] =
-        -signByDeltaS * (threed1_first_table_intermediate.bvcoH[jHo] -
-                         threed1_first_table_intermediate.bvcoH[jHi]);
+    threed1_first_table_intermediate.jcurv[j_f] =
+        sign_by_delta_s * (threed1_first_table_intermediate.bucoH[j_ho] -
+                        threed1_first_table_intermediate.bucoH[j_hi]);
+    threed1_first_table_intermediate.jcuru[j_f] =
+        -sign_by_delta_s * (threed1_first_table_intermediate.bvcoH[j_ho] -
+                         threed1_first_table_intermediate.bvcoH[j_hi]);
 
     // prescribed pressure gradient from user input
-    threed1_first_table_intermediate.presgrad[jF] =
-        (vmec_internal_results.presH[jHo] - vmec_internal_results.presH[jHi]) /
+    threed1_first_table_intermediate.presgrad[j_f] =
+        (vmec_internal_results.presH[j_ho] - vmec_internal_results.presH[j_hi]) /
         fc.deltaS;
 
     // interpolate dVds onto full grid
-    threed1_first_table_intermediate.vpphi[jF] =
+    threed1_first_table_intermediate.vpphi[j_f] =
         0.5 *
-        (vmec_internal_results.dVdsH[jHo] + vmec_internal_results.dVdsH[jHi]);
+        (vmec_internal_results.dVdsH[j_ho] + vmec_internal_results.dVdsH[j_hi]);
 
     // total resulting radial force-imbalance:
     // <F> = <-j x B + grad(p)>/V'
-    threed1_first_table_intermediate.equif[jF] =
-        (vmec_internal_results.chipF[jF] *
-             threed1_first_table_intermediate.jcurv[jF] -
-         vmec_internal_results.phipF[jF] *
-             threed1_first_table_intermediate.jcuru[jF]) /
-            threed1_first_table_intermediate.vpphi[jF] +
-        threed1_first_table_intermediate.presgrad[jF];
+    threed1_first_table_intermediate.equif[j_f] =
+        (vmec_internal_results.chipF[j_f] *
+             threed1_first_table_intermediate.jcurv[j_f] -
+         vmec_internal_results.phipF[j_f] *
+             threed1_first_table_intermediate.jcuru[j_f]) /
+            threed1_first_table_intermediate.vpphi[j_f] +
+        threed1_first_table_intermediate.presgrad[j_f];
   }  // jF
 
   // NOTE:  jcuru, jcurv on FULL radial mesh coming out of calc_fbal
@@ -3232,26 +3232,26 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
   threed1_first_table_intermediate.bvcof[0] =
       1.5 * threed1_first_table_intermediate.bvcoH[0] -
       0.5 * threed1_first_table_intermediate.bvcoH[1];
-  for (int jF = 1; jF < fc.ns - 1; ++jF) {
-    const int jHi = jF - 1;
-    const int jHo = jF;
+  for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
+    const int j_hi = j_f - 1;
+    const int j_ho = j_f;
 
-    threed1_first_table_intermediate.equif[jF] *=
-        threed1_first_table_intermediate.vpphi[jF] /
-        (std::abs(threed1_first_table_intermediate.jcurv[jF] *
-                  vmec_internal_results.chipF[jF]) +
-         std::abs(threed1_first_table_intermediate.jcuru[jF] *
-                  vmec_internal_results.phipF[jF]) +
-         std::abs(threed1_first_table_intermediate.presgrad[jF] *
-                  threed1_first_table_intermediate.vpphi[jF]));
+    threed1_first_table_intermediate.equif[j_f] *=
+        threed1_first_table_intermediate.vpphi[j_f] /
+        (std::abs(threed1_first_table_intermediate.jcurv[j_f] *
+                  vmec_internal_results.chipF[j_f]) +
+         std::abs(threed1_first_table_intermediate.jcuru[j_f] *
+                  vmec_internal_results.phipF[j_f]) +
+         std::abs(threed1_first_table_intermediate.presgrad[j_f] *
+                  threed1_first_table_intermediate.vpphi[j_f]));
 
-    threed1_first_table_intermediate.bucof[jF] =
-        (threed1_first_table_intermediate.bucoH[jHo] +
-         threed1_first_table_intermediate.bucoH[jHi]) /
+    threed1_first_table_intermediate.bucof[j_f] =
+        (threed1_first_table_intermediate.bucoH[j_ho] +
+         threed1_first_table_intermediate.bucoH[j_hi]) /
         2.0;
-    threed1_first_table_intermediate.bvcof[jF] =
-        (threed1_first_table_intermediate.bvcoH[jHo] +
-         threed1_first_table_intermediate.bvcoH[jHi]) /
+    threed1_first_table_intermediate.bvcof[j_f] =
+        (threed1_first_table_intermediate.bvcoH[j_ho] +
+         threed1_first_table_intermediate.bvcoH[j_hi]) /
         2.0;
   }
   threed1_first_table_intermediate.bucof[fc.ns - 1] =
@@ -3328,66 +3328,66 @@ vmecpp::Threed1FirstTable vmecpp::ComputeThreed1FirstTable(
   // flux derivative SPH/JDH (060211): remove twopi factors from <JSUPU,V>
   // (agree with output in JXBOUT file)
 
-  for (int jF = 0; jF < fc.ns; ++jF) {
+  for (int j_f = 0; j_f < fc.ns; ++j_f) {
     // normalized toroidal flux on full-grid
-    const double s = jF * fc.deltaS;
+    const double s = j_f * fc.deltaS;
 
-    const double vpphi = threed1_first_table_intermediate.vpphi[jF];
-    const double phipf_loc = threed1_first_table_intermediate.phipf_loc[jF];
+    const double vpphi = threed1_first_table_intermediate.vpphi[j_f];
+    const double phipf_loc = threed1_first_table_intermediate.phipf_loc[j_f];
 
     // dV/ds = dV/dPHI * d(PHI/ds)  (V=actual volume)
     const double cur0 = fac * vpphi * 2.0 * M_PI;
 
     // S
-    threed1_first_table.s[jF] = s;
+    threed1_first_table.s[j_f] = s;
 
     // <RADIAL FORCE>
-    threed1_first_table.radial_force[jF] =
-        threed1_first_table_intermediate.equif[jF];
+    threed1_first_table.radial_force[j_f] =
+        threed1_first_table_intermediate.equif[j_f];
 
     // TOROIDAL FLUX
-    threed1_first_table.toroidal_flux[jF] =
-        fac * threed1_first_table_intermediate.phi1[jF];
+    threed1_first_table.toroidal_flux[j_f] =
+        fac * threed1_first_table_intermediate.phi1[j_f];
 
     // IOTA
-    threed1_first_table.iota[jF] = vmec_internal_results.iotaF[jF];
+    threed1_first_table.iota[j_f] = vmec_internal_results.iotaF[j_f];
 
     // <JSUPU>
-    threed1_first_table.avg_jsupu[jF] =
-        threed1_first_table_intermediate.jcuru[jF] / vpphi / MU_0;
+    threed1_first_table.avg_jsupu[j_f] =
+        threed1_first_table_intermediate.jcuru[j_f] / vpphi / MU_0;
 
     // <JSUPV>
-    threed1_first_table.avg_jsupv[jF] =
-        threed1_first_table_intermediate.jcurv[jF] / vpphi / MU_0;
+    threed1_first_table.avg_jsupv[j_f] =
+        threed1_first_table_intermediate.jcurv[j_f] / vpphi / MU_0;
 
     // d(VOL)/d(PHI)
-    threed1_first_table.d_volume_d_phi[jF] = cur0 / phipf_loc;
+    threed1_first_table.d_volume_d_phi[j_f] = cur0 / phipf_loc;
 
     // d(PRES)/d(PHI)
-    threed1_first_table.d_pressure_d_phi[jF] =
-        threed1_first_table_intermediate.presgrad[jF] / phipf_loc / MU_0;
+    threed1_first_table.d_pressure_d_phi[j_f] =
+        threed1_first_table_intermediate.presgrad[j_f] / phipf_loc / MU_0;
 
     // <M>
-    threed1_first_table.spectral_width[jF] =
-        vmec_internal_results.spectral_width[jF];
+    threed1_first_table.spectral_width[j_f] =
+        vmec_internal_results.spectral_width[j_f];
 
     // PRESF
-    threed1_first_table.pressure[jF] =
-        threed1_first_table_intermediate.presf[jF] / MU_0;
+    threed1_first_table.pressure[j_f] =
+        threed1_first_table_intermediate.presf[j_f] / MU_0;
 
     // <BSUBU>
-    threed1_first_table.buco_full[jF] =
-        threed1_first_table_intermediate.bucof[jF];
+    threed1_first_table.buco_full[j_f] =
+        threed1_first_table_intermediate.bucof[j_f];
 
     // <BSUBV>
-    threed1_first_table.bvco_full[jF] =
-        threed1_first_table_intermediate.bvcof[jF];
+    threed1_first_table.bvco_full[j_f] =
+        threed1_first_table_intermediate.bvcof[j_f];
 
     // <J.B>
-    threed1_first_table.j_dot_b[jF] = jxbout.jdotb[jF];
+    threed1_first_table.j_dot_b[j_f] = jxbout.jdotb[j_f];
 
     // <B.B>
-    threed1_first_table.b_dot_b[jF] = jxbout.bdotb[jF];
+    threed1_first_table.b_dot_b[j_f] = jxbout.bdotb[j_f];
   }  // jF
 
   return threed1_first_table;
@@ -3450,9 +3450,9 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
 
   // cylindrical estimates for beta poloidal
   double sump_sum = 0.0;
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     sump_sum +=
-        vmec_internal_results.dVdsH[jH] * vmec_internal_results.presH[jH];
+        vmec_internal_results.dVdsH[j_h] * vmec_internal_results.presH[j_h];
   }  // jH
   intermediate.sump = intermediate.vnorm * sump_sum;
 
@@ -3470,9 +3470,9 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
   intermediate.musubi = 0.0;
   intermediate.rshaf1 = 0.0;
   intermediate.rshaf2 = 0.0;
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int index_half = jH * s.nZnT + kl;
+      const int index_half = j_h * s.nZnT + kl;
 
       // TODO(jons): assumes B_tor ~ 1/R ???
       intermediate.btor_vac[kl] =
@@ -3548,9 +3548,9 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
   double bsq_tau_sum = 0.0;
   double btor_sum = 0.0;
   double p2_sum = 0.0;
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int index_half = jH * s.nZnT + kl;
+      const int index_half = j_h * s.nZnT + kl;
 
       const double tau = threed1_first_table_intermediate.tau(index_half);
       bsq_tau_sum += vmec_internal_results.total_pressure(index_half) * tau;
@@ -3560,8 +3560,8 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
       btor_sum += tau * r_bsupv * r_bsupv;
     }  // kl
 
-    const double pressure = vmec_internal_results.presH[jH];
-    p2_sum += pressure * pressure * vmec_internal_results.dVdsH[jH];
+    const double pressure = vmec_internal_results.presH[j_h];
+    p2_sum += pressure * pressure * vmec_internal_results.dVdsH[j_h];
   }  // jH
 
   intermediate.sumbtot =
@@ -3576,32 +3576,32 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
   intermediate.jpar_perp_sum = 0.0;
   intermediate.jparPS_perp_sum = 0.0;
   intermediate.s2 = 0.0;
-  for (int jF = 1; jF < fc.ns - 1; ++jF) {
-    const int jHi = jF - 1;
-    const int jHo = jF;
+  for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
+    const int j_hi = j_f - 1;
+    const int j_ho = j_f;
 
-    intermediate.jPS2[jF] = jxbout.jpar2[jF] - jxbout.jdotb[jF] *
-                                                   jxbout.jdotb[jF] /
-                                                   jxbout.bdotb[jF];
+    intermediate.jPS2[j_f] = jxbout.jpar2[j_f] - jxbout.jdotb[j_f] *
+                                                   jxbout.jdotb[j_f] /
+                                                   jxbout.bdotb[j_f];
 
     // The factor of 1/2 from radial interpolation/averaging
     // is left out, since it cancels in numerator and denominator.
     // Premature optimization in Fortran VMEC, but leave it as-is for comparison
     // (for now).
-    const double two_dVds_full =
-        vmec_internal_results.dVdsH[jHo] + vmec_internal_results.dVdsH[jHi];
-    intermediate.jpar_perp_sum += jxbout.jpar2[jF] * two_dVds_full;
-    intermediate.jparPS_perp_sum += intermediate.jPS2[jF] * two_dVds_full;
-    intermediate.s2 += jxbout.jperp2[jF] * two_dVds_full;
+    const double two_d_vds_full =
+        vmec_internal_results.dVdsH[j_ho] + vmec_internal_results.dVdsH[j_hi];
+    intermediate.jpar_perp_sum += jxbout.jpar2[j_f] * two_d_vds_full;
+    intermediate.jparPS_perp_sum += intermediate.jPS2[j_f] * two_d_vds_full;
+    intermediate.s2 += jxbout.jperp2[j_f] * two_d_vds_full;
   }  // jH
 
   // TODO(jons): figure out what fac is and assign a better name
   intermediate.fac =
       2.0 * M_PI * fc.deltaS * vmec_internal_results.sign_of_jacobian;
   intermediate.r3v = VectorXd::Zero(fc.ns - 1);
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
-    intermediate.r3v[jH] = intermediate.fac * vmec_internal_results.phipH[jH] *
-                           vmec_internal_results.iotaH[jH];
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
+    intermediate.r3v[j_h] = intermediate.fac * vmec_internal_results.phipH[j_h] *
+                           vmec_internal_results.iotaH[j_h];
   }  // jH
 
   return intermediate;
@@ -3618,9 +3618,9 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   Threed1GeometricAndMagneticQuantities result;
 
   double toroidal_flux_sum = 0.0;
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int index_half = jH * s.nZnT + kl;
+      const int index_half = j_h * s.nZnT + kl;
 
       toroidal_flux_sum += vmec_internal_results.bsupv(index_half) *
                            threed1_first_table_intermediate.tau(index_half);
@@ -3720,19 +3720,19 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaReduced) * DBL_MAX;
   result.bmax = RowMatrixXd::Zero(fc.ns - 1, s.nThetaReduced);
 
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     for (int k = 0; k < s.nZeta; ++k) {
       for (int l = 0; l < s.nThetaReduced; ++l) {
         const int kl = k * s.nThetaReduced + l;
-        const int index_half = jH * s.nZnT + kl;
+        const int index_half = j_h * s.nZnT + kl;
 
         const double mod_b =
             std::sqrt(2.0 * (vmec_internal_results.total_pressure(index_half) -
-                             vmec_internal_results.presH[jH]));
-        result.bmax(jH * s.nThetaReduced + l) =
-            std::max(result.bmax(jH * s.nThetaEff + l), mod_b);
-        result.bmin(jH * s.nThetaReduced + l) =
-            std::min(result.bmin(jH * s.nThetaEff + l), mod_b);
+                             vmec_internal_results.presH[j_h]));
+        result.bmax(j_h * s.nThetaReduced + l) =
+            std::max(result.bmax(j_h * s.nThetaEff + l), mod_b);
+        result.bmin(j_h * s.nThetaReduced + l) =
+            std::min(result.bmin(j_h * s.nThetaEff + l), mod_b);
       }  // k
     }    // l
   }      // jH
@@ -3798,27 +3798,27 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   result.rbtor0 = handover_storage.rBtor0;
 
   result.psi = VectorXd::Zero(fc.ns);
-  for (int jF = 1; jF < fc.ns; ++jF) {
-    const int jFi = jF - 1;
-    const int jHi = jF - 1;
-    result.psi[jF] = result.psi[jFi] + intermediate.r3v[jHi];
+  for (int j_f = 1; j_f < fc.ns; ++j_f) {
+    const int j_fi = j_f - 1;
+    const int j_hi = j_f - 1;
+    result.psi[j_f] = result.psi[j_fi] + intermediate.r3v[j_hi];
   }  // jF
 
   result.loc_jpar_perp = VectorXd::Zero(fc.ns);
   result.loc_jparPS_perp = VectorXd::Zero(fc.ns);
-  for (int jF = 1; jF < fc.ns; ++jF) {
+  for (int j_f = 1; j_f < fc.ns; ++j_f) {
     double jperp2 = DBL_EPSILON;
-    if (jxbout.jperp2[jF] != 0.0) {
+    if (jxbout.jperp2[j_f] != 0.0) {
       // TODO(jons): Actually, in-place overwrite within Fortran VMEC.
       // -> need to do in-place overwrite for follow-up quanties?
-      jperp2 = jxbout.jperp2[jF];
+      jperp2 = jxbout.jperp2[j_f];
     }
 
-    result.loc_jpar_perp[jF] = jxbout.jpar2[jF] / jperp2;
-    if (jF < fc.ns - 1) {
-      result.loc_jparPS_perp[jF] = intermediate.jPS2[jF] / jperp2;
+    result.loc_jpar_perp[j_f] = jxbout.jpar2[j_f] / jperp2;
+    if (j_f < fc.ns - 1) {
+      result.loc_jparPS_perp[j_f] = intermediate.jPS2[j_f] / jperp2;
     } else {
-      result.loc_jparPS_perp[jF] = 0.0;
+      result.loc_jparPS_perp[j_f] = 0.0;
     }
   }  // jF
 
@@ -3839,7 +3839,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
     }
 
     // omit magnetic axis at jF = 0
-    for (int jF = 1; jF < fc.ns; ++jF) {
+    for (int j_f = 1; j_f < fc.ns; ++j_f) {
       double minimum_z = DBL_MAX;
       double maximum_z = -DBL_MAX;
       // TODO(jons): rename to ..._r
@@ -3866,13 +3866,13 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
         }
 
         for (int l = 0; l < s.nThetaReduced; ++l) {
-          const int l_off = (jF * s.nZeta + k1) * s.nThetaEff + l;
+          const int l_off = (j_f * s.nZeta + k1) * s.nThetaEff + l;
 
           const double yr1u = vmec_internal_results.r_e(l_off) +
-                              vmec_internal_results.sqrtSF[jF] *
+                              vmec_internal_results.sqrtSF[j_f] *
                                   vmec_internal_results.r_o(l_off);
           const double yz1u = t1 * (vmec_internal_results.z_e(l_off) +
-                                    vmec_internal_results.sqrtSF[jF] *
+                                    vmec_internal_results.sqrtSF[j_f] *
                                         vmec_internal_results.z_o(l_off));
 
           if (yz1u >= maximum_z) {
@@ -3900,33 +3900,33 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
       }    // icount
 
       // theta=180 deg
-      const int l_pi = (jF * s.nZeta + k) * s.nThetaEff + (s.nThetaReduced - 1);
+      const int l_pi = (j_f * s.nZeta + k) * s.nThetaEff + (s.nThetaReduced - 1);
       double xmida =
           vmec_internal_results.r_e(l_pi) +
-          vmec_internal_results.sqrtSF[jF] * vmec_internal_results.r_o(l_pi);
+          vmec_internal_results.sqrtSF[j_f] * vmec_internal_results.r_o(l_pi);
 
       // theta=0
-      const int l_t = (jF * s.nZeta + k) * s.nThetaEff + 0;
+      const int l_t = (j_f * s.nZeta + k) * s.nThetaEff + 0;
       double xmidb =
           vmec_internal_results.r_e(l_t) +
-          vmec_internal_results.sqrtSF[jF] * vmec_internal_results.r_o(l_t);
+          vmec_internal_results.sqrtSF[j_f] * vmec_internal_results.r_o(l_t);
 
       // Geometric major radius
       const double rgeo = (xmidb + xmida) / 2.0;
 
-      result.ygeo[nplanes * fc.ns + jF] = (xmidb - xmida) / 2.0;
+      result.ygeo[nplanes * fc.ns + j_f] = (xmidb - xmida) / 2.0;
 
-      result.yinden[nplanes * fc.ns + jF] =
+      result.yinden[nplanes * fc.ns + j_f] =
           (xmida - minimum_x) / (maximum_x - minimum_x);
 
-      result.yellip[nplanes * fc.ns + jF] =
+      result.yellip[nplanes * fc.ns + j_f] =
           (maximum_z - minimum_z) / (maximum_x - minimum_x);
 
-      result.ytrian[nplanes * fc.ns + jF] =
+      result.ytrian[nplanes * fc.ns + j_f] =
           (rgeo - rzmax) / (maximum_x - minimum_x);
 
       const double r_axis = vmec_internal_results.r_e(k * s.nThetaEff + 0);
-      result.yshift[nplanes * fc.ns + jF] =
+      result.yshift[nplanes * fc.ns + j_f] =
           (r_axis - rgeo) / (maximum_x - minimum_x);
     }  // jF
   }    // nplanes
@@ -3981,7 +3981,7 @@ vmecpp::Threed1AxisGeometry vmecpp::ComputeThreed1AxisGeometry(
   }
 
   // magnetic axis is at radial index 0
-  const int jF = 0;
+  const int j_f = 0;
   const int m = 0;
   for (int n = 0; n <= s.ntor; ++n) {
     const double basis_scaling =
@@ -3992,7 +3992,7 @@ vmecpp::Threed1AxisGeometry vmecpp::ComputeThreed1AxisGeometry(
       tz = 0.0;
     }
 
-    const int index = (jF * (s.ntor + 1) + n) * s.mpol + m;
+    const int index = (j_f * (s.ntor + 1) + n) * s.mpol + m;
 
     result.raxis_symm[n] = basis_scaling * vmec_internal_results.rmncc(index);
     if (s.lthreed) {
@@ -4060,15 +4060,15 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
     }
   } else {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int jH_ns2 = (fc.ns - 2) * s.nZnT + kl;
-      const int jH_ns3 = (fc.ns - 3) * s.nZnT + kl;
+      const int j_h_ns2 = (fc.ns - 2) * s.nZnT + kl;
+      const int j_h_ns3 = (fc.ns - 3) * s.nZnT + kl;
 
       const double bsq_lcfs =
-          1.5 * vmec_internal_results.total_pressure(jH_ns2) -
-          0.5 * vmec_internal_results.total_pressure(jH_ns3);
+          1.5 * vmec_internal_results.total_pressure(j_h_ns2) -
+          0.5 * vmec_internal_results.total_pressure(j_h_ns3);
 
-      const double bsupv_lcfs = 1.5 * vmec_internal_results.bsupv(jH_ns2) -
-                                0.5 * vmec_internal_results.bsupv(jH_ns3);
+      const double bsupv_lcfs = 1.5 * vmec_internal_results.bsupv(j_h_ns2) -
+                                0.5 * vmec_internal_results.bsupv(j_h_ns3);
       const double btor_lfcs =
           bsupv_lcfs * threed1_geometric_magnetic_intermediate.redge[kl];
 
@@ -4275,17 +4275,17 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.jcuru = VectorXd::Zero(fc.ns);
   wout.jcurv = VectorXd::Zero(fc.ns);
 
-  for (int jF = 0; jF < fc.ns; ++jF) {
-    if (wout.iota_full[jF] != 0.0) {
-      wout.safety_factor[jF] = 1.0 / wout.iota_full[jF];
+  for (int j_f = 0; j_f < fc.ns; ++j_f) {
+    if (wout.iota_full[j_f] != 0.0) {
+      wout.safety_factor[j_f] = 1.0 / wout.iota_full[j_f];
     }
-    wout.pressure_full[jF] = threed1_first_table_intermediate.presf[jF] / MU_0;
-    wout.phipf[jF] = m_vmec_internal_results.sign_of_jacobian * 2.0 * M_PI *
-                     m_vmec_internal_results.phipF[jF];
-    wout.chipf[jF] = m_vmec_internal_results.sign_of_jacobian * 2.0 * M_PI *
-                     m_vmec_internal_results.chipF[jF];
-    wout.jcuru[jF] = threed1_first_table_intermediate.jcuru[jF] / MU_0;
-    wout.jcurv[jF] = threed1_first_table_intermediate.jcurv[jF] / MU_0;
+    wout.pressure_full[j_f] = threed1_first_table_intermediate.presf[j_f] / MU_0;
+    wout.phipf[j_f] = m_vmec_internal_results.sign_of_jacobian * 2.0 * M_PI *
+                     m_vmec_internal_results.phipF[j_f];
+    wout.chipf[j_f] = m_vmec_internal_results.sign_of_jacobian * 2.0 * M_PI *
+                     m_vmec_internal_results.chipF[j_f];
+    wout.jcuru[j_f] = threed1_first_table_intermediate.jcuru[j_f] / MU_0;
+    wout.jcurv[j_f] = threed1_first_table_intermediate.jcurv[j_f] / MU_0;
   }  // jF
   wout.toroidal_flux = m_vmec_internal_results.phiF;
   wout.poloidal_flux = threed1_first_table_intermediate.chi;
@@ -4293,9 +4293,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   wout.mass.resize(fc.ns - 1);
   wout.pressure_half.resize(fc.ns - 1);
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
-    wout.mass[jH] = m_vmec_internal_results.massH[jH] / MU_0;
-    wout.pressure_half[jH] = m_vmec_internal_results.presH[jH] / MU_0;
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
+    wout.mass[j_h] = m_vmec_internal_results.massH[j_h] / MU_0;
+    wout.pressure_half[j_h] = m_vmec_internal_results.presH[j_h] / MU_0;
   }  // jH
   wout.iota_half = m_vmec_internal_results.iotaH;
   wout.beta = threed1_first_table_intermediate.beta_vol;
@@ -4361,10 +4361,10 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // Extrapolation of m=0 Lambda (cs) modes, which are not evolved at j=1, done
   // in CONVERT
   if (s.lthreed) {
-    for (int jF = 0; jF < fc.ns; ++jF) {
+    for (int j_f = 0; j_f < fc.ns; ++j_f) {
       for (int n = 0; n < s.ntor + 1; ++n) {
         const int m = 1;
-        const int idx_fc = (jF * (s.ntor + 1) + n) * s.mpol + m;
+        const int idx_fc = (j_f * (s.ntor + 1) + n) * s.mpol + m;
 
         const double old_rss = m_vmec_internal_results.rmnss(idx_fc);
         m_vmec_internal_results.rmnss(idx_fc) =
@@ -4381,7 +4381,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.rmnc = RowMatrixXd::Zero(fc.ns, s.mnmax);
   wout.zmns = RowMatrixXd::Zero(fc.ns, s.mnmax);
   wout.lmns_full = RowMatrixXd::Zero(fc.ns, s.mnmax);
-  for (int jF = 0; jF < fc.ns; ++jF) {
+  for (int j_f = 0; j_f < fc.ns; ++j_f) {
     std::vector<double> rmnc1(s.mnmax, 0.0);
     std::vector<double> zmns1(s.mnmax, 0.0);
     std::vector<double> lmns1(s.mnmax, 0.0);
@@ -4391,7 +4391,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     int m_0 = 0;
     for (int n = 0; n <= s.ntor; ++n) {
       mn++;
-      const int idx_fc = (jF * (s.ntor + 1) + n) * s.mpol + m_0;
+      const int idx_fc = (j_f * (s.ntor + 1) + n) * s.mpol + m_0;
       const double t1 = t.mscale[m_0] * t.nscale[n];
       rmnc1[mn] = t1 * m_vmec_internal_results.rmncc(idx_fc);
       if (s.lthreed) {
@@ -4403,7 +4403,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     }  // n
 
     // extrapolate to axis if 3D
-    if (s.lthreed && jF == 0) {
+    if (s.lthreed && j_f == 0) {
       int mn = -1;
       for (int n = 0; n <= s.ntor; ++n) {
         mn++;
@@ -4420,13 +4420,13 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       for (int n = -s.ntor; n <= s.ntor; ++n) {
         mn++;
         const int abs_n = std::abs(n);
-        const int idx_fc = (jF * (s.ntor + 1) + abs_n) * s.mpol + m;
+        const int idx_fc = (j_f * (s.ntor + 1) + abs_n) * s.mpol + m;
         const double t1 = t.mscale[m] * t.nscale[abs_n];
         if (n == 0) {
           rmnc1[mn] = t1 * m_vmec_internal_results.rmncc(idx_fc);
           zmns1[mn] = t1 * m_vmec_internal_results.zmnsc(idx_fc);
           lmns1[mn] = t1 * m_vmec_internal_results.lmnsc(idx_fc);
-        } else if (jF > 0) {
+        } else if (j_f > 0) {
           rmnc1[mn] = t1 * m_vmec_internal_results.rmncc(idx_fc) / 2.0;
           zmns1[mn] = t1 * m_vmec_internal_results.zmnsc(idx_fc) / 2.0;
           lmns1[mn] = t1 * m_vmec_internal_results.lmnsc(idx_fc) / 2.0;
@@ -4450,36 +4450,36 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                               << " should be mnmax=" << s.mnmax;
 
     for (int mn = 0; mn < s.mnmax; ++mn) {
-      wout.rmnc(jF * s.mnmax + mn) = rmnc1[mn];
-      wout.zmns(jF * s.mnmax + mn) = zmns1[mn];
-      wout.lmns_full(jF * s.mnmax + mn) =
-          lmns1[mn] / m_vmec_internal_results.phipF[jF] * constants.lamscale;
+      wout.rmnc(j_f * s.mnmax + mn) = rmnc1[mn];
+      wout.zmns(j_f * s.mnmax + mn) = zmns1[mn];
+      wout.lmns_full(j_f * s.mnmax + mn) =
+          lmns1[mn] / m_vmec_internal_results.phipF[j_f] * constants.lamscale;
     }  // mn
   }    // jF
 
   // INTERPOLATE LAMBDA ONTO HALF-MESH FOR BACKWARDS CONSISTENCY WITH EARLIER
   // VERSIONS OF VMEC AND SMOOTHS POSSIBLE UNPHYSICAL "WIGGLE" ON RADIAL MESH
   wout.lmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax);
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
-    const int jFi = jH;
-    const int jFo = jH + 1;
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
+    const int j_fi = j_h;
+    const int j_fo = j_h + 1;
 
     for (int mn = 0; mn < s.mnmax; ++mn) {
-      const double lmns_outside = wout.lmns_full(jFo * s.mnmax + mn);
+      const double lmns_outside = wout.lmns_full(j_fo * s.mnmax + mn);
 
-      double lmns_inside = wout.lmns_full(jFi * s.mnmax + mn);
-      if (jFi == 0 && wout.xm[mn] <= 1) {
+      double lmns_inside = wout.lmns_full(j_fi * s.mnmax + mn);
+      if (j_fi == 0 && wout.xm[mn] <= 1) {
         lmns_inside = lmns_outside;
       }
 
       if (wout.xm[mn] % 2 == 0) {
         // m is even
-        wout.lmns(jH * s.mnmax + mn) = (lmns_outside + lmns_inside) / 2.0;
+        wout.lmns(j_h * s.mnmax + mn) = (lmns_outside + lmns_inside) / 2.0;
       } else {
         // m is odd
-        const double sm = m_vmec_internal_results.sm[jH];
-        const double sp = m_vmec_internal_results.sp[jH];
-        wout.lmns(jH * s.mnmax + mn) =
+        const double sm = m_vmec_internal_results.sm[j_h];
+        const double sp = m_vmec_internal_results.sp[j_h];
+        wout.lmns(j_h * s.mnmax + mn) =
             (sm * lmns_outside + sp * lmns_inside) / 2.0;
       }
     }  // mn
@@ -4487,13 +4487,13 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   // COMPUTE |B| = SQRT(|B|**2) and store in bsq, bsqa
   std::vector<double> magnetic_pressure((fc.ns - 1) * s.nZnT, 0.0);
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int idx_kl = jH * s.nZnT + kl;
+      const int idx_kl = j_h * s.nZnT + kl;
       const double total_pressure =
           m_vmec_internal_results.total_pressure(idx_kl);
       magnetic_pressure[idx_kl] = std::sqrt(
-          2.0 * std::abs(total_pressure - m_vmec_internal_results.presH[jH]));
+          2.0 * std::abs(total_pressure - m_vmec_internal_results.presH[j_h]));
     }  // kl
   }    // jH
 
@@ -4528,10 +4528,10 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   wout.bsupumnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
   wout.bsupvmnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-      const int idx_mn_nyq = jH * s.mnmax_nyq + mn_nyq;
-      const int idx_mn_nyq1 = (jH + 1) * s.mnmax_nyq + mn_nyq;
+      const int idx_mn_nyq = j_h * s.mnmax_nyq + mn_nyq;
+      const int idx_mn_nyq1 = (j_h + 1) * s.mnmax_nyq + mn_nyq;
 
       const int m = wout.xm_nyq[mn_nyq];
       const int n = wout.xn_nyq[mn_nyq] / wout.nfp;
@@ -4558,7 +4558,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           const double tsini = dmult * (t.sinmui[ml] * cosnv[kn] -
                                         sign_n * cosmui[ml] * t.sinnv[kn]);
 
-          const int idx_kl = (jH * s.nZeta + k) * s.nThetaEff + l;
+          const int idx_kl = (j_h * s.nZeta + k) * s.nThetaEff + l;
           wout.gmnc(idx_mn_nyq) +=
               tcosi * m_vmec_internal_results.gsqrt(idx_kl);
           wout.bmnc(idx_mn_nyq) += tcosi * magnetic_pressure[idx_kl];
@@ -4603,10 +4603,10 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     // MUST CONVERT m=1 MODES... FROM INTERNAL TO PHYSICAL FORM
     // Extrapolation of m=0 Lambda (cs) modes, which are not evolved at j=1,
     // done in CONVERT
-    for (int jF = 0; jF < fc.ns; ++jF) {
+    for (int j_f = 0; j_f < fc.ns; ++j_f) {
       for (int n = 0; n < s.ntor + 1; ++n) {
         const int m = 1;
-        const int idx_fc = (jF * (s.ntor + 1) + n) * s.mpol + m;
+        const int idx_fc = (j_f * (s.ntor + 1) + n) * s.mpol + m;
 
         const double old_rsc = m_vmec_internal_results.rmnsc(idx_fc);
         m_vmec_internal_results.rmnsc(idx_fc) =
@@ -4714,76 +4714,76 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
   // one-dimensional array quantities
 
   const int ns = static_cast<int>(expected_wout.iota_full.size());
-  for (int jF = 0; jF < ns; ++jF) {
-    CHECK(IsCloseRelAbs(expected_wout.iota_full[jF], test_wout.iota_full[jF],
+  for (int j_f = 0; j_f < ns; ++j_f) {
+    CHECK(IsCloseRelAbs(expected_wout.iota_full[j_f], test_wout.iota_full[j_f],
                         tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.safety_factor[jF],
-                        test_wout.safety_factor[jF], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.pressure_full[jF],
-                        test_wout.pressure_full[jF], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.toroidal_flux[jF],
-                        test_wout.toroidal_flux[jF], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.poloidal_flux[jF],
-                        test_wout.poloidal_flux[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.safety_factor[j_f],
+                        test_wout.safety_factor[j_f], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.pressure_full[j_f],
+                        test_wout.pressure_full[j_f], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.toroidal_flux[j_f],
+                        test_wout.toroidal_flux[j_f], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.poloidal_flux[j_f],
+                        test_wout.poloidal_flux[j_f], tolerance));
     CHECK(
-        IsCloseRelAbs(expected_wout.phipf[jF], test_wout.phipf[jF], tolerance));
+        IsCloseRelAbs(expected_wout.phipf[j_f], test_wout.phipf[j_f], tolerance));
     CHECK(
-        IsCloseRelAbs(expected_wout.chipf[jF], test_wout.chipf[jF], tolerance));
+        IsCloseRelAbs(expected_wout.chipf[j_f], test_wout.chipf[j_f], tolerance));
     CHECK(
-        IsCloseRelAbs(expected_wout.jcuru[jF], test_wout.jcuru[jF], tolerance))
-        << "jF = " << jF;
+        IsCloseRelAbs(expected_wout.jcuru[j_f], test_wout.jcuru[j_f], tolerance))
+        << "jF = " << j_f;
     CHECK(
-        IsCloseRelAbs(expected_wout.jcurv[jF], test_wout.jcurv[jF], tolerance))
-        << "jF = " << jF;
-    CHECK(IsCloseRelAbs(expected_wout.spectral_width[jF],
-                        test_wout.spectral_width[jF], tolerance));
+        IsCloseRelAbs(expected_wout.jcurv[j_f], test_wout.jcurv[j_f], tolerance))
+        << "jF = " << j_f;
+    CHECK(IsCloseRelAbs(expected_wout.spectral_width[j_f],
+                        test_wout.spectral_width[j_f], tolerance));
   }  // jF
 
-  for (int jH = 0; jH < ns - 1; ++jH) {
-    CHECK(IsCloseRelAbs(expected_wout.iota_half[jH], test_wout.iota_half[jH],
+  for (int j_h = 0; j_h < ns - 1; ++j_h) {
+    CHECK(IsCloseRelAbs(expected_wout.iota_half[j_h], test_wout.iota_half[j_h],
                         tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.mass[jH], test_wout.mass[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.pressure_half[jH],
-                        test_wout.pressure_half[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.beta[jH], test_wout.beta[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.buco[jH], test_wout.buco[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.bvco[jH], test_wout.bvco[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.dVds[jH], test_wout.dVds[jH], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.mass[j_h], test_wout.mass[j_h], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.pressure_half[j_h],
+                        test_wout.pressure_half[j_h], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.beta[j_h], test_wout.beta[j_h], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.buco[j_h], test_wout.buco[j_h], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.bvco[j_h], test_wout.bvco[j_h], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.dVds[j_h], test_wout.dVds[j_h], tolerance));
     CHECK(
-        IsCloseRelAbs(expected_wout.phips[jH], test_wout.phips[jH], tolerance));
+        IsCloseRelAbs(expected_wout.phips[j_h], test_wout.phips[j_h], tolerance));
     CHECK(
-        IsCloseRelAbs(expected_wout.overr[jH], test_wout.overr[jH], tolerance));
+        IsCloseRelAbs(expected_wout.overr[j_h], test_wout.overr[j_h], tolerance));
   }  // jH
 
-  for (int jF = 0; jF < ns; ++jF) {
+  for (int j_f = 0; j_f < ns; ++j_f) {
     CHECK(
-        IsCloseRelAbs(expected_wout.jdotb[jF], test_wout.jdotb[jF], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.bdotgradv[jF], test_wout.bdotgradv[jF],
+        IsCloseRelAbs(expected_wout.jdotb[j_f], test_wout.jdotb[j_f], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.bdotgradv[j_f], test_wout.bdotgradv[j_f],
                         tolerance));
   }  // jF
 
-  for (int jF = 0; jF < ns; ++jF) {
+  for (int j_f = 0; j_f < ns; ++j_f) {
     CHECK(
-        IsCloseRelAbs(expected_wout.DMerc[jF], test_wout.DMerc[jF], tolerance))
-        << "jF = " << jF;
-    CHECK(IsCloseRelAbs(expected_wout.Dshear[jF], test_wout.Dshear[jF],
+        IsCloseRelAbs(expected_wout.DMerc[j_f], test_wout.DMerc[j_f], tolerance))
+        << "jF = " << j_f;
+    CHECK(IsCloseRelAbs(expected_wout.Dshear[j_f], test_wout.Dshear[j_f],
                         tolerance))
-        << "jF = " << jF;
+        << "jF = " << j_f;
     CHECK(
-        IsCloseRelAbs(expected_wout.Dwell[jF], test_wout.Dwell[jF], tolerance))
-        << "jF = " << jF;
+        IsCloseRelAbs(expected_wout.Dwell[j_f], test_wout.Dwell[j_f], tolerance))
+        << "jF = " << j_f;
     CHECK(
-        IsCloseRelAbs(expected_wout.Dcurr[jF], test_wout.Dcurr[jF], tolerance))
-        << "jF = " << jF;
+        IsCloseRelAbs(expected_wout.Dcurr[j_f], test_wout.Dcurr[j_f], tolerance))
+        << "jF = " << j_f;
     CHECK(
-        IsCloseRelAbs(expected_wout.Dgeod[jF], test_wout.Dgeod[jF], tolerance))
-        << "jF = " << jF;
+        IsCloseRelAbs(expected_wout.Dgeod[j_f], test_wout.Dgeod[j_f], tolerance))
+        << "jF = " << j_f;
   }  // jF
 
-  for (int jF = 0; jF < ns; ++jF) {
+  for (int j_f = 0; j_f < ns; ++j_f) {
     CHECK(
-        IsCloseRelAbs(expected_wout.equif[jF], test_wout.equif[jF], tolerance))
-        << "jF = " << jF;
+        IsCloseRelAbs(expected_wout.equif[j_f], test_wout.equif[j_f], tolerance))
+        << "jF = " << j_f;
   }
 
   // -------------------
@@ -4809,55 +4809,55 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
                         tolerance));
   }  // n
 
-  for (int jF = 0; jF < ns; ++jF) {
+  for (int j_f = 0; j_f < ns; ++j_f) {
     for (int mn = 0; mn < test_wout.mnmax; ++mn) {
-      CHECK(IsCloseRelAbs(expected_wout.rmnc(jF * test_wout.mnmax + mn),
-                          test_wout.rmnc(jF * test_wout.mnmax + mn), tolerance))
-          << "jF = " << jF << " mn = " << mn;
-      CHECK(IsCloseRelAbs(expected_wout.zmns(jF * test_wout.mnmax + mn),
-                          test_wout.zmns(jF * test_wout.mnmax + mn), tolerance))
-          << "jF = " << jF << " mn = " << mn;
+      CHECK(IsCloseRelAbs(expected_wout.rmnc(j_f * test_wout.mnmax + mn),
+                          test_wout.rmnc(j_f * test_wout.mnmax + mn), tolerance))
+          << "jF = " << j_f << " mn = " << mn;
+      CHECK(IsCloseRelAbs(expected_wout.zmns(j_f * test_wout.mnmax + mn),
+                          test_wout.zmns(j_f * test_wout.mnmax + mn), tolerance))
+          << "jF = " << j_f << " mn = " << mn;
     }  // mn
   }    // jF
 
-  for (int jH = 0; jH < ns - 1; ++jH) {
+  for (int j_h = 0; j_h < ns - 1; ++j_h) {
     for (int mn = 0; mn < test_wout.mnmax; ++mn) {
-      CHECK(IsCloseRelAbs(expected_wout.lmns(jH * test_wout.mnmax + mn),
-                          test_wout.lmns(jH * test_wout.mnmax + mn), tolerance))
-          << "jH = " << jH << " mn = " << mn;
+      CHECK(IsCloseRelAbs(expected_wout.lmns(j_h * test_wout.mnmax + mn),
+                          test_wout.lmns(j_h * test_wout.mnmax + mn), tolerance))
+          << "jH = " << j_h << " mn = " << mn;
     }  // mn
   }    // jH
 
-  for (int jH = 0; jH < ns - 1; ++jH) {
+  for (int j_h = 0; j_h < ns - 1; ++j_h) {
     for (int mn_nyq = 0; mn_nyq < test_wout.mnmax_nyq; ++mn_nyq) {
-      CHECK(IsCloseRelAbs(expected_wout.gmnc(jH * test_wout.mnmax_nyq + mn_nyq),
-                          test_wout.gmnc(jH * test_wout.mnmax_nyq + mn_nyq),
+      CHECK(IsCloseRelAbs(expected_wout.gmnc(j_h * test_wout.mnmax_nyq + mn_nyq),
+                          test_wout.gmnc(j_h * test_wout.mnmax_nyq + mn_nyq),
                           tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
-      CHECK(IsCloseRelAbs(expected_wout.bmnc(jH * test_wout.mnmax_nyq + mn_nyq),
-                          test_wout.bmnc(jH * test_wout.mnmax_nyq + mn_nyq),
+          << "jH = " << j_h << " mn_nyq = " << mn_nyq;
+      CHECK(IsCloseRelAbs(expected_wout.bmnc(j_h * test_wout.mnmax_nyq + mn_nyq),
+                          test_wout.bmnc(j_h * test_wout.mnmax_nyq + mn_nyq),
                           tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
+          << "jH = " << j_h << " mn_nyq = " << mn_nyq;
       CHECK(IsCloseRelAbs(
-          expected_wout.bsubumnc(jH * test_wout.mnmax_nyq + mn_nyq),
-          test_wout.bsubumnc(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
+          expected_wout.bsubumnc(j_h * test_wout.mnmax_nyq + mn_nyq),
+          test_wout.bsubumnc(j_h * test_wout.mnmax_nyq + mn_nyq), tolerance))
+          << "jH = " << j_h << " mn_nyq = " << mn_nyq;
       CHECK(IsCloseRelAbs(
-          expected_wout.bsubvmnc(jH * test_wout.mnmax_nyq + mn_nyq),
-          test_wout.bsubvmnc(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
+          expected_wout.bsubvmnc(j_h * test_wout.mnmax_nyq + mn_nyq),
+          test_wout.bsubvmnc(j_h * test_wout.mnmax_nyq + mn_nyq), tolerance))
+          << "jH = " << j_h << " mn_nyq = " << mn_nyq;
       CHECK(IsCloseRelAbs(
-          expected_wout.bsubsmns(jH * test_wout.mnmax_nyq + mn_nyq),
-          test_wout.bsubsmns(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
+          expected_wout.bsubsmns(j_h * test_wout.mnmax_nyq + mn_nyq),
+          test_wout.bsubsmns(j_h * test_wout.mnmax_nyq + mn_nyq), tolerance))
+          << "jH = " << j_h << " mn_nyq = " << mn_nyq;
       CHECK(IsCloseRelAbs(
-          expected_wout.bsupumnc(jH * test_wout.mnmax_nyq + mn_nyq),
-          test_wout.bsupumnc(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
+          expected_wout.bsupumnc(j_h * test_wout.mnmax_nyq + mn_nyq),
+          test_wout.bsupumnc(j_h * test_wout.mnmax_nyq + mn_nyq), tolerance))
+          << "jH = " << j_h << " mn_nyq = " << mn_nyq;
       CHECK(IsCloseRelAbs(
-          expected_wout.bsupvmnc(jH * test_wout.mnmax_nyq + mn_nyq),
-          test_wout.bsupvmnc(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
+          expected_wout.bsupvmnc(j_h * test_wout.mnmax_nyq + mn_nyq),
+          test_wout.bsupvmnc(j_h * test_wout.mnmax_nyq + mn_nyq), tolerance))
+          << "jH = " << j_h << " mn_nyq = " << mn_nyq;
     }  // mn_nyq
   }    // jH
 

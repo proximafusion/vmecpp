@@ -21,8 +21,8 @@ using ::testing::ElementsAreArray;
 TEST(ComposedTypesLibTest, CheckLength) {
   static constexpr double kTolerance = 1.0e-15;
 
-  const double kSqrt2 = std::sqrt(2.0);
-  const double kSqrt3 = std::sqrt(3.0);
+  static constexpr double kSqrt2 = std::numbers::sqrt2;
+  static constexpr double kSqrt3 = std::numbers::sqrt3;
 
   Vector3d vector_x;
   vector_x.set_x(1.0);
@@ -72,7 +72,7 @@ TEST(ComposedTypesLibTest, CheckScaleToInPlane) {
 
   static constexpr double kDesiredLength = 1.23;
 
-  const double kExpectedComponent = kDesiredLength / std::sqrt(2.0);
+  static constexpr double kExpectedComponent = kDesiredLength / std::numbers::sqrt2;
 
   Vector3d vector_xy;
   vector_xy.set_x(1.0);
@@ -107,7 +107,7 @@ TEST(ComposedTypesLibTest, CheckScaleToInVolume) {
 
   static constexpr double kDesiredLength = 1.23;
 
-  const double kExpectedComponent = kDesiredLength / std::sqrt(3.0);
+  static constexpr double kExpectedComponent = kDesiredLength / std::numbers::sqrt3;
 
   Vector3d vector_xyz;
   vector_xyz.set_x(1.0);
@@ -125,8 +125,8 @@ TEST(ComposedTypesLibTest, CheckScaleToInVolume) {
 TEST(ComposedTypesLibTest, CheckNormalize) {
   static constexpr double kTolerance = 1.0e-15;
 
-  const double kInverseSqrt2 = 1.0 / std::sqrt(2.0);
-  const double kInverseSqrt3 = 1.0 / std::sqrt(3.0);
+  static constexpr double kInverseSqrt2 = 1.0 / std::numbers::sqrt2;
+  static constexpr double kInverseSqrt3 = std::numbers::inv_sqrt3;
 
   Vector3d vector_xy;
   vector_xy.set_x(1.0);

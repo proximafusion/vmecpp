@@ -94,31 +94,31 @@ SurfaceGeometryMockup::SurfaceGeometryMockup(bool lasym, int nfp, int mpol,
       tp(s.nZnT, num_threads, thread_id),
       sg(&s, &fb, &tp) {
   // convert into 2D Fourier coefficient arrays
-  std::vector<double> rCC(s.mnsize);
-  std::vector<double> rSS(s.mnsize);
-  std::vector<double> rSC;
-  std::vector<double> rCS;
-  fb.cos_to_cc_ss(m_rmnc, rCC, rSS, s.ntor, s.mpol);
+  std::vector<double> r_cc(s.mnsize);
+  std::vector<double> r_ss(s.mnsize);
+  std::vector<double> r_sc;
+  std::vector<double> r_cs;
+  fb.cos_to_cc_ss(m_rmnc, r_cc, r_ss, s.ntor, s.mpol);
   if (s.lasym) {
-    rSC.resize(s.mnsize, 0.0);
-    rCS.resize(s.mnsize, 0.0);
-    fb.sin_to_sc_cs(m_rmns, rSC, rCS, s.ntor, s.mpol);
+    r_sc.resize(s.mnsize, 0.0);
+    r_cs.resize(s.mnsize, 0.0);
+    fb.sin_to_sc_cs(m_rmns, r_sc, r_cs, s.ntor, s.mpol);
   }
 
-  std::vector<double> zSC(s.mnsize);
-  std::vector<double> zCS(s.mnsize);
-  std::vector<double> zCC;
-  std::vector<double> zSS;
-  fb.sin_to_sc_cs(m_zmns, zSC, zCS, s.ntor, s.mpol);
+  std::vector<double> z_sc(s.mnsize);
+  std::vector<double> z_cs(s.mnsize);
+  std::vector<double> z_cc;
+  std::vector<double> z_ss;
+  fb.sin_to_sc_cs(m_zmns, z_sc, z_cs, s.ntor, s.mpol);
   if (s.lasym) {
-    zCC.resize(s.mnsize, 0.0);
-    zSS.resize(s.mnsize, 0.0);
-    fb.cos_to_cc_ss(m_zmnc, zCC, zSS, s.ntor, s.mpol);
+    z_cc.resize(s.mnsize, 0.0);
+    z_ss.resize(s.mnsize, 0.0);
+    fb.cos_to_cc_ss(m_zmnc, z_cc, z_ss, s.ntor, s.mpol);
   }
 
   // perform inv-DFT and related stuff in SurfaceGeometry
-  bool fullUpdate = true;
-  sg.update(rCC, rSS, rSC, rCS, zSC, zCS, zCC, zSS, signOfJacobian, fullUpdate);
+  bool full_update = true;
+  sg.update(r_cc, r_ss, r_sc, r_cs, z_sc, z_cs, z_cc, z_ss, signOfJacobian, full_update);
 }  // SurfaceGeometryMockup
 
 }  // namespace vmecpp

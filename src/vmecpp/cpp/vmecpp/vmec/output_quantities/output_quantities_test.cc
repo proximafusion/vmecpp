@@ -222,23 +222,23 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   std::vector<double> reference_jcurv = NetcdfReadArray1D(ncid, "jcurv");
   std::vector<double> reference_spectral_width =
       NetcdfReadArray1D(ncid, "specw");
-  for (int jF = 0; jF < fc.ns; ++jF) {
+  for (int j_f = 0; j_f < fc.ns; ++j_f) {
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_iota_full[jF], wout.iota_full[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_safety_factor[jF],
-                              wout.safety_factor[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_pressure_full[jF],
-                              wout.pressure_full[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_toroidal_flux[jF],
-                              wout.toroidal_flux[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_poloidal_flux[jF],
-                              wout.poloidal_flux[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_phipf[jF], wout.phipf[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_chipf[jF], wout.chipf[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_jcuru[jF], wout.jcuru[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_jcurv[jF], wout.jcurv[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_spectral_width[jF],
-                              wout.spectral_width[jF], tolerance));
+        IsCloseRelAbs(reference_iota_full[j_f], wout.iota_full[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_safety_factor[j_f],
+                              wout.safety_factor[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_pressure_full[j_f],
+                              wout.pressure_full[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_toroidal_flux[j_f],
+                              wout.toroidal_flux[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_poloidal_flux[j_f],
+                              wout.poloidal_flux[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_phipf[j_f], wout.phipf[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_chipf[j_f], wout.chipf[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_jcuru[j_f], wout.jcuru[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_jcurv[j_f], wout.jcurv[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_spectral_width[j_f],
+                              wout.spectral_width[j_f], tolerance));
   }  // jF
 
   std::vector<double> reference_iota_half = NetcdfReadArray1D(ncid, "iotas");
@@ -247,56 +247,56 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   std::vector<double> reference_beta = NetcdfReadArray1D(ncid, "beta_vol");
   std::vector<double> reference_buco = NetcdfReadArray1D(ncid, "buco");
   std::vector<double> reference_bvco = NetcdfReadArray1D(ncid, "bvco");
-  std::vector<double> reference_dVds = NetcdfReadArray1D(ncid, "vp");
+  std::vector<double> reference_d_vds = NetcdfReadArray1D(ncid, "vp");
   std::vector<double> reference_phips = NetcdfReadArray1D(ncid, "phips");
   std::vector<double> reference_overr = NetcdfReadArray1D(ncid, "over_r");
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
-    EXPECT_TRUE(IsCloseRelAbs(reference_iota_half[jH + 1], wout.iota_half[jH],
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
+    EXPECT_TRUE(IsCloseRelAbs(reference_iota_half[j_h + 1], wout.iota_half[j_h],
                               tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_mass_half[jH + 1], wout.mass[jH], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_pressure_half[jH + 1],
-                              wout.pressure_half[jH], tolerance));
+        IsCloseRelAbs(reference_mass_half[j_h + 1], wout.mass[j_h], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_pressure_half[j_h + 1],
+                              wout.pressure_half[j_h], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_beta[jH + 1], wout.beta[jH], tolerance));
+        IsCloseRelAbs(reference_beta[j_h + 1], wout.beta[j_h], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_buco[jH + 1], wout.buco[jH], tolerance));
+        IsCloseRelAbs(reference_buco[j_h + 1], wout.buco[j_h], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_bvco[jH + 1], wout.bvco[jH], tolerance));
+        IsCloseRelAbs(reference_bvco[j_h + 1], wout.bvco[j_h], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_dVds[jH + 1], wout.dVds[jH], tolerance));
+        IsCloseRelAbs(reference_d_vds[j_h + 1], wout.dVds[j_h], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_phips[jH + 1], wout.phips[jH], tolerance));
+        IsCloseRelAbs(reference_phips[j_h + 1], wout.phips[j_h], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_overr[jH + 1], wout.overr[jH], tolerance));
+        IsCloseRelAbs(reference_overr[j_h + 1], wout.overr[j_h], tolerance));
   }  // jH
 
   std::vector<double> reference_jdotb = NetcdfReadArray1D(ncid, "jdotb");
   std::vector<double> reference_bdotgradv =
       NetcdfReadArray1D(ncid, "bdotgradv");
-  for (int jF = 0; jF < fc.ns; ++jF) {
-    EXPECT_TRUE(IsCloseRelAbs(reference_jdotb[jF], wout.jdotb[jF], tolerance));
+  for (int j_f = 0; j_f < fc.ns; ++j_f) {
+    EXPECT_TRUE(IsCloseRelAbs(reference_jdotb[j_f], wout.jdotb[j_f], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_bdotgradv[jF], wout.bdotgradv[jF], tolerance));
+        IsCloseRelAbs(reference_bdotgradv[j_f], wout.bdotgradv[j_f], tolerance));
   }  // jF
 
-  std::vector<double> reference_DMerc = NetcdfReadArray1D(ncid, "DMerc");
-  std::vector<double> reference_Dshear = NetcdfReadArray1D(ncid, "DShear");
-  std::vector<double> reference_Dwell = NetcdfReadArray1D(ncid, "DWell");
-  std::vector<double> reference_Dcurr = NetcdfReadArray1D(ncid, "DCurr");
-  std::vector<double> reference_Dgeod = NetcdfReadArray1D(ncid, "DGeod");
-  for (int jF = 0; jF < fc.ns; ++jF) {
-    EXPECT_TRUE(IsCloseRelAbs(reference_DMerc[jF], wout.DMerc[jF], tolerance));
+  std::vector<double> reference_d_merc = NetcdfReadArray1D(ncid, "DMerc");
+  std::vector<double> reference_dshear = NetcdfReadArray1D(ncid, "DShear");
+  std::vector<double> reference_dwell = NetcdfReadArray1D(ncid, "DWell");
+  std::vector<double> reference_dcurr = NetcdfReadArray1D(ncid, "DCurr");
+  std::vector<double> reference_dgeod = NetcdfReadArray1D(ncid, "DGeod");
+  for (int j_f = 0; j_f < fc.ns; ++j_f) {
+    EXPECT_TRUE(IsCloseRelAbs(reference_d_merc[j_f], wout.DMerc[j_f], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_Dshear[jF], wout.Dshear[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_Dwell[jF], wout.Dwell[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_Dcurr[jF], wout.Dcurr[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_Dgeod[jF], wout.Dgeod[jF], tolerance));
+        IsCloseRelAbs(reference_dshear[j_f], wout.Dshear[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_dwell[j_f], wout.Dwell[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_dcurr[j_f], wout.Dcurr[j_f], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_dgeod[j_f], wout.Dgeod[j_f], tolerance));
   }  // jF
 
   std::vector<double> reference_equif = NetcdfReadArray1D(ncid, "equif");
-  for (int jF = 0; jF < fc.ns; ++jF) {
-    EXPECT_TRUE(IsCloseRelAbs(reference_equif[jF], wout.equif[jF], tolerance));
+  for (int j_f = 0; j_f < fc.ns; ++j_f) {
+    EXPECT_TRUE(IsCloseRelAbs(reference_equif[j_f], wout.equif[j_f], tolerance));
   }
 
   // TODO(jons): curlabel, potvac: once free-boundary works
@@ -334,21 +334,21 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
       NetcdfReadArray2D(ncid, "rmnc");
   std::vector<std::vector<double>> reference_zmns =
       NetcdfReadArray2D(ncid, "zmns");
-  for (int jF = 0; jF < fc.ns; ++jF) {
+  for (int j_f = 0; j_f < fc.ns; ++j_f) {
     for (int mn = 0; mn < s.mnmax; ++mn) {
-      EXPECT_TRUE(IsCloseRelAbs(reference_rmnc[jF][mn],
-                                wout.rmnc(jF * s.mnmax + mn), tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_zmns[jF][mn],
-                                wout.zmns(jF * s.mnmax + mn), tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(reference_rmnc[j_f][mn],
+                                wout.rmnc(j_f * s.mnmax + mn), tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(reference_zmns[j_f][mn],
+                                wout.zmns(j_f * s.mnmax + mn), tolerance));
     }  // mn
   }    // jF
 
   std::vector<std::vector<double>> reference_lmns =
       NetcdfReadArray2D(ncid, "lmns");
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     for (int mn = 0; mn < s.mnmax; ++mn) {
-      EXPECT_TRUE(IsCloseRelAbs(reference_lmns[jH + 1][mn],
-                                wout.lmns(jH * s.mnmax + mn), tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(reference_lmns[j_h + 1][mn],
+                                wout.lmns(j_h * s.mnmax + mn), tolerance));
     }  // mn
   }    // jH
 
@@ -366,28 +366,28 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
       NetcdfReadArray2D(ncid, "bsupumnc");
   std::vector<std::vector<double>> reference_bsupvmnc =
       NetcdfReadArray2D(ncid, "bsupvmnc");
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int j_h = 0; j_h < fc.ns - 1; ++j_h) {
     for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-      EXPECT_TRUE(IsCloseRelAbs(reference_gmnc[jH + 1][mn_nyq],
-                                wout.gmnc(jH * s.mnmax_nyq + mn_nyq),
+      EXPECT_TRUE(IsCloseRelAbs(reference_gmnc[j_h + 1][mn_nyq],
+                                wout.gmnc(j_h * s.mnmax_nyq + mn_nyq),
                                 tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bmnc[jH + 1][mn_nyq],
-                                wout.bmnc(jH * s.mnmax_nyq + mn_nyq),
+      EXPECT_TRUE(IsCloseRelAbs(reference_bmnc[j_h + 1][mn_nyq],
+                                wout.bmnc(j_h * s.mnmax_nyq + mn_nyq),
                                 tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsubumnc[jH + 1][mn_nyq],
-                                wout.bsubumnc(jH * s.mnmax_nyq + mn_nyq),
+      EXPECT_TRUE(IsCloseRelAbs(reference_bsubumnc[j_h + 1][mn_nyq],
+                                wout.bsubumnc(j_h * s.mnmax_nyq + mn_nyq),
                                 tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsubvmnc[jH + 1][mn_nyq],
-                                wout.bsubvmnc(jH * s.mnmax_nyq + mn_nyq),
+      EXPECT_TRUE(IsCloseRelAbs(reference_bsubvmnc[j_h + 1][mn_nyq],
+                                wout.bsubvmnc(j_h * s.mnmax_nyq + mn_nyq),
                                 tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsubsmns[jH + 1][mn_nyq],
-                                wout.bsubsmns((jH + 1) * s.mnmax_nyq + mn_nyq),
+      EXPECT_TRUE(IsCloseRelAbs(reference_bsubsmns[j_h + 1][mn_nyq],
+                                wout.bsubsmns((j_h + 1) * s.mnmax_nyq + mn_nyq),
                                 tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsupumnc[jH + 1][mn_nyq],
-                                wout.bsupumnc(jH * s.mnmax_nyq + mn_nyq),
+      EXPECT_TRUE(IsCloseRelAbs(reference_bsupumnc[j_h + 1][mn_nyq],
+                                wout.bsupumnc(j_h * s.mnmax_nyq + mn_nyq),
                                 tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsupvmnc[jH + 1][mn_nyq],
-                                wout.bsupvmnc(jH * s.mnmax_nyq + mn_nyq),
+      EXPECT_TRUE(IsCloseRelAbs(reference_bsupvmnc[j_h + 1][mn_nyq],
+                                wout.bsupvmnc(j_h * s.mnmax_nyq + mn_nyq),
                                 tolerance));
     }  // mn_nyq
   }    // jH

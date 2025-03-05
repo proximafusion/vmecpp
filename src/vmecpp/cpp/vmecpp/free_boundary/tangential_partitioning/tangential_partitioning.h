@@ -14,7 +14,7 @@ class TangentialPartitioning {
                                   int thread_id = 0);
 
   void adjustPartitioning(int nZnT);
-  int get_thread_id();
+  int get_thread_id() const;
 
   int ztMin;
   int ztMax;
