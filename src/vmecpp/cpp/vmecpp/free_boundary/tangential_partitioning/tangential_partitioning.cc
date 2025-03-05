@@ -30,6 +30,6 @@ void TangentialPartitioning::adjustPartitioning(int nZnT) {
   }
 }
 
-int TangentialPartitioning::get_thread_id() { return thread_id_; }
+int TangentialPartitioning::get_thread_id() const { return thread_id_; }
 
 }  // namespace vmecpp

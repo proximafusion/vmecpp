@@ -13,7 +13,7 @@ namespace vmecpp {
 
 // enumerates values of `restart_reason`
 // was `irst` = 1, 2, 3, 4 in Fortran VMEC
-enum class RestartReason {
+enum class RestartReason : std::uint8_t {
   // irst == 1, no restart required, instead make backup of current state vector
   // when calling Vmec::RestartIteration
   NO_RESTART,

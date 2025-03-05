@@ -94,9 +94,9 @@ makegrid::MagneticFieldResponseTable MakeMagneticFieldResponseTable(
 }
 
 vmecpp::HotRestartState MakeHotRestartState(
-    vmecpp::WOutFileContents wout, vmecpp::VmecINDATAPyWrapper indata) {
+    vmecpp::WOutFileContents wout, const vmecpp::VmecINDATAPyWrapper& indata) {
   return vmecpp::HotRestartState(std::move(wout),
-                                 vmecpp::VmecINDATA(std::move(indata)));
+                                 vmecpp::VmecINDATA(indata));
 }
 
 }  // anonymous namespace

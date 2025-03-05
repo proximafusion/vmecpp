@@ -1141,7 +1141,7 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
                            FourierGeometry& m_decomposed_x,
                            FourierVelocity& m_decomposed_v,
                            const FourierForces& decomposed_f,
-                           HandoverStorage& m_h_) {
+                           HandoverStorage& m_h_) const {
   // THIS IS THE TIME-STEP ALGORITHM. IT IS ESSENTIALLY A CONJUGATE
   // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
   // BASED ON A METHOD GIVEN BY P. GARABEDIAN
