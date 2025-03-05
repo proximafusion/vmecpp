@@ -2,7 +2,9 @@
 #define VMECPP_COMMON_MAGNETIC_CONFIGURATION_DEFINITION_MAGNETIC_CONFIGURATION_H_
 
 #include <string>
+#include <cstdint>
 #include <list>
+#include <string>
 
 #include "vmecpp/common/composed_types_definition/composed_types.h"
 
@@ -227,7 +229,7 @@ struct InfiniteStraightFilament {
 
 struct CurrentCarrier {
   // oneof type
-  enum TypeCase {
+  enum TypeCase : std::uint8_t {
     kInfiniteStraightFilament = 1,
     kCircularFilament         = 2,
     kPolygonFilament          = 3,

@@ -72,7 +72,7 @@ inline vmecpp::RowMatrixXd ToEigenMatrix(
   return m;
 }
 
-enum class VmecCheckpoint {
+enum class VmecCheckpoint : std::uint8_t {
   NONE = 0,
 
   // ------ initial guess and static members
@@ -145,7 +145,7 @@ enum class VmecCheckpoint {
   THREED1_SHAFRANOV_INTEGRALS
 };
 
-enum class VmecStatus {
+enum class VmecStatus : std::uint8_t {
   // no fatal error but convergence was not reached
   NORMAL_TERMINATION = 0,
   BAD_JACOBIAN = 1,
@@ -195,8 +195,8 @@ int signum(int x);
 // c     contains the RHS on entry and the solution vectors on exit
 void TridiagonalSolveSerial(std::vector<double> &m_a, std::vector<double> &m_d,
                             std::vector<double> &m_b,
-                            std::vector<std::vector<double>> &m_c,
-                            int jMin, int jMax, int nRHS);
+                            std::vector<std::vector<double>> &m_c, int jMin,
+                            int jMax, int nRHS);
 
 // OpenMP-enabled tri-diagonal solver
 //
