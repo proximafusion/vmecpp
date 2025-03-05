@@ -1,0 +1,58 @@
+name: clang-tidy-review
+
+on:
+  pull_request:
+    paths:
+      - 'src/vmecpp/cpp/vmecpp/**/*.h'
+      - 'src/vmecpp/cpp/vmecpp/**/*.cc'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/vmecpp/cpp/vmecpp/**/*.h'
+      - 'src/vmecpp/cpp/vmecpp/**/*.cc'
+
+# Cancel currently running job if a new one comes along for the same branch or tag.
+# From https://stackoverflow.com/a/72408109.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  clang-tidy:
+    permissions:
+      checks: write
+      pull-requests: write
+      packages: read
+      contents: read
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true  # for the mgrid test data
+      - name: Install required system packages for Ubuntu
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential cmake gcc g++ libeigen3-dev libhdf5-dev liblapacke-dev libnetcdf-dev libopenmpi-dev nlohmann-json3-dev python3-pip python-is-python3
+      - name: Generate compile_commands.json for clang-tidy
+        run: |
+          cmake -DCMAKE_EXPORT_COMPILE_COMMANDS:STRING=ON .
+      # Get the current working directory and set it as an environment variable
+      # (see https://github.com/ZedThree/clang-tidy-review#use-in-a-non-default-location)
+      - name: Set base_dir env var
+        run: echo "base_dir=$(pwd)" >> $GITHUB_ENV
+      - uses: ZedThree/clang-tidy-review@v0.20.1
+        name: Run clang-tidy review
+        id: review
+        with:
+          config_file: ".clang-tidy"
+          # Tell clang-tidy-review the base directory.
+          # This will get replaced by the new working
+          # directory inside the action
+          base_dir: ${{ env.base_dir }}
+          exclude: "./src/vmecpp/cpp/bazel-*,./src/vmecpp/cpp/external,./src/vmecpp/cpp/third_party"
+          # turn off "LGTM" comments: we only want pings about warnings/errors
+          lgtm_comment_body: ""
+        # If there are any comments, fail the check
+      - if: steps.review.outputs.total_comments > 0
+        run: exit 1
