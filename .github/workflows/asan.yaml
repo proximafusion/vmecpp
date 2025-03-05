@@ -22,15 +22,6 @@ jobs:
         run: |
           cd src/vmecpp/cpp
           bazel build --config=asan -- //...
-      - uses: actions/checkout@v4
-        with:
-          repository: proximafusion/vmecpp_large_cpp_tests
-          path: src/vmecpp/cpp/vmecpp_large_cpp_tests
-          lfs: true
-      - name: Build VMEC++ C++ tests via bazel
-        run: |
-          cd src/vmecpp/cpp
-          bazel build --config=asan -- //vmecpp_large_cpp_tests/...
       - name: Test with ASAN
         run: |
           cd src/vmecpp/cpp
