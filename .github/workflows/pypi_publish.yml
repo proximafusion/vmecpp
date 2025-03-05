@@ -50,10 +50,25 @@ jobs:
           output-dir: wheelhouse
           config-file: "{package}/pyproject.toml"
 
-      - name: Publish package to PyPI
-        if: success()
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-        run: |
-          twine upload wheelhouse/*.whl
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: vmecpp-wheels-${{ matrix.os }}
+          path: ./wheelhouse/*.whl
+
+  pypi-publish:
+    name: Publish wheels to PyPI
+    if: github.event_name == 'release'
+    needs: main
+    runs-on: ubuntu-latest
+    environment:
+        name: vmecpp
+    permissions:
+        id-token: write
+    steps:      
+      - uses: actions/download-artifact@v4
+        with:
+          path: wheelhouse
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
