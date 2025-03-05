@@ -1,0 +1,59 @@
+name: Publish wheels to PyPI
+
+on:
+  # allows running workflows manually
+  workflow_dispatch:
+
+  release:
+    types: [published]
+
+jobs:
+  main:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: manylinux_x86_64
+          - os: macos-13
+            arch: macosx_x86_64
+          - os: macos-14
+            arch: macosx_arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.23.0
+        env:
+          CIBW_BUILD: "cp*-${{ matrix.arch }}"
+          CIBW_ARCHS_LINUX: "x86_64"
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_34
+          CIBW_ARCHS_MACOS: "native"
+          CIBW_BEFORE_BUILD_LINUX: |
+            dnf install -y libomp-devel eigen3-devel lapack-devel json-devel netcdf-devel hdf5-devel
+          CIBW_BEFORE_BUILD_MACOS: |
+            brew install gcc libomp eigen lapack nlohmann-json protobuf netcdf hdf5
+          CIBW_ENVIRONMENT_MACOS: >
+            MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '13.0' }}
+            DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
+            FC=gfortran-14
+            HDF5_ROOT=$(brew --prefix hdf5)
+          CIBW_BUILD_FRONTEND: "build"
+        with:
+          package-dir: .
+          output-dir: wheelhouse
+          config-file: "{package}/pyproject.toml"
+
+      - name: Publish package to PyPI
+        if: success()
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          twine upload wheelhouse/*.whl
