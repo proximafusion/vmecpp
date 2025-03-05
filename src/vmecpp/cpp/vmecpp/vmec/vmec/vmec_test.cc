@@ -65,6 +65,7 @@ TEST(TestVmec, CheckErrorOnNonConvergence) {
   absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(indata.ok());
 
+  // allow only 1 iteration - not enough to let VMEC converge
   indata->niter_array[0] = 1;
 
   Vmec vmec(*indata);
@@ -72,7 +73,29 @@ TEST(TestVmec, CheckErrorOnNonConvergence) {
 
   CHECK(!status.ok());
   CHECK_EQ(status.status().message(), "VMEC++ did not converge");
-}
+} // CheckErrorOnNonConvergence
+
+TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
+  // make sure VMEC++ returns the outputs without an error
+  // if explicitly instructed to do so
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  // allow only 1 iteration - not enough to let VMEC converge
+  indata->niter_array[0] = 1;
+
+  // instruct VMEC++ to return its outputs, even if it did not converge
+  indata->return_outputs_even_if_not_converged = true;
+
+  Vmec vmec(*indata);
+  const absl::StatusOr<bool> status = vmec.run();
+
+  CHECK(status.ok());
+} // CheckNoErrorOnNonConvergenceIfDesired
 
 TEST(TestVmec, CheckInMemoryMgrid) {
   // test the constructor that takes an in-memory mgrid
@@ -122,4 +145,4 @@ TEST(TestVmec, CheckInMemoryMgrid) {
   // compare wout contents
   vmecpp::CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
                       /*tolerance=*/1e-7);
-}
+} // CheckInMemoryMgrid
