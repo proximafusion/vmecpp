@@ -13,7 +13,7 @@ import numpy as np
 import pydantic
 from beartype import beartype
 
-from vmecpp import _util, simsopt_compat
+from vmecpp import _util
 from vmecpp.cpp import _vmecpp  # bindings to the C++ core
 
 
@@ -193,9 +193,7 @@ class VmecInput(pydantic.BaseModel):
         with tempfile.TemporaryDirectory() as tmpdir, _util.change_working_directory_to(  # noqa: SIM117
             Path(tmpdir)
         ):  # we call this in a temporary directory because it produces the file in the current working directory
-            with simsopt_compat.ensure_vmecpp_input(
-                absolute_input_path
-            ) as vmecpp_input_file:
+            with _util.ensure_vmecpp_input(absolute_input_path) as vmecpp_input_file:
                 vmecpp_indata_pywrapper = _vmecpp.VmecINDATAPyWrapper.from_file(
                     vmecpp_input_file
                 )
