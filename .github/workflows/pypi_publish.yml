@@ -20,8 +20,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23.0
@@ -48,8 +46,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: true
 
     - name: Build SDist
       run: pipx run build --sdist

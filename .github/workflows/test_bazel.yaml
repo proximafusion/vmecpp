@@ -19,7 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           lfs: true  # for the mgrid test data
       - name: Install required system packages for Ubuntu
         run: |
