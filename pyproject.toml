@@ -71,10 +71,10 @@ test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py"
 
 [tool.cibuildwheel.linux]
-before-build = "yum install -y libgomp eigen3-devel lapack-devel json-devel netcdf-devel hdf5-devel"
+before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel"
 
 [tool.cibuildwheel.macos]
-before-build = "brew install gcc libomp eigen lapack nlohmann-json protobuf netcdf hdf5"
+before-build = "brew install gcc lapack protobuf netcdf hdf5"
 
 [tool.hatch.envs.test]
 dependencies = [

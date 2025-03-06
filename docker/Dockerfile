@@ -8,6 +8,6 @@ RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.24.1/bazeli
     && mv bazelisk-linux-amd64 /usr/local/bin/bazel \
     && chmod u+x /usr/local/bin/bazel
 
-RUN git clone https://github.com/proximafusion/vmecpp.git --recurse-submodules
+RUN git clone https://github.com/proximafusion/vmecpp.git
 WORKDIR /vmecpp
 RUN python -m pip install .
