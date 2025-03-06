@@ -3,11 +3,7 @@
 # SPDX-License-Identifier: MIT
 """Tests for VMEC++'s'SIMSOPT compatibility layer."""
 
-import contextlib
-import json
 import math
-import os
-from collections.abc import Generator
 from pathlib import Path
 
 import netCDF4
@@ -15,7 +11,7 @@ import numpy as np
 import pytest
 from simsopt import mhd as simsopt_mhd
 
-from vmecpp import simsopt_compat
+from vmecpp import _util, ensure_vmec2000_input, simsopt_compat
 
 # We don't want to install tests and test data as part of the package,
 # but scikit-build-core + hatchling does not support editable installs,
@@ -49,7 +45,7 @@ def reference_wout(input_file_path) -> netCDF4.Dataset:
 
 # regression test for #174
 def test_run_with_relative_path(input_file_path):
-    with _change_working_directory_to(TEST_DATA_DIR):
+    with _util.change_working_directory_to(TEST_DATA_DIR):
         vmec = simsopt_compat.Vmec(input_file_path.name)
         vmec.run()
 
@@ -162,30 +158,13 @@ def test_changing_mpol_ntor(vmec):
     assert vmec.wout.zmns.shape == expected_shape(new_mpol, new_ntor)
 
 
-def test_is_vmec2000_input():
-    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
-    vmecpp_input_file = TEST_DATA_DIR / "cma.json"
-
-    assert simsopt_compat.is_vmec2000_input(vmec2000_input_file)
-    assert not simsopt_compat.is_vmec2000_input(vmecpp_input_file)
-
-
-def test_ensure_vmec2000_input_noop():
-    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
-
-    with simsopt_compat.ensure_vmec2000_input(vmec2000_input_file) as indata_file:
-        assert indata_file == vmec2000_input_file
-
-
 def test_ensure_vmec2000_input_from_vmecpp_input():
     # we only install VMEC2000 on Ubu 22.04, not on MacOS and Ubuntu 24.04
     pytest.importorskip("vmec")
 
     vmecpp_input_file = TEST_DATA_DIR / "cma.json"
 
-    with simsopt_compat.ensure_vmec2000_input(
-        vmecpp_input_file
-    ) as converted_indata_file:
+    with ensure_vmec2000_input(vmecpp_input_file) as converted_indata_file:
         vmec2000 = simsopt_mhd.Vmec(str(converted_indata_file))
 
     vmecpp = simsopt_compat.Vmec(str(vmecpp_input_file))
@@ -280,34 +259,3 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
                             :, 101 - ntor : 101 + ntor + 1
                         ]
                 np.testing.assert_allclose(vmecpp_var, vmec2000_var_truncated)
-
-
-def test_ensure_vmecpp_input_noop():
-    vmecpp_input_file = TEST_DATA_DIR / "cma.json"
-
-    with simsopt_compat.ensure_vmecpp_input(vmecpp_input_file) as new_input_file:
-        assert new_input_file == vmecpp_input_file
-
-
-def test_ensure_vmecpp_input():
-    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
-
-    with simsopt_compat.ensure_vmecpp_input(vmec2000_input_file) as vmecpp_input_file:
-        assert vmecpp_input_file == TEST_DATA_DIR / f"cma.{os.getpid()}.json"
-        with open(vmecpp_input_file) as f:
-            vmecpp_input_dict = json.load(f)
-            # check the output is remotely sensible: we don't want to test indata_to_json's
-            # correctness here, just that nothing went terribly wrong
-            assert vmecpp_input_dict["mpol"] == 5
-            assert vmecpp_input_dict["ntor"] == 6
-
-
-@contextlib.contextmanager
-def _change_working_directory_to(path: Path) -> Generator[None, None, None]:
-    """Context manager that changes the working directory to `path`."""
-    origin = Path().absolute()
-    try:
-        os.chdir(path)
-        yield
-    finally:
-        os.chdir(origin)
