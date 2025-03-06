@@ -10,7 +10,7 @@ import os
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Optional, Union, cast
+from typing import Any, cast
 
 import numpy as np
 from jaxtyping import Bool, Float
@@ -62,29 +62,29 @@ class Vmec(Optimizable):
     n_iota: int
     iter: int
     free_boundary: bool
-    indata: Optional[vmec.VmecINDATAPyWrapper]
+    indata: vmec.VmecINDATAPyWrapper | None
     # non-null if Vmec was initialized from an input file
-    input_file: Optional[str]
+    input_file: str | None
     # non-null if Vmec was initialized from an output file
-    output_file: Optional[str]
+    output_file: str | None
     # These are filled:
     # - by __init__ if Vmec is initialized with an output file
     # - by a call to run() and are None before otherwise
-    s_full_grid = Optional[Float[np.ndarray, " ns"]]
-    ds = Optional[Float]
-    s_half_grid = Optional[Float[np.ndarray, " nshalf"]]
+    s_full_grid: Float[np.ndarray, " ns"] | None
+    ds: Float | None
+    s_half_grid: Float[np.ndarray, " nshalf"] | None
 
     # The loaded run results (or None if no results are present yet):
     # - a SIMSOPT Struct when reading an output file
     # - a FortranWOutAdapter when reading the results of a VMEC++ run
-    wout: Optional[Union[Struct, FortranWOutAdapter]]
+    wout: Struct | FortranWOutAdapter | None
     # Whether `run()` is available for this object:
     # depends on whether it has been initialized with an input configuration
     # or an output file.
     runnable: bool
     # False when the currently cached results are valid, True if we need to `run()`
     need_to_run_code: bool
-    mpi: Optional[MpiPartition]  # pyright: ignore
+    mpi: MpiPartition | None  # pyright: ignore
     verbose: bool
 
     def __init__(
@@ -94,7 +94,7 @@ class Vmec(Optimizable):
         ntheta: int = 50,
         nphi: int = 50,
         range_surface: str = "full torus",
-        mpi: Optional[MpiPartition] = None,  # pyright: ignore
+        mpi: MpiPartition | None = None,  # pyright: ignore
         keep_all_files: bool = False,
     ):
         self.verbose = verbose

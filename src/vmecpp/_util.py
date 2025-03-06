@@ -6,8 +6,8 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 
 def package_root() -> Path:
@@ -102,8 +102,9 @@ def indata_to_json(
         # won't know where to copy the final output to anymore.
         output_override = output_override.resolve()
 
-    with tempfile.TemporaryDirectory() as tmpdir, change_working_directory_to(
-        Path(tmpdir)
+    with (
+        tempfile.TemporaryDirectory() as tmpdir,
+        change_working_directory_to(Path(tmpdir)),
     ):
         # The Fortran indata2json supports a limited length of the path to the input file.
         # We work in a temporary directory in which we copy the input so that paths are always short.
