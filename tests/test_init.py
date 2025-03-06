@@ -7,7 +7,9 @@ Here we just test that the Python bindings and the general API works as expected
 Physics correctness is checked at the level of the C++ core.
 """
 
+import json
 import math
+import os
 import tempfile
 from pathlib import Path
 
@@ -220,3 +222,38 @@ def test_threed1volumetrics_bindings(cma_output):
         "avg_ekin",
     ]:
         assert isinstance(getattr(cma_output.threed1_volumetrics, varname), float)
+
+
+def test_is_vmec2000_input():
+    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
+    vmecpp_input_file = TEST_DATA_DIR / "cma.json"
+
+    assert vmecpp.is_vmec2000_input(vmec2000_input_file)
+    assert not vmecpp.is_vmec2000_input(vmecpp_input_file)
+
+
+def test_ensure_vmec2000_input_noop():
+    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
+
+    with vmecpp.ensure_vmec2000_input(vmec2000_input_file) as indata_file:
+        assert indata_file == vmec2000_input_file
+
+
+def test_ensure_vmecpp_input_noop():
+    vmecpp_input_file = TEST_DATA_DIR / "cma.json"
+
+    with vmecpp.ensure_vmecpp_input(vmecpp_input_file) as new_input_file:
+        assert new_input_file == vmecpp_input_file
+
+
+def test_ensure_vmecpp_input():
+    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
+
+    with vmecpp.ensure_vmecpp_input(vmec2000_input_file) as vmecpp_input_file:
+        assert vmecpp_input_file == TEST_DATA_DIR / f"cma.{os.getpid()}.json"
+        with open(vmecpp_input_file) as f:
+            vmecpp_input_dict = json.load(f)
+            # check the output is remotely sensible: we don't want to test indata_to_json's
+            # correctness here, just that nothing went terribly wrong
+            assert vmecpp_input_dict["mpol"] == 5
+            assert vmecpp_input_dict["ntor"] == 6
