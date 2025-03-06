@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "scikit-build-core~=0.10.0"]
+requires = ["hatchling", "scikit-build-core~=0.10.0", "pybind11"]
 build-backend = "hatchling.build"
 
 [project]
@@ -7,7 +7,7 @@ name = "vmecpp"
 dynamic = ["version"]
 description = "Proxima Fusion's reimplementation of the Variational Moments Equilibrium Code (VMEC), a free-boundary ideal-MHD equilibrium solver for stellarators and Tokamaks."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 keywords = []
 authors = [
   { name = "Jonathan Schilling", email = "jons@proximafusion.com" },
@@ -19,8 +19,6 @@ classifiers = [
   "Operating System :: MacOS :: MacOS X",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -30,7 +28,6 @@ classifiers = [
 dependencies = [
   "beartype",
   "jaxtyping",
-  "mpi4py",
   "netCDF4",
   "numpy",
   "pydantic",
@@ -39,6 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+MPI = ["mpi4py>=3.0.3", "simsopt[MPI]"]
 test = [
   "pytest",
 ]
@@ -61,10 +59,22 @@ path = "src/vmecpp/__about__.py"
 
 [tool.hatch.build.targets.wheel.hooks.scikit-build]
 experimental = true
-wheel.py-api = "cp38"
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/vmecpp/cpp/vmecpp/simsopt_compat" = "vmecpp/cpp/vmecpp/simsopt_compat"
+
+[tool.cibuildwheel]
+archs = ["native"]
+skip = ["pp*", "*-musllinux*"]
+build-frontend = "build"
+test-requires = "pytest"
+test-command = "pytest {package}/tests/test_simsopt_compat.py"
+
+[tool.cibuildwheel.linux]
+before-build = "yum install -y libgomp eigen3-devel lapack-devel json-devel netcdf-devel hdf5-devel"
+
+[tool.cibuildwheel.macos]
+before-build = "brew install gcc libomp eigen lapack nlohmann-json protobuf netcdf hdf5"
 
 [tool.hatch.envs.test]
 dependencies = [
