@@ -7,7 +7,7 @@
 #include <iostream>
 #include <vector>
 
-#include "Eigen/Dense"
+#include <Eigen/Dense>
 #include "absl/strings/str_format.h"
 
 bool testing::IsCloseRelAbs(double expected, double actual, double tolerance) {

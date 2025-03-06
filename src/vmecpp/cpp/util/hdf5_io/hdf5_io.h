@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "Eigen/Dense"
+#include <Eigen/Dense>
 #include "H5Cpp.h"
 
 namespace hdf5_io {
