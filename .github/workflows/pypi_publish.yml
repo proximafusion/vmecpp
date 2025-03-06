@@ -14,13 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            arch: manylinux_x86_64
-          - os: macos-13
-            arch: macosx_x86_64
-          - os: macos-14
-            arch: macosx_arm64
+        # ubuntu-24.04-arm not supported due to lack of netcdf-devel hdf5-devel
+        os: [ubuntu-latest, macos-13, macos-14]
 
     steps:
       - name: Checkout repository
@@ -30,25 +25,13 @@ jobs:
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23.0
+        # All the settings for cibuildwheel are in pyproject.toml
         env:
-          CIBW_BUILD: "cp*-${{ matrix.arch }}"
-          CIBW_ARCHS_LINUX: "x86_64"
-          CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux2014_x86_64
-          CIBW_MUSLLINUX_X86_64_IMAGE: quay.io/pypa/musllinux_1_2_x86_64
-          CIBW_ARCHS_MACOS: "native"
-          CIBW_BUILD_FRONTEND: "build"
-          CIBW_BEFORE_BUILD_LINUX: |
-            yum install -y libgomp eigen3-devel lapack-devel json-devel netcdf-devel hdf5-devel
-          CIBW_BEFORE_BUILD_MACOS: |
-            brew install gcc libomp eigen lapack nlohmann-json protobuf netcdf hdf5
           CIBW_ENVIRONMENT_MACOS: >
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '13.0' }}
             DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
             FC=gfortran-14
             HDF5_ROOT=$(brew --prefix hdf5)
-
-          CIBW_TEST_REQUIRES: pytest
-          CIBW_TEST_COMMAND: pytest tests/test_simsopt_compat.py && pytest tests/test_simsopt_vmec_ported.py
         with:
           package-dir: .
           output-dir: wheelhouse
@@ -66,8 +49,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Optional, use if you use setuptools_scm
-        submodules: true  # Optional, use if you have submodules
+        submodules: true
 
     - name: Build SDist
       run: pipx run build --sdist
@@ -94,6 +76,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: wheelhouse
+          merge-multiple: true
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
