@@ -205,7 +205,7 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
             varname_vmec2000 = f"{varname[:-1]}c{varname[-1]}"
         vmec2000_var = getattr(vmec2000.indata, varname_vmec2000)
 
-        if isinstance(vmecpp_var, (str, int, bool)):
+        if isinstance(vmecpp_var, str | int | bool):
             if isinstance(vmec2000_var, bytes):
                 vmec2000_var = vmec2000_var.decode().strip()
             elif varname in {"ntheta", "nzeta"}:
