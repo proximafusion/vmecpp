@@ -62,7 +62,7 @@ jobs:
     needs: main
     runs-on: ubuntu-latest
     environment:
-        name: vmecpp
+        name: pypi
     permissions:
         id-token: write
     steps:
