@@ -7,7 +7,7 @@ name = "vmecpp"
 dynamic = ["version"]
 description = "Proxima Fusion's reimplementation of the Variational Moments Equilibrium Code (VMEC), a free-boundary ideal-MHD equilibrium solver for stellarators and Tokamaks."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 keywords = []
 authors = [
   { name = "Jonathan Schilling", email = "jons@proximafusion.com" },
@@ -19,6 +19,7 @@ classifiers = [
   "Operating System :: MacOS :: MacOS X",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python",
+  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
