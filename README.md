@@ -50,7 +50,9 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [As a command line tool](#as-a-command-line-tool)
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
-  - [Ubuntu](#ubuntu)
+  - [Ubuntu](#ubuntudebian)
+  - [Arch](#arch-linux)
+  - [Fedora](#fedora)
   - [MacOS](#macos)
   - [As part of a conda environment](#as-part-of-a-conda-environment)
   - [C++ build from source](#c-build-from-source)
@@ -130,11 +132,11 @@ pip install vmecpp
 
 For usage as part of MPI-parallelized SIMSOPT applications, you might want to also install MPI on your machine and `pip install mpi4py`.
 
-Alternatively you can build the latest `vmecpp` directly from source according to the instructions below.
+Alternatively you can build the latest `vmecpp` directly from source according to the appropriate instructions below.
 
-### Ubuntu
+### Ubuntu/Debian
 
-Ubuntu 22.04 and 24.04 are both supported.
+Ubuntu 22.04 and 24.04, as well as Debian 12 are officially supported.
 
 1. Install required system packages:
 ```shell
@@ -152,6 +154,40 @@ The procedure will take a few minutes as it will build VMEC++ and some dependenc
 A common issue on Ubuntu is a build failure due to no `python` executable being available in PATH, since on Ubuntu the executable is called `python3`.
 When installing in a virtual environment (which is always a good idea anyways) `python` will be present.
 Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
+
+### Arch Linux
+
+1. Install required system packages:
+
+```shell
+pacman -Sy --noconfirm python-pip gcc gcc-fortran openmpi hdf5 netcdf lapack
+```
+
+2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
+
+```shell
+python -m pip install git+https://github.com/proximafusion/vmecpp
+```
+
+### Fedora
+
+[Fedora 41](https://docs.fedoraproject.org/en-US/fedora/f41/release-notes/) is officially supported.
+
+1. Install required system packages:
+
+```shell
+dnf install -y python3.10-devel cmake g++ gfortran openmpi-devel hdf5-devel netcdf-devel lapack-devel
+```
+
+2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
+
+```shell
+# If you are installing with MPI support, remember to source the mpi compiler first
+. /etc/profile.d/modules.sh
+module load mpi/openmpi-x86_64
+python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
+```
+
 
 ### MacOS
 
@@ -298,8 +334,9 @@ Some of the things we are planning for VMEC++'s future:
 - [ ] VMEC++ usable as a C++ bazel module
 
 Some items we do not plan to work on, but where community ownership is welcome:
-- [ ] packaging VMEC++ for other platforms or package managers (e.g. conda, homebrew, ...)
+- [ ] packaging VMEC++ for other platforms or package managers other than pip (e.g. conda, homebrew, ...)
 - [ ] native Windows support
+- [ ] ARM support
 - [ ] 2D preconditioner using [`bcyclic_plus_plus`](https://code.ornl.gov/m4c/bcyclic_plus_plus)
 
 ## Related repositories
