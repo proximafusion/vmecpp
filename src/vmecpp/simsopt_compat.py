@@ -8,12 +8,12 @@ import json
 import logging
 import os
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Generator, Optional, Union, cast
+from typing import Any, Optional, Union, cast
 
 import numpy as np
 from jaxtyping import Bool, Float
-from mpi4py import MPI
 from numpy.typing import NDArray
 from scipy.io import netcdf_file
 from simsopt._core.optimizable import Optimizable
@@ -37,7 +37,12 @@ logger = logging.getLogger(__name__)
 #
 # Creating an MpiPartition hogs memory until process exit, so we do it here once at
 # module scope rather than every time Vmec.__init__ is called.
-MPI_PARTITION = MpiPartition(ngroups=1)
+try:
+    from mpi4py import MPI
+
+    MPI_PARTITION = MpiPartition(ngroups=1)
+except ImportError:
+    MPI = None
 
 
 class Vmec(Optimizable):
