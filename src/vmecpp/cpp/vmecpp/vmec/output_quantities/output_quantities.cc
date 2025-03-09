@@ -58,6 +58,7 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(phipF);
   WRITEMEMBER(chipF);
   WRITEMEMBER(phipH);
+  WRITEMEMBER(currH);
   WRITEMEMBER(phiF);
   WRITEMEMBER(iotaF);
   WRITEMEMBER(spectral_width);
@@ -125,6 +126,11 @@ absl::Status vmecpp::VmecInternalResults::LoadInto(
   READMEMBER(phipF);
   READMEMBER(chipF);
   READMEMBER(phipH);
+  if (from_file.exists("currH")) {
+    READMEMBER(currH);
+  } else {
+    obj.currH.resize(obj.phipH.size(), 0.0);
+  }
   READMEMBER(phiF);
   READMEMBER(iotaF);
   READMEMBER(spectral_width);
@@ -1465,6 +1471,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
   results.massH = VectorXd::Zero(results.num_half);
   results.presH = VectorXd::Zero(results.num_half);
   results.iotaH = VectorXd::Zero(results.num_half);
+  results.currH = VectorXd::Zero(results.num_half);
 
   // state vector
   results.rmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
@@ -1554,6 +1561,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
         results.massH[jH] = p.massH[jH - nsMinH];
         results.presH[jH] = p.presH[jH - nsMinH];
         results.iotaH[jH] = p.iotaH[jH - nsMinH];
+        results.currH[jH] = p.currH[jH - nsMinH];
 
         for (int kl = 0; kl < s.nZnT; ++kl) {
           int idx_global = jH * s.nZnT + kl;
