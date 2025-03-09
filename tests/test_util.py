@@ -18,8 +18,9 @@ TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
 def test_indata_to_json_success():
-    with tempfile.TemporaryDirectory() as tmpdir, _util.change_working_directory_to(
-        Path(tmpdir)
+    with (
+        tempfile.TemporaryDirectory() as tmpdir,
+        _util.change_working_directory_to(Path(tmpdir)),
     ):
         test_file = TEST_DATA_DIR / "input.cma"
         json_input_file = _util.indata_to_json(test_file)
@@ -29,8 +30,9 @@ def test_indata_to_json_success():
 
 
 def test_indata_to_json_output_override():
-    with tempfile.TemporaryDirectory() as tmpdir, _util.change_working_directory_to(
-        Path(tmpdir)
+    with (
+        tempfile.TemporaryDirectory() as tmpdir,
+        _util.change_working_directory_to(Path(tmpdir)),
     ):
         test_file = TEST_DATA_DIR / "input.cma"
         json_input_file = _util.indata_to_json(

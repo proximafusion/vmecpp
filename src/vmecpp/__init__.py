@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import tempfile
-import typing
 from pathlib import Path
+from typing import ClassVar
 
 import jaxtyping as jt
 import netCDF4
@@ -190,9 +190,11 @@ class VmecInput(pydantic.BaseModel):
         file."""
         absolute_input_path = Path(input_file).resolve()
 
-        with tempfile.TemporaryDirectory() as tmpdir, _util.change_working_directory_to(  # noqa: SIM117
-            Path(tmpdir)
-        ):  # we call this in a temporary directory because it produces the file in the current working directory
+        # we call this in a temporary directory because it produces the file in the current working directory
+        with (  # noqa: SIM117
+            tempfile.TemporaryDirectory() as tmpdir,
+            _util.change_working_directory_to(Path(tmpdir)),
+        ):
             with simsopt_compat.ensure_vmecpp_input(
                 absolute_input_path
             ) as vmecpp_input_file:
@@ -264,7 +266,7 @@ class VmecWOut(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    _MISSING_FORTRAN_VARIABLES: typing.ClassVar[list[str]] = [
+    _MISSING_FORTRAN_VARIABLES: ClassVar[list[str]] = [
         "input_extension",
         "nextcur",
         "extcur",
