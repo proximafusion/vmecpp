@@ -141,7 +141,7 @@ Ubuntu 22.04 and 24.04 are both supported.
 
 1. Install required system packages:
 ```shell
-sudo apt-get install build-essential cmake libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
+sudo apt-get install build-essential cmake libnetcdf-dev liblapacke-dev libopenmpi-dev libhdf5-dev python3-dev
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
@@ -161,7 +161,7 @@ Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 1. Install dependencies via [Homebrew](https://brew.sh/):
 
 ```shell
-brew install python@3.10 gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json protobuf git open-mpi
+brew install python@3.10 gcc cmake ninja libomp netcdf-cxx protobuf git open-mpi
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):

@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "Eigen/Dense"  // VectorXd
+#include <Eigen/Dense>  // VectorXd
 #include "absl/log/check.h"
 #include "util/hdf5_io/hdf5_io.h"
 #include "util/testing/numerical_comparison_lib.h"
