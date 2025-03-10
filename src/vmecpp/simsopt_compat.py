@@ -8,8 +8,9 @@ import json
 import logging
 import os
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Generator, Optional, cast
+from typing import Any, Optional, cast
 
 import numpy as np
 from jaxtyping import Bool, Float
@@ -66,7 +67,7 @@ class Vmec(Optimizable):
     # - by __init__ if Vmec is initialized with an output file
     # - by a call to run() and are None before otherwise
     s_full_grid: Float[np.ndarray, " ns"] | None
-    ds: Float | None
+    ds: float | None
     s_half_grid: Float[np.ndarray, " nshalf"] | None
 
     # The loaded run results (or None if no results are present yet):
@@ -79,6 +80,7 @@ class Vmec(Optimizable):
     runnable: bool
     # False when the currently cached results are valid, True if we need to `run()`
     need_to_run_code: bool
+    # Cannot use | None for type annotation, because the @SimsoptRequires makes MpiPartition a function object
     mpi: Optional[MpiPartition]  # pyright: ignore # noqa: UP007
     verbose: bool
 
