@@ -832,7 +832,31 @@ class VmecWOut(pydantic.BaseModel):
 
         return cpp_wout
 
-    # TODO(eguiraud): implement from_wout_file
+    @staticmethod
+    def from_wout_file(wout_filename: str | Path) -> VmecWOut:
+        """Load wout contents in NetCDF format.
+
+        This is the format used by Fortran VMEC implementations and the one expected by
+        SIMSOPT.
+        """
+        with netCDF4.Dataset(wout_filename, "r") as fnc:
+            fnc.set_auto_mask(False)
+            attrs = {}
+            for key in fnc.variables:
+                if key.endswith("__logical__"):
+                    attrs[key[:-11]] = fnc[key][()] != 0
+                elif key == "volume_p":
+                    attrs["volume"] = fnc[key][()]
+                elif key in ["xm", "xn", "xm_nyq", "xn_nyq"]:
+                    attrs[key] = np.array(fnc[key][()], dtype=int)
+                elif key in ["pmass_type", "piota_type", "pcurr_type", "mgrid_file"]:
+                    attrs[key] = fnc[key][()].tobytes().decode("ascii")
+                else:
+                    attrs[key] = fnc[key][()]
+            if "lmns_full" not in fnc.variables:
+                attrs["lmns_full"] = None
+            return VmecWOut(**attrs)
+        raise RuntimeError("Failed to load NetCDF wout file " + str(wout_filename))
 
 
 class Threed1Volumetrics(pydantic.BaseModel):
