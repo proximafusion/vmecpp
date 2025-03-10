@@ -17,17 +17,16 @@ examples = Path("examples")
 # `mpirun -np 4 xvmec input.w7x` in `examples/data`
 
 # read PARVMEC reference output
-wout = netCDF4.Dataset(examples / "data" / "wout_w7x.nc", "r")
-wout.set_always_mask(False)
-ref_nfp = wout["nfp"][()]
-ref_ns = wout["ns"][()]
-ref_mnmax = wout["mnmax"][()]
-ref_xm = wout["xm"][()]
-ref_xn = wout["xn"][()]
-ref_rmnc = wout["rmnc"][()]
-ref_zmns = wout["zmns"][()]
-ref_iotas = wout["iotas"][()][1:]
-wout.close()
+with netCDF4.Dataset(examples / "data" / "wout_w7x.nc", "r") as reference_wout:
+    reference_wout.set_always_mask(False)
+    ref_nfp = reference_wout["nfp"][()]
+    ref_ns = reference_wout["ns"][()]
+    ref_mnmax = reference_wout["mnmax"][()]
+    ref_xm = reference_wout["xm"][()]
+    ref_xn = reference_wout["xn"][()]
+    ref_rmnc = reference_wout["rmnc"][()]
+    ref_zmns = reference_wout["zmns"][()]
+    ref_iotas = reference_wout["iotas"][()][1:]
 
 # read input file and run VMEC++
 input_file = examples / "data" / "input.w7x"
