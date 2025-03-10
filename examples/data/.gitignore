@@ -1,0 +1,7 @@
+# PARVMEC outputs
+jxbout_*.nc
+mercier.*
+parvmecinfo.txt
+threed1.*
+timings.txt
+wout_*.nc
