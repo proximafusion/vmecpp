@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "scikit-build-core~=0.10.0"]
+requires = ["hatchling", "scikit-build-core~=0.10.0", "pybind11"]
 build-backend = "hatchling.build"
 
 [project]
@@ -33,7 +33,7 @@ dependencies = [
   "netCDF4",
   "numpy",
   "pydantic",
-  "jax<=0.5.0",
+  "jax<=0.5.0", # To prevent a circular import bug in jax on arch Linux
   "simsopt>=1.8.1",
 ]
 
@@ -63,6 +63,19 @@ experimental = true
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/vmecpp/cpp/vmecpp/simsopt_compat" = "vmecpp/cpp/vmecpp/simsopt_compat"
+
+[tool.cibuildwheel]
+archs = ["native"]
+skip = ["pp*", "*-musllinux*"]
+build-frontend = "build"
+test-requires = "pytest"
+test-command = "pytest {package}/tests/test_simsopt_compat.py"
+
+[tool.cibuildwheel.linux]
+before-build = "yum install -y libgomp eigen3-devel lapack-devel json-devel netcdf-devel hdf5-devel"
+
+[tool.cibuildwheel.macos]
+before-build = "brew install gcc libomp eigen lapack nlohmann-json protobuf netcdf hdf5"
 
 [tool.hatch.envs.test]
 dependencies = [
