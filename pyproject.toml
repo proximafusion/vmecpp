@@ -153,5 +153,9 @@ ignore = [
 "**/*_test.py" = ["T20"]
 "examples/**" = ["T201"]
 
+[tool.pyright]
+include = ["src"]
+exclude = ["build", "**/__pycache__"]
+
 [tool.docformatter]
 black = true  # Enables mode that plays nice with black, e.g. sets line length to 88.
