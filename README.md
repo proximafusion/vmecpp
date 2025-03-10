@@ -123,6 +123,15 @@ more information and instructions on how to build a new image.
 
 ## Installation
 
+The easiest method for installing `vmecpp` is using pip:
+```shell
+pip install vmecpp
+```
+
+For usage as part of MPI-parallelized SIMSOPT applications, you might want to also install MPI on your machine and `pip install mpi4py`.
+
+Alternatively you can build the latest `vmecpp` directly from source according to the instructions below.
+
 ### Ubuntu
 
 Ubuntu 22.04 and 24.04 are both supported.

@@ -5,6 +5,7 @@ build/
 
 # python build outputs
 dist/
+wheelhouse/
 __pycache__
 
 # bazel output directories
