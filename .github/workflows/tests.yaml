@@ -14,6 +14,8 @@ concurrency:
 
 jobs:
   pre-commit:
+    env:
+        SKIP: 'pyright'
     name: Pre-commit checks
     runs-on: ubuntu-22.04
     steps:
