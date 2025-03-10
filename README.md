@@ -129,7 +129,7 @@ Ubuntu 22.04 and 24.04 are both supported.
 
 1. Install required system packages:
 ```shell
-sudo apt-get install build-essential cmake libnetcdf-dev liblapacke-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
+sudo apt-get install build-essential cmake libnetcdf-dev liblapack-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):

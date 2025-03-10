@@ -51,7 +51,6 @@ dependencies:
   - libiconv=1.17=hd590300_2
   - libjpeg-turbo=3.0.0=hd590300_1
   - liblapack=3.9.0=6_ha36c22a_netlib
-  - liblapacke=3.9.0=0_h6e990d7_netlib
   - liblzma=5.6.3=hb9d3cd8_1
   - libnetcdf=4.9.2=nompi_h00e09a9_116
   - libnghttp2=1.64.0=h161d5f1_0
