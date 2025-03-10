@@ -30,7 +30,7 @@ VectorXd NonEmptyVectorOr(const std::vector<double>& vec, const double val) {
   if (!vec.empty()) {
     return vmecpp::ToEigenVector(vec);
   } else {
-    return VectorXd{{val}};
+    return VectorXd::Constant(1, val);
   }
 }
 
