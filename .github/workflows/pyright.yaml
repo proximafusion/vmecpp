@@ -1,0 +1,28 @@
+name: Python Type Checking
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  tests:
+    name: Pyright type check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          cache: 'pip'
+
+      - run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install .
+
+      - run: echo "$PWD/.venv/bin" >> $GITHUB_PATH
+      - uses: jakebailey/pyright-action@v2
+        with:
+            version: 2.3.2
+            verify-types: vmecpp
