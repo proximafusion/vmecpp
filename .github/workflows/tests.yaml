@@ -46,6 +46,8 @@ jobs:
       - name: Also install VMEC2000 (only on Ubuntu 22.04)
         if: ${{ matrix.os == 'ubuntu-22.04' }}
         run: |
+          # mpi4py is needed for VMEC2000
+          python -m pip install mpi4py
           # custom wheel for VMEC2000, needed for some VMEC++/VMEC2000 compatibility tests
           # NOTE: this wheel is only guaranteed to work on Ubuntu 22.04
           python -m pip install vmec@https://anaconda.org/eguiraud-pf/vmec/0.0.6/download/vmec-0.0.6-cp310-cp310-linux_x86_64.whl
