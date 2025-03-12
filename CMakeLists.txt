@@ -23,6 +23,10 @@ endif()
 
 # Fetch all the remote dependencies
 include(FetchContent)
+if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
+  # Avoid warning about DOWNLOAD_EXTRACT_TIMESTAMP in CMake 3.24:
+  cmake_policy(SET CMP0135 NEW)
+endif()
 FetchContent_Declare(
   eigen
   GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
