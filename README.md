@@ -214,7 +214,7 @@ provided [here](https://github.com/proximafusion/vmecpp/blob/main/environment.ym
 can be used, after cloning the `vmecpp` repository, as:
 
 ```shell
-git clone git@github.com:proximafusion/vmecpp
+git clone https://github.com/proximafusion/vmecpp.git
 cd vmecpp
 # this creates a "vmecpp" conda environment
 conda env create --file environment.yml
@@ -228,7 +228,7 @@ After having installed the build dependencies as shown above, you can compile
 the C++ core of VMEC++ via CMake or Bazel. E.g. with CMake:
 
 ```shell
-git clone git@github.com:proximafusion/vmecpp
+git clone https://github.com/proximafusion/vmecpp.git
 cd vmecpp
 cmake -B build  # create and configure build directory
 cmake --build build --parallel  # build VMEC++
@@ -334,7 +334,7 @@ Some of the things we are planning for VMEC++'s future:
 - [ ] VMEC++ usable as a C++ bazel module
 
 Some items we do not plan to work on, but where community ownership is welcome:
-- [ ] packaging VMEC++ for other platforms or package managers other than pip (e.g. conda, homebrew, ...)
+- [ ] packaging VMEC++ for platforms or package managers other than pip (e.g. conda, homebrew, ...)
 - [ ] native Windows support
 - [ ] ARM support
 - [ ] 2D preconditioner using [`bcyclic_plus_plus`](https://code.ornl.gov/m4c/bcyclic_plus_plus)
