@@ -9,9 +9,8 @@ from typing import Optional, cast
 
 import numpy as np
 import numpydantic as npyd
-from scipy.io import netcdf_file
 from simsopt._core.optimizable import Optimizable
-from simsopt._core.util import ObjectiveFailure, Struct
+from simsopt._core.util import ObjectiveFailure
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
 from simsopt.util.mpi import MpiPartition
 
@@ -66,10 +65,8 @@ class Vmec(Optimizable):
     ds: float | None
     s_half_grid: npyd.NDArray[npyd.Shape["* nshalf"], float] | None
 
-    # The loaded run results (or None if no results are present yet):
-    # - a SIMSOPT Struct when reading an output file
-    # - a FortranWOutAdapter when reading the results of a VMEC++ run
-    wout: Struct | vmecpp.VmecWOut | None
+    # The loaded run results, either of the previous run or when constructing Vmec() from an output file
+    wout: vmecpp.VmecWOut | None
     # Whether `run()` is available for this object:
     # depends on whether it has been initialized with an input configuration
     # or an output file.
@@ -276,25 +273,7 @@ class Vmec(Optimizable):
     def load_wout_from_outfile(self) -> None:
         """Load data from self.output_file into self.wout."""
         logger.debug(f"Attempting to read file {self.output_file}")
-
-        self.wout = Struct()
-        # to make pyright happy (not sure why the previous statement is not enough)
-        assert self.wout is not None
-        with netcdf_file(str(self.output_file), mmap=False) as f:
-            for key, val in f.variables.items():
-                # 2D arrays need to be transposed.
-                val2 = val[()]  # Convert to numpy array
-                val3 = val2.T if len(val2.shape) == 2 else val2
-                setattr(self.wout, key, val3)
-
-            if self.wout.ier_flag != 0:
-                logger.warning("VMEC did not succeed!")
-                msg = "VMEC did not succeed"
-                raise ObjectiveFailure(msg)
-
-            # Shorthands for long variable names:
-            self.wout.lasym = f.variables["lasym__logical__"][()]
-            self.wout.volume = self.wout.volume_p
+        self.wout = vmecpp.VmecWOut.from_wout_file(self.output_file)
 
         self._set_grid()
 
