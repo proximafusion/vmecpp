@@ -462,14 +462,13 @@ namespace vmecpp {
 
 IdealMhdModel::IdealMhdModel(
     FlowControl* m_fc, const Sizes* s, const FourierBasisFastPoloidal* t,
-    RadialProfiles* m_p, const Boundaries* b, const VmecConstants* constants,
+    RadialProfiles* m_p, const VmecConstants* constants,
     ThreadLocalStorage* m_ls, HandoverStorage* m_h, const RadialPartitioning* r,
     FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip, int* m_ivac)
     : m_fc_(*m_fc),
       s_(*s),
       t_(*t),
       m_p_(*m_p),
-      b_(*b),
       constants_(*constants),
       m_ls_(*m_ls),
       m_h_(*m_h),

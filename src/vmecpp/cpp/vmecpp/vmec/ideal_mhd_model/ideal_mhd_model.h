@@ -64,7 +64,7 @@ class IdealMhdModel {
  public:
   IdealMhdModel(FlowControl* m_fc, const Sizes* s,
                 const FourierBasisFastPoloidal* t, RadialProfiles* m_p,
-                const Boundaries* b, const VmecConstants* constants,
+                const VmecConstants* constants,
                 ThreadLocalStorage* m_ls, HandoverStorage* m_h,
                 const RadialPartitioning* r, FreeBoundaryBase* m_fb,
                 int signOfJacobian, int nvacskip, int* m_ivac);
@@ -415,7 +415,6 @@ class IdealMhdModel {
   const Sizes& s_;
   const FourierBasisFastPoloidal& t_;
   RadialProfiles& m_p_;
-  const Boundaries& b_;
   const VmecConstants& constants_;
   ThreadLocalStorage& m_ls_;
   HandoverStorage& m_h_;
