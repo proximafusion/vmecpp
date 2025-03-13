@@ -1,3 +1,14 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+"""Example of how to utilize the hot restart functionality, to evaluate a finite
+difference estimate of the local Jacobian efficiently.
+
+We parallelize the evaluation using MPI and distribute the workload across a number of
+ranks. In this example, we compute the derivatives of the volume in respect to all
+Fourier components of the geometry.
+"""
+
 from pathlib import Path
 
 import mpi4py
@@ -5,13 +16,16 @@ import numpy as np
 
 import vmecpp
 
+# Notice that the OpenMP parallelism in VMEC++ allows us to use a simple MPI
+# communicator, without the need to split into sub-groups.
 comm = mpi4py.MPI.COMM_WORLD
 rank = comm.Get_rank()
 
 # In a real application, only root would probably read the input file and broadcast it.
-filename = Path(__file__).parent / "data" / "w7x.json"
+filename = Path(__file__).parent / "data" / "cth_like_fixed_bdy.json"
 initial_input = vmecpp.VmecInput.from_file(filename)
 
+# All Fourier components of the geometry R, Z are degrees of freedom
 n_dofs = np.prod(initial_input.rbc.shape) + np.prod(initial_input.zbs.shape)
 m_outputs = 1  # Only interested in the volume
 # One process per DOF. Root can also do a finite difference evaluation
