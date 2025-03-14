@@ -257,3 +257,12 @@ def test_ensure_vmecpp_input():
             # correctness here, just that nothing went terribly wrong
             assert vmecpp_input_dict["mpol"] == 5
             assert vmecpp_input_dict["ntor"] == 6
+
+
+# Regression test for PR #181
+def test_raise_invalid_threadcount():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    with pytest.raises(RuntimeError):
+        vmecpp.run(vmec_input, max_threads=-1)
+    with pytest.raises(RuntimeError):
+        vmecpp.run(vmec_input, max_threads=0)

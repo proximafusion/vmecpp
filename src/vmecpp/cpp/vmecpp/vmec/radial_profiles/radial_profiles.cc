@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/log/log.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 

@@ -211,13 +211,18 @@ class Vmec(Optimizable):
     def recompute_bell(self, parent=None) -> None:  # noqa: ARG002
         self.need_to_run_code = True
 
-    def run(self, initial_state=None, max_threads=None) -> None:
+    def run(self, initial_state=None, max_threads=1) -> None:
         """Run VMEC if ``need_to_run_code`` is ``True``.
 
         The max_threads argument is not present in SIMSOPT's original implementation as
         it is specific to VMEC++, which will spawn the corresponding number of OpenMP
-        threads to parallelize execution. If max_threads is None (the default), VMEC++
-        runs on a single thread.
+        threads to parallelize execution. By default max_threads=1, so VMEC++ runs on a
+        single thread. To automatically enable all threads, pass max_threads=None
+
+        Most optimization frameworks use multi-process parallelization for finite
+        differencing, and we do not want to end up overcommitting the machine with NCPU
+        processes running NCPU threads each -- especially when OpenMP is involved, as
+        OpenMP threads are generally bad at resource-sharing.
         """
         if not self.need_to_run_code:
             logger.debug("run() called but no need to re-run VMEC.")
@@ -243,12 +248,6 @@ class Vmec(Optimizable):
 
         logger.debug("Running VMEC++")
 
-        if max_threads is None:
-            # Starfinder does its own multi-process parallelization, and we do not want
-            # to end up overcommitting the machine with NCPU processes running NCPU
-            # threads each -- especially when OpenMP is involved, as OpenMP threads are
-            # generally bad at resource-sharing. So we set max_threads=1 by default.
-            max_threads = 1
         try:
             output_quantities = vmec.run(
                 indata,
