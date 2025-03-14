@@ -1033,6 +1033,13 @@ def run(
             indata=restart_from.input._to_cpp_vmecindatapywrapper(),
         )
 
+    if max_threads is not None and max_threads <= 0:
+        msg = (
+            "The number of threads must be >=1. To automatically use all "
+            "available threads, pass max_threads=None"
+        )
+        raise RuntimeError(msg)
+
     cpp_output_quantities = _vmecpp.run(
         cpp_indata,
         initial_state=initial_state,

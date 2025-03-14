@@ -21,20 +21,8 @@ else()
   message(STATUS "Could NOT find ccache")
 endif()
 
-# Fetch all the remote dependencies
-include(FetchContent)
-if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
-  # Avoid warning about DOWNLOAD_EXTRACT_TIMESTAMP in CMake 3.24:
-  cmake_policy(SET CMP0135 NEW)
-endif()
-FetchContent_Declare(
-  eigen
-  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-  GIT_TAG tags/3.4.0
-  GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(eigen)
-include_directories(${eigen_SOURCE_DIR})
+# First check if required libraries are installed locally
+find_package(OpenMP REQUIRED)
 
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
@@ -54,6 +42,20 @@ endif()
 
 include_directories(${netCDF_INCLUDE_DIRS})
 
+# Fetch all the remote dependencies
+include(FetchContent)
+if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
+  # Avoid warning about DOWNLOAD_EXTRACT_TIMESTAMP in CMake 3.24:
+  cmake_policy(SET CMP0135 NEW)
+endif()
+FetchContent_Declare(
+  eigen
+  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_TAG tags/3.4.0
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(eigen)
+include_directories(${eigen_SOURCE_DIR})
 
 FetchContent_Declare(nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
 FetchContent_MakeAvailable(nlohmann_json)
@@ -113,7 +115,6 @@ target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
 target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synchronization absl::strings absl::str_format absl::log absl::string_view absl::check absl::status absl::statusor)
 
-find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
   target_link_libraries(vmecpp_core PRIVATE OpenMP::OpenMP_CXX)
 endif()

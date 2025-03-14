@@ -143,7 +143,7 @@ Ubuntu 22.04 and 24.04, as well as Debian 12 are officially supported.
 
 1. Install required system packages:
 ```shell
-sudo apt-get install build-essential cmake libnetcdf-dev liblapack-dev libopenmpi-dev libhdf5-dev python3-dev
+sudo apt-get install build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libopenmpi-dev libhdf5-dev python3-dev
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
@@ -163,7 +163,7 @@ Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 1. Install required system packages:
 
 ```shell
-pacman -Sy --noconfirm python-pip gcc gcc-fortran openmpi hdf5 netcdf lapack
+pacman -Sy --noconfirm python-pip gcc gcc-fortran openmp openmpi hdf5 netcdf lapack
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
@@ -179,7 +179,7 @@ python -m pip install git+https://github.com/proximafusion/vmecpp
 1. Install required system packages:
 
 ```shell
-dnf install -y python3.10-devel cmake g++ gfortran openmpi-devel hdf5-devel netcdf-devel lapack-devel
+dnf install -y python3.10-devel cmake g++ gfortran libomp-devel openmpi-devel hdf5-devel netcdf-devel lapack-devel
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
@@ -205,7 +205,9 @@ brew install python@3.10 gcc cmake ninja libomp netcdf-cxx protobuf git open-mpi
 ```shell
 # tell cmake where to find gfortran and gcc as they have non-standard names
 export FC=$(which gfortran-14)
-export CC=$(which gcc-14)
+# OpenMP headers live under a different path newer OS-X versions, so CMake can't find them
+export OpenMP_ROOT=$(brew --prefix)/opt/libomp
+export HDF5_ROOT=$(brew --prefix hdf5)
 python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
 ```
 

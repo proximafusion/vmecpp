@@ -3,6 +3,9 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/flow_control/flow_control.h"
 
+#include "absl/log/log.h"
+#include "absl/log/check.h"
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif  // _OPENMP
@@ -26,12 +29,11 @@ RestartReason RestartReasonFromInt(int restart_reason) {
 
 int get_max_threads(std::optional<int> max_threads) {
   if (max_threads == std::nullopt) {
-#ifdef _OPENMP
     return omp_get_max_threads();
-#else
-    return 1;
-#endif
   }
+  CHECK_GT(max_threads.value(), 0)
+    << "The number of threads must be >=1. "
+    "To automatically use all available threads, pass std::nullopt";
   return max_threads.value();
 }
 

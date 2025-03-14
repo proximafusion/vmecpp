@@ -30,6 +30,7 @@ jobs:
             DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
             FC=gfortran-14
             HDF5_ROOT=$(brew --prefix hdf5)
+            OpenMP_ROOT=$(brew --prefix)/opt/libomp
         with:
           package-dir: .
           output-dir: wheelhouse
@@ -112,10 +113,10 @@ jobs:
         run: |
           case ${{ matrix.distro }} in
             ubuntu*|debian*)
-              apt install -y openmpi-bin libopenmpi-dev python3-dev
+              apt install -y libopenmpi-dev libomp-dev python3-dev
               ;;
             fedora*)
-              dnf install -y openmpi openmpi-devel python-devel
+              dnf install -y libomp-devel openmpi-devel python-devel
               ;;
             archlinux*)
               pacman -Sy --noconfirm gcc openmpi
