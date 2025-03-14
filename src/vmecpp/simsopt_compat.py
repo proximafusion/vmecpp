@@ -570,7 +570,7 @@ def ensure_vmecpp_input(input_path: Path) -> Generator[Path, None, None]:
         vmecpp_input_path = _util.indata_to_json(
             input_path, output_override=output_file
         )
-        assert vmecpp_input_path == output_file
+        assert vmecpp_input_path == output_file.resolve()
         try:
             yield vmecpp_input_path
         finally:
