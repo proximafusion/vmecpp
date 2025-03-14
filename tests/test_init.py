@@ -88,6 +88,13 @@ def cma_output() -> vmecpp.VmecOutput:
     return vmec_output
 
 
+def test_vmecwout_load_from_fortran():
+    """Test that a wout file produced by PARVMEC can be loaded by VmecWOut."""
+    wout_filename = REPO_ROOT / "examples" / "data" / "wout_cth_like_fixed_bdy.nc"
+    loaded_wout = vmecpp.VmecWOut.from_wout_file(wout_filename)
+    assert loaded_wout is not None
+
+
 def test_vmecwout_io(cma_output):
     with tempfile.NamedTemporaryFile() as tmp_file:
         cma_output.wout.save(tmp_file.name)
