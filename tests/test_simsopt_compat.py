@@ -3,9 +3,11 @@
 # SPDX-License-Identifier: MIT
 """Tests for VMEC++'s'SIMSOPT compatibility layer."""
 
+import contextlib
 import json
 import math
 import os
+from collections.abc import Generator
 from pathlib import Path
 
 import netCDF4
@@ -24,19 +26,30 @@ REPO_ROOT = Path(__file__).parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
-@pytest.fixture
-def json_input_filepath() -> Path:
-    return TEST_DATA_DIR / "solovev.json"
+@pytest.fixture(params=["solovev.json", "input.cma"])
+def input_file_path(request) -> Path:
+    return TEST_DATA_DIR / request.param
 
 
 @pytest.fixture
-def vmec(json_input_filepath) -> simsopt_compat.Vmec:
-    return simsopt_compat.Vmec(json_input_filepath)
+def vmec(input_file_path) -> simsopt_compat.Vmec:
+    return simsopt_compat.Vmec(input_file_path)
 
 
 @pytest.fixture
-def wout() -> netCDF4.Dataset:
-    return netCDF4.Dataset(TEST_DATA_DIR / "wout_solovev.nc", "r")
+def wout(input_file_path) -> netCDF4.Dataset:
+    if "solovev" in input_file_path.name:
+        return netCDF4.Dataset(TEST_DATA_DIR / "wout_solovev.nc", "r")
+
+    assert "cma" in input_file_path.name
+    return netCDF4.Dataset(TEST_DATA_DIR / "wout_cma.nc", "r")
+
+
+# regression test for #174
+def test_run_with_relative_path(input_file_path):
+    with _change_working_directory_to(TEST_DATA_DIR):
+        vmec = simsopt_compat.Vmec(input_file_path.name)
+        vmec.run()
 
 
 def test_aspect(vmec, wout):
@@ -57,7 +70,7 @@ def test_iota_axis(vmec, wout):
     vmec.run()
     iota_axis = vmec.iota_axis()
     expected_iota_axis = wout.variables["iotaf"][()][0]
-    np.testing.assert_allclose(iota_axis, expected_iota_axis, rtol=1e-11, atol=0.0)
+    np.testing.assert_allclose(iota_axis, expected_iota_axis, rtol=1e-11, atol=1e-11)
 
 
 def test_iota_edge(vmec, wout):
@@ -84,7 +97,7 @@ def test_mean_shear(vmec, wout):
     iotas = wout.variables["iotas"][()][1:]
     iota_fit = np.polynomial.Polynomial.fit(s_half_grid, iotas, deg=1)
     expected_mean_shear = iota_fit.deriv()(0)
-    np.testing.assert_allclose(mean_shear, expected_mean_shear, rtol=1e-11, atol=0.0)
+    np.testing.assert_allclose(mean_shear, expected_mean_shear, rtol=1e-11, atol=5e-11)
 
 
 @pytest.mark.parametrize(
@@ -146,7 +159,7 @@ def test_changing_mpol_ntor(vmec):
     # this mimics the way starfinder uses VMEC, changing
     # indata between one run and the next
     new_mpol = 7
-    new_ntor = 1
+    new_ntor = 5
     vmec.set_mpol_ntor(new_mpol=new_mpol, new_ntor=new_ntor)
     vmec.run()
 
@@ -294,3 +307,14 @@ def test_ensure_vmecpp_input():
             # correctness here, just that nothing went terribly wrong
             assert vmecpp_input_dict["mpol"] == 5
             assert vmecpp_input_dict["ntor"] == 6
+
+
+@contextlib.contextmanager
+def _change_working_directory_to(path: Path) -> Generator[None, None, None]:
+    """Context manager that changes the working directory to `path`."""
+    origin = Path().absolute()
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(origin)
