@@ -6,8 +6,7 @@
 
 #include <optional>
 #include <vector>
-
-#include "absl/log/log.h"
+#include <cstdint>
 
 namespace vmecpp {
 
