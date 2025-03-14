@@ -26,18 +26,20 @@ REPO_ROOT = Path(__file__).parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
-@pytest.fixture(params=["solovev.json", "input.cma"])
+@pytest.fixture(scope="module", params=["solovev.json", "input.cma"])
 def input_file_path(request) -> Path:
     return TEST_DATA_DIR / request.param
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def vmec(input_file_path) -> simsopt_compat.Vmec:
-    return simsopt_compat.Vmec(input_file_path)
+    vmec = simsopt_compat.Vmec(input_file_path)
+    vmec.run()
+    return vmec
 
 
 @pytest.fixture
-def wout(input_file_path) -> netCDF4.Dataset:
+def reference_wout(input_file_path) -> netCDF4.Dataset:
     if "solovev" in input_file_path.name:
         return netCDF4.Dataset(TEST_DATA_DIR / "wout_solovev.nc", "r")
 
@@ -52,49 +54,43 @@ def test_run_with_relative_path(input_file_path):
         vmec.run()
 
 
-def test_aspect(vmec, wout):
-    vmec.run()
+def test_aspect(vmec, reference_wout):
     aspect = vmec.aspect()
-    expected_aspect = wout.variables["aspect"][()]
+    expected_aspect = reference_wout.variables["aspect"][()]
     np.testing.assert_allclose(aspect, expected_aspect, rtol=1e-11, atol=0.0)
 
 
-def test_volume(vmec, wout):
-    vmec.run()
+def test_volume(vmec, reference_wout):
     volume = vmec.volume()
-    expected_volume = wout.variables["volume_p"][()]
+    expected_volume = reference_wout.variables["volume_p"][()]
     np.testing.assert_allclose(volume, expected_volume, rtol=1e-11, atol=0.0)
 
 
-def test_iota_axis(vmec, wout):
-    vmec.run()
+def test_iota_axis(vmec, reference_wout):
     iota_axis = vmec.iota_axis()
-    expected_iota_axis = wout.variables["iotaf"][()][0]
+    expected_iota_axis = reference_wout.variables["iotaf"][()][0]
     np.testing.assert_allclose(iota_axis, expected_iota_axis, rtol=1e-11, atol=1e-11)
 
 
-def test_iota_edge(vmec, wout):
-    vmec.run()
+def test_iota_edge(vmec, reference_wout):
     iota_edge = vmec.iota_edge()
-    expected_iota_edge = wout.variables["iotaf"][()][-1]
+    expected_iota_edge = reference_wout.variables["iotaf"][()][-1]
     np.testing.assert_allclose(iota_edge, expected_iota_edge, rtol=1e-11, atol=0.0)
 
 
-def test_mean_iota(vmec, wout):
-    vmec.run()
+def test_mean_iota(vmec, reference_wout):
     mean_iota = vmec.mean_iota()
-    expected_mean_iota = np.mean(wout.variables["iotas"][()][1:])
+    expected_mean_iota = np.mean(reference_wout.variables["iotas"][()][1:])
     np.testing.assert_allclose(mean_iota, expected_mean_iota, rtol=1e-11, atol=0.0)
 
 
-def test_mean_shear(vmec, wout):
-    vmec.run()
+def test_mean_shear(vmec, reference_wout):
     mean_shear = vmec.mean_shear()
     # Compute mean shear as in simsopt
-    s_full_grid = np.linspace(0, 1, wout.variables["ns"][()])
+    s_full_grid = np.linspace(0, 1, reference_wout.variables["ns"][()])
     ds = s_full_grid[1] - s_full_grid[0]
     s_half_grid = s_full_grid[1:] - 0.5 * ds
-    iotas = wout.variables["iotas"][()][1:]
+    iotas = reference_wout.variables["iotas"][()][1:]
     iota_fit = np.polynomial.Polynomial.fit(s_half_grid, iotas, deg=1)
     expected_mean_shear = iota_fit.deriv()(0)
     np.testing.assert_allclose(mean_shear, expected_mean_shear, rtol=1e-11, atol=5e-11)
@@ -119,7 +115,6 @@ def test_mean_shear(vmec, wout):
     ],
 )
 def test_wout_attributes_shape(vmec, attribute_name, mnmax_size_name):
-    vmec.run()
     ns = vmec.wout.ns
     attribute_value = getattr(vmec.wout, attribute_name)
     expected_shape = (getattr(vmec.wout, mnmax_size_name), ns)
@@ -145,8 +140,6 @@ def test_changing_boundary():
 
 
 def test_changing_mpol_ntor(vmec):
-    vmec.run()
-
     def expected_shape(mpol: int, ntor: int):
         # corresponds to Sizes::mnmax
         mnmax = (ntor + 1) + (mpol - 1) * (2 * ntor + 1)
