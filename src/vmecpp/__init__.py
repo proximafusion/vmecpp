@@ -842,11 +842,11 @@ class VmecWOut(pydantic.BaseModel):
         with netCDF4.Dataset(wout_filename, "r") as fnc:
             fnc.set_auto_mask(False)
             attrs = {}
-            for key in fnc.variables:
-                if key.endswith("__logical__"):
-                    attrs[key.removesuffix("__logical__")] = fnc[key][()] != 0
-                elif key == "volume_p":
-                    attrs["volume"] = fnc[key][()]
+            for key in VmecWOut.model_fields:
+                if key in ["lasym", "lfreeb"]:
+                    attrs[key] = fnc[key + "__logical__"][()] != 0
+                elif key == "volume":
+                    attrs[key] = fnc[key + "_p"][()]
                 elif key in ["xm", "xn", "xm_nyq", "xn_nyq"]:
                     attrs[key] = np.array(fnc[key][()], dtype=int)
                 elif key in ["pmass_type", "piota_type", "pcurr_type", "mgrid_file"]:
@@ -862,13 +862,20 @@ class VmecWOut(pydantic.BaseModel):
                     "rmnc",
                     "zmns",
                     "lmns",
-                    "lmns_full",
                 ]:
                     attrs[key] = np.transpose(fnc[key][()])
+                elif key == "lmns_full":
+                    # not present in classical wout files - specific to VMEC++
+                    if key in fnc.variables:
+                        attrs[key] = np.transpose(fnc[key][()])
+                    else:
+                        # special case for lambda coefficients for now:
+                        # lambda = 0 is a physically meaningful fall-back value
+                        mnmax = fnc["mnmax"][()]
+                        ns = fnc["ns"][()]
+                        attrs[key] = np.zeros([mnmax, ns])
                 else:
                     attrs[key] = fnc[key][()]
-            if "lmns_full" not in fnc.variables:
-                attrs["lmns_full"] = None
             return VmecWOut(**attrs)
 
 
