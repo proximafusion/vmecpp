@@ -844,19 +844,32 @@ class VmecWOut(pydantic.BaseModel):
             attrs = {}
             for key in fnc.variables:
                 if key.endswith("__logical__"):
-                    attrs[key[:-11]] = fnc[key][()] != 0
+                    attrs[key.removesuffix("__logical__")] = fnc[key][()] != 0
                 elif key == "volume_p":
                     attrs["volume"] = fnc[key][()]
                 elif key in ["xm", "xn", "xm_nyq", "xn_nyq"]:
                     attrs[key] = np.array(fnc[key][()], dtype=int)
                 elif key in ["pmass_type", "piota_type", "pcurr_type", "mgrid_file"]:
-                    attrs[key] = fnc[key][()].tobytes().decode("ascii")
+                    attrs[key] = fnc[key][()].tobytes().decode("ascii").strip()
+                elif key in [
+                    "bmnc",
+                    "gmnc",
+                    "bsubumnc",
+                    "bsubvmnc",
+                    "bsubsmns",
+                    "bsupumnc",
+                    "bsupvmnc",
+                    "rmnc",
+                    "zmns",
+                    "lmns",
+                    "lmns_full",
+                ]:
+                    attrs[key] = np.transpose(fnc[key][()])
                 else:
                     attrs[key] = fnc[key][()]
             if "lmns_full" not in fnc.variables:
                 attrs["lmns_full"] = None
             return VmecWOut(**attrs)
-        raise RuntimeError("Failed to load NetCDF wout file " + str(wout_filename))
 
 
 class Threed1Volumetrics(pydantic.BaseModel):
