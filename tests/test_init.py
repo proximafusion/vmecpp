@@ -98,6 +98,15 @@ def test_vmecwout_io(cma_output):
         loaded_wout = vmecpp.VmecWOut.from_wout_file(tmp_file.name)
         assert loaded_wout is not None
 
+        # test contents of loaded wout against original in-memory wout
+        for attr in vars(cma_output.wout):
+            error_msg = f"mismatch in {attr}"
+            np.testing.assert_equal(
+                actual=getattr(loaded_wout, attr),
+                desired=getattr(cma_output.wout, attr),
+                err_msg=error_msg,
+            )
+
         test_dataset = netCDF4.Dataset(tmp_file.name, "r")
 
     expected_dataset = netCDF4.Dataset(TEST_DATA_DIR / "wout_cma.nc", "r")
