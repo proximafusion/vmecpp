@@ -2,4 +2,4 @@
 #
 # SPDX-License-Identifier: MIT
 # NOTE: must also update src/vmecpp/cpp/MODULE.bazel
-__version__ = "0.1.0"
+__version__ = "0.2.0"
