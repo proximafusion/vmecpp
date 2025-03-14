@@ -1250,14 +1250,21 @@ class VmecOutput(pydantic.BaseModel):
 
 def run(
     input: VmecInput,
+    magnetic_field: _vmecpp.MagneticFieldResponseTable | None = None,
+    *,
     max_threads: int | None = None,
     verbose: bool = True,
     restart_from: VmecOutput | None = None,
 ) -> VmecOutput:
-    """Run VMEC++ using the provided input.
+    """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
+    and free-boundary calculations.
 
     Args:
         input: a VmecInput instance, corresponding to the contents of a classic VMEC input file
+        magnetic_field: if present, VMEC++ will pass the magnetic field object in memory instead of reading
+            it from an mgrid file (only relevant in free-boundary runs).
+
+    Keyword Args:
         max_threads: maximum number of threads that VMEC++ should spawn. The actual number might still
             be lower that this in case there are too few flux surfaces to keep these many threads
             busy. If None, a number of threads equal to the number of logical cores is used.
@@ -1265,6 +1272,14 @@ def run(
         restart_from: if present, VMEC++ is initialized using the converged equilibrium from the
             provided VmecOutput. This can dramatically decrease the number of iterations to
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
+
+    Example:
+        >>> import vmecpp
+        >>> path = "examples/data/solovev.json"
+        >>> vmec_input = vmecpp.VmecInput.from_file(path)
+        >>> output = vmecpp.run(vmec_input, verbose=False, max_threads=1)
+        >>> round(output.wout.b0, 14) # Exact value may differ by C library
+        0.20333137113443
     """
     input = VmecInput.model_validate(input)
     cpp_indata = input._to_cpp_vmecindatapywrapper()
@@ -1284,12 +1299,24 @@ def run(
         )
         raise RuntimeError(msg)
 
-    cpp_output_quantities = _vmecpp.run(
-        cpp_indata,
-        initial_state=initial_state,
-        max_threads=max_threads,
-        verbose=verbose,
-    )
+    if magnetic_field is None:
+        cpp_output_quantities = _vmecpp.run(
+            cpp_indata,
+            initial_state=initial_state,
+            max_threads=max_threads,
+            verbose=verbose,
+        )
+    else:
+        # magnetic_response_table takes precedence anyway, but let's be explicit, to ensure
+        # we don't silently use the mgrid file in input, instead of the magnetic_response_table object.
+        cpp_indata.mgrid_file = ""
+        cpp_output_quantities = _vmecpp.run(
+            cpp_indata,
+            magnetic_response_table=magnetic_field,
+            initial_state=initial_state,
+            max_threads=max_threads,
+            verbose=verbose,
+        )
 
     cpp_wout = cpp_output_quantities.wout
     wout = VmecWOut._from_cpp_wout(cpp_wout)
