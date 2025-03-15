@@ -8,5 +8,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/util:util",
+        "@abseil-cpp//absl/log:check",
     ]
 )
