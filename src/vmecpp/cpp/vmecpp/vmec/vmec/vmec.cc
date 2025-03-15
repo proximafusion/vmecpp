@@ -451,7 +451,7 @@ bool Vmec::InitializeRadial(
 
       // setup MHD model
       m_[thread_id] = std::make_unique<IdealMhdModel>(
-          &fc_, &s_, &t_, p_[thread_id].get(), &b_, &constants_,
+          &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
           ls_[thread_id].get(), &h_, r_[thread_id].get(), fb_[thread_id].get(),
           kSignOfJacobian, indata_.nvacskip, &ivac_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0);
