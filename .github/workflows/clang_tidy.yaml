@@ -1,13 +1,8 @@
 name: clang-tidy-review
 
 on:
+  # clang-tidy-review only works on PRs, not direct commits to main.
   pull_request:
-    paths:
-      - 'src/vmecpp/cpp/vmecpp/**/*.h'
-      - 'src/vmecpp/cpp/vmecpp/**/*.cc'
-  push:
-    branches:
-      - main
     paths:
       - 'src/vmecpp/cpp/vmecpp/**/*.h'
       - 'src/vmecpp/cpp/vmecpp/**/*.cc'
@@ -33,7 +28,7 @@ jobs:
         id: review
         with:
           config_file: ".clang-tidy"
-          apt_packages: libhdf5-dev, liblapacke-dev, libnetcdf-dev, gfortran, python3-dev, libomp-dev
+          apt_packages: libhdf5-dev, liblapack-dev, libnetcdf-dev, gfortran, python3-dev, libomp-dev
           build_dir: build
           cmake_command: cmake -B build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS:STRING=ON build
           exclude: "./src/vmecpp/cpp/bazel-*,./src/vmecpp/cpp/external,./src/vmecpp/cpp/third_party"
