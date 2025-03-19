@@ -78,13 +78,16 @@ VMEC++ offers a simple Python API:
 ```python
 import vmecpp
 
-# construct a VmecInput object, e.g. from a classic Fortran input file
-vmec_input = vmecpp.VmecInput.from_file("input.w7x")
+# Construct a VmecInput object, e.g. from a classic Fortran input file
+vmec_input = vmecpp.VmecInput.from_file("input.w7x")  # or VMEC++'s w7x.json format
+# This is a normal Python object: it can be constructed and modified programmatically
+vmec_input.rbc[0, 0] *= 1.1
 
-# run VMEC++
+# Run VMEC++
 vmec_output = vmecpp.run(vmec_input)
 
-# inspect the results or save them as a classic wout file
+# Inspect the results programmatically or save them as a classic wout file
+print(vmec_output.mercier.iota)
 vmec_output.wout.save("wout_w7x.nc")
 ```
 
