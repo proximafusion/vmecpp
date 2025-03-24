@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 import argparse
+import importlib.metadata
 from pathlib import Path
 
 import vmecpp
@@ -27,6 +28,13 @@ def parse_arguments() -> argparse.Namespace:
         "--quiet",
         help="If present, silences the printing of VMEC++ logs to standard output.",
         action="store_true",
+    )
+    p.add_argument(
+        "-v",
+        "--version",
+        help="Print VMEC++ version information and exit.",
+        action="version",
+        version=f"vmecpp v{importlib.metadata.version('vmecpp')}",
     )
     return p.parse_args()
 
