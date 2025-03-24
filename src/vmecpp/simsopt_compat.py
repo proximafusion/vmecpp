@@ -96,7 +96,7 @@ class Vmec(Optimizable):
         self.verbose = verbose
 
         if mpi is not None:
-            logging.warning(
+            logger.warning(
                 "self.mpi is not None: note however that it is unused, "
                 "only kept for compatibility with VMEC2000."
             )
@@ -281,12 +281,20 @@ class Vmec(Optimizable):
         wout_dict = {}
         with netcdf_file(str(self.output_file), mmap=False) as f:
             for key, val in f.variables.items():
-                # 2D arrays need to be transposed.
                 val2 = val[()]  # Convert to numpy array
-                val3 = val2.T if len(val2.shape) == 2 else val2
-                wout_dict[key] = val3
+                if val2.dtype.kind == "S":
+                    val3 = val2.tobytes().decode("utf-8").strip()
+                else:
+                    # 2D arrays need to be transposed.
+                    val3 = val2.T if len(val2.shape) == 2 else val2
+                key2 = key.removesuffix("__logical__")
+                if key.endswith("__logical__"):
+                    # The numpy array has dtype int32, but is a boolean
+                    val3 = val3.astype(bool)
+                wout_dict[key2] = val3
             self.wout = FortranWOutAdapter.model_validate(wout_dict)
 
+            assert self.wout is not None
             if self.wout.ier_flag != 0:
                 logger.warning("VMEC did not succeed!")
                 msg = "VMEC did not succeed"
