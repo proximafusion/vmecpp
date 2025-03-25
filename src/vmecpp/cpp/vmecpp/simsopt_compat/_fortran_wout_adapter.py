@@ -435,12 +435,13 @@ class FortranWOutAdapter(pydantic.BaseModel):
 
         return FortranWOutAdapter(**attrs)
 
-    def save(self, out_path: Path) -> None:
+    def save(self, out_path: str | Path) -> None:
         """Save contents in NetCDF3 format.
 
         This is the format used by Fortran VMEC implementations and the one expected by
         SIMSOPT.
         """
+        out_path = Path(out_path)
         # protect against possible confusion between the C++ WOutFileContents::Save
         # and this method
         if out_path.suffix == ".h5":
