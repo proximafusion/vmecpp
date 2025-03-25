@@ -7,6 +7,7 @@ from pathlib import Path
 
 import netCDF4
 import numpy as np
+import pytest
 
 from vmecpp.cpp import _vmecpp as vmec
 from vmecpp.cpp.vmecpp.simsopt_compat import (
@@ -23,7 +24,13 @@ REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
-def test_save_to_netcdf():
+# Regression test for #189
+@pytest.fixture(params=[str, Path])
+def path_type(request) -> str | Path:
+    return request.param
+
+
+def test_save_to_netcdf(path_type):
     indata = vmec.VmecINDATAPyWrapper.from_file(TEST_DATA_DIR / "cma.json")
     cpp_wout = vmec.run(indata).wout
 
@@ -31,7 +38,7 @@ def test_save_to_netcdf():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         out_path = Path(tmpdir, "wout_test.nc")
-        fortran_wout.save(out_path)
+        fortran_wout.save(path_type(out_path))
 
         test_dataset = netCDF4.Dataset(out_path, "r")
 
