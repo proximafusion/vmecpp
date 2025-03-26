@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 """Tests for VMEC++ pybind11 Python bindings."""
 
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -586,3 +587,16 @@ def test_magneticfieldresponsetable_constructor():
     np.testing.assert_allclose(
         magnetic_field_response_table.b_z, magnetic_field_component
     )
+
+
+def test_file_write():
+    indata = vmec.VmecINDATAPyWrapper.from_file(TEST_DATA_DIR / "cma.json")
+    output_quantities = vmec.run(indata)
+    assert output_quantities is not None
+    # Works with both Path and string call signature
+    for path_type in [Path, str]:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "h5test.h5"
+            assert not path.exists()
+            output_quantities.save(path_type(path))
+            assert path.exists()

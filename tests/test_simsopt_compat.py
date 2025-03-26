@@ -4,7 +4,6 @@
 """Tests for VMEC++'s'SIMSOPT compatibility layer."""
 
 import math
-import tempfile
 from pathlib import Path
 
 import netCDF4
@@ -55,17 +54,6 @@ def test_aspect(vmec, reference_wout):
     aspect = vmec.aspect()
     expected_aspect = reference_wout.variables["aspect"][()]
     np.testing.assert_allclose(aspect, expected_aspect, rtol=1e-11, atol=0.0)
-
-
-def test_file_write(vmec):
-    assert vmec.output_quantities is not None
-    # Works with both Path and string call signature
-    for path_type in [Path, str]:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "h5test.h5"
-            assert not path.exists()
-            vmec.output_quantities.save(path_type(path))
-            assert path.exists()
 
 
 def test_volume(vmec, reference_wout):
