@@ -86,6 +86,5 @@ dependencies:
   - zstd=1.5.6=ha6fb4c9_0
   - binutils
   - nlohmann_json
-  - mpi4py
   - pip:
     - ./.

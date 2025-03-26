@@ -75,7 +75,6 @@ jobs:
             "debian:testing-20250224",
             "fedora:41",
           ]
-        test-mpi: [ true, false ]
     runs-on: ubuntu-24.04
     container: ${{ matrix.distro }}
 
@@ -106,26 +105,6 @@ jobs:
 
           python3 -m venv venv
 
-      - name: Install OpenMPI (Distro-Specific)
-        if: matrix.test-mpi
-        # mpi4py is a dependency of simsopt and needs a system-wide MPI installation to compile.
-        # This requires both a working OpenMPI installation and Python.h headers.
-        run: |
-          case ${{ matrix.distro }} in
-            ubuntu*|debian*)
-              apt install -y libopenmpi-dev libomp-dev python3-dev
-              ;;
-            fedora*)
-              dnf install -y libomp-devel openmpi-devel python-devel
-              ;;
-            archlinux*)
-              pacman -Sy --noconfirm gcc openmpi
-              ;;
-            *)
-              echo "Unsupported distribution: ${{ matrix.distro }}"
-              exit 1
-              ;;
-          esac
       - name: Download wheels artifact
         uses: actions/download-artifact@v4
         with:
@@ -143,15 +122,6 @@ jobs:
           . venv/bin/activate
           wheel_filename=$(find wheelhouse/$(python --version | awk '{print $2}' | awk -F. '{printf "vmecpp*-cp%s%s-*manylinux*.whl", $1, $2}'))
           echo "Found matching wheel: $wheel_filename"
-          if [ ${{ matrix.test-mpi }} = true ]; then
-            # Fedora linux needs to source openmpi in every new shell
-            if [[ ${{ matrix.distro }} = fedora* ]]; then
-              . /etc/profile.d/modules.sh
-              module load mpi/openmpi-x86_64
-            fi
-
-            pip install mpi4py
-          fi
           pip install $wheel_filename
 
           pip install pytest

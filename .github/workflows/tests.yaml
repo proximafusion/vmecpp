@@ -37,12 +37,15 @@ jobs:
       - name: Install required packages for MacOS
         if: ${{ contains(matrix.os, 'macos') }}
         run: |
-          brew install gcc cmake ninja libomp netcdf-cxx eigen nlohmann-json protobuf lapack git open-mpi
+          brew install gcc cmake ninja libomp netcdf-cxx eigen lapack git
+          brew install open-mpi
       - name: Install required packages for Ubuntu
         if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
-          sudo apt-get update && sudo apt-get install libnetcdf-dev liblapack-dev libopenmpi-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev libnetcdff-dev libomp-dev libscalapack-openmpi-dev libopenblas-dev
+          sudo apt-get update && sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
+          # Needed for VMEC2000
+          sudo apt-get install -y libopenmpi-dev
       - name: Also install VMEC2000 (only on Ubuntu 22.04)
         if: ${{ matrix.os == 'ubuntu-22.04' }}
         run: |
@@ -59,6 +62,6 @@ jobs:
           if [[ ${{ contains(matrix.os, 'macos') }} == true ]]; then
             export OpenMP_ROOT=$(brew --prefix)/opt/libomp
           fi
-          python -m pip install -v .[test,MPI]
+          python -m pip install -v .[test]
       - name: Test package
         run: python -m pytest tests/
