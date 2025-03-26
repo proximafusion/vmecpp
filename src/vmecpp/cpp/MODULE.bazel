@@ -1,7 +1,7 @@
 # Find available modules at https://registry.bazel.build
 
 # NOTE: if updating the version, must also update src/vmecpp/__about__.py
-module(name = "vmecpp", version = "0.2.1")
+module(name = "vmecpp", version = "0.3.0")
 
 bazel_dep(name = "abseil-cpp", version = "20230802.0.bcr.1")
 bazel_dep(name = "eigen", version = "3.4.0")
