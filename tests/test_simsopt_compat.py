@@ -13,6 +13,7 @@ import pytest
 from simsopt import mhd as simsopt_mhd
 
 from vmecpp import _util, ensure_vmec2000_input, simsopt_compat
+from vmecpp.cpp.vmecpp import simsopt_compat as simsopt_compat_cpp
 
 # We don't want to install tests and test data as part of the package,
 # but scikit-build-core + hatchling does not support editable installs,
@@ -57,14 +58,27 @@ def test_aspect(vmec, reference_wout):
     np.testing.assert_allclose(aspect, expected_aspect, rtol=1e-11, atol=0.0)
 
 
-def test_file_write(vmec):
+def test_fortran_wout_adapter_write(vmec: simsopt_compat.Vmec):
     assert vmec.output_quantities is not None
     # Works with both Path and string call signature
     for path_type in [Path, str]:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "h5test.h5"
             assert not path.exists()
-            vmec.output_quantities.save(path_type(path))
+            cpp_wout = vmec.output_quantities.wout._to_cpp_wout()
+            fwout = simsopt_compat_cpp.FortranWOutAdapter.from_vmecpp_wout(cpp_wout)
+            fwout.save(path_type(path))
+            assert path.exists()
+
+
+def test_wout_write(vmec: simsopt_compat.Vmec):
+    assert vmec.output_quantities is not None
+    # Works with both Path and string call signature
+    for path_type in [Path, str]:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "wout_test.nc"
+            assert not path.exists()
+            vmec.wout.save(path_type(path))
             assert path.exists()
 
 

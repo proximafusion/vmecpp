@@ -17,8 +17,6 @@ from simsopt.geo.surfacerzfourier import SurfaceRZFourier
 from simsopt.util.mpi import MpiPartition
 
 import vmecpp
-from vmecpp.cpp import _vmecpp as vmec
-from vmecpp.cpp.vmecpp.simsopt_compat import FortranWOutAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +55,7 @@ class Vmec(Optimizable):
     n_iota: int
     iter: int
     free_boundary: bool
-    indata: vmec.VmecINDATAPyWrapper | None
+    indata: vmecpp.VmecInput | None
     # non-null if Vmec was initialized from an input file
     input_file: str | None
     # non-null if Vmec was initialized from an output file
@@ -72,7 +70,7 @@ class Vmec(Optimizable):
     # The loaded run results (or None if no results are present yet):
     # - a SIMSOPT Struct when reading an output file
     # - a FortranWOutAdapter when reading the results of a VMEC++ run
-    wout: Struct | FortranWOutAdapter | None
+    wout: Struct | vmecpp.VmecWOut | None
     # Whether `run()` is available for this object:
     # depends on whether it has been initialized with an input configuration
     # or an output file.
@@ -96,7 +94,7 @@ class Vmec(Optimizable):
         self.verbose = verbose
 
         if mpi is not None:
-            logging.warning(
+            logger.warning(
                 "self.mpi is not None: note however that it is unused, "
                 "only kept for compatibility with VMEC2000."
             )
@@ -129,7 +127,7 @@ class Vmec(Optimizable):
                 logger.debug(
                     f"Initializing a VMEC object from input file: {vmecpp_filename}"
                 )
-                self.indata = vmec.VmecINDATAPyWrapper.from_file(vmecpp_filename)
+                self.indata = vmecpp.VmecInput.from_file(vmecpp_filename)
             assert self.indata is not None  # for pyright
 
             self.runnable = True
@@ -211,7 +209,11 @@ class Vmec(Optimizable):
     def recompute_bell(self, parent=None) -> None:  # noqa: ARG002
         self.need_to_run_code = True
 
-    def run(self, initial_state=None, max_threads=1) -> None:
+    def run(
+        self,
+        restart_from: vmecpp.VmecOutput | None = None,
+        max_threads: int | None = 1,
+    ) -> None:
         """Run VMEC if ``need_to_run_code`` is ``True``.
 
         The max_threads argument is not present in SIMSOPT's original implementation as
@@ -238,10 +240,10 @@ class Vmec(Optimizable):
         assert self.indata is not None  # for pyright
 
         indata = self.indata
-        if initial_state is not None:
+        if restart_from is not None:
             # we are going to perform a hot restart, so we are only going to
             # run the last of the multi-grid steps: adapt indata accordingly
-            indata = self.indata.copy()
+            indata = self.indata.model_copy(deep=True)
             indata.ns_array = indata.ns_array[-1:]
             indata.ftol_array = indata.ftol_array[-1:]
             indata.niter_array = indata.niter_array[-1:]
@@ -249,17 +251,16 @@ class Vmec(Optimizable):
         logger.debug("Running VMEC++")
 
         try:
-            output_quantities = vmec.run(
+            self.output_quantities = vmecpp.run(
                 indata,
-                initial_state=initial_state,
                 max_threads=max_threads,
                 verbose=self.verbose,
+                restart_from=restart_from,
             )
+            self.wout = self.output_quantities.wout
         except RuntimeError as e:
             msg = f"Error while running VMEC++: {e}"
             raise ObjectiveFailure(msg) from e
-        self.output_quantities = output_quantities
-        self.wout = FortranWOutAdapter.from_vmecpp_wout(output_quantities.wout)
 
         if self._should_save_outputs:
             assert self.input_file is not None
@@ -508,9 +509,11 @@ class Vmec(Optimizable):
         """
         self.set_indata()
         assert self.indata is not None
-        return self.indata.to_json()
+        # TODO(jurasic): switch to return self.indata.model_dump_json() once
+        # Pydantic numpy serialization is working.
+        return self.indata._to_cpp_vmecindatapywrapper().to_json()
 
-    def write_input(self, filename: str) -> None:
+    def write_input(self, filename: str | Path) -> None:
         """Write a VMEC++ input file (in JSON format).
 
         To just get the result as a string without saving a file, see
@@ -522,7 +525,12 @@ class Vmec(Optimizable):
 
     def set_mpol_ntor(self, new_mpol: int, new_ntor: int):
         assert self.indata is not None
-        self.indata._set_mpol_ntor(new_mpol, new_ntor)
+        # Converting to and back is a bit unfortunate, but avoids
+        # having the resize method both in C++ and Python
+        indata_wrapper = self.indata._to_cpp_vmecindatapywrapper()
+        indata_wrapper._set_mpol_ntor(new_mpol, new_ntor)
+        self.indata = vmecpp.VmecInput._from_cpp_vmecindatapywrapper(indata_wrapper)
+
         # NOTE: SurfaceRZFourier uses m up to mpol _inclusive_,
         # differently from VMEC++, so have to manually reduce the range by one.
         mpol_for_surfacerzfourier = new_mpol - 1
@@ -530,7 +538,7 @@ class Vmec(Optimizable):
         self.recompute_bell()
 
 
-def _make_wout_filename(input_file: str) -> str:
+def _make_wout_filename(input_file: str | Path) -> str:
     # - input.foo -> wout_foo.nc
     # - input.json -> wout_input.nc
     # - foo.json -> wout_foo.nc
