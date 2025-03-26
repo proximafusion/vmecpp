@@ -74,7 +74,7 @@ test-command = "pytest {package}/tests/test_simsopt_compat.py"
 before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel libomp-devel"
 
 [tool.cibuildwheel.macos]
-before-build = "brew install gcc lapack protobuf netcdf hdf5 libomp"
+before-build = "brew install gcc lapack netcdf hdf5 libomp"
 
 [tool.hatch.envs.test]
 dependencies = [
