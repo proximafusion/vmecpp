@@ -97,6 +97,22 @@ def test_vmecwout_load_from_fortran():
     assert loaded_wout is not None
 
 
+def test_vmecinput_io():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_file = Path(tmp_dir) / "input_save_test.json"
+        vmec_input.save(tmp_file)
+        vmec_input_reloaded = vmecpp.VmecInput.from_file(tmp_file)
+
+        for attr in vars(vmec_input):
+            error_msg = f"mismatch in {attr}"
+            np.testing.assert_equal(
+                actual=getattr(vmec_input_reloaded, attr),
+                desired=getattr(vmec_input, attr),
+                err_msg=error_msg,
+            )
+
+
 def test_vmecwout_io(cma_output):
     with tempfile.NamedTemporaryFile() as tmp_file:
         cma_output.wout.save(tmp_file.name)
