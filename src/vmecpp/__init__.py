@@ -1007,6 +1007,8 @@ class VmecOutput(pydantic.BaseModel):
 
 def run(
     input: VmecInput,
+    magnetic_field: _vmecpp.MagneticFieldResponseTable | None = None,
+    *,
     max_threads: int | None = None,
     verbose: bool = True,
     restart_from: VmecOutput | None = None,
@@ -1015,6 +1017,8 @@ def run(
 
     Args:
         input: a VmecInput instance, corresponding to the contents of a classic VMEC input file
+        magnetic_field: if present, VMEC++ will pass the magnetic field object in memory instead of reading
+            it from an mgrid file (only relevant in free-boundary runs).
         max_threads: maximum number of threads that VMEC++ should spawn. The actual number might still
             be lower that this in case there are too few flux surfaces to keep these many threads
             busy. If None, a number of threads equal to the number of logical cores is used.
@@ -1040,12 +1044,21 @@ def run(
         )
         raise RuntimeError(msg)
 
-    cpp_output_quantities = _vmecpp.run(
-        cpp_indata,
-        initial_state=initial_state,
-        max_threads=max_threads,
-        verbose=verbose,
-    )
+    if magnetic_field is None:
+        cpp_output_quantities = _vmecpp.run(
+            cpp_indata,
+            initial_state=initial_state,
+            max_threads=max_threads,
+            verbose=verbose,
+        )
+    else:
+        cpp_output_quantities = _vmecpp.run(
+            cpp_indata,
+            magnetic_response_table=magnetic_field,
+            initial_state=initial_state,
+            max_threads=max_threads,
+            verbose=verbose,
+        )
 
     cpp_wout = cpp_output_quantities.wout
     wout = VmecWOut._from_cpp_wout(cpp_wout)
