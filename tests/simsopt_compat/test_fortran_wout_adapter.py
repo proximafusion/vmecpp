@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from vmecpp.cpp import _vmecpp as vmec
-from vmecpp.cpp.vmecpp.simsopt_compat import (
+from vmecpp.simsopt_compat._fortran_wout_adapter import (
     VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER,
     FortranWOutAdapter,
 )
@@ -20,7 +20,7 @@ from vmecpp.cpp.vmecpp.simsopt_compat import (
 # so the tests live in the sources but the vmecpp module lives in site_packages.
 # Therefore, in order to find the test data we use the relative path to this file.
 # I'm very open to alternative solutions :)
-REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
+REPO_ROOT = Path(__file__).parent.parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
