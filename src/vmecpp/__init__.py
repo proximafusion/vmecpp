@@ -253,10 +253,15 @@ class VmecInput(pydantic.BaseModel):
 
         return cpp_indata
 
-    # TODO(eguiraud): implement a save function. we can either teach pydantic
-    # how we want the fourier coefficients to be formatted, or convert
-    # to VmecINDATAPyWrapper and leverage its to_json function.
-    # But then model_dump_json and model_validate_json will not work properly.
+    def to_json(self) -> str:
+        return self._to_cpp_vmecindatapywrapper().to_json()
+
+    # TODO(jurasic): Make models serializable and use model_dump_json and
+    # model_validate_json instead.
+    def save(self, output_path: str | Path) -> None:
+        json_serialized = self.to_json()
+        output_path = Path(output_path)
+        output_path.write_text(json_serialized)
 
 
 # NOTE: in the future we want to change the C++ WOutFileContents layout so that it
