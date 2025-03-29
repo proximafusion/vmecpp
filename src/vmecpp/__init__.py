@@ -12,11 +12,10 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import ClassVar
 
-import jaxtyping as jt
 import netCDF4
 import numpy as np
+import numpydantic as npyd
 import pydantic
-from beartype import beartype
 
 from vmecpp import _util
 from vmecpp.cpp import _vmecpp  # bindings to the C++ core
@@ -41,8 +40,6 @@ class VmecInput(pydantic.BaseModel):
     """
 
     model_config = pydantic.ConfigDict(
-        # allow numpy arrays as attributes -- although this breaks pydantic's automatic JSON (de)serialization
-        arbitrary_types_allowed=True,
         # serialize NaN and infinite floats as strings in JSON output.
         ser_json_inf_nan="strings",
     )
@@ -68,13 +65,13 @@ class VmecInput(pydantic.BaseModel):
     """Number of toroidal grid points; must match nzeta of mgrid file if using free-
     boundary."""
 
-    ns_array: jt.Int[np.ndarray, " num_grids"]
+    ns_array: npyd.NDArray[npyd.Shape["* num_grids"], int]
     """Number of flux surfaces per multigrid step."""
 
-    ftol_array: jt.Float[np.ndarray, " num_grids"]
+    ftol_array: npyd.NDArray[npyd.Shape["* num_grids"], float]
     """Requested force tolerance for convergence per multigrid step."""
 
-    niter_array: jt.Int[np.ndarray, " num_grids"]
+    niter_array: npyd.NDArray[npyd.Shape["* num_grids"], int]
     """Maximum number of iterations per multigrid step."""
 
     phiedge: float
@@ -86,13 +83,13 @@ class VmecInput(pydantic.BaseModel):
     pmass_type: str
     """Parametrization of mass/pressure profile."""
 
-    am: jt.Float[np.ndarray, " am_len"]
+    am: npyd.NDArray[npyd.Shape["* am_len"], float]
     """Mass/pressure profile coefficients."""
 
-    am_aux_s: jt.Float[np.ndarray, " am_aux_len"]
+    am_aux_s: npyd.NDArray[npyd.Shape["* am_aux_len"], float]
     """Spline mass/pressure profile: knot locations in s"""
 
-    am_aux_f: jt.Float[np.ndarray, " am_aux_len"]
+    am_aux_f: npyd.NDArray[npyd.Shape["* am_aux_len"], float]
     """Spline mass/pressure profile: values at knots"""
 
     pres_scale: float
@@ -107,25 +104,25 @@ class VmecInput(pydantic.BaseModel):
     piota_type: str
     """Parametrization of iota profile."""
 
-    ai: jt.Float[np.ndarray, " ai_len"]
+    ai: npyd.NDArray[npyd.Shape["* ai_len"], float]
     """Iota profile coefficients."""
 
-    ai_aux_s: jt.Float[np.ndarray, " ai_aux_len"]
+    ai_aux_s: npyd.NDArray[npyd.Shape["* ai_aux_len"], float]
     """Spline iota profile: knot locations in s"""
 
-    ai_aux_f: jt.Float[np.ndarray, " ai_aux_len"]
+    ai_aux_f: npyd.NDArray[npyd.Shape["* ai_aux_len"], float]
     """Spline iota profile: values at knots"""
 
     pcurr_type: str
     """Parametrization of toroidal current profile."""
 
-    ac: jt.Float[np.ndarray, " ac_len"]
+    ac: npyd.NDArray[npyd.Shape["* ac_len"], float]
     """Enclosed toroidal current profile coefficients."""
 
-    ac_aux_s: jt.Float[np.ndarray, " ac_aux_len"]
+    ac_aux_s: npyd.NDArray[npyd.Shape["* ac_aux_len"], float]
     """Spline toroidal current profile: knot locations in s"""
 
-    ac_aux_f: jt.Float[np.ndarray, " ac_aux_len"]
+    ac_aux_f: npyd.NDArray[npyd.Shape["* ac_aux_len"], float]
     """Spline toroidal current profile: values at knots"""
 
     curtor: float
@@ -140,7 +137,7 @@ class VmecInput(pydantic.BaseModel):
     mgrid_file: str
     """Full path for vacuum Green's function data."""
 
-    extcur: jt.Float[np.ndarray, " extcur_len"]
+    extcur: npyd.NDArray[npyd.Shape["* extcur_len"], float]
     """Coil currents in A."""
 
     nvacskip: int
@@ -149,7 +146,7 @@ class VmecInput(pydantic.BaseModel):
     nstep: int
     """Printout interval."""
 
-    aphi: jt.Float[np.ndarray, " aphi_len"]
+    aphi: npyd.NDArray[npyd.Shape["* aphi_len"], float]
     """Radial flux zoning profile coefficients."""
 
     delt: float
@@ -167,28 +164,28 @@ class VmecInput(pydantic.BaseModel):
     Otherwise a RuntimeError will be raised.
     """
 
-    raxis_c: jt.Float[np.ndarray, " ntor_plus_1"]
+    raxis_c: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
     """Magnetic axis coefficients for R ~ cos(n*v); stellarator-symmetric."""
 
-    zaxis_s: jt.Float[np.ndarray, " ntor_plus_1"]
+    zaxis_s: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
     """Magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric."""
 
-    raxis_s: jt.Float[np.ndarray, " ntor_plus_1"]
+    raxis_s: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
     """Magnetic axis coefficients for R ~ sin(n*v); non-stellarator-symmetric."""
 
-    zaxis_c: jt.Float[np.ndarray, " ntor_plus_1"]
+    zaxis_c: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
     """Magnetic axis coefficients for Z ~ cos(n*v); non-stellarator-symmetric."""
 
-    rbc: jt.Float[np.ndarray, " mpol two_ntor_plus_one"]
+    rbc: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float]
     """Boundary coefficients for R ~ cos(m*u - n*v); stellarator-symmetric"""
 
-    zbs: jt.Float[np.ndarray, " mpol two_ntor_plus_one"]
+    zbs: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float]
     """Boundary coefficients for Z ~ sin(m*u - n*v); stellarator-symmetric"""
 
-    rbs: jt.Float[np.ndarray, " mpol two_ntor_plus_one"]
+    rbs: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float]
     """Boundary coefficients for R ~ sin(m*u - n*v); non-stellarator-symmetric"""
 
-    zbc: jt.Float[np.ndarray, " mpol two_ntor_plus_one"]
+    zbc: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float]
     """Boundary coefficients for Z ~ cos(m*u - n*v); non-stellarator-symmetric"""
 
     @staticmethod
@@ -269,7 +266,7 @@ class VmecWOut(pydantic.BaseModel):
     The `save` method produces a NetCDF file compatible with SIMSOPT/Fortran VMEC.
     """
 
-    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+    model_config = pydantic.ConfigDict(extra="forbid")
 
     _MISSING_FORTRAN_VARIABLES: ClassVar[list[str]] = [
         "input_extension",
@@ -329,37 +326,37 @@ class VmecWOut(pydantic.BaseModel):
     ftolv: float
     # NOTE: here, usage of the same dim1 or dim2 does NOT mean
     # they must have the same value across different attributes.
-    phipf: jt.Float[np.ndarray, " dim1"]
-    chipf: jt.Float[np.ndarray, " dim1"]
-    jcuru: jt.Float[np.ndarray, " dim1"]
-    jcurv: jt.Float[np.ndarray, " dim1"]
-    jdotb: jt.Float[np.ndarray, " dim1"]
-    bdotgradv: jt.Float[np.ndarray, " dim1"]
-    DMerc: jt.Float[np.ndarray, " dim1"]
-    equif: jt.Float[np.ndarray, " dim1"]
-    xm: jt.Int[np.ndarray, " dim1"]
-    xn: jt.Int[np.ndarray, " dim1"]
-    xm_nyq: jt.Int[np.ndarray, " dim1"]
-    xn_nyq: jt.Int[np.ndarray, " dim1"]
-    mass: jt.Float[np.ndarray, " dim1"]
-    buco: jt.Float[np.ndarray, " dim1"]
-    bvco: jt.Float[np.ndarray, " dim1"]
-    phips: jt.Float[np.ndarray, " dim1"]
-    bmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    gmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubumnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubvmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubsmns: jt.Float[np.ndarray, "dim1 dim2"]
-    bsupumnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsupvmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    rmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    zmns: jt.Float[np.ndarray, "dim1 dim2"]
-    lmns: jt.Float[np.ndarray, "mnmax n_surfaces"]
+    phipf: npyd.NDArray[npyd.Shape["* dim1"], float]
+    chipf: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jcuru: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jcurv: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bdotgradv: npyd.NDArray[npyd.Shape["* dim1"], float]
+    DMerc: npyd.NDArray[npyd.Shape["* dim1"], float]
+    equif: npyd.NDArray[npyd.Shape["* dim1"], float]
+    xm: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xn: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xm_nyq: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xn_nyq: npyd.NDArray[npyd.Shape["* dim1"], int]
+    mass: npyd.NDArray[npyd.Shape["* dim1"], float]
+    buco: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bvco: npyd.NDArray[npyd.Shape["* dim1"], float]
+    phips: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    gmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubumnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubvmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubsmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupumnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupvmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    rmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    zmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    lmns: npyd.NDArray[npyd.Shape["* mnmax, * n_surfaces"], float]
     # lmns_full is not present in a typical Fortran wout file,
     # but we need to save it for fixed-boundary hot restart
     # to work properly. We store it with the Fortran convention
     # for the order of the dimensions for consistency with lmns.
-    lmns_full: jt.Float[np.ndarray, "mnmax n_surfaces"]
+    lmns_full: npyd.NDArray[npyd.Shape["* mnmax, * n_surfaces"], float]
     pcurr_type: str
     pmass_type: str
     piota_type: str
@@ -367,31 +364,31 @@ class VmecWOut(pydantic.BaseModel):
     mgrid_file: str
 
     # In the C++ WOutFileContents this is called iota_half.
-    iotas: jt.Float[np.ndarray, "..."]
+    iotas: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called iota_full.
-    iotaf: jt.Float[np.ndarray, "..."]
+    iotaf: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called betatot.
     betatotal: float
 
     # In the C++ WOutFileContents this is called raxis_c.
-    raxis_cc: jt.Float[np.ndarray, "..."]
+    raxis_cc: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called zaxis_s.
-    zaxis_cs: jt.Float[np.ndarray, "..."]
+    zaxis_cs: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called dVds.
-    vp: jt.Float[np.ndarray, "..."]
+    vp: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called pressure_full.
-    presf: jt.Float[np.ndarray, "..."]
+    presf: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called pressure_half.
-    pres: jt.Float[np.ndarray, "..."]
+    pres: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called toroidal_flux.
-    phi: jt.Float[np.ndarray, "..."]
+    phi: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called sign_of_jacobian.
     signgs: int
@@ -400,34 +397,34 @@ class VmecWOut(pydantic.BaseModel):
     volavgB: float
 
     # In the C++ WOutFileContents this is called safety_factor.
-    q_factor: jt.Float[np.ndarray, "..."]
+    q_factor: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called poloidal_flux.
-    chi: jt.Float[np.ndarray, "..."]
+    chi: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called spectral_width.
-    specw: jt.Float[np.ndarray, "..."]
+    specw: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called overr.
-    over_r: jt.Float[np.ndarray, "..."]
+    over_r: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called Dshear.
-    DShear: jt.Float[np.ndarray, "..."]
+    DShear: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called Dwell.
-    DWell: jt.Float[np.ndarray, "..."]
+    DWell: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called Dcurr.
-    DCurr: jt.Float[np.ndarray, "..."]
+    DCurr: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called Dgeod.
-    DGeod: jt.Float[np.ndarray, "..."]
+    DGeod: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called maximum_iterations.
     niter: int
 
     # In the C++ WOutFileContents this is called beta.
-    beta_vol: jt.Float[np.ndarray, "..."]
+    beta_vol: npyd.NDArray[npyd.Shape["*"], float]
 
     # In the C++ WOutFileContents this is called 'version' and it is a string.
     version_: float
@@ -917,23 +914,23 @@ class Threed1Volumetrics(pydantic.BaseModel):
 
 
 class Mercier(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+    model_config = pydantic.ConfigDict(extra="forbid")
 
-    s: jt.Float[np.ndarray, " dim1"]
-    toroidal_flux: jt.Float[np.ndarray, " dim1"]
-    iota: jt.Float[np.ndarray, " dim1"]
-    shear: jt.Float[np.ndarray, " dim1"]
-    d_volume_d_s: jt.Float[np.ndarray, " dim1"]
-    well: jt.Float[np.ndarray, " dim1"]
-    toroidal_current: jt.Float[np.ndarray, " dim1"]
-    d_toroidal_current_d_s: jt.Float[np.ndarray, " dim1"]
-    pressure: jt.Float[np.ndarray, " dim1"]
-    d_pressure_d_s: jt.Float[np.ndarray, " dim1"]
-    DMerc: jt.Float[np.ndarray, " dim1"]
-    Dshear: jt.Float[np.ndarray, " dim1"]
-    Dwell: jt.Float[np.ndarray, " dim1"]
-    Dcurr: jt.Float[np.ndarray, " dim1"]
-    Dgeod: jt.Float[np.ndarray, " dim1"]
+    s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    toroidal_flux: npyd.NDArray[npyd.Shape["* dim1"], float]
+    iota: npyd.NDArray[npyd.Shape["* dim1"], float]
+    shear: npyd.NDArray[npyd.Shape["* dim1"], float]
+    d_volume_d_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    well: npyd.NDArray[npyd.Shape["* dim1"], float]
+    toroidal_current: npyd.NDArray[npyd.Shape["* dim1"], float]
+    d_toroidal_current_d_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    pressure: npyd.NDArray[npyd.Shape["* dim1"], float]
+    d_pressure_d_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    DMerc: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dshear: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dwell: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dcurr: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dgeod: npyd.NDArray[npyd.Shape["* dim1"], float]
 
     @staticmethod
     def _from_cpp_mercier(cpp_mercier: _vmecpp.Mercier) -> Mercier:
@@ -945,37 +942,37 @@ class Mercier(pydantic.BaseModel):
 
 
 class JxBOut(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+    model_config = pydantic.ConfigDict(extra="forbid")
 
-    itheta: jt.Float[np.ndarray, "num_full nZnT"]
-    izeta: jt.Float[np.ndarray, "num_full nZnT"]
-    bdotk: jt.Float[np.ndarray, "num_full nZnT"]
+    itheta: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
+    izeta: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
+    bdotk: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
 
-    amaxfor: jt.Float[np.ndarray, " dim1"]
-    aminfor: jt.Float[np.ndarray, " dim1"]
-    avforce: jt.Float[np.ndarray, " dim1"]
-    pprim: jt.Float[np.ndarray, " dim1"]
-    jdotb: jt.Float[np.ndarray, " dim1"]
-    bdotb: jt.Float[np.ndarray, " dim1"]
-    bdotgradv: jt.Float[np.ndarray, " dim1"]
-    jpar2: jt.Float[np.ndarray, " dim1"]
-    jperp2: jt.Float[np.ndarray, " dim1"]
-    phin: jt.Float[np.ndarray, " dim1"]
+    amaxfor: npyd.NDArray[npyd.Shape["* dim1"], float]
+    aminfor: npyd.NDArray[npyd.Shape["* dim1"], float]
+    avforce: npyd.NDArray[npyd.Shape["* dim1"], float]
+    pprim: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bdotgradv: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jpar2: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jperp2: npyd.NDArray[npyd.Shape["* dim1"], float]
+    phin: npyd.NDArray[npyd.Shape["* dim1"], float]
 
-    jsupu3: jt.Float[np.ndarray, "num_full nZnT"]
-    jsupv3: jt.Float[np.ndarray, "num_full nZnT"]
-    jsups3: jt.Float[np.ndarray, "num_half nZnT"]
+    jsupu3: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
+    jsupv3: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
+    jsups3: npyd.NDArray[npyd.Shape["* num_half, * nZnT"], float]
 
-    bsupu3: jt.Float[np.ndarray, "num_full nZnT"]
-    bsupv3: jt.Float[np.ndarray, "num_full nZnT"]
-    jcrossb: jt.Float[np.ndarray, "num_full nZnT"]
-    jxb_gradp: jt.Float[np.ndarray, "num_full nZnT"]
-    jdotb_sqrtg: jt.Float[np.ndarray, "num_full nZnT"]
-    sqrtg3: jt.Float[np.ndarray, "num_full nZnT"]
+    bsupu3: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
+    bsupv3: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
+    jcrossb: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
+    jxb_gradp: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
+    jdotb_sqrtg: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
+    sqrtg3: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
 
-    bsubu3: jt.Float[np.ndarray, "num_half nZnT"]
-    bsubv3: jt.Float[np.ndarray, "num_half nZnT"]
-    bsubs3: jt.Float[np.ndarray, "num_full nZnT"]
+    bsubu3: npyd.NDArray[npyd.Shape["* num_half, * nZnT"], float]
+    bsubv3: npyd.NDArray[npyd.Shape["* num_half, * nZnT"], float]
+    bsubs3: npyd.NDArray[npyd.Shape["* num_full, * nZnT"], float]
 
     @staticmethod
     def _from_cpp_jxbout(cpp_jxbout: _vmecpp.JxBOutFileContents) -> JxBOut:
@@ -1149,11 +1146,13 @@ def ensure_vmec2000_input(input_path: Path) -> Generator[Path, None, None]:
         yield out_path
 
 
-@jt.jaxtyped(typechecker=beartype)
 def _pad_and_transpose(
-    arr: jt.Float[np.ndarray, "ns_minus_one mn"], mnsize: int
-) -> jt.Float[np.ndarray, "mn ns_minus_one+1"]:
-    return np.vstack((np.zeros(mnsize), arr)).T
+    arr: npyd.NDArray[npyd.Shape["* ns_minus_one, * mn"], float], mnsize: int
+) -> npyd.NDArray[npyd.Shape["* mn, * ns_minus_one"], float]:
+    stacked = np.vstack((np.zeros(mnsize), arr)).T
+    assert stacked.shape[1] == arr.shape[0] + 1
+    assert stacked.shape[0] == arr.shape[1]
+    return stacked
 
 
 __all__ = [
