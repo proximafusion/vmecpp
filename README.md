@@ -348,7 +348,7 @@ Some items we do not plan to work on, but where community ownership is welcome:
 * [`proximafusion/vmecpp-validation`](https://github.com/proximafusion/vmecpp-validation) - Validation tests for VMEC++
 * [`proximafusion/vmecpp_large_cpp_tests`](https://github.com/proximafusion/vmecpp_large_cpp_tests) - Large C++ tests for VMEC++
 * [`proximafusion/the_numerics_of_vmecpp`](https://github.com/proximafusion/the_numerics_of_vmecpp) - Documentation of the numerical details of VMEC++
-* [`proximafusion/vmecpp-benchmarks`](`https://github.com/proximafusion/vmecpp-benchmarks`) - Performance benchmarks comparing VMEC++ and VMEC2000
+* [`proximafusion/vmecpp-benchmarks`](https://github.com/proximafusion/vmecpp-benchmarks) - Performance benchmarks comparing VMEC++ and VMEC2000
 
 ## License
 
