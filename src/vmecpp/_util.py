@@ -11,6 +11,9 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import numpydantic as npyd
+
 logger = logging.getLogger(__name__)
 
 
@@ -294,3 +297,106 @@ def _fourier_coefficients_to_namelist(varname: str, vmecpp_json: dict[str, Any])
             out += f"  {varname}({n}, {m}) = {value:.20e}\n"
         return out
     return ""
+
+
+def dense_to_sparse_coefficients(
+    arr: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float],
+) -> list[dict[str, float | int]]:
+    """
+    Convert a dense 2D array of Fourier coefficients to it's spare representation for storage.
+    Args:
+        arr: The dense 2D array (mpol, 2*ntor+1) of Fourier coefficients.
+    Returns:
+        A list of non-zero coefficients with keys 'm', 'n', and 'value'.
+
+    Example:
+        >>> # Example: mpol=2, ntor=1 => shape=(2, 3)
+        >>> # Columns correspond to n=-1, n=0, n=1
+        >>> dense_array = np.array([[10.0, 0.0, 0.0], [-1.5, 0.0, 1.5]])
+        >>> dense_to_sparse_coefficients(dense_array)
+        [{'m': 0, 'n': -1, 'value': 10.0}, {'m': 1, 'n': -1, 'value': -1.5}, {'m': 1, 'n': 1, 'value': 1.5}]
+
+        >>> dense_to_sparse_coefficients(np.zeros((0,0)))
+        []
+    """
+    shape = np.shape(arr)
+    if shape == (0, 0):
+        return []
+
+    assert len(shape) == 2
+    two_ntor_plus_one = shape[1]
+    # ntor*2+1 must be uneven
+    assert (two_ntor_plus_one - 1) % 2 == 0
+    ntor = (two_ntor_plus_one - 1) // 2
+
+    sparse_list = []
+    m_indices, col_indices = np.nonzero(arr)
+    for m, col in zip(m_indices, col_indices, strict=True):
+        n = col - ntor
+        value = arr[m][col]
+        # Convert numpy types like np.int64 to Python native for serialization
+        sparse_list.append({"m": int(m), "n": int(n), "value": float(value)})
+    return sparse_list
+
+
+def sparse_to_dense_coefficients(
+    sparse_list: list[dict[str, float | int]],
+    mpol: int,
+    ntor: int,
+) -> npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float]:
+    """Converts a sparse list of Fourier coefficients into a dense 2D NumPy array.
+
+    Args:
+        sparse_list: A list where each dictionary represents a coefficient
+            with keys 'm' (poloidal mode number, int >= 0), 'n' (toroidal
+            mode number, int), and 'value' (the coefficient's value).
+        mpol: Poloidal mode number. Defines the valid range for 'm' as [0, mpol-1].
+        ntor: Toroidal mode number. Defines the valid range for 'n' as [-ntor, ntor].
+
+    Example:
+        >>> import numpy as np
+        >>> sparse_data = [
+        ...     {"m": 0, "n": -1, "value": 10.0},
+        ...     {"m": 1, "n": -1, "value": -1.5},
+        ...     {"m": 1, "n": 1, "value": 1.5},
+        ... ]
+        >>> sparse_to_dense_coefficients(sparse_data, mpol=2, ntor=1)
+        array([[10. ,  0. ,  0. ],
+               [-1.5,  0. ,  1.5]])
+    """
+    dense_coefficients = np.zeros((mpol, 2 * ntor + 1))
+    for sparse_entry in sparse_list:
+        m = sparse_entry["m"]
+        n = sparse_entry["n"]
+        val = sparse_entry["value"]
+        # Convert from [-ntor, ntor] to range [0, 2*ntor]
+        col_idx = n + ntor
+        if 0 <= m < mpol and 0 <= col_idx < dense_coefficients.shape[1]:
+            dense_coefficients[m, col_idx] = val
+        else:
+            # Strict contract for deserialization, we don't want to implicitly drop terms.
+            msg = (
+                "Index out of bounds when parsing sparse coefficient array, one of "
+                f"m={m} in [0,{mpol}], n={n} in [{-ntor},{ntor}] are not in range."
+            )
+            raise ValueError(msg)
+    return dense_coefficients
+
+
+def sparse_to_dense_coefficients_implicit(
+    maybe_sparse_list: list[dict[str, float | int]]
+    | npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float],
+) -> npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float]:
+    """Convert a list of sparse array coefficients to a dense array, inferring the
+    (mpol, 2*ntor+1) shape from the maximum mode numbers OR return the original array if
+    the input represenation is already dense."""
+    if isinstance(maybe_sparse_list, np.ndarray):
+        return maybe_sparse_list
+
+    mpol = 0
+    ntor = 0
+    for sparse_entry in maybe_sparse_list:
+        mpol = max(mpol, sparse_entry["m"])
+        ntor = max(ntor, abs(sparse_entry["n"]))
+    mpol += 1
+    return sparse_to_dense_coefficients(maybe_sparse_list, mpol, ntor)

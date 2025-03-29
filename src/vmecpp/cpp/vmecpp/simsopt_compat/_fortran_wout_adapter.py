@@ -6,11 +6,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-import jaxtyping as jt
 import netCDF4
 import numpy as np
+import numpydantic as npyd
 import pydantic
-from beartype import beartype
 
 VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER = [
     "input_extension",
@@ -39,11 +38,13 @@ VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER = [
 not exposed by FortranWOutAdapter."""
 
 
-@jt.jaxtyped(typechecker=beartype)
 def pad_and_transpose(
-    arr: jt.Float[np.ndarray, "ns_minus_one mn"], mnsize: int
-) -> jt.Float[np.ndarray, "mn ns_minus_one+1"]:
-    return np.vstack((np.zeros(mnsize), arr)).T
+    arr: npyd.NDArray[npyd.Shape["* ns_minus_one, * mn"], float], mnsize: int
+) -> npyd.NDArray[npyd.Shape["* mn, * ns"], float]:
+    stacked = np.vstack((np.zeros(mnsize), arr)).T
+    assert stacked.shape[1] == arr.shape[0] + 1
+    assert stacked.shape[0] == arr.shape[1]
+    return stacked
 
 
 class _VmecppWOutLike(Protocol):
@@ -62,15 +63,15 @@ class _VmecppWOutLike(Protocol):
     piota_type: str
     # NOTE: the same dim1 does NOT indicate all these arrays have the same dimensions.
     # TODO(eguiraud): give different names to each separate size
-    am: jt.Float[np.ndarray, " dim1"]
-    ac: jt.Float[np.ndarray, " dim1"]
-    ai: jt.Float[np.ndarray, " dim1"]
-    am_aux_s: jt.Float[np.ndarray, " dim1"]
-    am_aux_f: jt.Float[np.ndarray, " dim1"]
-    ac_aux_s: jt.Float[np.ndarray, " dim1"]
-    ac_aux_f: jt.Float[np.ndarray, " dim1"]
-    ai_aux_s: jt.Float[np.ndarray, " dim1"]
-    ai_aux_f: jt.Float[np.ndarray, " dim1"]
+    am: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ac: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ai: npyd.NDArray[npyd.Shape["* dim1"], float]
+    am_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    am_aux_f: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ac_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ac_aux_f: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ai_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ai_aux_f: npyd.NDArray[npyd.Shape["* dim1"], float]
     nfp: int
     mpol: int
     ntor: int
@@ -80,7 +81,7 @@ class _VmecppWOutLike(Protocol):
     maximum_iterations: int
     lfreeb: bool
     mgrid_file: str
-    extcur: jt.Float[np.ndarray, " dim1"]
+    extcur: npyd.NDArray[npyd.Shape["* dim1"], float]
     mgrid_mode: str
     wb: float
     wp: float
@@ -107,66 +108,66 @@ class _VmecppWOutLike(Protocol):
     fsqr: float
     fsqz: float
     fsql: float
-    iota_full: jt.Float[np.ndarray, " dim1"]
-    safety_factor: jt.Float[np.ndarray, " dim1"]
-    pressure_full: jt.Float[np.ndarray, " dim1"]
-    toroidal_flux: jt.Float[np.ndarray, " dim1"]
-    phipf: jt.Float[np.ndarray, " dim1"]
-    poloidal_flux: jt.Float[np.ndarray, " dim1"]
-    chipf: jt.Float[np.ndarray, " dim1"]
-    jcuru: jt.Float[np.ndarray, " dim1"]
-    jcurv: jt.Float[np.ndarray, " dim1"]
-    iota_half: jt.Float[np.ndarray, " dim1"]
-    mass: jt.Float[np.ndarray, " dim1"]
-    pressure_half: jt.Float[np.ndarray, " dim1"]
-    beta: jt.Float[np.ndarray, " dim1"]
-    buco: jt.Float[np.ndarray, " dim1"]
-    bvco: jt.Float[np.ndarray, " dim1"]
-    dVds: jt.Float[np.ndarray, " dim1"]
-    spectral_width: jt.Float[np.ndarray, " dim1"]
-    phips: jt.Float[np.ndarray, " dim1"]
-    overr: jt.Float[np.ndarray, " dim1"]
-    jdotb: jt.Float[np.ndarray, " dim1"]
-    bdotgradv: jt.Float[np.ndarray, " dim1"]
-    DMerc: jt.Float[np.ndarray, " dim1"]
-    Dshear: jt.Float[np.ndarray, " dim1"]
-    Dwell: jt.Float[np.ndarray, " dim1"]
-    Dcurr: jt.Float[np.ndarray, " dim1"]
-    Dgeod: jt.Float[np.ndarray, " dim1"]
-    equif: jt.Float[np.ndarray, " dim1"]
+    iota_full: npyd.NDArray[npyd.Shape["* dim1"], float]
+    safety_factor: npyd.NDArray[npyd.Shape["* dim1"], float]
+    pressure_full: npyd.NDArray[npyd.Shape["* dim1"], float]
+    toroidal_flux: npyd.NDArray[npyd.Shape["* dim1"], float]
+    phipf: npyd.NDArray[npyd.Shape["* dim1"], float]
+    poloidal_flux: npyd.NDArray[npyd.Shape["* dim1"], float]
+    chipf: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jcuru: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jcurv: npyd.NDArray[npyd.Shape["* dim1"], float]
+    iota_half: npyd.NDArray[npyd.Shape["* dim1"], float]
+    mass: npyd.NDArray[npyd.Shape["* dim1"], float]
+    pressure_half: npyd.NDArray[npyd.Shape["* dim1"], float]
+    beta: npyd.NDArray[npyd.Shape["* dim1"], float]
+    buco: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bvco: npyd.NDArray[npyd.Shape["* dim1"], float]
+    dVds: npyd.NDArray[npyd.Shape["* dim1"], float]
+    spectral_width: npyd.NDArray[npyd.Shape["* dim1"], float]
+    phips: npyd.NDArray[npyd.Shape["* dim1"], float]
+    overr: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bdotgradv: npyd.NDArray[npyd.Shape["* dim1"], float]
+    DMerc: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dshear: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dwell: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dcurr: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dgeod: npyd.NDArray[npyd.Shape["* dim1"], float]
+    equif: npyd.NDArray[npyd.Shape["* dim1"], float]
     curlabel: list[str]
-    xm: jt.Int[np.ndarray, " dim1"]
-    xn: jt.Int[np.ndarray, " dim1"]
-    xm_nyq: jt.Int[np.ndarray, " dim1"]
-    xn_nyq: jt.Int[np.ndarray, " dim1"]
-    raxis_c: jt.Float[np.ndarray, " dim1"]
-    zaxis_s: jt.Float[np.ndarray, " dim1"]
-    rmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    zmns: jt.Float[np.ndarray, "dim1 dim2"]
-    lmns_full: jt.Float[np.ndarray, "dim1 dim2"]
-    lmns: jt.Float[np.ndarray, "dim1 dim2"]
-    gmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubumnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubvmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubsmns: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubsmns_full: jt.Float[np.ndarray, "dim1 dim2"]
-    bsupumnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsupvmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    raxis_s: jt.Float[np.ndarray, " dim1"]
-    zaxis_c: jt.Float[np.ndarray, " dim1"]
-    rmns: jt.Float[np.ndarray, "dim1 dim2"]
-    zmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    lmnc_full: jt.Float[np.ndarray, "dim1 dim2"]
-    lmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    gmns: jt.Float[np.ndarray, "dim1 dim2"]
-    bmns: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubumns: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubvmns: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubsmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubsmnc_full: jt.Float[np.ndarray, "dim1 dim2"]
-    bsupumns: jt.Float[np.ndarray, "dim1 dim2"]
-    bsupvmns: jt.Float[np.ndarray, "dim1 dim2"]
+    xm: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xn: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xm_nyq: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xn_nyq: npyd.NDArray[npyd.Shape["* dim1"], int]
+    raxis_c: npyd.NDArray[npyd.Shape["* dim1"], float]
+    zaxis_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    rmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    zmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    lmns_full: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    lmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    gmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubumnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubvmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubsmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubsmns_full: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupumnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupvmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    raxis_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    zaxis_c: npyd.NDArray[npyd.Shape["* dim1"], float]
+    rmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    zmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    lmnc_full: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    lmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    gmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubumns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubvmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubsmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubsmnc_full: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupumns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupvmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
 
 
 class FortranWOutAdapter(pydantic.BaseModel):
@@ -179,7 +180,7 @@ class FortranWOutAdapter(pydantic.BaseModel):
     The `save` method produces a NetCDF3 file compatible with SIMSOPT/Fortran VMEC.
     """
 
-    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+    model_config = pydantic.ConfigDict(extra="forbid")
 
     ier_flag: int
     nfp: int
@@ -213,63 +214,63 @@ class FortranWOutAdapter(pydantic.BaseModel):
     ftolv: float
     # NOTE: here, usage of the same dim1 or dim2 does NOT mean
     # they must have the same value across different attributes.
-    phipf: jt.Float[np.ndarray, " dim1"]
-    chipf: jt.Float[np.ndarray, " dim1"]
-    jcuru: jt.Float[np.ndarray, " dim1"]
-    jcurv: jt.Float[np.ndarray, " dim1"]
-    jdotb: jt.Float[np.ndarray, " dim1"]
-    bdotgradv: jt.Float[np.ndarray, " dim1"]
-    DMerc: jt.Float[np.ndarray, " dim1"]
-    equif: jt.Float[np.ndarray, " dim1"]
-    xm: jt.Int[np.ndarray, " dim1"]
-    xn: jt.Int[np.ndarray, " dim1"]
-    xm_nyq: jt.Int[np.ndarray, " dim1"]
-    xn_nyq: jt.Int[np.ndarray, " dim1"]
-    mass: jt.Float[np.ndarray, " dim1"]
-    buco: jt.Float[np.ndarray, " dim1"]
-    bvco: jt.Float[np.ndarray, " dim1"]
-    phips: jt.Float[np.ndarray, " dim1"]
-    bmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    gmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubumnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubvmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubsmns: jt.Float[np.ndarray, "dim1 dim2"]
-    bsupumnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsupvmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    rmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    zmns: jt.Float[np.ndarray, "dim1 dim2"]
-    lmns: jt.Float[np.ndarray, "dim1 dim2"]
+    phipf: npyd.NDArray[npyd.Shape["* dim1"], float]
+    chipf: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jcuru: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jcurv: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bdotgradv: npyd.NDArray[npyd.Shape["* dim1"], float]
+    DMerc: npyd.NDArray[npyd.Shape["* dim1"], float]
+    equif: npyd.NDArray[npyd.Shape["* dim1"], float]
+    xm: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xn: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xm_nyq: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xn_nyq: npyd.NDArray[npyd.Shape["* dim1"], int]
+    mass: npyd.NDArray[npyd.Shape["* dim1"], float]
+    buco: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bvco: npyd.NDArray[npyd.Shape["* dim1"], float]
+    phips: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    gmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubumnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubvmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubsmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupumnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupvmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    rmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    zmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    lmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
     pcurr_type: str
     pmass_type: str
     piota_type: str
     gamma: float
     mgrid_file: str
 
-    iotas: jt.Float[np.ndarray, "..."]
+    iotas: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called iota_half."""
 
-    iotaf: jt.Float[np.ndarray, "..."]
+    iotaf: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called iota_full."""
 
     betatotal: float
     """In VMEC++ this is called betatot."""
 
-    raxis_cc: jt.Float[np.ndarray, "..."]
+    raxis_cc: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called raxis_c."""
 
-    zaxis_cs: jt.Float[np.ndarray, "..."]
+    zaxis_cs: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called zaxis_s."""
 
-    vp: jt.Float[np.ndarray, "..."]
+    vp: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called dVds."""
 
-    presf: jt.Float[np.ndarray, "..."]
+    presf: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called pressure_full."""
 
-    pres: jt.Float[np.ndarray, "..."]
+    pres: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called pressure_half."""
 
-    phi: jt.Float[np.ndarray, "..."]
+    phi: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called toroidal_flux."""
 
     signgs: int
@@ -278,34 +279,34 @@ class FortranWOutAdapter(pydantic.BaseModel):
     volavgB: float
     """In VMEC++ this is called VolAvgB."""
 
-    q_factor: jt.Float[np.ndarray, "..."]
+    q_factor: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called safety_factor."""
 
-    chi: jt.Float[np.ndarray, "..."]
+    chi: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called poloidal_flux."""
 
-    specw: jt.Float[np.ndarray, "..."]
+    specw: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called spectral_width."""
 
-    over_r: jt.Float[np.ndarray, "..."]
+    over_r: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called overr."""
 
-    DShear: jt.Float[np.ndarray, "..."]
+    DShear: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called Dshear."""
 
-    DWell: jt.Float[np.ndarray, "..."]
+    DWell: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called Dwell."""
 
-    DCurr: jt.Float[np.ndarray, "..."]
+    DCurr: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called Dcurr."""
 
-    DGeod: jt.Float[np.ndarray, "..."]
+    DGeod: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called Dgeod."""
 
     niter: int
     """In VMEC++ this is called maximum_iterations."""
 
-    beta_vol: jt.Float[np.ndarray, "..."]
+    beta_vol: npyd.NDArray[npyd.Shape["*"], float]
     """In VMEC++ this is called beta."""
 
     version_: float
