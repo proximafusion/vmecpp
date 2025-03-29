@@ -7,6 +7,7 @@ build/
 dist/
 wheelhouse/
 __pycache__
+src/vmecpp/__about__.py
 
 # bazel output directories
 bazel-*
