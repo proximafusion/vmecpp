@@ -8,8 +8,7 @@ from pathlib import Path
 from typing import Optional, cast
 
 import numpy as np
-from jaxtyping import Bool, Float
-from numpy.typing import NDArray
+import numpydantic as npyd
 from scipy.io import netcdf_file
 from simsopt._core.optimizable import Optimizable
 from simsopt._core.util import ObjectiveFailure, Struct
@@ -63,9 +62,9 @@ class Vmec(Optimizable):
     # These are filled:
     # - by __init__ if Vmec is initialized with an output file
     # - by a call to run() and are None before otherwise
-    s_full_grid: Float[np.ndarray, " ns"] | None
+    s_full_grid: npyd.NDArray[npyd.Shape["* ns"], float] | None
     ds: float | None
-    s_half_grid: Float[np.ndarray, " nshalf"] | None
+    s_half_grid: npyd.NDArray[npyd.Shape["* nshalf"], float] | None
 
     # The loaded run results (or None if no results are present yet):
     # - a SIMSOPT Struct when reading an output file
@@ -169,7 +168,7 @@ class Vmec(Optimizable):
                         self._boundary.rs[m, n] = vi.rbs[m, n]
                         self._boundary.zc[m, n] = vi.zbc[m, n]
             self._boundary.local_full_x = cast(
-                Float[np.ndarray, "..."], self._boundary.get_dofs()
+                npyd.NDArray[npyd.Shape["*"], float], self._boundary.get_dofs()
             )
 
         elif basename.startswith("wout"):  # from output results
@@ -189,8 +188,8 @@ class Vmec(Optimizable):
             raise ValueError(msg)
 
         # Handle a few variables that are not Parameters:
-        x0 = cast(Float[np.ndarray, "..."], self.get_dofs())
-        fixed = cast(Bool[np.ndarray, "..."], np.full(len(x0), True))
+        x0 = cast(npyd.NDArray[npyd.Shape["*"], float], self.get_dofs())
+        fixed = cast(npyd.NDArray[npyd.Shape["*"], bool], np.full(len(x0), True))
         names = ["delt", "tcon0", "phiedge", "curtor", "gamma"]
         Optimizable.__init__(
             self,
@@ -356,7 +355,7 @@ class Vmec(Optimizable):
         # Return the slope:
         return float(poly.deriv()(0))
 
-    def get_dofs(self) -> NDArray:
+    def get_dofs(self) -> npyd.NDArray[npyd.Shape["*"], float]:
         if not self.runnable:
             # Use default values from vmec_input (copied from SIMSOPT)
             return np.array([1, 1, 1, 0, 0])
@@ -509,9 +508,7 @@ class Vmec(Optimizable):
         """
         self.set_indata()
         assert self.indata is not None
-        # TODO(jurasic): switch to return self.indata.model_dump_json() once
-        # Pydantic numpy serialization is working.
-        return self.indata._to_cpp_vmecindatapywrapper().to_json()
+        return self.indata.model_dump_json()
 
     def write_input(self, filename: str | Path) -> None:
         """Write a VMEC++ input file (in JSON format).
@@ -520,8 +517,8 @@ class Vmec(Optimizable):
         the ``get_input()`` function.
         """
         indata_json = self.get_input()
-        with open(filename, "w") as f:
-            f.write(indata_json)
+        filename = Path(filename)
+        filename.write_text(indata_json)
 
     def set_mpol_ntor(self, new_mpol: int, new_ntor: int):
         assert self.indata is not None
