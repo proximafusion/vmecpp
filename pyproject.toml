@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling", "scikit-build-core~=0.10.0", "pybind11"]
-build-backend = "hatchling.build"
+requires = ["scikit-build-core~=0.10.0", "pybind11", "numpy"] # numpy is needed for some scikit-build-core features.
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "vmecpp"
@@ -54,14 +54,20 @@ Documentation = "https://github.com/proximafusion/vmecpp#readme"
 Issues = "https://github.com/proximafusion/vmecpp/issues"
 Source = "https://github.com/proximafusion/vmecpp"
 
-[tool.hatch.version]
-path = "src/vmecpp/__about__.py"
+[tool.scikit-build]
+cmake.build-type = "Release"
+metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
+sdist.exclude = [
+    "src/vmecpp/cpp/vmecpp/test_data/",
+    "docs/",
+    ".github/",
+]
+cmake.verbose = true
+editable.rebuild = false
 
-[tool.hatch.build.targets.wheel.hooks.scikit-build]
-experimental = true
+[tool.setuptools_scm]
+version_file = "src/vmecpp/__about__.py"
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/vmecpp/cpp/vmecpp/simsopt_compat" = "vmecpp/cpp/vmecpp/simsopt_compat"
 
 [tool.cibuildwheel]
 archs = ["native"]
@@ -75,11 +81,6 @@ before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel libomp-devel
 
 [tool.cibuildwheel.macos]
 before-build = "brew install gcc lapack netcdf hdf5 libomp"
-
-[tool.hatch.envs.test]
-dependencies = [
-  "pytest"
-]
 
 [tool.coverage.run]
 source_pkgs = ["vmecpp", "tests"]
