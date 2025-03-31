@@ -1032,8 +1032,10 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   // (Initial Guess for) Boundary Geometry
   output["rbc"] = std::vector<nlohmann::json>();
   output["zbs"] = std::vector<nlohmann::json>();
-  output["rbs"] = std::vector<nlohmann::json>();
-  output["zbc"] = std::vector<nlohmann::json>();
+  if (lasym) {
+    output["rbs"] = std::vector<nlohmann::json>();
+    output["zbc"] = std::vector<nlohmann::json>();
+  }
   nlohmann::json tmp_obj;
   for (int m = 0; m < mpol; ++m) {
     for (int n = 0; n < 2 * ntor + 1; ++n) {
@@ -1042,18 +1044,20 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
       tmp_obj["m"] = m;
       tmp_obj["n"] = n - ntor;
       tmp_obj["value"] = rbc[idx_mn];
-      output["rbc"].push_back(tmp_obj);
 
-      tmp_obj["value"] = zbs[idx_mn];
-      output["zbs"].push_back(tmp_obj);
+      auto push_nonzero = [&output, &tmp_obj](const std::string& key, double value){
+        tmp_obj["value"] = value;
+        if (tmp_obj["value"] != 0.0) {
+          output[key].push_back(tmp_obj);
+        }
+      };
 
+      push_nonzero("rbc", rbc[idx_mn]);
+      push_nonzero("zbs", zbs[idx_mn]);
       if (lasym) {
         // we also have non-stellarator-symmetric components
-        tmp_obj["value"] = rbs[idx_mn];
-        output["rbs"].push_back(tmp_obj);
-
-        tmp_obj["value"] = zbc[idx_mn];
-        output["zbc"].push_back(tmp_obj);
+        push_nonzero("rbs", rbs[idx_mn]);
+        push_nonzero("zbc", zbc[idx_mn]);
       }
     }
   }
