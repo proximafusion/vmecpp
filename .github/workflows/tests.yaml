@@ -65,3 +65,6 @@ jobs:
           python -m pip install -v .[test]
       - name: Test package
         run: python -m pytest tests/
+      - name: Test docstring examples
+        # All except for __main__.py because this crashes doctest.
+        run: python -m doctest $(ls src/vmecpp/*.py | grep -v '/__main__.py$')
