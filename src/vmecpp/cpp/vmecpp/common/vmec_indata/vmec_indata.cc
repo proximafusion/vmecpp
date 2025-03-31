@@ -1001,7 +1001,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["pcurr_type"] = pcurr_type;
   output["ac"] = ac;
   output["ac_aux_s"] = ac_aux_s;
-  output["aic_aux_f"] = ac_aux_f;
+  output["ac_aux_f"] = ac_aux_f;
   output["curtor"] = curtor;
   output["bloat"] = bloat;
 
