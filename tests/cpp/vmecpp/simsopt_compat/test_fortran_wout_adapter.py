@@ -9,11 +9,7 @@ import netCDF4
 import numpy as np
 import pytest
 
-from vmecpp.cpp import _vmecpp as vmec
-from vmecpp.cpp.vmecpp.simsopt_compat import (
-    VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER,
-    FortranWOutAdapter,
-)
+import vmecpp
 
 # We don't want to install tests and test data as part of the package,
 # but scikit-build-core + hatchling does not support editable installs,
@@ -31,10 +27,8 @@ def path_type(request) -> str | Path:
 
 
 def test_save_to_netcdf(path_type):
-    indata = vmec.VmecINDATAPyWrapper.from_file(TEST_DATA_DIR / "cma.json")
-    cpp_wout = vmec.run(indata).wout
-
-    fortran_wout = FortranWOutAdapter.from_vmecpp_wout(cpp_wout)
+    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    fortran_wout = vmecpp.run(indata).wout
 
     with tempfile.TemporaryDirectory() as tmpdir:
         out_path = Path(tmpdir, "wout_test.nc")
@@ -45,7 +39,7 @@ def test_save_to_netcdf(path_type):
     expected_dataset = netCDF4.Dataset(TEST_DATA_DIR / "wout_cma.nc", "r")
 
     for varname, expected_value in expected_dataset.variables.items():
-        if varname in VARIABLES_MISSING_FROM_FORTRAN_WOUT_ADAPTER:
+        if varname in vmecpp.VmecWOut._MISSING_FORTRAN_VARIABLES:
             continue
 
         test_value = test_dataset[varname]

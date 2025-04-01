@@ -568,6 +568,17 @@ class VmecWOut(pydantic.BaseModel):
         SIMSOPT.
         """
         out_path = Path(out_path)
+        # protect against possible confusion between the C++ WOutFileContents::Save
+        # and this method
+        if out_path.suffix == ".h5":
+            msg = (
+                "You called `save` on a VmecWOut object: this produces a NetCDF3 "
+                "file, but you specified an output file name ending in '.h5', which "
+                "suggests an HDF5 output was expected. Please change output filename "
+                "suffix."
+            )
+            raise ValueError(msg)
+
         with netCDF4.Dataset(out_path, "w", format="NETCDF3_CLASSIC") as fnc:
             # scalar ints
             for varname in [
