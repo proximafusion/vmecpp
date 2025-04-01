@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/vmec/vmec.h"
@@ -153,11 +154,8 @@ Vmec::Vmec(const VmecINDATA& indata,
 
   if (fc_.lfreeb) {
     if (magnetic_response_table == nullptr) {
-      int loadStatus = mgrid_.loadFromMGrid(indata_.mgrid_file, indata_.extcur);
-      if (loadStatus != 0) {
-        LOG(FATAL) << "Could not load mgrid file '" << indata_.mgrid_file
-                   << "'. Now aborting.";
-      }
+      absl::Status s = mgrid_.LoadFile(indata_.mgrid_file, indata_.extcur);
+      CHECK_OK(s) << "Could not load mgrid file '" << indata_.mgrid_file;
     } else {
       absl::Status s =
           mgrid_.LoadFields(magnetic_response_table->parameters,
@@ -309,7 +307,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     // if ier_flag .eq. bad_jacobian_flag, repeat once again with ns=3 before
   }  // jacob_off
 
-  if (status_ != VmecStatus::SUCCESSFUL_TERMINATION && !indata_.return_outputs_even_if_not_converged) {
+  if (status_ != VmecStatus::SUCCESSFUL_TERMINATION &&
+      !indata_.return_outputs_even_if_not_converged) {
     const auto msg = "VMEC++ did not converge";
     return absl::InternalError(msg);
   }
@@ -447,7 +446,7 @@ bool Vmec::InitializeRadial(
                                      ToString(indata_.free_boundary_method),
                                      "' not implemented yet");
         }  // indata_.free_boundary_method
-      }    // lfreeb
+      }  // lfreeb
 
       // setup MHD model
       m_[thread_id] = std::make_unique<IdealMhdModel>(
@@ -1097,9 +1096,8 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
   absl::StatusOr<bool> reached_checkpoint = m_[thread_id]->update(
       *decomposed_x_[thread_id], *physical_x_[thread_id],
       *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
-      last_preconditioner_update_, last_full_update_nestor_,
-      fc_, iter1_, iter2_, checkpoint,
-      iterations_before_checkpointing);
+      last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
+      iter2_, checkpoint, iterations_before_checkpointing);
   if (!reached_checkpoint.ok()) {
     return reached_checkpoint;
   }
@@ -1241,8 +1239,8 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
           }
         }
       }  // n
-    }    // m
-  }      // jF
+    }  // m
+  }  // jF
 
   // also evolve satellite radial locations: nsMinF1, nsMaxF1-1 in case
   // inside, outside threads exist
@@ -1434,7 +1432,7 @@ void Vmec::InterpolateToNextMultigridStep(
         }
       }
     }  // n
-  }    // m
+  }  // m
 
   // ------------------------
   // radial interpolation from old, coarse state vector to new, finer state
@@ -1567,9 +1565,9 @@ void Vmec::InterpolateToNextMultigridStep(
             }
           }
         }  // n
-      }    // m
-    }      // jNew
-  }        // thread_id
+      }  // m
+    }  // jNew
+  }  // thread_id
 
   // ------------------------
   // Zero M=1 modes at origin
@@ -1602,7 +1600,7 @@ void Vmec::InterpolateToNextMultigridStep(
         }
       }
     }  // n
-  }    // m
+  }  // m
 }  // InterpolateToNextMultigridStep
 
 }  // namespace vmecpp
