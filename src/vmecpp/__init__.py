@@ -19,6 +19,12 @@ import pydantic
 
 from vmecpp import _util
 from vmecpp.cpp import _vmecpp  # bindings to the C++ core
+from vmecpp.free_boundary import (
+    MagneticConfiguration,
+    MagneticFieldResponseTable,
+    MakegridParameters,
+    compute_magnetic_field_response_table,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1143,7 +1149,7 @@ class VmecOutput(pydantic.BaseModel):
 
 def run(
     input: VmecInput,
-    magnetic_field: _vmecpp.MagneticFieldResponseTable | None = None,
+    magnetic_field: MagneticFieldResponseTable | None = None,
     *,
     max_threads: int | None = None,
     verbose: bool = True,
@@ -1328,10 +1334,14 @@ def _pad_and_transpose(
 
 __all__ = [
     "JxBOut",
+    "MagneticConfiguration",
+    "MagneticFieldResponseTable",
+    "MakegridParameters",
     "Mercier",
     "Threed1Volumetrics",
     "VmecInput",
     "VmecOutput",
     "VmecWOut",
+    "compute_magnetic_field_response_table",
     "run",
 ]
