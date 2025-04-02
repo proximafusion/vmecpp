@@ -67,4 +67,4 @@ jobs:
         run: python -m pytest tests/
       - name: Test docstring examples
         # All except for __main__.py because this crashes doctest.
-        run: python -m doctest $(ls src/vmecpp/*.py | grep -v '/__main__.py$')
+        run: python -m doctest $(git ls-files src/ | grep '\.py$' | grep -v '/__main__.py$')
