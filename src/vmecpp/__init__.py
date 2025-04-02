@@ -30,6 +30,9 @@ SerializableSparseCoefficientArray = typing.Annotated[
     pydantic.BeforeValidator(_util.sparse_to_dense_coefficients_implicit),
 ]
 
+MgridModeType = typing.Literal["R", "S", "", "\x00"]
+"""[Scaled, Raw, Unset] Fortran VMEC may populate mgrid_mode with a null terminator."""
+
 
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
 # In the future VmecINDATAPyWrapper and the C++ VmecINDATA will merge into one type,
@@ -369,6 +372,12 @@ class VmecInput(pydantic.BaseModel):
         output_path.write_text(json_serialized)
 
 
+# Fixed dimension of the profile inputs (i.e. pressure, iota, current)
+_PRESET_DIM = 21
+# Fixed dimension of the auxiliary profile quantities (i.e. am_aux_f)
+_NDF_MAX_DIM = 101
+
+
 # NOTE: in the future we want to change the C++ WOutFileContents layout so that it
 # matches the classic Fortran one, so most of the compatibility layer here could
 # disappear.
@@ -383,29 +392,21 @@ class VmecWOut(pydantic.BaseModel):
 
     _MISSING_FORTRAN_VARIABLES: typing.ClassVar[list[str]] = [
         "input_extension",
-        "nextcur",
-        "extcur",
-        "mgrid_mode",
-        "am",
-        "ac",
-        "ai",
-        "am_aux_s",
-        "am_aux_f",
-        "ai_aux_s",
-        "ai_aux_f",
-        "ac_aux_s",
-        "ac_aux_f",
         "itfsq",
         "lrecon__logical__",
         "lrfp__logical__",
         "lmove_axis__logical__",
         "mnyq",
         "nnyq",
-        "bdotb",
         "fsqt",
         "wdot",
         "currumnc",
         "currvmnc",
+        "curlabel",
+        "potvac",
+        "nobser",
+        "nobd",
+        "nbsets",
     ]
     """The complete list of variables that can be found in Fortran VMEC wout files but
     not in wout files produced by VMEC++."""
@@ -447,6 +448,7 @@ class VmecWOut(pydantic.BaseModel):
     jcuru: npyd.NDArray[npyd.Shape["* dim1"], float]
     jcurv: npyd.NDArray[npyd.Shape["* dim1"], float]
     jdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
     bdotgradv: npyd.NDArray[npyd.Shape["* dim1"], float]
     DMerc: npyd.NDArray[npyd.Shape["* dim1"], float]
     equif: npyd.NDArray[npyd.Shape["* dim1"], float]
@@ -476,8 +478,26 @@ class VmecWOut(pydantic.BaseModel):
     pcurr_type: str
     pmass_type: str
     piota_type: str
+    am: npyd.NDArray[npyd.Shape[str(_PRESET_DIM)], float]
+    ac: npyd.NDArray[npyd.Shape[str(_PRESET_DIM)], float]
+    ai: npyd.NDArray[npyd.Shape[str(_PRESET_DIM)], float]
+    am_aux_s: npyd.NDArray[npyd.Shape[str(_NDF_MAX_DIM)], float]
+    am_aux_f: npyd.NDArray[npyd.Shape[str(_NDF_MAX_DIM)], float]
+    ac_aux_s: npyd.NDArray[npyd.Shape[str(_NDF_MAX_DIM)], float]
+    ac_aux_f: npyd.NDArray[npyd.Shape[str(_NDF_MAX_DIM)], float]
+    ai_aux_s: npyd.NDArray[npyd.Shape[str(_NDF_MAX_DIM)], float]
+    ai_aux_f: npyd.NDArray[npyd.Shape[str(_NDF_MAX_DIM)], float]
     gamma: float
     mgrid_file: str
+    nextcur: int
+    extcur: npyd.NDArray[npyd.Shape["* extcur_len"], float] | float
+    """Coil currents in A.
+
+    for free-boundary runs, `extcur` has shape `(nextcur,)`
+    for fixed-boundary it is a scalar float `extcur=nan`
+    """
+
+    mgrid_mode: MgridModeType
 
     # In the C++ WOutFileContents this is called iota_half.
     iotas: npyd.NDArray[npyd.Shape["*"], float]
@@ -594,6 +614,7 @@ class VmecWOut(pydantic.BaseModel):
                 "mnmax",
                 "mnmax_nyq",
                 "signgs",
+                "nextcur",
             ]:
                 fnc.createVariable(varname, np.int32)
                 fnc[varname][:] = getattr(self, varname)
@@ -637,6 +658,12 @@ class VmecWOut(pydantic.BaseModel):
             fnc.createDimension("radius", self.ns)
             fnc.createDimension("n_tor", self.ntor + 1)  # Fortran quirk
             fnc.createDimension("mn_mode_nyq", self.mnmax_nyq)
+            fnc.createDimension("preset", _PRESET_DIM)
+            fnc.createDimension("ndfmax", _NDF_MAX_DIM)
+            # dimension of extcur and curlabel is not written in fixed-boundary wout
+            if self.lfreeb:
+                assert self.nextcur > 0
+                fnc.createDimension("ext_current", self.nextcur)
 
             # radial profiles
             for varname in [
@@ -660,6 +687,7 @@ class VmecWOut(pydantic.BaseModel):
                 "phips",
                 "over_r",
                 "jdotb",
+                "bdotb",
                 "bdotgradv",
                 "DMerc",
                 "DShear",
@@ -670,6 +698,23 @@ class VmecWOut(pydantic.BaseModel):
             ]:
                 fnc.createVariable(varname, np.float64, ("radius",))
                 fnc[varname][:] = getattr(self, varname)[:]
+
+            for varname in ["am", "ai", "ac"]:
+                fnc.createVariable(varname, np.float64, ("preset",))
+                unpadded_array = getattr(self, varname)[:]
+                fnc[varname][: len(unpadded_array)] = unpadded_array
+                for aux_suffix in ["_aux_f", "_aux_s"]:
+                    auxname = varname + aux_suffix
+                    fnc.createVariable(auxname, np.float64, ("ndfmax",))
+                    # am_aux_f in C++ return a length 1 array with default values in
+                    # NonEmptyVectorOr, but Fortran VMEC uses a fixed ndfmax=1001 elements.
+                    # Repeat the default value as needed.
+                    unpadded_array = getattr(self, auxname)[:]
+                    fnc[auxname][:] = np.pad(
+                        unpadded_array,
+                        (0, _NDF_MAX_DIM - len(unpadded_array)),
+                        mode="wrap",
+                    )
 
             for varname in ["raxis_cc", "zaxis_cs"]:
                 fnc.createVariable(varname, np.float64, ("n_tor",))
@@ -703,6 +748,17 @@ class VmecWOut(pydantic.BaseModel):
             fnc.createVariable("lmns_full", np.float64, ("radius", "mn_mode"))
             fnc["lmns_full"][:] = self.lmns_full.T[:]
 
+            if self.nextcur == 0:
+                # extcur is a scalar in fixed-boundary runs
+                assert isinstance(self.extcur, float)
+                assert self.extcur == netCDF4.default_fillvals["f8"]
+                fnc.createVariable("extcur", np.float64)
+            else:
+                # extcur is the array of coil currents in free-boundary runs
+                assert len(self.extcur) == self.nextcur
+                fnc.createVariable("extcur", np.float64, ("ext_current",))
+            fnc["extcur"][:] = self.extcur
+
             # version_ is required to make COBRAVMEC work correctly:
             # it changes its behavior depending on the VMEC version (>6 or not)
             fnc.createVariable("version_", np.float64)
@@ -711,11 +767,11 @@ class VmecWOut(pydantic.BaseModel):
             # strings
             # maximum length of the string, copied from wout_cma.nc
             max_string_length = 20
-            fnc.createDimension("profile_strings_max_len", max_string_length)
-            for varname in ["pcurr_type", "pmass_type", "piota_type"]:
-                string_variable = fnc.createVariable(
-                    varname, "S1", ("profile_strings_max_len",)
-                )
+
+            def create_string_variable(
+                varname: str, max_string_length: int, dimension_name: str
+            ) -> netCDF4.Variable:
+                string_variable = fnc.createVariable(varname, "S1", (dimension_name,))
 
                 # Put the string in the format netCDF3 requires. Don't know what to say.
                 value = getattr(self, varname)
@@ -724,26 +780,27 @@ class VmecWOut(pydantic.BaseModel):
                 )
                 padded_value_as_netcdf3_compatible_chararray = netCDF4.stringtochar(
                     padded_value_as_array
-                )  # pyright: ignore
-
+                )
                 string_variable[:] = padded_value_as_netcdf3_compatible_chararray
+                return string_variable
+
+            fnc.createDimension("profile_strings_max_len", max_string_length)
+            for varname in ["pcurr_type", "pmass_type", "piota_type"]:
+                create_string_variable(
+                    varname, max_string_length, "profile_strings_max_len"
+                )
 
             # now mgrid_file
-            varname = "mgrid_file"
             max_string_length = 200  # value copied from wout_cma.nc
             fnc.createDimension("mgrid_file_max_string_length", max_string_length)
-            string_variable = fnc.createVariable(
-                varname, "S1", ("mgrid_file_max_string_length",)
+            create_string_variable(
+                "mgrid_file", max_string_length, "mgrid_file_max_string_length"
             )
-            value = getattr(self, varname)
-            padded_value_as_array = np.array(
-                value.encode(encoding="ascii").ljust(max_string_length)
-            )
-            padded_value_as_netcdf3_compatible_chararray = netCDF4.stringtochar(
-                padded_value_as_array
-            )  # pyright: ignore
 
-            string_variable[:] = padded_value_as_netcdf3_compatible_chararray
+            # and a single character for mgrid_mode
+            max_string_length = 1  # value copied from wout_cma.nc
+            fnc.createDimension("mgrid_mode_length", max_string_length)
+            create_string_variable("mgrid_mode", max_string_length, "mgrid_mode_length")
 
     @staticmethod
     def _from_cpp_wout(cpp_wout: _vmecpp.VmecppWOut) -> VmecWOut:
@@ -784,6 +841,7 @@ class VmecWOut(pydantic.BaseModel):
         attrs["jcuru"] = cpp_wout.jcuru
         attrs["jcurv"] = cpp_wout.jcurv
         attrs["jdotb"] = cpp_wout.jdotb
+        attrs["bdotb"] = cpp_wout.bdotb
         attrs["bdotgradv"] = cpp_wout.bdotgradv
         attrs["DMerc"] = cpp_wout.DMerc
         attrs["equif"] = cpp_wout.equif
@@ -797,6 +855,15 @@ class VmecWOut(pydantic.BaseModel):
         attrs["piota_type"] = cpp_wout.piota_type
         attrs["gamma"] = cpp_wout.gamma
         attrs["mgrid_file"] = cpp_wout.mgrid_file
+        attrs["mgrid_mode"] = cpp_wout.mgrid_mode
+        attrs["nextcur"] = cpp_wout.nextcur
+        # extcur needs special treatment for fixed-boundary cases:
+        # in VMEC++ it will be an empty array, but Fortran VMEC uses
+        # a default fill value (masked out in the netcdf file)
+        if cpp_wout.nextcur > 0:
+            attrs["extcur"] = cpp_wout.extcur
+        else:
+            attrs["extcur"] = netCDF4.default_fillvals["f8"]
 
         # These attributes are called differently
         attrs["niter"] = cpp_wout.maximum_iterations
@@ -850,6 +917,29 @@ class VmecWOut(pydantic.BaseModel):
         attrs["bsupvmnc"] = _pad_and_transpose(cpp_wout.bsupvmnc, attrs["mnmax_nyq"])
         attrs["gmnc"] = _pad_and_transpose(cpp_wout.gmnc, attrs["mnmax_nyq"])
 
+        # These attributes have zero-padding at the end up to a fixed length
+        attrs["am"] = np.pad(cpp_wout.am, (0, _PRESET_DIM - len(cpp_wout.am)))
+        attrs["ac"] = np.pad(cpp_wout.ac, (0, _PRESET_DIM - len(cpp_wout.ac)))
+        attrs["ai"] = np.pad(cpp_wout.ai, (0, _PRESET_DIM - len(cpp_wout.ai)))
+        attrs["am_aux_s"] = np.pad(
+            cpp_wout.am_aux_s, (0, _NDF_MAX_DIM - len(cpp_wout.am_aux_s)), "wrap"
+        )
+        attrs["am_aux_f"] = np.pad(
+            cpp_wout.am_aux_f, (0, _NDF_MAX_DIM - len(cpp_wout.am_aux_f)), "wrap"
+        )
+        attrs["ac_aux_s"] = np.pad(
+            cpp_wout.ac_aux_s, (0, _NDF_MAX_DIM - len(cpp_wout.ac_aux_s)), "wrap"
+        )
+        attrs["ac_aux_f"] = np.pad(
+            cpp_wout.ac_aux_f, (0, _NDF_MAX_DIM - len(cpp_wout.ac_aux_f)), "wrap"
+        )
+        attrs["ai_aux_s"] = np.pad(
+            cpp_wout.ai_aux_s, (0, _NDF_MAX_DIM - len(cpp_wout.ai_aux_s)), "wrap"
+        )
+        attrs["ai_aux_f"] = np.pad(
+            cpp_wout.ai_aux_f, (0, _NDF_MAX_DIM - len(cpp_wout.ai_aux_f)), "wrap"
+        )
+
         attrs["version_"] = float(cpp_wout.version)
 
         # The Pydantic model raises an error if there are missing keys,
@@ -894,6 +984,7 @@ class VmecWOut(pydantic.BaseModel):
         cpp_wout.jcuru = self.jcuru
         cpp_wout.jcurv = self.jcurv
         cpp_wout.jdotb = self.jdotb
+        cpp_wout.bdotb = self.bdotb
         cpp_wout.bdotgradv = self.bdotgradv
         cpp_wout.DMerc = self.DMerc
         cpp_wout.equif = self.equif
@@ -907,6 +998,12 @@ class VmecWOut(pydantic.BaseModel):
         cpp_wout.piota_type = self.piota_type
         cpp_wout.gamma = self.gamma
         cpp_wout.mgrid_file = self.mgrid_file
+        cpp_wout.nextcur = self.nextcur
+        if self.nextcur > 0:
+            cpp_wout.extcur = self.extcur
+        else:
+            cpp_wout.extcur = np.array([])
+        cpp_wout.mgrid_mode = self.mgrid_mode
 
         # These attributes are called differently
         cpp_wout.maximum_iterations = self.niter
@@ -989,6 +1086,7 @@ class VmecWOut(pydantic.BaseModel):
                     "piota_type",
                     "pcurr_type",
                     "mgrid_file",
+                    "mgrid_mode",
                 ]:
                     attrs[var_name] = (
                         fnc[var_name][()].tobytes().decode("ascii").strip()
@@ -1016,6 +1114,13 @@ class VmecWOut(pydantic.BaseModel):
             mnmax = attrs["mnmax"]
             ns = attrs["ns"]
             attrs["lmns_full"] = np.zeros([mnmax, ns])
+
+        # Handle missing extcur - required for backwards compatibility with wout files produced before v0.3.3
+        if "extcur" not in attrs:
+            assert (
+                attrs["nextcur"] == 0
+            ), "extcur must be present for free-boundary wout files"
+            attrs["extcur"] = netCDF4.default_fillvals["f8"]
 
         return VmecWOut(**attrs)
 
