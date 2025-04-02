@@ -224,7 +224,7 @@ def vmecpp_json_to_indata(vmecpp_json: dict[str, Any]) -> str:
     indata += _fourier_coefficients_to_namelist("rbs", vmecpp_json)
     indata += _fourier_coefficients_to_namelist("zbc", vmecpp_json)
 
-    indata += "\n/\n&END\n"
+    indata += "\n/\n"
 
     return indata
 
