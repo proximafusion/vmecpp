@@ -58,6 +58,7 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(phipF);
   WRITEMEMBER(chipF);
   WRITEMEMBER(phipH);
+  WRITEMEMBER(chipH);
   WRITEMEMBER(currH);
   WRITEMEMBER(phiF);
   WRITEMEMBER(iotaF);
@@ -126,6 +127,9 @@ absl::Status vmecpp::VmecInternalResults::LoadInto(
   READMEMBER(phipF);
   READMEMBER(chipF);
   READMEMBER(phipH);
+  if (from_file.exists("chipH")) {
+    READMEMBER(chipH);
+  }
   if (from_file.exists("currH")) {
     READMEMBER(currH);
   } else {
@@ -1556,6 +1560,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
         results.sp[jH] = p.sp[jH - nsMinH];
 
         results.phipH[jH] = p.phipH[jH - nsMinH];
+        results.chipH[jH] = p.chipH[jH - nsMinH];
         results.bvcoH[jH] = p.bvcoH[jH - nsMinH];
         results.dVdsH[jH] = p.dVdsH[jH - nsMinH];
         results.massH[jH] = p.massH[jH - nsMinH];
