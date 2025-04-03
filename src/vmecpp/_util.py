@@ -300,12 +300,13 @@ def _fourier_coefficients_to_namelist(varname: str, vmecpp_json: dict[str, Any])
 
 
 def dense_to_sparse_coefficients(
-    arr: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float],
+    coefficients: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float],
 ) -> list[dict[str, float | int]]:
     """
+    Convert a dense 2D array of Fourier coefficients to its sparse representation for storage.
     Convert a dense 2D array of Fourier coefficients to it's spare representation for storage.
     Args:
-        arr: The dense 2D array (mpol, 2*ntor+1) of Fourier coefficients.
+        coefficients: The dense 2D array (mpol, 2*ntor+1) of Fourier coefficients.
     Returns:
         A list of non-zero coefficients with keys 'm', 'n', and 'value'.
 
@@ -319,21 +320,21 @@ def dense_to_sparse_coefficients(
         >>> dense_to_sparse_coefficients(np.zeros((0,0)))
         []
     """
-    shape = np.shape(arr)
+    shape = np.shape(coefficients)
     if shape == (0, 0):
         return []
 
     assert len(shape) == 2
     two_ntor_plus_one = shape[1]
-    # ntor*2+1 must be uneven
+    # ntor*2+1 must be odd
     assert (two_ntor_plus_one - 1) % 2 == 0
     ntor = (two_ntor_plus_one - 1) // 2
 
     sparse_list = []
-    m_indices, col_indices = np.nonzero(arr)
+    m_indices, col_indices = np.nonzero(coefficients)
     for m, col in zip(m_indices, col_indices, strict=True):
         n = col - ntor
-        value = arr[m][col]
+        value = coefficients[m][col]
         # Convert numpy types like np.int64 to Python native for serialization
         sparse_list.append({"m": int(m), "n": int(n), "value": float(value)})
     return sparse_list
@@ -389,7 +390,7 @@ def sparse_to_dense_coefficients_implicit(
 ) -> npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float]:
     """Convert a list of sparse array coefficients to a dense array, inferring the
     (mpol, 2*ntor+1) shape from the maximum mode numbers OR return the original array if
-    the input represenation is already dense."""
+    the input representation is already dense."""
     if isinstance(maybe_sparse_list, np.ndarray):
         return maybe_sparse_list
 
