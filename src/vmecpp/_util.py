@@ -1,6 +1,7 @@
 """The usual hodgepodge of helper utilities without a better home."""
 
 import contextlib
+import importlib.metadata
 import logging
 import os
 import shutil
@@ -20,6 +21,7 @@ def package_root() -> Path:
     Useful e.g. to point tests to test files using paths relative to the repo root
     rather than paths relative to the test module.
     """
+
     return Path(__file__).parent
 
 
@@ -86,9 +88,16 @@ def indata_to_json(
         msg = f"{filename} does not exist."
         raise FileNotFoundError(msg)
 
-    indata_to_json_exe = Path(
-        package_root(), "cpp", "third_party", "indata2json", "indata2json"
+    # Get the path to the packaged indata2json executable.
+    # For virtual environments, package_root() points to the source files,
+    # but this method will return the correct install location e.g. in your virtual environment.
+    indata_package_path = next(
+        filter(
+            lambda path: path.stem == "indata2json", importlib.metadata.files("vmecpp")
+        )
     )
+    indata_to_json_exe = indata_package_path.locate()
+
     if not indata_to_json_exe.is_file():
         msg = f"{indata_to_json_exe} is not a file."
         raise FileNotFoundError(msg)
