@@ -55,7 +55,7 @@ class VmecInput(pydantic.BaseModel):
     lasym: bool
     """Flag to indicate non-stellarator-symmetry.
 
-    (stellarator symmetric=False, asymmetric=True)
+    Note: this flag is False if stellarator symmetry is present, True if not.
     """
 
     nfp: int
@@ -187,20 +187,20 @@ class VmecInput(pydantic.BaseModel):
     zaxis_c: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
     """Magnetic axis coefficients for Z ~ cos(n*v); non-stellarator-symmetric."""
 
-    rbc: SerializableSparseCoefficientArray
+    rbc: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
     """Boundary coefficients for R ~ cos(m*u - n*v); stellarator-symmetric"""
 
-    zbs: SerializableSparseCoefficientArray
+    zbs: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
     """Boundary coefficients for Z ~ sin(m*u - n*v); stellarator-symmetric"""
 
-    rbs: SerializableSparseCoefficientArray
+    rbs: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
     """Boundary coefficients for R ~ sin(m*u - n*v); non-stellarator-symmetric"""
 
-    zbc: SerializableSparseCoefficientArray
+    zbc: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
     """Boundary coefficients for Z ~ cos(m*u - n*v); non-stellarator-symmetric"""
 
     @pydantic.model_validator(mode="after")
-    def correct_geometry_shape(self) -> typing.Self:
+    def _validate_fourier_coefficients_shapes(self) -> typing.Self:
         """All geometry coefficients need to have the shape (mpol, 2*ntor+1), wit 'rbs',
         'zbc' only populated for non-stellarator symmetric configurations."""
         mpol_two_ntor_plus_one_fields = ["rbc", "zbs"]
@@ -230,18 +230,22 @@ class VmecInput(pydantic.BaseModel):
             _util.change_working_directory_to(Path(tmpdir)),
         ):
             with ensure_vmecpp_input(absolute_input_path) as vmecpp_input_file:
-                # _vmecpp.VmecINDATAPyWrapper.from_file also handles default values for empty fields.
-                # The VmecInput.model_validate() is more strict in its data model, all fields need to be present and valid.
+                # `VmecINDATAPyWrapper` populates missing fields with default values, while `VmecInput` doesn't.
+                # Therefore we use `VmecINDATAPyWrapper` here to read the user input, before validating the model
                 vmecpp_indata_pywrapper = _vmecpp.VmecINDATAPyWrapper.from_file(
                     vmecpp_input_file
                 )
-
+        # At this point all required fields are populated with user defined or default values.
+        # Passing missing or extra fields to `VmecInput.model_validate` will otherwise raise an error.
         return VmecInput._from_cpp_vmecindatapywrapper(vmecpp_indata_pywrapper)
 
     @staticmethod
     def _from_cpp_vmecindatapywrapper(
         vmecindatapywrapper: _vmecpp.VmecINDATAPyWrapper,
     ) -> VmecInput:
+        # The VmecInput.model_validate() is strict in its data model, all fields need to be present and valid.
+        # VmecInput does _not_ have any default values.
+
         return VmecInput.model_validate(
             {
                 attr_name: getattr(vmecindatapywrapper, attr_name)
