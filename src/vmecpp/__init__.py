@@ -398,6 +398,9 @@ class VmecWOut(pydantic.BaseModel):
         "itfsq",
         "lrecon__logical__",
         "lrfp__logical__",
+        "lmove_axis__logical__",
+        "mnyq",
+        "nnyq",
         "bdotb",
         "fsqt",
         "wdot",
@@ -849,6 +852,8 @@ class VmecWOut(pydantic.BaseModel):
 
         attrs["version_"] = float(cpp_wout.version)
 
+        # The Pydantic model raises an error if there are missing keys,
+        # or extra keys that weren't included in MISSING_FORTRAN_VARIABLES
         return VmecWOut(**attrs)
 
     def _to_cpp_wout(self) -> _vmecpp.WOutFileContents:
@@ -968,16 +973,27 @@ class VmecWOut(pydantic.BaseModel):
         with netCDF4.Dataset(wout_filename, "r") as fnc:
             fnc.set_auto_mask(False)
             attrs = {}
-            for key in VmecWOut.model_fields:
-                if key in ["lasym", "lfreeb"]:
-                    attrs[key] = fnc[key + "__logical__"][()] != 0
-                elif key == "volume":
-                    attrs[key] = fnc[key + "_p"][()]
-                elif key in ["xm", "xn", "xm_nyq", "xn_nyq"]:
-                    attrs[key] = np.array(fnc[key][()], dtype=int)
-                elif key in ["pmass_type", "piota_type", "pcurr_type", "mgrid_file"]:
-                    attrs[key] = fnc[key][()].tobytes().decode("ascii").strip()
-                elif key in [
+            for var_name in fnc.variables:
+                if var_name in VmecWOut._MISSING_FORTRAN_VARIABLES:
+                    continue
+                if var_name in ["lasym__logical__", "lfreeb__logical__"]:
+                    key = var_name.removesuffix("__logical__")
+                    attrs[key] = fnc[var_name][()] != 0
+                elif var_name == "volume_p":
+                    key = var_name.removesuffix("_p")
+                    attrs[key] = fnc[var_name][()]
+                elif var_name in ["xm", "xn", "xm_nyq", "xn_nyq"]:
+                    attrs[var_name] = np.array(fnc[var_name][()], dtype=int)
+                elif var_name in [
+                    "pmass_type",
+                    "piota_type",
+                    "pcurr_type",
+                    "mgrid_file",
+                ]:
+                    attrs[var_name] = (
+                        fnc[var_name][()].tobytes().decode("ascii").strip()
+                    )
+                elif var_name in [
                     "bmnc",
                     "gmnc",
                     "bsubumnc",
@@ -988,21 +1004,20 @@ class VmecWOut(pydantic.BaseModel):
                     "rmnc",
                     "zmns",
                     "lmns",
+                    "lmns_full",
                 ]:
-                    attrs[key] = np.transpose(fnc[key][()])
-                elif key == "lmns_full":
-                    # not present in classical wout files - specific to VMEC++
-                    if key in fnc.variables:
-                        attrs[key] = np.transpose(fnc[key][()])
-                    else:
-                        # special case for lambda coefficients for now:
-                        # lambda = 0 is a physically meaningful fall-back value
-                        mnmax = fnc["mnmax"][()]
-                        ns = fnc["ns"][()]
-                        attrs[key] = np.zeros([mnmax, ns])
+                    attrs[var_name] = np.transpose(fnc[var_name][()])
                 else:
-                    attrs[key] = fnc[key][()]
-            return VmecWOut(**attrs)
+                    attrs[var_name] = fnc[var_name][()]
+
+        # Special handling for variables only present in VMEC++
+        # For now, only special case for lambda coefficients: lambda = 0 is a physically meaningful fall-back value
+        if "lmns_full" not in attrs:
+            mnmax = attrs["mnmax"]
+            ns = attrs["ns"]
+            attrs["lmns_full"] = np.zeros([mnmax, ns])
+
+        return VmecWOut(**attrs)
 
 
 class Threed1Volumetrics(pydantic.BaseModel):
