@@ -53,3 +53,14 @@ def test_indata_to_json_not_found_file():
 def test_package_root():
     # check we can find a file that should be there from the repo root
     assert Path(_util.package_root(), "_util.py").is_file()
+
+
+def test_distributino_root():
+    assert _util.distribution_root().is_dir()
+    assert (
+        _util.distribution_root()
+        / "cpp"
+        / "third_party"
+        / "indata2json"
+        / "indata2json"
+    ).is_file()

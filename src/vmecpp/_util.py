@@ -21,8 +21,19 @@ def package_root() -> Path:
     Useful e.g. to point tests to test files using paths relative to the repo root
     rather than paths relative to the test module.
     """
-
     return Path(__file__).parent
+
+
+def distribution_root() -> Path:
+    """The path to the install location of this package. This may be the same as
+    package_root, but doesn't have to be.
+
+    The two differ in editable installations, where package_root() will point to the
+    source files, and distribution will point the /site-packages/vmecpp folder of your
+    python environment. It is the correct path to use for accessing shared libraries and
+    executables that come with vmecpp.
+    """
+    return importlib.metadata.distribution("vmecpp").locate_file("vmecpp")
 
 
 @contextlib.contextmanager
@@ -88,16 +99,9 @@ def indata_to_json(
         msg = f"{filename} does not exist."
         raise FileNotFoundError(msg)
 
-    # Get the path to the packaged indata2json executable.
-    # For virtual environments, package_root() points to the source files,
-    # but this method will return the correct install location e.g. in your virtual environment.
-    indata_package_path = next(
-        filter(
-            lambda path: path.stem == "indata2json", importlib.metadata.files("vmecpp")
-        )
+    indata_to_json_exe = (
+        distribution_root() / "cpp" / "third_party" / "indata2json" / "indata2json"
     )
-    indata_to_json_exe = indata_package_path.locate()
-
     if not indata_to_json_exe.is_file():
         msg = f"{indata_to_json_exe} is not a file."
         raise FileNotFoundError(msg)
