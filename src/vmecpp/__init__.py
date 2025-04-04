@@ -30,6 +30,14 @@ SerializableSparseCoefficientArray = typing.Annotated[
     pydantic.BeforeValidator(_util.sparse_to_dense_coefficients_implicit),
 ]
 
+# [Scaled, Raw, Unset] Fortran VMEC may populate mgrid_mode with a null terminator.
+MgridModeType = typing.Literal["R", "S", "", "\x00"]
+# Fixed dimension of the profile inputs (i.e. pressure, iota, current)
+PRESET_DIM = 21
+PresetType = npyd.NDArray[npyd.Shape[f"{PRESET_DIM}"], float]
+
+NDF_MAX_DIM = 1001
+
 
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
 # In the future VmecINDATAPyWrapper and the C++ VmecINDATA will merge into one type,
@@ -306,11 +314,11 @@ class _VmecppWOutLike(typing.Protocol):
     pcurr_type: str
     pmass_type: str
     piota_type: str
+    am: npyd.NDArray[npyd.Shape[f"{PRESET_DIM}"], float]
+    ac: npyd.NDArray[npyd.Shape[f"{PRESET_DIM}"], float]
+    ai: npyd.NDArray[npyd.Shape[f"{PRESET_DIM}"], float]
     # NOTE: the same dim1 does NOT indicate all these arrays have the same dimensions.
     # TODO(eguiraud): give different names to each separate size
-    am: npyd.NDArray[npyd.Shape["* dim1"], float]
-    ac: npyd.NDArray[npyd.Shape["* dim1"], float]
-    ai: npyd.NDArray[npyd.Shape["* dim1"], float]
     am_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
     am_aux_f: npyd.NDArray[npyd.Shape["* dim1"], float]
     ac_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
@@ -326,8 +334,10 @@ class _VmecppWOutLike(typing.Protocol):
     maximum_iterations: int
     lfreeb: bool
     mgrid_file: str
-    extcur: npyd.NDArray[npyd.Shape["* dim1"], float]
-    mgrid_mode: str
+    nextcur: int
+    extcur: npyd.NDArray[npyd.Shape["* extcur_len"], float] | float
+    mgrid_mode: MgridModeType
+
     wb: float
     wp: float
     rmax_surf: float
@@ -373,6 +383,7 @@ class _VmecppWOutLike(typing.Protocol):
     phips: npyd.NDArray[npyd.Shape["* dim1"], float]
     overr: npyd.NDArray[npyd.Shape["* dim1"], float]
     jdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
     bdotgradv: npyd.NDArray[npyd.Shape["* dim1"], float]
     DMerc: npyd.NDArray[npyd.Shape["* dim1"], float]
     Dshear: npyd.NDArray[npyd.Shape["* dim1"], float]
@@ -429,29 +440,18 @@ class VmecWOut(pydantic.BaseModel):
 
     _MISSING_FORTRAN_VARIABLES: typing.ClassVar[list[str]] = [
         "input_extension",
-        "nextcur",
-        "extcur",
-        "mgrid_mode",
-        "am",
-        "ac",
-        "ai",
-        "am_aux_s",
-        "am_aux_f",
-        "ai_aux_s",
-        "ai_aux_f",
-        "ac_aux_s",
-        "ac_aux_f",
         "itfsq",
         "lrecon__logical__",
         "lrfp__logical__",
         "lmove_axis__logical__",
         "mnyq",
         "nnyq",
-        "bdotb",
         "fsqt",
         "wdot",
         "currumnc",
         "currvmnc",
+        "curlabel",
+        "potvac",
     ]
     """The complete list of variables that can be found in Fortran VMEC wout files but
     not in wout files produced by VMEC++."""
@@ -493,6 +493,7 @@ class VmecWOut(pydantic.BaseModel):
     jcuru: npyd.NDArray[npyd.Shape["* dim1"], float]
     jcurv: npyd.NDArray[npyd.Shape["* dim1"], float]
     jdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
     bdotgradv: npyd.NDArray[npyd.Shape["* dim1"], float]
     DMerc: npyd.NDArray[npyd.Shape["* dim1"], float]
     equif: npyd.NDArray[npyd.Shape["* dim1"], float]
@@ -522,8 +523,20 @@ class VmecWOut(pydantic.BaseModel):
     pcurr_type: str
     pmass_type: str
     piota_type: str
+    am: npyd.NDArray[npyd.Shape[f"{PRESET_DIM}"], float]
+    ac: npyd.NDArray[npyd.Shape[f"{PRESET_DIM}"], float]
+    ai: npyd.NDArray[npyd.Shape[f"{PRESET_DIM}"], float]
+    am_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    am_aux_f: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ac_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ac_aux_f: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ai_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ai_aux_f: npyd.NDArray[npyd.Shape["* dim1"], float]
     gamma: float
     mgrid_file: str
+    nextcur: int
+    extcur: npyd.NDArray[npyd.Shape["* extcur_len"], float] | None = None
+    mgrid_mode: MgridModeType
 
     # In the C++ WOutFileContents this is called iota_half.
     iotas: npyd.NDArray[npyd.Shape["*"], float]
@@ -610,6 +623,25 @@ class VmecWOut(pydantic.BaseModel):
         """This is how the attribute is called in the Fortran wout file."""
         return self.lfreeb
 
+    @property
+    def lrecon__logical__(self) -> bool:
+        """This is a deprecated flag from times when equilibrium reconstruction was done
+        directly within VMEC.
+
+        We unconditionally set it to false.
+        """
+        return False
+
+    @property
+    def lrfp__logical__(self) -> bool:
+        """Lrfp enables the reversed-field pinch mode in VMEC by constraining the
+        poloidal flux profile instead of the toroidal flux profile.
+
+        N.B. This is currently not supported in VMEC++, so it will always be set to
+        False.
+        """
+        return False
+
     def save(self, out_path: str | Path) -> None:
         """Save contents in NetCDF3 format.
 
@@ -640,6 +672,7 @@ class VmecWOut(pydantic.BaseModel):
                 "mnmax",
                 "mnmax_nyq",
                 "signgs",
+                "nextcur",
             ]:
                 fnc.createVariable(varname, np.int32)
                 fnc[varname][:] = getattr(self, varname)
@@ -647,6 +680,10 @@ class VmecWOut(pydantic.BaseModel):
             fnc["lasym__logical__"][:] = self.lasym
             fnc.createVariable("lfreeb__logical__", np.int32)
             fnc["lfreeb__logical__"][:] = self.lfreeb
+            fnc.createVariable("lrecon__logical__", np.int32)
+            fnc["lrecon__logical__"][:] = self.lrecon__logical__
+            fnc.createVariable("lrfp__logical__", np.int32)
+            fnc["lrfp__logical__"][:] = self.lrfp__logical__
 
             # scalar floats
             for varname in [
@@ -683,6 +720,10 @@ class VmecWOut(pydantic.BaseModel):
             fnc.createDimension("radius", self.ns)
             fnc.createDimension("n_tor", self.ntor + 1)  # Fortran quirk
             fnc.createDimension("mn_mode_nyq", self.mnmax_nyq)
+            fnc.createDimension("preset", PRESET_DIM)
+            fnc.createDimension("ndfmax", NDF_MAX_DIM)
+            if self.nextcur > 0:
+                fnc.createDimension("ext_current", self.nextcur)
 
             # radial profiles
             for varname in [
@@ -706,6 +747,7 @@ class VmecWOut(pydantic.BaseModel):
                 "phips",
                 "over_r",
                 "jdotb",
+                "bdotb",
                 "bdotgradv",
                 "DMerc",
                 "DShear",
@@ -716,6 +758,22 @@ class VmecWOut(pydantic.BaseModel):
             ]:
                 fnc.createVariable(varname, np.float64, ("radius",))
                 fnc[varname][:] = getattr(self, varname)[:]
+
+            for varname in ["am", "ai", "ac"]:
+                fnc.createVariable(varname, np.float64, ("preset",))
+                fnc[varname][:] = getattr(self, varname)[:]
+                for aux_suffix in ["_aux_f", "_aux_s"]:
+                    auxname = varname + aux_suffix
+                    fnc.createVariable(auxname, np.float64, ("ndfmax",))
+                    # am_aux_f in C++ return a length 1 array with default values in
+                    # NonEmptyVectorOr, but Fortran VMEC uses a fixed ndfmax=1001 elements.
+                    # Repeat the default value as needed.
+                    unpadded_array = getattr(self, auxname)[:]
+                    fnc[auxname][:] = np.pad(
+                        unpadded_array,
+                        (0, NDF_MAX_DIM - len(unpadded_array)),
+                        mode="wrap",
+                    )
 
             for varname in ["raxis_cc", "zaxis_cs"]:
                 fnc.createVariable(varname, np.float64, ("n_tor",))
@@ -758,7 +816,7 @@ class VmecWOut(pydantic.BaseModel):
             # maximum length of the string, copied from wout_cma.nc
             max_string_length = 20
             fnc.createDimension("profile_strings_max_len", max_string_length)
-            for varname in ["pcurr_type", "pmass_type", "piota_type"]:
+            for varname in ["pcurr_type", "pmass_type", "piota_type", "mgrid_mode"]:
                 string_variable = fnc.createVariable(
                     varname, "S1", ("profile_strings_max_len",)
                 )
@@ -830,6 +888,7 @@ class VmecWOut(pydantic.BaseModel):
         attrs["jcuru"] = cpp_wout.jcuru
         attrs["jcurv"] = cpp_wout.jcurv
         attrs["jdotb"] = cpp_wout.jdotb
+        attrs["bdotb"] = cpp_wout.bdotb
         attrs["bdotgradv"] = cpp_wout.bdotgradv
         attrs["DMerc"] = cpp_wout.DMerc
         attrs["equif"] = cpp_wout.equif
@@ -843,6 +902,13 @@ class VmecWOut(pydantic.BaseModel):
         attrs["piota_type"] = cpp_wout.piota_type
         attrs["gamma"] = cpp_wout.gamma
         attrs["mgrid_file"] = cpp_wout.mgrid_file
+        attrs["mgrid_mode"] = cpp_wout.mgrid_mode
+        # extcur needs special treatment for fixed-boundary cases:
+        # in VMEC++ it will be an empty array, but Fortran VMEC uses
+        # a default fill value (masked out in the netcdf file)
+        attrs["nextcur"] = cpp_wout.nextcur
+        if cpp_wout.nextcur > 0:
+            attrs["extcur"] = cpp_wout.extcur
 
         # These attributes are called differently
         attrs["niter"] = cpp_wout.maximum_iterations
@@ -896,6 +962,17 @@ class VmecWOut(pydantic.BaseModel):
         attrs["bsupvmnc"] = _pad_and_transpose(cpp_wout.bsupvmnc, attrs["mnmax_nyq"])
         attrs["gmnc"] = _pad_and_transpose(cpp_wout.gmnc, attrs["mnmax_nyq"])
 
+        # These attributes have zero-padding at the end up to a fixed length
+        attrs["am"] = np.pad(cpp_wout.am, (0, PRESET_DIM - len(cpp_wout.am)))
+        attrs["ac"] = np.pad(cpp_wout.ac, (0, PRESET_DIM - len(cpp_wout.ac)))
+        attrs["ai"] = np.pad(cpp_wout.ai, (0, PRESET_DIM - len(cpp_wout.ai)))
+        attrs["am_aux_s"] = cpp_wout.am_aux_s
+        attrs["am_aux_f"] = cpp_wout.am_aux_f
+        attrs["ac_aux_s"] = cpp_wout.ac_aux_s
+        attrs["ac_aux_f"] = cpp_wout.ac_aux_f
+        attrs["ai_aux_s"] = cpp_wout.ai_aux_s
+        attrs["ai_aux_f"] = cpp_wout.ai_aux_f
+
         attrs["version_"] = float(cpp_wout.version)
 
         # The Pydantic model raises an error if there are missing keys,
@@ -940,6 +1017,7 @@ class VmecWOut(pydantic.BaseModel):
         cpp_wout.jcuru = self.jcuru
         cpp_wout.jcurv = self.jcurv
         cpp_wout.jdotb = self.jdotb
+        cpp_wout.bdotb = self.bdotb
         cpp_wout.bdotgradv = self.bdotgradv
         cpp_wout.DMerc = self.DMerc
         cpp_wout.equif = self.equif
@@ -953,6 +1031,9 @@ class VmecWOut(pydantic.BaseModel):
         cpp_wout.piota_type = self.piota_type
         cpp_wout.gamma = self.gamma
         cpp_wout.mgrid_file = self.mgrid_file
+        cpp_wout.nextcur = self.nextcur
+        cpp_wout.extcur = np.atleast_1d(self.extcur)
+        cpp_wout.mgrid_mode = self.mgrid_mode
 
         # These attributes are called differently
         cpp_wout.maximum_iterations = self.niter
@@ -1035,6 +1116,7 @@ class VmecWOut(pydantic.BaseModel):
                     "piota_type",
                     "pcurr_type",
                     "mgrid_file",
+                    "mgrid_mode",
                 ]:
                     attrs[var_name] = (
                         fnc[var_name][()].tobytes().decode("ascii").strip()

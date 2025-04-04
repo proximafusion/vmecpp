@@ -26,8 +26,20 @@ def path_type(request) -> str | Path:
     return request.param
 
 
-def test_save_to_netcdf(path_type):
-    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+@pytest.mark.parametrize(
+    ("indata_file", "reference_wout_file"),
+    [
+        ("cma.json", "wout_cma.nc"),
+        (
+            "cth_like_free_bdy.json",
+            "wout_cth_like_free_bdy.nc",
+        ),
+    ],
+)
+def test_save_to_netcdf(indata_file, reference_wout_file, path_type):
+    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / indata_file)
+    if indata.lfreeb:
+        indata.mgrid_file = REPO_ROOT / "src" / "vmecpp" / "cpp" / indata.mgrid_file
     fortran_wout = vmecpp.run(indata).wout
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -36,7 +48,7 @@ def test_save_to_netcdf(path_type):
 
         test_dataset = netCDF4.Dataset(out_path, "r")
 
-    expected_dataset = netCDF4.Dataset(TEST_DATA_DIR / "wout_cma.nc", "r")
+    expected_dataset = netCDF4.Dataset(TEST_DATA_DIR / reference_wout_file, "r")
 
     for varname, expected_value in expected_dataset.variables.items():
         if varname in vmecpp.VmecWOut._MISSING_FORTRAN_VARIABLES:
@@ -47,7 +59,15 @@ def test_save_to_netcdf(path_type):
 
         # string
         if expected_value.dtype == np.dtype("S1"):
-            np.testing.assert_equal(test_value[:], expected_value[:], err_msg=error_msg)
+            if varname == "mgrid_file":
+                # the `mgrid_file` entry in the reference wout file only contains the
+                # base name, while the one produced by VMEC++ contains a path relative
+                # to the root of the repo
+                assert test_value[:].tobytes().decode().strip() == indata.mgrid_file
+            else:
+                np.testing.assert_equal(
+                    test_value[:], expected_value[:], err_msg=error_msg
+                )
             continue
 
         expected_dims = expected_value.dimensions
@@ -55,9 +75,13 @@ def test_save_to_netcdf(path_type):
 
         # scalar
         if expected_dims == ():
-            assert math.isclose(
-                test_value[:], expected_value[:], abs_tol=1e-7
-            ), error_msg
+            if varname == "extcur":
+                # we expect the value to be masked
+                assert test_value.mask
+            else:
+                assert math.isclose(
+                    test_value[:], expected_value[:], abs_tol=1e-7
+                ), error_msg
             continue
 
         # array or tensor

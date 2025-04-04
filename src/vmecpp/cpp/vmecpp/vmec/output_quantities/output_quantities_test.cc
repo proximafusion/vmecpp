@@ -144,6 +144,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
                            NetcdfReadString(ncid, "mgrid_file")));
     std::vector<double> reference_extcur = NetcdfReadArray1D(ncid, "extcur");
     EXPECT_THAT(wout.extcur, ElementsAreArray(reference_extcur));
+    EXPECT_EQ(wout.nextcur, static_cast<int>(reference_extcur.size()));
   }
   EXPECT_EQ(wout.mgrid_mode, NetcdfReadString(ncid, "mgrid_mode"));
 
@@ -272,10 +273,12 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   }  // jH
 
   std::vector<double> reference_jdotb = NetcdfReadArray1D(ncid, "jdotb");
+  std::vector<double> reference_bdotb = NetcdfReadArray1D(ncid, "bdotb");
   std::vector<double> reference_bdotgradv =
       NetcdfReadArray1D(ncid, "bdotgradv");
   for (int jF = 0; jF < fc.ns; ++jF) {
     EXPECT_TRUE(IsCloseRelAbs(reference_jdotb[jF], wout.jdotb[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_bdotb[jF], wout.bdotb[jF], tolerance));
     EXPECT_TRUE(
         IsCloseRelAbs(reference_bdotgradv[jF], wout.bdotgradv[jF], tolerance));
   }  // jF

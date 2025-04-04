@@ -802,6 +802,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(maximum_iterations);
   WRITEMEMBER(lfreeb);
   WRITEMEMBER(mgrid_file);
+  WRITEMEMBER(nextcur);
   WRITEMEMBER(extcur);
   WRITEMEMBER(mgrid_mode);
   WRITEMEMBER(wb);
@@ -920,6 +921,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& obj,
   READMEMBER(maximum_iterations);
   READMEMBER(lfreeb);
   READMEMBER(mgrid_file);
+  READMEMBER(nextcur);
   READMEMBER(extcur);
   READMEMBER(mgrid_mode);
   READMEMBER(wb);
@@ -4215,6 +4217,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.lfreeb = indata.lfreeb;
   wout.mgrid_file = indata.mgrid_file;
   // copy STL vector into Eigen vector
+  wout.nextcur = static_cast<int>(indata.extcur.size());
   wout.extcur = ToEigenVector(indata.extcur);
   wout.mgrid_mode = mgrid_mode;
 
@@ -4308,6 +4311,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.overr = threed1_first_table_intermediate.overr;
 
   wout.jdotb = jxbout.jdotb;
+  wout.bdotb = jxbout.bdotb;
   wout.bdotgradv = jxbout.bdotgradv;
 
   wout.DMerc = mercier.DMerc;
@@ -4760,6 +4764,8 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
   for (int jF = 0; jF < ns; ++jF) {
     CHECK(
         IsCloseRelAbs(expected_wout.jdotb[jF], test_wout.jdotb[jF], tolerance));
+    CHECK(
+      IsCloseRelAbs(expected_wout.bdotb[jF], test_wout.bdotb[jF], tolerance));
     CHECK(IsCloseRelAbs(expected_wout.bdotgradv[jF], test_wout.bdotgradv[jF],
                         tolerance));
   }  // jF
