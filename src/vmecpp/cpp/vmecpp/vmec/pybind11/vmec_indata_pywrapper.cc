@@ -119,18 +119,25 @@ VmecINDATAPyWrapper::operator VmecINDATA() const {
   indata.return_outputs_even_if_not_converged = return_outputs_even_if_not_converged;
   indata.raxis_c.assign(raxis_c.begin(), raxis_c.end());
   indata.zaxis_s.assign(zaxis_s.begin(), zaxis_s.end());
-  indata.raxis_s.assign(raxis_s.begin(), raxis_s.end());
-  indata.zaxis_c.assign(zaxis_c.begin(), zaxis_c.end());
+  if(raxis_s.has_value()){
+    indata.raxis_s.assign(raxis_s.value().begin(), raxis_s.value().end());
+  }
+  if(zaxis_c.has_value()){
+    indata.zaxis_c.assign(zaxis_c.value().begin(), zaxis_c.value().end());
+  }
 
   const auto rbc_flat = rbc.reshaped<Eigen::RowMajor>();
   indata.rbc.assign(rbc_flat.begin(), rbc_flat.end());
   const auto zbs_flat = zbs.reshaped<Eigen::RowMajor>();
   indata.zbs.assign(zbs_flat.begin(), zbs_flat.end());
-  const auto rbs_flat = rbs.reshaped<Eigen::RowMajor>();
-  indata.rbs.assign(rbs_flat.begin(), rbs_flat.end());
-  const auto zbc_flat = zbc.reshaped<Eigen::RowMajor>();
-  indata.zbc.assign(zbc_flat.begin(), zbc_flat.end());
-
+  if(rbs.has_value()){
+    const auto rbs_flat = rbs.value().reshaped<Eigen::RowMajor>();
+    indata.rbs.assign(rbs_flat.begin(), rbs_flat.end());
+  }
+  if(zbc.has_value()){
+    const auto zbc_flat = zbc.value().reshaped<Eigen::RowMajor>();
+    indata.zbc.assign(zbc_flat.begin(), zbc_flat.end());
+  }
   return indata;
 }
 
@@ -154,13 +161,13 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
   zaxis_s(shortest_range) = old_axis_fc(shortest_range);
 
   if (lasym) {
-    old_axis_fc = raxis_s;
+    old_axis_fc = raxis_s.value();
     raxis_s = VectorXd::Zero(new_ntor + 1);
-    raxis_s(shortest_range) = old_axis_fc(shortest_range);
+    (*raxis_s)(shortest_range) = old_axis_fc(shortest_range);
 
-    old_axis_fc = zaxis_c;
+    old_axis_fc = zaxis_c.value();
     zaxis_c = VectorXd::Zero(new_ntor + 1);
-    zaxis_c(shortest_range) = old_axis_fc(shortest_range);
+    (*zaxis_c)(shortest_range) = old_axis_fc(shortest_range);
   }
 
   auto resized_2d_coeff = [this, new_mpol, new_ntor](const auto& coeff) {
@@ -182,8 +189,8 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
   rbc = resized_2d_coeff(rbc);
   zbs = resized_2d_coeff(zbs);
   if (lasym) {
-    rbs = resized_2d_coeff(rbs);
-    zbc = resized_2d_coeff(zbc);
+    rbs = resized_2d_coeff(rbs.value());
+    zbc = resized_2d_coeff(zbc.value());
   }
 
   mpol = new_mpol;

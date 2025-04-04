@@ -7,6 +7,7 @@
 #include <Eigen/Dense>
 #include <filesystem>
 #include <string>
+#include <optional>
 
 #include "vmecpp/common/util/util.h"  // RowMatrixXd, ToEigenVector, ToEigenMatrix
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
@@ -65,12 +66,12 @@ class VmecINDATAPyWrapper {
   bool return_outputs_even_if_not_converged;
   Eigen::VectorXd raxis_c;
   Eigen::VectorXd zaxis_s;
-  Eigen::VectorXd raxis_s;
-  Eigen::VectorXd zaxis_c;
+  std::optional<Eigen::VectorXd> raxis_s;
+  std::optional<Eigen::VectorXd> zaxis_c;
   RowMatrixXd rbc;
   RowMatrixXd zbs;
-  RowMatrixXd rbs;
-  RowMatrixXd zbc;
+  std::optional<RowMatrixXd> rbs;
+  std::optional<RowMatrixXd> zbc;
 
   VmecINDATAPyWrapper();
   explicit VmecINDATAPyWrapper(const VmecINDATA& indata);
