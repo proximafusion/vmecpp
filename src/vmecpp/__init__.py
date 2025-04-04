@@ -181,10 +181,10 @@ class VmecInput(pydantic.BaseModel):
     zaxis_s: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
     """Magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric."""
 
-    raxis_s: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
+    raxis_s: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float] | None = None
     """Magnetic axis coefficients for R ~ sin(n*v); non-stellarator-symmetric."""
 
-    zaxis_c: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
+    zaxis_c: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float] | None = None
     """Magnetic axis coefficients for Z ~ cos(n*v); non-stellarator-symmetric."""
 
     rbc: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
@@ -193,10 +193,10 @@ class VmecInput(pydantic.BaseModel):
     zbs: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
     """Boundary coefficients for Z ~ sin(m*u - n*v); stellarator-symmetric"""
 
-    rbs: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
+    rbs: SerializableSparseCoefficientArray | None = None  # [mpol, 2 * ntor + 1]
     """Boundary coefficients for R ~ sin(m*u - n*v); non-stellarator-symmetric"""
 
-    zbc: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
+    zbc: SerializableSparseCoefficientArray | None = None  # [mpol, 2 * ntor + 1]
     """Boundary coefficients for Z ~ cos(m*u - n*v); non-stellarator-symmetric"""
 
     @pydantic.model_validator(mode="after")
@@ -211,11 +211,26 @@ class VmecInput(pydantic.BaseModel):
         for field in mpol_two_ntor_plus_one_fields:
             shape = np.shape(getattr(self, field))
             if shape != expected_shape:
-                msg = (
-                    f"{field} has shape {shape} instead of the expected {expected_shape}. "
-                    f"Does your coefficient array exceed mpol={self.mpol} or ntor={self.ntor}?"
-                )
+                msg = f"{field} has shape {shape} instead of the expected {expected_shape}\n"
+                f"Does your coefficient array exceed mpol={self.mpol} or ntor={self.ntor}?"
                 raise ValueError(msg)
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def _validate_stellarator_stellarator_asymmetric_fields(self) -> typing.Self:
+        """Check if all fields that break stellarator symmetry match the lasym flag."""
+        ASYMMETRIC_FIELDS = ["rbs", "zbc", "zaxis_c", "raxis_s"]
+        # If stellarator-symmetric
+        if not self.lasym:
+            for key in ASYMMETRIC_FIELDS:
+                value = getattr(self, key)
+                # Then all asymmetric fields should be None
+                if value is not None:
+                    msg = (
+                        "The input is for a stellarator symmetric configuration (lasym=False), "
+                        f"but the symmetry breaking field '{key}' is populated with \n{value}"
+                    )
+                    raise ValueError(msg)
         return self
 
     @staticmethod
@@ -245,7 +260,6 @@ class VmecInput(pydantic.BaseModel):
     ) -> VmecInput:
         # The VmecInput.model_validate() is strict in its data model, all fields need to be present and valid.
         # VmecInput does _not_ have any default values.
-
         return VmecInput.model_validate(
             {
                 attr_name: getattr(vmecindatapywrapper, attr_name)
@@ -282,7 +296,12 @@ class VmecInput(pydantic.BaseModel):
         cpp_indata._set_mpol_ntor(self.mpol, self.ntor)
         for attr in readonly_attrs - {"mpol", "ntor"}:
             # now we can set the elements of the readonly_attrs
-            getattr(cpp_indata, attr)[:] = getattr(self, attr)
+            value = getattr(self, attr)
+
+            # Asymmetric fields are only populated when lasym==True
+            # so we need to skip them for itemwise assignment
+            if value is not None:
+                getattr(cpp_indata, attr)[:] = value
 
         return cpp_indata
 

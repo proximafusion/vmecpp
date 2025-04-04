@@ -220,10 +220,12 @@ class VmecINDATA {
 
   // [ntor+1] magnetic axis coefficients for R ~ sin(n*v);
   // non-stellarator-symmetric
+  // TODO(jurasic) make theses optional after the Eigen3 refactor
   std::vector<double> raxis_s;
 
   // [ntor+1] magnetic axis coefficients for Z ~ cos(n*v);
   // non-stellarator-symmetric
+  // TODO(jurasic) make theses optional after the Eigen3 refactor
   std::vector<double> zaxis_c;
 
   // ---------------------------------
@@ -239,10 +241,12 @@ class VmecINDATA {
 
   // [mpol*(2*ntor+1)] boundary coefficients for R ~ sin(m*u - n*v);
   // non-stellarator-symmetric
+  // TODO(jurasic) make theses optional after the Eigen3 refactor
   std::vector<double> rbs;
 
   // [mpol*(2*ntor+1)] boundary coefficients for Z ~ cos(m*u - n*v);
   // non-stellarator-symmetric
+  // TODO(jurasic) make theses optional after the Eigen3 refactor
   std::vector<double> zbc;
 
   // Construct a VmecINDATA instance with default values, except for profile
