@@ -292,6 +292,129 @@ class VmecInput(pydantic.BaseModel):
         output_path.write_text(json_serialized)
 
 
+class _VmecppWOutLike(typing.Protocol):
+    """A Python protocol describing a type that has the attributes of a VMEC++
+    WOutFileContents object.
+
+    There is a dapper type with same layout, and our FortranWOutAdapter below can only
+    operate on types with this layout.
+    """
+
+    version: str
+    sign_of_jacobian: int
+    gamma: float
+    pcurr_type: str
+    pmass_type: str
+    piota_type: str
+    # NOTE: the same dim1 does NOT indicate all these arrays have the same dimensions.
+    # TODO(eguiraud): give different names to each separate size
+    am: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ac: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ai: npyd.NDArray[npyd.Shape["* dim1"], float]
+    am_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    am_aux_f: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ac_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ac_aux_f: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ai_aux_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    ai_aux_f: npyd.NDArray[npyd.Shape["* dim1"], float]
+    nfp: int
+    mpol: int
+    ntor: int
+    lasym: bool
+    ns: int
+    ftolv: float
+    maximum_iterations: int
+    lfreeb: bool
+    mgrid_file: str
+    extcur: npyd.NDArray[npyd.Shape["* dim1"], float]
+    mgrid_mode: str
+    wb: float
+    wp: float
+    rmax_surf: float
+    rmin_surf: float
+    zmax_surf: float
+    mnmax: int
+    mnmax_nyq: int
+    ier_flag: int
+    aspect: float
+    betatot: float
+    betapol: float
+    betator: float
+    betaxis: float
+    b0: float
+    rbtor0: float
+    rbtor: float
+    IonLarmor: float
+    VolAvgB: float
+    ctor: float
+    Aminor_p: float
+    Rmajor_p: float
+    volume_p: float
+    fsqr: float
+    fsqz: float
+    fsql: float
+    iota_full: npyd.NDArray[npyd.Shape["* dim1"], float]
+    safety_factor: npyd.NDArray[npyd.Shape["* dim1"], float]
+    pressure_full: npyd.NDArray[npyd.Shape["* dim1"], float]
+    toroidal_flux: npyd.NDArray[npyd.Shape["* dim1"], float]
+    phipf: npyd.NDArray[npyd.Shape["* dim1"], float]
+    poloidal_flux: npyd.NDArray[npyd.Shape["* dim1"], float]
+    chipf: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jcuru: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jcurv: npyd.NDArray[npyd.Shape["* dim1"], float]
+    iota_half: npyd.NDArray[npyd.Shape["* dim1"], float]
+    mass: npyd.NDArray[npyd.Shape["* dim1"], float]
+    pressure_half: npyd.NDArray[npyd.Shape["* dim1"], float]
+    beta: npyd.NDArray[npyd.Shape["* dim1"], float]
+    buco: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bvco: npyd.NDArray[npyd.Shape["* dim1"], float]
+    dVds: npyd.NDArray[npyd.Shape["* dim1"], float]
+    spectral_width: npyd.NDArray[npyd.Shape["* dim1"], float]
+    phips: npyd.NDArray[npyd.Shape["* dim1"], float]
+    overr: npyd.NDArray[npyd.Shape["* dim1"], float]
+    jdotb: npyd.NDArray[npyd.Shape["* dim1"], float]
+    bdotgradv: npyd.NDArray[npyd.Shape["* dim1"], float]
+    DMerc: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dshear: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dwell: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dcurr: npyd.NDArray[npyd.Shape["* dim1"], float]
+    Dgeod: npyd.NDArray[npyd.Shape["* dim1"], float]
+    equif: npyd.NDArray[npyd.Shape["* dim1"], float]
+    curlabel: list[str]
+    xm: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xn: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xm_nyq: npyd.NDArray[npyd.Shape["* dim1"], int]
+    xn_nyq: npyd.NDArray[npyd.Shape["* dim1"], int]
+    raxis_c: npyd.NDArray[npyd.Shape["* dim1"], float]
+    zaxis_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    rmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    zmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    lmns_full: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    lmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    gmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubumnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubvmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubsmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubsmns_full: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupumnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupvmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    raxis_s: npyd.NDArray[npyd.Shape["* dim1"], float]
+    zaxis_c: npyd.NDArray[npyd.Shape["* dim1"], float]
+    rmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    zmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    lmnc_full: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    lmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    gmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubumns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubvmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubsmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsubsmnc_full: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupumns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    bsupvmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+
+
 # NOTE: in the future we want to change the C++ WOutFileContents layout so that it
 # matches the classic Fortran one, so most of the compatibility layer here could
 # disappear.
@@ -491,6 +614,17 @@ class VmecWOut(pydantic.BaseModel):
         SIMSOPT.
         """
         out_path = Path(out_path)
+        # protect against possible confusion between the C++ WOutFileContents::Save
+        # and this method
+        if out_path.suffix == ".h5":
+            msg = (
+                "You called `save` on a FortranWOutAdapter: this produces a NetCDF3 "
+                "file, but you specified an output file name ending in '.h5', which "
+                "suggests an HDF5 output was expected. Please change output filename "
+                "suffix."
+            )
+            raise ValueError(msg)
+
         with netCDF4.Dataset(out_path, "w", format="NETCDF3_CLASSIC") as fnc:
             # scalar ints
             for varname in [
@@ -655,7 +789,7 @@ class VmecWOut(pydantic.BaseModel):
             string_variable[:] = padded_value_as_netcdf3_compatible_chararray
 
     @staticmethod
-    def _from_cpp_wout(cpp_wout: _vmecpp.VmecppWOut) -> VmecWOut:
+    def _from_cpp_wout(cpp_wout: _VmecppWOutLike) -> VmecWOut:
         attrs = {}
 
         # These attributes are the same in VMEC++ and in Fortran VMEC
