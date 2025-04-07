@@ -398,7 +398,7 @@ absl::StatusOr<std::vector<bool> > IsTooCloseToCurrentCarrierForComparison(
         // TODO(jons): implement case for FourierFilament
         // case CurrentCarrier::TypeCase::kFourierFilament:
         // break;
-        case CurrentCarrier::TypeCase::TYPE_NOT_SET:
+        case CurrentCarrier::TypeCase::kTypeNotSet:
           // consider as empty CurrentCarrier -> ignore
           break;
         default:
