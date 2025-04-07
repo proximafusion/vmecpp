@@ -315,7 +315,7 @@ absl::Status MagneticField(
                                    evaluation_positions, m_magnetic_field,
                                    false));
             break;
-          case CurrentCarrier::TypeCase::TYPE_NOT_SET:
+          case CurrentCarrier::TypeCase::kTypeNotSet:
             // consider as empty CurrentCarrier -> ignore
             break;
           default:
@@ -527,7 +527,7 @@ absl::Status VectorPotential(
                                      current, evaluation_positions,
                                      m_vector_potential, false));
             break;
-          case CurrentCarrier::TypeCase::TYPE_NOT_SET:
+          case CurrentCarrier::TypeCase::kTypeNotSet:
             // consider as empty CurrentCarrier -> ignore
             break;
           default:
