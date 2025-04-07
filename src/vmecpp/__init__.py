@@ -204,8 +204,17 @@ class VmecInput(pydantic.BaseModel):
         """All geometry coefficients need to have the shape (mpol, 2*ntor+1), wit 'rbs',
         'zbc' only populated for non-stellarator symmetric configurations."""
         mpol_two_ntor_plus_one_fields = ["rbc", "zbs"]
+        mpol_two_ntor_plus_one_fields_lasym = ["rbs", "zbc"]
         if self.lasym:
-            mpol_two_ntor_plus_one_fields.extend(["rbs", "zbc"])
+            mpol_two_ntor_plus_one_fields.extend(mpol_two_ntor_plus_one_fields_lasym)
+        else:
+            for lasym_field in mpol_two_ntor_plus_one_fields_lasym:
+                if np.shape(getattr(self, lasym_field)) != (0,):
+                    msg = (
+                        f"{lasym_field} was populated, but the input file is for a symmetric "
+                        "configuration. When lasym==True asymmetric fields should be empty."
+                    )
+                    raise ValueError(msg)
 
         expected_shape = (self.mpol, 2 * self.ntor + 1)
         for field in mpol_two_ntor_plus_one_fields:
@@ -285,6 +294,9 @@ class VmecInput(pydantic.BaseModel):
             getattr(cpp_indata, attr)[:] = getattr(self, attr)
 
         return cpp_indata
+
+    def to_json(self, **kwargs) -> str:
+        return self.model_dump_json(**kwargs)
 
     def save(self, output_path: str | Path) -> None:
         json_serialized = self.model_dump_json()

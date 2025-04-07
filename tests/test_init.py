@@ -284,21 +284,23 @@ def test_raise_invalid_threadcount():
         vmecpp.run(vmec_input, max_threads=0)
 
 
-def test_VmecInput_validation():
+def test_vmec_input_validation():
     test_file = TEST_DATA_DIR / "solovev.json"
     vmec_input = vmecpp.VmecInput.from_file(test_file)
 
     # Why do we not compare `json_dict = json.loads(test_file.read_text())` ?
     # The test_file json may exclude fields that have default values,
     # while the parsed versions should have all fields populated.
-    pywrapper_str = json.loads(vmec_input._to_cpp_vmecindatapywrapper().to_json())
+    pywrapper_dict_from_json = json.loads(
+        vmec_input._to_cpp_vmecindatapywrapper().to_json()
+    )
     # TODO(jurasic): These quantities are not yet present in VmecInput, since there's only one option atm.
-    del pywrapper_str["free_boundary_method"]
-    del pywrapper_str["iteration_style"]
-    pydantic_str = json.loads(vmec_input.model_dump_json())
+    del pywrapper_dict_from_json["free_boundary_method"]
+    del pywrapper_dict_from_json["iteration_style"]
+    vmec_input_dict_from_json = json.loads(vmec_input.model_dump_json())
 
     if not vmec_input.lasym:
         for lasym_field in ["rbs", "zbc", "raxis_s", "zaxis_c"]:
-            del pydantic_str[lasym_field]
+            del vmec_input_dict_from_json[lasym_field]
 
-    assert pywrapper_str == pydantic_str
+    assert pywrapper_dict_from_json == vmec_input_dict_from_json

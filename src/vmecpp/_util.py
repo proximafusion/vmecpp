@@ -304,7 +304,6 @@ def dense_to_sparse_coefficients(
 ) -> list[dict[str, float | int]]:
     """
     Convert a dense 2D array of Fourier coefficients to its sparse representation for storage.
-    Convert a dense 2D array of Fourier coefficients to it's spare representation for storage.
     Args:
         coefficients: The dense 2D array (mpol, 2*ntor+1) of Fourier coefficients.
     Returns:
