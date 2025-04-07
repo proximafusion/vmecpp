@@ -60,6 +60,8 @@ sdist.exclude = [
     "src/vmecpp/cpp/vmecpp/test_data/",
     "docs/",
     ".github/",
+    "tests/",
+    "examples/",
 ]
 cmake.verbose = true
 # Caching directory for wheel builds
@@ -81,7 +83,7 @@ test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py"
 
 [tool.cibuildwheel.linux]
-before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel libomp-devel"
+before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel"
 
 [tool.cibuildwheel.macos]
 before-build = "brew install gcc lapack netcdf hdf5 libomp"
