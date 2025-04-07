@@ -64,3 +64,31 @@ def test_distributino_root():
         / "indata2json"
         / "indata2json"
     ).is_file()
+
+
+def test_sparse_to_dense_coefficients_out_of_bounds():
+    sparse_data = [{"m": 2, "n": 0, "value": 1.0}]
+    with pytest.raises(ValueError):  # noqa: PT011
+        _util.sparse_to_dense_coefficients(sparse_data, mpol=2, ntor=1)
+
+
+def test_dense_to_sparse_truncation():
+    result_sparse = _util.dense_to_sparse_coefficients(
+        [[0, 0, 0, 0, 0], [0, 0, 0, 1, 0]]
+    )
+    expeted_sparse = [{"m": 1, "n": 1, "value": 1.0}]
+    assert expeted_sparse == result_sparse
+
+
+def test_to_and_from_sparse():
+    sparse_data = [
+        {"m": 0, "n": -1, "value": 10.0},
+        {"m": 1, "n": -1, "value": -1.5},
+        {"m": 1, "n": 1, "value": 1.5},
+        {"m": 2, "n": 0, "value": 5.0},
+        {"m": 3, "n": 2, "value": 7.0},
+    ]
+    dense_result = _util.sparse_to_dense_coefficients_implicit(sparse_data)
+    sparse_result = _util.dense_to_sparse_coefficients(dense_result)
+
+    assert sparse_data == sparse_result
