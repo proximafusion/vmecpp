@@ -181,10 +181,10 @@ class VmecInput(pydantic.BaseModel):
     zaxis_s: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
     """Magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric."""
 
-    raxis_s: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
+    raxis_s: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float] | None = None
     """Magnetic axis coefficients for R ~ sin(n*v); non-stellarator-symmetric."""
 
-    zaxis_c: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float]
+    zaxis_c: npyd.NDArray[npyd.Shape["* ntor_plus_1"], float] | None = None
     """Magnetic axis coefficients for Z ~ cos(n*v); non-stellarator-symmetric."""
 
     rbc: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
@@ -193,10 +193,10 @@ class VmecInput(pydantic.BaseModel):
     zbs: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
     """Boundary coefficients for Z ~ sin(m*u - n*v); stellarator-symmetric"""
 
-    rbs: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
+    rbs: SerializableSparseCoefficientArray | None = None  # [mpol, 2 * ntor + 1]
     """Boundary coefficients for R ~ sin(m*u - n*v); non-stellarator-symmetric"""
 
-    zbc: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
+    zbc: SerializableSparseCoefficientArray | None = None  # [mpol, 2 * ntor + 1]
     """Boundary coefficients for Z ~ cos(m*u - n*v); non-stellarator-symmetric"""
 
     @pydantic.model_validator(mode="after")
@@ -207,25 +207,83 @@ class VmecInput(pydantic.BaseModel):
         mpol_two_ntor_plus_one_fields_lasym = ["rbs", "zbc"]
         if self.lasym:
             mpol_two_ntor_plus_one_fields.extend(mpol_two_ntor_plus_one_fields_lasym)
-        else:
-            for lasym_field in mpol_two_ntor_plus_one_fields_lasym:
-                if np.shape(getattr(self, lasym_field))[0] != 0:
-                    msg = (
-                        f"{lasym_field} was populated, but the input file is for a symmetric "
-                        "configuration. When lasym==True asymmetric fields should be empty."
-                    )
-                    raise ValueError(msg)
 
         expected_shape = (self.mpol, 2 * self.ntor + 1)
         for field in mpol_two_ntor_plus_one_fields:
             shape = np.shape(getattr(self, field))
             if shape != expected_shape:
-                msg = (
-                    f"{field} has shape {shape} instead of the expected {expected_shape}. "
-                    f"Does your coefficient array exceed mpol={self.mpol} or ntor={self.ntor}?"
-                )
+                msg = f"{field} has shape {shape} instead of the expected {expected_shape}."
+                "Please resize your coefficient array using vmecpp.VmecInput.resize_2d_coeff"
+                f"({field}, {self.mpol}, {self.ntor}) to match mpol={self.mpol} or ntor={self.ntor}"
                 raise ValueError(msg)
         return self
+
+    @pydantic.model_validator(mode="after")
+    def _validate_stellarator_asymmetric_fields(self) -> typing.Self:
+        """Check if all fields that break stellarator symmetry match the lasym flag."""
+        ASYMMETRIC_FIELDS = ["rbs", "zbc", "zaxis_c", "raxis_s"]
+        is_stellarator_symmetric = not self.lasym
+        if is_stellarator_symmetric:
+            for key in ASYMMETRIC_FIELDS:
+                value = getattr(self, key)
+                # Then all asymmetric fields should be None
+                if value is not None:
+                    msg = (
+                        "The input is for a stellarator symmetric configuration (lasym=False), "
+                        f"but the symmetry-breaking field '{key}' is populated with \n{value}"
+                    )
+                    raise ValueError(msg)
+        return self
+
+    @staticmethod
+    def resize_2d_coeff(
+        coeff: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float],
+        mpol_new: int,
+        ntor_new: int,
+    ) -> npyd.NDArray[npyd.Shape["* mpol_new, * two_ntor_new_plus_one"], float]:
+        """Resizes a 2D NumPy array representing Fourier coefficients, padding with
+        zeros or truncating as needed.
+
+        Args:
+            coeff: A NumPy array of shape (mpol, 2 * ntor + 1).
+            mpol_new: The new number of poloidal modes.
+            ntor_new: The new number of toroidal modes.
+
+        Examples:
+            >>> coeff = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
+            >>> VmecInput.resize_2d_coeff(coeff, 3, 3)
+            array([[ 0.,  1.,  2.,  3.,  4.,  5.,  0.],
+                   [ 0.,  6.,  7.,  8.,  9., 10.,  0.],
+                   [ 0.,  0.,  0.,  0.,  0.,  0.,  0.]])
+
+            >>> VmecInput.resize_2d_coeff(coeff, 1, 1)
+            array([[2., 3., 4.]])
+
+            >>> VmecInput.resize_2d_coeff(coeff, 4, 1)
+            array([[2., 3., 4.],
+                   [7., 8., 9.],
+                   [0., 0., 0.],
+                   [0., 0., 0.]])
+        """
+
+        assert mpol_new >= 0
+        assert ntor_new >= 0
+        coeff = np.array(coeff)
+        mpol, nmax = coeff.shape
+        ntor = (nmax - 1) // 2
+        assert nmax == 2 * ntor + 1
+
+        new_nmax = 2 * ntor_new + 1
+        resized_coeff = np.zeros((mpol_new, new_nmax))
+
+        smaller_ntor = min(ntor, ntor_new)
+        smaller_mpol = min(mpol, mpol_new)
+
+        for m in range(smaller_mpol):
+            for n in range(-smaller_ntor, smaller_ntor + 1):
+                resized_coeff[m, n + ntor_new] = coeff[m, n + ntor]
+
+        return resized_coeff
 
     @staticmethod
     def from_file(input_file: str | Path) -> VmecInput:
@@ -254,7 +312,6 @@ class VmecInput(pydantic.BaseModel):
     ) -> VmecInput:
         # The VmecInput.model_validate() is strict in its data model, all fields need to be present and valid.
         # VmecInput does _not_ have any default values.
-
         return VmecInput.model_validate(
             {
                 attr_name: getattr(vmecindatapywrapper, attr_name)
@@ -291,7 +348,15 @@ class VmecInput(pydantic.BaseModel):
         cpp_indata._set_mpol_ntor(self.mpol, self.ntor)
         for attr in readonly_attrs - {"mpol", "ntor"}:
             # now we can set the elements of the readonly_attrs
-            getattr(cpp_indata, attr)[:] = getattr(self, attr)
+            value = getattr(self, attr)
+
+            # Asymmetric fields are only populated when lasym==True
+            # so we need to skip them for itemwise assignment
+            if value is None:  # must be a symmetric field and lasym == False
+                assert attr in {"rbs", "zbc", "zaxis_c", "raxis_s"}
+                assert not cpp_indata.lasym
+            else:
+                getattr(cpp_indata, attr)[:] = value
 
         return cpp_indata
 

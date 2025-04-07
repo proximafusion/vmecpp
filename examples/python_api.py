@@ -7,18 +7,13 @@ from pathlib import Path
 
 import vmecpp
 
-# NOTE: This resolves to src/vmecpp/cpp/vmecpp/test_data in the repo.
-TEST_DATA_DIR = (
-    Path(__file__).parent.parent / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
-)
-
 
 def run_vmecpp():
     # We need a VmecInput, a Python object that corresponds
     # to the classic "input.*" files.
     # We can construct it from such a classic VMEC input file
     # (Fortran namelist called INDATA):
-    input_file = TEST_DATA_DIR / "input.solovev"
+    input_file = Path(__file__).parent / "data" / "input.solovev"
     input = vmecpp.VmecInput.from_file(input_file)
 
     # Now we can run VMEC++:
