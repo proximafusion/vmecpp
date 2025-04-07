@@ -1184,7 +1184,7 @@ TEST(TestMagneticField, CheckFullyPopulatedMagneticConfiguration) {
             CHECK_OK(MagneticField(current_carrier.polygon_filament(), current,
                                    evaluation_positions, magnetic_field));
             break;
-          case CurrentCarrier::TypeCase::TYPE_NOT_SET:
+          case CurrentCarrier::TypeCase::kTypeNotSet:
             // consider as empty CurrentCarrier -> ignore
             break;
           default:
@@ -1529,7 +1529,7 @@ TEST(TestVectorPotential, CheckFullyPopulatedMagneticConfiguration) {
                                      current, evaluation_positions,
                                      vector_potential));
             break;
-          case CurrentCarrier::TypeCase::TYPE_NOT_SET:
+          case CurrentCarrier::TypeCase::kTypeNotSet:
             // consider as empty CurrentCarrier -> ignore
             break;
           default:

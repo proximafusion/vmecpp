@@ -234,11 +234,11 @@ struct CurrentCarrier {
     kCircularFilament         = 2,
     kPolygonFilament          = 3,
     kFourierFilament          = 4,
-    TYPE_NOT_SET              = 0
+    kTypeNotSet               = 0
   };
 
 private:
-  TypeCase type_case_ = TYPE_NOT_SET;
+  TypeCase type_case_ = kTypeNotSet;
 
   union {
     InfiniteStraightFilament infinite_straight_filament_;
@@ -247,7 +247,7 @@ private:
   };
 
 public:
-  CurrentCarrier() : type_case_(TYPE_NOT_SET) {}
+  CurrentCarrier() : type_case_(kTypeNotSet) {}
 
   ~CurrentCarrier() {
     Clear();
@@ -255,7 +255,7 @@ public:
 
   // Copy constructor
   CurrentCarrier(const CurrentCarrier& other)
-    : type_case_(TYPE_NOT_SET)
+    : type_case_(kTypeNotSet)
   {
     switch (other.type_case_) {
       case kInfiniteStraightFilament: {
@@ -274,14 +274,14 @@ public:
                           other.polygon_filament_);
       } break;
       default:
-        type_case_ = TYPE_NOT_SET;
+        type_case_ = kTypeNotSet;
         break;
     }
   }
 
   // Move constructor
   CurrentCarrier(CurrentCarrier&& other) noexcept
-    : type_case_(TYPE_NOT_SET)
+    : type_case_(kTypeNotSet)
   {
     switch (other.type_case_) {
       case kInfiniteStraightFilament: {
@@ -300,7 +300,7 @@ public:
                           std::move(other.polygon_filament_));
       } break;
       default:
-        type_case_ = TYPE_NOT_SET;
+        type_case_ = kTypeNotSet;
         break;
     }
     other.Clear();
@@ -327,7 +327,7 @@ public:
                             other.polygon_filament_);
         } break;
         default:
-          type_case_ = TYPE_NOT_SET;
+          type_case_ = kTypeNotSet;
           break;
       }
     }
@@ -355,7 +355,7 @@ public:
                             std::move(other.polygon_filament_));
         } break;
         default:
-          type_case_ = TYPE_NOT_SET;
+          type_case_ = kTypeNotSet;
           break;
       }
       other.Clear();
@@ -377,7 +377,7 @@ public:
       default:
         break;
     }
-    type_case_ = TYPE_NOT_SET;
+    type_case_ = kTypeNotSet;
   }
 
   // InfiniteStraightFilament
