@@ -197,10 +197,14 @@ PYBIND11_MODULE(_vmecpp, m) {
           [](VmecINDATAPyWrapper &w) -> VectorXd & { return w.zaxis_s; })
       .def_property_readonly(
           "raxis_s",
-          [](VmecINDATAPyWrapper &w) -> VectorXd & { return w.raxis_s; })
+          [](VmecINDATAPyWrapper &w) -> std::optional<VectorXd> & {
+            return w.raxis_s;
+        })
       .def_property_readonly(
           "zaxis_c",
-          [](VmecINDATAPyWrapper &w) -> VectorXd & { return w.zaxis_c; })
+          [](VmecINDATAPyWrapper &w) -> std::optional<VectorXd> & {
+            return w.zaxis_c;
+        })
 
       // (initial guess for) boundary shape
       // disallow re-assignment of the whole matrix (to preserve shapes
@@ -213,9 +217,12 @@ PYBIND11_MODULE(_vmecpp, m) {
           [](VmecINDATAPyWrapper &w) -> vmecpp::RowMatrixXd & { return w.zbs; })
       .def_property_readonly(
           "rbs",
-          [](VmecINDATAPyWrapper &w) -> vmecpp::RowMatrixXd & { return w.rbs; })
+          [](VmecINDATAPyWrapper &w) -> std::optional<vmecpp::RowMatrixXd> & {
+            return w.rbs;
+        })
       .def_property_readonly(
-          "zbc", [](VmecINDATAPyWrapper &w) -> vmecpp::RowMatrixXd & {
+          "zbc",
+          [](VmecINDATAPyWrapper &w) -> std::optional<vmecpp::RowMatrixXd> & {
             return w.zbc;
           });
 
