@@ -209,7 +209,7 @@ class VmecInput(pydantic.BaseModel):
             mpol_two_ntor_plus_one_fields.extend(mpol_two_ntor_plus_one_fields_lasym)
         else:
             for lasym_field in mpol_two_ntor_plus_one_fields_lasym:
-                if np.shape(getattr(self, lasym_field)) != (0,):
+                if np.shape(getattr(self, lasym_field))[0] != 0:
                     msg = (
                         f"{lasym_field} was populated, but the input file is for a symmetric "
                         "configuration. When lasym==True asymmetric fields should be empty."
@@ -1068,6 +1068,7 @@ def run(
             provided VmecOutput. This can dramatically decrease the number of iterations to
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
     """
+    input = VmecInput.model_validate(input)
     cpp_indata = input._to_cpp_vmecindatapywrapper()
 
     if restart_from is None:
