@@ -334,7 +334,7 @@ VMEC++:
 Some of the things we are planning for VMEC++'s future:
 - [ ] free-boundary hot-restart in Python
 - [X] open-sourcing the full VMEC++ test suite (including the Verification&Validation part that compares `wout` contents)
-- [ ] open-sourcing the source code to reproduce VMEC++'s performance benchmarks
+- [x] open-sourcing the source code to reproduce VMEC++'s performance benchmarks
 - [ ] VMEC++ usable as a C++ bazel module
 
 Some items we do not plan to work on, but where community ownership is welcome:
