@@ -467,6 +467,8 @@ class VmecWOut(pydantic.BaseModel):
     bsubsmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
     bsupumnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
     bsupvmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    currumnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
+    currvmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
     rmnc: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
     zmns: npyd.NDArray[npyd.Shape["* dim1, * dim2"], float]
     lmns: npyd.NDArray[npyd.Shape["* mnmax, * n_surfaces"], float]
@@ -752,6 +754,8 @@ class VmecWOut(pydantic.BaseModel):
                 "bsubsmns",
                 "bsupumnc",
                 "bsupvmnc",
+                "currumnc",
+                "currvmnc",
             ]:
                 fnc.createVariable(varname, np.float64, ("radius", "mn_mode_nyq"))
                 fnc[varname][:] = getattr(self, varname).T[:]
@@ -904,6 +908,8 @@ class VmecWOut(pydantic.BaseModel):
         attrs["rmnc"] = cpp_wout.rmnc.T
         attrs["zmns"] = cpp_wout.zmns.T
         attrs["bsubsmns"] = cpp_wout.bsubsmns.T
+        attrs["currumnc"] = cpp_wout.currumnc.T
+        attrs["currvmnc"] = cpp_wout.currvmnc.T
 
         # This is a VMEC++-only quantity but it's transposed when
         # stored in a wout file for consistency with lmns.
@@ -1045,6 +1051,9 @@ class VmecWOut(pydantic.BaseModel):
         cpp_wout.rmnc = self.rmnc.T
         cpp_wout.zmns = self.zmns.T
         cpp_wout.bsubsmns = self.bsubsmns.T
+
+        cpp_wout.currumnc = self.currumnc.T
+        cpp_wout.currvmnc = self.currvmnc.T
 
         # This is a VMEC++-only quantity but it's transposed when
         # stored in a wout file for consistency with lmns.
