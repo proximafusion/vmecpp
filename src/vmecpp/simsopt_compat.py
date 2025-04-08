@@ -16,12 +16,14 @@ from simsopt.util.mpi import MpiPartition
 
 import vmecpp
 
-logger = logging.getLogger(__name__)
+# Re-export specific functions from vmecpp for backwards compatibility
+from vmecpp import (  # noqa: F401
+    ensure_vmec2000_input,
+    ensure_vmecpp_input,
+    is_vmec2000_input,
+)
 
-# Expose specific functions from vmecpp for backwards compatibility
-is_vmec200_input = vmecpp.is_vmec2000_input
-ensure_vmec200_input = vmecpp.ensure_vmec2000_input
-ensure_vmecpp_input = vmecpp.ensure_vmecpp_input
+logger = logging.getLogger(__name__)
 
 # NOTE: this will be needed to set Vmec.mpi.
 # VMEC++ does not use MPI, but Vmec.mpi must be set anyways to make tools like Boozer
