@@ -48,4 +48,4 @@ configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)
 wout_file = Path(f"wout_{configuration_name}.nc")
 output.wout.save(wout_file)
 
-print(f"\nOutput written to {wout_file}.")  # noqa: T201
+print(f"\nOutput written to {wout_file}")  # noqa: T201
