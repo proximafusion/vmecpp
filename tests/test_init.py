@@ -8,7 +8,6 @@ Physics correctness is checked at the level of the C++ core.
 """
 
 import json
-import math
 import os
 import tempfile
 from pathlib import Path
@@ -151,20 +150,20 @@ def test_vmecwout_io(cma_output):
         expected_dims = expected_value.dimensions
         assert test_value.dimensions == expected_dims, error_msg
 
-        # scalar
-        if expected_dims == ():
-            assert math.isclose(
-                test_value[:], expected_value[:], abs_tol=1e-7
-            ), error_msg
-            continue
-
-        # array or tensor
+        # Check dimensions for an array or tensor (also works for scalars)
         for d in expected_dims:
             assert (
                 test_dataset.dimensions[d].size == expected_dataset.dimensions[d].size
             )
+        # np.asarray is needed to convert the masked array to a regular array.
+        # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
         np.testing.assert_allclose(
-            test_value[:], expected_value[:], err_msg=error_msg, rtol=1e-6, atol=1e-7
+            np.asarray(test_value[:]),
+            np.asarray(expected_value[:]),
+            err_msg=error_msg,
+            rtol=1e-6,
+            atol=1e-7,
+            equal_nan=True,
         )
 
 
