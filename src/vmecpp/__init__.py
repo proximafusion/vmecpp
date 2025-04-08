@@ -1202,11 +1202,15 @@ def run(
 
 def is_vmec2000_input(input_file: Path) -> bool:
     """Returns true if the input file looks like a Fortran VMEC/VMEC2000 INDATA file."""
-    # we peek at the first few characters in the file: if they are "&INDATA",
-    # this is an INDATA file
+    # we peek at the first few non-blank, non-comment lines in the file:
+    # if one of them is "&INDATA", then this is an INDATA file
     with open(input_file) as f:
-        first_line = f.readline().strip()
-    return first_line == "&INDATA"
+        for line in f:
+            stripped_line = line.strip()
+            if not stripped_line or stripped_line.startswith("!"):
+                continue
+            return stripped_line == "&INDATA"
+    return False
 
 
 @contextlib.contextmanager
