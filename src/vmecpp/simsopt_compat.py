@@ -18,6 +18,11 @@ import vmecpp
 
 logger = logging.getLogger(__name__)
 
+# Expose specific functions from vmecpp for backwards compatibility
+is_vmec200_input = vmecpp.is_vmec2000_input
+ensure_vmec200_input = vmecpp.ensure_vmec2000_input
+ensure_vmecpp_input = vmecpp.ensure_vmecpp_input
+
 # NOTE: this will be needed to set Vmec.mpi.
 # VMEC++ does not use MPI, but Vmec.mpi must be set anyways to make tools like Boozer
 # happy: they expect to be able to extract the mpi controller from the Vmec object,
