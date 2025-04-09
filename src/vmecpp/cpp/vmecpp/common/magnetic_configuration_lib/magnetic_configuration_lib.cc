@@ -365,7 +365,7 @@ absl::Status MoveRadially(double radial_step,
             return absl::InvalidArgumentError(
                 "Cannot perform radial movement if an FourierFilament is "
                 "present in the MagneticConfiguration");
-          case CurrentCarrier::TypeCase::TYPE_NOT_SET:
+          case CurrentCarrier::TypeCase::kTypeNotSet:
             // consider as empty CurrentCarrier -> ignore
             break;
           default:
@@ -540,7 +540,7 @@ absl::Status IsMagneticConfigurationFullyPopulated(
             status = IsPolygonFilamentFullyPopulated(
                 current_carrier.polygon_filament());
             break;
-          case CurrentCarrier::TypeCase::TYPE_NOT_SET:
+          case CurrentCarrier::TypeCase::kTypeNotSet:
             // consider as empty CurrentCarrier -> ignore
             break;
           default:
@@ -686,7 +686,7 @@ void PrintCurrentCarrier(const CurrentCarrier& current_carrier,
     case CurrentCarrier::TypeCase::kPolygonFilament:
       PrintPolygonFilament(current_carrier.polygon_filament(), indentation + 2);
       break;
-    case CurrentCarrier::TypeCase::TYPE_NOT_SET:
+    case CurrentCarrier::TypeCase::kTypeNotSet:
       // consider as empty CurrentCarrier -> ignore
       break;
     default:

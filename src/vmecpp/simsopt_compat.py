@@ -16,6 +16,13 @@ from simsopt.util.mpi import MpiPartition
 
 import vmecpp
 
+# Re-export specific functions from vmecpp for backwards compatibility
+from vmecpp import (  # noqa: F401
+    ensure_vmec2000_input,
+    ensure_vmecpp_input,
+    is_vmec2000_input,
+)
+
 logger = logging.getLogger(__name__)
 
 # NOTE: this will be needed to set Vmec.mpi.
