@@ -643,12 +643,12 @@ void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
     m_fc_.fResInvar[2] = 0.0;
   }
 
-#pragma omp critical
-  {
-    m_fc_.fResInvar[0] += localFResInvar[0];
-    m_fc_.fResInvar[1] += localFResInvar[1];
-    m_fc_.fResInvar[2] += localFResInvar[2];
-  }
+#pragma omp atomic
+  m_fc_.fResInvar[0] += localFResInvar[0];
+#pragma omp atomic
+  m_fc_.fResInvar[1] += localFResInvar[1];
+#pragma omp atomic
+  m_fc_.fResInvar[2] += localFResInvar[2];
 
 // this is protecting reads of fResInvar as well as
 // writes to m_fc.fsqz which is read before this call
@@ -674,13 +674,12 @@ void IdealMhdModel::evalFResPrecd(const std::vector<double>& localFResPrecd) {
     m_fc_.fResPrecd[2] = 0.0;
   }
 
-#pragma omp critical
-  {
-    m_fc_.fResPrecd[0] += localFResPrecd[0];
-    m_fc_.fResPrecd[1] += localFResPrecd[1];
-    m_fc_.fResPrecd[2] += localFResPrecd[2];
-  }
-#pragma omp barrier
+#pragma omp atomic
+  m_fc_.fResPrecd[0] += localFResPrecd[0];
+#pragma omp atomic
+  m_fc_.fResPrecd[1] += localFResPrecd[1];
+#pragma omp atomic
+  m_fc_.fResPrecd[2] += localFResPrecd[2];
 
 #pragma omp single
   {
@@ -1078,6 +1077,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
   std::vector<double> localFResInvar(3, 0.0);
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 
+  // TODO(jurasic): Algorithmically a reduction
   evalFResInvar(localFResInvar);
 
   if (checkpoint == VmecCheckpoint::INVARIANT_RESIDUALS &&
@@ -1113,6 +1113,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
   std::vector<double> localFResPrecd(3, 0.0);
   m_decomposed_f.residuals(localFResPrecd, true);
 
+  // TODO(jurasic) Algorithmically a reduction
   evalFResPrecd(localFResPrecd);
 
   if (checkpoint == VmecCheckpoint::PRECONDITIONED_RESIDUALS &&

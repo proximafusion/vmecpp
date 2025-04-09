@@ -667,11 +667,12 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
                            // barrier
     num_eqsolve_retries_ += n_local_eqsolve_retries;
 
+    if (s.ok()) {
+#pragma omp atomic update
+      any_checkpoint_reached |= (*s == SolveEqLoopStatus::CHECKPOINT_REACHED);
+    } else {
 #pragma omp critical
-    {
-      if (s.ok()) {
-        any_checkpoint_reached |= (*s == SolveEqLoopStatus::CHECKPOINT_REACHED);
-      } else {
+      {
         UpdateStatusForThread(status_of_all_threads, thread_id, s.status());
       }
     }
@@ -706,23 +707,19 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 // protect reads of restart_reason above from write below
 #pragma omp barrier
     // tells restart_iter to store current xc in xstore
-#pragma omp single
-    {
-      fc_.restart_reason = RestartReason::NO_RESTART;
-    }
+#pragma omp atomic write
+    fc_.restart_reason = RestartReason::NO_RESTART;
 
     // In the first multigrid iteration (OFF IN v8.50)
     RestartIteration(fc_.delt0r, thread_id);
   }  // restart_reason == BAD_JACOBIAN
 
-#pragma omp single
-  {
-    // start normal iterations
-    m_liter_flag = true;
 
-    // reset error flag
-    status_ = VmecStatus::NORMAL_TERMINATION;
-  }
+#pragma omp atomic write
+  // start normal iterations and reset error flag
+  m_liter_flag = true;
+#pragma omp atomic write
+  status_ = VmecStatus::NORMAL_TERMINATION;
 
   // `iter_loop`: FORCE ITERATION LOOP
   // It may hold iter2_>1 when entering this method and when prev iter
@@ -807,14 +804,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     if (fc_.ijacob == 25 || fc_.ijacob == 50) {
       // jacobian changed sign 25/50 times: hmmm? :-/
 
-#pragma omp single
-      {
-        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
-      }
+#pragma omp atomic write
+      fc_.restart_reason = RestartReason::BAD_JACOBIAN;
 
       RestartIteration(fc_.delt0r, thread_id);
 
-#pragma omp single
+#pragma omp single nowait
       {
         const double scale = fc_.ijacob == 25 ? 0.98 : 0.96;
         fc_.delt0r = scale * indata_.delt;
@@ -879,17 +874,15 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // at ~2e-3
       // --> lower threshold, e.g. 1e-4 ?
 
-#pragma omp single
+#pragma omp atomic write
       fc_.restart_reason = RestartReason::BAD_PROGRESS;
     }
 
     if (fc_.restart_reason != RestartReason::NO_RESTART) {
       // Retrieve previous good state
       RestartIteration(fc_.delt0r, thread_id);
-      // This code path does not increment the iter2 counter in VMEC 8.52, so we
-      // have to keep track
-      bad_resets++;
-#pragma omp single nowait
+
+#pragma omp atomic write
       iter1_ = iter2;
     } else {
       // Increment time step and printout every nstep iterations
@@ -921,23 +914,28 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     iter2_ = force_iteration + 1 - bad_resets;
 
 #pragma omp single nowait
-    // ivac gets set to 1 in vacuum() of NESTOR
-    if (ivac_ == 1) {
-      ivac_ = 2;
-      if (verbose_) {
-        std::cout << absl::StrFormat(
-            "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS\n\n", iter2_);
+    {
+      // ivac gets set to 1 in vacuum() of NESTOR
+      if (ivac_ == 1) {
+        // vacuum pressure turned on at iter2 iterations (here)
+
+        if (verbose_) {
+          std::cout << absl::StrFormat(
+                           "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS",
+                           iter2_)
+                    << "\n\n";
+        }
+
+        ivac_ = 2;
       }
     }
-  }
+  }  // while m_liter_flag
 
   return SolveEqLoopStatus::NORMAL_TERMINATION;
 }
 
 // aligned visually with restart_iter.f90
 void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
-#pragma omp barrier
-
   if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
     // restore previous good state
 
@@ -1145,7 +1143,7 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
     double delt0 = indata_.delt;
     RestartIteration(delt0, thread_id);
 
-#pragma omp single nowait
+#pragma omp atomic write
     // already done in restart_iter for restart_reason == BAD_JACOBIAN
     fc_.restart_reason = RestartReason::NO_RESTART;
   }
