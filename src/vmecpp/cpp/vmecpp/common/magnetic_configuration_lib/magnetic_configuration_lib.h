@@ -80,10 +80,7 @@ absl::Status IsInfiniteStraightFilamentFullyPopulated(
 absl::Status IsCircularFilamentFullyPopulated(
     const CircularFilament& circular_filament);
 
-// Check if the given PolygonFilament is fully populated.
-// Returns true if all required parameters in the current carrier, most of which
-// are optional in the specification, are provided. Note that this does NOT
-// check if the PolygonFilament is physically reasonable.
+// Check if the given PolygonFilament is fully populated (At least 2 polygons).
 absl::Status IsPolygonFilamentFullyPopulated(
     const PolygonFilament& polygon_filament);
 

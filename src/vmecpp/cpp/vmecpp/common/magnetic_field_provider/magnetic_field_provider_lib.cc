@@ -161,21 +161,21 @@ absl::Status MagneticField(
     }
   }
 
-  const Vector3d &center_vector = circular_filament.center_.value();
+  const Vector3d &center_vector = circular_filament.center;
   std::vector<double> center = {
       center_vector.x(),
       center_vector.y(),
       center_vector.z(),
   };
 
-  const Vector3d &normal_vector = circular_filament.normal_.value();
+  const Vector3d &normal_vector = circular_filament.normal;
   std::vector<double> normal = {
       normal_vector.x(),
       normal_vector.y(),
       normal_vector.z(),
   };
 
-  const double radius = *circular_filament.radius_;
+  const double radius = circular_filament.radius;
 
   const int number_evaluation_positions =
       static_cast<int>(evaluation_positions.size());
@@ -211,8 +211,9 @@ absl::Status MagneticField(
 
 absl::Status MagneticField(
     const PolygonFilament &polygon_filament, double current,
-    const std::vector<std::vector<double>> &evaluation_positions,
-    std::vector<std::vector<double>> &m_magnetic_field,
+    const Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>
+        &evaluation_positions,
+    Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor> &m_magnetic_field,
     bool check_current_carrier) {
   if (check_current_carrier) {
     absl::Status status = IsPolygonFilamentFullyPopulated(polygon_filament);
@@ -222,44 +223,79 @@ absl::Status MagneticField(
       return status;
     }
   }
+  const bool kUseAbscab = false;
+  if constexpr (kUseAbscab) {
+    const int number_evaluation_positions =
+        static_cast<int>(evaluation_positions.cols());
 
-  const int number_evaluation_positions =
-      static_cast<int>(evaluation_positions.size());
+    std::vector<double> evaluation_positions_1d(number_evaluation_positions *
+                                                3);
 
-  std::vector<double> evaluation_positions_1d(number_evaluation_positions * 3);
+    // convert evaluation_positions into double[] array for abscab
+    // in array-of-structs order (x0, y0, z0, x1, y1, z1, x2, y2, z2, ...)
+    for (int i = 0; i < number_evaluation_positions; ++i) {
+      evaluation_positions_1d[i * 3 + 0] = evaluation_positions(0, i);
+      evaluation_positions_1d[i * 3 + 1] = evaluation_positions(1, i);
+      evaluation_positions_1d[i * 3 + 2] = evaluation_positions(2, i);
+    }
 
-  // convert evaluation_positions into double[] array for abscab
-  // in array-of-structs order (x0, y0, z0, x1, y1, z1, x2, y2, z2, ...)
-  for (int i = 0; i < number_evaluation_positions; ++i) {
-    evaluation_positions_1d[i * 3 + 0] = evaluation_positions[i][0];
-    evaluation_positions_1d[i * 3 + 1] = evaluation_positions[i][1];
-    evaluation_positions_1d[i * 3 + 2] = evaluation_positions[i][2];
-  }
+    // target storage for magnetic field needs to be initialized to zero,
+    // as abscab methods only add and not initialize
+    std::vector<double> magnetic_field_1d(number_evaluation_positions * 3, 0.0);
 
-  // target storage for magnetic field needs to be initialized to zero,
-  // as abscab methods only add and not initialize
-  std::vector<double> magnetic_field_1d(number_evaluation_positions * 3, 0.0);
+    std::vector<double> vertices_1d(polygon_filament.vertices.cols() * 3);
 
-  std::vector<double> vertices_1d(polygon_filament.vertices_size() * 3);
+    // copy filament geometry into one-dimensional array for ABSCAB
+    for (int i = 0; i < polygon_filament.vertices.cols(); ++i) {
+      vertices_1d[i * 3 + 0] = polygon_filament.vertices(0, i);
+      vertices_1d[i * 3 + 1] = polygon_filament.vertices(1, i);
+      vertices_1d[i * 3 + 2] = polygon_filament.vertices(2, i);
+    }
 
-  // copy filament geometry into one-dimensional array for ABSCAB
-  for (int i = 0; i < polygon_filament.vertices_size(); ++i) {
-    const Vector3d &vertex = polygon_filament.vertices(i);
-    vertices_1d[i * 3 + 0] = vertex.x();
-    vertices_1d[i * 3 + 1] = vertex.y();
-    vertices_1d[i * 3 + 2] = vertex.z();
-  }
+    abscab::magneticFieldPolygonFilament(
+        polygon_filament.vertices.cols(), vertices_1d.data(), current,
+        number_evaluation_positions, evaluation_positions_1d.data(),
+        magnetic_field_1d.data());
 
-  abscab::magneticFieldPolygonFilament(
-      polygon_filament.vertices_size(), vertices_1d.data(), current,
-      number_evaluation_positions, evaluation_positions_1d.data(),
-      magnetic_field_1d.data());
+    // convert magneticField from abscab format and add to provided vectors
+    for (int i = 0; i < number_evaluation_positions; ++i) {
+      m_magnetic_field(0, i) += magnetic_field_1d[i * 3 + 0];
+      m_magnetic_field(1, i) += magnetic_field_1d[i * 3 + 1];
+      m_magnetic_field(2, i) += magnetic_field_1d[i * 3 + 2];
+    }
+  } else {
+    const int num_vertices = polygon_filament.vertices.cols();
+    const int num_evaluation_positions = evaluation_positions.cols();
 
-  // convert magneticField from abscab format and add to provided vectors
-  for (int i = 0; i < number_evaluation_positions; ++i) {
-    m_magnetic_field[i][0] += magnetic_field_1d[i * 3 + 0];
-    m_magnetic_field[i][1] += magnetic_field_1d[i * 3 + 1];
-    m_magnetic_field[i][2] += magnetic_field_1d[i * 3 + 2];
+    for (int i = 0; i < num_vertices; ++i) {
+      const Eigen::Vector3d vertex_start = polygon_filament.vertices.col(i);
+      const Eigen::Vector3d vertex_end =
+          polygon_filament.vertices.col((i + 1) % num_vertices);
+
+      const Eigen::Vector3d segment = vertex_end - vertex_start;
+      const double segment_length = segment.norm();
+      const Eigen::Vector3d segment_direction = segment / segment_length;
+
+      for (int j = 0; j < num_evaluation_positions; ++j) {
+        const Eigen::Vector3d eval_position = evaluation_positions.col(j);
+        const Eigen::Vector3d r_start = eval_position - vertex_start;
+        const Eigen::Vector3d r_end = eval_position - vertex_end;
+
+        const Eigen::Vector3d r_cross_segment = r_start.cross(segment);
+        const double r_start_norm = r_start.norm();
+        const double r_end_norm = r_end.norm();
+
+        if (r_start_norm > 0.0 && r_end_norm > 0.0) {
+          const double denominator =
+              r_start_norm * r_end_norm * (r_start_norm + r_end_norm);
+          const Eigen::Vector3d biot_savart_contribution =
+              (r_cross_segment / denominator) * segment_length;
+
+          m_magnetic_field.col(j) += (abscab::MU_0 * current / (4.0 * M_PI)) *
+                                     biot_savart_contribution;
+        }
+      }
+    }
   }
 
   return absl::OkStatus();
@@ -282,7 +318,8 @@ absl::Status MagneticField(
 
   for (const SerialCircuit &serial_circuit :
        magnetic_configuration.serial_circuits()) {
-    if (!serial_circuit.current_.has_value() || serial_circuit.current_.value() == 0.0) {
+    if (!serial_circuit.current_.has_value() ||
+        serial_circuit.current_.value() == 0.0) {
       // skip contributions with assumed zero current
       continue;
     }
@@ -311,11 +348,30 @@ absl::Status MagneticField(
                                    evaluation_positions, m_magnetic_field,
                                    false));
             break;
-          case CurrentCarrier::TypeCase::kPolygonFilament:
+          case CurrentCarrier::TypeCase::kPolygonFilament: {
+            Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>
+                evaluation_positions_eigen(3, evaluation_positions.size());
+            for (int i = 0; i < evaluation_positions.size(); ++i) {
+              evaluation_positions_eigen(0, i) = evaluation_positions[i][0];
+              evaluation_positions_eigen(1, i) = evaluation_positions[i][1];
+              evaluation_positions_eigen(2, i) = evaluation_positions[i][2];
+            }
+
+            Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>
+                m_magnetic_field_eigen =
+                    Eigen::Matrix<double, 3, Eigen::Dynamic,
+                                  Eigen::RowMajor>::Zero(3, evaluation_positions
+                                                                .size());
             CHECK_OK(MagneticField(current_carrier.polygon_filament(), current,
-                                   evaluation_positions, m_magnetic_field,
-                                   false));
-            break;
+                                   evaluation_positions_eigen,
+                                   m_magnetic_field_eigen, false));
+
+            for (int i = 0; i < evaluation_positions.size(); ++i) {
+              m_magnetic_field[i][0] += m_magnetic_field_eigen(0, i);
+              m_magnetic_field[i][1] += m_magnetic_field_eigen(1, i);
+              m_magnetic_field[i][2] += m_magnetic_field_eigen(2, i);
+            }
+          } break;
           case CurrentCarrier::TypeCase::kTypeNotSet:
             // consider as empty CurrentCarrier -> ignore
             break;
@@ -352,21 +408,21 @@ absl::Status VectorPotential(
     }
   }
 
-  const Vector3d &center_vector = *circular_filament.center_;
+  const Vector3d &center_vector = circular_filament.center;
   std::vector<double> center = {
       center_vector.x(),
       center_vector.y(),
       center_vector.z(),
   };
 
-  const Vector3d &normal_vector = *circular_filament.normal_;
+  const Vector3d &normal_vector = circular_filament.normal;
   std::vector<double> normal = {
       normal_vector.x(),
       normal_vector.y(),
       normal_vector.z(),
   };
 
-  const double radius = *circular_filament.radius_;
+  const double radius = circular_filament.radius;
 
   const int number_evaluation_positions =
       static_cast<int>(evaluation_positions.size());
@@ -433,18 +489,18 @@ absl::Status VectorPotential(
   // as abscab methods only add and not initialize
   std::vector<double> vector_potential_1d(number_evaluation_positions * 3, 0.0);
 
-  std::vector<double> vertices_1d(polygon_filament.vertices_size() * 3);
+  std::vector<double> vertices_1d(polygon_filament.vertices.cols() * 3);
 
   // copy filament geometry into one-dimensional array for ABSCAB
-  for (int i = 0; i < polygon_filament.vertices_size(); ++i) {
-    const Vector3d &vertex = polygon_filament.vertices(i);
+  for (int i = 0; i < polygon_filament.vertices.cols(); ++i) {
+    auto vertex = polygon_filament.vertices.col(i);
     vertices_1d[i * 3 + 0] = vertex.x();
     vertices_1d[i * 3 + 1] = vertex.y();
     vertices_1d[i * 3 + 2] = vertex.z();
   }
 
   abscab::vectorPotentialPolygonFilament(
-      polygon_filament.vertices_size(), vertices_1d.data(), current,
+      polygon_filament.vertices.cols(), vertices_1d.data(), current,
       number_evaluation_positions, evaluation_positions_1d.data(),
       vector_potential_1d.data());
 
@@ -491,7 +547,8 @@ absl::Status VectorPotential(
 
   for (const SerialCircuit &serial_circuit :
        magnetic_configuration.serial_circuits()) {
-    if (!serial_circuit.current_.has_value() || *serial_circuit.current_ == 0.0) {
+    if (!serial_circuit.current_.has_value() ||
+        *serial_circuit.current_ == 0.0) {
       // skip contributions with assumed zero current
       continue;
     }

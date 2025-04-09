@@ -10,13 +10,13 @@ cc_library(
         "//vmecpp/common/magnetic_configuration_definition:magnetic_configuration",
         "//vmecpp/common/composed_types_lib:composed_types_lib",
         "//util/file_io",
+        "@eigen",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/strings:strings",
         "@abseil-cpp//absl/status:status",
         "@abseil-cpp//absl/status:statusor",
-        "@eigen",
     ],
 )
 

@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 
+#include <cmath>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -39,20 +40,20 @@ end)";
       ImportMagneticConfigurationFromMakegrid(makegrid_coils);
   ASSERT_TRUE(magnetic_configuration.ok());
 
-  EXPECT_FALSE(magnetic_configuration->has_name());
-  ASSERT_TRUE(magnetic_configuration->has_num_field_periods());
-  EXPECT_EQ(magnetic_configuration->num_field_periods(), 1);
+  EXPECT_FALSE(magnetic_configuration->name.has_value());
+  ASSERT_TRUE(magnetic_configuration->num_field_periods_.has_value());
+  EXPECT_EQ(magnetic_configuration->num_field_periods_.value(), 1);
   ASSERT_EQ(magnetic_configuration->serial_circuits_size(), 1);
 
   SerialCircuit serial_circuit = magnetic_configuration->serial_circuits(0);
-  EXPECT_FALSE(serial_circuit.has_name());
-  EXPECT_EQ(serial_circuit.current(), 1.0);
+  EXPECT_FALSE(serial_circuit.name.has_value());
+  EXPECT_EQ(serial_circuit.current_.value(), 1.0);
   ASSERT_EQ(serial_circuit.coils_size(), 1);
 
   const Coil &coil = serial_circuit.coils(0);
-  EXPECT_FALSE(coil.has_name());
-  ASSERT_TRUE(coil.has_num_windings());
-  EXPECT_EQ(coil.num_windings(), 3.0);
+  EXPECT_FALSE(coil.name.has_value());
+  ASSERT_TRUE(coil.num_windings_.has_value());
+  EXPECT_EQ(coil.num_windings_.value(), 3.0);
   ASSERT_EQ(coil.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier = coil.current_carriers(0);
@@ -60,19 +61,16 @@ end)";
 
   const CircularFilament &circular_filament =
       current_carrier.circular_filament();
-  ASSERT_TRUE(circular_filament.has_name());
-  EXPECT_EQ(circular_filament.name(), "circular_filament");
-  ASSERT_TRUE(circular_filament.has_radius());
-  EXPECT_EQ(circular_filament.radius(), 1.0);
-  ASSERT_TRUE(circular_filament.has_center());
-  ASSERT_TRUE(circular_filament.has_normal());
+  ASSERT_TRUE(circular_filament.name.has_value());
+  EXPECT_EQ(circular_filament.name.value(), "circular_filament");
+  EXPECT_EQ(circular_filament.radius, 1.0);
 
-  const Vector3d &center = circular_filament.center();
+  const Vector3d &center = circular_filament.center;
   EXPECT_EQ(center.x(), 0.0);
   EXPECT_EQ(center.y(), 0.0);
   EXPECT_EQ(center.z(), 2.0);
 
-  const Vector3d &normal = circular_filament.normal();
+  const Vector3d &normal = circular_filament.normal;
   EXPECT_EQ(normal.x(), 0.0);
   EXPECT_EQ(normal.y(), 0.0);
   EXPECT_EQ(normal.z(), 1.0);
@@ -89,21 +87,21 @@ end)";
       ImportMagneticConfigurationFromMakegrid(makegrid_coils);
   ASSERT_TRUE(magnetic_configuration.ok());
 
-  EXPECT_FALSE(magnetic_configuration->has_name());
-  ASSERT_TRUE(magnetic_configuration->has_num_field_periods());
-  EXPECT_EQ(magnetic_configuration->num_field_periods(), 1);
+  EXPECT_FALSE(magnetic_configuration->name.has_value());
+  ASSERT_TRUE(magnetic_configuration->num_field_periods_.has_value());
+  EXPECT_EQ(magnetic_configuration->num_field_periods_.value(), 1);
   ASSERT_EQ(magnetic_configuration->serial_circuits_size(), 1);
 
   SerialCircuit serial_circuit = magnetic_configuration->serial_circuits(0);
-  EXPECT_FALSE(serial_circuit.has_name());
-  ASSERT_TRUE(serial_circuit.has_current());
-  EXPECT_EQ(serial_circuit.current(), 1.0);
+  EXPECT_FALSE(serial_circuit.name.has_value());
+  ASSERT_TRUE(serial_circuit.current_.has_value());
+  EXPECT_EQ(serial_circuit.current_.value(), 1.0);
   ASSERT_EQ(serial_circuit.coils_size(), 1);
 
   const Coil &coil = serial_circuit.coils(0);
-  EXPECT_FALSE(coil.has_name());
-  ASSERT_TRUE(coil.has_num_windings());
-  EXPECT_EQ(coil.num_windings(), 3.0);
+  EXPECT_FALSE(coil.name.has_value());
+  ASSERT_TRUE(coil.num_windings_.has_value());
+  EXPECT_EQ(coil.num_windings_.value(), 3.0);
   ASSERT_EQ(coil.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier = coil.current_carriers(0);
@@ -111,19 +109,16 @@ end)";
 
   const CircularFilament &circular_filament =
       current_carrier.circular_filament();
-  ASSERT_TRUE(circular_filament.has_name());
-  EXPECT_EQ(circular_filament.name(), "circular_filament");
-  ASSERT_TRUE(circular_filament.has_radius());
-  EXPECT_EQ(circular_filament.radius(), 1.0);
-  ASSERT_TRUE(circular_filament.has_center());
-  ASSERT_TRUE(circular_filament.has_normal());
+  ASSERT_TRUE(circular_filament.name.has_value());
+  EXPECT_EQ(circular_filament.name.value(), "circular_filament");
+  EXPECT_EQ(circular_filament.radius, 1.0);
 
-  const Vector3d &center = circular_filament.center();
+  const Vector3d &center = circular_filament.center;
   EXPECT_EQ(center.x(), 0.0);
   EXPECT_EQ(center.y(), 0.0);
   EXPECT_EQ(center.z(), 2.0);
 
-  const Vector3d &normal = circular_filament.normal();
+  const Vector3d &normal = circular_filament.normal;
   EXPECT_EQ(normal.x(), 0.0);
   EXPECT_EQ(normal.y(), 0.0);
   EXPECT_EQ(normal.z(), 1.0);
@@ -141,23 +136,23 @@ end)";
       ImportMagneticConfigurationFromMakegrid(makegrid_coils);
   ASSERT_TRUE(magnetic_configuration.ok());
 
-  EXPECT_FALSE(magnetic_configuration->has_name());
-  ASSERT_TRUE(magnetic_configuration->has_num_field_periods());
-  EXPECT_EQ(magnetic_configuration->num_field_periods(), 1);
+  EXPECT_FALSE(magnetic_configuration->name.has_value());
+  ASSERT_TRUE(magnetic_configuration->num_field_periods_.has_value());
+  EXPECT_EQ(magnetic_configuration->num_field_periods_.value(), 1);
   ASSERT_EQ(magnetic_configuration->serial_circuits_size(), 1);
 
   SerialCircuit serial_circuit = magnetic_configuration->serial_circuits(0);
-  EXPECT_FALSE(serial_circuit.has_name());
-  ASSERT_TRUE(serial_circuit.has_current());
-  EXPECT_EQ(serial_circuit.current(), 1.0);
+  EXPECT_FALSE(serial_circuit.name.has_value());
+  ASSERT_TRUE(serial_circuit.current_.has_value());
+  EXPECT_EQ(serial_circuit.current_.value(), 1.0);
   ASSERT_EQ(serial_circuit.coils_size(), 2);
 
   // first circular filament
 
   const Coil &coil_1a = serial_circuit.coils(0);
-  EXPECT_FALSE(coil_1a.has_name());
-  ASSERT_TRUE(coil_1a.has_num_windings());
-  EXPECT_EQ(coil_1a.num_windings(), 3.0);
+  EXPECT_FALSE(coil_1a.name.has_value());
+  ASSERT_TRUE(coil_1a.num_windings_.has_value());
+  EXPECT_EQ(coil_1a.num_windings_.value(), 3.0);
   ASSERT_EQ(coil_1a.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier_1a = coil_1a.current_carriers(0);
@@ -165,19 +160,16 @@ end)";
 
   const CircularFilament &circular_filament_1a =
       current_carrier_1a.circular_filament();
-  ASSERT_TRUE(circular_filament_1a.has_name());
-  EXPECT_EQ(circular_filament_1a.name(), "circular_filament_1a");
-  ASSERT_TRUE(circular_filament_1a.has_radius());
-  EXPECT_EQ(circular_filament_1a.radius(), 1.0);
-  ASSERT_TRUE(circular_filament_1a.has_center());
-  ASSERT_TRUE(circular_filament_1a.has_normal());
+  ASSERT_TRUE(circular_filament_1a.name.has_value());
+  EXPECT_EQ(circular_filament_1a.name.value(), "circular_filament_1a");
+  EXPECT_EQ(circular_filament_1a.radius, 1.0);
 
-  const Vector3d &center_1a = circular_filament_1a.center();
+  const Vector3d &center_1a = circular_filament_1a.center;
   EXPECT_EQ(center_1a.x(), 0.0);
   EXPECT_EQ(center_1a.y(), 0.0);
   EXPECT_EQ(center_1a.z(), 2.0);
 
-  const Vector3d &normal_1a = circular_filament_1a.normal();
+  const Vector3d &normal_1a = circular_filament_1a.normal;
   EXPECT_EQ(normal_1a.x(), 0.0);
   EXPECT_EQ(normal_1a.y(), 0.0);
   EXPECT_EQ(normal_1a.z(), 1.0);
@@ -185,9 +177,9 @@ end)";
   // second circular filament
 
   const Coil &coil_1b = serial_circuit.coils(1);
-  EXPECT_FALSE(coil_1b.has_name());
-  ASSERT_TRUE(coil_1b.has_num_windings());
-  EXPECT_EQ(coil_1b.num_windings(), 6.0);
+  EXPECT_FALSE(coil_1b.name.has_value());
+  ASSERT_TRUE(coil_1b.num_windings_.has_value());
+  EXPECT_EQ(coil_1b.num_windings_.value(), 6.0);
   EXPECT_EQ(coil_1b.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier_1b = coil_1b.current_carriers(0);
@@ -195,19 +187,16 @@ end)";
 
   const CircularFilament &circular_filament_1b =
       current_carrier_1b.circular_filament();
-  EXPECT_TRUE(circular_filament_1b.has_name());
-  EXPECT_EQ(circular_filament_1b.name(), "circular_filament_1b");
-  EXPECT_TRUE(circular_filament_1b.has_radius());
-  EXPECT_EQ(circular_filament_1b.radius(), 4.0);
-  ASSERT_TRUE(circular_filament_1b.has_center());
-  ASSERT_TRUE(circular_filament_1b.has_normal());
+  EXPECT_TRUE(circular_filament_1b.name.has_value());
+  EXPECT_EQ(circular_filament_1b.name.value(), "circular_filament_1b");
+  EXPECT_EQ(circular_filament_1b.radius, 4.0);
 
-  const Vector3d &center_1b = circular_filament_1b.center();
+  const Vector3d &center_1b = circular_filament_1b.center;
   EXPECT_EQ(center_1b.x(), 0.0);
   EXPECT_EQ(center_1b.y(), 0.0);
   EXPECT_EQ(center_1b.z(), 5.0);
 
-  const Vector3d &normal_1b = circular_filament_1b.normal();
+  const Vector3d &normal_1b = circular_filament_1b.normal;
   EXPECT_EQ(normal_1b.x(), 0.0);
   EXPECT_EQ(normal_1b.y(), 0.0);
   EXPECT_EQ(normal_1b.z(), 1.0);
@@ -225,21 +214,21 @@ end)";
       ImportMagneticConfigurationFromMakegrid(makegrid_coils);
   ASSERT_TRUE(magnetic_configuration.ok());
 
-  EXPECT_FALSE(magnetic_configuration->has_name());
+  EXPECT_FALSE(magnetic_configuration->name.has_value());
   ASSERT_EQ(magnetic_configuration->serial_circuits_size(), 2);
 
   // first circular filament
 
   SerialCircuit serial_circuit_1 = magnetic_configuration->serial_circuits(0);
-  EXPECT_FALSE(serial_circuit_1.has_name());
-  ASSERT_TRUE(serial_circuit_1.has_current());
-  EXPECT_EQ(serial_circuit_1.current(), 1.0);
+  EXPECT_FALSE(serial_circuit_1.name.has_value());
+  ASSERT_TRUE(serial_circuit_1.current_.has_value());
+  EXPECT_EQ(serial_circuit_1.current_.value(), 1.0);
   ASSERT_EQ(serial_circuit_1.coils_size(), 1);
 
   const Coil &coil_1 = serial_circuit_1.coils(0);
-  EXPECT_FALSE(coil_1.has_name());
-  ASSERT_TRUE(coil_1.has_num_windings());
-  EXPECT_EQ(coil_1.num_windings(), 3.0);
+  EXPECT_FALSE(coil_1.name.has_value());
+  ASSERT_TRUE(coil_1.num_windings_.has_value());
+  EXPECT_EQ(coil_1.num_windings_.value(), 3.0);
   ASSERT_EQ(coil_1.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier_1 = coil_1.current_carriers(0);
@@ -247,19 +236,16 @@ end)";
 
   const CircularFilament &circular_filament_1 =
       current_carrier_1.circular_filament();
-  ASSERT_TRUE(circular_filament_1.has_name());
-  EXPECT_EQ(circular_filament_1.name(), "circular_filament_1");
-  ASSERT_TRUE(circular_filament_1.has_radius());
-  EXPECT_EQ(circular_filament_1.radius(), 1.0);
-  ASSERT_TRUE(circular_filament_1.has_center());
-  ASSERT_TRUE(circular_filament_1.has_normal());
+  ASSERT_TRUE(circular_filament_1.name.has_value());
+  EXPECT_EQ(circular_filament_1.name.value(), "circular_filament_1");
+  EXPECT_EQ(circular_filament_1.radius, 1.0);
 
-  const Vector3d &center_1 = circular_filament_1.center();
+  const Vector3d &center_1 = circular_filament_1.center;
   EXPECT_EQ(center_1.x(), 0.0);
   EXPECT_EQ(center_1.y(), 0.0);
   EXPECT_EQ(center_1.z(), 2.0);
 
-  const Vector3d &normal_1 = circular_filament_1.normal();
+  const Vector3d &normal_1 = circular_filament_1.normal;
   EXPECT_EQ(normal_1.x(), 0.0);
   EXPECT_EQ(normal_1.y(), 0.0);
   EXPECT_EQ(normal_1.z(), 1.0);
@@ -267,15 +253,15 @@ end)";
   // second circular filament
 
   SerialCircuit serial_circuit_2 = magnetic_configuration->serial_circuits(1);
-  EXPECT_FALSE(serial_circuit_2.has_name());
-  ASSERT_TRUE(serial_circuit_2.has_current());
-  EXPECT_EQ(serial_circuit_2.current(), 1.0);
+  EXPECT_FALSE(serial_circuit_2.name.has_value());
+  ASSERT_TRUE(serial_circuit_2.current_.has_value());
+  EXPECT_EQ(serial_circuit_2.current_.value(), 1.0);
   ASSERT_EQ(serial_circuit_2.coils_size(), 1);
 
   const Coil &coil_2 = serial_circuit_2.coils(0);
-  EXPECT_FALSE(coil_2.has_name());
-  ASSERT_TRUE(coil_2.has_num_windings());
-  EXPECT_EQ(coil_2.num_windings(), 6.0);
+  EXPECT_FALSE(coil_2.name.has_value());
+  ASSERT_TRUE(coil_2.num_windings_.has_value());
+  EXPECT_EQ(coil_2.num_windings_.value(), 6.0);
   ASSERT_EQ(coil_2.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier_2 = coil_2.current_carriers(0);
@@ -283,19 +269,16 @@ end)";
 
   const CircularFilament &circular_filament_2 =
       current_carrier_2.circular_filament();
-  ASSERT_TRUE(circular_filament_2.has_name());
-  EXPECT_EQ(circular_filament_2.name(), "circular_filament_2");
-  ASSERT_TRUE(circular_filament_2.has_radius());
-  EXPECT_EQ(circular_filament_2.radius(), 4.0);
-  ASSERT_TRUE(circular_filament_2.has_center());
-  ASSERT_TRUE(circular_filament_2.has_normal());
+  ASSERT_TRUE(circular_filament_2.name.has_value());
+  EXPECT_EQ(circular_filament_2.name.value(), "circular_filament_2");
+  EXPECT_EQ(circular_filament_2.radius, 4.0);
 
-  const Vector3d &center_2 = circular_filament_2.center();
+  const Vector3d &center_2 = circular_filament_2.center;
   EXPECT_EQ(center_2.x(), 0.0);
   EXPECT_EQ(center_2.y(), 0.0);
   EXPECT_EQ(center_2.z(), 5.0);
 
-  const Vector3d &normal_2 = circular_filament_2.normal();
+  const Vector3d &normal_2 = circular_filament_2.normal;
   EXPECT_EQ(normal_2.x(), 0.0);
   EXPECT_EQ(normal_2.y(), 0.0);
   EXPECT_EQ(normal_2.z(), 1.0);
@@ -313,40 +296,38 @@ end)";
       ImportMagneticConfigurationFromMakegrid(makegrid_coils);
   ASSERT_TRUE(magnetic_configuration.ok());
 
-  EXPECT_FALSE(magnetic_configuration->has_name());
-  ASSERT_TRUE(magnetic_configuration->has_num_field_periods());
-  EXPECT_EQ(magnetic_configuration->num_field_periods(), 1);
+  EXPECT_FALSE(magnetic_configuration->name.has_value());
+  ASSERT_TRUE(magnetic_configuration->num_field_periods_.has_value());
+  EXPECT_EQ(magnetic_configuration->num_field_periods_.value(), 1);
   ASSERT_EQ(magnetic_configuration->serial_circuits_size(), 1);
 
   SerialCircuit serial_circuit = magnetic_configuration->serial_circuits(0);
-  EXPECT_FALSE(serial_circuit.has_name());
-  ASSERT_TRUE(serial_circuit.has_current());
-  EXPECT_EQ(serial_circuit.current(), 1.0);
+  EXPECT_FALSE(serial_circuit.name.has_value());
+  ASSERT_TRUE(serial_circuit.current_.has_value());
+  EXPECT_EQ(serial_circuit.current_.value(), 1.0);
   ASSERT_EQ(serial_circuit.coils_size(), 1);
 
   const Coil &coil = serial_circuit.coils(0);
-  EXPECT_FALSE(coil.has_name());
-  ASSERT_TRUE(coil.has_num_windings());
-  EXPECT_EQ(coil.num_windings(), 4.0);
+  EXPECT_FALSE(coil.name.has_value());
+  ASSERT_TRUE(coil.num_windings_.has_value());
+  EXPECT_EQ(coil.num_windings_.value(), 4.0);
   ASSERT_EQ(coil.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier = coil.current_carriers(0);
   ASSERT_TRUE(current_carrier.has_polygon_filament());
 
   const PolygonFilament &polygon_filament = current_carrier.polygon_filament();
-  ASSERT_TRUE(polygon_filament.has_name());
-  EXPECT_EQ(polygon_filament.name(), "polygon_filament");
-  ASSERT_EQ(polygon_filament.vertices_size(), 2);
+  ASSERT_TRUE(polygon_filament.name.has_value());
+  EXPECT_EQ(polygon_filament.name.value(), "polygon_filament");
+  ASSERT_EQ(polygon_filament.vertices.cols(), 2);
 
-  const Vector3d &vertex_0 = polygon_filament.vertices(0);
-  EXPECT_EQ(vertex_0.x(), 1.0);
-  EXPECT_EQ(vertex_0.y(), 2.0);
-  EXPECT_EQ(vertex_0.z(), 3.0);
+  EXPECT_EQ(polygon_filament.vertices(0, 0), 1.0);
+  EXPECT_EQ(polygon_filament.vertices(1, 0), 2.0);
+  EXPECT_EQ(polygon_filament.vertices(2, 0), 3.0);
 
-  const Vector3d &vertex_1 = polygon_filament.vertices(1);
-  EXPECT_EQ(vertex_1.x(), 5.0);
-  EXPECT_EQ(vertex_1.y(), 6.0);
-  EXPECT_EQ(vertex_1.z(), 7.0);
+  EXPECT_EQ(polygon_filament.vertices(0, 1), 5.0);
+  EXPECT_EQ(polygon_filament.vertices(1, 1), 6.0);
+  EXPECT_EQ(polygon_filament.vertices(2, 1), 7.0);
 }  // SinglePolygonFilament
 
 TEST(TestMagneticConfigurationLib, TwoPolygonFilamentsInSameCircuit) {
@@ -363,23 +344,23 @@ end)";
       ImportMagneticConfigurationFromMakegrid(makegrid_coils);
   ASSERT_TRUE(magnetic_configuration.ok());
 
-  EXPECT_FALSE(magnetic_configuration->has_name());
-  ASSERT_TRUE(magnetic_configuration->has_num_field_periods());
-  EXPECT_EQ(magnetic_configuration->num_field_periods(), 1);
+  EXPECT_FALSE(magnetic_configuration->name.has_value());
+  ASSERT_TRUE(magnetic_configuration->num_field_periods_.has_value());
+  EXPECT_EQ(magnetic_configuration->num_field_periods_.value(), 1);
   ASSERT_EQ(magnetic_configuration->serial_circuits_size(), 1);
 
   SerialCircuit serial_circuit = magnetic_configuration->serial_circuits(0);
-  EXPECT_FALSE(serial_circuit.has_name());
-  ASSERT_TRUE(serial_circuit.has_current());
-  EXPECT_EQ(serial_circuit.current(), 1.0);
+  EXPECT_FALSE(serial_circuit.name.has_value());
+  ASSERT_TRUE(serial_circuit.current_.has_value());
+  EXPECT_EQ(serial_circuit.current_.value(), 1.0);
   ASSERT_EQ(serial_circuit.coils_size(), 2);
 
   // first polygon filament
 
   const Coil &coil_1a = serial_circuit.coils(0);
-  EXPECT_FALSE(coil_1a.has_name());
-  ASSERT_TRUE(coil_1a.has_num_windings());
-  EXPECT_EQ(coil_1a.num_windings(), 4.0);
+  EXPECT_FALSE(coil_1a.name.has_value());
+  ASSERT_TRUE(coil_1a.num_windings_.has_value());
+  EXPECT_EQ(coil_1a.num_windings_.value(), 4.0);
   ASSERT_EQ(coil_1a.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier_1a = coil_1a.current_carriers(0);
@@ -387,26 +368,24 @@ end)";
 
   const PolygonFilament &polygon_filament_1a =
       current_carrier_1a.polygon_filament();
-  ASSERT_TRUE(polygon_filament_1a.has_name());
-  EXPECT_EQ(polygon_filament_1a.name(), "polygon_filament_1a");
-  ASSERT_EQ(polygon_filament_1a.vertices_size(), 2);
+  ASSERT_TRUE(polygon_filament_1a.name.has_value());
+  EXPECT_EQ(polygon_filament_1a.name.value(), "polygon_filament_1a");
+  ASSERT_EQ(polygon_filament_1a.vertices.cols(), 2);
 
-  const Vector3d &vertex_1a_0 = polygon_filament_1a.vertices(0);
-  EXPECT_EQ(vertex_1a_0.x(), 1.0);
-  EXPECT_EQ(vertex_1a_0.y(), 2.0);
-  EXPECT_EQ(vertex_1a_0.z(), 3.0);
+  EXPECT_EQ(polygon_filament_1a.vertices(0, 0), 1.0);
+  EXPECT_EQ(polygon_filament_1a.vertices(1, 0), 2.0);
+  EXPECT_EQ(polygon_filament_1a.vertices(2, 0), 3.0);
 
-  const Vector3d &vertex_1a_1 = polygon_filament_1a.vertices(1);
-  EXPECT_EQ(vertex_1a_1.x(), 5.0);
-  EXPECT_EQ(vertex_1a_1.y(), 6.0);
-  EXPECT_EQ(vertex_1a_1.z(), 7.0);
+  EXPECT_EQ(polygon_filament_1a.vertices(0, 1), 5.0);
+  EXPECT_EQ(polygon_filament_1a.vertices(1, 1), 6.0);
+  EXPECT_EQ(polygon_filament_1a.vertices(2, 1), 7.0);
 
   // second polygon filament
 
   const Coil &coil_1b = serial_circuit.coils(1);
-  EXPECT_FALSE(coil_1b.has_name());
-  ASSERT_TRUE(coil_1b.has_num_windings());
-  EXPECT_EQ(coil_1b.num_windings(), 4.5);
+  EXPECT_FALSE(coil_1b.name.has_value());
+  ASSERT_TRUE(coil_1b.num_windings_.has_value());
+  EXPECT_EQ(coil_1b.num_windings_.value(), 4.5);
   ASSERT_EQ(coil_1b.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier_1b = coil_1b.current_carriers(0);
@@ -414,19 +393,17 @@ end)";
 
   const PolygonFilament &polygon_filament_1b =
       current_carrier_1b.polygon_filament();
-  ASSERT_TRUE(polygon_filament_1b.has_name());
-  EXPECT_EQ(polygon_filament_1b.name(), "polygon_filament_1b");
-  ASSERT_EQ(polygon_filament_1b.vertices_size(), 2);
+  ASSERT_TRUE(polygon_filament_1b.name.has_value());
+  EXPECT_EQ(polygon_filament_1b.name.value(), "polygon_filament_1b");
+  ASSERT_EQ(polygon_filament_1b.vertices.cols(), 2);
 
-  const Vector3d &vertex_1b_0 = polygon_filament_1b.vertices(0);
-  EXPECT_EQ(vertex_1b_0.x(), 1.5);
-  EXPECT_EQ(vertex_1b_0.y(), 2.5);
-  EXPECT_EQ(vertex_1b_0.z(), 3.5);
+  EXPECT_EQ(polygon_filament_1b.vertices(0, 0), 1.5);
+  EXPECT_EQ(polygon_filament_1b.vertices(1, 0), 2.5);
+  EXPECT_EQ(polygon_filament_1b.vertices(2, 0), 3.5);
 
-  const Vector3d &vertex_1b_1 = polygon_filament_1b.vertices(1);
-  EXPECT_EQ(vertex_1b_1.x(), 5.5);
-  EXPECT_EQ(vertex_1b_1.y(), 6.5);
-  EXPECT_EQ(vertex_1b_1.z(), 7.5);
+  EXPECT_EQ(polygon_filament_1b.vertices(0, 1), 5.5);
+  EXPECT_EQ(polygon_filament_1b.vertices(1, 1), 6.5);
+  EXPECT_EQ(polygon_filament_1b.vertices(2, 1), 7.5);
 }  // TwoPolygonFilamentsInSameCircuit
 
 TEST(TestMagneticConfigurationLib, TwoPolygonFilamentsInTwoCircuits) {
@@ -443,23 +420,23 @@ end)";
       ImportMagneticConfigurationFromMakegrid(makegrid_coils);
   ASSERT_TRUE(magnetic_configuration.ok());
 
-  EXPECT_FALSE(magnetic_configuration->has_name());
-  ASSERT_TRUE(magnetic_configuration->has_num_field_periods());
-  EXPECT_EQ(magnetic_configuration->num_field_periods(), 1);
+  EXPECT_FALSE(magnetic_configuration->name.has_value());
+  ASSERT_TRUE(magnetic_configuration->num_field_periods_.has_value());
+  EXPECT_EQ(magnetic_configuration->num_field_periods_.value(), 1);
   ASSERT_EQ(magnetic_configuration->serial_circuits_size(), 2);
 
   // first polygon filament
 
   SerialCircuit serial_circuit_0 = magnetic_configuration->serial_circuits(0);
-  EXPECT_FALSE(serial_circuit_0.has_name());
-  ASSERT_TRUE(serial_circuit_0.has_current());
-  EXPECT_EQ(serial_circuit_0.current(), 1.0);
+  EXPECT_FALSE(serial_circuit_0.name.has_value());
+  ASSERT_TRUE(serial_circuit_0.current_.has_value());
+  EXPECT_EQ(serial_circuit_0.current_.value(), 1.0);
   ASSERT_EQ(serial_circuit_0.coils_size(), 1);
 
   const Coil &coil_0 = serial_circuit_0.coils(0);
-  EXPECT_FALSE(coil_0.has_name());
-  ASSERT_TRUE(coil_0.has_num_windings());
-  EXPECT_EQ(coil_0.num_windings(), 4.0);
+  EXPECT_FALSE(coil_0.name.has_value());
+  ASSERT_TRUE(coil_0.num_windings_.has_value());
+  EXPECT_EQ(coil_0.num_windings_.value(), 4.0);
   ASSERT_EQ(coil_0.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier_0 = coil_0.current_carriers(0);
@@ -467,32 +444,30 @@ end)";
 
   const PolygonFilament &polygon_filament_1 =
       current_carrier_0.polygon_filament();
-  ASSERT_TRUE(polygon_filament_1.has_name());
-  EXPECT_EQ(polygon_filament_1.name(), "polygon_filament_1");
-  ASSERT_EQ(polygon_filament_1.vertices_size(), 2);
+  ASSERT_TRUE(polygon_filament_1.name.has_value());
+  EXPECT_EQ(polygon_filament_1.name.value(), "polygon_filament_1");
+  ASSERT_EQ(polygon_filament_1.vertices.cols(), 2);
 
-  const Vector3d &vertex_1_0 = polygon_filament_1.vertices(0);
-  EXPECT_EQ(vertex_1_0.x(), 1.0);
-  EXPECT_EQ(vertex_1_0.y(), 2.0);
-  EXPECT_EQ(vertex_1_0.z(), 3.0);
+  EXPECT_EQ(polygon_filament_1.vertices(0, 0), 1.0);
+  EXPECT_EQ(polygon_filament_1.vertices(1, 0), 2.0);
+  EXPECT_EQ(polygon_filament_1.vertices(2, 0), 3.0);
 
-  const Vector3d &vertex_1_1 = polygon_filament_1.vertices(1);
-  EXPECT_EQ(vertex_1_1.x(), 5.0);
-  EXPECT_EQ(vertex_1_1.y(), 6.0);
-  EXPECT_EQ(vertex_1_1.z(), 7.0);
+  EXPECT_EQ(polygon_filament_1.vertices(0, 1), 5.0);
+  EXPECT_EQ(polygon_filament_1.vertices(1, 1), 6.0);
+  EXPECT_EQ(polygon_filament_1.vertices(2, 1), 7.0);
 
   // second polygon filament
 
   SerialCircuit serial_circuit_1 = magnetic_configuration->serial_circuits(1);
-  EXPECT_FALSE(serial_circuit_1.has_name());
-  ASSERT_TRUE(serial_circuit_1.has_current());
-  EXPECT_EQ(serial_circuit_1.current(), 1.0);
+  EXPECT_FALSE(serial_circuit_1.name.has_value());
+  ASSERT_TRUE(serial_circuit_1.current_.has_value());
+  EXPECT_EQ(serial_circuit_1.current_.value(), 1.0);
   ASSERT_EQ(serial_circuit_1.coils_size(), 1);
 
   const Coil &coil_1 = serial_circuit_1.coils(0);
-  EXPECT_FALSE(coil_1.has_name());
-  ASSERT_TRUE(coil_1.has_num_windings());
-  EXPECT_EQ(coil_1.num_windings(), 4.5);
+  EXPECT_FALSE(coil_1.name.has_value());
+  ASSERT_TRUE(coil_1.num_windings_.has_value());
+  EXPECT_EQ(coil_1.num_windings_.value(), 4.5);
   ASSERT_EQ(coil_1.current_carriers_size(), 1);
 
   const CurrentCarrier &current_carrier_1 = coil_1.current_carriers(0);
@@ -500,19 +475,17 @@ end)";
 
   const PolygonFilament &polygon_filament_2 =
       current_carrier_1.polygon_filament();
-  ASSERT_TRUE(polygon_filament_2.has_name());
-  EXPECT_EQ(polygon_filament_2.name(), "polygon_filament_2");
-  ASSERT_EQ(polygon_filament_2.vertices_size(), 2);
+  ASSERT_TRUE(polygon_filament_2.name.has_value());
+  EXPECT_EQ(polygon_filament_2.name.value(), "polygon_filament_2");
+  ASSERT_EQ(polygon_filament_2.vertices.cols(), 2);
 
-  const Vector3d &vertex_2_0 = polygon_filament_2.vertices(0);
-  EXPECT_EQ(vertex_2_0.x(), 1.5);
-  EXPECT_EQ(vertex_2_0.y(), 2.5);
-  EXPECT_EQ(vertex_2_0.z(), 3.5);
+  EXPECT_EQ(polygon_filament_2.vertices(0, 0), 1.5);
+  EXPECT_EQ(polygon_filament_2.vertices(1, 0), 2.5);
+  EXPECT_EQ(polygon_filament_2.vertices(2, 0), 3.5);
 
-  const Vector3d &vertex_2_1 = polygon_filament_2.vertices(1);
-  EXPECT_EQ(vertex_2_1.x(), 5.5);
-  EXPECT_EQ(vertex_2_1.y(), 6.5);
-  EXPECT_EQ(vertex_2_1.z(), 7.5);
+  EXPECT_EQ(polygon_filament_2.vertices(0, 1), 5.5);
+  EXPECT_EQ(polygon_filament_2.vertices(1, 1), 6.5);
+  EXPECT_EQ(polygon_filament_2.vertices(2, 1), 7.5);
 }  // TwoPolygonFilamentsInTwoCircuits
 
 TEST(TestMagneticConfigurationLib, CheckGetCircuitCurrents) {
@@ -617,17 +590,20 @@ end)";
   // and the currents are set to 1.0 -> check this first
   ASSERT_EQ(magnetic_configuration.serial_circuits_size(), 2);
 
-  EXPECT_EQ(magnetic_configuration.serial_circuits(0).current(), 1.0);
+  EXPECT_EQ(magnetic_configuration.serial_circuits(0).current_.value(), 1.0);
   ASSERT_EQ(magnetic_configuration.serial_circuits(0).coils_size(), 1);
-  EXPECT_EQ(magnetic_configuration.serial_circuits(0).coils(0).num_windings(),
-            4.0);
+  EXPECT_EQ(
+      magnetic_configuration.serial_circuits(0).coils(0).num_windings_.value(),
+      4.0);
 
-  EXPECT_EQ(magnetic_configuration.serial_circuits(1).current(), 1.0);
+  EXPECT_EQ(magnetic_configuration.serial_circuits(1).current_.value(), 1.0);
   ASSERT_EQ(magnetic_configuration.serial_circuits(1).coils_size(), 2);
-  EXPECT_EQ(magnetic_configuration.serial_circuits(1).coils(0).num_windings(),
-            4.5);
-  EXPECT_EQ(magnetic_configuration.serial_circuits(1).coils(1).num_windings(),
-            4.5);
+  EXPECT_EQ(
+      magnetic_configuration.serial_circuits(1).coils(0).num_windings_.value(),
+      4.5);
+  EXPECT_EQ(
+      magnetic_configuration.serial_circuits(1).coils(1).num_windings_.value(),
+      4.5);
 
   // now make a mutable copy of the MagneticConfiguration
   // and migrate `num_windings` into the circuit currents
@@ -638,16 +614,22 @@ end)";
   ASSERT_TRUE(status.ok()) << status.message();
 
   // now check that currents actually have been migrated into circuit currents
-  EXPECT_EQ(m_magnetic_configuration.serial_circuits(0).current(), 4.0);
+  EXPECT_EQ(m_magnetic_configuration.serial_circuits(0).current_.value(), 4.0);
   ASSERT_EQ(m_magnetic_configuration.serial_circuits(0).coils_size(), 1);
-  EXPECT_EQ(m_magnetic_configuration.serial_circuits(0).coils(0).num_windings(),
+  EXPECT_EQ(m_magnetic_configuration.serial_circuits(0)
+                .coils(0)
+                .num_windings_.value(),
             1.0);
 
-  EXPECT_EQ(m_magnetic_configuration.serial_circuits(1).current(), 4.5);
+  EXPECT_EQ(m_magnetic_configuration.serial_circuits(1).current_.value(), 4.5);
   ASSERT_EQ(m_magnetic_configuration.serial_circuits(1).coils_size(), 2);
-  EXPECT_EQ(m_magnetic_configuration.serial_circuits(1).coils(0).num_windings(),
+  EXPECT_EQ(m_magnetic_configuration.serial_circuits(1)
+                .coils(0)
+                .num_windings_.value(),
             1.0);
-  EXPECT_EQ(m_magnetic_configuration.serial_circuits(1).coils(1).num_windings(),
+  EXPECT_EQ(m_magnetic_configuration.serial_circuits(1)
+                .coils(1)
+                .num_windings_.value(),
             1.0);
 
   // now check also a case that should not work:
@@ -670,11 +652,15 @@ end)";
   // and the currents are set to 1.0 -> check this first
   ASSERT_EQ(magnetic_configuration_2.serial_circuits_size(), 1);
 
-  EXPECT_EQ(magnetic_configuration_2.serial_circuits(0).current(), 1.0);
+  EXPECT_EQ(magnetic_configuration_2.serial_circuits(0).current_.value(), 1.0);
   ASSERT_EQ(magnetic_configuration_2.serial_circuits(0).coils_size(), 2);
-  EXPECT_EQ(magnetic_configuration_2.serial_circuits(0).coils(0).num_windings(),
+  EXPECT_EQ(magnetic_configuration_2.serial_circuits(0)
+                .coils(0)
+                .num_windings_.value(),
             4.0);
-  EXPECT_EQ(magnetic_configuration_2.serial_circuits(0).coils(1).num_windings(),
+  EXPECT_EQ(magnetic_configuration_2.serial_circuits(0)
+                .coils(1)
+                .num_windings_.value(),
             4.5);
 
   // now make a mutable copy of the MagneticConfiguration
@@ -712,30 +698,32 @@ TEST_P(IsInfiniteStraightFilamentFullyPopulatedTest,
        CheckIsInfiniteStraightFilamentFullyPopulated) {
   InfiniteStraightFilament infinite_straight_filament;
   if (specify_name_) {
-    infinite_straight_filament.set_name("filament_1");
+    infinite_straight_filament.name = "filament_1";
   }
   if (specify_origin_) {
-    Vector3d *origin = infinite_straight_filament.mutable_origin();
+    infinite_straight_filament.origin_.emplace();
+    Vector3d &origin = *infinite_straight_filament.origin_;
     if (origin_components_ & (1 << 0)) {
-      origin->set_x(1.23);
+      origin.set_x(1.23);
     }
     if (origin_components_ & (1 << 1)) {
-      origin->set_y(4.56);
+      origin.set_y(4.56);
     }
     if (origin_components_ & (1 << 2)) {
-      origin->set_z(7.89);
+      origin.set_z(7.89);
     }
   }
   if (specify_direction_) {
-    Vector3d *direction = infinite_straight_filament.mutable_direction();
+    infinite_straight_filament.direction_.emplace();
+    Vector3d &direction = *infinite_straight_filament.direction_;
     if (direction_components_ & (1 << 0)) {
-      direction->set_x(9.87);
+      direction.set_x(9.87);
     }
     if (direction_components_ & (1 << 1)) {
-      direction->set_y(6.54);
+      direction.set_y(6.54);
     }
     if (direction_components_ & (1 << 2)) {
-      direction->set_z(3.21);
+      direction.set_z(3.21);
     }
   }
 
@@ -756,115 +744,56 @@ INSTANTIATE_TEST_SUITE_P(TestMagneticConfigurationLib,
 
 // -------------------
 
-// The two integer parameters are interpreted as bitfields that control
-// which Cartesian components of the center and normal vectors are populated.
-// Bit 0 controls the x component; x is populated if this bit is 1.
-// Bit 1 controls the y component; y is populated if this bit is 1.
-// Bit 2 controls the z component; z is populated if this bit is 1.
-class IsCircularFilamentFullyPopulatedTest
-    : public TestWithParam< ::std::tuple<bool, bool, int, bool, int, bool> > {
- protected:
-  void SetUp() override {
-    std::tie(specify_name_, specify_center_, center_components_,
-             specify_normal_, normal_components_, specify_radius_) = GetParam();
-  }
-  bool specify_name_;
-  bool specify_center_;
-  int center_components_;
-  bool specify_normal_;
-  int normal_components_;
-  bool specify_radius_;
-};
-
-TEST_P(IsCircularFilamentFullyPopulatedTest,
-       CheckIsCircularFilamentFullyPopulated) {
+// Since CircularFilament fields (center, normal, radius) are now non-optional,
+// IsCircularFilamentFullyPopulated always succeeds.
+TEST(TestMagneticConfigurationLib, IsCircularFilamentFullyPopulated) {
   CircularFilament circular_filament;
-  if (specify_name_) {
-    circular_filament.set_name("filament_1");
-  }
-  if (specify_center_) {
-    Vector3d *center = circular_filament.mutable_center();
-    if (center_components_ & (1 << 0)) {
-      center->set_x(1.23);
-    }
-    if (center_components_ & (1 << 1)) {
-      center->set_y(4.56);
-    }
-    if (center_components_ & (1 << 2)) {
-      center->set_z(7.89);
-    }
-  }
-  if (specify_normal_) {
-    Vector3d *normal = circular_filament.mutable_normal();
-    if (normal_components_ & (1 << 0)) {
-      normal->set_x(9.87);
-    }
-    if (normal_components_ & (1 << 1)) {
-      normal->set_y(6.54);
-    }
-    if (normal_components_ & (1 << 2)) {
-      normal->set_z(3.21);
-    }
-  }
-  if (specify_radius_) {
-    circular_filament.set_radius(3.14);
-  }
-
+  // Even with default-constructed values, the check should pass
   absl::Status status = IsCircularFilamentFullyPopulated(circular_filament);
-  if (specify_center_ && center_components_ == 7 && specify_normal_ &&
-      normal_components_ == 7 && specify_radius_) {
-    EXPECT_TRUE(status.ok());
-  } else {
-    EXPECT_FALSE(status.ok());
-  }
-}  // CheckIsCircularFilamentFullyPopulated
+  EXPECT_TRUE(status.ok());
 
-INSTANTIATE_TEST_SUITE_P(TestMagneticConfigurationLib,
-                         IsCircularFilamentFullyPopulatedTest,
-                         Combine(Bool(), Bool(), Values(0, 1, 2, 3, 4, 5, 6, 7),
-                                 Bool(), Values(0, 1, 2, 3, 4, 5, 6, 7),
-                                 Bool()));
+  // Also with explicit values
+  circular_filament.name = "test_filament";
+  circular_filament.center.set_x(1.23);
+  circular_filament.center.set_y(4.56);
+  circular_filament.center.set_z(7.89);
+  circular_filament.normal.set_x(0.0);
+  circular_filament.normal.set_y(0.0);
+  circular_filament.normal.set_z(1.0);
+  circular_filament.radius = 3.14;
+  status = IsCircularFilamentFullyPopulated(circular_filament);
+  EXPECT_TRUE(status.ok());
+}
 
 // -------------------
 
-// The second integer parameter is interpreted as a bitfield that controls
-// which Cartesian components of the vertices are populated.
-// Bit 0 controls the x component; x is populated if this bit is 1.
-// Bit 1 controls the y component; y is populated if this bit is 1.
-// Bit 2 controls the z component; z is populated if this bit is 1.
 class IsPolygonFilamentFullyPopulatedTest
-    : public TestWithParam< ::std::tuple<bool, int, int> > {
+    : public TestWithParam< ::std::tuple<bool, int> > {
  protected:
   void SetUp() override {
-    std::tie(specify_name_, number_of_vertices_, vertex_components_) =
-        GetParam();
+    std::tie(specify_name_, number_of_vertices_) = GetParam();
   }
   bool specify_name_;
   int number_of_vertices_;
-  int vertex_components_;
 };
 
 TEST_P(IsPolygonFilamentFullyPopulatedTest,
        CheckIsPolygonFilamentFullyPopulated) {
   PolygonFilament polygon_filament;
   if (specify_name_) {
-    polygon_filament.set_name("filament_3");
+    polygon_filament.name = "filament_3";
   }
-  for (int i = 0; i < number_of_vertices_; ++i) {
-    Vector3d *vertex = polygon_filament.add_vertices();
-    if (vertex_components_ & (1 << 0)) {
-      vertex->set_x(3.14);
-    }
-    if (vertex_components_ & (1 << 1)) {
-      vertex->set_y(2.71);
-    }
-    if (vertex_components_ & (1 << 2)) {
-      vertex->set_z(1.41);
+  if (number_of_vertices_ > 0) {
+    polygon_filament.vertices.resize(3, number_of_vertices_);
+    for (int i = 0; i < number_of_vertices_; ++i) {
+      polygon_filament.vertices(0, i) = 3.14;
+      polygon_filament.vertices(1, i) = 2.71;
+      polygon_filament.vertices(2, i) = 1.41;
     }
   }
 
   absl::Status status = IsPolygonFilamentFullyPopulated(polygon_filament);
-  if (number_of_vertices_ > 1 && vertex_components_ == 7) {
+  if (number_of_vertices_ > 1) {
     EXPECT_TRUE(status.ok());
   } else {
     EXPECT_FALSE(status.ok());
@@ -873,17 +802,19 @@ TEST_P(IsPolygonFilamentFullyPopulatedTest,
 
 INSTANTIATE_TEST_SUITE_P(TestMagneticConfigurationLib,
                          IsPolygonFilamentFullyPopulatedTest,
-                         Combine(Bool(), Values(0, 1, 2, 3),
-                                 Values(0, 1, 2, 3, 4, 5, 6, 7)));
+                         Combine(Bool(), Values(0, 1, 2, 3)));
 
 // -------------------
 
 class IsMagneticConfigurationFullyPopulatedTest : public Test {
  protected:
   void SetUp() override {
+    magnetic_configuration_.num_field_periods_ = 1;
     SerialCircuit *serial_circuit =
         magnetic_configuration_.add_serial_circuits();
+    serial_circuit->current_ = 1.0;
     Coil *coil = serial_circuit->add_coils();
+    coil->num_windings_ = 1.0;
     current_carrier_ = coil->add_current_carriers();
   }
   MagneticConfiguration magnetic_configuration_;
@@ -892,26 +823,27 @@ class IsMagneticConfigurationFullyPopulatedTest : public Test {
 
 TEST_F(IsMagneticConfigurationFullyPopulatedTest,
        CheckIsMagneticConfigurationFullyPopulatedWithNoCurrentCarrier) {
-  // do not add any current carrier
-  // --> noting to test, is also ok and will also not modify the magnetic field
+  // The current carrier has kTypeNotSet, which is now an error
   absl::Status status =
       IsMagneticConfigurationFullyPopulated(magnetic_configuration_);
 
-  EXPECT_TRUE(status.ok());
+  EXPECT_FALSE(status.ok());
 }  // CheckIsMagneticConfigurationFullyPopulatedWithNoCurrentCarrier
 
 TEST_F(IsMagneticConfigurationFullyPopulatedTest,
        CheckIsMagneticConfigurationFullyPopulatedWithInfiniteStraightFilament) {
   InfiniteStraightFilament *infinite_straight_filament =
       current_carrier_->mutable_infinite_straight_filament();
-  Vector3d *origin = infinite_straight_filament->mutable_origin();
-  origin->set_x(1.23);
-  origin->set_y(4.56);
-  origin->set_z(7.89);
-  Vector3d *direction = infinite_straight_filament->mutable_direction();
-  direction->set_x(9.87);
-  direction->set_y(6.54);
-  direction->set_z(3.21);
+  infinite_straight_filament->origin_.emplace();
+  Vector3d &origin = *infinite_straight_filament->origin_;
+  origin.set_x(1.23);
+  origin.set_y(4.56);
+  origin.set_z(7.89);
+  infinite_straight_filament->direction_.emplace();
+  Vector3d &direction = *infinite_straight_filament->direction_;
+  direction.set_x(9.87);
+  direction.set_y(6.54);
+  direction.set_z(3.21);
 
   absl::Status status =
       IsMagneticConfigurationFullyPopulated(magnetic_configuration_);
@@ -923,15 +855,13 @@ TEST_F(IsMagneticConfigurationFullyPopulatedTest,
        CheckIsMagneticConfigurationFullyPopulatedWithCircularFilament) {
   CircularFilament *circular_filament =
       current_carrier_->mutable_circular_filament();
-  Vector3d *center = circular_filament->mutable_center();
-  center->set_x(1.23);
-  center->set_y(4.56);
-  center->set_z(7.89);
-  Vector3d *normal = circular_filament->mutable_normal();
-  normal->set_x(9.87);
-  normal->set_y(6.54);
-  normal->set_z(3.21);
-  circular_filament->set_radius(3.14);
+  circular_filament->center.set_x(1.23);
+  circular_filament->center.set_y(4.56);
+  circular_filament->center.set_z(7.89);
+  circular_filament->normal.set_x(9.87);
+  circular_filament->normal.set_y(6.54);
+  circular_filament->normal.set_z(3.21);
+  circular_filament->radius = 3.14;
 
   absl::Status status =
       IsMagneticConfigurationFullyPopulated(magnetic_configuration_);
@@ -943,14 +873,9 @@ TEST_F(IsMagneticConfigurationFullyPopulatedTest,
        CheckIsMagneticConfigurationFullyPopulatedWithPolygonFilament) {
   PolygonFilament *polygon_filament =
       current_carrier_->mutable_polygon_filament();
-  Vector3d *vertex_1 = polygon_filament->add_vertices();
-  vertex_1->set_x(1.23);
-  vertex_1->set_y(4.56);
-  vertex_1->set_z(7.89);
-  Vector3d *vertex_2 = polygon_filament->add_vertices();
-  vertex_2->set_x(9.87);
-  vertex_2->set_y(6.54);
-  vertex_2->set_z(3.21);
+  polygon_filament->vertices.resize(3, 2);
+  polygon_filament->vertices.col(0) = Eigen::Vector3d{1.23, 4.56, 7.89};
+  polygon_filament->vertices.col(1) = Eigen::Vector3d{9.87, 6.54, 3.21};
 
   absl::Status status =
       IsMagneticConfigurationFullyPopulated(magnetic_configuration_);
@@ -974,19 +899,19 @@ class PrintInfiniteStraightFilamentTest
 TEST_P(PrintInfiniteStraightFilamentTest, CheckPrintInfiniteStraightFilament) {
   InfiniteStraightFilament infinite_straight_filament;
   if (specify_name_) {
-    infinite_straight_filament.set_name("filament_1");
+    infinite_straight_filament.name = "filament_1";
   }
   if (specify_origin_) {
-    Vector3d *origin = infinite_straight_filament.mutable_origin();
-    origin->set_x(1.23);
-    origin->set_y(4.56);
-    origin->set_z(7.89);
+    infinite_straight_filament.origin_.emplace();
+    infinite_straight_filament.origin_->set_x(1.23);
+    infinite_straight_filament.origin_->set_y(4.56);
+    infinite_straight_filament.origin_->set_z(7.89);
   }
   if (specify_direction_) {
-    Vector3d *direction = infinite_straight_filament.mutable_direction();
-    direction->set_x(9.87);
-    direction->set_y(6.54);
-    direction->set_z(3.21);
+    infinite_straight_filament.direction_.emplace();
+    infinite_straight_filament.direction_->set_x(9.87);
+    infinite_straight_filament.direction_->set_y(6.54);
+    infinite_straight_filament.direction_->set_z(3.21);
   }
 
   testing::internal::CaptureStdout();
@@ -997,17 +922,17 @@ TEST_P(PrintInfiniteStraightFilamentTest, CheckPrintInfiniteStraightFilament) {
   if (specify_name_) {
     expected_output += "  name: 'filament_1'\n";
   } else {
-    expected_output += "  name: none\n";
+    expected_output += "  name: [not set]\n";
   }
   if (specify_origin_) {
     expected_output += "  origin: [1.23, 4.56, 7.89]\n";
   } else {
-    expected_output += "  origin: none\n";
+    expected_output += "  origin: [not set]\n";
   }
   if (specify_direction_) {
     expected_output += "  direction: [9.87, 6.54, 3.21]\n";
   } else {
-    expected_output += "  direction: none\n";
+    expected_output += "  direction: [not set]\n";
   }
   expected_output += "}\n";
 
@@ -1020,74 +945,46 @@ INSTANTIATE_TEST_SUITE_P(TestMagneticConfigurationLib,
 
 // -------------------
 
-class PrintCircularFilamentTest
-    : public TestWithParam< ::std::tuple<bool, bool, bool, bool> > {
- protected:
-  void SetUp() override {
-    std::tie(specify_name_, specify_center_, specify_normal_, specify_radius_) =
-        GetParam();
-  }
-  bool specify_name_;
-  bool specify_center_;
-  bool specify_normal_;
-  bool specify_radius_;
-};
-
-TEST_P(PrintCircularFilamentTest, CheckPrintCircularFilament) {
+// Since center, normal, and radius are now non-optional, Print always outputs
+// them. Only name is optional.
+TEST(TestMagneticConfigurationLib, CheckPrintCircularFilament) {
   CircularFilament circular_filament;
-  if (specify_name_) {
-    circular_filament.set_name("filament_2");
-  }
-  if (specify_center_) {
-    Vector3d *center = circular_filament.mutable_center();
-    center->set_x(1.23);
-    center->set_y(4.56);
-    center->set_z(7.89);
-  }
-  if (specify_normal_) {
-    Vector3d *normal = circular_filament.mutable_normal();
-    normal->set_x(9.87);
-    normal->set_y(6.54);
-    normal->set_z(3.21);
-  }
-  if (specify_radius_) {
-    circular_filament.set_radius(3.14);
-  }
+  circular_filament.center.set_x(1.23);
+  circular_filament.center.set_y(4.56);
+  circular_filament.center.set_z(7.89);
+  circular_filament.normal.set_x(9.87);
+  circular_filament.normal.set_y(6.54);
+  circular_filament.normal.set_z(3.21);
+  circular_filament.radius = 3.14;
 
-  // https://stackoverflow.com/a/33186201
+  // With name
+  circular_filament.name = "filament_2";
   testing::internal::CaptureStdout();
   PrintCircularFilament(circular_filament);
   std::string output = testing::internal::GetCapturedStdout();
 
   std::string expected_output = "CircularFilament {\n";
-  if (specify_name_) {
-    expected_output += "  name: 'filament_2'\n";
-  } else {
-    expected_output += "  name: none\n";
-  }
-  if (specify_center_) {
-    expected_output += "  center: [1.23, 4.56, 7.89]\n";
-  } else {
-    expected_output += "  center: none\n";
-  }
-  if (specify_normal_) {
-    expected_output += "  normal: [9.87, 6.54, 3.21]\n";
-  } else {
-    expected_output += "  normal: none\n";
-  }
-  if (specify_radius_) {
-    expected_output += "  radius: 3.14\n";
-  } else {
-    expected_output += "  radius: none\n";
-  }
+  expected_output += "  name: 'filament_2'\n";
+  expected_output += "  center: [1.23, 4.56, 7.89]\n";
+  expected_output += "  normal: [9.87, 6.54, 3.21]\n";
+  expected_output += "  radius: 3.14\n";
   expected_output += "}\n";
+  EXPECT_EQ(output, expected_output);
 
-  EXPECT_TRUE(output == expected_output);
-}  // CheckPrintCircularFilament
+  // Without name
+  circular_filament.name.reset();
+  testing::internal::CaptureStdout();
+  PrintCircularFilament(circular_filament);
+  output = testing::internal::GetCapturedStdout();
 
-INSTANTIATE_TEST_SUITE_P(TestMagneticConfigurationLib,
-                         PrintCircularFilamentTest,
-                         Combine(Bool(), Bool(), Bool(), Bool()));
+  expected_output = "CircularFilament {\n";
+  expected_output += "  name: [not set]\n";
+  expected_output += "  center: [1.23, 4.56, 7.89]\n";
+  expected_output += "  normal: [9.87, 6.54, 3.21]\n";
+  expected_output += "  radius: 3.14\n";
+  expected_output += "}\n";
+  EXPECT_EQ(output, expected_output);
+}
 
 // -------------------
 
@@ -1104,12 +1001,11 @@ class PrintPolygonFilamentTest
 TEST_P(PrintPolygonFilamentTest, CheckPrintPolygonFilament) {
   PolygonFilament polygon_filament;
   if (specify_name_) {
-    polygon_filament.set_name("filament_3");
+    polygon_filament.name = "filament_3";
   }
   if (specify_vertices_) {
-    polygon_filament.add_vertices();
-    polygon_filament.add_vertices();
-    polygon_filament.add_vertices();
+    polygon_filament.vertices.resize(3, 3);
+    polygon_filament.vertices.setZero();
   }
 
   // https://stackoverflow.com/a/33186201
@@ -1118,11 +1014,12 @@ TEST_P(PrintPolygonFilamentTest, CheckPrintPolygonFilament) {
   std::string output = testing::internal::GetCapturedStdout();
 
   std::string expected_output = "PolygonFilament {\n";
+  // PrintPolygonFilament now prints optional name directly via operator<<
+  expected_output += "  name: '";
   if (specify_name_) {
-    expected_output += "  name: 'filament_3'\n";
-  } else {
-    expected_output += "  name: none\n";
+    expected_output += "filament_3";
   }
+  expected_output += "'\n";
   if (specify_vertices_) {
     expected_output += "  vertices: [3]\n";
   } else {
@@ -1143,15 +1040,13 @@ TEST(TestMagneticConfigurationLib, CheckMoveRadiallyOutwardCircularFilament) {
   const double radial_step = 0.42;
 
   CircularFilament circular_filament;
-  Vector3d *center = circular_filament.mutable_center();
-  center->set_x(1.23);
-  center->set_y(4.56);
-  center->set_z(7.89);
-  Vector3d *normal = circular_filament.mutable_normal();
-  normal->set_x(9.87);
-  normal->set_y(6.54);
-  normal->set_z(3.21);
-  circular_filament.set_radius(initial_radius);
+  circular_filament.center.set_x(1.23);
+  circular_filament.center.set_y(4.56);
+  circular_filament.center.set_z(7.89);
+  circular_filament.normal.set_x(9.87);
+  circular_filament.normal.set_y(6.54);
+  circular_filament.normal.set_z(3.21);
+  circular_filament.radius = initial_radius;
 
   absl::Status status = IsCircularFilamentFullyPopulated(circular_filament);
   ASSERT_TRUE(status.ok()) << status.message();
@@ -1160,40 +1055,36 @@ TEST(TestMagneticConfigurationLib, CheckMoveRadiallyOutwardCircularFilament) {
   // y
   status = MoveRadially(radial_step, /*m_circular_filament=*/circular_filament);
   ASSERT_FALSE(status.ok());
-  EXPECT_EQ(status.message(),
-            "center has to be on origin in x and y to perform radial movement");
 
   // fix center to be on origin in x and y
-  center->set_x(0.0);
-  center->set_y(0.0);
+  circular_filament.center.set_x(0.0);
+  circular_filament.center.set_y(0.0);
 
   // check that movement fails because normal is not along z axis
   status = MoveRadially(radial_step, /*m_circular_filament=*/circular_filament);
   ASSERT_FALSE(status.ok());
-  EXPECT_EQ(status.message(),
-            "normal has to be along z axis to perform radial movement");
 
   // fix normal to be along z axis
-  normal->set_x(0.0);
-  normal->set_y(0.0);
-  normal->set_z(1.0);
+  circular_filament.normal.set_x(0.0);
+  circular_filament.normal.set_y(0.0);
+  circular_filament.normal.set_z(1.0);
 
   // attempt movement and check that it was successful
   status = MoveRadially(radial_step, /*m_circular_filament=*/circular_filament);
   ASSERT_TRUE(status.ok()) << status.message();
 
   // check that radius has the expected value
-  EXPECT_EQ(circular_filament.radius(), initial_radius + radial_step);
+  EXPECT_EQ(circular_filament.radius, initial_radius + radial_step);
 
   // check that no other members have been changed by successful call to
   // MoveRadially
-  EXPECT_EQ(center->x(), 0.0);
-  EXPECT_EQ(center->y(), 0.0);
-  EXPECT_EQ(center->z(), 7.89);
+  EXPECT_EQ(circular_filament.center.x(), 0.0);
+  EXPECT_EQ(circular_filament.center.y(), 0.0);
+  EXPECT_EQ(circular_filament.center.z(), 7.89);
 
-  EXPECT_EQ(normal->x(), 0.0);
-  EXPECT_EQ(normal->y(), 0.0);
-  EXPECT_EQ(normal->z(), 1.0);
+  EXPECT_EQ(circular_filament.normal.x(), 0.0);
+  EXPECT_EQ(circular_filament.normal.y(), 0.0);
+  EXPECT_EQ(circular_filament.normal.z(), 1.0);
 }  // CheckMoveRadiallyOutwardCircularFilament
 
 TEST(TestMagneticConfigurationLib, CheckMoveRadiallyOutwardPolygonFilament) {
@@ -1202,21 +1093,10 @@ TEST(TestMagneticConfigurationLib, CheckMoveRadiallyOutwardPolygonFilament) {
   const double radial_step = 0.42;
 
   PolygonFilament polygon_filament;
-
-  Vector3d *vertex_1 = polygon_filament.add_vertices();
-  vertex_1->set_x(1.0);
-  vertex_1->set_y(0.0);
-  vertex_1->set_z(1.3);
-
-  Vector3d *vertex_2 = polygon_filament.add_vertices();
-  vertex_2->set_x(0.0);
-  vertex_2->set_y(1.0);
-  vertex_2->set_z(2.3);
-
-  Vector3d *vertex_3 = polygon_filament.add_vertices();
-  vertex_3->set_x(1.0);
-  vertex_3->set_y(1.0);
-  vertex_3->set_z(3.3);
+  polygon_filament.vertices.resize(3, 3);
+  polygon_filament.vertices.col(0) = Eigen::Vector3d{1.0, 0.0, 1.3};
+  polygon_filament.vertices.col(1) = Eigen::Vector3d{0.0, 1.0, 2.3};
+  polygon_filament.vertices.col(2) = Eigen::Vector3d{1.0, 1.0, 3.3};
 
   absl::Status status = IsPolygonFilamentFullyPopulated(polygon_filament);
   ASSERT_TRUE(status.ok()) << status.message();
@@ -1225,34 +1105,39 @@ TEST(TestMagneticConfigurationLib, CheckMoveRadiallyOutwardPolygonFilament) {
   status = MoveRadially(radial_step, /*m_polygon_filament=*/polygon_filament);
   ASSERT_TRUE(status.ok()) << status.message();
 
-  // check that vertices have moves as expected
+  // check that vertices have moved as expected
 
-  // vertex_1 only has x component in x-y plane
+  // vertex_0 only has x component in x-y plane
   // -> expected to move only along x
-  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step, vertex_1->x(), kTolerance));
-  EXPECT_TRUE(IsCloseRelAbs(0.0, vertex_1->y(), kTolerance));
-  EXPECT_EQ(vertex_1->z(), 1.3);
+  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step, polygon_filament.vertices(0, 0),
+                            kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(0.0, polygon_filament.vertices(1, 0), kTolerance));
+  EXPECT_EQ(polygon_filament.vertices(2, 0), 1.3);
 
-  // vertex_2 only has y component in x-y plane
+  // vertex_1 only has y component in x-y plane
   // -> expected to move only along y
-  EXPECT_TRUE(IsCloseRelAbs(0.0, vertex_2->x(), kTolerance));
-  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step, vertex_2->y(), kTolerance));
-  EXPECT_EQ(vertex_2->z(), 2.3);
+  EXPECT_TRUE(IsCloseRelAbs(0.0, polygon_filament.vertices(0, 1), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step, polygon_filament.vertices(1, 1),
+                            kTolerance));
+  EXPECT_EQ(polygon_filament.vertices(2, 1), 2.3);
 
-  // vertex_3 has equal components in x and y in x-y plane
+  // vertex_2 has equal components in x and y in x-y plane
   // -> expected to move in equal amounts along both directions
-  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step / std::sqrt(2), vertex_3->x(),
-                            kTolerance));
-  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step / std::sqrt(2), vertex_3->y(),
-                            kTolerance));
-  EXPECT_EQ(vertex_3->z(), 3.3);
+  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step / std::sqrt(2),
+                            polygon_filament.vertices(0, 2), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step / std::sqrt(2),
+                            polygon_filament.vertices(1, 2), kTolerance));
+  EXPECT_EQ(polygon_filament.vertices(2, 2), 3.3);
 }  // CheckMoveRadiallyOutwardPolygonFilament
 
 TEST(TestMagneticConfigurationLib,
      CheckMoveRadiallyOutwardMagneticConfiguration) {
   MagneticConfiguration magnetic_configuration;
+  magnetic_configuration.num_field_periods_ = 1;
   SerialCircuit *serial_circuit = magnetic_configuration.add_serial_circuits();
+  serial_circuit->current_ = 1.0;
   Coil *coil = serial_circuit->add_coils();
+  coil->num_windings_ = 1.0;
 
   static constexpr double kTolerance = 1.0e-15;
 
@@ -1263,89 +1148,80 @@ TEST(TestMagneticConfigurationLib,
   CurrentCarrier *current_carrier_0 = coil->add_current_carriers();
   CircularFilament *circular_filament =
       current_carrier_0->mutable_circular_filament();
-  Vector3d *center = circular_filament->mutable_center();
-  center->set_x(0.0);
-  center->set_y(0.0);
-  center->set_z(7.89);
-  Vector3d *normal = circular_filament->mutable_normal();
-  normal->set_x(0.0);
-  normal->set_y(0.0);
-  normal->set_z(1.0);
-  circular_filament->set_radius(initial_radius);
+  circular_filament->center.set_x(0.0);
+  circular_filament->center.set_y(0.0);
+  circular_filament->center.set_z(7.89);
+  circular_filament->normal.set_x(0.0);
+  circular_filament->normal.set_y(0.0);
+  circular_filament->normal.set_z(1.0);
+  circular_filament->radius = initial_radius;
 
   CurrentCarrier *current_carrier_1 = coil->add_current_carriers();
   PolygonFilament *polygon_filament =
       current_carrier_1->mutable_polygon_filament();
-  Vector3d *vertex_1 = polygon_filament->add_vertices();
-  vertex_1->set_x(1.0);
-  vertex_1->set_y(0.0);
-  vertex_1->set_z(1.3);
-  Vector3d *vertex_2 = polygon_filament->add_vertices();
-  vertex_2->set_x(0.0);
-  vertex_2->set_y(1.0);
-  vertex_2->set_z(2.3);
-  Vector3d *vertex_3 = polygon_filament->add_vertices();
-  vertex_3->set_x(1.0);
-  vertex_3->set_y(1.0);
-  vertex_3->set_z(3.3);
+  polygon_filament->vertices.resize(3, 3);
+  polygon_filament->vertices.col(0) = Eigen::Vector3d{1.0, 0.0, 1.3};
+  polygon_filament->vertices.col(1) = Eigen::Vector3d{0.0, 1.0, 2.3};
+  polygon_filament->vertices.col(2) = Eigen::Vector3d{1.0, 1.0, 3.3};
 
   // Check that the MagneticConfiguration is fully populated.
   absl::Status status =
       IsMagneticConfigurationFullyPopulated(magnetic_configuration);
   ASSERT_TRUE(status.ok()) << status.message();
 
-  // Attempt to radially move the MagneticConfigutation and check that both are
-  // moved. The correctness of the movement for the individual current carriers
-  // is tested stand-alone above.
+  // Attempt to radially move the MagneticConfiguration and check that both are
+  // moved.
   status = MoveRadially(radial_step,
                         /*m_magnetic_configuration=*/magnetic_configuration);
 
   // check that radius has the expected value
-  EXPECT_EQ(circular_filament->radius(), initial_radius + radial_step);
+  EXPECT_EQ(circular_filament->radius, initial_radius + radial_step);
 
   // check that no other members have been changed by successful call to
   // MoveRadially
-  EXPECT_EQ(center->x(), 0.0);
-  EXPECT_EQ(center->y(), 0.0);
-  EXPECT_EQ(center->z(), 7.89);
+  EXPECT_EQ(circular_filament->center.x(), 0.0);
+  EXPECT_EQ(circular_filament->center.y(), 0.0);
+  EXPECT_EQ(circular_filament->center.z(), 7.89);
 
-  EXPECT_EQ(normal->x(), 0.0);
-  EXPECT_EQ(normal->y(), 0.0);
-  EXPECT_EQ(normal->z(), 1.0);
+  EXPECT_EQ(circular_filament->normal.x(), 0.0);
+  EXPECT_EQ(circular_filament->normal.y(), 0.0);
+  EXPECT_EQ(circular_filament->normal.z(), 1.0);
 
-  // vertex_1 only has x component in x-y plane
+  // vertex_0 only has x component in x-y plane
   // -> expected to move only along x
-  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step, vertex_1->x(), kTolerance));
-  EXPECT_TRUE(IsCloseRelAbs(0.0, vertex_1->y(), kTolerance));
-  EXPECT_EQ(vertex_1->z(), 1.3);
+  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step, polygon_filament->vertices(0, 0),
+                            kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(0.0, polygon_filament->vertices(1, 0), kTolerance));
+  EXPECT_EQ(polygon_filament->vertices(2, 0), 1.3);
 
-  // vertex_2 only has y component in x-y plane
+  // vertex_1 only has y component in x-y plane
   // -> expected to move only along y
-  EXPECT_TRUE(IsCloseRelAbs(0.0, vertex_2->x(), kTolerance));
-  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step, vertex_2->y(), kTolerance));
-  EXPECT_EQ(vertex_2->z(), 2.3);
+  EXPECT_TRUE(IsCloseRelAbs(0.0, polygon_filament->vertices(0, 1), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step, polygon_filament->vertices(1, 1),
+                            kTolerance));
+  EXPECT_EQ(polygon_filament->vertices(2, 1), 2.3);
 
-  // vertex_3 has equal components in x and y in x-y plane
+  // vertex_2 has equal components in x and y in x-y plane
   // -> expected to move in equal amounts along both directions
-  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step / std::sqrt(2), vertex_3->x(),
-                            kTolerance));
-  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step / std::sqrt(2), vertex_3->y(),
-                            kTolerance));
-  EXPECT_EQ(vertex_3->z(), 3.3);
+  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step / std::sqrt(2),
+                            polygon_filament->vertices(0, 2), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(1.0 + radial_step / std::sqrt(2),
+                            polygon_filament->vertices(1, 2), kTolerance));
+  EXPECT_EQ(polygon_filament->vertices(2, 2), 3.3);
 
   // Add an InfiniteStraightFilament (which is not supported to be radially
   // moved).
   CurrentCarrier *current_carrier_2 = coil->add_current_carriers();
   InfiniteStraightFilament *infinite_straight_filament =
       current_carrier_2->mutable_infinite_straight_filament();
-  Vector3d *origin = infinite_straight_filament->mutable_origin();
-  origin->set_x(1.23);
-  origin->set_y(4.56);
-  origin->set_z(7.89);
-  Vector3d *direction = infinite_straight_filament->mutable_direction();
-  direction->set_x(9.87);
-  direction->set_y(6.54);
-  direction->set_z(3.21);
+  infinite_straight_filament->origin_.emplace();
+  infinite_straight_filament->origin_->set_x(1.23);
+  infinite_straight_filament->origin_->set_y(4.56);
+  infinite_straight_filament->origin_->set_z(7.89);
+  infinite_straight_filament->direction_.emplace();
+  infinite_straight_filament->direction_->set_x(9.87);
+  infinite_straight_filament->direction_->set_y(6.54);
+  infinite_straight_filament->direction_->set_z(3.21);
 
   // Check that the MagneticConfiguration is fully populated.
   status = IsMagneticConfigurationFullyPopulated(magnetic_configuration);
@@ -1355,10 +1231,68 @@ TEST(TestMagneticConfigurationLib,
   status = MoveRadially(radial_step,
                         /*m_magnetic_configuration=*/magnetic_configuration);
   EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.message(),
-            "Cannot perform radial movement if an InfiniteStraightFilament is "
-            "present "
-            "in the MagneticConfiguration");
 }  // CheckMoveRadiallyOutwardMagneticConfiguration
+
+// -------------------
+// Regression tests for the std::optional and Eigen refactoring
+
+TEST(TestRegressionOptional, PolygonVerticesAreContiguous) {
+  PolygonFilament polygon_filament;
+  polygon_filament.vertices.resize(3, 4);
+  for (int i = 0; i < 4; ++i) {
+    polygon_filament.vertices.col(i) =
+        Eigen::Vector3d{1.0 * i, 2.0 * i, 3.0 * i};
+  }
+
+  // Verify all values are accessible and correct
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(polygon_filament.vertices(0, i), 1.0 * i);
+    EXPECT_EQ(polygon_filament.vertices(1, i), 2.0 * i);
+    EXPECT_EQ(polygon_filament.vertices(2, i), 3.0 * i);
+  }
+
+  // Verify .cols() returns the correct count
+  EXPECT_EQ(polygon_filament.vertices.cols(), 4);
+}
+
+TEST(TestRegressionOptional, OptionalFieldsWorkCorrectly) {
+  SerialCircuit sc;
+  EXPECT_FALSE(sc.name.has_value());
+  EXPECT_FALSE(sc.current_.has_value());
+
+  sc.name = "test";
+  sc.current_ = 42.0;
+  EXPECT_TRUE(sc.name.has_value());
+  EXPECT_EQ(sc.name.value(), "test");
+  EXPECT_TRUE(sc.current_.has_value());
+  EXPECT_EQ(sc.current_.value(), 42.0);
+
+  sc.Clear();
+  EXPECT_FALSE(sc.name.has_value());
+  EXPECT_FALSE(sc.current_.has_value());
+}
+
+TEST(TestRegressionOptional, CircularFilamentFieldsAlwaysAccessible) {
+  CircularFilament cf;
+  // center, normal, radius should be directly accessible without checks
+  cf.center.set_x(1.0);
+  cf.center.set_y(2.0);
+  cf.center.set_z(3.0);
+  cf.normal.set_x(0.0);
+  cf.normal.set_y(0.0);
+  cf.normal.set_z(1.0);
+  cf.radius = 5.0;
+
+  EXPECT_EQ(cf.center.x(), 1.0);
+  EXPECT_EQ(cf.center.y(), 2.0);
+  EXPECT_EQ(cf.center.z(), 3.0);
+  EXPECT_EQ(cf.normal.z(), 1.0);
+  EXPECT_EQ(cf.radius, 5.0);
+
+  // name is still optional
+  EXPECT_FALSE(cf.name.has_value());
+  cf.name = "test_coil";
+  EXPECT_EQ(cf.name.value(), "test_coil");
+}
 
 }  // namespace magnetics

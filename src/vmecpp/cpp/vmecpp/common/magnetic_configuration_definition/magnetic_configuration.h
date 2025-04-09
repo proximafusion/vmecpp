@@ -1,11 +1,12 @@
 #ifndef VMECPP_COMMON_MAGNETIC_CONFIGURATION_DEFINITION_MAGNETIC_CONFIGURATION_H_
 #define VMECPP_COMMON_MAGNETIC_CONFIGURATION_DEFINITION_MAGNETIC_CONFIGURATION_H_
 
+#include <Eigen/Dense>
 #include <cstdint>
 #include <list>
+#include <memory>  // For std::addressof, std::construct_at
 #include <optional>
 #include <utility>
-#include <memory>   // For std::addressof, std::construct_at
 
 #include "vmecpp/common/composed_types_definition/composed_types.h"
 
@@ -13,67 +14,39 @@ namespace magnetics {
 
 struct PolygonFilament {
   // a human-readable name, e.g., for plotting
-  std::optional<std::string> name_;
+  std::optional<std::string> name;
 
-  // Cartesian components of filament geometry
-  std::list<composed_types::Vector3d> vertices_;
-
-  // Keep list helper methods for convenience
-  int vertices_size() const { return static_cast<int>(vertices_.size()); }
-  const composed_types::Vector3d& vertices(int index) const {
-    auto it = vertices_.cbegin();
-    std::advance(it, index);  // no explicit bounds-check for brevity
-    return *it;
-  }
-  composed_types::Vector3d* mutable_vertices(int index) {
-    auto it = vertices_.begin();
-    std::advance(it, index);  // no explicit bounds-check for brevity
-    return &(*it);
-  }
-  composed_types::Vector3d* add_vertices() {
-    vertices_.emplace_back();
-    return &vertices_.back(); // Return pointer to the newly added element
-  }
-  const std::list<composed_types::Vector3d>& vertices() const {
-    return vertices_;
-  }
-  std::list<composed_types::Vector3d>* mutable_vertices() {
-    return &vertices_;
-  }
+  // Cartesian components of filament geometry (struct of vectors layout)
+  Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor> vertices;
 
   // Clear the entire structure
   void Clear() {
-    name_.reset();
-    vertices_.clear();
+    name.reset();
+    vertices = Eigen::Matrix<double, 3, 0, Eigen::RowMajor>::Zero();
   }
 };  // PolygonFilament
 
 struct CircularFilament {
   // a human-readable name, e.g., for plotting
-  std::optional<std::string> name_;
+  std::optional<std::string> name;
 
   // Cartesian coordinates of the center point of the loop
-  std::optional<composed_types::Vector3d> center_;
+  composed_types::Vector3d center;
 
   // Cartesian components of a vector pointing along the normal of the circle
   // around which the current flows
-  std::optional<composed_types::Vector3d> normal_;
+  composed_types::Vector3d normal;
 
   // radius of the loop
-  std::optional<double> radius_;
+  double radius;
 
   // Clear the entire structure
-  void Clear() {
-    name_.reset();
-    center_.reset();
-    normal_.reset();
-    radius_.reset();
-  }
+  void Clear() { name.reset(); }
 };  // CircularFilament
 
 struct InfiniteStraightFilament {
   // a human-readable name, e.g., for plotting
-  std::optional<std::string> name_;
+  std::optional<std::string> name;
 
   // Cartesian coordinates of a point on the filament
   std::optional<composed_types::Vector3d> origin_;
@@ -81,9 +54,21 @@ struct InfiniteStraightFilament {
   // Cartesian components of the direction along the filament
   std::optional<composed_types::Vector3d> direction_;
 
+  bool has_origin() const { return origin_.has_value(); }
+  const composed_types::Vector3d& origin() const { return origin_.value(); }
+  void set_origin(const composed_types::Vector3d& value) { origin_ = value; }
+
+  bool has_direction() const { return direction_.has_value(); }
+  const composed_types::Vector3d& direction() const {
+    return direction_.value();
+  }
+  void set_direction(const composed_types::Vector3d& value) {
+    direction_ = value;
+  }
+
   // Clear the entire structure
   void Clear() {
-    name_.reset();
+    name.reset();
     origin_.reset();
     direction_.reset();
   }
@@ -103,9 +88,9 @@ struct CurrentCarrier {
   TypeCase type_case_ = kTypeNotSet;
 
   union {
-      InfiniteStraightFilament infinite_straight_filament_;
-      CircularFilament circular_filament_;
-      PolygonFilament polygon_filament_;
+    InfiniteStraightFilament infinite_straight_filament_;
+    CircularFilament circular_filament_;
+    PolygonFilament polygon_filament_;
   };
 
  public:
@@ -252,8 +237,8 @@ struct CurrentCarrier {
     return &infinite_straight_filament_;
   }
   void set_infinite_straight_filament(const InfiniteStraightFilament& value) {
-       Clear();
-       type_case_ = kInfiniteStraightFilament;
+    Clear();
+    type_case_ = kInfiniteStraightFilament;
     std::construct_at(std::addressof(infinite_straight_filament_), value);
   }
 
@@ -270,15 +255,15 @@ struct CurrentCarrier {
     }
     return &circular_filament_;
   }
-   void set_circular_filament(const CircularFilament& value) {
-       Clear();
-       type_case_ = kCircularFilament;
+  void set_circular_filament(const CircularFilament& value) {
+    Clear();
+    type_case_ = kCircularFilament;
     std::construct_at(std::addressof(circular_filament_), value);
   }
 
   // PolygonFilament
   bool has_polygon_filament() const { return type_case_ == kPolygonFilament; }
-   const PolygonFilament& polygon_filament() const { return polygon_filament_; }
+  const PolygonFilament& polygon_filament() const { return polygon_filament_; }
   PolygonFilament* mutable_polygon_filament() {
     if (type_case_ != kPolygonFilament) {
       Clear();
@@ -288,8 +273,8 @@ struct CurrentCarrier {
     return &polygon_filament_;
   }
   void set_polygon_filament(const PolygonFilament& value) {
-       Clear();
-       type_case_ = kPolygonFilament;
+    Clear();
+    type_case_ = kPolygonFilament;
     std::construct_at(std::addressof(polygon_filament_), value);
   }
 
@@ -298,14 +283,19 @@ struct CurrentCarrier {
 
 struct Coil {
   // a human-readable name, e.g., for plotting
-  std::optional<std::string> name_;
+  std::optional<std::string> name;
 
   // number of windings == multiplier for current along geometry;
-  // num_windings == 1.0 is often assumed if this field is not populated (std::nullopt)
+  // num_windings == 1.0 is often assumed if this field is not populated
+  // (std::nullopt)
   std::optional<double> num_windings_;
 
   // objects that define the single-turn geometry of the coil
   std::list<CurrentCarrier> current_carriers_;
+
+  bool has_num_windings() const { return num_windings_.has_value(); }
+  double num_windings() const { return num_windings_.value(); }
+  void set_num_windings(double value) { num_windings_ = value; }
 
   int current_carriers_size() const {
     return static_cast<int>(current_carriers_.size());
@@ -321,13 +311,19 @@ struct Coil {
     return &(*it);
   }
   CurrentCarrier* add_current_carriers() {
-    current_carriers_.emplace_back(); // Default construct new carrier
+    current_carriers_.emplace_back();  // Default construct new carrier
     return &current_carriers_.back();
+  }
+  const std::list<CurrentCarrier>& current_carriers() const {
+    return current_carriers_;
+  }
+  std::list<CurrentCarrier>* mutable_current_carriers() {
+    return &current_carriers_;
   }
 
   // Clear the entire structure
   void Clear() {
-    name_.reset();
+    name.reset();
     num_windings_.reset();
     current_carriers_.clear();
   }
@@ -335,13 +331,17 @@ struct Coil {
 
 struct SerialCircuit {
   // a human-readable name, e.g., for plotting
-  std::optional<std::string> name_;
+  std::optional<std::string> name;
 
   // current along each of the current carriers
   std::optional<double> current_;
 
   // objects that define the geometry of coils
   std::list<Coil> coils_;
+
+  bool has_current() const { return current_.has_value(); }
+  double current() const { return current_.value(); }
+  void set_current(double value) { current_ = value; }
 
   int coils_size() const { return static_cast<int>(coils_.size()); }
   const Coil& coils(int index) const {
@@ -355,13 +355,15 @@ struct SerialCircuit {
     return &(*it);
   }
   Coil* add_coils() {
-    coils_.emplace_back(); // Default construct new coil
+    coils_.emplace_back();  // Default construct new coil
     return &coils_.back();
   }
+  const std::list<Coil>& coils() const { return coils_; }
+  std::list<Coil>* mutable_coils() { return &coils_; }
 
   // Clear the entire structure
   void Clear() {
-    name_.reset();
+    name.reset();
     current_.reset();
     coils_.clear();
   }
@@ -369,7 +371,7 @@ struct SerialCircuit {
 
 struct MagneticConfiguration {
   // a human-readable name, e.g., for plotting
-  std::optional<std::string> name_;
+  std::optional<std::string> name;
 
   // number of field periods of this coil set
   std::optional<int> num_field_periods_;
@@ -403,7 +405,7 @@ struct MagneticConfiguration {
 
   // Clear the entire structure (all fields)
   void Clear() {
-    name_.reset();
+    name.reset();
     num_field_periods_.reset();
     serial_circuits_.clear();
   }

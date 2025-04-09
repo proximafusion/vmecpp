@@ -227,8 +227,8 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
         "An empty vector of evaluation locations was provided.");
   }
 
-  Vector3d normalized_normal = Normalize(circular_filament.normal());
-  const double radius = circular_filament.radius();
+  Vector3d normalized_normal = Normalize(circular_filament.normal);
+  const double radius = circular_filament.radius;
 
   for (std::size_t i = 0; i < number_of_evaluation_locations; ++i) {
     Vector3d evaluation_location;
@@ -238,7 +238,7 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
 
     // connection vector from evaluation position to center of loop
     Vector3d delta_eval_origin =
-        Subtract(circular_filament.center(), evaluation_location);
+        Subtract(circular_filament.center, evaluation_location);
 
     // distance between evaluation position and center of loop, parallel to
     // filament direction
@@ -295,7 +295,7 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
         "An empty vector of evaluation locations was provided.");
   }
 
-  const int number_of_segments = polygon_filament.vertices_size() - 1;
+  const int number_of_segments = polygon_filament.vertices.cols() - 1;
 
   for (std::size_t i = 0; i < number_of_evaluation_locations; ++i) {
     Vector3d evaluation_location;
@@ -305,11 +305,11 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
 
     for (int index_segment = 0; index_segment < number_of_segments;
          ++index_segment) {
-      const Vector3d& origin = polygon_filament.vertices(index_segment);
-      Vector3d segment =
-          Subtract(polygon_filament.vertices(index_segment + 1), origin);
-      const double length = Length(segment);
-      Vector3d direction = Normalize(segment);
+      const auto origin = polygon_filament.vertices.col(index_segment);
+      Eigen::Vector3d segment =
+          polygon_filament.vertices.col(index_segment + 1) - origin;
+      const double length = segment.norm();
+      Eigen::Vector3d direction = segment / length;
 
       // connection vector from evaluation position to start of segment
       Vector3d delta_eval_origin = Subtract(origin, evaluation_location);
@@ -379,7 +379,7 @@ absl::StatusOr<std::vector<bool>> IsTooCloseToCurrentCarrierForComparison(
   std::vector<bool> exclude_from_comparison(number_of_evaluation_locations,
                                             false);
 
-  if (!serial_circuit.has_current() || serial_circuit.current() == 0.0) {
+  if (!serial_circuit.current_ || *serial_circuit.current_ == 0.0) {
     // If the SerialCircuit does not contribute to the magnetic field, because
     // the current is zero, there is also no need to exclude any evaluation
     // points from a comparison, because all implementations should agree that
@@ -388,8 +388,8 @@ absl::StatusOr<std::vector<bool>> IsTooCloseToCurrentCarrierForComparison(
     return exclude_from_comparison;
   }
 
-  for (const Coil& coil : serial_circuit.coils()) {
-    for (const CurrentCarrier& current_carrier : coil.current_carriers()) {
+  for (const Coil& coil : serial_circuit.coils_) {
+    for (const CurrentCarrier& current_carrier : coil.current_carriers_) {
       switch (current_carrier.type_case()) {
         // TODO(jons): implement case for InfiniteStraightFilament
         // case CurrentCarrier::TypeCase::kInfiniteStraightFilament:

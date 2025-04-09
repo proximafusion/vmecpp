@@ -44,16 +44,15 @@ using ::testing::Values;
 absl::Status PolygonCirclePopulate(PolygonFilament &m_polygon_filament,
                                    const double radius, const int num_phi,
                                    const double z_offset = 0.0) {
-  if (m_polygon_filament.vertices_size() != 0) {
+  if (m_polygon_filament.vertices.cols() != 0) {
     return absl::InvalidArgumentError("non-empty PolygonFilament provided");
   }
   const double omega = 2.0 * M_PI / (num_phi - 1.0);
+  m_polygon_filament.vertices.resize(3, num_phi);
   for (int i = 0; i < num_phi; ++i) {
     const double phi = omega * i;
-    Vector3d *vertex = m_polygon_filament.add_vertices();
-    vertex->set_x(radius * cos(phi));
-    vertex->set_y(radius * sin(phi));
-    vertex->set_z(z_offset);
+    m_polygon_filament.vertices.col(i) =
+        Eigen::Vector3d{radius * cos(phi), radius * sin(phi), z_offset};
   }
   return absl::OkStatus();
 }  // PolygonCirclePopulate
@@ -71,11 +70,12 @@ TEST(TestPolygonCircle, CheckPolygonCirclePopulate) {
                   .ok());
 
   for (int i = 0; i < kNumPhi; ++i) {
-    const Vector3d &vertex = circle_geometry_around_origin.vertices(i);
-    const double radius = hypot(vertex.x(), vertex.y());
+    const double radius = hypot(circle_geometry_around_origin.vertices(0, i),
+                                circle_geometry_around_origin.vertices(1, i));
     EXPECT_TRUE(IsCloseRelAbs(kRadius, radius, kTolerance));
-    EXPECT_EQ(0.0, vertex.z());  // z should always be identically zero if
-                                 // z_offset is not specified
+    EXPECT_EQ(0.0,
+              circle_geometry_around_origin.vertices(2, i));  // z should always
+    // be identically zero if z_offset is not specified
   }
 
   // now check the case that z_offset is specified
@@ -86,10 +86,10 @@ TEST(TestPolygonCircle, CheckPolygonCirclePopulate) {
                     .ok());
 
     for (int i = 0; i < kNumPhi; ++i) {
-      const Vector3d &vertex = circle_geometry.vertices(i);
-      const double radius = hypot(vertex.x(), vertex.y());
+      const double radius =
+          hypot(circle_geometry.vertices(0, i), circle_geometry.vertices(1, i));
       EXPECT_TRUE(IsCloseRelAbs(kRadius, radius, kTolerance));
-      EXPECT_EQ(z_offset, vertex.z());
+      EXPECT_EQ(z_offset, circle_geometry.vertices(2, i));
     }
   }
 }  // CheckPolygonCirclePopulate
@@ -117,11 +117,12 @@ TEST(TestPolygonCircle, CheckPolygonCircle) {
       PolygonCircle(kRadius, kNumPhi);
 
   for (int i = 0; i < kNumPhi; ++i) {
-    const Vector3d &vertex = circle_geometry_around_origin.vertices(i);
-    const double radius = hypot(vertex.x(), vertex.y());
+    const double radius = hypot(circle_geometry_around_origin.vertices(0, i),
+                                circle_geometry_around_origin.vertices(1, i));
     EXPECT_TRUE(IsCloseRelAbs(kRadius, radius, kTolerance));
-    EXPECT_EQ(0.0, vertex.z());  // z should always be identically zero if
-                                 // z_offset is not specified
+    EXPECT_EQ(0.0,
+              circle_geometry_around_origin.vertices(2, i));  // z should always
+    // be identically zero if z_offset is not specified
   }
 
   // now check the case that z_offset is specified
@@ -129,10 +130,10 @@ TEST(TestPolygonCircle, CheckPolygonCircle) {
     PolygonFilament circle_geometry = PolygonCircle(kRadius, kNumPhi, z_offset);
 
     for (int i = 0; i < kNumPhi; ++i) {
-      const Vector3d &vertex = circle_geometry.vertices(i);
-      const double radius = hypot(vertex.x(), vertex.y());
+      const double radius =
+          hypot(circle_geometry.vertices(0, i), circle_geometry.vertices(1, i));
       EXPECT_TRUE(IsCloseRelAbs(kRadius, radius, kTolerance));
-      EXPECT_EQ(z_offset, vertex.z());
+      EXPECT_EQ(z_offset, circle_geometry.vertices(2, i));
     }
   }
 }  // CheckPolygonCircle
@@ -143,16 +144,18 @@ InfiniteStraightFilament MakeZAxisInfiniteStraightFilament() {
   InfiniteStraightFilament infinite_straight_filament;
 
   // centered at the origin
-  Vector3d *origin = infinite_straight_filament.mutable_origin();
-  origin->set_x(0.0);
-  origin->set_y(0.0);
-  origin->set_z(0.0);
+  Vector3d origin;
+  origin.set_x(0.0);
+  origin.set_y(0.0);
+  origin.set_z(0.0);
+  infinite_straight_filament.origin_ = origin;
 
   // direction along z axis
-  Vector3d *direction = infinite_straight_filament.mutable_direction();
-  direction->set_x(0.0);
-  direction->set_y(0.0);
-  direction->set_z(1.0);
+  Vector3d direction;
+  direction.set_x(0.0);
+  direction.set_y(0.0);
+  direction.set_z(1.0);
+  infinite_straight_filament.direction_ = direction;
 
   return infinite_straight_filament;
 }  // MakeZAxisInfiniteStraightFilament
@@ -224,7 +227,7 @@ TEST(TestMagneticField, CheckInfiniteStraightFilamentAtManyPoints) {
   }
 
   Vector3d normalized_direction =
-      Normalize(infinite_straight_filament.direction());
+      composed_types::Normalize(infinite_straight_filament.direction());
 
   for (int i = 0; i < kNumEvaluationLocations; ++i) {
     Vector3d evaluation_position;
@@ -233,23 +236,26 @@ TEST(TestMagneticField, CheckInfiniteStraightFilamentAtManyPoints) {
     evaluation_position.set_z(evaluation_positions[i][2]);
 
     // connection vector from evaluation position to origin on filament
-    Vector3d delta_eval_origin =
-        Subtract(infinite_straight_filament.origin(), evaluation_position);
+    Vector3d delta_eval_origin = composed_types::Subtract(
+        infinite_straight_filament.origin(), evaluation_position);
 
     // distance between evaluation position and origin on filament
     // parallel to filament direction
     const double parallel_distance =
-        DotProduct(delta_eval_origin, normalized_direction);
+        composed_types::DotProduct(delta_eval_origin, normalized_direction);
 
     // connector vector, projected onto the filament direction
-    Vector3d delta_parallel = ScaleTo(normalized_direction, parallel_distance);
+    Vector3d delta_parallel =
+        composed_types::ScaleTo(normalized_direction, parallel_distance);
 
     // vector from evaluation position to filament,
     // perpendicular to filament
-    Vector3d delta_perpendicular = Subtract(delta_eval_origin, delta_parallel);
+    Vector3d delta_perpendicular =
+        composed_types::Subtract(delta_eval_origin, delta_parallel);
 
     // radial distance from filament to evaluation position
-    const double evaluation_position_radius = Length(delta_perpendicular);
+    const double evaluation_position_radius =
+        composed_types::Length(delta_perpendicular);
 
     // The magnetic field is not defined on the filament,
     // so must check that radius is > 0.
@@ -262,16 +268,17 @@ TEST(TestMagneticField, CheckInfiniteStraightFilamentAtManyPoints) {
 
     // radial unit vector at evaluation location,
     // in coordinate system of filament
-    Vector3d radial_unit_vector = Normalize(delta_perpendicular);
+    Vector3d radial_unit_vector =
+        composed_types::Normalize(delta_perpendicular);
 
     // e_phi: unit vector in direction of magnetic field at evaluation location
     Vector3d toroidal_unit_vector =
-        CrossProduct(radial_unit_vector, normalized_direction);
+        composed_types::CrossProduct(radial_unit_vector, normalized_direction);
 
     // compute magnetic field vector by scaling correct unit vector to correct
     // length
     Vector3d magnetic_field_vector =
-        ScaleTo(toroidal_unit_vector, magnetic_field_strength);
+        composed_types::ScaleTo(toroidal_unit_vector, magnetic_field_strength);
     magnetic_field_reference[i][0] = magnetic_field_vector.x();
     magnetic_field_reference[i][1] = magnetic_field_vector.y();
     magnetic_field_reference[i][2] = magnetic_field_vector.z();
@@ -327,28 +334,48 @@ TEST(TestMagneticField, CheckInfiniteStraightFilamentAgainstPolygonFilament) {
   }
 
   // start of semi-infinite wire segment
-  Vector3d start_of_segment =
-      Subtract(infinite_straight_filament.origin(),
-               ScaleTo(infinite_straight_filament.direction(),
-                       kSufficientLengthToBeConsideredInfinite));
+  Vector3d start_of_segment = composed_types::Subtract(
+      infinite_straight_filament.origin(),
+      composed_types::ScaleTo(infinite_straight_filament.direction(),
+                              kSufficientLengthToBeConsideredInfinite));
 
   // end of semi-infinite wire segment
-  Vector3d end_of_segment =
-      Add(infinite_straight_filament.origin(),
-          ScaleTo(infinite_straight_filament.direction(),
-                  kSufficientLengthToBeConsideredInfinite));
+  Vector3d end_of_segment = composed_types::Add(
+      infinite_straight_filament.origin(),
+      composed_types::ScaleTo(infinite_straight_filament.direction(),
+                              kSufficientLengthToBeConsideredInfinite));
 
   // create PolygonFilament with a single wire segment to mimic
   // InfiniteStraightSegment
   PolygonFilament polygon_filament;
-  Vector3d *vertex_1 = polygon_filament.add_vertices();
-  vertex_1->CopyFrom(start_of_segment);
-  Vector3d *vertex_2 = polygon_filament.add_vertices();
-  vertex_2->CopyFrom(end_of_segment);
+  polygon_filament.vertices.resize(3, 2);
+  polygon_filament.vertices.col(0) = Eigen::Vector3d{
+      start_of_segment.x(), start_of_segment.y(), start_of_segment.z()};
+  polygon_filament.vertices.col(1) = Eigen::Vector3d{
+      end_of_segment.x(), end_of_segment.y(), end_of_segment.z()};
 
-  status = MagneticField(polygon_filament, kCurrent, evaluation_positions,
-                         magnetic_field_reference);
+  // Convert evaluation_positions to Eigen format for PolygonFilament
+  Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>
+      evaluation_positions_eigen(3, kNumEvaluationLocations);
+  Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>
+      magnetic_field_reference_eigen(3, kNumEvaluationLocations);
+  magnetic_field_reference_eigen.setZero();
+  for (int i = 0; i < kNumEvaluationLocations; ++i) {
+    evaluation_positions_eigen(0, i) = evaluation_positions[i][0];
+    evaluation_positions_eigen(1, i) = evaluation_positions[i][1];
+    evaluation_positions_eigen(2, i) = evaluation_positions[i][2];
+  }
+
+  status = MagneticField(polygon_filament, kCurrent, evaluation_positions_eigen,
+                         magnetic_field_reference_eigen);
   EXPECT_TRUE(status.ok());
+
+  // Convert back to std::vector format
+  for (int i = 0; i < kNumEvaluationLocations; ++i) {
+    magnetic_field_reference[i][0] = magnetic_field_reference_eigen(0, i);
+    magnetic_field_reference[i][1] = magnetic_field_reference_eigen(1, i);
+    magnetic_field_reference[i][2] = magnetic_field_reference_eigen(2, i);
+  }
 
   // now check the calculation against the reference
   for (int i = 0; i < kNumEvaluationLocations; ++i) {
@@ -376,17 +403,15 @@ TEST(TestMagneticField, CheckCircularFilament) {
 
   CircularFilament circular_filament;
 
-  Vector3d *center_vector = circular_filament.mutable_center();
-  center_vector->set_x(center[0]);
-  center_vector->set_y(center[1]);
-  center_vector->set_z(center[2]);
+  circular_filament.center.set_x(center[0]);
+  circular_filament.center.set_y(center[1]);
+  circular_filament.center.set_z(center[2]);
 
-  Vector3d *normal_vector = circular_filament.mutable_normal();
-  normal_vector->set_x(normal[0]);
-  normal_vector->set_y(normal[1]);
-  normal_vector->set_z(normal[2]);
+  circular_filament.normal.set_x(normal[0]);
+  circular_filament.normal.set_y(normal[1]);
+  circular_filament.normal.set_z(normal[2]);
 
-  circular_filament.set_radius(kRadius);
+  circular_filament.radius = kRadius;
 
   // setup evaluation locations
   std::vector<std::vector<double> > evaluation_positions(
@@ -463,17 +488,15 @@ TEST(TestMagneticField, CheckCircularFilamentAgainstDirectAbscab) {
 
   CircularFilament circular_filament;
 
-  Vector3d *center_vector = circular_filament.mutable_center();
-  center_vector->set_x(center[0]);
-  center_vector->set_y(center[1]);
-  center_vector->set_z(center[2]);
+  circular_filament.center.set_x(center[0]);
+  circular_filament.center.set_y(center[1]);
+  circular_filament.center.set_z(center[2]);
 
-  Vector3d *normal_vector = circular_filament.mutable_normal();
-  normal_vector->set_x(normal[0]);
-  normal_vector->set_y(normal[1]);
-  normal_vector->set_z(normal[2]);
+  circular_filament.normal.set_x(normal[0]);
+  circular_filament.normal.set_y(normal[1]);
+  circular_filament.normal.set_z(normal[2]);
 
-  circular_filament.set_radius(kRadius);
+  circular_filament.radius = kRadius;
 
   // setup evaluation locations
   std::vector<std::vector<double> > evaluation_positions(
@@ -585,25 +608,31 @@ TEST(TestMagneticField, CheckPolygonFilament) {
       center.data(), normal.data(), kRadius, kCurrent, kNumEvaluationLocations,
       evaluation_positions_reference.data(), magnetic_field_reference.data());
 
-  // target array for method to test
-  std::vector<std::vector<double> > magnetic_field(kNumEvaluationLocations);
+  // target array for method to test - convert to Eigen format
+  Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>
+      evaluation_positions_eigen(3, kNumEvaluationLocations);
+  Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor> magnetic_field(
+      3, kNumEvaluationLocations);
+  magnetic_field.setZero();
   for (int i = 0; i < kNumEvaluationLocations; ++i) {
-    magnetic_field[i].resize(3, 0.0);
+    evaluation_positions_eigen(0, i) = evaluation_positions[i][0];
+    evaluation_positions_eigen(1, i) = evaluation_positions[i][1];
+    evaluation_positions_eigen(2, i) = evaluation_positions[i][2];
   }
 
   // method under test here
-  absl::Status status = MagneticField(polygon_filament, kCurrent,
-                                      evaluation_positions, magnetic_field);
+  absl::Status status = MagneticField(
+      polygon_filament, kCurrent, evaluation_positions_eigen, magnetic_field);
   EXPECT_EQ(status, absl::OkStatus());
 
   // perform comparison
   for (int i = 0; i < kNumEvaluationLocations; ++i) {
     EXPECT_TRUE(IsCloseRelAbs(magnetic_field_reference[i * 3 + 0],
-                              magnetic_field[i][0], kTolerance));
+                              magnetic_field(0, i), kTolerance));
     EXPECT_TRUE(IsCloseRelAbs(magnetic_field_reference[i * 3 + 1],
-                              magnetic_field[i][1], kTolerance));
+                              magnetic_field(1, i), kTolerance));
     EXPECT_TRUE(IsCloseRelAbs(magnetic_field_reference[i * 3 + 2],
-                              magnetic_field[i][2], kTolerance));
+                              magnetic_field(2, i), kTolerance));
   }
 }  // MagneticField: CheckPolygonFilament
 
@@ -614,14 +643,9 @@ TEST(TestMagneticField, CheckPolygonFilamentAgainstDirectAbscab) {
   static constexpr int kNumEvaluationLocations = 3;
 
   PolygonFilament polygon_filament;
-  Vector3d *vertex_1 = polygon_filament.add_vertices();
-  vertex_1->set_x(1.0);
-  vertex_1->set_y(2.0);
-  vertex_1->set_z(3.0);
-  Vector3d *vertex_2 = polygon_filament.add_vertices();
-  vertex_2->set_x(3.0);
-  vertex_2->set_y(2.0);
-  vertex_2->set_z(1.0);
+  polygon_filament.vertices.resize(3, 2);
+  polygon_filament.vertices.col(0) = Eigen::Vector3d{1.0, 2.0, 3.0};
+  polygon_filament.vertices.col(1) = Eigen::Vector3d{3.0, 2.0, 1.0};
 
   // setup evaluation locations
   std::vector<std::vector<double> > evaluation_positions(
@@ -634,10 +658,17 @@ TEST(TestMagneticField, CheckPolygonFilamentAgainstDirectAbscab) {
     evaluation_positions[i][2] = -(i + 1);
   }
 
-  // setup target array for magnetic field to be tested
-  std::vector<std::vector<double> > magnetic_field(kNumEvaluationLocations);
+  // setup target array for magnetic field to be tested - convert to Eigen
+  // format
+  Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>
+      evaluation_positions_eigen(3, kNumEvaluationLocations);
+  Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor> magnetic_field(
+      3, kNumEvaluationLocations);
+  magnetic_field.setZero();
   for (int i = 0; i < kNumEvaluationLocations; ++i) {
-    magnetic_field[i].resize(3, 0.0);
+    evaluation_positions_eigen(0, i) = evaluation_positions[i][0];
+    evaluation_positions_eigen(1, i) = evaluation_positions[i][1];
+    evaluation_positions_eigen(2, i) = evaluation_positions[i][2];
   }
 
   // setup one-dimensional vector of evaluation location coordinates for ABSCAB
@@ -650,12 +681,12 @@ TEST(TestMagneticField, CheckPolygonFilamentAgainstDirectAbscab) {
   }
 
   // setup one-dimensional vector for polygon geometry for ABSCAB
-  const int num_vertices = polygon_filament.vertices_size();
+  const int num_vertices = polygon_filament.vertices.cols();
   std::vector<double> vertices(num_vertices * 3);
   for (int i = 0; i < num_vertices; ++i) {
-    vertices[i * 3 + 0] = polygon_filament.vertices(i).x();
-    vertices[i * 3 + 1] = polygon_filament.vertices(i).y();
-    vertices[i * 3 + 2] = polygon_filament.vertices(i).z();
+    vertices[i * 3 + 0] = polygon_filament.vertices(0, i);
+    vertices[i * 3 + 1] = polygon_filament.vertices(1, i);
+    vertices[i * 3 + 2] = polygon_filament.vertices(2, i);
   }
 
   // setup one-dimensional vector of magnetic field values for ABSCAB
@@ -668,18 +699,18 @@ TEST(TestMagneticField, CheckPolygonFilamentAgainstDirectAbscab) {
       evaluation_positions_reference.data(), magnetic_field_reference.data());
 
   // calculation under test here
-  absl::Status status = MagneticField(polygon_filament, kCurrent,
-                                      evaluation_positions, magnetic_field);
+  absl::Status status = MagneticField(
+      polygon_filament, kCurrent, evaluation_positions_eigen, magnetic_field);
   EXPECT_EQ(status, absl::OkStatus());
 
   // perform comparison
   for (int i = 0; i < kNumEvaluationLocations; ++i) {
     EXPECT_TRUE(IsCloseRelAbs(magnetic_field_reference[i * 3 + 0],
-                              magnetic_field[i][0], kTolerance));
+                              magnetic_field(0, i), kTolerance));
     EXPECT_TRUE(IsCloseRelAbs(magnetic_field_reference[i * 3 + 1],
-                              magnetic_field[i][1], kTolerance));
+                              magnetic_field(1, i), kTolerance));
     EXPECT_TRUE(IsCloseRelAbs(magnetic_field_reference[i * 3 + 2],
-                              magnetic_field[i][2], kTolerance));
+                              magnetic_field(2, i), kTolerance));
   }
 }  // MagneticField: CheckPolygonFilamentAgainstDirectAbscab
 
@@ -711,17 +742,15 @@ TEST(TestVectorPotential, CheckCircularFilamentAgainstDirectAbscab) {
 
   CircularFilament circular_filament;
 
-  Vector3d *center_vector = circular_filament.mutable_center();
-  center_vector->set_x(center[0]);
-  center_vector->set_y(center[1]);
-  center_vector->set_z(center[2]);
+  circular_filament.center.set_x(center[0]);
+  circular_filament.center.set_y(center[1]);
+  circular_filament.center.set_z(center[2]);
 
-  Vector3d *normal_vector = circular_filament.mutable_normal();
-  normal_vector->set_x(normal[0]);
-  normal_vector->set_y(normal[1]);
-  normal_vector->set_z(normal[2]);
+  circular_filament.normal.set_x(normal[0]);
+  circular_filament.normal.set_y(normal[1]);
+  circular_filament.normal.set_z(normal[2]);
 
-  circular_filament.set_radius(kRadius);
+  circular_filament.radius = kRadius;
 
   // setup evaluation locations
   std::vector<std::vector<double> > evaluation_positions(
@@ -867,14 +896,13 @@ TEST(TestVectorPotential, CheckPolygonFilamentAgainstDirectAbscab) {
   static constexpr int kNumEvaluationLocations = 3;
 
   PolygonFilament polygon_filament;
-  Vector3d *vertex_1 = polygon_filament.add_vertices();
-  vertex_1->set_x(1.0);
-  vertex_1->set_y(2.0);
-  vertex_1->set_z(3.0);
-  Vector3d *vertex_2 = polygon_filament.add_vertices();
-  vertex_2->set_x(3.0);
-  vertex_2->set_y(2.0);
-  vertex_2->set_z(1.0);
+  polygon_filament.vertices.resize(3, 2);
+  polygon_filament.vertices(0, 0) = 1.0;
+  polygon_filament.vertices(1, 0) = 2.0;
+  polygon_filament.vertices(2, 0) = 3.0;
+  polygon_filament.vertices(0, 1) = 3.0;
+  polygon_filament.vertices(1, 1) = 2.0;
+  polygon_filament.vertices(2, 1) = 1.0;
 
   // setup evaluation locations
   std::vector<std::vector<double> > evaluation_positions(
@@ -903,12 +931,12 @@ TEST(TestVectorPotential, CheckPolygonFilamentAgainstDirectAbscab) {
   }
 
   // setup one-dimensional vector for polygon geometry for ABSCAB
-  const int num_vertices = polygon_filament.vertices_size();
+  const int num_vertices = polygon_filament.vertices.cols();
   std::vector<double> vertices(num_vertices * 3);
   for (int i = 0; i < num_vertices; ++i) {
-    vertices[i * 3 + 0] = polygon_filament.vertices(i).x();
-    vertices[i * 3 + 1] = polygon_filament.vertices(i).y();
-    vertices[i * 3 + 2] = polygon_filament.vertices(i).z();
+    vertices[i * 3 + 0] = polygon_filament.vertices(0, i);
+    vertices[i * 3 + 1] = polygon_filament.vertices(1, i);
+    vertices[i * 3 + 2] = polygon_filament.vertices(2, i);
   }
 
   // setup one-dimensional vector of magnetic field values for ABSCAB
@@ -1023,43 +1051,41 @@ MagneticConfiguration MakeMagneticConfiguration(
 
   SerialCircuit *serial_circuit_1 =
       magnetic_configuration.add_serial_circuits();
-  serial_circuit_1->set_current(kCurrent1);
+  serial_circuit_1->current_ = kCurrent1;
   Coil *coil_1 = serial_circuit_1->add_coils();
   CurrentCarrier *current_carrier_1 = coil_1->add_current_carriers();
 
   CircularFilament *circular_filament =
       current_carrier_1->mutable_circular_filament();
 
-  Vector3d *center_vector = circular_filament->mutable_center();
   if (!(introduced_errors.circular_filament_center_omitted_components &
         (1 << 0))) {
-    center_vector->set_x(center[0]);
+    circular_filament->center.set_x(center[0]);
   }
   if (!(introduced_errors.circular_filament_center_omitted_components &
         (1 << 1))) {
-    center_vector->set_y(center[1]);
+    circular_filament->center.set_y(center[1]);
   }
   if (!(introduced_errors.circular_filament_center_omitted_components &
         (1 << 2))) {
-    center_vector->set_z(center[2]);
+    circular_filament->center.set_z(center[2]);
   }
 
-  Vector3d *normal_vector = circular_filament->mutable_normal();
   if (!(introduced_errors.circular_filament_normal_omitted_components &
         (1 << 0))) {
-    normal_vector->set_x(normal[0]);
+    circular_filament->normal.set_x(normal[0]);
   }
   if (!(introduced_errors.circular_filament_normal_omitted_components &
         (1 << 1))) {
-    normal_vector->set_y(normal[1]);
+    circular_filament->normal.set_y(normal[1]);
   }
   if (!(introduced_errors.circular_filament_normal_omitted_components &
         (1 << 2))) {
-    normal_vector->set_z(normal[2]);
+    circular_filament->normal.set_z(normal[2]);
   }
 
   if (!introduced_errors.circular_filament_omit_radius) {
-    circular_filament->set_radius(kRadius);
+    circular_filament->radius = kRadius;
   }
 
   // second current carrier: a PolygonFilament
@@ -1067,39 +1093,38 @@ MagneticConfiguration MakeMagneticConfiguration(
 
   SerialCircuit *serial_circuit_2 =
       magnetic_configuration.add_serial_circuits();
-  serial_circuit_2->set_current(kCurrent2);
+  serial_circuit_2->current_ = kCurrent2;
   Coil *coil_2 = serial_circuit_2->add_coils();
   CurrentCarrier *current_carrier_2 = coil_2->add_current_carriers();
 
   PolygonFilament *polygon_filament =
       current_carrier_2->mutable_polygon_filament();
 
-  Vector3d *vertex_1 = polygon_filament->add_vertices();
+  polygon_filament->vertices.resize(3, 2);
   if (!(introduced_errors.polygon_filament_vertex_1_omitted_components &
         (1 << 0))) {
-    vertex_1->set_x(1.0);
+    polygon_filament->vertices(0, 0) = 1.0;
   }
   if (!(introduced_errors.polygon_filament_vertex_1_omitted_components &
         (1 << 1))) {
-    vertex_1->set_y(2.0);
+    polygon_filament->vertices(1, 0) = 2.0;
   }
   if (!(introduced_errors.polygon_filament_vertex_1_omitted_components &
         (1 << 2))) {
-    vertex_1->set_z(3.0);
+    polygon_filament->vertices(2, 0) = 3.0;
   }
 
-  Vector3d *vertex_2 = polygon_filament->add_vertices();
   if (!(introduced_errors.polygon_filament_vertex_2_omitted_components &
         (1 << 0))) {
-    vertex_2->set_x(3.0);
+    polygon_filament->vertices(0, 1) = 3.0;
   }
   if (!(introduced_errors.polygon_filament_vertex_2_omitted_components &
         (1 << 1))) {
-    vertex_2->set_y(2.0);
+    polygon_filament->vertices(1, 1) = 2.0;
   }
   if (!(introduced_errors.polygon_filament_vertex_2_omitted_components &
         (1 << 2))) {
-    vertex_2->set_z(1.0);
+    polygon_filament->vertices(2, 1) = 1.0;
   }
 
   return magnetic_configuration;
@@ -1181,10 +1206,31 @@ TEST(TestMagneticField, CheckFullyPopulatedMagneticConfiguration) {
             CHECK_OK(MagneticField(current_carrier.circular_filament(), current,
                                    evaluation_positions, magnetic_field));
             break;
-          case CurrentCarrier::TypeCase::kPolygonFilament:
+          case CurrentCarrier::TypeCase::kPolygonFilament: {
+            // Convert to Eigen format for PolygonFilament
+            Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>
+                eval_pos_eigen(3, kNumEvaluationLocations);
+            Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>
+                mag_field_eigen(3, kNumEvaluationLocations);
+            mag_field_eigen.setZero();
+            for (int i = 0; i < kNumEvaluationLocations; ++i) {
+              eval_pos_eigen(0, i) = evaluation_positions[i][0];
+              eval_pos_eigen(1, i) = evaluation_positions[i][1];
+              eval_pos_eigen(2, i) = evaluation_positions[i][2];
+              mag_field_eigen(0, i) = magnetic_field[i][0];
+              mag_field_eigen(1, i) = magnetic_field[i][1];
+              mag_field_eigen(2, i) = magnetic_field[i][2];
+            }
             CHECK_OK(MagneticField(current_carrier.polygon_filament(), current,
-                                   evaluation_positions, magnetic_field));
+                                   eval_pos_eigen, mag_field_eigen));
+            // Convert back
+            for (int i = 0; i < kNumEvaluationLocations; ++i) {
+              magnetic_field[i][0] = mag_field_eigen(0, i);
+              magnetic_field[i][1] = mag_field_eigen(1, i);
+              magnetic_field[i][2] = mag_field_eigen(2, i);
+            }
             break;
+          }
           case CurrentCarrier::TypeCase::kTypeNotSet:
             // consider as empty CurrentCarrier -> ignore
             break;
@@ -1807,20 +1853,18 @@ class MagneticFieldNumWindingsTest : public Test {
     // setup MagneticConfiguration
     SerialCircuit *serial_circuit =
         magnetic_configuration_.add_serial_circuits();
-    serial_circuit->set_current(kCurrent);
+    serial_circuit->current_ = kCurrent;
     coil_ = serial_circuit->add_coils();
     CurrentCarrier *current_carrier = coil_->add_current_carriers();
     CircularFilament *circular_filament =
         current_carrier->mutable_circular_filament();
-    Vector3d *center = circular_filament->mutable_center();
-    center->set_x(center_[0]);
-    center->set_y(center_[1]);
-    center->set_z(center_[2]);
-    Vector3d *normal = circular_filament->mutable_normal();
-    normal->set_x(normal_[0]);
-    normal->set_y(normal_[1]);
-    normal->set_z(normal_[2]);
-    circular_filament->set_radius(kRadius);
+    circular_filament->center.set_x(center_[0]);
+    circular_filament->center.set_y(center_[1]);
+    circular_filament->center.set_z(center_[2]);
+    circular_filament->normal.set_x(normal_[0]);
+    circular_filament->normal.set_y(normal_[1]);
+    circular_filament->normal.set_z(normal_[2]);
+    circular_filament->radius = kRadius;
 
     // setup evaluation locations
     evaluation_positions_.resize(kNumEvaluationLocations);
@@ -1850,9 +1894,7 @@ class MagneticFieldNumWindingsTest : public Test {
     // setup one-dimensional vector of magnetic field values for ABSCAB
     magnetic_field_reference_.resize(kNumEvaluationLocations * 3, 0.0);
   }
-  void SetNumWindings(int num_windings) {
-    coil_->set_num_windings(num_windings);
-  }
+  void SetNumWindings(int num_windings) { coil_->num_windings_ = num_windings; }
   std::vector<double> center_ = {
       1.23, 4.56, 7.89};  // TODO(jons): make const once ABSCAB supports this
   std::vector<double> normal_ = {
@@ -1985,9 +2027,9 @@ TEST(TestMagneticField, CheckMultipleCoilsWithWindings) {
   MagneticConfiguration magnetic_configuration_1;
   SerialCircuit *serial_circuit_1 =
       magnetic_configuration_1.add_serial_circuits();
-  serial_circuit_1->set_current(kCurrent);
+  serial_circuit_1->current_ = kCurrent;
   Coil *coil_1 = serial_circuit_1->add_coils();
-  coil_1->set_num_windings(kNumberOfWindings1);
+  coil_1->num_windings_ = kNumberOfWindings1;
   CurrentCarrier *current_carrier_1 = coil_1->add_current_carriers();
   PolygonFilament *circle_1 = current_carrier_1->mutable_polygon_filament();
   ASSERT_TRUE(PolygonCirclePopulate(*circle_1, kRadius1,
@@ -1997,9 +2039,9 @@ TEST(TestMagneticField, CheckMultipleCoilsWithWindings) {
   MagneticConfiguration magnetic_configuration_2;
   SerialCircuit *serial_circuit_2 =
       magnetic_configuration_2.add_serial_circuits();
-  serial_circuit_2->set_current(kCurrent);
+  serial_circuit_2->current_ = kCurrent;
   Coil *coil_2 = serial_circuit_2->add_coils();
-  coil_2->set_num_windings(kNumberOfWindings2);
+  coil_2->num_windings_ = kNumberOfWindings2;
   CurrentCarrier *current_carrier_2 = coil_2->add_current_carriers();
   PolygonFilament *circle_2 = current_carrier_2->mutable_polygon_filament();
   ASSERT_TRUE(PolygonCirclePopulate(*circle_2, kRadius2,
@@ -2041,10 +2083,10 @@ TEST(TestMagneticField, CheckMultipleCoilsWithWindings) {
   // make a MagneticConfiguration which holds both circle_1 and circle_2
   MagneticConfiguration magnetic_configuration;
   SerialCircuit *serial_circuit = magnetic_configuration.add_serial_circuits();
-  serial_circuit->set_current(kCurrent);
+  serial_circuit->current_ = kCurrent;
 
   Coil *coil_1_of_2 = serial_circuit->add_coils();
-  coil_1_of_2->set_num_windings(kNumberOfWindings1);
+  coil_1_of_2->num_windings_ = kNumberOfWindings1;
   CurrentCarrier *current_carrier_1_of_2 = coil_1_of_2->add_current_carriers();
   PolygonFilament *circle_1_of_2 =
       current_carrier_1_of_2->mutable_polygon_filament();
@@ -2053,7 +2095,7 @@ TEST(TestMagneticField, CheckMultipleCoilsWithWindings) {
                   .ok());
 
   Coil *coil_2_of_2 = serial_circuit->add_coils();
-  coil_2_of_2->set_num_windings(kNumberOfWindings2);
+  coil_2_of_2->num_windings_ = kNumberOfWindings2;
   CurrentCarrier *current_carrier_2_of_2 = coil_2_of_2->add_current_carriers();
   PolygonFilament *circle_2_of_2 =
       current_carrier_2_of_2->mutable_polygon_filament();
@@ -2099,20 +2141,18 @@ class VectorPotentialNumWindingsTest : public Test {
     // setup MagneticConfiguration
     SerialCircuit *serial_circuit =
         magnetic_configuration_.add_serial_circuits();
-    serial_circuit->set_current(kCurrent);
+    serial_circuit->current_ = kCurrent;
     coil_ = serial_circuit->add_coils();
     CurrentCarrier *current_carrier = coil_->add_current_carriers();
     CircularFilament *circular_filament =
         current_carrier->mutable_circular_filament();
-    Vector3d *center = circular_filament->mutable_center();
-    center->set_x(center_[0]);
-    center->set_y(center_[1]);
-    center->set_z(center_[2]);
-    Vector3d *normal = circular_filament->mutable_normal();
-    normal->set_x(normal_[0]);
-    normal->set_y(normal_[1]);
-    normal->set_z(normal_[2]);
-    circular_filament->set_radius(kRadius);
+    circular_filament->center.set_x(center_[0]);
+    circular_filament->center.set_y(center_[1]);
+    circular_filament->center.set_z(center_[2]);
+    circular_filament->normal.set_x(normal_[0]);
+    circular_filament->normal.set_y(normal_[1]);
+    circular_filament->normal.set_z(normal_[2]);
+    circular_filament->radius = kRadius;
 
     // setup evaluation locations
     evaluation_positions_.resize(kNumEvaluationLocations);
@@ -2142,9 +2182,7 @@ class VectorPotentialNumWindingsTest : public Test {
     // setup one-dimensional vector of magnetic field values for ABSCAB
     vector_potential_reference_.resize(kNumEvaluationLocations * 3, 0.0);
   }
-  void SetNumWindings(int num_windings) {
-    coil_->set_num_windings(num_windings);
-  }
+  void SetNumWindings(int num_windings) { coil_->num_windings_ = num_windings; }
   std::vector<double> center_ = {
       1.23, 4.56, 7.89};  // TODO(jons): make const once ABSCAB supports this
   std::vector<double> normal_ = {
@@ -2286,9 +2324,9 @@ TEST(TestVectorPotential, CheckMultipleCoilsWithWindings) {
   MagneticConfiguration magnetic_configuration_1;
   SerialCircuit *serial_circuit_1 =
       magnetic_configuration_1.add_serial_circuits();
-  serial_circuit_1->set_current(kCurrent);
+  serial_circuit_1->current_ = kCurrent;
   Coil *coil_1 = serial_circuit_1->add_coils();
-  coil_1->set_num_windings(kNumberOfWindings1);
+  coil_1->num_windings_ = kNumberOfWindings1;
   CurrentCarrier *current_carrier_1 = coil_1->add_current_carriers();
   PolygonFilament *circle_1 = current_carrier_1->mutable_polygon_filament();
   ASSERT_TRUE(PolygonCirclePopulate(*circle_1, kRadius1,
@@ -2298,9 +2336,9 @@ TEST(TestVectorPotential, CheckMultipleCoilsWithWindings) {
   MagneticConfiguration magnetic_configuration_2;
   SerialCircuit *serial_circuit_2 =
       magnetic_configuration_2.add_serial_circuits();
-  serial_circuit_2->set_current(kCurrent);
+  serial_circuit_2->current_ = kCurrent;
   Coil *coil_2 = serial_circuit_2->add_coils();
-  coil_2->set_num_windings(kNumberOfWindings2);
+  coil_2->num_windings_ = kNumberOfWindings2;
   CurrentCarrier *current_carrier_2 = coil_2->add_current_carriers();
   PolygonFilament *circle_2 = current_carrier_2->mutable_polygon_filament();
   ASSERT_TRUE(PolygonCirclePopulate(*circle_2, kRadius2,
@@ -2344,10 +2382,10 @@ TEST(TestVectorPotential, CheckMultipleCoilsWithWindings) {
   // make a MagneticConfiguration which holds both circle_1 and circle_2
   MagneticConfiguration magnetic_configuration;
   SerialCircuit *serial_circuit = magnetic_configuration.add_serial_circuits();
-  serial_circuit->set_current(kCurrent);
+  serial_circuit->current_ = kCurrent;
 
   Coil *coil_1_of_2 = serial_circuit->add_coils();
-  coil_1_of_2->set_num_windings(kNumberOfWindings1);
+  coil_1_of_2->num_windings_ = kNumberOfWindings1;
   CurrentCarrier *current_carrier_1_of_2 = coil_1_of_2->add_current_carriers();
   PolygonFilament *circle_1_of_2 =
       current_carrier_1_of_2->mutable_polygon_filament();
@@ -2356,7 +2394,7 @@ TEST(TestVectorPotential, CheckMultipleCoilsWithWindings) {
                   .ok());
 
   Coil *coil_2_of_2 = serial_circuit->add_coils();
-  coil_2_of_2->set_num_windings(kNumberOfWindings2);
+  coil_2_of_2->num_windings_ = kNumberOfWindings2;
   CurrentCarrier *current_carrier_2_of_2 = coil_2_of_2->add_current_carriers();
   PolygonFilament *circle_2_of_2 =
       current_carrier_2_of_2->mutable_polygon_filament();

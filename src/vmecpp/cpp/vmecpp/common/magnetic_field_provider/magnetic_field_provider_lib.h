@@ -44,8 +44,8 @@ absl::Status MagneticField(
 // The magnetic field only has been modified if an ok status is returned.
 absl::Status MagneticField(
     const PolygonFilament &polygon_filament, double current,
-    const std::vector<std::vector<double> > &evaluation_positions,
-    std::vector<std::vector<double> > &m_magnetic_field,
+    const Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor> &evaluation_positions,
+    Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor> &m_magnetic_field,
     bool check_current_carrier = true);
 
 // Compute the net magnetic field due to a given MagneticConfiguration at given
