@@ -500,6 +500,8 @@ class VmecWOut(pydantic.BaseModel):
     for free-boundary runs, `extcur` has shape `(nextcur,)`
     for fixed-boundary it is a scalar float `extcur=nan`
     """
+    curlabel: list[str] | None = None
+    "Labels for each of the coil sets in extcur."
 
     mgrid_mode: MgridModeType
 
