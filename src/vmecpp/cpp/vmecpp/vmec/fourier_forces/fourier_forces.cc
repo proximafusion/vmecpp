@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/fourier_forces/fourier_forces.h"
@@ -36,7 +37,7 @@ void FourierForces::zeroZForceForM1() {
         fzcc[idx_fc] = 0.0;
       }
     }  // n
-  }    // j
+  }  // j
 }
 
 /** Compute the force residuals and write them into the provided [3] array. */
@@ -87,8 +88,8 @@ void FourierForces::residuals(std::vector<double>& fRes,
           }
         }
       }  // n
-    }    // m
-  }      // j
+    }  // m
+  }  // j
 
   fRes[0] = local_fResR;
   fRes[1] = local_fResZ;

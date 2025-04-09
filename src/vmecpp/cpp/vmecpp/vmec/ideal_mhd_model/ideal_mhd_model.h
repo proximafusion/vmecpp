@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #ifndef VMECPP_VMEC_IDEAL_MHD_MODEL_IDEAL_MHD_MODEL_H_
@@ -64,10 +65,10 @@ class IdealMhdModel {
  public:
   IdealMhdModel(FlowControl* m_fc, const Sizes* s,
                 const FourierBasisFastPoloidal* t, RadialProfiles* m_p,
-                const VmecConstants* constants,
-                ThreadLocalStorage* m_ls, HandoverStorage* m_h,
-                const RadialPartitioning* r, FreeBoundaryBase* m_fb,
-                int signOfJacobian, int nvacskip, int* m_ivac);
+                const VmecConstants* constants, ThreadLocalStorage* m_ls,
+                HandoverStorage* m_h, const RadialPartitioning* r,
+                FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
+                int* m_ivac);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
 
@@ -83,12 +84,10 @@ class IdealMhdModel {
   // or an error status if something went wrong.
   absl::StatusOr<bool> update(
       FourierGeometry& m_decomposed_x, FourierGeometry& m_physical_x,
-      FourierForces& m_decomposed_f,
-      FourierForces& m_physical_f, bool& m_need_restart,
-      int& m_last_preconditioner_update, int& m_last_full_update_nestor,
-      FlowControl& m_fc,
-      const int iter1, const int iter2,
-      const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
+      FourierForces& m_decomposed_f, FourierForces& m_physical_f,
+      bool& m_need_restart, int& m_last_preconditioner_update,
+      int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
+      const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       const int iterations_before_checkpointing = INT_MAX, bool verbose = true);
 
   // Coordinates which inverse-DFT routine to call for computing

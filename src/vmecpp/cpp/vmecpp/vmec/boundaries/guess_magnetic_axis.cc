@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/boundaries/guess_magnetic_axis.h"
@@ -133,7 +134,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
           zcs_boundary[m][n] = zbcs[idx_mn];
         }
       }  // n
-    }    // m
+    }  // m
   }
   if (s.lasym) {
     rsc_boundary.resize(s.mpol);
@@ -151,7 +152,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
           zcc_boundary[m][n] = zbcc[idx_mn];
         }
       }  // n
-    }    // m
+    }  // m
   }
 
   for (int m = 0; m < s.mpol; ++m) {
@@ -219,7 +220,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
         }
       }
     }  // n
-  }    // m
+  }  // m
 
   // end: interpolate Fourier coefficients between initial guess for axis and
   // boundary
@@ -321,7 +322,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
             }
           }
         }  // n
-      }    // m
+      }  // m
 
       // weird averaging of dX/dTheta in guess_axis
       w.d_r_d_theta_half[k][l] =
@@ -329,7 +330,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
       w.d_z_d_theta_half[k][l] =
           (w.d_z_d_theta_lcfs[k][l] + w.d_z_d_theta_half[k][l]) / 2.0;
     }  // l
-  }    // k
+  }  // k
 
   // flip-mirror geometry into non-stellarator-symmetric half in case of
   // stellarator symmetry
@@ -350,8 +351,8 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
         w.d_r_d_theta_half[k_reversed][l_reversed] = -w.d_r_d_theta_half[k][l];
         w.d_z_d_theta_half[k_reversed][l_reversed] = w.d_z_d_theta_half[k][l];
       }  // l
-    }    // k
-  }      // !lasym
+    }  // k
+  }  // !lasym
 
   // inverse Fourier transform for current axis geometry
   // axis has m = 0
@@ -374,7 +375,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
         w.z_axis[k] += zaxis_c[n] * t.cosnv[idx_kn] * basis_norm;
       }
     }  // n
-  }    // k
+  }  // k
 
   // main loop in which, for each poloidal cutplane,
   // the new axis position is estimated
@@ -446,8 +447,8 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
           }
         }
       }  // index_r
-    }    // index_z
-  }      // k
+    }  // index_z
+  }  // k
 
   // flip-mirror stellarator-symmetric half in case of symmetric run
   // in order to always have a full toroidal module for the Fourier transform
@@ -458,7 +459,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
       w.new_r_axis[k_reversed] = w.new_r_axis[k];
       w.new_z_axis[k_reversed] = -w.new_z_axis[k];
     }  // k
-  }    // !lasym
+  }  // !lasym
 
   // Fourier-transform the axis guess
   const double delta_v = 2.0 / s.nZeta;
@@ -478,7 +479,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
             delta_v * t.cosnv[idx_kn] * w.new_z_axis[k] / t.nscale[n];
       }
     }  // n
-  }    // k
+  }  // k
 
   // fixup Fourier basis scaling for cos(0) and cos(Nyquist) entries
   w.new_raxis_c[0] /= 2.0;

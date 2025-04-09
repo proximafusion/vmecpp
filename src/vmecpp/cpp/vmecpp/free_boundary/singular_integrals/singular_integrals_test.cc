@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/singular_integrals/singular_integrals.h"
@@ -51,8 +52,8 @@ TEST(TestSingularIntegrals, CheckConstants) {
 
         EXPECT_TRUE(IsCloseRelAbs(cmnRef, si.cmn[lnm], kTolerance));
       }  // l
-    }    // m
-  }      // n
+    }  // m
+  }  // n
 }  // CheckConstants
 
 }  // namespace vmecpp

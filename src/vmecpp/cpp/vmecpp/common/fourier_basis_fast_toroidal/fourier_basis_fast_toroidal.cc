@@ -1,11 +1,12 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
 
 #include <cmath>
-#include <vector>
 #include <numbers>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -96,7 +97,7 @@ void FourierBasisFastToroidal::computeFourierBasisFastToroidal(int nfp) {
       cosmumi[idx_lm] = m * cosmui[idx_lm];
       sinmumi[idx_lm] = -m * sinmui[idx_lm];
     }  // m
-  }    // l
+  }  // l
 
   // toroidal
   for (int n = 0; n < s_.nnyq2 + 1; ++n) {
@@ -126,7 +127,7 @@ void FourierBasisFastToroidal::computeFourierBasisFastToroidal(int nfp) {
       cosnvn[idx_nk] = n * nfp * cosnv[idx_nk];
       sinnvn[idx_nk] = -n * nfp * sinnv[idx_nk];
     }  // n
-  }    // k
+  }  // k
 }
 
 // convert cos(xm[mn] theta - xn[mn] zeta) into 2D FC array form
@@ -173,7 +174,7 @@ int FourierBasisFastToroidal::cos_to_cc_ss(const std::vector<double>& fcCos,
 
       mn++;
     }  // n
-  }    // m
+  }  // m
 
   CHECK_EQ(mn, mnmax) << "counting error: mn=" << mn << " should be " << mnmax
                       << " in cos_to_cc_ss";
@@ -228,7 +229,7 @@ int FourierBasisFastToroidal::sin_to_sc_cs(const std::vector<double>& fcSin,
 
       mn++;
     }  // n
-  }    // m
+  }  // m
 
   CHECK_EQ(mn, mnmax) << "counting error: mn=" << mn << " should be " << mnmax
                       << " in sin_to_sc_cs";
@@ -276,7 +277,7 @@ int FourierBasisFastToroidal::cc_ss_to_cos(const std::vector<double>& fcCC,
 
       mn++;
     }  // n
-  }    // m
+  }  // m
 
   CHECK_EQ(mn, mnmax) << "counting error: mn=" << mn << " should be " << mnmax
                       << " in cc_ss_to_cos";
@@ -323,7 +324,7 @@ int FourierBasisFastToroidal::sc_cs_to_sin(const std::vector<double>& fcSC,
 
       mn++;
     }  // n
-  }    // m
+  }  // m
 
   CHECK_EQ(mn, mnmax) << "counting error: mn=" << mn << " should be " << mnmax
                       << " in sc_cs_to_sin";

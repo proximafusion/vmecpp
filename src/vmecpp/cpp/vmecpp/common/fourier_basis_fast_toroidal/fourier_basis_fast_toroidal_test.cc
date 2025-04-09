@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
@@ -125,7 +126,7 @@ TEST(TestFourierBasisFastToroidal, CheckCos2CCSS) {
             << absl::StrFormat("m=%d n=%d", m, n);
       }
     }  // n
-  }    // m
+  }  // m
 }  // CheckCos2CCSS
 
 TEST(TestFourierBasisFastToroidal, CheckSin2SCCS) {
@@ -219,7 +220,7 @@ TEST(TestFourierBasisFastToroidal, CheckSin2SCCS) {
         }
       }
     }  // n
-  }    // m
+  }  // m
 }  // CheckSin2SCCS
 
 TEST(TestFourierBasisFastToroidal, CheckCCSS2Cos) {
@@ -386,8 +387,8 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTEvn) {
 
         realspace_evn[idx_kl] += rnkcc * cosnv + rnkss * sinnv;
       }  // k
-    }    // l
-  }      // n
+    }  // l
+  }  // n
 
   double omega_theta = 2.0 * M_PI / s.nThetaEven;
   double omega_zeta = 2.0 * M_PI / (s.nfp * s.nZeta);
@@ -407,7 +408,7 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTEvn) {
       EXPECT_TRUE(IsCloseRelAbs(ref_evn, realspace_evn[idx_kl], kTolerance))
           << absl::StrFormat("k=%d l=%d", k, l);
     }  // k
-  }    // l
+  }  // l
 }  // CheckInvDFTEvn
 
 TEST(TestFourierBasisFastToroidal, CheckInvDFTOdd) {
@@ -479,8 +480,8 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTOdd) {
 
         realspace_odd[idx_kl] += rnksc * cosnv + rnkcs * sinnv;
       }  // k
-    }    // l
-  }      // n
+    }  // l
+  }  // n
 
   double omega_theta = 2.0 * M_PI / s.nThetaEven;
   double omega_zeta = 2.0 * M_PI / (s.nfp * s.nZeta);
@@ -590,8 +591,8 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTCombined) {
         realspace_evn[idx_kl] += rnkcc * cosnv + rnkss * sinnv;
         realspace_odd[idx_kl] += rnksc * cosnv + rnkcs * sinnv;
       }  // k
-    }    // l
-  }      // n
+    }  // l
+  }  // n
 
   // compose full realspace from even- and odd-parity contributions
   absl::c_fill_n(realspace, s.nThetaEven * s.nZeta, 0);
@@ -608,7 +609,7 @@ TEST(TestFourierBasisFastToroidal, CheckInvDFTCombined) {
         realspace[klReversed] = realspace_evn[kl] - realspace_odd[kl];
       }
     }  // l
-  }    // k
+  }  // k
 
   double omega_theta = 2.0 * M_PI / s.nThetaEven;
   double omega_zeta = 2.0 * M_PI / (s.nfp * s.nZeta);
@@ -724,8 +725,8 @@ TEST(TestFourierBasisFastToroidal, CheckOrthogonality) {
         realspace_evn[idx_kl] += rnkcc * cosnv + rnkss * sinnv;
         realspace_odd[idx_kl] += rnksc * cosnv + rnkcs * sinnv;
       }  // k
-    }    // l
-  }      // n
+    }  // l
+  }  // n
 
   // compose full realspace from even- and odd-parity contributions
   absl::c_fill_n(realspace, s.nThetaEven * s.nZeta, 0);
@@ -742,7 +743,7 @@ TEST(TestFourierBasisFastToroidal, CheckOrthogonality) {
         realspace[klReversed] = realspace_evn[kl] - realspace_odd[kl];
       }
     }  // l
-  }    // k
+  }  // k
 
   // decompose back into even- and odd-parity contributions
   for (int l = 0; l < s.nThetaReduced; ++l) {
@@ -793,8 +794,8 @@ TEST(TestFourierBasisFastToroidal, CheckOrthogonality) {
         fcSC[idx_mn] += rnksc * sinmui;
         fcCS[idx_mn] += rnkcs * cosmui;
       }  // m
-    }    // l
-  }      // n
+    }  // l
+  }  // n
 
   // combine back into linear-indexed Fourier coefficient arrays
   fb.cc_ss_to_cos(fcCC, fcSS, fcCosOut, ntor, mpol);
@@ -881,7 +882,7 @@ TEST(TestFourierBasisFastToroidal, CheckInternally) {
                                     fourier_basis.sinmumi[idx_lm], kTolerance));
         }
       }  // l
-    }    // m
+    }  // m
   }
 
   {  // test toroidal Fourier basis
@@ -914,7 +915,7 @@ TEST(TestFourierBasisFastToroidal, CheckInternally) {
                                     fourier_basis.sinnvn[idx_nk], kTolerance));
         }
       }  // k
-    }    // n
+    }  // n
   }
 
   {  // test basis conversion indices
@@ -936,7 +937,7 @@ TEST(TestFourierBasisFastToroidal, CheckInternally) {
           EXPECT_EQ(fourier_basis.xn[mn], n * sizes.nfp);
           mn++;
         }  // n
-      }    // m
+      }  // m
     }
 
     EXPECT_EQ(mn, sizes.mnmax);
@@ -961,7 +962,7 @@ TEST(TestFourierBasisFastToroidal, CheckInternally) {
           EXPECT_EQ(fourier_basis.xn_nyq[mn_nyq], n * sizes.nfp);
           mn_nyq++;
         }  // n
-      }    // m
+      }  // m
     }
 
     EXPECT_EQ(mn_nyq, sizes.mnmax_nyq);

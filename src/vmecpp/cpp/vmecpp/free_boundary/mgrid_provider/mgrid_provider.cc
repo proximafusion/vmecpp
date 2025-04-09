@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
@@ -80,7 +81,8 @@ int MGridProvider::loadFromMGrid(const std::string& filename,
   numPhi = NetcdfReadInt(ncid, "kp");
 
   nextcur = NetcdfReadInt(ncid, "nextcur");
-  CHECK_EQ(coilCurrents.size(), nextcur) << "Number of currents does not match number of mgrid fields.";
+  CHECK_EQ(coilCurrents.size(), nextcur)
+      << "Number of currents does not match number of mgrid fields.";
 
   mgrid_mode = NetcdfReadString(ncid, "mgrid_mode");
 
@@ -121,9 +123,9 @@ int MGridProvider::loadFromMGrid(const std::string& filename,
           bZ[linear_index] +=
               b_z_contribution[index_phi][index_z][index_r] * coilCurrents[i];
         }  // index_r
-      }    // index_z
-    }      // index_phi
-  }        // nextcur
+      }  // index_z
+    }  // index_phi
+  }  // nextcur
 
   CHECK_EQ(nc_close(ncid), NC_NOERR);
 
@@ -178,7 +180,7 @@ absl::Status MGridProvider::LoadFields(
       bZ[linear_index] +=
           magnetic_response_table.b_z[i][linear_index] * coilCurrents[i];
     }  // linear_index
-  }    // nextcur
+  }  // nextcur
 
   hasMgridLoaded = true;
   has_fixed_field_ = false;

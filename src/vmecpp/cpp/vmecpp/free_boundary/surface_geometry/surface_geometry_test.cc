@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/surface_geometry/surface_geometry.h"
@@ -123,9 +124,9 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
           refR[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel);
           refZ[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel);
         }  // lasym
-      }    // mn
-    }      // k
-  }        // l
+      }  // mn
+    }  // k
+  }  // l
 
   for (int l = 0; l < s.nThetaReduced; ++l) {
     for (int k = 0; k < s.nZeta; ++k) {
@@ -265,9 +266,9 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
           refZvv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
                         (-fb.xn[mn] * fb.xn[mn]);
         }  // lasym
-      }    // mn
-    }      // m
-  }        // l
+      }  // mn
+    }  // m
+  }  // l
 
   // compare results
 
@@ -284,7 +285,7 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
       EXPECT_TRUE(IsCloseRelAbs(refZ[kl], sg.z1b[kl], tolerance))
           << "at k=" << k << " l=" << l;
     }  // k
-  }    // l
+  }  // l
 
   // b) finite-differences derivatives vs. analytical derivatives from inv-DFT:
   // should be roughly the same
@@ -356,7 +357,7 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
       EXPECT_TRUE(IsCloseRelAbs(zvv_approx, sg.zvv[kl], sqrt(fdTol)))
           << "at k=" << k << " l=" << l;
     }  // k
-  }    // l
+  }  // l
 
   // c) inv-DFT vs. reference inv-DFT: should be exactly the same
   for (int l = 0; l < s.nThetaReduced; ++l) {
@@ -409,7 +410,7 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
       EXPECT_TRUE(IsCloseRelAbs(refZvv[kl], sg.zvv[kl], tolerance))
           << "at k=" << k << " l=" << l;
     }  // k
-  }    // l
+  }  // l
 }
 
 TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
@@ -464,9 +465,9 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
           refR[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel);
           refZ[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel);
         }  // lasym
-      }    // mn
-    }      // k
-  }        // l
+      }  // mn
+    }  // k
+  }  // l
 
   for (int l = 0; l < s.nThetaReduced; ++l) {
     for (int k = 0; k < s.nZeta; ++k) {
@@ -530,9 +531,9 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
           refZvv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
                         (-fb.xn[mn] * fb.xn[mn]);
         }  // lasym
-      }    // mn
-    }      // k
-  }        // l
+      }  // mn
+    }  // k
+  }  // l
 
   // guu == g_{theta,theta}
   for (int l = 0; l < s.nThetaReduced; ++l) {
@@ -547,7 +548,7 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
       EXPECT_TRUE(IsCloseRelAbs(ref_guu, sg.guu[kl], tolerance))
           << "at k=" << k << " l=" << l;
     }  // k
-  }    // l
+  }  // l
 
   // 2 guv == 2 g_{theta,zeta}
   for (int l = 0; l < s.nThetaReduced; ++l) {
@@ -566,7 +567,7 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
       EXPECT_TRUE(IsCloseRelAbs(ref_2guv, sg.guv[kl], tolerance))
           << "at k=" << k << " l=" << l;
     }  // k
-  }    // l
+  }  // l
 
   // gvv == g_{zeta,zeta}
   for (int l = 0; l < s.nThetaReduced; ++l) {
@@ -582,7 +583,7 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
       EXPECT_TRUE(IsCloseRelAbs(ref_gvv, sg.gvv[kl], tolerance))
           << "at k=" << k << " l=" << l;
     }  // k
-  }    // l
+  }  // l
 
   // components of normal vector N (snr, snv, snz) and drv
   for (int l = 0; l < s.nThetaReduced; ++l) {
@@ -617,7 +618,7 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
       EXPECT_TRUE(IsCloseRelAbs(ref_drv, sg.drv[kl], tolerance))
           << "at k=" << k << " l=" << l;
     }  // k
-  }    // l
+  }  // l
 
   // A, B, C (==auu, auv, avv)
   for (int l = 0; l < s.nThetaReduced; ++l) {
@@ -646,7 +647,7 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
       EXPECT_TRUE(IsCloseRelAbs(ref_avv, sg.avv[kl], tolerance))
           << "at k=" << k << " l=" << l;
     }  // k
-  }    // l
+  }  // l
 
   // rzb2, rcosuv, rsinuv: full surface
   for (int l = 0; l < s.nThetaEven; ++l) {
@@ -666,7 +667,7 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
       EXPECT_TRUE(IsCloseRelAbs(ref_y, sg.rsinuv[kl], tolerance))
           << "at k=" << k << " l=" << l;
     }  // k
-  }    // l
+  }  // l
 }
 
 }  // namespace vmecpp

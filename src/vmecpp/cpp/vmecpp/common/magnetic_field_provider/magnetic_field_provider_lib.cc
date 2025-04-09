@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h"
@@ -326,8 +327,8 @@ absl::Status MagneticField(
             LOG(FATAL) << error_message.str();
         }
       }  // CurrentCarrier
-    }    // Coil
-  }      // SerialCircuit
+    }  // Coil
+  }  // SerialCircuit
 
   return absl::OkStatus();
 }  // MagneticField for MagneticConfiguration
@@ -538,8 +539,8 @@ absl::Status VectorPotential(
             LOG(FATAL) << error_message.str();
         }
       }  // CurrentCarrier
-    }    // Coil
-  }      // SerialCircuit
+    }  // Coil
+  }  // SerialCircuit
 
   return absl::OkStatus();
 }  // VectorPotential for MagneticConfiguration

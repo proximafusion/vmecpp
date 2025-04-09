@@ -1,16 +1,17 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 
 #include <H5Cpp.h>
 
+#include <Eigen/Dense>  // VectorXd
 #include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include <Eigen/Dense>  // VectorXd
 #include "absl/log/check.h"
 #include "util/hdf5_io/hdf5_io.h"
 #include "util/testing/numerical_comparison_lib.h"
@@ -1315,8 +1316,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     output_quantities.jxbout = ComputeJxBOutputFileContents(
         s, fc, output_quantities.vmec_internal_results,
         output_quantities.bsubs_full, output_quantities.covariant_b_derivatives,
-        indata.return_outputs_even_if_not_converged,
-        vmec_status);
+        indata.return_outputs_even_if_not_converged, vmec_status);
 
     if (checkpoint == VmecCheckpoint::JXBOUT) {
       return output_quantities;
@@ -1340,8 +1340,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
             s, fc, output_quantities.vmec_internal_results);
 
     output_quantities.threed1_first_table = ComputeThreed1FirstTable(
-        fc, output_quantities.vmec_internal_results,
-        output_quantities.jxbout,
+        fc, output_quantities.vmec_internal_results, output_quantities.jxbout,
         output_quantities.threed1_first_table_intermediate);
 
     if (checkpoint == VmecCheckpoint::THREED1_FIRST_TABLE) {
@@ -1634,7 +1633,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
             }
           }
         }  // m
-      }    // n
+      }  // n
 
       double unlamscale = 1.0;
       if (jF > 0) {
@@ -1673,7 +1672,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
         results.ruFull(idx_global) = m.ruFull[idx_local];
         results.zuFull(idx_global) = m.zuFull[idx_local];
       }  // kl
-    }    // jF
+    }  // jF
 
     if (thread_id == 0) {
       // a single thread is enough; this should be consistent among threads
@@ -1699,7 +1698,7 @@ void vmecpp::MeshBledingBSubZeta(const Sizes& s, const FlowControl& fc,
           2.0 * m_vmec_internal_results.bsubvF(idx_sourceF) -
           m_vmec_internal_results.bsubv(idx_sourceH);
     }  // kl
-  }    // jH
+  }  // jH
 }  // MeshBledingBSubZeta
 
 vmecpp::PoloidalCurrentToFixBSubV vmecpp::ComputePoloidalCurrentToFixBSubV(
@@ -1738,7 +1737,7 @@ void vmecpp::FixupPoloidalCurrent(
       m_vmec_internal_results.bsubv(iHalf) -=
           poloidal_current_to_fix_bsubv.poloidal_current_deviation[jH];
     }  // kl
-  }    // jH
+  }  // jH
 }  // FixupPoloidalCurrent
 
 void vmecpp::RecomputeToroidalFlux(
@@ -1820,7 +1819,7 @@ vmecpp::RemainingMetric vmecpp::ComputeRemainingMetric(
           remaining_metric.rs12(idxH) * remaining_metric.rv12(idxH) +
           remaining_metric.zs12(idxH) * remaining_metric.zv12(idxH);
     }  // kl
-  }    // jH
+  }  // jH
 
   return remaining_metric;
 }  // ComputeRemainingMetric
@@ -1848,7 +1847,7 @@ vmecpp::CylindricalComponentsOfB vmecpp::BCylindricalComponents(
           vmec_internal_results.bsupu(idxH) * vmec_internal_results.zu12(idxH) +
           vmec_internal_results.bsupv(idxH) * remaining_metric.zv12(idxH);
     }  // kl
-  }    // jH
+  }  // jH
 
   return b_cylindrical;
 }  // BCylindricalComponents
@@ -1867,7 +1866,7 @@ vmecpp::BSubSHalf vmecpp::ComputeBSubSOnHalfGrid(
           vmec_internal_results.bsupu(idxH) * remaining_metric.gsu(idxH) +
           vmec_internal_results.bsupv(idxH) * remaining_metric.gsv(idxH);
     }  // kl
-  }    // jH
+  }  // jH
 
   return bsubs_half;
 }  // ComputeBSubS
@@ -1889,7 +1888,7 @@ vmecpp::BSubSFull vmecpp::PutBSubSOnFullGrid(
            bsubs_half.bsubs_half(jHi * s.nZnT + kl)) /
           2.0;
     }  // kl
-  }    // jF
+  }  // jF
 
   return bsubs_full;
 }  // PutBSubSOnFullGrid
@@ -1941,7 +1940,7 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
             bsubs_full.bsubs_full(source_index) +
             bsubs_full.bsubs_full(source_index_reversed);
       }  // kl
-    }    // jF
+    }  // jF
     for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
       for (int kl = 0; kl < s.nZnT; ++kl) {
         const int source_index = jH * s.nZnT + kl;
@@ -1970,7 +1969,7 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
             vmec_internal_results.bsubv(source_index) -
             vmec_internal_results.bsubv(source_index_reversed);
       }  // kl
-    }    // jH
+    }  // jH
   } else {
     // stellarator-symmetric case: simply copy over data
     for (int jF = 0; jF < vmec_internal_results.num_full; ++jF) {
@@ -1980,7 +1979,7 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         decomposed_bcov.bsubs_s(target_index) =
             bsubs_full.bsubs_full(source_index);
       }  // kl
-    }    // jF
+    }  // jF
     for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
       for (int kl = 0; kl < s.nZnT; ++kl) {
         const int source_index = jH * s.nZnT + kl;
@@ -1990,7 +1989,7 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         decomposed_bcov.bsubv_s(target_index) =
             vmec_internal_results.bsubv(source_index);
       }  // kl
-    }    // jH
+    }  // jH
   }
 
   return decomposed_bcov;
@@ -2084,8 +2083,8 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               // sin-sin
               bsubsmn4 += tcosi2 * decomposed_bcov.bsubs_a(source_index);
             }  // lasym
-          }    // l
-        }      // k
+          }  // l
+        }  // k
 
         // FOURIER INVERSE TRANSFORM
         // Compute on u-v grid (must add symmetric, antisymmetric parts for
@@ -2117,11 +2116,11 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               const double tsinn2 = t.sinmu[idx_ml] * t.cosnvn[idx_kn];
               bsubsv_a[target_index] += tsinn1 * bsubsmn3 + tsinn2 * bsubsmn4;
             }  // lasym
-          }    // l
-        }      // k
-      }        // n
-    }          // m
-  }            // jF
+          }  // l
+        }  // k
+      }  // n
+    }  // m
+  }  // jF
 
   // FOURIER LOW-PASS FILTER bsubu AND bsubv
   for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
@@ -2186,8 +2185,8 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               // cos-sin
               bsubumn4 += tsini2 * decomposed_bcov.bsubu_a(source_index);
             }  // lasym
-          }    // l
-        }      // k
+          }  // l
+        }  // k
 
         // FOURIER INVERSE TRANSFORM
         // Compute on u-v grid (must add symmetric, antisymmetric parts for
@@ -2236,11 +2235,11 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               covariant_b_derivatives.bsubuv(target_index) +=
                   tcosn1 * bsubumn3 + tcosn2 * bsubumn4;
             }  // lasym
-          }    // l
-        }      // k
-      }        // n
-    }          // m
-  }            // jH
+          }  // l
+        }  // k
+      }  // n
+    }  // m
+  }  // jH
 
   if (s.lasym) {
     // EXTEND FILTERED bsubu, bsubv TO NTHETA3 MESH
@@ -2276,8 +2275,8 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               bsubv_filtered_s[source_index_reversed] -
               bsubv_filtered_a[source_index_reversed];
         }  // l
-      }    // k
-    }      // jH
+      }  // k
+    }  // jH
   } else {
     // simply overwrite non-filtered data in-place
     for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
@@ -2286,7 +2285,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
         m_vmec_internal_results.bsubu(idx_kl) = bsubu_filtered_s[idx_kl];
         m_vmec_internal_results.bsubv(idx_kl) = bsubv_filtered_s[idx_kl];
       }  // kl
-    }    // jH
+    }  // jH
   }
 
   // EXTEND bsubsu, bsubsv TO NTHETA3 MESH
@@ -2321,8 +2320,8 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
           covariant_b_derivatives.bsubsv(target_index) =
               bsubsv_s[source_index] + bsubsv_a[source_index];
         }  // l
-      }    // k
-    }      // jH
+      }  // k
+    }  // jH
   } else {
     // simply copy over data
     for (int jF = 0; jF < m_vmec_internal_results.num_full; ++jF) {
@@ -2331,7 +2330,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
         covariant_b_derivatives.bsubsu(idx_kl) = bsubsu_s[idx_kl];
         covariant_b_derivatives.bsubsv(idx_kl) = bsubsv_s[idx_kl];
       }  // kl
-    }    // jH
+    }  // jH
   }
 
   return covariant_b_derivatives;
@@ -2362,8 +2361,7 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     const VmecInternalResults& vmec_internal_results,
     const BSubSFull& bsubs_full,
     const CovariantBDerivatives& covariant_b_derivatives,
-    const bool return_outputs_even_if_not_converged,
-    VmecStatus vmec_status) {
+    const bool return_outputs_even_if_not_converged, VmecStatus vmec_status) {
   JxBOutFileContents jxbout;
 
   jxbout.itheta = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
@@ -2601,7 +2599,8 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     jxbout.jperp2[jF] = dnorm1 * tjnorm * average_jperp2;
 
     // Some quantities are only computed if VMEC++ actually converged.
-    if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION || return_outputs_even_if_not_converged) {
+    if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION ||
+        return_outputs_even_if_not_converged) {
       // normalized toroidal magnetic flux
       jxbout.phin[jF] = vmec_internal_results.phiF[jF] /
                         vmec_internal_results.phiF[fc.ns - 1];
@@ -2638,7 +2637,8 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
   }  // jF
 
   // Some quantities are only computed if VMEC++ actually converged.
-  if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION || return_outputs_even_if_not_converged) {
+  if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION ||
+      return_outputs_even_if_not_converged) {
     // The loop in jxbforce.f90:594 goes over js=2,ns1,
     // which means that the last half-grid point is not touched.
     for (int jH = 0; jH < vmec_internal_results.num_half - 1; ++jH) {
@@ -2655,7 +2655,7 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
         jxbout.bsubu3(target_index) = vmec_internal_results.bsubu(target_index);
         jxbout.bsubv3(target_index) = vmec_internal_results.bsubv(target_index);
       }  // kl
-    }    // jH
+    }  // jH
   }
 
   // extrapolate stuff to axis and boundary
@@ -2879,7 +2879,7 @@ vmecpp::ComputeIntermediateMercierQuantities(
           gpp_denominator_ingredient * gpp_denominator_ingredient;
       mercier_intermediate.gpp(index_full) = gpp_numerator / gpp_denominator;
     }  // kl
-  }    // jF
+  }  // jF
 
   // COMPUTE SURFACE AVERAGES OVER dS/|grad-PHI|**3 => |Jac| du dv /
   // |grad-PHI|**2 WHERE Jac = gsqrt/phip_real
@@ -2894,7 +2894,7 @@ vmecpp::ComputeIntermediateMercierQuantities(
           2.0 * (vmec_internal_results.total_pressure(index_half) -
                  vmec_internal_results.presH[jH]);
     }  // kl
-  }    // jH
+  }  // jH
 
   const double four_pi_squared = 4.0 * M_PI * M_PI;
   for (int jF = 1; jF < fc.ns - 1; ++jF) {
@@ -2943,8 +2943,7 @@ vmecpp::ComputeIntermediateMercierQuantities(
 }  // ComputeIntermediateMercierQuantities
 
 vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
-    const FlowControl& fc,
-    const VmecInternalResults& vmec_internal_results,
+    const FlowControl& fc, const VmecInternalResults& vmec_internal_results,
     const MercierStabilityIntermediateQuantities& mercier_intermediate) {
   MercierFileContents mercier;
 
@@ -3188,7 +3187,7 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
       threed1_first_table_intermediate.bvcoH[jH] +=
           vmec_internal_results.bsubv(iHalf) * s.wInt[l];
     }  // kl
-  }    // jH
+  }  // jH
 
   double signByDeltaS = vmec_internal_results.sign_of_jacobian / fc.deltaS;
 
@@ -3303,8 +3302,7 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
 }  // ComputeIntermediateThreed1FirstTableQuantities
 
 vmecpp::Threed1FirstTable vmecpp::ComputeThreed1FirstTable(
-    const FlowControl& fc,
-    const VmecInternalResults& vmec_internal_results,
+    const FlowControl& fc, const VmecInternalResults& vmec_internal_results,
     const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate) {
   const double fac = 2.0 * M_PI * vmec_internal_results.sign_of_jacobian;
@@ -3506,7 +3504,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
       intermediate.rshaf2 +=
           intermediate.phat[kl] / vmec_internal_results.r12(index_half);
     }  // kl
-  }    // jH
+  }  // jH
   intermediate.delphid_exact *= intermediate.anorm;
   intermediate.rshaf = intermediate.rshaf1 / intermediate.rshaf2;
 
@@ -3627,7 +3625,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
       toroidal_flux_sum += vmec_internal_results.bsupv(index_half) *
                            threed1_first_table_intermediate.tau(index_half);
     }  // kl
-  }    // jH
+  }  // jH
   result.toroidal_flux = intermediate.anorm * toroidal_flux_sum;
 
   result.circum_p = 2.0 * M_PI * intermediate.circumference_sum;
@@ -3736,8 +3734,8 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
         result.bmin(jH * s.nThetaReduced + l) =
             std::min(result.bmin(jH * s.nThetaEff + l), mod_b);
       }  // k
-    }    // l
-  }      // jH
+    }  // l
+  }  // jH
 
   // Compute Waist thickness and height in \f$\varphi = 0, \pi\f$ symmetry
   // planes.
@@ -3899,7 +3897,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
             // zxmin = yz1u;
           }
         }  // l
-      }    // icount
+      }  // icount
 
       // theta=180 deg
       const int l_pi = (jF * s.nZeta + k) * s.nThetaEff + (s.nThetaReduced - 1);
@@ -3931,7 +3929,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
       result.yshift[nplanes * fc.ns + jF] =
           (r_axis - rgeo) / (maximum_x - minimum_x);
     }  // jF
-  }    // nplanes
+  }  // nplanes
 
   return result;
 }  // ComputeThreed1GeometricMagneticQuantities
@@ -4038,7 +4036,8 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
     const Sizes& s, const FlowControl& fc,
     const HandoverStorage& handover_storage,
     const VmecInternalResults& vmec_internal_results,
-    const Threed1GeometricAndMagneticQuantitiesIntermediate& threed1_geometric_magnetic_intermediate,
+    const Threed1GeometricAndMagneticQuantitiesIntermediate&
+        threed1_geometric_magnetic_intermediate,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag, int ivac) {
   Threed1ShafranovIntegrals result;
 
@@ -4374,7 +4373,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         m_vmec_internal_results.zmncs(idx_fc) =
             (old_rss - m_vmec_internal_results.zmncs(idx_fc));
       }  // n
-    }    // jF
+    }  // jF
   }
 
   // CONVERT TO rmnc, zmns, lmns, etc EXTERNAL representation (without internal
@@ -4445,7 +4444,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         // NOTE: can omit assigning jF=0 entries to 0, since rmnc1, ..., lmns1
         // are initialized to 0.0 already
       }  // n
-    }    // m
+    }  // m
 
     // pre-incrementing means that we are off by one at the end
     CHECK_EQ(mn + 1, s.mnmax) << "counting error: (mn + 1)=" << (mn + 1)
@@ -4457,7 +4456,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       wout.lmns_full(jF * s.mnmax + mn) =
           lmns1[mn] / m_vmec_internal_results.phipF[jF] * constants.lamscale;
     }  // mn
-  }    // jF
+  }  // jF
 
   // INTERPOLATE LAMBDA ONTO HALF-MESH FOR BACKWARDS CONSISTENCY WITH EARLIER
   // VERSIONS OF VMEC AND SMOOTHS POSSIBLE UNPHYSICAL "WIGGLE" ON RADIAL MESH
@@ -4485,7 +4484,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             (sm * lmns_outside + sp * lmns_inside) / 2.0;
       }
     }  // mn
-  }    // jH
+  }  // jH
 
   // COMPUTE |B| = SQRT(|B|**2) and store in bsq, bsqa
   std::vector<double> magnetic_pressure((fc.ns - 1) * s.nZnT, 0.0);
@@ -4497,7 +4496,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       magnetic_pressure[idx_kl] = std::sqrt(
           2.0 * std::abs(total_pressure - m_vmec_internal_results.presH[jH]));
     }  // kl
-  }    // jH
+  }  // jH
 
   double tmult = 0.5;
   if (s.lasym) {
@@ -4574,9 +4573,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           wout.bsupvmnc(idx_mn_nyq) +=
               tcosi * m_vmec_internal_results.bsupv(idx_kl);
         }  // k
-      }    // l
-    }      // mn_nyq
-  }        // jH
+      }  // l
+    }  // mn_nyq
+  }  // jH
 
   // Note that bsubs in wrout.f in Fortran VMEC is on the half-grid,
   // as it is computed from bsup(u,v) (both of which are on the half-grid)
@@ -4616,7 +4615,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         m_vmec_internal_results.zmncc(idx_fc) =
             (old_rsc - m_vmec_internal_results.zmncc(idx_fc));
       }  // n
-    }    // jF
+    }  // jF
 
     // CONVERT TO rmnc, zmns, lmns, etc EXTERNAL representation (without
     // internal mscale, nscale) IF B^v ~ phip + lamu, MUST DIVIDE BY phipf(js)
@@ -4820,7 +4819,7 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
                           test_wout.zmns(jF * test_wout.mnmax + mn), tolerance))
           << "jF = " << jF << " mn = " << mn;
     }  // mn
-  }    // jF
+  }  // jF
 
   for (int jH = 0; jH < ns - 1; ++jH) {
     for (int mn = 0; mn < test_wout.mnmax; ++mn) {
@@ -4828,7 +4827,7 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
                           test_wout.lmns(jH * test_wout.mnmax + mn), tolerance))
           << "jH = " << jH << " mn = " << mn;
     }  // mn
-  }    // jH
+  }  // jH
 
   for (int jH = 0; jH < ns - 1; ++jH) {
     for (int mn_nyq = 0; mn_nyq < test_wout.mnmax_nyq; ++mn_nyq) {
@@ -4861,7 +4860,7 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
           test_wout.bsupvmnc(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
           << "jH = " << jH << " mn_nyq = " << mn_nyq;
     }  // mn_nyq
-  }    // jH
+  }  // jH
 
   // also test the wrong extrapolation of bsubsmns
   // beyond the magnetic axis for backward compatibility

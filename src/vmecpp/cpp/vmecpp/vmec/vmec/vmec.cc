@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/vmec/vmec.h"
@@ -50,41 +51,54 @@ void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
 // Check preconditions on (initial_state, indata) pair passed to Vmec::run
 // in order to make sure that the state to hot-restart from can be copied over
 // 1:1.
-void CheckInitialState(const vmecpp::HotRestartState& initial_state,
-                       const vmecpp::VmecINDATA& indata) {
+absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
+                               const vmecpp::VmecINDATA& indata) {
   const auto msg_start = "Mismatch in variable '";
   const auto msg_end =
-      "' between hot restart initial state and indata. "
-      "This is not supported yet.";
+      "' between hot restart initial state and indata. This is not supported "
+      "yet.";
 
   // check for match in `lasym`, since that determines whether
   // non-stellarator-symmetric terms are expected or not
-  CHECK_EQ(initial_state.indata.lasym, indata.lasym)
-      << msg_start << "lasym" << msg_end;
+  if (initial_state.indata.lasym != indata.lasym) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(msg_start, "lasym", msg_end));
+  }
 
   // check for `mpol` and `ntor` match, since they determine the expected array
   // size in tangential direction
-  CHECK_EQ(initial_state.indata.mpol, indata.mpol)
-      << msg_start << "mpol" << msg_end;
-  CHECK_EQ(initial_state.indata.ntor, indata.ntor)
-      << msg_start << "ntor" << msg_end;
+  if (initial_state.indata.mpol != indata.mpol) {
+    return absl::InvalidArgumentError(absl::StrCat(msg_start, "mpol", msg_end));
+  }
+  if (initial_state.indata.ntor != indata.ntor) {
+    return absl::InvalidArgumentError(absl::StrCat(msg_start, "ntor", msg_end));
+  }
 
   // check for having only a single element in `ns_array`, `ftol_array`, and
   // `niter_array`, since we don't support hot-restarting with multiple
   // multi-grid steps
-  CHECK_EQ(indata.ns_array.size(), 1ull)
-      << "Only ns array with a single element is supported when hot-restarting";
-  CHECK_EQ(indata.ftol_array.size(), 1ull)
-      << "Only ftol array with a single element is supported when "
-         "hot-restarting";
-  CHECK_EQ(indata.niter_array.size(), 1ull)
-      << "Only niter array with a single element is supported when "
-         "hot-restarting";
+  if (indata.ns_array.size() != 1ull) {
+    return absl::InvalidArgumentError(
+        "Only ns array with a single element is supported when hot-restarting");
+  }
+  if (indata.ftol_array.size() != 1ull) {
+    return absl::InvalidArgumentError(
+        "Only ftol array with a single element is supported when "
+        "hot-restarting");
+  }
+  if (indata.niter_array.size() != 1ull) {
+    return absl::InvalidArgumentError(
+        "Only niter array with a single element is supported when "
+        "hot-restarting");
+  }
 
-  // check for matching `ns`, since that determines the expected array size in
-  // radial direction
-  CHECK_EQ(initial_state.indata.ns_array.back(), indata.ns_array[0])
-      << msg_start << "ns_array" << msg_end;
+  // check for matching `ns`
+  if (initial_state.indata.ns_array.back() != indata.ns_array[0]) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(msg_start, "ns_array", msg_end));
+  }
+
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -197,7 +211,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   }
 
   if (initial_state.has_value()) {
-    CheckInitialState(*initial_state, indata_);
+    absl::Status status = CheckInitialState(*initial_state, indata_);
+    if (!status.ok()) {
+      return status;
+    }
   }
 
   // !!! THIS must be the ONLY place where this gets set to zero !!!
@@ -309,7 +326,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     // if ier_flag .eq. bad_jacobian_flag, repeat once again with ns=3 before
   }  // jacob_off
 
-  if (status_ != VmecStatus::SUCCESSFUL_TERMINATION && !indata_.return_outputs_even_if_not_converged) {
+  if (status_ != VmecStatus::SUCCESSFUL_TERMINATION &&
+      !indata_.return_outputs_even_if_not_converged) {
     const auto msg = "VMEC++ did not converge";
     return absl::InternalError(msg);
   }
@@ -447,7 +465,7 @@ bool Vmec::InitializeRadial(
                                      ToString(indata_.free_boundary_method),
                                      "' not implemented yet");
         }  // indata_.free_boundary_method
-      }    // lfreeb
+      }  // lfreeb
 
       // setup MHD model
       m_[thread_id] = std::make_unique<IdealMhdModel>(
@@ -673,7 +691,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp barrier
     // tells restart_iter to store current xc in xstore
 #pragma omp single
-    { fc_.restart_reason = RestartReason::NO_RESTART; }
+    {
+      fc_.restart_reason = RestartReason::NO_RESTART;
+    }
 
     if (liter_flag_) {
       // Note that at this point, liter_flag could also simply contain (iter2
@@ -771,7 +791,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // jacobian changed sign 25/50 times: hmmm? :-/
 
 #pragma omp single
-      { fc_.restart_reason = RestartReason::BAD_JACOBIAN; }
+      {
+        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+      }
 
       RestartIteration(fc_.delt0r, thread_id);
 
@@ -965,7 +987,9 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
                                   int iterations_before_checkpointing,
                                   double time_step, int thread_id) {
 #pragma omp single
-  { fc_.restart_reason = RestartReason::NO_RESTART; }
+  {
+    fc_.restart_reason = RestartReason::NO_RESTART;
+  }
 
   // `funct3d` - COMPUTE MHD FORCES
   absl::StatusOr<bool> reached_checkpoint = UpdateForwardModel(
@@ -1048,7 +1072,9 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 
 void Vmec::Printout(double delt0r, int thread_id) {
 #pragma omp single
-  { h_.ResetSpectralWidthAccumulators(); }
+  {
+    h_.ResetSpectralWidthAccumulators();
+  }
   p_[thread_id]->AccumulateVolumeAveragedSpectralWidth();
 #pragma omp barrier
 
@@ -1097,9 +1123,8 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
   absl::StatusOr<bool> reached_checkpoint = m_[thread_id]->update(
       *decomposed_x_[thread_id], *physical_x_[thread_id],
       *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
-      last_preconditioner_update_, last_full_update_nestor_,
-      fc_, iter1_, iter2_, checkpoint,
-      iterations_before_checkpointing);
+      last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
+      iter2_, checkpoint, iterations_before_checkpointing);
   if (!reached_checkpoint.ok()) {
     return reached_checkpoint;
   }
@@ -1241,8 +1266,8 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
           }
         }
       }  // n
-    }    // m
-  }      // jF
+    }  // m
+  }  // jF
 
   // also evolve satellite radial locations: nsMinF1, nsMaxF1-1 in case
   // inside, outside threads exist
@@ -1434,7 +1459,7 @@ void Vmec::InterpolateToNextMultigridStep(
         }
       }
     }  // n
-  }    // m
+  }  // m
 
   // ------------------------
   // radial interpolation from old, coarse state vector to new, finer state
@@ -1567,9 +1592,9 @@ void Vmec::InterpolateToNextMultigridStep(
             }
           }
         }  // n
-      }    // m
-    }      // jNew
-  }        // thread_id
+      }  // m
+    }  // jNew
+  }  // thread_id
 
   // ------------------------
   // Zero M=1 modes at origin
@@ -1602,7 +1627,7 @@ void Vmec::InterpolateToNextMultigridStep(
         }
       }
     }  // n
-  }    // m
+  }  // m
 }  // InterpolateToNextMultigridStep
 
 }  // namespace vmecpp

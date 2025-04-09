@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
@@ -1328,7 +1329,8 @@ TEST(TestMagneticConfigurationLib,
                             kTolerance));
   EXPECT_EQ(vertex_3->z(), 3.3);
 
-  // Add an InfiniteStraightFilament (which is not supported to be radially moved).
+  // Add an InfiniteStraightFilament (which is not supported to be radially
+  // moved).
   CurrentCarrier *current_carrier_2 = coil->add_current_carriers();
   InfiniteStraightFilament *infinite_straight_filament =
       current_carrier_2->mutable_infinite_straight_filament();
@@ -1350,7 +1352,8 @@ TEST(TestMagneticConfigurationLib,
                         /*m_magnetic_configuration=*/magnetic_configuration);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.message(),
-            "Cannot perform radial movement if an InfiniteStraightFilament is present "
+            "Cannot perform radial movement if an InfiniteStraightFilament is "
+            "present "
             "in the MagneticConfiguration");
 }  // CheckMoveRadiallyOutwardMagneticConfiguration
 

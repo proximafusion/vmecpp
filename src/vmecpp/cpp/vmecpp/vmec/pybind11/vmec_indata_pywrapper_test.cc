@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/pybind11/vmec_indata_pywrapper.h"
@@ -61,12 +62,13 @@ void CheckEquality(const vmecpp::VmecINDATAPyWrapper &wrapper,
   EXPECT_EQ(wrapper.lforbal, indata.lforbal);
   EXPECT_THAT(wrapper.raxis_c, ElementsAreArray(indata.raxis_c));
   EXPECT_THAT(wrapper.zaxis_s, ElementsAreArray(indata.zaxis_s));
-  if(indata.lasym){
+  if (indata.lasym) {
     EXPECT_THAT(wrapper.raxis_s.value(), ElementsAreArray(indata.raxis_s));
     EXPECT_THAT(wrapper.zaxis_c.value(), ElementsAreArray(indata.zaxis_c));
-  }else{
-    // For now, when stellaratory symmetric, VmecINDATA sets the asymmetric elements to
-    // an empty array and VmecINDATAPyWrapper uses std::nullopt. TODO(jurasic): reconcile the two
+  } else {
+    // For now, when stellaratory symmetric, VmecINDATA sets the asymmetric
+    // elements to an empty array and VmecINDATAPyWrapper uses std::nullopt.
+    // TODO(jurasic): reconcile the two
     EXPECT_EQ(indata.raxis_s.size(), 0);
     EXPECT_TRUE(!wrapper.raxis_s.has_value());
     EXPECT_EQ(indata.zaxis_c.size(), 0);
@@ -77,14 +79,15 @@ void CheckEquality(const vmecpp::VmecINDATAPyWrapper &wrapper,
   const auto flat_zbs = wrapper.zbs.reshaped<Eigen::RowMajor>();
   EXPECT_THAT(flat_zbs, ElementsAreArray(indata.zbs));
 
-  if(indata.lasym){
+  if (indata.lasym) {
     const auto flat_rbs = wrapper.rbs.value().reshaped<Eigen::RowMajor>();
     EXPECT_THAT(flat_rbs, ElementsAreArray(indata.rbs));
     const auto flat_zbc = wrapper.zbc.value().reshaped<Eigen::RowMajor>();
     EXPECT_THAT(flat_zbc, ElementsAreArray(indata.zbc));
-  }else{
-    // For now, when stellaratory symmetric, VmecINDATA sets the asymmetric elements to
-    // an empty array and VmecINDATAPyWrapper uses std::nullopt. TODO(jurasic): reconcile the two
+  } else {
+    // For now, when stellaratory symmetric, VmecINDATA sets the asymmetric
+    // elements to an empty array and VmecINDATAPyWrapper uses std::nullopt.
+    // TODO(jurasic): reconcile the two
     EXPECT_EQ(indata.rbs.size(), 0);
     EXPECT_TRUE(!wrapper.rbs.has_value());
     EXPECT_EQ(indata.zbc.size(), 0);

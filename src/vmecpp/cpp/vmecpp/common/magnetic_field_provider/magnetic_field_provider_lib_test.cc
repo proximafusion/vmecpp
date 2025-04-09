@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h"
@@ -1195,8 +1196,8 @@ TEST(TestMagneticField, CheckFullyPopulatedMagneticConfiguration) {
             LOG(FATAL) << error_message.str();
         }
       }  // CurrentCarrier
-    }    // Coil
-  }      // SerialCircuit
+    }  // Coil
+  }  // SerialCircuit
 
   // now check that the correct magnetic field has been computed
   for (int i = 0; i < kNumEvaluationLocations; ++i) {
@@ -1540,8 +1541,8 @@ TEST(TestVectorPotential, CheckFullyPopulatedMagneticConfiguration) {
             LOG(FATAL) << error_message.str();
         }
       }  // CurrentCarrier
-    }    // Coil
-  }      // SerialCircuit
+    }  // Coil
+  }  // SerialCircuit
 
   // now check that the correct vector potential has been computed
   for (int i = 0; i < kNumEvaluationLocations; ++i) {

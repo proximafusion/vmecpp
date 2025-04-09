@@ -1,12 +1,13 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #ifndef VMECPP_COMMON_FLOW_CONTROL_FLOW_CONTROL_H_
 #define VMECPP_COMMON_FLOW_CONTROL_FLOW_CONTROL_H_
 
+#include <cstdint>
 #include <optional>
 #include <vector>
-#include <cstdint>
 
 namespace vmecpp {
 

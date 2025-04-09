@@ -1,12 +1,13 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include <iostream>
 #include <string>
 
 #include "absl/log/check.h"
-#include "absl/strings/strip.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/strip.h"
 #include "util/file_io/file_io.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"

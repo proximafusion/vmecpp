@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
@@ -99,8 +100,8 @@ void FourierGeometry::interpFromBoundaryAndAxis(
           }
         }
       }  // n
-    }    // m
-  }      // j
+    }  // m
+  }  // j
 }
 
 void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
@@ -309,8 +310,8 @@ void FourierGeometry::copyFrom(const FourierGeometry& src) {
           }
         }
       }  // n
-    }    // m
-  }      // j
+    }  // m
+  }  // j
 }
 
 void FourierGeometry::ComputeSpectralWidth(
@@ -397,7 +398,7 @@ void FourierGeometry::ComputeSpectralWidth(
         spectral_width_numerator += coefficient_norm * std::pow(m, p + q);
         spectral_width_denominator += coefficient_norm * std::pow(m, p);
       }  // m
-    }    // n
+    }  // n
 
     m_radial_profiles.spectral_width[jF - r_.nsMinF1] =
         spectral_width_numerator / spectral_width_denominator;

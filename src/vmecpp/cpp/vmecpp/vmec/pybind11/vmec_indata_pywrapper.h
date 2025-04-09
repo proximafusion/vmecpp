@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #ifndef VMECPP_VMEC_PYBIND11_VMEC_INDATA_PYWRAPPER_H_
@@ -6,8 +7,8 @@
 
 #include <Eigen/Dense>
 #include <filesystem>
-#include <string>
 #include <optional>
+#include <string>
 
 #include "vmecpp/common/util/util.h"  // RowMatrixXd, ToEigenVector, ToEigenMatrix
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
