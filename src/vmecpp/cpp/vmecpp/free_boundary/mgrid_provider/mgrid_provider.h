@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #ifndef VMECPP_FREE_BOUNDARY_MGRID_PROVIDER_MGRID_PROVIDER_H_
 #define VMECPP_FREE_BOUNDARY_MGRID_PROVIDER_MGRID_PROVIDER_H_
 
-#include <string>
+#include <filesystem>
 #include <vector>
 
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -16,9 +17,8 @@ class MGridProvider {
  public:
   MGridProvider();
 
-  // TODO(jons): return an absl::Status, rename to LoadFile, fix casing
-  int loadFromMGrid(const std::string& filename,
-                    const std::vector<double>& coilCurrents);
+  absl::Status LoadFile(const std::filesystem::path& filename,
+                        const std::vector<double>& coilCurrents);
 
   absl::Status LoadFields(
       const makegrid::MakegridParameters& mgrid_params,

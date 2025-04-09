@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
@@ -10,7 +11,6 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
-#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -51,13 +51,13 @@ MGridProvider::MGridProvider() {
 }
 
 // return 0 if mgrid could be loaded, 1 otherwise
-int MGridProvider::loadFromMGrid(const std::string& filename,
-                                 const std::vector<double>& coilCurrents) {
+absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
+                                     const std::vector<double>& coilCurrents) {
   {  // try to open file in order to check if it is accessible
     std::ifstream fp(filename);
     if (!fp.is_open()) {
-      std::cout << "cannot open mgrid file '" << filename << "'\n";
-      return 1;
+      return absl::UnavailableError(
+          absl::StrFormat("cannot open mgrid file %s", filename));
     }
   }
 
@@ -80,8 +80,10 @@ int MGridProvider::loadFromMGrid(const std::string& filename,
   numPhi = NetcdfReadInt(ncid, "kp");
 
   nextcur = NetcdfReadInt(ncid, "nextcur");
-  CHECK_EQ(coilCurrents.size(), nextcur) << "Number of currents does not match number of mgrid fields.";
-
+  if (coilCurrents.size() != static_cast<std::size_t>(nextcur)) {
+    return absl::InvalidArgumentError(
+        "Number of currents does not match number of mgrid fields.");
+  }
   mgrid_mode = NetcdfReadString(ncid, "mgrid_mode");
 
   // Resize and make sure that the accumulation arrays are reset to zeros
@@ -121,24 +123,26 @@ int MGridProvider::loadFromMGrid(const std::string& filename,
           bZ[linear_index] +=
               b_z_contribution[index_phi][index_z][index_r] * coilCurrents[i];
         }  // index_r
-      }    // index_z
-    }      // index_phi
-  }        // nextcur
+      }  // index_z
+    }  // index_phi
+  }  // nextcur
 
   CHECK_EQ(nc_close(ncid), NC_NOERR);
 
   hasMgridLoaded = true;
   has_fixed_field_ = false;
 
-  return 0;
+  return absl::Status();
 }
 
 absl::Status MGridProvider::LoadFields(
     const makegrid::MakegridParameters& mgrid_params,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     const std::vector<double>& coilCurrents) {
-  CHECK_EQ(coilCurrents.size(), magnetic_response_table.b_p.size())
-      << "Number of currents does not match number of mgrid fields.";
+  if (coilCurrents.size() != magnetic_response_table.b_p.size()) {
+    return absl::InvalidArgumentError(
+        "Number of currents does not match number of mgrid fields.");
+  }
 
   nfp = mgrid_params.number_of_field_periods;
 
@@ -178,7 +182,7 @@ absl::Status MGridProvider::LoadFields(
       bZ[linear_index] +=
           magnetic_response_table.b_z[i][linear_index] * coilCurrents[i];
     }  // linear_index
-  }    // nextcur
+  }  // nextcur
 
   hasMgridLoaded = true;
   has_fixed_field_ = false;
