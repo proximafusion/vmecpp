@@ -392,14 +392,16 @@ class VmecWOut(pydantic.BaseModel):
 
     _MISSING_FORTRAN_VARIABLES: typing.ClassVar[list[str]] = [
         "input_extension",
-        "itfsq",
+        "itfsq",  # Something like Number of iterations until convergence
+        # TODO(jurasic) check implemented quantities against reference
+        # https://github.com/hiddenSymmetries/VMEC2000/blob/728af8bd6c796b36a0aa85fe298e507791e57c6e/Sources/TimeStep/eqsolve.f#L196
         "lrecon__logical__",
         "lrfp__logical__",
         "lmove_axis__logical__",
         "mnyq",
         "nnyq",
-        "fsqt",
-        "wdot",
+        "fsqt",  # "Time trace" of the force balance convergence
+        "wdot",  # Another convergence measure
         "currumnc",
         "currvmnc",
         "curlabel",
