@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/vmec/vmec.h"
@@ -73,7 +74,7 @@ TEST(TestVmec, CheckErrorOnNonConvergence) {
 
   CHECK(!status.ok());
   CHECK_EQ(status.status().message(), "VMEC++ did not converge");
-} // CheckErrorOnNonConvergence
+}  // CheckErrorOnNonConvergence
 
 TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
   // make sure VMEC++ returns the outputs without an error
@@ -95,7 +96,7 @@ TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
   const absl::StatusOr<bool> status = vmec.run();
 
   CHECK(status.ok());
-} // CheckNoErrorOnNonConvergenceIfDesired
+}  // CheckNoErrorOnNonConvergenceIfDesired
 
 TEST(TestVmec, CheckInMemoryMgrid) {
   // test the constructor that takes an in-memory mgrid
@@ -145,4 +146,4 @@ TEST(TestVmec, CheckInMemoryMgrid) {
   // compare wout contents
   vmecpp::CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
                       /*tolerance=*/1e-7);
-} // CheckInMemoryMgrid
+}  // CheckInMemoryMgrid

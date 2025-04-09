@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/nestor/nestor.h"
@@ -152,7 +153,7 @@ bool Nestor::update(
       potU[kl - tp_.ztMin] += bvecShare[mn] * m * cos_mu_nv;
       potV[kl - tp_.ztMin] += bvecShare[mn] * (-n * s_.nfp) * cos_mu_nv;
     }  // mn
-  }    // kl
+  }  // kl
 
   // compute net covariant magnetic field components on surface
   double local_bSubUVac = 0.0;

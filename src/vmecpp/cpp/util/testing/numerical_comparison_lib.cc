@@ -1,13 +1,14 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "util/testing/numerical_comparison_lib.h"
 
+#include <Eigen/Dense>
 #include <cmath>
 #include <iostream>
 #include <vector>
 
-#include <Eigen/Dense>
 #include "absl/strings/str_format.h"
 
 bool testing::IsCloseRelAbs(double expected, double actual, double tolerance) {

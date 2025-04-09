@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
@@ -10,8 +11,8 @@
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_format.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_format.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
@@ -623,8 +624,7 @@ double RadialProfiles::evalCubic(const std::vector<double>& splineKnots,
 
 double RadialProfiles::evalCubicIntegrated(
     const std::vector<double>& splineKnots,
-    const std::vector<double>& splineValues,
-    double x) {
+    const std::vector<double>& splineValues, double x) {
   // TODO(jons): implement `cubic_spline_i`
   (void)splineKnots;
   (void)splineValues;
@@ -661,8 +661,7 @@ double RadialProfiles::evalLineSegment(const std::vector<double>& splineKnots,
 
 double RadialProfiles::evalLineSegmentIntegrated(
     const std::vector<double>& splineKnots,
-    const std::vector<double>& splineValues,
-    double x) {
+    const std::vector<double>& splineValues, double x) {
   // TODO(jons): implement `line_segment_i`
   (void)splineKnots;
   (void)splineValues;

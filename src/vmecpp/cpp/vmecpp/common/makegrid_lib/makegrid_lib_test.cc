@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -324,7 +325,7 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
         break;
       }
     }  // number_of_segments
-  }    // number_of_evaluation_locations
+  }  // number_of_evaluation_locations
 
   return absl::OkStatus();
 }  // DetermineIfTooCloseToCurrentCarrierForComparison
@@ -409,7 +410,7 @@ absl::StatusOr<std::vector<bool> > IsTooCloseToCurrentCarrierForComparison(
           LOG(FATAL) << error_message.str();
       }
     }  // CurrentCarrier
-  }    // Coil
+  }  // Coil
 
   return exclude_from_comparison;
 }  // IsTooCloseToCurrentCarrierForComparison
@@ -557,8 +558,8 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
               b_z_contribution[index_phi][index_z][index_r], kTolerance));
           number_of_tested_evaluation_locations++;
         }  // index_r
-      }    // index_z
-    }      // index_phi
+      }  // index_z
+    }  // index_phi
 
     // make sure that at least 99% of the grid points are actually tested
     const double tested_fraction =
@@ -712,8 +713,8 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
               a_z_contribution[index_phi][index_z][index_r], kTolerance));
           number_of_tested_evaluation_locations++;
         }  // index_r
-      }    // index_z
-    }      // index_phi
+      }  // index_z
+    }  // index_phi
 
     // make sure that at least 99% of the grid points are actually tested
     const double tested_fraction =

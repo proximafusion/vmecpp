@@ -1,12 +1,12 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #ifndef UTIL_TESTING_NUMERICAL_COMPARISON_LIB_H_
 #define UTIL_TESTING_NUMERICAL_COMPARISON_LIB_H_
 
-#include <vector>
-
 #include <Eigen/Dense>
+#include <vector>
 
 namespace testing {
 

@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/laplace_solver/laplace_solver.h"
@@ -10,27 +11,17 @@
 #include "absl/log/check.h"
 
 ///  LU factorization of a general M-by-N matrix A
-extern "C" void dgetrf_(int *m,
-                        int *n,
-                        double *a,
-                        int *lda,
-                        int *ipiv,
+extern "C" void dgetrf_(int *m, int *n, double *a, int *lda, int *ipiv,
                         int *info);
 ///  Solves a system of linear equations using the LU factorization.
-extern "C" void dgetrs_(char *transpose,
-                        int *num_rows,
-                        int *num_columns,
-                        double *matrix,
-                        int *leading_dim,
-                        int *pivot,
-                        double *y,
-                        int *y_leading_dim,
-                        int *info);
+extern "C" void dgetrs_(char *transpose, int *num_rows, int *num_columns,
+                        double *matrix, int *leading_dim, int *pivot, double *y,
+                        int *y_leading_dim, int *info);
 
 namespace vmecpp {
 
-LaplaceSolver::LaplaceSolver(const Sizes* s, const FourierBasisFastToroidal* fb,
-                             const TangentialPartitioning* tp, int nf, int mf,
+LaplaceSolver::LaplaceSolver(const Sizes *s, const FourierBasisFastToroidal *fb,
+                             const TangentialPartitioning *tp, int nf, int mf,
                              std::span<double> matrixShare, std::span<int> iPiv,
                              std::span<double> bvecShare)
     : s_(*s),
@@ -71,7 +62,7 @@ LaplaceSolver::LaplaceSolver(const Sizes* s, const FourierBasisFastToroidal* fb,
 
 // fourp()-equivalent
 void LaplaceSolver::TransformGreensFunctionDerivative(
-    const std::vector<double>& greenp) {
+    const std::vector<double> &greenp) {
   const int mnpd = (2 * nf + 1) * (mf + 1);
   absl::c_fill_n(grpmn_sin, mnpd * numLocal, 0);
 
@@ -109,7 +100,7 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
           g1_symm[n] += cosn * kernel_odd;
           g2_symm[n] += sinn * kernel_odd;
         }  // n
-      }    // k
+      }  // k
 
       for (int m = 0; m < mf + 1; ++m) {
         const int idx_lm = l * (s_.mnyq2 + 1) + m;
@@ -129,12 +120,12 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
             grpmn_sin[idx_m_negn * numLocal + klpRel] += gcos_symm + gsin_symm;
           }
         }  // n
-      }    // m
-    }      // l
-  }        // kl'
+      }  // m
+    }  // l
+  }  // kl'
 }  // TransformGreensFunctionDerivative
 
-void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double>& gstore) {
+void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double> &gstore) {
   for (int l = 0; l < s_.nThetaReduced; ++l) {
     int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
     for (int k = 0; k < s_.nZeta; ++k) {
@@ -146,11 +137,11 @@ void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double>& gstore) {
       // 1/2 for even/odd decompoition
       gstore_symm[kl] = (gstore[kl] - gstore[klRev]) / 2;
     }  // k
-  }    // l
+  }  // l
 }  // SymmetriseSourceTerm
 
 void LaplaceSolver::AccumulateFullGrpmn(
-    const std::vector<double>& grpmn_sin_singular) {
+    const std::vector<double> &grpmn_sin_singular) {
   const int mnpd = (mf + 1) * (2 * nf + 1);
   for (int mn = 0; mn < mnpd; ++mn) {
     for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
@@ -160,7 +151,7 @@ void LaplaceSolver::AccumulateFullGrpmn(
       grpmn_sin[mn * numLocal + klpRel] +=
           grpmn_sin_singular[mn * numLocal + klpRel] / s_.nfp;
     }  // kl'
-  }    // mn
+  }  // mn
 }  // AccumulateFullGrpmn
 
 void LaplaceSolver::PerformToroidalFourierTransforms() {
@@ -194,7 +185,7 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
         bsin[idx_l_negn] = -bsin[idx_l_posn];
       }
     }  // l
-  }    // n
+  }  // n
 
   const int mnpd = (mf + 1) * (2 * nf + 1);
   const int size_a_temp = mnpd * (2 * nf + 1) * s_.nThetaEff;
@@ -221,8 +212,8 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
         actemp[idx_a_posn] += cosn * grpmn_sin[mn * numLocal + klpRel];
         astemp[idx_a_posn] += sinn * grpmn_sin[mn * numLocal + klpRel];
       }  // kl'
-    }    // n
-  }      // mn
+    }  // n
+  }  // mn
 
   for (int mn = 0; mn < mnpd; ++mn) {
     // starting at n=1 includes check for n > 0 already
@@ -238,8 +229,8 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
         actemp[idx_a_negn] = actemp[idx_a_posn];
         astemp[idx_a_negn] = -astemp[idx_a_posn];
       }  // klp, effectively l
-    }    // n
-  }      // mn
+    }  // n
+  }  // mn
 }  // PerformToroidalFourierTransforms
 
 void LaplaceSolver::PerformPoloidalFourierTransforms() {
@@ -259,8 +250,8 @@ void LaplaceSolver::PerformPoloidalFourierTransforms() {
         bvec_sin[all_n * (mf + 1) + m] +=
             bcos[idx_l_all_n] * sinmui - bsin[idx_l_all_n] * cosmui;
       }  // l
-    }    // m
-  }      // all_n
+    }  // m
+  }  // all_n
 
   // -----------------
 
@@ -282,9 +273,9 @@ void LaplaceSolver::PerformPoloidalFourierTransforms() {
           amat_sin_sin[idx_amat] +=
               actemp[idx_atemp] * sinmui - astemp[idx_atemp] * cosmui;
         }  // m
-      }    // l
-    }      // all_n
-  }        // mn
+      }  // l
+    }  // all_n
+  }  // mn
 }  // PerformPoloidalFourierTransforms
 
 void LaplaceSolver::BuildMatrix() {
@@ -313,7 +304,7 @@ void LaplaceSolver::BuildMatrix() {
 
         matrixShare[(mnp * (2 * nf + 1) + all_n) * (mf + 1) + m] = 0.0;
       }  // all_n
-    }    // mn'
+    }  // mn'
 
     // add diagonal term
     for (int mn = 0; mn < mnpd; ++mn) {
@@ -355,7 +346,7 @@ void LaplaceSolver::DecomposeMatrix() {
 }  // DecomposeMatrix
 
 void LaplaceSolver::SolveForPotential(
-    const std::vector<double>& bvec_sin_singular) {
+    const std::vector<double> &bvec_sin_singular) {
   int mnpd = (mf + 1) * (2 * nf + 1);
 #pragma omp single
   absl::c_fill_n(bvecShare, mnpd, 0);
@@ -386,8 +377,8 @@ void LaplaceSolver::SolveForPotential(
     int one = 1;
     int info;
     char no_transpose = 'N';
-    dgetrs_(&no_transpose, &mnpd, &one, matrixShare.data(), &mnpd,
-            iPiv.data(), bvecShare.data(), &mnpd, &info);
+    dgetrs_(&no_transpose, &mnpd, &one, matrixShare.data(), &mnpd, iPiv.data(),
+            bvecShare.data(), &mnpd, &info);
 
     if (info < 0) {
       std::cout << -info << "-th argument to dgetrs wrong\n";

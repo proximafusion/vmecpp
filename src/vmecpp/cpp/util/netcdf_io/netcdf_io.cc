@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "util/netcdf_io/netcdf_io.h"
@@ -245,7 +246,7 @@ std::vector<std::vector<double> > NetcdfReadArray2D(
     for (size_t j = 0; j < dimensions[1]; ++j) {
       two_dimensional_data[i][j] = variable_data[i * dimensions[1] + j];
     }  // j
-  }    // i
+  }  // i
 
   return two_dimensional_data;
 }  // NetcdfReadArray2D
@@ -296,8 +297,8 @@ std::vector<std::vector<std::vector<double> > > NetcdfReadArray3D(
         three_dimensional_data[i][j][k] =
             variable_data[(i * dimensions[1] + j) * dimensions[2] + k];
       }  // k
-    }    // j
-  }      // i
+    }  // j
+  }  // i
 
   return three_dimensional_data;
 }  // NetcdfReadArray3D

@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #ifndef VMECPP_VMEC_OUTPUT_QUANTITIES_OUTPUT_QUANTITIES_H_
@@ -1331,8 +1332,7 @@ JxBOutFileContents ComputeJxBOutputFileContents(
     const VmecInternalResults& vmec_internal_results,
     const BSubSFull& bsubs_full,
     const CovariantBDerivatives& covariant_b_derivatives,
-    const bool return_outputs_even_if_not_converged,
-    VmecStatus vmec_status);
+    const bool return_outputs_even_if_not_converged, VmecStatus vmec_status);
 
 MercierStabilityIntermediateQuantities ComputeIntermediateMercierQuantities(
     const Sizes& s, const FlowControl& fc,
@@ -1340,8 +1340,7 @@ MercierStabilityIntermediateQuantities ComputeIntermediateMercierQuantities(
     const JxBOutFileContents& jxbout);
 
 MercierFileContents ComputeMercierStability(
-    const FlowControl& fc,
-    const VmecInternalResults& vmec_internal_results,
+    const FlowControl& fc, const VmecInternalResults& vmec_internal_results,
     const MercierStabilityIntermediateQuantities& mercier_intermediate);
 
 Threed1FirstTableIntermediate ComputeIntermediateThreed1FirstTableQuantities(
@@ -1349,8 +1348,7 @@ Threed1FirstTableIntermediate ComputeIntermediateThreed1FirstTableQuantities(
     const VmecInternalResults& vmec_internal_results);
 
 Threed1FirstTable ComputeThreed1FirstTable(
-    const FlowControl& fc,
-    const VmecInternalResults& vmec_internal_results,
+    const FlowControl& fc, const VmecInternalResults& vmec_internal_results,
     const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate);
 

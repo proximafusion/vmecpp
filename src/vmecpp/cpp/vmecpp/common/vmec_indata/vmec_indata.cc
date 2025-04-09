@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
@@ -199,7 +200,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
-  WriteH5Dataset(return_outputs_even_if_not_converged, "/indata/return_outputs_even_if_not_converged", file);
+  WriteH5Dataset(return_outputs_even_if_not_converged,
+                 "/indata/return_outputs_even_if_not_converged", file);
 
   // 1D arrays
   WriteH5Dataset(ns_array, "/indata/ns_array", file);
@@ -297,7 +299,8 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& indata, H5::H5File& from_file) {
   ReadH5Dataset(indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(indata.lforbal, "/indata/lforbal", from_file);
   if (from_file.attrExists("/indata/return_outputs_even_if_not_converged")) {
-    ReadH5Dataset(indata.return_outputs_even_if_not_converged, "/indata/return_outputs_even_if_not_converged", from_file);
+    ReadH5Dataset(indata.return_outputs_even_if_not_converged,
+                  "/indata/return_outputs_even_if_not_converged", from_file);
   } else {
     indata.return_outputs_even_if_not_converged = false;
   }
@@ -740,12 +743,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     }
   }
 
-  auto maybe_return_outputs_even_if_not_converged = JsonReadBool(j, "return_outputs_even_if_not_converged");
+  auto maybe_return_outputs_even_if_not_converged =
+      JsonReadBool(j, "return_outputs_even_if_not_converged");
   if (!maybe_return_outputs_even_if_not_converged.ok()) {
     return maybe_return_outputs_even_if_not_converged.status();
   }
   if (maybe_return_outputs_even_if_not_converged->has_value()) {
-    vmec_indata.return_outputs_even_if_not_converged = maybe_return_outputs_even_if_not_converged->value();
+    vmec_indata.return_outputs_even_if_not_converged =
+        maybe_return_outputs_even_if_not_converged->value();
   }
 
   // -----------------------------------------------
@@ -1019,7 +1024,8 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
   output["iteration_style"] = ToString(iteration_style);
-  output["return_outputs_even_if_not_converged"] = return_outputs_even_if_not_converged;
+  output["return_outputs_even_if_not_converged"] =
+      return_outputs_even_if_not_converged;
 
   // Initial Guess for Magnetic Axis Geometry
   output["raxis_c"] = raxis_c;
@@ -1045,7 +1051,8 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
       tmp_obj["n"] = n - ntor;
       tmp_obj["value"] = rbc[idx_mn];
 
-      auto push_nonzero = [&output, &tmp_obj](const std::string& key, double value){
+      auto push_nonzero = [&output, &tmp_obj](const std::string& key,
+                                              double value) {
         tmp_obj["value"] = value;
         if (tmp_obj["value"] != 0.0) {
           output[key].push_back(tmp_obj);
@@ -1316,7 +1323,8 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   // return_outputs_even_if_not_converged
-  // nothing to check here: return_outputs_even_if_not_converged can be true or false and both are valid...
+  // nothing to check here: return_outputs_even_if_not_converged can be true or
+  // false and both are valid...
 
   /* --------------------------------- */
 

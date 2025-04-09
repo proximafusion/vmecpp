@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/util/util.h"
@@ -66,8 +67,8 @@ int signum(int x) {
 
 void TridiagonalSolveSerial(std::vector<double> &m_a, std::vector<double> &m_d,
                             std::vector<double> &m_b,
-                            std::vector<std::vector<double>> &m_c,
-                            int jMin, int jMax, int nRHS) {
+                            std::vector<std::vector<double>> &m_c, int jMin,
+                            int jMax, int nRHS) {
   // If jMin > 0, need to fill in the upper left corner of the matrix
   // with non-intrusive variables that do not change the solution of the system.
   // Thus, put the diagonal elements d to 1 (= implied identity matrix),
@@ -80,7 +81,7 @@ void TridiagonalSolveSerial(std::vector<double> &m_a, std::vector<double> &m_d,
     for (int k = 0; k < nRHS; ++k) {
       m_c[k][j] = 0.0;
     }  // k
-  }    // j
+  }  // j
 
   // Thomas algorithm from
   // https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm
@@ -114,7 +115,7 @@ void TridiagonalSolveSerial(std::vector<double> &m_a, std::vector<double> &m_d,
     for (int j = jMax - 2; j > jMin - 1; --j) {
       m_c[k][j] -= m_a[j] * m_c[k][j + 1];
     }  // j
-  }    // k
+  }  // k
 }
 
 void TridiagonalSolveOpenMP(
@@ -144,7 +145,7 @@ void TridiagonalSolveOpenMP(
           bz[idx_mn] = 0.0;
         }
       }  // mn
-    }    // j
+    }  // j
     for (int k = 0; k < nRHS; ++k) {
       for (int j = 0; j < nsMaxF; ++j) {
         for (int mn = 0; mn < mnmax; ++mn) {
@@ -154,8 +155,8 @@ void TridiagonalSolveOpenMP(
             cz[k][idx_mn] = 0.0;
           }
         }  // mn
-      }    // j
-    }      // k
+      }  // j
+    }  // k
 
     // check that d[jMin] != 0 and if so,
     // compute a[jMin] /= d[jMin] and c[*][jMin] /= d[jMin]
@@ -173,8 +174,8 @@ void TridiagonalSolveOpenMP(
         cr[k][idx_mn] /= dr[idx_mn];
         cz[k][idx_mn] /= dz[idx_mn];
       }  // k
-    }    // mn
-  }      // myid == 0
+    }  // mn
+  }  // myid == 0
 
   // have each thread take the lock that blocks the next thread
   if (myid + 1 < ncpu) {
@@ -256,7 +257,7 @@ void TridiagonalSolveOpenMP(
         }  // k
       }
     }  // mn
-  }    // j
+  }  // j
 
   // first unlock current mutex
   mutices[myid].unlock();
@@ -318,7 +319,7 @@ void TridiagonalSolveOpenMP(
         }  // k
       }
     }  // mn
-  }    // j
+  }  // j
 
   // first unlock current mutex
   mutices[myid].unlock();

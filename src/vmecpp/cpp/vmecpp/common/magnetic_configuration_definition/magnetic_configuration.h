@@ -1,7 +1,6 @@
 #ifndef VMECPP_COMMON_MAGNETIC_CONFIGURATION_DEFINITION_MAGNETIC_CONFIGURATION_H_
 #define VMECPP_COMMON_MAGNETIC_CONFIGURATION_DEFINITION_MAGNETIC_CONFIGURATION_H_
 
-#include <string>
 #include <cstdint>
 #include <list>
 #include <string>
@@ -35,17 +34,15 @@ struct PolygonFilament {
   }
 
   // vertices
-  int vertices_size() const {
-    return static_cast<int>(vertices_.size());
-  }
+  int vertices_size() const { return static_cast<int>(vertices_.size()); }
   const composed_types::Vector3d& vertices(int index) const {
     auto it = vertices_.cbegin();
-    std::advance(it, index); // no explicit bounds-check for brevity
+    std::advance(it, index);  // no explicit bounds-check for brevity
     return *it;
   }
   composed_types::Vector3d* mutable_vertices(int index) {
     auto it = vertices_.begin();
-    std::advance(it, index); // no explicit bounds-check for brevity
+    std::advance(it, index);  // no explicit bounds-check for brevity
     return &(*it);
   }
   composed_types::Vector3d* add_vertices() {
@@ -57,19 +54,15 @@ struct PolygonFilament {
   const std::list<composed_types::Vector3d>& vertices() const {
     return vertices_;
   }
-  std::list<composed_types::Vector3d>* mutable_vertices() {
-    return &vertices_;
-  }
-  void clear_vertices() {
-    vertices_.clear();
-  }
+  std::list<composed_types::Vector3d>* mutable_vertices() { return &vertices_; }
+  void clear_vertices() { vertices_.clear(); }
 
   // Clear the entire structure
   void Clear() {
     clear_name();
     clear_vertices();
   }
-}; // PolygonFilament
+};  // PolygonFilament
 
 struct CircularFilament {
   // a human-readable name, e.g., for plotting
@@ -156,7 +149,7 @@ struct CircularFilament {
     clear_normal();
     clear_radius();
   }
-}; // CircularFilament
+};  // CircularFilament
 
 struct InfiniteStraightFilament {
   // a human-readable name, e.g., for plotting
@@ -225,38 +218,34 @@ struct InfiniteStraightFilament {
     clear_origin();
     clear_direction();
   }
-}; // InfiniteStraightFilament
+};  // InfiniteStraightFilament
 
 struct CurrentCarrier {
   // oneof type
   enum TypeCase : std::uint8_t {
     kInfiniteStraightFilament = 1,
-    kCircularFilament         = 2,
-    kPolygonFilament          = 3,
-    kFourierFilament          = 4,
-    kTypeNotSet               = 0
+    kCircularFilament = 2,
+    kPolygonFilament = 3,
+    kFourierFilament = 4,
+    kTypeNotSet = 0
   };
 
-private:
+ private:
   TypeCase type_case_ = kTypeNotSet;
 
   union {
     InfiniteStraightFilament infinite_straight_filament_;
-    CircularFilament         circular_filament_;
-    PolygonFilament          polygon_filament_;
+    CircularFilament circular_filament_;
+    PolygonFilament polygon_filament_;
   };
 
-public:
+ public:
   CurrentCarrier() : type_case_(kTypeNotSet) {}
 
-  ~CurrentCarrier() {
-    Clear();
-  }
+  ~CurrentCarrier() { Clear(); }
 
   // Copy constructor
-  CurrentCarrier(const CurrentCarrier& other)
-    : type_case_(kTypeNotSet)
-  {
+  CurrentCarrier(const CurrentCarrier& other) : type_case_(kTypeNotSet) {
     switch (other.type_case_) {
       case kInfiniteStraightFilament: {
         type_case_ = kInfiniteStraightFilament;
@@ -280,9 +269,7 @@ public:
   }
 
   // Move constructor
-  CurrentCarrier(CurrentCarrier&& other) noexcept
-    : type_case_(kTypeNotSet)
-  {
+  CurrentCarrier(CurrentCarrier&& other) noexcept : type_case_(kTypeNotSet) {
     switch (other.type_case_) {
       case kInfiniteStraightFilament: {
         type_case_ = kInfiniteStraightFilament;
@@ -402,9 +389,7 @@ public:
   }
 
   // CircularFilament
-  bool has_circular_filament() const {
-    return type_case_ == kCircularFilament;
-  }
+  bool has_circular_filament() const { return type_case_ == kCircularFilament; }
   const CircularFilament& circular_filament() const {
     return circular_filament_;
   }
@@ -423,12 +408,8 @@ public:
   }
 
   // PolygonFilament
-  bool has_polygon_filament() const {
-    return type_case_ == kPolygonFilament;
-  }
-  const PolygonFilament& polygon_filament() const {
-    return polygon_filament_;
-  }
+  bool has_polygon_filament() const { return type_case_ == kPolygonFilament; }
+  const PolygonFilament& polygon_filament() const { return polygon_filament_; }
   PolygonFilament* mutable_polygon_filament() {
     if (type_case_ != kPolygonFilament) {
       Clear();
@@ -443,10 +424,8 @@ public:
     std::construct_at(std::addressof(polygon_filament_), value);
   }
 
-  TypeCase type_case() const {
-    return type_case_;
-  }
-}; // CurrentCarrier
+  TypeCase type_case() const { return type_case_; }
+};  // CurrentCarrier
 
 struct Coil {
   // a human-readable name, e.g., for plotting
@@ -518,9 +497,7 @@ struct Coil {
   std::list<CurrentCarrier>* mutable_current_carriers() {
     return &current_carriers_;
   }
-  void clear_current_carriers() {
-    current_carriers_.clear();
-  }
+  void clear_current_carriers() { current_carriers_.clear(); }
 
   // Clear the entire structure
   void Clear() {
@@ -528,7 +505,7 @@ struct Coil {
     clear_num_windings();
     clear_current_carriers();
   }
-}; // Coil
+};  // Coil
 
 struct SerialCircuit {
   // a human-readable name, e.g., for plotting
@@ -571,9 +548,7 @@ struct SerialCircuit {
   }
 
   // coils
-  int coils_size() const {
-    return static_cast<int>(coils_.size());
-  }
+  int coils_size() const { return static_cast<int>(coils_.size()); }
   const Coil& coils(int index) const {
     auto it = coils_.cbegin();
     // No bounds checks here for brevity
@@ -592,15 +567,9 @@ struct SerialCircuit {
     --it;
     return &(*it);
   }
-  const std::list<Coil>& coils() const {
-    return coils_;
-  }
-  std::list<Coil>* mutable_coils() {
-    return &coils_;
-  }
-  void clear_coils() {
-    coils_.clear();
-  }
+  const std::list<Coil>& coils() const { return coils_; }
+  std::list<Coil>* mutable_coils() { return &coils_; }
+  void clear_coils() { coils_.clear(); }
 
   // Clear the entire structure
   void Clear() {
@@ -608,7 +577,7 @@ struct SerialCircuit {
     clear_current();
     clear_coils();
   }
-}; // SerialCircuit
+};  // SerialCircuit
 
 struct MagneticConfiguration {
   // a human-readable name, e.g., for plotting
@@ -678,9 +647,7 @@ struct MagneticConfiguration {
   std::list<SerialCircuit>* mutable_serial_circuits() {
     return &serial_circuits_;
   }
-  void clear_serial_circuits() {
-    serial_circuits_.clear();
-  }
+  void clear_serial_circuits() { serial_circuits_.clear(); }
 
   // Clear the entire structure (all fields)
   void Clear() {
@@ -688,8 +655,8 @@ struct MagneticConfiguration {
     clear_num_field_periods();
     clear_serial_circuits();
   }
-}; // MagneticConfiguration
+};  // MagneticConfiguration
 
-} // namespace magnetics
+}  // namespace magnetics
 
-#endif // VMECPP_COMMON_MAGNETIC_CONFIGURATION_DEFINITION_MAGNETIC_CONFIGURATION_H_
+#endif  // VMECPP_COMMON_MAGNETIC_CONFIGURATION_DEFINITION_MAGNETIC_CONFIGURATION_H_

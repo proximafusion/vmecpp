@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include <pybind11/eigen.h>     // to wrap Eigen matrices
@@ -94,9 +95,8 @@ makegrid::MagneticFieldResponseTable MakeMagneticFieldResponseTable(
 }
 
 vmecpp::HotRestartState MakeHotRestartState(
-    vmecpp::WOutFileContents wout, const vmecpp::VmecINDATAPyWrapper& indata) {
-  return vmecpp::HotRestartState(std::move(wout),
-                                 vmecpp::VmecINDATA(indata));
+    vmecpp::WOutFileContents wout, const vmecpp::VmecINDATAPyWrapper &indata) {
+  return vmecpp::HotRestartState(std::move(wout), vmecpp::VmecINDATA(indata));
 }
 
 }  // anonymous namespace
@@ -184,7 +184,8 @@ PYBIND11_MODULE(_vmecpp, m) {
   pyindata.def_readwrite("delt", &VmecINDATAPyWrapper::delt)
       .def_readwrite("tcon0", &VmecINDATAPyWrapper::tcon0)
       .def_readwrite("lforbal", &VmecINDATAPyWrapper::lforbal)
-      .def_readwrite("return_outputs_even_if_not_converged", &VmecINDATAPyWrapper::return_outputs_even_if_not_converged)
+      .def_readwrite("return_outputs_even_if_not_converged",
+                     &VmecINDATAPyWrapper::return_outputs_even_if_not_converged)
 
       // initial guess for magnetic axis
       // disallow re-assignment of the whole vector (to preserve sizes
@@ -199,12 +200,12 @@ PYBIND11_MODULE(_vmecpp, m) {
           "raxis_s",
           [](VmecINDATAPyWrapper &w) -> std::optional<VectorXd> & {
             return w.raxis_s;
-        })
+          })
       .def_property_readonly(
           "zaxis_c",
           [](VmecINDATAPyWrapper &w) -> std::optional<VectorXd> & {
             return w.zaxis_c;
-        })
+          })
 
       // (initial guess for) boundary shape
       // disallow re-assignment of the whole matrix (to preserve shapes
@@ -219,7 +220,7 @@ PYBIND11_MODULE(_vmecpp, m) {
           "rbs",
           [](VmecINDATAPyWrapper &w) -> std::optional<vmecpp::RowMatrixXd> & {
             return w.rbs;
-        })
+          })
       .def_property_readonly(
           "zbc",
           [](VmecINDATAPyWrapper &w) -> std::optional<vmecpp::RowMatrixXd> & {
@@ -462,7 +463,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("version", &vmecpp::WOutFileContents::version)
       //
       .def_readwrite("sign_of_jacobian",
-                    &vmecpp::WOutFileContents::sign_of_jacobian)
+                     &vmecpp::WOutFileContents::sign_of_jacobian)
       //
       .def_readwrite("gamma", &vmecpp::WOutFileContents::gamma)
       //
@@ -491,7 +492,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("ns", &vmecpp::WOutFileContents::ns)
       .def_readwrite("ftolv", &vmecpp::WOutFileContents::ftolv)
       .def_readwrite("maximum_iterations",
-                    &vmecpp::WOutFileContents::maximum_iterations)
+                     &vmecpp::WOutFileContents::maximum_iterations)
       //
       .def_readwrite("lfreeb", &vmecpp::WOutFileContents::lfreeb)
       .def_readwrite("mgrid_file", &vmecpp::WOutFileContents::mgrid_file)
@@ -552,7 +553,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("buco", &vmecpp::WOutFileContents::buco)
       .def_readwrite("bvco", &vmecpp::WOutFileContents::bvco)
       .def_readwrite("dVds", &vmecpp::WOutFileContents::dVds)
-      .def_readwrite("spectral_width", &vmecpp::WOutFileContents::spectral_width)
+      .def_readwrite("spectral_width",
+                     &vmecpp::WOutFileContents::spectral_width)
       .def_readwrite("phips", &vmecpp::WOutFileContents::phips)
       .def_readwrite("overr", &vmecpp::WOutFileContents::overr)
       //

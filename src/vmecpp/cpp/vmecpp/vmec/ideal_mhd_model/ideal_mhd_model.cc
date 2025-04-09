@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.h"
@@ -7,9 +8,9 @@
 #include <array>
 #include <cstdio>
 #include <iostream>
+#include <numbers>
 #include <span>
 #include <vector>
-#include <numbers>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -150,7 +151,7 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
           rmkss += tempR * sinmui + brmn[idx_kl] * cosmumi;  // --> frss
           zmksc += tempZ * sinmui + bzmn[idx_kl] * cosmumi;  // --> fzsc
           zmkcs += tempZ * cosmui + bzmn[idx_kl] * sinmumi;  // --> fzcs
-        }                                                    // l
+        }  // l
 
         for (int n = 0; n < s.ntor + 1; ++n) {
           const int idx_mn = ((jF - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
@@ -171,9 +172,9 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
             physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
           }
         }  // n
-      }    // k
-    }      // m
-  }        // jF
+      }  // k
+    }  // m
+  }  // jF
 
   // repeat the above just for jMaxRZ to nsMaxFIncludingLcfs, just for flsc,
   // flcs
@@ -206,7 +207,7 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
           lmkcs += blmn[idx_kl] * sinmumi;   // --> flcs
           lmkcs_n -= clmn[idx_kl] * cosmui;  // --> flcs
           lmksc_n -= clmn[idx_kl] * sinmui;  // --> flsc
-        }                                    // l
+        }  // l
 
         for (int n = 0; n < s.ntor + 1; ++n) {
           const int idx_mn = ((jF - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
@@ -220,9 +221,9 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
           physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
           physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
         }  // n
-      }    // k
-    }      // m
-  }        // jF
+      }  // k
+    }  // m
+  }  // jF
 }
 
 void vmecpp::FourierToReal3DSymmFastPoloidal(
@@ -377,9 +378,9 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
             g.zCon[idx_con] += (zmksc * sinmu + zmkcs * cosmu) * con_factor;
           }
         }  // l
-      }    // k
-    }      // m
-  }        // j
+      }  // k
+    }  // m
+  }  // j
 }
 
 // Implemented as a free function for easier testing and benchmarking.
@@ -453,8 +454,8 @@ void vmecpp::deAliasConstraintForce(
           gCon[idx_kl] +=
               faccon[m] * (w0 * fb.sinmu[idx_ml] + w1 * fb.cosmu[idx_ml]);
         }  // l
-      }    // k
-    }      // m
+      }  // k
+    }  // m
   }
 }
 
@@ -687,11 +688,10 @@ void IdealMhdModel::evalFResPrecd(const std::vector<double>& localFResPrecd) {
 
 absl::StatusOr<bool> IdealMhdModel::update(
     FourierGeometry& m_decomposed_x, FourierGeometry& m_physical_x,
-    FourierForces& m_decomposed_f,
-    FourierForces& m_physical_f, bool& m_need_restart,
-    int& m_last_preconditioner_update, int& m_last_full_update_nestor,
-    FlowControl& m_fc,
-    const int iter1, const int iter2, const VmecCheckpoint& checkpoint,
+    FourierForces& m_decomposed_f, FourierForces& m_physical_f,
+    bool& m_need_restart, int& m_last_preconditioner_update,
+    int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
+    const int iter2, const VmecCheckpoint& checkpoint,
     const int iterations_before_checkpointing, bool verbose) {
   // preprocess Fourier coefficients of geometry
   m_decomposed_x.decomposeInto(m_physical_x, m_p_.scalxc);
@@ -811,7 +811,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   if (shouldUpdateRadialPreconditioner(iter1, iter2)) {
 #pragma omp single nowait
-    { m_last_preconditioner_update = iter2; }
+    {
+      m_last_preconditioner_update = iter2;
+    }
 
     updateRadialPreconditioner();
     if (checkpoint == VmecCheckpoint::UPDATE_RADIAL_PRECONDITIONER &&
@@ -872,7 +874,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
       nvacskip = std::max(nvacskip, new_nvacskip);
 
 #pragma omp single nowait
-      { m_last_full_update_nestor = iter2; }
+      {
+        m_last_full_update_nestor = iter2;
+      }
     }
 
     if (m_ivac_ >= 0) {
@@ -885,7 +889,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
           rCon0[idx_kl] *= 0.9;
           zCon0[idx_kl] *= 0.9;
         }  // kl
-      }    // j
+      }  // j
 
       if (r_.nsMaxF1 == m_fc_.ns) {
         // can only get this from thread that has the LCFS !!!
@@ -1013,7 +1017,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
         return true;
       }
     }  // ivac >= 0
-  }    // lfreeb
+  }  // lfreeb
 
   // NOTE: if (iequi != 1) { ... continue with code below ...
   // -> iequi==1 computations for outputs are done in OutputQuantities
@@ -1152,7 +1156,7 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
 #else
     exit(-1);
 #endif  // _OPENMP
-  }     // lasym
+  }  // lasym
 
   // related post-processing:
   // combine even-m and odd-m to ru, zu into ruFull, zuFull
@@ -1165,7 +1169,7 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
       zuFull[idx_kl] =
           zu_e[idx_kl1] + m_p_.sqrtSF[jF - r_.nsMinF1] * zu_o[idx_kl1];
     }  // kl
-  }    // jF
+  }  // jF
 
   if (r_.nsMaxF1 == m_fc_.ns) {
     // This thread has the boundary.
@@ -1189,7 +1193,8 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
 }
 
 // compute inv-DFTs on unique radial grid points
-void IdealMhdModel::dft_FourierToReal_3d_symm(const FourierGeometry& physical_x) {
+void IdealMhdModel::dft_FourierToReal_3d_symm(
+    const FourierGeometry& physical_x) {
   auto geometry = RealSpaceGeometry{.r1_e = r1_e,
                                     .r1_o = r1_o,
                                     .ru_e = ru_e,
@@ -1308,7 +1313,7 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
       zu_o[idx_jl] += znksc_m[m_odd];
       lu_o[idx_jl] += lnksc_m[m_odd];
     }  // l
-  }    // j
+  }  // j
 
   // The DFTs for rCon and zCon are done separately here,
   // since this allows to remove the condition on the radial range from the
@@ -1375,8 +1380,8 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
         const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
         zCon[idx_con] += src_zsc[m] * sinmu * scale;
       }  // l
-    }    // m
-  }      // jF
+    }  // m
+  }  // jF
 }  // dft_FourierToReal_2d_symm
 
 /** extrapolate (r,z)Con from boundary into volume */
@@ -1404,7 +1409,7 @@ void IdealMhdModel::rzConIntoVolume() {
       rCon0[idx_kl] = m_h_.rCon_LCFS[kl] * sFull;
       zCon0[idx_kl] = m_h_.zCon_LCFS[kl] * sFull;
     }  // kl
-  }    // j
+  }  // j
 }
 
 void IdealMhdModel::computeJacobian() {
@@ -1495,13 +1500,15 @@ void IdealMhdModel::computeJacobian() {
       m_ls_.zue_i[kl] = zue_o;
       m_ls_.zuo_i[kl] = zuo_o;
     }  // kl
-  }    // j
+  }  // j
 
   bool localBadJacobian = (minTau * maxTau < 0.0);
 
   if (localBadJacobian) {
 #pragma omp critical
-    { m_fc_.restart_reason = RestartReason::BAD_JACOBIAN; }
+    {
+      m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+    }
   }
 #pragma omp barrier
 }
@@ -1787,7 +1794,7 @@ void IdealMhdModel::computeBContra() {
         m_ls_.lvo_i[kl] = lvo_o;
       }
     }  // kl
-  }    // jH
+  }  // jH
 
   if (ncurr == 1) {
     // constrained toroidal current profile
@@ -1863,7 +1870,7 @@ void IdealMhdModel::computeBContra() {
       int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
       bsupu[iHalf] += m_p_.chipH[jH - r_.nsMinH] / gsqrt[iHalf];
     }  // kl
-  }    // jH
+  }  // jH
 }
 
 // Compute covariant magnetic field components.
@@ -1878,7 +1885,7 @@ void IdealMhdModel::computeBCo() {
         bsubu[iHalf] = guu[iHalf] * bsupu[iHalf] + guv[iHalf] * bsupv[iHalf];
         bsubv[iHalf] = guv[iHalf] * bsupu[iHalf] + gvv[iHalf] * bsupv[iHalf];
       }  // kl
-    }    // jH
+    }  // jH
   } else {
     // 2D case: can ignore guv (not even allocated)
     for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
@@ -1887,8 +1894,8 @@ void IdealMhdModel::computeBCo() {
         bsubu[iHalf] = guu[iHalf] * bsupu[iHalf];
         bsubv[iHalf] = gvv[iHalf] * bsupv[iHalf];
       }  // kl
-    }    // jH
-  }      // lthreed
+    }  // jH
+  }  // lthreed
 }
 
 void IdealMhdModel::pressureAndEnergies() {
@@ -1938,7 +1945,7 @@ void IdealMhdModel::pressureAndEnergies() {
       // to compute the total pressure
       totalPressure[iHalf] = magneticPressure + m_p_.presH[jH - r_.nsMinH];
     }  // kl
-  }    // jH
+  }  // jH
 
   // magneticEnergy could be negative due to negative sign of Jacobian (gsqrt)
   // --> could introduce signOfJacobian, but abs() does the job here as well
@@ -1978,7 +1985,7 @@ void IdealMhdModel::radialForceBalance() {
       m_p_.bucoH[jH - r_.nsMinH] += bsubu[iHalf] * s_.wInt[l];
       m_p_.bvcoH[jH - r_.nsMinH] += bsubv[iHalf] * s_.wInt[l];
     }  // kl
-  }    // jH
+  }  // jH
 
   double signByDeltaS = signOfJacobian / m_fc_.deltaS;
 
@@ -2160,7 +2167,7 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
             s_.wInt[l];
       }
     }  // kl
-  }    // j
+  }  // j
 
   // TODO(jons): exclude axis --> mimic PARVMEC
   // only unique radial points here;
@@ -2652,8 +2659,8 @@ void IdealMhdModel::updateLambdaPreconditioner() {
         lambdaPreconditioner[idx_mn] =
             pFactor / faclam * pow(m_p_.sqrtSF[jF - r_.nsMinF1], pwr);
       }  // m
-    }    // n
-  }      // jF
+    }  // n
+  }  // jF
 }
 
 /**
@@ -2745,7 +2752,7 @@ void IdealMhdModel::computePreconditioningMatrix(
       cx[jH - r_.nsMinH] += 0.25 * pFactor * bsupv[iHalf] * bsupv[iHalf] *
                             gsqrt[iHalf] * s_.wInt[l];
     }  // kl
-  }    // jH
+  }  // jH
 
   const std::vector<double>& sm = m_p_.sm;
   const std::vector<double>& sp = m_p_.sp;
@@ -2869,7 +2876,7 @@ void IdealMhdModel::effectiveConstraintForce() {
       gConEff[idx_kl] = (rCon[idx_kl] - rCon0[idx_kl]) * ruFull[idx_kl] +
                         (zCon[idx_kl] - zCon0[idx_kl]) * zuFull[idx_kl];
     }  // kl
-  }    // jF
+  }  // jF
 }
 
 // perform Fourier-space bandpass filtering of constraint force
@@ -2935,7 +2942,7 @@ void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
 #else
     exit(-1);
 #endif  // _OPENMP
-  }     // lasym
+  }  // lasym
 }
 
 void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
@@ -3025,8 +3032,8 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
         const double _zsc = znksc + xmpq[m] * zcon_sc;
         m_physical_f.fzsc[idx_jm] += _zsc * sinmui + znksc_m * cosmumi;
       }  // m
-    }    // l
-  }      // jF
+    }  // l
+  }  // jF
 
   // Do the lambda force coefficients separately, as they have different radial
   // ranges.
@@ -3045,8 +3052,8 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
         const double cosmumi = t_.cosmumi[m * s_.nThetaReduced + l];
         m_physical_f.flsc[idx_jm] += lnksc_m * cosmumi;
       }  // m
-    }    // l
-  }      // jF
+    }  // l
+  }  // jF
 }  // dft_ForcesToFourier_2d_symm
 
 // ---------------------------
@@ -3084,7 +3091,7 @@ void IdealMhdModel::applyM1Preconditioner(FourierForces& m_decomposed_f) {
         m_decomposed_f.fzcc[idx_mn] *= forceScaleZ;
       }
     }  // n
-  }    // jF
+  }  // jF
 
 #pragma omp barrier
 }
@@ -3156,8 +3163,8 @@ void IdealMhdModel::assembleRZPreconditioner() {
           bz[idx_mn] = 0.0;
         }
       }  // n
-    }    // m
-  }      // jF
+    }  // m
+  }  // jF
 
   // We need to check BOTH for
   // a) if we are in free-boundary mode AND
@@ -3282,8 +3289,8 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
         m_h_.all_cr[mn][idx_basis][jF] = cR[idx_basis][idx_mn];
         m_h_.all_cz[mn][idx_basis][jF] = cZ[idx_basis][idx_mn];
       }  // idx_basis
-    }    // mn
-  }      // jF
+    }  // mn
+  }  // jF
 #pragma omp barrier
 
   // split range [0, s_.mnsize) among threads
@@ -3306,11 +3313,9 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   // call serial Thomas solver for every mode number individually
   for (int mn = mnmin; mn < mnmax; ++mn) {
     TridiagonalSolveSerial(m_h_.all_ar[mn], m_h_.all_dr[mn], m_h_.all_br[mn],
-                           m_h_.all_cr[mn], jMin[mn], jMax,
-                           s_.num_basis);
+                           m_h_.all_cr[mn], jMin[mn], jMax, s_.num_basis);
     TridiagonalSolveSerial(m_h_.all_az[mn], m_h_.all_dz[mn], m_h_.all_bz[mn],
-                           m_h_.all_cz[mn], jMin[mn], jMax,
-                           s_.num_basis);
+                           m_h_.all_cz[mn], jMin[mn], jMax, s_.num_basis);
   }  // mn
 #pragma omp barrier
 
@@ -3322,8 +3327,8 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
         cR[idx_basis][idx_mn] = m_h_.all_cr[mn][idx_basis][jF];
         cZ[idx_basis][idx_mn] = m_h_.all_cz[mn][idx_basis][jF];
       }  // idx_basis
-    }    // mn
-  }      // jF
+    }  // mn
+  }  // jF
 
   return absl::OkStatus();
 }
@@ -3401,8 +3406,8 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
           }
         }
       }  // n
-    }    // m
-  }      // j
+    }  // m
+  }  // j
 }
 
 double IdealMhdModel::get_delbsq() const {

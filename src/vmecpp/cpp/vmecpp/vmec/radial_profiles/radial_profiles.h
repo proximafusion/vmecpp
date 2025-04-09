@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #ifndef VMECPP_VMEC_RADIAL_PROFILES_RADIAL_PROFILES_H_
@@ -32,8 +33,7 @@ class RadialProfiles {
   // Call this for every thread, one after another (ideally from a single
   // thread), providing thread_id = 0, 1, ..., (num_threads-1), where
   // num_threads is what is used in RadialPartitioning.
-  void evalRadialProfiles(bool haveToFlipTheta,
-                          VmecConstants& m_vmecconst);
+  void evalRadialProfiles(bool haveToFlipTheta, VmecConstants& m_vmecconst);
 
   ProfileParameterization findParameterization(const std::string& name,
                                                ProfileType intendedType);

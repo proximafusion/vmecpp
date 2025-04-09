@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/boundaries/boundaries.h"
@@ -174,7 +175,7 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
         }
       }
     }  // m
-  }    // n
+  }  // n
 }
 
 bool Boundaries::checkSignOfJacobian() {
@@ -229,7 +230,7 @@ void Boundaries::flipTheta() {
         }
       }
     }  // n
-  }    // m
+  }  // m
 }
 
 /**

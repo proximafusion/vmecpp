@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
@@ -18,7 +19,9 @@ ProfileParameterizationData::ProfileParameterizationData(
 
 const std::string& ProfileParameterizationData::Name() { return name_; }
 
-bool ProfileParameterizationData::NeedsSplineData() const { return needsSplineData_; }
+bool ProfileParameterizationData::NeedsSplineData() const {
+  return needsSplineData_;
+}
 
 AllowedFor ProfileParameterizationData::IsAllowedFor() { return allowedFor_; }
 

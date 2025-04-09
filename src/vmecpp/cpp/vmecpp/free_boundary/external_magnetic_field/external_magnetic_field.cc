@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/external_magnetic_field/external_magnetic_field.h"
@@ -83,7 +84,7 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
           sg_.cos_per[p] * axisXYZ[k * 3 + 1];
       axisXYZ[(p * s_.nZeta + k) * 3 + 2] = zAxis[k];
     }  // k
-  }    // field periods
+  }  // field periods
 
   // close the loop
   axisXYZ[s_.nZeta * s_.nfp * 3 + 0] = axisXYZ[0];
@@ -162,7 +163,7 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
           sg_.cos_per[p] * axisXYZ[k * 3 + 1];
       axisXYZ[(p * s_.nZeta + k) * 3 + 2] = zAxis[k];
     }  // k
-  }    // field periods
+  }  // field periods
 
   // close the loop
   axisXYZ[s_.nZeta * s_.nfp * 3 + 0] = axisXYZ[0];
@@ -251,7 +252,7 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
       bCoilsXYZ[kl_local * 3 + 2] +=
           magnetic_field_magnitude * (segment_dx * r_i_y - segment_dy * r_i_x);
     }  // kl
-  }    // source_index
+  }  // source_index
 
   // -------
   // Here, we have the magnetic field from the axis current (bCoilsXYZ) done.

@@ -72,7 +72,7 @@ struct Vector3d {
     has_z_ = other.has_z_;
     z_ = other.z_;
   }
-}; // Vector3d
+};  // Vector3d
 
 struct FourierCoefficient1D {
   // Fourier coefficients for cosine basis
@@ -129,7 +129,7 @@ struct FourierCoefficient1D {
     clear_fc_sin();
     clear_mode_number();
   }
-}; // FourierCoefficient1D
+};  // FourierCoefficient1D
 
 struct FourierCoefficient2D {
   // Fourier coefficients for cosine basis
@@ -203,7 +203,7 @@ struct FourierCoefficient2D {
     clear_poloidal_mode_number();
     clear_toroidal_mode_number();
   }
-}; // FourierCoefficient2D
+};  // FourierCoefficient2D
 
 struct CurveRZFourier {
   // Fourier coefficients for R
@@ -213,12 +213,10 @@ struct CurveRZFourier {
   std::list<composed_types::FourierCoefficient1D> z_;
 
   // r
-  int r_size() const {
-    return static_cast<int>(r_.size());
-  }
+  int r_size() const { return static_cast<int>(r_.size()); }
   const composed_types::FourierCoefficient1D& r(int index) const {
     auto it = r_.cbegin();
-    std::advance(it, index); // no explicit bounds-check for brevity
+    std::advance(it, index);  // no explicit bounds-check for brevity
     return *it;
   }
   composed_types::FourierCoefficient1D* mutable_r(int index) {
@@ -235,17 +233,11 @@ struct CurveRZFourier {
   const std::list<composed_types::FourierCoefficient1D>& r() const {
     return r_;
   }
-  std::list<composed_types::FourierCoefficient1D>* mutable_r() {
-    return &r_;
-  }
-  void clear_r() {
-    r_.clear();
-  }
+  std::list<composed_types::FourierCoefficient1D>* mutable_r() { return &r_; }
+  void clear_r() { r_.clear(); }
 
   // z
-  int z_size() const {
-    return static_cast<int>(z_.size());
-  }
+  int z_size() const { return static_cast<int>(z_.size()); }
   const composed_types::FourierCoefficient1D& z(int index) const {
     auto it = z_.cbegin();
     std::advance(it, index);
@@ -265,19 +257,15 @@ struct CurveRZFourier {
   const std::list<composed_types::FourierCoefficient1D>& z() const {
     return z_;
   }
-  std::list<composed_types::FourierCoefficient1D>* mutable_z() {
-    return &z_;
-  }
-  void clear_z() {
-    z_.clear();
-  }
+  std::list<composed_types::FourierCoefficient1D>* mutable_z() { return &z_; }
+  void clear_z() { z_.clear(); }
 
   // Clear the entire structure
   void Clear() {
     clear_r();
     clear_z();
   }
-}; // CurveRZFourier
+};  // CurveRZFourier
 
 struct SurfaceRZFourier {
   // Fourier coefficients for R
@@ -287,12 +275,10 @@ struct SurfaceRZFourier {
   std::list<composed_types::FourierCoefficient2D> z_;
 
   // r
-  int r_size() const {
-    return static_cast<int>(r_.size());
-  }
+  int r_size() const { return static_cast<int>(r_.size()); }
   const composed_types::FourierCoefficient2D& r(int index) const {
     auto it = r_.cbegin();
-    std::advance(it, index); // no explicit bounds-check for brevity
+    std::advance(it, index);  // no explicit bounds-check for brevity
     return *it;
   }
   composed_types::FourierCoefficient2D* mutable_r(int index) {
@@ -309,17 +295,11 @@ struct SurfaceRZFourier {
   const std::list<composed_types::FourierCoefficient2D>& r() const {
     return r_;
   }
-  std::list<composed_types::FourierCoefficient2D>* mutable_r() {
-    return &r_;
-  }
-  void clear_r() {
-    r_.clear();
-  }
+  std::list<composed_types::FourierCoefficient2D>* mutable_r() { return &r_; }
+  void clear_r() { r_.clear(); }
 
   // z
-  int z_size() const {
-    return static_cast<int>(z_.size());
-  }
+  int z_size() const { return static_cast<int>(z_.size()); }
   const composed_types::FourierCoefficient2D& z(int index) const {
     auto it = z_.cbegin();
     std::advance(it, index);
@@ -339,20 +319,16 @@ struct SurfaceRZFourier {
   const std::list<composed_types::FourierCoefficient2D>& z() const {
     return z_;
   }
-  std::list<composed_types::FourierCoefficient2D>* mutable_z() {
-    return &z_;
-  }
-  void clear_z() {
-    z_.clear();
-  }
+  std::list<composed_types::FourierCoefficient2D>* mutable_z() { return &z_; }
+  void clear_z() { z_.clear(); }
 
   // Clear the entire structure
   void Clear() {
     clear_r();
     clear_z();
   }
-}; // SurfaceRZFourier
+};  // SurfaceRZFourier
 
-} // namespace composed_types
+}  // namespace composed_types
 
-#endif // VMECPP_COMMON_COMPOSED_TYPES_DEFINITION_COMPOSED_TYPES_H_
+#endif  // VMECPP_COMMON_COMPOSED_TYPES_DEFINITION_COMPOSED_TYPES_H_
