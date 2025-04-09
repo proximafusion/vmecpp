@@ -593,6 +593,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bsubsmns_full", &vmecpp::WOutFileContents::bsubsmns_full)
       .def_readwrite("bsupumnc", &vmecpp::WOutFileContents::bsupumnc)
       .def_readwrite("bsupvmnc", &vmecpp::WOutFileContents::bsupvmnc)
+      .def_readwrite("currumnc", &vmecpp::WOutFileContents::currumnc)
+      .def_readwrite("currvmnc", &vmecpp::WOutFileContents::currvmnc)
       //
       .def_readwrite("raxis_s", &vmecpp::WOutFileContents::raxis_s)
       .def_readwrite("zaxis_c", &vmecpp::WOutFileContents::zaxis_c)

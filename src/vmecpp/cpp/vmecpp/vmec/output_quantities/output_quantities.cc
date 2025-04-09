@@ -5,13 +5,14 @@
 
 #include <H5Cpp.h>
 
+#include <Eigen/Dense>  // VectorXd
 #include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include <Eigen/Dense>  // VectorXd
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "util/hdf5_io/hdf5_io.h"
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/util/util.h"
@@ -4166,6 +4167,86 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
   return result;
 }  // ComputeThreed1ShafranovIntegrals
 
+void vmecpp::ComputeCurrents(const RowMatrixXd& bsubsmns,
+                             const RowMatrixXd& bsubumnc,
+                             const RowMatrixXd& bsubvmnc,
+                             const Eigen::VectorXi& xm_nyq,
+                             const Eigen::VectorXi& xn_nyq,
+                             RowMatrixXd& currumnc, RowMatrixXd& currvmnc) {
+  const int ns = bsubsmns.rows();
+  const double ohs = ns - 1;
+  const double hs = 1.0 / ohs;
+  LOG(INFO) << "ComputeCurrents: ns = " << ns << ", ohs = " << ohs
+            << ", hs = " << hs;
+  // Print dimensions of all matrices
+  LOG(INFO) << "bsubsmns: " << bsubsmns.rows() << " x " << bsubsmns.cols();
+  LOG(INFO) << "bsubumnc: " << bsubumnc.rows() << " x " << bsubumnc.cols();
+  LOG(INFO) << "bsubvmnc: " << bsubvmnc.rows() << " x " << bsubvmnc.cols();
+  LOG(INFO) << "xm_nyq: yt" << xm_nyq.size();
+  LOG(INFO) << "xn_nyq: " << xn_nyq.size();
+  LOG(INFO) << "currumnc: " << currumnc.rows() << " x " << currumnc.cols();
+  LOG(INFO) << "currvmnc: " << currvmnc.rows() << " x " << currvmnc.cols();
+  // Setup radial grid points
+  VectorXd shalf = VectorXd::Zero(ns);
+  VectorXd sfull = VectorXd::Zero(ns);
+  for (int js = 0; js < ns; js++) {
+    shalf(js) = std::sqrt(hs * (js - 1.5));
+    sfull(js) = std::sqrt(hs * (js - 1.0));
+  }
+
+  // Compute currents on interior points
+  for (int js = 1; js < ns - 2; js++) {
+    for (int mn = 0; mn < xm_nyq.size(); mn++) {
+      double t1{}, t2{}, t3{};
+      double bu0{}, bu1{}, bv0{}, bv1{};
+      if (static_cast<int>(xm_nyq(mn)) % 2 == 1) {
+        // Odd m modes
+        t1 = 0.5 *
+             (shalf(js + 1) * bsubsmns(js + 1, mn) +
+              shalf(js) * bsubsmns(js, mn)) /
+             sfull(js);
+
+        bu0 = bsubumnc(js, mn) / shalf(js);
+        bu1 = bsubumnc(js + 1, mn) / shalf(js + 1);
+        t2 = ohs * (bu1 - bu0) * sfull(js) + 0.25 * (bu0 + bu1) / sfull(js);
+
+        bv0 = bsubvmnc(js, mn) / shalf(js);
+        bv1 = bsubvmnc(js + 1, mn) / shalf(js + 1);
+        t3 = ohs * (bv1 - bv0) * sfull(js) + 0.25 * (bv0 + bv1) / sfull(js);
+      } else {
+        // Even m modes
+        t1 = 0.5 * (bsubsmns(js + 1, mn) + bsubsmns(js, mn));
+        t2 = ohs * (bsubumnc(js + 1, mn) - bsubumnc(js, mn));
+        t3 = ohs * (bsubvmnc(js + 1, mn) - bsubvmnc(js, mn));
+      }
+      currumnc(js, mn) = -xn_nyq(mn) * t1 - t3;
+      currvmnc(js, mn) = -xm_nyq(mn) * t1 + t2;
+    }
+  }
+  LOG(INFO) << "Completed main loop";
+
+  // Axis boundary conditions
+  for (int mn = 0; mn < xm_nyq.size(); mn++) {
+    if (xm_nyq(mn) <= 1) {
+      currvmnc(1, mn) = 2 * currvmnc(2, mn) - currvmnc(3, mn);
+      currumnc(1, mn) = 2 * currumnc(2, mn) - currumnc(3, mn);
+    } else {
+      currvmnc(1, mn) = 0;
+      currumnc(1, mn) = 0;
+    }
+  }
+
+  // Edge boundary conditions
+  for (int mn = 0; mn < xm_nyq.size(); mn++) {
+    currumnc(ns - 1, mn) = 2 * currumnc(ns - 2, mn) - currumnc(ns - 3, mn);
+    currvmnc(ns - 1, mn) = 2 * currvmnc(ns - 2, mn) - currvmnc(ns - 3, mn);
+  }
+
+  // Normalize by mu0
+  currumnc = currumnc / vmecpp::MU_0;
+  currvmnc = currvmnc / vmecpp::MU_0;
+}
+
 vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     const VmecINDATA& indata, const Sizes& s, const FourierBasisFastPoloidal& t,
     const FlowControl& fc, const VmecConstants& constants,
@@ -4609,6 +4690,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         2.0 * wout.bsubsmns(1, mn_nyq) - wout.bsubsmns(2, mn_nyq);
   }  // mn_nyq
 
+  wout.currumnc =
+      RowMatrixXd::Zero(fc.ns, s.mnmax_nyq);  // full-grid
+  wout.currvmnc =
+      RowMatrixXd::Zero(fc.ns, s.mnmax_nyq);  // full-grid
+  ComputeCurrents(wout.bsubsmns, wout.bsubumnc, wout.bsubvmnc, wout.xm_nyq,
+                  wout.xn_nyq, wout.currumnc, wout.currvmnc);
   // -------------------
   // non-stellarator-symmetric Fourier coefficients
 

@@ -1159,6 +1159,12 @@ struct WOutFileContents {
   // half-grid: contravariant B^\zeta
   RowMatrixXd bsupvmnc;
 
+  // full-grid: covariant J^\theta
+  RowMatrixXd currumnc;
+
+  // full-grid: covariant J^\zeta
+  RowMatrixXd currvmnc;
+
   // -------------------
   // non-stellarator-symmetric Fourier coefficients
 
@@ -1327,6 +1333,11 @@ CovariantBDerivatives LowPassFilterCovariantB(
 // extarpolate B_s on full-grid to axis and boundary
 void ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
                       BSubSFull& m_bsubs_full);
+
+void ComputeCurrents(const RowMatrixXd& bsubsmns, const RowMatrixXd& bsubumnc,
+                     const RowMatrixXd& bsubvmnc, const Eigen::VectorXi& xm_nyq,
+                     const Eigen::VectorXi& xn_nyq, RowMatrixXd& currumnc,
+                     RowMatrixXd& currvmnc);
 
 JxBOutFileContents ComputeJxBOutputFileContents(
     const Sizes& s, const FlowControl& fc,
