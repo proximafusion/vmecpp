@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/singular_integrals/singular_integrals.h"
@@ -123,8 +124,8 @@ void SingularIntegrals::computeCoefficients() {
 
         cmnSign = -cmnSign;
       }  // l
-    }    // m
-  }      // n
+    }  // m
+  }  // n
 
   // cmns from cmn: (6.291) in TNOV
   for (int n = 0; n < nf + 1; ++n) {
@@ -148,8 +149,8 @@ void SingularIntegrals::computeCoefficients() {
           cmns[ln_m_] = (cmn[ln_m_] + cmn[ln1m_] + cmn[ln_m1] + cmn[ln1m1]) / 2;
         }
       }  // l
-    }    // m
-  }      // n
+    }  // m
+  }  // n
 }  // computeCoefficients
 
 void SingularIntegrals::update(const std::vector<double>& bDotN,
@@ -255,7 +256,7 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
                          (R0m[klRel] + R1m[klRel]) / sqrtc2[klRel] +
                          sgn * (R0m[klRel] - R1m[klRel]) / sqrta2[klRel];
       }  // kl
-    }    // fullUpdate
+    }  // fullUpdate
 
     for (int n = 0; n < nf + 1; ++n) {
       for (int m = 0; m < mf + 1; ++m) {
@@ -452,9 +453,9 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
               }
             }
           }  // kl
-        }    // m == 0 or n == 0
-      }      // m
-    }        // n
+        }  // m == 0 or n == 0
+      }  // m
+    }  // n
 
     // Update T^{\pm}_l and T^{\pm}_{l-1} for next l
     sgn = -sgn;
@@ -472,7 +473,7 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
            (2 * (fl + 1) - 1) * d[kl] * Tl1m[kl] - fl * ap[kl] * Tl2m[kl]) /
           (am[kl] * (fl + 1));
     }  // kl
-  }    // fl
+  }  // fl
 }  // performUpdate
 
 }  // namespace vmecpp

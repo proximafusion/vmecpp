@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/pybind11/vmec_indata_pywrapper.h"
@@ -62,7 +63,8 @@ VmecINDATAPyWrapper::VmecINDATAPyWrapper(const VmecINDATA& indata)
       delt(indata.delt),
       tcon0(indata.tcon0),
       lforbal(indata.lforbal),
-      return_outputs_even_if_not_converged(indata.return_outputs_even_if_not_converged),
+      return_outputs_even_if_not_converged(
+          indata.return_outputs_even_if_not_converged),
       raxis_c(ToEigenVector(indata.raxis_c)),
       zaxis_s(ToEigenVector(indata.zaxis_s)),
       rbc(ToEigenMatrix(indata.rbc, mpol, 2 * ntor + 1)),
@@ -116,13 +118,14 @@ VmecINDATAPyWrapper::operator VmecINDATA() const {
   indata.delt = delt;
   indata.tcon0 = tcon0;
   indata.lforbal = lforbal;
-  indata.return_outputs_even_if_not_converged = return_outputs_even_if_not_converged;
+  indata.return_outputs_even_if_not_converged =
+      return_outputs_even_if_not_converged;
   indata.raxis_c.assign(raxis_c.begin(), raxis_c.end());
   indata.zaxis_s.assign(zaxis_s.begin(), zaxis_s.end());
-  if(raxis_s.has_value()){
+  if (raxis_s.has_value()) {
     indata.raxis_s.assign(raxis_s.value().begin(), raxis_s.value().end());
   }
-  if(zaxis_c.has_value()){
+  if (zaxis_c.has_value()) {
     indata.zaxis_c.assign(zaxis_c.value().begin(), zaxis_c.value().end());
   }
 
@@ -130,11 +133,11 @@ VmecINDATAPyWrapper::operator VmecINDATA() const {
   indata.rbc.assign(rbc_flat.begin(), rbc_flat.end());
   const auto zbs_flat = zbs.reshaped<Eigen::RowMajor>();
   indata.zbs.assign(zbs_flat.begin(), zbs_flat.end());
-  if(rbs.has_value()){
+  if (rbs.has_value()) {
     const auto rbs_flat = rbs.value().reshaped<Eigen::RowMajor>();
     indata.rbs.assign(rbs_flat.begin(), rbs_flat.end());
   }
-  if(zbc.has_value()){
+  if (zbc.has_value()) {
     const auto zbc_flat = zbc.value().reshaped<Eigen::RowMajor>();
     indata.zbc.assign(zbc_flat.begin(), zbc_flat.end());
   }

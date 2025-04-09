@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/util/util.h"
@@ -94,8 +95,8 @@ TEST_P(TridiagonalSolverSerialTest, CheckTridiagonalSolverSerial) {
 
   int jMin = 0;
   int jMax = kMatrixDimension;
-  TridiagonalSolveSerial(matDiagUp, matDiag, matDiagLow, rhs,
-                         jMin, jMax, kNumberOfRightHandSides);
+  TridiagonalSolveSerial(matDiagUp, matDiag, matDiagLow, rhs, jMin, jMax,
+                         kNumberOfRightHandSides);
 
   // check that solution is correct
   for (int i = 0; i < kMatrixDimension; ++i) {
@@ -162,8 +163,8 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
         xr[k][idx_mn] = dist(rng) + 1.0e-12;
         xz[k][idx_mn] = dist(rng) + 1.0e-12;
       }  // mn
-    }    // j
-  }      // k
+    }  // j
+  }  // k
 
   std::vector<int> jMin(mnmax);
   int jMax = ns;
@@ -257,7 +258,7 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
           bz[idx_mn] = 0.1 * dist(rng) + 1.0e-12;
         }
       }  // mn
-    }    // j
+    }  // j
 
     // compute RHS for known solution
     for (int j = nsMinF; j < nsMaxF; ++j) {
@@ -285,8 +286,8 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
             cz[k][local_idx] += bz[local_idx] * xz[k][idx_mn_m];
           }
         }  // k
-      }    // mn
-    }      // j
+      }  // mn
+    }  // j
 
 #pragma omp barrier
 
@@ -310,8 +311,8 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
               IsCloseRelAbs(xz[k][idx_mn], cz[k][local_idx], kTolerance))
               << absl::StrFormat("j=%d mn=%d", j, mn);
         }  // k
-      }    // mn
-    }      // j
+      }  // mn
+    }  // j
 #pragma omp barrier
   }  // omp parallel
 }  // CheckTridiagonalSolveOpenMP

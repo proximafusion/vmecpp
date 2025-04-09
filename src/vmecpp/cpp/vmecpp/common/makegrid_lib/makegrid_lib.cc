@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -332,8 +333,8 @@ absl::StatusOr<std::vector<std::vector<double>>> MakeCylindricalGrid(
             (phi_index * num_z + z_index) * num_r + r_index;
         cylindrical_grid[linear_index] = {x, y, z};
       }  // r_index
-    }    // z_index
-  }      // phi_index
+    }  // z_index
+  }  // phi_index
 
   return cylindrical_grid;
 }  // MakeCylindricalGrid

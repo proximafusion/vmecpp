@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/fourier_coefficients/fourier_coefficients.h"
@@ -118,8 +119,8 @@ void FourierCoeffs::decomposeInto(FourierCoeffs& x,
           }
         }
       }  // n
-    }    // m
-  }      // j
+    }  // m
+  }  // j
 }
 
 /** (un)do m=1 constraint to couple R_ss,Z_cs as well as R_sc,Z_cc */
@@ -145,7 +146,7 @@ void FourierCoeffs::m1Constraint(double scalingFactor,
         zcc[idx_fc] = (old_rsc - zcc[idx_fc]) * scalingFactor;
       }
     }  // n
-  }    // j
+  }  // j
 }
 
 double FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
@@ -177,8 +178,8 @@ double FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
           }
         }
       }  // n
-    }    // m
-  }      // j
+    }  // m
+  }  // j
 
   return local_norm2;
 }

@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/regularized_integrals/regularized_integrals.h"
@@ -195,8 +196,8 @@ void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
         const double g = twopidivnfp * htemp;
         gstore[kl] += bexni * g;
       }  // kl
-    }    // p
-  }      // klp
+    }  // p
+  }  // klp
 }
 
 }  // namespace vmecpp

@@ -1,14 +1,15 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #ifndef UTIL_HDF5_IO_HDF5_IO_H_
 #define UTIL_HDF5_IO_HDF5_IO_H_
 
+#include <Eigen/Dense>
 #include <string>
 #include <type_traits>
 #include <vector>
 
-#include <Eigen/Dense>
 #include "H5Cpp.h"
 
 namespace hdf5_io {

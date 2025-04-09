@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/surface_geometry/surface_geometry.h"
@@ -104,7 +105,6 @@ void SurfaceGeometry::inverseDFT(
     const std::span<const double> zSC, const std::span<const double> zCS,
     const std::span<const double> zCC, const std::span<const double> zSS,
     bool fullUpdate) {
-
   // TODO(jons): implement lasym-related code
   (void)rSC;
   (void)rCS;
@@ -230,8 +230,8 @@ void SurfaceGeometry::inverseDFT(
           }
         }
       }  // k
-    }    // l
-  }      // n
+    }  // l
+  }  // n
 
   if (s_.lasym) {
     // mirror quantities into respective
@@ -306,7 +306,7 @@ void SurfaceGeometry::derivedSurfaceQuantities(int signOfJacobian,
 
           rzb2[klRev] = rzb2[kl];
         }  // k
-      }    // l
+      }  // l
     }
 
     // x and y

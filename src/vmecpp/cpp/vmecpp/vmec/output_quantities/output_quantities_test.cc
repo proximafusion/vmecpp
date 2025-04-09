@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
@@ -341,7 +342,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
       EXPECT_TRUE(IsCloseRelAbs(reference_zmns[jF][mn],
                                 wout.zmns(jF * s.mnmax + mn), tolerance));
     }  // mn
-  }    // jF
+  }  // jF
 
   std::vector<std::vector<double>> reference_lmns =
       NetcdfReadArray2D(ncid, "lmns");
@@ -350,7 +351,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
       EXPECT_TRUE(IsCloseRelAbs(reference_lmns[jH + 1][mn],
                                 wout.lmns(jH * s.mnmax + mn), tolerance));
     }  // mn
-  }    // jH
+  }  // jH
 
   std::vector<std::vector<double>> reference_gmnc =
       NetcdfReadArray2D(ncid, "gmnc");
@@ -390,7 +391,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
                                 wout.bsupvmnc(jH * s.mnmax_nyq + mn_nyq),
                                 tolerance));
     }  // mn_nyq
-  }    // jH
+  }  // jH
 
   // also test the wrong extrapolation of bsubsmns
   // beyond the magnetic axis for backward compatibility

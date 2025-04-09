@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
@@ -376,8 +377,8 @@ absl::Status MoveRadially(double radial_step,
             LOG(FATAL) << error_message.str();
         }
       }  // CurrentCarrier
-    }    // Coil
-  }      // SerialCircuit
+    }  // Coil
+  }  // SerialCircuit
 
   return absl::OkStatus();
 }  // MoveRadially
@@ -555,8 +556,8 @@ absl::Status IsMagneticConfigurationFullyPopulated(
           return status;
         }
       }  // CurrentCarrier
-    }    // Coil
-  }      // SerialCircuit
+    }  // Coil
+  }  // SerialCircuit
 
   return absl::OkStatus();
 }  // IsMagneticConfigurationFullyPopulated
@@ -715,8 +716,7 @@ void PrintCoil(const Coil& coil, int indentation) {
   }
 
   if (coil.has_num_windings()) {
-    std::cout << prefix << "  num_windings: " << coil.num_windings()
-              << '\n';
+    std::cout << prefix << "  num_windings: " << coil.num_windings() << '\n';
   } else {
     std::cout << prefix << "  num_windings: none" << '\n';
   }
@@ -737,15 +737,13 @@ void PrintSerialCircuit(const SerialCircuit& serial_circuit, int indentation) {
   std::cout << prefix << "SerialCircuit {" << '\n';
 
   if (serial_circuit.has_name()) {
-    std::cout << prefix << "  name: '" << serial_circuit.name() << "'"
-              << '\n';
+    std::cout << prefix << "  name: '" << serial_circuit.name() << "'" << '\n';
   } else {
     std::cout << prefix << "  name: none" << '\n';
   }
 
   if (serial_circuit.has_current()) {
-    std::cout << prefix << "  current: " << serial_circuit.current()
-              << '\n';
+    std::cout << prefix << "  current: " << serial_circuit.current() << '\n';
   } else {
     std::cout << prefix << "  current: none" << '\n';
   }

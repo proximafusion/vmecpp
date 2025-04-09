@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #ifndef VMECPP_COMMON_MAGNETIC_FIELD_PROVIDER_MAGNETIC_FIELD_PROVIDER_LIB_H_

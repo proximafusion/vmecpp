@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
@@ -135,7 +136,7 @@ TEST(TestFourierBasisFastPoloidal, CheckCos2CCSS) {
             << "at m=" << m << " n=" << -n;
       }
     }  // n
-  }    // m
+  }  // m
 }  // CheckCos2CCSS
 
 TEST(TestFourierBasisFastPoloidal, CheckSin2SCCS) {
@@ -231,7 +232,7 @@ TEST(TestFourierBasisFastPoloidal, CheckSin2SCCS) {
         }
       }
     }  // n
-  }    // m
+  }  // m
 }  // CheckSin2SCCS
 
 TEST(TestFourierBasisFastPoloidal, CheckCCSS2Cos) {
@@ -420,7 +421,7 @@ TEST(TestFourierBasisFastPoloidal, CheckInvDFTEvn) {
       EXPECT_TRUE(IsCloseRelAbs(ref_evn, realspace_evn[idx_kl], kTolerance))
           << absl::StrFormat("k=%d l=%d", k, l);
     }  // k
-  }    // l
+  }  // l
 }  // CheckInvDFTEvn
 
 TEST(TestFourierBasisFastPoloidal, CheckInvDFTOdd) {
@@ -627,7 +628,7 @@ TEST(TestFourierBasisFastPoloidal, CheckInvDFTCombined) {
             realspace_evn[source_kl] - realspace_odd[source_kl];
       }
     }  // l
-  }    // k
+  }  // k
 
   double omega_theta = 2.0 * M_PI / s.nThetaEven;
   double omega_zeta = 2.0 * M_PI / (s.nfp * s.nZeta);
@@ -766,7 +767,7 @@ TEST(TestFourierBasisFastPoloidal, CheckOrthogonality) {
             realspace_evn[source_kl] - realspace_odd[source_kl];
       }
     }  // l
-  }    // k
+  }  // k
 
   // decompose back into even- and odd-parity contributions
   for (int k = 0; k < s.nZeta; ++k) {
@@ -911,7 +912,7 @@ TEST(TestFourierBasisFastPoloidal, CheckInternally) {
                                     fourier_basis.sinmumi[idx_ml], kTolerance));
         }
       }  // l
-    }    // m
+    }  // m
   }
 
   {  // test toroidal Fourier basis
@@ -944,7 +945,7 @@ TEST(TestFourierBasisFastPoloidal, CheckInternally) {
                                     fourier_basis.sinnvn[idx_kn], kTolerance));
         }
       }  // k
-    }    // n
+    }  // n
   }
 
   {  // test basis conversion indices
@@ -966,7 +967,7 @@ TEST(TestFourierBasisFastPoloidal, CheckInternally) {
           EXPECT_EQ(fourier_basis.xn[mn], n * sizes.nfp);
           mn++;
         }  // n
-      }    // m
+      }  // m
     }
 
     EXPECT_EQ(mn, sizes.mnmax);
@@ -991,7 +992,7 @@ TEST(TestFourierBasisFastPoloidal, CheckInternally) {
           EXPECT_EQ(fourier_basis.xn_nyq[mn_nyq], n * sizes.nfp);
           mn_nyq++;
         }  // n
-      }    // m
+      }  // m
     }
 
     EXPECT_EQ(mn_nyq, sizes.mnmax_nyq);

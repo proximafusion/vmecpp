@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 #ifndef VMECPP_FREE_BOUNDARY_FREE_BOUNDARY_BASE_FREE_BOUNDARY_BASE_H_
