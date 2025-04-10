@@ -7,7 +7,6 @@
 
 #include <Eigen/Dense>  // VectorXd, Matrix
 #include <cassert>
-#include <cctype>  // isdigit()
 #include <cmath>
 #include <cstdbool>
 #include <cstdio>
@@ -180,7 +179,6 @@ static constexpr int m_odd = 1;
 
 // ----------------------
 // simple math
-bool isInt(const std::string &str);
 int signum(int x);
 
 // ----------------------

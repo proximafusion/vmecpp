@@ -49,16 +49,6 @@ std::string VmecStatusAsString(const VmecStatus vmec_status) {
   return "UNKNOWN??";
 }
 
-/** check if a given string represents a positive integer */
-bool isInt(const char *str) {
-  for (size_t i = 0; i < strlen(str); ++i) {
-    if (!isdigit(str[i])) {
-      return false;
-    }
-  }
-  return true;
-}
-
 // -1 if x<0, 0 if x==0, +1 if x>0
 int signum(int x) {
   // https://stackoverflow.com/a/1903975
