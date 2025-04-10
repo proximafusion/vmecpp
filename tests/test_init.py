@@ -248,6 +248,12 @@ def test_is_vmec2000_input():
     assert not vmecpp.is_vmec2000_input(vmecpp_input_file)
 
 
+# Regression test #232
+def test_is_vmec2000_input_with_comment():
+    vmec2000_input_file = TEST_DATA_DIR / "input.solovev_analytical"
+    assert vmecpp.is_vmec2000_input(vmec2000_input_file)
+
+
 def test_ensure_vmec2000_input_noop():
     vmec2000_input_file = TEST_DATA_DIR / "input.cma"
 
