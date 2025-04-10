@@ -55,7 +55,8 @@ Issues = "https://github.com/proximafusion/vmecpp/issues"
 Source = "https://github.com/proximafusion/vmecpp"
 
 [tool.scikit-build]
-cmake.build-type = "Release"
+# To build with debug symbols, change this to "RelWithDebInfo".
+cmake.build-type = "Release" # "RelWithDebInfo"
 metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
 sdist.exclude = [
     "src/vmecpp/cpp/vmecpp/test_data/",
