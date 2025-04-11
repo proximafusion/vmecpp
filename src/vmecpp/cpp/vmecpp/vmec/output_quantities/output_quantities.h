@@ -1010,6 +1010,7 @@ struct WOutFileContents {
 
   bool lfreeb;
   std::string mgrid_file;
+  int nextcur;
   Eigen::VectorXd extcur;
   std::string mgrid_mode;
 
@@ -1093,6 +1094,7 @@ struct WOutFileContents {
   Eigen::VectorXd overr;
 
   Eigen::VectorXd jdotb;
+  Eigen::VectorXd bdotb;
   Eigen::VectorXd bdotgradv;
 
   Eigen::VectorXd DMerc;

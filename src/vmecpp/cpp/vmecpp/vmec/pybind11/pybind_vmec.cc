@@ -496,6 +496,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       //
       .def_readwrite("lfreeb", &vmecpp::WOutFileContents::lfreeb)
       .def_readwrite("mgrid_file", &vmecpp::WOutFileContents::mgrid_file)
+      .def_readwrite("nextcur", &vmecpp::WOutFileContents::nextcur)
       .def_readwrite("extcur", &vmecpp::WOutFileContents::extcur)
       .def_readwrite("mgrid_mode", &vmecpp::WOutFileContents::mgrid_mode)
       //
@@ -559,6 +560,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("overr", &vmecpp::WOutFileContents::overr)
       //
       .def_readwrite("jdotb", &vmecpp::WOutFileContents::jdotb)
+      .def_readwrite("bdotb", &vmecpp::WOutFileContents::bdotb)
       .def_readwrite("bdotgradv", &vmecpp::WOutFileContents::bdotgradv)
       //
       .def_readwrite("DMerc", &vmecpp::WOutFileContents::DMerc)
