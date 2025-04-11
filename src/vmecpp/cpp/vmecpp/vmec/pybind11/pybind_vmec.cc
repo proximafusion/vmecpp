@@ -61,7 +61,14 @@ void DefEigenProperty(PywrapperClass &pywrapper, const std::string &name,
 template <typename T>
 T &GetValueOrThrow(absl::StatusOr<T> &s) {
   if (!s.ok()) {
-    throw std::runtime_error(std::string(s.status().message()));
+    // Could handle more exceptions, but only some are translated to meaningful
+    // python exception types.
+    // https://pybind11.readthedocs.io/en/stable/advanced/exceptions.html
+    if (absl::IsInvalidArgument(s.status())) {
+      throw pybind11::attribute_error(std::string(s.status().message()));
+    } else {
+      throw std::runtime_error(std::string(s.status().message()));
+    }
   }
   return s.value();
 }

@@ -18,12 +18,14 @@ class MGridProvider {
   MGridProvider();
 
   absl::Status LoadFile(const std::filesystem::path& filename,
-                        const std::vector<double>& coilCurrents);
+                        const std::vector<double>& coil_currents);
 
+  // May return an error status, when the response table resolution doesn't
+  // match mgrid_params or coil_currents.size()
   absl::Status LoadFields(
       const makegrid::MakegridParameters& mgrid_params,
       const makegrid::MagneticFieldResponseTable& magnetic_response_table,
-      const std::vector<double>& coilCurrents);
+      const std::vector<double>& coil_currents);
 
   void SetFixedMagneticField(const std::vector<double>& fixed_br,
                              const std::vector<double>& fixed_bp,
