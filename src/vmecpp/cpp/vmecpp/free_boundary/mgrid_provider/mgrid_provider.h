@@ -17,8 +17,8 @@ class MGridProvider {
  public:
   MGridProvider();
 
-  int LoadFile(const std::filesystem::path& filename,
-               const std::vector<double>& coilCurrents);
+  absl::Status LoadFile(const std::filesystem::path& filename,
+                        const std::vector<double>& coilCurrents);
 
   absl::Status LoadFields(
       const makegrid::MakegridParameters& mgrid_params,
