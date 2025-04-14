@@ -32,5 +32,7 @@ jobs:
           conda activate vmecpp
           conda install --yes --quiet pytest
           # exclude test that requires VMEC2000 to be installed:
-          # it's not available as a conda package
-          python -m pytest -k 'not test_ensure_vmec2000_input_from_vmecpp_input' tests/
+          # it's not available as a conda package, and skip test
+          # that requires mgrid file from git-lfs
+          # (LFS not available in this container image)
+          python -m pytest -k 'not test_ensure_vmec2000_input_from_vmecpp_input and not test_save_to_netcdf' tests/
