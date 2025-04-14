@@ -21,9 +21,8 @@ class MGridProvider {
                         const Eigen::VectorXd& coil_currents);
 
   // May return an error status, when the response table resolution doesn't
-  // match mgrid_params or coil_currents.size()
+  // match coil_currents.size()
   absl::Status LoadFields(
-      const makegrid::MakegridParameters& mgrid_params,
       const makegrid::MagneticFieldResponseTable& magnetic_response_table,
       const Eigen::VectorXd& coil_currents);
 
