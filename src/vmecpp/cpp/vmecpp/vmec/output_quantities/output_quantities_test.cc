@@ -65,7 +65,10 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
       VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
 
-  Vmec vmec(*vmec_indata);
+  absl::StatusOr<Vmec> maybe_vmec{Vmec::FromIndata(*vmec_indata)};
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = *maybe_vmec;
+
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 

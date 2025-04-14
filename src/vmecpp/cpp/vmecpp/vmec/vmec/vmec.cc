@@ -108,7 +108,12 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, bool verbose) {
-  Vmec v = Vmec(indata, max_threads, verbose);
+  absl::StatusOr<Vmec> maybe_vmec =
+      Vmec::FromIndata(indata, nullptr, max_threads, verbose);
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
+  }
+  Vmec& v = *maybe_vmec;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -126,11 +131,12 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, bool verbose) {
-  Vmec v(indata, max_threads, verbose);
-  absl::Status mgrid_status = v.LoadMGrid(magnetic_response_table);
-  if (!mgrid_status.ok()) {
-    return mgrid_status;
+  absl::StatusOr<Vmec> maybe_vmec =
+      Vmec::FromIndata(indata, &magnetic_response_table, max_threads, verbose);
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
   }
+  Vmec& v = *maybe_vmec;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -145,6 +151,31 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
 
 namespace vmecpp {
 
+absl::StatusOr<Vmec> Vmec::FromIndata(
+    const VmecINDATA& indata,
+    const makegrid::MagneticFieldResponseTable* magnetic_response_table,
+    std::optional<int> max_threads, bool verbose) {
+  Vmec v(indata, max_threads, verbose);
+
+  // This part of Vmec initialization requires Status handling, and is therefore
+  // in this factory method instead of the constructor.
+  if (indata.lfreeb) {
+    absl::Status s{};
+    if (magnetic_response_table == nullptr) {
+      s = v.mgrid_.LoadFile(indata.mgrid_file, indata.extcur);
+    } else {
+      s = v.mgrid_.LoadFields(magnetic_response_table->parameters,
+                              *magnetic_response_table, indata.extcur);
+    }
+    if (!s.ok()) {
+      return s;
+    }
+  }
+
+  return v;
+}
+
+// initialize based on input file contents
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
            bool verbose)
     : indata_(indata),
