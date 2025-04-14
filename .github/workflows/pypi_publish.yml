@@ -98,11 +98,8 @@ jobs:
               exit 1
               ;;
           esac
-
-          python3 -m venv venv
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           lfs: true
       - name: Download wheels artifact
         uses: actions/download-artifact@v4
@@ -118,6 +115,7 @@ jobs:
         run: |
           ls wheelhouse/
 
+          python3 -m venv venv
           . venv/bin/activate
           wheel_filename=$(find wheelhouse/$(python --version | awk '{print $2}' | awk -F. '{printf "vmecpp*-cp%s%s-*manylinux*.whl", $1, $2}'))
           echo "Found matching wheel: $wheel_filename"
