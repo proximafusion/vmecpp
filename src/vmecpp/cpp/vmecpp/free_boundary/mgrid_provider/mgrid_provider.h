@@ -5,7 +5,7 @@
 #ifndef VMECPP_FREE_BOUNDARY_MGRID_PROVIDER_MGRID_PROVIDER_H_
 #define VMECPP_FREE_BOUNDARY_MGRID_PROVIDER_MGRID_PROVIDER_H_
 
-#include <string>
+#include <filesystem>
 #include <vector>
 
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -17,7 +17,7 @@ class MGridProvider {
  public:
   MGridProvider();
 
-  int LoadFile(const std::string& filename,
+  int LoadFile(const std::filesystem::path& filename,
                const std::vector<double>& coilCurrents);
 
   absl::Status LoadFields(

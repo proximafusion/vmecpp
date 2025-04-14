@@ -11,7 +11,6 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
-#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -52,7 +51,7 @@ MGridProvider::MGridProvider() {
 }
 
 // return 0 if mgrid could be loaded, 1 otherwise
-int MGridProvider::LoadFile(const std::string& filename,
+int MGridProvider::LoadFile(const std::filesystem::path& filename,
                             const std::vector<double>& coilCurrents) {
   {  // try to open file in order to check if it is accessible
     std::ifstream fp(filename);
