@@ -167,11 +167,8 @@ Vmec::Vmec(const VmecINDATA& indata,
 
   if (fc_.lfreeb) {
     if (magnetic_response_table == nullptr) {
-      int loadStatus = mgrid_.LoadFile(indata_.mgrid_file, indata_.extcur);
-      if (loadStatus != 0) {
-        LOG(FATAL) << "Could not load mgrid file '" << indata_.mgrid_file
-                   << "'. Now aborting.";
-      }
+      absl::Status s = mgrid_.LoadFile(indata_.mgrid_file, indata_.extcur);
+      CHECK_OK(s) << "Could not load mgrid file '" << indata_.mgrid_file << "'";
     } else {
       absl::Status s =
           mgrid_.LoadFields(magnetic_response_table->parameters,

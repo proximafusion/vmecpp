@@ -50,21 +50,31 @@ MGridProvider::MGridProvider() {
   mgrid_mode = "";
 }
 
-// return 0 if mgrid could be loaded, 1 otherwise
-int MGridProvider::LoadFile(const std::filesystem::path& filename,
-                            const std::vector<double>& coilCurrents) {
+absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
+                                     const std::vector<double>& coil_currents) {
   {  // try to open file in order to check if it is accessible
+    if (!std::filesystem::exists(filename)) {
+      return absl::NotFoundError(
+          absl::StrFormat("Could not find '%s'.", filename.string()));
+    }
     std::ifstream fp(filename);
     if (!fp.is_open()) {
-      std::cout << "cannot open mgrid file '" << filename << "'\n";
-      return 1;
+      return absl::PermissionDeniedError(absl::StrFormat(
+          "Mgrid file '%s' exists, but could not be opened for reading.",
+          filename.string()));
     }
   }
 
   int ncid = 0;
-  // TODO(jons): improve error message
-  CHECK_EQ(nc_open(filename.c_str(), NC_NOWRITE, &ncid), NC_NOERR);
+  if (nc_open(filename.c_str(), NC_NOWRITE, &ncid) != NC_NOERR) {
+    return absl::InternalError(
+        absl::StrFormat("NetCDF couldn't open '%s', despite passing "
+                        "preconditions. The file may be corrupted.",
+                        filename.string()));
+  }
 
+  // TODO(jurasic) All of these should be handled with abseil status, but
+  // terminate on error with absl::CHECK instead.
   nfp = NetcdfReadInt(ncid, "nfp");
 
   numR = NetcdfReadInt(ncid, "ir");
@@ -80,9 +90,12 @@ int MGridProvider::LoadFile(const std::filesystem::path& filename,
   numPhi = NetcdfReadInt(ncid, "kp");
 
   nextcur = NetcdfReadInt(ncid, "nextcur");
-  CHECK_EQ(coilCurrents.size(), nextcur)
-      << "Number of currents does not match number of mgrid fields.";
-
+  if (coil_currents.size() != static_cast<std::size_t>(nextcur)) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Number of currents %d does not match number of mgrid "
+                        "coil fields nextcur=%d.",
+                        coil_currents.size(), nextcur));
+  }
   mgrid_mode = NetcdfReadString(ncid, "mgrid_mode");
 
   // Resize and make sure that the accumulation arrays are reset to zeros
@@ -116,30 +129,36 @@ int MGridProvider::LoadFile(const std::filesystem::path& filename,
               (index_phi * numZ + index_z) * numR + index_r;
 
           bR[linear_index] +=
-              b_r_contribution[index_phi][index_z][index_r] * coilCurrents[i];
+              b_r_contribution[index_phi][index_z][index_r] * coil_currents[i];
           bP[linear_index] +=
-              b_p_contribution[index_phi][index_z][index_r] * coilCurrents[i];
+              b_p_contribution[index_phi][index_z][index_r] * coil_currents[i];
           bZ[linear_index] +=
-              b_z_contribution[index_phi][index_z][index_r] * coilCurrents[i];
+              b_z_contribution[index_phi][index_z][index_r] * coil_currents[i];
         }  // index_r
       }  // index_z
     }  // index_phi
   }  // nextcur
 
-  CHECK_EQ(nc_close(ncid), NC_NOERR);
+  if (nc_close(ncid) != NC_NOERR) {
+    return absl::InternalError("Failed to close NetCDF file.");
+  }
 
   hasMgridLoaded = true;
   has_fixed_field_ = false;
 
-  return 0;
+  return absl::Status();
 }
 
 absl::Status MGridProvider::LoadFields(
     const makegrid::MakegridParameters& mgrid_params,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
-    const std::vector<double>& coilCurrents) {
-  CHECK_EQ(coilCurrents.size(), magnetic_response_table.b_p.size())
-      << "Number of currents does not match number of mgrid fields.";
+    const std::vector<double>& coil_currents) {
+  if (coil_currents.size() != magnetic_response_table.b_p.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Number of currents %d does not match number of coil fields in the "
+        "response table %d.",
+        coil_currents.size(), magnetic_response_table.b_p.size()));
+  }
 
   nfp = mgrid_params.number_of_field_periods;
 
@@ -155,7 +174,7 @@ absl::Status MGridProvider::LoadFields(
 
   numPhi = mgrid_params.number_of_phi_grid_points;
 
-  nextcur = static_cast<int>(coilCurrents.size());
+  nextcur = static_cast<int>(coil_currents.size());
 
   if (mgrid_params.normalize_by_currents) {
     mgrid_mode = "S";
@@ -173,11 +192,11 @@ absl::Status MGridProvider::LoadFields(
   for (int i = 0; i < nextcur; ++i) {
     for (int linear_index = 0; linear_index < num_grid_points; ++linear_index) {
       bR[linear_index] +=
-          magnetic_response_table.b_r[i][linear_index] * coilCurrents[i];
+          magnetic_response_table.b_r[i][linear_index] * coil_currents[i];
       bP[linear_index] +=
-          magnetic_response_table.b_p[i][linear_index] * coilCurrents[i];
+          magnetic_response_table.b_p[i][linear_index] * coil_currents[i];
       bZ[linear_index] +=
-          magnetic_response_table.b_z[i][linear_index] * coilCurrents[i];
+          magnetic_response_table.b_z[i][linear_index] * coil_currents[i];
     }  // linear_index
   }  // nextcur
 
