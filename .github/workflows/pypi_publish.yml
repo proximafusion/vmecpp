@@ -79,24 +79,19 @@ jobs:
     container: ${{ matrix.distro }}
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          lfs: true
-
       - name: Install Python (Distro-Specific)
         run: |
           case ${{ matrix.distro }} in
             ubuntu*|debian*)
               apt update
-              apt install -y python3-venv
+              apt install -y python3-venv git-lfs
               ;;
             fedora*)
               dnf -y update && dnf clean all
-              dnf -y install python-pip
+              dnf -y install python-pip git-lfs
               ;;
             archlinux*)
-              pacman -Sy --noconfirm python-pip
+              pacman -Sy --noconfirm python-pip git-lfs
               ;;
             *)
               echo "Unsupported distribution: ${{ matrix.distro }}"
@@ -105,7 +100,10 @@ jobs:
           esac
 
           python3 -m venv venv
-
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
       - name: Download wheels artifact
         uses: actions/download-artifact@v4
         with:
