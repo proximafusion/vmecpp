@@ -309,3 +309,20 @@ def test_vmec_input_validation():
             del vmec_input_dict_from_json[lasym_field]
 
     assert pywrapper_dict_from_json == vmec_input_dict_from_json
+
+
+# Regression test for PR #244
+@pytest.mark.parametrize(
+    ("mgrid_path", "expected_exception"),
+    [
+        ("cma.json", RuntimeError),
+        ("does_not_exist", RuntimeError),
+        #  ("wout_cma.nc", RuntimeError),  # This crashes because netcdf_io doesn't use absl::status yet
+    ],
+)
+def test_raise_invalid_mgrid(mgrid_path: str, expected_exception):
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_input.lfreeb = True
+    vmec_input.mgrid_file = str(TEST_DATA_DIR / mgrid_path)
+    with pytest.raises(expected_exception):
+        vmecpp.run(vmec_input, max_threads=1)

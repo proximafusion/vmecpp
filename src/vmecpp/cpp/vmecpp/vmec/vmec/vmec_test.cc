@@ -69,7 +69,10 @@ TEST(TestVmec, CheckErrorOnNonConvergence) {
   // allow only 1 iteration - not enough to let VMEC converge
   indata->niter_array[0] = 1;
 
-  Vmec vmec(*indata);
+  absl::StatusOr<Vmec> maybe_vmec{Vmec::FromIndata(*indata)};
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = *maybe_vmec;
+
   const absl::StatusOr<bool> status = vmec.run();
 
   CHECK(!status.ok());
@@ -92,7 +95,10 @@ TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
   // instruct VMEC++ to return its outputs, even if it did not converge
   indata->return_outputs_even_if_not_converged = true;
 
-  Vmec vmec(*indata);
+  absl::StatusOr<Vmec> maybe_vmec{Vmec::FromIndata(*indata)};
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = *maybe_vmec;
+
   const absl::StatusOr<bool> status = vmec.run();
 
   CHECK(status.ok());

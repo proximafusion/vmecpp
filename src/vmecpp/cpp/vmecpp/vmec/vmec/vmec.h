@@ -65,6 +65,12 @@ absl::StatusOr<OutputQuantities> run(
     std::optional<int> max_threads = std::nullopt, bool verbose = true);
 
 class Vmec {
+ private:
+  // Private constructor, only called from factory methods, and exception free.
+  // Allocates memory required for the equilibrium computation and initializes
+  // part of the flow-control logic.
+  Vmec(const VmecINDATA& indata, std::optional<int> max_threads, bool verbose);
+
  public:
   // sign of Jacobian between cylindrical and flux coordinates
   // This is called `signgs` in Fortran VMEC.
@@ -73,13 +79,11 @@ class Vmec {
   // scaling factor for blending between two different ways to compute B^zeta
   static constexpr double kPDamp = 0.05;
 
-  explicit Vmec(const VmecINDATA& indata,
-                std::optional<int> max_threads = std::nullopt,
-                bool verbose = true);
-
-  Vmec(const VmecINDATA& indata,
-       const makegrid::MagneticFieldResponseTable* magnetic_response_table,
-       std::optional<int> max_threads = std::nullopt, bool verbose = true);
+  static absl::StatusOr<Vmec> FromIndata(
+      const VmecINDATA& indata,
+      const makegrid::MagneticFieldResponseTable* magnetic_response_table =
+          nullptr,
+      std::optional<int> max_threads = std::nullopt, bool verbose = true);
 
   absl::StatusOr<bool> run(
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
