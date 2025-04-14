@@ -17,9 +17,8 @@ class MGridProvider {
  public:
   MGridProvider();
 
-  // TODO(jons): return an absl::Status, rename to LoadFile, fix casing
-  int loadFromMGrid(const std::string& filename,
-                    const std::vector<double>& coilCurrents);
+  int LoadFile(const std::string& filename,
+               const std::vector<double>& coilCurrents);
 
   absl::Status LoadFields(
       const makegrid::MakegridParameters& mgrid_params,
