@@ -605,14 +605,14 @@ class VmecWOut(pydantic.BaseModel):
         with netCDF4.Dataset(out_path, "w", format="NETCDF3_CLASSIC") as fnc:
             # scalar ints
             for varname in [
-                "ier_flag",
-                "niter",
                 "nfp",
                 "ns",
                 "mpol",
                 "ntor",
                 "mnmax",
                 "mnmax_nyq",
+                "niter",
+                "ier_flag",
                 "signgs",
                 "nextcur",
             ]:
@@ -627,6 +627,7 @@ class VmecWOut(pydantic.BaseModel):
             for varname in [
                 "wb",
                 "wp",
+                "gamma",
                 "rmax_surf",
                 "rmin_surf",
                 "zmax_surf",
@@ -644,26 +645,41 @@ class VmecWOut(pydantic.BaseModel):
                 "Aminor_p",
                 "Rmajor_p",
                 "volume_p",
+                "ftolv",
+                "fsql",
                 "fsqr",
                 "fsqz",
-                "fsql",
-                "ftolv",
-                "gamma",
             ]:
                 fnc.createVariable(varname, np.float64)
                 fnc[varname][:] = getattr(self, varname)
 
-            # create dimensions
-            fnc.createDimension("mn_mode", self.mnmax)
-            fnc.createDimension("radius", self.ns)
-            fnc.createDimension("n_tor", self.ntor + 1)  # Fortran quirk
-            fnc.createDimension("mn_mode_nyq", self.mnmax_nyq)
-            fnc.createDimension("preset", _PRESET_DIM)
-            fnc.createDimension("ndfmax", _NDF_MAX_DIM)
+            # create dimensions (in the same order as VMEC2000)
+            # For the input extension
+            fnc.createDimension("dim_00100", 100)
+            # dim_00200 = mgrid_file_max_string_length
+            fnc.createDimension("dim_00200", 200)
+            # dim_00020 = profile_strings_max_len
+            fnc.createDimension("dim_00020", 20)
             # dimension of extcur and curlabel is not written in fixed-boundary wout
             if self.lfreeb:
                 assert self.nextcur > 0
                 fnc.createDimension("ext_current", self.nextcur)
+            # and a single character for mgrid_mode
+            fnc.createDimension("dim_00001", 1)
+            fnc.createDimension("mn_mode", self.mnmax)
+            fnc.createDimension("mn_mode_nyq", self.mnmax_nyq)
+            fnc.createDimension("n_tor", self.ntor + 1)  # Fortran quirk
+            fnc.createDimension("preset", _PRESET_DIM)
+            fnc.createDimension("ndfmax", _NDF_MAX_DIM)
+            fnc.createDimension("radius", self.ns)
+
+            # Dimensions that are not in use yet
+            _TIME = 100
+            _MN_MAX_POT = 100  # TODO(jurasic) self.mnmaxpot
+            fnc.createDimension("time", _TIME)
+            fnc.createDimension("mn_mode_pot", _MN_MAX_POT)
+            fnc.createDimension("current_label", 30)
+            fnc.createDimension("dim_00006", 6)
 
             # radial profiles
             for varname in [
@@ -729,8 +745,8 @@ class VmecWOut(pydantic.BaseModel):
                 fnc[varname][:] = getattr(self, varname)[:]
 
             for varname in [
-                "bmnc",
                 "gmnc",
+                "bmnc",
                 "bsubumnc",
                 "bsubvmnc",
                 "bsubsmns",
@@ -765,12 +781,10 @@ class VmecWOut(pydantic.BaseModel):
             fnc["version_"][:] = self.version_
 
             # strings
-            # maximum length of the string, copied from wout_cma.nc
-            max_string_length = 20
-
             def create_string_variable(
-                varname: str, max_string_length: int, dimension_name: str
+                varname: str, dimension_name: str
             ) -> netCDF4.Variable:
+                max_string_length = fnc.dimensions[dimension_name].size
                 string_variable = fnc.createVariable(varname, "S1", (dimension_name,))
 
                 # Put the string in the format netCDF3 requires. Don't know what to say.
@@ -784,23 +798,11 @@ class VmecWOut(pydantic.BaseModel):
                 string_variable[:] = padded_value_as_netcdf3_compatible_chararray
                 return string_variable
 
-            fnc.createDimension("profile_strings_max_len", max_string_length)
             for varname in ["pcurr_type", "pmass_type", "piota_type"]:
-                create_string_variable(
-                    varname, max_string_length, "profile_strings_max_len"
-                )
+                create_string_variable(varname, "dim_00020")
 
-            # now mgrid_file
-            max_string_length = 200  # value copied from wout_cma.nc
-            fnc.createDimension("mgrid_file_max_string_length", max_string_length)
-            create_string_variable(
-                "mgrid_file", max_string_length, "mgrid_file_max_string_length"
-            )
-
-            # and a single character for mgrid_mode
-            max_string_length = 1  # value copied from wout_cma.nc
-            fnc.createDimension("mgrid_mode_length", max_string_length)
-            create_string_variable("mgrid_mode", max_string_length, "mgrid_mode_length")
+            create_string_variable("mgrid_file", "dim_00200")
+            create_string_variable("mgrid_mode", "dim_00001")
 
     @staticmethod
     def _from_cpp_wout(cpp_wout: _vmecpp.VmecppWOut) -> VmecWOut:
