@@ -52,8 +52,8 @@ MGridProvider::MGridProvider() {
 }
 
 // return 0 if mgrid could be loaded, 1 otherwise
-int MGridProvider::loadFromMGrid(const std::string& filename,
-                                 const std::vector<double>& coilCurrents) {
+int MGridProvider::LoadFile(const std::string& filename,
+                            const std::vector<double>& coilCurrents) {
   {  // try to open file in order to check if it is accessible
     std::ifstream fp(filename);
     if (!fp.is_open()) {
