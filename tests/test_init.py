@@ -309,3 +309,53 @@ def test_vmec_input_validation():
             del vmec_input_dict_from_json[lasym_field]
 
     assert pywrapper_dict_from_json == vmec_input_dict_from_json
+
+
+def test_aux_arrays_from_cpp_wout():
+    """Test that auxiliary arrays are correctly padded when empty, and padding doesn't
+    accidentally overwrite any values."""
+
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
+    cpp_wout = vmec_output.wout._to_cpp_wout()
+
+    def assert_aux_defaults(wout: vmecpp.VmecWOut):
+        # Check padding values and length
+        assert len(wout.am_aux_s) == vmecpp._NDF_MAX_DIM
+        assert len(wout.am_aux_f) == vmecpp._NDF_MAX_DIM
+        assert len(wout.ac_aux_s) == vmecpp._NDF_MAX_DIM
+        assert len(wout.ac_aux_f) == vmecpp._NDF_MAX_DIM
+        assert len(wout.ai_aux_s) == vmecpp._NDF_MAX_DIM
+        assert len(wout.ai_aux_f) == vmecpp._NDF_MAX_DIM
+
+        # Verify _aux_s arrays are padded with -1
+        np.testing.assert_allclose(wout.am_aux_s, -1.0)
+        np.testing.assert_allclose(wout.ac_aux_s, -1.0)
+        np.testing.assert_allclose(wout.ai_aux_s, -1.0)
+
+        # Verify _aux_f arrays are padded with 0
+        np.testing.assert_allclose(wout.am_aux_f, 0.0)
+        np.testing.assert_allclose(wout.ac_aux_f, 0.0)
+        np.testing.assert_allclose(wout.ai_aux_f, 0.0)
+
+    assert_aux_defaults(vmecpp.VmecWOut._from_cpp_wout(cpp_wout))
+
+    # Set all aux arrays to empty
+    cpp_wout.am_aux_s = np.array([])
+    cpp_wout.am_aux_f = np.array([])
+    cpp_wout.ac_aux_s = np.array([])
+    cpp_wout.ac_aux_f = np.array([])
+    cpp_wout.ai_aux_s = np.array([])
+    cpp_wout.ai_aux_f = np.array([])
+
+    # Check that defaults work for empty aux arrays
+    assert_aux_defaults(vmecpp.VmecWOut._from_cpp_wout(cpp_wout))
+
+    # The defaults don't overwrite the original values, only pad them
+    cpp_wout.am_aux_s = np.array([2.0, 3.0])
+    cpp_wout.am_aux_f = np.array([2.0, 3.0])
+    wout = vmecpp.VmecWOut._from_cpp_wout(cpp_wout)
+    with pytest.raises(AssertionError):
+        assert_aux_defaults(wout)
+    np.testing.assert_almost_equal(wout.am_aux_s[:2], np.array([2.0, 3.0]))
+    np.testing.assert_almost_equal(wout.am_aux_f[:2], np.array([2.0, 3.0]))
