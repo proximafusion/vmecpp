@@ -719,7 +719,7 @@ class VmecWOut(pydantic.BaseModel):
                 fnc.createVariable(varname, np.float64, ("preset",))
                 unpadded_array = getattr(self, varname)[:]
                 fnc[varname][: len(unpadded_array)] = unpadded_array
-                for aux_suffix in ["_aux_f", "_aux_s"]:
+                for aux_suffix, default_value in [("_aux_f", 0.0), ("_aux_s", -1.0)]:
                     auxname = varname + aux_suffix
                     fnc.createVariable(auxname, np.float64, ("ndfmax",))
                     # am_aux_f in C++ return a length 1 array with default values in
@@ -729,7 +729,8 @@ class VmecWOut(pydantic.BaseModel):
                     fnc[auxname][:] = np.pad(
                         unpadded_array,
                         (0, _NDF_MAX_DIM - len(unpadded_array)),
-                        mode="wrap",
+                        mode="constant",
+                        constant_values=default_value,
                     )
 
             for varname in ["raxis_cc", "zaxis_cs"]:
@@ -924,22 +925,40 @@ class VmecWOut(pydantic.BaseModel):
         attrs["ac"] = np.pad(cpp_wout.ac, (0, _PRESET_DIM - len(cpp_wout.ac)))
         attrs["ai"] = np.pad(cpp_wout.ai, (0, _PRESET_DIM - len(cpp_wout.ai)))
         attrs["am_aux_s"] = np.pad(
-            cpp_wout.am_aux_s, (0, _NDF_MAX_DIM - len(cpp_wout.am_aux_s)), "wrap"
+            cpp_wout.am_aux_s,
+            (0, _NDF_MAX_DIM - len(cpp_wout.am_aux_s)),
+            mode="constant",
+            constant_values=-1.0,
         )
         attrs["am_aux_f"] = np.pad(
-            cpp_wout.am_aux_f, (0, _NDF_MAX_DIM - len(cpp_wout.am_aux_f)), "wrap"
+            cpp_wout.am_aux_f,
+            (0, _NDF_MAX_DIM - len(cpp_wout.am_aux_f)),
+            mode="constant",
+            constant_values=0.0,
         )
         attrs["ac_aux_s"] = np.pad(
-            cpp_wout.ac_aux_s, (0, _NDF_MAX_DIM - len(cpp_wout.ac_aux_s)), "wrap"
+            cpp_wout.ac_aux_s,
+            (0, _NDF_MAX_DIM - len(cpp_wout.ac_aux_s)),
+            mode="constant",
+            constant_values=-1.0,
         )
         attrs["ac_aux_f"] = np.pad(
-            cpp_wout.ac_aux_f, (0, _NDF_MAX_DIM - len(cpp_wout.ac_aux_f)), "wrap"
+            cpp_wout.ac_aux_f,
+            (0, _NDF_MAX_DIM - len(cpp_wout.ac_aux_f)),
+            mode="constant",
+            constant_values=0.0,
         )
         attrs["ai_aux_s"] = np.pad(
-            cpp_wout.ai_aux_s, (0, _NDF_MAX_DIM - len(cpp_wout.ai_aux_s)), "wrap"
+            cpp_wout.ai_aux_s,
+            (0, _NDF_MAX_DIM - len(cpp_wout.ai_aux_s)),
+            mode="constant",
+            constant_values=-1.0,
         )
         attrs["ai_aux_f"] = np.pad(
-            cpp_wout.ai_aux_f, (0, _NDF_MAX_DIM - len(cpp_wout.ai_aux_f)), "wrap"
+            cpp_wout.ai_aux_f,
+            (0, _NDF_MAX_DIM - len(cpp_wout.ai_aux_f)),
+            mode="constant",
+            constant_values=0.0,
         )
 
         attrs["version_"] = float(cpp_wout.version)
