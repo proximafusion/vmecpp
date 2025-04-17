@@ -30,7 +30,7 @@ SerializableSparseCoefficientArray = typing.Annotated[
     pydantic.BeforeValidator(_util.sparse_to_dense_coefficients_implicit),
 ]
 
-MgridModeType = typing.Literal["R", "S", "", "\x00"]
+MgridModeType = typing.Literal["R", "S", ""]
 """[Scaled, Raw, Unset] Fortran VMEC may populate mgrid_mode with a null terminator."""
 
 
@@ -1109,8 +1109,13 @@ class VmecWOut(pydantic.BaseModel):
                     "mgrid_file",
                     "mgrid_mode",
                 ]:
+                    # Remove both zero-padding and whitespaces.
                     attrs[var_name] = (
-                        fnc[var_name][()].tobytes().decode("ascii").strip()
+                        fnc[var_name][()]
+                        .tobytes()
+                        .decode("ascii")
+                        .strip("\x00")
+                        .strip()
                     )
                 elif var_name in [
                     "bmnc",
