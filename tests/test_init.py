@@ -135,6 +135,11 @@ def test_vmecwout_io(cma_output):
 
     expected_dataset = netCDF4.Dataset(TEST_DATA_DIR / "wout_cma.nc", "r")
 
+    expected_variables = set(expected_dataset.variables.keys()) - set(
+        vmecpp.VmecWOut._MISSING_FORTRAN_VARIABLES
+    )
+    assert expected_variables == set(test_dataset.variables.keys())
+
     for varname, expected_value in expected_dataset.variables.items():
         if varname in vmecpp.VmecWOut._MISSING_FORTRAN_VARIABLES:
             continue
