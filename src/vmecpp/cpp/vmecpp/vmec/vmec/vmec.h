@@ -73,13 +73,20 @@ class Vmec {
   // scaling factor for blending between two different ways to compute B^zeta
   static constexpr double kPDamp = 0.05;
 
+  // VMEC++ constructor is only valid for fixed-boundary input files.
+  // Free-boundary runs will complete initialization by loading the mgrid
+  // contents when run is called, to have graceful error handling with absl.
   explicit Vmec(const VmecINDATA& indata,
                 std::optional<int> max_threads = std::nullopt,
                 bool verbose = true);
 
-  Vmec(const VmecINDATA& indata,
-       const makegrid::MagneticFieldResponseTable* magnetic_response_table,
-       std::optional<int> max_threads = std::nullopt, bool verbose = true);
+  // Mgrid loading for free-boundary VMEC++ from a precomputed response-table is
+  // done outside of the Vmec constructor for improved exception handling
+  absl::Status LoadMGrid(
+      const makegrid::MagneticFieldResponseTable& magnetic_response_table);
+  // Mgrid loading for free-boundary VMEC++ from the indata_.mgrid_file path is
+  // done outside of the Vmec constructor for improved exception handling
+  absl::Status LoadMGrid();
 
   absl::StatusOr<bool> run(
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,

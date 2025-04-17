@@ -105,7 +105,7 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, bool verbose) {
-  Vmec v(indata, nullptr, max_threads, verbose);
+  Vmec v = Vmec(indata, max_threads, verbose);
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -123,7 +123,11 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, bool verbose) {
-  Vmec v(indata, &magnetic_response_table, max_threads, verbose);
+  Vmec v(indata, max_threads, verbose);
+  absl::Status mgrid_status = v.LoadMGrid(magnetic_response_table);
+  if (!mgrid_status.ok()) {
+    return mgrid_status;
+  }
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -140,12 +144,6 @@ namespace vmecpp {
 
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
            bool verbose)
-    : Vmec(indata, nullptr, max_threads, verbose) {}
-
-// initialize based on input file contents
-Vmec::Vmec(const VmecINDATA& indata,
-           const makegrid::MagneticFieldResponseTable* magnetic_response_table,
-           std::optional<int> max_threads, bool verbose)
     : indata_(indata),
       s_(indata_),
       t_(&s_),
@@ -166,16 +164,6 @@ Vmec::Vmec(const VmecINDATA& indata,
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
 
   if (fc_.lfreeb) {
-    if (magnetic_response_table == nullptr) {
-      absl::Status s = mgrid_.LoadFile(indata_.mgrid_file, indata_.extcur);
-      CHECK_OK(s) << "Could not load mgrid file '" << indata_.mgrid_file << "'";
-    } else {
-      absl::Status s =
-          mgrid_.LoadFields(magnetic_response_table->parameters,
-                            *magnetic_response_table, indata_.extcur);
-      CHECK_OK(s);
-    }
-
     // tangential Fourier resolution
     // 0 : ntor
     int nf = s_.ntor;
@@ -195,12 +183,41 @@ Vmec::Vmec(const VmecINDATA& indata,
   }
 }
 
+absl::Status Vmec::LoadMGrid(
+    const makegrid::MagneticFieldResponseTable& magnetic_response_table) {
+  if (!fc_.lfreeb) {
+    return absl::InvalidArgumentError(
+        "The MGridProvider is only required for free-boundary VMEC++ runs.");
+  }
+
+  return mgrid_.LoadFields(magnetic_response_table.parameters,
+                           magnetic_response_table, indata_.extcur);
+}
+
+absl::Status Vmec::LoadMGrid() {
+  if (!fc_.lfreeb) {
+    return absl::InvalidArgumentError(
+        "The MGridProvider is only required for free-boundary VMEC++ runs.");
+  }
+
+  return mgrid_.LoadFile(indata_.mgrid_file, indata_.extcur);
+}
+
 // main worker method; equivalent of vmec.f90
 // checked visually to comply with vmec.f90
 absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                const int iterations_before_checkpointing,
                                const int maximum_multi_grid_step,
                                std::optional<HotRestartState> initial_state) {
+  if (indata_.lfreeb && !mgrid_.IsLoaded()) {
+    // if we have a free-boundary VMEC run, we may need to load the
+    // magnetic field response table
+    absl::Status status = LoadMGrid();
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
   auto is_indata_consistent =
       IsConsistent(indata_, /*enable_info_messages=*/verbose_);
   if (!is_indata_consistent.ok()) {

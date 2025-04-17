@@ -1258,8 +1258,6 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // nothing to check here: lfreeb can be true or false and both are valid...
   if (vmec_indata.lfreeb) {
     // mgrid_file
-    // TODO(jons): check that mgrid file exists and can be opened
-    // TODO(jons): try to read it ? only metadata ?
     // TODO(jons): if mgrid read, check for consistent nzeta
 
     // extcur
