@@ -66,7 +66,7 @@ sdist.exclude = [
     "tests/",
     "examples/",
 ]
-cmake.verbose = true
+build.verbose = true
 # Caching directory for wheel builds
 build-dir = "build"
 # When vmecpp is installed in editable mode
