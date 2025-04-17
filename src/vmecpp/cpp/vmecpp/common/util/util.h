@@ -56,7 +56,7 @@ inline vmecpp::RowMatrixXd ToEigenMatrix(const std::vector<double> &v,
 inline vmecpp::RowMatrixXd ToEigenMatrix(
     const std::vector<std::vector<double>> &v) {
   const std::size_t outer_size = v.size();
-  CHECK_GT(outer_size, 0);
+  CHECK_GT(outer_size, 0u);
   const std::size_t inner_size = v[0].size();
   for (const auto &row : v) {
     CHECK_EQ(row.size(), inner_size);

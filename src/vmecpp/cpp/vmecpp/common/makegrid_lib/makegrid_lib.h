@@ -11,10 +11,14 @@
 
 #include "absl/status/statusor.h"
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
+#include "vmecpp/common/util/util.h"
 
 namespace makegrid {
 
 using magnetics::MagneticConfiguration;
+
+using vmecpp::RowMatrixXd;
+using RowMatrix3Xd = Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>;
 
 struct MakegridParameters {
   // If true, normalize the magnetic field to the coil currents and number of
@@ -60,17 +64,17 @@ struct MagneticFieldResponseTable {
   // cylindrical R components of magnetic field
   // [number_of_serial_circuits][number_of_phi_grid_points *
   // number_of_z_grid_points * number_of_r_grid_points]
-  std::vector<std::vector<double>> b_r;
+  RowMatrixXd b_r;
 
   // cylindrical phi components of magnetic field
   // [number_of_serial_circuits][number_of_phi_grid_points *
   // number_of_z_grid_points * number_of_r_grid_points]
-  std::vector<std::vector<double>> b_p;
+  RowMatrixXd b_p;
 
   // cylindrical Z components of magnetic field
   // [number_of_serial_circuits][number_of_phi_grid_points *
   // number_of_z_grid_points * number_of_r_grid_points]
-  std::vector<std::vector<double>> b_z;
+  RowMatrixXd b_z;
 };  // MagneticFieldResponseTable
 
 struct MakegridCachedVectorPotential {
@@ -80,17 +84,17 @@ struct MakegridCachedVectorPotential {
   // cylindrical R components of vector potential
   // [number_of_serial_circuits][number_of_phi_grid_points *
   // number_of_z_grid_points * number_of_r_grid_points]
-  std::vector<std::vector<double>> a_r;
+  RowMatrixXd a_r;
 
   // cylindrical phi components of vector potential
   // [number_of_serial_circuits][number_of_phi_grid_points *
   // number_of_z_grid_points * number_of_r_grid_points]
-  std::vector<std::vector<double>> a_p;
+  RowMatrixXd a_p;
 
   // cylindrical Z components of vector potential
   // [number_of_serial_circuits][number_of_phi_grid_points *
   // number_of_z_grid_points * number_of_r_grid_points]
-  std::vector<std::vector<double>> a_z;
+  RowMatrixXd a_z;
 };  // MakegridCachedVectorPotential
 
 // Check if the parameters in given MakegridParameters are valid.
@@ -113,7 +117,7 @@ absl::StatusOr<MakegridParameters> ImportMakegridParametersFromFile(
 //   * number_of_phi_grid_points (slowest)
 //   * number_of_z_grid_points
 //   * number_of_r_grid_points (fastest)
-absl::StatusOr<std::vector<std::vector<double>>> MakeCylindricalGrid(
+absl::StatusOr<RowMatrix3Xd> MakeCylindricalGrid(
     const MakegridParameters& makegrid_parameters);
 
 // Compute the (normalized) magnetic field components on the given grid

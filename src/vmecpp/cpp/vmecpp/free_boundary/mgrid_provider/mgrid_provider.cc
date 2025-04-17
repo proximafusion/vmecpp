@@ -153,11 +153,12 @@ absl::Status MGridProvider::LoadFields(
     const makegrid::MakegridParameters& mgrid_params,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     const std::vector<double>& coil_currents) {
-  if (coil_currents.size() != magnetic_response_table.b_p.size()) {
+  if (coil_currents.size() !=
+      static_cast<std::size_t>((magnetic_response_table.b_p.rows()))) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Number of currents %d does not match number of coil fields in the "
         "response table %d.",
-        coil_currents.size(), magnetic_response_table.b_p.size()));
+        coil_currents.size(), magnetic_response_table.b_p.rows()));
   }
 
   nfp = mgrid_params.number_of_field_periods;
@@ -192,11 +193,11 @@ absl::Status MGridProvider::LoadFields(
   for (int i = 0; i < nextcur; ++i) {
     for (int linear_index = 0; linear_index < num_grid_points; ++linear_index) {
       bR[linear_index] +=
-          magnetic_response_table.b_r[i][linear_index] * coil_currents[i];
+          magnetic_response_table.b_r(i, linear_index) * coil_currents[i];
       bP[linear_index] +=
-          magnetic_response_table.b_p[i][linear_index] * coil_currents[i];
+          magnetic_response_table.b_p(i, linear_index) * coil_currents[i];
       bZ[linear_index] +=
-          magnetic_response_table.b_z[i][linear_index] * coil_currents[i];
+          magnetic_response_table.b_z(i, linear_index) * coil_currents[i];
     }  // linear_index
   }  // nextcur
 

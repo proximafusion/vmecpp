@@ -18,7 +18,7 @@
 #include "util/json_io/json_io.h"
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 #include "vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h"
-
+#include "vmecpp/common/util/util.h"
 namespace makegrid {
 
 using nlohmann::json;
@@ -279,7 +279,7 @@ absl::StatusOr<MakegridParameters> ImportMakegridParametersFromFile(
   return ImportMakegridParametersFromJson(makegrid_params_json);
 }  // ImportMakegridParametersFromFile
 
-absl::StatusOr<std::vector<std::vector<double>>> MakeCylindricalGrid(
+absl::StatusOr<RowMatrix3Xd> MakeCylindricalGrid(
     const MakegridParameters& makegrid_parameters) {
   absl::Status makegrid_parameters_status =
       IsValidMakegridParameters(makegrid_parameters);
@@ -306,16 +306,19 @@ absl::StatusOr<std::vector<std::vector<double>>> MakeCylindricalGrid(
 
   int num_phi_effective = num_phi;
   if (makegrid_parameters.assume_stellarator_symmetry) {
-    CHECK_EQ(num_phi % 2, 0)
-        << "number of toroidal grid points has to be even for being able to "
-           "make use to stellarator symmetry in makegrid";
+    if (num_phi % 2 != 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "number of toroidal grid points has to be even for being able to "
+          "make use to stellarator symmetry in makegrid, but was num_phi=",
+          num_phi));
+    }
     num_phi_effective = num_phi / 2 + 1;
   }
 
   const int total_number_of_grid_points = num_phi_effective * num_z * num_r;
 
-  std::vector<std::vector<double>> cylindrical_grid(
-      total_number_of_grid_points);
+  RowMatrix3Xd cylindrical_grid{
+      RowMatrix3Xd::Zero(3, total_number_of_grid_points)};
 
   for (int phi_index = 0; phi_index < num_phi_effective; ++phi_index) {
     const double phi = phi_index * delta_phi;
@@ -331,7 +334,10 @@ absl::StatusOr<std::vector<std::vector<double>>> MakeCylindricalGrid(
 
         const int linear_index =
             (phi_index * num_z + z_index) * num_r + r_index;
-        cylindrical_grid[linear_index] = {x, y, z};
+        // TODO(jurasic) bad loop order
+        cylindrical_grid(0, linear_index) = x;
+        cylindrical_grid(1, linear_index) = y;
+        cylindrical_grid(2, linear_index) = z;
       }  // r_index
     }  // z_index
   }  // phi_index
@@ -339,22 +345,86 @@ absl::StatusOr<std::vector<std::vector<double>>> MakeCylindricalGrid(
   return cylindrical_grid;
 }  // MakeCylindricalGrid
 
+// Convert the cartesian magnetic field response to cylindrical coordinates
+// using the precomputed sin and cos terms
+template <typename Derived3>
+void CartesianToCylindricalField(
+    const Eigen::VectorXd& cos_phi, const Eigen::VectorXd& sin_phi,
+    const Eigen::DenseBase<Derived3>& magnetic_field, int num_z, int num_r,
+    int number_of_evaluation_points, Eigen::Ref<Eigen::RowVectorXd> m_b_r,
+    Eigen::Ref<Eigen::RowVectorXd> m_b_p,
+    Eigen::Ref<Eigen::RowVectorXd> m_b_z) {
+  const Eigen::Index num_phi = cos_phi.size();
+  const Eigen::Index total_number_of_grid_points = m_b_r.size();
+  // Sanity checks for dimensions
+  CHECK_EQ(cos_phi.size(), sin_phi.size());
+  CHECK_EQ(m_b_p.size(), m_b_r.size());
+  CHECK_EQ(m_b_z.size(), m_b_r.size());
+  CHECK_EQ(num_phi * num_r * num_z, total_number_of_grid_points);
+  // May be less than total_number_of_grid_points due to symmetry
+  CHECK_LE(number_of_evaluation_points, total_number_of_grid_points);
+
+// ABSCAB computes the Cartesian components of the magnetic field,
+// so we need to convert the x and y componets into r and phi
+// (cylindrical) components for comparison against the cylindrical
+// components in the mgrid file.
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif  // _OPENMP
+  for (Eigen::Index linear_index = 0;
+       linear_index < number_of_evaluation_points; ++linear_index) {
+    const double b_x = magnetic_field(0, linear_index);
+    const double b_y = magnetic_field(1, linear_index);
+
+    const Eigen::Index index_phi = linear_index / (num_z * num_r);
+    const double b_r = b_x * cos_phi[index_phi] + b_y * sin_phi[index_phi];
+    const double b_p = b_y * cos_phi[index_phi] - b_x * sin_phi[index_phi];
+
+    m_b_r[linear_index] = b_r;
+    m_b_p[linear_index] = b_p;
+  }  // linear_index
+  //
+  m_b_z.head(number_of_evaluation_points) = magnetic_field.row(2);
+
+  // mirror into other stellarator-symmetric part of grid
+  // if making use of stellarator symmetry
+  if (number_of_evaluation_points < total_number_of_grid_points) {
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif  // _OPENMP
+    for (int linear_index = number_of_evaluation_points;
+         linear_index < total_number_of_grid_points; ++linear_index) {
+      const int idx_phi = linear_index / (num_z * num_r);
+      const int idx_z_r = linear_index % (num_z * num_r);
+      const int idx_z = idx_z_r / num_r;
+      const int idx_r = idx_z_r % num_r;
+
+      const int idx_phi_reversed = num_phi - idx_phi;
+      const int idx_z_reversed = num_z - 1 - idx_z;
+
+      const int linear_index_reversed =
+          (idx_phi_reversed * num_z + idx_z_reversed) * num_r + idx_r;
+
+      m_b_r[linear_index] = -m_b_r[linear_index_reversed];
+      m_b_p[linear_index] = m_b_p[linear_index_reversed];
+      m_b_z[linear_index] = m_b_z[linear_index_reversed];
+    }
+  }
+}
+
 absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     const MakegridParameters& makegrid_parameters,
     const MagneticConfiguration& magnetic_configuration) {
-  absl::StatusOr<std::vector<std::vector<double>>> maybe_cylindrical_grid =
+  absl::StatusOr<RowMatrix3Xd> maybe_cylindrical_grid =
       MakeCylindricalGrid(makegrid_parameters);
   if (!maybe_cylindrical_grid.ok()) {
     return maybe_cylindrical_grid.status();
   }
-  const std::vector<std::vector<double>>& cylindrical_grid =
-      *maybe_cylindrical_grid;
-
   // `MakeCylindricalGrid` only computes the grid points for which to actually
   // evaluate the magnetic field. If stellarator symmetry is activated, this
   // might be less grid points that what gets stored in the mgrid file.
   const int number_of_evaluation_points =
-      static_cast<int>(cylindrical_grid.size());
+      static_cast<int>(maybe_cylindrical_grid.value().cols());
 
   // shorthand variables for grid dimensions
   const int num_field_periods = makegrid_parameters.number_of_field_periods;
@@ -366,13 +436,13 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
   const int total_number_of_grid_points = num_phi * num_z * num_r;
 
   // precompute toroidal trigonometry tables
-  std::vector<double> cos_phi(num_phi);
-  std::vector<double> sin_phi(num_phi);
+  Eigen::VectorXd cos_phi{Eigen::VectorXd::Zero(num_phi)};
+  Eigen::VectorXd sin_phi{Eigen::VectorXd::Zero(num_phi)};
   const double delta_phi = 2.0 * M_PI / (num_field_periods * num_phi);
   for (int index_phi = 0; index_phi < num_phi; ++index_phi) {
     const double phi = index_phi * delta_phi;
-    cos_phi[index_phi] = std::cos(phi);
-    sin_phi[index_phi] = std::sin(phi);
+    cos_phi(index_phi) = std::cos(phi);
+    sin_phi(index_phi) = std::sin(phi);
   }
 
   // Make a backup of the full vector of original circuit currents,
@@ -392,15 +462,12 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
   response_table_b.parameters = makegrid_parameters;
 
   // fully allocate result tables
-  response_table_b.b_r.resize(number_of_serial_circuits);
-  response_table_b.b_p.resize(number_of_serial_circuits);
-  response_table_b.b_z.resize(number_of_serial_circuits);
-  for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
-       ++circuit_index) {
-    response_table_b.b_r[circuit_index].resize(total_number_of_grid_points);
-    response_table_b.b_p[circuit_index].resize(total_number_of_grid_points);
-    response_table_b.b_z[circuit_index].resize(total_number_of_grid_points);
-  }  // circuit_index
+  response_table_b.b_r.resize(number_of_serial_circuits,
+                              total_number_of_grid_points);
+  response_table_b.b_p.resize(number_of_serial_circuits,
+                              total_number_of_grid_points);
+  response_table_b.b_z.resize(number_of_serial_circuits,
+                              total_number_of_grid_points);
 
   std::vector<absl::Status> status(number_of_serial_circuits);
 
@@ -430,11 +497,25 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
       continue;
     }
 
-    std::vector<std::vector<double>> magnetic_field(
+    // Evaluation result B (n, 3) in cartesian coordinates
+    // TODO(jurasic) Remove after Eigen refactor
+    std::vector<std::vector<double>> magnetic_field_stl(
         number_of_evaluation_points);
     for (int i = 0; i < number_of_evaluation_points; ++i) {
-      magnetic_field[i].resize(3, 0.0);
+      magnetic_field_stl[i].resize(3, 0.0);
     }
+
+    // TODO(jurasic) Remove after Eigen refactor
+    std::vector<std::vector<double>> cylindrical_grid_stl{
+        static_cast<std::size_t>(maybe_cylindrical_grid.value().cols())};
+    CHECK_EQ(number_of_evaluation_points, cylindrical_grid_stl.size());
+    for (int i = 0; i < number_of_evaluation_points; ++i) {
+      cylindrical_grid_stl[i].resize(3);
+      for (int j = 0; j < 3; ++j) {
+        cylindrical_grid_stl[i][j] = maybe_cylindrical_grid.value()(j, i);
+      }
+    }
+    CHECK_EQ(magnetic_field_stl.size(), cylindrical_grid_stl.size());
 
     // We parallelize over linear index of evaluation locations, since that
     // allows us to use more CPUs and parallelize also for configurations with
@@ -443,62 +524,20 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     // independent circuits but few evaluation locations. This is done inside of
     // ABSCAB, which is used within this call to `MagneticField`.
     absl::Status magnetic_field_status =
-        MagneticField(m_magnetic_configuration, cylindrical_grid,
-                      /*m_magnetic_field=*/magnetic_field);
+        MagneticField(m_magnetic_configuration, cylindrical_grid_stl,
+                      /*m_magnetic_field=*/magnetic_field_stl);
     if (!magnetic_field_status.ok()) {
       status[circuit_index] = magnetic_field_status;
       continue;
     }
-
-    // ABSCAB computes the Cartesian components of the magnetic field,
-    // so we need to convert the x and y componets into r and phi
-    // (cylindrical) components for comparison against the cylindrical
-    // components in the mgrid file.
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif  // _OPENMP
-    for (int linear_index = 0; linear_index < number_of_evaluation_points;
-         ++linear_index) {
-      const double b_x = magnetic_field[linear_index][0];
-      const double b_y = magnetic_field[linear_index][1];
-      const double b_z = magnetic_field[linear_index][2];
-
-      const size_t index_phi = linear_index / (num_z * num_r);
-      const double b_r = b_x * cos_phi[index_phi] + b_y * sin_phi[index_phi];
-      const double b_p = b_y * cos_phi[index_phi] - b_x * sin_phi[index_phi];
-
-      response_table_b.b_r[circuit_index][linear_index] = b_r;
-      response_table_b.b_p[circuit_index][linear_index] = b_p;
-      response_table_b.b_z[circuit_index][linear_index] = b_z;
-    }  // linear_index
-
-    // mirror into other stellarator-symmetric part of grid
-    // if making use of stellarator symmetry
-    if (makegrid_parameters.assume_stellarator_symmetry) {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif  // _OPENMP
-      for (int linear_index = number_of_evaluation_points;
-           linear_index < total_number_of_grid_points; ++linear_index) {
-        const int idx_phi = linear_index / (num_z * num_r);
-        const int idx_z_r = linear_index % (num_z * num_r);
-        const int idx_z = idx_z_r / num_r;
-        const int idx_r = idx_z_r % num_r;
-
-        const int idx_phi_reversed = num_phi - idx_phi;
-        const int idx_z_reversed = num_z - 1 - idx_z;
-
-        const int linear_index_reversed =
-            (idx_phi_reversed * num_z + idx_z_reversed) * num_r + idx_r;
-
-        response_table_b.b_r[circuit_index][linear_index] =
-            -response_table_b.b_r[circuit_index][linear_index_reversed];
-        response_table_b.b_p[circuit_index][linear_index] =
-            response_table_b.b_p[circuit_index][linear_index_reversed];
-        response_table_b.b_z[circuit_index][linear_index] =
-            response_table_b.b_z[circuit_index][linear_index_reversed];
-      }
-    }
+    RowMatrix3Xd magnetic_field =
+        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
+    magnetic_field = vmecpp::ToEigenMatrix(magnetic_field_stl).transpose();
+    CartesianToCylindricalField(cos_phi, sin_phi, magnetic_field, num_z, num_r,
+                                number_of_evaluation_points,
+                                response_table_b.b_r.row(circuit_index),
+                                response_table_b.b_p.row(circuit_index),
+                                response_table_b.b_z.row(circuit_index));
 
     LOG(INFO) << absl::StrFormat("B %2d/%2d: done", circuit_index + 1,
                                  number_of_serial_circuits);
@@ -517,19 +556,17 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
 absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     const MakegridParameters& makegrid_parameters,
     const MagneticConfiguration& magnetic_configuration) {
-  absl::StatusOr<std::vector<std::vector<double>>> maybe_cylindrical_grid =
+  absl::StatusOr<RowMatrix3Xd> maybe_cylindrical_grid =
       MakeCylindricalGrid(makegrid_parameters);
   if (!maybe_cylindrical_grid.ok()) {
     return maybe_cylindrical_grid.status();
   }
-  const std::vector<std::vector<double>>& cylindrical_grid =
-      *maybe_cylindrical_grid;
 
   // `MakeCylindricalGrid` only computes the grid points for which to actually
   // evaluate the magnetic field. If stellarator symmetry is activated, this
   // might be less grid points that what gets stored in the mgrid file.
   const int number_of_evaluation_points =
-      static_cast<int>(cylindrical_grid.size());
+      static_cast<int>(maybe_cylindrical_grid.value().cols());
 
   // shorthand variables for grid dimensions
   const int num_field_periods = makegrid_parameters.number_of_field_periods;
@@ -567,15 +604,12 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
   response_table_a.parameters = makegrid_parameters;
 
   // fully allocate result tables
-  response_table_a.a_r.resize(number_of_serial_circuits);
-  response_table_a.a_p.resize(number_of_serial_circuits);
-  response_table_a.a_z.resize(number_of_serial_circuits);
-  for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
-       ++circuit_index) {
-    response_table_a.a_r[circuit_index].resize(total_number_of_grid_points);
-    response_table_a.a_p[circuit_index].resize(total_number_of_grid_points);
-    response_table_a.a_z[circuit_index].resize(total_number_of_grid_points);
-  }  // circuit_index
+  response_table_a.a_r.resize(number_of_serial_circuits,
+                              total_number_of_grid_points);
+  response_table_a.a_p.resize(number_of_serial_circuits,
+                              total_number_of_grid_points);
+  response_table_a.a_z.resize(number_of_serial_circuits,
+                              total_number_of_grid_points);
 
   std::vector<absl::Status> status(number_of_serial_circuits);
 
@@ -605,10 +639,21 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
       continue;
     }
 
-    std::vector<std::vector<double>> vector_potential(
+    // TODO(jurasic) Remove after Eigen refactor
+    std::vector<std::vector<double>> vector_potential_stl(
         number_of_evaluation_points);
     for (int i = 0; i < number_of_evaluation_points; ++i) {
-      vector_potential[i].resize(3, 0.0);
+      vector_potential_stl[i].resize(3, 0.0);
+    }
+
+    // TODO(jurasic) Remove after Eigen refactor
+    std::vector<std::vector<double>> cylindrical_grid_stl{
+        static_cast<std::size_t>(maybe_cylindrical_grid.value().cols())};
+    for (int i = 0; i < number_of_evaluation_points; ++i) {
+      cylindrical_grid_stl[i].resize(3);
+      for (int j = 0; j < 3; ++j) {
+        cylindrical_grid_stl[i][j] = maybe_cylindrical_grid.value()(j, i);
+      }
     }
 
     // We parallelize over linear index of evaluation locations, since that
@@ -618,12 +663,15 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     // independent circuits but few evaluation locations. This is done inside of
     // ABSCAB, which is used within this call to `VectorPotential`.
     absl::Status vector_potential_status =
-        VectorPotential(m_magnetic_configuration, cylindrical_grid,
-                        /*m_vector_potential=*/vector_potential);
+        VectorPotential(m_magnetic_configuration, cylindrical_grid_stl,
+                        /*m_vector_potential=*/vector_potential_stl);
     if (!vector_potential_status.ok()) {
       status[circuit_index] = vector_potential_status;
       continue;
     }
+    RowMatrix3Xd vector_potential =
+        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
+    vector_potential = vmecpp::ToEigenMatrix(vector_potential_stl).transpose();
 
     // ABSCAB computes the Cartesian components of the vector potential,
     // so we need to convert the x and y componets into r and phi
@@ -634,17 +682,17 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
 #endif  // _OPENMP
     for (int linear_index = 0; linear_index < number_of_evaluation_points;
          ++linear_index) {
-      const double a_x = vector_potential[linear_index][0];
-      const double a_y = vector_potential[linear_index][1];
-      const double a_z = vector_potential[linear_index][2];
+      const double a_x = vector_potential(0, linear_index);
+      const double a_y = vector_potential(1, linear_index);
+      const double a_z = vector_potential(2, linear_index);
 
       const size_t index_phi = linear_index / (num_z * num_r);
       const double a_r = a_x * cos_phi[index_phi] + a_y * sin_phi[index_phi];
       const double a_p = a_y * cos_phi[index_phi] - a_x * sin_phi[index_phi];
 
-      response_table_a.a_r[circuit_index][linear_index] = a_r;
-      response_table_a.a_p[circuit_index][linear_index] = a_p;
-      response_table_a.a_z[circuit_index][linear_index] = a_z;
+      response_table_a.a_r(circuit_index, linear_index) = a_r;
+      response_table_a.a_p(circuit_index, linear_index) = a_p;
+      response_table_a.a_z(circuit_index, linear_index) = a_z;
     }  // linear_index
 
     // mirror into other stellarator-symmetric part of grid
@@ -666,12 +714,12 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
         const int linear_index_reversed =
             (idx_phi_reversed * num_z + idx_z_reversed) * num_r + idx_r;
 
-        response_table_a.a_r[circuit_index][linear_index] =
-            -response_table_a.a_r[circuit_index][linear_index_reversed];
-        response_table_a.a_p[circuit_index][linear_index] =
-            response_table_a.a_p[circuit_index][linear_index_reversed];
-        response_table_a.a_z[circuit_index][linear_index] =
-            response_table_a.a_z[circuit_index][linear_index_reversed];
+        response_table_a.a_r(circuit_index, linear_index) =
+            -response_table_a.a_r(circuit_index, linear_index_reversed);
+        response_table_a.a_p(circuit_index, linear_index) =
+            response_table_a.a_p(circuit_index, linear_index_reversed);
+        response_table_a.a_z(circuit_index, linear_index) =
+            response_table_a.a_z(circuit_index, linear_index_reversed);
       }
     }
 
@@ -927,24 +975,24 @@ absl::Status WriteMakegridNetCDFFile(
   for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
        ++circuit_index) {
     CHECK_EQ(nc_put_var(ncid, ids_variable_br[circuit_index],
-                        response_table_b.b_r[circuit_index].data()),
+                        response_table_b.b_r.row(circuit_index).data()),
              NC_NOERR);
     CHECK_EQ(nc_put_var(ncid, ids_variable_bp[circuit_index],
-                        response_table_b.b_p[circuit_index].data()),
+                        response_table_b.b_p.row(circuit_index).data()),
              NC_NOERR);
     CHECK_EQ(nc_put_var(ncid, ids_variable_bz[circuit_index],
-                        response_table_b.b_z[circuit_index].data()),
+                        response_table_b.b_z.row(circuit_index).data()),
              NC_NOERR);
 
     if (response_table_a.has_value()) {
       CHECK_EQ(nc_put_var(ncid, ids_variable_ar[circuit_index],
-                          response_table_a->a_r[circuit_index].data()),
+                          response_table_a->a_r.row(circuit_index).data()),
                NC_NOERR);
       CHECK_EQ(nc_put_var(ncid, ids_variable_ap[circuit_index],
-                          response_table_a->a_p[circuit_index].data()),
+                          response_table_a->a_p.row(circuit_index).data()),
                NC_NOERR);
       CHECK_EQ(nc_put_var(ncid, ids_variable_az[circuit_index],
-                          response_table_a->a_z[circuit_index].data()),
+                          response_table_a->a_z.row(circuit_index).data()),
                NC_NOERR);
     }
   }  // number_of_serial_circuits
