@@ -46,6 +46,21 @@ using magnetics::SerialCircuit;
 
 using testing::IsCloseRelAbs;
 
+template <typename Derived>
+std::vector<std::vector<double>> EigenToStl(
+    const Eigen::DenseBase<Derived>& matrix) {
+  std::vector<std::vector<double>> stl_matrix(matrix.rows());
+
+  for (int i = 0; i < matrix.rows(); ++i) {
+    stl_matrix[i].resize(matrix.cols());
+    for (int j = 0; j < matrix.cols(); ++j) {
+      stl_matrix[i][j] = matrix(i, j);
+    }
+  }
+
+  return stl_matrix;
+}
+
 TEST(TestMakegridLib, CheckMakeCylindricalGridSanityChecks) {
   // Knudge each of these parameters outside their allowed ranges, one at a
   // time, and test if MakeCylindricalGrid is able to detect the error.
@@ -64,37 +79,32 @@ TEST(TestMakegridLib, CheckMakeCylindricalGridSanityChecks) {
 
   MakegridParameters makegrid_parameters_nfp = makegrid_parameters;
   makegrid_parameters_nfp.number_of_field_periods = 0;
-  absl::StatusOr<std::vector<std::vector<double> > > cylindrical_grid_nfp =
-      MakeCylindricalGrid(makegrid_parameters_nfp);
+  auto cylindrical_grid_nfp = MakeCylindricalGrid(makegrid_parameters_nfp);
   ASSERT_FALSE(cylindrical_grid_nfp.ok());
 
   MakegridParameters makegrid_parameters_rmin = makegrid_parameters;
   makegrid_parameters_rmin.r_grid_minimum = 3.0;
-  absl::StatusOr<std::vector<std::vector<double> > > cylindrical_grid_rmin =
-      MakeCylindricalGrid(makegrid_parameters_rmin);
+  auto cylindrical_grid_rmin = MakeCylindricalGrid(makegrid_parameters_rmin);
   ASSERT_FALSE(cylindrical_grid_rmin.ok());
 
   MakegridParameters makegrid_parameters_numr = makegrid_parameters;
   makegrid_parameters_numr.number_of_r_grid_points = 1;
-  absl::StatusOr<std::vector<std::vector<double> > > cylindrical_grid_numr =
-      MakeCylindricalGrid(makegrid_parameters_numr);
+  auto cylindrical_grid_numr = MakeCylindricalGrid(makegrid_parameters_numr);
   ASSERT_FALSE(cylindrical_grid_numr.ok());
 
   MakegridParameters makegrid_parameters_zmin = makegrid_parameters;
   makegrid_parameters_zmin.z_grid_maximum = -1.0;
-  absl::StatusOr<std::vector<std::vector<double> > > cylindrical_grid_zmin =
-      MakeCylindricalGrid(makegrid_parameters_zmin);
+  auto cylindrical_grid_zmin = MakeCylindricalGrid(makegrid_parameters_zmin);
   ASSERT_FALSE(cylindrical_grid_zmin.ok());
 
   MakegridParameters makegrid_parameters_numz = makegrid_parameters;
   makegrid_parameters_numz.number_of_z_grid_points = 1;
-  absl::StatusOr<std::vector<std::vector<double> > > cylindrical_grid_numz =
-      MakeCylindricalGrid(makegrid_parameters_numz);
+  auto cylindrical_grid_numz = MakeCylindricalGrid(makegrid_parameters_numz);
   ASSERT_FALSE(cylindrical_grid_numz.ok());
 
   MakegridParameters makegrid_parameters_numphi = makegrid_parameters;
   makegrid_parameters_numphi.number_of_phi_grid_points = 0;
-  absl::StatusOr<std::vector<std::vector<double> > > cylindrical_grid_numphi =
+  auto cylindrical_grid_numphi =
       MakeCylindricalGrid(makegrid_parameters_numphi);
   ASSERT_FALSE(cylindrical_grid_numphi.ok());
 }  // CheckMakeCylindricalGridSanityChecks
@@ -123,9 +133,14 @@ TEST(TestMakegridLib, CheckMakeCylindricalGrid) {
   ASSERT_EQ(makegrid_parameters.number_of_z_grid_points, 13);
   ASSERT_EQ(makegrid_parameters.number_of_phi_grid_points, 18);
 
-  absl::StatusOr<std::vector<std::vector<double> > > cylindrical_grid =
+  absl::StatusOr<RowMatrix3Xd> cylindrical_grid_eigen =
       MakeCylindricalGrid(makegrid_parameters);
-  ASSERT_TRUE(cylindrical_grid.ok());
+  ASSERT_TRUE(cylindrical_grid_eigen.ok());
+
+  // MakeCylindricalGrid() returns a 3xN matrix, instead of Nx3, so we tranpose
+  // to keep the test the same:
+  absl::StatusOr<std::vector<std::vector<double>>> cylindrical_grid =
+      EigenToStl(cylindrical_grid_eigen.value().transpose());
 
   int num_phi_effective = makegrid_parameters.number_of_phi_grid_points;
   if (makegrid_parameters.assume_stellarator_symmetry) {
@@ -195,7 +210,7 @@ TEST(TestMakegridLib, CheckMakeCylindricalGrid) {
 // the magnetic field or the vector potential.
 absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
     const CircularFilament& circular_filament,
-    const std::vector<std::vector<double> >& evaluation_locations,
+    const std::vector<std::vector<double>>& evaluation_locations,
     std::vector<bool>& m_exclude_from_comparison) {
   static constexpr double kRhoMin = 1.0e-15;
 
@@ -265,7 +280,7 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
 // * for B_phi if (rho' < 1 and -1 < z' < 2) --> based on slide 39
 absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
     const PolygonFilament& polygon_filament,
-    const std::vector<std::vector<double> >& evaluation_locations,
+    const std::vector<std::vector<double>>& evaluation_locations,
     std::vector<bool>& m_exclude_from_comparison) {
   static constexpr double kTooCloseDistance = 1.0e-2;
   static constexpr double kRhoMax = kTooCloseDistance;
@@ -349,9 +364,9 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
 // `evaluation_locations` are expected to be supplied as
 // [number_of_evaluation_locations][3: x, y, z] and the too-close flags will be
 // returned as [number_of_evaluation_locations].
-absl::StatusOr<std::vector<bool> > IsTooCloseToCurrentCarrierForComparison(
+absl::StatusOr<std::vector<bool>> IsTooCloseToCurrentCarrierForComparison(
     const SerialCircuit& serial_circuit,
-    const std::vector<std::vector<double> >& evaluation_locations) {
+    const std::vector<std::vector<double>>& evaluation_locations) {
   const std::size_t number_of_evaluation_locations =
       evaluation_locations.size();
   if (number_of_evaluation_locations == 0) {
@@ -450,9 +465,11 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
   const int number_of_serial_circuits =
       magnetic_configuration->serial_circuits_size();
 
-  absl::StatusOr<std::vector<std::vector<double> > > cylindrical_grid =
+  absl::StatusOr<RowMatrix3Xd> cylindrical_grid_eigen =
       MakeCylindricalGrid(makegrid_parameters);
-  ASSERT_TRUE(cylindrical_grid.ok());
+  ASSERT_TRUE(cylindrical_grid_eigen.ok());
+  absl::StatusOr<std::vector<std::vector<double>>> cylindrical_grid =
+      EigenToStl(cylindrical_grid_eigen.value().transpose());
 
   const std::size_t number_of_evaluation_locations = cylindrical_grid->size();
 
@@ -504,22 +521,22 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
     // from the magnetic field comparison below.
     const SerialCircuit& serial_circuit =
         magnetic_configuration->serial_circuits(circuit_index);
-    absl::StatusOr<std::vector<bool> > exclude_from_comparison =
+    absl::StatusOr<std::vector<bool>> exclude_from_comparison =
         IsTooCloseToCurrentCarrierForComparison(serial_circuit,
                                                 *cylindrical_grid);
     ASSERT_TRUE(exclude_from_comparison.ok());
 
     // load mgrid data from NetCDF file
     std::string br_variable = absl::StrFormat("br_%03d", circuit_index + 1);
-    std::vector<std::vector<std::vector<double> > > b_r_contribution =
+    std::vector<std::vector<std::vector<double>>> b_r_contribution =
         NetcdfReadArray3D(ncid, br_variable);
 
     std::string bp_variable = absl::StrFormat("bp_%03d", circuit_index + 1);
-    std::vector<std::vector<std::vector<double> > > b_p_contribution =
+    std::vector<std::vector<std::vector<double>>> b_p_contribution =
         NetcdfReadArray3D(ncid, bp_variable);
 
     std::string bz_variable = absl::StrFormat("bz_%03d", circuit_index + 1);
-    std::vector<std::vector<std::vector<double> > > b_z_contribution =
+    std::vector<std::vector<std::vector<double>>> b_z_contribution =
         NetcdfReadArray3D(ncid, bz_variable);
 
     // perform comparison of points that are not explicitly excluded from the
@@ -548,13 +565,13 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
           }
 
           EXPECT_TRUE(IsCloseRelAbs(
-              magnetic_response_table->b_r[circuit_index][linear_index],
+              magnetic_response_table->b_r(circuit_index, linear_index),
               b_r_contribution[index_phi][index_z][index_r], kTolerance));
           EXPECT_TRUE(IsCloseRelAbs(
-              magnetic_response_table->b_p[circuit_index][linear_index],
+              magnetic_response_table->b_p(circuit_index, linear_index),
               b_p_contribution[index_phi][index_z][index_r], kTolerance));
           EXPECT_TRUE(IsCloseRelAbs(
-              magnetic_response_table->b_z[circuit_index][linear_index],
+              magnetic_response_table->b_z(circuit_index, linear_index),
               b_z_contribution[index_phi][index_z][index_r], kTolerance));
           number_of_tested_evaluation_locations++;
         }  // index_r
@@ -606,9 +623,14 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
   const int number_of_serial_circuits =
       magnetic_configuration->serial_circuits_size();
 
-  absl::StatusOr<std::vector<std::vector<double> > > cylindrical_grid =
+  absl::StatusOr<RowMatrix3Xd> cylindrical_grid_eigen =
       MakeCylindricalGrid(makegrid_parameters);
-  ASSERT_TRUE(cylindrical_grid.ok());
+  ASSERT_TRUE(cylindrical_grid_eigen.ok());
+
+  // MakeCylindricalGrid() returns a 3xN matrix, instead of Nx3, so we tranpose
+  // to keep the test the same:
+  absl::StatusOr<std::vector<std::vector<double>>> cylindrical_grid =
+      EigenToStl(cylindrical_grid_eigen.value().transpose());
 
   const std::size_t number_of_evaluation_locations = cylindrical_grid->size();
 
@@ -659,22 +681,22 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
     // from the magnetic field comparison below.
     const SerialCircuit& serial_circuit =
         magnetic_configuration->serial_circuits(circuit_index);
-    absl::StatusOr<std::vector<bool> > exclude_from_comparison =
+    absl::StatusOr<std::vector<bool>> exclude_from_comparison =
         IsTooCloseToCurrentCarrierForComparison(serial_circuit,
                                                 *cylindrical_grid);
     ASSERT_TRUE(exclude_from_comparison.ok());
 
     // load mgrid data from NetCDF file
     std::string ar_variable = absl::StrFormat("ar_%03d", circuit_index + 1);
-    std::vector<std::vector<std::vector<double> > > a_r_contribution =
+    std::vector<std::vector<std::vector<double>>> a_r_contribution =
         NetcdfReadArray3D(ncid, ar_variable);
 
     std::string ap_variable = absl::StrFormat("ap_%03d", circuit_index + 1);
-    std::vector<std::vector<std::vector<double> > > a_p_contribution =
+    std::vector<std::vector<std::vector<double>>> a_p_contribution =
         NetcdfReadArray3D(ncid, ap_variable);
 
     std::string az_variable = absl::StrFormat("az_%03d", circuit_index + 1);
-    std::vector<std::vector<std::vector<double> > > a_z_contribution =
+    std::vector<std::vector<std::vector<double>>> a_z_contribution =
         NetcdfReadArray3D(ncid, az_variable);
 
     // perform comparison of points that are not explicitly excluded from the
@@ -703,13 +725,13 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
           }
 
           EXPECT_TRUE(IsCloseRelAbs(
-              vector_potential_cache->a_r[circuit_index][linear_index],
+              vector_potential_cache->a_r(circuit_index, linear_index),
               a_r_contribution[index_phi][index_z][index_r], kTolerance));
           EXPECT_TRUE(IsCloseRelAbs(
-              vector_potential_cache->a_p[circuit_index][linear_index],
+              vector_potential_cache->a_p(circuit_index, linear_index),
               a_p_contribution[index_phi][index_z][index_r], kTolerance));
           EXPECT_TRUE(IsCloseRelAbs(
-              vector_potential_cache->a_z[circuit_index][linear_index],
+              vector_potential_cache->a_z(circuit_index, linear_index),
               a_z_contribution[index_phi][index_z][index_r], kTolerance));
           number_of_tested_evaluation_locations++;
         }  // index_r

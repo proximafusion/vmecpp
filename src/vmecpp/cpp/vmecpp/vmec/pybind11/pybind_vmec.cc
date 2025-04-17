@@ -85,22 +85,6 @@ std::vector<std::vector<double>> RowMatrixXdToVector(
   return v;
 }
 
-// The data members of MagneticFieldResponseTable are STL nested vectors,
-// but pybind11 prefers converting between Eigen matrices and numpy arrays.
-// So we take in Eigen matrices and convert them to STL vectors before
-// constructing a MagneticFieldResponseTable.
-makegrid::MagneticFieldResponseTable MakeMagneticFieldResponseTable(
-    const makegrid::MakegridParameters &parameters,
-    const vmecpp::RowMatrixXd &b_r, const vmecpp::RowMatrixXd &b_p,
-    const vmecpp::RowMatrixXd &b_z) {
-  return makegrid::MagneticFieldResponseTable{
-      parameters,
-      RowMatrixXdToVector(b_r),
-      RowMatrixXdToVector(b_p),
-      RowMatrixXdToVector(b_z),
-  };
-}
-
 vmecpp::HotRestartState MakeHotRestartState(
     vmecpp::WOutFileContents wout, const vmecpp::VmecINDATAPyWrapper &indata) {
   return vmecpp::HotRestartState(std::move(wout), vmecpp::VmecINDATA(indata));
@@ -731,25 +715,18 @@ PYBIND11_MODULE(_vmecpp, m) {
             return GetValueOrThrow(maybe_config);
           },
           py::arg("file"));
-
   py::class_<makegrid::MagneticFieldResponseTable>(m,
                                                    "MagneticFieldResponseTable")
-      .def(py::init(&MakeMagneticFieldResponseTable), "parameters"_a,
-           "b_r"_a.noconvert(), "b_p"_a.noconvert(), "b_z"_a.noconvert())
+      .def(
+          py::init<const makegrid::MakegridParameters &,
+                   const makegrid::RowMatrixXd &, const makegrid::RowMatrixXd &,
+                   const makegrid::RowMatrixXd &>(),
+          py::arg("parameters"), py::arg("b_r"), py::arg("b_p"), py::arg("b_z"))
       .def_readonly("parameters",
                     &makegrid::MagneticFieldResponseTable::parameters)
-      .def_property_readonly("b_r",
-                             [](const makegrid::MagneticFieldResponseTable &t) {
-                               return vmecpp::ToEigenMatrix(t.b_r);
-                             })
-      .def_property_readonly("b_p",
-                             [](const makegrid::MagneticFieldResponseTable &t) {
-                               return vmecpp::ToEigenMatrix(t.b_p);
-                             })
-      .def_property_readonly("b_z",
-                             [](const makegrid::MagneticFieldResponseTable &t) {
-                               return vmecpp::ToEigenMatrix(t.b_z);
-                             });
+      .def_readwrite("b_r", &makegrid::MagneticFieldResponseTable::b_r)
+      .def_readwrite("b_p", &makegrid::MagneticFieldResponseTable::b_p)
+      .def_readwrite("b_z", &makegrid::MagneticFieldResponseTable::b_z);
 
   m.def(
       "compute_magnetic_field_response_table",
