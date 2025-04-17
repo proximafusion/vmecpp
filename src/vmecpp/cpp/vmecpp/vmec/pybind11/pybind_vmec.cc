@@ -765,8 +765,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       "run",
       [](const VmecINDATAPyWrapper &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
-         std::optional<vmecpp::HotRestartState> initial_state = std::nullopt,
-         std::optional<int> max_threads = std::nullopt, bool verbose = true) {
+         std::optional<vmecpp::HotRestartState> initial_state,
+         std::optional<int> max_threads, bool verbose = true) {
         auto ret =
             vmecpp::run(vmecpp::VmecINDATA(indata), magnetic_response_table,
                         std::move(initial_state), max_threads, verbose);
