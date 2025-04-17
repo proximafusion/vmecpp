@@ -391,7 +391,6 @@ class VmecWOut(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid")
 
     _MISSING_FORTRAN_VARIABLES: typing.ClassVar[list[str]] = [
-        "input_extension",
         "itfsq",
         "lrecon__logical__",
         "lrfp__logical__",
@@ -411,6 +410,7 @@ class VmecWOut(pydantic.BaseModel):
     """The complete list of variables that can be found in Fortran VMEC wout files but
     not in wout files produced by VMEC++."""
 
+    input_extension: str
     ier_flag: int
     nfp: int
     ns: int
@@ -804,6 +804,7 @@ class VmecWOut(pydantic.BaseModel):
 
             create_string_variable("mgrid_file", "dim_00200")
             create_string_variable("mgrid_mode", "dim_00001")
+            create_string_variable("input_extension", "dim_00100")
 
     @staticmethod
     def _from_cpp_wout(cpp_wout: _vmecpp.VmecppWOut) -> VmecWOut:
@@ -963,6 +964,8 @@ class VmecWOut(pydantic.BaseModel):
 
         attrs["version_"] = float(cpp_wout.version)
 
+        attrs["input_extension"] = cpp_wout.input_extension
+
         # The Pydantic model raises an error if there are missing keys,
         # or extra keys that weren't included in MISSING_FORTRAN_VARIABLES
         return VmecWOut(**attrs)
@@ -1045,6 +1048,7 @@ class VmecWOut(pydantic.BaseModel):
         cpp_wout.raxis_c = self.raxis_cc
         cpp_wout.zaxis_s = self.zaxis_cs
         cpp_wout.version = str(self.version_)  # also needs a float -> str conversion
+        cpp_wout.input_extension = self.input_extension
 
         # These attributes have one element more in VMEC2000
         # (i.e. they have size ns instead of ns - 1).
@@ -1141,12 +1145,20 @@ class VmecWOut(pydantic.BaseModel):
             ns = attrs["ns"]
             attrs["lmns_full"] = np.zeros([mnmax, ns])
 
-        # Handle missing extcur - required for backwards compatibility with wout files produced before v0.3.3
+        # Optional handling for backwards compatibility with wout files produced before v0.3.3
+        # Handle extcur
         if "extcur" not in attrs:
             assert (
                 attrs["nextcur"] == 0
             ), "extcur must be present for free-boundary wout files"
             attrs["extcur"] = netCDF4.default_fillvals["f8"]
+        # Handle input_extension
+        if "input_extension" in attrs:
+            attrs["input_extension"] = (
+                attrs["input_extension"].tobytes().decode("ascii").strip()
+            )
+        else:
+            attrs["input_extension"] = ""
 
         return VmecWOut(**attrs)
 

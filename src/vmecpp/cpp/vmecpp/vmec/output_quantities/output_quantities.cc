@@ -780,6 +780,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   file.createGroup(this->H5key);
 
   WRITEMEMBER(version);
+  // TODO(jurasic) input_extension
   WRITEMEMBER(sign_of_jacobian);
   WRITEMEMBER(gamma);
   WRITEMEMBER(pcurr_type);
@@ -902,6 +903,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
 absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& obj,
                                                 H5::H5File& from_file) {
   READMEMBER(version);
+  // TODO(jurasic) input_extension
   READMEMBER(sign_of_jacobian);
   READMEMBER(gamma);
   READMEMBER(pcurr_type);
@@ -4192,6 +4194,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // TODO(jons): Upgrade VMEC++ to match PARVMEC and then change version to
   // "9.0".
   wout.version = "8.52";
+
+  // We cannot provide a meaningful value for input_extension here, as we run
+  // from a json input, but the input_extension indicates the existence of a
+  // corresponding Fortran namelist with naming convention input.extension
+  // To avoid confusion we leave it blank.
+  wout.input_extension = "";
 
   wout.sign_of_jacobian = m_vmec_internal_results.sign_of_jacobian;
 

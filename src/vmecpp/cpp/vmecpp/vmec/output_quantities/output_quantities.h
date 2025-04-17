@@ -974,6 +974,7 @@ struct WOutFileContents {
   // copy of input data
 
   std::string version;
+  std::string input_extension;
 
   int sign_of_jacobian;
 
