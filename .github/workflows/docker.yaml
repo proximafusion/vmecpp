@@ -1,13 +1,15 @@
 name: Build and Push Docker Container
 
 on:
-  push:
-    tags:
-      - 'v*'
   pull_request:
     paths:
       - 'docker/**'
       - '.github/workflows/docker.yaml'
+
+  # allows running workflows manually
+  workflow_dispatch:
+  release:
+    types: [published]
 
 jobs:
   docker:
