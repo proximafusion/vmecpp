@@ -43,7 +43,7 @@ MGridProvider::MGridProvider() {
 
   nextcur = -1;
 
-  hasMgridLoaded = false;
+  has_mgrid_loaded_ = false;
 
   has_fixed_field_ = false;
 
@@ -143,7 +143,7 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
     return absl::InternalError("Failed to close NetCDF file.");
   }
 
-  hasMgridLoaded = true;
+  has_mgrid_loaded_ = true;
   has_fixed_field_ = false;
 
   return absl::Status();
@@ -200,7 +200,7 @@ absl::Status MGridProvider::LoadFields(
     }  // linear_index
   }  // nextcur
 
-  hasMgridLoaded = true;
+  has_mgrid_loaded_ = true;
   has_fixed_field_ = false;
 
   return absl::OkStatus();
@@ -214,7 +214,7 @@ void MGridProvider::SetFixedMagneticField(const std::vector<double>& fixed_br,
   fixed_bp_ = fixed_bp;
   fixed_bz_ = fixed_bz;
 
-  hasMgridLoaded = true;
+  has_mgrid_loaded_ = true;
   has_fixed_field_ = true;
 }  // SetFixedMagneticField
 
@@ -225,7 +225,7 @@ void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
                                 std::vector<double>& m_interpBr,
                                 std::vector<double>& m_interpBp,
                                 std::vector<double>& m_interpBz) const {
-  CHECK(hasMgridLoaded) << "no mgrid loaded";
+  CHECK(has_mgrid_loaded_) << "no mgrid loaded";
 
   if (has_fixed_field_) {
     // quick return: just copy into target storage

@@ -61,8 +61,10 @@ class MGridProvider {
 
   std::string mgrid_mode;
 
+  bool IsLoaded() const { return has_mgrid_loaded_; }
+
  private:
-  bool hasMgridLoaded;
+  bool has_mgrid_loaded_;
   bool has_fixed_field_;
 
   std::vector<double> fixed_br_;
