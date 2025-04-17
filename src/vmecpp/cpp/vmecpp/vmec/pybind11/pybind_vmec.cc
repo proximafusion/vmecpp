@@ -468,6 +468,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def(py::init<const vmecpp::WOutFileContents &>(), py::arg("wout"))
       .def(py::init())
       .def_readwrite("version", &vmecpp::WOutFileContents::version)
+      .def_readwrite("input_extension",
+                     &vmecpp::WOutFileContents::input_extension)
       //
       .def_readwrite("sign_of_jacobian",
                      &vmecpp::WOutFileContents::sign_of_jacobian)
