@@ -300,7 +300,7 @@ def _fourier_coefficients_to_namelist(varname: str, vmecpp_json: dict[str, Any])
 
 
 def dense_to_sparse_coefficients(
-    coefficients: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float],
+    coefficients: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], np.float64],
 ) -> list[dict[str, float | int]]:
     """
     Convert a dense 2D array of Fourier coefficients to its sparse representation for storage.
@@ -343,7 +343,7 @@ def sparse_to_dense_coefficients(
     sparse_list: list[dict[str, float | int]],
     mpol: int,
     ntor: int,
-) -> npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float]:
+) -> npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], np.float64]:
     """Converts a sparse list of Fourier coefficients into a dense 2D NumPy array.
 
     Args:
@@ -385,8 +385,8 @@ def sparse_to_dense_coefficients(
 
 def sparse_to_dense_coefficients_implicit(
     maybe_sparse_list: list[dict[str, float | int]]
-    | npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float],
-) -> npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], float]:
+    | npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], np.float64],
+) -> npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], np.float64]:
     """Convert a list of sparse array coefficients to a dense array, inferring the
     (mpol, 2*ntor+1) shape from the maximum mode numbers OR return the original array if
     the input representation is already dense."""

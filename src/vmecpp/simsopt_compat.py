@@ -68,9 +68,9 @@ class Vmec(Optimizable):
     # These are filled:
     # - by __init__ if Vmec is initialized with an output file
     # - by a call to run() and are None before otherwise
-    s_full_grid: npyd.NDArray[npyd.Shape["* ns"], float] | None
+    s_full_grid: npyd.NDArray[npyd.Shape["* ns"], np.float64] | None
     ds: float | None
-    s_half_grid: npyd.NDArray[npyd.Shape["* nshalf"], float] | None
+    s_half_grid: npyd.NDArray[npyd.Shape["* nshalf"], np.float64] | None
 
     # The loaded run results, either of the previous run or when constructing Vmec() from an output file
     wout: vmecpp.VmecWOut | None
@@ -172,7 +172,7 @@ class Vmec(Optimizable):
                         self._boundary.rs[m, n] = vi.rbs[m, n]
                         self._boundary.zc[m, n] = vi.zbc[m, n]
             self._boundary.local_full_x = cast(
-                npyd.NDArray[npyd.Shape["*"], float], self._boundary.get_dofs()
+                npyd.NDArray[npyd.Shape["*"], np.float64], self._boundary.get_dofs()
             )
 
         elif basename.startswith("wout"):  # from output results
@@ -192,7 +192,7 @@ class Vmec(Optimizable):
             raise ValueError(msg)
 
         # Handle a few variables that are not Parameters:
-        x0 = cast(npyd.NDArray[npyd.Shape["*"], float], self.get_dofs())
+        x0 = cast(npyd.NDArray[npyd.Shape["*"], np.float64], self.get_dofs())
         fixed = cast(npyd.NDArray[npyd.Shape["*"], bool], np.full(len(x0), True))
         names = ["delt", "tcon0", "phiedge", "curtor", "gamma"]
         Optimizable.__init__(
@@ -341,7 +341,7 @@ class Vmec(Optimizable):
         # Return the slope:
         return float(poly.deriv()(0))
 
-    def get_dofs(self) -> npyd.NDArray[npyd.Shape["*"], float]:
+    def get_dofs(self) -> npyd.NDArray[npyd.Shape["*"], np.float64]:
         if not self.runnable:
             # Use default values from vmec_input (copied from SIMSOPT)
             return np.array([1, 1, 1, 0, 0])
