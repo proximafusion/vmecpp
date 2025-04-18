@@ -17,6 +17,7 @@
 #include "util/netcdf_io/netcdf_io.h"
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/composed_types_lib/composed_types_lib.h"
+#define ASSERT_OK(quantity) ASSERT_TRUE((quantity).ok()) << (quantity).status();
 
 namespace makegrid {
 
@@ -135,7 +136,7 @@ TEST(TestMakegridLib, CheckMakeCylindricalGrid) {
 
   absl::StatusOr<RowMatrix3Xd> cylindrical_grid_eigen =
       MakeCylindricalGrid(makegrid_parameters);
-  ASSERT_TRUE(cylindrical_grid_eigen.ok());
+  ASSERT_OK(cylindrical_grid_eigen);
 
   // MakeCylindricalGrid() returns a 3xN matrix, instead of Nx3, so we tranpose
   // to keep the test the same:
@@ -460,14 +461,14 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
   absl::StatusOr<MagneticConfiguration> magnetic_configuration =
       ImportMagneticConfigurationFromCoilsFile(
           "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_even");
-  ASSERT_TRUE(magnetic_configuration.ok());
+  ASSERT_OK(magnetic_configuration);
 
   const int number_of_serial_circuits =
       magnetic_configuration->serial_circuits_size();
 
   absl::StatusOr<RowMatrix3Xd> cylindrical_grid_eigen =
       MakeCylindricalGrid(makegrid_parameters);
-  ASSERT_TRUE(cylindrical_grid_eigen.ok());
+  ASSERT_OK(cylindrical_grid_eigen);
   absl::StatusOr<std::vector<std::vector<double>>> cylindrical_grid =
       EigenToStl(cylindrical_grid_eigen.value().transpose());
 
@@ -477,7 +478,7 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
   absl::StatusOr<MagneticFieldResponseTable> magnetic_response_table =
       ComputeMagneticFieldResponseTable(makegrid_parameters,
                                         *magnetic_configuration);
-  ASSERT_TRUE(magnetic_response_table.ok());
+  ASSERT_OK(magnetic_response_table);
 
   // Load NetCDF mgrid file and make sure dimensions are consistent.
   int ncid = 0;
@@ -524,7 +525,7 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
     absl::StatusOr<std::vector<bool>> exclude_from_comparison =
         IsTooCloseToCurrentCarrierForComparison(serial_circuit,
                                                 *cylindrical_grid);
-    ASSERT_TRUE(exclude_from_comparison.ok());
+    ASSERT_OK(exclude_from_comparison);
 
     // load mgrid data from NetCDF file
     std::string br_variable = absl::StrFormat("br_%03d", circuit_index + 1);
@@ -618,14 +619,14 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
   absl::StatusOr<MagneticConfiguration> magnetic_configuration =
       ImportMagneticConfigurationFromCoilsFile(
           "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_even");
-  ASSERT_TRUE(magnetic_configuration.ok());
+  ASSERT_OK(magnetic_configuration);
 
   const int number_of_serial_circuits =
       magnetic_configuration->serial_circuits_size();
 
   absl::StatusOr<RowMatrix3Xd> cylindrical_grid_eigen =
       MakeCylindricalGrid(makegrid_parameters);
-  ASSERT_TRUE(cylindrical_grid_eigen.ok());
+  ASSERT_OK(cylindrical_grid_eigen);
 
   // MakeCylindricalGrid() returns a 3xN matrix, instead of Nx3, so we tranpose
   // to keep the test the same:
@@ -637,7 +638,7 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
   // compute vector potential cache
   absl::StatusOr<MakegridCachedVectorPotential> vector_potential_cache =
       ComputeVectorPotentialCache(makegrid_parameters, *magnetic_configuration);
-  ASSERT_TRUE(vector_potential_cache.ok());
+  ASSERT_OK(vector_potential_cache);
 
   // Load NetCDF mgrid file and make sure dimensions are consistent.
   int ncid = 0;
@@ -684,7 +685,7 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
     absl::StatusOr<std::vector<bool>> exclude_from_comparison =
         IsTooCloseToCurrentCarrierForComparison(serial_circuit,
                                                 *cylindrical_grid);
-    ASSERT_TRUE(exclude_from_comparison.ok());
+    ASSERT_OK(exclude_from_comparison);
 
     // load mgrid data from NetCDF file
     std::string ar_variable = absl::StrFormat("ar_%03d", circuit_index + 1);
