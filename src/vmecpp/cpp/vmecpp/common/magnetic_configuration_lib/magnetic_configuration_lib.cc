@@ -53,7 +53,7 @@ absl::Status ParseCurrentCarriers(
         return absl::InvalidArgumentError(absl::StrCat(
             "The magnetic_configuration_lib only supports coilsets for which "
             "the mirror option is deactivated. Please check your "
-            "coils file, should be 'mirror NIL' but found ",
+            "coils file, should be 'mirror NUL' but found ",
             stripped_line));
       }
       continue;
