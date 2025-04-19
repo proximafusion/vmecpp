@@ -395,6 +395,10 @@ class VmecWOut(pydantic.BaseModel):
         "lrecon__logical__",
         "lrfp__logical__",
         "lmove_axis__logical__",
+        "bsubumnc_sur",  # Written on save, but ignored on load
+        "bsubvmnc_sur",  # Written on save, but ignored on load
+        "bsupumnc_sur",  # Written on save, but ignored on load
+        "bsupvmnc_sur",  # Written on save, but ignored on load
         "mnyq",
         "nnyq",
         "fsqt",
@@ -756,6 +760,18 @@ class VmecWOut(pydantic.BaseModel):
             ]:
                 fnc.createVariable(varname, np.float64, ("radius", "mn_mode_nyq"))
                 fnc[varname][:] = getattr(self, varname).T[:]
+
+            # Surface quantities
+            for varname in [
+                "bsubumnc_sur",
+                "bsubvmnc_sur",
+                "bsupumnc_sur",
+                "bsupvmnc_sur",
+            ]:
+                fnc.createVariable(varname, np.float64, ("mn_mode_nyq",))
+                # Extract the outermost element along the radial dimension
+                corresponding_field = varname.removesuffix("_sur")
+                fnc[varname][:] = getattr(self, corresponding_field)[:, -1]
 
             # fourier coefficients
             for varname in ["rmnc", "zmns", "lmns"]:
