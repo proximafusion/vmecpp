@@ -655,21 +655,18 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
     absl::StatusOr<SolveEqLoopStatus> s = SolveEqLoopStatus::MUST_RETRY;
     while (s.ok() && *s == SolveEqLoopStatus::MUST_RETRY) {
-#pragma omp single
-      {
-        // !!! THIS must be the ONLY place where this gets incremented !!!
-        num_eqsolve_retries_++;
-      }
-
+#pragma omp atomic update
+      num_eqsolve_retries_++;
       s = SolveEquilibriumLoop(thread_id, iterations_before_checkpointing,
                                checkpoint, lreset_internal);
     }
 
+    if (s.ok()) {
+#pragma omp atomic update
+      any_checkpoint_reached |= (*s == SolveEqLoopStatus::CHECKPOINT_REACHED);
+    } else {
 #pragma omp critical
-    {
-      if (s.ok()) {
-        any_checkpoint_reached |= (*s == SolveEqLoopStatus::CHECKPOINT_REACHED);
-      } else {
+      {
         UpdateStatusForThread(status_of_all_threads, thread_id, s.status());
       }
     }
