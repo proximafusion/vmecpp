@@ -1345,7 +1345,7 @@ def run(
     else:
         # magnetic_response_table takes precedence anyway, but let's be explicit, to ensure
         # we don't silently use the mgrid file in input, instead of the magnetic_response_table object.
-        cpp_indata.mgrid_file = ""
+        cpp_indata.mgrid_file = "NONE"
         cpp_output_quantities = _vmecpp.run(
             cpp_indata,
             magnetic_response_table=magnetic_field,
