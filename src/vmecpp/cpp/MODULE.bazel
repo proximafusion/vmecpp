@@ -4,7 +4,7 @@
 module(name = "vmecpp", version = "0.3.0")
 
 bazel_dep(name = "abseil-cpp", version = "20230802.0.bcr.1")
-bazel_dep(name = "eigen", version = "3.4.0")
+bazel_dep(name = "eigen", version = "3.4.0.bcr.3")
 bazel_dep(name = "google_benchmark", version = "1.8.2")
 bazel_dep(name = "googletest", version = "1.14.0")
 
