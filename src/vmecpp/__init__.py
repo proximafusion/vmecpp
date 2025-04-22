@@ -338,6 +338,12 @@ class VmecInput(pydantic.BaseModel):
             }
         )
 
+    @staticmethod
+    def default():
+        """Construct a VmecInput with the same default settings as VMEC2000."""
+        cpp_defaults = _vmecpp.VmecINDATAPyWrapper()
+        return VmecInput._from_cpp_vmecindatapywrapper(cpp_defaults)
+
     def _to_cpp_vmecindatapywrapper(self) -> _vmecpp.VmecINDATAPyWrapper:
         cpp_indata = _vmecpp.VmecINDATAPyWrapper()
 

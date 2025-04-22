@@ -380,3 +380,13 @@ def test_aux_arrays_from_cpp_wout():
         assert_aux_defaults(wout)
     np.testing.assert_almost_equal(wout.am_aux_s[:2], np.array([2.0, 3.0]))
     np.testing.assert_almost_equal(wout.am_aux_f[:2], np.array([2.0, 3.0]))
+
+
+def test_default_preset():
+    # Default construction doesn't throw an exception
+    default_preset = vmecpp.VmecInput.default()
+    # Sample a few of the default values that should be set
+    assert default_preset.nfp == 1
+    assert default_preset.mpol == 6
+    assert not default_preset.lasym
+    assert default_preset.ns_array == np.array([31])
