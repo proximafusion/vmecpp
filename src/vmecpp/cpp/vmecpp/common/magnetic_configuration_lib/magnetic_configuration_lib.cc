@@ -48,9 +48,14 @@ absl::Status ParseCurrentCarriers(
 
     if (absl::StartsWith(stripped_line, "mirror")) {
       // coils can be mirrored within MAKEGRID --> ignore this line for now
-      // TODO(jons): check if remainder after "mirror" is anything else than
-      // "NIL"
-      //             --> would be an error to ignore this then!
+      if (!(absl::EndsWithIgnoreCase(stripped_line, "NIL") ||
+            absl::EndsWithIgnoreCase(stripped_line, "NUL"))) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "The magnetic_configuration_lib only supports coilsets for which "
+            "the mirror option is deactivated. Please check your "
+            "coils file, should be 'mirror NUL' but found ",
+            stripped_line));
+      }
       continue;
     } else if (absl::StartsWith(stripped_line, "end")) {
       // current carrier geometry ended on this line
@@ -187,7 +192,7 @@ absl::StatusOr<MagneticConfiguration> ImportMagneticConfigurationFromMakegrid(
         // If something did not work out during parsing, return an empty
         // MagneticConfiguration, since the data is likely messed up anyway.
         magnetic_configuration.Clear();
-        break;
+        return status;
       }
     }
   }
