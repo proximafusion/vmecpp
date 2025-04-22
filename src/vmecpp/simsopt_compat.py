@@ -8,16 +8,17 @@ from pathlib import Path
 from typing import Optional, cast
 
 import numpy as np
-import numpydantic as npyd
 from simsopt._core.optimizable import Optimizable
 from simsopt._core.util import ObjectiveFailure
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
 from simsopt.util.mpi import MpiPartition
 
 import vmecpp
-
-# Re-export specific functions from vmecpp for backwards compatibility
 from vmecpp import (  # noqa: F401
+    # type hints
+    NDArray,
+    Shape,
+    # Re-export specific functions from vmecpp for backwards compatibility
     ensure_vmec2000_input,
     ensure_vmecpp_input,
     is_vmec2000_input,
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 # Creating an MpiPartition hogs memory until process exit, so we do it here once at
 # module scope rather than every time Vmec.__init__ is called.
 try:
-    from mpi4py import MPI
+    from mpi4py import MPI  # pyright: ignore
 
     MPI_PARTITION = MpiPartition(ngroups=1)
 except ImportError:
@@ -68,9 +69,9 @@ class Vmec(Optimizable):
     # These are filled:
     # - by __init__ if Vmec is initialized with an output file
     # - by a call to run() and are None before otherwise
-    s_full_grid: npyd.NDArray[npyd.Shape["* ns"], float] | None
+    s_full_grid: NDArray[Shape["* ns"], np.float64] | None
     ds: float | None
-    s_half_grid: npyd.NDArray[npyd.Shape["* nshalf"], float] | None
+    s_half_grid: NDArray[Shape["* nshalf"], np.float64] | None
 
     # The loaded run results, either of the previous run or when constructing Vmec() from an output file
     wout: vmecpp.VmecWOut | None
@@ -169,11 +170,11 @@ class Vmec(Optimizable):
                     self._boundary.rc[m, n] = vi.rbc[m, n]
                     self._boundary.zs[m, n] = vi.zbs[m, n]
                     if vi.lasym:
+                        assert vi.rbs is not None
+                        assert vi.zbc is not None
                         self._boundary.rs[m, n] = vi.rbs[m, n]
                         self._boundary.zc[m, n] = vi.zbc[m, n]
-            self._boundary.local_full_x = cast(
-                npyd.NDArray[npyd.Shape["*"], float], self._boundary.get_dofs()
-            )
+            self._boundary.local_full_x = self._boundary.get_dofs()
 
         elif basename.startswith("wout"):  # from output results
             logger.debug(f"Initializing a VMEC object from wout file: {filename}")
@@ -192,8 +193,8 @@ class Vmec(Optimizable):
             raise ValueError(msg)
 
         # Handle a few variables that are not Parameters:
-        x0 = cast(npyd.NDArray[npyd.Shape["*"], float], self.get_dofs())
-        fixed = cast(npyd.NDArray[npyd.Shape["*"], bool], np.full(len(x0), True))
+        x0 = self.get_dofs()
+        fixed = np.full(len(x0), True)
         names = ["delt", "tcon0", "phiedge", "curtor", "gamma"]
         Optimizable.__init__(
             self,
@@ -247,9 +248,9 @@ class Vmec(Optimizable):
             # we are going to perform a hot restart, so we are only going to
             # run the last of the multi-grid steps: adapt indata accordingly
             indata = self.indata.model_copy(deep=True)
-            indata.ns_array = indata.ns_array[-1:]
-            indata.ftol_array = indata.ftol_array[-1:]
-            indata.niter_array = indata.niter_array[-1:]
+            indata.ns_array = indata.ns_array[-1:]  # type: ignore
+            indata.ftol_array = indata.ftol_array[-1:]  # type: ignore
+            indata.niter_array = indata.niter_array[-1:]  # type: ignore
 
         logger.debug("Running VMEC++")
 
@@ -280,6 +281,7 @@ class Vmec(Optimizable):
     def load_wout_from_outfile(self) -> None:
         """Load data from self.output_file into self.wout."""
         logger.debug(f"Attempting to read file {self.output_file}")
+        assert self.output_file is not None
         self.wout = vmecpp.VmecWOut.from_wout_file(self.output_file)
 
         self._set_grid()
@@ -341,7 +343,7 @@ class Vmec(Optimizable):
         # Return the slope:
         return float(poly.deriv()(0))
 
-    def get_dofs(self) -> npyd.NDArray[npyd.Shape["*"], float]:
+    def get_dofs(self) -> np.ndarray:
         if not self.runnable:
             # Use default values from vmec_input (copied from SIMSOPT)
             return np.array([1, 1, 1, 0, 0])
@@ -472,6 +474,8 @@ class Vmec(Optimizable):
         vi.zaxis_s.fill(0.0)
 
         if vi.lasym:
+            assert vi.raxis_s is not None
+            assert vi.zaxis_c is not None
             vi.raxis_s.fill(0.0)
             vi.zaxis_c.fill(0.0)
 
