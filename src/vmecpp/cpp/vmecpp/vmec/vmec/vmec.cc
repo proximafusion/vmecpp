@@ -726,9 +726,14 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     // reset error flag
     status_ = VmecStatus::NORMAL_TERMINATION;
   }
+
+  // @jurasic this does not hold when prev iter SolveEqLoopStatus::MUST_RETRY
+  // CHECK_EQ(iter2_, 1);
+
   // FORCE ITERATION LOOP
-  CHECK_EQ(iter2_, 1);
-  for (int iter2 = 1; liter_flag;) {
+  int iter3 = iter2_;
+  int iter_bad_reset = 0;
+  for (int iter2 = iter2_; iter2 < fc_.niterv && liter_flag; iter3++) {
     // ADVANCE FOURIER AMPLITUDES OF R, Z, AND LAMBDA
     absl::StatusOr<bool> reached_checkpoint =
         Evolve(checkpoint, iterations_before_checkpointing, fc_.delt0r,
@@ -838,12 +843,6 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         status_ = VmecStatus::JACOBIAN_75_TIMES_BAD;
         liter_flag = false;
       }
-    } else if (iter2 >= fc_.niterv) {
-// protect liter_flag read above from the write below
-#pragma omp barrier
-#pragma omp single
-      // allowed number of iterations exceeded
-      liter_flag = false;
     }
 
 #pragma omp single
@@ -888,8 +887,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     if (fc_.restart_reason != RestartReason::NO_RESTART) {
       // Retrieve previous good state
       RestartIteration(fc_.delt0r, thread_id);
-
-#pragma omp single
+      // fc_.restart_reason != RestartReason::NO_RESTART does not increment the
+      // iter2 counter
+      // TODO(jurasic) This might be the cause for non terminating VMEC++!
+      iter_bad_reset++;
+#pragma omp single nowait
       iter1_ = iter2;
     } else {
       // Increment time step and printout every nstep iterations
@@ -911,14 +913,15 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
           return SolveEqLoopStatus::CHECKPOINT_REACHED;
         }
       }
-#pragma omp barrier
+      iter2++;
+      CHECK_EQ(iter2, iter3 + 1 - iter_bad_reset);
+    }
 
 #pragma omp single
-      // count iterations
-      iter2_++;
-      // iter2_=iter2+1;
-    }
-    iter2 = iter2_;
+    // Shared iteration counter
+    // bad resets didn't increment, subtract them to get the same iteration
+    // count as VMEC 8.52
+    iter2_ = iter3 + 1 - iter_bad_reset;
 
 #pragma omp barrier
 
