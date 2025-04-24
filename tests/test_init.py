@@ -128,7 +128,7 @@ def test_vmecinput_io():
             )
 
 
-def test_vmecwout_io(cma_output):
+def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
     with tempfile.NamedTemporaryFile() as tmp_file:
         cma_output.wout.save(tmp_file.name)
 
@@ -188,7 +188,7 @@ def test_vmecwout_io(cma_output):
         )
 
 
-def test_jxbout_bindings(cma_output):
+def test_jxbout_bindings(cma_output: vmecpp.VmecOutput):
     for varname in [
         "itheta",
         "izeta",
@@ -223,7 +223,7 @@ def test_jxbout_bindings(cma_output):
         assert len(getattr(cma_output.jxbout, varname).shape) == 1
 
 
-def test_mercier_bindings(cma_output):
+def test_mercier_bindings(cma_output: vmecpp.VmecOutput):
     for varname in [
         "s",
         "toroidal_flux",
@@ -244,7 +244,7 @@ def test_mercier_bindings(cma_output):
         assert len(getattr(cma_output.mercier, varname).shape) == 1
 
 
-def test_threed1volumetrics_bindings(cma_output):
+def test_threed1volumetrics_bindings(cma_output: vmecpp.VmecOutput):
     for varname in [
         "int_p",
         "avg_p",
