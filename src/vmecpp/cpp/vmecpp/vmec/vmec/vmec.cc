@@ -654,16 +654,20 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     bool lreset_internal = false;
 
     absl::StatusOr<SolveEqLoopStatus> s = SolveEqLoopStatus::MUST_RETRY;
-    while (s.ok() && *s == SolveEqLoopStatus::MUST_RETRY) {
-#pragma omp single
-      {
-        // !!! THIS must be the ONLY place where this gets incremented !!!
-        num_eqsolve_retries_++;
-      }
 
+    // n_local_eqsolve_retries is a thread-local counter
+    // may iterations only to ensure this terminates eventually, should never be
+    // reached.
+    int n_local_eqsolve_retries = 0;
+    for (n_local_eqsolve_retries = 0;
+         n_local_eqsolve_retries < fc_.niterv && s.ok() &&
+         *s == SolveEqLoopStatus::MUST_RETRY;
+         n_local_eqsolve_retries++) {
       s = SolveEquilibriumLoop(thread_id, iterations_before_checkpointing,
                                checkpoint, lreset_internal);
     }
+#pragma omp single nowait
+    num_eqsolve_retries_ += n_local_eqsolve_retries;
 
 #pragma omp critical
     {
