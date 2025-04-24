@@ -150,7 +150,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       b_(&s_, &t_, kSignOfJacobian),
       h_(&s_),
       fc_(indata_.lfreeb, indata_.delt,
-          static_cast<int>(indata_.ns_array.size()) + 1, max_threads),
+          static_cast<int>(indata_.ns_array.size()), max_threads),
       verbose_(verbose),
       ivac_(-1),
       status_(VmecStatus::NORMAL_TERMINATION),
@@ -257,13 +257,13 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     // starting to work with the user-provided ns_array
     // if the first ns value from ns_array gave a bad jacobian
 
-    int max_grids = std::min(fc_.multi_ns_grid, maximum_multi_grid_step + 1);
-    for (int igrid = 1 - jacob_off_; igrid < max_grids; ++igrid) {
+    const int max_grids = std::min(fc_.multi_ns_grid, maximum_multi_grid_step);
+    for (int igrid = -jacob_off_; igrid < max_grids; igrid++) {
       constants_.reset();
 
       // retrieve settings for (ns, ftol, niter) for current multi-grid
       // iteration
-      if (igrid < 1) {
+      if (igrid < 0) {
         // igrid .lt. 1 can only happen when jacob_off == 1 (then igrid==0)
 
         // TRY TO GET NON-SINGULAR JACOBIAN ON A 3 PT RADIAL MESH
@@ -278,7 +278,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         ivac_ = -1;
       } else {
         // proceed regularly with ns values from ns_array
-        fc_.nsval = indata_.ns_array[igrid - 1];
+        fc_.nsval = indata_.ns_array[igrid];
         if (fc_.nsval < fc_.ns_min) {
           // skip entries that have less flux surfaces than previous iteration
           continue;
@@ -287,8 +287,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         // update ns_min --> reduction in number of flux surfaces not allowed
         fc_.ns_min = fc_.nsval;
 
-        fc_.ftolv = indata_.ftol_array[igrid - 1];
-        fc_.niterv = indata_.niter_array[igrid - 1];
+        fc_.ftolv = indata_.ftol_array[igrid];
+        fc_.niterv = indata_.niter_array[igrid];
       }
 
       if (fc_.ns_old <= fc_.nsval) {
