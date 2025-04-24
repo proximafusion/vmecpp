@@ -635,7 +635,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   bool liter_flag = true;
 
 // NOTE: *THIS* is the main parallel region for the equilibrium solver
-#pragma omp parallel
+#pragma omp parallel shared(liter_flag)
   {
 #ifdef _OPENMP
     int thread_id = omp_get_thread_num();
@@ -728,7 +728,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     status_ = VmecStatus::NORMAL_TERMINATION;
   }
 
-  // `iter_loop`: FORCE ITERATION LOOP
+  // FORCE ITERATION LOOP
   while (liter_flag) {
     // ADVANCE FOURIER AMPLITUDES OF R, Z, AND LAMBDA
     absl::StatusOr<bool> reached_checkpoint =
@@ -839,11 +839,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         status_ = VmecStatus::JACOBIAN_75_TIMES_BAD;
         liter_flag = false;
       }
-    } else if (iter2_ >= fc_.niterv && liter_flag) {
-      // allowed number of iterations exceeded
+    } else if (iter2_ >= fc_.niterv) {
 // protect liter_flag read above from the write below
 #pragma omp barrier
 #pragma omp single
+      // allowed number of iterations exceeded
       liter_flag = false;
     }
 
