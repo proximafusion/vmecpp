@@ -36,7 +36,7 @@ class FlowControl {
   // ns4: number of iterations between update of radial preconditioner matrix
   static constexpr int kPreconditionerUpdateInterval = 25;
 
-  FlowControl(bool lfreeb, double delt, int num_grids_plus_1,
+  FlowControl(bool lfreeb, double delt, int num_grids,
               std::optional<int> max_threads = std::nullopt);
 
   int max_threads() const;
