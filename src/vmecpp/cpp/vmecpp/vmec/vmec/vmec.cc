@@ -635,7 +635,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   bool liter_flag = false;
 
 // NOTE: *THIS* is the main parallel region for the equilibrium solver
-#pragma omp parallel
+#pragma omp parallel shared(liter_flag)
   {
 #ifdef _OPENMP
     int thread_id = omp_get_thread_num();
@@ -653,16 +653,15 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     // n_local_eqsolve_retries is a thread-local counter
     // may iterations only to ensure this terminates eventually, should never be
     // reached.
-    int n_local_eqsolve_retries = 0;
-    for (n_local_eqsolve_retries = 0;
-         n_local_eqsolve_retries < fc_.niterv && s.ok() &&
-         *s == SolveEqLoopStatus::MUST_RETRY;
+    int n_local_eqsolve_retries = num_eqsolve_retries_;
+    for (; n_local_eqsolve_retries < fc_.niterv && s.ok() &&
+           *s == SolveEqLoopStatus::MUST_RETRY;
          n_local_eqsolve_retries++) {
       s = SolveEquilibriumLoop(thread_id, iterations_before_checkpointing,
                                checkpoint, lreset_internal, liter_flag);
     }
 #pragma omp single nowait
-    num_eqsolve_retries_ += n_local_eqsolve_retries;
+    num_eqsolve_retries_ = n_local_eqsolve_retries;
 
 #pragma omp critical
     {
@@ -727,7 +726,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     status_ = VmecStatus::NORMAL_TERMINATION;
   }
 
-  // `iter_loop`: FORCE ITERATION LOOP
+  // FORCE ITERATION LOOP
   while (liter_flag) {
     // ADVANCE FOURIER AMPLITUDES OF R, Z, AND LAMBDA
     absl::StatusOr<bool> reached_checkpoint =
@@ -838,11 +837,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         status_ = VmecStatus::JACOBIAN_75_TIMES_BAD;
         liter_flag = false;
       }
-    } else if (iter2_ >= fc_.niterv && liter_flag) {
-      // allowed number of iterations exceeded
+    } else if (iter2_ >= fc_.niterv) {
 // protect liter_flag read above from the write below
 #pragma omp barrier
 #pragma omp single
+      // allowed number of iterations exceeded
       liter_flag = false;
     }
 
