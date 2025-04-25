@@ -13,9 +13,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  asan:
-    name: Address sanitizer
+  sanitizer:
+    name: Run ${{ matrix.sanitizer }}
     runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        sanitizer: [asan, ubsan]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,7 +29,7 @@ jobs:
       - name: Build VMEC++ via bazel
         run: |
           cd src/vmecpp/cpp
-          bazel build --config=asan -- //...
+          bazel build --config=${{ matrix.sanitizer }} -- //...
       - uses: actions/checkout@v4
         with:
           repository: proximafusion/vmecpp_large_cpp_tests
@@ -35,8 +38,8 @@ jobs:
       - name: Build VMEC++ C++ tests via bazel
         run: |
           cd src/vmecpp/cpp
-          bazel build --config=asan -- //vmecpp_large_cpp_tests/...
-      - name: Test with ASAN
+          bazel build --config=${{ matrix.sanitizer }} -- //vmecpp_large_cpp_tests/...
+      - name: Test with ${{ matrix.sanitizer }}
         run: |
           cd src/vmecpp/cpp
-          bazel test --test_timeout=3600 --jobs=1 --config=asan --test_output=errors -- //...
+          bazel test --test_timeout=3600 --jobs=1 --config=${{ matrix.sanitizer }} --test_output=errors -- //...
