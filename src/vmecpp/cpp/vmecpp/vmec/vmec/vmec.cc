@@ -731,9 +731,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
   // CHECK_EQ(iter2_, 1);
 
   // FORCE ITERATION LOOP
-  int iter3 = iter2_;
   int iter_bad_reset = 0;
-  for (int iter2 = iter2_; iter2 < fc_.niterv && liter_flag; iter3++) {
+  for (int force_iterations = iter2_;
+       force_iterations < fc_.niterv && liter_flag; force_iterations++) {
     // ADVANCE FOURIER AMPLITUDES OF R, Z, AND LAMBDA
     absl::StatusOr<bool> reached_checkpoint =
         Evolve(checkpoint, iterations_before_checkpointing, fc_.delt0r,
@@ -792,7 +792,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     }
 
     if (checkpoint == VmecCheckpoint::EVOLVE &&
-        iter2 >= iterations_before_checkpointing) {
+        iter2_ >= iterations_before_checkpointing) {
       // need to get past re-try with guess_axis in case of bad Jacobian
       return SolveEqLoopStatus::CHECKPOINT_REACHED;
     }
@@ -859,17 +859,17 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
     }
 
-    if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
+    if (fc_.fsq <= fc_.res0 && (iter2_ - iter1_) > 10) {
       // Store current state (restart_reason=NO_RESTART)
       // --> was able to reduce force consistenly over at least 10 iterations
       RestartIteration(fc_.delt0r, thread_id);
-    } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
+    } else if (fc_.fsq > 100.0 * fc_.res0 && iter2_ > iter1_) {
       // Residuals are growing in time, reduce time step
 
 #pragma omp single
       fc_.restart_reason = RestartReason::BAD_JACOBIAN;
-    } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
-               iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
+    } else if ((iter2_ - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
+               iter2_ > 2 * fc_.kPreconditionerUpdateInterval &&
                fc_.fsqr + fc_.fsqz > 1.0e-2) {
       // quite some iterations and quite large forces
       // --> restart with different timestep
@@ -892,13 +892,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // TODO(jurasic) This might be the cause for non terminating VMEC++!
       iter_bad_reset++;
 #pragma omp single nowait
-      iter1_ = iter2;
+      iter1_ = iter2_;
     } else {
       // Increment time step and printout every nstep iterations
       // status report due or
       // first iteration or
       // iterations cancelled already (last iteration)
-      if (iter2 % indata_.nstep == 0 || iter2 == 1 || !liter_flag) {
+      if (iter2_ % indata_.nstep == 0 || iter2_ == 1 || !liter_flag) {
         // TODO(jons): why compute spectral width from backup and not current
         // gc (== physical xc) --> <M> includes scalxc ???
         physical_x_backup_[thread_id]->ComputeSpectralWidth(t_, *p_[thread_id]);
@@ -909,19 +909,17 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         Printout(fc_.delt0r, thread_id);
 
         if (checkpoint == VmecCheckpoint::PRINTOUT &&
-            iter2 >= iterations_before_checkpointing) {
+            iter2_ >= iterations_before_checkpointing) {
           return SolveEqLoopStatus::CHECKPOINT_REACHED;
         }
       }
-      iter2++;
-      CHECK_EQ(iter2, iter3 + 1 - iter_bad_reset);
     }
 
 #pragma omp single
     // Shared iteration counter
     // bad resets didn't increment, subtract them to get the same iteration
     // count as VMEC 8.52
-    iter2_ = iter3 + 1 - iter_bad_reset;
+    iter2_ = force_iterations + 1 - iter_bad_reset;
 
 #pragma omp barrier
 
