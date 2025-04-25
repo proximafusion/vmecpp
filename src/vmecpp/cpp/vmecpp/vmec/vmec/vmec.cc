@@ -666,7 +666,8 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
       s = SolveEquilibriumLoop(thread_id, iterations_before_checkpointing,
                                checkpoint, lreset_internal);
     }
-#pragma omp single nowait
+#pragma omp single nowait  // nowait because critical below has an implicit
+                           // barrier
     num_eqsolve_retries_ += n_local_eqsolve_retries;
 
 #pragma omp critical
