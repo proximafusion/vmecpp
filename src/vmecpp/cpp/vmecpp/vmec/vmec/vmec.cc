@@ -656,7 +656,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     absl::StatusOr<SolveEqLoopStatus> s = SolveEqLoopStatus::MUST_RETRY;
 
     // n_local_eqsolve_retries is a thread-local counter
-    // may iterations only to ensure this terminates eventually, should never be
+    // max iterations only to ensure this terminates eventually, should never be
     // reached.
     int n_local_eqsolve_retries = 0;
     for (n_local_eqsolve_retries = 0;
