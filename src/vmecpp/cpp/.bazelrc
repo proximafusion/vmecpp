@@ -11,6 +11,7 @@ build:opt   -c opt --copt="-O3" --copt="-fno-math-errno"
 build:perf  -c opt --copt="-O3" --copt="-fno-math-errno" --copt="-g" --strip=never --copt="-fno-omit-frame-pointer"
 build:dbg   -c dbg --copt="-O0"
 build:asan  -c dbg --features=asan --strip=never
+build:ubsan  -c dbg --features=ubsan --strip=never
 
 # We observe CPU overloads when having too many OpenMP threads in parallel on the CI machines.
 # So far, it looks similar to this issue: https://stackoverflow.com/q/70126350
