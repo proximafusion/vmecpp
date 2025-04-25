@@ -1282,7 +1282,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         /*m_vmec_internal_results=*/output_quantities.vmec_internal_results);
 
     if (checkpoint == VmecCheckpoint::BCOVAR_FILEOUT) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     RecomputeToroidalFlux(
@@ -1300,7 +1300,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
                                output_quantities.remaining_metric);
 
     if (checkpoint == VmecCheckpoint::BSS) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     // -> jxbforce
@@ -1318,7 +1318,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         /*m_vmec_internal_results=*/output_quantities.vmec_internal_results);
 
     if (checkpoint == VmecCheckpoint::LOWPASS_BCOVARIANT) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     // TODO(jons): optionally, re-compute B_s to solve radial force balance
@@ -1327,7 +1327,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     ExtrapolateBSubS(s, fc, /*m_bsubs_full=*/output_quantities.bsubs_full);
 
     if (checkpoint == VmecCheckpoint::EXTRAPOLATE_BSUBS) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     output_quantities.jxbout = ComputeJxBOutputFileContents(
@@ -1336,7 +1336,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         indata.return_outputs_even_if_not_converged, vmec_status);
 
     if (checkpoint == VmecCheckpoint::JXBOUT) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     output_quantities.mercier_intermediate =
@@ -1349,7 +1349,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
                                 output_quantities.mercier_intermediate);
 
     if (checkpoint == VmecCheckpoint::MERCIER) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     output_quantities.threed1_first_table_intermediate =
@@ -1361,7 +1361,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         output_quantities.threed1_first_table_intermediate);
 
     if (checkpoint == VmecCheckpoint::THREED1_FIRST_TABLE) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     output_quantities.threed1_geometric_magnetic_intermediate =
@@ -1378,7 +1378,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
             output_quantities.threed1_geometric_magnetic_intermediate);
 
     if (checkpoint == VmecCheckpoint::THREED1_GEOMAG) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     output_quantities.threed1_volumetrics = ComputeThreed1Volumetrics(
@@ -1386,14 +1386,14 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         output_quantities.threed1_geometric_magnetic);
 
     if (checkpoint == VmecCheckpoint::THREED1_VOLUMETRICS) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     output_quantities.threed1_axis = ComputeThreed1AxisGeometry(
         s, t, output_quantities.vmec_internal_results);
 
     if (checkpoint == VmecCheckpoint::THREED1_AXIS) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     output_quantities.threed1_betas = ComputeThreed1Betas(
@@ -1402,7 +1402,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         output_quantities.threed1_geometric_magnetic);
 
     if (checkpoint == VmecCheckpoint::THREED1_BETAS) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     output_quantities.threed1_shafranov_integrals =
@@ -1412,7 +1412,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
             output_quantities.threed1_geometric_magnetic, ivac);
 
     if (checkpoint == VmecCheckpoint::THREED1_SHAFRANOV_INTEGRALS) {
-      return output_quantities;
+      return output_quantities;  // output_quantities partially uninitialized.
     }
 
     // NOTE: We slightly deviate from Fortran VMEC here,

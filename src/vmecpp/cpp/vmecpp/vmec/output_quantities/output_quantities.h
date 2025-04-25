@@ -1003,13 +1003,13 @@ struct WOutFileContents {
   int nfp;
   int mpol;
   int ntor;
-  bool lasym;
+  bool lasym = false;
 
   int ns;
   double ftolv;
   int maximum_iterations;
 
-  bool lfreeb;
+  bool lfreeb = false;
   std::string mgrid_file;
   int nextcur;
   Eigen::VectorXd extcur;
