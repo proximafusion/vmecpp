@@ -474,13 +474,17 @@ IdealMhdModel::IdealMhdModel(
       m_ls_(*m_ls),
       m_h_(*m_h),
       r_(*r),
-      m_fb_(*m_fb),
+      m_fb_(m_fb),
       m_ivac_(*m_ivac),
       signOfJacobian(signOfJacobian),
       nvacskip(nvacskip),
       ivacskip(0) {
   CHECK_GE(nvacskip, 0)
       << "Should never happen: should be checked by VmecINDATA";
+  if (m_fc_.lfreeb) {
+    CHECK(m_fb_ != nullptr)
+        << "Free-boundary configuration requires a Free-boundary solver";
+  }
 
   // init members
   ncurr = 0;
@@ -909,9 +913,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
 // protect reads of magnetic axis, boundary geometry below from writes above
 #pragma omp barrier
-
       const double netToroidalCurrent = m_h_.cTor / MU_0;
-      bool reached_checkpoint = m_fb_.update(
+      bool reached_checkpoint = m_fb_->update(
           m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
           m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
           signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),

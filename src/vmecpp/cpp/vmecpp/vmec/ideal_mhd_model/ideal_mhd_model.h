@@ -418,7 +418,7 @@ class IdealMhdModel {
   ThreadLocalStorage& m_ls_;
   HandoverStorage& m_h_;
   const RadialPartitioning& r_;
-  FreeBoundaryBase& m_fb_;
+  FreeBoundaryBase* m_fb_;
   int& m_ivac_;
 
   int signOfJacobian;
