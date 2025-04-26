@@ -508,7 +508,8 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     // TODO(jurasic) Remove after Eigen refactor
     std::vector<std::vector<double>> cylindrical_grid_stl{
         static_cast<std::size_t>(maybe_cylindrical_grid.value().cols())};
-    CHECK_EQ(number_of_evaluation_points, cylindrical_grid_stl.size());
+    CHECK_EQ(static_cast<std::size_t>(number_of_evaluation_points),
+             cylindrical_grid_stl.size());
     for (int i = 0; i < number_of_evaluation_points; ++i) {
       cylindrical_grid_stl[i].resize(3);
       for (int j = 0; j < 3; ++j) {
