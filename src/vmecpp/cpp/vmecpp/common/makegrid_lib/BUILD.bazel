@@ -9,15 +9,13 @@ cc_library(
     deps = [
         "@abseil-cpp//absl/strings:str_format",
         "@nlohmann_json//:json",
+        "//third_party/netcdf4",
         "//util/json_io",
         "//util/file_io",
         "//vmecpp/common/composed_types_lib",
         "//vmecpp/common/magnetic_configuration_lib",
         "//vmecpp/common/magnetic_field_provider:magnetic_field_provider_lib",
         "//vmecpp/common/util:util",
-    ],
-    linkopts = [
-        "-lnetcdf",
     ],
 )
 
