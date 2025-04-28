@@ -162,6 +162,8 @@ ignore = [
 include = ["src"]
 exclude = ["build", "**/__pycache__", "src/vmecpp/cpp/bazel-cpp/"]
 pythonVersion = "3.10"
+venvPath = "."
+venv = ".venv"
 
 [tool.docformatter]
 black = true  # Enables mode that plays nice with black, e.g. sets line length to 88.

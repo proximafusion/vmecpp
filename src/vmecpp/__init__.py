@@ -245,10 +245,10 @@ class VmecInput(BaseModelWithNumpy):
 
     @staticmethod
     def resize_2d_coeff(
-        coeff: jt.Float[np.ndarray, "mpol, * two_ntor_plus_one"],
+        coeff: jt.Float[np.ndarray, "mpol two_ntor_plus_one"],
         mpol_new: int,
         ntor_new: int,
-    ) -> jt.Float[np.ndarray, "mpol_new, * two_ntor_new_plus_one"]:
+    ) -> jt.Float[np.ndarray, "mpol_new two_ntor_new_plus_one"]:
         """Resizes a 2D NumPy array representing Fourier coefficients, padding with
         zeros or truncating as needed.
 
@@ -492,15 +492,15 @@ class VmecWOut(BaseModelWithNumpy):
     pcurr_type: str
     pmass_type: str
     piota_type: str
-    am: jt.Float[np.ndarray, f"{_PRESET_DIM}"]
-    ac: jt.Float[np.ndarray, f"{_PRESET_DIM}"]
-    ai: jt.Float[np.ndarray, f"{_PRESET_DIM}"]
-    am_aux_s: jt.Float[np.ndarray, f"{_NDF_MAX_DIM}"]
-    am_aux_f: jt.Float[np.ndarray, f"{_NDF_MAX_DIM}"]
-    ac_aux_s: jt.Float[np.ndarray, f"{_NDF_MAX_DIM}"]
-    ac_aux_f: jt.Float[np.ndarray, f"{_NDF_MAX_DIM}"]
-    ai_aux_s: jt.Float[np.ndarray, f"{_NDF_MAX_DIM}"]
-    ai_aux_f: jt.Float[np.ndarray, f"{_NDF_MAX_DIM}"]
+    am: jt.Float[np.ndarray, "_PRESET_DIM"]
+    ac: jt.Float[np.ndarray, "_PRESET_DIM"]
+    ai: jt.Float[np.ndarray, "_PRESET_DIM"]
+    am_aux_s: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
+    am_aux_f: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
+    ac_aux_s: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
+    ac_aux_f: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
+    ai_aux_s: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
+    ai_aux_f: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
     gamma: float
     mgrid_file: str
     nextcur: int
