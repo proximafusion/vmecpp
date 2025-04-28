@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Optional, cast
 
+import jaxtyping as jt
 import numpy as np
 from simsopt._core.optimizable import Optimizable
 from simsopt._core.util import ObjectiveFailure
@@ -15,9 +16,6 @@ from simsopt.util.mpi import MpiPartition
 
 import vmecpp
 from vmecpp import (  # noqa: F401
-    # type hints
-    NDArray,
-    Shape,
     # Re-export specific functions from vmecpp for backwards compatibility
     ensure_vmec2000_input,
     ensure_vmecpp_input,
@@ -69,9 +67,9 @@ class Vmec(Optimizable):
     # These are filled:
     # - by __init__ if Vmec is initialized with an output file
     # - by a call to run() and are None before otherwise
-    s_full_grid: NDArray[Shape["* ns"], np.float64] | None
+    s_full_grid: jt.Float[np.ndarray, "ns"] | None
     ds: float | None
-    s_half_grid: NDArray[Shape["* nshalf"], np.float64] | None
+    s_half_grid: jt.Float[np.ndarray, "nshalf"] | None
 
     # The loaded run results, either of the previous run or when constructing Vmec() from an output file
     wout: vmecpp.VmecWOut | None
@@ -289,8 +287,9 @@ class Vmec(Optimizable):
     def _set_grid(self) -> None:
         assert self.wout is not None
         self.s_full_grid = np.linspace(0, 1, self.wout.ns)
-        self.ds = self.s_full_grid[1] - self.s_full_grid[0]
-        self.s_half_grid = self.s_full_grid[1:] - 0.5 * self.ds
+        ds = self.s_full_grid[1] - self.s_full_grid[0]
+        self.s_half_grid = self.s_full_grid[1:] - 0.5 * ds
+        self.ds = ds
 
     def aspect(self) -> float:
         """Return the plasma aspect ratio."""
