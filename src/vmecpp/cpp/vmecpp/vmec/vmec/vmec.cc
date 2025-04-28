@@ -154,7 +154,6 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       verbose_(verbose),
       ivac_(-1),
       status_(VmecStatus::NORMAL_TERMINATION),
-      liter_flag_(false),
       iter2_(1),
       iter1_(iter2_),
       invTau_(kNDamp),
@@ -291,20 +290,16 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         fc_.niterv = indata_.niter_array[igrid];
       }
 
-      if (fc_.ns_old <= fc_.nsval) {
-        // initialize ns-dependent arrays
-        // and (if previous solution is available) interpolate to current ns
-        // value
-        bool reached_checkpoint =
-            InitializeRadial(checkpoint, iterations_before_checkpointing,
-                             fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state);
-        if (reached_checkpoint) {
-          return true;
-        }
+      // initialize ns-dependent arrays
+      // and (if previous solution is available) interpolate to current ns
+      // value
+      if (InitializeRadial(checkpoint, iterations_before_checkpointing,
+                           fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state)) {
+        return true;
       }
 
       // *HERE* is the *ACTUAL* call to the equilibrium solver !
-      absl::StatusOr<bool> reached_checkpoint =
+      const absl::StatusOr<bool> reached_checkpoint =
           SolveEquilibrium(checkpoint, iterations_before_checkpointing);
       if (!reached_checkpoint.ok() || *reached_checkpoint == true) {
         return reached_checkpoint;
@@ -359,7 +354,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   return false;
 }  // run
 
-// initialize_radial
+// initialize_radial quantities, return true if a checkpoint was reached
 bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
@@ -636,8 +631,8 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   absl::Status status_of_all_threads = absl::OkStatus();
   bool any_checkpoint_reached = false;
 
-  // true at start of current multi-grid iteration
-  liter_flag_ = (iter2_ == 1);
+  // Shared communication variable for all threads, to early exit
+  bool liter_flag = true;
 
 // NOTE: *THIS* is the main parallel region for the equilibrium solver
 #pragma omp parallel
@@ -651,7 +646,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     // COMPUTE INITIAL R, Z AND MAGNETIC FLUX PROFILES
 
     // this needs to be persistent across loops, so we create it here
-    bool lreset_internal = false;
+    bool m_lreset_internal = false;
 
     absl::StatusOr<SolveEqLoopStatus> s = SolveEqLoopStatus::MUST_RETRY;
 
@@ -663,8 +658,9 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
          n_local_eqsolve_retries < fc_.niterv && s.ok() &&
          *s == SolveEqLoopStatus::MUST_RETRY;
          n_local_eqsolve_retries++) {
-      s = SolveEquilibriumLoop(thread_id, iterations_before_checkpointing,
-                               checkpoint, lreset_internal);
+      s = SolveEquilibriumLoop(
+          thread_id, iterations_before_checkpointing, checkpoint,
+          /*m_lreset_internal=*/m_lreset_internal, /*m_liter_flag=*/liter_flag);
     }
 #pragma omp single nowait  // nowait because critical below has an implicit
                            // barrier
@@ -695,13 +691,13 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
 absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     int thread_id, int iterations_before_checkpointing,
-    VmecCheckpoint checkpoint, bool& lreset_internal) {
+    VmecCheckpoint checkpoint, bool& m_lreset_internal, bool& m_liter_flag) {
   // RECOMPUTE INITIAL PROFILE, BUT WITH IMPROVED AXIS
   // OR
   // RESTART FROM INITIAL PROFILE, BUT WITH A SMALLER TIME-STEP
   if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
     decomposed_x_[thread_id]->setZero();
-    if (lreset_internal) {
+    if (m_lreset_internal) {
       decomposed_x_[thread_id]->interpFromBoundaryAndAxis(t_, b_,
                                                           *p_[thread_id]);
     }
@@ -714,31 +710,31 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       fc_.restart_reason = RestartReason::NO_RESTART;
     }
 
-    if (liter_flag_) {
-      // Note that at this point, liter_flag could also simply contain (iter2
-      // .eq. 1) (see above). (OFF IN v8.50)
+    // In the first multigrid iteration (OFF IN v8.50)
+    if (iter2_ == 1) {
       RestartIteration(fc_.delt0r, thread_id);
     }
   }  // restart_reason == BAD_JACOBIAN
 
-// protect read of liter_flag above from write below
+// protect read of m_liter_flag above from write below
 // (RestartIteration also implicitly does the same job as it contains several
 // barriers, but we do not want to count on its side-effects)
 #pragma omp barrier
 #pragma omp single
   {
     // start normal iterations
-    liter_flag_ = true;
+    m_liter_flag = true;
 
     // reset error flag
     status_ = VmecStatus::NORMAL_TERMINATION;
   }
 
-  // `iter_loop`: FORCE ITERATION LOOP
-  while (liter_flag_) {
+  // `liter_loop`: FORCE ITERATION LOOP
+  while (m_liter_flag) {
     // ADVANCE FOURIER AMPLITUDES OF R, Z, AND LAMBDA
-    absl::StatusOr<bool> reached_checkpoint = Evolve(
-        checkpoint, iterations_before_checkpointing, fc_.delt0r, thread_id);
+    absl::StatusOr<bool> reached_checkpoint =
+        Evolve(checkpoint, iterations_before_checkpointing, fc_.delt0r,
+               thread_id, /*m_liter_flag=*/m_liter_flag);
     if (!reached_checkpoint.ok()) {
       return reached_checkpoint.status();
     }
@@ -770,26 +766,26 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         fc_.ijacob = 1;
 
         // prepare parameters to functions that get called due to
-        // lreset_internal and restart_reason == BAD_JACOBIAN
+        // m_lreset_internal and restart_reason == BAD_JACOBIAN
         fc_.restart_reason = RestartReason::BAD_JACOBIAN;
       }
 
       // Signals to re-initialize the state vector
       // from the (updated/improved) initial guess
       // at the top of this method, in the next call.
-      // NOTE: `lreset_internal` is thread-local, hence need to do this outside
-      // the `omp single` block
-      lreset_internal = true;
+      // NOTE: `m_lreset_internal` is thread-local, hence need to do this
+      // outside the `omp single` block
+      m_lreset_internal = true;
 
       // try again: GOTO 20
-      // but need to leave liter_flag loop first...
+      // but need to leave m_liter_flag loop first...
       return SolveEqLoopStatus::MUST_RETRY;
     } else if (status_ != VmecStatus::NORMAL_TERMINATION &&
                status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
       // if something went totally wrong even in this initial steps, do not
       // continue at all
       std::cout << "FATAL ERROR in thread=" << thread_id << '\n';
-      break;  // while(liter_flag_)
+      break;  // while(m_liter_flag)
     }
 
     if (checkpoint == VmecCheckpoint::EVOLVE &&
@@ -801,7 +797,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     // (compute MHD energy)
     // (has been done in updateFwdModel already: `h_.mhdEnergy`)
 
-    // ADDITIONAL STOPPING CRITERION (set liter_flag to FALSE)
+    // ADDITIONAL STOPPING CRITERION (set m_liter_flag to FALSE)
 
     // the blocks for ijacob=25 or 50 are equal up to the point
     // that for 25, delt0r is reset to 0.98*delt (delt given by user)
@@ -833,7 +829,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         fc_.restart_reason = RestartReason::NO_RESTART;
       }
       // try again: GOTO 20
-      // but need to leave liter_flag loop first...
+      // but need to leave m_liter_flag loop first...
       return SolveEqLoopStatus::MUST_RETRY;
     } else if (fc_.ijacob >= 75) {
       // jacobian changed sign at least 75 times: time to give up :-(
@@ -842,14 +838,14 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       {
         // 'MORE THAN 75 JACOBIAN ITERATIONS (DECREASE DELT)'
         status_ = VmecStatus::JACOBIAN_75_TIMES_BAD;
-        liter_flag_ = false;
+        m_liter_flag = false;
       }
-    } else if (iter2_ >= fc_.niterv && liter_flag_) {
-      // allowed number of iterations exceeded
-// protect liter_flag read above from the write below
+    } else if (iter2_ >= fc_.niterv) {
+// protect m_liter_flag read above from the write below
 #pragma omp barrier
 #pragma omp single
-      liter_flag_ = false;
+      // allowed number of iterations exceeded
+      m_liter_flag = false;
     }
 
 #pragma omp single
@@ -902,7 +898,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // status report due or
       // first iteration or
       // iterations cancelled already (last iteration)
-      if (iter2_ % indata_.nstep == 0 || iter2_ == 1 || !liter_flag_) {
+      if (iter2_ % indata_.nstep == 0 || iter2_ == 1 || !m_liter_flag) {
         // TODO(jons): why compute spectral width from backup and not current
         // gc (== physical xc) --> <M> includes scalxc ???
         physical_x_backup_[thread_id]->ComputeSpectralWidth(t_, *p_[thread_id]);
@@ -942,7 +938,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         ivac_ = 2;
       }
     }
-  }  // while liter_flag
+  }  // while m_liter_flag
 
   return SolveEqLoopStatus::NORMAL_TERMINATION;
 }
@@ -1004,7 +1000,8 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 
 absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
                                   int iterations_before_checkpointing,
-                                  double time_step, int thread_id) {
+                                  double time_step, int thread_id,
+                                  bool& m_liter_flag) {
 #pragma omp single
   {
     fc_.restart_reason = RestartReason::NO_RESTART;
@@ -1027,12 +1024,12 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
                fc_.fsql <= fc_.ftolv) {
       // converged to desired tolerance
 
-      liter_flag_ = false;
+      m_liter_flag = false;
       status_ = VmecStatus::SUCCESSFUL_TERMINATION;
     }
   }  // #pragma omp single (there is an implicit omp barrier here)
 
-  if (status_ != VmecStatus::NORMAL_TERMINATION || !liter_flag_) {
+  if (status_ != VmecStatus::NORMAL_TERMINATION || !m_liter_flag) {
     // erroneous iteration or shall not iterate further
     return false;
   }
