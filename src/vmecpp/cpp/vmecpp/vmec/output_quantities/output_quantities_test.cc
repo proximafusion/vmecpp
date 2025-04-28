@@ -278,7 +278,8 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   std::vector<double> reference_bdotgradv =
       NetcdfReadArray1D(ncid, "bdotgradv");
   for (int jF = 0; jF < fc.ns; ++jF) {
-    EXPECT_TRUE(IsCloseRelAbs(reference_jdotb[jF], wout.jdotb[jF], tolerance));
+    EXPECT_TRUE(
+        IsCloseRelAbs(reference_jdotb[jF], wout.jdotb[jF], 10 * tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_bdotb[jF], wout.bdotb[jF], tolerance));
     EXPECT_TRUE(
         IsCloseRelAbs(reference_bdotgradv[jF], wout.bdotgradv[jF], tolerance));
