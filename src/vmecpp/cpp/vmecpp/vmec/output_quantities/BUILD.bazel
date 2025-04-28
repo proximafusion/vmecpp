@@ -16,7 +16,6 @@ cc_library(
         "//vmecpp/common/sizes:sizes",
         "//vmecpp/vmec/handover_storage:handover_storage",
         "//vmecpp/vmec/ideal_mhd_model:ideal_mhd_model",
-        "//third_party/hdf5",
     ],
 )
 

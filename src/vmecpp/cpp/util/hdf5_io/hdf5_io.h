@@ -5,12 +5,12 @@
 #ifndef UTIL_HDF5_IO_HDF5_IO_H_
 #define UTIL_HDF5_IO_HDF5_IO_H_
 
+#include <H5Cpp.h>
+
 #include <Eigen/Dense>
 #include <string>
 #include <type_traits>
 #include <vector>
-
-#include "H5Cpp.h"
 
 namespace hdf5_io {
 
