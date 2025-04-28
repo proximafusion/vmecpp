@@ -38,7 +38,7 @@ int get_max_threads(std::optional<int> max_threads) {
   return max_threads.value();
 }
 
-FlowControl::FlowControl(bool lfreeb, double delt, int num_grids_plus_1,
+FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
                          std::optional<int> max_threads)
     : lfreeb(lfreeb), max_threads_(get_max_threads(max_threads)) {
   fsq = 1.0;
@@ -51,7 +51,7 @@ FlowControl::FlowControl(bool lfreeb, double delt, int num_grids_plus_1,
   restart_reason = RestartReason::NO_RESTART;
   res0 = -1;
   delt0r = delt;
-  multi_ns_grid = num_grids_plus_1;
+  multi_ns_grid = num_grids;
   neqs_old = 0;
 
   fResInvar.resize(3, 0.0);
