@@ -203,10 +203,10 @@ absl::StatusOr<MagneticConfiguration> ImportMagneticConfigurationFromMakegrid(
 absl::StatusOr<MagneticConfiguration> ImportMagneticConfigurationFromCoilsFile(
     const std::filesystem::path& mgrid_coils_file) {
   const auto maybe_coils_file_content = file_io::ReadFile(mgrid_coils_file);
-  CHECK_OK(maybe_coils_file_content);
-  const auto& coils_file_content = *maybe_coils_file_content;
-
-  return ImportMagneticConfigurationFromMakegrid(coils_file_content);
+  if (!maybe_coils_file_content.ok()) {
+    return maybe_coils_file_content.status();
+  }
+  return ImportMagneticConfigurationFromMakegrid(*maybe_coils_file_content);
 }
 
 absl::StatusOr<std::vector<double> > GetCircuitCurrents(
