@@ -18,10 +18,9 @@ vmec_input = vmecpp.VmecInput.from_file(vmec_input_filename)
 # We don't need an mgrid file, because we are passing the magnetic field as an object in memory
 vmec_input.mgrid_file = ""
 
-mgrid_params = vmecpp._vmecpp.MakegridParameters.from_file(makegrid_params_fname)
-magnetic_configuration = vmecpp._vmecpp.MagneticConfiguration.from_file(coils_fname)
-magnetic_response_table = vmecpp._vmecpp.compute_magnetic_field_response_table(
-    mgrid_params, magnetic_configuration
+mgrid_params = vmecpp.MakegridParameters.from_file(makegrid_params_fname)
+magnetic_response_table = vmecpp.MagneticFieldResponseTable.from_coils_file(
+    coils_fname, mgrid_params
 )
 # Let's run VMEC++.
 # In case of errors or non-convergence, a RuntimeError is raised.
