@@ -4287,6 +4287,17 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.fsqz = fc.fsqz;
   wout.fsql = fc.fsql;
 
+  wout.fsqt = ToEigenVector(fc.fsqt);
+  wout.itfsq = wout.fsqt.size();
+  // First entry is the staring energy W
+  wout.wdot = ToEigenVector(fc.mhd_energy);
+  if (wout.wdot.size() > 1) {
+    // Compute decay rate wdot = -W/dt = (W[1:] - W[0:]) / W[1:]
+    wout.wdot.tail(wout.wdot.size() - 1) =
+        (wout.wdot.tail(wout.wdot.size() - 1) -
+         wout.wdot.head(wout.wdot.size() - 1))
+            .cwiseQuotient(wout.wdot.tail(wout.wdot.size() - 1));
+  }
   // -------------------
   // one-dimensional array quantities
 
