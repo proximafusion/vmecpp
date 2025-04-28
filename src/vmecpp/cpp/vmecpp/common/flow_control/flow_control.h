@@ -86,6 +86,9 @@ class FlowControl {
   double fsqr1, fsqz1, fsql1;
   double fsq;
 
+  std::vector<double> fsqt;
+  std::vector<double> mhd_energy;
+
   double res0;
 
   std::vector<double> fResInvar;

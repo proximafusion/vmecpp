@@ -413,14 +413,11 @@ class VmecWOut(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid")
 
     _MISSING_FORTRAN_VARIABLES: typing.ClassVar[list[str]] = [
-        "itfsq",
         "lrecon__logical__",
         "lrfp__logical__",
         "lmove_axis__logical__",
         "mnyq",
         "nnyq",
-        "fsqt",
-        "wdot",
         "currumnc",
         "currvmnc",
         "curlabel",
@@ -463,12 +460,17 @@ class VmecWOut(pydantic.BaseModel):
     fsqz: float
     fsql: float
     ftolv: float
+    # Default initialized so reading stays backwards compatible pre v0.3.6
+    itfsq: int = 0
     # NOTE: here, usage of the same dim1 or dim2 does NOT mean
     # they must have the same value across different attributes.
     phipf: NDArray[Shape["* dim1"], np.float64]
     chipf: NDArray[Shape["* dim1"], np.float64]
     jcuru: NDArray[Shape["* dim1"], np.float64]
     jcurv: NDArray[Shape["* dim1"], np.float64]
+    # Default initialized so reading stays backwards compatible pre v0.3.6
+    fsqt: NDArray[Shape["* time"], np.float64] = np.array([])
+    wdot: NDArray[Shape["* time"], np.float64] = np.array([])
     jdotb: NDArray[Shape["* dim1"], np.float64]
     bdotb: NDArray[Shape["* dim1"], np.float64]
     bdotgradv: NDArray[Shape["* dim1"], np.float64]
@@ -671,6 +673,7 @@ class VmecWOut(pydantic.BaseModel):
                 "fsql",
                 "fsqr",
                 "fsqz",
+                "itfsq",
             ]:
                 fnc.createVariable(varname, np.float64)
                 fnc[varname][:] = getattr(self, varname)
@@ -696,7 +699,9 @@ class VmecWOut(pydantic.BaseModel):
             fnc.createDimension("radius", self.ns)
 
             # Dimensions that are not in use yet
-            _TIME = 100
+            _TIME = (
+                self.itfsq
+            )  # VMEC2000 has a fixed value of 100, we store all steps instead
             _MN_MAX_POT = 100  # TODO(jurasic) self.mnmaxpot
             fnc.createDimension("time", _TIME)
             fnc.createDimension("mn_mode_pot", _MN_MAX_POT)
@@ -784,6 +789,11 @@ class VmecWOut(pydantic.BaseModel):
                 fnc.createVariable(varname, np.float64, ("radius", "mn_mode"))
                 fnc[varname][:] = getattr(self, varname).T[:]
 
+            # Convergence time trace information
+            for varname in ["fsqt", "wdot"]:
+                fnc.createVariable(varname, np.float64, ("time",))
+                fnc[varname][:] = getattr(self, varname).T[:]
+
             fnc.createVariable("lmns_full", np.float64, ("radius", "mn_mode"))
             fnc["lmns_full"][:] = self.lmns_full.T[:]
 
@@ -862,10 +872,13 @@ class VmecWOut(pydantic.BaseModel):
         attrs["fsqr"] = cpp_wout.fsqr
         attrs["fsqz"] = cpp_wout.fsqz
         attrs["fsql"] = cpp_wout.fsql
+        attrs["itfsq"] = cpp_wout.itfsq
         attrs["phipf"] = cpp_wout.phipf
         attrs["chipf"] = cpp_wout.chipf
         attrs["jcuru"] = cpp_wout.jcuru
         attrs["jcurv"] = cpp_wout.jcurv
+        attrs["fsqt"] = cpp_wout.fsqt
+        attrs["wdot"] = cpp_wout.wdot
         attrs["jdotb"] = cpp_wout.jdotb
         attrs["bdotb"] = cpp_wout.bdotb
         attrs["bdotgradv"] = cpp_wout.bdotgradv
@@ -1025,10 +1038,13 @@ class VmecWOut(pydantic.BaseModel):
         cpp_wout.fsqr = self.fsqr
         cpp_wout.fsqz = self.fsqz
         cpp_wout.fsql = self.fsql
+        cpp_wout.itfsq = self.itfsq
         cpp_wout.phipf = self.phipf
         cpp_wout.chipf = self.chipf
         cpp_wout.jcuru = self.jcuru
         cpp_wout.jcurv = self.jcurv
+        cpp_wout.fsqt = self.fsqt
+        cpp_wout.wdot = self.wdot
         cpp_wout.jdotb = self.jdotb
         cpp_wout.bdotb = self.bdotb
         cpp_wout.bdotgradv = self.bdotgradv

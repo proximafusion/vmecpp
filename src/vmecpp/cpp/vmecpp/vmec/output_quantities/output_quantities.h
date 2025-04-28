@@ -1053,6 +1053,10 @@ struct WOutFileContents {
   double fsqr;
   double fsqz;
   double fsql;
+  // Number of "time steps" of the force relaxation that were actually required
+  // to achieve convergence. (How many of the maximum niter steps we ended up
+  // using.)
+  int itfsq;
 
   // -------------------
   // one-dimensional array quantities
@@ -1080,6 +1084,12 @@ struct WOutFileContents {
 
   Eigen::VectorXd jcuru;
   Eigen::VectorXd jcurv;
+
+  // Convergence quantities (one entry per time step)
+  // Force residual at each iteration
+  Eigen::VectorXd fsqt;
+  // Gradient of the energy at each iteration
+  Eigen::VectorXd wdot;
 
   // ---------
 

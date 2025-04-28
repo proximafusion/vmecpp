@@ -529,6 +529,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("fsqr", &vmecpp::WOutFileContents::fsqr)
       .def_readwrite("fsqz", &vmecpp::WOutFileContents::fsqz)
       .def_readwrite("fsql", &vmecpp::WOutFileContents::fsql)
+      .def_readwrite("itfsq", &vmecpp::WOutFileContents::itfsq)
       //
       .def_readwrite("iota_full", &vmecpp::WOutFileContents::iota_full)
       .def_readwrite("safety_factor", &vmecpp::WOutFileContents::safety_factor)
@@ -539,6 +540,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("chipf", &vmecpp::WOutFileContents::chipf)
       .def_readwrite("jcuru", &vmecpp::WOutFileContents::jcuru)
       .def_readwrite("jcurv", &vmecpp::WOutFileContents::jcurv)
+      //
+      .def_readwrite("fsqt", &vmecpp::WOutFileContents::fsqt)
+      .def_readwrite("wdot", &vmecpp::WOutFileContents::wdot)
       //
       .def_readwrite("iota_half", &vmecpp::WOutFileContents::iota_half)
       .def_readwrite("mass", &vmecpp::WOutFileContents::mass)
