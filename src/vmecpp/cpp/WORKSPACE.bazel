@@ -32,3 +32,11 @@ http_archive(
     urls = [ "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_3.tar.gz" ],
     strip_prefix = "hdf5-hdf5-1_14_3",
 )
+
+http_archive(
+    name = "netcdf4",
+    build_file_content = _ALL_CONTENT,
+    integrity = "sha256-mQ9G1JUl1qtdxCSfhoTG3ur1Teb+xjoYfp+zgswP/f8=",
+    urls = [ "https://github.com/Unidata/netcdf-c/archive/refs/tags/v4.9.3.tar.gz" ],
+    strip_prefix = "netcdf-c-4.9.3",
+)

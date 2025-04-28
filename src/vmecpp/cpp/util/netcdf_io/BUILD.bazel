@@ -11,9 +11,7 @@ cc_library(
         "@abseil-cpp//absl/log:log",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:str_format",
-    ],
-    linkopts = [
-        "-lnetcdf",
+        "//third_party/netcdf4",
     ],
 )
 

@@ -4,9 +4,6 @@
 // SPDX-License-Identifier: MIT
 #include "util/netcdf_io/netcdf_io.h"
 
-// link with -lnetcdf
-#include <netcdf.h>
-
 #include <string>
 #include <vector>
 
@@ -14,6 +11,7 @@
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
+#include "netcdf.h"
 
 namespace netcdf_io {
 

@@ -4,8 +4,6 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 
-#include <netcdf.h>
-
 #include <string>
 #include <vector>
 
@@ -13,6 +11,7 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "netcdf.h"
 #include "nlohmann/json.hpp"
 #include "util/file_io/file_io.h"
 #include "util/json_io/json_io.h"

@@ -11,8 +11,9 @@ cmake(
     cache_entries = {
         # enable C++ API (slightly more friendly wrapper around the C API)
         "HDF5_BUILD_CPP_LIB": "ON",
-        # disable ZLIB support so we don't bring in the extra dependency
-        "HDF5_ENABLE_Z_LIB_SUPPORT" : "OFF",
+        # enable ZLIB support, since this is a hard requirement by NetCDF4
+        "HDF5_ENABLE_Z_LIB_SUPPORT" : "ON",
+        "HDF5_ENABLE_SZIP_SUPPORT" : "OFF",
         "BUILD_TESTING": "OFF",
         "HDF5_BUILD_TOOLS": "OFF",
     },
@@ -22,10 +23,13 @@ cmake(
     # unset, so I don't know how to stop cmake from appending the postfix.
     # Instead we change the expected static lib name here in Bazel.
     out_static_libs = select({
-        "//conditions:default": ["libhdf5_cpp.a", "libhdf5.a"],
-        ":debug": ["libhdf5_cpp_debug.a", "libhdf5_debug.a"],
+        "//conditions:default": ["libhdf5_cpp.a", "libhdf5_hl.a", "libhdf5.a"],
+        ":debug": ["libhdf5_cpp_debug.a", "libhdf5_hl_debug.a", "libhdf5_debug.a"],
     }),
     visibility = [ "//visibility:public" ],
+    deps=[
+      "@zlib",
+    ],
 )
 
 config_setting(
