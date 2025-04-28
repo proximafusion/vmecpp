@@ -104,7 +104,8 @@ class Vmec {
                                         int maximum_iterations);
   void RestartIteration(double& m_delt0r, int thread_id);
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
-                              double time_step, int thread_id);
+                              double time_step, int thread_id,
+                              bool& m_liter_flag);
   void Printout(double delt0r, int thread_id);
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
@@ -197,7 +198,7 @@ class Vmec {
   // Inner multi-thread loop logic for SolveEquilibrium
   absl::StatusOr<SolveEqLoopStatus> SolveEquilibriumLoop(
       int thread_id, int maximum_iterations, VmecCheckpoint checkpoint,
-      bool& lreset_internal);
+      bool& m_lreset_internal, bool& m_liter_flag);
 
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
@@ -215,8 +216,6 @@ class Vmec {
 
   // corresponds to PARVMEC's ier_flag
   VmecStatus status_;
-
-  bool liter_flag_;
 
   // the actual function evaluation count (the one that's printed on screen).
   // always increases.
