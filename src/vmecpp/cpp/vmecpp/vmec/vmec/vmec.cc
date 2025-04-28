@@ -485,7 +485,7 @@ bool Vmec::InitializeRadial(
     }  // thread_id
 
     if (checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
-        iter2_ >= iterations_before_checkpointing) {
+        iterations_before_checkpointing <= 1) {
       // break the loop over thread_id here to check spectral constraint static
       // data; need to have all "threads" initialized before being able to test
       // all at once
@@ -536,7 +536,7 @@ bool Vmec::InitializeRadial(
     constants_.lamscale = sqrt(constants_.rmsPhiP * fc_.deltaS);
 
     if (checkpoint == VmecCheckpoint::RADIAL_PROFILES_EVAL &&
-        iter2_ >= iterations_before_checkpointing) {
+        iterations_before_checkpointing <= 1) {
       return true;
     }
 
@@ -565,7 +565,7 @@ bool Vmec::InitializeRadial(
       }
     }
     if (checkpoint == VmecCheckpoint::SETUP_INITIAL_STATE &&
-        iter2_ >= iterations_before_checkpointing) {
+        iterations_before_checkpointing <= 1) {
       return true;
     }
 
@@ -631,7 +631,8 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   absl::Status status_of_all_threads = absl::OkStatus();
   bool any_checkpoint_reached = false;
 
-  // Shared communication variable for all threads, to early exit
+  // Shared communication variable for all threads. Used to signal an early exit
+  // of the main iteration loop.
   bool liter_flag = true;
 
 // NOTE: *THIS* is the main parallel region for the equilibrium solver
@@ -711,15 +712,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     }
 
     // In the first multigrid iteration (OFF IN v8.50)
-    if (iter2_ == 1) {
-      RestartIteration(fc_.delt0r, thread_id);
-    }
+    RestartIteration(fc_.delt0r, thread_id);
   }  // restart_reason == BAD_JACOBIAN
 
-// protect read of m_liter_flag above from write below
-// (RestartIteration also implicitly does the same job as it contains several
-// barriers, but we do not want to count on its side-effects)
-#pragma omp barrier
 #pragma omp single
   {
     // start normal iterations
@@ -729,8 +724,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     status_ = VmecStatus::NORMAL_TERMINATION;
   }
 
-  // `liter_loop`: FORCE ITERATION LOOP
-  while (m_liter_flag) {
+  // `iter_loop`: FORCE ITERATION LOOP
+  for (int iter2 = iter2_; m_liter_flag;) {
     // ADVANCE FOURIER AMPLITUDES OF R, Z, AND LAMBDA
     absl::StatusOr<bool> reached_checkpoint =
         Evolve(checkpoint, iterations_before_checkpointing, fc_.delt0r,
@@ -784,12 +779,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
                status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
       // if something went totally wrong even in this initial steps, do not
       // continue at all
-      std::cout << "FATAL ERROR in thread=" << thread_id << '\n';
-      break;  // while(m_liter_flag)
+      return absl::UnknownError(
+          absl::StrCat("FATAL ERROR in thread=", thread_id));
     }
 
     if (checkpoint == VmecCheckpoint::EVOLVE &&
-        iter2_ >= iterations_before_checkpointing) {
+        iter2 >= iterations_before_checkpointing) {
       // need to get past re-try with guess_axis in case of bad Jacobian
       return SolveEqLoopStatus::CHECKPOINT_REACHED;
     }
@@ -840,7 +835,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         status_ = VmecStatus::JACOBIAN_75_TIMES_BAD;
         m_liter_flag = false;
       }
-    } else if (iter2_ >= fc_.niterv) {
+    } else if (iter2 >= fc_.niterv) {
 // protect m_liter_flag read above from the write below
 #pragma omp barrier
 #pragma omp single
@@ -852,7 +847,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     {
       // TIME STEP CONTROL
 
-      if (iter2_ == iter1_ || fc_.res0 == -1) {
+      if (iter2 == iter1_ || fc_.res0 == -1) {
         // if res0 has never been assigned (-1), give it the current value of
         // fsq
         fc_.res0 = fc_.fsq;
@@ -862,17 +857,17 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
     }
 
-    if (fc_.fsq <= fc_.res0 && (iter2_ - iter1_) > 10) {
+    if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
       // Store current state (restart_reason=NO_RESTART)
       // --> was able to reduce force consistenly over at least 10 iterations
       RestartIteration(fc_.delt0r, thread_id);
-    } else if (fc_.fsq > 100.0 * fc_.res0 && iter2_ > iter1_) {
+    } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
       // Residuals are growing in time, reduce time step
 
 #pragma omp single
       fc_.restart_reason = RestartReason::BAD_JACOBIAN;
-    } else if ((iter2_ - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
-               iter2_ > 2 * fc_.kPreconditionerUpdateInterval &&
+    } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
+               iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
                fc_.fsqr + fc_.fsqz > 1.0e-2) {
       // quite some iterations and quite large forces
       // --> restart with different timestep
@@ -892,13 +887,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       RestartIteration(fc_.delt0r, thread_id);
 
 #pragma omp single
-      iter1_ = iter2_;
+      iter1_ = iter2;
     } else {
       // Increment time step and printout every nstep iterations
       // status report due or
       // first iteration or
       // iterations cancelled already (last iteration)
-      if (iter2_ % indata_.nstep == 0 || iter2_ == 1 || !m_liter_flag) {
+      if (iter2 % indata_.nstep == 0 || iter2 == 1 || !m_liter_flag) {
         // TODO(jons): why compute spectral width from backup and not current
         // gc (== physical xc) --> <M> includes scalxc ???
         physical_x_backup_[thread_id]->ComputeSpectralWidth(t_, *p_[thread_id]);
@@ -909,16 +904,19 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         Printout(fc_.delt0r, thread_id);
 
         if (checkpoint == VmecCheckpoint::PRINTOUT &&
-            iter2_ >= iterations_before_checkpointing) {
+            iter2 >= iterations_before_checkpointing) {
           return SolveEqLoopStatus::CHECKPOINT_REACHED;
         }
       }
 #pragma omp barrier
 
-#pragma omp single
       // count iterations
-      iter2_ = iter2_ + 1;
+      iter2 = iter2 + 1;
     }
+#pragma omp atomic write
+    // update iter2_ for all threads, all threads have the same value of iter2,
+    // it does not matter who does it.
+    iter2_ = iter2;
 
 #pragma omp barrier
 
