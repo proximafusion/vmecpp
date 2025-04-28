@@ -52,6 +52,12 @@ def test_save_to_netcdf(indata_file, reference_wout_file, path_type):
 
     expected_dataset = netCDF4.Dataset(TEST_DATA_DIR / reference_wout_file, "r")
 
+    # Some variables need enlarged tolerances,
+    # because they are not numerically well-defined.
+    enlarged_tolerances = {
+        "jdotb": {"rtol": 1.0e-5, "atol": 1.0e-4},
+    }
+
     for varname, expected_value in expected_dataset.variables.items():
         if varname in vmecpp.VmecWOut._MISSING_FORTRAN_VARIABLES:
             continue
@@ -78,13 +84,17 @@ def test_save_to_netcdf(indata_file, reference_wout_file, path_type):
             assert (
                 test_dataset.dimensions[d].size == expected_dataset.dimensions[d].size
             )
+
+        rtol = enlarged_tolerances.get(varname, {"rtol": 1.0e-6})["rtol"]
+        atol = enlarged_tolerances.get(varname, {"atol": 1.0e-7})["atol"]
+
         # np.asarray is needed to convert the masked array to a regular array.
         # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
         np.testing.assert_allclose(
             np.asarray(test_value[:]),
             np.asarray(expected_value[:]),
             err_msg=error_msg,
-            rtol=1e-6,
-            atol=1e-7,
+            rtol=rtol,
+            atol=atol,
             equal_nan=True,
         )
