@@ -725,7 +725,14 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
   }
 
   // `iter_loop`: FORCE ITERATION LOOP
-  for (int iter2 = iter2_; m_liter_flag;) {
+  // It may hold iter2_>1 when entering this method and when prev iter
+  // returned SolveEqLoopStatus::MUST_RETRY.
+
+  // bad_resets counts the number of times we early exit with a reason OTHER
+  // THAN SolveEqLoopStatus::MUST_RETRY
+  for (int force_iteration = iter2_, bad_resets = 0;
+       (force_iteration <= fc_.niterv) && m_liter_flag; force_iteration++) {
+    const int iter2 = force_iteration - bad_resets;
     // ADVANCE FOURIER AMPLITUDES OF R, Z, AND LAMBDA
     absl::StatusOr<bool> reached_checkpoint =
         Evolve(checkpoint, iterations_before_checkpointing, fc_.delt0r,
@@ -835,12 +842,6 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         status_ = VmecStatus::JACOBIAN_75_TIMES_BAD;
         m_liter_flag = false;
       }
-    } else if (iter2 >= fc_.niterv) {
-// protect m_liter_flag read above from the write below
-#pragma omp barrier
-#pragma omp single
-      // allowed number of iterations exceeded
-      m_liter_flag = false;
     }
 
 #pragma omp single
@@ -885,8 +886,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     if (fc_.restart_reason != RestartReason::NO_RESTART) {
       // Retrieve previous good state
       RestartIteration(fc_.delt0r, thread_id);
-
-#pragma omp single
+      // This code path does not increment the iter2 counter in VMEC 8.52, so we
+      // have to keep track
+      bad_resets++;
+#pragma omp single nowait
       iter1_ = iter2;
     } else {
       // Increment time step and printout every nstep iterations
@@ -908,35 +911,25 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
           return SolveEqLoopStatus::CHECKPOINT_REACHED;
         }
       }
-#pragma omp barrier
-
-      // count iterations
-      iter2 = iter2 + 1;
     }
+
 #pragma omp atomic write
     // update iter2_ for all threads, all threads have the same value of iter2,
     // it does not matter who does it.
-    iter2_ = iter2;
+    // bad resets didn't increment, iter2 in VMEC 8.52, so we need to compute
+    // the backwards compatible iteration count
+    iter2_ = force_iteration + 1 - bad_resets;
 
-#pragma omp barrier
-
-#pragma omp single
-    {
-      // ivac gets set to 1 in vacuum() of NESTOR
-      if (ivac_ == 1) {
-        // vacuum pressure turned on at iter2 iterations (here)
-
-        if (verbose_) {
-          std::cout << absl::StrFormat(
-                           "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS",
-                           iter2_)
-                    << "\n\n";
-        }
-
-        ivac_ = 2;
+#pragma omp single nowait
+    // ivac gets set to 1 in vacuum() of NESTOR
+    if (ivac_ == 1) {
+      ivac_ = 2;
+      if (verbose_) {
+        std::cout << absl::StrFormat(
+            "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS\n\n", iter2_);
       }
     }
-  }  // while m_liter_flag
+  }
 
   return SolveEqLoopStatus::NORMAL_TERMINATION;
 }
