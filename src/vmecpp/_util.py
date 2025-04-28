@@ -11,8 +11,8 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
+import jaxtyping as jt
 import numpy as np
-import numpydantic as npyd
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def distribution_root() -> Path:
     python environment. It is the correct path to use for accessing shared libraries and
     executables that come with vmecpp.
     """
-    return importlib.metadata.distribution("vmecpp").locate_file("vmecpp")
+    return Path(importlib.metadata.distribution("vmecpp").locate_file("vmecpp"))  # type: ignore
 
 
 @contextlib.contextmanager
@@ -300,7 +300,7 @@ def _fourier_coefficients_to_namelist(varname: str, vmecpp_json: dict[str, Any])
 
 
 def dense_to_sparse_coefficients(
-    coefficients: npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], np.float64],
+    coefficients: jt.Float[np.ndarray, "mpol two_ntor_plus_one"],
 ) -> list[dict[str, float | int]]:
     """
     Convert a dense 2D array of Fourier coefficients to its sparse representation for storage.
@@ -343,7 +343,7 @@ def sparse_to_dense_coefficients(
     sparse_list: list[dict[str, float | int]],
     mpol: int,
     ntor: int,
-) -> npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], np.float64]:
+) -> jt.Float[np.ndarray, "mpol two_ntor_plus_one"]:
     """Converts a sparse list of Fourier coefficients into a dense 2D NumPy array.
 
     Args:
@@ -366,8 +366,8 @@ def sparse_to_dense_coefficients(
     """
     dense_coefficients = np.zeros((mpol, 2 * ntor + 1))
     for sparse_entry in sparse_list:
-        m = sparse_entry["m"]
-        n = sparse_entry["n"]
+        m = int(sparse_entry["m"])
+        n = int(sparse_entry["n"])
         val = sparse_entry["value"]
         # Convert from [-ntor, ntor] to range [0, 2*ntor]
         col_idx = n + ntor
@@ -385,8 +385,8 @@ def sparse_to_dense_coefficients(
 
 def sparse_to_dense_coefficients_implicit(
     maybe_sparse_list: list[dict[str, float | int]]
-    | npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], np.float64],
-) -> npyd.NDArray[npyd.Shape["* mpol, * two_ntor_plus_one"], np.float64]:
+    | jt.Float[np.ndarray, "mpol two_ntor_plus_one"],
+) -> jt.Float[np.ndarray, "mpol two_ntor_plus_one"]:
     """Convert a list of sparse array coefficients to a dense array, inferring the
     (mpol, 2*ntor+1) shape from the maximum mode numbers OR return the original array if
     the input representation is already dense."""
@@ -396,7 +396,7 @@ def sparse_to_dense_coefficients_implicit(
     mpol = 0
     ntor = 0
     for sparse_entry in maybe_sparse_list:
-        mpol = max(mpol, sparse_entry["m"])
-        ntor = max(ntor, abs(sparse_entry["n"]))
+        mpol = int(max(mpol, sparse_entry["m"]))
+        ntor = int(max(ntor, abs(sparse_entry["n"])))
     mpol += 1
     return sparse_to_dense_coefficients(maybe_sparse_list, mpol, ntor)
