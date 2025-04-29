@@ -30,31 +30,31 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
         matrix:
-            os: [ubuntu-22.04, ubuntu-24.04, macos-14]
+            os: [ubuntu-22.04, macos-14]
             editable: [true, false]
+            python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true  # for the mgrid test data
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "${{ matrix.python-version }}"
+          cache: 'pip'
       - name: Install required packages for MacOS
         if: ${{ contains(matrix.os, 'macos') }}
         run: |
           brew install gcc cmake ninja libomp netcdf-cxx eigen lapack git
-          brew install open-mpi
       - name: Install required packages for Ubuntu
         if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
-          sudo apt-get update && sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
-          # Needed for VMEC2000
-          sudo apt-get install -y libopenmpi-dev
+          sudo apt-get update && sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev
       - name: Also install VMEC2000 (only on Ubuntu 22.04)
-        if: ${{ matrix.os == 'ubuntu-22.04' }}
+        if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.10' }}
         run: |
           # mpi4py is needed for VMEC2000
+          sudo apt-get install -y libopenmpi-dev
           python -m pip install mpi4py
           # custom wheel for VMEC2000, needed for some VMEC++/VMEC2000 compatibility tests
           # NOTE: this wheel is only guaranteed to work on Ubuntu 22.04
