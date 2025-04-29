@@ -14,8 +14,11 @@ concurrency:
 
 jobs:
   tests:
-    name: Build and run tests
+    name: Build and run ${{ matrix.config }} tests
     runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        config: [opt, asan, ubsan]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,10 +26,15 @@ jobs:
       - name: Install required system packages for Ubuntu
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential cmake liblapack-dev libomp-dev python3-dev python3-pip python-is-python3
+      - name: Mount bazel cache
+        uses: actions/cache@v4
+        with:
+          path: "~/.cache/bazel"
+          key: bazel-${{ matrix.config }}
       - name: Build VMEC++ via bazel
         run: |
           cd src/vmecpp/cpp
-          bazel build -- //...
+          bazel build --config=${{ matrix.config }} -- //...
       - uses: actions/checkout@v4
         with:
           repository: proximafusion/vmecpp_large_cpp_tests
@@ -35,8 +43,8 @@ jobs:
       - name: Build VMEC++ C++ tests via bazel
         run: |
           cd src/vmecpp/cpp
-          bazel build -- //vmecpp_large_cpp_tests/...
+          bazel build --config=${{ matrix.config }} -- //vmecpp_large_cpp_tests/...
       - name: Run full C++ test suite
         run: |
           cd src/vmecpp/cpp
-          bazel test --jobs=1 --test_output=errors -- //...
+          bazel test --config=${{ matrix.config }} --jobs=1 --test_output=errors -- //...
