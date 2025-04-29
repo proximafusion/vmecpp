@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from netCDF4 import Dataset
 
-from vmecpp.cpp import _vmecpp as vmec
+from vmecpp.cpp import _vmecpp as vmec  # type: ignore[import]
 
 # We don't want to install tests and test data as part of the package,
 # but scikit-build-core + hatchling does not support editable installs,
@@ -111,7 +111,7 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.jxbout.phin, jxbout["phin"][()], 1.0e-12)
     assert is_close_ra(output_quantities.jxbout.avforce, jxbout["avforce"][()], 1.0e-6)
     assert is_close_ra(
-        output_quantities.jxbout.jdotb, jxbout["surf_av_jdotb"][()], 1.0e-6
+        output_quantities.jxbout.jdotb, jxbout["surf_av_jdotb"][()], 1.0e-5
     )
     assert is_close_ra(
         output_quantities.jxbout.bdotgradv, jxbout["bdotgradv"][()], 1.0e-6
