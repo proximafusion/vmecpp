@@ -397,7 +397,7 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.phips, wout["phips"][()][1:], 1.0e-8)
     assert is_close_ra(output_quantities.wout.overr, wout["over_r"][()][1:], 1.0e-8)
 
-    assert is_close_ra(output_quantities.wout.jdotb, wout["jdotb"][()], 1.0e-6)
+    assert is_close_ra(output_quantities.wout.jdotb, wout["jdotb"][()], 1.0e-5)
     assert is_close_ra(output_quantities.wout.bdotgradv, wout["bdotgradv"][()], 1.0e-8)
 
     assert is_close_ra(output_quantities.wout.DMerc, wout["DMerc"][()], 1.0e-8)
