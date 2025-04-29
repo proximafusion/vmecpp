@@ -280,7 +280,10 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& indata, H5::H5File& from_file) {
   }
   indata.free_boundary_method = maybe_fbdy_method.value();
 
-  if (from_file.attrExists("/indata/iteration_style")) {
+  // Legacy way of checking for dataset existence
+  // TODO(jons) replace with from_file.nameExists when we get a newer HDF5
+  // version in pip wheels
+  if (H5Lexists(from_file.getId(), "/indata/iteration_style", 0) == 1) {
     std::string iteration_style_str;
     ReadH5Dataset(iteration_style_str, "/indata/iteration_style", from_file);
     const auto maybe_iteration_style =
@@ -298,7 +301,10 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& indata, H5::H5File& from_file) {
   ReadH5Dataset(indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(indata.lforbal, "/indata/lforbal", from_file);
-  if (from_file.attrExists("/indata/return_outputs_even_if_not_converged")) {
+
+  // Legacy way of checking for dataset existence
+  if (H5Lexists(from_file.getId(),
+                "/indata/return_outputs_even_if_not_converged", 0) == 1) {
     ReadH5Dataset(indata.return_outputs_even_if_not_converged,
                   "/indata/return_outputs_even_if_not_converged", from_file);
   } else {

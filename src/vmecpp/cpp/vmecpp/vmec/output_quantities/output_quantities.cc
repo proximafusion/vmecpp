@@ -4,14 +4,13 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 
-#include <H5Cpp.h>
-
 #include <Eigen/Dense>  // VectorXd
 #include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "H5Cpp.h"
 #include "absl/log/check.h"
 #include "util/hdf5_io/hdf5_io.h"
 #include "util/testing/numerical_comparison_lib.h"
@@ -128,12 +127,18 @@ absl::Status vmecpp::VmecInternalResults::LoadInto(
   READMEMBER(phipF);
   READMEMBER(chipF);
   READMEMBER(phipH);
-  if (from_file.exists(absl::StrFormat("%s/chipH", H5key))) {
+  // Legacy way of checking for dataset existence
+  // TODO(jons) replace with from_file.nameExists when we get a newer HDF5
+  // version in pip wheels
+  if (H5Lexists(from_file.getId(), absl::StrFormat("%s/chipH", H5key).c_str(),
+                0) == 1) {
     READMEMBER(chipH);
   } else {
     obj.chipH = Eigen::VectorXd::Zero(obj.phipH.size());
   }
-  if (from_file.exists(absl::StrFormat("%s/currH", H5key))) {
+  // Legacy way of checking for dataset existence
+  if (H5Lexists(from_file.getId(), absl::StrFormat("%s/currH", H5key).c_str(),
+                0) == 1) {
     READMEMBER(currH);
   } else {
     obj.currH = Eigen::VectorXd::Zero(obj.phipH.size());
