@@ -192,9 +192,7 @@ def _serialize_value(declared_type: type, value: Any, field_metadata: list[Any])
         a dict representation of the object, or a raw string.
         Returns the unmodified value if no special handling applies.
     """
-    del declared_type  # unused
-
-    if isinstance(value, NpOrJaxArray):
+    if issubclass(declared_type, NpOrAbstractArray) and isinstance(value, NpOrJaxArray):
         # Convert JAX arrays to numpy arrays for the purpose of serialization.
         np_array = np.asarray(value)
         if np_array.dtype in _NUMPY_ALLOWED_NONBINARY_DTYPES:
@@ -265,21 +263,43 @@ def _traverse_field_contents(
     # looking for special values, independently of their declared value type.
     # If this becomes a performance bottleneck, consider adding a check here to skip
     # containers that are known to not contain special values (e.g. list[float]).
-
     # Simple type.
     if outer_type is None:
-        result = value_converter(field_type, value, field_metadata)
+        return value_converter(field_type, value, field_metadata)
+
+    # Annotated types are a special case, since they can be used to add metadata
+    # to the field. We need to check if the first argument is a special type.
+    # The rest of the arguments are passed to the value converter.
+    # NOTE: This branch only handles "Annotated" if it appears nested inside other
+    # declarations. If it is the outermost type, Pydantic strips it automatically and
+    # its annotations will already be placed inside "field_metadata".
+    if outer_type is typing.Annotated:
+        inner_types = typing.get_args(field_type)
+        inner_type = inner_types[0]
+        # While processing this branch, add the annotations to the metadata list.
+        new_field_metadata = field_metadata + list(inner_types[1:])
+        return _traverse_field_contents(
+            inner_type, value, value_converter, new_field_metadata
+        )
 
     # Literal[X, Y, ...] cannot be used with issubclass and would fail the other checks,
     # so we need to check it separately.
-    elif outer_type is Literal:
-        result = value
+    if outer_type is Literal:
+        return value
+
+    # Defensive check: Some built-in types are not proper classes and for those,
+    # "issubclass" will raise an exception. It's hard to decide in general what should
+    # happen to those and if more cases even exist, so let's be defensive and admit that
+    # we don't know how to handle them ...
+    if not isinstance(outer_type, type) and outer_type is not Union:
+        msg = f"Dapper serialization does not know how to handle type {outer_type}! "
+        raise NotImplementedError(msg)
 
     # - Union[T, TOther].
     # - Optional[T] becomes Union[T, None].
     # - Surprisingly, "int|str" becomes types.UnionType[int, str] instead of Union,
     #   see: https://github.com/python/cpython/issues/105499
-    elif outer_type is Union or issubclass(outer_type, types.UnionType):
+    if outer_type is Union or outer_type is types.UnionType:
         # Unions are complex to deserialize, since it must be deduced which of the
         # declared types to deserialize to. For example, it is unclear how to handle
         # a field `Union[np.ndarray, Blob]`, since both types share the same JSON
@@ -304,12 +324,13 @@ def _traverse_field_contents(
             # Stop at the first conversion that changed something, similar to Pydantic's
             # "left-to-right" mode.
             if result is not value:
-                break
-
+                return result
+        return result
+    outer_type = typing.cast(type, outer_type)
     # Dicts and similar.
-    elif issubclass(outer_type, Mapping) and isinstance(value, Mapping):
+    if issubclass(outer_type, Mapping) and isinstance(value, Mapping):
         value_type = typing.get_args(field_type)[1]
-        result = outer_type(
+        return outer_type(
             {
                 key: _traverse_field_contents(
                     value_type, item, value_converter, field_metadata
@@ -320,31 +341,28 @@ def _traverse_field_contents(
 
     # Tuples: They can be declared as tuple[T1, T2] or tuple[T, ...].
     # During deserialization, `value` will however be a list!
-    elif issubclass(outer_type, tuple) and isinstance(value, tuple | list):
+    if issubclass(outer_type, tuple) and isinstance(value, tuple | list):
         value_types = typing.get_args(field_type)
         if len(value_types) == 2 and value_types[1] is Ellipsis:
             value_types = [value_types[0]] * len(value)
-        result = outer_type(
+        return outer_type(
             _traverse_field_contents(item_type, item, value_converter, field_metadata)
             for item_type, item in zip(value_types, value, strict=True)
         )
 
     # Lists and similar.
     # Cannot use "Sequence" since that would also capture "str" and maybe others.
-    elif issubclass(outer_type, list | set | frozenset) and isinstance(
+    if issubclass(outer_type, list | set | frozenset) and isinstance(
         value, list | set | frozenset
     ):
         value_type = typing.get_args(field_type)[0]
-        result = outer_type(
+        return outer_type(
             _traverse_field_contents(value_type, item, value_converter, field_metadata)
             for item in value
         )
 
     # Other generic type. We don't support these, just pass them through.
-    else:
-        result = value
-
-    return result
+    return value
 
 
 def sanitize_floats_in_container(value: list | dict) -> None:
