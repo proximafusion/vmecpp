@@ -979,58 +979,118 @@ struct WOutFileContents {
   // -------------------
   // copy of input data
 
+  // version identifier for this VMEC implementation
   std::string version;
+
   std::string input_extension;
 
+  // sign of Jacobian between cylindrical and flux coordinates; hardcoded to -1
   int sign_of_jacobian;
 
+  // adiabatic index
   double gamma;
 
+  // parameterization identifier for toroidal current profile
   std::string pcurr_type;
+
+  // parameterization identifier for mass/pressure profile
   std::string pmass_type;
+
+  // parameterization identifier for iota profile
   std::string piota_type;
 
   // pressure profile coefficients
+  // interpretation depends on value of `pmass_type`
   Eigen::VectorXd am;
+
   // toroidal current profile coefficients
+  // interpretation depends on value of `pcurr_type`
   Eigen::VectorXd ac;
+
   // iota profile coefficients
+  // interpretation depends on value of `piota_type`
   Eigen::VectorXd ai;
 
+  // knots for discrete mass/pressure profile
   Eigen::VectorXd am_aux_s;
+
+  // values for discrete mass/pressure profile
   Eigen::VectorXd am_aux_f;
 
+  // knots for discrete toroidal current profile
   Eigen::VectorXd ac_aux_s;
+
+  // values for discrete toroidal current profile
   Eigen::VectorXd ac_aux_f;
 
+  // knots for discrete iota profile
   Eigen::VectorXd ai_aux_s;
+
+  // values for discrete iota profile
   Eigen::VectorXd ai_aux_f;
 
+  // number of toroidal field periods
   int nfp;
+
+  // poloidal Fourier resolution; m = 0, 1, ..., (mpol-1)
   int mpol;
+
+  // toroidal Fourier resolution; n = -ntor, ..., -1, 0, 1, ..., ntor
   int ntor;
+
+  // flag to indicate a non-stellarator-symmetric case
   bool lasym = false;
 
+  // final radial resolution
+  // == number of flux surfaces
+  // == number of full-grid points
   int ns;
+
+  // requested force tolerance level for convergence
   double ftolv;
+
+  // iterations required until convergence
   int maximum_iterations;
 
+  // flag to indicate a free-boundary run
   bool lfreeb = false;
+
+  // path to file which contains the magnetic field response tables
   std::string mgrid_file;
+
+  // number of external coil currents
   int nextcur;
+
+  // external coil currents
   Eigen::VectorXd extcur;
+
+  // 'R': mgrid file contains un-normalized response tables
+  // 'S': mgrid file contains response tables normalized to unit currents
   std::string mgrid_mode;
 
   // -------------------
   // scalar quantities
 
+  // magnetic energy
   double wb;
+
+  // thermal energy
   double wp;
 
+  // maximum R of LCFS
   double rmax_surf;
+
+  // minimum R of LCFS
   double rmin_surf;
+
+  // maximum |Z| of LCFS
   double zmax_surf;
+
+  // number of Fourier coefficients in state vector (R, Z, lambda)
   int mnmax;
+
+  // number of Fourier coefficients for derived quantities, Nyquist-extended
+  // (sqrt(g), |B|, co- and contravariant B components, currents)
   int mnmax_nyq;
 
   int ier_flag;
@@ -1059,6 +1119,7 @@ struct WOutFileContents {
   double fsqr;
   double fsqz;
   double fsql;
+
   // Number of "time steps" of the force relaxation that were actually required
   // to achieve convergence. (How many of the maximum niter steps we ended up
   // using.)
@@ -1079,13 +1140,13 @@ struct WOutFileContents {
   // full-grid: enclosed toroidal magnetic flux (phi) in Vs
   Eigen::VectorXd toroidal_flux;
 
-  // full-grid: toroidal flux differential (phip)
+  // full-grid: toroidal flux differential (phi-prime)
   Eigen::VectorXd phipf;
 
   // full-grid: enclosed poloidal magnetic flux (chi) in Vs
   Eigen::VectorXd poloidal_flux;
 
-  // full-grid: poloidal flux differential (chip)
+  // full-grid: poloidal flux differential (chi-prime)
   Eigen::VectorXd chipf;
 
   Eigen::VectorXd jcuru;
@@ -1094,6 +1155,7 @@ struct WOutFileContents {
   // Convergence quantities (one entry per time step)
   // Force residual at each iteration
   Eigen::VectorXd fsqt;
+
   // Gradient of the energy at each iteration
   Eigen::VectorXd wdot;
 
@@ -1148,6 +1210,7 @@ struct WOutFileContents {
   RowMatrixXd zmns;
 
   // full-grid: lambda
+  // NOTE: new with respect to Fortran VMEC
   RowMatrixXd lmns_full;
 
   // half-grid: lambda
@@ -1169,6 +1232,7 @@ struct WOutFileContents {
   RowMatrixXd bsubsmns;
 
   // full-grid: covariant B_s
+  // NOTE: new with respect to Fortran VMEC
   RowMatrixXd bsubsmns_full;
 
   // half-grid: contravariant B^\theta
@@ -1190,6 +1254,7 @@ struct WOutFileContents {
   RowMatrixXd zmnc;
 
   // full-grid: lambda
+  // NOTE: new with respect to Fortran VMEC
   RowMatrixXd lmnc_full;
 
   // half-grid: lambda
@@ -1211,6 +1276,7 @@ struct WOutFileContents {
   RowMatrixXd bsubsmnc;
 
   // full-grid: covariant B_s
+  // NOTE: new with respect to Fortran VMEC
   RowMatrixXd bsubsmnc_full;
 
   // half-grid: contravariant B^\theta
