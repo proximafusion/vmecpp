@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "cubic_spline",
+    hdrs = ["cubic_spline.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status:statusor",
+        "@eigen",
+    ],
+)
+
+cc_test(
+  name="cubic_spline_test",
+  srcs=["cubic_spline_test.cc"],
+  deps=[
+    ":cubic_spline",
+    "@googletest//:gtest_main",
+  ],
+)
+
+cc_binary(
+  name="cubic_spline_demo",
+  srcs=["cubic_spline_demo.cc"],
+  deps=[
+    ":cubic_spline",
+    "@abseil-cpp//absl/log:check",
+    "//util/file_io",
+  ],
+)
