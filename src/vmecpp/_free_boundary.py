@@ -116,6 +116,29 @@ class MagneticFieldResponseTable(BaseModelWithNumpy):
             cpp_response_table
         )
 
+    def _to_cpp_magnetic_field_response_table(
+        self,
+    ) -> _vmecpp.MagneticFieldResponseTable:
+        """Convert the Pydantic object to a C++ MagneticFieldResponseTable object,
+        avoiding a copy if possible."""
+        # If vmecpp.MagneticFieldResponseTable was created from a C++ object, the
+        # arrays be views to the memory of the C++ object. We don't need to create
+        # a new object and just return the underling one.
+        underlying = self.b_r.base
+        if (
+            isinstance(underlying, _vmecpp.MagneticFieldResponseTable)
+            and underlying == self.b_p.base
+            and underlying == self.b_z.base
+        ):
+            return underlying
+        # Otherwise, create a new C++ object
+        return _vmecpp.MagneticFieldResponseTable(
+            self.parameters._to_cpp_makegrid_parameters(),
+            self.b_r,
+            self.b_p,
+            self.b_z,
+        )
+
 
 __all__ = [
     "MagneticFieldResponseTable",

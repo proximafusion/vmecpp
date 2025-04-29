@@ -18,12 +18,12 @@ import numpy as np
 import pydantic
 
 from vmecpp import _util
-from vmecpp._pydantic_numpy import BaseModelWithNumpy
-from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
-from vmecpp.free_boundary import (
+from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
     MakegridParameters,
 )
+from vmecpp._pydantic_numpy import BaseModelWithNumpy
+from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
 logger = logging.getLogger(__name__)
 
@@ -1376,7 +1376,7 @@ def run(
         cpp_indata.mgrid_file = "NONE"
         cpp_output_quantities = _vmecpp.run(
             cpp_indata,
-            magnetic_response_table=magnetic_field,
+            magnetic_response_table=magnetic_field._to_cpp_magnetic_field_response_table(),
             initial_state=initial_state,
             max_threads=max_threads,
             verbose=verbose,

@@ -719,18 +719,23 @@ PYBIND11_MODULE(_vmecpp, m) {
             return GetValueOrThrow(maybe_config);
           },
           py::arg("file"));
-  py::class_<makegrid::MagneticFieldResponseTable>(m,
-                                                   "MagneticFieldResponseTable")
-      .def(
-          py::init<const makegrid::MakegridParameters &,
-                   const makegrid::RowMatrixXd &, const makegrid::RowMatrixXd &,
-                   const makegrid::RowMatrixXd &>(),
-          py::arg("parameters"), py::arg("b_r"), py::arg("b_p"), py::arg("b_z"))
-      .def_readonly("parameters",
-                    &makegrid::MagneticFieldResponseTable::parameters)
-      .def_readwrite("b_r", &makegrid::MagneticFieldResponseTable::b_r)
-      .def_readwrite("b_p", &makegrid::MagneticFieldResponseTable::b_p)
-      .def_readwrite("b_z", &makegrid::MagneticFieldResponseTable::b_z);
+  auto response_table =
+      py::class_<makegrid::MagneticFieldResponseTable>(
+          m, "MagneticFieldResponseTable")
+          .def(py::init<const makegrid::MakegridParameters &,
+                        const makegrid::RowMatrixXd &,
+                        const makegrid::RowMatrixXd &,
+                        const makegrid::RowMatrixXd &>(),
+               py::arg("parameters"), py::arg("b_r"), py::arg("b_p"),
+               py::arg("b_z"))
+          .def_readonly("parameters",
+                        &makegrid::MagneticFieldResponseTable::parameters);
+  DefEigenProperty(response_table, "b_r",
+                   &makegrid::MagneticFieldResponseTable::b_r);
+  DefEigenProperty(response_table, "b_p",
+                   &makegrid::MagneticFieldResponseTable::b_p);
+  DefEigenProperty(response_table, "b_z",
+                   &makegrid::MagneticFieldResponseTable::b_z);
 
   m.def(
       "compute_magnetic_field_response_table",
