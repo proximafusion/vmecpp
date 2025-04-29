@@ -28,22 +28,6 @@ TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
 @pytest.mark.parametrize(
-    ("mgrid_path", "expected_exception"),
-    [
-        ("cma.json", RuntimeError),
-        ("does_not_exist", RuntimeError),
-        #  ("wout_cma.nc", RuntimeError),  # This crashes because netcdf_io doesn't use absl::status yet
-    ],
-)
-def test_raise_invalid_mgrid(mgrid_path: str, expected_exception):
-    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
-    vmec_input.lfreeb = True
-    vmec_input.mgrid_file = str(TEST_DATA_DIR / mgrid_path)
-    with pytest.raises(expected_exception):
-        vmecpp.run(vmec_input, max_threads=1)
-
-
-@pytest.mark.parametrize(
     ("max_threads", "input_file", "verbose"),
     [(None, "cma.json", True), (1, "input.cma", False)],
 )
@@ -54,6 +38,23 @@ def test_run(max_threads, input_file, verbose):
     vmec_output = vmecpp.run(vmec_input, max_threads=max_threads, verbose=verbose)
 
     assert vmec_output.wout is not None
+
+
+@pytest.mark.parametrize(
+    ("mgrid_path", "expected_exception"),
+    [
+        ("cma.json", RuntimeError),  # Invalid netcdf
+        ("does_not_exist", RuntimeError),
+        # TODO(jurasic) Enable test after switching netcdf_io to absl::Status
+        # ("wout_cma.nc", RuntimeError),  # Valid netcdf, but invalid mgrid
+    ],
+)
+def test_raise_invalid_mgrid(mgrid_path: str, expected_exception):
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_input.lfreeb = True
+    vmec_input.mgrid_file = str(TEST_DATA_DIR / mgrid_path)
+    with pytest.raises(expected_exception):
+        vmecpp.run(vmec_input, max_threads=1)
 
 
 def test_get_outputs_if_non_converged_if_wanted():
