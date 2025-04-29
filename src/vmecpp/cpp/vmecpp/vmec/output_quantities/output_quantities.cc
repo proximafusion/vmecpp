@@ -59,6 +59,7 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(phipF);
   WRITEMEMBER(chipF);
   WRITEMEMBER(phipH);
+  WRITEMEMBER(chipH);
   WRITEMEMBER(currH);
   WRITEMEMBER(phiF);
   WRITEMEMBER(iotaF);
@@ -127,6 +128,11 @@ absl::Status vmecpp::VmecInternalResults::LoadInto(
   READMEMBER(phipF);
   READMEMBER(chipF);
   READMEMBER(phipH);
+  if (from_file.exists(absl::StrFormat("%s/chipH", H5key))) {
+    READMEMBER(chipH);
+  } else {
+    obj.chipH = Eigen::VectorXd::Zero(obj.phipH.size());
+  }
   if (from_file.exists(absl::StrFormat("%s/currH", H5key))) {
     READMEMBER(currH);
   } else {
@@ -1482,6 +1488,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
   results.spectral_width = VectorXd::Zero(results.num_full);
 
   results.phipH = VectorXd::Zero(results.num_half);
+  results.chipH = VectorXd::Zero(results.num_half);
   results.bvcoH = VectorXd::Zero(results.num_half);
   results.dVdsH = VectorXd::Zero(results.num_half);
   results.massH = VectorXd::Zero(results.num_half);
@@ -1572,6 +1579,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
         results.sp[jH] = p.sp[jH - nsMinH];
 
         results.phipH[jH] = p.phipH[jH - nsMinH];
+        results.chipH[jH] = p.chipH[jH - nsMinH];
         results.bvcoH[jH] = p.bvcoH[jH - nsMinH];
         results.dVdsH[jH] = p.dVdsH[jH - nsMinH];
         results.massH[jH] = p.massH[jH - nsMinH];

@@ -52,6 +52,9 @@ struct VmecInternalResults {
   // [ns - 1] radial derivative of enclosed toroidal magnetic flux on half-grid
   Eigen::VectorXd phipH;
 
+  // [ns - 1] radial derivative of enclosed poloidal magnetic flux on half-grid
+  Eigen::VectorXd chipH;
+
   // [ns - 1] enclosed current profile on half-grid
   Eigen::VectorXd currH;
 
