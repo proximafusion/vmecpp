@@ -4,7 +4,7 @@
 import datetime as dt
 import json
 from collections.abc import Callable
-from typing import Literal
+from typing import Annotated, Literal
 
 import jax
 import jax.numpy as jnp
@@ -191,6 +191,31 @@ def test_serialize_numpy_dict():
     assert "bar" in deserialized.np_dict
     assert np.all(deserialized.np_dict["foo"] == np_data)
     assert np.all(deserialized.np_dict["bar"] == np_data)
+
+
+def test_numpy_supports_nested_annotated():
+    class Model(BaseModelWithNumpy):
+        # If Annotated is not at the "outermost" level, Pydantic does not extract it.
+        # We have special logic for this, which this test case covers.
+        array_in_union: (
+            str | Annotated[np.ndarray, "annotation", "other_annotation"] | None
+        )
+        dict_of_arrays: dict[
+            str,
+            Annotated[jt.Int[np.ndarray, "..."], "annotation"],
+        ]
+
+    model = Model(
+        array_in_union=np.array([5566, 6655], dtype=np.int64),
+        dict_of_arrays={"foo": np.array([1, 2, 3], dtype=np.int64)},
+    )
+    serialized = model.model_dump_json()
+    deserialized = Model.model_validate_json(serialized)
+    assert isinstance(deserialized.array_in_union, np.ndarray)
+    assert deserialized.array_in_union.dtype == np.int64
+    assert np.all(deserialized.array_in_union == [5566, 6655])
+    assert deserialized.dict_of_arrays["foo"].dtype == np.int64
+    assert np.all(deserialized.dict_of_arrays["foo"] == [1, 2, 3])
 
 
 def test_serialize_deeply_nested():
