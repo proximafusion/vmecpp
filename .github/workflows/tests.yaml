@@ -14,8 +14,6 @@ concurrency:
 
 jobs:
   pre-commit:
-    env:
-        SKIP: 'pyright'
     name: Pre-commit checks
     runs-on: ubuntu-22.04
     steps:
@@ -23,6 +21,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+      - run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install .
+          echo "$PWD/.venv/bin" >> $GITHUB_PATH
       - uses: pre-commit/action@v3.0.1
 
   tests:
