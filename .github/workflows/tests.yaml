@@ -10,7 +10,7 @@ on:
 # From https://stackoverflow.com/a/72408109.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
   pre-commit:
