@@ -376,10 +376,12 @@ class VmecInput(BaseModelWithNumpy):
         return cpp_indata
 
     def to_json(self, **kwargs) -> str:
+        kwargs.setdefault("exclude_none", True)
+        kwargs.setdefault("exclude_defaults", True)
         return self.model_dump_json(**kwargs)
 
     def save(self, output_path: str | Path) -> None:
-        json_serialized = self.model_dump_json()
+        json_serialized = self.to_json()
         output_path = Path(output_path)
         output_path.write_text(json_serialized)
 
