@@ -783,8 +783,11 @@ class VmecWOut(BaseModelWithNumpy):
             for varname in ["fsqt", "wdot"]:
                 fnc.createVariable(varname, np.float64, ("time",))
                 # Slice for compatibility if time traces are padded to 100, as is done in VMEC2000
-                fnc[varname][:] = getattr(self, varname)[: self.itfsq]
-
+                fnc[varname][:] = np.zeros(self.itfsq)
+                maybe_padded = getattr(self, varname)
+                fnc[varname][: min(self.itfsq, len(maybe_padded))] = getattr(
+                    self, varname
+                )[: self.itfsq]
             fnc.createVariable("lmns_full", np.float64, ("radius", "mn_mode"))
             fnc["lmns_full"][:] = self.lmns_full.T[:]
 
