@@ -282,6 +282,20 @@ def test_ensure_vmec2000_input_noop():
         assert indata_file == vmec2000_input_file
 
 
+def test_ensure_vmec2000_input_with_null():
+    # Test that the null values are handled gracefully and removed from the VMEC2000 input file
+    vmec_input = vmecpp.VmecInput.default()
+    assert vmec_input.rbs is None
+
+    vmec_input.rbc = np.array([[1.0, 2.0, 3.0]])
+    vmecpp_input_file = "test_null.json"
+    vmec_input.save(vmecpp_input_file)
+    with vmecpp.ensure_vmec2000_input(Path("test_null.json")) as converted_indata_file:
+        indata_namelist = converted_indata_file.read_text()
+        assert "rbs" not in indata_namelist
+        assert "rbc" in indata_namelist, indata_namelist
+
+
 def test_ensure_vmecpp_input_noop():
     vmecpp_input_file = TEST_DATA_DIR / "cma.json"
 
