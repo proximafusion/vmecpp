@@ -782,7 +782,8 @@ class VmecWOut(BaseModelWithNumpy):
             # Convergence time trace information
             for varname in ["fsqt", "wdot"]:
                 fnc.createVariable(varname, np.float64, ("time",))
-                fnc[varname][:] = getattr(self, varname).T[:]
+                # Slice for compatibility if time traces are padded to 100, as is done in VMEC2000
+                fnc[varname][:] = getattr(self, varname)[: self.itfsq]
 
             fnc.createVariable("lmns_full", np.float64, ("radius", "mn_mode"))
             fnc["lmns_full"][:] = self.lmns_full.T[:]
@@ -1176,10 +1177,9 @@ class VmecWOut(BaseModelWithNumpy):
         # Optional handling for backwards compatibility with wout files produced before v0.3.3
         # Handle extcur
         if "extcur" not in attrs:
-            assert (
-                attrs["nextcur"] == 0
-            ), "extcur must be present for free-boundary wout files"
             attrs["extcur"] = netCDF4.default_fillvals["f8"]
+        if "nextcur" not in attrs:
+            attrs["nextcur"] = 0
         # Handle input_extension
         if "input_extension" in attrs:
             attrs["input_extension"] = (
