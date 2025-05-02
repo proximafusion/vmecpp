@@ -13,7 +13,7 @@ import numpy as np
 import pydantic
 import pytest
 
-from vmecpp._pydantic_numpy import BaseModelWithNumpy, NpOrJaxArray
+from vmecpp._pydantic_numpy import BaseModelWithNumpy
 
 jax.config.update("jax_enable_x64", True)
 
@@ -488,8 +488,8 @@ def test_serialize_literal():
 
 def test_serialization_jax_array_mixed():
     class ModelWithNpOrJaxArrays(BaseModelWithNumpy):
-        untyped_array: NpOrJaxArray
-        typed_array: jt.Float[NpOrJaxArray, " n_elements"]
+        untyped_array: np.ndarray | jt.Array
+        typed_array: jt.Float[np.ndarray | jt.Array, " n_elements"]
 
     model = ModelWithNpOrJaxArrays(
         untyped_array=jnp.array([1.0, 2.0, 3.0], dtype=np.float64),

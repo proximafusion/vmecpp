@@ -120,9 +120,8 @@ JAX array handling works as follows:
    the same rules.
  - During validation, "jt.Array" annotations are NOT treated specially, thus only numpy
    arrays can be produced by the deserialization process. To put JAX arrays into Dapper
-   types that should be serializable, they must be annotated with NpOrJaxArray!
+   types that should be serializable, they must be annotated with np.ndarray | jt.Array!
 """
-NpOrJaxArray = np.ndarray | jt.Array
 NpOrAbstractArray = np.ndarray | jt.AbstractArray
 
 AnyJsonValue = dict | list | str | int | float | bool | None
@@ -177,6 +176,10 @@ def deserialize_special_field(
     )
 
 
+def _is_arraylike(x):
+    return hasattr(x, "__array__") or hasattr(x, "__array_interface__")
+
+
 def _serialize_value(declared_type: type, value: Any, field_metadata: list[Any]) -> Any:  # noqa: ARG001
     """Tests for the presence of a special type and converts it to a serializable value.
 
@@ -192,7 +195,7 @@ def _serialize_value(declared_type: type, value: Any, field_metadata: list[Any])
         a dict representation of the object, or a raw string.
         Returns the unmodified value if no special handling applies.
     """
-    if issubclass(declared_type, NpOrAbstractArray) and isinstance(value, NpOrJaxArray):
+    if issubclass(declared_type, NpOrAbstractArray) and _is_arraylike(value):
         # Convert JAX arrays to numpy arrays for the purpose of serialization.
         np_array = np.asarray(value)
         if np_array.dtype in _NUMPY_ALLOWED_NONBINARY_DTYPES:
