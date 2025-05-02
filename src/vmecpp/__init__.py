@@ -402,8 +402,6 @@ class VmecWOut(BaseModelWithNumpy):
     The `save` method produces a NetCDF file compatible with SIMSOPT/Fortran VMEC.
     """
 
-    model_config = pydantic.ConfigDict(extra="forbid")
-
     _MISSING_FORTRAN_VARIABLES: typing.ClassVar[list[str]] = [
         "lrecon__logical__",
         "lrfp__logical__",
@@ -417,6 +415,14 @@ class VmecWOut(BaseModelWithNumpy):
         "nobser",
         "nobd",
         "nbsets",
+        "mnmaxpot",
+        "potsin",
+        "xmpot",
+        "xnpot",
+        "bsubumnc_sur",
+        "bsubvmnc_sur",
+        "bsupumnc_sur",
+        "bsupvmnc_sur",
     ]
     """The complete list of variables that can be found in Fortran VMEC wout files but
     not in wout files produced by VMEC++."""
@@ -1124,7 +1130,9 @@ class VmecWOut(BaseModelWithNumpy):
         """Load wout contents in NetCDF format.
 
         This is the format used by Fortran VMEC implementations and the one expected by
-        SIMSOPT.
+        SIMSOPT. We allow for additional attributes to be present in the file, for
+        compatibility with wouf files from other VMEC versions, but require at least the
+        fields produced by VMEC++.
         """
         with netCDF4.Dataset(wout_filename, "r") as fnc:
             fnc.set_auto_mask(False)
