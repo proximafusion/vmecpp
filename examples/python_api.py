@@ -31,7 +31,9 @@ def run_vmecpp():
     # We can save the output wout as a classic NetCDF
     # wout file if needed:
     output.wout.save("wout_solovev.nc")
-
+    # Text files like threed1 are no longer supporeted in
+    # the same way, but the data is available:
+    print("threed1_volumetrics", output.threed1_volumetrics.model_dump_json(indent=2))
     # Free-boundary runs work just the same, in which
     # case VmecInput will also include a path to an
     # "mgrid_*.nc" file produced by MAKEGRID.
