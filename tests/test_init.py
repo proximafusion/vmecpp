@@ -189,6 +189,37 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
         )
 
 
+def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
+    """Support for unknown fields in wout files."""
+    cma_output.wout = cma_output.wout.model_copy(
+        update={
+            "extra_field": np.array([1.0, 2.0, 3.0]),
+            "extra_string": "string",
+            "extra_float": 3.14,
+            "extra_int": 42,
+            "extra_2darray": np.array([[1.0, 2.0], [3.0, 4.0]]),
+        }
+    )
+
+    with tempfile.NamedTemporaryFile() as tmp_file:
+        cma_output.wout.save(tmp_file.name)
+
+        assert Path(tmp_file.name).exists()
+
+        # check that from_wout_file can load the file as well
+        loaded_wout = vmecpp.VmecWOut.from_wout_file(tmp_file.name)
+        assert loaded_wout is not None
+
+        # test contents of loaded wout against original in-memory wout
+        for attr in vars(cma_output.wout):
+            error_msg = f"mismatch in {attr}"
+            np.testing.assert_equal(
+                actual=getattr(loaded_wout, attr),
+                desired=getattr(cma_output.wout, attr),
+                err_msg=error_msg,
+            )
+
+
 def test_jxbout_bindings(cma_output: vmecpp.VmecOutput):
     for varname in [
         "itheta",
