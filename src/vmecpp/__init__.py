@@ -375,13 +375,19 @@ class VmecInput(BaseModelWithNumpy):
 
         return cpp_indata
 
+    # By default we want to write everything to JSON, so the the file is a
+    # single source of truth without an implicit dependence on defaults.
     def to_json(self, **kwargs) -> str:
-        kwargs.setdefault("exclude_none", True)
-        kwargs.setdefault("exclude_defaults", True)
+        """Serialize the object to JSON.
+
+        Keyword Args:
+            **kwargs: Additional keyword arguments to forward to the model_dump_json method.
+        """
+
         return self.model_dump_json(**kwargs)
 
-    def save(self, output_path: str | Path) -> None:
-        json_serialized = self.to_json()
+    def save(self, output_path: str | Path, **kwargs) -> None:
+        json_serialized = self.to_json(**kwargs)
         output_path = Path(output_path)
         output_path.write_text(json_serialized)
 
