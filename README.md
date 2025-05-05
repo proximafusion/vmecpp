@@ -19,6 +19,7 @@
 
 [![CI](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml)
 [![C++ core tests](https://github.com/proximafusion/vmecpp/actions/workflows/test_bazel.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/test_bazel.yaml)
+[![Publish wheels to PyPI](https://github.com/proximafusion/vmecpp/actions/workflows/pypi_publish.yml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/pypi_publish.yml)
 
 VMEC++ is a Python-friendly, from-scratch reimplementation in C++ of the Variational Moments Equilibrium Code (VMEC),
 a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks.
