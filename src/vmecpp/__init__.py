@@ -455,30 +455,52 @@ class VmecWOut(BaseModelWithNumpy):
         extra="allow",
     )
 
-    _MISSING_FORTRAN_VARIABLES: typing.ClassVar[list[str]] = [
-        "lrecon__logical__",
-        "lrfp__logical__",
-        "lmove_axis__logical__",
-        "mnyq",
-        "nnyq",
-        "currumnc",
-        "currvmnc",
-        "curlabel",
-        "potvac",
-        "nobser",
-        "nobd",
-        "nbsets",
-        "mnmaxpot",
-        "potsin",
-        "xmpot",
-        "xnpot",
-        "bsubumnc_sur",
-        "bsubvmnc_sur",
-        "bsupumnc_sur",
-        "bsupvmnc_sur",
+    _CPP_WOUT_SPECIAL_HANDLING: typing.ClassVar[list[str]] = [
+        "niter",
+        "signgs",
+        "betatotal",
+        "volavgB",
+        "iotaf",
+        "q_factor",
+        "presf",
+        "phi",
+        "chi",
+        "beta_vol",
+        "specw",
+        "DShear",
+        "DWell",
+        "DCurr",
+        "DGeod",
+        "raxis_cc",
+        "zaxis_cs",
+        "version_",
+        "bvco",
+        "buco",
+        "vp",
+        "volume",
+        "pres",
+        "mass",
+        "phips",
+        "over_r",
+        "iotas",
+        "rmnc",
+        "zmns",
+        "bsubsmns",
+        "lmns_full",
+        "lmns",
+        "bmnc",
+        "bsubumnc",
+        "bsubvmnc",
+        "bsupumnc",
+        "bsupvmnc",
+        "gmnc",
     ]
-    """The complete list of variables that can be found in Fortran VMEC wout files but
-    not in wout files produced by VMEC++."""
+    """If quantities are not exactly the same in C++ WoutFileContents and this class,
+    add them to this list and implement the conversion logic in _to_cpp_wout and
+    _from_cpp_wout (e.g. different naming, storage order).
+
+    TODO(jurasic) homogenize the two so this list can disappear.
+    """
 
     input_extension: typing.Annotated[str, pydantic.Field(max_length=100)] = ""
     ier_flag: int
@@ -819,60 +841,11 @@ class VmecWOut(BaseModelWithNumpy):
         attrs = {}
 
         # These attributes are the same in VMEC++ and in Fortran VMEC
-        attrs["ier_flag"] = cpp_wout.ier_flag
-        attrs["nfp"] = cpp_wout.nfp
-        attrs["ns"] = cpp_wout.ns
-        attrs["mpol"] = cpp_wout.mpol
-        attrs["ntor"] = cpp_wout.ntor
-        attrs["mnmax"] = cpp_wout.mnmax
-        attrs["mnmax_nyq"] = cpp_wout.mnmax_nyq
-        attrs["lasym"] = cpp_wout.lasym
-        attrs["lfreeb"] = cpp_wout.lfreeb
-        attrs["wb"] = cpp_wout.wb
-        attrs["wp"] = cpp_wout.wp
-        attrs["rmax_surf"] = cpp_wout.rmax_surf
-        attrs["rmin_surf"] = cpp_wout.rmin_surf
-        attrs["zmax_surf"] = cpp_wout.zmax_surf
-        attrs["aspect"] = cpp_wout.aspect
-        attrs["betapol"] = cpp_wout.betapol
-        attrs["betator"] = cpp_wout.betator
-        attrs["betaxis"] = cpp_wout.betaxis
-        attrs["b0"] = cpp_wout.b0
-        attrs["rbtor0"] = cpp_wout.rbtor0
-        attrs["rbtor"] = cpp_wout.rbtor
-        attrs["IonLarmor"] = cpp_wout.IonLarmor
-        attrs["ctor"] = cpp_wout.ctor
-        attrs["Aminor_p"] = cpp_wout.Aminor_p
-        attrs["Rmajor_p"] = cpp_wout.Rmajor_p
+        for field in VmecWOut.model_fields:
+            if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
+                attrs[field] = getattr(cpp_wout, field)
+
         attrs["volume"] = cpp_wout.volume_p
-        attrs["fsqr"] = cpp_wout.fsqr
-        attrs["fsqz"] = cpp_wout.fsqz
-        attrs["fsql"] = cpp_wout.fsql
-        attrs["itfsq"] = cpp_wout.itfsq
-        attrs["phipf"] = cpp_wout.phipf
-        attrs["chipf"] = cpp_wout.chipf
-        attrs["jcuru"] = cpp_wout.jcuru
-        attrs["jcurv"] = cpp_wout.jcurv
-        attrs["fsqt"] = cpp_wout.fsqt
-        attrs["wdot"] = cpp_wout.wdot
-        attrs["jdotb"] = cpp_wout.jdotb
-        attrs["bdotb"] = cpp_wout.bdotb
-        attrs["bdotgradv"] = cpp_wout.bdotgradv
-        attrs["DMerc"] = cpp_wout.DMerc
-        attrs["equif"] = cpp_wout.equif
-        attrs["xm"] = cpp_wout.xm.astype(np.int64)
-        attrs["xn"] = cpp_wout.xn.astype(np.int64)
-        attrs["xm_nyq"] = cpp_wout.xm_nyq.astype(np.int64)
-        attrs["xn_nyq"] = cpp_wout.xn_nyq.astype(np.int64)
-        attrs["ftolv"] = cpp_wout.ftolv
-        attrs["pcurr_type"] = cpp_wout.pcurr_type
-        attrs["pmass_type"] = cpp_wout.pmass_type
-        attrs["piota_type"] = cpp_wout.piota_type
-        attrs["gamma"] = cpp_wout.gamma
-        attrs["mgrid_file"] = cpp_wout.mgrid_file
-        attrs["mgrid_mode"] = cpp_wout.mgrid_mode
-        attrs["nextcur"] = cpp_wout.nextcur
-        attrs["extcur"] = cpp_wout.extcur
 
         # These attributes are called differently
         attrs["niter"] = cpp_wout.maximum_iterations
@@ -969,72 +942,18 @@ class VmecWOut(BaseModelWithNumpy):
 
         attrs["version_"] = float(cpp_wout.version)
 
-        attrs["input_extension"] = cpp_wout.input_extension
-
-        # The Pydantic model raises an error if there are missing keys,
-        # or extra keys that weren't included in MISSING_FORTRAN_VARIABLES
         return VmecWOut(**attrs)
 
     def _to_cpp_wout(self) -> _vmecpp.WOutFileContents:
         cpp_wout = _vmecpp.WOutFileContents()
 
         # These attributes are the same in VMEC++ and in Fortran VMEC
-        cpp_wout.ier_flag = self.ier_flag
-        cpp_wout.nfp = self.nfp
-        cpp_wout.ns = self.ns
-        cpp_wout.mpol = self.mpol
-        cpp_wout.ntor = self.ntor
-        cpp_wout.mnmax = self.mnmax
-        cpp_wout.mnmax_nyq = self.mnmax_nyq
-        cpp_wout.lasym = self.lasym
-        cpp_wout.lfreeb = self.lfreeb
-        cpp_wout.wb = self.wb
-        cpp_wout.wp = self.wp
-        cpp_wout.rmax_surf = self.rmax_surf
-        cpp_wout.rmin_surf = self.rmin_surf
-        cpp_wout.zmax_surf = self.zmax_surf
-        cpp_wout.aspect = self.aspect
-        cpp_wout.betapol = self.betapol
-        cpp_wout.betator = self.betator
-        cpp_wout.betaxis = self.betaxis
-        cpp_wout.b0 = self.b0
-        cpp_wout.rbtor0 = self.rbtor0
-        cpp_wout.rbtor = self.rbtor
-        cpp_wout.IonLarmor = self.IonLarmor
-        cpp_wout.ctor = self.ctor
-        cpp_wout.Aminor_p = self.Aminor_p
-        cpp_wout.Rmajor_p = self.Rmajor_p
-        cpp_wout.volume_p = self.volume_p
-        cpp_wout.fsqr = self.fsqr
-        cpp_wout.fsqz = self.fsqz
-        cpp_wout.fsql = self.fsql
-        cpp_wout.itfsq = self.itfsq
-        cpp_wout.phipf = self.phipf
-        cpp_wout.chipf = self.chipf
-        cpp_wout.jcuru = self.jcuru
-        cpp_wout.jcurv = self.jcurv
-        cpp_wout.fsqt = self.fsqt
-        cpp_wout.wdot = self.wdot
-        cpp_wout.jdotb = self.jdotb
-        cpp_wout.bdotb = self.bdotb
-        cpp_wout.bdotgradv = self.bdotgradv
-        cpp_wout.DMerc = self.DMerc
-        cpp_wout.equif = self.equif
-        cpp_wout.xm = self.xm
-        cpp_wout.xn = self.xn
-        cpp_wout.xm_nyq = self.xm_nyq
-        cpp_wout.xn_nyq = self.xn_nyq
-        cpp_wout.ftolv = self.ftolv
-        cpp_wout.pcurr_type = self.pcurr_type
-        cpp_wout.pmass_type = self.pmass_type
-        cpp_wout.piota_type = self.piota_type
-        cpp_wout.gamma = self.gamma
-        cpp_wout.mgrid_file = self.mgrid_file
-        cpp_wout.nextcur = self.nextcur
-        cpp_wout.extcur = self.extcur
-        cpp_wout.mgrid_mode = self.mgrid_mode
+        for field in VmecWOut.model_fields:
+            if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
+                setattr(cpp_wout, field, getattr(self, field))
 
         # These attributes are called differently
+        cpp_wout.volume_p = self.volume
         cpp_wout.maximum_iterations = self.niter
         cpp_wout.sign_of_jacobian = self.signgs
         cpp_wout.betatot = self.betatotal
@@ -1053,7 +972,6 @@ class VmecWOut(BaseModelWithNumpy):
         cpp_wout.raxis_c = self.raxis_cc
         cpp_wout.zaxis_s = self.zaxis_cs
         cpp_wout.version = str(self.version_)  # also needs a float -> str conversion
-        cpp_wout.input_extension = self.input_extension
 
         # These attributes have one element more in VMEC2000
         # (i.e. they have size ns instead of ns - 1).
