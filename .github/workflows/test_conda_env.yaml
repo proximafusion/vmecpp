@@ -20,6 +20,7 @@ jobs:
       image: continuumio/miniconda3
     steps:
       - uses: actions/checkout@v4
+      # This container does not have git-lfs installed
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
@@ -35,4 +36,4 @@ jobs:
           # it's not available as a conda package, and skip test
           # that requires mgrid file from git-lfs
           # (LFS not available in this container image)
-          python -m pytest -k 'not test_ensure_vmec2000_input_from_vmecpp_input and not test_save_to_netcdf' tests/
+          python -m pytest -k 'not test_ensure_vmec2000_input_from_vmecpp_input and not test_against_reference_wout' tests/
