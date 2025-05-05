@@ -286,14 +286,14 @@ def test_ensure_vmec2000_input_with_null():
     # Test that the null values are handled gracefully and removed from the VMEC2000 input file
     vmec_input = vmecpp.VmecInput.default()
     assert vmec_input.rbs is None
-
-    vmec_input.rbc = np.array([[1.0, 2.0, 3.0]])
-    vmecpp_input_file = "test_null.json"
-    vmec_input.save(vmecpp_input_file)
-    with vmecpp.ensure_vmec2000_input(Path("test_null.json")) as converted_indata_file:
-        indata_namelist = converted_indata_file.read_text()
-        assert "rbs" not in indata_namelist
-        assert "rbc" in indata_namelist, indata_namelist
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        vmec_input.rbc = np.array([[1.0, 2.0, 3.0]])
+        vmecpp_input_file = Path(tmp_dir) / "test_null.json"
+        vmec_input.save(vmecpp_input_file)
+        with vmecpp.ensure_vmec2000_input(vmecpp_input_file) as converted_indata_file:
+            indata_namelist = converted_indata_file.read_text()
+            assert "rbs" not in indata_namelist
+            assert "rbc" in indata_namelist, indata_namelist
 
 
 def test_ensure_vmecpp_input_noop():
@@ -357,12 +357,12 @@ def test_aux_arrays_from_cpp_wout():
 
     def assert_aux_defaults(wout: vmecpp.VmecWOut):
         # Check padding values and length
-        assert len(wout.am_aux_s) == vmecpp._NDF_MAX_DIM
-        assert len(wout.am_aux_f) == vmecpp._NDF_MAX_DIM
-        assert len(wout.ac_aux_s) == vmecpp._NDF_MAX_DIM
-        assert len(wout.ac_aux_f) == vmecpp._NDF_MAX_DIM
-        assert len(wout.ai_aux_s) == vmecpp._NDF_MAX_DIM
-        assert len(wout.ai_aux_f) == vmecpp._NDF_MAX_DIM
+        assert len(wout.am_aux_s) == vmecpp.ndfmax
+        assert len(wout.am_aux_f) == vmecpp.ndfmax
+        assert len(wout.ac_aux_s) == vmecpp.ndfmax
+        assert len(wout.ac_aux_f) == vmecpp.ndfmax
+        assert len(wout.ai_aux_s) == vmecpp.ndfmax
+        assert len(wout.ai_aux_f) == vmecpp.ndfmax
 
         # Verify _aux_s arrays are padded with -1
         np.testing.assert_allclose(wout.am_aux_s, -1.0)

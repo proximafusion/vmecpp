@@ -153,10 +153,10 @@ class VmecInput(BaseModelWithNumpy):
     lfreeb: bool
     """Flag to indicate free-boundary."""
 
-    mgrid_file: str
+    mgrid_file: typing.Annotated[str, pydantic.Field(max_length=200)]
     """Full path for vacuum Green's function data."""
 
-    extcur: jt.Float[np.ndarray, "extcur_len"]
+    extcur: jt.Float[np.ndarray, "ext_current"]
     """Coil currents in A."""
 
     nvacskip: int
@@ -393,9 +393,9 @@ class VmecInput(BaseModelWithNumpy):
 
 
 # Fixed dimension of the profile inputs (i.e. pressure, iota, current)
-_PRESET_DIM = 21
+preset = 21
 # Fixed dimension of the auxiliary profile quantities (i.e. am_aux_f)
-_NDF_MAX_DIM = 101
+ndfmax = 101
 
 
 # NOTE: in the future we want to change the C++ WOutFileContents layout so that it
@@ -433,7 +433,7 @@ class VmecWOut(BaseModelWithNumpy):
     """The complete list of variables that can be found in Fortran VMEC wout files but
     not in wout files produced by VMEC++."""
 
-    input_extension: str
+    input_extension: typing.Annotated[str, pydantic.Field(max_length=100)] = ""
     ier_flag: int
     nfp: int
     ns: int
@@ -464,40 +464,39 @@ class VmecWOut(BaseModelWithNumpy):
     fsqz: float
     fsql: float
     ftolv: float
-    # Default initialized so reading stays backwards compatible pre v0.3.6
+    # Default initialized so reading stays backwards compatible pre v0.4.0
     itfsq: int = 0
-    # NOTE: here, usage of the same dim1 or dim2 does NOT mean
-    # they must have the same value across different attributes.
-    phipf: jt.Float[np.ndarray, "dim1"]
-    chipf: jt.Float[np.ndarray, "dim1"]
-    jcuru: jt.Float[np.ndarray, "dim1"]
-    jcurv: jt.Float[np.ndarray, "dim1"]
-    # Default initialized so reading stays backwards compatible pre v0.3.6
+    phipf: jt.Float[np.ndarray, "n_surfaces"]
+    chipf: jt.Float[np.ndarray, "n_surfaces"]
+    jcuru: jt.Float[np.ndarray, "n_surfaces"]
+    jcurv: jt.Float[np.ndarray, "n_surfaces"]
+    # Default initialized so reading stays backwards compatible pre v0.4.0
     fsqt: jt.Float[np.ndarray, "time"] = np.array([])
     wdot: jt.Float[np.ndarray, "time"] = np.array([])
-    jdotb: jt.Float[np.ndarray, "dim1"]
-    bdotb: jt.Float[np.ndarray, "dim1"]
-    bdotgradv: jt.Float[np.ndarray, "dim1"]
-    DMerc: jt.Float[np.ndarray, "dim1"]
-    equif: jt.Float[np.ndarray, "dim1"]
-    xm: jt.Int[np.ndarray, "dim1"]
-    xn: jt.Int[np.ndarray, "dim1"]
-    xm_nyq: jt.Int[np.ndarray, "dim1"]
-    xn_nyq: jt.Int[np.ndarray, "dim1"]
-    mass: jt.Float[np.ndarray, "dim1"]
-    buco: jt.Float[np.ndarray, "dim1"]
-    bvco: jt.Float[np.ndarray, "dim1"]
-    phips: jt.Float[np.ndarray, "dim1"]
-    bmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    gmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubumnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubvmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsubsmns: jt.Float[np.ndarray, "dim1 dim2"]
-    bsupumnc: jt.Float[np.ndarray, "dim1 dim2"]
-    bsupvmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    rmnc: jt.Float[np.ndarray, "dim1 dim2"]
-    zmns: jt.Float[np.ndarray, "dim1 dim2"]
-    lmns: jt.Float[np.ndarray, "mnmax n_surfaces"]
+    jdotb: jt.Float[np.ndarray, "n_surfaces"]
+    bdotb: jt.Float[np.ndarray, "n_surfaces"]
+    bdotgradv: jt.Float[np.ndarray, "n_surfaces"]
+    DMerc: jt.Float[np.ndarray, "n_surfaces"]
+    equif: jt.Float[np.ndarray, "n_surfaces"]
+    # In wout these are stored as float64, although they only take integer values.
+    xm: jt.Int[np.ndarray, "mn_mode"]
+    xn: jt.Int[np.ndarray, "mn_mode"]
+    xm_nyq: jt.Int[np.ndarray, "mn_mode_nyq"]
+    xn_nyq: jt.Int[np.ndarray, "mn_mode_nyq"]
+    mass: jt.Float[np.ndarray, "n_surfaces"]
+    buco: jt.Float[np.ndarray, "n_surfaces"]
+    bvco: jt.Float[np.ndarray, "n_surfaces"]
+    phips: jt.Float[np.ndarray, "n_surfaces"]
+    bmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    gmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsubumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsubvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsubsmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsupumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsupvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    rmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    zmns: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    lmns: jt.Float[np.ndarray, "mn_mode n_surfaces"]
     # lmns_full is not present in a typical Fortran wout file,
     # but we need to save it for fixed-boundary hot restart
     # to work properly. We store it with the Fortran convention
@@ -506,17 +505,17 @@ class VmecWOut(BaseModelWithNumpy):
     pcurr_type: str
     pmass_type: str
     piota_type: str
-    am: jt.Float[np.ndarray, "_PRESET_DIM"]
-    ac: jt.Float[np.ndarray, "_PRESET_DIM"]
-    ai: jt.Float[np.ndarray, "_PRESET_DIM"]
-    am_aux_s: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
-    am_aux_f: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
-    ac_aux_s: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
-    ac_aux_f: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
-    ai_aux_s: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
-    ai_aux_f: jt.Float[np.ndarray, "_NDF_MAX_DIM"]
+    am: jt.Float[np.ndarray, "preset"]
+    ac: jt.Float[np.ndarray, "preset"]
+    ai: jt.Float[np.ndarray, "preset"]
+    am_aux_s: jt.Float[np.ndarray, "ndfmax"]
+    am_aux_f: jt.Float[np.ndarray, "ndfmax"]
+    ac_aux_s: jt.Float[np.ndarray, "ndfmax"]
+    ac_aux_f: jt.Float[np.ndarray, "ndfmax"]
+    ai_aux_s: jt.Float[np.ndarray, "ndfmax"]
+    ai_aux_f: jt.Float[np.ndarray, "ndfmax"]
     gamma: float
-    mgrid_file: str
+    mgrid_file: typing.Annotated[str, pydantic.Field(max_length=200)]
     nextcur: int
     extcur: jt.Float[np.ndarray, "extcur_len"] | float
     """Coil currents in A.
@@ -528,31 +527,31 @@ class VmecWOut(BaseModelWithNumpy):
     mgrid_mode: MgridModeType
 
     # In the C++ WOutFileContents this is called iota_half.
-    iotas: jt.Float[np.ndarray, "dim1"]
+    iotas: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called iota_full.
-    iotaf: jt.Float[np.ndarray, "dim1"]
+    iotaf: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called betatot.
     betatotal: float
 
     # In the C++ WOutFileContents this is called raxis_c.
-    raxis_cc: jt.Float[np.ndarray, "dim1"]
+    raxis_cc: jt.Float[np.ndarray, "ntor_plus_1"]
 
     # In the C++ WOutFileContents this is called zaxis_s.
-    zaxis_cs: jt.Float[np.ndarray, "dim1"]
+    zaxis_cs: jt.Float[np.ndarray, "ntor_plus_1"]
 
     # In the C++ WOutFileContents this is called dVds.
-    vp: jt.Float[np.ndarray, "dim1"]
+    vp: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called pressure_full.
-    presf: jt.Float[np.ndarray, "dim1"]
+    presf: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called pressure_half.
-    pres: jt.Float[np.ndarray, "dim1"]
+    pres: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called toroidal_flux.
-    phi: jt.Float[np.ndarray, "dim1"]
+    phi: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called sign_of_jacobian.
     signgs: int
@@ -561,36 +560,38 @@ class VmecWOut(BaseModelWithNumpy):
     volavgB: float
 
     # In the C++ WOutFileContents this is called safety_factor.
-    q_factor: jt.Float[np.ndarray, "dim1"]
+    q_factor: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called poloidal_flux.
-    chi: jt.Float[np.ndarray, "dim1"]
+    chi: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called spectral_width.
-    specw: jt.Float[np.ndarray, "dim1"]
+    specw: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called overr.
-    over_r: jt.Float[np.ndarray, "dim1"]
+    over_r: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called Dshear.
-    DShear: jt.Float[np.ndarray, "dim1"]
+    DShear: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called Dwell.
-    DWell: jt.Float[np.ndarray, "dim1"]
+    DWell: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called Dcurr.
-    DCurr: jt.Float[np.ndarray, "dim1"]
+    DCurr: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called Dgeod.
-    DGeod: jt.Float[np.ndarray, "dim1"]
+    DGeod: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called maximum_iterations.
     niter: int
 
     # In the C++ WOutFileContents this is called beta.
-    beta_vol: jt.Float[np.ndarray, "dim1"]
+    beta_vol: jt.Float[np.ndarray, "n_surfaces"]
 
     # In the C++ WOutFileContents this is called 'version' and it is a string.
+    # version_ is required to make COBRAVMEC work correctly:
+    # it changes its behavior depending on the VMEC version (>6 or not)
     version_: float
 
     @property
@@ -698,8 +699,8 @@ class VmecWOut(BaseModelWithNumpy):
             fnc.createDimension("mn_mode", self.mnmax)
             fnc.createDimension("mn_mode_nyq", self.mnmax_nyq)
             fnc.createDimension("n_tor", self.ntor + 1)  # Fortran quirk
-            fnc.createDimension("preset", _PRESET_DIM)
-            fnc.createDimension("ndfmax", _NDF_MAX_DIM)
+            fnc.createDimension("preset", preset)
+            fnc.createDimension("ndfmax", ndfmax)
             fnc.createDimension("radius", self.ns)
 
             # Dimensions that are not in use yet
@@ -759,7 +760,7 @@ class VmecWOut(BaseModelWithNumpy):
                     unpadded_array = getattr(self, auxname)[:]
                     fnc[auxname][:] = np.pad(
                         unpadded_array,
-                        (0, _NDF_MAX_DIM - len(unpadded_array)),
+                        (0, ndfmax - len(unpadded_array)),
                         mode="constant",
                         constant_values=default_value,
                     )
@@ -965,42 +966,42 @@ class VmecWOut(BaseModelWithNumpy):
         attrs["gmnc"] = _pad_and_transpose(cpp_wout.gmnc, attrs["mnmax_nyq"])
 
         # These attributes have zero-padding at the end up to a fixed length
-        attrs["am"] = np.pad(cpp_wout.am, (0, _PRESET_DIM - len(cpp_wout.am)))
-        attrs["ac"] = np.pad(cpp_wout.ac, (0, _PRESET_DIM - len(cpp_wout.ac)))
-        attrs["ai"] = np.pad(cpp_wout.ai, (0, _PRESET_DIM - len(cpp_wout.ai)))
+        attrs["am"] = np.pad(cpp_wout.am, (0, preset - len(cpp_wout.am)))
+        attrs["ac"] = np.pad(cpp_wout.ac, (0, preset - len(cpp_wout.ac)))
+        attrs["ai"] = np.pad(cpp_wout.ai, (0, preset - len(cpp_wout.ai)))
         attrs["am_aux_s"] = np.pad(
             cpp_wout.am_aux_s,
-            (0, _NDF_MAX_DIM - len(cpp_wout.am_aux_s)),
+            (0, ndfmax - len(cpp_wout.am_aux_s)),
             mode="constant",
             constant_values=-1.0,
         )
         attrs["am_aux_f"] = np.pad(
             cpp_wout.am_aux_f,
-            (0, _NDF_MAX_DIM - len(cpp_wout.am_aux_f)),
+            (0, ndfmax - len(cpp_wout.am_aux_f)),
             mode="constant",
             constant_values=0.0,
         )
         attrs["ac_aux_s"] = np.pad(
             cpp_wout.ac_aux_s,
-            (0, _NDF_MAX_DIM - len(cpp_wout.ac_aux_s)),
+            (0, ndfmax - len(cpp_wout.ac_aux_s)),
             mode="constant",
             constant_values=-1.0,
         )
         attrs["ac_aux_f"] = np.pad(
             cpp_wout.ac_aux_f,
-            (0, _NDF_MAX_DIM - len(cpp_wout.ac_aux_f)),
+            (0, ndfmax - len(cpp_wout.ac_aux_f)),
             mode="constant",
             constant_values=0.0,
         )
         attrs["ai_aux_s"] = np.pad(
             cpp_wout.ai_aux_s,
-            (0, _NDF_MAX_DIM - len(cpp_wout.ai_aux_s)),
+            (0, ndfmax - len(cpp_wout.ai_aux_s)),
             mode="constant",
             constant_values=-1.0,
         )
         attrs["ai_aux_f"] = np.pad(
             cpp_wout.ai_aux_f,
-            (0, _NDF_MAX_DIM - len(cpp_wout.ai_aux_f)),
+            (0, ndfmax - len(cpp_wout.ai_aux_f)),
             mode="constant",
             constant_values=0.0,
         )
