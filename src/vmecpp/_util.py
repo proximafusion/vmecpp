@@ -412,3 +412,18 @@ def sparse_to_dense_coefficients_implicit(
         ntor = int(max(ntor, abs(sparse_entry["n"])))
     mpol += 1
     return sparse_to_dense_coefficients(maybe_sparse_list, mpol, ntor)
+
+
+def pad_to_target(value, target_length: int, default_value: float):
+    if len(value) <= target_length:
+        return np.pad(
+            value,
+            (0, target_length - len(value)),
+            mode="constant",
+            constant_values=default_value,
+        )
+    msg = (
+        f"Array length {len(value)} exceeds target "
+        f"length {target_length} allowed for serialization"
+    )
+    raise ValueError(msg)

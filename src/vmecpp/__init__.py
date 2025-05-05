@@ -27,16 +27,38 @@ from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
 logger = logging.getLogger(__name__)
 
-SerializableSparseCoefficientArray = typing.Annotated[
-    jt.Float[np.ndarray, "mpol two_ntor_plus_one"],
+
+_ArrayType = typing.TypeVar("_ArrayType")
+
+
+SerializableSparseCoefficientArray: typing.TypeAlias = typing.Annotated[
+    _ArrayType,
     pydantic.PlainSerializer(
         _util.dense_to_sparse_coefficients, when_used="unless-none"
     ),
     pydantic.BeforeValidator(_util.sparse_to_dense_coefficients_implicit),
 ]
+SerializeInt32AsFloat: typing.TypeAlias = typing.Annotated[
+    _ArrayType,
+    pydantic.PlainSerializer(lambda x: x.astype(np.float64)),
+    pydantic.BeforeValidator(lambda x: x.astype(np.int32)),
+]
 
-MgridModeType: typing.TypeAlias = typing.Literal["R", "S", ""]
+AuxFType = typing.Annotated[
+    _ArrayType,
+    pydantic.BeforeValidator(lambda x: _util.pad_to_target(x, ndfmax, 0.0)),
+]
+AuxSType = typing.Annotated[
+    _ArrayType,
+    pydantic.BeforeValidator(lambda x: _util.pad_to_target(x, ndfmax, -1.0)),
+]
+
+MgridModeType: typing.TypeAlias = typing.Annotated[
+    typing.Literal["R", "S", ""], pydantic.Field(max_length=1)
+]
 """[Scaled, Raw, Unset]"""
+
+ProfileType = typing.Annotated[str, pydantic.Field(max_length=20)]
 
 
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
@@ -99,7 +121,7 @@ class VmecInput(BaseModelWithNumpy):
     ncurr: typing.Literal[0, 1]
     """Select constraint on iota or enclosed toroidal current profiles 0: constrained-iota; 1: constrained-current"""
 
-    pmass_type: str
+    pmass_type: ProfileType
     """Parametrization of mass/pressure profile."""
 
     am: jt.Float[np.ndarray, "am_len"]
@@ -120,7 +142,7 @@ class VmecInput(BaseModelWithNumpy):
     spres_ped: float
     """Location of pressure pedestal in s."""
 
-    piota_type: str
+    piota_type: ProfileType
     """Parametrization of iota profile."""
 
     ai: jt.Float[np.ndarray, "ai_len"]
@@ -132,7 +154,7 @@ class VmecInput(BaseModelWithNumpy):
     ai_aux_f: jt.Float[np.ndarray, "ai_aux_len"]
     """Spline iota profile: values at knots"""
 
-    pcurr_type: str
+    pcurr_type: ProfileType
     """Parametrization of toroidal current profile."""
 
     ac: jt.Float[np.ndarray, "ac_len"]
@@ -195,16 +217,30 @@ class VmecInput(BaseModelWithNumpy):
     zaxis_c: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
     """Magnetic axis coefficients for Z ~ cos(n*v); non-stellarator-symmetric."""
 
-    rbc: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
+    rbc: SerializableSparseCoefficientArray[
+        jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+    ]
     """Boundary coefficients for R ~ cos(m*u - n*v); stellarator-symmetric"""
 
-    zbs: SerializableSparseCoefficientArray  # [mpol, 2 * ntor + 1]
+    zbs: SerializableSparseCoefficientArray[
+        jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+    ]
     """Boundary coefficients for Z ~ sin(m*u - n*v); stellarator-symmetric"""
 
-    rbs: SerializableSparseCoefficientArray | None = None  # [mpol, 2 * ntor + 1]
+    rbs: (
+        SerializableSparseCoefficientArray[
+            jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+        ]
+        | None
+    ) = None
     """Boundary coefficients for R ~ sin(m*u - n*v); non-stellarator-symmetric"""
 
-    zbc: SerializableSparseCoefficientArray | None = None  # [mpol, 2 * ntor + 1]
+    zbc: (
+        SerializableSparseCoefficientArray[
+            jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+        ]
+        | None
+    ) = None
     """Boundary coefficients for Z ~ cos(m*u - n*v); non-stellarator-symmetric"""
 
     @pydantic.model_validator(mode="after")
@@ -408,6 +444,17 @@ class VmecWOut(BaseModelWithNumpy):
     The `save` method produces a NetCDF file compatible with SIMSOPT/Fortran VMEC.
     """
 
+    # We use alias names to map to the wout keys, when they differ from the variable
+    # names in Python (e.g. lasym__logical__ instead of lasym). By default, we want
+    # to use the nicer Python names and explicitly opt in to use the wout names.
+    model_config = pydantic.ConfigDict(
+        validate_by_alias=False,
+        validate_by_name=True,
+        serialize_by_alias=False,
+        # Allow for variables in the wout file even if VMEC++ doesn't use them.
+        extra="allow",
+    )
+
     _MISSING_FORTRAN_VARIABLES: typing.ClassVar[list[str]] = [
         "lrecon__logical__",
         "lrfp__logical__",
@@ -441,8 +488,27 @@ class VmecWOut(BaseModelWithNumpy):
     ntor: int
     mnmax: int
     mnmax_nyq: int
-    lasym: bool
-    lfreeb: bool
+    # Serialized as int in the wout file under a different name
+    lasym: typing.Annotated[
+        bool,
+        pydantic.PlainSerializer(
+            lambda x: int(x),
+        ),
+        pydantic.BeforeValidator(
+            lambda x: bool(x),
+        ),
+        pydantic.Field(alias="lasym__logical__"),
+    ]
+    lfreeb: typing.Annotated[
+        bool,
+        pydantic.PlainSerializer(
+            lambda x: int(x),
+        ),
+        pydantic.BeforeValidator(
+            lambda x: bool(x),
+        ),
+        pydantic.Field(alias="lfreeb__logical__"),
+    ]
     wb: float
     wp: float
     rmax_surf: float
@@ -459,7 +525,7 @@ class VmecWOut(BaseModelWithNumpy):
     ctor: float
     Aminor_p: float
     Rmajor_p: float
-    volume: float
+    volume: typing.Annotated[float, pydantic.Field(alias="volume_p")]
     fsqr: float
     fsqz: float
     fsql: float
@@ -479,10 +545,10 @@ class VmecWOut(BaseModelWithNumpy):
     DMerc: jt.Float[np.ndarray, "n_surfaces"]
     equif: jt.Float[np.ndarray, "n_surfaces"]
     # In wout these are stored as float64, although they only take integer values.
-    xm: jt.Int[np.ndarray, "mn_mode"]
-    xn: jt.Int[np.ndarray, "mn_mode"]
-    xm_nyq: jt.Int[np.ndarray, "mn_mode_nyq"]
-    xn_nyq: jt.Int[np.ndarray, "mn_mode_nyq"]
+    xm: SerializeInt32AsFloat[jt.Int[np.ndarray, "mn_mode"]]
+    xn: SerializeInt32AsFloat[jt.Int[np.ndarray, "mn_mode"]]
+    xm_nyq: SerializeInt32AsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
+    xn_nyq: SerializeInt32AsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
     mass: jt.Float[np.ndarray, "n_surfaces"]
     buco: jt.Float[np.ndarray, "n_surfaces"]
     bvco: jt.Float[np.ndarray, "n_surfaces"]
@@ -501,23 +567,29 @@ class VmecWOut(BaseModelWithNumpy):
     # but we need to save it for fixed-boundary hot restart
     # to work properly. We store it with the Fortran convention
     # for the order of the dimensions for consistency with lmns.
-    lmns_full: jt.Float[np.ndarray, "mnmax n_surfaces"]
-    pcurr_type: str
-    pmass_type: str
-    piota_type: str
+    lmns_full: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    pcurr_type: ProfileType
+    pmass_type: ProfileType
+    piota_type: ProfileType
     am: jt.Float[np.ndarray, "preset"]
     ac: jt.Float[np.ndarray, "preset"]
     ai: jt.Float[np.ndarray, "preset"]
-    am_aux_s: jt.Float[np.ndarray, "ndfmax"]
-    am_aux_f: jt.Float[np.ndarray, "ndfmax"]
-    ac_aux_s: jt.Float[np.ndarray, "ndfmax"]
-    ac_aux_f: jt.Float[np.ndarray, "ndfmax"]
-    ai_aux_s: jt.Float[np.ndarray, "ndfmax"]
-    ai_aux_f: jt.Float[np.ndarray, "ndfmax"]
+    am_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    am_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    ac_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    ac_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    ai_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    ai_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
     gamma: float
     mgrid_file: typing.Annotated[str, pydantic.Field(max_length=200)]
     nextcur: int
-    extcur: jt.Float[np.ndarray, "extcur_len"] | float
+    extcur: typing.Annotated[
+        jt.Float[np.ndarray, "ext_current"],
+        pydantic.BeforeValidator(lambda x: x if np.shape(x) != () else np.array([])),
+        pydantic.PlainSerializer(
+            lambda x: x if x.shape != (0,) else netCDF4.default_fillvals["f8"]
+        ),
+    ]
     """Coil currents in A.
 
     for free-boundary runs, `extcur` has shape `(nextcur,)`
@@ -632,220 +704,115 @@ class VmecWOut(BaseModelWithNumpy):
             raise ValueError(msg)
 
         with netCDF4.Dataset(out_path, "w", format="NETCDF3_CLASSIC") as fnc:
-            # scalar ints
-            for varname in [
-                "nfp",
-                "ns",
-                "mpol",
-                "ntor",
-                "mnmax",
-                "mnmax_nyq",
-                "niter",
-                "ier_flag",
-                "signgs",
-                "nextcur",
-            ]:
-                fnc.createVariable(varname, np.int32)
-                fnc[varname][:] = getattr(self, varname)
-            fnc.createVariable("lasym__logical__", np.int32)
-            fnc["lasym__logical__"][:] = self.lasym
-            fnc.createVariable("lfreeb__logical__", np.int32)
-            fnc["lfreeb__logical__"][:] = self.lfreeb
-
-            # scalar floats
-            for varname in [
-                "wb",
-                "wp",
-                "gamma",
-                "rmax_surf",
-                "rmin_surf",
-                "zmax_surf",
-                "aspect",
-                "betatotal",
-                "betapol",
-                "betator",
-                "betaxis",
-                "b0",
-                "rbtor0",
-                "rbtor",
-                "IonLarmor",
-                "volavgB",
-                "ctor",
-                "Aminor_p",
-                "Rmajor_p",
-                "volume_p",
-                "ftolv",
-                "fsql",
-                "fsqr",
-                "fsqz",
-                "itfsq",
-            ]:
-                fnc.createVariable(varname, np.float64)
-                fnc[varname][:] = getattr(self, varname)
-
             # create dimensions (in the same order as VMEC2000)
-            # For the input extension
-            fnc.createDimension("dim_00100", 100)
-            # dim_00200 = mgrid_file_max_string_length
-            fnc.createDimension("dim_00200", 200)
-            # dim_00020 = profile_strings_max_len
-            fnc.createDimension("dim_00020", 20)
-            # dimension of extcur and curlabel is not written in fixed-boundary wout
-            if self.lfreeb:
-                assert self.nextcur > 0
-                fnc.createDimension("ext_current", self.nextcur)
-            # and a single character for mgrid_mode
-            fnc.createDimension("dim_00001", 1)
-            fnc.createDimension("mn_mode", self.mnmax)
-            fnc.createDimension("mn_mode_nyq", self.mnmax_nyq)
-            fnc.createDimension("n_tor", self.ntor + 1)  # Fortran quirk
-            fnc.createDimension("preset", preset)
-            fnc.createDimension("ndfmax", ndfmax)
-            fnc.createDimension("radius", self.ns)
-
-            # Dimensions that are not in use yet
-            _TIME = (
-                self.itfsq
-            )  # VMEC2000 has a fixed value of 100, we store all steps instead
-            _MN_MAX_POT = 100  # TODO(jurasic) self.mnmaxpot
-            fnc.createDimension("time", _TIME)
-            fnc.createDimension("mn_mode_pot", _MN_MAX_POT)
+            # Dimensions that are not in use yet, written for compatibility
+            fnc.createDimension("mn_mode_pot", 100)
             fnc.createDimension("current_label", 30)
             fnc.createDimension("dim_00006", 6)
 
-            # radial profiles
-            for varname in [
-                "iotaf",
-                "q_factor",
-                "presf",
-                "phi",
-                "phipf",
-                "chi",
-                "chipf",
-                "jcuru",
-                "jcurv",
-                "iotas",
-                "mass",
-                "pres",
-                "beta_vol",
-                "buco",
-                "bvco",
-                "vp",
-                "specw",
-                "phips",
-                "over_r",
-                "jdotb",
-                "bdotb",
-                "bdotgradv",
-                "DMerc",
-                "DShear",
-                "DWell",
-                "DCurr",
-                "DGeod",
-                "equif",
-            ]:
-                fnc.createVariable(varname, np.float64, ("radius",))
-                fnc[varname][:] = getattr(self, varname)[:]
+            # For some dimension names, we chose a different naming convention,
+            # which we consider clearer. Here we translate them to the standard
+            # wout equivalents, for compatibility.
+            map_dimension_names = {
+                "ntor_plus_1": "n_tor",
+                "n_surfaces": "radius",
+            }
 
-            for varname in ["am", "ai", "ac"]:
-                fnc.createVariable(varname, np.float64, ("preset",))
-                unpadded_array = getattr(self, varname)[:]
-                fnc[varname][: len(unpadded_array)] = unpadded_array
-                for aux_suffix, default_value in [("_aux_f", 0.0), ("_aux_s", -1.0)]:
-                    auxname = varname + aux_suffix
-                    fnc.createVariable(auxname, np.float64, ("ndfmax",))
-                    # am_aux_f in C++ return a length 1 array with default values in
-                    # NonEmptyVectorOr, but Fortran VMEC uses a fixed ndfmax=1001 elements.
-                    # Repeat the default value as needed.
-                    unpadded_array = getattr(self, auxname)[:]
-                    fnc[auxname][:] = np.pad(
-                        unpadded_array,
-                        (0, ndfmax - len(unpadded_array)),
-                        mode="constant",
-                        constant_values=default_value,
+            # Convert VmeWOut to its NetCDF3 compatible representation
+            # (wout compatible names and datatypes)
+            dumped_fields = self.model_dump(by_alias=True)
+
+            # Make a dictionary of alias names to field info, from
+            # model_fields (dictionary of non-alias names)
+            alias_field_infos = {
+                (
+                    field_info.alias if field_info.alias is not None else field
+                ): field_info
+                for field, field_info in VmecWOut.model_fields.items()
+            }
+
+            # Operates under the assumption that the order of the fields in
+            # model_fields and model_dump are the same.
+            for field, value in dumped_fields.items():
+                field_type = type(value)
+                # None for extra fields
+                field_info = alias_field_infos.get(field)
+
+                if field_type is int:
+                    fnc.createVariable(field, np.int32)
+                    fnc[field][:] = value
+                elif field_type is float:
+                    fnc.createVariable(field, np.float64)
+                    fnc[field][:] = value
+                elif field_type is str:
+                    if field_info and len(field_info.metadata) > 0:
+                        # Find the max_length metadata for the dimension annotation
+                        # TODO(jurasic) this assumes that the first metadata is the
+                        # max_length, could be generalized
+                        max_len = field_info.metadata[0].max_length
+                    else:
+                        # No max_length metadata, dynamic length
+                        max_len = len(value)
+                    dim_name = f"dim_{max_len:05d}"
+                    # Create the dimension if it doesn't exist yet
+                    if dim_name not in fnc.dimensions:
+                        fnc.createDimension(dim_name, (max_len))
+
+                    string_variable = fnc.createVariable(field, "S1", (dim_name,))
+
+                    # Put the string in the format netCDF3 requires. Don't know what to say.
+                    padded_value_as_array = np.array(
+                        value.encode(encoding="ascii").ljust(max_len)
                     )
+                    padded_value_as_netcdf3_compatible_chararray = netCDF4.stringtochar(
+                        padded_value_as_array
+                    )
+                    string_variable[:] = padded_value_as_netcdf3_compatible_chararray
 
-            for varname in ["raxis_cc", "zaxis_cs"]:
-                fnc.createVariable(varname, np.float64, ("n_tor",))
-                fnc[varname][:] = getattr(self, varname)[:]
+                elif field_type is np.ndarray:
+                    if (
+                        field_info is not None  # is a model field
+                        and field_info.annotation is not None  # has an annotation
+                        and issubclass(
+                            field_info.annotation,
+                            jt.AbstractArray,
+                        )
+                    ):
+                        # Extract the dimension names used for NetCDF wout
+                        shape_string = tuple(
+                            [
+                                map_dimension_names.get(dim.name, str(dim.name))
+                                for dim in field_info.annotation.dims
+                            ]
+                        )
+                    else:
+                        # The dimensions are not annotated (must be an extra field)
+                        shape_string = tuple([f"dim_{dim:05d}" for dim in value.shape])
 
-            for varname in ["xm", "xn"]:
-                fnc.createVariable(varname, np.float64, ("mn_mode",))
-                fnc[varname][:] = getattr(self, varname)[:]
+                    for dim_name, dim_size in zip(
+                        shape_string, value.shape, strict=True
+                    ):
+                        if dim_name not in fnc.dimensions:
+                            fnc.createDimension(dim_name, dim_size)
 
-            for varname in ["xm_nyq", "xn_nyq"]:
-                fnc.createVariable(varname, np.float64, ("mn_mode_nyq",))
-                fnc[varname][:] = getattr(self, varname)[:]
-
-            for varname in [
-                "gmnc",
-                "bmnc",
-                "bsubumnc",
-                "bsubvmnc",
-                "bsubsmns",
-                "bsupumnc",
-                "bsupvmnc",
-            ]:
-                fnc.createVariable(varname, np.float64, ("radius", "mn_mode_nyq"))
-                fnc[varname][:] = getattr(self, varname).T[:]
-
-            # fourier coefficients
-            for varname in ["rmnc", "zmns", "lmns"]:
-                fnc.createVariable(varname, np.float64, ("radius", "mn_mode"))
-                fnc[varname][:] = getattr(self, varname).T[:]
-
-            # Convergence time trace information
-            for varname in ["fsqt", "wdot"]:
-                fnc.createVariable(varname, np.float64, ("time",))
-                # Slice for compatibility if time traces are padded to 100, as is done in VMEC2000
-                fnc[varname][:] = np.zeros(self.itfsq)
-                maybe_padded = getattr(self, varname)
-                fnc[varname][: min(self.itfsq, len(maybe_padded))] = getattr(
-                    self, varname
-                )[: self.itfsq]
-            fnc.createVariable("lmns_full", np.float64, ("radius", "mn_mode"))
-            fnc["lmns_full"][:] = self.lmns_full.T[:]
-
-            if self.nextcur == 0:
-                # extcur is a scalar in fixed-boundary runs
-                assert isinstance(self.extcur, float)
-                assert self.extcur == netCDF4.default_fillvals["f8"]
-                fnc.createVariable("extcur", np.float64)
-            else:
-                # extcur is the array of coil currents in free-boundary runs
-                assert np.shape(self.extcur)[0] == self.nextcur
-                fnc.createVariable("extcur", np.float64, ("ext_current",))
-            fnc["extcur"][:] = self.extcur
-
-            # version_ is required to make COBRAVMEC work correctly:
-            # it changes its behavior depending on the VMEC version (>6 or not)
-            fnc.createVariable("version_", np.float64)
-            fnc["version_"][:] = self.version_
-
-            # strings
-            def create_string_variable(
-                varname: str, dimension_name: str
-            ) -> netCDF4.Variable:
-                max_string_length = fnc.dimensions[dimension_name].size
-                string_variable = fnc.createVariable(varname, "S1", (dimension_name,))
-
-                # Put the string in the format netCDF3 requires. Don't know what to say.
-                value = getattr(self, varname)
-                padded_value_as_array = np.array(
-                    value.encode(encoding="ascii").ljust(max_string_length)
-                )
-                padded_value_as_netcdf3_compatible_chararray = netCDF4.stringtochar(
-                    padded_value_as_array
-                )
-                string_variable[:] = padded_value_as_netcdf3_compatible_chararray
-                return string_variable
-
-            for varname in ["pcurr_type", "pmass_type", "piota_type"]:
-                create_string_variable(varname, "dim_00020")
-
-            create_string_variable("mgrid_file", "dim_00200")
-            create_string_variable("mgrid_mode", "dim_00001")
-            create_string_variable("input_extension", "dim_00100")
+                    dtype = value.dtype
+                    if len(shape_string) == 1:
+                        fnc.createVariable(field, dtype, shape_string)
+                        # Slice arrays that are padded in wout and unpadded in VMEC++
+                        fnc[field][: len(value)] = value
+                    elif len(shape_string) == 2:
+                        # 2D arrays are transposed in Fortran, also reverse the dimension order
+                        fnc.createVariable(field, dtype, shape_string[::-1])
+                        fnc[field][:] = value.T
+                    else:
+                        msg = f"Field {field} has an unsupported shape: {shape_string}"
+                        raise ValueError(msg)
+                else:
+                    msg = (
+                        f"Field {field} has an unsupported type: {field_type}. "
+                        "Please report this to the developers."
+                    )
+                    raise ValueError(msg)
 
     @staticmethod
     def _from_cpp_wout(cpp_wout: _vmecpp.VmecppWOut) -> VmecWOut:
@@ -905,13 +872,7 @@ class VmecWOut(BaseModelWithNumpy):
         attrs["mgrid_file"] = cpp_wout.mgrid_file
         attrs["mgrid_mode"] = cpp_wout.mgrid_mode
         attrs["nextcur"] = cpp_wout.nextcur
-        # extcur needs special treatment for fixed-boundary cases:
-        # in VMEC++ it will be an empty array, but Fortran VMEC uses
-        # a default fill value (masked out in the netcdf file)
-        if cpp_wout.nextcur > 0:
-            attrs["extcur"] = cpp_wout.extcur
-        else:
-            attrs["extcur"] = netCDF4.default_fillvals["f8"]
+        attrs["extcur"] = cpp_wout.extcur
 
         # These attributes are called differently
         attrs["niter"] = cpp_wout.maximum_iterations
@@ -1070,10 +1031,7 @@ class VmecWOut(BaseModelWithNumpy):
         cpp_wout.gamma = self.gamma
         cpp_wout.mgrid_file = self.mgrid_file
         cpp_wout.nextcur = self.nextcur
-        if self.nextcur > 0:
-            cpp_wout.extcur = self.extcur
-        else:
-            cpp_wout.extcur = np.array([])
+        cpp_wout.extcur = self.extcur
         cpp_wout.mgrid_mode = self.mgrid_mode
 
         # These attributes are called differently
@@ -1144,24 +1102,8 @@ class VmecWOut(BaseModelWithNumpy):
         with netCDF4.Dataset(wout_filename, "r") as fnc:
             fnc.set_auto_mask(False)
             attrs = {}
-            for var_name in fnc.variables:
-                if var_name in VmecWOut._MISSING_FORTRAN_VARIABLES:
-                    continue
-                if var_name in ["lasym__logical__", "lfreeb__logical__"]:
-                    key = var_name.removesuffix("__logical__")
-                    attrs[key] = fnc[var_name][()] != 0
-                elif var_name == "volume_p":
-                    key = var_name.removesuffix("_p")
-                    attrs[key] = fnc[var_name][()]
-                elif var_name in ["xm", "xn", "xm_nyq", "xn_nyq"]:
-                    attrs[var_name] = np.array(fnc[var_name][()], dtype=np.int32)
-                elif var_name in [
-                    "pmass_type",
-                    "piota_type",
-                    "pcurr_type",
-                    "mgrid_file",
-                    "mgrid_mode",
-                ]:
+            for var_name, variable in fnc.variables.items():
+                if variable.dtype is str or variable.dtype == "S1":
                     # Remove both zero-padding and whitespaces.
                     attrs[var_name] = (
                         fnc[var_name][()]
@@ -1170,19 +1112,9 @@ class VmecWOut(BaseModelWithNumpy):
                         .strip("\x00")
                         .strip()
                     )
-                elif var_name in [
-                    "bmnc",
-                    "gmnc",
-                    "bsubumnc",
-                    "bsubvmnc",
-                    "bsubsmns",
-                    "bsupumnc",
-                    "bsupvmnc",
-                    "rmnc",
-                    "zmns",
-                    "lmns",
-                    "lmns_full",
-                ]:
+                elif variable.ndim == 2:
+                    # We transpose the 2D arrays to map from
+                    # Column-major convention (Fortran) to Row-major (Python, C++)
                     attrs[var_name] = np.transpose(fnc[var_name][()])
                 else:
                     attrs[var_name] = fnc[var_name][()]
@@ -1197,18 +1129,11 @@ class VmecWOut(BaseModelWithNumpy):
         # Optional handling for backwards compatibility with wout files produced before v0.3.3
         # Handle extcur
         if "extcur" not in attrs:
-            attrs["extcur"] = netCDF4.default_fillvals["f8"]
+            attrs["extcur"] = np.array([])
         if "nextcur" not in attrs:
             attrs["nextcur"] = 0
-        # Handle input_extension
-        if "input_extension" in attrs:
-            attrs["input_extension"] = (
-                attrs["input_extension"].tobytes().decode("ascii").strip()
-            )
-        else:
-            attrs["input_extension"] = ""
 
-        return VmecWOut(**attrs)
+        return VmecWOut.model_validate(attrs, by_alias=True)
 
 
 class Threed1Volumetrics(BaseModelWithNumpy):
