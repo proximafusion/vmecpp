@@ -140,7 +140,6 @@ class Vmec {
                        const FourierForces& decomposed_f,
                        HandoverStorage& m_h_) const;
 
-  int get_ivac() const { return ivac_; }
   int get_num_eqsolve_retries() const { return num_eqsolve_retries_; }
   VmecStatus get_status() const { return status_; }
   int get_iter1() const { return iter1_; }
@@ -205,6 +204,13 @@ class Vmec {
 
   // initialization state counter for Nestor
   // TODO(eguiraud): make this an enum and document the various states
+  // 2 >= vacuum pressure turned on, in the process of reducing rCon0,zCon0 *=
+  //      0.9; But think it never exceeds 2?
+  // 1 = vacuum pressure turned off, in the process of reducing rCon0,zCon0
+  //     *= 0.9; RESET FIRST TIME FOR SOFT START 0 = vacuum pressure turned off,
+  //     computed first free boundary update
+  // -1 = ?
+  // -2 = vacuum pressure turned off, but not yet initialized
   int ivac_;
 
   // 0 if in regular multi-grid sequence;
