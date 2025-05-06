@@ -477,6 +477,26 @@ def test_vmec_input_validation():
     assert pywrapper_dict_from_json == vmec_input_dict_from_json
 
 
+def test_vmec_output_serialization(cma_output: vmecpp.VmecOutput):
+    # Since VmecOutput contains the other objects, we don't need to test them individually.
+    serialized_output = cma_output.model_dump_json()
+    deserialized_output = vmecpp.VmecOutput.model_validate_json(serialized_output)
+
+    # Test nested objects (VmecWOut, JxbOut, Mercier, etc.)
+    for field in vmecpp.VmecOutput.model_fields:
+        deserialized_field = getattr(deserialized_output, field)
+        output_field = getattr(cma_output, field)
+        # Check the individual fields of the nested object
+        for attr in vars(output_field):
+            error_msg = f"mismatch in {attr}"
+
+            np.testing.assert_equal(
+                actual=getattr(deserialized_field, attr),
+                desired=getattr(output_field, attr),
+                err_msg=error_msg,
+            )
+
+
 def test_aux_arrays_from_cpp_wout():
     """Test that auxiliary arrays are correctly padded when empty, and padding doesn't
     accidentally overwrite any values."""
