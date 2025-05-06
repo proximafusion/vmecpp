@@ -791,7 +791,8 @@ class VmecWOut(BaseModelWithNumpy):
                     )
                     string_variable[:] = padded_value_as_netcdf3_compatible_chararray
 
-                elif field_type is np.ndarray:
+                elif field_type is np.ndarray or field_type is list:
+                    value_array = np.array(value)
                     if (
                         field_info is not None  # is a model field
                         and field_info.annotation is not None  # has an annotation
@@ -809,15 +810,17 @@ class VmecWOut(BaseModelWithNumpy):
                         )
                     else:
                         # The dimensions are not annotated (must be an extra field)
-                        shape_string = tuple([f"dim_{dim:05d}" for dim in value.shape])
+                        shape_string = tuple(
+                            [f"dim_{dim:05d}" for dim in value_array.shape]
+                        )
 
                     for dim_name, dim_size in zip(
-                        shape_string, value.shape, strict=True
+                        shape_string, value_array.shape, strict=True
                     ):
                         if dim_name not in fnc.dimensions:
                             fnc.createDimension(dim_name, dim_size)
 
-                    dtype = value.dtype
+                    dtype = value_array.dtype
                     if np.issubdtype(dtype, np.integer):
                         # wout format uses 32 bit integers, Python uses 64 bit by default
                         dtype = np.int32
@@ -825,11 +828,11 @@ class VmecWOut(BaseModelWithNumpy):
                     if len(shape_string) == 1:
                         fnc.createVariable(field, dtype, shape_string)
                         # Slice arrays that are padded in wout and unpadded in VMEC++
-                        fnc[field][: len(value)] = value
+                        fnc[field][: len(value_array)] = value_array
                     elif len(shape_string) == 2:
                         # 2D arrays are transposed in Fortran, also reverse the dimension order
                         fnc.createVariable(field, dtype, shape_string[::-1])
-                        fnc[field][:] = value.T
+                        fnc[field][:] = value_array.T
                     else:
                         msg = f"Field {field} has an unsupported shape: {shape_string}"
                         raise ValueError(msg)
