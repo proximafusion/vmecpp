@@ -284,7 +284,7 @@ double RadialProfiles::torflux(double x) {
   for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
     torflux = x * torflux + id_.aphi[i];
   }
-  return torflux *= x;
+  return torflux * x;
 }
 
 /**
