@@ -248,18 +248,22 @@ class VmecInput(BaseModelWithNumpy):
         """All geometry coefficients need to have the shape (mpol, 2*ntor+1), wit 'rbs',
         'zbc' only populated for non-stellarator symmetric configurations."""
         mpol_two_ntor_plus_one_fields = ["rbc", "zbs"]
-        mpol_two_ntor_plus_one_fields_lasym = ["rbs", "zbc"]
         if self.lasym:
-            mpol_two_ntor_plus_one_fields.extend(mpol_two_ntor_plus_one_fields_lasym)
+            mpol_two_ntor_plus_one_fields.extend(["rbs", "zbc"])
 
         expected_shape = (self.mpol, 2 * self.ntor + 1)
         for field in mpol_two_ntor_plus_one_fields:
             shape = np.shape(getattr(self, field))
             if shape != expected_shape:
-                msg = f"{field} has shape {shape} instead of the expected {expected_shape}."
-                "Please resize your coefficient array using vmecpp.VmecInput.resize_2d_coeff"
-                f"({field}, {self.mpol}, {self.ntor}) to match mpol={self.mpol} or ntor={self.ntor}"
-                raise ValueError(msg)
+                setattr(
+                    self,
+                    field,
+                    VmecInput.resize_2d_coeff(
+                        getattr(self, field),
+                        mpol_new=self.mpol,
+                        ntor_new=self.ntor,
+                    ),
+                )
         return self
 
     @pydantic.model_validator(mode="after")
@@ -322,6 +326,11 @@ class VmecInput(BaseModelWithNumpy):
 
         smaller_ntor = min(ntor, ntor_new)
         smaller_mpol = min(mpol, mpol_new)
+        if mpol_new < mpol or ntor_new < ntor:
+            logger.warning(
+                f"Discarding coefficients because mpol={mpol} or ntor={ntor} "
+                f"are smaller than mpol_new={mpol_new} or ntor_new={ntor_new}"
+            )
 
         for m in range(smaller_mpol):
             for n in range(-smaller_ntor, smaller_ntor + 1):
