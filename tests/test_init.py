@@ -290,7 +290,9 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
 
 def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
     """Support for unknown fields in wout files."""
-    cma_output.wout = cma_output.wout.model_copy(
+    cma_output_copy = cma_output.model_copy(deep=True)
+    del cma_output  # Prevent accidental use of the original object
+    cma_output_copy.wout = cma_output_copy.wout.model_copy(
         update={
             "extra_field": np.array([1.0, 2.0, 3.0]),
             "extra_string": "string",
@@ -301,7 +303,7 @@ def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
     )
 
     with tempfile.NamedTemporaryFile() as tmp_file:
-        cma_output.wout.save(tmp_file.name)
+        cma_output_copy.wout.save(tmp_file.name)
 
         assert Path(tmp_file.name).exists()
 
@@ -310,11 +312,11 @@ def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
         assert loaded_wout is not None
 
         # test contents of loaded wout against original in-memory wout
-        for attr in vars(cma_output.wout):
+        for attr in vars(cma_output_copy.wout):
             error_msg = f"mismatch in {attr}"
             np.testing.assert_equal(
                 actual=getattr(loaded_wout, attr),
-                desired=getattr(cma_output.wout, attr),
+                desired=getattr(cma_output_copy.wout, attr),
                 err_msg=error_msg,
             )
 
