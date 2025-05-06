@@ -176,7 +176,7 @@ absl::Status MGridProvider::LoadFields(
 
   nextcur = static_cast<int>(coil_currents.size());
 
-  if (mgrid_params.normalize_by_currents) {
+  if (mgrid_params.normalize_by_num_windings) {
     mgrid_mode = "S";
   } else {
     mgrid_mode = "R";

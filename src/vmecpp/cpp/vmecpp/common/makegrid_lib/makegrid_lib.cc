@@ -104,7 +104,7 @@ absl::StatusOr<MakegridParameters> ImportMakegridParametersFromJson(
     return maybe_normalize_by_currents.status();
   } else {
     if (maybe_normalize_by_currents->has_value()) {
-      makegrid_parameters.normalize_by_currents =
+      makegrid_parameters.normalize_by_num_windings =
           maybe_normalize_by_currents->value();
     } else {
       // MakegridParameters must be fully populated
@@ -450,7 +450,7 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
   // this step the num_windings factor would remain in the result regardless of
   // the normalize_by_currents flag. The copy is only created when needed.
   std::optional<MagneticConfiguration> migrated_configuration;
-  if (makegrid_parameters.normalize_by_currents) {
+  if (makegrid_parameters.normalize_by_num_windings) {
     migrated_configuration = magnetic_configuration;
     absl::Status migrate_status =
         NumWindingsToCircuitCurrents(*migrated_configuration);
@@ -502,7 +502,7 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
 
     Eigen::VectorXd currents_for_circuit;
     currents_for_circuit.setZero(number_of_serial_circuits);
-    if (makegrid_parameters.normalize_by_currents) {
+    if (makegrid_parameters.normalize_by_num_windings) {
       currents_for_circuit[circuit_index] = 1.0;
     } else {
       currents_for_circuit[circuit_index] = original_currents[circuit_index];
@@ -612,7 +612,7 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
   // result regardless of the normalize_by_currents flag. The copy is only
   // created when needed.
   std::optional<MagneticConfiguration> migrated_configuration;
-  if (makegrid_parameters.normalize_by_currents) {
+  if (makegrid_parameters.normalize_by_num_windings) {
     migrated_configuration = magnetic_configuration;
     absl::Status migrate_status =
         NumWindingsToCircuitCurrents(*migrated_configuration);
@@ -664,7 +664,7 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
 
     Eigen::VectorXd currents_for_circuit;
     currents_for_circuit.setZero(number_of_serial_circuits);
-    if (makegrid_parameters.normalize_by_currents) {
+    if (makegrid_parameters.normalize_by_num_windings) {
       currents_for_circuit[circuit_index] = 1.0;
     } else {
       currents_for_circuit[circuit_index] = original_currents[circuit_index];
@@ -1004,7 +1004,7 @@ absl::Status WriteMakegridNetCDFFile(
   CHECK_EQ(nc_put_var(ncid, id_variable_coil_group, coil_group_names.c_str()),
            NC_NOERR);
 
-  if (makegrid_parameters.normalize_by_currents) {
+  if (makegrid_parameters.normalize_by_num_windings) {
     CHECK_EQ(nc_put_var(ncid, id_variable_mgrid_mode, &kNormalizeByCurrents),
              NC_NOERR);
   } else {
