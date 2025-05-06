@@ -96,14 +96,14 @@ absl::StatusOr<MakegridParameters> ImportMakegridParametersFromJson(
 
   MakegridParameters makegrid_parameters;
 
-  // normalize_by_currents
+  // normalize_by_currents (external name for normalize_by_num_windings)
   absl::StatusOr<std::optional<bool>> maybe_normalize_by_currents =
       JsonReadBool(j, "normalize_by_currents");
   if (!maybe_normalize_by_currents.ok()) {
     return maybe_normalize_by_currents.status();
   } else {
     if (maybe_normalize_by_currents->has_value()) {
-      makegrid_parameters.normalize_by_currents =
+      makegrid_parameters.normalize_by_num_windings =
           maybe_normalize_by_currents->value();
     } else {
       // MakegridParameters must be fully populated
@@ -444,27 +444,25 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     sin_phi(index_phi) = std::sin(phi);
   }
 
-  // Migrate num_windings into circuit currents so that normalization works
-  // correctly. This is done on a local copy to avoid mutating the caller's
-  // MagneticConfiguration.
-  MagneticConfiguration magnetic_config_with_currents = magnetic_configuration;
-  absl::Status nw_status =
-      NumWindingsToCircuitCurrents(magnetic_config_with_currents);
-  if (!nw_status.ok()) {
-    return nw_status;
+  // When normalizing, migrate num_windings into circuit currents so we can
+  // then set each circuit to unit current. When not normalizing, use the
+  // original configuration directly (ABSCAB handles num_windings natively).
+  MagneticConfiguration working_config = magnetic_configuration;
+  if (makegrid_parameters.normalize_by_num_windings) {
+    absl::Status nw_status = NumWindingsToCircuitCurrents(working_config);
+    if (!nw_status.ok()) {
+      return nw_status;
+    }
   }
 
-  // Make a backup of the full vector of circuit currents (now including
-  // num_windings).
-  absl::StatusOr<std::vector<double>> maybe_original_currents =
-      GetCircuitCurrents(magnetic_config_with_currents);
+  absl::StatusOr<Eigen::VectorXd> maybe_original_currents =
+      GetCircuitCurrents(working_config);
   if (!maybe_original_currents.ok()) {
     return maybe_original_currents.status();
   }
   const Eigen::VectorXd& original_currents = *maybe_original_currents;
 
-  const int number_of_serial_circuits =
-      magnetic_config_with_currents.serial_circuits_size();
+  const int number_of_serial_circuits = working_config.serial_circuits_size();
 
   MagneticFieldResponseTable response_table_b;
   response_table_b.parameters = makegrid_parameters;
@@ -489,12 +487,11 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
        ++circuit_index) {
     // make second internal copy for being able to set inidividually only one
     // circuit current to != 0
-    MagneticConfiguration m_magnetic_configuration =
-        magnetic_config_with_currents;
+    MagneticConfiguration m_magnetic_configuration = working_config;
 
     Eigen::VectorXd currents_for_circuit;
     currents_for_circuit.setZero(number_of_serial_circuits);
-    if (makegrid_parameters.normalize_by_currents) {
+    if (makegrid_parameters.normalize_by_num_windings) {
       currents_for_circuit[circuit_index] = 1.0;
     } else {
       currents_for_circuit[circuit_index] = original_currents[circuit_index];
@@ -600,27 +597,25 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     sin_phi[index_phi] = std::sin(phi);
   }
 
-  // Migrate num_windings into circuit currents so that normalization works
-  // correctly. This is done on a local copy to avoid mutating the caller's
-  // MagneticConfiguration.
-  MagneticConfiguration magnetic_config_with_currents = magnetic_configuration;
-  absl::Status nw_status =
-      NumWindingsToCircuitCurrents(magnetic_config_with_currents);
-  if (!nw_status.ok()) {
-    return nw_status;
+  // When normalizing, migrate num_windings into circuit currents so we can
+  // then set each circuit to unit current. When not normalizing, use the
+  // original configuration directly (ABSCAB handles num_windings natively).
+  MagneticConfiguration working_config = magnetic_configuration;
+  if (makegrid_parameters.normalize_by_num_windings) {
+    absl::Status nw_status = NumWindingsToCircuitCurrents(working_config);
+    if (!nw_status.ok()) {
+      return nw_status;
+    }
   }
 
-  // Make a backup of the full vector of circuit currents (now including
-  // num_windings).
-  absl::StatusOr<std::vector<double>> maybe_original_currents =
-      GetCircuitCurrents(magnetic_config_with_currents);
+  absl::StatusOr<Eigen::VectorXd> maybe_original_currents =
+      GetCircuitCurrents(working_config);
   if (!maybe_original_currents.ok()) {
     return maybe_original_currents.status();
   }
   const Eigen::VectorXd& original_currents = *maybe_original_currents;
 
-  const int number_of_serial_circuits =
-      magnetic_config_with_currents.serial_circuits_size();
+  const int number_of_serial_circuits = working_config.serial_circuits_size();
 
   MakegridCachedVectorPotential response_table_a;
   response_table_a.parameters = makegrid_parameters;
@@ -645,12 +640,11 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
        ++circuit_index) {
     // make second internal copy for being able to set inidividually only one
     // circuit current to != 0
-    MagneticConfiguration m_magnetic_configuration =
-        magnetic_config_with_currents;
+    MagneticConfiguration m_magnetic_configuration = working_config;
 
     Eigen::VectorXd currents_for_circuit;
     currents_for_circuit.setZero(number_of_serial_circuits);
-    if (makegrid_parameters.normalize_by_currents) {
+    if (makegrid_parameters.normalize_by_num_windings) {
       currents_for_circuit[circuit_index] = 1.0;
     } else {
       currents_for_circuit[circuit_index] = original_currents[circuit_index];
@@ -990,7 +984,7 @@ absl::Status WriteMakegridNetCDFFile(
   CHECK_EQ(nc_put_var(ncid, id_variable_coil_group, coil_group_names.c_str()),
            NC_NOERR);
 
-  if (makegrid_parameters.normalize_by_currents) {
+  if (makegrid_parameters.normalize_by_num_windings) {
     CHECK_EQ(nc_put_var(ncid, id_variable_mgrid_mode, &kNormalizeByCurrents),
              NC_NOERR);
   } else {
