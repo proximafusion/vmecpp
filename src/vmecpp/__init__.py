@@ -38,10 +38,10 @@ SerializableSparseCoefficientArray: typing.TypeAlias = typing.Annotated[
     ),
     pydantic.BeforeValidator(_util.sparse_to_dense_coefficients_implicit),
 ]
-SerializeInt32AsFloat: typing.TypeAlias = typing.Annotated[
+SerializeIntAsFloat: typing.TypeAlias = typing.Annotated[
     _ArrayType,
-    pydantic.PlainSerializer(lambda x: x.astype(np.float64)),
-    pydantic.BeforeValidator(lambda x: x.astype(np.int32)),
+    pydantic.PlainSerializer(lambda x: np.array(x).astype(np.float64).tolist()),
+    pydantic.BeforeValidator(lambda x: np.array(x).astype(np.int64)),
 ]
 
 AuxFType = typing.Annotated[
@@ -567,10 +567,10 @@ class VmecWOut(BaseModelWithNumpy):
     DMerc: jt.Float[np.ndarray, "n_surfaces"]
     equif: jt.Float[np.ndarray, "n_surfaces"]
     # In wout these are stored as float64, although they only take integer values.
-    xm: SerializeInt32AsFloat[jt.Int[np.ndarray, "mn_mode"]]
-    xn: SerializeInt32AsFloat[jt.Int[np.ndarray, "mn_mode"]]
-    xm_nyq: SerializeInt32AsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
-    xn_nyq: SerializeInt32AsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
+    xm: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode"]]
+    xn: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode"]]
+    xm_nyq: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
+    xn_nyq: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
     mass: jt.Float[np.ndarray, "n_surfaces"]
     buco: jt.Float[np.ndarray, "n_surfaces"]
     bvco: jt.Float[np.ndarray, "n_surfaces"]
@@ -609,7 +609,7 @@ class VmecWOut(BaseModelWithNumpy):
         jt.Float[np.ndarray, "ext_current"],
         pydantic.BeforeValidator(lambda x: x if np.shape(x) != () else np.array([])),
         pydantic.PlainSerializer(
-            lambda x: x if x.shape != (0,) else netCDF4.default_fillvals["f8"]
+            lambda x: x if np.shape(x) != (0,) else netCDF4.default_fillvals["f8"]
         ),
     ]
     """Coil currents in A.
@@ -818,6 +818,10 @@ class VmecWOut(BaseModelWithNumpy):
                             fnc.createDimension(dim_name, dim_size)
 
                     dtype = value.dtype
+                    if np.issubdtype(dtype, np.integer):
+                        # wout format uses 32 bit integers, Python uses 64 bit by default
+                        dtype = np.int32
+
                     if len(shape_string) == 1:
                         fnc.createVariable(field, dtype, shape_string)
                         # Slice arrays that are padded in wout and unpadded in VMEC++
