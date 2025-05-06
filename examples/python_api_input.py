@@ -1,36 +1,44 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""How to modify a VmecInput object via the Python API."""
+"""How to create a VmecInput object via the Python API."""
 
-from pathlib import Path
+import numpy as np
 
 import vmecpp
 
+# We can construct a VmecInput object completely from Python.
+# As a starting point, we can use the VMEC2000 defaults.
+vmec_input = vmecpp.VmecInput.default()
+print("default = \n", vmec_input.to_json(indent=2))
 
-def modify_input_and_run():
-    input_file = Path(__file__).parent / "data" / "input.solovev"
-    input = vmecpp.VmecInput.from_file(input_file)
+# Let's set a pressure profile that decays linearly from 0.125 to zero.
+vmec_input.am = np.array([0.125, -0.125])
+# ...a constant rotational transform of 1.0
+vmec_input.ai = np.array([1.0])
+# ...and increase the number of iterations so it has time to converge.
+vmec_input.niter_array = np.array([200])
 
-    # Since VmecInput is a Python object, we can easily
-    # interact with it, e.g. by modifying the coefficients:
-    input.rbc *= 1.1
-    input.zbs *= 1.1
+# Finally we construct boundary geometry that is approximately the Solovev
+# equilibrium. There are helper methods for explicitly resizing coefficient
+# arrays to the correct shape by padding them with zeros left and right.
+vmec_input.rbc = vmecpp.VmecInput.resize_2d_coeff(
+    np.array([[4.0], [1.0], [-0.068]]),
+    vmec_input.mpol,
+    vmec_input.ntor,
+)
+vmec_input.zbs = vmecpp.VmecInput.resize_2d_coeff(
+    np.array([[0], [1.58], [0.01]]),
+    vmec_input.mpol,
+    vmec_input.ntor,
+)
 
-    # Note that the shapes of input arrays are validated and handled strictly,
-    # so data isn't implicitly ignored or padded. In this example VmecInput
-    # fails validation, because rbc has the wrong shape (2,1) when a configuration
-    # with mpol=6 requires rbc.shape == (6,1):
-    input.rbc = [[4.4], [1.13]]
-    try:
-        vmecpp.run(input)
-    except ValueError as e:
-        print(f"As expected: passing invalid shape arrays triggers the exception:\n{e}")
-
-    # There are helper methods for explicitly resizing coefficient arrays to the correct shape
-    input.rbc = vmecpp.VmecInput.resize_2d_coeff(input.rbc, input.mpol, input.ntor)
-    vmecpp.run(input)
-
-
-if __name__ == "__main__":
-    modify_input_and_run()
+# Now it is time to run the equilibrium solver and inspect the results.
+output = vmecpp.run(vmec_input)
+# Once the residual force is small enough, the equilibrium is converged.
+print(
+    "Residual force: ",
+    output.wout.fsqr,
+    "is below the threshold of",
+    vmec_input.ftol_array,
+)
