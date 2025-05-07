@@ -21,15 +21,13 @@ class BaseModelWithNumpy(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(
         arbitrary_types_allowed=True,
         # Serialize NaN and infinite floats as strings in JSON output.
-        # See: https://docs.google.com/document/d/1fTvLrCl_tfjgud8SL7PVwhG28az0oy22gVa5wvqXSxY
-        # for why.
         # Due to a bug in Pydantic, this setting is ignored by model_dump(mode="json"),
         # so we override it below to also convert values to string there.
         ser_json_inf_nan="strings",
     )
 
     @pydantic.field_serializer("*", mode="wrap", when_used="json")
-    def _dapper_serialize_field(
+    def _serialize_field(
         self,
         value: typing.Any,
         default_handler: pydantic.SerializerFunctionWrapHandler,
@@ -42,7 +40,7 @@ class BaseModelWithNumpy(pydantic.BaseModel):
 
     @pydantic.field_validator("*", mode="wrap")
     @classmethod
-    def _dapper_validate_field(
+    def _validate_field(
         cls,
         value: typing.Any,
         default_handler: pydantic.ValidatorFunctionWrapHandler,
@@ -75,7 +73,7 @@ class BaseModelWithNumpy(pydantic.BaseModel):
             return output_dict
 
 
-"""This module handles special cases for serialization of DapperData types.
+"""This module handles special cases for serialization of BaseModelWithNumpy types.
 
 Any data type that pydantic cannot natively handle can be supported by
 adding a case in this module.
@@ -87,16 +85,16 @@ Before adding a special case to this module, consider one of these two alternati
 
 1) Wrap the type definition and add Pydantic serializers and validators directly:
    `Annotated[<type>, pydantic.PlainSerializer(...), pydantic.BeforeValidator(...)]`
-   Example can be found here: dapper/examples/annotated_serialization.py
+   Example can be found here: vmecpp/src/vmecpp/__init__.py
 
-2) Convert/wrap the unsupported class in a DapperData class and provide a
+2) Convert/wrap the unsupported class in a BaseModelWithNumpy class and provide a
    @pydantic.field_serializer and @pydantic.field_validator method on that class.
    See: https://docs.pydantic.dev/latest/concepts/serialization/#custom-serializers
 
 The advantage of adding a special case to this module is solely so types can be
-declared in DapperData classes "as-is" without wrapping them with Annotated types.
+declared in BaseModelWithNumpy classes "as-is" without wrapping them with Annotated types.
 For example, you can declare `value: jt.Float[np.ndarray, ...]` instead of
-`value: dapper.NumpyArrayWrapper[...]`.
+`value: NumpyArrayWrapper[...]`.
 
 ----
 
@@ -104,7 +102,7 @@ The mechanism for serialization is to convert "special" fields to JSON-serializa
 values and then let Pydantic take care of the rest.
 In practice:
 - If the field is "special", (e.g. `np.ndarray`) it is converted to either a primitive
-  list or a `dapper.Blob`, depending on the presence of a `dapper.Binary` annotation.
+  list.
 - If the field is a generic/composed type such as a list, an optional or a union,
   recurse and do the same for the inner types.
 - Otherwise just return the field as is.
@@ -119,8 +117,9 @@ JAX array handling works as follows:
  - During serialization, JAX arrays are converted to numpy arrays and serialized with
    the same rules.
  - During validation, "jt.Array" annotations are NOT treated specially, thus only numpy
-   arrays can be produced by the deserialization process. To put JAX arrays into Dapper
-   types that should be serializable, they must be annotated with np.ndarray | jt.Array!
+   arrays can be produced by the deserialization process. To put JAX arrays into
+   BaseModelWithNumpy types that should be serializable, they must be annotated with
+   np.ndarray | jt.Array!
 """
 NpOrAbstractArray = np.ndarray | jt.AbstractArray
 
@@ -187,12 +186,10 @@ def _serialize_value(declared_type: type, value: Any, field_metadata: list[Any])
         declared_type: The innermost declared type of the field. Unused, since for
             serialization, the runtime type of the value is enough.
         value: The scalar value to serialize, that potentially needs special handling.
-        field_metadata: The annotation metadata of the field, which may contain the
-            `dapper.Binary` annotation.
 
     Returns:
-        Any value that can be serialized by Pydantic, for example a `dapper.Blob`,
-        a dict representation of the object, or a raw string.
+        Any value that can be serialized by Pydantic, for example a dict representation
+        of the object, or a raw string.
         Returns the unmodified value if no special handling applies.
     """
     if issubclass(declared_type, NpOrAbstractArray) and _is_arraylike(value):
@@ -295,7 +292,7 @@ def _traverse_field_contents(
     # happen to those and if more cases even exist, so let's be defensive and admit that
     # we don't know how to handle them ...
     if not isinstance(outer_type, type) and outer_type is not Union:
-        msg = f"Dapper serialization does not know how to handle type {outer_type}! "
+        msg = f"BaseModelWithNumpy serialization does not know how to handle type {outer_type}! "
         raise NotImplementedError(msg)
 
     # - Union[T, TOther].
@@ -384,8 +381,6 @@ def sanitize_floats_in_container(value: list | dict) -> None:
             value[key] = _sanitize_float(item)
 
 
-# See: https://docs.google.com/document/d/1fTvLrCl_tfjgud8SL7PVwhG28az0oy22gVa5wvqXSxY
-# for the rationale behind representing these values as strings.
 def _sanitize_float(value: float) -> float | str:
     if np.isnan(value):
         return "NaN"
