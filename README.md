@@ -92,7 +92,7 @@ print(vmec_output.mercier.iota)
 vmec_output.wout.save("wout_w7x.nc")
 ```
 
-Note that other output files are planned to be accessible via members of the `output` object called `threed1`, `jxbout` and `mercier` soon.
+All other output files are accessible via members of the `output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
 
 ### With SIMSOPT
 
@@ -333,7 +333,7 @@ VMEC++:
 ## Roadmap
 
 Some of the things we are planning for VMEC++'s future:
-- [ ] free-boundary hot-restart in Python
+- [x] free-boundary hot-restart in Python
 - [X] open-sourcing the full VMEC++ test suite (including the Verification&Validation part that compares `wout` contents)
 - [x] open-sourcing the source code to reproduce VMEC++'s performance benchmarks
 - [ ] VMEC++ usable as a C++ bazel module
