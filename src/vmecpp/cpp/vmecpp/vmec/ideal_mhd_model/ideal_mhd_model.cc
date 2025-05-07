@@ -862,7 +862,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // end of bcovar
 
   // back in funct3d, free-boundary force contribution active?
-  if (m_fc_.lfreeb && iter2 > 1) {
+  // This can even happen in the first iteration when hot-restarted.
+  if (m_fc_.lfreeb &&
+      (iter2 > 1 || m_vacuum_pressure_state_ != VacuumPressureState::kOff)) {
     ivacskip = (iter2 - iter1) % nvacskip;
     // when R+Z force residuals are <1e-3, enable vacuum contribution
     if (m_vacuum_pressure_state_ != VacuumPressureState::kActive &&
@@ -887,7 +889,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
         m_last_full_update_nestor = iter2;
       }
     }
-
+#pragma omp barrier
     if (m_vacuum_pressure_state_ != VacuumPressureState::kOff) {
       // IF INITIALLY ON, MUST TURN OFF rcon0, zcon0 SLOWLY
       for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
@@ -1392,7 +1394,12 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
   }  // jF
 }  // dft_FourierToReal_2d_symm
 
-/** extrapolate (r,z)Con from boundary into volume */
+/** extrapolate (r,z)Con from boundary into volume.
+ * Only called on initialization/soft reset to set (r,z)Con0 to a large value.
+ * Since (r,z)Con0 are subtracted from (r,z)Con, this effectively disables the
+ * constraint. Over the iterations, (r,z)Con0 are gradually reduced to zero,
+ * enabling the constraint again.
+ */
 void IdealMhdModel::rzConIntoVolume() {
   // The CPU which has the LCFS needs to compute (r,z)Con at the LCFS
   // for computing (r,z)Con0 by extrapolation from the LCFS into the volume.

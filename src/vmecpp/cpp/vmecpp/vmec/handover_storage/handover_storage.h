@@ -88,6 +88,9 @@ class HandoverStorage {
   // Amperes
   double bSubVVac;
 
+  // Used only in rzConIntoVolume() to extrapolate the constraint force
+  // contribution from the LCFS into the plasma volume.
+  // TODO(jurasic) this should have a smaller scope.
   std::vector<double> rCon_LCFS;
   std::vector<double> zCon_LCFS;
 

@@ -58,10 +58,18 @@ class FreeBoundaryBase {
   SurfaceGeometry sg_;
   ExternalMagneticField ef_;
 
+  // [nZnT] vacuum magnetic pressure |B_vac^2|/2 at the plasma boundary
+  // Points to vacuum_magnetic_pressure in HandoverStorage
   std::span<double> bSqVacShare;
 
+  // [nZnT] cylindrical B^R of Nestor's vacuum magnetic field
+  // Points to vacuum_b_r in HandoverStorage
   std::span<double> vacuum_b_r_share_;
+  // [nZnT] cylindrical B^phi of Nestor's vacuum magnetic field
+  // Points to vacuum_b_phi in HandoverStorage
   std::span<double> vacuum_b_phi_share_;
+  // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
+  // Points to vacuum_b_z in HandoverStorage
   std::span<double> vacuum_b_z_share_;
 };  // FreeBoundaryBase
 
