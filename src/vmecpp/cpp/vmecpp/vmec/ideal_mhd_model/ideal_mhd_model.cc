@@ -69,7 +69,7 @@ void HandOverMagneticAxis(vmecpp::HandoverStorage& m_h,
 void vmecpp::ForcesToFourier3DSymmFastPoloidal(
     const RealSpaceForces& d, const std::vector<double>& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
-    const FourierBasisFastPoloidal& fb, int ivac,
+    const FourierBasisFastPoloidal& fb, VacuumPressureState ivac,
     FourierForces& physical_forces) {
   // in here, we can safely assume lthreed == true
 
@@ -78,7 +78,8 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
 
   int jMaxRZ = std::min(rp.nsMaxF, fc.ns - 1);
 
-  if (fc.lfreeb && ivac >= 1) {
+  if (fc.lfreeb && (ivac == VacuumPressureState::kInitialized ||
+                    ivac == VacuumPressureState::kActive)) {
     // free-boundary: up to jMaxRZ=ns
     jMaxRZ = std::min(rp.nsMaxF, fc.ns);
   }
@@ -461,11 +462,14 @@ void vmecpp::deAliasConstraintForce(
 
 namespace vmecpp {
 
-IdealMhdModel::IdealMhdModel(
-    FlowControl* m_fc, const Sizes* s, const FourierBasisFastPoloidal* t,
-    RadialProfiles* m_p, const VmecConstants* constants,
-    ThreadLocalStorage* m_ls, HandoverStorage* m_h, const RadialPartitioning* r,
-    FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip, int* m_ivac)
+IdealMhdModel::IdealMhdModel(FlowControl* m_fc, const Sizes* s,
+                             const FourierBasisFastPoloidal* t,
+                             RadialProfiles* m_p,
+                             const VmecConstants* constants,
+                             ThreadLocalStorage* m_ls, HandoverStorage* m_h,
+                             const RadialPartitioning* r,
+                             FreeBoundaryBase* m_fb, int signOfJacobian,
+                             int nvacskip, VacuumPressureState* m_ivac)
     : m_fc_(*m_fc),
       s_(*s),
       t_(*t),
@@ -716,7 +720,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  if (iter2 == iter1 && m_ivac_ <= 0) {
+  if (iter2 == iter1 && (m_ivac_ == VacuumPressureState::kOff ||
+                         m_ivac_ == VacuumPressureState::kInitializing)) {
     rzConIntoVolume();
   }
 
@@ -858,17 +863,16 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // back in funct3d, free-boundary force contribution active?
   if (m_fc_.lfreeb && iter2 > 1) {
-    if (m_fc_.fsqr + m_fc_.fsqz < 1.0e-3) {
-      // when R+Z force residuals are <1e-3, enable vacuum contribution
-#pragma omp single
-      m_ivac_++;
-    }
-
     ivacskip = (iter2 - iter1) % nvacskip;
-    if (m_ivac_ <= 2) {
+    // when R+Z force residuals are <1e-3, enable vacuum contribution
+    if (m_ivac_ != VacuumPressureState::kActive &&
+        m_fc_.fsqr + m_fc_.fsqz < 1.0e-3) {
+      // vacuum pressure not fully turned on yet
+      // Do full vacuum calc on every iteration
       ivacskip = 0;
-      // vacuum pressure not turned on yet (?)
-      // and do full vacuum calc on every iteration
+#pragma omp single
+      // Increment ivac, never exceeding VacuumPressureState::kActive
+      m_ivac_ = static_cast<VacuumPressureState>(static_cast<int>(m_ivac_) + 1);
     }
 
     // EXTEND NVACSKIP AS EQUILIBRIUM CONVERGES
@@ -883,7 +887,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
     }
 
-    if (m_ivac_ >= 0) {
+    if (m_ivac_ != VacuumPressureState::kOff) {
       // IF INITIALLY ON, MUST TURN OFF rcon0, zcon0 SLOWLY
       for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
         for (int kl = 0; kl < s_.nZnT; ++kl) {
@@ -927,8 +931,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #pragma omp single
       {
         // In educational_VMEC, this is part of Nestor.
-        if (m_ivac_ == 0) {
-          m_ivac_++;
+        if (m_ivac_ == VacuumPressureState::kInitializing) {
+          m_ivac_ = VacuumPressureState::kInitialized;
 
           if (verbose) {
             // bSubUVac and cTor contain 2*pi already; see Nestor.cc for
@@ -959,7 +963,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
       // RESET FIRST TIME FOR SOFT START
-      if (m_ivac_ == 1) {
+      if (m_ivac_ == VacuumPressureState::kInitialized) {
 #pragma omp single
         m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
         m_need_restart = true;
@@ -1004,7 +1008,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
           delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
         }
 
-        if (m_ivac_ == 1) {
+        if (m_ivac_ == VacuumPressureState::kInitialized) {
           // TODO(jons): implement this !!!
 
           // initial magnetic field at boundary
@@ -2894,7 +2898,10 @@ void IdealMhdModel::assembleTotalForces() {
 #pragma omp barrier
 
   // free-boundary contribution: include force on boundary from NESTOR
-  if (m_fc_.lfreeb && m_ivac_ >= 1 && r_.nsMaxF1 == m_fc_.ns) {
+  if (m_fc_.lfreeb &&
+      (m_ivac_ == VacuumPressureState::kInitialized ||
+       m_ivac_ == VacuumPressureState::kActive) &&
+      r_.nsMaxF1 == m_fc_.ns) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int idx_kl = (r_.nsMaxF - 1 - r_.nsMinF) * s_.nZnT + kl;
 
@@ -2985,7 +2992,8 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
 #pragma omp barrier
 
   int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
-  if (m_fc_.lfreeb && m_ivac_ >= 1) {
+  if (m_fc_.lfreeb && (m_ivac_ == VacuumPressureState::kInitialized ||
+                       m_ivac_ == VacuumPressureState::kActive)) {
     // free-boundary: up to jMaxRZ=ns
     jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
   }
@@ -3115,7 +3123,8 @@ void IdealMhdModel::assembleRZPreconditioner() {
   }
 
   int jMax = m_fc_.ns - 1;
-  if (m_fc_.lfreeb && m_ivac_ >= 1) {
+  if (m_fc_.lfreeb && (m_ivac_ == VacuumPressureState::kInitialized ||
+                       m_ivac_ == VacuumPressureState::kActive)) {
     jMax = m_fc_.ns;
   }
 
@@ -3274,7 +3283,8 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   }
 
   int jMax = m_fc_.ns - 1;
-  if (m_fc_.lfreeb && m_ivac_ >= 1) {
+  if (m_fc_.lfreeb && (m_ivac_ == VacuumPressureState::kInitialized ||
+                       m_ivac_ == VacuumPressureState::kActive)) {
     jMax = m_fc_.ns;
   }
 
@@ -3372,7 +3382,8 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
 //     }
 
 //     int jMax = r.ns - 1;
-//     if (fc.lfreeb && fc.ivac >= 1) {
+//     if (fc.lfreeb && (fc.ivac == VacuumPressureState::kInitialized || fc.ivac
+//     == VacuumPressureState::kActive)) {
 //         jMax = r.ns;
 //     }
 
@@ -3415,7 +3426,7 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
 
 double IdealMhdModel::get_delbsq() const {
   double delBSqAvg = 0.0;
-  if (m_fc_.lfreeb && m_ivac_ > 1) {
+  if (m_fc_.lfreeb && m_ivac_ == VacuumPressureState::kActive) {
     double delBSqNorm = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int l = kl % s_.nThetaEff;

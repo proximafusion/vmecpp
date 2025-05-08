@@ -152,7 +152,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       fc_(indata_.lfreeb, indata_.delt,
           static_cast<int>(indata_.ns_array.size()), max_threads),
       verbose_(verbose),
-      ivac_(-1),
+      ivac_(VacuumPressureState::kOff),
       status_(VmecStatus::NORMAL_TERMINATION),
       iter2_(1),
       iter1_(iter2_),
@@ -246,7 +246,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // jacob_off=1 indicates that in the previous iteration, the Jacobian was
       // bad
       // --> also need to restart vacuum calculations
-      ivac_ = 1;
+      ivac_ = VacuumPressureState::kInitialized;
     }
 
     fc_.ns_min = 3;
@@ -273,8 +273,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         // niterv taken from niter_array[0] in INDATA, I guess?
 
         // fully restart vacuum
-        // TODO(jons): why then assign ivac=1 then above?
-        ivac_ = -1;
+        // TODO(jons): why then assign ivac=kInitialized then above?
+        ivac_ = VacuumPressureState::kOff;
       } else {
         // proceed regularly with ns values from ns_array
         fc_.nsval = indata_.ns_array[igrid];
@@ -920,16 +920,24 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     // the backwards compatible iteration count
     iter2_ = force_iteration + 1 - bad_resets;
 
-#pragma omp single nowait
-    // ivac gets set to 1 in vacuum() of NESTOR
-    if (ivac_ == 1) {
-      ivac_ = 2;
-      if (verbose_) {
-        std::cout << absl::StrFormat(
-            "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS\n\n", iter2_);
+#pragma omp barrier
+
+#pragma omp single
+    {
+      // ivac gets set to VacuumPressureState::kInitialized in vacuum() of
+      // NESTOR
+      if (ivac_ == VacuumPressureState::kInitialized) {
+        ivac_ = VacuumPressureState::kActive;
+
+        if (verbose_) {
+          std::cout << absl::StrFormat(
+                           "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS",
+                           iter2_)
+                    << "\n\n";
+        }
       }
     }
-  }
+  }  // while m_liter_flag
 
   return SolveEqLoopStatus::NORMAL_TERMINATION;
 }
