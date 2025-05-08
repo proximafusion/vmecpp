@@ -162,6 +162,20 @@ enum class VmecStatus : std::uint8_t {
   SUCCESSFUL_TERMINATION = 11
 };
 
+enum class VacuumPressureState : std::int8_t {
+  // No vacuum pressure
+  kOff = -1,
+  // No vacuum pressure yet, force free-boundary update
+  kInitializing = 0,
+  // vacuum pressure turned on
+  // soft restart equilibrium calculation by returning BAD_JACOBIAN
+  // in the process of reducing rCon0,zCon0 *= 0.9;
+  kInitialized = 1,
+  // vacuum pressure turned on
+  // in the process of reducing rCon0,zCon0 *= 0.9;
+  kActive = 2
+};
+
 int VmecStatusCode(const VmecStatus vmec_status);
 
 std::string VmecStatusAsString(const VmecStatus vmec_status);

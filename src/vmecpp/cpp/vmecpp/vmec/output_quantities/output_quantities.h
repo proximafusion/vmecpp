@@ -1350,8 +1350,8 @@ OutputQuantities ComputeOutputQuantities(
     const std::vector<std::unique_ptr<FourierGeometry> >& decomposed_x,
     const std::vector<std::unique_ptr<IdealMhdModel> >& models_from_threads,
     const std::vector<std::unique_ptr<RadialProfiles> >& radial_profiles,
-    const VmecCheckpoint& checkpoint, int ivac, VmecStatus vmec_status,
-    int iter2);
+    const VmecCheckpoint& checkpoint, VacuumPressureState ivac,
+    VmecStatus vmec_status, int iter2);
 
 // gather data from all threads into the main thread
 VmecInternalResults GatherDataFromThreads(
@@ -1444,7 +1444,7 @@ ComputeIntermediateThreed1GeometricMagneticQuantities(
     const VmecInternalResults& vmec_internal_results,
     const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
-    int ivac);
+    VacuumPressureState ivac);
 
 Threed1GeometricAndMagneticQuantities ComputeThreed1GeometricMagneticQuantities(
     const Sizes& s, const FlowControl& fc,
@@ -1477,7 +1477,8 @@ Threed1ShafranovIntegrals ComputeThreed1ShafranovIntegrals(
     const VmecInternalResults& vmec_internal_results,
     const Threed1GeometricAndMagneticQuantitiesIntermediate&
         threed1_geometric_magnetic_intermediate,
-    const Threed1GeometricAndMagneticQuantities& threed1_geomag, int ivac);
+    const Threed1GeometricAndMagneticQuantities& threed1_geomag,
+    VacuumPressureState ivac);
 
 WOutFileContents ComputeWOutFileContents(
     const VmecINDATA& indata, const Sizes& s, const FourierBasisFastPoloidal& t,

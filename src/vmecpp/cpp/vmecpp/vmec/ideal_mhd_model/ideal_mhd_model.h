@@ -39,7 +39,7 @@ void ForcesToFourier3DSymmFastPoloidal(const RealSpaceForces& d,
                                        const RadialPartitioning& rp,
                                        const FlowControl& fc, const Sizes& s,
                                        const FourierBasisFastPoloidal& fb,
-                                       int ivac,
+                                       VacuumPressureState ivac,
                                        FourierForces& physical_forces);
 
 // Implemented as a free function for easier testing and benchmarking.
@@ -68,7 +68,7 @@ class IdealMhdModel {
                 const VmecConstants* constants, ThreadLocalStorage* m_ls,
                 HandoverStorage* m_h, const RadialPartitioning* r,
                 FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
-                int* m_ivac);
+                VacuumPressureState* m_ivac);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
 
@@ -419,7 +419,7 @@ class IdealMhdModel {
   HandoverStorage& m_h_;
   const RadialPartitioning& r_;
   FreeBoundaryBase* m_fb_;
-  int& m_ivac_;
+  VacuumPressureState& m_ivac_;
 
   int signOfJacobian;
 
