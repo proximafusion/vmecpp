@@ -140,7 +140,7 @@ class Vmec {
                        const FourierForces& decomposed_f,
                        HandoverStorage& m_h_) const;
 
-  int get_ivac() const { return static_cast<int>(ivac_); }
+  int get_ivac() const { return static_cast<int>(vacuum_pressure_state_); }
   int get_num_eqsolve_retries() const { return num_eqsolve_retries_; }
   VmecStatus get_status() const { return status_; }
   int get_iter1() const { return iter1_; }
@@ -203,8 +203,8 @@ class Vmec {
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
 
-  // initialization state counter for Nestor
-  VacuumPressureState ivac_;
+  // initialization state counter for Nestor. Called ivac in Fortran VMEC.
+  VacuumPressureState vacuum_pressure_state_;
 
   // 0 if in regular multi-grid sequence;
   // 1 if have tried from scratch with intermediate ns=3, ftolv=1.0e-4

@@ -34,13 +34,11 @@ namespace vmecpp {
 // Implemented as a free function for easier testing and benchmarking.
 // "FastPoloidal" indicates that, in real space, iterations use the
 // poloidal coordinate as the fast index.
-void ForcesToFourier3DSymmFastPoloidal(const RealSpaceForces& d,
-                                       const std::vector<double>& xmpq,
-                                       const RadialPartitioning& rp,
-                                       const FlowControl& fc, const Sizes& s,
-                                       const FourierBasisFastPoloidal& fb,
-                                       VacuumPressureState ivac,
-                                       FourierForces& physical_forces);
+void ForcesToFourier3DSymmFastPoloidal(
+    const RealSpaceForces& d, const std::vector<double>& xmpq,
+    const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
+    const FourierBasisFastPoloidal& fb,
+    VacuumPressureState vacuum_pressure_state, FourierForces& physical_forces);
 
 // Implemented as a free function for easier testing and benchmarking.
 // "FastPoloidal" indicates that, in real space, iterations use the
@@ -68,7 +66,7 @@ class IdealMhdModel {
                 const VmecConstants* constants, ThreadLocalStorage* m_ls,
                 HandoverStorage* m_h, const RadialPartitioning* r,
                 FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
-                VacuumPressureState* m_ivac);
+                VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
 
@@ -419,7 +417,7 @@ class IdealMhdModel {
   HandoverStorage& m_h_;
   const RadialPartitioning& r_;
   FreeBoundaryBase* m_fb_;
-  VacuumPressureState& m_ivac_;
+  VacuumPressureState& m_vacuum_pressure_state_;
 
   int signOfJacobian;
 

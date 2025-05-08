@@ -1277,7 +1277,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     const std::vector<std::unique_ptr<FourierGeometry>>& decomposed_x,
     const std::vector<std::unique_ptr<IdealMhdModel>>& models_from_threads,
     const std::vector<std::unique_ptr<RadialProfiles>>& radial_profiles,
-    const VmecCheckpoint& checkpoint, VacuumPressureState ivac,
+    const VmecCheckpoint& checkpoint, VacuumPressureState vacuum_pressure_state,
     VmecStatus vmec_status, int iter2) {
   OutputQuantities output_quantities;
 
@@ -1385,7 +1385,8 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         ComputeIntermediateThreed1GeometricMagneticQuantities(
             s, fc, h, output_quantities.vmec_internal_results,
             output_quantities.jxbout,
-            output_quantities.threed1_first_table_intermediate, ivac);
+            output_quantities.threed1_first_table_intermediate,
+            vacuum_pressure_state);
 
     output_quantities.threed1_geometric_magnetic =
         ComputeThreed1GeometricMagneticQuantities(
@@ -1426,7 +1427,8 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         ComputeThreed1ShafranovIntegrals(
             s, fc, h, output_quantities.vmec_internal_results,
             output_quantities.threed1_geometric_magnetic_intermediate,
-            output_quantities.threed1_geometric_magnetic, ivac);
+            output_quantities.threed1_geometric_magnetic,
+            vacuum_pressure_state);
 
     if (checkpoint == VmecCheckpoint::THREED1_SHAFRANOV_INTEGRALS) {
       return output_quantities;  // output_quantities partially uninitialized.
@@ -3438,7 +3440,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     const VmecInternalResults& vmec_internal_results,
     const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
-    VacuumPressureState ivac) {
+    VacuumPressureState vacuum_pressure_state) {
   Threed1GeometricAndMagneticQuantitiesIntermediate intermediate;
 
   // Calculate mean (toroidally averaged) poloidal cross section area & toroidal
@@ -3557,7 +3559,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     intermediate.redge[kl] =
         vmec_internal_results.r_e(lcfs_kl) + vmec_internal_results.r_o(lcfs_kl);
   }  // kl
-  if (fc.lfreeb && ivac == VacuumPressureState::kActive) {
+  if (fc.lfreeb && vacuum_pressure_state == VacuumPressureState::kActive) {
     for (int k = 0; k < s.nZeta; ++k) {
       for (int l = 0; l < s.nThetaEff; ++l) {
         // FIXME(eguiraud) slow loop for nestor
@@ -4077,7 +4079,7 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
     const Threed1GeometricAndMagneticQuantitiesIntermediate&
         threed1_geometric_magnetic_intermediate,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,
-    VacuumPressureState ivac) {
+    VacuumPressureState vacuum_pressure_state) {
   Threed1ShafranovIntegrals result;
 
   // Shafranov surface integrals s1,s2
@@ -4086,7 +4088,8 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
   // Note: if ctor = 0, use Int(Bsupu*Bsubu dV) for ctor*ctor/R
   // Phys. Fluids B, Vol 5 (1993) p 3121, Eq. 9a-9d
   std::vector<double> bpol2vac(s.nZnT, 0.0);
-  if (fc.lfreeb && ivac == vmecpp::VacuumPressureState::kActive) {
+  if (fc.lfreeb &&
+      vacuum_pressure_state == vmecpp::VacuumPressureState::kActive) {
     for (int l = 0; l < s.nThetaEff; ++l) {
       for (int k = 0; k < s.nZeta; ++k) {
         // FIXME(eguiraud) slow loop for nestor

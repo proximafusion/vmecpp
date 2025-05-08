@@ -152,7 +152,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       fc_(indata_.lfreeb, indata_.delt,
           static_cast<int>(indata_.ns_array.size()), max_threads),
       verbose_(verbose),
-      ivac_(VacuumPressureState::kOff),
+      vacuum_pressure_state_(VacuumPressureState::kOff),
       status_(VmecStatus::NORMAL_TERMINATION),
       iter2_(1),
       iter1_(iter2_),
@@ -246,7 +246,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // jacob_off=1 indicates that in the previous iteration, the Jacobian was
       // bad
       // --> also need to restart vacuum calculations
-      ivac_ = VacuumPressureState::kInitialized;
+      vacuum_pressure_state_ = VacuumPressureState::kInitialized;
     }
 
     fc_.ns_min = 3;
@@ -273,8 +273,9 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         // niterv taken from niter_array[0] in INDATA, I guess?
 
         // fully restart vacuum
-        // TODO(jons): why then assign ivac=kInitialized then above?
-        ivac_ = VacuumPressureState::kOff;
+        // TODO(jons): why then assign vacuum_pressure_state=kInitialized then
+        // above?
+        vacuum_pressure_state_ = VacuumPressureState::kOff;
       } else {
         // proceed regularly with ns values from ns_array
         fc_.nsval = indata_.ns_array[igrid];
@@ -345,7 +346,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   // (for creating the output file, use WriteOutputFile())
   output_quantities_ = vmecpp::ComputeOutputQuantities(
       kSignOfJacobian, indata_, s_, fc_, constants_, t_, h_, mgrid_.mgrid_mode,
-      r_, decomposed_x_, m_, p_, checkpoint, ivac_, status_, iter2_);
+      r_, decomposed_x_, m_, p_, checkpoint, vacuum_pressure_state_, status_,
+      iter2_);
 
   if (verbose_) {
     std::cout << "\nNUMBER OF JACOBIAN RESETS = " << fc_.ijacob << '\n';
@@ -480,7 +482,7 @@ bool Vmec::InitializeRadial(
       m_[thread_id] = std::make_unique<IdealMhdModel>(
           &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
           ls_[thread_id].get(), &h_, r_[thread_id].get(), fb_[thread_id].get(),
-          kSignOfJacobian, indata_.nvacskip, &ivac_);
+          kSignOfJacobian, indata_.nvacskip, &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0);
     }  // thread_id
 
@@ -924,10 +926,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
 #pragma omp single
     {
-      // ivac gets set to VacuumPressureState::kInitialized in vacuum() of
-      // NESTOR
-      if (ivac_ == VacuumPressureState::kInitialized) {
-        ivac_ = VacuumPressureState::kActive;
+      // vacuum_pressure_state gets set to VacuumPressureState::kInitialized in
+      // vacuum() of NESTOR
+      if (vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
+        vacuum_pressure_state_ = VacuumPressureState::kActive;
 
         if (verbose_) {
           std::cout << absl::StrFormat(
