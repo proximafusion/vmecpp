@@ -155,3 +155,24 @@ def test_magnetic_field_response_table_loading(makegrid_params):
     assert response.b_p.shape == response.b_r.shape
     assert response.b_z.shape == response.b_p.shape
     assert response.b_r[0, 0] == pytest.approx(-9.78847973e-06, abs=1e-8, rel=1e-6)
+
+
+def test_normalize_by_currents(makegrid_params: vmecpp.MakegridParameters):
+    makegrid_params.normalize_by_currents = True
+    response1 = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+
+    makegrid_params.normalize_by_currents = False
+    response2 = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    assert not np.allclose(
+        response1.b_r[0], response2.b_r[0]
+    ), "The two responses should be different when normalize_by_currents is True/False but were identical"
+    assert not np.allclose(
+        response1.b_z[0], response2.b_z[0]
+    ), "The two responses should be different when normalize_by_currents is True/False but were identical"
+    assert not np.allclose(
+        response1.b_p[0], response2.b_p[0]
+    ), "The two responses should be different when normalize_by_currents is True/False but were identical"
