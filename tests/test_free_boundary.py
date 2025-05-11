@@ -43,13 +43,24 @@ def test_run_free_boundary_from_response_table():
     vmec_output = vmecpp.run(vmec_input, response)
     assert vmec_output.wout.volume == pytest.approx(0.307512, 1e-5, 1e-5)
 
-    # Test hot-restart functionality
+    # Test hot-restart functionality. w/o perturbation, should converge immediately
     hot_restart_output = vmecpp.run(
         vmec_input, magnetic_field=response, restart_from=vmec_output
     )
+    assert hot_restart_output.wout.itfsq == 0
+    assert hot_restart_output.wout.volume == vmec_output.wout.volume
+
+    response.b_r *= 1.2
+    response.b_p *= 1.2
+    response.b_z *= 1.2
+    hot_restart_output_perturbed = vmecpp.run(
+        vmec_input, magnetic_field=response, restart_from=vmec_output
+    )
     # The change in initial guess should only result in a tiny change in output
-    assert hot_restart_output.wout.volume != vmec_output.wout.volume
-    assert hot_restart_output.wout.volume == pytest.approx(
+    assert hot_restart_output_perturbed.wout.itfsq > 0
+    assert hot_restart_output_perturbed.wout.itfsq > vmec_output.wout.itfsq
+    assert hot_restart_output_perturbed.wout.volume != vmec_output.wout.volume
+    assert hot_restart_output_perturbed.wout.volume == pytest.approx(
         vmec_output.wout.volume, 1e-5, 1e-5
     )
 
