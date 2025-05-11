@@ -40,28 +40,29 @@ def test_run_free_boundary_from_response_table():
         TEST_DATA_DIR / "coils.cth_like", makegrid_params
     )
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    vmec_output = vmecpp.run(vmec_input, response)
+    vmec_output = vmecpp.run(vmec_input, response, verbose=False)
     assert vmec_output.wout.volume == pytest.approx(0.307512, 1e-5, 1e-5)
 
     # Test hot-restart functionality. w/o perturbation, should converge immediately
     hot_restart_output = vmecpp.run(
         vmec_input, magnetic_field=response, restart_from=vmec_output
     )
-    assert hot_restart_output.wout.itfsq == 0
-    assert hot_restart_output.wout.volume == vmec_output.wout.volume
-
-    response.b_r *= 1.2
-    response.b_p *= 1.2
-    response.b_z *= 1.2
-    hot_restart_output_perturbed = vmecpp.run(
-        vmec_input, magnetic_field=response, restart_from=vmec_output
+    assert hot_restart_output.wout.itfsq == 1
+    assert hot_restart_output.wout.volume == pytest.approx(
+        vmec_output.wout.volume, 1e-8, 1e-8
     )
-    # The change in initial guess should only result in a tiny change in output
-    assert hot_restart_output_perturbed.wout.itfsq > 0
-    assert hot_restart_output_perturbed.wout.itfsq > vmec_output.wout.itfsq
-    assert hot_restart_output_perturbed.wout.volume != vmec_output.wout.volume
-    assert hot_restart_output_perturbed.wout.volume == pytest.approx(
-        vmec_output.wout.volume, 1e-5, 1e-5
+    FLUX_INCREASE = 1.02
+    response.b_r *= FLUX_INCREASE
+    response.b_p *= FLUX_INCREASE
+    response.b_z *= FLUX_INCREASE
+    hot_restart_output_perturbed = vmecpp.run(
+        vmec_input, magnetic_field=response, restart_from=vmec_output, verbose=False
+    )
+    assert hot_restart_output_perturbed.wout.itfsq > 1
+    assert hot_restart_output_perturbed.wout.itfsq < vmec_output.wout.itfsq
+    # The change in field strength should only result in a proportional change in volume
+    assert hot_restart_output_perturbed.wout.volume * FLUX_INCREASE == pytest.approx(
+        vmec_output.wout.volume, 1e-3, 1e-3
     )
 
 

@@ -1078,10 +1078,24 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // COMPUTE INVARIANT RESIDUALS
 
-  // include edge contribution only if converged well enough fast enough (?)
+  // include edge contribution if the equilibrium has converged very quickly,
+  // to prevent a strong force-imbalance at the LCFS-vacuum transition, since
+  // the termination criterion based on sum(force residuals) < ftol only
+  // considers the inner flux-surfaces, but not the balance with the magnetic
+  // pressure in vacuum at the LCFS. This special case includes that force
+  // contribution in the first few iterations, preventing termination, to
+  // ensure the free-boundary forces have "enough time" to propagate through
+  // to the inner surfaces.
+  // TODO(jurasic) the hard-coded 50 and 1e-6 are only here for backwards
+  // compatibility, ideally vacuum-pressure should always part of the
+  // force-balance
+  bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
+  // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
+  // wouldn't trigger without special handling for the hot-restart case.
+  bool hot_restart = (iter2 == 1 && m_vacuum_pressure_state_ ==
+                                        VacuumPressureState::kInitialized);
   bool includeEdgeRZForces =
-      ((iter2 - iter1) < 50 && (m_fc.fsqr + m_fc.fsqz) < 1.0e-6);
-
+      ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
   std::vector<double> localFResInvar(3, 0.0);
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 
