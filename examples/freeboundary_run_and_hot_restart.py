@@ -29,9 +29,10 @@ magnetic_response_table = vmecpp.MagneticFieldResponseTable.from_coils_file(
 vmec_output = vmecpp.run(vmec_input, magnetic_field=magnetic_response_table)
 
 # Now let's perturb the magnetic field...
-magnetic_response_table.b_p *= 1.05
-magnetic_response_table.b_r *= 1.05
-magnetic_response_table.b_z *= 1.05
+magnetic_response_table.b_p *= 1.01
+magnetic_response_table.b_r *= 1.01
+magnetic_response_table.b_z *= 1.01
+print("Increased the magnetic field strength by 1%")
 
 # ...and run VMEC++ again, but using its "hot restart" feature:
 # passing the previously obtained output_quantities ensures that
@@ -40,8 +41,5 @@ magnetic_response_table.b_z *= 1.05
 perturbed_output = vmecpp.run(
     vmec_input, magnetic_field=magnetic_response_table, restart_from=vmec_output
 )
-# Because we increased the magnetic field strength by 5%, but kept the enclosed magnetic
-# flux the same (vmec_input.phiedge), the volume reduced by 5%.
-print("initial   volume:", vmec_output.wout.volume_p)
-print("perturbed volume:", perturbed_output.wout.volume_p)
-print("Difference:      ", vmec_output.wout.volume_p - perturbed_output.wout.volume_p)
+print("First  run took", vmec_output.wout.itfsq, "iterations")
+print("Second run took", perturbed_output.wout.itfsq, "iterations")
