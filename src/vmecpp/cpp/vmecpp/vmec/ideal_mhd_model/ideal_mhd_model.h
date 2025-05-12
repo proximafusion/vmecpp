@@ -258,9 +258,15 @@ class IdealMhdModel {
   std::vector<double> rCon;
 
   // constraint force contribution Y on full-grid
+  // In free-boundary this starts as a large value and is slowly reduced to zero
+  // to gradually increase the vacuum pressure constraint (force felt from the
+  // B^2 contribution).
   std::vector<double> zCon;
 
-  // initial constraint force contribution X on full-grid
+  // initial constraint force contribution X on full-grid.
+  // In free-boundary this starts as a large value and is slowly reduced to zero
+  // to gradually increase the vacuum pressure constraint (force felt from the
+  // B^2 contribution).
   std::vector<double> rCon0;
 
   // initial constraint force contribution Y on full-grid

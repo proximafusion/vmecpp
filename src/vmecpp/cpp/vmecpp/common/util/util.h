@@ -165,12 +165,16 @@ enum class VmecStatus : std::uint8_t {
 enum class VacuumPressureState : std::int8_t {
   // No vacuum pressure
   kOff = -1,
-  // No vacuum pressure yet, force free-boundary update
+
+  // No vacuum pressure yet, force free-boundary update, but ignore the result
+  // in this force-balance computation.
   kInitializing = 0,
-  // vacuum pressure turned on
-  // soft restart equilibrium calculation by returning BAD_JACOBIAN
-  // in the process of reducing rCon0,zCon0 *= 0.9;
+
+  // vacuum pressure turned on.
+  // soft restart equilibrium calculation by returning BAD_JACOBIAN in the
+  // process of reducing rCon0,zCon0 *= 0.9;
   kInitialized = 1,
+
   // vacuum pressure turned on
   // in the process of reducing rCon0,zCon0 *= 0.9;
   kActive = 2
