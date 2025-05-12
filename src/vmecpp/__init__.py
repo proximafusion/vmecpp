@@ -85,7 +85,8 @@ class VmecInput(BaseModelWithNumpy):
     lasym: bool
     """Flag to indicate non-stellarator-symmetry.
 
-    Note: this flag is False if stellarator symmetry is present, True if not.
+    - False, assumes stellarator symmetry (only cosine/sine coefficients used).
+    - True, (currently unsupported) allows for non-stellarator-symmetric terms.
     """
 
     nfp: int
@@ -99,15 +100,24 @@ class VmecInput(BaseModelWithNumpy):
     ntor-1, ntor."""
 
     ntheta: int
-    """Number of poloidal grid points; if odd: is rounded to next smaller even
-    number."""
+    """Number of poloidal grid points (ntheta >= 0).
+
+    Controls the poloidal resolution in real space. If 0, chosen automatically as
+    minimally allowed. Must be at least 2*mpol + 6.
+    """
 
     nzeta: int
-    """Number of toroidal grid points; must match nzeta of mgrid file if using free-
-    boundary."""
+    """Number of toroidal grid points (nzeta >= 0).
+
+    Controls the toroidal resolution in real space. If 0, chosen automatically as
+    minimally allowed. Must be at least 2*ntor + 4.
+    """
 
     ns_array: jt.Int[np.ndarray, "num_grids"]
-    """Number of flux surfaces per multigrid step."""
+    """Number of flux surfaces per multigrid step.
+
+    Each entry >= 3 and >= previous entry.
+    """
 
     ftol_array: jt.Float[np.ndarray, "num_grids"]
     """Requested force tolerance for convergence per multigrid step."""
@@ -116,16 +126,28 @@ class VmecInput(BaseModelWithNumpy):
     """Maximum number of iterations per multigrid step."""
 
     phiedge: float
-    """Total enclosed toroidal magnetic flux in Vs == Wb."""
+    """Total enclosed toroidal magnetic flux in Vs == Wb.
+
+    - In fixed-boundary, this determines the magnetic field strength.
+    - In free-boundary, the magnetic field strength is given externally,
+    so this determines cross-section area and volume of the plasma.
+    """
 
     ncurr: typing.Literal[0, 1]
-    """Select constraint on iota or enclosed toroidal current profiles 0: constrained-iota; 1: constrained-current"""
+    """Select constraint on iota or enclosed toroidal current profiles.
+
+    - 0: constrained-iota (rotational transform profile specified)
+    - 1: constrained-current (toroidal current profile specified)
+    """
 
     pmass_type: ProfileType
     """Parametrization of mass/pressure profile."""
 
     am: jt.Float[np.ndarray, "am_len"]
-    """Mass/pressure profile coefficients."""
+    """Mass/pressure profile coefficients.
+
+    Units: Pascals for pressure.
+    """
 
     am_aux_s: jt.Float[np.ndarray, "am_aux_len"]
     """Spline mass/pressure profile: knot locations in s"""
@@ -137,13 +159,20 @@ class VmecInput(BaseModelWithNumpy):
     """Global scaling factor for mass/pressure profile."""
 
     gamma: float
-    """Adiabatic index."""
+    """Adiabatic index (ratio of specific heats).
+
+    Specifying 0 implies that the pressure profile is specified. For all other values,
+    the mass profile is specified.
+    """
 
     spres_ped: float
-    """Location of pressure pedestal in s."""
+    """Location of pressure pedestal in s.
+
+    Outside this radial location, pressure is constant.
+    """
 
     piota_type: ProfileType
-    """Parametrization of iota profile."""
+    """Parametrization of iota (rotational transform) profile."""
 
     ai: jt.Float[np.ndarray, "ai_len"]
     """Iota profile coefficients."""
@@ -155,7 +184,14 @@ class VmecInput(BaseModelWithNumpy):
     """Spline iota profile: values at knots"""
 
     pcurr_type: ProfileType
-    """Parametrization of toroidal current profile."""
+    """Parametrization of toroidal current profile.
+
+    One of: 'power_series', 'power_series_i', 'gauss_trunc', 'sum_atan', 'two_power',
+    'two_power_gs', 'akima_spline_i', 'akima_spline_ip', 'cubic_spline_i',
+    'cubic_spline_ip', 'pedestal', 'rational', 'line_segment_i', 'line_segment_ip',
+    'sum_cossq_s', 'sum_cossq_sqrts', 'sum_cossq_s_free'.
+    Default: 'power_series'.
+    """
 
     ac: jt.Float[np.ndarray, "ac_len"]
     """Enclosed toroidal current profile coefficients."""
@@ -167,16 +203,25 @@ class VmecInput(BaseModelWithNumpy):
     """Spline toroidal current profile: values at knots"""
 
     curtor: float
-    """Toroidal current in A."""
+    """Toroidal current in A.
+
+    Net toroidal current. The toroidal current profile is scaled to yield this total.
+    """
 
     bloat: float
     """Bloating factor (for constrained toroidal current)"""
 
     lfreeb: bool
-    """Flag to indicate free-boundary."""
+    """Flag to indicate free-boundary.
+
+    If True, run in free-boundary mode; if False, fixed-boundary.
+    """
 
     mgrid_file: typing.Annotated[str, pydantic.Field(max_length=200)]
-    """Full path for vacuum Green's function data."""
+    """Full path for vacuum Green's function data.
+
+    NetCDF MGRID file with magnetic field response factors for external coils.
+    """
 
     extcur: jt.Float[np.ndarray, "ext_current"]
     """Coil currents in A."""
@@ -185,7 +230,7 @@ class VmecInput(BaseModelWithNumpy):
     """Number of iterations between full vacuum calculations."""
 
     nstep: int
-    """Printout interval."""
+    """Printout interval at which convergence progress is logged."""
 
     aphi: jt.Float[np.ndarray, "aphi_len"]
     """Radial flux zoning profile coefficients."""
@@ -206,16 +251,28 @@ class VmecInput(BaseModelWithNumpy):
     """
 
     raxis_c: jt.Float[np.ndarray, "ntor_plus_1"]
-    """Magnetic axis coefficients for R ~ cos(n*v); stellarator-symmetric."""
+    """Magnetic axis coefficients for R ~ cos(n*v); stellarator-symmetric.
+
+    At least 1 value required, up to n=ntor considered.
+    """
 
     zaxis_s: jt.Float[np.ndarray, "ntor_plus_1"]
-    """Magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric."""
+    """Magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric.
+
+    Up to n=ntor considered; first entry (n=0) is ignored.
+    """
 
     raxis_s: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
-    """Magnetic axis coefficients for R ~ sin(n*v); non-stellarator-symmetric."""
+    """Magnetic axis coefficients for R ~ sin(n*v); non-stellarator-symmetric.
+
+    Up to n=ntor considered; first entry (n=0) is ignored. Only used if lasym=True.
+    """
 
     zaxis_c: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
-    """Magnetic axis coefficients for Z ~ cos(n*v); non-stellarator-symmetric."""
+    """Magnetic axis coefficients for Z ~ cos(n*v); non-stellarator-symmetric.
+
+    Only used if lasym=True.
+    """
 
     rbc: SerializableSparseCoefficientArray[
         jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
@@ -233,7 +290,10 @@ class VmecInput(BaseModelWithNumpy):
         ]
         | None
     ) = None
-    """Boundary coefficients for R ~ sin(m*u - n*v); non-stellarator-symmetric"""
+    """Boundary coefficients for R ~ sin(m*u - n*v); non-stellarator-symmetric.
+
+    Only used if lasym=True.
+    """
 
     zbc: (
         SerializableSparseCoefficientArray[
@@ -241,7 +301,10 @@ class VmecInput(BaseModelWithNumpy):
         ]
         | None
     ) = None
-    """Boundary coefficients for Z ~ cos(m*u - n*v); non-stellarator-symmetric"""
+    """Boundary coefficients for Z ~ cos(m*u - n*v); non-stellarator-symmetric.
+
+    Only used if lasym=True.
+    """
 
     @pydantic.model_validator(mode="after")
     def _validate_fourier_coefficients_shapes(self) -> VmecInput:
