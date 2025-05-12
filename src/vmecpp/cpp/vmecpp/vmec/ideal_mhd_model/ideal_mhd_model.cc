@@ -862,7 +862,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // end of bcovar
 
   // back in funct3d, free-boundary force contribution active?
-  if (m_fc_.lfreeb && iter2 > 1) {
+  // This can even happen in the first iteration when hot-restarted.
+  if (m_fc_.lfreeb &&
+      (iter2 > 1 || m_vacuum_pressure_state_ != VacuumPressureState::kOff)) {
     ivacskip = (iter2 - iter1) % nvacskip;
     // when R+Z force residuals are <1e-3, enable vacuum contribution
     if (m_vacuum_pressure_state_ != VacuumPressureState::kActive &&
@@ -887,7 +889,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
         m_last_full_update_nestor = iter2;
       }
     }
-
+// protects read of `m_vacuum_pressure_state_` below from the write above
+#pragma omp barrier
     if (m_vacuum_pressure_state_ != VacuumPressureState::kOff) {
       // IF INITIALLY ON, MUST TURN OFF rcon0, zcon0 SLOWLY
       for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
@@ -1076,10 +1079,24 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // COMPUTE INVARIANT RESIDUALS
 
-  // include edge contribution only if converged well enough fast enough (?)
+  // include edge contribution if the equilibrium has converged very quickly,
+  // to prevent a strong force-imbalance at the LCFS-vacuum transition, since
+  // the termination criterion based on sum(force residuals) < ftol only
+  // considers the inner flux-surfaces, but not the balance with the magnetic
+  // pressure in vacuum at the LCFS. This special case includes that force
+  // contribution in the first few iterations, preventing termination, to
+  // ensure the free-boundary forces have "enough time" to propagate through
+  // to the inner surfaces.
+  // TODO(jurasic) the hard-coded 50 and 1e-6 are only here for backwards
+  // compatibility, ideally vacuum-pressure should always part of the
+  // force-balance
+  bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
+  // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
+  // wouldn't trigger without special handling for the hot-restart case.
+  bool hot_restart = (iter2 == 1 && m_vacuum_pressure_state_ ==
+                                        VacuumPressureState::kInitialized);
   bool includeEdgeRZForces =
-      ((iter2 - iter1) < 50 && (m_fc.fsqr + m_fc.fsqz) < 1.0e-6);
-
+      ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
   std::vector<double> localFResInvar(3, 0.0);
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 
@@ -1392,7 +1409,12 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
   }  // jF
 }  // dft_FourierToReal_2d_symm
 
-/** extrapolate (r,z)Con from boundary into volume */
+/** extrapolate (r,z)Con from boundary into volume.
+ * Only called on initialization/soft reset to set (r,z)Con0 to a large value.
+ * Since (r,z)Con0 are subtracted from (r,z)Con, this effectively disables the
+ * constraint. Over the iterations, (r,z)Con0 are gradually reduced to zero,
+ * enabling the constraint again.
+ */
 void IdealMhdModel::rzConIntoVolume() {
   // The CPU which has the LCFS needs to compute (r,z)Con at the LCFS
   // for computing (r,z)Con0 by extrapolation from the LCFS into the volume.

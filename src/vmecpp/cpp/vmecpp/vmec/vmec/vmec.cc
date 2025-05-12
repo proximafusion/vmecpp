@@ -242,10 +242,12 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     // before the user-provided ns values from ns_array are processed
     // in the multi-grid run
 
-    if (fc_.lfreeb && jacob_off_ == 1) {
-      // jacob_off=1 indicates that in the previous iteration, the Jacobian was
-      // bad
-      // --> also need to restart vacuum calculations
+    // Free-boundary hot-restart attempt. Assuming that the initial_guess is
+    // very good, we can immediately take the vacuum contribution into account,
+    // instead of slowly activating it (as we would in a regular free-bdy
+    // solve). If the initial guess completely off, jacob_off>0 will trigger a
+    // retry with VacuumPressureState::kOff anyway.
+    if (fc_.lfreeb && initial_state.has_value()) {
       vacuum_pressure_state_ = VacuumPressureState::kInitialized;
     }
 
@@ -705,7 +707,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
                                                           *p_[thread_id]);
     }
 
-// protect reads of restart_reason above from write below
+    // protect reads of restart_reason above from write below
 #pragma omp barrier
     // tells restart_iter to store current xc in xstore
 #pragma omp single
@@ -915,16 +917,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
-#pragma omp atomic write
-    // update iter2_ for all threads, all threads have the same value of iter2,
-    // it does not matter who does it.
-    // bad resets didn't increment, iter2 in VMEC 8.52, so we need to compute
-    // the backwards compatible iteration count
-    iter2_ = force_iteration + 1 - bad_resets;
-
-#pragma omp barrier
-
-#pragma omp single
+#pragma omp single nowait
     {
       // vacuum_pressure_state gets set to VacuumPressureState::kInitialized in
       // vacuum() of NESTOR
@@ -939,6 +932,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         }
       }
     }
+
+#pragma omp atomic write
+    // update iter2_ for all threads, all threads have the same value of iter2,
+    // it does not matter who does it.
+    // bad resets didn't increment, iter2 in VMEC 8.52, so we need to compute
+    // the backwards compatible iteration count
+    iter2_ = force_iteration + 1 - bad_resets;
   }  // while m_liter_flag
 
   return SolveEqLoopStatus::NORMAL_TERMINATION;
