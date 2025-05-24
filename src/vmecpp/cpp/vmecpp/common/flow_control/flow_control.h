@@ -82,10 +82,16 @@ class FlowControl {
 
   double delt0r;
 
+  // Cumulative force residuals (radial, vertical and lambda)
+  // Populated by `evalFResInvar`
   double fsqr, fsqz, fsql;
+  // Preconditioned cumulative force residuals (radial, vertical and lambda)
+  // Populated by `evalFResPrecd`
   double fsqr1, fsqz1, fsql1;
   double fsq;
 
+  // Time-trace of the invariant force residuals during convergence
+  // (fsqr + fsqz + fsql)
   std::vector<double> fsqt;
   std::vector<double> mhd_energy;
 
