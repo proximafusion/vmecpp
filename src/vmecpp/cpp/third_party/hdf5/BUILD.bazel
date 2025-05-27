@@ -13,7 +13,12 @@ cmake(
         "HDF5_BUILD_CPP_LIB": "ON",
         # enable ZLIB support, since this is a hard requirement by NetCDF4
         "HDF5_ENABLE_Z_LIB_SUPPORT" : "ON",
+        # disable SZIP support, since this might not be available on all systems
+        # and is not needed for our use case
         "HDF5_ENABLE_SZIP_SUPPORT" : "OFF",
+        "HDF5_ENABLE_SZIP_ENCODING" : "OFF",
+        "SZIP_INCLUDE_DIR": "IGNORE_THIS_PATH",
+        "SZIP_LIBRARY": "IGNORE_THIS_PATH",
         "BUILD_TESTING": "OFF",
         "HDF5_BUILD_TOOLS": "OFF",
     },
