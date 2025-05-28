@@ -85,15 +85,21 @@ void SurfaceGeometry::update(
     const std::span<const double> zSC, const std::span<const double> zCS,
     const std::span<const double> zCC, const std::span<const double> zSS,
     int signOfJacobian, bool fullUpdate) {
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   inverseDFT(rCC, rSS, rSC, rCS, zSC, zCS, zCC, zSS, fullUpdate);
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   derivedSurfaceQuantities(signOfJacobian, fullUpdate);
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 // Perform inverse Fourier transform from Fourier coefficients of surface

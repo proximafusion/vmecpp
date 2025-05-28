@@ -99,9 +99,13 @@ bool Nestor::update(
       return true;
     }
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
     ls_.DecomposeMatrix();
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
   }  // fullUpdate
 
   // virtual checkpoint, if maximum_iterations before next full Nestor update
@@ -168,19 +172,27 @@ bool Nestor::update(
   }
   local_bSubUVac *= signOfJacobian * 2.0 * M_PI;
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     *bSubUVac = 0.0;
     *bSubVVac = 0.0;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     *bSubUVac += local_bSubUVac;
     *bSubVVac += local_bSubVVac;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // compute magnetic pressure from co- and contravariant B_vac components
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
@@ -218,7 +230,9 @@ bool Nestor::update(
     return true;
   }
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // TODO(jons): could move bSubUVac, bSubVVac collection here to spare on
   // barrier
