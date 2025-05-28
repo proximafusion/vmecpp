@@ -177,7 +177,9 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
 
   std::vector<std::mutex> mutices(max_threads);
 
+#ifdef _OPENMP
 #pragma omp parallel
+#endif  // _OPENMP
   {
 #ifdef _OPENMP
     int ncpu = omp_get_num_threads();
@@ -187,7 +189,9 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
     int myid = 0;
 #endif
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
     {
       all_ar.resize(ncpu);
       all_az.resize(ncpu);
@@ -289,14 +293,18 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
       }  // mn
     }  // j
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
     // solve tri-diagonal system
     TridiagonalSolveOpenMP(ar, dr, br, cr, az, dz, bz, cz, jMin, jMax, mnmax,
                            num_basis, mutices, ncpu, myid, nsMinF, nsMaxF,
                            handover_ar, handover_cr, handover_az, handover_cz);
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
     // check that solution is correct
     for (int j = nsMinF; j < nsMaxF; ++j) {
@@ -313,7 +321,9 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
         }  // k
       }  // mn
     }  // j
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
   }  // omp parallel
 }  // CheckTridiagonalSolveOpenMP
 
