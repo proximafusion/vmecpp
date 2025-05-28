@@ -639,14 +639,18 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
 }
 
 void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     m_fc_.fResInvar[0] = 0.0;
     m_fc_.fResInvar[1] = 0.0;
     m_fc_.fResInvar[2] = 0.0;
   }
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     m_fc_.fResInvar[0] += localFResInvar[0];
     m_fc_.fResInvar[1] += localFResInvar[1];
@@ -655,9 +659,13 @@ void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
 
 // this is protecting reads of fResInvar as well as
 // writes to m_fc.fsqz which is read before this call
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     // set new values
     // TODO(jons): what is `r1scale`?
@@ -670,22 +678,30 @@ void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
 }
 
 void IdealMhdModel::evalFResPrecd(const std::vector<double>& localFResPrecd) {
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     m_fc_.fResPrecd[0] = 0.0;
     m_fc_.fResPrecd[1] = 0.0;
     m_fc_.fResPrecd[2] = 0.0;
   }
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     m_fc_.fResPrecd[0] += localFResPrecd[0];
     m_fc_.fResPrecd[1] += localFResPrecd[1];
     m_fc_.fResPrecd[2] += localFResPrecd[2];
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     m_fc_.fsqr1 = m_fc_.fResPrecd[0] * m_h_.fNorm1;
     m_fc_.fsqz1 = m_fc_.fResPrecd[1] * m_h_.fNorm1;
@@ -819,7 +835,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // since we don't overwrite stuff in-place in VMEC++.
 
   if (shouldUpdateRadialPreconditioner(iter1, iter2)) {
+#ifdef _OPENMP
 #pragma omp single nowait
+#endif  // _OPENMP
     {
       m_last_preconditioner_update = iter2;
     }
@@ -872,7 +890,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
       // vacuum pressure not fully turned on yet
       // Do full vacuum calc on every iteration
       ivacskip = 0;
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
       // Increment ivac, never exceeding VacuumPressureState::kActive
       m_vacuum_pressure_state_ = static_cast<VacuumPressureState>(
           static_cast<int>(m_vacuum_pressure_state_) + 1);
@@ -884,13 +904,17 @@ absl::StatusOr<bool> IdealMhdModel::update(
           1.0 / std::max(0.1, 1.0e11 * (m_fc_.fsqr + m_fc_.fsqz)));
       nvacskip = std::max(nvacskip, new_nvacskip);
 
+#ifdef _OPENMP
 #pragma omp single nowait
+#endif  // _OPENMP
       {
         m_last_full_update_nestor = iter2;
       }
     }
 // protects read of `m_vacuum_pressure_state_` below from the write above
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
     if (m_vacuum_pressure_state_ != VacuumPressureState::kOff) {
       // IF INITIALLY ON, MUST TURN OFF rcon0, zcon0 SLOWLY
       for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
@@ -920,7 +944,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
 // protect reads of magnetic axis, boundary geometry below from writes above
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
       const double netToroidalCurrent = m_h_.cTor / MU_0;
       bool reached_checkpoint = m_fb_->update(
           m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
@@ -932,7 +958,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
         return true;
       }
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
       {
         // In educational_VMEC, this is part of Nestor.
         if (m_vacuum_pressure_state_ == VacuumPressureState::kInitializing) {
@@ -968,7 +996,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
       // RESET FIRST TIME FOR SOFT START
       if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
         m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
         m_need_restart = true;
       } else {
@@ -1146,7 +1176,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // back in funct3d
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     if (iter2 == 1 && (m_fc.fsqr + m_fc.fsqz + m_fc.fsql) > 1.0e2) {
       // first iteration and gigantic force residuals
@@ -1259,7 +1291,9 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
   absl::c_fill_n(zCon, num_con, 0);
 
 // need to wait for other threads to have filled _i and _o arrays above
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
     double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
@@ -1429,7 +1463,9 @@ void IdealMhdModel::rzConIntoVolume() {
   }
 
 // wait for thread that has LCFS to have put rzCon at LCFS into array above
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // step 2: all threads interpolate into volume
   for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
@@ -1535,12 +1571,16 @@ void IdealMhdModel::computeJacobian() {
   bool localBadJacobian = (minTau * maxTau < 0.0);
 
   if (localBadJacobian) {
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
     {
       m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
     }
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 void IdealMhdModel::computeMetricElements() {
@@ -1707,13 +1747,21 @@ void IdealMhdModel::computeInitialVolume() {
   }
   localPlasmaVolume *= m_fc_.deltaS;
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   m_h_.voli = 0.0;
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   m_h_.voli += localPlasmaVolume * (2.0 * M_PI) * (2.0 * M_PI);
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }  // computeInitialVolume
 
 void IdealMhdModel::updateVolume() {
@@ -1729,13 +1777,21 @@ void IdealMhdModel::updateVolume() {
   }
   localPlasmaVolume *= m_fc_.deltaS;
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   m_h_.plasmaVolume = 0.0;
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   m_h_.plasmaVolume += localPlasmaVolume;
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }  // updateVolume
 
 /**
@@ -1981,25 +2037,37 @@ void IdealMhdModel::pressureAndEnergies() {
   // --> could introduce signOfJacobian, but abs() does the job here as well
   localMagneticEnergy = fabs(localMagneticEnergy) * m_fc_.deltaS;
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     m_h_.thermalEnergy = 0.0;
     m_h_.magneticEnergy = 0.0;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     m_h_.thermalEnergy += localThermalEnergy;
     m_h_.magneticEnergy += localMagneticEnergy;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   // compute MHD energy from individual volume integrals
   m_h_.mhdEnergy =
       m_h_.magneticEnergy + m_h_.thermalEnergy / (adiabaticIndex - 1.0);
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 // COMPUTE AVERAGE FORCE BALANCE AND TOROIDAL/POLOIDAL CURRENTS
@@ -2050,7 +2118,9 @@ void IdealMhdModel::radialForceBalance() {
 }
 
 void IdealMhdModel::hybridLambdaForce() {
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // obtain first inside point
   int j0 = r_.nsMinF;
@@ -2169,7 +2239,9 @@ void IdealMhdModel::hybridLambdaForce() {
   }  // jF
 
 // }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 // Compute normalization factors for force residuals.
@@ -2207,31 +2279,43 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
   double localForceNorm1 =
       decomposed_x.rzNorm(false, nsMinHere, r_.nsMaxFIncludingLcfs);
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     // re-use target array elements for global accumulation
     m_h_.fNormRZ = 0.0;
     m_h_.fNormL = 0.0;
     m_h_.fNorm1 = 0.0;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     m_h_.fNormRZ += localForceNormSumRZ;
     m_h_.fNormL += localForceNormSumL;
     m_h_.fNorm1 += localForceNorm1;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     m_h_.fNormRZ = 1.0 / (m_h_.fNormRZ * energyDensity * energyDensity);
     m_h_.fNormL =
         1.0 / (m_h_.fNormL * constants_.lamscale * constants_.lamscale);
     m_h_.fNorm1 = 1.0 / m_h_.fNorm1;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 void IdealMhdModel::computeMHDForces() {
@@ -2918,7 +3002,9 @@ void IdealMhdModel::deAliasConstraintForce() {
 
 // add constraint force to MHD force
 void IdealMhdModel::assembleTotalForces() {
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // free-boundary contribution: include force on boundary from NESTOR
   if (m_fc_.lfreeb &&
@@ -3012,7 +3098,9 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
   // fill target force arrays with zeros
   m_physical_f.setZero();
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
   if (m_fc_.lfreeb &&
@@ -3128,7 +3216,9 @@ void IdealMhdModel::applyM1Preconditioner(FourierForces& m_decomposed_f) {
     }  // n
   }  // jF
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 void IdealMhdModel::assembleRZPreconditioner() {
@@ -3270,7 +3360,9 @@ void IdealMhdModel::assembleRZPreconditioner() {
   //   dx(ns,1:,1:) = 3*dx(ns,1:,1:)
   // END IF
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 // serial variant
@@ -3330,7 +3422,9 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
       }  // idx_basis
     }  // mn
   }  // jF
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // split range [0, s_.mnsize) among threads
   const int thread_id = r_.get_thread_id();
@@ -3356,7 +3450,9 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
     TridiagonalSolveSerial(m_h_.all_az[mn], m_h_.all_dz[mn], m_h_.all_bz[mn],
                            m_h_.all_cz[mn], jMin[mn], jMax, s_.num_basis);
   }  // mn
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // re-distribute solution back into threads
   for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {

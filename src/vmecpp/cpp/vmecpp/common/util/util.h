@@ -8,7 +8,6 @@
 #include <Eigen/Dense>  // VectorXd, Matrix
 #include <cassert>
 #include <cmath>
-#include <cstdbool>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

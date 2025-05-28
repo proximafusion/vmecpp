@@ -155,16 +155,22 @@ void SingularIntegrals::computeCoefficients() {
 
 void SingularIntegrals::update(const std::vector<double>& bDotN,
                                bool fullUpdate) {
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   prepareUpdate(sg_.guu, sg_.guv, sg_.gvv, sg_.auu, sg_.auv, sg_.avv,
                 fullUpdate);
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   performUpdate(bDotN, fullUpdate);
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }  // update
 
 void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
