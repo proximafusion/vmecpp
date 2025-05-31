@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        config: [opt, asan, ubsan]
+        config: [opt, asan, ubsan, tsan]
     steps:
       - uses: actions/checkout@v4
         with:
