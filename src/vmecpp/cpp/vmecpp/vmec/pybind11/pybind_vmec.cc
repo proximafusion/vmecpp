@@ -73,18 +73,6 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
   return s.value();
 }
 
-// convert a RowMatrixXd to the corresponding STL vector<vector<double>>
-std::vector<std::vector<double>> RowMatrixXdToVector(
-    const vmecpp::RowMatrixXd &m) {
-  std::vector<std::vector<double>> v(m.rows(), std::vector<double>(m.cols()));
-  for (int i = 0; i < m.rows(); ++i) {
-    for (int j = 0; j < m.cols(); ++j) {
-      v[i][j] = m(i, j);
-    }
-  }
-  return v;
-}
-
 vmecpp::HotRestartState MakeHotRestartState(
     vmecpp::WOutFileContents wout, const vmecpp::VmecINDATAPyWrapper &indata) {
   return vmecpp::HotRestartState(std::move(wout), vmecpp::VmecINDATA(indata));
