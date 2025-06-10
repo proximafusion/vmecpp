@@ -774,7 +774,7 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     scalxc[(jF1 - r_.nsMinF1) * 2 + m_evn] = 1.0;
 
     // odd-m: factor out 1/sqrt(s)
-    // This is Eqn. (8c) in Hirshman, Schwenn & Nührenberg (1990).
+    // This is Eqn. (8c) in Hirshman, Schwenn & Nuehrenberg (1990).
     // The innermost full-grid point (== magnetic axis)
     // gets sqrt(s) of the innermost actual flux surface at j=1.
     // This is a constant extrapolation towards the axis.
