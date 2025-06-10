@@ -192,18 +192,6 @@ std::string VmecStatusAsString(const VmecStatus vmec_status);
 // static constexpr double MU_0 = 1.25663706212e-6;
 static constexpr double MU_0 = 4.0e-7 * M_PI;
 
-// MOVED: m_evn and m_odd constants have been moved to
-// vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h
-// Use kEvenParity and kOddParity instead.
-
-// TODO(vmecpp-team): Remove this backwards-compatibility layer after
-// vmecpp_large_cpp_tests migration is complete. The canonical constants
-// are now kEvenParity and kOddParity in vmec_algorithm_constants.h
-static constexpr int m_evn =
-    0;  // Even poloidal mode numbers (backwards compatibility)
-static constexpr int m_odd =
-    1;  // Odd poloidal mode numbers (backwards compatibility)
-
 // ----------------------
 // simple math
 int signum(int x);

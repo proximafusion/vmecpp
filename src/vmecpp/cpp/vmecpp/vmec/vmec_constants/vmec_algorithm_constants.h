@@ -245,7 +245,6 @@ static constexpr double kVacuumFrequencyHigh = 1.0e11;
 
 /**
  * Even parity index for Fourier harmonics with even poloidal mode number m.
- * Replaces: m_evn constant from util.h with descriptive naming
  * Used in: Fourier mode classification by poloidal mode number parity
  * Context: Harmonics with m=0,2,4,6,... (even poloidal mode numbers)
  */
@@ -253,7 +252,6 @@ static constexpr int kEvenParity = 0;
 
 /**
  * Odd parity index for Fourier harmonics with odd poloidal mode number m.
- * Replaces: m_odd constant from util.h with descriptive naming
  * Used in: Fourier mode classification by poloidal mode number parity
  * Context: Harmonics with m=1,3,5,7,... (odd poloidal mode numbers)
  */
