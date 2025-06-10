@@ -17,19 +17,57 @@ Use naming conventions that immediately reveal computational intent and data dep
 
 ---
 
+## Source Code Encoding Standards
+
+### **ASCII-Only Requirement**
+All VMEC++ source code files (`.cc`, `.h`, `.cpp`, `.hpp`) must contain only ASCII characters (ord 0-127).
+
+**Rationale:**
+- Ensures consistent behavior across different editors, compilers, and operating systems
+- Prevents encoding-related build failures in international development environments
+- Maintains compatibility with legacy build systems and tools
+
+**Mathematical Symbols in Comments:**
+Use LaTeX notation for mathematical expressions in comments:
+
+```cpp
+// [CORRECT] LaTeX notation for mathematical symbols
+/**
+ * Vacuum magnetic permeability \mu_0 in Vs/Am.
+ * Traditional definition: \mu_0 = 4\pi \times 10^{-7} Vs/Am
+ * Volume integral: \iiint d\rho d\theta d\zeta over torus
+ * Constraint scaling: 1/\sqrt{2}
+ */
+
+// [INCORRECT] Unicode mathematical symbols
+/**
+ * Vacuum magnetic permeability \mu_0 in Vs/Am.
+ * Traditional definition: \mu_0 = 4\pi \times 10^-^7 Vs/Am
+ */
+```
+
+**Standard LaTeX Mathematical Notation:**
+- Greek letters: `\alpha`, `\beta`, `\gamma`, `\mu`, `\pi`, `\theta`, `\zeta`, `\rho`
+- Operators: `\times`, `\cdot`, `\pm`, `\rightarrow`
+- Integrals: `\int`, `\iiint`, `\int_{-1}^1`, `\sum_i`
+- Functions: `\sqrt{2}`, `\frac{1}{2}`, `\sin`, `\cos`
+- Subscripts/superscripts: `\mu_0`, `x^2`, `10^{-7}`
+
+---
+
 ## Naming Conventions
 
 ### **Functions**: CamelCase (Google Style)
 
 ```cpp
-// ✅ All functions use CamelCase with capital first letter
+// [CORRECT] All functions use CamelCase with capital first letter
 class IdealMhdModel {
   void ComputeGeometry();           // Infrastructure function
   void UpdatePreconditioner();      // Infrastructure function
   void FourierToReal();            // Physics computation (descriptive name)
 };
 
-// ✅ Legacy physics function names acceptable when well-established
+// [CORRECT] Legacy physics function names acceptable when well-established
 void funct3d();    // Historical VMEC routine name - keep for consistency
 void forces();     // Core physics function - widely understood
 ```
@@ -39,12 +77,12 @@ void forces();     // Core physics function - widely understood
 #### **Local Variables**: `snake_case` for infrastructure, traditional names for physics
 ```cpp
 void SomeFunction() {
-  // ✅ Infrastructure variables: descriptive snake_case
+  // [CORRECT] Infrastructure variables: descriptive snake_case
   int iteration_count = 0;
   bool convergence_achieved = false;
   double tolerance_threshold = 1e-6;
 
-  // ✅ Physics variables: preserve traditional names
+  // [CORRECT] Physics variables: preserve traditional names
   double iotas = 0.0;         // Rotational transform (stellarator physics)
   double presf = 0.0;         // Pressure on full grid
   double phips = 0.0;         // Toroidal flux derivative
@@ -55,12 +93,12 @@ void SomeFunction() {
 ```cpp
 class IdealMhdModel {
 private:
-  // ✅ Core physics variables: preserve names, add trailing underscore
-  std::vector<double> bsupu_;     // B^θ contravariant component
-  std::vector<double> bsupv_;     // B^ζ contravariant component
+  // [CORRECT] Core physics variables: preserve names, add trailing underscore
+  std::vector<double> bsupu_;     // B^\theta contravariant component
+  std::vector<double> bsupv_;     // B^\zeta contravariant component
   std::vector<double> iotaf_;     // Rotational transform, full grid
 
-  // ✅ Infrastructure variables: descriptive names + trailing underscore
+  // [CORRECT] Infrastructure variables: descriptive names + trailing underscore
   bool convergence_achieved_;     // Clear intent
   int iteration_count_;           // Descriptive
   FlowControl flow_control_;      // Modernized from m_fc
@@ -72,7 +110,7 @@ private:
 **CRITICAL**: Use `m_` prefix for parameters that **WILL BE MODIFIED** by the function:
 
 ```cpp
-// ✅ Crystal clear data flow intent
+// [CORRECT] Crystal clear data flow intent
 void ComputeMagneticField(
     // INPUTS (read-only):
     const std::vector<double>& iotaf,           // Rotational transform
@@ -80,11 +118,11 @@ void ComputeMagneticField(
     const Sizes& grid_sizes,                    // Grid configuration
 
     // OUTPUTS (will be modified):
-    std::vector<double>& m_bsupu,               // B^θ - MODIFIED
-    std::vector<double>& m_bsupv,               // B^ζ - MODIFIED
+    std::vector<double>& m_bsupu,               // B^\theta - MODIFIED
+    std::vector<double>& m_bsupv,               // B^\zeta - MODIFIED
     FourierGeometry& m_geometry);               // Geometry - MODIFIED
 
-// ✅ Mixed input/output clearly identified
+// [CORRECT] Mixed input/output clearly identified
 void UpdateEquilibrium(
     const VmecConstants& constants,             // INPUT: Physical constants
     RadialProfiles& m_profiles,                 // INPUT/OUTPUT: Modified
@@ -92,30 +130,72 @@ void UpdateEquilibrium(
     bool& m_convergence_flag);                  // OUTPUT: Convergence status
 ```
 
-### **Constants**: kCamelCase with Physics Context
+### **Constants**: Domain-Organized kCamelCase
 
-VMEC++ consolidates algorithmic and physical constants in `vmec_algorithm_constants.h` to replace magic numbers and improve code readability:
+#### **Organization by Purpose in vmec_algorithm_constants.h**
+
+Organize constants into logical domains with comprehensive documentation:
 
 ```cpp
 namespace vmecpp::vmec_algorithm_constants {
-  // ✅ Poloidal mode parity constants with descriptive names (replaces m_evn/m_odd)
-  static constexpr int kEvenParity = 0;    // Even poloidal mode numbers (m=0,2,4,...)
-  static constexpr int kOddParity = 1;     // Odd poloidal mode numbers (m=1,3,5,...)
 
-  // ✅ Algorithm constants with clear purpose
-  static constexpr int kMinIterationsForM1Constraint = 2;
-  static constexpr double kFastConvergenceThreshold = 1.0e-6;
-  static constexpr int kMaxIterationDeltaForEdgeForces = 50;
+// ========== Physical Constants ==========
+/**
+ * Vacuum magnetic permeability \mu_0 in Vs/Am.
+ * Value matches Fortran VMEC for 1:1 comparison rather than CODATA-2022.
+ * Traditional definition: \mu_0 = 4\pi \times 10^{-7} Vs/Am
+ */
+static constexpr double kVacuumPermeability = 4.0e-7 * M_PI;
 
-  // ✅ Physics constants with historical context
-  static constexpr int kSignOfJacobian = -1;              // "signgs" in Fortran VMEC
-  static constexpr double kMagneticFieldBlendingFactor = 0.05;  // "pdamp" in Fortran
-  static constexpr double kToroidalNormalizationFactor = 2.0 * M_PI;
+// ========== Mathematical Constants ==========
+/**
+ * Toroidal volume normalization factor: 2\pi
+ * Used throughout for volume integrals, flux surface calculations
+ */
+static constexpr double kToroidalNormalizationFactor = 2.0 * M_PI;
 
-  // ✅ Convergence and tolerance constants
-  static constexpr double kDefaultForceTolerance = 1.0e-10;
-  static constexpr double kVacuumPressureThreshold = 1.0e-3;
-}
+// ========== Convergence and Tolerance Constants ==========
+/**
+ * Force residual threshold for iteration decisions.
+ * Context: ||F_residual|| < threshold \rightarrow good convergence
+ */
+static constexpr double kForceResidualThreshold = 1.0e-2;
+
+// ========== Symmetry and Parity Constants ==========
+/**
+ * Even parity index for Fourier harmonics with even poloidal mode number m.
+ * Context: Harmonics with m=0,2,4,6,... (even poloidal mode numbers)
+ */
+static constexpr int kEvenParity = 0;
+
+} // namespace vmec_algorithm_constants
+```
+
+#### **Constants Migration Strategy**
+
+When replacing magic numbers:
+
+1. **Identify semantic meaning**: What does this number represent physically or algorithmically?
+2. **Choose descriptive name**: Use `k` prefix + descriptive CamelCase name
+3. **Document context**: Include usage locations, physical meaning, and historical references
+4. **Group by domain**: Place in appropriate section of `vmec_algorithm_constants.h`
+5. **Add using declarations**: Import frequently-used constants at file level
+
+```cpp
+// [CORRECT] Replace magic numbers systematically
+// BEFORE:
+if (iteration_count > 75) { /* change approach */ }
+scalxc[idx * 2 + 0] = 1.0;  // even modes
+scalxc[idx * 2 + 1] = factor;  // odd modes
+
+// AFTER:
+using vmecpp::vmec_algorithm_constants::kJacobianIterationThreshold;
+using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kOddParity;
+
+if (iteration_count > kJacobianIterationThreshold) { /* change approach */ }
+scalxc[idx * 2 + kEvenParity] = 1.0;  // even poloidal mode numbers
+scalxc[idx * 2 + kOddParity] = factor;  // odd poloidal mode numbers
 ```
 
 ### **Using Declarations**: File-Level Import for Readability
@@ -123,13 +203,13 @@ namespace vmecpp::vmec_algorithm_constants {
 Follow Google C++ Style Guide by using file-level `using` declarations for frequently used symbols:
 
 ```cpp
-// ✅ File-level using declarations for constants
+// [CORRECT] File-level using declarations for constants
 #include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
 
 using vmecpp::vmec_algorithm_constants::kEvenParity;
 using vmecpp::vmec_algorithm_constants::kOddParity;
 
-// ✅ Now use descriptive names directly in code
+// [CORRECT] Now use descriptive names directly in code
 void ProcessFourierModes() {
   for (int parity = kEvenParity; parity <= kOddParity; ++parity) {
     // Clear poloidal mode number parity vs cryptic m_evn/m_odd
@@ -141,11 +221,57 @@ void ProcessFourierModes() {
   }
 }
 
-// ❌ Avoid global using directives
+// [INCORRECT] Avoid global using directives
 using namespace vmecpp::vmec_algorithm_constants;  // DON'T do this
 
-// ❌ Avoid long namespace qualifiers in frequently-used code
+// [INCORRECT] Avoid long namespace qualifiers in frequently-used code
 vmecpp::vmec_algorithm_constants::kEvenParity;     // Too verbose for frequent use
+```
+
+---
+
+## Header Inclusion Patterns
+
+### **Constants Headers**
+
+Include algorithm constants header and use file-level using declarations:
+
+```cpp
+#include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
+
+// [CORRECT] File-level using declarations for frequently used constants
+using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kOddParity;
+using vmecpp::vmec_algorithm_constants::kDefaultForceTolerance;
+
+namespace vmecpp {
+
+void ProcessEquilibrium() {
+  // [CORRECT] Use descriptive constant names directly
+  for (int parity = kEvenParity; parity <= kOddParity; ++parity) {
+    // Process Fourier harmonics...
+  }
+
+  if (force_residual < kDefaultForceTolerance) {
+    // Convergence achieved...
+  }
+}
+
+} // namespace vmecpp
+```
+
+### **Build Dependencies**
+
+When using constants, ensure proper BUILD.bazel dependencies:
+
+```python
+cc_library(
+    name="your_module",
+    deps=[
+        "//vmecpp/vmec/vmec_constants:vmec_constants",  # For algorithm constants
+        # ... other deps
+    ],
+)
 ```
 
 ---
@@ -161,22 +287,22 @@ VMEC++ uses **different Fourier bases** for internal computation vs external int
 #### **Internal Product Basis** (Computational Efficiency)
 ```cpp
 /**
- * INTERNAL Fourier coefficients using product basis cos(mθ) * cos(nζ).
+ * INTERNAL Fourier coefficients using product basis cos(m\theta) * cos(n\zeta).
  *
- * Mathematical form: R(θ,ζ) = Σ rmncc_[m,n] * cos(mθ) * cos(nζ)
+ * Mathematical form: R(\theta,\zeta) = \sum_{m,n} rmncc_[m,n] * cos(m\theta) * cos(n\zeta)
  *
- * CRITICAL: This is NOT the combined basis cos(mθ-nζ) used externally.
+ * CRITICAL: This is NOT the combined basis cos(m\theta-n\zeta) used externally.
  *
- * Computational advantage: Enables separable FFTs (θ and ζ independent)
- * Conversion: cos(mθ-nζ) = cos(mθ)cos(nζ) + sin(mθ)sin(nζ) = rmncc + rmnss
+ * Computational advantage: Enables separable FFTs (\theta and \zeta independent)
+ * Conversion: cos(m\theta-n\zeta) = cos(m\theta)cos(n\zeta) + sin(m\theta)sin(n\zeta) = rmncc + rmnss
  * External equivalent: rmnc (combined basis)
  * Physics: Even-even trigonometric parity component of R boundary
  */
 std::vector<double> rmncc_;
 
 /**
- * INTERNAL Fourier coefficients using product basis sin(mθ) * sin(nζ).
- * Mathematical form: R(θ,ζ) = Σ rmnss_[m,n] * sin(mθ) * sin(nζ)
+ * INTERNAL Fourier coefficients using product basis sin(m\theta) * sin(n\zeta).
+ * Mathematical form: R(\theta,\zeta) = \sum_{m,n} rmnss_[m,n] * sin(m\theta) * sin(n\zeta)
  * Physics: Odd-odd trigonometric parity component of R boundary
  */
 std::vector<double> rmnss_;
@@ -185,18 +311,18 @@ std::vector<double> rmnss_;
 #### **External Combined Basis** (Researcher Interface)
 ```cpp
 /**
- * EXTERNAL Fourier coefficients using combined basis cos(mθ - nζ).
+ * EXTERNAL Fourier coefficients using combined basis cos(m\theta - n\zeta).
  *
- * Mathematical form: R(θ,ζ) = Σ rmnc[m,n] * cos(mθ - nζ)
+ * Mathematical form: R(\theta,\zeta) = \sum_{m,n} rmnc[m,n] * cos(m\theta - n\zeta)
  *
  * Traditional VMEC format: Used in wout files, researcher-familiar
  * Conversion from internal: rmnc = rmncc + rmnss (3D case)
- * Stellarator symmetry: cos(mθ-nζ) terms (stellarator-symmetric harmonics)
+ * Stellarator symmetry: cos(m\theta-n\zeta) terms (stellarator-symmetric harmonics)
  */
 RowMatrixXd rmnc;    // External interface - preserve traditional name
 
 /**
- * EXTERNAL Z coefficients using combined basis sin(mθ - nζ).
+ * EXTERNAL Z coefficients using combined basis sin(m\theta - n\zeta).
  * Traditional VMEC format for Z-coordinate stellarator-symmetric terms
  */
 RowMatrixXd zmns;    // External interface - preserve traditional name
@@ -206,28 +332,28 @@ RowMatrixXd zmns;    // External interface - preserve traditional name
 ```cpp
 // Internal product basis suffix meanings:
 // NOTE: This "parity" refers to trigonometric function parity, NOT poloidal mode number parity
-std::vector<double> rmncc_;  // cos(mθ) * cos(nζ)  [even-even trig parity]
-std::vector<double> rmnss_;  // sin(mθ) * sin(nζ)  [odd-odd trig parity]
-std::vector<double> rmnsc_;  // sin(mθ) * cos(nζ)  [odd-even trig parity]
-std::vector<double> rmncs_;  // cos(mθ) * sin(nζ)  [even-odd trig parity]
+std::vector<double> rmncc_;  // cos(m\theta) * cos(n\zeta)  [even-even trig parity]
+std::vector<double> rmnss_;  // sin(m\theta) * sin(n\zeta)  [odd-odd trig parity]
+std::vector<double> rmnsc_;  // sin(m\theta) * cos(n\zeta)  [odd-even trig parity]
+std::vector<double> rmncs_;  // cos(m\theta) * sin(n\zeta)  [even-odd trig parity]
 
-std::vector<double> zmnsc_;  // Z: sin(mθ) * cos(nζ)
-std::vector<double> zmncs_;  // Z: cos(mθ) * sin(nζ)
-std::vector<double> lmnsc_;  // λ: sin(mθ) * cos(nζ)
-std::vector<double> lmncs_;  // λ: cos(mθ) * sin(nζ)
+std::vector<double> zmnsc_;  // Z: sin(m\theta) * cos(n\zeta)
+std::vector<double> zmncs_;  // Z: cos(m\theta) * sin(n\zeta)
+std::vector<double> lmnsc_;  // \lambda: sin(m\theta) * cos(n\zeta)
+std::vector<double> lmncs_;  // \lambda: cos(m\theta) * sin(n\zeta)
 ```
 
 ### **Conversion Function Naming**
 ```cpp
-// ✅ Basis transformation functions use descriptive names
+// [CORRECT] Basis transformation functions use descriptive names
 class FourierBasisFastPoloidal {
-  // Convert external combined → internal product basis
-  int CosToProductBasis(...)  // cos(mθ-nζ) → {cc, ss}
-  int SinToProductBasis(...)  // sin(mθ-nζ) → {sc, cs}
+  // Convert external combined -> internal product basis
+  int CosToProductBasis(...)  // cos(m\theta-n\zeta) -> {cc, ss}
+  int SinToProductBasis(...)  // sin(m\theta-n\zeta) -> {sc, cs}
 
-  // Convert internal product → external combined basis
-  int ProductBasisToCos(...)  // {cc, ss} → cos(mθ-nζ)
-  int ProductBasisToSin(...)  // {sc, cs} → sin(mθ-nζ)
+  // Convert internal product -> external combined basis
+  int ProductBasisToCos(...)  // {cc, ss} -> cos(m\theta-n\zeta)
+  int ProductBasisToSin(...)  // {sc, cs} -> sin(m\theta-n\zeta)
 };
 ```
 
@@ -238,11 +364,11 @@ class FourierBasisFastPoloidal {
 ### **Physics Variables**: Comprehensive Context
 ```cpp
 /**
- * Contravariant magnetic field component B^θ in VMEC flux coordinates.
+ * Contravariant magnetic field component B^\theta in VMEC flux coordinates.
  *
  * Physics context:
  * - Represents magnetic field strength in poloidal direction
- * - Computed from equilibrium force balance ∇p = J × B
+ * - Computed from equilibrium force balance \nabla p = J \times B
  * - Used in energy and force calculations
  *
  * Computational details:
@@ -251,7 +377,7 @@ class FourierBasisFastPoloidal {
  * - Memory layout: [radial_index * angular_size + angular_index]
  *
  * Historical reference: "bsupu" in Fortran VMEC
- * Related variables: bsupv_ (B^ζ component), bsubv_ (covariant B_ζ)
+ * Related variables: bsupv_ (B^\zeta component), bsubv_ (covariant B_\zeta)
  */
 std::vector<double> bsupu_;
 ```
@@ -272,20 +398,60 @@ std::vector<double> bsupu_;
 int iteration_count_;
 ```
 
+### **Mathematical Documentation Standards**
+
+#### **LaTeX Notation in Comments**
+Use consistent LaTeX notation for mathematical expressions:
+
+```cpp
+/**
+ * Gauss-Legendre quadrature integration.
+ * Mathematical basis: \int_{-1}^1 f(x)dx \approx \sum_i w_i f(x_i)
+ *
+ * Integration limits: [-1, 1]
+ * Accuracy: Exact for polynomials of degree \leq 2n-1
+ * Implementation: 10-point quadrature for pressure profiles
+ */
+static constexpr std::array<double, 10> kGaussLegendreWeights10 = {...};
+
+/**
+ * Magnetic field components in flux coordinates.
+ * Force balance: J \times B = \nabla p
+ * Contravariant components: B^\theta, B^\zeta
+ * Units: Tesla
+ */
+std::vector<double> bsupu_;  // B^\theta component
+```
+
+#### **Physical Context Documentation**
+Always include physical meaning alongside mathematical notation:
+
+```cpp
+/**
+ * Rotational transform profile \iota(s) on full radial grid.
+ *
+ * Physics: \iota = d\chi/d\phi (change in poloidal angle per toroidal angle)
+ * Magnetic surfaces: \iota determines field line winding
+ * Stability: \iota profiles affect MHD stability boundaries
+ * Units: Dimensionless (radians/radian)
+ */
+std::vector<double> iotaf_;
+```
+
 ---
 
 ## Implementation Examples
 
 ### **Before and After: Function Signatures**
 ```cpp
-// ❌ BEFORE: Unclear data flow, mixed conventions
+// [INCORRECT] BEFORE: Unclear data flow, mixed conventions
 absl::StatusOr<bool> update(
     FourierGeometry& m_decomposed_x,     // Modified? Unclear!
     FourierForces& m_physical_f,         // Modified? Unclear!
     bool& m_need_restart,                // Modified? Unclear!
     const int iter2);                    // Magic variable name
 
-// ✅ AFTER: Crystal clear data flow and intent
+// [CORRECT] AFTER: Crystal clear data flow and intent
 absl::StatusOr<bool> Update(
     const int iteration_count,                    // INPUT: Clear name
     FourierGeometry& m_decomposed_geometry,       // OUTPUT: Modified
@@ -295,14 +461,14 @@ absl::StatusOr<bool> Update(
 
 ### **Before and After: Class Members**
 ```cpp
-// ❌ BEFORE: Mixed conventions, unclear purposes
+// [INCORRECT] BEFORE: Mixed conventions, unclear purposes
 class IdealMhdModel {
   bool m_liter_flag;           // Hungarian notation + unclear
   std::vector<double> bsupu;   // No context, unclear if member
   FlowControl m_fc;            // Cryptic abbreviation
 };
 
-// ✅ AFTER: Consistent conventions, clear intent
+// [CORRECT] AFTER: Consistent conventions, clear intent
 class IdealMhdModel {
   bool convergence_achieved_;           // Clear infrastructure naming
   std::vector<double> bsupu_;           // Physics name + member convention
@@ -315,16 +481,16 @@ class IdealMhdModel {
 ## File Organization: Google Style
 
 ```cpp
-// ✅ Header files: snake_case
+// [CORRECT] Header files: snake_case
 ideal_mhd_model.h
 fourier_basis_fast_poloidal.h
 vmec_algorithm_constants.h
 
-// ✅ Include guards: UPPER_SNAKE_CASE with full path
+// [CORRECT] Include guards: UPPER_SNAKE_CASE with full path
 #ifndef VMECPP_VMEC_IDEAL_MHD_MODEL_IDEAL_MHD_MODEL_H_
 #define VMECPP_VMEC_IDEAL_MHD_MODEL_IDEAL_MHD_MODEL_H_
 
-// ✅ Class names: CamelCase
+// [CORRECT] Class names: CamelCase
 class IdealMhdModel {
 class FourierBasisFastPoloidal {
 class VmecAlgorithmConstants {
@@ -332,20 +498,20 @@ class VmecAlgorithmConstants {
 
 ---
 
-## Recent Improvements: Constants Migration ✅
+## Recent Improvements: Constants Migration [DONE]
 
-### **Completed: m_evn/m_odd → kEvenParity/kOddParity Migration**
+### **Completed: m_evn/m_odd -> kEvenParity/kOddParity Migration**
 
 Successfully migrated all 64 occurrences of cryptic `m_evn`/`m_odd` constants to descriptive `kEvenParity`/`kOddParity` throughout the VMEC++ codebase:
 
 ```cpp
-// ❌ BEFORE: Cryptic parity indexing
+// [INCORRECT] BEFORE: Cryptic parity indexing
 if (parity == m_evn) {
   // Process even modes...
 }
 rmncc[idx] += fourier_data[m_odd];
 
-// ✅ AFTER: Self-documenting poloidal mode parity operations
+// [CORRECT] AFTER: Self-documenting poloidal mode parity operations
 if (parity == kEvenParity) {
   // Process Fourier harmonics with even poloidal mode numbers...
 }
@@ -363,23 +529,23 @@ rmncc[idx] += fourier_data[kOddParity];
 Created `vmec_algorithm_constants.h` as central repository for 50+ algorithmic, physical, and mathematical constants previously scattered across the codebase:
 
 ```cpp
-// ✅ Physics constants with full context documentation
+// [CORRECT] Physics constants with full context documentation
 static constexpr double kVacuumPermeability = 4.0e-7 * M_PI;  // Matches Fortran VMEC
 static constexpr double kIonLarmorRadiusCoefficient = 3.2e-3;  // Used in output_quantities
 
-// ✅ Algorithm constants with usage locations documented
+// [CORRECT] Algorithm constants with usage locations documented
 static constexpr int kMinIterationsForM1Constraint = 2;        // From ideal_mhd_model.cc
 static constexpr double kFastConvergenceThreshold = 1.0e-6;    // Convergence acceleration
 
-// ✅ Gauss-Legendre quadrature arrays for high-accuracy integration
+// [CORRECT] Gauss-Legendre quadrature arrays for high-accuracy integration
 static constexpr std::array<double, 10> kGaussLegendreWeights10 = {...};
 ```
 
 ## Implementation Strategy
 
-### **Phase 1: High-Impact, Low-Risk Changes ✅ COMPLETED**
-1. ✅ **Replace magic numbers** with named constants from `vmec_algorithm_constants.h`
-2. ✅ **Migrate parity constants** from `m_evn/m_odd` to `kEvenParity/kOddParity`
+### **Phase 1: High-Impact, Low-Risk Changes [DONE]**
+1. [DONE] **Replace magic numbers** with named constants from `vmec_algorithm_constants.h`
+2. [DONE] **Migrate parity constants** from `m_evn/m_odd` to `kEvenParity/kOddParity`
 3. **Standardize function parameter signatures** with `m_` prefix for mutable parameters
 4. **Add comprehensive documentation** to Fourier basis variables
 5. **Update new code** to follow conventions consistently
@@ -406,7 +572,9 @@ static constexpr std::array<double, 10> kGaussLegendreWeights10 = {...};
 6. **Use Descriptive Constants**: `kEvenParity` refers to Fourier harmonics with even poloidal mode number m, and `kOddParity` refers to Fourier harmonics with odd poloidal mode number m
 7. **Consolidate Magic Numbers**: Central `vmec_algorithm_constants.h` improves maintainability
 8. **Follow Google C++ Style**: File-level `using` declarations for readability without namespace pollution
-9. **Eliminate Deprecated Headers**: Remove C++17-deprecated includes like `<cstdbool>`
+9. **Enforce ASCII Compliance**: All source code must use ASCII-only characters with LaTeX notation for mathematical symbols
+10. **Organize Constants by Domain**: Group related constants with comprehensive documentation in appropriate sections
+11. **Use Mathematical Documentation Standards**: Combine LaTeX notation with physical context for clarity
 
 **Recent Achievements**: Successfully migrated 64 occurrences of cryptic parity constants and consolidated 50+ algorithmic constants, demonstrating that systematic modernization can preserve physics domain knowledge while improving code clarity.
 

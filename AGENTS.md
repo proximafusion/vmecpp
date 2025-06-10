@@ -175,18 +175,18 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 VMEC++ uses **two different Fourier representations**:
 
 **Internal Product Basis** (Computational efficiency):
-- `rmncc_`: R × cos(mθ) × cos(nζ) coefficients
-- `rmnss_`: R × sin(mθ) × sin(nζ) coefficients
+- `rmncc_`: R \times cos(m\theta) \times cos(n\zeta) coefficients
+- `rmnss_`: R \times sin(m\theta) \times sin(n\zeta) coefficients
 - Enables separable FFTs for performance
 
 **External Combined Basis** (Researcher interface):
-- `rmnc`: R × cos(mθ - nζ) coefficients (traditional VMEC format)
-- `zmns`: Z × sin(mθ - nζ) coefficients
+- `rmnc`: R \times cos(m\theta - n\zeta) coefficients (traditional VMEC format)
+- `zmns`: Z \times sin(m\theta - n\zeta) coefficients
 - Compatible with research literature and SIMSOPT
 
 **Key Physics Variables** (preserve traditional names):
-- `bsupu_`: B^θ contravariant magnetic field component
-- `bsupv_`: B^ζ contravariant magnetic field component
+- `bsupu_`: B^\theta contravariant magnetic field component
+- `bsupv_`: B^\zeta contravariant magnetic field component
 - `iotaf_`: Rotational transform on full grid
 - `presf_`: Pressure on full grid
 
