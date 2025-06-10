@@ -14,7 +14,11 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
+#include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
+
+using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kOddParity;
 
 namespace vmecpp {
 
@@ -771,14 +775,14 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     radialBlending[jF1 - r_.nsMinF1] = 2.0 * pDamp * (1.0 - fullGridPos);
 
     // even-m: no scaling
-    scalxc[(jF1 - r_.nsMinF1) * 2 + m_evn] = 1.0;
+    scalxc[(jF1 - r_.nsMinF1) * 2 + kEvenParity] = 1.0;
 
     // odd-m: factor out 1/sqrt(s)
     // This is Eqn. (8c) in Hirshman, Schwenn & Nuehrenberg (1990).
     // The innermost full-grid point (== magnetic axis)
     // gets sqrt(s) of the innermost actual flux surface at j=1.
     // This is a constant extrapolation towards the axis.
-    scalxc[(jF1 - r_.nsMinF1) * 2 + m_odd] =
+    scalxc[(jF1 - r_.nsMinF1) * 2 + kOddParity] =
         1.0 / std::max(sqrtSF[jF1 - r_.nsMinF1], sqrtS1);
   }
 

@@ -22,7 +22,11 @@
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
+#include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
+
+using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kOddParity;
 
 namespace {
 
@@ -1327,16 +1331,16 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
       }
 
       const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
-      r1_e[idx_jl] += rnkcc[m_evn];
-      ru_e[idx_jl] += rnkcc_m[m_evn];
-      z1_e[idx_jl] += znksc[m_evn];
-      zu_e[idx_jl] += znksc_m[m_evn];
-      lu_e[idx_jl] += lnksc_m[m_evn];
-      r1_o[idx_jl] += rnkcc[m_odd];
-      ru_o[idx_jl] += rnkcc_m[m_odd];
-      z1_o[idx_jl] += znksc[m_odd];
-      zu_o[idx_jl] += znksc_m[m_odd];
-      lu_o[idx_jl] += lnksc_m[m_odd];
+      r1_e[idx_jl] += rnkcc[kEvenParity];
+      ru_e[idx_jl] += rnkcc_m[kEvenParity];
+      z1_e[idx_jl] += znksc[kEvenParity];
+      zu_e[idx_jl] += znksc_m[kEvenParity];
+      lu_e[idx_jl] += lnksc_m[kEvenParity];
+      r1_o[idx_jl] += rnkcc[kOddParity];
+      ru_o[idx_jl] += rnkcc_m[kOddParity];
+      z1_o[idx_jl] += znksc[kOddParity];
+      zu_o[idx_jl] += znksc_m[kOddParity];
+      lu_o[idx_jl] += lnksc_m[kOddParity];
     }  // l
   }  // j
 
@@ -1368,11 +1372,11 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
 
     // In the following, we need to apply a scaling factor only for the
     // odd-parity m contributions:
-    //   m_parity == m_odd(==1) --> * m_p_.sqrtSF[jF - r_.nsMinF1]
-    //   m_parity == m_evn(==0) --> * 1
+    //   m_parity == kOddParity(==1) --> * m_p_.sqrtSF[jF - r_.nsMinF1]
+    //   m_parity == kEvenParity(==0) --> * 1
     //
-    // This expression is 0 if m_parity is 0 (=m_evn) and m_p_.sqrtSF[jF -
-    // r_.nsMinF1] if m_parity is 1 (==m_odd):
+    // This expression is 0 if m_parity is 0 (=kEvenParity) and m_p_.sqrtSF[jF -
+    // r_.nsMinF1] if m_parity is 1 (==kOddParity):
     //   m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]
     //
     // This expression is 1 if m_parity is 0 and 0 if m_parity is 1:
@@ -1380,7 +1384,7 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
     //
     // Hence, we can replace the following conditional statement:
     //   double scale = xmpq[m];
-    //   if (m_parity == m_odd) {
+    //   if (m_parity == kOddParity) {
     //       scale *= m_p_.sqrtSF[jF - r_.nsMinF1];
     //   }
     // with the following code:
@@ -2791,13 +2795,13 @@ void IdealMhdModel::computePreconditioningMatrix(
   // All this sm, sp logic seems to be related to the odd-m scaling factors...
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // off-diagonal, d^2/ds^2 (radial), on half-grid
-    m_axm[(jH - r_.nsMinH) * 2 + m_evn] = -ax[(jH - r_.nsMinH) * 4 + 0];
-    m_axm[(jH - r_.nsMinH) * 2 + m_odd] =
+    m_axm[(jH - r_.nsMinH) * 2 + kEvenParity] = -ax[(jH - r_.nsMinH) * 4 + 0];
+    m_axm[(jH - r_.nsMinH) * 2 + kOddParity] =
         ax[(jH - r_.nsMinH) * 4 + 1] * sm[jH - r_.nsMinH] * sp[jH - r_.nsMinH];
 
     // off-diagonal, m^2 (poloidal), on half-grid
-    m_bxm[(jH - r_.nsMinH) * 2 + m_evn] = bx[(jH - r_.nsMinH) * 3 + 0];
-    m_bxm[(jH - r_.nsMinH) * 2 + m_odd] =
+    m_bxm[(jH - r_.nsMinH) * 2 + kEvenParity] = bx[(jH - r_.nsMinH) * 3 + 0];
+    m_bxm[(jH - r_.nsMinH) * 2 + kOddParity] =
         bx[(jH - r_.nsMinH) * 3 + 0] * sm[jH - r_.nsMinH] * sp[jH - r_.nsMinH];
   }
 
@@ -2806,18 +2810,18 @@ void IdealMhdModel::computePreconditioningMatrix(
     int jH_o = jF - r_.nsMinH;
 
     // diagonal, d^2/ds^2 (radial), on forces full-grid
-    m_axd[(jF - r_.nsMinF) * 2 + m_evn] =
+    m_axd[(jF - r_.nsMinF) * 2 + kEvenParity] =
         (jF > 0 ? ax[jH_i * 4 + 0] : 0.0) +
         (jF < m_fc_.ns - 1 ? ax[jH_o * 4 + 0] : 0.0);
-    m_axd[(jF - r_.nsMinF) * 2 + m_odd] =
+    m_axd[(jF - r_.nsMinF) * 2 + kOddParity] =
         (jF > 0 ? ax[jH_i * 4 + 2] * sm[jH_i] * sm[jH_i] : 0.0) +
         (jF < m_fc_.ns - 1 ? ax[jH_o * 4 + 3] * sp[jH_o] * sp[jH_o] : 0.0);
 
     // diagonal, m^2 (poloidal), on forces full-grid
-    m_bxd[(jF - r_.nsMinF) * 2 + m_evn] =
+    m_bxd[(jF - r_.nsMinF) * 2 + kEvenParity] =
         (jF > 0 ? bx[jH_i * 3 + 1] : 0.0) +
         (jF < m_fc_.ns - 1 ? bx[jH_o * 3 + 2] : 0.0);
-    m_bxd[(jF - r_.nsMinF) * 2 + m_odd] =
+    m_bxd[(jF - r_.nsMinF) * 2 + kOddParity] =
         (jF > 0 ? bx[jH_i * 3 + 1] * sm[jH_i] * sm[jH_i] : 0.0) +
         (jF < m_fc_.ns - 1 ? bx[jH_o * 3 + 2] * sp[jH_o] * sp[jH_o] : 0.0);
 
@@ -2870,8 +2874,8 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
     }
 
     double tcon_base =
-        std::min(fabs(ard[(jF - r_.nsMinF) * 2 + m_evn] / arNorm),
-                 fabs(azd[(jF - r_.nsMinF) * 2 + m_evn] / azNorm));
+        std::min(fabs(ard[(jF - r_.nsMinF) * 2 + kEvenParity] / arNorm),
+                 fabs(azd[(jF - r_.nsMinF) * 2 + kEvenParity] / azNorm));
 
     // TODO(jons): why the last term ?
     // --> could be to cancel some terms in ard, azd

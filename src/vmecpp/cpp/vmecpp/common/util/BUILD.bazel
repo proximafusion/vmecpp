@@ -13,6 +13,7 @@ cc_library(
         "@abseil-cpp//absl/strings:str_format",
         "@eigen",
         "@nlohmann_json//:json",
+        "//vmecpp/vmec/vmec_constants:vmec_constants",
     ],
 )
 
