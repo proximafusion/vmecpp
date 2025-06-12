@@ -109,15 +109,16 @@ void TridiagonalSolveSerial(std::vector<double> &m_a, std::vector<double> &m_d,
 }
 
 void TridiagonalSolveOpenMP(
-    std::vector<double> &ar, std::vector<double> &dr, std::vector<double> &br,
-    std::vector<std::span<double>> &cr, std::vector<double> &az,
-    std::vector<double> &dz, std::vector<double> &bz,
-    std::vector<std::span<double>> &cz, const std::vector<int> &jMin, int jMax,
-    int mnmax, int nRHS, std::vector<std::mutex> &mutices, int ncpu, int myid,
-    int nsMinF, int nsMaxF, std::vector<double> &handover_ar,
-    std::vector<std::vector<double>> &handover_cr,
-    std::vector<double> &handover_az,
-    std::vector<std::vector<double>> &handover_cz) {
+    std::vector<double> &m_ar, std::vector<double> &m_dr,
+    std::vector<double> &m_br, std::vector<std::span<double>> &m_cr,
+    std::vector<double> &m_az, std::vector<double> &m_dz,
+    std::vector<double> &m_bz, std::vector<std::span<double>> &m_cz,
+    const std::vector<int> &jMin, int jMax, int mnmax, int nRHS,
+    std::vector<std::mutex> &m_mutices, int ncpu, int myid, int nsMinF,
+    int nsMaxF, std::vector<double> &m_handover_ar,
+    std::vector<std::vector<double>> &m_handover_cr,
+    std::vector<double> &m_handover_az,
+    std::vector<std::vector<double>> &m_handover_cz) {
 #pragma omp barrier
 
   if (myid == 0) {
@@ -127,12 +128,12 @@ void TridiagonalSolveOpenMP(
       for (int mn = 0; mn < mnmax; ++mn) {
         if (j < jMin[mn]) {  // continue; }
           int idx_mn = (j - nsMinF) * mnmax + mn;
-          ar[idx_mn] = 0.0;
-          az[idx_mn] = 0.0;
-          dr[idx_mn] = 1.0;
-          dz[idx_mn] = 1.0;
-          br[idx_mn] = 0.0;
-          bz[idx_mn] = 0.0;
+          m_ar[idx_mn] = 0.0;
+          m_az[idx_mn] = 0.0;
+          m_dr[idx_mn] = 1.0;
+          m_dz[idx_mn] = 1.0;
+          m_br[idx_mn] = 0.0;
+          m_bz[idx_mn] = 0.0;
         }
       }  // mn
     }  // j
@@ -141,8 +142,8 @@ void TridiagonalSolveOpenMP(
         for (int mn = 0; mn < mnmax; ++mn) {
           if (j < jMin[mn]) {  // continue; }
             int idx_mn = (j - nsMinF) * mnmax + mn;
-            cr[k][idx_mn] = 0.0;
-            cz[k][idx_mn] = 0.0;
+            m_cr[k][idx_mn] = 0.0;
+            m_cz[k][idx_mn] = 0.0;
           }
         }  // mn
       }  // j
@@ -152,31 +153,33 @@ void TridiagonalSolveOpenMP(
     // compute a[jMin] /= d[jMin] and c[*][jMin] /= d[jMin]
     for (int mn = 0; mn < mnmax; ++mn) {
       int idx_mn = (jMin[mn] - nsMinF) * mnmax + mn;
-      if (dr[idx_mn] == 0.0) {
-        LOG(FATAL) << absl::StrFormat("dr[jMin=%d, mn=%d] == 0", jMin[mn], mn);
+      if (m_dr[idx_mn] == 0.0) {
+        LOG(FATAL) << absl::StrFormat("m_dr[jMin=%d, mn=%d] == 0", jMin[mn],
+                                      mn);
       }
-      if (dz[idx_mn] == 0.0) {
-        LOG(FATAL) << absl::StrFormat("dz[jMin=%d, mn=%d] == 0", jMin[mn], mn);
+      if (m_dz[idx_mn] == 0.0) {
+        LOG(FATAL) << absl::StrFormat("m_dz[jMin=%d, mn=%d] == 0", jMin[mn],
+                                      mn);
       }
-      ar[idx_mn] /= dr[idx_mn];
-      az[idx_mn] /= dz[idx_mn];
+      m_ar[idx_mn] /= m_dr[idx_mn];
+      m_az[idx_mn] /= m_dz[idx_mn];
       for (int k = 0; k < nRHS; ++k) {
-        cr[k][idx_mn] /= dr[idx_mn];
-        cz[k][idx_mn] /= dz[idx_mn];
+        m_cr[k][idx_mn] /= m_dr[idx_mn];
+        m_cz[k][idx_mn] /= m_dz[idx_mn];
       }  // k
     }  // mn
   }  // myid == 0
 
   // have each thread take the lock that blocks the next thread
   if (myid + 1 < ncpu) {
-    mutices[myid + 1].lock();
+    m_mutices[myid + 1].lock();
   }
 
 #pragma omp barrier
 
   // blocks until previous thread is done with this step
   // thread 0 is free to go, since its mutex is unlocked
-  mutices[myid].lock();
+  m_mutices[myid].lock();
 
   for (int j = nsMinF; j < std::min(jMax, nsMaxF); ++j) {
     for (int mn = 0; mn < mnmax; ++mn) {
@@ -187,35 +190,35 @@ void TridiagonalSolveOpenMP(
       int idx_mn_0 = (j - nsMinF) * mnmax + mn;      //  0
       int idx_mn_m = (j - 1 - nsMinF) * mnmax + mn;  // -1
 
-      double prev_ar;
+      double prev_m_ar;
       double prev_az;
-      std::vector<std::span<double>> prev_cr(handover_cr.size());
-      std::vector<std::span<double>> prev_cz(handover_cz.size());
+      std::vector<std::span<double>> prev_cr(m_handover_cr.size());
+      std::vector<std::span<double>> prev_cz(m_handover_cz.size());
       int prev_c_idx;
       if (j == nsMinF) {
         // j-1 is within rank myid-1
-        prev_ar = handover_ar[mn];
-        prev_az = handover_az[mn];  // all_a[myid-1][(myid-1)->nsMaxF-1][mn]
-        for (std::size_t i = 0; i < handover_cr.size(); ++i) {
-          prev_cr[i] = handover_cr[i];
-          prev_cz[i] = handover_cz[i];
+        prev_m_ar = m_handover_ar[mn];
+        prev_az = m_handover_az[mn];  // all_a[myid-1][(myid-1)->nsMaxF-1][mn]
+        for (std::size_t i = 0; i < m_handover_cr.size(); ++i) {
+          prev_cr[i] = m_handover_cr[i];
+          prev_cz[i] = m_handover_cz[i];
         }
 
         // // needs to point to (myid-1)->nsMaxF-1 in previous rank
         prev_c_idx = mn;
       } else {
         // j-1 is within current rank
-        prev_ar = ar[idx_mn_m];
-        prev_az = az[idx_mn_m];
+        prev_m_ar = m_ar[idx_mn_m];
+        prev_az = m_az[idx_mn_m];
         prev_c_idx = idx_mn_m;
-        for (std::size_t i = 0; i < cr.size(); ++i) {
-          prev_cr[i] = cr[i];
-          prev_cz[i] = cz[i];
+        for (std::size_t i = 0; i < m_cr.size(); ++i) {
+          prev_cr[i] = m_cr[i];
+          prev_cz[i] = m_cz[i];
         }
       }
 
-      double denom_r = dr[idx_mn_0] - prev_ar * br[idx_mn_0];
-      double denom_z = dz[idx_mn_0] - prev_az * bz[idx_mn_0];
+      double denom_r = m_dr[idx_mn_0] - prev_m_ar * m_br[idx_mn_0];
+      double denom_z = m_dz[idx_mn_0] - prev_az * m_bz[idx_mn_0];
 
       // make sure to not divide by zero in the following
       if (denom_r == 0.0) {
@@ -226,45 +229,47 @@ void TridiagonalSolveOpenMP(
       }
 
       if (j < jMax - 1) {
-        ar[idx_mn_0] /= denom_r;
-        az[idx_mn_0] /= denom_z;
+        m_ar[idx_mn_0] /= denom_r;
+        m_az[idx_mn_0] /= denom_z;
       }
 
       for (int k = 0; k < nRHS; ++k) {
-        cr[k][idx_mn_0] =
-            (cr[k][idx_mn_0] - prev_cr[k][prev_c_idx] * br[idx_mn_0]) / denom_r;
-        cz[k][idx_mn_0] =
-            (cz[k][idx_mn_0] - prev_cz[k][prev_c_idx] * bz[idx_mn_0]) / denom_z;
+        m_cr[k][idx_mn_0] =
+            (m_cr[k][idx_mn_0] - prev_cr[k][prev_c_idx] * m_br[idx_mn_0]) /
+            denom_r;
+        m_cz[k][idx_mn_0] =
+            (m_cz[k][idx_mn_0] - prev_cz[k][prev_c_idx] * m_bz[idx_mn_0]) /
+            denom_z;
       }  // k
 
       if (j == nsMaxF - 1) {
         // need to leave handover data for rank myid+1
-        handover_ar[mn] = ar[idx_mn_0];
-        handover_az[mn] = az[idx_mn_0];
+        m_handover_ar[mn] = m_ar[idx_mn_0];
+        m_handover_az[mn] = m_az[idx_mn_0];
         for (int k = 0; k < nRHS; ++k) {
-          handover_cr[k][mn] = cr[k][idx_mn_0];
-          handover_cz[k][mn] = cz[k][idx_mn_0];
+          m_handover_cr[k][mn] = m_cr[k][idx_mn_0];
+          m_handover_cz[k][mn] = m_cz[k][idx_mn_0];
         }  // k
       }
     }  // mn
   }  // j
 
   // first unlock current mutex
-  mutices[myid].unlock();
+  m_mutices[myid].unlock();
 
   if (myid + 1 < ncpu) {
     // ... now can unlock next one and next thread will immediately continue
-    mutices[myid + 1].unlock();
+    m_mutices[myid + 1].unlock();
   }
 
   // have each thread lock the mutex that blocks the _previous_ thread
   if (myid > 0) {
-    mutices[myid - 1].lock();
+    m_mutices[myid - 1].lock();
   }
 
 #pragma omp barrier
 
-  mutices[myid].lock();
+  m_mutices[myid].lock();
 
   for (int j = std::min(jMax - 2, nsMaxF - 1); j >= nsMinF; --j) {
     for (int mn = 0; mn < mnmax; ++mn) {
@@ -275,48 +280,48 @@ void TridiagonalSolveOpenMP(
       int idx_mn_p = (j + 1 - nsMinF) * mnmax + mn;  // +1
       int idx_mn_0 = (j - nsMinF) * mnmax + mn;      //  0
 
-      std::vector<std::span<double>> prev_cr(handover_cr.size());
-      std::vector<std::span<double>> prev_cz(handover_cz.size());
+      std::vector<std::span<double>> prev_cr(m_handover_cr.size());
+      std::vector<std::span<double>> prev_cz(m_handover_cz.size());
       int prev_c_idx;
       if (j == nsMaxF - 1) {
         // j+1 is within rank myid+1
-        for (std::size_t i = 0; i < handover_cr.size(); ++i) {
-          prev_cr[i] = handover_cr[i];
-          prev_cz[i] = handover_cz[i];
+        for (std::size_t i = 0; i < m_handover_cr.size(); ++i) {
+          prev_cr[i] = m_handover_cr[i];
+          prev_cz[i] = m_handover_cz[i];
         }
 
         // needs to point to (myid+1)->nsMinF
         prev_c_idx = mn;
       } else {
         // j+1 is within current rank
-        for (std::size_t i = 0; i < cr.size(); ++i) {
-          prev_cr[i] = cr[i];
-          prev_cz[i] = cz[i];
+        for (std::size_t i = 0; i < m_cr.size(); ++i) {
+          prev_cr[i] = m_cr[i];
+          prev_cz[i] = m_cz[i];
         }
         prev_c_idx = idx_mn_p;
       }
 
       for (int k = 0; k < nRHS; ++k) {
-        cr[k][idx_mn_0] -= ar[idx_mn_0] * prev_cr[k][prev_c_idx];
-        cz[k][idx_mn_0] -= az[idx_mn_0] * prev_cz[k][prev_c_idx];
+        m_cr[k][idx_mn_0] -= m_ar[idx_mn_0] * prev_cr[k][prev_c_idx];
+        m_cz[k][idx_mn_0] -= m_az[idx_mn_0] * prev_cz[k][prev_c_idx];
       }  // k
 
       if (j == nsMinF) {
         // need to leave handover data for rank myid-1
         for (int k = 0; k < nRHS; ++k) {
-          handover_cr[k][mn] = cr[k][idx_mn_0];
-          handover_cz[k][mn] = cz[k][idx_mn_0];
+          m_handover_cr[k][mn] = m_cr[k][idx_mn_0];
+          m_handover_cz[k][mn] = m_cz[k][idx_mn_0];
         }  // k
       }
     }  // mn
   }  // j
 
   // first unlock current mutex
-  mutices[myid].unlock();
+  m_mutices[myid].unlock();
 
   if (myid > 0) {
     // ... now can unlock next one and next thread will immediately continue
-    mutices[myid - 1].unlock();
+    m_mutices[myid - 1].unlock();
   }
 
 #pragma omp barrier

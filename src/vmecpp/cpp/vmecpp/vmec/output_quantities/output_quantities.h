@@ -190,7 +190,8 @@ struct VmecInternalResults {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(VmecInternalResults& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(VmecInternalResults& m_obj,
+                               H5::H5File& from_file);
 
   static constexpr char H5key[] = "/vmec_internal_results";
 };
@@ -231,7 +232,7 @@ struct RemainingMetric {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(RemainingMetric& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(RemainingMetric& m_obj, H5::H5File& from_file);
 
   static constexpr char H5key[] = "/remaining_metric";
 };
@@ -254,7 +255,7 @@ struct CylindricalComponentsOfB {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(CylindricalComponentsOfB& obj,
+  static absl::Status LoadInto(CylindricalComponentsOfB& m_obj,
                                H5::H5File& from_file);
 
   static constexpr char H5key[] = "/cylindrical_components_of_b";
@@ -274,7 +275,7 @@ struct BSubSHalf {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(BSubSHalf& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(BSubSHalf& m_obj, H5::H5File& from_file);
 
   static constexpr char H5key[] = "/bsubs_half";
 };
@@ -293,7 +294,7 @@ struct BSubSFull {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(BSubSFull& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(BSubSFull& m_obj, H5::H5File& from_file);
 
   static constexpr char H5key[] = "/bsubs_full";
 };
@@ -352,7 +353,7 @@ struct CovariantBDerivatives {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(CovariantBDerivatives& obj,
+  static absl::Status LoadInto(CovariantBDerivatives& m_obj,
                                H5::H5File& from_file);
 
   static constexpr char H5key[] = "/covariant_b_derivatives";
@@ -406,7 +407,8 @@ struct JxBOutFileContents {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(JxBOutFileContents& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(JxBOutFileContents& m_obj,
+                               H5::H5File& from_file);
 
   static constexpr char H5key[] = "/jxbout";
 };
@@ -478,7 +480,7 @@ struct MercierStabilityIntermediateQuantities {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(MercierStabilityIntermediateQuantities& obj,
+  static absl::Status LoadInto(MercierStabilityIntermediateQuantities& m_obj,
                                H5::H5File& from_file);
 
   static constexpr char H5key[] = "/mercier_intermediate";
@@ -543,7 +545,8 @@ struct MercierFileContents {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(MercierFileContents& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(MercierFileContents& m_obj,
+                               H5::H5File& from_file);
 
   static constexpr char H5key[] = "/mercier";
 };
@@ -613,7 +616,7 @@ struct Threed1FirstTableIntermediate {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(Threed1FirstTableIntermediate& obj,
+  static absl::Status LoadInto(Threed1FirstTableIntermediate& m_obj,
                                H5::H5File& from_file);
 
   static constexpr char H5key[] = "/threed1_first_table_intermediate";
@@ -671,7 +674,7 @@ struct Threed1FirstTable {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(Threed1FirstTable& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(Threed1FirstTable& m_obj, H5::H5File& from_file);
 
   static constexpr char H5key[] = "/threed1_first_table";
 };
@@ -824,7 +827,7 @@ struct Threed1GeometricAndMagneticQuantities {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(Threed1GeometricAndMagneticQuantities& obj,
+  static absl::Status LoadInto(Threed1GeometricAndMagneticQuantities& m_obj,
                                H5::H5File& from_file);
 
   static constexpr char H5key[] = "/threed1_geometric_and_magnetic_quantities";
@@ -856,7 +859,8 @@ struct Threed1Volumetrics {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(Threed1Volumetrics& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(Threed1Volumetrics& m_obj,
+                               H5::H5File& from_file);
 
   static constexpr char H5key[] = "/threed1_volumetrics";
 };
@@ -888,7 +892,8 @@ struct Threed1AxisGeometry {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(Threed1AxisGeometry& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(Threed1AxisGeometry& m_obj,
+                               H5::H5File& from_file);
 
   static constexpr char H5key[] = "/threed1_axis_geometry";
 };
@@ -922,7 +927,7 @@ struct Threed1Betas {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(Threed1Betas& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(Threed1Betas& m_obj, H5::H5File& from_file);
 
   static constexpr char H5key[] = "/threed1_betas";
 };
@@ -969,7 +974,7 @@ struct Threed1ShafranovIntegrals {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(Threed1ShafranovIntegrals& obj,
+  static absl::Status LoadInto(Threed1ShafranovIntegrals& m_obj,
                                H5::H5File& from_file);
 
   static constexpr char H5key[] = "/threed1_shafranov_integrals";
@@ -1294,7 +1299,7 @@ struct WOutFileContents {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(WOutFileContents& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(WOutFileContents& m_obj, H5::H5File& from_file);
 
   static constexpr char H5key[] = "/wout";
 };
