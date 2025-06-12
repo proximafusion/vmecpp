@@ -238,10 +238,21 @@ vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
 ## Agent-Specific Guidelines
 
 **For Code Changes**:
-1. Always validate changes with pre-commit hooks before suggesting commits
-2. Use incremental development approach (small, testable changes)
-3. Respect the physics domain knowledge embedded in variable names
-4. Follow the naming guide strictly for new code
+1. **MANDATORY: Always check compliance with VMECPP_NAMING_GUIDE.md before proposing ANY changes**
+   - Verify naming conventions: classes, functions, variables, constants
+   - Ensure physics variable names are preserved (e.g., `bsupu_`, `iotaf_`, `presf_`)
+   - Check function parameter conventions (`m_` prefix for mutable parameters)
+   - Validate against Google C++ Style Guide adaptations
+2. **MANDATORY: Only use ASCII characters in ALL changes**
+   - Never use Unicode, special symbols, or non-ASCII characters in code
+   - Never use Unicode, special symbols, or non-ASCII characters in comments
+   - Never use Unicode, special symbols, or non-ASCII characters in documentation
+   - Use LaTeX notation for mathematics (e.g., `\nabla p`, `\sum_{m,n}`, `\lambda`)
+   - Replace any non-ASCII characters with proper ASCII equivalents
+3. Always validate changes with pre-commit hooks before suggesting commits
+4. Use incremental development approach (small, testable changes)
+5. Respect the physics domain knowledge embedded in variable names
+6. Follow the naming guide strictly for new code
 
 **For Code Analysis**:
 1. Use Task tool for broad searches across the codebase
