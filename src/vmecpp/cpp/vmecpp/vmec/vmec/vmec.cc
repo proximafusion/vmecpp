@@ -717,7 +717,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
-        // tells restart_iter to store current xc in xstore
+
+    // tells restart_iter to store current xc in xstore
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
