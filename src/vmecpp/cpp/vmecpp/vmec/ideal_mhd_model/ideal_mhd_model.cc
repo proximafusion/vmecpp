@@ -74,11 +74,12 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
     const RealSpaceForces& d, const std::vector<double>& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
     const FourierBasisFastPoloidal& fb,
-    VacuumPressureState vacuum_pressure_state, FourierForces& physical_forces) {
+    VacuumPressureState vacuum_pressure_state,
+    FourierForces& m_physical_forces) {
   // in here, we can safely assume lthreed == true
 
   // fill target force arrays with zeros
-  physical_forces.setZero();
+  m_physical_forces.setZero();
 
   int jMaxRZ = std::min(rp.nsMaxF, fc.ns - 1);
 
@@ -168,14 +169,14 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
           const double cosnvn = fb.cosnvn[idx_kn];
           const double sinnvn = fb.sinnvn[idx_kn];
 
-          physical_forces.frcc[idx_mn] += rmkcc * cosnv + rmkcc_n * sinnvn;
-          physical_forces.frss[idx_mn] += rmkss * sinnv + rmkss_n * cosnvn;
-          physical_forces.fzsc[idx_mn] += zmksc * cosnv + zmksc_n * sinnvn;
-          physical_forces.fzcs[idx_mn] += zmkcs * sinnv + zmkcs_n * cosnvn;
+          m_physical_forces.frcc[idx_mn] += rmkcc * cosnv + rmkcc_n * sinnvn;
+          m_physical_forces.frss[idx_mn] += rmkss * sinnv + rmkss_n * cosnvn;
+          m_physical_forces.fzsc[idx_mn] += zmksc * cosnv + zmksc_n * sinnvn;
+          m_physical_forces.fzcs[idx_mn] += zmkcs * sinnv + zmkcs_n * cosnvn;
 
           if (jMinL <= jF) {
-            physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
-            physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
+            m_physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
+            m_physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
           }
         }  // n
       }  // k
@@ -224,8 +225,8 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
           const double cosnvn = fb.cosnvn[idx_kn];
           const double sinnvn = fb.sinnvn[idx_kn];
 
-          physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
-          physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
+          m_physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
+          m_physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
         }  // n
       }  // k
     }  // m
@@ -235,28 +236,28 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
 void vmecpp::FourierToReal3DSymmFastPoloidal(
     const FourierGeometry& physical_x, const std::vector<double>& xmpq,
     const RadialPartitioning& r, const Sizes& s, const RadialProfiles& rp,
-    const FourierBasisFastPoloidal& fb, RealSpaceGeometry& g) {
+    const FourierBasisFastPoloidal& fb, RealSpaceGeometry& m_geometry) {
   // can safely assume lthreed == true in here
 
-  absl::c_fill(g.r1_e, 0);
-  absl::c_fill(g.r1_o, 0);
-  absl::c_fill(g.ru_e, 0);
-  absl::c_fill(g.ru_o, 0);
-  absl::c_fill(g.rv_e, 0);
-  absl::c_fill(g.rv_o, 0);
-  absl::c_fill(g.z1_e, 0);
-  absl::c_fill(g.z1_o, 0);
-  absl::c_fill(g.zu_e, 0);
-  absl::c_fill(g.zu_o, 0);
-  absl::c_fill(g.zv_e, 0);
-  absl::c_fill(g.zv_o, 0);
-  absl::c_fill(g.lu_e, 0);
-  absl::c_fill(g.lu_o, 0);
-  absl::c_fill(g.lv_e, 0);
-  absl::c_fill(g.lv_o, 0);
+  absl::c_fill(m_geometry.r1_e, 0);
+  absl::c_fill(m_geometry.r1_o, 0);
+  absl::c_fill(m_geometry.ru_e, 0);
+  absl::c_fill(m_geometry.ru_o, 0);
+  absl::c_fill(m_geometry.rv_e, 0);
+  absl::c_fill(m_geometry.rv_o, 0);
+  absl::c_fill(m_geometry.z1_e, 0);
+  absl::c_fill(m_geometry.z1_o, 0);
+  absl::c_fill(m_geometry.zu_e, 0);
+  absl::c_fill(m_geometry.zu_o, 0);
+  absl::c_fill(m_geometry.zv_e, 0);
+  absl::c_fill(m_geometry.zv_o, 0);
+  absl::c_fill(m_geometry.lu_e, 0);
+  absl::c_fill(m_geometry.lu_o, 0);
+  absl::c_fill(m_geometry.lv_e, 0);
+  absl::c_fill(m_geometry.lv_o, 0);
 
-  absl::c_fill(g.rCon, 0);
-  absl::c_fill(g.zCon, 0);
+  absl::c_fill(m_geometry.rCon, 0);
+  absl::c_fill(m_geometry.zCon, 0);
 
   // NOTE: fix on old VMEC++: need to transform geometry for nsMinF1 ... nsMaxF1
   const int nsMinF1 = r.nsMinF1;
@@ -270,14 +271,14 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
       const double con_factor =
           m_even ? xmpq[m] : xmpq[m] * rp.sqrtSF[jF - nsMinF1];
 
-      auto& r1 = m_even ? g.r1_e : g.r1_o;
-      auto& ru = m_even ? g.ru_e : g.ru_o;
-      auto& rv = m_even ? g.rv_e : g.rv_o;
-      auto& z1 = m_even ? g.z1_e : g.z1_o;
-      auto& zu = m_even ? g.zu_e : g.zu_o;
-      auto& zv = m_even ? g.zv_e : g.zv_o;
-      auto& lu = m_even ? g.lu_e : g.lu_o;
-      auto& lv = m_even ? g.lv_e : g.lv_o;
+      auto& r1 = m_even ? m_geometry.r1_e : m_geometry.r1_o;
+      auto& ru = m_even ? m_geometry.ru_e : m_geometry.ru_o;
+      auto& rv = m_even ? m_geometry.rv_e : m_geometry.rv_o;
+      auto& z1 = m_even ? m_geometry.z1_e : m_geometry.z1_o;
+      auto& zu = m_even ? m_geometry.zu_e : m_geometry.zu_o;
+      auto& zv = m_even ? m_geometry.zv_e : m_geometry.zv_o;
+      auto& lu = m_even ? m_geometry.lu_e : m_geometry.lu_o;
+      auto& lv = m_even ? m_geometry.lv_e : m_geometry.lv_o;
 
       // axis only gets contributions up to m=1
       // --> all larger m contributions enter only from j=1 onwards
@@ -380,8 +381,10 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
             // spectral condensation is local per flux surface
             // --> no need for numFull1
             const int idx_con = ((jF - nsMinF) * s.nZeta + k) * s.nThetaEff + l;
-            g.rCon[idx_con] += (rmkcc * cosmu + rmkss * sinmu) * con_factor;
-            g.zCon[idx_con] += (zmksc * sinmu + zmkcs * cosmu) * con_factor;
+            m_geometry.rCon[idx_con] +=
+                (rmkcc * cosmu + rmkss * sinmu) * con_factor;
+            m_geometry.zCon[idx_con] +=
+                (zmksc * sinmu + zmkcs * cosmu) * con_factor;
           }
         }  // l
       }  // k
@@ -393,10 +396,10 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
 void vmecpp::deAliasConstraintForce(
     const vmecpp::RadialPartitioning& rp,
     const vmecpp::FourierBasisFastPoloidal& fb, const vmecpp::Sizes& s_,
-    std::vector<double>& faccon, std::vector<double>& tcon,
-    std::vector<double>& gConEff, std::vector<double>& gsc,
-    std::vector<double>& gcs, std::vector<double>& gCon) {
-  absl::c_fill_n(gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
+    const std::vector<double>& faccon, const std::vector<double>& tcon,
+    const std::vector<double>& gConEff, std::vector<double>& m_gsc,
+    std::vector<double>& m_gcs, std::vector<double>& m_gCon) {
+  absl::c_fill_n(m_gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
 
   // no constraint on axis --> has no poloidal angle
   int jMin = 0;
@@ -406,8 +409,8 @@ void vmecpp::deAliasConstraintForce(
 
   for (int jF = std::max(jMin, rp.nsMinF); jF < rp.nsMaxF; ++jF) {
     for (int m = 1; m < s_.mpol - 1; ++m) {
-      absl::c_fill_n(gsc, s_.ntor + 1, 0);
-      absl::c_fill_n(gcs, s_.ntor + 1, 0);
+      absl::c_fill_n(m_gsc, s_.ntor + 1, 0);
+      absl::c_fill_n(m_gcs, s_.ntor + 1, 0);
 
       for (int k = 0; k < s_.nZeta; ++k) {
         double w0 = 0.0;
@@ -429,8 +432,8 @@ void vmecpp::deAliasConstraintForce(
           int idx_kn = k * (s_.nnyq2 + 1) + n;
 
           // NOTE: `tcon` comes into play here
-          gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
-          gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
+          m_gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
+          m_gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
         }
       }  // k
 
@@ -447,8 +450,8 @@ void vmecpp::deAliasConstraintForce(
         // collect contribution to current grid point from n-th toroidal mode
         for (int n = 0; n < s_.ntor + 1; ++n) {
           int idx_kn = k * (s_.nnyq2 + 1) + n;
-          w0 += gsc[n] * fb.cosnv[idx_kn];
-          w1 += gcs[n] * fb.sinnv[idx_kn];
+          w0 += m_gsc[n] * fb.cosnv[idx_kn];
+          w1 += m_gcs[n] * fb.sinnv[idx_kn];
         }  // n
 
         // inv transform in poloidal direction
@@ -457,7 +460,7 @@ void vmecpp::deAliasConstraintForce(
           const int idx_ml = m * s_.nThetaReduced + l;
 
           // NOTE: `faccon` comes into play here
-          gCon[idx_kl] +=
+          m_gCon[idx_kl] +=
               faccon[m] * (w0 * fb.sinmu[idx_ml] + w1 * fb.cosmu[idx_ml]);
         }  // l
       }  // k

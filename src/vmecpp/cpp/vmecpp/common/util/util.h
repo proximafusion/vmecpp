@@ -227,15 +227,16 @@ void TridiagonalSolveSerial(std::vector<double> &m_a, std::vector<double> &m_d,
 // a,d,b contain the tri-diagonal matrix and is modified in-place
 // c     contains the RHS on entry and the solution vectors on exit
 void TridiagonalSolveOpenMP(
-    std::vector<double> &ar, std::vector<double> &dr, std::vector<double> &br,
-    std::vector<std::span<double>> &cr, std::vector<double> &az,
-    std::vector<double> &dz, std::vector<double> &bz,
-    std::vector<std::span<double>> &cz, const std::vector<int> &jMin, int jMax,
-    int mnmax, int nRHS, std::vector<std::mutex> &mutices, int ncpu, int myid,
-    int nsMinF, int nsMaxF, std::vector<double> &handover_ar,
-    std::vector<std::vector<double>> &handover_cr,
-    std::vector<double> &handover_az,
-    std::vector<std::vector<double>> &handover_cz);
+    std::vector<double> &m_ar, std::vector<double> &m_dr,
+    std::vector<double> &m_br, std::vector<std::span<double>> &m_cr,
+    std::vector<double> &m_az, std::vector<double> &m_dz,
+    std::vector<double> &m_bz, std::vector<std::span<double>> &m_cz,
+    const std::vector<int> &jMin, int jMax, int mnmax, int nRHS,
+    std::vector<std::mutex> &m_mutices, int ncpu, int myid, int nsMinF,
+    int nsMaxF, std::vector<double> &m_handover_ar,
+    std::vector<std::vector<double>> &m_handover_cr,
+    std::vector<double> &m_handover_az,
+    std::vector<std::vector<double>> &m_handover_cz);
 
 // ----------------------
 // VMEC-specific
