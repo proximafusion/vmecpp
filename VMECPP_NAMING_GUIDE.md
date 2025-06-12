@@ -40,18 +40,7 @@ Use LaTeX notation for mathematical expressions in comments:
  */
 
 // [INCORRECT] Unicode mathematical symbols
-/**
- * Vacuum magnetic permeability \mu_0 in Vs/Am.
- * Traditional definition: \mu_0 = 4\pi \times 10^-^7 Vs/Am
- */
 ```
-
-**Standard LaTeX Mathematical Notation:**
-- Greek letters: `\alpha`, `\beta`, `\gamma`, `\mu`, `\pi`, `\theta`, `\zeta`, `\rho`
-- Operators: `\times`, `\cdot`, `\pm`, `\rightarrow`
-- Integrals: `\int`, `\iiint`, `\int_{-1}^1`, `\sum_i`
-- Functions: `\sqrt{2}`, `\frac{1}{2}`, `\sin`, `\cos`
-- Subscripts/superscripts: `\mu_0`, `x^2`, `10^{-7}`
 
 ---
 
@@ -171,24 +160,8 @@ static constexpr int kEvenParity = 0;
 } // namespace vmec_algorithm_constants
 ```
 
-#### **Constants Migration Strategy**
-
-When replacing magic numbers:
-
-1. **Identify semantic meaning**: What does this number represent physically or algorithmically?
-2. **Choose descriptive name**: Use `k` prefix + descriptive CamelCase name
-3. **Document context**: Include usage locations, physical meaning, and historical references
-4. **Group by domain**: Place in appropriate section of `vmec_algorithm_constants.h`
-5. **Add using declarations**: Import frequently-used constants at file level
-
 ```cpp
-// [CORRECT] Replace magic numbers systematically
-// BEFORE:
-if (iteration_count > 75) { /* change approach */ }
-scalxc[idx * 2 + 0] = 1.0;  // even modes
-scalxc[idx * 2 + 1] = factor;  // odd modes
-
-// AFTER:
+// [CORRECT] Replace magic numbers systematically with documented constants
 using vmecpp::vmec_algorithm_constants::kJacobianIterationThreshold;
 using vmecpp::vmec_algorithm_constants::kEvenParity;
 using vmecpp::vmec_algorithm_constants::kOddParity;
@@ -260,19 +233,6 @@ void ProcessEquilibrium() {
 } // namespace vmecpp
 ```
 
-### **Build Dependencies**
-
-When using constants, ensure proper BUILD.bazel dependencies:
-
-```python
-cc_library(
-    name="your_module",
-    deps=[
-        "//vmecpp/vmec/vmec_constants:vmec_constants",  # For algorithm constants
-        # ... other deps
-    ],
-)
-```
 
 ---
 
@@ -524,42 +484,6 @@ rmncc[idx] += fourier_data[kOddParity];
 - **Enhanced maintainability**: Self-documenting code reduces debugging time
 - **Physics clarity**: Links code directly to Fourier mode classification by poloidal mode number
 
-### **Completed: Comprehensive Constants Consolidation**
-
-Created `vmec_algorithm_constants.h` as central repository for 50+ algorithmic, physical, and mathematical constants previously scattered across the codebase:
-
-```cpp
-// [CORRECT] Physics constants with full context documentation
-static constexpr double kVacuumPermeability = 4.0e-7 * M_PI;  // Matches Fortran VMEC
-static constexpr double kIonLarmorRadiusCoefficient = 3.2e-3;  // Used in output_quantities
-
-// [CORRECT] Algorithm constants with usage locations documented
-static constexpr int kMinIterationsForM1Constraint = 2;        // From ideal_mhd_model.cc
-static constexpr double kFastConvergenceThreshold = 1.0e-6;    // Convergence acceleration
-
-// [CORRECT] Gauss-Legendre quadrature arrays for high-accuracy integration
-static constexpr std::array<double, 10> kGaussLegendreWeights10 = {...};
-```
-
-## Implementation Strategy
-
-### **Phase 1: High-Impact, Low-Risk Changes [DONE]**
-1. [DONE] **Replace magic numbers** with named constants from `vmec_algorithm_constants.h`
-2. [DONE] **Migrate parity constants** from `m_evn/m_odd` to `kEvenParity/kOddParity`
-3. **Standardize function parameter signatures** with `m_` prefix for mutable parameters
-4. **Add comprehensive documentation** to Fourier basis variables
-5. **Update new code** to follow conventions consistently
-
-### **Phase 2: Gradual Infrastructure Modernization**
-1. **Member variable naming** in utility classes
-2. **Function naming** for infrastructure code
-3. **File organization** improvements
-
-### **Phase 3: Enhanced Documentation**
-1. **Cross-reference documentation** between internal and external representations
-2. **Conversion function documentation** with mathematical relationships
-3. **Developer onboarding guides** explaining basis choices
-
 ---
 
 ## Key Takeaways
@@ -575,7 +499,5 @@ static constexpr std::array<double, 10> kGaussLegendreWeights10 = {...};
 9. **Enforce ASCII Compliance**: All source code must use ASCII-only characters with LaTeX notation for mathematical symbols
 10. **Organize Constants by Domain**: Group related constants with comprehensive documentation in appropriate sections
 11. **Use Mathematical Documentation Standards**: Combine LaTeX notation with physical context for clarity
-
-**Recent Achievements**: Successfully migrated 64 occurrences of cryptic parity constants and consolidated 50+ algorithmic constants, demonstrating that systematic modernization can preserve physics domain knowledge while improving code clarity.
 
 This naming guide bridges the gap between modern software engineering practices and deep physics domain knowledge, making VMEC++ both maintainable and scientifically accessible.
