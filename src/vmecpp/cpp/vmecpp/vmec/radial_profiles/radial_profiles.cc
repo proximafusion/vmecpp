@@ -277,29 +277,18 @@ double RadialProfiles::torfluxDeriv(double x) {
 
 /**
  * Compute radial profile of enclosed toroidal flux
- * by trapezoidal quadrature.
- * TODO: why not directly eval the aphi polynomial here?
  *
  * @param x
  * @return
  */
 double RadialProfiles::torflux(double x) {
-  //  trapezoidal integration outwards from 0 to x in N=100 steps
-  const int N = 100;
-  double delta_x = x / N;
-
+  //  Analytic evaluation of the polynomial (0 at x=0)
+  //  using Horner's method
   double torflux = 0.0;
-  for (int i = 0; i <= N; ++i) {
-    double contribution = torfluxDeriv(i * delta_x);
-    if (i == 0 || i == N) {
-      torflux += 0.5 * contribution;
-    } else {
-      torflux += contribution;
-    }
+  for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
+    torflux = x * torflux + id_.aphi[i];
   }
-  torflux *= delta_x;
-
-  return torflux;
+  return torflux * x;
 }
 
 /**
