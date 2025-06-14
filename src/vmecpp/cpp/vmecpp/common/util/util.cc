@@ -119,7 +119,9 @@ void TridiagonalSolveOpenMP(
     std::vector<std::vector<double>> &m_handover_cr,
     std::vector<double> &m_handover_az,
     std::vector<std::vector<double>> &m_handover_cz) {
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   if (myid == 0) {
     // this is the rank that has jMin;
@@ -175,7 +177,9 @@ void TridiagonalSolveOpenMP(
     m_mutices[myid + 1].lock();
   }
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // blocks until previous thread is done with this step
   // thread 0 is free to go, since its mutex is unlocked
@@ -267,7 +271,9 @@ void TridiagonalSolveOpenMP(
     m_mutices[myid - 1].lock();
   }
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   m_mutices[myid].lock();
 
@@ -324,7 +330,9 @@ void TridiagonalSolveOpenMP(
     m_mutices[myid - 1].unlock();
   }
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }  // TriDiagonalSolveOpenMP
 
 int vmec_adjust_num_threads(const int max_threads,
