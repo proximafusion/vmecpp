@@ -5,6 +5,7 @@
 #ifndef VMECPP_COMMON_FOURIER_BASIS_FAST_TOROIDAL_FOURIER_BASIS_FAST_TOROIDAL_H_
 #define VMECPP_COMMON_FOURIER_BASIS_FAST_TOROIDAL_FOURIER_BASIS_FAST_TOROIDAL_H_
 
+#include <span>
 #include <vector>
 
 #include "vmecpp/common/sizes/sizes.h"
@@ -125,19 +126,19 @@ class FourierBasisFastToroidal {
 
   // ---------------
 
-  int cos_to_cc_ss(const std::vector<double>& fcCos,
-                   std::vector<double>& m_fcCC, std::vector<double>& m_fcSS,
+  int cos_to_cc_ss(const std::span<const double> fcCos,
+                   std::span<double> m_fcCC, std::span<double> m_fcSS,
                    int n_size, int m_size) const;
-  int sin_to_sc_cs(const std::vector<double>& fcSin,
-                   std::vector<double>& m_fcSC, std::vector<double>& m_fcCS,
+  int sin_to_sc_cs(const std::span<const double> fcSin,
+                   std::span<double> m_fcSC, std::span<double> m_fcCS,
                    int n_size, int m_size) const;
 
-  int cc_ss_to_cos(const std::vector<double>& fcCC,
-                   const std::vector<double>& fcSS,
-                   std::vector<double>& m_fcCos, int n_size, int m_size) const;
-  int sc_cs_to_sin(const std::vector<double>& fcSC,
-                   const std::vector<double>& fcCS,
-                   std::vector<double>& m_fcSin, int n_size, int m_size) const;
+  int cc_ss_to_cos(const std::span<const double> fcCC,
+                   const std::span<const double> fcSS,
+                   std::span<double> m_fcCos, int n_size, int m_size) const;
+  int sc_cs_to_sin(const std::span<const double> fcSC,
+                   const std::span<const double> fcCS,
+                   std::span<double> m_fcSin, int n_size, int m_size) const;
 
   int mnIdx(int m, int n) const;
   int mnMax(int m_size, int n_size) const;
