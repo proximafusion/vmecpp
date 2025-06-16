@@ -30,7 +30,11 @@ RestartReason RestartReasonFromInt(int restart_reason) {
 
 int get_max_threads(std::optional<int> max_threads) {
   if (max_threads == std::nullopt) {
+#ifdef _OPENMP
     return omp_get_max_threads();
+#endif  // _OPENMP
+    // Default to 1 thread if OpenMP is not available
+    return 1;
   }
   CHECK_GT(max_threads.value(), 0)
       << "The number of threads must be >=1. "

@@ -280,19 +280,29 @@ void LaplaceSolver::PerformPoloidalFourierTransforms() {
 
 void LaplaceSolver::BuildMatrix() {
   const int mnpd = (mf + 1) * (2 * nf + 1);
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   absl::c_fill_n(matrixShare, mnpd * mnpd, 0);
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     for (int mn_mnp = 0; mn_mnp < mnpd * mnpd; ++mn_mnp) {
       matrixShare[mn_mnp] += amat_sin_sin[mn_mnp];
     }  // mn * mn'
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     // TODO(jons): Get back to only having the minimal set of unique Fourier
     // coefficients in the linear system. set n = [-nf, ..., -1], m=0 elements
@@ -316,7 +326,9 @@ void LaplaceSolver::BuildMatrix() {
       matrixShare[mn * mnpd + mn] += 0.5;
     }  // mn
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }  // BuildMatrix
 
 void LaplaceSolver::DecomposeMatrix() {
@@ -348,19 +360,29 @@ void LaplaceSolver::DecomposeMatrix() {
 void LaplaceSolver::SolveForPotential(
     const std::vector<double> &bvec_sin_singular) {
   int mnpd = (mf + 1) * (2 * nf + 1);
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   absl::c_fill_n(bvecShare, mnpd, 0);
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     for (int mn = 0; mn < mnpd; ++mn) {
       bvecShare[mn] += bvec_sin[mn] + bvec_sin_singular[mn] / s_.nfp;
     }  // mn
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     // TODO(jons): Get back to only having the minimal set of unique Fourier
     // coefficients in the linear system. set n = [-nf, ..., -1], m=0 elements
@@ -386,7 +408,9 @@ void LaplaceSolver::SolveForPotential(
 
     CHECK_EQ(info, 0) << "dgetrs error";
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 }  // namespace vmecpp

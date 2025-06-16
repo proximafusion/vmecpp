@@ -41,12 +41,16 @@ ExternalMagneticField::ExternalMagneticField(const Sizes* s,
 void ExternalMagneticField::update(const std::span<const double> rAxis,
                                    const std::span<const double> zAxis,
                                    double netToroidalCurrent) {
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   mgrid_.interpolate(tp_.ztMin, tp_.ztMax, s_.nZeta, sg_.r1b, sg_.z1b, interpBr,
                      interpBp, interpBz);
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   if (kUseAbscabForAxisCurrent) {
     AddAxisCurrentFieldAbscab(rAxis, zAxis, netToroidalCurrent);
@@ -54,11 +58,15 @@ void ExternalMagneticField::update(const std::span<const double> rAxis,
     AddAxisCurrentFieldSimple(rAxis, zAxis, netToroidalCurrent);
   }
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   covariantAndNormalComponents();
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 // add in contribution from net toroidal current along magnetic axis

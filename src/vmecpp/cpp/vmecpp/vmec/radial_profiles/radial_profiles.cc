@@ -828,9 +828,15 @@ void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
     }
   }  // jH
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
+
   m_h_.RegisterSpectralWidthContribution(spectral_width_contribution);
+
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }  // AccumulateVolumeAveragedSpectralWidth
 
 }  // namespace vmecpp
