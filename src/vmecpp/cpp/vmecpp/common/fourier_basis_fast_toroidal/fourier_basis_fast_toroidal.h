@@ -11,8 +11,23 @@
 
 namespace vmecpp {
 
-// An implementation of FourierBasis that stores its data so that the toroidal
-// coordinate is the fast loop index.
+// Fourier basis representation optimized for toroidal coordinate operations.
+//
+// This class provides the fundamental spectral basis for VMEC++ computations,
+// representing 3D plasma quantities using Fourier decomposition in flux
+// coordinates (s, \theta, \zeta) where:
+//   s     = normalized toroidal flux (radial coordinate)
+//   \theta = poloidal angle
+//   \zeta  = toroidal angle = nfp * \phi (field period toroidal angle)
+//
+// Physical quantities are expanded as:
+//   f(s,\theta,\zeta) = \sum_{m,n} f_{mn}(s) * basis_function(m*\theta,
+//   n*\zeta)
+//
+// The "FastToroidal" layout stores data with toroidal (\zeta) coordinate as
+// the fast (innermost) loop index, optimizing for operations that iterate
+// over toroidal modes. This differs from FastPoloidal layout.
+//
 // NOTE: Nestor has its own implementation of this class because we want to be
 // able to use different data layouts between VMEC++ and Nestor.
 // TODO(eguiraud) reduce overall code duplication
@@ -20,22 +35,92 @@ class FourierBasisFastToroidal {
  public:
   explicit FourierBasisFastToroidal(const Sizes* s);
 
+  // ============================================================================
+  // FOURIER BASIS SCALING FACTORS
+  // ============================================================================
+
+  // [mnyq2+1] Poloidal mode scaling factors: sqrt(2) for m>0, 1.0 for m=0
+  // Applied to cos(m*\theta) and sin(m*\theta) basis functions for DFT
+  // normalization Enables proper normalization: 1/\pi for m>0 modes, 1/(2\pi)
+  // for m=0 mode
   std::vector<double> mscale;
+
+  // [nnyq2+1] Toroidal mode scaling factors: sqrt(2) for n>0, 1.0 for n=0
+  // Applied to cos(n*\zeta) and sin(n*\zeta) basis functions for DFT
+  // normalization Enables proper normalization: 1/\pi for n>0 modes, 1/(2\pi)
+  // for n=0 mode
   std::vector<double> nscale;
 
+  // ============================================================================
+  // POLOIDAL BASIS FUNCTIONS (l-major layout: [l][m])
+  // ============================================================================
+
+  // [nThetaReduced * (mnyq2+1)] Pre-scaled poloidal cosine basis
+  // Layout: cosmu[l*(mnyq2+1) + m] = cos(m*\theta[l]) * mscale[m]
+  // \theta[l] = 2*\pi*l/nThetaEven for l=0...nThetaReduced-1 (reduced [0,\pi]
+  // interval)
   std::vector<double> cosmu;
+
+  // [nThetaReduced * (mnyq2+1)] Pre-scaled poloidal sine basis
+  // Layout: sinmu[l*(mnyq2+1) + m] = sin(m*\theta[l]) * mscale[m]
   std::vector<double> sinmu;
+
+  // [nThetaReduced * (mnyq2+1)] Pre-scaled poloidal cosine derivative
+  // Layout: cosmum[l*(mnyq2+1) + m] = m * cos(m*\theta[l]) * mscale[m]
+  // Used for computing \partial/\partial\theta derivatives in force
+  // calculations
   std::vector<double> cosmum;
+
+  // [nThetaReduced * (mnyq2+1)] Pre-scaled poloidal sine derivative
+  // Layout: sinmum[l*(mnyq2+1) + m] = -m * sin(m*\theta[l]) * mscale[m]
+  // Used for computing \partial/\partial\theta derivatives in force
+  // calculations
   std::vector<double> sinmum;
 
+  // ============================================================================
+  // POLOIDAL BASIS WITH INTEGRATION WEIGHTS
+  // ============================================================================
+
+  // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal cosine basis
+  // Layout: cosmui[l*(mnyq2+1) + m] = cosmu[l*(mnyq2+1) + m] * intNorm
+  // intNorm = 1/(nZeta*(nThetaReduced-1)), with boundary point factor 1/2
   std::vector<double> cosmui;
+
+  // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal sine basis
+  // Layout: sinmui[l*(mnyq2+1) + m] = sinmu[l*(mnyq2+1) + m] * intNorm
   std::vector<double> sinmui;
+
+  // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal cosine derivative
+  // Layout: cosmumi[l*(mnyq2+1) + m] = cosmum[l*(mnyq2+1) + m] * intNorm
   std::vector<double> cosmumi;
+
+  // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal sine derivative
+  // Layout: sinmumi[l*(mnyq2+1) + m] = sinmum[l*(mnyq2+1) + m] * intNorm
   std::vector<double> sinmumi;
 
+  // ============================================================================
+  // TOROIDAL BASIS FUNCTIONS (n-major layout: [n][k])
+  // ============================================================================
+
+  // [(nnyq2+1) * nZeta] Pre-scaled toroidal cosine basis
+  // Layout: cosnv[n*nZeta + k] = cos(n*\zeta[k]) * nscale[n]
+  // \zeta[k] = 2*\pi*k/nZeta for k=0...nZeta-1 (full [0,2\pi] interval)
   std::vector<double> cosnv;
+
+  // [(nnyq2+1) * nZeta] Pre-scaled toroidal sine basis
+  // Layout: sinnv[n*nZeta + k] = sin(n*\zeta[k]) * nscale[n]
   std::vector<double> sinnv;
+
+  // [(nnyq2+1) * nZeta] Pre-scaled toroidal cosine derivative with nfp factor
+  // Layout: cosnvn[n*nZeta + k] = n*nfp * cos(n*\zeta[k]) * nscale[n]
+  // Factor nfp converts \partial/\partial\zeta to \partial/\partial\phi
+  // derivatives
   std::vector<double> cosnvn;
+
+  // [(nnyq2+1) * nZeta] Pre-scaled toroidal sine derivative with nfp factor
+  // Layout: sinnvn[n*nZeta + k] = -n*nfp * sin(n*\zeta[k]) * nscale[n]
+  // Factor nfp converts \partial/\partial\zeta to \partial/\partial\phi
+  // derivatives
   std::vector<double> sinnvn;
 
   // ---------------
@@ -59,10 +144,31 @@ class FourierBasisFastToroidal {
   void computeConversionIndices(std::vector<int>& m_xm, std::vector<int>& m_xn,
                                 int n_size, int m_size, int nfp) const;
 
+  // ============================================================================
+  // MODE NUMBER MAPPING ARRAYS
+  // ============================================================================
+
+  // [mnmax] Poloidal mode numbers for standard resolution Fourier coefficients
+  // Layout: xm[mn] = poloidal mode number m for the mn-th coefficient
+  // Maps linear coefficient index mn to 2D mode (m,n) for spectral operations
   std::vector<int> xm;
+
+  // [mnmax] Toroidal mode numbers for standard resolution Fourier coefficients
+  // Layout: xn[mn] = toroidal mode number n*nfp for the mn-th coefficient
+  // Factor nfp included to convert from field periods to geometric toroidal
+  // modes
   std::vector<int> xn;
 
+  // [mnmax_nyq] Poloidal mode numbers for Nyquist-extended Fourier coefficients
+  // Layout: xm_nyq[mn] = poloidal mode number m for the mn-th Nyquist
+  // coefficient Extended resolution to avoid aliasing in nonlinear force
+  // calculations
   std::vector<int> xm_nyq;
+
+  // [mnmax_nyq] Toroidal mode numbers for Nyquist-extended Fourier coefficients
+  // Layout: xn_nyq[mn] = toroidal mode number n*nfp for the mn-th Nyquist
+  // coefficient Extended resolution to avoid aliasing in nonlinear force
+  // calculations
   std::vector<int> xn_nyq;
 
  private:
