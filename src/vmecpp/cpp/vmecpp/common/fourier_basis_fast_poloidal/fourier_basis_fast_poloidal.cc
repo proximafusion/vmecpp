@@ -140,9 +140,7 @@ int FourierBasisFastPoloidal::cos_to_cc_ss(const std::span<const double> fcCos,
   int mnmax = (n_size + 1) + (m_size - 1) * (2 * n_size + 1);
 
   absl::c_fill_n(m_fcCC, m_size * (n_size + 1), 0);
-  if (s_.lthreed) {
-    absl::c_fill_n(m_fcSS, m_size * (n_size + 1), 0);
-  }
+  absl::c_fill_n(m_fcSS, m_size * (n_size + 1), 0);
 
   int mn = 0;
 
@@ -170,7 +168,7 @@ int FourierBasisFastPoloidal::cos_to_cc_ss(const std::span<const double> fcCos,
       double normedFC = basis_norm * fcCos[mn];
 
       m_fcCC[m * (n_size + 1) + abs_n] += normedFC;
-      if (s_.lthreed && abs_n > 0) {
+      if (abs_n > 0) {
         m_fcSS[m * (n_size + 1) + abs_n] += sgn_n * normedFC;
       }
 
@@ -193,10 +191,7 @@ int FourierBasisFastPoloidal::sin_to_sc_cs(const std::span<const double> fcSin,
   int mnmax = (n_size + 1) + (m_size - 1) * (2 * n_size + 1);
 
   absl::c_fill_n(m_fcSC, m_size * (n_size + 1), 0);
-
-  if (s_.lthreed) {
-    absl::c_fill_n(m_fcCS, m_size * (n_size + 1), 0);
-  }
+  absl::c_fill_n(m_fcCS, m_size * (n_size + 1), 0);
 
   int mn = 1;
 
@@ -210,9 +205,8 @@ int FourierBasisFastPoloidal::sin_to_sc_cs(const std::span<const double> fcSin,
     double normedFC = basis_norm * fcSin[mn];
 
     // no contribution to fcSC where m == 0
-    if (s_.lthreed) {  // check for n > 0 is redundant when starting loop at n=1
-      m_fcCS[m * (n_size + 1) + abs_n] = -sgn_n * normedFC;
-    }
+    // check for n > 0 is redundant when starting loop at n=1
+    m_fcCS[m * (n_size + 1) + abs_n] = -sgn_n * normedFC;
 
     mn++;
   }
@@ -227,7 +221,7 @@ int FourierBasisFastPoloidal::sin_to_sc_cs(const std::span<const double> fcSin,
       double normedFC = basis_norm * fcSin[mn];
 
       m_fcSC[m * (n_size + 1) + abs_n] += normedFC;
-      if (s_.lthreed && abs_n > 0) {
+      if (abs_n > 0) {
         m_fcCS[m * (n_size + 1) + abs_n] += -sgn_n * normedFC;
       }
 
