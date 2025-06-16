@@ -322,7 +322,9 @@ void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
     }
   }
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 }  // namespace vmecpp

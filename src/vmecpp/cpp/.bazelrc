@@ -1,18 +1,17 @@
 # general compilation options
 build --cxxopt="-std=c++20" --copt="-fdiagnostics-color=always"
-# If compiling with clang or intel compilers, you will need to adjust the linked OpenMP library from libgomp to libomp
-build --copt="-fopenmp" --linkopt="-lgomp"
 
 # workaround for a Bazel 7 issue with rules_foreign_cc: https://github.com/bazelbuild/rules_foreign_cc/issues/1129
 build --sandbox_add_mount_pair=/tmp
 
+# If compiling with clang or intel compilers, you will need to adjust the linked OpenMP library from libgomp to libomp
 # -fno-math-errno yields a few % of performance improvements and we don't check errno anyways
-build:opt   -c opt --copt="-O3" --copt="-fno-math-errno"
-build:perf  -c opt --copt="-O3" --copt="-fno-math-errno" --copt="-g" --strip=never --copt="-fno-omit-frame-pointer"
-build:dbg   -c dbg --copt="-O0"
-build:asan  -c dbg --features=asan --strip=never
+build:opt   -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-O3" --copt="-fno-math-errno"
+build:perf  -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-O3" --copt="-fno-math-errno" --copt="-g" --strip=never --copt="-fno-omit-frame-pointer"
+build:dbg   -c dbg --copt="-fopenmp" --linkopt="-lgomp" --copt="-O0"
+build:asan  -c dbg --copt="-fopenmp" --linkopt="-lgomp" --features=asan --strip=never
 # Undefined behavior sanitization is quite slow, to compensate we compile in opt mode
-build:ubsan -c opt --features=ubsan --strip=never
+build:ubsan -c opt --copt="-fopenmp" --linkopt="-lgomp" --features=ubsan --strip=never
 
 # We observe CPU overloads when having too many OpenMP threads in parallel on the CI machines.
 # So far, it looks similar to this issue: https://stackoverflow.com/q/70126350
