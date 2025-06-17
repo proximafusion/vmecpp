@@ -125,18 +125,146 @@ class FourierBasisFastPoloidal {
   // derivatives
   std::vector<double> sinnvn;
 
-  // ---------------
+  // ============================================================================
+  // FOURIER BASIS CONVERSION FUNCTIONS
+  // ============================================================================
+  //
+  // These functions convert between VMEC++'s two Fourier basis representations
+  // using trigonometric identities and pre-computed scaling factors.
+  // See docs/fourier_basis_implementation.md for complete mathematical details.
+  //
+  // Two Fourier basis types:
+  // 1. COMBINED BASIS (External): cos(m*\theta - n*\zeta), sin(m*\theta -
+  // n*\zeta)
+  //    - Used in: wout files, Python API, traditional VMEC format
+  //    - Storage: Linear arrays indexed by mode number mn
+  //
+  // 2. PRODUCT BASIS (Internal): cos(m*\theta)*cos(n*\zeta),
+  // sin(m*\theta)*sin(n*\zeta), etc.
+  //    - Used in: Internal computations with separable DFT operations
+  //    - Storage: 2D arrays indexed by (m,n) separately
+  //    - Layout: fcCC[m*(n_size+1) + n] (m-major ordering for poloidal class)
+  //
+  // Mathematical basis function identity:
+  // cos(m*\theta - n*\zeta) = cos(m*\theta)*cos(n*\zeta) +
+  // sin(m*\theta)*sin(n*\zeta)
 
+  /**
+   * Convert coefficients from combined cosine basis to separable product basis.
+   *
+   * Basis function identity:
+   * cos(m*\theta - n*\zeta) = cos(m*\theta)*cos(n*\zeta) +
+   * sin(m*\theta)*sin(n*\zeta)
+   *
+   * This function transforms coefficients for cos(m*\theta - n*\zeta) basis
+   * functions into coefficients for the separable product basis
+   * cos(m*\theta)*cos(n*\zeta) and sin(m*\theta)*sin(n*\zeta). The
+   * transformation accounts for VMEC symmetry where only n >= 0 coefficients
+   * are stored.
+   *
+   * Implementation uses pre-computed scaling factors (mscale, nscale) and
+   * handles positive/negative toroidal mode symmetry. Standalone function.
+   *
+   * Physics context: Converts external coefficient format (wout files) to
+   * internal product basis coefficients that enable separable DFT operations.
+   *
+   * @param fcCos [input] Coefficients for cos(m*\theta - n*\zeta) basis, size
+   * mnmax
+   * @param m_fcCC [output] Coefficients for cos(m*\theta)*cos(n*\zeta) basis,
+   * size m_size*(n_size+1)
+   * @param m_fcSS [output] Coefficients for sin(m*\theta)*sin(n*\zeta) basis,
+   * size m_size*(n_size+1)
+   * @param n_size Toroidal mode range: n in [-n_size, n_size]
+   * @param m_size Poloidal mode range: m in [0, m_size-1]
+   * @return Total number of modes processed (mnmax)
+   */
   int cos_to_cc_ss(const std::span<const double> fcCos,
                    std::span<double> m_fcCC, std::span<double> m_fcSS,
                    int n_size, int m_size) const;
+
+  /**
+   * Convert coefficients from combined sine basis to separable product basis.
+   *
+   * Basis function identity:
+   * sin(m*\theta - n*\zeta) = sin(m*\theta)*cos(n*\zeta) -
+   * cos(m*\theta)*sin(n*\zeta)
+   *
+   * This function transforms coefficients for sin(m*\theta - n*\zeta) basis
+   * functions into coefficients for the separable product basis
+   * sin(m*\theta)*cos(n*\zeta) and cos(m*\theta)*sin(n*\zeta). Enforces
+   * sin(0*\theta - 0*\zeta) = 0 constraint.
+   *
+   * Physics context: Handles sine-parity quantities like Z coordinates (zmns)
+   * and \lambda angle functions (lmns coefficients).
+   *
+   * @param fcSin [input] Coefficients for sin(m*\theta - n*\zeta) basis, size
+   * mnmax
+   * @param m_fcSC [output] Coefficients for sin(m*\theta)*cos(n*\zeta) basis,
+   * size m_size*(n_size+1)
+   * @param m_fcCS [output] Coefficients for cos(m*\theta)*sin(n*\zeta) basis,
+   * size m_size*(n_size+1)
+   * @param n_size Toroidal mode range: n in [-n_size, n_size]
+   * @param m_size Poloidal mode range: m in [0, m_size-1]
+   * @return Total number of modes processed (mnmax)
+   */
   int sin_to_sc_cs(const std::span<const double> fcSin,
                    std::span<double> m_fcSC, std::span<double> m_fcCS,
                    int n_size, int m_size) const;
 
+  /**
+   * Convert coefficients from separable product basis back to combined cosine
+   * basis.
+   *
+   * Inverse transformation using basis function identity:
+   * cos(m*\theta - n*\zeta) = cos(m*\theta)*cos(n*\zeta) +
+   * sin(m*\theta)*sin(n*\zeta)
+   *
+   * This function reconstructs coefficients for cos(m*\theta - n*\zeta) basis
+   * from coefficients of the separable product basis. Handles positive/negative
+   * toroidal mode reconstruction and applies inverse scaling factors.
+   *
+   * Physics context: Converts internal computational results back to external
+   * coefficient format for wout files, Python API, and traditional VMEC output.
+   *
+   * @param fcCC [input] Coefficients for cos(m*\theta)*cos(n*\zeta) basis, size
+   * m_size*(n_size+1)
+   * @param fcSS [input] Coefficients for sin(m*\theta)*sin(n*\zeta) basis, size
+   * m_size*(n_size+1)
+   * @param m_fcCos [output] Coefficients for cos(m*\theta - n*\zeta) basis,
+   * size mnmax
+   * @param n_size Toroidal mode range: n in [-n_size, n_size]
+   * @param m_size Poloidal mode range: m in [0, m_size-1]
+   * @return Total number of modes processed (mnmax)
+   */
   int cc_ss_to_cos(const std::span<const double> fcCC,
                    const std::span<const double> fcSS,
                    std::span<double> m_fcCos, int n_size, int m_size) const;
+
+  /**
+   * Convert coefficients from separable product basis back to combined sine
+   * basis.
+   *
+   * Inverse transformation using basis function identity:
+   * sin(m*\theta - n*\zeta) = sin(m*\theta)*cos(n*\zeta) -
+   * cos(m*\theta)*sin(n*\zeta)
+   *
+   * This function reconstructs coefficients for sin(m*\theta - n*\zeta) basis
+   * from coefficients of the separable product basis. Enforces sin(0*\theta -
+   * 0*\zeta) = 0.
+   *
+   * Physics context: Converts internal results for sine-parity quantities
+   * back to external coefficient format for output and analysis.
+   *
+   * @param fcSC [input] Coefficients for sin(m*\theta)*cos(n*\zeta) basis, size
+   * m_size*(n_size+1)
+   * @param fcCS [input] Coefficients for cos(m*\theta)*sin(n*\zeta) basis, size
+   * m_size*(n_size+1)
+   * @param m_fcSin [output] Coefficients for sin(m*\theta - n*\zeta) basis,
+   * size mnmax
+   * @param n_size Toroidal mode range: n in [-n_size, n_size]
+   * @param m_size Poloidal mode range: m in [0, m_size-1]
+   * @return Total number of modes processed (mnmax)
+   */
   int sc_cs_to_sin(const std::span<const double> fcSC,
                    const std::span<const double> fcCS,
                    std::span<double> m_fcSin, int n_size, int m_size) const;

@@ -238,6 +238,8 @@ void ProcessEquilibrium() {
 
 ## Fourier Basis Naming: Critical Domain Knowledge
 
+**Essential Reading**: For complete understanding of VMEC++'s Fourier basis implementation, including DFT vs FFT distinctions, mathematical foundations, and conversion algorithms, see `docs/fourier_basis_implementation.md`.
+
 **Important**: This section discusses **product basis parity** (even/odd trigonometric functions), which is distinct from **poloidal mode number parity** (kEvenParity/kOddParity for even/odd values of m).
 
 ### **The Two Fourier Representations in VMEC++**
@@ -253,8 +255,9 @@ VMEC++ uses **different Fourier bases** for internal computation vs external int
  *
  * CRITICAL: This is NOT the combined basis cos(m\theta-n\zeta) used externally.
  *
- * Computational advantage: Enables separable FFTs (\theta and \zeta independent)
- * Conversion: cos(m\theta-n\zeta) = cos(m\theta)cos(n\zeta) + sin(m\theta)sin(n\zeta) = rmncc + rmnss
+ * Computational advantage: Enables separable DFT operations (\theta and \zeta independent)
+ * Basis function identity: cos(m\theta-n\zeta) = cos(m\theta)cos(n\zeta) + sin(m\theta)sin(n\zeta)
+ * Coefficient conversion: rmnc coefficients -> rmncc + rmnss coefficients
  * External equivalent: rmnc (combined basis)
  * Physics: Even-even trigonometric parity component of R boundary
  */

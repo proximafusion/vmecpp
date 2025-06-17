@@ -170,6 +170,8 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 
 ## Physics Domain Knowledge
 
+**Essential Reading for Fourier Operations**: `docs/fourier_basis_implementation.md` provides comprehensive coverage of DFT implementation, basis conversions, and mathematical foundations. Required reading before working with any Fourier-related code.
+
 ### Fourier Basis Architecture
 
 VMEC++ uses **two different Fourier representations**:
@@ -177,7 +179,7 @@ VMEC++ uses **two different Fourier representations**:
 **Internal Product Basis** (Computational efficiency):
 - `rmncc_`: R \times cos(m\theta) \times cos(n\zeta) coefficients
 - `rmnss_`: R \times sin(m\theta) \times sin(n\zeta) coefficients
-- Enables separable FFTs for performance
+- Enables separable DFT operations using pre-computed basis arrays
 
 **External Combined Basis** (Researcher interface):
 - `rmnc`: R \times cos(m\theta - n\zeta) coefficients (traditional VMEC format)
