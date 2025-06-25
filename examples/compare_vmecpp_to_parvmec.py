@@ -69,7 +69,7 @@ for phi_degrees in [0, 18, 36]:
     plt.grid(True)
     plt.legend(loc="upper right")
 
-    plt.title(f"$\\varphi = {phi_degrees}°$")
+    plt.title(f"$\\varphi = {phi_degrees}$ deg")
 
 # plot iota profile comparison
 s_half = (0.5 + np.arange(ref_ns - 1)) / (ref_ns - 1.0)

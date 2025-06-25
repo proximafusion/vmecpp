@@ -38,7 +38,8 @@ void ForcesToFourier3DSymmFastPoloidal(
     const RealSpaceForces& d, const std::vector<double>& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
     const FourierBasisFastPoloidal& fb,
-    VacuumPressureState vacuum_pressure_state, FourierForces& physical_forces);
+    VacuumPressureState vacuum_pressure_state,
+    FourierForces& m_physical_forces);
 
 // Implemented as a free function for easier testing and benchmarking.
 // "FastPoloidal" indicates that, in real space, iterations use the
@@ -48,16 +49,17 @@ void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
                                      const RadialPartitioning& r,
                                      const Sizes& s, const RadialProfiles& rp,
                                      const FourierBasisFastPoloidal& fb,
-                                     RealSpaceGeometry& g);
+                                     RealSpaceGeometry& m_geometry);
 
 // Implemented as a free function for easier testing and benchmarking.
 void deAliasConstraintForce(const RadialPartitioning& rp,
                             const FourierBasisFastPoloidal& fb, const Sizes& s_,
-                            std::vector<double>& faccon,
-                            std::vector<double>& tcon,
-                            std::vector<double>& gConEff,
-                            std::vector<double>& gsc, std::vector<double>& gcs,
-                            std::vector<double>& gCon);
+                            const std::vector<double>& faccon,
+                            const std::vector<double>& tcon,
+                            const std::vector<double>& gConEff,
+                            std::vector<double>& m_gsc,
+                            std::vector<double>& m_gcs,
+                            std::vector<double>& m_gCon);
 
 class IdealMhdModel {
  public:
@@ -258,9 +260,15 @@ class IdealMhdModel {
   std::vector<double> rCon;
 
   // constraint force contribution Y on full-grid
+  // In free-boundary this starts as a large value and is slowly reduced to zero
+  // to gradually increase the vacuum pressure constraint (force felt from the
+  // B^2 contribution).
   std::vector<double> zCon;
 
-  // initial constraint force contribution X on full-grid
+  // initial constraint force contribution X on full-grid.
+  // In free-boundary this starts as a large value and is slowly reduced to zero
+  // to gradually increase the vacuum pressure constraint (force felt from the
+  // B^2 contribution).
   std::vector<double> rCon0;
 
   // initial constraint force contribution Y on full-grid

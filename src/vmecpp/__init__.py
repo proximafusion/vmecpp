@@ -85,7 +85,8 @@ class VmecInput(BaseModelWithNumpy):
     lasym: bool
     """Flag to indicate non-stellarator-symmetry.
 
-    Note: this flag is False if stellarator symmetry is present, True if not.
+    - False, assumes stellarator symmetry (only cosine/sine coefficients used).
+    - True, (currently unsupported) allows for non-stellarator-symmetric terms.
     """
 
     nfp: int
@@ -99,15 +100,25 @@ class VmecInput(BaseModelWithNumpy):
     ntor-1, ntor."""
 
     ntheta: int
-    """Number of poloidal grid points; if odd: is rounded to next smaller even
-    number."""
+    """Number of poloidal grid points (ntheta >= 0).
+
+    Controls the poloidal resolution in real space. If 0, chosen automatically as
+    minimally allowed. Must be at least 2*mpol + 6.
+    """
 
     nzeta: int
-    """Number of toroidal grid points; must match nzeta of mgrid file if using free-
-    boundary."""
+    """Number of toroidal grid points (nzeta >= 0).
+
+    Controls the toroidal resolution in real space. If 0, chosen automatically as
+    minimally allowed. Must be at least 2*ntor + 4. We typically use use phi as the
+    convention for the toroidal angle, the name nzeta is due to beckwards compatibility.
+    """
 
     ns_array: jt.Int[np.ndarray, "num_grids"]
-    """Number of flux surfaces per multigrid step."""
+    """Number of flux surfaces per multigrid step.
+
+    Each entry >= 3 and >= previous entry.
+    """
 
     ftol_array: jt.Float[np.ndarray, "num_grids"]
     """Requested force tolerance for convergence per multigrid step."""
@@ -116,16 +127,28 @@ class VmecInput(BaseModelWithNumpy):
     """Maximum number of iterations per multigrid step."""
 
     phiedge: float
-    """Total enclosed toroidal magnetic flux in Vs == Wb."""
+    """Total enclosed toroidal magnetic flux in Vs == Wb.
+
+    - In fixed-boundary, this determines the magnetic field strength.
+    - In free-boundary, the magnetic field strength is given externally,
+    so this determines cross-section area and volume of the plasma.
+    """
 
     ncurr: typing.Literal[0, 1]
-    """Select constraint on iota or enclosed toroidal current profiles 0: constrained-iota; 1: constrained-current"""
+    """Select constraint on iota or enclosed toroidal current profiles.
+
+    - 0: constrained-iota (rotational transform profile specified)
+    - 1: constrained-current (toroidal current profile specified)
+    """
 
     pmass_type: ProfileType
     """Parametrization of mass/pressure profile."""
 
     am: jt.Float[np.ndarray, "am_len"]
-    """Mass/pressure profile coefficients."""
+    """Mass/pressure profile coefficients.
+
+    Units: Pascals for pressure.
+    """
 
     am_aux_s: jt.Float[np.ndarray, "am_aux_len"]
     """Spline mass/pressure profile: knot locations in s"""
@@ -137,13 +160,20 @@ class VmecInput(BaseModelWithNumpy):
     """Global scaling factor for mass/pressure profile."""
 
     gamma: float
-    """Adiabatic index."""
+    """Adiabatic index (ratio of specific heats).
+
+    Specifying 0 implies that the pressure profile is specified. For all other values,
+    the mass profile is specified.
+    """
 
     spres_ped: float
-    """Location of pressure pedestal in s."""
+    """Location of pressure pedestal in s.
+
+    Outside this radial location, pressure is constant.
+    """
 
     piota_type: ProfileType
-    """Parametrization of iota profile."""
+    """Parametrization of iota (rotational transform) profile."""
 
     ai: jt.Float[np.ndarray, "ai_len"]
     """Iota profile coefficients."""
@@ -167,16 +197,25 @@ class VmecInput(BaseModelWithNumpy):
     """Spline toroidal current profile: values at knots"""
 
     curtor: float
-    """Toroidal current in A."""
+    """Net toroidal current in A.
+
+    The toroidal current profile is scaled to yield this total.
+    """
 
     bloat: float
     """Bloating factor (for constrained toroidal current)"""
 
     lfreeb: bool
-    """Flag to indicate free-boundary."""
+    """Flag to indicate free-boundary.
+
+    If True, run in free-boundary mode; if False, fixed-boundary.
+    """
 
     mgrid_file: typing.Annotated[str, pydantic.Field(max_length=200)]
-    """Full path for vacuum Green's function data."""
+    """Full path for vacuum Green's function data.
+
+    NetCDF MGRID file with magnetic field response factors for external coils.
+    """
 
     extcur: jt.Float[np.ndarray, "ext_current"]
     """Coil currents in A."""
@@ -185,7 +224,7 @@ class VmecInput(BaseModelWithNumpy):
     """Number of iterations between full vacuum calculations."""
 
     nstep: int
-    """Printout interval."""
+    """Printout interval at which convergence progress is logged."""
 
     aphi: jt.Float[np.ndarray, "aphi_len"]
     """Radial flux zoning profile coefficients."""
@@ -206,16 +245,28 @@ class VmecInput(BaseModelWithNumpy):
     """
 
     raxis_c: jt.Float[np.ndarray, "ntor_plus_1"]
-    """Magnetic axis coefficients for R ~ cos(n*v); stellarator-symmetric."""
+    """Magnetic axis coefficients for R ~ cos(n*v); stellarator-symmetric.
+
+    At least 1 value required, up to n=ntor considered.
+    """
 
     zaxis_s: jt.Float[np.ndarray, "ntor_plus_1"]
-    """Magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric."""
+    """Magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric.
+
+    Up to n=ntor considered; first entry (n=0) is ignored.
+    """
 
     raxis_s: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
-    """Magnetic axis coefficients for R ~ sin(n*v); non-stellarator-symmetric."""
+    """Magnetic axis coefficients for R ~ sin(n*v); non-stellarator-symmetric.
+
+    Up to n=ntor considered; first entry (n=0) is ignored. Only used if lasym=True.
+    """
 
     zaxis_c: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
-    """Magnetic axis coefficients for Z ~ cos(n*v); non-stellarator-symmetric."""
+    """Magnetic axis coefficients for Z ~ cos(n*v); non-stellarator-symmetric.
+
+    Only used if lasym=True.
+    """
 
     rbc: SerializableSparseCoefficientArray[
         jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
@@ -233,7 +284,10 @@ class VmecInput(BaseModelWithNumpy):
         ]
         | None
     ) = None
-    """Boundary coefficients for R ~ sin(m*u - n*v); non-stellarator-symmetric"""
+    """Boundary coefficients for R ~ sin(m*u - n*v); non-stellarator-symmetric.
+
+    Only used if lasym=True.
+    """
 
     zbc: (
         SerializableSparseCoefficientArray[
@@ -241,7 +295,10 @@ class VmecInput(BaseModelWithNumpy):
         ]
         | None
     ) = None
-    """Boundary coefficients for Z ~ cos(m*u - n*v); non-stellarator-symmetric"""
+    """Boundary coefficients for Z ~ cos(m*u - n*v); non-stellarator-symmetric.
+
+    Only used if lasym=True.
+    """
 
     @pydantic.model_validator(mode="after")
     def _validate_fourier_coefficients_shapes(self) -> VmecInput:
@@ -512,13 +569,29 @@ class VmecWOut(BaseModelWithNumpy):
     """
 
     input_extension: typing.Annotated[str, pydantic.Field(max_length=100)] = ""
+    """File extension of the input file."""
+
     ier_flag: int
+    """Status code indicating success or problems during the VMEC++ run."""
+
     nfp: int
+    """Number of toroidal field periods."""
+
     ns: int
+    """Number of radial grid points."""
+
     mpol: int
+    """Number of poloidal Fourier modes."""
+
     ntor: int
+    """Number of toroidal Fourier modes."""
+
     mnmax: int
+    """Number of Fourier coefficients for the state vector."""
+
     mnmax_nyq: int
+    """Number of Fourier coefficients for the Nyquist-quantities."""
+
     # Serialized as int in the wout file under a different name
     lasym: typing.Annotated[
         bool,
@@ -530,6 +603,8 @@ class VmecWOut(BaseModelWithNumpy):
         ),
         pydantic.Field(alias="lasym__logical__"),
     ]
+    """Flag indicating non-stellarator-symmetry."""
+
     lfreeb: typing.Annotated[
         bool,
         pydantic.PlainSerializer(
@@ -540,80 +615,237 @@ class VmecWOut(BaseModelWithNumpy):
         ),
         pydantic.Field(alias="lfreeb__logical__"),
     ]
+    """Flag indicating free-boundary computation."""
+
     wb: float
+    """Magnetic energy: volume integral of `|B|^2/(2 mu0)`."""
+
     wp: float
+    """Kinetic energy: volume integral of `p`."""
+
     rmax_surf: float
+    """Maximum `R` on the plasma boundary over all grid points."""
+
     rmin_surf: float
+    """Minimum `R` on the plasma boundary over all grid points."""
+
     zmax_surf: float
+    """Maximum `Z` on the plasma boundary over all grid points."""
+
     aspect: float
+    """Aspect ratio (major radius over minor radius) of the plasma boundary."""
+
     betapol: float
+    """Poloidal plasma beta.
+
+    The ratio of the total thermal energy of the plasma, to the total poloidal magnetic
+    energy. `beta=W_th/W_{B_theta}=\int p dV/(\int B_theta^2/(2 mu_0) dV)`
+    """
+
     betator: float
+    """Toroidal plasma beta.
+
+    The ratio of the total thermal energy of the plasma, to the total toroidal magnetic
+    energy. `beta=W_th/W_{B_phi}=\int p dV/(\int B_phi^2/(2 mu_0) dV)`
+    """
+
     betaxis: float
+    """Plasma beta on the magnetic axis."""
+
     b0: float
+    """Toroidal magnetic flux density from poloidal current and magnetic axis position
+    at `phi=0`."""
+
     rbtor0: float
+    """Poloidal ribbon current at the axis."""
+
     rbtor: float
+    """Poloidal ribbon current at the plasma boundary."""
+
     IonLarmor: float
+    """Larmor radius of plasma ions."""
+
     ctor: float
+    """Net toroidal plasma current."""
+
     Aminor_p: float
+    """Minor radius of the plasma."""
+
     Rmajor_p: float
+    """Major radius of the plasma."""
+
     volume: typing.Annotated[float, pydantic.Field(alias="volume_p")]
+    """Plasma volume."""
+
     fsqr: float
+    """Invariant force residual of the force on `R` at end of the run."""
+
     fsqz: float
+    """Invariant force residual of the force on `Z` at end of the run."""
+
     fsql: float
+    """Invariant force residual of the force on `lambda` at end of the run."""
+
     ftolv: float
+    """Force tolerance value used to determine convergence."""
+
     # Default initialized so reading stays backwards compatible pre v0.4.0
     itfsq: int = 0
+    """Number of force-balance iterations after which the run terminated."""
+
     phipf: jt.Float[np.ndarray, "n_surfaces"]
+    """Radial derivative of enclosed toroidal magnetic flux `phi'` on the full-grid."""
+
     chipf: jt.Float[np.ndarray, "n_surfaces"]
+    """Radial derivative of enclosed poloidal magnetic flux `chi'` on the full-grid."""
+
     jcuru: jt.Float[np.ndarray, "n_surfaces"]
+    """Radial derivative of enclosed poloidal current on full-grid."""
+
     jcurv: jt.Float[np.ndarray, "n_surfaces"]
+    """Radial derivative of enclosed toroidal current on full-grid."""
+
     # Default initialized so reading stays backwards compatible pre v0.4.0
     fsqt: jt.Float[np.ndarray, "time"] = np.array([])
+    """Evolution of the total force residual along the run."""
+
     wdot: jt.Float[np.ndarray, "time"] = np.array([])
+    """Evolution of the MHD energy decay along the run."""
+
     jdotb: jt.Float[np.ndarray, "n_surfaces"]
+    """`<j * B>` on full-grid."""
+
     bdotb: jt.Float[np.ndarray, "n_surfaces"]
+    """`<B * B>` on full-grid."""
+
     bdotgradv: jt.Float[np.ndarray, "n_surfaces"]
+    """Flux-surface-averaged toroidal magnetic field component `B * grad(v)` on full-
+    grid."""
+
     DMerc: jt.Float[np.ndarray, "n_surfaces"]
+    """Full Mercier stability criterion on the full-grid."""
+
     equif: jt.Float[np.ndarray, "n_surfaces"]
+    """Radial force balance residual on full-grid."""
+
     # In wout these are stored as float64, although they only take integer values.
     xm: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode"]]
+    """Poloidal mode numbers `m` for the Fourier coefficients in the state vector."""
+
     xn: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode"]]
+    """Toroidal mode numbers times number of toroidal field periods `n * nfp` for the
+    Fourier coefficients in the state vector."""
+
     xm_nyq: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
+    """Poloidal mode numbers `m` for the Fourier coefficients in the Nyquist-
+    quantities."""
+
     xn_nyq: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
+    """Toroidal mode numbers times number of toroidal field periods `n * nfp` for the
+    Fourier coefficients in the Nyquist-quantities."""
+
     mass: jt.Float[np.ndarray, "n_surfaces"]
+    """Plasma mass profile `m` on half-grid."""
+
     buco: jt.Float[np.ndarray, "n_surfaces"]
+    """Profile of enclosed toroidal current `I` on half-grid."""
+
     bvco: jt.Float[np.ndarray, "n_surfaces"]
+    """Profile of enclosed poloidal ribbon current `G` on half-grid."""
+
     phips: jt.Float[np.ndarray, "n_surfaces"]
+    """Radial derivative of enclosed toroidal magnetic flux `phi'` on the half-grid."""
+
     bmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    """Fourier coefficients of the magnetic field strength `|B|` on the half-grid."""
+
     gmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    """Fourier coefficients of the Jacobian `sqrt(g)` on the half-grid."""
+
     bsubumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    """Fourier coefficients of the covariant magnetic field component `B_theta` on the
+    half-grid."""
+
     bsubvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    """Fourier coefficients of the covariant magnetic field component `B_phi` on the
+    half-grid."""
+
     bsubsmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    """Fourier coefficients of the covariant magnetic field component `B_s` on the full-
+    grid."""
+
     bsupumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    """Fourier coefficients of the contravariant magnetic field component `B^theta` on
+    the half-grid."""
+
     bsupvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    """Fourier coefficients of the contravariant magnetic field component `B^phi` on the
+    half-grid."""
+
     rmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    """Fourier coefficients for `R` of the geometry of the flux surfaces on the full-
+    grid."""
+
     zmns: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    """Fourier coefficients for `Z` of the geometry of the flux surfaces on the full-
+    grid."""
+
     lmns: jt.Float[np.ndarray, "mn_mode n_surfaces"]
-    # lmns_full is not present in a typical Fortran wout file,
-    # but we need to save it for fixed-boundary hot restart
-    # to work properly. We store it with the Fortran convention
-    # for the order of the dimensions for consistency with lmns.
+    """Fourier coefficients for `lambda` stream function on the half-grid."""
+
     lmns_full: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    """Fourier coefficients for `lambda` stream function on the full-grid.
+
+    This quantity is VMEC++ specific and required for hot-restart to work properly. We
+    store it with the Fortran convention for the order of the dimensions for consistency
+    with lmns.
+    """
+
     pcurr_type: ProfileType
+    """Parametrization of toroidal current profile (copied from input)."""
+
     pmass_type: ProfileType
+    """Parametrization of mass/pressure profile (copied from input)."""
+
     piota_type: ProfileType
+    """Parametrization of iota profile (copied from input)."""
+
     am: jt.Float[np.ndarray, "preset"]
+    """Mass/pressure profile coefficients (copied from input)."""
+
     ac: jt.Float[np.ndarray, "preset"]
+    """Enclosed toroidal current profile coefficients (copied from input)."""
+
     ai: jt.Float[np.ndarray, "preset"]
+    """Iota profile coefficients (copied from input)."""
+
     am_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    """Spline mass/pressure profile: knot locations in `s` (copied from input)."""
+
     am_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    """Spline mass/pressure profile: values at knots (copied from input)."""
+
     ac_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    """Spline toroidal current profile: knot locations in `s` (copied from input)."""
+
     ac_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    """Spline toroidal current profile: values at knots (copied from input)."""
+
     ai_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    """Spline iota profile: knot locations in `s` (copied from input)."""
+
     ai_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    """Spline iota profile: values at knots (copied from input)."""
+
     gamma: float
+    """Adiabatic index `gamma` (copied from input)."""
+
     mgrid_file: typing.Annotated[str, pydantic.Field(max_length=200)]
+    """Full path for vacuum Green's function data (copied from input)."""
+
     nextcur: int
+    """Number of external coil currents."""
+
     extcur: typing.Annotated[
         jt.Float[np.ndarray, "ext_current"],
         pydantic.BeforeValidator(lambda x: x if np.shape(x) != () else np.array([])),
@@ -628,74 +860,105 @@ class VmecWOut(BaseModelWithNumpy):
     """
 
     mgrid_mode: MgridModeType
+    """Indicates if the mgrid file was normalized to unit currents ("S") or not
+    ("R")."""
 
     # In the C++ WOutFileContents this is called iota_half.
     iotas: jt.Float[np.ndarray, "n_surfaces"]
+    """Rotational transform `iota` on the half-grid."""
 
     # In the C++ WOutFileContents this is called iota_full.
     iotaf: jt.Float[np.ndarray, "n_surfaces"]
+    """Rotational transform `iota` on the full-grid."""
 
     # In the C++ WOutFileContents this is called betatot.
     betatotal: float
+    """Total plasma beta.
+
+    The ratio of the total thermal energy of the plasma, to the total magnetic energy.
+    `beta=W_th/W_B=\int p dV/(\int B/(2 mu_0) dV)`
+    """
 
     # In the C++ WOutFileContents this is called raxis_c.
     raxis_cc: jt.Float[np.ndarray, "ntor_plus_1"]
+    """Fourier coefficients of `R(phi)` of the magnetic axis geometry."""
 
     # In the C++ WOutFileContents this is called zaxis_s.
     zaxis_cs: jt.Float[np.ndarray, "ntor_plus_1"]
+    """Fourier coefficients of `Z(phi)` of the magnetic axis geometry."""
 
     # In the C++ WOutFileContents this is called dVds.
     vp: jt.Float[np.ndarray, "n_surfaces"]
+    """Differential volume `V'` on half-grid."""
 
     # In the C++ WOutFileContents this is called pressure_full.
     presf: jt.Float[np.ndarray, "n_surfaces"]
+    """Kinetic pressure `p` on the full-grid."""
 
     # In the C++ WOutFileContents this is called pressure_half.
     pres: jt.Float[np.ndarray, "n_surfaces"]
+    """Kinetic pressure `p` on the half-grid."""
 
     # In the C++ WOutFileContents this is called toroidal_flux.
     phi: jt.Float[np.ndarray, "n_surfaces"]
+    """Enclosed toroidal magnetic flux `phi` on the full-grid."""
 
     # In the C++ WOutFileContents this is called sign_of_jacobian.
     signgs: int
+    """Sign of the Jacobian of the coordinate transform between flux coordinates and
+    cylindrical coordinates."""
 
     # In the C++ WOutFileContents this is called VolAvgB.
     volavgB: float
+    """Volume-averaged magnetic field strength."""
 
     # In the C++ WOutFileContents this is called safety_factor.
     q_factor: jt.Float[np.ndarray, "n_surfaces"]
+    """Safety factor `1/iota` on the full-grid."""
 
     # In the C++ WOutFileContents this is called poloidal_flux.
     chi: jt.Float[np.ndarray, "n_surfaces"]
+    """Enclosed poloidal magnetic flux `chi` on the full-grid."""
 
     # In the C++ WOutFileContents this is called spectral_width.
     specw: jt.Float[np.ndarray, "n_surfaces"]
+    """Spectral width `M` on the full-grid."""
 
     # In the C++ WOutFileContents this is called overr.
     over_r: jt.Float[np.ndarray, "n_surfaces"]
+    """`<tau / R> / V'` on half-grid."""
 
     # In the C++ WOutFileContents this is called Dshear.
     DShear: jt.Float[np.ndarray, "n_surfaces"]
+    """Mercier stability criterion contribution due to magnetic shear."""
 
     # In the C++ WOutFileContents this is called Dwell.
     DWell: jt.Float[np.ndarray, "n_surfaces"]
+    """Mercier stability criterion contribution due to magnetic well."""
 
     # In the C++ WOutFileContents this is called Dcurr.
     DCurr: jt.Float[np.ndarray, "n_surfaces"]
+    """Mercier stability criterion contribution due to plasma currents."""
 
     # In the C++ WOutFileContents this is called Dgeod.
     DGeod: jt.Float[np.ndarray, "n_surfaces"]
+    """Mercier stability criterion contribution due to geodesic curvature."""
 
     # In the C++ WOutFileContents this is called maximum_iterations.
     niter: int
+    """Maximum number of force-balance iterations allowed."""
 
     # In the C++ WOutFileContents this is called beta.
     beta_vol: jt.Float[np.ndarray, "n_surfaces"]
+    """Flux-surface averaged plasma beta on half-grid."""
 
     # In the C++ WOutFileContents this is called 'version' and it is a string.
-    # version_ is required to make COBRAVMEC work correctly:
-    # it changes its behavior depending on the VMEC version (>6 or not)
     version_: float
+    """Version number of VMEC, that this VMEC++ wout file is compatible with.
+
+    Some codes change how they interpret values in the wout file depending on this
+    number. (E.g. COBRAVMEC checks if >6 or not)
+    """
 
     @property
     def volume_p(self):
@@ -1074,19 +1337,35 @@ class Threed1Volumetrics(BaseModelWithNumpy):
     model_config = pydantic.ConfigDict(extra="forbid")
 
     int_p: float
+    """Total plasma pressure integrated over the plasma volume."""
+
     avg_p: float
+    """Volume-averaged plasma pressure."""
 
     int_bpol: float
+    """Total poloidal magnetic field energy `B_phi^2/(2 mu0)` integrated over the plasma
+    volume."""
+
     avg_bpol: float
+    """Volume-averaged poloidal magnetic field energy."""
 
     int_btor: float
+    """Total toroidal magnetic field energy integrated over the plasma volume."""
+
     avg_btor: float
+    """Volume-averaged toroidal magnetic field energy."""
 
     int_modb: float
+    """Total `|B|` integrated over the plasma volume."""
+
     avg_modb: float
+    """Volume-averaged `|B|`."""
 
     int_ekin: float
+    """Total kinetic energy integrated over the plasma volume."""
+
     avg_ekin: float
+    """Volume-averaged kinetic energy."""
 
     @staticmethod
     def _from_cpp_threed1volumetrics(
@@ -1105,21 +1384,50 @@ class Threed1Volumetrics(BaseModelWithNumpy):
 class Mercier(BaseModelWithNumpy):
     model_config = pydantic.ConfigDict(extra="forbid")
 
-    s: jt.Float[np.ndarray, "dim1"]
-    toroidal_flux: jt.Float[np.ndarray, "dim1"]
-    iota: jt.Float[np.ndarray, "dim1"]
-    shear: jt.Float[np.ndarray, "dim1"]
-    d_volume_d_s: jt.Float[np.ndarray, "dim1"]
-    well: jt.Float[np.ndarray, "dim1"]
-    toroidal_current: jt.Float[np.ndarray, "dim1"]
-    d_toroidal_current_d_s: jt.Float[np.ndarray, "dim1"]
-    pressure: jt.Float[np.ndarray, "dim1"]
-    d_pressure_d_s: jt.Float[np.ndarray, "dim1"]
-    DMerc: jt.Float[np.ndarray, "dim1"]
-    Dshear: jt.Float[np.ndarray, "dim1"]
-    Dwell: jt.Float[np.ndarray, "dim1"]
-    Dcurr: jt.Float[np.ndarray, "dim1"]
-    Dgeod: jt.Float[np.ndarray, "dim1"]
+    s: jt.Float[np.ndarray, "n_surfaces"]
+    """Normalized toroidal flux coordinate `s`."""
+
+    toroidal_flux: jt.Float[np.ndarray, "n_surfaces"]
+    """Enclosed toroidal magnetic flux `phi`."""
+
+    iota: jt.Float[np.ndarray, "n_surfaces"]
+    """Rotational transform `iota`."""
+
+    shear: jt.Float[np.ndarray, "n_surfaces"]
+    """Magnetic shear profile."""
+
+    d_volume_d_s: jt.Float[np.ndarray, "n_surfaces"]
+    """Radial derivative of plasma volume with respect to `s`."""
+
+    well: jt.Float[np.ndarray, "n_surfaces"]
+    """Magnetic well profile."""
+
+    toroidal_current: jt.Float[np.ndarray, "n_surfaces"]
+    """Enclosed toroidal current profile."""
+
+    d_toroidal_current_d_s: jt.Float[np.ndarray, "n_surfaces"]
+    """Radial derivative of enclosed toroidal current."""
+
+    pressure: jt.Float[np.ndarray, "n_surfaces"]
+    """Pressure profile `p`."""
+
+    d_pressure_d_s: jt.Float[np.ndarray, "n_surfaces"]
+    """Radial derivative of pressure profile."""
+
+    DMerc: jt.Float[np.ndarray, "n_surfaces"]
+    """Full Mercier stability criterion."""
+
+    Dshear: jt.Float[np.ndarray, "n_surfaces"]
+    """Mercier criterion contribution due to magnetic shear."""
+
+    Dwell: jt.Float[np.ndarray, "n_surfaces"]
+    """Mercier criterion contribution due to magnetic well."""
+
+    Dcurr: jt.Float[np.ndarray, "n_surfaces"]
+    """Mercier criterion contribution due to plasma currents."""
+
+    Dgeod: jt.Float[np.ndarray, "n_surfaces"]
+    """Mercier criterion contribution due to geodesic curvature."""
 
     @staticmethod
     def _from_cpp_mercier(cpp_mercier: _vmecpp.Mercier) -> Mercier:
@@ -1133,31 +1441,83 @@ class Mercier(BaseModelWithNumpy):
 class JxBOut(BaseModelWithNumpy):
     model_config = pydantic.ConfigDict(extra="forbid")
 
-    itheta: jt.Float[np.ndarray, "num_full nZnT"]
-    izeta: jt.Float[np.ndarray, "num_full nZnT"]
+    itheta: jt.Float[np.ndarray, "num_half nZnT"]
+    """Poloidal surface current.
+
+    `itheta = (d B_s/dPhi - d B_phi/ds)/mu0`
+    """
+
+    izeta: jt.Float[np.ndarray, "num_half nZnT"]
+    """Toroidal surface current.
+
+    `izeta = (-d B_s/dTheta + d B_theta/ds)/mu0`
+    """
+
     bdotk: jt.Float[np.ndarray, "num_full nZnT"]
 
-    amaxfor: jt.Float[np.ndarray, "dim1"]
-    aminfor: jt.Float[np.ndarray, "dim1"]
-    avforce: jt.Float[np.ndarray, "dim1"]
-    pprim: jt.Float[np.ndarray, "dim1"]
-    jdotb: jt.Float[np.ndarray, "dim1"]
-    bdotb: jt.Float[np.ndarray, "dim1"]
-    bdotgradv: jt.Float[np.ndarray, "dim1"]
-    jpar2: jt.Float[np.ndarray, "dim1"]
-    jperp2: jt.Float[np.ndarray, "dim1"]
-    phin: jt.Float[np.ndarray, "dim1"]
+    amaxfor: jt.Float[np.ndarray, "n_surfaces"]
+    """100 * Maximum value of the real space force residual on each radial surface."""
+
+    aminfor: jt.Float[np.ndarray, "n_surfaces"]
+    """100 * Minimum value of the real space force residual on each radial surface."""
+
+    avforce: jt.Float[np.ndarray, "n_surfaces"]
+    """Average force residual on each radial surface."""
+
+    pprim: jt.Float[np.ndarray, "n_surfaces"]
+    """Radial derivative of the pressure profile."""
+
+    jdotb: jt.Float[np.ndarray, "n_surfaces"]
+    """`<j * B>` on full-grid."""
+
+    bdotb: jt.Float[np.ndarray, "n_surfaces"]
+    """`<B * B>` on full-grid."""
+
+    bdotgradv: jt.Float[np.ndarray, "n_surfaces"]
+
+    jpar2: jt.Float[np.ndarray, "n_surfaces"]
+    """Flux-surface-averaged squared parallel current density `<j||^2>`."""
+
+    jperp2: jt.Float[np.ndarray, "n_surfaces"]
+    """Flux-surface-averaged squared perpendicular current density `<j-perp^2>`."""
+
+    phin: jt.Float[np.ndarray, "n_surfaces"]
+    """Normalized, enclosed toroidal flux at each radial surface.
+
+    `phin = toroidal_flux/toroidal_flux[-1]`
+    """
 
     jsupu3: jt.Float[np.ndarray, "num_full nZnT"]
+    """Contravariant current density component `j^u` on the full grid.
+
+    `j^u = itheta/V'`
+    """
+
     jsupv3: jt.Float[np.ndarray, "num_full nZnT"]
+    """Contravariant current density component `j^v` on the full grid.
+
+    `j^u = izeta/V'`
+    """
+
     jsups3: jt.Float[np.ndarray, "num_half nZnT"]
+    """Contravariant current density component `j^s` on the half grid.
+
+    `j^s = (d B_theta/dPhi - d B_pih/dTheta)/(mu0 * V')`
+    """
 
     bsupu3: jt.Float[np.ndarray, "num_full nZnT"]
     bsupv3: jt.Float[np.ndarray, "num_full nZnT"]
     jcrossb: jt.Float[np.ndarray, "num_full nZnT"]
+    """Magnitude of `j x B` at each grid point."""
+
     jxb_gradp: jt.Float[np.ndarray, "num_full nZnT"]
+    """Dot product of `j x B` and `grad(p)` at each grid point."""
+
     jdotb_sqrtg: jt.Float[np.ndarray, "num_full nZnT"]
+    """Product of `j * B` and `sqrt(g)` at each grid point."""
+
     sqrtg3: jt.Float[np.ndarray, "num_full nZnT"]
+    """Jacobian determinant `sqrt(g)` at each grid point."""
 
     bsubu3: jt.Float[np.ndarray, "num_half nZnT"]
     bsubv3: jt.Float[np.ndarray, "num_half nZnT"]
@@ -1182,10 +1542,21 @@ class VmecOutput(BaseModelWithNumpy):
     """Python equivalent of VMEC's "jxbout" file."""
 
     mercier: Mercier
-    """Python equivalent of VMEC's "mercier" file."""
+    """Python equivalent of VMEC's "mercier" file.
+
+    Contains radial profiles and stability criteria relevant for Mercier stability
+    analysis, including the Mercier criterion and its decomposition into shear, well,
+    current, and geodesic contributions. Also includes profiles of rotational transform,
+    toroidal flux, pressure, and their derivatives.
+    """
 
     threed1_volumetrics: Threed1Volumetrics
-    """Python equivalent of VMEC's volumetrics section in the "threed1" file."""
+    """Python equivalent of VMEC's volumetrics section in the "threed1" file.
+
+    Contains global and flux-surface-averaged quantities such as total and average
+    pressure, poloidal and toroidal magnetic field energies, kinetic energy, and related
+    integrals. Useful for postprocessing and global equilibrium characterization.
+    """
 
     wout: VmecWOut
     """Python equivalent of VMEC's "wout" file."""

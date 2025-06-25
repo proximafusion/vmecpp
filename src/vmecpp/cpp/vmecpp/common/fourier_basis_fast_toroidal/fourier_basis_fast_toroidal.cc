@@ -131,10 +131,10 @@ void FourierBasisFastToroidal::computeFourierBasisFastToroidal(int nfp) {
 }
 
 // convert cos(xm[mn] theta - xn[mn] zeta) into 2D FC array form
-int FourierBasisFastToroidal::cos_to_cc_ss(const std::vector<double>& fcCos,
-                                           std::vector<double>& m_fcCC,
-                                           std::vector<double>& m_fcSS,
-                                           int n_size, int m_size) const {
+int FourierBasisFastToroidal::cos_to_cc_ss(const std::span<const double> fcCos,
+                                           std::span<double> m_fcCC,
+                                           std::span<double> m_fcSS, int n_size,
+                                           int m_size) const {
   // m = 0: n =  0, 1, ..., ntor --> ntor + 1
   // m > 0: n = -ntor, ..., ntor --> (mpol - 1) * (2 * ntor + 1)
   int mnmax = (n_size + 1) + (m_size - 1) * (2 * n_size + 1);
@@ -168,7 +168,7 @@ int FourierBasisFastToroidal::cos_to_cc_ss(const std::vector<double>& fcCos,
       double normedFC = basis_norm * fcCos[mn];
 
       m_fcCC[abs_n * m_size + m] += normedFC;
-      if (s_.lthreed && abs_n > 0) {
+      if (abs_n > 0) {
         m_fcSS[abs_n * m_size + m] += sgn_n * normedFC;
       }
 
@@ -182,10 +182,10 @@ int FourierBasisFastToroidal::cos_to_cc_ss(const std::vector<double>& fcCos,
   return mnmax;
 }
 
-int FourierBasisFastToroidal::sin_to_sc_cs(const std::vector<double>& fcSin,
-                                           std::vector<double>& m_fcSC,
-                                           std::vector<double>& m_fcCS,
-                                           int n_size, int m_size) const {
+int FourierBasisFastToroidal::sin_to_sc_cs(const std::span<const double> fcSin,
+                                           std::span<double> m_fcSC,
+                                           std::span<double> m_fcCS, int n_size,
+                                           int m_size) const {
   // m = 0: n =  0, 1, ..., ntor --> ntor + 1
   // m > 0: n = -ntor, ..., ntor --> (mpol - 1) * (2 * ntor + 1)
   int mnmax = (n_size + 1) + (m_size - 1) * (2 * n_size + 1);
@@ -205,10 +205,8 @@ int FourierBasisFastToroidal::sin_to_sc_cs(const std::vector<double>& fcSin,
     double normedFC = basis_norm * fcSin[mn];
 
     // no contribution to fcSC where m == 0
-    if (s_.lthreed) {
-      // check for n > 0 is redundant when starting loop at n=1
-      m_fcCS[abs_n * m_size + m] = -sgn_n * normedFC;
-    }
+    // check for n > 0 is redundant when starting loop at n=1
+    m_fcCS[abs_n * m_size + m] = -sgn_n * normedFC;
 
     mn++;
   }
@@ -223,7 +221,7 @@ int FourierBasisFastToroidal::sin_to_sc_cs(const std::vector<double>& fcSin,
       double normedFC = basis_norm * fcSin[mn];
 
       m_fcSC[abs_n * m_size + m] += normedFC;
-      if (s_.lthreed && abs_n > 0) {
+      if (abs_n > 0) {
         m_fcCS[abs_n * m_size + m] += -sgn_n * normedFC;
       }
 
@@ -237,9 +235,9 @@ int FourierBasisFastToroidal::sin_to_sc_cs(const std::vector<double>& fcSin,
   return mnmax;
 }
 
-int FourierBasisFastToroidal::cc_ss_to_cos(const std::vector<double>& fcCC,
-                                           const std::vector<double>& fcSS,
-                                           std::vector<double>& m_fcCos,
+int FourierBasisFastToroidal::cc_ss_to_cos(const std::span<const double> fcCC,
+                                           const std::span<const double> fcSS,
+                                           std::span<double> m_fcCos,
                                            int n_size, int m_size) const {
   // m = 0: n =  0, 1, ..., ntor --> ntor + 1
   // m > 0: n = -ntor, ..., ntor --> (mpol - 1) * (2 * ntor + 1)
@@ -285,9 +283,9 @@ int FourierBasisFastToroidal::cc_ss_to_cos(const std::vector<double>& fcCC,
   return mnmax;
 }
 
-int FourierBasisFastToroidal::sc_cs_to_sin(const std::vector<double>& fcSC,
-                                           const std::vector<double>& fcCS,
-                                           std::vector<double>& m_fcSin,
+int FourierBasisFastToroidal::sc_cs_to_sin(const std::span<const double> fcSC,
+                                           const std::span<const double> fcCS,
+                                           std::span<double> m_fcSin,
                                            int n_size, int m_size) const {
   // m = 0: n =  0, 1, ..., ntor --> ntor + 1
   // m > 0: n = -ntor, ..., ntor --> (mpol - 1) * (2 * ntor + 1)

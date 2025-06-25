@@ -37,12 +37,12 @@ VectorXd NonEmptyVectorOr(const std::vector<double>& vec, const double val) {
 }  // namespace
 
 // Shorthands for the calls required to read/write data members from/to HDF5
-// files. They assume that `H5key`, `file`, `obj` and `from_file` are available
-// in the calling context.
+// files. They assume that `H5key`, `file`, `m_obj` and `from_file` are
+// available in the calling context.
 #define WRITEMEMBER(x) \
   WriteH5Dataset(x, absl::StrFormat("%s/%s", H5key, #x), file);
 #define READMEMBER(x) \
-  ReadH5Dataset(obj.x, absl::StrFormat("%s/%s", H5key, #x), from_file);
+  ReadH5Dataset(m_obj.x, absl::StrFormat("%s/%s", H5key, #x), from_file);
 
 // Write object to the specified HDF5 file, under key "vmecinternalresults".
 absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
@@ -115,7 +115,7 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
 }
 
 absl::Status vmecpp::VmecInternalResults::LoadInto(
-    vmecpp::VmecInternalResults& obj, H5::H5File& from_file) {
+    vmecpp::VmecInternalResults& m_obj, H5::H5File& from_file) {
   READMEMBER(sign_of_jacobian);
   READMEMBER(num_full);
   READMEMBER(num_half);
@@ -134,14 +134,14 @@ absl::Status vmecpp::VmecInternalResults::LoadInto(
                 0) == 1) {
     READMEMBER(chipH);
   } else {
-    obj.chipH = Eigen::VectorXd::Zero(obj.phipH.size());
+    m_obj.chipH = Eigen::VectorXd::Zero(m_obj.phipH.size());
   }
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(), absl::StrFormat("%s/currH", H5key).c_str(),
                 0) == 1) {
     READMEMBER(currH);
   } else {
-    obj.currH = Eigen::VectorXd::Zero(obj.phipH.size());
+    m_obj.currH = Eigen::VectorXd::Zero(m_obj.phipH.size());
   }
   READMEMBER(phiF);
   READMEMBER(iotaF);
@@ -209,7 +209,7 @@ absl::Status vmecpp::RemainingMetric::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::RemainingMetric::LoadInto(RemainingMetric& obj,
+absl::Status vmecpp::RemainingMetric::LoadInto(RemainingMetric& m_obj,
                                                H5::H5File& from_file) {
   READMEMBER(rv12);
   READMEMBER(zv12);
@@ -231,7 +231,7 @@ absl::Status vmecpp::CylindricalComponentsOfB::WriteTo(H5::H5File& file) const {
 }
 
 absl::Status vmecpp::CylindricalComponentsOfB::LoadInto(
-    CylindricalComponentsOfB& obj, H5::H5File& from_file) {
+    CylindricalComponentsOfB& m_obj, H5::H5File& from_file) {
   READMEMBER(b_r);
   READMEMBER(b_phi);
   READMEMBER(b_z);
@@ -245,7 +245,7 @@ absl::Status vmecpp::BSubSHalf::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::BSubSHalf::LoadInto(BSubSHalf& obj,
+absl::Status vmecpp::BSubSHalf::LoadInto(BSubSHalf& m_obj,
                                          H5::H5File& from_file) {
   READMEMBER(bsubs_half);
   return absl::OkStatus();
@@ -257,7 +257,7 @@ absl::Status vmecpp::BSubSFull::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::BSubSFull::LoadInto(BSubSFull& obj,
+absl::Status vmecpp::BSubSFull::LoadInto(BSubSFull& m_obj,
                                          H5::H5File& from_file) {
   READMEMBER(bsubs_full);
   return absl::OkStatus();
@@ -273,8 +273,8 @@ absl::Status vmecpp::CovariantBDerivatives::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::CovariantBDerivatives::LoadInto(CovariantBDerivatives& obj,
-                                                     H5::H5File& from_file) {
+absl::Status vmecpp::CovariantBDerivatives::LoadInto(
+    CovariantBDerivatives& m_obj, H5::H5File& from_file) {
   READMEMBER(bsubsu);
   READMEMBER(bsubsv);
   READMEMBER(bsubuv);
@@ -313,7 +313,7 @@ absl::Status vmecpp::JxBOutFileContents::WriteTo(H5::H5File& file) const {
 
   return absl::OkStatus();
 }
-absl::Status vmecpp::JxBOutFileContents::LoadInto(JxBOutFileContents& obj,
+absl::Status vmecpp::JxBOutFileContents::LoadInto(JxBOutFileContents& m_obj,
                                                   H5::H5File& from_file) {
   READMEMBER(itheta);
   READMEMBER(izeta);
@@ -367,7 +367,7 @@ absl::Status vmecpp::MercierStabilityIntermediateQuantities::WriteTo(
   return absl::OkStatus();
 }
 absl::Status vmecpp::MercierStabilityIntermediateQuantities::LoadInto(
-    MercierStabilityIntermediateQuantities& obj, H5::H5File& from_file) {
+    MercierStabilityIntermediateQuantities& m_obj, H5::H5File& from_file) {
   READMEMBER(s);
   READMEMBER(shear);
   READMEMBER(vpp);
@@ -408,7 +408,7 @@ absl::Status vmecpp::MercierFileContents::WriteTo(H5::H5File& file) const {
 
   return absl::OkStatus();
 }
-absl::Status vmecpp::MercierFileContents::LoadInto(MercierFileContents& obj,
+absl::Status vmecpp::MercierFileContents::LoadInto(MercierFileContents& m_obj,
                                                    H5::H5File& from_file) {
   READMEMBER(s);
   READMEMBER(toroidal_flux);
@@ -453,7 +453,7 @@ absl::Status vmecpp::Threed1FirstTableIntermediate::WriteTo(
   return absl::OkStatus();
 }
 absl::Status vmecpp::Threed1FirstTableIntermediate::LoadInto(
-    Threed1FirstTableIntermediate& obj, H5::H5File& from_file) {
+    Threed1FirstTableIntermediate& m_obj, H5::H5File& from_file) {
   READMEMBER(tau);
   READMEMBER(beta_vol);
   READMEMBER(overr);
@@ -494,7 +494,7 @@ absl::Status vmecpp::Threed1FirstTable::WriteTo(H5::H5File& file) const {
 
   return absl::OkStatus();
 }
-absl::Status vmecpp::Threed1FirstTable::LoadInto(Threed1FirstTable& obj,
+absl::Status vmecpp::Threed1FirstTable::LoadInto(Threed1FirstTable& m_obj,
                                                  H5::H5File& from_file) {
   READMEMBER(s);
   READMEMBER(radial_force);
@@ -552,7 +552,7 @@ absl::Status vmecpp::Threed1GeometricAndMagneticQuantitiesIntermediate::WriteTo(
 }
 absl::Status
 vmecpp::Threed1GeometricAndMagneticQuantitiesIntermediate::LoadInto(
-    Threed1GeometricAndMagneticQuantitiesIntermediate& obj,
+    Threed1GeometricAndMagneticQuantitiesIntermediate& m_obj,
     H5::H5File& from_file) {
   READMEMBER(anorm);
   READMEMBER(vnorm);
@@ -634,7 +634,7 @@ absl::Status vmecpp::Threed1GeometricAndMagneticQuantities::WriteTo(
   return absl::OkStatus();
 }
 absl::Status vmecpp::Threed1GeometricAndMagneticQuantities::LoadInto(
-    Threed1GeometricAndMagneticQuantities& obj, H5::H5File& from_file) {
+    Threed1GeometricAndMagneticQuantities& m_obj, H5::H5File& from_file) {
   READMEMBER(toroidal_flux);
   READMEMBER(circum_p);
   READMEMBER(surf_area_p);
@@ -694,7 +694,7 @@ absl::Status vmecpp::Threed1Volumetrics::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::Threed1Volumetrics::LoadInto(Threed1Volumetrics& obj,
+absl::Status vmecpp::Threed1Volumetrics::LoadInto(Threed1Volumetrics& m_obj,
                                                   H5::H5File& from_file) {
   READMEMBER(int_p);
   READMEMBER(avg_p);
@@ -719,7 +719,7 @@ absl::Status vmecpp::Threed1AxisGeometry::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::Threed1AxisGeometry::LoadInto(Threed1AxisGeometry& obj,
+absl::Status vmecpp::Threed1AxisGeometry::LoadInto(Threed1AxisGeometry& m_obj,
                                                    H5::H5File& from_file) {
   READMEMBER(raxis_symm);
   READMEMBER(zaxis_symm);
@@ -739,7 +739,7 @@ absl::Status vmecpp::Threed1Betas::WriteTo(H5::H5File& file) const {
 
   return absl::OkStatus();
 }
-absl::Status vmecpp::Threed1Betas::LoadInto(Threed1Betas& obj,
+absl::Status vmecpp::Threed1Betas::LoadInto(Threed1Betas& m_obj,
                                             H5::H5File& from_file) {
   READMEMBER(betatot);
   READMEMBER(betapol);
@@ -773,7 +773,7 @@ absl::Status vmecpp::Threed1ShafranovIntegrals::WriteTo(
   return absl::OkStatus();
 }
 absl::Status vmecpp::Threed1ShafranovIntegrals::LoadInto(
-    Threed1ShafranovIntegrals& obj, H5::H5File& from_file) {
+    Threed1ShafranovIntegrals& m_obj, H5::H5File& from_file) {
   READMEMBER(scaling_ratio);
   READMEMBER(r_lao);
   READMEMBER(f_lao);
@@ -917,7 +917,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& obj,
+absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
                                                 H5::H5File& from_file) {
   READMEMBER(version);
   // TODO(jurasic) input_extension
@@ -946,12 +946,12 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& obj,
   READMEMBER(mgrid_file);
   // Compatibility with HDF5 files that do not have the nextcur and extcur
   // fields yet (before v0.3.3)
-  if (obj.lfreeb) {
+  if (m_obj.lfreeb) {
     READMEMBER(nextcur);
     READMEMBER(extcur);
   } else {
-    obj.nextcur = 0;
-    obj.extcur = Eigen::Vector<double, 0>::Zero();
+    m_obj.nextcur = 0;
+    m_obj.extcur = Eigen::Vector<double, 0>::Zero();
   }
   READMEMBER(mgrid_mode);
   READMEMBER(wb);

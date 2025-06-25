@@ -22,7 +22,8 @@ class FourierCoeffs {
 
   void setZero();
 
-  void decomposeInto(FourierCoeffs& x, const std::vector<double>& scalxc) const;
+  void decomposeInto(FourierCoeffs& m_x,
+                     const std::vector<double>& scalxc) const;
   void m1Constraint(double scalingFactor,
                     std::optional<int> jMax = std::nullopt);
 

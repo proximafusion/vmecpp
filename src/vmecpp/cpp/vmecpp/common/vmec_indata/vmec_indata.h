@@ -264,7 +264,7 @@ class VmecINDATA {
   // Load contents of `from_file` into the specified instance.
   // The file is expected to have the same schema as the one produced by
   // WriteTo.
-  static absl::Status LoadInto(VmecINDATA& obj, H5::H5File& from_file);
+  static absl::Status LoadInto(VmecINDATA& m_obj, H5::H5File& from_file);
 
   static absl::StatusOr<VmecINDATA> FromJson(const std::string& indata_json);
 

@@ -247,29 +247,29 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
 // Load contents of `from_file` into the specified instance.
 // The file is expected to have the same schema as the one produced by
 // WriteTo.
-absl::Status VmecINDATA::LoadInto(VmecINDATA& indata, H5::H5File& from_file) {
+absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   using hdf5_io::ReadH5Dataset;
 
   // scalars
-  ReadH5Dataset(indata.lasym, "/indata/lasym", from_file);
-  ReadH5Dataset(indata.nfp, "/indata/nfp", from_file);
-  ReadH5Dataset(indata.mpol, "/indata/mpol", from_file);
-  ReadH5Dataset(indata.ntor, "/indata/ntor", from_file);
-  ReadH5Dataset(indata.ntheta, "/indata/ntheta", from_file);
-  ReadH5Dataset(indata.nzeta, "/indata/nzeta", from_file);
-  ReadH5Dataset(indata.phiedge, "/indata/phiedge", from_file);
-  ReadH5Dataset(indata.ncurr, "/indata/ncurr", from_file);
-  ReadH5Dataset(indata.pmass_type, "/indata/pmass_type", from_file);
-  ReadH5Dataset(indata.pres_scale, "/indata/pres_scale", from_file);
-  ReadH5Dataset(indata.gamma, "/indata/gamma", from_file);
-  ReadH5Dataset(indata.spres_ped, "/indata/spres_ped", from_file);
-  ReadH5Dataset(indata.piota_type, "/indata/piota_type", from_file);
-  ReadH5Dataset(indata.pcurr_type, "/indata/pcurr_type", from_file);
-  ReadH5Dataset(indata.curtor, "/indata/curtor", from_file);
-  ReadH5Dataset(indata.bloat, "/indata/bloat", from_file);
-  ReadH5Dataset(indata.lfreeb, "/indata/lfreeb", from_file);
-  ReadH5Dataset(indata.mgrid_file, "/indata/mgrid_file", from_file);
-  ReadH5Dataset(indata.nvacskip, "/indata/nvacskip", from_file);
+  ReadH5Dataset(m_indata.lasym, "/indata/lasym", from_file);
+  ReadH5Dataset(m_indata.nfp, "/indata/nfp", from_file);
+  ReadH5Dataset(m_indata.mpol, "/indata/mpol", from_file);
+  ReadH5Dataset(m_indata.ntor, "/indata/ntor", from_file);
+  ReadH5Dataset(m_indata.ntheta, "/indata/ntheta", from_file);
+  ReadH5Dataset(m_indata.nzeta, "/indata/nzeta", from_file);
+  ReadH5Dataset(m_indata.phiedge, "/indata/phiedge", from_file);
+  ReadH5Dataset(m_indata.ncurr, "/indata/ncurr", from_file);
+  ReadH5Dataset(m_indata.pmass_type, "/indata/pmass_type", from_file);
+  ReadH5Dataset(m_indata.pres_scale, "/indata/pres_scale", from_file);
+  ReadH5Dataset(m_indata.gamma, "/indata/gamma", from_file);
+  ReadH5Dataset(m_indata.spres_ped, "/indata/spres_ped", from_file);
+  ReadH5Dataset(m_indata.piota_type, "/indata/piota_type", from_file);
+  ReadH5Dataset(m_indata.pcurr_type, "/indata/pcurr_type", from_file);
+  ReadH5Dataset(m_indata.curtor, "/indata/curtor", from_file);
+  ReadH5Dataset(m_indata.bloat, "/indata/bloat", from_file);
+  ReadH5Dataset(m_indata.lfreeb, "/indata/lfreeb", from_file);
+  ReadH5Dataset(m_indata.mgrid_file, "/indata/mgrid_file", from_file);
+  ReadH5Dataset(m_indata.nvacskip, "/indata/nvacskip", from_file);
 
   // special treatment for enums
   std::string fbdy_method_str;
@@ -278,7 +278,7 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& indata, H5::H5File& from_file) {
   if (!maybe_fbdy_method.ok()) {
     return maybe_fbdy_method.status();
   }
-  indata.free_boundary_method = maybe_fbdy_method.value();
+  m_indata.free_boundary_method = maybe_fbdy_method.value();
 
   // Legacy way of checking for dataset existence
   // TODO(jons) replace with from_file.nameExists when we get a newer HDF5
@@ -291,45 +291,45 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& indata, H5::H5File& from_file) {
     if (!maybe_iteration_style.ok()) {
       return maybe_iteration_style.status();
     }
-    indata.iteration_style = maybe_iteration_style.value();
+    m_indata.iteration_style = maybe_iteration_style.value();
   } else {
     // fall back to default value
-    indata.iteration_style = IterationStyle::VMEC_8_52;
+    m_indata.iteration_style = IterationStyle::VMEC_8_52;
   }
 
-  ReadH5Dataset(indata.nstep, "/indata/nstep", from_file);
-  ReadH5Dataset(indata.delt, "/indata/delt", from_file);
-  ReadH5Dataset(indata.tcon0, "/indata/tcon0", from_file);
-  ReadH5Dataset(indata.lforbal, "/indata/lforbal", from_file);
+  ReadH5Dataset(m_indata.nstep, "/indata/nstep", from_file);
+  ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
+  ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
+  ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
 
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(),
                 "/indata/return_outputs_even_if_not_converged", 0) == 1) {
-    ReadH5Dataset(indata.return_outputs_even_if_not_converged,
+    ReadH5Dataset(m_indata.return_outputs_even_if_not_converged,
                   "/indata/return_outputs_even_if_not_converged", from_file);
   } else {
-    indata.return_outputs_even_if_not_converged = false;
+    m_indata.return_outputs_even_if_not_converged = false;
   }
 
   // 1D arrays
-  ReadH5Dataset(indata.ns_array, "/indata/ns_array", from_file);
-  ReadH5Dataset(indata.ftol_array, "/indata/ftol_array", from_file);
-  ReadH5Dataset(indata.niter_array, "/indata/niter_array", from_file);
-  ReadH5Dataset(indata.am, "/indata/am", from_file);
-  ReadH5Dataset(indata.am_aux_s, "/indata/am_aux_s", from_file);
-  ReadH5Dataset(indata.am_aux_f, "/indata/am_aux_f", from_file);
-  ReadH5Dataset(indata.ai, "/indata/ai", from_file);
-  ReadH5Dataset(indata.ai_aux_s, "/indata/ai_aux_s", from_file);
-  ReadH5Dataset(indata.ai_aux_f, "/indata/ai_aux_f", from_file);
-  ReadH5Dataset(indata.ac, "/indata/ac", from_file);
-  ReadH5Dataset(indata.ac_aux_s, "/indata/ac_aux_s", from_file);
-  ReadH5Dataset(indata.ac_aux_f, "/indata/ac_aux_f", from_file);
-  ReadH5Dataset(indata.extcur, "/indata/extcur", from_file);
-  ReadH5Dataset(indata.aphi, "/indata/aphi", from_file);
-  ReadH5Dataset(indata.raxis_c, "/indata/raxis_c", from_file);
-  ReadH5Dataset(indata.zaxis_s, "/indata/zaxis_s", from_file);
-  ReadH5Dataset(indata.raxis_s, "/indata/raxis_s", from_file);
-  ReadH5Dataset(indata.zaxis_c, "/indata/zaxis_c", from_file);
+  ReadH5Dataset(m_indata.ns_array, "/indata/ns_array", from_file);
+  ReadH5Dataset(m_indata.ftol_array, "/indata/ftol_array", from_file);
+  ReadH5Dataset(m_indata.niter_array, "/indata/niter_array", from_file);
+  ReadH5Dataset(m_indata.am, "/indata/am", from_file);
+  ReadH5Dataset(m_indata.am_aux_s, "/indata/am_aux_s", from_file);
+  ReadH5Dataset(m_indata.am_aux_f, "/indata/am_aux_f", from_file);
+  ReadH5Dataset(m_indata.ai, "/indata/ai", from_file);
+  ReadH5Dataset(m_indata.ai_aux_s, "/indata/ai_aux_s", from_file);
+  ReadH5Dataset(m_indata.ai_aux_f, "/indata/ai_aux_f", from_file);
+  ReadH5Dataset(m_indata.ac, "/indata/ac", from_file);
+  ReadH5Dataset(m_indata.ac_aux_s, "/indata/ac_aux_s", from_file);
+  ReadH5Dataset(m_indata.ac_aux_f, "/indata/ac_aux_f", from_file);
+  ReadH5Dataset(m_indata.extcur, "/indata/extcur", from_file);
+  ReadH5Dataset(m_indata.aphi, "/indata/aphi", from_file);
+  ReadH5Dataset(m_indata.raxis_c, "/indata/raxis_c", from_file);
+  ReadH5Dataset(m_indata.zaxis_s, "/indata/zaxis_s", from_file);
+  ReadH5Dataset(m_indata.raxis_s, "/indata/raxis_s", from_file);
+  ReadH5Dataset(m_indata.zaxis_c, "/indata/zaxis_c", from_file);
 
   // 2D matrices (represented as 1D std::vectors)
   // All have dimensions (mpol, 2*ntor+1)
@@ -337,31 +337,31 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& indata, H5::H5File& from_file) {
   // simplicity. In the future we expect VmecINDATA's data members will switch
   // to Eigen types and the extra copy will evaporate.
   RowMatrixXd tmp_matrix;
-  const int linear_size = indata.mpol * (2 * indata.ntor + 1);
+  const int linear_size = m_indata.mpol * (2 * m_indata.ntor + 1);
 
   ReadH5Dataset(tmp_matrix, "/indata/rbc", from_file);
   assert(tmp_matrix.size() == linear_size);
-  indata.rbc.resize(linear_size);
+  m_indata.rbc.resize(linear_size);
   std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
-            indata.rbc.begin());
+            m_indata.rbc.begin());
 
   ReadH5Dataset(tmp_matrix, "/indata/zbs", from_file);
   assert(tmp_matrix.size() == linear_size);
-  indata.zbs.resize(linear_size);
+  m_indata.zbs.resize(linear_size);
   std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
-            indata.zbs.begin());
+            m_indata.zbs.begin());
 
-  if (indata.lasym) {
+  if (m_indata.lasym) {
     ReadH5Dataset(tmp_matrix, "/indata/rbs", from_file);
     assert(tmp_matrix.size() == linear_size);
-    indata.rbs.resize(linear_size);
+    m_indata.rbs.resize(linear_size);
     std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
-              indata.rbs.begin());
+              m_indata.rbs.begin());
     ReadH5Dataset(tmp_matrix, "/indata/zbc", from_file);
     assert(tmp_matrix.size() == linear_size);
-    indata.zbc.resize(linear_size);
+    m_indata.zbc.resize(linear_size);
     std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
-              indata.zbc.begin());
+              m_indata.zbc.begin());
   }
 
   return absl::OkStatus();
