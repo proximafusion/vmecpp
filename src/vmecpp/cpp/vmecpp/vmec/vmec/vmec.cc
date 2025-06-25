@@ -1127,7 +1127,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     // update backup copy of fsq1 --> here, fsq is fsq1 of previous iteration
     fc_.fsq = fsq1;
 
-    fc_.fsqt.push_back(fc_.fsq);
+    fc_.fsqt.push_back(fc_.fsqr + fc_.fsqz + fc_.fsql);
     fc_.mhd_energy.push_back(h_.mhdEnergy);
   }  // #pragma omp single (there is an implicit omp barrier here)
 
