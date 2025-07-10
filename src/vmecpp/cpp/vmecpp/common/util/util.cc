@@ -25,8 +25,8 @@ std::string VmecStatusAsString(const VmecStatus vmec_status) {
   switch (vmec_status) {
     case VmecStatus::NORMAL_TERMINATION:
       return "NORMAL_TERMINATION";
-    case VmecStatus::BAD_JACOBIAN:
-      return "BAD_JACOBIAN";
+    case VmecStatus::kBadJacobian:
+      return "kBadJacobian";
     case VmecStatus::NCURR_NE_1_BLOAT_NE_1:
       return "NCURR_NE_1_BLOAT_NE_1";
     case VmecStatus::JACOBIAN_75_TIMES_BAD:

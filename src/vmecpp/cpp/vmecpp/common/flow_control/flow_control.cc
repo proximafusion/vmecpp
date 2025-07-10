@@ -16,13 +16,13 @@ namespace vmecpp {
 RestartReason RestartReasonFromInt(int restart_reason) {
   switch (restart_reason) {
     case 1:
-      return RestartReason::NO_RESTART;
+      return RestartReason::kNoRestart;
     case 2:
-      return RestartReason::BAD_JACOBIAN;
+      return RestartReason::kBadJacobian;
     case 3:
-      return RestartReason::BAD_PROGRESS;
+      return RestartReason::kBadProgress;
     case 4:
-      return RestartReason::HUGE_INITIAL_FORCES;
+      return RestartReason::kHugeInitialForces;
     default:
       LOG(FATAL) << "Invalid restart_reason value: " << restart_reason;
   }
@@ -52,7 +52,7 @@ FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
   fsqz = 1.0;
   ftolv = fsqr;
   ijacob = 0;
-  restart_reason = RestartReason::NO_RESTART;
+  restart_reason = RestartReason::kNoRestart;
   res0 = -1;
   delt0r = delt;
   multi_ns_grid = num_grids;
