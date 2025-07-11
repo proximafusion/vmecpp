@@ -68,6 +68,23 @@ def test_run_free_boundary_from_response_table():
     )
 
 
+def test_raise_invalid_nzeta():
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    # Lower the makegrid resolution
+    makegrid_params.number_of_r_grid_points = 3
+    makegrid_params.number_of_phi_grid_points = 24
+    makegrid_params.number_of_z_grid_points = 2
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    assert vmec_input.nzeta != makegrid_params.number_of_phi_grid_points
+    with pytest.raises(AttributeError, match=r"MGridProvider has \d"):
+        vmecpp.run(vmec_input, response, verbose=False)
+
+
 def test_makegrid_parameters_conversion(makegrid_params):
     # Convert resolution parameters to C++ and back to Python
     cpp_params = makegrid_params._to_cpp_makegrid_parameters()
