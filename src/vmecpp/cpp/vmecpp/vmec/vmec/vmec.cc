@@ -208,12 +208,21 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                const int iterations_before_checkpointing,
                                const int maximum_multi_grid_step,
                                std::optional<HotRestartState> initial_state) {
-  if (indata_.lfreeb && !mgrid_.IsLoaded()) {
-    // if we have a free-boundary VMEC run, we may need to load the
-    // magnetic field response table
-    absl::Status status = LoadMGrid();
-    if (!status.ok()) {
-      return status;
+  if (indata_.lfreeb) {
+    if (!mgrid_.IsLoaded()) {
+      // if we have a free-boundary VMEC run, we may need to load the
+      // magnetic field response table
+      absl::Status status = LoadMGrid();
+      if (!status.ok()) {
+        return status;
+      }
+    }
+    if (mgrid_.numPhi != indata_.nzeta) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "MGridProvider has %d phi grid points, but VmecINDATA "
+          "has %d nzeta grid points. Please ensure that the two "
+          "are consistent.",
+          mgrid_.numPhi, indata_.nzeta));
     }
   }
 
