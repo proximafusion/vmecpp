@@ -808,8 +808,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
                status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
       // if something went totally wrong even in this initial steps, do not
       // continue at all
-      return absl::UnknownError(
-          absl::StrCat("FATAL ERROR in thread=", thread_id));
+      const auto msg = absl::StrFormat(
+          "FATAL ERROR in thread=%d. The solver failed during the first "
+          "iterations. This may happen if the initial boundary is poorly "
+          "shaped or if it isn't spectrally condensed enough.",
+          thread_id);
+      return absl::UnknownError(msg);
     }
 
     if (checkpoint == VmecCheckpoint::EVOLVE &&
