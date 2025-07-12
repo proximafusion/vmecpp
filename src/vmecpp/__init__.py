@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import enum
 import json
 import logging
 import os
@@ -59,6 +60,18 @@ MgridModeType: typing.TypeAlias = typing.Annotated[
 """[Scaled, Raw, Unset]"""
 
 ProfileType = typing.Annotated[str, pydantic.Field(max_length=20)]
+
+
+class RestartReason(enum.Enum):
+    BAD_JACOBIAN = 2
+    """Irst == 2, bad Jacobian, flux surfaces are overlapping."""
+
+    BAD_PROGRESS = 3
+    """Irst == 3, bad progress, residuals not decaying as expected."""
+
+    HUGE_INITIAL_FORCES = 4
+    """Irst == 4, huge initial forces, flux surfaces are too close to each other (but
+    not overlapping yet)"""
 
 
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
@@ -560,6 +573,7 @@ class VmecWOut(BaseModelWithNumpy):
         "bsupumnc",
         "bsupvmnc",
         "gmnc",
+        "restart_reason_timetrace",
     ]
     """If quantities are not exactly the same in C++ WoutFileContents and this class,
     add them to this list and implement the conversion logic in _to_cpp_wout and
@@ -636,17 +650,17 @@ class VmecWOut(BaseModelWithNumpy):
     """Aspect ratio (major radius over minor radius) of the plasma boundary."""
 
     betapol: float
-    """Poloidal plasma beta.
+    r"""Poloidal plasma beta.
 
     The ratio of the total thermal energy of the plasma, to the total poloidal magnetic
-    energy. `beta=W_th/W_{B_theta}=\int p dV/(\int B_theta^2/(2 mu_0) dV)`
+    energy. $\beta=W_th/W_{B_theta}=\int p dV/(\int B_theta^2/(2 mu_0) dV)$
     """
 
     betator: float
-    """Toroidal plasma beta.
+    r"""Toroidal plasma beta.
 
     The ratio of the total thermal energy of the plasma, to the total toroidal magnetic
-    energy. `beta=W_th/W_{B_phi}=\int p dV/(\int B_phi^2/(2 mu_0) dV)`
+    energy. $\beta=W_th/W_{B_phi}=\int p dV/(\int B_phi^2/(2 mu_0) dV)$
     """
 
     betaxis: float
@@ -707,7 +721,33 @@ class VmecWOut(BaseModelWithNumpy):
 
     # Default initialized so reading stays backwards compatible pre v0.4.0
     fsqt: jt.Float[np.ndarray, "time"] = np.array([])
-    """Evolution of the total force residual along the run."""
+    """Evolution of the total force residual along the run.
+
+    This is the sum of `force_residual_r`, `force_residual_z`, and `force_residual_lambda`.
+    """
+
+    force_residual_r: jt.Float[np.ndarray, "time"] = np.array([])
+    """Evolution of the r radial force residual along the run."""
+
+    force_residual_z: jt.Float[np.ndarray, "time"] = np.array([])
+    """Evolution of the z vertical force residual along the run."""
+
+    force_residual_lambda: jt.Float[np.ndarray, "time"] = np.array([])
+    """Evolution of the lambda force residual along the run."""
+
+    delbsq: jt.Float[np.ndarray, "time"] = np.array([])
+    """Evolution of the force residual at the vacuum boundary along the run."""
+
+    restart_reason_timetrace: typing.Annotated[
+        jt.Int[np.ndarray, "time"],
+        pydantic.Field(alias="restart_reasons"),
+        pydantic.BeforeValidator(lambda x: np.array(x).astype(np.int64)),
+    ] = np.array([], dtype=np.int64)
+    """Internal restart reasons at each step along the run.  (debugging quantity).
+
+    Use the `restart_reasons` field to access a more readable enum version of this
+    instead of integer status codes.
+    """
 
     wdot: jt.Float[np.ndarray, "time"] = np.array([])
     """Evolution of the MHD energy decay along the run."""
@@ -873,10 +913,10 @@ class VmecWOut(BaseModelWithNumpy):
 
     # In the C++ WOutFileContents this is called betatot.
     betatotal: float
-    """Total plasma beta.
+    r"""Total plasma beta.
 
     The ratio of the total thermal energy of the plasma, to the total magnetic energy.
-    `beta=W_th/W_B=\int p dV/(\int B/(2 mu_0) dV)`
+    $\beta=W_th/W_B=\int p dV/(\int B/(2 mu_0) dV)$
     """
 
     # In the C++ WOutFileContents this is called raxis_c.
@@ -979,6 +1019,18 @@ class VmecWOut(BaseModelWithNumpy):
         """This is how the attribute is called in the Fortran wout file."""
         return self.lfreeb
 
+    @property
+    def restart_reasons(self) -> list[tuple[int, RestartReason]]:
+        """Get the restart reasons as a list of tuples.
+
+        Each tuple contains the iteration number and the reason for the restart.
+        """
+        return [
+            (i, RestartReason(reason))
+            for i, reason in enumerate(self.restart_reason_timetrace)
+            if reason != 1  # skip the "no restart" reason
+        ]
+
     def save(self, out_path: str | Path) -> None:
         """Save contents in NetCDF3 format.
 
@@ -1065,6 +1117,10 @@ class VmecWOut(BaseModelWithNumpy):
 
                 elif field_type is np.ndarray or field_type is list:
                     value_array = np.array(value)
+                    # Fallback to default dimension names like dim_00001, dim_00002, etc.
+                    shape_string = tuple(
+                        [f"dim_{dim:05d}" for dim in value_array.shape]
+                    )
                     if (
                         field_info is not None  # is a model field
                         and field_info.annotation is not None  # has an annotation
@@ -1073,17 +1129,18 @@ class VmecWOut(BaseModelWithNumpy):
                             jt.AbstractArray,
                         )
                     ):
-                        # Extract the dimension names used for NetCDF wout
+                        # Extract the dimension names used for NetCDF wout when available
                         shape_string = tuple(
                             [
                                 map_dimension_names.get(dim.name, str(dim.name))
-                                for dim in field_info.annotation.dims
+                                if isinstance(dim, jt._array_types._NamedDim)
+                                else dim_default_name
+                                for dim, dim_default_name in zip(
+                                    field_info.annotation.dims,
+                                    shape_string,
+                                    strict=True,
+                                )
                             ]
-                        )
-                    else:
-                        # The dimensions are not annotated (must be an extra field)
-                        shape_string = tuple(
-                            [f"dim_{dim:05d}" for dim in value_array.shape]
                         )
 
                     for dim_name, dim_size in zip(
@@ -1097,7 +1154,11 @@ class VmecWOut(BaseModelWithNumpy):
                         # wout format uses 32 bit integers, Python uses 64 bit by default
                         dtype = np.int32
 
-                    if len(shape_string) == 1:
+                    if len(shape_string) == 0:
+                        # Scalar value, no dimensions
+                        fnc.createVariable(field, dtype)
+                        fnc[field][:] = value_array
+                    elif len(shape_string) == 1:
                         fnc.createVariable(field, dtype, shape_string)
                         # Slice arrays that are padded in wout and unpadded in VMEC++
                         fnc[field][: len(value_array)] = value_array
@@ -1219,6 +1280,8 @@ class VmecWOut(BaseModelWithNumpy):
             constant_values=0.0,
         )
 
+        attrs["restart_reason_timetrace"] = cpp_wout.restart_reasons
+
         attrs["version_"] = float(cpp_wout.version)
 
         return VmecWOut(**attrs)
@@ -1274,6 +1337,9 @@ class VmecWOut(BaseModelWithNumpy):
         # This is a VMEC++-only quantity but it's transposed when
         # stored in a wout file for consistency with lmns.
         cpp_wout.lmns_full = self.lmns_full.T
+
+        # This is a VMEC++ only quantity
+        cpp_wout.restart_reasons = self.restart_reason_timetrace
 
         # These attributes have one column less and their elements are transposed
         # in VMEC++ with respect to SIMSOPT/VMEC2000

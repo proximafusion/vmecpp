@@ -16,17 +16,17 @@ namespace vmecpp {
 enum class RestartReason : std::uint8_t {
   // irst == 1, no restart required, instead make backup of current state vector
   // when calling Vmec::RestartIteration
-  NO_RESTART,
+  NO_RESTART = 1,
 
   // irst == 2, bad Jacobian, flux surfaces are overlapping
-  BAD_JACOBIAN,
+  BAD_JACOBIAN = 2,
 
   // irst == 3, bad progress, residuals not decaying as expected
-  BAD_PROGRESS,
+  BAD_PROGRESS = 3,
 
   // irst == 4, huge initial forces, flux surfaces are too close to each other
   // (but not overlapping yet)
-  HUGE_INITIAL_FORCES
+  HUGE_INITIAL_FORCES = 4
 };
 
 RestartReason RestartReasonFromInt(int restart_reason);
@@ -82,12 +82,29 @@ class FlowControl {
 
   double delt0r;
 
+  // Cumulative force residuals (radial, vertical and lambda)
+  // Populated by `evalFResInvar`
   double fsqr, fsqz, fsql;
+
+  // Time-trace of the invariant force residuals during convergence
+  // fsqt = (force_residual_r + force_residual_z + force_residual_lambda)
+  std::vector<double> force_residual_r;
+  std::vector<double> force_residual_z;
+  std::vector<double> force_residual_lambda;
+
+  // Preconditioned cumulative force residuals (radial, vertical and lambda)
+  // Populated by `evalFResPrecd`
   double fsqr1, fsqz1, fsql1;
   double fsq;
 
-  std::vector<double> fsqt;
   std::vector<double> mhd_energy;
+
+  // Time-trace of the force at the vacuum boundary (only for free-boundary)
+  std::vector<double> delbsq;
+  // Time-trace of the restart reasons, for debugging purposes. Each restart is
+  // a pair of <iteration, reason> (e.g. to see how many jacobian resets
+  // occurred)
+  std::vector<RestartReason> restart_reasons;
 
   double res0;
 

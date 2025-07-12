@@ -1139,10 +1139,23 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 
     // update backup copy of fsq1 --> here, fsq is fsq1 of previous iteration
     fc_.fsq = fsq1;
-
-    fc_.fsqt.push_back(fc_.fsq);
-    fc_.mhd_energy.push_back(h_.mhdEnergy);
   }  // #pragma omp single (there is an implicit omp barrier here)
+
+  // Our thread owns the last LCFS, it is our responsibility to log the
+  // residuals.
+  if (r_[thread_id]->nsMaxF1 == fc_.ns) {
+    fc_.force_residual_r.push_back(fc_.fsqr);
+    fc_.force_residual_z.push_back(fc_.fsqz);
+    fc_.force_residual_lambda.push_back(fc_.fsql);
+    if (fc_.lfreeb) {
+      // delbsq is only available on the LCFS thread
+      fc_.delbsq.push_back(m_[thread_id]->get_delbsq());
+    } else {
+      fc_.delbsq.push_back(0.0);
+    }
+    fc_.restart_reasons.push_back(fc_.restart_reason);
+    fc_.mhd_energy.push_back(h_.mhdEnergy);
+  }
 
   // averaging over ndamp entries : 1/ndamp*sum(invTau)
   const double otav = absl::c_accumulate(invTau_, 0.) / kNDamp;
