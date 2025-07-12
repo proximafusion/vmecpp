@@ -755,7 +755,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  if (m_fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
+  if (m_fc_.restart_reason == RestartReason::kBadJacobian) {
     // bad jacobian and not final iteration yet
     //   (would be indicated by iequi.eq.1)
     // --> need to restart except when computing output file
@@ -1006,7 +1006,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-        m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+        m_fc_.restart_reason = RestartReason::kBadJacobian;
         m_need_restart = true;
       } else {
         m_need_restart = false;
@@ -1190,7 +1190,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
     if (iter2 == 1 && (m_fc.fsqr + m_fc.fsqz + m_fc.fsql) > 1.0e2) {
       // first iteration and gigantic force residuals
       // --> what is going on here?
-      m_fc.restart_reason = RestartReason::HUGE_INITIAL_FORCES;
+      m_fc.restart_reason = RestartReason::kHugeInitialForces;
     }
   }
 
@@ -1582,7 +1582,7 @@ void IdealMhdModel::computeJacobian() {
 #pragma omp critical
 #endif  // _OPENMP
     {
-      m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+      m_fc_.restart_reason = RestartReason::kBadJacobian;
     }
   }
 #ifdef _OPENMP

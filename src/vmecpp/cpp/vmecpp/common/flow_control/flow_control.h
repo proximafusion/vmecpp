@@ -16,17 +16,17 @@ namespace vmecpp {
 enum class RestartReason : std::uint8_t {
   // irst == 1, no restart required, instead make backup of current state vector
   // when calling Vmec::RestartIteration
-  NO_RESTART = 1,
+  kNoRestart = 1,
 
   // irst == 2, bad Jacobian, flux surfaces are overlapping
-  BAD_JACOBIAN = 2,
+  kBadJacobian = 2,
 
   // irst == 3, bad progress, residuals not decaying as expected
-  BAD_PROGRESS = 3,
+  kBadProgress = 3,
 
   // irst == 4, huge initial forces, flux surfaces are too close to each other
   // (but not overlapping yet)
-  HUGE_INITIAL_FORCES = 4
+  kHugeInitialForces = 4
 };
 
 RestartReason RestartReasonFromInt(int restart_reason);
