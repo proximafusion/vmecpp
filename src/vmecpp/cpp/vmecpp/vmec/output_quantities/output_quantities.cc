@@ -4312,7 +4312,19 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.fsqz = fc.fsqz;
   wout.fsql = fc.fsql;
 
-  wout.fsqt = ToEigenVector(fc.fsqt);
+  wout.force_residual_r = ToEigenVector(fc.force_residual_r);
+  wout.force_residual_z = ToEigenVector(fc.force_residual_z);
+  wout.force_residual_lambda = ToEigenVector(fc.force_residual_lambda);
+  wout.fsqt = wout.force_residual_r + wout.force_residual_z +
+              wout.force_residual_lambda;
+  wout.delbsq = ToEigenVector(fc.delbsq);
+  // Convert status codes to integer values
+  wout.restart_reasons = Eigen::VectorXi::Zero(fc.restart_reasons.size());
+  for (Eigen::Index i = 0;
+       i < static_cast<Eigen::Index>(fc.restart_reasons.size()); ++i) {
+    // VmecStatusCode
+    wout.restart_reasons(i) = static_cast<int>(fc.restart_reasons[i]);
+  }
   wout.itfsq = wout.fsqt.size();
   // First entry is the staring energy W
   wout.wdot = ToEigenVector(fc.mhd_energy);

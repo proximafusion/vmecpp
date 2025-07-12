@@ -529,8 +529,17 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("jcuru", &vmecpp::WOutFileContents::jcuru)
       .def_readwrite("jcurv", &vmecpp::WOutFileContents::jcurv)
       //
+      .def_readwrite("force_residual_r",
+                     &vmecpp::WOutFileContents::force_residual_r)
+      .def_readwrite("force_residual_z",
+                     &vmecpp::WOutFileContents::force_residual_z)
+      .def_readwrite("force_residual_lambda",
+                     &vmecpp::WOutFileContents::force_residual_lambda)
       .def_readwrite("fsqt", &vmecpp::WOutFileContents::fsqt)
+      .def_readwrite("delbsq", &vmecpp::WOutFileContents::delbsq)
       .def_readwrite("wdot", &vmecpp::WOutFileContents::wdot)
+      .def_readwrite("restart_reasons",
+                     &vmecpp::WOutFileContents::restart_reasons)
       //
       .def_readwrite("iota_half", &vmecpp::WOutFileContents::iota_half)
       .def_readwrite("mass", &vmecpp::WOutFileContents::mass)
