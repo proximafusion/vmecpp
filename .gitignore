@@ -1,5 +1,6 @@
 **/compile_commands.json
 venv/
+.venv/
 .vscode
 build/
 
