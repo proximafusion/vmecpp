@@ -116,10 +116,11 @@ In a terminal in which Python has access to the VMEC++ package:
 
 ```console
 # run on a given input file -> produce corresponding wout_w7x.nc
-python -m vmecpp examples/data/input.w7x
+# vmecpp is a python module and can be either run with `python -m` or directly as a script
+vmecpp examples/data/input.w7x
 
 # check all options
-python -m vmecpp --help
+vmecpp --help
 ```
 
 ### As a Docker image
