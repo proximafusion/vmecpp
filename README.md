@@ -63,7 +63,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 - [Related repositories](#related-repositories)
 - [License](#license)
 
-<!-- SPHINX-START -->
+<!-- SPHINX-START1 -->
 
 ## Usage
 
@@ -73,7 +73,9 @@ Suitable input files are found in [`examples/data`](https://github.com/proximafu
 If unsure where to start, we suggest to give the [`w7x`](https://github.com/proximafusion/vmecpp/blob/main/examples/data/w7x.json) case a try, which is a five-field-period stellarator case for the [Wendelstein 7-X](https://www.ipp.mpg.de/w7x) stellarator.
 
 For example [`examples/force_residual_convergence.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/force_residual_convergence.py) runs fixed-boundary VMEC++ on the W7-X case and plots the convergence of the force residuals.
+<!-- SPHINX-END1 -->
 ![W7-X force residual convergence](docs/w7x_force_convergence.png)
+<!-- SPHINX-START2 -->
 
 ### As a Python package
 
