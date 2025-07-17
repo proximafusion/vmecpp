@@ -2119,9 +2119,9 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               const double tcosi2 = t.sinmui[idx_ml] * t.sinnv[idx_kn] * dnorm1;
 
               // cos-cos
-              bsubsmn3 += tcosi1 * decomposed_bcov.bsubs_a(jF, kl);
+              bsubsmn3 += tcosi1 * decomposed_bcov.bsubs_a(source_index);
               // sin-sin
-              bsubsmn4 += tcosi2 * decomposed_bcov.bsubs_a(jF, kl);
+              bsubsmn4 += tcosi2 * decomposed_bcov.bsubs_a(source_index);
             }  // lasym
           }  // l
         }  // k

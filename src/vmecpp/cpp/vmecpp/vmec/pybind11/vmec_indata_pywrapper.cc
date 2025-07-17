@@ -72,21 +72,8 @@ VmecINDATAPyWrapper::VmecINDATAPyWrapper(const VmecINDATA& indata)
   if (lasym) {
     raxis_s = ToEigenVector(indata.raxis_s);
     zaxis_c = ToEigenVector(indata.zaxis_c);
-
-    // Check if asymmetric boundary arrays are properly allocated
-    if (indata.rbs.size() == static_cast<size_t>(mpol * (2 * ntor + 1))) {
-      rbs = ToEigenMatrix(indata.rbs, mpol, 2 * ntor + 1);
-    } else {
-      // Initialize with zeros if not properly allocated
-      rbs = RowMatrixXd::Zero(mpol, 2 * ntor + 1);
-    }
-
-    if (indata.zbc.size() == static_cast<size_t>(mpol * (2 * ntor + 1))) {
-      zbc = ToEigenMatrix(indata.zbc, mpol, 2 * ntor + 1);
-    } else {
-      // Initialize with zeros if not properly allocated
-      zbc = RowMatrixXd::Zero(mpol, 2 * ntor + 1);
-    }
+    rbs = ToEigenMatrix(indata.rbs, mpol, 2 * ntor + 1);
+    zbc = ToEigenMatrix(indata.zbc, mpol, 2 * ntor + 1);
   }
 }
 
