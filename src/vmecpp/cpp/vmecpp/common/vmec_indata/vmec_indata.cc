@@ -892,13 +892,16 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
 
   if (vmec_indata.lasym) {
+    // Always resize asymmetric arrays when lasym=true, regardless of JSON
+    // content
+    vmec_indata.rbs.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
+    vmec_indata.zbc.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
+
     auto maybe_rbs = BoundaryCoefficient::FromJson(j, "rbs");
     if (!maybe_rbs.ok()) {
       return maybe_rbs.status();
     }
     if (maybe_rbs->has_value()) {
-      vmec_indata.rbs.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1),
-                             0.0);
       std::vector<BoundaryCoefficient> entries = maybe_rbs->value();
       for (const BoundaryCoefficient& entry : entries) {
         if (entry.m > vmec_indata.mpol - 1) {
@@ -932,8 +935,6 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
       return maybe_zbc.status();
     }
     if (maybe_zbc->has_value()) {
-      vmec_indata.zbc.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1),
-                             0.0);
       std::vector<BoundaryCoefficient> entries = maybe_zbc->value();
       for (const BoundaryCoefficient& entry : entries) {
         if (entry.m > vmec_indata.mpol - 1) {
@@ -1381,7 +1382,8 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         expected_bdy_size_symm, vmec_indata.zbs.size()));
   }
 
-  const std::size_t expected_bdy_size_asym = 0;
+  const std::size_t expected_bdy_size_asym =
+      vmec_indata.lasym ? vmec_indata.mpol * (2 * vmec_indata.ntor + 1) : 0;
 
   // rbs
   if (vmec_indata.rbs.size() != expected_bdy_size_asym) {

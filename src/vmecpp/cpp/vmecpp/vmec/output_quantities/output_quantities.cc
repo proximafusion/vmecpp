@@ -1946,11 +1946,11 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
       vmec_internal_results.num_half, vmec_internal_results.nZnT_reduced);
 
   if (s.lasym) {
-    decomposed_bcov.bsubs_a = VectorXd::Zero(
+    decomposed_bcov.bsubs_a = RowMatrixXd::Zero(
         vmec_internal_results.num_full, vmec_internal_results.nZnT_reduced);
-    decomposed_bcov.bsubu_a = VectorXd::Zero(
+    decomposed_bcov.bsubu_a = RowMatrixXd::Zero(
         vmec_internal_results.num_half, vmec_internal_results.nZnT_reduced);
-    decomposed_bcov.bsubv_a = VectorXd::Zero(
+    decomposed_bcov.bsubv_a = RowMatrixXd::Zero(
         vmec_internal_results.num_half, vmec_internal_results.nZnT_reduced);
 
     // fsym_fft:
@@ -1976,7 +1976,7 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         decomposed_bcov.bsubs_s(target_index) =
             bsubs_full.bsubs_full(source_index) -
             bsubs_full.bsubs_full(source_index_reversed);
-        decomposed_bcov.bsubs_a(target_index) =
+        decomposed_bcov.bsubs_a(jF, kl) =
             bsubs_full.bsubs_full(source_index) +
             bsubs_full.bsubs_full(source_index_reversed);
       }  // kl
@@ -1999,13 +1999,13 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         decomposed_bcov.bsubu_s(target_index) =
             vmec_internal_results.bsubu(source_index) +
             vmec_internal_results.bsubu(source_index_reversed);
-        decomposed_bcov.bsubu_a(target_index) =
+        decomposed_bcov.bsubu_a(jH, kl) =
             vmec_internal_results.bsubu(source_index) -
             vmec_internal_results.bsubu(source_index_reversed);
         decomposed_bcov.bsubv_s(target_index) =
             vmec_internal_results.bsubv(source_index) +
             vmec_internal_results.bsubv(source_index_reversed);
-        decomposed_bcov.bsubv_a(target_index) =
+        decomposed_bcov.bsubv_a(jH, kl) =
             vmec_internal_results.bsubv(source_index) -
             vmec_internal_results.bsubv(source_index_reversed);
       }  // kl
@@ -2119,9 +2119,9 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               const double tcosi2 = t.sinmui[idx_ml] * t.sinnv[idx_kn] * dnorm1;
 
               // cos-cos
-              bsubsmn3 += tcosi1 * decomposed_bcov.bsubs_a(source_index);
+              bsubsmn3 += tcosi1 * decomposed_bcov.bsubs_a(jF, kl);
               // sin-sin
-              bsubsmn4 += tcosi2 * decomposed_bcov.bsubs_a(source_index);
+              bsubsmn4 += tcosi2 * decomposed_bcov.bsubs_a(jF, kl);
             }  // lasym
           }  // l
         }  // k
@@ -2217,13 +2217,13 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               const double tsini2 = t.cosmui[idx_ml] * t.sinnv[idx_kn] * dnorm1;
 
               // sin-cos
-              bsubvmn3 += tsini1 * decomposed_bcov.bsubv_a(source_index);
+              bsubvmn3 += tsini1 * decomposed_bcov.bsubv_a(jH, kl);
               // cos-sin
-              bsubvmn4 += tsini2 * decomposed_bcov.bsubv_a(source_index);
+              bsubvmn4 += tsini2 * decomposed_bcov.bsubv_a(jH, kl);
               // sin-cos
-              bsubumn3 += tsini1 * decomposed_bcov.bsubu_a(source_index);
+              bsubumn3 += tsini1 * decomposed_bcov.bsubu_a(jH, kl);
               // cos-sin
-              bsubumn4 += tsini2 * decomposed_bcov.bsubu_a(source_index);
+              bsubumn4 += tsini2 * decomposed_bcov.bsubu_a(jH, kl);
             }  // lasym
           }  // l
         }  // k
@@ -4581,7 +4581,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     //    has not been fixed yet for educational_VMEC.
     tmult *= 2.0;
 
-    // TODO(jons): implement symoutput() once lasym=true test case is set up
+    // Symoutput functionality is implemented inline in the Fourier transform
+    // loop below
   }
 
   // -------------------
@@ -4602,6 +4603,17 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   wout.bsupumnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
   wout.bsupvmnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+
+  // Initialize asymmetric arrays for lasym=true cases
+  if (s.lasym) {
+    wout.gmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.bmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.bsubumns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.bsubvmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.bsubsmnc = RowMatrixXd::Zero(fc.ns, s.mnmax_nyq);
+    wout.bsupumns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.bsupvmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+  }
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
       const int idx_mn_nyq = jH * s.mnmax_nyq + mn_nyq;
@@ -4645,6 +4657,47 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               tcosi * m_vmec_internal_results.bsupu(idx_kl);
           wout.bsupvmnc(idx_mn_nyq) +=
               tcosi * m_vmec_internal_results.bsupv(idx_kl);
+
+          // Add asymmetric contributions for lasym=true cases
+          if (s.lasym) {
+            // Compute asymmetric parts for sin Fourier modes
+            const int k_rev = (s.nZeta - k) % s.nZeta;
+            const int l_rev = (s.nThetaEff - l) % s.nThetaEff;
+            const int idx_kl_rev = (jH * s.nZeta + k_rev) * s.nThetaEff + l_rev;
+
+            // Asymmetric quantities for sin modes
+            const double gsqrt_asym =
+                0.5 * (m_vmec_internal_results.gsqrt(idx_kl) -
+                       m_vmec_internal_results.gsqrt(idx_kl_rev));
+            const double bmagn_asym = 0.5 * (magnetic_pressure[idx_kl] -
+                                             magnetic_pressure[idx_kl_rev]);
+            const double bsubu_asym =
+                0.5 * (m_vmec_internal_results.bsubu(idx_kl) -
+                       m_vmec_internal_results.bsubu(idx_kl_rev));
+            const double bsubv_asym =
+                0.5 * (m_vmec_internal_results.bsubv(idx_kl) -
+                       m_vmec_internal_results.bsubv(idx_kl_rev));
+            const double bsupu_asym =
+                0.5 * (m_vmec_internal_results.bsupu(idx_kl) -
+                       m_vmec_internal_results.bsupu(idx_kl_rev));
+            const double bsupv_asym =
+                0.5 * (m_vmec_internal_results.bsupv(idx_kl) -
+                       m_vmec_internal_results.bsupv(idx_kl_rev));
+
+            // Special case for bsubs: reversed symmetry (cos mode)
+            const double bsubs_asym = 0.5 * (bsubs_half.bsubs_half(idx_kl) +
+                                             bsubs_half.bsubs_half(idx_kl_rev));
+
+            // Add asymmetric contributions to sin arrays
+            wout.gmns(idx_mn_nyq) += tsini * gsqrt_asym;
+            wout.bmns(idx_mn_nyq) += tsini * bmagn_asym;
+            wout.bsubumns(idx_mn_nyq) += tsini * bsubu_asym;
+            wout.bsubvmns(idx_mn_nyq) += tsini * bsubv_asym;
+            wout.bsubsmnc(idx_mn_nyq1) +=
+                tcosi * bsubs_asym;  // cos mode for bsubs
+            wout.bsupumns(idx_mn_nyq) += tsini * bsupu_asym;
+            wout.bsupvmns(idx_mn_nyq) += tsini * bsupv_asym;
+          }
         }  // k
       }  // l
     }  // mn_nyq
@@ -4697,17 +4750,105 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     wout.rmns = RowMatrixXd::Zero(fc.ns, s.mnmax);
     wout.zmnc = RowMatrixXd::Zero(fc.ns, s.mnmax);
     wout.lmnc_full = RowMatrixXd::Zero(fc.ns, s.mnmax);
+    for (int jF = 0; jF < fc.ns; ++jF) {
+      std::vector<double> rmns1(s.mnmax, 0.0);
+      std::vector<double> zmnc1(s.mnmax, 0.0);
+      std::vector<double> lmnc1(s.mnmax, 0.0);
 
-    // TODO(jons): implement when first non-stellarator-symmetric test case is
-    // ready
+      // DO M = 0 MODES SEPARATELY (ONLY KEEP N >= 0 HERE: SIN(-NV), COS(-NV))
+      int mn = -1;
+      int m_0 = 0;
+      for (int n = 0; n <= s.ntor; ++n) {
+        mn++;
+        const int idx_fc = (jF * (s.ntor + 1) + n) * s.mpol + m_0;
+        const double t1 = t.mscale[m_0] * t.nscale[n];
+        rmns1[mn] = t1 * m_vmec_internal_results.rmnsc(idx_fc);
+        if (s.lthreed) {
+          zmnc1[mn] = -t1 * m_vmec_internal_results.zmncc(idx_fc);
+          lmnc1[mn] = -t1 * m_vmec_internal_results.lmncc(idx_fc);
+        }
+        // NOTE: Z and lambda do not have m=0 contributions in 2D,
+        // since cos(m * theta) == 0 for m = 0
+      }  // n
+
+      // extrapolate to axis if 3D
+      if (s.lthreed && jF == 0) {
+        int mn = -1;
+        for (int n = 0; n <= s.ntor; ++n) {
+          mn++;
+          const int idx_ns_1 = (1 * (s.ntor + 1) + n) * s.mpol + m_0;
+          const int idx_ns_2 = (2 * (s.ntor + 1) + n) * s.mpol + m_0;
+          const double t1 = t.mscale[m_0] * t.nscale[n];
+          lmnc1[mn] = -t1 * (2.0 * m_vmec_internal_results.lmncc(idx_ns_1) -
+                             m_vmec_internal_results.lmncc(idx_ns_2));
+        }  // n
+      }
+
+      // now come the m>0, n=-ntor, ..., ntor entries
+      for (int m = 1; m < s.mpol; ++m) {
+        for (int n = -s.ntor; n <= s.ntor; ++n) {
+          mn++;
+          const int abs_n = std::abs(n);
+          const int idx_fc = (jF * (s.ntor + 1) + abs_n) * s.mpol + m;
+          const double t1 = t.mscale[m] * t.nscale[abs_n];
+          if (n == 0) {
+            rmns1[mn] = t1 * m_vmec_internal_results.rmnsc(idx_fc);
+            zmnc1[mn] = t1 * m_vmec_internal_results.zmncc(idx_fc);
+            lmnc1[mn] = t1 * m_vmec_internal_results.lmncc(idx_fc);
+          } else if (jF > 0) {
+            rmns1[mn] = t1 * m_vmec_internal_results.rmnsc(idx_fc) / 2.0;
+            zmnc1[mn] = t1 * m_vmec_internal_results.zmncc(idx_fc) / 2.0;
+            lmnc1[mn] = t1 * m_vmec_internal_results.lmncc(idx_fc) / 2.0;
+            if (s.lthreed) {
+              const int sign_n = signum(n);
+              rmns1[mn] +=
+                  t1 * sign_n * m_vmec_internal_results.rmncs(idx_fc) / 2.0;
+              zmnc1[mn] -=
+                  t1 * sign_n * m_vmec_internal_results.zmnss(idx_fc) / 2.0;
+              lmnc1[mn] -=
+                  t1 * sign_n * m_vmec_internal_results.lmnss(idx_fc) / 2.0;
+            }
+          }
+          // NOTE: can omit assigning jF=0 entries to 0, since rmns1, ..., lmnc1
+          // are initialized to 0.0 already
+        }  // n
+      }  // m
+
+      // pre-incrementing means that we are off by one at the end
+      CHECK_EQ(mn + 1, s.mnmax) << "counting error: (mn + 1)=" << (mn + 1)
+                                << " should be mnmax=" << s.mnmax;
+
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        wout.rmns(jF * s.mnmax + mn) = rmns1[mn];
+        wout.zmnc(jF * s.mnmax + mn) = zmnc1[mn];
+        wout.lmnc_full(jF * s.mnmax + mn) =
+            lmnc1[mn] / m_vmec_internal_results.phipF[jF] * constants.lamscale;
+      }  // mn
+    }  // jF
 
     // INTERPOLATE LAMBDA ONTO HALF-MESH FOR BACKWARDS CONSISTENCY WITH EARLIER
     // VERSIONS OF VMEC AND SMOOTHS POSSIBLE UNPHYSICAL "WIGGLE" ON RADIAL MESH
 
     wout.lmnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax);
+    for (int jH = 0; jH < fc.ns - 1; ++jH) {
+      const int jFi = jH;
+      const int jFo = jH + 1;
 
-    // TODO(jons): implement when first non-stellarator-symmetric test case is
-    // ready
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        const double lmnc_outside = wout.lmnc_full(jFo * s.mnmax + mn);
+
+        double lmnc_inside = wout.lmnc_full(jFi * s.mnmax + mn);
+        if (jFi == 0 && wout.xm[mn] <= 1) {
+          lmnc_inside = lmnc_outside;
+        }
+
+        if (wout.xm[mn] % 2 == 0) {
+          wout.lmnc(jH * s.mnmax + mn) = (lmnc_inside + lmnc_outside) * 0.5;
+        } else {
+          wout.lmnc(jH * s.mnmax + mn) = (lmnc_outside - lmnc_inside) * 0.5;
+        }
+      }  // mn
+    }  // jH
   }  // lasym
 
   // RESTORE nyq ENDPOINT VALUES
