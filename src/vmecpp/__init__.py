@@ -449,6 +449,44 @@ class VmecInput(BaseModelWithNumpy):
         return self
 
     @pydantic.model_validator(mode="after")
+    def _validate_axis_coefficients_shapes(self) -> VmecInput:
+        """Initialize axis arrays for asymmetric configurations."""
+        # Axis arrays should have shape (ntor+1,)
+        expected_axis_shape = (self.ntor + 1,)
+
+        # Always validate raxis_c and zaxis_s (stellarator-symmetric arrays)
+        for field in ["raxis_c", "zaxis_s"]:
+            current_value = getattr(self, field)
+            if np.shape(current_value) != expected_axis_shape:
+                setattr(
+                    self,
+                    field,
+                    VmecInput.resize_axis_coeff(
+                        current_value,
+                        ntor_new=self.ntor,
+                    ),
+                )
+
+        # Initialize asymmetric axis arrays if lasym=True
+        if self.lasym:
+            for field in ["raxis_s", "zaxis_c"]:
+                current_value = getattr(self, field)
+                if current_value is None:
+                    # Initialize with zero arrays
+                    setattr(self, field, np.zeros(expected_axis_shape))
+                elif np.shape(current_value) != expected_axis_shape:
+                    setattr(
+                        self,
+                        field,
+                        VmecInput.resize_axis_coeff(
+                            current_value,
+                            ntor_new=self.ntor,
+                        ),
+                    )
+
+        return self
+
+    @pydantic.model_validator(mode="after")
     def _validate_stellarator_asymmetric_fields(self) -> VmecInput:
         """Check if all fields that break stellarator symmetry match the lasym flag."""
         ASYMMETRIC_FIELDS = ["rbs", "zbc", "zaxis_c", "raxis_s"]
@@ -517,6 +555,38 @@ class VmecInput(BaseModelWithNumpy):
         for m in range(smaller_mpol):
             for n in range(-smaller_ntor, smaller_ntor + 1):
                 resized_coeff[m, n + ntor_new] = coeff[m, n + ntor]
+
+        return resized_coeff
+
+    @staticmethod
+    def resize_axis_coeff(
+        coeff: jt.Float[np.ndarray, "ntor_plus_one"],
+        ntor_new: int,
+    ) -> jt.Float[np.ndarray, "ntor_new_plus_one"]:
+        """Resizes a 1D NumPy array representing axis Fourier coefficients.
+
+        Args:
+            coeff: A NumPy array of shape (ntor + 1,).
+            ntor_new: The new number of toroidal modes.
+
+        Returns:
+            Resized array of shape (ntor_new + 1,).
+        """
+        assert ntor_new >= 0
+        coeff = np.array(coeff)
+        ntor = len(coeff) - 1
+
+        resized_coeff = np.zeros(ntor_new + 1)
+        smaller_ntor = min(ntor, ntor_new)
+
+        if ntor_new < ntor:
+            logger.warning(
+                f"Discarding axis coefficients because ntor={ntor} "
+                f"is larger than ntor_new={ntor_new}"
+            )
+
+        # Copy existing coefficients up to the smaller of the two sizes
+        resized_coeff[: smaller_ntor + 1] = coeff[: smaller_ntor + 1]
 
         return resized_coeff
 
