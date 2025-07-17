@@ -518,6 +518,33 @@ class VmecInput(BaseModelWithNumpy):
         }
         vmec_input_dict["ns_array"] = vmec_input_dict["ns_array"].astype(np.int64)
         vmec_input_dict["niter_array"] = vmec_input_dict["niter_array"].astype(np.int64)
+
+        # Handle asymmetric fields: set to None if empty and lasym=False,
+        # or initialize with zeros if lasym=True and missing
+        asymmetric_fields = ["rbs", "zbc", "raxis_s", "zaxis_c"]
+        is_asymmetric = vmec_input_dict["lasym"]
+
+        for field in asymmetric_fields:
+            value = vmec_input_dict[field]
+            # Check if the field is effectively empty (size 0 or all zeros)
+            if value is None or (hasattr(value, "size") and value.size == 0):
+                if is_asymmetric:
+                    # For asymmetric runs, initialize missing fields with appropriate shapes
+                    if field in ["rbs", "zbc"]:
+                        # Boundary coefficient arrays: shape (mpol, 2*ntor+1)
+                        shape = (
+                            vmec_input_dict["mpol"],
+                            2 * vmec_input_dict["ntor"] + 1,
+                        )
+                        vmec_input_dict[field] = np.zeros(shape)
+                    else:  # raxis_s, zaxis_c
+                        # Axis coefficient arrays: shape (ntor+1,)
+                        shape = (vmec_input_dict["ntor"] + 1,)
+                        vmec_input_dict[field] = np.zeros(shape)
+                else:
+                    # For symmetric runs, set to None (asymmetric fields not used)
+                    vmec_input_dict[field] = None
+
         return VmecInput.model_validate(vmec_input_dict)
 
     @staticmethod
