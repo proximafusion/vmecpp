@@ -2431,6 +2431,12 @@ void IdealMhdModel::computeMHDForces() {
       m_ls_.gbvbv_i[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
     }  // kl
     sqrtSHi = m_p_.sqrtSH[j0 - r_.nsMinH];
+    // Protect against division by zero or very small values
+    if (std::abs(sqrtSHi) < 1e-15) {
+      std::cout << "WARNING: sqrtSHi too small (" << sqrtSHi
+                << "), setting to 1.0" << std::endl;
+      sqrtSHi = 1.0;
+    }
   } else {
     // defaults to 0: no contribution from half-grid point inside the axis
     m_ls_.P_i.setZero();
@@ -2465,6 +2471,12 @@ void IdealMhdModel::computeMHDForces() {
     double sqrtSHo = 1.0;
     if (jF < r_.nsMaxH) {
       sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
+      // Protect against division by zero or very small values
+      if (std::abs(sqrtSHo) < 1e-15) {
+        std::cout << "WARNING: sqrtSHo too small (" << sqrtSHo
+                  << "), setting to 1.0" << std::endl;
+        sqrtSHo = 1.0;
+      }
     }
 
     if (jF < r_.nsMaxH) {
