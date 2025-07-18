@@ -98,3 +98,13 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_binary(
+    name = "test_nan",
+    srcs = ["test_nan.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "//vmecpp/common/sizes:sizes",
+    ],
+)

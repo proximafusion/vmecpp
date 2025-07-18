@@ -93,15 +93,26 @@ void FourierToReal3DAsymmFastPoloidal(
         // For zeta: FourierBasisFastPoloidal stores basis functions indexed by
         // (k,n) The storage format is: idx = k * (nnyq2 + 1) + n for n >= 0
         double cos_nv, sin_nv;
-        int abs_n = std::abs(n);
-        int idx_nv = k * (sizes.nnyq2 + 1) + abs_n;
-        cos_nv = fourier_basis.cosnv[idx_nv];
-        sin_nv = fourier_basis.sinnv[idx_nv];
 
-        // Apply symmetry for negative n: cos(-nv) = cos(nv), sin(-nv) =
-        // -sin(nv)
-        if (n < 0) {
-          sin_nv = -sin_nv;
+        // Check if n is within valid range for precomputed basis
+        int abs_n = std::abs(n);
+        if (abs_n <= sizes.nnyq2) {
+          // Use precomputed basis functions
+          int idx_nv = k * (sizes.nnyq2 + 1) + abs_n;
+          cos_nv = fourier_basis.cosnv[idx_nv];
+          sin_nv = fourier_basis.sinnv[idx_nv];
+
+          // Apply symmetry for negative n: cos(-nv) = cos(nv), sin(-nv) =
+          // -sin(nv)
+          if (n < 0) {
+            sin_nv = -sin_nv;
+          }
+        } else {
+          // Compute basis functions directly for out-of-range n
+          double nv = n * sizes.nfp * v;
+          double nscale = (n == 0) ? 1.0 : 1.0 / sqrt(2.0);
+          cos_nv = cos(nv) * nscale;
+          sin_nv = sin(nv) * nscale;
         }
 
         // DEBUG: Check basis functions for negative n
