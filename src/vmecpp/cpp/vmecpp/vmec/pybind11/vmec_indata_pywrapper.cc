@@ -174,7 +174,7 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
   }
 
   auto resized_2d_coeff = [this, new_mpol, new_ntor](const auto& coeff) {
-    const int new_nmax = 2 * new_ntor + 1;
+    const int new_nmax = (2 * new_ntor) + 1;
     RowMatrixXd resized_coeff = RowMatrixXd::Zero(new_mpol, new_nmax);
 
     // copy the original values at the appropriate indices
