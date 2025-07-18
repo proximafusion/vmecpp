@@ -2194,7 +2194,16 @@ void IdealMhdModel::hybridLambdaForce() {
   int j0 = r_.nsMinF;
   double sqrtSHi = 0.0;
   if (j0 > 0) {
-    sqrtSHi = m_p_.sqrtSH[j0 - 1 - r_.nsMinH];
+    int sqrtSH_index = j0 - 1 - r_.nsMinH;
+    if (sqrtSH_index >= 0 &&
+        sqrtSH_index < static_cast<int>(m_p_.sqrtSH.size())) {
+      sqrtSHi = m_p_.sqrtSH[sqrtSH_index];
+    } else {
+      std::cout << "WARNING: sqrtSH index out of bounds: " << sqrtSH_index
+                << " (j0=" << j0 << ", nsMinH=" << r_.nsMinH
+                << "), using sqrtSHi=0.0" << std::endl;
+      sqrtSHi = 0.0;
+    }
   }
   for (int kl = 0; kl < s_.nZnT; ++kl) {
     if (j0 == 0) {
@@ -2219,7 +2228,16 @@ void IdealMhdModel::hybridLambdaForce() {
   for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
     double sqrtSHo = 0.0;
     if (jF < r_.nsMaxH) {
-      sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
+      int sqrtSH_index = jF - r_.nsMinH;
+      if (sqrtSH_index >= 0 &&
+          sqrtSH_index < static_cast<int>(m_p_.sqrtSH.size())) {
+        sqrtSHo = m_p_.sqrtSH[sqrtSH_index];
+      } else {
+        std::cout << "WARNING: sqrtSHo index out of bounds: " << sqrtSH_index
+                  << " (jF=" << jF << ", nsMinH=" << r_.nsMinH
+                  << "), using sqrtSHo=1.0" << std::endl;
+        sqrtSHo = 1.0;
+      }
     }
 
     for (int kl = 0; kl < s_.nZnT; ++kl) {
@@ -2411,7 +2429,16 @@ void IdealMhdModel::computeMHDForces() {
       m_ls_.gbubv_i[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupv[iHalf];
       m_ls_.gbvbv_i[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
     }  // kl
-    sqrtSHi = m_p_.sqrtSH[j0 - r_.nsMinH];
+    int sqrtSH_index = j0 - r_.nsMinH;
+    if (sqrtSH_index >= 0 &&
+        sqrtSH_index < static_cast<int>(m_p_.sqrtSH.size())) {
+      sqrtSHi = m_p_.sqrtSH[sqrtSH_index];
+    } else {
+      std::cout << "WARNING: sqrtSHi force calc index out of bounds: "
+                << sqrtSH_index << " (j0=" << j0 << ", nsMinH=" << r_.nsMinH
+                << "), using sqrtSHi=1.0" << std::endl;
+      sqrtSHi = 1.0;
+    }
     // Protect against division by zero or very small values
     if (std::abs(sqrtSHi) < 1e-15) {
       std::cout << "WARNING: sqrtSHi too small (" << sqrtSHi
@@ -2447,7 +2474,16 @@ void IdealMhdModel::computeMHDForces() {
     // stuff gets divided by sqrtSHo, so cannot be 0
     double sqrtSHo = 1.0;
     if (jF < r_.nsMaxH) {
-      sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
+      int sqrtSH_index = jF - r_.nsMinH;
+      if (sqrtSH_index >= 0 &&
+          sqrtSH_index < static_cast<int>(m_p_.sqrtSH.size())) {
+        sqrtSHo = m_p_.sqrtSH[sqrtSH_index];
+      } else {
+        std::cout << "WARNING: sqrtSHo force calc index out of bounds: "
+                  << sqrtSH_index << " (jF=" << jF << ", nsMinH=" << r_.nsMinH
+                  << "), using sqrtSHo=1.0" << std::endl;
+        sqrtSHo = 1.0;
+      }
       // Protect against division by zero or very small values
       if (std::abs(sqrtSHo) < 1e-15) {
         std::cout << "WARNING: sqrtSHo too small (" << sqrtSHo

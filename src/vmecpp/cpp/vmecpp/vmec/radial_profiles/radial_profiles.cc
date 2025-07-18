@@ -711,6 +711,14 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     // normalized toroidal flux array
     sqrtSH[jH - r_.nsMinH] = std::sqrt(halfGridPos);
 
+    // DEBUG: Check for problematic sqrtSH values
+    if (sqrtSH[jH - r_.nsMinH] < 1e-10) {
+      std::cout << "WARNING: sqrtSH[" << (jH - r_.nsMinH)
+                << "] = " << sqrtSH[jH - r_.nsMinH]
+                << " computed from halfGridPos=" << halfGridPos << " (jH=" << jH
+                << ", ns=" << fc_.ns << ")" << std::endl;
+    }
+
     phipH[jH - r_.nsMinH] = maxToroidalFlux * torfluxDeriv(halfGridPos);
     chipH[jH - r_.nsMinH] = maxToroidalFlux * polfluxDeriv(halfGridPos);
 
