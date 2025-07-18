@@ -189,8 +189,8 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
     return resized_coeff;
   };
 
-  rbc = resized_2d_coeff(rbc.value());
-  zbs = resized_2d_coeff(zbs.value());
+  rbc = resized_2d_coeff(rbc);
+  zbs = resized_2d_coeff(zbs);
 
   if (lasym) {
     rbs = resized_2d_coeff(rbs.value());
