@@ -1202,6 +1202,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
 /** inverse Fourier transform to get geometry from Fourier coefficients */
 void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
+  std::cout << "DEBUG geometryFromFourier: lasym=" << s_.lasym
+            << ", lthreed=" << s_.lthreed << std::endl;
+
   // symmetric contribution is always needed
   if (s_.lthreed) {
     dft_FourierToReal_3d_symm(physical_x);
@@ -1211,9 +1214,24 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
 
   if (s_.lasym) {
     // asymmetric contribution needed for non-symmetric equilibria
+    std::cout << "DEBUG: Processing asymmetric contribution" << std::endl;
+
+    // Check physical_x arrays
+    std::cout << "DEBUG: physical_x.rmnsc size=" << physical_x.rmnsc.size()
+              << std::endl;
+    if (physical_x.rmnsc.size() > 0) {
+      std::cout << "  First few rmnsc values: ";
+      for (int i = 0;
+           i < std::min(5, static_cast<int>(physical_x.rmnsc.size())); ++i) {
+        std::cout << physical_x.rmnsc[i] << " ";
+      }
+      std::cout << std::endl;
+    }
+
     if (s_.lthreed) {
       dft_FourierToReal_3d_asymm(physical_x);
     } else {
+      std::cout << "DEBUG: Calling 2D asymmetric transform" << std::endl;
       dft_FourierToReal_2d_asymm(physical_x);
     }
 
@@ -3586,6 +3604,14 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(
 void IdealMhdModel::dft_FourierToReal_2d_asymm(
     const FourierGeometry& physical_x) {
   // Apply asymmetric 2D transform from Fourier to real space
+  std::cout
+      << "DEBUG dft_FourierToReal_2d_asymm: Starting asymmetric 2D transform"
+      << std::endl;
+  std::cout << "  Input array sizes: rmnsc=" << physical_x.rmnsc.size()
+            << ", zmncc=" << physical_x.zmncc.size() << std::endl;
+  std::cout << "  Output span size: " << (s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1))
+            << std::endl;
+
   FourierToReal2DAsymmFastPoloidal(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
       physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
