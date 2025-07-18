@@ -50,10 +50,14 @@ Must implement:
 - Design docs: ../benchmark_vmec/design/
 
 ## Testing Strategy
-1. Start with simple asymmetric test cases
-2. Compare outputs with educational_VMEC and jVMEC
-3. Verify conservation properties
-4. Validate Jacobian calculations with full u-range
+1. **CRITICAL: Follow strict Test-Driven Development (TDD)**
+   - Write failing tests FIRST before any implementation
+   - Add debug output at EVERY TINY STEP comparing with educational_VMEC
+   - Run tokamak input with debug prints matching educational_VMEC positions
+2. Start with simple asymmetric test cases
+3. Compare outputs with educational_VMEC and jVMEC
+4. Verify conservation properties
+5. Validate Jacobian calculations with full u-range
 
 ## Current State
 - HandoverStorage already has asymmetric arrays allocated

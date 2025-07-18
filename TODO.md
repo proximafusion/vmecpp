@@ -113,4 +113,6 @@
 - Refactor only after tests pass (REFACTOR phase)
 - Run all tests after each step
 - Use educational_VMEC and jVMEC as reference implementations
-- Add debug output as needed to verify intermediate steps
+- **CRITICAL: Add debug output at EVERY TINY STEP comparing with educational_VMEC**
+- **CRITICAL: Run tokamak input with debug prints matching educational_VMEC positions**
+- **CRITICAL: Never implement any function without proper test coverage**
