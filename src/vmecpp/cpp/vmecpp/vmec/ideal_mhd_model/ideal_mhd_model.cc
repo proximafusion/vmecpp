@@ -18,6 +18,7 @@
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
+#include "vmecpp/vmec/fourier_asymmetric/fourier_asymmetric.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
@@ -1209,17 +1210,15 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
   }
 
   if (s_.lasym) {
-    // FIXME(jons): implement non-symmetric DFT variants
-    std::cerr << "asymmetric inv-DFT not implemented yet\n";
+    // asymmetric contribution needed for non-symmetric equilibria
+    if (s_.lthreed) {
+      dft_FourierToReal_3d_asymm(physical_x);
+    } else {
+      dft_FourierToReal_2d_asymm(physical_x);
+    }
 
-    // FIXME(jons): implement symrzl
-    std::cerr << "symrzl not implemented yet\n";
-
-#ifdef _OPENMP
-    abort();
-#else
-    exit(-1);
-#endif  // _OPENMP
+    // symmetrize geometry components
+    symrzl_geometry(physical_x);
   }  // lasym
 
   // related post-processing:
@@ -3057,17 +3056,15 @@ void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
   }
 
   if (s_.lasym) {
-    // FIXME(jons): implement non-symmetric DFT variants
-    std::cerr << "asymmetric fwd-DFT not implemented yet\n";
+    // asymmetric contribution needed for non-symmetric equilibria
+    if (s_.lthreed) {
+      dft_ForcesToFourier_3d_asymm(m_physical_f);
+    } else {
+      dft_ForcesToFourier_2d_asymm(m_physical_f);
+    }
 
-    // FIXME(jons): implement symforce
-    std::cerr << "symforce not implemented yet\n";
-
-#ifdef _OPENMP
-    abort();
-#else
-    exit(-1);
-#endif  // _OPENMP
+    // symmetrize force components
+    symrzl_forces(m_physical_f);
   }  // lasym
 }
 
@@ -3570,5 +3567,103 @@ double IdealMhdModel::get_delbsq() const {
 }
 
 int IdealMhdModel::get_ivacskip() const { return ivacskip; }
+
+void IdealMhdModel::dft_FourierToReal_3d_asymm(
+    const FourierGeometry& physical_x) {
+  // Apply asymmetric 3D transform from Fourier to real space
+  FourierToReal3DAsymmFastPoloidal(
+      s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
+      physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
+      physical_x.zmnss,
+      absl::Span<double>(m_ls_.r1e_i.data(),
+                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
+      absl::Span<double>(m_ls_.z1e_i.data(),
+                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
+      absl::Span<double>(m_ls_.lue_i.data(),
+                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)));
+}
+
+void IdealMhdModel::dft_FourierToReal_2d_asymm(
+    const FourierGeometry& physical_x) {
+  // Apply asymmetric 2D transform from Fourier to real space
+  FourierToReal2DAsymmFastPoloidal(
+      s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
+      physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
+      physical_x.zmnss,
+      absl::Span<double>(m_ls_.r1e_i.data(),
+                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
+      absl::Span<double>(m_ls_.z1e_i.data(),
+                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
+      absl::Span<double>(m_ls_.lue_i.data(),
+                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)));
+}
+
+void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {
+  // Apply asymmetric 3D transform from real space to Fourier forces
+  RealToFourier3DAsymmFastPoloidal(
+      s_,
+      absl::Span<const double>(armn_e.data(),
+                               s_.nZnT * (r_.nsMaxF - r_.nsMinF)),
+      absl::Span<const double>(azmn_e.data(),
+                               s_.nZnT * (r_.nsMaxF - r_.nsMinF)),
+      absl::Span<const double>(blmn_e.data(),
+                               s_.nZnT * (r_.nsMaxF - r_.nsMinF)),
+      absl::Span<double>(m_physical_f.frcc.data(), m_physical_f.frcc.size()),
+      absl::Span<double>(m_physical_f.frss.data(), m_physical_f.frss.size()),
+      absl::Span<double>(m_physical_f.frsc.data(), m_physical_f.frsc.size()),
+      absl::Span<double>(m_physical_f.frcs.data(), m_physical_f.frcs.size()),
+      absl::Span<double>(m_physical_f.fzsc.data(), m_physical_f.fzsc.size()),
+      absl::Span<double>(m_physical_f.fzcs.data(), m_physical_f.fzcs.size()),
+      absl::Span<double>(m_physical_f.fzcc.data(), m_physical_f.fzcc.size()),
+      absl::Span<double>(m_physical_f.fzss.data(), m_physical_f.fzss.size()),
+      absl::Span<double>(m_physical_f.flsc.data(), m_physical_f.flsc.size()),
+      absl::Span<double>(m_physical_f.flcs.data(), m_physical_f.flcs.size()),
+      absl::Span<double>(m_physical_f.flcc.data(), m_physical_f.flcc.size()),
+      absl::Span<double>(m_physical_f.flss.data(), m_physical_f.flss.size()));
+}
+
+void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
+  // Apply asymmetric 2D transform from real space to Fourier forces
+  RealToFourier2DAsymmFastPoloidal(
+      s_,
+      absl::Span<const double>(armn_e.data(),
+                               s_.nZnT * (r_.nsMaxF - r_.nsMinF)),
+      absl::Span<const double>(azmn_e.data(),
+                               s_.nZnT * (r_.nsMaxF - r_.nsMinF)),
+      absl::Span<const double>(blmn_e.data(),
+                               s_.nZnT * (r_.nsMaxF - r_.nsMinF)),
+      absl::Span<double>(m_physical_f.frcc.data(), m_physical_f.frcc.size()),
+      absl::Span<double>(m_physical_f.frss.data(), m_physical_f.frss.size()),
+      absl::Span<double>(m_physical_f.frsc.data(), m_physical_f.frsc.size()),
+      absl::Span<double>(m_physical_f.frcs.data(), m_physical_f.frcs.size()),
+      absl::Span<double>(m_physical_f.fzsc.data(), m_physical_f.fzsc.size()),
+      absl::Span<double>(m_physical_f.fzcs.data(), m_physical_f.fzcs.size()),
+      absl::Span<double>(m_physical_f.fzcc.data(), m_physical_f.fzcc.size()),
+      absl::Span<double>(m_physical_f.fzss.data(), m_physical_f.fzss.size()),
+      absl::Span<double>(m_physical_f.flsc.data(), m_physical_f.flsc.size()),
+      absl::Span<double>(m_physical_f.flcs.data(), m_physical_f.flcs.size()),
+      absl::Span<double>(m_physical_f.flcc.data(), m_physical_f.flcc.size()),
+      absl::Span<double>(m_physical_f.flss.data(), m_physical_f.flss.size()));
+}
+
+void IdealMhdModel::symrzl_geometry(const FourierGeometry& physical_x) {
+  // Symmetrize real space geometry components
+  SymmetrizeRealSpaceGeometry(
+      s_,
+      absl::Span<double>(m_ls_.r1e_i.data(),
+                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
+      absl::Span<double>(m_ls_.z1e_i.data(),
+                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
+      absl::Span<double>(m_ls_.lue_i.data(),
+                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)));
+}
+
+void IdealMhdModel::symrzl_forces(FourierForces& m_physical_f) {
+  // Symmetrize force components
+  SymmetrizeForces(
+      s_, absl::Span<double>(armn_e.data(), s_.nZnT * (r_.nsMaxF - r_.nsMinF)),
+      absl::Span<double>(azmn_e.data(), s_.nZnT * (r_.nsMaxF - r_.nsMinF)),
+      absl::Span<double>(blmn_e.data(), s_.nZnT * (r_.nsMaxF - r_.nsMinF)));
+}
 
 }  // namespace vmecpp

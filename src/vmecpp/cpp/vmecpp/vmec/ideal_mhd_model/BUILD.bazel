@@ -14,6 +14,7 @@ cc_library(
         "//vmecpp/vmec/boundaries:boundaries",
         "//vmecpp/vmec/fourier_geometry:fourier_geometry",
         "//vmecpp/vmec/fourier_forces:fourier_forces",
+        "//vmecpp/vmec/fourier_asymmetric:fourier_asymmetric",
         "//vmecpp/vmec/radial_profiles:radial_profiles",
         "//vmecpp/vmec/thread_local_storage:thread_local_storage",
         "//vmecpp/vmec/handover_storage:handover_storage",
@@ -23,5 +24,20 @@ cc_library(
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",
+    ],
+)
+
+cc_test(
+    name = "ideal_mhd_model_asymmetric_test",
+    srcs = ["ideal_mhd_model_asymmetric_test.cc"],
+    deps = [
+        ":ideal_mhd_model",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+        "//vmecpp/vmec/fourier_forces:fourier_forces",
+        "//vmecpp/vmec/handover_storage:handover_storage",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "//vmecpp/common/composed_types_definition:composed_types",
+        "@googletest//:gtest_main",
     ],
 )

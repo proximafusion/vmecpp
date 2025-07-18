@@ -23,3 +23,78 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "stellarator_asymmetric_test",
+    srcs = ["stellarator_asymmetric_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+        "//vmecpp/vmec/output_quantities:output_quantities",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+    data = [
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+    ],
+)
+
+cc_test(
+    name = "debug_asymmetric_test",
+    srcs = ["debug_asymmetric_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "//util/file_io:file_io",
+    ],
+    size = "small",
+    data = [
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+    ],
+)
+
+cc_test(
+    name = "minimal_debug_test",
+    srcs = ["minimal_debug_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "up_down_asymmetric_test",
+    srcs = ["up_down_asymmetric_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+        "//vmecpp/vmec/output_quantities:output_quantities",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+)
+
+cc_test(
+    name = "simple_2d_asymmetric_test",
+    srcs = ["simple_2d_asymmetric_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+    ],
+    size = "small",
+)
