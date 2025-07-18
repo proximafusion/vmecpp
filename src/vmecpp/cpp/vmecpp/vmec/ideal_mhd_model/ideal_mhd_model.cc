@@ -1233,11 +1233,55 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
     } else {
       std::cout << "DEBUG: Calling 2D asymmetric transform" << std::endl;
       dft_FourierToReal_2d_asymm(physical_x);
+
+      // DEBUG: Check output values from transform
+      std::cout
+          << "DEBUG: After 2D asymmetric transform, checking first few values:"
+          << std::endl;
+      for (int i = 0; i < std::min(10, static_cast<int>(s_.nZnT)); ++i) {
+        double r_val = m_ls_.r1e_i[i];
+        double z_val = m_ls_.z1e_i[i];
+        std::cout << "  i=" << i << ": R=" << r_val << ", Z=" << z_val;
+        if (!std::isfinite(r_val) || !std::isfinite(z_val)) {
+          std::cout << " <-- NON-FINITE!";
+        }
+        std::cout << std::endl;
+      }
     }
 
     // symmetrize geometry components
+    std::cout << "DEBUG: Calling symrzl_geometry" << std::endl;
     symrzl_geometry(physical_x);
+
+    // DEBUG: Check values after symmetrization
+    std::cout << "DEBUG: After symrzl_geometry, checking first few values:"
+              << std::endl;
+    for (int i = 0; i < std::min(10, static_cast<int>(s_.nZnT)); ++i) {
+      double r_val = m_ls_.r1e_i[i];
+      double z_val = m_ls_.z1e_i[i];
+      std::cout << "  i=" << i << ": R=" << r_val << ", Z=" << z_val;
+      if (!std::isfinite(r_val) || !std::isfinite(z_val)) {
+        std::cout << " <-- NON-FINITE!";
+      }
+      std::cout << std::endl;
+    }
   }  // lasym
+
+  // DEBUG: Check geometry arrays for NaN before MHD computation
+  if (s_.lasym) {
+    bool found_nan_geom = false;
+    for (int i = 0; i < std::min(10, static_cast<int>(r1_e.size())); ++i) {
+      if (!std::isfinite(r1_e[i]) || !std::isfinite(r1_o[i])) {
+        std::cout << "ERROR: Non-finite geometry array at i=" << i
+                  << ", r1_e=" << r1_e[i] << ", r1_o=" << r1_o[i] << std::endl;
+        found_nan_geom = true;
+      }
+    }
+    if (!found_nan_geom) {
+      std::cout << "DEBUG: All geometry arrays are finite (first 10 checked)"
+                << std::endl;
+    }
+  }
 
   // related post-processing:
   // combine even-m and odd-m to ru, zu into ruFull, zuFull
@@ -2406,12 +2450,37 @@ void IdealMhdModel::computeMHDForces() {
         // obtain next outside point
         // defaults to 0: no contribution from half-grid point outside LCFS
         int iHalf = iHalf_base + kl;
+
+        // DEBUG: Check for NaN in MHD quantities
+        if (kl < 3 && jF == r_.nsMinF) {
+          std::cout << "DEBUG MHD quantities kl=" << kl << ", iHalf=" << iHalf
+                    << ", jF=" << jF << std::endl;
+          std::cout << "  r12[" << iHalf << "]=" << r12[iHalf] << std::endl;
+          std::cout << "  totalPressure[" << iHalf
+                    << "]=" << totalPressure[iHalf] << std::endl;
+          std::cout << "  ru12[" << iHalf << "]=" << ru12[iHalf] << std::endl;
+          std::cout << "  zu12[" << iHalf << "]=" << zu12[iHalf] << std::endl;
+          std::cout << "  tau[" << iHalf << "]=" << tau[iHalf] << std::endl;
+        }
+
         P_o[kl] = r12[iHalf] * totalPressure[iHalf];
         rup_o[kl] = ru12[iHalf] * P_o[kl];
         zup_o[kl] = zu12[iHalf] * P_o[kl];
         rsp_o[kl] = rs[iHalf] * P_o[kl];
         zsp_o[kl] = zs[iHalf] * P_o[kl];
         taup_o[kl] = tau[iHalf] * totalPressure[iHalf];
+
+        // DEBUG: Check computed quantities for NaN
+        if (kl < 3 && jF == r_.nsMinF) {
+          std::cout << "  Computed: P_o=" << P_o[kl] << ", rup_o=" << rup_o[kl]
+                    << ", zup_o=" << zup_o[kl] << ", taup_o=" << taup_o[kl]
+                    << std::endl;
+          if (!std::isfinite(P_o[kl]) || !std::isfinite(rup_o[kl]) ||
+              !std::isfinite(zup_o[kl]) || !std::isfinite(taup_o[kl])) {
+            std::cout << "ERROR: Non-finite MHD quantity detected!"
+                      << std::endl;
+          }
+        }
       }  // kl
 
       for (int kl = 0; kl < s_.nZnT; ++kl) {
@@ -2444,6 +2513,23 @@ void IdealMhdModel::computeMHDForces() {
 
       // index in force arrays
       int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
+
+      // DEBUG: Check for NaN in force computation components
+      if (kl < 3 && jF == r_.nsMinF) {
+        std::cout << "DEBUG Force computation kl=" << kl << ", jF=" << jF
+                  << std::endl;
+        std::cout << "  zup_o[" << kl << "]=" << zup_o[kl]
+                  << ", zup_i=" << m_ls_.zup_i[kl] << std::endl;
+        std::cout << "  taup_o[" << kl << "]=" << taup_o[kl]
+                  << ", taup_i=" << m_ls_.taup_i[kl] << std::endl;
+        std::cout << "  gbvbv_o[" << kl << "]=" << gbvbv_o[kl]
+                  << ", gbvbv_i=" << m_ls_.gbvbv_i[kl] << std::endl;
+        std::cout << "  r1_e[" << idx_g << "]=" << r1_e[idx_g]
+                  << ", r1_o=" << r1_o[idx_g] << std::endl;
+        std::cout << "  deltaS=" << m_fc_.deltaS << ", sqrtSHo=" << sqrtSHo
+                  << ", sqrtSHi=" << sqrtSHi << std::endl;
+      }
+
       // A_R force
       armn_e[idx_f] =
           (zup_o[kl] - m_ls_.zup_i[kl]) / m_fc_.deltaS +
@@ -2451,6 +2537,12 @@ void IdealMhdModel::computeMHDForces() {
           0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * r1_e[idx_g] -
           0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
               r1_o[idx_g];
+
+      // DEBUG: Check if computed force is NaN
+      if (kl < 3 && jF == r_.nsMinF && !std::isfinite(armn_e[idx_f])) {
+        std::cout << "ERROR: armn_e[" << idx_f << "] = " << armn_e[idx_f]
+                  << " (NaN detected!)" << std::endl;
+      }
     }
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // index in geometry arrays
@@ -2474,7 +2566,22 @@ void IdealMhdModel::computeMHDForces() {
       // index in force arrays
       int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
 
+      // DEBUG: Check for NaN in A_Z force computation
+      if (kl < 3 && jF == r_.nsMinF) {
+        std::cout << "DEBUG A_Z Force computation kl=" << kl << ", jF=" << jF
+                  << std::endl;
+        std::cout << "  rup_o[" << kl << "]=" << rup_o[kl]
+                  << ", rup_i=" << m_ls_.rup_i[kl] << std::endl;
+        std::cout << "  deltaS=" << m_fc_.deltaS << std::endl;
+      }
+
       azmn_e[idx_f] = -(rup_o[kl] - m_ls_.rup_i[kl]) / m_fc_.deltaS;
+
+      // DEBUG: Check if computed A_Z force is NaN
+      if (kl < 3 && jF == r_.nsMinF && !std::isfinite(azmn_e[idx_f])) {
+        std::cout << "ERROR: azmn_e[" << idx_f << "] = " << azmn_e[idx_f]
+                  << " (NaN detected!)" << std::endl;
+      }
     }
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // index in geometry arrays
@@ -3641,6 +3748,26 @@ void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {
 
 void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
   // Apply asymmetric 2D transform from real space to Fourier forces
+  std::cout << "DEBUG: dft_ForcesToFourier_2d_asymm started" << std::endl;
+
+  // DEBUG: Check input forces for NaN
+  bool found_nan_in_forces = false;
+  int check_limit =
+      std::min(10, static_cast<int>(s_.nZnT * (r_.nsMaxF - r_.nsMinF)));
+  for (int i = 0; i < check_limit; ++i) {
+    if (!std::isfinite(armn_e[i]) || !std::isfinite(azmn_e[i]) ||
+        !std::isfinite(blmn_e[i])) {
+      std::cout << "ERROR: Non-finite force before transform at i=" << i
+                << ", armn_e=" << armn_e[i] << ", azmn_e=" << azmn_e[i]
+                << ", blmn_e=" << blmn_e[i] << std::endl;
+      found_nan_in_forces = true;
+    }
+  }
+  if (!found_nan_in_forces) {
+    std::cout << "DEBUG: All input forces are finite (first " << check_limit
+              << " checked)" << std::endl;
+  }
+
   RealToFourier2DAsymmFastPoloidal(
       s_,
       absl::Span<const double>(armn_e.data(),
@@ -3661,6 +3788,24 @@ void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
       absl::Span<double>(m_physical_f.flcs.data(), m_physical_f.flcs.size()),
       absl::Span<double>(m_physical_f.flcc.data(), m_physical_f.flcc.size()),
       absl::Span<double>(m_physical_f.flss.data(), m_physical_f.flss.size()));
+
+  // DEBUG: Check output Fourier forces for NaN
+  bool found_nan_fourier_forces = false;
+  int check_fourier_limit =
+      std::min(10, static_cast<int>(m_physical_f.frsc.size()));
+  for (int i = 0; i < check_fourier_limit; ++i) {
+    if (!std::isfinite(m_physical_f.frsc[i]) ||
+        !std::isfinite(m_physical_f.fzcc[i])) {
+      std::cout << "ERROR: Non-finite Fourier force after transform at i=" << i
+                << ", frsc=" << m_physical_f.frsc[i]
+                << ", fzcc=" << m_physical_f.fzcc[i] << std::endl;
+      found_nan_fourier_forces = true;
+    }
+  }
+  if (!found_nan_fourier_forces) {
+    std::cout << "DEBUG: All output Fourier forces are finite (first "
+              << check_fourier_limit << " checked)" << std::endl;
+  }
 }
 
 void IdealMhdModel::symrzl_geometry(const FourierGeometry& physical_x) {

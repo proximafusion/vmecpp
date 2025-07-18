@@ -380,6 +380,13 @@ void SymmetrizeRealSpaceGeometry(const Sizes& sizes, absl::Span<double> r_real,
                   << ": copying from idx_r=" << idx_r << " to idx=" << idx
                   << ", R[" << idx << "]=" << r_real[idx] << ", Z[" << idx
                   << "]=" << z_real[idx] << std::endl;
+
+        // Check for NaN/inf values
+        if (!std::isfinite(r_real[idx]) || !std::isfinite(z_real[idx])) {
+          std::cout << "ERROR: Non-finite values detected at symmetrization i="
+                    << i << ", R=" << r_real[idx] << ", Z=" << z_real[idx]
+                    << std::endl;
+        }
       }
     }
   }
@@ -615,6 +622,22 @@ void SymmetrizeForces(const Sizes& sizes, absl::Span<double> force_r,
   // DEBUG: Compare with educational_VMEC symforce.f90
   std::cout << "DEBUG SymmetrizeForces: force symmetrization started"
             << std::endl;
+
+  // DEBUG: Check input forces for NaN
+  bool found_nan_forces = false;
+  for (int i = 0; i < std::min(10, static_cast<int>(force_r.size())); ++i) {
+    if (!std::isfinite(force_r[i]) || !std::isfinite(force_z[i]) ||
+        !std::isfinite(force_lambda[i])) {
+      std::cout << "ERROR: Non-finite force at i=" << i << ", fr=" << force_r[i]
+                << ", fz=" << force_z[i] << ", fl=" << force_lambda[i]
+                << std::endl;
+      found_nan_forces = true;
+    }
+  }
+  if (!found_nan_forces) {
+    std::cout << "DEBUG: All input forces are finite (first 10 checked)"
+              << std::endl;
+  }
 
   // This function should only be called for asymmetric equilibria
   if (!sizes.lasym) {

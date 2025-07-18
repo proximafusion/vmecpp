@@ -108,3 +108,24 @@ cc_binary(
         "//vmecpp/common/sizes:sizes",
     ],
 )
+
+cc_binary(
+    name = "debug_nan_test",
+    srcs = ["debug_nan_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_binary(
+    name = "vmecpp_crash_test",
+    srcs = ["vmecpp_crash_test.cc"],
+    deps = [
+        "//vmecpp/vmec/vmec:vmec",
+        "//util/file_io:file_io",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+)
