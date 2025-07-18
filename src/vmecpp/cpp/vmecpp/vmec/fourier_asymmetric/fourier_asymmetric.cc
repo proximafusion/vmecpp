@@ -32,7 +32,7 @@ void FourierToReal3DAsymmFastPoloidal(
               << std::endl;
   }
 
-  const double PI = 3.14159265358979323846;
+  // const double PI = 3.14159265358979323846;  // unused
 
   // Initialize output arrays
   std::fill(r_real.begin(), r_real.end(), 0.0);
@@ -59,6 +59,7 @@ void FourierToReal3DAsymmFastPoloidal(
       int idx = i * sizes.nZeta + k;
       if (idx >= static_cast<int>(r_real.size())) continue;
 
+      const double PI = 3.14159265358979323846;
       double u = 2.0 * PI * i / sizes.nThetaEff;
       double v = 2.0 * PI * k / sizes.nZeta;
 
@@ -182,9 +183,19 @@ void FourierToReal2DAsymmFastPoloidal(
 
   // DEBUG: Compare with educational_VMEC 2D case
   std::cout << "DEBUG FourierToReal2DAsymmFastPoloidal: 2D transform, mnmax="
-            << sizes.mnmax << std::endl;
+            << sizes.mnmax << ", ntheta=" << sizes.ntheta
+            << ", nThetaEff=" << sizes.nThetaEff << ", nZeta=" << sizes.nZeta
+            << std::endl;
 
-  const double PI = 3.14159265358979323846;
+  // Debug: Print first few Fourier coefficients
+  std::cout << "DEBUG: Input asymmetric Fourier coefficients (first 5 modes):"
+            << std::endl;
+  for (int mn = 0; mn < std::min(5, sizes.mnmax); ++mn) {
+    std::cout << "  mn=" << mn << ": rmnsc[" << mn << "]=" << rmnsc[mn]
+              << ", zmncc[" << mn << "]=" << zmncc[mn] << std::endl;
+  }
+
+  // const double PI = 3.14159265358979323846;  // unused
 
   // Initialize output arrays
   std::fill(r_real.begin(), r_real.end(), 0.0);
@@ -204,7 +215,13 @@ void FourierToReal2DAsymmFastPoloidal(
   for (int i = 0; i < sizes.nThetaEff; ++i) {
     for (int k = 0; k < sizes.nZeta; ++k) {
       int idx = i * sizes.nZeta + k;
-      if (idx >= static_cast<int>(r_real.size())) continue;
+      if (idx >= static_cast<int>(r_real.size())) {
+        std::cout << "ERROR in 2D transform: idx=" << idx
+                  << " >= array size=" << r_real.size() << " (i=" << i
+                  << ", k=" << k << ", nThetaEff=" << sizes.nThetaEff
+                  << ", nZeta=" << sizes.nZeta << ")" << std::endl;
+        continue;
+      }
 
       // double u = 2.0 * PI * i / sizes.nThetaEff;  // Not needed when using
       // pre-computed basis
@@ -218,19 +235,44 @@ void FourierToReal2DAsymmFastPoloidal(
         int m = fourier_basis.xm[mn];
         int n = fourier_basis.xn[mn] / sizes.nfp;
 
+        if (mn < 3 && i < 3) {
+          std::cout << "DEBUG: Processing mn=" << mn << ", m=" << m
+                    << ", n=" << n << " at i=" << i << ", k=" << k << std::endl;
+        }
+
         // Skip non-axisymmetric modes
         if (n != 0) continue;
 
         // Get pre-normalized basis functions (2D case)
         double cos_mu, sin_mu;
         if (i < sizes.nThetaReduced) {
-          cos_mu = fourier_basis.cosmu[m * sizes.nThetaReduced + i];
-          sin_mu = fourier_basis.sinmu[m * sizes.nThetaReduced + i];
+          int idx_basis = m * sizes.nThetaReduced + i;
+          if (idx_basis >= static_cast<int>(fourier_basis.cosmu.size())) {
+            std::cout << "ERROR: cosmu index out of bounds: " << idx_basis
+                      << " >= " << fourier_basis.cosmu.size() << " (m=" << m
+                      << ", i=" << i << ")" << std::endl;
+            continue;
+          }
+          cos_mu = fourier_basis.cosmu[idx_basis];
+          sin_mu = fourier_basis.sinmu[idx_basis];
         } else {
           // For [pi,2pi], use symmetry
           int i_sym = sizes.nThetaEff - i;
-          cos_mu = fourier_basis.cosmu[m * sizes.nThetaReduced + i_sym];
-          sin_mu = -fourier_basis.sinmu[m * sizes.nThetaReduced + i_sym];
+          if (i_sym < 0 || i_sym >= sizes.nThetaReduced) {
+            std::cout << "ERROR: Invalid i_sym=" << i_sym << " for i=" << i
+                      << ", nThetaEff=" << sizes.nThetaEff
+                      << ", nThetaReduced=" << sizes.nThetaReduced << std::endl;
+            continue;
+          }
+          int idx_basis = m * sizes.nThetaReduced + i_sym;
+          if (idx_basis >= static_cast<int>(fourier_basis.cosmu.size())) {
+            std::cout << "ERROR: cosmu index out of bounds: " << idx_basis
+                      << " >= " << fourier_basis.cosmu.size() << " (m=" << m
+                      << ", i_sym=" << i_sym << ")" << std::endl;
+            continue;
+          }
+          cos_mu = fourier_basis.cosmu[idx_basis];
+          sin_mu = -fourier_basis.sinmu[idx_basis];
         }
 
         // 2D asymmetric transform: only theta dependence
@@ -260,6 +302,19 @@ void SymmetrizeRealSpaceGeometry(const Sizes& sizes, absl::Span<double> r_real,
             << sizes.nThetaEff << ", nThetaReduced=" << sizes.nThetaReduced
             << ", nZeta=" << sizes.nZeta << std::endl;
 
+  // Debug: Print values before symmetrization
+  std::cout << "DEBUG: Values before symmetrization (first 3 theta points):"
+            << std::endl;
+  for (int i = 0; i < std::min(3, sizes.nThetaEff); ++i) {
+    for (int k = 0; k < std::min(1, sizes.nZeta); ++k) {
+      int idx = i * sizes.nZeta + k;
+      if (idx < static_cast<int>(r_real.size())) {
+        std::cout << "  idx=" << idx << " (i=" << i << ", k=" << k << "): "
+                  << "R=" << r_real[idx] << ", Z=" << z_real[idx] << std::endl;
+      }
+    }
+  }
+
   // This function should only be called for asymmetric equilibria
   if (!sizes.lasym) {
     return;
@@ -274,14 +329,35 @@ void SymmetrizeRealSpaceGeometry(const Sizes& sizes, absl::Span<double> r_real,
   // Process extended interval [π, 2π] using symmetry relations
   for (int i = sizes.nThetaReduced; i < sizes.nThetaEff; ++i) {
     // Map theta to pi-theta: ir = ntheta1 + 2 - i
+    // In educational_VMEC: i = ntheta2+1 to ntheta1, ir = ntheta1 + 2 - i
+    // For i = nThetaReduced (=ntheta2), ir should be nThetaReduced-1
+    // For i = nThetaEff-1 (=ntheta1-1), ir should be 1
     int ir = sizes.nThetaReduced + (sizes.nThetaReduced - 1 - i);
+
+    // DEBUG: Verify ir calculation
+    if (ir < 0 || ir >= sizes.nThetaEff) {
+      std::cout << "ERROR: Invalid ir=" << ir << " for i=" << i
+                << ", nThetaReduced=" << sizes.nThetaReduced
+                << ", nThetaEff=" << sizes.nThetaEff << std::endl;
+      continue;
+    }
 
     for (int k = 0; k < sizes.nZeta; ++k) {
       int idx = i * sizes.nZeta + k;
       int idx_r = ir * sizes.nZeta + ireflect[k];
 
+      // DEBUG: Additional bounds checking
+      if (ireflect[k] < 0 || ireflect[k] >= sizes.nZeta) {
+        std::cout << "ERROR: Invalid ireflect[" << k << "]=" << ireflect[k]
+                  << ", nZeta=" << sizes.nZeta << std::endl;
+        continue;
+      }
+
       if (idx >= static_cast<int>(r_real.size()) ||
           idx_r >= static_cast<int>(r_real.size())) {
+        std::cout << "ERROR: Index out of bounds: idx=" << idx
+                  << ", idx_r=" << idx_r << ", array size=" << r_real.size()
+                  << std::endl;
         continue;
       }
 
@@ -298,6 +374,13 @@ void SymmetrizeRealSpaceGeometry(const Sizes& sizes, absl::Span<double> r_real,
 
       // For lambda: similar to R (even parity)
       lambda_real[idx] = lambda_real[idx_r];
+
+      if (i < sizes.ntheta + 3 && k == 0) {
+        std::cout << "DEBUG: Symmetrization at i=" << i << ", ir=" << ir
+                  << ": copying from idx_r=" << idx_r << " to idx=" << idx
+                  << ", R[" << idx << "]=" << r_real[idx] << ", Z[" << idx
+                  << "]=" << z_real[idx] << std::endl;
+      }
     }
   }
 }
@@ -319,7 +402,7 @@ void RealToFourier3DAsymmFastPoloidal(
       << "DEBUG RealToFourier3DAsymmFastPoloidal: inverse transform, mnmax="
       << sizes.mnmax << std::endl;
 
-  const double PI = 3.14159265358979323846;
+  // const double PI = 3.14159265358979323846;  // unused
 
   // Initialize output arrays
   std::fill(rmncc.begin(), rmncc.end(), 0.0);
@@ -372,6 +455,7 @@ void RealToFourier3DAsymmFastPoloidal(
         int idx = i * sizes.nZeta + k;
         if (idx >= static_cast<int>(r_real.size())) continue;
 
+        const double PI = 3.14159265358979323846;
         double u = 2.0 * PI * i / sizes.nThetaEff;
         double v = 2.0 * PI * k / sizes.nZeta;
 
@@ -450,7 +534,7 @@ void RealToFourier2DAsymmFastPoloidal(
   // 2D asymmetric inverse transform (axisymmetric case, ntor=0)
   // Optimized version that only processes m modes (n=0)
 
-  const double PI = 3.14159265358979323846;
+  // const double PI = 3.14159265358979323846;  // unused
 
   // Initialize output arrays
   std::fill(rmncc.begin(), rmncc.end(), 0.0);
@@ -494,6 +578,7 @@ void RealToFourier2DAsymmFastPoloidal(
         if (idx >= static_cast<int>(r_real.size())) continue;
 
         // Use plain trigonometric functions for inverse transform
+        const double PI = 3.14159265358979323846;
         double u = 2.0 * PI * i / sizes.nThetaEff;
         double cos_mu = cos(m * u);
         double sin_mu = sin(m * u);
