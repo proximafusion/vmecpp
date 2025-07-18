@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 
 import vmecpp
+from vmecpp.cpp import _vmecpp  # pyright: ignore[reportAttributeAccessIssue]
 
 # We don't want to install tests and test data as part of the package,
 # but scikit-build-core + hatchling does not support editable installs,
@@ -561,7 +562,9 @@ def test_default_preset():
 
 def test_python_defaults_match_cpp_defaults():
     python_defaults = vmecpp.VmecInput()
-    cpp_defaults = vmecpp.VmecInput.default()
+    cpp_defaults = vmecpp.VmecInput._from_cpp_vmecindatapywrapper(
+        _vmecpp.VmecINDATAPyWrapper()
+    )
 
     for field in vmecpp.VmecInput.model_fields:
         py_val = getattr(python_defaults, field)

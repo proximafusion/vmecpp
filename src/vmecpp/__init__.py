@@ -133,9 +133,7 @@ class VmecInput(BaseModelWithNumpy):
     Each entry >= 3 and >= previous entry.
     """
 
-    ftol_array: jt.Float[np.ndarray, "num_grids"] = np.array(
-        [1.0e-10], dtype=np.float64
-    )
+    ftol_array: jt.Float[np.ndarray, "num_grids"] = np.array([1.0e-10])
     """Requested force tolerance for convergence per multigrid step."""
 
     niter_array: jt.Int[np.ndarray, "num_grids"] = np.array([100], dtype=np.int64)
@@ -159,16 +157,22 @@ class VmecInput(BaseModelWithNumpy):
     pmass_type: ProfileType = "power_series"
     """Parametrization of mass/pressure profile."""
 
-    am: jt.Float[np.ndarray, "am_len"] = np.array([], dtype=np.float64)
+    am: jt.Float[np.ndarray, "am_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Mass/pressure profile coefficients.
 
     Units: Pascals for pressure.
     """
 
-    am_aux_s: jt.Float[np.ndarray, "am_aux_len"] = np.array([], dtype=np.float64)
+    am_aux_s: jt.Float[np.ndarray, "am_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Spline mass/pressure profile: knot locations in s"""
 
-    am_aux_f: jt.Float[np.ndarray, "am_aux_len"] = np.array([], dtype=np.float64)
+    am_aux_f: jt.Float[np.ndarray, "am_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Spline mass/pressure profile: values at knots"""
 
     pres_scale: float = 1.0
@@ -190,25 +194,37 @@ class VmecInput(BaseModelWithNumpy):
     piota_type: ProfileType = "power_series"
     """Parametrization of iota (rotational transform) profile."""
 
-    ai: jt.Float[np.ndarray, "ai_len"] = np.array([], dtype=np.float64)
+    ai: jt.Float[np.ndarray, "ai_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Iota profile coefficients."""
 
-    ai_aux_s: jt.Float[np.ndarray, "ai_aux_len"] = np.array([], dtype=np.float64)
+    ai_aux_s: jt.Float[np.ndarray, "ai_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Spline iota profile: knot locations in s"""
 
-    ai_aux_f: jt.Float[np.ndarray, "ai_aux_len"] = np.array([], dtype=np.float64)
+    ai_aux_f: jt.Float[np.ndarray, "ai_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Spline iota profile: values at knots"""
 
     pcurr_type: ProfileType = "power_series"
     """Parametrization of toroidal current profile."""
 
-    ac: jt.Float[np.ndarray, "ac_len"] = np.array([], dtype=np.float64)
+    ac: jt.Float[np.ndarray, "ac_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Enclosed toroidal current profile coefficients."""
 
-    ac_aux_s: jt.Float[np.ndarray, "ac_aux_len"] = np.array([], dtype=np.float64)
+    ac_aux_s: jt.Float[np.ndarray, "ac_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Spline toroidal current profile: knot locations in s"""
 
-    ac_aux_f: jt.Float[np.ndarray, "ac_aux_len"] = np.array([], dtype=np.float64)
+    ac_aux_f: jt.Float[np.ndarray, "ac_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Spline toroidal current profile: values at knots"""
 
     curtor: float = 0.0
@@ -232,7 +248,9 @@ class VmecInput(BaseModelWithNumpy):
     NetCDF MGRID file with magnetic field response factors for external coils.
     """
 
-    extcur: jt.Float[np.ndarray, "ext_current"] = np.array([], dtype=np.float64)
+    extcur: jt.Float[np.ndarray, "ext_current"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Coil currents in A."""
 
     nvacskip: int = 1
@@ -241,7 +259,7 @@ class VmecInput(BaseModelWithNumpy):
     nstep: int = 10
     """Printout interval at which convergence progress is logged."""
 
-    aphi: jt.Float[np.ndarray, "aphi_len"] = np.array([1.0], dtype=np.float64)
+    aphi: jt.Float[np.ndarray, "aphi_len"] = np.array([1.0])
     """Radial flux zoning profile coefficients."""
 
     delt: float = 1.0
@@ -259,13 +277,13 @@ class VmecInput(BaseModelWithNumpy):
     Otherwise a RuntimeError will be raised.
     """
 
-    raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = np.array([0.0], dtype=np.float64)
+    raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = np.array([0.0])
     """Magnetic axis coefficients for R ~ cos(n*v); stellarator-symmetric.
 
     At least 1 value required, up to n=ntor considered.
     """
 
-    zaxis_s: jt.Float[np.ndarray, "ntor_plus_1"] = np.array([0.0], dtype=np.float64)
+    zaxis_s: jt.Float[np.ndarray, "ntor_plus_1"] = np.array([0.0])
     """Magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric.
 
     Up to n=ntor considered; first entry (n=0) is ignored.
@@ -285,12 +303,12 @@ class VmecInput(BaseModelWithNumpy):
 
     rbc: SerializableSparseCoefficientArray[
         jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
-    ] = np.zeros((6, 1), dtype=np.float64)
+    ] = np.zeros((6, 1))
     """Boundary coefficients for R ~ cos(m*u - n*v); stellarator-symmetric"""
 
     zbs: SerializableSparseCoefficientArray[
         jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
-    ] = np.zeros((6, 1), dtype=np.float64)
+    ] = np.zeros((6, 1))
     """Boundary coefficients for Z ~ sin(m*u - n*v); stellarator-symmetric"""
 
     rbs: (
@@ -447,9 +465,8 @@ class VmecInput(BaseModelWithNumpy):
 
     @staticmethod
     def default():
-        """Construct a VmecInput with the same default settings as VMEC2000."""
-        cpp_defaults = _vmecpp.VmecINDATAPyWrapper()
-        return VmecInput._from_cpp_vmecindatapywrapper(cpp_defaults)
+        """Return a ``VmecInput`` with VMEC++ default values."""
+        return VmecInput()
 
     def _to_cpp_vmecindatapywrapper(self) -> _vmecpp.VmecINDATAPyWrapper:
         cpp_indata = _vmecpp.VmecINDATAPyWrapper()
@@ -722,36 +739,48 @@ class VmecWOut(BaseModelWithNumpy):
     """Radial derivative of enclosed toroidal current on full-grid."""
 
     # Default initialized so reading stays backwards compatible pre v0.4.0
-    fsqt: jt.Float[np.ndarray, "time"] = np.array([])
+    fsqt: jt.Float[np.ndarray, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Evolution of the total force residual along the run.
 
     This is the sum of `force_residual_r`, `force_residual_z`, and `force_residual_lambda`.
     """
 
-    force_residual_r: jt.Float[np.ndarray, "time"] = np.array([])
+    force_residual_r: jt.Float[np.ndarray, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Evolution of the r radial force residual along the run."""
 
-    force_residual_z: jt.Float[np.ndarray, "time"] = np.array([])
+    force_residual_z: jt.Float[np.ndarray, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Evolution of the z vertical force residual along the run."""
 
-    force_residual_lambda: jt.Float[np.ndarray, "time"] = np.array([])
+    force_residual_lambda: jt.Float[np.ndarray, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Evolution of the lambda force residual along the run."""
 
-    delbsq: jt.Float[np.ndarray, "time"] = np.array([])
+    delbsq: jt.Float[np.ndarray, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Evolution of the force residual at the vacuum boundary along the run."""
 
     restart_reason_timetrace: typing.Annotated[
         jt.Int[np.ndarray, "time"],
         pydantic.Field(alias="restart_reasons"),
         pydantic.BeforeValidator(lambda x: np.array(x).astype(np.int64)),
-    ] = np.array([], dtype=np.int64)
+    ] = pydantic.Field(default_factory=lambda: np.array([], dtype=np.int64))
     """Internal restart reasons at each step along the run.  (debugging quantity).
 
     Use the `restart_reasons` field to access a more readable enum version of this
     instead of integer status codes.
     """
 
-    wdot: jt.Float[np.ndarray, "time"] = np.array([])
+    wdot: jt.Float[np.ndarray, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Evolution of the MHD energy decay along the run."""
 
     jdotb: jt.Float[np.ndarray, "n_surfaces"]
