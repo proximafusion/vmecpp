@@ -164,11 +164,11 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
   zaxis_s(shortest_range) = old_axis_fc(shortest_range);
 
   if (lasym) {
-    old_axis_fc = *raxis_s;
+    old_axis_fc = raxis_s.value();
     raxis_s = VectorXd::Zero(new_ntor + 1);
     (*raxis_s)(shortest_range) = old_axis_fc(shortest_range);
 
-    old_axis_fc = *zaxis_c;
+    old_axis_fc = zaxis_c.value();
     zaxis_c = VectorXd::Zero(new_ntor + 1);
     (*zaxis_c)(shortest_range) = old_axis_fc(shortest_range);
   }
@@ -189,12 +189,12 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
     return resized_coeff;
   };
 
-  rbc = resized_2d_coeff(rbc);
-  zbs = resized_2d_coeff(zbs);
+  rbc = resized_2d_coeff(rbc.value());
+  zbs = resized_2d_coeff(zbs.value());
 
   if (lasym) {
-    rbs = resized_2d_coeff(*rbs);
-    zbc = resized_2d_coeff(*zbc);
+    rbs = resized_2d_coeff(rbs.value());
+    zbc = resized_2d_coeff(zbc.value());
   }
 
   mpol = new_mpol;
