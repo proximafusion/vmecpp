@@ -53,6 +53,7 @@ def test_asymmetric_arrays_initialization_for_asymmetric_run():
     """Test that missing asymmetric arrays are properly initialized for lasym=True."""
     # This test verifies the fix in _from_cpp_vmecindatapywrapper function
     # Load an asymmetric input that may have missing asymmetric arrays
+    # TODO: This should run the asymmetric config instead of just loading the input
     input_file = "examples/data/input.up_down_asymmetric_tokamak"
 
     vmec_input = vmecpp.VmecInput.from_file(input_file)

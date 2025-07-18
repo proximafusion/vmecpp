@@ -342,7 +342,6 @@ class VmecInput(BaseModelWithNumpy):
                 )
         return self
 
-
     @pydantic.model_validator(mode="after")
     def _validate_stellarator_asymmetric_fields(self) -> VmecInput:
         """Check if all fields that break stellarator symmetry match the lasym flag."""
@@ -415,7 +414,6 @@ class VmecInput(BaseModelWithNumpy):
 
         return resized_coeff
 
-
     @staticmethod
     def from_file(input_file: str | Path) -> VmecInput:
         """Build a VmecInput from either a VMEC++ JSON input file or a classic INDATA
@@ -449,7 +447,6 @@ class VmecInput(BaseModelWithNumpy):
         }
         vmec_input_dict["ns_array"] = vmec_input_dict["ns_array"].astype(np.int64)
         vmec_input_dict["niter_array"] = vmec_input_dict["niter_array"].astype(np.int64)
-
 
         return VmecInput.model_validate(vmec_input_dict)
 
