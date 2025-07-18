@@ -2412,6 +2412,12 @@ void IdealMhdModel::computeMHDForces() {
       m_ls_.gbvbv_i[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
     }  // kl
     sqrtSHi = m_p_.sqrtSH[j0 - r_.nsMinH];
+    // Protect against division by zero or very small values
+    if (std::abs(sqrtSHi) < 1e-15) {
+      std::cout << "WARNING: sqrtSHi too small (" << sqrtSHi
+                << "), setting to 1.0" << std::endl;
+      sqrtSHi = 1.0;
+    }
   } else {
     // defaults to 0: no contribution from half-grid point inside the axis
     absl::c_fill_n(m_ls_.P_i, s_.nZnT, 0);
@@ -2442,6 +2448,12 @@ void IdealMhdModel::computeMHDForces() {
     double sqrtSHo = 1.0;
     if (jF < r_.nsMaxH) {
       sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
+      // Protect against division by zero or very small values
+      if (std::abs(sqrtSHo) < 1e-15) {
+        std::cout << "WARNING: sqrtSHo too small (" << sqrtSHo
+                  << "), setting to 1.0" << std::endl;
+        sqrtSHo = 1.0;
+      }
     }
 
     if (jF < r_.nsMaxH) {
@@ -2530,6 +2542,20 @@ void IdealMhdModel::computeMHDForces() {
                   << ", sqrtSHi=" << sqrtSHi << std::endl;
       }
 
+      // Check for invalid input values before force calculation
+      if (!std::isfinite(zup_o[kl]) || !std::isfinite(m_ls_.zup_i[kl]) ||
+          !std::isfinite(taup_o[kl]) || !std::isfinite(m_ls_.taup_i[kl]) ||
+          !std::isfinite(gbvbv_o[kl]) || !std::isfinite(m_ls_.gbvbv_i[kl]) ||
+          !std::isfinite(r1_e[idx_g]) || !std::isfinite(r1_o[idx_g]) ||
+          !std::isfinite(m_fc_.deltaS) || !std::isfinite(sqrtSHo) ||
+          !std::isfinite(sqrtSHi)) {
+        std::cout << "ERROR: Non-finite input to force calculation at kl=" << kl
+                  << ", jF=" << jF << std::endl;
+        std::cout << "  Setting force to zero for this point" << std::endl;
+        armn_e[idx_f] = 0.0;
+        continue;
+      }
+
       // A_R force
       armn_e[idx_f] =
           (zup_o[kl] - m_ls_.zup_i[kl]) / m_fc_.deltaS +
@@ -2575,7 +2601,15 @@ void IdealMhdModel::computeMHDForces() {
         std::cout << "  deltaS=" << m_fc_.deltaS << std::endl;
       }
 
-      azmn_e[idx_f] = -(rup_o[kl] - m_ls_.rup_i[kl]) / m_fc_.deltaS;
+      // Check for invalid input values before A_Z force calculation
+      if (!std::isfinite(rup_o[kl]) || !std::isfinite(m_ls_.rup_i[kl]) ||
+          !std::isfinite(m_fc_.deltaS)) {
+        std::cout << "ERROR: Non-finite input to A_Z force calculation at kl="
+                  << kl << ", jF=" << jF << std::endl;
+        azmn_e[idx_f] = 0.0;
+      } else {
+        azmn_e[idx_f] = -(rup_o[kl] - m_ls_.rup_i[kl]) / m_fc_.deltaS;
+      }
 
       // DEBUG: Check if computed A_Z force is NaN
       if (kl < 3 && jF == r_.nsMinF && !std::isfinite(azmn_e[idx_f])) {
