@@ -3592,13 +3592,9 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(
   FourierToReal3DAsymmFastPoloidal(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
       physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
-      physical_x.zmnss,
-      absl::Span<double>(m_ls_.r1e_i.data(),
-                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
-      absl::Span<double>(m_ls_.z1e_i.data(),
-                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
-      absl::Span<double>(m_ls_.lue_i.data(),
-                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)));
+      physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), s_.nZnT),
+      absl::Span<double>(m_ls_.z1e_i.data(), s_.nZnT),
+      absl::Span<double>(m_ls_.lue_i.data(), s_.nZnT));
 }
 
 void IdealMhdModel::dft_FourierToReal_2d_asymm(
@@ -3609,19 +3605,14 @@ void IdealMhdModel::dft_FourierToReal_2d_asymm(
       << std::endl;
   std::cout << "  Input array sizes: rmnsc=" << physical_x.rmnsc.size()
             << ", zmncc=" << physical_x.zmncc.size() << std::endl;
-  std::cout << "  Output span size: " << (s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1))
-            << std::endl;
+  std::cout << "  Output span size: " << s_.nZnT << std::endl;
 
   FourierToReal2DAsymmFastPoloidal(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
       physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
-      physical_x.zmnss,
-      absl::Span<double>(m_ls_.r1e_i.data(),
-                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
-      absl::Span<double>(m_ls_.z1e_i.data(),
-                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
-      absl::Span<double>(m_ls_.lue_i.data(),
-                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)));
+      physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), s_.nZnT),
+      absl::Span<double>(m_ls_.z1e_i.data(), s_.nZnT),
+      absl::Span<double>(m_ls_.lue_i.data(), s_.nZnT));
 }
 
 void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {
