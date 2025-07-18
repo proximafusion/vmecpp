@@ -11,10 +11,10 @@
 #include "util/file_io/file_io.h"
 
 namespace {
-[[noreturn]] void ErrorToException(const absl::Status& s,
-                                   const std::string& where) {
+[[noreturn]] void ErrorToException(const absl::Status& status,
+                                   const std::string& context) {
   const std::string msg =
-      "There was an error " + where + ":\n" + std::string(s.message());
+      "There was an error " + context + ":\n" + std::string(status.message());
   throw std::runtime_error(msg);
 }
 }  // namespace
