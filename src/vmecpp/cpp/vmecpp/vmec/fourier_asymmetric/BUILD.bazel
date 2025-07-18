@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "fourier_asymmetric",
+    srcs = ["fourier_asymmetric.cc"],
+    hdrs = ["fourier_asymmetric.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "fourier_asymmetric_test",
+    srcs = ["fourier_asymmetric_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+    ],
+    size = "small",
+)
