@@ -448,7 +448,6 @@ class VmecInput(BaseModelWithNumpy):
                 )
         return self
 
-
     @pydantic.model_validator(mode="after")
     def _validate_stellarator_asymmetric_fields(self) -> VmecInput:
         """Check if all fields that break stellarator symmetry match the lasym flag."""
@@ -520,7 +519,6 @@ class VmecInput(BaseModelWithNumpy):
                 resized_coeff[m, n + ntor_new] = coeff[m, n + ntor]
 
         return resized_coeff
-
 
     @staticmethod
     def from_file(input_file: str | Path) -> VmecInput:
