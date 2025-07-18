@@ -872,6 +872,17 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // try again: GOTO 20
       // but need to leave m_liter_flag loop first...
       return SolveEqLoopStatus::MUST_RETRY;
+    } else if (fc_.ijacob >= 75) {
+      // jacobian changed sign at least 75 times: time to give up :-(
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        // 'MORE THAN 75 JACOBIAN ITERATIONS (DECREASE DELT)'
+        status_ = VmecStatus::JACOBIAN_75_TIMES_BAD;
+        m_liter_flag = false;
+      }
     }
 
 #ifdef _OPENMP
@@ -1083,13 +1094,6 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 
       m_liter_flag = false;
       status_ = VmecStatus::SUCCESSFUL_TERMINATION;
-    } else if (fc_.ijacob >= 75) {
-      // jacobian changed sign at least 75 times: time to give up :-(
-      // But only if we haven't already converged above
-
-      // 'MORE THAN 75 JACOBIAN ITERATIONS (DECREASE DELT)'
-      status_ = VmecStatus::JACOBIAN_75_TIMES_BAD;
-      m_liter_flag = false;
     }
   }  // #pragma omp single (there is an implicit omp barrier here)
 

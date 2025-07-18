@@ -148,61 +148,29 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
   using Eigen::VectorXd;
 
   const bool both_same_as_before = (new_mpol == mpol && new_ntor == ntor);
-
-  // Check if we need to initialize asymmetric arrays even without resizing
-  const bool need_asymmetric_init =
-      lasym && (!raxis_s.has_value() || !zaxis_c.has_value() ||
-                !rbs.has_value() || !zbc.has_value());
-
-  if (both_same_as_before && !need_asymmetric_init) {
+  if (both_same_as_before) {
     return;  // nothing to do
   }
 
-  // Initialize or resize symmetric arrays only if dimensions changed
-  if (!both_same_as_before) {
-    VectorXd old_axis_fc = raxis_c;
-    const auto shortest_range = Eigen::seq(0, std::min(ntor, new_ntor));
+  VectorXd old_axis_fc = raxis_c;
+  const auto shortest_range = Eigen::seq(0, std::min(ntor, new_ntor));
 
-    raxis_c = VectorXd::Zero(new_ntor + 1);
-    // Copy back pre-existing elements
-    raxis_c(shortest_range) = old_axis_fc(shortest_range);
+  raxis_c = VectorXd::Zero(new_ntor + 1);
+  // Copy back pre-existing elements
+  raxis_c(shortest_range) = old_axis_fc(shortest_range);
 
-    old_axis_fc = zaxis_s;
-    zaxis_s = VectorXd::Zero(new_ntor + 1);
-    zaxis_s(shortest_range) = old_axis_fc(shortest_range);
-  }
+  old_axis_fc = zaxis_s;
+  zaxis_s = VectorXd::Zero(new_ntor + 1);
+  zaxis_s(shortest_range) = old_axis_fc(shortest_range);
 
   if (lasym) {
-    // Initialize or resize asymmetric axis arrays
-    if (!both_same_as_before) {
-      // Resizing case
-      VectorXd old_axis_fc;
-      const auto shortest_range = Eigen::seq(0, std::min(ntor, new_ntor));
+    old_axis_fc = raxis_s.value();
+    raxis_s = VectorXd::Zero(new_ntor + 1);
+    (*raxis_s)(shortest_range) = old_axis_fc(shortest_range);
 
-      if (raxis_s.has_value()) {
-        old_axis_fc = raxis_s.value();
-      } else {
-        old_axis_fc = VectorXd::Zero(ntor + 1);
-      }
-      raxis_s = VectorXd::Zero(new_ntor + 1);
-      (*raxis_s)(shortest_range) = old_axis_fc(shortest_range);
-
-      if (zaxis_c.has_value()) {
-        old_axis_fc = zaxis_c.value();
-      } else {
-        old_axis_fc = VectorXd::Zero(ntor + 1);
-      }
-      zaxis_c = VectorXd::Zero(new_ntor + 1);
-      (*zaxis_c)(shortest_range) = old_axis_fc(shortest_range);
-    } else {
-      // Same dimensions but need initialization
-      if (!raxis_s.has_value()) {
-        raxis_s = VectorXd::Zero(new_ntor + 1);
-      }
-      if (!zaxis_c.has_value()) {
-        zaxis_c = VectorXd::Zero(new_ntor + 1);
-      }
-    }
+    old_axis_fc = zaxis_c.value();
+    zaxis_c = VectorXd::Zero(new_ntor + 1);
+    (*zaxis_c)(shortest_range) = old_axis_fc(shortest_range);
   }
 
   auto resized_2d_coeff = [this, new_mpol, new_ntor](const auto& coeff) {
@@ -221,40 +189,16 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
     return resized_coeff;
   };
 
-  // Initialize or resize boundary arrays only if dimensions changed
-  if (!both_same_as_before) {
-    rbc = resized_2d_coeff(rbc);
-    zbs = resized_2d_coeff(zbs);
-  }
+  rbc = resized_2d_coeff(rbc);
+  zbs = resized_2d_coeff(zbs);
 
   if (lasym) {
-    if (!both_same_as_before) {
-      // Resizing case
-      if (rbs.has_value()) {
-        rbs = resized_2d_coeff(rbs.value());
-      } else {
-        rbs = RowMatrixXd::Zero(new_mpol, 2 * new_ntor + 1);
-      }
-      if (zbc.has_value()) {
-        zbc = resized_2d_coeff(zbc.value());
-      } else {
-        zbc = RowMatrixXd::Zero(new_mpol, 2 * new_ntor + 1);
-      }
-    } else {
-      // Same dimensions but need initialization
-      if (!rbs.has_value()) {
-        rbs = RowMatrixXd::Zero(new_mpol, 2 * new_ntor + 1);
-      }
-      if (!zbc.has_value()) {
-        zbc = RowMatrixXd::Zero(new_mpol, 2 * new_ntor + 1);
-      }
-    }
+    rbs = resized_2d_coeff(rbs.value());
+    zbc = resized_2d_coeff(zbc.value());
   }
 
-  if (!both_same_as_before) {
-    mpol = new_mpol;
-    ntor = new_ntor;
-  }
+  mpol = new_mpol;
+  ntor = new_ntor;
 }
 
 std::string VmecINDATAPyWrapper::ToJson() const {
