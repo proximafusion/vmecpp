@@ -23,8 +23,12 @@ void FourierToReal3DAsymmFastPoloidal(
   const int ntheta1 = 2 * ntheta2;          // full range [0, 2pi]
   const int nznt = ntheta1 * nzeta;
 
-  // CRITICAL: Create SEPARATE arrays for asymmetric contributions
-  // These start at zero, not the symmetric baseline!
+  // Initialize output arrays
+  std::fill(r_real.begin(), r_real.end(), 0.0);
+  std::fill(z_real.begin(), z_real.end(), 0.0);
+  std::fill(lambda_real.begin(), lambda_real.end(), 0.0);
+
+  // Create arrays for asymmetric contributions
   std::vector<double> asym_R(nznt, 0.0);
   std::vector<double> asym_Z(nznt, 0.0);
   std::vector<double> asym_L(nznt, 0.0);
@@ -32,17 +36,19 @@ void FourierToReal3DAsymmFastPoloidal(
   // Get basis functions
   FourierBasisFastPoloidal fourier_basis(&sizes);
 
-  // Work arrays for intermediate results
-  std::vector<std::vector<double>> work(12, std::vector<double>(nzeta, 0.0));
-
   // Process each poloidal mode m
   for (int m = 0; m < sizes.mpol; ++m) {
-    // Clear work arrays for this m
-    for (int idx = 0; idx < 12; ++idx) {
-      std::fill(work[idx].begin(), work[idx].end(), 0.0);
-    }
+    // Work arrays for this m mode
+    std::vector<double> rmkcc(nzeta, 0.0);
+    std::vector<double> rmkss(nzeta, 0.0);
+    std::vector<double> zmksc(nzeta, 0.0);
+    std::vector<double> zmkcs(nzeta, 0.0);
+    std::vector<double> rmksc_asym(nzeta, 0.0);
+    std::vector<double> rmkcs_asym(nzeta, 0.0);
+    std::vector<double> zmkcc_asym(nzeta, 0.0);
+    std::vector<double> zmkss_asym(nzeta, 0.0);
 
-    // STAGE 1: Accumulate zeta contributions
+    // STAGE 1: Accumulate zeta contributions for both symmetric and asymmetric
     for (int k = 0; k < nzeta; ++k) {
       for (int n = 0; n <= sizes.ntor; ++n) {
         // Find mode (m,n)
@@ -65,13 +71,22 @@ void FourierToReal3DAsymmFastPoloidal(
                             ? fourier_basis.sinnv[idx_nv]
                             : std::sin(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
 
-        // Accumulate asymmetric coefficients
-        work[0][k] += rmnsc[mn] * cos_nv;
-        work[5][k] += zmncc[mn] * cos_nv;
+        // Accumulate symmetric coefficients
+        rmkcc[k] += rmncc[mn] * cos_nv;
+        zmksc[k] += zmnsc[mn] * cos_nv;
 
         if (sizes.lthreed) {
-          work[1][k] += rmncs[mn] * sin_nv;
-          work[4][k] += zmnss[mn] * sin_nv;
+          rmkss[k] += rmnss[mn] * sin_nv;
+          zmkcs[k] += zmncs[mn] * sin_nv;
+        }
+
+        // Accumulate asymmetric coefficients
+        rmksc_asym[k] += rmnsc[mn] * cos_nv;
+        zmkcc_asym[k] += zmncc[mn] * cos_nv;
+
+        if (sizes.lthreed) {
+          rmkcs_asym[k] += rmncs[mn] * sin_nv;
+          zmkss_asym[k] += zmnss[mn] * sin_nv;
         }
       }
     }
@@ -84,19 +99,28 @@ void FourierToReal3DAsymmFastPoloidal(
       for (int k = 0; k < nzeta; ++k) {
         int idx = l * nzeta + k;
 
-        // Accumulate into separate asymmetric arrays
-        asym_R[idx] += work[0][k] * sin_mu;
-        asym_Z[idx] += work[5][k] * cos_mu;
+        // Symmetric contributions
+        r_real[idx] += rmkcc[k] * cos_mu;
+        z_real[idx] += zmksc[k] * sin_mu;
 
         if (sizes.lthreed) {
-          asym_R[idx] += work[1][k] * cos_mu;
-          asym_Z[idx] += work[4][k] * sin_mu;
+          r_real[idx] += rmkss[k] * sin_mu;
+          z_real[idx] += zmkcs[k] * cos_mu;
+        }
+
+        // Asymmetric contributions (stored separately for reflection)
+        asym_R[idx] += rmksc_asym[k] * sin_mu;
+        asym_Z[idx] += zmkcc_asym[k] * cos_mu;
+
+        if (sizes.lthreed) {
+          asym_R[idx] += rmkcs_asym[k] * cos_mu;
+          asym_Z[idx] += zmkss_asym[k] * sin_mu;
         }
       }
     }
   }
 
-  // STEP 1: Apply asymmetric contributions for theta=[0,pi]
+  // STEP 1: Add asymmetric contributions for theta=[0,pi]
   for (int l = 0; l < ntheta2; ++l) {
     for (int k = 0; k < nzeta; ++k) {
       int idx = l * nzeta + k;
@@ -110,7 +134,8 @@ void FourierToReal3DAsymmFastPoloidal(
 
   // STEP 2: Handle theta=[pi,2pi] using reflection
   for (int l = ntheta2; l < ntheta1; ++l) {
-    int lr = ntheta1 - l;
+    // Simple reflection: map theta to pi-theta
+    int lr = ntheta1 - 1 - l;
 
     for (int k = 0; k < nzeta; ++k) {
       int kr = (nzeta - k) % nzeta;
@@ -120,6 +145,7 @@ void FourierToReal3DAsymmFastPoloidal(
 
       if (idx >= r_real.size() || idx_reflect >= r_real.size()) continue;
 
+      // Apply reflection with proper parity
       r_real[idx] = r_real[idx_reflect] - asym_R[idx_reflect];
       z_real[idx] = -z_real[idx_reflect] + asym_Z[idx_reflect];
       lambda_real[idx] = lambda_real[idx_reflect] - asym_L[idx_reflect];
@@ -138,8 +164,12 @@ void FourierToReal2DAsymmFastPoloidal(
   const int ntheta2 = sizes.nThetaReduced;  // [0, pi]
   const int ntheta1 = 2 * ntheta2;          // full range [0, 2pi]
 
-  // CRITICAL: Create SEPARATE arrays for asymmetric contributions
-  // These start at zero, not the symmetric baseline!
+  // Initialize output arrays
+  std::fill(r_real.begin(), r_real.end(), 0.0);
+  std::fill(z_real.begin(), z_real.end(), 0.0);
+  std::fill(lambda_real.begin(), lambda_real.end(), 0.0);
+
+  // Create arrays for asymmetric contributions
   std::vector<double> asym_R(ntheta1 * nzeta, 0.0);
   std::vector<double> asym_Z(ntheta1 * nzeta, 0.0);
   std::vector<double> asym_L(ntheta1 * nzeta, 0.0);
@@ -163,13 +193,15 @@ void FourierToReal2DAsymmFastPoloidal(
     }
     if (mn < 0) continue;  // mode not found
 
-    // Get coefficients for this mode
+    // Get symmetric coefficients
+    double rcc = (mn < rmncc.size()) ? rmncc[mn] : 0.0;
+    double zsc = (mn < zmnsc.size()) ? zmnsc[mn] : 0.0;
+
+    // Get asymmetric coefficients
     double rsc = (mn < rmnsc.size()) ? rmnsc[mn] : 0.0;
     double zcc = (mn < zmncc.size()) ? zmncc[mn] : 0.0;
 
-    if (std::abs(rsc) < 1e-12 && std::abs(zcc) < 1e-12) continue;
-
-    // Compute asymmetric contributions for theta=[0,pi]
+    // Compute both symmetric and asymmetric contributions for theta=[0,pi]
     for (int l = 0; l < ntheta2; ++l) {
       double sin_mu = fourier_basis.sinmu[m * sizes.nThetaReduced + l];
       double cos_mu = fourier_basis.cosmu[m * sizes.nThetaReduced + l];
@@ -177,7 +209,11 @@ void FourierToReal2DAsymmFastPoloidal(
       for (int k = 0; k < nzeta; ++k) {
         int idx = l * nzeta + k;
 
-        // Following jVMEC lines 302-305 exactly
+        // Symmetric contributions
+        r_real[idx] += rcc * cos_mu;  // rmncc * cosmu
+        z_real[idx] += zsc * sin_mu;  // zmnsc * sinmu
+
+        // Asymmetric contributions (stored separately for reflection)
         asym_R[idx] += rsc * sin_mu;  // rmnsc * sinmu
         asym_Z[idx] += zcc * cos_mu;  // zmncc * cosmu
       }
@@ -201,7 +237,7 @@ void FourierToReal2DAsymmFastPoloidal(
   // STEP 2: Handle theta=[pi,2pi] using reflection
   // Following jVMEC lines 340-365
   for (int l = ntheta2; l < ntheta1; ++l) {
-    int lr = ntheta1 - l;  // reflection index
+    int lr = ntheta1 - 1 - l;  // reflection index
 
     for (int k = 0; k < nzeta; ++k) {
       int kr = (nzeta - k) % nzeta;  // zeta reflection (ireflect)

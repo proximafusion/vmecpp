@@ -149,11 +149,33 @@
 3. **Transform tests failing**: Basic Fourier transform tests produce incorrect results (pre-existing)
 4. **Convergence failure**: Even with spectral condensation fix, convergence issues persist
 
-## Phase 1.7: Physics Configuration and Realistic Testing ✅ ACTIVE
-- [ ] Create realistic asymmetric tokamak configuration with proper physics
-- [ ] Fix NaN issues in pressure/current profiles
-- [ ] Test with minimal but physically valid asymmetric perturbations
-- [ ] Compare convergence with jVMEC using same configuration
+## Phase 1.9: Fix Basic Fourier Transform Tests ✅ ACTIVE
+- [ ] 🔴 CRITICAL: Fix FourierToReal3DAsymmSingleMode precision error (~0.003)
+- [ ] Fix reflection logic in [pi,2pi] range for asymmetric case
+- [ ] Verify normalization factors match jVMEC exactly
+- [ ] Fix RealToFourier3DAsymmSingleMode round-trip accuracy
+- [ ] Fix negative mode handling (n=-1 test failing)
+- [ ] Make all 8 Fourier tests pass with 1e-10 precision
+- [ ] Add unit tests comparing with known analytical solutions
+
+## Phase 1.10: jVMEC Reference Comparison ✅ NEXT
+- [ ] Run known-working jVMEC asymmetric case through VMEC++
+- [ ] Compare first iteration arrays element-by-element
+- [ ] Identify exact point where results diverge
+- [ ] Fix divergence systematically with unit tests
+- [ ] Achieve first convergent asymmetric equilibrium
+
+## Phase 1.8: Fine-tuning and Production Readiness - POSTPONED
+- [ ] Tune physics parameters for better convergence in asymmetric cases
+- [ ] Test with working jVMEC asymmetric input files
+- [ ] Create asymmetric test suite for continuous integration
+- [ ] Document asymmetric VMEC usage and best practices
+
+## Phase 1.7: Physics Configuration and Realistic Testing ✅ COMPLETED
+- [x] ✅ Create realistic asymmetric tokamak configuration with proper physics
+- [x] ✅ Resolved NaN issues by fixing vector bounds errors (not physics)
+- [x] ✅ Test with minimal but physically valid asymmetric perturbations
+- [x] ✅ Confirmed asymmetric code path execution without crashes
 
 ### Phase 1.6: Fix ntheta=0 at Source ✅ COMPLETED
 - [x] ✅ Investigated Nyquist correction - works correctly, sizes.ntheta properly set
@@ -189,11 +211,22 @@ The transforms are now correct (producing valid geometry), but something else in
 - ✅ **ROOT CAUSE #2**: Additional bounds error even with ntheta=16 manually set
 - ✅ **WORKAROUND**: Manual ntheta correction implemented for continued debugging
 
-**CURRENT PHASE**: Create realistic asymmetric physics configuration. Vector bounds errors fully resolved. Focus on proper physics setup for valid asymmetric equilibria.
+**CURRENT PHASE**: Vector bounds errors completely resolved. Moving to unit tests and systematic debugging.
 
-**MAJOR BREAKTHROUGH**: Both vector bounds errors identified and fixed:
-- ✅ **First error**: ntheta=0 corrected by Nyquist system (sizes.ntheta=16)
-- ✅ **Second error**: Axis arrays wrong size (2 instead of ntor+1=3) - FIXED
-- ✅ **Technical location**: boundaries.cc:60-64 axis coefficient parsing
-- ✅ **Current status**: No bounds errors, asymmetric code path executes successfully
-- 🔴 **Next challenge**: NaN in physics (pressure/MHD) requiring realistic parameter setup
+**REALITY CHECK - Current Status:**
+- ✅ **ALL vector bounds errors FIXED**: No crashes or array violations anywhere
+- ✅ **Basic execution WORKING**: Code runs without segfaults on all test cases
+- ✅ **Transform infrastructure COMPLETE**: All arrays properly allocated and initialized
+- ✅ **Spectral condensation WORKING**: 8/8 unit tests pass for asymmetric spectral operations
+- ⚠️ **Fourier transforms NEED validation**: Must write comprehensive unit tests
+- ❌ **NO convergent equilibrium**: All integration tests fail convergence
+- ❌ **NO jVMEC comparison**: Haven't verified correctness vs reference implementation
+
+**CRITICAL GAPS TO ADDRESS:**
+- ❌ **Missing Fourier transform unit tests**: Need comprehensive test coverage
+- ❌ **No line-by-line jVMEC comparison**: Don't know where algorithms diverge
+- ❌ **No working asymmetric equilibrium**: Integration tests fail convergence
+- ❌ **Missing debug output**: Need detailed logging from all three codes
+
+**CURRENT APPROACH**: Unit tests first, then debug output, then small systematic steps
+**NEXT PRIORITY**: Write comprehensive unit tests for fourier_asymmetric transforms
