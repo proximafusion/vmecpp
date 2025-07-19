@@ -472,3 +472,16 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "debug_bounds_test",
+    srcs = ["debug_bounds_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
