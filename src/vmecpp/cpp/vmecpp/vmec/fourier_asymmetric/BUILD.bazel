@@ -307,3 +307,35 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_jvmec_tokasym",
+    srcs = ["test_jvmec_tokasym.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "large",
+)
+
+cc_test(
+    name = "test_simple_asymmetric",
+    srcs = ["test_simple_asymmetric.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_input_validation",
+    srcs = ["test_input_validation.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)

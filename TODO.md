@@ -172,14 +172,17 @@
 - ❌ Issue occurs in pressure initialization, before any MHD calculations
 - 🔍 Need to investigate dVds (volume derivative) initialization
 
-### Next Steps - Phase 1.11: Known-Good jVMEC Configuration ⚠️ ACTIVE:
+### Next Steps - Phase 1.11: Vector Bounds Error in jVMEC Configuration ⚠️ ACTIVE:
 1. ✅ **Run test_pressure_init**: Direct comparison shows asymmetric case fails
 2. ✅ **Study jVMEC pressure init**: Found dVdsHalf starts as zeros, vulnerable in first iteration
 3. ❌ **Test with zero pressure**: Still crashes, indicates geometry/initialization issue
-4. **🔍 ACTIVE: Use known-good jVMEC input**: Test with working asymmetric configuration from jVMEC
-5. **📊 Add meticulous debug output**: From all three codes (VMEC++, jVMEC, educational_VMEC)
-6. **🔬 Element-by-element comparison**: First iteration arrays to find exact divergence
-7. **🛠️ Unit tests for each fix**: Systematic TDD approach for each identified issue
+4. ✅ **Created test_input_validation**: PASSES - confirms array setup is correct
+5. ✅ **Created test_jvmec_tokasym**: Using exact tok_asym configuration from jVMEC
+6. ❌ **Integration tests fail**: Vector bounds error: `std::vector<double>::operator[]: Assertion '__n < this->size()' failed`
+7. **🔍 ACTIVE: Debug vector bounds error**: Find exact location causing assertion failure
+8. **📊 Add meticulous debug output**: From all three codes (VMEC++, jVMEC, educational_VMEC)
+9. **🔬 Element-by-element comparison**: First iteration arrays to find exact divergence
+10. **🛠️ Unit tests for each fix**: Systematic TDD approach for each identified issue
 
 ## Phase 1.9: Fix Basic Fourier Transform Tests ✅ COMPLETED
 - [x] ✅ Fixed FourierToReal3DAsymmSingleMode precision - all tests pass
