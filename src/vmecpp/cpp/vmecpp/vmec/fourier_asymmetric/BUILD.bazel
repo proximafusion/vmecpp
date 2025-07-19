@@ -339,3 +339,25 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_force_debug",
+    srcs = ["test_force_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_jacobian_debug",
+    srcs = ["test_jacobian_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
