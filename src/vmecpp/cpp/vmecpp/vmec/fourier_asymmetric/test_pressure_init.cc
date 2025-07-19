@@ -38,19 +38,19 @@ TEST(PressureInitTest, CompareSymmetricVsAsymmetric) {
   indata_sym.rbc.resize(coeff_size, 0.0);
   indata_sym.zbs.resize(coeff_size, 0.0);
 
-  // (m=0, n=0) - major radius
+  // (m=0, n=0) - major radius (larger to avoid R->0)
   int idx_00 = 0 * (2 * indata_sym.ntor + 1) + (0 + indata_sym.ntor);
-  indata_sym.rbc[idx_00] = 1.0;
+  indata_sym.rbc[idx_00] = 10.0;  // Much larger major radius
 
   // (m=1, n=0) - minor radius
   int idx_10 = 1 * (2 * indata_sym.ntor + 1) + (0 + indata_sym.ntor);
-  indata_sym.rbc[idx_10] = 0.1;
-  indata_sym.zbs[idx_10] = 0.1;
+  indata_sym.rbc[idx_10] = 1.0;  // Aspect ratio 10
+  indata_sym.zbs[idx_10] = 1.0;
 
   // Axis arrays
   indata_sym.raxis_c.resize(indata_sym.ntor + 1, 0.0);
   indata_sym.zaxis_s.resize(indata_sym.ntor + 1, 0.0);
-  indata_sym.raxis_c[0] = 1.0;
+  indata_sym.raxis_c[0] = 10.0;  // Match major radius
 
   // Clear asymmetric arrays
   indata_sym.rbs.clear();
@@ -65,8 +65,8 @@ TEST(PressureInitTest, CompareSymmetricVsAsymmetric) {
   // Add asymmetric arrays
   indata_asym.rbs.resize(coeff_size, 0.0);
   indata_asym.zbc.resize(coeff_size, 0.0);
-  indata_asym.rbs[idx_10] = 0.001;  // Tiny perturbation
-  indata_asym.zbc[idx_10] = 0.001;
+  indata_asym.rbs[idx_10] = 0.01;  // Small perturbation (1% of minor radius)
+  indata_asym.zbc[idx_10] = 0.01;
 
   indata_asym.raxis_s.resize(indata_asym.ntor + 1, 0.0);
   indata_asym.zaxis_c.resize(indata_asym.ntor + 1, 0.0);
