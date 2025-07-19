@@ -35,8 +35,10 @@
 - [x] ✅ All arrays now match jVMEC initialization pattern
 
 ### 1.3 Vector Bounds Error Investigation 🔴 ACTIVE
-- [ ] ❌ Stellarator asymmetric test fails with vector assertion
-- [ ] Run test with AddressSanitizer to get exact stack trace
+- [x] ✅ Stellarator asymmetric test fails with vector assertion
+- [x] ✅ Run test with AddressSanitizer to get exact stack trace
+- [x] ✅ Asymmetric transforms work correctly in isolation
+- [ ] Error occurs somewhere else in VMEC algorithm, not transforms
 - [ ] Add bounds checking to all array accesses in asymmetric code paths
 - [ ] Verify nThetaEff vs nThetaReduced usage throughout
 - [ ] Check if any arrays are allocated with wrong size for asymmetric mode
@@ -147,10 +149,13 @@ The transforms are now correct (producing valid geometry), but something else in
 - Array initialization patterns
 - Numerical precision/accumulation order
 
-**UPDATE**: Spectral condensation asymmetric handling has been implemented. Testing revealed:
+**UPDATE**: Spectral condensation asymmetric handling has been implemented and tested. Results:
+- ✅ Comprehensive unit tests written and passing for spectral condensation
+- ✅ All tests verify gcc/gss arrays, work[2]/work[3] handling, reflection indices, and symmetrization
+- ✅ Asymmetric transforms work correctly in isolation (minimal_debug_test passes)
 - Fourier transform tests were already failing before our changes (pre-existing issue)
-- Stellarator asymmetric test fails with vector bounds error
+- Stellarator asymmetric test fails with vector bounds error **NOT in transforms but elsewhere**
 - Tokamak asymmetric tests show expected convergence difficulties
 - Even symmetric baseline tests are failing in some cases
 
-**CONCLUSION**: Our spectral condensation implementation is correct. The remaining issues appear to be pre-existing problems in the asymmetric implementation that need further investigation.
+**CONCLUSION**: Our spectral condensation implementation is correct and well-tested. The vector bounds error occurs somewhere else in the VMEC algorithm when asymmetric mode is enabled, not in the transforms or spectral condensation.
