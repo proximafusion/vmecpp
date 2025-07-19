@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 cc_library(
     name = "fourier_asymmetric",
-    srcs = ["fourier_asymmetric.cc", "fourier_asymmetric_jvmec_corrected.cc"],
+    srcs = ["fourier_asymmetric.cc"],
     hdrs = ["fourier_asymmetric.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -153,4 +153,16 @@ cc_test(
         "@abseil-cpp//absl/types:span",
     ],
     size = "small",
+)
+
+cc_test(
+    name = "small_asymmetric_tokamak_test",
+    srcs = ["small_asymmetric_tokamak_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "@nlohmann_json//:json",
+    ],
+    size = "large",
 )

@@ -25,29 +25,8 @@ void FourierToReal3DAsymmFastPoloidal(
     absl::Span<double> r_real, absl::Span<double> z_real,
     absl::Span<double> lambda_real);
 
-// CORRECTED implementation based on exact jVMEC algorithm
-void FourierToReal3DAsymmFastPoloidal_Corrected(
-    const Sizes& sizes, absl::Span<const double> rmncc,
-    absl::Span<const double> rmnss,
-    absl::Span<const double> rmnsc,  // Asymmetric
-    absl::Span<const double> rmncs,  // Asymmetric
-    absl::Span<const double> zmnsc, absl::Span<const double> zmncs,
-    absl::Span<const double> zmncc,  // Asymmetric
-    absl::Span<const double> zmnss,  // Asymmetric
-    absl::Span<double> r_real, absl::Span<double> z_real,
-    absl::Span<double> lambda_real);
-
 // 2D version for axisymmetric case
 void FourierToReal2DAsymmFastPoloidal(
-    const Sizes& sizes, absl::Span<const double> rmncc,
-    absl::Span<const double> rmnss, absl::Span<const double> rmnsc,
-    absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
-    absl::Span<const double> zmncs, absl::Span<const double> zmncc,
-    absl::Span<const double> zmnss, absl::Span<double> r_real,
-    absl::Span<double> z_real, absl::Span<double> lambda_real);
-
-// CORRECTED 2D implementation based on exact jVMEC algorithm
-void FourierToReal2DAsymmFastPoloidal_Corrected(
     const Sizes& sizes, absl::Span<const double> rmncc,
     absl::Span<const double> rmnss, absl::Span<const double> rmnsc,
     absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
