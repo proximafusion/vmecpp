@@ -28,7 +28,7 @@ TEST(InputValidationTest, ValidateAsymmetricInputStructure) {
             << ", ntor=" << indata.ntor << std::endl;
 
   // Calculate expected array sizes
-  int coeff_size = (indata.mpol + 1) * (2 * indata.ntor + 1);
+  int coeff_size = indata.mpol * (2 * indata.ntor + 1);
   std::cout << "Calculated coefficient array size: " << coeff_size << std::endl;
 
   // Initialize arrays
@@ -46,7 +46,7 @@ TEST(InputValidationTest, ValidateAsymmetricInputStructure) {
   // Test index calculations for different modes
   std::cout << "\nTesting index calculations:" << std::endl;
 
-  for (int m = 0; m <= indata.mpol; ++m) {
+  for (int m = 0; m < indata.mpol; ++m) {
     for (int n = -indata.ntor; n <= indata.ntor; ++n) {
       int idx = m * (2 * indata.ntor + 1) + (n + indata.ntor);
       std::cout << "  m=" << m << ", n=" << n << " -> idx=" << idx;

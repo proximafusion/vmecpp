@@ -61,7 +61,7 @@ TEST(JVMECTokAsymTest, RunKnownGoodAsymmetricTokamak) {
             << std::endl;
 
   // Calculate coefficient array size for asymmetric tokamak
-  int coeff_size = (indata.mpol + 1) * (2 * indata.ntor + 1);
+  int coeff_size = indata.mpol * (2 * indata.ntor + 1);
   indata.rbc.resize(coeff_size, 0.0);
   indata.zbs.resize(coeff_size, 0.0);
   indata.rbs.resize(coeff_size, 0.0);
@@ -108,17 +108,11 @@ TEST(JVMECTokAsymTest, RunKnownGoodAsymmetricTokamak) {
   indata.zbc[5] = 2.11750000E-02;
   indata.zbs[5] = 4.47690000E-03;
 
-  // m=6 coefficients
+  // m=6 coefficients (mpol=7 means m goes from 0 to 6)
   indata.rbc[6] = -5.63650000E-03;
   indata.rbs[6] = -7.61150000E-03;
   indata.zbc[6] = 2.43930000E-03;
   indata.zbs[6] = -1.67730000E-02;
-
-  // m=7 coefficients
-  indata.rbc[7] = -1.17870000E-03;
-  indata.rbs[7] = 1.83440000E-03;
-  indata.zbc[7] = -8.62780000E-03;
-  indata.zbs[7] = 3.38110000E-03;
 
   std::cout << "Configuration summary:" << std::endl;
   std::cout << "  lasym = " << indata.lasym << std::endl;
