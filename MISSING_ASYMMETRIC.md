@@ -2,9 +2,9 @@
 
 Based on comparison with jVMEC, the following asymmetric-specific features are MISSING:
 
-## 1. Boundaries.cc - Theta Shift
+## 1. Boundaries.cc - Theta Shift ✅ ACTUALLY IMPLEMENTED
 **jVMEC**: Calculates delta angle shift to ensure RBS(n=0,m=1) = ZBC(n=0,m=1)
-**VMEC++**: Has comment about it but NOT implemented
+**VMEC++**: IMPLEMENTED in boundaries.cc lines 70-164, properly applies theta shift
 
 ## 2. SpectralCondensation.cc - Asymmetric Work Arrays
 **jVMEC**: Uses work[2] and work[3] for asymmetric case, on-the-fly symmetrization
