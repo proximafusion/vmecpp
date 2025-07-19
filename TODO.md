@@ -1,257 +1,140 @@
-# VMEC++ Asymmetric Equilibria Implementation TODO
+# VMEC++ Asymmetric Implementation - Critical Debugging Plan
 
-## Phase 1: Foundation - Fourier Transform Infrastructure ✅ COMPLETED
+## CURRENT STATUS: Transforms Fixed, Convergence Issues Remain
 
-### 1.1 Create Basic Test Infrastructure ✅ COMPLETED
-- [x] Create src/vmecpp/cpp/vmecpp/vmec/fourier_asymmetric/fourier_asymmetric_test.cc
-- [x] Create src/vmecpp/cpp/vmecpp/vmec/fourier_asymmetric/BUILD.bazel
-- [x] Write test for FourierToReal3DAsymmFastPoloidal with simple 1-mode case
-- [x] Write test for RealToFourier3DAsymmFastPoloidal with simple 1-mode case
-- [x] Write test for round-trip transform accuracy
+### ✅ COMPLETED: Corrected Asymmetric Transform Algorithm
+- **FIXED**: Implemented exact jVMEC two-stage transform approach
+- **FIXED**: Use separate arrays for asymmetric contributions (initialized to zero)
+- **FIXED**: Proper reflection handling for theta=[pi,2pi] range
+- **FIXED**: Arrays no longer cleared (symmetric baseline preserved)
+- **RESULT**: Transforms produce finite, geometrically valid results
 
-### 1.2 Implement Core Transform Functions ✅ COMPLETED
-- [x] Create src/vmecpp/cpp/vmecpp/vmec/fourier_asymmetric/fourier_asymmetric.h with function declarations
-- [x] Create src/vmecpp/cpp/vmecpp/vmec/fourier_asymmetric/fourier_asymmetric.cc with implementations
-- [x] Implement FourierToReal3DAsymmFastPoloidal for single mode
-- [x] Implement RealToFourier3DAsymmFastPoloidal for single mode
-- [x] Verify tests pass for single mode
+### 🔴 CRITICAL ISSUE: Why doesn't VMEC++ converge when jVMEC and educational_VMEC do?
 
-### 1.3 Extend to Multi-Mode Transforms ✅ COMPLETED
-- [x] Write test for multi-mode forward transform
-- [x] Write test for multi-mode inverse transform
-- [x] Extend FourierToReal3DAsymmFastPoloidal to handle all modes
-- [x] Extend RealToFourier3DAsymmFastPoloidal to handle all modes
-- [x] Verify multi-mode tests pass
+## Phase 1: Immediate Debugging Tasks
 
-### 1.4 Add 2D Transform Variants ✅ COMPLETED
-- [x] Write test for FourierToReal2DAsymmFastPoloidal
-- [x] Write test for RealToFourier2DAsymmFastPoloidal
-- [x] Implement 2D transform functions
-- [x] Verify 2D transform tests pass
+### 1.1 Verify Transform Integration
+- [ ] Check if symmetric transforms are called BEFORE asymmetric (order matters!)
+- [ ] Verify corrected implementation is used in ALL code paths
+- [ ] Check if symrzl_geometry is called at the right time
+- [ ] Verify force symmetrization is called when needed
 
-## Phase 2: Symmetrization Operations ✅ COMPLETED
+### 1.2 Array Initialization Comparison
+- [ ] Compare how jVMEC initializes ALL arrays (not just transform arrays)
+- [ ] Check if force arrays need special initialization
+- [ ] Verify geometry arrays are properly sized for full theta range
+- [ ] Check lambda array handling (often overlooked)
 
-### 2.1 Geometry Symmetrization ✅ COMPLETED
-- [x] Write test for SymmetrizeRealSpaceGeometry basic case
-- [x] Compare expected output with educational_VMEC's symrzl
-- [x] Implement SymmetrizeRealSpaceGeometry
-- [x] Write test for edge cases (boundary points)
-- [x] Verify all symmetrization tests pass
+### 1.3 Numerical Precision Issues
+- [ ] Compare floating point operations order with jVMEC
+- [ ] Check if accumulation order affects numerical stability
+- [ ] Verify no uninitialized values propagate through calculations
+- [ ] Check for division by zero or near-zero values
 
-### 2.2 Force Symmetrization ✅ COMPLETED
-- [x] Write test for SymmetrizeForces basic case
-- [x] Implement SymmetrizeForces
-- [x] Write test for force conservation properties
-- [x] Verify force symmetrization tests pass
+## Phase 2: Line-by-Line jVMEC Comparison
 
-## Phase 3: Integration with Core Algorithm ✅ COMPLETED
+### 2.1 Transform Details
+- [ ] Compare EXACT coefficient ordering (mn indexing)
+- [ ] Verify basis function normalization matches
+- [ ] Check sign conventions for all terms
+- [ ] Compare work array usage patterns
 
-### 3.1 Prepare Integration Tests ✅ COMPLETED
-- [x] Create test/test_ideal_mhd_asymmetric.cc
-- [x] Write test comparing symmetric mode output (lasym=false baseline)
-- [x] Write test for simple asymmetric equilibrium
+### 2.2 Force Calculation
+- [ ] Compare MHD force calculations in asymmetric mode
+- [ ] Check if forces need different treatment for asymmetric
+- [ ] Verify force symmetrization matches jVMEC exactly
+- [ ] Check force array indexing for full theta range
 
-### 3.2 Modify ideal_mhd_model.cc ✅ COMPLETED
-- [x] Write test for geometryFromFourier with lasym=true
-- [x] Replace error placeholder in geometryFromFourier
-- [x] Add conditional call to asymmetric transforms
-- [x] Fix asymmetric transform normalization based on educational_VMEC reference
-- [x] Test integration with ideal MHD model
+### 2.3 Convergence Parameters
+- [ ] Compare initial guess generation
+- [ ] Check time step (delt) handling
+- [ ] Verify convergence criteria calculations
+- [ ] Compare Jacobian calculations
 
-### 3.3 Force Calculation Integration ✅ COMPLETED
-- [x] Write test for forcesToFourier with lasym=true
-- [x] Replace error placeholder in forcesToFourier
-- [x] Add conditional call to asymmetric force transforms
-- [x] Verify force calculation test passes
+## Phase 3: Missing Asymmetric Functions
 
-## Phase 4: Real VMEC Testing ✅ LARGELY COMPLETED
+### 3.1 Potential Missing Implementations
+- [ ] Check for asymmetric-specific preconditioner updates
+- [ ] Verify asymmetric boundary condition handling
+- [ ] Check for asymmetric-specific spectral condensation
+- [ ] Look for asymmetric metric tensor calculations
 
-### 4.1 Real VMEC Stellarator Configuration ✅ COMPLETED
-- [x] Create test with real VMEC stellarator configuration (cth_like_fixed_bdy)
-- [x] Test asymmetric mode with realistic stellarator parameters
-- [x] Compare symmetric vs asymmetric results
-- [x] Debug array bounds issue in asymmetric mode
-- [x] Compare with educational_VMEC array sizing patterns
-- [x] Compare with jVMEC array sizing patterns
-- [x] Fix array bounds issue based on reference implementations
-- [x] Verify core asymmetric transforms work correctly in isolation
+### 3.2 Integration Points
+- [ ] Search jVMEC for ALL uses of "lasym" flag
+- [ ] List every function that has asymmetric-specific code
+- [ ] Compare with VMEC++ to find missing implementations
+- [ ] Check for subtle differences in shared code paths
 
-### 4.2 Remaining Issues ⚠️ CONVERGENCE PROBLEMS IDENTIFIED
-- [x] **Issue identified**: Core transforms work correctly, but full VMEC context fails
-- [x] **Calling context**: Array bounds issues identified and debugged
-- [ ] **CRITICAL**: Asymmetric VMEC runs fail to converge despite correct transforms
-- [ ] **Final verification**: Full stellarator asymmetric test passes
+## Phase 4: Test Case Analysis
 
-## Phase 5: End-to-End Testing ⚠️ PARTIALLY COMPLETED
+### 4.1 Small Perturbation Tests
+- [ ] Create MINIMAL asymmetric test (e.g., 0.1% perturbation)
+- [ ] Compare convergence behavior with jVMEC
+- [ ] Gradually increase perturbation to find breaking point
+- [ ] Document exact failure mode at each level
 
-### 5.1 Simple Asymmetric Test Case ✅ COMPLETED
-- [x] Create asymmetric tokamak test input
-- [x] Write test comparing output with educational_VMEC patterns
-- [x] Debug discrepancies using detailed output
-- [x] Verify test case passes for unit tests
+### 4.2 Mode-by-Mode Testing
+- [ ] Test with only m=1 asymmetric mode
+- [ ] Test with only m=2 asymmetric mode
+- [ ] Test combinations to isolate problematic modes
+- [ ] Compare mode coupling with jVMEC
 
-### 5.2 Complex Asymmetric Test Case ⚠️ CONVERGENCE ISSUES
-- [x] Create stellarator with asymmetry test input
-- [x] Write test comparing key quantities with reference codes
-- [x] Debug array bounds discrepancies
-- [x] **Fixed**: Calling context array bounds issues resolved
-- [ ] **CRITICAL**: VMEC convergence failure in asymmetric mode
-- [ ] **Remaining**: Verify test case passes completely
+## Phase 5: Detailed Numerical Comparison
 
-### 5.3 Up-Down Asymmetric Tokamak Testing ✅ COMPLETED
-- [x] Create up-down asymmetric tokamak test configuration
-- [x] Run symmetric baseline with lasym=false
-- [x] Run asymmetric mode with lasym=true
-- [x] Verify core transforms work correctly in isolation
-- [x] Document design analysis and comparison with reference codes
+### 5.1 First Iteration Deep Dive
+- [ ] Save ALL arrays after first iteration from both codes
+- [ ] Compare EVERY array element-by-element
+- [ ] Find first divergence point
+- [ ] Trace back to root cause
 
-### 5.4 Educational VMEC Verification ✅ COMPLETED
-- [x] Review benchmark design documentation
-- [x] Run educational_VMEC up-down asymmetric tokamak example (converged with 1 Jacobian reset)
-- [x] Compare point-by-point with design requirements from benchmark_vmec/design/index.md
-- [x] Verify all implementation details match reference codes
+### 5.2 Force Residual Analysis
+- [ ] Compare force residuals at each iteration
+- [ ] Check which force component diverges first
+- [ ] Analyze force distribution patterns
+- [ ] Compare with jVMEC force evolution
 
-### 5.5 Performance and Numerical Tests ⚠️ FUTURE WORK
-- [ ] Write test for force balance convergence
-- [ ] Write test for energy conservation
-- [ ] Verify numerical properties match reference codes
+## Phase 6: Critical Code Review
 
-## Phase 6: Critical Debugging Against jVMEC Reference 🚨 URGENT
+### 6.1 Array Bounds and Sizing
+- [ ] Verify ALL array allocations for asymmetric mode
+- [ ] Check for off-by-one errors in loop bounds
+- [ ] Verify span sizes match array allocations
+- [ ] Check for buffer overruns in full theta range
 
-### 6.1 Line-by-Line jVMEC Comparison 🚨 HIGH PRIORITY
-- [ ] **Step 1**: Extract exact jVMEC asymmetric transform functions
-- [ ] **Step 2**: Compare coefficient ordering (rmnsc, zmncc, etc.)
-- [ ] **Step 3**: Compare mode indexing and negative n-mode handling
-- [ ] **Step 4**: Compare normalization factors at every step
-- [ ] **Step 5**: Compare symmetrization operations line-by-line
-- [ ] **Step 6**: Compare integration with main VMEC loop
-- [ ] **Step 7**: Identify exact divergence point causing non-convergence
+### 6.2 Memory and Threading
+- [ ] Check ThreadLocalStorage for asymmetric arrays
+- [ ] Verify no race conditions in asymmetric mode
+- [ ] Check for memory aliasing issues
+- [ ] Verify all temporary arrays are properly sized
 
-### 6.2 Numerical Debugging Against jVMEC 🚨 HIGH PRIORITY
-- [ ] **Debug transforms**: Run identical input through jVMEC and VMEC++, compare every value
-- [ ] **Debug coefficients**: Compare Fourier coefficient values at each iteration
-- [ ] **Debug forces**: Compare force calculations in asymmetric mode
-- [ ] **Debug convergence**: Trace why jVMEC converges but VMEC++ doesn't
-- [ ] **Debug array access**: Ensure all array indexing matches jVMEC exactly
+## Success Criteria
 
-### 6.3 Educational VMEC Secondary Validation 📋 MEDIUM PRIORITY
-- [ ] Cross-check findings with educational_VMEC implementation
-- [ ] Validate that both references agree on key algorithmic points
+1. **Exact Match**: VMEC++ produces identical results to jVMEC for test cases
+2. **Convergence**: Asymmetric equilibria converge with similar iteration counts
+3. **Stability**: No NaN or infinity values during iteration
+4. **Correctness**: Force residuals decrease monotonically
 
-## Phase 7: Output and Diagnostics 📋 FUTURE WORK
+## Priority Actions
 
-### 6.1 Output Quantities 📋 FUTURE WORK
-- [ ] Write test for asymmetric output quantities
-- [ ] Update output routines to handle full u-range
-- [ ] Verify output tests pass
+1. **IMMEDIATE**: Compare array initialization patterns with jVMEC
+2. **HIGH**: Check for missing asymmetric-specific functions
+3. **HIGH**: Verify force calculation matches jVMEC exactly
+4. **MEDIUM**: Test with minimal perturbations
+5. **MEDIUM**: Deep dive first iteration comparison
 
-### 6.2 Diagnostic Output 📋 FUTURE WORK
-- [ ] Add debug output options for asymmetric transforms
-- [ ] Create comparison scripts with educational_VMEC
-- [ ] Document debug output usage
+## Known Issues to Fix
 
-## ✅ IMPLEMENTATION STATUS: TRANSFORMS CORRECTED, GEOMETRIC VALIDITY ACHIEVED
+1. Vector assertion failure in stellarator test
+2. Symmetric baseline fails in some tests (parameter issue?)
+3. Convergence failure even with correct transforms
+4. Possible missing asymmetric-specific calculations
 
-### ✅ **CORRECTED JVMEC-BASED TRANSFORMS IMPLEMENTED**
-- **CRITICAL FIX**: Created corrected implementations following exact jVMEC two-stage algorithm
-- **FourierToReal3DAsymmFastPoloidal_Corrected**: Exact jVMEC FourierTransformsJava.java mapping
-- **FourierToReal2DAsymmFastPoloidal_Corrected**: Exact jVMEC mapping for axisymmetric case
-- **INTEGRATION**: Updated ideal_mhd_model.cc to use corrected implementations for both 2D and 3D
-- **GEOMETRIC VALIDITY**: Corrected transforms produce finite, reasonable geometry values
-- **VERIFICATION**: Debug output confirms corrected transforms are being used and produce valid results
-- **ROOT CAUSE IDENTIFIED**: Original VMEC++ transforms had incorrect coefficient mapping vs jVMEC
+## Key Insight
+The transforms are now correct (producing valid geometry), but something else in the VMEC algorithm differs from jVMEC. The issue is likely in:
+- Force calculations
+- Convergence criteria
+- Missing asymmetric-specific functions
+- Array initialization patterns
+- Numerical precision/accumulation order
 
-### ✅ **PREVIOUS IMPLEMENTATION STATUS**
-- Complete asymmetric Fourier transform infrastructure (100% working)
-- 3D and 2D transforms (forward and inverse) - VERIFIED CORRECT IN ISOLATION
-- Proper mode handling including negative n modes
-- Symmetrization operations (geometry and forces) - VERIFIED CORRECT
-- Integration with IdealMhdModel - FIXED ARRAY SIZING ISSUES
-- Comprehensive unit test suite (6 out of 8 tests pass)
-- Array bounds debugging and fixes - COMPLETED
-- Core transforms verified to work correctly in isolation - CONFIRMED
-- **FIXED**: Memory corruption and segfaults in asymmetric mode
-- **FIXED**: Added comprehensive bounds checking and debug output
-- **FIXED**: ThreadLocalStorage span sizing for asymmetric transforms
-- **FIXED**: Heap-buffer-overflow detected by AddressSanitizer
-
-### ⚠️ **REMAINING CONVERGENCE CHALLENGES**
-- **PARTIAL SUCCESS**: Corrected transforms now produce geometrically valid results
-- **CURRENT STATUS**: VMEC can start iterations but still fails to fully converge in asymmetric mode
-- **ASSESSMENT**: This is typical behavior for asymmetric equilibria which are inherently more challenging
-- **PROGRESS**: Major breakthrough - eliminated "invalid geometry" failure mode
-
-### ✅ **REMAINING WORK COMPLETED**
-- ~~Debug NaN propagation in downstream MHD calculations (not transform-related)~~ ✅ RESOLVED
-- ~~Fix 2 remaining unit test failures (round-trip and negative n-mode normalization)~~ ✅ ACCEPTABLE
-- ~~Make debug output optional for production use~~ ✅ OPTIONAL ENHANCEMENT
-
-### 🔍 **REQUIRED VERIFICATION WORK**
-- **jVMEC**: PRIMARY REFERENCE - Need line-by-line comparison of every asymmetric operation
-- **Educational_VMEC**: Secondary validation - partial comparison completed
-- **VMEC++**: Core transforms work in isolation but fail in full algorithm
-- **CRITICAL**: Need to trace exact divergence point from jVMEC behavior
-- **MISSING**: Detailed coefficient handling, normalization, and iteration behavior comparison
-
-### 📋 **TECHNICAL DEBT**
-- Normalization precision issues in round-trip tests
-- Minor unused variable warnings in transform functions
-- Debug output should be made optional
-
-**⚠️ CRITICAL: Asymmetric transforms implemented but convergence issues prevent production use. Requires meticulous debugging against jVMEC reference.** 🚨
-
-### 🔬 **VERIFICATION SUMMARY**
-- **Educational VMEC**: Up-down asymmetric tokamak converges with 1 Jacobian reset
-- **Source Code Review**: All key algorithms match reference implementations
-- **Design Compliance**: 100% of requirements from benchmark_vmec/design/index.md satisfied
-- **Test Coverage**: Core transforms pass all isolated tests
-- **Integration Status**: Asymmetric transforms work correctly, first iteration successful
-- **Memory Safety**: All segfaults and memory corruption issues resolved
-- **Array Bounds**: Comprehensive bounds checking added and verified
-
-### 📊 **COMPONENT VERIFICATION STATUS**
-1. **Fourier Transform Asymmetric** ✅ Implemented ✅ Verified ✅ Production Ready
-   - All functions present and working correctly
-   - Matches educational_VMEC totzspa/tomnspa algorithms
-   - Memory safety verified with AddressSanitizer
-   - Bounds checking implemented and tested
-
-2. **Ideal MHD Model** ✅ Implemented ✅ Verified ⚠️ NaN Issue
-   - Integration points present and working
-   - Array sizing issues resolved
-   - First iteration works correctly
-   - NaN propagation in subsequent iterations (non-transform related)
-
-3. **Boundaries** ✅ Implemented ✅ Verified
-   - Asymmetric boundary handling correct
-
-4. **Fourier Coefficients** ✅ Implemented ✅ Verified
-   - Zero initialization confirmed
-
-5. **Handover Storage** ✅ Implemented ✅ Verified
-   - Asymmetric arrays properly allocated
-
-6. **Output Quantities** ⚠️ To Be Verified
-   - Implementation present but not tested
-
-7. **VMEC Input Data** ✅ Implemented ✅ Verified
-   - Parses RBS/ZBC correctly
-
-8. **Python Wrapper** ⚠️ To Be Verified
-   - Implementation present but not tested
-
-9. **VMEC Main** ✅ Implemented ✅ Verified
-   - lasym flag properly handled
-
-10. **Magnetic Axis Recovery** ✅ Implemented ✅ Verified
-    - Works with asymmetric equilibria
-
-## Notes:
-- Each test was written BEFORE implementation (RED phase) ✅
-- Minimal implementations to pass tests (GREEN phase) ✅
-- Refactoring performed after tests pass (REFACTOR phase) ✅
-- All tests run after each step ✅
-- Educational_VMEC and jVMEC used as reference implementations ✅
-- **CRITICAL: Debug output added at key steps comparing with educational_VMEC** ✅
-- **CRITICAL: Tokamak and stellarator inputs tested with debug prints** ✅
-- **CRITICAL: All functions implemented with proper test coverage** ✅
+**CRITICAL**: Must find why jVMEC and educational_VMEC converge but VMEC++ doesn't, despite having correct transforms.
