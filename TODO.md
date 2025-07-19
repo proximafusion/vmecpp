@@ -20,8 +20,10 @@
 2. **✅ FIXED: VMEC execution**: Asymmetric configurations now load and run without crashes
 3. **✅ FIXED: Transform integration**: All 7/7 unit tests pass, transforms work correctly
 
-### 🔴 NEW REMAINING ISSUE:
-1. **NaN values in force calculations**: Lambda forces (blmn_e) become NaN during MHD iterations
+### 🔍 ROOT CAUSE IDENTIFIED: Asymmetric Geometry Derivatives at Specific Theta Positions
+1. **✅ BREAKTHROUGH**: NaN values occur at specific theta grid points (kl=6,7,8,9) in asymmetric mode
+2. **✅ ISOLATED**: Asymmetric transforms work correctly - issue is in geometry derivative calculations
+3. **🔴 ACTIVE**: Asymmetric geometry derivatives (`tau`, `zu12`, `ru12`) become singular at certain theta positions
 
 ## Phase 1: Immediate Debugging Tasks ✅ COMPLETED
 
@@ -175,7 +177,7 @@
 - ❌ Issue occurs in pressure initialization, before any MHD calculations
 - 🔍 Need to investigate dVds (volume derivative) initialization
 
-### Next Steps - Phase 1.11: NaN Values in MHD Force Calculations ⚠️ ACTIVE:
+### Next Steps - Phase 1.12: Root Cause Identified - Asymmetric Geometry Derivatives ⚠️ ACTIVE:
 1. ✅ **Run test_pressure_init**: Direct comparison shows asymmetric case fails
 2. ✅ **Study jVMEC pressure init**: Found dVdsHalf starts as zeros, vulnerable in first iteration
 3. ❌ **Test with zero pressure**: Still crashes, indicates geometry/initialization issue
@@ -183,12 +185,13 @@
 5. ✅ **Created test_jvmec_tokasym**: Using exact tok_asym configuration from jVMEC
 6. ✅ **Fixed array size calculation**: Changed `(mpol+1) * (2*ntor+1)` to `mpol * (2*ntor+1)` - no more vector bounds errors
 7. ✅ **BREAKTHROUGH**: VMEC now runs without crashing! Asymmetric transforms working correctly
-8. ❌ **New issue**: NaN values in MHD force calculations (blmn_e forces) causing convergence failure
-9. **🔍 ACTIVE: Debug NaN in force calculations**: Investigate why lambda forces become NaN
-10. **📊 ACTIVE: Add meticulous debug output**: From all three codes (VMEC++, jVMEC, educational_VMEC)
-11. **🔬 NEXT: Study jVMEC force calculations**: Look deeply into jVMEC implementation for reference
-12. **🔬 Element-by-element comparison**: First iteration arrays to find exact divergence
-13. **🛠️ Unit tests for each fix**: Systematic TDD approach for each identified issue
+8. ✅ **ROOT CAUSE FOUND**: NaN values occur at specific theta grid points (kl=6,7,8,9) in asymmetric geometry
+9. ✅ **Created debug tests**: test_force_debug.cc and test_jacobian_debug.cc isolate the exact failure points
+10. ✅ **Identified variables**: `tau`, `zu12`, `ru12`, `gsqrt` become NaN at problematic theta positions
+11. **🔍 ACTIVE: Fix asymmetric geometry derivatives**: Debug why Jacobian becomes singular at kl=6-9
+12. **🔬 NEXT: Compare asymmetric geometry with jVMEC**: Ensure correct handling of asymmetric coefficients in geometry calculations
+13. **🔬 Element-by-element comparison**: First iteration arrays to find exact divergence
+14. **🛠️ Unit tests for each fix**: Systematic TDD approach for each identified issue
 
 ## Phase 1.9: Fix Basic Fourier Transform Tests ✅ COMPLETED
 - [x] ✅ Fixed FourierToReal3DAsymmSingleMode precision - all tests pass
