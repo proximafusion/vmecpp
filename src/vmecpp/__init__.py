@@ -811,7 +811,9 @@ class VmecWOut(BaseModelWithNumpy):
     jdotb: jt.Float[np.ndarray, "n_surfaces"]
     """`<j * B>` on full-grid."""
 
-    bdotb: jt.Float[np.ndarray, "n_surfaces"]
+    bdotb: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """`<B * B>` on full-grid."""
 
     bdotgradv: jt.Float[np.ndarray, "n_surfaces"]
@@ -965,7 +967,7 @@ class VmecWOut(BaseModelWithNumpy):
     mgrid_file: typing.Annotated[str, pydantic.Field(max_length=200)]
     """Full path for vacuum Green's function data (copied from input)."""
 
-    nextcur: int
+    nextcur: int = 0
     """Number of external coil currents."""
 
     extcur: typing.Annotated[
@@ -1501,13 +1503,6 @@ class VmecWOut(BaseModelWithNumpy):
             mnmax = attrs["mnmax"]
             ns = attrs["ns"]
             attrs["lmns_full"] = np.zeros([mnmax, ns])
-
-        # Optional handling for backwards compatibility with wout files produced before v0.3.3
-        # Handle extcur
-        if "extcur" not in attrs:
-            attrs["extcur"] = np.array([])
-        if "nextcur" not in attrs:
-            attrs["nextcur"] = 0
 
         return VmecWOut.model_validate(attrs, by_alias=True)
 
