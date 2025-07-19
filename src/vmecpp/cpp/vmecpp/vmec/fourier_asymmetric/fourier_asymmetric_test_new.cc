@@ -92,9 +92,11 @@ TEST(FourierAsymmetricTestNew, jVMECAlgorithmComparison) {
       if (std::abs(r_real[idx]) > 1e-12 || std::abs(z_real[idx]) > 1e-12) {
         has_correct_pattern = true;
 
-        // Expected pattern with sqrt(2) normalization
-        double expected_r = sin(u) * cos(v) * sqrt(2.0);  // rmnsc basis
-        double expected_z = cos(u) * cos(v) * sqrt(2.0);  // zmncc basis
+        // Expected pattern with correct FourierBasisFastPoloidal normalization
+        // FourierBasisFastPoloidal applies sqrt(2) to both cos_mu and cos_nv
+        // resulting in a factor of 2.0 when multiplied
+        double expected_r = sin(u) * cos(v) * 2.0;  // rmnsc basis
+        double expected_z = cos(u) * cos(v) * 2.0;  // zmncc basis
 
         std::cout << "jVMEC pattern at u=" << u << ", v=" << v
                   << ": R=" << r_real[idx] << " (exp: " << expected_r << ")"
@@ -165,12 +167,12 @@ TEST(FourierAsymmetricTestNew, NormalizationFactorsJVMEC) {
       absl::MakeSpan(lambda_real));
 
   // Check normalization at specific points
-  // For jVMEC compatibility, rmnsc coefficient should produce
-  // sqrt(2)*sin(mu)cos(nv)
+  // FourierBasisFastPoloidal applies sqrt(2) to both sin_mu and cos_nv
+  // resulting in a factor of 2.0 when multiplied
   int idx_test = 4;  // Some test index
   double u = 2.0 * PI * (idx_test / sizes.nZeta) / sizes.nThetaEff;
   double v = 2.0 * PI * (idx_test % sizes.nZeta) / sizes.nZeta;
-  double expected = sqrt(2.0) * sin(u) * cos(v);
+  double expected = 2.0 * sin(u) * cos(v);
 
   std::cout << "Normalization test: u=" << u << ", v=" << v
             << ", R=" << r_real[idx_test] << ", expected=" << expected
@@ -224,10 +226,12 @@ TEST(FourierAsymmetricTestNew, AsymmetricArrayCombination) {
   // in the final result (proper array combination)
   for (int i = 0; i < sizes.nThetaEff; ++i) {
     double u = 2.0 * PI * i / sizes.nThetaEff;
-    // Expected: R = cos(mu)*sqrt(2) + sin(mu)*sqrt(2)
-    // Expected: Z = sin(mu)*sqrt(2) + cos(mu)*sqrt(2)
-    double expected_r = (cos(u) + sin(u)) * sqrt(2.0);
-    double expected_z = (sin(u) + cos(u)) * sqrt(2.0);
+    // For this 2D case (ntor=0), each coefficient gets sqrt(2) normalization
+    // R: rmncc[1]=1.0 gives cos(u)*sqrt(2), rmnsc[1]=0.5 gives
+    // sin(u)*0.5*sqrt(2) Z: zmnsc[1]=1.0 gives sin(u)*sqrt(2), zmncc[1]=0.5
+    // gives cos(u)*0.5*sqrt(2)
+    double expected_r = cos(u) * sqrt(2.0) + sin(u) * 0.5 * sqrt(2.0);
+    double expected_z = sin(u) * sqrt(2.0) + cos(u) * 0.5 * sqrt(2.0);
 
     std::cout << "Combination test u=" << u << ": R=" << r_real[i]
               << " (exp: " << expected_r << "), Z=" << z_real[i]
@@ -281,6 +285,7 @@ TEST(FourierAsymmetricTestNew, FullThetaRangeHandling) {
   // Should be continuous sin(u) function, not reflected
   for (int i = 0; i < sizes.nThetaEff; ++i) {
     double u = 2.0 * PI * i / sizes.nThetaEff;
+    // FourierBasisFastPoloidal applies sqrt(2) normalization for m>0 modes
     double expected_r = sin(u) * sqrt(2.0);
 
     std::cout << "Full range u=" << u << " (" << i << "/" << sizes.nThetaEff
@@ -356,7 +361,9 @@ TEST(FourierAsymmetricTestNew, CoefficientIndexingJVMECMatch) {
       int idx = i * sizes.nZeta + k;
       double u = 2.0 * PI * i / sizes.nThetaEff;
       double v = 2.0 * PI * k / sizes.nZeta;
-      double expected = sin(u) * cos(v) * sqrt(2.0);
+      // FourierBasisFastPoloidal applies sqrt(2) to both sin_mu and cos_nv
+      // resulting in a factor of 2.0 when multiplied
+      double expected = sin(u) * cos(v) * 2.0;
 
       if (std::abs(expected) > 1e-12) {
         found_correct_pattern = true;
