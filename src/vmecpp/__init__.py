@@ -1504,13 +1504,6 @@ class VmecWOut(BaseModelWithNumpy):
             ns = attrs["ns"]
             attrs["lmns_full"] = np.zeros([mnmax, ns])
 
-        # Optional handling for backwards compatibility with wout files produced before v0.3.3
-        # Handle extcur
-        if "extcur" not in attrs:
-            attrs["extcur"] = np.array([])
-        if "nextcur" not in attrs:
-            attrs["nextcur"] = 0
-
         return VmecWOut.model_validate(attrs, by_alias=True)
 
 
