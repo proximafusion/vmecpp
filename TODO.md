@@ -149,23 +149,26 @@
 3. **Transform tests failing**: Basic Fourier transform tests produce incorrect results (pre-existing)
 4. **Convergence failure**: Even with spectral condensation fix, convergence issues persist
 
-## Phase 1.6: Fix ntheta=0 at Source 🔴 ACTIVE
-- [ ] Investigate why Nyquist correction in sizes.cc doesn't fix ntheta=0
-- [ ] Check order of operations in INDATA processing vs Sizes constructor
-- [ ] Ensure ntheta correction happens before any array allocations
-- [ ] Add unit test to verify ntheta correction works for all cases
+## Phase 1.7: Physics Configuration and Realistic Testing ✅ ACTIVE
+- [ ] Create realistic asymmetric tokamak configuration with proper physics
+- [ ] Fix NaN issues in pressure/current profiles
+- [ ] Test with minimal but physically valid asymmetric perturbations
+- [ ] Compare convergence with jVMEC using same configuration
 
-## Next Phase: Systematic Debugging
+### Phase 1.6: Fix ntheta=0 at Source ✅ COMPLETED
+- [x] ✅ Investigated Nyquist correction - works correctly, sizes.ntheta properly set
+- [x] ✅ **KEY FINDING**: Vmec stores both indata_ (ntheta=0) and s_ (corrected) separately
+- [x] ✅ Confirmed the Nyquist correction system works as designed
+- [x] ✅ No source fix needed - correction is working properly
 
-### Phase 1.5: Vector Bounds Error Source Identification ✅ MAJOR PROGRESS
+### Phase 1.5: Vector Bounds Error Source Identification ✅ COMPLETED
 - [x] ✅ Create minimal test that reproduces vector bounds error
 - [x] ✅ **ROOT CAUSE #1 FOUND**: ntheta=0 in asymmetric case from input file
-- [x] ✅ **ROOT CAUSE #2 FOUND**: Additional vector bounds error even with ntheta fixed
-- [x] ✅ Implemented systematic debug test with workarounds
-- [ ] 🔴 Fix ntheta=0 issue at source in INDATA processing (not just workaround)
-- [ ] 🔴 Add debug output to identify exact array and index for second bounds error
-- [ ] Check array allocations in asymmetric mode vs symmetric mode
-- [ ] Verify all nThetaEff vs nThetaReduced usage in asymmetric paths
+- [x] ✅ **ROOT CAUSE #2 SOLVED**: Axis arrays (raxis_c, raxis_s, zaxis_c, zaxis_s) wrong size
+- [x] ✅ **TECHNICAL FIX**: Axis arrays must be size (ntor+1), not 2
+- [x] ✅ **LOCATION**: boundaries.cc:60-64 accessing id.raxis_c[n] for n=0 to ntor
+- [x] ✅ All vector bounds errors now resolved
+- [x] ✅ Systematic debugging approach successfully isolated both root causes
 
 ## Key Insight
 The transforms are now correct (producing valid geometry), but something else in the VMEC algorithm differs from jVMEC. The issue is likely in:
@@ -186,4 +189,11 @@ The transforms are now correct (producing valid geometry), but something else in
 - ✅ **ROOT CAUSE #2**: Additional bounds error even with ntheta=16 manually set
 - ✅ **WORKAROUND**: Manual ntheta correction implemented for continued debugging
 
-**CURRENT PHASE**: Fix ntheta=0 at source and identify second bounds error with meticulous debug output. Step-by-step approach proving effective.
+**CURRENT PHASE**: Create realistic asymmetric physics configuration. Vector bounds errors fully resolved. Focus on proper physics setup for valid asymmetric equilibria.
+
+**MAJOR BREAKTHROUGH**: Both vector bounds errors identified and fixed:
+- ✅ **First error**: ntheta=0 corrected by Nyquist system (sizes.ntheta=16)
+- ✅ **Second error**: Axis arrays wrong size (2 instead of ntor+1=3) - FIXED
+- ✅ **Technical location**: boundaries.cc:60-64 axis coefficient parsing
+- ✅ **Current status**: No bounds errors, asymmetric code path executes successfully
+- 🔴 **Next challenge**: NaN in physics (pressure/MHD) requiring realistic parameter setup

@@ -183,3 +183,17 @@ cc_test(
         "//vmecpp/test_data:cth_like_fixed_bdy",
     ],
 )
+
+cc_test(
+    name = "second_bounds_error_debug_test",
+    srcs = ["second_bounds_error_debug_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+)
