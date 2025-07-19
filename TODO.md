@@ -173,10 +173,10 @@
 - 🔍 Need to investigate dVds (volume derivative) initialization
 
 ### Next Steps:
-1. **Run test_pressure_init**: Direct comparison of symmetric vs asymmetric
-2. **Add debug to pressure calculation**: Track massH, dVdsH, presH values
-3. **Study jVMEC pressure init**: Look for asymmetric-specific handling
-4. **Check volume calculation**: May differ for asymmetric equilibria
+1. ✅ **Run test_pressure_init**: Direct comparison shows asymmetric case fails
+2. ✅ **Study jVMEC pressure init**: Found dVdsHalf starts as zeros, vulnerable in first iteration
+3. ❌ **Test with zero pressure**: Still crashes, indicates geometry/initialization issue
+4. 🔍 **Use known-good jVMEC input**: Test with working asymmetric configuration from jVMEC
 
 ## Phase 1.9: Fix Basic Fourier Transform Tests ✅ COMPLETED
 - [x] ✅ Fixed FourierToReal3DAsymmSingleMode precision - all tests pass
