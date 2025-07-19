@@ -1298,6 +1298,30 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
       std::cout << std::endl;
     }
 
+    // IMPORTANT: For asymmetric case, we need to:
+    // 1. Copy symmetric values to m_ls_ arrays
+    // 2. Add asymmetric contributions
+    // 3. Symmetrize
+    // 4. Copy back to main arrays
+
+    // Step 1: Copy symmetric values to m_ls_ arrays
+    for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+      int offset = (jF - r_.nsMinF1) * s_.nZnT;
+      for (int kl = 0; kl < s_.nZnT; ++kl) {
+        m_ls_.r1e_i[offset + kl] = r1_e[offset + kl];
+        m_ls_.r1o_i[offset + kl] = r1_o[offset + kl];
+        m_ls_.z1e_i[offset + kl] = z1_e[offset + kl];
+        m_ls_.z1o_i[offset + kl] = z1_o[offset + kl];
+        m_ls_.rue_i[offset + kl] = ru_e[offset + kl];
+        m_ls_.ruo_i[offset + kl] = ru_o[offset + kl];
+        m_ls_.zue_i[offset + kl] = zu_e[offset + kl];
+        m_ls_.zuo_i[offset + kl] = zu_o[offset + kl];
+        m_ls_.lue_i[offset + kl] = lu_e[offset + kl];
+        m_ls_.luo_i[offset + kl] = lu_o[offset + kl];
+      }
+    }
+
+    // Step 2: Add asymmetric contributions
     if (s_.lthreed) {
       dft_FourierToReal_3d_asymm(physical_x);
     } else {
@@ -1319,7 +1343,7 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
       }
     }
 
-    // symmetrize geometry components
+    // Step 3: Symmetrize geometry components
     std::cout << "DEBUG: Calling symrzl_geometry" << std::endl;
     symrzl_geometry(physical_x);
 
@@ -1335,6 +1359,24 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
       }
       std::cout << std::endl;
     }
+
+    // Step 4: Copy combined values back to main arrays
+    for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+      int offset = (jF - r_.nsMinF1) * s_.nZnT;
+      for (int kl = 0; kl < s_.nZnT; ++kl) {
+        r1_e[offset + kl] = m_ls_.r1e_i[offset + kl];
+        r1_o[offset + kl] = m_ls_.r1o_i[offset + kl];
+        z1_e[offset + kl] = m_ls_.z1e_i[offset + kl];
+        z1_o[offset + kl] = m_ls_.z1o_i[offset + kl];
+        ru_e[offset + kl] = m_ls_.rue_i[offset + kl];
+        ru_o[offset + kl] = m_ls_.ruo_i[offset + kl];
+        zu_e[offset + kl] = m_ls_.zue_i[offset + kl];
+        zu_o[offset + kl] = m_ls_.zuo_i[offset + kl];
+        lu_e[offset + kl] = m_ls_.lue_i[offset + kl];
+        lu_o[offset + kl] = m_ls_.luo_i[offset + kl];
+      }
+    }
+
   }  // lasym
 
   // DEBUG: Check geometry arrays for NaN before MHD computation
@@ -3866,23 +3908,27 @@ int IdealMhdModel::get_ivacskip() const { return ivacskip; }
 void IdealMhdModel::dft_FourierToReal_3d_asymm(
     const FourierGeometry& physical_x) {
   // Apply asymmetric 3D transform from Fourier to real space
+  // Process all surfaces
+  int total_size = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
   FourierToReal3DAsymmFastPoloidal(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
       physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
-      physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), s_.nZnT),
-      absl::Span<double>(m_ls_.z1e_i.data(), s_.nZnT),
-      absl::Span<double>(m_ls_.lue_i.data(), s_.nZnT));
+      physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), total_size),
+      absl::Span<double>(m_ls_.z1e_i.data(), total_size),
+      absl::Span<double>(m_ls_.lue_i.data(), total_size));
 }
 
 void IdealMhdModel::dft_FourierToReal_2d_asymm(
     const FourierGeometry& physical_x) {
   // Apply asymmetric 2D transform from Fourier to real space
+  // Process all surfaces
+  int total_size = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
   FourierToReal2DAsymmFastPoloidal(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
       physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
-      physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), s_.nZnT),
-      absl::Span<double>(m_ls_.z1e_i.data(), s_.nZnT),
-      absl::Span<double>(m_ls_.lue_i.data(), s_.nZnT));
+      physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), total_size),
+      absl::Span<double>(m_ls_.z1e_i.data(), total_size),
+      absl::Span<double>(m_ls_.lue_i.data(), total_size));
 }
 
 void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {
