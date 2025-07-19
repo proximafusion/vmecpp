@@ -192,8 +192,10 @@
 12. ✅ **COMPLETED: Compare asymmetric geometry with jVMEC**: Identified differences in even/odd contribution handling
 13. ✅ **COMPLETED: Add unit tests for geometry derivatives**: Created comprehensive test suite including axis protection tests
 14. **🔍 ACTIVE: Investigate deeper asymmetric coefficient issues**: Axis protection insufficient - need to examine asymmetric transform output
-15. **🔬 Element-by-element comparison**: First iteration arrays to find exact divergence
-16. **🛠️ Unit tests for each fix**: Systematic TDD approach for each identified issue
+15. **📊 ACTIVE: Add debug output for asymmetric transform values**: Compare actual R,Z values at problematic theta positions
+16. **🔬 ACTIVE: Analyze jVMEC asymmetric coefficient processing**: Study how jVMEC handles asymmetric terms in geometry calculations
+17. **🔬 Element-by-element comparison**: First iteration arrays to find exact divergence
+18. **🛠️ Unit tests for each fix**: Systematic TDD approach for each identified issue
 
 ## Phase 1.9: Fix Basic Fourier Transform Tests ✅ COMPLETED
 - [x] ✅ Fixed FourierToReal3DAsymmSingleMode precision - all tests pass
