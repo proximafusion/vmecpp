@@ -2340,7 +2340,7 @@ void IdealMhdModel::hybridLambdaForce() {
         m_ls_.guv_bsupu_i[kl] = guv_bsupu_o;
       }
     }  // kl
-    sqrtSHi = sqrtSHo;
+    // sqrtSHi = sqrtSHo;  // BUG: This overwrites computed sqrtSHi value!
   }  // jF
 
 // }
@@ -2460,8 +2460,9 @@ void IdealMhdModel::computeMHDForces() {
     }
     // Protect against division by zero or very small values
     if (std::abs(sqrtSHi) < 1e-15) {
-      std::cout << "WARNING: sqrtSHi too small (" << sqrtSHi
-                << "), setting to 1.0" << std::endl;
+      std::cout << "WARNING: sqrtSHi too small (" << sqrtSHi << ") at j0=" << j0
+                << " nsMinH=" << r_.nsMinH << " sqrtSH_index=" << sqrtSH_index
+                << ", setting to 1.0" << std::endl;
       sqrtSHi = 1.0;
     }
   } else {
