@@ -704,9 +704,13 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
 
   double local_rmsPhiP = 0.0;
 
-  // half-grid
+  // half-grid: direct port of educational_VMEC formula si = hs*(i-1.5) where
+  // i=2..ns
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    const double halfGridPos = (jH + 0.5) / (fc_.ns - 1.0);
+    // Educational_VMEC: for i=2,3,...,ns: si = hs*(i-1.5)
+    // Direct mapping: i = jH + 2 (since jH starts from 0 when nsMinH=0)
+    const int educational_i = jH + 2;
+    const double halfGridPos = (educational_i - 1.5) / (fc_.ns - 1.0);
 
     // normalized toroidal flux array
     sqrtSH[jH - r_.nsMinH] = std::sqrt(halfGridPos);

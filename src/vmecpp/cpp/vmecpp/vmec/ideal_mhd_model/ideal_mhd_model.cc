@@ -2321,7 +2321,7 @@ void IdealMhdModel::hybridLambdaForce() {
         m_ls_.guv_bsupu_i[kl] = guv_bsupu_o;
       }
     }  // kl
-    sqrtSHi = sqrtSHo;
+    // sqrtSHi = sqrtSHo;  // BUG: This overwrites computed sqrtSHi value!
   }  // jF
 
 // }
@@ -2441,8 +2441,9 @@ void IdealMhdModel::computeMHDForces() {
     }
     // Protect against division by zero or very small values
     if (std::abs(sqrtSHi) < 1e-15) {
-      std::cout << "WARNING: sqrtSHi too small (" << sqrtSHi
-                << "), setting to 1.0" << std::endl;
+      std::cout << "WARNING: sqrtSHi too small (" << sqrtSHi << ") at j0=" << j0
+                << " nsMinH=" << r_.nsMinH << " sqrtSH_index=" << sqrtSH_index
+                << ", setting to 1.0" << std::endl;
       sqrtSHi = 1.0;
     }
   } else {
@@ -2587,6 +2588,14 @@ void IdealMhdModel::computeMHDForces() {
           !std::isfinite(sqrtSHi)) {
         std::cout << "ERROR: Non-finite input to force calculation at kl=" << kl
                   << ", jF=" << jF << std::endl;
+        std::cout << "  Details: zup_o=" << zup_o[kl]
+                  << " zup_i=" << m_ls_.zup_i[kl] << " taup_o=" << taup_o[kl]
+                  << " taup_i=" << m_ls_.taup_i[kl] << std::endl;
+        std::cout << "  gbvbv_o=" << gbvbv_o[kl]
+                  << " gbvbv_i=" << m_ls_.gbvbv_i[kl] << " r1_e=" << r1_e[idx_g]
+                  << " r1_o=" << r1_o[idx_g] << std::endl;
+        std::cout << "  deltaS=" << m_fc_.deltaS << " sqrtSHo=" << sqrtSHo
+                  << " sqrtSHi=" << sqrtSHi << std::endl;
         std::cout << "  Setting force to zero for this point" << std::endl;
         armn_e[idx_f] = 0.0;
         continue;
