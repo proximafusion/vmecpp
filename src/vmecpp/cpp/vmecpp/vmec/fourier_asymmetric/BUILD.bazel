@@ -1,0 +1,487 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "fourier_asymmetric",
+    srcs = ["fourier_asymmetric.cc"],
+    hdrs = ["fourier_asymmetric.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "fourier_asymmetric_test",
+    srcs = ["fourier_asymmetric_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "stellarator_asymmetric_test",
+    srcs = ["stellarator_asymmetric_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+        "//vmecpp/vmec/output_quantities:output_quantities",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+    data = [
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+    ],
+)
+
+cc_test(
+    name = "debug_asymmetric_test",
+    srcs = ["debug_asymmetric_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "//util/file_io:file_io",
+    ],
+    size = "small",
+    data = [
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+    ],
+)
+
+cc_test(
+    name = "minimal_debug_test",
+    srcs = ["minimal_debug_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "up_down_asymmetric_test",
+    srcs = ["up_down_asymmetric_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+        "//vmecpp/vmec/output_quantities:output_quantities",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+)
+
+cc_test(
+    name = "simple_2d_asymmetric_test",
+    srcs = ["simple_2d_asymmetric_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+    ],
+    size = "small",
+)
+
+cc_binary(
+    name = "test_nan",
+    srcs = ["test_nan.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "//vmecpp/common/sizes:sizes",
+    ],
+)
+
+cc_binary(
+    name = "debug_nan_test",
+    srcs = ["debug_nan_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_binary(
+    name = "vmecpp_crash_test",
+    srcs = ["vmecpp_crash_test.cc"],
+    deps = [
+        "//vmecpp/vmec/vmec:vmec",
+        "//util/file_io:file_io",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+)
+
+cc_test(
+    name = "debug_corrected_transform_test",
+    srcs = ["debug_corrected_transform_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "compare_implementations_test",
+    srcs = ["compare_implementations_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "small_asymmetric_tokamak_test",
+    srcs = ["small_asymmetric_tokamak_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "@nlohmann_json//:json",
+    ],
+    size = "large",
+)
+
+cc_test(
+    name = "vector_bounds_debug_test",
+    srcs = ["vector_bounds_debug_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+    data = [
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+    ],
+)
+
+cc_test(
+    name = "second_bounds_error_debug_test",
+    srcs = ["second_bounds_error_debug_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+)
+
+cc_test(
+    name = "realistic_asymmetric_test",
+    srcs = ["realistic_asymmetric_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/common/sizes:sizes",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+)
+
+cc_test(
+    name = "fourier_transform_unit_test",
+    srcs = ["fourier_transform_unit_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "fourier_debug_simple_test",
+    srcs = ["fourier_debug_simple_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+# negative_n_debug_test removed - negative toroidal modes not used in VMEC
+
+cc_test(
+    name = "test_symmetric_regression",
+    srcs = ["test_symmetric_regression.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+# debug_normalization_test removed - was for negative n modes
+
+cc_test(
+    name = "minimal_asymmetric_test",
+    srcs = ["minimal_asymmetric_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "small",
+    data = [
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+    ],
+)
+
+cc_test(
+    name = "debug_pressure_test",
+    srcs = ["debug_pressure_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/radial_profiles:radial_profiles",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_pressure_init",
+    srcs = ["test_pressure_init.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_dvds_init",
+    srcs = ["test_dvds_init.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_jvmec_tokasym",
+    srcs = ["test_jvmec_tokasym.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "large",
+)
+
+cc_test(
+    name = "test_simple_asymmetric",
+    srcs = ["test_simple_asymmetric.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_input_validation",
+    srcs = ["test_input_validation.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_force_debug",
+    srcs = ["test_force_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_jacobian_debug",
+    srcs = ["test_jacobian_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_geometry_jacobian",
+    srcs = ["test_geometry_jacobian.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_axis_protection",
+    srcs = ["test_axis_protection.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_asymmetric_transform_output",
+    srcs = ["test_asymmetric_transform_output.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/common/sizes:sizes",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_geometry_derivatives",
+    srcs = ["test_geometry_derivatives.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/common/sizes:sizes",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_jacobian_asymmetric_debug",
+    srcs = ["test_jacobian_asymmetric_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_array_combination",
+    srcs = ["test_array_combination.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_array_combination_fix",
+    srcs = ["test_array_combination_fix.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_educational_vmec_comparison",
+    srcs = ["test_educational_vmec_comparison.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "fourier_asymmetric_test_new",
+    srcs = ["fourier_asymmetric_test_new.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "simple_normalization_test",
+    srcs = ["simple_normalization_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "debug_bounds_test",
+    srcs = ["debug_bounds_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)

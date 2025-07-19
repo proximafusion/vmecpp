@@ -1976,7 +1976,7 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         decomposed_bcov.bsubs_s(target_index) =
             bsubs_full.bsubs_full(source_index) -
             bsubs_full.bsubs_full(source_index_reversed);
-        decomposed_bcov.bsubs_a(target_index) =
+        decomposed_bcov.bsubs_a(jF, kl) =
             bsubs_full.bsubs_full(source_index) +
             bsubs_full.bsubs_full(source_index_reversed);
       }  // kl
@@ -1999,13 +1999,13 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         decomposed_bcov.bsubu_s(target_index) =
             vmec_internal_results.bsubu(source_index) +
             vmec_internal_results.bsubu(source_index_reversed);
-        decomposed_bcov.bsubu_a(target_index) =
+        decomposed_bcov.bsubu_a(jH, kl) =
             vmec_internal_results.bsubu(source_index) -
             vmec_internal_results.bsubu(source_index_reversed);
         decomposed_bcov.bsubv_s(target_index) =
             vmec_internal_results.bsubv(source_index) +
             vmec_internal_results.bsubv(source_index_reversed);
-        decomposed_bcov.bsubv_a(target_index) =
+        decomposed_bcov.bsubv_a(jH, kl) =
             vmec_internal_results.bsubv(source_index) -
             vmec_internal_results.bsubv(source_index_reversed);
       }  // kl
@@ -2217,13 +2217,13 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               const double tsini2 = t.cosmui[idx_ml] * t.sinnv[idx_kn] * dnorm1;
 
               // sin-cos
-              bsubvmn3 += tsini1 * decomposed_bcov.bsubv_a(source_index);
+              bsubvmn3 += tsini1 * decomposed_bcov.bsubv_a(jH, kl);
               // cos-sin
-              bsubvmn4 += tsini2 * decomposed_bcov.bsubv_a(source_index);
+              bsubvmn4 += tsini2 * decomposed_bcov.bsubv_a(jH, kl);
               // sin-cos
-              bsubumn3 += tsini1 * decomposed_bcov.bsubu_a(source_index);
+              bsubumn3 += tsini1 * decomposed_bcov.bsubu_a(jH, kl);
               // cos-sin
-              bsubumn4 += tsini2 * decomposed_bcov.bsubu_a(source_index);
+              bsubumn4 += tsini2 * decomposed_bcov.bsubu_a(jH, kl);
             }  // lasym
           }  // l
         }  // k
