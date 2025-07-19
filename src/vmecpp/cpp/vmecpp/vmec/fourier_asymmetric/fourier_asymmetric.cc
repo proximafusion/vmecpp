@@ -26,10 +26,28 @@ void FourierToReal3DAsymmFastPoloidal(
   std::cout << "DEBUG FourierToReal3DAsymmFastPoloidal: mnmax=" << sizes.mnmax
             << ", nThetaEff=" << sizes.nThetaEff << ", nZeta=" << sizes.nZeta
             << std::endl;
+  std::cout << "  mpol=" << sizes.mpol << ", ntor=" << sizes.ntor
+            << ", nfp=" << sizes.nfp << std::endl;
+
+  // Print first few input coefficients (asymmetric arrays)
   if (sizes.mnmax > 0) {
-    std::cout << "DEBUG input coefficients: rmncc[0]=" << rmncc[0]
-              << ", rmncc[1]=" << (sizes.mnmax > 1 ? rmncc[1] : 0.0)
-              << std::endl;
+    std::cout << "DEBUG input coefficients (asymmetric):" << std::endl;
+    // Print first few rmnsc coefficients (SIN(mu) COS(nv)) - equivalent to
+    // educational_VMEC
+    std::cout << "  First rmnsc values:" << std::endl;
+    for (int mn = 0; mn < std::min(5, sizes.mnmax); ++mn) {
+      std::cout << "    mn=" << mn << " rmnsc=" << rmnsc[mn]
+                << " zmncs=" << zmncs[mn] << std::endl;
+    }
+    // Check for NaN in input arrays
+    for (int mn = 0; mn < sizes.mnmax; ++mn) {
+      if (std::isnan(rmnsc[mn])) {
+        std::cout << "ERROR: NaN in rmnsc at mn=" << mn << std::endl;
+      }
+      if (std::isnan(zmncs[mn])) {
+        std::cout << "ERROR: NaN in zmncs at mn=" << mn << std::endl;
+      }
+    }
   }
 
   // const double PI = 3.14159265358979323846;  // unused
@@ -72,6 +90,13 @@ void FourierToReal3DAsymmFastPoloidal(
         // Use FourierBasisFastPoloidal to decode m,n from linear index
         int m = fourier_basis.xm[mn];
         int n = fourier_basis.xn[mn] / sizes.nfp;  // xn includes nfp factor
+
+        // DEBUG: Check mode processing for first few iterations
+        if (idx < 3 && mn < 5) {
+          std::cout << "  Processing mn=" << mn << " m=" << m << " n=" << n
+                    << " rmnsc=" << rmnsc[mn] << " zmncs=" << zmncs[mn]
+                    << std::endl;
+        }
 
         // Get pre-normalized basis functions from FourierBasisFastPoloidal
         // These already include mscale and nscale factors
@@ -167,6 +192,19 @@ void FourierToReal3DAsymmFastPoloidal(
                   << ", v=" << v << ", R=" << r_val << ", Z=" << z_val
                   << std::endl;
       }
+    }
+  }
+
+  // DEBUG: Print first few output values and check for NaN
+  std::cout << "DEBUG FourierToReal3DAsymmFastPoloidal output:" << std::endl;
+  for (int i = 0; i < std::min(5, static_cast<int>(r_real.size())); ++i) {
+    std::cout << "  r_real[" << i << "]=" << r_real[i] << " z_real[" << i
+              << "]=" << z_real[i] << std::endl;
+    if (std::isnan(r_real[i])) {
+      std::cout << "ERROR: NaN in r_real output at i=" << i << std::endl;
+    }
+    if (std::isnan(z_real[i])) {
+      std::cout << "ERROR: NaN in z_real output at i=" << i << std::endl;
     }
   }
 }
