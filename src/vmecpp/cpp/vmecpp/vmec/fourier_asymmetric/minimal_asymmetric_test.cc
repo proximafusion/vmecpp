@@ -65,20 +65,20 @@ TEST(MinimalAsymmetricTest, SimpleAsymmetricTest) {
   indata_asymm.rbs.resize(coeff_size, 0.0);
   indata_asymm.zbc.resize(coeff_size, 0.0);
 
-  // Initialize symmetric coefficients with simple values
+  // Initialize symmetric coefficients with safer values
   // (m=0, n=0) - constant term
   int idx_00 = 0 * (2 * indata_asymm.ntor + 1) + (0 + indata_asymm.ntor);
-  indata_asymm.rbc[idx_00] = 1.0;  // Major radius
+  indata_asymm.rbc[idx_00] = 10.0;  // Large major radius to avoid R->0
 
   // (m=1, n=0) - simple elliptical cross-section
   int idx_10 = 1 * (2 * indata_asymm.ntor + 1) + (0 + indata_asymm.ntor);
-  indata_asymm.rbc[idx_10] = 0.1;  // Minor radius
-  indata_asymm.zbs[idx_10] = 0.1;  // Vertical elongation
+  indata_asymm.rbc[idx_10] = 1.0;  // Minor radius (aspect ratio 10)
+  indata_asymm.zbs[idx_10] = 1.0;  // Vertical elongation
 
   // Add tiny asymmetric perturbation only for asymmetric case
   if (indata_asymm.lasym) {
-    indata_asymm.rbs[idx_10] = 0.001;  // 1% of symmetric value
-    indata_asymm.zbc[idx_10] = 0.001;
+    indata_asymm.rbs[idx_10] = 0.01;  // 1% of minor radius
+    indata_asymm.zbc[idx_10] = 0.01;
   } else {
     // Clear asymmetric coefficient arrays for symmetric case
     indata_asymm.rbs.clear();
@@ -115,7 +115,7 @@ TEST(MinimalAsymmetricTest, SimpleAsymmetricTest) {
   }
 
   // Set axis position
-  indata_asymm.raxis_c[0] = 1.0;  // Same as boundary R00
+  indata_asymm.raxis_c[0] = 10.0;  // Match major radius
 
   std::cout << "\nAxis arrays initialized with size " << indata_asymm.ntor + 1
             << std::endl;

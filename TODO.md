@@ -161,8 +161,22 @@
 1. **Asymmetric transforms execute correctly**: Debug output confirms correct code paths
 2. **Geometry arrays populated**: R, Z values look reasonable after transforms
 3. **Issue identified**: totalPressure = NaN in MHD calculations for asymmetric case
-4. **Root cause**: Physics calculations not handling asymmetric geometry properly
-5. **Transforms validated**: Unit tests prove transforms work, issue is downstream
+4. **Root cause**: Pressure initialization fails for asymmetric case, not transforms
+5. **Transforms validated**: 7/7 unit tests pass, transforms work correctly
+
+## Current Issue: Pressure NaN in Asymmetric Case ⚠️ ACTIVE
+
+### Findings:
+- ✅ Symmetric case works with identical pressure profile
+- ❌ Asymmetric case: totalPressure = NaN from first iteration
+- ❌ Issue occurs in pressure initialization, before any MHD calculations
+- 🔍 Need to investigate dVds (volume derivative) initialization
+
+### Next Steps:
+1. **Run test_pressure_init**: Direct comparison of symmetric vs asymmetric
+2. **Add debug to pressure calculation**: Track massH, dVdsH, presH values
+3. **Study jVMEC pressure init**: Look for asymmetric-specific handling
+4. **Check volume calculation**: May differ for asymmetric equilibria
 
 ## Phase 1.9: Fix Basic Fourier Transform Tests ✅ COMPLETED
 - [x] ✅ Fixed FourierToReal3DAsymmSingleMode precision - all tests pass
@@ -330,5 +344,7 @@ nscale[n] = sqrt(2.0);  // for n > 0
 **NEW ISSUE - PRESSURE NaN IN ASYMMETRIC CASE:**
 - ❌ totalPressure becomes NaN immediately in asymmetric case
 - ✅ Symmetric case works correctly with same pressure profile
-- ❌ Issue appears to be in initial pressure/volume calculation, not transforms
-- 🔍 Need to investigate dVds (volume derivative) initialization for asymmetric case
+- ✅ Identified root cause: R approaches zero in simple test configurations
+- ✅ Fixed geometry to use larger major radius (R0=10) to avoid R->0
+- ❌ Still getting NaN, issue may be in dVdsH initialization
+- 🔍 jVMEC starts with dVdsHalf=0, pressure calculation vulnerable in first iteration for asymmetric case
