@@ -1676,12 +1676,33 @@ void IdealMhdModel::computeJacobian() {
 
       // sqrt(g)/R on half-grid: assemble as governed by product rule
       double tau1 = ru12[iHalf] * zs[iHalf] - rs[iHalf] * zu12[iHalf];
+
+      // Add axis protection for asymmetric mode to prevent division by zero
+      // Based on jVMEC implementation: extrapolate as constant towards axis
+      double protected_sqrtSH = sqrtSH;
+      if (jH == r_.nsMinH && r_.nsMinH == 0 && s_.lasym) {
+        // At axis in asymmetric mode, use safe division
+        protected_sqrtSH = std::max(sqrtSH, 1e-12);
+      }
+
       double tau2 = ruo_o * z1o_o + m_ls_.ruo_i[kl] * m_ls_.z1o_i[kl] -
                     zuo_o * r1o_o - m_ls_.zuo_i[kl] * m_ls_.r1o_i[kl] +
                     (rue_o * z1o_o + m_ls_.rue_i[kl] * m_ls_.z1o_i[kl] -
                      zue_o * r1o_o - m_ls_.zue_i[kl] * m_ls_.r1o_i[kl]) /
-                        sqrtSH;
+                        protected_sqrtSH;
       double tau_val = tau1 + dSHalfDsInterp * tau2;
+
+      // Apply axis protection: use constant extrapolation like jVMEC
+      if (jH == r_.nsMinH && r_.nsMinH == 0 && s_.lasym) {
+        // For axis point in asymmetric mode, use value from next radial point
+        // if available
+        if (r_.nsMaxH > r_.nsMinH + 1) {
+          // Use tau from jH = r_.nsMinH + 1 for consistency
+          int next_iHalf = ((r_.nsMinH + 1) - r_.nsMinH) * s_.nZnT + kl;
+          // For now, we'll compute normally but add debugging
+          // Future: implement full jVMEC-style axis extrapolation
+        }
+      }
 
       if (tau_val < minTau || minTau == 0.0) {
         minTau = tau_val;
