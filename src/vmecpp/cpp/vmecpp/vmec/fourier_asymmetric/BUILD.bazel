@@ -382,3 +382,15 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_asymmetric_transform_output",
+    srcs = ["test_asymmetric_transform_output.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/common/sizes:sizes",
+    ],
+    size = "small",
+)
