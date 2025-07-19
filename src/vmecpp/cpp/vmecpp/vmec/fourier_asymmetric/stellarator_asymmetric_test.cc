@@ -39,6 +39,38 @@ class StellaratorAsymmetricTest : public ::testing::Test {
     indata_asymmetric_ = *indata;
     indata_asymmetric_.lasym = true;  // Enable asymmetric mode
 
+    // Initialize asymmetric coefficient arrays with same size as symmetric ones
+    indata_asymmetric_.rbs.resize(indata_asymmetric_.rbc.size(), 0.0);
+    indata_asymmetric_.zbc.resize(indata_asymmetric_.zbs.size(), 0.0);
+
+    // Add small asymmetric perturbations to test the asymmetric code path
+    // The coefficient arrays are organized as: [m=0,n=-ntor...ntor],
+    // [m=1,n=-ntor...ntor], ... For a simple test, add a small perturbation to
+    // the m=1, n=0 mode
+    int mpol = indata_asymmetric_.mpol;
+    int ntor = indata_asymmetric_.ntor;
+
+    // Calculate index for (m=1, n=0) mode
+    // For each m, there are (2*ntor+1) n values
+    // n=0 is at position ntor within each m block
+    int m = 1;
+    int n = 0;
+    int idx = m * (2 * ntor + 1) + (n + ntor);
+
+    if (idx < static_cast<int>(indata_asymmetric_.rbc.size())) {
+      // Add 1% asymmetric perturbation
+      double rbc_value = indata_asymmetric_.rbc[idx];
+      double zbs_value = indata_asymmetric_.zbs[idx];
+
+      indata_asymmetric_.rbs[idx] = 0.01 * rbc_value;
+      indata_asymmetric_.zbc[idx] = 0.01 * zbs_value;
+
+      std::cout << "Added asymmetric perturbation at idx=" << idx << " (m=" << m
+                << ", n=" << n << "): "
+                << "rbs=" << indata_asymmetric_.rbs[idx]
+                << ", zbc=" << indata_asymmetric_.zbc[idx] << std::endl;
+    }
+
     // Reduce iterations for testing
     indata_symmetric_.niter_array[0] = 100;
     indata_asymmetric_.niter_array[0] = 100;
