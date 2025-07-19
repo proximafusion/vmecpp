@@ -361,3 +361,24 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_geometry_jacobian",
+    srcs = ["test_geometry_jacobian.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_axis_protection",
+    srcs = ["test_axis_protection.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
