@@ -1,6 +1,6 @@
-# VMEC++ Asymmetric Implementation - Status Update
+# VMEC++ Asymmetric Implementation - Debug Plan
 
-## CURRENT STATUS: Transforms Fixed, Spectral Condensation Updated
+## CURRENT STATUS: Spectral Condensation Complete, Debugging Vector Bounds Error
 
 ### ✅ COMPLETED: Corrected Asymmetric Transform Algorithm
 - **FIXED**: Implemented exact jVMEC two-stage transform approach
@@ -34,11 +34,12 @@
 - [x] ✅ Lambda array handling verified
 - [x] ✅ All arrays now match jVMEC initialization pattern
 
-### 1.3 Vector Bounds Error Investigation 🔴
+### 1.3 Vector Bounds Error Investigation 🔴 ACTIVE
 - [ ] ❌ Stellarator asymmetric test fails with vector assertion
-- [ ] Debug exact location of bounds violation
-- [ ] Check all array access patterns in asymmetric mode
-- [ ] Verify index calculations for reflected coordinates
+- [ ] Run test with AddressSanitizer to get exact stack trace
+- [ ] Add bounds checking to all array accesses in asymmetric code paths
+- [ ] Verify nThetaEff vs nThetaReduced usage throughout
+- [ ] Check if any arrays are allocated with wrong size for asymmetric mode
 
 ## Phase 2: Line-by-Line jVMEC Comparison
 
@@ -123,13 +124,13 @@
 3. **Stability**: No NaN or infinity values during iteration
 4. **Correctness**: Force residuals decrease monotonically
 
-## Priority Actions
+## Priority Actions - Next Steps
 
-1. **IMMEDIATE**: Debug vector bounds error in stellarator asymmetric test
-2. **HIGH**: Investigate why basic Fourier transform tests are failing
-3. **HIGH**: Check if there are additional missing asymmetric implementations
-4. **MEDIUM**: Test with tokamak asymmetric case as suggested by user
-5. **MEDIUM**: Deep dive into convergence issues once tests pass
+1. **ACTIVE NOW**: Debug vector bounds error with AddressSanitizer
+2. **NEXT**: Add debug output to pinpoint exact array access failure
+3. **THEN**: Fix the bounds error and re-test all asymmetric cases
+4. **FUTURE**: Investigate pre-existing Fourier transform test failures
+5. **FUTURE**: Deep dive into convergence issues once all tests pass
 
 ## Known Issues to Fix
 
