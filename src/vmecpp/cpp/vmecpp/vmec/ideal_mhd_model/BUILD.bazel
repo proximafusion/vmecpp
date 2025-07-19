@@ -41,3 +41,15 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "dealias_constraint_force_asymmetric_test",
+    srcs = ["dealias_constraint_force_asymmetric_test.cc"],
+    deps = [
+        ":ideal_mhd_model",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "@googletest//:gtest_main",
+    ],
+)
