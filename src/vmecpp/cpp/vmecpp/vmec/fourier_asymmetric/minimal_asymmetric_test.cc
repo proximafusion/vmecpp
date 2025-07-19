@@ -48,6 +48,11 @@ TEST(MinimalAsymmetricTest, SimpleAsymmetricTest) {
             << ", mpol=" << indata_asymm.mpol << ", ntor=" << indata_asymm.ntor
             << ", ns=" << indata_asymm.ns_array[0] << std::endl;
 
+  // Check pressure profile before modifying
+  std::cout << "Pressure profile: type=" << indata_asymm.pmass_type
+            << ", pres_scale=" << indata_asymm.pres_scale
+            << ", am.size()=" << indata_asymm.am.size() << std::endl;
+
   // Resize coefficient arrays appropriately
   int coeff_size = indata_asymm.mpol * (2 * indata_asymm.ntor + 1);
   indata_asymm.rbc.resize(coeff_size, 0.0);
