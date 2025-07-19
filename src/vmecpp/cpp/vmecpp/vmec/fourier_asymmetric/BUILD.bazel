@@ -255,3 +255,20 @@ cc_test(
 )
 
 # debug_normalization_test removed - was for negative n modes
+
+cc_test(
+    name = "minimal_asymmetric_test",
+    srcs = ["minimal_asymmetric_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "small",
+    data = [
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+    ],
+)
