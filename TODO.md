@@ -24,6 +24,8 @@
 1. **✅ BREAKTHROUGH**: NaN occurs because symmetric arrays (r1_e) are zero at kl=6-9
 2. **✅ ROOT CAUSE 1**: Asymmetric arrays (m_ls_.r1e_i) not combined with symmetric arrays
 3. **✅ ROOT CAUSE 2**: tau2 calculation divides by sqrtSH causing numerical instability
+4. **✅ EDUCATIONAL_VMEC CONFIRMS**: symrzl.f90 explicitly combines arrays: r1s = r1s + r1a
+5. **✅ ALL THREE CODES**: Have division by sqrt(s) in Jacobian - this is standard algorithm
 
 ## Phase 1: Immediate Debugging Tasks ✅ COMPLETED
 
@@ -197,8 +199,10 @@
 17. **✅ COMPLETED: Create test_geometry_derivatives.cc**: Shows transforms produce valid R,Z but arrays not combined
 18. **✅ COMPLETED: Create test_jacobian_asymmetric_debug.cc**: Debug output shows r1_e=0 at kl=6-9
 19. **✅ COMPLETED: Create test_array_combination.cc**: Documents exact fix needed for array combination
-20. **🔍 ACTIVE: Implement array combination fix**: Add r1_e[idx] += m_ls_.r1e_i[idx] in ideal_mhd_model
-21. **🔍 ACTIVE: Fix tau2 division issue**: Replace division with multiplication like jVMEC
+20. **✅ COMPLETED: Study educational_VMEC array combination**: Confirmed r1s = r1s + r1a pattern
+21. **✅ COMPLETED: Create test_educational_vmec_comparison.cc**: Documents educational_VMEC findings
+22. **🔍 ACTIVE: Implement array combination fix**: Add r1_e[idx] += m_ls_.r1e_i[idx] in ideal_mhd_model
+23. **🔍 ACTIVE: Fix tau2 division issue**: Despite all three codes having division, may need better protection
 
 ## Phase 1.9: Fix Basic Fourier Transform Tests ✅ COMPLETED
 - [x] ✅ Fixed FourierToReal3DAsymmSingleMode precision - all tests pass
@@ -393,3 +397,32 @@ nscale[n] = sqrt(2.0);  // for n > 0
 - ✅ Fixed geometry to use larger major radius (R0=10) to avoid R->0
 - ❌ Still getting NaN, issue may be in dVdsH initialization
 - 🔍 jVMEC starts with dVdsHalf=0, pressure calculation vulnerable in first iteration for asymmetric case
+
+## 🎯 FINAL SOLUTION IDENTIFIED - ARRAY COMBINATION FIX:
+
+### Root Cause Analysis Complete:
+1. **Transform works correctly**: Produces valid R,Z values (verified by test_asymmetric_transform_output)
+2. **Arrays not combined**: Symmetric arrays (r1_e) zero while asymmetric (m_ls_.r1e_i) has values
+3. **Educational_VMEC pattern**: Explicitly combines arrays after transforms (r1s = r1s + r1a)
+4. **All three codes**: Have division by sqrt(s) in Jacobian - this is standard
+
+### Required Fix in ideal_mhd_model.cc:
+```cpp
+// After asymmetric transform completes (around line 1380)
+for (int idx = 0; idx < r1_e.size(); ++idx) {
+  r1_e[idx] += m_ls_.r1e_i[idx];
+  r1_o[idx] += m_ls_.r1o_i[idx];
+  z1_e[idx] += m_ls_.z1e_i[idx];
+  z1_o[idx] += m_ls_.z1o_i[idx];
+  ru_e[idx] += m_ls_.rue_i[idx];
+  ru_o[idx] += m_ls_.ruo_i[idx];
+  zu_e[idx] += m_ls_.zue_i[idx];
+  zu_o[idx] += m_ls_.zuo_i[idx];
+}
+```
+
+### Next Steps:
+- Implement array combination fix in ideal_mhd_model.cc
+- Test with minimal asymmetric configuration
+- Verify NaN issues resolved
+- Run full asymmetric convergence tests
