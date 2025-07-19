@@ -1,6 +1,6 @@
 # VMEC++ Asymmetric Implementation - Debug Plan
 
-## CURRENT STATUS: Spectral Condensation Complete, Debugging Vector Bounds Error
+## CURRENT STATUS: Major Breakthrough - VMEC Runs Asymmetric, Debugging NaN Forces
 
 ### ✅ COMPLETED: Corrected Asymmetric Transform Algorithm
 - **FIXED**: Implemented exact jVMEC two-stage transform approach
@@ -15,10 +15,13 @@
 - **FIXED**: Added gcc and gss Fourier coefficient arrays
 - **FIXED**: Proper reflection index handling in deAliasConstraintForce
 
-### 🔴 REMAINING ISSUES:
-1. **Vector bounds error**: Stellarator asymmetric test fails with assertion
-2. **Pre-existing test failures**: Fourier transform tests were already failing before our changes
-3. **Convergence issues**: Both symmetric and asymmetric cases show convergence problems
+### ✅ MAJOR BREAKTHROUGH: Array Size Issue Resolved
+1. **✅ FIXED: Vector bounds error**: Fixed array size calculation from `(mpol+1) * (2*ntor+1)` to `mpol * (2*ntor+1)`
+2. **✅ FIXED: VMEC execution**: Asymmetric configurations now load and run without crashes
+3. **✅ FIXED: Transform integration**: All 7/7 unit tests pass, transforms work correctly
+
+### 🔴 NEW REMAINING ISSUE:
+1. **NaN values in force calculations**: Lambda forces (blmn_e) become NaN during MHD iterations
 
 ## Phase 1: Immediate Debugging Tasks ✅ COMPLETED
 
@@ -182,9 +185,10 @@
 7. ✅ **BREAKTHROUGH**: VMEC now runs without crashing! Asymmetric transforms working correctly
 8. ❌ **New issue**: NaN values in MHD force calculations (blmn_e forces) causing convergence failure
 9. **🔍 ACTIVE: Debug NaN in force calculations**: Investigate why lambda forces become NaN
-10. **📊 Add meticulous debug output**: From all three codes (VMEC++, jVMEC, educational_VMEC)
-11. **🔬 Element-by-element comparison**: First iteration arrays to find exact divergence
-12. **🛠️ Unit tests for each fix**: Systematic TDD approach for each identified issue
+10. **📊 ACTIVE: Add meticulous debug output**: From all three codes (VMEC++, jVMEC, educational_VMEC)
+11. **🔬 NEXT: Study jVMEC force calculations**: Look deeply into jVMEC implementation for reference
+12. **🔬 Element-by-element comparison**: First iteration arrays to find exact divergence
+13. **🛠️ Unit tests for each fix**: Systematic TDD approach for each identified issue
 
 ## Phase 1.9: Fix Basic Fourier Transform Tests ✅ COMPLETED
 - [x] ✅ Fixed FourierToReal3DAsymmSingleMode precision - all tests pass
