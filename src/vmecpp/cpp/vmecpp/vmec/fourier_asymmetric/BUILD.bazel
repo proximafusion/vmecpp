@@ -197,3 +197,18 @@ cc_test(
     ],
     size = "large",
 )
+
+cc_test(
+    name = "realistic_asymmetric_test",
+    srcs = ["realistic_asymmetric_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/common/sizes:sizes",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+)
