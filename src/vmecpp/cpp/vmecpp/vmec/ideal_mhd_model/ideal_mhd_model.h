@@ -52,14 +52,13 @@ void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
                                      RealSpaceGeometry& m_geometry);
 
 // Implemented as a free function for easier testing and benchmarking.
-void deAliasConstraintForce(const RadialPartitioning& rp,
-                            const FourierBasisFastPoloidal& fb, const Sizes& s_,
-                            const std::vector<double>& faccon,
-                            const std::vector<double>& tcon,
-                            const std::vector<double>& gConEff,
-                            std::vector<double>& m_gsc,
-                            std::vector<double>& m_gcs,
-                            std::vector<double>& m_gCon);
+void deAliasConstraintForce(
+    const RadialPartitioning& rp, const FourierBasisFastPoloidal& fb,
+    const Sizes& s_, const std::vector<double>& faccon,
+    const std::vector<double>& tcon, const std::vector<double>& gConEff,
+    std::vector<double>& m_gsc, std::vector<double>& m_gcs,
+    std::vector<double>& m_gcc, std::vector<double>& m_gss,
+    std::vector<double>& m_gCon);
 
 class IdealMhdModel {
  public:
@@ -422,6 +421,8 @@ class IdealMhdModel {
   // Fourier coefficients of constraint force - used during de-aliasing
   std::vector<double> gsc;
   std::vector<double> gcs;
+  std::vector<double> gcc;  // asymmetric cos-cos component
+  std::vector<double> gss;  // asymmetric sin-sin component
 
   // de-aliased constraint force - what enters the Fourier coefficients of the
   // forces

@@ -399,8 +399,15 @@ void vmecpp::deAliasConstraintForce(
     const vmecpp::FourierBasisFastPoloidal& fb, const vmecpp::Sizes& s_,
     const std::vector<double>& faccon, const std::vector<double>& tcon,
     const std::vector<double>& gConEff, std::vector<double>& m_gsc,
-    std::vector<double>& m_gcs, std::vector<double>& m_gCon) {
+    std::vector<double>& m_gcs, std::vector<double>& m_gcc,
+    std::vector<double>& m_gss, std::vector<double>& m_gCon) {
   absl::c_fill_n(m_gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
+
+  // Temporary array for asymmetric contributions (like gcona in jVMEC)
+  std::vector<double> gConAsym;
+  if (s_.lasym) {
+    gConAsym.resize((rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0.0);
+  }
 
   // no constraint on axis --> has no poloidal angle
   int jMin = 0;
@@ -412,10 +419,16 @@ void vmecpp::deAliasConstraintForce(
     for (int m = 1; m < s_.mpol - 1; ++m) {
       absl::c_fill_n(m_gsc, s_.ntor + 1, 0);
       absl::c_fill_n(m_gcs, s_.ntor + 1, 0);
+      if (s_.lasym) {
+        absl::c_fill_n(m_gcc, s_.ntor + 1, 0);
+        absl::c_fill_n(m_gss, s_.ntor + 1, 0);
+      }
 
       for (int k = 0; k < s_.nZeta; ++k) {
         double w0 = 0.0;
         double w1 = 0.0;
+        double w2 = 0.0;
+        double w3 = 0.0;
 
         // fwd transform in poloidal direction
         // integrate poloidally to get m-th poloidal Fourier coefficient
@@ -425,6 +438,17 @@ void vmecpp::deAliasConstraintForce(
           int idx_kl = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
           w0 += gConEff[idx_kl] * fb.sinmui[idx_ml];
           w1 += gConEff[idx_kl] * fb.cosmui[idx_ml];
+
+          if (s_.lasym) {
+            // Handle reflection indices for asymmetric case
+            const int kReversed = (s_.nZeta - k) % s_.nZeta;
+            const int lReversed = (s_.nThetaReduced - l) % s_.nThetaReduced;
+            int idx_kl_rev =
+                ((jF - rp.nsMinF) * s_.nZeta + kReversed) * s_.nThetaEff +
+                lReversed;
+            w2 += gConEff[idx_kl_rev] * fb.cosmui[idx_ml];
+            w3 += gConEff[idx_kl_rev] * fb.sinmui[idx_ml];
+          }
         }  // l
 
         // forward Fourier transform in toroidal direction for full set of mode
@@ -433,8 +457,20 @@ void vmecpp::deAliasConstraintForce(
           int idx_kn = k * (s_.nnyq2 + 1) + n;
 
           // NOTE: `tcon` comes into play here
-          m_gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
-          m_gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
+          if (!s_.lasym) {
+            m_gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
+            m_gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
+          } else {
+            // Asymmetric case with on-the-fly symmetrization
+            m_gcc[n] +=
+                0.5 * tcon[jF - rp.nsMinF] * fb.cosnv[idx_kn] * (w1 + w2);
+            m_gss[n] +=
+                0.5 * tcon[jF - rp.nsMinF] * fb.sinnv[idx_kn] * (w0 + w3);
+            m_gsc[n] +=
+                0.5 * tcon[jF - rp.nsMinF] * fb.cosnv[idx_kn] * (w0 - w3);
+            m_gcs[n] +=
+                0.5 * tcon[jF - rp.nsMinF] * fb.sinnv[idx_kn] * (w1 - w2);
+          }
         }
       }  // k
 
@@ -447,12 +483,18 @@ void vmecpp::deAliasConstraintForce(
       for (int k = 0; k < s_.nZeta; ++k) {
         double w0 = 0.0;
         double w1 = 0.0;
+        double w2 = 0.0;
+        double w3 = 0.0;
 
         // collect contribution to current grid point from n-th toroidal mode
         for (int n = 0; n < s_.ntor + 1; ++n) {
           int idx_kn = k * (s_.nnyq2 + 1) + n;
-          w0 += m_gsc[n] * fb.cosnv[idx_kn];
-          w1 += m_gcs[n] * fb.sinnv[idx_kn];
+          w2 += m_gcs[n] * fb.sinnv[idx_kn];
+          w3 += m_gsc[n] * fb.cosnv[idx_kn];
+          if (s_.lasym) {
+            w0 += m_gcc[n] * fb.cosnv[idx_kn];
+            w1 += m_gss[n] * fb.sinnv[idx_kn];
+          }
         }  // n
 
         // inv transform in poloidal direction
@@ -462,10 +504,33 @@ void vmecpp::deAliasConstraintForce(
 
           // NOTE: `faccon` comes into play here
           m_gCon[idx_kl] +=
-              faccon[m] * (w0 * fb.sinmu[idx_ml] + w1 * fb.cosmu[idx_ml]);
+              faccon[m] * (w2 * fb.cosmu[idx_ml] + w3 * fb.sinmu[idx_ml]);
+
+          if (s_.lasym) {
+            // Store asymmetric contribution separately
+            gConAsym[idx_kl] +=
+                faccon[m] * (w0 * fb.cosmu[idx_ml] + w1 * fb.sinmu[idx_ml]);
+          }
         }  // l
       }  // k
     }  // m
+  }
+
+  // For asymmetric case, extend gCon into theta = [pi, 2*pi] domain
+  if (s_.lasym) {
+    // Based on jVMEC lines 418-438
+    // First, add the asymmetric contribution to theta = [0, pi]
+    for (int jF = std::max(jMin, rp.nsMinF); jF < rp.nsMaxF; ++jF) {
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          int idx_kl = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          m_gCon[idx_kl] += gConAsym[idx_kl];
+        }
+      }
+    }
+
+    // Note: Extension to theta=[pi,2pi] is handled elsewhere in the code
+    // through the symrzl functions that extend all quantities consistently
   }
 }
 
@@ -632,6 +697,8 @@ IdealMhdModel::IdealMhdModel(
   gConEff.resize(nrztIncludingBoundary);
   gsc.resize(s_.ntor + 1);
   gcs.resize(s_.ntor + 1);
+  gcc.resize(s_.ntor + 1);
+  gss.resize(s_.ntor + 1);
   gCon.resize(nrztIncludingBoundary);
 
   frcon_e.resize(nrzt);
@@ -3210,7 +3277,7 @@ void IdealMhdModel::effectiveConstraintForce() {
 // and apply scaling (tcon[j]) and preconditioning (faccon[m])
 void IdealMhdModel::deAliasConstraintForce() {
   vmecpp::deAliasConstraintForce(r_, t_, s_, faccon, tcon, gConEff, gsc, gcs,
-                                 gCon);
+                                 gcc, gss, gCon);
 }
 
 // add constraint force to MHD force
