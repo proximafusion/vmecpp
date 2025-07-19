@@ -20,10 +20,10 @@
 2. **✅ FIXED: VMEC execution**: Asymmetric configurations now load and run without crashes
 3. **✅ FIXED: Transform integration**: All 7/7 unit tests pass, transforms work correctly
 
-### 🔍 ROOT CAUSE IDENTIFIED: Asymmetric Geometry Derivatives at Specific Theta Positions
+### 🎯 ROOT CAUSE NARROWED: Geometry Derivative Processing of Valid Transform Output
 1. **✅ BREAKTHROUGH**: NaN values occur at specific theta grid points (kl=6,7,8,9) in asymmetric mode
-2. **✅ ISOLATED**: Asymmetric transforms work correctly - issue is in geometry derivative calculations
-3. **🔴 ACTIVE**: Asymmetric geometry derivatives (`tau`, `zu12`, `ru12`) become singular at certain theta positions
+2. **✅ CONFIRMED**: Asymmetric transforms produce valid finite R,Z values (R=1.85-4.14, Z=-0.0008 to -0.001)
+3. **🔍 ACTIVE**: Issue is in how geometry derivatives (`tau`, `zu12`, `ru12`) are calculated from valid R,Z input
 
 ## Phase 1: Immediate Debugging Tasks ✅ COMPLETED
 
@@ -177,7 +177,7 @@
 - ❌ Issue occurs in pressure initialization, before any MHD calculations
 - 🔍 Need to investigate dVds (volume derivative) initialization
 
-### Next Steps - Phase 1.12: Root Cause Identified - Asymmetric Geometry Derivatives ⚠️ ACTIVE:
+### Next Steps - Phase 1.12: Geometry Derivative Processing Investigation ⚠️ ACTIVE:
 1. ✅ **Run test_pressure_init**: Direct comparison shows asymmetric case fails
 2. ✅ **Study jVMEC pressure init**: Found dVdsHalf starts as zeros, vulnerable in first iteration
 3. ❌ **Test with zero pressure**: Still crashes, indicates geometry/initialization issue
@@ -194,8 +194,10 @@
 14. **✅ BREAKTHROUGH: Asymmetric transform output verified**: Transform produces finite R,Z values at kl=6-9 - issue NOT in transform itself
 15. **✅ COMPLETED: Add debug output for asymmetric transform values**: Test shows R=1.85-4.14, Z=-0.0008 to -0.001 at problematic positions
 16. **🔍 ACTIVE: Investigate geometry derivative calculation with valid R,Z input**: Since transforms work, focus on ru12, zu12, tau calculations
-17. **🔬 Element-by-element comparison**: First iteration arrays to find exact divergence
-18. **🛠️ Unit tests for each fix**: Systematic TDD approach for each identified issue
+17. **📊 Create test_geometry_derivatives.cc**: Unit test to isolate derivative calculation from valid R,Z input
+18. **🔬 Compare jVMEC geometry derivative processing**: Study how jVMEC calculates derivatives in asymmetric mode
+19. **🛠️ Add debug output to ideal_mhd_model**: Trace exact values before NaN occurs
+20. **🔍 Element-by-element comparison**: First iteration arrays to find exact divergence
 
 ## Phase 1.9: Fix Basic Fourier Transform Tests ✅ COMPLETED
 - [x] ✅ Fixed FourierToReal3DAsymmSingleMode precision - all tests pass
