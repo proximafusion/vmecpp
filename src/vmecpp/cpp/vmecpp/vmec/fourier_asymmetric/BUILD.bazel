@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 cc_library(
     name = "fourier_asymmetric",
-    srcs = ["fourier_asymmetric.cc"],
+    srcs = ["fourier_asymmetric.cc", "fourier_asymmetric_jvmec_corrected.cc"],
     hdrs = ["fourier_asymmetric.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -128,4 +128,29 @@ cc_binary(
         "//util/file_io:file_io",
         "//vmecpp/common/vmec_indata:vmec_indata",
     ],
+)
+
+cc_test(
+    name = "debug_corrected_transform_test",
+    srcs = ["debug_corrected_transform_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "compare_implementations_test",
+    srcs = ["compare_implementations_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
 )

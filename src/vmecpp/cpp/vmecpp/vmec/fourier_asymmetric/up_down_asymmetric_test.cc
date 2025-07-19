@@ -167,6 +167,10 @@ TEST_F(UpDownAsymmetricTest, TestAsymmetricMode) {
   std::cout << "Testing up-down asymmetric mode (lasym=true)..." << std::endl;
 
   const auto output = vmecpp::run(indata_asymmetric_);
+  if (!output.ok()) {
+    std::cout << "DEBUG: Asymmetric mode failed with status: "
+              << output.status() << std::endl;
+  }
   EXPECT_TRUE(output.ok()) << "Asymmetric mode failed: " << output.status();
 
   if (output.ok()) {
@@ -263,7 +267,12 @@ TEST_F(UpDownAsymmetricTest, TestAxiSymmetricConstraints) {
 
   // Run the asymmetric case
   const auto output = vmecpp::run(indata_asymmetric_);
-  ASSERT_TRUE(output.ok()) << "Asymmetric run failed";
+  if (!output.ok()) {
+    std::cout << "DEBUG: Asymmetric run failed with status: " << output.status()
+              << std::endl;
+  }
+  ASSERT_TRUE(output.ok()) << "Asymmetric run failed with status: "
+                           << output.status();
 
   // The key test is that the code runs without errors
   // The asymmetric transforms should handle the n=0 case correctly
