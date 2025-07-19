@@ -323,13 +323,19 @@ class VmecInput(BaseModelWithNumpy):
 
         expected_shape = (self.mpol, 2 * self.ntor + 1)
         for field in mpol_two_ntor_plus_one_fields:
-            shape = np.shape(getattr(self, field))
+            current_value = getattr(self, field)
+
+            if current_value is None:
+                current_value = np.zeros(expected_shape)
+                setattr(self, field, current_value)
+
+            shape = np.shape(current_value)
             if shape != expected_shape:
                 setattr(
                     self,
                     field,
                     VmecInput.resize_2d_coeff(
-                        getattr(self, field),
+                        current_value,
                         mpol_new=self.mpol,
                         ntor_new=self.ntor,
                     ),
@@ -441,6 +447,7 @@ class VmecInput(BaseModelWithNumpy):
         }
         vmec_input_dict["ns_array"] = vmec_input_dict["ns_array"].astype(np.int64)
         vmec_input_dict["niter_array"] = vmec_input_dict["niter_array"].astype(np.int64)
+
         return VmecInput.model_validate(vmec_input_dict)
 
     @staticmethod
@@ -482,10 +489,24 @@ class VmecInput(BaseModelWithNumpy):
 
             # Asymmetric fields are only populated when lasym==True
             # so we need to skip them for itemwise assignment
-            if value is None:  # must be a symmetric field and lasym == False
+            if value is None:
                 assert attr in {"rbs", "zbc", "zaxis_c", "raxis_s"}
-                assert not cpp_indata.lasym
+                # All asymmetric fields should be initialized when lasym=True
+                if cpp_indata.lasym:
+                    msg = f"Field {attr} should not be None when lasym=True"
+                    raise ValueError(msg)
+                # Skip None values (don't try to assign them)
             else:
+                # Check if non-None asymmetric fields are being set when lasym=False
+                if (
+                    attr in {"rbs", "zbc", "zaxis_c", "raxis_s"}
+                    and not cpp_indata.lasym
+                ):
+                    msg = (
+                        f"Cannot set asymmetric field '{attr}' when lasym=False. "
+                        "Either set lasym=True or remove the asymmetric field."
+                    )
+                    raise ValueError(msg)
                 getattr(cpp_indata, attr)[:] = value
 
         return cpp_indata
@@ -564,6 +585,10 @@ class VmecWOut(BaseModelWithNumpy):
         "iotas",
         "rmnc",
         "zmns",
+        "rmns",
+        "zmnc",
+        "lmnc",
+        "lmnc_full",
         "bsubsmns",
         "lmns_full",
         "lmns",
@@ -841,6 +866,32 @@ class VmecWOut(BaseModelWithNumpy):
     with lmns.
     """
 
+    rmns: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    """Fourier coefficients for `R` ~ sin(m*theta - n*zeta) of the geometry of the flux surfaces on the full-grid.
+
+    Only populated when lasym=True (non-stellarator-symmetric configurations).
+    """
+
+    zmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    """Fourier coefficients for `Z` ~ cos(m*theta - n*zeta) of the geometry of the flux surfaces on the full-grid.
+
+    Only populated when lasym=True (non-stellarator-symmetric configurations).
+    """
+
+    lmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    """Fourier coefficients for `lambda` ~ cos(m*theta - n*zeta) stream function on the half-grid.
+
+    Only populated when lasym=True (non-stellarator-symmetric configurations).
+    """
+
+    lmnc_full: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    """Fourier coefficients for `lambda` ~ cos(m*theta - n*zeta) stream function on the full-grid.
+
+    This quantity is VMEC++ specific and required for hot-restart to work properly. We
+    store it with the Fortran convention for the order of the dimensions for consistency
+    with lmnc. Only populated when lasym=True (non-stellarator-symmetric configurations).
+    """
+
     pcurr_type: ProfileType
     """Parametrization of toroidal current profile (copied from input)."""
 
@@ -1115,6 +1166,9 @@ class VmecWOut(BaseModelWithNumpy):
                     )
                     string_variable[:] = padded_value_as_netcdf3_compatible_chararray
 
+                elif value is None:
+                    # Skip None values (e.g., asymmetric arrays when lasym=False)
+                    continue
                 elif field_type is np.ndarray or field_type is list:
                     value_array = np.array(value)
                     # Fallback to default dimension names like dim_00001, dim_00002, etc.
@@ -1229,9 +1283,25 @@ class VmecWOut(BaseModelWithNumpy):
         # stored in a wout file for consistency with lmns.
         attrs["lmns_full"] = cpp_wout.lmns_full.T
 
+        # Asymmetric attributes are transposed and only populated when lasym=True
+        if cpp_wout.lasym:
+            attrs["rmns"] = cpp_wout.rmns.T
+            attrs["zmnc"] = cpp_wout.zmnc.T
+            attrs["lmnc_full"] = cpp_wout.lmnc_full.T
+        else:
+            attrs["rmns"] = None
+            attrs["zmnc"] = None
+            attrs["lmnc_full"] = None
+
         # These attributes have one column less and their elements are transposed
         # in VMEC++ with respect to SIMSOPT/VMEC2000
         attrs["lmns"] = _pad_and_transpose(cpp_wout.lmns, attrs["mnmax"])
+
+        # Asymmetric lambda coefficients on half-grid (only when lasym=True)
+        if cpp_wout.lasym:
+            attrs["lmnc"] = _pad_and_transpose(cpp_wout.lmnc, attrs["mnmax"])
+        else:
+            attrs["lmnc"] = None
         attrs["bmnc"] = _pad_and_transpose(cpp_wout.bmnc, attrs["mnmax_nyq"])
         attrs["bsubumnc"] = _pad_and_transpose(cpp_wout.bsubumnc, attrs["mnmax_nyq"])
         attrs["bsubvmnc"] = _pad_and_transpose(cpp_wout.bsubvmnc, attrs["mnmax_nyq"])
@@ -1338,12 +1408,24 @@ class VmecWOut(BaseModelWithNumpy):
         # stored in a wout file for consistency with lmns.
         cpp_wout.lmns_full = self.lmns_full.T
 
+        # Asymmetric attributes are transposed and only set when lasym=True
+        if self.lasym and self.rmns is not None:
+            cpp_wout.rmns = self.rmns.T
+        if self.lasym and self.zmnc is not None:
+            cpp_wout.zmnc = self.zmnc.T
+        if self.lasym and self.lmnc_full is not None:
+            cpp_wout.lmnc_full = self.lmnc_full.T
+
         # This is a VMEC++ only quantity
         cpp_wout.restart_reasons = self.restart_reason_timetrace
 
         # These attributes have one column less and their elements are transposed
         # in VMEC++ with respect to SIMSOPT/VMEC2000
         cpp_wout.lmns = self.lmns.T[1:, :]
+
+        # Asymmetric lambda coefficients on half-grid (only when lasym=True)
+        if self.lasym and self.lmnc is not None:
+            cpp_wout.lmnc = self.lmnc.T[1:, :]
         cpp_wout.bmnc = self.bmnc.T[1:, :]
         cpp_wout.bsubumnc = self.bsubumnc.T[1:, :]
         cpp_wout.bsubvmnc = self.bsubvmnc.T[1:, :]

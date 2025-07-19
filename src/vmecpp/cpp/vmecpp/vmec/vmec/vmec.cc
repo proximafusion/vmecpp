@@ -1407,7 +1407,26 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
       }
     }  // lthreed
 
-    // TODO(jons) : non-stellarator-symmetric terms!
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
+        m_h_.rmnsc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.rmnsc[idx_mn];
+        m_h_.zmncc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.zmncc[idx_mn];
+        m_h_.lmncc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.lmncc[idx_mn];
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
+          m_h_.rmncs_o[r.get_thread_id() - 1][mn] =
+              m_decomposed_x.rmncs[idx_mn];
+          m_h_.zmnss_o[r.get_thread_id() - 1][mn] =
+              m_decomposed_x.zmnss[idx_mn];
+          m_h_.lmnss_o[r.get_thread_id() - 1][mn] =
+              m_decomposed_x.lmnss[idx_mn];
+        }
+      }
+    }  // lasym
   }
 
   if (hasOutside) {
@@ -1428,7 +1447,26 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
       }
     }  // lthreed
 
-    // TODO(jons) : non-stellarator-symmetric terms!
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
+        m_h_.rmnsc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.rmnsc[idx_mn];
+        m_h_.zmncc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.zmncc[idx_mn];
+        m_h_.lmncc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.lmncc[idx_mn];
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
+          m_h_.rmncs_i[r.get_thread_id() + 1][mn] =
+              m_decomposed_x.rmncs[idx_mn];
+          m_h_.zmnss_i[r.get_thread_id() + 1][mn] =
+              m_decomposed_x.zmnss[idx_mn];
+          m_h_.lmnss_i[r.get_thread_id() + 1][mn] =
+              m_decomposed_x.lmnss[idx_mn];
+        }
+      }
+    }  // lasym
   }
 
 #ifdef _OPENMP
@@ -1455,6 +1493,24 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
         m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_o[r.get_thread_id()][mn];
       }
     }  // lthreed
+
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
+        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_o[r.get_thread_id()][mn];
+        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_o[r.get_thread_id()][mn];
+        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_o[r.get_thread_id()][mn];
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
+          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_o[r.get_thread_id()][mn];
+          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_o[r.get_thread_id()][mn];
+          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_o[r.get_thread_id()][mn];
+        }
+      }
+    }  // lasym
   }
 
   if (hasInside) {
@@ -1474,6 +1530,24 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
         m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_i[r.get_thread_id()][mn];
       }
     }  // lthreed
+
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
+        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_i[r.get_thread_id()][mn];
+        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_i[r.get_thread_id()][mn];
+        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_i[r.get_thread_id()][mn];
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
+          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_i[r.get_thread_id()][mn];
+          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_i[r.get_thread_id()][mn];
+          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_i[r.get_thread_id()][mn];
+        }
+      }
+    }  // lasym
   }
 
 #ifdef _OPENMP
