@@ -296,3 +296,14 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_dvds_init",
+    srcs = ["test_dvds_init.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
