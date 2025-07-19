@@ -49,7 +49,7 @@ void FourierToReal3DAsymmFastPoloidal(
     std::vector<double> zmkss_asym(nzeta, 0.0);
 
     // STAGE 1: Accumulate zeta contributions for both symmetric and asymmetric
-    // Only process n >= 0 (no negative toroidal modes in 2D half-sided Fourier)
+    // Only process n >= 0 (jVMEC uses n ∈ [0, ntor] exactly)
     for (int k = 0; k < nzeta; ++k) {
       for (int n = 0; n <= sizes.ntor; ++n) {
         // Find mode (m,n)
@@ -63,7 +63,7 @@ void FourierToReal3DAsymmFastPoloidal(
         }
         if (mn < 0) continue;
 
-        // Get basis functions (always n >= 0)
+        // Get basis functions (n >= 0 always, following jVMEC)
         int idx_nv = k * (sizes.nnyq2 + 1) + n;
         double cos_nv = (n <= sizes.nnyq2)
                             ? fourier_basis.cosnv[idx_nv]
@@ -155,7 +155,7 @@ void FourierToReal3DAsymmFastPoloidal(
     std::vector<double> zmkss_asym(nzeta, 0.0);
 
     // STAGE 1: Accumulate zeta contributions
-    // Only process n >= 0 (no negative toroidal modes in 2D half-sided Fourier)
+    // Only process n >= 0 (jVMEC uses n ∈ [0, ntor] exactly)
     for (int k = 0; k < nzeta; ++k) {
       for (int n = 0; n <= sizes.ntor; ++n) {
         // Find mode (m,n)
@@ -169,7 +169,7 @@ void FourierToReal3DAsymmFastPoloidal(
         }
         if (mn < 0) continue;
 
-        // Get basis functions (always n >= 0)
+        // Get basis functions (n >= 0 always, following jVMEC)
         int idx_nv = k * (sizes.nnyq2 + 1) + n;
         double cos_nv = (n <= sizes.nnyq2)
                             ? fourier_basis.cosnv[idx_nv]

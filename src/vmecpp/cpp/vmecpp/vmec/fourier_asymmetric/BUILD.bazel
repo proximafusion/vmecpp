@@ -447,3 +447,28 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "fourier_asymmetric_test_new",
+    srcs = ["fourier_asymmetric_test_new.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "simple_normalization_test",
+    srcs = ["simple_normalization_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
