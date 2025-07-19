@@ -37,6 +37,10 @@ dependencies = [
   "simsopt>=1.8.1",
 ]
 
+[project.scripts]
+# Allow vmecpp to be run as vmecpp instead of just python -m vmecpp
+vmecpp = "vmecpp.__main__:main"
+
 [project.optional-dependencies]
 test = [
   "pytest",

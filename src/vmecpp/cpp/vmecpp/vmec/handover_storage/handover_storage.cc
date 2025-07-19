@@ -76,6 +76,23 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     lmnsc_o.resize(num_threads_);
     lmncs_o.resize(num_threads_);
 
+    // Allocate asymmetric arrays if needed
+    if (s_.lasym) {
+      rmnsc_i.resize(num_threads_);
+      rmncs_i.resize(num_threads_);
+      zmncc_i.resize(num_threads_);
+      zmnss_i.resize(num_threads_);
+      lmncc_i.resize(num_threads_);
+      lmnss_i.resize(num_threads_);
+
+      rmnsc_o.resize(num_threads_);
+      rmncs_o.resize(num_threads_);
+      zmncc_o.resize(num_threads_);
+      zmnss_o.resize(num_threads_);
+      lmncc_o.resize(num_threads_);
+      lmnss_o.resize(num_threads_);
+    }
+
     // global accumulator for serial tri-diagonal solver
     all_ar.resize(mnsize);
     all_az.resize(mnsize);
@@ -119,6 +136,15 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     zmncs_i[r.get_thread_id()].resize(s_.mnsize);
     lmnsc_i[r.get_thread_id()].resize(s_.mnsize);
     lmncs_i[r.get_thread_id()].resize(s_.mnsize);
+
+    if (s_.lasym) {
+      rmnsc_i[r.get_thread_id()].resize(s_.mnsize);
+      rmncs_i[r.get_thread_id()].resize(s_.mnsize);
+      zmncc_i[r.get_thread_id()].resize(s_.mnsize);
+      zmnss_i[r.get_thread_id()].resize(s_.mnsize);
+      lmncc_i[r.get_thread_id()].resize(s_.mnsize);
+      lmnss_i[r.get_thread_id()].resize(s_.mnsize);
+    }
   }
 
   if (r.nsMaxF1 < ns) {
@@ -129,6 +155,15 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     zmncs_o[r.get_thread_id()].resize(s_.mnsize);
     lmnsc_o[r.get_thread_id()].resize(s_.mnsize);
     lmncs_o[r.get_thread_id()].resize(s_.mnsize);
+
+    if (s_.lasym) {
+      rmnsc_o[r.get_thread_id()].resize(s_.mnsize);
+      rmncs_o[r.get_thread_id()].resize(s_.mnsize);
+      zmncc_o[r.get_thread_id()].resize(s_.mnsize);
+      zmnss_o[r.get_thread_id()].resize(s_.mnsize);
+      lmncc_o[r.get_thread_id()].resize(s_.mnsize);
+      lmnss_o[r.get_thread_id()].resize(s_.mnsize);
+    }
   }
 }  // allocate
 

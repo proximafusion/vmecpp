@@ -1160,6 +1160,11 @@ struct WOutFileContents {
   // Convergence quantities (one entry per time step)
   // Force residual at each iteration
   Eigen::VectorXd fsqt;
+  Eigen::VectorXd force_residual_r;
+  Eigen::VectorXd force_residual_z;
+  Eigen::VectorXd force_residual_lambda;
+  Eigen::VectorXd delbsq;
+  Eigen::VectorXi restart_reasons;
 
   // Gradient of the energy at each iteration
   Eigen::VectorXd wdot;

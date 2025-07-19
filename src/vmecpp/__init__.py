@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import enum
 import json
 import logging
 import os
@@ -59,6 +60,18 @@ MgridModeType: typing.TypeAlias = typing.Annotated[
 """[Scaled, Raw, Unset]"""
 
 ProfileType = typing.Annotated[str, pydantic.Field(max_length=20)]
+
+
+class RestartReason(enum.Enum):
+    BAD_JACOBIAN = 2
+    """Irst == 2, bad Jacobian, flux surfaces are overlapping."""
+
+    BAD_PROGRESS = 3
+    """Irst == 3, bad progress, residuals not decaying as expected."""
+
+    HUGE_INITIAL_FORCES = 4
+    """Irst == 4, huge initial forces, flux surfaces are too close to each other (but
+    not overlapping yet)"""
 
 
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
@@ -310,13 +323,19 @@ class VmecInput(BaseModelWithNumpy):
 
         expected_shape = (self.mpol, 2 * self.ntor + 1)
         for field in mpol_two_ntor_plus_one_fields:
-            shape = np.shape(getattr(self, field))
+            current_value = getattr(self, field)
+
+            if current_value is None:
+                current_value = np.zeros(expected_shape)
+                setattr(self, field, current_value)
+
+            shape = np.shape(current_value)
             if shape != expected_shape:
                 setattr(
                     self,
                     field,
                     VmecInput.resize_2d_coeff(
-                        getattr(self, field),
+                        current_value,
                         mpol_new=self.mpol,
                         ntor_new=self.ntor,
                     ),
@@ -428,6 +447,7 @@ class VmecInput(BaseModelWithNumpy):
         }
         vmec_input_dict["ns_array"] = vmec_input_dict["ns_array"].astype(np.int64)
         vmec_input_dict["niter_array"] = vmec_input_dict["niter_array"].astype(np.int64)
+
         return VmecInput.model_validate(vmec_input_dict)
 
     @staticmethod
@@ -469,10 +489,24 @@ class VmecInput(BaseModelWithNumpy):
 
             # Asymmetric fields are only populated when lasym==True
             # so we need to skip them for itemwise assignment
-            if value is None:  # must be a symmetric field and lasym == False
+            if value is None:
                 assert attr in {"rbs", "zbc", "zaxis_c", "raxis_s"}
-                assert not cpp_indata.lasym
+                # All asymmetric fields should be initialized when lasym=True
+                if cpp_indata.lasym:
+                    msg = f"Field {attr} should not be None when lasym=True"
+                    raise ValueError(msg)
+                # Skip None values (don't try to assign them)
             else:
+                # Check if non-None asymmetric fields are being set when lasym=False
+                if (
+                    attr in {"rbs", "zbc", "zaxis_c", "raxis_s"}
+                    and not cpp_indata.lasym
+                ):
+                    msg = (
+                        f"Cannot set asymmetric field '{attr}' when lasym=False. "
+                        "Either set lasym=True or remove the asymmetric field."
+                    )
+                    raise ValueError(msg)
                 getattr(cpp_indata, attr)[:] = value
 
         return cpp_indata
@@ -551,6 +585,10 @@ class VmecWOut(BaseModelWithNumpy):
         "iotas",
         "rmnc",
         "zmns",
+        "rmns",
+        "zmnc",
+        "lmnc",
+        "lmnc_full",
         "bsubsmns",
         "lmns_full",
         "lmns",
@@ -560,6 +598,7 @@ class VmecWOut(BaseModelWithNumpy):
         "bsupumnc",
         "bsupvmnc",
         "gmnc",
+        "restart_reason_timetrace",
     ]
     """If quantities are not exactly the same in C++ WoutFileContents and this class,
     add them to this list and implement the conversion logic in _to_cpp_wout and
@@ -636,17 +675,17 @@ class VmecWOut(BaseModelWithNumpy):
     """Aspect ratio (major radius over minor radius) of the plasma boundary."""
 
     betapol: float
-    """Poloidal plasma beta.
+    r"""Poloidal plasma beta.
 
     The ratio of the total thermal energy of the plasma, to the total poloidal magnetic
-    energy. `beta=W_th/W_{B_theta}=\int p dV/(\int B_theta^2/(2 mu_0) dV)`
+    energy. $\beta=W_th/W_{B_theta}=\int p dV/(\int B_theta^2/(2 mu_0) dV)$
     """
 
     betator: float
-    """Toroidal plasma beta.
+    r"""Toroidal plasma beta.
 
     The ratio of the total thermal energy of the plasma, to the total toroidal magnetic
-    energy. `beta=W_th/W_{B_phi}=\int p dV/(\int B_phi^2/(2 mu_0) dV)`
+    energy. $\beta=W_th/W_{B_phi}=\int p dV/(\int B_phi^2/(2 mu_0) dV)$
     """
 
     betaxis: float
@@ -707,7 +746,33 @@ class VmecWOut(BaseModelWithNumpy):
 
     # Default initialized so reading stays backwards compatible pre v0.4.0
     fsqt: jt.Float[np.ndarray, "time"] = np.array([])
-    """Evolution of the total force residual along the run."""
+    """Evolution of the total force residual along the run.
+
+    This is the sum of `force_residual_r`, `force_residual_z`, and `force_residual_lambda`.
+    """
+
+    force_residual_r: jt.Float[np.ndarray, "time"] = np.array([])
+    """Evolution of the r radial force residual along the run."""
+
+    force_residual_z: jt.Float[np.ndarray, "time"] = np.array([])
+    """Evolution of the z vertical force residual along the run."""
+
+    force_residual_lambda: jt.Float[np.ndarray, "time"] = np.array([])
+    """Evolution of the lambda force residual along the run."""
+
+    delbsq: jt.Float[np.ndarray, "time"] = np.array([])
+    """Evolution of the force residual at the vacuum boundary along the run."""
+
+    restart_reason_timetrace: typing.Annotated[
+        jt.Int[np.ndarray, "time"],
+        pydantic.Field(alias="restart_reasons"),
+        pydantic.BeforeValidator(lambda x: np.array(x).astype(np.int64)),
+    ] = np.array([], dtype=np.int64)
+    """Internal restart reasons at each step along the run.  (debugging quantity).
+
+    Use the `restart_reasons` field to access a more readable enum version of this
+    instead of integer status codes.
+    """
 
     wdot: jt.Float[np.ndarray, "time"] = np.array([])
     """Evolution of the MHD energy decay along the run."""
@@ -801,6 +866,32 @@ class VmecWOut(BaseModelWithNumpy):
     with lmns.
     """
 
+    rmns: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    """Fourier coefficients for `R` ~ sin(m*theta - n*zeta) of the geometry of the flux surfaces on the full-grid.
+
+    Only populated when lasym=True (non-stellarator-symmetric configurations).
+    """
+
+    zmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    """Fourier coefficients for `Z` ~ cos(m*theta - n*zeta) of the geometry of the flux surfaces on the full-grid.
+
+    Only populated when lasym=True (non-stellarator-symmetric configurations).
+    """
+
+    lmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    """Fourier coefficients for `lambda` ~ cos(m*theta - n*zeta) stream function on the half-grid.
+
+    Only populated when lasym=True (non-stellarator-symmetric configurations).
+    """
+
+    lmnc_full: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    """Fourier coefficients for `lambda` ~ cos(m*theta - n*zeta) stream function on the full-grid.
+
+    This quantity is VMEC++ specific and required for hot-restart to work properly. We
+    store it with the Fortran convention for the order of the dimensions for consistency
+    with lmnc. Only populated when lasym=True (non-stellarator-symmetric configurations).
+    """
+
     pcurr_type: ProfileType
     """Parametrization of toroidal current profile (copied from input)."""
 
@@ -873,10 +964,10 @@ class VmecWOut(BaseModelWithNumpy):
 
     # In the C++ WOutFileContents this is called betatot.
     betatotal: float
-    """Total plasma beta.
+    r"""Total plasma beta.
 
     The ratio of the total thermal energy of the plasma, to the total magnetic energy.
-    `beta=W_th/W_B=\int p dV/(\int B/(2 mu_0) dV)`
+    $\beta=W_th/W_B=\int p dV/(\int B/(2 mu_0) dV)$
     """
 
     # In the C++ WOutFileContents this is called raxis_c.
@@ -979,6 +1070,18 @@ class VmecWOut(BaseModelWithNumpy):
         """This is how the attribute is called in the Fortran wout file."""
         return self.lfreeb
 
+    @property
+    def restart_reasons(self) -> list[tuple[int, RestartReason]]:
+        """Get the restart reasons as a list of tuples.
+
+        Each tuple contains the iteration number and the reason for the restart.
+        """
+        return [
+            (i, RestartReason(reason))
+            for i, reason in enumerate(self.restart_reason_timetrace)
+            if reason != 1  # skip the "no restart" reason
+        ]
+
     def save(self, out_path: str | Path) -> None:
         """Save contents in NetCDF3 format.
 
@@ -1063,8 +1166,15 @@ class VmecWOut(BaseModelWithNumpy):
                     )
                     string_variable[:] = padded_value_as_netcdf3_compatible_chararray
 
+                elif value is None:
+                    # Skip None values (e.g., asymmetric arrays when lasym=False)
+                    continue
                 elif field_type is np.ndarray or field_type is list:
                     value_array = np.array(value)
+                    # Fallback to default dimension names like dim_00001, dim_00002, etc.
+                    shape_string = tuple(
+                        [f"dim_{dim:05d}" for dim in value_array.shape]
+                    )
                     if (
                         field_info is not None  # is a model field
                         and field_info.annotation is not None  # has an annotation
@@ -1073,17 +1183,18 @@ class VmecWOut(BaseModelWithNumpy):
                             jt.AbstractArray,
                         )
                     ):
-                        # Extract the dimension names used for NetCDF wout
+                        # Extract the dimension names used for NetCDF wout when available
                         shape_string = tuple(
                             [
                                 map_dimension_names.get(dim.name, str(dim.name))
-                                for dim in field_info.annotation.dims
+                                if isinstance(dim, jt._array_types._NamedDim)
+                                else dim_default_name
+                                for dim, dim_default_name in zip(
+                                    field_info.annotation.dims,
+                                    shape_string,
+                                    strict=True,
+                                )
                             ]
-                        )
-                    else:
-                        # The dimensions are not annotated (must be an extra field)
-                        shape_string = tuple(
-                            [f"dim_{dim:05d}" for dim in value_array.shape]
                         )
 
                     for dim_name, dim_size in zip(
@@ -1097,7 +1208,11 @@ class VmecWOut(BaseModelWithNumpy):
                         # wout format uses 32 bit integers, Python uses 64 bit by default
                         dtype = np.int32
 
-                    if len(shape_string) == 1:
+                    if len(shape_string) == 0:
+                        # Scalar value, no dimensions
+                        fnc.createVariable(field, dtype)
+                        fnc[field][:] = value_array
+                    elif len(shape_string) == 1:
                         fnc.createVariable(field, dtype, shape_string)
                         # Slice arrays that are padded in wout and unpadded in VMEC++
                         fnc[field][: len(value_array)] = value_array
@@ -1168,9 +1283,25 @@ class VmecWOut(BaseModelWithNumpy):
         # stored in a wout file for consistency with lmns.
         attrs["lmns_full"] = cpp_wout.lmns_full.T
 
+        # Asymmetric attributes are transposed and only populated when lasym=True
+        if cpp_wout.lasym:
+            attrs["rmns"] = cpp_wout.rmns.T
+            attrs["zmnc"] = cpp_wout.zmnc.T
+            attrs["lmnc_full"] = cpp_wout.lmnc_full.T
+        else:
+            attrs["rmns"] = None
+            attrs["zmnc"] = None
+            attrs["lmnc_full"] = None
+
         # These attributes have one column less and their elements are transposed
         # in VMEC++ with respect to SIMSOPT/VMEC2000
         attrs["lmns"] = _pad_and_transpose(cpp_wout.lmns, attrs["mnmax"])
+
+        # Asymmetric lambda coefficients on half-grid (only when lasym=True)
+        if cpp_wout.lasym:
+            attrs["lmnc"] = _pad_and_transpose(cpp_wout.lmnc, attrs["mnmax"])
+        else:
+            attrs["lmnc"] = None
         attrs["bmnc"] = _pad_and_transpose(cpp_wout.bmnc, attrs["mnmax_nyq"])
         attrs["bsubumnc"] = _pad_and_transpose(cpp_wout.bsubumnc, attrs["mnmax_nyq"])
         attrs["bsubvmnc"] = _pad_and_transpose(cpp_wout.bsubvmnc, attrs["mnmax_nyq"])
@@ -1218,6 +1349,8 @@ class VmecWOut(BaseModelWithNumpy):
             mode="constant",
             constant_values=0.0,
         )
+
+        attrs["restart_reason_timetrace"] = cpp_wout.restart_reasons
 
         attrs["version_"] = float(cpp_wout.version)
 
@@ -1275,9 +1408,24 @@ class VmecWOut(BaseModelWithNumpy):
         # stored in a wout file for consistency with lmns.
         cpp_wout.lmns_full = self.lmns_full.T
 
+        # Asymmetric attributes are transposed and only set when lasym=True
+        if self.lasym and self.rmns is not None:
+            cpp_wout.rmns = self.rmns.T
+        if self.lasym and self.zmnc is not None:
+            cpp_wout.zmnc = self.zmnc.T
+        if self.lasym and self.lmnc_full is not None:
+            cpp_wout.lmnc_full = self.lmnc_full.T
+
+        # This is a VMEC++ only quantity
+        cpp_wout.restart_reasons = self.restart_reason_timetrace
+
         # These attributes have one column less and their elements are transposed
         # in VMEC++ with respect to SIMSOPT/VMEC2000
         cpp_wout.lmns = self.lmns.T[1:, :]
+
+        # Asymmetric lambda coefficients on half-grid (only when lasym=True)
+        if self.lasym and self.lmnc is not None:
+            cpp_wout.lmnc = self.lmnc.T[1:, :]
         cpp_wout.bmnc = self.bmnc.T[1:, :]
         cpp_wout.bsubumnc = self.bsubumnc.T[1:, :]
         cpp_wout.bsubvmnc = self.bsubvmnc.T[1:, :]
