@@ -573,24 +573,27 @@ IdealMhdModel::IdealMhdModel(
   insideTotalPressure.resize(s_.nZnT);
   delBSq.resize(s_.nZnT);
 
-  armn_e.resize(nrzt);
-  armn_o.resize(nrzt);
-  brmn_e.resize(nrzt);
-  brmn_o.resize(nrzt);
-  azmn_e.resize(nrzt);
-  azmn_o.resize(nrzt);
-  bzmn_e.resize(nrzt);
-  bzmn_o.resize(nrzt);
-  blmn_e.resize(nrztIncludingBoundary);
-  blmn_o.resize(nrztIncludingBoundary);
+  // CRITICAL: resize() does not initialize to zero!
+  // Java arrays are zero-initialized, but C++ vectors are not.
+  // This matches jVMEC behavior where force arrays rely on zero initialization.
+  armn_e.resize(nrzt, 0.0);
+  armn_o.resize(nrzt, 0.0);
+  brmn_e.resize(nrzt, 0.0);
+  brmn_o.resize(nrzt, 0.0);
+  azmn_e.resize(nrzt, 0.0);
+  azmn_o.resize(nrzt, 0.0);
+  bzmn_e.resize(nrzt, 0.0);
+  bzmn_o.resize(nrzt, 0.0);
+  blmn_e.resize(nrztIncludingBoundary, 0.0);
+  blmn_o.resize(nrztIncludingBoundary, 0.0);
 
   if (s_.lthreed) {
-    crmn_e.resize(nrzt);
-    crmn_o.resize(nrzt);
-    czmn_e.resize(nrzt);
-    czmn_o.resize(nrzt);
-    clmn_e.resize(nrztIncludingBoundary);
-    clmn_o.resize(nrztIncludingBoundary);
+    crmn_e.resize(nrzt, 0.0);
+    crmn_o.resize(nrzt, 0.0);
+    czmn_e.resize(nrzt, 0.0);
+    czmn_o.resize(nrzt, 0.0);
+    clmn_e.resize(nrztIncludingBoundary, 0.0);
+    clmn_o.resize(nrztIncludingBoundary, 0.0);
   }
 
   // TODO(jons): +1 only if at LCFS
