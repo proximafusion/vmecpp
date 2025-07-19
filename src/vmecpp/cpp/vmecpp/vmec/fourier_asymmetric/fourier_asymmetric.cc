@@ -18,193 +18,111 @@ void FourierToReal3DAsymmFastPoloidal(
     absl::Span<const double> zmncs, absl::Span<const double> zmncc,
     absl::Span<const double> zmnss, absl::Span<double> r_real,
     absl::Span<double> z_real, absl::Span<double> lambda_real) {
-  // Implementation based on educational_VMEC's totzspa.f90
-  // This is the asymmetric transform that handles both symmetric and asymmetric
-  // modes
+  const int nzeta = sizes.nZeta;
+  const int ntheta2 = sizes.nThetaReduced;  // [0, pi]
+  const int ntheta1 = 2 * ntheta2;          // full range [0, 2pi]
+  const int nznt = ntheta1 * nzeta;
 
-  // DEBUG: Compare with educational_VMEC at same position
-  std::cout << "DEBUG FourierToReal3DAsymmFastPoloidal: mnmax=" << sizes.mnmax
-            << ", nThetaEff=" << sizes.nThetaEff << ", nZeta=" << sizes.nZeta
-            << std::endl;
-  std::cout << "  mpol=" << sizes.mpol << ", ntor=" << sizes.ntor
-            << ", nfp=" << sizes.nfp << std::endl;
+  // CRITICAL: Create SEPARATE arrays for asymmetric contributions
+  // These start at zero, not the symmetric baseline!
+  std::vector<double> asym_R(nznt, 0.0);
+  std::vector<double> asym_Z(nznt, 0.0);
+  std::vector<double> asym_L(nznt, 0.0);
 
-  // Print first few input coefficients (asymmetric arrays)
-  if (sizes.mnmax > 0) {
-    std::cout << "DEBUG input coefficients (asymmetric):" << std::endl;
-    // Print first few rmnsc coefficients (SIN(mu) COS(nv)) - equivalent to
-    // educational_VMEC
-    std::cout << "  First rmnsc values:" << std::endl;
-    for (int mn = 0; mn < std::min(5, sizes.mnmax); ++mn) {
-      std::cout << "    mn=" << mn << " rmnsc=" << rmnsc[mn]
-                << " zmncs=" << zmncs[mn] << std::endl;
-    }
-    // Check for NaN in input arrays
-    for (int mn = 0; mn < sizes.mnmax; ++mn) {
-      if (std::isnan(rmnsc[mn])) {
-        std::cout << "ERROR: NaN in rmnsc at mn=" << mn << std::endl;
-      }
-      if (std::isnan(zmncs[mn])) {
-        std::cout << "ERROR: NaN in zmncs at mn=" << mn << std::endl;
-      }
-    }
-  }
-
-  // const double PI = 3.14159265358979323846;  // unused
-
-  // Initialize output arrays
-  std::fill(r_real.begin(), r_real.end(), 0.0);
-  std::fill(z_real.begin(), z_real.end(), 0.0);
-  std::fill(lambda_real.begin(), lambda_real.end(), 0.0);
-
-  // Create FourierBasisFastPoloidal to get proper mode indexing
+  // Get basis functions
   FourierBasisFastPoloidal fourier_basis(&sizes);
 
-  // Compute scaling factors like educational_VMEC
-  std::vector<double> mscale(sizes.mpol + 1);
-  std::vector<double> nscale(sizes.ntor + 1);
-  mscale[0] = 1.0;
-  nscale[0] = 1.0;
-  for (int m = 1; m <= sizes.mpol; ++m) {
-    mscale[m] = 1.0 / sqrt(2.0);
-  }
-  for (int n = 1; n <= sizes.ntor; ++n) {
-    nscale[n] = 1.0 / sqrt(2.0);
-  }
+  // Work arrays for intermediate results
+  std::vector<std::vector<double>> work(12, std::vector<double>(nzeta, 0.0));
 
-  for (int i = 0; i < sizes.nThetaEff; ++i) {
-    for (int k = 0; k < sizes.nZeta; ++k) {
-      int idx = i * sizes.nZeta + k;
-      if (idx >= static_cast<int>(r_real.size())) continue;
+  // Process each poloidal mode m
+  for (int m = 0; m < sizes.mpol; ++m) {
+    // Clear work arrays for this m
+    for (int idx = 0; idx < 12; ++idx) {
+      std::fill(work[idx].begin(), work[idx].end(), 0.0);
+    }
 
-      const double PI = 3.14159265358979323846;
-      double u = 2.0 * PI * i / sizes.nThetaEff;
-      double v = 2.0 * PI * k / sizes.nZeta;
-
-      double r_val = 0.0;
-      double z_val = 0.0;
-      double lambda_val = 0.0;
-
-      // Process all modes using proper indexing
-      for (int mn = 0; mn < sizes.mnmax; ++mn) {
-        // Use FourierBasisFastPoloidal to decode m,n from linear index
-        int m = fourier_basis.xm[mn];
-        int n = fourier_basis.xn[mn] / sizes.nfp;  // xn includes nfp factor
-
-        // DEBUG: Check mode processing for first few iterations
-        if (idx < 3 && mn < 5) {
-          std::cout << "  Processing mn=" << mn << " m=" << m << " n=" << n
-                    << " rmnsc=" << rmnsc[mn] << " zmncs=" << zmncs[mn]
-                    << std::endl;
-        }
-
-        // Get pre-normalized basis functions from FourierBasisFastPoloidal
-        // These already include mscale and nscale factors
-
-        // For theta: FourierBasisFastPoloidal only stores values for [0,pi]
-        // For asymmetric case, we need values for [0,2pi]
-        double cos_mu, sin_mu;
-        if (i < sizes.nThetaReduced) {
-          // Direct lookup for [0,pi]
-          cos_mu = fourier_basis.cosmu[m * sizes.nThetaReduced + i];
-          sin_mu = fourier_basis.sinmu[m * sizes.nThetaReduced + i];
-        } else {
-          // For [pi,2pi], use symmetry: cos(m*(2pi-theta)) = cos(m*theta),
-          // sin(m*(2pi-theta)) = -sin(m*theta)
-          int i_sym = sizes.nThetaEff - i;
-          cos_mu = fourier_basis.cosmu[m * sizes.nThetaReduced + i_sym];
-          sin_mu = -fourier_basis.sinmu[m * sizes.nThetaReduced + i_sym];
-        }
-
-        // For zeta: FourierBasisFastPoloidal stores basis functions indexed by
-        // (k,n) The storage format is: idx = k * (nnyq2 + 1) + n for n >= 0
-        double cos_nv, sin_nv;
-
-        // Check if n is within valid range for precomputed basis
-        int abs_n = std::abs(n);
-        if (abs_n <= sizes.nnyq2) {
-          // Use precomputed basis functions
-          int idx_nv = k * (sizes.nnyq2 + 1) + abs_n;
-          cos_nv = fourier_basis.cosnv[idx_nv];
-          sin_nv = fourier_basis.sinnv[idx_nv];
-
-          // Apply symmetry for negative n: cos(-nv) = cos(nv), sin(-nv) =
-          // -sin(nv)
-          if (n < 0) {
-            sin_nv = -sin_nv;
+    // STAGE 1: Accumulate zeta contributions
+    for (int k = 0; k < nzeta; ++k) {
+      for (int n = 0; n <= sizes.ntor; ++n) {
+        // Find mode (m,n)
+        int mn = -1;
+        for (int mn_candidate = 0; mn_candidate < sizes.mnmax; ++mn_candidate) {
+          if (fourier_basis.xm[mn_candidate] == m &&
+              fourier_basis.xn[mn_candidate] / sizes.nfp == n) {
+            mn = mn_candidate;
+            break;
           }
-        } else {
-          // Compute basis functions directly for out-of-range n
-          double nv = n * sizes.nfp * v;
-          double nscale = (n == 0) ? 1.0 : 1.0 / sqrt(2.0);
-          cos_nv = cos(nv) * nscale;
-          sin_nv = sin(nv) * nscale;
         }
+        if (mn < 0) continue;
 
-        // DEBUG: Check basis functions for negative n
-        if (idx < 3 && mn < 5) {
-          std::cout << "DEBUG basis: idx=" << idx << ", mn=" << mn
-                    << ", m=" << m << ", n=" << n << ", cos_nv=" << cos_nv
-                    << ", sin_nv=" << sin_nv << std::endl;
-        }
+        // Get basis functions
+        int idx_nv = k * (sizes.nnyq2 + 1) + n;
+        double cos_nv = (n <= sizes.nnyq2)
+                            ? fourier_basis.cosnv[idx_nv]
+                            : std::cos(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
+        double sin_nv = (n <= sizes.nnyq2)
+                            ? fourier_basis.sinnv[idx_nv]
+                            : std::sin(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
 
-        // Asymmetric transform: Handle both symmetric and asymmetric modes
-        // Using VMEC conventions: cos(mu-nv) and sin(mu-nv) expansions
-        if (n == 0) {
-          // For n=0: cos(mu-0) = cos(mu), sin(mu-0) = sin(mu)
-          r_val += rmncc[mn] * cos_mu;  // cos(m*u) for R symmetric
-          r_val += rmnsc[mn] * sin_mu;  // sin(m*u) for R asymmetric
+        // Accumulate asymmetric coefficients
+        work[0][k] += rmnsc[mn] * cos_nv;
+        work[5][k] += zmncc[mn] * cos_nv;
 
-          z_val += zmnsc[mn] * sin_mu;  // sin(m*u) for Z symmetric
-          z_val += zmncc[mn] * cos_mu;  // cos(m*u) for Z asymmetric
-        } else {
-          // For n!=0, use proper trigonometric expansions
-          // cos(mu-nv) = cos(mu)*cos(nv) + sin(mu)*sin(nv)
-          // sin(mu-nv) = sin(mu)*cos(nv) - cos(mu)*sin(nv)
-
-          // R symmetric terms
-          double cos_mu_nv = cos_mu * cos_nv + sin_mu * sin_nv;  // cos(mu-nv)
-          double sin_mu_nv = sin_mu * cos_nv - cos_mu * sin_nv;  // sin(mu-nv)
-          r_val += rmncc[mn] * cos_mu_nv;  // Rmncc * cos(mu-nv)
-          r_val += rmnss[mn] * sin_mu_nv;  // Rmnss * sin(mu-nv)
-
-          // R asymmetric terms
-          r_val += rmnsc[mn] * sin_mu * cos_nv;  // Rmnsc * sin(mu)*cos(nv)
-          r_val += rmncs[mn] * cos_mu * sin_nv;  // Rmncs * cos(mu)*sin(nv)
-
-          // Z symmetric terms
-          z_val += zmnsc[mn] * sin_mu_nv;  // Zmnsc * sin(mu-nv)
-          z_val += zmncs[mn] * cos_mu_nv;  // Zmncs * cos(mu-nv)
-
-          // Z asymmetric terms
-          z_val += zmncc[mn] * cos_mu * cos_nv;  // Zmncc * cos(mu)*cos(nv)
-          z_val += zmnss[mn] * sin_mu * sin_nv;  // Zmnss * sin(mu)*sin(nv)
+        if (sizes.lthreed) {
+          work[1][k] += rmncs[mn] * sin_nv;
+          work[4][k] += zmnss[mn] * sin_nv;
         }
       }
+    }
 
-      r_real[idx] = r_val;
-      z_real[idx] = z_val;
-      lambda_real[idx] = lambda_val;
+    // STAGE 2: Transform in theta for [0,pi]
+    for (int l = 0; l < ntheta2; ++l) {
+      double sin_mu = fourier_basis.sinmu[m * sizes.nThetaReduced + l];
+      double cos_mu = fourier_basis.cosmu[m * sizes.nThetaReduced + l];
 
-      // DEBUG: Output first few points for comparison with educational_VMEC
-      if (idx < 3) {
-        std::cout << "DEBUG FourierToReal3D: idx=" << idx << ", u=" << u
-                  << ", v=" << v << ", R=" << r_val << ", Z=" << z_val
-                  << std::endl;
+      for (int k = 0; k < nzeta; ++k) {
+        int idx = l * nzeta + k;
+
+        // Accumulate into separate asymmetric arrays
+        asym_R[idx] += work[0][k] * sin_mu;
+        asym_Z[idx] += work[5][k] * cos_mu;
+
+        if (sizes.lthreed) {
+          asym_R[idx] += work[1][k] * cos_mu;
+          asym_Z[idx] += work[4][k] * sin_mu;
+        }
       }
     }
   }
 
-  // DEBUG: Print first few output values and check for NaN
-  std::cout << "DEBUG FourierToReal3DAsymmFastPoloidal output:" << std::endl;
-  for (int i = 0; i < std::min(5, static_cast<int>(r_real.size())); ++i) {
-    std::cout << "  r_real[" << i << "]=" << r_real[i] << " z_real[" << i
-              << "]=" << z_real[i] << std::endl;
-    if (std::isnan(r_real[i])) {
-      std::cout << "ERROR: NaN in r_real output at i=" << i << std::endl;
+  // STEP 1: Apply asymmetric contributions for theta=[0,pi]
+  for (int l = 0; l < ntheta2; ++l) {
+    for (int k = 0; k < nzeta; ++k) {
+      int idx = l * nzeta + k;
+      if (idx >= r_real.size()) continue;
+
+      r_real[idx] += asym_R[idx];
+      z_real[idx] += asym_Z[idx];
+      lambda_real[idx] += asym_L[idx];
     }
-    if (std::isnan(z_real[i])) {
-      std::cout << "ERROR: NaN in z_real output at i=" << i << std::endl;
+  }
+
+  // STEP 2: Handle theta=[pi,2pi] using reflection
+  for (int l = ntheta2; l < ntheta1; ++l) {
+    int lr = ntheta1 - l;
+
+    for (int k = 0; k < nzeta; ++k) {
+      int kr = (nzeta - k) % nzeta;
+
+      int idx = l * nzeta + k;
+      int idx_reflect = lr * nzeta + kr;
+
+      if (idx >= r_real.size() || idx_reflect >= r_real.size()) continue;
+
+      r_real[idx] = r_real[idx_reflect] - asym_R[idx_reflect];
+      z_real[idx] = -z_real[idx_reflect] + asym_Z[idx_reflect];
+      lambda_real[idx] = lambda_real[idx_reflect] - asym_L[idx_reflect];
     }
   }
 }
@@ -216,114 +134,89 @@ void FourierToReal2DAsymmFastPoloidal(
     absl::Span<const double> zmncs, absl::Span<const double> zmncc,
     absl::Span<const double> zmnss, absl::Span<double> r_real,
     absl::Span<double> z_real, absl::Span<double> lambda_real) {
-  // 2D asymmetric forward transform (axisymmetric case, ntor=0)
-  // Optimized version that only processes m modes (n=0)
+  const int nzeta = sizes.nZeta;
+  const int ntheta2 = sizes.nThetaReduced;  // [0, pi]
+  const int ntheta1 = 2 * ntheta2;          // full range [0, 2pi]
 
-  // DEBUG: Compare with educational_VMEC 2D case
-  std::cout << "DEBUG FourierToReal2DAsymmFastPoloidal: 2D transform, mnmax="
-            << sizes.mnmax << ", ntheta=" << sizes.ntheta
-            << ", nThetaEff=" << sizes.nThetaEff << ", nZeta=" << sizes.nZeta
-            << std::endl;
+  // CRITICAL: Create SEPARATE arrays for asymmetric contributions
+  // These start at zero, not the symmetric baseline!
+  std::vector<double> asym_R(ntheta1 * nzeta, 0.0);
+  std::vector<double> asym_Z(ntheta1 * nzeta, 0.0);
+  std::vector<double> asym_L(ntheta1 * nzeta, 0.0);
 
-  // Debug: Print first few Fourier coefficients
-  std::cout << "DEBUG: Input asymmetric Fourier coefficients (first 5 modes):"
-            << std::endl;
-  for (int mn = 0; mn < std::min(5, sizes.mnmax); ++mn) {
-    std::cout << "  mn=" << mn << ": rmnsc[" << mn << "]=" << rmnsc[mn]
-              << ", zmncc[" << mn << "]=" << zmncc[mn] << std::endl;
-  }
-
-  // const double PI = 3.14159265358979323846;  // unused
-
-  // Initialize output arrays
-  std::fill(r_real.begin(), r_real.end(), 0.0);
-  std::fill(z_real.begin(), z_real.end(), 0.0);
-  std::fill(lambda_real.begin(), lambda_real.end(), 0.0);
-
-  // Create FourierBasisFastPoloidal to get proper mode indexing
+  // Get basis functions
   FourierBasisFastPoloidal fourier_basis(&sizes);
 
-  // Compute scaling factors like 3D case
-  std::vector<double> mscale(sizes.mpol + 1);
-  mscale[0] = 1.0;
-  for (int m = 1; m <= sizes.mpol; ++m) {
-    mscale[m] = 1.0 / sqrt(2.0);
+  // For 2D case (ntor=0), only n=0 modes exist
+  // cosnv=1, sinnv=0 for all n=0
+
+  // Process each poloidal mode m
+  for (int m = 0; m < sizes.mpol; ++m) {
+    // Find mode mn for (m,n=0)
+    int mn = -1;
+    for (int mn_candidate = 0; mn_candidate < sizes.mnmax; ++mn_candidate) {
+      if (fourier_basis.xm[mn_candidate] == m &&
+          fourier_basis.xn[mn_candidate] / sizes.nfp == 0) {
+        mn = mn_candidate;
+        break;
+      }
+    }
+    if (mn < 0) continue;  // mode not found
+
+    // Get coefficients for this mode
+    double rsc = (mn < rmnsc.size()) ? rmnsc[mn] : 0.0;
+    double zcc = (mn < zmncc.size()) ? zmncc[mn] : 0.0;
+
+    if (std::abs(rsc) < 1e-12 && std::abs(zcc) < 1e-12) continue;
+
+    // Compute asymmetric contributions for theta=[0,pi]
+    for (int l = 0; l < ntheta2; ++l) {
+      double sin_mu = fourier_basis.sinmu[m * sizes.nThetaReduced + l];
+      double cos_mu = fourier_basis.cosmu[m * sizes.nThetaReduced + l];
+
+      for (int k = 0; k < nzeta; ++k) {
+        int idx = l * nzeta + k;
+
+        // Following jVMEC lines 302-305 exactly
+        asym_R[idx] += rsc * sin_mu;  // rmnsc * sinmu
+        asym_Z[idx] += zcc * cos_mu;  // zmncc * cosmu
+      }
+    }
   }
 
-  for (int i = 0; i < sizes.nThetaEff; ++i) {
-    for (int k = 0; k < sizes.nZeta; ++k) {
-      int idx = i * sizes.nZeta + k;
-      if (idx >= static_cast<int>(r_real.size())) {
-        std::cout << "ERROR in 2D transform: idx=" << idx
-                  << " >= array size=" << r_real.size() << " (i=" << i
-                  << ", k=" << k << ", nThetaEff=" << sizes.nThetaEff
-                  << ", nZeta=" << sizes.nZeta << ")" << std::endl;
-        continue;
-      }
+  // STEP 1: Apply asymmetric contributions for theta=[0,pi]
+  // Following jVMEC lines 368-390
+  for (int l = 0; l < ntheta2; ++l) {
+    for (int k = 0; k < nzeta; ++k) {
+      int idx = l * nzeta + k;
+      if (idx >= r_real.size()) continue;
 
-      // double u = 2.0 * PI * i / sizes.nThetaEff;  // Not needed when using
-      // pre-computed basis
+      // ADD asymmetric to existing symmetric values
+      r_real[idx] += asym_R[idx];
+      z_real[idx] += asym_Z[idx];
+      lambda_real[idx] += asym_L[idx];
+    }
+  }
 
-      double r_val = 0.0;
-      double z_val = 0.0;
-      double lambda_val = 0.0;
+  // STEP 2: Handle theta=[pi,2pi] using reflection
+  // Following jVMEC lines 340-365
+  for (int l = ntheta2; l < ntheta1; ++l) {
+    int lr = ntheta1 - l;  // reflection index
 
-      // Process only n=0 modes for 2D case
-      for (int mn = 0; mn < sizes.mnmax; ++mn) {
-        int m = fourier_basis.xm[mn];
-        int n = fourier_basis.xn[mn] / sizes.nfp;
+    for (int k = 0; k < nzeta; ++k) {
+      int kr = (nzeta - k) % nzeta;  // zeta reflection (ireflect)
 
-        if (mn < 3 && i < 3) {
-          std::cout << "DEBUG: Processing mn=" << mn << ", m=" << m
-                    << ", n=" << n << " at i=" << i << ", k=" << k << std::endl;
-        }
+      int idx = l * nzeta + k;
+      int idx_reflect = lr * nzeta + kr;
 
-        // Skip non-axisymmetric modes
-        if (n != 0) continue;
+      if (idx >= r_real.size() || idx_reflect >= r_real.size()) continue;
 
-        // Get pre-normalized basis functions (2D case)
-        double cos_mu, sin_mu;
-        if (i < sizes.nThetaReduced) {
-          int idx_basis = m * sizes.nThetaReduced + i;
-          if (idx_basis >= static_cast<int>(fourier_basis.cosmu.size())) {
-            std::cout << "ERROR: cosmu index out of bounds: " << idx_basis
-                      << " >= " << fourier_basis.cosmu.size() << " (m=" << m
-                      << ", i=" << i << ")" << std::endl;
-            continue;
-          }
-          cos_mu = fourier_basis.cosmu[idx_basis];
-          sin_mu = fourier_basis.sinmu[idx_basis];
-        } else {
-          // For [pi,2pi], use symmetry
-          int i_sym = sizes.nThetaEff - i;
-          if (i_sym < 0 || i_sym >= sizes.nThetaReduced) {
-            std::cout << "ERROR: Invalid i_sym=" << i_sym << " for i=" << i
-                      << ", nThetaEff=" << sizes.nThetaEff
-                      << ", nThetaReduced=" << sizes.nThetaReduced << std::endl;
-            continue;
-          }
-          int idx_basis = m * sizes.nThetaReduced + i_sym;
-          if (idx_basis >= static_cast<int>(fourier_basis.cosmu.size())) {
-            std::cout << "ERROR: cosmu index out of bounds: " << idx_basis
-                      << " >= " << fourier_basis.cosmu.size() << " (m=" << m
-                      << ", i_sym=" << i_sym << ")" << std::endl;
-            continue;
-          }
-          cos_mu = fourier_basis.cosmu[idx_basis];
-          sin_mu = -fourier_basis.sinmu[idx_basis];
-        }
-
-        // 2D asymmetric transform: only theta dependence
-        r_val += rmncc[mn] * cos_mu;  // symmetric cos(mu)
-        r_val += rmnsc[mn] * sin_mu;  // asymmetric sin(mu)
-
-        z_val += zmnsc[mn] * sin_mu;  // symmetric sin(mu)
-        z_val += zmncc[mn] * cos_mu;  // asymmetric cos(mu)
-      }
-
-      r_real[idx] = r_val;
-      z_real[idx] = z_val;
-      lambda_real[idx] = lambda_val;
+      // Following jVMEC reflection formulas exactly:
+      // R[pi,2pi] = R_sym[reflected] - asym_R[reflected]
+      // Z[pi,2pi] = -Z_sym[reflected] + asym_Z[reflected]
+      r_real[idx] = r_real[idx_reflect] - asym_R[idx_reflect];
+      z_real[idx] = -z_real[idx_reflect] + asym_Z[idx_reflect];
+      lambda_real[idx] = lambda_real[idx_reflect] - asym_L[idx_reflect];
     }
   }
 }

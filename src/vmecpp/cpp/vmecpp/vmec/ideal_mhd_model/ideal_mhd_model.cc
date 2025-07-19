@@ -3774,10 +3774,8 @@ int IdealMhdModel::get_ivacskip() const { return ivacskip; }
 
 void IdealMhdModel::dft_FourierToReal_3d_asymm(
     const FourierGeometry& physical_x) {
-  // Apply CORRECTED asymmetric 3D transform from Fourier to real space
-  std::cout << "DEBUG: Using CORRECTED jVMEC-based 3D asymmetric transform"
-            << std::endl;
-  FourierToReal3DAsymmFastPoloidal_Corrected(
+  // Apply asymmetric 3D transform from Fourier to real space
+  FourierToReal3DAsymmFastPoloidal(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
       physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
       physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), s_.nZnT),
@@ -3787,14 +3785,8 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(
 
 void IdealMhdModel::dft_FourierToReal_2d_asymm(
     const FourierGeometry& physical_x) {
-  // Apply CORRECTED asymmetric 2D transform from Fourier to real space
-  std::cout << "DEBUG: Using CORRECTED jVMEC-based 2D asymmetric transform"
-            << std::endl;
-  std::cout << "  Input array sizes: rmnsc=" << physical_x.rmnsc.size()
-            << ", zmncc=" << physical_x.zmncc.size() << std::endl;
-  std::cout << "  Output span size: " << s_.nZnT << std::endl;
-
-  FourierToReal2DAsymmFastPoloidal_Corrected(
+  // Apply asymmetric 2D transform from Fourier to real space
+  FourierToReal2DAsymmFastPoloidal(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
       physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
       physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), s_.nZnT),
