@@ -417,3 +417,13 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_array_combination",
+    srcs = ["test_array_combination.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
