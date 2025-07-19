@@ -130,6 +130,38 @@ def test_vmecinput_io():
             )
 
 
+def test_asymmetric_tokamak_input_io():
+    input_file = TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+
+    vmec_input = vmecpp.VmecInput.from_file(input_file)
+
+    # Verify it's an asymmetric run
+    assert vmec_input.lasym is True
+
+    # Verify asymmetric arrays are properly initialized (not None)
+    assert vmec_input.rbs is not None
+    assert vmec_input.zbc is not None
+    assert vmec_input.raxis_s is not None
+    assert vmec_input.zaxis_c is not None
+
+    # Verify array shapes are correct for ntor=0, mpol=5
+    expected_shape = (5, 1)  # (mpol, 2*ntor+1)
+    assert vmec_input.rbs.shape == expected_shape
+    assert vmec_input.zbc.shape == expected_shape
+
+    expected_axis_shape = (1,)  # (ntor+1,)
+    assert vmec_input.raxis_s.shape == expected_axis_shape
+    assert vmec_input.zaxis_c.shape == expected_axis_shape
+
+    assert vmec_input.rbs[1, 0] == pytest.approx(0.6)  # RBS(0,1) from input file
+    assert vmec_input.rbs[2, 0] == pytest.approx(0.12)  # RBS(0,2) from input file
+
+    # Verify other asymmetric arrays are initialized to zero
+    assert vmec_input.zbc[0, 0] == pytest.approx(0.0)
+    assert vmec_input.raxis_s[0] == pytest.approx(0.0)
+    assert vmec_input.zaxis_c[0] == pytest.approx(0.0)
+
+
 _MISSING_FORTRAN_VARIABLES = [
     "lrecon__logical__",
     "lrfp__logical__",

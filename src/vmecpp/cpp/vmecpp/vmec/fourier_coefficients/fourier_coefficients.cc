@@ -25,22 +25,22 @@ FourierCoeffs::FourierCoeffs(const Sizes* s, const RadialPartitioning* r,
   int num_fc_RZ = (jMaxIncludingBoundary - nsMin) * s_.mpol * (s_.ntor + 1);
   int num_fc_L = (jMaxIncludingBoundary - nsMin) * s_.mpol * (s_.ntor + 1);
 
-  rcc.resize(num_fc_RZ);
-  zsc.resize(num_fc_RZ);
-  lsc.resize(num_fc_L);
+  rcc.resize(num_fc_RZ, 0.0);
+  zsc.resize(num_fc_RZ, 0.0);
+  lsc.resize(num_fc_L, 0.0);
   if (s_.lthreed) {
-    rss.resize(num_fc_RZ);
-    zcs.resize(num_fc_RZ);
-    lcs.resize(num_fc_L);
+    rss.resize(num_fc_RZ, 0.0);
+    zcs.resize(num_fc_RZ, 0.0);
+    lcs.resize(num_fc_L, 0.0);
   }
   if (s_.lasym) {
-    rsc.resize(num_fc_RZ);
-    zcc.resize(num_fc_RZ);
-    lcc.resize(num_fc_L);
+    rsc.resize(num_fc_RZ, 0.0);
+    zcc.resize(num_fc_RZ, 0.0);
+    lcc.resize(num_fc_L, 0.0);
     if (s_.lthreed) {
-      rcs.resize(num_fc_RZ);
-      zss.resize(num_fc_RZ);
-      lss.resize(num_fc_L);
+      rcs.resize(num_fc_RZ, 0.0);
+      zss.resize(num_fc_RZ, 0.0);
+      lss.resize(num_fc_L, 0.0);
     }
   }
 }
