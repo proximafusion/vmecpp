@@ -20,10 +20,10 @@
 2. **✅ FIXED: VMEC execution**: Asymmetric configurations now load and run without crashes
 3. **✅ FIXED: Transform integration**: All 7/7 unit tests pass, transforms work correctly
 
-### 🎯 ROOT CAUSE NARROWED: Geometry Derivative Processing of Valid Transform Output
-1. **✅ BREAKTHROUGH**: NaN values occur at specific theta grid points (kl=6,7,8,9) in asymmetric mode
-2. **✅ CONFIRMED**: Asymmetric transforms produce valid finite R,Z values (R=1.85-4.14, Z=-0.0008 to -0.001)
-3. **🔍 ACTIVE**: Issue is in how geometry derivatives (`tau`, `zu12`, `ru12`) are calculated from valid R,Z input
+### 🎯 ROOT CAUSE IDENTIFIED: Missing Array Combination and tau2 Division
+1. **✅ BREAKTHROUGH**: NaN occurs because symmetric arrays (r1_e) are zero at kl=6-9
+2. **✅ ROOT CAUSE 1**: Asymmetric arrays (m_ls_.r1e_i) not combined with symmetric arrays
+3. **✅ ROOT CAUSE 2**: tau2 calculation divides by sqrtSH causing numerical instability
 
 ## Phase 1: Immediate Debugging Tasks ✅ COMPLETED
 
@@ -193,11 +193,12 @@
 13. ✅ **COMPLETED: Add unit tests for geometry derivatives**: Created comprehensive test suite including axis protection tests
 14. **✅ BREAKTHROUGH: Asymmetric transform output verified**: Transform produces finite R,Z values at kl=6-9 - issue NOT in transform itself
 15. **✅ COMPLETED: Add debug output for asymmetric transform values**: Test shows R=1.85-4.14, Z=-0.0008 to -0.001 at problematic positions
-16. **🔍 ACTIVE: Investigate geometry derivative calculation with valid R,Z input**: Since transforms work, focus on ru12, zu12, tau calculations
-17. **📊 Create test_geometry_derivatives.cc**: Unit test to isolate derivative calculation from valid R,Z input
-18. **🔬 Compare jVMEC geometry derivative processing**: Study how jVMEC calculates derivatives in asymmetric mode
-19. **🛠️ Add debug output to ideal_mhd_model**: Trace exact values before NaN occurs
-20. **🔍 Element-by-element comparison**: First iteration arrays to find exact divergence
+16. **✅ COMPLETED: Investigate geometry derivative calculation**: Identified missing array combination
+17. **✅ COMPLETED: Create test_geometry_derivatives.cc**: Shows transforms produce valid R,Z but arrays not combined
+18. **✅ COMPLETED: Create test_jacobian_asymmetric_debug.cc**: Debug output shows r1_e=0 at kl=6-9
+19. **✅ COMPLETED: Create test_array_combination.cc**: Documents exact fix needed for array combination
+20. **🔍 ACTIVE: Implement array combination fix**: Add r1_e[idx] += m_ls_.r1e_i[idx] in ideal_mhd_model
+21. **🔍 ACTIVE: Fix tau2 division issue**: Replace division with multiplication like jVMEC
 
 ## Phase 1.9: Fix Basic Fourier Transform Tests ✅ COMPLETED
 - [x] ✅ Fixed FourierToReal3DAsymmSingleMode precision - all tests pass
