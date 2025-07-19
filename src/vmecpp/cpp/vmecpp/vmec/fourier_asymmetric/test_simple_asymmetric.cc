@@ -39,7 +39,7 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
   indata.return_outputs_even_if_not_converged = true;
 
   // Simple coefficient arrays
-  int coeff_size = (indata.mpol + 1) * (2 * indata.ntor + 1);
+  int coeff_size = indata.mpol * (2 * indata.ntor + 1);
   indata.rbc.resize(coeff_size, 0.0);
   indata.zbs.resize(coeff_size, 0.0);
   indata.rbs.resize(coeff_size, 0.0);
