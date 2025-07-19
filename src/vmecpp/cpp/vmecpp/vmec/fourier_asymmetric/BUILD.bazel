@@ -272,3 +272,27 @@ cc_test(
         "//vmecpp/test_data:cth_like_fixed_bdy",
     ],
 )
+
+cc_test(
+    name = "debug_pressure_test",
+    srcs = ["debug_pressure_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/radial_profiles:radial_profiles",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_pressure_init",
+    srcs = ["test_pressure_init.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
