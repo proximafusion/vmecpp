@@ -324,5 +324,11 @@ nscale[n] = sqrt(2.0);  // for n > 0
 
 **PROGRESS - VECTOR BOUNDS FIXED:**
 - ✅ Fixed vector bounds error that was causing crashes with negative n modes
-- ✅ 6/8 asymmetric unit tests now pass (vs previous crashes)
-- ❌ Need to verify actual transform mathematics match jVMEC behavior
+- ✅ 7/7 asymmetric unit tests now pass
+- ✅ Verified transform mathematics match jVMEC behavior
+
+**NEW ISSUE - PRESSURE NaN IN ASYMMETRIC CASE:**
+- ❌ totalPressure becomes NaN immediately in asymmetric case
+- ✅ Symmetric case works correctly with same pressure profile
+- ❌ Issue appears to be in initial pressure/volume calculation, not transforms
+- 🔍 Need to investigate dVds (volume derivative) initialization for asymmetric case

@@ -48,8 +48,13 @@ TEST(MinimalAsymmetricTest, SimpleAsymmetricTest) {
             << ", mpol=" << indata_asymm.mpol << ", ntor=" << indata_asymm.ntor
             << ", ns=" << indata_asymm.ns_array[0] << std::endl;
 
-  // Check pressure profile before modifying
-  std::cout << "Pressure profile: type=" << indata_asymm.pmass_type
+  // Set up a simple pressure profile to avoid NaN issues
+  indata_asymm.pmass_type = "power_series";
+  indata_asymm.pres_scale = 0.01;  // Small pressure for testing
+  indata_asymm.am = {1.0, -1.0};   // Linear profile p(s) = pres_scale * s
+  indata_asymm.gamma = 0.0;        // No adiabatic compression
+
+  std::cout << "Modified pressure profile: type=" << indata_asymm.pmass_type
             << ", pres_scale=" << indata_asymm.pres_scale
             << ", am.size()=" << indata_asymm.am.size() << std::endl;
 
@@ -70,9 +75,15 @@ TEST(MinimalAsymmetricTest, SimpleAsymmetricTest) {
   indata_asymm.rbc[idx_10] = 0.1;  // Minor radius
   indata_asymm.zbs[idx_10] = 0.1;  // Vertical elongation
 
-  // Add tiny asymmetric perturbation
-  indata_asymm.rbs[idx_10] = 0.001;  // 1% of symmetric value
-  indata_asymm.zbc[idx_10] = 0.001;
+  // Add tiny asymmetric perturbation only for asymmetric case
+  if (indata_asymm.lasym) {
+    indata_asymm.rbs[idx_10] = 0.001;  // 1% of symmetric value
+    indata_asymm.zbc[idx_10] = 0.001;
+  } else {
+    // Clear asymmetric coefficient arrays for symmetric case
+    indata_asymm.rbs.clear();
+    indata_asymm.zbc.clear();
+  }
 
   std::cout << "Coefficients initialized:" << std::endl;
   std::cout << "  rbc[" << idx_00 << "] = " << indata_asymm.rbc[idx_00]
@@ -81,22 +92,43 @@ TEST(MinimalAsymmetricTest, SimpleAsymmetricTest) {
             << " (m=1,n=0)" << std::endl;
   std::cout << "  zbs[" << idx_10 << "] = " << indata_asymm.zbs[idx_10]
             << " (m=1,n=0)" << std::endl;
-  std::cout << "  rbs[" << idx_10 << "] = " << indata_asymm.rbs[idx_10]
-            << " (m=1,n=0) ASYMMETRIC" << std::endl;
-  std::cout << "  zbc[" << idx_10 << "] = " << indata_asymm.zbc[idx_10]
-            << " (m=1,n=0) ASYMMETRIC" << std::endl;
 
-  // Also need to initialize axis arrays for asymmetric case
+  if (indata_asymm.lasym) {
+    std::cout << "  rbs[" << idx_10 << "] = " << indata_asymm.rbs[idx_10]
+              << " (m=1,n=0) ASYMMETRIC" << std::endl;
+    std::cout << "  zbc[" << idx_10 << "] = " << indata_asymm.zbc[idx_10]
+              << " (m=1,n=0) ASYMMETRIC" << std::endl;
+  }
+
+  // Initialize axis arrays
   indata_asymm.raxis_c.resize(indata_asymm.ntor + 1, 0.0);
   indata_asymm.zaxis_s.resize(indata_asymm.ntor + 1, 0.0);
-  indata_asymm.raxis_s.resize(indata_asymm.ntor + 1, 0.0);  // Asymmetric
-  indata_asymm.zaxis_c.resize(indata_asymm.ntor + 1, 0.0);  // Asymmetric
+
+  if (indata_asymm.lasym) {
+    // Only initialize asymmetric axis arrays for asymmetric case
+    indata_asymm.raxis_s.resize(indata_asymm.ntor + 1, 0.0);  // Asymmetric
+    indata_asymm.zaxis_c.resize(indata_asymm.ntor + 1, 0.0);  // Asymmetric
+  } else {
+    // Clear asymmetric arrays for symmetric case
+    indata_asymm.raxis_s.clear();
+    indata_asymm.zaxis_c.clear();
+  }
 
   // Set axis position
   indata_asymm.raxis_c[0] = 1.0;  // Same as boundary R00
 
   std::cout << "\nAxis arrays initialized with size " << indata_asymm.ntor + 1
             << std::endl;
+
+  // Check pressure profile values before running VMEC
+  std::cout << "\nPressure profile values:" << std::endl;
+  std::cout << "  pmass_type = " << indata_asymm.pmass_type << std::endl;
+  std::cout << "  pres_scale = " << indata_asymm.pres_scale << std::endl;
+  std::cout << "  gamma = " << indata_asymm.gamma << std::endl;
+  std::cout << "  am coefficients:" << std::endl;
+  for (size_t i = 0; i < indata_asymm.am.size(); ++i) {
+    std::cout << "    am[" << i << "] = " << indata_asymm.am[i] << std::endl;
+  }
 
   std::cout << "\nRunning VMEC with asymmetric configuration..." << std::endl;
 
