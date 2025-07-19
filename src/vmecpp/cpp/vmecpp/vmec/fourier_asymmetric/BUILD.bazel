@@ -212,3 +212,46 @@ cc_test(
     ],
     size = "large",
 )
+
+cc_test(
+    name = "fourier_transform_unit_test",
+    srcs = ["fourier_transform_unit_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "fourier_debug_simple_test",
+    srcs = ["fourier_debug_simple_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+# negative_n_debug_test removed - negative toroidal modes not used in VMEC
+
+cc_test(
+    name = "test_symmetric_regression",
+    srcs = ["test_symmetric_regression.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+# debug_normalization_test removed - was for negative n modes

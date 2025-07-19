@@ -19,9 +19,9 @@ void FourierToReal3DAsymmFastPoloidal(
     absl::Span<const double> zmnss, absl::Span<double> r_real,
     absl::Span<double> z_real, absl::Span<double> lambda_real) {
   const int nzeta = sizes.nZeta;
-  const int ntheta2 = sizes.nThetaReduced;  // [0, pi]
-  const int ntheta1 = 2 * ntheta2;          // full range [0, 2pi]
-  const int nznt = ntheta1 * nzeta;
+  const int ntheta2 = sizes.nThetaReduced;  // [0, pi] including endpoint
+  const int ntheta_eff = sizes.nThetaEff;   // effective theta grid size
+  const int nznt = ntheta_eff * nzeta;
 
   // Initialize output arrays
   std::fill(r_real.begin(), r_real.end(), 0.0);
@@ -49,6 +49,7 @@ void FourierToReal3DAsymmFastPoloidal(
     std::vector<double> zmkss_asym(nzeta, 0.0);
 
     // STAGE 1: Accumulate zeta contributions for both symmetric and asymmetric
+    // Only process n >= 0 (no negative toroidal modes in 2D half-sided Fourier)
     for (int k = 0; k < nzeta; ++k) {
       for (int n = 0; n <= sizes.ntor; ++n) {
         // Find mode (m,n)
@@ -62,7 +63,7 @@ void FourierToReal3DAsymmFastPoloidal(
         }
         if (mn < 0) continue;
 
-        // Get basis functions
+        // Get basis functions (always n >= 0)
         int idx_nv = k * (sizes.nnyq2 + 1) + n;
         double cos_nv = (n <= sizes.nnyq2)
                             ? fourier_basis.cosnv[idx_nv]
@@ -93,8 +94,13 @@ void FourierToReal3DAsymmFastPoloidal(
 
     // STAGE 2: Transform in theta for [0,pi]
     for (int l = 0; l < ntheta2; ++l) {
-      double sin_mu = fourier_basis.sinmu[m * sizes.nThetaReduced + l];
-      double cos_mu = fourier_basis.cosmu[m * sizes.nThetaReduced + l];
+      int idx_basis = m * sizes.nThetaReduced + l;
+      if (idx_basis >= fourier_basis.sinmu.size()) {
+        // Debug: skip invalid access
+        continue;
+      }
+      double sin_mu = fourier_basis.sinmu[idx_basis];
+      double cos_mu = fourier_basis.cosmu[idx_basis];
 
       for (int k = 0; k < nzeta; ++k) {
         int idx = l * nzeta + k;
@@ -132,23 +138,108 @@ void FourierToReal3DAsymmFastPoloidal(
     }
   }
 
-  // STEP 2: Handle theta=[pi,2pi] using reflection
-  for (int l = ntheta2; l < ntheta1; ++l) {
-    // Simple reflection: map theta to pi-theta
-    int lr = ntheta1 - 1 - l;
+  // STEP 2: Compute theta=[pi,2pi] directly using same algorithm as [0,pi]
+  // The original code only computed [0,pi], then used reflection.
+  // For proper Fourier transforms, compute all points directly.
 
+  // Process each poloidal mode m for the SECOND half theta range
+  for (int m = 0; m < sizes.mpol; ++m) {
+    // Work arrays for this m mode (reuse the computation from first half)
+    std::vector<double> rmkcc(nzeta, 0.0);
+    std::vector<double> rmkss(nzeta, 0.0);
+    std::vector<double> zmksc(nzeta, 0.0);
+    std::vector<double> zmkcs(nzeta, 0.0);
+    std::vector<double> rmksc_asym(nzeta, 0.0);
+    std::vector<double> rmkcs_asym(nzeta, 0.0);
+    std::vector<double> zmkcc_asym(nzeta, 0.0);
+    std::vector<double> zmkss_asym(nzeta, 0.0);
+
+    // STAGE 1: Accumulate zeta contributions
+    // Only process n >= 0 (no negative toroidal modes in 2D half-sided Fourier)
     for (int k = 0; k < nzeta; ++k) {
-      int kr = (nzeta - k) % nzeta;
+      for (int n = 0; n <= sizes.ntor; ++n) {
+        // Find mode (m,n)
+        int mn = -1;
+        for (int mn_candidate = 0; mn_candidate < sizes.mnmax; ++mn_candidate) {
+          if (fourier_basis.xm[mn_candidate] == m &&
+              fourier_basis.xn[mn_candidate] / sizes.nfp == n) {
+            mn = mn_candidate;
+            break;
+          }
+        }
+        if (mn < 0) continue;
 
-      int idx = l * nzeta + k;
-      int idx_reflect = lr * nzeta + kr;
+        // Get basis functions (always n >= 0)
+        int idx_nv = k * (sizes.nnyq2 + 1) + n;
+        double cos_nv = (n <= sizes.nnyq2)
+                            ? fourier_basis.cosnv[idx_nv]
+                            : std::cos(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
+        double sin_nv = (n <= sizes.nnyq2)
+                            ? fourier_basis.sinnv[idx_nv]
+                            : std::sin(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
 
-      if (idx >= r_real.size() || idx_reflect >= r_real.size()) continue;
+        // Accumulate symmetric coefficients
+        rmkcc[k] += rmncc[mn] * cos_nv;
+        zmksc[k] += zmnsc[mn] * cos_nv;
 
-      // Apply reflection with proper parity
-      r_real[idx] = r_real[idx_reflect] - asym_R[idx_reflect];
-      z_real[idx] = -z_real[idx_reflect] + asym_Z[idx_reflect];
-      lambda_real[idx] = lambda_real[idx_reflect] - asym_L[idx_reflect];
+        if (sizes.lthreed) {
+          rmkss[k] += rmnss[mn] * sin_nv;
+          zmkcs[k] += zmncs[mn] * sin_nv;
+        }
+
+        // Accumulate asymmetric coefficients
+        rmksc_asym[k] += rmnsc[mn] * cos_nv;
+        zmkcc_asym[k] += zmncc[mn] * cos_nv;
+
+        if (sizes.lthreed) {
+          rmkcs_asym[k] += rmncs[mn] * sin_nv;
+          zmkss_asym[k] += zmnss[mn] * sin_nv;
+        }
+      }
+    }
+
+    // STAGE 2: Transform in theta for the SECOND half [pi,2pi)
+    for (int l = ntheta2; l < ntheta_eff; ++l) {
+      // Compute basis functions directly for the full theta range
+      double theta = 2.0 * M_PI * l / ntheta_eff;
+      double cos_mu = cos(m * theta);
+      double sin_mu = sin(m * theta);
+
+      // Apply same normalization as FourierBasisFastPoloidal
+      if (m > 0) {
+        cos_mu *= sqrt(2.0);
+        sin_mu *= sqrt(2.0);
+      }
+
+      for (int k = 0; k < nzeta; ++k) {
+        int idx = l * nzeta + k;
+        if (idx >= r_real.size()) continue;
+
+        // Initialize to zero for clean computation
+        if (m == 0) {
+          r_real[idx] = 0.0;
+          z_real[idx] = 0.0;
+          lambda_real[idx] = 0.0;
+        }
+
+        // Symmetric contributions
+        r_real[idx] += rmkcc[k] * cos_mu;
+        z_real[idx] += zmksc[k] * sin_mu;
+
+        if (sizes.lthreed) {
+          r_real[idx] += rmkss[k] * sin_mu;
+          z_real[idx] += zmkcs[k] * cos_mu;
+        }
+
+        // Asymmetric contributions
+        r_real[idx] += rmksc_asym[k] * sin_mu;
+        z_real[idx] += zmkcc_asym[k] * cos_mu;
+
+        if (sizes.lthreed) {
+          r_real[idx] += rmkcs_asym[k] * cos_mu;
+          z_real[idx] += zmkss_asym[k] * sin_mu;
+        }
+      }
     }
   }
 }
@@ -203,8 +294,13 @@ void FourierToReal2DAsymmFastPoloidal(
 
     // Compute both symmetric and asymmetric contributions for theta=[0,pi]
     for (int l = 0; l < ntheta2; ++l) {
-      double sin_mu = fourier_basis.sinmu[m * sizes.nThetaReduced + l];
-      double cos_mu = fourier_basis.cosmu[m * sizes.nThetaReduced + l];
+      int idx_basis = m * sizes.nThetaReduced + l;
+      if (idx_basis >= fourier_basis.sinmu.size()) {
+        // Debug: skip invalid access
+        continue;
+      }
+      double sin_mu = fourier_basis.sinmu[idx_basis];
+      double cos_mu = fourier_basis.cosmu[idx_basis];
 
       for (int k = 0; k < nzeta; ++k) {
         int idx = l * nzeta + k;
@@ -371,11 +467,6 @@ void RealToFourier3DAsymmFastPoloidal(
   // Inverse transform from real space to Fourier coefficients
   // Based on discrete Fourier transform with trapezoidal rule integration
 
-  // DEBUG: Compare with educational_VMEC tomnspa.f90
-  std::cout
-      << "DEBUG RealToFourier3DAsymmFastPoloidal: inverse transform, mnmax="
-      << sizes.mnmax << std::endl;
-
   // const double PI = 3.14159265358979323846;  // unused
 
   // Initialize output arrays
@@ -398,16 +489,19 @@ void RealToFourier3DAsymmFastPoloidal(
   // Create FourierBasisFastPoloidal to get proper mode indexing
   FourierBasisFastPoloidal fourier_basis(&sizes);
 
-  // Compute scaling factors like educational_VMEC
+  // Compute scaling factors for inverse transform
+  // Since forward transform applies sqrt(2) for m>0, n>0,
+  // inverse transform must also apply sqrt(2) to recover coefficients
+  // (due to symmetric normalization convention)
   std::vector<double> mscale(sizes.mpol + 1);
   std::vector<double> nscale(sizes.ntor + 1);
   mscale[0] = 1.0;
   nscale[0] = 1.0;
   for (int m = 1; m <= sizes.mpol; ++m) {
-    mscale[m] = 1.0 / sqrt(2.0);
+    mscale[m] = sqrt(2.0);  // Match forward transform normalization
   }
   for (int n = 1; n <= sizes.ntor; ++n) {
-    nscale[n] = 1.0 / sqrt(2.0);
+    nscale[n] = sqrt(2.0);  // Match forward transform normalization
   }
 
   // For each mode
@@ -415,10 +509,6 @@ void RealToFourier3DAsymmFastPoloidal(
     // Use FourierBasisFastPoloidal to decode m,n from linear index
     int m = fourier_basis.xm[mn];
     int n = fourier_basis.xn[mn] / sizes.nfp;  // xn includes nfp factor
-
-    // DEBUG: Show which modes are being processed
-    std::cout << "DEBUG RealToFourier3D: Processing mode mn=" << mn
-              << ", m=" << m << ", n=" << n << std::endl;
 
     // Integrate over theta and zeta
     double sum_rmncc = 0.0, sum_rmnss = 0.0, sum_rmnsc = 0.0, sum_rmncs = 0.0;
@@ -477,22 +567,24 @@ void RealToFourier3DAsymmFastPoloidal(
     // normalization)
     double norm_factor = 1.0 / (sizes.nZeta * sizes.nThetaEff);
 
-    // DEBUG: Show normalization factors
-    std::cout << "DEBUG RealToFourier3D: mn=" << mn
-              << ", norm_factor=" << norm_factor << std::endl;
+    // Apply normalization factors to match forward transform
+    // Forward transform applies sqrt(2) for m>0 and n>0 modes
+    // Inverse must apply 1/sqrt(2) to recover original coefficients
+    double mode_scale = mscale[m];
+    if (n != 0) {
+      mode_scale *= nscale[std::abs(n)];
+    }
 
-    // Store coefficients with standard DFT normalization only
-    // The forward transform already applies mscale/nscale through the basis
-    // functions
-    rmncc[mn] = sum_rmncc * norm_factor;
-    rmnss[mn] = sum_rmnss * norm_factor;
-    rmnsc[mn] = sum_rmnsc * norm_factor;
-    rmncs[mn] = sum_rmncs * norm_factor;
+    // Store coefficients with DFT normalization and mode scaling
+    rmncc[mn] = sum_rmncc * norm_factor * mode_scale;
+    rmnss[mn] = sum_rmnss * norm_factor * mode_scale;
+    rmnsc[mn] = sum_rmnsc * norm_factor * mode_scale;
+    rmncs[mn] = sum_rmncs * norm_factor * mode_scale;
 
-    zmnsc[mn] = sum_zmnsc * norm_factor;
-    zmncs[mn] = sum_zmncs * norm_factor;
-    zmncc[mn] = sum_zmncc * norm_factor;
-    zmnss[mn] = sum_zmnss * norm_factor;
+    zmnsc[mn] = sum_zmnsc * norm_factor * mode_scale;
+    zmncs[mn] = sum_zmncs * norm_factor * mode_scale;
+    zmncc[mn] = sum_zmncc * norm_factor * mode_scale;
+    zmnss[mn] = sum_zmnss * norm_factor * mode_scale;
   }
 }
 
@@ -528,10 +620,11 @@ void RealToFourier2DAsymmFastPoloidal(
   FourierBasisFastPoloidal fourier_basis(&sizes);
 
   // Compute scaling factors for normalization
+  // Match forward transform normalization convention
   std::vector<double> mscale(sizes.mpol + 1);
   mscale[0] = 1.0;
   for (int m = 1; m <= sizes.mpol; ++m) {
-    mscale[m] = 1.0 / sqrt(2.0);
+    mscale[m] = sqrt(2.0);  // Same as 3D case
   }
 
   // For each mode (only n=0 modes for 2D)
@@ -570,11 +663,14 @@ void RealToFourier2DAsymmFastPoloidal(
     // normalization)
     double norm_factor = 1.0 / (sizes.nZeta * sizes.nThetaEff);
 
-    // Store coefficients with standard DFT normalization only
-    rmncc[mn] = sum_rmncc * norm_factor;
-    rmnsc[mn] = sum_rmnsc * norm_factor;
-    zmnsc[mn] = sum_zmnsc * norm_factor;
-    zmncc[mn] = sum_zmncc * norm_factor;
+    // Apply mode scaling to match forward transform normalization
+    double mode_scale = mscale[m];
+
+    // Store coefficients with DFT normalization and mode scaling
+    rmncc[mn] = sum_rmncc * norm_factor * mode_scale;
+    rmnsc[mn] = sum_rmnsc * norm_factor * mode_scale;
+    zmnsc[mn] = sum_zmnsc * norm_factor * mode_scale;
+    zmncc[mn] = sum_zmncc * norm_factor * mode_scale;
   }
 }
 

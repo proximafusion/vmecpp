@@ -24,6 +24,11 @@ This document contains critical information for implementing asymmetric equilibr
 For u in [0,π]: total = symmetric + anti-symmetric
 For u in [π,2π]: total = symmetric - anti-symmetric
 
+## Implementation Notes
+
+### Negative Toroidal Mode Numbers
+- We do not use negative toroidal mode numbers n due to the way one can compress a fourier series in 2d with half sided in one variable
+
 ## Required Components
 
 ### 1. New File: fourier_asymmetric.cc/h
@@ -94,6 +99,25 @@ Must implement:
   - Line ~389: "symrzl not implemented yet"
   - Line ~415: "asymmetric fwd-DFT not implemented yet"
   - Line ~417: "symforce not implemented yet"
+
+## Critical Implementation Constraints
+
+### NEVER CHANGE SYMMETRIC BEHAVIOR (CRITICAL CONSTRAINT)
+- **🚨 ABSOLUTE REQUIREMENT: Any modifications to asymmetric Fourier transforms MUST NOT affect the behavior when lasym=false (symmetric case)**
+- **🚨 The symmetric variant (lasym=F) is working correctly and MUST remain unchanged**
+- Always test both lasym=true and lasym=false to ensure no regression in symmetric behavior
+- Upstream has working symmetric transforms in `FourierToReal3DSymmFastPoloidal` - do not break this
+- **Before making ANY changes, verify against symmetric baseline behavior**
+
+### Reference Source Code Locations
+- **jVMEC source code**: `../jVMEC/` - Use for exact negative n mode handling verification
+- **educational_VMEC source code**: `../educational_VMEC/` - Use for detailed algorithm understanding
+- **Design documentation**: `../benchmark_vmec/design/`
+
+### Verification Requirements
+- **All negative n mode handling and asymmetric transform behavior must match jVMEC exactly, not theoretical expectations**
+- When implementing transforms, verify against actual jVMEC/educational_VMEC source code, not mathematical assumptions
+- Use meticulous debug output comparing all three codes (VMEC++, jVMEC, educational_VMEC) line-by-line
 
 ## External Resources
 - You can find general instructions on the codebase for agentic coding in AGENTS.md
