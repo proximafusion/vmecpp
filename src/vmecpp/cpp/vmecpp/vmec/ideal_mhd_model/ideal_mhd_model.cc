@@ -1298,83 +1298,87 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
       std::cout << std::endl;
     }
 
-    // IMPORTANT: For asymmetric case, we need to:
-    // 1. Copy symmetric values to m_ls_ arrays
-    // 2. Add asymmetric contributions
-    // 3. Symmetrize
-    // 4. Copy back to main arrays
+    // IMPORTANT: For asymmetric case, following educational_VMEC pattern:
+    // 1. Symmetric transform already filled main arrays (r1_e, etc.)
+    // 2. Asymmetric transform fills m_ls_ arrays with ONLY asymmetric
+    // contributions
+    // 3. ADD asymmetric contributions to symmetric arrays (r1s = r1s + r1a
+    // pattern)
 
-    // Step 1: Copy symmetric values to m_ls_ arrays
-    for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
-      int offset = (jF - r_.nsMinF1) * s_.nZnT;
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        m_ls_.r1e_i[offset + kl] = r1_e[offset + kl];
-        m_ls_.r1o_i[offset + kl] = r1_o[offset + kl];
-        m_ls_.z1e_i[offset + kl] = z1_e[offset + kl];
-        m_ls_.z1o_i[offset + kl] = z1_o[offset + kl];
-        m_ls_.rue_i[offset + kl] = ru_e[offset + kl];
-        m_ls_.ruo_i[offset + kl] = ru_o[offset + kl];
-        m_ls_.zue_i[offset + kl] = zu_e[offset + kl];
-        m_ls_.zuo_i[offset + kl] = zu_o[offset + kl];
-        m_ls_.lue_i[offset + kl] = lu_e[offset + kl];
-        m_ls_.luo_i[offset + kl] = lu_o[offset + kl];
-      }
-    }
+    // Step 1: Resize asymmetric arrays to accommodate all radial surfaces
+    int required_size = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
+    std::cout << "DEBUG: Resizing asymmetric arrays from " << m_ls_.r1e_i.size()
+              << " to " << required_size << std::endl;
 
-    // Step 2: Add asymmetric contributions
+    m_ls_.r1e_i.resize(required_size, 0.0);
+    m_ls_.z1e_i.resize(required_size, 0.0);
+    m_ls_.lue_i.resize(required_size, 0.0);
+
+    // Step 2: Apply asymmetric transform to fill m_ls_ arrays
     if (s_.lthreed) {
       dft_FourierToReal_3d_asymm(physical_x);
     } else {
       std::cout << "DEBUG: Calling 2D asymmetric transform" << std::endl;
       dft_FourierToReal_2d_asymm(physical_x);
-
-      // DEBUG: Check output values from transform
-      std::cout
-          << "DEBUG: After 2D asymmetric transform, checking first few values:"
-          << std::endl;
-      for (int i = 0; i < std::min(10, static_cast<int>(s_.nZnT)); ++i) {
-        double r_val = m_ls_.r1e_i[i];
-        double z_val = m_ls_.z1e_i[i];
-        std::cout << "  i=" << i << ": R=" << r_val << ", Z=" << z_val;
-        if (!std::isfinite(r_val) || !std::isfinite(z_val)) {
-          std::cout << " <-- NON-FINITE!";
-        }
-        std::cout << std::endl;
-      }
     }
 
-    // Step 3: Symmetrize geometry components
+    // Step 3: Apply symmetrization to asymmetric arrays
     std::cout << "DEBUG: Calling symrzl_geometry" << std::endl;
     symrzl_geometry(physical_x);
 
-    // DEBUG: Check values after symmetrization
-    std::cout << "DEBUG: After symrzl_geometry, checking first few values:"
+    // Step 4: ADD asymmetric contributions to symmetric arrays
+    // (educational_VMEC pattern) Following educational_VMEC: r1s = r1s + r1a,
+    // z1s = z1s + z1a, etc. NOTE: Only add position arrays, not derivatives
+    // (asymmetric transform doesn't compute derivatives)
+    std::cout << "DEBUG: Adding asymmetric contributions to symmetric arrays"
               << std::endl;
-    for (int i = 0; i < std::min(10, static_cast<int>(s_.nZnT)); ++i) {
-      double r_val = m_ls_.r1e_i[i];
-      double z_val = m_ls_.z1e_i[i];
-      std::cout << "  i=" << i << ": R=" << r_val << ", Z=" << z_val;
-      if (!std::isfinite(r_val) || !std::isfinite(z_val)) {
-        std::cout << " <-- NON-FINITE!";
-      }
-      std::cout << std::endl;
-    }
 
-    // Step 4: Copy combined values back to main arrays
+    // First, let's check the sizes to debug the bounds error
+    int total_symmetric_size = r1_e.size();
+    int total_asymmetric_size = m_ls_.r1e_i.size();
+    std::cout << "DEBUG: Array sizes - symmetric: " << total_symmetric_size
+              << ", asymmetric: " << total_asymmetric_size << std::endl;
+    std::cout << "DEBUG: nsMinF1=" << r_.nsMinF1 << ", nsMaxF1=" << r_.nsMaxF1
+              << ", nZnT=" << s_.nZnT << std::endl;
+
     for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
       int offset = (jF - r_.nsMinF1) * s_.nZnT;
       for (int kl = 0; kl < s_.nZnT; ++kl) {
-        r1_e[offset + kl] = m_ls_.r1e_i[offset + kl];
-        r1_o[offset + kl] = m_ls_.r1o_i[offset + kl];
-        z1_e[offset + kl] = m_ls_.z1e_i[offset + kl];
-        z1_o[offset + kl] = m_ls_.z1o_i[offset + kl];
-        ru_e[offset + kl] = m_ls_.rue_i[offset + kl];
-        ru_o[offset + kl] = m_ls_.ruo_i[offset + kl];
-        zu_e[offset + kl] = m_ls_.zue_i[offset + kl];
-        zu_o[offset + kl] = m_ls_.zuo_i[offset + kl];
-        lu_e[offset + kl] = m_ls_.lue_i[offset + kl];
-        lu_o[offset + kl] = m_ls_.luo_i[offset + kl];
+        int idx = offset + kl;
+        if (idx >= total_symmetric_size || idx >= total_asymmetric_size) {
+          std::cout << "ERROR: Array index " << idx
+                    << " out of bounds! jF=" << jF << ", kl=" << kl
+                    << ", offset=" << offset << std::endl;
+          continue;
+        }
+
+        // Only add position arrays (r1, z1) - these are what asymmetric
+        // transform fills
+        r1_e[idx] += m_ls_.r1e_i[idx];
+        z1_e[idx] += m_ls_.z1e_i[idx];
+        // Note: r1_o and z1_o are not filled by asymmetric transform in 2D case
+
+        // lu_e array should be added as well since asymmetric transform fills
+        // lue_i
+        lu_e[idx] += m_ls_.lue_i[idx];
       }
+    }
+
+    // DEBUG: Check combined arrays for problematic theta positions
+    std::cout << "DEBUG: After array combination, checking kl=6-9:"
+              << std::endl;
+    for (int kl = 6; kl <= 9 && kl < s_.nZnT; ++kl) {
+      double r_e = r1_e[kl];
+      double r_o = r1_o[kl];
+      std::cout << "  kl=" << kl << ": r1_e=" << r_e << ", r1_o=" << r_o;
+      if (!std::isfinite(r_e) || !std::isfinite(r_o)) {
+        std::cout << " <-- NON-FINITE!";
+      } else if (r_e == 0.0 && r_o == 0.0) {
+        std::cout << " <-- STILL ZERO!";
+      } else {
+        std::cout << " <-- GOOD (non-zero)";
+      }
+      std::cout << std::endl;
     }
 
   }  // lasym
