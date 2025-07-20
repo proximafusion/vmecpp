@@ -1763,12 +1763,30 @@ void IdealMhdModel::computeJacobian() {
       // sqrt(g)/R on half-grid: assemble as governed by product rule
       double tau1 = ru12[iHalf] * zs[iHalf] - rs[iHalf] * zu12[iHalf];
 
+      // DEBUG: Detailed tau calculation analysis for asymmetric mode
+      if (s_.lasym && (kl >= 6 && kl <= 9)) {
+        std::cout << "DEBUG TAU CALC kl=" << kl << " jH=" << jH
+                  << " iHalf=" << iHalf << ":\n";
+        std::cout << "  ru12[" << iHalf << "]=" << ru12[iHalf] << ", zs["
+                  << iHalf << "]=" << zs[iHalf] << "\n";
+        std::cout << "  rs[" << iHalf << "]=" << rs[iHalf] << ", zu12[" << iHalf
+                  << "]=" << zu12[iHalf] << "\n";
+        std::cout << "  tau1 = " << ru12[iHalf] << " * " << zs[iHalf] << " - "
+                  << rs[iHalf] << " * " << zu12[iHalf] << " = " << tau1 << "\n";
+        std::cout << "  sqrtSH=" << sqrtSH
+                  << ", dSHalfDsInterp=" << dSHalfDsInterp << "\n";
+      }
+
       // Add axis protection for asymmetric mode to prevent division by zero
       // Based on jVMEC implementation: extrapolate as constant towards axis
       double protected_sqrtSH = sqrtSH;
       if (jH == r_.nsMinH && r_.nsMinH == 0 && s_.lasym) {
         // At axis in asymmetric mode, use safe division
         protected_sqrtSH = std::max(sqrtSH, 1e-12);
+        if (kl >= 6 && kl <= 9) {
+          std::cout << "  AXIS PROTECTION: sqrtSH=" << sqrtSH
+                    << " → protected_sqrtSH=" << protected_sqrtSH << "\n";
+        }
       }
 
       double tau2 = ruo_o * z1o_o + m_ls_.ruo_i[kl] * m_ls_.z1o_i[kl] -
@@ -1776,7 +1794,30 @@ void IdealMhdModel::computeJacobian() {
                     (rue_o * z1o_o + m_ls_.rue_i[kl] * m_ls_.z1o_i[kl] -
                      zue_o * r1o_o - m_ls_.zue_i[kl] * m_ls_.r1o_i[kl]) /
                         protected_sqrtSH;
+
+      if (s_.lasym && (kl >= 6 && kl <= 9)) {
+        std::cout << "  tau2 components:\n";
+        std::cout << "    ruo_o * z1o_o = " << ruo_o << " * " << z1o_o << " = "
+                  << (ruo_o * z1o_o) << "\n";
+        std::cout << "    zuo_o * r1o_o = " << zuo_o << " * " << r1o_o << " = "
+                  << (zuo_o * r1o_o) << "\n";
+        std::cout << "    division term = "
+                  << ((rue_o * z1o_o + m_ls_.rue_i[kl] * m_ls_.z1o_i[kl] -
+                       zue_o * r1o_o - m_ls_.zue_i[kl] * m_ls_.r1o_i[kl]) /
+                      protected_sqrtSH)
+                  << "\n";
+        std::cout << "    tau2 = " << tau2 << "\n";
+      }
+
       double tau_val = tau1 + dSHalfDsInterp * tau2;
+
+      if (s_.lasym && (kl >= 6 && kl <= 9)) {
+        std::cout << "  tau_val = " << tau1 << " + " << dSHalfDsInterp << " * "
+                  << tau2 << " = " << tau_val << "\n";
+        if (!std::isfinite(tau_val)) {
+          std::cout << "  ❌ NON-FINITE TAU_VAL!\n";
+        }
+      }
 
       // Apply axis protection: use constant extrapolation like jVMEC
       if (jH == r_.nsMinH && r_.nsMinH == 0 && s_.lasym) {

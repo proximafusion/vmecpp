@@ -608,8 +608,21 @@ Through systematic TDD testing with multiple configurations:
 3. **✅ Even realistic jVMEC config fails**: R0=6, mpol=5, finite pressure still fails
 4. **❌ Jacobian calculation fails**: "INITIAL JACOBIAN CHANGED SIGN!" with correct geometry
 
-### The Real Issue: computeJacobian() Function
+### 🎯 BREAKTHROUGH: Tau Sign Change Identified in Jacobian Calculation
+**Latest tau debug output reveals exact failure mechanism:**
+
+- **Surface jH=0**: tau values are **positive** (tau=4.082400 at kl=8, tau=0.000000 at kl=9)
+- **Surface jH=1**: tau values are **negative** (tau=-0.594000, tau=-0.835831, tau=-0.936000)
+- **Jacobian check**: `(minTau * maxTau < 0.0)` fails because tau changes sign between surfaces
+
+**Key Components of tau calculation:**
+- `tau1 = ru12 * zs - rs * zu12` (geometric component)
+- `tau2 = complex expression / sqrtSH` (always zero in debug output)
+- `tau = tau1 + dSHalfDsInterp * tau2` (final tau value)
+
+**The Real Issue: computeJacobian() Function**
 - **Location**: `ideal_mhd_model.cc` in `computeJacobian()` function
-- **Problem**: Tau calculation fails with correct geometry arrays in asymmetric mode
-- **Evidence**: Both simple and realistic configs fail at same point
-- **Not configuration-specific**: Fundamental algorithm issue in Jacobian calculation
+- **Problem**: Tau changes sign between radial surfaces in asymmetric mode
+- **Evidence**: Surface jH=0 positive tau, surface jH=1 negative tau
+- **Root cause**: tau1 calculation produces different signs across surfaces
+- **Not configuration-specific**: Fundamental issue with tau1=ru12*zs-rs*zu12 in asymmetric mode
