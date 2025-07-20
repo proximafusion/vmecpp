@@ -1082,3 +1082,12 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_force_constraint_integration",
+    srcs = ["test_force_constraint_integration.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

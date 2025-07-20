@@ -194,6 +194,9 @@ class IdealMhdModel {
   // Computes the forward-DFT of forces for the 2D asymmetric case.
   void dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f);
 
+  // Apply jVMEC-style m=1 constraint to force coefficients
+  void applyM1ConstraintToForces(FourierForces& m_physical_f);
+
   // Symmetrize force components for asymmetric equilibria
   void symrzl_forces(FourierForces& m_physical_f);
 
