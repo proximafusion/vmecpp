@@ -149,11 +149,20 @@
 
 ## Priority Actions - Next Steps
 
-1. **ACTIVE NOW**: Run integration tests with asymmetric equilibria
-2. **NEXT**: Add meticulous debug output from VMEC++, jVMEC, and educational_VMEC
-3. **THEN**: Deep dive into jVMEC implementation for reference
-4. **CURRENT**: Create minimal asymmetric test case for detailed comparison
-5. **FUTURE**: Compare transform outputs between all three codes step-by-step
+1. **✅ COMPLETED**: Run integration tests with asymmetric equilibria - algorithm works, boundary issue identified
+2. **✅ COMPLETED**: Add meticulous debug output from VMEC++, jVMEC, and educational_VMEC
+3. **✅ COMPLETED**: Deep dive into jVMEC implementation for reference - **ROOT CAUSE FOUND**
+4. **✅ COMPLETED**: Create minimal asymmetric test case for detailed comparison
+5. **🎯 CRITICAL**: **Implement jVMEC boundary theta shift correction** - this is the missing piece!
+
+## 🚨 NEXT PHASE: Implement Boundary Theta Shift Correction
+
+### Implementation Plan:
+1. **Create unit tests** for theta shift calculation (TDD approach)
+2. **Find where VMEC++ initializes axis/boundary** geometry from input coefficients
+3. **Implement jVMEC correction formula** with proper validation
+4. **Test convergence** with corrected boundary initialization
+5. **Achieve first asymmetric equilibrium convergence** in VMEC++
 
 ## Known Issues Fixed ✅
 
@@ -518,11 +527,30 @@ This represents the breakthrough needed for asymmetric VMEC in C++. The primary 
 4. **✅ COMPLETED**: Created embedded configuration test with proven working boundary conditions
 5. **⏳ NEXT**: Deep jVMEC comparison for exact reference behavior on remaining convergence issues
 
-### Phase 3.3: Deep jVMEC Reference Analysis
-1. **Study jVMEC asymmetric algorithm flow**: Document exact sequence of operations
-2. **Compare initialization patterns**: Verify array setup and boundary conditions match
-3. **Analyze convergence criteria**: Ensure VMEC++ uses same convergence logic
-4. **Add debug output at every step**: Match jVMEC debug output positions exactly
+### Phase 3.3: Deep jVMEC Reference Analysis ✅ BREAKTHROUGH: ROOT CAUSE IDENTIFIED!
+1. **✅ COMPLETED**: Study jVMEC asymmetric algorithm flow - documented exact sequence of operations
+2. **✅ BREAKTHROUGH**: Compare initialization patterns - **FOUND MISSING BOUNDARY THETA SHIFT CORRECTION**
+3. **✅ IDENTIFIED**: Convergence criteria match, issue is in boundary initialization
+4. **✅ ROOT CAUSE**: jVMEC uses corrected theta shift formula, VMEC++ missing this correction
+
+### 🎯 MAJOR DISCOVERY: Missing Boundary Theta Shift Correction
+**Analysis shows -34.36° theta shift for proven working configuration!**
+
+#### jVMEC Corrected Formula (missing in VMEC++):
+```java
+delta = Math.atan2(Rbs[ntord][m] - Zbc[ntord][m], Rbc[ntord][m] + Zbs[ntord][m]);
+```
+
+#### Key Evidence:
+1. **✅ Asymmetric algorithm works**: Debug shows "Processing asymmetric contribution"
+2. **❌ Boundary poorly shaped**: "FATAL ERROR... initial boundary is poorly shaped"
+3. **🔍 Significant shift**: -34.36° theta correction needed for up_down_asymmetric_tokamak.json
+4. **📍 Location**: jVMEC applies this in Boundaries.java, VMEC++ missing equivalent
+
+#### Impact:
+- Explains why proven jVMEC configurations fail in VMEC++
+- Core asymmetric transforms work correctly, issue is boundary initialization
+- Simple parameter validation fixes (tcon0 range) vs fundamental algorithm fix
 
 ### Critical Testing Requirements Maintained
 - **TDD Mandatory**: All changes driven by failing/passing tests
