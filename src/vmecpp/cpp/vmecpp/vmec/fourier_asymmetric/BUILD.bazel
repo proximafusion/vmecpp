@@ -872,3 +872,33 @@ cc_test(
     ],
     size = "large",
 )
+
+cc_test(
+    name = "test_jacobian_jvmec_comparison",
+    srcs = ["test_jacobian_jvmec_comparison.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "test_geometry_derivatives_debug",
+    srcs = ["test_geometry_derivatives_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "medium",
+)
+
+cc_test(
+    name = "test_array_indexing_bug",
+    srcs = ["test_array_indexing_bug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "medium",
+)

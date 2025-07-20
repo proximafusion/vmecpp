@@ -941,8 +941,31 @@ These terms represent coupling between even and odd modes, crucial for asymmetri
 - **Not a tau bug**: Issue appears to be in boundary conditions or initial geometry
 - **Next focus**: Deep dive into jVMEC Jacobian handling for asymmetric cases
 
+### 🎉 LATEST BREAKTHROUGH: Array Indexing Bug Fixed (Partially)
+
+#### ✅ ROOT CAUSE IDENTIFIED: r1_o Array Corruption
+- **Problem**: r1_o[16] = -0.058779 (derivative value, not R position)
+- **Expected**: r1_o[16] should be ~19-20 (R coordinate value)
+- **Found via debug**: Array indexing shows r1_o contains derivative values instead of positions
+
+#### ✅ PARTIAL FIX: Odd Array Population Corrected
+- **Issue**: Asymmetric transform only stored small perturbations in r1_o
+- **Solution**: Store full combined geometry (r_symmetric - r_asym) for anti-symmetric contribution
+- **Result**: r1_o values now reasonable (0.058779 vs previous -0.058779)
+
+#### 🔍 REMAINING ISSUE: Even Arrays Not Populated at Higher Surfaces
+- **New problem**: r1_e[16] = 0.000000 (should be ~19-20)
+- **Impact**: r1[j+1] calculation still wrong because even arrays missing at surface 1
+- **Debug shows**: Surface 0 (indices 0-9) populated correctly, surface 1 (indices 10-19) missing data
+
+#### 🎯 NEXT FOCUS: Debug Surface Population
+- **Surface 0**: Properly populated with geometry data
+- **Surface 1**: Arrays are zero where they should have interpolated geometry
+- **Issue**: With NS=3, need proper geometry at all radial surfaces for Jacobian
+
 ### Next Immediate Steps 🔄
-1. **Create unit test for Jacobian sign behavior**: Compare VMEC++ vs jVMEC line-by-line
-2. **Add meticulous debug output**: Trace every tau component from all three codes
-3. **Study jVMEC Jacobian protection**: How does jVMEC handle sign-changing Jacobians?
-4. **Test with proven jVMEC inputs**: Use exact working asymmetric configurations
+1. **✅ COMPLETED: Identify array indexing bug**: Found r1_o corruption with derivative values
+2. **✅ COMPLETED: Fix odd array population**: Now stores full geometry instead of perturbations
+3. **🔄 NEXT: Debug even array population**: Why r1_e[16]=0 at surface 1?
+4. **⏳ PENDING: Test surface interpolation**: Ensure all NS surfaces have proper geometry
+5. **⏳ PENDING: Verify Jacobian with correct arrays**: Should converge once all arrays populated
