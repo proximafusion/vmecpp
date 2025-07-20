@@ -25,6 +25,23 @@ void FourierToReal3DAsymmFastPoloidal(
     absl::Span<double> r_real, absl::Span<double> z_real,
     absl::Span<double> lambda_real);
 
+// NEW: Forward transform that outputs separate symmetric and antisymmetric
+// arrays This is the key to fixing the array combination issue
+void FourierToReal3DAsymmFastPoloidalSeparated(
+    const Sizes& sizes, absl::Span<const double> rmncc,
+    absl::Span<const double> rmnss,
+    absl::Span<const double> rmnsc,  // Asymmetric
+    absl::Span<const double> rmncs,  // Asymmetric
+    absl::Span<const double> zmnsc, absl::Span<const double> zmncs,
+    absl::Span<const double> zmncc,   // Asymmetric
+    absl::Span<const double> zmnss,   // Asymmetric
+    absl::Span<double> r_sym,         // SEPARATE symmetric output [0, π]
+    absl::Span<double> r_asym,        // SEPARATE antisymmetric output [0, π]
+    absl::Span<double> z_sym,         // SEPARATE symmetric output [0, π]
+    absl::Span<double> z_asym,        // SEPARATE antisymmetric output [0, π]
+    absl::Span<double> lambda_sym,    // SEPARATE symmetric output [0, π]
+    absl::Span<double> lambda_asym);  // SEPARATE antisymmetric output [0, π]
+
 // 2D version for axisymmetric case
 void FourierToReal2DAsymmFastPoloidal(
     const Sizes& sizes, absl::Span<const double> rmncc,

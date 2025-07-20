@@ -781,4 +781,120 @@ void SymmetrizeForces(const Sizes& sizes, absl::Span<double> force_r,
   }
 }
 
+void FourierToReal3DAsymmFastPoloidalSeparated(
+    const Sizes& sizes, absl::Span<const double> rmncc,
+    absl::Span<const double> rmnss, absl::Span<const double> rmnsc,
+    absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
+    absl::Span<const double> zmncs, absl::Span<const double> zmncc,
+    absl::Span<const double> zmnss, absl::Span<double> r_sym,
+    absl::Span<double> r_asym, absl::Span<double> z_sym,
+    absl::Span<double> z_asym, absl::Span<double> lambda_sym,
+    absl::Span<double> lambda_asym) {
+  const int nzeta = sizes.nZeta;
+  const int ntheta2 = sizes.nThetaReduced;   // [0, pi] including endpoint
+  const int nznt_reduced = ntheta2 * nzeta;  // Size for separate arrays
+
+  // Initialize output arrays - these are for [0, π] range only
+  std::fill(r_sym.begin(), r_sym.end(), 0.0);
+  std::fill(r_asym.begin(), r_asym.end(), 0.0);
+  std::fill(z_sym.begin(), z_sym.end(), 0.0);
+  std::fill(z_asym.begin(), z_asym.end(), 0.0);
+  std::fill(lambda_sym.begin(), lambda_sym.end(), 0.0);
+  std::fill(lambda_asym.begin(), lambda_asym.end(), 0.0);
+
+  // Get basis functions
+  FourierBasisFastPoloidal fourier_basis(&sizes);
+
+  // Process each poloidal mode m
+  for (int m = 0; m < sizes.mpol; ++m) {
+    // Work arrays for this m mode
+    std::vector<double> rmkcc(nzeta, 0.0);       // Symmetric R
+    std::vector<double> rmkss(nzeta, 0.0);       // Symmetric R
+    std::vector<double> zmksc(nzeta, 0.0);       // Symmetric Z
+    std::vector<double> zmkcs(nzeta, 0.0);       // Symmetric Z
+    std::vector<double> rmksc_asym(nzeta, 0.0);  // Antisymmetric R
+    std::vector<double> rmkcs_asym(nzeta, 0.0);  // Antisymmetric R
+    std::vector<double> zmkcc_asym(nzeta, 0.0);  // Antisymmetric Z
+    std::vector<double> zmkss_asym(nzeta, 0.0);  // Antisymmetric Z
+
+    // STAGE 1: Accumulate zeta contributions for both symmetric and asymmetric
+    for (int k = 0; k < nzeta; ++k) {
+      for (int n = 0; n <= sizes.ntor; ++n) {
+        // Find mode (m,n)
+        int mn = -1;
+        for (int mn_candidate = 0; mn_candidate < sizes.mnmax; ++mn_candidate) {
+          if (fourier_basis.xm[mn_candidate] == m &&
+              fourier_basis.xn[mn_candidate] / sizes.nfp == n) {
+            mn = mn_candidate;
+            break;
+          }
+        }
+        if (mn < 0) continue;
+
+        // Calculate zeta angle
+        const double zeta = 2.0 * M_PI * k / nzeta;
+        const double arg = n * zeta;
+        const double cos_arg = cos(arg);
+        const double sin_arg = sin(arg);
+
+        // Symmetric coefficients (same as original VMEC)
+        double rcc = (mn < static_cast<int>(rmncc.size())) ? rmncc[mn] : 0.0;
+        double rss = (mn < static_cast<int>(rmnss.size())) ? rmnss[mn] : 0.0;
+        double zsc = (mn < static_cast<int>(zmnsc.size())) ? zmnsc[mn] : 0.0;
+        double zcs = (mn < static_cast<int>(zmncs.size())) ? zmncs[mn] : 0.0;
+
+        // Antisymmetric coefficients (new for asymmetric mode)
+        double rsc = (mn < static_cast<int>(rmnsc.size())) ? rmnsc[mn] : 0.0;
+        double rcs = (mn < static_cast<int>(rmncs.size())) ? rmncs[mn] : 0.0;
+        double zcc = (mn < static_cast<int>(zmncc.size())) ? zmncc[mn] : 0.0;
+        double zss = (mn < static_cast<int>(zmnss.size())) ? zmnss[mn] : 0.0;
+
+        // Accumulate symmetric contributions
+        rmkcc[k] += rcc * cos_arg;
+        rmkss[k] += rss * sin_arg;
+        zmksc[k] += zsc * sin_arg;
+        zmkcs[k] += zcs * cos_arg;
+
+        // Accumulate antisymmetric contributions
+        rmksc_asym[k] += rsc * sin_arg;
+        rmkcs_asym[k] += rcs * cos_arg;
+        zmkcc_asym[k] += zcc * cos_arg;
+        zmkss_asym[k] += zss * sin_arg;
+      }
+    }
+
+    // STAGE 2: Transform to real space for [0, π] range only
+    for (int j = 0; j < ntheta2; ++j) {
+      // Calculate theta angle for [0, π] range
+      const double theta = M_PI * j / (ntheta2 - 1);
+
+      // Basis function index
+      const int idx_basis = m * ntheta2 + j;
+      if (idx_basis >= static_cast<int>(fourier_basis.sinmu.size())) {
+        continue;
+      }
+
+      const double cosmu = fourier_basis.cosmu[idx_basis];
+      const double sinmu = fourier_basis.sinmu[idx_basis];
+
+      for (int k = 0; k < nzeta; ++k) {
+        const int idx = j + k * ntheta2;  // Index for [0, π] arrays
+        if (idx >= static_cast<int>(r_sym.size())) continue;
+
+        // Add symmetric contributions
+        r_sym[idx] += rmkcc[k] * cosmu + rmkss[k] * sinmu;
+        z_sym[idx] += zmksc[k] * sinmu + zmkcs[k] * cosmu;
+        // Lambda symmetric (for now, set to zero - can be added later)
+        // lambda_sym[idx] += ...;
+
+        // Add antisymmetric contributions
+        r_asym[idx] += rmksc_asym[k] * sinmu + rmkcs_asym[k] * cosmu;
+        z_asym[idx] += zmkcc_asym[k] * cosmu + zmkss_asym[k] * sinmu;
+        // Lambda antisymmetric (for now, set to zero - can be added later)
+        // lambda_asym[idx] += ...;
+      }
+    }
+  }
+}
+
 }  // namespace vmecpp
