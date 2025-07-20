@@ -1064,3 +1064,21 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_force_constraint_implementation",
+    srcs = ["test_force_constraint_implementation.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_vmecpp_force_processing_analysis",
+    srcs = ["test_vmecpp_force_processing_analysis.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
