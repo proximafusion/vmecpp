@@ -841,3 +841,23 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_tau_formula_fix",
+    srcs = ["test_tau_formula_fix.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_tau_unified_formula",
+    srcs = ["test_tau_unified_formula.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "medium",
+)
