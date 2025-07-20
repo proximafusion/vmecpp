@@ -735,3 +735,69 @@ Instead of preprocessing, focus on the actual **asymmetric Jacobian algorithm**:
 - **Debug output**: Meticulous tau1/tau2 component comparison with jVMEC
 - **Systematic testing**: Test multiple asymmetric configs to find patterns
 - **Reference validation**: Match jVMEC Jacobian calculation exactly
+
+## 🎯 CURRENT PHASE: Line-by-Line Algorithm Debugging (TDD Approach)
+
+### Phase 4.1: Asymmetric Tau Calculation Unit Tests
+1. **🔄 NEXT**: Create test_asymmetric_tau_components.cc
+   - Unit test tau1 calculation: ru12*zs - rs*zu12
+   - Unit test tau2 calculation: (ruo_o*z1o_o - zuo_o*r1o_o)/sqrtSH
+   - Test half-grid interpolation: dSHalfDsInterp averaging
+   - Verify against educational_VMEC tau calculation
+
+2. **⏳ PENDING**: Create test_jvmec_tau_comparison.cc
+   - Load identical geometry into both VMEC++ and jVMEC
+   - Compare tau1, tau2 components element-by-element
+   - Identify first point where calculations diverge
+   - Document exact numerical differences
+
+### Phase 4.2: Deep jVMEC Implementation Study
+1. **⏳ PENDING**: Study jVMEC jacobian.f90 file line-by-line
+   - Document exact tau calculation formula used
+   - Note any asymmetric-specific modifications
+   - Compare surface indexing and grid handling
+   - Identify half-grid interpolation differences
+
+2. **⏳ PENDING**: Compare educational_VMEC jacobian calculation
+   - Extract exact tau formula from eqsolve.f90
+   - Note any differences from VMEC++ implementation
+   - Test with known working asymmetric case
+   - Verify tau sign distribution
+
+### Phase 4.3: Systematic Debug Output Implementation
+1. **🔄 NEXT**: Add comprehensive tau debug output to VMEC++
+   - Log tau1 components: ru12, zs, rs, zu12 for each surface
+   - Log tau2 components: ruo_o, z1o_o, zuo_o, r1o_o, sqrtSH
+   - Log half-grid interpolation: dSHalfDsInterp calculation
+   - Output at same precision as jVMEC for exact comparison
+
+2. **⏳ PENDING**: Create parallel debug output for jVMEC
+   - Add debug prints to jVMEC jacobian calculation
+   - Use identical format to VMEC++ for easy comparison
+   - Run same test case through both codes
+   - Generate side-by-side tau calculation comparison
+
+### Phase 4.4: Algorithm Correction Implementation
+1. **⏳ PENDING**: Identify specific algorithmic difference
+   - Isolate exact calculation causing tau sign change
+   - Implement TDD test that reproduces the difference
+   - Fix calculation to match jVMEC exactly
+   - Verify fix doesn't break symmetric mode
+
+2. **⏳ PENDING**: Validation with multiple test cases
+   - Test fix with simple asymmetric configurations
+   - Test fix with complex jVMEC working configurations
+   - Verify first convergent asymmetric equilibrium
+   - Run comprehensive regression tests
+
+### 🎯 IMMEDIATE NEXT STEPS:
+1. **Create test_asymmetric_tau_components.cc** - Unit test framework for tau calculation
+2. **Add tau debug output** - Meticulous component-by-component logging
+3. **Study jVMEC jacobian.f90** - Line-by-line algorithm understanding
+4. **Compare educational_VMEC** - Reference implementation verification
+
+### 🔬 TDD METHODOLOGY CONTINUED:
+- **Small steps**: One tau component at a time
+- **Unit tests first**: Write failing test, then implement fix
+- **Debug output**: Meticulous comparison at machine precision
+- **Reference validation**: Match all three codes exactly
