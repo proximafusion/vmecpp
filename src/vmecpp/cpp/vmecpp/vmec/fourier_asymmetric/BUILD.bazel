@@ -1284,3 +1284,28 @@ cc_test(
     ],
     size = "large",
 )
+
+cc_test(
+    name = "test_m1_constraint_convergence",
+    srcs = ["test_m1_constraint_convergence.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)
+
+cc_test(
+    name = "test_m1_constraint_detailed_debug",
+    srcs = ["test_m1_constraint_detailed_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/boundaries:boundaries",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "medium",
+)
