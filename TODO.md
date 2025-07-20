@@ -1,8 +1,8 @@
 # VMEC++ Asymmetric Implementation - Debug Plan
 
-## CURRENT STATUS: ✅ CORE ALGORITHM COMPLETE - Boundary Condition Optimization Phase
+## CURRENT STATUS: 🎯 M=1 CONSTRAINT IMPLEMENTATION - Root Cause Identified and Validated
 
-### 🎉 MAJOR MILESTONE: Core Asymmetric Algorithm Mathematically Complete and Validated
+### 🎉 CRITICAL BREAKTHROUGH: jVMEC M=1 Constraint Root Cause Confirmed
 - **✅ COMPLETE**: Critical bounds fix achieved R-coordinate EXACT MATCH (0.0e+00 difference)
 - **✅ COMPLETE**: Z-coordinate 90% precision improvement maintained in pipeline tests
 - **✅ COMPLETE**: ALL property validation checks pass with "Match: YES"
@@ -13,6 +13,8 @@
 - **✅ COMPLETE**: Pipeline integration test fixed with correct zeta reflection formula matching jVMEC
 - **✅ COMPLETE**: Core asymmetric algorithm validation completed - 7/7 Fourier tests + pipeline integration working
 - **🎯 CRITICAL BREAKTHROUGH**: jVMEC M=1 constraint creates 53.77% boundary coefficient change - root cause identified!
+- **✅ COMPLETE**: M=1 constraint formula validated: rbs[1] = zbc[1] = (rbs[1] + zbc[1])/2 with perfect satisfaction
+- **🔄 ACTIVE**: Implementing M=1 constraint in VMEC++ boundary preprocessing for convergent asymmetric equilibria
 
 ### ✅ ARCHITECTURE: Corrected Pipeline Flow
 ```
@@ -61,7 +63,13 @@ Standard VMEC++ pipeline continues with correctly combined arrays
 - [x] ✅ **Create M=1 constraint implementation**: test_m1_constraint_implementation.cc validates formula
 - [x] ✅ **Meticulous debug output**: Perfect constraint satisfaction verified (|rbs[1] - zbc[1]| = 0.0)
 - [x] ✅ **Critical discovery**: jVMEC applies rbs[1] = zbc[1] = (rbs[1] + zbc[1])/2 constraint
-- [ ] 🔄 **Implement M=1 constraint in VMEC++**: Apply boundary preprocessing before equilibrium solve
+- [x] ✅ **Unit test framework created**: Comprehensive tests for M=1 constraint validation and impact analysis
+
+#### 5.2 M=1 Constraint Implementation Phase 🔄 ACTIVE
+- [ ] 🔄 **Implement M=1 constraint in VMEC++ initialization**: Apply in boundary preprocessing
+- [ ] 📊 **Create comparison test for constrained equilibrium**: Monitor Jacobian behavior changes
+- [ ] 🔬 **Debug output for constraint impact**: Track minTau, maxTau values before/after constraint
+- [ ] 🎯 **Validate against jVMEC convergence**: Compare iteration-by-iteration behavior
 
 #### 5.2 Convergence Robustness Testing 🔄 NEXT
 - [ ] 🧪 **Create minimal asymmetric test suite**: Small perturbations to validate stability
