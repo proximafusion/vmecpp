@@ -1182,3 +1182,15 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_pipeline_integration",
+    srcs = ["test_pipeline_integration.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
