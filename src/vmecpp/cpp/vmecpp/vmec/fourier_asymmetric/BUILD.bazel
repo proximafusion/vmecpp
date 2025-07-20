@@ -1406,3 +1406,16 @@ cc_test(
     size = "small",
     tags = ["ci_tier1", "fast"],
 )
+
+# CI TIER 2: INTEGRATION TESTS (<5 minutes total)
+# Integration tests for asymmetric geometry and M=1 constraints
+
+cc_test(
+    name = "test_tier2_array_combination",
+    srcs = ["test_tier2_array_combination.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "medium",
+    tags = ["ci_tier2", "integration"],
+)
