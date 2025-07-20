@@ -818,8 +818,55 @@ Since tau calculation is correct, the Jacobian sign change must be due to:
 - **Geometry generation**: Focus on why same boundaries create different initial conditions
 - **Reference validation**: Match jVMEC algorithm flow, not just mathematical formulas
 
+## 🚀 PHASE 4.2: System-Level Algorithm Flow Comparison (TDD Approach)
+
+### Phase 4.2.1: Surface Indexing and Grid Setup Analysis
+1. **🔄 NEXT**: Create test_surface_indexing_differences.cc
+   - Unit test comparing j/j-1 surface handling between VMEC++ and jVMEC
+   - Test theta grid setup: [0,π] vs [0,2π] configuration differences
+   - Verify surface count and half-grid interpolation patterns
+   - Document exact indexing patterns used by each code
+
+2. **⏳ PENDING**: Create test_grid_configuration_debug.cc
+   - Compare nThetaEff vs nThetaReduced between symmetric/asymmetric modes
+   - Test theta spacing and grid point distribution
+   - Verify radial surface setup and half-grid positioning
+   - Add meticulous debug output for grid comparison
+
+### Phase 4.2.2: Boundary Processing and Initial Geometry
+1. **⏳ PENDING**: Study jVMEC boundary initialization workflow
+   - Document exact sequence: parseToInternalArrays → spectralToInternal → geometry generation
+   - Compare VMEC++ boundary processing with jVMEC step-by-step
+   - Identify differences in initial guess interpolation between codes
+   - Test with identical boundary coefficients, different processing
+
+2. **⏳ PENDING**: Create test_boundary_processing_comparison.cc
+   - Load identical boundary coefficients into both VMEC++ and jVMEC
+   - Compare geometry generation before first iteration
+   - Debug output for R,Z values at each theta/radial position
+   - Isolate where geometry first diverges between codes
+
+### Phase 4.2.3: Algorithm Flow Integration Testing
+1. **⏳ PENDING**: Create test_algorithm_flow_debug.cc
+   - Compare complete first iteration between VMEC++ and jVMEC
+   - Step-by-step comparison: boundary → geometry → forces → Jacobian
+   - Identify exact point where algorithm results diverge
+   - Document differences in convergence criteria and error handling
+
+2. **⏳ PENDING**: Create test_tau_distribution_analysis.cc
+   - Compare tau values across all surfaces and theta positions
+   - Test why same boundaries create different tau sign distributions
+   - Analyze radial derivative calculation differences
+   - Verify cross-coupling term computation differences
+
 ### 🎯 IMMEDIATE NEXT STEPS:
-1. **✅ COMPLETED**: Tau calculation unit tests and analysis
-2. **🔄 NEXT**: Study jVMEC surface indexing and boundary initialization
-3. **⏳ PENDING**: Compare grid setup and theta range handling
-4. **⏳ PENDING**: Analyze why identical boundaries create different tau distributions
+1. **Create test_surface_indexing_differences.cc** - Unit test framework for surface/grid comparison
+2. **Add comprehensive grid debug output** - Compare theta range and surface setup
+3. **Study jVMEC boundary workflow** - Line-by-line boundary processing understanding
+4. **Create boundary processing unit test** - Direct VMEC++ vs jVMEC comparison
+
+### 🔬 TDD METHODOLOGY FOR PHASE 4.2:
+- **System-level unit tests**: Test entire algorithm components, not just individual functions
+- **Comparative debugging**: Side-by-side output from VMEC++ and jVMEC
+- **Grid-level analysis**: Focus on surface indexing and theta range differences
+- **Reference validation**: Match jVMEC algorithm flow exactly, step by step
