@@ -34,8 +34,18 @@ void FourierToReal2DAsymmFastPoloidal(
     absl::Span<const double> zmnss, absl::Span<double> r_real,
     absl::Span<double> z_real, absl::Span<double> lambda_real);
 
-// Symmetrize real space geometry
+// Symmetrize real space geometry - FIXED VERSION
 // Equivalent to educational_VMEC's symrzl
+// Takes separate symmetric and antisymmetric arrays and combines them properly
+void SymmetrizeRealSpaceGeometry(
+    const absl::Span<const double> r_sym, const absl::Span<const double> r_asym,
+    const absl::Span<const double> z_sym, const absl::Span<const double> z_asym,
+    const absl::Span<const double> lambda_sym,
+    const absl::Span<const double> lambda_asym, absl::Span<double> r_full,
+    absl::Span<double> z_full, absl::Span<double> lambda_full,
+    const Sizes& sizes);
+
+// OLD VERSION - DEPRECATED - Remove after testing
 void SymmetrizeRealSpaceGeometry(const Sizes& sizes, absl::Span<double> r_real,
                                  absl::Span<double> z_real,
                                  absl::Span<double> lambda_real);

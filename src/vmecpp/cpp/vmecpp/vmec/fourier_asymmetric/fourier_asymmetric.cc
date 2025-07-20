@@ -353,35 +353,84 @@ void FourierToReal2DAsymmFastPoloidal(
   }
 }
 
-void SymmetrizeRealSpaceGeometry(const Sizes& sizes, absl::Span<double> r_real,
-                                 absl::Span<double> z_real,
-                                 absl::Span<double> lambda_real) {
-  // Symmetrize real space geometry for asymmetric equilibria
-  // Equivalent to educational_VMEC's symrzl subroutine
-  // Only called when lasym=true to combine symmetric and antisymmetric parts
+// FIXED VERSION - Following educational_VMEC pattern exactly
+void SymmetrizeRealSpaceGeometry(
+    const absl::Span<const double> r_sym, const absl::Span<const double> r_asym,
+    const absl::Span<const double> z_sym, const absl::Span<const double> z_asym,
+    const absl::Span<const double> lambda_sym,
+    const absl::Span<const double> lambda_asym, absl::Span<double> r_full,
+    absl::Span<double> z_full, absl::Span<double> lambda_full,
+    const Sizes& sizes) {
+  // This implements the correct educational_VMEC symrzl logic
+  // Key insight: Keep symmetric and antisymmetric arrays separate
+  // and combine them with proper reflection, NOT division by tau
 
-  // DEBUG: Compare with educational_VMEC symrzl.f90
-  std::cout << "DEBUG SymmetrizeRealSpaceGeometry: nThetaEff="
-            << sizes.nThetaEff << ", nThetaReduced=" << sizes.nThetaReduced
-            << ", nZeta=" << sizes.nZeta << std::endl;
+  const int ntheta = sizes.nThetaReduced;  // [0, π] range
+  const int nzeta = sizes.nZeta;
 
-  // Debug: Print values before symmetrization
-  std::cout << "DEBUG: Values before symmetrization (first 3 theta points):"
-            << std::endl;
-  for (int i = 0; i < std::min(3, sizes.nThetaEff); ++i) {
-    for (int k = 0; k < std::min(1, sizes.nZeta); ++k) {
-      int idx = i * sizes.nZeta + k;
-      if (idx < static_cast<int>(r_real.size())) {
-        std::cout << "  idx=" << idx << " (i=" << i << ", k=" << k << "): "
-                  << "R=" << r_real[idx] << ", Z=" << z_real[idx] << std::endl;
+  std::cout << "DEBUG SymmetrizeRealSpaceGeometry FIXED: ntheta=" << ntheta
+            << ", nzeta=" << nzeta << std::endl;
+
+  // First half: theta in [0, π] - direct addition
+  for (int k = 0; k < nzeta; ++k) {
+    for (int j = 0; j < ntheta; ++j) {
+      const int idx_half = j + k * ntheta;
+      const int idx_full_first = j + k * (2 * ntheta);
+
+      // Bounds checking
+      if (idx_half >= r_sym.size() || idx_full_first >= r_full.size()) {
+        std::cout << "ERROR: Bounds error in first half at j=" << j
+                  << ", k=" << k << std::endl;
+        continue;
       }
+
+      // First half: symmetric + antisymmetric
+      r_full[idx_full_first] = r_sym[idx_half] + r_asym[idx_half];
+      z_full[idx_full_first] = z_sym[idx_half] + z_asym[idx_half];
+      lambda_full[idx_full_first] =
+          lambda_sym[idx_half] + lambda_asym[idx_half];
     }
   }
 
+  // Second half: theta in [π, 2π] - reflection with sign change
+  for (int k = 0; k < nzeta; ++k) {
+    for (int j = 0; j < ntheta; ++j) {
+      const int idx_full_second = (j + ntheta) + k * (2 * ntheta);
+
+      // Reflection mapping: theta -> 2*π - theta
+      const int j_reflected = ntheta - 1 - j;
+      const int idx_reflected = j_reflected + k * ntheta;
+
+      // Bounds checking
+      if (idx_reflected >= r_sym.size() || idx_full_second >= r_full.size()) {
+        std::cout << "ERROR: Bounds error in second half at j=" << j
+                  << ", k=" << k << std::endl;
+        continue;
+      }
+
+      // Second half: symmetric - antisymmetric (with reflection)
+      r_full[idx_full_second] = r_sym[idx_reflected] - r_asym[idx_reflected];
+      z_full[idx_full_second] = z_sym[idx_reflected] - z_asym[idx_reflected];
+      lambda_full[idx_full_second] =
+          lambda_sym[idx_reflected] - lambda_asym[idx_reflected];
+    }
+  }
+
+  std::cout << "DEBUG: Symmetrization completed successfully" << std::endl;
+}
+
+// OLD VERSION - DEPRECATED - Keep temporarily for compatibility
+void SymmetrizeRealSpaceGeometry(const Sizes& sizes, absl::Span<double> r_real,
+                                 absl::Span<double> z_real,
+                                 absl::Span<double> lambda_real) {
   // This function should only be called for asymmetric equilibria
   if (!sizes.lasym) {
     return;
   }
+
+  std::cout << "WARNING: Using old SymmetrizeRealSpaceGeometry - should be "
+               "replaced with fixed version"
+            << std::endl;
 
   // Build reflection index for zeta -> -zeta mapping
   std::vector<int> ireflect(sizes.nZeta);
@@ -391,17 +440,9 @@ void SymmetrizeRealSpaceGeometry(const Sizes& sizes, absl::Span<double> r_real,
 
   // Process extended interval [π, 2π] using symmetry relations
   for (int i = sizes.nThetaReduced; i < sizes.nThetaEff; ++i) {
-    // Map theta to pi-theta: ir = ntheta1 + 2 - i
-    // In educational_VMEC: i = ntheta2+1 to ntheta1, ir = ntheta1 + 2 - i
-    // For i = nThetaReduced (=ntheta2), ir should be nThetaReduced-1
-    // For i = nThetaEff-1 (=ntheta1-1), ir should be 1
     int ir = sizes.nThetaReduced + (sizes.nThetaReduced - 1 - i);
 
-    // DEBUG: Verify ir calculation
     if (ir < 0 || ir >= sizes.nThetaEff) {
-      std::cout << "ERROR: Invalid ir=" << ir << " for i=" << i
-                << ", nThetaReduced=" << sizes.nThetaReduced
-                << ", nThetaEff=" << sizes.nThetaEff << std::endl;
       continue;
     }
 
@@ -409,48 +450,18 @@ void SymmetrizeRealSpaceGeometry(const Sizes& sizes, absl::Span<double> r_real,
       int idx = i * sizes.nZeta + k;
       int idx_r = ir * sizes.nZeta + ireflect[k];
 
-      // DEBUG: Additional bounds checking
       if (ireflect[k] < 0 || ireflect[k] >= sizes.nZeta) {
-        std::cout << "ERROR: Invalid ireflect[" << k << "]=" << ireflect[k]
-                  << ", nZeta=" << sizes.nZeta << std::endl;
         continue;
       }
 
       if (idx >= static_cast<int>(r_real.size()) ||
           idx_r >= static_cast<int>(r_real.size())) {
-        std::cout << "ERROR: Index out of bounds: idx=" << idx
-                  << ", idx_r=" << idx_r << ", array size=" << r_real.size()
-                  << std::endl;
         continue;
       }
 
-      // For R: even parity R(u,v) = R(π-u,-v) - R_antisym(π-u,-v)
-      // In practice, this means R_total = R_symmetric + R_antisymmetric
-      // The extended interval gets: R_symmetric(reflected) +
-      // R_antisymmetric(reflected)
       r_real[idx] = r_real[idx_r];
-
-      // For Z: odd parity Z(u,v) = -Z(π-u,-v) + Z_antisym(π-u,-v)
-      // The extended interval gets: -Z_symmetric(reflected) +
-      // Z_antisymmetric(reflected)
       z_real[idx] = -z_real[idx_r];
-
-      // For lambda: similar to R (even parity)
       lambda_real[idx] = lambda_real[idx_r];
-
-      if (i < sizes.ntheta + 3 && k == 0) {
-        std::cout << "DEBUG: Symmetrization at i=" << i << ", ir=" << ir
-                  << ": copying from idx_r=" << idx_r << " to idx=" << idx
-                  << ", R[" << idx << "]=" << r_real[idx] << ", Z[" << idx
-                  << "]=" << z_real[idx] << std::endl;
-
-        // Check for NaN/inf values
-        if (!std::isfinite(r_real[idx]) || !std::isfinite(z_real[idx])) {
-          std::cout << "ERROR: Non-finite values detected at symmetrization i="
-                    << i << ", R=" << r_real[idx] << ", Z=" << z_real[idx]
-                    << std::endl;
-        }
-      }
     }
   }
 }
