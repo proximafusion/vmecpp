@@ -1368,8 +1368,19 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
         // lu_e array should be added as well since asymmetric transform fills
         // lue_i
         lu_e[idx] += m_ls_.lue_i[idx];
+
+        // DEBUG: Track array values right after combination for critical
+        // position
+        if (idx == 18) {
+          std::cout << "DEBUG: Right after combination idx=" << idx << ": r1_e["
+                    << idx << "]=" << r1_e[idx] << std::endl;
+        }
       }
     }
+
+    // DEBUG: Check critical array position immediately after combination loop
+    std::cout << "DEBUG: Immediately after array combination loop: r1_e[18]="
+              << r1_e[18] << std::endl;
 
     // DEBUG: Check combined arrays for problematic theta positions
     std::cout << "DEBUG: After array combination, checking kl=6-9:"

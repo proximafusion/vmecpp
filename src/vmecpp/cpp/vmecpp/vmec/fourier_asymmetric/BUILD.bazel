@@ -688,3 +688,42 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_array_indexing_debug",
+    srcs = ["test_array_indexing_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_working_jvmec_config",
+    srcs = ["test_working_jvmec_config.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+    data = [
+        "//vmecpp/test_data:up_down_asymmetric_tokamak",
+    ],
+)
+
+cc_test(
+    name = "test_jacobian_geometry_debug",
+    srcs = ["test_jacobian_geometry_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)
