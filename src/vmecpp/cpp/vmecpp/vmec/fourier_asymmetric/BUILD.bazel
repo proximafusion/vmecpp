@@ -1320,3 +1320,13 @@ cc_test(
     ],
     size = "large",
 )
+cc_test(
+    name = "test_external_validation_prep",
+    size = "small",
+    srcs = ["test_external_validation_prep.cc"],
+    deps = [
+        "//vmecpp/common/vmec_indata",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+)
