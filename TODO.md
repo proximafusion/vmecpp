@@ -963,9 +963,28 @@ These terms represent coupling between even and odd modes, crucial for asymmetri
 - **Surface 1**: Arrays are zero where they should have interpolated geometry
 - **Issue**: With NS=3, need proper geometry at all radial surfaces for Jacobian
 
+### 🎯 CURRENT PHASE: Fix Even Array Population at Higher Surfaces
+
+#### ✅ MAJOR PROGRESS: Array Indexing Bug Partially Fixed
+- **Problem solved**: r1_o arrays no longer corrupted with derivative values
+- **Algorithm working**: Odd arrays now contain proper combined geometry (r_symmetric - r_asym)
+- **Tau formula validated**: Non-zero odd_contrib values confirm correct implementation
+
+#### 🔍 ACTIVE ISSUE: Even Arrays Missing at Surface 1
+- **Specific problem**: r1_e[16] = 0.000000 (should be ~19-20 for R coordinate)
+- **Pattern identified**: Surface 0 (indices 0-9) populated, surface 1 (indices 10-19) empty
+- **Impact**: Jacobian calculation fails because r1[j+1] uses unpopulated arrays
+
+#### 🎯 ROOT CAUSE HYPOTHESIS: Surface Interpolation vs Transform
+- **Surface 0**: Direct Fourier transform from boundary coefficients (working)
+- **Surface 1**: Requires interpolation between boundary and interior (missing)
+- **NS=3 config**: Need geometry at surfaces j=0, j=1, j=2 for proper Jacobian
+
 ### Next Immediate Steps 🔄
 1. **✅ COMPLETED: Identify array indexing bug**: Found r1_o corruption with derivative values
 2. **✅ COMPLETED: Fix odd array population**: Now stores full geometry instead of perturbations
-3. **🔄 NEXT: Debug even array population**: Why r1_e[16]=0 at surface 1?
-4. **⏳ PENDING: Test surface interpolation**: Ensure all NS surfaces have proper geometry
-5. **⏳ PENDING: Verify Jacobian with correct arrays**: Should converge once all arrays populated
+3. **🔄 ACTIVE: Debug even array population**: Why r1_e[16]=0 at surface 1?
+4. **🔄 NEXT: Trace surface interpolation logic**: How are interior surfaces generated?
+5. **⏳ PENDING: Compare with jVMEC surface handling**: Reference implementation study
+6. **⏳ PENDING: Fix surface interpolation**: Ensure all NS surfaces have proper geometry
+7. **⏳ PENDING: Test convergence**: Verify Jacobian works with all arrays populated
