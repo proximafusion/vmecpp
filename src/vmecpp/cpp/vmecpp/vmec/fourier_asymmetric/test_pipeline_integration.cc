@@ -200,21 +200,32 @@ TEST_F(PipelineIntegrationTest, TestCompleteAsymmetricPipeline) {
         const double expected_first = r_sym[idx_sep] + r_asym[idx_sep];
 
         // For second half, we need the reflected index in the separate arrays
+        // Following exact jVMEC/educational_VMEC zeta reflection pattern
         const int j_reflected = ntheta - 1 - j;
-        const int idx_reflected = j_reflected + k * ntheta;
+        const int k_reflected =
+            (nzeta - k) % nzeta;  // Critical zeta reflection
+        const int idx_reflected = j_reflected + k_reflected * ntheta;
 
         double expected_second = 0.0;
         if (idx_reflected < reduced_size) {
           expected_second = r_sym[idx_reflected] - r_asym[idx_reflected];
         }
 
-        std::cout << "  k=" << k << ", j=" << j << ":\n";
+        std::cout << "  k=" << k << ", j=" << j << " -> j_refl=" << j_reflected
+                  << ", k_refl=" << k_reflected << ":\n";
         std::cout << "    r_sym[" << idx_sep << "] = " << r_sym[idx_sep]
                   << "\n";
         std::cout << "    r_asym[" << idx_sep << "] = " << r_asym[idx_sep]
                   << "\n";
         std::cout << "    r_full[" << idx_first << "] = " << r_full[idx_first]
                   << " (expected " << expected_first << ")\n";
+        std::cout << "    r_sym[" << idx_reflected << "] = "
+                  << (idx_reflected < reduced_size ? r_sym[idx_reflected] : 0.0)
+                  << "\n";
+        std::cout << "    r_asym[" << idx_reflected << "] = "
+                  << (idx_reflected < reduced_size ? r_asym[idx_reflected]
+                                                   : 0.0)
+                  << "\n";
         std::cout << "    r_full[" << idx_second << "] = " << r_full[idx_second]
                   << " (expected " << expected_second << ")\n";
 
