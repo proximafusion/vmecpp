@@ -1028,3 +1028,39 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_power_law_interpolation",
+    srcs = ["test_power_law_interpolation.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_vmecpp_interpolation_verification",
+    srcs = ["test_vmecpp_interpolation_verification.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_spectral_condensation_comparison",
+    srcs = ["test_spectral_condensation_comparison.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_force_spectral_condensation",
+    srcs = ["test_force_spectral_condensation.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
