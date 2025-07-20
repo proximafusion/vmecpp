@@ -632,3 +632,36 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_tau_calculation_debug",
+    srcs = ["test_tau_calculation_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_tau_debug_run",
+    srcs = ["test_tau_debug_run.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "medium",
+)
+
+cc_test(
+    name = "test_symmetric_tau_only",
+    srcs = ["test_symmetric_tau_only.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "medium",
+)
