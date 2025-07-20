@@ -1408,9 +1408,15 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
           double theta = 2.0 * M_PI * kl / s_.ntheta;
           int idx = (jF - r_.nsMinF1) * s_.nZnT + kl;
 
-          // Initialize accumulators
-          double r_odd = 0.0, ru_odd = 0.0;
-          double z_odd = 0.0, zu_odd = 0.0;
+          // Get the symmetric geometry values at this point
+          double r_symmetric = r1_e[idx];
+          double ru_symmetric = ru_e[idx];
+          double z_symmetric = z1_e[idx];
+          double zu_symmetric = zu_e[idx];
+
+          // Initialize asymmetric corrections
+          double r_asym = 0.0, ru_asym = 0.0;
+          double z_asym = 0.0, zu_asym = 0.0;
 
           // Transform asymmetric coefficients
           for (int m = 0; m < num_m; ++m) {
@@ -1424,19 +1430,21 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
             }
 
             // R asymmetric: sin basis
-            r_odd += src_rsc[m] * sin_mu;
-            ru_odd += src_rsc[m] * m * cos_mu;
+            r_asym += src_rsc[m] * sin_mu;
+            ru_asym += src_rsc[m] * m * cos_mu;
 
             // Z asymmetric: cos basis
-            z_odd += src_zcc[m] * cos_mu;
-            zu_odd -= src_zcc[m] * m * sin_mu;  // negative for derivative
+            z_asym += src_zcc[m] * cos_mu;
+            zu_asym -= src_zcc[m] * m * sin_mu;  // negative for derivative
           }
 
-          // Store in odd arrays
-          r1_o[idx] = r_odd;
-          ru_o[idx] = ru_odd;
-          z1_o[idx] = z_odd;
-          zu_o[idx] = zu_odd;
+          // Store FULL geometry with asymmetric correction in odd arrays
+          // For theta in [π,2π], this represents the anti-symmetric
+          // contribution
+          r1_o[idx] = r_symmetric - r_asym;  // Opposite sign for anti-symmetry
+          ru_o[idx] = ru_symmetric - ru_asym;
+          z1_o[idx] = z_symmetric - z_asym;
+          zu_o[idx] = zu_symmetric - zu_asym;
         }
       }
     }
@@ -1768,6 +1776,34 @@ void IdealMhdModel::computeJacobian() {
     double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
 
     for (int kl = 0; kl < s_.nZnT; ++kl) {
+      // Debug array bounds and index calculation
+      if (s_.lasym && jH == 0 && kl == 6) {
+        int target_idx = (jH + 1 - r_.nsMinF1) * s_.nZnT + kl;
+        std::cout << "Array index debug jH=" << jH << " kl=" << kl << ":\n";
+        std::cout << "  jH + 1 = " << (jH + 1) << "\n";
+        std::cout << "  r_.nsMinF1 = " << r_.nsMinF1 << "\n";
+        std::cout << "  s_.nZnT = " << s_.nZnT << "\n";
+        std::cout << "  target_idx = " << target_idx << "\n";
+        std::cout << "  r1_e.size() = " << r1_e.size() << "\n";
+        std::cout << "  r1_o.size() = " << r1_o.size() << "\n";
+        if (target_idx < static_cast<int>(r1_e.size())) {
+          std::cout << "  r1_e[" << target_idx << "] = " << r1_e[target_idx]
+                    << "\n";
+          std::cout << "  r1_o[" << target_idx << "] = " << r1_o[target_idx]
+                    << "\n";
+          std::cout << "  ru_e[" << target_idx << "] = " << ru_e[target_idx]
+                    << "\n";
+          std::cout << "  ru_o[" << target_idx << "] = " << ru_o[target_idx]
+                    << "\n";
+          std::cout << "  zu_e[" << target_idx << "] = " << zu_e[target_idx]
+                    << "\n";
+          std::cout << "  zu_o[" << target_idx << "] = " << zu_o[target_idx]
+                    << "\n";
+        } else {
+          std::cout << "  ❌ INDEX OUT OF BOUNDS!\n";
+        }
+      }
+
       // contributions from full-grid surface _o_utside j-th half-grid surface
       double r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
       double r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
@@ -1820,7 +1856,7 @@ void IdealMhdModel::computeJacobian() {
 
       tau_val += dshalfds * odd_contrib;
 
-      // Debug output for asymmetric mode
+      // Debug output for asymmetric mode with geometry derivatives
       if (s_.lasym && (kl >= 6 && kl <= 9)) {
         std::cout << "DEBUG TAU CALC kl=" << kl << " jH=" << jH
                   << " iHalf=" << iHalf << ":\n";
@@ -1829,6 +1865,25 @@ void IdealMhdModel::computeJacobian() {
                   << "\n";
         std::cout << "  Odd contrib: " << odd_contrib << "\n";
         std::cout << "  tau_val = " << tau_val << "\n";
+
+        // Geometry derivative debug
+        std::cout << "  GEOMETRY DERIVATIVES:\n";
+        std::cout << "    ru12=" << ru12[iHalf] << " (dR/dtheta avg)\n";
+        std::cout << "    zu12=" << zu12[iHalf] << " (dZ/dtheta avg)\n";
+        std::cout << "    rs=" << rs[iHalf] << " (dR/ds)\n";
+        std::cout << "    zs=" << zs[iHalf] << " (dZ/ds)\n";
+        std::cout << "    r12=" << r12[iHalf] << " (R at half-grid)\n";
+        std::cout << "    deltaS=" << m_fc_.deltaS << " (grid spacing)\n";
+
+        // Geometry values at full grid points
+        std::cout << "  FULL GRID VALUES:\n";
+        std::cout << "    r1[j]="
+                  << (m_ls_.r1e_i[kl] + sqrtSH * m_ls_.r1o_i[kl]) << "\n";
+        std::cout << "    r1[j+1]=" << (r1e_o + sqrtSH * r1o_o) << "\n";
+        std::cout << "    z1[j]="
+                  << (m_ls_.z1e_i[kl] + sqrtSH * m_ls_.z1o_i[kl]) << "\n";
+        std::cout << "    z1[j+1]=" << (z1e_o + sqrtSH * z1o_o) << "\n";
+
         // More detailed debug
         std::cout << "  ODD COMPONENTS: ruo_o=" << ruo_o << " z1o_o=" << z1o_o
                   << " zuo_o=" << zuo_o << " r1o_o=" << r1o_o << "\n";
