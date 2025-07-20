@@ -924,17 +924,25 @@ These terms represent coupling between even and odd modes, crucial for asymmetri
 ### ✅ COMPLETED: Odd Arrays Population Implementation!
 - **Implemented proper fix**: Added separate transform loop for asymmetric coefficients
 - **Transform works correctly**: Debug shows r1_o=-0.058779, z1_o=-0.080902 etc. (non-zero!)
-- **Tau formula now produces**: odd_contrib = 0.020000 (verified non-zero)
+- **Tau formula now produces**: odd_contrib = 0.020000, 0.138690, 0.022500 (verified non-zero)
 - **Clean implementation**: Removed test hack, proper asymmetric coefficient transform
+- **No regression**: Symmetric mode tests pass correctly
 
 ### Implementation Details:
 - **Location**: ideal_mhd_model.cc after array combination (line ~1405)
 - **Method**: Separate transform loop for asymmetric coefficients (rmnsc, zmncc)
 - **Basis functions**: sin(m*theta) for R asymmetric, cos(m*theta) for Z asymmetric
 - **Normalization**: Applied sqrt(2) for m>0 modes (consistent with symmetric transform)
+- **Result**: Asymmetric algorithm runs without crashes, tau formula working correctly
+
+### Current Status: Jacobian Sign Change Issue 🔍
+- **Core algorithm works**: Odd arrays populated, tau formula produces correct values
+- **Remaining issue**: Jacobian still changes sign (minTau=-3.381750, maxTau=4.470750)
+- **Not a tau bug**: Issue appears to be in boundary conditions or initial geometry
+- **Next focus**: Deep dive into jVMEC Jacobian handling for asymmetric cases
 
 ### Next Immediate Steps 🔄
-1. **Test full convergence**: Run embedded asymmetric tokamak configuration
-2. **Verify no regression**: Test symmetric mode still works correctly
-3. **Compare with jVMEC**: Validate results match reference implementation
-4. **Clean up debug output**: Remove temporary debug prints once validated
+1. **Create unit test for Jacobian sign behavior**: Compare VMEC++ vs jVMEC line-by-line
+2. **Add meticulous debug output**: Trace every tau component from all three codes
+3. **Study jVMEC Jacobian protection**: How does jVMEC handle sign-changing Jacobians?
+4. **Test with proven jVMEC inputs**: Use exact working asymmetric configurations
