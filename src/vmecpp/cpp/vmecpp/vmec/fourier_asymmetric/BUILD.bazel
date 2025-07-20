@@ -665,3 +665,26 @@ cc_test(
     ],
     size = "medium",
 )
+
+cc_test(
+    name = "test_initial_guess_interpolation",
+    srcs = ["test_initial_guess_interpolation.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_symmetric_transform_debug",
+    srcs = ["test_symmetric_transform_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "small",
+)
