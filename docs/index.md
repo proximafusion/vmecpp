@@ -8,6 +8,8 @@
 :hidden:
 
 Reference <api/vmecpp>
+Examples <examples_overview>
+Fourier Basis Details <fourier_basis_implementation>
 ```
 
 ![MIT license](https://img.shields.io/badge/license-MIT-blue)
@@ -33,8 +35,14 @@ On the other hand, some features of the original Fortran VMEC are not available 
 See [below](#differences-with-respect-to-parvmec-vmec2000) for more details.
 
 ```{include} ../README.md
-:start-after: <!-- SPHINX-START -->
+:start-after: <!-- SPHINX-START1 -->
+:end-before: <!-- SPHINX-END1 -->
 ```
+![W7-X force residual convergence](w7x_force_convergence.png)
+```{include} ../README.md
+:start-after: <!-- SPHINX-START2 -->
+```
+
 
 ## Indices and tables
 
