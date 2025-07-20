@@ -1217,3 +1217,45 @@ From crash test debug output:
 2. Compare initial boundary preprocessing with jVMEC
 3. Test with different numerical parameters
 4. Investigate spectral condensation requirements
+
+## 🚨 BREAKTHROUGH: Root Cause of Early Iteration Failures Identified!
+
+### ✅ COMPLETED: test_early_iteration_debug.cc
+1. **✅ CREATED**: Detailed debug output for first iterations
+2. **✅ FINDING**: "ODD ARRAYS HACK" in ideal_mhd_model.cc is the culprit
+3. **✅ ANALYSIS**: Code tries to divide by tau to extract antisymmetric components - fundamentally wrong!
+4. **🎯 ROOT CAUSE**: Incorrect array combination logic in SymmetrizeRealSpaceGeometry
+
+### ✅ COMPLETED: test_asymmetric_array_combination.cc
+1. **✅ ANALYZED**: educational_VMEC symrzl.f90 array combination pattern
+2. **✅ DOCUMENTED**: Correct approach - keep symmetric/antisymmetric separate
+3. **✅ IDENTIFIED**: Division by tau is circular logic and mathematically incorrect
+4. **✅ PROPOSED**: Complete fix following educational_VMEC pattern
+
+### ✅ COMPLETED: test_ideal_mhd_model_fix.cc
+1. **✅ LOCATED**: Exact problematic code in ideal_mhd_model.cc lines 1470-1497
+2. **✅ DOCUMENTED**: Step-by-step fix implementation
+3. **✅ CLARIFIED**: Transform functions need to output separate arrays
+4. **✅ READY**: Implementation plan for proper symmetrization
+
+### 🎯 THE ISSUE: Incorrect Symmetrization Logic
+**Current code (WRONG)**:
+```cpp
+// Tries to extract antisymmetric from combined array by division
+tau_val = ru12*zs - rs*zu12;
+r1_o[idx] = (tau_val != 0) ? (r1_e[idx] - r1[idx]) * tau_val / zu12 : 1.9;
+```
+
+**Correct approach (educational_VMEC)**:
+```fortran
+! First half: add symmetric + antisymmetric
+r1s(:,:n2) = r1s(:,:n2) + r1a(:,:n2)
+! Second half: reflect with sign change
+r1s(jk,i) = r1s(jka,ir) - r1a(jka,ir)
+```
+
+### 🔧 REQUIRED FIX:
+1. Modify `FourierToReal3DAsymmFastPoloidal` to output separate symmetric/antisymmetric arrays
+2. Implement proper `SymmetrizeRealSpaceGeometry` following educational_VMEC
+3. Remove the division by tau completely
+4. Test with asymmetric configurations
