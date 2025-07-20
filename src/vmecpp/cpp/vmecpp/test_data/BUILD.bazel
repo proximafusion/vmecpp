@@ -80,5 +80,6 @@ filegroup(
     visibility = ["//visibility:public"],
     srcs = [
         "up_down_asymmetric_tokamak.json",
+        "up_down_asymmetric_tokamak_simple.json",
     ],
 )

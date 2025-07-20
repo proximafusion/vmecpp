@@ -164,10 +164,11 @@
 4. **Test convergence** with corrected boundary initialization
 5. **Achieve first asymmetric equilibrium convergence** in VMEC++
 
-### Current Phase Status: 🔄 ACTIVE IMPLEMENTATION
-- **✅ Root cause identified**: Missing boundary theta shift correction (-34.36° for test case)
-- **🔄 Next step**: Write failing unit tests for theta shift calculation
-- **📍 Reference**: jVMEC Boundaries.java implementation
+### Current Phase Status: 🔄 ACTIVE DEBUGGING
+- **❌ Initial hypothesis wrong**: Theta shift already correctly implemented
+- **🔍 True root cause unknown**: ALL asymmetric cases fail with Jacobian sign change
+- **🔄 Next step**: Debug Jacobian calculation and boundary initialization
+- **📍 Key pattern**: "INITIAL JACOBIAN CHANGED SIGN!" in all failures
 
 ## Known Issues Fixed ✅
 
@@ -538,24 +539,26 @@ This represents the breakthrough needed for asymmetric VMEC in C++. The primary 
 3. **✅ IDENTIFIED**: Convergence criteria match, issue is in boundary initialization
 4. **✅ ROOT CAUSE**: jVMEC uses corrected theta shift formula, VMEC++ missing this correction
 
-### 🎯 MAJOR DISCOVERY: Missing Boundary Theta Shift Correction
-**Analysis shows -34.36° theta shift for proven working configuration!**
+### 🎯 CORRECTED UNDERSTANDING: Theta Shift Already Implemented!
+**Initial analysis was incorrect - VMEC++ DOES implement theta shift correction**
 
-#### jVMEC Corrected Formula (missing in VMEC++):
-```java
-delta = Math.atan2(Rbs[ntord][m] - Zbc[ntord][m], Rbc[ntord][m] + Zbs[ntord][m]);
-```
+#### Key Findings from Testing:
+1. **✅ Theta shift IS implemented**: In `boundaries.cc` line 89, exact jVMEC formula
+2. **✅ Formula matches**: `delta = atan2(id.rbs[idx] - id.zbc[idx], id.rbc[idx] + id.zbs[idx])`
+3. **✅ Applied correctly**: Debug shows "need to shift theta by delta = 0.0473987"
+4. **❌ Not the root cause**: Even with theta shift, ALL asymmetric cases fail
 
-#### Key Evidence:
-1. **✅ Asymmetric algorithm works**: Debug shows "Processing asymmetric contribution"
-2. **❌ Boundary poorly shaped**: "FATAL ERROR... initial boundary is poorly shaped"
-3. **🔍 Significant shift**: -34.36° theta correction needed for up_down_asymmetric_tokamak.json
-4. **📍 Location**: jVMEC applies this in Boundaries.java, VMEC++ missing equivalent
+#### The Real Issue:
+- **-34.36° shift** calculated was for m=2 modes, but theta shift only uses m=1
+- **up_down_asymmetric_tokamak.json** has zero m=1 modes, so theta shift = 0 (correct!)
+- **Even with m=1 modes** and proper theta shift, asymmetric cases still fail
+- **"INITIAL JACOBIAN CHANGED SIGN!"** appears in all failures
 
-#### Impact:
-- Explains why proven jVMEC configurations fail in VMEC++
-- Core asymmetric transforms work correctly, issue is boundary initialization
-- Simple parameter validation fixes (tcon0 range) vs fundamental algorithm fix
+#### True Root Cause Still Unknown:
+- All asymmetric cases fail with "poorly shaped boundary" error
+- Even tiny 1% perturbations fail
+- Issue appears fundamental to asymmetric initialization or Jacobian calculation
+- Core transforms work (debug shows non-zero values), but something else is wrong
 
 ### Critical Testing Requirements Maintained
 - **TDD Mandatory**: All changes driven by failing/passing tests

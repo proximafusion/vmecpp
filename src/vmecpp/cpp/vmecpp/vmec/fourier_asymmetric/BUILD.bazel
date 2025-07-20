@@ -583,3 +583,41 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_theta_shift_debug",
+    srcs = ["test_theta_shift_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_m1_modes_convergence",
+    srcs = ["test_m1_modes_convergence.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "medium",
+)
+
+cc_test(
+    name = "test_simple_asymmetric_json",
+    srcs = ["test_simple_asymmetric_json.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+    ],
+    size = "medium",
+    data = [
+        "//vmecpp/test_data:up_down_asymmetric_tokamak",
+    ],
+)
