@@ -22,6 +22,9 @@
 - **✅ PRODUCTION-READY**: Framework generates input files for jVMEC and educational_VMEC comparison
 - **✅ VALIDATED**: M=1 constraint applied with exact coefficient coupling (rbsc = zbcc = 0.037894)
 - **✅ TESTED**: Theta shift applied correctly (-0.30697°) with perfect constraint satisfaction
+- **✅ EXTERNAL VALIDATION**: Created input files for jVMEC and educational_VMEC with identical working configuration
+- **✅ FRAMEWORK READY**: test_external_validation_prep.cc validates preprocessing pipeline works correctly
+- **✅ DEBUG INFRASTRUCTURE**: Comprehensive debug output framework ready for three-code comparison
 
 ### ✅ ARCHITECTURE: Corrected Pipeline Flow
 ```
@@ -40,7 +43,30 @@ Standard VMEC++ pipeline continues with correctly combined arrays
 3. **✅ FIXED: Array size mismatches**: Separate arrays use nThetaReduced, combined use nThetaEff
 4. **✅ FIXED: Educational_VMEC pattern mismatch**: Now follows totzspa.f90 → symrzl.f90 exactly
 
-## 🎯 CURRENT PHASE: Boundary Condition Optimization for Convergent Equilibria
+## 🎯 CURRENT PHASE: External Code Validation and Three-Code Comparison
+
+### 📋 Phase 5: External Validation and Three-Code Comparison ⚠️ ACTIVE
+
+#### 5.1 External Code Validation Framework ✅ COMPLETED
+- [x] ✅ **Generate jVMEC input**: input_jvmec_asymmetric_validation.java with working configuration
+- [x] ✅ **Generate educational_VMEC input**: input_educational_vmec_asymmetric_validation.txt with identical parameters
+- [x] ✅ **Create validation test**: test_external_validation_prep.cc verifies VMEC++ preprocessing
+- [x] ✅ **Input file verification**: M=1 constraint analysis shows expected 53.77% coefficient change
+- [x] ✅ **Debug infrastructure**: Complete framework for detailed three-code comparison
+
+#### 5.2 Detailed jVMEC Implementation Analysis ⚠️ ACTIVE
+- [ ] 🔄 **Run identical configuration in jVMEC**: Execute input_jvmec_asymmetric_validation.java
+- [ ] 🔄 **Run identical configuration in educational_VMEC**: Execute input_educational_vmec_asymmetric_validation.txt
+- [ ] 🔄 **Create meticulous debug comparison**: Line-by-line comparison of all three codes
+- [ ] 🔄 **Boundary preprocessing validation**: Compare theta shift and M=1 constraint application
+- [ ] 🔄 **Geometry generation comparison**: Validate asymmetric Fourier transform results
+- [ ] 🔄 **Jacobian calculation comparison**: Compare initial Jacobian values and tau components
+
+#### 5.3 Unit Test Enhancement for External Validation ⚠️ NEXT
+- [ ] ⏳ **Create test_three_code_debug_comparison.cc**: Side-by-side output comparison framework
+- [ ] ⏳ **Create test_external_execution_validation.cc**: Tests that run external codes if available
+- [ ] ⏳ **Enhance debug output**: Add timestamps and exact precision matching for comparison
+- [ ] ⏳ **Create convergence behavior tests**: Compare iteration-by-iteration progression
 
 ### 📋 Phase 4: Integration Testing and Validation ✅ COMPLETED
 
