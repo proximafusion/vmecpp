@@ -1366,3 +1366,43 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_comprehensive_asymmetric_integration",
+    srcs = ["test_comprehensive_asymmetric_integration.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_jvmec_implementation_deep_dive",
+    srcs = ["test_jvmec_implementation_deep_dive.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_educational_vmec_deep_analysis",
+    srcs = ["test_educational_vmec_deep_analysis.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+# CI TIER 1: FAST UNIT TESTS (<1 minute total)
+# Comprehensive test suite for continuous integration pipeline
+
+cc_test(
+    name = "test_fourier_asymmetric_unit_test",
+    srcs = ["test_fourier_asymmetric_unit_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["ci_tier1", "fast"],
+)
