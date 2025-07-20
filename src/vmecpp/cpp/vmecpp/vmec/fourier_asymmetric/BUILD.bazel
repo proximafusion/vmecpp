@@ -738,3 +738,32 @@ cc_test(
     ],
     size = "medium",
 )
+
+cc_test(
+    name = "test_jvmec_jacobian_formula",
+    srcs = ["test_jvmec_jacobian_formula.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_implement_jvmec_tau",
+    srcs = ["test_implement_jvmec_tau.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_verify_tau2_formula",
+    srcs = ["test_verify_tau2_formula.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
