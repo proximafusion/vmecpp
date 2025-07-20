@@ -1935,18 +1935,27 @@ void IdealMhdModel::computeJacobian() {
         }
       }
 
-      if (tau_val < minTau || minTau == 0.0) {
-        minTau = tau_val;
-        if (s_.lasym && (kl >= 6 && kl <= 9)) {
-          std::cout << "  NEW minTau=" << minTau << " at jH=" << jH
-                    << " kl=" << kl << "\n";
+      // Exclude axis (jH == 0) from min/max calculation like jVMEC
+      // jVMEC RealSpaceGeometry.java lines 386-391 are commented out
+      if (jH > 0) {  // Only include j >= 1, exclude axis
+        if (tau_val < minTau || minTau == 0.0) {
+          minTau = tau_val;
+          if (s_.lasym && (kl >= 6 && kl <= 9)) {
+            std::cout << "  NEW minTau=" << minTau << " at jH=" << jH
+                      << " kl=" << kl << "\n";
+          }
         }
-      }
-      if (tau_val > maxTau || maxTau == 0.0) {
-        maxTau = tau_val;
+        if (tau_val > maxTau || maxTau == 0.0) {
+          maxTau = tau_val;
+          if (s_.lasym && (kl >= 6 && kl <= 9)) {
+            std::cout << "  NEW maxTau=" << maxTau << " at jH=" << jH
+                      << " kl=" << kl << "\n";
+          }
+        }
+      } else {
         if (s_.lasym && (kl >= 6 && kl <= 9)) {
-          std::cout << "  NEW maxTau=" << maxTau << " at jH=" << jH
-                    << " kl=" << kl << "\n";
+          std::cout << "  EXCLUDED axis tau=" << tau_val << " at jH=" << jH
+                    << " kl=" << kl << " (jVMEC style)\n";
         }
       }
 
