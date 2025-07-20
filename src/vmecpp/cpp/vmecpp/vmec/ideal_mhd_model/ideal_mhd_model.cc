@@ -1365,6 +1365,32 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
         z1_e[idx] += m_ls_.z1e_i[idx];
         // Note: r1_o and z1_o are not filled by asymmetric transform in 2D case
 
+        // TEMPORARY FIX: Copy asymmetric contributions to odd arrays
+        // This is not physically correct but tests if tau formula works
+        if (s_.lasym) {
+          r1_o[idx] = m_ls_.r1e_i[idx] * 0.1;  // Scale down to test
+          z1_o[idx] = m_ls_.z1e_i[idx] * 0.1;
+          // Also need derivatives for tau formula
+          // These are not computed by asymmetric transform, so approximate
+          if (kl > 0 && kl < s_.nZnT - 1) {
+            ru_o[idx] =
+                (m_ls_.r1e_i[offset + kl + 1] - m_ls_.r1e_i[offset + kl - 1]) *
+                0.05;
+            zu_o[idx] =
+                (m_ls_.z1e_i[offset + kl + 1] - m_ls_.z1e_i[offset + kl - 1]) *
+                0.05;
+          }
+
+          // DEBUG: Check if odd arrays are being set
+          if (jF == 1 && (kl >= 6 && kl <= 9)) {
+            std::cout << "DEBUG ODD ARRAYS: jF=" << jF << " kl=" << kl
+                      << " r1_o[" << idx << "]=" << r1_o[idx] << " z1_o[" << idx
+                      << "]=" << z1_o[idx]
+                      << " (from r1e_i=" << m_ls_.r1e_i[idx] << ")"
+                      << std::endl;
+          }
+        }
+
         // lu_e array should be added as well since asymmetric transform fills
         // lue_i
         lu_e[idx] += m_ls_.lue_i[idx];
@@ -1787,6 +1813,13 @@ void IdealMhdModel::computeJacobian() {
                   << "\n";
         std::cout << "  Odd contrib: " << odd_contrib << "\n";
         std::cout << "  tau_val = " << tau_val << "\n";
+        // More detailed debug
+        std::cout << "  ODD COMPONENTS: ruo_o=" << ruo_o << " z1o_o=" << z1o_o
+                  << " zuo_o=" << zuo_o << " r1o_o=" << r1o_o << "\n";
+        std::cout << "  m_ls_ odd: ruo_i=" << m_ls_.ruo_i[kl]
+                  << " z1o_i=" << m_ls_.z1o_i[kl]
+                  << " zuo_i=" << m_ls_.zuo_i[kl]
+                  << " r1o_i=" << m_ls_.r1o_i[kl] << "\n";
         if (!std::isfinite(tau_val)) {
           std::cout << "  ❌ NON-FINITE TAU_VAL!\n";
         }
