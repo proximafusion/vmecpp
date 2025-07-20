@@ -1,6 +1,6 @@
 # VMEC++ Asymmetric Implementation - Debug Plan
 
-## CURRENT STATUS: ✅ M=1 CONSTRAINT IMPLEMENTED - Ready for Full Convergence Testing
+## CURRENT STATUS: 🔄 TESTING M=1 CONSTRAINT - Creating Comprehensive Unit Tests
 
 ### 🎉 MAJOR MILESTONE: jVMEC-Compatible M=1 Constraint Complete
 - **✅ COMPLETE**: Critical bounds fix achieved R-coordinate EXACT MATCH (0.0e+00 difference)
@@ -16,6 +16,7 @@
 - **✅ COMPLETE**: M=1 constraint formula validated: rbs[1] = zbc[1] = (rbs[1] + zbc[1])/2 with perfect satisfaction
 - **✅ IMPLEMENTED**: Modified boundaries.cc to use jVMEC M=1 constraint formula instead of rotation transformation
 - **✅ TESTED**: Created comprehensive tests verifying jVMEC-compatible constraint behavior
+- **🔄 ACTIVE**: Creating unit tests for asymmetric convergence with M=1 constraint
 
 ### ✅ ARCHITECTURE: Corrected Pipeline Flow
 ```
@@ -182,7 +183,7 @@ Standard VMEC++ pipeline continues with correctly combined arrays
 3. **Stability**: No NaN or infinity values during iteration
 4. **Correctness**: Force residuals decrease monotonically
 
-## 🎯 NEXT CRITICAL STEPS: Full Asymmetric Convergence Testing
+## 🎯 NEXT CRITICAL STEPS: Comprehensive Testing with M=1 Constraint
 
 ### Immediate Actions (Following User's Small Steps Approach):
 
@@ -192,17 +193,23 @@ Standard VMEC++ pipeline continues with correctly combined arrays
    - **Location**: Modified boundaries.cc ensureM1Constrained method
    - **Test**: Comprehensive tests verify jVMEC-compatible behavior
 
-2. **🔄 ACTIVE**: Test full asymmetric convergence with M=1 constraint
-   - Run test_full_asymmetric_convergence with jVMEC configurations
-   - Monitor Jacobian behavior and force residual evolution
-   - Compare with jVMEC reference outputs
-   - Debug any remaining convergence issues
+2. **🔄 ACTIVE**: Create unit test for asymmetric convergence with M=1 constraint
+   - Test specific impact of M=1 constraint on Jacobian stability
+   - Compare convergence behavior with/without constraint
+   - Add meticulous debug output for three-code comparison
+   - Verify constraint propagates correctly through algorithm
 
-3. **⏳ NEXT**: Validate complete asymmetric equilibrium convergence
-   - Test with multiple jVMEC benchmark cases
-   - Verify final equilibrium properties match reference
-   - Ensure no regression in symmetric mode
-   - Document performance and accuracy metrics
+3. **⏳ NEXT**: Add meticulous debug output from all three codes
+   - VMEC++ debug output with M=1 constraint active
+   - jVMEC debug output for same configuration
+   - educational_VMEC output for reference
+   - Line-by-line comparison of constraint impact
+
+4. **⏳ FOLLOWING**: Deep dive into jVMEC initial guess generation
+   - Study how jVMEC creates initial radial profiles
+   - Compare with VMEC++ initial guess approach
+   - Test impact on asymmetric convergence
+   - Document any critical differences
 
 ## 🚨 CURRENT PHASE: Debug Jacobian Sign Change Issue
 
