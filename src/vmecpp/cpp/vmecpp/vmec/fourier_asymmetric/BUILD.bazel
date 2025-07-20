@@ -861,3 +861,14 @@ cc_test(
     ],
     size = "medium",
 )
+
+cc_test(
+    name = "test_odd_m_modes",
+    srcs = ["test_odd_m_modes.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)
