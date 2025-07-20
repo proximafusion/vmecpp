@@ -1330,3 +1330,30 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "test_jvmec_spectral_condensation_deep_analysis",
+    srcs = ["test_jvmec_spectral_condensation_deep_analysis.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_vmecpp_constraint_force_multiplier",
+    srcs = ["test_vmecpp_constraint_force_multiplier.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_vmecpp_effective_constraint_force",
+    srcs = ["test_vmecpp_effective_constraint_force.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

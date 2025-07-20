@@ -24,7 +24,7 @@
      ☒ PRIORITY 3: Implement deAliasConstraintForce() band-pass filtering
      ☒ Fine-tune remaining numerical precision issues in symmetrization (small differences at certain k,j combinations)
      ☒ PRIORITY 4: Add computeEffectiveConstraintForce() if needed for convergence
-     ☐ Create test_three_code_debug_comparison.cc for side-by-side output comparison framework
+     ☒ Create test_three_code_debug_comparison.cc for side-by-side output comparison framework
      ☐ Investigate spectral condensation requirements for asymmetric boundaries
      ☐ Create comprehensive asymmetric test suite for continuous integration
      ☐ Compare iteration-by-iteration behavior between VMEC++ and jVMEC
