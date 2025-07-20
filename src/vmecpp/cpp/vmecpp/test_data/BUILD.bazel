@@ -74,3 +74,11 @@ filegroup(
         "wout_cth_like_free_bdy.nc",
     ],
 )
+
+filegroup(
+    name = "up_down_asymmetric_tokamak",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "up_down_asymmetric_tokamak.json",
+    ],
+)

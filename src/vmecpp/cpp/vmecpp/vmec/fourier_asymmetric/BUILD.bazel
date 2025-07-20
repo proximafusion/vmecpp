@@ -545,3 +545,31 @@ cc_test(
         "//vmecpp/test_data:cth_like_fixed_bdy",
     ],
 )
+
+cc_test(
+    name = "test_working_asymmetric_tokamak",
+    srcs = ["test_working_asymmetric_tokamak.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//util/file_io:file_io",
+        "@nlohmann_json//:json",
+        "@abseil-cpp//absl/log:check",
+    ],
+    size = "large",
+    data = [
+        "//vmecpp/test_data:up_down_asymmetric_tokamak",
+    ],
+)
+
+cc_test(
+    name = "test_embedded_asymmetric_tokamak",
+    srcs = ["test_embedded_asymmetric_tokamak.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "large",
+)
