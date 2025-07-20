@@ -164,6 +164,11 @@
 4. **Test convergence** with corrected boundary initialization
 5. **Achieve first asymmetric equilibrium convergence** in VMEC++
 
+### Current Phase Status: 🔄 ACTIVE IMPLEMENTATION
+- **✅ Root cause identified**: Missing boundary theta shift correction (-34.36° for test case)
+- **🔄 Next step**: Write failing unit tests for theta shift calculation
+- **📍 Reference**: jVMEC Boundaries.java implementation
+
 ## Known Issues Fixed ✅
 
 1. **ntheta=0 issue**: ✅ FIXED - Nyquist correction works correctly, issue was in axis array sizing
