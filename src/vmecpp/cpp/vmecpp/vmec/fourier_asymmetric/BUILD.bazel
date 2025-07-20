@@ -832,3 +832,12 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_educational_vmec_tau",
+    srcs = ["test_educational_vmec_tau.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

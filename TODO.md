@@ -818,55 +818,78 @@ Since tau calculation is correct, the Jacobian sign change must be due to:
 - **Geometry generation**: Focus on why same boundaries create different initial conditions
 - **Reference validation**: Match jVMEC algorithm flow, not just mathematical formulas
 
-## 🚀 PHASE 4.2: System-Level Algorithm Flow Comparison (TDD Approach)
+## 🎉 BREAKTHROUGH: ROOT CAUSE IDENTIFIED - Missing educational_VMEC Formula Terms
 
-### Phase 4.2.1: Surface Indexing and Grid Setup Analysis
-1. **🔄 NEXT**: Create test_surface_indexing_differences.cc
-   - Unit test comparing j/j-1 surface handling between VMEC++ and jVMEC
-   - Test theta grid setup: [0,π] vs [0,2π] configuration differences
-   - Verify surface count and half-grid interpolation patterns
-   - Document exact indexing patterns used by each code
+### ✅ COMPLETED: Tau Formula Analysis (Critical Discovery)
+1. **✅ tau2 = 0 discovery**: Debug shows all odd mode components are zero in VMEC++
+2. **✅ educational_VMEC analysis**: Uses UNIFIED formula with both even/odd contributions
+3. **✅ Formula difference identified**: VMEC++ splits tau into tau1 + tau2, but tau2 missing contributions
+4. **✅ Missing terms found**: Mixed even/odd mode terms (ru_even*z1_odd - zu_even*r1_odd)/shalf
 
-2. **⏳ PENDING**: Create test_grid_configuration_debug.cc
-   - Compare nThetaEff vs nThetaReduced between symmetric/asymmetric modes
-   - Test theta spacing and grid point distribution
-   - Verify radial surface setup and half-grid positioning
-   - Add meticulous debug output for grid comparison
+### 🎯 CRITICAL FINDINGS: VMEC++ vs educational_VMEC Tau Formula
+- **educational_VMEC (jacobian.f90)**: UNIFIED expression with dshalfds=0.25
+  ```fortran
+  tau(l) = ru12(l)*zs(l) - rs(l)*zu12(l) + dshalfds*(
+             ru(l,modd) *z1(l,modd) + ru(l-1,modd) *z1(l-1,modd)
+           - zu(l,modd) *r1(l,modd) - zu(l-1,modd) *r1(l-1,modd)
+         + ( ru(l,meven)*z1(l,modd) + ru(l-1,meven)*z1(l-1,modd)
+           - zu(l,meven)*r1(l,modd) - zu(l-1,meven)*r1(l-1,modd) )/shalf(l) )
+  ```
 
-### Phase 4.2.2: Boundary Processing and Initial Geometry
-1. **⏳ PENDING**: Study jVMEC boundary initialization workflow
-   - Document exact sequence: parseToInternalArrays → spectralToInternal → geometry generation
-   - Compare VMEC++ boundary processing with jVMEC step-by-step
-   - Identify differences in initial guess interpolation between codes
-   - Test with identical boundary coefficients, different processing
+- **VMEC++ (ideal_mhd_model.cc)**: SPLIT formula missing crucial terms
+  ```cpp
+  tau_val = tau1 + dSHalfDsInterp * tau2
+  where tau1 = ru12*zs - rs*zu12                    // ✅ Matches educational_VMEC
+        tau2 = (odd_terms) / sqrtSH                 // ❌ INCOMPLETE - Missing mixed terms!
+  ```
 
-2. **⏳ PENDING**: Create test_boundary_processing_comparison.cc
-   - Load identical boundary coefficients into both VMEC++ and jVMEC
-   - Compare geometry generation before first iteration
-   - Debug output for R,Z values at each theta/radial position
-   - Isolate where geometry first diverges between codes
+### 🚨 ROOT CAUSE: Missing Mixed Even/Odd Mode Terms
+VMEC++ is missing the critical mixed terms from educational_VMEC formula:
+```
+dshalfds * (ru_even*z1_odd - zu_even*r1_odd)/shalf
+```
+These terms represent coupling between even and odd modes, crucial for asymmetric equilibria!
 
-### Phase 4.2.3: Algorithm Flow Integration Testing
-1. **⏳ PENDING**: Create test_algorithm_flow_debug.cc
-   - Compare complete first iteration between VMEC++ and jVMEC
-   - Step-by-step comparison: boundary → geometry → forces → Jacobian
-   - Identify exact point where algorithm results diverge
-   - Document differences in convergence criteria and error handling
+### 🎯 REQUIRED FIX: Implement educational_VMEC Unified Formula
+**Location**: `ideal_mhd_model.cc` around line 1764 (computeJacobian)
+**Action**: Replace current split tau calculation with educational_VMEC unified formula
+**Expected Result**: Asymmetric Jacobian should work correctly, no more sign changes
 
-2. **⏳ PENDING**: Create test_tau_distribution_analysis.cc
-   - Compare tau values across all surfaces and theta positions
-   - Test why same boundaries create different tau sign distributions
-   - Analyze radial derivative calculation differences
-   - Verify cross-coupling term computation differences
+### 🔬 TDD METHODOLOGY VALIDATED:
+- **Small steps**: Debug output isolated exact tau2=0 issue
+- **Reference comparison**: educational_VMEC provides correct formula
+- **Unit tests**: Created test_educational_vmec_tau.cc documenting solution
+- **Debug evidence**: tau2 components all zero proves missing contributions
 
-### 🎯 IMMEDIATE NEXT STEPS:
-1. **Create test_surface_indexing_differences.cc** - Unit test framework for surface/grid comparison
-2. **Add comprehensive grid debug output** - Compare theta range and surface setup
-3. **Study jVMEC boundary workflow** - Line-by-line boundary processing understanding
-4. **Create boundary processing unit test** - Direct VMEC++ vs jVMEC comparison
+## 🚀 PHASE 4.3: Implement educational_VMEC Tau Formula (TDD Approach)
 
-### 🔬 TDD METHODOLOGY FOR PHASE 4.2:
-- **System-level unit tests**: Test entire algorithm components, not just individual functions
-- **Comparative debugging**: Side-by-side output from VMEC++ and jVMEC
-- **Grid-level analysis**: Focus on surface indexing and theta range differences
-- **Reference validation**: Match jVMEC algorithm flow exactly, step by step
+### Phase 4.3.1: Immediate Implementation ⚠️ ACTIVE
+1. **🔄 NEXT**: Modify computeJacobian() in ideal_mhd_model.cc
+   - Replace current tau calculation with educational_VMEC unified formula
+   - Extract mode values at l and l-1 surfaces (even/odd separation)
+   - Apply exact dshalfds=0.25 scaling and shalf division
+   - Test with minimal asymmetric configuration
+
+2. **⏳ PENDING**: Create test_tau_formula_fix.cc
+   - Unit test comparing old vs new tau calculation
+   - Verify no regression in symmetric mode behavior
+   - Test that tau2 is no longer zero for asymmetric case
+   - Confirm Jacobian passes with new formula
+
+### Phase 4.3.2: Validation and Testing
+1. **⏳ PENDING**: Run comprehensive asymmetric test suite
+   - Test embedded asymmetric tokamak configuration
+   - Test jVMEC working configurations
+   - Verify first convergent asymmetric equilibrium
+   - Compare convergence behavior with jVMEC
+
+2. **⏳ PENDING**: Regression testing
+   - Verify symmetric mode still works correctly (critical constraint)
+   - Test various asymmetric perturbation levels
+   - Validate against educational_VMEC reference cases
+   - Run full test suite to ensure no breakage
+
+### 🎯 SUCCESS CRITERIA:
+- **Primary**: Asymmetric tokamak converges without Jacobian errors
+- **Secondary**: No regression in symmetric mode behavior
+- **Tertiary**: tau calculation matches educational_VMEC exactly
