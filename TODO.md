@@ -617,12 +617,19 @@ Through systematic TDD testing with multiple configurations:
 
 **Key Components of tau calculation:**
 - `tau1 = ru12 * zs - rs * zu12` (geometric component)
-- `tau2 = complex expression / sqrtSH` (always zero in debug output)
+- `tau2 = (ruo_o*z1o_o - zuo_o*r1o_o) / sqrtSH` (previously zero, now non-zero in asymmetric!)
 - `tau = tau1 + dSHalfDsInterp * tau2` (final tau value)
 
-**The Real Issue: computeJacobian() Function**
+**🎯 LATEST BREAKTHROUGH: tau2 Contribution Critical in Asymmetric Mode**
+From test_tau_symmetric_vs_asymmetric debug output:
+- **Asymmetric tau2**: -6.0, -4.535898 (significant non-zero values!)
+- **Previous tests**: tau2 was always zero, now shows real contribution
+- **tau range**: jH=0 surface: -13.125 to 0.0, jH=1 surface: -0.642949 to 0.0
+- **All negative/zero**: Unlike previous tests with positive values, still fails Jacobian
+
+**The Real Issue: computeJacobian() Function in Asymmetric Mode**
 - **Location**: `ideal_mhd_model.cc` in `computeJacobian()` function
-- **Problem**: Tau changes sign between radial surfaces in asymmetric mode
-- **Evidence**: Surface jH=0 positive tau, surface jH=1 negative tau
-- **Root cause**: tau1 calculation produces different signs across surfaces
-- **Not configuration-specific**: Fundamental issue with tau1=ru12*zs-rs*zu12 in asymmetric mode
+- **Problem**: Tau calculation differs fundamentally between symmetric/asymmetric modes
+- **Evidence**: tau2 contribution changes sign and magnitude significantly
+- **Root cause**: Different theta grid [0,2π] vs [0,π] affects derivatives and tau2 calculation
+- **Critical insight**: Even when all tau values negative, Jacobian still fails - algorithm issue not just sign
