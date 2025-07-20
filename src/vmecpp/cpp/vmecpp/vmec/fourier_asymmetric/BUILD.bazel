@@ -1309,3 +1309,14 @@ cc_test(
     ],
     size = "medium",
 )
+
+cc_test(
+    name = "test_three_code_validation",
+    srcs = ["test_three_code_validation.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)
