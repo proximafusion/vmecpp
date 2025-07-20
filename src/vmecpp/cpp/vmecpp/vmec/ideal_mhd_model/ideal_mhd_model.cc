@@ -3625,6 +3625,9 @@ void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
       dft_ForcesToFourier_2d_asymm(m_physical_f);
     }
 
+    // Apply jVMEC-style m=1 constraint to forces during iteration
+    applyM1ConstraintToForces(m_physical_f);
+
     // symmetrize force components
     symrzl_forces(m_physical_f);
   }  // lasym
@@ -4252,6 +4255,40 @@ void IdealMhdModel::symrzl_geometry(const FourierGeometry& physical_x) {
                          s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
       absl::Span<double>(m_ls_.lue_i.data(),
                          s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)));
+}
+
+void IdealMhdModel::applyM1ConstraintToForces(FourierForces& m_physical_f) {
+  // Apply jVMEC-style m=1 constraint to force coefficients
+  // This implements convert_to_m1_constrained from jVMEC SpectralCondensation
+  // with 1/sqrt(2) scaling for forces during iteration
+  
+  const double force_scaling = 1.0 / std::sqrt(2.0);
+  
+  // Apply constraint to m=1 modes only
+  const int m = 1;
+  
+  for (int n = 0; n <= s_.ntor; ++n) {
+    const int idx_mn = m * (s_.ntor + 1) + n;
+    
+    // Apply jVMEC force constraint (RSS = ZCS for symmetric, RSC = ZCC for asymmetric)
+    if (idx_mn < static_cast<int>(m_physical_f.frss.size())) {
+      // Symmetric constraint: RSS = ZCS
+      double backup_rss = m_physical_f.frss[idx_mn];
+      double backup_zcs = m_physical_f.fzcs[idx_mn];
+      
+      m_physical_f.frss[idx_mn] = force_scaling * (backup_rss + backup_zcs);
+      m_physical_f.fzcs[idx_mn] = force_scaling * (backup_rss - backup_zcs);
+    }
+    
+    if (idx_mn < static_cast<int>(m_physical_f.frsc.size())) {
+      // Asymmetric constraint: RSC = ZCC  
+      double backup_rsc = m_physical_f.frsc[idx_mn];
+      double backup_zcc = m_physical_f.fzcc[idx_mn];
+      
+      m_physical_f.frsc[idx_mn] = force_scaling * (backup_rsc + backup_zcc);
+      m_physical_f.fzcc[idx_mn] = force_scaling * (backup_rsc - backup_zcc);
+    }
+  }
 }
 
 void IdealMhdModel::symrzl_forces(FourierForces& m_physical_f) {
