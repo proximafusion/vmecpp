@@ -84,6 +84,12 @@ TEST(JVMECTokAsymTest, RunKnownGoodAsymmetricTokamak) {
   indata.zbc[1] = 5.73020000E-02;
   indata.zbs[1] = 3.62230000E+00;
 
+  std::cout << "DEBUG: M=1 coefficients from input:" << std::endl;
+  std::cout << "  rbc[1] = " << indata.rbc[1] << std::endl;
+  std::cout << "  rbs[1] = " << indata.rbs[1] << std::endl;
+  std::cout << "  zbc[1] = " << indata.zbc[1] << std::endl;
+  std::cout << "  zbs[1] = " << indata.zbs[1] << std::endl;
+
   // m=2 coefficients
   indata.rbc[2] = 3.37360000E-01;
   indata.rbs[2] = 1.00380000E-01;
