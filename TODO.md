@@ -149,26 +149,31 @@
 
 ## Priority Actions - Next Steps
 
-1. **✅ COMPLETED**: Run integration tests with asymmetric equilibria - algorithm works, boundary issue identified
+1. **✅ COMPLETED**: Run integration tests with asymmetric equilibria - algorithm works, Jacobian issue identified
 2. **✅ COMPLETED**: Add meticulous debug output from VMEC++, jVMEC, and educational_VMEC
-3. **✅ COMPLETED**: Deep dive into jVMEC implementation for reference - **ROOT CAUSE FOUND**
+3. **✅ COMPLETED**: Deep dive into jVMEC implementation - theta shift already implemented
 4. **✅ COMPLETED**: Create minimal asymmetric test case for detailed comparison
-5. **🎯 CRITICAL**: **Implement jVMEC boundary theta shift correction** - this is the missing piece!
+5. **✅ COMPLETED**: Verify theta shift implementation - working correctly
 
-## 🚨 NEXT PHASE: Implement Boundary Theta Shift Correction
+## 🚨 CURRENT PHASE: Debug Jacobian Sign Change Issue
+
+### Key Finding:
+- **ALL asymmetric cases fail** with "INITIAL JACOBIAN CHANGED SIGN!"
+- Core asymmetric transforms work correctly (verified by debug output)
+- Issue appears in initial boundary/Jacobian calculation
 
 ### Implementation Plan:
-1. **Create unit tests** for theta shift calculation (TDD approach)
-2. **Find where VMEC++ initializes axis/boundary** geometry from input coefficients
-3. **Implement jVMEC correction formula** with proper validation
-4. **Test convergence** with corrected boundary initialization
-5. **Achieve first asymmetric equilibrium convergence** in VMEC++
+1. **Add debug output** to Jacobian calculation for asymmetric mode
+2. **Compare initial guess** generation between VMEC++ and jVMEC
+3. **Test with existing** asymmetric tokamak examples from test_data
+4. **Investigate spectral condensation** for asymmetric boundaries
+5. **Check axis protection** logic in asymmetric geometry
 
 ### Current Phase Status: 🔄 ACTIVE DEBUGGING
-- **❌ Initial hypothesis wrong**: Theta shift already correctly implemented
-- **🔍 True root cause unknown**: ALL asymmetric cases fail with Jacobian sign change
-- **🔄 Next step**: Debug Jacobian calculation and boundary initialization
-- **📍 Key pattern**: "INITIAL JACOBIAN CHANGED SIGN!" in all failures
+- **✅ Asymmetric transforms**: Working correctly (array values non-zero)
+- **✅ Theta shift**: Correctly implemented and applied
+- **❌ Jacobian calculation**: Sign changes prevent any convergence
+- **🔄 Next step**: Add debug output to trace exact failure point
 
 ## Known Issues Fixed ✅
 
