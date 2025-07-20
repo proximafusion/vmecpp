@@ -1160,30 +1160,24 @@ cc_test(
 )
 
 cc_test(
-    name = "test_asymmetric_array_combination",
-    srcs = ["test_asymmetric_array_combination.cc"],
-    deps = [
-        "@googletest//:gtest_main",
-    ],
-    size = "small",
-)
-
-cc_test(
-    name = "test_ideal_mhd_model_fix",
-    srcs = ["test_ideal_mhd_model_fix.cc"],
-    deps = [
-        "@googletest//:gtest_main",
-    ],
-    size = "small",
-)
-
-cc_test(
     name = "test_symmetrize_fix",
     srcs = ["test_symmetrize_fix.cc"],
     deps = [
         "@googletest//:gtest_main",
         "//vmecpp/common/vmec_indata:vmec_indata",
         "//vmecpp/vmec/vmec:vmec",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_separated_transform_arrays",
+    srcs = ["test_separated_transform_arrays.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
         "@abseil-cpp//absl/types:span",
     ],
     size = "small",
