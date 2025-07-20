@@ -511,12 +511,14 @@ This represents the breakthrough needed for asymmetric VMEC in C++. The primary 
 4. **✅ BOTH 2D AND 3D PATHS**: Debug output confirms both asymmetric transform modes work
 5. **✅ FUNDAMENTAL ALGORITHM SUCCESS**: Issue changed from "array combination" to "convergence with degenerate boundaries"
 
-### Phase 3.1: Remaining Convergence Issues ⚠️ NEXT
-1. **Create better boundary conditions**: Fix "arNorm should never be 0.0" and "INITIAL JACOBIAN CHANGED SIGN"
-2. **Use working jVMEC input files**: Copy exact working asymmetric configurations from jVMEC
-3. **Small perturbation approach**: Start with symmetric equilibrium + tiny asymmetric perturbation
+### Phase 3.2: Convergent Asymmetric Equilibria ⚠️ ACTIVE
+1. **✅ MAJOR SUCCESS**: Asymmetric algorithm working - issue now is boundary conditions, not core algorithm
+2. **Find existing tokamak asymmetric input files**: Check examples directory for working configurations
+3. **Test with working jVMEC asymmetric inputs**: Use proven boundary conditions that converge
+4. **Small perturbation approach**: Start with converged symmetric + tiny asymmetric perturbation
+5. **Deep jVMEC comparison**: Line-by-line debug output comparison for exact reference behavior
 
-### Phase 3.2: Deep jVMEC Reference Analysis
+### Phase 3.3: Deep jVMEC Reference Analysis
 1. **Study jVMEC asymmetric algorithm flow**: Document exact sequence of operations
 2. **Compare initialization patterns**: Verify array setup and boundary conditions match
 3. **Analyze convergence criteria**: Ensure VMEC++ uses same convergence logic
