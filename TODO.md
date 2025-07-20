@@ -1139,15 +1139,23 @@ From crash test debug output:
 5. **✅ FORCE APPLICATION**: jVMEC applies constraint during force decomposition, not geometry initialization
 
 ### 🎯 CRITICAL ISSUES IDENTIFIED:
-1. **Constraint timing**: jVMEC constrains forces every iteration, VMEC++ constrains geometry once
-2. **Scaling factor**: 29% difference between force (1/√2) and geometry (0.5) scaling  
-3. **Force multiplier**: VMEC++ missing dynamic constraint strength calculation
-4. **Band-pass filtering**: VMEC++ missing m=1 to m=(mpol-2) force filtering
-5. **Symmetrization order**: Different approach to force symmetrization in asymmetric mode
+1. **✅ FIXED: Constraint timing**: Forces now constrained every iteration like jVMEC
+2. **✅ FIXED: Scaling factor**: 29% difference eliminated - using 1/√2 for forces
+3. **⚠️ IN PROGRESS: Force multiplier**: Dynamic constraint strength calculation
+4. **⏳ PENDING: Band-pass filtering**: m=1 to m=(mpol-2) force filtering
+5. **✅ FIXED: Symmetrization order**: Constraint now applied before symmetrization
 
-### 🚀 NEXT IMPLEMENTATION PHASE: 
-- **Implement force constraint application**: Apply m=1 constraint to forces during iteration, not geometry
-- **Add constraint force multiplier**: Dynamic scaling based on surface count like jVMEC
-- **Implement band-pass filtering**: Retain only m=1 to m=(mpol-2) in constraint forces
-- **Test scaling factor differences**: Verify 1/√2 vs 0.5 impact on convergence
-- **Fix symmetrization timing**: Apply constraint before force symmetrization
+### 🚀 IMPLEMENTATION PROGRESS:
+- **✅ PRIORITY 1 COMPLETE**: applyM1ConstraintToForces() implemented and tested
+  - Force constraint application during iteration ✅
+  - Correct 1/√2 scaling factor ✅
+  - Integration tests passing ✅
+  - No symmetric mode regression ✅
+
+- **🔄 PRIORITY 2 IN PROGRESS**: computeConstraintForceMultiplier()
+  - Dynamic scaling based on surface count
+  - Formula: tcon0 * (1 + ns*(1/60 + ns/(200*120))) / (4*r0scale^2)^2
+  - Next: Create TDD tests for multiplier calculation
+
+- **⏳ PRIORITY 3 PENDING**: deAliasConstraintForce() band-pass filtering
+- **⏳ PRIORITY 4 PENDING**: computeEffectiveConstraintForce() if needed
