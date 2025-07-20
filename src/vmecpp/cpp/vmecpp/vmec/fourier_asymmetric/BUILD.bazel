@@ -1091,3 +1091,30 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_constraint_force_multiplier",
+    srcs = ["test_constraint_force_multiplier.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_dealias_constraint_force",
+    srcs = ["test_dealias_constraint_force.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_constraint_system_complete",
+    srcs = ["test_constraint_system_complete.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
