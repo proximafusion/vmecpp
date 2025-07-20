@@ -407,7 +407,9 @@ void SymmetrizeRealSpaceGeometry(
     // Following educational_VMEC/jVMEC pattern: theta -> 2π - theta, zeta ->
     // -zeta
     for (int k = 0; k < nzeta; ++k) {
-      for (int j = 0; j < ntheta_reduced; ++j) {
+      // Critical fix: limit j to ensure idx_full_second stays in bounds
+      const int max_j_second = ntheta_eff - ntheta_reduced;
+      for (int j = 0; j < max_j_second; ++j) {
         const int idx_full_second =
             (j + ntheta_reduced) + k * ntheta_eff + surface * full_slice_size;
 
@@ -418,10 +420,17 @@ void SymmetrizeRealSpaceGeometry(
         const int idx_reflected = j_reflected + k_reflected * ntheta_reduced +
                                   surface * reduced_slice_size;
 
-        // Bounds checking
+        // Detailed bounds checking with debug info
         if (idx_reflected >= r_sym.size() || idx_full_second >= r_full.size()) {
           std::cout << "ERROR: Bounds error in second half at surface="
-                    << surface << ", j=" << j << ", k=" << k << std::endl;
+                    << surface << ", j=" << j << ", k=" << k
+                    << ", j_reflected=" << j_reflected
+                    << ", k_reflected=" << k_reflected
+                    << ", idx_reflected=" << idx_reflected
+                    << " (max=" << r_sym.size() << ")"
+                    << ", idx_full_second=" << idx_full_second
+                    << " (max=" << r_full.size() << ")"
+                    << ", max_j_second=" << max_j_second << std::endl;
           continue;
         }
 
