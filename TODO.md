@@ -1172,3 +1172,27 @@ From crash test debug output:
 - Only missing piece was m=1 force constraint application (Priority 1)
 - With applyM1ConstraintToForces() now implemented, system is complete
 - All algorithmic differences between VMEC++ and jVMEC are resolved
+
+## 🚀 NEXT PHASE: Full Asymmetric Convergence Testing
+
+### Immediate Tasks:
+1. **🔄 IN PROGRESS**: Test full asymmetric convergence with proven jVMEC configurations
+   - Use jVMEC benchmark cases (input.tok_asym)
+   - Compare iteration-by-iteration convergence
+   - Verify force residuals decrease monotonically
+
+2. **⏳ PENDING**: Create convergence comparison framework
+   - Side-by-side VMEC++ vs jVMEC output
+   - Force residual evolution tracking
+   - Jacobian behavior monitoring
+
+3. **⏳ PENDING**: Debug any remaining convergence issues
+   - Use meticulous debug output from all three codes
+   - Focus on first divergence point if any
+   - Small incremental fixes with TDD
+
+### Test Strategy:
+- Start with minimal asymmetric perturbations
+- Gradually increase asymmetry level
+- Document exact failure modes if any
+- Compare with educational_VMEC for validation
