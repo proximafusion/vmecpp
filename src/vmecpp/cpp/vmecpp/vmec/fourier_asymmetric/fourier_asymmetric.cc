@@ -333,7 +333,7 @@ void FourierToReal2DAsymmFastPoloidal(
   // STEP 2: Handle theta=[pi,2pi] using reflection
   // Following jVMEC lines 340-365
   for (int l = ntheta2; l < ntheta1; ++l) {
-    int lr = ntheta1 - 1 - l;  // reflection index
+    int lr = ntheta1 - l;  // reflection index (matches jVMEC exactly)
 
     for (int k = 0; k < nzeta; ++k) {
       int kr = (nzeta - k) % nzeta;  // zeta reflection (ireflect)
@@ -380,7 +380,7 @@ void SymmetrizeRealSpaceGeometry(
 
   // Process each surface separately
   for (int surface = 0; surface < nsurfaces; ++surface) {
-    // First half: theta in [0, π] - direct addition
+    // First half: theta in [0, π] - direct addition (NO zeta reflection)
     for (int k = 0; k < nzeta; ++k) {
       for (int j = 0; j < ntheta_reduced; ++j) {
         const int idx_half =
@@ -395,7 +395,7 @@ void SymmetrizeRealSpaceGeometry(
           continue;
         }
 
-        // First half: symmetric + antisymmetric
+        // First half: symmetric + antisymmetric (direct mapping)
         r_full[idx_full_first] = r_sym[idx_half] + r_asym[idx_half];
         z_full[idx_full_first] = z_sym[idx_half] + z_asym[idx_half];
         lambda_full[idx_full_first] =
@@ -404,15 +404,19 @@ void SymmetrizeRealSpaceGeometry(
     }
 
     // Second half: theta in [π, 2π] - reflection with sign change
+    // Following educational_VMEC/jVMEC pattern: theta -> 2π - theta, zeta ->
+    // -zeta
     for (int k = 0; k < nzeta; ++k) {
       for (int j = 0; j < ntheta_reduced; ++j) {
         const int idx_full_second =
             (j + ntheta_reduced) + k * ntheta_eff + surface * full_slice_size;
 
-        // Reflection mapping: theta -> 2*π - theta
+        // Reflection mapping: theta -> 2π - theta, zeta -> -zeta
         const int j_reflected = ntheta_reduced - 1 - j;
-        const int idx_reflected =
-            j_reflected + k * ntheta_reduced + surface * reduced_slice_size;
+        const int k_reflected =
+            (nzeta - k) % nzeta;  // zeta -> -zeta reflection
+        const int idx_reflected = j_reflected + k_reflected * ntheta_reduced +
+                                  surface * reduced_slice_size;
 
         // Bounds checking
         if (idx_reflected >= r_sym.size() || idx_full_second >= r_full.size()) {
