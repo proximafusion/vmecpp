@@ -1451,6 +1451,23 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
 
   }  // lasym
 
+  // DEBUG: Check surface population in asymmetric mode
+  if (s_.lasym) {
+    std::cout << "DEBUG SURFACE POPULATION:\n";
+    for (int jF = 0; jF < 3; ++jF) {
+      int idx = jF * s_.nZnT + 6;  // kl=6 for each surface
+      if (idx < static_cast<int>(r1_e.size())) {
+        std::cout << "  Surface jF=" << jF << " r1_e[" << idx
+                  << "]=" << r1_e[idx] << " r1_o[" << idx << "]=" << r1_o[idx]
+                  << "\n";
+      }
+    }
+    std::cout << "  Array sizes: r1_e.size()=" << r1_e.size()
+              << " r1_o.size()=" << r1_o.size() << "\n";
+    std::cout << "  nsMinF1=" << r_.nsMinF1 << " nsMaxF1=" << r_.nsMaxF1
+              << " nZnT=" << s_.nZnT << "\n";
+  }
+
   // DEBUG: Check geometry arrays for NaN before MHD computation
   if (s_.lasym) {
     bool found_nan_geom = false;
@@ -1522,6 +1539,16 @@ void IdealMhdModel::dft_FourierToReal_3d_symm(
                                     .lv_o = lv_o,
                                     .rCon = rCon,
                                     .zCon = zCon};
+
+  // DEBUG: Check radial partitioning values in asymmetric mode
+  if (s_.lasym) {
+    std::cout << "DEBUG RADIAL PARTITIONING:\n";
+    std::cout << "  nsMinF1 = " << r_.nsMinF1 << "\n";
+    std::cout << "  nsMaxF1 = " << r_.nsMaxF1 << "\n";
+    std::cout << "  nsMinF = " << r_.nsMinF << "\n";
+    std::cout << "  Range: jF = " << r_.nsMinF1 << " to " << (r_.nsMaxF1 - 1)
+              << "\n";
+  }
 
   FourierToReal3DSymmFastPoloidal(physical_x, xmpq, r_, s_, m_p_, t_, geometry);
 }
