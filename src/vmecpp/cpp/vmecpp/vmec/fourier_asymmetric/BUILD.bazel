@@ -1019,3 +1019,12 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_jvmec_interpolation_analysis",
+    srcs = ["test_jvmec_interpolation_analysis.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
