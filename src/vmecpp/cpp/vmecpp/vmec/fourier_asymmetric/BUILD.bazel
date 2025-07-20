@@ -767,3 +767,25 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_jvmec_boundary_differences",
+    srcs = ["test_jvmec_boundary_differences.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "medium",
+)
+
+cc_test(
+    name = "test_jvmec_axis_optimization",
+    srcs = ["test_jvmec_axis_optimization.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)
