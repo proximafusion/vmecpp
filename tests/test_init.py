@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 
 import vmecpp
+from vmecpp.cpp import _vmecpp  # pyright: ignore[reportAttributeAccessIssue]
 
 # We don't want to install tests and test data as part of the package,
 # but scikit-build-core + hatchling does not support editable installs,
@@ -589,3 +590,18 @@ def test_default_preset():
     assert default_preset.mpol == 6
     assert not default_preset.lasym
     assert default_preset.ns_array == np.array([31])
+
+
+def test_python_defaults_match_cpp_defaults():
+    python_defaults = vmecpp.VmecInput()
+    cpp_defaults = vmecpp.VmecInput._from_cpp_vmecindatapywrapper(
+        _vmecpp.VmecINDATAPyWrapper()
+    )
+
+    for field in vmecpp.VmecInput.model_fields:
+        py_val = getattr(python_defaults, field)
+        cpp_val = getattr(cpp_defaults, field)
+        if isinstance(py_val, np.ndarray):
+            np.testing.assert_array_equal(py_val, cpp_val)
+        else:
+            assert py_val == cpp_val
