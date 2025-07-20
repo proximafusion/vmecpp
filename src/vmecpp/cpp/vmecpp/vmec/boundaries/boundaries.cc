@@ -242,18 +242,25 @@ void Boundaries::flipTheta() {
  * origin.
  */
 void Boundaries::ensureM1Constrained(const double scaling_factor) {
+  // NOTE: For jVMEC compatibility, we use the averaging formula
+  // that enforces rbsc = zbcc and rbss = zbcs for m=1 modes
+  // instead of the rotation transformation. The scaling_factor
+  // parameter is ignored in this implementation.
+
   for (int n = 0; n <= s_.ntor; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
     if (s_.lthreed) {
-      double backup_rss = rbss[idx_mn];
-      rbss[idx_mn] = (backup_rss + zbcs[idx_mn]) * scaling_factor;
-      zbcs[idx_mn] = (backup_rss - zbcs[idx_mn]) * scaling_factor;
+      // jVMEC constraint: set both to average
+      double constrained_value = (rbss[idx_mn] + zbcs[idx_mn]) / 2.0;
+      rbss[idx_mn] = constrained_value;
+      zbcs[idx_mn] = constrained_value;
     }
     if (s_.lasym) {
-      double backup_rsc = rbsc[idx_mn];
-      rbsc[idx_mn] = (backup_rsc + zbcc[idx_mn]) * scaling_factor;
-      zbcc[idx_mn] = (backup_rsc - zbcc[idx_mn]) * scaling_factor;
+      // jVMEC constraint: set both to average
+      double constrained_value = (rbsc[idx_mn] + zbcc[idx_mn]) / 2.0;
+      rbsc[idx_mn] = constrained_value;
+      zbcc[idx_mn] = constrained_value;
     }
   }  // n
 }

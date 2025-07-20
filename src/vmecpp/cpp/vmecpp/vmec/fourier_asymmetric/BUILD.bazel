@@ -1251,3 +1251,36 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_vmecpp_vs_jvmec_m1_constraint",
+    srcs = ["test_vmecpp_vs_jvmec_m1_constraint.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_jvmec_m1_constraint_boundaries",
+    srcs = ["test_jvmec_m1_constraint_boundaries.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/boundaries:boundaries",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_jvmec_constraint_integration",
+    srcs = ["test_jvmec_constraint_integration.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)
