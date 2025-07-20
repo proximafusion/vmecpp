@@ -1833,9 +1833,17 @@ void IdealMhdModel::computeJacobian() {
 
       if (tau_val < minTau || minTau == 0.0) {
         minTau = tau_val;
+        if (s_.lasym && (kl >= 6 && kl <= 9)) {
+          std::cout << "  NEW minTau=" << minTau << " at jH=" << jH
+                    << " kl=" << kl << "\n";
+        }
       }
       if (tau_val > maxTau || maxTau == 0.0) {
         maxTau = tau_val;
+        if (s_.lasym && (kl >= 6 && kl <= 9)) {
+          std::cout << "  NEW maxTau=" << maxTau << " at jH=" << jH
+                    << " kl=" << kl << "\n";
+        }
       }
 
       tau[iHalf] = tau_val;
@@ -1855,6 +1863,18 @@ void IdealMhdModel::computeJacobian() {
   }  // j
 
   bool localBadJacobian = (minTau * maxTau < 0.0);
+
+  if (s_.lasym) {
+    std::cout << "\nDEBUG JACOBIAN CHECK:\n";
+    std::cout << "  Final minTau=" << minTau << ", maxTau=" << maxTau << "\n";
+    std::cout << "  minTau * maxTau = " << (minTau * maxTau) << "\n";
+    std::cout << "  localBadJacobian = " << localBadJacobian
+              << " (condition: < 0.0)\n";
+    std::cout << "  Range spans: "
+              << ((minTau < 0.0 && maxTau > 0.0) ? "BOTH sides of zero"
+                                                 : "SAME side of zero")
+              << "\n";
+  }
 
   if (localBadJacobian) {
 #ifdef _OPENMP
