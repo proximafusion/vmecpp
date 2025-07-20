@@ -1176,3 +1176,15 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_symmetrize_fix",
+    srcs = ["test_symmetrize_fix.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
