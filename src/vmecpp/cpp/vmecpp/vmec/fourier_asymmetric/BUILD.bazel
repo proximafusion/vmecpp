@@ -1218,3 +1218,15 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_precise_zeta_reflection_debug",
+    srcs = ["test_precise_zeta_reflection_debug.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
