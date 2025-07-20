@@ -1118,3 +1118,14 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_full_asymmetric_convergence",
+    srcs = ["test_full_asymmetric_convergence.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)
