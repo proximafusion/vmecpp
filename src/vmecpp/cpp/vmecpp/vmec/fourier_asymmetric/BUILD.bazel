@@ -1010,3 +1010,12 @@ cc_binary(
         "//vmecpp/test_data:up_down_asymmetric_tokamak",
     ],
 )
+
+cc_test(
+    name = "test_jvmec_axis_exclusion",
+    srcs = ["test_jvmec_axis_exclusion.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
