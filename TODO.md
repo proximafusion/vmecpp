@@ -559,14 +559,34 @@ This represents the breakthrough needed for asymmetric VMEC in C++. The primary 
 - **Even with m=1 modes** and proper theta shift, asymmetric cases still fail
 - **"INITIAL JACOBIAN CHANGED SIGN!"** appears in all failures
 
-#### True Root Cause Still Unknown:
-- All asymmetric cases fail with "poorly shaped boundary" error
-- Even tiny 1% perturbations fail
-- Issue appears fundamental to asymmetric initialization or Jacobian calculation
-- Core transforms work (debug shows non-zero values), but something else is wrong
+#### True Root Cause IDENTIFIED:
+- **CRITICAL BUG**: Same symmetric geometry works with lasym=false but fails with lasym=true
+- **Initial guess interpolation**: Creates different geometry for asymmetric mode
+- **Debug shows**: R values at kl=6 are 18.0 (asymmetric) vs 10.0 (symmetric) - HUGE difference!
+- **Theta range difference**: [0,π] for symmetric vs [0,2π] for asymmetric causes different interpolation
 
 ### Critical Testing Requirements Maintained
 - **TDD Mandatory**: All changes driven by failing/passing tests
 - **Small steps**: Fix one bounds error at a time
 - **Debug output**: Line-by-line comparison with reference implementations
 - **Reference accuracy**: Match jVMEC behavior exactly, not theoretical expectations
+
+## 🚨 CRITICAL BUG: Initial Guess Interpolation Differs for Asymmetric Mode
+
+### Key Finding from test_symmetric_tau_only:
+1. **IDENTICAL geometry behaves differently**: lasym=false works, lasym=true fails
+2. **Debug output shows HUGE differences**:
+   - Symmetric (lasym=false): tau values around -3.0, R values around 10.0
+   - Asymmetric (lasym=true): R values at kl=6 are 18.0! (should be ~8.0)
+3. **Root cause**: Initial guess interpolation creates different geometry for full theta range
+
+### What's happening:
+- Symmetric mode: theta ∈ [0,π], simple interpolation
+- Asymmetric mode: theta ∈ [0,2π], different interpolation causing wrong R values
+- The r1_e=18.0 at kl=6 is WRONG - it should be closer to 8.0 (R0-a = 10-2)
+
+### Next debugging steps:
+1. **Trace initial guess generation** in asymmetric mode
+2. **Compare interpolation** between symmetric/asymmetric modes
+3. **Check spectral_to_initial_guess** function for asymmetric handling
+4. **Verify theta grid setup** for full [0,2π] range
