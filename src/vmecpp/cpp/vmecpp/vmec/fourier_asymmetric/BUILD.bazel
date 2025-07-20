@@ -789,3 +789,24 @@ cc_test(
     ],
     size = "large",
 )
+
+cc_test(
+    name = "test_jvmec_boundary_preprocessing",
+    srcs = ["test_jvmec_boundary_preprocessing.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_m1_constraint_impact",
+    srcs = ["test_m1_constraint_impact.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)

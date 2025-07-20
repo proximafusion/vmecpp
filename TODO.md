@@ -671,3 +671,67 @@ From debug output analysis:
 - **✅ Grid search tested**: Systematic approach validates no working positions
 - **🔄 Next step**: Test exact jVMEC working configuration
 - **🔄 Integration needed**: Add axis optimization to VMEC++ initialization
+
+## 🚨 BREAKTHROUGH: jVMEC Preprocessing Analysis Complete
+
+### ✅ COMPLETED: Comprehensive jVMEC Implementation Testing
+1. **✅ M=1 constraint testing**: BOTH original and corrected jVMEC constraint formulas tested
+2. **✅ Axis optimization**: 9×9 grid search proves NO axis position works for current config
+3. **✅ jVMEC working config**: Even exact input.tok_asym coefficients fail in VMEC++
+4. **✅ Boundary preprocessing**: Theta shift, M=1 modes, Jacobian heuristic all tested
+
+### 🎯 CRITICAL FINDINGS: None of jVMEC Preprocessing Fixes the Issue
+
+#### M=1 Constraint Impact (test_m1_constraint_impact):
+- **Original config**: minTau=-29.290532, maxTau=69.194719 → FAIL
+- **Constrained config**: minTau=-29.286840, maxTau=69.197732 → FAIL
+- **Conclusion**: M=1 constraint makes negligible difference
+
+#### Axis Optimization Results (test_jvmec_axis_optimization):
+- **81/81 positions tested**: ALL fail with Jacobian errors
+- **Grid coverage**: R ∈ [5.21, 6.79], Z ∈ [-0.79, +0.79]
+- **Success rate**: 0% (complete systematic failure)
+- **Conclusion**: Simple axis positioning cannot solve this
+
+#### jVMEC Working Configuration (test_m1_constraint_impact):
+- **Exact input.tok_asym coefficients**: Still fails with Jacobian error
+- **Even with jVMEC preprocessing**: Still minTau * maxTau < 0
+- **Conclusion**: Even proven jVMEC configs fail in VMEC++
+
+### 🔍 ROOT CAUSE ANALYSIS: Fundamental Algorithm Difference
+
+The systematic failure of ALL approaches (M=1 constraints, axis optimization, exact jVMEC configs) indicates the issue is NOT in preprocessing but in the **core asymmetric Jacobian calculation algorithm**.
+
+#### Evidence:
+1. **Tau calculation works correctly**: Debug shows finite, reasonable tau1 and tau2 values
+2. **Geometry is correct**: All R,Z values are finite and physically reasonable
+3. **Array combination works**: r1_e arrays contain correct non-zero values
+4. **Issue is tau sign distribution**: tau changes sign across surfaces → legitimate Jacobian failure
+
+### 🎯 BREAKTHROUGH INSIGHT: Algorithm Implementation Differences
+
+**Hypothesis**: VMEC++ and jVMEC may have subtle differences in:
+- **Half-grid interpolation** in tau2 calculation
+- **Surface indexing** in Jacobian computation
+- **Even/odd contribution** handling in asymmetric mode
+- **Radial derivatives** calculation for tau components
+
+### 🔬 NEXT DEBUGGING PHASE: Line-by-Line Algorithm Comparison
+
+Instead of preprocessing, focus on the actual **asymmetric Jacobian algorithm**:
+
+1. **✅ COMPLETED**: Added tau calculation debug output to trace exact failure
+2. **🔄 NEXT**: Compare tau1/tau2 calculation with jVMEC line-by-line
+3. **⏳ PENDING**: Study jVMEC Jacobian calculation for asymmetric mode
+4. **⏳ PENDING**: Identify specific algorithmic difference causing tau sign issues
+
+### 🎯 SUCCESS CRITERIA UPDATED:
+- **Primary**: Understand why tau changes sign in VMEC++ but not jVMEC
+- **Secondary**: Find the specific calculation difference in asymmetric Jacobian
+- **Tertiary**: Fix the algorithm difference to match jVMEC behavior
+
+### 🔬 DEBUGGING METHODOLOGY REFINED:
+- **Algorithm focus**: Concentrate on core Jacobian calculation, not preprocessing
+- **Debug output**: Meticulous tau1/tau2 component comparison with jVMEC
+- **Systematic testing**: Test multiple asymmetric configs to find patterns
+- **Reference validation**: Match jVMEC Jacobian calculation exactly

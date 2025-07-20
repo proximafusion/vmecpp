@@ -213,16 +213,15 @@ TEST(JVMECAxisOptimizationTest, TestWithJVMECWorkingConfig) {
   config.zaxis_s = {0.0};
   config.zaxis_c = {0.47};  // zaxis_cc from input.tok_asym
 
-  // jVMEC boundary (first few modes from input.tok_asym)
-  // Need to pad with zeros to match mpol=7 requirement
-  config.rbc = {5.9163,     1.9196,   0.33736,    0.041504,
-                -0.0058256, 0.010374, -0.0056365, -0.0011787};
-  config.rbs = {0.0,       0.027610, 0.10038,   -0.071843,
-                -0.011423, 0.008177, -0.007611, 0.001834};
+  // jVMEC boundary (first 7 modes from input.tok_asym, m=0 to m=6)
+  config.rbc = {5.9163,     1.9196,   0.33736,   0.041504,
+                -0.0058256, 0.010374, -0.0056365};
+  config.rbs = {0.0,       0.027610, 0.10038,  -0.071843,
+                -0.011423, 0.008177, -0.007611};
   config.zbc = {0.4105,     0.057302, 0.0046697, -0.039155,
-                -0.0087848, 0.021175, 0.002439,  -0.0086278};
-  config.zbs = {0.0,      3.6223,   -0.18511,  -0.0048568,
-                0.059268, 0.004477, -0.016773, 0.003381};
+                -0.0087848, 0.021175, 0.002439};
+  config.zbs = {0.0,      3.6223,   -0.18511, -0.0048568,
+                0.059268, 0.004477, -0.016773};
 
   std::cout << "Testing jVMEC working configuration:\n";
   std::cout << "  Major radius: R0 = " << config.rbc[0] << " m\n";
