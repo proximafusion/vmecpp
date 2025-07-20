@@ -1206,3 +1206,15 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_three_code_debug_comparison",
+    srcs = ["test_three_code_debug_comparison.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
