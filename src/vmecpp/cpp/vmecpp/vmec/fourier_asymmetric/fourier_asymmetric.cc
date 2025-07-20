@@ -365,17 +365,19 @@ void SymmetrizeRealSpaceGeometry(
   // Key insight: Keep symmetric and antisymmetric arrays separate
   // and combine them with proper reflection, NOT division by tau
 
-  const int ntheta = sizes.nThetaReduced;  // [0, π] range
+  const int ntheta_reduced = sizes.nThetaReduced;  // [0, π] range
+  const int ntheta_eff = sizes.nThetaEff;          // [0, 2π] range
   const int nzeta = sizes.nZeta;
 
-  std::cout << "DEBUG SymmetrizeRealSpaceGeometry FIXED: ntheta=" << ntheta
+  std::cout << "DEBUG SymmetrizeRealSpaceGeometry FIXED: ntheta_reduced="
+            << ntheta_reduced << ", ntheta_eff=" << ntheta_eff
             << ", nzeta=" << nzeta << std::endl;
 
   // First half: theta in [0, π] - direct addition
   for (int k = 0; k < nzeta; ++k) {
-    for (int j = 0; j < ntheta; ++j) {
-      const int idx_half = j + k * ntheta;
-      const int idx_full_first = j + k * (2 * ntheta);
+    for (int j = 0; j < ntheta_reduced; ++j) {
+      const int idx_half = j + k * ntheta_reduced;
+      const int idx_full_first = j + k * ntheta_eff;
 
       // Bounds checking
       if (idx_half >= r_sym.size() || idx_full_first >= r_full.size()) {
@@ -394,12 +396,12 @@ void SymmetrizeRealSpaceGeometry(
 
   // Second half: theta in [π, 2π] - reflection with sign change
   for (int k = 0; k < nzeta; ++k) {
-    for (int j = 0; j < ntheta; ++j) {
-      const int idx_full_second = (j + ntheta) + k * (2 * ntheta);
+    for (int j = 0; j < ntheta_reduced; ++j) {
+      const int idx_full_second = (j + ntheta_reduced) + k * ntheta_eff;
 
       // Reflection mapping: theta -> 2*π - theta
-      const int j_reflected = ntheta - 1 - j;
-      const int idx_reflected = j_reflected + k * ntheta;
+      const int j_reflected = ntheta_reduced - 1 - j;
+      const int idx_reflected = j_reflected + k * ntheta_reduced;
 
       // Bounds checking
       if (idx_reflected >= r_sym.size() || idx_full_second >= r_full.size()) {
