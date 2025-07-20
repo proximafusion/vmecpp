@@ -369,52 +369,64 @@ void SymmetrizeRealSpaceGeometry(
   const int ntheta_eff = sizes.nThetaEff;          // [0, 2π] range
   const int nzeta = sizes.nZeta;
 
+  // Calculate number of surfaces from array sizes
+  const int reduced_slice_size = ntheta_reduced * nzeta;
+  const int full_slice_size = ntheta_eff * nzeta;
+  const int nsurfaces = r_sym.size() / reduced_slice_size;
+
   std::cout << "DEBUG SymmetrizeRealSpaceGeometry FIXED: ntheta_reduced="
             << ntheta_reduced << ", ntheta_eff=" << ntheta_eff
-            << ", nzeta=" << nzeta << std::endl;
+            << ", nzeta=" << nzeta << ", nsurfaces=" << nsurfaces << std::endl;
 
-  // First half: theta in [0, π] - direct addition
-  for (int k = 0; k < nzeta; ++k) {
-    for (int j = 0; j < ntheta_reduced; ++j) {
-      const int idx_half = j + k * ntheta_reduced;
-      const int idx_full_first = j + k * ntheta_eff;
+  // Process each surface separately
+  for (int surface = 0; surface < nsurfaces; ++surface) {
+    // First half: theta in [0, π] - direct addition
+    for (int k = 0; k < nzeta; ++k) {
+      for (int j = 0; j < ntheta_reduced; ++j) {
+        const int idx_half =
+            j + k * ntheta_reduced + surface * reduced_slice_size;
+        const int idx_full_first =
+            j + k * ntheta_eff + surface * full_slice_size;
 
-      // Bounds checking
-      if (idx_half >= r_sym.size() || idx_full_first >= r_full.size()) {
-        std::cout << "ERROR: Bounds error in first half at j=" << j
-                  << ", k=" << k << std::endl;
-        continue;
+        // Bounds checking
+        if (idx_half >= r_sym.size() || idx_full_first >= r_full.size()) {
+          std::cout << "ERROR: Bounds error in first half at surface="
+                    << surface << ", j=" << j << ", k=" << k << std::endl;
+          continue;
+        }
+
+        // First half: symmetric + antisymmetric
+        r_full[idx_full_first] = r_sym[idx_half] + r_asym[idx_half];
+        z_full[idx_full_first] = z_sym[idx_half] + z_asym[idx_half];
+        lambda_full[idx_full_first] =
+            lambda_sym[idx_half] + lambda_asym[idx_half];
       }
-
-      // First half: symmetric + antisymmetric
-      r_full[idx_full_first] = r_sym[idx_half] + r_asym[idx_half];
-      z_full[idx_full_first] = z_sym[idx_half] + z_asym[idx_half];
-      lambda_full[idx_full_first] =
-          lambda_sym[idx_half] + lambda_asym[idx_half];
     }
-  }
 
-  // Second half: theta in [π, 2π] - reflection with sign change
-  for (int k = 0; k < nzeta; ++k) {
-    for (int j = 0; j < ntheta_reduced; ++j) {
-      const int idx_full_second = (j + ntheta_reduced) + k * ntheta_eff;
+    // Second half: theta in [π, 2π] - reflection with sign change
+    for (int k = 0; k < nzeta; ++k) {
+      for (int j = 0; j < ntheta_reduced; ++j) {
+        const int idx_full_second =
+            (j + ntheta_reduced) + k * ntheta_eff + surface * full_slice_size;
 
-      // Reflection mapping: theta -> 2*π - theta
-      const int j_reflected = ntheta_reduced - 1 - j;
-      const int idx_reflected = j_reflected + k * ntheta_reduced;
+        // Reflection mapping: theta -> 2*π - theta
+        const int j_reflected = ntheta_reduced - 1 - j;
+        const int idx_reflected =
+            j_reflected + k * ntheta_reduced + surface * reduced_slice_size;
 
-      // Bounds checking
-      if (idx_reflected >= r_sym.size() || idx_full_second >= r_full.size()) {
-        std::cout << "ERROR: Bounds error in second half at j=" << j
-                  << ", k=" << k << std::endl;
-        continue;
+        // Bounds checking
+        if (idx_reflected >= r_sym.size() || idx_full_second >= r_full.size()) {
+          std::cout << "ERROR: Bounds error in second half at surface="
+                    << surface << ", j=" << j << ", k=" << k << std::endl;
+          continue;
+        }
+
+        // Second half: symmetric - antisymmetric (with reflection)
+        r_full[idx_full_second] = r_sym[idx_reflected] - r_asym[idx_reflected];
+        z_full[idx_full_second] = z_sym[idx_reflected] - z_asym[idx_reflected];
+        lambda_full[idx_full_second] =
+            lambda_sym[idx_reflected] - lambda_asym[idx_reflected];
       }
-
-      // Second half: symmetric - antisymmetric (with reflection)
-      r_full[idx_full_second] = r_sym[idx_reflected] - r_asym[idx_reflected];
-      z_full[idx_full_second] = z_sym[idx_reflected] - z_asym[idx_reflected];
-      lambda_full[idx_full_second] =
-          lambda_sym[idx_reflected] - lambda_asym[idx_reflected];
     }
   }
 

@@ -1194,3 +1194,15 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_simplified_3d_symmetrization",
+    srcs = ["test_simplified_3d_symmetrization.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
