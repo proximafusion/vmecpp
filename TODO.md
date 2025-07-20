@@ -901,6 +901,7 @@ These terms represent coupling between even and odd modes, crucial for asymmetri
 2. **Debug infrastructure**: Comprehensive output shows tau2=0 is the root cause
 3. **Reference comparison**: educational_VMEC formula identified as solution
 4. **TDD methodology**: Unit tests successfully isolated exact algorithmic difference
+5. **Tau formula implemented**: Educational_VMEC unified formula now in ideal_mhd_model.cc
 
 ### Root Cause Identified 🎯
 - **Missing terms**: VMEC++ tau2 missing mixed even/odd mode contributions
@@ -908,8 +909,14 @@ These terms represent coupling between even and odd modes, crucial for asymmetri
 - **Critical terms**: `dshalfds * (ru_even*z1_odd - zu_even*r1_odd)/shalf`
 - **Impact**: Without these terms, Jacobian changes sign → convergence failure
 
+### New Critical Finding 🚨
+- **Odd arrays not populated**: r1_o, z1_o, ru_o, zu_o are always zero!
+- **Root cause**: Asymmetric transform only fills even arrays (r1_e, z1_e)
+- **Missing step**: Need to populate odd arrays from asymmetric Fourier coefficients
+- **Impact**: Even with correct tau formula, odd_contrib = 0 because odd arrays = 0
+
 ### Next Immediate Steps 🔄
-1. **Create unit test**: Test tau formula fix in isolation before modifying code
-2. **Study ideal_mhd_model.cc**: Understand current tau calculation structure
-3. **Implement unified formula**: Replace split calculation with educational_VMEC approach
+1. **Fix odd arrays population**: Add asymmetric contributions to r1_o, z1_o arrays
+2. **Verify with odd m modes**: Test with m=1, m=3 modes to get non-zero odd_contrib
+3. **Check array indexing**: Ensure proper theta-based array access
 4. **Test with asymmetric cases**: Verify Jacobian passes and convergence achieved
