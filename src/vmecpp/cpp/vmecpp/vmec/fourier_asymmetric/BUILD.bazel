@@ -816,6 +816,27 @@ cc_test(
 )
 
 cc_test(
+    name = "test_m1_constraint_implementation",
+    srcs = ["test_m1_constraint_implementation.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_m1_constraint_jacobian_impact",
+    srcs = ["test_m1_constraint_jacobian_impact.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "medium",
+)
+
+cc_test(
     name = "test_m1_constraint_impact",
     srcs = ["test_m1_constraint_impact.cc"],
     deps = [
