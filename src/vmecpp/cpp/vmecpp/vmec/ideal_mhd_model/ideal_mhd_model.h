@@ -438,6 +438,14 @@ class IdealMhdModel {
   std::vector<double> fzcon_o;
 
  private:
+  // Separate arrays for fixed asymmetric transform (educational_VMEC pattern)
+  std::vector<double> m_ls_sym_r_;
+  std::vector<double> m_ls_sym_z_;
+  std::vector<double> m_ls_sym_lambda_;
+  std::vector<double> m_ls_asym_r_;
+  std::vector<double> m_ls_asym_z_;
+  std::vector<double> m_ls_asym_lambda_;
+
   FlowControl& m_fc_;
   const Sizes& s_;
   const FourierBasisFastPoloidal& t_;

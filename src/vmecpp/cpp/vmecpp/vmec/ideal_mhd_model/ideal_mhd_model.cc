@@ -4135,15 +4135,34 @@ int IdealMhdModel::get_ivacskip() const { return ivacskip; }
 
 void IdealMhdModel::dft_FourierToReal_3d_asymm(
     const FourierGeometry& physical_x) {
-  // Apply asymmetric 3D transform from Fourier to real space
-  // Process all surfaces
-  int total_size = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
-  FourierToReal3DAsymmFastPoloidal(
+  // Apply asymmetric 3D transform from Fourier to real space using SEPARATED
+  // arrays This is the corrected approach following educational_VMEC pattern
+  // exactly
+
+  // Calculate sizes for separate arrays [0, π] range
+  const int reduced_size =
+      s_.nThetaReduced * s_.nZeta * (r_.nsMaxF1 - r_.nsMinF1);
+
+  // Allocate separate symmetric and antisymmetric arrays
+  m_ls_sym_r_.resize(reduced_size, 0.0);
+  m_ls_sym_z_.resize(reduced_size, 0.0);
+  m_ls_sym_lambda_.resize(reduced_size, 0.0);
+  m_ls_asym_r_.resize(reduced_size, 0.0);
+  m_ls_asym_z_.resize(reduced_size, 0.0);
+  m_ls_asym_lambda_.resize(reduced_size, 0.0);
+
+  // Use the NEW separated transform function
+  FourierToReal3DAsymmFastPoloidalSeparated(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
       physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
-      physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), total_size),
-      absl::Span<double>(m_ls_.z1e_i.data(), total_size),
-      absl::Span<double>(m_ls_.lue_i.data(), total_size));
+      physical_x.zmnss,
+      absl::MakeSpan(m_ls_sym_r_),       // Separate symmetric R
+      absl::MakeSpan(m_ls_asym_r_),      // Separate antisymmetric R
+      absl::MakeSpan(m_ls_sym_z_),       // Separate symmetric Z
+      absl::MakeSpan(m_ls_asym_z_),      // Separate antisymmetric Z
+      absl::MakeSpan(m_ls_sym_lambda_),  // Separate symmetric Lambda
+      absl::MakeSpan(m_ls_asym_lambda_)  // Separate antisymmetric Lambda
+  );
 }
 
 void IdealMhdModel::dft_FourierToReal_2d_asymm(
@@ -4246,45 +4265,55 @@ void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
 }
 
 void IdealMhdModel::symrzl_geometry(const FourierGeometry& physical_x) {
-  // Symmetrize real space geometry components
+  // Symmetrize real space geometry components using NEW FIXED approach
+  // This combines separate symmetric and antisymmetric arrays correctly
+  const int total_size = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
+
   SymmetrizeRealSpaceGeometry(
-      s_,
+      absl::MakeConstSpan(m_ls_sym_r_),        // Separate symmetric R
+      absl::MakeConstSpan(m_ls_asym_r_),       // Separate antisymmetric R
+      absl::MakeConstSpan(m_ls_sym_z_),        // Separate symmetric Z
+      absl::MakeConstSpan(m_ls_asym_z_),       // Separate antisymmetric Z
+      absl::MakeConstSpan(m_ls_sym_lambda_),   // Separate symmetric Lambda
+      absl::MakeConstSpan(m_ls_asym_lambda_),  // Separate antisymmetric Lambda
       absl::Span<double>(m_ls_.r1e_i.data(),
-                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
+                         total_size),  // Full combined R output
       absl::Span<double>(m_ls_.z1e_i.data(),
-                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)),
+                         total_size),  // Full combined Z output
       absl::Span<double>(m_ls_.lue_i.data(),
-                         s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1)));
+                         total_size),  // Full combined Lambda output
+      s_);
 }
 
 void IdealMhdModel::applyM1ConstraintToForces(FourierForces& m_physical_f) {
   // Apply jVMEC-style m=1 constraint to force coefficients
   // This implements convert_to_m1_constrained from jVMEC SpectralCondensation
   // with 1/sqrt(2) scaling for forces during iteration
-  
+
   const double force_scaling = 1.0 / std::sqrt(2.0);
-  
+
   // Apply constraint to m=1 modes only
   const int m = 1;
-  
+
   for (int n = 0; n <= s_.ntor; ++n) {
     const int idx_mn = m * (s_.ntor + 1) + n;
-    
-    // Apply jVMEC force constraint (RSS = ZCS for symmetric, RSC = ZCC for asymmetric)
+
+    // Apply jVMEC force constraint (RSS = ZCS for symmetric, RSC = ZCC for
+    // asymmetric)
     if (idx_mn < static_cast<int>(m_physical_f.frss.size())) {
       // Symmetric constraint: RSS = ZCS
       double backup_rss = m_physical_f.frss[idx_mn];
       double backup_zcs = m_physical_f.fzcs[idx_mn];
-      
+
       m_physical_f.frss[idx_mn] = force_scaling * (backup_rss + backup_zcs);
       m_physical_f.fzcs[idx_mn] = force_scaling * (backup_rss - backup_zcs);
     }
-    
+
     if (idx_mn < static_cast<int>(m_physical_f.frsc.size())) {
-      // Asymmetric constraint: RSC = ZCC  
+      // Asymmetric constraint: RSC = ZCC
       double backup_rsc = m_physical_f.frsc[idx_mn];
       double backup_zcc = m_physical_f.fzcc[idx_mn];
-      
+
       m_physical_f.frsc[idx_mn] = force_scaling * (backup_rsc + backup_zcc);
       m_physical_f.fzcc[idx_mn] = force_scaling * (backup_rsc - backup_zcc);
     }
