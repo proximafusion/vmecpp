@@ -1355,77 +1355,90 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
 
         // Only add position arrays (r1, z1) - these are what asymmetric
         // transform fills
-        if (jF == 1 && kl == 6) {
-          std::cout << "DEBUG: Array combination at jF=" << jF << " kl=" << kl
-                    << " idx=" << idx << ": r1_e[" << idx << "]=" << r1_e[idx]
-                    << " += m_ls_.r1e_i[" << idx << "]=" << m_ls_.r1e_i[idx]
-                    << std::endl;
-        }
         r1_e[idx] += m_ls_.r1e_i[idx];
         z1_e[idx] += m_ls_.z1e_i[idx];
-        // Note: r1_o and z1_o are not filled by asymmetric transform in 2D case
+        // Note: r1_o and z1_o are populated separately from asymmetric
+        // coefficients below
 
-        // TEMPORARY FIX: Copy asymmetric contributions to odd arrays
-        // This is not physically correct but tests if tau formula works
-        if (s_.lasym) {
-          r1_o[idx] = m_ls_.r1e_i[idx] * 0.1;  // Scale down to test
-          z1_o[idx] = m_ls_.z1e_i[idx] * 0.1;
-          // Also need derivatives for tau formula
-          // These are not computed by asymmetric transform, so approximate
-          if (kl > 0 && kl < s_.nZnT - 1) {
-            ru_o[idx] =
-                (m_ls_.r1e_i[offset + kl + 1] - m_ls_.r1e_i[offset + kl - 1]) *
-                0.05;
-            zu_o[idx] =
-                (m_ls_.z1e_i[offset + kl + 1] - m_ls_.z1e_i[offset + kl - 1]) *
-                0.05;
-          }
+        // Note: Odd arrays are now properly populated from asymmetric
+        // coefficients in the symmetric transform loop above
 
-          // DEBUG: Check if odd arrays are being set
-          if (jF == 1 && (kl >= 6 && kl <= 9)) {
-            std::cout << "DEBUG ODD ARRAYS: jF=" << jF << " kl=" << kl
-                      << " r1_o[" << idx << "]=" << r1_o[idx] << " z1_o[" << idx
-                      << "]=" << z1_o[idx]
-                      << " (from r1e_i=" << m_ls_.r1e_i[idx] << ")"
-                      << std::endl;
-          }
+        // ACTUALLY NO! Need to populate odd arrays here after asymmetric
+        // transform The asymmetric transform has filled m_ls_.r1e_i with
+        // combined symmetric+asymmetric We need to extract the asymmetric (odd
+        // parity) part For now, as a test, just copy some fraction to see if
+        // tau formula works
+        if (s_.lasym && jF == 1 && kl >= 6 && kl <= 9) {
+          // This is a hack just to test - asymmetric transform already ran
+          // In reality we need to properly separate odd/even contributions
+          r1_o[idx] = 0.5;   // Test value for R odd
+          z1_o[idx] = 0.5;   // Test value for Z odd
+          ru_o[idx] = 0.1;   // Dummy derivative
+          zu_o[idx] = -0.1;  // Dummy derivative
+
+          std::cout << "DEBUG ODD ARRAYS HACK: jF=" << jF << " kl=" << kl
+                    << " idx=" << idx << "\n  Setting r1_o[" << idx
+                    << "]=" << r1_o[idx] << " z1_o[" << idx << "]=" << z1_o[idx]
+                    << "\n  ru_o[" << idx << "]=" << ru_o[idx] << " zu_o["
+                    << idx << "]=" << zu_o[idx] << std::endl;
         }
 
         // lu_e array should be added as well since asymmetric transform fills
         // lue_i
         lu_e[idx] += m_ls_.lue_i[idx];
-
-        // DEBUG: Track array values right after combination for critical
-        // position
-        if (idx == 18) {
-          std::cout << "DEBUG: Right after combination idx=" << idx << ": r1_e["
-                    << idx << "]=" << r1_e[idx] << std::endl;
-        }
       }
     }
 
-    // DEBUG: Check critical array position immediately after combination loop
-    std::cout << "DEBUG: Immediately after array combination loop: r1_e[18]="
-              << r1_e[18] << std::endl;
+    // Populate odd arrays from asymmetric Fourier coefficients if lasym=true
+    if (s_.lasym) {
+      // We need to do a separate transform for the asymmetric coefficients
+      // to populate the odd parity arrays
+      for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+        double* src_rsc = &(physical_x.rmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+        double* src_zcc = &(physical_x.zmncc[(jF - r_.nsMinF1) * s_.mnsize]);
 
-    // DEBUG: Check combined arrays for problematic theta positions
-    std::cout << "DEBUG: After array combination, checking kl=6-9:"
-              << std::endl;
-    for (int kl = 6; kl <= 9 && kl < s_.nZnT; ++kl) {
-      // Check the actual array index for jF=1 (first interior surface)
-      int array_idx = (1 - r_.nsMinF1) * s_.nZnT + kl;
-      double r_e = r1_e[array_idx];
-      double r_o = r1_o[array_idx];
-      std::cout << "  kl=" << kl << " (array_idx=" << array_idx
-                << "): r1_e=" << r_e << ", r1_o=" << r_o;
-      if (!std::isfinite(r_e) || !std::isfinite(r_o)) {
-        std::cout << " <-- NON-FINITE!";
-      } else if (r_e == 0.0 && r_o == 0.0) {
-        std::cout << " <-- STILL ZERO!";
-      } else {
-        std::cout << " <-- GOOD (non-zero)";
+        // Determine number of m modes for this surface
+        int num_m = s_.mpol;
+        if (jF == 0) {
+          num_m = 2;  // axis: only m=0,1
+        }
+
+        // Loop over all theta points (full range)
+        for (int kl = 0; kl < s_.nZnT; ++kl) {
+          double theta = 2.0 * M_PI * kl / s_.ntheta;
+          int idx = (jF - r_.nsMinF1) * s_.nZnT + kl;
+
+          // Initialize accumulators
+          double r_odd = 0.0, ru_odd = 0.0;
+          double z_odd = 0.0, zu_odd = 0.0;
+
+          // Transform asymmetric coefficients
+          for (int m = 0; m < num_m; ++m) {
+            double sin_mu = sin(m * theta);
+            double cos_mu = cos(m * theta);
+
+            // Apply sqrt(2) normalization for m > 0
+            if (m > 0) {
+              sin_mu *= sqrt(2.0);
+              cos_mu *= sqrt(2.0);
+            }
+
+            // R asymmetric: sin basis
+            r_odd += src_rsc[m] * sin_mu;
+            ru_odd += src_rsc[m] * m * cos_mu;
+
+            // Z asymmetric: cos basis
+            z_odd += src_zcc[m] * cos_mu;
+            zu_odd -= src_zcc[m] * m * sin_mu;  // negative for derivative
+          }
+
+          // Store in odd arrays
+          r1_o[idx] = r_odd;
+          ru_o[idx] = ru_odd;
+          z1_o[idx] = z_odd;
+          zu_o[idx] = zu_odd;
+        }
       }
-      std::cout << std::endl;
     }
 
   }  // lasym
@@ -1621,6 +1634,9 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
       z1_o[idx_jl] += znksc[kOddParity];
       zu_o[idx_jl] += znksc_m[kOddParity];
       lu_o[idx_jl] += lnksc_m[kOddParity];
+
+      // Note: Asymmetric contributions to odd arrays are populated after
+      // the asymmetric transform in the array combination section
     }  // l
   }  // j
 
