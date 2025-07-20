@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <iomanip>
 #include <iostream>
 #include <numbers>
 #include <span>
@@ -1354,6 +1355,12 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
 
         // Only add position arrays (r1, z1) - these are what asymmetric
         // transform fills
+        if (jF == 1 && kl == 6) {
+          std::cout << "DEBUG: Array combination at jF=" << jF << " kl=" << kl
+                    << " idx=" << idx << ": r1_e[" << idx << "]=" << r1_e[idx]
+                    << " += m_ls_.r1e_i[" << idx << "]=" << m_ls_.r1e_i[idx]
+                    << std::endl;
+        }
         r1_e[idx] += m_ls_.r1e_i[idx];
         z1_e[idx] += m_ls_.z1e_i[idx];
         // Note: r1_o and z1_o are not filled by asymmetric transform in 2D case
@@ -1368,9 +1375,12 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
     std::cout << "DEBUG: After array combination, checking kl=6-9:"
               << std::endl;
     for (int kl = 6; kl <= 9 && kl < s_.nZnT; ++kl) {
-      double r_e = r1_e[kl];
-      double r_o = r1_o[kl];
-      std::cout << "  kl=" << kl << ": r1_e=" << r_e << ", r1_o=" << r_o;
+      // Check the actual array index for jF=1 (first interior surface)
+      int array_idx = (1 - r_.nsMinF1) * s_.nZnT + kl;
+      double r_e = r1_e[array_idx];
+      double r_o = r1_o[array_idx];
+      std::cout << "  kl=" << kl << " (array_idx=" << array_idx
+                << "): r1_e=" << r_e << ", r1_o=" << r_o;
       if (!std::isfinite(r_e) || !std::isfinite(r_o)) {
         std::cout << " <-- NON-FINITE!";
       } else if (r_e == 0.0 && r_o == 0.0) {
@@ -1544,7 +1554,26 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
         lnksc_m[m_parity] += src_lsc[m] * cosmum;
       }
 
+      // DEBUG: Add debug output for asymmetric mode analysis
+      if (s_.lasym && jF == 1 && (l == 0 || l == 6)) {
+        const double theta = 2.0 * M_PI * l / s_.ntheta;
+        std::cout << "[SYMM_TRANSFORM_DEBUG] jF=" << jF << " l=" << l
+                  << " theta=" << std::fixed << std::setprecision(6) << theta
+                  << " rnkcc[0]=" << rnkcc[0] << " rnkcc[1]=" << rnkcc[1]
+                  << " R_total=" << (rnkcc[0] + rnkcc[1]) << std::endl;
+        if (l == 0) {
+          std::cout << "[SYMM_TRANSFORM_DEBUG] Input coeffs: src_rcc[0]="
+                    << src_rcc[0] << " src_rcc[1]=" << src_rcc[1]
+                    << " src_rcc[2]=" << src_rcc[2] << std::endl;
+        }
+      }
+
       const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
+      if (s_.lasym && l == 6 && (jF == 0 || jF == 1)) {
+        std::cout << "[SYMM_STORE] jF=" << jF << " l=" << l
+                  << " idx_jl=" << idx_jl << ": storing r1_e[" << idx_jl
+                  << "] = " << rnkcc[kEvenParity] << std::endl;
+      }
       r1_e[idx_jl] += rnkcc[kEvenParity];
       ru_e[idx_jl] += rnkcc_m[kEvenParity];
       z1_e[idx_jl] += znksc[kEvenParity];
