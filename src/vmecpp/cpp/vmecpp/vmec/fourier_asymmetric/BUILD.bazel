@@ -983,3 +983,30 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_debug_output_comparison",
+    srcs = ["test_debug_output_comparison.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+        "//util/file_io:file_io",
+    ],
+    size = "medium",
+    data = [
+        "//vmecpp/test_data:up_down_asymmetric_tokamak",
+    ],
+)
+
+cc_binary(
+    name = "capture_vmecpp_debug",
+    srcs = ["capture_vmecpp_debug.cc"],
+    deps = [
+        "//vmecpp/vmec/vmec:vmec",
+        "//util/file_io:file_io",
+    ],
+    data = [
+        "//vmecpp/test_data:up_down_asymmetric_tokamak",
+    ],
+)
