@@ -1357,3 +1357,12 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_test(
+    name = "test_enhanced_dealias_constraint_force",
+    srcs = ["test_enhanced_dealias_constraint_force.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
