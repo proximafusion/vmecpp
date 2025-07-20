@@ -245,11 +245,8 @@ cc_test(
     name = "test_symmetric_regression",
     srcs = ["test_symmetric_regression.cc"],
     deps = [
-        ":fourier_asymmetric",
         "@googletest//:gtest_main",
-        "//vmecpp/common/sizes:sizes",
-        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
-        "@abseil-cpp//absl/types:span",
+        "//vmecpp/common/vmec_indata:vmec_indata",
     ],
     size = "small",
 )
@@ -923,4 +920,66 @@ cc_test(
         "//vmecpp/vmec/vmec:vmec",
     ],
     size = "medium",
+)
+
+cc_test(
+    name = "test_convergence_debug",
+    srcs = ["test_convergence_debug.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+        "//util/file_io:file_io",
+    ],
+    size = "medium",
+)
+
+cc_test(
+    name = "test_jacobian_calculation",
+    srcs = ["test_jacobian_calculation.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_symmetric_regression_new",
+    srcs = ["test_symmetric_regression.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_axis_positioning",
+    srcs = ["test_axis_positioning.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_initial_guess_comparison",
+    srcs = ["test_initial_guess_comparison.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "test_small_perturbations",
+    srcs = ["test_small_perturbations.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
 )
