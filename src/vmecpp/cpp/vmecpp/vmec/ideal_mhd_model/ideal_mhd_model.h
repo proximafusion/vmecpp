@@ -104,6 +104,15 @@ class IdealMhdModel {
   // case
   void dft_FourierToReal_2d_symm(const FourierGeometry& physical_x);
 
+  // Inverse-DFT for flux surface geometry and lambda, 3D asymmetric case
+  void dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x);
+
+  // Inverse-DFT for flux surface geometry and lambda, 2D asymmetric case
+  void dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x);
+
+  // Symmetrize geometry components for asymmetric equilibria
+  void symrzl_geometry(const FourierGeometry& physical_x);
+
   // Extrapolates ingredients for the spectral condensation force
   // from the LCFS into the plasma volume.
   void rzConIntoVolume();
@@ -178,6 +187,18 @@ class IdealMhdModel {
 
   // Computes the forward-DFT of forces for the 2D axisymmetric (Tokamak) case.
   void dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f);
+
+  // Computes the forward-DFT of forces for the 3D asymmetric case.
+  void dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f);
+
+  // Computes the forward-DFT of forces for the 2D asymmetric case.
+  void dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f);
+
+  // Apply jVMEC-style m=1 constraint to force coefficients
+  void applyM1ConstraintToForces(FourierForces& m_physical_f);
+
+  // Symmetrize force components for asymmetric equilibria
+  void symrzl_forces(FourierForces& m_physical_f);
 
   // Checks if the radial preconditioner matrix elements should be updated.
   // They don't change so much during iterations, so one can get away with
@@ -415,6 +436,14 @@ class IdealMhdModel {
   Eigen::VectorXd fzcon_o;
 
  private:
+  // Separate arrays for fixed asymmetric transform (educational_VMEC pattern)
+  std::vector<double> m_ls_sym_r_;
+  std::vector<double> m_ls_sym_z_;
+  std::vector<double> m_ls_sym_lambda_;
+  std::vector<double> m_ls_asym_r_;
+  std::vector<double> m_ls_asym_z_;
+  std::vector<double> m_ls_asym_lambda_;
+
   FlowControl& m_fc_;
   const Sizes& s_;
   const FourierBasisFastPoloidal& t_;
