@@ -121,3 +121,116 @@ Must implement:
 
 ## External Resources
 - You can find general instructions on the codebase for agentic coding in AGENTS.md
+
+## VMEC Benchmark Tool
+
+A comprehensive benchmarking tool is available as a symlink `benchmark_vmec` in the VMEC++ directory for comparing VMEC++, educational_VMEC, jVMEC, and VMEC2000.
+
+### Tool Overview
+The benchmark tool (https://github.com/itpplasma/benchmark_vmec) provides automated comparison across multiple VMEC implementations:
+- **VMEC++**: Modern C++ implementation (this repository)
+- **Educational VMEC**: Reference Fortran implementation
+- **jVMEC**: Java implementation (most up-to-date with bugfixes)
+- **VMEC2000**: Python interface to VMEC
+
+### Key Features
+- Automated three-code comparison with detailed debug output
+- Side-by-side execution of VMEC++, educational_VMEC, and jVMEC
+- Support for both symmetric (lasym=F) and asymmetric (lasym=T) cases
+- Timestamped debug directories for each run
+- Comparison of physics quantities (beta, MHD energy, aspect ratio, etc.)
+- Automated input file cleaning for compatibility
+
+### Usage from VMEC++ Directory
+The benchmark tool is available as a symlink in the VMEC++ directory:
+
+```bash
+# Run symmetric case comparison (SOLOVEV test case)
+benchmark_vmec/compare_symmetric_debug.sh
+
+# Run asymmetric case comparison
+benchmark_vmec/compare_asymmetric_debug.sh
+
+# View benchmark results
+ls benchmark_vmec/benchmark_results/
+cat benchmark_vmec/benchmark_results/comparison_report.md
+
+# Access specific debug runs
+ls benchmark_vmec/symmetric_debug_*/
+ls benchmark_vmec/asymmetric_debug_*/
+```
+
+### Debug Output Structure
+Each debug run creates a timestamped directory with outputs from all three codes:
+
+```
+symmetric_debug_20250719_090220/
+├── educational_vmec/
+│   ├── educational_vmec_output.log  # Full console output
+│   ├── input.SOLOVEV               # Input file used
+│   ├── wout_SOLOVEV.nc            # NetCDF output with solution
+│   ├── jxbout_SOLOVEV.nc          # J×B force output
+│   ├── mercier.SOLOVEV            # Mercier stability data
+│   └── threed1.SOLOVEV            # 3D equilibrium data
+├── jvmec/
+│   ├── jvmec_output.log           # Console output
+│   ├── input_cleaned.txt          # Cleaned input (comments removed)
+│   └── wout_input_cleaned.nc      # NetCDF output
+└── vmecpp/
+    ├── input.SOLOVEV               # Input file
+    ├── SOLOVEV.json               # JSON format (if available)
+    └── vmecpp_output.log          # Console output
+```
+
+### Benchmark Results
+The tool generates comprehensive comparison reports:
+- `comparison_report.md`: Detailed comparison of physics quantities
+- `comparison_table.csv`: Tabular data for analysis
+- Per-case subdirectories with logs and outputs
+
+### Reference Implementation Priority
+- **Primary Reference**: jVMEC - most up-to-date with bugfixes and optimizations
+- **Secondary Reference**: educational_VMEC - for additional insight
+- **Target**: VMEC++ asymmetric implementation should match jVMEC exactly
+
+### Building with FPM (Fortran Package Manager)
+```bash
+cd benchmark_vmec
+
+# Build the tool
+fpm build
+
+# Build all VMEC implementations
+fpm run vmec-build
+
+# Run full benchmark suite
+fpm run vmec-benchmark -- run
+
+# Run with limited test cases
+fpm run vmec-benchmark -- run --limit 5
+
+# Other commands
+fpm run vmec-benchmark -- setup         # Clone repositories
+fpm run vmec-benchmark -- list-repos    # Check repository status
+fpm run vmec-benchmark -- --help        # Show all options
+
+# Run unit tests
+fpm test
+```
+
+### Repository Structure
+The benchmark tool manages VMEC repositories as symlinks:
+```
+benchmark_vmec/vmec_repos/
+├── educational_VMEC -> ../../educational_VMEC
+├── jVMEC -> ../../jVMEC
+├── vmecpp -> ../../vmecpp
+└── VMEC2000/  # Cloned directly
+```
+
+### Important Notes
+- Input files are automatically cleaned for each implementation
+- VMEC++ uses JSON format when available (automatic detection)
+- jVMEC requires manual setup (private repository)
+- Debug scripts provide the most reliable comparison method
+- Results focus on physics validation, not performance
