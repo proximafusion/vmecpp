@@ -490,11 +490,16 @@ void vmecpp::deAliasConstraintForce(
         // collect contribution to current grid point from n-th toroidal mode
         for (int n = 0; n < s_.ntor + 1; ++n) {
           int idx_kn = k * (s_.nnyq2 + 1) + n;
-          w2 += m_gcs[n] * fb.sinnv[idx_kn];
-          w3 += m_gsc[n] * fb.cosnv[idx_kn];
-          if (s_.lasym) {
+          if (!s_.lasym) {
+            // Symmetric case: use w0 and w1 (matching upstream/main logic)
+            w0 += m_gsc[n] * fb.cosnv[idx_kn];
+            w1 += m_gcs[n] * fb.sinnv[idx_kn];
+          } else {
+            // Asymmetric case: use all four components
             w0 += m_gcc[n] * fb.cosnv[idx_kn];
             w1 += m_gss[n] * fb.sinnv[idx_kn];
+            w2 += m_gcs[n] * fb.sinnv[idx_kn];
+            w3 += m_gsc[n] * fb.cosnv[idx_kn];
           }
         }  // n
 
@@ -504,8 +509,16 @@ void vmecpp::deAliasConstraintForce(
           const int idx_ml = m * s_.nThetaReduced + l;
 
           // NOTE: `faccon` comes into play here
-          m_gCon[idx_kl] +=
-              faccon[m] * (w2 * fb.cosmu[idx_ml] + w3 * fb.sinmu[idx_ml]);
+          if (!s_.lasym) {
+            // Symmetric case: use correct basis functions (sinmu with w0, cosmu
+            // with w1)
+            m_gCon[idx_kl] +=
+                faccon[m] * (w0 * fb.sinmu[idx_ml] + w1 * fb.cosmu[idx_ml]);
+          } else {
+            // Asymmetric case: symmetric part
+            m_gCon[idx_kl] +=
+                faccon[m] * (w2 * fb.cosmu[idx_ml] + w3 * fb.sinmu[idx_ml]);
+          }
 
           if (s_.lasym) {
             // Store asymmetric contribution separately
