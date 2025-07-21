@@ -108,6 +108,12 @@ Standard VMEC++ pipeline continues with correctly combined arrays
 - [ ] ⏳ **Optimize asymmetric algorithm performance**: Production-ready performance tuning
 - [ ] ⏳ **Clean up debug output**: Remove development debug prints for production release
 
+### 📋 Phase 8: Convergence Issues Investigation
+- [x] ✅ **Fix double free error**: Fixed elsewhere, benchmark tool now runs without crashes
+- [ ] 🔄 **Debug convergence failures**: VMEC++ fails to converge on benchmark test cases
+- [ ] ⏳ **Compare solver parameters**: Investigate differences in numerical parameters vs other codes
+- [ ] ⏳ **Test with proven inputs**: Run with configurations known to work in jVMEC/educational_VMEC
+
 ### 📋 Phase 4: Integration Testing and Validation ✅ COMPLETED
 
 #### 4.1 End-to-End Pipeline Testing ✅ COMPLETED
