@@ -29,7 +29,8 @@ class EquilibriumConvergenceValidationTest : public ::testing::Test {
     // Run VMEC++ equilibrium solve
     std::string command =
         "cd /home/ert/code/vmecpp/src/vmecpp/cpp && "
-        "timeout 60 bazel run //vmecpp/examples:vmec_solve -- " +
+        "timeout 60 bazel run //vmecpp/vmec/vmec_standalone:vmec_standalone "
+        "-- " +
         input_path + " 2>&1";
 
     FILE* pipe = popen(command.c_str(), "r");
@@ -177,6 +178,13 @@ TEST_F(EquilibriumConvergenceValidationTest, SymmetricEquilibriaComparison) {
     bool vmecpp_converged = RunVMECPP(input_path, vmecpp_output);
     std::cout << "  VMEC++: " << (vmecpp_converged ? "✓ CONVERGED" : "✗ FAILED")
               << "\n";
+    if (!vmecpp_converged) {
+      std::cout << "    Error output (last 500 chars): "
+                << vmecpp_output.substr(vmecpp_output.length() > 500
+                                            ? vmecpp_output.length() - 500
+                                            : 0)
+                << "\n";
+    }
     if (vmecpp_converged) vmecpp_success++;
 
     // Test jVMEC
@@ -255,6 +263,13 @@ TEST_F(EquilibriumConvergenceValidationTest, AsymmetricEquilibriaComparison) {
     bool vmecpp_converged = RunVMECPP(input_path, vmecpp_output);
     std::cout << "  VMEC++: " << (vmecpp_converged ? "✓ CONVERGED" : "✗ FAILED")
               << "\n";
+    if (!vmecpp_converged) {
+      std::cout << "    Error output (last 500 chars): "
+                << vmecpp_output.substr(vmecpp_output.length() > 500
+                                            ? vmecpp_output.length() - 500
+                                            : 0)
+                << "\n";
+    }
     if (vmecpp_converged) vmecpp_success++;
 
     // Test jVMEC
