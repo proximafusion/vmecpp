@@ -1419,3 +1419,13 @@ cc_test(
     size = "medium",
     tags = ["ci_tier2", "integration"],
 )
+
+cc_test(
+    name = "test_equilibrium_convergence_validation",
+    srcs = ["test_equilibrium_convergence_validation.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+    size = "large",
+    tags = ["ci_tier3", "convergence"],
+)
