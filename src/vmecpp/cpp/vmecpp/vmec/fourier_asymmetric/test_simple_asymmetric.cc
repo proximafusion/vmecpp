@@ -23,7 +23,7 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
   // Minimal parameters
   indata.nfp = 1;
   indata.lasym = true;
-  indata.mpol = 1;  // Just m=0,1
+  indata.mpol = 2;  // Minimum allowed value
   indata.ntor = 0;  // Axisymmetric
   indata.ns_array = {3};
   indata.niter_array = {50};
@@ -39,7 +39,8 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
   indata.return_outputs_even_if_not_converged = true;
 
   // Simple coefficient arrays
-  int coeff_size = indata.mpol * (2 * indata.ntor + 1);
+  // Modes go from m=0 to m=mpol, so we need (mpol+1) rows
+  int coeff_size = (indata.mpol + 1) * (2 * indata.ntor + 1);
   indata.rbc.resize(coeff_size, 0.0);
   indata.zbs.resize(coeff_size, 0.0);
   indata.rbs.resize(coeff_size, 0.0);
@@ -58,6 +59,12 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
   indata.zbs[1] = 1.0;  // Z10 - elongation
   indata.rbs[1] = 0.1;  // Asymmetric R10 - small perturbation
   indata.zbc[1] = 0.1;  // Asymmetric Z10 - small perturbation
+  
+  // m=2: Higher harmonic (small)
+  indata.rbc[2] = 0.0;  // R20
+  indata.zbs[2] = 0.0;  // Z20
+  indata.rbs[2] = 0.0;  // Asymmetric R20
+  indata.zbc[2] = 0.0;  // Asymmetric Z20
 
   // Axis arrays
   indata.raxis_c = {10.0};  // Match R00
@@ -70,8 +77,8 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
   std::cout << "  mpol = " << indata.mpol << ", ntor = " << indata.ntor
             << std::endl;
   std::cout << "  R00 = " << indata.rbc[0] << ", R10 = " << indata.rbc[1]
-            << std::endl;
-  std::cout << "  Z10 = " << indata.zbs[1] << std::endl;
+            << ", R20 = " << indata.rbc[2] << std::endl;
+  std::cout << "  Z10 = " << indata.zbs[1] << ", Z20 = " << indata.zbs[2] << std::endl;
   std::cout << "  Asymmetric R10 = " << indata.rbs[1] << std::endl;
   std::cout << "  Asymmetric Z10 = " << indata.zbc[1] << std::endl;
 
