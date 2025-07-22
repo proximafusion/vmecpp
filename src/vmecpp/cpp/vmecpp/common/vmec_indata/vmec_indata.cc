@@ -224,15 +224,15 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(zaxis_c, "/indata/zaxis_c", file);
 
   // 2D matrices (represented as 1D std::vectors)
-  // All have dimensions (mpol, 2*ntor+1)
+  // All have dimensions (mpol+1, 2*ntor+1)
   const auto rbc_view =
-      Eigen::Map<const RowMatrixXd>(rbc.data(), mpol, 2 * ntor + 1);
+      Eigen::Map<const RowMatrixXd>(rbc.data(), mpol + 1, 2 * ntor + 1);
   WriteH5Dataset(rbc_view, "/indata/rbc", file);
   const auto zbs_view =
-      Eigen::Map<const RowMatrixXd>(zbs.data(), mpol, 2 * ntor + 1);
+      Eigen::Map<const RowMatrixXd>(zbs.data(), mpol + 1, 2 * ntor + 1);
   WriteH5Dataset(zbs_view, "/indata/zbs", file);
 
-  const int mpol_asym = lasym ? mpol : 0;
+  const int mpol_asym = lasym ? mpol + 1 : 0;
   const int ntor2p1_asym = lasym ? 2 * ntor + 1 : 0;
   const auto rbs_view =
       Eigen::Map<const RowMatrixXd>(rbs.data(), mpol_asym, ntor2p1_asym);
@@ -830,14 +830,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     return maybe_rbc.status();
   }
   if (maybe_rbc->has_value()) {
-    vmec_indata.rbc.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
+    vmec_indata.rbc.resize((vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1), 0.0);
     std::vector<BoundaryCoefficient> entries = maybe_rbc->value();
     for (const BoundaryCoefficient& entry : entries) {
-      if (entry.m > vmec_indata.mpol - 1) {
+      if (entry.m > vmec_indata.mpol) {
         LOG(INFO) << absl::StrFormat(
-            "Ignoring rbc entry with m = %d, since m is larger than (mpol - 1) "
+            "Ignoring rbc entry with m = %d, since m is larger than mpol "
             "= %d",
-            entry.m, vmec_indata.mpol - 1);
+            entry.m, vmec_indata.mpol);
         continue;
       }
       if (std::abs(entry.n) > vmec_indata.ntor) {
@@ -863,14 +863,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     return maybe_zbs.status();
   }
   if (maybe_zbs->has_value()) {
-    vmec_indata.zbs.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
+    vmec_indata.zbs.resize((vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1), 0.0);
     std::vector<BoundaryCoefficient> entries = maybe_zbs->value();
     for (const BoundaryCoefficient& entry : entries) {
-      if (entry.m > vmec_indata.mpol - 1) {
+      if (entry.m > vmec_indata.mpol) {
         LOG(INFO) << absl::StrFormat(
-            "Ignoring zbs entry with m = %d, since m is larger than (mpol - 1) "
+            "Ignoring zbs entry with m = %d, since m is larger than mpol "
             "= %d",
-            entry.m, vmec_indata.mpol - 1);
+            entry.m, vmec_indata.mpol);
         continue;
       }
       if (std::abs(entry.n) > vmec_indata.ntor) {
@@ -894,8 +894,8 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   if (vmec_indata.lasym) {
     // Always resize asymmetric arrays when lasym=true, regardless of JSON
     // content
-    vmec_indata.rbs.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
-    vmec_indata.zbc.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
+    vmec_indata.rbs.resize((vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1), 0.0);
+    vmec_indata.zbc.resize((vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1), 0.0);
 
     auto maybe_rbs = BoundaryCoefficient::FromJson(j, "rbs");
     if (!maybe_rbs.ok()) {
@@ -904,11 +904,11 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     if (maybe_rbs->has_value()) {
       std::vector<BoundaryCoefficient> entries = maybe_rbs->value();
       for (const BoundaryCoefficient& entry : entries) {
-        if (entry.m > vmec_indata.mpol - 1) {
+        if (entry.m > vmec_indata.mpol) {
           LOG(INFO) << absl::StrFormat(
-              "Ignoring rbs entry with m = %d, since m is larger than (mpol - "
-              "1) = %d",
-              entry.m, vmec_indata.mpol - 1);
+              "Ignoring rbs entry with m = %d, since m is larger than mpol "
+              "= %d",
+              entry.m, vmec_indata.mpol);
           continue;
         }
         if (std::abs(entry.n) > vmec_indata.ntor) {
@@ -937,11 +937,11 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     if (maybe_zbc->has_value()) {
       std::vector<BoundaryCoefficient> entries = maybe_zbc->value();
       for (const BoundaryCoefficient& entry : entries) {
-        if (entry.m > vmec_indata.mpol - 1) {
+        if (entry.m > vmec_indata.mpol) {
           LOG(INFO) << absl::StrFormat(
-              "Ignoring zbc entry with m = %d, since m is larger than (mpol - "
-              "1) = %d",
-              entry.m, vmec_indata.mpol - 1);
+              "Ignoring zbc entry with m = %d, since m is larger than mpol "
+              "= %d",
+              entry.m, vmec_indata.mpol);
           continue;
         }
         if (std::abs(entry.n) > vmec_indata.ntor) {
@@ -1050,7 +1050,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
     output["zbc"] = std::vector<nlohmann::json>();
   }
   nlohmann::json tmp_obj;
-  for (int m = 0; m < mpol; ++m) {
+  for (int m = 0; m <= mpol; ++m) {
     for (int n = 0; n < 2 * ntor + 1; ++n) {
       const int idx_mn = m * (2 * ntor + 1) + n;
 
@@ -1368,7 +1368,7 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // only check sizes are ok; will see when the physics starts to run...
 
   const std::size_t expected_bdy_size_symm =
-      vmec_indata.mpol * (2 * vmec_indata.ntor + 1);
+      (vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1);
   // rbc
   if (vmec_indata.rbc.size() != expected_bdy_size_symm) {
     return absl::InvalidArgumentError(absl::StrFormat(
@@ -1383,7 +1383,7 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   const std::size_t expected_bdy_size_asym =
-      vmec_indata.lasym ? vmec_indata.mpol * (2 * vmec_indata.ntor + 1) : 0;
+      vmec_indata.lasym ? (vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1) : 0;
 
   // rbs
   if (vmec_indata.rbs.size() != expected_bdy_size_asym) {
