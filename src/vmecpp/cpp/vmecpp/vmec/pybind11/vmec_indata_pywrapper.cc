@@ -129,16 +129,24 @@ VmecINDATAPyWrapper::operator VmecINDATA() const {
     indata.zaxis_c.assign(zaxis_c.value().begin(), zaxis_c.value().end());
   }
 
-  const auto rbc_flat = rbc.reshaped<Eigen::RowMajor>();
+  // Create copies to avoid using iterators from temporaries
+  Eigen::MatrixXd rbc_copy = rbc;
+  const auto rbc_flat = rbc_copy.reshaped<Eigen::RowMajor>();
   indata.rbc.assign(rbc_flat.begin(), rbc_flat.end());
-  const auto zbs_flat = zbs.reshaped<Eigen::RowMajor>();
+  
+  Eigen::MatrixXd zbs_copy = zbs;
+  const auto zbs_flat = zbs_copy.reshaped<Eigen::RowMajor>();
   indata.zbs.assign(zbs_flat.begin(), zbs_flat.end());
   if (rbs.has_value()) {
-    const auto rbs_flat = rbs.value().reshaped<Eigen::RowMajor>();
+    // Create a proper copy to avoid using iterators from a temporary
+    Eigen::MatrixXd rbs_copy = rbs.value();
+    const auto rbs_flat = rbs_copy.reshaped<Eigen::RowMajor>();
     indata.rbs.assign(rbs_flat.begin(), rbs_flat.end());
   }
   if (zbc.has_value()) {
-    const auto zbc_flat = zbc.value().reshaped<Eigen::RowMajor>();
+    // Create a proper copy to avoid using iterators from a temporary
+    Eigen::MatrixXd zbc_copy = zbc.value();
+    const auto zbc_flat = zbc_copy.reshaped<Eigen::RowMajor>();
     indata.zbc.assign(zbc_flat.begin(), zbc_flat.end());
   }
   return indata;
@@ -164,11 +172,11 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
   zaxis_s(shortest_range) = old_axis_fc(shortest_range);
 
   if (lasym) {
-    old_axis_fc = raxis_s.value();
+    old_axis_fc = *raxis_s;
     raxis_s = VectorXd::Zero(new_ntor + 1);
     (*raxis_s)(shortest_range) = old_axis_fc(shortest_range);
 
-    old_axis_fc = zaxis_c.value();
+    old_axis_fc = *zaxis_c;
     zaxis_c = VectorXd::Zero(new_ntor + 1);
     (*zaxis_c)(shortest_range) = old_axis_fc(shortest_range);
   }
@@ -193,8 +201,8 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
   zbs = resized_2d_coeff(zbs);
 
   if (lasym) {
-    rbs = resized_2d_coeff(rbs.value());
-    zbc = resized_2d_coeff(zbc.value());
+    rbs = resized_2d_coeff(*rbs);
+    zbc = resized_2d_coeff(*zbc);
   }
 
   mpol = new_mpol;

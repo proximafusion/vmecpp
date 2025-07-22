@@ -1,0 +1,43 @@
+need to shift theta by delta = 0.0473987
+
+ NS = 17   NO. FOURIER MODES = 5   FTOLV = 1.000e-20   NITER = 3000
+
+ ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz      fsql   |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  <M>
+------+------------------------------+------------------------------+----------+-----------+------------+------------+-------
+DEBUG geometryFromFourier: lasym=1, lthreed=0
+DEBUG: Processing asymmetric contribution
+DEBUG: physical_x.rmnsc size=85
+  First few rmnsc values: 0 0.0670068 0 0 0
+DEBUG: Calling 2D asymmetric transform
+DEBUG dft_FourierToReal_2d_asymm: Starting asymmetric 2D transform
+  Input array sizes: rmnsc=85, zmncc=85
+  Output span size: 272
+DEBUG FourierToReal2DAsymmFastPoloidal: 2D transform, mnmax=5, ntheta=16, nThetaEff=16, nZeta=1
+DEBUG: Input asymmetric Fourier coefficients (first 5 modes):
+  mn=0: rmnsc[0]=0, zmncc[0]=0
+  mn=1: rmnsc[1]=0.0670068, zmncc[1]=0.0670068
+  mn=2: rmnsc[2]=0, zmncc[2]=0
+  mn=3: rmnsc[3]=0, zmncc[3]=0
+  mn=4: rmnsc[4]=0, zmncc[4]=0
+DEBUG: Processing mn=0, m=0, n=0 at i=0, k=0
+DEBUG: Processing mn=1, m=1, n=0 at i=0, k=0
+DEBUG: Processing mn=2, m=2, n=0 at i=0, k=0
+DEBUG: Processing mn=0, m=0, n=0 at i=1, k=0
+DEBUG: Processing mn=1, m=1, n=0 at i=1, k=0
+DEBUG: Processing mn=2, m=2, n=0 at i=1, k=0
+DEBUG: Processing mn=0, m=0, n=0 at i=2, k=0
+DEBUG: Processing mn=1, m=1, n=0 at i=2, k=0
+DEBUG: Processing mn=2, m=2, n=0 at i=2, k=0
+DEBUG SymmetrizeRealSpaceGeometry: nThetaEff=16, nThetaReduced=9, nZeta=1
+DEBUG: Values before symmetrization (first 3 theta points):
+  idx=0 (i=0, k=0): R=8.00674, Z=0.094762
+  idx=1 (i=1, k=0): R=7.89025, Z=0.852056
+  idx=2 (i=2, k=0): R=7.48599, Z=1.47963
+DEBUG: Symmetrization at i=9, ir=8: copying from idx_r=8 to idx=9, R[9]=3.99326, Z[9]=0.094762
+DEBUG: Symmetrization at i=10, ir=7: copying from idx_r=7 to idx=10, R[10]=4.18227, Z[10]=-0.676959
+DEBUG: Symmetrization at i=11, ir=6: copying from idx_r=6 to idx=11, R[11]=4.64802, Z[11]=-1.34562
+DEBUG: Symmetrization at i=12, ir=5: copying from idx_r=5 to idx=12, R[12]=5.3196, Z[12]=-1.80942
+DEBUG: Symmetrization at i=13, ir=4: copying from idx_r=4 to idx=13, R[13]=6.09476, Z[13]=-1.99775
+DEBUG: Symmetrization at i=14, ir=3: copying from idx_r=3 to idx=14, R[14]=6.8555, Z[14]=-1.88195
+DEBUG: Symmetrization at i=15, ir=2: copying from idx_r=2 to idx=15, R[15]=7.48599, Z[15]=-1.47963
+timeout: the monitored command dumped core

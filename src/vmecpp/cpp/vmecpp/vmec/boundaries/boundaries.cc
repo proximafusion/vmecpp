@@ -90,6 +90,11 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
 
     if (verbose && delta != 0.0) {
       std::cout << "need to shift theta by delta = " << delta << "\n";
+      std::cout << "  Calculated from: atan2(" << id.rbs[idx] << " - "
+                << id.zbc[idx] << ", " << id.rbc[idx] << " + " << id.zbs[idx]
+                << ")" << std::endl;
+      std::cout << "  = atan2(" << (id.rbs[idx] - id.zbc[idx]) << ", "
+                << (id.rbc[idx] + id.zbs[idx]) << ")" << std::endl;
       // In this implementation, the theta-shift will be done during sorting of
       // coefficients below.
     }
@@ -136,6 +141,17 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
               id.rbs[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
         zbs = id.zbs[m * (2 * s_.ntor + 1) + source_n] * cosMDelta -
               id.zbc[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
+
+        if (m == 1 && n == 0) {
+          std::cout << "DEBUG theta shift for m=1,n=0:" << std::endl;
+          std::cout << "  Original: rbc="
+                    << id.rbc[m * (2 * s_.ntor + 1) + source_n]
+                    << " rbs=" << id.rbs[m * (2 * s_.ntor + 1) + source_n]
+                    << " zbs=" << id.zbs[m * (2 * s_.ntor + 1) + source_n]
+                    << " zbc=" << id.zbc[m * (2 * s_.ntor + 1) + source_n]
+                    << std::endl;
+          std::cout << "  Shifted: rbc=" << rbc << " zbs=" << zbs << std::endl;
+        }
       }
 
       const int idx_mn = m * (s_.ntor + 1) + target_n;
@@ -161,6 +177,11 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
                 id.rbc[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
           zbc = id.zbc[m * (2 * s_.ntor + 1) + source_n] * cosMDelta +
                 id.zbs[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
+
+          if (m == 1 && n == 0) {
+            std::cout << "  Shifted asymmetric: rbs=" << rbs << " zbc=" << zbc
+                      << std::endl;
+          }
         }
 
         if (m > 0) {
@@ -242,18 +263,38 @@ void Boundaries::flipTheta() {
  * origin.
  */
 void Boundaries::ensureM1Constrained(const double scaling_factor) {
+  // NOTE: For jVMEC compatibility, we use the averaging formula
+  // that enforces rbsc = zbcc and rbss = zbcs for m=1 modes
+  // instead of the rotation transformation. The scaling_factor
+  // parameter is ignored in this implementation.
+
+  std::cout << "DEBUG ensureM1Constrained: applying M=1 constraint"
+            << std::endl;
+
   for (int n = 0; n <= s_.ntor; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
     if (s_.lthreed) {
-      double backup_rss = rbss[idx_mn];
-      rbss[idx_mn] = (backup_rss + zbcs[idx_mn]) * scaling_factor;
-      zbcs[idx_mn] = (backup_rss - zbcs[idx_mn]) * scaling_factor;
+      // jVMEC constraint: set both to average
+      double orig_rbss = rbss[idx_mn];
+      double orig_zbcs = zbcs[idx_mn];
+      double constrained_value = (rbss[idx_mn] + zbcs[idx_mn]) / 2.0;
+      rbss[idx_mn] = constrained_value;
+      zbcs[idx_mn] = constrained_value;
+      std::cout << "  n=" << n << " lthreed: rbss " << orig_rbss << " -> "
+                << constrained_value << ", zbcs " << orig_zbcs << " -> "
+                << constrained_value << std::endl;
     }
     if (s_.lasym) {
-      double backup_rsc = rbsc[idx_mn];
-      rbsc[idx_mn] = (backup_rsc + zbcc[idx_mn]) * scaling_factor;
-      zbcc[idx_mn] = (backup_rsc - zbcc[idx_mn]) * scaling_factor;
+      // jVMEC constraint: set both to average
+      double orig_rbsc = rbsc[idx_mn];
+      double orig_zbcc = zbcc[idx_mn];
+      double constrained_value = (rbsc[idx_mn] + zbcc[idx_mn]) / 2.0;
+      rbsc[idx_mn] = constrained_value;
+      zbcc[idx_mn] = constrained_value;
+      std::cout << "  n=" << n << " lasym: rbsc " << orig_rbsc << " -> "
+                << constrained_value << ", zbcc " << orig_zbcc << " -> "
+                << constrained_value << std::endl;
     }
   }  // n
 }
