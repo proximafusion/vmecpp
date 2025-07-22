@@ -129,18 +129,22 @@ python test_symmetric_regression.py
 4. ✅ NO regression in symmetric mode **VERIFIED**
 5. ✅ All tests pass (unit tests pass, memory corruption is separate issue) **ACHIEVED**
 
-## Current Status: **azNorm=0 FIXED - Convergence Issues Remain**
+## Current Status: **Array Size Validation Issue**
 
-**CORE OBJECTIVE ACHIEVED**: The critical azNorm=0 error has been successfully eliminated. ✅
+**PREVIOUS FIXES**: 
+- ✅ azNorm=0 error eliminated for asymmetric equilibria
+- ✅ Fourier transform derivatives properly populate zuFull array
+- ✅ Memory bounds issues in asymmetric transform resolved
 
-**VALIDATION STATUS**: 
-- ✅ Asymmetric equilibria start without azNorm=0 error
-- ✅ Fourier transform derivatives properly populate zuFull array  
-- ✅ No regression in symmetric functionality
-- ✅ Array size mismatch between C++ and Python fixed
+**CURRENT ISSUE**: 
+- ❌ Array size validation mismatch between C++ and JSON input format
+- The C++ validation expects `mpol * (2*ntor+1)` coefficients 
+- JSON files may provide different array sizes
+- This is blocking both symmetric and asymmetric tests
+
+**REMAINING ISSUES**:
+- ❌ The "ODD ARRAYS HACK" in ideal_mhd_model.cc sets dummy values for odd parity arrays
 - ❌ Asymmetric equilibria fail to converge due to incorrect odd parity arrays
-
-**NEW ISSUE DISCOVERED**: The "ODD ARRAYS HACK" in ideal_mhd_model.cc is setting dummy values for odd parity arrays instead of computing them properly, causing convergence failure.
 
 ## Phase 5: Fix Odd Parity Array Computation 🚧
 
