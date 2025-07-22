@@ -1383,7 +1383,7 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   const std::size_t expected_bdy_size_asym =
-      vmec_indata.lasym ? vmec_indata.mpol * (2 * vmec_indata.ntor + 1) : 0;
+      vmec_indata.lasym ? (vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1) : 0;
 
   // rbs
   if (vmec_indata.rbs.size() != expected_bdy_size_asym) {
