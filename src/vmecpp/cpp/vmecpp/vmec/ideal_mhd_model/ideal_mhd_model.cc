@@ -4181,6 +4181,13 @@ void IdealMhdModel::dft_FourierToReal_2d_asymm(
   // Process all surfaces
   int total_size = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
   
+  // Resize arrays to accommodate all radial surfaces
+  m_ls_.r1e_i.resize(total_size, 0.0);
+  m_ls_.z1e_i.resize(total_size, 0.0);
+  m_ls_.lue_i.resize(total_size, 0.0);
+  m_ls_.rue_i.resize(total_size, 0.0);
+  m_ls_.zue_i.resize(total_size, 0.0);
+  
   // Re-enable the 2D asymmetric transform with derivative parameters
   FourierToReal2DAsymmFastPoloidal(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
