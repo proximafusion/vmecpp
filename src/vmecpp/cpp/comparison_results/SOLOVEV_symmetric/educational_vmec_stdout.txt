@@ -1,0 +1,2 @@
+Invalid line in namelist: dump_bsqvac_vac1         = .true.
+ In VMEC, indata NAMELIST error: iostat = 5010
