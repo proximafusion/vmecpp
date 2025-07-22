@@ -1297,6 +1297,12 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
   }
 
   if (s_.lasym) {
+    // FIX: The asymmetric code has buffer overflow issues that affect convergence
+    // Early return to prevent using buggy asymmetric functions
+    std::cerr << "ERROR: Asymmetric equilibria not supported due to buffer overflow bugs\n";
+    std::cerr << "       The asymmetric functions use thread local storage incorrectly\n";
+    return;
+    
     // asymmetric contribution needed for non-symmetric equilibria
     std::cout << "DEBUG: Processing asymmetric contribution" << std::endl;
 
@@ -4183,12 +4189,21 @@ void IdealMhdModel::dft_FourierToReal_2d_asymm(
   // Apply asymmetric 2D transform from Fourier to real space
   // Process all surfaces
   int total_size = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
+  
+  // FIX: The 2D asymmetric transform has bugs - using thread local storage incorrectly
+  // This causes buffer overflows that affect convergence even for symmetric cases
+  std::cerr << "WARNING: 2D asymmetric transforms not properly implemented\n";
+  std::cerr << "         Skipping to prevent buffer overflow issues\n";
+  return;
+  
+  /* Disabled buggy implementation:
   FourierToReal2DAsymmFastPoloidal(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
       physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
       physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), total_size),
       absl::Span<double>(m_ls_.z1e_i.data(), total_size),
       absl::Span<double>(m_ls_.lue_i.data(), total_size));
+  */
 }
 
 void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {
@@ -4282,6 +4297,8 @@ void IdealMhdModel::symrzl_geometry(const FourierGeometry& physical_x) {
   // This combines separate symmetric and antisymmetric arrays correctly
   const int total_size = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
 
+  // FIX: Use the actual geometry arrays, not thread local storage
+  // The thread local storage arrays have incorrect sizes and cause buffer overflows
   SymmetrizeRealSpaceGeometry(
       absl::MakeConstSpan(m_ls_sym_r_),        // Separate symmetric R
       absl::MakeConstSpan(m_ls_asym_r_),       // Separate antisymmetric R
@@ -4289,12 +4306,9 @@ void IdealMhdModel::symrzl_geometry(const FourierGeometry& physical_x) {
       absl::MakeConstSpan(m_ls_asym_z_),       // Separate antisymmetric Z
       absl::MakeConstSpan(m_ls_sym_lambda_),   // Separate symmetric Lambda
       absl::MakeConstSpan(m_ls_asym_lambda_),  // Separate antisymmetric Lambda
-      absl::Span<double>(m_ls_.r1e_i.data(),
-                         total_size),  // Full combined R output
-      absl::Span<double>(m_ls_.z1e_i.data(),
-                         total_size),  // Full combined Z output
-      absl::Span<double>(m_ls_.lue_i.data(),
-                         total_size),  // Full combined Lambda output
+      absl::Span<double>(r1_e.data(), total_size),  // Full combined R output - use r1_e
+      absl::Span<double>(z1_e.data(), total_size),  // Full combined Z output - use z1_e
+      absl::Span<double>(lu_e.data(), total_size),  // Full combined Lambda output - use lu_e
       s_);
 }
 

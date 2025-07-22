@@ -1,0 +1,127 @@
+{
+  "lasym": true,
+  "nfp": 3,
+  "mpol": 5,
+  "ntor": 4,
+  "ntheta": 0,
+  "nzeta": 0,
+  "ns_array": [
+    11,
+    25
+  ],
+  "ftol_array": [
+    1e-08,
+    1e-11
+  ],
+  "niter_array": [
+    300,
+    1000
+  ],
+  "phiedge": 0.5,
+  "ncurr": 0,
+  "pmass_type": "power_series",
+  "am": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "am_aux_s": [],
+  "am_aux_f": [],
+  "pres_scale": 1.0,
+  "gamma": 0.0,
+  "spres_ped": 1.0,
+  "piota_type": "power_series",
+  "ai": [
+    0.4,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "ai_aux_s": [],
+  "ai_aux_f": [],
+  "pcurr_type": "power_series",
+  "ac": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "ac_aux_s": [],
+  "ac_aux_f": [],
+  "curtor": 0.0,
+  "bloat": 1.0,
+  "bcrit": 1.0,
+  "pt_type": "power_series",
+  "at": [
+    1.0,
+    -0.2,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "ph_type": "power_series",
+  "ah": [
+    0.1,
+    -0.1,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "lfreeb": false,
+  "mgrid_file": "",
+  "extcur": [],
+  "nvacskip": 1,
+  "nstep": 200,
+  "aphi": [],
+  "delt": 0.9,
+  "tcon0": 2.0,
+  "lforbal": false,
+  "return_outputs_even_if_not_converged": false,
+  "raxis_c": [
+    1.0
+  ],
+  "zaxis_s": [
+    0.0
+  ],
+  "raxis_s": [
+    0.0
+  ],
+  "zaxis_c": [
+    0.0
+  ],
+  "rbc": [
+    {
+      "m": 0,
+      "n": 1,
+      "value": 1.0
+    },
+    {
+      "m": 1,
+      "n": -1,
+      "value": 1.0
+    },
+    {
+      "m": 1,
+      "n": 1,
+      "value": 0.1
+    }
+  ],
+  "zbs": [
+    {
+      "m": 0,
+      "n": -1,
+      "value": 1.0
+    },
+    {
+      "m": 0,
+      "n": 1,
+      "value": 0.1
+    }
+  ],
+  "rbs": [],
+  "zbc": []
+}
