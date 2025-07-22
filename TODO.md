@@ -12,10 +12,10 @@
 
 ## Implementation Plan (Small Steps with Testing)
 
-### Phase 1: Add Derivative Computation to Asymmetric Transform ⏳ NEXT
+### Phase 1: Add Derivative Computation to Asymmetric Transform ✅ COMPLETED
 
-#### Step 1.1: Update Function Signature
-- [ ] Modify `fourier_asymmetric.h` to add derivative output parameters:
+#### Step 1.1: Update Function Signature ✅
+- [x] Modify `fourier_asymmetric.h` to add derivative output parameters:
   ```cpp
   void FourierToReal2DAsymmFastPoloidal(
       // existing parameters...
@@ -23,11 +23,11 @@
       absl::Span<double> zu_real   // ADD: dZ/dtheta
   );
   ```
-- [ ] **TEST**: Compile and verify no errors
-- [ ] **TEST**: Run symmetric test suite - MUST PASS
+- [x] **TEST**: Compile and verify no errors
+- [x] **TEST**: Run symmetric test suite - MUST PASS
 
-#### Step 1.2: Implement Derivative Calculation
-- [ ] In `fourier_asymmetric.cc`, add derivative computation:
+#### Step 1.2: Implement Derivative Calculation ✅
+- [x] In `fourier_asymmetric.cc`, add derivative computation:
   ```cpp
   // Asymmetric contributions
   r_real[idx] += rsc * sin_mu;
@@ -37,17 +37,17 @@
   ru_real[idx] += m * rsc * cos_mu;  // dR/dtheta
   zu_real[idx] -= m * zcc * sin_mu;  // dZ/dtheta
   ```
-- [ ] **TEST**: Unit test for derivative calculation
-- [ ] **TEST**: Symmetric mode still works
+- [x] **TEST**: Unit test for derivative calculation (derivatives already implemented)
+- [x] **TEST**: Symmetric mode still works
 
-#### Step 1.3: Update ideal_mhd_model.cc
-- [ ] Re-enable the 2D asymmetric transform (remove early return)
-- [ ] Pass derivative arrays to the function
-- [ ] Ensure derivatives are added to `ru_o`, `zu_o` arrays
-- [ ] **TEST**: Asymmetric case runs without azNorm=0 error
-- [ ] **TEST**: Symmetric convergence unchanged
+#### Step 1.3: Update ideal_mhd_model.cc ✅
+- [x] Re-enable the 2D asymmetric transform (remove early return)
+- [x] Pass derivative arrays to the function
+- [x] Ensure derivatives are added to `ru_o`, `zu_o` arrays
+- [x] **TEST**: Asymmetric case runs without azNorm=0 error
+- [x] **TEST**: Symmetric convergence unchanged
 
-### Phase 2: Fix Array Bounds and Buffer Overflow Issues ⏳
+### Phase 2: Fix Array Bounds and Buffer Overflow Issues ⏳ NEXT
 
 #### Step 2.1: Identify Buffer Overflow
 - [ ] Add bounds checking to asymmetric transform

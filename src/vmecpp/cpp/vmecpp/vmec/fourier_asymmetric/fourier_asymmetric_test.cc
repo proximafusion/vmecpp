@@ -71,6 +71,8 @@ TEST(FourierAsymmetricTest, FourierToReal3DAsymmSingleMode) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real(sizes.nZnT, 0.0);
+  std::vector<double> zu_real(sizes.nZnT, 0.0);
 
   // Call the function (will fail until implemented)
   FourierToReal3DAsymmFastPoloidal(
@@ -78,7 +80,7 @@ TEST(FourierAsymmetricTest, FourierToReal3DAsymmSingleMode) {
       absl::MakeSpan(rmnsc), absl::MakeSpan(rmncs), absl::MakeSpan(zmnsc),
       absl::MakeSpan(zmncs), absl::MakeSpan(zmncc), absl::MakeSpan(zmnss),
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
-      absl::MakeSpan(lambda_real));
+      absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real), absl::MakeSpan(zu_real));
 
   // Check results at specific angles
   // With normalization: m=0 has factor 1.0, m=1 has factor 1/sqrt(2)
@@ -153,6 +155,8 @@ TEST(FourierAsymmetricTest, RealToFourier3DAsymmSingleMode) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT, 0.0);
+  std::vector<double> ru_real_orig(sizes.nZnT, 0.0);
+  std::vector<double> zu_real_orig(sizes.nZnT, 0.0);
 
   FourierToReal3DAsymmFastPoloidal(
       sizes, absl::MakeSpan(rmncc_orig), absl::MakeSpan(rmnss_orig),
@@ -160,7 +164,7 @@ TEST(FourierAsymmetricTest, RealToFourier3DAsymmSingleMode) {
       absl::MakeSpan(zmnsc_orig), absl::MakeSpan(zmncs_orig),
       absl::MakeSpan(zmncc_orig), absl::MakeSpan(zmnss_orig),
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
-      absl::MakeSpan(lambda_real));
+      absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real_orig), absl::MakeSpan(zu_real_orig));
 
   // Inverse transform: real space -> coefficients
   std::vector<double> rmncc(sizes.mnmax, 0.0);
@@ -308,6 +312,8 @@ TEST(FourierAsymmetricTest, RoundTripTransform) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real_orig2(sizes.nZnT, 0.0);
+  std::vector<double> zu_real_orig2(sizes.nZnT, 0.0);
 
   FourierToReal3DAsymmFastPoloidal(
       sizes, absl::MakeSpan(rmncc_orig), absl::MakeSpan(rmnss_orig),
@@ -315,7 +321,7 @@ TEST(FourierAsymmetricTest, RoundTripTransform) {
       absl::MakeSpan(zmnsc_orig), absl::MakeSpan(zmncs_orig),
       absl::MakeSpan(zmncc_orig), absl::MakeSpan(zmnss_orig),
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
-      absl::MakeSpan(lambda_real));
+      absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real_orig2), absl::MakeSpan(zu_real_orig2));
 
   // Inverse transform
   std::vector<double> rmncc_recov(sizes.mnmax, 0.0);
@@ -405,6 +411,8 @@ TEST(FourierAsymmetricTest, FourierToReal2DAsymmSingleMode) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real(sizes.nZnT, 0.0);
+  std::vector<double> zu_real(sizes.nZnT, 0.0);
 
   // Call 2D transform
   FourierToReal2DAsymmFastPoloidal(
@@ -412,7 +420,7 @@ TEST(FourierAsymmetricTest, FourierToReal2DAsymmSingleMode) {
       absl::MakeSpan(rmnsc), absl::MakeSpan(rmncs), absl::MakeSpan(zmnsc),
       absl::MakeSpan(zmncs), absl::MakeSpan(zmncc), absl::MakeSpan(zmnss),
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
-      absl::MakeSpan(lambda_real));
+      absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real), absl::MakeSpan(zu_real));
 
   // Verify results - should match 3D case when ntor=0
   // Basis functions include sqrt(2) normalization for m>0
@@ -460,6 +468,8 @@ TEST(FourierAsymmetricTest, RealToFourier2DAsymmSingleMode) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT, 0.0);
+  std::vector<double> ru_real(sizes.nZnT, 0.0);
+  std::vector<double> zu_real(sizes.nZnT, 0.0);
 
   FourierToReal2DAsymmFastPoloidal(
       sizes, absl::MakeSpan(rmncc_orig), absl::MakeSpan(rmnss_orig),
@@ -467,7 +477,7 @@ TEST(FourierAsymmetricTest, RealToFourier2DAsymmSingleMode) {
       absl::MakeSpan(zmnsc_orig), absl::MakeSpan(zmncs_orig),
       absl::MakeSpan(zmncc_orig), absl::MakeSpan(zmnss_orig),
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
-      absl::MakeSpan(lambda_real));
+      absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real), absl::MakeSpan(zu_real));
 
   // Inverse transform
   std::vector<double> rmncc(sizes.mnmax, 0.0);
@@ -700,13 +710,15 @@ TEST(FourierAsymmetricTest, PositiveNModeHandling) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real(sizes.nZnT, 0.0);
+  std::vector<double> zu_real(sizes.nZnT, 0.0);
 
   FourierToReal3DAsymmFastPoloidal(
       sizes, absl::MakeSpan(rmncc), absl::MakeSpan(rmnss),
       absl::MakeSpan(rmnsc), absl::MakeSpan(rmncs), absl::MakeSpan(zmnsc),
       absl::MakeSpan(zmncs), absl::MakeSpan(zmncc), absl::MakeSpan(zmnss),
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
-      absl::MakeSpan(lambda_real));
+      absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real), absl::MakeSpan(zu_real));
 
   // Check some values to verify cos(u - v) behavior (jVMEC pattern)
   std::cout << "Real space values for cos(u-v):" << std::endl;

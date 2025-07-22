@@ -321,104 +321,88 @@ void FourierToReal2DAsymmFastPoloidal(
   // For 2D case (ntor=0), only n=0 modes exist
   // cosnv=1, sinnv=0 for all n=0
 
-  // Process each poloidal mode m
-  for (int m = 0; m < sizes.mpol; ++m) {
-    // Find mode mn for (m,n=0)
-    int mn = -1;
-    for (int mn_candidate = 0; mn_candidate < sizes.mnmax; ++mn_candidate) {
-      if (fourier_basis.xm[mn_candidate] == m &&
-          fourier_basis.xn[mn_candidate] / sizes.nfp == 0) {
-        mn = mn_candidate;
-        break;
+  // Process each surface
+  const int num_surfaces = rmncc.size() / sizes.mnmax;
+  for (int js = 0; js < num_surfaces; ++js) {
+    // Clear temporary arrays for this surface
+    std::fill(asym_R.begin(), asym_R.end(), 0.0);
+    std::fill(asym_Z.begin(), asym_Z.end(), 0.0);
+    std::fill(asym_L.begin(), asym_L.end(), 0.0);
+    std::fill(asym_Ru.begin(), asym_Ru.end(), 0.0);
+    std::fill(asym_Zu.begin(), asym_Zu.end(), 0.0);
+    
+    // Process each poloidal mode m
+    for (int m = 0; m < sizes.mpol; ++m) {
+      // Find mode mn for (m,n=0)
+      int mn = -1;
+      for (int mn_candidate = 0; mn_candidate < sizes.mnmax; ++mn_candidate) {
+        if (fourier_basis.xm[mn_candidate] == m &&
+            fourier_basis.xn[mn_candidate] / sizes.nfp == 0) {
+          mn = mn_candidate;
+          break;
+        }
       }
-    }
-    if (mn < 0) continue;  // mode not found
+      if (mn < 0) continue;  // mode not found
 
-    // Get symmetric coefficients
-    double rcc = (mn < rmncc.size()) ? rmncc[mn] : 0.0;
-    double zsc = (mn < zmnsc.size()) ? zmnsc[mn] : 0.0;
-
-    // Get asymmetric coefficients
-    double rsc = (mn < rmnsc.size()) ? rmnsc[mn] : 0.0;
-    double zcc = (mn < zmncc.size()) ? zmncc[mn] : 0.0;
-
-    // Compute both symmetric and asymmetric contributions for theta=[0,pi]
-    for (int l = 0; l < ntheta2; ++l) {
-      int idx_basis = m * sizes.nThetaReduced + l;
-      if (idx_basis >= fourier_basis.sinmu.size()) {
-        // Debug: skip invalid access
-        continue;
-      }
-      double sin_mu = fourier_basis.sinmu[idx_basis];
-      double cos_mu = fourier_basis.cosmu[idx_basis];
-
-      for (int k = 0; k < nzeta; ++k) {
-        int idx = l * nzeta + k;
-
-        // Symmetric contributions
-        r_real[idx] += rcc * cos_mu;  // rmncc * cosmu
-        z_real[idx] += zsc * sin_mu;  // zmnsc * sinmu
-        
-        // Symmetric derivatives
-        ru_real[idx] += -m * rcc * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
-        zu_real[idx] += m * zsc * cos_mu;   // d(sin(m*theta))/dtheta = m*cos(m*theta)
-
-        // Asymmetric contributions (stored separately for reflection)
-        asym_R[idx] += rsc * sin_mu;  // rmnsc * sinmu
-        asym_Z[idx] += zcc * cos_mu;  // zmncc * cosmu
-        
-        // Asymmetric derivatives
-        asym_Ru[idx] += m * rsc * cos_mu;   // d(sin(m*theta))/dtheta = m*cos(m*theta)
-        asym_Zu[idx] += -m * zcc * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
-      }
-    }
-  }
-
-  // STEP 1: Apply asymmetric contributions for theta=[0,pi]
-  // Following jVMEC lines 368-390
-  for (int l = 0; l < ntheta2; ++l) {
-    for (int k = 0; k < nzeta; ++k) {
-      int idx = l * nzeta + k;
-      if (idx >= r_real.size()) continue;
-
-      // ADD asymmetric to existing symmetric values
-      r_real[idx] += asym_R[idx];
-      z_real[idx] += asym_Z[idx];
-      lambda_real[idx] += asym_L[idx];
+      // Get coefficients for this surface
+      int coeff_idx = js * sizes.mnmax + mn;
       
-      // Add asymmetric derivative contributions
-      ru_real[idx] += asym_Ru[idx];
-      zu_real[idx] += asym_Zu[idx];
+      // Get symmetric coefficients
+      double rcc = (coeff_idx < rmncc.size()) ? rmncc[coeff_idx] : 0.0;
+      double zsc = (coeff_idx < zmnsc.size()) ? zmnsc[coeff_idx] : 0.0;
+
+      // Get asymmetric coefficients
+      double rsc = (coeff_idx < rmnsc.size()) ? rmnsc[coeff_idx] : 0.0;
+      double zcc = (coeff_idx < zmncc.size()) ? zmncc[coeff_idx] : 0.0;
+
+      // Compute both symmetric and asymmetric contributions for full theta range
+      for (int l = 0; l < sizes.nThetaEff; ++l) {
+        // Map to basis functions (only defined for [0,pi])
+        int l_basis = (l < ntheta2) ? l : (ntheta1 - l);
+        int idx_basis = m * sizes.nThetaReduced + l_basis;
+        if (idx_basis >= fourier_basis.sinmu.size()) {
+          continue;
+        }
+        double sin_mu = fourier_basis.sinmu[idx_basis];
+        double cos_mu = fourier_basis.cosmu[idx_basis];
+        
+        // Sign adjustments for second half
+        if (l >= ntheta2) {
+          sin_mu = -sin_mu;  // sin(2π - θ) = -sin(θ)
+        }
+
+        for (int k = 0; k < nzeta; ++k) {
+          int idx_surf = js * sizes.nZnT + l * nzeta + k;  // Index in output arrays
+          
+          if (idx_surf >= r_real.size()) continue;
+
+          // Symmetric contributions
+          r_real[idx_surf] += rcc * cos_mu;  // rmncc * cosmu
+          z_real[idx_surf] += zsc * sin_mu;  // zmnsc * sinmu
+          
+          // Symmetric derivatives
+          ru_real[idx_surf] += -m * rcc * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
+          zu_real[idx_surf] += m * zsc * cos_mu;   // d(sin(m*theta))/dtheta = m*cos(m*theta)
+          
+          // For asymmetric part in second half, apply reflection
+          if (l < ntheta2) {
+            // First half: add asymmetric directly
+            r_real[idx_surf] += rsc * sin_mu;  // rmnsc * sinmu
+            z_real[idx_surf] += zcc * cos_mu;  // zmncc * cosmu
+            ru_real[idx_surf] += m * rsc * cos_mu;   // d(sin(m*theta))/dtheta
+            zu_real[idx_surf] += -m * zcc * sin_mu;  // d(cos(m*theta))/dtheta
+          } else {
+            // Second half: subtract asymmetric (reflection)
+            int kr = (nzeta - k) % nzeta;
+            r_real[idx_surf] -= rsc * sin_mu;  // subtract for reflection
+            z_real[idx_surf] -= zcc * cos_mu;  // note: z also gets negated
+            ru_real[idx_surf] -= m * rsc * cos_mu;   // derivative sign change
+            zu_real[idx_surf] += m * zcc * sin_mu;   // derivative sign change
+          }
+        }
+      }
     }
-  }
-
-  // STEP 2: Handle theta=[pi,2pi] using reflection
-  // Following jVMEC lines 340-365
-  for (int l = ntheta2; l < ntheta1; ++l) {
-    int lr = ntheta1 - l;  // reflection index (matches jVMEC exactly)
-
-    for (int k = 0; k < nzeta; ++k) {
-      int kr = (nzeta - k) % nzeta;  // zeta reflection (ireflect)
-
-      int idx = l * nzeta + k;
-      int idx_reflect = lr * nzeta + kr;
-
-      if (idx >= r_real.size() || idx_reflect >= r_real.size()) continue;
-
-      // Following jVMEC reflection formulas exactly:
-      // R[pi,2pi] = R_sym[reflected] - asym_R[reflected]
-      // Z[pi,2pi] = -Z_sym[reflected] + asym_Z[reflected]
-      r_real[idx] = r_real[idx_reflect] - asym_R[idx_reflect];
-      z_real[idx] = -z_real[idx_reflect] + asym_Z[idx_reflect];
-      lambda_real[idx] = lambda_real[idx_reflect] - asym_L[idx_reflect];
-      
-      // Derivatives with reflection (sign changes due to theta -> 2pi - theta)
-      // dR/dtheta[pi,2pi] = -dR/dtheta_sym[reflected] + asym_dR/dtheta[reflected]
-      // dZ/dtheta[pi,2pi] = dZ/dtheta_sym[reflected] - asym_dZ/dtheta[reflected]
-      ru_real[idx] = -ru_real[idx_reflect] + asym_Ru[idx_reflect];
-      zu_real[idx] = zu_real[idx_reflect] - asym_Zu[idx_reflect];
-    }
-  }
+  }  // end surface loop
 }
 
 // FIXED VERSION - Following educational_VMEC pattern exactly
