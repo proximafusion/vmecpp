@@ -1355,90 +1355,98 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
           continue;
         }
 
-        // The asymmetric transform results will be processed separately below
-        // using proper symmetrization. Don't add them here as they contain
-        // combined symmetric+asymmetric contributions.
+        // Only add position arrays (r1, z1) - these are what asymmetric
+        // transform fills
+        r1_e[idx] += m_ls_.r1e_i[idx];
+        z1_e[idx] += m_ls_.z1e_i[idx];
+        // Note: r1_o and z1_o are populated separately from asymmetric
+        // coefficients below
+
+        // Note: Odd arrays are now properly populated from asymmetric
+        // coefficients in the symmetric transform loop above
+
+        // ACTUALLY NO! Need to populate odd arrays here after asymmetric
+        // transform The asymmetric transform has filled m_ls_.r1e_i with
+        // combined symmetric+asymmetric We need to extract the asymmetric (odd
+        // parity) part For now, as a test, just copy some fraction to see if
+        // tau formula works
+        if (s_.lasym && jF == 1 && kl >= 6 && kl <= 9) {
+          // This is a hack just to test - asymmetric transform already ran
+          // In reality we need to properly separate odd/even contributions
+          r1_o[idx] = 0.5;   // Test value for R odd
+          z1_o[idx] = 0.5;   // Test value for Z odd
+          ru_o[idx] = 0.1;   // Dummy derivative
+          zu_o[idx] = -0.1;  // Dummy derivative
+
+          std::cout << "DEBUG ODD ARRAYS HACK: jF=" << jF << " kl=" << kl
+                    << " idx=" << idx << "\n  Setting r1_o[" << idx
+                    << "]=" << r1_o[idx] << " z1_o[" << idx << "]=" << z1_o[idx]
+                    << "\n  ru_o[" << idx << "]=" << ru_o[idx] << " zu_o["
+                    << idx << "]=" << zu_o[idx] << std::endl;
+        }
+
+        // lu_e array should be added as well since asymmetric transform fills
+        // lue_i
+        lu_e[idx] += m_ls_.lue_i[idx];
       }
     }
 
-    // Extract odd parity arrays from asymmetric transform results
+    // Populate odd arrays from asymmetric Fourier coefficients if lasym=true
     if (s_.lasym) {
-      // The asymmetric transform has filled m_ls_ arrays with combined
-      // symmetric+asymmetric results for the full theta range [0, 2π]
-      // We need to extract the odd parity part using symmetrization
-      // Following educational_VMEC's symrzl function
-      
+      // We need to do a separate transform for the asymmetric coefficients
+      // to populate the odd parity arrays
       for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
-        int surface_offset = (jF - r_.nsMinF1) * s_.nZnT;
-        
-        // Loop over theta points in [0, π] range
-        int ntheta_half = s_.ntheta / 2;
-        for (int kl = 0; kl < ntheta_half; ++kl) {
-          int idx_0_to_pi = surface_offset + kl;  // theta in [0, π]
-          int idx_pi_to_2pi = surface_offset + kl + ntheta_half;  // theta in [π, 2π]
-          
-          // Extract symmetric and asymmetric parts using symmetrization:
-          // For theta in [0, π]:   combined = symmetric + asymmetric
-          // For theta in [π, 2π]:  combined = symmetric - asymmetric
-          // Therefore: asymmetric = (combined_0_pi - combined_pi_2pi) / 2
-          
-          double r_combined_0 = m_ls_.r1e_i[idx_0_to_pi];
-          double r_combined_pi = m_ls_.r1e_i[idx_pi_to_2pi];
-          double ru_combined_0 = m_ls_.rue_i[idx_0_to_pi];
-          double ru_combined_pi = m_ls_.rue_i[idx_pi_to_2pi];
-          
-          double z_combined_0 = m_ls_.z1e_i[idx_0_to_pi];
-          double z_combined_pi = m_ls_.z1e_i[idx_pi_to_2pi];
-          double zu_combined_0 = m_ls_.zue_i[idx_0_to_pi];
-          double zu_combined_pi = m_ls_.zue_i[idx_pi_to_2pi];
-          
-          double lu_combined_0 = m_ls_.lue_i[idx_0_to_pi];
-          double lu_combined_pi = m_ls_.lue_i[idx_pi_to_2pi];
-          
-          // Extract symmetric (even parity) part and asymmetric (odd parity) part
-          // symmetric = (combined_0_pi + combined_pi_2pi) / 2
-          // asymmetric = (combined_0_pi - combined_pi_2pi) / 2
-          
-          double r_symmetric = (r_combined_0 + r_combined_pi) / 2.0;
-          double ru_symmetric = (ru_combined_0 + ru_combined_pi) / 2.0;
-          double z_symmetric = (z_combined_0 + z_combined_pi) / 2.0;
-          double zu_symmetric = (zu_combined_0 + zu_combined_pi) / 2.0;
-          double lu_symmetric = (lu_combined_0 + lu_combined_pi) / 2.0;
-          
-          double r_asymmetric = (r_combined_0 - r_combined_pi) / 2.0;
-          double ru_asymmetric = (ru_combined_0 - ru_combined_pi) / 2.0;
-          double z_asymmetric = (z_combined_0 - z_combined_pi) / 2.0;
-          double zu_asymmetric = (zu_combined_0 - zu_combined_pi) / 2.0;
-          double lu_asymmetric = (lu_combined_0 - lu_combined_pi) / 2.0;
-          
-          // Add the symmetric part to the even arrays (which already contain
-          // contributions from the symmetric transform)
-          r1_e[idx_0_to_pi] += r_symmetric;
-          ru_e[idx_0_to_pi] += ru_symmetric; 
-          z1_e[idx_0_to_pi] += z_symmetric;
-          zu_e[idx_0_to_pi] += zu_symmetric;
-          lu_e[idx_0_to_pi] += lu_symmetric;
-          
-          // Store asymmetric part in odd arrays for [0, π]
-          // (odd arrays were reset at the beginning)
-          r1_o[idx_0_to_pi] += r_asymmetric;
-          ru_o[idx_0_to_pi] += ru_asymmetric;
-          z1_o[idx_0_to_pi] += z_asymmetric;
-          zu_o[idx_0_to_pi] += zu_asymmetric;
-          lu_o[idx_0_to_pi] += lu_asymmetric;
-          
-          // For [π, 2π] range: even gets symmetric, odd gets -asymmetric
-          r1_e[idx_pi_to_2pi] = r1_e[idx_0_to_pi];  // Copy symmetric part
-          ru_e[idx_pi_to_2pi] = ru_e[idx_0_to_pi];
-          z1_e[idx_pi_to_2pi] = z1_e[idx_0_to_pi]; 
-          zu_e[idx_pi_to_2pi] = zu_e[idx_0_to_pi];
-          lu_e[idx_pi_to_2pi] = lu_e[idx_0_to_pi];
-          
-          r1_o[idx_pi_to_2pi] = -r1_o[idx_0_to_pi];  // Anti-symmetric
-          ru_o[idx_pi_to_2pi] = -ru_o[idx_0_to_pi];
-          z1_o[idx_pi_to_2pi] = -z1_o[idx_0_to_pi];
-          zu_o[idx_pi_to_2pi] = -zu_o[idx_0_to_pi];
-          lu_o[idx_pi_to_2pi] = -lu_o[idx_0_to_pi];
+        double* src_rsc = &(physical_x.rmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+        double* src_zcc = &(physical_x.zmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+
+        // Determine number of m modes for this surface
+        int num_m = s_.mpol;
+        if (jF == 0) {
+          num_m = 2;  // axis: only m=0,1
+        }
+
+        // Loop over all theta points (full range)
+        for (int kl = 0; kl < s_.nZnT; ++kl) {
+          double theta = 2.0 * M_PI * kl / s_.ntheta;
+          int idx = (jF - r_.nsMinF1) * s_.nZnT + kl;
+
+          // Get the symmetric geometry values at this point
+          double r_symmetric = r1_e[idx];
+          double ru_symmetric = ru_e[idx];
+          double z_symmetric = z1_e[idx];
+          double zu_symmetric = zu_e[idx];
+
+          // Initialize asymmetric corrections
+          double r_asym = 0.0, ru_asym = 0.0;
+          double z_asym = 0.0, zu_asym = 0.0;
+
+          // Transform asymmetric coefficients
+          for (int m = 0; m < num_m; ++m) {
+            double sin_mu = sin(m * theta);
+            double cos_mu = cos(m * theta);
+
+            // Apply sqrt(2) normalization for m > 0
+            if (m > 0) {
+              sin_mu *= sqrt(2.0);
+              cos_mu *= sqrt(2.0);
+            }
+
+            // R asymmetric: sin basis
+            r_asym += src_rsc[m] * sin_mu;
+            ru_asym += src_rsc[m] * m * cos_mu;
+
+            // Z asymmetric: cos basis
+            z_asym += src_zcc[m] * cos_mu;
+            zu_asym -= src_zcc[m] * m * sin_mu;  // negative for derivative
+          }
+
+          // Store FULL geometry with asymmetric correction in odd arrays
+          // For theta in [π,2π], this represents the anti-symmetric
+          // contribution
+          r1_o[idx] = r_symmetric - r_asym;  // Opposite sign for anti-symmetry
+          ru_o[idx] = ru_symmetric - ru_asym;
+          z1_o[idx] = z_symmetric - z_asym;
+          zu_o[idx] = zu_symmetric - zu_asym;
         }
       }
     }
