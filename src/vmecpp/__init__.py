@@ -321,7 +321,10 @@ class VmecInput(BaseModelWithNumpy):
         if self.lasym:
             mpol_two_ntor_plus_one_fields.extend(["rbs", "zbc"])
 
+        # Arrays from C++ have mpol+1 rows, but we expect mpol rows in the Python model
         expected_shape = (self.mpol, 2 * self.ntor + 1)
+        cpp_shape = (self.mpol + 1, 2 * self.ntor + 1)
+        
         for field in mpol_two_ntor_plus_one_fields:
             current_value = getattr(self, field)
 
@@ -330,7 +333,8 @@ class VmecInput(BaseModelWithNumpy):
                 setattr(self, field, current_value)
 
             shape = np.shape(current_value)
-            if shape != expected_shape:
+            # Accept both shapes - arrays from C++ have mpol+1 rows
+            if shape not in [expected_shape, cpp_shape]:
                 setattr(
                     self,
                     field,
@@ -507,7 +511,18 @@ class VmecInput(BaseModelWithNumpy):
                         "Either set lasym=True or remove the asymmetric field."
                     )
                     raise ValueError(msg)
-                getattr(cpp_indata, attr)[:] = value
+                # Handle array size mismatch: C++ expects mpol rows, not mpol+1
+                dest = getattr(cpp_indata, attr)
+                if attr in {"rbc", "zbs", "rbs", "zbc"}:
+                    # Fourier coefficient arrays
+                    if value.shape[0] == self.mpol + 1 and dest.shape[0] == self.mpol:
+                        # Source has mpol+1 rows (from file loading), but C++ expects mpol rows
+                        dest[:] = value[:self.mpol]
+                    else:
+                        dest[:] = value
+                else:
+                    # Axis arrays or other arrays
+                    dest[:] = value
 
         return cpp_indata
 
