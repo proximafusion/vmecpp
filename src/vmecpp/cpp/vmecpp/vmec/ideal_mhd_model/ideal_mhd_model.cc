@@ -4149,9 +4149,13 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(
   m_ls_sym_r_.resize(reduced_size, 0.0);
   m_ls_sym_z_.resize(reduced_size, 0.0);
   m_ls_sym_lambda_.resize(reduced_size, 0.0);
+  m_ls_sym_ru_.resize(reduced_size, 0.0);
+  m_ls_sym_zu_.resize(reduced_size, 0.0);
   m_ls_asym_r_.resize(reduced_size, 0.0);
   m_ls_asym_z_.resize(reduced_size, 0.0);
   m_ls_asym_lambda_.resize(reduced_size, 0.0);
+  m_ls_asym_ru_.resize(reduced_size, 0.0);
+  m_ls_asym_zu_.resize(reduced_size, 0.0);
 
   // Use the NEW separated transform function
   FourierToReal3DAsymmFastPoloidalSeparated(
@@ -4163,7 +4167,11 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(
       absl::MakeSpan(m_ls_sym_z_),       // Separate symmetric Z
       absl::MakeSpan(m_ls_asym_z_),      // Separate antisymmetric Z
       absl::MakeSpan(m_ls_sym_lambda_),  // Separate symmetric Lambda
-      absl::MakeSpan(m_ls_asym_lambda_)  // Separate antisymmetric Lambda
+      absl::MakeSpan(m_ls_asym_lambda_), // Separate antisymmetric Lambda
+      absl::MakeSpan(m_ls_sym_ru_),      // Separate symmetric dR/dtheta
+      absl::MakeSpan(m_ls_asym_ru_),     // Separate antisymmetric dR/dtheta
+      absl::MakeSpan(m_ls_sym_zu_),      // Separate symmetric dZ/dtheta
+      absl::MakeSpan(m_ls_asym_zu_)      // Separate antisymmetric dZ/dtheta
   );
 }
 
@@ -4173,20 +4181,15 @@ void IdealMhdModel::dft_FourierToReal_2d_asymm(
   // Process all surfaces
   int total_size = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
   
-  // FIX: The 2D asymmetric transform has bugs - using thread local storage incorrectly
-  // This causes buffer overflows that affect convergence even for symmetric cases
-  std::cerr << "WARNING: 2D asymmetric transforms not properly implemented\n";
-  std::cerr << "         Skipping to prevent buffer overflow issues\n";
-  return;
-  
-  /* Disabled buggy implementation:
+  // Re-enable the 2D asymmetric transform with derivative parameters
   FourierToReal2DAsymmFastPoloidal(
       s_, physical_x.rmncc, physical_x.rmnss, physical_x.rmnsc,
       physical_x.rmncs, physical_x.zmnsc, physical_x.zmncs, physical_x.zmncc,
       physical_x.zmnss, absl::Span<double>(m_ls_.r1e_i.data(), total_size),
       absl::Span<double>(m_ls_.z1e_i.data(), total_size),
-      absl::Span<double>(m_ls_.lue_i.data(), total_size));
-  */
+      absl::Span<double>(m_ls_.lue_i.data(), total_size),
+      absl::Span<double>(m_ls_.rue_i.data(), total_size),  // ADD: dR/dtheta
+      absl::Span<double>(m_ls_.zue_i.data(), total_size)); // ADD: dZ/dtheta
 }
 
 void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {

@@ -23,7 +23,9 @@ void FourierToReal3DAsymmFastPoloidal(
     absl::Span<const double> zmncc,  // Asymmetric
     absl::Span<const double> zmnss,  // Asymmetric
     absl::Span<double> r_real, absl::Span<double> z_real,
-    absl::Span<double> lambda_real);
+    absl::Span<double> lambda_real,
+    absl::Span<double> ru_real,  // ADD: dR/dtheta
+    absl::Span<double> zu_real);  // ADD: dZ/dtheta
 
 // NEW: Forward transform that outputs separate symmetric and antisymmetric
 // arrays This is the key to fixing the array combination issue
@@ -40,7 +42,11 @@ void FourierToReal3DAsymmFastPoloidalSeparated(
     absl::Span<double> z_sym,         // SEPARATE symmetric output [0, π]
     absl::Span<double> z_asym,        // SEPARATE antisymmetric output [0, π]
     absl::Span<double> lambda_sym,    // SEPARATE symmetric output [0, π]
-    absl::Span<double> lambda_asym);  // SEPARATE antisymmetric output [0, π]
+    absl::Span<double> lambda_asym,  // SEPARATE antisymmetric output [0, π]
+    absl::Span<double> ru_sym,        // SEPARATE symmetric dR/dtheta [0, π]
+    absl::Span<double> ru_asym,       // SEPARATE antisymmetric dR/dtheta [0, π]
+    absl::Span<double> zu_sym,        // SEPARATE symmetric dZ/dtheta [0, π]
+    absl::Span<double> zu_asym);      // SEPARATE antisymmetric dZ/dtheta [0, π]
 
 // 2D version for axisymmetric case
 void FourierToReal2DAsymmFastPoloidal(
@@ -49,7 +55,9 @@ void FourierToReal2DAsymmFastPoloidal(
     absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
     absl::Span<const double> zmncs, absl::Span<const double> zmncc,
     absl::Span<const double> zmnss, absl::Span<double> r_real,
-    absl::Span<double> z_real, absl::Span<double> lambda_real);
+    absl::Span<double> z_real, absl::Span<double> lambda_real,
+    absl::Span<double> ru_real,  // ADD: dR/dtheta
+    absl::Span<double> zu_real);  // ADD: dZ/dtheta
 
 // Symmetrize real space geometry - FIXED VERSION
 // Equivalent to educational_VMEC's symrzl

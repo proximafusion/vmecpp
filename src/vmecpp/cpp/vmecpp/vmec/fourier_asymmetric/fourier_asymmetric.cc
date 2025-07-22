@@ -17,7 +17,8 @@ void FourierToReal3DAsymmFastPoloidal(
     absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
     absl::Span<const double> zmncs, absl::Span<const double> zmncc,
     absl::Span<const double> zmnss, absl::Span<double> r_real,
-    absl::Span<double> z_real, absl::Span<double> lambda_real) {
+    absl::Span<double> z_real, absl::Span<double> lambda_real,
+    absl::Span<double> ru_real, absl::Span<double> zu_real) {
   const int nzeta = sizes.nZeta;
   const int ntheta2 = sizes.nThetaReduced;  // [0, pi] including endpoint
   const int ntheta_eff = sizes.nThetaEff;   // effective theta grid size
@@ -27,11 +28,17 @@ void FourierToReal3DAsymmFastPoloidal(
   std::fill(r_real.begin(), r_real.end(), 0.0);
   std::fill(z_real.begin(), z_real.end(), 0.0);
   std::fill(lambda_real.begin(), lambda_real.end(), 0.0);
+  std::fill(ru_real.begin(), ru_real.end(), 0.0);
+  std::fill(zu_real.begin(), zu_real.end(), 0.0);
 
   // Create arrays for asymmetric contributions
   std::vector<double> asym_R(nznt, 0.0);
   std::vector<double> asym_Z(nznt, 0.0);
   std::vector<double> asym_L(nznt, 0.0);
+  
+  // Create arrays for asymmetric derivative contributions
+  std::vector<double> asym_Ru(nznt, 0.0);
+  std::vector<double> asym_Zu(nznt, 0.0);
 
   // Get basis functions
   FourierBasisFastPoloidal fourier_basis(&sizes);
@@ -108,19 +115,35 @@ void FourierToReal3DAsymmFastPoloidal(
         // Symmetric contributions
         r_real[idx] += rmkcc[k] * cos_mu;
         z_real[idx] += zmksc[k] * sin_mu;
+        
+        // Symmetric derivatives (dR/dtheta, dZ/dtheta)
+        ru_real[idx] += -m * rmkcc[k] * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
+        zu_real[idx] += m * zmksc[k] * cos_mu;   // d(sin(m*theta))/dtheta = m*cos(m*theta)
 
         if (sizes.lthreed) {
           r_real[idx] += rmkss[k] * sin_mu;
           z_real[idx] += zmkcs[k] * cos_mu;
+          
+          // Additional symmetric derivative contributions
+          ru_real[idx] += m * rmkss[k] * cos_mu;   // d(sin(m*theta))/dtheta = m*cos(m*theta)
+          zu_real[idx] += -m * zmkcs[k] * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
         }
 
         // Asymmetric contributions (stored separately for reflection)
         asym_R[idx] += rmksc_asym[k] * sin_mu;
         asym_Z[idx] += zmkcc_asym[k] * cos_mu;
+        
+        // Asymmetric derivatives (following jVMEC pattern)
+        asym_Ru[idx] += m * rmksc_asym[k] * cos_mu;  // d(sin(m*theta))/dtheta = m*cos(m*theta)
+        asym_Zu[idx] += -m * zmkcc_asym[k] * sin_mu; // d(cos(m*theta))/dtheta = -m*sin(m*theta)
 
         if (sizes.lthreed) {
           asym_R[idx] += rmkcs_asym[k] * cos_mu;
           asym_Z[idx] += zmkss_asym[k] * sin_mu;
+          
+          // Additional asymmetric derivative contributions
+          asym_Ru[idx] += -m * rmkcs_asym[k] * sin_mu; // d(cos(m*theta))/dtheta = -m*sin(m*theta)
+          asym_Zu[idx] += m * zmkss_asym[k] * cos_mu;  // d(sin(m*theta))/dtheta = m*cos(m*theta)
         }
       }
     }
@@ -135,6 +158,10 @@ void FourierToReal3DAsymmFastPoloidal(
       r_real[idx] += asym_R[idx];
       z_real[idx] += asym_Z[idx];
       lambda_real[idx] += asym_L[idx];
+      
+      // Add asymmetric derivative contributions
+      ru_real[idx] += asym_Ru[idx];
+      zu_real[idx] += asym_Zu[idx];
     }
   }
 
@@ -220,24 +247,40 @@ void FourierToReal3DAsymmFastPoloidal(
           r_real[idx] = 0.0;
           z_real[idx] = 0.0;
           lambda_real[idx] = 0.0;
+          ru_real[idx] = 0.0;
+          zu_real[idx] = 0.0;
         }
 
         // Symmetric contributions
         r_real[idx] += rmkcc[k] * cos_mu;
         z_real[idx] += zmksc[k] * sin_mu;
+        
+        // Symmetric derivatives
+        ru_real[idx] += -m * rmkcc[k] * sin_mu;
+        zu_real[idx] += m * zmksc[k] * cos_mu;
 
         if (sizes.lthreed) {
           r_real[idx] += rmkss[k] * sin_mu;
           z_real[idx] += zmkcs[k] * cos_mu;
+          
+          ru_real[idx] += m * rmkss[k] * cos_mu;
+          zu_real[idx] += -m * zmkcs[k] * sin_mu;
         }
 
         // Asymmetric contributions
         r_real[idx] += rmksc_asym[k] * sin_mu;
         z_real[idx] += zmkcc_asym[k] * cos_mu;
+        
+        // Asymmetric derivatives
+        ru_real[idx] += m * rmksc_asym[k] * cos_mu;
+        zu_real[idx] += -m * zmkcc_asym[k] * sin_mu;
 
         if (sizes.lthreed) {
           r_real[idx] += rmkcs_asym[k] * cos_mu;
           z_real[idx] += zmkss_asym[k] * sin_mu;
+          
+          ru_real[idx] += -m * rmkcs_asym[k] * sin_mu;
+          zu_real[idx] += m * zmkss_asym[k] * cos_mu;
         }
       }
     }
@@ -250,7 +293,8 @@ void FourierToReal2DAsymmFastPoloidal(
     absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
     absl::Span<const double> zmncs, absl::Span<const double> zmncc,
     absl::Span<const double> zmnss, absl::Span<double> r_real,
-    absl::Span<double> z_real, absl::Span<double> lambda_real) {
+    absl::Span<double> z_real, absl::Span<double> lambda_real,
+    absl::Span<double> ru_real, absl::Span<double> zu_real) {
   const int nzeta = sizes.nZeta;
   const int ntheta2 = sizes.nThetaReduced;  // [0, pi]
   const int ntheta1 = 2 * ntheta2;          // full range [0, 2pi]
@@ -259,11 +303,17 @@ void FourierToReal2DAsymmFastPoloidal(
   std::fill(r_real.begin(), r_real.end(), 0.0);
   std::fill(z_real.begin(), z_real.end(), 0.0);
   std::fill(lambda_real.begin(), lambda_real.end(), 0.0);
+  std::fill(ru_real.begin(), ru_real.end(), 0.0);
+  std::fill(zu_real.begin(), zu_real.end(), 0.0);
 
   // Create arrays for asymmetric contributions
   std::vector<double> asym_R(ntheta1 * nzeta, 0.0);
   std::vector<double> asym_Z(ntheta1 * nzeta, 0.0);
   std::vector<double> asym_L(ntheta1 * nzeta, 0.0);
+  
+  // Create arrays for asymmetric derivative contributions
+  std::vector<double> asym_Ru(ntheta1 * nzeta, 0.0);
+  std::vector<double> asym_Zu(ntheta1 * nzeta, 0.0);
 
   // Get basis functions
   FourierBasisFastPoloidal fourier_basis(&sizes);
@@ -308,10 +358,18 @@ void FourierToReal2DAsymmFastPoloidal(
         // Symmetric contributions
         r_real[idx] += rcc * cos_mu;  // rmncc * cosmu
         z_real[idx] += zsc * sin_mu;  // zmnsc * sinmu
+        
+        // Symmetric derivatives
+        ru_real[idx] += -m * rcc * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
+        zu_real[idx] += m * zsc * cos_mu;   // d(sin(m*theta))/dtheta = m*cos(m*theta)
 
         // Asymmetric contributions (stored separately for reflection)
         asym_R[idx] += rsc * sin_mu;  // rmnsc * sinmu
         asym_Z[idx] += zcc * cos_mu;  // zmncc * cosmu
+        
+        // Asymmetric derivatives
+        asym_Ru[idx] += m * rsc * cos_mu;   // d(sin(m*theta))/dtheta = m*cos(m*theta)
+        asym_Zu[idx] += -m * zcc * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
       }
     }
   }
@@ -327,6 +385,10 @@ void FourierToReal2DAsymmFastPoloidal(
       r_real[idx] += asym_R[idx];
       z_real[idx] += asym_Z[idx];
       lambda_real[idx] += asym_L[idx];
+      
+      // Add asymmetric derivative contributions
+      ru_real[idx] += asym_Ru[idx];
+      zu_real[idx] += asym_Zu[idx];
     }
   }
 
@@ -349,6 +411,12 @@ void FourierToReal2DAsymmFastPoloidal(
       r_real[idx] = r_real[idx_reflect] - asym_R[idx_reflect];
       z_real[idx] = -z_real[idx_reflect] + asym_Z[idx_reflect];
       lambda_real[idx] = lambda_real[idx_reflect] - asym_L[idx_reflect];
+      
+      // Derivatives with reflection (sign changes due to theta -> 2pi - theta)
+      // dR/dtheta[pi,2pi] = -dR/dtheta_sym[reflected] + asym_dR/dtheta[reflected]
+      // dZ/dtheta[pi,2pi] = dZ/dtheta_sym[reflected] - asym_dZ/dtheta[reflected]
+      ru_real[idx] = -ru_real[idx_reflect] + asym_Ru[idx_reflect];
+      zu_real[idx] = zu_real[idx_reflect] - asym_Zu[idx_reflect];
     }
   }
 }
@@ -816,7 +884,9 @@ void FourierToReal3DAsymmFastPoloidalSeparated(
     absl::Span<const double> zmnss, absl::Span<double> r_sym,
     absl::Span<double> r_asym, absl::Span<double> z_sym,
     absl::Span<double> z_asym, absl::Span<double> lambda_sym,
-    absl::Span<double> lambda_asym) {
+    absl::Span<double> lambda_asym, absl::Span<double> ru_sym,
+    absl::Span<double> ru_asym, absl::Span<double> zu_sym,
+    absl::Span<double> zu_asym) {
   const int nzeta = sizes.nZeta;
   const int ntheta2 = sizes.nThetaReduced;   // [0, pi] including endpoint
   const int nznt_reduced = ntheta2 * nzeta;  // Size for separate arrays
@@ -828,6 +898,10 @@ void FourierToReal3DAsymmFastPoloidalSeparated(
   std::fill(z_asym.begin(), z_asym.end(), 0.0);
   std::fill(lambda_sym.begin(), lambda_sym.end(), 0.0);
   std::fill(lambda_asym.begin(), lambda_asym.end(), 0.0);
+  std::fill(ru_sym.begin(), ru_sym.end(), 0.0);
+  std::fill(ru_asym.begin(), ru_asym.end(), 0.0);
+  std::fill(zu_sym.begin(), zu_sym.end(), 0.0);
+  std::fill(zu_asym.begin(), zu_asym.end(), 0.0);
 
   // Get basis functions
   FourierBasisFastPoloidal fourier_basis(&sizes);
@@ -913,12 +987,20 @@ void FourierToReal3DAsymmFastPoloidalSeparated(
         z_sym[idx] += zmksc[k] * sinmu + zmkcs[k] * cosmu;
         // Lambda symmetric (for now, set to zero - can be added later)
         // lambda_sym[idx] += ...;
+        
+        // Add symmetric derivatives
+        ru_sym[idx] += -m * rmkcc[k] * sinmu + m * rmkss[k] * cosmu;
+        zu_sym[idx] += m * zmksc[k] * cosmu - m * zmkcs[k] * sinmu;
 
         // Add antisymmetric contributions
         r_asym[idx] += rmksc_asym[k] * sinmu + rmkcs_asym[k] * cosmu;
         z_asym[idx] += zmkcc_asym[k] * cosmu + zmkss_asym[k] * sinmu;
         // Lambda antisymmetric (for now, set to zero - can be added later)
         // lambda_asym[idx] += ...;
+        
+        // Add antisymmetric derivatives
+        ru_asym[idx] += m * rmksc_asym[k] * cosmu - m * rmkcs_asym[k] * sinmu;
+        zu_asym[idx] += -m * zmkcc_asym[k] * sinmu + m * zmkss_asym[k] * cosmu;
       }
     }
   }

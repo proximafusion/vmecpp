@@ -442,9 +442,13 @@ class IdealMhdModel {
   std::vector<double> m_ls_sym_r_;
   std::vector<double> m_ls_sym_z_;
   std::vector<double> m_ls_sym_lambda_;
+  std::vector<double> m_ls_sym_ru_;      // ADD: symmetric dR/dtheta
+  std::vector<double> m_ls_sym_zu_;      // ADD: symmetric dZ/dtheta
   std::vector<double> m_ls_asym_r_;
   std::vector<double> m_ls_asym_z_;
   std::vector<double> m_ls_asym_lambda_;
+  std::vector<double> m_ls_asym_ru_;     // ADD: asymmetric dR/dtheta
+  std::vector<double> m_ls_asym_zu_;     // ADD: asymmetric dZ/dtheta
 
   FlowControl& m_fc_;
   const Sizes& s_;
