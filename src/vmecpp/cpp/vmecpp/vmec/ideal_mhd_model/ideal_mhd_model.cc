@@ -501,16 +501,8 @@ void vmecpp::deAliasConstraintForce(
           const int idx_ml = m * s_.nThetaReduced + l;
 
           // NOTE: `faccon` comes into play here
-          if (!s_.lasym) {
-            // Symmetric case: use correct basis functions (sinmu with w0, cosmu
-            // with w1)
-            m_gCon[idx_kl] +=
-                faccon[m] * (w0 * fb.sinmu[idx_ml] + w1 * fb.cosmu[idx_ml]);
-          } else {
-            // Asymmetric case: symmetric part
-            m_gCon[idx_kl] +=
-                faccon[m] * (w2 * fb.cosmu[idx_ml] + w3 * fb.sinmu[idx_ml]);
-          }
+          m_gCon[idx_kl] +=
+              faccon[m] * (w2 * fb.cosmu[idx_ml] + w3 * fb.sinmu[idx_ml]);
 
           if (s_.lasym) {
             // Store asymmetric contribution separately
