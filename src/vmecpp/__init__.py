@@ -333,8 +333,9 @@ class VmecInput(BaseModelWithNumpy):
                 setattr(self, field, current_value)
 
             shape = np.shape(current_value)
-            # Accept both shapes - arrays from C++ have mpol+1 rows
-            if shape not in [expected_shape, cpp_shape]:
+            # Arrays from C++ have mpol+1 rows, which is correct
+            # Only resize if the shape is completely wrong
+            if shape != expected_shape and shape != cpp_shape:
                 setattr(
                     self,
                     field,
@@ -511,17 +512,18 @@ class VmecInput(BaseModelWithNumpy):
                         "Either set lasym=True or remove the asymmetric field."
                     )
                     raise ValueError(msg)
-                # Handle array size mismatch: C++ expects mpol rows, not mpol+1
+                # Handle potential size mismatch between Python and C++ expectations
                 dest = getattr(cpp_indata, attr)
-                if attr in {"rbc", "zbs", "rbs", "zbc"}:
-                    # Fourier coefficient arrays
-                    if value.shape[0] == self.mpol + 1 and dest.shape[0] == self.mpol:
-                        # Source has mpol+1 rows (from file loading), but C++ expects mpol rows
-                        dest[:] = value[:self.mpol]
+                if attr in {"rbc", "zbs", "rbs", "zbc"} and value.shape != dest.shape:
+                    # If shapes don't match, we need to handle it carefully
+                    if value.shape[0] > dest.shape[0]:
+                        # Source has more rows, truncate
+                        dest[:] = value[:dest.shape[0]]
                     else:
-                        dest[:] = value
+                        # Source has fewer rows, pad with zeros
+                        dest[:value.shape[0]] = value
+                        dest[value.shape[0]:] = 0
                 else:
-                    # Axis arrays or other arrays
                     dest[:] = value
 
         return cpp_indata
