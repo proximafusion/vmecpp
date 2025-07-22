@@ -1275,8 +1275,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
 /** inverse Fourier transform to get geometry from Fourier coefficients */
 void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
-  std::cout << "DEBUG geometryFromFourier: lasym=" << s_.lasym
-            << ", lthreed=" << s_.lthreed << std::endl;
+  // std::cout << "DEBUG geometryFromFourier: lasym=" << s_.lasym
+  //           << ", lthreed=" << s_.lthreed << std::endl;
 
   // symmetric contribution is always needed
   if (s_.lthreed) {
@@ -1286,11 +1286,7 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
   }
 
   if (s_.lasym) {
-    // FIX: The asymmetric code has buffer overflow issues that affect convergence
-    // Early return to prevent using buggy asymmetric functions
-    std::cerr << "ERROR: Asymmetric equilibria not supported due to buffer overflow bugs\n";
-    std::cerr << "       The asymmetric functions use thread local storage incorrectly\n";
-    return;
+    std::cout << "DEBUG: Processing asymmetric equilibrium with lasym=true" << std::endl;
     
     // asymmetric contribution needed for non-symmetric equilibria
     std::cout << "DEBUG: Processing asymmetric contribution" << std::endl;
@@ -2862,17 +2858,17 @@ void IdealMhdModel::computeMHDForces() {
         // defaults to 0: no contribution from half-grid point outside LCFS
         int iHalf = iHalf_base + kl;
 
-        // DEBUG: Check for NaN in MHD quantities
-        if (kl < 3 && jF == r_.nsMinF) {
-          std::cout << "DEBUG MHD quantities kl=" << kl << ", iHalf=" << iHalf
-                    << ", jF=" << jF << std::endl;
-          std::cout << "  r12[" << iHalf << "]=" << r12[iHalf] << std::endl;
-          std::cout << "  totalPressure[" << iHalf
-                    << "]=" << totalPressure[iHalf] << std::endl;
-          std::cout << "  ru12[" << iHalf << "]=" << ru12[iHalf] << std::endl;
-          std::cout << "  zu12[" << iHalf << "]=" << zu12[iHalf] << std::endl;
-          std::cout << "  tau[" << iHalf << "]=" << tau[iHalf] << std::endl;
-        }
+        // DEBUG: Check for NaN in MHD quantities - commented out for performance
+        // if (kl < 3 && jF == r_.nsMinF) {
+        //   std::cout << "DEBUG MHD quantities kl=" << kl << ", iHalf=" << iHalf
+        //             << ", jF=" << jF << std::endl;
+        //   std::cout << "  r12[" << iHalf << "]=" << r12[iHalf] << std::endl;
+        //   std::cout << "  totalPressure[" << iHalf
+        //             << "]=" << totalPressure[iHalf] << std::endl;
+        //   std::cout << "  ru12[" << iHalf << "]=" << ru12[iHalf] << std::endl;
+        //   std::cout << "  zu12[" << iHalf << "]=" << zu12[iHalf] << std::endl;
+        //   std::cout << "  tau[" << iHalf << "]=" << tau[iHalf] << std::endl;
+        // }
 
         P_o[kl] = r12[iHalf] * totalPressure[iHalf];
         rup_o[kl] = ru12[iHalf] * P_o[kl];
@@ -2881,17 +2877,17 @@ void IdealMhdModel::computeMHDForces() {
         zsp_o[kl] = zs[iHalf] * P_o[kl];
         taup_o[kl] = tau[iHalf] * totalPressure[iHalf];
 
-        // DEBUG: Check computed quantities for NaN
-        if (kl < 3 && jF == r_.nsMinF) {
-          std::cout << "  Computed: P_o=" << P_o[kl] << ", rup_o=" << rup_o[kl]
-                    << ", zup_o=" << zup_o[kl] << ", taup_o=" << taup_o[kl]
-                    << std::endl;
-          if (!std::isfinite(P_o[kl]) || !std::isfinite(rup_o[kl]) ||
-              !std::isfinite(zup_o[kl]) || !std::isfinite(taup_o[kl])) {
-            std::cout << "ERROR: Non-finite MHD quantity detected!"
-                      << std::endl;
-          }
-        }
+        // DEBUG: Check computed quantities for NaN - commented out for performance
+        // if (kl < 3 && jF == r_.nsMinF) {
+        //   std::cout << "  Computed: P_o=" << P_o[kl] << ", rup_o=" << rup_o[kl]
+        //             << ", zup_o=" << zup_o[kl] << ", taup_o=" << taup_o[kl]
+        //             << std::endl;
+        //   if (!std::isfinite(P_o[kl]) || !std::isfinite(rup_o[kl]) ||
+        //       !std::isfinite(zup_o[kl]) || !std::isfinite(taup_o[kl])) {
+        //     std::cout << "ERROR: Non-finite MHD quantity detected!"
+        //               << std::endl;
+        //   }
+        // }
       }  // kl
 
       for (int kl = 0; kl < s_.nZnT; ++kl) {

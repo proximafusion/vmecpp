@@ -18,6 +18,10 @@
   "extcur": [0.0],
   "lfreeb": false,
   "lasym": true,
+  "raxis_c": [6.0],
+  "raxis_s": [0.0],
+  "zaxis_s": [0.0],
+  "zaxis_c": [0.0],
   "boundary": {
     "nfp": 1,
     "stellSym": false,
