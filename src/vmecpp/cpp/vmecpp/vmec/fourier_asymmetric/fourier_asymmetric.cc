@@ -165,123 +165,26 @@ void FourierToReal3DAsymmFastPoloidal(
     }
   }
 
-  // STEP 2: Compute theta=[pi,2pi] directly using same algorithm as [0,pi]
-  // The original code only computed [0,pi], then used reflection.
-  // For proper Fourier transforms, compute all points directly.
-
-  // Process each poloidal mode m for the SECOND half theta range
-  for (int m = 0; m < sizes.mpol; ++m) {
-    // Work arrays for this m mode (reuse the computation from first half)
-    std::vector<double> rmkcc(nzeta, 0.0);
-    std::vector<double> rmkss(nzeta, 0.0);
-    std::vector<double> zmksc(nzeta, 0.0);
-    std::vector<double> zmkcs(nzeta, 0.0);
-    std::vector<double> rmksc_asym(nzeta, 0.0);
-    std::vector<double> rmkcs_asym(nzeta, 0.0);
-    std::vector<double> zmkcc_asym(nzeta, 0.0);
-    std::vector<double> zmkss_asym(nzeta, 0.0);
-
-    // STAGE 1: Accumulate zeta contributions
-    // Only process n >= 0 (jVMEC uses n ∈ [0, ntor] exactly)
+  // STEP 2: Symmetrization to fill theta=[pi,2pi] using jVMEC pattern
+  // For u in [π, 2π]: total = symmetric - asymmetric
+  for (int l = ntheta2; l < ntheta_eff; ++l) {
     for (int k = 0; k < nzeta; ++k) {
-      for (int n = 0; n <= sizes.ntor; ++n) {
-        // Find mode (m,n)
-        int mn = -1;
-        for (int mn_candidate = 0; mn_candidate < sizes.mnmax; ++mn_candidate) {
-          if (fourier_basis.xm[mn_candidate] == m &&
-              fourier_basis.xn[mn_candidate] / sizes.nfp == n) {
-            mn = mn_candidate;
-            break;
-          }
-        }
-        if (mn < 0) continue;
-
-        // Get basis functions (n >= 0 always, following jVMEC)
-        int idx_nv = k * (sizes.nnyq2 + 1) + n;
-        double cos_nv = (n <= sizes.nnyq2)
-                            ? fourier_basis.cosnv[idx_nv]
-                            : std::cos(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
-        double sin_nv = (n <= sizes.nnyq2)
-                            ? fourier_basis.sinnv[idx_nv]
-                            : std::sin(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
-
-        // Accumulate symmetric coefficients
-        rmkcc[k] += rmncc[mn] * cos_nv;
-        zmksc[k] += zmnsc[mn] * cos_nv;
-
-        if (sizes.lthreed) {
-          rmkss[k] += rmnss[mn] * sin_nv;
-          zmkcs[k] += zmncs[mn] * sin_nv;
-        }
-
-        // Accumulate asymmetric coefficients
-        rmksc_asym[k] += rmnsc[mn] * cos_nv;
-        zmkcc_asym[k] += zmncc[mn] * cos_nv;
-
-        if (sizes.lthreed) {
-          rmkcs_asym[k] += rmncs[mn] * sin_nv;
-          zmkss_asym[k] += zmnss[mn] * sin_nv;
-        }
-      }
-    }
-
-    // STAGE 2: Transform in theta for the SECOND half [pi,2pi)
-    for (int l = ntheta2; l < ntheta_eff; ++l) {
-      // Compute basis functions directly for the full theta range
-      double theta = 2.0 * M_PI * l / ntheta_eff;
-      double cos_mu = cos(m * theta);
-      double sin_mu = sin(m * theta);
-
-      // Apply same normalization as FourierBasisFastPoloidal
-      if (m > 0) {
-        cos_mu *= sqrt(2.0);
-        sin_mu *= sqrt(2.0);
-      }
-
-      for (int k = 0; k < nzeta; ++k) {
-        int idx = l * nzeta + k;
-        if (idx >= r_real.size()) continue;
-
-        // Initialize to zero for clean computation
-        if (m == 0) {
-          r_real[idx] = 0.0;
-          z_real[idx] = 0.0;
-          lambda_real[idx] = 0.0;
-          ru_real[idx] = 0.0;
-          zu_real[idx] = 0.0;
-        }
-
-        // Symmetric contributions
-        r_real[idx] += rmkcc[k] * cos_mu;
-        z_real[idx] += zmksc[k] * sin_mu;
+      int idx = l * nzeta + k;
+      if (idx >= r_real.size()) continue;
+      
+      // Find corresponding point in [0,π] range
+      int l_reflected = ntheta_eff - 1 - l;  // Reflection: θ → 2π - θ
+      int idx_reflected = l_reflected * nzeta + k;
+      
+      if (idx_reflected >= 0 && idx_reflected < ntheta2 * nzeta) {
+        // Apply symmetrization: total = symmetric - asymmetric
+        r_real[idx] = (r_real[idx_reflected] - asym_R[idx_reflected]) - asym_R[idx_reflected];
+        z_real[idx] = -(z_real[idx_reflected] - asym_Z[idx_reflected]) + asym_Z[idx_reflected];
+        lambda_real[idx] = (lambda_real[idx_reflected] - asym_L[idx_reflected]) - asym_L[idx_reflected];
         
-        // Symmetric derivatives
-        ru_real[idx] += -m * rmkcc[k] * sin_mu;
-        zu_real[idx] += m * zmksc[k] * cos_mu;
-
-        if (sizes.lthreed) {
-          r_real[idx] += rmkss[k] * sin_mu;
-          z_real[idx] += zmkcs[k] * cos_mu;
-          
-          ru_real[idx] += m * rmkss[k] * cos_mu;
-          zu_real[idx] += -m * zmkcs[k] * sin_mu;
-        }
-
-        // Asymmetric contributions
-        r_real[idx] += rmksc_asym[k] * sin_mu;
-        z_real[idx] += zmkcc_asym[k] * cos_mu;
-        
-        // Asymmetric derivatives
-        ru_real[idx] += m * rmksc_asym[k] * cos_mu;
-        zu_real[idx] += -m * zmkcc_asym[k] * sin_mu;
-
-        if (sizes.lthreed) {
-          r_real[idx] += rmkcs_asym[k] * cos_mu;
-          z_real[idx] += zmkss_asym[k] * sin_mu;
-          
-          ru_real[idx] += -m * rmkcs_asym[k] * sin_mu;
-          zu_real[idx] += m * zmkss_asym[k] * cos_mu;
-        }
+        // Derivative symmetrization
+        ru_real[idx] = -(ru_real[idx_reflected] - asym_Ru[idx_reflected]) - asym_Ru[idx_reflected];
+        zu_real[idx] = (zu_real[idx_reflected] - asym_Zu[idx_reflected]) + asym_Zu[idx_reflected];
       }
     }
   }
