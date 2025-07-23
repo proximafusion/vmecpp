@@ -71,17 +71,10 @@ void FourierToReal3DAsymmFastPoloidal(
         if (mn < 0) continue;
 
         // Get basis functions (n >= 0 always, following jVMEC)
+        // All basis functions from fourier_basis already include nscale normalization
         int idx_nv = k * (sizes.nnyq2 + 1) + n;
-        double cos_nv, sin_nv;
-        if (n <= sizes.nnyq2) {
-          cos_nv = fourier_basis.cosnv[idx_nv];
-          sin_nv = fourier_basis.sinnv[idx_nv];
-        } else {
-          // For n > nnyq2, compute with proper normalization
-          double nscale = (n > 0) ? std::sqrt(2.0) : 1.0;
-          cos_nv = nscale * std::cos(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
-          sin_nv = nscale * std::sin(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
-        }
+        double cos_nv = fourier_basis.cosnv[idx_nv];
+        double sin_nv = fourier_basis.sinnv[idx_nv];
 
         // Accumulate symmetric coefficients
         rmkcc[k] += rmncc[mn] * cos_nv;
@@ -171,14 +164,17 @@ void FourierToReal3DAsymmFastPoloidal(
 
   // STEP 2: Symmetrization to fill theta=[pi,2pi] using jVMEC pattern
   // For u in [π, 2π]: total = symmetric - asymmetric
+  const int ntheta1 = 2 * ntheta2;  // full range size
   for (int l = ntheta2; l < ntheta_eff; ++l) {
     for (int k = 0; k < nzeta; ++k) {
       int idx = l * nzeta + k;
       if (idx >= r_real.size()) continue;
       
-      // Find corresponding point in [0,π] range
-      int l_reflected = ntheta_eff - 1 - l;  // Reflection: θ → 2π - θ
-      int idx_reflected = l_reflected * nzeta + k;
+      // Find corresponding point using jVMEC reflection formula
+      int lr = ntheta1 - l;  // jVMEC: theta reflection
+      if (lr >= ntheta2) lr = ntheta2 - 1;  // ensure within [0, pi] range
+      int kr = (nzeta - k) % nzeta;  // jVMEC: zeta reflection
+      int idx_reflected = lr * nzeta + kr;
       
       if (idx_reflected >= 0 && idx_reflected < ntheta2 * nzeta) {
         // Apply symmetrization following jVMEC pattern:
