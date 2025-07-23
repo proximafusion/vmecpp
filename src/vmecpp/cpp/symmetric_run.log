@@ -1,0 +1,25 @@
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: target //vmecpp/vmec/vmec_standalone:vmec_standalone (0 packages loaded, 0 targets configured)
+Analyzing: target //vmecpp/vmec/vmec_standalone:vmec_standalone (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed target //vmecpp/vmec/vmec_standalone:vmec_standalone (0 packages loaded, 0 targets configured).
+INFO: Found 1 target...
+Target //vmecpp/vmec/vmec_standalone:vmec_standalone up-to-date:
+  bazel-bin/vmecpp/vmec/vmec_standalone/vmec_standalone
+INFO: Elapsed time: 0.155s, Critical Path: 0.02s
+INFO: 1 process: 1 internal.
+INFO: Build completed successfully, 1 total action
+INFO: Running command line: bazel-bin/vmecpp/vmec/vmec_standalone/vmec_standalone solovev.json
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+F0000 00:00:1753261465.309978 3129162 vmec_standalone.cc:29] Check failed: indata_json is OK (NOT_FOUND: File solovev.json not found.) Could not read input file 'solovev.json': NOT_FOUND: File solovev.json not found.
+*** Check failure stack trace: ***
+    @     0x5589afa527a6  absl::lts_20230802::log_internal::LogMessage::PrepareToDie()
+    @     0x5589afa52815  absl::lts_20230802::log_internal::LogMessage::SendToLog()
+    @     0x5589afa52294  absl::lts_20230802::log_internal::LogMessage::Flush()
+    @     0x5589afa52af2  absl::lts_20230802::log_internal::LogMessageFatal::~LogMessageFatal()
+    @     0x5589af8af5e9  main
+    @     0x7fce9e0376b5  (unknown)
+    @     0x7fce9e037769  __libc_start_main
+    @     0x5589af8af355  _start

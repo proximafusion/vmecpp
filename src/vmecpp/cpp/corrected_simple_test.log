@@ -1,0 +1,10 @@
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+F0000 00:00:1753265626.007356 3165262 vmec_standalone.cc:45] Check failed: out is OK (INTERNAL: VMEC++ did not converge) Error encountered during the VMEC++ run: INTERNAL: VMEC++ did not converge
+*** Check failure stack trace: ***
+    @     0x55bb4b025a61  absl::lts_20230802::log_internal::LogMessage::SendToLog()
+    @     0x55bb4b026059  absl::lts_20230802::log_internal::LogMessageFatal::~LogMessageFatal()
+    @     0x55bb4aedc74d  main.cold
+    @     0x7f7109e376b5  (unknown)
+    @     0x7f7109e37769  __libc_start_main
+    @     0x55bb4aef78a5  _start
+timeout: the monitored command dumped core
