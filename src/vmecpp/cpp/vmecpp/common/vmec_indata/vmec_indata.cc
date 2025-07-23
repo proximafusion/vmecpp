@@ -923,11 +923,11 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.rbc.setZero(vmec_indata.mpol, 2 * vmec_indata.ntor + 1);
     std::vector<BoundaryCoefficient> entries = maybe_rbc->value();
     for (const BoundaryCoefficient& entry : entries) {
-      if (entry.m > vmec_indata.mpol) {
+      if (entry.m > vmec_indata.mpol - 1) {
         LOG(INFO) << absl::StrFormat(
-            "Ignoring rbc entry with m = %d, since m is larger than mpol "
+            "Ignoring rbc entry with m = %d, since m is larger than (mpol - 1) "
             "= %d",
-            entry.m, vmec_indata.mpol);
+            entry.m, vmec_indata.mpol - 1);
         continue;
       }
       if (std::abs(entry.n) > vmec_indata.ntor) {
@@ -953,11 +953,11 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.zbs.setZero(vmec_indata.mpol, 2 * vmec_indata.ntor + 1);
     std::vector<BoundaryCoefficient> entries = maybe_zbs->value();
     for (const BoundaryCoefficient& entry : entries) {
-      if (entry.m > vmec_indata.mpol) {
+      if (entry.m > vmec_indata.mpol - 1) {
         LOG(INFO) << absl::StrFormat(
-            "Ignoring zbs entry with m = %d, since m is larger than mpol "
+            "Ignoring zbs entry with m = %d, since m is larger than (mpol - 1) "
             "= %d",
-            entry.m, vmec_indata.mpol);
+            entry.m, vmec_indata.mpol - 1);
         continue;
       }
       if (std::abs(entry.n) > vmec_indata.ntor) {
@@ -990,11 +990,11 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     if (maybe_rbs->has_value()) {
       std::vector<BoundaryCoefficient> entries = maybe_rbs->value();
       for (const BoundaryCoefficient& entry : entries) {
-        if (entry.m > vmec_indata.mpol) {
+        if (entry.m > vmec_indata.mpol - 1) {
           LOG(INFO) << absl::StrFormat(
-              "Ignoring rbs entry with m = %d, since m is larger than mpol "
-              "= %d",
-              entry.m, vmec_indata.mpol);
+              "Ignoring rbs entry with m = %d, since m is larger than (mpol - "
+              "1) = %d",
+              entry.m, vmec_indata.mpol - 1);
           continue;
         }
         if (std::abs(entry.n) > vmec_indata.ntor) {
@@ -1020,11 +1020,11 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     if (maybe_zbc->has_value()) {
       std::vector<BoundaryCoefficient> entries = maybe_zbc->value();
       for (const BoundaryCoefficient& entry : entries) {
-        if (entry.m > vmec_indata.mpol) {
+        if (entry.m > vmec_indata.mpol - 1) {
           LOG(INFO) << absl::StrFormat(
-              "Ignoring zbc entry with m = %d, since m is larger than mpol "
-              "= %d",
-              entry.m, vmec_indata.mpol);
+              "Ignoring zbc entry with m = %d, since m is larger than (mpol - "
+              "1) = %d",
+              entry.m, vmec_indata.mpol - 1);
           continue;
         }
         if (std::abs(entry.n) > vmec_indata.ntor) {
