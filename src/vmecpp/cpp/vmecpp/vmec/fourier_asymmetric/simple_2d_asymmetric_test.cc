@@ -63,6 +63,8 @@ TEST(Simple2DAsymmetricTest, TestBasic2DTransform) {
   std::vector<double> r_real(sizes.nZnT, 0.0);
   std::vector<double> z_real(sizes.nZnT, 0.0);
   std::vector<double> lambda_real(sizes.nZnT, 0.0);
+  std::vector<double> ru_real(real_size);
+  std::vector<double> zu_real(real_size);
 
   std::cout << "Input coefficients:" << std::endl;
   for (int mn = 0; mn < sizes.mnmax; ++mn) {
@@ -176,6 +178,8 @@ TEST(Simple2DAsymmetricTest, TestSymmetrizationOnly) {
   std::vector<double> r_real(sizes.nZnT, 0.0);
   std::vector<double> z_real(sizes.nZnT, 0.0);
   std::vector<double> lambda_real(sizes.nZnT, 0.0);
+  std::vector<double> ru_real(real_size);
+  std::vector<double> zu_real(real_size);
 
   // Fill with a simple pattern
   for (int i = 0; i < sizes.nZnT; ++i) {

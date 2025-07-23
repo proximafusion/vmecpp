@@ -52,6 +52,8 @@ int main() {
   std::vector<double> r_real(real_size);
   std::vector<double> z_real(real_size);
   std::vector<double> lambda_real(real_size);
+  std::vector<double> ru_real(real_size);
+  std::vector<double> zu_real(real_size);
 
   std::cout << "\nTesting 2D transform first..." << std::endl;
 
@@ -61,7 +63,8 @@ int main() {
       absl::MakeSpan(rmnsc), absl::MakeSpan(rmncs), absl::MakeSpan(zmnsc),
       absl::MakeSpan(zmncs), absl::MakeSpan(zmncc), absl::MakeSpan(zmnss),
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
-      absl::MakeSpan(lambda_real));
+      absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real),
+      absl::MakeSpan(zu_real));
 
   // Check for NaN in 2D
   bool found_nan_2d = false;
@@ -90,7 +93,8 @@ int main() {
       absl::MakeSpan(rmnsc), absl::MakeSpan(rmncs), absl::MakeSpan(zmnsc),
       absl::MakeSpan(zmncs), absl::MakeSpan(zmncc), absl::MakeSpan(zmnss),
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
-      absl::MakeSpan(lambda_real));
+      absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real),
+      absl::MakeSpan(zu_real));
 
   // Check for NaN
   bool found_nan = false;

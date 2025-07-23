@@ -108,6 +108,10 @@ TEST_F(PipelineIntegrationTest, TestCompleteAsymmetricPipeline) {
   std::vector<double> z_asym(reduced_size, 0.0);
   std::vector<double> lambda_sym(reduced_size, 0.0);
   std::vector<double> lambda_asym(reduced_size, 0.0);
+  std::vector<double> ru_sym(reduced_size, 0.0);
+  std::vector<double> ru_asym(reduced_size, 0.0);
+  std::vector<double> zu_sym(reduced_size, 0.0);
+  std::vector<double> zu_asym(reduced_size, 0.0);
 
   std::cout
       << "STEP 1: Applying FourierToReal3DAsymmFastPoloidalSeparated...\n";
@@ -118,7 +122,9 @@ TEST_F(PipelineIntegrationTest, TestCompleteAsymmetricPipeline) {
       absl::MakeConstSpan(zmncc), absl::MakeConstSpan(zmnss),
       absl::MakeSpan(r_sym), absl::MakeSpan(r_asym), absl::MakeSpan(z_sym),
       absl::MakeSpan(z_asym), absl::MakeSpan(lambda_sym),
-      absl::MakeSpan(lambda_asym));
+      absl::MakeSpan(lambda_asym), absl::MakeSpan(ru_sym),
+      absl::MakeSpan(ru_asym), absl::MakeSpan(zu_sym),
+      absl::MakeSpan(zu_asym));
 
   // Verify separated arrays are populated
   bool r_sym_populated = false, r_asym_populated = false;

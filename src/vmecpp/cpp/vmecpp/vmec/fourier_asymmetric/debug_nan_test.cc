@@ -39,6 +39,8 @@ int main() {
   std::vector<double> r_real(sizes.nZnT, 0.0);
   std::vector<double> z_real(sizes.nZnT, 0.0);
   std::vector<double> lambda_real(sizes.nZnT, 0.0);
+  std::vector<double> ru_real(sizes.nZnT, 0.0);
+  std::vector<double> zu_real(sizes.nZnT, 0.0);
 
   std::cout << "DEBUG: Created output arrays of size " << sizes.nZnT
             << std::endl;

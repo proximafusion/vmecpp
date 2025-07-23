@@ -90,13 +90,16 @@ TEST(DebugNormalizationTest, CompareWithBasisFunctions) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real(sizes.nZnT);
+  std::vector<double> zu_real(sizes.nZnT);
 
   FourierToReal3DAsymmFastPoloidal(
       sizes, absl::MakeSpan(rmncc), absl::MakeSpan(rmnss),
       absl::MakeSpan(rmnsc), absl::MakeSpan(rmncs), absl::MakeSpan(zmnsc),
       absl::MakeSpan(zmncs), absl::MakeSpan(zmncc), absl::MakeSpan(zmnss),
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
-      absl::MakeSpan(lambda_real));
+      absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real),
+      absl::MakeSpan(zu_real));
 
   std::cout << "\nTransform output vs expected:" << std::endl;
   for (int i = 0; i < sizes.nThetaEff; ++i) {
