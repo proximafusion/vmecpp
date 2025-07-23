@@ -44,6 +44,8 @@ TEST(DebugBoundsTest, MinimalFailingCase) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real(sizes.nZnT);
+  std::vector<double> zu_real(sizes.nZnT);
 
   std::cout << "About to call FourierToReal3DAsymmFastPoloidal..." << std::endl;
 

@@ -99,6 +99,8 @@ TEST(DebugEducationalVMECComparison, AsymmetricTransformPatterns) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real(sizes.nZnT);
+  std::vector<double> zu_real(sizes.nZnT);
 
   std::cout << "\nCalling FourierToReal3DAsymmFastPoloidal..." << std::endl;
 
@@ -218,6 +220,8 @@ TEST(DebugEducationalVMECComparison, AsymmetricCoordinateMapping) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real(sizes.nZnT);
+  std::vector<double> zu_real(sizes.nZnT);
 
   FourierToReal3DAsymmFastPoloidal(
       sizes, absl::MakeSpan(rmncc), absl::MakeSpan(rmnss),
@@ -306,6 +310,8 @@ TEST(DebugEducationalVMECComparison, AsymmetricSymmetrization) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real(sizes.nZnT);
+  std::vector<double> zu_real(sizes.nZnT);
 
   FourierToReal3DAsymmFastPoloidal(
       sizes, absl::MakeSpan(rmncc), absl::MakeSpan(rmnss),

@@ -156,12 +156,13 @@ VmecINDATA::VmecINDATA() {
   }
 
   // zero-initialized boundary shape
-  const int bdy_size = mpol * (2 * ntor + 1);
-  rbc.resize(bdy_size);
-  zbs.resize(bdy_size);
+  const int bdy_size_symm = (mpol + 1) * (2 * ntor + 1);
+  const int bdy_size_asym = mpol * (2 * ntor + 1);
+  rbc.resize(bdy_size_symm);
+  zbs.resize(bdy_size_symm);
   if (lasym) {
-    rbs.resize(bdy_size);
-    zbc.resize(bdy_size);
+    rbs.resize(bdy_size_asym);
+    zbc.resize(bdy_size_asym);
   }
 }
 
@@ -337,29 +338,30 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   // simplicity. In the future we expect VmecINDATA's data members will switch
   // to Eigen types and the extra copy will evaporate.
   RowMatrixXd tmp_matrix;
-  const int linear_size = m_indata.mpol * (2 * m_indata.ntor + 1);
+  const int linear_size_symm = (m_indata.mpol + 1) * (2 * m_indata.ntor + 1);
+  const int linear_size_asym = m_indata.mpol * (2 * m_indata.ntor + 1);
 
   ReadH5Dataset(tmp_matrix, "/indata/rbc", from_file);
-  assert(tmp_matrix.size() == linear_size);
-  m_indata.rbc.resize(linear_size);
+  assert(tmp_matrix.size() == linear_size_symm);
+  m_indata.rbc.resize(linear_size_symm);
   std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
             m_indata.rbc.begin());
 
   ReadH5Dataset(tmp_matrix, "/indata/zbs", from_file);
-  assert(tmp_matrix.size() == linear_size);
-  m_indata.zbs.resize(linear_size);
+  assert(tmp_matrix.size() == linear_size_symm);
+  m_indata.zbs.resize(linear_size_symm);
   std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
             m_indata.zbs.begin());
 
   if (m_indata.lasym) {
     ReadH5Dataset(tmp_matrix, "/indata/rbs", from_file);
-    assert(tmp_matrix.size() == linear_size);
-    m_indata.rbs.resize(linear_size);
+    assert(tmp_matrix.size() == linear_size_asym);
+    m_indata.rbs.resize(linear_size_asym);
     std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
               m_indata.rbs.begin());
     ReadH5Dataset(tmp_matrix, "/indata/zbc", from_file);
-    assert(tmp_matrix.size() == linear_size);
-    m_indata.zbc.resize(linear_size);
+    assert(tmp_matrix.size() == linear_size_asym);
+    m_indata.zbc.resize(linear_size_asym);
     std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
               m_indata.zbc.begin());
   }
@@ -894,8 +896,8 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   if (vmec_indata.lasym) {
     // Always resize asymmetric arrays when lasym=true, regardless of JSON
     // content
-    vmec_indata.rbs.resize((vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1), 0.0);
-    vmec_indata.zbc.resize((vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1), 0.0);
+    vmec_indata.rbs.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
+    vmec_indata.zbc.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
 
     auto maybe_rbs = BoundaryCoefficient::FromJson(j, "rbs");
     if (!maybe_rbs.ok()) {
@@ -1050,13 +1052,14 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
     output["zbc"] = std::vector<nlohmann::json>();
   }
   nlohmann::json tmp_obj;
+  
+  // Symmetric arrays (rbc, zbs) have size (mpol+1) * (2*ntor+1)
   for (int m = 0; m <= mpol; ++m) {
     for (int n = 0; n < 2 * ntor + 1; ++n) {
       const int idx_mn = m * (2 * ntor + 1) + n;
 
       tmp_obj["m"] = m;
       tmp_obj["n"] = n - ntor;
-      tmp_obj["value"] = rbc[idx_mn];
 
       auto push_nonzero = [&output, &tmp_obj](const std::string& key,
                                               double value) {
@@ -1068,8 +1071,26 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
 
       push_nonzero("rbc", rbc[idx_mn]);
       push_nonzero("zbs", zbs[idx_mn]);
-      if (lasym) {
-        // we also have non-stellarator-symmetric components
+    }
+  }
+  
+  // Asymmetric arrays (rbs, zbc) have size mpol * (2*ntor+1)
+  if (lasym) {
+    for (int m = 0; m < mpol; ++m) {
+      for (int n = 0; n < 2 * ntor + 1; ++n) {
+        const int idx_mn = m * (2 * ntor + 1) + n;
+
+        tmp_obj["m"] = m;
+        tmp_obj["n"] = n - ntor;
+
+        auto push_nonzero = [&output, &tmp_obj](const std::string& key,
+                                                double value) {
+          tmp_obj["value"] = value;
+          if (tmp_obj["value"] != 0.0) {
+            output[key].push_back(tmp_obj);
+          }
+        };
+
         push_nonzero("rbs", rbs[idx_mn]);
         push_nonzero("zbc", zbc[idx_mn]);
       }
@@ -1383,7 +1404,7 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   const std::size_t expected_bdy_size_asym =
-      vmec_indata.lasym ? (vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1) : 0;
+      vmec_indata.lasym ? vmec_indata.mpol * (2 * vmec_indata.ntor + 1) : 0;
 
   // rbs
   if (vmec_indata.rbs.size() != expected_bdy_size_asym) {

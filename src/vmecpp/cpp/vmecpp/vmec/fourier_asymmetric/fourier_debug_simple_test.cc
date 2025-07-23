@@ -48,6 +48,8 @@ TEST(FourierDebugSimpleTest, TestFirstHalfThetaOnly) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real(sizes.nZnT);
+  std::vector<double> zu_real(sizes.nZnT);
 
   // Set cosine mode (m=1, n=0)
   rmncc[1] = 1.0;  // Assuming mode index 1 is (m=1,n=0)

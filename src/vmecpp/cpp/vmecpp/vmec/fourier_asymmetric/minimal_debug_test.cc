@@ -46,6 +46,8 @@ TEST(MinimalDebugTest, TestAsymmetricTransformDirect) {
   std::vector<double> r_real(sizes_asym.nZnT, 0.0);
   std::vector<double> z_real(sizes_asym.nZnT, 0.0);
   std::vector<double> lambda_real(sizes_asym.nZnT, 0.0);
+  std::vector<double> ru_real(sizes_asym.nZnT, 0.0);
+  std::vector<double> zu_real(sizes_asym.nZnT, 0.0);
 
   std::cout << "Calling FourierToReal3DAsymmFastPoloidal..." << std::endl;
 

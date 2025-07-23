@@ -45,6 +45,10 @@ TEST(SimpleNormalizationTest, SingleAsymmetricMode) {
   std::vector<double> r_real(sizes.nZnT);
   std::vector<double> z_real(sizes.nZnT);
   std::vector<double> lambda_real(sizes.nZnT);
+  std::vector<double> ru_real(sizes.nZnT);
+  std::vector<double> zu_real(sizes.nZnT);
+  std::vector<double> ru_real(real_size);
+  std::vector<double> zu_real(real_size);
 
   FourierToReal3DAsymmFastPoloidal(
       sizes, absl::MakeSpan(rmncc), absl::MakeSpan(rmnss),

@@ -28,14 +28,16 @@ TEST(InputValidationTest, ValidateAsymmetricInputStructure) {
             << ", ntor=" << indata.ntor << std::endl;
 
   // Calculate expected array sizes
-  int coeff_size = indata.mpol * (2 * indata.ntor + 1);
-  std::cout << "Calculated coefficient array size: " << coeff_size << std::endl;
+  int coeff_size_symm = (indata.mpol + 1) * (2 * indata.ntor + 1);
+  int coeff_size_asym = indata.mpol * (2 * indata.ntor + 1);
+  std::cout << "Calculated symmetric coefficient array size: " << coeff_size_symm << std::endl;
+  std::cout << "Calculated asymmetric coefficient array size: " << coeff_size_asym << std::endl;
 
   // Initialize arrays
-  indata.rbc.resize(coeff_size, 0.0);
-  indata.zbs.resize(coeff_size, 0.0);
-  indata.rbs.resize(coeff_size, 0.0);
-  indata.zbc.resize(coeff_size, 0.0);
+  indata.rbc.resize(coeff_size_symm, 0.0);
+  indata.zbs.resize(coeff_size_symm, 0.0);
+  indata.rbs.resize(coeff_size_asym, 0.0);
+  indata.zbc.resize(coeff_size_asym, 0.0);
 
   std::cout << "Array sizes after resize:" << std::endl;
   std::cout << "  rbc.size() = " << indata.rbc.size() << std::endl;
@@ -46,26 +48,27 @@ TEST(InputValidationTest, ValidateAsymmetricInputStructure) {
   // Test index calculations for different modes
   std::cout << "\nTesting index calculations:" << std::endl;
 
-  for (int m = 0; m < indata.mpol; ++m) {
+  for (int m = 0; m <= indata.mpol; ++m) {  // Note: m goes up to mpol for symmetric arrays
     for (int n = -indata.ntor; n <= indata.ntor; ++n) {
       int idx = m * (2 * indata.ntor + 1) + (n + indata.ntor);
       std::cout << "  m=" << m << ", n=" << n << " -> idx=" << idx;
 
-      if (idx >= 0 && idx < coeff_size) {
+      if (idx >= 0 && idx < coeff_size_symm) {
         std::cout << " ✅ Valid" << std::endl;
 
         // Test setting coefficient
         indata.rbc[idx] = 1.0 + m + 0.1 * n;
         indata.zbs[idx] = 2.0 + m + 0.1 * n;
-        if (indata.lasym) {
-          indata.rbs[idx] = 0.01 * (1.0 + m + 0.1 * n);
-          indata.zbc[idx] = 0.01 * (2.0 + m + 0.1 * n);
+        if (indata.lasym && m < indata.mpol) {  // Asymmetric arrays don't include m=mpol
+          int idx_asym = m * (2 * indata.ntor + 1) + (n + indata.ntor);
+          indata.rbs[idx_asym] = 0.01 * (1.0 + m + 0.1 * n);
+          indata.zbc[idx_asym] = 0.01 * (2.0 + m + 0.1 * n);
         }
 
       } else {
         std::cout << " ❌ Invalid (out of bounds)" << std::endl;
         FAIL() << "Index out of bounds for m=" << m << ", n=" << n
-               << ", idx=" << idx << ", size=" << coeff_size;
+               << ", idx=" << idx << ", size=" << coeff_size_symm;
       }
     }
   }
@@ -108,19 +111,20 @@ TEST(InputValidationTest, ValidateAsymmetricInputStructure) {
             << std::endl;
 
   if (indata.lasym) {
-    std::cout << "  idx(1,0) = " << idx_10 << ", rbs = " << indata.rbs[idx_10]
+    // For asymmetric arrays, only m=0 exists (since mpol=1 and asymmetric arrays exclude m=mpol)
+    std::cout << "  idx(0,0) = " << idx_00 << ", rbs = " << indata.rbs[idx_00]
               << std::endl;
-    std::cout << "  idx(1,0) = " << idx_10 << ", zbc = " << indata.zbc[idx_10]
+    std::cout << "  idx(0,0) = " << idx_00 << ", zbc = " << indata.zbc[idx_00]
               << std::endl;
   }
 
   // All validations passed
   std::cout << "\n✅ All input validation tests passed!" << std::endl;
 
-  EXPECT_EQ(indata.rbc.size(), coeff_size);
-  EXPECT_EQ(indata.zbs.size(), coeff_size);
-  EXPECT_EQ(indata.rbs.size(), coeff_size);
-  EXPECT_EQ(indata.zbc.size(), coeff_size);
+  EXPECT_EQ(indata.rbc.size(), coeff_size_symm);
+  EXPECT_EQ(indata.zbs.size(), coeff_size_symm);
+  EXPECT_EQ(indata.rbs.size(), coeff_size_asym);
+  EXPECT_EQ(indata.zbc.size(), coeff_size_asym);
   EXPECT_EQ(indata.raxis_c.size(), axis_size);
   EXPECT_EQ(indata.zaxis_s.size(), axis_size);
 

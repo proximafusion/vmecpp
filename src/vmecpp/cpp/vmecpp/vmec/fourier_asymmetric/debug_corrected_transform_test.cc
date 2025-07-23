@@ -72,6 +72,8 @@ TEST_F(DebugCorrectedTransformTest, TestMinimalAsymmetricTransform) {
   std::vector<double> r_real(sizes.nZnT, 0.0);
   std::vector<double> z_real(sizes.nZnT, 0.0);
   std::vector<double> lambda_real(sizes.nZnT, 0.0);
+  std::vector<double> ru_real(sizes.nZnT, 0.0);
+  std::vector<double> zu_real(sizes.nZnT, 0.0);
 
   // Call corrected implementation
   std::cout << "\n===== CALLING CORRECTED 2D TRANSFORM =====" << std::endl;

@@ -168,11 +168,12 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.zaxis_c.size(), indata.lasym ? indata.ntor + 1 : 0);
 
   // (initial guess for) boundary shape
-  const int bdy_size = indata.mpol * (2 * indata.ntor + 1);
-  EXPECT_EQ(indata.rbc.size(), bdy_size);
-  EXPECT_EQ(indata.zbs.size(), bdy_size);
-  EXPECT_EQ(indata.rbs.size(), indata.lasym ? bdy_size : 0);
-  EXPECT_EQ(indata.zbc.size(), indata.lasym ? bdy_size : 0);
+  const int bdy_size_symm = (indata.mpol + 1) * (2 * indata.ntor + 1);
+  const int bdy_size_asym = indata.mpol * (2 * indata.ntor + 1);
+  EXPECT_EQ(indata.rbc.size(), bdy_size_symm);
+  EXPECT_EQ(indata.zbs.size(), bdy_size_symm);
+  EXPECT_EQ(indata.rbs.size(), indata.lasym ? bdy_size_asym : 0);
+  EXPECT_EQ(indata.zbc.size(), indata.lasym ? bdy_size_asym : 0);
 }  // CheckDefaults
 
 TEST(TestVmecINDATA, ToJson) {

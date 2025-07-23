@@ -72,8 +72,8 @@ VmecINDATAPyWrapper::VmecINDATAPyWrapper(const VmecINDATA& indata)
   if (lasym) {
     raxis_s = ToEigenVector(indata.raxis_s);
     zaxis_c = ToEigenVector(indata.zaxis_c);
-    rbs = ToEigenMatrix(indata.rbs, mpol + 1, (2 * ntor) + 1);
-    zbc = ToEigenMatrix(indata.zbc, mpol + 1, (2 * ntor) + 1);
+    rbs = ToEigenMatrix(indata.rbs, mpol, (2 * ntor) + 1);
+    zbc = ToEigenMatrix(indata.zbc, mpol, (2 * ntor) + 1);
   }
 }
 
