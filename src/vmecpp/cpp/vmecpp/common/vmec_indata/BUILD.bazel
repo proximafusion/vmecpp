@@ -35,6 +35,16 @@ cc_library(
 )
 
 cc_test(
+    name = "vmec_indata_array_sizing_test",
+    srcs = ["vmec_indata_array_sizing_test.cc"],
+    deps = [
+        ":vmec_indata",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
     name = "vmec_indata_test",
     srcs = ["vmec_indata_test.cc"],
     data = [
