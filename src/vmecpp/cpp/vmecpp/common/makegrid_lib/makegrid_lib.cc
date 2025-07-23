@@ -748,10 +748,15 @@ absl::Status WriteMakegridNetCDFFile(
   static constexpr char kNormalizeByCurrents = 'S';
 
   // number of response tables in this mgrid file
-  const int number_of_serial_circuits =
-      static_cast<int>(response_table_b.b_r.size());
-  CHECK_GT(number_of_serial_circuits, 0)
+  const int n_serial_circuits = static_cast<int>(response_table_b.b_r.rows());
+  CHECK_GT(n_serial_circuits, 0)
       << "No magnetic field cache present to be written.";
+
+  const int n_circuit_currents = static_cast<int>(circuit_currents.size());
+  CHECK_EQ(n_circuit_currents, n_serial_circuits) << absl::StrFormat(
+      "number of provided circuit currents (%d) has to equal number of serial "
+      "circuits(%d)",
+      n_circuit_currents, n_serial_circuits);
 
   int ncid = 0;
   CHECK_EQ(nc_create(makegrid_filename.c_str(), NC_CLOBBER, &ncid), NC_NOERR);
@@ -763,7 +768,7 @@ absl::Status WriteMakegridNetCDFFile(
       NC_NOERR);
 
   int id_dimension_external_coil_groups = 0;
-  CHECK_EQ(nc_def_dim(ncid, "external_coil_groups", number_of_serial_circuits,
+  CHECK_EQ(nc_def_dim(ncid, "external_coil_groups", n_serial_circuits,
                       &id_dimension_external_coil_groups),
            NC_NOERR);
 
@@ -771,7 +776,7 @@ absl::Status WriteMakegridNetCDFFile(
   CHECK_EQ(nc_def_dim(ncid, "dim_00001", 1, &id_dimension_dim_00001), NC_NOERR);
 
   int id_dimension_external_coils = 0;
-  CHECK_EQ(nc_def_dim(ncid, "external_coils", number_of_serial_circuits,
+  CHECK_EQ(nc_def_dim(ncid, "external_coils", n_serial_circuits,
                       &id_dimension_external_coils),
            NC_NOERR);
 
@@ -846,13 +851,13 @@ absl::Status WriteMakegridNetCDFFile(
                       &id_dimension_external_coils, &id_variable_raw_coil_cur),
            NC_NOERR);
 
-  std::vector<int> ids_variable_br(number_of_serial_circuits, 0);
-  std::vector<int> ids_variable_bp(number_of_serial_circuits, 0);
-  std::vector<int> ids_variable_bz(number_of_serial_circuits, 0);
-  std::vector<int> ids_variable_ar(number_of_serial_circuits, 0);
-  std::vector<int> ids_variable_ap(number_of_serial_circuits, 0);
-  std::vector<int> ids_variable_az(number_of_serial_circuits, 0);
-  for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
+  std::vector<int> ids_variable_br(n_serial_circuits, 0);
+  std::vector<int> ids_variable_bp(n_serial_circuits, 0);
+  std::vector<int> ids_variable_bz(n_serial_circuits, 0);
+  std::vector<int> ids_variable_ar(n_serial_circuits, 0);
+  std::vector<int> ids_variable_ap(n_serial_circuits, 0);
+  std::vector<int> ids_variable_az(n_serial_circuits, 0);
+  for (int circuit_index = 0; circuit_index < n_serial_circuits;
        ++circuit_index) {
     std::array<int, 3> grid_dimension = {id_dimension_phi, id_dimension_zee,
                                          id_dimension_rad};
@@ -922,8 +927,7 @@ absl::Status WriteMakegridNetCDFFile(
                       &(makegrid_parameters.number_of_field_periods)),
            NC_NOERR);
 
-  CHECK_EQ(nc_put_var(ncid, id_variable_nextcur, &number_of_serial_circuits),
-           NC_NOERR);
+  CHECK_EQ(nc_put_var(ncid, id_variable_nextcur, &n_serial_circuits), NC_NOERR);
 
   CHECK_EQ(
       nc_put_var(ncid, id_variable_rmin, &(makegrid_parameters.r_grid_minimum)),
@@ -947,7 +951,7 @@ absl::Status WriteMakegridNetCDFFile(
   // it is ok to have a one-dimensional storage here.
   std::string coil_group_names;
 
-  for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
+  for (int circuit_index = 0; circuit_index < n_serial_circuits;
        ++circuit_index) {
     // TODO(jons): Figure out how the name of the coil groups is determined in
     // MAKEGRID. The challenge is that many coils (with individual names) can
@@ -972,7 +976,7 @@ absl::Status WriteMakegridNetCDFFile(
   CHECK_EQ(nc_put_var(ncid, id_variable_raw_coil_cur, circuit_currents.data()),
            NC_NOERR);
 
-  for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
+  for (int circuit_index = 0; circuit_index < n_serial_circuits;
        ++circuit_index) {
     CHECK_EQ(nc_put_var(ncid, ids_variable_br[circuit_index],
                         response_table_b.b_r.row(circuit_index).data()),
