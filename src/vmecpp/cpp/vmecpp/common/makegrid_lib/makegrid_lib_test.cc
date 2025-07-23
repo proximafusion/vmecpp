@@ -753,4 +753,8 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
 // TODO(jons): implement test of stellarator-symmetric mgrid file using
 // symmetric C++ implementation
 
+// TODO(jons): add test of WriteMakegridNetCDFFile
+// -> in particular, make sure that the consistency of number of serial circuits
+// in the response table and the number of circuit currents is properly checked
+
 }  // namespace makegrid
