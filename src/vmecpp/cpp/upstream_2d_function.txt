@@ -1,0 +1,200 @@
+1285:void IdealMhdModel::dft_FourierToReal_2d_symm(
+1286-    const FourierGeometry& physical_x) {
+1287-  // can safely assume lthreed == false in here
+1288-
+1289-  const int num_realsp = (r_.nsMaxF1 - r_.nsMinF1) * s_.nThetaEff;
+1290-
+1291-  for (auto* v :
+1292-       {&r1_e, &r1_o, &ru_e, &ru_o, &z1_e, &z1_o, &zu_e, &zu_o, &lu_e, &lu_o}) {
+1293-    absl::c_fill_n(*v, num_realsp, 0);
+1294-  }
+1295-
+1296-  int num_con = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nThetaEff;
+1297-  absl::c_fill_n(rCon, num_con, 0);
+1298-  absl::c_fill_n(zCon, num_con, 0);
+1299-
+1300-// need to wait for other threads to have filled _i and _o arrays above
+1301-#ifdef _OPENMP
+1302-#pragma omp barrier
+1303-#endif  // _OPENMP
+1304-
+1305-  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+1306-    double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+1307-    double* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+1308-    double* src_lsc = &(physical_x.lmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+1309-
+1310-    for (int l = 0; l < s_.nThetaReduced; ++l) {
+1311-      std::array<double, 2> rnkcc = {0.0, 0.0};
+1312-      std::array<double, 2> rnkcc_m = {0.0, 0.0};
+1313-      std::array<double, 2> znksc = {0.0, 0.0};
+1314-      std::array<double, 2> znksc_m = {0.0, 0.0};
+1315-      std::array<double, 2> lnksc_m = {0.0, 0.0};
+1316-
+1317-      // NOTE: The axis only gets contributions up to m=1.
+1318-      // This is counterintuitive on its own, since the axis is a
+1319-      // one-dimensional object, and thus has to poloidal variation of its
+1320-      // geometry. As far as we know, this has to do with the innermost
+1321-      // half-grid point for computing a better near-axis approximation of the
+1322-      // Jacobian.
+1323-      //
+1324-      // Regular case: all poloidal contributions up to m = mpol - 1.
+1325-      int num_m = s_.mpol;
+1326-      if (jF == 0) {
+1327-        // axis: num_m = 2 -> m = 0, 1
+1328-        num_m = 2;
+1329-      }
+1330-
+1331-      // TODO(jons): One could go further about optimizing this,
+1332-      // but since the axisymmetric case is really not the main deal in VMEC++,
+1333-      // I left it as-is for now.
+1334-
+1335-      for (int m = 0; m < num_m; ++m) {
+1336-        const int m_parity = m % 2;
+1337-        const int idx_ml = m * s_.nThetaReduced + l;
+1338-        const double cosmu = t_.cosmu[idx_ml];
+1339-        rnkcc[m_parity] += src_rcc[m] * cosmu;
+1340-      }
+1341-
+1342-      for (int m = 0; m < num_m; ++m) {
+1343-        const int m_parity = m % 2;
+1344-        const int idx_ml = m * s_.nThetaReduced + l;
+1345-        const double sinmum = t_.sinmum[idx_ml];
+1346-        rnkcc_m[m_parity] += src_rcc[m] * sinmum;
+1347-      }
+1348-
+1349-      for (int m = 0; m < num_m; ++m) {
+1350-        const int m_parity = m % 2;
+1351-        const int idx_ml = m * s_.nThetaReduced + l;
+1352-        const double sinmu = t_.sinmu[idx_ml];
+1353-        znksc[m_parity] += src_zsc[m] * sinmu;
+1354-      }
+1355-
+1356-      for (int m = 0; m < num_m; ++m) {
+1357-        const int m_parity = m % 2;
+1358-        const int idx_ml = m * s_.nThetaReduced + l;
+1359-        const double cosmum = t_.cosmum[idx_ml];
+1360-        znksc_m[m_parity] += src_zsc[m] * cosmum;
+1361-      }
+1362-
+1363-      for (int m = 0; m < num_m; ++m) {
+1364-        const int m_parity = m % 2;
+1365-        const int idx_ml = m * s_.nThetaReduced + l;
+1366-        const double cosmum = t_.cosmum[idx_ml];
+1367-        lnksc_m[m_parity] += src_lsc[m] * cosmum;
+1368-      }
+1369-
+1370-      const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
+1371-      r1_e[idx_jl] += rnkcc[kEvenParity];
+1372-      ru_e[idx_jl] += rnkcc_m[kEvenParity];
+1373-      z1_e[idx_jl] += znksc[kEvenParity];
+1374-      zu_e[idx_jl] += znksc_m[kEvenParity];
+1375-      lu_e[idx_jl] += lnksc_m[kEvenParity];
+1376-      r1_o[idx_jl] += rnkcc[kOddParity];
+1377-      ru_o[idx_jl] += rnkcc_m[kOddParity];
+1378-      z1_o[idx_jl] += znksc[kOddParity];
+1379-      zu_o[idx_jl] += znksc_m[kOddParity];
+1380-      lu_o[idx_jl] += lnksc_m[kOddParity];
+1381-    }  // l
+1382-  }  // j
+1383-
+1384-  // The DFTs for rCon and zCon are done separately here,
+1385-  // since this allows to remove the condition on the radial range from the
+1386-  // innermost loops.
+1387-
+1388-  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+1389-    double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+1390-    double* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+1391-
+1392-    // NOTE: The axis only gets contributions up to m=1.
+1393-    // This is counterintuitive on its own, since the axis is a
+1394-    // one-dimensional object, and thus has to poloidal variation of its
+1395-    // geometry. As far as we know, this has to do with the innermost
+1396-    // half-grid point for computing a better near-axis approximation of the
+1397-    // Jacobian.
+1398-    //
+1399-    // Regular case: all poloidal contributions up to m = mpol - 1.
+1400-    int num_m = s_.mpol;
+1401-    if (jF == 0) {
+1402-      // axis: num_m = 2 -> m = 0, 1
+1403-      num_m = 2;
+1404-    }
+1405-
+1406-    // TODO(jons): One could go further about optimizing this,
+1407-    // but since the axisymmetric case is really not the main deal in VMEC++,
+1408-    // I left it as-is for now.
+1409-
+1410-    // In the following, we need to apply a scaling factor only for the
+1411-    // odd-parity m contributions:
+1412-    //   m_parity == kOddParity(==1) --> * m_p_.sqrtSF[jF - r_.nsMinF1]
+1413-    //   m_parity == kEvenParity(==0) --> * 1
+1414-    //
+1415-    // This expression is 0 if m_parity is 0 (=kEvenParity) and m_p_.sqrtSF[jF -
+1416-    // r_.nsMinF1] if m_parity is 1 (==kOddParity):
+1417-    //   m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]
+1418-    //
+1419-    // This expression is 1 if m_parity is 0 and 0 if m_parity is 1:
+1420-    //   (1 - m_parity)
+1421-    //
+1422-    // Hence, we can replace the following conditional statement:
+1423-    //   double scale = xmpq[m];
+1424-    //   if (m_parity == kOddParity) {
+1425-    //       scale *= m_p_.sqrtSF[jF - r_.nsMinF1];
+1426-    //   }
+1427-    // with the following code:
+1428-    //   const double scale = xmpq[m] * (1 - m_parity + m_parity *
+1429-    //   m_p_.sqrtSF[jF - r_.nsMinF1]);
+1430-
+1431-    for (int m = 0; m < num_m; ++m) {
+1432-      const int m_parity = m % 2;
+1433-      const double scale =
+1434-          xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]);
+1435-
+1436-      for (int l = 0; l < s_.nThetaReduced; ++l) {
+1437-        const int idx_ml = m * s_.nThetaReduced + l;
+1438-        const double cosmu = t_.cosmu[idx_ml];
+1439-        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
+1440-        rCon[idx_con] += src_rcc[m] * cosmu * scale;
+1441-      }  // l
+1442-
+1443-      for (int l = 0; l < s_.nThetaReduced; ++l) {
+1444-        const int idx_ml = m * s_.nThetaReduced + l;
+1445-        const double sinmu = t_.sinmu[idx_ml];
+1446-        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
+1447-        zCon[idx_con] += src_zsc[m] * sinmu * scale;
+1448-      }  // l
+1449-    }  // m
+1450-  }  // jF
+1451-}  // dft_FourierToReal_2d_symm
+1452-
+1453-/** extrapolate (r,z)Con from boundary into volume.
+1454- * Only called on initialization/soft reset to set (r,z)Con0 to a large value.
+1455- * Since (r,z)Con0 are subtracted from (r,z)Con, this effectively disables the
+1456- * constraint. Over the iterations, (r,z)Con0 are gradually reduced to zero,
+1457- * enabling the constraint again.
+1458- */
+1459-void IdealMhdModel::rzConIntoVolume() {
+1460-  // The CPU which has the LCFS needs to compute (r,z)Con at the LCFS
+1461-  // for computing (r,z)Con0 by extrapolation from the LCFS into the volume.
+1462-
+1463-  // step 1: source thread puts rCon, zCon at LCFS into global array
+1464-  if (r_.nsMaxF1 == m_fc_.ns) {
+1465-    for (int kl = 0; kl < s_.nZnT; ++kl) {
+1466-      int lcfs_kl = (m_fc_.ns - 1 - r_.nsMinF) * s_.nZnT + kl;
+1467-      m_h_.rCon_LCFS[kl] = rCon[lcfs_kl];
+1468-      m_h_.zCon_LCFS[kl] = zCon[lcfs_kl];
+1469-    }  // kl
+1470-  }
+1471-
+1472-// wait for thread that has LCFS to have put rzCon at LCFS into array above
+1473-#ifdef _OPENMP
+1474-#pragma omp barrier
+1475-#endif  // _OPENMP
+1476-
+1477-  // step 2: all threads interpolate into volume
+1478-  for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
+1479-    double sFull = m_p_.sqrtSF[jF - r_.nsMinF1] * m_p_.sqrtSF[jF - r_.nsMinF1];
+1480-    for (int kl = 0; kl < s_.nZnT; ++kl) {
+1481-      int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
+1482-      rCon0[idx_kl] = m_h_.rCon_LCFS[kl] * sFull;
+1483-      zCon0[idx_kl] = m_h_.zCon_LCFS[kl] * sFull;
+1484-    }  // kl

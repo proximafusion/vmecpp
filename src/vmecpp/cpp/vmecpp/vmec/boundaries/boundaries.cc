@@ -90,11 +90,6 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
 
     if (verbose && delta != 0.0) {
       std::cout << "need to shift theta by delta = " << delta << "\n";
-      std::cout << "  Calculated from: atan2(" << id.rbs[idx] << " - "
-                << id.zbc[idx] << ", " << id.rbc[idx] << " + " << id.zbs[idx]
-                << ")" << std::endl;
-      std::cout << "  = atan2(" << (id.rbs[idx] - id.zbc[idx]) << ", "
-                << (id.rbc[idx] + id.zbs[idx]) << ")" << std::endl;
       // In this implementation, the theta-shift will be done during sorting of
       // coefficients below.
     }
@@ -141,7 +136,6 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
               id.rbs[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
         zbs = id.zbs[m * (2 * s_.ntor + 1) + source_n] * cosMDelta -
               id.zbc[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
-
       }
 
       const int idx_mn = m * (s_.ntor + 1) + target_n;
@@ -167,7 +161,6 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
                 id.rbc[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
           zbc = id.zbc[m * (2 * s_.ntor + 1) + source_n] * cosMDelta +
                 id.zbs[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
-
         }
 
         if (m > 0) {
@@ -249,26 +242,18 @@ void Boundaries::flipTheta() {
  * origin.
  */
 void Boundaries::ensureM1Constrained(const double scaling_factor) {
-  // NOTE: For jVMEC compatibility, we use the averaging formula
-  // that enforces rbsc = zbcc and rbss = zbcs for m=1 modes
-  // instead of the rotation transformation. The scaling_factor
-  // parameter is ignored in this implementation.
-
-
   for (int n = 0; n <= s_.ntor; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
     if (s_.lthreed) {
-      // jVMEC constraint: set both to average
-      double constrained_value = (rbss[idx_mn] + zbcs[idx_mn]) / 2.0;
-      rbss[idx_mn] = constrained_value;
-      zbcs[idx_mn] = constrained_value;
+      double backup_rss = rbss[idx_mn];
+      rbss[idx_mn] = (backup_rss + zbcs[idx_mn]) * scaling_factor;
+      zbcs[idx_mn] = (backup_rss - zbcs[idx_mn]) * scaling_factor;
     }
     if (s_.lasym) {
-      // jVMEC constraint: set both to average
-      double constrained_value = (rbsc[idx_mn] + zbcc[idx_mn]) / 2.0;
-      rbsc[idx_mn] = constrained_value;
-      zbcc[idx_mn] = constrained_value;
+      double backup_rsc = rbsc[idx_mn];
+      rbsc[idx_mn] = (backup_rsc + zbcc[idx_mn]) * scaling_factor;
+      zbcc[idx_mn] = (backup_rsc - zbcc[idx_mn]) * scaling_factor;
     }
   }  // n
 }
