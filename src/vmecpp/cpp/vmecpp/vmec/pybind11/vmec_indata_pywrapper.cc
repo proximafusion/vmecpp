@@ -11,10 +11,10 @@
 #include "util/file_io/file_io.h"
 
 namespace {
-[[noreturn]] void ErrorToException(const absl::Status& s,
-                                   const std::string& where) {
+[[noreturn]] void ErrorToException(const absl::Status& status,
+                                   const std::string& context) {
   const std::string msg =
-      "There was an error " + where + ":\n" + std::string(s.message());
+      "There was an error " + context + ":\n" + std::string(status.message());
   throw std::runtime_error(msg);
 }
 }  // namespace
@@ -67,13 +67,13 @@ VmecINDATAPyWrapper::VmecINDATAPyWrapper(const VmecINDATA& indata)
           indata.return_outputs_even_if_not_converged),
       raxis_c(ToEigenVector(indata.raxis_c)),
       zaxis_s(ToEigenVector(indata.zaxis_s)),
-      rbc(ToEigenMatrix(indata.rbc, mpol, 2 * ntor + 1)),
-      zbs(ToEigenMatrix(indata.zbs, mpol, 2 * ntor + 1)) {
+      rbc(ToEigenMatrix(indata.rbc, mpol, (2 * ntor) + 1)),
+      zbs(ToEigenMatrix(indata.zbs, mpol, (2 * ntor) + 1)) {
   if (lasym) {
     raxis_s = ToEigenVector(indata.raxis_s);
     zaxis_c = ToEigenVector(indata.zaxis_c);
-    rbs = ToEigenMatrix(indata.rbs, mpol, 2 * ntor + 1);
-    zbc = ToEigenMatrix(indata.zbc, mpol, 2 * ntor + 1);
+    rbs = ToEigenMatrix(indata.rbs, mpol, (2 * ntor) + 1);
+    zbc = ToEigenMatrix(indata.zbc, mpol, (2 * ntor) + 1);
   }
 }
 
@@ -174,7 +174,7 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
   }
 
   auto resized_2d_coeff = [this, new_mpol, new_ntor](const auto& coeff) {
-    const int new_nmax = 2 * new_ntor + 1;
+    const int new_nmax = (2 * new_ntor) + 1;
     RowMatrixXd resized_coeff = RowMatrixXd::Zero(new_mpol, new_nmax);
 
     // copy the original values at the appropriate indices
@@ -191,6 +191,7 @@ void VmecINDATAPyWrapper::SetMpolNtor(int new_mpol, int new_ntor) {
 
   rbc = resized_2d_coeff(rbc);
   zbs = resized_2d_coeff(zbs);
+
   if (lasym) {
     rbs = resized_2d_coeff(rbs.value());
     zbc = resized_2d_coeff(zbc.value());

@@ -152,7 +152,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       fc_(indata_.lfreeb, indata_.delt,
           static_cast<int>(indata_.ns_array.size()), max_threads),
       verbose_(verbose),
-      ivac_(-1),
+      vacuum_pressure_state_(VacuumPressureState::kOff),
       status_(VmecStatus::NORMAL_TERMINATION),
       iter2_(1),
       iter1_(iter2_),
@@ -208,12 +208,21 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                const int iterations_before_checkpointing,
                                const int maximum_multi_grid_step,
                                std::optional<HotRestartState> initial_state) {
-  if (indata_.lfreeb && !mgrid_.IsLoaded()) {
-    // if we have a free-boundary VMEC run, we may need to load the
-    // magnetic field response table
-    absl::Status status = LoadMGrid();
-    if (!status.ok()) {
-      return status;
+  if (indata_.lfreeb) {
+    if (!mgrid_.IsLoaded()) {
+      // if we have a free-boundary VMEC run, we may need to load the
+      // magnetic field response table
+      absl::Status status = LoadMGrid();
+      if (!status.ok()) {
+        return status;
+      }
+    }
+    if (mgrid_.numPhi != indata_.nzeta) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "MGridProvider has %d phi grid points, but VmecINDATA "
+          "has %d nzeta grid points. Please ensure that the two "
+          "are consistent.",
+          mgrid_.numPhi, indata_.nzeta));
     }
   }
 
@@ -242,11 +251,13 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     // before the user-provided ns values from ns_array are processed
     // in the multi-grid run
 
-    if (fc_.lfreeb && jacob_off_ == 1) {
-      // jacob_off=1 indicates that in the previous iteration, the Jacobian was
-      // bad
-      // --> also need to restart vacuum calculations
-      ivac_ = 1;
+    // Free-boundary hot-restart attempt. Assuming that the initial_guess is
+    // very good, we can immediately take the vacuum contribution into account,
+    // instead of slowly activating it (as we would in a regular free-bdy
+    // solve). If the initial guess completely off, jacob_off>0 will trigger a
+    // retry with VacuumPressureState::kOff anyway.
+    if (fc_.lfreeb && initial_state.has_value()) {
+      vacuum_pressure_state_ = VacuumPressureState::kInitialized;
     }
 
     fc_.ns_min = 3;
@@ -273,8 +284,9 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         // niterv taken from niter_array[0] in INDATA, I guess?
 
         // fully restart vacuum
-        // TODO(jons): why then assign ivac=1 then above?
-        ivac_ = -1;
+        // TODO(jons): why then assign vacuum_pressure_state=kInitialized then
+        // above?
+        vacuum_pressure_state_ = VacuumPressureState::kOff;
       } else {
         // proceed regularly with ns values from ns_array
         fc_.nsval = indata_.ns_array[igrid];
@@ -345,7 +357,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   // (for creating the output file, use WriteOutputFile())
   output_quantities_ = vmecpp::ComputeOutputQuantities(
       kSignOfJacobian, indata_, s_, fc_, constants_, t_, h_, mgrid_.mgrid_mode,
-      r_, decomposed_x_, m_, p_, checkpoint, ivac_, status_, iter2_);
+      r_, decomposed_x_, m_, p_, checkpoint, vacuum_pressure_state_, status_,
+      iter2_);
 
   if (verbose_) {
     std::cout << "\nNUMBER OF JACOBIAN RESETS = " << fc_.ijacob << '\n';
@@ -480,7 +493,7 @@ bool Vmec::InitializeRadial(
       m_[thread_id] = std::make_unique<IdealMhdModel>(
           &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
           ls_[thread_id].get(), &h_, r_[thread_id].get(), fb_[thread_id].get(),
-          kSignOfJacobian, indata_.nvacskip, &ivac_);
+          kSignOfJacobian, indata_.nvacskip, &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0);
     }  // thread_id
 
@@ -636,7 +649,9 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   bool liter_flag = true;
 
 // NOTE: *THIS* is the main parallel region for the equilibrium solver
+#ifdef _OPENMP
 #pragma omp parallel
+#endif  // _OPENMP
   {
 #ifdef _OPENMP
     int thread_id = omp_get_thread_num();
@@ -663,11 +678,15 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
           thread_id, iterations_before_checkpointing, checkpoint,
           /*m_lreset_internal=*/m_lreset_internal, /*m_liter_flag=*/liter_flag);
     }
-#pragma omp single nowait  // nowait because critical below has an implicit
-                           // barrier
+// nowait because critical below has an implicit barrier
+#ifdef _OPENMP
+#pragma omp single nowait
+#endif  // _OPENMP
     num_eqsolve_retries_ += n_local_eqsolve_retries;
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
     {
       if (s.ok()) {
         any_checkpoint_reached |= (*s == SolveEqLoopStatus::CHECKPOINT_REACHED);
@@ -703,10 +722,15 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
                                                           *p_[thread_id]);
     }
 
-// protect reads of restart_reason above from write below
+    // protect reads of restart_reason above from write below
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
+
     // tells restart_iter to store current xc in xstore
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
     {
       fc_.restart_reason = RestartReason::NO_RESTART;
     }
@@ -715,7 +739,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     RestartIteration(fc_.delt0r, thread_id);
   }  // restart_reason == BAD_JACOBIAN
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     // start normal iterations
     m_liter_flag = true;
@@ -750,8 +776,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
          fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
         fc_.ns >= 3) {
 // protect reads of ijacob above from write below
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
+
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
       {
         if (verbose_) {
           // Only warn about bad jacobian if that is actually the reason.
@@ -786,8 +817,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
                status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
       // if something went totally wrong even in this initial steps, do not
       // continue at all
-      return absl::UnknownError(
-          absl::StrCat("FATAL ERROR in thread=", thread_id));
+      const auto msg = absl::StrFormat(
+          "FATAL ERROR in thread=%d. The solver failed during the first "
+          "iterations. This may happen if the initial boundary is poorly "
+          "shaped or if it isn't spectrally condensed enough.",
+          thread_id);
+      return absl::UnknownError(msg);
     }
 
     if (checkpoint == VmecCheckpoint::EVOLVE &&
@@ -807,14 +842,18 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     if (fc_.ijacob == 25 || fc_.ijacob == 50) {
       // jacobian changed sign 25/50 times: hmmm? :-/
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
       {
         fc_.restart_reason = RestartReason::BAD_JACOBIAN;
       }
 
       RestartIteration(fc_.delt0r, thread_id);
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
       {
         const double scale = fc_.ijacob == 25 ? 0.98 : 0.96;
         fc_.delt0r = scale * indata_.delt;
@@ -836,7 +875,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     } else if (fc_.ijacob >= 75) {
       // jacobian changed sign at least 75 times: time to give up :-(
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
       {
         // 'MORE THAN 75 JACOBIAN ITERATIONS (DECREASE DELT)'
         status_ = VmecStatus::JACOBIAN_75_TIMES_BAD;
@@ -844,7 +885,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
     {
       // TIME STEP CONTROL
 
@@ -865,7 +908,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
       // Residuals are growing in time, reduce time step
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
       fc_.restart_reason = RestartReason::BAD_JACOBIAN;
     } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
                iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
@@ -879,7 +924,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // at ~2e-3
       // --> lower threshold, e.g. 1e-4 ?
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
       fc_.restart_reason = RestartReason::BAD_PROGRESS;
     }
 
@@ -889,7 +936,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // This code path does not increment the iter2 counter in VMEC 8.52, so we
       // have to keep track
       bad_resets++;
+#ifdef _OPENMP
 #pragma omp single nowait
+#endif  // _OPENMP
       iter1_ = iter2;
     } else {
       // Increment time step and printout every nstep iterations
@@ -913,30 +962,42 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
+#ifdef _OPENMP
+#pragma omp single nowait
+#endif  // _OPENMP
+    {
+      // vacuum_pressure_state gets set to VacuumPressureState::kInitialized in
+      // vacuum() of NESTOR
+      if (vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
+        vacuum_pressure_state_ = VacuumPressureState::kActive;
+
+        if (verbose_) {
+          std::cout << absl::StrFormat(
+                           "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS",
+                           iter2_)
+                    << "\n\n";
+        }
+      }
+    }
+
+#ifdef _OPENMP
 #pragma omp atomic write
+#endif  // _OPENMP
     // update iter2_ for all threads, all threads have the same value of iter2,
     // it does not matter who does it.
     // bad resets didn't increment, iter2 in VMEC 8.52, so we need to compute
     // the backwards compatible iteration count
     iter2_ = force_iteration + 1 - bad_resets;
-
-#pragma omp single nowait
-    // ivac gets set to 1 in vacuum() of NESTOR
-    if (ivac_ == 1) {
-      ivac_ = 2;
-      if (verbose_) {
-        std::cout << absl::StrFormat(
-            "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS\n\n", iter2_);
-      }
-    }
-  }
+  }  // while m_liter_flag
 
   return SolveEqLoopStatus::NORMAL_TERMINATION;
 }
 
 // aligned visually with restart_iter.f90
 void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
     // restore previous good state
@@ -947,8 +1008,13 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
     // restore state from backup
     decomposed_x_[thread_id]->copyFrom(*physical_x_backup_[thread_id]);
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
+
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
     {
       // reduce time step
       m_delt0r = m_delt0r * 0.9;
@@ -971,8 +1037,13 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
     // restore state from backup
     decomposed_x_[thread_id]->copyFrom(*physical_x_backup_[thread_id]);
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
+
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
     {
       // reduce time step
       m_delt0r = m_delt0r / 1.03;
@@ -986,14 +1057,18 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
     // update backup
     physical_x_backup_[thread_id]->copyFrom(*decomposed_x_[thread_id]);
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
                                   int iterations_before_checkpointing,
                                   double time_step, int thread_id,
                                   bool& m_liter_flag) {
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     fc_.restart_reason = RestartReason::NO_RESTART;
   }
@@ -1005,7 +1080,9 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     return reached_checkpoint;
   }
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     // COMPUTE ABSOLUTE STOPPING CRITERION
     if (iter2_ == 1 && fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
@@ -1030,7 +1107,9 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   // COMPUTE DAMPING PARAMETER (DTAU) AND
   // EVOLVE R, Z, AND LAMBDA ARRAYS IN FOURIER SPACE
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     // sum of preconditioned force residuals in current iteration
     const double fsq1 = fc_.fsqr1 + fc_.fsqz1 + fc_.fsql1;
@@ -1060,10 +1139,23 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 
     // update backup copy of fsq1 --> here, fsq is fsq1 of previous iteration
     fc_.fsq = fsq1;
-
-    fc_.fsqt.push_back(fc_.fsq);
-    fc_.mhd_energy.push_back(h_.mhdEnergy);
   }  // #pragma omp single (there is an implicit omp barrier here)
+
+  // Our thread owns the last LCFS, it is our responsibility to log the
+  // residuals.
+  if (r_[thread_id]->nsMaxF1 == fc_.ns) {
+    fc_.force_residual_r.push_back(fc_.fsqr);
+    fc_.force_residual_z.push_back(fc_.fsqz);
+    fc_.force_residual_lambda.push_back(fc_.fsql);
+    if (fc_.lfreeb) {
+      // delbsq is only available on the LCFS thread
+      fc_.delbsq.push_back(m_[thread_id]->get_delbsq());
+    } else {
+      fc_.delbsq.push_back(0.0);
+    }
+    fc_.restart_reasons.push_back(fc_.restart_reason);
+    fc_.mhd_energy.push_back(h_.mhdEnergy);
+  }
 
   // averaging over ndamp entries : 1/ndamp*sum(invTau)
   const double otav = absl::c_accumulate(invTau_, 0.) / kNDamp;
@@ -1081,12 +1173,16 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 }
 
 void Vmec::Printout(double delt0r, int thread_id) {
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     h_.ResetSpectralWidthAccumulators();
   }
   p_[thread_id]->AccumulateVolumeAveragedSpectralWidth();
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   if (verbose_ && r_[thread_id]->nsMaxF1 == fc_.ns) {
     // only the thread that computes the free-boundary force can compute
@@ -1134,7 +1230,7 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
       *decomposed_x_[thread_id], *physical_x_[thread_id],
       *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
       last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
-      iter2_, checkpoint, iterations_before_checkpointing);
+      iter2_, checkpoint, iterations_before_checkpointing, verbose_);
   if (!reached_checkpoint.ok()) {
     return reached_checkpoint;
   }
@@ -1145,19 +1241,25 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
     double delt0 = indata_.delt;
     RestartIteration(delt0, thread_id);
 
+#ifdef _OPENMP
 #pragma omp single nowait
+#endif  // _OPENMP
     // already done in restart_iter for restart_reason == BAD_JACOBIAN
     fc_.restart_reason = RestartReason::NO_RESTART;
   }
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   return reached_checkpoint;
 }
 
 void Vmec::PerformTimeStep(double fac, double b1, double time_step,
                            int thread_id) {
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   performTimeStep(s_, fc_, *r_[thread_id], fac, b1, time_step,
                   /*m_decomposed_x=*/*decomposed_x_[thread_id],
@@ -1165,7 +1267,9 @@ void Vmec::PerformTimeStep(double fac, double b1, double time_step,
                   *decomposed_f_[thread_id],
                   /*m_h_=*/h_);
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 // velocity_scale == fac
@@ -1303,7 +1407,26 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
       }
     }  // lthreed
 
-    // TODO(jons) : non-stellarator-symmetric terms!
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
+        m_h_.rmnsc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.rmnsc[idx_mn];
+        m_h_.zmncc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.zmncc[idx_mn];
+        m_h_.lmncc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.lmncc[idx_mn];
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
+          m_h_.rmncs_o[r.get_thread_id() - 1][mn] =
+              m_decomposed_x.rmncs[idx_mn];
+          m_h_.zmnss_o[r.get_thread_id() - 1][mn] =
+              m_decomposed_x.zmnss[idx_mn];
+          m_h_.lmnss_o[r.get_thread_id() - 1][mn] =
+              m_decomposed_x.lmnss[idx_mn];
+        }
+      }
+    }  // lasym
   }
 
   if (hasOutside) {
@@ -1324,10 +1447,31 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
       }
     }  // lthreed
 
-    // TODO(jons) : non-stellarator-symmetric terms!
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
+        m_h_.rmnsc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.rmnsc[idx_mn];
+        m_h_.zmncc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.zmncc[idx_mn];
+        m_h_.lmncc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.lmncc[idx_mn];
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
+          m_h_.rmncs_i[r.get_thread_id() + 1][mn] =
+              m_decomposed_x.rmncs[idx_mn];
+          m_h_.zmnss_i[r.get_thread_id() + 1][mn] =
+              m_decomposed_x.zmnss[idx_mn];
+          m_h_.lmnss_i[r.get_thread_id() + 1][mn] =
+              m_decomposed_x.lmnss[idx_mn];
+        }
+      }
+    }  // lasym
   }
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // Now that the crossover data is in the HandoverStorge,
   // put it locally into the correct satellite locations.
@@ -1349,6 +1493,24 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
         m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_o[r.get_thread_id()][mn];
       }
     }  // lthreed
+
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
+        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_o[r.get_thread_id()][mn];
+        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_o[r.get_thread_id()][mn];
+        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_o[r.get_thread_id()][mn];
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
+          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_o[r.get_thread_id()][mn];
+          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_o[r.get_thread_id()][mn];
+          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_o[r.get_thread_id()][mn];
+        }
+      }
+    }  // lasym
   }
 
   if (hasInside) {
@@ -1368,9 +1530,29 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
         m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_i[r.get_thread_id()][mn];
       }
     }  // lthreed
+
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
+        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_i[r.get_thread_id()][mn];
+        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_i[r.get_thread_id()][mn];
+        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_i[r.get_thread_id()][mn];
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
+          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_i[r.get_thread_id()][mn];
+          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_i[r.get_thread_id()][mn];
+          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_i[r.get_thread_id()][mn];
+        }
+      }
+    }  // lasym
   }
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }  // performTimeStep
 
 void Vmec::InterpolateToNextMultigridStep(

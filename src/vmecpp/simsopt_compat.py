@@ -452,6 +452,7 @@ class Vmec(Optimizable):
         vi = self.indata  # Shorthand
         # Convert boundary to RZFourier if needed:
         boundary_RZFourier = self.boundary.to_RZFourier()
+        boundary_RZFourier.change_resolution(self.indata.mpol, self.indata.ntor)
         vi.rbc.fill(0.0)
         vi.zbs.fill(0.0)
 

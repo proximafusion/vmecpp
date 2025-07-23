@@ -37,12 +37,12 @@ VectorXd NonEmptyVectorOr(const std::vector<double>& vec, const double val) {
 }  // namespace
 
 // Shorthands for the calls required to read/write data members from/to HDF5
-// files. They assume that `H5key`, `file`, `obj` and `from_file` are available
-// in the calling context.
+// files. They assume that `H5key`, `file`, `m_obj` and `from_file` are
+// available in the calling context.
 #define WRITEMEMBER(x) \
   WriteH5Dataset(x, absl::StrFormat("%s/%s", H5key, #x), file);
 #define READMEMBER(x) \
-  ReadH5Dataset(obj.x, absl::StrFormat("%s/%s", H5key, #x), from_file);
+  ReadH5Dataset(m_obj.x, absl::StrFormat("%s/%s", H5key, #x), from_file);
 
 // Write object to the specified HDF5 file, under key "vmecinternalresults".
 absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
@@ -115,7 +115,7 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
 }
 
 absl::Status vmecpp::VmecInternalResults::LoadInto(
-    vmecpp::VmecInternalResults& obj, H5::H5File& from_file) {
+    vmecpp::VmecInternalResults& m_obj, H5::H5File& from_file) {
   READMEMBER(sign_of_jacobian);
   READMEMBER(num_full);
   READMEMBER(num_half);
@@ -134,14 +134,14 @@ absl::Status vmecpp::VmecInternalResults::LoadInto(
                 0) == 1) {
     READMEMBER(chipH);
   } else {
-    obj.chipH = Eigen::VectorXd::Zero(obj.phipH.size());
+    m_obj.chipH = Eigen::VectorXd::Zero(m_obj.phipH.size());
   }
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(), absl::StrFormat("%s/currH", H5key).c_str(),
                 0) == 1) {
     READMEMBER(currH);
   } else {
-    obj.currH = Eigen::VectorXd::Zero(obj.phipH.size());
+    m_obj.currH = Eigen::VectorXd::Zero(m_obj.phipH.size());
   }
   READMEMBER(phiF);
   READMEMBER(iotaF);
@@ -209,7 +209,7 @@ absl::Status vmecpp::RemainingMetric::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::RemainingMetric::LoadInto(RemainingMetric& obj,
+absl::Status vmecpp::RemainingMetric::LoadInto(RemainingMetric& m_obj,
                                                H5::H5File& from_file) {
   READMEMBER(rv12);
   READMEMBER(zv12);
@@ -231,7 +231,7 @@ absl::Status vmecpp::CylindricalComponentsOfB::WriteTo(H5::H5File& file) const {
 }
 
 absl::Status vmecpp::CylindricalComponentsOfB::LoadInto(
-    CylindricalComponentsOfB& obj, H5::H5File& from_file) {
+    CylindricalComponentsOfB& m_obj, H5::H5File& from_file) {
   READMEMBER(b_r);
   READMEMBER(b_phi);
   READMEMBER(b_z);
@@ -245,7 +245,7 @@ absl::Status vmecpp::BSubSHalf::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::BSubSHalf::LoadInto(BSubSHalf& obj,
+absl::Status vmecpp::BSubSHalf::LoadInto(BSubSHalf& m_obj,
                                          H5::H5File& from_file) {
   READMEMBER(bsubs_half);
   return absl::OkStatus();
@@ -257,7 +257,7 @@ absl::Status vmecpp::BSubSFull::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::BSubSFull::LoadInto(BSubSFull& obj,
+absl::Status vmecpp::BSubSFull::LoadInto(BSubSFull& m_obj,
                                          H5::H5File& from_file) {
   READMEMBER(bsubs_full);
   return absl::OkStatus();
@@ -273,8 +273,8 @@ absl::Status vmecpp::CovariantBDerivatives::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::CovariantBDerivatives::LoadInto(CovariantBDerivatives& obj,
-                                                     H5::H5File& from_file) {
+absl::Status vmecpp::CovariantBDerivatives::LoadInto(
+    CovariantBDerivatives& m_obj, H5::H5File& from_file) {
   READMEMBER(bsubsu);
   READMEMBER(bsubsv);
   READMEMBER(bsubuv);
@@ -313,7 +313,7 @@ absl::Status vmecpp::JxBOutFileContents::WriteTo(H5::H5File& file) const {
 
   return absl::OkStatus();
 }
-absl::Status vmecpp::JxBOutFileContents::LoadInto(JxBOutFileContents& obj,
+absl::Status vmecpp::JxBOutFileContents::LoadInto(JxBOutFileContents& m_obj,
                                                   H5::H5File& from_file) {
   READMEMBER(itheta);
   READMEMBER(izeta);
@@ -367,7 +367,7 @@ absl::Status vmecpp::MercierStabilityIntermediateQuantities::WriteTo(
   return absl::OkStatus();
 }
 absl::Status vmecpp::MercierStabilityIntermediateQuantities::LoadInto(
-    MercierStabilityIntermediateQuantities& obj, H5::H5File& from_file) {
+    MercierStabilityIntermediateQuantities& m_obj, H5::H5File& from_file) {
   READMEMBER(s);
   READMEMBER(shear);
   READMEMBER(vpp);
@@ -408,7 +408,7 @@ absl::Status vmecpp::MercierFileContents::WriteTo(H5::H5File& file) const {
 
   return absl::OkStatus();
 }
-absl::Status vmecpp::MercierFileContents::LoadInto(MercierFileContents& obj,
+absl::Status vmecpp::MercierFileContents::LoadInto(MercierFileContents& m_obj,
                                                    H5::H5File& from_file) {
   READMEMBER(s);
   READMEMBER(toroidal_flux);
@@ -453,7 +453,7 @@ absl::Status vmecpp::Threed1FirstTableIntermediate::WriteTo(
   return absl::OkStatus();
 }
 absl::Status vmecpp::Threed1FirstTableIntermediate::LoadInto(
-    Threed1FirstTableIntermediate& obj, H5::H5File& from_file) {
+    Threed1FirstTableIntermediate& m_obj, H5::H5File& from_file) {
   READMEMBER(tau);
   READMEMBER(beta_vol);
   READMEMBER(overr);
@@ -494,7 +494,7 @@ absl::Status vmecpp::Threed1FirstTable::WriteTo(H5::H5File& file) const {
 
   return absl::OkStatus();
 }
-absl::Status vmecpp::Threed1FirstTable::LoadInto(Threed1FirstTable& obj,
+absl::Status vmecpp::Threed1FirstTable::LoadInto(Threed1FirstTable& m_obj,
                                                  H5::H5File& from_file) {
   READMEMBER(s);
   READMEMBER(radial_force);
@@ -552,7 +552,7 @@ absl::Status vmecpp::Threed1GeometricAndMagneticQuantitiesIntermediate::WriteTo(
 }
 absl::Status
 vmecpp::Threed1GeometricAndMagneticQuantitiesIntermediate::LoadInto(
-    Threed1GeometricAndMagneticQuantitiesIntermediate& obj,
+    Threed1GeometricAndMagneticQuantitiesIntermediate& m_obj,
     H5::H5File& from_file) {
   READMEMBER(anorm);
   READMEMBER(vnorm);
@@ -634,7 +634,7 @@ absl::Status vmecpp::Threed1GeometricAndMagneticQuantities::WriteTo(
   return absl::OkStatus();
 }
 absl::Status vmecpp::Threed1GeometricAndMagneticQuantities::LoadInto(
-    Threed1GeometricAndMagneticQuantities& obj, H5::H5File& from_file) {
+    Threed1GeometricAndMagneticQuantities& m_obj, H5::H5File& from_file) {
   READMEMBER(toroidal_flux);
   READMEMBER(circum_p);
   READMEMBER(surf_area_p);
@@ -694,7 +694,7 @@ absl::Status vmecpp::Threed1Volumetrics::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::Threed1Volumetrics::LoadInto(Threed1Volumetrics& obj,
+absl::Status vmecpp::Threed1Volumetrics::LoadInto(Threed1Volumetrics& m_obj,
                                                   H5::H5File& from_file) {
   READMEMBER(int_p);
   READMEMBER(avg_p);
@@ -719,7 +719,7 @@ absl::Status vmecpp::Threed1AxisGeometry::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::Threed1AxisGeometry::LoadInto(Threed1AxisGeometry& obj,
+absl::Status vmecpp::Threed1AxisGeometry::LoadInto(Threed1AxisGeometry& m_obj,
                                                    H5::H5File& from_file) {
   READMEMBER(raxis_symm);
   READMEMBER(zaxis_symm);
@@ -739,7 +739,7 @@ absl::Status vmecpp::Threed1Betas::WriteTo(H5::H5File& file) const {
 
   return absl::OkStatus();
 }
-absl::Status vmecpp::Threed1Betas::LoadInto(Threed1Betas& obj,
+absl::Status vmecpp::Threed1Betas::LoadInto(Threed1Betas& m_obj,
                                             H5::H5File& from_file) {
   READMEMBER(betatot);
   READMEMBER(betapol);
@@ -773,7 +773,7 @@ absl::Status vmecpp::Threed1ShafranovIntegrals::WriteTo(
   return absl::OkStatus();
 }
 absl::Status vmecpp::Threed1ShafranovIntegrals::LoadInto(
-    Threed1ShafranovIntegrals& obj, H5::H5File& from_file) {
+    Threed1ShafranovIntegrals& m_obj, H5::H5File& from_file) {
   READMEMBER(scaling_ratio);
   READMEMBER(r_lao);
   READMEMBER(f_lao);
@@ -917,7 +917,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   return absl::OkStatus();
 }
 
-absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& obj,
+absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
                                                 H5::H5File& from_file) {
   READMEMBER(version);
   // TODO(jurasic) input_extension
@@ -946,12 +946,12 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& obj,
   READMEMBER(mgrid_file);
   // Compatibility with HDF5 files that do not have the nextcur and extcur
   // fields yet (before v0.3.3)
-  if (obj.lfreeb) {
+  if (m_obj.lfreeb) {
     READMEMBER(nextcur);
     READMEMBER(extcur);
   } else {
-    obj.nextcur = 0;
-    obj.extcur = Eigen::Vector<double, 0>::Zero();
+    m_obj.nextcur = 0;
+    m_obj.extcur = Eigen::Vector<double, 0>::Zero();
   }
   READMEMBER(mgrid_mode);
   READMEMBER(wb);
@@ -1277,8 +1277,8 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     const std::vector<std::unique_ptr<FourierGeometry>>& decomposed_x,
     const std::vector<std::unique_ptr<IdealMhdModel>>& models_from_threads,
     const std::vector<std::unique_ptr<RadialProfiles>>& radial_profiles,
-    const VmecCheckpoint& checkpoint, int ivac, VmecStatus vmec_status,
-    int iter2) {
+    const VmecCheckpoint& checkpoint, VacuumPressureState vacuum_pressure_state,
+    VmecStatus vmec_status, int iter2) {
   OutputQuantities output_quantities;
 
   output_quantities.vmec_internal_results = GatherDataFromThreads(
@@ -1385,7 +1385,8 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         ComputeIntermediateThreed1GeometricMagneticQuantities(
             s, fc, h, output_quantities.vmec_internal_results,
             output_quantities.jxbout,
-            output_quantities.threed1_first_table_intermediate, ivac);
+            output_quantities.threed1_first_table_intermediate,
+            vacuum_pressure_state);
 
     output_quantities.threed1_geometric_magnetic =
         ComputeThreed1GeometricMagneticQuantities(
@@ -1426,7 +1427,8 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         ComputeThreed1ShafranovIntegrals(
             s, fc, h, output_quantities.vmec_internal_results,
             output_quantities.threed1_geometric_magnetic_intermediate,
-            output_quantities.threed1_geometric_magnetic, ivac);
+            output_quantities.threed1_geometric_magnetic,
+            vacuum_pressure_state);
 
     if (checkpoint == VmecCheckpoint::THREED1_SHAFRANOV_INTEGRALS) {
       return output_quantities;  // output_quantities partially uninitialized.
@@ -1944,11 +1946,11 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
       vmec_internal_results.num_half, vmec_internal_results.nZnT_reduced);
 
   if (s.lasym) {
-    decomposed_bcov.bsubs_a = VectorXd::Zero(
+    decomposed_bcov.bsubs_a = RowMatrixXd::Zero(
         vmec_internal_results.num_full, vmec_internal_results.nZnT_reduced);
-    decomposed_bcov.bsubu_a = VectorXd::Zero(
+    decomposed_bcov.bsubu_a = RowMatrixXd::Zero(
         vmec_internal_results.num_half, vmec_internal_results.nZnT_reduced);
-    decomposed_bcov.bsubv_a = VectorXd::Zero(
+    decomposed_bcov.bsubv_a = RowMatrixXd::Zero(
         vmec_internal_results.num_half, vmec_internal_results.nZnT_reduced);
 
     // fsym_fft:
@@ -3438,7 +3440,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     const VmecInternalResults& vmec_internal_results,
     const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
-    int ivac) {
+    VacuumPressureState vacuum_pressure_state) {
   Threed1GeometricAndMagneticQuantitiesIntermediate intermediate;
 
   // Calculate mean (toroidally averaged) poloidal cross section area & toroidal
@@ -3557,7 +3559,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     intermediate.redge[kl] =
         vmec_internal_results.r_e(lcfs_kl) + vmec_internal_results.r_o(lcfs_kl);
   }  // kl
-  if (fc.lfreeb && ivac > 1) {
+  if (fc.lfreeb && vacuum_pressure_state == VacuumPressureState::kActive) {
     for (int k = 0; k < s.nZeta; ++k) {
       for (int l = 0; l < s.nThetaEff; ++l) {
         // FIXME(eguiraud) slow loop for nestor
@@ -4076,7 +4078,8 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
     const VmecInternalResults& vmec_internal_results,
     const Threed1GeometricAndMagneticQuantitiesIntermediate&
         threed1_geometric_magnetic_intermediate,
-    const Threed1GeometricAndMagneticQuantities& threed1_geomag, int ivac) {
+    const Threed1GeometricAndMagneticQuantities& threed1_geomag,
+    VacuumPressureState vacuum_pressure_state) {
   Threed1ShafranovIntegrals result;
 
   // Shafranov surface integrals s1,s2
@@ -4085,7 +4088,8 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
   // Note: if ctor = 0, use Int(Bsupu*Bsubu dV) for ctor*ctor/R
   // Phys. Fluids B, Vol 5 (1993) p 3121, Eq. 9a-9d
   std::vector<double> bpol2vac(s.nZnT, 0.0);
-  if (fc.lfreeb && ivac > 1) {
+  if (fc.lfreeb &&
+      vacuum_pressure_state == vmecpp::VacuumPressureState::kActive) {
     for (int l = 0; l < s.nThetaEff; ++l) {
       for (int k = 0; k < s.nZeta; ++k) {
         // FIXME(eguiraud) slow loop for nestor
@@ -4308,7 +4312,19 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.fsqz = fc.fsqz;
   wout.fsql = fc.fsql;
 
-  wout.fsqt = ToEigenVector(fc.fsqt);
+  wout.force_residual_r = ToEigenVector(fc.force_residual_r);
+  wout.force_residual_z = ToEigenVector(fc.force_residual_z);
+  wout.force_residual_lambda = ToEigenVector(fc.force_residual_lambda);
+  wout.fsqt = wout.force_residual_r + wout.force_residual_z +
+              wout.force_residual_lambda;
+  wout.delbsq = ToEigenVector(fc.delbsq);
+  // Convert status codes to integer values
+  wout.restart_reasons = Eigen::VectorXi::Zero(fc.restart_reasons.size());
+  for (Eigen::Index i = 0;
+       i < static_cast<Eigen::Index>(fc.restart_reasons.size()); ++i) {
+    // VmecStatusCode
+    wout.restart_reasons(i) = static_cast<int>(fc.restart_reasons[i]);
+  }
   wout.itfsq = wout.fsqt.size();
   // First entry is the staring energy W
   wout.wdot = ToEigenVector(fc.mhd_energy);
@@ -4565,7 +4581,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     //    has not been fixed yet for educational_VMEC.
     tmult *= 2.0;
 
-    // TODO(jons): implement symoutput() once lasym=true test case is set up
+    // Symoutput functionality is implemented inline in the Fourier transform
+    // loop below
   }
 
   // -------------------
@@ -4586,6 +4603,17 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   wout.bsupumnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
   wout.bsupvmnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+
+  // Initialize asymmetric arrays for lasym=true cases
+  if (s.lasym) {
+    wout.gmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.bmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.bsubumns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.bsubvmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.bsubsmnc = RowMatrixXd::Zero(fc.ns, s.mnmax_nyq);
+    wout.bsupumns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.bsupvmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+  }
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
       const int idx_mn_nyq = jH * s.mnmax_nyq + mn_nyq;
@@ -4629,6 +4657,47 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               tcosi * m_vmec_internal_results.bsupu(idx_kl);
           wout.bsupvmnc(idx_mn_nyq) +=
               tcosi * m_vmec_internal_results.bsupv(idx_kl);
+
+          // Add asymmetric contributions for lasym=true cases
+          if (s.lasym) {
+            // Compute asymmetric parts for sin Fourier modes
+            const int k_rev = (s.nZeta - k) % s.nZeta;
+            const int l_rev = (s.nThetaEff - l) % s.nThetaEff;
+            const int idx_kl_rev = (jH * s.nZeta + k_rev) * s.nThetaEff + l_rev;
+
+            // Asymmetric quantities for sin modes
+            const double gsqrt_asym =
+                0.5 * (m_vmec_internal_results.gsqrt(idx_kl) -
+                       m_vmec_internal_results.gsqrt(idx_kl_rev));
+            const double bmagn_asym = 0.5 * (magnetic_pressure[idx_kl] -
+                                             magnetic_pressure[idx_kl_rev]);
+            const double bsubu_asym =
+                0.5 * (m_vmec_internal_results.bsubu(idx_kl) -
+                       m_vmec_internal_results.bsubu(idx_kl_rev));
+            const double bsubv_asym =
+                0.5 * (m_vmec_internal_results.bsubv(idx_kl) -
+                       m_vmec_internal_results.bsubv(idx_kl_rev));
+            const double bsupu_asym =
+                0.5 * (m_vmec_internal_results.bsupu(idx_kl) -
+                       m_vmec_internal_results.bsupu(idx_kl_rev));
+            const double bsupv_asym =
+                0.5 * (m_vmec_internal_results.bsupv(idx_kl) -
+                       m_vmec_internal_results.bsupv(idx_kl_rev));
+
+            // Special case for bsubs: reversed symmetry (cos mode)
+            const double bsubs_asym = 0.5 * (bsubs_half.bsubs_half(idx_kl) +
+                                             bsubs_half.bsubs_half(idx_kl_rev));
+
+            // Add asymmetric contributions to sin arrays
+            wout.gmns(idx_mn_nyq) += tsini * gsqrt_asym;
+            wout.bmns(idx_mn_nyq) += tsini * bmagn_asym;
+            wout.bsubumns(idx_mn_nyq) += tsini * bsubu_asym;
+            wout.bsubvmns(idx_mn_nyq) += tsini * bsubv_asym;
+            wout.bsubsmnc(idx_mn_nyq1) +=
+                tcosi * bsubs_asym;  // cos mode for bsubs
+            wout.bsupumns(idx_mn_nyq) += tsini * bsupu_asym;
+            wout.bsupvmns(idx_mn_nyq) += tsini * bsupv_asym;
+          }
         }  // k
       }  // l
     }  // mn_nyq
@@ -4681,17 +4750,105 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     wout.rmns = RowMatrixXd::Zero(fc.ns, s.mnmax);
     wout.zmnc = RowMatrixXd::Zero(fc.ns, s.mnmax);
     wout.lmnc_full = RowMatrixXd::Zero(fc.ns, s.mnmax);
+    for (int jF = 0; jF < fc.ns; ++jF) {
+      std::vector<double> rmns1(s.mnmax, 0.0);
+      std::vector<double> zmnc1(s.mnmax, 0.0);
+      std::vector<double> lmnc1(s.mnmax, 0.0);
 
-    // TODO(jons): implement when first non-stellarator-symmetric test case is
-    // ready
+      // DO M = 0 MODES SEPARATELY (ONLY KEEP N >= 0 HERE: SIN(-NV), COS(-NV))
+      int mn = -1;
+      int m_0 = 0;
+      for (int n = 0; n <= s.ntor; ++n) {
+        mn++;
+        const int idx_fc = (jF * (s.ntor + 1) + n) * s.mpol + m_0;
+        const double t1 = t.mscale[m_0] * t.nscale[n];
+        rmns1[mn] = t1 * m_vmec_internal_results.rmnsc(idx_fc);
+        if (s.lthreed) {
+          zmnc1[mn] = -t1 * m_vmec_internal_results.zmncc(idx_fc);
+          lmnc1[mn] = -t1 * m_vmec_internal_results.lmncc(idx_fc);
+        }
+        // NOTE: Z and lambda do not have m=0 contributions in 2D,
+        // since cos(m * theta) == 0 for m = 0
+      }  // n
+
+      // extrapolate to axis if 3D
+      if (s.lthreed && jF == 0) {
+        int mn = -1;
+        for (int n = 0; n <= s.ntor; ++n) {
+          mn++;
+          const int idx_ns_1 = (1 * (s.ntor + 1) + n) * s.mpol + m_0;
+          const int idx_ns_2 = (2 * (s.ntor + 1) + n) * s.mpol + m_0;
+          const double t1 = t.mscale[m_0] * t.nscale[n];
+          lmnc1[mn] = -t1 * (2.0 * m_vmec_internal_results.lmncc(idx_ns_1) -
+                             m_vmec_internal_results.lmncc(idx_ns_2));
+        }  // n
+      }
+
+      // now come the m>0, n=-ntor, ..., ntor entries
+      for (int m = 1; m < s.mpol; ++m) {
+        for (int n = -s.ntor; n <= s.ntor; ++n) {
+          mn++;
+          const int abs_n = std::abs(n);
+          const int idx_fc = (jF * (s.ntor + 1) + abs_n) * s.mpol + m;
+          const double t1 = t.mscale[m] * t.nscale[abs_n];
+          if (n == 0) {
+            rmns1[mn] = t1 * m_vmec_internal_results.rmnsc(idx_fc);
+            zmnc1[mn] = t1 * m_vmec_internal_results.zmncc(idx_fc);
+            lmnc1[mn] = t1 * m_vmec_internal_results.lmncc(idx_fc);
+          } else if (jF > 0) {
+            rmns1[mn] = t1 * m_vmec_internal_results.rmnsc(idx_fc) / 2.0;
+            zmnc1[mn] = t1 * m_vmec_internal_results.zmncc(idx_fc) / 2.0;
+            lmnc1[mn] = t1 * m_vmec_internal_results.lmncc(idx_fc) / 2.0;
+            if (s.lthreed) {
+              const int sign_n = signum(n);
+              rmns1[mn] +=
+                  t1 * sign_n * m_vmec_internal_results.rmncs(idx_fc) / 2.0;
+              zmnc1[mn] -=
+                  t1 * sign_n * m_vmec_internal_results.zmnss(idx_fc) / 2.0;
+              lmnc1[mn] -=
+                  t1 * sign_n * m_vmec_internal_results.lmnss(idx_fc) / 2.0;
+            }
+          }
+          // NOTE: can omit assigning jF=0 entries to 0, since rmns1, ..., lmnc1
+          // are initialized to 0.0 already
+        }  // n
+      }  // m
+
+      // pre-incrementing means that we are off by one at the end
+      CHECK_EQ(mn + 1, s.mnmax) << "counting error: (mn + 1)=" << (mn + 1)
+                                << " should be mnmax=" << s.mnmax;
+
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        wout.rmns(jF * s.mnmax + mn) = rmns1[mn];
+        wout.zmnc(jF * s.mnmax + mn) = zmnc1[mn];
+        wout.lmnc_full(jF * s.mnmax + mn) =
+            lmnc1[mn] / m_vmec_internal_results.phipF[jF] * constants.lamscale;
+      }  // mn
+    }  // jF
 
     // INTERPOLATE LAMBDA ONTO HALF-MESH FOR BACKWARDS CONSISTENCY WITH EARLIER
     // VERSIONS OF VMEC AND SMOOTHS POSSIBLE UNPHYSICAL "WIGGLE" ON RADIAL MESH
 
     wout.lmnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax);
+    for (int jH = 0; jH < fc.ns - 1; ++jH) {
+      const int jFi = jH;
+      const int jFo = jH + 1;
 
-    // TODO(jons): implement when first non-stellarator-symmetric test case is
-    // ready
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        const double lmnc_outside = wout.lmnc_full(jFo * s.mnmax + mn);
+
+        double lmnc_inside = wout.lmnc_full(jFi * s.mnmax + mn);
+        if (jFi == 0 && wout.xm[mn] <= 1) {
+          lmnc_inside = lmnc_outside;
+        }
+
+        if (wout.xm[mn] % 2 == 0) {
+          wout.lmnc(jH * s.mnmax + mn) = (lmnc_inside + lmnc_outside) * 0.5;
+        } else {
+          wout.lmnc(jH * s.mnmax + mn) = (lmnc_outside - lmnc_inside) * 0.5;
+        }
+      }  // mn
+    }  // jH
   }  // lasym
 
   // RESTORE nyq ENDPOINT VALUES

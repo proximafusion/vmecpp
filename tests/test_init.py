@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 
 import vmecpp
+from vmecpp.cpp import _vmecpp  # pyright: ignore[reportAttributeAccessIssue]
 
 # We don't want to install tests and test data as part of the package,
 # but scikit-build-core + hatchling does not support editable installs,
@@ -127,6 +128,38 @@ def test_vmecinput_io():
                 desired=getattr(vmec_input, attr),
                 err_msg=error_msg,
             )
+
+
+def test_asymmetric_tokamak_input_io():
+    input_file = TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+
+    vmec_input = vmecpp.VmecInput.from_file(input_file)
+
+    # Verify it's an asymmetric run
+    assert vmec_input.lasym is True
+
+    # Verify asymmetric arrays are properly initialized (not None)
+    assert vmec_input.rbs is not None
+    assert vmec_input.zbc is not None
+    assert vmec_input.raxis_s is not None
+    assert vmec_input.zaxis_c is not None
+
+    # Verify array shapes are correct for ntor=0, mpol=5
+    expected_shape = (5, 1)  # (mpol, 2*ntor+1)
+    assert vmec_input.rbs.shape == expected_shape
+    assert vmec_input.zbc.shape == expected_shape
+
+    expected_axis_shape = (1,)  # (ntor+1,)
+    assert vmec_input.raxis_s.shape == expected_axis_shape
+    assert vmec_input.zaxis_c.shape == expected_axis_shape
+
+    assert vmec_input.rbs[1, 0] == pytest.approx(0.6)  # RBS(0,1) from input file
+    assert vmec_input.rbs[2, 0] == pytest.approx(0.12)  # RBS(0,2) from input file
+
+    # Verify other asymmetric arrays are initialized to zero
+    assert vmec_input.zbc[0, 0] == pytest.approx(0.0)
+    assert vmec_input.raxis_s[0] == pytest.approx(0.0)
+    assert vmec_input.zaxis_c[0] == pytest.approx(0.0)
 
 
 _MISSING_FORTRAN_VARIABLES = [
@@ -557,3 +590,18 @@ def test_default_preset():
     assert default_preset.mpol == 6
     assert not default_preset.lasym
     assert default_preset.ns_array == np.array([31])
+
+
+def test_python_defaults_match_cpp_defaults():
+    python_defaults = vmecpp.VmecInput()
+    cpp_defaults = vmecpp.VmecInput._from_cpp_vmecindatapywrapper(
+        _vmecpp.VmecINDATAPyWrapper()
+    )
+
+    for field in vmecpp.VmecInput.model_fields:
+        py_val = getattr(python_defaults, field)
+        cpp_val = getattr(cpp_defaults, field)
+        if isinstance(py_val, np.ndarray):
+            np.testing.assert_array_equal(py_val, cpp_val)
+        else:
+            assert py_val == cpp_val

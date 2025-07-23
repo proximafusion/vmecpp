@@ -88,6 +88,9 @@ class HandoverStorage {
   // Amperes
   double bSubVVac;
 
+  // Used only in rzConIntoVolume() to extrapolate the constraint force
+  // contribution from the LCFS into the plasma volume.
+  // TODO(jurasic) this should have a smaller scope.
   std::vector<double> rCon_LCFS;
   std::vector<double> zCon_LCFS;
 
@@ -102,6 +105,13 @@ class HandoverStorage {
   std::vector<std::vector<double>> zmncs_i;
   std::vector<std::vector<double>> lmnsc_i;
   std::vector<std::vector<double>> lmncs_i;
+  // Asymmetric arrays for lasym=true
+  std::vector<std::vector<double>> rmnsc_i;
+  std::vector<std::vector<double>> rmncs_i;
+  std::vector<std::vector<double>> zmncc_i;
+  std::vector<std::vector<double>> zmnss_i;
+  std::vector<std::vector<double>> lmncc_i;
+  std::vector<std::vector<double>> lmnss_i;
 
   // on outside of target thread
   std::vector<std::vector<double>> rmncc_o;
@@ -110,6 +120,13 @@ class HandoverStorage {
   std::vector<std::vector<double>> zmncs_o;
   std::vector<std::vector<double>> lmnsc_o;
   std::vector<std::vector<double>> lmncs_o;
+  // Asymmetric arrays for lasym=true
+  std::vector<std::vector<double>> rmnsc_o;
+  std::vector<std::vector<double>> rmncs_o;
+  std::vector<std::vector<double>> zmncc_o;
+  std::vector<std::vector<double>> zmnss_o;
+  std::vector<std::vector<double>> lmncc_o;
+  std::vector<std::vector<double>> lmnss_o;
 
   // radial preconditioner; serial tri-diagonal solver
   int mnsize;

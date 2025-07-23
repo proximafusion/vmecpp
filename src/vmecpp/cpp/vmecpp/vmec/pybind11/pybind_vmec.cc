@@ -73,18 +73,6 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
   return s.value();
 }
 
-// convert a RowMatrixXd to the corresponding STL vector<vector<double>>
-std::vector<std::vector<double>> RowMatrixXdToVector(
-    const vmecpp::RowMatrixXd &m) {
-  std::vector<std::vector<double>> v(m.rows(), std::vector<double>(m.cols()));
-  for (int i = 0; i < m.rows(); ++i) {
-    for (int j = 0; j < m.cols(); ++j) {
-      v[i][j] = m(i, j);
-    }
-  }
-  return v;
-}
-
 vmecpp::HotRestartState MakeHotRestartState(
     vmecpp::WOutFileContents wout, const vmecpp::VmecINDATAPyWrapper &indata) {
   return vmecpp::HotRestartState(std::move(wout), vmecpp::VmecINDATA(indata));
@@ -541,8 +529,17 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("jcuru", &vmecpp::WOutFileContents::jcuru)
       .def_readwrite("jcurv", &vmecpp::WOutFileContents::jcurv)
       //
+      .def_readwrite("force_residual_r",
+                     &vmecpp::WOutFileContents::force_residual_r)
+      .def_readwrite("force_residual_z",
+                     &vmecpp::WOutFileContents::force_residual_z)
+      .def_readwrite("force_residual_lambda",
+                     &vmecpp::WOutFileContents::force_residual_lambda)
       .def_readwrite("fsqt", &vmecpp::WOutFileContents::fsqt)
+      .def_readwrite("delbsq", &vmecpp::WOutFileContents::delbsq)
       .def_readwrite("wdot", &vmecpp::WOutFileContents::wdot)
+      .def_readwrite("restart_reasons",
+                     &vmecpp::WOutFileContents::restart_reasons)
       //
       .def_readwrite("iota_half", &vmecpp::WOutFileContents::iota_half)
       .def_readwrite("mass", &vmecpp::WOutFileContents::mass)

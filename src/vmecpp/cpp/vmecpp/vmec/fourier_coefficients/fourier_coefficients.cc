@@ -25,22 +25,22 @@ FourierCoeffs::FourierCoeffs(const Sizes* s, const RadialPartitioning* r,
   int num_fc_RZ = (jMaxIncludingBoundary - nsMin) * s_.mpol * (s_.ntor + 1);
   int num_fc_L = (jMaxIncludingBoundary - nsMin) * s_.mpol * (s_.ntor + 1);
 
-  rcc.resize(num_fc_RZ);
-  zsc.resize(num_fc_RZ);
-  lsc.resize(num_fc_L);
+  rcc.resize(num_fc_RZ, 0.0);
+  zsc.resize(num_fc_RZ, 0.0);
+  lsc.resize(num_fc_L, 0.0);
   if (s_.lthreed) {
-    rss.resize(num_fc_RZ);
-    zcs.resize(num_fc_RZ);
-    lcs.resize(num_fc_L);
+    rss.resize(num_fc_RZ, 0.0);
+    zcs.resize(num_fc_RZ, 0.0);
+    lcs.resize(num_fc_L, 0.0);
   }
   if (s_.lasym) {
-    rsc.resize(num_fc_RZ);
-    zcc.resize(num_fc_RZ);
-    lcc.resize(num_fc_L);
+    rsc.resize(num_fc_RZ, 0.0);
+    zcc.resize(num_fc_RZ, 0.0);
+    lcc.resize(num_fc_L, 0.0);
     if (s_.lthreed) {
-      rcs.resize(num_fc_RZ);
-      zss.resize(num_fc_RZ);
-      lss.resize(num_fc_L);
+      rcs.resize(num_fc_RZ, 0.0);
+      zss.resize(num_fc_RZ, 0.0);
+      lss.resize(num_fc_L, 0.0);
     }
   }
 }
@@ -71,7 +71,7 @@ void FourierCoeffs::setZero() {
 }
 
 /** apply even/odd-m decomposition */
-void FourierCoeffs::decomposeInto(FourierCoeffs& x,
+void FourierCoeffs::decomposeInto(FourierCoeffs& m_x,
                                   const std::vector<double>& scalxc) const {
   // TODO(jons): understand correct limits in fixed-boundary vs. free-boundary
   int jMaxIncludingBoundary = nsMax_;
@@ -93,29 +93,29 @@ void FourierCoeffs::decomposeInto(FourierCoeffs& x,
         double scal = scalxc[(jF - r_.nsMinF1) * 2 + m_parity];
 
         if (jF < jMaxRZ) {
-          x.rcc[idx_fc] = rcc[idx_fc] * scal;
-          x.zsc[idx_fc] = zsc[idx_fc] * scal;
+          m_x.rcc[idx_fc] = rcc[idx_fc] * scal;
+          m_x.zsc[idx_fc] = zsc[idx_fc] * scal;
         }
-        x.lsc[idx_fc] = lsc[idx_fc] * scal;
+        m_x.lsc[idx_fc] = lsc[idx_fc] * scal;
         if (s_.lthreed) {
           if (jF < jMaxRZ) {
-            x.rss[idx_fc] = rss[idx_fc] * scal;
-            x.zcs[idx_fc] = zcs[idx_fc] * scal;
+            m_x.rss[idx_fc] = rss[idx_fc] * scal;
+            m_x.zcs[idx_fc] = zcs[idx_fc] * scal;
           }
-          x.lcs[idx_fc] = lcs[idx_fc] * scal;
+          m_x.lcs[idx_fc] = lcs[idx_fc] * scal;
         }
         if (s_.lasym) {
           if (jF < jMaxRZ) {
-            x.rsc[idx_fc] = rsc[idx_fc] * scal;
-            x.zcc[idx_fc] = zcc[idx_fc] * scal;
+            m_x.rsc[idx_fc] = rsc[idx_fc] * scal;
+            m_x.zcc[idx_fc] = zcc[idx_fc] * scal;
           }
-          x.lcc[idx_fc] = lcc[idx_fc] * scal;
+          m_x.lcc[idx_fc] = lcc[idx_fc] * scal;
           if (s_.lthreed) {
             if (jF < jMaxRZ) {
-              x.rcs[idx_fc] = rcs[idx_fc] * scal;
-              x.zss[idx_fc] = zss[idx_fc] * scal;
+              m_x.rcs[idx_fc] = rcs[idx_fc] * scal;
+              m_x.zss[idx_fc] = zss[idx_fc] * scal;
             }
-            x.lss[idx_fc] = lss[idx_fc] * scal;
+            m_x.lss[idx_fc] = lss[idx_fc] * scal;
           }
         }
       }  // n

@@ -56,3 +56,8 @@ nitpick_ignore = [
 always_document_param_types = True
 
 myst_enable_extensions = ["html_image"]
+
+# Add entry points to prioritize in the Reference/API section
+autodoc_default_options = {
+    "member-order": "bysource",
+}

@@ -22,7 +22,11 @@
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
+#include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
+
+using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kOddParity;
 
 namespace {
 
@@ -69,16 +73,19 @@ void HandOverMagneticAxis(vmecpp::HandoverStorage& m_h,
 void vmecpp::ForcesToFourier3DSymmFastPoloidal(
     const RealSpaceForces& d, const std::vector<double>& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
-    const FourierBasisFastPoloidal& fb, int ivac,
-    FourierForces& physical_forces) {
+    const FourierBasisFastPoloidal& fb,
+    VacuumPressureState vacuum_pressure_state,
+    FourierForces& m_physical_forces) {
   // in here, we can safely assume lthreed == true
 
   // fill target force arrays with zeros
-  physical_forces.setZero();
+  m_physical_forces.setZero();
 
   int jMaxRZ = std::min(rp.nsMaxF, fc.ns - 1);
 
-  if (fc.lfreeb && ivac >= 1) {
+  if (fc.lfreeb &&
+      (vacuum_pressure_state == VacuumPressureState::kInitialized ||
+       vacuum_pressure_state == VacuumPressureState::kActive)) {
     // free-boundary: up to jMaxRZ=ns
     jMaxRZ = std::min(rp.nsMaxF, fc.ns);
   }
@@ -162,14 +169,14 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
           const double cosnvn = fb.cosnvn[idx_kn];
           const double sinnvn = fb.sinnvn[idx_kn];
 
-          physical_forces.frcc[idx_mn] += rmkcc * cosnv + rmkcc_n * sinnvn;
-          physical_forces.frss[idx_mn] += rmkss * sinnv + rmkss_n * cosnvn;
-          physical_forces.fzsc[idx_mn] += zmksc * cosnv + zmksc_n * sinnvn;
-          physical_forces.fzcs[idx_mn] += zmkcs * sinnv + zmkcs_n * cosnvn;
+          m_physical_forces.frcc[idx_mn] += rmkcc * cosnv + rmkcc_n * sinnvn;
+          m_physical_forces.frss[idx_mn] += rmkss * sinnv + rmkss_n * cosnvn;
+          m_physical_forces.fzsc[idx_mn] += zmksc * cosnv + zmksc_n * sinnvn;
+          m_physical_forces.fzcs[idx_mn] += zmkcs * sinnv + zmkcs_n * cosnvn;
 
           if (jMinL <= jF) {
-            physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
-            physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
+            m_physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
+            m_physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
           }
         }  // n
       }  // k
@@ -218,8 +225,8 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
           const double cosnvn = fb.cosnvn[idx_kn];
           const double sinnvn = fb.sinnvn[idx_kn];
 
-          physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
-          physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
+          m_physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
+          m_physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
         }  // n
       }  // k
     }  // m
@@ -229,28 +236,28 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
 void vmecpp::FourierToReal3DSymmFastPoloidal(
     const FourierGeometry& physical_x, const std::vector<double>& xmpq,
     const RadialPartitioning& r, const Sizes& s, const RadialProfiles& rp,
-    const FourierBasisFastPoloidal& fb, RealSpaceGeometry& g) {
+    const FourierBasisFastPoloidal& fb, RealSpaceGeometry& m_geometry) {
   // can safely assume lthreed == true in here
 
-  absl::c_fill(g.r1_e, 0);
-  absl::c_fill(g.r1_o, 0);
-  absl::c_fill(g.ru_e, 0);
-  absl::c_fill(g.ru_o, 0);
-  absl::c_fill(g.rv_e, 0);
-  absl::c_fill(g.rv_o, 0);
-  absl::c_fill(g.z1_e, 0);
-  absl::c_fill(g.z1_o, 0);
-  absl::c_fill(g.zu_e, 0);
-  absl::c_fill(g.zu_o, 0);
-  absl::c_fill(g.zv_e, 0);
-  absl::c_fill(g.zv_o, 0);
-  absl::c_fill(g.lu_e, 0);
-  absl::c_fill(g.lu_o, 0);
-  absl::c_fill(g.lv_e, 0);
-  absl::c_fill(g.lv_o, 0);
+  absl::c_fill(m_geometry.r1_e, 0);
+  absl::c_fill(m_geometry.r1_o, 0);
+  absl::c_fill(m_geometry.ru_e, 0);
+  absl::c_fill(m_geometry.ru_o, 0);
+  absl::c_fill(m_geometry.rv_e, 0);
+  absl::c_fill(m_geometry.rv_o, 0);
+  absl::c_fill(m_geometry.z1_e, 0);
+  absl::c_fill(m_geometry.z1_o, 0);
+  absl::c_fill(m_geometry.zu_e, 0);
+  absl::c_fill(m_geometry.zu_o, 0);
+  absl::c_fill(m_geometry.zv_e, 0);
+  absl::c_fill(m_geometry.zv_o, 0);
+  absl::c_fill(m_geometry.lu_e, 0);
+  absl::c_fill(m_geometry.lu_o, 0);
+  absl::c_fill(m_geometry.lv_e, 0);
+  absl::c_fill(m_geometry.lv_o, 0);
 
-  absl::c_fill(g.rCon, 0);
-  absl::c_fill(g.zCon, 0);
+  absl::c_fill(m_geometry.rCon, 0);
+  absl::c_fill(m_geometry.zCon, 0);
 
   // NOTE: fix on old VMEC++: need to transform geometry for nsMinF1 ... nsMaxF1
   const int nsMinF1 = r.nsMinF1;
@@ -264,14 +271,14 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
       const double con_factor =
           m_even ? xmpq[m] : xmpq[m] * rp.sqrtSF[jF - nsMinF1];
 
-      auto& r1 = m_even ? g.r1_e : g.r1_o;
-      auto& ru = m_even ? g.ru_e : g.ru_o;
-      auto& rv = m_even ? g.rv_e : g.rv_o;
-      auto& z1 = m_even ? g.z1_e : g.z1_o;
-      auto& zu = m_even ? g.zu_e : g.zu_o;
-      auto& zv = m_even ? g.zv_e : g.zv_o;
-      auto& lu = m_even ? g.lu_e : g.lu_o;
-      auto& lv = m_even ? g.lv_e : g.lv_o;
+      auto& r1 = m_even ? m_geometry.r1_e : m_geometry.r1_o;
+      auto& ru = m_even ? m_geometry.ru_e : m_geometry.ru_o;
+      auto& rv = m_even ? m_geometry.rv_e : m_geometry.rv_o;
+      auto& z1 = m_even ? m_geometry.z1_e : m_geometry.z1_o;
+      auto& zu = m_even ? m_geometry.zu_e : m_geometry.zu_o;
+      auto& zv = m_even ? m_geometry.zv_e : m_geometry.zv_o;
+      auto& lu = m_even ? m_geometry.lu_e : m_geometry.lu_o;
+      auto& lv = m_even ? m_geometry.lv_e : m_geometry.lv_o;
 
       // axis only gets contributions up to m=1
       // --> all larger m contributions enter only from j=1 onwards
@@ -374,8 +381,10 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
             // spectral condensation is local per flux surface
             // --> no need for numFull1
             const int idx_con = ((jF - nsMinF) * s.nZeta + k) * s.nThetaEff + l;
-            g.rCon[idx_con] += (rmkcc * cosmu + rmkss * sinmu) * con_factor;
-            g.zCon[idx_con] += (zmksc * sinmu + zmkcs * cosmu) * con_factor;
+            m_geometry.rCon[idx_con] +=
+                (rmkcc * cosmu + rmkss * sinmu) * con_factor;
+            m_geometry.zCon[idx_con] +=
+                (zmksc * sinmu + zmkcs * cosmu) * con_factor;
           }
         }  // l
       }  // k
@@ -387,10 +396,10 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
 void vmecpp::deAliasConstraintForce(
     const vmecpp::RadialPartitioning& rp,
     const vmecpp::FourierBasisFastPoloidal& fb, const vmecpp::Sizes& s_,
-    std::vector<double>& faccon, std::vector<double>& tcon,
-    std::vector<double>& gConEff, std::vector<double>& gsc,
-    std::vector<double>& gcs, std::vector<double>& gCon) {
-  absl::c_fill_n(gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
+    const std::vector<double>& faccon, const std::vector<double>& tcon,
+    const std::vector<double>& gConEff, std::vector<double>& m_gsc,
+    std::vector<double>& m_gcs, std::vector<double>& m_gCon) {
+  absl::c_fill_n(m_gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
 
   // no constraint on axis --> has no poloidal angle
   int jMin = 0;
@@ -400,8 +409,8 @@ void vmecpp::deAliasConstraintForce(
 
   for (int jF = std::max(jMin, rp.nsMinF); jF < rp.nsMaxF; ++jF) {
     for (int m = 1; m < s_.mpol - 1; ++m) {
-      absl::c_fill_n(gsc, s_.ntor + 1, 0);
-      absl::c_fill_n(gcs, s_.ntor + 1, 0);
+      absl::c_fill_n(m_gsc, s_.ntor + 1, 0);
+      absl::c_fill_n(m_gcs, s_.ntor + 1, 0);
 
       for (int k = 0; k < s_.nZeta; ++k) {
         double w0 = 0.0;
@@ -423,8 +432,8 @@ void vmecpp::deAliasConstraintForce(
           int idx_kn = k * (s_.nnyq2 + 1) + n;
 
           // NOTE: `tcon` comes into play here
-          gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
-          gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
+          m_gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
+          m_gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
         }
       }  // k
 
@@ -441,8 +450,8 @@ void vmecpp::deAliasConstraintForce(
         // collect contribution to current grid point from n-th toroidal mode
         for (int n = 0; n < s_.ntor + 1; ++n) {
           int idx_kn = k * (s_.nnyq2 + 1) + n;
-          w0 += gsc[n] * fb.cosnv[idx_kn];
-          w1 += gcs[n] * fb.sinnv[idx_kn];
+          w0 += m_gsc[n] * fb.cosnv[idx_kn];
+          w1 += m_gcs[n] * fb.sinnv[idx_kn];
         }  // n
 
         // inv transform in poloidal direction
@@ -451,7 +460,7 @@ void vmecpp::deAliasConstraintForce(
           const int idx_ml = m * s_.nThetaReduced + l;
 
           // NOTE: `faccon` comes into play here
-          gCon[idx_kl] +=
+          m_gCon[idx_kl] +=
               faccon[m] * (w0 * fb.sinmu[idx_ml] + w1 * fb.cosmu[idx_ml]);
         }  // l
       }  // k
@@ -465,7 +474,8 @@ IdealMhdModel::IdealMhdModel(
     FlowControl* m_fc, const Sizes* s, const FourierBasisFastPoloidal* t,
     RadialProfiles* m_p, const VmecConstants* constants,
     ThreadLocalStorage* m_ls, HandoverStorage* m_h, const RadialPartitioning* r,
-    FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip, int* m_ivac)
+    FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
+    VacuumPressureState* m_vacuum_pressure_state)
     : m_fc_(*m_fc),
       s_(*s),
       t_(*t),
@@ -475,7 +485,7 @@ IdealMhdModel::IdealMhdModel(
       m_h_(*m_h),
       r_(*r),
       m_fb_(m_fb),
-      m_ivac_(*m_ivac),
+      m_vacuum_pressure_state_(*m_vacuum_pressure_state),
       signOfJacobian(signOfJacobian),
       nvacskip(nvacskip),
       ivacskip(0) {
@@ -636,14 +646,18 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
 }
 
 void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     m_fc_.fResInvar[0] = 0.0;
     m_fc_.fResInvar[1] = 0.0;
     m_fc_.fResInvar[2] = 0.0;
   }
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     m_fc_.fResInvar[0] += localFResInvar[0];
     m_fc_.fResInvar[1] += localFResInvar[1];
@@ -652,9 +666,13 @@ void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
 
 // this is protecting reads of fResInvar as well as
 // writes to m_fc.fsqz which is read before this call
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     // set new values
     // TODO(jons): what is `r1scale`?
@@ -667,22 +685,30 @@ void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
 }
 
 void IdealMhdModel::evalFResPrecd(const std::vector<double>& localFResPrecd) {
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     m_fc_.fResPrecd[0] = 0.0;
     m_fc_.fResPrecd[1] = 0.0;
     m_fc_.fResPrecd[2] = 0.0;
   }
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     m_fc_.fResPrecd[0] += localFResPrecd[0];
     m_fc_.fResPrecd[1] += localFResPrecd[1];
     m_fc_.fResPrecd[2] += localFResPrecd[2];
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     m_fc_.fsqr1 = m_fc_.fResPrecd[0] * m_h_.fNorm1;
     m_fc_.fsqz1 = m_fc_.fResPrecd[1] * m_h_.fNorm1;
@@ -716,7 +742,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  if (iter2 == iter1 && m_ivac_ <= 0) {
+  if (iter2 == iter1 &&
+      (m_vacuum_pressure_state_ == VacuumPressureState::kOff ||
+       m_vacuum_pressure_state_ == VacuumPressureState::kInitializing)) {
     rzConIntoVolume();
   }
 
@@ -814,7 +842,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // since we don't overwrite stuff in-place in VMEC++.
 
   if (shouldUpdateRadialPreconditioner(iter1, iter2)) {
+#ifdef _OPENMP
 #pragma omp single nowait
+#endif  // _OPENMP
     {
       m_last_preconditioner_update = iter2;
     }
@@ -857,18 +887,22 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // end of bcovar
 
   // back in funct3d, free-boundary force contribution active?
-  if (m_fc_.lfreeb && iter2 > 1) {
-    if (m_fc_.fsqr + m_fc_.fsqz < 1.0e-3) {
-      // when R+Z force residuals are <1e-3, enable vacuum contribution
-#pragma omp single
-      m_ivac_++;
-    }
-
+  // This can even happen in the first iteration when hot-restarted.
+  if (m_fc_.lfreeb &&
+      (iter2 > 1 || m_vacuum_pressure_state_ != VacuumPressureState::kOff)) {
     ivacskip = (iter2 - iter1) % nvacskip;
-    if (m_ivac_ <= 2) {
+    // when R+Z force residuals are <1e-3, enable vacuum contribution
+    if (m_vacuum_pressure_state_ != VacuumPressureState::kActive &&
+        m_fc_.fsqr + m_fc_.fsqz < 1.0e-3) {
+      // vacuum pressure not fully turned on yet
+      // Do full vacuum calc on every iteration
       ivacskip = 0;
-      // vacuum pressure not turned on yet (?)
-      // and do full vacuum calc on every iteration
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      // Increment ivac, never exceeding VacuumPressureState::kActive
+      m_vacuum_pressure_state_ = static_cast<VacuumPressureState>(
+          static_cast<int>(m_vacuum_pressure_state_) + 1);
     }
 
     // EXTEND NVACSKIP AS EQUILIBRIUM CONVERGES
@@ -877,13 +911,18 @@ absl::StatusOr<bool> IdealMhdModel::update(
           1.0 / std::max(0.1, 1.0e11 * (m_fc_.fsqr + m_fc_.fsqz)));
       nvacskip = std::max(nvacskip, new_nvacskip);
 
+#ifdef _OPENMP
 #pragma omp single nowait
+#endif  // _OPENMP
       {
         m_last_full_update_nestor = iter2;
       }
     }
-
-    if (m_ivac_ >= 0) {
+// protects read of `m_vacuum_pressure_state_` below from the write above
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+    if (m_vacuum_pressure_state_ != VacuumPressureState::kOff) {
       // IF INITIALLY ON, MUST TURN OFF rcon0, zcon0 SLOWLY
       for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
         for (int kl = 0; kl < s_.nZnT; ++kl) {
@@ -912,7 +951,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
 // protect reads of magnetic axis, boundary geometry below from writes above
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
       const double netToroidalCurrent = m_h_.cTor / MU_0;
       bool reached_checkpoint = m_fb_->update(
           m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
@@ -924,11 +965,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
         return true;
       }
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
       {
         // In educational_VMEC, this is part of Nestor.
-        if (m_ivac_ == 0) {
-          m_ivac_++;
+        if (m_vacuum_pressure_state_ == VacuumPressureState::kInitializing) {
+          m_vacuum_pressure_state_ = VacuumPressureState::kInitialized;
 
           if (verbose) {
             // bSubUVac and cTor contain 2*pi already; see Nestor.cc for
@@ -959,8 +1002,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
       // RESET FIRST TIME FOR SOFT START
-      if (m_ivac_ == 1) {
+      if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
         m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
         m_need_restart = true;
       } else {
@@ -1004,7 +1049,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
           delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
         }
 
-        if (m_ivac_ == 1) {
+        if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
           // TODO(jons): implement this !!!
 
           // initial magnetic field at boundary
@@ -1019,7 +1064,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
           iter2 >= iterations_before_checkpointing) {
         return true;
       }
-    }  // ivac >= 0
+    }
   }  // lfreeb
 
   // NOTE: if (iequi != 1) { ... continue with code below ...
@@ -1071,10 +1116,24 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // COMPUTE INVARIANT RESIDUALS
 
-  // include edge contribution only if converged well enough fast enough (?)
+  // include edge contribution if the equilibrium has converged very quickly,
+  // to prevent a strong force-imbalance at the LCFS-vacuum transition, since
+  // the termination criterion based on sum(force residuals) < ftol only
+  // considers the inner flux-surfaces, but not the balance with the magnetic
+  // pressure in vacuum at the LCFS. This special case includes that force
+  // contribution in the first few iterations, preventing termination, to
+  // ensure the free-boundary forces have "enough time" to propagate through
+  // to the inner surfaces.
+  // TODO(jurasic) the hard-coded 50 and 1e-6 are only here for backwards
+  // compatibility, ideally vacuum-pressure should always part of the
+  // force-balance
+  bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
+  // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
+  // wouldn't trigger without special handling for the hot-restart case.
+  bool hot_restart = (iter2 == 1 && m_vacuum_pressure_state_ ==
+                                        VacuumPressureState::kInitialized);
   bool includeEdgeRZForces =
-      ((iter2 - iter1) < 50 && (m_fc.fsqr + m_fc.fsqz) < 1.0e-6);
-
+      ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
   std::vector<double> localFResInvar(3, 0.0);
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 
@@ -1124,7 +1183,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // back in funct3d
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     if (iter2 == 1 && (m_fc.fsqr + m_fc.fsqz + m_fc.fsql) > 1.0e2) {
       // first iteration and gigantic force residuals
@@ -1237,7 +1298,9 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
   absl::c_fill_n(zCon, num_con, 0);
 
 // need to wait for other threads to have filled _i and _o arrays above
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
     double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
@@ -1305,16 +1368,16 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
       }
 
       const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
-      r1_e[idx_jl] += rnkcc[m_evn];
-      ru_e[idx_jl] += rnkcc_m[m_evn];
-      z1_e[idx_jl] += znksc[m_evn];
-      zu_e[idx_jl] += znksc_m[m_evn];
-      lu_e[idx_jl] += lnksc_m[m_evn];
-      r1_o[idx_jl] += rnkcc[m_odd];
-      ru_o[idx_jl] += rnkcc_m[m_odd];
-      z1_o[idx_jl] += znksc[m_odd];
-      zu_o[idx_jl] += znksc_m[m_odd];
-      lu_o[idx_jl] += lnksc_m[m_odd];
+      r1_e[idx_jl] += rnkcc[kEvenParity];
+      ru_e[idx_jl] += rnkcc_m[kEvenParity];
+      z1_e[idx_jl] += znksc[kEvenParity];
+      zu_e[idx_jl] += znksc_m[kEvenParity];
+      lu_e[idx_jl] += lnksc_m[kEvenParity];
+      r1_o[idx_jl] += rnkcc[kOddParity];
+      ru_o[idx_jl] += rnkcc_m[kOddParity];
+      z1_o[idx_jl] += znksc[kOddParity];
+      zu_o[idx_jl] += znksc_m[kOddParity];
+      lu_o[idx_jl] += lnksc_m[kOddParity];
     }  // l
   }  // j
 
@@ -1346,11 +1409,11 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
 
     // In the following, we need to apply a scaling factor only for the
     // odd-parity m contributions:
-    //   m_parity == m_odd(==1) --> * m_p_.sqrtSF[jF - r_.nsMinF1]
-    //   m_parity == m_evn(==0) --> * 1
+    //   m_parity == kOddParity(==1) --> * m_p_.sqrtSF[jF - r_.nsMinF1]
+    //   m_parity == kEvenParity(==0) --> * 1
     //
-    // This expression is 0 if m_parity is 0 (=m_evn) and m_p_.sqrtSF[jF -
-    // r_.nsMinF1] if m_parity is 1 (==m_odd):
+    // This expression is 0 if m_parity is 0 (=kEvenParity) and m_p_.sqrtSF[jF -
+    // r_.nsMinF1] if m_parity is 1 (==kOddParity):
     //   m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]
     //
     // This expression is 1 if m_parity is 0 and 0 if m_parity is 1:
@@ -1358,7 +1421,7 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
     //
     // Hence, we can replace the following conditional statement:
     //   double scale = xmpq[m];
-    //   if (m_parity == m_odd) {
+    //   if (m_parity == kOddParity) {
     //       scale *= m_p_.sqrtSF[jF - r_.nsMinF1];
     //   }
     // with the following code:
@@ -1387,7 +1450,12 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
   }  // jF
 }  // dft_FourierToReal_2d_symm
 
-/** extrapolate (r,z)Con from boundary into volume */
+/** extrapolate (r,z)Con from boundary into volume.
+ * Only called on initialization/soft reset to set (r,z)Con0 to a large value.
+ * Since (r,z)Con0 are subtracted from (r,z)Con, this effectively disables the
+ * constraint. Over the iterations, (r,z)Con0 are gradually reduced to zero,
+ * enabling the constraint again.
+ */
 void IdealMhdModel::rzConIntoVolume() {
   // The CPU which has the LCFS needs to compute (r,z)Con at the LCFS
   // for computing (r,z)Con0 by extrapolation from the LCFS into the volume.
@@ -1402,7 +1470,9 @@ void IdealMhdModel::rzConIntoVolume() {
   }
 
 // wait for thread that has LCFS to have put rzCon at LCFS into array above
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // step 2: all threads interpolate into volume
   for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
@@ -1508,12 +1578,16 @@ void IdealMhdModel::computeJacobian() {
   bool localBadJacobian = (minTau * maxTau < 0.0);
 
   if (localBadJacobian) {
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
     {
       m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
     }
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 void IdealMhdModel::computeMetricElements() {
@@ -1680,13 +1754,21 @@ void IdealMhdModel::computeInitialVolume() {
   }
   localPlasmaVolume *= m_fc_.deltaS;
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   m_h_.voli = 0.0;
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   m_h_.voli += localPlasmaVolume * (2.0 * M_PI) * (2.0 * M_PI);
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }  // computeInitialVolume
 
 void IdealMhdModel::updateVolume() {
@@ -1702,13 +1784,21 @@ void IdealMhdModel::updateVolume() {
   }
   localPlasmaVolume *= m_fc_.deltaS;
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   m_h_.plasmaVolume = 0.0;
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   m_h_.plasmaVolume += localPlasmaVolume;
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }  // updateVolume
 
 /**
@@ -1954,25 +2044,37 @@ void IdealMhdModel::pressureAndEnergies() {
   // --> could introduce signOfJacobian, but abs() does the job here as well
   localMagneticEnergy = fabs(localMagneticEnergy) * m_fc_.deltaS;
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     m_h_.thermalEnergy = 0.0;
     m_h_.magneticEnergy = 0.0;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     m_h_.thermalEnergy += localThermalEnergy;
     m_h_.magneticEnergy += localMagneticEnergy;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   // compute MHD energy from individual volume integrals
   m_h_.mhdEnergy =
       m_h_.magneticEnergy + m_h_.thermalEnergy / (adiabaticIndex - 1.0);
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 // COMPUTE AVERAGE FORCE BALANCE AND TOROIDAL/POLOIDAL CURRENTS
@@ -2023,7 +2125,9 @@ void IdealMhdModel::radialForceBalance() {
 }
 
 void IdealMhdModel::hybridLambdaForce() {
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // obtain first inside point
   int j0 = r_.nsMinF;
@@ -2142,7 +2246,9 @@ void IdealMhdModel::hybridLambdaForce() {
   }  // jF
 
 // }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 // Compute normalization factors for force residuals.
@@ -2180,31 +2286,43 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
   double localForceNorm1 =
       decomposed_x.rzNorm(false, nsMinHere, r_.nsMaxFIncludingLcfs);
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     // re-use target array elements for global accumulation
     m_h_.fNormRZ = 0.0;
     m_h_.fNormL = 0.0;
     m_h_.fNorm1 = 0.0;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp critical
+#endif  // _OPENMP
   {
     m_h_.fNormRZ += localForceNormSumRZ;
     m_h_.fNormL += localForceNormSumL;
     m_h_.fNorm1 += localForceNorm1;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
+#ifdef _OPENMP
 #pragma omp single
+#endif  // _OPENMP
   {
     m_h_.fNormRZ = 1.0 / (m_h_.fNormRZ * energyDensity * energyDensity);
     m_h_.fNormL =
         1.0 / (m_h_.fNormL * constants_.lamscale * constants_.lamscale);
     m_h_.fNorm1 = 1.0 / m_h_.fNorm1;
   }
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 void IdealMhdModel::computeMHDForces() {
@@ -2764,13 +2882,13 @@ void IdealMhdModel::computePreconditioningMatrix(
   // All this sm, sp logic seems to be related to the odd-m scaling factors...
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // off-diagonal, d^2/ds^2 (radial), on half-grid
-    m_axm[(jH - r_.nsMinH) * 2 + m_evn] = -ax[(jH - r_.nsMinH) * 4 + 0];
-    m_axm[(jH - r_.nsMinH) * 2 + m_odd] =
+    m_axm[(jH - r_.nsMinH) * 2 + kEvenParity] = -ax[(jH - r_.nsMinH) * 4 + 0];
+    m_axm[(jH - r_.nsMinH) * 2 + kOddParity] =
         ax[(jH - r_.nsMinH) * 4 + 1] * sm[jH - r_.nsMinH] * sp[jH - r_.nsMinH];
 
     // off-diagonal, m^2 (poloidal), on half-grid
-    m_bxm[(jH - r_.nsMinH) * 2 + m_evn] = bx[(jH - r_.nsMinH) * 3 + 0];
-    m_bxm[(jH - r_.nsMinH) * 2 + m_odd] =
+    m_bxm[(jH - r_.nsMinH) * 2 + kEvenParity] = bx[(jH - r_.nsMinH) * 3 + 0];
+    m_bxm[(jH - r_.nsMinH) * 2 + kOddParity] =
         bx[(jH - r_.nsMinH) * 3 + 0] * sm[jH - r_.nsMinH] * sp[jH - r_.nsMinH];
   }
 
@@ -2779,18 +2897,18 @@ void IdealMhdModel::computePreconditioningMatrix(
     int jH_o = jF - r_.nsMinH;
 
     // diagonal, d^2/ds^2 (radial), on forces full-grid
-    m_axd[(jF - r_.nsMinF) * 2 + m_evn] =
+    m_axd[(jF - r_.nsMinF) * 2 + kEvenParity] =
         (jF > 0 ? ax[jH_i * 4 + 0] : 0.0) +
         (jF < m_fc_.ns - 1 ? ax[jH_o * 4 + 0] : 0.0);
-    m_axd[(jF - r_.nsMinF) * 2 + m_odd] =
+    m_axd[(jF - r_.nsMinF) * 2 + kOddParity] =
         (jF > 0 ? ax[jH_i * 4 + 2] * sm[jH_i] * sm[jH_i] : 0.0) +
         (jF < m_fc_.ns - 1 ? ax[jH_o * 4 + 3] * sp[jH_o] * sp[jH_o] : 0.0);
 
     // diagonal, m^2 (poloidal), on forces full-grid
-    m_bxd[(jF - r_.nsMinF) * 2 + m_evn] =
+    m_bxd[(jF - r_.nsMinF) * 2 + kEvenParity] =
         (jF > 0 ? bx[jH_i * 3 + 1] : 0.0) +
         (jF < m_fc_.ns - 1 ? bx[jH_o * 3 + 2] : 0.0);
-    m_bxd[(jF - r_.nsMinF) * 2 + m_odd] =
+    m_bxd[(jF - r_.nsMinF) * 2 + kOddParity] =
         (jF > 0 ? bx[jH_i * 3 + 1] * sm[jH_i] * sm[jH_i] : 0.0) +
         (jF < m_fc_.ns - 1 ? bx[jH_o * 3 + 2] * sp[jH_o] * sp[jH_o] : 0.0);
 
@@ -2843,8 +2961,8 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
     }
 
     double tcon_base =
-        std::min(fabs(ard[(jF - r_.nsMinF) * 2 + m_evn] / arNorm),
-                 fabs(azd[(jF - r_.nsMinF) * 2 + m_evn] / azNorm));
+        std::min(fabs(ard[(jF - r_.nsMinF) * 2 + kEvenParity] / arNorm),
+                 fabs(azd[(jF - r_.nsMinF) * 2 + kEvenParity] / azNorm));
 
     // TODO(jons): why the last term ?
     // --> could be to cancel some terms in ard, azd
@@ -2891,10 +3009,15 @@ void IdealMhdModel::deAliasConstraintForce() {
 
 // add constraint force to MHD force
 void IdealMhdModel::assembleTotalForces() {
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // free-boundary contribution: include force on boundary from NESTOR
-  if (m_fc_.lfreeb && m_ivac_ >= 1 && r_.nsMaxF1 == m_fc_.ns) {
+  if (m_fc_.lfreeb &&
+      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
+       m_vacuum_pressure_state_ == VacuumPressureState::kActive) &&
+      r_.nsMaxF1 == m_fc_.ns) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int idx_kl = (r_.nsMaxF - 1 - r_.nsMinF) * s_.nZnT + kl;
 
@@ -2973,7 +3096,7 @@ void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
   };
 
   ForcesToFourier3DSymmFastPoloidal(input_data, xmpq, r_, m_fc_, s_, t_,
-                                    m_ivac_, m_physical_f);
+                                    m_vacuum_pressure_state_, m_physical_f);
 }
 
 void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
@@ -2982,10 +3105,14 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
   // fill target force arrays with zeros
   m_physical_f.setZero();
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
-  if (m_fc_.lfreeb && m_ivac_ >= 1) {
+  if (m_fc_.lfreeb &&
+      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
+       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
     // free-boundary: up to jMaxRZ=ns
     jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
   }
@@ -3096,7 +3223,9 @@ void IdealMhdModel::applyM1Preconditioner(FourierForces& m_decomposed_f) {
     }  // n
   }  // jF
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 void IdealMhdModel::assembleRZPreconditioner() {
@@ -3115,7 +3244,9 @@ void IdealMhdModel::assembleRZPreconditioner() {
   }
 
   int jMax = m_fc_.ns - 1;
-  if (m_fc_.lfreeb && m_ivac_ >= 1) {
+  if (m_fc_.lfreeb &&
+      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
+       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
     jMax = m_fc_.ns;
   }
 
@@ -3228,7 +3359,7 @@ void IdealMhdModel::assembleRZPreconditioner() {
   //   ! only if forces are converged low enough already
   //   ledge = .true.
   //
-  // IF ((iter2-iter1).lt.400 .or. ivac.lt.1) &
+  // IF ((iter2-iter1).lt.400 .or. vacuum_pressure_state.lt.1) &
   //   ! only starting in late iterations and if NESTOR fully initialized
   //   ledge = .false.
   //
@@ -3236,7 +3367,9 @@ void IdealMhdModel::assembleRZPreconditioner() {
   //   dx(ns,1:,1:) = 3*dx(ns,1:,1:)
   // END IF
 
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 }
 
 // serial variant
@@ -3274,7 +3407,9 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   }
 
   int jMax = m_fc_.ns - 1;
-  if (m_fc_.lfreeb && m_ivac_ >= 1) {
+  if (m_fc_.lfreeb &&
+      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
+       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
     jMax = m_fc_.ns;
   }
 
@@ -3294,7 +3429,9 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
       }  // idx_basis
     }  // mn
   }  // jF
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // split range [0, s_.mnsize) among threads
   const int thread_id = r_.get_thread_id();
@@ -3320,7 +3457,9 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
     TridiagonalSolveSerial(m_h_.all_az[mn], m_h_.all_dz[mn], m_h_.all_bz[mn],
                            m_h_.all_cz[mn], jMin[mn], jMax, s_.num_basis);
   }  // mn
+#ifdef _OPENMP
 #pragma omp barrier
+#endif  // _OPENMP
 
   // re-distribute solution back into threads
   for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
@@ -3372,7 +3511,9 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
 //     }
 
 //     int jMax = r.ns - 1;
-//     if (fc.lfreeb && fc.ivac >= 1) {
+//     if (fc.lfreeb && (vacuum_pressure_state ==
+//     VacuumPressureState::kInitialized || vacuum_pressure_state ==
+//     VacuumPressureState::kActive)) {
 //         jMax = r.ns;
 //     }
 
@@ -3415,7 +3556,8 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
 
 double IdealMhdModel::get_delbsq() const {
   double delBSqAvg = 0.0;
-  if (m_fc_.lfreeb && m_ivac_ > 1) {
+  if (m_fc_.lfreeb &&
+      m_vacuum_pressure_state_ == VacuumPressureState::kActive) {
     double delBSqNorm = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int l = kl % s_.nThetaEff;

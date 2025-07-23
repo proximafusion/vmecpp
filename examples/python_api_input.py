@@ -7,17 +7,14 @@ import numpy as np
 
 import vmecpp
 
-# We can construct a VmecInput object completely from Python.
-# As a starting point, we can use the VMEC2000 defaults.
-vmec_input = vmecpp.VmecInput.default()
+# We can construct a VmecInput object completely from Python using keyword
+# arguments to override a subset of the default values.
+vmec_input = vmecpp.VmecInput(
+    am=np.array([0.125, -0.125]),  # pressure profile coefficients
+    ai=np.array([1.0]),  # constant rotational transform
+    niter_array=np.array([200]),  # allow more iterations for convergence
+)
 print("default = \n", vmec_input.to_json(indent=2))
-
-# Let's set a pressure profile that decays linearly from 0.125 to zero.
-vmec_input.am = np.array([0.125, -0.125])
-# ...a constant rotational transform of 1.0
-vmec_input.ai = np.array([1.0])
-# ...and increase the number of iterations so it has time to converge.
-vmec_input.niter_array = np.array([200])
 
 # Finally we construct boundary geometry that is approximately the Solovev
 # equilibrium. There are helper methods for explicitly resizing coefficient

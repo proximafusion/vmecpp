@@ -8,7 +8,6 @@
 #include <Eigen/Dense>  // VectorXd, Matrix
 #include <cassert>
 #include <cmath>
-#include <cstdbool>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -19,6 +18,7 @@
 #include <vector>
 
 #include "absl/log/check.h"
+#include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -162,6 +162,24 @@ enum class VmecStatus : std::uint8_t {
   SUCCESSFUL_TERMINATION = 11
 };
 
+enum class VacuumPressureState : std::int8_t {
+  // No vacuum pressure
+  kOff = -1,
+
+  // No vacuum pressure yet, force free-boundary update, but ignore the result
+  // in this force-balance computation.
+  kInitializing = 0,
+
+  // vacuum pressure turned on.
+  // soft restart equilibrium calculation by returning BAD_JACOBIAN in the
+  // process of reducing rCon0,zCon0 *= 0.9;
+  kInitialized = 1,
+
+  // vacuum pressure turned on
+  // in the process of reducing rCon0,zCon0 *= 0.9;
+  kActive = 2
+};
+
 int VmecStatusCode(const VmecStatus vmec_status);
 
 std::string VmecStatusAsString(const VmecStatus vmec_status);
@@ -173,9 +191,6 @@ std::string VmecStatusAsString(const VmecStatus vmec_status);
 // VMEC.
 // static constexpr double MU_0 = 1.25663706212e-6;
 static constexpr double MU_0 = 4.0e-7 * M_PI;
-
-static constexpr int m_evn = 0;
-static constexpr int m_odd = 1;
 
 // ----------------------
 // simple math
@@ -212,15 +227,16 @@ void TridiagonalSolveSerial(std::vector<double> &m_a, std::vector<double> &m_d,
 // a,d,b contain the tri-diagonal matrix and is modified in-place
 // c     contains the RHS on entry and the solution vectors on exit
 void TridiagonalSolveOpenMP(
-    std::vector<double> &ar, std::vector<double> &dr, std::vector<double> &br,
-    std::vector<std::span<double>> &cr, std::vector<double> &az,
-    std::vector<double> &dz, std::vector<double> &bz,
-    std::vector<std::span<double>> &cz, const std::vector<int> &jMin, int jMax,
-    int mnmax, int nRHS, std::vector<std::mutex> &mutices, int ncpu, int myid,
-    int nsMinF, int nsMaxF, std::vector<double> &handover_ar,
-    std::vector<std::vector<double>> &handover_cr,
-    std::vector<double> &handover_az,
-    std::vector<std::vector<double>> &handover_cz);
+    std::vector<double> &m_ar, std::vector<double> &m_dr,
+    std::vector<double> &m_br, std::vector<std::span<double>> &m_cr,
+    std::vector<double> &m_az, std::vector<double> &m_dz,
+    std::vector<double> &m_bz, std::vector<std::span<double>> &m_cz,
+    const std::vector<int> &jMin, int jMax, int mnmax, int nRHS,
+    std::vector<std::mutex> &m_mutices, int ncpu, int myid, int nsMinF,
+    int nsMaxF, std::vector<double> &m_handover_ar,
+    std::vector<std::vector<double>> &m_handover_cr,
+    std::vector<double> &m_handover_az,
+    std::vector<std::vector<double>> &m_handover_cz);
 
 // ----------------------
 // VMEC-specific
