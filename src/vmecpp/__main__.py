@@ -39,13 +39,18 @@ def parse_arguments() -> argparse.Namespace:
     return p.parse_args()
 
 
-args = parse_arguments()
+def main() -> None:
+    args = parse_arguments()
 
-input = vmecpp.VmecInput.from_file(args.input_file)
-output = vmecpp.run(input, max_threads=args.max_threads, verbose=not args.quiet)
+    input = vmecpp.VmecInput.from_file(args.input_file)
+    output = vmecpp.run(input, max_threads=args.max_threads, verbose=not args.quiet)
 
-configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)
-wout_file = Path(f"wout_{configuration_name}.nc")
-output.wout.save(wout_file)
+    configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)
+    wout_file = Path(f"wout_{configuration_name}.nc")
+    output.wout.save(wout_file)
 
-print(f"\nOutput written to {wout_file}")  # noqa: T201
+    print(f"\nOutput written to {wout_file}")  # noqa: T201
+
+
+if __name__ == "__main__":
+    main()
