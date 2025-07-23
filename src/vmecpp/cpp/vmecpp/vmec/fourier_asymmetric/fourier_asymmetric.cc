@@ -16,7 +16,9 @@ void FourierToReal3DAsymmFastPoloidal(
     absl::Span<const double> rmnss, absl::Span<const double> rmnsc,
     absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
     absl::Span<const double> zmncs, absl::Span<const double> zmncc,
-    absl::Span<const double> zmnss, absl::Span<double> r_real,
+    absl::Span<const double> zmnss, absl::Span<const double> lmnsc,
+    absl::Span<const double> lmncs, absl::Span<const double> lmncc,
+    absl::Span<const double> lmnss, absl::Span<double> r_real,
     absl::Span<double> z_real, absl::Span<double> lambda_real,
     absl::Span<double> ru_real, absl::Span<double> zu_real) {
   const int nzeta = sizes.nZeta;
@@ -75,13 +77,15 @@ void FourierToReal3DAsymmFastPoloidal(
         double sin_nv = fourier_basis.sinnv[idx_nv];
 
         // ONLY process asymmetric coefficients (symmetric already done)
-        // Accumulate asymmetric coefficients
+        // Accumulate asymmetric coefficients (CRITICAL: Lambda coefficients)
         rmksc_asym[k] += rmnsc[mn] * cos_nv;
         zmkcc_asym[k] += zmncc[mn] * cos_nv;
+        lmkcc_asym[k] += lmncc[mn] * cos_nv;
 
         if (sizes.lthreed) {
           rmkcs_asym[k] += rmncs[mn] * sin_nv;
           zmkss_asym[k] += zmnss[mn] * sin_nv;
+          lmkss_asym[k] += lmnss[mn] * sin_nv;
         }
       }
     }
@@ -108,6 +112,7 @@ void FourierToReal3DAsymmFastPoloidal(
         // Asymmetric contributions (stored separately for reflection)
         asym_R[idx] += rmksc_asym[k] * sin_mu;
         asym_Z[idx] += zmkcc_asym[k] * cos_mu;
+        asym_L[idx] += lmkcc_asym[k] * cos_mu;  // CRITICAL: Lambda asymmetric
         
         // Asymmetric derivatives using pre-computed basis functions
         asym_Ru[idx] += rmksc_asym[k] * cos_mum;  // cosmum includes m factor
@@ -116,6 +121,7 @@ void FourierToReal3DAsymmFastPoloidal(
         if (sizes.lthreed) {
           asym_R[idx] += rmkcs_asym[k] * cos_mu;
           asym_Z[idx] += zmkss_asym[k] * sin_mu;
+          asym_L[idx] += lmkss_asym[k] * sin_mu;  // CRITICAL: Lambda asymmetric 3D
           
           // Additional asymmetric derivative contributions
           asym_Ru[idx] += rmkcs_asym[k] * sin_mum; // sinmum includes -m factor
@@ -183,8 +189,11 @@ void FourierToReal2DAsymmFastPoloidal(
     absl::Span<const double> rmnss, absl::Span<const double> rmnsc,
     absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
     absl::Span<const double> zmncs, absl::Span<const double> zmncc,
-    absl::Span<const double> zmnss, absl::Span<double> r_real,
-    absl::Span<double> z_real, absl::Span<double> lambda_real,
+    absl::Span<const double> zmnss,
+    absl::Span<const double> lmnsc, absl::Span<const double> lmncs,
+    absl::Span<const double> lmncc, absl::Span<const double> lmnss,
+    absl::Span<double> r_real, absl::Span<double> z_real,
+    absl::Span<double> lambda_real,
     absl::Span<double> ru_real, absl::Span<double> zu_real) {
   const int nzeta = sizes.nZeta;
   const int ntheta2 = sizes.nThetaReduced;  // [0, pi]

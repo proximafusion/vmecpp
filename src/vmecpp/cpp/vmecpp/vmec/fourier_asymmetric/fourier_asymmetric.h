@@ -21,7 +21,10 @@ void FourierToReal3DAsymmFastPoloidal(
     absl::Span<const double> rmncs,  // Asymmetric
     absl::Span<const double> zmnsc, absl::Span<const double> zmncs,
     absl::Span<const double> zmncc,  // Asymmetric
-    absl::Span<const double> zmnss,  // Asymmetric
+    absl::Span<const double> zmnss,  // Asymmetric  
+    absl::Span<const double> lmnsc, absl::Span<const double> lmncs,
+    absl::Span<const double> lmncc,  // Asymmetric CRITICAL
+    absl::Span<const double> lmnss,  // Asymmetric CRITICAL
     absl::Span<double> r_real, absl::Span<double> z_real,
     absl::Span<double> lambda_real,
     absl::Span<double> ru_real,  // ADD: dR/dtheta
@@ -54,8 +57,12 @@ void FourierToReal2DAsymmFastPoloidal(
     absl::Span<const double> rmnss, absl::Span<const double> rmnsc,
     absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
     absl::Span<const double> zmncs, absl::Span<const double> zmncc,
-    absl::Span<const double> zmnss, absl::Span<double> r_real,
-    absl::Span<double> z_real, absl::Span<double> lambda_real,
+    absl::Span<const double> zmnss, 
+    absl::Span<const double> lmnsc, absl::Span<const double> lmncs,
+    absl::Span<const double> lmncc,  // Asymmetric CRITICAL
+    absl::Span<const double> lmnss,  // Asymmetric CRITICAL
+    absl::Span<double> r_real, absl::Span<double> z_real, 
+    absl::Span<double> lambda_real,
     absl::Span<double> ru_real,  // ADD: dR/dtheta
     absl::Span<double> zu_real);  // ADD: dZ/dtheta
 

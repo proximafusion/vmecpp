@@ -3590,11 +3590,18 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x
   const auto zmnsc = physical_x.zmnsc.subspan(offset, count);
   const auto zmncs = physical_x.zmncs.subspan(offset, count);
 
+  // Get lambda coefficients (both symmetric and asymmetric)
+  const auto lmnsc = physical_x.lmnsc.subspan(offset, count);
+  const auto lmncs = physical_x.lmncs.subspan(offset, count);
+  const auto lmncc = physical_x.lmncc.subspan(offset, count);  // CRITICAL: asymmetric
+  const auto lmnss = physical_x.lmnss.subspan(offset, count);  // CRITICAL: asymmetric
+
   // Output arrays - use existing arrays directly
   const int num_realsp = (r_.nsMaxF - r_.nsMinF) * s_.nZnT;
   
   FourierToReal3DAsymmFastPoloidal(
       s_, rmncc, rmnss, rmnsc, rmncs, zmnsc, zmncs, zmncc, zmnss,
+      lmnsc, lmncs, lmncc, lmnss,  // CRITICAL: Lambda coefficients added
       absl::MakeSpan(r1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
       absl::MakeSpan(z1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
       absl::MakeSpan(lu_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
@@ -3624,10 +3631,17 @@ void IdealMhdModel::dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x
   auto zmnsc = physical_x.zmnsc.empty() ? absl::Span<const double>() : physical_x.zmnsc.subspan(offset, count);
   auto zmncs = physical_x.zmncs.empty() ? absl::Span<const double>() : physical_x.zmncs.subspan(offset, count);
 
+  // Lambda coefficients (both symmetric and asymmetric)
+  auto lmnsc = physical_x.lmnsc.empty() ? absl::Span<const double>() : physical_x.lmnsc.subspan(offset, count);
+  auto lmncs = physical_x.lmncs.empty() ? absl::Span<const double>() : physical_x.lmncs.subspan(offset, count);
+  auto lmncc = physical_x.lmncc.empty() ? absl::Span<const double>() : physical_x.lmncc.subspan(offset, count);  // CRITICAL: asymmetric
+  auto lmnss = physical_x.lmnss.empty() ? absl::Span<const double>() : physical_x.lmnss.subspan(offset, count);  // CRITICAL: asymmetric
+
   const int num_realsp = (r_.nsMaxF - r_.nsMinF) * s_.nThetaEff;
   
   FourierToReal2DAsymmFastPoloidal(
       s_, rmncc, rmnss, rmnsc, rmncs, zmnsc, zmncs, zmncc, zmnss,
+      lmnsc, lmncs, lmncc, lmnss,  // CRITICAL: Lambda coefficients added
       absl::MakeSpan(r1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
       absl::MakeSpan(z1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
       absl::MakeSpan(lu_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
