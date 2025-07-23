@@ -1,0 +1,376 @@
+need to shift theta by delta = 0.0831412
+  Calculated from: atan2(0.05 - 0, 0.3 + 0.3)
+  = atan2(0.05, 0.6)
+DEBUG theta shift for m=1,n=0:
+  Original: rbc=0.3 rbs=0.05 zbs=0.3 zbc=0
+  Shifted: rbc=0.303116 zbs=0.298964
+  Shifted asymmetric: rbs=0.0249136 zbc=0.0249136
+DEBUG ensureM1Constrained: applying M=1 constraint
+  n=0 lasym: rbsc 0.0249136 -> 0.0249136, zbcc 0.0249136 -> 0.0249136
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+W0000 00:00:1753261497.083937 3129920 radial_profiles.cc:558] too few coefficients for 'two_power' profile; need 3, got 2
+
+W0000 00:00:1753261497.084051 3129920 radial_profiles.cc:558] too few coefficients for 'two_power' profile; need 3, got 2
+
+
+ NS = 3   NO. FOURIER MODES = 2   FTOLV = 1.000e-08   NITER = 5
+
+ ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz      fsql   |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  <M>  
+------+------------------------------+------------------------------+----------+-----------+------------+------------+-------
+[SYMM_TRANSFORM_DEBUG] jF=1 l=0 theta=0.000000 rnkcc[0]=1.000000 rnkcc[1]=0.303116 R_total=1.303116
+[SYMM_TRANSFORM_DEBUG] Input coeffs: src_rcc[0]=1.000000 src_rcc[1]=0.214335 src_rcc[2]=1.000000
+DEBUG: Processing asymmetric equilibrium with lasym=true
+DEBUG: Processing asymmetric contribution
+DEBUG: physical_x.rmnsc size=6
+  First few rmnsc values: 0.000000 0.035233 0.000000 0.035233 0.000000 
+DEBUG: Resizing asymmetric arrays from 20 to 60
+DEBUG: Calling 2D asymmetric transform
+DEBUG: Calling symrzl_geometry
+DEBUG SymmetrizeRealSpaceGeometry FIXED: ntheta_reduced=6, ntheta_eff=10, nzeta=2, nsurfaces=0
+DEBUG: Symmetrization completed successfully
+DEBUG: Adding asymmetric contributions to symmetric arrays
+DEBUG: Array sizes - symmetric: 60, asymmetric: 60
+DEBUG: nsMinF1=0, nsMaxF1=3, nZnT=20
+DEBUG SURFACE POPULATION:
+  Surface jF=0 r1_e[6]=3.431534 r1_o[6]=-0.419924
+  Surface jF=1 r1_e[26]=3.431534 r1_o[26]=-0.419924
+  Surface jF=2 r1_e[46]=2.431534 r1_o[46]=-0.174698
+  Array sizes: r1_e.size()=60 r1_o.size()=60
+  nsMinF1=0 nsMaxF1=3 nZnT=20
+DEBUG: All geometry arrays are finite (first 10 checked)
+Array index debug jH=0 kl=6:
+  jH + 1 = 1
+  r_.nsMinF1 = 0
+  s_.nZnT = 20
+  target_idx = 26
+  r1_e.size() = 60
+  r1_o.size() = 60
+  r1_e[26] = 3.431534
+  r1_o[26] = -0.419924
+  ru_e[26] = -0.126925
+  ru_o[26] = 0.001415
+  zu_e[26] = 0.103289
+  zu_o[26] = -0.437541
+DEBUG TAU CALC kl=6 jH=0 iHalf=6:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.177029
+  tau_val = -0.044257
+  GEOMETRY DERIVATIVES:
+    ru12=-0.126218 (dR/dtheta avg)
+    zu12=-0.115481 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=3.221572 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=3.221572
+    r1[j+1]=3.221572
+    z1[j]=0.125385
+    z1[j+1]=0.125385
+  ODD COMPONENTS: ruo_o=0.001415 z1o_o=-0.033561 zuo_o=-0.437541 r1o_o=-0.419924
+  m_ls_ odd: ruo_i=0.001415 z1o_i=-0.033561 zuo_i=-0.437541 r1o_i=-0.419924
+  EXCLUDED axis tau=-0.044257 at jH=0 kl=6 (jVMEC style)
+DEBUG TAU CALC kl=7 jH=0 iHalf=7:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.052740
+  tau_val = 0.013185
+  GEOMETRY DERIVATIVES:
+    ru12=-0.118082 (dR/dtheta avg)
+    zu12=-0.055014 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=3.261599 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=3.261599
+    r1[j+1]=3.261599
+    z1[j]=0.290741
+    z1[j+1]=0.290741
+  ODD COMPONENTS: ruo_o=0.205369 z1o_o=-0.230029 zuo_o=-0.259511 r1o_o=-0.254065
+  m_ls_ odd: ruo_i=0.205369 z1o_i=-0.230029 zuo_i=-0.259511 r1o_i=-0.254065
+  EXCLUDED axis tau=0.013185 at jH=0 kl=7 (jVMEC style)
+DEBUG TAU CALC kl=8 jH=0 iHalf=8:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.016313
+  tau_val = 0.004078
+  GEOMETRY DERIVATIVES:
+    ru12=-0.054182 (dR/dtheta avg)
+    zu12=-0.074741 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=3.228022 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=3.228022
+    r1[j+1]=3.228022
+    z1[j]=0.209287
+    z1[j+1]=0.209287
+  ODD COMPONENTS: ruo_o=0.247969 z1o_o=-0.284331 zuo_o=-0.149482 r1o_o=-0.151558
+  m_ls_ odd: ruo_i=0.247969 z1o_i=-0.284331 zuo_i=-0.149482 r1o_i=-0.151558
+  EXCLUDED axis tau=0.004078 at jH=0 kl=8 (jVMEC style)
+DEBUG TAU CALC kl=9 jH=0 iHalf=9:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.141547
+  tau_val = 0.035387
+  GEOMETRY DERIVATIVES:
+    ru12=-0.142996 (dR/dtheta avg)
+    zu12=-0.037370 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=3.136980 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=3.136980
+    r1[j+1]=3.136980
+    z1[j]=0.399346
+    z1[j+1]=0.399346
+  ODD COMPONENTS: ruo_o=0.205369 z1o_o=-0.230029 zuo_o=0.074741 r1o_o=0.066729
+  m_ls_ odd: ruo_i=0.205369 z1o_i=-0.230029 zuo_i=0.074741 r1o_i=0.066729
+  EXCLUDED axis tau=0.035387 at jH=0 kl=9 (jVMEC style)
+DEBUG TAU CALC kl=6 jH=1 iHalf=26:
+  Basic Jacobian: -0.330953
+  Odd contrib: -0.188091
+  tau_val = -0.377976
+  GEOMETRY DERIVATIVES:
+    ru12=-0.202849 (dR/dtheta avg)
+    zu12=-0.170901 (dZ/dtheta avg)
+    rs=-1.575256 (dR/ds)
+    zs=0.304367 (dZ/ds)
+    r12=2.674056 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=3.067870
+    r1[j+1]=2.280242
+    z1[j]=0.113101
+    z1[j+1]=0.265285
+  ODD COMPONENTS: ruo_o=-0.176753 z1o_o=0.142166 zuo_o=-0.195674 r1o_o=-0.174698
+  m_ls_ odd: ruo_i=0.001415 z1o_i=-0.033561 zuo_i=-0.437541 r1o_i=-0.419924
+  NEW minTau=-0.377976 at jH=1 kl=6
+DEBUG TAU CALC kl=7 jH=1 iHalf=27:
+  Basic Jacobian: -0.284759
+  Odd contrib: -0.063917
+  tau_val = -0.300738
+  GEOMETRY DERIVATIVES:
+    ru12=-0.167741 (dR/dtheta avg)
+    zu12=-0.109998 (dZ/dtheta avg)
+    rs=-1.837762 (dR/ds)
+    zs=0.492476 (dZ/ds)
+    r12=2.709164 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=3.168605
+    r1[j+1]=2.249723
+    z1[j]=0.206545
+    z1[j+1]=0.452783
+  ODD COMPONENTS: ruo_o=-0.082911 z1o_o=0.054302 zuo_o=-0.167126 r1o_o=-0.160397
+  m_ls_ odd: ruo_i=0.205369 z1o_i=-0.230029 zuo_i=-0.259511 r1o_i=-0.254065
+DEBUG TAU CALC kl=8 jH=1 iHalf=28:
+  Basic Jacobian: -0.409871
+  Odd contrib: -0.093977
+  tau_val = -0.433365
+  GEOMETRY DERIVATIVES:
+    ru12=-0.088248 (dR/dtheta avg)
+    zu12=-0.169459 (dZ/dtheta avg)
+    rs=-2.162238 (dR/ds)
+    zs=0.492476 (dZ/ds)
+    r12=2.631989 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=3.172548
+    r1[j+1]=2.091430
+    z1[j]=0.105215
+    z1[j+1]=0.351453
+  ODD COMPONENTS: ruo_o=-0.040311 z1o_o=0.000000 zuo_o=-0.241867 r1o_o=-0.245226
+  m_ls_ odd: ruo_i=0.247969 z1o_i=-0.284331 zuo_i=-0.149482 r1o_i=-0.151558
+  NEW minTau=-0.433365 at jH=1 kl=8
+DEBUG TAU CALC kl=9 jH=1 iHalf=29:
+  Basic Jacobian: -0.322352
+  Odd contrib: -0.012522
+  tau_val = -0.325482
+  GEOMETRY DERIVATIVES:
+    ru12=-0.144974 (dR/dtheta avg)
+    zu12=-0.114745 (dZ/dtheta avg)
+    rs=-2.424744 (dR/ds)
+    zs=0.304367 (dZ/ds)
+    r12=2.555218 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=3.161404
+    r1[j+1]=1.949032
+    z1[j]=0.315149
+    z1[j+1]=0.467333
+  ODD COMPONENTS: ruo_o=0.027202 z1o_o=-0.054302 zuo_o=-0.167126 r1o_o=-0.178497
+  m_ls_ odd: ruo_i=0.205369 z1o_i=-0.230029 zuo_i=0.074741 r1o_i=0.066729
+
+DEBUG JACOBIAN CHECK:
+  Final minTau=-0.433365, maxTau=0.977506
+  minTau * maxTau = -0.423617
+  localBadJacobian = 1 (condition: < 0.0)
+  Range spans: BOTH sides of zero
+ INITIAL JACOBIAN CHANGED SIGN!
+ TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS
+[SYMM_TRANSFORM_DEBUG] jF=1 l=0 theta=0.000000 rnkcc[0]=0.825779 rnkcc[1]=0.303116 R_total=1.128895
+[SYMM_TRANSFORM_DEBUG] Input coeffs: src_rcc[0]=0.825779 src_rcc[1]=0.214335 src_rcc[2]=1.000000
+DEBUG: Processing asymmetric equilibrium with lasym=true
+DEBUG: Processing asymmetric contribution
+DEBUG: physical_x.rmnsc size=6
+  First few rmnsc values: 0.000000 0.035233 0.000000 0.035233 0.000000 
+DEBUG: Resizing asymmetric arrays from 60 to 60
+DEBUG: Calling 2D asymmetric transform
+DEBUG: Calling symrzl_geometry
+DEBUG SymmetrizeRealSpaceGeometry FIXED: ntheta_reduced=6, ntheta_eff=10, nzeta=2, nsurfaces=0
+DEBUG: Symmetrization completed successfully
+DEBUG: Adding asymmetric contributions to symmetric arrays
+DEBUG: Array sizes - symmetric: 60, asymmetric: 60
+DEBUG: nsMinF1=0, nsMaxF1=3, nZnT=20
+DEBUG SURFACE POPULATION:
+  Surface jF=0 r1_e[6]=2.386208 r1_o[6]=-0.419924
+  Surface jF=1 r1_e[26]=3.083092 r1_o[26]=-0.419924
+  Surface jF=2 r1_e[46]=4.863069 r1_o[46]=-0.349395
+  Array sizes: r1_e.size()=60 r1_o.size()=60
+  nsMinF1=0 nsMaxF1=3 nZnT=20
+DEBUG: All geometry arrays are finite (first 10 checked)
+Array index debug jH=0 kl=6:
+  jH + 1 = 1
+  r_.nsMinF1 = 0
+  s_.nZnT = 20
+  target_idx = 26
+  r1_e.size() = 60
+  r1_o.size() = 60
+  r1_e[26] = 3.083092
+  r1_o[26] = -0.419924
+  ru_e[26] = -0.126925
+  ru_o[26] = 0.001415
+  zu_e[26] = 0.103289
+  zu_o[26] = -0.437541
+DEBUG TAU CALC kl=6 jH=0 iHalf=6:
+  Basic Jacobian: 0.160954
+  Odd contrib: -0.177029
+  tau_val = 0.116697
+  GEOMETRY DERIVATIVES:
+    ru12=-0.126218 (dR/dtheta avg)
+    zu12=-0.115481 (dZ/dtheta avg)
+    rs=1.393768 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=2.524688 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=2.176246
+    r1[j+1]=2.873130
+    z1[j]=0.125385
+    z1[j+1]=0.125385
+  ODD COMPONENTS: ruo_o=0.001415 z1o_o=-0.033561 zuo_o=-0.437541 r1o_o=-0.419924
+  m_ls_ odd: ruo_i=0.001415 z1o_i=-0.033561 zuo_i=-0.437541 r1o_i=-0.419924
+  EXCLUDED axis tau=0.116697 at jH=0 kl=6 (jVMEC style)
+DEBUG TAU CALC kl=7 jH=0 iHalf=7:
+  Basic Jacobian: 0.076677
+  Odd contrib: 0.052740
+  tau_val = 0.089862
+  GEOMETRY DERIVATIVES:
+    ru12=-0.118082 (dR/dtheta avg)
+    zu12=-0.055014 (dZ/dtheta avg)
+    rs=1.393768 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=2.564715 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=2.216273
+    r1[j+1]=2.913157
+    z1[j]=0.290741
+    z1[j+1]=0.290741
+  ODD COMPONENTS: ruo_o=0.205369 z1o_o=-0.230029 zuo_o=-0.259511 r1o_o=-0.254065
+  m_ls_ odd: ruo_i=0.205369 z1o_i=-0.230029 zuo_i=-0.259511 r1o_i=-0.254065
+  EXCLUDED axis tau=0.089862 at jH=0 kl=7 (jVMEC style)
+DEBUG TAU CALC kl=8 jH=0 iHalf=8:
+  Basic Jacobian: 0.104172
+  Odd contrib: 0.016313
+  tau_val = 0.108250
+  GEOMETRY DERIVATIVES:
+    ru12=-0.054182 (dR/dtheta avg)
+    zu12=-0.074741 (dZ/dtheta avg)
+    rs=1.393768 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=2.531138 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=2.182696
+    r1[j+1]=2.879580
+    z1[j]=0.209287
+    z1[j+1]=0.209287
+  ODD COMPONENTS: ruo_o=0.247969 z1o_o=-0.284331 zuo_o=-0.149482 r1o_o=-0.151558
+  m_ls_ odd: ruo_i=0.247969 z1o_i=-0.284331 zuo_i=-0.149482 r1o_i=-0.151558
+  EXCLUDED axis tau=0.108250 at jH=0 kl=8 (jVMEC style)
+DEBUG TAU CALC kl=9 jH=0 iHalf=9:
+  Basic Jacobian: 0.052086
+  Odd contrib: 0.141547
+  tau_val = 0.087473
+  GEOMETRY DERIVATIVES:
+    ru12=-0.142996 (dR/dtheta avg)
+    zu12=-0.037370 (dZ/dtheta avg)
+    rs=1.393768 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=2.440096 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=2.091654
+    r1[j+1]=2.788538
+    z1[j]=0.399346
+    z1[j+1]=0.399346
+  ODD COMPONENTS: ruo_o=0.205369 z1o_o=-0.230029 zuo_o=0.074741 r1o_o=0.066729
+  m_ls_ odd: ruo_i=0.205369 z1o_i=-0.230029 zuo_i=0.074741 r1o_i=0.066729
+  EXCLUDED axis tau=0.087473 at jH=0 kl=9 (jVMEC style)
+DEBUG TAU CALC kl=6 jH=1 iHalf=26:
+  Basic Jacobian: 0.464841
+  Odd contrib: -0.366027
+  tau_val = 0.373335
+  GEOMETRY DERIVATIVES:
+    ru12=-0.342848 (dR/dtheta avg)
+    zu12=-0.203986 (dZ/dtheta avg)
+    rs=3.682111 (dR/ds)
+    zs=0.834937 (dZ/ds)
+    r12=3.639955 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=2.719428
+    r1[j+1]=4.560483
+    z1[j]=0.113101
+    z1[j+1]=0.530570
+  ODD COMPONENTS: ruo_o=-0.353505 z1o_o=0.284331 zuo_o=-0.391349 r1o_o=-0.349395
+  m_ls_ odd: ruo_i=0.001415 z1o_i=-0.033561 zuo_i=-0.437541 r1o_i=-0.419924
+  NEW maxTau=0.373335 at jH=1 kl=6
+DEBUG TAU CALC kl=7 jH=1 iHalf=27:
+  Basic Jacobian: 0.047955
+  Odd contrib: -0.157843
+  tau_val = 0.008494
+  GEOMETRY DERIVATIVES:
+    ru12=-0.314026 (dR/dtheta avg)
+    zu12=-0.144995 (dZ/dtheta avg)
+    rs=3.358568 (dR/ds)
+    zs=1.398042 (dZ/ds)
+    r12=3.659805 (R at half-grid)
+    deltaS=0.500000 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=2.820163
+    r1[j+1]=4.499447
+    z1[j]=0.206545
+    z1[j+1]=0.905565
+  ODD COMPONENTS: ruo_o=-0.165822 z1o_o=0.108605 zuo_o=-0.334252 r1o_o=-0.320793
+  m_ls_ odd: ruo_i=0.205369 z1o_i=-0.230029 zuo_i=-0.259511 r1o_i=-0.254065
+DEBUG TAU CALC kl=8 jH=1 iHalf=28:
+  Basic Jacobian: 0.512268
+  Odd contrib: -0.271913
+  tau_val = 0.444290
+  GEOMETRY DERIVATIF0000 00:00:1753261497.087778 3129920 vmec_standalone.cc:45] Check failed: out is OK (INTERNAL: Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.) Error encountered during the VMEC++ run: INTERNAL: Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.
+*** Check failure stack trace: ***
+    @     0x55a9794697a6  absl::lts_20230802::log_internal::LogMessage::PrepareToDie()
+    @     0x55a979469815  absl::lts_20230802::log_internal::LogMessage::SendToLog()
+    @     0x55a979469294  absl::lts_20230802::log_internal::LogMessage::Flush()
+    @     0x55a979469af2  absl::lts_20230802::log_internal::LogMessageFatal::~LogMessageFatal()
+    @     0x55a9792c692b  main
+    @     0x7f7ad34376b5  (unknown)
+    @     0x7f7ad3437769  __libc_start_main
+    @     0x55a9792c6355  _start

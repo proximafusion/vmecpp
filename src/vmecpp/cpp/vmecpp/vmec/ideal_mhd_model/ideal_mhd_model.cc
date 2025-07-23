@@ -1562,71 +1562,82 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
   // can safely assume lthreed == false in here
   const int num_realsp = (r_.nsMaxF1 - r_.nsMinF1) * s_.nThetaEff;
   
-  // SURGICAL FIX: Compute derivatives correctly instead of zeroing them
-  // Initialize derivatives to zero first
-  for (auto* v :
-       {&ru_e, &ru_o, &zu_e, &zu_o, &lu_e, &lu_o}) {
-    absl::c_fill_n(*v, num_realsp, 0);
-  }
-  
-  // Also initialize position arrays
-  for (auto* v : {&r1_e, &r1_o, &z1_e, &z1_o}) {
+  // Initialize all arrays to zero
+  for (auto* v : {&ru_e, &ru_o, &zu_e, &zu_o, &lu_e, &lu_o, &r1_e, &r1_o, &z1_e, &z1_o}) {
     absl::c_fill_n(*v, num_realsp, 0);
   }
 
-  // Now compute position and derivatives like the 3D version but for 2D
+  // Use same approach as 3D version - work with coefficients and pre-computed basis functions
   for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
-
     for (int m = 0; m < s_.mpol; ++m) {
-      // For 2D case (ntor=0), get coefficients directly
-      int idx_mn = ((jF - r_.nsMinF1) * s_.mpol + m) * (s_.ntor + 1) + 0; // n=0 for 2D
-      const double rcc_coeff = physical_x.rmncc[idx_mn];
-      const double zsc_coeff = physical_x.zmnsc[idx_mn];
+      // For 2D case (ntor=0), only n=0 coefficients exist
+      const int idx_mn = ((jF - r_.nsMinF1) * s_.mpol + m) * (s_.ntor + 1) + 0;
+      
+      // Get 2D symmetric coefficients (only rmncc and zmnsc for symmetric case)
+      const double rmkcc = physical_x.rmncc[idx_mn];
+      const double zmksc = physical_x.zmnsc[idx_mn];
+      const double lmksc = physical_x.lmnsc[idx_mn];
+      
+      // Apply radial scaling like 3D version
       const int m_parity = m % 2;
       const double scale = xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]);
+      
+      const double rmkcc_scaled = rmkcc * scale;
+      const double zmksc_scaled = zmksc * scale;
+      const double lmksc_scaled = lmksc * scale;
 
+      // Use same basis function approach as 3D version
+      const int idx_ml_base = m * s_.nThetaReduced;
+      const int idx_realsp_base = (jF - r_.nsMinF1) * s_.nThetaEff;
+
+      // Compute derivatives using pre-computed basis functions (like 3D version)
       for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_ml = m * s_.nThetaReduced + l;
-        const int idx_realsp = (jF - r_.nsMinF1) * s_.nThetaEff + l;
+        const int idx_ml = idx_ml_base + l;
+        const int idx_realsp = idx_realsp_base + l;
         
-        const double cosmu = t_.cosmu[idx_ml];
-        const double sinmu = t_.sinmu[idx_ml];
-
-        // Position values
-        const double rval = rcc_coeff * cosmu * scale;
-        const double zval = zsc_coeff * sinmu * scale;
+        // Use pre-computed derivative basis functions (same as 3D)
+        const double sinmum = t_.sinmum[idx_ml];  // -m * sin(m*theta) * mscale[m]
+        const double cosmum = t_.cosmum[idx_ml];  // m * cos(m*theta) * mscale[m]
         
-        // Store positions
-        if (m_parity == 0) {  // even m
-          r1_e[idx_realsp] += rval;
-          z1_e[idx_realsp] += zval;
-        } else {  // odd m
-          r1_o[idx_realsp] += rval;
-          z1_o[idx_realsp] += zval;
-        }
-
-        // Compute u-derivatives (theta derivatives)
-        const double ru_val = -m * rcc_coeff * sinmu * scale;
-        const double zu_val = m * zsc_coeff * cosmu * scale;
+        // Compute u-derivatives using pre-computed basis (same pattern as 3D)
+        const double ru_val = rmkcc_scaled * sinmum;  // For CC coefficients
+        const double zu_val = zmksc_scaled * cosmum;  // For SC coefficients
+        const double lu_val = lmksc_scaled * cosmum;  // For SC coefficients
         
+        // Store in even/odd arrays based on m parity
         if (m_parity == 0) {  // even m
           ru_e[idx_realsp] += ru_val;
           zu_e[idx_realsp] += zu_val;
+          lu_e[idx_realsp] += lu_val;
         } else {  // odd m
           ru_o[idx_realsp] += ru_val;
           zu_o[idx_realsp] += zu_val;
+          lu_o[idx_realsp] += lu_val;
         }
+      }
 
-        // For 2D case, v-derivatives are zero (no toroidal variation)
-        // rv_e, rv_o, zv_e, zv_o remain zero
-
-        // Lambda derivatives (same as u-derivatives for 2D)
+      // Compute positions using regular basis functions (same as 3D)
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_ml = idx_ml_base + l;
+        const int idx_realsp = idx_realsp_base + l;
+        
+        // Use regular basis functions for positions
+        const double cosmu = t_.cosmu[idx_ml];  // cos(m*theta) * mscale[m]
+        const double sinmu = t_.sinmu[idx_ml];  // sin(m*theta) * mscale[m]
+        
+        // Compute positions (same pattern as 3D)
+        const double r_val = rmkcc_scaled * cosmu;
+        const double z_val = zmksc_scaled * sinmu;
+        
+        // Store in even/odd arrays based on m parity
         if (m_parity == 0) {  // even m
-          lu_e[idx_realsp] += ru_val;  // lu = ru for 2D
+          r1_e[idx_realsp] += r_val;
+          z1_e[idx_realsp] += z_val;
         } else {  // odd m
-          lu_o[idx_realsp] += ru_val;
+          r1_o[idx_realsp] += r_val;
+          z1_o[idx_realsp] += z_val;
         }
-      }  // l
+      }
     }  // m
   }  // jF
 

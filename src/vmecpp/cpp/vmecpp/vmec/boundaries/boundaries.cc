@@ -142,16 +142,6 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
         zbs = id.zbs[m * (2 * s_.ntor + 1) + source_n] * cosMDelta -
               id.zbc[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
 
-        if (m == 1 && n == 0) {
-          std::cout << "DEBUG theta shift for m=1,n=0:" << std::endl;
-          std::cout << "  Original: rbc="
-                    << id.rbc[m * (2 * s_.ntor + 1) + source_n]
-                    << " rbs=" << id.rbs[m * (2 * s_.ntor + 1) + source_n]
-                    << " zbs=" << id.zbs[m * (2 * s_.ntor + 1) + source_n]
-                    << " zbc=" << id.zbc[m * (2 * s_.ntor + 1) + source_n]
-                    << std::endl;
-          std::cout << "  Shifted: rbc=" << rbc << " zbs=" << zbs << std::endl;
-        }
       }
 
       const int idx_mn = m * (s_.ntor + 1) + target_n;
@@ -178,10 +168,6 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
           zbc = id.zbc[m * (2 * s_.ntor + 1) + source_n] * cosMDelta +
                 id.zbs[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
 
-          if (m == 1 && n == 0) {
-            std::cout << "  Shifted asymmetric: rbs=" << rbs << " zbc=" << zbc
-                      << std::endl;
-          }
         }
 
         if (m > 0) {

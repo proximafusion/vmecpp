@@ -1,0 +1,47 @@
+{
+  "lasym": false,
+  "nfp": 1,
+  "mpol": 3,
+  "ntor": 0,
+  "ns_array": [
+    3
+  ],
+  "ftol_array": [
+    1e-08
+  ],
+  "niter_array": [
+    50
+  ],
+  "rbc": [
+    {
+      "m": 0,
+      "n": 0,
+      "value": 1.0
+    },
+    {
+      "m": 1,
+      "n": 0,
+      "value": 0.1
+    }
+  ],
+  "zbs": [
+    {
+      "m": 1,
+      "n": 0,
+      "value": 0.1
+    }
+  ],
+  "phiedge": 0.1,
+  "ncurr": 0,
+  "curtor": 0.0,
+  "pres_scale": 1.0,
+  "am": [
+    0.0
+  ],
+  "ai": [
+    0.0
+  ],
+  "ac": [
+    0.0
+  ]
+}
