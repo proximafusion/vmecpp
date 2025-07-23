@@ -268,33 +268,21 @@ void Boundaries::ensureM1Constrained(const double scaling_factor) {
   // instead of the rotation transformation. The scaling_factor
   // parameter is ignored in this implementation.
 
-  std::cout << "DEBUG ensureM1Constrained: applying M=1 constraint"
-            << std::endl;
 
   for (int n = 0; n <= s_.ntor; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
     if (s_.lthreed) {
       // jVMEC constraint: set both to average
-      double orig_rbss = rbss[idx_mn];
-      double orig_zbcs = zbcs[idx_mn];
       double constrained_value = (rbss[idx_mn] + zbcs[idx_mn]) / 2.0;
       rbss[idx_mn] = constrained_value;
       zbcs[idx_mn] = constrained_value;
-      std::cout << "  n=" << n << " lthreed: rbss " << orig_rbss << " -> "
-                << constrained_value << ", zbcs " << orig_zbcs << " -> "
-                << constrained_value << std::endl;
     }
     if (s_.lasym) {
       // jVMEC constraint: set both to average
-      double orig_rbsc = rbsc[idx_mn];
-      double orig_zbcc = zbcc[idx_mn];
       double constrained_value = (rbsc[idx_mn] + zbcc[idx_mn]) / 2.0;
       rbsc[idx_mn] = constrained_value;
       zbcc[idx_mn] = constrained_value;
-      std::cout << "  n=" << n << " lasym: rbsc " << orig_rbsc << " -> "
-                << constrained_value << ", zbcc " << orig_zbcc << " -> "
-                << constrained_value << std::endl;
     }
   }  // n
 }
