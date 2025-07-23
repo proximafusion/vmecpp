@@ -3599,14 +3599,33 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x
   // Output arrays - use existing arrays directly
   const int num_realsp = (r_.nsMaxF - r_.nsMinF) * s_.nZnT;
   
-  FourierToReal3DAsymmFastPoloidal(
+  // Use separated transform to avoid mathematical errors in symmetrization
+  const int num_reduced = (r_.nsMaxF - r_.nsMinF) * s_.nThetaReduced * s_.nZeta;
+  
+  // Create temporary arrays for separate symmetric/asymmetric parts  
+  std::vector<double> r_sym(num_reduced), r_asym(num_reduced);
+  std::vector<double> z_sym(num_reduced), z_asym(num_reduced);
+  std::vector<double> lambda_sym(num_reduced), lambda_asym(num_reduced);
+  std::vector<double> ru_sym(num_reduced), ru_asym(num_reduced);
+  std::vector<double> zu_sym(num_reduced), zu_asym(num_reduced);
+  
+  FourierToReal3DAsymmFastPoloidalSeparated(
       s_, rmncc, rmnss, rmnsc, rmncs, zmnsc, zmncs, zmncc, zmnss,
-      lmnsc, lmncs, lmncc, lmnss,  // CRITICAL: Lambda coefficients added
+      absl::MakeSpan(r_sym), absl::MakeSpan(r_asym), 
+      absl::MakeSpan(z_sym), absl::MakeSpan(z_asym), 
+      absl::MakeSpan(lambda_sym), absl::MakeSpan(lambda_asym),
+      absl::MakeSpan(ru_sym), absl::MakeSpan(ru_asym), 
+      absl::MakeSpan(zu_sym), absl::MakeSpan(zu_asym));
+  
+  // Apply correct symmetrization following jVMEC pattern
+  SymmetrizeRealSpaceGeometry(
+      absl::MakeConstSpan(r_sym), absl::MakeConstSpan(r_asym), 
+      absl::MakeConstSpan(z_sym), absl::MakeConstSpan(z_asym), 
+      absl::MakeConstSpan(lambda_sym), absl::MakeConstSpan(lambda_asym),
       absl::MakeSpan(r1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
       absl::MakeSpan(z1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
       absl::MakeSpan(lu_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
-      absl::MakeSpan(ru_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
-      absl::MakeSpan(zu_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp));
+      s_);
 }
 
 void IdealMhdModel::dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x) {
