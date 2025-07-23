@@ -40,6 +40,12 @@ int main() {
   std::vector<double> zmncs(sizes.mnmax, 0.0);
   std::vector<double> zmncc(sizes.mnmax, 0.0);
   std::vector<double> zmnss(sizes.mnmax, 0.0);
+  
+  // Lambda coefficients (both symmetric and asymmetric)
+  std::vector<double> lmnsc(sizes.mnmax, 0.0);
+  std::vector<double> lmncs(sizes.mnmax, 0.0);
+  std::vector<double> lmncc(sizes.mnmax, 0.0);  // CRITICAL: asymmetric
+  std::vector<double> lmnss(sizes.mnmax, 0.0);  // CRITICAL: asymmetric
 
   // Set simple test values
   rmncc[0] = 1.0;  // R00
@@ -62,6 +68,8 @@ int main() {
       sizes, absl::MakeSpan(rmncc), absl::MakeSpan(rmnss),
       absl::MakeSpan(rmnsc), absl::MakeSpan(rmncs), absl::MakeSpan(zmnsc),
       absl::MakeSpan(zmncs), absl::MakeSpan(zmncc), absl::MakeSpan(zmnss),
+      absl::MakeSpan(lmnsc), absl::MakeSpan(lmncs),  // CRITICAL: Lambda coefficients
+      absl::MakeSpan(lmncc), absl::MakeSpan(lmnss),  // CRITICAL: Lambda asymmetric coefficients
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
       absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real),
       absl::MakeSpan(zu_real));
@@ -92,6 +100,8 @@ int main() {
       sizes, absl::MakeSpan(rmncc), absl::MakeSpan(rmnss),
       absl::MakeSpan(rmnsc), absl::MakeSpan(rmncs), absl::MakeSpan(zmnsc),
       absl::MakeSpan(zmncs), absl::MakeSpan(zmncc), absl::MakeSpan(zmnss),
+      absl::MakeSpan(lmnsc), absl::MakeSpan(lmncs),  // CRITICAL: Lambda coefficients
+      absl::MakeSpan(lmncc), absl::MakeSpan(lmnss),  // CRITICAL: Lambda asymmetric coefficients
       absl::MakeSpan(r_real), absl::MakeSpan(z_real),
       absl::MakeSpan(lambda_real), absl::MakeSpan(ru_real),
       absl::MakeSpan(zu_real));
