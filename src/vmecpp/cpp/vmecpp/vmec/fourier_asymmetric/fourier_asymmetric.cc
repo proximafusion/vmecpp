@@ -72,12 +72,16 @@ void FourierToReal3DAsymmFastPoloidal(
 
         // Get basis functions (n >= 0 always, following jVMEC)
         int idx_nv = k * (sizes.nnyq2 + 1) + n;
-        double cos_nv = (n <= sizes.nnyq2)
-                            ? fourier_basis.cosnv[idx_nv]
-                            : std::cos(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
-        double sin_nv = (n <= sizes.nnyq2)
-                            ? fourier_basis.sinnv[idx_nv]
-                            : std::sin(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
+        double cos_nv, sin_nv;
+        if (n <= sizes.nnyq2) {
+          cos_nv = fourier_basis.cosnv[idx_nv];
+          sin_nv = fourier_basis.sinnv[idx_nv];
+        } else {
+          // For n > nnyq2, compute with proper normalization
+          double nscale = (n > 0) ? std::sqrt(2.0) : 1.0;
+          cos_nv = nscale * std::cos(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
+          sin_nv = nscale * std::sin(n * sizes.nfp * 2.0 * M_PI * k / nzeta);
+        }
 
         // Accumulate symmetric coefficients
         rmkcc[k] += rmncc[mn] * cos_nv;
@@ -177,14 +181,23 @@ void FourierToReal3DAsymmFastPoloidal(
       int idx_reflected = l_reflected * nzeta + k;
       
       if (idx_reflected >= 0 && idx_reflected < ntheta2 * nzeta) {
-        // Apply symmetrization: total = symmetric - asymmetric
-        r_real[idx] = (r_real[idx_reflected] - asym_R[idx_reflected]) - asym_R[idx_reflected];
-        z_real[idx] = -(z_real[idx_reflected] - asym_Z[idx_reflected]) + asym_Z[idx_reflected];
-        lambda_real[idx] = (lambda_real[idx_reflected] - asym_L[idx_reflected]) - asym_L[idx_reflected];
+        // Apply symmetrization following jVMEC pattern:
+        // For theta in [pi, 2pi]: total = symmetric - asymmetric
+        // Get symmetric part (before asymmetric was added)
+        double r_sym = r_real[idx_reflected] - asym_R[idx_reflected];
+        double z_sym = z_real[idx_reflected] - asym_Z[idx_reflected];
+        double lambda_sym = lambda_real[idx_reflected] - asym_L[idx_reflected];
+        double ru_sym = ru_real[idx_reflected] - asym_Ru[idx_reflected];
+        double zu_sym = zu_real[idx_reflected] - asym_Zu[idx_reflected];
+        
+        // Apply reflection with sign changes
+        r_real[idx] = r_sym - asym_R[idx_reflected];
+        z_real[idx] = -z_sym + asym_Z[idx_reflected];
+        lambda_real[idx] = lambda_sym - asym_L[idx_reflected];
         
         // Derivative symmetrization
-        ru_real[idx] = -(ru_real[idx_reflected] - asym_Ru[idx_reflected]) - asym_Ru[idx_reflected];
-        zu_real[idx] = (zu_real[idx_reflected] - asym_Zu[idx_reflected]) + asym_Zu[idx_reflected];
+        ru_real[idx] = -ru_sym - asym_Ru[idx_reflected];
+        zu_real[idx] = zu_sym + asym_Zu[idx_reflected];
       }
     }
   }

@@ -57,6 +57,18 @@ cc_test(
 )
 
 cc_test(
+    name = "test_symmetric_baseline",
+    srcs = ["test_symmetric_baseline.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "small",
+)
+
+cc_test(
     name = "debug_asymmetric_test",
     srcs = ["debug_asymmetric_test.cc"],
     deps = [
