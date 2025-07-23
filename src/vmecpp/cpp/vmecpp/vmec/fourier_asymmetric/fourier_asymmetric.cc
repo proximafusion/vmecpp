@@ -45,17 +45,15 @@ void FourierToReal3DAsymmFastPoloidal(
 
   // Process each poloidal mode m
   for (int m = 0; m < sizes.mpol; ++m) {
-    // Work arrays for this m mode
-    std::vector<double> rmkcc(nzeta, 0.0);
-    std::vector<double> rmkss(nzeta, 0.0);
-    std::vector<double> zmksc(nzeta, 0.0);
-    std::vector<double> zmkcs(nzeta, 0.0);
+    // Work arrays for asymmetric coefficients only
     std::vector<double> rmksc_asym(nzeta, 0.0);
     std::vector<double> rmkcs_asym(nzeta, 0.0);
     std::vector<double> zmkcc_asym(nzeta, 0.0);
     std::vector<double> zmkss_asym(nzeta, 0.0);
+    std::vector<double> lmkcc_asym(nzeta, 0.0);
+    std::vector<double> lmkss_asym(nzeta, 0.0);
 
-    // STAGE 1: Accumulate zeta contributions for both symmetric and asymmetric
+    // STAGE 1: Accumulate zeta contributions for asymmetric coefficients only
     // Only process n >= 0 (jVMEC uses n ∈ [0, ntor] exactly)
     for (int k = 0; k < nzeta; ++k) {
       for (int n = 0; n <= sizes.ntor; ++n) {
@@ -76,15 +74,7 @@ void FourierToReal3DAsymmFastPoloidal(
         double cos_nv = fourier_basis.cosnv[idx_nv];
         double sin_nv = fourier_basis.sinnv[idx_nv];
 
-        // Accumulate symmetric coefficients
-        rmkcc[k] += rmncc[mn] * cos_nv;
-        zmksc[k] += zmnsc[mn] * cos_nv;
-
-        if (sizes.lthreed) {
-          rmkss[k] += rmnss[mn] * sin_nv;
-          zmkcs[k] += zmncs[mn] * sin_nv;
-        }
-
+        // ONLY process asymmetric coefficients (symmetric already done)
         // Accumulate asymmetric coefficients
         rmksc_asym[k] += rmnsc[mn] * cos_nv;
         zmkcc_asym[k] += zmncc[mn] * cos_nv;
@@ -109,26 +99,11 @@ void FourierToReal3DAsymmFastPoloidal(
       for (int k = 0; k < nzeta; ++k) {
         int idx = l * nzeta + k;
 
-        // Symmetric contributions
-        r_real[idx] += rmkcc[k] * cos_mu;
-        z_real[idx] += zmksc[k] * sin_mu;
-        
-        // Symmetric derivatives using pre-computed derivative basis functions
+        // ONLY process asymmetric contributions (symmetric already computed)
+        // Get derivative basis functions
         int idx_basis_deriv = m * sizes.nThetaReduced + l;
         double sin_mum = fourier_basis.sinmum[idx_basis_deriv];  // -m*sin(m*theta)*mscale[m]
         double cos_mum = fourier_basis.cosmum[idx_basis_deriv];  // m*cos(m*theta)*mscale[m]
-        
-        ru_real[idx] += rmkcc[k] * sin_mum;  // sinmum already includes -m factor
-        zu_real[idx] += zmksc[k] * cos_mum;  // cosmum already includes m factor
-
-        if (sizes.lthreed) {
-          r_real[idx] += rmkss[k] * sin_mu;
-          z_real[idx] += zmkcs[k] * cos_mu;
-          
-          // Additional symmetric derivative contributions
-          ru_real[idx] += rmkss[k] * cos_mum;   // cosmum includes m factor
-          zu_real[idx] += zmkcs[k] * sin_mum;   // sinmum includes -m factor
-        }
 
         // Asymmetric contributions (stored separately for reflection)
         asym_R[idx] += rmksc_asym[k] * sin_mu;
