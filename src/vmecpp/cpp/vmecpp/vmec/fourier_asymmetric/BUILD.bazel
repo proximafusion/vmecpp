@@ -328,6 +328,17 @@ cc_test(
 )
 
 cc_test(
+    name = "test_symmetric_mode",
+    srcs = ["test_symmetric_mode.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "//vmecpp/vmec/vmec:vmec",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+    size = "small",
+)
+
+cc_test(
     name = "test_input_validation",
     srcs = ["test_input_validation.cc"],
     deps = [
