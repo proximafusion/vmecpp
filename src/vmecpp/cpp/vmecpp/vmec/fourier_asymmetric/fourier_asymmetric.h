@@ -114,6 +114,19 @@ void SymmetrizeForces(const Sizes& sizes, absl::Span<double> force_r,
                       absl::Span<double> force_z,
                       absl::Span<double> force_lambda);
 
+// M=1 constraint coupling functions - PRIORITY 3 IMPLEMENTATION
+// Equivalent to jVMEC's Boundaries.ensureM1Constrained()
+void EnsureM1Constrained(const Sizes& sizes,
+                         absl::Span<double> rbss, absl::Span<double> zbcs,
+                         absl::Span<double> rbsc, absl::Span<double> zbcc);
+
+// Equivalent to jVMEC's SpectralCondensation.convert_to_m1_constrained()
+void ConvertToM1Constrained(const Sizes& sizes, 
+                            int num_surfaces,
+                            absl::Span<double> rss_rsc,
+                            absl::Span<double> zcs_zcc,
+                            double scaling_factor);
+
 }  // namespace vmecpp
 
 #endif  // VMECPP_VMEC_FOURIER_ASYMMETRIC_FOURIER_ASYMMETRIC_H_

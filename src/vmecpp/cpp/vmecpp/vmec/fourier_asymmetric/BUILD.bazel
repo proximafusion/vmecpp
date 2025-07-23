@@ -1464,3 +1464,15 @@ cc_test(
     size = "large",
     tags = ["ci_tier3", "convergence"],
 )
+
+cc_test(
+    name = "m1_constraint_test",
+    srcs = ["m1_constraint_test.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)

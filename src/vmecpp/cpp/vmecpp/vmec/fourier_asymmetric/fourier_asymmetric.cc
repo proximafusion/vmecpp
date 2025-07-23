@@ -890,4 +890,68 @@ void FourierToReal3DAsymmFastPoloidalSeparated(
   }
 }
 
+// M=1 constraint coupling functions - PRIORITY 3 IMPLEMENTATION
+
+void EnsureM1Constrained(const Sizes& sizes,
+                         absl::Span<double> rbss, 
+                         absl::Span<double> zbcs,
+                         absl::Span<double> rbsc, 
+                         absl::Span<double> zbcc) {
+  const int ntor = sizes.ntor;
+  const bool lthreed = sizes.lthreed;
+  const bool lasym = sizes.lasym;
+  
+  const int m = 1;  // M=1 mode constraint
+  
+  // For 3D case: couple rbss[n][1] with zbcs[n][1]
+  if (lthreed) {
+    for (int n = 0; n <= ntor; ++n) {
+      const int idx = n * (sizes.mpol + 1) + m;
+      if (idx < static_cast<int>(rbss.size()) && 
+          idx < static_cast<int>(zbcs.size())) {
+        const double backup_rbss = rbss[idx];
+        rbss[idx] = (backup_rbss + zbcs[idx]) / 2.0;
+        zbcs[idx] = (backup_rbss - zbcs[idx]) / 2.0;
+      }
+    }
+  }
+  
+  // For asymmetric case: couple rbsc[n][1] with zbcc[n][1]
+  if (lasym) {
+    for (int n = 0; n <= ntor; ++n) {
+      const int idx = n * (sizes.mpol + 1) + m;
+      if (idx < static_cast<int>(rbsc.size()) && 
+          idx < static_cast<int>(zbcc.size())) {
+        const double backup_rbsc = rbsc[idx];
+        rbsc[idx] = (backup_rbsc + zbcc[idx]) / 2.0;
+        zbcc[idx] = (backup_rbsc - zbcc[idx]) / 2.0;
+      }
+    }
+  }
+}
+
+void ConvertToM1Constrained(const Sizes& sizes, 
+                            int num_surfaces,
+                            absl::Span<double> rss_rsc,
+                            absl::Span<double> zcs_zcc,
+                            double scaling_factor) {
+  const int ntor = sizes.ntor;
+  const int m = 1;  // M=1 mode constraint
+  
+  // Apply M=1 constraint coupling with scaling
+  for (int j = 0; j < num_surfaces; ++j) {
+    for (int n = 0; n <= ntor; ++n) {
+      const int idx = j * (ntor + 1) * (sizes.mpol + 1) + 
+                      n * (sizes.mpol + 1) + m;
+      
+      if (idx < static_cast<int>(rss_rsc.size()) && 
+          idx < static_cast<int>(zcs_zcc.size())) {
+        const double backup = rss_rsc[idx];
+        rss_rsc[idx] = scaling_factor * (backup + zcs_zcc[idx]);
+        zcs_zcc[idx] = scaling_factor * (backup - zcs_zcc[idx]);
+      }
+    }
+  }
+}
+
 }  // namespace vmecpp
