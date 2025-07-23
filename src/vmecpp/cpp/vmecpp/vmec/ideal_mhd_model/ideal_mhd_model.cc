@@ -1210,6 +1210,23 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
   }
 
   if (s_.lasym) {
+    // CRITICAL: Apply M=1 constraints every iteration before transforms (jVMEC requirement)
+    FourierGeometry& mutable_physical_x = const_cast<FourierGeometry&>(physical_x);
+    
+    if (s_.lthreed) {
+      // Apply M=1 constraint to 3D symmetric arrays: rmnss <-> zmncs
+      EnsureM1Constrained(s_, 
+                          absl::MakeSpan(mutable_physical_x.rmnss), 
+                          absl::MakeSpan(mutable_physical_x.zmncs),
+                          absl::Span<double>(), absl::Span<double>());
+    }
+    
+    // Apply M=1 constraint to asymmetric arrays: rmnsc <-> zmncc  
+    EnsureM1Constrained(s_,
+                        absl::MakeSpan(mutable_physical_x.rmnsc),
+                        absl::MakeSpan(mutable_physical_x.zmncc), 
+                        absl::Span<double>(), absl::Span<double>());
+    
     // Add asymmetric contribution to existing symmetric geometry
     if (s_.lthreed) {
       dft_FourierToReal_3d_asymm(physical_x);
