@@ -26,13 +26,14 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
   indata.mpol = 3;  // Match jVMEC reference
   indata.ntor = 0;  // Axisymmetric
   indata.ns_array = {5};  // Very low resolution like jVMEC
-  indata.niter_array = {5};  // Few iterations
+  indata.niter_array = {100};  // More iterations for robustness
   indata.ntheta = 17;
   indata.nzeta = 1;
 
   // Zero pressure vacuum case
   indata.pres_scale = 0.0;
   indata.am = {0.4, 0.0};  // iota profile from jVMEC
+  indata.ftol_array = {1e-06};  // Relaxed tolerance like jVMEC
   indata.gamma = 0.0;
   indata.phiedge = 1.0;  // toroidal flux
 
@@ -64,6 +65,7 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
   std::cout << "  mpol = " << indata.mpol << ", ntor = " << indata.ntor
             << std::endl;
   std::cout << "  ns_array = " << indata.ns_array[0] << ", niter = " << indata.niter_array[0] << std::endl;
+  std::cout << "  ftol = " << indata.ftol_array[0] << " (relaxed tolerance)" << std::endl;
   std::cout << "  RBC(0,0) = " << indata.rbc[0] << " (major radius)" << std::endl;
   std::cout << "  RBC(0,1) = " << indata.rbc[1] << " (ellipticity)" << std::endl;
   std::cout << "  ZBS(0,1) = " << indata.zbs[1] << " (elongation)" << std::endl;
