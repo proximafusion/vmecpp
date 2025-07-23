@@ -1,0 +1,11 @@
+
+cc_binary(
+    name = "test_fix",
+    srcs = ["test_fix.cc"],
+    data = ["//vmecpp/test_data:solovev"],
+    deps = [
+        "//vmecpp/common/vmec_indata",
+        "//util/file_io",
+    ],
+)
+
