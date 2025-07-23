@@ -45,6 +45,18 @@ cc_test(
 )
 
 cc_test(
+    name = "debug_transform_output",
+    srcs = ["debug_transform_output.cc"],
+    deps = [
+        ":fourier_asymmetric",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/types:span",
+    ],
+    size = "small",
+)
+
+cc_test(
     name = "debug_asymmetric_test",
     srcs = ["debug_asymmetric_test.cc"],
     deps = [
