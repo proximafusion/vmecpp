@@ -113,34 +113,38 @@ void FourierToReal3DAsymmFastPoloidal(
         r_real[idx] += rmkcc[k] * cos_mu;
         z_real[idx] += zmksc[k] * sin_mu;
         
-        // Symmetric derivatives (dR/dtheta, dZ/dtheta)
-        ru_real[idx] += -m * rmkcc[k] * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
-        zu_real[idx] += m * zmksc[k] * cos_mu;   // d(sin(m*theta))/dtheta = m*cos(m*theta)
+        // Symmetric derivatives using pre-computed derivative basis functions
+        int idx_basis_deriv = m * sizes.nThetaReduced + l;
+        double sin_mum = fourier_basis.sinmum[idx_basis_deriv];  // -m*sin(m*theta)*mscale[m]
+        double cos_mum = fourier_basis.cosmum[idx_basis_deriv];  // m*cos(m*theta)*mscale[m]
+        
+        ru_real[idx] += rmkcc[k] * sin_mum;  // sinmum already includes -m factor
+        zu_real[idx] += zmksc[k] * cos_mum;  // cosmum already includes m factor
 
         if (sizes.lthreed) {
           r_real[idx] += rmkss[k] * sin_mu;
           z_real[idx] += zmkcs[k] * cos_mu;
           
           // Additional symmetric derivative contributions
-          ru_real[idx] += m * rmkss[k] * cos_mu;   // d(sin(m*theta))/dtheta = m*cos(m*theta)
-          zu_real[idx] += -m * zmkcs[k] * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
+          ru_real[idx] += rmkss[k] * cos_mum;   // cosmum includes m factor
+          zu_real[idx] += zmkcs[k] * sin_mum;   // sinmum includes -m factor
         }
 
         // Asymmetric contributions (stored separately for reflection)
         asym_R[idx] += rmksc_asym[k] * sin_mu;
         asym_Z[idx] += zmkcc_asym[k] * cos_mu;
         
-        // Asymmetric derivatives (following jVMEC pattern)
-        asym_Ru[idx] += m * rmksc_asym[k] * cos_mu;  // d(sin(m*theta))/dtheta = m*cos(m*theta)
-        asym_Zu[idx] += -m * zmkcc_asym[k] * sin_mu; // d(cos(m*theta))/dtheta = -m*sin(m*theta)
+        // Asymmetric derivatives using pre-computed basis functions
+        asym_Ru[idx] += rmksc_asym[k] * cos_mum;  // cosmum includes m factor
+        asym_Zu[idx] += zmkcc_asym[k] * sin_mum;  // sinmum includes -m factor
 
         if (sizes.lthreed) {
           asym_R[idx] += rmkcs_asym[k] * cos_mu;
           asym_Z[idx] += zmkss_asym[k] * sin_mu;
           
           // Additional asymmetric derivative contributions
-          asym_Ru[idx] += -m * rmkcs_asym[k] * sin_mu; // d(cos(m*theta))/dtheta = -m*sin(m*theta)
-          asym_Zu[idx] += m * zmkss_asym[k] * cos_mu;  // d(sin(m*theta))/dtheta = m*cos(m*theta)
+          asym_Ru[idx] += rmkcs_asym[k] * sin_mum; // sinmum includes -m factor
+          asym_Zu[idx] += zmkss_asym[k] * cos_mum;  // cosmum includes m factor
         }
       }
     }
