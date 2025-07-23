@@ -1368,7 +1368,7 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // only check sizes are ok; will see when the physics starts to run...
 
   const std::size_t expected_bdy_size_symm =
-      vmec_indata.mpol * (2 * vmec_indata.ntor + 1);
+      (vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1);
   // rbc
   if (vmec_indata.rbc.size() != expected_bdy_size_symm) {
     return absl::InvalidArgumentError(absl::StrFormat(
@@ -1383,7 +1383,7 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   const std::size_t expected_bdy_size_asym =
-      vmec_indata.lasym ? vmec_indata.mpol * (2 * vmec_indata.ntor + 1) : 0;
+      vmec_indata.lasym ? (vmec_indata.mpol + 1) * (2 * vmec_indata.ntor + 1) : 0;
 
   // rbs
   if (vmec_indata.rbs.size() != expected_bdy_size_asym) {

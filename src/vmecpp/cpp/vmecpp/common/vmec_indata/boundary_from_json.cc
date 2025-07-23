@@ -82,7 +82,7 @@ BoundaryCoefficient::FromJson(const json& j, const std::string& name) {
 std::vector<double> BoundaryFromJson(const nlohmann::json& json,
                                      const std::string& key, int mpol,
                                      int ntor) {
-  std::vector<double> coeffs(mpol * (2 * ntor + 1));
+  std::vector<double> coeffs((mpol + 1) * (2 * ntor + 1));
 
   const auto maybe_entries = vmecpp::BoundaryCoefficient::FromJson(json, key);
   CHECK_OK(maybe_entries);
@@ -92,7 +92,7 @@ std::vector<double> BoundaryFromJson(const nlohmann::json& json,
       maybe_entries->value();
   for (const vmecpp::BoundaryCoefficient& entry : entries) {
     // Fortran order along n: -ntor, -ntor+1, ..., -1, 0, 1, ..., ntor-1, ntor
-    if (entry.m < 0 || entry.m >= mpol || entry.n < -ntor || entry.n > ntor) {
+    if (entry.m < 0 || entry.m > mpol || entry.n < -ntor || entry.n > ntor) {
       // invalid indices for boundary coefficients in the json input are ignore
       continue;
     }

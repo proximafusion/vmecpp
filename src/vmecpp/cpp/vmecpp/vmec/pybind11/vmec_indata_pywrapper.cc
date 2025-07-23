@@ -67,13 +67,13 @@ VmecINDATAPyWrapper::VmecINDATAPyWrapper(const VmecINDATA& indata)
           indata.return_outputs_even_if_not_converged),
       raxis_c(ToEigenVector(indata.raxis_c)),
       zaxis_s(ToEigenVector(indata.zaxis_s)),
-      rbc(ToEigenMatrix(indata.rbc, mpol, (2 * ntor) + 1)),
-      zbs(ToEigenMatrix(indata.zbs, mpol, (2 * ntor) + 1)) {
+      rbc(ToEigenMatrix(indata.rbc, mpol + 1, (2 * ntor) + 1)),
+      zbs(ToEigenMatrix(indata.zbs, mpol + 1, (2 * ntor) + 1)) {
   if (lasym) {
     raxis_s = ToEigenVector(indata.raxis_s);
     zaxis_c = ToEigenVector(indata.zaxis_c);
-    rbs = ToEigenMatrix(indata.rbs, mpol, (2 * ntor) + 1);
-    zbc = ToEigenMatrix(indata.zbc, mpol, (2 * ntor) + 1);
+    rbs = ToEigenMatrix(indata.rbs, mpol + 1, (2 * ntor) + 1);
+    zbc = ToEigenMatrix(indata.zbc, mpol + 1, (2 * ntor) + 1);
   }
 }
 

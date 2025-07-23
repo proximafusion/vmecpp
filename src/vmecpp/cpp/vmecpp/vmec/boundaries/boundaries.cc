@@ -21,18 +21,18 @@ Boundaries::Boundaries(const Sizes* s, const FourierBasisFastPoloidal* t,
     zaxis_c.resize(s_.ntor + 1);
   }
 
-  rbcc.resize(s_.mpol * (s_.ntor + 1));
-  zbsc.resize(s_.mpol * (s_.ntor + 1));
+  rbcc.resize((s_.mpol + 1) * (s_.ntor + 1));
+  zbsc.resize((s_.mpol + 1) * (s_.ntor + 1));
   if (s_.lthreed) {
-    rbss.resize(s_.mpol * (s_.ntor + 1));
-    zbcs.resize(s_.mpol * (s_.ntor + 1));
+    rbss.resize((s_.mpol + 1) * (s_.ntor + 1));
+    zbcs.resize((s_.mpol + 1) * (s_.ntor + 1));
   }
   if (s_.lasym) {
-    rbsc.resize(s_.mpol * (s_.ntor + 1));
-    zbcc.resize(s_.mpol * (s_.ntor + 1));
+    rbsc.resize((s_.mpol + 1) * (s_.ntor + 1));
+    zbcc.resize((s_.mpol + 1) * (s_.ntor + 1));
     if (s_.lthreed) {
-      rbcs.resize(s_.mpol * (s_.ntor + 1));
-      zbss.resize(s_.mpol * (s_.ntor + 1));
+      rbcs.resize((s_.mpol + 1) * (s_.ntor + 1));
+      zbss.resize((s_.mpol + 1) * (s_.ntor + 1));
     }
   }
 }
@@ -110,7 +110,7 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
     }
   }
 
-  for (int m = 0; m < s_.mpol; ++m) {
+  for (int m = 0; m <= s_.mpol; ++m) {
     double cosMDelta = 1.0;
     double sinMDelta = 0.0;
     if (delta != 0.0) {
@@ -208,7 +208,7 @@ bool Boundaries::checkSignOfJacobian() {
 }
 
 void Boundaries::flipTheta() {
-  for (int m = 1; m < s_.mpol; ++m) {
+  for (int m = 1; m <= s_.mpol; ++m) {
     for (int n = 0; n <= s_.ntor; ++n) {
       int idx_mn = m * (s_.ntor + 1) + n;
 
