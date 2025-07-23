@@ -1,0 +1,8 @@
+cc_binary(
+    name = "test_symmetric_check",
+    srcs = ["test_symmetric_check.cc"],
+    deps = [
+        "//vmecpp/common/vmec_indata",
+        "//vmecpp/vmec/vmec",
+    ],
+)
