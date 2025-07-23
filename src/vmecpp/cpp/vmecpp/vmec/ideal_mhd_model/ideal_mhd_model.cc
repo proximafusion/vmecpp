@@ -1217,8 +1217,8 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
       dft_FourierToReal_2d_asymm(physical_x);
     }
     
-    // Apply symmetrization (symrzl equivalent)
-    symmetrizeRealSpaceGeometry();
+    // NOTE: The non-separated asymmetric transforms already handle symmetrization
+    // internally, so we don't need to call symmetrizeRealSpaceGeometry() here
   }  // lasym
 
   // related post-processing:
@@ -3570,25 +3570,25 @@ int IdealMhdModel::get_ivacskip() const { return ivacskip; }
 
 // Asymmetric DFT implementations - additive extensions to symmetric transforms
 void IdealMhdModel::dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x) {
+  // Use mnsize instead of mnmax for array indexing
+  const int coeff_size = s_.mpol * (s_.ntor + 1);  // This equals s_.mnsize
+  
+  // The FourierGeometry arrays are indexed from physical_x.nsMin(), not from r_.nsMinF
+  // We need to adjust the offset accordingly
+  const int offset = (r_.nsMinF - physical_x.nsMin()) * coeff_size;
+  const int count = (r_.nsMaxF - r_.nsMinF) * coeff_size;
+  
   // Get spans for asymmetric coefficient arrays
-  const auto rmnsc = physical_x.rmnsc.subspan(r_.nsMinF * s_.mnmax, 
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto rmncs = physical_x.rmncs.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto zmncc = physical_x.zmncc.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto zmnss = physical_x.zmnss.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
+  const auto rmnsc = physical_x.rmnsc.subspan(offset, count);
+  const auto rmncs = physical_x.rmncs.subspan(offset, count);
+  const auto zmncc = physical_x.zmncc.subspan(offset, count);
+  const auto zmnss = physical_x.zmnss.subspan(offset, count);
 
   // Get existing symmetric coefficient arrays for reference
-  const auto rmncc = physical_x.rmncc.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto rmnss = physical_x.rmnss.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto zmnsc = physical_x.zmnsc.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto zmncs = physical_x.zmncs.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
+  const auto rmncc = physical_x.rmncc.subspan(offset, count);
+  const auto rmnss = physical_x.rmnss.subspan(offset, count);
+  const auto zmnsc = physical_x.zmnsc.subspan(offset, count);
+  const auto zmncs = physical_x.zmncs.subspan(offset, count);
 
   // Output arrays - use existing arrays directly
   const int num_realsp = (r_.nsMaxF - r_.nsMinF) * s_.nZnT;
@@ -3604,23 +3604,25 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x
 
 void IdealMhdModel::dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x) {
   // Similar to 3D but for axisymmetric case
-  const auto rmnsc = physical_x.rmnsc.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto rmncs = physical_x.rmncs.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto zmncc = physical_x.zmncc.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto zmnss = physical_x.zmnss.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
+  // Use mnsize instead of mnmax for asymmetric arrays
+  const int coeff_size = s_.mpol * (s_.ntor + 1);  // This equals s_.mnsize
+  
+  // The FourierGeometry arrays are indexed from physical_x.nsMin(), not from r_.nsMinF
+  // We need to adjust the offset accordingly
+  const int offset = (r_.nsMinF - physical_x.nsMin()) * coeff_size;
+  const int count = (r_.nsMaxF - r_.nsMinF) * coeff_size;
+  
+  // For 2D case, arrays with sin(n*v) terms are empty when ntor=0
+  // Use empty spans for these arrays
+  auto rmnsc = physical_x.rmnsc.empty() ? absl::Span<const double>() : physical_x.rmnsc.subspan(offset, count);
+  auto rmncs = physical_x.rmncs.empty() ? absl::Span<const double>() : physical_x.rmncs.subspan(offset, count);
+  auto zmncc = physical_x.zmncc.empty() ? absl::Span<const double>() : physical_x.zmncc.subspan(offset, count);
+  auto zmnss = physical_x.zmnss.empty() ? absl::Span<const double>() : physical_x.zmnss.subspan(offset, count);
 
-  const auto rmncc = physical_x.rmncc.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto rmnss = physical_x.rmnss.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto zmnsc = physical_x.zmnsc.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
-  const auto zmncs = physical_x.zmncs.subspan(r_.nsMinF * s_.mnmax,
-                                              (r_.nsMaxF - r_.nsMinF) * s_.mnmax);
+  auto rmncc = physical_x.rmncc.empty() ? absl::Span<const double>() : physical_x.rmncc.subspan(offset, count);
+  auto rmnss = physical_x.rmnss.empty() ? absl::Span<const double>() : physical_x.rmnss.subspan(offset, count);
+  auto zmnsc = physical_x.zmnsc.empty() ? absl::Span<const double>() : physical_x.zmnsc.subspan(offset, count);
+  auto zmncs = physical_x.zmncs.empty() ? absl::Span<const double>() : physical_x.zmncs.subspan(offset, count);
 
   const int num_realsp = (r_.nsMaxF - r_.nsMinF) * s_.nThetaEff;
   
@@ -3634,14 +3636,9 @@ void IdealMhdModel::dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x
 }
 
 void IdealMhdModel::symmetrizeRealSpaceGeometry() {
-  // Apply symmetrization using the existing old interface
-  // This extends the theta range from [0,π] to [0,2π]
-  const int num_realsp = (r_.nsMaxF - r_.nsMinF) * s_.nZnT;
-  
-  SymmetrizeRealSpaceGeometry(s_,
-      absl::MakeSpan(r1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
-      absl::MakeSpan(z1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
-      absl::MakeSpan(lu_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp));
+  // NOTE: This method is kept for interface compatibility but is not needed
+  // when using the non-separated asymmetric transforms, which already handle
+  // symmetrization internally
 }
 
 void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {
