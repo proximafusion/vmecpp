@@ -47,11 +47,11 @@ SerializeIntAsFloat: typing.TypeAlias = typing.Annotated[
 
 AuxFType = typing.Annotated[
     _ArrayType,
-    pydantic.BeforeValidator(lambda x: _util.pad_to_target(x, ndfmax, 0.0)),
+    pydantic.BeforeValidator(lambda x: _util.right_pad(x, ndfmax, 0.0)),
 ]
 AuxSType = typing.Annotated[
     _ArrayType,
-    pydantic.BeforeValidator(lambda x: _util.pad_to_target(x, ndfmax, -1.0)),
+    pydantic.BeforeValidator(lambda x: _util.right_pad(x, ndfmax, -1.0)),
 ]
 
 MgridModeType: typing.TypeAlias = typing.Annotated[
@@ -787,7 +787,8 @@ class VmecWOut(BaseModelWithNumpy):
     """Radial derivative of enclosed toroidal magnetic flux ``phi'`` on the full-
     grid."""
 
-    chipf: jt.Float[np.ndarray, "n_surfaces"]
+    # Defaulted for backwards compatibility with old wout files
+    chipf: jt.Float[np.ndarray, "n_surfaces"] = np.array([])
     """Radial derivative of enclosed poloidal magnetic flux ``chi'`` on the full-
     grid."""
 
@@ -1112,11 +1113,13 @@ class VmecWOut(BaseModelWithNumpy):
     """Volume-averaged magnetic field strength."""
 
     # In the C++ WOutFileContents this is called safety_factor.
-    q_factor: jt.Float[np.ndarray, "n_surfaces"]
+    # Defaulted for backwards compatibility with old wout files.
+    q_factor: jt.Float[np.ndarray, "n_surfaces"] = np.array([])
     r"""Safety factor :math:`q = 1/\iota` on the full-grid."""
 
     # In the C++ WOutFileContents this is called poloidal_flux.
-    chi: jt.Float[np.ndarray, "n_surfaces"]
+    # Defaulted for backwards compatibility with old wout files.
+    chi: jt.Float[np.ndarray, "n_surfaces"] = np.array([])
     r"""Enclosed poloidal magnetic flux :math:`\chi` on the full-grid."""
 
     # In the C++ WOutFileContents this is called spectral_width.
@@ -1434,45 +1437,15 @@ class VmecWOut(BaseModelWithNumpy):
         attrs["gmnc"] = _pad_and_transpose(cpp_wout.gmnc, attrs["mnmax_nyq"])
 
         # These attributes have zero-padding at the end up to a fixed length
-        attrs["am"] = np.pad(cpp_wout.am, (0, preset - len(cpp_wout.am)))
-        attrs["ac"] = np.pad(cpp_wout.ac, (0, preset - len(cpp_wout.ac)))
-        attrs["ai"] = np.pad(cpp_wout.ai, (0, preset - len(cpp_wout.ai)))
-        attrs["am_aux_s"] = np.pad(
-            cpp_wout.am_aux_s,
-            (0, ndfmax - len(cpp_wout.am_aux_s)),
-            mode="constant",
-            constant_values=-1.0,
-        )
-        attrs["am_aux_f"] = np.pad(
-            cpp_wout.am_aux_f,
-            (0, ndfmax - len(cpp_wout.am_aux_f)),
-            mode="constant",
-            constant_values=0.0,
-        )
-        attrs["ac_aux_s"] = np.pad(
-            cpp_wout.ac_aux_s,
-            (0, ndfmax - len(cpp_wout.ac_aux_s)),
-            mode="constant",
-            constant_values=-1.0,
-        )
-        attrs["ac_aux_f"] = np.pad(
-            cpp_wout.ac_aux_f,
-            (0, ndfmax - len(cpp_wout.ac_aux_f)),
-            mode="constant",
-            constant_values=0.0,
-        )
-        attrs["ai_aux_s"] = np.pad(
-            cpp_wout.ai_aux_s,
-            (0, ndfmax - len(cpp_wout.ai_aux_s)),
-            mode="constant",
-            constant_values=-1.0,
-        )
-        attrs["ai_aux_f"] = np.pad(
-            cpp_wout.ai_aux_f,
-            (0, ndfmax - len(cpp_wout.ai_aux_f)),
-            mode="constant",
-            constant_values=0.0,
-        )
+        attrs["am"] = _util.right_pad(cpp_wout.am, preset)
+        attrs["ac"] = _util.right_pad(cpp_wout.ac, preset)
+        attrs["ai"] = _util.right_pad(cpp_wout.ai, preset)
+        attrs["am_aux_s"] = _util.right_pad(cpp_wout.am_aux_s, ndfmax, -1.0)
+        attrs["am_aux_f"] = _util.right_pad(cpp_wout.am_aux_f, ndfmax)
+        attrs["ac_aux_s"] = _util.right_pad(cpp_wout.ac_aux_s, ndfmax, -1.0)
+        attrs["ac_aux_f"] = _util.right_pad(cpp_wout.ac_aux_f, ndfmax)
+        attrs["ai_aux_s"] = _util.right_pad(cpp_wout.ai_aux_s, ndfmax, -1.0)
+        attrs["ai_aux_f"] = _util.right_pad(cpp_wout.ai_aux_f, ndfmax)
 
         attrs["restart_reason_timetrace"] = cpp_wout.restart_reasons
 
@@ -2037,6 +2010,46 @@ def _pad_and_transpose(
     return stacked
 
 
+def populate_raw_profile(
+    vmec_input: VmecInput,
+    field: typing.Literal["pressure", "iota", "current"],
+    f: typing.Callable[[np.ndarray], np.ndarray],
+) -> None:
+    """Populate a line segment profile using callable ``f``.
+
+    The callable is evaluated on all unique ``s`` values required for the
+    multi-grid steps (full and half grids). The resulting knots and values are
+    stored in the auxiliary arrays for the chosen profile.
+    """
+    s_values: set[float] = set()
+    for ns in vmec_input.ns_array:
+        full_grid = np.linspace(0.0, 1.0, ns)
+        half_grid = full_grid - 0.5 * (full_grid[1] - full_grid[0])
+        s_values.update(full_grid)
+        s_values.update(half_grid)
+    knots = np.array(np.sort(np.array(list(s_values))))
+    values = np.array(f(knots))
+
+    if field == "pressure":
+        vmec_input.pmass_type = "line_segment"
+        vmec_input.am_aux_s = knots
+        vmec_input.am_aux_f = values
+        vmec_input.am = np.array([])
+    elif field == "iota":
+        vmec_input.piota_type = "line_segment"
+        vmec_input.ai_aux_s = knots
+        vmec_input.ai_aux_f = values
+        vmec_input.ai = np.array([])
+    elif field == "current":
+        vmec_input.pcurr_type = "line_segment_i"
+        vmec_input.ac_aux_s = knots
+        vmec_input.ac_aux_f = values
+        vmec_input.ac = np.array([])
+    else:
+        msg = "field must be one of 'pressure', 'iota', 'current'"
+        raise ValueError(msg)
+
+
 # Ordered this way to ensure run, VmecInput, and VmecOutput are the first three
 # items in the generated documentation.
 __all__ = [
@@ -2049,4 +2062,5 @@ __all__ = [
     "Threed1Volumetrics",
     "MakegridParameters",
     "MagneticFieldResponseTable",
+    "populate_raw_profile",
 ]
