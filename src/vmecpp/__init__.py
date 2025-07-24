@@ -1588,6 +1588,24 @@ class VmecWOut(BaseModelWithNumpy):
         if attrs["lasym__logical__"]:
             attrs.setdefault("lmnc_full", np.zeros([mnmax, ns]))
 
+        # Backwards compatibility for very old wout files
+        if attrs["version_"] <= 8.0:
+            attrs.setdefault("fsqr", np.nan)
+            attrs.setdefault("fsqz", np.nan)
+            attrs.setdefault("fsql", np.nan)
+            attrs.setdefault("ftolv", np.nan)
+            attrs.setdefault("pcurr_type", "UNKNOWN")
+            attrs.setdefault("pmass_type", "UNKNOWN")
+            attrs.setdefault("piota_type", "UNKNOWN")
+            attrs.setdefault("am", np.array([]))
+            attrs.setdefault("ac", np.array([]))
+            attrs.setdefault("ai", np.array([]))
+            attrs.setdefault("am_aux_s", np.array([]))
+            attrs.setdefault("am_aux_f", np.array([]))
+            attrs.setdefault("ac_aux_s", np.array([]))
+            attrs.setdefault("ac_aux_f", np.array([]))
+            attrs.setdefault("ai_aux_s", np.array([]))
+            attrs.setdefault("ai_aux_f", np.array([]))
         return VmecWOut.model_validate(attrs, by_alias=True)
 
 
