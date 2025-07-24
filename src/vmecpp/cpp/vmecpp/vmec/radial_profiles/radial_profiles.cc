@@ -653,24 +653,74 @@ double RadialProfiles::evalRational(const std::vector<double>& coeffs,
   return 0.0;
 }
 
+// Linear interpolation between closest points and associated knots.
+// Clamp the profile if x is outside the range of knots.
 double RadialProfiles::evalLineSegment(const std::vector<double>& splineKnots,
                                        const std::vector<double>& splineValues,
                                        double x) {
-  // TODO(jons): implement `line_segment`
-  (void)splineKnots;
-  (void)splineValues;
-  (void)x;
-  return 0.0;
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 2 || n != static_cast<int>(splineValues.size())) {
+    return 0.0;
+  }
+
+  auto it = std::lower_bound(splineKnots.begin(), splineKnots.end(), x);
+  if (it == splineKnots.end()) {
+    return splineKnots.back();  // x is out of bounds
+  }
+  if (it == splineKnots.begin()) {
+    return splineValues[0];  // x is below the first knot
+  }
+  const double x0 = *it;
+  const double x1 = *(it + 1);
+  int ilow = static_cast<int>(std::distance(splineKnots.begin(), it));
+  const double y0 = splineValues[ilow];
+  const double y1 = splineValues[ilow + 1];
+  const double t = (x - x0) / (x1 - x0);
+  return (1.0 - t) * y0 + t * y1;
 }
 
 double RadialProfiles::evalLineSegmentIntegrated(
     const std::vector<double>& splineKnots,
     const std::vector<double>& splineValues, double x) {
-  // TODO(jons): implement `line_segment_i`
-  (void)splineKnots;
-  (void)splineValues;
-  (void)x;
-  return 0.0;
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 2 || n != static_cast<int>(splineValues.size())) {
+    return 0.0;
+  }
+
+  auto integrate_segment = [](double x0, double x1, double y0, double y1) {
+    const double m = (y1 - y0) / (x1 - x0);
+    const double b = y0 - m * x0;
+    return m * 0.5 * (x1 * x1 - x0 * x0) + b * (x1 - x0);
+  };
+
+  double xi = x;
+  double result = 0.0;
+
+  if (xi <= splineKnots.front()) {
+    result += integrate_segment(0.0, xi, splineValues[0],
+                                evalLineSegment(splineKnots, splineValues, xi));
+    return result;
+  }
+
+  int idx = 0;
+  while (idx < n - 1 && xi > splineKnots[idx + 1]) {
+    result += integrate_segment(splineKnots[idx], splineKnots[idx + 1],
+                                splineValues[idx], splineValues[idx + 1]);
+    ++idx;
+  }
+
+  const double x0 = splineKnots[idx];
+  const double x1 = std::min(xi, splineKnots[idx + 1]);
+  const double y0 = splineValues[idx];
+  const double y1 = splineValues[idx + 1];
+  result += integrate_segment(x0, x1, y0, y1);
+
+  if (xi > splineKnots.back()) {
+    result += integrate_segment(splineKnots.back(), xi, splineValues[n - 1],
+                                evalLineSegment(splineKnots, splineValues, xi));
+  }
+
+  return result;
 }
 
 double RadialProfiles::evalNiceQuadratic(const std::vector<double>& coeffs,
