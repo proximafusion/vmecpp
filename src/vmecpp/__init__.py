@@ -630,13 +630,30 @@ class VmecWOut(BaseModelWithNumpy):
     """File extension of the input file."""
 
     ier_flag: int
-    """Status code indicating success or problems during the VMEC++ run."""
+    """Status code indicating success or problems during the VMEC++ run.
+
+    See the ``reason`` property for a human-readable description.
+    """
+
+    @property
+    def reason(self) -> str:
+        return {
+            0: "no fatal error but convergence was not reached",
+            1: "initially bad Jacobian",
+            3: "NCURR_NE_1_BLOAT_NE_1",
+            4: "Jacobian reset 75 times, the geometry isn't well defined",
+            5: "input parsing error",
+            8: "NS array must not be all zeroes",
+            9: "miscellaneous error, can happen in mgrid_mod",
+            10: "vacuum VMEC and ITOR mismatch",
+            11: "ftolv termination condition satisfied",
+        }.get(self.ier_flag, "unknown error")
 
     nfp: int
     """Number of toroidal field periods."""
 
     ns: int
-    """Number of radial grid points."""
+    """Number of radial grid points (=number of flux surfaces)."""
 
     mpol: int
     """Number of poloidal Fourier modes."""
@@ -1705,7 +1722,7 @@ class JxBOut(BaseModelWithNumpy):
     r"""Dot product of :math:`j \times B` and :math:`\nabla p` at each grid point."""
 
     jdotb_sqrtg: jt.Float[np.ndarray, "num_full nZnT"]
-    r"""Product of :math:`j \dot B` and :math:`\sqrt{g}` at each grid point."""
+    r"""Product of :math:`j \cdot B` and :math:`\sqrt{g}` at each grid point."""
 
     sqrtg3: jt.Float[np.ndarray, "num_full nZnT"]
     r"""Jacobian determinant :math:`\sqrt{g}` at each grid point."""
