@@ -318,9 +318,6 @@ VMEC++:
    * `cubic_spline_ip`
    * `pedestal`
    * `rational`
-   * `line_segment`
-   * `line_segment_i`
-   * `line_segment_ip`
    * `nice_quadratic`
    * `sum_cossq_s`
    * `sum_cossq_sqrts`

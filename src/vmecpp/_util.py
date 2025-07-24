@@ -414,7 +414,9 @@ def sparse_to_dense_coefficients_implicit(
     return sparse_to_dense_coefficients(maybe_sparse_list, mpol, ntor)
 
 
-def pad_to_target(value, target_length: int, default_value: float):
+def pad_to_target(
+    value: np.ndarray, target_length: int, default_value: float
+) -> np.ndarray:
     if len(value) <= target_length:
         return np.pad(
             value,
@@ -427,3 +429,13 @@ def pad_to_target(value, target_length: int, default_value: float):
         f"length {target_length} allowed for serialization"
     )
     raise ValueError(msg)
+
+
+def right_pad(
+    arr: np.ndarray, target_length: int, default_value: float = 0.0
+) -> np.ndarray:
+    """Right-pad an array with zeros to a given length.
+
+    If the array is longer than the target length, leave it unchanged.
+    """
+    return pad_to_target(arr, max(len(arr), target_length), default_value)
