@@ -3643,6 +3643,50 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x
       absl::MakeSpan(z1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
       absl::MakeSpan(lu_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
       s_);
+      
+  // CRITICAL: Compute spectral condensation for asymmetric modes (missing piece!)
+  // This must be done after symmetrization to include all theta values
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    const int js_offset = (jF - r_.nsMinF) * coeff_size;
+    
+    for (int m = 2; m < s_.mpol - 1; ++m) {
+      const double con_factor = m * (m - 1);  // xmpq[m][0]
+      
+      for (int n = 0; n <= s_.ntor; ++n) {
+        const int imn = n * s_.mpol + m + js_offset;
+        
+        // Get asymmetric Fourier coefficients
+        const double rmksc = (imn < rmnsc.size()) ? rmnsc[imn] : 0.0;
+        const double rmkcs = (imn < rmncs.size() && s_.lthreed) ? rmncs[imn] : 0.0;
+        const double zmkcc = (imn < zmncc.size()) ? zmncc[imn] : 0.0;
+        const double zmkss = (imn < zmnss.size() && s_.lthreed) ? zmnss[imn] : 0.0;
+        
+        for (int k = 0; k < s_.nZeta; ++k) {
+          const int idx_kn = k * (s_.ntor + 1) + n;
+          const double cos_nv = t_.cosnv[idx_kn];
+          const double sin_nv = t_.sinnv[idx_kn];
+          
+          // Process asymmetric contributions to spectral condensation
+          const double rmksc_n = rmksc * cos_nv - rmkcs * sin_nv;
+          const double rmkcs_n = rmkcs * cos_nv + rmksc * sin_nv;
+          const double zmkcc_n = zmkcc * cos_nv - zmkss * sin_nv;
+          const double zmkss_n = zmkss * cos_nv + zmkcc * sin_nv;
+          
+          for (int l = 0; l < s_.nThetaEff; ++l) {
+            const int idx_ml = m * s_.nThetaEff + l;
+            const double cosmu = t_.cosmu[idx_ml];
+            const double sinmu = t_.sinmu[idx_ml];
+            
+            const int idx_con = ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+            
+            // Add asymmetric contributions to spectral condensation
+            rCon[idx_con] += (rmksc_n * sinmu + rmkcs_n * cosmu) * con_factor;
+            zCon[idx_con] += (zmkcc_n * cosmu + zmkss_n * sinmu) * con_factor;
+          }
+        }
+      }
+    }
+  }
 }
 
 void IdealMhdModel::dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x) {
