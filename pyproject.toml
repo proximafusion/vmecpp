@@ -86,7 +86,7 @@ version_file = "src/vmecpp/__about__.py"
 [tool.cibuildwheel]
 archs = ["native"]
 skip = ["pp*", "*-musllinux*"]
-build-frontend = "build"
+build-frontend = "build[uv]" # More modern package manager than pip, with faster builds
 test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py"
 
