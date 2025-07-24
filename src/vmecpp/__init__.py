@@ -592,6 +592,8 @@ class VmecWOut(BaseModelWithNumpy):
         "DGeod",
         "raxis_cc",
         "zaxis_cs",
+        "raxis_cs",
+        "zaxis_cc",
         "version_",
         "bvco",
         "buco",
@@ -617,6 +619,15 @@ class VmecWOut(BaseModelWithNumpy):
         "bsupumnc",
         "bsupvmnc",
         "gmnc",
+        "rmns",
+        "zmnc",
+        "gmns",
+        "bmns",
+        "bsubumns",
+        "bsubvmns",
+        "bsubsmnc",
+        "bsupumns",
+        "bsupvmns",
         "restart_reason_timetrace",
     ]
     """If quantities are not exactly the same in C++ WoutFileContents and this class,
@@ -661,7 +672,10 @@ class VmecWOut(BaseModelWithNumpy):
         ),
         pydantic.Field(alias="lasym__logical__"),
     ]
-    """Flag indicating non-stellarator-symmetry."""
+    """Flag indicating non-stellarator-symmetry.
+
+    Non-stellarator symmetric fields are only populated if this is True.
+    """
 
     lfreeb: typing.Annotated[
         bool,
@@ -859,44 +873,45 @@ class VmecWOut(BaseModelWithNumpy):
     grid."""
 
     bmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
-    """Fourier coefficients of the magnetic field strength ``|B|`` on the half-grid."""
+    """Fourier coefficients (cos) of the magnetic field strength ``|B|`` on the half-
+    grid."""
 
     gmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
-    r"""Fourier coefficients of the Jacobian :math:`\sqrt{g}` on the half-grid."""
+    r"""Fourier coefficients (cos) of the Jacobian :math:`\sqrt{g}` on the half-grid."""
 
     bsubumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
-    r"""Fourier coefficients of the covariant magnetic field component
+    r"""Fourier coefficients (cos) of the covariant magnetic field component
     :math:`B_{\theta}` on the half-grid."""
 
     bsubvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
-    r"""Fourier coefficients of the covariant magnetic field component :math:`B_{\phi}`
-    on the half-grid."""
+    r"""Fourier coefficients (cos) of the covariant magnetic field component
+    :math:`B_{\phi}` on the half-grid."""
 
     bsubsmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
-    """Fourier coefficients of the covariant magnetic field component :math:`B_{s}` on
-    the full- grid."""
+    """Fourier coefficients (sin) of the covariant magnetic field component
+    :math:`B_{s}` on the full- grid."""
 
     bsupumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
-    r"""Fourier coefficients of the contravariant magnetic field component
+    r"""Fourier coefficients (cos) of the contravariant magnetic field component
     :math:`B^{\theta}` on the half-grid."""
 
     bsupvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
-    r"""Fourier coefficients of the contravariant magnetic field component
+    r"""Fourier coefficients (cos) of the contravariant magnetic field component
     :math:`B^{\phi}` on the half-grid."""
 
     rmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"]
-    """Fourier coefficients for ``R`` of the geometry of the flux surfaces on the full-
-    grid."""
+    """Fourier coefficients (cos) for ``R`` of the geometry of the flux surfaces on the
+    full- grid."""
 
     zmns: jt.Float[np.ndarray, "mn_mode n_surfaces"]
-    """Fourier coefficients for ``Z`` of the geometry of the flux surfaces on the full-
-    grid."""
+    """Fourier coefficients (sin) for ``Z`` of the geometry of the flux surfaces on the
+    full- grid."""
 
     lmns: jt.Float[np.ndarray, "mn_mode n_surfaces"]
-    """Fourier coefficients for ``lambda`` stream function on the half-grid."""
+    """Fourier coefficients (sin) for ``lambda`` stream function on the half-grid."""
 
     lmns_full: jt.Float[np.ndarray, "mn_mode n_surfaces"]
-    """Fourier coefficients for ``lambda`` stream function on the full-grid.
+    """Fourier coefficients (sin) for ``lambda`` stream function on the full-grid.
 
     This quantity is VMEC++ specific and required for hot-restart to work properly. We
     store it with the Fortran convention for the order of the dimensions for consistency
@@ -904,30 +919,54 @@ class VmecWOut(BaseModelWithNumpy):
     """
 
     rmns: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
-    """Fourier coefficients for `R` ~ sin(m*theta - n*zeta) of the geometry of the flux surfaces on the full-grid.
-
-    Only populated when lasym=True (non-stellarator-symmetric configurations).
-    """
+    """Fourier coefficients (sin) for `R` of the geometry of the flux surfaces on the
+    full-grid; non-stellarator-symmetric."""
 
     zmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
-    """Fourier coefficients for `Z` ~ cos(m*theta - n*zeta) of the geometry of the flux surfaces on the full-grid.
-
-    Only populated when lasym=True (non-stellarator-symmetric configurations).
-    """
+    """Fourier coefficients (cos) for `Z` of the geometry of the flux surfaces on the
+    full-grid; non-stellarator-symmetric."""
 
     lmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
-    """Fourier coefficients for `lambda` ~ cos(m*theta - n*zeta) stream function on the half-grid.
-
-    Only populated when lasym=True (non-stellarator-symmetric configurations).
-    """
+    """Fourier coefficients (cos) for `lambda` stream function on the half-grid; non-
+    stellarator-symmetric."""
 
     lmnc_full: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
-    """Fourier coefficients for `lambda` ~ cos(m*theta - n*zeta) stream function on the full-grid.
+    """Fourier coefficients (cos) for `lambda` stream function on the full-grid; non-
+    stellarator-symmetric.
 
     This quantity is VMEC++ specific and required for hot-restart to work properly. We
     store it with the Fortran convention for the order of the dimensions for consistency
-    with lmnc. Only populated when lasym=True (non-stellarator-symmetric configurations).
+    with lmnc. Only populated when lasym=True (non-stellarator-symmetric
+    configurations).
     """
+
+    gmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    r"""Fourier coefficients (sin) of the Jacobian :math:`\sqrt{g}` on the half-grid;
+    non-stellarator-symmetric."""
+
+    bmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    """Fourier coefficients (sin) of the magnetic field strength ``|B|`` on the half-
+    grid; non-stellarator-symmetric."""
+
+    bsubumns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    r"""Fourier coefficients (sin) of the covariant magnetic field component
+    :math:`B_{\theta}` on the half-grid; non-stellarator-symmetric."""
+
+    bsubvmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    r"""Fourier coefficients (sin) of the covariant magnetic field component
+    :math:`B_{\phi}` on the half-grid; non-stellarator-symmetric."""
+
+    bsubsmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    """Fourier coefficients (cos) of the covariant magnetic field component
+    :math:`B_{s}` on the full- grid; non-stellarator-symmetric."""
+
+    bsupumns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    r"""Fourier coefficients (sin) of the contravariant magnetic field component
+    :math:`B^{\theta}` on the half-grid; non-stellarator-symmetric."""
+
+    bsupvmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    r"""Fourier coefficients (sin) of the contravariant magnetic field component
+    :math:`B^{\phi}` on the half-grid; non-stellarator-symmetric."""
 
     pcurr_type: ProfileType
     """Parametrization of toroidal current profile (copied from input)."""
@@ -1016,6 +1055,16 @@ class VmecWOut(BaseModelWithNumpy):
     # In the C++ WOutFileContents this is called zaxis_s.
     zaxis_cs: jt.Float[np.ndarray, "ntor_plus_1"]
     """Fourier coefficients of :math:`Z(phi)` of the magnetic axis geometry."""
+
+    # In the C++ WOutFileContents this is called raxis_s.
+    raxis_cs: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
+    """Fourier coefficients of :math:`R(phi)` of the magnetic axis geometry; non-
+    stellarator-symmetric."""
+
+    # In the C++ WOutFileContents this is called zaxis_c.
+    zaxis_cc: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
+    """Fourier coefficients of :math:`Z(phi)` of the magnetic axis geometry; non-
+    stellarator-symmetric."""
 
     # In the C++ WOutFileContents this is called dVds.
     vp: jt.Float[np.ndarray, "n_surfaces"]
@@ -1329,24 +1378,37 @@ class VmecWOut(BaseModelWithNumpy):
         attrs["lmns_full"] = cpp_wout.lmns_full.T
 
         # Asymmetric attributes are transposed and only populated when lasym=True
+        # All of them are defaulted to None when lasym=False
         if cpp_wout.lasym:
+            attrs["raxis_cs"] = cpp_wout.raxis_s
+            attrs["zaxis_cc"] = cpp_wout.zaxis_c
+
+            attrs["bsubsmnc"] = cpp_wout.bsubsmnc.T
             attrs["rmns"] = cpp_wout.rmns.T
             attrs["zmnc"] = cpp_wout.zmnc.T
             attrs["lmnc_full"] = cpp_wout.lmnc_full.T
-        else:
-            attrs["rmns"] = None
-            attrs["zmnc"] = None
-            attrs["lmnc_full"] = None
+
+            attrs["lmnc"] = _pad_and_transpose(cpp_wout.lmnc, attrs["mnmax"])
+
+            attrs["bmns"] = _pad_and_transpose(cpp_wout.bmns, attrs["mnmax_nyq"])
+            attrs["bsubumns"] = _pad_and_transpose(
+                cpp_wout.bsubumns, attrs["mnmax_nyq"]
+            )
+            attrs["bsubvmns"] = _pad_and_transpose(
+                cpp_wout.bsubvmns, attrs["mnmax_nyq"]
+            )
+            attrs["bsupumns"] = _pad_and_transpose(
+                cpp_wout.bsupumns, attrs["mnmax_nyq"]
+            )
+            attrs["bsupvmns"] = _pad_and_transpose(
+                cpp_wout.bsupvmns, attrs["mnmax_nyq"]
+            )
+            attrs["gmns"] = _pad_and_transpose(cpp_wout.gmns, attrs["mnmax_nyq"])
 
         # These attributes have one column less and their elements are transposed
         # in VMEC++ with respect to SIMSOPT/VMEC2000
         attrs["lmns"] = _pad_and_transpose(cpp_wout.lmns, attrs["mnmax"])
 
-        # Asymmetric lambda coefficients on half-grid (only when lasym=True)
-        if cpp_wout.lasym:
-            attrs["lmnc"] = _pad_and_transpose(cpp_wout.lmnc, attrs["mnmax"])
-        else:
-            attrs["lmnc"] = None
         attrs["bmnc"] = _pad_and_transpose(cpp_wout.bmnc, attrs["mnmax_nyq"])
         attrs["bsubumnc"] = _pad_and_transpose(cpp_wout.bsubumnc, attrs["mnmax_nyq"])
         attrs["bsubvmnc"] = _pad_and_transpose(cpp_wout.bsubvmnc, attrs["mnmax_nyq"])
@@ -1453,30 +1515,49 @@ class VmecWOut(BaseModelWithNumpy):
         # stored in a wout file for consistency with lmns.
         cpp_wout.lmns_full = self.lmns_full.T
 
+        if self.lasym:
+            cpp_wout.raxis_s = self.raxis_cs
+            cpp_wout.zaxis_c = self.zaxis_cc
         # Asymmetric attributes are transposed and only set when lasym=True
-        if self.lasym and self.rmns is not None:
-            cpp_wout.rmns = self.rmns.T
-        if self.lasym and self.zmnc is not None:
-            cpp_wout.zmnc = self.zmnc.T
-        if self.lasym and self.lmnc_full is not None:
-            cpp_wout.lmnc_full = self.lmnc_full.T
+        for field in [
+            "bsubsmnc",
+            "rmns",
+            "zmnc",
+            "lmnc_full",
+            "lmnc",
+            "bmns",
+        ]:
+            value = getattr(self, field)
+            if value is not None:
+                setattr(cpp_wout, field, value.T)
 
         # This is a VMEC++ only quantity
         cpp_wout.restart_reasons = self.restart_reason_timetrace
 
+        # coefficients on half-grid
         # These attributes have one column less and their elements are transposed
         # in VMEC++ with respect to SIMSOPT/VMEC2000
-        cpp_wout.lmns = self.lmns.T[1:, :]
-
-        # Asymmetric lambda coefficients on half-grid (only when lasym=True)
-        if self.lasym and self.lmnc is not None:
-            cpp_wout.lmnc = self.lmnc.T[1:, :]
-        cpp_wout.bmnc = self.bmnc.T[1:, :]
-        cpp_wout.bsubumnc = self.bsubumnc.T[1:, :]
-        cpp_wout.bsubvmnc = self.bsubvmnc.T[1:, :]
-        cpp_wout.bsupumnc = self.bsupumnc.T[1:, :]
-        cpp_wout.bsupvmnc = self.bsupvmnc.T[1:, :]
-        cpp_wout.gmnc = self.gmnc.T[1:, :]
+        for field in [
+            "lmns",
+            "gmnc",
+            "bmnc",
+            "bsubumnc",
+            "bsubvmnc",
+            "bsupumnc",
+            "bsupvmnc",
+            # Asymmetric coefficients (only when lasym=True)
+            "lmnc",
+            "gmns",
+            "bmns",
+            "bsubumns",
+            "bsubvmns",
+            "bsupumns",
+            "bsupvmns",
+        ]:
+            value = getattr(self, field)
+            # Asymmetric coefficients may be None when lasym=False
+            if value is not None:
+                setattr(cpp_wout, field, value.T[1:, :])
 
         return cpp_wout
 
@@ -1511,10 +1592,11 @@ class VmecWOut(BaseModelWithNumpy):
 
         # Special handling for variables only present in VMEC++
         # For now, only special case for lambda coefficients: lambda = 0 is a physically meaningful fall-back value
-        if "lmns_full" not in attrs:
-            mnmax = attrs["mnmax"]
-            ns = attrs["ns"]
-            attrs["lmns_full"] = np.zeros([mnmax, ns])
+        mnmax = attrs["mnmax"]
+        ns = attrs["ns"]
+        attrs.setdefault("lmns_full", np.zeros([mnmax, ns]))
+        if attrs["lasym__logical__"]:
+            attrs.setdefault("lmnc_full", np.zeros([mnmax, ns]))
 
         return VmecWOut.model_validate(attrs, by_alias=True)
 
@@ -1928,8 +2010,10 @@ def ensure_vmec2000_input(input_path: Path) -> Generator[Path, None, None]:
 
 
 def _pad_and_transpose(
-    arr: jt.Float[np.ndarray, "ns_minus_one mn"], mnsize: int
-) -> jt.Float[np.ndarray, "mn ns"]:
+    arr: jt.Float[np.ndarray, "ns_minus_one mn"] | None, mnsize: int
+) -> jt.Float[np.ndarray, "mn ns"] | None:
+    if arr is None:
+        return None
     stacked = np.vstack((np.zeros(mnsize), arr)).T
     assert stacked.shape[1] == arr.shape[0] + 1
     assert stacked.shape[0] == arr.shape[1]
