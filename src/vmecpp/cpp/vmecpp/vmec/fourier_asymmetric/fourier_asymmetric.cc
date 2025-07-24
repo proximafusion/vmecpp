@@ -910,8 +910,8 @@ void EnsureM1Constrained(const Sizes& sizes,
       if (idx < static_cast<int>(rbss.size()) && 
           idx < static_cast<int>(zbcs.size())) {
         const double backup_rbss = rbss[idx];
-        rbss[idx] = (backup_rbss + zbcs[idx]) / 2.0;
-        zbcs[idx] = (backup_rbss - zbcs[idx]) / 2.0;
+        rbss[idx] = backup_rbss + zbcs[idx];
+        zbcs[idx] = backup_rbss - zbcs[idx];
       }
     }
   }
@@ -923,8 +923,8 @@ void EnsureM1Constrained(const Sizes& sizes,
       if (idx < static_cast<int>(rbsc.size()) && 
           idx < static_cast<int>(zbcc.size())) {
         const double backup_rbsc = rbsc[idx];
-        rbsc[idx] = (backup_rbsc + zbcc[idx]) / 2.0;
-        zbcc[idx] = (backup_rbsc - zbcc[idx]) / 2.0;
+        rbsc[idx] = backup_rbsc + zbcc[idx];
+        zbcc[idx] = backup_rbsc - zbcc[idx];
       }
     }
   }
