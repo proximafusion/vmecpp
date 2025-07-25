@@ -338,13 +338,13 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     // if did not converge only because jacobian was bad
     // and the intermediate ns=3 run was not performed yet (jacob_off is still
     // == 0), retry the whole thing again
-    if (status_ != VmecStatus::BAD_JACOBIAN) {
+    if (status_ != VmecStatus::kBadJacobian) {
       // We can only correct a bad Jacobian (by re-trying with ns = 3);
       // all other errors are fatal.
       break;
     }
 
-    // if ier_flag .eq. bad_jacobian_flag, repeat once again with ns=3 before
+    // if ier_flag .eq. kBadJacobian_flag, repeat once again with ns=3 before
   }  // jacob_off
 
   if (status_ != VmecStatus::SUCCESSFUL_TERMINATION &&
@@ -385,7 +385,7 @@ bool Vmec::InitializeRadial(
   iter1_ = iter2_;
 
   fc_.ijacob = 0;
-  fc_.restart_reason = RestartReason::NO_RESTART;
+  fc_.restart_reason = RestartReason::kNoRestart;
   fc_.res0 = -1;
   m_delt0 = indata_.delt;
 
@@ -582,10 +582,10 @@ bool Vmec::InitializeRadial(
       return true;
     }
 
-    // restart_reason == NO_RESTART at entry of restart_iter means to store xc
+    // restart_reason == kNoRestart at entry of restart_iter means to store xc
     // in xstore
     for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
-      fc_.restart_reason = RestartReason::NO_RESTART;
+      fc_.restart_reason = RestartReason::kNoRestart;
 
       // TODO(jons): what exactly happens here?
       // Why do we mask potential changes on `indata_.delt` by passing a copy?
@@ -715,7 +715,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
   // RECOMPUTE INITIAL PROFILE, BUT WITH IMPROVED AXIS
   // OR
   // RESTART FROM INITIAL PROFILE, BUT WITH A SMALLER TIME-STEP
-  if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
+  if (fc_.restart_reason == RestartReason::kBadJacobian) {
     decomposed_x_[thread_id]->setZero();
     if (m_lreset_internal) {
       decomposed_x_[thread_id]->interpFromBoundaryAndAxis(t_, b_,
@@ -732,12 +732,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp single
 #endif  // _OPENMP
     {
-      fc_.restart_reason = RestartReason::NO_RESTART;
+      fc_.restart_reason = RestartReason::kNoRestart;
     }
 
     // In the first multigrid iteration (OFF IN v8.50)
     RestartIteration(fc_.delt0r, thread_id);
-  }  // restart_reason == BAD_JACOBIAN
+  }  // restart_reason == kBadJacobian
 
 #ifdef _OPENMP
 #pragma omp single
@@ -772,8 +772,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
     // check for bad jacobian and bad initial guess for axis
     if (fc_.ijacob == 0 &&
-        (status_ == VmecStatus::BAD_JACOBIAN ||
-         fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
+        (status_ == VmecStatus::kBadJacobian ||
+         fc_.restart_reason == RestartReason::kHugeInitialForces) &&
         fc_.ns >= 3) {
 // protect reads of ijacob above from write below
 #ifdef _OPENMP
@@ -786,10 +786,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       {
         if (verbose_) {
           // Only warn about bad jacobian if that is actually the reason.
-          // The other reason could be restart_reason == HUGE_INITIAL_FORCES,
+          // The other reason could be restart_reason == kHugeInitialForces,
           // which means that the initial forces are huge (but the Jacbian is
           // fine, i.e., flux surfaces don't overlap yet).
-          if (status_ == VmecStatus::BAD_JACOBIAN) {
+          if (status_ == VmecStatus::kBadJacobian) {
             std::cout << " INITIAL JACOBIAN CHANGED SIGN!\n";
           }
           std::cout << " TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS\n";
@@ -799,8 +799,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         fc_.ijacob = 1;
 
         // prepare parameters to functions that get called due to
-        // m_lreset_internal and restart_reason == BAD_JACOBIAN
-        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+        // m_lreset_internal and restart_reason == kBadJacobian
+        fc_.restart_reason = RestartReason::kBadJacobian;
       }
 
       // Signals to re-initialize the state vector
@@ -846,7 +846,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp single
 #endif  // _OPENMP
       {
-        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+        fc_.restart_reason = RestartReason::kBadJacobian;
       }
 
       RestartIteration(fc_.delt0r, thread_id);
@@ -867,7 +867,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         }
 
         // done by restart_iter already...
-        fc_.restart_reason = RestartReason::NO_RESTART;
+        fc_.restart_reason = RestartReason::kNoRestart;
       }
       // try again: GOTO 20
       // but need to leave m_liter_flag loop first...
@@ -902,7 +902,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     }
 
     if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
-      // Store current state (restart_reason=NO_RESTART)
+      // Store current state (restart_reason=kNoRestart)
       // --> was able to reduce force consistenly over at least 10 iterations
       RestartIteration(fc_.delt0r, thread_id);
     } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
@@ -911,7 +911,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-      fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+      fc_.restart_reason = RestartReason::kBadJacobian;
     } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
                iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
                fc_.fsqr + fc_.fsqz > 1.0e-2) {
@@ -927,10 +927,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-      fc_.restart_reason = RestartReason::BAD_PROGRESS;
+      fc_.restart_reason = RestartReason::kBadProgress;
     }
 
-    if (fc_.restart_reason != RestartReason::NO_RESTART) {
+    if (fc_.restart_reason != RestartReason::kNoRestart) {
       // Retrieve previous good state
       RestartIteration(fc_.delt0r, thread_id);
       // This code path does not increment the iter2 counter in VMEC 8.52, so we
@@ -999,7 +999,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 #pragma omp barrier
 #endif  // _OPENMP
 
-  if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
+  if (fc_.restart_reason == RestartReason::kBadJacobian) {
     // restore previous good state
 
     // zero velocity
@@ -1025,10 +1025,10 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
       // update marker
       iter1_ = iter2_;
 
-      fc_.restart_reason = RestartReason::NO_RESTART;
+      fc_.restart_reason = RestartReason::kNoRestart;
     }
 
-  } else if (fc_.restart_reason == RestartReason::BAD_PROGRESS) {
+  } else if (fc_.restart_reason == RestartReason::kBadProgress) {
     // restore previous good state
 
     // zero velocity
@@ -1048,11 +1048,11 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
       // reduce time step
       m_delt0r = m_delt0r / 1.03;
 
-      fc_.restart_reason = RestartReason::NO_RESTART;
+      fc_.restart_reason = RestartReason::kNoRestart;
     }
   } else {
-    // NO_RESTART or HUGE_INITIAL_FORCES
-    // save current state vector, e.g. restart_reason == NO_RESTART
+    // kNoRestart or kHugeInitialForces
+    // save current state vector, e.g. restart_reason == kNoRestart
 
     // update backup
     physical_x_backup_[thread_id]->copyFrom(*decomposed_x_[thread_id]);
@@ -1070,7 +1070,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 #pragma omp single
 #endif  // _OPENMP
   {
-    fc_.restart_reason = RestartReason::NO_RESTART;
+    fc_.restart_reason = RestartReason::kNoRestart;
   }
 
   // `funct3d` - COMPUTE MHD FORCES
@@ -1085,9 +1085,9 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 #endif  // _OPENMP
   {
     // COMPUTE ABSOLUTE STOPPING CRITERION
-    if (iter2_ == 1 && fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
+    if (iter2_ == 1 && fc_.restart_reason == RestartReason::kBadJacobian) {
       // first iteration and Jacobian was not computed correctly
-      status_ = VmecStatus::BAD_JACOBIAN;
+      status_ = VmecStatus::kBadJacobian;
     } else if (fc_.fsqr <= fc_.ftolv && fc_.fsqz <= fc_.ftolv &&
                fc_.fsql <= fc_.ftolv) {
       // converged to desired tolerance
@@ -1244,8 +1244,8 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
 #ifdef _OPENMP
 #pragma omp single nowait
 #endif  // _OPENMP
-    // already done in restart_iter for restart_reason == BAD_JACOBIAN
-    fc_.restart_reason = RestartReason::NO_RESTART;
+    // already done in restart_iter for restart_reason == kBadJacobian
+    fc_.restart_reason = RestartReason::kNoRestart;
   }
 
 #ifdef _OPENMP
