@@ -127,16 +127,22 @@ class VmecInput(BaseModelWithNumpy):
     convention for the toroidal angle, the name nzeta is due to beckwards compatibility.
     """
 
-    ns_array: jt.Int[np.ndarray, "num_grids"] = np.array([31], dtype=np.int64)
+    ns_array: jt.Int[np.ndarray, "num_grids"] = pydantic.Field(
+        default_factory=lambda: np.array([31], dtype=np.int64)
+    )
     """Number of flux surfaces per multigrid step.
 
     Each entry >= 3 and >= previous entry.
     """
 
-    ftol_array: jt.Float[np.ndarray, "num_grids"] = np.array([1.0e-10])
+    ftol_array: jt.Float[np.ndarray, "num_grids"] = pydantic.Field(
+        default_factory=lambda: np.array([1.0e-10])
+    )
     """Requested force tolerance for convergence per multigrid step."""
 
-    niter_array: jt.Int[np.ndarray, "num_grids"] = np.array([100], dtype=np.int64)
+    niter_array: jt.Int[np.ndarray, "num_grids"] = pydantic.Field(
+        default_factory=lambda: np.array([100], dtype=np.int64)
+    )
     """Maximum number of iterations per multigrid step."""
 
     phiedge: float = 1.0
@@ -259,7 +265,9 @@ class VmecInput(BaseModelWithNumpy):
     nstep: int = 10
     """Printout interval at which convergence progress is logged."""
 
-    aphi: jt.Float[np.ndarray, "aphi_len"] = np.array([1.0])
+    aphi: jt.Float[np.ndarray, "aphi_len"] = pydantic.Field(
+        default_factory=lambda: np.array([1.0])
+    )
     """Radial flux zoning profile coefficients."""
 
     delt: float = 1.0
@@ -277,13 +285,17 @@ class VmecInput(BaseModelWithNumpy):
     Otherwise a RuntimeError will be raised.
     """
 
-    raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = np.array([0.0])
+    raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = pydantic.Field(
+        default_factory=lambda: np.array([0.0])
+    )
     """Magnetic axis coefficients for R ~ cos(n*v); stellarator-symmetric.
 
     At least 1 value required, up to n=ntor considered.
     """
 
-    zaxis_s: jt.Float[np.ndarray, "ntor_plus_1"] = np.array([0.0])
+    zaxis_s: jt.Float[np.ndarray, "ntor_plus_1"] = pydantic.Field(
+        default_factory=lambda: np.array([0.0])
+    )
     """Magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric.
 
     Up to n=ntor considered; first entry (n=0) is ignored.
@@ -303,12 +315,12 @@ class VmecInput(BaseModelWithNumpy):
 
     rbc: SerializableSparseCoefficientArray[
         jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
-    ] = np.zeros((6, 1))
+    ] = pydantic.Field(default_factory=lambda: np.zeros((6, 1)))
     """Boundary coefficients for R ~ cos(m*u - n*v); stellarator-symmetric"""
 
     zbs: SerializableSparseCoefficientArray[
         jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
-    ] = np.zeros((6, 1))
+    ] = pydantic.Field(default_factory=lambda: np.zeros((6, 1)))
     """Boundary coefficients for Z ~ sin(m*u - n*v); stellarator-symmetric"""
 
     rbs: (
@@ -788,7 +800,9 @@ class VmecWOut(BaseModelWithNumpy):
     grid."""
 
     # Defaulted for backwards compatibility with old wout files
-    chipf: jt.Float[np.ndarray, "n_surfaces"] = np.array([])
+    chipf: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     """Radial derivative of enclosed poloidal magnetic flux ``chi'`` on the full-
     grid."""
 
@@ -1114,12 +1128,16 @@ class VmecWOut(BaseModelWithNumpy):
 
     # In the C++ WOutFileContents this is called safety_factor.
     # Defaulted for backwards compatibility with old wout files.
-    q_factor: jt.Float[np.ndarray, "n_surfaces"] = np.array([])
+    q_factor: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     r"""Safety factor :math:`q = 1/\iota` on the full-grid."""
 
     # In the C++ WOutFileContents this is called poloidal_flux.
     # Defaulted for backwards compatibility with old wout files.
-    chi: jt.Float[np.ndarray, "n_surfaces"] = np.array([])
+    chi: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     r"""Enclosed poloidal magnetic flux :math:`\chi` on the full-grid."""
 
     # In the C++ WOutFileContents this is called spectral_width.
