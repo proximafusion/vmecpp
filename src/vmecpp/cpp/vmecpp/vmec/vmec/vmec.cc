@@ -672,7 +672,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     int n_local_eqsolve_retries = 0;
     for (n_local_eqsolve_retries = 0;
          n_local_eqsolve_retries < fc_.niterv && s.ok() &&
-         *s == SolveEqLoopStatus::MUST_RETRY;
+         *s == SolveEqLoopStatus::MUST_RETRY && liter_flag;
          n_local_eqsolve_retries++) {
       s = SolveEquilibriumLoop(
           thread_id, iterations_before_checkpointing, checkpoint,
@@ -836,6 +836,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
     // ADDITIONAL STOPPING CRITERION (set m_liter_flag to FALSE)
 
+#ifdef _OPENMP
+// Protect the reads of fc_.ijacob from writes in the single region below.
+#pragma omp barrier
+#endif  // _OPENMP
+
     // the blocks for ijacob=25 or 50 are equal up to the point
     // that for 25, delt0r is reset to 0.98*delt (delt given by user)
     // and  for 50, delt0r is reset to 0.96*delt (delt given by user)
@@ -855,7 +860,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp single
 #endif  // _OPENMP
       {
-        const double scale = fc_.ijacob == 25 ? 0.98 : 0.96;
+        // fc_.ijacob is incremented in RestartIteration
+        const double scale = fc_.ijacob < 50 ? 0.98 : 0.96;
+
         fc_.delt0r = scale * indata_.delt;
 
         if (verbose_) {
