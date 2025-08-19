@@ -2107,6 +2107,195 @@ def populate_raw_profile(
         raise ValueError(msg)
 
 
+def interpolate_to(
+    vmec_output: VmecOutput, new_ns: int, new_mpol: int, new_ntor: int
+) -> VmecOutput:
+    """Interpolate the given VmecOutput to a new grid with specified number of flux
+    surfaces, poloidal and toroidal modes. Use this to provide an initial guess for use
+    with the hot-restart functionality to gradually increase both the radial resolution
+    (as VMEC++ is already able to do via ns_array) and the number of Fourier modes
+    (poloidal and toroidal resolution). Resolution parameters can only be increased,
+    i.e. the new number of flux surfaces, poloidal and toroidal modes must be greater
+    than or equal to the old ones. Increasing the toroidal and poloidal resolution is
+    done by zero-padding. Radial interpolation is done for each Fourier mode separately,
+    using the radial interpolation weights (sqrt(s) for odd poloidal mode numbers) that
+    are used by VMEC++ itself in the multi-grid mode.
+
+    For unchanged toroidal and poloidal resolution (only radial resolution changes),
+    the interpolation is identical to the one done by VMEC++ itself in the usual ns_array multi-grid mode.
+
+    Args:
+        vmec_output: the VmecOutput to interpolate.
+        new_ns: the number of flux surfaces in the new output.
+        new_mpol: the number of poloidal modes in the new output.
+        new_ntor: the number of toroidal modes in the new output.
+
+    Returns:
+        A new VmecOutput with interpolated values.
+    """
+    old_ns = vmec_output.wout.ns
+    old_mnmax = vmec_output.wout.mnmax
+
+    # Make a deep copy of the previous output object for being able to change its contents
+    # without loosing access to the previous resolution to restart from.
+    vmec_output_to_restart_from = vmec_output.model_copy(deep=True)
+
+    # Perform radial interpolation and zero-padding in order to produce the initial guess
+    # for the next resolution step based on the previous step.
+    mnmax = (new_ntor + 1) + (new_mpol - 1) * (2 * new_ntor + 1)
+    vmec_output_to_restart_from.wout.rmnc = np.zeros([mnmax, new_ns])
+    vmec_output_to_restart_from.wout.zmns = np.zeros([mnmax, new_ns])
+    vmec_output_to_restart_from.wout.lmns_full = np.zeros([mnmax, new_ns])
+
+    if new_ns == old_ns:
+        # no radial interpolation if radial resolution does not change
+        for j in range(new_ns):
+            mn = 0
+            m = 0
+            for n in range(new_ntor + 1):
+                for old_mn in range(old_mnmax):
+                    if (
+                        m == vmec_output.wout.xm[old_mn]
+                        and n * vmec_output.wout.nfp == vmec_output.wout.xn[old_mn]
+                    ):
+                        vmec_output_to_restart_from.wout.rmnc[mn, j] = (
+                            vmec_output.wout.rmnc[old_mn, j]
+                        )
+                        vmec_output_to_restart_from.wout.zmns[mn, j] = (
+                            vmec_output.wout.zmns[old_mn, j]
+                        )
+                        vmec_output_to_restart_from.wout.lmns_full[mn, j] = (
+                            vmec_output.wout.lmns_full[old_mn, j]
+                        )
+                mn += 1
+            for m in range(1, new_mpol):
+                for n in range(-new_ntor, new_ntor + 1):
+                    for old_mn in range(old_mnmax):
+                        if (
+                            m == vmec_output.wout.xm[old_mn]
+                            and n * vmec_output.wout.nfp == vmec_output.wout.xn[old_mn]
+                        ):
+                            vmec_output_to_restart_from.wout.rmnc[mn, j] = (
+                                vmec_output.wout.rmnc[old_mn, j]
+                            )
+                            vmec_output_to_restart_from.wout.zmns[mn, j] = (
+                                vmec_output.wout.zmns[old_mn, j]
+                            )
+                            vmec_output_to_restart_from.wout.lmns_full[mn, j] = (
+                                vmec_output.wout.lmns_full[old_mn, j]
+                            )
+                    mn += 1
+    else:
+        # perform radial interpolation as well as zero-padding in Fourier space
+
+        old_sqrt_s_full = np.sqrt(np.linspace(0.0, 1.0, old_ns, endpoint=True))
+        new_sqrt_s_full = np.sqrt(np.linspace(0.0, 1.0, new_ns, endpoint=True))
+
+        old_scalxc = np.zeros(old_ns)
+        old_scalxc[1:] = 1.0 / old_sqrt_s_full[1:]
+        old_scalxc[0] = old_scalxc[1]
+
+        new_scalxc = np.zeros(new_ns)
+        new_scalxc[1:] = 1.0 / new_sqrt_s_full[1:]
+        new_scalxc[0] = new_scalxc[1]
+
+        def get_interpolated_slice_from_previous_run(
+            vmec_output: VmecOutput,
+            old_sqrt_s_full: np.ndarray,
+            new_sqrt_s_full: np.ndarray,
+            old_scalxc: np.ndarray,
+            new_scalxc: np.ndarray,
+            old_mn: int,
+            m: int,
+        ):
+            # extract radial slice at matching source Fourier mode
+            rmnc_slice = vmec_output.wout.rmnc[old_mn, :].copy()
+            zmns_slice = vmec_output.wout.zmns[old_mn, :].copy()
+            lmns_full_slice = vmec_output.wout.lmns_full[old_mn, :].copy()
+
+            if m % 2 == 1:
+                # Apply odd-m interpolation weights.
+                rmnc_slice *= old_scalxc
+                zmns_slice *= old_scalxc
+                lmns_full_slice *= old_scalxc
+
+                # Extrapolate odd-m modes in source output from first two flux surfaces.
+                rmnc_slice[0] = 2.0 * rmnc_slice[1] - rmnc_slice[2]
+                zmns_slice[0] = 2.0 * zmns_slice[1] - zmns_slice[2]
+                lmns_full_slice[0] = 2.0 * lmns_full_slice[1] - lmns_full_slice[2]
+
+            # perform radial interpolation to new resolution
+            rmnc_interp = np.interp(new_sqrt_s_full, old_sqrt_s_full, rmnc_slice)
+            zmns_interp = np.interp(new_sqrt_s_full, old_sqrt_s_full, zmns_slice)
+            lmns_full_interp = np.interp(
+                new_sqrt_s_full, old_sqrt_s_full, lmns_full_slice
+            )
+
+            if m % 2 == 1:
+                # un-do odd-m interpolation weights in interpolated data
+                rmnc_interp /= new_scalxc
+                zmns_interp /= new_scalxc
+                lmns_full_interp /= new_scalxc
+
+                # set odd-m modes in target output to zero at the magnetic axis
+                rmnc_interp[0] = 0.0
+                zmns_interp[0] = 0.0
+                lmns_full_interp[0] = 0.0
+
+            return rmnc_interp, zmns_interp, lmns_full_interp
+
+        mn = 0
+        m = 0
+        for n in range(new_ntor + 1):
+            for old_mn in range(old_mnmax):
+                if (
+                    m == vmec_output.wout.xm[old_mn]
+                    and n * vmec_output.wout.nfp == vmec_output.wout.xn[old_mn]
+                ):
+                    rmnc_interp, zmns_interp, lmns_full_interp = (
+                        get_interpolated_slice_from_previous_run(
+                            vmec_output=vmec_output,
+                            old_sqrt_s_full=old_sqrt_s_full,
+                            new_sqrt_s_full=new_sqrt_s_full,
+                            old_scalxc=old_scalxc,
+                            new_scalxc=new_scalxc,
+                            old_mn=old_mn,
+                            m=m,
+                        )
+                    )
+                    vmec_output_to_restart_from.wout.rmnc[mn, :] = rmnc_interp
+                    vmec_output_to_restart_from.wout.zmns[mn, :] = zmns_interp
+                    vmec_output_to_restart_from.wout.lmns_full[mn, :] = lmns_full_interp
+            mn += 1
+        for m in range(1, new_mpol):
+            for n in range(-new_ntor, new_ntor + 1):
+                for old_mn in range(old_mnmax):
+                    if (
+                        m == vmec_output.wout.xm[old_mn]
+                        and n * vmec_output.wout.nfp == vmec_output.wout.xn[old_mn]
+                    ):
+                        rmnc_interp, zmns_interp, lmns_full_interp = (
+                            get_interpolated_slice_from_previous_run(
+                                vmec_output=vmec_output,
+                                old_sqrt_s_full=old_sqrt_s_full,
+                                new_sqrt_s_full=new_sqrt_s_full,
+                                old_scalxc=old_scalxc,
+                                new_scalxc=new_scalxc,
+                                old_mn=old_mn,
+                                m=m,
+                            )
+                        )
+                        vmec_output_to_restart_from.wout.rmnc[mn, :] = rmnc_interp
+                        vmec_output_to_restart_from.wout.zmns[mn, :] = zmns_interp
+                        vmec_output_to_restart_from.wout.lmns_full[mn, :] = (
+                            lmns_full_interp
+                        )
+                mn += 1
+        assert mn == mnmax
+
+    return vmec_output_to_restart_from
+
+
 # Ordered this way to ensure run, VmecInput, and VmecOutput are the first three
 # items in the generated documentation.
 __all__ = [
