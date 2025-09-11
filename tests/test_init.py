@@ -627,3 +627,34 @@ def test_python_defaults_match_cpp_defaults():
             np.testing.assert_array_equal(py_val, cpp_val)
         else:
             assert py_val == cpp_val
+
+
+def test_interpolate_to():
+    vmec_input_filename = TEST_DATA_DIR / "cma.json"
+    vmec_input = vmecpp.VmecInput.from_file(vmec_input_filename)
+
+    # load the interp reference data from src/vmecpp/cpp/vmecpp_large_cpp_tests/test_data/cma/interp/interp_00051_000001_01.cma.json
+    LARGE_TEST_DATA_DIR = (
+        REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp_large_cpp_tests" / "test_data"
+    )
+    interp_reference_file = Path(
+        LARGE_TEST_DATA_DIR / "cma" / "interp" / "interp_00051_000001_01.cma.json"
+    )
+
+    vmec_input_only_first_step = vmec_input.model_copy(deep=True)
+    vmec_input_only_first_step.ns_array = np.array([vmec_input.ns_array[0]])
+    vmec_input_only_first_step.ftol_array = np.array([vmec_input.ftol_array[0]])
+    vmec_input_only_first_step.niter_array = np.array([vmec_input.niter_array[0]])
+
+    vmec_output = vmecpp.run(vmec_input_only_first_step)
+
+    assert vmec_output.wout.ns == vmec_input_only_first_step.ns_array[0]
+
+    interp_reference = {}
+    with open(interp_reference_file) as f:
+        interp_reference = json.load(f)
+
+    print(
+        np.shape(interp_reference["xold"])
+    )  # 3 (R,Z,L), 2 (SC/CS,SS/CC), 25 (ns), 7(ntor+1), 5(mpol)
+    print(np.shape(interp_reference["xnew"]))  # 3, 2, 51, 7, 5
