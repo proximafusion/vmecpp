@@ -148,7 +148,7 @@ enum class VmecCheckpoint : std::uint8_t {
 enum class VmecStatus : std::uint8_t {
   // no fatal error but convergence was not reached
   NORMAL_TERMINATION = 0,
-  BAD_JACOBIAN = 1,
+  kBadJacobian = 1,
   // 2 TODO(jons): not used anymore?
   NCURR_NE_1_BLOAT_NE_1 = 3,
   JACOBIAN_75_TIMES_BAD = 4,
@@ -171,7 +171,7 @@ enum class VacuumPressureState : std::int8_t {
   kInitializing = 0,
 
   // vacuum pressure turned on.
-  // soft restart equilibrium calculation by returning BAD_JACOBIAN in the
+  // soft restart equilibrium calculation by returning kBadJacobian in the
   // process of reducing rCon0,zCon0 *= 0.9;
   kInitialized = 1,
 
