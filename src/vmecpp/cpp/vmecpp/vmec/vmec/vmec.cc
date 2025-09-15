@@ -981,6 +981,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         }
       }
     }
+// protect read of vacuum_pressure_state_ in get_delbsq called by Printout above
+// from write below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
 
 // don't use nowait here, since need implicit barrier to protect read of iter2_
 // from write below in potentially different thread
