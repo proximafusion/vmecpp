@@ -44,7 +44,7 @@ jobs:
       - name: Install required packages for MacOS
         if: ${{ contains(matrix.os, 'macos') }}
         run: |
-          brew install gcc cmake ninja libomp netcdf-cxx eigen lapack git
+          brew install ninja libomp netcdf-cxx eigen lapack git
       - name: Install required packages for Ubuntu
         if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
