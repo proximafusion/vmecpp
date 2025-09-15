@@ -203,7 +203,9 @@ python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
 1. Install dependencies via [Homebrew](https://brew.sh/):
 
 ```shell
-brew install python@3.10 gcc cmake ninja libomp netcdf-cxx git
+brew install python@3.10 ninja libomp netcdf-cxx git
+# And if they aren't pre-installed already:
+brew install gcc cmake
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
