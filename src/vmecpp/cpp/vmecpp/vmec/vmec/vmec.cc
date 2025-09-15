@@ -674,6 +674,11 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
          n_local_eqsolve_retries < fc_.niterv && s.ok() &&
          *s == SolveEqLoopStatus::MUST_RETRY && liter_flag;
          n_local_eqsolve_retries++) {
+// protect read of `liter_flag` from write within `SolveEquilibriumLoop` below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
       s = SolveEquilibriumLoop(
           thread_id, iterations_before_checkpointing, checkpoint,
           /*m_lreset_internal=*/m_lreset_internal, /*m_liter_flag=*/liter_flag);
