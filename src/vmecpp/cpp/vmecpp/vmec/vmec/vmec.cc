@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "vmecpp/common/flow_control/flow_control.h"
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif  // _OPENMP
@@ -942,7 +944,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       fc_.restart_reason = RestartReason::BAD_PROGRESS;
     }
 
-    if (fc_.restart_reason != RestartReason::NO_RESTART) {
+    const RestartReason restart_reason = fc_.restart_reason;
+// protect read of restart_reason above from write (in different thread) below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+    if (restart_reason != RestartReason::NO_RESTART) {
       // Retrieve previous good state
       RestartIteration(fc_.delt0r, thread_id);
       // This code path does not increment the iter2 counter in VMEC 8.52, so we
@@ -974,8 +982,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
+// don't use nowait here, since need implicit barrier to protect read of iter2_
+// from write below in potentially different thread
 #ifdef _OPENMP
-#pragma omp single nowait
+#pragma omp single
 #endif  // _OPENMP
     {
       // vacuum_pressure_state gets set to VacuumPressureState::kInitialized in
