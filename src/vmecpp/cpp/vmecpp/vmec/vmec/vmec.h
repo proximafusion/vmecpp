@@ -106,7 +106,7 @@ class Vmec {
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
                               double time_step, int thread_id,
                               bool& m_liter_flag);
-  void Printout(double delt0r, int thread_id);
+  void Printout(double delt0r, int thread_id, int iter2);
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
                                           int thread_id);
