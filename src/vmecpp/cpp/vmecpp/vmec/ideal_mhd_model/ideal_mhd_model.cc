@@ -890,10 +890,20 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // This can even happen in the first iteration when hot-restarted.
   if (m_fc_.lfreeb &&
       (iter2 > 1 || m_vacuum_pressure_state_ != VacuumPressureState::kOff)) {
+// protect read of m_vacuum_pressure_state_ below from write above
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
     ivacskip = (iter2 - iter1) % nvacskip;
     // when R+Z force residuals are <1e-3, enable vacuum contribution
     if (m_vacuum_pressure_state_ != VacuumPressureState::kActive &&
         m_fc_.fsqr + m_fc_.fsqz < 1.0e-3) {
+// protect read of m_vacuum_pressure_state_ below from write above
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
       // vacuum pressure not fully turned on yet
       // Do full vacuum calc on every iteration
       ivacskip = 0;
