@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "vmecpp/common/flow_control/flow_control.h"
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif  // _OPENMP
@@ -672,8 +674,13 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     int n_local_eqsolve_retries = 0;
     for (n_local_eqsolve_retries = 0;
          n_local_eqsolve_retries < fc_.niterv && s.ok() &&
-         *s == SolveEqLoopStatus::MUST_RETRY;
+         *s == SolveEqLoopStatus::MUST_RETRY && liter_flag;
          n_local_eqsolve_retries++) {
+// protect read of `liter_flag` from write within `SolveEquilibriumLoop` below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
       s = SolveEquilibriumLoop(
           thread_id, iterations_before_checkpointing, checkpoint,
           /*m_lreset_internal=*/m_lreset_internal, /*m_liter_flag=*/liter_flag);
@@ -836,6 +843,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
     // ADDITIONAL STOPPING CRITERION (set m_liter_flag to FALSE)
 
+#ifdef _OPENMP
+// Protect the reads of fc_.ijacob from writes in the single region below.
+#pragma omp barrier
+#endif  // _OPENMP
+
     // the blocks for ijacob=25 or 50 are equal up to the point
     // that for 25, delt0r is reset to 0.98*delt (delt given by user)
     // and  for 50, delt0r is reset to 0.96*delt (delt given by user)
@@ -855,7 +867,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp single
 #endif  // _OPENMP
       {
-        const double scale = fc_.ijacob == 25 ? 0.98 : 0.96;
+        // fc_.ijacob is incremented in RestartIteration
+        const double scale = fc_.ijacob < 50 ? 0.98 : 0.96;
+
         fc_.delt0r = scale * indata_.delt;
 
         if (verbose_) {
@@ -930,7 +944,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       fc_.restart_reason = RestartReason::BAD_PROGRESS;
     }
 
-    if (fc_.restart_reason != RestartReason::NO_RESTART) {
+    const RestartReason restart_reason = fc_.restart_reason;
+// protect read of restart_reason above from write (in different thread) below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+    if (restart_reason != RestartReason::NO_RESTART) {
       // Retrieve previous good state
       RestartIteration(fc_.delt0r, thread_id);
       // This code path does not increment the iter2 counter in VMEC 8.52, so we
@@ -953,7 +973,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // NOTE: IIRC, this still needs to be called to keep the spectral width
         // updated. Screen output will be controlled by checking the `verbose_`
         // flag inside `Printout`.
-        Printout(fc_.delt0r, thread_id);
+        Printout(fc_.delt0r, thread_id, iter2);
 
         if (checkpoint == VmecCheckpoint::PRINTOUT &&
             iter2 >= iterations_before_checkpointing) {
@@ -961,9 +981,16 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         }
       }
     }
-
+// protect read of vacuum_pressure_state_ in get_delbsq called by Printout above
+// from write below
 #ifdef _OPENMP
-#pragma omp single nowait
+#pragma omp barrier
+#endif  // _OPENMP
+
+// don't use nowait here, since need implicit barrier to protect read of iter2_
+// from write below in potentially different thread
+#ifdef _OPENMP
+#pragma omp single
 #endif  // _OPENMP
     {
       // vacuum_pressure_state gets set to VacuumPressureState::kInitialized in
@@ -987,7 +1014,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     // it does not matter who does it.
     // bad resets didn't increment, iter2 in VMEC 8.52, so we need to compute
     // the backwards compatible iteration count
-    iter2_ = force_iteration + 1 - bad_resets;
+    iter2_ = (force_iteration - bad_resets) + 1;  // equivalent to iter2++
   }  // while m_liter_flag
 
   return SolveEqLoopStatus::NORMAL_TERMINATION;
@@ -1172,7 +1199,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   return false;
 }
 
-void Vmec::Printout(double delt0r, int thread_id) {
+void Vmec::Printout(double delt0r, int thread_id, int iter2) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -1208,14 +1235,14 @@ void Vmec::Printout(double delt0r, int thread_id) {
       std::cout << absl::StrFormat(
           "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
           "%.3e | %.4e | %.4e | %5.3f | %.3e\n",
-          iter2_, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
+          iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
           delt0r, r00, energy, betaVolAvg, volAvgM, delbsq);
     } else {
       // omit DELBSQ column in fixed-boundary case
       std::cout << absl::StrFormat(
           "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
           "%.3e | %.4e | %.4e | %5.3f\n",
-          iter2_, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
+          iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
           delt0r, r00, energy, betaVolAvg, volAvgM);
     }
   }  // thread which has boundary

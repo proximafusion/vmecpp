@@ -592,7 +592,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       //
       .def_readwrite("raxis_s", &vmecpp::WOutFileContents::raxis_s)
       .def_readwrite("zaxis_c", &vmecpp::WOutFileContents::zaxis_c)
-      //
+      // non-stellarator symmetric
       .def_readwrite("rmns", &vmecpp::WOutFileContents::rmns)
       .def_readwrite("zmnc", &vmecpp::WOutFileContents::zmnc)
       .def_readwrite("lmnc_full", &vmecpp::WOutFileContents::lmnc_full)

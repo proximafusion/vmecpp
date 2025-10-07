@@ -582,6 +582,28 @@ def test_aux_arrays_from_cpp_wout():
     np.testing.assert_almost_equal(wout.am_aux_f[:2], np.array([2.0, 3.0]))
 
 
+def test_populate_raw_profile_knots():
+    vmec_input = vmecpp.VmecInput.default()
+    vmec_input.ns_array = np.array([5, 9])
+
+    def f(s):
+        return s**2
+
+    vmecpp.populate_raw_profile(vmec_input, "pressure", f)
+
+    s_values = set()
+    for ns in vmec_input.ns_array:
+        delta = 1.0 / float(ns - 1)
+        s_values.update(i * delta for i in range(ns))
+        s_values.update((i - 0.5) * delta for i in range(ns))
+    expected_knots = np.array(sorted(s_values), dtype=float)
+
+    n = len(expected_knots)
+    np.testing.assert_allclose(vmec_input.am_aux_s[:n], expected_knots)
+    np.testing.assert_allclose(vmec_input.am_aux_f[:n], expected_knots**2)
+    assert vmec_input.pmass_type == "line_segment"
+
+
 def test_default_preset():
     # Default construction doesn't throw an exception
     default_preset = vmecpp.VmecInput.default()
