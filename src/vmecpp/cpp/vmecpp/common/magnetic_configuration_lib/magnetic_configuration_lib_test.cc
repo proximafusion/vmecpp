@@ -529,13 +529,14 @@ end)";
   // The numbers in above makegrid_coils are parsed into the number of windings.
   // The currents are originally initialized to 1.0 for each SerialCircuit in
   // ImportMagneticConfigurationFromMakegrid.
-  std::vector<double> expected_currents = {1.0, 1.0};
+  Eigen::VectorXd expected_currents(2);
+  expected_currents << 1.0, 1.0;
 
   absl::StatusOr<MagneticConfiguration> magnetic_configuration =
       ImportMagneticConfigurationFromMakegrid(makegrid_coils);
   ASSERT_TRUE(magnetic_configuration.ok());
 
-  absl::StatusOr<std::vector<double> > circuit_currents =
+  absl::StatusOr<Eigen::VectorXd> circuit_currents =
       GetCircuitCurrents(*magnetic_configuration);
   ASSERT_TRUE(circuit_currents.ok());
 
@@ -556,7 +557,8 @@ end)";
   // The numbers in above makegrid_coils are parsed into the number of windings.
   // The currents are originally initialized to 1.0 for each SerialCircuit in
   // ImportMagneticConfigurationFromMakegrid.
-  std::vector<double> original_currents = {1.0, 1.0};
+  Eigen::VectorXd original_currents(2);
+  original_currents << 1.0, 1.0;
 
   absl::StatusOr<MagneticConfiguration> magnetic_configuration =
       ImportMagneticConfigurationFromMakegrid(makegrid_coils);
@@ -564,14 +566,15 @@ end)";
 
   // specifying only a single current should be rejected, since two circuits are
   // in the MagneticConfiguration
-  std::vector<double> one_current = {2.0};
+  Eigen::VectorXd one_current(1);
+  one_current << 2.0;
   absl::Status status_one_current = SetCircuitCurrents(
       one_current, /*m_magnetic_configuration=*/*magnetic_configuration);
   EXPECT_FALSE(status_one_current.ok());
 
   // check that no change was made to the currents (assume that no other part in
   // the MagneticConfiguration was touched)
-  absl::StatusOr<std::vector<double> > currents_after_first_attempt =
+  absl::StatusOr<Eigen::VectorXd> currents_after_first_attempt =
       GetCircuitCurrents(*magnetic_configuration);
   ASSERT_TRUE(currents_after_first_attempt.ok());
   EXPECT_THAT(*currents_after_first_attempt,
@@ -579,13 +582,14 @@ end)";
 
   // specifying two currents should be accepted, since two circuits are in the
   // MagneticConfiguration
-  std::vector<double> two_currents = {2.0, 3.0};
+  Eigen::VectorXd two_currents(2);
+  two_currents << 2.0, 3.0;
   absl::Status status_two_current = SetCircuitCurrents(
       two_currents, /*m_magnetic_configuration=*/*magnetic_configuration);
   EXPECT_TRUE(status_two_current.ok());
 
   // now check that the currents actually appeared in the MagneticConfiguration
-  absl::StatusOr<std::vector<double> > currents_after_second_attempt =
+  absl::StatusOr<Eigen::VectorXd> currents_after_second_attempt =
       GetCircuitCurrents(*magnetic_configuration);
   ASSERT_TRUE(currents_after_second_attempt.ok());
   EXPECT_THAT(*currents_after_second_attempt, ElementsAreArray(two_currents));

@@ -497,19 +497,17 @@ def test_vmec_input_validation():
     # Why do we not compare `json_dict = json.loads(test_file.read_text())` ?
     # The test_file json may exclude fields that have default values,
     # while the parsed versions should have all fields populated.
-    pywrapper_dict_from_json = json.loads(
-        vmec_input._to_cpp_vmecindatapywrapper().to_json()
-    )
+    indata_dict_from_json = json.loads(vmec_input._to_cpp_vmecindata().to_json())
     # TODO(jurasic): These quantities are not yet present in VmecInput, since there's only one option atm.
-    del pywrapper_dict_from_json["free_boundary_method"]
-    del pywrapper_dict_from_json["iteration_style"]
+    del indata_dict_from_json["free_boundary_method"]
+    del indata_dict_from_json["iteration_style"]
     vmec_input_dict_from_json = json.loads(vmec_input.model_dump_json())
 
     if not vmec_input.lasym:
         for lasym_field in ["rbs", "zbc", "raxis_s", "zaxis_c"]:
             del vmec_input_dict_from_json[lasym_field]
 
-    assert pywrapper_dict_from_json == vmec_input_dict_from_json
+    assert indata_dict_from_json == vmec_input_dict_from_json
 
 
 def test_vmec_output_serialization(cma_output: vmecpp.VmecOutput):
@@ -616,9 +614,7 @@ def test_default_preset():
 
 def test_python_defaults_match_cpp_defaults():
     python_defaults = vmecpp.VmecInput()
-    cpp_defaults = vmecpp.VmecInput._from_cpp_vmecindatapywrapper(
-        _vmecpp.VmecINDATAPyWrapper()
-    )
+    cpp_defaults = vmecpp.VmecInput._from_cpp_vmecindata(_vmecpp.VmecINDATA())
 
     for field in vmecpp.VmecInput.model_fields:
         py_val = getattr(python_defaults, field)

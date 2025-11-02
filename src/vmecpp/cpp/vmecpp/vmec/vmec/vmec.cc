@@ -95,7 +95,8 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
   }
 
   // check for matching `ns`
-  if (initial_state.indata.ns_array.back() != indata.ns_array[0]) {
+  if (initial_state.indata.ns_array[initial_state.indata.ns_array.size() - 1] !=
+      indata.ns_array[0]) {
     return absl::InvalidArgumentError(
         absl::StrCat(msg_start, "ns_array", msg_end));
   }

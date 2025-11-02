@@ -51,7 +51,7 @@ MGridProvider::MGridProvider() {
 }
 
 absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
-                                     const std::vector<double>& coil_currents) {
+                                     const Eigen::VectorXd& coil_currents) {
   {  // try to open file in order to check if it is accessible
     if (!std::filesystem::exists(filename)) {
       return absl::NotFoundError(
@@ -90,7 +90,7 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
   numPhi = NetcdfReadInt(ncid, "kp");
 
   nextcur = NetcdfReadInt(ncid, "nextcur");
-  if (coil_currents.size() != static_cast<std::size_t>(nextcur)) {
+  if (coil_currents.size() != nextcur) {
     return absl::InvalidArgumentError(
         absl::StrFormat("Number of currents %d does not match number of mgrid "
                         "coil fields nextcur=%d.",
@@ -152,9 +152,8 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
 absl::Status MGridProvider::LoadFields(
     const makegrid::MakegridParameters& mgrid_params,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
-    const std::vector<double>& coil_currents) {
-  if (coil_currents.size() !=
-      static_cast<std::size_t>((magnetic_response_table.b_p.rows()))) {
+    const Eigen::VectorXd& coil_currents) {
+  if (coil_currents.size() != magnetic_response_table.b_p.rows()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Number of currents %d does not match number of coil fields in the "
         "response table %d.",

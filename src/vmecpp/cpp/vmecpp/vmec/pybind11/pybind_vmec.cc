@@ -14,21 +14,19 @@
 #include <string>
 #include <type_traits>  // std::is_same_v
 #include <utility>      // std::move
-#include <vector>
 
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
-#include "vmecpp/vmec/pybind11/vmec_indata_pywrapper.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
 namespace py = pybind11;
 using Eigen::VectorXd;
 using Eigen::VectorXi;
-using vmecpp::VmecINDATAPyWrapper;
 using pybind11::literals::operator""_a;
+using vmecpp::VmecINDATA;
 
 namespace {
 
@@ -73,9 +71,9 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
   return s.value();
 }
 
-vmecpp::HotRestartState MakeHotRestartState(
-    vmecpp::WOutFileContents wout, const vmecpp::VmecINDATAPyWrapper &indata) {
-  return vmecpp::HotRestartState(std::move(wout), vmecpp::VmecINDATA(indata));
+vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
+                                            const vmecpp::VmecINDATA &indata) {
+  return vmecpp::HotRestartState(std::move(wout), indata);
 }
 
 }  // anonymous namespace
@@ -98,117 +96,110 @@ PYBIND11_MODULE(_vmecpp, m) {
   // play well with OpenMP: only use it with max_thread=1 or OMP_NUM_THREADS=1!
   py::add_ostream_redirect(m, "ostream_redirect");
 
-  auto pyindata =
-      py::class_<VmecINDATAPyWrapper>(m, "VmecINDATAPyWrapper")
-          .def(py::init<>())
-          .def("_set_mpol_ntor", &VmecINDATAPyWrapper::SetMpolNtor,
-               py::arg("new_mpol"), py::arg("new_ntor"))
-          .def("from_file", &VmecINDATAPyWrapper::FromFile)
-          .def("from_json", &VmecINDATAPyWrapper::FromJson)
-          .def("to_json", &VmecINDATAPyWrapper::ToJson)
-          .def("copy", &VmecINDATAPyWrapper::Copy)
+  auto pyindata = py::class_<VmecINDATA>(m, "VmecINDATA")
+                      .def(py::init<>())
+                      .def("_set_mpol_ntor", &VmecINDATA::SetMpolNtor,
+                           py::arg("new_mpol"), py::arg("new_ntor"))
+                      .def("from_file", &VmecINDATA::FromFile)
+                      .def("from_json", &VmecINDATA::FromJson)
+                      .def("to_json", &VmecINDATA::ToJsonOrException)
+                      .def("copy", &VmecINDATA::Copy)
 
-          // numerical resolution, symmetry assumption
-          .def_readwrite("lasym", &VmecINDATAPyWrapper::lasym)
-          .def_readwrite("nfp", &VmecINDATAPyWrapper::nfp)
-          .def_readonly("mpol", &VmecINDATAPyWrapper::mpol)  // readonly!
-          .def_readonly("ntor", &VmecINDATAPyWrapper::ntor)  // readonly!
-          .def_readwrite("ntheta", &VmecINDATAPyWrapper::ntheta)
-          .def_readwrite("nzeta", &VmecINDATAPyWrapper::nzeta);
+                      // numerical resolution, symmetry assumption
+                      .def_readwrite("lasym", &VmecINDATA::lasym)
+                      .def_readwrite("nfp", &VmecINDATA::nfp)
+                      .def_readonly("mpol", &VmecINDATA::mpol)  // readonly!
+                      .def_readonly("ntor", &VmecINDATA::ntor)  // readonly!
+                      .def_readwrite("ntheta", &VmecINDATA::ntheta)
+                      .def_readwrite("nzeta", &VmecINDATA::nzeta);
 
   // multi-grid steps
-  DefEigenProperty(pyindata, "ns_array", &VmecINDATAPyWrapper::ns_array);
-  DefEigenProperty(pyindata, "ftol_array", &VmecINDATAPyWrapper::ftol_array);
-  DefEigenProperty(pyindata, "niter_array", &VmecINDATAPyWrapper::niter_array);
+  DefEigenProperty(pyindata, "ns_array", &VmecINDATA::ns_array);
+  DefEigenProperty(pyindata, "ftol_array", &VmecINDATA::ftol_array);
+  DefEigenProperty(pyindata, "niter_array", &VmecINDATA::niter_array);
 
   // global physics parameters
-  pyindata.def_readwrite("phiedge", &VmecINDATAPyWrapper::phiedge)
-      .def_readwrite("ncurr", &VmecINDATAPyWrapper::ncurr)
+  pyindata.def_readwrite("phiedge", &VmecINDATA::phiedge)
+      .def_readwrite("ncurr", &VmecINDATA::ncurr)
 
       // mass / pressure profile
-      .def_readwrite("pmass_type", &VmecINDATAPyWrapper::pmass_type);
+      .def_readwrite("pmass_type", &VmecINDATA::pmass_type);
   // fully read-write
-  DefEigenProperty(pyindata, "am", &VmecINDATAPyWrapper::am);
-  DefEigenProperty(pyindata, "am_aux_s", &VmecINDATAPyWrapper::am_aux_s);
-  DefEigenProperty(pyindata, "am_aux_f", &VmecINDATAPyWrapper::am_aux_f);
-  pyindata.def_readwrite("pres_scale", &VmecINDATAPyWrapper::pres_scale)
-      .def_readwrite("gamma", &VmecINDATAPyWrapper::gamma)
-      .def_readwrite("spres_ped", &VmecINDATAPyWrapper::spres_ped)
+  DefEigenProperty(pyindata, "am", &VmecINDATA::am);
+  DefEigenProperty(pyindata, "am_aux_s", &VmecINDATA::am_aux_s);
+  DefEigenProperty(pyindata, "am_aux_f", &VmecINDATA::am_aux_f);
+  pyindata.def_readwrite("pres_scale", &VmecINDATA::pres_scale)
+      .def_readwrite("gamma", &VmecINDATA::gamma)
+      .def_readwrite("spres_ped", &VmecINDATA::spres_ped)
 
       // (initial guess for) iota profile
-      .def_readwrite("piota_type", &VmecINDATAPyWrapper::piota_type);
-  DefEigenProperty(pyindata, "ai", &VmecINDATAPyWrapper::ai);
-  DefEigenProperty(pyindata, "ai_aux_s", &VmecINDATAPyWrapper::ai_aux_s);
-  DefEigenProperty(pyindata, "ai_aux_f", &VmecINDATAPyWrapper::ai_aux_f);
+      .def_readwrite("piota_type", &VmecINDATA::piota_type);
+  DefEigenProperty(pyindata, "ai", &VmecINDATA::ai);
+  DefEigenProperty(pyindata, "ai_aux_s", &VmecINDATA::ai_aux_s);
+  DefEigenProperty(pyindata, "ai_aux_f", &VmecINDATA::ai_aux_f);
 
   // enclosed toroidal current profile
-  pyindata.def_readwrite("pcurr_type", &VmecINDATAPyWrapper::pcurr_type);
-  DefEigenProperty(pyindata, "ac", &VmecINDATAPyWrapper::ac);
-  DefEigenProperty(pyindata, "ac_aux_s", &VmecINDATAPyWrapper::ac_aux_s);
-  DefEigenProperty(pyindata, "ac_aux_f", &VmecINDATAPyWrapper::ac_aux_f);
-  pyindata.def_readwrite("curtor", &VmecINDATAPyWrapper::curtor)
-      .def_readwrite("bloat", &VmecINDATAPyWrapper::bloat)
+  pyindata.def_readwrite("pcurr_type", &VmecINDATA::pcurr_type);
+  DefEigenProperty(pyindata, "ac", &VmecINDATA::ac);
+  DefEigenProperty(pyindata, "ac_aux_s", &VmecINDATA::ac_aux_s);
+  DefEigenProperty(pyindata, "ac_aux_f", &VmecINDATA::ac_aux_f);
+  pyindata.def_readwrite("curtor", &VmecINDATA::curtor)
+      .def_readwrite("bloat", &VmecINDATA::bloat)
 
       // free-boundary parameters
-      .def_readwrite("lfreeb", &VmecINDATAPyWrapper::lfreeb)
-      .def_readwrite("mgrid_file", &VmecINDATAPyWrapper::mgrid_file);
-  DefEigenProperty(pyindata, "extcur", &VmecINDATAPyWrapper::extcur);
-  pyindata.def_readwrite("nvacskip", &VmecINDATAPyWrapper::nvacskip)
-      .def_readwrite("free_boundary_method",
-                     &VmecINDATAPyWrapper::free_boundary_method)
+      .def_readwrite("lfreeb", &VmecINDATA::lfreeb)
+      .def_readwrite("mgrid_file", &VmecINDATA::mgrid_file);
+  DefEigenProperty(pyindata, "extcur", &VmecINDATA::extcur);
+  pyindata.def_readwrite("nvacskip", &VmecINDATA::nvacskip)
+      .def_readwrite("free_boundary_method", &VmecINDATA::free_boundary_method)
 
       // tweaking parameters
-      .def_readwrite("nstep", &VmecINDATAPyWrapper::nstep);
-  DefEigenProperty(pyindata, "aphi", &VmecINDATAPyWrapper::aphi);
-  pyindata.def_readwrite("delt", &VmecINDATAPyWrapper::delt)
-      .def_readwrite("tcon0", &VmecINDATAPyWrapper::tcon0)
-      .def_readwrite("lforbal", &VmecINDATAPyWrapper::lforbal)
+      .def_readwrite("nstep", &VmecINDATA::nstep);
+  DefEigenProperty(pyindata, "aphi", &VmecINDATA::aphi);
+  pyindata.def_readwrite("delt", &VmecINDATA::delt)
+      .def_readwrite("tcon0", &VmecINDATA::tcon0)
+      .def_readwrite("lforbal", &VmecINDATA::lforbal)
+      .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
-                     &VmecINDATAPyWrapper::return_outputs_even_if_not_converged)
+                     &VmecINDATA::return_outputs_even_if_not_converged)
 
       // initial guess for magnetic axis
       // disallow re-assignment of the whole vector (to preserve sizes
       // consistent with mpol/ntor) but allow changing the individual elements
       .def_property_readonly(
-          "raxis_c",
-          [](VmecINDATAPyWrapper &w) -> VectorXd & { return w.raxis_c; })
+          "raxis_c", [](VmecINDATA &w) -> VectorXd & { return w.raxis_c; })
       .def_property_readonly(
-          "zaxis_s",
-          [](VmecINDATAPyWrapper &w) -> VectorXd & { return w.zaxis_s; })
+          "zaxis_s", [](VmecINDATA &w) -> VectorXd & { return w.zaxis_s; })
       .def_property_readonly(
           "raxis_s",
-          [](VmecINDATAPyWrapper &w) -> std::optional<VectorXd> & {
-            return w.raxis_s;
-          })
+          [](VmecINDATA &w) -> std::optional<VectorXd> & { return w.raxis_s; })
       .def_property_readonly(
           "zaxis_c",
-          [](VmecINDATAPyWrapper &w) -> std::optional<VectorXd> & {
-            return w.zaxis_c;
-          })
+          [](VmecINDATA &w) -> std::optional<VectorXd> & { return w.zaxis_c; })
 
       // (initial guess for) boundary shape
       // disallow re-assignment of the whole matrix (to preserve shapes
       // consistent with mpol/ntor) but allow changing the individual elements
       .def_property_readonly(
-          "rbc",
-          [](VmecINDATAPyWrapper &w) -> vmecpp::RowMatrixXd & { return w.rbc; })
+          "rbc", [](VmecINDATA &w) -> vmecpp::RowMatrixXd & { return w.rbc; })
       .def_property_readonly(
-          "zbs",
-          [](VmecINDATAPyWrapper &w) -> vmecpp::RowMatrixXd & { return w.zbs; })
+          "zbs", [](VmecINDATA &w) -> vmecpp::RowMatrixXd & { return w.zbs; })
       .def_property_readonly(
           "rbs",
-          [](VmecINDATAPyWrapper &w) -> std::optional<vmecpp::RowMatrixXd> & {
+          [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
             return w.rbs;
           })
       .def_property_readonly(
-          "zbc",
-          [](VmecINDATAPyWrapper &w) -> std::optional<vmecpp::RowMatrixXd> & {
+          "zbc", [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
             return w.zbc;
           });
 
   py::enum_<vmecpp::FreeBoundaryMethod>(m, "FreeBoundaryMethod")
       .value("NESTOR", vmecpp::FreeBoundaryMethod::NESTOR)
       .value("BIEST", vmecpp::FreeBoundaryMethod::BIEST);
+
+  py::enum_<vmecpp::IterationStyle>(m, "IterationStyle")
+      .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52);
 
   py::class_<vmecpp::VmecCheckpoint>(m, "VmecCheckpoint");
 
@@ -620,13 +611,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("threed1_shafranov_integrals",
                     &vmecpp::OutputQuantities::threed1_shafranov_integrals)
       .def_readonly("wout", &vmecpp::OutputQuantities::wout)
-      .def_property_readonly(
-          "indata",
-          [](const vmecpp::OutputQuantities &oq) -> VmecINDATAPyWrapper {
-            // TODO(eguiraud): this conversion requires a copy as long as
-            // https://github.com/proximafusion/repo/issues/2593 is not solved
-            return VmecINDATAPyWrapper(oq.indata);
-          })
+      .def_readonly("indata", &vmecpp::OutputQuantities::indata)
       .def(
           "save",
           [](const vmecpp::OutputQuantities &oq,
@@ -660,12 +645,12 @@ PYBIND11_MODULE(_vmecpp, m) {
 
   m.def(
       "run",
-      [](const VmecINDATAPyWrapper &indata,
+      [](const VmecINDATA &indata,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads,
          bool verbose = true) -> vmecpp::OutputQuantities {
-        auto ret = vmecpp::run(vmecpp::VmecINDATA(indata),
-                               std::move(initial_state), max_threads, verbose);
+        auto ret =
+            vmecpp::run(indata, std::move(initial_state), max_threads, verbose);
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
@@ -746,13 +731,12 @@ PYBIND11_MODULE(_vmecpp, m) {
 
   m.def(
       "run",
-      [](const VmecINDATAPyWrapper &indata,
+      [](const VmecINDATA &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads, bool verbose = true) {
-        auto ret =
-            vmecpp::run(vmecpp::VmecINDATA(indata), magnetic_response_table,
-                        std::move(initial_state), max_threads, verbose);
+        auto ret = vmecpp::run(indata, magnetic_response_table,
+                               std::move(initial_state), max_threads, verbose);
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("magnetic_response_table"),

@@ -514,9 +514,9 @@ class Vmec(Optimizable):
         assert self.indata is not None
         # Converting to and back is a bit unfortunate, but avoids
         # having the resize method both in C++ and Python
-        indata_wrapper = self.indata._to_cpp_vmecindatapywrapper()
+        indata_wrapper = self.indata._to_cpp_vmecindata()
         indata_wrapper._set_mpol_ntor(new_mpol, new_ntor)
-        self.indata = vmecpp.VmecInput._from_cpp_vmecindatapywrapper(indata_wrapper)
+        self.indata = vmecpp.VmecInput._from_cpp_vmecindata(indata_wrapper)
 
         # NOTE: SurfaceRZFourier uses m up to mpol _inclusive_,
         # differently from VMEC++, so have to manually reduce the range by one.
