@@ -24,7 +24,7 @@ namespace fs = std::filesystem;
 
 namespace vmecpp {
 
-using ::file_io::ReadFile;
+using file_io::ReadFile;
 
 using composed_types::CoefficientsRCos;
 using composed_types::CoefficientsRSin;
@@ -35,10 +35,12 @@ using composed_types::CurveRZFourierFromCsv;
 using composed_types::SurfaceRZFourier;
 using composed_types::SurfaceRZFourierFromCsv;
 
-using ::nlohmann::json;
+using nlohmann::json;
 
-using ::testing::ElementsAre;
-using ::testing::ElementsAreArray;
+using testing::DoubleEq;
+using testing::ElementsAre;
+using testing::ElementsAreArray;
+using testing::Pointwise;
 
 TEST(TestVmecINDATA, CheckParseJsonBoundary) {
   json j =
@@ -84,7 +86,7 @@ TEST(TestVmecINDATA, CheckFreeBoundaryMethodCases) {
 
   free_boundary_method = FreeBoundaryMethod::BIEST;
   EXPECT_EQ(free_boundary_method, FreeBoundaryMethod::BIEST);
-}
+}  // CheckFreeBoundaryMethodCases
 
 TEST(TestVmecINDATA, CheckFreeBoundaryMethodFromString) {
   absl::StatusOr<FreeBoundaryMethod> status_or_free_boundary_method =
@@ -98,12 +100,12 @@ TEST(TestVmecINDATA, CheckFreeBoundaryMethodFromString) {
 
   status_or_free_boundary_method = FreeBoundaryMethodFromString("blablubb");
   EXPECT_FALSE(status_or_free_boundary_method.ok());
-}
+}  // CheckFreeBoundaryMethodFromString
 
 TEST(TestVmecINDATA, CheckFreeBoundaryMethodToString) {
   EXPECT_EQ(ToString(FreeBoundaryMethod::NESTOR), "nestor");
   EXPECT_EQ(ToString(FreeBoundaryMethod::BIEST), "biest");
-}
+}  // CheckFreeBoundaryMethodToString
 
 TEST(TestVmecINDATA, CheckDefaults) {
   VmecINDATA indata;
@@ -164,15 +166,25 @@ TEST(TestVmecINDATA, CheckDefaults) {
   // initial guess for magnetic axis
   EXPECT_EQ(indata.raxis_c.size(), indata.ntor + 1);
   EXPECT_EQ(indata.zaxis_s.size(), indata.ntor + 1);
-  EXPECT_EQ(indata.raxis_s.size(), indata.lasym ? indata.ntor + 1 : 0);
-  EXPECT_EQ(indata.zaxis_c.size(), indata.lasym ? indata.ntor + 1 : 0);
+  if (indata.lasym) {
+    EXPECT_EQ(indata.raxis_s->size(), indata.ntor + 1);
+    EXPECT_EQ(indata.zaxis_c->size(), indata.ntor + 1);
+  } else {
+    EXPECT_FALSE(indata.raxis_s.has_value());
+    EXPECT_FALSE(indata.zaxis_c.has_value());
+  }
 
   // (initial guess for) boundary shape
   const int bdy_size = indata.mpol * (2 * indata.ntor + 1);
   EXPECT_EQ(indata.rbc.size(), bdy_size);
   EXPECT_EQ(indata.zbs.size(), bdy_size);
-  EXPECT_EQ(indata.rbs.size(), indata.lasym ? bdy_size : 0);
-  EXPECT_EQ(indata.zbc.size(), indata.lasym ? bdy_size : 0);
+  if (indata.lasym) {
+    EXPECT_EQ(indata.rbs->size(), indata.lasym ? bdy_size : 0);
+    EXPECT_EQ(indata.zbc->size(), indata.lasym ? bdy_size : 0);
+  } else {
+    EXPECT_FALSE(indata.rbs.has_value());
+    EXPECT_FALSE(indata.zbc.has_value());
+  }
 }  // CheckDefaults
 
 TEST(TestVmecINDATA, ToJson) {
@@ -288,6 +300,136 @@ TEST(TestVmecINDATA, HDF5IO) {
   EXPECT_EQ(indata.zbs, indata_from_file.zbs);
   EXPECT_EQ(indata.rbs, indata_from_file.rbs);
   EXPECT_EQ(indata.zbc, indata_from_file.zbc);
-}
+}  // HDF5IO
+
+TEST(TestVmecINDATA, SetMpolNtor) {
+  VmecINDATA indata =
+      VmecINDATA::FromFile("vmecpp/test_data/cth_like_free_bdy.json");
+
+  const VmecINDATA old_indata = indata;
+  const int old_mpol = indata.mpol;
+  const int old_ntor = indata.ntor;
+
+  // test expanding mpol and ntor
+  indata.SetMpolNtor(indata.mpol + 1, indata.ntor + 1);
+  ASSERT_TRUE(
+      IsConsistent(VmecINDATA(indata), /*enable_info_messages=*/false).ok());
+  EXPECT_EQ(indata.ntor, old_ntor + 1);
+  EXPECT_EQ(indata.mpol, old_mpol + 1);
+
+  // expect same elements as before and plus one zero at the end
+  Eigen::VectorXd expected(old_indata.raxis_c.size() + 1);
+  expected.head(old_indata.raxis_c.size()) = old_indata.raxis_c;
+  expected.tail(1).setZero();
+  EXPECT_THAT(indata.raxis_c, Pointwise(DoubleEq(), expected));
+
+  expected.head(old_indata.zaxis_s.size()) = old_indata.zaxis_s;
+  EXPECT_THAT(indata.zaxis_s, Pointwise(DoubleEq(), expected));
+
+  // check the 2D coefficients have been zero-padded properly, leaving
+  // non-zero elements at the right positions
+  EXPECT_EQ(indata.rbc.rows(), indata.mpol);
+  EXPECT_EQ(indata.rbc.cols(), 2 * indata.ntor + 1);
+  EXPECT_EQ(indata.zbs.rows(), indata.mpol);
+  EXPECT_EQ(indata.zbs.cols(), 2 * indata.ntor + 1);
+  for (int m = 0; m < old_mpol; ++m) {
+    for (int n = -old_ntor; n <= old_ntor; ++n) {
+      EXPECT_DOUBLE_EQ(old_indata.rbc(m, old_ntor + n),
+                       indata.rbc(m, indata.ntor + n));
+      EXPECT_DOUBLE_EQ(old_indata.zbs(m, old_ntor + n),
+                       indata.zbs(m, indata.ntor + n));
+    }
+  }
+
+  // test shrinking mpol and ntor (back to less than the original sizes in
+  // old_indata)
+  indata.SetMpolNtor(old_mpol - 1, old_ntor - 1);
+  ASSERT_TRUE(
+      IsConsistent(VmecINDATA(indata), /*enable_info_messages=*/false).ok());
+  EXPECT_EQ(indata.ntor, old_ntor - 1);
+  EXPECT_EQ(indata.mpol, old_mpol - 1);
+
+  expected = old_indata.raxis_c.head(old_indata.raxis_c.size() - 1);
+  EXPECT_THAT(indata.raxis_c, ElementsAreArray(expected));
+  expected = old_indata.zaxis_s.head(old_indata.zaxis_s.size() - 1);
+  EXPECT_THAT(indata.zaxis_s, ElementsAreArray(expected));
+
+  // check the 2D coefficients have been truncated properly, leaving other
+  // elements at the right positions
+  EXPECT_EQ(indata.rbc.rows(), indata.mpol);
+  EXPECT_EQ(indata.rbc.cols(), 2 * indata.ntor + 1);
+  EXPECT_EQ(indata.zbs.rows(), indata.mpol);
+  EXPECT_EQ(indata.zbs.cols(), 2 * indata.ntor + 1);
+  for (int m = 0; m < indata.mpol; ++m) {
+    for (int n = 0; n < indata.ntor; ++n) {
+      EXPECT_DOUBLE_EQ(old_indata.rbc(m, old_ntor + n),
+                       indata.rbc(m, indata.ntor + n));
+      EXPECT_DOUBLE_EQ(old_indata.zbs(m, old_ntor + n),
+                       indata.zbs(m, indata.ntor + n));
+    }
+  }
+}  // SetMpolNtor
+
+TEST(TestVmecINDATA, CopyMethod) {
+  const VmecINDATA indata =
+      VmecINDATA::FromFile("vmecpp/test_data/cth_like_free_bdy.json");
+
+  const auto copy = indata.Copy();
+
+  // make sure we performed a deep copy
+  EXPECT_NE(&copy.lasym, &indata.lasym);
+  EXPECT_NE(copy.rbc.data(), indata.rbc.data());
+
+  // make sure the copy went well
+  EXPECT_EQ(copy.lasym, indata.lasym);
+  EXPECT_EQ(copy.nfp, indata.nfp);
+  EXPECT_EQ(copy.mpol, indata.mpol);
+  EXPECT_EQ(copy.ntor, indata.ntor);
+  EXPECT_EQ(copy.ntheta, indata.ntheta);
+  EXPECT_EQ(copy.nzeta, indata.nzeta);
+  EXPECT_EQ(copy.ns_array, indata.ns_array);
+  EXPECT_EQ(copy.ftol_array, indata.ftol_array);
+  EXPECT_EQ(copy.niter_array, indata.niter_array);
+  EXPECT_EQ(copy.phiedge, indata.phiedge);
+  EXPECT_EQ(copy.ncurr, indata.ncurr);
+  EXPECT_EQ(copy.pmass_type, indata.pmass_type);
+  EXPECT_EQ(copy.am, indata.am);
+  EXPECT_EQ(copy.am_aux_s, indata.am_aux_s);
+  EXPECT_EQ(copy.am_aux_f, indata.am_aux_f);
+  EXPECT_EQ(copy.pres_scale, indata.pres_scale);
+  EXPECT_EQ(copy.gamma, indata.gamma);
+  EXPECT_EQ(copy.spres_ped, indata.spres_ped);
+  EXPECT_EQ(copy.piota_type, indata.piota_type);
+  EXPECT_EQ(copy.ai, indata.ai);
+  EXPECT_EQ(copy.ai_aux_s, indata.ai_aux_s);
+  EXPECT_EQ(copy.ai_aux_f, indata.ai_aux_f);
+  EXPECT_EQ(copy.pcurr_type, indata.pcurr_type);
+  EXPECT_EQ(copy.ac, indata.ac);
+  EXPECT_EQ(copy.ac_aux_s, indata.ac_aux_s);
+  EXPECT_EQ(copy.ac_aux_f, indata.ac_aux_f);
+  EXPECT_EQ(copy.curtor, indata.curtor);
+  EXPECT_EQ(copy.bloat, indata.bloat);
+  EXPECT_EQ(copy.lfreeb, indata.lfreeb);
+  EXPECT_EQ(copy.mgrid_file, indata.mgrid_file);
+  EXPECT_EQ(copy.extcur, indata.extcur);
+  EXPECT_EQ(copy.nvacskip, indata.nvacskip);
+  EXPECT_EQ(copy.free_boundary_method, indata.free_boundary_method);
+  EXPECT_EQ(copy.nstep, indata.nstep);
+  EXPECT_EQ(copy.aphi, indata.aphi);
+  EXPECT_EQ(copy.delt, indata.delt);
+  EXPECT_EQ(copy.tcon0, indata.tcon0);
+  EXPECT_EQ(copy.lforbal, indata.lforbal);
+  EXPECT_EQ(copy.iteration_style, indata.iteration_style);
+  EXPECT_EQ(copy.return_outputs_even_if_not_converged,
+            indata.return_outputs_even_if_not_converged);
+  EXPECT_EQ(copy.raxis_c, indata.raxis_c);
+  EXPECT_EQ(copy.zaxis_s, indata.zaxis_s);
+  EXPECT_EQ(copy.raxis_s, indata.raxis_s);
+  EXPECT_EQ(copy.zaxis_c, indata.zaxis_c);
+  EXPECT_EQ(copy.rbc, indata.rbc);
+  EXPECT_EQ(copy.zbs, indata.zbs);
+  EXPECT_EQ(copy.rbs, indata.rbs);
+  EXPECT_EQ(copy.zbc, indata.zbc);
+}  // CopyMethod
 
 }  // namespace vmecpp

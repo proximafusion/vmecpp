@@ -447,12 +447,12 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
   // Make a backup of the full vector of original circuit currents,
   // but only after num_windings has potentially been migrated into circuit
   // currents.
-  absl::StatusOr<std::vector<double>> maybe_original_currents =
+  absl::StatusOr<Eigen::VectorXd> maybe_original_currents =
       GetCircuitCurrents(magnetic_configuration);
   if (!maybe_original_currents.ok()) {
     return maybe_original_currents.status();
   }
-  const std::vector<double>& original_currents = *maybe_original_currents;
+  const Eigen::VectorXd& original_currents = *maybe_original_currents;
 
   const int number_of_serial_circuits =
       magnetic_configuration.serial_circuits_size();
@@ -482,7 +482,8 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     // circuit current to != 0
     MagneticConfiguration m_magnetic_configuration = magnetic_configuration;
 
-    std::vector<double> currents_for_circuit(number_of_serial_circuits);
+    Eigen::VectorXd currents_for_circuit;
+    currents_for_circuit.setZero(number_of_serial_circuits);
     if (makegrid_parameters.normalize_by_currents) {
       currents_for_circuit[circuit_index] = 1.0;
     } else {
@@ -590,12 +591,12 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
   // Make a backup of the full vector of original circuit currents,
   // but only after num_windings has potentially been migrated into circuit
   // currents.
-  absl::StatusOr<std::vector<double>> maybe_original_currents =
+  absl::StatusOr<Eigen::VectorXd> maybe_original_currents =
       GetCircuitCurrents(magnetic_configuration);
   if (!maybe_original_currents.ok()) {
     return maybe_original_currents.status();
   }
-  const std::vector<double>& original_currents = *maybe_original_currents;
+  const Eigen::VectorXd& original_currents = *maybe_original_currents;
 
   const int number_of_serial_circuits =
       magnetic_configuration.serial_circuits_size();
@@ -625,7 +626,8 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     // circuit current to != 0
     MagneticConfiguration m_magnetic_configuration = magnetic_configuration;
 
-    std::vector<double> currents_for_circuit(number_of_serial_circuits);
+    Eigen::VectorXd currents_for_circuit;
+    currents_for_circuit.setZero(number_of_serial_circuits);
     if (makegrid_parameters.normalize_by_currents) {
       currents_for_circuit[circuit_index] = 1.0;
     } else {

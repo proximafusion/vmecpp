@@ -5,9 +5,9 @@
 #ifndef VMECPP_COMMON_MAGNETIC_CONFIGURATION_LIB_MAGNETIC_CONFIGURATION_LIB_H_
 #define VMECPP_COMMON_MAGNETIC_CONFIGURATION_LIB_MAGNETIC_CONFIGURATION_LIB_H_
 
+#include <Eigen/Dense>
 #include <filesystem>
 #include <string>
-#include <vector>
 
 #include "absl/status/statusor.h"
 #include "vmecpp/common/magnetic_configuration_definition/magnetic_configuration.h"
@@ -28,7 +28,7 @@ absl::StatusOr<MagneticConfiguration> ImportMagneticConfigurationFromCoilsFile(
 
 // Get the currents in the SerialCircuits in the given MagneticConfiguration.
 // Checks that the given MagneticConfiguration is fully populated.
-absl::StatusOr<std::vector<double> > GetCircuitCurrents(
+absl::StatusOr<Eigen::VectorXd> GetCircuitCurrents(
     const MagneticConfiguration& magnetic_configuration);
 
 // Overwrite the currents for the SerialCircuits in the given
@@ -36,7 +36,7 @@ absl::StatusOr<std::vector<double> > GetCircuitCurrents(
 // the circuit currents vector has to match the number of SerialCircuits in the
 // given MagneticConfiguration.
 absl::Status SetCircuitCurrents(
-    const std::vector<double>& circuit_currents,
+    const Eigen::VectorXd& circuit_currents,
     MagneticConfiguration& m_magnetic_configuration);
 
 // Move num_windings of Coils in each SerialCircuit into common circuit current,

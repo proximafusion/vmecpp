@@ -24,16 +24,15 @@ using testing::IsCloseRelAbs;
 using testing::IsVectorCloseRelAbs;
 
 namespace {
-// Return a Eigen version of the input vector if non-empty, else a 1-element
+// Return the input vector if non-empty, else a 1-element
 // vector containing val (it's a common initialization pattern used below).
-VectorXd NonEmptyVectorOr(const std::vector<double>& vec, const double val) {
-  if (!vec.empty()) {
-    return vmecpp::ToEigenVector(vec);
+VectorXd NonEmptyVectorOr(const Eigen::VectorXd& vec, const double val) {
+  if (vec.size() > 0) {
+    return vec;
   } else {
     return VectorXd::Constant(1, val);
   }
-}
-
+}  // NonEmptyVectorOr
 }  // namespace
 
 // Shorthands for the calls required to read/write data members from/to HDF5
@@ -4263,7 +4262,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.mgrid_file = indata.mgrid_file;
   // copy STL vector into Eigen vector
   wout.nextcur = static_cast<int>(indata.extcur.size());
-  wout.extcur = ToEigenVector(indata.extcur);
+  wout.extcur = indata.extcur;
   wout.mgrid_mode = mgrid_mode;
 
   // -------------------

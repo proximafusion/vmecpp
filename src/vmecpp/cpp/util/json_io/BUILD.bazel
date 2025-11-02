@@ -10,6 +10,7 @@ cc_library(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings:str_format",
         "@nlohmann_json//:json",
+        "@eigen",
     ],
 )
 

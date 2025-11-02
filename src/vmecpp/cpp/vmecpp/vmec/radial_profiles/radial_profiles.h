@@ -5,6 +5,7 @@
 #ifndef VMECPP_VMEC_RADIAL_PROFILES_RADIAL_PROFILES_H_
 #define VMECPP_VMEC_RADIAL_PROFILES_RADIAL_PROFILES_H_
 
+#include <Eigen/Dense>
 #include <cfloat>
 #include <cmath>
 #include <string>
@@ -72,36 +73,36 @@ class RadialProfiles {
   // enclosed toroidal current profile.
   // TODO(jons): This function is wearing way too many hats. Chunk it up.
   double evalProfileFunction(const ProfileParameterization& param,
-                             const std::vector<double>& coeffs,
-                             const std::vector<double>& splineKnots,
-                             const std::vector<double>& splineValues,
+                             const Eigen::VectorXd& coeffs,
+                             const Eigen::VectorXd& splineKnots,
+                             const Eigen::VectorXd& splineValues,
                              bool shouldIntegrate, double normX);
 
-  double evalPowerSeries(const std::vector<double>& coeffs, double x,
+  double evalPowerSeries(const Eigen::VectorXd& coeffs, double x,
                          bool should_integrate);
-  double evalPowerSeriesI(const std::vector<double>& coeffs, double x);
-  double evalGaussTrunc(const std::vector<double>& coeffs, double x);
-  double evalSumAtan(const std::vector<double>& coeffs, double x);
-  double evalTwoLorentz(const std::vector<double>& coeffs, double x);
-  double evalTwoPower(const std::vector<double>& coeffs, double x,
+  double evalPowerSeriesI(const Eigen::VectorXd& coeffs, double x);
+  double evalGaussTrunc(const Eigen::VectorXd& coeffs, double x);
+  double evalSumAtan(const Eigen::VectorXd& coeffs, double x);
+  double evalTwoLorentz(const Eigen::VectorXd& coeffs, double x);
+  double evalTwoPower(const Eigen::VectorXd& coeffs, double x,
                       bool shouldIntegrate);
-  double evalTwoPowerGs(const std::vector<double>& coeffs, double x);
-  double evalAkima(const std::vector<double>& splineKnots,
-                   const std::vector<double>& splineValues, double x);
-  double evalAkimaIntegrated(const std::vector<double>& splineKnots,
-                             const std::vector<double>& splineValues, double x);
-  double evalCubic(const std::vector<double>& splineKnots,
-                   const std::vector<double>& splineValues, double x);
-  double evalCubicIntegrated(const std::vector<double>& splineKnots,
-                             const std::vector<double>& splineValues, double x);
-  double evalPedestal(const std::vector<double>& coeffs, double x);
-  double evalRational(const std::vector<double>& coeffs, double x);
-  double evalLineSegment(const std::vector<double>& splineKnots,
-                         const std::vector<double>& splineValues, double x);
-  double evalLineSegmentIntegrated(const std::vector<double>& splineKnots,
-                                   const std::vector<double>& splineValues,
+  double evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x);
+  double evalAkima(const Eigen::VectorXd& splineKnots,
+                   const Eigen::VectorXd& splineValues, double x);
+  double evalAkimaIntegrated(const Eigen::VectorXd& splineKnots,
+                             const Eigen::VectorXd& splineValues, double x);
+  double evalCubic(const Eigen::VectorXd& splineKnots,
+                   const Eigen::VectorXd& splineValues, double x);
+  double evalCubicIntegrated(const Eigen::VectorXd& splineKnots,
+                             const Eigen::VectorXd& splineValues, double x);
+  double evalPedestal(const Eigen::VectorXd& coeffs, double x);
+  double evalRational(const Eigen::VectorXd& coeffs, double x);
+  double evalLineSegment(const Eigen::VectorXd& splineKnots,
+                         const Eigen::VectorXd& splineValues, double x);
+  double evalLineSegmentIntegrated(const Eigen::VectorXd& splineKnots,
+                                   const Eigen::VectorXd& splineValues,
                                    double x);
-  double evalNiceQuadratic(const std::vector<double>& coeffs, double x);
+  double evalNiceQuadratic(const Eigen::VectorXd& coeffs, double x);
 
   // Accumulate contributions to volume-averaged spectral width <M>.
   void AccumulateVolumeAveragedSpectralWidth() const;

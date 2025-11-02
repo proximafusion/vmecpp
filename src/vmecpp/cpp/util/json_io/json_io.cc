@@ -15,8 +15,8 @@ using nlohmann::json;
 
 namespace json_io {
 
-absl::StatusOr<std::optional<bool> > JsonReadBool(const json& j,
-                                                  const std::string& name) {
+absl::StatusOr<std::optional<bool>> JsonReadBool(const json& j,
+                                                 const std::string& name) {
   if (!j.contains(name)) {
     // not present --> skip
     return std::nullopt;
@@ -30,8 +30,8 @@ absl::StatusOr<std::optional<bool> > JsonReadBool(const json& j,
   return j[name];
 }  // JsonReadBool
 
-absl::StatusOr<std::optional<int> > JsonReadInt(const json& j,
-                                                const std::string& name) {
+absl::StatusOr<std::optional<int>> JsonReadInt(const json& j,
+                                               const std::string& name) {
   if (!j.contains(name)) {
     // not present --> skip
     return std::nullopt;
@@ -45,8 +45,8 @@ absl::StatusOr<std::optional<int> > JsonReadInt(const json& j,
   return j[name];
 }  // JsonReadInt
 
-absl::StatusOr<std::optional<double> > JsonReadDouble(const json& j,
-                                                      const std::string& name) {
+absl::StatusOr<std::optional<double>> JsonReadDouble(const json& j,
+                                                     const std::string& name) {
   if (!j.contains(name)) {
     // not present --> skip
     return std::nullopt;
@@ -60,7 +60,7 @@ absl::StatusOr<std::optional<double> > JsonReadDouble(const json& j,
   return j[name];
 }  // JsonReadDouble
 
-absl::StatusOr<std::optional<std::string> > JsonReadString(
+absl::StatusOr<std::optional<std::string>> JsonReadString(
     const json& j, const std::string& name) {
   if (!j.contains(name)) {
     // not present --> skip
@@ -75,7 +75,7 @@ absl::StatusOr<std::optional<std::string> > JsonReadString(
   return j[name];
 }  // JsonReadString
 
-absl::StatusOr<std::optional<std::vector<int> > > JsonReadVectorInt(
+absl::StatusOr<std::optional<Eigen::VectorXi>> JsonReadVectorInt(
     const json& j, const std::string& name) {
   if (!j.contains(name)) {
     // not present --> skip
@@ -99,10 +99,17 @@ absl::StatusOr<std::optional<std::vector<int> > > JsonReadVectorInt(
     i++;
   }
 
-  return entries;
+  Eigen::VectorXi::Index entries_size =
+      static_cast<Eigen::VectorXi::Index>(entries.size());
+  Eigen::VectorXi entries_vector(entries_size);
+  for (Eigen::VectorXi::Index i = 0; i < entries_size; ++i) {
+    entries_vector[i] = entries[i];
+  }
+
+  return entries_vector;
 }  // JsonReadVectorInt
 
-absl::StatusOr<std::optional<std::vector<double> > > JsonReadVectorDouble(
+absl::StatusOr<std::optional<Eigen::VectorXd>> JsonReadVectorDouble(
     const json& j, const std::string& name) {
   if (!j.contains(name)) {
     // not present --> skip
@@ -126,7 +133,14 @@ absl::StatusOr<std::optional<std::vector<double> > > JsonReadVectorDouble(
     i++;
   }
 
-  return entries;
+  Eigen::VectorXd::Index entries_size =
+      static_cast<Eigen::VectorXd::Index>(entries.size());
+  Eigen::VectorXd entries_vector(entries_size);
+  for (Eigen::VectorXd::Index i = 0; i < entries_size; ++i) {
+    entries_vector[i] = entries[i];
+  }
+
+  return entries_vector;
 }  // JsonReadVectorDouble
 
 }  // namespace json_io
