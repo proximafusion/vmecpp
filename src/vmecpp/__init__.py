@@ -458,23 +458,21 @@ class VmecInput(BaseModelWithNumpy):
             _util.change_working_directory_to(Path(tmpdir)),
         ):
             with ensure_vmecpp_input(absolute_input_path) as vmecpp_input_file:
-                # `VmecINDATAPyWrapper` populates missing fields with default values, while `VmecInput` doesn't.
-                # Therefore we use `VmecINDATAPyWrapper` here to read the user input, before validating the model
-                vmecpp_indata_pywrapper = _vmecpp.VmecINDATAPyWrapper.from_file(
-                    vmecpp_input_file
-                )
+                # `VmecINDATA` populates missing fields with default values, while `VmecInput` doesn't.
+                # Therefore we use `VmecINDATA` here to read the user input, before validating the model
+                vmecpp_indata = _vmecpp.VmecINDATA.from_file(vmecpp_input_file)
         # At this point all required fields are populated with user defined or default values.
         # Passing missing or extra fields to `VmecInput.model_validate` will otherwise raise an error.
-        return VmecInput._from_cpp_vmecindatapywrapper(vmecpp_indata_pywrapper)
+        return VmecInput._from_cpp_vmecindata(vmecpp_indata)
 
     @staticmethod
-    def _from_cpp_vmecindatapywrapper(
-        vmecindatapywrapper: _vmecpp.VmecINDATAPyWrapper,
+    def _from_cpp_vmecindata(
+        vmecindata: _vmecpp.VmecINDATA,
     ) -> VmecInput:
         # The VmecInput.model_validate() is strict in its data model, all fields need to be present and valid.
         # VmecInput does _not_ have any default values.
         vmec_input_dict = {
-            attr_name: getattr(vmecindatapywrapper, attr_name)
+            attr_name: getattr(vmecindata, attr_name)
             for attr_name in VmecInput.model_fields
         }
         vmec_input_dict["ns_array"] = vmec_input_dict["ns_array"].astype(np.int64)
@@ -487,10 +485,10 @@ class VmecInput(BaseModelWithNumpy):
         """Return a ``VmecInput`` with VMEC++ default values."""
         return VmecInput()
 
-    def _to_cpp_vmecindatapywrapper(self) -> _vmecpp.VmecINDATAPyWrapper:
-        cpp_indata = _vmecpp.VmecINDATAPyWrapper()
+    def _to_cpp_vmecindata(self) -> _vmecpp.VmecINDATA:
+        cpp_indata = _vmecpp.VmecINDATA()
 
-        # these are read-only in VmecINDATAPyWrapper to
+        # these are read-only in VmecINDATA to
         # guarantee consistency with mpol and ntor:
         # we can't set the attributes directly but we
         # can set their elements after calling _set_mpol_ntor.
@@ -1893,14 +1891,14 @@ def run(
         0.20333137113443
     """
     input = VmecInput.model_validate(input)
-    cpp_indata = input._to_cpp_vmecindatapywrapper()
+    cpp_indata = input._to_cpp_vmecindata()
 
     if restart_from is None:
         initial_state = None
     else:
         initial_state = _vmecpp.HotRestartState(
             wout=restart_from.wout._to_cpp_wout(),
-            indata=restart_from.input._to_cpp_vmecindatapywrapper(),
+            indata=restart_from.input._to_cpp_vmecindata(),
         )
 
     if max_threads is not None and max_threads <= 0:

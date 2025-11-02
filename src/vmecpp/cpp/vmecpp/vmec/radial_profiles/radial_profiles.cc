@@ -377,11 +377,11 @@ double RadialProfiles::evalCurrProfile(double x) {
   return p;
 }
 
-double RadialProfiles::evalProfileFunction(
-    const ProfileParameterization& param, const std::vector<double>& coeffs,
-    const std::vector<double>& splineKnots,
-    const std::vector<double>& splineValues, bool shouldIntegrate,
-    double normX) {
+double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
+                                           const Eigen::VectorXd& coeffs,
+                                           const Eigen::VectorXd& splineKnots,
+                                           const Eigen::VectorXd& splineValues,
+                                           bool shouldIntegrate, double normX) {
   switch (param) {
     case ProfileParameterization::POWER_SERIES:
       return evalPowerSeries(coeffs, normX, shouldIntegrate);
@@ -431,18 +431,17 @@ double RadialProfiles::evalProfileFunction(
   return 0.0;
 }
 
-double RadialProfiles::evalPowerSeries(const std::vector<double>& coeffs,
-                                       double x, bool should_integrate) {
+double RadialProfiles::evalPowerSeries(const Eigen::VectorXd& coeffs, double x,
+                                       bool should_integrate) {
   double ret = 0.0;
-  int i = static_cast<int>(coeffs.size()) - 1;
-  for (auto it = coeffs.rbegin(); it != coeffs.rend(); ++it) {
-    const double coeff = *it;
+
+  for (Eigen::VectorXd::Index i = coeffs.size() - 1; i >= 0; i--) {
+    const double coeff = coeffs[i];
     if (should_integrate) {
-      ret = x * ret + coeff / (i + 1);
+      ret = x * ret + coeff / static_cast<double>(i + 1);
     } else {
       ret = x * ret + coeff;
     }
-    i--;
   }
   if (should_integrate) {
     ret *= x;
@@ -450,26 +449,24 @@ double RadialProfiles::evalPowerSeries(const std::vector<double>& coeffs,
   return ret;
 }
 
-double RadialProfiles::evalPowerSeriesI(const std::vector<double>& coeffs,
+double RadialProfiles::evalPowerSeriesI(const Eigen::VectorXd& coeffs,
                                         double x) {
   double ret = 0.0;
-  for (auto it = coeffs.rbegin(); it != coeffs.rend(); ++it) {
-    const double coeff = *it;
+  for (Eigen::VectorXd::Index i = coeffs.size() - 1; i >= 0; i--) {
+    const double coeff = coeffs[i];
     ret = (ret + coeff) * x;
   }
   return ret;
 }
 
-double RadialProfiles::evalGaussTrunc(const std::vector<double>& coeffs,
-                                      double x) {
+double RadialProfiles::evalGaussTrunc(const Eigen::VectorXd& coeffs, double x) {
   // TODO(jons): implement `gauss_trunc`
   (void)coeffs;
   (void)x;
   return 0.0;
 }
 
-double RadialProfiles::evalSumAtan(const std::vector<double>& coeffs,
-                                   double x) {
+double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
   double ret = 0.0;
 
   if (coeffs.size() > 0) {
@@ -518,8 +515,7 @@ double RadialProfiles::evalSumAtan(const std::vector<double>& coeffs,
   return ret;
 }
 
-double RadialProfiles::evalTwoLorentz(const std::vector<double>& coeffs,
-                                      double x) {
+double RadialProfiles::evalTwoLorentz(const Eigen::VectorXd& coeffs, double x) {
   if (coeffs.size() < 8) {
     LOG(WARNING)
         << "too few coefficients for 'two_lorentz' profile; need 8, got "
@@ -552,7 +548,7 @@ double RadialProfiles::evalTwoLorentz(const std::vector<double>& coeffs,
   return ret;
 }
 
-double RadialProfiles::evalTwoPower(const std::vector<double>& coeffs, double x,
+double RadialProfiles::evalTwoPower(const Eigen::VectorXd& coeffs, double x,
                                     bool shouldIntegrate) {
   if (coeffs.size() < 3) {
     LOG(WARNING) << "too few coefficients for 'two_power' profile; need 3, got "
@@ -588,16 +584,15 @@ double RadialProfiles::evalTwoPower(const std::vector<double>& coeffs, double x,
   return ret;
 }
 
-double RadialProfiles::evalTwoPowerGs(const std::vector<double>& coeffs,
-                                      double x) {
+double RadialProfiles::evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x) {
   // TODO(jons): implement `two_power_gs`
   (void)coeffs;
   (void)x;
   return 0.0;
 }
 
-double RadialProfiles::evalAkima(const std::vector<double>& splineKnots,
-                                 const std::vector<double>& splineValues,
+double RadialProfiles::evalAkima(const Eigen::VectorXd& splineKnots,
+                                 const Eigen::VectorXd& splineValues,
                                  double x) {
   // TODO(jons): implement `akima_spline`
   (void)splineKnots;
@@ -606,9 +601,9 @@ double RadialProfiles::evalAkima(const std::vector<double>& splineKnots,
   return 0.0;
 }
 
-double RadialProfiles::evalAkimaIntegrated(
-    const std::vector<double>& splineKnots,
-    const std::vector<double>& splineValues, double x) {
+double RadialProfiles::evalAkimaIntegrated(const Eigen::VectorXd& splineKnots,
+                                           const Eigen::VectorXd& splineValues,
+                                           double x) {
   // TODO(jons): implement `akima_spline_i`
   (void)splineKnots;
   (void)splineValues;
@@ -616,8 +611,8 @@ double RadialProfiles::evalAkimaIntegrated(
   return 0.0;
 }
 
-double RadialProfiles::evalCubic(const std::vector<double>& splineKnots,
-                                 const std::vector<double>& splineValues,
+double RadialProfiles::evalCubic(const Eigen::VectorXd& splineKnots,
+                                 const Eigen::VectorXd& splineValues,
                                  double x) {
   // TODO(jons): implement `cubic_spline`
   (void)splineKnots;
@@ -626,9 +621,9 @@ double RadialProfiles::evalCubic(const std::vector<double>& splineKnots,
   return 0.0;
 }
 
-double RadialProfiles::evalCubicIntegrated(
-    const std::vector<double>& splineKnots,
-    const std::vector<double>& splineValues, double x) {
+double RadialProfiles::evalCubicIntegrated(const Eigen::VectorXd& splineKnots,
+                                           const Eigen::VectorXd& splineValues,
+                                           double x) {
   // TODO(jons): implement `cubic_spline_i`
   (void)splineKnots;
   (void)splineValues;
@@ -637,16 +632,14 @@ double RadialProfiles::evalCubicIntegrated(
   return 0.0;
 }
 
-double RadialProfiles::evalPedestal(const std::vector<double>& coeffs,
-                                    double x) {
+double RadialProfiles::evalPedestal(const Eigen::VectorXd& coeffs, double x) {
   // TODO(jons): implement `pedestal`
   (void)coeffs;
   (void)x;
   return 0.0;
 }
 
-double RadialProfiles::evalRational(const std::vector<double>& coeffs,
-                                    double x) {
+double RadialProfiles::evalRational(const Eigen::VectorXd& coeffs, double x) {
   // TODO(jons): implement `rational`
   (void)coeffs;
   (void)x;
@@ -655,8 +648,8 @@ double RadialProfiles::evalRational(const std::vector<double>& coeffs,
 
 // Linear interpolation between closest points and associated knots.
 // Clamp the profile if x is outside the range of knots.
-double RadialProfiles::evalLineSegment(const std::vector<double>& splineKnots,
-                                       const std::vector<double>& splineValues,
+double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
+                                       const Eigen::VectorXd& splineValues,
                                        double x) {
   const int n = static_cast<int>(splineKnots.size());
   if (n < 2 || n != static_cast<int>(splineValues.size())) {
@@ -665,10 +658,12 @@ double RadialProfiles::evalLineSegment(const std::vector<double>& splineKnots,
 
   auto it = std::lower_bound(splineKnots.begin(), splineKnots.end(), x);
   if (it == splineKnots.end()) {
-    return splineKnots.back();  // x is out of bounds
+    // x is out of bounds
+    return splineValues[n - 1];
   }
   if (it == splineKnots.begin()) {
-    return splineValues[0];  // x is below the first knot
+    // x is below the first knot
+    return splineValues[0];
   }
   const double x0 = *it;
   const double x1 = *(it + 1);
@@ -680,8 +675,8 @@ double RadialProfiles::evalLineSegment(const std::vector<double>& splineKnots,
 }
 
 double RadialProfiles::evalLineSegmentIntegrated(
-    const std::vector<double>& splineKnots,
-    const std::vector<double>& splineValues, double x) {
+    const Eigen::VectorXd& splineKnots, const Eigen::VectorXd& splineValues,
+    double x) {
   const int n = static_cast<int>(splineKnots.size());
   if (n < 2 || n != static_cast<int>(splineValues.size())) {
     return 0.0;
@@ -696,7 +691,7 @@ double RadialProfiles::evalLineSegmentIntegrated(
   double xi = x;
   double result = 0.0;
 
-  if (xi <= splineKnots.front()) {
+  if (xi <= splineKnots[0]) {
     result += integrate_segment(0.0, xi, splineValues[0],
                                 evalLineSegment(splineKnots, splineValues, xi));
     return result;
@@ -715,15 +710,15 @@ double RadialProfiles::evalLineSegmentIntegrated(
   const double y1 = splineValues[idx + 1];
   result += integrate_segment(x0, x1, y0, y1);
 
-  if (xi > splineKnots.back()) {
-    result += integrate_segment(splineKnots.back(), xi, splineValues[n - 1],
+  if (xi > splineKnots[n - 1]) {
+    result += integrate_segment(splineKnots[n - 1], xi, splineValues[n - 1],
                                 evalLineSegment(splineKnots, splineValues, xi));
   }
 
   return result;
 }
 
-double RadialProfiles::evalNiceQuadratic(const std::vector<double>& coeffs,
+double RadialProfiles::evalNiceQuadratic(const Eigen::VectorXd& coeffs,
                                          double x) {
   // TODO(jons): implement `nice_quadratic`
   (void)coeffs;
@@ -735,7 +730,7 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
                                         VmecConstants& m_vmecconst) {
   // R_00 of initial boundary is ~ major radius
   // and used as normalization factor for mass profile
-  const double r00 = id_.rbc[0];
+  const double r00 = id_.rbc(0, id_.ntor);
 
   // scale profile of enclosed toroidal current to prescribed net toroidal
   // current,
