@@ -622,3 +622,460 @@ def test_python_defaults_match_cpp_defaults():
             np.testing.assert_array_equal(py_val, cpp_val)
         else:
             assert py_val == cpp_val
+
+
+def test_interpolate_to():
+    vmec_input_filename = TEST_DATA_DIR / "cma.json"
+    vmec_input = vmecpp.VmecInput.from_file(vmec_input_filename)
+
+    mpol = vmec_input.mpol
+    ntor = vmec_input.ntor
+    ns_old = vmec_input.ns_array[0]
+    ns_new = vmec_input.ns_array[1]
+
+    scalxc_old = np.zeros([ns_old])
+    sqrtSF1_old = np.sqrt(1.0 / (ns_old - 1.0))
+    for jF in range(ns_old):
+        sqrtSF = np.sqrt(jF / (ns_old - 1.0))
+        scalxc_old[jF] = 1.0 / max(sqrtSF, sqrtSF1_old)
+
+    scalxc_new = np.zeros([ns_new])
+    sqrtSF1_new = np.sqrt(1.0 / (ns_new - 1.0))
+    for jF in range(ns_new):
+        sqrtSF = np.sqrt(jF / (ns_new - 1.0))
+        scalxc_new[jF] = 1.0 / max(sqrtSF, sqrtSF1_new)
+
+    # load the interp reference data from src/vmecpp/cpp/vmecpp_large_cpp_tests/test_data/cma/interp/interp_00051_000001_01.cma.json
+    LARGE_TEST_DATA_DIR = (
+        REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp_large_cpp_tests" / "test_data"
+    )
+    interp_reference_file = Path(
+        LARGE_TEST_DATA_DIR / "cma" / "interp" / "interp_00051_000001_01.cma.json"
+    )
+
+    vmec_input_only_first_step = vmec_input.model_copy(deep=True)
+    vmec_input_only_first_step.ns_array = np.array([vmec_input.ns_array[0]])
+    vmec_input_only_first_step.ftol_array = np.array([vmec_input.ftol_array[0]])
+    vmec_input_only_first_step.niter_array = np.array([vmec_input.niter_array[0]])
+
+    vmec_output = vmecpp.run(vmec_input_only_first_step)
+
+    assert vmec_output.wout.ns == vmec_input_only_first_step.ns_array[0]
+
+    interp_reference = {}
+    with open(interp_reference_file) as f:
+        interp_reference = json.load(f)
+
+    xold_ref = np.array(interp_reference["xold"])
+    xnew_ref = np.array(interp_reference["xnew"])
+
+    # 3 (R,Z,L), 2 (SC/CS,SS/CC), 25 (ns), 7(ntor+1), 5(mpol)
+    # print(xold_ref.shape)  # (3, 2, 25, 7, 5)
+    # print(xnew_ref.shape)  # (3, 2, 51, 7, 5)
+
+    mscale = np.ones(mpol)
+    mscale[1:] *= np.sqrt(2.0)
+
+    nscale = np.ones(ntor + 1)
+    nscale[1:] *= np.sqrt(2.0)
+
+    ################### other conversion start ###################
+
+    # Allocate reconstructed internal arrays (mixed versions for m=1 already)
+    rmncc_rec = np.zeros((ns_old, ntor + 1, mpol))
+    rmnss_rec = np.zeros((ns_old, ntor + 1, mpol))
+    zmnsc_rec = np.zeros((ns_old, ntor + 1, mpol))
+    zmncs_rec = np.zeros((ns_old, ntor + 1, mpol))
+    lmnsc_rec = np.zeros((ns_old, ntor + 1, mpol))
+    lmncs_rec = np.zeros((ns_old, ntor + 1, mpol))
+
+    # Loop over full radial surfaces
+    for jF in range(ns_old):
+        # Initialize external index
+        mn = 0
+
+        # Handle m = 0 block: n = 0..ntor
+        m = 0
+        for n in range(ntor + 1):
+            # Compute scale factor t1
+            t1 = mscale[m] * nscale[n]
+
+            # Invert rmnc_ref for rmncc
+            rmncc_rec[jF, n, m] = vmec_output.wout.rmnc[mn, jF] / t1
+
+            # Invert zmns_ref for zmncs_ (note the minus sign in forward)
+            zmncs_rec[jF, n, m] = -vmec_output.wout.zmns[mn, jF] / t1
+
+            lmncs_rec[jF, n, m] = -vmec_output.wout.lmns_full[mn, jF] / t1
+
+            # Advance external index
+            mn += 1
+
+        # Handle m >= 1 blocks
+        for m in range(1, mpol):
+            # Precompute scale vector for all |n|
+            t1_absn = mscale[m] * nscale
+
+            # Handle n = 0 directly
+            # Extract scale for |n|=0
+            t10 = t1_absn[0]
+
+            # Assign from external with simple inversion
+            rmncc_rec[jF, 0, m] = vmec_output.wout.rmnc[mn + ntor, jF] / t10
+            zmnsc_rec[jF, 0, m] = vmec_output.wout.zmns[mn + ntor, jF] / t10
+            lmnsc_rec[jF, 0, m] = vmec_output.wout.lmns_full[mn + ntor, jF] / t10
+
+            # Loop positive n only and use pair (+n, -n) to solve the 2x2 systems
+            for npos in range(1, ntor + 1):
+                # mn index for n=0 sits at mn + ntor
+
+                # Compute mn index for -npos
+                mn_neg = mn + ntor - npos
+
+                # Compute mn index for +npos
+                mn_pos = mn + ntor + npos
+
+                # Fetch scale
+                t1 = t1_absn[npos]
+
+                rmncc_rec[jF, npos, m] = (
+                    vmec_output.wout.rmnc[mn_pos, jF]
+                    + vmec_output.wout.rmnc[mn_neg, jF]
+                ) / t1
+                rmnss_rec[jF, npos, m] = (
+                    vmec_output.wout.rmnc[mn_pos, jF]
+                    - vmec_output.wout.rmnc[mn_neg, jF]
+                ) / t1
+
+                zmnsc_rec[jF, npos, m] = (
+                    vmec_output.wout.zmns[mn_pos, jF]
+                    + vmec_output.wout.zmns[mn_neg, jF]
+                ) / t1
+                zmncs_rec[jF, npos, m] = (
+                    vmec_output.wout.zmns[mn_neg, jF]
+                    - vmec_output.wout.zmns[mn_pos, jF]
+                ) / t1
+
+                lmnsc_rec[jF, npos, m] = (
+                    vmec_output.wout.lmns_full[mn_pos, jF]
+                    + vmec_output.wout.lmns_full[mn_neg, jF]
+                ) / t1
+                lmncs_rec[jF, npos, m] = (
+                    vmec_output.wout.lmns_full[mn_neg, jF]
+                    - vmec_output.wout.lmns_full[mn_pos, jF]
+                ) / t1
+
+            # Advance external index block for this m by (2*ntor + 1)
+            mn += 2 * ntor + 1
+
+        # activate m=1 constraint
+        old_rss = rmnss_rec[jF, :, 1].copy()
+        rmnss_rec[jF, :, 1] = 0.5 * (old_rss + zmncs_rec[jF, :, 1])
+        zmncs_rec[jF, :, 1] = 0.5 * (old_rss - zmncs_rec[jF, :, 1])
+
+        # apply scalxc factors
+        rmncc_rec[jF, :, 1::2] *= scalxc_old[jF]
+        rmnss_rec[jF, :, 1::2] *= scalxc_old[jF]
+        zmnsc_rec[jF, :, 1::2] *= scalxc_old[jF]
+        zmncs_rec[jF, :, 1::2] *= scalxc_old[jF]
+        lmnsc_rec[jF, :, 1::2] *= scalxc_old[jF]
+        lmncs_rec[jF, :, 1::2] *= scalxc_old[jF]
+
+    # fix lambda scaling
+    lmnsc_rec *= -1.0
+    lmncs_rec *= -1.0
+
+    # set lambda to zero on-axis, except for odd-m extrap below
+    lmnsc_rec[0, :, :] = 0.0
+    lmncs_rec[0, :, :] = 0.0
+
+    # extrapolate odd-m to axis
+    rmncc_rec[0, :, 1::2] = 2.0 * rmncc_rec[1, :, 1::2] - rmncc_rec[2, :, 1::2]
+    rmnss_rec[0, :, 1::2] = 2.0 * rmnss_rec[1, :, 1::2] - rmnss_rec[2, :, 1::2]
+    zmnsc_rec[0, :, 1::2] = 2.0 * zmnsc_rec[1, :, 1::2] - zmnsc_rec[2, :, 1::2]
+    zmncs_rec[0, :, 1::2] = 2.0 * zmncs_rec[1, :, 1::2] - zmncs_rec[2, :, 1::2]
+    lmnsc_rec[0, :, 1::2] = 2.0 * lmnsc_rec[1, :, 1::2] - lmnsc_rec[2, :, 1::2]
+    lmncs_rec[0, :, 1::2] = 2.0 * lmncs_rec[1, :, 1::2] - lmncs_rec[2, :, 1::2]
+
+    ################### other conversion end ###################
+
+    np.testing.assert_array_almost_equal(xold_ref[0, 0, :, :, :], rmncc_rec, decimal=13)
+    np.testing.assert_array_almost_equal(xold_ref[0, 1, :, :, :], rmnss_rec, decimal=13)
+    np.testing.assert_array_almost_equal(xold_ref[1, 0, :, :, :], zmnsc_rec, decimal=13)
+    np.testing.assert_array_almost_equal(xold_ref[1, 1, :, :, :], zmncs_rec, decimal=13)
+    np.testing.assert_array_almost_equal(xold_ref[2, 0, :, :, :], lmnsc_rec, decimal=11)
+    np.testing.assert_array_almost_equal(xold_ref[2, 1, :, :, :], lmncs_rec, decimal=11)
+
+    # implement interpoation and check interpolated state vector against xnew_ref
+
+    s_old = np.linspace(0.0, 1.0, ns_old, endpoint=True)
+    s_new = np.linspace(0.0, 1.0, ns_new, endpoint=True)
+
+    rmncc_new = np.zeros([ns_new, ntor + 1, mpol])
+    rmnss_new = np.zeros([ns_new, ntor + 1, mpol])
+    zmnsc_new = np.zeros([ns_new, ntor + 1, mpol])
+    zmncs_new = np.zeros([ns_new, ntor + 1, mpol])
+    lmnsc_new = np.zeros([ns_new, ntor + 1, mpol])
+    lmncs_new = np.zeros([ns_new, ntor + 1, mpol])
+
+    for n in range(ntor + 1):
+        for m in range(mpol):
+            rmncc_new[:, n, m] = np.interp(x=s_new, xp=s_old, fp=rmncc_rec[:, n, m])
+            rmnss_new[:, n, m] = np.interp(x=s_new, xp=s_old, fp=rmnss_rec[:, n, m])
+            zmnsc_new[:, n, m] = np.interp(x=s_new, xp=s_old, fp=zmnsc_rec[:, n, m])
+            zmncs_new[:, n, m] = np.interp(x=s_new, xp=s_old, fp=zmncs_rec[:, n, m])
+            lmnsc_new[:, n, m] = np.interp(x=s_new, xp=s_old, fp=lmnsc_rec[:, n, m])
+            lmncs_new[:, n, m] = np.interp(x=s_new, xp=s_old, fp=lmncs_rec[:, n, m])
+
+    rmncc_new[:, :, 1::2] /= scalxc_new[:, np.newaxis, np.newaxis]
+    rmnss_new[:, :, 1::2] /= scalxc_new[:, np.newaxis, np.newaxis]
+    zmnsc_new[:, :, 1::2] /= scalxc_new[:, np.newaxis, np.newaxis]
+    zmncs_new[:, :, 1::2] /= scalxc_new[:, np.newaxis, np.newaxis]
+    lmnsc_new[:, :, 1::2] /= scalxc_new[:, np.newaxis, np.newaxis]
+    lmncs_new[:, :, 1::2] /= scalxc_new[:, np.newaxis, np.newaxis]
+
+    # zero out odd-m on axis extrapolation leftovers
+    rmncc_new[0, :, 1::2] = 0.0
+    rmnss_new[0, :, 1::2] = 0.0
+    zmnsc_new[0, :, 1::2] = 0.0
+    zmncs_new[0, :, 1::2] = 0.0
+    lmnsc_new[0, :, 1::2] = 0.0
+    lmncs_new[0, :, 1::2] = 0.0
+
+    # for title, act, ref in zip(
+    #     [
+    #         "rmncc",
+    #         "rmnss",
+    #         "zmnsc",
+    #         "zmncs",
+    #         "lmnsc",
+    #         "lmncs",
+    #     ],
+    #     [rmncc_new, rmnss_new, zmnsc_new, zmncs_new, lmnsc_new, lmncs_new],
+    #     [
+    #         xnew_ref[0, 0, :, :, :],
+    #         xnew_ref[0, 1, :, :, :],
+    #         xnew_ref[1, 0, :, :, :],
+    #         xnew_ref[1, 1, :, :, :],
+    #         xnew_ref[2, 0, :, :, :],
+    #         xnew_ref[2, 1, :, :, :],
+    #     ],
+    #     strict=False,
+    # ):
+    #     for jF in range(ns_new):
+    #         # first check: compare xold against vmec_output.wout
+    #         plt.figure()
+    #         plt.subplot(1, 3, 1)
+    #         plt.title("ref")
+    #         plt.imshow(ref[jF, :, :], origin="lower", aspect="auto")
+    #         plt.colorbar()
+    #         plt.subplot(1, 3, 2)
+    #         plt.title(f"{title} act j={jF}")
+    #         plt.imshow(act[jF, :, :], origin="lower", aspect="auto")
+    #         plt.colorbar()
+    #         plt.subplot(1, 3, 3)
+    #         plt.title("err")
+    #         plt.imshow(
+    #             np.log10(
+    #                 1.0e-30
+    #                 + np.abs(act[jF, :, :] - ref[jF, :, :])
+    #                 / (1.0 + np.abs(ref[jF, :, :]))
+    #             ),
+    #             origin="lower",
+    #             aspect="auto",
+    #         )
+    #         plt.colorbar()
+    #         plt.tight_layout()
+
+    # plt.show()
+
+    np.testing.assert_array_almost_equal(xnew_ref[0, 0, :, :, :], rmncc_new, decimal=13)
+    np.testing.assert_array_almost_equal(xnew_ref[0, 1, :, :, :], rmnss_new, decimal=13)
+    np.testing.assert_array_almost_equal(xnew_ref[1, 0, :, :, :], zmnsc_new, decimal=13)
+    np.testing.assert_array_almost_equal(xnew_ref[1, 1, :, :, :], zmncs_new, decimal=13)
+    np.testing.assert_array_almost_equal(xnew_ref[2, 0, :, :, :], lmnsc_new, decimal=11)
+    np.testing.assert_array_almost_equal(xnew_ref[2, 1, :, :, :], lmncs_new, decimal=11)
+
+    ############## start of conversion ##############
+
+    # zero out spurious extrapolation at axis from interp leftovers in reference in odd-m modes
+    xold_ref[:, :, 0, :, 1::2] = 0.0
+
+    # undo scalxc in reference
+    xold_ref[:, :, :, :, 1::2] /= scalxc_old[
+        np.newaxis, np.newaxis, :, np.newaxis, np.newaxis
+    ]
+
+    rmncc = xold_ref[0, 0, :, :, :]
+    rmnss = xold_ref[0, 1, :, :, :]
+    zmnsc = xold_ref[1, 0, :, :, :]
+    zmncs = xold_ref[1, 1, :, :, :]
+    lmnsc = xold_ref[2, 0, :, :, :]
+    lmncs = xold_ref[2, 1, :, :, :]
+
+    mnmax = (ntor + 1) + (mpol - 1) * (2 * ntor + 1)
+
+    # Copy internal arrays so the in-place "M=1 conversion" does not mutate inputs
+    rmnss_ = rmnss.copy()
+    zmncs_ = zmncs.copy()
+
+    # Apply the m=1 internal→physical mixing only for 3D
+    # Select the m=1 slice for all jF and all n>=0
+    old_rss = rmnss_[:, :, 1].copy()
+    # rmnss <- old_rss + zmncs
+    rmnss_[:, :, 1] = old_rss + zmncs_[:, :, 1]
+    # zmncs <- old_rss - zmncs
+    zmncs_[:, :, 1] = old_rss - zmncs_[:, :, 1]
+
+    # Allocate external arrays
+    rmnc_ref = np.zeros((mnmax, ns_old))
+    zmns_ref = np.zeros((mnmax, ns_old))
+    lmns_ref = np.zeros((mnmax, ns_old))
+
+    # Process each full radial surface jF independently
+    for jF in range(ns_old):
+        mn = 0
+
+        # Handle m = 0 block: n = 0..ntor
+        m0 = 0
+        for n in range(ntor + 1):
+            # Compute the scaling t1 = mscale[m]*nscale[|n|]
+            t1 = mscale[m0] * nscale[n]
+
+            # Accumulate rmnc from rmncc(jF, |n|, m=0)
+            rmnc_ref[mn, jF] = t1 * rmncc[jF, n, m0]
+
+            # For 3D, set zmns from zmncs with minus sign
+            zmns_ref[mn, jF] = -t1 * zmncs_[jF, n, m0]
+
+            lmns_ref[mn, jF] = -t1 * lmncs[jF, n, m0]
+
+            # Increment external mode index
+            mn += 1
+
+        # extrapolate lambda to axis for m=0
+        if jF == 0:
+            for n in range(ntor + 1):
+                t1 = mscale[m0] * nscale[n]
+                lmns_ref[n, jF] = -t1 * (2.0 * lmncs[1, n, m0] - lmncs[2, n, m0])
+
+        # Handle m >= 1 blocks
+        for m in range(1, mpol):
+            for n in range(-ntor, ntor + 1):
+                # Use |n| for indexing the internal arrays/nscale
+                abs_n = abs(n)
+
+                # Build scaling t1 = mscale[m]*nscale[|n|]
+                t1 = mscale[m] * nscale[abs_n]
+
+                # Handle the n == 0 case (no 1/2 and no sign mixing)
+                if n == 0:
+                    # Set external rmnc/zmns/lmns directly from internal cc/sc
+                    rmnc_ref[mn, jF] = t1 * rmncc[jF, abs_n, m]
+                    zmns_ref[mn, jF] = t1 * zmnsc[jF, abs_n, m]
+                    lmns_ref[mn, jF] = t1 * lmnsc[jF, abs_n, m]
+                # For jF == 0, leave zeros (already initialized)
+                elif jF > 0:  # n != 0 AND jF > 0
+                    sign_n = int(np.sign(n))
+
+                    # Start with 1/2 of cc/sc parts
+                    # For 3D, add/subtract the mixed cs/ss parts with sign of n
+                    rmnc_ref[mn, jF] = (
+                        t1 * (rmncc[jF, abs_n, m] + sign_n * rmnss_[jF, abs_n, m]) / 2.0
+                    )
+                    zmns_ref[mn, jF] = (
+                        t1 * (zmnsc[jF, abs_n, m] - sign_n * zmncs_[jF, abs_n, m]) / 2.0
+                    )
+                    lmns_ref[mn, jF] = (
+                        t1 * (lmnsc[jF, abs_n, m] - sign_n * lmncs[jF, abs_n, m]) / 2.0
+                    )
+
+                # Increment external mode index
+                mn += 1
+
+    lmns_ref *= -1.0
+
+    ############## end of conversion ##############
+
+    # # first check: compare xold against vmec_output.wout
+    # plt.figure()
+    # plt.subplot(1, 3, 1)
+    # plt.title("rmnc ref")
+    # plt.imshow(rmnc_ref, origin="lower", aspect="auto")
+    # plt.colorbar()
+    # plt.subplot(1, 3, 2)
+    # plt.title("rmnc act")
+    # plt.imshow(vmec_output.wout.rmnc, origin="lower", aspect="auto")
+    # plt.colorbar()
+    # plt.subplot(1, 3, 3)
+    # plt.title("rmnc err")
+    # plt.imshow(
+    #     np.log10(
+    #         1.0e-30
+    #         + np.abs(vmec_output.wout.rmnc - rmnc_ref) / (1.0 + np.abs(rmnc_ref))
+    #     ),
+    #     origin="lower",
+    #     aspect="auto",
+    # )
+    # plt.colorbar()
+    # plt.tight_layout()
+
+    # plt.figure()
+    # plt.subplot(1, 3, 1)
+    # plt.title("zmns ref")
+    # plt.imshow(zmns_ref, origin="lower", aspect="auto")
+    # plt.colorbar()
+    # plt.subplot(1, 3, 2)
+    # plt.title("zmns act")
+    # plt.imshow(vmec_output.wout.zmns, origin="lower", aspect="auto")
+    # plt.colorbar()
+    # plt.subplot(1, 3, 3)
+    # plt.title("zmns err")
+    # plt.imshow(
+    #     np.log10(
+    #         1.0e-30
+    #         + np.abs(vmec_output.wout.zmns - zmns_ref) / (1.0 + np.abs(zmns_ref))
+    #     ),
+    #     origin="lower",
+    #     aspect="auto",
+    # )
+    # plt.colorbar()
+    # plt.tight_layout()
+
+    # plt.figure()
+    # plt.subplot(1, 3, 1)
+    # plt.title("lmns ref")
+    # plt.imshow(lmns_ref, origin="lower", aspect="auto")
+    # plt.colorbar()
+    # plt.subplot(1, 3, 2)
+    # plt.title("lmns act")
+    # plt.imshow(vmec_output.wout.lmns_full, origin="lower", aspect="auto")
+    # plt.colorbar()
+    # plt.subplot(1, 3, 3)
+    # plt.title("lmns err")
+    # plt.imshow(
+    #     np.log10(
+    #         1.0e-30
+    #         + np.abs(vmec_output.wout.lmns_full - lmns_ref)
+    #         / (1.0 + np.abs(lmns_ref))
+    #     ),
+    #     origin="lower",
+    #     aspect="auto",
+    # )
+    # plt.colorbar()
+    # plt.tight_layout()
+
+    # plt.show()
+
+    np.testing.assert_array_almost_equal(rmnc_ref, vmec_output.wout.rmnc, decimal=13)
+    np.testing.assert_array_almost_equal(zmns_ref, vmec_output.wout.zmns, decimal=13)
+    np.testing.assert_array_almost_equal(
+        lmns_ref, vmec_output.wout.lmns_full, decimal=11
+    )
+
+    ###############
+
+    # TODO(jons):
+    # 1. How do I need to provide rmnc, zmns, lmns_full to vmecpp.run() as HotRestartState,
+    #    in order for the iterations to proceed as if a regular multi-grid step is continued?
+    # 2. Do I need to adjust other flow control variables? Probably not, since they are reset anyway between steps.
