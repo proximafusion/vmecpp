@@ -145,6 +145,13 @@ endif()
 if(VMECPP_ENABLE_CUDA)
   set(vmecpp_cuda_sources
     ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/compute_backend/cuda/compute_backend_cuda.cu
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/compute_backend/cuda/tile_memory_budget.cu
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/compute_backend/cuda/cuda_memory.cu
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/compute_backend/cuda/tiled_compute_backend_cuda.cu
+  )
+  # TileScheduler is pure C++ (no CUDA), so it can be part of regular sources
+  list(APPEND vmecpp_sources
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/compute_backend/cuda/tile_scheduler.cc
   )
   add_library(vmecpp_cuda STATIC ${vmecpp_cuda_sources})
   target_include_directories(vmecpp_cuda PRIVATE ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp)
@@ -167,6 +174,13 @@ add_executable(backend_benchmark ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/com
 target_link_libraries(backend_benchmark vmecpp_core)
 if(VMECPP_ENABLE_CUDA)
   target_link_libraries(backend_benchmark vmecpp_cuda CUDA::cudart)
+endif()
+
+# Add the tiled backend benchmark executable.
+add_executable(tiled_benchmark ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/compute_backend/benchmark/tiled_benchmark.cc)
+target_link_libraries(tiled_benchmark vmecpp_core)
+if(VMECPP_ENABLE_CUDA)
+  target_link_libraries(tiled_benchmark vmecpp_cuda CUDA::cudart)
 endif()
 
 # Now add the pybind11 module for VMEC++.
