@@ -24,6 +24,28 @@ endif()
 # First check if required libraries are installed locally
 find_package(OpenMP REQUIRED)
 
+# Optional CUDA support for GPU acceleration
+option(VMECPP_ENABLE_CUDA "Enable CUDA backend for GPU acceleration" OFF)
+if(VMECPP_ENABLE_CUDA)
+  include(CheckLanguage)
+  check_language(CUDA)
+  if(CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    # Use the same C++ standard for CUDA as for C++
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
+    add_compile_definitions(VMECPP_HAS_CUDA)
+    message(STATUS "CUDA support enabled")
+    message(STATUS "CUDA compiler: ${CMAKE_CUDA_COMPILER}")
+    message(STATUS "CUDA version: ${CMAKE_CUDA_COMPILER_VERSION}")
+  else()
+    message(WARNING "CUDA requested but no CUDA compiler found. Disabling CUDA support.")
+    set(VMECPP_ENABLE_CUDA OFF)
+  endif()
+endif()
+
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
 
@@ -117,6 +139,21 @@ target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synch
 
 if(OpenMP_CXX_FOUND)
   target_link_libraries(vmecpp_core PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
+# CUDA backend library (built separately due to CUDA compilation requirements)
+if(VMECPP_ENABLE_CUDA)
+  set(vmecpp_cuda_sources
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/compute_backend/cuda/compute_backend_cuda.cu
+  )
+  add_library(vmecpp_cuda STATIC ${vmecpp_cuda_sources})
+  target_include_directories(vmecpp_cuda PRIVATE ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp)
+  target_link_libraries(vmecpp_cuda PRIVATE CUDA::cudart)
+  set_target_properties(vmecpp_cuda PROPERTIES
+    CUDA_SEPARABLE_COMPILATION ON
+    POSITION_INDEPENDENT_CODE ON
+  )
+  target_link_libraries(vmecpp_core PRIVATE vmecpp_cuda CUDA::cudart)
 endif()
 
 

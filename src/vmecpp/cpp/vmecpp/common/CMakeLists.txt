@@ -1,5 +1,6 @@
 add_subdirectory(composed_types_definition)
 add_subdirectory(composed_types_lib)
+add_subdirectory(compute_backend)
 add_subdirectory(flow_control)
 add_subdirectory(fourier_basis_fast_poloidal)
 add_subdirectory(fourier_basis_fast_toroidal)

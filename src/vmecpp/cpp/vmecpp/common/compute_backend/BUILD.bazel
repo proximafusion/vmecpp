@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+
+# Compute backend abstraction layer for CPU and GPU acceleration.
+# The CPU backend is always available. The CUDA backend requires building
+# with CMake and -DVMECPP_ENABLE_CUDA=ON (Bazel CUDA support is not yet
+# implemented - use CMake for CUDA builds).
+
+cc_library(
+    name = "compute_backend",
+    hdrs = ["compute_backend.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/flow_control:flow_control",
+        "//vmecpp/common/fourier_basis_fast_poloidal:fourier_basis_fast_poloidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/vmec/fourier_forces:fourier_forces",
+        "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+        "//vmecpp/vmec/ideal_mhd_model:ideal_mhd_model",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "//vmecpp/vmec/radial_profiles:radial_profiles",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "compute_backend_cpu",
+    srcs = ["compute_backend_cpu.cc"],
+    hdrs = ["compute_backend_cpu.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compute_backend",
+        "//vmecpp/vmec/ideal_mhd_model:ideal_mhd_model",
+    ],
+)
+
+cc_library(
+    name = "compute_backend_factory",
+    srcs = ["compute_backend_factory.cc"],
+    hdrs = ["compute_backend_factory.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compute_backend",
+        ":compute_backend_cpu",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
