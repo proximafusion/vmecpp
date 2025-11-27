@@ -42,14 +42,17 @@ void TileScheduler::GenerateTiles() {
 
   const int overlap = GetOverlapRequirement(config_.op_type);
   const int ns_min = config_.ns_min;
-  const int ns_max = config_.ns;
+  // ns is the total count, so surfaces are [ns_min, ns_min + ns)
+  // which with ns_min=1 gives surfaces 1..ns (inclusive)
+  const int ns_max_exclusive = ns_min + config_.ns;
 
   int tile_index = 0;
-  for (int start = ns_min; start < ns_max; start += config_.tile_size) {
+  for (int start = ns_min; start < ns_max_exclusive;
+       start += config_.tile_size) {
     RadialTile tile;
     tile.tile_index = tile_index++;
     tile.start_surface = start;
-    tile.end_surface = std::min(start + config_.tile_size, ns_max);
+    tile.end_surface = std::min(start + config_.tile_size, ns_max_exclusive);
 
     // Determine overlap requirements based on operation type
     switch (config_.op_type) {
@@ -62,7 +65,7 @@ void TileScheduler::GenerateTiles() {
         // Need surface j+1, so last tile doesn't need overlap after
         tile.overlap_before = 0;
         tile.overlap_after =
-            (tile.end_surface < ns_max) ? overlap : 0;
+            (tile.end_surface < ns_max_exclusive) ? overlap : 0;
         break;
 
       case TileOperationType::kBackwardStencil:
@@ -75,7 +78,7 @@ void TileScheduler::GenerateTiles() {
         // Need both directions
         tile.overlap_before = (start > ns_min) ? overlap : 0;
         tile.overlap_after =
-            (tile.end_surface < ns_max) ? overlap : 0;
+            (tile.end_surface < ns_max_exclusive) ? overlap : 0;
         break;
     }
 
@@ -106,12 +109,16 @@ bool TileScheduler::ValidateCoverage() const {
     return config_.ns == 0;
   }
 
+  // ns is the total count of surfaces, starting from ns_min
+  // Surfaces are [ns_min, ns_min + ns) in half-open notation
+  const int ns_max_exclusive = config_.ns_min + config_.ns;
+
   // Check that tiles cover all surfaces exactly once
   std::vector<int> coverage(config_.ns, 0);
 
   for (const auto& tile : tiles_) {
     for (int s = tile.start_surface; s < tile.end_surface; ++s) {
-      if (s >= config_.ns_min && s < config_.ns) {
+      if (s >= config_.ns_min && s < ns_max_exclusive) {
         coverage[s - config_.ns_min]++;
       }
     }
