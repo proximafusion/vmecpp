@@ -7,6 +7,8 @@
 
 #include <cuda_runtime.h>
 
+#include "vmecpp/common/compute_backend/compute_backend_cpu.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <stdexcept>
@@ -840,6 +842,437 @@ std::string ComputeBackendCuda::GetComputeCapability() const {
 
 size_t ComputeBackendCuda::GetDeviceMemoryBytes() const {
   return impl_ ? impl_->GetDeviceMemoryBytes() : 0;
+}
+
+// =============================================================================
+// CUDA Kernels for Jacobian, Metric, BContra, MHDForces
+// =============================================================================
+
+// Parameters for additional kernels.
+struct PhysicsKernelParams {
+  int ns_min_f;
+  int ns_max_f;
+  int ns_min_f1;
+  int ns_max_f1;
+  int ns_min_h;
+  int ns_max_h;
+  int ns_min_fi;
+  int ns_max_fi;
+  int n_znt;
+  int n_theta_eff;
+  double delta_s;
+  bool lthreed;
+  bool lfreeb;
+  int ns;
+  int ncurr;
+  double lamscale;
+};
+
+// Kernel for Jacobian computation.
+// Each thread handles one (jH, kl) pair.
+__global__ void ComputeJacobianKernel(
+    const double* __restrict__ r1_e,
+    const double* __restrict__ r1_o,
+    const double* __restrict__ z1_e,
+    const double* __restrict__ z1_o,
+    const double* __restrict__ ru_e,
+    const double* __restrict__ ru_o,
+    const double* __restrict__ zu_e,
+    const double* __restrict__ zu_o,
+    const double* __restrict__ sqrt_sh,
+    double* __restrict__ tau,
+    double* __restrict__ r12,
+    double* __restrict__ ru12,
+    double* __restrict__ zu12,
+    double* __restrict__ rs,
+    double* __restrict__ zs,
+    double* __restrict__ min_tau,
+    double* __restrict__ max_tau,
+    PhysicsKernelParams params) {
+  const int jH = blockIdx.x + params.ns_min_h;
+  const int kl = threadIdx.x + blockIdx.y * blockDim.x;
+
+  if (jH >= params.ns_max_h || kl >= params.n_znt) {
+    return;
+  }
+
+  constexpr double dSHalfDsInterp = 0.25;
+  const double sqrtSH = sqrt_sh[jH - params.ns_min_h];
+  const int iHalf = (jH - params.ns_min_h) * params.n_znt + kl;
+
+  // Inside values (at grid point jH).
+  const int idx_i = (jH - params.ns_min_f1) * params.n_znt + kl;
+  const double r1e_i = r1_e[idx_i];
+  const double r1o_i = r1_o[idx_i];
+  const double z1e_i = z1_e[idx_i];
+  const double z1o_i = z1_o[idx_i];
+  const double rue_i = ru_e[idx_i];
+  const double ruo_i = ru_o[idx_i];
+  const double zue_i = zu_e[idx_i];
+  const double zuo_i = zu_o[idx_i];
+
+  // Outside values (at grid point jH+1).
+  const int idx_o = (jH + 1 - params.ns_min_f1) * params.n_znt + kl;
+  const double r1e_o = r1_e[idx_o];
+  const double r1o_o = r1_o[idx_o];
+  const double z1e_o = z1_e[idx_o];
+  const double z1o_o = z1_o[idx_o];
+  const double rue_o = ru_e[idx_o];
+  const double ruo_o = ru_o[idx_o];
+  const double zue_o = zu_e[idx_o];
+  const double zuo_o = zu_o[idx_o];
+
+  // R on half-grid.
+  r12[iHalf] = 0.5 * ((r1e_i + r1e_o) + sqrtSH * (r1o_i + r1o_o));
+
+  // dR/dTheta on half-grid.
+  ru12[iHalf] = 0.5 * ((rue_i + rue_o) + sqrtSH * (ruo_i + ruo_o));
+
+  // dZ/dTheta on half-grid.
+  zu12[iHalf] = 0.5 * ((zue_i + zue_o) + sqrtSH * (zuo_i + zuo_o));
+
+  // dR/ds on half-grid.
+  rs[iHalf] = ((r1e_o - r1e_i) + sqrtSH * (r1o_o - r1o_i)) / params.delta_s;
+
+  // dZ/ds on half-grid.
+  zs[iHalf] = ((z1e_o - z1e_i) + sqrtSH * (z1o_o - z1o_i)) / params.delta_s;
+
+  // sqrt(g)/R (tau) on half-grid.
+  const double tau1 = ru12[iHalf] * zs[iHalf] - rs[iHalf] * zu12[iHalf];
+  const double tau2 = ruo_o * z1o_o + ruo_i * z1o_i -
+                      zuo_o * r1o_o - zuo_i * r1o_i +
+                      (rue_o * z1o_o + rue_i * z1o_i -
+                       zue_o * r1o_o - zue_i * r1o_i) / sqrtSH;
+  const double tau_val = tau1 + dSHalfDsInterp * tau2;
+
+  tau[iHalf] = tau_val;
+
+  // Atomic min/max for bad Jacobian detection.
+  atomicMin(reinterpret_cast<unsigned long long*>(min_tau),
+            __double_as_longlong(tau_val < 0 ? tau_val : 0.0));
+  atomicMax(reinterpret_cast<unsigned long long*>(max_tau),
+            __double_as_longlong(tau_val > 0 ? tau_val : 0.0));
+}
+
+// Kernel for metric elements computation.
+__global__ void ComputeMetricElementsKernel(
+    const double* __restrict__ r1_e,
+    const double* __restrict__ r1_o,
+    const double* __restrict__ ru_e,
+    const double* __restrict__ ru_o,
+    const double* __restrict__ zu_e,
+    const double* __restrict__ zu_o,
+    const double* __restrict__ rv_e,
+    const double* __restrict__ rv_o,
+    const double* __restrict__ zv_e,
+    const double* __restrict__ zv_o,
+    const double* __restrict__ tau_in,
+    const double* __restrict__ r12_in,
+    const double* __restrict__ sqrt_sf,
+    const double* __restrict__ sqrt_sh,
+    double* __restrict__ gsqrt,
+    double* __restrict__ guu,
+    double* __restrict__ guv,
+    double* __restrict__ gvv,
+    PhysicsKernelParams params) {
+  const int jH = blockIdx.x + params.ns_min_h;
+  const int kl = threadIdx.x + blockIdx.y * blockDim.x;
+
+  if (jH >= params.ns_max_h || kl >= params.n_znt) {
+    return;
+  }
+
+  const int iHalf = (jH - params.ns_min_h) * params.n_znt + kl;
+  const double sqrtSH = sqrt_sh[jH - params.ns_min_h];
+
+  // gsqrt = tau * R.
+  gsqrt[iHalf] = tau_in[iHalf] * r12_in[iHalf];
+
+  // sF values at inside and outside full-grid points.
+  const double sF_i = sqrt_sf[jH - params.ns_min_f1] *
+                      sqrt_sf[jH - params.ns_min_f1];
+  const double sF_o = sqrt_sf[jH + 1 - params.ns_min_f1] *
+                      sqrt_sf[jH + 1 - params.ns_min_f1];
+
+  // Inside values.
+  const int idx_i = (jH - params.ns_min_f1) * params.n_znt + kl;
+  const double r1e_i = r1_e[idx_i];
+  const double r1o_i = r1_o[idx_i];
+  const double rue_i = ru_e[idx_i];
+  const double ruo_i = ru_o[idx_i];
+  const double zue_i = zu_e[idx_i];
+  const double zuo_i = zu_o[idx_i];
+
+  // Outside values.
+  const int idx_o = (jH + 1 - params.ns_min_f1) * params.n_znt + kl;
+  const double r1e_o = r1_e[idx_o];
+  const double r1o_o = r1_o[idx_o];
+  const double rue_o = ru_e[idx_o];
+  const double ruo_o = ru_o[idx_o];
+  const double zue_o = zu_e[idx_o];
+  const double zuo_o = zu_o[idx_o];
+
+  // g_{\theta,\theta}.
+  guu[iHalf] = 0.5 * ((rue_i * rue_i + zue_i * zue_i) +
+                      (rue_o * rue_o + zue_o * zue_o) +
+                      sF_i * (ruo_i * ruo_i + zuo_i * zuo_i) +
+                      sF_o * (ruo_o * ruo_o + zuo_o * zuo_o)) +
+               sqrtSH * ((rue_i * ruo_i + zue_i * zuo_i) +
+                         (rue_o * ruo_o + zue_o * zuo_o));
+
+  // g_{\zeta,\zeta} (base term: R^2).
+  gvv[iHalf] = 0.5 * (r1e_i * r1e_i + r1e_o * r1e_o +
+                      sF_i * r1o_i * r1o_i + sF_o * r1o_o * r1o_o) +
+               sqrtSH * (r1e_i * r1o_i + r1e_o * r1o_o);
+
+  if (params.lthreed) {
+    const double rve_i = rv_e[idx_i];
+    const double rvo_i = rv_o[idx_i];
+    const double zve_i = zv_e[idx_i];
+    const double zvo_i = zv_o[idx_i];
+    const double rve_o = rv_e[idx_o];
+    const double rvo_o = rv_o[idx_o];
+    const double zve_o = zv_e[idx_o];
+    const double zvo_o = zv_o[idx_o];
+
+    // g_{\theta,\zeta}.
+    guv[iHalf] = 0.5 * ((rue_i * rve_i + zue_i * zve_i) +
+                        (rue_o * rve_o + zue_o * zve_o) +
+                        sF_i * (ruo_i * rvo_i + zuo_i * zvo_i) +
+                        sF_o * (ruo_o * rvo_o + zuo_o * zvo_o) +
+                        sqrtSH * ((rue_i * rvo_i + zue_i * zvo_i) +
+                                  (rue_o * rvo_o + zue_o * zvo_o) +
+                                  (rve_i * ruo_i + zve_i * zuo_i) +
+                                  (rve_o * ruo_o + zve_o * zuo_o)));
+
+    // Add 3D contribution to g_{\zeta,\zeta}.
+    gvv[iHalf] += 0.5 * ((rve_i * rve_i + zve_i * zve_i) +
+                         (rve_o * rve_o + zve_o * zve_o) +
+                         sF_i * (rvo_i * rvo_i + zvo_i * zvo_i) +
+                         sF_o * (rvo_o * rvo_o + zvo_o * zvo_o)) +
+                  sqrtSH * ((rve_i * rvo_i + zve_i * zvo_i) +
+                            (rve_o * rvo_o + zve_o * zvo_o));
+  }
+}
+
+// Kernel for MHD forces computation.
+__global__ void ComputeMHDForcesKernel(
+    const double* __restrict__ r1_e,
+    const double* __restrict__ r1_o,
+    const double* __restrict__ z1_o,
+    const double* __restrict__ ru_e,
+    const double* __restrict__ ru_o,
+    const double* __restrict__ zu_e,
+    const double* __restrict__ zu_o,
+    const double* __restrict__ rv_e,
+    const double* __restrict__ rv_o,
+    const double* __restrict__ zv_e,
+    const double* __restrict__ zv_o,
+    const double* __restrict__ r12,
+    const double* __restrict__ ru12,
+    const double* __restrict__ zu12,
+    const double* __restrict__ rs,
+    const double* __restrict__ zs,
+    const double* __restrict__ tau,
+    const double* __restrict__ gsqrt,
+    const double* __restrict__ bsupu,
+    const double* __restrict__ bsupv,
+    const double* __restrict__ totalPressure,
+    const double* __restrict__ sqrt_sf,
+    const double* __restrict__ sqrt_sh,
+    double* __restrict__ armn_e,
+    double* __restrict__ armn_o,
+    double* __restrict__ azmn_e,
+    double* __restrict__ azmn_o,
+    double* __restrict__ brmn_e,
+    double* __restrict__ brmn_o,
+    double* __restrict__ bzmn_e,
+    double* __restrict__ bzmn_o,
+    double* __restrict__ crmn_e,
+    double* __restrict__ crmn_o,
+    double* __restrict__ czmn_e,
+    double* __restrict__ czmn_o,
+    PhysicsKernelParams params,
+    int j_max_rz) {
+  const int jF = blockIdx.x + params.ns_min_f;
+  const int kl = threadIdx.x + blockIdx.y * blockDim.x;
+
+  if (jF >= j_max_rz || kl >= params.n_znt) {
+    return;
+  }
+
+  const int idx_g = (jF - params.ns_min_f1) * params.n_znt + kl;
+  const int idx_f = (jF - params.ns_min_f) * params.n_znt + kl;
+
+  const double sFull = sqrt_sf[jF - params.ns_min_f1] *
+                       sqrt_sf[jF - params.ns_min_f1];
+
+  // Compute inside/outside values.
+  double sqrtSHi = 1.0, sqrtSHo = 1.0;
+  double P_i = 0.0, P_o = 0.0;
+  double rup_i = 0.0, rup_o = 0.0;
+  double zup_i = 0.0, zup_o = 0.0;
+  double rsp_i = 0.0, rsp_o = 0.0;
+  double zsp_i = 0.0, zsp_o = 0.0;
+  double taup_i = 0.0, taup_o = 0.0;
+  double gbubu_i = 0.0, gbubu_o = 0.0;
+  double gbubv_i = 0.0, gbubv_o = 0.0;
+  double gbvbv_i = 0.0, gbvbv_o = 0.0;
+
+  // Inside values (half-grid point at jF-1 if jF > 0).
+  if (jF > 0 && (jF - 1) >= params.ns_min_h && (jF - 1) < params.ns_max_h) {
+    const int iHalf_i = (jF - 1 - params.ns_min_h) * params.n_znt + kl;
+    sqrtSHi = sqrt_sh[jF - 1 - params.ns_min_h];
+    P_i = r12[iHalf_i] * totalPressure[iHalf_i];
+    rup_i = ru12[iHalf_i] * P_i;
+    zup_i = zu12[iHalf_i] * P_i;
+    rsp_i = rs[iHalf_i] * P_i;
+    zsp_i = zs[iHalf_i] * P_i;
+    taup_i = tau[iHalf_i] * totalPressure[iHalf_i];
+    gbubu_i = gsqrt[iHalf_i] * bsupu[iHalf_i] * bsupu[iHalf_i];
+    gbubv_i = gsqrt[iHalf_i] * bsupu[iHalf_i] * bsupv[iHalf_i];
+    gbvbv_i = gsqrt[iHalf_i] * bsupv[iHalf_i] * bsupv[iHalf_i];
+  }
+
+  // Outside values (half-grid point at jF).
+  if (jF >= params.ns_min_h && jF < params.ns_max_h) {
+    const int iHalf_o = (jF - params.ns_min_h) * params.n_znt + kl;
+    sqrtSHo = sqrt_sh[jF - params.ns_min_h];
+    P_o = r12[iHalf_o] * totalPressure[iHalf_o];
+    rup_o = ru12[iHalf_o] * P_o;
+    zup_o = zu12[iHalf_o] * P_o;
+    rsp_o = rs[iHalf_o] * P_o;
+    zsp_o = zs[iHalf_o] * P_o;
+    taup_o = tau[iHalf_o] * totalPressure[iHalf_o];
+    gbubu_o = gsqrt[iHalf_o] * bsupu[iHalf_o] * bsupu[iHalf_o];
+    gbubv_o = gsqrt[iHalf_o] * bsupu[iHalf_o] * bsupv[iHalf_o];
+    gbvbv_o = gsqrt[iHalf_o] * bsupv[iHalf_o] * bsupv[iHalf_o];
+  }
+
+  // A_R force (even).
+  armn_e[idx_f] = (zup_o - zup_i) / params.delta_s +
+                  0.5 * (taup_o + taup_i) -
+                  0.5 * (gbvbv_o + gbvbv_i) * r1_e[idx_g] -
+                  0.5 * (gbvbv_o * sqrtSHo + gbvbv_i * sqrtSHi) * r1_o[idx_g];
+
+  // A_R force (odd).
+  armn_o[idx_f] = (zup_o * sqrtSHo - zup_i * sqrtSHi) / params.delta_s -
+                  0.25 * (P_o / sqrtSHo + P_i / sqrtSHi) * zu_e[idx_g] -
+                  0.25 * (P_o + P_i) * zu_o[idx_g] +
+                  0.5 * (taup_o * sqrtSHo + taup_i * sqrtSHi) -
+                  0.5 * (gbvbv_o * sqrtSHo + gbvbv_i * sqrtSHi) * r1_e[idx_g] -
+                  0.5 * (gbvbv_o + gbvbv_i) * r1_o[idx_g] * sFull;
+
+  // A_Z force (even).
+  azmn_e[idx_f] = -(rup_o - rup_i) / params.delta_s;
+
+  // A_Z force (odd).
+  azmn_o[idx_f] = -(rup_o * sqrtSHo - rup_i * sqrtSHi) / params.delta_s +
+                  0.25 * (P_o / sqrtSHo + P_i / sqrtSHi) * ru_e[idx_g] +
+                  0.25 * (P_o + P_i) * ru_o[idx_g];
+
+  // B_R force (even).
+  brmn_e[idx_f] = 0.5 * (zsp_o + zsp_i) +
+                  0.25 * (P_o / sqrtSHo + P_i / sqrtSHi) * z1_o[idx_g] -
+                  0.5 * (gbubu_o + gbubu_i) * ru_e[idx_g] -
+                  0.5 * (gbubu_o * sqrtSHo + gbubu_i * sqrtSHi) * ru_o[idx_g];
+
+  // B_R force (odd).
+  brmn_o[idx_f] = 0.5 * (zsp_o * sqrtSHo + zsp_i * sqrtSHi) +
+                  0.25 * (P_o + P_i) * z1_o[idx_g] -
+                  0.5 * (gbubu_o * sqrtSHo + gbubu_i * sqrtSHi) * ru_e[idx_g] -
+                  0.5 * (gbubu_o + gbubu_i) * ru_o[idx_g] * sFull;
+
+  // B_Z force (even).
+  bzmn_e[idx_f] = -0.5 * (rsp_o + rsp_i) -
+                  0.25 * (P_o / sqrtSHo + P_i / sqrtSHi) * r1_o[idx_g] -
+                  0.5 * (gbubu_o + gbubu_i) * zu_e[idx_g] -
+                  0.5 * (gbubu_o * sqrtSHo + gbubu_i * sqrtSHi) * zu_o[idx_g];
+
+  // B_Z force (odd).
+  bzmn_o[idx_f] = -0.5 * (rsp_o * sqrtSHo + rsp_i * sqrtSHi) -
+                  0.25 * (P_o + P_i) * r1_o[idx_g] -
+                  0.5 * (gbubu_o * sqrtSHo + gbubu_i * sqrtSHi) * zu_e[idx_g] -
+                  0.5 * (gbubu_o + gbubu_i) * zu_o[idx_g] * sFull;
+
+  if (params.lthreed) {
+    // 3D contributions to B_R force.
+    brmn_e[idx_f] += -0.5 * (gbubv_o + gbubv_i) * rv_e[idx_g] -
+                     0.5 * (gbubv_o * sqrtSHo + gbubv_i * sqrtSHi) * rv_o[idx_g];
+    brmn_o[idx_f] += -0.5 * (gbubv_o * sqrtSHo + gbubv_i * sqrtSHi) * rv_e[idx_g] -
+                     0.5 * (gbubv_o + gbubv_i) * rv_o[idx_g] * sFull;
+
+    // 3D contributions to B_Z force.
+    bzmn_e[idx_f] += -0.5 * (gbubv_o + gbubv_i) * zv_e[idx_g] -
+                     0.5 * (gbubv_o * sqrtSHo + gbubv_i * sqrtSHi) * zv_o[idx_g];
+    bzmn_o[idx_f] += -0.5 * (gbubv_o * sqrtSHo + gbubv_i * sqrtSHi) * zv_e[idx_g] -
+                     0.5 * (gbubv_o + gbubv_i) * zv_o[idx_g] * sFull;
+
+    // C_R force (even).
+    crmn_e[idx_f] = 0.5 * (gbubv_o + gbubv_i) * ru_e[idx_g] +
+                    0.5 * (gbubv_o * sqrtSHo + gbubv_i * sqrtSHi) * ru_o[idx_g] +
+                    0.5 * (gbvbv_o + gbvbv_i) * rv_e[idx_g] +
+                    0.5 * (gbvbv_o * sqrtSHo + gbvbv_i * sqrtSHi) * rv_o[idx_g];
+
+    // C_R force (odd).
+    crmn_o[idx_f] = 0.5 * (gbubv_o * sqrtSHo + gbubv_i * sqrtSHi) * ru_e[idx_g] +
+                    0.5 * (gbubv_o + gbubv_i) * ru_o[idx_g] * sFull +
+                    0.5 * (gbvbv_o * sqrtSHo + gbvbv_i * sqrtSHi) * rv_e[idx_g] +
+                    0.5 * (gbvbv_o + gbvbv_i) * rv_o[idx_g] * sFull;
+
+    // C_Z force (even).
+    czmn_e[idx_f] = 0.5 * (gbubv_o + gbubv_i) * zu_e[idx_g] +
+                    0.5 * (gbubv_o * sqrtSHo + gbubv_i * sqrtSHi) * zu_o[idx_g] +
+                    0.5 * (gbvbv_o + gbvbv_i) * zv_e[idx_g] +
+                    0.5 * (gbvbv_o * sqrtSHo + gbvbv_i * sqrtSHi) * zv_o[idx_g];
+
+    // C_Z force (odd).
+    czmn_o[idx_f] = 0.5 * (gbubv_o * sqrtSHo + gbubv_i * sqrtSHi) * zu_e[idx_g] +
+                    0.5 * (gbubv_o + gbubv_i) * zu_o[idx_g] * sFull +
+                    0.5 * (gbvbv_o * sqrtSHo + gbvbv_i * sqrtSHi) * zv_e[idx_g] +
+                    0.5 * (gbvbv_o + gbvbv_i) * zv_o[idx_g] * sFull;
+  }
+}
+
+// =============================================================================
+// Additional ComputeBackendCuda implementations
+// =============================================================================
+
+bool ComputeBackendCuda::ComputeJacobian(const JacobianInput& input,
+                                         const RadialPartitioning& rp,
+                                         const Sizes& s,
+                                         JacobianOutput& m_output) {
+  // Fall back to CPU implementation for now - CUDA kernel needs refinement.
+  // The atomic min/max for bad Jacobian detection requires special handling.
+  static ComputeBackendCpu cpu_backend;
+  return cpu_backend.ComputeJacobian(input, rp, s, m_output);
+}
+
+void ComputeBackendCuda::ComputeMetricElements(const MetricInput& input,
+                                               const RadialPartitioning& rp,
+                                               const Sizes& s,
+                                               MetricOutput& m_output) {
+  // Fall back to CPU implementation for now.
+  static ComputeBackendCpu cpu_backend;
+  cpu_backend.ComputeMetricElements(input, rp, s, m_output);
+}
+
+void ComputeBackendCuda::ComputeBContra(const BContraInput& input,
+                                        const RadialPartitioning& rp,
+                                        const Sizes& s,
+                                        BContraOutput& m_output) {
+  // Fall back to CPU implementation - this has complex reduction operations.
+  static ComputeBackendCpu cpu_backend;
+  cpu_backend.ComputeBContra(input, rp, s, m_output);
+}
+
+void ComputeBackendCuda::ComputeMHDForces(const MHDForcesInput& input,
+                                          const RadialPartitioning& rp,
+                                          const Sizes& s,
+                                          MHDForcesOutput& m_output) {
+  // Fall back to CPU implementation for now.
+  static ComputeBackendCpu cpu_backend;
+  cpu_backend.ComputeMHDForces(input, rp, s, m_output);
 }
 
 }  // namespace vmecpp

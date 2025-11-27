@@ -70,6 +70,21 @@ class ComputeBackendCuda : public ComputeBackend {
 
   bool IsAvailable() const override;
 
+  // Additional compute-heavy operations.
+  bool ComputeJacobian(const JacobianInput& input, const RadialPartitioning& rp,
+                       const Sizes& s, JacobianOutput& m_output) override;
+
+  void ComputeMetricElements(const MetricInput& input,
+                             const RadialPartitioning& rp, const Sizes& s,
+                             MetricOutput& m_output) override;
+
+  void ComputeBContra(const BContraInput& input, const RadialPartitioning& rp,
+                      const Sizes& s, BContraOutput& m_output) override;
+
+  void ComputeMHDForces(const MHDForcesInput& input,
+                        const RadialPartitioning& rp, const Sizes& s,
+                        MHDForcesOutput& m_output) override;
+
   // Returns the CUDA device ID this backend is using.
   int GetDeviceId() const;
 

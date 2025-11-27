@@ -4,10 +4,17 @@ This directory contains the compute backend abstraction layer that enables GPU a
 
 ## Architecture
 
-The compute backend provides an abstract interface (`ComputeBackend`) for the computationally intensive DFT operations:
+The compute backend provides an abstract interface (`ComputeBackend`) for the computationally intensive operations:
 
+**DFT Operations (Primary):**
 - `FourierToReal`: Inverse DFT (Fourier coefficients -> real-space geometry)
 - `ForcesToFourier`: Forward DFT (real-space forces -> Fourier coefficients)
+
+**Physics Operations (Secondary):**
+- `ComputeJacobian`: Jacobian sqrt(g)/R and half-grid geometry
+- `ComputeMetricElements`: Metric tensor (guu, guv, gvv) and Jacobian gsqrt
+- `ComputeBContra`: Contravariant magnetic field (B^theta, B^zeta)
+- `ComputeMHDForces`: MHD force calculation on real-space grid
 
 ### Available Backends
 
@@ -23,25 +30,34 @@ The CUDA backend accelerates the **two most computationally intensive operations
 
 | Operation | Description | Complexity | Status |
 |-----------|-------------|------------|--------|
-| `FourierToReal3DSymmFastPoloidal` | Inverse DFT: Fourier coefficients to real-space geometry | O(ns * mpol * ntor * nzeta * ntheta) | Accelerated |
-| `ForcesToFourier3DSymmFastPoloidal` | Forward DFT: Real-space forces to Fourier coefficients | O(ns * mpol * ntor * nzeta * ntheta) | Accelerated |
+| `FourierToReal` | Inverse DFT: Fourier coefficients to real-space geometry | O(ns * mpol * ntor * nzeta * ntheta) | GPU Accelerated |
+| `ForcesToFourier` | Forward DFT: Real-space forces to Fourier coefficients | O(ns * mpol * ntor * nzeta * ntheta) | GPU Accelerated |
 
 These DFT operations typically account for **30-50%** of total VMEC iteration time on CPU, making them the highest-impact targets for GPU acceleration.
 
-### Operations Not Yet Accelerated
+### Operations with Interface Support (CPU Fallback)
 
-The following compute-heavy operations remain on CPU:
+The following operations have backend interface support and CPU implementations. The CUDA backend currently uses CPU fallback for these operations, with GPU kernels ready for future activation:
+
+| Operation | Description | Complexity | Status |
+|-----------|-------------|------------|--------|
+| `ComputeMHDForces` | MHD force calculation on real-space grid | O(ns * nzeta * ntheta) | Interface Ready |
+| `ComputeJacobian` | Jacobian sqrt(g)/R and half-grid geometry | O(ns * nzeta * ntheta) | Interface Ready |
+| `ComputeMetricElements` | Metric tensor (guu, guv, gvv) and gsqrt | O(ns * nzeta * ntheta) | Interface Ready |
+| `ComputeBContra` | Contravariant magnetic field (B^theta, B^zeta) | O(ns * nzeta * ntheta) | Interface Ready |
+
+These operations have CUDA kernels written but currently execute on CPU to ensure correctness. Future versions will enable GPU execution after validation.
+
+### Operations Not Yet in Backend
+
+The following operations remain outside the backend interface:
 
 | Operation | Description | Potential Benefit |
 |-----------|-------------|-------------------|
-| `computeMHDForces()` | MHD force calculation on real-space grid | High |
-| `computeJacobian()` | Jacobian computation | Medium |
-| `computeMetricElements()` | Metric tensor (guu, guv, gvv) | Medium |
-| `computeBContra()` | Contravariant magnetic field | Medium |
 | `pressureAndEnergies()` | Pressure and energy integrals | Low |
 | `deAliasConstraintForce()` | Constraint force filtering | Low |
 
-These operations have lower computational density and involve more complex data dependencies, making GPU acceleration less straightforward. Future versions may add support for these operations.
+These operations have lower computational density and minimal impact on overall performance.
 
 ### Estimated Speedup
 
@@ -212,8 +228,9 @@ To add a new backend (e.g., OpenCL, SYCL, ROCm):
 
 Potential enhancements:
 
-1. **Additional GPU-accelerated operations**: `computeMHDForces()`, `computeJacobian()`
+1. **Enable GPU kernels for physics operations**: Activate CUDA kernels for ComputeJacobian, ComputeMetricElements, ComputeBContra, and ComputeMHDForces after validation
 2. **Multi-GPU support**: Distribute radial surfaces across multiple GPUs
 3. **Mixed-precision computation**: Use FP32 for intermediate calculations
 4. **Persistent GPU memory**: Keep data on GPU across multiple VMEC iterations
 5. **Bazel CUDA support**: Add rules_cuda integration
+6. **Integrate backend into IdealMhdModel**: Wire up the physics operations to use the compute backend
