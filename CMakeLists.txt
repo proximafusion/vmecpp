@@ -162,6 +162,13 @@ add_executable(vmec_standalone ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/
 target_link_libraries(vmec_standalone vmecpp_core)
 target_link_libraries(vmecpp_core PRIVATE absl::strings)
 
+# Add the backend benchmark executable.
+add_executable(backend_benchmark ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/compute_backend/benchmark/backend_benchmark.cc)
+target_link_libraries(backend_benchmark vmecpp_core)
+if(VMECPP_ENABLE_CUDA)
+  target_link_libraries(backend_benchmark vmecpp_cuda CUDA::cudart)
+endif()
+
 # Now add the pybind11 module for VMEC++.
 FetchContent_MakeAvailable(pybind11)
 set(vmecpp_pybind11_sources
