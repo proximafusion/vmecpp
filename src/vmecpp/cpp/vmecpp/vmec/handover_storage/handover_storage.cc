@@ -77,33 +77,41 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
         static_cast<std::size_t>(num_threads_) * mnsize;
 
     rmncc_i.assign(fourier_size, 0.0);
-    rmnss_i.assign(fourier_size, 0.0);
     zmnsc_i.assign(fourier_size, 0.0);
-    zmncs_i.assign(fourier_size, 0.0);
     lmnsc_i.assign(fourier_size, 0.0);
-    lmncs_i.assign(fourier_size, 0.0);
 
     rmncc_o.assign(fourier_size, 0.0);
-    rmnss_o.assign(fourier_size, 0.0);
     zmnsc_o.assign(fourier_size, 0.0);
-    zmncs_o.assign(fourier_size, 0.0);
     lmnsc_o.assign(fourier_size, 0.0);
-    lmncs_o.assign(fourier_size, 0.0);
+
+    if (s_.lthreed) {
+      rmnss_i.assign(fourier_size, 0.0);
+      zmncs_i.assign(fourier_size, 0.0);
+      lmncs_i.assign(fourier_size, 0.0);
+
+      rmnss_o.assign(fourier_size, 0.0);
+      zmncs_o.assign(fourier_size, 0.0);
+      lmncs_o.assign(fourier_size, 0.0);
+    }
 
     if (s_.lasym) {
       rmnsc_i.assign(fourier_size, 0.0);
-      rmncs_i.assign(fourier_size, 0.0);
       zmncc_i.assign(fourier_size, 0.0);
-      zmnss_i.assign(fourier_size, 0.0);
       lmncc_i.assign(fourier_size, 0.0);
-      lmnss_i.assign(fourier_size, 0.0);
 
       rmnsc_o.assign(fourier_size, 0.0);
-      rmncs_o.assign(fourier_size, 0.0);
       zmncc_o.assign(fourier_size, 0.0);
-      zmnss_o.assign(fourier_size, 0.0);
       lmncc_o.assign(fourier_size, 0.0);
-      lmnss_o.assign(fourier_size, 0.0);
+
+      if (s_.lthreed) {
+        rmncs_i.assign(fourier_size, 0.0);
+        zmnss_i.assign(fourier_size, 0.0);
+        lmnss_i.assign(fourier_size, 0.0);
+
+        rmncs_o.assign(fourier_size, 0.0);
+        zmnss_o.assign(fourier_size, 0.0);
+        lmnss_o.assign(fourier_size, 0.0);
+      }
     }
 
     // =========================================================================
