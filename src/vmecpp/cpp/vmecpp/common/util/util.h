@@ -205,12 +205,14 @@ int signum(int x);
 //   a[j]*x[k,j+1] + d[j]*x[k,j] + b[j]*x[k,j-1] = c[k,j] for j = jMin, jMin+1,
 //   ..., (jMax-1)
 //
-// a,d,b contain the tri-diagonal matrix and is modified in-place
-// c     contains the RHS on entry and the solution vectors on exit
-void TridiagonalSolveSerial(std::vector<double> &m_a, std::vector<double> &m_d,
-                            std::vector<double> &m_b,
-                            std::vector<std::vector<double>> &m_c, int jMin,
-                            int jMax, int nRHS);
+// a,d,b contain the tri-diagonal matrix and are modified in-place
+// m_c_data contains the RHS on entry and the solution vectors on exit
+//   - Layout: [k * c_stride + j] where k is the RHS index and j is the radial
+//   - c_stride is typically ns (number of radial surfaces)
+//   - Access pattern: c[k][j] = m_c_data[k * c_stride + j]
+void TridiagonalSolveSerial(std::span<double> m_a, std::span<double> m_d,
+                            std::span<double> m_b, double *m_c_data,
+                            int c_stride, int jMin, int jMax, int nRHS);
 
 // OpenMP-enabled tri-diagonal solver
 //

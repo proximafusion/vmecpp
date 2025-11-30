@@ -5,6 +5,7 @@
 #ifndef VMECPP_VMEC_HANDOVER_STORAGE_HANDOVER_STORAGE_H_
 #define VMECPP_VMEC_HANDOVER_STORAGE_HANDOVER_STORAGE_H_
 
+#include <cstddef>
 #include <span>
 #include <vector>
 
@@ -94,56 +95,128 @@ class HandoverStorage {
   std::vector<double> rCon_LCFS;
   std::vector<double> zCon_LCFS;
 
-  // on inside of target thread
-  // TODO(enrico) revise allocation strategy as we revise thread
-  // synchronization: nested std::vectors have bad locality, but it might not
-  // matter depending on the access pattern (and we might not want them to be
-  // dense if they are large).
-  std::vector<std::vector<double>> rmncc_i;
-  std::vector<std::vector<double>> rmnss_i;
-  std::vector<std::vector<double>> zmnsc_i;
-  std::vector<std::vector<double>> zmncs_i;
-  std::vector<std::vector<double>> lmnsc_i;
-  std::vector<std::vector<double>> lmncs_i;
-  // Asymmetric arrays for lasym=true
-  std::vector<std::vector<double>> rmnsc_i;
-  std::vector<std::vector<double>> rmncs_i;
-  std::vector<std::vector<double>> zmncc_i;
-  std::vector<std::vector<double>> zmnss_i;
-  std::vector<std::vector<double>> lmncc_i;
-  std::vector<std::vector<double>> lmnss_i;
+  // =========================================================================
+  // Fourier coefficient handover storage for inter-thread communication
+  // =========================================================================
+  // Layout: flat [thread * mnsize + mn], contiguous per thread
+  // Access: FourierCoeff(thread, mn) for element access
+  //
+  // _i arrays: inside boundary of target thread (from previous thread)
+  // _o arrays: outside boundary of target thread (from next thread)
 
-  // on outside of target thread
-  std::vector<std::vector<double>> rmncc_o;
-  std::vector<std::vector<double>> rmnss_o;
-  std::vector<std::vector<double>> zmnsc_o;
-  std::vector<std::vector<double>> zmncs_o;
-  std::vector<std::vector<double>> lmnsc_o;
-  std::vector<std::vector<double>> lmncs_o;
+  std::vector<double> rmncc_i;
+  std::vector<double> rmnss_i;
+  std::vector<double> zmnsc_i;
+  std::vector<double> zmncs_i;
+  std::vector<double> lmnsc_i;
+  std::vector<double> lmncs_i;
   // Asymmetric arrays for lasym=true
-  std::vector<std::vector<double>> rmnsc_o;
-  std::vector<std::vector<double>> rmncs_o;
-  std::vector<std::vector<double>> zmncc_o;
-  std::vector<std::vector<double>> zmnss_o;
-  std::vector<std::vector<double>> lmncc_o;
-  std::vector<std::vector<double>> lmnss_o;
+  std::vector<double> rmnsc_i;
+  std::vector<double> rmncs_i;
+  std::vector<double> zmncc_i;
+  std::vector<double> zmnss_i;
+  std::vector<double> lmncc_i;
+  std::vector<double> lmnss_i;
 
-  // radial preconditioner; serial tri-diagonal solver
+  std::vector<double> rmncc_o;
+  std::vector<double> rmnss_o;
+  std::vector<double> zmnsc_o;
+  std::vector<double> zmncs_o;
+  std::vector<double> lmnsc_o;
+  std::vector<double> lmncs_o;
+  // Asymmetric arrays for lasym=true
+  std::vector<double> rmnsc_o;
+  std::vector<double> rmncs_o;
+  std::vector<double> zmncc_o;
+  std::vector<double> zmnss_o;
+  std::vector<double> lmncc_o;
+  std::vector<double> lmnss_o;
+
+  // Index helper for Fourier coefficient arrays: [thread][mn]
+  inline std::size_t IdxFourier(int thread, int mn) const noexcept {
+    return static_cast<std::size_t>(thread) * mnsize + mn;
+  }
+
+  // =========================================================================
+  // Radial preconditioner storage for serial tri-diagonal solver
+  // =========================================================================
+  // Tri-diagonal matrix arrays: layout [mn * ns + j]
+  // Radial dimension (j) is contiguous for optimal solver access.
+  //
+  // RHS arrays: layout [(mn * num_basis + k) * ns + j]
+  // For each mode mn, the num_basis RHS vectors are stored contiguously,
+  // with radial dimension innermost.
+
   int mnsize;
-  std::vector<std::vector<double>> all_ar;
-  std::vector<std::vector<double>> all_az;
-  std::vector<std::vector<double>> all_dr;
-  std::vector<std::vector<double>> all_dz;
-  std::vector<std::vector<double>> all_br;
-  std::vector<std::vector<double>> all_bz;
-  std::vector<std::vector<std::vector<double>>> all_cr;
-  std::vector<std::vector<std::vector<double>>> all_cz;
+  int ns_ = 0;  // number of radial surfaces (set in allocate)
 
-  // radial preconditioner; parallel tri-diagonal solver
-  std::vector<std::vector<double>> handover_cR;
-  std::vector<double> handover_aR;
-  std::vector<std::vector<double>> handover_cZ;
+  std::vector<double> all_ar;  // [mnsize * ns]
+  std::vector<double> all_az;
+  std::vector<double> all_dr;
+  std::vector<double> all_dz;
+  std::vector<double> all_br;
+  std::vector<double> all_bz;
+  std::vector<double> all_cr;  // [mnsize * num_basis * ns]
+  std::vector<double> all_cz;
+
+  // Index helper for tri-diagonal matrix arrays: [mn][j]
+  inline std::size_t IdxTridiag(int mn, int j) const noexcept {
+    return static_cast<std::size_t>(mn) * ns_ + j;
+  }
+
+  // Index helper for tri-diagonal RHS arrays: [mn][k][j]
+  inline std::size_t IdxTridiagRhs(int mn, int k, int j) const noexcept {
+    return (static_cast<std::size_t>(mn) * num_basis_ + k) * ns_ + j;
+  }
+
+  // Span accessors for tri-diagonal solver (returns view of radial slice)
+  inline std::span<double> TridiagAr(int mn) noexcept {
+    return std::span<double>(all_ar.data() + mn * ns_, ns_);
+  }
+  inline std::span<double> TridiagAz(int mn) noexcept {
+    return std::span<double>(all_az.data() + mn * ns_, ns_);
+  }
+  inline std::span<double> TridiagDr(int mn) noexcept {
+    return std::span<double>(all_dr.data() + mn * ns_, ns_);
+  }
+  inline std::span<double> TridiagDz(int mn) noexcept {
+    return std::span<double>(all_dz.data() + mn * ns_, ns_);
+  }
+  inline std::span<double> TridiagBr(int mn) noexcept {
+    return std::span<double>(all_br.data() + mn * ns_, ns_);
+  }
+  inline std::span<double> TridiagBz(int mn) noexcept {
+    return std::span<double>(all_bz.data() + mn * ns_, ns_);
+  }
+
+  // RHS span accessor: returns pointer to start of RHS block for mode mn
+  // The solver accesses c[k][j] as base[k * ns + j]
+  inline double* TridiagCrData(int mn) noexcept {
+    return all_cr.data() + static_cast<std::size_t>(mn) * num_basis_ * ns_;
+  }
+  inline double* TridiagCzData(int mn) noexcept {
+    return all_cz.data() + static_cast<std::size_t>(mn) * num_basis_ * ns_;
+  }
+
+  // Dimension accessor for solver
+  int GetNumBasis() const noexcept { return num_basis_; }
+  int GetNs() const noexcept { return ns_; }
+
+  // =========================================================================
+  // Radial preconditioner storage for parallel tri-diagonal solver
+  // =========================================================================
+  // handover_cR/cZ: layout [k * mnsize + mn]
+  // handover_aR/aZ: already flat [mnsize]
+
+  std::vector<double> handover_cR;  // [num_basis * mnsize]
+  std::vector<double> handover_aR;  // [mnsize]
+  std::vector<double> handover_cZ;
   std::vector<double> handover_aZ;
+
+  // Index helper for parallel handover arrays: [k][mn]
+  inline std::size_t IdxHandover(int k, int mn) const noexcept {
+    return static_cast<std::size_t>(k) * mnsize + mn;
+  }
 
   // magnetic axis geometry for NESTOR
   std::vector<double> rAxis;

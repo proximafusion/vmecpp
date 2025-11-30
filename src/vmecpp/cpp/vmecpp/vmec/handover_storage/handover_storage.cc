@@ -10,6 +10,7 @@ namespace vmecpp {
 
 HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
   plasmaVolume = 0.0;
+  voli = 0.0;
 
   fNormRZ = 0.0;
   fNormL = 0.0;
@@ -28,6 +29,10 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
 
   rCon_LCFS.resize(s_.nZnT);
   zCon_LCFS.resize(s_.nZnT);
+  vacuum_magnetic_pressure.resize(s_.nZnT);
+  vacuum_b_r.resize(s_.nZnT);
+  vacuum_b_phi.resize(s_.nZnT);
+  vacuum_b_z.resize(s_.nZnT);
 
   num_threads_ = 1;
   num_basis_ = 0;
@@ -57,114 +62,87 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
 
 // called from serial region now
 void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
-  // only 1 thread allocates
+  // only 1 thread allocates all storage
   if (r.get_thread_id() == 0) {
     num_threads_ = r.get_num_threads();
     num_basis_ = s_.num_basis;
+    ns_ = ns;
 
-    rmncc_i.resize(num_threads_);
-    rmnss_i.resize(num_threads_);
-    zmnsc_i.resize(num_threads_);
-    zmncs_i.resize(num_threads_);
-    lmnsc_i.resize(num_threads_);
-    lmncs_i.resize(num_threads_);
+    // =========================================================================
+    // Fourier coefficient handover storage
+    // =========================================================================
+    // Layout: flat [thread * mnsize + mn]
+    // Allocate full array for all threads; unused portions remain zero.
+    const std::size_t fourier_size =
+        static_cast<std::size_t>(num_threads_) * mnsize;
 
-    rmncc_o.resize(num_threads_);
-    rmnss_o.resize(num_threads_);
-    zmnsc_o.resize(num_threads_);
-    zmncs_o.resize(num_threads_);
-    lmnsc_o.resize(num_threads_);
-    lmncs_o.resize(num_threads_);
+    rmncc_i.assign(fourier_size, 0.0);
+    rmnss_i.assign(fourier_size, 0.0);
+    zmnsc_i.assign(fourier_size, 0.0);
+    zmncs_i.assign(fourier_size, 0.0);
+    lmnsc_i.assign(fourier_size, 0.0);
+    lmncs_i.assign(fourier_size, 0.0);
 
-    // Allocate asymmetric arrays if needed
-    if (s_.lasym) {
-      rmnsc_i.resize(num_threads_);
-      rmncs_i.resize(num_threads_);
-      zmncc_i.resize(num_threads_);
-      zmnss_i.resize(num_threads_);
-      lmncc_i.resize(num_threads_);
-      lmnss_i.resize(num_threads_);
-
-      rmnsc_o.resize(num_threads_);
-      rmncs_o.resize(num_threads_);
-      zmncc_o.resize(num_threads_);
-      zmnss_o.resize(num_threads_);
-      lmncc_o.resize(num_threads_);
-      lmnss_o.resize(num_threads_);
-    }
-
-    // global accumulator for serial tri-diagonal solver
-    all_ar.resize(mnsize);
-    all_az.resize(mnsize);
-    all_dr.resize(mnsize);
-    all_dz.resize(mnsize);
-    all_br.resize(mnsize);
-    all_bz.resize(mnsize);
-    all_cr.resize(mnsize);
-    all_cz.resize(mnsize);
-    for (int mn = 0; mn < mnsize; ++mn) {
-      all_ar[mn].resize(ns);
-      all_az[mn].resize(ns);
-      all_dr[mn].resize(ns);
-      all_dz[mn].resize(ns);
-      all_br[mn].resize(ns);
-      all_bz[mn].resize(ns);
-      all_cr[mn].resize(num_basis_);
-      all_cz[mn].resize(num_basis_);
-      for (int k = 0; k < num_basis_; ++k) {
-        all_cr[mn][k].resize(ns);
-        all_cz[mn][k].resize(ns);
-      }
-    }
-
-    // storage to hand over data between ranks
-    handover_aR.resize(mnsize);
-    handover_aZ.resize(mnsize);
-    handover_cR.resize(num_basis_);
-    handover_cZ.resize(num_basis_);
-    for (int k = 0; k < num_basis_; ++k) {
-      handover_cR[k].resize(mnsize);
-      handover_cZ[k].resize(mnsize);
-    }
-  }
-
-  if (r.nsMinF1 > 0) {
-    // has inside
-    rmncc_i[r.get_thread_id()].resize(s_.mnsize);
-    rmnss_i[r.get_thread_id()].resize(s_.mnsize);
-    zmnsc_i[r.get_thread_id()].resize(s_.mnsize);
-    zmncs_i[r.get_thread_id()].resize(s_.mnsize);
-    lmnsc_i[r.get_thread_id()].resize(s_.mnsize);
-    lmncs_i[r.get_thread_id()].resize(s_.mnsize);
+    rmncc_o.assign(fourier_size, 0.0);
+    rmnss_o.assign(fourier_size, 0.0);
+    zmnsc_o.assign(fourier_size, 0.0);
+    zmncs_o.assign(fourier_size, 0.0);
+    lmnsc_o.assign(fourier_size, 0.0);
+    lmncs_o.assign(fourier_size, 0.0);
 
     if (s_.lasym) {
-      rmnsc_i[r.get_thread_id()].resize(s_.mnsize);
-      rmncs_i[r.get_thread_id()].resize(s_.mnsize);
-      zmncc_i[r.get_thread_id()].resize(s_.mnsize);
-      zmnss_i[r.get_thread_id()].resize(s_.mnsize);
-      lmncc_i[r.get_thread_id()].resize(s_.mnsize);
-      lmnss_i[r.get_thread_id()].resize(s_.mnsize);
+      rmnsc_i.assign(fourier_size, 0.0);
+      rmncs_i.assign(fourier_size, 0.0);
+      zmncc_i.assign(fourier_size, 0.0);
+      zmnss_i.assign(fourier_size, 0.0);
+      lmncc_i.assign(fourier_size, 0.0);
+      lmnss_i.assign(fourier_size, 0.0);
+
+      rmnsc_o.assign(fourier_size, 0.0);
+      rmncs_o.assign(fourier_size, 0.0);
+      zmncc_o.assign(fourier_size, 0.0);
+      zmnss_o.assign(fourier_size, 0.0);
+      lmncc_o.assign(fourier_size, 0.0);
+      lmnss_o.assign(fourier_size, 0.0);
     }
+
+    // =========================================================================
+    // Tri-diagonal solver storage
+    // =========================================================================
+    // Matrix arrays: layout [mn * ns + j], size = mnsize * ns
+    const std::size_t tridiag_size = static_cast<std::size_t>(mnsize) * ns;
+    all_ar.assign(tridiag_size, 0.0);
+    all_az.assign(tridiag_size, 0.0);
+    all_dr.assign(tridiag_size, 0.0);
+    all_dz.assign(tridiag_size, 0.0);
+    all_br.assign(tridiag_size, 0.0);
+    all_bz.assign(tridiag_size, 0.0);
+
+    // RHS arrays: layout [(mn * num_basis + k) * ns + j]
+    // size = mnsize * num_basis * ns
+    const std::size_t tridiag_rhs_size = tridiag_size * num_basis_;
+    all_cr.assign(tridiag_rhs_size, 0.0);
+    all_cz.assign(tridiag_rhs_size, 0.0);
+
+    // =========================================================================
+    // Parallel tri-diagonal solver handover storage
+    // =========================================================================
+    // handover_cR/cZ: layout [k * mnsize + mn], size = num_basis * mnsize
+    const std::size_t handover_c_size =
+        static_cast<std::size_t>(num_basis_) * mnsize;
+    handover_cR.assign(handover_c_size, 0.0);
+    handover_cZ.assign(handover_c_size, 0.0);
+
+    // handover_aR/aZ: flat [mnsize]
+    handover_aR.assign(mnsize, 0.0);
+    handover_aZ.assign(mnsize, 0.0);
   }
 
-  if (r.nsMaxF1 < ns) {
-    // has outside
-    rmncc_o[r.get_thread_id()].resize(s_.mnsize);
-    rmnss_o[r.get_thread_id()].resize(s_.mnsize);
-    zmnsc_o[r.get_thread_id()].resize(s_.mnsize);
-    zmncs_o[r.get_thread_id()].resize(s_.mnsize);
-    lmnsc_o[r.get_thread_id()].resize(s_.mnsize);
-    lmncs_o[r.get_thread_id()].resize(s_.mnsize);
-
-    if (s_.lasym) {
-      rmnsc_o[r.get_thread_id()].resize(s_.mnsize);
-      rmncs_o[r.get_thread_id()].resize(s_.mnsize);
-      zmncc_o[r.get_thread_id()].resize(s_.mnsize);
-      zmnss_o[r.get_thread_id()].resize(s_.mnsize);
-      lmncc_o[r.get_thread_id()].resize(s_.mnsize);
-      lmnss_o[r.get_thread_id()].resize(s_.mnsize);
-    }
-  }
+  // Note: With flat storage, individual thread allocation is no longer needed.
+  // All threads access their portions via index helpers:
+  //   IdxFourier(thread, mn) for Fourier coefficients
+  //   IdxTridiag(mn, j) for tri-diagonal matrix elements
+  //   IdxTridiagRhs(mn, k, j) for tri-diagonal RHS elements
 }  // allocate
 
 void HandoverStorage::ResetSpectralWidthAccumulators() {

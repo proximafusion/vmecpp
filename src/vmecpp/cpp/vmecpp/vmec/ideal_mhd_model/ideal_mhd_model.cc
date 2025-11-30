@@ -3423,19 +3423,21 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
     jMax = m_fc_.ns;
   }
 
-  // gather everything into HandoverStorage
+  // gather everything into HandoverStorage (flat layout)
   for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (jF - r_.nsMinF) * s_.mnsize + mn;
-      m_h_.all_ar[mn][jF] = ar[idx_mn];
-      m_h_.all_az[mn][jF] = az[idx_mn];
-      m_h_.all_dr[mn][jF] = dr[idx_mn];
-      m_h_.all_dz[mn][jF] = dz[idx_mn];
-      m_h_.all_br[mn][jF] = br[idx_mn];
-      m_h_.all_bz[mn][jF] = bz[idx_mn];
+      m_h_.all_ar[m_h_.IdxTridiag(mn, jF)] = ar[idx_mn];
+      m_h_.all_az[m_h_.IdxTridiag(mn, jF)] = az[idx_mn];
+      m_h_.all_dr[m_h_.IdxTridiag(mn, jF)] = dr[idx_mn];
+      m_h_.all_dz[m_h_.IdxTridiag(mn, jF)] = dz[idx_mn];
+      m_h_.all_br[m_h_.IdxTridiag(mn, jF)] = br[idx_mn];
+      m_h_.all_bz[m_h_.IdxTridiag(mn, jF)] = bz[idx_mn];
       for (int idx_basis = 0; idx_basis < s_.num_basis; ++idx_basis) {
-        m_h_.all_cr[mn][idx_basis][jF] = cR[idx_basis][idx_mn];
-        m_h_.all_cz[mn][idx_basis][jF] = cZ[idx_basis][idx_mn];
+        m_h_.all_cr[m_h_.IdxTridiagRhs(mn, idx_basis, jF)] =
+            cR[idx_basis][idx_mn];
+        m_h_.all_cz[m_h_.IdxTridiagRhs(mn, idx_basis, jF)] =
+            cZ[idx_basis][idx_mn];
       }  // idx_basis
     }  // mn
   }  // jF
@@ -3461,11 +3463,15 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   }
 
   // call serial Thomas solver for every mode number individually
+  // Uses span accessors to pass contiguous radial slices to the solver
+  const int ns = m_h_.GetNs();
   for (int mn = mnmin; mn < mnmax; ++mn) {
-    TridiagonalSolveSerial(m_h_.all_ar[mn], m_h_.all_dr[mn], m_h_.all_br[mn],
-                           m_h_.all_cr[mn], jMin[mn], jMax, s_.num_basis);
-    TridiagonalSolveSerial(m_h_.all_az[mn], m_h_.all_dz[mn], m_h_.all_bz[mn],
-                           m_h_.all_cz[mn], jMin[mn], jMax, s_.num_basis);
+    TridiagonalSolveSerial(m_h_.TridiagAr(mn), m_h_.TridiagDr(mn),
+                           m_h_.TridiagBr(mn), m_h_.TridiagCrData(mn), ns,
+                           jMin[mn], jMax, s_.num_basis);
+    TridiagonalSolveSerial(m_h_.TridiagAz(mn), m_h_.TridiagDz(mn),
+                           m_h_.TridiagBz(mn), m_h_.TridiagCzData(mn), ns,
+                           jMin[mn], jMax, s_.num_basis);
   }  // mn
 #ifdef _OPENMP
 #pragma omp barrier
@@ -3476,8 +3482,10 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (jF - r_.nsMinF) * s_.mnsize + mn;
       for (int idx_basis = 0; idx_basis < s_.num_basis; ++idx_basis) {
-        cR[idx_basis][idx_mn] = m_h_.all_cr[mn][idx_basis][jF];
-        cZ[idx_basis][idx_mn] = m_h_.all_cz[mn][idx_basis][jF];
+        cR[idx_basis][idx_mn] =
+            m_h_.all_cr[m_h_.IdxTridiagRhs(mn, idx_basis, jF)];
+        cZ[idx_basis][idx_mn] =
+            m_h_.all_cz[m_h_.IdxTridiagRhs(mn, idx_basis, jF)];
       }  // idx_basis
     }  // mn
   }  // jF
