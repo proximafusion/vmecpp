@@ -1,0 +1,23 @@
+Benchmark Results Summary
+
+Date: Sunday, November 30, 2025
+System: Darwin (Mac)
+Script: examples/benchmark_vmec.py
+Input: src/vmecpp/cpp/vmecpp/test_data/cth_like_free_bdy.json
+
+--- Original Baseline (Before HandoverStorage Refactor) ---
+Cold Start Average Time: 0.5946 s +/- 0.0021 s (Iterations: 488)
+Hot Restart Average Time: 0.2438 s +/- 0.0177 s (Iterations: 174)
+Details: Cold start averaged over 3 runs. Hot restart averaged over 5 runs.
+
+--- Latest Results (After HandoverStorage Refactor and subsequent fixes) ---
+Cold Start Average Time: 0.5865 s +/- 0.0057 s (Iterations: 488)
+Hot Restart Average Time: 0.2311 s +/- 0.0006 s (Iterations: 174)
+Details: Cold start averaged over 3 runs. Hot restart averaged over 5 runs.
+
+--- Performance Comparison (Latest vs. Original Baseline) ---
+Cold Start: Improved by ~1.36% (0.5946s -> 0.5865s)
+Hot Restart: Improved by ~5.21% (0.2438s -> 0.2311s)
+
+Note: All hot restart runs involved a 1% perturbation of magnetic field components (b_p, b_r, b_z).
+The benchmark measures the full vmecpp.run call, including both the core solver and the NESTOR interface for free-boundary cases.

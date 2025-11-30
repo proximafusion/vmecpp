@@ -172,27 +172,27 @@ class HandoverStorage {
   // Span accessors for tri-diagonal solver (returns view of radial slice)
   inline std::span<double> TridiagAr(int mn) noexcept {
     return std::span<double>(all_ar.data() + static_cast<std::size_t>(mn) * ns_,
-                            ns_);
+                             ns_);
   }
   inline std::span<double> TridiagAz(int mn) noexcept {
     return std::span<double>(all_az.data() + static_cast<std::size_t>(mn) * ns_,
-                            ns_);
+                             ns_);
   }
   inline std::span<double> TridiagDr(int mn) noexcept {
     return std::span<double>(all_dr.data() + static_cast<std::size_t>(mn) * ns_,
-                            ns_);
+                             ns_);
   }
   inline std::span<double> TridiagDz(int mn) noexcept {
     return std::span<double>(all_dz.data() + static_cast<std::size_t>(mn) * ns_,
-                            ns_);
+                             ns_);
   }
   inline std::span<double> TridiagBr(int mn) noexcept {
     return std::span<double>(all_br.data() + static_cast<std::size_t>(mn) * ns_,
-                            ns_);
+                             ns_);
   }
   inline std::span<double> TridiagBz(int mn) noexcept {
     return std::span<double>(all_bz.data() + static_cast<std::size_t>(mn) * ns_,
-                            ns_);
+                             ns_);
   }
 
   // RHS span accessor: returns pointer to start of RHS block for mode mn
