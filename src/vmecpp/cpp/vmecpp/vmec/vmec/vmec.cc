@@ -1417,41 +1417,44 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
   bool hasOutside = (r.nsMaxF1 < fc.ns);
 
   // get Full1-specific elements from neighboring threads
+  // Uses flat storage with IdxFourier(thread, mn) indexing
   if (hasInside) {
     // put innermost grid point into _o storage of previous rank
+    const int prev_thread = r.get_thread_id() - 1;
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
-      m_h_.rmncc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.rmncc[idx_mn];
-      m_h_.zmnsc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.zmnsc[idx_mn];
-      m_h_.lmnsc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.lmnsc[idx_mn];
+      const std::size_t idx = m_h_.IdxFourier(prev_thread, mn);
+      m_h_.rmncc_o[idx] = m_decomposed_x.rmncc[idx_mn];
+      m_h_.zmnsc_o[idx] = m_decomposed_x.zmnsc[idx_mn];
+      m_h_.lmnsc_o[idx] = m_decomposed_x.lmnsc[idx_mn];
     }
 
     if (s_.lthreed) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
-        m_h_.rmnss_o[r.get_thread_id() - 1][mn] = m_decomposed_x.rmnss[idx_mn];
-        m_h_.zmncs_o[r.get_thread_id() - 1][mn] = m_decomposed_x.zmncs[idx_mn];
-        m_h_.lmncs_o[r.get_thread_id() - 1][mn] = m_decomposed_x.lmncs[idx_mn];
+        const std::size_t idx = m_h_.IdxFourier(prev_thread, mn);
+        m_h_.rmnss_o[idx] = m_decomposed_x.rmnss[idx_mn];
+        m_h_.zmncs_o[idx] = m_decomposed_x.zmncs[idx_mn];
+        m_h_.lmncs_o[idx] = m_decomposed_x.lmncs[idx_mn];
       }
     }  // lthreed
 
     if (s_.lasym) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
-        m_h_.rmnsc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.rmnsc[idx_mn];
-        m_h_.zmncc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.zmncc[idx_mn];
-        m_h_.lmncc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.lmncc[idx_mn];
+        const std::size_t idx = m_h_.IdxFourier(prev_thread, mn);
+        m_h_.rmnsc_o[idx] = m_decomposed_x.rmnsc[idx_mn];
+        m_h_.zmncc_o[idx] = m_decomposed_x.zmncc[idx_mn];
+        m_h_.lmncc_o[idx] = m_decomposed_x.lmncc[idx_mn];
       }
 
       if (s_.lthreed) {
         for (int mn = 0; mn < s_.mnsize; ++mn) {
           int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
-          m_h_.rmncs_o[r.get_thread_id() - 1][mn] =
-              m_decomposed_x.rmncs[idx_mn];
-          m_h_.zmnss_o[r.get_thread_id() - 1][mn] =
-              m_decomposed_x.zmnss[idx_mn];
-          m_h_.lmnss_o[r.get_thread_id() - 1][mn] =
-              m_decomposed_x.lmnss[idx_mn];
+          const std::size_t idx = m_h_.IdxFourier(prev_thread, mn);
+          m_h_.rmncs_o[idx] = m_decomposed_x.rmncs[idx_mn];
+          m_h_.zmnss_o[idx] = m_decomposed_x.zmnss[idx_mn];
+          m_h_.lmnss_o[idx] = m_decomposed_x.lmnss[idx_mn];
         }
       }
     }  // lasym
@@ -1459,39 +1462,41 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
 
   if (hasOutside) {
     // put outermost grid point into _i storage of next rank
+    const int next_thread = r.get_thread_id() + 1;
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
-      m_h_.rmncc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.rmncc[idx_mn];
-      m_h_.zmnsc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.zmnsc[idx_mn];
-      m_h_.lmnsc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.lmnsc[idx_mn];
+      const std::size_t idx = m_h_.IdxFourier(next_thread, mn);
+      m_h_.rmncc_i[idx] = m_decomposed_x.rmncc[idx_mn];
+      m_h_.zmnsc_i[idx] = m_decomposed_x.zmnsc[idx_mn];
+      m_h_.lmnsc_i[idx] = m_decomposed_x.lmnsc[idx_mn];
     }
 
     if (s_.lthreed) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
-        m_h_.rmnss_i[r.get_thread_id() + 1][mn] = m_decomposed_x.rmnss[idx_mn];
-        m_h_.zmncs_i[r.get_thread_id() + 1][mn] = m_decomposed_x.zmncs[idx_mn];
-        m_h_.lmncs_i[r.get_thread_id() + 1][mn] = m_decomposed_x.lmncs[idx_mn];
+        const std::size_t idx = m_h_.IdxFourier(next_thread, mn);
+        m_h_.rmnss_i[idx] = m_decomposed_x.rmnss[idx_mn];
+        m_h_.zmncs_i[idx] = m_decomposed_x.zmncs[idx_mn];
+        m_h_.lmncs_i[idx] = m_decomposed_x.lmncs[idx_mn];
       }
     }  // lthreed
 
     if (s_.lasym) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
-        m_h_.rmnsc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.rmnsc[idx_mn];
-        m_h_.zmncc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.zmncc[idx_mn];
-        m_h_.lmncc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.lmncc[idx_mn];
+        const std::size_t idx = m_h_.IdxFourier(next_thread, mn);
+        m_h_.rmnsc_i[idx] = m_decomposed_x.rmnsc[idx_mn];
+        m_h_.zmncc_i[idx] = m_decomposed_x.zmncc[idx_mn];
+        m_h_.lmncc_i[idx] = m_decomposed_x.lmncc[idx_mn];
       }
 
       if (s_.lthreed) {
         for (int mn = 0; mn < s_.mnsize; ++mn) {
           int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
-          m_h_.rmncs_i[r.get_thread_id() + 1][mn] =
-              m_decomposed_x.rmncs[idx_mn];
-          m_h_.zmnss_i[r.get_thread_id() + 1][mn] =
-              m_decomposed_x.zmnss[idx_mn];
-          m_h_.lmnss_i[r.get_thread_id() + 1][mn] =
-              m_decomposed_x.lmnss[idx_mn];
+          const std::size_t idx = m_h_.IdxFourier(next_thread, mn);
+          m_h_.rmncs_i[idx] = m_decomposed_x.rmncs[idx_mn];
+          m_h_.zmnss_i[idx] = m_decomposed_x.zmnss[idx_mn];
+          m_h_.lmnss_i[idx] = m_decomposed_x.lmnss[idx_mn];
         }
       }
     }  // lasym
@@ -1501,78 +1506,88 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
 #pragma omp barrier
 #endif  // _OPENMP
 
-  // Now that the crossover data is in the HandoverStorge,
+  // Now that the crossover data is in the HandoverStorage,
   // put it locally into the correct satellite locations.
 
   if (hasOutside) {
     // put _o storage filled by thread_id-1 into nsMaxF1-1
+    const int this_thread = r.get_thread_id();
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
-      m_decomposed_x.rmncc[idx_mn] = m_h_.rmncc_o[r.get_thread_id()][mn];
-      m_decomposed_x.zmnsc[idx_mn] = m_h_.zmnsc_o[r.get_thread_id()][mn];
-      m_decomposed_x.lmnsc[idx_mn] = m_h_.lmnsc_o[r.get_thread_id()][mn];
+      const std::size_t idx = m_h_.IdxFourier(this_thread, mn);
+      m_decomposed_x.rmncc[idx_mn] = m_h_.rmncc_o[idx];
+      m_decomposed_x.zmnsc[idx_mn] = m_h_.zmnsc_o[idx];
+      m_decomposed_x.lmnsc[idx_mn] = m_h_.lmnsc_o[idx];
     }
 
     if (s_.lthreed) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
-        m_decomposed_x.rmnss[idx_mn] = m_h_.rmnss_o[r.get_thread_id()][mn];
-        m_decomposed_x.zmncs[idx_mn] = m_h_.zmncs_o[r.get_thread_id()][mn];
-        m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_o[r.get_thread_id()][mn];
+        const std::size_t idx = m_h_.IdxFourier(this_thread, mn);
+        m_decomposed_x.rmnss[idx_mn] = m_h_.rmnss_o[idx];
+        m_decomposed_x.zmncs[idx_mn] = m_h_.zmncs_o[idx];
+        m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_o[idx];
       }
     }  // lthreed
 
     if (s_.lasym) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
-        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_o[r.get_thread_id()][mn];
-        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_o[r.get_thread_id()][mn];
-        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_o[r.get_thread_id()][mn];
+        const std::size_t idx = m_h_.IdxFourier(this_thread, mn);
+        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_o[idx];
+        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_o[idx];
+        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_o[idx];
       }
 
       if (s_.lthreed) {
         for (int mn = 0; mn < s_.mnsize; ++mn) {
           int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
-          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_o[r.get_thread_id()][mn];
-          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_o[r.get_thread_id()][mn];
-          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_o[r.get_thread_id()][mn];
+          const std::size_t idx = m_h_.IdxFourier(this_thread, mn);
+          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_o[idx];
+          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_o[idx];
+          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_o[idx];
         }
       }
     }  // lasym
   }
 
   if (hasInside) {
-    // put _i storage filled by thread_id-1 into nsMinF1
+    // put _i storage filled by thread_id+1 into nsMinF1
+    const int this_thread = r.get_thread_id();
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
-      m_decomposed_x.rmncc[idx_mn] = m_h_.rmncc_i[r.get_thread_id()][mn];
-      m_decomposed_x.zmnsc[idx_mn] = m_h_.zmnsc_i[r.get_thread_id()][mn];
-      m_decomposed_x.lmnsc[idx_mn] = m_h_.lmnsc_i[r.get_thread_id()][mn];
+      const std::size_t idx = m_h_.IdxFourier(this_thread, mn);
+      m_decomposed_x.rmncc[idx_mn] = m_h_.rmncc_i[idx];
+      m_decomposed_x.zmnsc[idx_mn] = m_h_.zmnsc_i[idx];
+      m_decomposed_x.lmnsc[idx_mn] = m_h_.lmnsc_i[idx];
     }
 
     if (s_.lthreed) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
-        m_decomposed_x.rmnss[idx_mn] = m_h_.rmnss_i[r.get_thread_id()][mn];
-        m_decomposed_x.zmncs[idx_mn] = m_h_.zmncs_i[r.get_thread_id()][mn];
-        m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_i[r.get_thread_id()][mn];
+        const std::size_t idx = m_h_.IdxFourier(this_thread, mn);
+        m_decomposed_x.rmnss[idx_mn] = m_h_.rmnss_i[idx];
+        m_decomposed_x.zmncs[idx_mn] = m_h_.zmncs_i[idx];
+        m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_i[idx];
       }
     }  // lthreed
 
     if (s_.lasym) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
-        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_i[r.get_thread_id()][mn];
-        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_i[r.get_thread_id()][mn];
-        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_i[r.get_thread_id()][mn];
+        const std::size_t idx = m_h_.IdxFourier(this_thread, mn);
+        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_i[idx];
+        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_i[idx];
+        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_i[idx];
       }
 
       if (s_.lthreed) {
         for (int mn = 0; mn < s_.mnsize; ++mn) {
           int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
-          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_i[r.get_thread_id()][mn];
-          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_i[r.get_thread_id()][mn];
-          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_i[r.get_thread_id()][mn];
+          const std::size_t idx = m_h_.IdxFourier(this_thread, mn);
+          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_i[idx];
+          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_i[idx];
+          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_i[idx];
         }
       }
     }  // lasym
