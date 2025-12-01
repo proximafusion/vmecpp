@@ -10,7 +10,6 @@ namespace vmecpp {
 
 HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
   plasmaVolume = 0.0;
-  voli = 0.0;
 
   fNormRZ = 0.0;
   fNormL = 0.0;
@@ -29,10 +28,6 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
 
   rCon_LCFS.resize(s_.nZnT);
   zCon_LCFS.resize(s_.nZnT);
-  vacuum_magnetic_pressure.resize(s_.nZnT);
-  vacuum_b_r.resize(s_.nZnT);
-  vacuum_b_phi.resize(s_.nZnT);
-  vacuum_b_z.resize(s_.nZnT);
 
   num_threads_ = 1;
   num_basis_ = 0;
