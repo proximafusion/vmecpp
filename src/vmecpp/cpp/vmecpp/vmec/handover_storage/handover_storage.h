@@ -5,6 +5,7 @@
 #ifndef VMECPP_VMEC_HANDOVER_STORAGE_HANDOVER_STORAGE_H_
 #define VMECPP_VMEC_HANDOVER_STORAGE_HANDOVER_STORAGE_H_
 
+#include <cstddef>
 #include <span>
 #include <vector>
 
@@ -94,55 +95,92 @@ class HandoverStorage {
   std::vector<double> rCon_LCFS;
   std::vector<double> zCon_LCFS;
 
-  // on inside of target thread
-  // TODO(enrico) revise allocation strategy as we revise thread
-  // synchronization: nested std::vectors have bad locality, but it might not
-  // matter depending on the access pattern (and we might not want them to be
-  // dense if they are large).
-  std::vector<std::vector<double>> rmncc_i;
-  std::vector<std::vector<double>> rmnss_i;
-  std::vector<std::vector<double>> zmnsc_i;
-  std::vector<std::vector<double>> zmncs_i;
-  std::vector<std::vector<double>> lmnsc_i;
-  std::vector<std::vector<double>> lmncs_i;
-  // Asymmetric arrays for lasym=true
-  std::vector<std::vector<double>> rmnsc_i;
-  std::vector<std::vector<double>> rmncs_i;
-  std::vector<std::vector<double>> zmncc_i;
-  std::vector<std::vector<double>> zmnss_i;
-  std::vector<std::vector<double>> lmncc_i;
-  std::vector<std::vector<double>> lmnss_i;
+  // Inter-thread handover storage: RowMatrixXd [num_threads, mnsize]
+  // _i arrays: inside boundary, _o arrays: outside boundary
 
-  // on outside of target thread
-  std::vector<std::vector<double>> rmncc_o;
-  std::vector<std::vector<double>> rmnss_o;
-  std::vector<std::vector<double>> zmnsc_o;
-  std::vector<std::vector<double>> zmncs_o;
-  std::vector<std::vector<double>> lmnsc_o;
-  std::vector<std::vector<double>> lmncs_o;
+  RowMatrixXd rmncc_i;
+  RowMatrixXd rmnss_i;
+  RowMatrixXd zmnsc_i;
+  RowMatrixXd zmncs_i;
+  RowMatrixXd lmnsc_i;
+  RowMatrixXd lmncs_i;
   // Asymmetric arrays for lasym=true
-  std::vector<std::vector<double>> rmnsc_o;
-  std::vector<std::vector<double>> rmncs_o;
-  std::vector<std::vector<double>> zmncc_o;
-  std::vector<std::vector<double>> zmnss_o;
-  std::vector<std::vector<double>> lmncc_o;
-  std::vector<std::vector<double>> lmnss_o;
+  RowMatrixXd rmnsc_i;
+  RowMatrixXd rmncs_i;
+  RowMatrixXd zmncc_i;
+  RowMatrixXd zmnss_i;
+  RowMatrixXd lmncc_i;
+  RowMatrixXd lmnss_i;
 
-  // radial preconditioner; serial tri-diagonal solver
+  RowMatrixXd rmncc_o;
+  RowMatrixXd rmnss_o;
+  RowMatrixXd zmnsc_o;
+  RowMatrixXd zmncs_o;
+  RowMatrixXd lmnsc_o;
+  RowMatrixXd lmncs_o;
+  // Asymmetric arrays for lasym=true
+  RowMatrixXd rmnsc_o;
+  RowMatrixXd rmncs_o;
+  RowMatrixXd zmncc_o;
+  RowMatrixXd zmnss_o;
+  RowMatrixXd lmncc_o;
+  RowMatrixXd lmnss_o;
+
+  // Serial tri-diagonal solver storage
+  // Matrix: RowMatrixXd [mn, j], RHS: vector of RowMatrixXd [mn][basis, j]
+
   int mnsize;
-  std::vector<std::vector<double>> all_ar;
-  std::vector<std::vector<double>> all_az;
-  std::vector<std::vector<double>> all_dr;
-  std::vector<std::vector<double>> all_dz;
-  std::vector<std::vector<double>> all_br;
-  std::vector<std::vector<double>> all_bz;
-  std::vector<std::vector<std::vector<double>>> all_cr;
-  std::vector<std::vector<std::vector<double>>> all_cz;
+  int ns_ = 0;  // number of radial surfaces (set in allocate)
 
-  // radial preconditioner; parallel tri-diagonal solver
-  std::vector<std::vector<double>> handover_cR;
-  std::vector<double> handover_aR;
-  std::vector<std::vector<double>> handover_cZ;
+  RowMatrixXd all_ar;  // [mnsize, ns]
+  RowMatrixXd all_az;
+  RowMatrixXd all_dr;
+  RowMatrixXd all_dz;
+  RowMatrixXd all_br;
+  RowMatrixXd all_bz;
+
+  // [mnsize] -> [num_basis, ns]
+  std::vector<RowMatrixXd> all_cr;
+  std::vector<RowMatrixXd> all_cz;
+
+  // Span accessors for tri-diagonal solver (returns view of radial slice)
+  // Since RowMatrixXd is row-major, .row(mn) is contiguous.
+  inline std::span<double> TridiagAr(int mn) noexcept {
+    return std::span<double>(all_ar.row(mn).data(), ns_);
+  }
+  inline std::span<double> TridiagAz(int mn) noexcept {
+    return std::span<double>(all_az.row(mn).data(), ns_);
+  }
+  inline std::span<double> TridiagDr(int mn) noexcept {
+    return std::span<double>(all_dr.row(mn).data(), ns_);
+  }
+  inline std::span<double> TridiagDz(int mn) noexcept {
+    return std::span<double>(all_dz.row(mn).data(), ns_);
+  }
+  inline std::span<double> TridiagBr(int mn) noexcept {
+    return std::span<double>(all_br.row(mn).data(), ns_);
+  }
+  inline std::span<double> TridiagBz(int mn) noexcept {
+    return std::span<double>(all_bz.row(mn).data(), ns_);
+  }
+
+  // RHS span accessor: returns pointer to start of RHS block for mode mn
+  // The solver accesses c[k][j] as base[k * ns + j]
+  // With RowMatrixXd [num_basis, ns], this is exactly flat row-major storage.
+  inline double* TridiagCrData(int mn) noexcept { return all_cr[mn].data(); }
+  inline double* TridiagCzData(int mn) noexcept { return all_cz[mn].data(); }
+
+  // Dimension accessor for solver
+  int GetNumBasis() const noexcept { return num_basis_; }
+  int GetNs() const noexcept { return ns_; }
+
+  // Parallel tri-diagonal solver storage
+  // handover_cR/cZ: RowMatrixXd [num_basis, mnsize], handover_aR/aZ: flat
+  // [mnsize]
+
+  RowMatrixXd handover_cR;          // [num_basis, mnsize]
+  std::vector<double> handover_aR;  // [mnsize]
+  RowMatrixXd handover_cZ;
   std::vector<double> handover_aZ;
 
   // magnetic axis geometry for NESTOR
