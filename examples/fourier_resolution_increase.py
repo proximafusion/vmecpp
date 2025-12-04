@@ -26,9 +26,10 @@ vmec_input = vmecpp.VmecInput.from_file(vmec_input_filename)
 vmec_output = vmecpp.run(vmec_input)
 
 # Define additional steps with increased resolution.
-ns_array = [31, 51]
-mpol_array = [7, 9]
-ntor_array = [7, 9]
+ns_array = [31]
+# mpol_array = [7, 9] ; ntor_array = [7, 9]
+mpol_array = [5]
+ntor_array = [4]
 
 # Go through resolution steps and run VMEC++ for each step.
 for i_step, (ns, mpol, ntor) in enumerate(
@@ -140,13 +141,13 @@ for i_step, (ns, mpol, ntor) in enumerate(
         old_sqrt_s_full = np.sqrt(np.linspace(0.0, 1.0, old_ns, endpoint=True))
         new_sqrt_s_full = np.sqrt(np.linspace(0.0, 1.0, ns, endpoint=True))
 
-        scalxc_old = np.zeros(old_ns)
-        scalxc_old[1:] = 1.0 / old_sqrt_s_full[1:]
-        scalxc_old[0] = scalxc_old[1]
+        old_scalxc = np.zeros(old_ns)
+        old_scalxc[1:] = 1.0 / old_sqrt_s_full[1:]
+        old_scalxc[0] = old_scalxc[1]
 
-        scalxc_new = np.zeros(ns)
-        scalxc_new[1:] = 1.0 / new_sqrt_s_full[1:]
-        scalxc_new[0] = scalxc_new[1]
+        new_scalxc = np.zeros(ns)
+        new_scalxc[1:] = 1.0 / new_sqrt_s_full[1:]
+        new_scalxc[0] = new_scalxc[1]
 
         # FIXME(jons): Something is still fishy here:
         # When using this interpolation method for just increasing radial resolution, without chaning the Fourier resolution, the resulting force residuals decay is not the same as when using the radial multi-grid method natively implemented in VMEC++ directly.
@@ -156,8 +157,8 @@ for i_step, (ns, mpol, ntor) in enumerate(
             vmec_output: vmecpp.VmecOutput,
             old_sqrt_s_full: np.ndarray,
             new_sqrt_s_full: np.ndarray,
-            scalxc_old: np.ndarray,
-            scalxc_new: np.ndarray,
+            old_scalxc: np.ndarray,
+            new_scalxc: np.ndarray,
             old_mn: int,
             m: int,
         ):
@@ -168,9 +169,9 @@ for i_step, (ns, mpol, ntor) in enumerate(
 
             if m % 2 == 1:
                 # Apply odd-m interpolation weights.
-                rmnc_slice *= scalxc_old
-                zmns_slice *= scalxc_old
-                lmns_full_slice *= scalxc_old
+                rmnc_slice *= old_scalxc
+                zmns_slice *= old_scalxc
+                lmns_full_slice *= old_scalxc
 
                 # Extrapolate odd-m modes in source output from first two flux surfaces.
                 rmnc_slice[0] = 2.0 * rmnc_slice[1] - rmnc_slice[2]
@@ -186,9 +187,9 @@ for i_step, (ns, mpol, ntor) in enumerate(
 
             if m % 2 == 1:
                 # un-do odd-m interpolation weights in interpolated data
-                rmnc_interp /= scalxc_new
-                zmns_interp /= scalxc_new
-                lmns_full_interp /= scalxc_new
+                rmnc_interp /= new_scalxc
+                zmns_interp /= new_scalxc
+                lmns_full_interp /= new_scalxc
 
                 # set odd-m modes in target output to zero at the magnetic axis
                 rmnc_interp[0] = 0.0
@@ -210,8 +211,8 @@ for i_step, (ns, mpol, ntor) in enumerate(
                             vmec_output=vmec_output,
                             old_sqrt_s_full=old_sqrt_s_full,
                             new_sqrt_s_full=new_sqrt_s_full,
-                            scalxc_old=scalxc_old,
-                            scalxc_new=scalxc_new,
+                            old_scalxc=old_scalxc,
+                            new_scalxc=new_scalxc,
                             old_mn=old_mn,
                             m=m,
                         )
@@ -232,8 +233,8 @@ for i_step, (ns, mpol, ntor) in enumerate(
                                 vmec_output=vmec_output,
                                 old_sqrt_s_full=old_sqrt_s_full,
                                 new_sqrt_s_full=new_sqrt_s_full,
-                                scalxc_old=scalxc_old,
-                                scalxc_new=scalxc_new,
+                                old_scalxc=old_scalxc,
+                                new_scalxc=new_scalxc,
                                 old_mn=old_mn,
                                 m=m,
                             )
