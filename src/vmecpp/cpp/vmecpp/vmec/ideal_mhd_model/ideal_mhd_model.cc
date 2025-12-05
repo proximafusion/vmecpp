@@ -3462,14 +3462,18 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
 
   // call serial Thomas solver for every mode number individually
   // Uses span accessors to pass contiguous radial slices to the solver
-  const int ns = m_h_.GetNs();
+  const int ns = m_h_.all_ar.cols();
   for (int mn = mnmin; mn < mnmax; ++mn) {
-    TridiagonalSolveSerial(m_h_.TridiagAr(mn), m_h_.TridiagDr(mn),
-                           m_h_.TridiagBr(mn), m_h_.TridiagCrData(mn), ns,
-                           jMin[mn], jMax, s_.num_basis);
-    TridiagonalSolveSerial(m_h_.TridiagAz(mn), m_h_.TridiagDz(mn),
-                           m_h_.TridiagBz(mn), m_h_.TridiagCzData(mn), ns,
-                           jMin[mn], jMax, s_.num_basis);
+    TridiagonalSolveSerial(std::span<double>(m_h_.all_ar.row(mn).data(), ns),
+                           std::span<double>(m_h_.all_dr.row(mn).data(), ns),
+                           std::span<double>(m_h_.all_br.row(mn).data(), ns),
+                           m_h_.all_cr[mn].data(), ns, jMin[mn], jMax,
+                           s_.num_basis);
+    TridiagonalSolveSerial(std::span<double>(m_h_.all_az.row(mn).data(), ns),
+                           std::span<double>(m_h_.all_dz.row(mn).data(), ns),
+                           std::span<double>(m_h_.all_bz.row(mn).data(), ns),
+                           m_h_.all_cz[mn].data(), ns, jMin[mn], jMax,
+                           s_.num_basis);
   }  // mn
 #ifdef _OPENMP
 #pragma omp barrier
