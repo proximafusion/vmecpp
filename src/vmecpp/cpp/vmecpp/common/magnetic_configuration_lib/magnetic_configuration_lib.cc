@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 
+#include <Eigen/Dense>
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -209,7 +210,7 @@ absl::StatusOr<MagneticConfiguration> ImportMagneticConfigurationFromCoilsFile(
   return ImportMagneticConfigurationFromMakegrid(*maybe_coils_file_content);
 }
 
-absl::StatusOr<std::vector<double> > GetCircuitCurrents(
+absl::StatusOr<Eigen::VectorXd> GetCircuitCurrents(
     const MagneticConfiguration& magnetic_configuration) {
   absl::Status status =
       IsMagneticConfigurationFullyPopulated(magnetic_configuration);
@@ -219,7 +220,7 @@ absl::StatusOr<std::vector<double> > GetCircuitCurrents(
 
   const int number_of_serial_circuits =
       magnetic_configuration.serial_circuits_size();
-  std::vector<double> circuit_currents(number_of_serial_circuits, 0.0);
+  Eigen::VectorXd circuit_currents(number_of_serial_circuits);
   for (int i = 0; i < number_of_serial_circuits; ++i) {
     circuit_currents[i] = magnetic_configuration.serial_circuits(i).current();
   }
@@ -228,12 +229,12 @@ absl::StatusOr<std::vector<double> > GetCircuitCurrents(
 }  // GetCircuitCurrents
 
 absl::Status SetCircuitCurrents(
-    const std::vector<double>& circuit_currents,
+    const Eigen::VectorXd& circuit_currents,
     MagneticConfiguration& m_magnetic_configuration) {
   const int number_of_serial_circuits =
       m_magnetic_configuration.serial_circuits_size();
-  const int number_of_circuit_currents =
-      static_cast<int>(circuit_currents.size());
+  const Eigen::VectorXd::Index number_of_circuit_currents =
+      circuit_currents.size();
   if (number_of_serial_circuits != number_of_circuit_currents) {
     std::stringstream error_message;
     error_message << "The number of circuit currents ("

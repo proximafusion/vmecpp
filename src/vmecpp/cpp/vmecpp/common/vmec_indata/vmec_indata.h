@@ -5,12 +5,14 @@
 #ifndef VMECPP_COMMON_VMEC_INDATA_VMEC_INDATA_H_
 #define VMECPP_COMMON_VMEC_INDATA_VMEC_INDATA_H_
 
+#include <Eigen/Dense>
+#include <filesystem>
 #include <string>
-#include <vector>
 
 #include "H5Cpp.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "vmecpp/common/util/util.h"  // RowMatrixXd, ToEigenVector, ToEigenMatrix
 
 namespace vmecpp {
 
@@ -85,13 +87,13 @@ class VmecINDATA {
   // multi-grid steps
 
   // [numGrids] number of flux surfaces per multigrid step
-  std::vector<int> ns_array;
+  Eigen::VectorXi ns_array;
 
   // [numGrids] requested force tolerance for convergence per multigrid step
-  std::vector<double> ftol_array;
+  Eigen::VectorXd ftol_array;
 
   // [numGrids] maximum number of iterations per multigrid step
-  std::vector<int> niter_array;
+  Eigen::VectorXi niter_array;
 
   // ---------------------------------
   // global physics parameters
@@ -110,13 +112,13 @@ class VmecINDATA {
   std::string pmass_type;
 
   // [amLen] mass/pressure profile coefficients
-  std::vector<double> am;
+  Eigen::VectorXd am;
 
   // [am_auxLen] spline mass/pressure profile: knot locations in s
-  std::vector<double> am_aux_s;
+  Eigen::VectorXd am_aux_s;
 
   // [am_auxLen] spline mass/pressure profile: values at knots
-  std::vector<double> am_aux_f;
+  Eigen::VectorXd am_aux_f;
 
   // global scaling factor for mass/pressure profile
   double pres_scale;
@@ -134,13 +136,13 @@ class VmecINDATA {
   std::string piota_type;
 
   // [aiLen] iota profile coefficients
-  std::vector<double> ai;
+  Eigen::VectorXd ai;
 
   // [ai_auxLen] spline iota profile: knot locations in s
-  std::vector<double> ai_aux_s;
+  Eigen::VectorXd ai_aux_s;
 
   // [ai_auxLen] spline iota profile: values at knots
-  std::vector<double> ai_aux_f;
+  Eigen::VectorXd ai_aux_f;
 
   // ---------------------------------
   // enclosed toroidal current profile
@@ -149,13 +151,13 @@ class VmecINDATA {
   std::string pcurr_type;
 
   // enclosed toroidal current profile coefficients
-  std::vector<double> ac;
+  Eigen::VectorXd ac;
 
   // [ac_auxLen] spline toroidal current profile: knot locations in s
-  std::vector<double> ac_aux_s;
+  Eigen::VectorXd ac_aux_s;
 
   // [ac_auxLen] spline toroidal current profile: values at knots
-  std::vector<double> ac_aux_f;
+  Eigen::VectorXd ac_aux_f;
 
   // toroidal current in A
   double curtor;
@@ -173,7 +175,7 @@ class VmecINDATA {
   std::string mgrid_file;
 
   // [extcurLen] coil currents in A
-  std::vector<double> extcur;
+  Eigen::VectorXd extcur;
 
   // number of iterations between full vacuum calculations
   int nvacskip;
@@ -189,7 +191,7 @@ class VmecINDATA {
   int nstep;
 
   // [aphiLen] radial flux zoning profile coefficients
-  std::vector<double> aphi;
+  Eigen::VectorXd aphi;
 
   // initial value for artificial time step in iterative solver
   double delt;
@@ -214,41 +216,37 @@ class VmecINDATA {
   // initial guess for magnetic axis
 
   // [ntor+1] magnetic axis coefficients for R ~ cos(n*v); stellarator-symmetric
-  std::vector<double> raxis_c;
+  Eigen::VectorXd raxis_c;
 
   // [ntor+1] magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric
-  std::vector<double> zaxis_s;
+  Eigen::VectorXd zaxis_s;
 
   // [ntor+1] magnetic axis coefficients for R ~ sin(n*v);
   // non-stellarator-symmetric
-  // TODO(jurasic) make theses optional after the Eigen3 refactor
-  std::vector<double> raxis_s;
+  std::optional<Eigen::VectorXd> raxis_s;
 
   // [ntor+1] magnetic axis coefficients for Z ~ cos(n*v);
   // non-stellarator-symmetric
-  // TODO(jurasic) make theses optional after the Eigen3 refactor
-  std::vector<double> zaxis_c;
+  std::optional<Eigen::VectorXd> zaxis_c;
 
   // ---------------------------------
   // (initial guess for) boundary shape
 
-  // [mpol*(2*ntor+1)] boundary coefficients for R ~ cos(m*u - n*v);
+  // [mpol, (2*ntor+1)] boundary coefficients for R ~ cos(m*u - n*v);
   // stellarator-symmetric
-  std::vector<double> rbc;
+  RowMatrixXd rbc;
 
-  // [mpol*(2*ntor+1)] boundary coefficients for Z ~ sin(m*u - n*v);
+  // [mpol, (2*ntor+1)] boundary coefficients for Z ~ sin(m*u - n*v);
   // stellarator-symmetric
-  std::vector<double> zbs;
+  RowMatrixXd zbs;
 
-  // [mpol*(2*ntor+1)] boundary coefficients for R ~ sin(m*u - n*v);
+  // [mpol, (2*ntor+1)] boundary coefficients for R ~ sin(m*u - n*v);
   // non-stellarator-symmetric
-  // TODO(jurasic) make theses optional after the Eigen3 refactor
-  std::vector<double> rbs;
+  std::optional<RowMatrixXd> rbs;
 
-  // [mpol*(2*ntor+1)] boundary coefficients for Z ~ cos(m*u - n*v);
+  // [mpol, (2*ntor+1)] boundary coefficients for Z ~ cos(m*u - n*v);
   // non-stellarator-symmetric
-  // TODO(jurasic) make theses optional after the Eigen3 refactor
-  std::vector<double> zbc;
+  std::optional<RowMatrixXd> zbc;
 
   // Construct a VmecINDATA instance with default values, except for profile
   // coefficients or knot locations/values. Axis geometry coefficients and
@@ -258,6 +256,11 @@ class VmecINDATA {
   bool operator==(const VmecINDATA&) const = default;
   bool operator!=(const VmecINDATA& o) const { return !(*this == o); }
 
+  // Set new values for indata's mpol and/or ntor.
+  // Related quantities such as raxis_c and rbc are zero-padded or truncated as
+  // needed.
+  void SetMpolNtor(int new_mpol, int new_ntor);
+
   // Write object to the specified HDF5 file, under key "indata".
   absl::Status WriteTo(H5::H5File& file) const;
 
@@ -266,9 +269,14 @@ class VmecINDATA {
   // WriteTo.
   static absl::Status LoadInto(VmecINDATA& m_obj, H5::H5File& from_file);
 
+  static VmecINDATA FromFile(
+      const std::filesystem::path& indata_json_file_path);
   static absl::StatusOr<VmecINDATA> FromJson(const std::string& indata_json);
 
   absl::StatusOr<std::string> ToJson() const;
+  std::string ToJsonOrException() const;
+
+  VmecINDATA Copy() const;
 };
 
 absl::Status IsConsistent(const VmecINDATA& vmec_indata,

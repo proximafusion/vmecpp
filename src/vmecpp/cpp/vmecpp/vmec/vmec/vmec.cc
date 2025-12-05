@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "vmecpp/common/flow_control/flow_control.h"
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif  // _OPENMP
@@ -93,7 +95,8 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
   }
 
   // check for matching `ns`
-  if (initial_state.indata.ns_array.back() != indata.ns_array[0]) {
+  if (initial_state.indata.ns_array[initial_state.indata.ns_array.size() - 1] !=
+      indata.ns_array[0]) {
     return absl::InvalidArgumentError(
         absl::StrCat(msg_start, "ns_array", msg_end));
   }
@@ -672,8 +675,13 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     int n_local_eqsolve_retries = 0;
     for (n_local_eqsolve_retries = 0;
          n_local_eqsolve_retries < fc_.niterv && s.ok() &&
-         *s == SolveEqLoopStatus::MUST_RETRY;
+         *s == SolveEqLoopStatus::MUST_RETRY && liter_flag;
          n_local_eqsolve_retries++) {
+// protect read of `liter_flag` from write within `SolveEquilibriumLoop` below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
       s = SolveEquilibriumLoop(
           thread_id, iterations_before_checkpointing, checkpoint,
           /*m_lreset_internal=*/m_lreset_internal, /*m_liter_flag=*/liter_flag);
@@ -836,6 +844,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
     // ADDITIONAL STOPPING CRITERION (set m_liter_flag to FALSE)
 
+#ifdef _OPENMP
+// Protect the reads of fc_.ijacob from writes in the single region below.
+#pragma omp barrier
+#endif  // _OPENMP
+
     // the blocks for ijacob=25 or 50 are equal up to the point
     // that for 25, delt0r is reset to 0.98*delt (delt given by user)
     // and  for 50, delt0r is reset to 0.96*delt (delt given by user)
@@ -855,7 +868,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp single
 #endif  // _OPENMP
       {
-        const double scale = fc_.ijacob == 25 ? 0.98 : 0.96;
+        // fc_.ijacob is incremented in RestartIteration
+        const double scale = fc_.ijacob < 50 ? 0.98 : 0.96;
+
         fc_.delt0r = scale * indata_.delt;
 
         if (verbose_) {
@@ -930,7 +945,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       fc_.restart_reason = RestartReason::BAD_PROGRESS;
     }
 
-    if (fc_.restart_reason != RestartReason::NO_RESTART) {
+    const RestartReason restart_reason = fc_.restart_reason;
+// protect read of restart_reason above from write (in different thread) below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+    if (restart_reason != RestartReason::NO_RESTART) {
       // Retrieve previous good state
       RestartIteration(fc_.delt0r, thread_id);
       // This code path does not increment the iter2 counter in VMEC 8.52, so we
@@ -953,7 +974,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // NOTE: IIRC, this still needs to be called to keep the spectral width
         // updated. Screen output will be controlled by checking the `verbose_`
         // flag inside `Printout`.
-        Printout(fc_.delt0r, thread_id);
+        Printout(fc_.delt0r, thread_id, iter2);
 
         if (checkpoint == VmecCheckpoint::PRINTOUT &&
             iter2 >= iterations_before_checkpointing) {
@@ -961,9 +982,16 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         }
       }
     }
-
+// protect read of vacuum_pressure_state_ in get_delbsq called by Printout above
+// from write below
 #ifdef _OPENMP
-#pragma omp single nowait
+#pragma omp barrier
+#endif  // _OPENMP
+
+// don't use nowait here, since need implicit barrier to protect read of iter2_
+// from write below in potentially different thread
+#ifdef _OPENMP
+#pragma omp single
 #endif  // _OPENMP
     {
       // vacuum_pressure_state gets set to VacuumPressureState::kInitialized in
@@ -987,7 +1015,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     // it does not matter who does it.
     // bad resets didn't increment, iter2 in VMEC 8.52, so we need to compute
     // the backwards compatible iteration count
-    iter2_ = force_iteration + 1 - bad_resets;
+    iter2_ = (force_iteration - bad_resets) + 1;  // equivalent to iter2++
   }  // while m_liter_flag
 
   return SolveEqLoopStatus::NORMAL_TERMINATION;
@@ -1172,7 +1200,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   return false;
 }
 
-void Vmec::Printout(double delt0r, int thread_id) {
+void Vmec::Printout(double delt0r, int thread_id, int iter2) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -1208,14 +1236,14 @@ void Vmec::Printout(double delt0r, int thread_id) {
       std::cout << absl::StrFormat(
           "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
           "%.3e | %.4e | %.4e | %5.3f | %.3e\n",
-          iter2_, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
+          iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
           delt0r, r00, energy, betaVolAvg, volAvgM, delbsq);
     } else {
       // omit DELBSQ column in fixed-boundary case
       std::cout << absl::StrFormat(
           "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
           "%.3e | %.4e | %.4e | %5.3f\n",
-          iter2_, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
+          iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
           delt0r, r00, energy, betaVolAvg, volAvgM);
     }
   }  // thread which has boundary
@@ -1389,41 +1417,40 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
   bool hasOutside = (r.nsMaxF1 < fc.ns);
 
   // get Full1-specific elements from neighboring threads
+  // Uses RowMatrixXd with (thread, mn) indexing
   if (hasInside) {
     // put innermost grid point into _o storage of previous rank
+    const int prev_thread = r.get_thread_id() - 1;
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
-      m_h_.rmncc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.rmncc[idx_mn];
-      m_h_.zmnsc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.zmnsc[idx_mn];
-      m_h_.lmnsc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.lmnsc[idx_mn];
+      m_h_.rmncc_o(prev_thread, mn) = m_decomposed_x.rmncc[idx_mn];
+      m_h_.zmnsc_o(prev_thread, mn) = m_decomposed_x.zmnsc[idx_mn];
+      m_h_.lmnsc_o(prev_thread, mn) = m_decomposed_x.lmnsc[idx_mn];
     }
 
     if (s_.lthreed) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
-        m_h_.rmnss_o[r.get_thread_id() - 1][mn] = m_decomposed_x.rmnss[idx_mn];
-        m_h_.zmncs_o[r.get_thread_id() - 1][mn] = m_decomposed_x.zmncs[idx_mn];
-        m_h_.lmncs_o[r.get_thread_id() - 1][mn] = m_decomposed_x.lmncs[idx_mn];
+        m_h_.rmnss_o(prev_thread, mn) = m_decomposed_x.rmnss[idx_mn];
+        m_h_.zmncs_o(prev_thread, mn) = m_decomposed_x.zmncs[idx_mn];
+        m_h_.lmncs_o(prev_thread, mn) = m_decomposed_x.lmncs[idx_mn];
       }
     }  // lthreed
 
     if (s_.lasym) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
-        m_h_.rmnsc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.rmnsc[idx_mn];
-        m_h_.zmncc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.zmncc[idx_mn];
-        m_h_.lmncc_o[r.get_thread_id() - 1][mn] = m_decomposed_x.lmncc[idx_mn];
+        m_h_.rmnsc_o(prev_thread, mn) = m_decomposed_x.rmnsc[idx_mn];
+        m_h_.zmncc_o(prev_thread, mn) = m_decomposed_x.zmncc[idx_mn];
+        m_h_.lmncc_o(prev_thread, mn) = m_decomposed_x.lmncc[idx_mn];
       }
 
       if (s_.lthreed) {
         for (int mn = 0; mn < s_.mnsize; ++mn) {
           int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
-          m_h_.rmncs_o[r.get_thread_id() - 1][mn] =
-              m_decomposed_x.rmncs[idx_mn];
-          m_h_.zmnss_o[r.get_thread_id() - 1][mn] =
-              m_decomposed_x.zmnss[idx_mn];
-          m_h_.lmnss_o[r.get_thread_id() - 1][mn] =
-              m_decomposed_x.lmnss[idx_mn];
+          m_h_.rmncs_o(prev_thread, mn) = m_decomposed_x.rmncs[idx_mn];
+          m_h_.zmnss_o(prev_thread, mn) = m_decomposed_x.zmnss[idx_mn];
+          m_h_.lmnss_o(prev_thread, mn) = m_decomposed_x.lmnss[idx_mn];
         }
       }
     }  // lasym
@@ -1431,39 +1458,37 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
 
   if (hasOutside) {
     // put outermost grid point into _i storage of next rank
+    const int next_thread = r.get_thread_id() + 1;
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
-      m_h_.rmncc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.rmncc[idx_mn];
-      m_h_.zmnsc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.zmnsc[idx_mn];
-      m_h_.lmnsc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.lmnsc[idx_mn];
+      m_h_.rmncc_i(next_thread, mn) = m_decomposed_x.rmncc[idx_mn];
+      m_h_.zmnsc_i(next_thread, mn) = m_decomposed_x.zmnsc[idx_mn];
+      m_h_.lmnsc_i(next_thread, mn) = m_decomposed_x.lmnsc[idx_mn];
     }
 
     if (s_.lthreed) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
-        m_h_.rmnss_i[r.get_thread_id() + 1][mn] = m_decomposed_x.rmnss[idx_mn];
-        m_h_.zmncs_i[r.get_thread_id() + 1][mn] = m_decomposed_x.zmncs[idx_mn];
-        m_h_.lmncs_i[r.get_thread_id() + 1][mn] = m_decomposed_x.lmncs[idx_mn];
+        m_h_.rmnss_i(next_thread, mn) = m_decomposed_x.rmnss[idx_mn];
+        m_h_.zmncs_i(next_thread, mn) = m_decomposed_x.zmncs[idx_mn];
+        m_h_.lmncs_i(next_thread, mn) = m_decomposed_x.lmncs[idx_mn];
       }
     }  // lthreed
 
     if (s_.lasym) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
-        m_h_.rmnsc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.rmnsc[idx_mn];
-        m_h_.zmncc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.zmncc[idx_mn];
-        m_h_.lmncc_i[r.get_thread_id() + 1][mn] = m_decomposed_x.lmncc[idx_mn];
+        m_h_.rmnsc_i(next_thread, mn) = m_decomposed_x.rmnsc[idx_mn];
+        m_h_.zmncc_i(next_thread, mn) = m_decomposed_x.zmncc[idx_mn];
+        m_h_.lmncc_i(next_thread, mn) = m_decomposed_x.lmncc[idx_mn];
       }
 
       if (s_.lthreed) {
         for (int mn = 0; mn < s_.mnsize; ++mn) {
           int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
-          m_h_.rmncs_i[r.get_thread_id() + 1][mn] =
-              m_decomposed_x.rmncs[idx_mn];
-          m_h_.zmnss_i[r.get_thread_id() + 1][mn] =
-              m_decomposed_x.zmnss[idx_mn];
-          m_h_.lmnss_i[r.get_thread_id() + 1][mn] =
-              m_decomposed_x.lmnss[idx_mn];
+          m_h_.rmncs_i(next_thread, mn) = m_decomposed_x.rmncs[idx_mn];
+          m_h_.zmnss_i(next_thread, mn) = m_decomposed_x.zmnss[idx_mn];
+          m_h_.lmnss_i(next_thread, mn) = m_decomposed_x.lmnss[idx_mn];
         }
       }
     }  // lasym
@@ -1473,78 +1498,80 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
 #pragma omp barrier
 #endif  // _OPENMP
 
-  // Now that the crossover data is in the HandoverStorge,
+  // Now that the crossover data is in the HandoverStorage,
   // put it locally into the correct satellite locations.
 
   if (hasOutside) {
     // put _o storage filled by thread_id-1 into nsMaxF1-1
+    const int this_thread = r.get_thread_id();
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
-      m_decomposed_x.rmncc[idx_mn] = m_h_.rmncc_o[r.get_thread_id()][mn];
-      m_decomposed_x.zmnsc[idx_mn] = m_h_.zmnsc_o[r.get_thread_id()][mn];
-      m_decomposed_x.lmnsc[idx_mn] = m_h_.lmnsc_o[r.get_thread_id()][mn];
+      m_decomposed_x.rmncc[idx_mn] = m_h_.rmncc_o(this_thread, mn);
+      m_decomposed_x.zmnsc[idx_mn] = m_h_.zmnsc_o(this_thread, mn);
+      m_decomposed_x.lmnsc[idx_mn] = m_h_.lmnsc_o(this_thread, mn);
     }
 
     if (s_.lthreed) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
-        m_decomposed_x.rmnss[idx_mn] = m_h_.rmnss_o[r.get_thread_id()][mn];
-        m_decomposed_x.zmncs[idx_mn] = m_h_.zmncs_o[r.get_thread_id()][mn];
-        m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_o[r.get_thread_id()][mn];
+        m_decomposed_x.rmnss[idx_mn] = m_h_.rmnss_o(this_thread, mn);
+        m_decomposed_x.zmncs[idx_mn] = m_h_.zmncs_o(this_thread, mn);
+        m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_o(this_thread, mn);
       }
     }  // lthreed
 
     if (s_.lasym) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
-        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_o[r.get_thread_id()][mn];
-        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_o[r.get_thread_id()][mn];
-        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_o[r.get_thread_id()][mn];
+        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_o(this_thread, mn);
+        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_o(this_thread, mn);
+        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_o(this_thread, mn);
       }
 
       if (s_.lthreed) {
         for (int mn = 0; mn < s_.mnsize; ++mn) {
           int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
-          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_o[r.get_thread_id()][mn];
-          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_o[r.get_thread_id()][mn];
-          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_o[r.get_thread_id()][mn];
+          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_o(this_thread, mn);
+          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_o(this_thread, mn);
+          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_o(this_thread, mn);
         }
       }
     }  // lasym
   }
 
   if (hasInside) {
-    // put _i storage filled by thread_id-1 into nsMinF1
+    // put _i storage filled by thread_id+1 into nsMinF1
+    const int this_thread = r.get_thread_id();
     for (int mn = 0; mn < s_.mnsize; ++mn) {
       int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
-      m_decomposed_x.rmncc[idx_mn] = m_h_.rmncc_i[r.get_thread_id()][mn];
-      m_decomposed_x.zmnsc[idx_mn] = m_h_.zmnsc_i[r.get_thread_id()][mn];
-      m_decomposed_x.lmnsc[idx_mn] = m_h_.lmnsc_i[r.get_thread_id()][mn];
+      m_decomposed_x.rmncc[idx_mn] = m_h_.rmncc_i(this_thread, mn);
+      m_decomposed_x.zmnsc[idx_mn] = m_h_.zmnsc_i(this_thread, mn);
+      m_decomposed_x.lmnsc[idx_mn] = m_h_.lmnsc_i(this_thread, mn);
     }
 
     if (s_.lthreed) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
-        m_decomposed_x.rmnss[idx_mn] = m_h_.rmnss_i[r.get_thread_id()][mn];
-        m_decomposed_x.zmncs[idx_mn] = m_h_.zmncs_i[r.get_thread_id()][mn];
-        m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_i[r.get_thread_id()][mn];
+        m_decomposed_x.rmnss[idx_mn] = m_h_.rmnss_i(this_thread, mn);
+        m_decomposed_x.zmncs[idx_mn] = m_h_.zmncs_i(this_thread, mn);
+        m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_i(this_thread, mn);
       }
     }  // lthreed
 
     if (s_.lasym) {
       for (int mn = 0; mn < s_.mnsize; ++mn) {
         int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
-        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_i[r.get_thread_id()][mn];
-        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_i[r.get_thread_id()][mn];
-        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_i[r.get_thread_id()][mn];
+        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_i(this_thread, mn);
+        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_i(this_thread, mn);
+        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_i(this_thread, mn);
       }
 
       if (s_.lthreed) {
         for (int mn = 0; mn < s_.mnsize; ++mn) {
           int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
-          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_i[r.get_thread_id()][mn];
-          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_i[r.get_thread_id()][mn];
-          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_i[r.get_thread_id()][mn];
+          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_i(this_thread, mn);
+          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_i(this_thread, mn);
+          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_i(this_thread, mn);
         }
       }
     }  // lasym

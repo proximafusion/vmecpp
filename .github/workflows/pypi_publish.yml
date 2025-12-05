@@ -20,7 +20,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6 # We use uv in cibuildwheel for faster builds
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23.0
         # All the settings for cibuildwheel are in pyproject.toml

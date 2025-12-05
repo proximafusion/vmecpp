@@ -136,9 +136,9 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 
 ### Python Code
 
-**Style**: Follows `ruff` linting and formatting with line length 88
-**Type Checking**: Must pass `pyright` type validation
-**Documentation**: Use `docformatter` for consistent docstring formatting
+- **Style**: Follows `ruff` linting and formatting with line length 88
+- **Type Checking**: Must pass `pyright` type validation
+- **Documentation**: Use `docformatter` for consistent docstring formatting
 
 ### Development Workflow
 

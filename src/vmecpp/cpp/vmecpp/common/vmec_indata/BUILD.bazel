@@ -24,6 +24,7 @@ cc_library(
         ":boundary_from_json",
         "//vmecpp/common/util:util",
         "//util/hdf5_io",
+        "//util/file_io",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/log:log",

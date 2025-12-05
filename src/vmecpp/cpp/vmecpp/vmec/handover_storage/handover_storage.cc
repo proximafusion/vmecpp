@@ -62,109 +62,114 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     num_threads_ = r.get_num_threads();
     num_basis_ = s_.num_basis;
 
-    rmncc_i.resize(num_threads_);
-    rmnss_i.resize(num_threads_);
-    zmnsc_i.resize(num_threads_);
-    zmncs_i.resize(num_threads_);
-    lmnsc_i.resize(num_threads_);
-    lmncs_i.resize(num_threads_);
+    // -----------
+    // Fourier coefficient handover storage
+    // -----------
+    // Layout: RowMatrixXd [num_threads, mnsize]
 
-    rmncc_o.resize(num_threads_);
-    rmnss_o.resize(num_threads_);
-    zmnsc_o.resize(num_threads_);
-    zmncs_o.resize(num_threads_);
-    lmnsc_o.resize(num_threads_);
-    lmncs_o.resize(num_threads_);
+    rmncc_i.resize(num_threads_, mnsize);
+    rmncc_i.setZero();
+    zmnsc_i.resize(num_threads_, mnsize);
+    zmnsc_i.setZero();
+    lmnsc_i.resize(num_threads_, mnsize);
+    lmnsc_i.setZero();
 
-    // Allocate asymmetric arrays if needed
-    if (s_.lasym) {
-      rmnsc_i.resize(num_threads_);
-      rmncs_i.resize(num_threads_);
-      zmncc_i.resize(num_threads_);
-      zmnss_i.resize(num_threads_);
-      lmncc_i.resize(num_threads_);
-      lmnss_i.resize(num_threads_);
+    rmncc_o.resize(num_threads_, mnsize);
+    rmncc_o.setZero();
+    zmnsc_o.resize(num_threads_, mnsize);
+    zmnsc_o.setZero();
+    lmnsc_o.resize(num_threads_, mnsize);
+    lmnsc_o.setZero();
 
-      rmnsc_o.resize(num_threads_);
-      rmncs_o.resize(num_threads_);
-      zmncc_o.resize(num_threads_);
-      zmnss_o.resize(num_threads_);
-      lmncc_o.resize(num_threads_);
-      lmnss_o.resize(num_threads_);
+    if (s_.lthreed) {
+      rmnss_i.resize(num_threads_, mnsize);
+      rmnss_i.setZero();
+      zmncs_i.resize(num_threads_, mnsize);
+      zmncs_i.setZero();
+      lmncs_i.resize(num_threads_, mnsize);
+      lmncs_i.setZero();
+
+      rmnss_o.resize(num_threads_, mnsize);
+      rmnss_o.setZero();
+      zmncs_o.resize(num_threads_, mnsize);
+      zmncs_o.setZero();
+      lmncs_o.resize(num_threads_, mnsize);
+      lmncs_o.setZero();
     }
 
-    // global accumulator for serial tri-diagonal solver
-    all_ar.resize(mnsize);
-    all_az.resize(mnsize);
-    all_dr.resize(mnsize);
-    all_dz.resize(mnsize);
-    all_br.resize(mnsize);
-    all_bz.resize(mnsize);
-    all_cr.resize(mnsize);
-    all_cz.resize(mnsize);
-    for (int mn = 0; mn < mnsize; ++mn) {
-      all_ar[mn].resize(ns);
-      all_az[mn].resize(ns);
-      all_dr[mn].resize(ns);
-      all_dz[mn].resize(ns);
-      all_br[mn].resize(ns);
-      all_bz[mn].resize(ns);
-      all_cr[mn].resize(num_basis_);
-      all_cz[mn].resize(num_basis_);
-      for (int k = 0; k < num_basis_; ++k) {
-        all_cr[mn][k].resize(ns);
-        all_cz[mn][k].resize(ns);
+    if (s_.lasym) {
+      rmnsc_i.resize(num_threads_, mnsize);
+      rmnsc_i.setZero();
+      zmncc_i.resize(num_threads_, mnsize);
+      zmncc_i.setZero();
+      lmncc_i.resize(num_threads_, mnsize);
+      lmncc_i.setZero();
+
+      rmnsc_o.resize(num_threads_, mnsize);
+      rmnsc_o.setZero();
+      zmncc_o.resize(num_threads_, mnsize);
+      zmncc_o.setZero();
+      lmncc_o.resize(num_threads_, mnsize);
+      lmncc_o.setZero();
+
+      if (s_.lthreed) {
+        rmncs_i.resize(num_threads_, mnsize);
+        rmncs_i.setZero();
+        zmnss_i.resize(num_threads_, mnsize);
+        zmnss_i.setZero();
+        lmnss_i.resize(num_threads_, mnsize);
+        lmnss_i.setZero();
+
+        rmncs_o.resize(num_threads_, mnsize);
+        rmncs_o.setZero();
+        zmnss_o.resize(num_threads_, mnsize);
+        zmnss_o.setZero();
+        lmnss_o.resize(num_threads_, mnsize);
+        lmnss_o.setZero();
       }
     }
 
-    // storage to hand over data between ranks
-    handover_aR.resize(mnsize);
-    handover_aZ.resize(mnsize);
-    handover_cR.resize(num_basis_);
-    handover_cZ.resize(num_basis_);
-    for (int k = 0; k < num_basis_; ++k) {
-      handover_cR[k].resize(mnsize);
-      handover_cZ[k].resize(mnsize);
+    // =========================================================================
+    // Tri-diagonal solver storage
+    // =========================================================================
+    // Matrix arrays: RowMatrixXd [mn, ns]
+    all_ar.resize(mnsize, ns);
+    all_ar.setZero();
+    all_az.resize(mnsize, ns);
+    all_az.setZero();
+    all_dr.resize(mnsize, ns);
+    all_dr.setZero();
+    all_dz.resize(mnsize, ns);
+    all_dz.setZero();
+    all_br.resize(mnsize, ns);
+    all_br.setZero();
+    all_bz.resize(mnsize, ns);
+    all_bz.setZero();
+
+    // RHS arrays: vector of RowMatrixXd [mn][num_basis, ns]
+    all_cr.resize(mnsize);
+    all_cz.resize(mnsize);
+    for (int mn = 0; mn < mnsize; ++mn) {
+      all_cr[mn].resize(num_basis_, ns);
+      all_cr[mn].setZero();
+      all_cz[mn].resize(num_basis_, ns);
+      all_cz[mn].setZero();
     }
+
+    // =========================================================================
+    // Parallel tri-diagonal solver handover storage
+    // =========================================================================
+    // handover_cR/cZ: RowMatrixXd [num_basis, mnsize]
+    handover_cR.resize(num_basis_, mnsize);
+    handover_cR.setZero();
+    handover_cZ.resize(num_basis_, mnsize);
+    handover_cZ.setZero();
+
+    // handover_aR/aZ: flat [mnsize]
+    handover_aR.assign(mnsize, 0.0);
+    handover_aZ.assign(mnsize, 0.0);
   }
 
-  if (r.nsMinF1 > 0) {
-    // has inside
-    rmncc_i[r.get_thread_id()].resize(s_.mnsize);
-    rmnss_i[r.get_thread_id()].resize(s_.mnsize);
-    zmnsc_i[r.get_thread_id()].resize(s_.mnsize);
-    zmncs_i[r.get_thread_id()].resize(s_.mnsize);
-    lmnsc_i[r.get_thread_id()].resize(s_.mnsize);
-    lmncs_i[r.get_thread_id()].resize(s_.mnsize);
-
-    if (s_.lasym) {
-      rmnsc_i[r.get_thread_id()].resize(s_.mnsize);
-      rmncs_i[r.get_thread_id()].resize(s_.mnsize);
-      zmncc_i[r.get_thread_id()].resize(s_.mnsize);
-      zmnss_i[r.get_thread_id()].resize(s_.mnsize);
-      lmncc_i[r.get_thread_id()].resize(s_.mnsize);
-      lmnss_i[r.get_thread_id()].resize(s_.mnsize);
-    }
-  }
-
-  if (r.nsMaxF1 < ns) {
-    // has outside
-    rmncc_o[r.get_thread_id()].resize(s_.mnsize);
-    rmnss_o[r.get_thread_id()].resize(s_.mnsize);
-    zmnsc_o[r.get_thread_id()].resize(s_.mnsize);
-    zmncs_o[r.get_thread_id()].resize(s_.mnsize);
-    lmnsc_o[r.get_thread_id()].resize(s_.mnsize);
-    lmncs_o[r.get_thread_id()].resize(s_.mnsize);
-
-    if (s_.lasym) {
-      rmnsc_o[r.get_thread_id()].resize(s_.mnsize);
-      rmncs_o[r.get_thread_id()].resize(s_.mnsize);
-      zmncc_o[r.get_thread_id()].resize(s_.mnsize);
-      zmnss_o[r.get_thread_id()].resize(s_.mnsize);
-      lmncc_o[r.get_thread_id()].resize(s_.mnsize);
-      lmnss_o[r.get_thread_id()].resize(s_.mnsize);
-    }
-  }
 }  // allocate
 
 void HandoverStorage::ResetSpectralWidthAccumulators() {

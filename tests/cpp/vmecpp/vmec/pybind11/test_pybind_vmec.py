@@ -61,7 +61,7 @@ def is_close_ra(actual, expected, tolerance, context=""):
 
 def test_indata_readwrite():
     """Test that we can read in an VmecINDATA object and then modify its contents."""
-    indata = vmec.VmecINDATAPyWrapper.from_file(TEST_DATA_DIR / "solovev.json")
+    indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / "solovev.json")
     assert indata.ntor == 0
     assert indata.mpol == 6
     assert len(indata.ns_array) == 3
@@ -103,7 +103,7 @@ def test_indata_readwrite():
 def test_output_quantities():
     case_name = "cma"
 
-    indata = vmec.VmecINDATAPyWrapper.from_file(TEST_DATA_DIR / f"{case_name}.json")
+    indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / f"{case_name}.json")
     output_quantities = vmec.run(indata)
 
     # jxbout
@@ -504,7 +504,7 @@ def test_vmecpp_run_from_inmemory_mgrid():
     coils_fname = TEST_DATA_DIR / "coils.cth_like"
     makegrid_params_fname = TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
 
-    indata = vmec.VmecINDATAPyWrapper.from_file(indata_fname)
+    indata = vmec.VmecINDATA.from_file(indata_fname)
     indata.niter_array = np.array([1])  # to speed up the test
 
     mgrid_params = vmec.MakegridParameters.from_file(makegrid_params_fname)

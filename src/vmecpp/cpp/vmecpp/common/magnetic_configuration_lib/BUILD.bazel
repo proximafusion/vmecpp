@@ -16,6 +16,7 @@ cc_library(
         "@abseil-cpp//absl/strings:strings",
         "@abseil-cpp//absl/status:status",
         "@abseil-cpp//absl/status:statusor",
+        "@eigen",
     ],
 )
 

@@ -60,8 +60,8 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
     raxis_c[n] = id.raxis_c[n];
     zaxis_s[n] = id.zaxis_s[n];
     if (s_.lasym) {
-      raxis_s[n] = id.raxis_s[n];
-      zaxis_c[n] = id.zaxis_c[n];
+      raxis_s[n] = (*id.raxis_s)[n];
+      zaxis_c[n] = (*id.zaxis_c)[n];
     }
   }
 
@@ -80,13 +80,8 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
     int m = 1;
     int n = 0;
 
-    // Fortran layout along n in rbc, zbs, ...
-    int nIdx = s_.ntor + n;
-
-    // m slow, n fast
-    int idx = m * (2 * s_.ntor + 1) + nIdx;
-
-    delta = atan2(id.rbs[idx] - id.zbc[idx], id.rbc[idx] + id.zbs[idx]);
+    delta = atan2((*id.rbs)(m, s_.ntor + n) - (*id.zbc)(m, s_.ntor + n),
+                  id.rbc(m, s_.ntor + n) + id.zbs(m, s_.ntor + n));
 
     if (verbose && delta != 0.0) {
       std::cout << "need to shift theta by delta = " << delta << "\n";
@@ -128,14 +123,14 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
       double rbc;
       double zbs;
       if (!s_.lasym || delta == 0.0) {
-        rbc = id.rbc[m * (2 * s_.ntor + 1) + source_n];
-        zbs = id.zbs[m * (2 * s_.ntor + 1) + source_n];
+        rbc = id.rbc(m, source_n);
+        zbs = id.zbs(m, source_n);
       } else {
         // lasym && delta != 0.0
-        rbc = id.rbc[m * (2 * s_.ntor + 1) + source_n] * cosMDelta +
-              id.rbs[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
-        zbs = id.zbs[m * (2 * s_.ntor + 1) + source_n] * cosMDelta -
-              id.zbc[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
+        rbc = id.rbc(m, source_n) * cosMDelta +
+              (*id.rbs)(m, source_n) * sinMDelta;
+        zbs = id.zbs(m, source_n) * cosMDelta -
+              (*id.zbc)(m, source_n) * sinMDelta;
       }
 
       const int idx_mn = m * (s_.ntor + 1) + target_n;
@@ -154,13 +149,13 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
         double rbs;
         double zbc;
         if (delta == 0.0) {
-          rbs = id.rbs[m * (2 * s_.ntor + 1) + source_n];
-          zbc = id.zbc[m * (2 * s_.ntor + 1) + source_n];
+          rbs = (*id.rbs)(m, source_n);
+          zbc = (*id.zbc)(m, source_n);
         } else {
-          rbs = id.rbs[m * (2 * s_.ntor + 1) + source_n] * cosMDelta -
-                id.rbc[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
-          zbc = id.zbc[m * (2 * s_.ntor + 1) + source_n] * cosMDelta +
-                id.zbs[m * (2 * s_.ntor + 1) + source_n] * sinMDelta;
+          rbs = (*id.rbs)(m, source_n) * cosMDelta -
+                id.rbc(m, source_n) * sinMDelta;
+          zbc = (*id.zbc)(m, source_n) * cosMDelta +
+                id.zbs(m, source_n) * sinMDelta;
         }
 
         if (m > 0) {

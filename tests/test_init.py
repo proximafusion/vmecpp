@@ -497,19 +497,17 @@ def test_vmec_input_validation():
     # Why do we not compare `json_dict = json.loads(test_file.read_text())` ?
     # The test_file json may exclude fields that have default values,
     # while the parsed versions should have all fields populated.
-    pywrapper_dict_from_json = json.loads(
-        vmec_input._to_cpp_vmecindatapywrapper().to_json()
-    )
+    indata_dict_from_json = json.loads(vmec_input._to_cpp_vmecindata().to_json())
     # TODO(jurasic): These quantities are not yet present in VmecInput, since there's only one option atm.
-    del pywrapper_dict_from_json["free_boundary_method"]
-    del pywrapper_dict_from_json["iteration_style"]
+    del indata_dict_from_json["free_boundary_method"]
+    del indata_dict_from_json["iteration_style"]
     vmec_input_dict_from_json = json.loads(vmec_input.model_dump_json())
 
     if not vmec_input.lasym:
         for lasym_field in ["rbs", "zbc", "raxis_s", "zaxis_c"]:
             del vmec_input_dict_from_json[lasym_field]
 
-    assert pywrapper_dict_from_json == vmec_input_dict_from_json
+    assert indata_dict_from_json == vmec_input_dict_from_json
 
 
 def test_vmec_output_serialization(cma_output: vmecpp.VmecOutput):
@@ -582,6 +580,28 @@ def test_aux_arrays_from_cpp_wout():
     np.testing.assert_almost_equal(wout.am_aux_f[:2], np.array([2.0, 3.0]))
 
 
+def test_populate_raw_profile_knots():
+    vmec_input = vmecpp.VmecInput.default()
+    vmec_input.ns_array = np.array([5, 9])
+
+    def f(s):
+        return s**2
+
+    vmecpp.populate_raw_profile(vmec_input, "pressure", f)
+
+    s_values = set()
+    for ns in vmec_input.ns_array:
+        delta = 1.0 / float(ns - 1)
+        s_values.update(i * delta for i in range(ns))
+        s_values.update((i - 0.5) * delta for i in range(ns))
+    expected_knots = np.array(sorted(s_values), dtype=float)
+
+    n = len(expected_knots)
+    np.testing.assert_allclose(vmec_input.am_aux_s[:n], expected_knots)
+    np.testing.assert_allclose(vmec_input.am_aux_f[:n], expected_knots**2)
+    assert vmec_input.pmass_type == "line_segment"
+
+
 def test_default_preset():
     # Default construction doesn't throw an exception
     default_preset = vmecpp.VmecInput.default()
@@ -594,9 +614,7 @@ def test_default_preset():
 
 def test_python_defaults_match_cpp_defaults():
     python_defaults = vmecpp.VmecInput()
-    cpp_defaults = vmecpp.VmecInput._from_cpp_vmecindatapywrapper(
-        _vmecpp.VmecINDATAPyWrapper()
-    )
+    cpp_defaults = vmecpp.VmecInput._from_cpp_vmecindata(_vmecpp.VmecINDATA())
 
     for field in vmecpp.VmecInput.model_fields:
         py_val = getattr(python_defaults, field)

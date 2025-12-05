@@ -6,18 +6,29 @@
 
 #include <algorithm>
 #include <cassert>
+#include <stdexcept>
 #include <string>
-#include <vector>
 
 #include "H5Cpp.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "nlohmann/json.hpp"
+#include "util/file_io/file_io.h"
 #include "util/hdf5_io/hdf5_io.h"
 #include "util/json_io/json_io.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/boundary_from_json.h"
+
+namespace {
+[[noreturn]] void ErrorToException(const absl::Status& status,
+                                   const std::string& context) {
+  const std::string msg =
+      "There was an error " + context + ":\n" + std::string(status.message());
+  throw std::runtime_error(msg);
+}
+}  // namespace
 
 namespace vmecpp {
 
@@ -100,9 +111,12 @@ VmecINDATA::VmecINDATA() {
   nzeta = 0;
 
   // multi-grid steps
-  ns_array = {kNsDefault};
-  ftol_array = {kFTolDefault};
-  niter_array = {kNIterDefault};
+  ns_array.resize(1);
+  ns_array[0] = kNsDefault;
+  ftol_array.resize(1);
+  ftol_array[0] = kFTolDefault;
+  niter_array.resize(1);
+  niter_array[0] = kNIterDefault;
 
   // global physics parameters
   phiedge = 1.0;
@@ -140,7 +154,8 @@ VmecINDATA::VmecINDATA() {
 
   // tweaking parameters
   nstep = 10;
-  aphi = {1.0};
+  aphi.resize(1);
+  aphi[0] = 1.0;
   delt = 1.0;
   tcon0 = 1.0;
   lforbal = false;
@@ -148,22 +163,78 @@ VmecINDATA::VmecINDATA() {
   return_outputs_even_if_not_converged = false;
 
   // zero-initialized magnetic axis
-  raxis_c.resize(ntor + 1);
-  zaxis_s.resize(ntor + 1);
+  raxis_c.setZero(ntor + 1);
+  zaxis_s.setZero(ntor + 1);
   if (lasym) {
-    raxis_s.resize(ntor + 1);
-    zaxis_c.resize(ntor + 1);
+    raxis_s.emplace().setZero(ntor + 1);
+    zaxis_c.emplace().setZero(ntor + 1);
   }
 
   // zero-initialized boundary shape
-  const int bdy_size = mpol * (2 * ntor + 1);
-  rbc.resize(bdy_size);
-  zbs.resize(bdy_size);
+  rbc.setZero(mpol, 2 * ntor + 1);
+  zbs.setZero(mpol, 2 * ntor + 1);
   if (lasym) {
-    rbs.resize(bdy_size);
-    zbc.resize(bdy_size);
+    rbs.emplace().setZero(mpol, 2 * ntor + 1);
+    zbc.emplace().setZero(mpol, 2 * ntor + 1);
   }
-}
+}  // VmecINDATA()
+
+void VmecINDATA::SetMpolNtor(int new_mpol, int new_ntor) {
+  using Eigen::VectorXd;
+
+  const bool both_same_as_before = (new_mpol == mpol && new_ntor == ntor);
+  if (both_same_as_before) {
+    return;  // nothing to do
+  }
+
+  VectorXd old_axis_fc = raxis_c;
+  const auto shortest_range = Eigen::seq(0, std::min(ntor, new_ntor));
+
+  raxis_c = VectorXd::Zero(new_ntor + 1);
+  // Copy back pre-existing elements
+  raxis_c(shortest_range) = old_axis_fc(shortest_range);
+
+  old_axis_fc = zaxis_s;
+  zaxis_s = VectorXd::Zero(new_ntor + 1);
+  zaxis_s(shortest_range) = old_axis_fc(shortest_range);
+
+  if (lasym) {
+    old_axis_fc = raxis_s.value();
+    raxis_s = VectorXd::Zero(new_ntor + 1);
+    (*raxis_s)(shortest_range) = old_axis_fc(shortest_range);
+
+    old_axis_fc = zaxis_c.value();
+    zaxis_c = VectorXd::Zero(new_ntor + 1);
+    (*zaxis_c)(shortest_range) = old_axis_fc(shortest_range);
+  }
+
+  auto resized_2d_coeff = [this, new_mpol, new_ntor](const auto& coeff) {
+    const int new_nmax = (2 * new_ntor) + 1;
+    RowMatrixXd resized_coeff = RowMatrixXd::Zero(new_mpol, new_nmax);
+
+    // copy the original values at the appropriate indices
+    const int smaller_ntor = std::min(ntor, new_ntor);
+    const int smaller_mpol = std::min(mpol, new_mpol);
+    for (int m = 0; m < smaller_mpol; ++m) {
+      for (int n = -smaller_ntor; n <= smaller_ntor; ++n) {
+        resized_coeff(m, n + new_ntor) = coeff(m, n + ntor);
+      }
+    }
+
+    return resized_coeff;
+  };  // resized_2d_coeff
+
+  rbc = resized_2d_coeff(rbc);
+  zbs = resized_2d_coeff(zbs);
+
+  if (lasym) {
+    rbs = resized_2d_coeff(rbs.value());
+    zbc = resized_2d_coeff(zbc.value());
+  }
+
+  mpol = new_mpol;
+  ntor = new_ntor;
+}  // SetMpolNtor
 
 // Write object to the specified HDF5 file, under key "indata".
 absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
@@ -220,29 +291,22 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(aphi, "/indata/aphi", file);
   WriteH5Dataset(raxis_c, "/indata/raxis_c", file);
   WriteH5Dataset(zaxis_s, "/indata/zaxis_s", file);
-  WriteH5Dataset(raxis_s, "/indata/raxis_s", file);
-  WriteH5Dataset(zaxis_c, "/indata/zaxis_c", file);
+  if (lasym) {
+    WriteH5Dataset(raxis_s->value(), "/indata/raxis_s", file);
+    WriteH5Dataset(zaxis_c->value(), "/indata/zaxis_c", file);
+  }
 
-  // 2D matrices (represented as 1D std::vectors)
+  // 2D matrices
   // All have dimensions (mpol, 2*ntor+1)
-  const auto rbc_view =
-      Eigen::Map<const RowMatrixXd>(rbc.data(), mpol, 2 * ntor + 1);
-  WriteH5Dataset(rbc_view, "/indata/rbc", file);
-  const auto zbs_view =
-      Eigen::Map<const RowMatrixXd>(zbs.data(), mpol, 2 * ntor + 1);
-  WriteH5Dataset(zbs_view, "/indata/zbs", file);
-
-  const int mpol_asym = lasym ? mpol : 0;
-  const int ntor2p1_asym = lasym ? 2 * ntor + 1 : 0;
-  const auto rbs_view =
-      Eigen::Map<const RowMatrixXd>(rbs.data(), mpol_asym, ntor2p1_asym);
-  WriteH5Dataset(rbs_view, "/indata/rbs", file);
-  const auto zbc_view =
-      Eigen::Map<const RowMatrixXd>(zbc.data(), mpol_asym, ntor2p1_asym);
-  WriteH5Dataset(zbc_view, "/indata/zbc", file);
+  WriteH5Dataset(rbc, "/indata/rbc", file);
+  WriteH5Dataset(zbs, "/indata/zbs", file);
+  if (lasym) {
+    WriteH5Dataset(rbs->value(), "/indata/rbs", file);
+    WriteH5Dataset(zbc->value(), "/indata/zbc", file);
+  }
 
   return absl::OkStatus();
-}
+}  // WriteTo
 
 // Load contents of `from_file` into the specified instance.
 // The file is expected to have the same schema as the one produced by
@@ -328,44 +392,70 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.aphi, "/indata/aphi", from_file);
   ReadH5Dataset(m_indata.raxis_c, "/indata/raxis_c", from_file);
   ReadH5Dataset(m_indata.zaxis_s, "/indata/zaxis_s", from_file);
-  ReadH5Dataset(m_indata.raxis_s, "/indata/raxis_s", from_file);
-  ReadH5Dataset(m_indata.zaxis_c, "/indata/zaxis_c", from_file);
+  if (m_indata.lasym) {
+    ReadH5Dataset(m_indata.raxis_s.emplace(), "/indata/raxis_s", from_file);
+    ReadH5Dataset(m_indata.zaxis_c.emplace(), "/indata/zaxis_c", from_file);
+  }
 
   // 2D matrices (represented as 1D std::vectors)
   // All have dimensions (mpol, 2*ntor+1)
   // NOTE: we read into a RowMatrixXd and then copy into std::vectors for
   // simplicity. In the future we expect VmecINDATA's data members will switch
   // to Eigen types and the extra copy will evaporate.
-  RowMatrixXd tmp_matrix;
-  const int linear_size = m_indata.mpol * (2 * m_indata.ntor + 1);
+  const int num_cols = 2 * m_indata.ntor + 1;
 
-  ReadH5Dataset(tmp_matrix, "/indata/rbc", from_file);
-  assert(tmp_matrix.size() == linear_size);
-  m_indata.rbc.resize(linear_size);
-  std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
-            m_indata.rbc.begin());
+  ReadH5Dataset(m_indata.rbc, "/indata/rbc", from_file);
+  if (m_indata.rbc.rows() != m_indata.mpol) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("expected rbc to have ", m_indata.mpol, " rows, but had ",
+                     m_indata.rbc.rows()));
+  }
+  if (m_indata.rbc.cols() != 2 * m_indata.ntor + 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("expected rbc to have ", num_cols, " columns, but had ",
+                     m_indata.rbc.cols()));
+  }
 
-  ReadH5Dataset(tmp_matrix, "/indata/zbs", from_file);
-  assert(tmp_matrix.size() == linear_size);
-  m_indata.zbs.resize(linear_size);
-  std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
-            m_indata.zbs.begin());
+  ReadH5Dataset(m_indata.zbs, "/indata/zbs", from_file);
+  if (m_indata.zbs.rows() != m_indata.mpol) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("expected zbs to have ", m_indata.mpol, " rows, but had ",
+                     m_indata.zbs.rows()));
+  }
+  if (m_indata.zbs.cols() != 2 * m_indata.ntor + 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("expected zbs to have ", num_cols, " columns, but had ",
+                     m_indata.zbs.cols()));
+  }
 
   if (m_indata.lasym) {
-    ReadH5Dataset(tmp_matrix, "/indata/rbs", from_file);
-    assert(tmp_matrix.size() == linear_size);
-    m_indata.rbs.resize(linear_size);
-    std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
-              m_indata.rbs.begin());
-    ReadH5Dataset(tmp_matrix, "/indata/zbc", from_file);
-    assert(tmp_matrix.size() == linear_size);
-    m_indata.zbc.resize(linear_size);
-    std::copy(tmp_matrix.data(), tmp_matrix.data() + tmp_matrix.size(),
-              m_indata.zbc.begin());
+    ReadH5Dataset(m_indata.rbs.emplace(), "/indata/rbs", from_file);
+    if (m_indata.rbs->rows() != m_indata.mpol) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("expected rbs to have ", m_indata.mpol,
+                       " rows, but had ", m_indata.rbs->rows()));
+    }
+    if (m_indata.rbs->cols() != 2 * m_indata.ntor + 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("expected rbs to have ", num_cols, " columns, but had ",
+                       m_indata.rbs->cols()));
+    }
+
+    ReadH5Dataset(m_indata.zbc.emplace(), "/indata/zbc", from_file);
+    if (m_indata.zbc->rows() != m_indata.mpol) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("expected zbc to have ", m_indata.mpol,
+                       " rows, but had ", m_indata.zbc->rows()));
+    }
+    if (m_indata.zbc->cols() != 2 * m_indata.ntor + 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("expected zbc to have ", num_cols, " columns, but had ",
+                       m_indata.zbc->cols()));
+    }
   }
 
   return absl::OkStatus();
-}
+}  // LoadInto
 
 absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     const std::string& indata_json) {
@@ -769,8 +859,7 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.raxis_c = maybe_raxis_c->value();
   }
 
-  if (vmec_indata.raxis_c.size() !=
-      static_cast<std::size_t>(vmec_indata.ntor) + 1) {
+  if (vmec_indata.raxis_c.size() != vmec_indata.ntor + 1) {
     return absl::InvalidArgumentError(
         absl::StrFormat("length of raxis_c (%ld) does not match ntor+1 (%d)\n",
                         vmec_indata.raxis_c.size(), vmec_indata.ntor + 1));
@@ -784,8 +873,7 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.zaxis_s = maybe_zaxis_s->value();
   }
 
-  if (vmec_indata.zaxis_s.size() !=
-      static_cast<std::size_t>(vmec_indata.ntor) + 1) {
+  if (vmec_indata.zaxis_s.size() != vmec_indata.ntor + 1) {
     return absl::InvalidArgumentError(
         absl::StrFormat("length of zaxis_s (%ld) does not match ntor+1 (%d)\n",
                         vmec_indata.zaxis_s.size(), vmec_indata.ntor + 1));
@@ -800,11 +888,10 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
       vmec_indata.raxis_s = maybe_raxis_s->value();
     }
 
-    if (vmec_indata.raxis_s.size() !=
-        static_cast<std::size_t>(vmec_indata.ntor) + 1) {
+    if (vmec_indata.raxis_s->size() != vmec_indata.ntor + 1) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "length of raxis_s (%ld) does not match ntor+1 (%d)\n",
-          vmec_indata.raxis_s.size(), vmec_indata.ntor + 1));
+          vmec_indata.raxis_s->size(), vmec_indata.ntor + 1));
     }
 
     auto maybe_zaxis_c = JsonReadVectorDouble(j, "zaxis_c");
@@ -815,11 +902,10 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
       vmec_indata.zaxis_c = maybe_zaxis_c->value();
     }
 
-    if (vmec_indata.zaxis_c.size() !=
-        static_cast<std::size_t>(vmec_indata.ntor) + 1) {
+    if (vmec_indata.zaxis_c->size() != vmec_indata.ntor + 1) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "length of zaxis_c (%ld) does not match ntor+1 (%d)\n",
-          vmec_indata.zaxis_c.size(), vmec_indata.ntor + 1));
+          vmec_indata.zaxis_c->size(), vmec_indata.ntor + 1));
     }
   }
 
@@ -830,7 +916,7 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     return maybe_rbc.status();
   }
   if (maybe_rbc->has_value()) {
-    vmec_indata.rbc.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
+    vmec_indata.rbc.setZero(vmec_indata.mpol, 2 * vmec_indata.ntor + 1);
     std::vector<BoundaryCoefficient> entries = maybe_rbc->value();
     for (const BoundaryCoefficient& entry : entries) {
       if (entry.m > vmec_indata.mpol - 1) {
@@ -851,10 +937,7 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
       // Fortran order along n: -ntor, -ntor+1, ..., -1, 0, 1, ..., ntor-1, ntor
       const int index_along_n = vmec_indata.ntor + entry.n;
 
-      const int flat_index =
-          entry.m * (2 * vmec_indata.ntor + 1) + index_along_n;
-
-      vmec_indata.rbc[flat_index] = entry.value;
+      vmec_indata.rbc(entry.m, index_along_n) = entry.value;
     }
   }
 
@@ -863,7 +946,7 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     return maybe_zbs.status();
   }
   if (maybe_zbs->has_value()) {
-    vmec_indata.zbs.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
+    vmec_indata.zbs.setZero(vmec_indata.mpol, 2 * vmec_indata.ntor + 1);
     std::vector<BoundaryCoefficient> entries = maybe_zbs->value();
     for (const BoundaryCoefficient& entry : entries) {
       if (entry.m > vmec_indata.mpol - 1) {
@@ -884,18 +967,17 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
       // Fortran order along n: -ntor, -ntor+1, ..., -1, 0, 1, ..., ntor-1, ntor
       const int index_along_n = vmec_indata.ntor + entry.n;
 
-      const int flat_index =
-          entry.m * (2 * vmec_indata.ntor + 1) + index_along_n;
-
-      vmec_indata.zbs[flat_index] = entry.value;
+      vmec_indata.zbs(entry.m, index_along_n) = entry.value;
     }
   }
 
   if (vmec_indata.lasym) {
     // Always resize asymmetric arrays when lasym=true, regardless of JSON
     // content
-    vmec_indata.rbs.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
-    vmec_indata.zbc.resize(vmec_indata.mpol * (2 * vmec_indata.ntor + 1), 0.0);
+    vmec_indata.rbs.emplace().setZero(vmec_indata.mpol,
+                                      2 * vmec_indata.ntor + 1);
+    vmec_indata.zbc.emplace().setZero(vmec_indata.mpol,
+                                      2 * vmec_indata.ntor + 1);
 
     auto maybe_rbs = BoundaryCoefficient::FromJson(j, "rbs");
     if (!maybe_rbs.ok()) {
@@ -923,10 +1005,7 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
         // ntor
         const int index_along_n = vmec_indata.ntor + entry.n;
 
-        const int flat_index =
-            entry.m * (2 * vmec_indata.ntor + 1) + index_along_n;
-
-        vmec_indata.rbs[flat_index] = entry.value;
+        (*vmec_indata.rbs)(entry.m, index_along_n) = entry.value;
       }
     }
 
@@ -956,10 +1035,7 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
         // ntor
         const int index_along_n = vmec_indata.ntor + entry.n;
 
-        const int flat_index =
-            entry.m * (2 * vmec_indata.ntor + 1) + index_along_n;
-
-        vmec_indata.zbc[flat_index] = entry.value;
+        (*vmec_indata.zbc)(entry.m, index_along_n) = entry.value;
       }
     }
   }
@@ -972,7 +1048,28 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
 
   return vmec_indata;
-}
+}  // FromJson
+
+VmecINDATA VmecINDATA::FromFile(
+    const std::filesystem::path& indata_json_file_path) {
+  absl::StatusOr<std::string> indata_json =
+      file_io::ReadFile(indata_json_file_path);
+
+  if (!indata_json.ok()) {
+    ErrorToException(
+        indata_json.status(),
+        "reading JSON file '" + indata_json_file_path.string() + "'");
+  }
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  if (!vmec_indata.ok()) {
+    ErrorToException(vmec_indata.status(),
+                     "creating VmecINDATA object from JSON (input file was '" +
+                         indata_json_file_path.string() + "')");
+  }
+
+  return vmec_indata.value();
+}  // FromFile
 
 absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   nlohmann::json output;
@@ -1038,8 +1135,8 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["raxis_c"] = raxis_c;
   output["zaxis_s"] = zaxis_s;
   if (lasym) {
-    output["raxis_s"] = raxis_s;
-    output["zaxis_c"] = zaxis_c;
+    output["raxis_s"] = raxis_s->value();
+    output["zaxis_c"] = zaxis_c->value();
   }
 
   // (Initial Guess for) Boundary Geometry
@@ -1051,12 +1148,10 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   }
   nlohmann::json tmp_obj;
   for (int m = 0; m < mpol; ++m) {
-    for (int n = 0; n < 2 * ntor + 1; ++n) {
-      const int idx_mn = m * (2 * ntor + 1) + n;
-
+    for (int n = -ntor; n <= ntor; ++n) {
       tmp_obj["m"] = m;
-      tmp_obj["n"] = n - ntor;
-      tmp_obj["value"] = rbc[idx_mn];
+      tmp_obj["n"] = n;
+      tmp_obj["value"] = rbc(m, ntor + n);
 
       auto push_nonzero = [&output, &tmp_obj](const std::string& key,
                                               double value) {
@@ -1064,20 +1159,28 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
         if (tmp_obj["value"] != 0.0) {
           output[key].push_back(tmp_obj);
         }
-      };
+      };  // push_nonzero
 
-      push_nonzero("rbc", rbc[idx_mn]);
-      push_nonzero("zbs", zbs[idx_mn]);
+      push_nonzero("rbc", rbc(m, ntor + n));
+      push_nonzero("zbs", zbs(m, ntor + n));
       if (lasym) {
         // we also have non-stellarator-symmetric components
-        push_nonzero("rbs", rbs[idx_mn]);
-        push_nonzero("zbc", zbc[idx_mn]);
+        push_nonzero("rbs", (*rbs)(m, ntor + n));
+        push_nonzero("zbc", (*zbc)(m, ntor + n));
       }
     }
   }
 
   return output.dump();
-}
+}  // ToJson
+
+std::string VmecINDATA::ToJsonOrException() const {
+  const absl::StatusOr<std::string> json = ToJson();
+  if (!json.ok()) {
+    ErrorToException(json.status(), "converting VmecINDATA to JSON");
+  }
+  return *json;
+}  // ToJsonOrException
 
 absl::Status IsConsistent(const VmecINDATA& vmec_indata,
                           bool enable_info_messages) {
@@ -1124,7 +1227,8 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   if (vmec_indata.ns_array.size() >
       0) {  // make sure that at least one multigrid step is specified
     int largestNumSurfacesSoFar = -1;
-    for (size_t idx = 0; idx < vmec_indata.ns_array.size(); ++idx) {
+    for (Eigen::VectorXi::Index idx = 0; idx < vmec_indata.ns_array.size();
+         ++idx) {
       int ns = vmec_indata.ns_array[idx];
       if (ns >= NS_MIN) {  // ensure minimum number of surfaces
         if (ns < largestNumSurfacesSoFar) {  // make sure that ns is
@@ -1152,7 +1256,8 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   // ftol_array
-  for (size_t idx = 0; idx < vmec_indata.ns_array.size(); ++idx) {
+  for (Eigen::VectorXi::Index idx = 0; idx < vmec_indata.ns_array.size();
+       ++idx) {
     double ftol = vmec_indata.ftol_array[idx];
     if (ftol < 0.0) {
       return absl::InvalidArgumentError(
@@ -1163,7 +1268,8 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   // niter_array
-  for (size_t idx = 0; idx < vmec_indata.ns_array.size(); ++idx) {
+  for (Eigen::VectorXi::Index idx = 0; idx < vmec_indata.ns_array.size();
+       ++idx) {
     int niter = vmec_indata.niter_array[idx];
     if (niter <= 0) {
       return absl::InvalidArgumentError(
@@ -1334,80 +1440,117 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   /* --------------------------------- */
 
   // only check sizes are ok; will see about the contents when physics start...
-  const std::size_t expected_axis_size_symm = vmec_indata.ntor + 1;
+  const int expected_axis_size = vmec_indata.ntor + 1;
   // raxis_c
-  if (vmec_indata.raxis_c.size() != expected_axis_size_symm) {
+  if (vmec_indata.raxis_c.size() != expected_axis_size) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "input variable 'raxis_c' has wrong size: should be %i, but it is %i.",
-        expected_axis_size_symm, vmec_indata.raxis_c.size()));
+        expected_axis_size, vmec_indata.raxis_c.size()));
   }
   // zaxis_s
-  if (vmec_indata.zaxis_s.size() != expected_axis_size_symm) {
+  if (vmec_indata.zaxis_s.size() != expected_axis_size) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "input variable 'zaxis_s' has wrong size: should be %i, but it is %i.",
-        expected_axis_size_symm, vmec_indata.zaxis_s.size()));
+        expected_axis_size, vmec_indata.zaxis_s.size()));
   }
 
-  const std::size_t expected_axis_size_asym =
-      vmec_indata.lasym ? vmec_indata.ntor + 1 : 0;
-  // raxis_s
-  if (vmec_indata.raxis_s.size() != expected_axis_size_asym) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'raxis_s' has wrong size: should be %i, but it is %i.",
-        expected_axis_size_asym, vmec_indata.raxis_s.size()));
-  }
-  // zaxis_c
-  if (vmec_indata.zaxis_c.size() != expected_axis_size_asym) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'zaxis_c' has wrong size: should be %i, but it is %i.",
-        expected_axis_size_asym, vmec_indata.zaxis_c.size()));
+  if (vmec_indata.lasym) {
+    // raxis_s
+    if (vmec_indata.raxis_s->size() != expected_axis_size) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("input variable 'raxis_s' has wrong size: should be "
+                          "%i, but it is %i.",
+                          expected_axis_size, vmec_indata.raxis_s->size()));
+    }
+    // zaxis_c
+    if (vmec_indata.zaxis_c->size() != expected_axis_size) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("input variable 'zaxis_c' has wrong size: should be "
+                          "%i, but it is %i.",
+                          expected_axis_size, vmec_indata.zaxis_c->size()));
+    }
+  } else {
+    // when lasym == false, these arrays should not be set
+    if (vmec_indata.raxis_s.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'raxis_s' should not be set when 'lasym' is false.");
+    }
+    if (vmec_indata.zaxis_c.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'zaxis_c' should not be set when 'lasym' is false.");
+    }
   }
 
   /* --------------------------------- */
 
   // only check sizes are ok; will see when the physics starts to run...
 
-  const std::size_t expected_bdy_size_symm =
-      vmec_indata.mpol * (2 * vmec_indata.ntor + 1);
   // rbc
-  if (vmec_indata.rbc.size() != expected_bdy_size_symm) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'rbc' has wrong size: should be %i, but it is %i.",
-        expected_bdy_size_symm, vmec_indata.rbc.size()));
+  if (vmec_indata.rbc.rows() != vmec_indata.mpol) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("input variable 'rbc' has wrong number of rows: should "
+                        "be %i, but it is %i.",
+                        vmec_indata.mpol, vmec_indata.rbc.rows()));
+  }
+  if (vmec_indata.rbc.cols() != 2 * vmec_indata.ntor + 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("input variable 'rbc' has wrong number of columns: "
+                        "should be %i, but it is %i.",
+                        2 * vmec_indata.ntor + 1, vmec_indata.rbc.cols()));
   }
   // zbs
-  if (vmec_indata.zbs.size() != expected_bdy_size_symm) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'zbs' has wrong size: should be %i, but it is %i.",
-        expected_bdy_size_symm, vmec_indata.zbs.size()));
+  if (vmec_indata.zbs.rows() != vmec_indata.mpol) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("input variable 'zbs' has wrong number of rows: should "
+                        "be %i, but it is %i.",
+                        vmec_indata.mpol, vmec_indata.zbs.rows()));
+  }
+  if (vmec_indata.zbs.cols() != 2 * vmec_indata.ntor + 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("input variable 'zbs' has wrong number of columns: "
+                        "should be %i, but it is %i.",
+                        2 * vmec_indata.ntor + 1, vmec_indata.zbs.cols()));
   }
 
-  const std::size_t expected_bdy_size_asym =
-      vmec_indata.lasym ? vmec_indata.mpol * (2 * vmec_indata.ntor + 1) : 0;
-
-  // rbs
-  if (vmec_indata.rbs.size() != expected_bdy_size_asym) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'rbs' has wrong size: should be %i, but it is %i.",
-        expected_bdy_size_asym, vmec_indata.rbs.size()));
+  if (vmec_indata.lasym) {
+    // rbs
+    if (vmec_indata.rbs->rows() != vmec_indata.mpol) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("input variable 'rbs' has wrong number of rows: "
+                          "should be %i, but it is %i.",
+                          vmec_indata.mpol, vmec_indata.rbs->rows()));
+    }
+    if (vmec_indata.rbs->cols() != 2 * vmec_indata.ntor + 1) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("input variable 'rbs' has wrong number of columns: "
+                          "should be %i, but it is %i.",
+                          2 * vmec_indata.ntor + 1, vmec_indata.rbs->cols()));
+    }
+    // zbc
+    if (vmec_indata.zbc->rows() != vmec_indata.mpol) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("input variable 'zbc' has wrong number of rows: "
+                          "should be %i, but it is %i.",
+                          vmec_indata.mpol, vmec_indata.zbc->rows()));
+    }
+    if (vmec_indata.zbc->cols() != 2 * vmec_indata.ntor + 1) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("input variable 'zbc' has wrong number of columns: "
+                          "should be %i, but it is %i.",
+                          2 * vmec_indata.ntor + 1, vmec_indata.zbc->cols()));
+    }
+  } else {
+    if (vmec_indata.rbs.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'rbs' should not be set when 'lasym' is false.");
+    }
+    if (vmec_indata.zbc.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'zbc' should not be set when 'lasym' is false.");
+    }
   }
-  // zbc
-  if (vmec_indata.zbc.size() != expected_bdy_size_asym) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'zbc' has wrong size: should be %i, but it is %i.",
-        expected_bdy_size_asym, vmec_indata.zbc.size()));
-  }
 
-  // zbs
-  if (enable_info_messages && vmec_indata.zbs[0] != 0.0) {
-    // The (0,0) mode of a sin(m*u-n*v) term is irrelevant, so see if anything
-    // was specified there. The linear index of (0,0) mode is 0.
-    LOG(INFO) << absl::StrFormat(
-        "ignoring irrelevant zbs entry for m=0, n=0: %g\n", vmec_indata.zbs[0]);
-  }
-
-  // raxis_cc
-  // zaxis_cs
+  // zaxis_s
   if (enable_info_messages && vmec_indata.zaxis_s[0] != 0.0) {
     // The n=0 mode of a sin(n*v) term is irrelevant, so see if anything was
     // specified there.
@@ -1416,31 +1559,39 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         vmec_indata.zaxis_s[0]);
   }
 
+  // zbs
+  if (enable_info_messages && vmec_indata.zbs(0, vmec_indata.ntor) != 0.0) {
+    // The (0,0) mode of a sin(m*u-n*v) term is irrelevant, so see if anything
+    // was specified there. The linear index of (0,0) mode is 0.
+    LOG(INFO) << absl::StrFormat(
+        "ignoring irrelevant zbs entry for m=0, n=0: %g\n",
+        vmec_indata.zbs(0, vmec_indata.ntor));
+  }
+
   if (vmec_indata.lasym) {
-    // rbs
-    if (enable_info_messages && vmec_indata.rbs[0] != 0.0) {
-      // The (0,0) mode of a sin(m*u-n*v) term is irrelevant, so see if anything
-      // was specified there. The linear index of (0,0) mode is 0.
-      LOG(INFO) << absl::StrFormat(
-          "ignoring irrelevant rbs entry for m=0, n=0: %g\n",
-          vmec_indata.rbs[0]);
-    }
-
-    // zbc
-
-    // raxis_cs
-    if (enable_info_messages && vmec_indata.raxis_s[0] != 0.0) {
+    // raxis_s
+    if (enable_info_messages && (*vmec_indata.raxis_s)[0] != 0.0) {
       // The n=0 mode of a sin(n*v) term is irrelevant, so see if anything was
       // specified there.
       LOG(INFO) << absl::StrFormat(
           "ignoring irrelevant raxis_s entry for n=0: %g\n",
-          vmec_indata.raxis_s[0]);
+          (*vmec_indata.raxis_s)[0]);
     }
 
-    // zaxis_cc
+    // rbs
+    if (enable_info_messages &&
+        (*vmec_indata.rbs)(0, vmec_indata.ntor) != 0.0) {
+      // The (0,0) mode of a sin(m*u-n*v) term is irrelevant, so see if anything
+      // was specified there. The linear index of (0,0) mode is 0.
+      LOG(INFO) << absl::StrFormat(
+          "ignoring irrelevant rbs entry for m=0, n=0: %g\n",
+          (*vmec_indata.rbs)(0, vmec_indata.ntor));
+    }
   }
 
   return absl::OkStatus();
-}
+}  // IsConsistent
+
+VmecINDATA VmecINDATA::Copy() const { return *this; }
 
 }  // namespace vmecpp
