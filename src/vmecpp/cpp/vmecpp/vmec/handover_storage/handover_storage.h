@@ -130,8 +130,6 @@ class HandoverStorage {
   // Matrix: RowMatrixXd [mn, j], RHS: vector of RowMatrixXd [mn][basis, j]
 
   int mnsize;
-  int ns_ = 0;  // number of radial surfaces (set in allocate)
-
   RowMatrixXd all_ar;  // [mnsize, ns]
   RowMatrixXd all_az;
   RowMatrixXd all_dr;
@@ -143,37 +141,6 @@ class HandoverStorage {
   std::vector<RowMatrixXd> all_cr;
   std::vector<RowMatrixXd> all_cz;
 
-  // Span accessors for tri-diagonal solver (returns view of radial slice)
-  // Since RowMatrixXd is row-major, .row(mn) is contiguous.
-  inline std::span<double> TridiagAr(int mn) noexcept {
-    return std::span<double>(all_ar.row(mn).data(), ns_);
-  }
-  inline std::span<double> TridiagAz(int mn) noexcept {
-    return std::span<double>(all_az.row(mn).data(), ns_);
-  }
-  inline std::span<double> TridiagDr(int mn) noexcept {
-    return std::span<double>(all_dr.row(mn).data(), ns_);
-  }
-  inline std::span<double> TridiagDz(int mn) noexcept {
-    return std::span<double>(all_dz.row(mn).data(), ns_);
-  }
-  inline std::span<double> TridiagBr(int mn) noexcept {
-    return std::span<double>(all_br.row(mn).data(), ns_);
-  }
-  inline std::span<double> TridiagBz(int mn) noexcept {
-    return std::span<double>(all_bz.row(mn).data(), ns_);
-  }
-
-  // RHS span accessor: returns pointer to start of RHS block for mode mn
-  // The solver accesses c[k][j] as base[k * ns + j]
-  // With RowMatrixXd [num_basis, ns], this is exactly flat row-major storage.
-  inline double* TridiagCrData(int mn) noexcept { return all_cr[mn].data(); }
-  inline double* TridiagCzData(int mn) noexcept { return all_cz[mn].data(); }
-
-  // Dimension accessor for solver
-  int GetNumBasis() const noexcept { return num_basis_; }
-  int GetNs() const noexcept { return ns_; }
-
   // Parallel tri-diagonal solver storage
   // handover_cR/cZ: RowMatrixXd [num_basis, mnsize], handover_aR/aZ: flat
   // [mnsize]
@@ -182,7 +149,6 @@ class HandoverStorage {
   std::vector<double> handover_aR;  // [mnsize]
   RowMatrixXd handover_cZ;
   std::vector<double> handover_aZ;
-
   // magnetic axis geometry for NESTOR
   std::vector<double> rAxis;
   std::vector<double> zAxis;
