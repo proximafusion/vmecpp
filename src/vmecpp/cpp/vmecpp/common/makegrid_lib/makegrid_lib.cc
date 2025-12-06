@@ -494,6 +494,8 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
         SetCircuitCurrents(currents_for_circuit, m_magnetic_configuration);
     if (!set_currents_status.ok()) {
       status[circuit_index] = set_currents_status;
+      LOG(WARNING) << "Couldn't set circuit currents because: "
+                   << set_currents_status;
       continue;
     }
 
