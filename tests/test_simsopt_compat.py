@@ -177,6 +177,7 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
         if varname.startswith("_") or varname in [
             "free_boundary_method",
             "return_outputs_even_if_not_converged",
+            "model_computed_fields",
         ]:
             continue
 
