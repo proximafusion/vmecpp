@@ -40,12 +40,12 @@ class FourierCoeffs {
   int nsMax() const;
 
  protected:
-  const Sizes& s_;
-  const RadialPartitioning& r_;
+  const Sizes* s_;
+  const RadialPartitioning* r_;
 
-  const int nsMin_;
-  const int nsMax_;
-  const int ns;
+  int nsMin_;
+  int nsMax_;
+  int ns_;
 
   // [ns x numFC] R ~ cos(m*theta)*cos(n*zeta)
   std::vector<double> rcc;

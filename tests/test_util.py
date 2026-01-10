@@ -4,6 +4,7 @@
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from vmecpp import _util
@@ -74,7 +75,7 @@ def test_sparse_to_dense_coefficients_out_of_bounds():
 
 def test_dense_to_sparse_truncation():
     result_sparse = _util.dense_to_sparse_coefficients(
-        [[0, 0, 0, 0, 0], [0, 0, 0, 1, 0]]
+        np.array([[0, 0, 0, 0, 0], [0, 0, 0, 1, 0]])
     )
     expeted_sparse = [{"m": 1, "n": 1, "value": 1.0}]
     assert expeted_sparse == result_sparse

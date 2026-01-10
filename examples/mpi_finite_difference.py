@@ -11,14 +11,14 @@ Fourier components of the geometry.
 
 from pathlib import Path
 
-import mpi4py
 import numpy as np
+from mpi4py import MPI
 
 import vmecpp
 
 # Notice that the OpenMP parallelism in VMEC++ allows us to use a simple MPI
 # communicator, without the need to split into sub-groups.
-comm = mpi4py.MPI.COMM_WORLD
+comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
 # In a real application, only root would probably read the input file and broadcast it.
@@ -37,6 +37,7 @@ initial_output = None
 if rank == 0:
     initial_output = vmecpp.run(initial_input)
 initial_output = comm.bcast(initial_output)
+assert initial_output is not None
 
 # ...and fix up the multigrid steps: hot-restarted runs only allow a single step
 initial_input.ns_array = initial_input.ns_array[-1:]

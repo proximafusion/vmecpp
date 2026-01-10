@@ -1277,8 +1277,10 @@ class VmecWOut(BaseModelWithNumpy):
                         # TODO(jurasic) this assumes that the first metadata is the
                         # max_length, could be generalized
                         max_len = field_info.metadata[0].max_length
+                    # No max_length metadata, dynamic length
+                    elif isinstance(value, (bytes, np.bytes_)):
+                        max_len = len(value.decode(encoding="ascii"))
                     else:
-                        # No max_length metadata, dynamic length
                         max_len = len(value)
                     dim_name = f"dim_{max_len:05d}"
                     # Create the dimension if it doesn't exist yet
@@ -1288,13 +1290,16 @@ class VmecWOut(BaseModelWithNumpy):
                     string_variable = fnc.createVariable(field, "S1", (dim_name,))
 
                     # Put the string in the format netCDF3 requires. Don't know what to say.
-                    padded_value_as_array = np.array(
-                        value.encode(encoding="ascii").ljust(max_len)
+                    if isinstance(value, (bytes, np.bytes_)):
+                        value_str = value.decode(encoding="ascii")
+                    else:
+                        value_str = value
+                    padded_value_as_bytes = value_str.ljust(max_len).encode(
+                        encoding="ascii"
                     )
-                    padded_value_as_netcdf3_compatible_chararray = netCDF4.stringtochar(
-                        padded_value_as_array
+                    string_variable[:] = np.frombuffer(
+                        padded_value_as_bytes, dtype="S1"
                     )
-                    string_variable[:] = padded_value_as_netcdf3_compatible_chararray
 
                 elif value is None:
                     # Skip None values (e.g., asymmetric arrays when lasym=False)

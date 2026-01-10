@@ -5,7 +5,9 @@ using VMEC++ instead of VMEC2000.
 It shows how to optimize a VMEC equilibrium for quasi-helical symmetry (M=1, N=1) throughout the volume.
 """
 
+from numbers import Real
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 from simsopt.mhd import QuasisymmetryRatioResidual
@@ -44,7 +46,12 @@ qs = QuasisymmetryRatioResidual(
 )  # (M, N) you want in |B|
 
 # Define objective function
-prob = LeastSquaresProblem.from_tuples([(vmec.aspect, 7, 1), (qs.residuals, 0, 1)])
+prob = LeastSquaresProblem.from_tuples(
+    [
+        (vmec.aspect, cast(Real, 7.0), cast(Real, 1.0)),
+        (qs.residuals, cast(Real, 0.0), cast(Real, 1.0)),
+    ]
+)
 
 # Make sure all procs participate in computing the objective:
 prob.objective()

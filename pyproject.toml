@@ -162,11 +162,13 @@ ignore = [
 "tests/**" = ["T20"]
 "**/*_test.py" = ["T20"]
 "examples/**" = ["T201"]
+"src/vmecpp/__init__.py" = ["UP038"]
 
 [tool.pyright]
 include = ["src"]
 exclude = ["build", "**/__pycache__", "src/vmecpp/cpp/bazel-cpp/"]
 pythonVersion = "3.10"
+stubPath = "typings"
 venvPath = "."
 venv = ".venv"
 
