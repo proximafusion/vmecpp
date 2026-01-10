@@ -171,7 +171,9 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
 
     # vmec2000.indata has way many more variables than vmecpp.indata, so we test
     # the common subset.
-    for varname in vmecpp.indata.__class__.model_fields:
+    indata = vmecpp.indata
+    assert indata is not None
+    for varname in indata.__class__.model_fields:
         # These are not present in the legacy VMEC2000 INDATA namelist,
         # therefore skip them.
         if varname.startswith("_") or varname in [
@@ -179,7 +181,7 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
         ]:
             continue
 
-        vmecpp_var = getattr(vmecpp.indata, varname)
+        vmecpp_var = getattr(indata, varname)
         if callable(vmecpp_var):
             continue  # this is a method, not a variable
         if vmecpp_var is None:
