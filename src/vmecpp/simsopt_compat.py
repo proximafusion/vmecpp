@@ -457,6 +457,7 @@ class Vmec(Optimizable):
         )
         if updated_boundary is not None:
             boundary_RZFourier = updated_boundary
+            self.boundary = updated_boundary
         vi.rbc.fill(0.0)
         vi.zbs.fill(0.0)
 
@@ -525,7 +526,11 @@ class Vmec(Optimizable):
         # NOTE: SurfaceRZFourier uses m up to mpol _inclusive_,
         # differently from VMEC++, so have to manually reduce the range by one.
         mpol_for_surfacerzfourier = new_mpol - 1
-        self.boundary.change_resolution(mpol_for_surfacerzfourier, new_ntor)
+        updated_boundary = self.boundary.change_resolution(
+            mpol_for_surfacerzfourier, new_ntor
+        )
+        if updated_boundary is not None:
+            self.boundary = updated_boundary
         self.recompute_bell()
 
 
