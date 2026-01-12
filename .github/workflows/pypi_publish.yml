@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         # ubuntu-24.04-arm not supported due to lack of netcdf-devel hdf5-devel
-        os: [ubuntu-24.04, macos-13, macos-14]
+        os: [ubuntu-24.04, macos-14, macos-15-intel]
 
     steps:
       - name: Checkout repository
@@ -23,11 +23,11 @@ jobs:
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6 # We use uv in cibuildwheel for faster builds
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.23.0
+        uses: pypa/cibuildwheel@v3.3.1
         # All the settings for cibuildwheel are in pyproject.toml
         env:
           CIBW_ENVIRONMENT_MACOS: >
-            MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '13.0' }}
+            MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '15.0' }}
             DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
             FC=gfortran-14
             HDF5_ROOT=$(brew --prefix hdf5)

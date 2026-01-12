@@ -87,14 +87,12 @@ version_file = "src/vmecpp/__about__.py"
 archs = ["native"]
 skip = ["pp*", "*-musllinux*"]
 build-frontend = "build[uv]" # More modern package manager than pip, with faster builds
+test-skip = ["cp314-*", "cp314t-*"] # Skip tests on Python 3.14 until all our dependencies start supporting it. The wheels are still valid, and become installable the moment simsopt releases 3.14 support.
 test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py"
 
 [tool.cibuildwheel.linux]
-before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel libaec-devel"
-
-[tool.cibuildwheel.macos]
-before-build = "brew install gcc lapack netcdf hdf5 libomp"
+before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel"
 
 [tool.coverage.run]
 source_pkgs = ["vmecpp", "tests"]
