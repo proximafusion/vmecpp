@@ -1291,11 +1291,10 @@ class VmecWOut(BaseModelWithNumpy):
                     padded_value_as_array = np.array(
                         value.encode(encoding="ascii").ljust(max_len)
                     )
-                    padded_value_as_netcdf3_compatible_chararray = netCDF4.stringtochar(
-                        padded_value_as_array
+                    padded_value_as_netcdf3_compatible_chararray = np.frombuffer(
+                        padded_value_as_array, dtype="S1"
                     )
                     string_variable[:] = padded_value_as_netcdf3_compatible_chararray
-
                 elif value is None:
                     # Skip None values (e.g., asymmetric arrays when lasym=False)
                     continue
