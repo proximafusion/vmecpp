@@ -164,7 +164,6 @@ def test_asymmetric_tokamak_input_io():
 
 _MISSING_FORTRAN_VARIABLES = [
     "lrecon__logical__",
-    "lrfp__logical__",
     "lmove_axis__logical__",
     "mnyq",
     "nnyq",
