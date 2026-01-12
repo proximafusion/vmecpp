@@ -92,7 +92,7 @@ jobs:
               dnf -y install python-pip git-lfs
               ;;
             archlinux*)
-              pacman -Sy --noconfirm python-pip git-lfs
+              pacman -Sy --noconfirm python313-pip git-lfs
               ;;
             *)
               echo "Unsupported distribution: ${{ matrix.distro }}"
