@@ -1271,7 +1271,7 @@ class VmecWOut(BaseModelWithNumpy):
                 elif field_type is float:
                     fnc.createVariable(field, np.float64)
                     fnc[field][:] = value
-                elif isinstance(value, str):
+                elif field_type is str:
                     if field_info and len(field_info.metadata) > 0:
                         # Find the max_length metadata for the dimension annotation
                         # TODO(jurasic) this assumes that the first metadata is the
@@ -1288,29 +1288,13 @@ class VmecWOut(BaseModelWithNumpy):
                     string_variable = fnc.createVariable(field, "S1", (dim_name,))
 
                     # Put the string in the format netCDF3 requires. Don't know what to say.
-                    value_str = value[:max_len]
-                    value_bytes = value_str.encode("ascii")
+                    padded_value_as_array = np.array(
+                        value.encode(encoding="ascii").ljust(max_len)
+                    )
                     padded_value_as_netcdf3_compatible_chararray = np.frombuffer(
-                        value_bytes.ljust(max_len, b" "),
-                        dtype="S1",
+                        padded_value_as_array, dtype="S1"
                     )
                     string_variable[:] = padded_value_as_netcdf3_compatible_chararray
-                elif isinstance(value, bytes | np.bytes_):
-                    if field_info and len(field_info.metadata) > 0:
-                        max_len = field_info.metadata[0].max_length
-                    else:
-                        max_len = len(value)
-                    dim_name = f"dim_{max_len:05d}"
-                    if dim_name not in fnc.dimensions:
-                        fnc.createDimension(dim_name, (max_len))
-                    string_variable = fnc.createVariable(field, "S1", (dim_name,))
-                    value_bytes = value[:max_len]
-                    padded_value_as_netcdf3_compatible_chararray = np.frombuffer(
-                        value_bytes.ljust(max_len, b" "),
-                        dtype="S1",
-                    )
-                    string_variable[:] = padded_value_as_netcdf3_compatible_chararray
-
                 elif value is None:
                     # Skip None values (e.g., asymmetric arrays when lasym=False)
                     continue
