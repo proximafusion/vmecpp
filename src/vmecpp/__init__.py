@@ -639,6 +639,7 @@ class VmecWOut(BaseModelWithNumpy):
         "bsupumns",
         "bsupvmns",
         "restart_reason_timetrace",
+        "lrfp",
     ]
     """If quantities are not exactly the same in C++ WoutFileContents and this class,
     add them to this list and implement the conversion logic in _to_cpp_wout and
@@ -715,6 +716,18 @@ class VmecWOut(BaseModelWithNumpy):
         pydantic.Field(alias="lfreeb__logical__"),
     ]
     """Flag indicating free-boundary computation."""
+
+    lrfp: typing.Annotated[
+        bool,
+        pydantic.PlainSerializer(
+            lambda x: int(x),
+        ),
+        pydantic.BeforeValidator(
+            lambda x: bool(x),
+        ),
+        pydantic.Field(alias="lrfp__logical__", default=False),
+    ]
+    """Flag indicating reversed-field pinch configuration."""
 
     wb: float
     """Magnetic energy: volume integral of `|B|^2/(2 mu0)`."""
@@ -1201,6 +1214,11 @@ class VmecWOut(BaseModelWithNumpy):
         return self.lfreeb
 
     @property
+    def lrfp__logical__(self):
+        """This is how the attribute is called in the Fortran wout file."""
+        return self.lrfp
+
+    @property
     def restart_reasons(self) -> list[tuple[int, RestartReason]]:
         """Get the restart reasons as a list of tuples.
 
@@ -1466,6 +1484,9 @@ class VmecWOut(BaseModelWithNumpy):
 
         attrs["version_"] = float(cpp_wout.version)
 
+        # lrfp is Python-only (not in C++ WOutFileContents), default to False
+        attrs["lrfp"] = False
+
         return VmecWOut(**attrs)
 
     def _to_cpp_wout(self) -> _vmecpp.WOutFileContents:
@@ -1602,6 +1623,9 @@ class VmecWOut(BaseModelWithNumpy):
         attrs.setdefault("lmns_full", np.zeros([mnmax, ns]))
         if attrs["lasym__logical__"]:
             attrs.setdefault("lmnc_full", np.zeros([mnmax, ns]))
+
+        # Backwards compatibility: lrfp flag may not exist in older wout files
+        attrs.setdefault("lrfp__logical__", 0)
 
         # Backwards compatibility for very old wout files
         if attrs["version_"] <= 8.0:
