@@ -452,7 +452,12 @@ class Vmec(Optimizable):
         vi = self.indata  # Shorthand
         # Convert boundary to RZFourier if needed:
         boundary_RZFourier = self.boundary.to_RZFourier()
-        boundary_RZFourier.change_resolution(self.indata.mpol, self.indata.ntor)
+        updated_boundary = boundary_RZFourier.change_resolution(
+            self.indata.mpol, self.indata.ntor
+        )
+        if updated_boundary is not None:
+            boundary_RZFourier = updated_boundary
+            self.boundary = updated_boundary
         vi.rbc.fill(0.0)
         vi.zbs.fill(0.0)
 
@@ -521,7 +526,11 @@ class Vmec(Optimizable):
         # NOTE: SurfaceRZFourier uses m up to mpol _inclusive_,
         # differently from VMEC++, so have to manually reduce the range by one.
         mpol_for_surfacerzfourier = new_mpol - 1
-        self.boundary.change_resolution(mpol_for_surfacerzfourier, new_ntor)
+        updated_boundary = self.boundary.change_resolution(
+            mpol_for_surfacerzfourier, new_ntor
+        )
+        if updated_boundary is not None:
+            self.boundary = updated_boundary
         self.recompute_bell()
 
 
