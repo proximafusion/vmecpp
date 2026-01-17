@@ -197,6 +197,11 @@ absl::StatusOr<MagneticConfiguration> ImportMagneticConfigurationFromMakegrid(
       }
     }
   }
+  absl::Status status = NumWindingsToCircuitCurrents(magnetic_configuration);
+  if (!status.ok()) {
+    magnetic_configuration.Clear();
+    return status;
+  }
 
   return magnetic_configuration;
 }  // ImportMagneticConfigurationFromMakegrid
