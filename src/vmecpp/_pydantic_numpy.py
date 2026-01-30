@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
+import base64
+import io
 import types
 import typing
 from collections.abc import Callable, Mapping
@@ -231,12 +233,23 @@ def _deserialize_value(
     """
     del field_metadata  # unused
 
-    if issubclass(declared_type, NpOrAbstractArray) and isinstance(value, list):
-        fixed_list = _reconstruct_floats_for_numpy(value)
-        np_data = np.array(fixed_list)
-        # Only accept allowed dtypes, to avoid misinterpreting non-numpy lists.
-        if np_data.dtype in _NUMPY_ALLOWED_NONBINARY_DTYPES:
-            return np_data
+    if issubclass(declared_type, NpOrAbstractArray):
+        if isinstance(value, list):
+            fixed_list = _reconstruct_floats_for_numpy(value)
+            np_data = np.array(fixed_list)
+            # Only accept allowed dtypes, to avoid misinterpreting non-numpy lists.
+            if np_data.dtype in _NUMPY_ALLOWED_NONBINARY_DTYPES:
+                return np_data
+        # Data may be serialized in a base64-encoded binary format for efficiency.
+        # Also support loading such data here.
+        elif (
+            isinstance(value, dict) and "dapper_is_blob" in value and "content" in value
+        ):
+            encoded_content = value["content"]
+            np_bytes = base64.b64decode(encoded_content)
+            with io.BytesIO(np_bytes) as in_f:
+                return np.load(in_f)
+
     return value
 
 
