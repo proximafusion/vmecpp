@@ -14,6 +14,10 @@ namespace vmecpp {
 class FourierVelocity : public FourierCoeffs {
  public:
   FourierVelocity(const Sizes* s, const RadialPartitioning* r, int ns);
+  FourierVelocity(const FourierVelocity& other);
+  FourierVelocity& operator=(const FourierVelocity& other);
+  FourierVelocity(FourierVelocity&& other) noexcept;
+  FourierVelocity& operator=(FourierVelocity&& other) noexcept;
 
   // appropriately-named variables for the data in FourierCoeffs
   std::span<double> vrcc;
@@ -30,6 +34,9 @@ class FourierVelocity : public FourierCoeffs {
   std::span<double> vlcs;
   std::span<double> vlcc;
   std::span<double> vlss;
+
+ private:
+  void BindSpans();
 };
 
 }  // namespace vmecpp

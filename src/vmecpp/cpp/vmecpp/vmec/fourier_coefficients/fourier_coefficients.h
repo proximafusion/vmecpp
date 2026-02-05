@@ -19,6 +19,10 @@ class FourierCoeffs {
  public:
   FourierCoeffs(const Sizes* s, const RadialPartitioning* r, int nsMin,
                 int nsMax, int ns);
+  FourierCoeffs(const FourierCoeffs& other) = default;
+  FourierCoeffs(FourierCoeffs&& other) noexcept = default;
+  FourierCoeffs& operator=(const FourierCoeffs& other);
+  FourierCoeffs& operator=(FourierCoeffs&& other) noexcept;
 
   void setZero();
 

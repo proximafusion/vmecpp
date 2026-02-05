@@ -5,6 +5,7 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 #include "vmecpp/common/util/util.h"
@@ -28,6 +29,71 @@ FourierGeometry::FourierGeometry(const Sizes* s, const RadialPartitioning* r,
       lmncs(lcs),
       lmncc(lcc),
       lmnss(lss) {}
+
+FourierGeometry::FourierGeometry(const FourierGeometry& other)
+    : FourierCoeffs(other),
+      rmncc(rcc),
+      rmnss(rss),
+      rmnsc(rsc),
+      rmncs(rcs),
+
+      zmnsc(zsc),
+      zmncs(zcs),
+      zmncc(zcc),
+      zmnss(zss),
+
+      lmnsc(lsc),
+      lmncs(lcs),
+      lmncc(lcc),
+      lmnss(lss) {}
+
+void FourierGeometry::BindSpans() {
+  rmncc = rcc;
+  rmnss = rss;
+  rmnsc = rsc;
+  rmncs = rcs;
+  zmnsc = zsc;
+  zmncs = zcs;
+  zmncc = zcc;
+  zmnss = zss;
+  lmnsc = lsc;
+  lmncs = lcs;
+  lmncc = lcc;
+  lmnss = lss;
+}
+
+FourierGeometry& FourierGeometry::operator=(const FourierGeometry& other) {
+  if (this != &other) {
+    FourierCoeffs::operator=(other);
+    BindSpans();
+  }
+  return *this;
+}
+
+FourierGeometry::FourierGeometry(FourierGeometry&& other) noexcept
+    : FourierCoeffs(std::move(other)),
+      rmncc(rcc),
+      rmnss(rss),
+      rmnsc(rsc),
+      rmncs(rcs),
+
+      zmnsc(zsc),
+      zmncs(zcs),
+      zmncc(zcc),
+      zmnss(zss),
+
+      lmnsc(lsc),
+      lmncs(lcs),
+      lmncc(lcc),
+      lmnss(lss) {}
+
+FourierGeometry& FourierGeometry::operator=(FourierGeometry&& other) noexcept {
+  if (this != &other) {
+    FourierCoeffs::operator=(std::move(other));
+    BindSpans();
+  }
+  return *this;
+}
 
 void FourierGeometry::interpFromBoundaryAndAxis(
     const FourierBasisFastPoloidal& t, const Boundaries& b,

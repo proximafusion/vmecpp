@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -43,6 +44,42 @@ FourierCoeffs::FourierCoeffs(const Sizes* s, const RadialPartitioning* r,
       lss.resize(num_fc_L, 0.0);
     }
   }
+}
+
+FourierCoeffs& FourierCoeffs::operator=(const FourierCoeffs& other) {
+  if (this != &other) {
+    rcc = other.rcc;
+    rss = other.rss;
+    rsc = other.rsc;
+    rcs = other.rcs;
+    zsc = other.zsc;
+    zcs = other.zcs;
+    zcc = other.zcc;
+    zss = other.zss;
+    lsc = other.lsc;
+    lcs = other.lcs;
+    lcc = other.lcc;
+    lss = other.lss;
+  }
+  return *this;
+}
+
+FourierCoeffs& FourierCoeffs::operator=(FourierCoeffs&& other) noexcept {
+  if (this != &other) {
+    rcc = std::move(other.rcc);
+    rss = std::move(other.rss);
+    rsc = std::move(other.rsc);
+    rcs = std::move(other.rcs);
+    zsc = std::move(other.zsc);
+    zcs = std::move(other.zcs);
+    zcc = std::move(other.zcc);
+    zss = std::move(other.zss);
+    lsc = std::move(other.lsc);
+    lcs = std::move(other.lcs);
+    lcc = std::move(other.lcc);
+    lss = std::move(other.lss);
+  }
+  return *this;
 }
 
 int FourierCoeffs::nsMin() const { return nsMin_; }

@@ -5,6 +5,7 @@
 #include "vmecpp/vmec/fourier_forces/fourier_forces.h"
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 namespace vmecpp {
@@ -24,6 +25,67 @@ FourierForces::FourierForces(const Sizes* s, const RadialPartitioning* r,
       flcs(lcs),
       flcc(lcc),
       flss(lss) {}
+
+FourierForces::FourierForces(const FourierForces& other)
+    : FourierCoeffs(other),
+      frcc(rcc),
+      frss(rss),
+      frsc(rsc),
+      frcs(rcs),
+      fzsc(zsc),
+      fzcs(zcs),
+      fzcc(zcc),
+      fzss(zss),
+      flsc(lsc),
+      flcs(lcs),
+      flcc(lcc),
+      flss(lss) {}
+
+void FourierForces::BindSpans() {
+  frcc = rcc;
+  frss = rss;
+  frsc = rsc;
+  frcs = rcs;
+  fzsc = zsc;
+  fzcs = zcs;
+  fzcc = zcc;
+  fzss = zss;
+  flsc = lsc;
+  flcs = lcs;
+  flcc = lcc;
+  flss = lss;
+}
+
+FourierForces& FourierForces::operator=(const FourierForces& other) {
+  if (this != &other) {
+    FourierCoeffs::operator=(other);
+    BindSpans();
+  }
+  return *this;
+}
+
+FourierForces::FourierForces(FourierForces&& other) noexcept
+    : FourierCoeffs(std::move(other)),
+      frcc(rcc),
+      frss(rss),
+      frsc(rsc),
+      frcs(rcs),
+      fzsc(zsc),
+      fzcs(zcs),
+      fzcc(zcc),
+      fzss(zss),
+      flsc(lsc),
+      flcs(lcs),
+      flcc(lcc),
+      flss(lss) {}
+
+FourierForces& FourierForces::operator=(FourierForces&& other) noexcept {
+  if (this != &other) {
+    FourierCoeffs::operator=(std::move(other));
+    BindSpans();
+  }
+  return *this;
+}
 
 void FourierForces::zeroZForceForM1() {
   for (int jF = nsMin_; jF < nsMax_; ++jF) {
