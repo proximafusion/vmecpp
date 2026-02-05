@@ -85,15 +85,12 @@ FourierGeometry::FourierGeometry(FourierGeometry&& other) noexcept
       lmnsc(lsc),
       lmncs(lcs),
       lmncc(lcc),
-      lmnss(lss) {
-  other.BindSpans();
-}
+      lmnss(lss) {}
 
 FourierGeometry& FourierGeometry::operator=(FourierGeometry&& other) noexcept {
   if (this != &other) {
     FourierCoeffs::operator=(std::move(other));
     BindSpans();
-    other.BindSpans();
   }
   return *this;
 }

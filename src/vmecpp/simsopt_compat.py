@@ -259,7 +259,8 @@ class Vmec(Optimizable):
                 verbose=self.verbose,
                 restart_from=restart_from,
             )
-            self.wout = self.output_quantities.wout
+            wout = self.output_quantities.wout
+            self.wout = wout
         except RuntimeError as e:
             msg = f"Error while running VMEC++: {e}"
             raise ObjectiveFailure(msg) from e
@@ -267,7 +268,7 @@ class Vmec(Optimizable):
         if self._should_save_outputs:
             assert self.input_file is not None
             wout_fname = _make_wout_filename(self.input_file)
-            self.wout.save(Path(wout_fname))
+            wout.save(Path(wout_fname))
             self.output_file = str(wout_fname)
 
         logger.debug("VMEC++ run complete. Now loading output.")
@@ -452,7 +453,11 @@ class Vmec(Optimizable):
         vi = self.indata  # Shorthand
         # Convert boundary to RZFourier if needed:
         boundary_RZFourier = self.boundary.to_RZFourier()
-        boundary_RZFourier.change_resolution(self.indata.mpol, self.indata.ntor)
+        resized_boundary = boundary_RZFourier.change_resolution(
+            self.indata.mpol, self.indata.ntor
+        )
+        if resized_boundary is not None:
+            boundary_RZFourier = resized_boundary
         vi.rbc.fill(0.0)
         vi.zbs.fill(0.0)
 
@@ -521,7 +526,11 @@ class Vmec(Optimizable):
         # NOTE: SurfaceRZFourier uses m up to mpol _inclusive_,
         # differently from VMEC++, so have to manually reduce the range by one.
         mpol_for_surfacerzfourier = new_mpol - 1
-        self.boundary.change_resolution(mpol_for_surfacerzfourier, new_ntor)
+        resized_boundary = self.boundary.change_resolution(
+            mpol_for_surfacerzfourier, new_ntor
+        )
+        if resized_boundary is not None:
+            self.boundary = resized_boundary
         self.recompute_bell()
 
 

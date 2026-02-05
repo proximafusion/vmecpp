@@ -75,15 +75,12 @@ FourierVelocity::FourierVelocity(FourierVelocity&& other) noexcept
       vlsc(lsc),
       vlcs(lcs),
       vlcc(lcc),
-      vlss(lss) {
-  other.BindSpans();
-}
+      vlss(lss) {}
 
 FourierVelocity& FourierVelocity::operator=(FourierVelocity&& other) noexcept {
   if (this != &other) {
     FourierCoeffs::operator=(std::move(other));
     BindSpans();
-    other.BindSpans();
   }
   return *this;
 }

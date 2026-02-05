@@ -77,15 +77,12 @@ FourierForces::FourierForces(FourierForces&& other) noexcept
       flsc(lsc),
       flcs(lcs),
       flcc(lcc),
-      flss(lss) {
-  other.BindSpans();
-}
+      flss(lss) {}
 
 FourierForces& FourierForces::operator=(FourierForces&& other) noexcept {
   if (this != &other) {
     FourierCoeffs::operator=(std::move(other));
     BindSpans();
-    other.BindSpans();
   }
   return *this;
 }
