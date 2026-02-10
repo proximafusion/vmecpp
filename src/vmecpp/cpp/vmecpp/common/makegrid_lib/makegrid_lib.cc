@@ -444,18 +444,27 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     sin_phi(index_phi) = std::sin(phi);
   }
 
-  // Make a backup of the full vector of original circuit currents,
-  // but only after num_windings has potentially been migrated into circuit
-  // currents.
-  absl::StatusOr<Eigen::VectorXd> maybe_original_currents =
-      GetCircuitCurrents(magnetic_configuration);
+  // Migrate num_windings into circuit currents so that normalization works
+  // correctly. This is done on a local copy to avoid mutating the caller's
+  // MagneticConfiguration.
+  MagneticConfiguration magnetic_config_with_currents = magnetic_configuration;
+  absl::Status nw_status =
+      NumWindingsToCircuitCurrents(magnetic_config_with_currents);
+  if (!nw_status.ok()) {
+    return nw_status;
+  }
+
+  // Make a backup of the full vector of circuit currents (now including
+  // num_windings).
+  absl::StatusOr<std::vector<double>> maybe_original_currents =
+      GetCircuitCurrents(magnetic_config_with_currents);
   if (!maybe_original_currents.ok()) {
     return maybe_original_currents.status();
   }
   const Eigen::VectorXd& original_currents = *maybe_original_currents;
 
   const int number_of_serial_circuits =
-      magnetic_configuration.serial_circuits_size();
+      magnetic_config_with_currents.serial_circuits_size();
 
   MagneticFieldResponseTable response_table_b;
   response_table_b.parameters = makegrid_parameters;
@@ -480,7 +489,8 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
        ++circuit_index) {
     // make second internal copy for being able to set inidividually only one
     // circuit current to != 0
-    MagneticConfiguration m_magnetic_configuration = magnetic_configuration;
+    MagneticConfiguration m_magnetic_configuration =
+        magnetic_config_with_currents;
 
     Eigen::VectorXd currents_for_circuit;
     currents_for_circuit.setZero(number_of_serial_circuits);
@@ -590,18 +600,27 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     sin_phi[index_phi] = std::sin(phi);
   }
 
-  // Make a backup of the full vector of original circuit currents,
-  // but only after num_windings has potentially been migrated into circuit
-  // currents.
-  absl::StatusOr<Eigen::VectorXd> maybe_original_currents =
-      GetCircuitCurrents(magnetic_configuration);
+  // Migrate num_windings into circuit currents so that normalization works
+  // correctly. This is done on a local copy to avoid mutating the caller's
+  // MagneticConfiguration.
+  MagneticConfiguration magnetic_config_with_currents = magnetic_configuration;
+  absl::Status nw_status =
+      NumWindingsToCircuitCurrents(magnetic_config_with_currents);
+  if (!nw_status.ok()) {
+    return nw_status;
+  }
+
+  // Make a backup of the full vector of circuit currents (now including
+  // num_windings).
+  absl::StatusOr<std::vector<double>> maybe_original_currents =
+      GetCircuitCurrents(magnetic_config_with_currents);
   if (!maybe_original_currents.ok()) {
     return maybe_original_currents.status();
   }
   const Eigen::VectorXd& original_currents = *maybe_original_currents;
 
   const int number_of_serial_circuits =
-      magnetic_configuration.serial_circuits_size();
+      magnetic_config_with_currents.serial_circuits_size();
 
   MakegridCachedVectorPotential response_table_a;
   response_table_a.parameters = makegrid_parameters;
@@ -626,7 +645,8 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
        ++circuit_index) {
     // make second internal copy for being able to set inidividually only one
     // circuit current to != 0
-    MagneticConfiguration m_magnetic_configuration = magnetic_configuration;
+    MagneticConfiguration m_magnetic_configuration =
+        magnetic_config_with_currents;
 
     Eigen::VectorXd currents_for_circuit;
     currents_for_circuit.setZero(number_of_serial_circuits);
