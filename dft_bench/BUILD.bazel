@@ -1,0 +1,95 @@
+cc_library(
+    name = "ideal_mhd_data",
+    srcs = ["ideal_mhd_data.cc"],
+    hdrs = ["ideal_mhd_data.h"],
+    deps = [
+        "@vmecpp//vmecpp/common/sizes",
+        "@vmecpp//vmecpp/vmec/radial_partitioning",
+    ]
+)
+
+cc_library(
+    name = "inputs",
+    srcs = ["inputs.cc"],
+    hdrs = ["inputs.h"],
+    deps = [
+        "//util/file_io:file_io",
+        "@vmecpp//vmecpp/common/sizes",
+        "@vmecpp//vmecpp/vmec/fourier_geometry",
+        "@vmecpp//vmecpp/vmec/radial_partitioning",
+        "@vmecpp//vmecpp/vmec/radial_profiles",
+        "@vmecpp//vmecpp/common/flow_control",
+        "@vmecpp//vmecpp/common/fourier_basis_fast_poloidal",
+        "@abseil-cpp//absl/log:check",
+    ]
+)
+
+cc_library(
+    name = "fast_toroidal",
+    srcs = ["fast_toroidal.cc"],
+    hdrs = ["fast_toroidal.h"],
+    deps = [
+        "ideal_mhd_data",
+        "inputs",
+        "@vmecpp//vmecpp/vmec/fourier_forces",
+    ]
+)
+
+cc_library(
+    name = "fast_toroidal_vectorized",
+    srcs = ["fast_toroidal_vectorized.cc"],
+    hdrs = ["fast_toroidal_vectorized.h"],
+    deps = [
+        "ideal_mhd_data",
+        "inputs",
+        "@vmecpp//vmecpp/vmec/fourier_forces",
+    ]
+)
+
+cc_library(
+    name = "fast_poloidal",
+    srcs = ["fast_poloidal.cc"],
+    hdrs = ["fast_poloidal.h"],
+    deps = [
+        "ideal_mhd_data",
+        "inputs",
+        "@vmecpp//vmecpp/vmec/fourier_forces",
+    ]
+)
+
+# the actual benchmarks
+cc_test(
+    name = "dft_bench",
+    srcs = ["dft_bench.cc"],
+    deps = [
+        "ideal_mhd_data",
+        "inputs",
+        "fast_toroidal",
+        "fast_toroidal_vectorized",
+        "fast_poloidal",
+        "@google_benchmark//:benchmark_main",
+    ],
+    data = [
+        "//alphasim_core/test_data/vmecpp:cma",
+    ],
+    size = "medium",
+)
+
+# correctness tests
+cc_test(
+    name = "dft_bench_test",
+    srcs = ["dft_bench_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "@abseil-cpp//absl/log:log",
+        "//util/testing:numerical_comparison_lib",
+        "fast_toroidal",
+        "fast_toroidal_vectorized",
+        "fast_poloidal",
+        "inputs",
+    ],
+    data = [
+        "//alphasim_core/test_data/vmecpp:cma",
+    ],
+    size = "small",
+)
