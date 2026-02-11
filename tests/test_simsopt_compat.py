@@ -176,9 +176,7 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
     for varname in type(indata).model_fields:
         # These are not present in the legacy VMEC2000 INDATA namelist,
         # therefore skip them.
-        if varname.startswith("_") or varname in [
-            "return_outputs_even_if_not_converged",
-        ]:
+        if varname.startswith("_") or varname == "return_outputs_even_if_not_converged":
             continue
 
         vmecpp_var = getattr(indata, varname)

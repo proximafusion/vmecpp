@@ -358,7 +358,7 @@ def test_text_numpy_rejects_nonstandard_dtypes(np_data: np.ndarray):
 
     model = Model(np_array=np_data)
 
-    with pytest.raises(ValueError, match="Cannot serialize .+ dtype"):
+    with pytest.raises(ValueError, match=r"Cannot serialize .+ dtype"):
         model.model_dump_json()
 
 

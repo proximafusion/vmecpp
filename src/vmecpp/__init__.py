@@ -692,12 +692,8 @@ class VmecWOut(BaseModelWithNumpy):
     # Serialized as int in the wout file under a different name
     lasym: typing.Annotated[
         bool,
-        pydantic.PlainSerializer(
-            lambda x: int(x),
-        ),
-        pydantic.BeforeValidator(
-            lambda x: bool(x),
-        ),
+        pydantic.PlainSerializer(int),
+        pydantic.BeforeValidator(bool),
         pydantic.Field(alias="lasym__logical__"),
     ]
     """Flag indicating non-stellarator-symmetry.
@@ -707,24 +703,16 @@ class VmecWOut(BaseModelWithNumpy):
 
     lfreeb: typing.Annotated[
         bool,
-        pydantic.PlainSerializer(
-            lambda x: int(x),
-        ),
-        pydantic.BeforeValidator(
-            lambda x: bool(x),
-        ),
+        pydantic.PlainSerializer(int),
+        pydantic.BeforeValidator(bool),
         pydantic.Field(alias="lfreeb__logical__"),
     ]
     """Flag indicating free-boundary computation."""
 
     lrfp: typing.Annotated[
         bool,
-        pydantic.PlainSerializer(
-            lambda x: int(x),
-        ),
-        pydantic.BeforeValidator(
-            lambda x: bool(x),
-        ),
+        pydantic.PlainSerializer(int),
+        pydantic.BeforeValidator(bool),
         pydantic.Field(alias="lrfp__logical__", default=False),
     ]
     """Flag indicating reversed-field pinch configuration."""
@@ -2109,7 +2097,7 @@ def populate_raw_profile(
 
 # Ordered this way to ensure run, VmecInput, and VmecOutput are the first three
 # items in the generated documentation.
-__all__ = [
+__all__ = [  # noqa: RUF022
     "run",
     "VmecInput",
     "VmecOutput",

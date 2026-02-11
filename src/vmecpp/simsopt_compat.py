@@ -80,7 +80,7 @@ class Vmec(Optimizable):
     # False when the currently cached results are valid, True if we need to `run()`
     need_to_run_code: bool
     # Cannot use | None for type annotation, because the @SimsoptRequires makes MpiPartition a function object
-    mpi: Optional[MpiPartition]  # pyright: ignore # noqa: UP007
+    mpi: Optional[MpiPartition]  # pyright: ignore  # noqa: UP045
     verbose: bool
 
     def __init__(
@@ -90,7 +90,7 @@ class Vmec(Optimizable):
         ntheta: int = 50,
         nphi: int = 50,
         range_surface: str = "full torus",
-        mpi: Optional[MpiPartition] = None,  # pyright: ignore  # noqa: UP007
+        mpi: Optional[MpiPartition] = None,  # pyright: ignore  # noqa: UP045
         keep_all_files: bool = False,
     ):
         self.verbose = verbose
