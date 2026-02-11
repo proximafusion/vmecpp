@@ -9,7 +9,11 @@ Physics correctness is checked at the level of the C++ core.
 
 import json
 import os
+import signal
+import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 
 import netCDF4
@@ -622,3 +626,64 @@ def test_python_defaults_match_cpp_defaults():
             np.testing.assert_array_equal(py_val, cpp_val)
         else:
             assert py_val == cpp_val
+
+
+def test_ctrl_c_interrupts_run():
+    """Test that a VMEC++ run can be interrupted with SIGINT (Ctrl+C).
+
+    Launches a subprocess that starts a long VMEC++ run, sends SIGINT after the run has
+    started, and verifies that the process terminates with KeyboardInterrupt rather than
+    running to completion.
+    """
+    script = f"""\
+import sys
+import vmecpp
+from pathlib import Path
+
+vmec_input = vmecpp.VmecInput.from_file(
+    Path({str(TEST_DATA_DIR)!r}) / "cma.json"
+)
+# Use many iterations to ensure the run doesn't finish before the signal
+vmec_input.niter_array[-1] = 100000
+vmec_input.ftol_array[-1] = 1.0e-18  # Don't terminate due to tolerance
+try:
+    vmecpp.run(vmec_input, verbose=True, max_threads=1)
+    # Should not reach here
+    print("RUN_COMPLETED")
+except KeyboardInterrupt:
+    print("KEYBOARD_INTERRUPT")
+"""
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", script],
+        # Merge stderr into stdout so editable-install build output
+        # doesn't block the stdout readline loop
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    # Wait for the subprocess to signal that it's about to start the run.
+    deadline = time.monotonic() + 60
+    partial_output = ""
+    assert proc.stdout
+    while time.monotonic() < deadline:
+        line = proc.stdout.readline()
+        if not line:
+            break
+        partial_output += line
+        # The tabular output of the first force iteration
+        if "    1 |" in line:
+            break
+    else:
+        raise RuntimeError(
+            "The vmecpp subprocess did not start in time. Progress: \n" + partial_output
+        )
+
+    proc.send_signal(signal.SIGINT)
+
+    remaining_output = proc.communicate(timeout=30)[0]
+    output = partial_output + remaining_output
+    assert (
+        "KEYBOARD_INTERRUPT" in output
+    ), f"Expected KeyboardInterrupt but got:\noutput: {output}"
+    assert "RUN_COMPLETED" not in output

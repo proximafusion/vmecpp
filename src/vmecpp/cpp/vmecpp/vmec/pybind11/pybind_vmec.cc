@@ -649,8 +649,27 @@ PYBIND11_MODULE(_vmecpp, m) {
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads,
          bool verbose = true) -> vmecpp::OutputQuantities {
-        auto ret =
-            vmecpp::run(indata, std::move(initial_state), max_threads, verbose);
+        bool was_interrupted = false;
+        auto interrupt_check = [&was_interrupted]() -> bool {
+          if (was_interrupted) {
+            return true;
+          }
+          py::gil_scoped_acquire acquire;
+          if (PyErr_CheckSignals() != 0) {
+            was_interrupted = true;
+            return true;
+          }
+          return false;
+        };
+        absl::StatusOr<vmecpp::OutputQuantities> ret;
+        {
+          py::gil_scoped_release release;
+          ret = vmecpp::run(indata, std::move(initial_state), max_threads,
+                            verbose, interrupt_check);
+        }
+        if (was_interrupted) {
+          throw py::error_already_set();
+        }
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
@@ -735,8 +754,26 @@ PYBIND11_MODULE(_vmecpp, m) {
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads, bool verbose = true) {
-        auto ret = vmecpp::run(indata, magnetic_response_table,
-                               std::move(initial_state), max_threads, verbose);
+        bool was_interrupted = false;
+        auto interrupt_check = [&was_interrupted]() -> bool {
+          if (was_interrupted) return true;
+          py::gil_scoped_acquire acquire;
+          if (PyErr_CheckSignals() != 0) {
+            was_interrupted = true;
+            return true;
+          }
+          return false;
+        };
+        absl::StatusOr<vmecpp::OutputQuantities> ret;
+        {
+          py::gil_scoped_release release;
+          ret = vmecpp::run(indata, magnetic_response_table,
+                            std::move(initial_state), max_threads, verbose,
+                            interrupt_check);
+        }
+        if (was_interrupted) {
+          throw py::error_already_set();
+        }
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("magnetic_response_table"),

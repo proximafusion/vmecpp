@@ -107,8 +107,9 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
-    std::optional<int> max_threads, bool verbose) {
-  Vmec v = Vmec(indata, max_threads, verbose);
+    std::optional<int> max_threads, bool verbose,
+    InterruptCallback interrupt_callback) {
+  Vmec v = Vmec(indata, max_threads, verbose, std::move(interrupt_callback));
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -125,8 +126,9 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<HotRestartState> initial_state,
-    std::optional<int> max_threads, bool verbose) {
-  Vmec v(indata, max_threads, verbose);
+    std::optional<int> max_threads, bool verbose,
+    InterruptCallback interrupt_callback) {
+  Vmec v(indata, max_threads, verbose, std::move(interrupt_callback));
   absl::Status mgrid_status = v.LoadMGrid(magnetic_response_table);
   if (!mgrid_status.ok()) {
     return mgrid_status;
@@ -146,7 +148,7 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
 namespace vmecpp {
 
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
-           bool verbose)
+           bool verbose, InterruptCallback interrupt_callback)
     : indata_(indata),
       s_(indata_),
       t_(&s_),
@@ -155,6 +157,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       fc_(indata_.lfreeb, indata_.delt,
           static_cast<int>(indata_.ns_array.size()), max_threads),
       verbose_(verbose),
+      interrupt_callback_(std::move(interrupt_callback)),
       vacuum_pressure_state_(VacuumPressureState::kOff),
       status_(VmecStatus::NORMAL_TERMINATION),
       iter2_(1),
@@ -704,6 +707,10 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     }
   }  // omp parallel
 
+  if (interrupted_) {
+    return absl::CancelledError("Run interrupted by user");
+  }
+
   if (!status_of_all_threads.ok()) {
     return status_of_all_threads;
   }
@@ -712,6 +719,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     // write MHD energy at end of iterations for current number of surfaces
     std::cout << absl::StrFormat("MHD Energy = %12.6e\n",
                                  h_.mhdEnergy * 4.0 * M_PI * M_PI);
+    std::cout << std::flush;
   }
 
   return any_checkpoint_reached;
@@ -874,11 +882,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         fc_.delt0r = scale * indata_.delt;
 
         if (verbose_) {
-          std::cout << absl::StrFormat(
-              "HAVING A CONVERGENCE PROBLEM: RESETTING DELT TO %8.3f. "
-              " If this does NOT resolve the problem,"
-              " try changing (decrease OR increase) the value of DELT\n",
-              fc_.delt0r);
+          std::cout
+              << absl::StrFormat(
+                     "HAVING A CONVERGENCE PROBLEM: RESETTING DELT TO %8.3f. "
+                     " If this does NOT resolve the problem,"
+                     " try changing (decrease OR increase) the value of DELT\n",
+                     fc_.delt0r)
+              << std::flush;
         }
 
         // done by restart_iter already...
@@ -976,12 +986,29 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // flag inside `Printout`.
         Printout(fc_.delt0r, thread_id, iter2);
 
+        // Check for interrupt signal (e.g., Ctrl+C from Python).
+        // Only the master thread calls the callback; the subsequent barrier
+        // ensures all threads see the updated m_liter_flag.
+        // It MUST be the master thread, other threads cannot acquire the GIL.
+#ifdef _OPENMP
+#pragma omp master
+#endif  // _OPENMP
+        {
+          if (interrupt_callback_ && interrupt_callback_()) {
+            m_liter_flag = false;
+#pragma omp atomic write
+            interrupted_ = true;
+            std::cout << "Received interrupt signal from Python thread.\n";
+          }
+        }
+
         if (checkpoint == VmecCheckpoint::PRINTOUT &&
             iter2 >= iterations_before_checkpointing) {
           return SolveEqLoopStatus::CHECKPOINT_REACHED;
         }
       }
     }
+
 // protect read of vacuum_pressure_state_ in get_delbsq called by Printout above
 // from write below
 #ifdef _OPENMP
