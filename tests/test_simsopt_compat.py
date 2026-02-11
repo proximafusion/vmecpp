@@ -171,18 +171,21 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
 
     # vmec2000.indata has way many more variables than vmecpp.indata, so we test
     # the common subset.
-    for varname in dir(vmecpp.indata):
+    indata = vmecpp.indata
+    assert indata is not None
+    for varname in type(indata).model_fields:
         # These are not present in the legacy VMEC2000 INDATA namelist,
         # therefore skip them.
         if varname.startswith("_") or varname in [
-            "free_boundary_method",
             "return_outputs_even_if_not_converged",
         ]:
             continue
 
-        vmecpp_var = getattr(vmecpp.indata, varname)
+        vmecpp_var = getattr(indata, varname)
         if callable(vmecpp_var):
             continue  # this is a method, not a variable
+        if vmecpp_var is None:
+            continue
 
         varname_vmec2000 = varname
         if varname[1:-1] == "axis_":
