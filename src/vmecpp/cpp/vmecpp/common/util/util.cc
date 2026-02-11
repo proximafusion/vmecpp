@@ -27,26 +27,19 @@ std::string VmecStatusAsString(const VmecStatus vmec_status) {
       return "NORMAL_TERMINATION";
     case VmecStatus::BAD_JACOBIAN:
       return "BAD_JACOBIAN";
-    case VmecStatus::NCURR_NE_1_BLOAT_NE_1:
-      return "NCURR_NE_1_BLOAT_NE_1";
     case VmecStatus::JACOBIAN_75_TIMES_BAD:
-      return "JACOBIAN_75_TIMES_BAD";
-    case VmecStatus::INPUT_PARSING_ERROR:
-      return "INPUT_PARSING_ERROR";
-    case VmecStatus::PHIEDGE_WRONG_SIGN:
-      return "PHIEDGE_WRONG_SIGN";
-    case VmecStatus::NS_ERROR:
-      return "NS_ERROR";
-    case VmecStatus::MISC_ERROR:
-      return "MISC_ERROR";
-    case VmecStatus::VAC_VMEC_ITOR_MISMATCH:
-      return "VAC_VMEC_ITOR_MISMATCH";
+      return "JACOBIAN_75_TIMES_BAD The jacobian factor of the geometry "
+             "repeatedly "
+             "became negative, indicating that flux surfaces become "
+             "self-intersecting. This "
+             "can mean that your prescribed boundary is too shaped for VMEC to "
+             "resolve ";
     case VmecStatus::SUCCESSFUL_TERMINATION:
       return "SUCCESSFUL_TERMINATION";
   }
 
   // never reached
-  return "UNKNOWN??";
+  return "UNKNOWN??" + std::to_string(static_cast<int>(vmec_status));
 }
 
 // -1 if x<0, 0 if x==0, +1 if x>0

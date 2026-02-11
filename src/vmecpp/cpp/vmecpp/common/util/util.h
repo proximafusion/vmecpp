@@ -149,15 +149,7 @@ enum class VmecStatus : std::uint8_t {
   // no fatal error but convergence was not reached
   NORMAL_TERMINATION = 0,
   BAD_JACOBIAN = 1,
-  // 2 TODO(jons): not used anymore?
-  NCURR_NE_1_BLOAT_NE_1 = 3,
   JACOBIAN_75_TIMES_BAD = 4,
-  INPUT_PARSING_ERROR = 5,
-  // 6 TODO(jons): not used anymore?
-  PHIEDGE_WRONG_SIGN = 7,
-  NS_ERROR = 8,    // NS ARRAY MUST NOT BE ALL ZEROES
-  MISC_ERROR = 9,  // can happen in mgrid_mod
-  VAC_VMEC_ITOR_MISMATCH = 10,
   // everything went well, VMEC++ converged
   SUCCESSFUL_TERMINATION = 11
 };

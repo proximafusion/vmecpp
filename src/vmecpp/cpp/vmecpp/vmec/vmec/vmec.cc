@@ -325,8 +325,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       if (status_ != VmecStatus::NORMAL_TERMINATION &&
           status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
         const auto msg = absl::StrFormat(
-            "FATAL ERROR in SolveEquilibrium.\nVmec status "
-            "code: %s\nVmecINDATA had these contents:\n%s",
+            "FATAL ERROR in SolveEquilibrium: %s\n"
+            "VmecINDATA had these contents:\n%s",
             VmecStatusAsString(status_), *indata_.ToJson());
 
         return absl::InternalError(msg);
