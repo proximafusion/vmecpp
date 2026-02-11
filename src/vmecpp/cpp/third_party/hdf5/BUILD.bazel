@@ -19,6 +19,7 @@ cmake(
         "HDF5_ENABLE_SZIP_ENCODING" : "OFF",
         "SZIP_INCLUDE_DIR": "IGNORE_THIS_PATH",
         "SZIP_LIBRARY": "IGNORE_THIS_PATH",
+        "HDF5_BUILD_EXAMPLES": "OFF",
         "BUILD_TESTING": "OFF",
         "HDF5_BUILD_TOOLS": "OFF",
     },
