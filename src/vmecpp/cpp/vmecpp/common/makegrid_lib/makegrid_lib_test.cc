@@ -68,13 +68,18 @@ TEST(TestMakegridLib, CheckMakeCylindricalGridSanityChecks) {
 
   MakegridParameters makegrid_parameters = {
       // corresponding to mgrid_mode = 'R'
-      .normalize_by_currents = false, .assume_stellarator_symmetry = false,
-      .number_of_field_periods = 5,   .r_grid_minimum = 1.0,
-      .r_grid_maximum = 2.0,          .number_of_r_grid_points = 11,
-      .z_grid_minimum = -0.6,         .z_grid_maximum = 0.6,
-      .number_of_z_grid_points = 13,  .number_of_phi_grid_points = 18};
+      .normalize_by_num_windings = false,
+      .assume_stellarator_symmetry = false,
+      .number_of_field_periods = 5,
+      .r_grid_minimum = 1.0,
+      .r_grid_maximum = 2.0,
+      .number_of_r_grid_points = 11,
+      .z_grid_minimum = -0.6,
+      .z_grid_maximum = 0.6,
+      .number_of_z_grid_points = 13,
+      .number_of_phi_grid_points = 18};
 
-  // both Boolean options are ok for normalize_by_currents
+  // both Boolean options are ok for normalize_by_num_windings
 
   // both Boolean options are ok for assume_stellarator_symmetry
 
@@ -113,17 +118,21 @@ TEST(TestMakegridLib, CheckMakeCylindricalGridSanityChecks) {
 TEST(TestMakegridLib, CheckMakeCylindricalGrid) {
   static constexpr double kTolerance = 1.0e-15;
 
-  MakegridParameters makegrid_parameters = {
-      // corresponding to mgrid_mode = 'R'
-      .normalize_by_currents = false, .assume_stellarator_symmetry = true,
-      .number_of_field_periods = 5,   .r_grid_minimum = 1.0,
-      .r_grid_maximum = 2.0,          .number_of_r_grid_points = 11,
-      .z_grid_minimum = -0.6,         .z_grid_maximum = 0.6,
-      .number_of_z_grid_points = 13,  .number_of_phi_grid_points = 18};
+  MakegridParameters makegrid_parameters = {// corresponding to mgrid_mode = 'R'
+                                            .normalize_by_num_windings = false,
+                                            .assume_stellarator_symmetry = true,
+                                            .number_of_field_periods = 5,
+                                            .r_grid_minimum = 1.0,
+                                            .r_grid_maximum = 2.0,
+                                            .number_of_r_grid_points = 11,
+                                            .z_grid_minimum = -0.6,
+                                            .z_grid_maximum = 0.6,
+                                            .number_of_z_grid_points = 13,
+                                            .number_of_phi_grid_points = 18};
 
   // for now, make sure that the struct initialization above correctly
   // identified the members
-  ASSERT_FALSE(makegrid_parameters.normalize_by_currents);
+  ASSERT_FALSE(makegrid_parameters.normalize_by_num_windings);
   ASSERT_TRUE(makegrid_parameters.assume_stellarator_symmetry);
   ASSERT_EQ(makegrid_parameters.number_of_field_periods, 5);
   ASSERT_EQ(makegrid_parameters.r_grid_minimum, 1.0);
@@ -436,17 +445,21 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
 
   // NOTE: These parameters have to be consistent with the MGRID_NLI namelist
   // in the `coils.test_*` input files.
-  MakegridParameters makegrid_parameters = {
-      // corresponding to mgrid_mode = 'R'
-      .normalize_by_currents = false, .assume_stellarator_symmetry = true,
-      .number_of_field_periods = 5,   .r_grid_minimum = 1.0,
-      .r_grid_maximum = 2.0,          .number_of_r_grid_points = 11,
-      .z_grid_minimum = -0.6,         .z_grid_maximum = 0.6,
-      .number_of_z_grid_points = 13,  .number_of_phi_grid_points = 18};
+  MakegridParameters makegrid_parameters = {// corresponding to mgrid_mode = 'R'
+                                            .normalize_by_num_windings = false,
+                                            .assume_stellarator_symmetry = true,
+                                            .number_of_field_periods = 5,
+                                            .r_grid_minimum = 1.0,
+                                            .r_grid_maximum = 2.0,
+                                            .number_of_r_grid_points = 11,
+                                            .z_grid_minimum = -0.6,
+                                            .z_grid_maximum = 0.6,
+                                            .number_of_z_grid_points = 13,
+                                            .number_of_phi_grid_points = 18};
 
   // for now, make sure that the struct initialization above correctly
   // identified the members
-  ASSERT_FALSE(makegrid_parameters.normalize_by_currents);
+  ASSERT_FALSE(makegrid_parameters.normalize_by_num_windings);
   ASSERT_TRUE(makegrid_parameters.assume_stellarator_symmetry);
   ASSERT_EQ(makegrid_parameters.number_of_field_periods, 5);
   ASSERT_EQ(makegrid_parameters.r_grid_minimum, 1.0);
@@ -594,17 +607,21 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
 
   // NOTE: These parameters have to be consistent with the MGRID_NLI namelist
   // in the `coils.test_*` input files.
-  MakegridParameters makegrid_parameters = {
-      // corresponding to mgrid_mode = 'R'
-      .normalize_by_currents = false, .assume_stellarator_symmetry = true,
-      .number_of_field_periods = 5,   .r_grid_minimum = 1.0,
-      .r_grid_maximum = 2.0,          .number_of_r_grid_points = 11,
-      .z_grid_minimum = -0.6,         .z_grid_maximum = 0.6,
-      .number_of_z_grid_points = 13,  .number_of_phi_grid_points = 18};
+  MakegridParameters makegrid_parameters = {// corresponding to mgrid_mode = 'R'
+                                            .normalize_by_num_windings = false,
+                                            .assume_stellarator_symmetry = true,
+                                            .number_of_field_periods = 5,
+                                            .r_grid_minimum = 1.0,
+                                            .r_grid_maximum = 2.0,
+                                            .number_of_r_grid_points = 11,
+                                            .z_grid_minimum = -0.6,
+                                            .z_grid_maximum = 0.6,
+                                            .number_of_z_grid_points = 13,
+                                            .number_of_phi_grid_points = 18};
 
   // for now, make sure that the struct initialization above correctly
   // identified the members
-  ASSERT_FALSE(makegrid_parameters.normalize_by_currents);
+  ASSERT_FALSE(makegrid_parameters.normalize_by_num_windings);
   ASSERT_TRUE(makegrid_parameters.assume_stellarator_symmetry);
   ASSERT_EQ(makegrid_parameters.number_of_field_periods, 5);
   ASSERT_EQ(makegrid_parameters.r_grid_minimum, 1.0);

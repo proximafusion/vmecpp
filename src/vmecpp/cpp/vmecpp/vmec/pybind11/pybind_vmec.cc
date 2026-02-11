@@ -672,7 +672,7 @@ PYBIND11_MODULE(_vmecpp, m) {
           },
           py::arg("file"))
       .def_readonly("normalize_by_currents",
-                    &makegrid::MakegridParameters::normalize_by_currents)
+                    &makegrid::MakegridParameters::normalize_by_num_windings)
       .def_readonly("assume_stellarator_symmetry",
                     &makegrid::MakegridParameters::assume_stellarator_symmetry)
       .def_readonly("number_of_field_periods",

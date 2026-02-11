@@ -23,7 +23,7 @@ using RowMatrix3Xd = Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>;
 struct MakegridParameters {
   // If true, normalize the magnetic field to the coil currents and number of
   // windings.
-  bool normalize_by_currents = false;
+  bool normalize_by_num_windings = false;
 
   // If true, compute the magnetic field and vector potential only on the
   // stellarator-symmetric half-period and mirror it into the other half-period.
