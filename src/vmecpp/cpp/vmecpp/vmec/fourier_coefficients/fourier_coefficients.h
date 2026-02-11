@@ -5,6 +5,7 @@
 #ifndef VMECPP_VMEC_FOURIER_COEFFICIENTS_FOURIER_COEFFICIENTS_H_
 #define VMECPP_VMEC_FOURIER_COEFFICIENTS_FOURIER_COEFFICIENTS_H_
 
+#include <Eigen/Dense>
 #include <cstdio>
 #include <optional>
 #include <vector>
@@ -22,8 +23,7 @@ class FourierCoeffs {
 
   void setZero();
 
-  void decomposeInto(FourierCoeffs& m_x,
-                     const std::vector<double>& scalxc) const;
+  void decomposeInto(FourierCoeffs& m_x, const Eigen::VectorXd& scalxc) const;
   void m1Constraint(double scalingFactor,
                     std::optional<int> jMax = std::nullopt);
 
@@ -48,44 +48,44 @@ class FourierCoeffs {
   const int ns;
 
   // [ns x numFC] R ~ cos(m*theta)*cos(n*zeta)
-  std::vector<double> rcc;
+  Eigen::VectorXd rcc;
 
   // [ns x numFC] R ~ sin(m*theta)*sin(n*zeta)
-  std::vector<double> rss;
+  Eigen::VectorXd rss;
 
   // [ns x numFC] R ~ sin(m*theta)*cos(n*zeta)
-  std::vector<double> rsc;
+  Eigen::VectorXd rsc;
 
   // [ns x numFC] R ~ cos(m*theta)*sin(n*zeta)
-  std::vector<double> rcs;
+  Eigen::VectorXd rcs;
 
   //***************/
 
   // [ns x numFC] Z ~ sin(m*theta)*cos(n*zeta)
-  std::vector<double> zsc;
+  Eigen::VectorXd zsc;
 
   // [ns x numFC] Z ~ cos(m*theta)*sin(n*zeta)
-  std::vector<double> zcs;
+  Eigen::VectorXd zcs;
 
   // [ns x numFC] Z ~ cos(m*theta)*cos(n*zeta)
-  std::vector<double> zcc;
+  Eigen::VectorXd zcc;
 
   // [ns x numFC] Z ~ sin(m*theta)*sin(n*zeta)
-  std::vector<double> zss;
+  Eigen::VectorXd zss;
 
   //***************/
 
   // [ns x numFC] lambda ~ sin(m*theta)*cos(n*zeta)
-  std::vector<double> lsc;
+  Eigen::VectorXd lsc;
 
   // [ns x numFC] lambda ~ cos(m*theta)*sin(n*zeta)
-  std::vector<double> lcs;
+  Eigen::VectorXd lcs;
 
   // [ns x numFC] lambda ~ cos(m*theta)*cos(n*zeta)
-  std::vector<double> lcc;
+  Eigen::VectorXd lcc;
 
   // [ns x numFC] lambda ~ sin(m*theta)*sin(n*zeta)
-  std::vector<double> lss;
+  Eigen::VectorXd lss;
 };
 
 }  // namespace vmecpp

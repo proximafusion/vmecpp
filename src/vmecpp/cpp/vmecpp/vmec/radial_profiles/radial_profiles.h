@@ -9,7 +9,6 @@
 #include <cfloat>
 #include <cmath>
 #include <string>
-#include <vector>
 
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/util/util.h"
@@ -114,19 +113,19 @@ class RadialProfiles {
   ProfileParameterization pcurrType;
 
   // half-grid
-  std::vector<double> phipH;
-  std::vector<double> chipH;
-  std::vector<double> iotaH;
-  std::vector<double> currH;
-  std::vector<double> massH;
-  std::vector<double> sqrtSH;
+  Eigen::VectorXd phipH;
+  Eigen::VectorXd chipH;
+  Eigen::VectorXd iotaH;
+  Eigen::VectorXd currH;
+  Eigen::VectorXd massH;
+  Eigen::VectorXd sqrtSH;
 
   // full-grid
-  std::vector<double> phipF;
-  std::vector<double> chipF;
-  std::vector<double> iotaF;
-  std::vector<double> sqrtSF;
-  std::vector<double> radialBlending;
+  Eigen::VectorXd phipF;
+  Eigen::VectorXd chipF;
+  Eigen::VectorXd iotaF;
+  Eigen::VectorXd sqrtSF;
+  Eigen::VectorXd radialBlending;
 
   // ---------------------------------
 
@@ -139,47 +138,47 @@ class RadialProfiles {
   double pressureScalingFactor;
 
   /** sm[j] = sqrt(s_{j-1/2}) / sqrt(s_j) for all force-j (numFull) */
-  std::vector<double> sm;
+  Eigen::VectorXd sm;
 
   /** sp[j] = sqrt(s_{j+1/2}) / sqrt(s_j) for all force-j (numFull) */
-  std::vector<double> sp;
+  Eigen::VectorXd sp;
 
   // part 2: derived radial profiles
 
   /** differential volume, half-grid */
-  std::vector<double> dVdsH;
+  Eigen::VectorXd dVdsH;
 
   /** kinetic pressure, half-grid */
-  std::vector<double> presH;
+  Eigen::VectorXd presH;
 
   /** enclosed poloidal current, half-grid */
-  std::vector<double> bvcoH;
+  Eigen::VectorXd bvcoH;
 
   /** enclosed toroidal current, half-grid */
-  std::vector<double> bucoH;
+  Eigen::VectorXd bucoH;
 
   /** poloidal current density, interior full-grid */
-  std::vector<double> jcuruF;
+  Eigen::VectorXd jcuruF;
 
   /** toroidal current density, interior full-grid */
-  std::vector<double> jcurvF;
+  Eigen::VectorXd jcurvF;
 
   /** pressure gradient, interior full-grid */
-  std::vector<double> presgradF;
+  Eigen::VectorXd presgradF;
 
   /** differential volume, interior full-grid */
-  std::vector<double> dVdsF;
+  Eigen::VectorXd dVdsF;
 
   /** radial force balance residual, interior full-grid */
-  std::vector<double> equiF;
+  Eigen::VectorXd equiF;
 
   // [nsMinF1 ... nsMaxF1] surface-averaged spectral width profile on full-grid
-  std::vector<double> spectral_width;
+  Eigen::VectorXd spectral_width;
 
   // ---------------------------------
 
   /** [ns x 2] 1/sqrtSF for odd-m; 1 for even-m */
-  std::vector<double> scalxc;
+  Eigen::VectorXd scalxc;
 
  private:
   const RadialPartitioning& r_;

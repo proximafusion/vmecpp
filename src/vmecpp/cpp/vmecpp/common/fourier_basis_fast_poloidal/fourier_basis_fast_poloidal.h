@@ -5,8 +5,8 @@
 #ifndef VMECPP_COMMON_FOURIER_BASIS_FAST_POLOIDAL_FOURIER_BASIS_FAST_POLOIDAL_H_
 #define VMECPP_COMMON_FOURIER_BASIS_FAST_POLOIDAL_FOURIER_BASIS_FAST_POLOIDAL_H_
 
+#include <Eigen/Dense>
 #include <span>
-#include <vector>
 
 #include "vmecpp/common/sizes/sizes.h"
 
@@ -43,13 +43,13 @@ class FourierBasisFastPoloidal {
   // Applied to cos(m*\theta) and sin(m*\theta) basis functions for DFT
   // normalization Enables proper normalization: 1/\pi for m>0 modes, 1/(2\pi)
   // for m=0 mode
-  std::vector<double> mscale;
+  Eigen::VectorXd mscale;
 
   // [nnyq2+1] Toroidal mode scaling factors: sqrt(2) for n>0, 1.0 for n=0
   // Applied to cos(n*\zeta) and sin(n*\zeta) basis functions for DFT
   // normalization Enables proper normalization: 1/\pi for n>0 modes, 1/(2\pi)
   // for n=0 mode
-  std::vector<double> nscale;
+  Eigen::VectorXd nscale;
 
   // ============================================================================
   // POLOIDAL BASIS FUNCTIONS (m-major layout: [m][l])
@@ -59,23 +59,23 @@ class FourierBasisFastPoloidal {
   // Layout: cosmu[m*nThetaReduced + l] = cos(m*\theta[l]) * mscale[m]
   // \theta[l] = 2*\pi*l/nThetaEven for l=0...nThetaReduced-1 (reduced [0,\pi]
   // interval)
-  std::vector<double> cosmu;
+  Eigen::VectorXd cosmu;
 
   // [nThetaReduced * (mnyq2+1)] Pre-scaled poloidal sine basis
   // Layout: sinmu[m*nThetaReduced + l] = sin(m*\theta[l]) * mscale[m]
-  std::vector<double> sinmu;
+  Eigen::VectorXd sinmu;
 
   // [nThetaReduced * (mnyq2+1)] Pre-scaled poloidal cosine derivative
   // Layout: cosmum[m*nThetaReduced + l] = m * cos(m*\theta[l]) * mscale[m]
   // Used for computing \partial/\partial\theta derivatives in force
   // calculations
-  std::vector<double> cosmum;
+  Eigen::VectorXd cosmum;
 
   // [nThetaReduced * (mnyq2+1)] Pre-scaled poloidal sine derivative
   // Layout: sinmum[m*nThetaReduced + l] = -m * sin(m*\theta[l]) * mscale[m]
   // Used for computing \partial/\partial\theta derivatives in force
   // calculations
-  std::vector<double> sinmum;
+  Eigen::VectorXd sinmum;
 
   // ============================================================================
   // POLOIDAL BASIS WITH INTEGRATION WEIGHTS
@@ -84,21 +84,21 @@ class FourierBasisFastPoloidal {
   // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal cosine basis
   // Layout: cosmui[m*nThetaReduced + l] = cosmu[m*nThetaReduced + l] * intNorm
   // intNorm = 1/(nZeta*(nThetaReduced-1)), with boundary point factor 1/2
-  std::vector<double> cosmui;
+  Eigen::VectorXd cosmui;
 
   // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal sine basis
   // Layout: sinmui[m*nThetaReduced + l] = sinmu[m*nThetaReduced + l] * intNorm
-  std::vector<double> sinmui;
+  Eigen::VectorXd sinmui;
 
   // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal cosine derivative
   // Layout: cosmumi[m*nThetaReduced + l] = cosmum[m*nThetaReduced + l] *
   // intNorm
-  std::vector<double> cosmumi;
+  Eigen::VectorXd cosmumi;
 
   // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal sine derivative
   // Layout: sinmumi[m*nThetaReduced + l] = sinmum[m*nThetaReduced + l] *
   // intNorm
-  std::vector<double> sinmumi;
+  Eigen::VectorXd sinmumi;
 
   // ============================================================================
   // TOROIDAL BASIS FUNCTIONS (zeta-major layout: [k][n])
@@ -107,23 +107,23 @@ class FourierBasisFastPoloidal {
   // [(nnyq2+1) * nZeta] Pre-scaled toroidal cosine basis
   // Layout: cosnv[k*(nnyq2+1) + n] = cos(n*\zeta[k]) * nscale[n]
   // \zeta[k] = 2*\pi*k/nZeta for k=0...nZeta-1 (full [0,2\pi] interval)
-  std::vector<double> cosnv;
+  Eigen::VectorXd cosnv;
 
   // [(nnyq2+1) * nZeta] Pre-scaled toroidal sine basis
   // Layout: sinnv[k*(nnyq2+1) + n] = sin(n*\zeta[k]) * nscale[n]
-  std::vector<double> sinnv;
+  Eigen::VectorXd sinnv;
 
   // [(nnyq2+1) * nZeta] Pre-scaled toroidal cosine derivative with nfp factor
   // Layout: cosnvn[k*(nnyq2+1) + n] = n*nfp * cos(n*\zeta[k]) * nscale[n]
   // Factor nfp converts \partial/\partial\zeta to \partial/\partial\phi
   // derivatives
-  std::vector<double> cosnvn;
+  Eigen::VectorXd cosnvn;
 
   // [(nnyq2+1) * nZeta] Pre-scaled toroidal sine derivative with nfp factor
   // Layout: sinnvn[k*(nnyq2+1) + n] = -n*nfp * sin(n*\zeta[k]) * nscale[n]
   // Factor nfp converts \partial/\partial\zeta to \partial/\partial\phi
   // derivatives
-  std::vector<double> sinnvn;
+  Eigen::VectorXd sinnvn;
 
   // ============================================================================
   // FOURIER BASIS CONVERSION FUNCTIONS
@@ -271,7 +271,7 @@ class FourierBasisFastPoloidal {
 
   int mnIdx(int m, int n) const;
   int mnMax(int m_size, int n_size) const;
-  void computeConversionIndices(std::vector<int>& m_xm, std::vector<int>& m_xn,
+  void computeConversionIndices(Eigen::VectorXi& m_xm, Eigen::VectorXi& m_xn,
                                 int n_size, int m_size, int nfp) const;
 
   // ============================================================================
@@ -281,25 +281,25 @@ class FourierBasisFastPoloidal {
   // [mnmax] Poloidal mode numbers for standard resolution Fourier coefficients
   // Layout: xm[mn] = poloidal mode number m for the mn-th coefficient
   // Maps linear coefficient index mn to 2D mode (m,n) for spectral operations
-  std::vector<int> xm;
+  Eigen::VectorXi xm;
 
   // [mnmax] Toroidal mode numbers for standard resolution Fourier coefficients
   // Layout: xn[mn] = toroidal mode number n*nfp for the mn-th coefficient
   // Factor nfp included to convert from field periods to geometric toroidal
   // modes
-  std::vector<int> xn;
+  Eigen::VectorXi xn;
 
   // [mnmax_nyq] Poloidal mode numbers for Nyquist-extended Fourier coefficients
   // Layout: xm_nyq[mn] = poloidal mode number m for the mn-th Nyquist
   // coefficient Extended resolution to avoid aliasing in nonlinear force
   // calculations
-  std::vector<int> xm_nyq;
+  Eigen::VectorXi xm_nyq;
 
   // [mnmax_nyq] Toroidal mode numbers for Nyquist-extended Fourier coefficients
   // Layout: xn_nyq[mn] = toroidal mode number n*nfp for the mn-th Nyquist
   // coefficient Extended resolution to avoid aliasing in nonlinear force
   // calculations
-  std::vector<int> xn_nyq;
+  Eigen::VectorXi xn_nyq;
 
  private:
   const Sizes& s_;

@@ -45,7 +45,7 @@ cc_test(
         "//util/file_io:file_io",
         "//util/testing:numerical_comparison_lib",
     ],
-    size = "small",
+    size = "medium",
 )
 
 cc_test(
@@ -60,5 +60,5 @@ cc_test(
         "//util/testing:numerical_comparison_lib",
         "//vmecpp/vmec/vmec",
     ],
-    size = "small",
+    size = "medium",
 )

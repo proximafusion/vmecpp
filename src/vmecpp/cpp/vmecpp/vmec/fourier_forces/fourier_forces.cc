@@ -12,18 +12,18 @@ namespace vmecpp {
 FourierForces::FourierForces(const Sizes* s, const RadialPartitioning* r,
                              int ns)
     : FourierCoeffs(s, r, r->nsMinF, r->nsMaxF, ns),
-      frcc(rcc),
-      frss(rss),
-      frsc(rsc),
-      frcs(rcs),
-      fzsc(zsc),
-      fzcs(zcs),
-      fzcc(zcc),
-      fzss(zss),
-      flsc(lsc),
-      flcs(lcs),
-      flcc(lcc),
-      flss(lss) {}
+      frcc(rcc.data(), rcc.size()),
+      frss(rss.data(), rss.size()),
+      frsc(rsc.data(), rsc.size()),
+      frcs(rcs.data(), rcs.size()),
+      fzsc(zsc.data(), zsc.size()),
+      fzcs(zcs.data(), zcs.size()),
+      fzcc(zcc.data(), zcc.size()),
+      fzss(zss.data(), zss.size()),
+      flsc(lsc.data(), lsc.size()),
+      flcs(lcs.data(), lcs.size()),
+      flcc(lcc.data(), lcc.size()),
+      flss(lss.data(), lss.size()) {}
 
 void FourierForces::zeroZForceForM1() {
   for (int jF = nsMin_; jF < nsMax_; ++jF) {
