@@ -351,35 +351,6 @@ void FourierGeometry::extrapolateTowardsAxis() {
   }  // n
 }
 
-void FourierGeometry::copyFrom(const FourierGeometry& src) {
-  for (int jF = nsMin_; jF < nsMax_; ++jF) {
-    for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
-
-        rmncc[idx_fc] = src.rmncc[idx_fc];
-        zmnsc[idx_fc] = src.zmnsc[idx_fc];
-        lmnsc[idx_fc] = src.lmnsc[idx_fc];
-        if (s_.lthreed) {
-          rmnss[idx_fc] = src.rmnss[idx_fc];
-          zmncs[idx_fc] = src.zmncs[idx_fc];
-          lmncs[idx_fc] = src.lmncs[idx_fc];
-        }
-        if (s_.lasym) {
-          rmnsc[idx_fc] = src.rmnsc[idx_fc];
-          zmncc[idx_fc] = src.zmncc[idx_fc];
-          lmncc[idx_fc] = src.lmncc[idx_fc];
-          if (s_.lthreed) {
-            rmncs[idx_fc] = src.rmncs[idx_fc];
-            zmnss[idx_fc] = src.zmnss[idx_fc];
-            lmnss[idx_fc] = src.lmnss[idx_fc];
-          }
-        }
-      }  // n
-    }  // m
-  }  // j
-}
-
 void FourierGeometry::ComputeSpectralWidth(
     const FourierBasisFastPoloidal& fourier_basis,
     RadialProfiles& m_radial_profiles, const int p, const int q) const {

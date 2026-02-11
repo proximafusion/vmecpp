@@ -1034,7 +1034,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
     decomposed_v_[thread_id]->setZero();
 
     // restore state from backup
-    decomposed_x_[thread_id]->copyFrom(*physical_x_backup_[thread_id]);
+    *decomposed_x_[thread_id] = *physical_x_backup_[thread_id];
 
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1063,7 +1063,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
     decomposed_v_[thread_id]->setZero();
 
     // restore state from backup
-    decomposed_x_[thread_id]->copyFrom(*physical_x_backup_[thread_id]);
+    *decomposed_x_[thread_id] = *physical_x_backup_[thread_id];
 
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1083,7 +1083,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
     // save current state vector, e.g. restart_reason == NO_RESTART
 
     // update backup
-    physical_x_backup_[thread_id]->copyFrom(*decomposed_x_[thread_id]);
+    *physical_x_backup_[thread_id] = *decomposed_x_[thread_id];
   }
 #ifdef _OPENMP
 #pragma omp barrier

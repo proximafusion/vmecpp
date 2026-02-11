@@ -41,8 +41,6 @@ class FourierGeometry : public FourierCoeffs {
 
   void extrapolateTowardsAxis();
 
-  void copyFrom(const FourierGeometry &src);
-
   // Compute the spectral width of the R and Z Fourier coefficients
   // and write it into the spectral_width vector in the given RadialProfiles.
   void ComputeSpectralWidth(const FourierBasisFastPoloidal &fourier_basis,
