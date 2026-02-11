@@ -683,7 +683,7 @@ except KeyboardInterrupt:
 
     remaining_output = proc.communicate(timeout=30)[0]
     output = partial_output + remaining_output
-    assert (
-        "KEYBOARD_INTERRUPT" in output
-    ), f"Expected KeyboardInterrupt but got:\noutput: {output}"
+    assert "KEYBOARD_INTERRUPT" in output, (
+        f"Expected KeyboardInterrupt but got:\noutput: {output}"
+    )
     assert "RUN_COMPLETED" not in output
