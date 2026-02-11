@@ -173,7 +173,7 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
     # the common subset.
     indata = vmecpp.indata
     assert indata is not None
-    for varname in indata.__class__.model_fields:
+    for varname in type(indata).model_fields:
         # These are not present in the legacy VMEC2000 INDATA namelist,
         # therefore skip them.
         if varname.startswith("_") or varname in [
