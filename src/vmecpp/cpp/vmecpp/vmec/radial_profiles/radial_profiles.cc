@@ -9,7 +9,6 @@
 #include <cstdio>
 #include <iostream>
 #include <string>
-#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
@@ -73,14 +72,17 @@ RadialProfiles::RadialProfiles(const RadialPartitioning* r,
   dVdsF.resize(r_.nsMaxFi - r_.nsMinFi);
   equiF.resize(r_.nsMaxFi - r_.nsMinFi);
 
-  spectral_width.resize(r_.nsMaxF1 - r_.nsMinF1, 0.0);
+  spectral_width.resize(r_.nsMaxF1 - r_.nsMinF1);
+  spectral_width.setZero();
 
   // ---------------------------------
 
   scalxc.resize((r_.nsMaxF1 - r_.nsMinF1) * 2);
 
-  sm.resize(r_.nsMaxH - r_.nsMinH, 0.0);
-  sp.resize(r_.nsMaxH - r_.nsMinH, 0.0);
+  sm.resize(r_.nsMaxH - r_.nsMinH);
+  sm.setZero();
+  sp.resize(r_.nsMaxH - r_.nsMinH);
+  sp.setZero();
 }
 
 void RadialProfiles::setupInputProfiles() {

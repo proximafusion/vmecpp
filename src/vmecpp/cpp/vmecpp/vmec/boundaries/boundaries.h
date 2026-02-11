@@ -5,7 +5,7 @@
 #ifndef VMECPP_VMEC_BOUNDARIES_BOUNDARIES_H_
 #define VMECPP_VMEC_BOUNDARIES_BOUNDARIES_H_
 
-#include <vector>
+#include <Eigen/Dense>
 
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
@@ -36,20 +36,20 @@ class Boundaries {
   void RecomputeMagneticAxisToFixJacobianSign(int number_of_flux_surfaces,
                                               int sign_of_jacobian);
 
-  std::vector<double> raxis_c;
-  std::vector<double> zaxis_s;
-  std::vector<double> raxis_s;
-  std::vector<double> zaxis_c;
+  Eigen::VectorXd raxis_c;
+  Eigen::VectorXd zaxis_s;
+  Eigen::VectorXd raxis_s;
+  Eigen::VectorXd zaxis_c;
 
-  std::vector<double> rbcc;
-  std::vector<double> rbss;
-  std::vector<double> rbsc;
-  std::vector<double> rbcs;
+  Eigen::VectorXd rbcc;
+  Eigen::VectorXd rbss;
+  Eigen::VectorXd rbsc;
+  Eigen::VectorXd rbcs;
 
-  std::vector<double> zbsc;
-  std::vector<double> zbcs;
-  std::vector<double> zbcc;
-  std::vector<double> zbss;
+  Eigen::VectorXd zbsc;
+  Eigen::VectorXd zbcs;
+  Eigen::VectorXd zbcc;
+  Eigen::VectorXd zbss;
 
  private:
   const Sizes& s_;

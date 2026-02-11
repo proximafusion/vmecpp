@@ -2885,8 +2885,8 @@ void IdealMhdModel::computePreconditioningMatrix(
     }  // kl
   }  // jH
 
-  const std::vector<double>& sm = m_p_.sm;
-  const std::vector<double>& sp = m_p_.sp;
+  const Eigen::VectorXd& sm = m_p_.sm;
+  const Eigen::VectorXd& sp = m_p_.sp;
 
   // radial assembly of preconditioning matrix element components
   // All this sm, sp logic seems to be related to the odd-m scaling factors...

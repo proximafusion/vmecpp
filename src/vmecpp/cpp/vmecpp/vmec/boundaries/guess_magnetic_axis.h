@@ -5,6 +5,7 @@
 #ifndef VMECPP_VMEC_BOUNDARIES_GUESS_MAGNETIC_AXIS_H_
 #define VMECPP_VMEC_BOUNDARIES_GUESS_MAGNETIC_AXIS_H_
 
+#include <Eigen/Dense>
 #include <vector>
 
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
@@ -61,13 +62,13 @@ struct RecomputeAxisWorkspace {
 // done assuming the given number_of_flux_surfaces.
 RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
     int number_of_flux_surfaces, int sign_of_jacobian, const Sizes& s,
-    const FourierBasisFastPoloidal& t, const std::vector<double>& rbcc,
-    const std::vector<double>& rbss, const std::vector<double>& rbsc,
-    const std::vector<double>& rbcs, const std::vector<double>& zbsc,
-    const std::vector<double>& zbcs, const std::vector<double>& zbcc,
-    const std::vector<double>& zbss, const std::vector<double>& raxis_c,
-    const std::vector<double>& raxis_s, const std::vector<double>& zaxis_s,
-    const std::vector<double>& zaxis_c);
+    const FourierBasisFastPoloidal& t, const Eigen::VectorXd& rbcc,
+    const Eigen::VectorXd& rbss, const Eigen::VectorXd& rbsc,
+    const Eigen::VectorXd& rbcs, const Eigen::VectorXd& zbsc,
+    const Eigen::VectorXd& zbcs, const Eigen::VectorXd& zbcc,
+    const Eigen::VectorXd& zbss, const Eigen::VectorXd& raxis_c,
+    const Eigen::VectorXd& raxis_s, const Eigen::VectorXd& zaxis_s,
+    const Eigen::VectorXd& zaxis_c);
 
 }  // namespace vmecpp
 

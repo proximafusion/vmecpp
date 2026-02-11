@@ -4394,11 +4394,11 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // -------------------
   // mode numbers for Fourier coefficient arrays below
 
-  // copy STL vectors into Eigen vectors
-  wout.xm = ToEigenVector(t.xm);
-  wout.xn = ToEigenVector(t.xn);
-  wout.xm_nyq = ToEigenVector(t.xm_nyq);
-  wout.xn_nyq = ToEigenVector(t.xn_nyq);
+  // copy Eigen vectors into wout
+  wout.xm = t.xm;
+  wout.xn = t.xn;
+  wout.xm_nyq = t.xm_nyq;
+  wout.xn_nyq = t.xn_nyq;
 
   // -------------------
   // stellarator-symmetric Fourier coefficients

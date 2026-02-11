@@ -6,7 +6,6 @@
 
 #include <cmath>
 #include <numbers>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -36,13 +35,17 @@ FourierBasisFastToroidal::FourierBasisFastToroidal(const Sizes* s) : s_(*s) {
 
   // -----------------
 
-  xm.resize(s_.mnmax, 0);
-  xn.resize(s_.mnmax, 0);
+  xm.resize(s_.mnmax);
+  xm.setZero();
+  xn.resize(s_.mnmax);
+  xn.setZero();
 
   computeConversionIndices(/*m_xm=*/xm, /*m_xn=*/xn, s_.ntor, s_.mpol, s_.nfp);
 
-  xm_nyq.resize(s_.mnmax_nyq, 0);
-  xn_nyq.resize(s_.mnmax_nyq, 0);
+  xm_nyq.resize(s_.mnmax_nyq);
+  xm_nyq.setZero();
+  xn_nyq.resize(s_.mnmax_nyq);
+  xn_nyq.setZero();
 
   computeConversionIndices(/*m_xm=*/xm_nyq, /*m_xn=*/xn_nyq, s_.nnyq,
                            s_.mnyq + 1, s_.nfp);
@@ -350,8 +353,8 @@ int FourierBasisFastToroidal::mnMax(int m_size, int n_size) const {
   return mnmax;
 }
 
-void FourierBasisFastToroidal::computeConversionIndices(std::vector<int>& m_xm,
-                                                        std::vector<int>& m_xn,
+void FourierBasisFastToroidal::computeConversionIndices(Eigen::VectorXi& m_xm,
+                                                        Eigen::VectorXi& m_xn,
                                                         int n_size, int m_size,
                                                         int nfp) const {
   const int mnmax = mnMax(m_size, n_size);
