@@ -655,10 +655,9 @@ double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
   if (n < 2 || n != static_cast<int>(splineValues.size())) {
     return 0.0;
   }
-
   auto it = std::lower_bound(splineKnots.begin(), splineKnots.end(), x);
-  if (it == splineKnots.end()) {
-    // x is out of bounds
+  if (it >= (splineKnots.end() - 1)) {
+    // x is out of bounds (or x1 = it+1 would be out of bounds)
     return splineValues[n - 1];
   }
   if (it == splineKnots.begin()) {

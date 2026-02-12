@@ -589,7 +589,7 @@ def test_populate_raw_profile_knots():
     def f(s):
         return s**2
 
-    vmecpp.populate_raw_profile(vmec_input, "pressure", f)
+    vmec_input = vmecpp.populate_raw_profile(vmec_input, "pressure", f)
 
     s_values = set()
     for ns in vmec_input.ns_array:

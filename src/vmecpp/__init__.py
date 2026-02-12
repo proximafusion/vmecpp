@@ -2095,16 +2095,29 @@ def _pad_and_transpose(
     return stacked
 
 
-def populate_raw_profile(
+def set_profile(
     vmec_input: VmecInput,
     field: typing.Literal["pressure", "iota", "current"],
     f: typing.Callable[[np.ndarray], np.ndarray],
-) -> None:
+) -> VmecInput:
     """Populate a line segment profile using callable ``f``.
+
+    This allows users to set a precise pressure/iota/curent profile on flux
+    surfaces without any precision loss by fitting the profile to e.g.
+    experimental data first.
 
     The callable is evaluated on all unique ``s`` values required for the
     multi-grid steps (full and half grids). The resulting knots and values are
-    stored in the auxiliary arrays for the chosen profile.
+    stored in the auxiliary arrays for the chosen profile. Therefore you should
+    populate the multigrid ``ns_array`` resolutions before calling this function.
+
+    Args:
+        vmec_input: The vmec input to be modified.
+        field: The profile quantity to set.
+        f: A callable taking an array of flux coordinates ``s`` and returning
+            the value of the selected quantity (pressure/iota/current)
+    Returns:
+        A modified copy of the given ``VmecInput``.
     """
     s_values: set[float] = set()
     for ns in vmec_input.ns_array:
@@ -2114,25 +2127,39 @@ def populate_raw_profile(
         s_values.update(half_grid)
     knots = np.array(np.sort(np.array(list(s_values))))
     values = np.array(f(knots))
-
     if field == "pressure":
-        vmec_input.pmass_type = "line_segment"
-        vmec_input.am_aux_s = knots
-        vmec_input.am_aux_f = values
-        vmec_input.am = np.array([])
-    elif field == "iota":
-        vmec_input.piota_type = "line_segment"
-        vmec_input.ai_aux_s = knots
-        vmec_input.ai_aux_f = values
-        vmec_input.ai = np.array([])
-    elif field == "current":
-        vmec_input.pcurr_type = "line_segment_i"
-        vmec_input.ac_aux_s = knots
-        vmec_input.ac_aux_f = values
-        vmec_input.ac = np.array([])
-    else:
-        msg = "field must be one of 'pressure', 'iota', 'current'"
-        raise ValueError(msg)
+        return vmec_input.model_copy(
+            update={
+                "pmass_type": "line_segment",
+                "am_aux_s": knots,
+                "am_aux_f": values,
+                "am": np.array([]),
+            }
+        )
+    if field == "iota":
+        return vmec_input.model_copy(
+            update={
+                "piota_type": "line_segment",
+                "ai_aux_s": knots,
+                "ai_aux_f": values,
+                "ai": np.array([]),
+            }
+        )
+    if field == "current":
+        return vmec_input.model_copy(
+            update={
+                "pcurr_type": "line_segment_i",
+                "ac_aux_s": knots,
+                "ac_aux_f": values,
+                "ac": np.array([]),
+            }
+        )
+    msg = "field must be one of 'pressure', 'iota', 'current'"
+    raise ValueError(msg)
+
+
+# Backwards compatible name
+populate_raw_profile = set_profile
 
 
 # Ordered this way to ensure run, VmecInput, and VmecOutput are the first three
@@ -2148,5 +2175,5 @@ __all__ = [  # noqa: RUF022
     "MakegridParameters",
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
-    "populate_raw_profile",
+    "set_profile",
 ]
