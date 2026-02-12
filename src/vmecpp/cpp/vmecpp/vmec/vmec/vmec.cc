@@ -28,7 +28,10 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/free_boundary/nestor/nestor.h"
+#include "vmecpp/free_boundary/only_coils/only_coils.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 
 namespace {
 void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
@@ -185,6 +188,15 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     h_.vacuum_b_r.resize(s_.nZnT);
     h_.vacuum_b_phi.resize(s_.nZnT);
     h_.vacuum_b_z.resize(s_.nZnT);
+
+    // TODO(jons): move this check to better-suited place
+    if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
+        (indata_.curtor != 0.0 || indata_.pres_scale != 0.0)) {
+      throw std::invalid_argument(
+          absl::StrCat("curtor and pres_scale must be zero when using "
+                       "'only_coils' free boundary method, but were ",
+                       indata_.curtor, " and ", indata_.pres_scale));
+    }  // check that cutor==0 and pres_scale==0 for only_coils
   }
 }
 
@@ -488,6 +500,11 @@ bool Vmec::InitializeRadial(
               &s_, tp_[thread_id].get(), &mgrid_, matrixShare, bvecShare,
               h_.vacuum_magnetic_pressure, iPiv, h_.vacuum_b_r, h_.vacuum_b_phi,
               h_.vacuum_b_z);
+        } else if (indata_.free_boundary_method ==
+                   FreeBoundaryMethod::ONLY_COILS) {
+          fb_[thread_id] = std::make_unique<OnlyCoils>(
+              &s_, tp_[thread_id].get(), &mgrid_, h_.vacuum_magnetic_pressure,
+              h_.vacuum_b_r, h_.vacuum_b_phi, h_.vacuum_b_z);
         } else {
           LOG(FATAL) << absl::StrCat("free boundary method '",
                                      ToString(indata_.free_boundary_method),

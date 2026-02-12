@@ -501,8 +501,7 @@ def test_vmec_input_validation():
     # The test_file json may exclude fields that have default values,
     # while the parsed versions should have all fields populated.
     indata_dict_from_json = json.loads(vmec_input._to_cpp_vmecindata().to_json())
-    # TODO(jurasic): These quantities are not yet present in VmecInput, since there's only one option atm.
-    del indata_dict_from_json["free_boundary_method"]
+    # TODO(jurasic): iteration_style is not yet present in VmecInput, since there's only one option atm.
     del indata_dict_from_json["iteration_style"]
     vmec_input_dict_from_json = json.loads(vmec_input.model_dump_json())
 

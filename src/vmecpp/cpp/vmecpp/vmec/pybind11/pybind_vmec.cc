@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include <pybind11/eigen.h>     // to wrap Eigen matrices
 #include <pybind11/iostream.h>  // py::add_ostream_redirect
+#include <pybind11/native_enum.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>  // to wrap std::vector
 #include <pybind11/stl/filesystem.h>
@@ -194,12 +195,18 @@ PYBIND11_MODULE(_vmecpp, m) {
             return w.zbc;
           });
 
-  py::enum_<vmecpp::FreeBoundaryMethod>(m, "FreeBoundaryMethod")
+  py::native_enum<vmecpp::FreeBoundaryMethod>(m, "FreeBoundaryMethod",
+                                              "enum.Enum")
       .value("NESTOR", vmecpp::FreeBoundaryMethod::NESTOR)
-      .value("BIEST", vmecpp::FreeBoundaryMethod::BIEST);
+      .value("ONLY_COILS", vmecpp::FreeBoundaryMethod::ONLY_COILS)
+      .value("BIEST", vmecpp::FreeBoundaryMethod::BIEST)
+      .export_values()
+      .finalize();
 
-  py::enum_<vmecpp::IterationStyle>(m, "IterationStyle")
-      .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52);
+  py::native_enum<vmecpp::IterationStyle>(m, "IterationStyle", "enum.Enum")
+      .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52)
+      .export_values()
+      .finalize();
 
   py::class_<vmecpp::VmecCheckpoint>(m, "VmecCheckpoint");
 

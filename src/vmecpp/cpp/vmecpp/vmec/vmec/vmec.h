@@ -26,7 +26,6 @@
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
-#include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"

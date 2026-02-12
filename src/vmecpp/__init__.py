@@ -74,6 +74,34 @@ class RestartReason(enum.Enum):
     not overlapping yet)"""
 
 
+class FreeBoundaryMethod(str, enum.Enum):
+    """Method for handling free-boundary conditions."""
+
+    NESTOR = "nestor"
+    """NEumann Solver for TORoidal systems."""
+
+    ONLY_COILS = "only_coils"
+    """Use just the coils field for the free-boundary force contribution.
+
+    This can be particularly useful for verification calculations.
+
+    Warning: This is only valid for vacuum calculations and will ignore
+    the plasma current contribution!
+    """
+
+    BIEST = "biest"
+    """Boundary Integral Equation Solver for Toroidal systems."""
+
+
+def _validate_free_boundary_method(
+    value: _vmecpp.FreeBoundaryMethod | str | FreeBoundaryMethod,
+) -> FreeBoundaryMethod:
+    """Convert various representations to FreeBoundaryMethod."""
+    if isinstance(value, _vmecpp.FreeBoundaryMethod):
+        return FreeBoundaryMethod(value.name.lower())  # pyright: ignore[reportAttributeAccessIssue]
+    return FreeBoundaryMethod(str(value))
+
+
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
 # In the future VmecINDATAPyWrapper and the C++ VmecINDATA will merge into one type,
 # and this will become a Python wrapper around the one C++ VmecINDATA type.
@@ -261,6 +289,13 @@ class VmecInput(BaseModelWithNumpy):
 
     nvacskip: int = 1
     """Number of iterations between full vacuum calculations."""
+
+    free_boundary_method: typing.Annotated[
+        FreeBoundaryMethod,
+        pydantic.BeforeValidator(_validate_free_boundary_method),
+        pydantic.Field(),
+    ] = FreeBoundaryMethod.NESTOR
+    """Method for handling free-boundary conditions."""
 
     nstep: int = 10
     """Printout interval at which convergence progress is logged."""
@@ -506,9 +541,14 @@ class VmecInput(BaseModelWithNumpy):
         }
 
         for attr in VmecInput.model_fields:
-            if attr in readonly_attrs:
+            if attr in readonly_attrs or attr == "free_boundary_method":
                 continue  # these must be set separately
             setattr(cpp_indata, attr, getattr(self, attr))
+
+        # Convert Python enum to C++ enum
+        cpp_indata.free_boundary_method = getattr(
+            _vmecpp.FreeBoundaryMethod, self.free_boundary_method.upper()
+        )
 
         # this also resizes the readonly_attrs
         cpp_indata._set_mpol_ntor(self.mpol, self.ntor)
@@ -2107,5 +2147,6 @@ __all__ = [  # noqa: RUF022
     "Threed1Volumetrics",
     "MakegridParameters",
     "MagneticFieldResponseTable",
+    "FreeBoundaryMethod",
     "populate_raw_profile",
 ]
