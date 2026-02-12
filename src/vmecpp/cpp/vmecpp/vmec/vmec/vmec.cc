@@ -110,7 +110,7 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
-    std::optional<int> max_threads, bool verbose,
+    std::optional<int> max_threads, OutputMode verbose,
     InterruptCallback interrupt_callback) {
   Vmec v = Vmec(indata, max_threads, verbose, std::move(interrupt_callback));
 
@@ -129,7 +129,7 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<HotRestartState> initial_state,
-    std::optional<int> max_threads, bool verbose,
+    std::optional<int> max_threads, OutputMode verbose,
     InterruptCallback interrupt_callback) {
   Vmec v(indata, max_threads, verbose, std::move(interrupt_callback));
   absl::Status mgrid_status = v.LoadMGrid(magnetic_response_table);
@@ -151,7 +151,7 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
 namespace vmecpp {
 
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
-           bool verbose, InterruptCallback interrupt_callback)
+           OutputMode verbose, InterruptCallback interrupt_callback)
     : indata_(indata),
       s_(indata_),
       t_(&s_),
@@ -159,7 +159,8 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       h_(&s_),
       fc_(indata_.lfreeb, indata_.delt,
           static_cast<int>(indata_.ns_array.size()), max_threads),
-      verbose_(verbose),
+      verbose_(verbose != OutputMode::kSilent),
+      logger_(std::cout, verbose),
       interrupt_callback_(std::move(interrupt_callback)),
       vacuum_pressure_state_(VacuumPressureState::kOff),
       status_(VmecStatus::NORMAL_TERMINATION),
@@ -320,6 +321,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         fc_.niterv = indata_.niter_array[igrid];
       }
 
+      // notify logger of the next multigrid stage
+      logger_.BeginStage(igrid, max_grids + jacob_off_, fc_.nsval, s_.mnmax,
+                         fc_.ftolv, fc_.niterv, fc_.lfreeb);
+
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
       // value
@@ -378,8 +383,25 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       r_, decomposed_x_, m_, p_, checkpoint, vacuum_pressure_state_, status_,
       iter2_);
 
-  if (verbose_) {
-    std::cout << "\nNUMBER OF JACOBIAN RESETS = " << fc_.ijacob << '\n';
+  {
+    const auto& w = output_quantities_.wout;
+    RunSummary summary;
+    summary.converged = (status_ == VmecStatus::SUCCESSFUL_TERMINATION);
+    summary.total_iterations = w.itfsq;
+    summary.num_jacobian_resets = fc_.ijacob;
+    summary.fsqr = w.fsqr;
+    summary.fsqz = w.fsqz;
+    summary.fsql = w.fsql;
+    summary.ftolv = fc_.ftolv;
+    summary.betatot = w.betatot;
+    summary.betapol = w.betapol;
+    summary.betator = w.betator;
+    summary.w_mhd = h_.mhdEnergy * 4.0 * M_PI * M_PI;
+    summary.rax = w.Rmajor_p;
+    summary.aminor = w.Aminor_p;
+    summary.rmajor = w.Rmajor_p;
+    summary.b0 = w.b0;
+    logger_.EndRun(summary);
   }
 
   return false;
@@ -390,11 +412,7 @@ bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
     const std::optional<HotRestartState>& initial_state) {
-  if (verbose_) {
-    std::cout << absl::StrFormat(
-        "\n NS = %d   NO. FOURIER MODES = %d   FTOLV = %9.3e   NITER = %d\n",
-        nsval, s_.mnmax, fc_.ftolv, fc_.niterv);
-  }
+  // Stage info output is now handled by logger_.BeginStage() in run().
 
   // Set timestep control parameters
   fc_.fsq = 1.0;
@@ -641,28 +659,7 @@ bool Vmec::InitializeRadial(
 // resetting the time step.
 absl::StatusOr<bool> Vmec::SolveEquilibrium(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing) {
-  if (verbose_) {
-    std::cout << '\n';
-    if (fc_.lfreeb) {
-      std::cout
-          << " ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz      "
-             "fsql   |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  "
-             "<M>  |  DELBSQ  \n";
-      std::cout
-          << "------+------------------------------+-----------------------"
-             "-------+----------+-----------+------------+------------+----"
-             "---+----------\n";
-    } else {
-      std::cout
-          << " ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz    "
-             "  fsql  "
-             " |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  <M>  \n";
-      std::cout
-          << "------+------------------------------+---------------------"
-             "--------"
-             "-+----------+-----------+------------+------------+-------\n";
-    }
-  }
+  // Table header output is now handled by logger_.BeginStage() in run().
 
   absl::Status status_of_all_threads = absl::OkStatus();
   bool any_checkpoint_reached = false;
@@ -732,11 +729,9 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     return status_of_all_threads;
   }
 
-  if (!any_checkpoint_reached && verbose_) {
+  if (!any_checkpoint_reached) {
     // write MHD energy at end of iterations for current number of surfaces
-    std::cout << absl::StrFormat("MHD Energy = %12.6e\n",
-                                 h_.mhdEnergy * 4.0 * M_PI * M_PI);
-    std::cout << std::flush;
+    logger_.EndStage(h_.mhdEnergy * 4.0 * M_PI * M_PI);
   }
 
   return any_checkpoint_reached;
@@ -1256,7 +1251,7 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
 #pragma omp barrier
 #endif  // _OPENMP
 
-  if (verbose_ && r_[thread_id]->nsMaxF1 == fc_.ns) {
+  if (r_[thread_id]->nsMaxF1 == fc_.ns) {
     // only the thread that computes the free-boundary force can compute
     // delbsq
 
@@ -1276,20 +1271,9 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
     // mismatch in |B|^2 at LCFS for free-boundary
     double delbsq = m_[thread_id]->get_delbsq();
 
-    if (fc_.lfreeb) {
-      std::cout << absl::StrFormat(
-          "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
-          "%.3e | %.4e | %.4e | %5.3f | %.3e\n",
-          iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
-          delt0r, r00, energy, betaVolAvg, volAvgM, delbsq);
-    } else {
-      // omit DELBSQ column in fixed-boundary case
-      std::cout << absl::StrFormat(
-          "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
-          "%.3e | %.4e | %.4e | %5.3f\n",
-          iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
-          delt0r, r00, energy, betaVolAvg, volAvgM);
-    }
+    logger_.LogIteration(iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1,
+                         fc_.fsqz1, fc_.fsql1, delt0r, r00, energy, betaVolAvg,
+                         volAvgM, delbsq);
   }  // thread which has boundary
 }
 
