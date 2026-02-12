@@ -25,6 +25,7 @@
 #include "vmecpp/vmec/fourier_velocity/fourier_velocity.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.h"
+#include "vmecpp/vmec/iteration_logger/iteration_logger.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
@@ -56,7 +57,8 @@ using InterruptCallback = std::function<bool()>;
 absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
     std::optional<HotRestartState> initial_state = std::nullopt,
-    std::optional<int> max_threads = std::nullopt, bool verbose = true,
+    std::optional<int> max_threads = std::nullopt,
+    OutputMode verbose = OutputMode::kLegacy,
     InterruptCallback interrupt_callback = nullptr);
 
 // This overload enables free-boundary runs with an in-memory mgrid file.
@@ -67,7 +69,8 @@ absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<HotRestartState> initial_state = std::nullopt,
-    std::optional<int> max_threads = std::nullopt, bool verbose = true,
+    std::optional<int> max_threads = std::nullopt,
+    OutputMode verbose = OutputMode::kLegacy,
     InterruptCallback interrupt_callback = nullptr);
 
 class Vmec {
@@ -84,7 +87,7 @@ class Vmec {
   // contents when run is called, to have graceful error handling with absl.
   explicit Vmec(const VmecINDATA& indata,
                 std::optional<int> max_threads = std::nullopt,
-                bool verbose = true,
+                OutputMode verbose = OutputMode::kLegacy,
                 InterruptCallback interrupt_callback = nullptr);
 
   // Mgrid loading for free-boundary VMEC++ from a precomputed response-table is
@@ -209,6 +212,9 @@ class Vmec {
 
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
+
+  // handles all formatted iteration output (progress bars or legacy table)
+  IterationLogger logger_;
 
   // optional callback to check for interrupt signals (e.g., Ctrl+C)
   InterruptCallback interrupt_callback_;
