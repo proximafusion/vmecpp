@@ -8,7 +8,6 @@ import enum
 import json
 import logging
 import os
-import sys
 import tempfile
 import typing
 from collections.abc import Generator
@@ -92,22 +91,6 @@ class FreeBoundaryMethod(str, enum.Enum):
 
     BIEST = "biest"
     """Boundary Integral Equation Solver for Toroidal systems."""
-
-
-class OutputMode(enum.Enum):
-    """Controls the output format of iteration logging.."""
-
-    SILENT = _vmecpp.OutputMode.SILENT  # 0
-    """No output."""
-
-    LEGACY = _vmecpp.OutputMode.LEGACY  # 1
-    """Traditional table output (original VMEC++ format)"""
-
-    PROGRESS = _vmecpp.OutputMode.PROGRESS  # 2
-    """Multi-line progress bars with ANSI cursor movement (TTY)"""
-
-    PROGRESS_NON_TTY = _vmecpp.OutputMode.PROGRESS_NON_TTY  # 3
-    """Single-line progress with carriage return (Jupyter, etc.)"""
 
 
 def _validate_free_boundary_method(
@@ -1927,24 +1910,12 @@ class VmecOutput(BaseModelWithNumpy):
     """Python equivalent of VMEC's "wout" file."""
 
 
-_progress_tip_shown = False
-
-
-def _print_progress_tip_once() -> None:
-    global _progress_tip_shown  # noqa: PLW0603
-    if not _progress_tip_shown:
-        _progress_tip_shown = True
-        print(  # noqa: T201
-            "Tip: Use vmecpp.run(..., verbose=1) for classic table output."
-        )
-
-
 def run(
     input: VmecInput,
     magnetic_field: MagneticFieldResponseTable | None = None,
     *,
     max_threads: int | None = None,
-    verbose: bool | int | OutputMode = OutputMode.PROGRESS,
+    verbose: bool = True,
     restart_from: VmecOutput | None = None,
 ) -> VmecOutput:
     """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
@@ -1957,11 +1928,7 @@ def run(
         max_threads: maximum number of threads that VMEC++ should spawn. The actual number might still
             be lower that this in case there are too few flux surfaces to keep these many threads
             busy. If None, a number of threads equal to the number of logical cores is used.
-        verbose: controls the output format. Accepts bool for backward compatibility:
-            0. silent, no logging (False)
-            1. legacy table output (True)
-            2. animated progress bar for TTY enabled terminals
-            3. animated progress bar for non-TTY outputs (e.g. Jupyter)
+        verbose: if True, VMEC++ logs its progress to standard output.
         restart_from: if present, VMEC++ is initialized using the converged equilibrium from the
             provided VmecOutput. This can dramatically decrease the number of iterations to
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
@@ -1992,23 +1959,12 @@ def run(
         )
         raise RuntimeError(msg)
 
-    _verbose = OutputMode(verbose)
-
-    if _verbose == OutputMode.PROGRESS:
-        # Rich printing has been requested, let's auto detect if the terminal
-        # is TTY capable
-        is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
-        if not is_tty:
-            _verbose = OutputMode.PROGRESS_NON_TTY
-    if _verbose in (OutputMode.PROGRESS, OutputMode.PROGRESS_NON_TTY):
-        _print_progress_tip_once()
-
     if magnetic_field is None:
         cpp_output_quantities = _vmecpp.run(
             cpp_indata,
             initial_state=initial_state,
             max_threads=max_threads,
-            verbose=_verbose.value,
+            verbose=verbose,
         )
     else:
         # magnetic_response_table takes precedence anyway, but let's be explicit, to ensure
@@ -2019,7 +1975,7 @@ def run(
             magnetic_response_table=magnetic_field._to_cpp_magnetic_field_response_table(),
             initial_state=initial_state,
             max_threads=max_threads,
-            verbose=_verbose.value,
+            verbose=verbose,
         )
 
     cpp_wout = cpp_output_quantities.wout

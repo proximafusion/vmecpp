@@ -203,14 +203,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       .export_values()
       .finalize();
 
-  py::native_enum<vmecpp::OutputMode>(m, "OutputMode", "enum.IntEnum")
-      .value("SILENT", vmecpp::OutputMode::kSilent)
-      .value("LEGACY", vmecpp::OutputMode::kLegacy)
-      .value("PROGRESS", vmecpp::OutputMode::kProgress)
-      .value("PROGRESS_NON_TTY", vmecpp::OutputMode::kProgressNonTTY)
-      .export_values()
-      .finalize();
-
   py::native_enum<vmecpp::IterationStyle>(m, "IterationStyle", "enum.Enum")
       .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52)
       .export_values()
@@ -663,7 +655,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATA &indata,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads,
-         vmecpp::OutputMode verbose) -> vmecpp::OutputQuantities {
+         bool verbose = true) -> vmecpp::OutputQuantities {
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
           if (was_interrupted) {
@@ -688,8 +680,7 @@ PYBIND11_MODULE(_vmecpp, m) {
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
-      py::arg("max_threads") = std::nullopt,
-      py::arg("verbose") = vmecpp::OutputMode::kProgress);
+      py::arg("max_threads") = std::nullopt, py::arg("verbose") = true);
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,
@@ -769,7 +760,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATA &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
          std::optional<vmecpp::HotRestartState> initial_state,
-         std::optional<int> max_threads, vmecpp::OutputMode verbose) {
+         std::optional<int> max_threads, bool verbose = true) {
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
           if (was_interrupted) return true;
@@ -794,6 +785,5 @@ PYBIND11_MODULE(_vmecpp, m) {
       },
       py::arg("indata"), py::arg("magnetic_response_table"),
       py::arg("initial_state") = std::nullopt,
-      py::arg("max_threads") = std::nullopt,
-      py::arg("verbose") = vmecpp::OutputMode::kProgress);
+      py::arg("max_threads") = std::nullopt, py::arg("verbose") = true);
 }  // NOLINT(readability/fn_size)

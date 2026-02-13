@@ -36,30 +36,14 @@ def parse_arguments() -> argparse.Namespace:
         action="version",
         version=f"vmecpp v{importlib.metadata.version('vmecpp')}",
     )
-    p.add_argument(
-        "--legacy",
-        help="Show the legacy table output instead of animated progress bars.",
-        action="store_true",
-    )
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_arguments()
 
-    if args.quiet:
-        verbose = 0
-    elif args.legacy:
-        verbose = 1
-    else:
-        verbose = 2
-        print(  # noqa: T201
-            "Tip: Use the --legacy flag for classic table output."
-        )
-        vmecpp._progress_tip_shown = True
-
     input = vmecpp.VmecInput.from_file(args.input_file)
-    output = vmecpp.run(input, max_threads=args.max_threads, verbose=verbose)
+    output = vmecpp.run(input, max_threads=args.max_threads, verbose=not args.quiet)
 
     configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)
     wout_file = Path(f"wout_{configuration_name}.nc")
