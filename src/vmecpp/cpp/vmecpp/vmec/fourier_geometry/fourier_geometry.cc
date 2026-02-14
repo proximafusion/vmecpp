@@ -15,20 +15,20 @@ namespace vmecpp {
 FourierGeometry::FourierGeometry(const Sizes* s, const RadialPartitioning* r,
                                  int ns)
     : FourierCoeffs(s, r, r->nsMinF1, r->nsMaxF1, ns),
-      rmncc(rcc),
-      rmnss(rss),
-      rmnsc(rsc),
-      rmncs(rcs),
+      rmncc(rcc.data(), rcc.size()),
+      rmnss(rss.data(), rss.size()),
+      rmnsc(rsc.data(), rsc.size()),
+      rmncs(rcs.data(), rcs.size()),
 
-      zmnsc(zsc),
-      zmncs(zcs),
-      zmncc(zcc),
-      zmnss(zss),
+      zmnsc(zsc.data(), zsc.size()),
+      zmncs(zcs.data(), zcs.size()),
+      zmncc(zcc.data(), zcc.size()),
+      zmnss(zss.data(), zss.size()),
 
-      lmnsc(lsc),
-      lmncs(lcs),
-      lmncc(lcc),
-      lmnss(lss) {}
+      lmnsc(lsc.data(), lsc.size()),
+      lmncs(lcs.data(), lcs.size()),
+      lmncc(lcc.data(), lcc.size()),
+      lmnss(lss.data(), lss.size()) {}
 
 FourierGeometry::FourierGeometry(const FourierGeometry& other)
     : FourierCoeffs(other),
