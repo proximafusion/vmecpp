@@ -8,6 +8,7 @@ import enum
 import json
 import logging
 import os
+import sys
 import tempfile
 import typing
 from collections.abc import Generator
@@ -72,6 +73,50 @@ class RestartReason(enum.Enum):
     HUGE_INITIAL_FORCES = 4
     """Irst == 4, huge initial forces, flux surfaces are too close to each other (but
     not overlapping yet)"""
+
+
+class FreeBoundaryMethod(str, enum.Enum):
+    """Method for handling free-boundary conditions."""
+
+    NESTOR = "nestor"
+    """NEumann Solver for TORoidal systems."""
+
+    ONLY_COILS = "only_coils"
+    """Use just the coils field for the free-boundary force contribution.
+
+    This can be particularly useful for verification calculations.
+
+    Warning: This is only valid for vacuum calculations and will ignore
+    the plasma current contribution!
+    """
+
+    BIEST = "biest"
+    """Boundary Integral Equation Solver for Toroidal systems."""
+
+
+class OutputMode(enum.Enum):
+    """Controls the output format of iteration logging.."""
+
+    SILENT = _vmecpp.OutputMode.SILENT  # 0
+    """No output."""
+
+    LEGACY = _vmecpp.OutputMode.LEGACY  # 1
+    """Traditional table output (original VMEC++ format)"""
+
+    PROGRESS = _vmecpp.OutputMode.PROGRESS  # 2
+    """Multi-line progress bars with ANSI cursor movement (TTY)"""
+
+    PROGRESS_NON_TTY = _vmecpp.OutputMode.PROGRESS_NON_TTY  # 3
+    """Single-line progress with carriage return (Jupyter, etc.)"""
+
+
+def _validate_free_boundary_method(
+    value: _vmecpp.FreeBoundaryMethod | str | FreeBoundaryMethod,
+) -> FreeBoundaryMethod:
+    """Convert various representations to FreeBoundaryMethod."""
+    if isinstance(value, _vmecpp.FreeBoundaryMethod):
+        return FreeBoundaryMethod(value.name.lower())  # pyright: ignore[reportAttributeAccessIssue]
+    return FreeBoundaryMethod(str(value))
 
 
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
@@ -261,6 +306,13 @@ class VmecInput(BaseModelWithNumpy):
 
     nvacskip: int = 1
     """Number of iterations between full vacuum calculations."""
+
+    free_boundary_method: typing.Annotated[
+        FreeBoundaryMethod,
+        pydantic.BeforeValidator(_validate_free_boundary_method),
+        pydantic.Field(),
+    ] = FreeBoundaryMethod.NESTOR
+    """Method for handling free-boundary conditions."""
 
     nstep: int = 10
     """Printout interval at which convergence progress is logged."""
@@ -506,9 +558,14 @@ class VmecInput(BaseModelWithNumpy):
         }
 
         for attr in VmecInput.model_fields:
-            if attr in readonly_attrs:
+            if attr in readonly_attrs or attr == "free_boundary_method":
                 continue  # these must be set separately
             setattr(cpp_indata, attr, getattr(self, attr))
+
+        # Convert Python enum to C++ enum
+        cpp_indata.free_boundary_method = getattr(
+            _vmecpp.FreeBoundaryMethod, self.free_boundary_method.upper()
+        )
 
         # this also resizes the readonly_attrs
         cpp_indata._set_mpol_ntor(self.mpol, self.ntor)
@@ -639,6 +696,7 @@ class VmecWOut(BaseModelWithNumpy):
         "bsupumns",
         "bsupvmns",
         "restart_reason_timetrace",
+        "lrfp",
     ]
     """If quantities are not exactly the same in C++ WoutFileContents and this class,
     add them to this list and implement the conversion logic in _to_cpp_wout and
@@ -691,12 +749,8 @@ class VmecWOut(BaseModelWithNumpy):
     # Serialized as int in the wout file under a different name
     lasym: typing.Annotated[
         bool,
-        pydantic.PlainSerializer(
-            lambda x: int(x),
-        ),
-        pydantic.BeforeValidator(
-            lambda x: bool(x),
-        ),
+        pydantic.PlainSerializer(int),
+        pydantic.BeforeValidator(bool),
         pydantic.Field(alias="lasym__logical__"),
     ]
     """Flag indicating non-stellarator-symmetry.
@@ -706,15 +760,19 @@ class VmecWOut(BaseModelWithNumpy):
 
     lfreeb: typing.Annotated[
         bool,
-        pydantic.PlainSerializer(
-            lambda x: int(x),
-        ),
-        pydantic.BeforeValidator(
-            lambda x: bool(x),
-        ),
+        pydantic.PlainSerializer(int),
+        pydantic.BeforeValidator(bool),
         pydantic.Field(alias="lfreeb__logical__"),
     ]
     """Flag indicating free-boundary computation."""
+
+    lrfp: typing.Annotated[
+        bool,
+        pydantic.PlainSerializer(int),
+        pydantic.BeforeValidator(bool),
+        pydantic.Field(alias="lrfp__logical__", default=False),
+    ]
+    """Flag indicating reversed-field pinch configuration."""
 
     wb: float
     """Magnetic energy: volume integral of `|B|^2/(2 mu0)`."""
@@ -1201,6 +1259,11 @@ class VmecWOut(BaseModelWithNumpy):
         return self.lfreeb
 
     @property
+    def lrfp__logical__(self):
+        """This is how the attribute is called in the Fortran wout file."""
+        return self.lrfp
+
+    @property
     def restart_reasons(self) -> list[tuple[int, RestartReason]]:
         """Get the restart reasons as a list of tuples.
 
@@ -1291,11 +1354,10 @@ class VmecWOut(BaseModelWithNumpy):
                     padded_value_as_array = np.array(
                         value.encode(encoding="ascii").ljust(max_len)
                     )
-                    padded_value_as_netcdf3_compatible_chararray = netCDF4.stringtochar(
-                        padded_value_as_array
+                    padded_value_as_netcdf3_compatible_chararray = np.frombuffer(
+                        padded_value_as_array, dtype="S1"
                     )
                     string_variable[:] = padded_value_as_netcdf3_compatible_chararray
-
                 elif value is None:
                     # Skip None values (e.g., asymmetric arrays when lasym=False)
                     continue
@@ -1467,6 +1529,9 @@ class VmecWOut(BaseModelWithNumpy):
 
         attrs["version_"] = float(cpp_wout.version)
 
+        # lrfp is Python-only (not in C++ WOutFileContents), default to False
+        attrs["lrfp"] = False
+
         return VmecWOut(**attrs)
 
     def _to_cpp_wout(self) -> _vmecpp.WOutFileContents:
@@ -1603,6 +1668,9 @@ class VmecWOut(BaseModelWithNumpy):
         attrs.setdefault("lmns_full", np.zeros([mnmax, ns]))
         if attrs["lasym__logical__"]:
             attrs.setdefault("lmnc_full", np.zeros([mnmax, ns]))
+
+        # Backwards compatibility: lrfp flag may not exist in older wout files
+        attrs.setdefault("lrfp__logical__", 0)
 
         # Backwards compatibility for very old wout files
         if attrs["version_"] <= 8.0:
@@ -1859,12 +1927,24 @@ class VmecOutput(BaseModelWithNumpy):
     """Python equivalent of VMEC's "wout" file."""
 
 
+_progress_tip_shown = False
+
+
+def _print_progress_tip_once() -> None:
+    global _progress_tip_shown  # noqa: PLW0603
+    if not _progress_tip_shown:
+        _progress_tip_shown = True
+        print(  # noqa: T201
+            "Tip: Use vmecpp.run(..., verbose=1) for classic table output."
+        )
+
+
 def run(
     input: VmecInput,
     magnetic_field: MagneticFieldResponseTable | None = None,
     *,
     max_threads: int | None = None,
-    verbose: bool = True,
+    verbose: bool | int | OutputMode = OutputMode.PROGRESS,
     restart_from: VmecOutput | None = None,
 ) -> VmecOutput:
     """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
@@ -1877,7 +1957,11 @@ def run(
         max_threads: maximum number of threads that VMEC++ should spawn. The actual number might still
             be lower that this in case there are too few flux surfaces to keep these many threads
             busy. If None, a number of threads equal to the number of logical cores is used.
-        verbose: if True, VMEC++ logs its progress to standard output.
+        verbose: controls the output format. Accepts bool for backward compatibility:
+            0. silent, no logging (False)
+            1. legacy table output (True)
+            2. animated progress bar for TTY enabled terminals
+            3. animated progress bar for non-TTY outputs (e.g. Jupyter)
         restart_from: if present, VMEC++ is initialized using the converged equilibrium from the
             provided VmecOutput. This can dramatically decrease the number of iterations to
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
@@ -1908,12 +1992,23 @@ def run(
         )
         raise RuntimeError(msg)
 
+    _verbose = OutputMode(verbose)
+
+    if _verbose == OutputMode.PROGRESS:
+        # Rich printing has been requested, let's auto detect if the terminal
+        # is TTY capable
+        is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+        if not is_tty:
+            _verbose = OutputMode.PROGRESS_NON_TTY
+    if _verbose in (OutputMode.PROGRESS, OutputMode.PROGRESS_NON_TTY):
+        _print_progress_tip_once()
+
     if magnetic_field is None:
         cpp_output_quantities = _vmecpp.run(
             cpp_indata,
             initial_state=initial_state,
             max_threads=max_threads,
-            verbose=verbose,
+            verbose=_verbose.value,
         )
     else:
         # magnetic_response_table takes precedence anyway, but let's be explicit, to ensure
@@ -1924,7 +2019,7 @@ def run(
             magnetic_response_table=magnetic_field._to_cpp_magnetic_field_response_table(),
             initial_state=initial_state,
             max_threads=max_threads,
-            verbose=verbose,
+            verbose=_verbose.value,
         )
 
     cpp_wout = cpp_output_quantities.wout
@@ -2044,16 +2139,29 @@ def _pad_and_transpose(
     return stacked
 
 
-def populate_raw_profile(
+def set_profile(
     vmec_input: VmecInput,
     field: typing.Literal["pressure", "iota", "current"],
     f: typing.Callable[[np.ndarray], np.ndarray],
-) -> None:
+) -> VmecInput:
     """Populate a line segment profile using callable ``f``.
+
+    This allows users to set a precise pressure/iota/curent profile on flux
+    surfaces without any precision loss by fitting the profile to e.g.
+    experimental data first.
 
     The callable is evaluated on all unique ``s`` values required for the
     multi-grid steps (full and half grids). The resulting knots and values are
-    stored in the auxiliary arrays for the chosen profile.
+    stored in the auxiliary arrays for the chosen profile. Therefore you should
+    populate the multigrid ``ns_array`` resolutions before calling this function.
+
+    Args:
+        vmec_input: The vmec input to be modified.
+        field: The profile quantity to set.
+        f: A callable taking an array of flux coordinates ``s`` and returning
+            the value of the selected quantity (pressure/iota/current)
+    Returns:
+        A modified copy of the given ``VmecInput``.
     """
     s_values: set[float] = set()
     for ns in vmec_input.ns_array:
@@ -2063,30 +2171,44 @@ def populate_raw_profile(
         s_values.update(half_grid)
     knots = np.array(np.sort(np.array(list(s_values))))
     values = np.array(f(knots))
-
     if field == "pressure":
-        vmec_input.pmass_type = "line_segment"
-        vmec_input.am_aux_s = knots
-        vmec_input.am_aux_f = values
-        vmec_input.am = np.array([])
-    elif field == "iota":
-        vmec_input.piota_type = "line_segment"
-        vmec_input.ai_aux_s = knots
-        vmec_input.ai_aux_f = values
-        vmec_input.ai = np.array([])
-    elif field == "current":
-        vmec_input.pcurr_type = "line_segment_i"
-        vmec_input.ac_aux_s = knots
-        vmec_input.ac_aux_f = values
-        vmec_input.ac = np.array([])
-    else:
-        msg = "field must be one of 'pressure', 'iota', 'current'"
-        raise ValueError(msg)
+        return vmec_input.model_copy(
+            update={
+                "pmass_type": "line_segment",
+                "am_aux_s": knots,
+                "am_aux_f": values,
+                "am": np.array([]),
+            }
+        )
+    if field == "iota":
+        return vmec_input.model_copy(
+            update={
+                "piota_type": "line_segment",
+                "ai_aux_s": knots,
+                "ai_aux_f": values,
+                "ai": np.array([]),
+            }
+        )
+    if field == "current":
+        return vmec_input.model_copy(
+            update={
+                "pcurr_type": "line_segment_i",
+                "ac_aux_s": knots,
+                "ac_aux_f": values,
+                "ac": np.array([]),
+            }
+        )
+    msg = "field must be one of 'pressure', 'iota', 'current'"
+    raise ValueError(msg)
+
+
+# Backwards compatible name
+populate_raw_profile = set_profile
 
 
 # Ordered this way to ensure run, VmecInput, and VmecOutput are the first three
 # items in the generated documentation.
-__all__ = [
+__all__ = [  # noqa: RUF022
     "run",
     "VmecInput",
     "VmecOutput",
@@ -2096,5 +2218,6 @@ __all__ = [
     "Threed1Volumetrics",
     "MakegridParameters",
     "MagneticFieldResponseTable",
-    "populate_raw_profile",
+    "FreeBoundaryMethod",
+    "set_profile",
 ]

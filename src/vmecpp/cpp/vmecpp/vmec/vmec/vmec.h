@@ -6,6 +6,7 @@
 #define VMECPP_VMEC_VMEC_VMEC_H_
 
 #include <climits>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>  // std::move
@@ -24,8 +25,8 @@
 #include "vmecpp/vmec/fourier_velocity/fourier_velocity.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.h"
+#include "vmecpp/vmec/iteration_logger/iteration_logger.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
-#include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
@@ -48,11 +49,17 @@ struct HotRestartState {
         indata(std::move(output_quantities.indata)) {}
 };
 
+// Callback that returns true if execution should be interrupted (e.g., Ctrl+C).
+// Called periodically from the iteration loop.
+using InterruptCallback = std::function<bool()>;
+
 // This is the preferred way to run VMEC++.
 absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
     std::optional<HotRestartState> initial_state = std::nullopt,
-    std::optional<int> max_threads = std::nullopt, bool verbose = true);
+    std::optional<int> max_threads = std::nullopt,
+    OutputMode verbose = OutputMode::kLegacy,
+    InterruptCallback interrupt_callback = nullptr);
 
 // This overload enables free-boundary runs with an in-memory mgrid file.
 // The mgrid_file entry in `indata` will be ignored.
@@ -62,7 +69,9 @@ absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<HotRestartState> initial_state = std::nullopt,
-    std::optional<int> max_threads = std::nullopt, bool verbose = true);
+    std::optional<int> max_threads = std::nullopt,
+    OutputMode verbose = OutputMode::kLegacy,
+    InterruptCallback interrupt_callback = nullptr);
 
 class Vmec {
  public:
@@ -78,7 +87,8 @@ class Vmec {
   // contents when run is called, to have graceful error handling with absl.
   explicit Vmec(const VmecINDATA& indata,
                 std::optional<int> max_threads = std::nullopt,
-                bool verbose = true);
+                OutputMode verbose = OutputMode::kLegacy,
+                InterruptCallback interrupt_callback = nullptr);
 
   // Mgrid loading for free-boundary VMEC++ from a precomputed response-table is
   // done outside of the Vmec constructor for improved exception handling
@@ -202,6 +212,15 @@ class Vmec {
 
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
+
+  // handles all formatted iteration output (progress bars or legacy table)
+  IterationLogger logger_;
+
+  // optional callback to check for interrupt signals (e.g., Ctrl+C)
+  InterruptCallback interrupt_callback_;
+
+  // set to true when the interrupt callback signals an interrupt
+  bool interrupted_ = false;
 
   // initialization state counter for Nestor. Called ivac in Fortran VMEC.
   VacuumPressureState vacuum_pressure_state_;

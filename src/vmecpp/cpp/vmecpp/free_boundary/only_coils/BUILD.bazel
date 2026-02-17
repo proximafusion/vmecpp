@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "only_coils",
+    srcs = ["only_coils.cc"],
+    hdrs = ["only_coils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+        "//vmecpp/free_boundary/external_magnetic_field:external_magnetic_field",
+        "//vmecpp/free_boundary/singular_integrals:singular_integrals",
+        "//vmecpp/free_boundary/regularized_integrals:regularized_integrals",
+        "//vmecpp/free_boundary/laplace_solver:laplace_solver",
+        "//vmecpp/free_boundary/free_boundary_base:free_boundary_base",
+    ],
+)

@@ -18,6 +18,10 @@ namespace vmecpp {
 class FourierGeometry : public FourierCoeffs {
  public:
   FourierGeometry(const Sizes *s, const RadialPartitioning *r, int ns);
+  FourierGeometry(const FourierGeometry &other);
+  FourierGeometry &operator=(const FourierGeometry &other);
+  FourierGeometry(FourierGeometry &&other) noexcept;
+  FourierGeometry &operator=(FourierGeometry &&other) noexcept;
 
   void interpFromBoundaryAndAxis(const FourierBasisFastPoloidal &t,
                                  const Boundaries &b, const RadialProfiles &p);
@@ -36,8 +40,6 @@ class FourierGeometry : public FourierCoeffs {
                      const Boundaries *b = nullptr);
 
   void extrapolateTowardsAxis();
-
-  void copyFrom(const FourierGeometry &src);
 
   // Compute the spectral width of the R and Z Fourier coefficients
   // and write it into the spectral_width vector in the given RadialProfiles.
@@ -87,6 +89,9 @@ class FourierGeometry : public FourierCoeffs {
 
   // contrib to lambda ~ sin(m * theta) * sin(n * zeta)
   std::span<double> lmnss;
+
+ private:
+  void BindSpans();
 };
 
 }  // namespace vmecpp

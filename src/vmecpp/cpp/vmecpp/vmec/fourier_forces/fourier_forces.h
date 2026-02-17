@@ -15,6 +15,10 @@ namespace vmecpp {
 class FourierForces : public FourierCoeffs {
  public:
   FourierForces(const Sizes* s, const RadialPartitioning* r, int ns);
+  FourierForces(const FourierForces& other);
+  FourierForces& operator=(const FourierForces& other);
+  FourierForces(FourierForces&& other) noexcept;
+  FourierForces& operator=(FourierForces&& other) noexcept;
 
   void zeroZForceForM1();
   void residuals(std::vector<double>& fRes, bool includeEdgeRZ) const;
@@ -34,6 +38,9 @@ class FourierForces : public FourierCoeffs {
   std::span<double> flcs;
   std::span<double> flcc;
   std::span<double> flss;
+
+ private:
+  void BindSpans();
 };
 
 }  // namespace vmecpp

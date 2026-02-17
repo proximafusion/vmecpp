@@ -5,6 +5,7 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 #include "vmecpp/common/util/util.h"
@@ -28,6 +29,71 @@ FourierGeometry::FourierGeometry(const Sizes* s, const RadialPartitioning* r,
       lmncs(lcs),
       lmncc(lcc),
       lmnss(lss) {}
+
+FourierGeometry::FourierGeometry(const FourierGeometry& other)
+    : FourierCoeffs(other),
+      rmncc(rcc),
+      rmnss(rss),
+      rmnsc(rsc),
+      rmncs(rcs),
+
+      zmnsc(zsc),
+      zmncs(zcs),
+      zmncc(zcc),
+      zmnss(zss),
+
+      lmnsc(lsc),
+      lmncs(lcs),
+      lmncc(lcc),
+      lmnss(lss) {}
+
+void FourierGeometry::BindSpans() {
+  rmncc = rcc;
+  rmnss = rss;
+  rmnsc = rsc;
+  rmncs = rcs;
+  zmnsc = zsc;
+  zmncs = zcs;
+  zmncc = zcc;
+  zmnss = zss;
+  lmnsc = lsc;
+  lmncs = lcs;
+  lmncc = lcc;
+  lmnss = lss;
+}
+
+FourierGeometry& FourierGeometry::operator=(const FourierGeometry& other) {
+  if (this != &other) {
+    FourierCoeffs::operator=(other);
+    BindSpans();
+  }
+  return *this;
+}
+
+FourierGeometry::FourierGeometry(FourierGeometry&& other) noexcept
+    : FourierCoeffs(std::move(other)),
+      rmncc(rcc),
+      rmnss(rss),
+      rmnsc(rsc),
+      rmncs(rcs),
+
+      zmnsc(zsc),
+      zmncs(zcs),
+      zmncc(zcc),
+      zmnss(zss),
+
+      lmnsc(lsc),
+      lmncs(lcs),
+      lmncc(lcc),
+      lmnss(lss) {}
+
+FourierGeometry& FourierGeometry::operator=(FourierGeometry&& other) noexcept {
+  if (this != &other) {
+    FourierCoeffs::operator=(std::move(other));
+    BindSpans();
+  }
+  return *this;
+}
 
 void FourierGeometry::interpFromBoundaryAndAxis(
     const FourierBasisFastPoloidal& t, const Boundaries& b,
@@ -283,35 +349,6 @@ void FourierGeometry::extrapolateTowardsAxis() {
       }
     }
   }  // n
-}
-
-void FourierGeometry::copyFrom(const FourierGeometry& src) {
-  for (int jF = nsMin_; jF < nsMax_; ++jF) {
-    for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
-
-        rmncc[idx_fc] = src.rmncc[idx_fc];
-        zmnsc[idx_fc] = src.zmnsc[idx_fc];
-        lmnsc[idx_fc] = src.lmnsc[idx_fc];
-        if (s_.lthreed) {
-          rmnss[idx_fc] = src.rmnss[idx_fc];
-          zmncs[idx_fc] = src.zmncs[idx_fc];
-          lmncs[idx_fc] = src.lmncs[idx_fc];
-        }
-        if (s_.lasym) {
-          rmnsc[idx_fc] = src.rmnsc[idx_fc];
-          zmncc[idx_fc] = src.zmncc[idx_fc];
-          lmncc[idx_fc] = src.lmncc[idx_fc];
-          if (s_.lthreed) {
-            rmncs[idx_fc] = src.rmncs[idx_fc];
-            zmnss[idx_fc] = src.zmnss[idx_fc];
-            lmnss[idx_fc] = src.lmnss[idx_fc];
-          }
-        }
-      }  // n
-    }  // m
-  }  // j
 }
 
 void FourierGeometry::ComputeSpectralWidth(

@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include <pybind11/eigen.h>     // to wrap Eigen matrices
 #include <pybind11/iostream.h>  // py::add_ostream_redirect
+#include <pybind11/native_enum.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>  // to wrap std::vector
 #include <pybind11/stl/filesystem.h>
@@ -194,12 +195,26 @@ PYBIND11_MODULE(_vmecpp, m) {
             return w.zbc;
           });
 
-  py::enum_<vmecpp::FreeBoundaryMethod>(m, "FreeBoundaryMethod")
+  py::native_enum<vmecpp::FreeBoundaryMethod>(m, "FreeBoundaryMethod",
+                                              "enum.Enum")
       .value("NESTOR", vmecpp::FreeBoundaryMethod::NESTOR)
-      .value("BIEST", vmecpp::FreeBoundaryMethod::BIEST);
+      .value("ONLY_COILS", vmecpp::FreeBoundaryMethod::ONLY_COILS)
+      .value("BIEST", vmecpp::FreeBoundaryMethod::BIEST)
+      .export_values()
+      .finalize();
 
-  py::enum_<vmecpp::IterationStyle>(m, "IterationStyle")
-      .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52);
+  py::native_enum<vmecpp::OutputMode>(m, "OutputMode", "enum.IntEnum")
+      .value("SILENT", vmecpp::OutputMode::kSilent)
+      .value("LEGACY", vmecpp::OutputMode::kLegacy)
+      .value("PROGRESS", vmecpp::OutputMode::kProgress)
+      .value("PROGRESS_NON_TTY", vmecpp::OutputMode::kProgressNonTTY)
+      .export_values()
+      .finalize();
+
+  py::native_enum<vmecpp::IterationStyle>(m, "IterationStyle", "enum.Enum")
+      .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52)
+      .export_values()
+      .finalize();
 
   py::class_<vmecpp::VmecCheckpoint>(m, "VmecCheckpoint");
 
@@ -648,13 +663,33 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATA &indata,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads,
-         bool verbose = true) -> vmecpp::OutputQuantities {
-        auto ret =
-            vmecpp::run(indata, std::move(initial_state), max_threads, verbose);
+         vmecpp::OutputMode verbose) -> vmecpp::OutputQuantities {
+        bool was_interrupted = false;
+        auto interrupt_check = [&was_interrupted]() -> bool {
+          if (was_interrupted) {
+            return true;
+          }
+          py::gil_scoped_acquire acquire;
+          if (PyErr_CheckSignals() != 0) {
+            was_interrupted = true;
+            return true;
+          }
+          return false;
+        };
+        absl::StatusOr<vmecpp::OutputQuantities> ret;
+        {
+          py::gil_scoped_release release;
+          ret = vmecpp::run(indata, std::move(initial_state), max_threads,
+                            verbose, interrupt_check);
+        }
+        if (was_interrupted) {
+          throw py::error_already_set();
+        }
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
-      py::arg("max_threads") = std::nullopt, py::arg("verbose") = true);
+      py::arg("max_threads") = std::nullopt,
+      py::arg("verbose") = vmecpp::OutputMode::kProgress);
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,
@@ -734,12 +769,31 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATA &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
          std::optional<vmecpp::HotRestartState> initial_state,
-         std::optional<int> max_threads, bool verbose = true) {
-        auto ret = vmecpp::run(indata, magnetic_response_table,
-                               std::move(initial_state), max_threads, verbose);
+         std::optional<int> max_threads, vmecpp::OutputMode verbose) {
+        bool was_interrupted = false;
+        auto interrupt_check = [&was_interrupted]() -> bool {
+          if (was_interrupted) return true;
+          py::gil_scoped_acquire acquire;
+          if (PyErr_CheckSignals() != 0) {
+            was_interrupted = true;
+            return true;
+          }
+          return false;
+        };
+        absl::StatusOr<vmecpp::OutputQuantities> ret;
+        {
+          py::gil_scoped_release release;
+          ret = vmecpp::run(indata, magnetic_response_table,
+                            std::move(initial_state), max_threads, verbose,
+                            interrupt_check);
+        }
+        if (was_interrupted) {
+          throw py::error_already_set();
+        }
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("magnetic_response_table"),
       py::arg("initial_state") = std::nullopt,
-      py::arg("max_threads") = std::nullopt, py::arg("verbose") = true);
+      py::arg("max_threads") = std::nullopt,
+      py::arg("verbose") = vmecpp::OutputMode::kProgress);
 }  // NOLINT(readability/fn_size)

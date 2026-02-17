@@ -27,8 +27,7 @@ def is_close_ra(actual, expected, tolerance, context=""):
     expected_shape = np.shape(expected)
     if len(actual_shape) != len(expected_shape):
         print(
-            "rank mismatch: actual is rank-%d, expected is rank-%d"
-            % (len(actual_shape), len(expected_shape))
+            f"rank mismatch: actual is rank-{len(actual_shape)}, expected is rank-{len(expected_shape)}"
         )
         return False
 
@@ -39,7 +38,7 @@ def is_close_ra(actual, expected, tolerance, context=""):
 
         for i, a in enumerate(actual):
             e = expected[i]
-            all_good &= is_close_ra(a, e, tolerance, " at %d" % (i,))
+            all_good &= is_close_ra(a, e, tolerance, f" at {i}")
     else:
         # This is the actual test, on scalars.
         ra_err = (actual - expected) / (1.0 + abs(expected))

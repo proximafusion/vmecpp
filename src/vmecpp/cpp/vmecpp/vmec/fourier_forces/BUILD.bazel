@@ -14,3 +14,15 @@ cc_library(
         "//vmecpp/vmec/fourier_coefficients:fourier_coefficients",
     ],
 )
+
+cc_test(
+    name = "fourier_forces_test",
+    srcs = ["fourier_forces_test.cc"],
+    deps = [
+        ":fourier_forces",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

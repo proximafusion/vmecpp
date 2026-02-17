@@ -13,6 +13,7 @@ cc_library(
         "//vmecpp/common/vmec_indata",
         "//vmecpp/common/makegrid_lib",
         "//vmecpp/vmec/boundaries",
+        "//vmecpp/vmec/iteration_logger",
         "//vmecpp/vmec/vmec_constants",
         "//vmecpp/vmec/profile_parameterization_data",
         "//vmecpp/vmec/fourier_geometry",
@@ -25,6 +26,7 @@ cc_library(
         "//vmecpp/vmec/output_quantities",
         "//vmecpp/free_boundary/free_boundary_base",
         "//vmecpp/free_boundary/nestor",
+        "//vmecpp/free_boundary/only_coils",
     ],
 )
 

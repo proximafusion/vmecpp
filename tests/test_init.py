@@ -9,7 +9,11 @@ Physics correctness is checked at the level of the C++ core.
 
 import json
 import os
+import signal
+import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 
 import netCDF4
@@ -164,7 +168,6 @@ def test_asymmetric_tokamak_input_io():
 
 _MISSING_FORTRAN_VARIABLES = [
     "lrecon__logical__",
-    "lrfp__logical__",
     "lmove_axis__logical__",
     "mnyq",
     "nnyq",
@@ -498,8 +501,7 @@ def test_vmec_input_validation():
     # The test_file json may exclude fields that have default values,
     # while the parsed versions should have all fields populated.
     indata_dict_from_json = json.loads(vmec_input._to_cpp_vmecindata().to_json())
-    # TODO(jurasic): These quantities are not yet present in VmecInput, since there's only one option atm.
-    del indata_dict_from_json["free_boundary_method"]
+    # TODO(jurasic): iteration_style is not yet present in VmecInput, since there's only one option atm.
     del indata_dict_from_json["iteration_style"]
     vmec_input_dict_from_json = json.loads(vmec_input.model_dump_json())
 
@@ -587,7 +589,7 @@ def test_populate_raw_profile_knots():
     def f(s):
         return s**2
 
-    vmecpp.populate_raw_profile(vmec_input, "pressure", f)
+    vmec_input = vmecpp.populate_raw_profile(vmec_input, "pressure", f)
 
     s_values = set()
     for ns in vmec_input.ns_array:
@@ -623,3 +625,64 @@ def test_python_defaults_match_cpp_defaults():
             np.testing.assert_array_equal(py_val, cpp_val)
         else:
             assert py_val == cpp_val
+
+
+def test_ctrl_c_interrupts_run():
+    """Test that a VMEC++ run can be interrupted with SIGINT (Ctrl+C).
+
+    Launches a subprocess that starts a long VMEC++ run, sends SIGINT after the run has
+    started, and verifies that the process terminates with KeyboardInterrupt rather than
+    running to completion.
+    """
+    script = f"""\
+import sys
+import vmecpp
+from pathlib import Path
+
+vmec_input = vmecpp.VmecInput.from_file(
+    Path({str(TEST_DATA_DIR)!r}) / "cma.json"
+)
+# Use many iterations to ensure the run doesn't finish before the signal
+vmec_input.niter_array[-1] = 100000
+vmec_input.ftol_array[-1] = 1.0e-18  # Don't terminate due to tolerance
+try:
+    vmecpp.run(vmec_input, verbose=True, max_threads=1)
+    # Should not reach here
+    print("RUN_COMPLETED")
+except KeyboardInterrupt:
+    print("KEYBOARD_INTERRUPT")
+"""
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", script],
+        # Merge stderr into stdout so editable-install build output
+        # doesn't block the stdout readline loop
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    # Wait for the subprocess to signal that it's about to start the run.
+    deadline = time.monotonic() + 60
+    partial_output = ""
+    assert proc.stdout
+    while time.monotonic() < deadline:
+        line = proc.stdout.readline()
+        if not line:
+            break
+        partial_output += line
+        # The tabular output of the first force iteration
+        if "    1 |" in line:
+            break
+    else:
+        raise RuntimeError(
+            "The vmecpp subprocess did not start in time. Progress: \n" + partial_output
+        )
+
+    proc.send_signal(signal.SIGINT)
+
+    remaining_output = proc.communicate(timeout=30)[0]
+    output = partial_output + remaining_output
+    assert "KEYBOARD_INTERRUPT" in output, (
+        f"Expected KeyboardInterrupt but got:\noutput: {output}"
+    )
+    assert "RUN_COMPLETED" not in output
