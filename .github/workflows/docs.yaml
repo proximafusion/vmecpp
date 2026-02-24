@@ -34,6 +34,16 @@ jobs:
           # must actually install the package otherwise sphinx can't autogenerate the API reference
           python -m pip install -vvv .[docs]
           sphinx-apidoc --module-first --no-toc --force --separate -o docs/api src/vmecpp/ && sphinx-build docs html_docs
+      - name: Fetch benchmark dashboard
+        run: |
+          git fetch origin benchmark-runs --depth=1 || true
+          if git rev-parse --verify origin/benchmark-runs >/dev/null 2>&1; then
+            git worktree add benchmark-runs-data origin/benchmark-runs
+            if [ -d benchmark-runs-data/benchmarks ]; then
+              cp -r benchmark-runs-data/benchmarks html_docs/benchmarks
+            fi
+            git worktree remove benchmark-runs-data --force
+          fi
       - name: Upload artifacts
         uses: actions/upload-pages-artifact@v3
         with:

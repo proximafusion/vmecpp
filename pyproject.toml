@@ -45,6 +45,10 @@ vmecpp = "vmecpp.__main__:main"
 test = [
   "pytest",
 ]
+benchmark = [
+  "pytest",
+  "pytest-benchmark",
+]
 docs = [
   "furo",
   "myst",
