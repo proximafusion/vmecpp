@@ -35,7 +35,7 @@ def w7x_input():
 def cma_input():
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
     vmec_input.ftol_array[0] = 1e-8
-    vmec_input.ftol_array[0] = 1e-10
+    vmec_input.ftol_array[1] = 1e-9
     return vmec_input
 
 
