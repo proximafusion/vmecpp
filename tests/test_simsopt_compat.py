@@ -136,12 +136,17 @@ def test_changing_boundary():
     )
 
 
-def test_run_preserves_assigned_boundary_identity_and_dofs():
-    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+def _assign_low_res_boundary(vmec: simsopt_compat.Vmec) -> SurfaceRZFourier:
     assert vmec.indata is not None
 
-    surf = SurfaceRZFourier(mpol=1, ntor=1, nfp=vmec.indata.nfp)
-    vmec.boundary = surf
+    boundary = SurfaceRZFourier(mpol=1, ntor=1, nfp=vmec.indata.nfp)
+    vmec.boundary = boundary
+    return boundary
+
+
+def test_run_preserves_assigned_boundary_identity_and_dofs():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    surf = _assign_low_res_boundary(vmec)
 
     original_num_dofs = len(vmec.x)
     vmec.run()
@@ -152,15 +157,24 @@ def test_run_preserves_assigned_boundary_identity_and_dofs():
 
 def test_assigned_boundary_stays_connected_after_run():
     vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
-    assert vmec.indata is not None
-
-    surf = SurfaceRZFourier(mpol=1, ntor=1, nfp=vmec.indata.nfp)
-    vmec.boundary = surf
+    surf = _assign_low_res_boundary(vmec)
     vmec.run()
 
     assert not vmec.need_to_run_code
     surf.set_rc(1, 0, surf.get_rc(1, 0) + 0.1)
     assert vmec.need_to_run_code
+
+
+def test_get_input_preserves_assigned_boundary_identity_and_dofs():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    surf = _assign_low_res_boundary(vmec)
+
+    original_num_dofs = len(vmec.x)
+    indata_json = vmec.get_input()
+
+    assert indata_json
+    assert vmec.boundary is surf
+    assert len(vmec.x) == original_num_dofs
 
 
 def test_changing_mpol_ntor(vmec):
