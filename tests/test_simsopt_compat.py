@@ -10,6 +10,7 @@ import netCDF4
 import numpy as np
 import pytest
 from simsopt import mhd as simsopt_mhd
+from simsopt.geo import SurfaceRZFourier
 
 from vmecpp import _util, ensure_vmec2000_input, simsopt_compat
 
@@ -133,6 +134,33 @@ def test_changing_boundary():
     np.testing.assert_allclose(
         vmec.wout.aspect, expected_aspect_ratio, rtol=5e-2, atol=0.0
     )
+
+
+def test_run_preserves_assigned_boundary_identity_and_dofs():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    assert vmec.indata is not None
+
+    surf = SurfaceRZFourier(mpol=1, ntor=1, nfp=vmec.indata.nfp)
+    vmec.boundary = surf
+
+    original_num_dofs = len(vmec.x)
+    vmec.run()
+
+    assert vmec.boundary is surf
+    assert len(vmec.x) == original_num_dofs
+
+
+def test_assigned_boundary_stays_connected_after_run():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    assert vmec.indata is not None
+
+    surf = SurfaceRZFourier(mpol=1, ntor=1, nfp=vmec.indata.nfp)
+    vmec.boundary = surf
+    vmec.run()
+
+    assert not vmec.need_to_run_code
+    surf.set_rc(1, 0, surf.get_rc(1, 0) + 0.1)
+    assert vmec.need_to_run_code
 
 
 def test_changing_mpol_ntor(vmec):

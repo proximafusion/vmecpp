@@ -140,21 +140,20 @@ class Vmec(Optimizable):
             self.input_file = str(filename)
             self.iter = -1
 
-            # NOTE: SurfaceRZFourier uses m up to mpol _inclusive_,
-            # differently from VMEC++, so have to manually reduce the range by one.
-            mpol_for_surfacerzfourier = self.indata.mpol - 1
-
             # A vmec object has mpol and ntor attributes independent of
             # the boundary. The boundary surface object is initialized
             # with mpol and ntor values that match those of the vmec
             # object, but the mpol/ntor values of either the vmec object
             # or the boundary surface object can be changed independently
             # by the user.
+            mpol_for_surfacerzfourier, ntor_for_surfacerzfourier = (
+                self._surface_rzfourier_resolution(self.indata.mpol, self.indata.ntor)
+            )
             self._boundary = SurfaceRZFourier.from_nphi_ntheta(
                 nfp=self.indata.nfp,
                 stellsym=not self.indata.lasym,
                 mpol=mpol_for_surfacerzfourier,
-                ntor=self.indata.ntor,
+                ntor=ntor_for_surfacerzfourier,
                 ntheta=ntheta,
                 nphi=nphi,
                 range=range_surface,
@@ -436,28 +435,41 @@ class Vmec(Optimizable):
             self.append_parent(boundary)
             self.need_to_run_code = True
 
+    @staticmethod
+    def _surface_rzfourier_resolution(mpol: int, ntor: int) -> tuple[int, int]:
+        # SurfaceRZFourier uses m up to mpol inclusive, unlike VMEC++.
+        return mpol - 1, ntor
+
+    @staticmethod
+    def _resize_surface_rzfourier(
+        surface: SurfaceRZFourier, mpol: int, ntor: int
+    ) -> SurfaceRZFourier:
+        if surface.mpol == mpol and surface.ntor == ntor:
+            return surface
+
+        updated_surface = surface.change_resolution(mpol, ntor)
+        return surface if updated_surface is None else updated_surface
+
     def set_indata(self) -> None:
         """Transfer data from simsopt objects to vmec.indata.
 
-        Presently, this function sets the boundary shape and magnetic
-        axis shape.  In the future, the input profiles will be set here
-        as well. This data transfer is performed before writing a Vmec
-        input file or running Vmec. The boundary surface object
-        converted to ``SurfaceRZFourier`` is returned.
+        Presently, this function sets the boundary shape and magnetic axis shape.  In
+        the future, the input profiles will be set here as well. This data transfer is
+        performed before writing a Vmec input file or running Vmec.
         """
         if not self.runnable:
             msg = "Cannot access indata for a Vmec object that was initialized from a wout file."
             raise RuntimeError(msg)
         assert self.indata is not None
         vi = self.indata  # Shorthand
-        # Convert boundary to RZFourier if needed:
-        boundary_RZFourier = self.boundary.to_RZFourier()
-        updated_boundary = boundary_RZFourier.change_resolution(
+        target_mpol, target_ntor = self._surface_rzfourier_resolution(
             self.indata.mpol, self.indata.ntor
         )
-        if updated_boundary is not None:
-            boundary_RZFourier = updated_boundary
-            self.boundary = updated_boundary
+        boundary_RZFourier = self._resize_surface_rzfourier(
+            self.boundary.to_RZFourier().copy(),
+            target_mpol,
+            target_ntor,
+        )
         vi.rbc.fill(0.0)
         vi.zbs.fill(0.0)
 
@@ -523,13 +535,13 @@ class Vmec(Optimizable):
         indata_wrapper._set_mpol_ntor(new_mpol, new_ntor)
         self.indata = vmecpp.VmecInput._from_cpp_vmecindata(indata_wrapper)
 
-        # NOTE: SurfaceRZFourier uses m up to mpol _inclusive_,
-        # differently from VMEC++, so have to manually reduce the range by one.
-        mpol_for_surfacerzfourier = new_mpol - 1
-        updated_boundary = self.boundary.change_resolution(
-            mpol_for_surfacerzfourier, new_ntor
+        mpol_for_surfacerzfourier, ntor_for_surfacerzfourier = (
+            self._surface_rzfourier_resolution(new_mpol, new_ntor)
         )
-        if updated_boundary is not None:
+        updated_boundary = self._resize_surface_rzfourier(
+            self.boundary, mpol_for_surfacerzfourier, ntor_for_surfacerzfourier
+        )
+        if updated_boundary is not self.boundary:
             self.boundary = updated_boundary
         self.recompute_bell()
 
