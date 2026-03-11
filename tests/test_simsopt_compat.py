@@ -10,6 +10,7 @@ import netCDF4
 import numpy as np
 import pytest
 from simsopt import mhd as simsopt_mhd
+from simsopt.geo import SurfaceRZFourier
 
 from vmecpp import _util, ensure_vmec2000_input, simsopt_compat
 
@@ -135,6 +136,47 @@ def test_changing_boundary():
     )
 
 
+def _assign_low_res_boundary(vmec: simsopt_compat.Vmec) -> SurfaceRZFourier:
+    assert vmec.indata is not None
+
+    boundary = SurfaceRZFourier(mpol=1, ntor=1, nfp=vmec.indata.nfp)
+    vmec.boundary = boundary
+    return boundary
+
+
+def test_run_preserves_assigned_boundary_identity_and_dofs():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    surf = _assign_low_res_boundary(vmec)
+
+    original_num_dofs = len(vmec.x)
+    vmec.run()
+
+    assert vmec.boundary is surf
+    assert len(vmec.x) == original_num_dofs
+
+
+def test_assigned_boundary_stays_connected_after_run():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    surf = _assign_low_res_boundary(vmec)
+    vmec.run()
+
+    assert not vmec.need_to_run_code
+    surf.set_rc(1, 0, surf.get_rc(1, 0) + 0.1)
+    assert vmec.need_to_run_code
+
+
+def test_get_input_preserves_assigned_boundary_identity_and_dofs():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    surf = _assign_low_res_boundary(vmec)
+
+    original_num_dofs = len(vmec.x)
+    indata_json = vmec.get_input()
+
+    assert indata_json
+    assert vmec.boundary is surf
+    assert len(vmec.x) == original_num_dofs
+
+
 def test_changing_mpol_ntor(vmec):
     def expected_shape(mpol: int, ntor: int):
         # corresponds to Sizes::mnmax
@@ -163,6 +205,7 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
     pytest.importorskip("vmec")
 
     vmecpp_input_file = TEST_DATA_DIR / "cma.json"
+    asymmetric_fields = {"rbs", "zbc", "raxis_s", "zaxis_c"}
 
     with ensure_vmec2000_input(vmecpp_input_file) as converted_indata_file:
         vmec2000 = simsopt_mhd.Vmec(str(converted_indata_file))
@@ -182,14 +225,27 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
         vmecpp_var = getattr(indata, varname)
         if callable(vmecpp_var):
             continue  # this is a method, not a variable
-        if vmecpp_var is None:
-            continue
 
         varname_vmec2000 = varname
         if varname[1:-1] == "axis_":
             # these are called differently in VMEC2000, e.g. raxis_c -> raxis_cc
             varname_vmec2000 = f"{varname[:-1]}c{varname[-1]}"
         vmec2000_var = getattr(vmec2000.indata, varname_vmec2000)
+
+        if vmecpp_var is None:
+            assert varname in asymmetric_fields
+            assert not indata.lasym
+
+            if varname in {"raxis_s", "zaxis_c"}:
+                np.testing.assert_allclose(vmec2000_var[: indata.ntor + 1], 0.0)
+            else:
+                ntor = indata.ntor
+                vmec2000_var_truncated = vmec2000_var.T[: indata.mpol, :]
+                vmec2000_var_truncated = vmec2000_var_truncated[
+                    :, 101 - ntor : 101 + ntor + 1
+                ]
+                np.testing.assert_allclose(vmec2000_var_truncated, 0.0)
+            continue
 
         if isinstance(vmecpp_var, str | int | bool):
             if isinstance(vmec2000_var, bytes):
@@ -236,27 +292,20 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
                 if len(vmecpp_var.shape) == 1:
                     vmec2000_var_truncated = vmec2000_var[: len(vmecpp_var)]
                 else:
-                    assert vmecpp.indata is not None  # for pyright
-                    # RBS and ZBC might be just empty
-                    if varname in {"rbs", "zbc"} and not vmecpp.indata.lasym:
-                        vmec2000_var_truncated = np.zeros(shape=(0, 0))
-                    else:
-                        # must be 2D RBC, ZBS. here there is a triple mismatch:
-                        # 1. VMEC2000 uses layout (n, m) while VMEC++ uses (m, n)
-                        # 2. VMEC2000 pre-allocates an array with shape (203, 101)
-                        #    while VMEC++ allocates according to mpol, ntor
-                        # 3. for the `n` index values are laid out as
-                        #    [-ntor, ..., 0, ..., ntor] (with ntor being the one from
-                        #    the file for VMEC++, and 101 for VMEC2000), so we need to
-                        #    truncate the entries in vmec2000_var symmetrically around
-                        #    the center
-                        # First we transpose and truncate the rows:
-                        vmec2000_var_truncated = vmec2000_var.T[
-                            : vmecpp_var.shape[0], :
-                        ]
-                        # Now we truncate the columns symmetrically around the center:
-                        ntor = vmecpp.indata.ntor
-                        vmec2000_var_truncated = vmec2000_var_truncated[
-                            :, 101 - ntor : 101 + ntor + 1
-                        ]
+                    # must be 2D RBC, ZBS. here there is a triple mismatch:
+                    # 1. VMEC2000 uses layout (n, m) while VMEC++ uses (m, n)
+                    # 2. VMEC2000 pre-allocates an array with shape (203, 101)
+                    #    while VMEC++ allocates according to mpol, ntor
+                    # 3. for the `n` index values are laid out as
+                    #    [-ntor, ..., 0, ..., ntor] (with ntor being the one from
+                    #    the file for VMEC++, and 101 for VMEC2000), so we need to
+                    #    truncate the entries in vmec2000_var symmetrically around
+                    #    the center
+                    # First we transpose and truncate the rows:
+                    vmec2000_var_truncated = vmec2000_var.T[: vmecpp_var.shape[0], :]
+                    # Now we truncate the columns symmetrically around the center:
+                    ntor = indata.ntor
+                    vmec2000_var_truncated = vmec2000_var_truncated[
+                        :, 101 - ntor : 101 + ntor + 1
+                    ]
                 np.testing.assert_allclose(vmecpp_var, vmec2000_var_truncated)
