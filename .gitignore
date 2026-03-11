@@ -3,6 +3,7 @@ venv/
 .venv/
 .vscode
 build/
+.cache
 
 # python build outputs
 dist/
