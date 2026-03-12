@@ -55,6 +55,8 @@ absl::StatusOr<FreeBoundaryMethod> FreeBoundaryMethodFromString(
     return FreeBoundaryMethod::ONLY_COILS;
   } else if (free_boundary_method_string == "biest") {
     return FreeBoundaryMethod::BIEST;
+  } else if (free_boundary_method_string == "only_coils_bdotn") {
+    return FreeBoundaryMethod::ONLY_COILS_BDOTN;
   }
   return absl::NotFoundError(absl::StrCat("free boundary method named '",
                                           free_boundary_method_string,
@@ -69,6 +71,8 @@ std::string ToString(FreeBoundaryMethod free_boundary_method) {
       return "only_coils";
     case FreeBoundaryMethod::BIEST:
       return "biest";
+    case FreeBoundaryMethod::ONLY_COILS_BDOTN:
+      return "only_coils_bdotn";
     default:
       LOG(FATAL)
           << "no string conversion implemented yet for FreeBoundaryMethod code "
@@ -1389,15 +1393,14 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     }
 
     // free_boundary_method
-    // For the current state of the code, we only accept NESTOR,
-    // but in the future [TODO(jons)] also all other (implemented) enum values
-    // are valid.
     if (vmec_indata.free_boundary_method != FreeBoundaryMethod::NESTOR &&
-        vmec_indata.free_boundary_method != FreeBoundaryMethod::ONLY_COILS) {
-      return absl::InvalidArgumentError(
-          absl::StrFormat("input variable 'free_boundary_method' must be "
-                          "'nestor' or 'only_coils', but is %s\n",
-                          ToString(vmec_indata.free_boundary_method)));
+        vmec_indata.free_boundary_method != FreeBoundaryMethod::ONLY_COILS &&
+        vmec_indata.free_boundary_method !=
+            FreeBoundaryMethod::ONLY_COILS_BDOTN) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "input variable 'free_boundary_method' must be "
+          "'nestor', 'only_coils', or 'only_coils_bdotn', but is %s\n",
+          ToString(vmec_indata.free_boundary_method)));
     }
   }
 

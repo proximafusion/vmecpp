@@ -220,15 +220,19 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     h_.vacuum_b_r.resize(s_.nZnT);
     h_.vacuum_b_phi.resize(s_.nZnT);
     h_.vacuum_b_z.resize(s_.nZnT);
+    h_.vacuum_b_normal.resize(s_.nZnT, 0.0);
 
     // TODO(jons): move this check to better-suited place
-    if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
+    if ((indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS ||
+         indata_.free_boundary_method ==
+             FreeBoundaryMethod::ONLY_COILS_BDOTN) &&
         (indata_.curtor != 0.0 || indata_.pres_scale != 0.0)) {
       throw std::invalid_argument(
-          absl::StrCat("curtor and pres_scale must be zero when using "
-                       "'only_coils' free boundary method, but were ",
-                       indata_.curtor, " and ", indata_.pres_scale));
-    }  // check that cutor==0 and pres_scale==0 for only_coils
+          absl::StrCat("curtor and pres_scale must be zero when using '",
+                       ToString(indata_.free_boundary_method),
+                       "' free boundary method, but were ", indata_.curtor,
+                       " and ", indata_.pres_scale));
+    }  // check that cutor==0 and pres_scale==0 for only_coils variants
   }
 }
 
@@ -528,12 +532,19 @@ bool Vmec::InitializeRadial(
           fb_[thread_id] = std::make_unique<Nestor>(
               &s_, tp_[thread_id].get(), &mgrid_, matrixShare, bvecShare,
               h_.vacuum_magnetic_pressure, iPiv, h_.vacuum_b_r, h_.vacuum_b_phi,
-              h_.vacuum_b_z);
+              h_.vacuum_b_z, h_.vacuum_b_normal);
         } else if (indata_.free_boundary_method ==
                    FreeBoundaryMethod::ONLY_COILS) {
           fb_[thread_id] = std::make_unique<OnlyCoils>(
               &s_, tp_[thread_id].get(), &mgrid_, h_.vacuum_magnetic_pressure,
-              h_.vacuum_b_r, h_.vacuum_b_phi, h_.vacuum_b_z);
+              h_.vacuum_b_r, h_.vacuum_b_phi, h_.vacuum_b_z,
+              h_.vacuum_b_normal);
+        } else if (indata_.free_boundary_method ==
+                   FreeBoundaryMethod::ONLY_COILS_BDOTN) {
+          fb_[thread_id] = std::make_unique<OnlyCoils>(
+              &s_, tp_[thread_id].get(), &mgrid_, h_.vacuum_magnetic_pressure,
+              h_.vacuum_b_r, h_.vacuum_b_phi, h_.vacuum_b_z, h_.vacuum_b_normal,
+              BoundaryForceTermType::kNormalField);
         } else {
           LOG(FATAL) << absl::StrCat("free boundary method '",
                                      ToString(indata_.free_boundary_method),
@@ -1226,10 +1237,12 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     fc_.force_residual_z.push_back(fc_.fsqz);
     fc_.force_residual_lambda.push_back(fc_.fsql);
     if (fc_.lfreeb) {
-      // delbsq is only available on the LCFS thread
+      // delbsq and delbn are only available on the LCFS thread
       fc_.delbsq.push_back(m_[thread_id]->get_delbsq());
+      fc_.delbn.push_back(m_[thread_id]->get_delbn());
     } else {
       fc_.delbsq.push_back(0.0);
+      fc_.delbn.push_back(0.0);
     }
     fc_.restart_reasons.push_back(fc_.restart_reason);
     fc_.mhd_energy.push_back(h_.mhdEnergy);
@@ -1281,10 +1294,12 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
 
     // mismatch in |B|^2 at LCFS for free-boundary
     double delbsq = m_[thread_id]->get_delbsq();
+    // |B_coils . n| at LCFS
+    double delbn = m_[thread_id]->get_delbn();
 
     logger_.LogIteration(iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1,
                          fc_.fsqz1, fc_.fsql1, delt0r, r00, energy, betaVolAvg,
-                         volAvgM, delbsq);
+                         volAvgM, delbsq, delbn);
   }  // thread which has boundary
 }
 

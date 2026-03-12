@@ -175,6 +175,9 @@ class HandoverStorage {
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
   std::vector<double> vacuum_b_z;
 
+  // [nZnT] B_coils . n at the plasma boundary
+  std::vector<double> vacuum_b_normal;
+
  private:
   const Sizes& s_;
 

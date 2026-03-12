@@ -66,7 +66,7 @@ class IterationLogger {
   void LogIteration(int iter, double fsqr, double fsqz, double fsql,
                     double fsqr1, double fsqz1, double fsql1, double delt,
                     double rax, double w_mhd, double beta_vol_avg,
-                    double vol_avg_m, double delbsq);
+                    double vol_avg_m, double delbsq, double delbn);
 
   // Called after SolveEquilibrium completes for a stage.
   void EndStage(double mhd_energy);
@@ -87,6 +87,7 @@ class IterationLogger {
     double last_w_mhd = 0.0;
     double last_rax = 0.0;
     double last_delbsq = 0.0;
+    double last_delbn = 0.0;
     bool initial_fsq_set = false;
     bool completed = false;
   };
@@ -117,7 +118,7 @@ class IterationLogger {
   void PrintLegacyRow(int iter, double fsqr, double fsqz, double fsql,
                       double fsqr1, double fsqz1, double fsql1, double delt,
                       double rax, double w_mhd, double beta_vol_avg,
-                      double vol_avg_m, double delbsq) const;
+                      double vol_avg_m, double delbsq, double delbn) const;
 
   std::ostream& output_;
   OutputMode mode_;

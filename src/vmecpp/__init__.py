@@ -93,6 +93,16 @@ class FreeBoundaryMethod(str, enum.Enum):
     BIEST = "biest"
     """Boundary Integral Equation Solver for Toroidal systems."""
 
+    ONLY_COILS_BDOTN = "only_coils_bdotn"
+    """Use the coils field with B_coils.n = 0 boundary condition.
+
+    Instead of pressure continuity (B_inside^2 - B_outside^2), drives the
+    normal component of the external magnetic field to zero at the LCFS.
+
+    Warning: This is only valid for vacuum calculations and will ignore
+    the plasma current contribution!
+    """
+
 
 class OutputMode(enum.Enum):
     """Controls the output format of iteration logging.."""

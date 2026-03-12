@@ -17,6 +17,19 @@
 
 namespace vmecpp {
 
+// Describes the physical meaning of the boundary force term stored in
+// bSqVacShare by the free-boundary solver.
+enum class BoundaryForceTermType : std::uint8_t {
+  // bSqVacShare contains |B_vac|^2 / 2 (vacuum magnetic pressure).
+  // The force term uses pressure continuity: p_inside = p_outside at the LCFS.
+  kPressureContinuity,
+
+  // bSqVacShare contains B_coils . n, the normal component of the external
+  // magnetic field at the LCFS.
+  // The force term drives B_coils . n -> 0 at the boundary.
+  kNormalField
+};
+
 class FreeBoundaryBase {
  public:
   virtual ~FreeBoundaryBase() = default;
@@ -25,7 +38,8 @@ class FreeBoundaryBase {
                    const MGridProvider* mgrid, std::span<double> bSqVacShare,
                    std::span<double> vacuum_b_r_share,
                    std::span<double> vacuum_b_phi_share,
-                   std::span<double> vacuum_b_z_share)
+                   std::span<double> vacuum_b_z_share,
+                   std::span<double> b_dot_n_share)
       : s_(*s),
         fb_(&s_),
         tp_(*tp),
@@ -34,7 +48,8 @@ class FreeBoundaryBase {
         bSqVacShare(bSqVacShare),
         vacuum_b_r_share_(vacuum_b_r_share),
         vacuum_b_phi_share_(vacuum_b_phi_share),
-        vacuum_b_z_share_(vacuum_b_z_share) {}
+        vacuum_b_z_share_(vacuum_b_z_share),
+        b_dot_n_share_(b_dot_n_share) {}
 
   virtual bool update(
       const std::span<const double> rCC, const std::span<const double> rSS,
@@ -46,6 +61,10 @@ class FreeBoundaryBase {
       double netToroidalCurrent, int m_ivacskip,
       const VmecCheckpoint& vmec_checkpoint = VmecCheckpoint::NONE,
       bool at_checkpoint_iteration = false) = 0;
+
+  virtual BoundaryForceTermType GetBoundaryForceTermType() const {
+    return BoundaryForceTermType::kPressureContinuity;
+  }
 
   const SurfaceGeometry& GetSurfaceGeometry() const { return sg_; }
   const ExternalMagneticField& GetExternalMagneticField() const { return ef_; }
@@ -71,6 +90,10 @@ class FreeBoundaryBase {
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
   // Points to vacuum_b_z in HandoverStorage
   std::span<double> vacuum_b_z_share_;
+
+  // [nZnT] B_coils . n at the plasma boundary
+  // Points to vacuum_b_normal in HandoverStorage
+  std::span<double> b_dot_n_share_;
 };  // FreeBoundaryBase
 
 }  // namespace vmecpp

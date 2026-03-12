@@ -21,7 +21,9 @@ class OnlyCoils : public FreeBoundaryBase {
             const MGridProvider* mgrid, std::span<double> bSqVacShare,
             std::span<double> vacuum_b_r_share,
             std::span<double> vacuum_b_phi_share,
-            std::span<double> vacuum_b_z_share);
+            std::span<double> vacuum_b_z_share, std::span<double> b_dot_n_share,
+            BoundaryForceTermType boundary_force_term_type =
+                BoundaryForceTermType::kPressureContinuity);
 
   bool update(
       const std::span<const double> rCC, const std::span<const double> rSS,
@@ -33,6 +35,13 @@ class OnlyCoils : public FreeBoundaryBase {
       double netToroidalCurrent, int ivacskip,
       const VmecCheckpoint& vmec_checkpoint = VmecCheckpoint::NONE,
       bool at_checkpoint_iteration = false) final;
+
+  BoundaryForceTermType GetBoundaryForceTermType() const final {
+    return boundary_force_term_type_;
+  }
+
+ private:
+  BoundaryForceTermType boundary_force_term_type_;
 };
 
 }  // namespace vmecpp

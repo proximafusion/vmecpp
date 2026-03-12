@@ -28,7 +28,7 @@ class Nestor : public FreeBoundaryBase {
          std::span<double> bvecShare, std::span<double> bSqVacShare,
          std::span<int> iPiv, std::span<double> vacuum_b_r_share,
          std::span<double> vacuum_b_phi_share,
-         std::span<double> vacuum_b_z_share);
+         std::span<double> vacuum_b_z_share, std::span<double> b_dot_n_share);
 
   bool update(
       const std::span<const double> rCC, const std::span<const double> rSS,

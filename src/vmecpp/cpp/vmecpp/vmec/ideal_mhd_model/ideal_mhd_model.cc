@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <numbers>
@@ -491,6 +492,9 @@ IdealMhdModel::IdealMhdModel(
   if (m_fc_.lfreeb) {
     CHECK(m_fb_ != nullptr)
         << "Free-boundary configuration requires a Free-boundary solver";
+    boundary_force_term_type_ = m_fb_->GetBoundaryForceTermType();
+  } else {
+    boundary_force_term_type_ = BoundaryForceTermType::kPressureContinuity;
   }
 
   // init members
@@ -568,6 +572,7 @@ IdealMhdModel::IdealMhdModel(
 
   insideTotalPressure.resize(s_.nZnT);
   delBSq.resize(s_.nZnT);
+  delBn.resize(s_.nZnT);
 
   armn_e.resize(nrzt);
   armn_o.resize(nrzt);
@@ -1020,14 +1025,26 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
       if (r_.nsMaxF1 == m_fc_.ns) {
-        // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS PRECONDITIONER!
-        // double edgePressure = 1.5 * p.presH[r.nsMaxH-1 - r.nsMinH] - 0.5 *
-        // p.presH[r.nsMinH - r.nsMinH];
+        // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS
+        // PRECONDITIONER!
         double edgePressure =
             m_p_.evalMassProfile((m_fc_.ns - 1.5) / (m_fc_.ns - 1.0));
         if (edgePressure != 0.0) {
           edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
                          m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH];
+        }
+
+        // B.n homotopy weight: ramps from 0 (pure pressure continuity)
+        // to 1 (full B.n correction) as FSQ drops on a log scale.
+        // vacuum_magnetic_pressure always contains |B|^2/2; the correction
+        // subtracts w * (B.n)^2/2 so the effective outside pressure becomes
+        // |B_tangential|^2/2 at w=1, enforcing B.n = 0 at equilibrium.
+        double bdotn_weight = 0.0;
+        if (boundary_force_term_type_ == BoundaryForceTermType::kNormalField &&
+            m_fc_.res0 > 0.0 && m_fc_.fsq > 0.0 && m_fc_.res0 > m_fc_.ftolv) {
+          double log_total_range = std::log10(m_fc_.res0 / m_fc_.ftolv);
+          double log_progress = std::log10(m_fc_.res0 / m_fc_.fsq);
+          bdotn_weight = std::clamp(log_progress / log_total_range, 0.0, 1.0);
         }
 
         for (int kl = 0; kl < s_.nZnT; ++kl) {
@@ -1038,14 +1055,22 @@ absl::StatusOr<bool> IdealMhdModel::update(
               0.5 * totalPressure[(r_.nsMaxH - 2 - r_.nsMinH) * s_.nZnT + kl];
 
           // net pressure from outside on LCFS
-          // FIXME(eguiraud) slow loop over Nestor output
           // NOTE: here is the interface between the fast-toroidal setup in
-          // Nestor and fast-poloidal setup in VMEC
+          // the free-boundary solver and fast-poloidal setup in VMEC
           const int k = kl / s_.nThetaEff;
           const int l = kl % s_.nThetaEff;
           const int idx_lk = l * s_.nZeta + k;
+
           double outsideEdgePressure =
               m_h_.vacuum_magnetic_pressure[idx_lk] + edgePressure;
+
+          // In kNormalField mode, subtract weighted (B.n)^2/2 so the
+          // effective outside pressure is a blend between |B|^2/2 and
+          // |B_tangential|^2/2 = (|B|^2 - (B.n)^2)/2.
+          if (bdotn_weight > 0.0) {
+            double bn = m_h_.vacuum_b_normal[idx_lk];
+            outsideEdgePressure -= bdotn_weight * 0.5 * bn * bn;
+          }
 
           // term to enter MHD forces
           int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
@@ -1054,6 +1079,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
           // for printout: global mismatch between inside and outside pressure
           delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
+          delBn[kl] = fabs(m_h_.vacuum_b_normal[idx_lk]);
         }
 
         if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
@@ -3020,7 +3046,7 @@ void IdealMhdModel::assembleTotalForces() {
 #pragma omp barrier
 #endif  // _OPENMP
 
-  // free-boundary contribution: include force on boundary from NESTOR
+  // free-boundary contribution: include force on boundary from vacuum solver
   if (m_fc_.lfreeb &&
       (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
        m_vacuum_pressure_state_ == VacuumPressureState::kActive) &&
@@ -3582,6 +3608,21 @@ double IdealMhdModel::get_delbsq() const {
     delBSqAvg /= delBSqNorm;
   }
   return delBSqAvg;
+}
+
+double IdealMhdModel::get_delbn() const {
+  double delBnAvg = 0.0;
+  if (m_fc_.lfreeb &&
+      m_vacuum_pressure_state_ == VacuumPressureState::kActive) {
+    double delBnNorm = 0.0;
+    for (int kl = 0; kl < s_.nZnT; ++kl) {
+      int l = kl % s_.nThetaEff;
+      delBnAvg += delBn[kl] * s_.wInt[l];
+      delBnNorm += insideTotalPressure[kl] * s_.wInt[l];
+    }
+    delBnAvg /= delBnNorm;
+  }
+  return delBnAvg;
 }
 
 int IdealMhdModel::get_ivacskip() const { return ivacskip; }
