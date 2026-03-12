@@ -70,7 +70,8 @@ class IdealMhdModel {
                 FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
                 VacuumPressureState* m_vacuum_pressure_state);
 
-  void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
+  void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
+                     double boundary_force_weight);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -453,6 +454,9 @@ class IdealMhdModel {
   // 0 -- no spectral condensation constraint force
   // 1 (default) -- full spectral condensation constraint force
   double tcon0;
+
+  // from INDATA: multiplier on the boundary force term rBSq
+  double boundary_force_weight_ = 1.0;
 
   // [mnsize] minimum flux surface index for which to apply radial
   // preconditioner for R and Z

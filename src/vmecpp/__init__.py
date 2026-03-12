@@ -317,6 +317,14 @@ class VmecInput(BaseModelWithNumpy):
     nvacskip: int = 1
     """Number of iterations between full vacuum calculations."""
 
+    boundary_force_weight: float = 1.0
+    """Multiplier on the boundary force term (penalty parameter).
+
+    Increasing this above 1.0 strengthens the enforcement of the free-boundary
+    condition, which can improve boundary accuracy at the cost of potentially slower
+    internal convergence.
+    """
+
     free_boundary_method: typing.Annotated[
         FreeBoundaryMethod,
         pydantic.BeforeValidator(_validate_free_boundary_method),
