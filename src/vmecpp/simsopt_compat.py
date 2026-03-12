@@ -554,6 +554,15 @@ class Vmec(Optimizable):
             self.boundary, mpol_for_surfacerzfourier, ntor_for_surfacerzfourier
         )
         if updated_boundary is not self.boundary:
+            old_boundary = self.boundary
+            # Transfer children (other than self) from old boundary to new boundary
+            # to preserve the optimization dependency chain.
+            # self (Vmec) is excluded here; the boundary setter handles it below.
+            old_children = [c() for c in old_boundary._children if c() is not None]
+            for child in old_children:
+                if child is not self:
+                    child.remove_parent(old_boundary)
+                    child.append_parent(updated_boundary)
             self.boundary = updated_boundary
         self.recompute_bell()
 
