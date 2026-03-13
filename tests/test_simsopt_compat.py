@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 """Tests for VMEC++'s'SIMSOPT compatibility layer."""
 
+import json
 import math
 from pathlib import Path
 
@@ -144,6 +145,19 @@ def _assign_low_res_boundary(vmec: simsopt_compat.Vmec) -> SurfaceRZFourier:
     return boundary
 
 
+def _make_asymmetric_vmec() -> simsopt_compat.Vmec:
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "input.up_down_asymmetric_tokamak")
+    assert vmec.indata is not None
+    assert vmec.indata.lasym
+    assert vmec.indata.rbs is not None
+    assert vmec.indata.zbc is not None
+    return vmec
+
+
+def _get_input_json(vmec: simsopt_compat.Vmec) -> dict[str, object]:
+    return json.loads(vmec.get_input())
+
+
 def test_run_preserves_assigned_boundary_identity_and_dofs():
     vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
     surf = _assign_low_res_boundary(vmec)
@@ -175,6 +189,33 @@ def test_get_input_preserves_assigned_boundary_identity_and_dofs():
     assert indata_json
     assert vmec.boundary is surf
     assert len(vmec.x) == original_num_dofs
+
+
+def test_set_indata_writes_and_clears_asymmetric_rbs_coefficients():
+    vmec = _make_asymmetric_vmec()
+    indata = vmec.indata
+    assert indata is not None
+    assert indata.rbs is not None
+
+    vmec.boundary.set_rs(1, 0, 0.723)
+    vmec.set_indata()
+    np.testing.assert_allclose(indata.rbs[1, 0], 0.723)
+
+    vmec.boundary.set_rs(1, 0, 0.0)
+    vmec.set_indata()
+    np.testing.assert_allclose(indata.rbs[1, 0], 0.0)
+
+
+def test_get_input_writes_and_clears_asymmetric_zbc_coefficients():
+    vmec = _make_asymmetric_vmec()
+
+    vmec.boundary.set_zc(0, 0, 0.456)
+    indata_json = _get_input_json(vmec)
+    assert indata_json["zbc"] == [{"m": 0, "n": 0, "value": 0.456}]
+
+    vmec.boundary.set_zc(0, 0, 0.0)
+    indata_json = _get_input_json(vmec)
+    assert indata_json["zbc"] == []
 
 
 def test_changing_mpol_ntor(vmec):
