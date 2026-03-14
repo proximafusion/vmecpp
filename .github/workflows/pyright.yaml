@@ -22,7 +22,9 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install dependencies
-        run: sudo apt-get install build-essential cmake libnetcdf-dev liblapack-dev python3-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install build-essential cmake libnetcdf-dev liblapack-dev python3-dev
       # Parse the dependencies from the pyproject.toml file and install them,
       # without installing and building the entire vmecpp project
       - run: |
