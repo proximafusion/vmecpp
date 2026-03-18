@@ -7,7 +7,7 @@ name = "vmecpp"
 dynamic = ["version"]
 description = "Proxima Fusion's reimplementation of the Variational Moments Equilibrium Code (VMEC), a free-boundary ideal-MHD equilibrium solver for stellarators and Tokamaks."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 license = "MIT"
 license-files = ["LICENSE.txt"]
 keywords = []
