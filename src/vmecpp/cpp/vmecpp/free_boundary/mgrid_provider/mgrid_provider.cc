@@ -54,8 +54,8 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
                                      const Eigen::VectorXd& coil_currents) {
   {  // try to open file in order to check if it is accessible
     if (!std::filesystem::exists(filename)) {
-      return absl::NotFoundError(
-          absl::StrFormat("Could not find '%s'.", filename.string()));
+      return absl::NotFoundError(absl::StrFormat(
+          "Could not find mgrid_file='%s'.", filename.string()));
     }
     std::ifstream fp(filename);
     if (!fp.is_open()) {

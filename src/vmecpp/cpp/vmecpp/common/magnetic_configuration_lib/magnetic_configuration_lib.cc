@@ -197,7 +197,6 @@ absl::StatusOr<MagneticConfiguration> ImportMagneticConfigurationFromMakegrid(
       }
     }
   }
-
   return magnetic_configuration;
 }  // ImportMagneticConfigurationFromMakegrid
 
