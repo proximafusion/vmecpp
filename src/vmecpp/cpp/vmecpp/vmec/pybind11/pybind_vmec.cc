@@ -445,12 +445,11 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::class_<vmecpp::WOutFileContents>(m, "WOutFileContents")
       .def(py::init<const vmecpp::WOutFileContents &>(), py::arg("wout"))
       .def(py::init())
-      .def_readwrite("version", &vmecpp::WOutFileContents::version)
+      .def_readwrite("version_", &vmecpp::WOutFileContents::version_)
       .def_readwrite("input_extension",
                      &vmecpp::WOutFileContents::input_extension)
       //
-      .def_readwrite("sign_of_jacobian",
-                     &vmecpp::WOutFileContents::sign_of_jacobian)
+      .def_readwrite("signgs", &vmecpp::WOutFileContents::signgs)
       //
       .def_readwrite("gamma", &vmecpp::WOutFileContents::gamma)
       //
@@ -478,8 +477,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       //
       .def_readwrite("ns", &vmecpp::WOutFileContents::ns)
       .def_readwrite("ftolv", &vmecpp::WOutFileContents::ftolv)
-      .def_readwrite("maximum_iterations",
-                     &vmecpp::WOutFileContents::maximum_iterations)
+      .def_readwrite("niter", &vmecpp::WOutFileContents::niter)
       //
       .def_readwrite("lfreeb", &vmecpp::WOutFileContents::lfreeb)
       .def_readwrite("mgrid_file", &vmecpp::WOutFileContents::mgrid_file)
@@ -501,7 +499,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       //
       .def_readwrite("aspect", &vmecpp::WOutFileContents::aspect)
       //
-      .def_readwrite("betatot", &vmecpp::WOutFileContents::betatot)
+      .def_readwrite("betatotal", &vmecpp::WOutFileContents::betatotal)
       .def_readwrite("betapol", &vmecpp::WOutFileContents::betapol)
       .def_readwrite("betator", &vmecpp::WOutFileContents::betator)
       .def_readwrite("betaxis", &vmecpp::WOutFileContents::betaxis)
@@ -512,25 +510,25 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("rbtor", &vmecpp::WOutFileContents::rbtor)
       //
       .def_readwrite("IonLarmor", &vmecpp::WOutFileContents::IonLarmor)
-      .def_readwrite("VolAvgB", &vmecpp::WOutFileContents::VolAvgB)
+      .def_readwrite("volavgB", &vmecpp::WOutFileContents::volavgB)
       //
       .def_readwrite("ctor", &vmecpp::WOutFileContents::ctor)
       //
       .def_readwrite("Aminor_p", &vmecpp::WOutFileContents::Aminor_p)
       .def_readwrite("Rmajor_p", &vmecpp::WOutFileContents::Rmajor_p)
-      .def_readwrite("volume_p", &vmecpp::WOutFileContents::volume_p)
+      .def_readwrite("volume", &vmecpp::WOutFileContents::volume)
       //
       .def_readwrite("fsqr", &vmecpp::WOutFileContents::fsqr)
       .def_readwrite("fsqz", &vmecpp::WOutFileContents::fsqz)
       .def_readwrite("fsql", &vmecpp::WOutFileContents::fsql)
       .def_readwrite("itfsq", &vmecpp::WOutFileContents::itfsq)
       //
-      .def_readwrite("iota_full", &vmecpp::WOutFileContents::iota_full)
-      .def_readwrite("safety_factor", &vmecpp::WOutFileContents::safety_factor)
-      .def_readwrite("pressure_full", &vmecpp::WOutFileContents::pressure_full)
-      .def_readwrite("toroidal_flux", &vmecpp::WOutFileContents::toroidal_flux)
+      .def_readwrite("iotaf", &vmecpp::WOutFileContents::iotaf)
+      .def_readwrite("q_factor", &vmecpp::WOutFileContents::q_factor)
+      .def_readwrite("presf", &vmecpp::WOutFileContents::presf)
+      .def_readwrite("phi", &vmecpp::WOutFileContents::phi)
       .def_readwrite("phipf", &vmecpp::WOutFileContents::phipf)
-      .def_readwrite("poloidal_flux", &vmecpp::WOutFileContents::poloidal_flux)
+      .def_readwrite("chi", &vmecpp::WOutFileContents::chi)
       .def_readwrite("chipf", &vmecpp::WOutFileContents::chipf)
       .def_readwrite("jcuru", &vmecpp::WOutFileContents::jcuru)
       .def_readwrite("jcurv", &vmecpp::WOutFileContents::jcurv)
@@ -544,8 +542,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("fsqt", &vmecpp::WOutFileContents::fsqt)
       .def_readwrite("delbsq", &vmecpp::WOutFileContents::delbsq)
       .def_readwrite("wdot", &vmecpp::WOutFileContents::wdot)
-      .def_readwrite("restart_reasons",
-                     &vmecpp::WOutFileContents::restart_reasons)
+      .def_readwrite("restart_reason_timetrace",
+                     &vmecpp::WOutFileContents::restart_reason_timetrace)
       //
       .def_readwrite("iota_half", &vmecpp::WOutFileContents::iota_half)
       .def_readwrite("mass", &vmecpp::WOutFileContents::mass)
@@ -554,8 +552,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("buco", &vmecpp::WOutFileContents::buco)
       .def_readwrite("bvco", &vmecpp::WOutFileContents::bvco)
       .def_readwrite("dVds", &vmecpp::WOutFileContents::dVds)
-      .def_readwrite("spectral_width",
-                     &vmecpp::WOutFileContents::spectral_width)
+      .def_readwrite("specw", &vmecpp::WOutFileContents::specw)
       .def_readwrite("phips", &vmecpp::WOutFileContents::phips)
       .def_readwrite("overr", &vmecpp::WOutFileContents::overr)
       //
@@ -564,10 +561,10 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bdotgradv", &vmecpp::WOutFileContents::bdotgradv)
       //
       .def_readwrite("DMerc", &vmecpp::WOutFileContents::DMerc)
-      .def_readwrite("Dshear", &vmecpp::WOutFileContents::Dshear)
-      .def_readwrite("Dwell", &vmecpp::WOutFileContents::Dwell)
-      .def_readwrite("Dcurr", &vmecpp::WOutFileContents::Dcurr)
-      .def_readwrite("Dgeod", &vmecpp::WOutFileContents::Dgeod)
+      .def_readwrite("DShear", &vmecpp::WOutFileContents::DShear)
+      .def_readwrite("DWell", &vmecpp::WOutFileContents::DWell)
+      .def_readwrite("DCurr", &vmecpp::WOutFileContents::DCurr)
+      .def_readwrite("DGeod", &vmecpp::WOutFileContents::DGeod)
       //
       .def_readwrite("equif", &vmecpp::WOutFileContents::equif)
       //
@@ -580,8 +577,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("xm_nyq", &vmecpp::WOutFileContents::xm_nyq)
       .def_readwrite("xn_nyq", &vmecpp::WOutFileContents::xn_nyq)
       //
-      .def_readwrite("raxis_c", &vmecpp::WOutFileContents::raxis_c)
-      .def_readwrite("zaxis_s", &vmecpp::WOutFileContents::zaxis_s)
+      .def_readwrite("raxis_cc", &vmecpp::WOutFileContents::raxis_cc)
+      .def_readwrite("zaxis_cs", &vmecpp::WOutFileContents::zaxis_cs)
       //
       .def_readwrite("rmnc", &vmecpp::WOutFileContents::rmnc)
       .def_readwrite("zmns", &vmecpp::WOutFileContents::zmns)
@@ -596,8 +593,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bsupumnc", &vmecpp::WOutFileContents::bsupumnc)
       .def_readwrite("bsupvmnc", &vmecpp::WOutFileContents::bsupvmnc)
       //
-      .def_readwrite("raxis_s", &vmecpp::WOutFileContents::raxis_s)
-      .def_readwrite("zaxis_c", &vmecpp::WOutFileContents::zaxis_c)
+      .def_readwrite("raxis_cs", &vmecpp::WOutFileContents::raxis_cs)
+      .def_readwrite("zaxis_cc", &vmecpp::WOutFileContents::zaxis_cc)
       // non-stellarator symmetric
       .def_readwrite("rmns", &vmecpp::WOutFileContents::rmns)
       .def_readwrite("zmnc", &vmecpp::WOutFileContents::zmnc)
