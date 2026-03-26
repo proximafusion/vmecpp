@@ -183,20 +183,20 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
   const int max_ns_to_set_rz_on_from_state_locally =
       std::min(nsMax_, max_ns_to_set_rz_on_from_state);
   for (int jF = nsMin_; jF < max_ns_to_set_rz_on_from_state_locally; ++jF) {
-    const auto& rmnc_row = rmnc.row(jF);
-    const auto& rmnc_row_vector =
-        std::vector<double>(rmnc_row.data(), rmnc_row.data() + rmnc_row.size());
+    const Eigen::VectorXd rmnc_col = rmnc.col(jF);
+    const std::vector<double> rmnc_col_vector(
+        rmnc_col.data(), rmnc_col.data() + rmnc_col.size());
     std::vector<double> rmncc_at_jF(s_.mpol * (s_.ntor + 1));
     std::vector<double> rmnss_at_jF(s_.mpol * (s_.ntor + 1));
-    fb.cos_to_cc_ss(rmnc_row_vector, rmncc_at_jF, rmnss_at_jF, s_.ntor,
+    fb.cos_to_cc_ss(rmnc_col_vector, rmncc_at_jF, rmnss_at_jF, s_.ntor,
                     s_.mpol);
 
-    const auto& zmns_row = zmns.row(jF);
-    const auto& zmns_row_vector =
-        std::vector<double>(zmns_row.data(), zmns_row.data() + zmns_row.size());
+    const Eigen::VectorXd zmns_col = zmns.col(jF);
+    const std::vector<double> zmns_col_vector(
+        zmns_col.data(), zmns_col.data() + zmns_col.size());
     std::vector<double> zmnsc_at_jF(s_.mpol * (s_.ntor + 1));
     std::vector<double> zmncs_at_jF(s_.mpol * (s_.ntor + 1));
-    fb.sin_to_sc_cs(zmns_row_vector, zmnsc_at_jF, zmncs_at_jF, s_.ntor,
+    fb.sin_to_sc_cs(zmns_col_vector, zmnsc_at_jF, zmncs_at_jF, s_.ntor,
                     s_.mpol);
 
     for (int m = 0; m < s_.mpol; ++m) {
@@ -218,12 +218,12 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
   // the lambda Fourier coefficients on every flux surface,
   // __including__ the plasma boundary.
   for (int jF = nsMin_; jF < nsMax_; ++jF) {
-    const auto& lmns_row = lmns_full.row(jF);
-    const auto& lmns_row_vector =
-        std::vector<double>(lmns_row.data(), lmns_row.data() + lmns_row.size());
+    const Eigen::VectorXd lmns_col = lmns_full.col(jF);
+    const std::vector<double> lmns_col_vector(
+        lmns_col.data(), lmns_col.data() + lmns_col.size());
     std::vector<double> lmnsc_at_jF(s_.mpol * (s_.ntor + 1));
     std::vector<double> lmncs_at_jF(s_.mpol * (s_.ntor + 1));
-    fb.sin_to_sc_cs(lmns_row_vector, lmnsc_at_jF, lmncs_at_jF, s_.ntor,
+    fb.sin_to_sc_cs(lmns_col_vector, lmnsc_at_jF, lmncs_at_jF, s_.ntor,
                     s_.mpol);
 
     for (int m = 0; m < s_.mpol; ++m) {

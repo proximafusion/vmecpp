@@ -340,21 +340,21 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
       NetcdfReadArray2D(ncid, "zmns");
   for (int jF = 0; jF < fc.ns; ++jF) {
     for (int mn = 0; mn < s.mnmax; ++mn) {
-      EXPECT_TRUE(IsCloseRelAbs(reference_rmnc[jF][mn],
-                                wout.rmnc(jF * s.mnmax + mn), tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_zmns[jF][mn],
-                                wout.zmns(jF * s.mnmax + mn), tolerance));
+      EXPECT_TRUE(
+          IsCloseRelAbs(reference_rmnc[jF][mn], wout.rmnc(mn, jF), tolerance));
+      EXPECT_TRUE(
+          IsCloseRelAbs(reference_zmns[jF][mn], wout.zmns(mn, jF), tolerance));
     }  // mn
   }  // jF
 
   std::vector<std::vector<double>> reference_lmns =
       NetcdfReadArray2D(ncid, "lmns");
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int jF = 0; jF < fc.ns; ++jF) {
     for (int mn = 0; mn < s.mnmax; ++mn) {
-      EXPECT_TRUE(IsCloseRelAbs(reference_lmns[jH + 1][mn],
-                                wout.lmns(jH * s.mnmax + mn), tolerance));
+      EXPECT_TRUE(
+          IsCloseRelAbs(reference_lmns[jF][mn], wout.lmns(mn, jF), tolerance));
     }  // mn
-  }  // jH
+  }  // jF
 
   std::vector<std::vector<double>> reference_gmnc =
       NetcdfReadArray2D(ncid, "gmnc");
@@ -370,39 +370,24 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
       NetcdfReadArray2D(ncid, "bsupumnc");
   std::vector<std::vector<double>> reference_bsupvmnc =
       NetcdfReadArray2D(ncid, "bsupvmnc");
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+  for (int jF = 0; jF < fc.ns; ++jF) {
     for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-      EXPECT_TRUE(IsCloseRelAbs(reference_gmnc[jH + 1][mn_nyq],
-                                wout.gmnc(jH * s.mnmax_nyq + mn_nyq),
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bmnc[jH + 1][mn_nyq],
-                                wout.bmnc(jH * s.mnmax_nyq + mn_nyq),
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsubumnc[jH + 1][mn_nyq],
-                                wout.bsubumnc(jH * s.mnmax_nyq + mn_nyq),
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsubvmnc[jH + 1][mn_nyq],
-                                wout.bsubvmnc(jH * s.mnmax_nyq + mn_nyq),
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsubsmns[jH + 1][mn_nyq],
-                                wout.bsubsmns((jH + 1) * s.mnmax_nyq + mn_nyq),
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsupumnc[jH + 1][mn_nyq],
-                                wout.bsupumnc(jH * s.mnmax_nyq + mn_nyq),
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsupvmnc[jH + 1][mn_nyq],
-                                wout.bsupvmnc(jH * s.mnmax_nyq + mn_nyq),
-                                tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(reference_gmnc[jF][mn_nyq],
+                                wout.gmnc(mn_nyq, jF), tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(reference_bmnc[jF][mn_nyq],
+                                wout.bmnc(mn_nyq, jF), tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(reference_bsubumnc[jF][mn_nyq],
+                                wout.bsubumnc(mn_nyq, jF), tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(reference_bsubvmnc[jF][mn_nyq],
+                                wout.bsubvmnc(mn_nyq, jF), tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(reference_bsubsmns[jF][mn_nyq],
+                                wout.bsubsmns(mn_nyq, jF), tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(reference_bsupumnc[jF][mn_nyq],
+                                wout.bsupumnc(mn_nyq, jF), tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(reference_bsupvmnc[jF][mn_nyq],
+                                wout.bsupvmnc(mn_nyq, jF), tolerance));
     }  // mn_nyq
-  }  // jH
-
-  // also test the wrong extrapolation of bsubsmns
-  // beyond the magnetic axis for backward compatibility
-  for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-    EXPECT_TRUE(IsCloseRelAbs(reference_bsubsmns[0][mn_nyq],
-                              wout.bsubsmns(0 * s.mnmax_nyq + mn_nyq),
-                              tolerance));
-  }  // mn_nyq
+  }  // jF
 
   // -------------------
   // non-stellarator-symmetric Fourier coefficients
