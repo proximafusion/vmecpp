@@ -4,6 +4,7 @@ venv/
 .vscode
 build/
 .cache
+.claude/worktrees
 
 # python build outputs
 dist/
