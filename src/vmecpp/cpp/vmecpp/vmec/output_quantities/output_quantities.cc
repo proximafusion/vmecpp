@@ -42,6 +42,15 @@ VectorXd NonEmptyVectorOr(const Eigen::VectorXd& vec, const double val) {
   WriteH5Dataset(x, absl::StrFormat("%s/%s", H5key, #x), file);
 #define READMEMBER(x) \
   ReadH5Dataset(m_obj.x, absl::StrFormat("%s/%s", H5key, #x), from_file);
+// Read a field that was renamed: try new name, fall back to old_name.
+// Only for fields whose memory layout did not change (scalars, same-size 1D).
+#define READMEMBER_COMPAT(x, old_name)                                \
+  if (from_file.nameExists(absl::StrFormat("%s/%s", H5key, #x))) {    \
+    READMEMBER(x);                                                    \
+  } else {                                                            \
+    ReadH5Dataset(m_obj.x, absl::StrFormat("%s/%s", H5key, old_name), \
+                  from_file);                                         \
+  }
 
 // Write object to the specified HDF5 file, under key "vmecinternalresults".
 absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
@@ -918,9 +927,18 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
 
 absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
                                                 H5::H5File& from_file) {
-  READMEMBER(version_);
+  // version_ changed type from std::string to double. Old HDF5 files store
+  // a string under "version"; new files store a double under "version_".
+  if (from_file.nameExists(absl::StrFormat("%s/%s", H5key, "version_"))) {
+    READMEMBER(version_);
+  } else {
+    std::string version_str;
+    ReadH5Dataset(version_str, absl::StrFormat("%s/%s", H5key, "version"),
+                  from_file);
+    m_obj.version_ = std::stod(version_str);
+  }
   // TODO(jurasic) input_extension
-  READMEMBER(signgs);
+  READMEMBER_COMPAT(signgs, "sign_of_jacobian");
   READMEMBER(gamma);
   READMEMBER(pcurr_type);
   READMEMBER(pmass_type);
@@ -940,7 +958,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(lasym);
   READMEMBER(ns);
   READMEMBER(ftolv);
-  READMEMBER(niter);
+  READMEMBER_COMPAT(niter, "maximum_iterations");
   READMEMBER(lfreeb);
   READMEMBER(mgrid_file);
   // Compatibility with HDF5 files that do not have the nextcur and extcur
@@ -962,7 +980,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(mnmax_nyq);
   READMEMBER(ier_flag);
   READMEMBER(aspect);
-  READMEMBER(betatotal);
+  READMEMBER_COMPAT(betatotal, "betatot");
   READMEMBER(betapol);
   READMEMBER(betator);
   READMEMBER(betaxis);
@@ -970,43 +988,68 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(rbtor0);
   READMEMBER(rbtor);
   READMEMBER(IonLarmor);
-  READMEMBER(volavgB);
+  READMEMBER_COMPAT(volavgB, "VolAvgB");
   READMEMBER(ctor);
   READMEMBER(Aminor_p);
   READMEMBER(Rmajor_p);
-  READMEMBER(volume);
+  READMEMBER_COMPAT(volume, "volume_p");
   READMEMBER(fsqr);
   READMEMBER(fsqz);
   READMEMBER(fsql);
-  READMEMBER(iotaf);
-  READMEMBER(q_factor);
-  READMEMBER(presf);
-  READMEMBER(phi);
+  READMEMBER_COMPAT(iotaf, "iota_full");
+  READMEMBER_COMPAT(q_factor, "safety_factor");
+  READMEMBER_COMPAT(presf, "pressure_full");
+  READMEMBER_COMPAT(phi, "toroidal_flux");
   READMEMBER(phipf);
-  READMEMBER(chi);
+  READMEMBER_COMPAT(chi, "poloidal_flux");
   READMEMBER(chipf);
   READMEMBER(jcuru);
   READMEMBER(jcurv);
-  READMEMBER(iotas);
-  READMEMBER(mass);
-  READMEMBER(pres);
-  READMEMBER(beta_vol);
-  READMEMBER(buco);
-  READMEMBER(bvco);
-  READMEMBER(vp);
-  READMEMBER(specw);
-  READMEMBER(phips);
-  READMEMBER(over_r);
+  // Half-grid 1D arrays: old HDF5 files store these under old names with
+  // size ns-1. Read into the tail of the ns-sized array, leaving [0]=0.
+  READMEMBER_COMPAT(specw, "spectral_width");
+  // Half-grid 1D arrays: old HDF5 files store these under old names with
+  // size ns-1. Read into the tail of the ns-sized array, leaving [0]=0.
+  if (from_file.nameExists(absl::StrFormat("%s/%s", H5key, "iotas"))) {
+    READMEMBER(iotas);
+    READMEMBER(mass);
+    READMEMBER(pres);
+    READMEMBER(beta_vol);
+    READMEMBER(buco);
+    READMEMBER(bvco);
+    READMEMBER(vp);
+    READMEMBER(phips);
+    READMEMBER(over_r);
+  } else {
+    // Legacy format: ns-1 sized arrays with old names.
+    // Read into temporaries and pad to ns with a leading zero.
+    auto ReadHalfGridCompat = [&](Eigen::VectorXd& dest,
+                                  const std::string& old_name) {
+      Eigen::VectorXd tmp;
+      ReadH5Dataset(tmp, absl::StrFormat("%s/%s", H5key, old_name), from_file);
+      dest = Eigen::VectorXd::Zero(tmp.size() + 1);
+      dest.tail(tmp.size()) = tmp;
+    };
+    ReadHalfGridCompat(m_obj.iotas, "iota_half");
+    ReadHalfGridCompat(m_obj.mass, "mass");
+    ReadHalfGridCompat(m_obj.pres, "pressure_half");
+    ReadHalfGridCompat(m_obj.beta_vol, "beta");
+    ReadHalfGridCompat(m_obj.buco, "buco");
+    ReadHalfGridCompat(m_obj.bvco, "bvco");
+    ReadHalfGridCompat(m_obj.vp, "dVds");
+    ReadHalfGridCompat(m_obj.phips, "phips");
+    ReadHalfGridCompat(m_obj.over_r, "overr");
+  }
   READMEMBER(jdotb);
   // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
   // reference files with all quantities once that is done
   //  READMEMBER(bdotb);
   READMEMBER(bdotgradv);
   READMEMBER(DMerc);
-  READMEMBER(DShear);
-  READMEMBER(DWell);
-  READMEMBER(DCurr);
-  READMEMBER(DGeod);
+  READMEMBER_COMPAT(DShear, "Dshear");
+  READMEMBER_COMPAT(DWell, "Dwell");
+  READMEMBER_COMPAT(DCurr, "Dcurr");
+  READMEMBER_COMPAT(DGeod, "Dgeod");
   READMEMBER(equif);
   READMEMBER(curlabel);
   READMEMBER(potvac);
@@ -1014,34 +1057,69 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(xn);
   READMEMBER(xm_nyq);
   READMEMBER(xn_nyq);
-  READMEMBER(raxis_cc);
-  READMEMBER(zaxis_cs);
-  READMEMBER(rmnc);
-  READMEMBER(zmns);
-  READMEMBER(lmns_full);
-  READMEMBER(lmns);
-  READMEMBER(gmnc);
-  READMEMBER(bmnc);
-  READMEMBER(bsubumnc);
-  READMEMBER(bsubvmnc);
-  READMEMBER(bsubsmns);
+  READMEMBER_COMPAT(raxis_cc, "raxis_c");
+  READMEMBER_COMPAT(zaxis_cs, "zaxis_s");
+
+  // 2D Fourier arrays: old HDF5 files store (ns, mnmax) layout,
+  // new format uses (mnmax, ns). Detect by checking if dimensions match.
+  // Also handle half-grid arrays that changed from (ns-1, mnmax) to (mnmax,
+  // ns).
+  auto ReadAndTranspose2D = [&](RowMatrixXd& dest, const std::string& name) {
+    RowMatrixXd tmp;
+    ReadH5Dataset(tmp, absl::StrFormat("%s/%s", H5key, name), from_file);
+    // If rows > cols, this is old (ns, mnmax) layout; transpose it.
+    // New layout is (mnmax, ns) where mnmax < ns is not guaranteed,
+    // so we check if the stored shape matches (mnmax, ns) or (ns, mnmax).
+    // We know mnmax and ns from already-read fields.
+    if (tmp.rows() == m_obj.ns &&
+        (tmp.cols() == m_obj.mnmax || tmp.cols() == m_obj.mnmax_nyq)) {
+      dest = tmp.transpose();
+    } else {
+      dest = tmp;
+    }
+  };
+  auto ReadAndTransposePadHalfGrid2D =
+      [&](RowMatrixXd& dest, const std::string& name, int mnsize) {
+        RowMatrixXd tmp;
+        ReadH5Dataset(tmp, absl::StrFormat("%s/%s", H5key, name), from_file);
+        // Old format: (ns-1, mnsize) -> transpose and pad to (mnsize, ns)
+        if (tmp.rows() == m_obj.ns - 1 && tmp.cols() == mnsize) {
+          dest = RowMatrixXd::Zero(mnsize, m_obj.ns);
+          dest.rightCols(m_obj.ns - 1) = tmp.transpose();
+        } else if (tmp.rows() == m_obj.ns && tmp.cols() == mnsize) {
+          // Old full-grid format (ns, mnsize) e.g. bsubsmns -> transpose
+          dest = tmp.transpose();
+        } else {
+          dest = tmp;
+        }
+      };
+
+  ReadAndTranspose2D(m_obj.rmnc, "rmnc");
+  ReadAndTranspose2D(m_obj.zmns, "zmns");
+  ReadAndTranspose2D(m_obj.lmns_full, "lmns_full");
+  ReadAndTransposePadHalfGrid2D(m_obj.lmns, "lmns", m_obj.mnmax);
+  ReadAndTransposePadHalfGrid2D(m_obj.gmnc, "gmnc", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bmnc, "bmnc", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubumnc, "bsubumnc", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubvmnc, "bsubvmnc", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubsmns, "bsubsmns", m_obj.mnmax_nyq);
   READMEMBER(bsubsmns_full);
-  READMEMBER(bsupumnc);
-  READMEMBER(bsupvmnc);
-  READMEMBER(raxis_cs);
-  READMEMBER(zaxis_cc);
-  READMEMBER(rmns);
-  READMEMBER(zmnc);
-  READMEMBER(lmnc_full);
-  READMEMBER(lmnc);
-  READMEMBER(gmns);
-  READMEMBER(bmns);
-  READMEMBER(bsubumns);
-  READMEMBER(bsubvmns);
-  READMEMBER(bsubsmnc);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsupumnc, "bsupumnc", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsupvmnc, "bsupvmnc", m_obj.mnmax_nyq);
+  READMEMBER_COMPAT(raxis_cs, "raxis_s");
+  READMEMBER_COMPAT(zaxis_cc, "zaxis_c");
+  ReadAndTranspose2D(m_obj.rmns, "rmns");
+  ReadAndTranspose2D(m_obj.zmnc, "zmnc");
+  ReadAndTranspose2D(m_obj.lmnc_full, "lmnc_full");
+  ReadAndTransposePadHalfGrid2D(m_obj.lmnc, "lmnc", m_obj.mnmax);
+  ReadAndTransposePadHalfGrid2D(m_obj.gmns, "gmns", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bmns, "bmns", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubumns, "bsubumns", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubvmns, "bsubvmns", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubsmnc, "bsubsmnc", m_obj.mnmax_nyq);
   READMEMBER(bsubsmnc_full);
-  READMEMBER(bsupumns);
-  READMEMBER(bsupvmns);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsupumns, "bsupumns", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsupvmns, "bsupvmns", m_obj.mnmax_nyq);
 
   return absl::OkStatus();
 }
