@@ -151,34 +151,50 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         double zmksc_n = -czmn_seg.dot(sinmui_seg);
 
         // Assemble effective R and Z forces from MHD and spectral condensation
-        // contributions
-        auto tempR_seg = armn_seg + xmpq[m] * frcon_seg;
-        auto tempZ_seg = azmn_seg + xmpq[m] * fzcon_seg;
+        // contributions. Materialize to avoid re-evaluation in each dot
+        // product.
+        const Eigen::VectorXd tempR_seg =
+            (armn_seg + xmpq[m] * frcon_seg).eval();
+        const Eigen::VectorXd tempZ_seg =
+            (azmn_seg + xmpq[m] * fzcon_seg).eval();
 
         double rmkcc = tempR_seg.dot(cosmui_seg) + brmn_seg.dot(sinmumi_seg);
         double rmkss = tempR_seg.dot(sinmui_seg) + brmn_seg.dot(cosmumi_seg);
         double zmksc = tempZ_seg.dot(sinmui_seg) + bzmn_seg.dot(cosmumi_seg);
         double zmkcs = tempZ_seg.dot(cosmui_seg) + bzmn_seg.dot(sinmumi_seg);
 
-        for (int n = 0; n < s.ntor + 1; ++n) {
-          const int idx_mn = ((jF - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
-          const int idx_kn = k * (s.nnyq2 + 1) + n;
+        // Vectorized toroidal scatter: segment ops replace scalar n-loop
+        const int ntorp1 = s.ntor + 1;
+        const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
+        const int idx_kn_base = k * (s.nnyq2 + 1);
 
-          const double cosnv = fb.cosnv[idx_kn];
-          const double sinnv = fb.sinnv[idx_kn];
-          const double cosnvn = fb.cosnvn[idx_kn];
-          const double sinnvn = fb.sinnvn[idx_kn];
+        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
+        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
+        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
+        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
 
-          m_physical_forces.frcc[idx_mn] += rmkcc * cosnv + rmkcc_n * sinnvn;
-          m_physical_forces.frss[idx_mn] += rmkss * sinnv + rmkss_n * cosnvn;
-          m_physical_forces.fzsc[idx_mn] += zmksc * cosnv + zmksc_n * sinnvn;
-          m_physical_forces.fzcs[idx_mn] += zmkcs * sinnv + zmkcs_n * cosnvn;
+        Eigen::Map<Eigen::VectorXd> frcc_seg(
+            m_physical_forces.frcc.data() + idx_mn_base, ntorp1);
+        Eigen::Map<Eigen::VectorXd> frss_seg(
+            m_physical_forces.frss.data() + idx_mn_base, ntorp1);
+        Eigen::Map<Eigen::VectorXd> fzsc_seg(
+            m_physical_forces.fzsc.data() + idx_mn_base, ntorp1);
+        Eigen::Map<Eigen::VectorXd> fzcs_seg(
+            m_physical_forces.fzcs.data() + idx_mn_base, ntorp1);
 
-          if (jMinL <= jF) {
-            m_physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
-            m_physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
-          }
-        }  // n
+        frcc_seg += rmkcc * cosnv_seg + rmkcc_n * sinnvn_seg;
+        frss_seg += rmkss * sinnv_seg + rmkss_n * cosnvn_seg;
+        fzsc_seg += zmksc * cosnv_seg + zmksc_n * sinnvn_seg;
+        fzcs_seg += zmkcs * sinnv_seg + zmkcs_n * cosnvn_seg;
+
+        if (jMinL <= jF) {
+          Eigen::Map<Eigen::VectorXd> flsc_seg(
+              m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
+          Eigen::Map<Eigen::VectorXd> flcs_seg(
+              m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
+          flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
+          flcs_seg += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
+        }
       }  // k
     }  // m
   }  // jF
@@ -212,18 +228,23 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         double lmkcs_n = -clmn_seg.dot(cosmui_seg);
         double lmksc_n = -clmn_seg.dot(sinmui_seg);
 
-        for (int n = 0; n < s.ntor + 1; ++n) {
-          const int idx_mn = ((jF - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
-          const int idx_kn = k * (s.nnyq2 + 1) + n;
+        // Vectorized toroidal scatter for lambda-only section
+        const int ntorp1 = s.ntor + 1;
+        const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
+        const int idx_kn_base = k * (s.nnyq2 + 1);
 
-          const double cosnv = fb.cosnv[idx_kn];
-          const double sinnv = fb.sinnv[idx_kn];
-          const double cosnvn = fb.cosnvn[idx_kn];
-          const double sinnvn = fb.sinnvn[idx_kn];
+        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
+        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
+        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
+        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
 
-          m_physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
-          m_physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
-        }  // n
+        Eigen::Map<Eigen::VectorXd> flsc_seg(
+            m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
+        Eigen::Map<Eigen::VectorXd> flcs_seg(
+            m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
+
+        flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
+        flcs_seg += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
       }  // k
     }  // m
   }  // jF
