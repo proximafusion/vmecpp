@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774546648102,
+  "lastUpdate": 1774547128482,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -196,6 +196,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.028601622457251754",
             "extra": "mean: 9.475105710666677 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jurasic@proximafusion.com",
+            "name": "jurasic-pf",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "jurasic@proximafusion.com",
+            "name": "jurasic-pf",
+            "username": "jurasic-pf"
+          },
+          "distinct": false,
+          "id": "14c9c876477f74fc42a46a1e94a8fcd69afad6b4",
+          "message": "high verbosity CI logs for docs were enabled for debugging, no longer needed. (#450)",
+          "timestamp": "2026-03-26T17:14:25Z",
+          "tree_id": "80c8918132fc1bc43f96c90db3159e62b8e8b1a6",
+          "url": "https://github.com/proximafusion/vmecpp/commit/14c9c876477f74fc42a46a1e94a8fcd69afad6b4"
+        },
+        "date": 1774547127599,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.9691844045760933,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002731248080450877",
+            "extra": "mean: 336.79282379996494 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.9729036993351947,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00047862880454434064",
+            "extra": "mean: 336.37147419999565 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.28815865639401067,
+            "unit": "iter/sec",
+            "range": "stddev: 0.032224865380086794",
+            "extra": "mean: 3.4703104620000054 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.7219733952948133,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014810607032413999",
+            "extra": "mean: 1.3850925900000182 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.27901883897672713,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008234796283750831",
+            "extra": "mean: 3.583987388333336 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10612768316978004,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01971315567664394",
+            "extra": "mean: 9.422612179333347 sec\nrounds: 3"
           }
         ]
       }
