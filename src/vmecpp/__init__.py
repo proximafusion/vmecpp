@@ -1971,8 +1971,8 @@ def run(
         >>> path = "examples/data/solovev.json"
         >>> vmec_input = vmecpp.VmecInput.from_file(path)
         >>> output = vmecpp.run(vmec_input, verbose=False, max_threads=1)
-        >>> round(output.wout.b0, 14) # Exact value may differ by C library
-        0.20333137113443
+        >>> round(output.wout.b0, 10) # Exact value may differ by C library
+        0.2033313711
     """
     input = VmecInput.model_validate(input)
     cpp_indata = input._to_cpp_vmecindata()

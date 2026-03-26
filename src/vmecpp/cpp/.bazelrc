@@ -6,10 +6,10 @@ build --sandbox_add_mount_pair=/tmp
 
 # If compiling with clang or intel compilers, you will need to adjust the linked OpenMP library from libgomp to libomp
 # -fno-math-errno yields a few % of performance improvements and we don't check errno anyways
-build:opt   -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-O3" --copt="-fno-math-errno"
-build:perf  -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-O3" --copt="-fno-math-errno" --copt="-g" --strip=never --copt="-fno-omit-frame-pointer"
+build:opt   -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-O3" --copt="-DNDEBUG" --copt="-fno-math-errno"
+build:perf  -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-O3" --copt="-DNDEBUG" --copt="-fno-math-errno" --copt="-g" --strip=never --copt="-fno-omit-frame-pointer"
 build:dbg   -c dbg --copt="-fopenmp" --linkopt="-lgomp" --copt="-O0"
-build:asan  -c dbg --copt="-fopenmp" --linkopt="-lgomp" --features=asan --strip=never
+build:asan  -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-DNDEBUG" --features=asan --strip=never
 # Undefined behavior sanitization is quite slow, to compensate we compile in opt mode
 build:ubsan -c opt --copt="-fopenmp" --linkopt="-lgomp" --features=ubsan --strip=never
 

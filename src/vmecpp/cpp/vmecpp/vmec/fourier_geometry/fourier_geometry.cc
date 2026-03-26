@@ -15,20 +15,20 @@ namespace vmecpp {
 FourierGeometry::FourierGeometry(const Sizes* s, const RadialPartitioning* r,
                                  int ns)
     : FourierCoeffs(s, r, r->nsMinF1, r->nsMaxF1, ns),
-      rmncc(rcc),
-      rmnss(rss),
-      rmnsc(rsc),
-      rmncs(rcs),
+      rmncc(rcc.data(), rcc.size()),
+      rmnss(rss.data(), rss.size()),
+      rmnsc(rsc.data(), rsc.size()),
+      rmncs(rcs.data(), rcs.size()),
 
-      zmnsc(zsc),
-      zmncs(zcs),
-      zmncc(zcc),
-      zmnss(zss),
+      zmnsc(zsc.data(), zsc.size()),
+      zmncs(zcs.data(), zcs.size()),
+      zmncc(zcc.data(), zcc.size()),
+      zmnss(zss.data(), zss.size()),
 
-      lmnsc(lsc),
-      lmncs(lcs),
-      lmncc(lcc),
-      lmnss(lss) {}
+      lmnsc(lsc.data(), lsc.size()),
+      lmncs(lcs.data(), lcs.size()),
+      lmncc(lcc.data(), lcc.size()),
+      lmnss(lss.data(), lss.size()) {}
 
 FourierGeometry::FourierGeometry(const FourierGeometry& other)
     : FourierCoeffs(other),
@@ -375,8 +375,9 @@ void FourierGeometry::ComputeSpectralWidth(
         const double basis_norm =
             fourier_basis.mscale[m] * fourier_basis.nscale[n];
 
-        std::vector<double> r_coefficients(4, 0.0);
-        std::vector<double> z_coefficients(4, 0.0);
+        // Use Eigen for vectorized norm computation
+        Eigen::Vector4d r_coefficients = Eigen::Vector4d::Zero();
+        Eigen::Vector4d z_coefficients = Eigen::Vector4d::Zero();
         int basis_dimension = 0;
 
         r_coefficients[basis_dimension] = rmncc[fourier_index];
@@ -422,14 +423,10 @@ void FourierGeometry::ComputeSpectralWidth(
           basis_dimension++;
         }
 
-        double coefficient_norm = 0.0;
-        for (int basis_index = 0; basis_index < basis_dimension;
-             ++basis_index) {
-          coefficient_norm +=
-              r_coefficients[basis_index] * r_coefficients[basis_index];
-          coefficient_norm +=
-              z_coefficients[basis_index] * z_coefficients[basis_index];
-        }  // basis_index
+        // Vectorized squared norm computation
+        double coefficient_norm =
+            r_coefficients.head(basis_dimension).squaredNorm() +
+            z_coefficients.head(basis_dimension).squaredNorm();
         coefficient_norm *= basis_norm * basis_norm;
 
         spectral_width_numerator += coefficient_norm * std::pow(m, p + q);

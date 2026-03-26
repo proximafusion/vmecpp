@@ -183,9 +183,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     iPiv.resize(mnpd, 0);
     bvecShare.resize(mnpd, 0.0);
 
-    // not so nice to do this here, but meh...
     h_.vacuum_magnetic_pressure.resize(s_.nZnT, 0.0);
-
     h_.vacuum_b_r.resize(s_.nZnT);
     h_.vacuum_b_phi.resize(s_.nZnT);
     h_.vacuum_b_z.resize(s_.nZnT);
