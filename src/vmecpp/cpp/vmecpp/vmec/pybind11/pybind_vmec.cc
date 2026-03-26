@@ -474,6 +474,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("mpol", &vmecpp::WOutFileContents::mpol)
       .def_readwrite("ntor", &vmecpp::WOutFileContents::ntor)
       .def_readwrite("lasym", &vmecpp::WOutFileContents::lasym)
+      .def_readwrite("lrfp", &vmecpp::WOutFileContents::lrfp)
       //
       .def_readwrite("ns", &vmecpp::WOutFileContents::ns)
       .def_readwrite("ftolv", &vmecpp::WOutFileContents::ftolv)

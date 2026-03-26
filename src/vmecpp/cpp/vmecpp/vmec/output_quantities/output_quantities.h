@@ -1046,6 +1046,9 @@ struct WOutFileContents {
   // flag to indicate a non-stellarator-symmetric case
   bool lasym = false;
 
+  // flag to indicate whether iota or safety factor (q) is used as input
+  bool lrfp = false;
+
   // final radial resolution
   // == number of flux surfaces
   // == number of full-grid points

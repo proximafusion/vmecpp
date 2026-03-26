@@ -4246,6 +4246,29 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.ai_aux_s = NonEmptyVectorOr(indata.ai_aux_s, -1.0);
   wout.ai_aux_f = NonEmptyVectorOr(indata.ai_aux_f, 0.0);
 
+  // Right-pad profile arrays to match Fortran VMEC output sizes.
+  constexpr int kPreset = 21;
+  constexpr int kNdfmax = 101;
+
+  auto PadVector = [](Eigen::VectorXd& vec, int target_size, double pad_value) {
+    if (vec.size() < target_size) {
+      const int old_size = vec.size();
+      vec.conservativeResize(target_size);
+      vec.tail(target_size - old_size).setConstant(pad_value);
+    }
+  };
+
+  PadVector(wout.am, kPreset, 0.0);
+  PadVector(wout.ac, kPreset, 0.0);
+  PadVector(wout.ai, kPreset, 0.0);
+
+  PadVector(wout.am_aux_s, kNdfmax, -1.0);
+  PadVector(wout.am_aux_f, kNdfmax, 0.0);
+  PadVector(wout.ac_aux_s, kNdfmax, -1.0);
+  PadVector(wout.ac_aux_f, kNdfmax, 0.0);
+  PadVector(wout.ai_aux_s, kNdfmax, -1.0);
+  PadVector(wout.ai_aux_f, kNdfmax, 0.0);
+
   wout.nfp = indata.nfp;
   wout.mpol = indata.mpol;
   wout.ntor = indata.ntor;

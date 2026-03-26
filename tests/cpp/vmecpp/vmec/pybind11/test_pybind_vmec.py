@@ -236,77 +236,19 @@ def test_output_quantities():
     )
 
     # mass profile: am, am_aux_s, am_aux_f
-    last_zero = 0
-
-    while wout["am"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.am, wout["am"][()][: last_zero + 1], 1.0e-15
-    )
-    last_zero = 0
-    while wout["am_aux_s"][()][last_zero] != -1.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.am_aux_s,
-        wout["am_aux_s"][()][: last_zero + 1],
-        1.0e-15,
-    )
-    last_zero = 0
-    while wout["am_aux_f"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.am_aux_f,
-        wout["am_aux_f"][()][: last_zero + 1],
-        1.0e-15,
-    )
+    assert is_close_ra(output_quantities.wout.am, wout["am"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.am_aux_s, wout["am_aux_s"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.am_aux_f, wout["am_aux_f"][()], 1.0e-15)
 
     # current profile: ac, ac_aux_s, ac_aux_f
-    last_zero = 0
-    while wout["ac"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ac, wout["ac"][()][: last_zero + 1], 1.0e-15
-    )
-    last_zero = 0
-    while wout["ac_aux_s"][()][last_zero] != -1.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ac_aux_s,
-        wout["ac_aux_s"][()][: last_zero + 1],
-        1.0e-15,
-    )
-    last_zero = 0
-    while wout["ac_aux_f"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ac_aux_f,
-        wout["ac_aux_f"][()][: last_zero + 1],
-        1.0e-15,
-    )
+    assert is_close_ra(output_quantities.wout.ac, wout["ac"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ac_aux_s, wout["ac_aux_s"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ac_aux_f, wout["ac_aux_f"][()], 1.0e-15)
 
     # iota profile: ai, ai_aux_s, ai_aux_f
-    last_zero = 0
-    while wout["ai"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ai, wout["ai"][()][: last_zero + 1], 1.0e-15
-    )
-    last_zero = 0
-    while wout["ai_aux_s"][()][last_zero] != -1.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ai_aux_s,
-        wout["ai_aux_s"][()][: last_zero + 1],
-        1.0e-15,
-    )
-    last_zero = 0
-    while wout["ai_aux_f"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ai_aux_f,
-        wout["ai_aux_f"][()][: last_zero + 1],
-        1.0e-15,
-    )
+    assert is_close_ra(output_quantities.wout.ai, wout["ai"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ai_aux_s, wout["ai_aux_s"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ai_aux_f, wout["ai_aux_f"][()], 1.0e-15)
 
     assert output_quantities.wout.nfp == wout["nfp"][()]
     assert output_quantities.wout.mpol == wout["mpol"][()]
