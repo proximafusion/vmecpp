@@ -73,7 +73,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
           # must actually install the package otherwise sphinx can't autogenerate the API reference
-          python -m pip install -vvv .[docs]
+          python -m pip install -v .[docs]
           sphinx-apidoc --module-first --no-toc --force --separate -o docs/api src/vmecpp/ && sphinx-build docs html_docs
       - name: Fetch benchmark dashboard
         run: |
