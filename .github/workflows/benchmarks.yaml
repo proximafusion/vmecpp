@@ -1,13 +1,11 @@
 name: Benchmarks
 
 on:
-  push:
-    branches: ["main"]
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
 
 jobs:
@@ -36,21 +34,9 @@ jobs:
         run: |
           pytest benchmarks/test_benchmarks.py --benchmark-json=benchmark_results.json
 
-      - name: Store benchmark result (push to main)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          tool: "pytest"
-          output-file-path: benchmark_results.json
-          gh-pages-branch: benchmark-runs
-          benchmark-data-dir-path: benchmarks
-          auto-push: true
-          alert-threshold: "150%"
-          fail-on-alert: false
-
-      - name: Compare benchmark result (PRs)
+      - name: Compare benchmark result
         if: github.event_name == 'pull_request'
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@v1.21.0
         with:
           tool: "pytest"
           output-file-path: benchmark_results.json
