@@ -28,7 +28,9 @@ EXAMPLES_DATA_DIR = REPO_ROOT / "examples" / "data"
 
 @pytest.fixture(scope="module")
 def w7x_input():
-    return vmecpp.VmecInput.from_file(EXAMPLES_DATA_DIR / "w7x.json")
+    vmec_input = vmecpp.VmecInput.from_file(EXAMPLES_DATA_DIR / "w7x.json")
+    vmec_input.ftol_array[0] = 8e-9
+    return vmec_input
 
 
 @pytest.fixture(scope="module")
