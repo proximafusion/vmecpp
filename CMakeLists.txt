@@ -10,7 +10,7 @@ endif()
 
 set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -fno-math-errno")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-math-errno")
 
 # use ccache if available
 find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
