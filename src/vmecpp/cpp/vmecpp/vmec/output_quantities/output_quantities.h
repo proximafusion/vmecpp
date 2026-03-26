@@ -1171,16 +1171,16 @@ struct WOutFileContents {
 
   // ---------
 
-  Eigen::VectorXd iota_half;
+  Eigen::VectorXd iotas;
   Eigen::VectorXd mass;
-  Eigen::VectorXd pressure_half;
-  Eigen::VectorXd beta;
+  Eigen::VectorXd pres;
+  Eigen::VectorXd beta_vol;
   Eigen::VectorXd buco;
   Eigen::VectorXd bvco;
-  Eigen::VectorXd dVds;
+  Eigen::VectorXd vp;
   Eigen::VectorXd specw;
   Eigen::VectorXd phips;
-  Eigen::VectorXd overr;
+  Eigen::VectorXd over_r;
 
   Eigen::VectorXd jdotb;
   Eigen::VectorXd bdotb;
