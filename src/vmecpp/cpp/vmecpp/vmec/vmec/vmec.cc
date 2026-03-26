@@ -179,14 +179,14 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     // 0 : (mpol + 1)
     int mf = s_.mpol + 1;
     int mnpd = (2 * nf + 1) * (mf + 1);
-    matrixShare.resize(mnpd * mnpd, 0.0);
-    iPiv.resize(mnpd, 0);
-    bvecShare.resize(mnpd, 0.0);
+    matrixShare.setZero(mnpd * mnpd);
+    iPiv.setZero(mnpd);
+    bvecShare.setZero(mnpd);
 
-    h_.vacuum_magnetic_pressure.resize(s_.nZnT, 0.0);
-    h_.vacuum_b_r.resize(s_.nZnT);
-    h_.vacuum_b_phi.resize(s_.nZnT);
-    h_.vacuum_b_z.resize(s_.nZnT);
+    h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
+    h_.vacuum_b_r.setZero(s_.nZnT);
+    h_.vacuum_b_phi.setZero(s_.nZnT);
+    h_.vacuum_b_z.setZero(s_.nZnT);
 
     // TODO(jons): move this check to better-suited place
     if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
@@ -513,14 +513,24 @@ bool Vmec::InitializeRadial(
 
         if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
           fb_[thread_id] = std::make_unique<Nestor>(
-              &s_, tp_[thread_id].get(), &mgrid_, matrixShare, bvecShare,
-              h_.vacuum_magnetic_pressure, iPiv, h_.vacuum_b_r, h_.vacuum_b_phi,
-              h_.vacuum_b_z);
+              &s_, tp_[thread_id].get(), &mgrid_,
+              std::span<double>(matrixShare.data(), matrixShare.size()),
+              std::span<double>(bvecShare.data(), bvecShare.size()),
+              std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                                h_.vacuum_magnetic_pressure.size()),
+              std::span<int>(iPiv.data(), iPiv.size()),
+              std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+              std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+              std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
         } else if (indata_.free_boundary_method ==
                    FreeBoundaryMethod::ONLY_COILS) {
           fb_[thread_id] = std::make_unique<OnlyCoils>(
-              &s_, tp_[thread_id].get(), &mgrid_, h_.vacuum_magnetic_pressure,
-              h_.vacuum_b_r, h_.vacuum_b_phi, h_.vacuum_b_z);
+              &s_, tp_[thread_id].get(), &mgrid_,
+              std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                                h_.vacuum_magnetic_pressure.size()),
+              std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+              std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+              std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
         } else {
           LOG(FATAL) << absl::StrCat("free boundary method '",
                                      ToString(indata_.free_boundary_method),
@@ -1182,12 +1192,15 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     if (iter2_ == iter1_) {
       // initialize all entries in otau to 0.15/time_step --> required for
       // averaging otau: "over" tau --> 1/tau ???
-      absl::c_fill(invTau_, 0.15 / time_step);
+      invTau_.setConstant(0.15 / time_step);
     }
 
     // shift elements for averaging to the left to make space at end for new
     // entry (oldest entry ends up at the end and will be overwritten later)
-    absl::c_rotate(invTau_, invTau_.begin() + 1);
+    {
+      Eigen::VectorXd tmp = invTau_.tail(invTau_.size() - 1);
+      invTau_.head(invTau_.size() - 1) = tmp;
+    }
 
     if (iter2_ > iter1_) {
       double invtau_numerator = 0.;
@@ -1199,7 +1212,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 
       // overwrite oldest entry (at last index after rotation above) with the
       // new value of 1/tau
-      invTau_.back() = invtau_numerator / time_step;
+      invTau_[invTau_.size() - 1] = invtau_numerator / time_step;
     }
 
     // update backup copy of fsq1 --> here, fsq is fsq1 of previous iteration
@@ -1223,7 +1236,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   }
 
   // averaging over ndamp entries : 1/ndamp*sum(invTau)
-  const double otav = absl::c_accumulate(invTau_, 0.) / kNDamp;
+  const double otav = invTau_.sum() / kNDamp;
 
   const double dtau = time_step * otav / 2.0;
   const double b1 = 1.0 - dtau;

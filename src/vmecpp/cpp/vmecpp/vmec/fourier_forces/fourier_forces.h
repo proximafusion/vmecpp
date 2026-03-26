@@ -5,8 +5,8 @@
 #ifndef VMECPP_VMEC_FOURIER_FORCES_FOURIER_FORCES_H_
 #define VMECPP_VMEC_FOURIER_FORCES_FOURIER_FORCES_H_
 
+#include <Eigen/Dense>
 #include <span>
-#include <vector>
 
 #include "vmecpp/vmec/fourier_coefficients/fourier_coefficients.h"
 
@@ -21,7 +21,7 @@ class FourierForces : public FourierCoeffs {
   FourierForces& operator=(FourierForces&& other) noexcept;
 
   void zeroZForceForM1();
-  void residuals(std::vector<double>& fRes, bool includeEdgeRZ) const;
+  void residuals(Eigen::VectorXd& fRes, bool includeEdgeRZ) const;
 
   // appropriately-named variables for the data in FourierCoeffs
   std::span<double> frcc;

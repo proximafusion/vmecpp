@@ -5,8 +5,8 @@
 #ifndef VMECPP_FREE_BOUNDARY_NESTOR_NESTOR_H_
 #define VMECPP_FREE_BOUNDARY_NESTOR_NESTOR_H_
 
+#include <Eigen/Dense>
 #include <span>
-#include <vector>
 
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
 #include "vmecpp/common/sizes/sizes.h"
@@ -46,12 +46,12 @@ class Nestor : public FreeBoundaryBase {
   const LaplaceSolver& GetLaplaceSolver() const;
 
   // tangential derivatives of scalar magnetic potential
-  std::vector<double> potU;
-  std::vector<double> potV;
+  Eigen::VectorXd potU;
+  Eigen::VectorXd potV;
 
   // covariant magnetic field components on surface
-  std::vector<double> bSubU;
-  std::vector<double> bSubV;
+  Eigen::VectorXd bSubU;
+  Eigen::VectorXd bSubV;
 
  private:
   // tangential Fourier resolution

@@ -58,8 +58,8 @@ FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
   multi_ns_grid = num_grids;
   neqs_old = 0;
 
-  fResInvar.resize(3, 0.0);
-  fResPrecd.resize(3, 0.0);
+  fResInvar.setZero();
+  fResPrecd.setZero();
 
   ns_old = 0;
 }
