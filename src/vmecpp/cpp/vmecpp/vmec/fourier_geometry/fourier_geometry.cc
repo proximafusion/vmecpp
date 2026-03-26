@@ -375,8 +375,9 @@ void FourierGeometry::ComputeSpectralWidth(
         const double basis_norm =
             fourier_basis.mscale[m] * fourier_basis.nscale[n];
 
-        std::vector<double> r_coefficients(4, 0.0);
-        std::vector<double> z_coefficients(4, 0.0);
+        // Use Eigen for vectorized norm computation
+        Eigen::Vector4d r_coefficients = Eigen::Vector4d::Zero();
+        Eigen::Vector4d z_coefficients = Eigen::Vector4d::Zero();
         int basis_dimension = 0;
 
         r_coefficients[basis_dimension] = rmncc[fourier_index];
@@ -422,14 +423,10 @@ void FourierGeometry::ComputeSpectralWidth(
           basis_dimension++;
         }
 
-        double coefficient_norm = 0.0;
-        for (int basis_index = 0; basis_index < basis_dimension;
-             ++basis_index) {
-          coefficient_norm +=
-              r_coefficients[basis_index] * r_coefficients[basis_index];
-          coefficient_norm +=
-              z_coefficients[basis_index] * z_coefficients[basis_index];
-        }  // basis_index
+        // Vectorized squared norm computation
+        double coefficient_norm =
+            r_coefficients.head(basis_dimension).squaredNorm() +
+            z_coefficients.head(basis_dimension).squaredNorm();
         coefficient_norm *= basis_norm * basis_norm;
 
         spectral_width_numerator += coefficient_norm * std::pow(m, p + q);
