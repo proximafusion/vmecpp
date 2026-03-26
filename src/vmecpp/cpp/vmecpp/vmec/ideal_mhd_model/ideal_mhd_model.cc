@@ -1974,27 +1974,16 @@ void IdealMhdModel::computeBContra() {
 
 // Compute covariant magnetic field components.
 void IdealMhdModel::computeBCo() {
-  // bsubu, bsubv
-
+  // bsubu = g * B^contra: index lowering via metric tensor
   if (s_.lthreed) {
     // 3D case: need all of guu, guv, gvv
-    for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-        bsubu[iHalf] = guu[iHalf] * bsupu[iHalf] + guv[iHalf] * bsupv[iHalf];
-        bsubv[iHalf] = guv[iHalf] * bsupu[iHalf] + gvv[iHalf] * bsupv[iHalf];
-      }  // kl
-    }  // jH
+    bsubu = guu.cwiseProduct(bsupu) + guv.cwiseProduct(bsupv);
+    bsubv = guv.cwiseProduct(bsupu) + gvv.cwiseProduct(bsupv);
   } else {
     // 2D case: can ignore guv (not even allocated)
-    for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-        bsubu[iHalf] = guu[iHalf] * bsupu[iHalf];
-        bsubv[iHalf] = gvv[iHalf] * bsupv[iHalf];
-      }  // kl
-    }  // jH
-  }  // lthreed
+    bsubu = guu.cwiseProduct(bsupu);
+    bsubv = gvv.cwiseProduct(bsupv);
+  }
 }
 
 void IdealMhdModel::pressureAndEnergies() {
@@ -2022,28 +2011,31 @@ void IdealMhdModel::pressureAndEnergies() {
   // --> multiply it in here for thermal energy
   localThermalEnergy *= m_fc_.deltaS;
 
+  // magnetic pressure is |B|^2/2 = 0.5*(B^u*B_u + B^v*B_v)
+  // Compute as a vectorized operation over all half-grid points
+  // temporarily re-use `totalPressure` to store only magnetic pressure; kinetic
+  // pressure presH will be added below
+  totalPressure = 0.5 * (bsupu.cwiseProduct(bsubu) + bsupv.cwiseProduct(bsubv));
+
+  // Accumulate magnetic energy and add kinetic pressure per surface
   double localMagneticEnergy = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
+    const int offset = (jH - r_.nsMinH) * s_.nZnT;
 
-      // magnetic pressure is |B|^2/2 = 0.5*(B^u*B_u + B^v*B_v)
-      double magneticPressure =
-          0.5 * (bsupu[iHalf] * bsubu[iHalf] + bsupv[iHalf] * bsubv[iHalf]);
-
-      // perform volume integral over magnetic pressure for magnetic energy
-      // This must be done over UNIQUE half-grid points !!!
-      // --> The standard partitioning has half-grid points between
-      //     neighboring ranks that are handled by both ranks.
-      if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
+    // perform volume integral over magnetic pressure for magnetic energy
+    // This must be done over UNIQUE half-grid points !!!
+    if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
+      for (int kl = 0; kl < s_.nZnT; ++kl) {
         int l = kl % s_.nThetaEff;
-        localMagneticEnergy += gsqrt[iHalf] * magneticPressure * s_.wInt[l];
+        localMagneticEnergy +=
+            gsqrt[offset + kl] * totalPressure[offset + kl] * s_.wInt[l];
       }
+    }
 
-      // now can ADD KINETIC PRESSURE TO MAGNETIC PRESSURE
-      // to compute the total pressure
-      totalPressure[iHalf] = magneticPressure + m_p_.presH[jH - r_.nsMinH];
-    }  // kl
+    // now ADD KINETIC PRESSURE to magnetic pressure in order to compute the
+    // total pressure
+    totalPressure.segment(offset, s_.nZnT).array() +=
+        m_p_.presH[jH - r_.nsMinH];
   }  // jH
 
   // magneticEnergy could be negative due to negative sign of Jacobian (gsqrt)
@@ -2427,237 +2419,100 @@ void IdealMhdModel::computeMHDForces() {
       gbvbv_o.setZero();
     }
 
-    // NOTE: the loop over kl is split in many separate loops to help compiler
-    // auto-vectorization
+    // Segment views into geometry and force arrays for this surface
+    const int nZnT = s_.nZnT;
+    const int g_off = (jF - r_.nsMinF1) * nZnT;
+    const int f_off = (jF - r_.nsMinF) * nZnT;
+    const auto r1e = r1_e.segment(g_off, nZnT);
+    const auto r1o = r1_o.segment(g_off, nZnT);
+    const auto rue = ru_e.segment(g_off, nZnT);
+    const auto ruo = ru_o.segment(g_off, nZnT);
+    const auto zue = zu_e.segment(g_off, nZnT);
+    const auto zuo = zu_o.segment(g_off, nZnT);
+    const auto z1o = z1_o.segment(g_off, nZnT);
+
+    // Pre-compute common sub-expressions (averages and weighted averages)
+    const double invDS = 1.0 / m_fc_.deltaS;
+    const double invSHo = 1.0 / sqrtSHo;
+    const double invSHi = 1.0 / sqrtSHi;
+    const Eigen::VectorXd P_avg = 0.5 * (P_o + m_ls_.P_i);
+    const Eigen::VectorXd P_wavg = 0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
+
+    const Eigen::VectorXd gbubu_avg = 0.5 * (gbubu_o + m_ls_.gbubu_i);
+    const Eigen::VectorXd gbubu_wavg =
+        0.5 * (gbubu_o * sqrtSHo + m_ls_.gbubu_i * sqrtSHi);
+    const Eigen::VectorXd gbvbv_avg = 0.5 * (gbvbv_o + m_ls_.gbvbv_i);
+    const Eigen::VectorXd gbvbv_wavg =
+        0.5 * (gbvbv_o * sqrtSHo + m_ls_.gbvbv_i * sqrtSHi);
 
     // A_R force
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-      // A_R force
-      armn_e[idx_f] =
-          (zup_o[kl] - m_ls_.zup_i[kl]) / m_fc_.deltaS +
-          0.5 * (taup_o[kl] + m_ls_.taup_i[kl]) -
-          0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * r1_e[idx_g] -
-          0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-              r1_o[idx_g];
-    }
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      armn_o[idx_f] =
-          (zup_o[kl] * sqrtSHo - m_ls_.zup_i[kl] * sqrtSHi) / m_fc_.deltaS -
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * zu_e[idx_g] -
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * zu_o[idx_g] +
-          0.5 * (taup_o[kl] * sqrtSHo + m_ls_.taup_i[kl] * sqrtSHi) -
-          0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-              r1_e[idx_g] -
-          0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * r1_o[idx_g] * sFull;
-    }
+    armn_e.segment(f_off, nZnT) =
+        (zup_o - m_ls_.zup_i) * invDS + 0.5 * (taup_o + m_ls_.taup_i) -
+        gbvbv_avg.cwiseProduct(r1e) - gbvbv_wavg.cwiseProduct(r1o);
+    armn_o.segment(f_off, nZnT) =
+        (zup_o * sqrtSHo - m_ls_.zup_i * sqrtSHi) * invDS -
+        0.5 * P_wavg.cwiseProduct(zue) - 0.5 * P_avg.cwiseProduct(zuo) +
+        0.5 * (taup_o * sqrtSHo + m_ls_.taup_i * sqrtSHi) -
+        gbvbv_wavg.cwiseProduct(r1e) - gbvbv_avg.cwiseProduct(r1o) * sFull;
 
     // A_Z force
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      azmn_e[idx_f] = -(rup_o[kl] - m_ls_.rup_i[kl]) / m_fc_.deltaS;
-    }
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      azmn_o[idx_f] =
-          -(rup_o[kl] * sqrtSHo - m_ls_.rup_i[kl] * sqrtSHi) / m_fc_.deltaS +
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * ru_e[idx_g] +
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * ru_o[idx_g];
-    }
+    azmn_e.segment(f_off, nZnT) = -(rup_o - m_ls_.rup_i) * invDS;
+    azmn_o.segment(f_off, nZnT) =
+        -(rup_o * sqrtSHo - m_ls_.rup_i * sqrtSHi) * invDS +
+        0.5 * P_wavg.cwiseProduct(rue) + 0.5 * P_avg.cwiseProduct(ruo);
 
     // B_R force
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      brmn_e[idx_f] =
-          0.5 * (zsp_o[kl] + m_ls_.zsp_i[kl]) +
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * z1_o[idx_g] -
-          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * ru_e[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
-              ru_o[idx_g];
-    }
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      brmn_o[idx_f] =
-          0.5 * (zsp_o[kl] * sqrtSHo + m_ls_.zsp_i[kl] * sqrtSHi) +
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * z1_o[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
-              ru_e[idx_g] -
-          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * ru_o[idx_g] * sFull;
-    }
+    brmn_e.segment(f_off, nZnT) =
+        0.5 * (zsp_o + m_ls_.zsp_i) + 0.5 * P_wavg.cwiseProduct(z1o) -
+        gbubu_avg.cwiseProduct(rue) - gbubu_wavg.cwiseProduct(ruo);
+    brmn_o.segment(f_off, nZnT) =
+        0.5 * (zsp_o * sqrtSHo + m_ls_.zsp_i * sqrtSHi) +
+        0.5 * P_avg.cwiseProduct(z1o) - gbubu_wavg.cwiseProduct(rue) -
+        gbubu_avg.cwiseProduct(ruo) * sFull;
 
     // B_Z force
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      bzmn_e[idx_f] =
-          -0.5 * (rsp_o[kl] + m_ls_.rsp_i[kl]) -
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * r1_o[idx_g] -
-          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * zu_e[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
-              zu_o[idx_g];
-    }
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      bzmn_o[idx_f] =
-          -0.5 * (rsp_o[kl] * sqrtSHo + m_ls_.rsp_i[kl] * sqrtSHi) -
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * r1_o[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
-              zu_e[idx_g] -
-          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * zu_o[idx_g] * sFull;
-    }
+    bzmn_e.segment(f_off, nZnT) =
+        -0.5 * (rsp_o + m_ls_.rsp_i) - 0.5 * P_wavg.cwiseProduct(r1o) -
+        gbubu_avg.cwiseProduct(zue) - gbubu_wavg.cwiseProduct(zuo);
+    bzmn_o.segment(f_off, nZnT) =
+        -0.5 * (rsp_o * sqrtSHo + m_ls_.rsp_i * sqrtSHi) -
+        0.5 * P_avg.cwiseProduct(r1o) - gbubu_wavg.cwiseProduct(zue) -
+        gbubu_avg.cwiseProduct(zuo) * sFull;
 
     if (s_.lthreed) {
-      // B_R force
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+      const Eigen::VectorXd gbubv_avg = 0.5 * (gbubv_o + m_ls_.gbubv_i);
+      const Eigen::VectorXd gbubv_wavg =
+          0.5 * (gbubv_o * sqrtSHo + m_ls_.gbubv_i * sqrtSHi);
+      const auto rve = rv_e.segment(g_off, nZnT);
+      const auto rvo = rv_o.segment(g_off, nZnT);
+      const auto zve = zv_e.segment(g_off, nZnT);
+      const auto zvo = zv_o.segment(g_off, nZnT);
 
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        brmn_e[idx_f] +=
-            -0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * rv_e[idx_g] -
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                rv_o[idx_g];
-      }
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        brmn_o[idx_f] +=
-            -0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                rv_e[idx_g] -
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * rv_o[idx_g] * sFull;
-      }
-
-      // B_Z force
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        bzmn_e[idx_f] +=
-            -0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zv_e[idx_g] -
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                zv_o[idx_g];
-      }
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        bzmn_o[idx_f] +=
-            -0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                zv_e[idx_g] -
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zv_o[idx_g] * sFull;
-      }
+      // 3D contributions to B_R and B_Z
+      brmn_e.segment(f_off, nZnT) -=
+          gbubv_avg.cwiseProduct(rve) + gbubv_wavg.cwiseProduct(rvo);
+      brmn_o.segment(f_off, nZnT) -=
+          gbubv_wavg.cwiseProduct(rve) + gbubv_avg.cwiseProduct(rvo) * sFull;
+      bzmn_e.segment(f_off, nZnT) -=
+          gbubv_avg.cwiseProduct(zve) + gbubv_wavg.cwiseProduct(zvo);
+      bzmn_o.segment(f_off, nZnT) -=
+          gbubv_wavg.cwiseProduct(zve) + gbubv_avg.cwiseProduct(zvo) * sFull;
 
       // C_R force
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        crmn_e[idx_f] =
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * ru_e[idx_g] +
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                ru_o[idx_g] +
-            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * rv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-                rv_o[idx_g];
-      }
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        crmn_o[idx_f] =
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                ru_e[idx_g] +
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * ru_o[idx_g] * sFull +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-                rv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * rv_o[idx_g] * sFull;
-      }
+      crmn_e.segment(f_off, nZnT) =
+          gbubv_avg.cwiseProduct(rue) + gbubv_wavg.cwiseProduct(ruo) +
+          gbvbv_avg.cwiseProduct(rve) + gbvbv_wavg.cwiseProduct(rvo);
+      crmn_o.segment(f_off, nZnT) =
+          gbubv_wavg.cwiseProduct(rue) + gbubv_avg.cwiseProduct(ruo) * sFull +
+          gbvbv_wavg.cwiseProduct(rve) + gbvbv_avg.cwiseProduct(rvo) * sFull;
 
       // C_Z force
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        czmn_e[idx_f] =
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zu_e[idx_g] +
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                zu_o[idx_g] +
-            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * zv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-                zv_o[idx_g];
-      }
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        czmn_o[idx_f] =
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                zu_e[idx_g] +
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zu_o[idx_g] * sFull +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-                zv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * zv_o[idx_g] * sFull;
-      }
+      czmn_e.segment(f_off, nZnT) =
+          gbubv_avg.cwiseProduct(zue) + gbubv_wavg.cwiseProduct(zuo) +
+          gbvbv_avg.cwiseProduct(zve) + gbvbv_wavg.cwiseProduct(zvo);
+      czmn_o.segment(f_off, nZnT) =
+          gbubv_wavg.cwiseProduct(zue) + gbubv_avg.cwiseProduct(zuo) * sFull +
+          gbvbv_wavg.cwiseProduct(zve) + gbvbv_avg.cwiseProduct(zvo) * sFull;
     }  // lthreed
 
     // shift to next point
