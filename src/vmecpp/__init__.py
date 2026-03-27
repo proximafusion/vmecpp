@@ -33,16 +33,38 @@ logger = logging.getLogger(__name__)
 _ArrayType = typing.TypeVar("_ArrayType")
 
 
+def _wrap_dense_to_sparse(
+    value: typing.Any,
+    handler: pydantic.SerializerFunctionWrapHandler,
+    _: pydantic.FieldSerializationInfo,
+) -> list[dict[str, float | int]]:
+    # Handle ndarray directly, and also lists (which arise when the base class
+    # _serialize_field wrap serializer converts ndarray -> list before this runs).
+    if isinstance(value, (np.ndarray, list)):
+        return _util.dense_to_sparse_coefficients(np.asarray(value))
+    return handler(value)
+
+
 SerializableSparseCoefficientArray: typing.TypeAlias = typing.Annotated[
     _ArrayType,
-    pydantic.PlainSerializer(
-        _util.dense_to_sparse_coefficients, when_used="unless-none"
-    ),
+    pydantic.WrapSerializer(_wrap_dense_to_sparse, when_used="unless-none"),  # pyright: ignore[reportArgumentType]
     pydantic.BeforeValidator(_util.sparse_to_dense_coefficients_implicit),
 ]
+
+
+def _wrap_int_as_float(
+    value: typing.Any,
+    handler: pydantic.SerializerFunctionWrapHandler,
+    _: pydantic.FieldSerializationInfo,
+) -> list[float]:
+    if isinstance(value, (np.ndarray, list)):
+        return np.array(value).astype(np.float64).tolist()
+    return handler(value)
+
+
 SerializeIntAsFloat: typing.TypeAlias = typing.Annotated[
     _ArrayType,
-    pydantic.PlainSerializer(lambda x: np.array(x).astype(np.float64).tolist()),
+    pydantic.WrapSerializer(_wrap_int_as_float, when_used="json"),  # pyright: ignore[reportArgumentType]
     pydantic.BeforeValidator(lambda x: np.array(x).astype(np.int64)),
 ]
 
@@ -1064,8 +1086,12 @@ class VmecWOut(BaseModelWithNumpy):
     extcur: typing.Annotated[
         jt.Float[np.ndarray, "ext_current"],
         pydantic.BeforeValidator(lambda x: x if np.shape(x) != () else np.array([])),
-        pydantic.PlainSerializer(
-            lambda x: x if np.shape(x) != (0,) else netCDF4.default_fillvals["f8"]
+        pydantic.WrapSerializer(
+            lambda x, handler, _: (
+                netCDF4.default_fillvals["f8"]
+                if isinstance(x, (np.ndarray, list)) and np.shape(x) == (0,)
+                else handler(x)
+            )
         ),
     ]
     """Coil currents in A.
