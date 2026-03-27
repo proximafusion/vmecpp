@@ -5,6 +5,7 @@
 #ifndef VMECPP_VMEC_HANDOVER_STORAGE_HANDOVER_STORAGE_H_
 #define VMECPP_VMEC_HANDOVER_STORAGE_HANDOVER_STORAGE_H_
 
+#include <Eigen/Dense>
 #include <cstddef>
 #include <span>
 #include <vector>
@@ -92,8 +93,8 @@ class HandoverStorage {
   // Used only in rzConIntoVolume() to extrapolate the constraint force
   // contribution from the LCFS into the plasma volume.
   // TODO(jurasic) this should have a smaller scope.
-  std::vector<double> rCon_LCFS;
-  std::vector<double> zCon_LCFS;
+  Eigen::VectorXd rCon_LCFS;
+  Eigen::VectorXd zCon_LCFS;
 
   // Inter-thread handover storage: RowMatrixXd [num_threads, mnsize]
   // _i arrays: inside boundary, _o arrays: outside boundary
@@ -145,35 +146,35 @@ class HandoverStorage {
   // handover_cR/cZ: RowMatrixXd [num_basis, mnsize], handover_aR/aZ: flat
   // [mnsize]
 
-  RowMatrixXd handover_cR;          // [num_basis, mnsize]
-  std::vector<double> handover_aR;  // [mnsize]
+  RowMatrixXd handover_cR;      // [num_basis, mnsize]
+  Eigen::VectorXd handover_aR;  // [mnsize]
   RowMatrixXd handover_cZ;
-  std::vector<double> handover_aZ;
+  Eigen::VectorXd handover_aZ;
   // magnetic axis geometry for NESTOR
-  std::vector<double> rAxis;
-  std::vector<double> zAxis;
+  Eigen::VectorXd rAxis;
+  Eigen::VectorXd zAxis;
 
   // LCFS geometry for NESTOR
-  std::vector<double> rCC_LCFS;
-  std::vector<double> rSS_LCFS;
-  std::vector<double> rSC_LCFS;
-  std::vector<double> rCS_LCFS;
-  std::vector<double> zSC_LCFS;
-  std::vector<double> zCS_LCFS;
-  std::vector<double> zCC_LCFS;
-  std::vector<double> zSS_LCFS;
+  Eigen::VectorXd rCC_LCFS;
+  Eigen::VectorXd rSS_LCFS;
+  Eigen::VectorXd rSC_LCFS;
+  Eigen::VectorXd rCS_LCFS;
+  Eigen::VectorXd zSC_LCFS;
+  Eigen::VectorXd zCS_LCFS;
+  Eigen::VectorXd zCC_LCFS;
+  Eigen::VectorXd zSS_LCFS;
 
   // [nZnT] vacuum magnetic pressure |B_vac^2|/2 at the plasma boundary
-  std::vector<double> vacuum_magnetic_pressure;
+  Eigen::VectorXd vacuum_magnetic_pressure;
 
   // [nZnT] cylindrical B^R of Nestor's vacuum magnetic field
-  std::vector<double> vacuum_b_r;
+  Eigen::VectorXd vacuum_b_r;
 
   // [nZnT] cylindrical B^phi of Nestor's vacuum magnetic field
-  std::vector<double> vacuum_b_phi;
+  Eigen::VectorXd vacuum_b_phi;
 
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
-  std::vector<double> vacuum_b_z;
+  Eigen::VectorXd vacuum_b_z;
 
  private:
   const Sizes& s_;

@@ -5,7 +5,7 @@
 #ifndef VMECPP_COMMON_SIZES_SIZES_H_
 #define VMECPP_COMMON_SIZES_SIZES_H_
 
-#include <vector>
+#include <Eigen/Dense>
 
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
@@ -58,7 +58,7 @@ class Sizes {
   int nZnT;
 
   // [nThetaEff] poloidal integration weights
-  std::vector<double> wInt;
+  Eigen::VectorXd wInt;
 
   // number of Fourier coefficients in one of the 2D arrays (cc, ss, ...)
   int mnsize;

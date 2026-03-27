@@ -57,9 +57,8 @@ void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
 }  // HandOverBoundaryGeometry
 
 void HandOverMagneticAxis(vmecpp::HandoverStorage& m_h,
-                          const std::vector<double>& r1_e,
-                          const std::vector<double>& z1_e,
-                          const vmecpp::Sizes& s) {
+                          const Eigen::VectorXd& r1_e,
+                          const Eigen::VectorXd& z1_e, const vmecpp::Sizes& s) {
   for (int k = 0; k < s.nZeta; ++k) {
     // we are interested in l == 0
     int idx_kl = k * s.nThetaEff;
@@ -71,7 +70,7 @@ void HandOverMagneticAxis(vmecpp::HandoverStorage& m_h,
 }  // namespace
 
 void vmecpp::ForcesToFourier3DSymmFastPoloidal(
-    const RealSpaceForces& d, const std::vector<double>& xmpq,
+    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
     const FourierBasisFastPoloidal& fb,
     VacuumPressureState vacuum_pressure_state,
@@ -231,7 +230,7 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
 }
 
 void vmecpp::FourierToReal3DSymmFastPoloidal(
-    const FourierGeometry& physical_x, const std::vector<double>& xmpq,
+    const FourierGeometry& physical_x, const Eigen::VectorXd& xmpq,
     const RadialPartitioning& r, const Sizes& s, const RadialProfiles& rp,
     const FourierBasisFastPoloidal& fb, RealSpaceGeometry& m_geometry) {
   // can safely assume lthreed == true in here
@@ -390,9 +389,9 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
 void vmecpp::deAliasConstraintForce(
     const vmecpp::RadialPartitioning& rp,
     const vmecpp::FourierBasisFastPoloidal& fb, const vmecpp::Sizes& s_,
-    const std::vector<double>& faccon, const std::vector<double>& tcon,
-    const std::vector<double>& gConEff, std::vector<double>& m_gsc,
-    std::vector<double>& m_gcs, std::vector<double>& m_gCon) {
+    const Eigen::VectorXd& faccon, const Eigen::VectorXd& tcon,
+    const Eigen::VectorXd& gConEff, Eigen::VectorXd& m_gsc,
+    Eigen::VectorXd& m_gcs, Eigen::VectorXd& m_gCon) {
   absl::c_fill_n(m_gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
 
   // no constraint on axis --> has no poloidal angle
@@ -499,8 +498,8 @@ IdealMhdModel::IdealMhdModel(
   tcon0 = 0.0;
 
   // allocate arrays
-  xmpq.resize(s_.mpol);
-  faccon.resize(s_.mpol);
+  xmpq.setZero(s_.mpol);
+  faccon.setZero(s_.mpol);
   for (int m = 0; m < s_.mpol; ++m) {
     xmpq[m] = m * (m - 1);
     if (m > 1) {
@@ -511,128 +510,128 @@ IdealMhdModel::IdealMhdModel(
   int nrzt1 = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
   int nrzt = s_.nZnT * (r_.nsMaxF - r_.nsMinF);
 
-  r1_e.resize(nrzt1);
-  r1_o.resize(nrzt1);
-  ru_e.resize(nrzt1);
-  ru_o.resize(nrzt1);
-  z1_e.resize(nrzt1);
-  z1_o.resize(nrzt1);
-  zu_e.resize(nrzt1);
-  zu_o.resize(nrzt1);
-  lu_e.resize(nrzt1);
-  lu_o.resize(nrzt1);
+  r1_e.setZero(nrzt1);
+  r1_o.setZero(nrzt1);
+  ru_e.setZero(nrzt1);
+  ru_o.setZero(nrzt1);
+  z1_e.setZero(nrzt1);
+  z1_o.setZero(nrzt1);
+  zu_e.setZero(nrzt1);
+  zu_o.setZero(nrzt1);
+  lu_e.setZero(nrzt1);
+  lu_o.setZero(nrzt1);
 
   if (s_.lthreed) {
-    rv_e.resize(nrzt1);
-    rv_o.resize(nrzt1);
-    zv_e.resize(nrzt1);
-    zv_o.resize(nrzt1);
-    lv_e.resize(nrzt1);
-    lv_o.resize(nrzt1);
+    rv_e.setZero(nrzt1);
+    rv_o.setZero(nrzt1);
+    zv_e.setZero(nrzt1);
+    zv_o.setZero(nrzt1);
+    lv_e.setZero(nrzt1);
+    lv_o.setZero(nrzt1);
   }
 
   int nrztIncludingBoundary = s_.nZnT * (r_.nsMaxFIncludingLcfs - r_.nsMinF);
 
-  ruFull.resize(nrztIncludingBoundary);
-  zuFull.resize(nrztIncludingBoundary);
+  ruFull.setZero(nrztIncludingBoundary);
+  zuFull.setZero(nrztIncludingBoundary);
 
-  rCon.resize(nrztIncludingBoundary);
-  zCon.resize(nrztIncludingBoundary);
+  rCon.setZero(nrztIncludingBoundary);
+  zCon.setZero(nrztIncludingBoundary);
 
-  rCon0.resize(nrztIncludingBoundary);
-  zCon0.resize(nrztIncludingBoundary);
+  rCon0.setZero(nrztIncludingBoundary);
+  zCon0.setZero(nrztIncludingBoundary);
 
-  r12.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  ru12.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  zu12.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  rs.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  zs.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  tau.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  r12.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  ru12.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  zu12.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  rs.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  zs.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  tau.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
-  gsqrt.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  gsqrt.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
-  guu.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  guu.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
   if (s_.lthreed) {
-    guv.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+    guv.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
   }
-  gvv.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  gvv.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
-  bsupu.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  bsupv.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  bsupu.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  bsupv.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
-  bsubu.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  bsubv.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  bsubu.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  bsubv.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
-  totalPressure.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  rBSq.resize(s_.nZnT);
+  totalPressure.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  rBSq.setZero(s_.nZnT);
 
-  insideTotalPressure.resize(s_.nZnT);
-  delBSq.resize(s_.nZnT);
+  insideTotalPressure.setZero(s_.nZnT);
+  delBSq.setZero(s_.nZnT);
 
-  armn_e.resize(nrzt);
-  armn_o.resize(nrzt);
-  brmn_e.resize(nrzt);
-  brmn_o.resize(nrzt);
-  azmn_e.resize(nrzt);
-  azmn_o.resize(nrzt);
-  bzmn_e.resize(nrzt);
-  bzmn_o.resize(nrzt);
-  blmn_e.resize(nrztIncludingBoundary);
-  blmn_o.resize(nrztIncludingBoundary);
+  armn_e.setZero(nrzt);
+  armn_o.setZero(nrzt);
+  brmn_e.setZero(nrzt);
+  brmn_o.setZero(nrzt);
+  azmn_e.setZero(nrzt);
+  azmn_o.setZero(nrzt);
+  bzmn_e.setZero(nrzt);
+  bzmn_o.setZero(nrzt);
+  blmn_e.setZero(nrztIncludingBoundary);
+  blmn_o.setZero(nrztIncludingBoundary);
 
   if (s_.lthreed) {
-    crmn_e.resize(nrzt);
-    crmn_o.resize(nrzt);
-    czmn_e.resize(nrzt);
-    czmn_o.resize(nrzt);
-    clmn_e.resize(nrztIncludingBoundary);
-    clmn_o.resize(nrztIncludingBoundary);
+    crmn_e.setZero(nrzt);
+    crmn_o.setZero(nrzt);
+    czmn_e.setZero(nrzt);
+    czmn_o.setZero(nrzt);
+    clmn_e.setZero(nrztIncludingBoundary);
+    clmn_o.setZero(nrztIncludingBoundary);
   }
 
   // TODO(jons): +1 only if at LCFS
-  bLambda.resize(r_.nsMaxF1 - r_.nsMinF1 + 1);
-  dLambda.resize(r_.nsMaxF1 - r_.nsMinF1 + 1);
-  cLambda.resize(r_.nsMaxF1 - r_.nsMinF1 + 1);
-  lambdaPreconditioner.resize((r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.mpol *
-                              (s_.ntor + 1));
+  bLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
+  dLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
+  cLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
+  lambdaPreconditioner.setZero((r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.mpol *
+                               (s_.ntor + 1));
 
-  ax.resize((r_.nsMaxH - r_.nsMinH) * 4);
-  bx.resize((r_.nsMaxH - r_.nsMinH) * 3);
-  cx.resize(r_.nsMaxH - r_.nsMinH);
+  ax.setZero((r_.nsMaxH - r_.nsMinH) * 4);
+  bx.setZero((r_.nsMaxH - r_.nsMinH) * 3);
+  cx.setZero(r_.nsMaxH - r_.nsMinH);
 
-  arm.resize((r_.nsMaxH - r_.nsMinH) * 2);
-  azm.resize((r_.nsMaxH - r_.nsMinH) * 2);
-  brm.resize((r_.nsMaxH - r_.nsMinH) * 2);
-  bzm.resize((r_.nsMaxH - r_.nsMinH) * 2);
+  arm.setZero((r_.nsMaxH - r_.nsMinH) * 2);
+  azm.setZero((r_.nsMaxH - r_.nsMinH) * 2);
+  brm.setZero((r_.nsMaxH - r_.nsMinH) * 2);
+  bzm.setZero((r_.nsMaxH - r_.nsMinH) * 2);
 
-  ard.resize((r_.nsMaxF - r_.nsMinF) * 2);
-  brd.resize((r_.nsMaxF - r_.nsMinF) * 2);
-  azd.resize((r_.nsMaxF - r_.nsMinF) * 2);
-  bzd.resize((r_.nsMaxF - r_.nsMinF) * 2);
-  cxd.resize(r_.nsMaxF - r_.nsMinF);
+  ard.setZero((r_.nsMaxF - r_.nsMinF) * 2);
+  brd.setZero((r_.nsMaxF - r_.nsMinF) * 2);
+  azd.setZero((r_.nsMaxF - r_.nsMinF) * 2);
+  bzd.setZero((r_.nsMaxF - r_.nsMinF) * 2);
+  cxd.setZero(r_.nsMaxF - r_.nsMinF);
 
   // leave one entry at beginning as target to put in the data sent from the MPI
   // rank next inside
-  ar.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  az.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  dr.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  dz.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  br.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  bz.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  ar.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  az.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  dr.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  dz.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  br.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  bz.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
 
-  tcon.resize(r_.nsMaxFIncludingLcfs - r_.nsMinF);
+  tcon.setZero(r_.nsMaxFIncludingLcfs - r_.nsMinF);
 
-  gConEff.resize(nrztIncludingBoundary);
-  gsc.resize(s_.ntor + 1);
-  gcs.resize(s_.ntor + 1);
-  gCon.resize(nrztIncludingBoundary);
+  gConEff.setZero(nrztIncludingBoundary);
+  gsc.setZero(s_.ntor + 1);
+  gcs.setZero(s_.ntor + 1);
+  gCon.setZero(nrztIncludingBoundary);
 
-  frcon_e.resize(nrzt);
-  frcon_o.resize(nrzt);
-  fzcon_e.resize(nrzt);
-  fzcon_o.resize(nrzt);
+  frcon_e.setZero(nrzt);
+  frcon_o.setZero(nrzt);
+  fzcon_e.setZero(nrzt);
+  fzcon_o.setZero(nrzt);
 
-  jMin.resize(s_.mpol * (s_.ntor + 1));
+  jMin.setZero(s_.mpol * (s_.ntor + 1));
 }
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
@@ -642,7 +641,7 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
   this->tcon0 = tcon0;
 }
 
-void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
+void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -681,7 +680,7 @@ void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
   }
 }
 
-void IdealMhdModel::evalFResPrecd(const std::vector<double>& localFResPrecd) {
+void IdealMhdModel::evalFResPrecd(const Eigen::VectorXd& localFResPrecd) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -1141,7 +1140,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
                                         VacuumPressureState::kInitialized);
   bool includeEdgeRZForces =
       ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
-  std::vector<double> localFResInvar(3, 0.0);
+  Eigen::VectorXd localFResInvar = Eigen::VectorXd::Zero(3);
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 
   evalFResInvar(localFResInvar);
@@ -1176,7 +1175,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  std::vector<double> localFResPrecd(3, 0.0);
+  Eigen::VectorXd localFResPrecd = Eigen::VectorXd::Zero(3);
   m_decomposed_f.residuals(localFResPrecd, true);
 
   evalFResPrecd(localFResPrecd);
@@ -2360,26 +2359,30 @@ void IdealMhdModel::computeMHDForces() {
     sqrtSHi = m_p_.sqrtSH[j0 - r_.nsMinH];
   } else {
     // defaults to 0: no contribution from half-grid point inside the axis
-    absl::c_fill_n(m_ls_.P_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.rup_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.zup_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.rsp_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.zsp_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.taup_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.gbubu_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.gbubv_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.gbvbv_i, s_.nZnT, 0);
+    m_ls_.P_i.setZero();
+    m_ls_.rup_i.setZero();
+    m_ls_.zup_i.setZero();
+    m_ls_.rsp_i.setZero();
+    m_ls_.zsp_i.setZero();
+    m_ls_.taup_i.setZero();
+    m_ls_.gbubu_i.setZero();
+    m_ls_.gbubv_i.setZero();
+    m_ls_.gbvbv_i.setZero();
   }
 
-  std::vector<double> P_o(s_.nZnT);      //  r12 * totalPressure = P
-  std::vector<double> rup_o(s_.nZnT);    // ru12 * P
-  std::vector<double> zup_o(s_.nZnT);    // zu12 * P
-  std::vector<double> rsp_o(s_.nZnT);    //   rs * P
-  std::vector<double> zsp_o(s_.nZnT);    //   zs * P
-  std::vector<double> taup_o(s_.nZnT);   //  tau * P
-  std::vector<double> gbubu_o(s_.nZnT);  // gsqrt * bsupu * bsupu
-  std::vector<double> gbubv_o(s_.nZnT);  // gsqrt * bsupu * bsupv
-  std::vector<double> gbvbv_o(s_.nZnT);  // gsqrt * bsupv * bsupv
+  Eigen::VectorXd P_o =
+      Eigen::VectorXd::Zero(s_.nZnT);  //  r12 * totalPressure = P
+  Eigen::VectorXd rup_o = Eigen::VectorXd::Zero(s_.nZnT);   // ru12 * P
+  Eigen::VectorXd zup_o = Eigen::VectorXd::Zero(s_.nZnT);   // zu12 * P
+  Eigen::VectorXd rsp_o = Eigen::VectorXd::Zero(s_.nZnT);   //   rs * P
+  Eigen::VectorXd zsp_o = Eigen::VectorXd::Zero(s_.nZnT);   //   zs * P
+  Eigen::VectorXd taup_o = Eigen::VectorXd::Zero(s_.nZnT);  //  tau * P
+  Eigen::VectorXd gbubu_o =
+      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupu * bsupu
+  Eigen::VectorXd gbubv_o =
+      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupu * bsupv
+  Eigen::VectorXd gbvbv_o =
+      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupv * bsupv
 
   for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
     const double sFull =
@@ -2413,15 +2416,15 @@ void IdealMhdModel::computeMHDForces() {
         gbvbv_o[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
       }  // kl
     } else {
-      absl::c_fill(P_o, 0.);
-      absl::c_fill(rup_o, 0.);
-      absl::c_fill(zup_o, 0.);
-      absl::c_fill(rsp_o, 0.);
-      absl::c_fill(zsp_o, 0.);
-      absl::c_fill(taup_o, 0.);
-      absl::c_fill(gbubu_o, 0.);
-      absl::c_fill(gbubv_o, 0.);
-      absl::c_fill(gbvbv_o, 0.);
+      P_o.setZero();
+      rup_o.setZero();
+      zup_o.setZero();
+      rsp_o.setZero();
+      zsp_o.setZero();
+      taup_o.setZero();
+      gbubu_o.setZero();
+      gbubv_o.setZero();
+      gbvbv_o.setZero();
     }
 
     // NOTE: the loop over kl is split in many separate loops to help compiler
@@ -2800,11 +2803,10 @@ void IdealMhdModel::updateLambdaPreconditioner() {
  * The diagonal terms (..d) are on the forces full-grid.
  */
 void IdealMhdModel::computePreconditioningMatrix(
-    const std::vector<double>& xs, const std::vector<double>& xu12,
-    const std::vector<double>& xu_e, const std::vector<double>& xu_o,
-    const std::vector<double>& x1_o, std::vector<double>& m_axm,
-    std::vector<double>& m_axd, std::vector<double>& m_bxm,
-    std::vector<double>& m_bxd, std::vector<double>& m_cxd) {
+    const Eigen::VectorXd& xs, const Eigen::VectorXd& xu12,
+    const Eigen::VectorXd& xu_e, const Eigen::VectorXd& xu_o,
+    const Eigen::VectorXd& x1_o, Eigen::VectorXd& m_axm, Eigen::VectorXd& m_axd,
+    Eigen::VectorXd& m_bxm, Eigen::VectorXd& m_bxd, Eigen::VectorXd& m_cxd) {
   // zs, zu12, zu, z1 --> arm, ard, brm, brd, cxd
   // rs, ru12, ru, r1 --> azm, azd, bzm, bzd, cxd
 

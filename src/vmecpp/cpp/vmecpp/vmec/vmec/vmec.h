@@ -197,17 +197,17 @@ class Vmec {
   std::vector<std::unique_ptr<FourierForces>> physical_f_;
   std::vector<std::unique_ptr<FourierVelocity>> decomposed_v_;
 
-  std::vector<double> sj;
-  std::vector<int> js1;
-  std::vector<int> js2;
-  std::vector<double> s1;
-  std::vector<double> xint;
+  Eigen::VectorXd sj;
+  Eigen::VectorXi js1;
+  Eigen::VectorXi js2;
+  Eigen::VectorXd s1;
+  Eigen::VectorXd xint;
   std::vector<std::unique_ptr<FourierGeometry>> old_xc_scaled_;
   std::vector<std::unique_ptr<RadialPartitioning>> old_r_;
 
-  std::vector<double> matrixShare;
-  std::vector<int> iPiv;
-  std::vector<double> bvecShare;
+  Eigen::VectorXd matrixShare;
+  Eigen::VectorXi iPiv;
+  Eigen::VectorXd bvecShare;
 
  private:
   enum class SolveEqLoopStatus : std::uint8_t {
@@ -257,7 +257,7 @@ class Vmec {
   // history size for averaging of 1/tau
   static constexpr int kNDamp = 10;
 
-  std::vector<double> invTau_;
+  Eigen::VectorXd invTau_;
 
   // iter2 at last update of preconditioner update
   int last_preconditioner_update_;

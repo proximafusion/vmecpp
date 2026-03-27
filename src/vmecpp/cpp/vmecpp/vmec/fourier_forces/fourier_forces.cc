@@ -103,7 +103,7 @@ void FourierForces::zeroZForceForM1() {
 }
 
 /** Compute the force residuals and write them into the provided [3] array. */
-void FourierForces::residuals(std::vector<double>& fRes,
+void FourierForces::residuals(Eigen::VectorXd& fRes,
                               bool includeEdgeRZForces) const {
   int jMaxRZ = std::min(nsMax_, ns - 1);
   if (includeEdgeRZForces && r_.nsMaxF1 == ns) {
