@@ -152,6 +152,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("mgrid_file", &VmecINDATA::mgrid_file);
   DefEigenProperty(pyindata, "extcur", &VmecINDATA::extcur);
   pyindata.def_readwrite("nvacskip", &VmecINDATA::nvacskip)
+      .def_readwrite("boundary_force_weight",
+                     &VmecINDATA::boundary_force_weight)
       .def_readwrite("free_boundary_method", &VmecINDATA::free_boundary_method)
 
       // tweaking parameters

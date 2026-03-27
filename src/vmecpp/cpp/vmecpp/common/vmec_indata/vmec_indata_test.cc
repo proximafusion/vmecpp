@@ -170,6 +170,7 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.mgrid_file, "NONE");
   EXPECT_EQ(indata.extcur.size(), 0);
   EXPECT_EQ(indata.nvacskip, 1);
+  EXPECT_EQ(indata.boundary_force_weight, 1.0);
 
   // tweaking parameters
   EXPECT_EQ(indata.nstep, 10);
@@ -301,6 +302,8 @@ TEST(TestVmecINDATA, HDF5IO) {
   EXPECT_EQ(indata.mgrid_file, indata_from_file.mgrid_file);
   EXPECT_EQ(indata.extcur, indata_from_file.extcur);
   EXPECT_EQ(indata.nvacskip, indata_from_file.nvacskip);
+  EXPECT_EQ(indata.boundary_force_weight,
+            indata_from_file.boundary_force_weight);
   EXPECT_EQ(indata.free_boundary_method, indata_from_file.free_boundary_method);
   EXPECT_EQ(indata.nstep, indata_from_file.nstep);
   EXPECT_EQ(indata.aphi, indata_from_file.aphi);
@@ -428,6 +431,7 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.mgrid_file, indata.mgrid_file);
   EXPECT_EQ(copy.extcur, indata.extcur);
   EXPECT_EQ(copy.nvacskip, indata.nvacskip);
+  EXPECT_EQ(copy.boundary_force_weight, indata.boundary_force_weight);
   EXPECT_EQ(copy.free_boundary_method, indata.free_boundary_method);
   EXPECT_EQ(copy.nstep, indata.nstep);
   EXPECT_EQ(copy.aphi, indata.aphi);

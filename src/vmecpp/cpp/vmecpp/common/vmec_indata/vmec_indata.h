@@ -188,6 +188,9 @@ class VmecINDATA {
   // number of iterations between full vacuum calculations
   int nvacskip;
 
+  // multiplier on the boundary force term rBSq (penalty parameter)
+  double boundary_force_weight;
+
   // indicates which method to use
   // for the free-boundary force contribution
   FreeBoundaryMethod free_boundary_method;

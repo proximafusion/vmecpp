@@ -641,10 +641,11 @@ IdealMhdModel::IdealMhdModel(
 }
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
-                                  double tcon0) {
+                                  double tcon0, double boundary_force_weight) {
   this->ncurr = ncurr;
   this->adiabaticIndex = adiabaticIndex;
   this->tcon0 = tcon0;
+  this->boundary_force_weight_ = boundary_force_weight;
 }
 
 void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
@@ -1074,8 +1075,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
           // term to enter MHD forces
           int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
-          rBSq[kl] = outsideEdgePressure * (r1_e[idx_kl] + r1_o[idx_kl]) /
-                     m_fc_.deltaS;
+          rBSq[kl] = boundary_force_weight_ * outsideEdgePressure *
+                     (r1_e[idx_kl] + r1_o[idx_kl]) / m_fc_.deltaS;
 
           // for printout: global mismatch between inside and outside pressure
           delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
