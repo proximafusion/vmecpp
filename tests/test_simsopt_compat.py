@@ -6,11 +6,13 @@
 import json
 import math
 from pathlib import Path
+from unittest.mock import patch
 
 import netCDF4
 import numpy as np
 import pytest
 from simsopt import mhd as simsopt_mhd
+from simsopt._core.optimizable import Optimizable
 from simsopt.geo import SurfaceRZFourier
 
 from vmecpp import _util, ensure_vmec2000_input, simsopt_compat
@@ -177,6 +179,37 @@ def test_assigned_boundary_stays_connected_after_run():
     assert not vmec.need_to_run_code
     surf.set_rc(1, 0, surf.get_rc(1, 0) + 0.1)
     assert vmec.need_to_run_code
+
+
+def test_set_mpol_ntor_preserves_children_of_boundary():
+    """Other Optimizable objects that depend on the boundary stay connected after
+    set_mpol_ntor forces a boundary resize.
+
+    In the current simsopt, SurfaceRZFourier.change_resolution() modifies the surface
+    in-place and returns None, so the boundary object identity is preserved. This test
+    mocks change_resolution to return a new object, exercising the defensive children-
+    transfer code path for surface types that create a new object.
+    """
+
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    surf = _assign_low_res_boundary(vmec)  # mpol=1, ntor=1, different from indata
+
+    # Create a second dependent that also listens to surf
+    dependent = Optimizable(depends_on=[surf])
+    assert surf in dependent.parents
+
+    # Simulate change_resolution returning a new surface object (non-in-place resize)
+    target_mpol, target_ntor = 3, 3  # _surface_rzfourier_resolution(4, 3) = (3, 3)
+    replacement = SurfaceRZFourier(mpol=target_mpol, ntor=target_ntor, nfp=surf.nfp)
+    with patch.object(surf, "change_resolution", return_value=replacement):
+        vmec.set_mpol_ntor(new_mpol=4, new_ntor=3)
+
+    new_surf = vmec.boundary
+    assert new_surf is replacement  # New surface was installed
+
+    # dependent should now point to new_surf, not the stale surf
+    assert new_surf in dependent.parents
+    assert surf not in dependent.parents
 
 
 def test_get_input_preserves_assigned_boundary_identity_and_dofs():

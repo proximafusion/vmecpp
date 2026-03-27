@@ -112,7 +112,12 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
     InterruptCallback interrupt_callback) {
-  Vmec v = Vmec(indata, max_threads, verbose, std::move(interrupt_callback));
+  auto maybe_vmec = Vmec::FromIndata(indata, nullptr, max_threads, verbose,
+                                     std::move(interrupt_callback));
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
+  }
+  Vmec& v = **maybe_vmec;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -131,11 +136,13 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
     InterruptCallback interrupt_callback) {
-  Vmec v(indata, max_threads, verbose, std::move(interrupt_callback));
-  absl::Status mgrid_status = v.LoadMGrid(magnetic_response_table);
-  if (!mgrid_status.ok()) {
-    return mgrid_status;
+  auto maybe_vmec =
+      Vmec::FromIndata(indata, &magnetic_response_table, max_threads, verbose,
+                       std::move(interrupt_callback));
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
   }
+  Vmec& v = **maybe_vmec;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -150,6 +157,32 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
 
 namespace vmecpp {
 
+absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
+    const VmecINDATA& indata,
+    const makegrid::MagneticFieldResponseTable* magnetic_response_table,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback) {
+  auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
+                                  std::move(interrupt_callback));
+
+  // This part of Vmec initialization requires Status handling, and is therefore
+  // in this factory method instead of the constructor.
+  if (indata.lfreeb) {
+    absl::Status s{};
+    if (magnetic_response_table == nullptr) {
+      s = v->mgrid_.LoadFile(indata.mgrid_file, indata.extcur);
+    } else {
+      s = v->mgrid_.LoadFields(*magnetic_response_table, indata.extcur);
+    }
+    if (!s.ok()) {
+      return s;
+    }
+  }
+
+  return v;
+}
+
+// initialize based on input file contents
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
            OutputMode verbose, InterruptCallback interrupt_callback)
     : indata_(indata),
@@ -199,26 +232,6 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
   }
 }
 
-absl::Status Vmec::LoadMGrid(
-    const makegrid::MagneticFieldResponseTable& magnetic_response_table) {
-  if (!fc_.lfreeb) {
-    return absl::InvalidArgumentError(
-        "The MGridProvider is only required for free-boundary VMEC++ runs.");
-  }
-
-  return mgrid_.LoadFields(magnetic_response_table.parameters,
-                           magnetic_response_table, indata_.extcur);
-}
-
-absl::Status Vmec::LoadMGrid() {
-  if (!fc_.lfreeb) {
-    return absl::InvalidArgumentError(
-        "The MGridProvider is only required for free-boundary VMEC++ runs.");
-  }
-
-  return mgrid_.LoadFile(indata_.mgrid_file, indata_.extcur);
-}
-
 // main worker method; equivalent of vmec.f90
 // checked visually to comply with vmec.f90
 absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
@@ -227,9 +240,9 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                std::optional<HotRestartState> initial_state) {
   if (indata_.lfreeb) {
     if (!mgrid_.IsLoaded()) {
-      // if we have a free-boundary VMEC run, we may need to load the
-      // magnetic field response table
-      absl::Status status = LoadMGrid();
+      // Fallback: load mgrid from file if constructed directly via the public
+      // constructor instead of the FromIndata factory method.
+      absl::Status status = mgrid_.LoadFile(indata_.mgrid_file, indata_.extcur);
       if (!status.ok()) {
         return status;
       }
@@ -1623,11 +1636,11 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
 
 void Vmec::InterpolateToNextMultigridStep(
     int ns_new, int ns_old,
-    const std::vector<std::unique_ptr<RadialProfiles> >& p,
-    const std::vector<std::unique_ptr<RadialPartitioning> >& r_new,
-    const std::vector<std::unique_ptr<RadialPartitioning> >& r_old,
-    std::vector<std::unique_ptr<FourierGeometry> >& m_x_new,
-    std::vector<std::unique_ptr<FourierGeometry> >& m_x_old) {
+    const std::vector<std::unique_ptr<RadialProfiles>>& p,
+    const std::vector<std::unique_ptr<RadialPartitioning>>& r_new,
+    const std::vector<std::unique_ptr<RadialPartitioning>>& r_old,
+    std::vector<std::unique_ptr<FourierGeometry>>& m_x_new,
+    std::vector<std::unique_ptr<FourierGeometry>>& m_x_old) {
   // INTERPOLATE R,Z AND LAMBDA ON FULL GRID
   // (EXTRAPOLATE M=1 MODES,OVER SQRT(S), TO ORIGIN)
   // ON ENTRY, XOLD = X(COARSE MESH) * SCALXC(COARSE MESH)

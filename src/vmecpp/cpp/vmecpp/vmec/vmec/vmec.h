@@ -75,6 +75,22 @@ absl::StatusOr<OutputQuantities> run(
 
 class Vmec {
  public:
+  // Prefer using the FromIndata factory method, which handles both fixed-
+  // and free-boundary initialization with proper error handling.
+  // This constructor is public for use in external test code.
+  explicit Vmec(const VmecINDATA& indata,
+                std::optional<int> max_threads = std::nullopt,
+                OutputMode verbose = OutputMode::kLegacy,
+                InterruptCallback interrupt_callback = nullptr);
+
+  // Vmec must not be moved or copied because members (t_, b_, h_) store
+  // raw pointers to sibling members (s_, t_). Moving would leave those
+  // pointers dangling.
+  Vmec(const Vmec&) = delete;
+  Vmec& operator=(const Vmec&) = delete;
+  Vmec(Vmec&&) = delete;
+  Vmec& operator=(Vmec&&) = delete;
+
   // sign of Jacobian between cylindrical and flux coordinates
   // This is called `signgs` in Fortran VMEC.
   static constexpr int kSignOfJacobian = -1;
@@ -82,21 +98,16 @@ class Vmec {
   // scaling factor for blending between two different ways to compute B^zeta
   static constexpr double kPDamp = 0.05;
 
-  // VMEC++ constructor is only valid for fixed-boundary input files.
-  // Free-boundary runs will complete initialization by loading the mgrid
-  // contents when run is called, to have graceful error handling with absl.
-  explicit Vmec(const VmecINDATA& indata,
-                std::optional<int> max_threads = std::nullopt,
-                OutputMode verbose = OutputMode::kLegacy,
-                InterruptCallback interrupt_callback = nullptr);
-
-  // Mgrid loading for free-boundary VMEC++ from a precomputed response-table is
-  // done outside of the Vmec constructor for improved exception handling
-  absl::Status LoadMGrid(
-      const makegrid::MagneticFieldResponseTable& magnetic_response_table);
-  // Mgrid loading for free-boundary VMEC++ from the indata_.mgrid_file path is
-  // done outside of the Vmec constructor for improved exception handling
-  absl::Status LoadMGrid();
+  // Factory method for creating a Vmec instance.
+  // Handles mgrid loading for free-boundary runs with proper error handling.
+  // Returns a unique_ptr because Vmec is non-movable.
+  static absl::StatusOr<std::unique_ptr<Vmec>> FromIndata(
+      const VmecINDATA& indata,
+      const makegrid::MagneticFieldResponseTable* magnetic_response_table =
+          nullptr,
+      std::optional<int> max_threads = std::nullopt,
+      OutputMode verbose = OutputMode::kLegacy,
+      InterruptCallback interrupt_callback = nullptr);
 
   absl::StatusOr<bool> run(
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
@@ -123,11 +134,11 @@ class Vmec {
   void PerformTimeStep(double fac, double b1, double time_step, int thread_id);
   void InterpolateToNextMultigridStep(
       int ns_new, int ns_old,
-      const std::vector<std::unique_ptr<RadialProfiles> >& p,
-      const std::vector<std::unique_ptr<RadialPartitioning> >& r_new,
-      const std::vector<std::unique_ptr<RadialPartitioning> >& r_old,
-      std::vector<std::unique_ptr<FourierGeometry> >& m_x_new,
-      std::vector<std::unique_ptr<FourierGeometry> >& m_x_old);
+      const std::vector<std::unique_ptr<RadialProfiles>>& p,
+      const std::vector<std::unique_ptr<RadialPartitioning>>& r_new,
+      const std::vector<std::unique_ptr<RadialPartitioning>>& r_old,
+      std::vector<std::unique_ptr<FourierGeometry>>& m_x_new,
+      std::vector<std::unique_ptr<FourierGeometry>>& m_x_old);
   // -------------------
 
   bool updateFwdModel(IdealMhdModel& m_m, FourierGeometry& m_decomposed_x,
@@ -173,18 +184,18 @@ class Vmec {
   OutputQuantities output_quantities_;
 
   int num_threads_;
-  std::vector<std::unique_ptr<RadialPartitioning> > r_;
-  std::vector<std::unique_ptr<ThreadLocalStorage> > ls_;
-  std::vector<std::unique_ptr<RadialProfiles> > p_;
-  std::vector<std::unique_ptr<FreeBoundaryBase> > fb_;
-  std::vector<std::unique_ptr<TangentialPartitioning> > tp_;
-  std::vector<std::unique_ptr<IdealMhdModel> > m_;
-  std::vector<std::unique_ptr<FourierGeometry> > decomposed_x_;
-  std::vector<std::unique_ptr<FourierGeometry> > physical_x_backup_;
-  std::vector<std::unique_ptr<FourierGeometry> > physical_x_;
-  std::vector<std::unique_ptr<FourierForces> > decomposed_f_;
-  std::vector<std::unique_ptr<FourierForces> > physical_f_;
-  std::vector<std::unique_ptr<FourierVelocity> > decomposed_v_;
+  std::vector<std::unique_ptr<RadialPartitioning>> r_;
+  std::vector<std::unique_ptr<ThreadLocalStorage>> ls_;
+  std::vector<std::unique_ptr<RadialProfiles>> p_;
+  std::vector<std::unique_ptr<FreeBoundaryBase>> fb_;
+  std::vector<std::unique_ptr<TangentialPartitioning>> tp_;
+  std::vector<std::unique_ptr<IdealMhdModel>> m_;
+  std::vector<std::unique_ptr<FourierGeometry>> decomposed_x_;
+  std::vector<std::unique_ptr<FourierGeometry>> physical_x_backup_;
+  std::vector<std::unique_ptr<FourierGeometry>> physical_x_;
+  std::vector<std::unique_ptr<FourierForces>> decomposed_f_;
+  std::vector<std::unique_ptr<FourierForces>> physical_f_;
+  std::vector<std::unique_ptr<FourierVelocity>> decomposed_v_;
 
   Eigen::VectorXd sj;
   Eigen::VectorXi js1;
