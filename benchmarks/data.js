@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774547583391,
+  "lastUpdate": 1774570723828,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -328,6 +328,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.011416062849415093",
             "extra": "mean: 8.82266493166666 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "jurasic@proximafusion.com",
+            "name": "jurasic-pf",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "jurasic@proximafusion.com",
+            "name": "jurasic-pf",
+            "username": "jurasic-pf"
+          },
+          "distinct": false,
+          "id": "a304c1df8c7f1e53648449541dce0c291856b82e",
+          "message": "Migrate FourierBasisFastPoloidal and FourierBasisFastToroidal to Eigen3 (#410)\n\nPart of the larger migration of `vmecpp` to Eigen datatypes instead of std::vectors.",
+          "timestamp": "2026-03-26T23:59:51Z",
+          "tree_id": "7cfcf9d3a35c7021e12bb29c7280017a59f39996",
+          "url": "https://github.com/proximafusion/vmecpp/commit/a304c1df8c7f1e53648449541dce0c291856b82e"
+        },
+        "date": 1774570723028,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.910577815976096,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0022402754904197438",
+            "extra": "mean: 343.5743908000063 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.9039757486336586,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003010388550123228",
+            "extra": "mean: 344.3554928000026 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2451544522594961,
+            "unit": "iter/sec",
+            "range": "stddev: 0.034814709304288045",
+            "extra": "mean: 4.079061141999982 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5940994908332135,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007362544415360937",
+            "extra": "mean: 1.6832197559999902 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.2770968305588864,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014761498826641357",
+            "extra": "mean: 3.608846763000012 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10095290907287849,
+            "unit": "iter/sec",
+            "range": "stddev: 0.010964357285937431",
+            "extra": "mean: 9.905608557333343 sec\nrounds: 3"
           }
         ]
       }
