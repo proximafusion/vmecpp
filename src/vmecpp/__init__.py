@@ -645,16 +645,6 @@ class VmecWOut(BaseModelWithNumpy):
         # Asymmetric-only axis fields (None when lasym=False)
         "raxis_cs",
         "zaxis_cc",
-        # Padded 1D arrays (size ns-1 in C++ -> ns in Python)
-        "beta_vol",
-        "bvco",
-        "buco",
-        "vp",
-        "pres",
-        "mass",
-        "phips",
-        "over_r",
-        "iotas",
         # Transposed 2D arrays
         "rmnc",
         "zmns",
@@ -1103,15 +1093,12 @@ class VmecWOut(BaseModelWithNumpy):
     """Indicates if the mgrid file was normalized to unit currents ("S") or not
     ("R")."""
 
-    # In the C++ WOutFileContents this is called iota_half.
     iotas: jt.Float[np.ndarray, "n_surfaces"]
     r"""Rotational transform :math:`\iota` on the half-grid."""
 
-    # In the C++ WOutFileContents this is called iota_full.
     iotaf: jt.Float[np.ndarray, "n_surfaces"]
     r"""Rotational transform :math:`\iota` on the full-grid."""
 
-    # In the C++ WOutFileContents this is called betatot.
     betatotal: float
     r"""Total plasma beta.
 
@@ -1121,102 +1108,78 @@ class VmecWOut(BaseModelWithNumpy):
     )`
     """
 
-    # In the C++ WOutFileContents this is called raxis_c.
     raxis_cc: jt.Float[np.ndarray, "ntor_plus_1"]
     """Fourier coefficients of :math:`R(phi)` of the magnetic axis geometry."""
 
-    # In the C++ WOutFileContents this is called zaxis_s.
     zaxis_cs: jt.Float[np.ndarray, "ntor_plus_1"]
     """Fourier coefficients of :math:`Z(phi)` of the magnetic axis geometry."""
 
-    # In the C++ WOutFileContents this is called raxis_s.
     raxis_cs: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
     """Fourier coefficients of :math:`R(phi)` of the magnetic axis geometry; non-
     stellarator-symmetric."""
 
-    # In the C++ WOutFileContents this is called zaxis_c.
     zaxis_cc: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
     """Fourier coefficients of :math:`Z(phi)` of the magnetic axis geometry; non-
     stellarator-symmetric."""
 
-    # In the C++ WOutFileContents this is called dVds.
     vp: jt.Float[np.ndarray, "n_surfaces"]
-    r"""Differential volume :math:`V' = \frac{\partial V}{\partial s}` on half-grid.
+    r"""Differential volume :math:`V' = \frac{\partial V}{\partial s}` on half-grid."""
 
-    Note: called ``dVds`` in cpp
-    """
-
-    # In the C++ WOutFileContents this is called pressure_full.
     presf: jt.Float[np.ndarray, "n_surfaces"]
     """Kinetic pressure ``p`` on the full-grid."""
 
-    # In the C++ WOutFileContents this is called pressure_half.
     pres: jt.Float[np.ndarray, "n_surfaces"]
     """Kinetic pressure ``p`` on the half-grid."""
 
-    # In the C++ WOutFileContents this is called toroidal_flux.
     phi: jt.Float[np.ndarray, "n_surfaces"]
     r"""Enclosed toroidal magnetic flux :math:`\phi` on the full-grid."""
 
-    # In the C++ WOutFileContents this is called sign_of_jacobian.
     signgs: int
     """Sign of the Jacobian of the coordinate transform between flux coordinates and
     cylindrical coordinates."""
 
-    # In the C++ WOutFileContents this is called VolAvgB.
     volavgB: float
     """Volume-averaged magnetic field strength."""
 
-    # In the C++ WOutFileContents this is called safety_factor.
     # Defaulted for backwards compatibility with old wout files.
     q_factor: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Safety factor :math:`q = 1/\iota` on the full-grid."""
 
-    # In the C++ WOutFileContents this is called poloidal_flux.
     # Defaulted for backwards compatibility with old wout files.
     chi: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Enclosed poloidal magnetic flux :math:`\chi` on the full-grid."""
 
-    # In the C++ WOutFileContents this is called spectral_width.
     specw: jt.Float[np.ndarray, "n_surfaces"]
     """Spectral width ``M`` on the full-grid."""
 
-    # In the C++ WOutFileContents this is called overr.
     over_r: jt.Float[np.ndarray, "n_surfaces"]
     r"""``<\tau / R> / V'`` on half-grid.
 
     :math:`\left\langle \frac{\tau}{R} \right\rangle / V'`
     """
 
-    # In the C++ WOutFileContents this is called Dshear.
     DShear: jt.Float[np.ndarray, "n_surfaces"]
     """Mercier stability criterion contribution due to magnetic shear."""
 
-    # In the C++ WOutFileContents this is called Dwell.
     DWell: jt.Float[np.ndarray, "n_surfaces"]
     """Mercier stability criterion contribution due to magnetic well."""
 
-    # In the C++ WOutFileContents this is called Dcurr.
     DCurr: jt.Float[np.ndarray, "n_surfaces"]
     """Mercier stability criterion contribution due to plasma currents."""
 
-    # In the C++ WOutFileContents this is called Dgeod.
     DGeod: jt.Float[np.ndarray, "n_surfaces"]
     """Mercier stability criterion contribution due to geodesic curvature."""
 
-    # In the C++ WOutFileContents this is called maximum_iterations.
     niter: int
     """Maximum number of force-balance iterations allowed."""
 
-    # In the C++ WOutFileContents this is called beta.
     beta_vol: jt.Float[np.ndarray, "n_surfaces"]
     """Flux-surface averaged plasma beta on half-grid."""
 
-    # In the C++ WOutFileContents this is called 'version' and it is a string.
     version_: float
     """Version number of VMEC, that this VMEC++ wout file is compatible with.
 
@@ -1416,20 +1379,6 @@ class VmecWOut(BaseModelWithNumpy):
             if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
                 attrs[field] = getattr(cpp_wout, field)
 
-        # These attributes have one element more in VMEC2000
-        # (i.e. they have size ns instead of ns - 1).
-        # VMEC2000 then indexes them as with [1:], so we pad VMEC++'s.
-        # And they might be called differently.
-        attrs["bvco"] = np.concatenate(([0.0], cpp_wout.bvco))
-        attrs["buco"] = np.concatenate(([0.0], cpp_wout.buco))
-        attrs["vp"] = np.concatenate(([0.0], cpp_wout.dVds))
-        attrs["pres"] = np.concatenate(([0.0], cpp_wout.pressure_half))
-        attrs["mass"] = np.concatenate(([0.0], cpp_wout.mass))
-        attrs["beta_vol"] = np.concatenate(([0.0], cpp_wout.beta))
-        attrs["phips"] = np.concatenate(([0.0], cpp_wout.phips))
-        attrs["over_r"] = np.concatenate(([0.0], cpp_wout.overr))
-        attrs["iotas"] = np.concatenate(([0.0], cpp_wout.iota_half))
-
         # These attributes are transposed in SIMSOPT/Fortran VMEC
         attrs["rmnc"] = cpp_wout.rmnc.T
         attrs["zmns"] = cpp_wout.zmns.T
@@ -1501,20 +1450,6 @@ class VmecWOut(BaseModelWithNumpy):
         for field in VmecWOut.model_fields:
             if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
                 setattr(cpp_wout, field, getattr(self, field))
-
-        # These attributes have one element more in VMEC2000
-        # (i.e. they have size ns instead of ns - 1).
-        # VMEC2000 then indexes them as with [1:], so we pad VMEC++'s.
-        # And they might be called differently.
-        cpp_wout.bvco = self.bvco[1:]
-        cpp_wout.buco = self.buco[1:]
-        cpp_wout.dVds = self.vp[1:]
-        cpp_wout.pressure_half = self.pres[1:]
-        cpp_wout.mass = self.mass[1:]
-        cpp_wout.beta = self.beta_vol[1:]
-        cpp_wout.phips = self.phips[1:]
-        cpp_wout.overr = self.over_r[1:]
-        cpp_wout.iota_half = self.iotas[1:]
 
         # Asymmetric axis fields
         if self.lasym:

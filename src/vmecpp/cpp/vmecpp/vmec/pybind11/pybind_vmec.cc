@@ -545,16 +545,16 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("restart_reason_timetrace",
                      &vmecpp::WOutFileContents::restart_reason_timetrace)
       //
-      .def_readwrite("iota_half", &vmecpp::WOutFileContents::iota_half)
+      .def_readwrite("iotas", &vmecpp::WOutFileContents::iotas)
       .def_readwrite("mass", &vmecpp::WOutFileContents::mass)
-      .def_readwrite("pressure_half", &vmecpp::WOutFileContents::pressure_half)
-      .def_readwrite("beta", &vmecpp::WOutFileContents::beta)
+      .def_readwrite("pres", &vmecpp::WOutFileContents::pres)
+      .def_readwrite("beta_vol", &vmecpp::WOutFileContents::beta_vol)
       .def_readwrite("buco", &vmecpp::WOutFileContents::buco)
       .def_readwrite("bvco", &vmecpp::WOutFileContents::bvco)
-      .def_readwrite("dVds", &vmecpp::WOutFileContents::dVds)
+      .def_readwrite("vp", &vmecpp::WOutFileContents::vp)
       .def_readwrite("specw", &vmecpp::WOutFileContents::specw)
       .def_readwrite("phips", &vmecpp::WOutFileContents::phips)
-      .def_readwrite("overr", &vmecpp::WOutFileContents::overr)
+      .def_readwrite("over_r", &vmecpp::WOutFileContents::over_r)
       //
       .def_readwrite("jdotb", &vmecpp::WOutFileContents::jdotb)
       .def_readwrite("bdotb", &vmecpp::WOutFileContents::bdotb)

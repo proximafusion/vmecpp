@@ -857,16 +857,16 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(chipf);
   WRITEMEMBER(jcuru);
   WRITEMEMBER(jcurv);
-  WRITEMEMBER(iota_half);
+  WRITEMEMBER(iotas);
   WRITEMEMBER(mass);
-  WRITEMEMBER(pressure_half);
-  WRITEMEMBER(beta);
+  WRITEMEMBER(pres);
+  WRITEMEMBER(beta_vol);
   WRITEMEMBER(buco);
   WRITEMEMBER(bvco);
-  WRITEMEMBER(dVds);
+  WRITEMEMBER(vp);
   WRITEMEMBER(specw);
   WRITEMEMBER(phips);
-  WRITEMEMBER(overr);
+  WRITEMEMBER(over_r);
   WRITEMEMBER(jdotb);
   // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
   // reference files with all quantities once that is done
@@ -987,16 +987,16 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(chipf);
   READMEMBER(jcuru);
   READMEMBER(jcurv);
-  READMEMBER(iota_half);
+  READMEMBER(iotas);
   READMEMBER(mass);
-  READMEMBER(pressure_half);
-  READMEMBER(beta);
+  READMEMBER(pres);
+  READMEMBER(beta_vol);
   READMEMBER(buco);
   READMEMBER(bvco);
-  READMEMBER(dVds);
+  READMEMBER(vp);
   READMEMBER(specw);
   READMEMBER(phips);
-  READMEMBER(overr);
+  READMEMBER(over_r);
   READMEMBER(jdotb);
   // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
   // reference files with all quantities once that is done
@@ -4364,19 +4364,26 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.chi = threed1_first_table_intermediate.chi;
   wout.specw = m_vmec_internal_results.spectral_width;
 
-  wout.mass.resize(fc.ns - 1);
-  wout.pressure_half.resize(fc.ns - 1);
+  wout.mass = VectorXd::Zero(fc.ns);
+  wout.pres = VectorXd::Zero(fc.ns);
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
-    wout.mass[jH] = m_vmec_internal_results.massH[jH] / MU_0;
-    wout.pressure_half[jH] = m_vmec_internal_results.presH[jH] / MU_0;
+    wout.mass[jH + 1] = m_vmec_internal_results.massH[jH] / MU_0;
+    wout.pres[jH + 1] = m_vmec_internal_results.presH[jH] / MU_0;
   }  // jH
-  wout.iota_half = m_vmec_internal_results.iotaH;
-  wout.beta = threed1_first_table_intermediate.beta_vol;
-  wout.buco = threed1_first_table_intermediate.bucoH;
-  wout.bvco = threed1_first_table_intermediate.bvcoH;
-  wout.dVds = m_vmec_internal_results.dVdsH;
-  wout.phips = m_vmec_internal_results.phipH;
-  wout.overr = threed1_first_table_intermediate.overr;
+  wout.iotas = VectorXd::Zero(fc.ns);
+  wout.iotas.tail(fc.ns - 1) = m_vmec_internal_results.iotaH;
+  wout.beta_vol = VectorXd::Zero(fc.ns);
+  wout.beta_vol.tail(fc.ns - 1) = threed1_first_table_intermediate.beta_vol;
+  wout.buco = VectorXd::Zero(fc.ns);
+  wout.buco.tail(fc.ns - 1) = threed1_first_table_intermediate.bucoH;
+  wout.bvco = VectorXd::Zero(fc.ns);
+  wout.bvco.tail(fc.ns - 1) = threed1_first_table_intermediate.bvcoH;
+  wout.vp = VectorXd::Zero(fc.ns);
+  wout.vp.tail(fc.ns - 1) = m_vmec_internal_results.dVdsH;
+  wout.phips = VectorXd::Zero(fc.ns);
+  wout.phips.tail(fc.ns - 1) = m_vmec_internal_results.phipH;
+  wout.over_r = VectorXd::Zero(fc.ns);
+  wout.over_r.tail(fc.ns - 1) = threed1_first_table_intermediate.overr;
 
   wout.jdotb = jxbout.jdotb;
   wout.bdotb = jxbout.bdotb;
@@ -4951,21 +4958,21 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
         IsCloseRelAbs(expected_wout.specw[jF], test_wout.specw[jF], tolerance));
   }  // jF
 
-  for (int jH = 0; jH < ns - 1; ++jH) {
-    CHECK(IsCloseRelAbs(expected_wout.iota_half[jH], test_wout.iota_half[jH],
+  for (int jF = 0; jF < ns; ++jF) {
+    CHECK(
+        IsCloseRelAbs(expected_wout.iotas[jF], test_wout.iotas[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.mass[jF], test_wout.mass[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.pres[jF], test_wout.pres[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.beta_vol[jF], test_wout.beta_vol[jF],
                         tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.mass[jH], test_wout.mass[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.pressure_half[jH],
-                        test_wout.pressure_half[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.beta[jH], test_wout.beta[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.buco[jH], test_wout.buco[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.bvco[jH], test_wout.bvco[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.dVds[jH], test_wout.dVds[jH], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.buco[jF], test_wout.buco[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.bvco[jF], test_wout.bvco[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.vp[jF], test_wout.vp[jF], tolerance));
     CHECK(
-        IsCloseRelAbs(expected_wout.phips[jH], test_wout.phips[jH], tolerance));
-    CHECK(
-        IsCloseRelAbs(expected_wout.overr[jH], test_wout.overr[jH], tolerance));
-  }  // jH
+        IsCloseRelAbs(expected_wout.phips[jF], test_wout.phips[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.over_r[jF], test_wout.over_r[jF],
+                        tolerance));
+  }  // jF
 
   for (int jF = 0; jF < ns; ++jF) {
     CHECK(

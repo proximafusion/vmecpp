@@ -256,26 +256,21 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   std::vector<double> reference_dVds = NetcdfReadArray1D(ncid, "vp");
   std::vector<double> reference_phips = NetcdfReadArray1D(ncid, "phips");
   std::vector<double> reference_overr = NetcdfReadArray1D(ncid, "over_r");
-  for (int jH = 0; jH < fc.ns - 1; ++jH) {
-    EXPECT_TRUE(IsCloseRelAbs(reference_iota_half[jH + 1], wout.iota_half[jH],
-                              tolerance));
+  for (int jF = 0; jF < fc.ns; ++jF) {
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_mass_half[jH + 1], wout.mass[jH], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_pressure_half[jH + 1],
-                              wout.pressure_half[jH], tolerance));
+        IsCloseRelAbs(reference_iota_half[jF], wout.iotas[jF], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_beta[jH + 1], wout.beta[jH], tolerance));
+        IsCloseRelAbs(reference_mass_half[jF], wout.mass[jF], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_buco[jH + 1], wout.buco[jH], tolerance));
+        IsCloseRelAbs(reference_pressure_half[jF], wout.pres[jF], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_bvco[jH + 1], wout.bvco[jH], tolerance));
-    EXPECT_TRUE(
-        IsCloseRelAbs(reference_dVds[jH + 1], wout.dVds[jH], tolerance));
-    EXPECT_TRUE(
-        IsCloseRelAbs(reference_phips[jH + 1], wout.phips[jH], tolerance));
-    EXPECT_TRUE(
-        IsCloseRelAbs(reference_overr[jH + 1], wout.overr[jH], tolerance));
-  }  // jH
+        IsCloseRelAbs(reference_beta[jF], wout.beta_vol[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_buco[jF], wout.buco[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_bvco[jF], wout.bvco[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_dVds[jF], wout.vp[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_phips[jF], wout.phips[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_overr[jF], wout.over_r[jF], tolerance));
+  }  // jF
 
   std::vector<double> reference_jdotb = NetcdfReadArray1D(ncid, "jdotb");
   std::vector<double> reference_bdotb = NetcdfReadArray1D(ncid, "bdotb");
