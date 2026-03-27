@@ -1385,7 +1385,6 @@ class VmecWOut(BaseModelWithNumpy):
             attrs["bsupvmns"] = cpp_wout.bsupvmns
             attrs["gmns"] = cpp_wout.gmns
 
-        # These attributes have zero-padding at the end up to a fixed length
         return VmecWOut(**attrs)
 
     def _to_cpp_wout(self) -> _vmecpp.WOutFileContents:
