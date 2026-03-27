@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774570723828,
+  "lastUpdate": 1774572150608,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -394,6 +394,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.010964357285937431",
             "extra": "mean: 9.905608557333343 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "69142e7a02b5457b323fff1fc4512a1abf0df591",
+          "message": "Vmec constructor -> Factory for error handling during initialization. (#244)\n\nTo get proper exception handling during file IO and mgrid construction, we should move to a factory pattern.\n\nBuilding a Factory function is complicated by the current situation with move/copy assignment operators, and the fact that we have const references in our objects.\n\nRevisit once this is resolved.\nhttps://github.com/proximafusion/vmecpp/issues/164",
+          "timestamp": "2026-03-27T00:38:24Z",
+          "tree_id": "d1c86ca8ebee63e151d20fc645b5bae901836a2d",
+          "url": "https://github.com/proximafusion/vmecpp/commit/69142e7a02b5457b323fff1fc4512a1abf0df591"
+        },
+        "date": 1774572149725,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.0007013029038445,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0022316056287117175",
+            "extra": "mean: 333.25542899997345 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.9876823973533093,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0008221596337784202",
+            "extra": "mean: 334.707598399973 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2496837922475478,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009670402162005456",
+            "extra": "mean: 4.005065731333313 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.60246478101846,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0051946245564453075",
+            "extra": "mean: 1.6598480633332808 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.27820582237098607,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01777270412715383",
+            "extra": "mean: 3.5944610773332593 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10280459167241082,
+            "unit": "iter/sec",
+            "range": "stddev: 0.04241070451910032",
+            "extra": "mean: 9.727191983666671 sec\nrounds: 3"
           }
         ]
       }
