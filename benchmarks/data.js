@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774572150608,
+  "lastUpdate": 1774573341780,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -460,6 +460,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.04241070451910032",
             "extra": "mean: 9.727191983666671 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2d8888e1defbd4d5f2949047dfa742495854ca1f",
+          "message": "SImsopt keep dependency chain even when resolution is inconsistent (#436)\n\nRelated to https://github.com/proximafusion/vmecpp/issues/427",
+          "timestamp": "2026-03-27T00:57:22Z",
+          "tree_id": "3b8c2e550b838b75d8fc95055d8f597c69aa717d",
+          "url": "https://github.com/proximafusion/vmecpp/commit/2d8888e1defbd4d5f2949047dfa742495854ca1f"
+        },
+        "date": 1774573340955,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.931847132955567,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004240172575010991",
+            "extra": "mean: 341.0819032000177 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.925490089099671,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003045399639364468",
+            "extra": "mean: 341.82306879998805 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2453390218864563,
+            "unit": "iter/sec",
+            "range": "stddev: 0.028926613381809265",
+            "extra": "mean: 4.075992446333316 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5993525732370025,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0018944765137329516",
+            "extra": "mean: 1.6684670169999738 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.2784411905724834,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00729835812165881",
+            "extra": "mean: 3.591422655333323 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10185277045853065,
+            "unit": "iter/sec",
+            "range": "stddev: 0.02049071876904756",
+            "extra": "mean: 9.818093268333334 sec\nrounds: 3"
           }
         ]
       }
