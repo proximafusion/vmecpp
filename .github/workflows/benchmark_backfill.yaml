@@ -1,0 +1,395 @@
+name: Benchmark Backfill
+
+on:
+  push:
+    branches:
+      - backfill-benchmark-data
+  workflow_dispatch:
+    inputs:
+      start_sha:
+        description: "Start from this commit (inclusive, oldest). Leave empty for first Python API commit."
+        required: false
+        default: "c2c42436"
+      num_jobs:
+        description: "Number of parallel jobs"
+        required: false
+        default: "20"
+
+permissions:
+  contents: write
+
+# Serialize with the docs workflow to avoid concurrent pushes to benchmark-runs.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Generate the commit matrix
+  # ---------------------------------------------------------------------------
+  generate-matrix:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Generate batch matrix
+        id: matrix
+        run: |
+          START_SHA="${{ inputs.start_sha || '3395faf1' }}"
+
+          # Get all first-parent commits on main, oldest first
+          git log --format="%H" --first-parent main --reverse > all_commits.txt
+
+          # Trim to commits from START_SHA onward
+          if [ -n "$START_SHA" ]; then
+            # Resolve short sha to full
+            full_sha=$(git rev-parse "$START_SHA")
+            line=$(grep -n "$full_sha" all_commits.txt | head -1 | cut -d: -f1)
+            if [ -z "$line" ]; then
+              echo "ERROR: $START_SHA not found in first-parent history of main"
+              exit 1
+            fi
+            sed -i "1,$((line - 1))d" all_commits.txt
+          fi
+
+          total=$(wc -l < all_commits.txt)
+          num_jobs=${{ inputs.num_jobs || '20' }}
+          batch_size=$(( (total + num_jobs - 1) / num_jobs ))
+          echo "Total commits: $total, jobs: $num_jobs, batch size: $batch_size"
+
+          # Split into batches and build JSON matrix
+          matrix='{"include":['
+          batch=0
+          while true; do
+            start=$(( batch * batch_size + 1 ))
+            commits=$(sed -n "${start},$(( start + batch_size - 1 ))p" all_commits.txt | tr '\n' ',' | sed 's/,$//')
+            if [ -z "$commits" ]; then
+              break
+            fi
+            if [ $batch -gt 0 ]; then
+              matrix="${matrix},"
+            fi
+            matrix="${matrix}{\"batch\":${batch},\"commits\":\"${commits}\"}"
+            batch=$(( batch + 1 ))
+          done
+          matrix="${matrix}]}"
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Generated $batch batches"
+
+  # ---------------------------------------------------------------------------
+  # Run benchmarks for each batch of commits
+  # ---------------------------------------------------------------------------
+  bench-batch:
+    needs: generate-matrix
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Save benchmark assets from main
+        run: |
+          # Save the current benchmark script and test data so we can overlay
+          # them onto older checkouts where they may not exist yet.
+          cp benchmarks/test_benchmarks.py /tmp/test_benchmarks.py
+          cp -r src/vmecpp/cpp/vmecpp/test_data /tmp/test_data_backup || true
+          cp -r examples/data /tmp/examples_data_backup || true
+
+      - name: Run benchmarks on each commit
+        run: |
+          mkdir -p results
+          IFS=',' read -ra COMMITS <<< "${{ matrix.commits }}"
+
+          for sha in "${COMMITS[@]}"; do
+            echo "========================================"
+            echo "Benchmarking commit: ${sha:0:8}"
+            echo "========================================"
+
+            # Clean checkout of the commit
+            git checkout --force "$sha"
+            git clean -fdx -e results
+
+            # Overlay the current benchmark script
+            mkdir -p benchmarks
+            cp /tmp/test_benchmarks.py benchmarks/test_benchmarks.py
+
+            # Restore test data and examples if missing at this commit
+            if [ -d /tmp/test_data_backup ]; then
+              mkdir -p src/vmecpp/cpp/vmecpp/test_data
+              cp -rn /tmp/test_data_backup/* src/vmecpp/cpp/vmecpp/test_data/ 2>/dev/null || true
+            fi
+            if [ -d /tmp/examples_data_backup ]; then
+              mkdir -p examples/data
+              cp -rn /tmp/examples_data_backup/* examples/data/ 2>/dev/null || true
+            fi
+
+            # Fix broken FetchContent pins: the old indata2json hash was force-pushed
+            # away from its repo, replace with the current working hash.
+            if [ -f CMakeLists.txt ]; then
+              sed -i 's/d0247ac15b0a0032e3129906ac022326a8181e30/f59e3ddd66486b63536f141a786d39c23d654c77/g' CMakeLists.txt
+            fi
+
+            # Try to install vmecpp; skip on failure.
+            # Old commits may not have the [benchmark] extra, so install
+            # pytest-benchmark separately to guarantee it's always available.
+            uv pip install --system pytest pytest-benchmark 2>/dev/null
+            if ! uv pip install --system . 2>&1; then
+              echo "INSTALL FAILED: ${sha:0:8} (skipping)"
+              uv pip uninstall --system vmecpp 2>/dev/null || true
+              continue
+            fi
+
+            # Verify vmecpp actually imported
+            if ! python -c "import vmecpp" 2>/dev/null; then
+              echo "IMPORT FAILED: ${sha:0:8} (skipping)"
+              uv pip uninstall --system vmecpp 2>/dev/null || true
+              continue
+            fi
+
+            # Run each benchmark test individually so partial results are captured
+            # even when some tests fail (e.g., free-boundary on old commits).
+            any_passed=false
+            for test in \
+              test_bench_cli_startup \
+              test_bench_cli_invalid_input \
+              test_bench_fixed_boundary_w7x \
+              test_bench_fixed_boundary_cma \
+              test_bench_response_table_from_coils \
+              test_bench_free_boundary
+            do
+              rm -f "/tmp/bench_${test}.json"
+              if python -m pytest "benchmarks/test_benchmarks.py::${test}" \
+                   --benchmark-json="/tmp/bench_${test}.json"; then
+                any_passed=true
+              else
+                rm -f "/tmp/bench_${test}.json"
+              fi
+            done
+
+            # Merge individual test results into one JSON per commit
+            if [ "$any_passed" = true ]; then
+              python3 - "$sha" <<'MERGE'
+          import json, sys, glob
+          sha = sys.argv[1]
+          merged_benchmarks = []
+          for f in sorted(glob.glob("/tmp/bench_test_bench_*.json")):
+              with open(f) as fh:
+                  data = json.load(fh)
+              merged_benchmarks.extend(data.get("benchmarks", []))
+          if merged_benchmarks:
+              # Use the first file as a template for the top-level structure
+              with open(f) as fh:
+                  out = json.load(fh)
+              out["benchmarks"] = merged_benchmarks
+              with open(f"results/{sha}.json", "w") as fh:
+                  json.dump(out, fh)
+              print(f"  Collected {len(merged_benchmarks)} benchmark(s)")
+          MERGE
+            fi
+
+            rm -f /tmp/bench_test_bench_*.json
+            uv pip uninstall --system vmecpp 2>/dev/null || true
+            echo ""
+          done
+
+          echo "Completed batch ${{ matrix.batch }}. Results:"
+          ls results/ | wc -l
+          echo "commits benchmarked"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ matrix.batch }}
+          path: results/
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Merge all results into benchmark-runs branch
+  # ---------------------------------------------------------------------------
+  merge-results:
+    needs: bench-batch
+    runs-on: ubuntu-22.04
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results
+          pattern: bench-results-*
+          merge-multiple: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Merge results into data.js
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import os
+          import subprocess
+          import time
+          from pathlib import Path
+
+          REPO_URL = "https://github.com/proximafusion/vmecpp"
+          results_dir = Path("all-results")
+
+          if not results_dir.exists() or not any(results_dir.glob("*.json")):
+              print("No benchmark results found. Exiting.")
+              exit(0)
+
+          # Get ordered commit list (oldest first) to insert results in order
+          commit_order = subprocess.check_output(
+              ["git", "log", "--format=%H", "--first-parent", "main", "--reverse"],
+              text=True,
+          ).strip().split("\n")
+          commit_index = {sha: i for i, sha in enumerate(commit_order)}
+
+          # Load existing data.js from benchmark-runs branch
+          try:
+              existing = subprocess.check_output(
+                  ["git", "show", "origin/benchmark-runs:benchmarks/data.js"],
+                  text=True,
+              )
+              data = json.loads(existing.replace("window.BENCHMARK_DATA = ", ""))
+          except subprocess.CalledProcessError:
+              data = {"lastUpdate": 0, "repoUrl": REPO_URL, "entries": {"Benchmark": []}}
+
+          existing_ids = {e["commit"]["id"] for e in data["entries"]["Benchmark"]}
+
+          # Parse each result file and build entries
+          new_entries = []
+          for result_file in sorted(results_dir.glob("*.json")):
+              sha = result_file.stem
+              if sha in existing_ids:
+                  print(f"Skipping {sha[:8]} (already in data.js)")
+                  continue
+
+              with open(result_file) as f:
+                  bench_data = json.load(f)
+
+              # Get commit metadata from git
+              fmt = "%an%n%ae%n%cn%n%ce%n%s%n%aI%n%T"
+              info = subprocess.check_output(
+                  ["git", "log", "-1", "--format=" + fmt, sha], text=True
+              ).strip().split("\n")
+
+              author_name, author_email, committer_name, committer_email, message, timestamp, tree_id = info
+
+              entry = {
+                  "commit": {
+                      "author": {"name": author_name, "email": author_email, "username": ""},
+                      "committer": {"name": committer_name, "email": committer_email, "username": ""},
+                      "distinct": True,
+                      "id": sha,
+                      "message": message,
+                      "timestamp": timestamp,
+                      "tree_id": tree_id,
+                      "url": f"{REPO_URL}/commit/{sha}",
+                  },
+                  "date": int(time.time() * 1000),
+                  "tool": "pytest",
+                  "benches": [],
+              }
+
+              # Convert pytest-benchmark JSON to github-action-benchmark format
+              for bench in bench_data.get("benchmarks", []):
+                  name = f"benchmarks/test_benchmarks.py::{bench['name']}"
+                  mean_sec = bench["stats"]["mean"]
+                  ops_per_sec = 1.0 / mean_sec if mean_sec > 0 else 0
+                  stddev = bench["stats"]["stddev"]
+                  rounds = bench["stats"]["rounds"]
+
+                  if mean_sec >= 1:
+                      extra_mean = f"mean: {mean_sec:.4f} sec"
+                  else:
+                      extra_mean = f"mean: {mean_sec * 1000:.4f} msec"
+
+                  entry["benches"].append({
+                      "name": name,
+                      "value": ops_per_sec,
+                      "unit": "iter/sec",
+                      "range": f"stddev: {stddev}",
+                      "extra": f"{extra_mean}\nrounds: {rounds}",
+                  })
+
+              if entry["benches"]:
+                  new_entries.append((commit_index.get(sha, float("inf")), entry))
+                  print(f"Added {sha[:8]}: {message[:60]} ({len(entry['benches'])} benchmarks)")
+
+          if not new_entries:
+              print("No new entries to add.")
+              exit(0)
+
+          # Sort new entries by commit order
+          new_entries.sort(key=lambda x: x[0])
+
+          # Merge with existing and sort everything by commit order
+          all_entries = [e for _, e in new_entries] + data["entries"]["Benchmark"]
+          all_entries.sort(key=lambda e: commit_index.get(e["commit"]["id"], float("inf")))
+
+          data["entries"]["Benchmark"] = all_entries
+          data["lastUpdate"] = int(time.time() * 1000)
+
+          # Write merged data.js
+          os.makedirs("merged", exist_ok=True)
+          with open("merged/data.js", "w") as f:
+              f.write("window.BENCHMARK_DATA = ")
+              json.dump(data, f, indent=0)
+
+          print(f"\nMerged {len(new_entries)} new + {len(existing_ids)} existing = {len(all_entries)} total entries")
+          PYEOF
+
+      - name: Push to benchmark-runs branch
+        run: |
+          if [ ! -f merged/data.js ]; then
+            echo "No merged data to push."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Checkout the benchmark-runs branch
+          git fetch origin benchmark-runs || true
+          git checkout benchmark-runs 2>/dev/null || git checkout --orphan benchmark-runs
+
+          # Update data.js
+          mkdir -p benchmarks
+          cp merged/data.js benchmarks/data.js
+
+          git add benchmarks/data.js
+          git commit -m "Add backfill benchmark results for historical commits" || echo "Nothing to commit"
+          git push origin benchmark-runs
