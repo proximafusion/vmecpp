@@ -219,7 +219,7 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.mercier.Dgeod, wout["DGeod"][()], 1.0e-8)
 
     # wout
-    assert output_quantities.wout.sign_of_jacobian == wout["signgs"][()]
+    assert output_quantities.wout.signgs == wout["signgs"][()]
     assert output_quantities.wout.gamma == wout["gamma"][()]
 
     assert (
@@ -315,7 +315,7 @@ def test_output_quantities():
 
     assert output_quantities.wout.ns == wout["ns"][()]
     assert output_quantities.wout.ftolv == wout["ftolv"][()]
-    assert output_quantities.wout.maximum_iterations == wout["niter"][()]
+    assert output_quantities.wout.niter == wout["niter"][()]
 
     assert output_quantities.wout.lfreeb == (wout["lfreeb__logical__"][()] != 0)
     assert (
@@ -346,7 +346,7 @@ def test_output_quantities():
 
     assert is_close_ra(output_quantities.wout.aspect, wout["aspect"][()], 1.0e-11)
 
-    assert is_close_ra(output_quantities.wout.betatot, wout["betatotal"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.betatotal, wout["betatotal"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.betapol, wout["betapol"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.betator, wout["betator"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.betaxis, wout["betaxis"][()], 1.0e-11)
@@ -356,13 +356,13 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.rbtor, wout["rbtor"][()], 1.0e-11)
 
     assert is_close_ra(output_quantities.wout.IonLarmor, wout["IonLarmor"][()], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.VolAvgB, wout["volavgB"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.volavgB, wout["volavgB"][()], 1.0e-11)
 
     assert is_close_ra(output_quantities.wout.ctor, wout["ctor"][()], 1.0e-6)
 
     assert is_close_ra(output_quantities.wout.Aminor_p, wout["Aminor_p"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.Rmajor_p, wout["Rmajor_p"][()], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.volume_p, wout["volume_p"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.volume, wout["volume_p"][()], 1.0e-11)
 
     assert is_close_ra(output_quantities.wout.fsqr, wout["fsqr"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.fsqz, wout["fsqz"][()], 1.0e-11)
@@ -371,14 +371,12 @@ def test_output_quantities():
     # -------------------
     # one-dimensional array quantities
 
-    assert is_close_ra(output_quantities.wout.iota_full, wout["iotaf"][()], 1.0e-6)
-    assert is_close_ra(
-        output_quantities.wout.safety_factor, wout["q_factor"][()], 1.0e-10
-    )
-    assert is_close_ra(output_quantities.wout.pressure_full, wout["presf"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.toroidal_flux, wout["phi"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.iotaf, wout["iotaf"][()], 1.0e-6)
+    assert is_close_ra(output_quantities.wout.q_factor, wout["q_factor"][()], 1.0e-10)
+    assert is_close_ra(output_quantities.wout.presf, wout["presf"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.phi, wout["phi"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.phipf, wout["phipf"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.poloidal_flux, wout["chi"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.chi, wout["chi"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.chipf, wout["chipf"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.jcuru, wout["jcuru"][()], 1.0e-6)
     assert is_close_ra(output_quantities.wout.jcurv, wout["jcurv"][()], 1.0e-6)
@@ -392,7 +390,7 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.buco, wout["buco"][()][1:], 1.0e-8)
     assert is_close_ra(output_quantities.wout.bvco, wout["bvco"][()][1:], 1.0e-8)
     assert is_close_ra(output_quantities.wout.dVds, wout["vp"][()][1:], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.spectral_width, wout["specw"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.specw, wout["specw"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.phips, wout["phips"][()][1:], 1.0e-8)
     assert is_close_ra(output_quantities.wout.overr, wout["over_r"][()][1:], 1.0e-8)
 
@@ -400,10 +398,10 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.bdotgradv, wout["bdotgradv"][()], 1.0e-8)
 
     assert is_close_ra(output_quantities.wout.DMerc, wout["DMerc"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.Dshear, wout["DShear"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.Dwell, wout["DWell"][()], 1.0e-9)
-    assert is_close_ra(output_quantities.wout.Dcurr, wout["DCurr"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.Dgeod, wout["DGeod"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.DShear, wout["DShear"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.DWell, wout["DWell"][()], 1.0e-9)
+    assert is_close_ra(output_quantities.wout.DCurr, wout["DCurr"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.DGeod, wout["DGeod"][()], 1.0e-8)
 
     # Fortran VMEC defines equif over all flux surfaces,
     # but then skips the axis and boundary during writing.
@@ -424,8 +422,8 @@ def test_output_quantities():
     # -------------------
     # stellarator-symmetric Fourier coefficients
 
-    assert is_close_ra(output_quantities.wout.raxis_c, wout["raxis_cc"][()], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.zaxis_s, wout["zaxis_cs"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.raxis_cc, wout["raxis_cc"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.zaxis_cs, wout["zaxis_cs"][()], 1.0e-11)
 
     assert is_close_ra(
         np.reshape(output_quantities.wout.rmnc, [ns, mnmax], order="C"),

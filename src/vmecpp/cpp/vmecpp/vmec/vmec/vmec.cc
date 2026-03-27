@@ -404,7 +404,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     summary.fsqz = w.fsqz;
     summary.fsql = w.fsql;
     summary.ftolv = fc_.ftolv;
-    summary.betatot = w.betatot;
+    summary.betatot = w.betatotal;
     summary.betapol = w.betapol;
     summary.betator = w.betator;
     summary.w_mhd = h_.mhdEnergy * 4.0 * M_PI * M_PI;

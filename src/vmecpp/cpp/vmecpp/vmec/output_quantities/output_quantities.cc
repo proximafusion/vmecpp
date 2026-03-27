@@ -795,9 +795,9 @@ absl::Status vmecpp::Threed1ShafranovIntegrals::LoadInto(
 absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   file.createGroup(this->H5key);
 
-  WRITEMEMBER(version);
+  WRITEMEMBER(version_);
   // TODO(jurasic) input_extension
-  WRITEMEMBER(sign_of_jacobian);
+  WRITEMEMBER(signgs);
   WRITEMEMBER(gamma);
   WRITEMEMBER(pcurr_type);
   WRITEMEMBER(pmass_type);
@@ -817,7 +817,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(lasym);
   WRITEMEMBER(ns);
   WRITEMEMBER(ftolv);
-  WRITEMEMBER(maximum_iterations);
+  WRITEMEMBER(niter);
   WRITEMEMBER(lfreeb);
   WRITEMEMBER(mgrid_file);
   WRITEMEMBER(nextcur);
@@ -832,7 +832,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(mnmax_nyq);
   WRITEMEMBER(ier_flag);
   WRITEMEMBER(aspect);
-  WRITEMEMBER(betatot);
+  WRITEMEMBER(betatotal);
   WRITEMEMBER(betapol);
   WRITEMEMBER(betator);
   WRITEMEMBER(betaxis);
@@ -840,20 +840,20 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(rbtor0);
   WRITEMEMBER(rbtor);
   WRITEMEMBER(IonLarmor);
-  WRITEMEMBER(VolAvgB);
+  WRITEMEMBER(volavgB);
   WRITEMEMBER(ctor);
   WRITEMEMBER(Aminor_p);
   WRITEMEMBER(Rmajor_p);
-  WRITEMEMBER(volume_p);
+  WRITEMEMBER(volume);
   WRITEMEMBER(fsqr);
   WRITEMEMBER(fsqz);
   WRITEMEMBER(fsql);
-  WRITEMEMBER(iota_full);
-  WRITEMEMBER(safety_factor);
-  WRITEMEMBER(pressure_full);
-  WRITEMEMBER(toroidal_flux);
+  WRITEMEMBER(iotaf);
+  WRITEMEMBER(q_factor);
+  WRITEMEMBER(presf);
+  WRITEMEMBER(phi);
   WRITEMEMBER(phipf);
-  WRITEMEMBER(poloidal_flux);
+  WRITEMEMBER(chi);
   WRITEMEMBER(chipf);
   WRITEMEMBER(jcuru);
   WRITEMEMBER(jcurv);
@@ -864,7 +864,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(buco);
   WRITEMEMBER(bvco);
   WRITEMEMBER(dVds);
-  WRITEMEMBER(spectral_width);
+  WRITEMEMBER(specw);
   WRITEMEMBER(phips);
   WRITEMEMBER(overr);
   WRITEMEMBER(jdotb);
@@ -873,10 +873,10 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   //  WRITEMEMBER(bdotb);
   WRITEMEMBER(bdotgradv);
   WRITEMEMBER(DMerc);
-  WRITEMEMBER(Dshear);
-  WRITEMEMBER(Dwell);
-  WRITEMEMBER(Dcurr);
-  WRITEMEMBER(Dgeod);
+  WRITEMEMBER(DShear);
+  WRITEMEMBER(DWell);
+  WRITEMEMBER(DCurr);
+  WRITEMEMBER(DGeod);
   WRITEMEMBER(equif);
   WRITEMEMBER(curlabel);
   WRITEMEMBER(potvac);
@@ -884,8 +884,8 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(xn);
   WRITEMEMBER(xm_nyq);
   WRITEMEMBER(xn_nyq);
-  WRITEMEMBER(raxis_c);
-  WRITEMEMBER(zaxis_s);
+  WRITEMEMBER(raxis_cc);
+  WRITEMEMBER(zaxis_cs);
   WRITEMEMBER(rmnc);
   WRITEMEMBER(zmns);
   WRITEMEMBER(lmns_full);
@@ -898,8 +898,8 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(bsubsmns_full);
   WRITEMEMBER(bsupumnc);
   WRITEMEMBER(bsupvmnc);
-  WRITEMEMBER(raxis_s);
-  WRITEMEMBER(zaxis_c);
+  WRITEMEMBER(raxis_cs);
+  WRITEMEMBER(zaxis_cc);
   WRITEMEMBER(rmns);
   WRITEMEMBER(zmnc);
   WRITEMEMBER(lmnc_full);
@@ -918,9 +918,9 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
 
 absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
                                                 H5::H5File& from_file) {
-  READMEMBER(version);
+  READMEMBER(version_);
   // TODO(jurasic) input_extension
-  READMEMBER(sign_of_jacobian);
+  READMEMBER(signgs);
   READMEMBER(gamma);
   READMEMBER(pcurr_type);
   READMEMBER(pmass_type);
@@ -940,7 +940,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(lasym);
   READMEMBER(ns);
   READMEMBER(ftolv);
-  READMEMBER(maximum_iterations);
+  READMEMBER(niter);
   READMEMBER(lfreeb);
   READMEMBER(mgrid_file);
   // Compatibility with HDF5 files that do not have the nextcur and extcur
@@ -962,7 +962,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(mnmax_nyq);
   READMEMBER(ier_flag);
   READMEMBER(aspect);
-  READMEMBER(betatot);
+  READMEMBER(betatotal);
   READMEMBER(betapol);
   READMEMBER(betator);
   READMEMBER(betaxis);
@@ -970,20 +970,20 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(rbtor0);
   READMEMBER(rbtor);
   READMEMBER(IonLarmor);
-  READMEMBER(VolAvgB);
+  READMEMBER(volavgB);
   READMEMBER(ctor);
   READMEMBER(Aminor_p);
   READMEMBER(Rmajor_p);
-  READMEMBER(volume_p);
+  READMEMBER(volume);
   READMEMBER(fsqr);
   READMEMBER(fsqz);
   READMEMBER(fsql);
-  READMEMBER(iota_full);
-  READMEMBER(safety_factor);
-  READMEMBER(pressure_full);
-  READMEMBER(toroidal_flux);
+  READMEMBER(iotaf);
+  READMEMBER(q_factor);
+  READMEMBER(presf);
+  READMEMBER(phi);
   READMEMBER(phipf);
-  READMEMBER(poloidal_flux);
+  READMEMBER(chi);
   READMEMBER(chipf);
   READMEMBER(jcuru);
   READMEMBER(jcurv);
@@ -994,7 +994,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(buco);
   READMEMBER(bvco);
   READMEMBER(dVds);
-  READMEMBER(spectral_width);
+  READMEMBER(specw);
   READMEMBER(phips);
   READMEMBER(overr);
   READMEMBER(jdotb);
@@ -1003,10 +1003,10 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   //  READMEMBER(bdotb);
   READMEMBER(bdotgradv);
   READMEMBER(DMerc);
-  READMEMBER(Dshear);
-  READMEMBER(Dwell);
-  READMEMBER(Dcurr);
-  READMEMBER(Dgeod);
+  READMEMBER(DShear);
+  READMEMBER(DWell);
+  READMEMBER(DCurr);
+  READMEMBER(DGeod);
   READMEMBER(equif);
   READMEMBER(curlabel);
   READMEMBER(potvac);
@@ -1014,8 +1014,8 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(xn);
   READMEMBER(xm_nyq);
   READMEMBER(xn_nyq);
-  READMEMBER(raxis_c);
-  READMEMBER(zaxis_s);
+  READMEMBER(raxis_cc);
+  READMEMBER(zaxis_cs);
   READMEMBER(rmnc);
   READMEMBER(zmns);
   READMEMBER(lmns_full);
@@ -1028,8 +1028,8 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(bsubsmns_full);
   READMEMBER(bsupumnc);
   READMEMBER(bsupvmnc);
-  READMEMBER(raxis_s);
-  READMEMBER(zaxis_c);
+  READMEMBER(raxis_cs);
+  READMEMBER(zaxis_cc);
   READMEMBER(rmns);
   READMEMBER(zmnc);
   READMEMBER(lmnc_full);
@@ -4217,7 +4217,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // take version from educational_VMEC for now
   // TODO(jons): Upgrade VMEC++ to match PARVMEC and then change version to
   // "9.0".
-  wout.version = "8.52";
+  wout.version_ = 8.52;
 
   // We cannot provide a meaningful value for input_extension here, as we run
   // from a json input, but the input_extension indicates the existence of a
@@ -4225,7 +4225,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // To avoid confusion we leave it blank.
   wout.input_extension = "";
 
-  wout.sign_of_jacobian = m_vmec_internal_results.sign_of_jacobian;
+  wout.signgs = m_vmec_internal_results.sign_of_jacobian;
 
   // TODO(jons): Extend data set such that all input file contents are available
   // in the output file.
@@ -4256,7 +4256,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   // TODO(jons): Technically, this is not an input but an output (should go into
   // output data section).
-  wout.maximum_iterations = iter2;
+  wout.niter = iter2;
 
   wout.lfreeb = indata.lfreeb;
   wout.mgrid_file = indata.mgrid_file;
@@ -4288,7 +4288,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   wout.aspect = threed1_geomag.aspect;
 
-  wout.betatot = threed1_betas.betatot;
+  wout.betatotal = threed1_betas.betatot;
   wout.betapol = threed1_betas.betapol;
   wout.betator = threed1_betas.betator;
   wout.betaxis = threed1_betas.betaxis;
@@ -4299,13 +4299,13 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.rbtor = handover_storage.rBtor;
 
   wout.IonLarmor = threed1_geomag.IonLarmor;
-  wout.VolAvgB = threed1_geomag.VolAvgB;
+  wout.volavgB = threed1_geomag.VolAvgB;
 
   wout.ctor = handover_storage.cTor / MU_0;
 
   wout.Aminor_p = threed1_geomag.Aminor_p;
   wout.Rmajor_p = threed1_geomag.Rmajor_p;
-  wout.volume_p = threed1_geomag.volume_p;
+  wout.volume = threed1_geomag.volume_p;
 
   wout.fsqr = fc.fsqr;
   wout.fsqz = fc.fsqz;
@@ -4318,11 +4318,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               wout.force_residual_lambda;
   wout.delbsq = ToEigenVector(fc.delbsq);
   // Convert status codes to integer values
-  wout.restart_reasons = Eigen::VectorXi::Zero(fc.restart_reasons.size());
+  wout.restart_reason_timetrace =
+      Eigen::VectorXi::Zero(fc.restart_reasons.size());
   for (Eigen::Index i = 0;
        i < static_cast<Eigen::Index>(fc.restart_reasons.size()); ++i) {
     // VmecStatusCode
-    wout.restart_reasons(i) = static_cast<int>(fc.restart_reasons[i]);
+    wout.restart_reason_timetrace(i) = static_cast<int>(fc.restart_reasons[i]);
   }
   wout.itfsq = wout.fsqt.size();
   // First entry is the staring energy W
@@ -4337,21 +4338,21 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // -------------------
   // one-dimensional array quantities
 
-  wout.iota_full = m_vmec_internal_results.iotaF;
+  wout.iotaf = m_vmec_internal_results.iotaF;
 
-  wout.safety_factor = VectorXd::Ones(fc.ns) * DBL_MAX;
+  wout.q_factor = VectorXd::Ones(fc.ns) * DBL_MAX;
 
-  wout.pressure_full = VectorXd::Zero(fc.ns);
+  wout.presf = VectorXd::Zero(fc.ns);
   wout.phipf = VectorXd::Zero(fc.ns);
   wout.chipf = VectorXd::Zero(fc.ns);
   wout.jcuru = VectorXd::Zero(fc.ns);
   wout.jcurv = VectorXd::Zero(fc.ns);
 
   for (int jF = 0; jF < fc.ns; ++jF) {
-    if (wout.iota_full[jF] != 0.0) {
-      wout.safety_factor[jF] = 1.0 / wout.iota_full[jF];
+    if (wout.iotaf[jF] != 0.0) {
+      wout.q_factor[jF] = 1.0 / wout.iotaf[jF];
     }
-    wout.pressure_full[jF] = threed1_first_table_intermediate.presf[jF] / MU_0;
+    wout.presf[jF] = threed1_first_table_intermediate.presf[jF] / MU_0;
     wout.phipf[jF] = m_vmec_internal_results.sign_of_jacobian * 2.0 * M_PI *
                      m_vmec_internal_results.phipF[jF];
     wout.chipf[jF] = m_vmec_internal_results.sign_of_jacobian * 2.0 * M_PI *
@@ -4359,9 +4360,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     wout.jcuru[jF] = threed1_first_table_intermediate.jcuru[jF] / MU_0;
     wout.jcurv[jF] = threed1_first_table_intermediate.jcurv[jF] / MU_0;
   }  // jF
-  wout.toroidal_flux = m_vmec_internal_results.phiF;
-  wout.poloidal_flux = threed1_first_table_intermediate.chi;
-  wout.spectral_width = m_vmec_internal_results.spectral_width;
+  wout.phi = m_vmec_internal_results.phiF;
+  wout.chi = threed1_first_table_intermediate.chi;
+  wout.specw = m_vmec_internal_results.spectral_width;
 
   wout.mass.resize(fc.ns - 1);
   wout.pressure_half.resize(fc.ns - 1);
@@ -4382,10 +4383,10 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.bdotgradv = jxbout.bdotgradv;
 
   wout.DMerc = mercier.DMerc;
-  wout.Dshear = mercier.Dshear;
-  wout.Dwell = mercier.Dwell;
-  wout.Dcurr = mercier.Dcurr;
-  wout.Dgeod = mercier.Dgeod;
+  wout.DShear = mercier.Dshear;
+  wout.DWell = mercier.Dwell;
+  wout.DCurr = mercier.Dcurr;
+  wout.DGeod = mercier.Dgeod;
 
   wout.equif = threed1_first_table.radial_force;
 
@@ -4403,8 +4404,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // -------------------
   // stellarator-symmetric Fourier coefficients
 
-  wout.raxis_c = threed1_axis.raxis_symm;
-  wout.zaxis_s = threed1_axis.zaxis_symm;
+  wout.raxis_cc = threed1_axis.raxis_symm;
+  wout.zaxis_cs = threed1_axis.zaxis_symm;
 
   // NYQUIST FREQUENCY REQUIRES FACTOR OF 1/2
   std::vector<double> cosmui(s.nThetaReduced * (s.mnyq2 + 1));
@@ -4723,8 +4724,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // non-stellarator-symmetric Fourier coefficients
 
   if (s.lasym) {
-    wout.raxis_s = threed1_axis.raxis_asym;
-    wout.zaxis_c = threed1_axis.zaxis_asym;
+    wout.raxis_cs = threed1_axis.raxis_asym;
+    wout.zaxis_cc = threed1_axis.zaxis_asym;
 
     // MUST CONVERT m=1 MODES... FROM INTERNAL TO PHYSICAL FORM
     // Extrapolation of m=0 Lambda (cs) modes, which are not evolved at j=1,
@@ -4858,9 +4859,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
 void vmecpp::CompareWOut(const WOutFileContents& test_wout,
                          const WOutFileContents& expected_wout,
-                         double tolerance,
-                         bool check_equal_maximum_iterations) {
-  CHECK_EQ(test_wout.sign_of_jacobian, expected_wout.sign_of_jacobian);
+                         double tolerance, bool check_equal_niter) {
+  CHECK_EQ(test_wout.signgs, expected_wout.signgs);
   CHECK_EQ(test_wout.gamma, expected_wout.gamma);
   CHECK_EQ(test_wout.pcurr_type, expected_wout.pcurr_type);
   CHECK_EQ(test_wout.pmass_type, expected_wout.pmass_type);
@@ -4877,8 +4877,8 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
 
   CHECK_EQ(test_wout.ns, expected_wout.ns);
   CHECK_EQ(test_wout.ftolv, expected_wout.ftolv);
-  if (check_equal_maximum_iterations) {
-    CHECK_EQ(test_wout.maximum_iterations, expected_wout.maximum_iterations);
+  if (check_equal_niter) {
+    CHECK_EQ(test_wout.niter, expected_wout.niter);
   }
 
   CHECK_EQ(test_wout.lfreeb, expected_wout.lfreeb);
@@ -4901,7 +4901,7 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
 
   CHECK(IsCloseRelAbs(expected_wout.aspect, test_wout.aspect, tolerance));
 
-  CHECK(IsCloseRelAbs(expected_wout.betatot, test_wout.betatot, tolerance));
+  CHECK(IsCloseRelAbs(expected_wout.betatotal, test_wout.betatotal, tolerance));
   CHECK(IsCloseRelAbs(expected_wout.betapol, test_wout.betapol, tolerance));
   CHECK(IsCloseRelAbs(expected_wout.betator, test_wout.betator, tolerance));
   CHECK(IsCloseRelAbs(expected_wout.betaxis, test_wout.betaxis, tolerance));
@@ -4912,13 +4912,13 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
   CHECK(IsCloseRelAbs(expected_wout.rbtor, test_wout.rbtor, tolerance));
 
   CHECK(IsCloseRelAbs(expected_wout.IonLarmor, test_wout.IonLarmor, tolerance));
-  CHECK(IsCloseRelAbs(expected_wout.VolAvgB, test_wout.VolAvgB, tolerance));
+  CHECK(IsCloseRelAbs(expected_wout.volavgB, test_wout.volavgB, tolerance));
 
   CHECK(IsCloseRelAbs(expected_wout.ctor, test_wout.ctor, tolerance));
 
   CHECK(IsCloseRelAbs(expected_wout.Aminor_p, test_wout.Aminor_p, tolerance));
   CHECK(IsCloseRelAbs(expected_wout.Rmajor_p, test_wout.Rmajor_p, tolerance));
-  CHECK(IsCloseRelAbs(expected_wout.volume_p, test_wout.volume_p, tolerance));
+  CHECK(IsCloseRelAbs(expected_wout.volume, test_wout.volume, tolerance));
 
   CHECK(IsCloseRelAbs(expected_wout.fsqr, test_wout.fsqr, tolerance));
   CHECK(IsCloseRelAbs(expected_wout.fsqz, test_wout.fsqz, tolerance));
@@ -4927,18 +4927,16 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
   // -------------------
   // one-dimensional array quantities
 
-  const int ns = static_cast<int>(expected_wout.iota_full.size());
+  const int ns = static_cast<int>(expected_wout.iotaf.size());
   for (int jF = 0; jF < ns; ++jF) {
-    CHECK(IsCloseRelAbs(expected_wout.iota_full[jF], test_wout.iota_full[jF],
+    CHECK(
+        IsCloseRelAbs(expected_wout.iotaf[jF], test_wout.iotaf[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.q_factor[jF], test_wout.q_factor[jF],
                         tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.safety_factor[jF],
-                        test_wout.safety_factor[jF], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.pressure_full[jF],
-                        test_wout.pressure_full[jF], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.toroidal_flux[jF],
-                        test_wout.toroidal_flux[jF], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.poloidal_flux[jF],
-                        test_wout.poloidal_flux[jF], tolerance));
+    CHECK(
+        IsCloseRelAbs(expected_wout.presf[jF], test_wout.presf[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.phi[jF], test_wout.phi[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.chi[jF], test_wout.chi[jF], tolerance));
     CHECK(
         IsCloseRelAbs(expected_wout.phipf[jF], test_wout.phipf[jF], tolerance));
     CHECK(
@@ -4949,8 +4947,8 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
     CHECK(
         IsCloseRelAbs(expected_wout.jcurv[jF], test_wout.jcurv[jF], tolerance))
         << "jF = " << jF;
-    CHECK(IsCloseRelAbs(expected_wout.spectral_width[jF],
-                        test_wout.spectral_width[jF], tolerance));
+    CHECK(
+        IsCloseRelAbs(expected_wout.specw[jF], test_wout.specw[jF], tolerance));
   }  // jF
 
   for (int jH = 0; jH < ns - 1; ++jH) {
@@ -4982,17 +4980,17 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
     CHECK(
         IsCloseRelAbs(expected_wout.DMerc[jF], test_wout.DMerc[jF], tolerance))
         << "jF = " << jF;
-    CHECK(IsCloseRelAbs(expected_wout.Dshear[jF], test_wout.Dshear[jF],
+    CHECK(IsCloseRelAbs(expected_wout.DShear[jF], test_wout.DShear[jF],
                         tolerance))
         << "jF = " << jF;
     CHECK(
-        IsCloseRelAbs(expected_wout.Dwell[jF], test_wout.Dwell[jF], tolerance))
+        IsCloseRelAbs(expected_wout.DWell[jF], test_wout.DWell[jF], tolerance))
         << "jF = " << jF;
     CHECK(
-        IsCloseRelAbs(expected_wout.Dcurr[jF], test_wout.Dcurr[jF], tolerance))
+        IsCloseRelAbs(expected_wout.DCurr[jF], test_wout.DCurr[jF], tolerance))
         << "jF = " << jF;
     CHECK(
-        IsCloseRelAbs(expected_wout.Dgeod[jF], test_wout.Dgeod[jF], tolerance))
+        IsCloseRelAbs(expected_wout.DGeod[jF], test_wout.DGeod[jF], tolerance))
         << "jF = " << jF;
   }  // jF
 
@@ -5019,9 +5017,9 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
   // stellarator-symmetric Fourier coefficients
 
   for (int n = 0; n <= test_wout.ntor; ++n) {
-    CHECK(IsCloseRelAbs(expected_wout.raxis_c[n], test_wout.raxis_c[n],
+    CHECK(IsCloseRelAbs(expected_wout.raxis_cc[n], test_wout.raxis_cc[n],
                         tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.zaxis_s[n], test_wout.zaxis_s[n],
+    CHECK(IsCloseRelAbs(expected_wout.zaxis_cs[n], test_wout.zaxis_cs[n],
                         tolerance));
   }  // n
 
@@ -5090,9 +5088,9 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
 
   if (test_wout.lasym) {
     for (int n = 0; n <= test_wout.ntor; ++n) {
-      CHECK(IsCloseRelAbs(expected_wout.raxis_s[n], test_wout.raxis_s[n],
+      CHECK(IsCloseRelAbs(expected_wout.raxis_cs[n], test_wout.raxis_cs[n],
                           tolerance));
-      CHECK(IsCloseRelAbs(expected_wout.zaxis_c[n], test_wout.zaxis_c[n],
+      CHECK(IsCloseRelAbs(expected_wout.zaxis_cc[n], test_wout.zaxis_cc[n],
                           tolerance));
     }  // n
   }

@@ -87,7 +87,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   int ncid;
   ASSERT_EQ(nc_open(filename.c_str(), NC_NOWRITE, &ncid), NC_NOERR);
 
-  EXPECT_EQ(wout.sign_of_jacobian, NetcdfReadInt(ncid, "signgs"));
+  EXPECT_EQ(wout.signgs, NetcdfReadInt(ncid, "signgs"));
 
   EXPECT_EQ(wout.gamma, NetcdfReadDouble(ncid, "gamma"));
 
@@ -132,7 +132,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
 
   EXPECT_EQ(wout.ns, NetcdfReadInt(ncid, "ns"));
   EXPECT_EQ(wout.ftolv, NetcdfReadDouble(ncid, "ftolv"));
-  EXPECT_EQ(wout.maximum_iterations, NetcdfReadInt(ncid, "niter"));
+  EXPECT_EQ(wout.niter, NetcdfReadInt(ncid, "niter"));
 
   EXPECT_EQ(wout.lfreeb, NetcdfReadBool(ncid, "lfreeb"));
   if (wout.lfreeb) {
@@ -174,7 +174,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   EXPECT_TRUE(
       IsCloseRelAbs(NetcdfReadDouble(ncid, "aspect"), wout.aspect, tolerance));
 
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betatotal"), wout.betatot,
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betatotal"), wout.betatotal,
                             tolerance));
   EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betapol"), wout.betapol,
                             tolerance));
@@ -192,7 +192,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
 
   EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "IonLarmor"), wout.IonLarmor,
                             tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "volavgB"), wout.VolAvgB,
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "volavgB"), wout.volavgB,
                             tolerance));
 
   EXPECT_TRUE(
@@ -202,7 +202,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
                             tolerance));
   EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "Rmajor_p"), wout.Rmajor_p,
                             tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "volume_p"), wout.volume_p,
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "volume_p"), wout.volume,
                             tolerance));
 
   EXPECT_TRUE(
@@ -230,21 +230,21 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
       NetcdfReadArray1D(ncid, "specw");
   for (int jF = 0; jF < fc.ns; ++jF) {
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_iota_full[jF], wout.iota_full[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_safety_factor[jF],
-                              wout.safety_factor[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_pressure_full[jF],
-                              wout.pressure_full[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_toroidal_flux[jF],
-                              wout.toroidal_flux[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_poloidal_flux[jF],
-                              wout.poloidal_flux[jF], tolerance));
+        IsCloseRelAbs(reference_iota_full[jF], wout.iotaf[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_safety_factor[jF], wout.q_factor[jF],
+                              tolerance));
+    EXPECT_TRUE(
+        IsCloseRelAbs(reference_pressure_full[jF], wout.presf[jF], tolerance));
+    EXPECT_TRUE(
+        IsCloseRelAbs(reference_toroidal_flux[jF], wout.phi[jF], tolerance));
+    EXPECT_TRUE(
+        IsCloseRelAbs(reference_poloidal_flux[jF], wout.chi[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_phipf[jF], wout.phipf[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_chipf[jF], wout.chipf[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_jcuru[jF], wout.jcuru[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_jcurv[jF], wout.jcurv[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_spectral_width[jF],
-                              wout.spectral_width[jF], tolerance));
+    EXPECT_TRUE(
+        IsCloseRelAbs(reference_spectral_width[jF], wout.specw[jF], tolerance));
   }  // jF
 
   std::vector<double> reference_iota_half = NetcdfReadArray1D(ncid, "iotas");
@@ -297,10 +297,10 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   for (int jF = 0; jF < fc.ns; ++jF) {
     EXPECT_TRUE(IsCloseRelAbs(reference_DMerc[jF], wout.DMerc[jF], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_Dshear[jF], wout.Dshear[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_Dwell[jF], wout.Dwell[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_Dcurr[jF], wout.Dcurr[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_Dgeod[jF], wout.Dgeod[jF], tolerance));
+        IsCloseRelAbs(reference_Dshear[jF], wout.DShear[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_Dwell[jF], wout.DWell[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_Dcurr[jF], wout.DCurr[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(reference_Dgeod[jF], wout.DGeod[jF], tolerance));
   }  // jF
 
   std::vector<double> reference_equif = NetcdfReadArray1D(ncid, "equif");
@@ -334,9 +334,9 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   std::vector<double> reference_zaxis_cs = NetcdfReadArray1D(ncid, "zaxis_cs");
   for (int n = 0; n <= wout.ntor; ++n) {
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_raxis_cc[n], wout.raxis_c[n], tolerance));
+        IsCloseRelAbs(reference_raxis_cc[n], wout.raxis_cc[n], tolerance));
     EXPECT_TRUE(
-        IsCloseRelAbs(reference_zaxis_cs[n], wout.zaxis_s[n], tolerance));
+        IsCloseRelAbs(reference_zaxis_cs[n], wout.zaxis_cs[n], tolerance));
   }  // n
 
   std::vector<std::vector<double>> reference_rmnc =
@@ -419,9 +419,9 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
         NetcdfReadArray1D(ncid, "zaxis_cc");
     for (int n = 0; n <= wout.ntor; ++n) {
       EXPECT_TRUE(
-          IsCloseRelAbs(reference_raxis_cs[n], wout.raxis_s[n], tolerance));
+          IsCloseRelAbs(reference_raxis_cs[n], wout.raxis_cs[n], tolerance));
       EXPECT_TRUE(
-          IsCloseRelAbs(reference_zaxis_cc[n], wout.zaxis_c[n], tolerance));
+          IsCloseRelAbs(reference_zaxis_cc[n], wout.zaxis_cc[n], tolerance));
     }  // n
 
     // TODO(jons): implement tests when first non-stellarator-symmetric test

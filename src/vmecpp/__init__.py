@@ -642,35 +642,20 @@ class VmecWOut(BaseModelWithNumpy):
     )
 
     _CPP_WOUT_SPECIAL_HANDLING: typing.ClassVar[list[str]] = [
-        "niter",
-        "signgs",
-        "betatotal",
-        "volavgB",
-        "iotaf",
-        "q_factor",
-        "presf",
-        "phi",
-        "chi",
-        "beta_vol",
-        "specw",
-        "DShear",
-        "DWell",
-        "DCurr",
-        "DGeod",
-        "raxis_cc",
-        "zaxis_cs",
+        # Asymmetric-only axis fields (None when lasym=False)
         "raxis_cs",
         "zaxis_cc",
-        "version_",
+        # Padded 1D arrays (size ns-1 in C++ -> ns in Python)
+        "beta_vol",
         "bvco",
         "buco",
         "vp",
-        "volume",
         "pres",
         "mass",
         "phips",
         "over_r",
         "iotas",
+        # Transposed 2D arrays
         "rmnc",
         "zmns",
         "rmns",
@@ -695,7 +680,7 @@ class VmecWOut(BaseModelWithNumpy):
         "bsubsmnc",
         "bsupumns",
         "bsupvmns",
-        "restart_reason_timetrace",
+        # Python-only
         "lrfp",
     ]
     """If quantities are not exactly the same in C++ WoutFileContents and this class,
@@ -1431,27 +1416,6 @@ class VmecWOut(BaseModelWithNumpy):
             if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
                 attrs[field] = getattr(cpp_wout, field)
 
-        attrs["volume"] = cpp_wout.volume_p
-
-        # These attributes are called differently
-        attrs["niter"] = cpp_wout.maximum_iterations
-        attrs["signgs"] = cpp_wout.sign_of_jacobian
-        attrs["betatotal"] = cpp_wout.betatot
-        attrs["volavgB"] = cpp_wout.VolAvgB
-        attrs["iotaf"] = cpp_wout.iota_full
-        attrs["q_factor"] = cpp_wout.safety_factor
-        attrs["presf"] = cpp_wout.pressure_full
-        attrs["phi"] = cpp_wout.toroidal_flux
-        attrs["chi"] = cpp_wout.poloidal_flux
-        attrs["beta_vol"] = cpp_wout.beta
-        attrs["specw"] = cpp_wout.spectral_width
-        attrs["DShear"] = cpp_wout.Dshear
-        attrs["DWell"] = cpp_wout.Dwell
-        attrs["DCurr"] = cpp_wout.Dcurr
-        attrs["DGeod"] = cpp_wout.Dgeod
-        attrs["raxis_cc"] = cpp_wout.raxis_c
-        attrs["zaxis_cs"] = cpp_wout.zaxis_s
-
         # These attributes have one element more in VMEC2000
         # (i.e. they have size ns instead of ns - 1).
         # VMEC2000 then indexes them as with [1:], so we pad VMEC++'s.
@@ -1475,11 +1439,11 @@ class VmecWOut(BaseModelWithNumpy):
         # stored in a wout file for consistency with lmns.
         attrs["lmns_full"] = cpp_wout.lmns_full.T
 
-        # Asymmetric attributes are transposed and only populated when lasym=True
+        # Asymmetric attributes are only populated when lasym=True
         # All of them are defaulted to None when lasym=False
         if cpp_wout.lasym:
-            attrs["raxis_cs"] = cpp_wout.raxis_s
-            attrs["zaxis_cc"] = cpp_wout.zaxis_c
+            attrs["raxis_cs"] = cpp_wout.raxis_cs
+            attrs["zaxis_cc"] = cpp_wout.zaxis_cc
 
             attrs["bsubsmnc"] = cpp_wout.bsubsmnc.T
             attrs["rmns"] = cpp_wout.rmns.T
@@ -1525,10 +1489,6 @@ class VmecWOut(BaseModelWithNumpy):
         attrs["ai_aux_s"] = _util.right_pad(cpp_wout.ai_aux_s, ndfmax, -1.0)
         attrs["ai_aux_f"] = _util.right_pad(cpp_wout.ai_aux_f, ndfmax)
 
-        attrs["restart_reason_timetrace"] = cpp_wout.restart_reasons
-
-        attrs["version_"] = float(cpp_wout.version)
-
         # lrfp is Python-only (not in C++ WOutFileContents), default to False
         attrs["lrfp"] = False
 
@@ -1541,27 +1501,6 @@ class VmecWOut(BaseModelWithNumpy):
         for field in VmecWOut.model_fields:
             if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
                 setattr(cpp_wout, field, getattr(self, field))
-
-        # These attributes are called differently
-        cpp_wout.volume_p = self.volume
-        cpp_wout.maximum_iterations = self.niter
-        cpp_wout.sign_of_jacobian = self.signgs
-        cpp_wout.betatot = self.betatotal
-        cpp_wout.VolAvgB = self.volavgB
-        cpp_wout.iota_full = self.iotaf
-        cpp_wout.safety_factor = self.q_factor
-        cpp_wout.pressure_full = self.presf
-        cpp_wout.toroidal_flux = self.phi
-        cpp_wout.poloidal_flux = self.chi
-        cpp_wout.beta = self.beta_vol
-        cpp_wout.spectral_width = self.specw
-        cpp_wout.Dshear = self.DShear
-        cpp_wout.Dwell = self.DWell
-        cpp_wout.Dcurr = self.DCurr
-        cpp_wout.Dgeod = self.DGeod
-        cpp_wout.raxis_c = self.raxis_cc
-        cpp_wout.zaxis_s = self.zaxis_cs
-        cpp_wout.version = str(self.version_)  # also needs a float -> str conversion
 
         # These attributes have one element more in VMEC2000
         # (i.e. they have size ns instead of ns - 1).
@@ -1577,6 +1516,11 @@ class VmecWOut(BaseModelWithNumpy):
         cpp_wout.overr = self.over_r[1:]
         cpp_wout.iota_half = self.iotas[1:]
 
+        # Asymmetric axis fields
+        if self.lasym:
+            cpp_wout.raxis_cs = self.raxis_cs
+            cpp_wout.zaxis_cc = self.zaxis_cc
+
         # These attributes are transposed in SIMSOPT
         cpp_wout.rmnc = self.rmnc.T
         cpp_wout.zmns = self.zmns.T
@@ -1586,9 +1530,6 @@ class VmecWOut(BaseModelWithNumpy):
         # stored in a wout file for consistency with lmns.
         cpp_wout.lmns_full = self.lmns_full.T
 
-        if self.lasym:
-            cpp_wout.raxis_s = self.raxis_cs
-            cpp_wout.zaxis_c = self.zaxis_cc
         # Asymmetric attributes are transposed and only set when lasym=True
         for field in [
             "bsubsmnc",
@@ -1601,9 +1542,6 @@ class VmecWOut(BaseModelWithNumpy):
             value = getattr(self, field)
             if value is not None:
                 setattr(cpp_wout, field, value.T)
-
-        # This is a VMEC++ only quantity
-        cpp_wout.restart_reasons = self.restart_reason_timetrace
 
         # coefficients on half-grid
         # These attributes have one column less and their elements are transposed
