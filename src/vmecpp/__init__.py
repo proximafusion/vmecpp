@@ -657,8 +657,6 @@ class VmecWOut(BaseModelWithNumpy):
         "bsubvmns",
         "bsupumns",
         "bsupvmns",
-        # Python-only
-        "lrfp",
     ]
     """If quantities are not exactly the same in C++ WoutFileContents and this class,
     add them to this list and implement the conversion logic in _to_cpp_wout and
@@ -1386,20 +1384,6 @@ class VmecWOut(BaseModelWithNumpy):
             attrs["bsupumns"] = cpp_wout.bsupumns
             attrs["bsupvmns"] = cpp_wout.bsupvmns
             attrs["gmns"] = cpp_wout.gmns
-
-        # These attributes have zero-padding at the end up to a fixed length
-        attrs["am"] = _util.right_pad(cpp_wout.am, preset)
-        attrs["ac"] = _util.right_pad(cpp_wout.ac, preset)
-        attrs["ai"] = _util.right_pad(cpp_wout.ai, preset)
-        attrs["am_aux_s"] = _util.right_pad(cpp_wout.am_aux_s, ndfmax, -1.0)
-        attrs["am_aux_f"] = _util.right_pad(cpp_wout.am_aux_f, ndfmax)
-        attrs["ac_aux_s"] = _util.right_pad(cpp_wout.ac_aux_s, ndfmax, -1.0)
-        attrs["ac_aux_f"] = _util.right_pad(cpp_wout.ac_aux_f, ndfmax)
-        attrs["ai_aux_s"] = _util.right_pad(cpp_wout.ai_aux_s, ndfmax, -1.0)
-        attrs["ai_aux_f"] = _util.right_pad(cpp_wout.ai_aux_f, ndfmax)
-
-        # lrfp is Python-only (not in C++ WOutFileContents), default to False
-        attrs["lrfp"] = False
 
         return VmecWOut(**attrs)
 
