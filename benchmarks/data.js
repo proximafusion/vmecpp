@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774601669039,
+  "lastUpdate": 1774602713317,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -592,6 +592,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.005505363364384548",
             "extra": "mean: 9.954311772666662 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "df0547f8fbd75d5c34354b4148de251a5f365491",
+          "message": "Simplify a few more ideal mhd expressions with Eigen3 (#453)",
+          "timestamp": "2026-03-27T09:07:38Z",
+          "tree_id": "59491cd9d769f611dc4d46f48ef19e3d7f9b388e",
+          "url": "https://github.com/proximafusion/vmecpp/commit/df0547f8fbd75d5c34354b4148de251a5f365491"
+        },
+        "date": 1774602711642,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.9363142433776366,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0030670384955502885",
+            "extra": "mean: 340.56300420002117 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.9666399263631305,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0013017848504486636",
+            "extra": "mean: 337.0816900000136 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.24695621775621324,
+            "unit": "iter/sec",
+            "range": "stddev: 0.04328242196180794",
+            "extra": "mean: 4.049300758999986 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.6189751959039602,
+            "unit": "iter/sec",
+            "range": "stddev: 0.001504065503079652",
+            "extra": "mean: 1.6155736233332998 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.27875389985881444,
+            "unit": "iter/sec",
+            "range": "stddev: 0.006598923725209605",
+            "extra": "mean: 3.5873937566666805 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10232305071881385,
+            "unit": "iter/sec",
+            "range": "stddev: 0.06385182748735631",
+            "extra": "mean: 9.772968974000037 sec\nrounds: 3"
           }
         ]
       }
