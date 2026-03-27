@@ -424,13 +424,13 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.zaxis_cs, wout["zaxis_cs"][()], 1.0e-11)
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.rmnc, [ns, mnmax], order="C"),
+        np.reshape(output_quantities.wout.rmnc, [mnmax, ns], order="C").T,
         wout["rmnc"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.zmns, [ns, mnmax], order="C"),
+        np.reshape(output_quantities.wout.zmns, [mnmax, ns], order="C").T,
         wout["zmns"][()],
         1.0e-11,
     )
@@ -438,50 +438,50 @@ def test_output_quantities():
     # NOTE: lmns_full is not available from Fortran VMEC
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.lmns, [ns - 1, mnmax], order="C"),
-        wout["lmns"][()][1:, :],
+        np.reshape(output_quantities.wout.lmns, [mnmax, ns], order="C").T,
+        wout["lmns"][()],
         1.0e-10,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.gmnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["gmnc"][()][1:, :],
+        np.reshape(output_quantities.wout.gmnc, [mnmax_nyq, ns], order="C").T,
+        wout["gmnc"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bmnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["bmnc"][()][1:, :],
+        np.reshape(output_quantities.wout.bmnc, [mnmax_nyq, ns], order="C").T,
+        wout["bmnc"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsubumnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["bsubumnc"][()][1:, :],
+        np.reshape(output_quantities.wout.bsubumnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsubumnc"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsubvmnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["bsubvmnc"][()][1:, :],
+        np.reshape(output_quantities.wout.bsubvmnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsubvmnc"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsubsmns, [ns, mnmax_nyq], order="C"),
+        np.reshape(output_quantities.wout.bsubsmns, [mnmax_nyq, ns], order="C").T,
         wout["bsubsmns"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsupumnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["bsupumnc"][()][1:, :],
+        np.reshape(output_quantities.wout.bsupumnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsupumnc"][()],
         1.0e-10,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsupvmnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["bsupvmnc"][()][1:, :],
+        np.reshape(output_quantities.wout.bsupvmnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsupvmnc"][()],
         1.0e-11,
     )
 

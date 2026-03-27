@@ -642,32 +642,19 @@ class VmecWOut(BaseModelWithNumpy):
     )
 
     _CPP_WOUT_SPECIAL_HANDLING: typing.ClassVar[list[str]] = [
-        # Asymmetric-only axis fields (None when lasym=False)
+        # Asymmetric-only fields (None when lasym=False)
         "raxis_cs",
         "zaxis_cc",
-        # Transposed 2D arrays
-        "rmnc",
-        "zmns",
         "rmns",
         "zmnc",
-        "lmnc",
         "lmnc_full",
-        "bsubsmns",
-        "lmns_full",
-        "lmns",
-        "bmnc",
-        "bsubumnc",
-        "bsubvmnc",
-        "bsupumnc",
-        "bsupvmnc",
-        "gmnc",
-        "rmns",
-        "zmnc",
+        "bsubsmnc",
+        # Asymmetric half-grid 2D arrays (None when lasym=False)
+        "lmnc",
         "gmns",
         "bmns",
         "bsubumns",
         "bsubvmns",
-        "bsubsmnc",
         "bsupumns",
         "bsupvmns",
         # Python-only
@@ -1379,53 +1366,26 @@ class VmecWOut(BaseModelWithNumpy):
             if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
                 attrs[field] = getattr(cpp_wout, field)
 
-        # These attributes are transposed in SIMSOPT/Fortran VMEC
-        attrs["rmnc"] = cpp_wout.rmnc.T
-        attrs["zmns"] = cpp_wout.zmns.T
-        attrs["bsubsmns"] = cpp_wout.bsubsmns.T
-
-        # This is a VMEC++-only quantity but it's transposed when
-        # stored in a wout file for consistency with lmns.
-        attrs["lmns_full"] = cpp_wout.lmns_full.T
-
         # Asymmetric attributes are only populated when lasym=True
         # All of them are defaulted to None when lasym=False
         if cpp_wout.lasym:
             attrs["raxis_cs"] = cpp_wout.raxis_cs
             attrs["zaxis_cc"] = cpp_wout.zaxis_cc
 
-            attrs["bsubsmnc"] = cpp_wout.bsubsmnc.T
-            attrs["rmns"] = cpp_wout.rmns.T
-            attrs["zmnc"] = cpp_wout.zmnc.T
-            attrs["lmnc_full"] = cpp_wout.lmnc_full.T
+            # Full-grid asymmetric 2D arrays
+            attrs["rmns"] = cpp_wout.rmns
+            attrs["zmnc"] = cpp_wout.zmnc
+            attrs["lmnc_full"] = cpp_wout.lmnc_full
+            attrs["bsubsmnc"] = cpp_wout.bsubsmnc
 
-            attrs["lmnc"] = _pad_and_transpose(cpp_wout.lmnc, attrs["mnmax"])
-
-            attrs["bmns"] = _pad_and_transpose(cpp_wout.bmns, attrs["mnmax_nyq"])
-            attrs["bsubumns"] = _pad_and_transpose(
-                cpp_wout.bsubumns, attrs["mnmax_nyq"]
-            )
-            attrs["bsubvmns"] = _pad_and_transpose(
-                cpp_wout.bsubvmns, attrs["mnmax_nyq"]
-            )
-            attrs["bsupumns"] = _pad_and_transpose(
-                cpp_wout.bsupumns, attrs["mnmax_nyq"]
-            )
-            attrs["bsupvmns"] = _pad_and_transpose(
-                cpp_wout.bsupvmns, attrs["mnmax_nyq"]
-            )
-            attrs["gmns"] = _pad_and_transpose(cpp_wout.gmns, attrs["mnmax_nyq"])
-
-        # These attributes have one column less and their elements are transposed
-        # in VMEC++ with respect to SIMSOPT/VMEC2000
-        attrs["lmns"] = _pad_and_transpose(cpp_wout.lmns, attrs["mnmax"])
-
-        attrs["bmnc"] = _pad_and_transpose(cpp_wout.bmnc, attrs["mnmax_nyq"])
-        attrs["bsubumnc"] = _pad_and_transpose(cpp_wout.bsubumnc, attrs["mnmax_nyq"])
-        attrs["bsubvmnc"] = _pad_and_transpose(cpp_wout.bsubvmnc, attrs["mnmax_nyq"])
-        attrs["bsupumnc"] = _pad_and_transpose(cpp_wout.bsupumnc, attrs["mnmax_nyq"])
-        attrs["bsupvmnc"] = _pad_and_transpose(cpp_wout.bsupvmnc, attrs["mnmax_nyq"])
-        attrs["gmnc"] = _pad_and_transpose(cpp_wout.gmnc, attrs["mnmax_nyq"])
+            # Half-grid asymmetric 2D arrays
+            attrs["lmnc"] = cpp_wout.lmnc
+            attrs["bmns"] = cpp_wout.bmns
+            attrs["bsubumns"] = cpp_wout.bsubumns
+            attrs["bsubvmns"] = cpp_wout.bsubvmns
+            attrs["bsupumns"] = cpp_wout.bsupumns
+            attrs["bsupvmns"] = cpp_wout.bsupvmns
+            attrs["gmns"] = cpp_wout.gmns
 
         # These attributes have zero-padding at the end up to a fixed length
         attrs["am"] = _util.right_pad(cpp_wout.am, preset)
@@ -1451,57 +1411,27 @@ class VmecWOut(BaseModelWithNumpy):
             if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
                 setattr(cpp_wout, field, getattr(self, field))
 
-        # Asymmetric axis fields
+        # Asymmetric fields (only set when lasym=True)
         if self.lasym:
             cpp_wout.raxis_cs = self.raxis_cs
             cpp_wout.zaxis_cc = self.zaxis_cc
 
-        # These attributes are transposed in SIMSOPT
-        cpp_wout.rmnc = self.rmnc.T
-        cpp_wout.zmns = self.zmns.T
-        cpp_wout.bsubsmns = self.bsubsmns.T
-
-        # This is a VMEC++-only quantity but it's transposed when
-        # stored in a wout file for consistency with lmns.
-        cpp_wout.lmns_full = self.lmns_full.T
-
-        # Asymmetric attributes are transposed and only set when lasym=True
-        for field in [
-            "bsubsmnc",
-            "rmns",
-            "zmnc",
-            "lmnc_full",
-            "lmnc",
-            "bmns",
-        ]:
-            value = getattr(self, field)
-            if value is not None:
-                setattr(cpp_wout, field, value.T)
-
-        # coefficients on half-grid
-        # These attributes have one column less and their elements are transposed
-        # in VMEC++ with respect to SIMSOPT/VMEC2000
-        for field in [
-            "lmns",
-            "gmnc",
-            "bmnc",
-            "bsubumnc",
-            "bsubvmnc",
-            "bsupumnc",
-            "bsupvmnc",
-            # Asymmetric coefficients (only when lasym=True)
-            "lmnc",
-            "gmns",
-            "bmns",
-            "bsubumns",
-            "bsubvmns",
-            "bsupumns",
-            "bsupvmns",
-        ]:
-            value = getattr(self, field)
-            # Asymmetric coefficients may be None when lasym=False
-            if value is not None:
-                setattr(cpp_wout, field, value.T[1:, :])
+            for field in [
+                "rmns",
+                "zmnc",
+                "lmnc_full",
+                "bsubsmnc",
+                "lmnc",
+                "gmns",
+                "bmns",
+                "bsubumns",
+                "bsubvmns",
+                "bsupumns",
+                "bsupvmns",
+            ]:
+                value = getattr(self, field)
+                if value is not None:
+                    setattr(cpp_wout, field, value)
 
         return cpp_wout
 
@@ -1999,17 +1929,6 @@ def ensure_vmec2000_input(input_path: Path) -> Generator[Path, None, None]:
         with open(out_path, "w") as out_f:
             out_f.write(indata_contents)
         yield out_path
-
-
-def _pad_and_transpose(
-    arr: jt.Float[np.ndarray, "ns_minus_one mn"] | None, mnsize: int
-) -> jt.Float[np.ndarray, "mn ns"] | None:
-    if arr is None:
-        return None
-    stacked = np.vstack((np.zeros(mnsize), arr)).T
-    assert stacked.shape[1] == arr.shape[0] + 1
-    assert stacked.shape[0] == arr.shape[1]
-    return stacked
 
 
 def set_profile(
