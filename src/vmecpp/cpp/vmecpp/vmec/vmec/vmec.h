@@ -202,8 +202,8 @@ class Vmec {
   Eigen::VectorXi js2;
   Eigen::VectorXd s1;
   Eigen::VectorXd xint;
-  std::vector<std::unique_ptr<FourierGeometry> > old_xc_scaled_;
-  std::vector<std::unique_ptr<RadialPartitioning> > old_r_;
+  std::vector<std::unique_ptr<FourierGeometry>> old_xc_scaled_;
+  std::vector<std::unique_ptr<RadialPartitioning>> old_r_;
 
   Eigen::VectorXd matrixShare;
   Eigen::VectorXi iPiv;
