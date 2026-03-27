@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774606941117,
+  "lastUpdate": 1774607405978,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -856,6 +856,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.004779294621861399",
             "extra": "mean: 9.885318397999981 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "16e7d0e3171a58d62b6fb12fe3e800e56eda11f8",
+          "message": "Add HDF5 backwards compatibility for renamed/resized wout fields (#446)",
+          "timestamp": "2026-03-27T11:21:40+01:00",
+          "tree_id": "53fa7dee60337426e3269ec381c9c2296e887308",
+          "url": "https://github.com/proximafusion/vmecpp/commit/16e7d0e3171a58d62b6fb12fe3e800e56eda11f8"
+        },
+        "date": 1774607405051,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.978227207776783,
+            "unit": "iter/sec",
+            "range": "stddev: 0.001249436165069204",
+            "extra": "mean: 335.77021839998906 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.9565086147001813,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0020550348050118704",
+            "extra": "mean: 338.2367956000053 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23095484423866391,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008825581031545963",
+            "extra": "mean: 4.329850726000018 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5693504149766464,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00855285390420487",
+            "extra": "mean: 1.7563875843333108 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.2773846773564516,
+            "unit": "iter/sec",
+            "range": "stddev: 0.020582770688828432",
+            "extra": "mean: 3.6051018013333 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10067706606872306,
+            "unit": "iter/sec",
+            "range": "stddev: 0.03527315159997423",
+            "extra": "mean: 9.932748728666676 sec\nrounds: 3"
           }
         ]
       }
