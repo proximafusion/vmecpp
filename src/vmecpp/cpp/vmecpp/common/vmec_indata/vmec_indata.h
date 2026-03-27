@@ -36,7 +36,11 @@ enum class FreeBoundaryMethod : std::uint8_t {
 
   // use the Boundary Integral Equation Solver for Toroidal systems
   // for the free-boundary force contribution
-  BIEST
+  BIEST,
+
+  // use just the coils field with B_coils . n = 0 boundary condition
+  // instead of pressure continuity
+  ONLY_COILS_BDOTN
 };
 
 int FreeBoundaryMethodCode(FreeBoundaryMethod free_boundary_method);

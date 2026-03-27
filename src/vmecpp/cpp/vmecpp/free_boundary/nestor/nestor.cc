@@ -13,9 +13,10 @@ Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
                std::span<double> bvecShare, std::span<double> bSqVacShare,
                std::span<int> iPiv, std::span<double> vacuum_b_r_share,
                std::span<double> vacuum_b_phi_share,
-               std::span<double> vacuum_b_z_share)
+               std::span<double> vacuum_b_z_share,
+               std::span<double> b_dot_n_share)
     : FreeBoundaryBase(s, tp, mgrid, bSqVacShare, vacuum_b_r_share,
-                       vacuum_b_phi_share, vacuum_b_z_share),
+                       vacuum_b_phi_share, vacuum_b_z_share, b_dot_n_share),
       nf(s_.ntor),
       mf(s_.mpol + 1),
       si_(s, &fb_, tp, &sg_, nf, mf),
@@ -221,6 +222,9 @@ bool Nestor::update(
     vacuum_b_phi_share_[kl] = sg_.r1b[kl] * bSupV;
     vacuum_b_z_share_[kl] =
         sg_.zub[kl - tp_.ztMin] * bSupU + sg_.zvb[kl - tp_.ztMin] * bSupV;
+
+    // B_coils . n for delbn diagnostic
+    b_dot_n_share_[kl] = ef_.bDotN[kl - tp_.ztMin];
   }  // kl
 
   // ... done ...

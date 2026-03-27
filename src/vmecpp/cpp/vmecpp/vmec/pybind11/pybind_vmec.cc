@@ -200,6 +200,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .value("NESTOR", vmecpp::FreeBoundaryMethod::NESTOR)
       .value("ONLY_COILS", vmecpp::FreeBoundaryMethod::ONLY_COILS)
       .value("BIEST", vmecpp::FreeBoundaryMethod::BIEST)
+      .value("ONLY_COILS_BDOTN", vmecpp::FreeBoundaryMethod::ONLY_COILS_BDOTN)
       .export_values()
       .finalize();
 

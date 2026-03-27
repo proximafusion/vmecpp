@@ -10,9 +10,12 @@ OnlyCoils::OnlyCoils(const Sizes* s, const TangentialPartitioning* tp,
                      const MGridProvider* mgrid, std::span<double> bSqVacShare,
                      std::span<double> vacuum_b_r_share,
                      std::span<double> vacuum_b_phi_share,
-                     std::span<double> vacuum_b_z_share)
+                     std::span<double> vacuum_b_z_share,
+                     std::span<double> b_dot_n_share,
+                     BoundaryForceTermType boundary_force_term_type)
     : FreeBoundaryBase(s, tp, mgrid, bSqVacShare, vacuum_b_r_share,
-                       vacuum_b_phi_share, vacuum_b_z_share) {}  // OnlyCoils
+                       vacuum_b_phi_share, vacuum_b_z_share, b_dot_n_share),
+      boundary_force_term_type_(boundary_force_term_type) {}  // OnlyCoils
 
 bool OnlyCoils::update(
     const std::span<const double> rCC, const std::span<const double> rSS,
@@ -65,14 +68,19 @@ bool OnlyCoils::update(
 #pragma omp barrier
 #endif  // _OPENMP
 
-  // compute magnetic pressure from only coils: |B|^2/2
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
     // cylindrical components of vacuum magnetic field
     vacuum_b_r_share_[kl] = ef_.interpBr[kl - tp_.ztMin];
     vacuum_b_phi_share_[kl] = ef_.interpBp[kl - tp_.ztMin];
     vacuum_b_z_share_[kl] = ef_.interpBz[kl - tp_.ztMin];
 
+    // B_coils . n is always shared back for the delbn diagnostic
+    b_dot_n_share_[kl] = ef_.bDotN[kl - tp_.ztMin];
+
     // magnetic pressure from vacuum: |B|^2/2
+    // Both modes store the full magnetic pressure here.  In kNormalField
+    // mode the correction using vacuum_b_normal is applied downstream in
+    // IdealMhdModel.
     bSqVacShare[kl] = 0.5 * (vacuum_b_r_share_[kl] * vacuum_b_r_share_[kl] +
                              vacuum_b_phi_share_[kl] * vacuum_b_phi_share_[kl] +
                              vacuum_b_z_share_[kl] * vacuum_b_z_share_[kl]);

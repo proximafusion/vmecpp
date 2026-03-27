@@ -72,12 +72,13 @@ void IterationLogger::LogIteration(int iter, double fsqr, double fsqz,
                                    double fsql, double fsqr1, double fsqz1,
                                    double fsql1, double delt, double rax,
                                    double w_mhd, double beta_vol_avg,
-                                   double vol_avg_m, double delbsq) {
+                                   double vol_avg_m, double delbsq,
+                                   double delbn) {
   if (mode_ == OutputMode::kSilent) return;
 
   if (mode_ == OutputMode::kLegacy) {
     PrintLegacyRow(iter, fsqr, fsqz, fsql, fsqr1, fsqz1, fsql1, delt, rax,
-                   w_mhd, beta_vol_avg, vol_avg_m, delbsq);
+                   w_mhd, beta_vol_avg, vol_avg_m, delbsq, delbn);
     return;
   }
 
@@ -101,6 +102,7 @@ void IterationLogger::LogIteration(int iter, double fsqr, double fsqz,
   stage.last_w_mhd = w_mhd;
   stage.last_rax = rax;
   stage.last_delbsq = delbsq;
+  stage.last_delbn = delbn;
 
   if (mode_ == OutputMode::kProgress) {
     RenderProgressDisplay();
@@ -251,7 +253,8 @@ void IterationLogger::RenderProgressDisplay() {
         "RAX=%.4f",
         s.last_iter, s.last_fsq, s.last_beta, s.last_w_mhd, s.last_rax);
     if (is_free_boundary_) {
-      output_ << absl::StrFormat("  DELBSQ=%.3e", s.last_delbsq);
+      output_ << absl::StrFormat("  DELBSQ=%.3e  DELBN=%.3e", s.last_delbsq,
+                                 s.last_delbn);
     }
     output_ << kReset << "\n";
     lines++;
@@ -289,7 +292,8 @@ void IterationLogger::RenderSingleLineProgress() {
   output_ << absl::StrFormat(" %5.1f%%  FSQ=%.2e", progress_frac * 100.0,
                              s.last_fsq);
   if (is_free_boundary_) {
-    output_ << absl::StrFormat("  delbsq=%.2e", s.last_delbsq);
+    output_ << absl::StrFormat("  delbsq=%.2e  delbn=%.2e", s.last_delbsq,
+                               s.last_delbn);
   }
 
   // Pad with spaces to clear any leftover characters from a longer line.
@@ -402,10 +406,10 @@ void IterationLogger::PrintLegacyHeader() const {
   if (is_free_boundary_) {
     output_ << " ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz      "
                "fsql   |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  "
-               "<M>  |  DELBSQ  \n";
+               "<M>  |  DELBSQ  |  DELBN   \n";
     output_ << "------+------------------------------+-----------------------"
                "-------+----------+-----------+------------+------------+----"
-               "---+----------\n";
+               "---+----------+----------\n";
   } else {
     output_ << " ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz    "
                "  fsql  "
@@ -420,13 +424,14 @@ void IterationLogger::PrintLegacyRow(int iter, double fsqr, double fsqz,
                                      double fsql, double fsqr1, double fsqz1,
                                      double fsql1, double delt, double rax,
                                      double w_mhd, double beta_vol_avg,
-                                     double vol_avg_m, double delbsq) const {
+                                     double vol_avg_m, double delbsq,
+                                     double delbn) const {
   if (is_free_boundary_) {
     output_ << absl::StrFormat(
         "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
-        "%.3e | %.4e | %.4e | %5.3f | %.3e\n",
+        "%.3e | %.4e | %.4e | %5.3f | %.3e | %.3e\n",
         iter, fsqr, fsqz, fsql, fsqr1, fsqz1, fsql1, delt, rax, w_mhd,
-        beta_vol_avg, vol_avg_m, delbsq);
+        beta_vol_avg, vol_avg_m, delbsq, delbn);
   } else {
     output_ << absl::StrFormat(
         "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "

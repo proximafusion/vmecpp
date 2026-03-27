@@ -101,6 +101,8 @@ class FlowControl {
 
   // Time-trace of the force at the vacuum boundary (only for free-boundary)
   std::vector<double> delbsq;
+  // Time-trace of |B_coils . n| at the LCFS (only for free-boundary)
+  std::vector<double> delbn;
   // Time-trace of the restart reasons, for debugging purposes. Each restart is
   // a pair of <iteration, reason> (e.g. to see how many jacobian resets
   // occurred)

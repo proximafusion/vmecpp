@@ -218,6 +218,9 @@ class IdealMhdModel {
   // Computes the mismatch in |B|^2 at the LCFS.
   double get_delbsq() const;
 
+  // Computes the surface-averaged |B_coils . n| at the LCFS.
+  double get_delbn() const;
+
   // `ivacskip` is the current counter that controls whether a full update or a
   // partial update of the Nestor free boundary force contribution is computed.
   int get_ivacskip() const;
@@ -336,6 +339,9 @@ class IdealMhdModel {
   // mismatch in |B|^2 between plasma and vacuum regions at LCFS
   std::vector<double> delBSq;
 
+  // |B_coils . n| at each point on the LCFS
+  std::vector<double> delBn;
+
   /**********************************************/
 
   // real-space forces
@@ -426,6 +432,7 @@ class IdealMhdModel {
   const RadialPartitioning& r_;
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
+  BoundaryForceTermType boundary_force_term_type_;
 
   int signOfJacobian;
 

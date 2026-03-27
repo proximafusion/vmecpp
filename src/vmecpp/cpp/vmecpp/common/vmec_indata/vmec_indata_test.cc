@@ -86,6 +86,9 @@ TEST(TestVmecINDATA, CheckFreeBoundaryMethodCases) {
 
   free_boundary_method = FreeBoundaryMethod::BIEST;
   EXPECT_EQ(free_boundary_method, FreeBoundaryMethod::BIEST);
+
+  free_boundary_method = FreeBoundaryMethod::ONLY_COILS_BDOTN;
+  EXPECT_EQ(free_boundary_method, FreeBoundaryMethod::ONLY_COILS_BDOTN);
 }  // CheckFreeBoundaryMethodCases
 
 TEST(TestVmecINDATA, CheckFreeBoundaryMethodFromString) {
@@ -102,6 +105,12 @@ TEST(TestVmecINDATA, CheckFreeBoundaryMethodFromString) {
   ASSERT_TRUE(status_or_free_boundary_method.ok());
   EXPECT_EQ(*status_or_free_boundary_method, FreeBoundaryMethod::BIEST);
 
+  status_or_free_boundary_method =
+      FreeBoundaryMethodFromString("only_coils_bdotn");
+  ASSERT_TRUE(status_or_free_boundary_method.ok());
+  EXPECT_EQ(*status_or_free_boundary_method,
+            FreeBoundaryMethod::ONLY_COILS_BDOTN);
+
   status_or_free_boundary_method = FreeBoundaryMethodFromString("blablubb");
   EXPECT_FALSE(status_or_free_boundary_method.ok());
 }  // CheckFreeBoundaryMethodFromString
@@ -110,6 +119,7 @@ TEST(TestVmecINDATA, CheckFreeBoundaryMethodToString) {
   EXPECT_EQ(ToString(FreeBoundaryMethod::NESTOR), "nestor");
   EXPECT_EQ(ToString(FreeBoundaryMethod::ONLY_COILS), "only_coils");
   EXPECT_EQ(ToString(FreeBoundaryMethod::BIEST), "biest");
+  EXPECT_EQ(ToString(FreeBoundaryMethod::ONLY_COILS_BDOTN), "only_coils_bdotn");
 }  // CheckFreeBoundaryMethodToString
 
 TEST(TestVmecINDATA, CheckDefaults) {
