@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774603185565,
+  "lastUpdate": 1774606458135,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -724,6 +724,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.009397925972032671",
             "extra": "mean: 9.98057792233332 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c9181b56ab9c9f097eb576b58d8a86462659f748",
+          "message": "Rename WOutFileContents scalar/1D fields to match Python VmecWOut (#442)\n\n(Expected CI failiures for the intermediate commits until PR #446, on large CPP tests)\n\nRename 22 fields in the C++ WOutFileContents struct to match the\nPython VmecWOut field names, eliminating name-mapping conversion\nlogic in _from_cpp_wout and _to_cpp_wout.\n\nKey renames: version->version_ (also string->double), sign_of_jacobian->signgs,\nmaximum_iterations->niter, betatot->betatotal, VolAvgB->volavgB,\nvolume_p->volume, iota_full->iotaf, safety_factor->q_factor,\npressure_full->presf, toroidal_flux->phi, poloidal_flux->chi,\nspectral_width->specw, Dshear->DShear, Dwell->DWell, Dcurr->DCurr,\nDgeod->DGeod, raxis_c->raxis_cc, zaxis_s->zaxis_cs, raxis_s->raxis_cs,\nzaxis_c->zaxis_cc, restart_reasons->restart_reason_timetrace.\n\n_CPP_WOUT_SPECIAL_HANDLING reduced from 56 to 34 entries.",
+          "timestamp": "2026-03-27T11:10:05+01:00",
+          "tree_id": "350559997c660245c118de00e7f79b90aa1a5712",
+          "url": "https://github.com/proximafusion/vmecpp/commit/c9181b56ab9c9f097eb576b58d8a86462659f748"
+        },
+        "date": 1774606456940,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.9099889634303953,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0057497998317706375",
+            "extra": "mean: 343.64391499999556 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.893320833377173,
+            "unit": "iter/sec",
+            "range": "stddev: 0.006417176634364154",
+            "extra": "mean: 345.6236130000036 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23464622638151153,
+            "unit": "iter/sec",
+            "range": "stddev: 0.010664362216718971",
+            "extra": "mean: 4.261734848333333 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5721445868393417,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0041427692167804045",
+            "extra": "mean: 1.7478099469999886 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.27828500592554445,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0065946328107481375",
+            "extra": "mean: 3.5934383049999874 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10045047977627423,
+            "unit": "iter/sec",
+            "range": "stddev: 0.04737034148020323",
+            "extra": "mean: 9.955154044333332 sec\nrounds: 3"
           }
         ]
       }
