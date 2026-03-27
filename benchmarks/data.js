@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774606458135,
+  "lastUpdate": 1774606941117,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -790,6 +790,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.04737034148020323",
             "extra": "mean: 9.955154044333332 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "684058866cbb7969ca2e90bcb8c01b6388e3265c",
+          "message": "Right-pad profile arrays in C++, add lrfp field, final cleanup (#445)\n\n* Right-pad profile arrays in C++, add lrfp field, final cleanup\n\n* Update __init__.py",
+          "timestamp": "2026-03-27T11:17:46+01:00",
+          "tree_id": "e091a056a071f389319fdb60afead4147c667238",
+          "url": "https://github.com/proximafusion/vmecpp/commit/684058866cbb7969ca2e90bcb8c01b6388e3265c"
+        },
+        "date": 1774606939663,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.9338594716623336,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0012380790942025115",
+            "extra": "mean: 340.8479546000194 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.873073252073852,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004191656659944429",
+            "extra": "mean: 348.0593470000031 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23432559561522262,
+            "unit": "iter/sec",
+            "range": "stddev: 0.08430126904711714",
+            "extra": "mean: 4.267566235666645 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5706875871868932,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002878398485235706",
+            "extra": "mean: 1.7522722106666606 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.2792164403054774,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00864058926554246",
+            "extra": "mean: 3.5814510023333432 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.1011601204673713,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004779294621861399",
+            "extra": "mean: 9.885318397999981 sec\nrounds: 3"
           }
         ]
       }
