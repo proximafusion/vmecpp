@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774644920474,
+  "lastUpdate": 1774711062825,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -988,6 +988,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.018805242324691905",
             "extra": "mean: 10.023981572333335 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3d6cbed0f25c1e5a296d1befb8b7ca15cca07997",
+          "message": "[Bugfix] xm, xn should be double but were serialized as int (#459)\n\n[Bugfix] xm, xn should be double but were serialized as int. Add testcase to catch such regressions",
+          "timestamp": "2026-03-28T16:13:28+01:00",
+          "tree_id": "822a97757f797559878c6a25e283b92420d4c609",
+          "url": "https://github.com/proximafusion/vmecpp/commit/3d6cbed0f25c1e5a296d1befb8b7ca15cca07997"
+        },
+        "date": 1774711061326,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.902297039941741,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0028635108179312996",
+            "extra": "mean: 344.55467039999235 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.898164035631086,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0022002017203393604",
+            "extra": "mean: 345.04603180000686 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2326732936241909,
+            "unit": "iter/sec",
+            "range": "stddev: 0.016620784680583364",
+            "extra": "mean: 4.297871854666653 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.568839962139555,
+            "unit": "iter/sec",
+            "range": "stddev: 0.006151376999728751",
+            "extra": "mean: 1.7579636920000137 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.27887178497336196,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004313832157065651",
+            "extra": "mean: 3.585877288000006 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10072246364169234,
+            "unit": "iter/sec",
+            "range": "stddev: 0.04847067795032895",
+            "extra": "mean: 9.92827184566668 sec\nrounds: 3"
           }
         ]
       }
