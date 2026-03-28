@@ -64,7 +64,7 @@ def _wrap_int_as_float(
 
 SerializeIntAsFloat: typing.TypeAlias = typing.Annotated[
     _ArrayType,
-    pydantic.WrapSerializer(_wrap_int_as_float, when_used="json"),  # pyright: ignore[reportArgumentType]
+    pydantic.WrapSerializer(_wrap_int_as_float),  # pyright: ignore[reportArgumentType]
     pydantic.BeforeValidator(lambda x: np.array(x).astype(np.int64)),
 ]
 
