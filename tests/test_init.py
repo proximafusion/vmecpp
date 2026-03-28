@@ -250,6 +250,9 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
             atol=1e-7,
             equal_nan=True,
         )
+        assert test_value.dtype == expected_value.dtype, (
+            error_msg + f" (dtype {test_value.dtype} != {expected_value.dtype})"
+        )
 
 
 @pytest.mark.parametrize(
