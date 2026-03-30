@@ -42,15 +42,21 @@ void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
       const int idx_mn = m * ntorp1 + n;
       const int idx_nm = n * sizes.mpol + m;
       m_h.rCC_LCFS[idx_nm] = physical_x.rmncc[offset + idx_mn];
-      m_h.rSS_LCFS[idx_nm] = physical_x.rmnss[offset + idx_mn];
       m_h.zSC_LCFS[idx_nm] = physical_x.zmnsc[offset + idx_mn];
-      m_h.zCS_LCFS[idx_nm] = physical_x.zmncs[offset + idx_mn];
+
+      if (sizes.lthreed) {
+        m_h.rSS_LCFS[idx_nm] = physical_x.rmnss[offset + idx_mn];
+        m_h.zCS_LCFS[idx_nm] = physical_x.zmncs[offset + idx_mn];
+      }
 
       if (sizes.lasym) {
         m_h.rSC_LCFS[idx_nm] = physical_x.rmnsc[offset + idx_mn];
-        m_h.rCS_LCFS[idx_nm] = physical_x.rmncs[offset + idx_mn];
         m_h.zCC_LCFS[idx_nm] = physical_x.zmncc[offset + idx_mn];
-        m_h.zSS_LCFS[idx_nm] = physical_x.zmnss[offset + idx_mn];
+
+        if (sizes.lthreed) {
+          m_h.rCS_LCFS[idx_nm] = physical_x.rmncs[offset + idx_mn];
+          m_h.zSS_LCFS[idx_nm] = physical_x.zmnss[offset + idx_mn];
+        }
       }
     }
   }
@@ -964,8 +970,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
       if (r_.nsMaxF1 == m_fc_.ns) {
         // can only get this from thread that has the LCFS !!!
 
-        // TODO(jons): respect lthreed in case of a free-boundary axisymmetric
-        // run
         HandOverBoundaryGeometry(
             m_h_, m_physical_x, s_,
             /*offset=*/(r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.mnsize);
