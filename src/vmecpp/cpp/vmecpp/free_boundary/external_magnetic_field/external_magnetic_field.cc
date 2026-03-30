@@ -14,9 +14,9 @@ ExternalMagneticField::ExternalMagneticField(const Sizes* s,
                                              const SurfaceGeometry* sg,
                                              const MGridProvider* mgrid)
     : s_(*s), tp_(*tp), sg_(*sg), mgrid_(*mgrid) {
-  // nzeta points per each of the nfp field periods,
+  // nzeta points per each of the nVacuumPeriods vacuum periods,
   // and then one more point to close the loop
-  axisXYZ.resize(3 * (s_.nZeta * s_.nfp + 1));
+  axisXYZ.resize(3 * (s_.nZeta * s_.nVacuumPeriods + 1));
 
   // thread-local tangential grid point range
   const int numLocal = tp_.ztMax - tp_.ztMin;
@@ -81,8 +81,8 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
     axisXYZ[k * 3 + 2] = zAxis[k];
   }  // k
 
-  // rotate into other modules
-  for (int p = 1; p < s_.nfp; ++p) {
+  // rotate into other vacuum periods
+  for (int p = 1; p < s_.nVacuumPeriods; ++p) {
     for (int k = 0; k < s_.nZeta; ++k) {
       axisXYZ[(p * s_.nZeta + k) * 3 + 0] =
           sg_.cos_per[p] * axisXYZ[k * 3 + 0] -
@@ -92,12 +92,12 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
           sg_.cos_per[p] * axisXYZ[k * 3 + 1];
       axisXYZ[(p * s_.nZeta + k) * 3 + 2] = zAxis[k];
     }  // k
-  }  // field periods
+  }  // vacuum periods
 
   // close the loop
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 0] = axisXYZ[0];
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 1] = axisXYZ[1];
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 2] = axisXYZ[2];
+  axisXYZ[s_.nZeta * s_.nVacuumPeriods * 3 + 0] = axisXYZ[0];
+  axisXYZ[s_.nZeta * s_.nVacuumPeriods * 3 + 1] = axisXYZ[1];
+  axisXYZ[s_.nZeta * s_.nVacuumPeriods * 3 + 2] = axisXYZ[2];
 
   // convert points on surface into surfaceXYZ
   // TODO(jons): might be useful to have interface in abscab,
@@ -127,7 +127,7 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
 
   // compute magnetic field due to line current along magnetic axis
   int numProcessors = 1;  // Nestor itself is already parallelized via OpenMP
-  abscab::magneticFieldPolygonFilament(s_.nZeta * s_.nfp + 1, axisXYZ.data(),
+  abscab::magneticFieldPolygonFilament(s_.nZeta * s_.nVacuumPeriods + 1, axisXYZ.data(),
                                        axis_current, tp_.ztMax - tp_.ztMin,
                                        surfaceXYZ.data(), bCoilsXYZ.data(),
                                        numProcessors);
@@ -160,8 +160,8 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
     axisXYZ[k * 3 + 2] = zAxis[k];
   }  // k
 
-  // rotate into other modules
-  for (int p = 1; p < s_.nfp; ++p) {
+  // rotate into other vacuum periods
+  for (int p = 1; p < s_.nVacuumPeriods; ++p) {
     for (int k = 0; k < s_.nZeta; ++k) {
       axisXYZ[(p * s_.nZeta + k) * 3 + 0] =
           sg_.cos_per[p] * axisXYZ[k * 3 + 0] -
@@ -171,12 +171,12 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
           sg_.cos_per[p] * axisXYZ[k * 3 + 1];
       axisXYZ[(p * s_.nZeta + k) * 3 + 2] = zAxis[k];
     }  // k
-  }  // field periods
+  }  // vacuum periods
 
   // close the loop
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 0] = axisXYZ[0];
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 1] = axisXYZ[1];
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 2] = axisXYZ[2];
+  axisXYZ[s_.nZeta * s_.nVacuumPeriods * 3 + 0] = axisXYZ[0];
+  axisXYZ[s_.nZeta * s_.nVacuumPeriods * 3 + 1] = axisXYZ[1];
+  axisXYZ[s_.nZeta * s_.nVacuumPeriods * 3 + 2] = axisXYZ[2];
 
   // convert points on surface into surfaceXYZ
   // TODO(jons): might be useful to have interface in abscab,
@@ -211,7 +211,8 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
   // which is Eqn. (8) in Hanson & Hirshman (2002) [Physics of Plasmas 9, 4410].
   const double magnetic_field_scale = 1.0e-7 * netToroidalCurrent * 2.0;
 
-  for (int source_index = 0; source_index < s_.nZeta * s_.nfp; ++source_index) {
+  for (int source_index = 0; source_index < s_.nZeta * s_.nVacuumPeriods;
+       ++source_index) {
     const double segment_dx =
         axisXYZ[(source_index + 1) * 3 + 0] - axisXYZ[source_index * 3 + 0];
     const double segment_dy =

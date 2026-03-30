@@ -46,6 +46,12 @@ class Sizes {
   // flag to indicate 3D case
   bool lthreed;
 
+  // Number of toroidal periods for axis current filament discretization.
+  // For 3D cases (nZeta > 1), this equals nfp.
+  // For axisymmetric cases (nZeta == 1), this is 64 to ensure adequate
+  // toroidal resolution of the axis polygon for Biot-Savart integration.
+  int nVacuumPeriods;
+
   // number of Fourier basis components
   int num_basis;
 
