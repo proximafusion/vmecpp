@@ -590,7 +590,9 @@ IdealMhdModel::IdealMhdModel(
   bsubv.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
   totalPressure.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  rBSq.setZero(s_.nZnT);
+  // m_h_.rBSq is NOT zeroed here — it carries over from the previous multigrid
+  // step (matching Fortran's module-level rbsq). Initialized once to zero in
+  // HandoverStorage constructor.
 
   insideTotalPressure.setZero(s_.nZnT);
   delBSq.setZero(s_.nZnT);
@@ -910,16 +912,27 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // end of bcovar
 
   // back in funct3d, free-boundary force contribution active?
-  // This can even happen in the first iteration when hot-restarted.
-  if (m_fc_.lfreeb &&
-      (iter2 > 1 || m_vacuum_pressure_state_ != VacuumPressureState::kOff)) {
+  // Fortran: IF (lfreeb .and. iter2.gt.1 .and. iequi.eq.0)
+  // For hot restarts (kInitialized at entry), vacuum is active from iter=1.
+  //
+  // vacuum_forces_active_ is set AFTER the NESTOR block below, to match
+  // Fortran where forces() is called after the free-boundary block in funct3d.
+  // Fortran forces.f90 line 192: IF (ivac >= 1) — rbsq applied when vacuum
+  // has been activated at least once.
+  vacuum_forces_active_ = false;
+  if (m_fc_.lfreeb && (iter2 > 1 || m_vacuum_pressure_state_ ==
+                                        VacuumPressureState::kInitialized)) {
 // protect read of m_vacuum_pressure_state_ below from write above
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
 
-    ivacskip = (iter2 - iter1) % nvacskip;
-    // when R+Z force residuals are <1e-3, enable vacuum contribution
+    // Fortran order in funct3d:
+    // 1. IF (fsqr+fsqz <= 1e-3) ivac = ivac + 1   (line 206)
+    // 2. ivacskip = MOD(iter2-iter1, nvacskip)      (line 219)
+    // 3. IF (ivac <= 2) ivacskip = 0                (line 220)
+
+    // Step 1: Advance the vacuum pressure state when forces are low enough.
     if (m_vacuum_pressure_state_ != VacuumPressureState::kActive &&
         m_fc_.fsqr + m_fc_.fsqz < 1.0e-3) {
 // protect read of m_vacuum_pressure_state_ below from write above
@@ -927,15 +940,26 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #pragma omp barrier
 #endif  // _OPENMP
 
-      // vacuum pressure not fully turned on yet
-      // Do full vacuum calc on every iteration
-      ivacskip = 0;
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
       // Increment ivac, never exceeding VacuumPressureState::kActive
       m_vacuum_pressure_state_ = static_cast<VacuumPressureState>(
           static_cast<int>(m_vacuum_pressure_state_) + 1);
+    }
+
+// all threads must see updated m_vacuum_pressure_state_
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+    // Step 2: Compute ivacskip
+    ivacskip = (iter2 - iter1) % nvacskip;
+
+    // Step 3: Force full NESTOR update during initialization phase
+    // (Fortran: IF (ivac .le. 2) ivacskip = 0)
+    if (m_vacuum_pressure_state_ != VacuumPressureState::kActive) {
+      ivacskip = 0;
     }
 
     // EXTEND NVACSKIP AS EQUILIBRIUM CONVERGES
@@ -1004,6 +1028,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
         if (m_vacuum_pressure_state_ == VacuumPressureState::kInitializing) {
           m_vacuum_pressure_state_ = VacuumPressureState::kInitialized;
 
+          // RESET FIRST TIME FOR SOFT START
+          // Fortran: ivac==1 triggers BAD_JACOBIAN restart once.
+          m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+
           if (verbose) {
             // bSubUVac and cTor contain 2*pi already; see Nestor.cc for
             // bSubUVac and above for cTor
@@ -1032,16 +1060,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
             "ENCLOSE EXT. COIL");
       }
 
-      // RESET FIRST TIME FOR SOFT START
-      if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-        m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
-        m_need_restart = true;
-      } else {
-        m_need_restart = false;
-      }
+      // m_need_restart is set based on whether this is the first vacuum
+      // activation (kInitializing -> kInitialized happened in the omp single
+      // block above). On subsequent iterations, restart_reason was already
+      // consumed by the caller.
+      m_need_restart = (m_fc_.restart_reason == RestartReason::BAD_JACOBIAN);
 
       if (r_.nsMaxF1 == m_fc_.ns) {
         // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS PRECONDITIONER!
@@ -1073,8 +1096,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
           // term to enter MHD forces
           int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
-          rBSq[kl] = outsideEdgePressure * (r1_e[idx_kl] + r1_o[idx_kl]) /
-                     m_fc_.deltaS;
+          m_h_.rBSq[kl] = outsideEdgePressure * (r1_e[idx_kl] + r1_o[idx_kl]) /
+                          m_fc_.deltaS;
 
           // for printout: global mismatch between inside and outside pressure
           delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
@@ -1097,6 +1120,15 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
     }
   }  // lfreeb
+
+  // Fortran forces.f90 line 192: IF (ivac >= 1) applies rbsq at the LCFS.
+  // Set AFTER the NESTOR block, since ivac may have been incremented inside it.
+  // m_h_.rBSq persists across multigrid steps (matching Fortran module-level
+  // rbsq).
+  vacuum_forces_active_ =
+      m_fc_.lfreeb &&
+      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
+       m_vacuum_pressure_state_ == VacuumPressureState::kActive);
 
   // NOTE: if (iequi != 1) { ... continue with code below ...
   // -> iequi==1 computations for outputs are done in OutputQuantities
@@ -2903,17 +2935,14 @@ void IdealMhdModel::assembleTotalForces() {
 #endif  // _OPENMP
 
   // free-boundary contribution: include force on boundary from NESTOR
-  if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive) &&
-      r_.nsMaxF1 == m_fc_.ns) {
+  if (m_fc_.lfreeb && vacuum_forces_active_ && r_.nsMaxF1 == m_fc_.ns) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int idx_kl = (r_.nsMaxF - 1 - r_.nsMinF) * s_.nZnT + kl;
 
-      armn_e[idx_kl] += zuFull[idx_kl] * rBSq[kl];
-      armn_o[idx_kl] += zuFull[idx_kl] * rBSq[kl];
-      azmn_e[idx_kl] -= ruFull[idx_kl] * rBSq[kl];
-      azmn_o[idx_kl] -= ruFull[idx_kl] * rBSq[kl];
+      armn_e[idx_kl] += zuFull[idx_kl] * m_h_.rBSq[kl];
+      armn_o[idx_kl] += zuFull[idx_kl] * m_h_.rBSq[kl];
+      azmn_e[idx_kl] -= ruFull[idx_kl] * m_h_.rBSq[kl];
+      azmn_o[idx_kl] -= ruFull[idx_kl] * m_h_.rBSq[kl];
     }
   }
 
@@ -2999,9 +3028,7 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
 #endif  // _OPENMP
 
   int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
-  if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+  if (m_fc_.lfreeb && vacuum_forces_active_ && true) {
     // free-boundary: up to jMaxRZ=ns
     jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
   }
@@ -3133,9 +3160,7 @@ void IdealMhdModel::assembleRZPreconditioner() {
   }
 
   int jMax = m_fc_.ns - 1;
-  if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+  if (m_fc_.lfreeb && vacuum_forces_active_ && true) {
     jMax = m_fc_.ns;
   }
 
@@ -3296,9 +3321,7 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   }
 
   int jMax = m_fc_.ns - 1;
-  if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+  if (m_fc_.lfreeb && vacuum_forces_active_ && true) {
     jMax = m_fc_.ns;
   }
 
@@ -3453,8 +3476,7 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
 
 double IdealMhdModel::get_delbsq() const {
   double delBSqAvg = 0.0;
-  if (m_fc_.lfreeb &&
-      m_vacuum_pressure_state_ == VacuumPressureState::kActive) {
+  if (vacuum_forces_active_) {
     double delBSqNorm = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int l = kl % s_.nThetaEff;

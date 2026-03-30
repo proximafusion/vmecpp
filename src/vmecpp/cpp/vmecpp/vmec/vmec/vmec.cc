@@ -1054,11 +1054,14 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp single
 #endif  // _OPENMP
     {
-      // vacuum_pressure_state gets set to VacuumPressureState::kInitialized in
-      // vacuum() of NESTOR
-      if (vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
-        vacuum_pressure_state_ = VacuumPressureState::kActive;
-
+      // In Fortran, "VACUUM PRESSURE TURNED ON" prints once when ivac
+      // transitions from 1 to 2 (in eqsolve). The state only advances
+      // further (to ivac>=3, equivalent to kActive) when forces drop below
+      // 1e-3 again (funct3d line 206). Do NOT advance kInitialized -> kActive
+      // here; that transition happens in IdealMhdModel::update.
+      if (vacuum_pressure_state_ == VacuumPressureState::kInitialized &&
+          !vacuum_turned_on_printed_) {
+        vacuum_turned_on_printed_ = true;
         if (verbose_) {
           std::cout << absl::StrFormat(
                            "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS",
