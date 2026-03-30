@@ -415,6 +415,7 @@ INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantities, WOutFileContentsTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-7},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-7},
+           DataSource{.identifier = "solovev_free_bdy", .tolerance = 5.0e-7},
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-6},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 1.0e-6},
