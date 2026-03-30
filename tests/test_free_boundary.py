@@ -68,6 +68,26 @@ def test_run_free_boundary_from_response_table():
     )
 
 
+@pytest.mark.skip(
+    reason="Axisymmetric free-boundary code path not yet fully implemented (segfaults)"
+)
+def test_run_free_boundary_solovev():
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_solovev.json"
+    )
+    # Lower the makegrid resolution
+    makegrid_params.number_of_r_grid_points = 51
+    makegrid_params.number_of_z_grid_points = 51
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.solovev", makegrid_params
+    )
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "solovev_free_bdy.json"
+    )
+    vmec_output = vmecpp.run(vmec_input, response, verbose=False)
+    assert vmec_output.wout.volume == pytest.approx(128.8377, rel=1e-3, abs=1e-3)
+
+
 def test_raise_invalid_nzeta():
     makegrid_params = vmecpp.MakegridParameters.from_file(
         TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
