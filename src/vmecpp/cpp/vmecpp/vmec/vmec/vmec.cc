@@ -121,7 +121,8 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
-      v.run(VmecCheckpoint::NONE, INT_MAX, 500, std::move(initial_state));
+      v.run(VmecCheckpoint::NONE, INT_MAX, /*target_ns=*/0, 500,
+            std::move(initial_state));
 
   if (!s.ok()) {
     return s.status();
@@ -146,7 +147,8 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
-      v.run(VmecCheckpoint::NONE, INT_MAX, 500, std::move(initial_state));
+      v.run(VmecCheckpoint::NONE, INT_MAX, /*target_ns=*/0, 500,
+            std::move(initial_state));
 
   if (!s.ok()) {
     return s.status();
@@ -236,6 +238,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
 // checked visually to comply with vmec.f90
 absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                const int iterations_before_checkpointing,
+                               int target_ns,
                                const int maximum_multi_grid_step,
                                std::optional<HotRestartState> initial_state) {
   if (indata_.lfreeb) {
@@ -269,7 +272,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     }
   }
 
-  // !!! THIS must be the ONLY place where this gets set to zero !!!
+  // Also reset in InitializeRadial per multigrid step (matching Fortran).
   num_eqsolve_retries_ = 0;
 
   fc_.ns_old = 0;
@@ -336,17 +339,25 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       logger_.BeginStage(igrid, max_grids + jacob_off_, fc_.nsval, s_.mnmax,
                          fc_.ftolv, fc_.niterv, fc_.lfreeb);
 
+      // When target_ns is specified, only enable checkpointing at that ns.
+      // This allows tests to run through earlier multigrid steps to
+      // convergence and checkpoint at a specific later step (e.g. ns=32).
+      const VmecCheckpoint effective_checkpoint =
+          (target_ns > 0 && fc_.nsval != target_ns) ? VmecCheckpoint::NONE
+                                                    : checkpoint;
+
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
       // value
-      if (InitializeRadial(checkpoint, iterations_before_checkpointing,
-                           fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state)) {
+      if (InitializeRadial(effective_checkpoint,
+                           iterations_before_checkpointing, fc_.nsval,
+                           fc_.ns_old, fc_.delt0r, initial_state)) {
         return true;
       }
 
       // *HERE* is the *ACTUAL* call to the equilibrium solver !
-      const absl::StatusOr<bool> reached_checkpoint =
-          SolveEquilibrium(checkpoint, iterations_before_checkpointing);
+      const absl::StatusOr<bool> reached_checkpoint = SolveEquilibrium(
+          effective_checkpoint, iterations_before_checkpointing);
       if (!reached_checkpoint.ok() || *reached_checkpoint == true) {
         return reached_checkpoint;
       }
@@ -424,6 +435,9 @@ bool Vmec::InitializeRadial(
     int ns_old, double& m_delt0,
     const std::optional<HotRestartState>& initial_state) {
   // Stage info output is now handled by logger_.BeginStage() in run().
+
+  // Reset per-multigrid-step counters (matches Fortran initialize_radial.f90)
+  num_eqsolve_retries_ = 0;
 
   // Set timestep control parameters
   fc_.fsq = 1.0;
@@ -529,6 +543,7 @@ bool Vmec::InitializeRadial(
               &s_, tp_[thread_id].get(), &mgrid_,
               std::span<double>(matrixShare.data(), matrixShare.size()),
               std::span<double>(bvecShare.data(), bvecShare.size()),
+              std::span<double>(h_.bvecSin.data(), h_.bvecSin.size()),
               std::span<double>(h_.vacuum_magnetic_pressure.data(),
                                 h_.vacuum_magnetic_pressure.size()),
               std::span<int>(iPiv.data(), iPiv.size()),

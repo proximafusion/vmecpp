@@ -1144,6 +1144,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
   computeMHDForces();
 
   assembleTotalForces();
+
   if (checkpoint == VmecCheckpoint::REALSPACE_FORCES &&
       iter2 >= iterations_before_checkpointing) {
     return true;
@@ -3077,8 +3078,9 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
 
         const double _zsc = znksc + xmpq[m] * zcon_sc;
         m_physical_f.fzsc[idx_jm] += _zsc * sinmui + znksc_m * cosmumi;
-      }  // m
-    }  // l
+      }  // l
+
+    }  // m
   }  // jF
 
   // Do the lambda force coefficients separately, as they have different radial
@@ -3483,7 +3485,9 @@ double IdealMhdModel::get_delbsq() const {
       delBSqAvg += delBSq[kl] * s_.wInt[l];
       delBSqNorm += insideTotalPressure[kl] * s_.wInt[l];
     }
-    delBSqAvg /= delBSqNorm;
+    if (delBSqNorm > 0.0) {
+      delBSqAvg /= delBSqNorm;
+    }
   }
   return delBSqAvg;
 }
