@@ -30,8 +30,9 @@ def calculate_magnetic_field(vmec_output, j, theta, phi,
 
     Returns
     -------
-    ndarray, ndarray
-        Position `X` and magnetic field value `B` in the desired coordinates.
+    ndarray, ndarray, ndarray
+        Position `X`, magnetic field vector `B`, and current density `J` in the 
+        desired coordinates.
     """
     
     # Fetch poloidal mode numbers: m for position, m_nyq for magnetic field
@@ -83,18 +84,33 @@ def calculate_magnetic_field(vmec_output, j, theta, phi,
     bx = br * np.cos(phi) - bphi * np.sin(phi)
     by = br * np.sin(phi) + bphi * np.cos(phi)
 
+    # # Repeat the same process for the current density field
+    # jtht = np.dot(vmec_output.jxbout.itheta[j, :], np.cos(kernel_nyq))
+    # jzta = np.dot(vmec_output.jxbout.izeta[j, :], np.cos(kernel_nyq))
+
+    # jr = jtht * drdtheta + jzta * drdphi
+    # jphi = jzta * r
+    # jz = jtht * dzdtheta + jzta * dzdphi
+
+    # jx = jr * np.cos(phi) - jphi * np.sin(phi)
+    # jy = jr * np.sin(phi) + jphi * np.cos(phi)
+
     # Format outputs as vectors
     X = np.array([x, y, z])                       # Position in Cartesian coordinates
     B = np.array([bx, by, bz])                    # Magnetic field in Cartesian coordinates
+    # J = np.array([jx, jy, jz])                    # Current density in Cartesian coordinates
 
     Xcyl = np.array([r, phi, z])                  # Position in cylindrical coordinates
     Bcyl = np.array([br, bphi, bz])               # Magnetic field in cylindrical coordinates
+    # Jcyl = np.array([jr, jphi, jz])               # Current density in cylindrical coordinates
 
     # Return X and B
     if output_coordinates == 'cartesian':
+        # return X, B, J
         return X, B
     
     elif output_coordinates == 'cylindrical':
+        # return Xcyl, Bcyl, Jcyl
         return Xcyl, Bcyl
     
     else:
@@ -146,20 +162,27 @@ if __name__ == "__main__":
     # Compute Cartesian coordinates of flux surface geometry and magnetic field
     x, y, z = (np.zeros([num_theta, num_phi]) for i in range(3))
     bx, by, bz = (np.zeros([num_theta, num_phi]) for i in range(3))
+    jx, jy, jz = (np.zeros([num_theta, num_phi]) for i in range(3))
 
     for idx_theta, theta in enumerate(grid_theta):
         for idx_phi, phi in enumerate(grid_phi):
 
             # Compute
+            # X, B, J = calculate_magnetic_field(vmec_output, j, theta, phi)
             X, B = calculate_magnetic_field(vmec_output, j, theta, phi)
 
             # Unpack coordinates
             x[idx_theta, idx_phi] = X[0]
             y[idx_theta, idx_phi] = X[1]
             z[idx_theta, idx_phi] = X[2]
+
             bx[idx_theta, idx_phi] = B[0]
             by[idx_theta, idx_phi] = B[1]
             bz[idx_theta, idx_phi] = B[2]
+
+            # jx[idx_theta, idx_phi] = J[0]
+            # jy[idx_theta, idx_phi] = J[1]
+            # jz[idx_theta, idx_phi] = J[2]
 
 
     # ----------- VISUALIZE WITH pyVista ---------------------------------------
@@ -169,12 +192,15 @@ if __name__ == "__main__":
 
     # Combine vector components
     B = np.stack((bx, by, bz), axis=2)
+    J = np.stack((jx, jy, jz), axis=2)
 
     # Reshape to (n_points, 3)
     B = B.reshape(-1, 3, order='F')
+    J = J.reshape(-1, 3, order='F')
 
     # Attach vector field
     grid["B"] = B
+    grid["J"] = J
 
     # Initialize plotter
     plotter = pv.Plotter()
@@ -201,3 +227,20 @@ if __name__ == "__main__":
 
     # Visualize
     plotter.show()
+
+    # # Same thing with the current density
+    # plotter.add_mesh(
+    #     grid,
+    #     scalars="J",
+    #     smooth_shading=True,
+    #     specular=0.2,
+    # )
+
+    # glyphs = grid.glyph(
+    #     orient="J",
+    #     scale="J",
+    #     factor=0.03
+    # )
+    # plotter.add_mesh(glyphs, color="blue")
+
+    # plotter.show()
