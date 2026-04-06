@@ -100,3 +100,55 @@ def calculate_magnetic_field(vmec_output, j, theta, phi,
     else:
         raise ValueError(f"Invalid `output_coordinates = {output_coordinates}`;"
                           + " valid values are 'cartesian' and 'cylindrical'.")
+
+
+
+
+if __name__ == "__main__":
+
+    from pathlib import Path
+    import numpy as np
+
+    import vmecpp
+
+    # Construct a VmecInput object, e.g. from a classic Fortran input file or VMEC++'s json format
+    input_file = Path(__file__).parent / "data" / "input.w7x"
+    vmec_input = vmecpp.VmecInput.from_file(input_file)
+
+    # This is a normal Python object: it can be constructed and modified programmatically
+    # vmec_input.rbc[0, 0] *= 1.1
+
+    # Run VMEC++:
+    vmec_output = vmecpp.run(vmec_input)
+
+    # Number of flux surfaces, i.e., final radial resolution
+    ns = vmec_output.wout.ns
+
+    # Flux surface to process (ns - 1 is the outermost (last) flux surface, which is the plasma boundary)
+    j = ns - 1
+
+    # Resolution over the flux surface
+    num_theta = 101
+    num_phi = 181
+
+    # Grid in theta and phi along the flux surface
+    grid_theta = np.linspace(0.0, 2*np.pi, num_theta, endpoint=True)
+    grid_phi = np.linspace(0.0, 2*np.pi, num_phi, endpoint=True)
+
+    # Compute Cartesian coordinates of flux surface geometry and magnetic field
+    x, y, z = (np.zeros([num_theta, num_phi]) for i in range(3))
+    bx, by, bz = (np.zeros([num_theta, num_phi]) for i in range(3))
+
+    for idx_theta, theta in enumerate(grid_theta):
+        for idx_phi, phi in enumerate(grid_phi):
+
+            # Compute
+            X, B = calculate_magnetic_field(vmec_output, j, theta, phi)
+
+            # Unpack coordinates
+            x[idx_theta, idx_phi] = X[0]
+            y[idx_theta, idx_phi] = X[1]
+            z[idx_theta, idx_phi] = X[2]
+            bx[idx_theta, idx_phi] = B[0]
+            by[idx_theta, idx_phi] = B[1]
+            bz[idx_theta, idx_phi] = B[2]
