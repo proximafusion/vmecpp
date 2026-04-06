@@ -109,7 +109,12 @@ if __name__ == "__main__":
     from pathlib import Path
     import numpy as np
 
+    import pyvista as pv
+
     import vmecpp
+
+
+    # ----------- RUN VMEC++ ---------------------------------------------------
 
     # Construct a VmecInput object, e.g. from a classic Fortran input file or VMEC++'s json format
     input_file = Path(__file__).parent / "data" / "input.w7x"
@@ -120,6 +125,9 @@ if __name__ == "__main__":
 
     # Run VMEC++:
     vmec_output = vmecpp.run(vmec_input)
+
+
+    # ----------- CONSTRUCT MAGNETIC FIELD OVER A FLUX SURFACE -----------------
 
     # Number of flux surfaces, i.e., final radial resolution
     ns = vmec_output.wout.ns
@@ -152,3 +160,44 @@ if __name__ == "__main__":
             bx[idx_theta, idx_phi] = B[0]
             by[idx_theta, idx_phi] = B[1]
             bz[idx_theta, idx_phi] = B[2]
+
+
+    # ----------- VISUALIZE WITH pyVista ---------------------------------------
+
+    # Create structured grid
+    grid = pv.StructuredGrid(x, y, z)
+
+    # Combine vector components
+    B = np.stack((bx, by, bz), axis=2)
+
+    # Reshape to (n_points, 3)
+    B = B.reshape(-1, 3, order='F')
+
+    # Attach vector field
+    grid["B"] = B
+
+    # Initialize plotter
+    plotter = pv.Plotter()
+
+    # Add flux surface with B magnitude heat map
+    plotter.add_mesh(
+        grid,
+        scalars="B",
+        # cmap="plasma",            # Specify color scheme for heat map
+        smooth_shading=True,
+        specular=0.2,
+        # show_edges=True,          # Show grid edges
+        # line_width=0.5,
+        # jupyter_backend='trame'   # Enable interactivity in Jupyter
+    )
+
+    # Add magnetic field glyphs
+    glyphs = grid.glyph(
+        orient="B",
+        scale="B",
+        factor=0.03
+    )
+    plotter.add_mesh(glyphs, color="blue")
+
+    # Visualize
+    plotter.show()
