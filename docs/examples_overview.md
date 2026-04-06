@@ -8,6 +8,7 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`hot_restart_scaling.py`](../examples/hot_restart_scaling.py): illustrate how boundary perturbations affect hot-restart iteration counts.
 - [`compare_vmecpp_to_parvmec.py`](../examples/compare_vmecpp_to_parvmec.py): compare VMEC++ results to a PARVMEC reference solution.
 - [`plot_plasma_boundary.py`](../examples/plot_plasma_boundary.py): plot the outer plasma boundary with `matplotlib`.
+- [`visualize_magnetic_field.py`](../examples/visualize_magnetic_field.py): calculate the magnetic field and current density, and visualize with `pyvista`.
 - [`mpi_finite_difference.py`](../examples/mpi_finite_difference.py): compute finite-difference derivatives in parallel using MPI.
 - [`simsopt_integration.py`](../examples/simsopt_integration.py): minimal integration with SIMSOPT.
 - [`simsopt_qh_fixed_resolution.py`](../examples/simsopt_qh_fixed_resolution.py): reproduce SIMSOPT's QH fixed resolution example.
