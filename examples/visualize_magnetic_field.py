@@ -144,9 +144,6 @@ if __name__ == "__main__":
     input_file = Path(__file__).parent / "data" / "input.w7x"
     vmec_input = vmecpp.VmecInput.from_file(input_file)
 
-    # This is a normal Python object: it can be constructed and modified programmatically
-    # vmec_input.rbc[0, 0] *= 1.1
-
     # Run VMEC++:
     vmec_output = vmecpp.run(vmec_input)
 
