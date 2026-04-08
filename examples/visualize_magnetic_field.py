@@ -56,24 +56,29 @@ def calculate_magnetic_field(vmec_output, j, theta, phi,
     # Arguments of Fourier series
     kernel = xm * theta - xn * phi
     kernel_nyq = xm_nyq * theta - xn_nyq * phi
+
+    # Evaluate cos and sin
+    cosk = np.cos(kernel)
+    sink = np.sin(kernel)
+    cosk_nyq = np.cos(kernel_nyq)
     
     # Position in cylindrical coordinates (Sec. 9.1)
-    r = np.dot(rmnc[:, j], np.cos(kernel))
-    z = np.dot(zmns[:, j], np.sin(kernel))
+    r = np.dot(rmnc[:, j], cosk)
+    z = np.dot(zmns[:, j], sink)
     
     # Cylindrical position derivatives (Sec. 3.5)
-    drdtheta = np.dot(rmnc[:, j], -xm * np.sin(kernel))
-    drdphi = np.dot(rmnc[:, j], xn * np.sin(kernel))
-    dzdtheta = np.dot(zmns[:, j], xm * np.cos(kernel))
-    dzdphi = np.dot(zmns[:, j], -xn * np.cos(kernel))
+    drdtheta = np.dot(rmnc[:, j], -xm * sink)
+    drdphi = np.dot(rmnc[:, j], xn * sink)
+    dzdtheta = np.dot(zmns[:, j], xm * cosk)
+    dzdphi = np.dot(zmns[:, j], -xn * cosk)
     
     # Position in Cartesian coordinates (Sec. 3.7)
     x = r * np.cos(phi)
     y = r * np.sin(phi)
     
     # Construct contravariant components B^θ and B^ζ from Fourier series (Sec. 9.2)
-    bsupu = np.dot(bsupumnc[:, j], np.cos(kernel_nyq))
-    bsupv = np.dot(bsupvmnc[:, j], np.cos(kernel_nyq))
+    bsupu = np.dot(bsupumnc[:, j], cosk_nyq)
+    bsupv = np.dot(bsupvmnc[:, j], cosk_nyq)
     
     # Construct cylindrical components from contraviariant components
     br = bsupu * drdtheta + bsupv * drdphi
@@ -84,8 +89,8 @@ def calculate_magnetic_field(vmec_output, j, theta, phi,
     # currumnc = vmec_output.wout.currumnc
     # currvmnc = vmec_output.wout.currvmnc
 
-    # curru = np.dot(currumnc[:, j], np.cos(kernel_nyq))
-    # currv = np.dot(currvmnc[:, j], np.cos(kernel_nyq))
+    # curru = np.dot(currumnc[:, j], cosk_nyq)
+    # currv = np.dot(currvmnc[:, j], cosk_nyq)
 
     # currr = curru * drdtheta + currv * drdphi
     # currphi = currv * r
