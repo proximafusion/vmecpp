@@ -50,8 +50,8 @@ def calculate_magnetic_field(vmec_output, j, theta, phi,
     # Fetch B^θ_mn and B^ζ_mn cos Fourier coefficients
     # NOTE: From Schilling 2026 VMEC++ white paper, Table 9.2, we have 
     #       B^{θ,cos}_mn = bsupumnc and B^{ζ,cos}_mn = bsupvmnc
-    bsupthtmnc = vmec_output.wout.bsupumnc
-    bsupztamnc = vmec_output.wout.bsupvmnc
+    bsupumnc = vmec_output.wout.bsupumnc
+    bsupvmnc = vmec_output.wout.bsupvmnc
     
     # Arguments of Fourier series
     kernel = xm * theta - xn * phi
@@ -72,25 +72,25 @@ def calculate_magnetic_field(vmec_output, j, theta, phi,
     y = r * np.sin(phi)
     
     # Construct contravariant components B^θ and B^ζ from Fourier series (Sec. 9.2)
-    bsuptht = np.dot(bsupthtmnc[:, j], np.cos(kernel_nyq))
-    bsupzta = np.dot(bsupztamnc[:, j], np.cos(kernel_nyq))
+    bsupu = np.dot(bsupumnc[:, j], np.cos(kernel_nyq))
+    bsupv = np.dot(bsupvmnc[:, j], np.cos(kernel_nyq))
     
     # Construct cylindrical components from contraviariant components
-    br = bsuptht * drdtheta + bsupzta * drdphi
-    bphi = bsupzta * r
-    bz = bsuptht * dzdtheta + bsupzta * dzdphi
+    br = bsupu * drdtheta + bsupv * drdphi
+    bphi = bsupv * r
+    bz = bsupu * dzdtheta + bsupv * dzdphi
     
     # Magnetic field in Cartesian coordinates (Sec. 3.7)
     bx = br * np.cos(phi) - bphi * np.sin(phi)
     by = br * np.sin(phi) + bphi * np.cos(phi)
 
     # # Repeat the same process for the current density field
-    # jtht = np.dot(vmec_output.jxbout.itheta[j, :], np.cos(kernel_nyq))
-    # jzta = np.dot(vmec_output.jxbout.izeta[j, :], np.cos(kernel_nyq))
+    # ju = np.dot(vmec_output.jxbout.itheta[j, :], np.cos(kernel_nyq))
+    # jv = np.dot(vmec_output.jxbout.izeta[j, :], np.cos(kernel_nyq))
 
-    # jr = jtht * drdtheta + jzta * drdphi
-    # jphi = jzta * r
-    # jz = jtht * dzdtheta + jzta * dzdphi
+    # jr = ju * drdtheta + jv * drdphi
+    # jphi = jv * r
+    # jz = ju * dzdtheta + jv * dzdphi
 
     # jx = jr * np.cos(phi) - jphi * np.sin(phi)
     # jy = jr * np.sin(phi) + jphi * np.cos(phi)
