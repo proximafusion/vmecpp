@@ -190,12 +190,13 @@ if __name__ == "__main__":
     grid = pv.StructuredGrid(x, y, z)
 
     # Combine vector components
-    B = np.stack((bx, by, bz), axis=2)
-    J = np.stack((jx, jy, jz), axis=2)
+    B = np.c_[  bx.ravel(order='F'),
+                by.ravel(order='F'),
+                bz.ravel(order='F')]
 
-    # Reshape to (n_points, 3)
-    B = B.reshape(-1, 3, order="F")
-    J = J.reshape(-1, 3, order="F")
+    J = np.c_[  jx.ravel(order='F'),
+                jy.ravel(order='F'),
+                jz.ravel(order='F')]
 
     # Attach vector field
     grid["B"] = B
