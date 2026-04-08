@@ -1254,6 +1254,12 @@ struct WOutFileContents {
   // half-grid: contravariant B^\zeta
   RowMatrixXd bsupvmnc;
 
+  // full-grid: sqrt(g) * J^\theta, Fourier coefficients (cos)
+  RowMatrixXd currumnc;
+
+  // full-grid: sqrt(g) * J^\zeta, Fourier coefficients (cos)
+  RowMatrixXd currvmnc;
+
   // -------------------
   // non-stellarator-symmetric Fourier coefficients
 
@@ -1297,6 +1303,12 @@ struct WOutFileContents {
 
   // half-grid: contravariant B^\zeta
   RowMatrixXd bsupvmns;
+
+  // full-grid: sqrt(g) * J^\theta, Fourier coefficients (sin)
+  RowMatrixXd currumns;
+
+  // full-grid: sqrt(g) * J^\zeta, Fourier coefficients (sin)
+  RowMatrixXd currvmns;
 
   bool operator==(const WOutFileContents&) const = default;
   bool operator!=(const WOutFileContents& o) const { return !(*this == o); }

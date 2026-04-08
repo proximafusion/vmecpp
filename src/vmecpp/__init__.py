@@ -679,6 +679,8 @@ class VmecWOut(BaseModelWithNumpy):
         "bsubvmns",
         "bsupumns",
         "bsupvmns",
+        "currumns",
+        "currvmns",
     ]
     """If quantities are not exactly the same in C++ WoutFileContents and this class,
     add them to this list and implement the conversion logic in _to_cpp_wout and
@@ -969,6 +971,18 @@ class VmecWOut(BaseModelWithNumpy):
     r"""Fourier coefficients (cos) of the contravariant magnetic field component
     :math:`B^{\phi}` on the half-grid."""
 
+    # Defaulted for backwards compatibility with old wout files
+    currumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\theta}` on the full-grid."""
+
+    # Defaulted for backwards compatibility with old wout files
+    currvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\zeta}` on the full-grid."""
+
     rmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"]
     """Fourier coefficients (cos) for ``R`` of the geometry of the flux surfaces on the
     full- grid."""
@@ -1037,6 +1051,14 @@ class VmecWOut(BaseModelWithNumpy):
     bsupvmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the contravariant magnetic field component
     :math:`B^{\phi}` on the half-grid; non-stellarator-symmetric."""
+
+    currumns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    r"""Fourier coefficients (sin) of :math:`\sqrt{g} J^{\theta}` on the full-grid; non-
+    stellarator-symmetric."""
+
+    currvmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    r"""Fourier coefficients (sin) of :math:`\sqrt{g} J^{\zeta}` on the full-grid; non-
+    stellarator-symmetric."""
 
     pcurr_type: ProfileType
     """Parametrization of toroidal current profile (copied from input)."""
@@ -1409,6 +1431,8 @@ class VmecWOut(BaseModelWithNumpy):
             attrs["bsubvmns"] = cpp_wout.bsubvmns
             attrs["bsupumns"] = cpp_wout.bsupumns
             attrs["bsupvmns"] = cpp_wout.bsupvmns
+            attrs["currumns"] = cpp_wout.currumns
+            attrs["currvmns"] = cpp_wout.currvmns
             attrs["gmns"] = cpp_wout.gmns
 
         return VmecWOut(**attrs)
@@ -1438,6 +1462,8 @@ class VmecWOut(BaseModelWithNumpy):
                 "bsubvmns",
                 "bsupumns",
                 "bsupvmns",
+                "currumns",
+                "currvmns",
             ]:
                 value = getattr(self, field)
                 if value is not None:

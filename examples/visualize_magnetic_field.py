@@ -87,35 +87,37 @@ def calculate_magnetic_field(
     bphi = bsupv * r
     bz = bsupu * dzdtheta + bsupv * dzdphi
 
-    # # Repeat the same process for the current density field
-    # currumnc = vmec_output.wout.currumnc
-    # currvmnc = vmec_output.wout.currvmnc
+    # Repeat the same process for the current density field
+    currumnc = vmec_output.wout.currumnc
+    currvmnc = vmec_output.wout.currvmnc
 
-    # curru = np.dot(currumnc[:, j], cosk_nyq)
-    # currv = np.dot(currvmnc[:, j], cosk_nyq)
+    curru = np.dot(currumnc[:, j], cosk_nyq)
+    currv = np.dot(currvmnc[:, j], cosk_nyq)
 
-    # currr = curru * drdtheta + currv * drdphi
-    # currphi = currv * r
-    # currz = curru * dzdtheta + currv * dzdphi
+    currr = curru * drdtheta + currv * drdphi
+    currphi = currv * r
+    currz = curru * dzdtheta + currv * dzdphi
 
     if output_coordinates == "cylindrical":
         # Format outputs as vectors
         X = np.array([r, phi, z])  # Position in cylindrical coordinates
         B = np.array([br, bphi, bz])  # Magnetic field in cylindrical coordinates
-        # J = np.array([currr, currphi, currz])     # Current density in cylindrical coordinates
+        J = np.array(
+            [currr, currphi, currz]
+        )  # Current density in cylindrical coordinates
 
     elif output_coordinates == "cartesian":
         # Magnetic field in Cartesian coordinates (Sec. 3.7)
         bx = br * np.cos(phi) - bphi * np.sin(phi)
         by = br * np.sin(phi) + bphi * np.cos(phi)
 
-        # currx = currr * np.cos(phi) - currphi * np.sin(phi)
-        # curry = currr * np.sin(phi) + currphi * np.cos(phi)
+        currx = currr * np.cos(phi) - currphi * np.sin(phi)
+        curry = currr * np.sin(phi) + currphi * np.cos(phi)
 
         # Format outputs as vectors
         X = np.array([x, y, z])  # Position in Cartesian coordinates
         B = np.array([bx, by, bz])  # Magnetic field in Cartesian coordinates
-        # J = np.array([currx, curry, currz])       # Current density in Cartesian coordinates
+        J = np.array([currx, curry, currz])  # Current density in Cartesian coordinates
 
     else:
         raise ValueError(
@@ -123,8 +125,7 @@ def calculate_magnetic_field(
             + " valid values are 'cartesian' and 'cylindrical'."
         )
 
-    # return X, B, J
-    return X, B
+    return X, B, J
 
 
 if __name__ == "__main__":
@@ -168,8 +169,7 @@ if __name__ == "__main__":
     for idx_theta, theta in enumerate(grid_theta):
         for idx_phi, phi in enumerate(grid_phi):
             # Compute
-            # X, B, J = calculate_magnetic_field(vmec_output, j, theta, phi)
-            X, B = calculate_magnetic_field(vmec_output, j, theta, phi)
+            X, B, J = calculate_magnetic_field(vmec_output, j, theta, phi)
 
             # Unpack coordinates
             x[idx_theta, idx_phi] = X[0]
@@ -180,9 +180,9 @@ if __name__ == "__main__":
             by[idx_theta, idx_phi] = B[1]
             bz[idx_theta, idx_phi] = B[2]
 
-            # jx[idx_theta, idx_phi] = J[0]
-            # jy[idx_theta, idx_phi] = J[1]
-            # jz[idx_theta, idx_phi] = J[2]
+            jx[idx_theta, idx_phi] = J[0]
+            jy[idx_theta, idx_phi] = J[1]
+            jz[idx_theta, idx_phi] = J[2]
 
     # ----------- VISUALIZE WITH pyVista ---------------------------------------
 
@@ -220,19 +220,14 @@ if __name__ == "__main__":
     # Visualize
     plotter.show()
 
-    # # Same thing with the current density
-    # plotter.add_mesh(
-    #     grid,
-    #     scalars="J",
-    #     smooth_shading=True,
-    #     specular=0.2,
-    # )
-
-    # glyphs = grid.glyph(
-    #     orient="J",
-    #     scale="J",
-    #     factor=0.03
-    # )
-    # plotter.add_mesh(glyphs, color="blue")
-
-    # plotter.show()
+    # Same thing with the current density
+    plotter_j = pv.Plotter()
+    plotter_j.add_mesh(
+        grid,
+        scalars="J",
+        smooth_shading=True,
+        specular=0.2,
+    )
+    glyphs_j = grid.glyph(orient="J", scale="J", factor=3.0e-7)
+    plotter_j.add_mesh(glyphs_j, color="blue")
+    plotter_j.show()
