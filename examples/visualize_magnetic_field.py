@@ -5,6 +5,8 @@ Cartesian coordinates, and (3) visualize flux surface + magnetic field using pyV
 Note, that this script requires pyvista as an additional dependency.
 """
 
+import numpy as np
+
 
 def calculate_magnetic_field(
     vmec_output, j, theta, phi, output_coordinates="cartesian"
