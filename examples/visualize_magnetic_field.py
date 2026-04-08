@@ -85,24 +85,27 @@ def calculate_magnetic_field(vmec_output, j, theta, phi,
     by = br * np.sin(phi) + bphi * np.cos(phi)
 
     # # Repeat the same process for the current density field
-    # ju = np.dot(vmec_output.jxbout.itheta[j, :], np.cos(kernel_nyq))
-    # jv = np.dot(vmec_output.jxbout.izeta[j, :], np.cos(kernel_nyq))
+    # currumnc = vmec_output.wout.currumnc
+    # currvmnc = vmec_output.wout.currvmnc
 
-    # jr = ju * drdtheta + jv * drdphi
-    # jphi = jv * r
-    # jz = ju * dzdtheta + jv * dzdphi
+    # curru = np.dot(currumnc[:, j], np.cos(kernel_nyq))
+    # currv = np.dot(currvmnc[:, j], np.cos(kernel_nyq))
 
-    # jx = jr * np.cos(phi) - jphi * np.sin(phi)
-    # jy = jr * np.sin(phi) + jphi * np.cos(phi)
+    # currr = curru * drdtheta + currv * drdphi
+    # currphi = currv * r
+    # currz = curru * dzdtheta + currv * dzdphi
+
+    # currx = currr * np.cos(phi) - currphi * np.sin(phi)
+    # curry = currr * np.sin(phi) + currphi * np.cos(phi)
 
     # Format outputs as vectors
     X = np.array([x, y, z])                       # Position in Cartesian coordinates
     B = np.array([bx, by, bz])                    # Magnetic field in Cartesian coordinates
-    # J = np.array([jx, jy, jz])                    # Current density in Cartesian coordinates
+    # J = np.array([currx, curry, currz])         # Current density in Cartesian coordinates
 
     Xcyl = np.array([r, phi, z])                  # Position in cylindrical coordinates
     Bcyl = np.array([br, bphi, bz])               # Magnetic field in cylindrical coordinates
-    # Jcyl = np.array([jr, jphi, jz])               # Current density in cylindrical coordinates
+    # Jcyl = np.array([currr, currphi, currz])    # Current density in cylindrical coordinates
 
     # Return X and B
     if output_coordinates == 'cartesian':
