@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775638085966,
+  "lastUpdate": 1775817021074,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -1120,6 +1120,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.005803871927889995",
             "extra": "mean: 9.87227842566665 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "130992531+jons-pf@users.noreply.github.com",
+            "name": "Jonathan Schilling",
+            "username": "jons-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "bb623a411e381b7a45c3905502ce63c2d6886b56",
+          "message": "Implement the current density Fourier coefficients. (#474)",
+          "timestamp": "2026-04-10T10:26:12Z",
+          "tree_id": "27605f632f483ab8cb9a4a98f54cbd75d36dee9c",
+          "url": "https://github.com/proximafusion/vmecpp/commit/bb623a411e381b7a45c3905502ce63c2d6886b56"
+        },
+        "date": 1775817020231,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.7474776222578354,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0035124411644543246",
+            "extra": "mean: 363.97020739998425 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.7147479807961377,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003977850771133096",
+            "extra": "mean: 368.35831800001415 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23076889890580482,
+            "unit": "iter/sec",
+            "range": "stddev: 0.034842879959478795",
+            "extra": "mean: 4.33333956499996 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5611759204971993,
+            "unit": "iter/sec",
+            "range": "stddev: 0.012841338055319782",
+            "extra": "mean: 1.7819723966666363 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.2772501402377176,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014743401853566063",
+            "extra": "mean: 3.606851196333347 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.0998568255099256,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0035784047592257186",
+            "extra": "mean: 10.014337977333374 sec\nrounds: 3"
           }
         ]
       }
