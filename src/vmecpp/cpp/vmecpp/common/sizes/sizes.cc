@@ -83,6 +83,12 @@ void Sizes::computeDerivedSizes() {
   // flag to indicate a three-dimensional case (== has toroidal variation)
   lthreed = (ntor > 0);
 
+  // For Biot-Savart integration of the axis current filament:
+  // In 3D cases, the existing nZeta * nfp grid provides enough segments.
+  // In the axisymmetric case (nZeta == 1), we need more segments to
+  // properly discretize the circular axis for the Biot-Savart integral.
+  nVacuumPeriods = (nZeta == 1) ? 64 : nfp;
+
   // number of Fourier basis functions
   // num_basis = 2**(lthreed + lasym)
   num_basis = 1;

@@ -12,8 +12,8 @@ SurfaceGeometry::SurfaceGeometry(const Sizes* s,
                                  const FourierBasisFastToroidal* fb,
                                  const TangentialPartitioning* tp)
     : s_(*s), fb_(*fb), tp_(*tp) {
-  cos_per.resize(s_.nfp);
-  sin_per.resize(s_.nfp);
+  cos_per.resize(s_.nVacuumPeriods);
+  sin_per.resize(s_.nVacuumPeriods);
 
   cos_phi.resize(s_.nZeta);
   sin_phi.resize(s_.nZeta);
@@ -62,8 +62,8 @@ SurfaceGeometry::SurfaceGeometry(const Sizes* s,
 }
 
 void SurfaceGeometry::computeConstants() {
-  double omega_per = 2.0 * M_PI / s_.nfp;
-  for (int p = 0; p < s_.nfp; ++p) {
+  double omega_per = 2.0 * M_PI / s_.nVacuumPeriods;
+  for (int p = 0; p < s_.nVacuumPeriods; ++p) {
     double phi_per = omega_per * p;
     cos_per[p] = cos(phi_per);
     sin_per[p] = sin(phi_per);
