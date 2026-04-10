@@ -327,7 +327,8 @@ class IdealMhdModel {
   Eigen::VectorXd totalPressure;
 
   // r * |B_vac|^2 at LCFS
-  Eigen::VectorXd rBSq;
+  // rBSq is stored in HandoverStorage (m_h_.rBSq) to persist across
+  // multigrid steps, matching Fortran's module-level rbsq variable.
 
   // (|B|^2/(2 mu_0) + p) on inside of LCFS
   Eigen::VectorXd insideTotalPressure;
@@ -465,6 +466,14 @@ class IdealMhdModel {
   // counter how many vacuum iterations have passed since last full update
   // --> counts modulo nvacskip
   int ivacskip;
+
+  // Set at the beginning of update() to indicate whether vacuum force
+  // contributions should be included. Matches Fortran's
+  // IF (lfreeb .and. iter2.gt.1) condition. Used by downstream methods
+  // (assembleTotalForces, forcesToFourier, etc.) that don't have access
+  // to iter2 directly. For hot restarts (kInitialized at entry), this is
+  // true from iter=1.
+  bool vacuum_forces_active_ = false;
 };
 
 }  // namespace vmecpp

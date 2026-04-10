@@ -164,6 +164,11 @@ class HandoverStorage {
   Eigen::VectorXd zCC_LCFS;
   Eigen::VectorXd zSS_LCFS;
 
+  // [nZnT] edge force contribution from vacuum pressure (rbsq in Fortran).
+  // Persists across multigrid steps so it can be applied at iter=1 of
+  // the next multigrid step (matching Fortran's module-level rbsq).
+  Eigen::VectorXd rBSq;
+
   // [nZnT] vacuum magnetic pressure |B_vac^2|/2 at the plasma boundary
   Eigen::VectorXd vacuum_magnetic_pressure;
 

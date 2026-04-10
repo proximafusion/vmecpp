@@ -236,6 +236,9 @@ class Vmec {
   // initialization state counter for Nestor. Called ivac in Fortran VMEC.
   VacuumPressureState vacuum_pressure_state_;
 
+  // Latch for "VACUUM PRESSURE TURNED ON" printout (prints once).
+  bool vacuum_turned_on_printed_ = false;
+
   // 0 if in regular multi-grid sequence;
   // 1 if have tried from scratch with intermediate ns=3, ftolv=1.0e-4
   // multi-grid step

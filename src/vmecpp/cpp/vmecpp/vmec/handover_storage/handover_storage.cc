@@ -26,6 +26,8 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
   bSubUVac = 0.0;
   bSubVVac = 0.0;
 
+  rBSq.setZero(s_.nZnT);
+
   rCon_LCFS.setZero(s_.nZnT);
   zCon_LCFS.setZero(s_.nZnT);
 
