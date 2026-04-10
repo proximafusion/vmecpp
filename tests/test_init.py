@@ -172,8 +172,6 @@ _MISSING_FORTRAN_VARIABLES = [
     "lmove_axis__logical__",
     "mnyq",
     "nnyq",
-    "currumnc",
-    "currvmnc",
     "curlabel",
     "potvac",
     "nobser",
@@ -242,11 +240,15 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
             )
         # np.asarray is needed to convert the masked array to a regular array.
         # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
+        # Current density coefficients are computed via finite differences of
+        # covariant B field Fourier coefficients, which amplifies floating-point
+        # non-determinism (e.g., from OpenMP reduction order).
+        rtol = 1e-3 if varname in ("currumnc", "currvmnc") else 1e-6
         np.testing.assert_allclose(
             np.asarray(test_value[:]),
             np.asarray(expected_value[:]),
             err_msg=error_msg,
-            rtol=1e-6,
+            rtol=rtol,
             atol=1e-7,
             equal_nan=True,
         )
@@ -284,6 +286,11 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
     # because they are not numerically well-defined.
     enlarged_tolerances = {
         "jdotb": {"rtol": 1.0e-5, "atol": 1.0e-4},
+        # Current density Fourier coefficients are computed via finite
+        # differences of covariant B components, which amplifies floating-point
+        # non-determinism (e.g., from OpenMP reduction order).
+        "currumnc": {"rtol": 1.0e-4, "atol": 1.0e-4},
+        "currvmnc": {"rtol": 1.0e-4, "atol": 1.0e-4},
     }
 
     for varname, expected_value in expected_dataset.variables.items():

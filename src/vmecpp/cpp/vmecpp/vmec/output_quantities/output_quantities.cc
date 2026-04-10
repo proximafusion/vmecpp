@@ -907,6 +907,8 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(bsubsmns_full);
   WRITEMEMBER(bsupumnc);
   WRITEMEMBER(bsupvmnc);
+  WRITEMEMBER(currumnc);
+  WRITEMEMBER(currvmnc);
   WRITEMEMBER(raxis_cs);
   WRITEMEMBER(zaxis_cc);
   WRITEMEMBER(rmns);
@@ -921,6 +923,8 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(bsubsmnc_full);
   WRITEMEMBER(bsupumns);
   WRITEMEMBER(bsupvmns);
+  WRITEMEMBER(currumns);
+  WRITEMEMBER(currvmns);
 
   return absl::OkStatus();
 }
@@ -1106,6 +1110,12 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(bsubsmns_full);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupumnc, "bsupumnc", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupvmnc, "bsupvmnc", m_obj.mnmax_nyq);
+  if (from_file.nameExists(absl::StrFormat("%s/currumnc", H5key))) {
+    ReadAndTranspose2D(m_obj.currumnc, "currumnc");
+  }
+  if (from_file.nameExists(absl::StrFormat("%s/currvmnc", H5key))) {
+    ReadAndTranspose2D(m_obj.currvmnc, "currvmnc");
+  }
   READMEMBER_COMPAT(raxis_cs, "raxis_s");
   READMEMBER_COMPAT(zaxis_cc, "zaxis_c");
   ReadAndTranspose2D(m_obj.rmns, "rmns");
@@ -1120,6 +1130,12 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(bsubsmnc_full);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupumns, "bsupumns", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupvmns, "bsupvmns", m_obj.mnmax_nyq);
+  if (from_file.nameExists(absl::StrFormat("%s/currumns", H5key))) {
+    ReadAndTranspose2D(m_obj.currumns, "currumns");
+  }
+  if (from_file.nameExists(absl::StrFormat("%s/currvmns", H5key))) {
+    ReadAndTranspose2D(m_obj.currvmns, "currvmns");
+  }
 
   return absl::OkStatus();
 }
@@ -4959,6 +4975,151 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // RESTORE nyq ENDPOINT VALUES
   // --> not needed here, since cosmui and cosnv were duplicated in local scope
 
+  // -------------------
+  // Compute current density Fourier coefficients from covariant B components.
+  // This is a 1:1 port of the Fortran Compute_Currents subroutine.
+  // currXmn == sqrt(g) * J^X, X = theta (u), zeta (v)
+  //
+  // From Ampere's law in flux coordinates:
+  //   sqrt(g) * J^theta = (1/mu0) * (dB_s/dzeta - dB_zeta/ds)
+  //   sqrt(g) * J^zeta  = (1/mu0) * (dB_theta/ds - dB_s/dtheta)
+  //
+  // In Fourier space (combined basis cos(m*theta - n*nfp*zeta)):
+  //   currumnc(m,n) = (1/mu0) * (-n_nfp * Bs_interp - dBzeta_cos/ds)
+  //   currvmnc(m,n) = (1/mu0) * (-m     * Bs_interp + dBtheta_cos/ds)
+  //
+  // Radial derivatives use sqrt(s) regularization for odd-m modes.
+  {
+    const double ohs = 1.0 / fc.deltaS;
+
+    wout.currumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.currvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    if (s.lasym) {
+      wout.currumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+      wout.currvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    }
+
+    // Interior full-grid points: j_f = 1 .. ns-2
+    // In the wout storage convention (Fortran-style offset by 1),
+    // bsub*(:, j_f) and bsub*(:, j_f+1) are the neighboring half-grid data.
+    // sqrtSH[j_f-1] and sqrtSH[j_f] are the corresponding sqrt(s) values.
+    // sqrtSF[j_f] is the full-grid sqrt(s).
+    for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
+      const double sqrt_s_half_inner = m_vmec_internal_results.sqrtSH[j_f - 1];
+      const double sqrt_s_half_outer = m_vmec_internal_results.sqrtSH[j_f];
+      const double sqrt_s_full = m_vmec_internal_results.sqrtSF[j_f];
+
+      for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+        const int m = wout.xm_nyq[mn];
+        const double n_nfp = static_cast<double>(wout.xn_nyq[mn]);
+
+        double t1 = 0.0;
+        double t2 = 0.0;
+        double t3 = 0.0;
+
+        if (m % 2 == 1) {
+          // odd m: regularized derivatives
+          t1 = 0.5 *
+               (sqrt_s_half_outer * wout.bsubsmns(mn, j_f + 1) +
+                sqrt_s_half_inner * wout.bsubsmns(mn, j_f)) /
+               sqrt_s_full;
+
+          const double bu0 = wout.bsubumnc(mn, j_f) / sqrt_s_half_inner;
+          const double bu1 = wout.bsubumnc(mn, j_f + 1) / sqrt_s_half_outer;
+          t2 = ohs * (bu1 - bu0) * sqrt_s_full +
+               0.25 * (bu0 + bu1) / sqrt_s_full;
+
+          const double bv0 = wout.bsubvmnc(mn, j_f) / sqrt_s_half_inner;
+          const double bv1 = wout.bsubvmnc(mn, j_f + 1) / sqrt_s_half_outer;
+          t3 = ohs * (bv1 - bv0) * sqrt_s_full +
+               0.25 * (bv0 + bv1) / sqrt_s_full;
+        } else {
+          // even m: simple finite differences
+          t1 = 0.5 * (wout.bsubsmns(mn, j_f + 1) + wout.bsubsmns(mn, j_f));
+          t2 = ohs * (wout.bsubumnc(mn, j_f + 1) - wout.bsubumnc(mn, j_f));
+          t3 = ohs * (wout.bsubvmnc(mn, j_f + 1) - wout.bsubvmnc(mn, j_f));
+        }
+
+        wout.currumnc(mn, j_f) = -n_nfp * t1 - t3;
+        wout.currvmnc(mn, j_f) = -m * t1 + t2;
+
+        if (s.lasym) {
+          double t1a = 0.0;
+          double t2a = 0.0;
+          double t3a = 0.0;
+
+          if (m % 2 == 1) {
+            t1a = 0.5 *
+                  (sqrt_s_half_outer * wout.bsubsmnc(mn, j_f + 1) +
+                   sqrt_s_half_inner * wout.bsubsmnc(mn, j_f)) /
+                  sqrt_s_full;
+
+            const double bu0a = wout.bsubumns(mn, j_f) / sqrt_s_half_outer;
+            const double bu1a = wout.bsubumns(mn, j_f + 1) / sqrt_s_half_outer;
+            t2a = ohs * (bu1a - bu0a) * sqrt_s_full +
+                  0.25 * (bu0a + bu1a) / sqrt_s_full;
+
+            const double bv0a = wout.bsubvmns(mn, j_f) / sqrt_s_half_inner;
+            const double bv1a = wout.bsubvmns(mn, j_f + 1) / sqrt_s_half_outer;
+            t3a = ohs * (bv1a - bv0a) * sqrt_s_full +
+                  0.25 * (bv0a + bv1a) / sqrt_s_full;
+          } else {
+            t1a = 0.5 * (wout.bsubsmnc(mn, j_f + 1) + wout.bsubsmnc(mn, j_f));
+            t2a = ohs * (wout.bsubumns(mn, j_f + 1) - wout.bsubumns(mn, j_f));
+            t3a = ohs * (wout.bsubvmns(mn, j_f + 1) - wout.bsubvmns(mn, j_f));
+          }
+
+          wout.currumns(mn, j_f) = n_nfp * t1a - t3a;
+          wout.currvmns(mn, j_f) = m * t1a + t2a;
+        }
+      }  // mn
+    }  // j_f
+
+    // Axis (j_f=0): extrapolate for m <= 1, zero for m > 1
+    for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+      if (wout.xm_nyq[mn] <= 1) {
+        wout.currumnc(mn, 0) =
+            2.0 * wout.currumnc(mn, 1) - wout.currumnc(mn, 2);
+        wout.currvmnc(mn, 0) =
+            2.0 * wout.currvmnc(mn, 1) - wout.currvmnc(mn, 2);
+      }
+      // m > 1: already zero from initialization
+    }
+
+    // Edge (j_f=ns-1): linear extrapolation
+    for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+      wout.currumnc(mn, fc.ns - 1) =
+          2.0 * wout.currumnc(mn, fc.ns - 2) - wout.currumnc(mn, fc.ns - 3);
+      wout.currvmnc(mn, fc.ns - 1) =
+          2.0 * wout.currvmnc(mn, fc.ns - 2) - wout.currvmnc(mn, fc.ns - 3);
+    }
+
+    // Divide by mu_0 to convert to SI units (Amperes)
+    wout.currumnc /= MU_0;
+    wout.currvmnc /= MU_0;
+
+    if (s.lasym) {
+      for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+        if (wout.xm_nyq[mn] <= 1) {
+          wout.currumns(mn, 0) =
+              2.0 * wout.currumns(mn, 1) - wout.currumns(mn, 2);
+          wout.currvmns(mn, 0) =
+              2.0 * wout.currvmns(mn, 1) - wout.currvmns(mn, 2);
+        }
+      }
+
+      for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+        wout.currumns(mn, fc.ns - 1) =
+            2.0 * wout.currumns(mn, fc.ns - 2) - wout.currumns(mn, fc.ns - 3);
+        wout.currvmns(mn, fc.ns - 1) =
+            2.0 * wout.currvmns(mn, fc.ns - 2) - wout.currvmns(mn, fc.ns - 3);
+      }
+
+      wout.currumns /= MU_0;
+      wout.currvmns /= MU_0;
+    }
+  }
+
   return wout;
 }  // NOLINT(readability/fn_size)
 
@@ -5170,6 +5331,23 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
       CHECK(IsCloseRelAbs(expected_wout.bsupvmnc(mn_nyq, jF),
                           test_wout.bsupvmnc(mn_nyq, jF), tolerance))
           << "jF = " << jF << " mn_nyq = " << mn_nyq;
+      // Current density coefficients are computed via finite differences
+      // of covariant B Fourier coefficients, which amplifies differences.
+      // Skip when base tolerance is very loose (e.g. hot restart comparisons
+      // where bsub fields already differ by ~10%), as finite differencing
+      // amplifies those to >100% for current density, making comparison
+      // meaningless. Also skip axis/edge extrapolation points and cases
+      // where the arrays are empty (e.g. loaded from old HDF5 files).
+      if (expected_wout.currumnc.size() > 0 && test_wout.currumnc.size() > 0 &&
+          jF > 0 && jF < ns - 1 && tolerance < 1.0e-2) {
+        const double curr_tol = std::max(tolerance * 10.0, 1.0e-4);
+        CHECK(IsCloseRelAbs(expected_wout.currumnc(mn_nyq, jF),
+                            test_wout.currumnc(mn_nyq, jF), curr_tol))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+        CHECK(IsCloseRelAbs(expected_wout.currvmnc(mn_nyq, jF),
+                            test_wout.currvmnc(mn_nyq, jF), curr_tol))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+      }
     }  // mn_nyq
   }  // jF
 

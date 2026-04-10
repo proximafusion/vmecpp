@@ -594,6 +594,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bsupumnc", &vmecpp::WOutFileContents::bsupumnc)
       .def_readwrite("bsupvmnc", &vmecpp::WOutFileContents::bsupvmnc)
       //
+      .def_readwrite("currumnc", &vmecpp::WOutFileContents::currumnc)
+      .def_readwrite("currvmnc", &vmecpp::WOutFileContents::currvmnc)
+      //
       .def_readwrite("raxis_cs", &vmecpp::WOutFileContents::raxis_cs)
       .def_readwrite("zaxis_cc", &vmecpp::WOutFileContents::zaxis_cc)
       // non-stellarator symmetric
@@ -608,7 +611,10 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bsubsmnc", &vmecpp::WOutFileContents::bsubsmnc)
       .def_readwrite("bsubsmnc_full", &vmecpp::WOutFileContents::bsubsmnc_full)
       .def_readwrite("bsupumns", &vmecpp::WOutFileContents::bsupumns)
-      .def_readwrite("bsupvmns", &vmecpp::WOutFileContents::bsupvmns);
+      .def_readwrite("bsupvmns", &vmecpp::WOutFileContents::bsupvmns)
+      //
+      .def_readwrite("currumns", &vmecpp::WOutFileContents::currumns)
+      .def_readwrite("currvmns", &vmecpp::WOutFileContents::currvmns);
 
   py::class_<vmecpp::OutputQuantities>(m, "OutputQuantities")
       .def_readonly("jxbout", &vmecpp::OutputQuantities::jxbout)

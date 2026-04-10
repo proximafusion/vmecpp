@@ -109,9 +109,8 @@ def test_mean_shear(vmec, reference_wout):
         ("bsupvmnc", "mnmax_nyq"),
         ("bsubsmns", "mnmax_nyq"),
         ("gmnc", "mnmax_nyq"),
-        # NOTE: VMEC++ does not implement these and they are not used anywhere
-        # ("currumnc", "mnmax_nyq"),
-        # ("currvmnc", "mnmax_nyq"),
+        ("currumnc", "mnmax_nyq"),
+        ("currvmnc", "mnmax_nyq"),
     ],
 )
 def test_wout_attributes_shape(vmec, attribute_name, mnmax_size_name):
