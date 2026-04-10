@@ -169,6 +169,10 @@ class HandoverStorage {
   // the next multigrid step (matching Fortran's module-level rbsq).
   Eigen::VectorXd rBSq;
 
+  // [mnpd] non-singular part of NESTOR RHS (bvecsav in Fortran).
+  // Persists across multigrid steps for partial NESTOR updates.
+  Eigen::VectorXd bvecSin;
+
   // [nZnT] vacuum magnetic pressure |B_vac^2|/2 at the plasma boundary
   Eigen::VectorXd vacuum_magnetic_pressure;
 

@@ -112,6 +112,7 @@ class Vmec {
   absl::StatusOr<bool> run(
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       int iterations_before_checkpointing = INT_MAX,
+      int target_ns = 0,
       int maximum_multi_grid_step = 500,
       std::optional<HotRestartState> initial_state = std::nullopt);
 

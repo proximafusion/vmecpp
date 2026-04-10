@@ -5,6 +5,7 @@
 #ifndef VMECPP_FREE_BOUNDARY_LAPLACE_SOLVER_LAPLACE_SOLVER_H_
 #define VMECPP_FREE_BOUNDARY_LAPLACE_SOLVER_LAPLACE_SOLVER_H_
 
+#include <span>
 #include <vector>
 
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
@@ -19,7 +20,8 @@ class LaplaceSolver {
   LaplaceSolver(const Sizes* s, const FourierBasisFastToroidal* fb,
                 const TangentialPartitioning* tp, int nf, int mf,
                 std::span<double> matrixShare, std::span<int> iPiv,
-                std::span<double> bvecShare);
+                std::span<double> bvecShare,
+                std::span<double> bvecSinShare);
 
   void TransformGreensFunctionDerivative(const std::vector<double>& greenp);
   void SymmetriseSourceTerm(const std::vector<double>& gstore);
@@ -49,8 +51,10 @@ class LaplaceSolver {
   std::vector<double> astemp;
 
   // linear system to be solved
-  std::vector<double> bvec_sin;
   std::vector<double> amat_sin_sin;
+
+  // non-singular part of NESTOR RHS, shared with HandoverStorage
+  std::span<double> bvecSinShare;
 
  private:
   const Sizes& s_;

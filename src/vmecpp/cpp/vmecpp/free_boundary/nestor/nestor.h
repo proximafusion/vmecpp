@@ -25,8 +25,9 @@ class Nestor : public FreeBoundaryBase {
  public:
   Nestor(const Sizes* s, const TangentialPartitioning* tp,
          const MGridProvider* mgrid, std::span<double> matrixShare,
-         std::span<double> bvecShare, std::span<double> bSqVacShare,
-         std::span<int> iPiv, std::span<double> vacuum_b_r_share,
+         std::span<double> bvecShare, std::span<double> bvecSinShare,
+         std::span<double> bSqVacShare, std::span<int> iPiv,
+         std::span<double> vacuum_b_r_share,
          std::span<double> vacuum_b_phi_share,
          std::span<double> vacuum_b_z_share);
 

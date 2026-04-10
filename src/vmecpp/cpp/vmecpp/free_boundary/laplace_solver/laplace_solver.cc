@@ -23,8 +23,10 @@ namespace vmecpp {
 LaplaceSolver::LaplaceSolver(const Sizes *s, const FourierBasisFastToroidal *fb,
                              const TangentialPartitioning *tp, int nf, int mf,
                              std::span<double> matrixShare, std::span<int> iPiv,
-                             std::span<double> bvecShare)
-    : s_(*s),
+                             std::span<double> bvecShare,
+                             std::span<double> bvecSinShare)
+    : bvecSinShare(bvecSinShare),
+      s_(*s),
       fb_(*fb),
       tp_(*tp),
       nf(nf),
@@ -56,7 +58,6 @@ LaplaceSolver::LaplaceSolver(const Sizes *s, const FourierBasisFastToroidal *fb,
   actemp.resize(size_a_temp);
   astemp.resize(size_a_temp);
 
-  bvec_sin.resize(mnpd);
   amat_sin_sin.resize(mnpd * mnpd);
 }
 
@@ -235,7 +236,7 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
 
 void LaplaceSolver::PerformPoloidalFourierTransforms() {
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  absl::c_fill_n(bvec_sin, mnpd, 0);
+  std::fill_n(bvecSinShare.data(), mnpd, 0.0);
   absl::c_fill_n(amat_sin_sin, mnpd * mnpd, 0);
 
   for (int all_n = 0; all_n < 2 * nf + 1; ++all_n) {
@@ -247,7 +248,7 @@ void LaplaceSolver::PerformPoloidalFourierTransforms() {
         double sinmui = fb_.sinmui[idx_lm] / fb_.mscale[m];
 
         const int idx_l_all_n = all_n * s_.nThetaReduced + l;
-        bvec_sin[all_n * (mf + 1) + m] +=
+        bvecSinShare[all_n * (mf + 1) + m] +=
             bcos[idx_l_all_n] * sinmui - bsin[idx_l_all_n] * cosmui;
       }  // l
     }  // m
@@ -373,7 +374,7 @@ void LaplaceSolver::SolveForPotential(
 #endif  // _OPENMP
   {
     for (int mn = 0; mn < mnpd; ++mn) {
-      bvecShare[mn] += bvec_sin[mn] + bvec_sin_singular[mn] / s_.nfp;
+      bvecShare[mn] += bvecSinShare[mn] + bvec_sin_singular[mn] / s_.nfp;
     }  // mn
   }
 #ifdef _OPENMP

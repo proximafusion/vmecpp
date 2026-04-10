@@ -28,6 +28,9 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
 
   rBSq.setZero(s_.nZnT);
 
+  int mnpd = (2 * s_.ntor + 1) * (s_.mpol + 2);
+  bvecSin.setZero(mnpd);
+
   rCon_LCFS.setZero(s_.nZnT);
   zCon_LCFS.setZero(s_.nZnT);
 
