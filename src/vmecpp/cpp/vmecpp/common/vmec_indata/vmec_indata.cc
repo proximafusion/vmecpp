@@ -203,6 +203,12 @@ void VmecINDATA::SetMpolNtor(int new_mpol, int new_ntor) {
   zaxis_s(shortest_range) = old_axis_fc(shortest_range);
 
   if (lasym) {
+    if (!raxis_s.has_value()) {
+      raxis_s = VectorXd::Zero(ntor + 1);
+    }
+    if (!zaxis_c.has_value()) {
+      zaxis_c = VectorXd::Zero(ntor + 1);
+    }
     old_axis_fc = raxis_s.value();
     raxis_s = VectorXd::Zero(new_ntor + 1);
     (*raxis_s)(shortest_range) = old_axis_fc(shortest_range);
@@ -232,6 +238,12 @@ void VmecINDATA::SetMpolNtor(int new_mpol, int new_ntor) {
   zbs = resized_2d_coeff(zbs);
 
   if (lasym) {
+    if (!rbs.has_value()) {
+      rbs = RowMatrixXd::Zero(mpol, 2 * ntor + 1);
+    }
+    if (!zbc.has_value()) {
+      zbc = RowMatrixXd::Zero(mpol, 2 * ntor + 1);
+    }
     rbs = resized_2d_coeff(rbs.value());
     zbc = resized_2d_coeff(zbc.value());
   }

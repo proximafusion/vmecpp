@@ -167,6 +167,16 @@ def test_asymmetric_tokamak_input_io():
     assert vmec_input.zaxis_c[0] == pytest.approx(0.0)
 
 
+def test_asymmetric_tokamak_to_cpp_indata():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "input.up_down_asymmetric_tokamak")
+
+    cpp_indata = vmec_input._to_cpp_vmecindata()
+
+    assert cpp_indata.lasym
+    assert cpp_indata.rbs.shape == (vmec_input.mpol, 2 * vmec_input.ntor + 1)
+    assert cpp_indata.zbc.shape == (vmec_input.mpol, 2 * vmec_input.ntor + 1)
+
+
 _MISSING_FORTRAN_VARIABLES = [
     "lrecon__logical__",
     "lmove_axis__logical__",
