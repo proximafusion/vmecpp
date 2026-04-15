@@ -4,6 +4,7 @@
 cc_library(
     name = "ideal_mhd_model",
     srcs = [
+        "asymmetric_dft.cc",
         "force_symmetry.cc",
         "ideal_mhd_model.cc",
     ],

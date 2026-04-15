@@ -1231,14 +1231,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
 void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
   if (s_.lasym) {
     if (s_.lthreed) {
-      std::cerr << "3D asymmetric inv-DFT not implemented yet\n";
-#ifdef _OPENMP
-      abort();
-#else
-      exit(-1);
-#endif  // _OPENMP
+      dft_FourierToReal_3d_asymm(physical_x);
+    } else {
+      dft_FourierToReal_2d_asymm(physical_x);
     }
-    dft_FourierToReal_2d_asymm(physical_x);
   } else if (s_.lthreed) {
     dft_FourierToReal_3d_symm(physical_x);
   } else {
@@ -1302,6 +1298,31 @@ void IdealMhdModel::dft_FourierToReal_3d_symm(
                                     .zCon = zCon};
 
   FourierToReal3DSymmFastPoloidal(physical_x, xmpq, r_, s_, m_p_, t_, geometry);
+}
+
+void IdealMhdModel::dft_FourierToReal_3d_asymm(
+    const FourierGeometry& physical_x) {
+  auto geometry = RealSpaceGeometry{.r1_e = r1_e,
+                                    .r1_o = r1_o,
+                                    .ru_e = ru_e,
+                                    .ru_o = ru_o,
+                                    .rv_e = rv_e,
+                                    .rv_o = rv_o,
+                                    .z1_e = z1_e,
+                                    .z1_o = z1_o,
+                                    .zu_e = zu_e,
+                                    .zu_o = zu_o,
+                                    .zv_e = zv_e,
+                                    .zv_o = zv_o,
+                                    .lu_e = lu_e,
+                                    .lu_o = lu_o,
+                                    .lv_e = lv_e,
+                                    .lv_o = lv_o,
+                                    .rCon = rCon,
+                                    .zCon = zCon};
+
+  FourierToReal3DAsymmFastPoloidal(physical_x, xmpq, r_, s_, m_p_, t_,
+                                   geometry);
 }
 
 // compute inv-DFTs on unique radial grid points
@@ -3044,14 +3065,10 @@ void IdealMhdModel::assembleTotalForces() {
 void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
   if (s_.lasym) {
     if (s_.lthreed) {
-      std::cerr << "3D asymmetric fwd-DFT not implemented yet\n";
-#ifdef _OPENMP
-      abort();
-#else
-      exit(-1);
-#endif  // _OPENMP
+      dft_ForcesToFourier_3d_asymm(m_physical_f);
+    } else {
+      dft_ForcesToFourier_2d_asymm(m_physical_f);
     }
-    dft_ForcesToFourier_2d_asymm(m_physical_f);
   } else if (s_.lthreed) {
     dft_ForcesToFourier_3d_symm(m_physical_f);
   } else {
@@ -3085,6 +3102,35 @@ void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
 
   ForcesToFourier3DSymmFastPoloidal(input_data, xmpq, r_, m_fc_, s_, t_,
                                     m_vacuum_pressure_state_, m_physical_f);
+}
+
+void IdealMhdModel::dft_ForcesToFourier_3d_asymm(
+    FourierForces& m_physical_f) {
+  const auto input_data = RealSpaceForces{
+      .armn_e = armn_e,
+      .armn_o = armn_o,
+      .azmn_e = azmn_e,
+      .azmn_o = azmn_o,
+      .blmn_e = blmn_e,
+      .blmn_o = blmn_o,
+      .brmn_e = brmn_e,
+      .brmn_o = brmn_o,
+      .bzmn_e = bzmn_e,
+      .bzmn_o = bzmn_o,
+      .clmn_e = clmn_e,
+      .clmn_o = clmn_o,
+      .crmn_e = crmn_e,
+      .crmn_o = crmn_o,
+      .czmn_e = czmn_e,
+      .czmn_o = czmn_o,
+      .frcon_e = frcon_e,
+      .frcon_o = frcon_o,
+      .fzcon_e = fzcon_e,
+      .fzcon_o = fzcon_o,
+  };
+
+  ForcesToFourier3DAsymmFastPoloidal(input_data, xmpq, r_, m_fc_, s_, t_,
+                                     m_vacuum_pressure_state_, m_physical_f);
 }
 
 void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {

@@ -51,6 +51,20 @@ void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
                                      const FourierBasisFastPoloidal& fb,
                                      RealSpaceGeometry& m_geometry);
 
+void FourierToReal3DAsymmFastPoloidal(const FourierGeometry& physical_x,
+                                      const Eigen::VectorXd& xmpq,
+                                      const RadialPartitioning& r,
+                                      const Sizes& s, const RadialProfiles& rp,
+                                      const FourierBasisFastPoloidal& fb,
+                                      RealSpaceGeometry& m_geometry);
+
+void ForcesToFourier3DAsymmFastPoloidal(
+    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
+    const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
+    const FourierBasisFastPoloidal& fb,
+    VacuumPressureState vacuum_pressure_state,
+    FourierForces& m_physical_forces);
+
 // Implemented as a free function for easier testing and benchmarking.
 void deAliasConstraintForce(const RadialPartitioning& rp,
                             const FourierBasisFastPoloidal& fb, const Sizes& s_,
@@ -178,6 +192,8 @@ class IdealMhdModel {
 
   // Computes the forward-DFT of forces for the 2D axisymmetric (Tokamak) case.
   void dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f);
+  void dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x);
+  void dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f);
   void dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x);
   void dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f);
 

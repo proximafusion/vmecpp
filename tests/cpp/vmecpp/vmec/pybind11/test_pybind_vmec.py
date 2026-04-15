@@ -538,6 +538,31 @@ def test_asymmetric_tokamak_forward_dft_matches_reference_m0_profiles():
     np.testing.assert_allclose(frsc[:, 0], 0.0, atol=1.0e-12)
 
 
+def test_landreman_low_res_inverse_dft_populates_full_3d_asymmetric_interval():
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.LandremanSenguptaPlunk_section5p3_low_res"
+    )
+    indata = vmec_input._to_cpp_vmecindata()
+
+    geometry = vmec._geometry_after_inverse_dft_for_testing(indata, max_threads=1)
+    r_edge = np.asarray(geometry["r_edge"])
+    z_edge = np.asarray(geometry["z_edge"])
+    n_theta_eff = geometry["n_theta_eff"]
+    n_theta_reduced = geometry["n_theta_reduced"]
+    n_zeta = r_edge.size // n_theta_eff
+
+    assert r_edge.size == z_edge.size == n_theta_eff * n_zeta
+    assert n_theta_eff == 2 * (n_theta_reduced - 1)
+    assert np.isfinite(r_edge).all()
+    assert np.isfinite(z_edge).all()
+
+    r_slice = r_edge[:n_theta_eff]
+    z_slice = z_edge[:n_theta_eff]
+    assert not np.allclose(r_slice[n_theta_reduced:], 0.0)
+    assert not np.allclose(z_slice[n_theta_reduced:], 0.0)
+    assert np.max(np.abs(z_slice)) > 1.0e-2
+
+
 def test_vmecpp_run_from_inmemory_mgrid():
     indata_fname = TEST_DATA_DIR / "cth_like_free_bdy.json"
     coils_fname = TEST_DATA_DIR / "coils.cth_like"
