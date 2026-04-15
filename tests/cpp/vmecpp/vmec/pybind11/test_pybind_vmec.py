@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from netCDF4 import Dataset
 
+import vmecpp
 from vmecpp.cpp import _vmecpp as vmec  # type: ignore[import]
 
 # We don't want to install tests and test data as part of the package,
@@ -434,6 +435,32 @@ def test_output_quantities():
     # the non-stellarator-symmetric parts implemented
 
     wout.close()
+
+
+def test_asymmetric_tokamak_inverse_dft_populates_full_poloidal_interval():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "input.up_down_asymmetric_tokamak")
+    indata = vmec_input._to_cpp_vmecindata()
+
+    geometry = vmec._geometry_after_inverse_dft_for_testing(indata, max_threads=1)
+    r_edge = np.asarray(geometry["r_edge"])
+    z_edge = np.asarray(geometry["z_edge"])
+
+    assert r_edge.shape == z_edge.shape == (geometry["n_theta_eff"],)
+    assert geometry["n_theta_eff"] == 2 * (geometry["n_theta_reduced"] - 1)
+
+    # The second half of the interval used to stay uninitialized in the 2D
+    # asymmetric path. Check the full edge geometry instead of a solver outcome.
+    assert not np.allclose(r_edge[geometry["n_theta_reduced"] :], 0.0)
+    assert not np.allclose(z_edge[geometry["n_theta_reduced"] :], 0.0)
+    np.testing.assert_allclose(
+        z_edge[: geometry["n_theta_reduced"] - 1],
+        -z_edge[geometry["n_theta_reduced"] - 1 :],
+        atol=1e-12,
+    )
+
+    assert np.min(r_edge) == pytest.approx(5.27240052143, abs=5e-3)
+    assert np.max(r_edge) == pytest.approx(6.96518735705, abs=5e-3)
+    assert np.max(np.abs(z_edge)) == pytest.approx(0.59849052529, abs=5e-3)
 
 
 def test_vmecpp_run_from_inmemory_mgrid():

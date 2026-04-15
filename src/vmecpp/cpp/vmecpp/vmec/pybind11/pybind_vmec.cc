@@ -77,6 +77,40 @@ vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
   return vmecpp::HotRestartState(std::move(wout), indata);
 }
 
+py::dict GeometryAfterInverseDftForTesting(const VmecINDATA &indata,
+                                           std::optional<int> max_threads) {
+  auto maybe_vmec =
+      vmecpp::Vmec::FromIndata(indata, /*magnetic_response_table=*/nullptr,
+                               max_threads, vmecpp::OutputMode::kSilent);
+  auto &vmec = GetValueOrThrow(maybe_vmec);
+
+  auto reached_checkpoint =
+      vmec->run(vmecpp::VmecCheckpoint::INV_DFT_GEOMETRY,
+                /*iterations_before_checkpointing=*/1);
+  if (!reached_checkpoint.ok()) {
+    throw std::runtime_error(std::string(reached_checkpoint.status().message()));
+  }
+  if (!*reached_checkpoint) {
+    throw std::runtime_error("inverse DFT checkpoint was not reached");
+  }
+
+  vmecpp::VmecInternalResults internal = vmecpp::GatherDataFromThreads(
+      vmecpp::Vmec::kSignOfJacobian, vmec->s_, vmec->fc_, vmec->constants_,
+      vmec->r_, vmec->decomposed_x_, vmec->m_, vmec->p_);
+
+  const int edge_index = vmec->fc_.ns - 1;
+  const double sqrt_s_edge = internal.sqrtSF[edge_index];
+
+  py::dict geometry;
+  geometry["n_theta_eff"] = vmec->s_.nThetaEff;
+  geometry["n_theta_reduced"] = vmec->s_.nThetaReduced;
+  geometry["r_edge"] = internal.r_e.row(edge_index).transpose() +
+                       sqrt_s_edge * internal.r_o.row(edge_index).transpose();
+  geometry["z_edge"] = internal.z_e.row(edge_index).transpose() +
+                       sqrt_s_edge * internal.z_o.row(edge_index).transpose();
+  return geometry;
+}
+
 }  // anonymous namespace
 
 // IMPORTANT: The first argument must be the name of the module, else
@@ -694,6 +728,10 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
       py::arg("verbose") = vmecpp::OutputMode::kProgress);
+
+  m.def("_geometry_after_inverse_dft_for_testing",
+        &GeometryAfterInverseDftForTesting, py::arg("indata"),
+        py::arg("max_threads") = std::nullopt);
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,

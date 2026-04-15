@@ -178,6 +178,8 @@ class IdealMhdModel {
 
   // Computes the forward-DFT of forces for the 2D axisymmetric (Tokamak) case.
   void dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f);
+  void dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x);
+  void dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f);
 
   // Checks if the radial preconditioner matrix elements should be updated.
   // They don't change so much during iterations, so one can get away with
