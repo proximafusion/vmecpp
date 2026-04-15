@@ -463,6 +463,18 @@ def test_asymmetric_tokamak_inverse_dft_populates_full_poloidal_interval():
     assert np.max(np.abs(z_edge)) == pytest.approx(0.59849052529, abs=5e-3)
 
 
+def test_asymmetric_tokamak_axis_recovery_matches_educational_vmec():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "input.up_down_asymmetric_tokamak")
+    indata = vmec_input._to_cpp_vmecindata()
+
+    axis = vmec._recomputed_axis_for_testing(indata)
+
+    assert axis["raxis_c"][0] == pytest.approx(6.11879393924, abs=5e-6)
+    assert axis["zaxis_s"][0] == pytest.approx(0.0, abs=1e-12)
+    assert axis["raxis_s"][0] == pytest.approx(0.0, abs=1e-12)
+    assert axis["zaxis_c"][0] == pytest.approx(0.119698105058, abs=5e-6)
+
+
 def test_vmecpp_run_from_inmemory_mgrid():
     indata_fname = TEST_DATA_DIR / "cth_like_free_bdy.json"
     coils_fname = TEST_DATA_DIR / "coils.cth_like"
