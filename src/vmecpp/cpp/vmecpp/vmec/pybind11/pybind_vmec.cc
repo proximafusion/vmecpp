@@ -15,6 +15,7 @@
 #include <string>
 #include <type_traits>  // std::is_same_v
 #include <utility>      // std::move
+#include <vector>
 
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -133,6 +134,46 @@ py::dict RecomputedAxisForTesting(const VmecINDATA &indata) {
   axis["zaxis_s"] = workspace.new_zaxis_s;
   axis["zaxis_c"] = workspace.new_zaxis_c;
   return axis;
+}
+
+py::dict ForwardDftForcesForTesting(const VmecINDATA &indata,
+                                    std::optional<int> max_threads,
+                                    int iterations_before_checkpointing) {
+  auto maybe_vmec =
+      vmecpp::Vmec::FromIndata(indata, /*magnetic_response_table=*/nullptr,
+                               max_threads, vmecpp::OutputMode::kSilent);
+  auto &vmec = GetValueOrThrow(maybe_vmec);
+
+  auto reached_checkpoint =
+      vmec->run(vmecpp::VmecCheckpoint::FWD_DFT_FORCES,
+                iterations_before_checkpointing);
+  if (!reached_checkpoint.ok()) {
+    throw std::runtime_error(std::string(reached_checkpoint.status().message()));
+  }
+  if (!*reached_checkpoint) {
+    throw std::runtime_error("forward DFT checkpoint was not reached");
+  }
+
+  const auto &forces = *vmec->physical_f_[0];
+
+  py::dict output;
+  output["ns"] = vmec->fc_.ns;
+  output["mpol"] = vmec->s_.mpol;
+  output["ntor"] = vmec->s_.ntor;
+  output["iterations_before_checkpointing"] = iterations_before_checkpointing;
+  output["frcc"] = std::vector<double>(forces.frcc.begin(), forces.frcc.end());
+  output["fzsc"] = std::vector<double>(forces.fzsc.begin(), forces.fzsc.end());
+  output["flsc"] = std::vector<double>(forces.flsc.begin(), forces.flsc.end());
+  output["frss"] = std::vector<double>(forces.frss.begin(), forces.frss.end());
+  output["fzcs"] = std::vector<double>(forces.fzcs.begin(), forces.fzcs.end());
+  output["flcs"] = std::vector<double>(forces.flcs.begin(), forces.flcs.end());
+  output["frsc"] = std::vector<double>(forces.frsc.begin(), forces.frsc.end());
+  output["fzcc"] = std::vector<double>(forces.fzcc.begin(), forces.fzcc.end());
+  output["flcc"] = std::vector<double>(forces.flcc.begin(), forces.flcc.end());
+  output["frcs"] = std::vector<double>(forces.frcs.begin(), forces.frcs.end());
+  output["fzss"] = std::vector<double>(forces.fzss.begin(), forces.fzss.end());
+  output["flss"] = std::vector<double>(forces.flss.begin(), forces.flss.end());
+  return output;
 }
 
 }  // anonymous namespace
@@ -758,6 +799,9 @@ PYBIND11_MODULE(_vmecpp, m) {
         py::arg("max_threads") = std::nullopt);
   m.def("_recomputed_axis_for_testing", &RecomputedAxisForTesting,
         py::arg("indata"));
+  m.def("_forward_dft_forces_for_testing", &ForwardDftForcesForTesting,
+        py::arg("indata"), py::arg("max_threads") = std::nullopt,
+        py::arg("iterations_before_checkpointing") = 1);
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,

@@ -3188,6 +3188,85 @@ void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
     jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
   }
 
+  const std::size_t nrzt_reduced =
+      static_cast<std::size_t>(r_.nsMaxF - r_.nsMinF) * s_.nZeta *
+      s_.nThetaReduced;
+  const std::size_t nrzt_reduced_including_boundary =
+      static_cast<std::size_t>(r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZeta *
+      s_.nThetaReduced;
+
+  std::vector<double> armn_sym_e(nrzt_reduced);
+  std::vector<double> armn_sym_o(nrzt_reduced);
+  std::vector<double> armn_asym_e(nrzt_reduced);
+  std::vector<double> armn_asym_o(nrzt_reduced);
+  std::vector<double> brmn_sym_e(nrzt_reduced);
+  std::vector<double> brmn_sym_o(nrzt_reduced);
+  std::vector<double> brmn_asym_e(nrzt_reduced);
+  std::vector<double> brmn_asym_o(nrzt_reduced);
+  std::vector<double> azmn_sym_e(nrzt_reduced);
+  std::vector<double> azmn_sym_o(nrzt_reduced);
+  std::vector<double> azmn_asym_e(nrzt_reduced);
+  std::vector<double> azmn_asym_o(nrzt_reduced);
+  std::vector<double> bzmn_sym_e(nrzt_reduced);
+  std::vector<double> bzmn_sym_o(nrzt_reduced);
+  std::vector<double> bzmn_asym_e(nrzt_reduced);
+  std::vector<double> bzmn_asym_o(nrzt_reduced);
+  std::vector<double> frcon_sym_e(nrzt_reduced);
+  std::vector<double> frcon_sym_o(nrzt_reduced);
+  std::vector<double> frcon_asym_e(nrzt_reduced);
+  std::vector<double> frcon_asym_o(nrzt_reduced);
+  std::vector<double> fzcon_sym_e(nrzt_reduced);
+  std::vector<double> fzcon_sym_o(nrzt_reduced);
+  std::vector<double> fzcon_asym_e(nrzt_reduced);
+  std::vector<double> fzcon_asym_o(nrzt_reduced);
+  std::vector<double> blmn_sym_e(nrzt_reduced_including_boundary);
+  std::vector<double> blmn_sym_o(nrzt_reduced_including_boundary);
+  std::vector<double> blmn_asym_e(nrzt_reduced_including_boundary);
+  std::vector<double> blmn_asym_o(nrzt_reduced_including_boundary);
+
+  DecomposeForceComponent(s_, std::span<const double>(armn_e.data(), armn_e.size()),
+                          ReflectionParity::kStandard, armn_sym_e,
+                          armn_asym_e);
+  DecomposeForceComponent(s_, std::span<const double>(armn_o.data(), armn_o.size()),
+                          ReflectionParity::kStandard, armn_sym_o,
+                          armn_asym_o);
+  DecomposeForceComponent(s_, std::span<const double>(brmn_e.data(), brmn_e.size()),
+                          ReflectionParity::kReversed, brmn_sym_e,
+                          brmn_asym_e);
+  DecomposeForceComponent(s_, std::span<const double>(brmn_o.data(), brmn_o.size()),
+                          ReflectionParity::kReversed, brmn_sym_o,
+                          brmn_asym_o);
+  DecomposeForceComponent(s_, std::span<const double>(azmn_e.data(), azmn_e.size()),
+                          ReflectionParity::kReversed, azmn_sym_e,
+                          azmn_asym_e);
+  DecomposeForceComponent(s_, std::span<const double>(azmn_o.data(), azmn_o.size()),
+                          ReflectionParity::kReversed, azmn_sym_o,
+                          azmn_asym_o);
+  DecomposeForceComponent(s_, std::span<const double>(bzmn_e.data(), bzmn_e.size()),
+                          ReflectionParity::kStandard, bzmn_sym_e,
+                          bzmn_asym_e);
+  DecomposeForceComponent(s_, std::span<const double>(bzmn_o.data(), bzmn_o.size()),
+                          ReflectionParity::kStandard, bzmn_sym_o,
+                          bzmn_asym_o);
+  DecomposeForceComponent(s_, std::span<const double>(frcon_e.data(), frcon_e.size()),
+                          ReflectionParity::kStandard, frcon_sym_e,
+                          frcon_asym_e);
+  DecomposeForceComponent(s_, std::span<const double>(frcon_o.data(), frcon_o.size()),
+                          ReflectionParity::kStandard, frcon_sym_o,
+                          frcon_asym_o);
+  DecomposeForceComponent(s_, std::span<const double>(fzcon_e.data(), fzcon_e.size()),
+                          ReflectionParity::kReversed, fzcon_sym_e,
+                          fzcon_asym_e);
+  DecomposeForceComponent(s_, std::span<const double>(fzcon_o.data(), fzcon_o.size()),
+                          ReflectionParity::kReversed, fzcon_sym_o,
+                          fzcon_asym_o);
+  DecomposeForceComponent(s_, std::span<const double>(blmn_e.data(), blmn_e.size()),
+                          ReflectionParity::kStandard, blmn_sym_e,
+                          blmn_asym_e);
+  DecomposeForceComponent(s_, std::span<const double>(blmn_o.data(), blmn_o.size()),
+                          ReflectionParity::kStandard, blmn_sym_o,
+                          blmn_asym_o);
+
   for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
     int num_m = s_.mpol;
     if (jF == 0) {
@@ -3198,33 +3277,24 @@ void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
       const bool m_even = m % 2 == 0;
       const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
 
-      const auto& armn = m_even ? armn_e : armn_o;
-      const auto& brmn = m_even ? brmn_e : brmn_o;
-      const auto& azmn = m_even ? azmn_e : azmn_o;
-      const auto& bzmn = m_even ? bzmn_e : bzmn_o;
-      const auto& frcon = m_even ? frcon_e : frcon_o;
-      const auto& fzcon = m_even ? fzcon_e : fzcon_o;
+      const auto& armn_sym = m_even ? armn_sym_e : armn_sym_o;
+      const auto& brmn_sym = m_even ? brmn_sym_e : brmn_sym_o;
+      const auto& azmn_sym = m_even ? azmn_sym_e : azmn_sym_o;
+      const auto& bzmn_sym = m_even ? bzmn_sym_e : bzmn_sym_o;
+      const auto& frcon_sym = m_even ? frcon_sym_e : frcon_sym_o;
+      const auto& fzcon_sym = m_even ? fzcon_sym_e : fzcon_sym_o;
 
-      for (int l = 0; l < s_.nThetaEff; ++l) {
-        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        const bool reflected = l >= s_.nThetaReduced;
-        const int l_ref = reflected ? s_.nThetaEven - l : l;
-        const int idx_ml = m * s_.nThetaReduced + l_ref;
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaReduced + l;
+        const int idx_ml = m * s_.nThetaReduced + l;
 
-        const double weight = s_.wInt[l];
-        const double cosmu = t_.cosmu[idx_ml];
-        const double sinmu = reflected ? -t_.sinmu[idx_ml] : t_.sinmu[idx_ml];
-        const double cosmum = t_.cosmum[idx_ml];
-        const double sinmum =
-            reflected ? -t_.sinmum[idx_ml] : t_.sinmum[idx_ml];
-
-        const double r_force = armn[idx_jl] + xmpq[m] * frcon[idx_jl];
+        const double r_force = armn_sym[idx_jl] + xmpq[m] * frcon_sym[idx_jl];
         m_physical_f.frcc[idx_jm] +=
-            r_force * cosmu * weight + brmn[idx_jl] * sinmum * weight;
+            r_force * t_.cosmui[idx_ml] + brmn_sym[idx_jl] * t_.sinmumi[idx_ml];
 
-        const double z_force = azmn[idx_jl] + xmpq[m] * fzcon[idx_jl];
+        const double z_force = azmn_sym[idx_jl] + xmpq[m] * fzcon_sym[idx_jl];
         m_physical_f.fzsc[idx_jm] +=
-            z_force * sinmu * weight + bzmn[idx_jl] * cosmum * weight;
+            z_force * t_.sinmui[idx_ml] + bzmn_sym[idx_jl] * t_.cosmumi[idx_ml];
       }
     }
   }
@@ -3232,89 +3302,16 @@ void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
   for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
     for (int m = 0; m < s_.mpol; ++m) {
       const bool m_even = m % 2 == 0;
-      const auto& blmn = m_even ? blmn_e : blmn_o;
+      const auto& blmn_sym = m_even ? blmn_sym_e : blmn_sym_o;
       const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
 
-      for (int l = 0; l < s_.nThetaEff; ++l) {
-        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        const bool reflected = l >= s_.nThetaReduced;
-        const int l_ref = reflected ? s_.nThetaEven - l : l;
-        const int idx_ml = m * s_.nThetaReduced + l_ref;
-        const double weight = s_.wInt[l];
-        const double cosmum = t_.cosmum[idx_ml];
-
-        m_physical_f.flsc[idx_jm] += blmn[idx_jl] * cosmum * weight;
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaReduced + l;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        m_physical_f.flsc[idx_jm] += blmn_sym[idx_jl] * t_.cosmumi[idx_ml];
       }
     }
   }
-
-  const std::size_t nrzt_reduced =
-      static_cast<std::size_t>(r_.nsMaxF - r_.nsMinF) * s_.nZeta *
-      s_.nThetaReduced;
-  const std::size_t nrzt_reduced_including_boundary =
-      static_cast<std::size_t>(r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZeta *
-      s_.nThetaReduced;
-
-  std::vector<double> scratch_rz(nrzt_reduced);
-  std::vector<double> scratch_lambda(nrzt_reduced_including_boundary);
-
-  std::vector<double> armn_asym_e(nrzt_reduced);
-  std::vector<double> armn_asym_o(nrzt_reduced);
-  std::vector<double> brmn_asym_e(nrzt_reduced);
-  std::vector<double> brmn_asym_o(nrzt_reduced);
-  std::vector<double> azmn_asym_e(nrzt_reduced);
-  std::vector<double> azmn_asym_o(nrzt_reduced);
-  std::vector<double> bzmn_asym_e(nrzt_reduced);
-  std::vector<double> bzmn_asym_o(nrzt_reduced);
-  std::vector<double> frcon_asym_e(nrzt_reduced);
-  std::vector<double> frcon_asym_o(nrzt_reduced);
-  std::vector<double> fzcon_asym_e(nrzt_reduced);
-  std::vector<double> fzcon_asym_o(nrzt_reduced);
-  std::vector<double> blmn_asym_e(nrzt_reduced_including_boundary);
-  std::vector<double> blmn_asym_o(nrzt_reduced_including_boundary);
-
-  DecomposeForceComponent(s_, std::span<const double>(armn_e.data(), armn_e.size()),
-                          ReflectionParity::kStandard, scratch_rz,
-                          armn_asym_e);
-  DecomposeForceComponent(s_, std::span<const double>(armn_o.data(), armn_o.size()),
-                          ReflectionParity::kStandard, scratch_rz,
-                          armn_asym_o);
-  DecomposeForceComponent(s_, std::span<const double>(brmn_e.data(), brmn_e.size()),
-                          ReflectionParity::kReversed, scratch_rz,
-                          brmn_asym_e);
-  DecomposeForceComponent(s_, std::span<const double>(brmn_o.data(), brmn_o.size()),
-                          ReflectionParity::kReversed, scratch_rz,
-                          brmn_asym_o);
-  DecomposeForceComponent(s_, std::span<const double>(azmn_e.data(), azmn_e.size()),
-                          ReflectionParity::kReversed, scratch_rz,
-                          azmn_asym_e);
-  DecomposeForceComponent(s_, std::span<const double>(azmn_o.data(), azmn_o.size()),
-                          ReflectionParity::kReversed, scratch_rz,
-                          azmn_asym_o);
-  DecomposeForceComponent(s_, std::span<const double>(bzmn_e.data(), bzmn_e.size()),
-                          ReflectionParity::kStandard, scratch_rz,
-                          bzmn_asym_e);
-  DecomposeForceComponent(s_, std::span<const double>(bzmn_o.data(), bzmn_o.size()),
-                          ReflectionParity::kStandard, scratch_rz,
-                          bzmn_asym_o);
-  DecomposeForceComponent(s_, std::span<const double>(frcon_e.data(), frcon_e.size()),
-                          ReflectionParity::kStandard, scratch_rz,
-                          frcon_asym_e);
-  DecomposeForceComponent(s_, std::span<const double>(frcon_o.data(), frcon_o.size()),
-                          ReflectionParity::kStandard, scratch_rz,
-                          frcon_asym_o);
-  DecomposeForceComponent(s_, std::span<const double>(fzcon_e.data(), fzcon_e.size()),
-                          ReflectionParity::kReversed, scratch_rz,
-                          fzcon_asym_e);
-  DecomposeForceComponent(s_, std::span<const double>(fzcon_o.data(), fzcon_o.size()),
-                          ReflectionParity::kReversed, scratch_rz,
-                          fzcon_asym_o);
-  DecomposeForceComponent(s_, std::span<const double>(blmn_e.data(), blmn_e.size()),
-                          ReflectionParity::kStandard, scratch_lambda,
-                          blmn_asym_e);
-  DecomposeForceComponent(s_, std::span<const double>(blmn_o.data(), blmn_o.size()),
-                          ReflectionParity::kStandard, scratch_lambda,
-                          blmn_asym_o);
 
   for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
     int num_m = s_.mpol;
