@@ -231,12 +231,21 @@ PYBIND11_MODULE(_vmecpp, m) {
   pyindata.def_readwrite("pres_scale", &VmecINDATA::pres_scale)
       .def_readwrite("gamma", &VmecINDATA::gamma)
       .def_readwrite("spres_ped", &VmecINDATA::spres_ped)
+      .def_readwrite("bcrit", &VmecINDATA::bcrit)
+      .def_readwrite("pt_type", &VmecINDATA::pt_type)
+      .def_readwrite("ph_type", &VmecINDATA::ph_type)
 
       // (initial guess for) iota profile
       .def_readwrite("piota_type", &VmecINDATA::piota_type);
   DefEigenProperty(pyindata, "ai", &VmecINDATA::ai);
   DefEigenProperty(pyindata, "ai_aux_s", &VmecINDATA::ai_aux_s);
   DefEigenProperty(pyindata, "ai_aux_f", &VmecINDATA::ai_aux_f);
+  DefEigenProperty(pyindata, "at", &VmecINDATA::at);
+  DefEigenProperty(pyindata, "at_aux_s", &VmecINDATA::at_aux_s);
+  DefEigenProperty(pyindata, "at_aux_f", &VmecINDATA::at_aux_f);
+  DefEigenProperty(pyindata, "ah", &VmecINDATA::ah);
+  DefEigenProperty(pyindata, "ah_aux_s", &VmecINDATA::ah_aux_s);
+  DefEigenProperty(pyindata, "ah_aux_f", &VmecINDATA::ah_aux_f);
 
   // enclosed toroidal current profile
   pyindata.def_readwrite("pcurr_type", &VmecINDATA::pcurr_type);
