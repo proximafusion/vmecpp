@@ -1228,25 +1228,20 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
 /** inverse Fourier transform to get geometry from Fourier coefficients */
 void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
-  // symmetric contribution is always needed
-  if (s_.lthreed) {
+  if (s_.lasym) {
+    if (s_.lthreed) {
+      std::cerr << "3D asymmetric inv-DFT not implemented yet\n";
+#ifdef _OPENMP
+      abort();
+#else
+      exit(-1);
+#endif  // _OPENMP
+    }
+    dft_FourierToReal_2d_asymm(physical_x);
+  } else if (s_.lthreed) {
     dft_FourierToReal_3d_symm(physical_x);
   } else {
     dft_FourierToReal_2d_symm(physical_x);
-  }
-
-  if (s_.lasym) {
-    // FIXME(jons): implement non-symmetric DFT variants
-    std::cerr << "asymmetric inv-DFT not implemented yet\n";
-
-    // FIXME(jons): implement symrzl
-    std::cerr << "symrzl not implemented yet\n";
-
-#ifdef _OPENMP
-    abort();
-#else
-    exit(-1);
-#endif  // _OPENMP
   }  // lasym
 
   // related post-processing:
@@ -1476,6 +1471,118 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
     }  // m
   }  // jF
 }  // dft_FourierToReal_2d_symm
+
+void IdealMhdModel::dft_FourierToReal_2d_asymm(
+    const FourierGeometry& physical_x) {
+  const int num_realsp = (r_.nsMaxF1 - r_.nsMinF1) * s_.nThetaEff;
+
+  for (auto* v :
+       {&r1_e, &r1_o, &ru_e, &ru_o, &z1_e, &z1_o, &zu_e, &zu_o, &lu_e, &lu_o}) {
+    absl::c_fill_n(*v, num_realsp, 0);
+  }
+
+  const int num_con = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nThetaEff;
+  absl::c_fill_n(rCon, num_con, 0);
+  absl::c_fill_n(zCon, num_con, 0);
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+    const double* src_rsc = &(physical_x.rmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    const double* src_zcc = &(physical_x.zmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    const double* src_lcc = &(physical_x.lmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    const double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    const double* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    const double* src_lsc = &(physical_x.lmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+
+    for (int l = 0; l < s_.nThetaEff; ++l) {
+      std::array<double, 2> rnksc = {0.0, 0.0};
+      std::array<double, 2> rnksc_m = {0.0, 0.0};
+      std::array<double, 2> rnkcc = {0.0, 0.0};
+      std::array<double, 2> rnkcc_m = {0.0, 0.0};
+      std::array<double, 2> znksc = {0.0, 0.0};
+      std::array<double, 2> znksc_m = {0.0, 0.0};
+      std::array<double, 2> znkcc = {0.0, 0.0};
+      std::array<double, 2> znkcc_m = {0.0, 0.0};
+      std::array<double, 2> lnksc_m = {0.0, 0.0};
+      std::array<double, 2> lnkcc_m = {0.0, 0.0};
+
+      int num_m = s_.mpol;
+      if (jF == 0) {
+        num_m = 2;
+      }
+
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const bool reflected = l >= s_.nThetaReduced;
+        const int l_ref = reflected ? s_.nThetaEven - l : l;
+        const int idx_ml = m * s_.nThetaReduced + l_ref;
+
+        const double cosmu = t_.cosmu[idx_ml];
+        const double sinmu = reflected ? -t_.sinmu[idx_ml] : t_.sinmu[idx_ml];
+        const double cosmum = t_.cosmum[idx_ml];
+        const double sinmum =
+            reflected ? -t_.sinmum[idx_ml] : t_.sinmum[idx_ml];
+
+        rnkcc[m_parity] += src_rcc[m] * cosmu;
+        rnkcc_m[m_parity] += src_rcc[m] * sinmum;
+        rnksc[m_parity] += src_rsc[m] * sinmu;
+        rnksc_m[m_parity] += src_rsc[m] * cosmum;
+        znksc[m_parity] += src_zsc[m] * sinmu;
+        znksc_m[m_parity] += src_zsc[m] * cosmum;
+        znkcc[m_parity] += src_zcc[m] * cosmu;
+        znkcc_m[m_parity] += src_zcc[m] * sinmum;
+        lnksc_m[m_parity] += src_lsc[m] * cosmum;
+        lnkcc_m[m_parity] += src_lcc[m] * sinmum;
+      }
+
+      const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
+      r1_e[idx_jl] += rnkcc[kEvenParity] + rnksc[kEvenParity];
+      ru_e[idx_jl] += rnkcc_m[kEvenParity] + rnksc_m[kEvenParity];
+      z1_e[idx_jl] += znksc[kEvenParity] + znkcc[kEvenParity];
+      zu_e[idx_jl] += znksc_m[kEvenParity] + znkcc_m[kEvenParity];
+      lu_e[idx_jl] += lnksc_m[kEvenParity] + lnkcc_m[kEvenParity];
+      r1_o[idx_jl] += rnkcc[kOddParity] + rnksc[kOddParity];
+      ru_o[idx_jl] += rnkcc_m[kOddParity] + rnksc_m[kOddParity];
+      z1_o[idx_jl] += znksc[kOddParity] + znkcc[kOddParity];
+      zu_o[idx_jl] += znksc_m[kOddParity] + znkcc_m[kOddParity];
+      lu_o[idx_jl] += lnksc_m[kOddParity] + lnkcc_m[kOddParity];
+    }
+  }
+
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    const double* src_rsc = &(physical_x.rmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    const double* src_zcc = &(physical_x.zmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    const double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    const double* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+
+    int num_m = s_.mpol;
+    if (jF == 0) {
+      num_m = 2;
+    }
+
+    for (int m = 0; m < num_m; ++m) {
+      const int m_parity = m % 2;
+      const double scale =
+          xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]);
+
+      for (int l = 0; l < s_.nThetaEff; ++l) {
+        const bool reflected = l >= s_.nThetaReduced;
+        const int l_ref = reflected ? s_.nThetaEven - l : l;
+        const int idx_ml = m * s_.nThetaReduced + l_ref;
+        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
+
+        const double cosmu = t_.cosmu[idx_ml];
+        const double sinmu = reflected ? -t_.sinmu[idx_ml] : t_.sinmu[idx_ml];
+
+        rCon[idx_con] += (src_rcc[m] * cosmu + src_rsc[m] * sinmu) * scale;
+        zCon[idx_con] += (src_zsc[m] * sinmu + src_zcc[m] * cosmu) * scale;
+      }
+    }
+  }
+}
 
 /** extrapolate (r,z)Con from boundary into volume.
  * Only called on initialization/soft reset to set (r,z)Con0 to a large value.
@@ -2934,25 +3041,20 @@ void IdealMhdModel::assembleTotalForces() {
 }
 
 void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
-  // symmetric contribution is always needed
-  if (s_.lthreed) {
+  if (s_.lasym) {
+    if (s_.lthreed) {
+      std::cerr << "3D asymmetric fwd-DFT not implemented yet\n";
+#ifdef _OPENMP
+      abort();
+#else
+      exit(-1);
+#endif  // _OPENMP
+    }
+    dft_ForcesToFourier_2d_asymm(m_physical_f);
+  } else if (s_.lthreed) {
     dft_ForcesToFourier_3d_symm(m_physical_f);
   } else {
     dft_ForcesToFourier_2d_symm(m_physical_f);
-  }
-
-  if (s_.lasym) {
-    // FIXME(jons): implement non-symmetric DFT variants
-    std::cerr << "asymmetric fwd-DFT not implemented yet\n";
-
-    // FIXME(jons): implement symforce
-    std::cerr << "symforce not implemented yet\n";
-
-#ifdef _OPENMP
-    abort();
-#else
-    exit(-1);
-#endif  // _OPENMP
   }  // lasym
 }
 
@@ -3070,6 +3172,88 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
     }  // l
   }  // jF
 }  // dft_ForcesToFourier_2d_symm
+
+void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
+  m_physical_f.setZero();
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  if (m_fc_.lfreeb &&
+      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
+       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+    jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
+  }
+
+  for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
+    int num_m = s_.mpol;
+    if (jF == 0) {
+      num_m = 1;
+    }
+
+    for (int m = 0; m < num_m; ++m) {
+      const bool m_even = m % 2 == 0;
+      const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
+
+      const auto& armn = m_even ? armn_e : armn_o;
+      const auto& brmn = m_even ? brmn_e : brmn_o;
+      const auto& azmn = m_even ? azmn_e : azmn_o;
+      const auto& bzmn = m_even ? bzmn_e : bzmn_o;
+      const auto& frcon = m_even ? frcon_e : frcon_o;
+      const auto& fzcon = m_even ? fzcon_e : fzcon_o;
+
+      for (int l = 0; l < s_.nThetaEff; ++l) {
+        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        const bool reflected = l >= s_.nThetaReduced;
+        const int l_ref = reflected ? s_.nThetaEven - l : l;
+        const int idx_ml = m * s_.nThetaReduced + l_ref;
+
+        const double weight = s_.wInt[l];
+        const double cosmu = t_.cosmu[idx_ml];
+        const double sinmu = reflected ? -t_.sinmu[idx_ml] : t_.sinmu[idx_ml];
+        const double cosmum = t_.cosmum[idx_ml];
+        const double sinmum =
+            reflected ? -t_.sinmum[idx_ml] : t_.sinmum[idx_ml];
+
+        const double r_force = armn[idx_jl] + xmpq[m] * frcon[idx_jl];
+        m_physical_f.frcc[idx_jm] +=
+            r_force * cosmu * weight + brmn[idx_jl] * sinmum * weight;
+        m_physical_f.frsc[idx_jm] +=
+            r_force * sinmu * weight + brmn[idx_jl] * cosmum * weight;
+
+        const double z_force = azmn[idx_jl] + xmpq[m] * fzcon[idx_jl];
+        m_physical_f.fzsc[idx_jm] +=
+            z_force * sinmu * weight + bzmn[idx_jl] * cosmum * weight;
+        m_physical_f.fzcc[idx_jm] +=
+            z_force * cosmu * weight + bzmn[idx_jl] * sinmum * weight;
+      }
+    }
+  }
+
+  for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    for (int m = 0; m < s_.mpol; ++m) {
+      const bool m_even = m % 2 == 0;
+      const auto& blmn = m_even ? blmn_e : blmn_o;
+      const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
+
+      for (int l = 0; l < s_.nThetaEff; ++l) {
+        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        const bool reflected = l >= s_.nThetaReduced;
+        const int l_ref = reflected ? s_.nThetaEven - l : l;
+        const int idx_ml = m * s_.nThetaReduced + l_ref;
+        const double weight = s_.wInt[l];
+        const double cosmum = t_.cosmum[idx_ml];
+        const double sinmum =
+            reflected ? -t_.sinmum[idx_ml] : t_.sinmum[idx_ml];
+
+        m_physical_f.flsc[idx_jm] += blmn[idx_jl] * cosmum * weight;
+        m_physical_f.flcc[idx_jm] += blmn[idx_jl] * sinmum * weight;
+      }
+    }
+  }
+}
 
 // ---------------------------
 
