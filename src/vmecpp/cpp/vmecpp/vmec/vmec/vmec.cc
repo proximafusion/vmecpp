@@ -5,6 +5,7 @@
 #include "vmecpp/vmec/vmec/vmec.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <memory>
@@ -106,6 +107,168 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 
   return absl::OkStatus();
 }
+
+void RecomputeMagneticAxisFromGeometry(
+    const vmecpp::VmecInternalResults& internal, const vmecpp::Sizes& s,
+    const vmecpp::FourierBasisFastPoloidal& t, int sign_of_jacobian,
+    Eigen::VectorXd& raxis_c, Eigen::VectorXd& zaxis_s,
+    Eigen::VectorXd* raxis_s, Eigen::VectorXd* zaxis_c) {
+  static constexpr int kNumGridKnots = 61;
+
+  const int ns = internal.num_full;
+  const int ns12 = (ns + 1) / 2 - 1;
+  const int edge = ns - 1;
+  const double ds = (edge - ns12) / static_cast<double>(edge);
+  const double d_zeta = 2.0 / s.nZeta;
+  const double sqrt_s_mid = internal.sqrtSF[ns12];
+  const bool even_nzeta = s.nZeta % 2 == 0;
+
+  Eigen::VectorXd axis_guess_r = Eigen::VectorXd::Zero(s.nZeta);
+  Eigen::VectorXd axis_guess_z = Eigen::VectorXd::Zero(s.nZeta);
+
+  std::vector<double> r_edge(s.nThetaEven);
+  std::vector<double> z_edge(s.nThetaEven);
+  std::vector<double> ru_edge(s.nThetaEven);
+  std::vector<double> zu_edge(s.nThetaEven);
+  std::vector<double> r_mid(s.nThetaEven);
+  std::vector<double> z_mid(s.nThetaEven);
+  std::vector<double> ru_mid(s.nThetaEven);
+  std::vector<double> zu_mid(s.nThetaEven);
+  std::vector<double> rs(s.nThetaEven);
+  std::vector<double> zs(s.nThetaEven);
+  std::vector<double> tau0(s.nThetaEven);
+  std::vector<double> tau(s.nThetaEven);
+
+  for (int k = 0; k < s.nZeta; ++k) {
+    if (!s.lasym && k > s.nZeta / 2) {
+      axis_guess_r[k] = axis_guess_r[s.nZeta - k];
+      axis_guess_z[k] = -axis_guess_z[s.nZeta - k];
+      continue;
+    }
+
+    for (int l = 0; l < s.nThetaEff; ++l) {
+      const int kl = k * s.nThetaEff + l;
+      r_edge[l] = internal.r_e(edge, kl) + internal.r_o(edge, kl);
+      z_edge[l] = internal.z_e(edge, kl) + internal.z_o(edge, kl);
+      ru_edge[l] = internal.ruFull(edge, kl);
+      zu_edge[l] = internal.zuFull(edge, kl);
+
+      r_mid[l] =
+          internal.r_e(ns12, kl) + sqrt_s_mid * internal.r_o(ns12, kl);
+      z_mid[l] =
+          internal.z_e(ns12, kl) + sqrt_s_mid * internal.z_o(ns12, kl);
+      ru_mid[l] = 0.5 * (internal.ruFull(edge, kl) + internal.ruFull(ns12, kl));
+      zu_mid[l] = 0.5 * (internal.zuFull(edge, kl) + internal.zuFull(ns12, kl));
+    }
+
+    if (!s.lasym) {
+      const int k_minus = (s.nZeta - k) % s.nZeta;
+      for (int l = s.nThetaReduced; l < s.nThetaEven; ++l) {
+        const int l_minus = s.nThetaEven - l;
+        const int kl = k_minus * s.nThetaEff + l_minus;
+
+        r_edge[l] = internal.r_e(edge, kl) + internal.r_o(edge, kl);
+        z_edge[l] = -(internal.z_e(edge, kl) + internal.z_o(edge, kl));
+        ru_edge[l] = -internal.ruFull(edge, kl);
+        zu_edge[l] = internal.zuFull(edge, kl);
+
+        r_mid[l] =
+            internal.r_e(ns12, kl) + sqrt_s_mid * internal.r_o(ns12, kl);
+        z_mid[l] =
+            -(internal.z_e(ns12, kl) + sqrt_s_mid * internal.z_o(ns12, kl));
+        ru_mid[l] =
+            -0.5 * (internal.ruFull(edge, kl) + internal.ruFull(ns12, kl));
+        zu_mid[l] =
+            0.5 * (internal.zuFull(edge, kl) + internal.zuFull(ns12, kl));
+      }
+    }
+
+    const auto [r_min_it, r_max_it] =
+        std::minmax_element(r_edge.begin(), r_edge.end());
+    const auto [z_min_it, z_max_it] =
+        std::minmax_element(z_edge.begin(), z_edge.end());
+    const double r_min = *r_min_it;
+    const double r_max = *r_max_it;
+    const double z_min = *z_min_it;
+    const double z_max = *z_max_it;
+
+    axis_guess_r[k] = 0.5 * (r_min + r_max);
+    axis_guess_z[k] = 0.5 * (z_min + z_max);
+
+    const int axis_index = k * s.nThetaEff;
+    const double axis_r = internal.r_e(0, axis_index);
+    const double axis_z = internal.z_e(0, axis_index);
+    for (int l = 0; l < s.nThetaEven; ++l) {
+      rs[l] = (r_edge[l] - r_mid[l]) / ds + axis_r;
+      zs[l] = (z_edge[l] - z_mid[l]) / ds + axis_z;
+      tau0[l] = ru_mid[l] * zs[l] - zu_mid[l] * rs[l];
+    }
+
+    double min_tau = 0.0;
+    const double delta_r = (r_max - r_min) / (kNumGridKnots - 1.0);
+    const double delta_z = (z_max - z_min) / (kNumGridKnots - 1.0);
+
+    for (int i = 0; i < kNumGridKnots; ++i) {
+      double z_test = z_min + i * delta_z;
+      if (!s.lasym && (k == 0 || (even_nzeta && k == s.nZeta / 2))) {
+        if (i > 0) {
+          break;
+        }
+        z_test = 0.0;
+      }
+
+      for (int j = 0; j < kNumGridKnots; ++j) {
+        const double r_test = r_min + j * delta_r;
+        for (int l = 0; l < s.nThetaEven; ++l) {
+          tau[l] = sign_of_jacobian *
+                   (tau0[l] - ru_mid[l] * z_test + zu_mid[l] * r_test);
+        }
+
+        const double candidate = *std::min_element(tau.begin(), tau.end());
+        if (candidate > min_tau) {
+          min_tau = candidate;
+          axis_guess_r[k] = r_test;
+          axis_guess_z[k] = z_test;
+        } else if (candidate == min_tau &&
+                   std::abs(axis_guess_z[k]) > std::abs(z_test)) {
+          axis_guess_z[k] = z_test;
+        }
+      }
+    }
+  }
+
+  for (int n = 0; n <= s.ntor; ++n) {
+    double new_raxis_c = 0.0;
+    double new_zaxis_s = 0.0;
+    double new_raxis_s = 0.0;
+    double new_zaxis_c = 0.0;
+
+    for (int k = 0; k < s.nZeta; ++k) {
+      const int kn = k * (s.nnyq2 + 1) + n;
+      new_raxis_c += t.cosnv[kn] * axis_guess_r[k];
+      new_zaxis_s += -t.sinnv[kn] * axis_guess_z[k];
+      if (s.lasym) {
+        new_raxis_s += -t.sinnv[kn] * axis_guess_r[k];
+        new_zaxis_c += t.cosnv[kn] * axis_guess_z[k];
+      }
+    }
+
+    const double scale = d_zeta / t.nscale[n];
+    raxis_c[n] = new_raxis_c * scale;
+    zaxis_s[n] = new_zaxis_s * scale;
+    if (s.lasym) {
+      (*raxis_s)[n] = new_raxis_s * scale;
+      (*zaxis_c)[n] = new_zaxis_c * scale;
+    }
+
+    if (n == 0 || (even_nzeta && n == s.nZeta / 2)) {
+      raxis_c[n] *= 0.5;
+      if (s.lasym) {
+        (*zaxis_c)[n] *= 0.5;
+      }
+    }
+  }
+}
 }  // namespace
 
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
@@ -156,6 +319,15 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
 }
 
 namespace vmecpp {
+
+void Vmec::RecomputeMagneticAxisFromCurrentGeometry() {
+  VmecInternalResults internal = GatherDataFromThreads(
+      kSignOfJacobian, s_, fc_, constants_, r_, decomposed_x_, m_, p_);
+
+  RecomputeMagneticAxisFromGeometry(
+      internal, s_, t_, kSignOfJacobian, b_.raxis_c, b_.zaxis_s,
+      s_.lasym ? &b_.raxis_s : nullptr, s_.lasym ? &b_.zaxis_c : nullptr);
+}
 
 absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
     const VmecINDATA& indata,
@@ -844,7 +1016,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
           std::cout << " TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS\n";
         }
 
-        b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, kSignOfJacobian);
+        RecomputeMagneticAxisFromCurrentGeometry();
         fc_.ijacob = 1;
 
         // prepare parameters to functions that get called due to
