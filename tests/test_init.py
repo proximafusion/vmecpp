@@ -104,6 +104,43 @@ def test_get_outputs_for_asymmetric_tokamak_if_non_converged():
     assert not np.all(vmec_output.jxbout.bsubu3 == 0.0)
 
 
+def test_asymmetric_tokamak_short_run_reaches_small_residuals():
+    """Test that the asymmetric tokamak follows the corrected force trajectory."""
+
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+    )
+    vmec_input.niter_array[-1] = 200
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    assert vmec_output.wout is not None
+    assert vmec_output.wout.fsqr < 1.0e-6
+    assert vmec_output.wout.fsqz < 1.0e-6
+    assert vmec_output.wout.raxis_cc[0] < 6.09
+    assert vmec_output.wout.zaxis_cc[0] > 0.09
+
+
+def test_landreman_low_res_recovers_axis_and_converges():
+    """Test that retry-time axis recovery handles the low-res asymmetric case."""
+
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.LandremanSenguptaPlunk_section5p3_low_res"
+    )
+    vmec_input.niter_array[-1] = 200
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    assert vmec_output.wout is not None
+    assert vmec_output.wout.ier_flag == 0
+    assert vmec_output.wout.fsqr < 1.0e-5
+    assert vmec_output.wout.fsqz < 1.0e-5
+    assert vmec_output.wout.raxis_cc[0] == pytest.approx(0.9945761, abs=1.0e-2)
+    assert vmec_output.wout.zaxis_cc[0] == pytest.approx(-0.0021634, abs=5.0e-3)
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():

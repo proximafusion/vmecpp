@@ -221,6 +221,10 @@ class Vmec {
       int thread_id, int maximum_iterations, VmecCheckpoint checkpoint,
       bool& m_lreset_internal, bool& m_liter_flag);
 
+  // Retry-time axis recovery should use the actual real-space geometry from the
+  // failed iterate, not just the original boundary coefficients.
+  void RecomputeMagneticAxisFromCurrentGeometry();
+
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
 
