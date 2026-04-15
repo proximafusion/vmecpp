@@ -196,6 +196,24 @@ def test_asymmetric_tokamak_to_cpp_indata():
     assert cpp_indata.zbc.shape == (vmec_input.mpol, 2 * vmec_input.ntor + 1)
 
 
+def test_anisotropic_profile_fields_roundtrip_from_indata():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "input.anisotropic_profile_parse")
+
+    assert vmec_input.lasym is True
+    assert vmec_input.bcrit == pytest.approx(1.0)
+    assert vmec_input.pt_type == "power_series"
+    assert vmec_input.ph_type == "power_series"
+    np.testing.assert_allclose(vmec_input.at, np.array([1.0, 0.0, 0.0]))
+    np.testing.assert_allclose(vmec_input.ah, np.array([0.0, 0.0, 0.0]))
+
+    cpp_indata = vmec_input._to_cpp_vmecindata()
+
+    assert cpp_indata.pt_type == "power_series"
+    assert cpp_indata.ph_type == "power_series"
+    np.testing.assert_allclose(cpp_indata.at, np.array([1.0, 0.0, 0.0]))
+    np.testing.assert_allclose(cpp_indata.ah, np.array([0.0, 0.0, 0.0]))
+
+
 _MISSING_FORTRAN_VARIABLES = [
     "lrecon__logical__",
     "lmove_axis__logical__",

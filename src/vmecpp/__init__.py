@@ -264,6 +264,45 @@ class VmecInput(BaseModelWithNumpy):
     Outside this radial location, pressure is constant.
     """
 
+    bcrit: float = 1.0
+    """Hot particle energy deposition value for |B|."""
+
+    pt_type: ProfileType = "power_series"
+    """Parametrization of the anisotropy or flow temperature profile."""
+
+    at: jt.Float[np.ndarray, "at_len"] = pydantic.Field(
+        default_factory=lambda: np.array([1.0])
+    )
+    """Anisotropy or flow temperature profile coefficients."""
+
+    at_aux_s: jt.Float[np.ndarray, "at_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Spline anisotropy profile: knot locations in s."""
+
+    at_aux_f: jt.Float[np.ndarray, "at_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Spline anisotropy profile: values at knots."""
+
+    ph_type: ProfileType = "power_series"
+    """Parametrization of the toroidal rotation profile."""
+
+    ah: jt.Float[np.ndarray, "ah_len"] = pydantic.Field(
+        default_factory=lambda: np.array([0.0])
+    )
+    """Toroidal rotation profile coefficients."""
+
+    ah_aux_s: jt.Float[np.ndarray, "ah_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Spline toroidal rotation profile: knot locations in s."""
+
+    ah_aux_f: jt.Float[np.ndarray, "ah_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Spline toroidal rotation profile: values at knots."""
+
     piota_type: ProfileType = "power_series"
     """Parametrization of iota (rotational transform) profile."""
 
