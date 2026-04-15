@@ -85,6 +85,25 @@ def test_get_outputs_if_non_converged_if_wanted():
     assert not np.all(vmec_output.jxbout.jxb_gradp == 0.0)
 
 
+def test_get_outputs_for_asymmetric_tokamak_if_non_converged():
+    """Test that short asymmetric runs can still return output quantities."""
+
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+    )
+    vmec_input.niter_array[-1] = 2
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    assert vmec_output.wout is not None
+    assert vmec_output.wout.lasym
+    assert vmec_output.wout.niter >= 2
+    assert np.isfinite(vmec_output.wout.raxis_cc[0])
+    assert np.isfinite(vmec_output.wout.zaxis_cs[0])
+    assert not np.all(vmec_output.jxbout.bsubu3 == 0.0)
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
