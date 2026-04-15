@@ -141,6 +141,41 @@ def test_landreman_low_res_recovers_axis_and_converges():
     assert vmec_output.wout.zaxis_cc[0] == pytest.approx(-0.0021634, abs=5.0e-3)
 
 
+def test_landreman_low_res_default_threads_do_not_crash():
+    """Test that the low-res asymmetric retry path is safe with default threading."""
+
+    script = f"""
+from pathlib import Path
+import json
+import vmecpp
+
+input_file = Path({str(TEST_DATA_DIR / "input.LandremanSenguptaPlunk_section5p3_low_res")!r})
+vmec_input = vmecpp.VmecInput.from_file(input_file)
+vmec_input.niter_array[-1] = 200
+vmec_input.return_outputs_even_if_not_converged = True
+vmec_output = vmecpp.run(vmec_input, verbose=False)
+print(json.dumps({{
+    "ier_flag": int(vmec_output.wout.ier_flag),
+    "fsqr": float(vmec_output.wout.fsqr),
+    "fsqz": float(vmec_output.wout.fsqz),
+}}))
+"""
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    result = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert result["ier_flag"] == 0
+    assert result["fsqr"] < 1.0e-5
+    assert result["fsqz"] < 1.0e-5
+
+
 def test_asymmetric_tokamak_matches_reference_axis_scalars():
     """Test key asymmetric tokamak scalars against the VMEC2000 reference run."""
 

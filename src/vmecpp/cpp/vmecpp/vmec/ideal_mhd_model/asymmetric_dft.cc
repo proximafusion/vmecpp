@@ -71,6 +71,17 @@ std::size_t FullIndex(int j, int k, int l, int n_zeta, int n_theta_eff) {
   return ((static_cast<std::size_t>(j) * n_zeta) + k) * n_theta_eff + l;
 }
 
+int ReflectedToroidalIndex(const Sizes& s, int k) {
+  return (s.nZeta - k) % s.nZeta;
+}
+
+int ReflectedPoloidalIndex(const Sizes& s, int l) {
+  if (l == 0) {
+    return 0;
+  }
+  return s.nThetaEven - l;
+}
+
 std::span<double> SelectBuffer(std::vector<double>& even, std::vector<double>& odd,
                                bool is_even) {
   return is_even ? std::span<double>(even) : std::span<double>(odd);
@@ -88,9 +99,9 @@ void ReflectGeometrySecondHalf(std::span<double> sym, std::span<const double> as
   const int num_surfaces = static_cast<int>(sym.size()) / s.nZnT;
   for (int j = 0; j < num_surfaces; ++j) {
     for (int k = 0; k < s.nZeta; ++k) {
-      const int k_ref = (s.nZeta - k) % s.nZeta;
+      const int k_ref = ReflectedToroidalIndex(s, k);
       for (int l = s.nThetaReduced; l < s.nThetaEff; ++l) {
-        const int l_ref = s.nThetaEff - l;
+        const int l_ref = ReflectedPoloidalIndex(s, l);
         const std::size_t dst = FullIndex(j, k, l, s.nZeta, s.nThetaEff);
         const std::size_t src = FullIndex(j, k_ref, l_ref, s.nZeta, s.nThetaEff);
         const std::size_t asym_src =
@@ -107,9 +118,9 @@ void ReflectDerivativeSecondHalf(std::span<double> sym, std::span<const double> 
   const int num_surfaces = static_cast<int>(sym.size()) / s.nZnT;
   for (int j = 0; j < num_surfaces; ++j) {
     for (int k = 0; k < s.nZeta; ++k) {
-      const int k_ref = (s.nZeta - k) % s.nZeta;
+      const int k_ref = ReflectedToroidalIndex(s, k);
       for (int l = s.nThetaReduced; l < s.nThetaEff; ++l) {
-        const int l_ref = s.nThetaEff - l;
+        const int l_ref = ReflectedPoloidalIndex(s, l);
         const std::size_t dst = FullIndex(j, k, l, s.nZeta, s.nThetaEff);
         const std::size_t src = FullIndex(j, k_ref, l_ref, s.nZeta, s.nThetaEff);
         const std::size_t asym_src =
@@ -179,7 +190,8 @@ void FourierToReal3DAsymmFastPoloidal(const FourierGeometry& physical_x,
 
       std::span<double> r_con;
       std::span<double> z_con;
-      const bool has_constraint_surface = jF < r.nsMaxFIncludingLcfs;
+      const bool has_constraint_surface =
+          r.nsMinF <= jF && jF < r.nsMaxFIncludingLcfs;
       if (has_constraint_surface) {
         r_con = SelectBuffer(asym_con.rCon_e, asym_con.rCon_o, m_even);
         z_con = SelectBuffer(asym_con.zCon_e, asym_con.zCon_o, m_even);
