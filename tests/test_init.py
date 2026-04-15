@@ -141,6 +141,26 @@ def test_landreman_low_res_recovers_axis_and_converges():
     assert vmec_output.wout.zaxis_cc[0] == pytest.approx(-0.0021634, abs=5.0e-3)
 
 
+def test_asymmetric_tokamak_matches_reference_axis_scalars():
+    """Test key asymmetric tokamak scalars against the VMEC2000 reference run."""
+
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+    )
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    assert vmec_output.wout.ier_flag == 0
+    assert vmec_output.wout.fsqr < 1.0e-6
+    assert vmec_output.wout.fsqz < 1.0e-6
+    assert vmec_output.wout.aspect == pytest.approx(10.1, abs=1.0e-12)
+    assert vmec_output.wout.raxis_cc[0] == pytest.approx(6.03903441199, abs=3.0e-3)
+    assert vmec_output.wout.zaxis_cc[0] == pytest.approx(7.78888829013e-2, abs=1.0e-3)
+    assert vmec_output.wout.raxis_cs[0] == pytest.approx(0.0, abs=1.0e-12)
+    assert vmec_output.wout.zaxis_cs[0] == pytest.approx(0.0, abs=1.0e-12)
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
