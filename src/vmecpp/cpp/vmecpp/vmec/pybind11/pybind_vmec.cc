@@ -20,6 +20,7 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/vmec/boundaries/guess_magnetic_axis.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
@@ -109,6 +110,29 @@ py::dict GeometryAfterInverseDftForTesting(const VmecINDATA &indata,
   geometry["z_edge"] = internal.z_e.row(edge_index).transpose() +
                        sqrt_s_edge * internal.z_o.row(edge_index).transpose();
   return geometry;
+}
+
+py::dict RecomputedAxisForTesting(const VmecINDATA &indata) {
+  vmecpp::Sizes sizes(indata.lasym, indata.nfp, indata.mpol, indata.ntor,
+                      indata.ntheta, indata.nzeta);
+  vmecpp::FourierBasisFastPoloidal basis(&sizes);
+  vmecpp::Boundaries boundaries(&sizes, &basis, vmecpp::Vmec::kSignOfJacobian);
+  boundaries.setupFromIndata(indata, /*verbose=*/false);
+
+  vmecpp::RecomputeAxisWorkspace workspace =
+      vmecpp::RecomputeMagneticAxisToFixJacobianSign(
+          indata.ns_array[0], vmecpp::Vmec::kSignOfJacobian, sizes, basis,
+          boundaries.rbcc, boundaries.rbss, boundaries.rbsc, boundaries.rbcs,
+          boundaries.zbsc, boundaries.zbcs, boundaries.zbcc, boundaries.zbss,
+          boundaries.raxis_c, boundaries.raxis_s, boundaries.zaxis_s,
+          boundaries.zaxis_c);
+
+  py::dict axis;
+  axis["raxis_c"] = workspace.new_raxis_c;
+  axis["raxis_s"] = workspace.new_raxis_s;
+  axis["zaxis_s"] = workspace.new_zaxis_s;
+  axis["zaxis_c"] = workspace.new_zaxis_c;
+  return axis;
 }
 
 }  // anonymous namespace
@@ -732,6 +756,8 @@ PYBIND11_MODULE(_vmecpp, m) {
   m.def("_geometry_after_inverse_dft_for_testing",
         &GeometryAfterInverseDftForTesting, py::arg("indata"),
         py::arg("max_threads") = std::nullopt);
+  m.def("_recomputed_axis_for_testing", &RecomputedAxisForTesting,
+        py::arg("indata"));
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,
