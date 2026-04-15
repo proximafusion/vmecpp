@@ -1,4 +1,5 @@
 list (APPEND vmecpp_sources
+  ${CMAKE_CURRENT_SOURCE_DIR}/asymmetric_dft.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/dft_data.h
   ${CMAKE_CURRENT_SOURCE_DIR}/force_symmetry.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/force_symmetry.h
