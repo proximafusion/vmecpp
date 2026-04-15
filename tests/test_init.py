@@ -161,6 +161,26 @@ def test_asymmetric_tokamak_matches_reference_axis_scalars():
     assert vmec_output.wout.zaxis_cs[0] == pytest.approx(0.0, abs=1.0e-12)
 
 
+def test_asymmetric_tokamak_wout_can_be_saved_on_python_314():
+    """Test that optional asymmetric arrays do not break wout saving."""
+
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+    )
+    vmec_input.niter_array[-1] = 2
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    with tempfile.NamedTemporaryFile(suffix=".nc") as tmp_file:
+        vmec_output.wout.save(tmp_file.name)
+        reloaded_wout = vmecpp.VmecWOut.from_wout_file(tmp_file.name)
+
+    assert reloaded_wout.lasym
+    assert np.isfinite(reloaded_wout.raxis_cc[0])
+    assert np.isfinite(reloaded_wout.zaxis_cs[0])
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
