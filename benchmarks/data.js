@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776339449890,
+  "lastUpdate": 1776343720230,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -15990,6 +15990,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.004145177924291285",
             "extra": "mean: 9.862705914333352 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8adda439309a04d379648e25c4f64f2c5f3bdedb",
+          "message": "Add a Python 3.13 Nix development shell (#479)\n\n* Add a Python 3.13 Nix development shell\n\n* Update README.md\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-04-16T14:44:28+02:00",
+          "tree_id": "e8e3f2cfad15e4222d2e4ee2fbb465245fd99bf3",
+          "url": "https://github.com/proximafusion/vmecpp/commit/8adda439309a04d379648e25c4f64f2c5f3bdedb"
+        },
+        "date": 1776343718838,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.9609476989705588,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007313969007659451",
+            "extra": "mean: 337.7297073999898 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.9451254767322927,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0038709303114931146",
+            "extra": "mean: 339.5441069999947 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23418334402193228,
+            "unit": "iter/sec",
+            "range": "stddev: 0.026700440493864684",
+            "extra": "mean: 4.270158512666664 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5704369339674493,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0032514267888857896",
+            "extra": "mean: 1.7530421689999873 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.2784592097744244,
+            "unit": "iter/sec",
+            "range": "stddev: 0.012022105711454881",
+            "extra": "mean: 3.591190253000017 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.1011718573075453,
+            "unit": "iter/sec",
+            "range": "stddev: 0.016143795089124283",
+            "extra": "mean: 9.884171612666648 sec\nrounds: 3"
           }
         ]
       }
