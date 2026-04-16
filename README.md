@@ -220,7 +220,7 @@ export HDF5_ROOT=$(brew --prefix hdf5)
 python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
 ```
 
-### With Nix
+### With Nix (Community support)
 
 For a Linux development shell with the latest supported Python version:
 
