@@ -55,6 +55,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [Arch](#arch-linux)
   - [Fedora](#fedora)
   - [MacOS](#macos)
+  - [With Nix](#with-nix)
   - [As part of a conda environment](#as-part-of-a-conda-environment)
   - [C++ build from source](#c-build-from-source)
 - [Hot restart](#hot-restart)
@@ -218,6 +219,20 @@ export OpenMP_ROOT=$(brew --prefix)/opt/libomp
 export HDF5_ROOT=$(brew --prefix hdf5)
 python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
 ```
+
+### With Nix (Community support)
+
+For a Linux development shell with the latest supported Python version:
+
+```shell
+nix develop
+python --version
+python -m pip install -e .[test]
+```
+
+The shell provides Python 3.13 together with the native build dependencies needed
+to build and test VMEC++, including CMake, GCC, GFortran, HDF5, NetCDF, LAPACK,
+OpenMPI, and Git LFS.
 
 ### As part of a conda environment
 
