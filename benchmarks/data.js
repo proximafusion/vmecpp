@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775817021074,
+  "lastUpdate": 1776330678315,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -1186,6 +1186,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0035784047592257186",
             "extra": "mean: 10.014337977333374 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d79e972b074dedc10976091e00e12f68551d5fb3",
+          "message": "Restrict pydantic version, breaking change (#480)\n\npydantic 2.13 is causing validation failiures, restrict it until we understand the issue",
+          "timestamp": "2026-04-16T11:06:55+02:00",
+          "tree_id": "c081f0908ae5d478b1d3e6f9b2b2ae2457d276fb",
+          "url": "https://github.com/proximafusion/vmecpp/commit/d79e972b074dedc10976091e00e12f68551d5fb3"
+        },
+        "date": 1776330677246,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.5069642200014006,
+            "unit": "iter/sec",
+            "range": "stddev: 0.007022561567535208",
+            "extra": "mean: 398.8888202000112 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.5931517266232045,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005103190661552017",
+            "extra": "mean: 385.6311182000127 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2299238303108003,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0373332178785665",
+            "extra": "mean: 4.349266444666682 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5630004394083282,
+            "unit": "iter/sec",
+            "range": "stddev: 0.006764010403762522",
+            "extra": "mean: 1.7761975480000085 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.277674342773856,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003867373101805961",
+            "extra": "mean: 3.6013410169999815 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.09924296737695544,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01469764029796653",
+            "extra": "mean: 10.076280732333316 sec\nrounds: 3"
           }
         ]
       }
