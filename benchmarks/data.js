@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776338593959,
+  "lastUpdate": 1776339449890,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -15924,6 +15924,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.09915692862364608",
             "extra": "mean: 10.345216440666661 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "48dd1a146c28f3a06e53af22dbc2e8d2c32c38cc",
+          "message": "Also add .github/workflows/copilot-setup-steps.yml to pre-install vmecpp and its Ubuntu system dependencies in the Copilot cloud agent environment. (#483)\n\nAlso add .github/workflows/copilot-setup-steps.yml to pre-install vmecpp and\nits Ubuntu system dependencies in the Copilot cloud agent environment.",
+          "timestamp": "2026-04-16T13:33:19+02:00",
+          "tree_id": "1aed1e09f2dffc1c1fdbc2e0601a7f79d30d2d0d",
+          "url": "https://github.com/proximafusion/vmecpp/commit/48dd1a146c28f3a06e53af22dbc2e8d2c32c38cc"
+        },
+        "date": 1776339448637,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.9749995431442224,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0010899525310423717",
+            "extra": "mean: 336.1345053999969 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.9437706078293844,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00037705187844342823",
+            "extra": "mean: 339.7003819999952 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23619984761903837,
+            "unit": "iter/sec",
+            "range": "stddev: 0.030243292864653184",
+            "extra": "mean: 4.233702985333328 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5670677980271094,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006167950069048943",
+            "extra": "mean: 1.7634575679999973 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.27916840285839034,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0019631419982103263",
+            "extra": "mean: 3.5820672746666653 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.1013920529199509,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004145177924291285",
+            "extra": "mean: 9.862705914333352 sec\nrounds: 3"
           }
         ]
       }
