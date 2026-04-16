@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
+import json
 import types
 import typing
 from collections.abc import Callable, Mapping
@@ -26,17 +27,20 @@ class BaseModelWithNumpy(pydantic.BaseModel):
         ser_json_inf_nan="strings",
     )
 
-    @pydantic.field_serializer("*", mode="wrap", when_used="json")
-    def _serialize_field(
+    @pydantic.model_serializer(mode="wrap", when_used="json")
+    def _serialize_model(
         self,
-        value: typing.Any,
         default_handler: pydantic.SerializerFunctionWrapHandler,
-        info: pydantic.FieldSerializationInfo,
         # Note: Do NOT annotate return type with "-> Any" here, since that removes types
         # from the JSON schema of all fields (in serialization mode).
     ):
-        value = serialize_special_field(type(self), info.field_name, value)
-        return default_handler(value)
+        output = default_handler(self)
+        if not isinstance(output, dict):
+            return output
+
+        for field_name, value in output.items():
+            output[field_name] = serialize_special_field(type(self), field_name, value)
+        return output
 
     @pydantic.field_validator("*", mode="wrap")
     @classmethod
@@ -46,7 +50,8 @@ class BaseModelWithNumpy(pydantic.BaseModel):
         default_handler: pydantic.ValidatorFunctionWrapHandler,
         info: pydantic.ValidationInfo,
     ) -> typing.Any:
-        assert info.field_name is not None
+        if info.field_name is None or info.field_name not in cls.model_fields:
+            return default_handler(value)
         # We consciously *ignore* info.mode_is_json() here to allow validating from
         # JSON-like dicts without having to go through strings. This is consistent with
         # Pydantic's default behavior: while serializers retain Python objects in
@@ -66,11 +71,40 @@ class BaseModelWithNumpy(pydantic.BaseModel):
     # types and defaults.
     if not typing.TYPE_CHECKING:
 
+        @classmethod
+        def model_validate(cls, obj: Any, **kwargs: Any):
+            return super().model_validate(_prepare_model_input(cls, obj), **kwargs)
+
+        @classmethod
+        def model_validate_json(cls, json_data: str | bytes | bytearray, **kwargs: Any):
+            return cls.model_validate(json.loads(json_data), **kwargs)
+
         def model_dump(self, *, mode: str = "python", **kwargs: Any) -> dict[str, Any]:
-            output_dict = super().model_dump(mode=mode, **kwargs)
-            if mode == "json":
-                sanitize_floats_in_container(output_dict)
+            if mode != "json":
+                return super().model_dump(mode=mode, **kwargs)
+
+            output_dict = super().model_dump(mode="python", **kwargs)
+            output_dict = _prepare_container_for_json(output_dict)
+            output_dict = pydantic.TypeAdapter(dict[str, Any]).dump_python(
+                output_dict, mode="json"
+            )
             return output_dict
+
+        def model_dump_json(
+            self,
+            *,
+            indent: int | None = None,
+            ensure_ascii: bool = False,
+            **kwargs: Any,
+        ) -> str:
+            output_dict = self.model_dump(mode="json", **kwargs)
+            separators = None if indent is not None else (",", ":")
+            return json.dumps(
+                output_dict,
+                indent=indent,
+                ensure_ascii=ensure_ascii,
+                separators=separators,
+            )
 
 
 """This module handles special cases for serialization of BaseModelWithNumpy types.
@@ -139,13 +173,13 @@ def serialize_special_field(
     unchanged."""
     field_info = cls.model_fields.get(field_name, None)
     if field_info is not None:
-        assert field_info.annotation is not None
+        if field_info.annotation is None:
+            return value
         field_type = field_info.annotation
         field_metadata = field_info.metadata
     else:
-        assert field_name in cls.model_computed_fields, (
-            f"Field {field_name} must be either a field or a computed field."
-        )
+        if field_name not in cls.model_computed_fields:
+            return value
         computed_field_info = cls.model_computed_fields[field_name]
         field_type = computed_field_info.return_type
         field_metadata = []  # Computed fields cannot use Annotated[...] for now.
@@ -169,7 +203,8 @@ def deserialize_special_field(
     # Note: Computed fields do not call field validators, so we do not need to consider
     # them for deserialization.
     field_info = cls.model_fields[field_name]
-    assert field_info.annotation is not None
+    if field_info.annotation is None:
+        return value
     return _traverse_field_contents(
         field_info.annotation, value, _deserialize_value, field_info.metadata
     )
@@ -387,6 +422,49 @@ def _sanitize_float(value: float) -> float | str:
     if np.isinf(value):
         return "-Infinity" if value < 0 else "Infinity"
     return value
+
+
+def _prepare_container_for_json(value: Any) -> Any:
+    """Recursively normalizes Python-mode model dumps into JSON-safe values."""
+    if _is_arraylike(value):
+        return _serialize_arraylike_for_json(value)
+    if isinstance(value, np.generic):
+        return _prepare_scalar_for_json(value.item())
+    if isinstance(value, Mapping):
+        return {key: _prepare_container_for_json(item) for key, item in value.items()}
+    if isinstance(value, list | tuple | set | frozenset):
+        return [_prepare_container_for_json(item) for item in value]
+    return _prepare_scalar_for_json(value)
+
+
+def _prepare_model_input(cls: type[pydantic.BaseModel], obj: Any) -> Any:
+    if not isinstance(obj, Mapping):
+        return obj
+
+    prepared = dict(obj)
+    for field_name in cls.model_fields:
+        if field_name in prepared:
+            prepared[field_name] = deserialize_special_field(
+                cls, field_name, prepared[field_name]
+            )
+    return prepared
+
+
+def _prepare_scalar_for_json(value: Any) -> Any:
+    if isinstance(value, float):
+        return _sanitize_float(value)
+    return value
+
+
+def _serialize_arraylike_for_json(value: Any) -> list[Any]:
+    np_array = np.asarray(value)
+    if np_array.dtype in _NUMPY_ALLOWED_NONBINARY_DTYPES:
+        return _prepare_container_for_json(np_array.tolist())
+    msg = (
+        f"Cannot serialize numpy array with dtype {np_array.dtype} to JSON. "
+        f"Please convert it to an allowed dtype: {_NUMPY_ALLOWED_NONBINARY_DTYPES}."
+    )
+    raise ValueError(msg)
 
 
 def _reconstruct_floats_for_numpy(value: list | float | str) -> list | float | str:

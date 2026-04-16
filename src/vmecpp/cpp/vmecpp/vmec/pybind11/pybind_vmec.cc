@@ -15,11 +15,13 @@
 #include <string>
 #include <type_traits>  // std::is_same_v
 #include <utility>      // std::move
+#include <vector>
 
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/vmec/boundaries/guess_magnetic_axis.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
@@ -77,6 +79,103 @@ vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
   return vmecpp::HotRestartState(std::move(wout), indata);
 }
 
+py::dict GeometryAfterInverseDftForTesting(const VmecINDATA &indata,
+                                           std::optional<int> max_threads) {
+  auto maybe_vmec =
+      vmecpp::Vmec::FromIndata(indata, /*magnetic_response_table=*/nullptr,
+                               max_threads, vmecpp::OutputMode::kSilent);
+  auto &vmec = GetValueOrThrow(maybe_vmec);
+
+  auto reached_checkpoint =
+      vmec->run(vmecpp::VmecCheckpoint::INV_DFT_GEOMETRY,
+                /*iterations_before_checkpointing=*/1);
+  if (!reached_checkpoint.ok()) {
+    throw std::runtime_error(std::string(reached_checkpoint.status().message()));
+  }
+  if (!*reached_checkpoint) {
+    throw std::runtime_error("inverse DFT checkpoint was not reached");
+  }
+
+  vmecpp::VmecInternalResults internal = vmecpp::GatherDataFromThreads(
+      vmecpp::Vmec::kSignOfJacobian, vmec->s_, vmec->fc_, vmec->constants_,
+      vmec->r_, vmec->decomposed_x_, vmec->m_, vmec->p_);
+
+  const int edge_index = vmec->fc_.ns - 1;
+  const double sqrt_s_edge = internal.sqrtSF[edge_index];
+
+  py::dict geometry;
+  geometry["n_theta_eff"] = vmec->s_.nThetaEff;
+  geometry["n_theta_reduced"] = vmec->s_.nThetaReduced;
+  geometry["r_edge"] = internal.r_e.row(edge_index).transpose() +
+                       sqrt_s_edge * internal.r_o.row(edge_index).transpose();
+  geometry["z_edge"] = internal.z_e.row(edge_index).transpose() +
+                       sqrt_s_edge * internal.z_o.row(edge_index).transpose();
+  return geometry;
+}
+
+py::dict RecomputedAxisForTesting(const VmecINDATA &indata) {
+  vmecpp::Sizes sizes(indata.lasym, indata.nfp, indata.mpol, indata.ntor,
+                      indata.ntheta, indata.nzeta);
+  vmecpp::FourierBasisFastPoloidal basis(&sizes);
+  vmecpp::Boundaries boundaries(&sizes, &basis, vmecpp::Vmec::kSignOfJacobian);
+  boundaries.setupFromIndata(indata, /*verbose=*/false);
+
+  vmecpp::RecomputeAxisWorkspace workspace =
+      vmecpp::RecomputeMagneticAxisToFixJacobianSign(
+          indata.ns_array[0], vmecpp::Vmec::kSignOfJacobian, sizes, basis,
+          boundaries.rbcc, boundaries.rbss, boundaries.rbsc, boundaries.rbcs,
+          boundaries.zbsc, boundaries.zbcs, boundaries.zbcc, boundaries.zbss,
+          boundaries.raxis_c, boundaries.raxis_s, boundaries.zaxis_s,
+          boundaries.zaxis_c);
+
+  py::dict axis;
+  axis["raxis_c"] = workspace.new_raxis_c;
+  axis["raxis_s"] = workspace.new_raxis_s;
+  axis["zaxis_s"] = workspace.new_zaxis_s;
+  axis["zaxis_c"] = workspace.new_zaxis_c;
+  return axis;
+}
+
+py::dict ForwardDftForcesForTesting(const VmecINDATA &indata,
+                                    std::optional<int> max_threads,
+                                    int iterations_before_checkpointing) {
+  auto maybe_vmec =
+      vmecpp::Vmec::FromIndata(indata, /*magnetic_response_table=*/nullptr,
+                               max_threads, vmecpp::OutputMode::kSilent);
+  auto &vmec = GetValueOrThrow(maybe_vmec);
+
+  auto reached_checkpoint =
+      vmec->run(vmecpp::VmecCheckpoint::FWD_DFT_FORCES,
+                iterations_before_checkpointing);
+  if (!reached_checkpoint.ok()) {
+    throw std::runtime_error(std::string(reached_checkpoint.status().message()));
+  }
+  if (!*reached_checkpoint) {
+    throw std::runtime_error("forward DFT checkpoint was not reached");
+  }
+
+  const auto &forces = *vmec->physical_f_[0];
+
+  py::dict output;
+  output["ns"] = vmec->fc_.ns;
+  output["mpol"] = vmec->s_.mpol;
+  output["ntor"] = vmec->s_.ntor;
+  output["iterations_before_checkpointing"] = iterations_before_checkpointing;
+  output["frcc"] = std::vector<double>(forces.frcc.begin(), forces.frcc.end());
+  output["fzsc"] = std::vector<double>(forces.fzsc.begin(), forces.fzsc.end());
+  output["flsc"] = std::vector<double>(forces.flsc.begin(), forces.flsc.end());
+  output["frss"] = std::vector<double>(forces.frss.begin(), forces.frss.end());
+  output["fzcs"] = std::vector<double>(forces.fzcs.begin(), forces.fzcs.end());
+  output["flcs"] = std::vector<double>(forces.flcs.begin(), forces.flcs.end());
+  output["frsc"] = std::vector<double>(forces.frsc.begin(), forces.frsc.end());
+  output["fzcc"] = std::vector<double>(forces.fzcc.begin(), forces.fzcc.end());
+  output["flcc"] = std::vector<double>(forces.flcc.begin(), forces.flcc.end());
+  output["frcs"] = std::vector<double>(forces.frcs.begin(), forces.frcs.end());
+  output["fzss"] = std::vector<double>(forces.fzss.begin(), forces.fzss.end());
+  output["flss"] = std::vector<double>(forces.flss.begin(), forces.flss.end());
+  return output;
+}
+
 }  // anonymous namespace
 
 // IMPORTANT: The first argument must be the name of the module, else
@@ -132,12 +231,21 @@ PYBIND11_MODULE(_vmecpp, m) {
   pyindata.def_readwrite("pres_scale", &VmecINDATA::pres_scale)
       .def_readwrite("gamma", &VmecINDATA::gamma)
       .def_readwrite("spres_ped", &VmecINDATA::spres_ped)
+      .def_readwrite("bcrit", &VmecINDATA::bcrit)
+      .def_readwrite("pt_type", &VmecINDATA::pt_type)
+      .def_readwrite("ph_type", &VmecINDATA::ph_type)
 
       // (initial guess for) iota profile
       .def_readwrite("piota_type", &VmecINDATA::piota_type);
   DefEigenProperty(pyindata, "ai", &VmecINDATA::ai);
   DefEigenProperty(pyindata, "ai_aux_s", &VmecINDATA::ai_aux_s);
   DefEigenProperty(pyindata, "ai_aux_f", &VmecINDATA::ai_aux_f);
+  DefEigenProperty(pyindata, "at", &VmecINDATA::at);
+  DefEigenProperty(pyindata, "at_aux_s", &VmecINDATA::at_aux_s);
+  DefEigenProperty(pyindata, "at_aux_f", &VmecINDATA::at_aux_f);
+  DefEigenProperty(pyindata, "ah", &VmecINDATA::ah);
+  DefEigenProperty(pyindata, "ah_aux_s", &VmecINDATA::ah_aux_s);
+  DefEigenProperty(pyindata, "ah_aux_f", &VmecINDATA::ah_aux_f);
 
   // enclosed toroidal current profile
   pyindata.def_readwrite("pcurr_type", &VmecINDATA::pcurr_type);
@@ -694,6 +802,15 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
       py::arg("verbose") = vmecpp::OutputMode::kProgress);
+
+  m.def("_geometry_after_inverse_dft_for_testing",
+        &GeometryAfterInverseDftForTesting, py::arg("indata"),
+        py::arg("max_threads") = std::nullopt);
+  m.def("_recomputed_axis_for_testing", &RecomputedAxisForTesting,
+        py::arg("indata"));
+  m.def("_forward_dft_forces_for_testing", &ForwardDftForcesForTesting,
+        py::arg("indata"), py::arg("max_threads") = std::nullopt,
+        py::arg("iterations_before_checkpointing") = 1);
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,

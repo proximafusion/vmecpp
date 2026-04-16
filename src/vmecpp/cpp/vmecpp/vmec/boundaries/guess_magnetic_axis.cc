@@ -228,7 +228,8 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   // inverse Fourier transforms:
   // evaluate R, Z, dR/dTheta and dZ/dTheta at radial locations ns12 and ns-1
   for (int k = 0; k < s.nZeta; ++k) {
-    for (int l = 0; l < s.nThetaReduced; ++l) {
+    const int theta_limit = s.lasym ? s.nThetaEven : s.nThetaReduced;
+    for (int l = 0; l < theta_limit; ++l) {
       // set target storage to zero
       w.r_lcfs[k][l] = 0.0;
       w.z_lcfs[k][l] = 0.0;
@@ -242,83 +243,92 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
 
       for (int m = 0; m < s.mpol; ++m) {
         for (int n = 0; n <= s.ntor; ++n) {
-          int idx_ml = m * s.nThetaReduced + l;
           int idx_kn = k * (s.nnyq2 + 1) + n;
           int idx_mn = m * (s.ntor + 1) + n;
+
+          const bool reflected = s.lasym && l >= s.nThetaReduced;
+          const int l_ref = reflected ? s.nThetaEven - l : l;
+          int idx_ml = m * s.nThetaReduced + l_ref;
+
+          const double cosmu = t.cosmu[idx_ml];
+          const double sinmu = reflected ? -t.sinmu[idx_ml] : t.sinmu[idx_ml];
+          const double cosmum = t.cosmum[idx_ml];
+          const double sinmum =
+              reflected ? -t.sinmum[idx_ml] : t.sinmum[idx_ml];
 
           const double basis_norm = 1.0 / (t.mscale[m] * t.nscale[n]);
 
           w.r_lcfs[k][l] +=
-              basis_norm * rbcc[idx_mn] * t.cosmu[idx_ml] * t.cosnv[idx_kn];
+              basis_norm * rbcc[idx_mn] * cosmu * t.cosnv[idx_kn];
           w.z_lcfs[k][l] +=
-              basis_norm * zbsc[idx_mn] * t.sinmu[idx_ml] * t.cosnv[idx_kn];
+              basis_norm * zbsc[idx_mn] * sinmu * t.cosnv[idx_kn];
           w.d_r_d_theta_lcfs[k][l] +=
-              basis_norm * rbcc[idx_mn] * t.sinmum[idx_ml] * t.cosnv[idx_kn];
+              basis_norm * rbcc[idx_mn] * sinmum * t.cosnv[idx_kn];
           w.d_z_d_theta_lcfs[k][l] +=
-              basis_norm * zbsc[idx_mn] * t.cosmum[idx_ml] * t.cosnv[idx_kn];
+              basis_norm * zbsc[idx_mn] * cosmum * t.cosnv[idx_kn];
           w.r_half[k][l] +=
-              basis_norm * rcc_half[m][n] * t.cosmu[idx_ml] * t.cosnv[idx_kn];
+              basis_norm * rcc_half[m][n] * cosmu * t.cosnv[idx_kn];
           w.z_half[k][l] +=
-              basis_norm * zsc_half[m][n] * t.sinmu[idx_ml] * t.cosnv[idx_kn];
+              basis_norm * zsc_half[m][n] * sinmu * t.cosnv[idx_kn];
           w.d_r_d_theta_half[k][l] +=
-              basis_norm * rcc_half[m][n] * t.sinmum[idx_ml] * t.cosnv[idx_kn];
+              basis_norm * rcc_half[m][n] * sinmum * t.cosnv[idx_kn];
           w.d_z_d_theta_half[k][l] +=
-              basis_norm * zsc_half[m][n] * t.cosmum[idx_ml] * t.cosnv[idx_kn];
+              basis_norm * zsc_half[m][n] * cosmum * t.cosnv[idx_kn];
           if (s.lthreed) {
             w.r_lcfs[k][l] += basis_norm * rss_boundary[m][n] *
-                              t.sinmu[idx_ml] * t.sinnv[idx_kn];
+                              sinmu * t.sinnv[idx_kn];
             w.z_lcfs[k][l] += basis_norm * zcs_boundary[m][n] *
-                              t.cosmu[idx_ml] * t.sinnv[idx_kn];
+                              cosmu * t.sinnv[idx_kn];
             w.d_r_d_theta_lcfs[k][l] += basis_norm * rss_boundary[m][n] *
-                                        t.cosmum[idx_ml] * t.sinnv[idx_kn];
+                                        cosmum * t.sinnv[idx_kn];
             w.d_z_d_theta_lcfs[k][l] += basis_norm * zcs_boundary[m][n] *
-                                        t.sinmum[idx_ml] * t.sinnv[idx_kn];
+                                        sinmum * t.sinnv[idx_kn];
 
             w.r_half[k][l] +=
-                basis_norm * rss_half[m][n] * t.sinmu[idx_ml] * t.sinnv[idx_kn];
+                basis_norm * rss_half[m][n] * sinmu * t.sinnv[idx_kn];
             w.z_half[k][l] +=
-                basis_norm * zcs_half[m][n] * t.cosmu[idx_ml] * t.sinnv[idx_kn];
+                basis_norm * zcs_half[m][n] * cosmu * t.sinnv[idx_kn];
             w.d_r_d_theta_half[k][l] += basis_norm * rss_half[m][n] *
-                                        t.cosmum[idx_ml] * t.sinnv[idx_kn];
+                                        cosmum * t.sinnv[idx_kn];
             w.d_z_d_theta_half[k][l] += basis_norm * zcs_half[m][n] *
-                                        t.sinmum[idx_ml] * t.sinnv[idx_kn];
+                                        sinmum * t.sinnv[idx_kn];
           }
           if (s.lasym) {
             w.r_lcfs[k][l] += basis_norm * rsc_boundary[m][n] *
-                              t.sinmu[idx_ml] * t.cosnv[idx_kn];
+                              sinmu * t.cosnv[idx_kn];
             w.z_lcfs[k][l] += basis_norm * zcc_boundary[m][n] *
-                              t.cosmu[idx_ml] * t.cosnv[idx_kn];
+                              cosmu * t.cosnv[idx_kn];
             w.d_r_d_theta_lcfs[k][l] += basis_norm * rsc_boundary[m][n] *
-                                        t.cosmum[idx_ml] * t.cosnv[idx_kn];
+                                        cosmum * t.cosnv[idx_kn];
             w.d_z_d_theta_lcfs[k][l] += basis_norm * zcc_boundary[m][n] *
-                                        t.sinmum[idx_ml] * t.cosnv[idx_kn];
+                                        sinmum * t.cosnv[idx_kn];
 
             w.r_half[k][l] +=
-                basis_norm * rsc_half[m][n] * t.sinmu[idx_ml] * t.cosnv[idx_kn];
+                basis_norm * rsc_half[m][n] * sinmu * t.cosnv[idx_kn];
             w.z_half[k][l] +=
-                basis_norm * zcc_half[m][n] * t.cosmu[idx_ml] * t.cosnv[idx_kn];
+                basis_norm * zcc_half[m][n] * cosmu * t.cosnv[idx_kn];
             w.d_r_d_theta_half[k][l] += basis_norm * rsc_half[m][n] *
-                                        t.cosmum[idx_ml] * t.cosnv[idx_kn];
+                                        cosmum * t.cosnv[idx_kn];
             w.d_z_d_theta_half[k][l] += basis_norm * zcc_half[m][n] *
-                                        t.sinmum[idx_ml] * t.cosnv[idx_kn];
+                                        sinmum * t.cosnv[idx_kn];
             if (s.lthreed) {
               w.r_lcfs[k][l] +=
-                  basis_norm * rbcs[idx_mn] * t.cosmu[idx_ml] * t.sinnv[idx_kn];
+                  basis_norm * rbcs[idx_mn] * cosmu * t.sinnv[idx_kn];
               w.z_lcfs[k][l] +=
-                  basis_norm * zbss[idx_mn] * t.sinmu[idx_ml] * t.sinnv[idx_kn];
+                  basis_norm * zbss[idx_mn] * sinmu * t.sinnv[idx_kn];
               w.d_r_d_theta_lcfs[k][l] += basis_norm * rbcs[idx_mn] *
-                                          t.sinmum[idx_ml] * t.sinnv[idx_kn];
+                                          sinmum * t.sinnv[idx_kn];
               w.d_z_d_theta_lcfs[k][l] += basis_norm * zbss[idx_mn] *
-                                          t.cosmum[idx_ml] * t.sinnv[idx_kn];
+                                          cosmum * t.sinnv[idx_kn];
 
-              w.r_half[k][l] += basis_norm * rcs_half[m][n] * t.cosmu[idx_ml] *
-                                t.sinnv[idx_kn];
-              w.z_half[k][l] += basis_norm * zss_half[m][n] * t.sinmu[idx_ml] *
-                                t.sinnv[idx_kn];
+              w.r_half[k][l] +=
+                  basis_norm * rcs_half[m][n] * cosmu * t.sinnv[idx_kn];
+              w.z_half[k][l] +=
+                  basis_norm * zss_half[m][n] * sinmu * t.sinnv[idx_kn];
               w.d_r_d_theta_half[k][l] += basis_norm * rcs_half[m][n] *
-                                          t.sinmum[idx_ml] * t.sinnv[idx_kn];
+                                          sinmum * t.sinnv[idx_kn];
               w.d_z_d_theta_half[k][l] += basis_norm * zss_half[m][n] *
-                                          t.cosmum[idx_ml] * t.sinnv[idx_kn];
+                                          cosmum * t.sinnv[idx_kn];
             }
           }
         }  // n

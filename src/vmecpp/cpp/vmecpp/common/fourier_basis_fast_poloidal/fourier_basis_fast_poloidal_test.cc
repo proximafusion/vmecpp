@@ -999,4 +999,69 @@ TEST(TestFourierBasisFastPoloidal, CheckInternally) {
   }
 }  // CheckInternally
 
+TEST(TestFourierBasisFastPoloidal, CheckInternallyAsymmetricTokamak) {
+  static constexpr double kTwoPi = 2.0 * M_PI;
+  static constexpr double kTolerance = 1.0e-30;
+
+  const bool lasym = true;
+  const int nfp = 1;
+  const int mpol = 8;
+  const int ntor = 0;
+  int ntheta = 0;
+  int nzeta = 1;
+
+  Sizes sizes(lasym, nfp, mpol, ntor, ntheta, nzeta);
+  FourierBasisFastPoloidal fourier_basis(&sizes);
+
+  const double d_theta_zeta =
+      1.0 / (sizes.nZeta * (sizes.nThetaReduced - 1));
+  const double d_theta_full = 1.0 / (sizes.nZeta * sizes.nThetaEven);
+
+  EXPECT_EQ(sizes.nThetaEff, sizes.nThetaEven);
+  ASSERT_EQ(sizes.wInt.size(), sizes.nThetaEff);
+
+  for (int l = 0; l < sizes.nThetaEff; ++l) {
+    EXPECT_TRUE(IsCloseRelAbs(sizes.wInt[l], d_theta_full, kTolerance))
+        << absl::StrFormat("wInt l=%d", l);
+  }
+
+  for (int m = 0; m < sizes.mnyq2 + 1; ++m) {
+    for (int l = 0; l < sizes.nThetaReduced; ++l) {
+      const double theta = kTwoPi * l / sizes.nThetaEven;
+      const int idx_ml = m * sizes.nThetaReduced + l;
+
+      const double reference_cosmu =
+          std::cos(m * theta) * fourier_basis.mscale[m];
+      const double reference_sinmu =
+          std::sin(m * theta) * fourier_basis.mscale[m];
+
+      double reference_cosmui = reference_cosmu * d_theta_zeta;
+      const double reference_sinmui = reference_sinmu * d_theta_zeta;
+
+      if (l == 0 || l == sizes.nThetaReduced - 1) {
+        reference_cosmui /= 2.0;
+      }
+
+      EXPECT_TRUE(IsCloseRelAbs(reference_cosmu, fourier_basis.cosmu[idx_ml],
+                                kTolerance))
+          << absl::StrFormat("cosmu m=%d l=%d", m, l);
+      EXPECT_TRUE(IsCloseRelAbs(reference_sinmu, fourier_basis.sinmu[idx_ml],
+                                kTolerance))
+          << absl::StrFormat("sinmu m=%d l=%d", m, l);
+      EXPECT_TRUE(IsCloseRelAbs(reference_cosmui, fourier_basis.cosmui[idx_ml],
+                                kTolerance))
+          << absl::StrFormat("cosmui m=%d l=%d", m, l);
+      EXPECT_TRUE(IsCloseRelAbs(reference_sinmui, fourier_basis.sinmui[idx_ml],
+                                kTolerance))
+          << absl::StrFormat("sinmui m=%d l=%d", m, l);
+      EXPECT_TRUE(IsCloseRelAbs(m * reference_cosmui,
+                                fourier_basis.cosmumi[idx_ml], kTolerance))
+          << absl::StrFormat("cosmumi m=%d l=%d", m, l);
+      EXPECT_TRUE(IsCloseRelAbs(-m * reference_sinmui,
+                                fourier_basis.sinmumi[idx_ml], kTolerance))
+          << absl::StrFormat("sinmumi m=%d l=%d", m, l);
+    }
+  }
+}
+
 }  // namespace vmecpp

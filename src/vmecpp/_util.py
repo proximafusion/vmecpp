@@ -2,8 +2,10 @@
 
 import contextlib
 import importlib.metadata
+import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -15,6 +17,32 @@ import jaxtyping as jt
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+_ANI_FLOW_SCALAR_FIELDS = {
+    "bcrit",
+    "pt_type",
+    "ph_type",
+}
+_ANI_FLOW_ARRAY_FIELDS = {
+    "at",
+    "at_aux_s",
+    "at_aux_f",
+    "ah",
+    "ah_aux_s",
+    "ah_aux_f",
+}
+_ANI_FLOW_FIELDS = _ANI_FLOW_SCALAR_FIELDS | _ANI_FLOW_ARRAY_FIELDS
+_INDATA2JSON_UNSUPPORTED_FIELDS = {
+    "pt_type",
+    "ph_type",
+    "at_aux_s",
+    "at_aux_f",
+    "ah_aux_s",
+    "ah_aux_f",
+}
+_NAMELIST_ASSIGNMENT_RE = re.compile(
+    r"^\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?:\([^)]*\))?\s*=\s*(?P<value>.*)$"
+)
 
 
 def package_root() -> Path:
@@ -73,6 +101,109 @@ def get_vmec_configuration_name(vmec_file: Path) -> str:
     return case_name
 
 
+def _strip_fortran_comment(line: str) -> str:
+    return line.split("!", 1)[0]
+
+
+def _parse_fortran_string(raw_value: str) -> str:
+    value = raw_value.strip().rstrip(",").strip()
+    if len(value) >= 2 and value[0] in {"'", '"'} and value[-1] == value[0]:
+        return value[1:-1]
+    return value
+
+
+def _parse_fortran_float_array(raw_value: str) -> np.ndarray:
+    value = raw_value.replace(",", " ")
+    tokens = [token for token in value.split() if token]
+    if not tokens:
+        return np.array([])
+    return np.array([float(token) for token in tokens], dtype=float)
+
+
+def _extract_ani_flow_fields(indata_text: str) -> dict[str, Any]:
+    parsed_fields: dict[str, str] = {}
+    current_field: str | None = None
+    current_chunks: list[str] = []
+
+    def flush_current_field() -> None:
+        nonlocal current_field, current_chunks
+        if current_field is not None:
+            parsed_fields[current_field] = " ".join(current_chunks).strip()
+        current_field = None
+        current_chunks = []
+
+    for raw_line in indata_text.splitlines():
+        line = _strip_fortran_comment(raw_line).strip()
+        if not line or line == "/":
+            flush_current_field()
+            continue
+
+        match = _NAMELIST_ASSIGNMENT_RE.match(line)
+        if match:
+            field_name = match.group("name").lower()
+            if field_name in _ANI_FLOW_FIELDS:
+                flush_current_field()
+                current_field = field_name
+                current_chunks = [match.group("value").strip()]
+                continue
+
+            flush_current_field()
+            continue
+
+        if current_field in _ANI_FLOW_ARRAY_FIELDS:
+            current_chunks.append(line)
+
+    flush_current_field()
+
+    extracted_fields: dict[str, Any] = {}
+    for field_name, raw_value in parsed_fields.items():
+        if field_name in _ANI_FLOW_SCALAR_FIELDS:
+            if field_name in {"pt_type", "ph_type"}:
+                extracted_fields[field_name] = _parse_fortran_string(raw_value)
+            else:
+                extracted_fields[field_name] = float(
+                    _parse_fortran_float_array(raw_value)[0]
+                )
+        else:
+            extracted_fields[field_name] = _parse_fortran_float_array(
+                raw_value
+            ).tolist()
+
+    return extracted_fields
+
+
+def _sanitize_indata_for_indata2json(indata_text: str) -> str:
+    sanitized_lines: list[str] = []
+    skip_continuation = False
+
+    for raw_line in indata_text.splitlines():
+        line_no_comment = _strip_fortran_comment(raw_line)
+        stripped = line_no_comment.strip()
+
+        if not stripped:
+            if not skip_continuation:
+                sanitized_lines.append(raw_line)
+            continue
+
+        match = _NAMELIST_ASSIGNMENT_RE.match(stripped)
+        if match:
+            field_name = match.group("name").lower()
+            if field_name in _INDATA2JSON_UNSUPPORTED_FIELDS:
+                skip_continuation = field_name in _ANI_FLOW_ARRAY_FIELDS
+                continue
+
+            skip_continuation = False
+            sanitized_lines.append(raw_line)
+            continue
+
+        if skip_continuation:
+            continue
+
+        sanitized_lines.append(raw_line)
+
+    return "\n".join(sanitized_lines) + "\n"
+
+
 def indata_to_json(
     filename: Path,
     use_mgrid_file_absolute_path: bool = False,
@@ -128,7 +259,9 @@ def indata_to_json(
         # The Fortran indata2json supports a limited length of the path to the input file.
         # We work in a temporary directory in which we copy the input so that paths are always short.
         local_input_file = original_input_file.name
-        shutil.copyfile(original_input_file, local_input_file)
+        input_text = original_input_file.read_text()
+        ani_flow_fields = _extract_ani_flow_fields(input_text)
+        Path(local_input_file).write_text(_sanitize_indata_for_indata2json(input_text))
 
         if use_mgrid_file_absolute_path:
             command = [
@@ -155,6 +288,10 @@ def indata_to_json(
                 f"{i2j_output_file} is missing. This should never happen!"
             )
             raise RuntimeError(msg)
+
+        json_data = json.loads(i2j_output_file.read_text())
+        json_data.update(ani_flow_fields)
+        i2j_output_file.write_text(json.dumps(json_data, indent=2, sort_keys=True) + "\n")
 
         if output_override is None:
             # copy output back
@@ -204,6 +341,16 @@ def vmecpp_json_to_indata(vmecpp_json: dict[str, Any]) -> str:
     indata += _float_to_namelist("pres_scale", vmecpp_json)
     indata += _float_to_namelist("gamma", vmecpp_json)
     indata += _float_to_namelist("spres_ped", vmecpp_json)
+    indata += "\n  ! anisotropy / flow profiles\n"
+    indata += _float_to_namelist("bcrit", vmecpp_json)
+    indata += _string_to_namelist("pt_type", vmecpp_json)
+    indata += _float_array_to_namelist("at", vmecpp_json)
+    indata += _float_array_to_namelist("at_aux_s", vmecpp_json)
+    indata += _float_array_to_namelist("at_aux_f", vmecpp_json)
+    indata += _string_to_namelist("ph_type", vmecpp_json)
+    indata += _float_array_to_namelist("ah", vmecpp_json)
+    indata += _float_array_to_namelist("ah_aux_s", vmecpp_json)
+    indata += _float_array_to_namelist("ah_aux_f", vmecpp_json)
 
     indata += "\n  ! select constraint on iota or enclosed toroidal current profiles\n"
     indata += _int_to_namelist("ncurr", vmecpp_json)

@@ -3,8 +3,16 @@
 # SPDX-License-Identifier: MIT
 cc_library(
     name = "ideal_mhd_model",
-    srcs = ["ideal_mhd_model.cc"],
-    hdrs = ["ideal_mhd_model.h", "dft_data.h"],
+    srcs = [
+        "asymmetric_dft.cc",
+        "force_symmetry.cc",
+        "ideal_mhd_model.cc",
+    ],
+    hdrs = [
+        "dft_data.h",
+        "force_symmetry.h",
+        "ideal_mhd_model.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/flow_control:flow_control",
@@ -24,4 +32,15 @@ cc_library(
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",
     ],
+)
+
+cc_test(
+    name = "force_symmetry_test",
+    srcs = ["force_symmetry_test.cc"],
+    deps = [
+        ":ideal_mhd_model",
+        "//vmecpp/common/sizes:sizes",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
 )

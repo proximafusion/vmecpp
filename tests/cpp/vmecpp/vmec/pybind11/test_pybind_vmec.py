@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from netCDF4 import Dataset
 
+import vmecpp
 from vmecpp.cpp import _vmecpp as vmec  # type: ignore[import]
 
 # We don't want to install tests and test data as part of the package,
@@ -18,6 +19,50 @@ from vmecpp.cpp import _vmecpp as vmec  # type: ignore[import]
 # I'm very open to alternative solutions :)
 REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
+
+ASYMMETRIC_TOKAMAK_FRCC_M0 = np.array(
+    [
+        0.414223368703,
+        0.926607014819,
+        1.06378316178,
+        1.27160692942,
+        1.45483977456,
+        1.62851360767,
+        1.79475568731,
+        1.95439760585,
+        2.10801634015,
+        2.25613984598,
+        2.3993072913,
+        2.53809348605,
+        2.67312301207,
+        2.80508156353,
+        2.93472775916,
+        3.23513828239,
+        0.0,
+    ]
+)
+
+ASYMMETRIC_TOKAMAK_FZCC_M0 = np.array(
+    [
+        2.09581702336,
+        3.8578979966,
+        3.37227250485,
+        2.88182366506,
+        2.37646063026,
+        1.85587918471,
+        1.31915068964,
+        0.765318659941,
+        0.193447611209,
+        -0.397377135166,
+        -1.00806400828,
+        -1.63953894088,
+        -2.29277817285,
+        -2.96885091854,
+        -3.66897389127,
+        -3.91506688891,
+        0.0,
+    ]
+)
 
 
 def is_close_ra(actual, expected, tolerance, context=""):
@@ -434,6 +479,88 @@ def test_output_quantities():
     # the non-stellarator-symmetric parts implemented
 
     wout.close()
+
+
+def test_asymmetric_tokamak_inverse_dft_populates_full_poloidal_interval():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "input.up_down_asymmetric_tokamak")
+    indata = vmec_input._to_cpp_vmecindata()
+
+    geometry = vmec._geometry_after_inverse_dft_for_testing(indata, max_threads=1)
+    r_edge = np.asarray(geometry["r_edge"])
+    z_edge = np.asarray(geometry["z_edge"])
+
+    assert r_edge.shape == z_edge.shape == (geometry["n_theta_eff"],)
+    assert geometry["n_theta_eff"] == 2 * (geometry["n_theta_reduced"] - 1)
+
+    # The second half of the interval used to stay uninitialized in the 2D
+    # asymmetric path. Check the full edge geometry instead of a solver outcome.
+    assert not np.allclose(r_edge[geometry["n_theta_reduced"] :], 0.0)
+    assert not np.allclose(z_edge[geometry["n_theta_reduced"] :], 0.0)
+    np.testing.assert_allclose(
+        z_edge[: geometry["n_theta_reduced"] - 1],
+        -z_edge[geometry["n_theta_reduced"] - 1 :],
+        atol=1e-12,
+    )
+
+    assert np.min(r_edge) == pytest.approx(5.27240052143, abs=5e-3)
+    assert np.max(r_edge) == pytest.approx(6.96518735705, abs=5e-3)
+    assert np.max(np.abs(z_edge)) == pytest.approx(0.59849052529, abs=5e-3)
+
+
+def test_asymmetric_tokamak_axis_recovery_matches_educational_vmec():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "input.up_down_asymmetric_tokamak")
+    indata = vmec_input._to_cpp_vmecindata()
+
+    axis = vmec._recomputed_axis_for_testing(indata)
+
+    assert axis["raxis_c"][0] == pytest.approx(6.11879393924, abs=5e-6)
+    assert axis["zaxis_s"][0] == pytest.approx(0.0, abs=1e-12)
+    assert axis["raxis_s"][0] == pytest.approx(0.0, abs=1e-12)
+    assert axis["zaxis_c"][0] == pytest.approx(0.119698105058, abs=5e-6)
+
+
+def test_asymmetric_tokamak_forward_dft_matches_reference_m0_profiles():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "input.up_down_asymmetric_tokamak")
+    indata = vmec_input._to_cpp_vmecindata()
+
+    forces = vmec._forward_dft_forces_for_testing(
+        indata, max_threads=1, iterations_before_checkpointing=2
+    )
+
+    frcc = np.asarray(forces["frcc"]).reshape(forces["ns"], forces["mpol"])
+    fzcc = np.asarray(forces["fzcc"]).reshape(forces["ns"], forces["mpol"])
+    flsc = np.asarray(forces["flsc"]).reshape(forces["ns"], forces["mpol"])
+    frsc = np.asarray(forces["frsc"]).reshape(forces["ns"], forces["mpol"])
+
+    np.testing.assert_allclose(frcc[:, 0], ASYMMETRIC_TOKAMAK_FRCC_M0, atol=1.0e-11)
+    np.testing.assert_allclose(fzcc[:, 0], ASYMMETRIC_TOKAMAK_FZCC_M0, atol=1.0e-11)
+    np.testing.assert_allclose(flsc[:, 0], 0.0, atol=1.0e-12)
+    np.testing.assert_allclose(frsc[:, 0], 0.0, atol=1.0e-12)
+
+
+def test_landreman_low_res_inverse_dft_populates_full_3d_asymmetric_interval():
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.LandremanSenguptaPlunk_section5p3_low_res"
+    )
+    indata = vmec_input._to_cpp_vmecindata()
+
+    geometry = vmec._geometry_after_inverse_dft_for_testing(indata, max_threads=1)
+    r_edge = np.asarray(geometry["r_edge"])
+    z_edge = np.asarray(geometry["z_edge"])
+    n_theta_eff = geometry["n_theta_eff"]
+    n_theta_reduced = geometry["n_theta_reduced"]
+    n_zeta = r_edge.size // n_theta_eff
+
+    assert r_edge.size == z_edge.size == n_theta_eff * n_zeta
+    assert n_theta_eff == 2 * (n_theta_reduced - 1)
+    assert np.isfinite(r_edge).all()
+    assert np.isfinite(z_edge).all()
+
+    r_slice = r_edge[:n_theta_eff]
+    z_slice = z_edge[:n_theta_eff]
+    assert not np.allclose(r_slice[n_theta_reduced:], 0.0)
+    assert not np.allclose(z_slice[n_theta_reduced:], 0.0)
+    assert np.max(np.abs(z_slice)) > 1.0e-2
 
 
 def test_vmecpp_run_from_inmemory_mgrid():
