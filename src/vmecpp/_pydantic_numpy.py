@@ -38,22 +38,30 @@ class BaseModelWithNumpy(pydantic.BaseModel):
         value = serialize_special_field(type(self), info.field_name, value)
         return default_handler(value)
 
-    @pydantic.field_validator("*", mode="wrap")
+    @pydantic.model_validator(mode="before")
     @classmethod
-    def _validate_field(
+    def _deserialize_fields(
         cls,
-        value: typing.Any,
-        default_handler: pydantic.ValidatorFunctionWrapHandler,
-        info: pydantic.ValidationInfo,
-    ) -> typing.Any:
-        assert info.field_name is not None
-        # We consciously *ignore* info.mode_is_json() here to allow validating from
+        data: Any,
+    ) -> Any:
+        # We consciously *ignore* the validation mode here to allow validating from
         # JSON-like dicts without having to go through strings. This is consistent with
         # Pydantic's default behavior: while serializers retain Python objects in
         # model_dump, but convert them to JSON values in model_dump_json, validators
         # are lenient and accept JSON values in both modes.
-        value = deserialize_special_field(cls, info.field_name, value)
-        return default_handler(value)
+        #
+        # Note: In pydantic>=2.13, field_validator("*") no longer provides
+        # info.field_name, so we use model_validator(mode="before") instead, which
+        # receives the full data dict and allows us to look up each field by name.
+        if not isinstance(data, dict):
+            return data
+        result = dict(data)
+        for field_name in cls.model_fields:
+            if field_name in result:
+                result[field_name] = deserialize_special_field(
+                    cls, field_name, result[field_name]
+                )
+        return result
 
     # This override is necessary to make also `model_dump(mode="json")` respect the
     # ser_json_inf_nan="strings" setting in model_config. Without this fix, Pydantic

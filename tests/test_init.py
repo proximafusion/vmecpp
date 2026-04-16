@@ -700,37 +700,37 @@ except KeyboardInterrupt:
 
 
 def test_subclass_outer_wrap_serializer_not_overridden(cma_output: vmecpp.VmecOutput):
-    """Subclass wrap serializers that operate on the arrays must not be overridden by
-    VmecWOut's inner serializers.
+    """A model_serializer in a VmecWOut subclass wraps all field-level serializers.
 
-    This ensures that VmecWOut's field-level serializers (e.g. a PlainSerializer on
-    extcur) pass through values that are not numpy arrays, so an outer framework can
-    replace arrays with custom representations during serialization.
+    This ensures that an outer framework can post-process all serialized field values
+    (including numpy arrays converted to lists, and fields with their own serializers
+    such as xm and extcur) by using a model_serializer in a subclass.
+
+    Note: in pydantic>=2.13, multiple field_serializer("*") in a class hierarchy are
+    not allowed. Use model_serializer(mode="wrap") in the subclass instead, which wraps
+    around VmecWOut's field-level serializers without conflict.
     """
 
-    class OuterSerializer(pydantic.BaseModel):
-        model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
-
-        @pydantic.field_serializer("*", mode="wrap", when_used="always")
+    class CustomWOut(vmecpp.VmecWOut):
+        @pydantic.model_serializer(mode="wrap", when_used="always")
         def _outer_encode(
             self,
-            value: object,
             handler: pydantic.SerializerFunctionWrapHandler,
-            _: pydantic.FieldSerializationInfo,
         ) -> object:
-            if isinstance(value, np.ndarray):
-                return {"__custom_encoded__": True}
-            return handler(value)
-
-    class CustomWOut(OuterSerializer, vmecpp.VmecWOut):
-        pass
+            # handler calls VmecWOut's field-level serializers (including
+            # BaseModelWithNumpy._serialize_field which converts numpy arrays to lists,
+            # and VmecWOut's own WrapSerializers for xm, extcur, etc.).
+            result = handler(self)
+            # Post-process: wrap every serialized value with a custom representation,
+            # preserving the original serialized value for inspection.
+            return {k: {"__custom_encoded__": True, "value": v} for k, v in result.items()}
 
     custom = CustomWOut.model_validate(cma_output.wout.model_dump())
     dumped = custom.model_dump(mode="json")
 
-    # Plain array field — goes through _serialize_field wrap serializer.
+    # Plain array field — converted to list by _serialize_field, then wrapped.
     assert dumped["rmnc"].get("__custom_encoded__")
-    # SerializeIntAsFloat field — has its own PlainSerializer/WrapSerializer.
+    # SerializeIntAsFloat field — converted to float list by its WrapSerializer, then wrapped.
     assert dumped["xm"].get("__custom_encoded__")
-    # extcur field — has its own PlainSerializer/WrapSerializer.
+    # extcur field — handled by its own WrapSerializer, then wrapped.
     assert dumped["extcur"].get("__custom_encoded__")
