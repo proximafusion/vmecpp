@@ -1,0 +1,10 @@
+cc_test(
+    name = "symmetric_asymmetric_test",
+    size = "small",
+    srcs = ["test_symmetric_asymmetric.cc"],
+    deps = [
+        "//vmecpp/common/vmec_indata",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+)

@@ -379,7 +379,9 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
 
   // main loop in which, for each poloidal cutplane,
   // the new axis position is estimated
-  for (int k = 0; k < s.nZeta / 2 + 1; ++k) {
+  // For asymmetric case, optimize over full toroidal domain
+  const int nZetaLoop = s.lasym ? s.nZeta : s.nZeta / 2 + 1;
+  for (int k = 0; k < nZetaLoop; ++k) {
     // compute grid extent
     const double min_r =
         *std::min_element(w.r_lcfs[k].begin(), w.r_lcfs[k].end());

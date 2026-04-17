@@ -1,0 +1,798 @@
+[0/1] Re-running CMake...
+-- Could NOT find ccache
+-- Found HDF5: hdf5-shared;hdf5_cpp-shared (found version "1.14.6") found components: C CXX
+-- Found HDF5: hdf5-shared (found version "1.14.6")
+CMake Deprecation Warning at build/_deps/eigen-src/CMakeLists.txt:2 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+-- Performing Test COMPILER_SUPPORT_std=cpp03
+-- Performing Test COMPILER_SUPPORT_std=cpp03 - Success
+-- Standard libraries to link to explicitly: none
+-- Found unsuitable Qt version "5.15.17" from /usr/bin/qmake
+-- Looking for Fortran sgemm
+-- Looking for Fortran sgemm - found
+-- A version of Pastix has been found but pastix_nompi.h does not exist in the include directory. Because Eigen tests require a version without MPI, we disable the Pastix backend.
+-- Found unsuitable Qt version "5.15.17" from /usr/bin/qmake
+CMake Warning (dev) at build/_deps/eigen-src/test/CMakeLists.txt:368 (find_package):
+  Policy CMP0167 is not set: The FindBoost module is removed.  Run "cmake
+  --help-policy CMP0167" for policy details.  Use the cmake_policy command to
+  set the policy and suppress this warning.
+
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Could NOT find GoogleHash (missing: GOOGLEHASH_INCLUDES GOOGLEHASH_COMPILE) 
+-- Could NOT find Adolc (missing: ADOLC_INCLUDES ADOLC_LIBRARIES) 
+-- Could NOT find MPREAL (missing: MPREAL_INCLUDES MPREAL_VERSION_OK MPREAL_WORKS) (Required is at least version "1.0.0")
+CMake Warning (dev) at build/_deps/eigen-src/unsupported/test/CMakeLists.txt:293 (find_package):
+  Policy CMP0146 is not set: The FindCUDA module is removed.  Run "cmake
+  --help-policy CMP0146" for policy details.  Use the cmake_policy command to
+  set the policy and suppress this warning.
+
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Found unsuitable Qt version "5.15.17" from /usr/bin/qmake
+-- Qt4 not found, so disabling the mandelbrot and opengl demos
+-- A version of Pastix has been found but pastix_nompi.h does not exist in the include directory. Because Eigen tests require a version without MPI, we disable the Pastix backend.
+-- ************************************************************
+-- ***    Eigen's unit tests configuration summary          ***
+-- ************************************************************
+-- 
+-- Build type:        Release
+-- Build site:        mailuefterl
+-- Build string:      linux-6.15.7-arch1-1-g++-15.1.1-sse2-64bit
+-- Enabled backends:  CHOLMOD,  UMFPACK,  KLU,  SuperLU,  SPQR,  Boost.Multiprecision,  fftw, 
+-- Disabled backends: PaStiX,  METIS,  Qt4 support,  GoogleHash,  Adolc,  MPFR C++,  OpenGL, 
+-- Default order:     Column-major
+-- Maximal matrix/vector size: 320
+-- SSE2:              Using architecture defaults
+-- SSE3:              Using architecture defaults
+-- SSSE3:             Using architecture defaults
+-- SSE4.1:            Using architecture defaults
+-- SSE4.2:            Using architecture defaults
+-- AVX:               Using architecture defaults
+-- AVX2:              Using architecture defaults
+-- FMA:               Using architecture defaults
+-- AVX512:            Using architecture defaults
+-- AVX512DQ:          Using architecture defaults
+-- Altivec:           Using architecture defaults
+-- VSX:               Using architecture defaults
+-- MIPS MSA:          Using architecture defaults
+-- ARM NEON:          Using architecture defaults
+-- ARMv8 NEON:        Using architecture defaults
+-- S390X ZVECTOR:     Using architecture defaults
+-- C++11:             OFF
+-- SYCL:              OFF
+-- CUDA:              OFF
+-- HIP:               OFF
+-- 
+CXX:               /usr/bin/g++
+ CXX_VERSION:       g++ (GCC) 15.1.1 20250425
+ CXX_FLAGS:         -fPIC -Wall -Wextra -std=c++03 -pedantic -Wall -Wextra -Wundef -Wcast-align -Wchar-subscripts -Wnon-virtual-dtor -Wunused-local-typedefs -Wpointer-arith -Wwrite-strings -Wformat-security -Wlogical-op -Wenum-conversion -Wc++11-extensions -Wdouble-promotion -Wshadow -Wno-psabi -Wno-variadic-macros -Wno-long-long -fno-check-new -fno-common -fstrict-aliasing -ansi
+ Sparse lib flags:   ;/usr/lib/libcholmod.so;/usr/lib/libamd.so;/usr/lib/libcolamd.so;/usr/lib/libcamd.so;/usr/lib/libccolamd.so;/usr/lib/libmetis.so;eigen_blas;eigen_lapack;/usr/lib/libumfpack.so;/usr/lib/libcolamd.so;/usr/lib/libamd.so;/usr/lib/libcholmod.so;eigen_blas;/usr/lib/libklu.so;/usr/lib/libcolamd.so;/usr/lib/libamd.so;/usr/lib/libbtf.so;eigen_blas;/usr/lib/libsuperlu.so;eigen_blas;/usr/lib/libspqr.so;/usr/lib/libcholmod.so;/usr/lib/libcholmod.so;/usr/lib/libamd.so;/usr/lib/libcolamd.so;/usr/lib/libcamd.so;/usr/lib/libccolamd.so;/usr/lib/libmetis.so;eigen_lapack;eigen_blas
+
+-- ************************************************************
+-- 
+-- Configured Eigen 3.4.0
+-- 
+-- Available targets (use: cmake --build . --target TARGET):
+-- ---------+--------------------------------------------------------------
+-- Target   |   Description
+-- ---------+--------------------------------------------------------------
+-- install  | Install Eigen. Headers will be installed to:
+--          |     <CMAKE_INSTALL_PREFIX>/<INCLUDE_INSTALL_DIR>
+--          |   Using the following values:
+--          |     CMAKE_INSTALL_PREFIX: /tmp/tmp074zftyk/wheel/platlib
+--          |     INCLUDE_INSTALL_DIR:  include/eigen3
+--          |   Change the install location of Eigen headers using:
+--          |     cmake . -DCMAKE_INSTALL_PREFIX=yourprefix
+--          |   Or:
+--          |     cmake . -DINCLUDE_INSTALL_DIR=yourdir
+-- doc      | Generate the API documentation, requires Doxygen & LaTeX
+-- check    | Build and run the unit-tests. Read this page:
+--          |   http://eigen.tuxfamily.org/index.php?title=Tests
+-- blas     | Build BLAS library (not the same thing as Eigen)
+-- uninstall| Remove files installed by the install target
+-- ---------+--------------------------------------------------------------
+-- 
+-- Using the multi-header code from /home/ert/code/vmecpp/build/_deps/nlohmann_json-src/include/
+-- Detected platform: Linux
+CMake Deprecation Warning at build/_deps/pybind11-src/CMakeLists.txt:13 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+-- pybind11 v2.13.6 
+CMake Warning (dev) at CMakeLists.txt:138 (install):
+  Policy CMP0177 is not set: install() DESTINATION paths are normalized.  Run
+  "cmake --help-policy CMP0177" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Configuring done (1.4s)
+-- Generating done (0.6s)
+-- Build files have been written to: /home/ert/code/vmecpp/build
+[1/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/json.dir/Fortran.dd
+[2/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/tolower.dir/Fortran.dd
+[3/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/stel_kinds.dir/Fortran.dd
+[4/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/safe_open_mod.dir/Fortran.dd
+[5/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/getcarg.dir/Fortran.dd
+[6/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/vsvd0.dir/Fortran.dd
+[7/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/stel_constants.dir/Fortran.dd
+[8/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/nonzerolen.dir/Fortran.dd
+[9/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/vparams.dir/Fortran.dd
+[10/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/vmec_input.dir/Fortran.dd
+[11/25] Generating Fortran dyndep file _deps/indata2json-build/CMakeFiles/indata2json.dir/Fortran.dd
+[12/25] Scanning /home/ert/code/vmecpp/src/vmecpp/cpp/vmecpp/vmec/pybind11/vmec_indata_pywrapper.cc for CXX dependencies
+[13/25] Scanning /home/ert/code/vmecpp/src/vmecpp/cpp/vmecpp/vmec/pybind11/pybind_vmec.cc for CXX dependencies
+[14/25] Generating CXX dyndep file CMakeFiles/_vmecpp.dir/CXX.dd
+[15/25] Building CXX object CMakeFiles/vmecpp_core.dir/src/vmecpp/cpp/vmecpp/vmec/boundaries/boundaries.cc.o
+[16/25] Building CXX object CMakeFiles/vmec_standalone.dir/src/vmecpp/cpp/vmecpp/vmec/vmec_standalone/vmec_standalone.cc.o
+[17/25] Building CXX object CMakeFiles/_vmecpp.dir/src/vmecpp/cpp/vmecpp/vmec/pybind11/vmec_indata_pywrapper.cc.o
+[18/25] Building CXX object CMakeFiles/vmecpp_core.dir/src/vmecpp/cpp/vmecpp/vmec/radial_profiles/radial_profiles.cc.o
+[19/25] Building CXX object CMakeFiles/vmecpp_core.dir/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.cc.o
+[20/25] Building CXX object CMakeFiles/_vmecpp.dir/src/vmecpp/cpp/vmecpp/vmec/pybind11/pybind_vmec.cc.o
+[21/25] Building CXX object CMakeFiles/vmecpp_core.dir/src/vmecpp/cpp/vmecpp/vmec/vmec/vmec.cc.o
+[22/25] Building CXX object CMakeFiles/vmecpp_core.dir/src/vmecpp/cpp/vmecpp/vmec/output_quantities/output_quantities.cc.o
+[23/25] Linking CXX static library libvmecpp_core.a
+[24/25] Linking CXX executable vmec_standalone
+[25/25] Linking CXX shared module _vmecpp.cpython-313-x86_64-linux-gnu.so
+lto-wrapper: warning: using serial compilation of 9 LTRANS jobs
+lto-wrapper: note: see the ‘-flto’ option documentation for more information
+-- Install configuration: "Release"
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/signature_of_eigen3_matrix_library
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/share/pkgconfig/eigen3.pc
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/SparseCore
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/Core
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/Eigenvalues
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/StdList
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/QR
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/SparseQR
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/StdDeque
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/LU
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/KLUSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/Jacobi
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/PardisoSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/SVD
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/CholmodSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/SparseCholesky
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/Eigen
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/MappedSparseMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseCompressedBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseSelfAdjointView.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseTranspose.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseSparseProductWithPruning.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseTriangularView.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseVector.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/TriangularSolver.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseCwiseUnaryOp.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseAssign.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseMatrixBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseUtil.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseDenseProduct.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseColEtree.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/ConservativeSparseSparseProduct.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseMap.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseBlock.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseDiagonalProduct.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseView.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseDot.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseCwiseBinaryOp.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseRef.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseProduct.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseRedux.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseFuzzy.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/CompressedStorage.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/AmbiVector.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparsePermutation.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCore/SparseSolverBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/StlIterators.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Select.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/ForceAlignedAccess.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Assign_MKL.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/GlobalFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/MatrixBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/ArrayWrapper.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/TriangularMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/ArrayBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Assign.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/DenseCoeffsBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/SelfAdjointView.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/DenseBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/functors
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/functors/TernaryFunctors.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/functors/AssignmentFunctors.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/functors/StlFunctors.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/functors/UnaryFunctors.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/functors/BinaryFunctors.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/functors/NullaryFunctors.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Array.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/PartialReduxEvaluator.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/NestByValue.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Diagonal.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/CwiseUnaryView.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Ref.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Product.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/MathFunctionsImpl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/CwiseTernaryOp.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/ReturnByValue.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Replicate.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Block.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/GenericPacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/ConditionEstimator.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/MapBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/PermutationMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Solve.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/ArithmeticSequence.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/DiagonalMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/DenseStorage.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Fuzzy.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Matrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/NumTraits.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/CommaInitializer.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/PlainObjectBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Reshaped.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Visitor.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Inverse.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/GPU
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/GPU/TypeCasting.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/GPU/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/GPU/PacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/Default
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/Default/TypeCasting.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/Default/Settings.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/Default/GenericPacketMathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/Default/GenericPacketMathFunctionsFwd.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/Default/ConjHelper.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/Default/Half.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/Default/BFloat16.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/HIP
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/HIP/hcc
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/HIP/hcc/math_constants.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/ZVector
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/ZVector/Complex.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/ZVector/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/ZVector/PacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SYCL
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SYCL/SyclMemoryModel.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SYCL/TypeCasting.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SYCL/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SYCL/InteropHeaders.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SYCL/PacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AltiVec
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AltiVec/MatrixProductCommon.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AltiVec/Complex.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AltiVec/MatrixProduct.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AltiVec/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AltiVec/PacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AltiVec/MatrixProductMMA.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/MSA
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/MSA/Complex.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/MSA/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/MSA/PacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/NEON
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/NEON/Complex.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/NEON/TypeCasting.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/NEON/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/NEON/GeneralBlockPanelKernel.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/NEON/PacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/CUDA
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/CUDA/Complex.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SVE
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SVE/TypeCasting.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SVE/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SVE/PacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AVX512
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AVX512/Complex.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AVX512/TypeCasting.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AVX512/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AVX512/PacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SSE
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SSE/Complex.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SSE/TypeCasting.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SSE/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/SSE/PacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AVX
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AVX/Complex.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AVX/TypeCasting.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AVX/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/arch/AVX/PacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Transpose.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/SolveTriangular.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/SolverBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/AssignEvaluator.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/ForwardDeclarations.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/ReshapedHelper.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/ReenableStupidWarnings.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/Memory.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/StaticAssert.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/DisableStupidWarnings.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/ConfigureVectorization.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/Macros.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/Meta.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/SymbolicIndex.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/Constants.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/IndexedViewHelper.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/BlasUtil.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/XprHelper.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/NonMPL2.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/IntegralConstant.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/util/MKL_support.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Dot.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/GeneralProduct.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/TriangularSolverMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/SelfadjointMatrixVector.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/TriangularSolverVector.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/TriangularSolverMatrix_BLAS.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/GeneralMatrixMatrixTriangular_BLAS.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/GeneralMatrixMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/SelfadjointRank2Update.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/GeneralBlockPanelKernel.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/TriangularMatrixMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/Parallelizer.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/TriangularMatrixVector_BLAS.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/GeneralMatrixVector_BLAS.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/GeneralMatrixVector.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/GeneralMatrixMatrixTriangular.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/SelfadjointMatrixMatrix_BLAS.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/SelfadjointMatrixMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/TriangularMatrixMatrix_BLAS.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/GeneralMatrixMatrix_BLAS.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/SelfadjointProduct.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/SelfadjointMatrixVector_BLAS.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/products/TriangularMatrixVector.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/CoreEvaluators.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/VectorBlock.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Transpositions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/BandMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Redux.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/IO.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/VectorwiseOp.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Map.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/SelfCwiseBinaryOp.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Random.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/EigenBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/CwiseNullaryOp.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/ProductEvaluators.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Swap.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Reverse.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/Stride.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/StableNorm.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/CoreIterators.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/BooleanRedux.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/IndexedView.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/NoAlias.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/DiagonalProduct.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/CwiseUnaryOp.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Core/CwiseBinaryOp.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/EigenSolver.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/RealQZ.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/ComplexSchur_LAPACKE.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/RealSchur_LAPACKE.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/ComplexEigenSolver.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/SelfAdjointEigenSolver.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/GeneralizedEigenSolver.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/GeneralizedSelfAdjointEigenSolver.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/MatrixBaseEigenvalues.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/RealSchur.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/HessenbergDecomposition.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/SelfAdjointEigenSolver_LAPACKE.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/Tridiagonalization.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Eigenvalues/ComplexSchur.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/QR
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/QR/ColPivHouseholderQR.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/QR/HouseholderQR.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/QR/ColPivHouseholderQR_LAPACKE.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/QR/CompleteOrthogonalDecomposition.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/QR/FullPivHouseholderQR.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/QR/HouseholderQR_LAPACKE.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseQR
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseQR/SparseQR.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/misc
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/misc/RealSvd2x2.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/misc/Kernel.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/misc/Image.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/misc/lapacke_mangling.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/misc/lapack.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/misc/blas.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/misc/lapacke.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/LU
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/LU/PartialPivLU.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/LU/Determinant.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/LU/InverseImpl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/LU/arch
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/LU/arch/InverseSize4.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/LU/FullPivLU.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/LU/PartialPivLU_LAPACKE.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/KLUSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/KLUSupport/KLUSupport.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Jacobi
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Jacobi/Jacobi.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/PardisoSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/PardisoSupport/PardisoSupport.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SVD
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SVD/SVDBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SVD/JacobiSVD_LAPACKE.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SVD/UpperBidiagonalization.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SVD/BDCSVD.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SVD/JacobiSVD.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/CholmodSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/CholmodSupport/CholmodSupport.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCholesky
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCholesky/SimplicialCholesky.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseCholesky/SimplicialCholesky_impl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/PaStiXSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/PaStiXSupport/PaStiXSupport.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/StlSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/StlSupport/StdDeque.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/StlSupport/StdList.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/StlSupport/StdVector.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/StlSupport/details.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SPQRSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SPQRSupport/SuiteSparseQRSupport.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/plugins
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/plugins/BlockMethods.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/plugins/ArrayCwiseBinaryOps.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/plugins/CommonCwiseUnaryOps.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/plugins/MatrixCwiseBinaryOps.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/plugins/ArrayCwiseUnaryOps.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/plugins/IndexedViewMethods.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/plugins/ReshapedMethods.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/plugins/MatrixCwiseUnaryOps.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/plugins/CommonCwiseBinaryOps.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SuperLUSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SuperLUSupport/SuperLUSupport.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Householder
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Householder/HouseholderSequence.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Householder/Householder.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Householder/BlockHouseholder.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/Scaling.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/AlignedBox.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/ParametrizedLine.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/Hyperplane.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/Umeyama.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/arch
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/arch/Geometry_SIMD.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/RotationBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/EulerAngles.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/Translation.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/Transform.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/AngleAxis.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/Homogeneous.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/Rotation2D.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/OrthoMethods.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Geometry/Quaternion.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/UmfPackSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/UmfPackSupport/UmfPackSupport.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/IterativeLinearSolvers
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/IterativeLinearSolvers/IncompleteCholesky.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/IterativeLinearSolvers/LeastSquareConjugateGradient.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/IterativeLinearSolvers/ConjugateGradient.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/IterativeLinearSolvers/BasicPreconditioners.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/IterativeLinearSolvers/IncompleteLUT.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/IterativeLinearSolvers/IterativeSolverBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/IterativeLinearSolvers/SolveWithGuess.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/IterativeLinearSolvers/BiCGSTAB.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_heap_relax_snode.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_Utils.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_pruneL.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_SupernodalMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_panel_dfs.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_panel_bmod.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_relax_snode.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLUImpl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_pivotL.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_copy_to_ucol.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_Memory.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_column_bmod.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_Structs.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_column_dfs.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_gemm_kernel.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/SparseLU/SparseLU_kernel_bmod.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/OrderingMethods
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/OrderingMethods/Eigen_Colamd.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/OrderingMethods/Ordering.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/OrderingMethods/Amd.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/MetisSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/MetisSupport/MetisSupport.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Cholesky
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Cholesky/LDLT.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Cholesky/LLT.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/src/Cholesky/LLT_LAPACKE.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/PaStiXSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/SPQRSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/QtAlignedMalloc
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/SuperLUSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/Householder
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/Geometry
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/UmfPackSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/IterativeLinearSolvers
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/StdVector
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/SparseLU
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/OrderingMethods
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/Dense
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/MetisSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/Sparse
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/Eigen/Cholesky
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/share/eigen3/cmake/Eigen3Targets.cmake
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/share/eigen3/cmake/UseEigen3.cmake
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/share/eigen3/cmake/Eigen3Config.cmake
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/share/eigen3/cmake/Eigen3ConfigVersion.cmake
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/AdolcForward
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/AlignedVector3
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/ArpackSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/AutoDiff
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/BVH
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/EulerAngles
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/FFT
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/IterativeSolvers
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/KroneckerProduct
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/LevenbergMarquardt
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/MatrixFunctions
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/MoreVectorization
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/MPRealSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/NonLinearOptimization
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/NumericalDiff
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/OpenGLSupport
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/Polynomials
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/Skyline
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/SparseExtra
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/SpecialFunctions
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/Splines
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Eigenvalues
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Eigenvalues/ArpackSelfAdjointEigenSolver.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NumericalDiff
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NumericalDiff/NumericalDiff.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/FFT
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/FFT/ei_fftw_impl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/FFT/ei_kissfft_impl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/lmpar.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/chkder.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/LevenbergMarquardt.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/r1updt.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/fdjac1.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/rwupdt.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/HybridNonLinearSolver.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/qrsolv.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/r1mpyq.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/dogleg.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/NonLinearOptimization/covar.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Polynomials
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Polynomials/PolynomialUtils.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Polynomials/PolynomialSolver.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Polynomials/Companion.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/KroneckerProduct
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/KroneckerProduct/KroneckerTensorProduct.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/AutoDiff
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/AutoDiff/AutoDiffJacobian.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/AutoDiff/AutoDiffScalar.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/AutoDiff/AutoDiffVector.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/MoreVectorization
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/MoreVectorization/MathFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsFunctors.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsBFloat16.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsHalf.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/GPU
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/GPU/SpecialFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/NEON
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/NEON/BesselFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/NEON/SpecialFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/AVX512
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/AVX512/BesselFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/AVX512/SpecialFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/AVX
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/AVX/BesselFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/arch/AVX/SpecialFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsArrayAPI.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/BesselFunctionsBFloat16.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/BesselFunctionsPacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/HipVectorCompatibility.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsPacketMath.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/BesselFunctionsImpl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/BesselFunctionsHalf.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/BesselFunctionsFunctors.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SpecialFunctions/BesselFunctionsArrayAPI.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Skyline
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Skyline/SkylineUtil.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Skyline/SkylineProduct.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Skyline/SkylineStorage.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Skyline/SkylineMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Skyline/SkylineInplaceLU.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Skyline/SkylineMatrixBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/EulerAngles
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/EulerAngles/EulerSystem.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/EulerAngles/EulerAngles.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/MatrixFunctions
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/MatrixFunctions/MatrixSquareRoot.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/MatrixFunctions/MatrixExponential.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/MatrixFunctions/MatrixPower.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/MatrixFunctions/MatrixLogarithm.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/MatrixFunctions/StemFunction.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/MatrixFunctions/MatrixFunction.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SparseExtra
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SparseExtra/MarketIO.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SparseExtra/RandomSetter.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SparseExtra/DynamicSparseMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SparseExtra/BlockSparseMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SparseExtra/BlockOfDynamicSparseMatrix.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/SparseExtra/MatrixMarketIterator.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Splines
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Splines/Spline.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Splines/SplineFwd.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/Splines/SplineFitting.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/BVH
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/BVH/KdBVH.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/BVH/BVAlgorithms.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/IterativeSolvers
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/IterativeSolvers/Scaling.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/IterativeSolvers/MINRES.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/IterativeSolvers/IDRS.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/IterativeSolvers/GMRES.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/IterativeSolvers/DGMRES.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/IterativeSolvers/IncompleteLU.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/IterativeSolvers/IterationController.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/IterativeSolvers/ConstrainedConjGrad.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/LevenbergMarquardt
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/LevenbergMarquardt/LMpar.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/LevenbergMarquardt/LevenbergMarquardt.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/LevenbergMarquardt/LMcovar.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/LevenbergMarquardt/LMonestep.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/src/LevenbergMarquardt/LMqrsolv.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/Tensor
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/TensorSymmetry
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/ThreadPool
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/TensorSymmetry
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/TensorSymmetry/DynamicSymmetry.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/TensorSymmetry/StaticSymmetry.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/TensorSymmetry/Symmetry.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/TensorSymmetry/util
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/TensorSymmetry/util/TemplateGroupTheory.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/util
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/util/MaxSizeVector.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/util/CXX11Workarounds.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/util/EmulateArray.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/util/CXX11Meta.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool/NonBlockingThreadPool.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool/ThreadEnvironment.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool/ThreadCancel.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool/Barrier.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool/ThreadLocal.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool/EventCount.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool/ThreadPoolInterface.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool/RunQueue.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/ThreadPool/ThreadYield.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorScanSycl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorTrace.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorEvalTo.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorConversion.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorPatch.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorLayoutSwap.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorStorage.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorConvolutionSycl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorExpr.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorRef.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorFFT.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorContractionGpu.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorContraction.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorContractionBlocking.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorForwardDeclarations.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorDevice.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorContractionSycl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorIntDiv.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorTraits.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/Tensor.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorDimensionList.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorScan.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorGlobalFunctions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorChipping.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorInflation.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorVolumePatch.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorGenerator.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorMap.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorImagePatch.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorRandom.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorContractionMapper.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceCuda.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorGpuHipCudaDefines.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorReductionGpu.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorStriding.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorBase.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorInitializer.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorReductionCuda.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorFunctors.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorBroadcasting.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorFixedSize.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorArgMax.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorShuffling.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorDimensions.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorGpuHipCudaUndefines.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorUInt128.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorCustomOp.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorConvolution.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorReductionSycl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorConcatenation.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceGpu.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorContractionCuda.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorBlock.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorPadding.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorCostModel.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorIO.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorReverse.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorContractionThreadPool.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceSycl.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/include/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorAssign.h
+-- Installing: /home/ert/code/.venv/lib/python3.13/site-packages/vmecpp/cpp/./_vmecpp.cpython-313-x86_64-linux-gnu.so
+-- Up-to-date: /home/ert/code/.venv/lib/python3.13/site-packages/vmecpp/cpp/third_party/indata2json/indata2json
+Running cmake --build & --install in /home/ert/code/vmecpp/build
+Loaded input file successfully
+LASYM = False
+MPOL = 8
+NTOR = 0
+
+Running VMEC...
+✅ VMEC converged successfully!
+MHD Energy = 172.39494071067568
+
+ NS = 10   NO. FOURIER MODES = 8   FTOLV = 1.000e-30   NITER = 500
+
+ ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz      fsql   |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  <M>  
+------+------------------------------+------------------------------+----------+-----------+------------+------------+-------
+ INITIAL JACOBIAN CHANGED SIGN!
+ TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS
+    2 | 4.68e-02  2.12e-04  2.53e-02 | 4.62e-03  2.88e-06  7.59e-03 | 9.00e-01 | 6.000e+00 | 7.0033e+03 | 0.0000e+00 | 1.000
+  200 | 1.10e-09  5.45e-10  1.26e-10 | 3.82e-13  1.98e-13  1.55e-11 | 9.00e-01 | 6.132e+00 | 6.8062e+03 | 0.0000e+00 | 1.000
+  401 | 1.91e-14  2.10e-14  2.01e-14 | 1.46e-18  1.93e-18  1.33e-16 | 9.00e-01 | 6.132e+00 | 6.8062e+03 | 0.0000e+00 | 1.000
+MHD Energy = 6.806159e+03
+
+ NS = 17   NO. FOURIER MODES = 8   FTOLV = 1.000e-20   NITER = 1000
+
+ ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz      fsql   |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  <M>  
+------+------------------------------+------------------------------+----------+-----------+------------+------------+-------
+    2 | 3.94e-03  1.55e-03  1.22e-06 | 1.47e-08  4.83e-09  6.99e-07 | 9.00e-01 | 6.132e+00 | 6.8059e+03 | 0.0000e+00 | 1.000
+  200 | 1.64e-11  1.30e-11  1.26e-12 | 1.48e-16  1.30e-16  5.29e-14 | 9.00e-01 | 6.132e+00 | 6.8059e+03 | 0.0000e+00 | 1.000
+  401 | 2.23e-15  1.75e-15  1.04e-15 | 1.87e-20  1.69e-20  3.21e-18 | 9.00e-01 | 6.132e+00 | 6.8059e+03 | 0.0000e+00 | 1.000
+  600 | 1.21e-19  7.72e-20  3.37e-20 | 1.82e-24  1.23e-24  2.14e-22 | 9.00e-01 | 6.132e+00 | 6.8059e+03 | 0.0000e+00 | 1.000
+  643 | 9.24e-21  9.46e-21  2.71e-21 | 1.99e-25  7.44e-26  2.63e-23 | 9.00e-01 | 6.132e+00 | 6.8059e+03 | 0.0000e+00 | 1.000
+MHD Energy = 6.805879e+03
+
+NUMBER OF JACOBIAN RESETS = 0

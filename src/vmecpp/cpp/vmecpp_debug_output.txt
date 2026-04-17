@@ -1,0 +1,2486 @@
+=== VMEC++ DEBUG OUTPUT CAPTURE ===
+Loading configuration: /home/ert/code/vmecpp/src/vmecpp/cpp/vmecpp/test_data/up_down_asymmetric_tokamak_simple.json
+Configuration loaded successfully:
+  lasym = true
+  nfp = 1
+  mpol = 5, ntor = 0
+  NS = 17
+  niter = 3000
+
+Asymmetric boundary coefficients:
+  rbc size: 5 (expected: 5)
+  zbs size: 5
+  rbs size: 5 (asymmetric)
+  zbc size: 5 (asymmetric)
+
+Key coefficients:
+  R00 = 6 (axis)
+  R10 = 2 (shape)
+  Z10 = 2 (shape)
+  R10s = 0.189737 (asymmetric)
+  Z10c = 0 (asymmetric)
+
+============================================================
+RUNNING VMEC++ WITH DEBUG OUTPUT
+============================================================
+need to shift theta by delta = 0.0473987
+
+ NS = 17   NO. FOURIER MODES = 5   FTOLV = 1.000e-20   NITER = 3000
+
+ ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz      fsql   |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  <M>  
+------+------------------------------+------------------------------+----------+-----------+------------+------------+-------
+DEBUG geometryFromFourier: lasym=1, lthreed=0
+[SYMM_STORE] jF=0 l=6 idx_jl=6: storing r1_e[6] = 6
+[SYMM_TRANSFORM_DEBUG] jF=1 l=0 theta=0.000000 rnkcc[0]=6.000000 rnkcc[1]=2.006744 R_total=8.006744
+[SYMM_TRANSFORM_DEBUG] Input coeffs: src_rcc[0]=6.000000 src_rcc[1]=1.418982 src_rcc[2]=0.000000
+[SYMM_TRANSFORM_DEBUG] jF=1 l=6 theta=2.356194 rnkcc[0]=6.000000 rnkcc[1]=-1.418982 R_total=4.581018
+[SYMM_STORE] jF=1 l=6 idx_jl=22: storing r1_e[22] = 6.000000
+DEBUG: Processing asymmetric contribution
+DEBUG: physical_x.rmnsc size=85
+  First few rmnsc values: 0.000000 0.067007 0.000000 0.000000 0.000000 
+DEBUG: Resizing asymmetric arrays from 16 to 272
+DEBUG: Calling 2D asymmetric transform
+DEBUG: Calling symrzl_geometry
+DEBUG SymmetrizeRealSpaceGeometry: nThetaEff=16, nThetaReduced=9, nZeta=1
+DEBUG: Values before symmetrization (first 3 theta points):
+  idx=0 (i=0, k=0): R=8.006744, Z=0.094762
+  idx=1 (i=1, k=0): R=7.890253, Z=0.852056
+  idx=2 (i=2, k=0): R=7.485989, Z=1.479632
+DEBUG: Symmetrization at i=9, ir=8: copying from idx_r=8 to idx=9, R[9]=3.993256, Z[9]=0.094762
+DEBUG: Symmetrization at i=10, ir=7: copying from idx_r=7 to idx=10, R[10]=4.182274, Z[10]=-0.676959
+DEBUG: Symmetrization at i=11, ir=6: copying from idx_r=6 to idx=11, R[11]=4.648025, Z[11]=-1.345618
+DEBUG: Symmetrization at i=12, ir=5: copying from idx_r=5 to idx=12, R[12]=5.319601, Z[12]=-1.809420
+DEBUG: Symmetrization at i=13, ir=4: copying from idx_r=4 to idx=13, R[13]=6.094762, Z[13]=-1.997754
+DEBUG: Symmetrization at i=14, ir=3: copying from idx_r=3 to idx=14, R[14]=6.855496, Z[14]=-1.881948
+DEBUG: Symmetrization at i=15, ir=2: copying from idx_r=2 to idx=15, R[15]=7.485989, Z[15]=-1.479632
+DEBUG: Adding asymmetric contributions to symmetric arrays
+DEBUG: Array sizes - symmetric: 272, asymmetric: 272
+DEBUG: nsMinF1=0, nsMaxF1=17, nZnT=16
+DEBUG ODD ARRAYS HACK: jF=1 kl=6 idx=22
+  Setting r1_o[22]=0.500000 z1_o[22]=0.500000
+  ru_o[22]=0.100000 zu_o[22]=-0.100000
+DEBUG ODD ARRAYS HACK: jF=1 kl=7 idx=23
+  Setting r1_o[23]=0.500000 z1_o[23]=0.500000
+  ru_o[23]=0.100000 zu_o[23]=-0.100000
+DEBUG ODD ARRAYS HACK: jF=1 kl=8 idx=24
+  Setting r1_o[24]=0.500000 z1_o[24]=0.500000
+  ru_o[24]=0.100000 zu_o[24]=-0.100000
+DEBUG ODD ARRAYS HACK: jF=1 kl=9 idx=25
+  Setting r1_o[25]=0.500000 z1_o[25]=0.500000
+  ru_o[25]=0.100000 zu_o[25]=-0.100000
+DEBUG SURFACE POPULATION:
+  Surface jF=0 r1_e[6]=10.648025 r1_o[6]=10.581018
+  Surface jF=1 r1_e[22]=6.000000 r1_o[22]=5.932993
+  Surface jF=2 r1_e[38]=6.000000 r1_o[38]=5.932993
+  Array sizes: r1_e.size()=272 r1_o.size()=272
+  nsMinF1=0 nsMaxF1=17 nZnT=16
+DEBUG: All geometry arrays are finite (first 10 checked)
+Array index debug jH=0 kl=6:
+  jH + 1 = 1
+  r_.nsMinF1 = 0
+  s_.nZnT = 16
+  target_idx = 22
+  r1_e.size() = 272
+  r1_o.size() = 272
+  r1_e[22] = 6.000000
+  r1_o[22] = 5.932993
+  ru_e[22] = 0.000000
+  ru_o[22] = 0.067007
+  zu_e[22] = 0.000000
+  zu_o[22] = 0.067007
+DEBUG TAU CALC kl=6 jH=0 iHalf=6:
+  Basic Jacobian: 0.736527
+  Odd contrib: -1.007406
+  tau_val = 0.484675
+  GEOMETRY DERIVATIVES:
+    ru12=0.011845 (dR/dtheta avg)
+    zu12=0.011845 (dZ/dtheta avg)
+    rs=-87.514995 (dR/ds)
+    zs=-25.335878 (dZ/ds)
+    r12=9.783659 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=12.518502
+    r1[j+1]=7.048815
+    z1[j]=1.595338
+    z1[j+1]=0.011845
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=1.412625 zuo_i=0.067007 r1o_i=10.581018
+DEBUG TAU CALC kl=7 jH=0 iHalf=7:
+  Basic Jacobian: 0.307542
+  Odd contrib: -0.509605
+  tau_val = 0.180140
+  GEOMETRY DERIVATIVES:
+    ru12=0.015477 (dR/dtheta avg)
+    zu12=0.006411 (dZ/dtheta avg)
+    rs=-78.745649 (dR/ds)
+    zs=-12.746067 (dZ/ds)
+    r12=9.515051 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.975853
+    r1[j+1]=7.054250
+    z1[j]=0.812106
+    z1[j+1]=0.015477
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.764507 zuo_i=0.036264 r1o_i=10.146011
+DEBUG TAU CALC kl=8 jH=0 iHalf=8:
+  Basic Jacobian: 0.029889
+  Odd contrib: 0.008980
+  tau_val = 0.032134
+  GEOMETRY DERIVATIVES:
+    ru12=0.016752 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=-75.186735 (dR/ds)
+    zs=1.784219 (dZ/ds)
+    r12=9.410246 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.759831
+    r1[j+1]=7.060660
+    z1[j]=-0.094762
+    z1[j+1]=0.016752
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.000000 zuo_i=0.000000 r1o_i=9.993256
+DEBUG TAU CALC kl=9 jH=0 iHalf=9:
+  Basic Jacobian: -0.509606
+  Odd contrib: 0.171067
+  tau_val = -0.466839
+  GEOMETRY DERIVATIVES:
+    ru12=0.015477 (dR/dtheta avg)
+    zu12=-0.006411 (dZ/dtheta avg)
+    rs=-75.186735 (dR/ds)
+    zs=-1.784219 (dZ/ds)
+    r12=2.355996 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=4.705582
+    r1[j+1]=0.006411
+    z1[j]=0.126990
+    z1[j+1]=0.015477
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.182311 zuo_i=-0.036264 r1o_i=4.029520
+  NEW minTau=-0.466839 at jH=0 kl=9
+DEBUG TAU CALC kl=6 jH=1 iHalf=22:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.020517 (dR/dtheta avg)
+    zu12=0.020517 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=7.816601 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.816601
+    r1[j+1]=7.816601
+    z1[j]=0.020517
+    z1[j+1]=0.020517
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=1 iHalf=23:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.026806 (dR/dtheta avg)
+    zu12=0.011103 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=7.826014 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.826014
+    r1[j+1]=7.826014
+    z1[j]=0.026806
+    z1[j+1]=0.026806
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=1 iHalf=24:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.029015 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=7.837117 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.837117
+    r1[j+1]=7.837117
+    z1[j]=0.029015
+    z1[j+1]=0.029015
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=1 iHalf=25:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.026806 (dR/dtheta avg)
+    zu12=-0.011103 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.011103 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.011103
+    r1[j+1]=0.011103
+    z1[j]=0.026806
+    z1[j+1]=0.026806
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=2 iHalf=38:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.026487 (dR/dtheta avg)
+    zu12=0.026487 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=8.345221 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.345221
+    r1[j+1]=8.345221
+    z1[j]=0.026487
+    z1[j+1]=0.026487
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=2 iHalf=39:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.034607 (dR/dtheta avg)
+    zu12=0.014335 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=8.357374 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.357374
+    r1[j+1]=8.357374
+    z1[j]=0.034607
+    z1[j+1]=0.034607
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=2 iHalf=40:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.037458 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=8.371708 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.371708
+    r1[j+1]=8.371708
+    z1[j]=0.037458
+    z1[j+1]=0.037458
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=2 iHalf=41:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.034607 (dR/dtheta avg)
+    zu12=-0.014335 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.014335 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.014335
+    r1[j+1]=0.014335
+    z1[j]=0.034607
+    z1[j+1]=0.034607
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=3 iHalf=54:
+  Basic Jacobian: -0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.031340 (dR/dtheta avg)
+    zu12=0.031340 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=8.774903 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.774903
+    r1[j+1]=8.774903
+    z1[j]=0.031340
+    z1[j+1]=0.031340
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=3 iHalf=55:
+  Basic Jacobian: -0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.040947 (dR/dtheta avg)
+    zu12=0.016961 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=8.789282 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.789282
+    r1[j+1]=8.789282
+    z1[j]=0.040947
+    z1[j+1]=0.040947
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=3 iHalf=56:
+  Basic Jacobian: -0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.044321 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=8.806243 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.806243
+    r1[j+1]=8.806243
+    z1[j]=0.044321
+    z1[j+1]=0.044321
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=3 iHalf=57:
+  Basic Jacobian: -0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.040947 (dR/dtheta avg)
+    zu12=-0.016961 (dZ/dtheta avg)
+    rs=-0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=0.016961 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.016961
+    r1[j+1]=0.016961
+    z1[j]=0.040947
+    z1[j+1]=0.040947
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=4 iHalf=70:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.035536 (dR/dtheta avg)
+    zu12=0.035536 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=9.146445 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.146445
+    r1[j+1]=9.146445
+    z1[j]=0.035536
+    z1[j+1]=0.035536
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=4 iHalf=71:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.046430 (dR/dtheta avg)
+    zu12=0.019232 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=9.162749 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.162749
+    r1[j+1]=9.162749
+    z1[j]=0.046430
+    z1[j+1]=0.046430
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=4 iHalf=72:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.050255 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=9.181981 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.181981
+    r1[j+1]=9.181981
+    z1[j]=0.050255
+    z1[j+1]=0.050255
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=4 iHalf=73:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.046430 (dR/dtheta avg)
+    zu12=-0.019232 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.019232 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.019232
+    r1[j+1]=0.019232
+    z1[j]=0.046430
+    z1[j+1]=0.046430
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=5 iHalf=86:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.039286 (dR/dtheta avg)
+    zu12=0.039286 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=9.478526 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.478526
+    r1[j+1]=9.478526
+    z1[j]=0.039286
+    z1[j+1]=0.039286
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=5 iHalf=87:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.051330 (dR/dtheta avg)
+    zu12=0.021262 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=9.496550 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.496550
+    r1[j+1]=9.496550
+    z1[j]=0.051330
+    z1[j+1]=0.051330
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=5 iHalf=88:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.055559 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=9.517812 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.517812
+    r1[j+1]=9.517812
+    z1[j]=0.055559
+    z1[j+1]=0.055559
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=5 iHalf=89:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.051330 (dR/dtheta avg)
+    zu12=-0.021262 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.021262 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.021262
+    r1[j+1]=0.021262
+    z1[j]=0.051330
+    z1[j+1]=0.051330
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=6 iHalf=102:
+  Basic Jacobian: -0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.042709 (dR/dtheta avg)
+    zu12=0.042709 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=9.781556 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.781556
+    r1[j+1]=9.781556
+    z1[j]=0.042709
+    z1[j+1]=0.042709
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=6 iHalf=103:
+  Basic Jacobian: -0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.055802 (dR/dtheta avg)
+    zu12=0.023114 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=9.801151 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.801151
+    r1[j+1]=9.801151
+    z1[j]=0.055802
+    z1[j+1]=0.055802
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=6 iHalf=104:
+  Basic Jacobian: -0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.060399 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=9.824265 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.824265
+    r1[j+1]=9.824265
+    z1[j]=0.060399
+    z1[j+1]=0.060399
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=6 iHalf=105:
+  Basic Jacobian: -0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.055802 (dR/dtheta avg)
+    zu12=-0.023114 (dZ/dtheta avg)
+    rs=-0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=0.023114 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.023114
+    r1[j+1]=0.023114
+    z1[j]=0.055802
+    z1[j+1]=0.055802
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=7 iHalf=118:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.045876 (dR/dtheta avg)
+    zu12=0.045876 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=10.062043 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.062043
+    r1[j+1]=10.062043
+    z1[j]=0.045876
+    z1[j+1]=0.045876
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=7 iHalf=119:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.059940 (dR/dtheta avg)
+    zu12=0.024828 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=10.083091 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.083091
+    r1[j+1]=10.083091
+    z1[j]=0.059940
+    z1[j+1]=0.059940
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=7 iHalf=120:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.064879 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=10.107919 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.107919
+    r1[j+1]=10.107919
+    z1[j]=0.064879
+    z1[j+1]=0.064879
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=7 iHalf=121:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.059940 (dR/dtheta avg)
+    zu12=-0.024828 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.024828 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.024828
+    r1[j+1]=0.024828
+    z1[j]=0.059940
+    z1[j+1]=0.059940
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=8 iHalf=134:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.048839 (dR/dtheta avg)
+    zu12=0.048839 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=10.324375 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.324375
+    r1[j+1]=10.324375
+    z1[j]=0.048839
+    z1[j+1]=0.048839
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=8 iHalf=135:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.063811 (dR/dtheta avg)
+    zu12=0.026432 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=10.346782 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.346782
+    r1[j+1]=10.346782
+    z1[j]=0.063811
+    z1[j+1]=0.063811
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=8 iHalf=136:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.069069 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=10.373214 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.373214
+    r1[j+1]=10.373214
+    z1[j]=0.069069
+    z1[j+1]=0.069069
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=8 iHalf=137:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.063811 (dR/dtheta avg)
+    zu12=-0.026432 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.026432 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.026432
+    r1[j+1]=0.026432
+    z1[j]=0.063811
+    z1[j+1]=0.063811
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=9 iHalf=150:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.051632 (dR/dtheta avg)
+    zu12=0.051632 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=10.571678 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.571678
+    r1[j+1]=10.571678
+    z1[j]=0.051632
+    z1[j+1]=0.051632
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=9 iHalf=151:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.067461 (dR/dtheta avg)
+    zu12=0.027943 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=10.595367 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.595367
+    r1[j+1]=10.595367
+    z1[j]=0.067461
+    z1[j+1]=0.067461
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=9 iHalf=152:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.073019 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=10.623311 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.623311
+    r1[j+1]=10.623311
+    z1[j]=0.073019
+    z1[j+1]=0.073019
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=9 iHalf=153:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.067461 (dR/dtheta avg)
+    zu12=-0.027943 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.027943 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.027943
+    r1[j+1]=0.027943
+    z1[j]=0.067461
+    z1[j+1]=0.067461
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=10 iHalf=166:
+  Basic Jacobian: -0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.054282 (dR/dtheta avg)
+    zu12=0.054282 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=10.806274 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.806274
+    r1[j+1]=10.806274
+    z1[j]=0.054282
+    z1[j+1]=0.054282
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=10 iHalf=167:
+  Basic Jacobian: -0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.070922 (dR/dtheta avg)
+    zu12=0.029377 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=10.831178 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.831178
+    r1[j+1]=10.831178
+    z1[j]=0.070922
+    z1[j+1]=0.070922
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=10 iHalf=168:
+  Basic Jacobian: -0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.076766 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=10.860556 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.860556
+    r1[j+1]=10.860556
+    z1[j]=0.076766
+    z1[j+1]=0.076766
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=10 iHalf=169:
+  Basic Jacobian: -0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.070922 (dR/dtheta avg)
+    zu12=-0.029377 (dZ/dtheta avg)
+    rs=-0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=0.029377 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.029377
+    r1[j+1]=0.029377
+    z1[j]=0.070922
+    z1[j+1]=0.070922
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=11 iHalf=182:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.056808 (dR/dtheta avg)
+    zu12=0.056808 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.029940 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.029940
+    r1[j+1]=11.029940
+    z1[j]=0.056808
+    z1[j+1]=0.056808
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=11 iHalf=183:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.074223 (dR/dtheta avg)
+    zu12=0.030744 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.056003 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.056003
+    r1[j+1]=11.056003
+    z1[j]=0.074223
+    z1[j+1]=0.074223
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=11 iHalf=184:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.080338 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.086747 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.086747
+    r1[j+1]=11.086747
+    z1[j]=0.080338
+    z1[j+1]=0.080338
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=11 iHalf=185:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.074223 (dR/dtheta avg)
+    zu12=-0.030744 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.030744 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.030744
+    r1[j+1]=0.030744
+    z1[j]=0.074223
+    z1[j+1]=0.074223
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=12 iHalf=198:
+  Basic Jacobian: -0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.059226 (dR/dtheta avg)
+    zu12=0.059226 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=11.244075 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.244075
+    r1[j+1]=11.244075
+    z1[j]=0.059226
+    z1[j+1]=0.059226
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=12 iHalf=199:
+  Basic Jacobian: -0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.077383 (dR/dtheta avg)
+    zu12=0.032053 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=11.271248 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.271248
+    r1[j+1]=11.271248
+    z1[j]=0.077383
+    z1[j+1]=0.077383
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=12 iHalf=200:
+  Basic Jacobian: -0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.083759 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=11.303301 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.303301
+    r1[j+1]=11.303301
+    z1[j]=0.083759
+    z1[j+1]=0.083759
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=12 iHalf=201:
+  Basic Jacobian: -0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.077383 (dR/dtheta avg)
+    zu12=-0.032053 (dZ/dtheta avg)
+    rs=-0.000000 (dR/ds)
+    zs=-0.000000 (dZ/ds)
+    r12=0.032053 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.032053
+    r1[j+1]=0.032053
+    z1[j]=0.077383
+    z1[j+1]=0.077383
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=13 iHalf=214:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.061550 (dR/dtheta avg)
+    zu12=0.061550 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.449802 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.449802
+    r1[j+1]=11.449802
+    z1[j]=0.061550
+    z1[j+1]=0.061550
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=13 iHalf=215:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.080419 (dR/dtheta avg)
+    zu12=0.033310 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.478041 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.478041
+    r1[j+1]=11.478041
+    z1[j]=0.080419
+    z1[j+1]=0.080419
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=13 iHalf=216:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.087044 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.511352 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.511352
+    r1[j+1]=11.511352
+    z1[j]=0.087044
+    z1[j+1]=0.087044
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=13 iHalf=217:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.080419 (dR/dtheta avg)
+    zu12=-0.033310 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.033310 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.033310
+    r1[j+1]=0.033310
+    z1[j]=0.080419
+    z1[j+1]=0.080419
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=14 iHalf=230:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.063789 (dR/dtheta avg)
+    zu12=0.063789 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.648041 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.648041
+    r1[j+1]=11.648041
+    z1[j]=0.063789
+    z1[j+1]=0.063789
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=14 iHalf=231:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.083344 (dR/dtheta avg)
+    zu12=0.034522 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.677308 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.677308
+    r1[j+1]=11.677308
+    z1[j]=0.083344
+    z1[j+1]=0.083344
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=14 iHalf=232:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.090211 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.711830 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.711830
+    r1[j+1]=11.711830
+    z1[j]=0.090211
+    z1[j+1]=0.090211
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=14 iHalf=233:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.083344 (dR/dtheta avg)
+    zu12=-0.034522 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.034522 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.034522
+    r1[j+1]=0.034522
+    z1[j]=0.083344
+    z1[j+1]=0.083344
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=15 iHalf=246:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.786122
+  tau_val = -0.196531
+  GEOMETRY DERIVATIVES:
+    ru12=0.065952 (dR/dtheta avg)
+    zu12=0.065952 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.839554 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.839554
+    r1[j+1]=11.839554
+    z1[j]=0.065952
+    z1[j+1]=0.065952
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.067007 zuo_i=0.067007 r1o_i=5.932993
+DEBUG TAU CALC kl=7 jH=15 iHalf=247:
+  Basic Jacobian: 0.000000
+  Odd contrib: -0.417206
+  tau_val = -0.104302
+  GEOMETRY DERIVATIVES:
+    ru12=0.086170 (dR/dtheta avg)
+    zu12=0.035693 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.869813 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.869813
+    r1[j+1]=11.869813
+    z1[j]=0.086170
+    z1[j+1]=0.086170
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=0.036264 r1o_i=5.963736
+DEBUG TAU CALC kl=8 jH=15 iHalf=248:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.093270 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=11.905506 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.905506
+    r1[j+1]=11.905506
+    z1[j]=0.093270
+    z1[j+1]=0.093270
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094762 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=15 iHalf=249:
+  Basic Jacobian: 0.000000
+  Odd contrib: 0.017960
+  tau_val = 0.004490
+  GEOMETRY DERIVATIVES:
+    ru12=0.086170 (dR/dtheta avg)
+    zu12=-0.035693 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.000000 (dZ/ds)
+    r12=0.035693 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.035693
+    r1[j+1]=0.035693
+    z1[j]=0.086170
+    z1[j+1]=0.086170
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.087549 zuo_i=-0.036264 r1o_i=0.036264
+
+DEBUG JACOBIAN CHECK:
+  Final minTau=-1.861142, maxTau=1.799575
+  minTau * maxTau = -3.349266
+  localBadJacobian = 1 (condition: < 0.0)
+  Range spans: BOTH sides of zero
+ INITIAL JACOBIAN CHANGED SIGN!
+ TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS
+DEBUG geometryFromFourier: lasym=1, lthreed=0
+[SYMM_STORE] jF=0 l=6 idx_jl=6: storing r1_e[6] = 4.003372
+[SYMM_TRANSFORM_DEBUG] jF=1 l=0 theta=0.000000 rnkcc[0]=4.128161 rnkcc[1]=2.006744 R_total=6.134905
+[SYMM_TRANSFORM_DEBUG] Input coeffs: src_rcc[0]=4.128161 src_rcc[1]=1.418982 src_rcc[2]=0.000000
+[SYMM_TRANSFORM_DEBUG] jF=1 l=6 theta=2.356194 rnkcc[0]=4.128161 rnkcc[1]=-1.418982 R_total=2.709179
+[SYMM_STORE] jF=1 l=6 idx_jl=22: storing r1_e[22] = 4.128161
+DEBUG: Processing asymmetric contribution
+DEBUG: physical_x.rmnsc size=85
+  First few rmnsc values: 0.000000 0.067007 0.000000 0.000000 0.000000 
+DEBUG: Resizing asymmetric arrays from 272 to 272
+DEBUG: Calling 2D asymmetric transform
+DEBUG: Calling symrzl_geometry
+DEBUG SymmetrizeRealSpaceGeometry: nThetaEff=16, nThetaReduced=9, nZeta=1
+DEBUG: Values before symmetrization (first 3 theta points):
+  idx=0 (i=0, k=0): R=6.010116, Z=0.104626
+  idx=1 (i=1, k=0): R=5.893625, Z=0.861920
+  idx=2 (i=2, k=0): R=5.489361, Z=1.489496
+DEBUG: Symmetrization at i=9, ir=8: copying from idx_r=8 to idx=9, R[9]=1.996628, Z[9]=0.084898
+DEBUG: Symmetrization at i=10, ir=7: copying from idx_r=7 to idx=10, R[10]=2.185646, Z[10]=-0.686822
+DEBUG: Symmetrization at i=11, ir=6: copying from idx_r=6 to idx=11, R[11]=2.651397, Z[11]=-1.355482
+DEBUG: Symmetrization at i=12, ir=5: copying from idx_r=5 to idx=12, R[12]=3.322973, Z[12]=-1.819284
+DEBUG: Symmetrization at i=13, ir=4: copying from idx_r=4 to idx=13, R[13]=4.098134, Z[13]=-2.007618
+DEBUG: Symmetrization at i=14, ir=3: copying from idx_r=3 to idx=14, R[14]=4.858868, Z[14]=-1.891811
+DEBUG: Symmetrization at i=15, ir=2: copying from idx_r=2 to idx=15, R[15]=5.489361, Z[15]=-1.489496
+DEBUG: Adding asymmetric contributions to symmetric arrays
+DEBUG: Array sizes - symmetric: 272, asymmetric: 272
+DEBUG: nsMinF1=0, nsMaxF1=17, nZnT=16
+DEBUG ODD ARRAYS HACK: jF=1 kl=6 idx=22
+  Setting r1_o[22]=0.500000 z1_o[22]=0.500000
+  ru_o[22]=0.100000 zu_o[22]=-0.100000
+DEBUG ODD ARRAYS HACK: jF=1 kl=7 idx=23
+  Setting r1_o[23]=0.500000 z1_o[23]=0.500000
+  ru_o[23]=0.100000 zu_o[23]=-0.100000
+DEBUG ODD ARRAYS HACK: jF=1 kl=8 idx=24
+  Setting r1_o[24]=0.500000 z1_o[24]=0.500000
+  ru_o[24]=0.100000 zu_o[24]=-0.100000
+DEBUG ODD ARRAYS HACK: jF=1 kl=9 idx=25
+  Setting r1_o[25]=0.500000 z1_o[25]=0.500000
+  ru_o[25]=0.100000 zu_o[25]=-0.100000
+DEBUG SURFACE POPULATION:
+  Surface jF=0 r1_e[6]=6.654768 r1_o[6]=6.587762
+  Surface jF=1 r1_e[22]=4.128161 r1_o[22]=4.061154
+  Surface jF=2 r1_e[38]=4.252950 r1_o[38]=4.185944
+  Array sizes: r1_e.size()=272 r1_o.size()=272
+  nsMinF1=0 nsMaxF1=17 nZnT=16
+DEBUG: All geometry arrays are finite (first 10 checked)
+Array index debug jH=0 kl=6:
+  jH + 1 = 1
+  r_.nsMinF1 = 0
+  s_.nZnT = 16
+  target_idx = 22
+  r1_e.size() = 272
+  r1_o.size() = 272
+  r1_e[22] = 4.128161
+  r1_o[22] = 4.061154
+  ru_e[22] = 0.000000
+  ru_o[22] = 0.067007
+  zu_e[22] = 0.000000
+  zu_o[22] = 0.067007
+DEBUG TAU CALC kl=6 jH=0 iHalf=6:
+  Basic Jacobian: 0.261214
+  Odd contrib: -0.615024
+  tau_val = 0.107457
+  GEOMETRY DERIVATIVES:
+    ru12=0.011845 (dR/dtheta avg)
+    zu12=0.011845 (dZ/dtheta avg)
+    rs=-47.572042 (dR/ds)
+    zs=-25.519855 (dZ/ds)
+    r12=6.332705 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.819331
+    r1[j+1]=4.846079
+    z1[j]=1.605201
+    z1[j+1]=0.010211
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.057759 zuo_o=0.067007 r1o_o=4.061154
+  m_ls_ odd: ruo_i=0.067007 z1o_i=1.412625 zuo_i=0.067007 r1o_i=6.587762
+DEBUG TAU CALC kl=7 jH=0 iHalf=7:
+  Basic Jacobian: 0.048636
+  Odd contrib: -0.297724
+  tau_val = -0.025795
+  GEOMETRY DERIVATIVES:
+    ru12=0.015477 (dR/dtheta avg)
+    zu12=0.006411 (dZ/dtheta avg)
+    rs=-38.802696 (dR/ds)
+    zs=-12.930043 (dZ/ds)
+    r12=6.064097 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.276682
+    r1[j+1]=4.851513
+    z1[j]=0.821970
+    z1[j+1]=0.013842
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.078301 zuo_o=0.036264 r1o_o=4.091897
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.764507 zuo_i=0.036264 r1o_i=6.152754
+  NEW minTau=-0.025795 at jH=0 kl=7
+DEBUG TAU CALC kl=8 jH=0 iHalf=8:
+  Basic Jacobian: 0.026807
+  Odd contrib: 0.008104
+  tau_val = 0.028833
+  GEOMETRY DERIVATIVES:
+    ru12=0.016752 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=-35.243782 (dR/ds)
+    zs=1.600242 (dZ/ds)
+    r12=5.959292 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.060660
+    r1[j+1]=4.857924
+    z1[j]=-0.084898
+    z1[j+1]=0.015117
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.085515 zuo_o=0.000000 r1o_o=4.128161
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.000000 zuo_i=0.000000 r1o_i=6.000000
+DEBUG TAU CALC kl=9 jH=0 iHalf=9:
+  Basic Jacobian: -0.265708
+  Odd contrib: 0.096125
+  tau_val = -0.241677
+  GEOMETRY DERIVATIVES:
+    ru12=0.015477 (dR/dtheta avg)
+    zu12=-0.006411 (dZ/dtheta avg)
+    rs=-37.593368 (dR/ds)
+    zs=-1.596754 (dZ/ds)
+    r12=1.181203 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=2.355996
+    r1[j+1]=0.006411
+    z1[j]=0.113639
+    z1[j+1]=0.013842
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.078301 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.162583 zuo_i=-0.036264 r1o_i=2.032892
+  NEW minTau=-0.241677 at jH=0 kl=9
+DEBUG TAU CALC kl=6 jH=1 iHalf=22:
+  Basic Jacobian: -0.053445
+  Odd contrib: -0.544830
+  tau_val = -0.189652
+  GEOMETRY DERIVATIVES:
+    ru12=0.020517 (dR/dtheta avg)
+    zu12=0.020517 (dZ/dtheta avg)
+    rs=2.607968 (dR/ds)
+    zs=0.003020 (dZ/ds)
+    r12=5.453130 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=5.371631
+    r1[j+1]=5.534629
+    z1[j]=0.017685
+    z1[j+1]=0.017874
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.058376 zuo_o=0.067007 r1o_o=4.185944
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.057759 zuo_i=0.067007 r1o_i=4.061154
+DEBUG TAU CALC kl=7 jH=1 iHalf=23:
+  Basic Jacobian: -0.028877
+  Odd contrib: -0.287537
+  tau_val = -0.100761
+  GEOMETRY DERIVATIVES:
+    ru12=0.026806 (dR/dtheta avg)
+    zu12=0.011103 (dZ/dtheta avg)
+    rs=2.607968 (dR/ds)
+    zs=0.003020 (dZ/ds)
+    r12=5.462543 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=5.381044
+    r1[j+1]=5.544042
+    z1[j]=0.023975
+    z1[j+1]=0.024164
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.078918 zuo_o=0.036264 r1o_o=4.216687
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.078301 zuo_i=0.036264 r1o_i=4.091897
+DEBUG TAU CALC kl=8 jH=1 iHalf=24:
+  Basic Jacobian: 0.000088
+  Odd contrib: 0.016265
+  tau_val = 0.004154
+  GEOMETRY DERIVATIVES:
+    ru12=0.029015 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=2.607968 (dR/ds)
+    zs=0.003020 (dZ/ds)
+    r12=5.473646 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=5.392147
+    r1[j+1]=5.555145
+    z1[j]=0.026183
+    z1[j+1]=0.026372
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.086131 zuo_o=0.000000 r1o_o=4.252950
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.085515 zuo_i=0.000000 r1o_i=4.128161
+DEBUG TAU CALC kl=9 jH=1 iHalf=25:
+  Basic Jacobian: 0.000081
+  Odd contrib: 0.016394
+  tau_val = 0.004180
+  GEOMETRY DERIVATIVES:
+    ru12=0.026806 (dR/dtheta avg)
+    zu12=-0.011103 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.003020 (dZ/ds)
+    r12=0.011103 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.011103
+    r1[j+1]=0.011103
+    z1[j]=0.023975
+    z1[j+1]=0.024164
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.078918 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.078301 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=2 iHalf=38:
+  Basic Jacobian: -0.073685
+  Odd contrib: -0.561471
+  tau_val = -0.214053
+  GEOMETRY DERIVATIVES:
+    ru12=0.026487 (dR/dtheta avg)
+    zu12=0.026487 (dZ/dtheta avg)
+    rs=2.785865 (dR/ds)
+    zs=0.003899 (dZ/ds)
+    r12=5.994648 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=5.907590
+    r1[j+1]=6.081706
+    z1[j]=0.023075
+    z1[j+1]=0.023319
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.058992 zuo_o=0.067007 r1o_o=4.310733
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.058376 zuo_i=0.067007 r1o_i=4.185944
+DEBUG TAU CALC kl=7 jH=2 iHalf=39:
+  Basic Jacobian: -0.039799
+  Odd contrib: -0.296479
+  tau_val = -0.113919
+  GEOMETRY DERIVATIVES:
+    ru12=0.034607 (dR/dtheta avg)
+    zu12=0.014335 (dZ/dtheta avg)
+    rs=2.785865 (dR/ds)
+    zs=0.003899 (dZ/ds)
+    r12=6.006800 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=5.919742
+    r1[j+1]=6.093859
+    z1[j]=0.031195
+    z1[j+1]=0.031439
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.079534 zuo_o=0.036264 r1o_o=4.341476
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.078918 zuo_i=0.036264 r1o_i=4.216687
+DEBUG TAU CALC kl=8 jH=2 iHalf=40:
+  Basic Jacobian: 0.000146
+  Odd contrib: 0.016382
+  tau_val = 0.004242
+  GEOMETRY DERIVATIVES:
+    ru12=0.037458 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=2.785865 (dR/ds)
+    zs=0.003899 (dZ/ds)
+    r12=6.021135 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=5.934077
+    r1[j+1]=6.108193
+    z1[j]=0.034046
+    z1[j+1]=0.034290
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.086748 zuo_o=0.000000 r1o_o=4.377740
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.086131 zuo_i=0.000000 r1o_i=4.252950
+DEBUG TAU CALC kl=9 jH=2 iHalf=41:
+  Basic Jacobian: 0.000135
+  Odd contrib: 0.016502
+  tau_val = 0.004261
+  GEOMETRY DERIVATIVES:
+    ru12=0.034607 (dR/dtheta avg)
+    zu12=-0.014335 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.003899 (dZ/ds)
+    r12=0.014335 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.014335
+    r1[j+1]=0.014335
+    z1[j]=0.031195
+    z1[j+1]=0.031439
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.079534 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.078918 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=3 iHalf=54:
+  Basic Jacobian: -0.091695
+  Odd contrib: -0.578112
+  tau_val = -0.236223
+  GEOMETRY DERIVATIVES:
+    ru12=0.031340 (dR/dtheta avg)
+    zu12=0.031340 (dZ/dtheta avg)
+    rs=2.930465 (dR/ds)
+    zs=0.004613 (dZ/ds)
+    r12=6.485477 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=6.393900
+    r1[j+1]=6.577054
+    z1[j]=0.027591
+    z1[j+1]=0.027880
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.059609 zuo_o=0.067007 r1o_o=4.435522
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.058992 zuo_i=0.067007 r1o_i=4.310733
+DEBUG TAU CALC kl=7 jH=3 iHalf=55:
+  Basic Jacobian: -0.049514
+  Odd contrib: -0.305422
+  tau_val = -0.125870
+  GEOMETRY DERIVATIVES:
+    ru12=0.040947 (dR/dtheta avg)
+    zu12=0.016961 (dZ/dtheta avg)
+    rs=2.930465 (dR/ds)
+    zs=0.004613 (dZ/ds)
+    r12=6.499856 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=6.408279
+    r1[j+1]=6.591433
+    z1[j]=0.037199
+    z1[j+1]=0.037487
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.080151 zuo_o=0.036264 r1o_o=4.466265
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.079534 zuo_i=0.036264 r1o_i=4.341476
+DEBUG TAU CALC kl=8 jH=3 iHalf=56:
+  Basic Jacobian: 0.000204
+  Odd contrib: 0.016499
+  tau_val = 0.004329
+  GEOMETRY DERIVATIVES:
+    ru12=0.044321 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=2.930465 (dR/ds)
+    zs=0.004613 (dZ/ds)
+    r12=6.516817 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=6.425240
+    r1[j+1]=6.608394
+    z1[j]=0.040572
+    z1[j+1]=0.040861
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.087364 zuo_o=0.000000 r1o_o=4.502529
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.086748 zuo_i=0.000000 r1o_i=4.377740
+DEBUG TAU CALC kl=9 jH=3 iHalf=57:
+  Basic Jacobian: 0.000189
+  Odd contrib: 0.016610
+  tau_val = 0.004341
+  GEOMETRY DERIVATIVES:
+    ru12=0.040947 (dR/dtheta avg)
+    zu12=-0.016961 (dZ/dtheta avg)
+    rs=-0.000000 (dR/ds)
+    zs=0.004613 (dZ/ds)
+    r12=0.016961 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.016961
+    r1[j+1]=0.016961
+    z1[j]=0.037199
+    z1[j+1]=0.037487
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.080151 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.079534 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=4 iHalf=70:
+  Basic Jacobian: -0.108394
+  Odd contrib: -0.594752
+  tau_val = -0.257082
+  GEOMETRY DERIVATIVES:
+    ru12=0.035536 (dR/dtheta avg)
+    zu12=0.035536 (dZ/dtheta avg)
+    rs=3.055500 (dR/ds)
+    zs=0.005231 (dZ/ds)
+    r12=6.950304 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=6.854820
+    r1[j+1]=7.045788
+    z1[j]=0.031612
+    z1[j+1]=0.031939
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.060225 zuo_o=0.067007 r1o_o=4.560311
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.059609 zuo_i=0.067007 r1o_i=4.435522
+DEBUG TAU CALC kl=7 jH=4 iHalf=71:
+  Basic Jacobian: -0.058520
+  Odd contrib: -0.314365
+  tau_val = -0.137111
+  GEOMETRY DERIVATIVES:
+    ru12=0.046430 (dR/dtheta avg)
+    zu12=0.019232 (dZ/dtheta avg)
+    rs=3.055500 (dR/ds)
+    zs=0.005231 (dZ/ds)
+    r12=6.966608 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=6.871124
+    r1[j+1]=7.062092
+    z1[j]=0.042506
+    z1[j+1]=0.042833
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.080767 zuo_o=0.036264 r1o_o=4.591054
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.080151 zuo_i=0.036264 r1o_i=4.466265
+DEBUG TAU CALC kl=8 jH=4 iHalf=72:
+  Basic Jacobian: 0.000263
+  Odd contrib: 0.016616
+  tau_val = 0.004417
+  GEOMETRY DERIVATIVES:
+    ru12=0.050255 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.055500 (dR/ds)
+    zs=0.005231 (dZ/ds)
+    r12=6.985840 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=6.890355
+    r1[j+1]=7.081324
+    z1[j]=0.046332
+    z1[j+1]=0.046659
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.087981 zuo_o=0.000000 r1o_o=4.627318
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.087364 zuo_i=0.000000 r1o_i=4.502529
+DEBUG TAU CALC kl=9 jH=4 iHalf=73:
+  Basic Jacobian: 0.000243
+  Odd contrib: 0.016718
+  tau_val = 0.004422
+  GEOMETRY DERIVATIVES:
+    ru12=0.046430 (dR/dtheta avg)
+    zu12=-0.019232 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.005231 (dZ/ds)
+    r12=0.019232 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.019232
+    r1[j+1]=0.019232
+    z1[j]=0.042506
+    z1[j+1]=0.042833
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.080767 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.080151 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=5 iHalf=86:
+  Basic Jacobian: -0.124202
+  Odd contrib: -0.611393
+  tau_val = -0.277051
+  GEOMETRY DERIVATIVES:
+    ru12=0.039286 (dR/dtheta avg)
+    zu12=0.039286 (dZ/dtheta avg)
+    rs=3.167255 (dR/ds)
+    zs=0.005783 (dZ/ds)
+    r12=7.400014 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.301038
+    r1[j+1]=7.498991
+    z1[j]=0.035310
+    z1[j+1]=0.035672
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.060842 zuo_o=0.067007 r1o_o=4.685101
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.060225 zuo_i=0.067007 r1o_i=4.560311
+DEBUG TAU CALC kl=7 jH=5 iHalf=87:
+  Basic Jacobian: -0.067044
+  Odd contrib: -0.323308
+  tau_val = -0.147871
+  GEOMETRY DERIVATIVES:
+    ru12=0.051330 (dR/dtheta avg)
+    zu12=0.021262 (dZ/dtheta avg)
+    rs=3.167255 (dR/ds)
+    zs=0.005783 (dZ/ds)
+    r12=7.418039 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.319062
+    r1[j+1]=7.517016
+    z1[j]=0.047354
+    z1[j+1]=0.047715
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.081384 zuo_o=0.036264 r1o_o=4.715844
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.080767 zuo_i=0.036264 r1o_i=4.591054
+DEBUG TAU CALC kl=8 jH=5 iHalf=88:
+  Basic Jacobian: 0.000321
+  Odd contrib: 0.016733
+  tau_val = 0.004505
+  GEOMETRY DERIVATIVES:
+    ru12=0.055559 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.167255 (dR/ds)
+    zs=0.005783 (dZ/ds)
+    r12=7.439301 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.340324
+    r1[j+1]=7.538277
+    z1[j]=0.051583
+    z1[j+1]=0.051945
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.088597 zuo_o=0.000000 r1o_o=4.752107
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.087981 zuo_i=0.000000 r1o_i=4.627318
+DEBUG TAU CALC kl=9 jH=5 iHalf=89:
+  Basic Jacobian: 0.000297
+  Odd contrib: 0.016826
+  tau_val = 0.004503
+  GEOMETRY DERIVATIVES:
+    ru12=0.051330 (dR/dtheta avg)
+    zu12=-0.021262 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.005783 (dZ/ds)
+    r12=0.021262 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.021262
+    r1[j+1]=0.021262
+    z1[j]=0.047354
+    z1[j+1]=0.047715
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.081384 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.080767 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=6 iHalf=102:
+  Basic Jacobian: -0.139356
+  Odd contrib: -0.628034
+  tau_val = -0.296365
+  GEOMETRY DERIVATIVES:
+    ru12=0.042709 (dR/dtheta avg)
+    zu12=0.042709 (dZ/dtheta avg)
+    rs=3.269234 (dR/ds)
+    zs=0.006287 (dZ/ds)
+    r12=7.840448 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.738285
+    r1[j+1]=7.942612
+    z1[j]=0.038779
+    z1[j+1]=0.039172
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.061458 zuo_o=0.067007 r1o_o=4.809890
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.060842 zuo_i=0.067007 r1o_i=4.685101
+DEBUG TAU CALC kl=7 jH=6 iHalf=103:
+  Basic Jacobian: -0.075213
+  Odd contrib: -0.332250
+  tau_val = -0.158276
+  GEOMETRY DERIVATIVES:
+    ru12=0.055802 (dR/dtheta avg)
+    zu12=0.023114 (dZ/dtheta avg)
+    rs=3.269234 (dR/ds)
+    zs=0.006287 (dZ/ds)
+    r12=7.860043 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.757880
+    r1[j+1]=7.962207
+    z1[j]=0.051872
+    z1[j+1]=0.052265
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.082000 zuo_o=0.036264 r1o_o=4.840633
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.081384 zuo_i=0.036264 r1o_i=4.715844
+DEBUG TAU CALC kl=8 jH=6 iHalf=104:
+  Basic Jacobian: 0.000380
+  Odd contrib: 0.016850
+  tau_val = 0.004592
+  GEOMETRY DERIVATIVES:
+    ru12=0.060399 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.269234 (dR/ds)
+    zs=0.006287 (dZ/ds)
+    r12=7.883157 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=7.780993
+    r1[j+1]=7.985321
+    z1[j]=0.056470
+    z1[j+1]=0.056863
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.089214 zuo_o=0.000000 r1o_o=4.876897
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.088597 zuo_i=0.000000 r1o_i=4.752107
+DEBUG TAU CALC kl=9 jH=6 iHalf=105:
+  Basic Jacobian: 0.000351
+  Odd contrib: 0.016934
+  tau_val = 0.004584
+  GEOMETRY DERIVATIVES:
+    ru12=0.055802 (dR/dtheta avg)
+    zu12=-0.023114 (dZ/dtheta avg)
+    rs=-0.000000 (dR/ds)
+    zs=0.006287 (dZ/ds)
+    r12=0.023114 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.023114
+    r1[j+1]=0.023114
+    z1[j]=0.051872
+    z1[j+1]=0.052265
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.082000 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.081384 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=7 iHalf=118:
+  Basic Jacobian: -0.154001
+  Odd contrib: -0.644675
+  tau_val = -0.315170
+  GEOMETRY DERIVATIVES:
+    ru12=0.045876 (dR/dtheta avg)
+    zu12=0.045876 (dZ/dtheta avg)
+    rs=3.363626 (dR/ds)
+    zs=0.006753 (dZ/ds)
+    r12=8.275116 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.170003
+    r1[j+1]=8.380230
+    z1[j]=0.042078
+    z1[j+1]=0.042500
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.062075 zuo_o=0.067007 r1o_o=4.934679
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.061458 zuo_i=0.067007 r1o_i=4.809890
+DEBUG TAU CALC kl=7 jH=7 iHalf=119:
+  Basic Jacobian: -0.083108
+  Odd contrib: -0.341193
+  tau_val = -0.168406
+  GEOMETRY DERIVATIVES:
+    ru12=0.059940 (dR/dtheta avg)
+    zu12=0.024828 (dZ/dtheta avg)
+    rs=3.363626 (dR/ds)
+    zs=0.006753 (dZ/ds)
+    r12=8.296165 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.191051
+    r1[j+1]=8.401278
+    z1[j]=0.056142
+    z1[j+1]=0.056564
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.082617 zuo_o=0.036264 r1o_o=4.965422
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.082000 zuo_i=0.036264 r1o_i=4.840633
+DEBUG TAU CALC kl=8 jH=7 iHalf=120:
+  Basic Jacobian: 0.000438
+  Odd contrib: 0.016967
+  tau_val = 0.004680
+  GEOMETRY DERIVATIVES:
+    ru12=0.064879 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.363626 (dR/ds)
+    zs=0.006753 (dZ/ds)
+    r12=8.320993 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.215880
+    r1[j+1]=8.426106
+    z1[j]=0.061080
+    z1[j+1]=0.061502
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.089830 zuo_o=0.000000 r1o_o=5.001686
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.089214 zuo_i=0.000000 r1o_i=4.876897
+DEBUG TAU CALC kl=9 jH=7 iHalf=121:
+  Basic Jacobian: 0.000405
+  Odd contrib: 0.017042
+  tau_val = 0.004665
+  GEOMETRY DERIVATIVES:
+    ru12=0.059940 (dR/dtheta avg)
+    zu12=-0.024828 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.006753 (dZ/ds)
+    r12=0.024828 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.024828
+    r1[j+1]=0.024828
+    z1[j]=0.056142
+    z1[j+1]=0.056564
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.082617 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.082000 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=8 iHalf=134:
+  Basic Jacobian: -0.168237
+  Odd contrib: -0.661316
+  tau_val = -0.333566
+  GEOMETRY DERIVATIVES:
+    ru12=0.048839 (dR/dtheta avg)
+    zu12=0.048839 (dZ/dtheta avg)
+    rs=3.451908 (dR/ds)
+    zs=0.007189 (dZ/ds)
+    r12=8.706293 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.598420
+    r1[j+1]=8.814165
+    z1[j]=0.045244
+    z1[j+1]=0.045694
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.062691 zuo_o=0.067007 r1o_o=5.059468
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.062075 zuo_i=0.067007 r1o_i=4.934679
+DEBUG TAU CALC kl=7 jH=8 iHalf=135:
+  Basic Jacobian: -0.090781
+  Odd contrib: -0.350136
+  tau_val = -0.178315
+  GEOMETRY DERIVATIVES:
+    ru12=0.063811 (dR/dtheta avg)
+    zu12=0.026432 (dZ/dtheta avg)
+    rs=3.451908 (dR/ds)
+    zs=0.007189 (dZ/ds)
+    r12=8.728700 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.620828
+    r1[j+1]=8.836572
+    z1[j]=0.060217
+    z1[j+1]=0.060666
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.083233 zuo_o=0.036264 r1o_o=5.090211
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.082617 zuo_i=0.036264 r1o_i=4.965422
+DEBUG TAU CALC kl=8 jH=8 iHalf=136:
+  Basic Jacobian: 0.000497
+  Odd contrib: 0.017083
+  tau_val = 0.004767
+  GEOMETRY DERIVATIVES:
+    ru12=0.069069 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.451908 (dR/ds)
+    zs=0.007189 (dZ/ds)
+    r12=8.755132 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=8.647260
+    r1[j+1]=8.863004
+    z1[j]=0.065474
+    z1[j+1]=0.065924
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.090447 zuo_o=0.000000 r1o_o=5.126475
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.089830 zuo_i=0.000000 r1o_i=5.001686
+DEBUG TAU CALC kl=9 jH=8 iHalf=137:
+  Basic Jacobian: 0.000459
+  Odd contrib: 0.017150
+  tau_val = 0.004746
+  GEOMETRY DERIVATIVES:
+    ru12=0.063811 (dR/dtheta avg)
+    zu12=-0.026432 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.007189 (dZ/ds)
+    r12=0.026432 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.026432
+    r1[j+1]=0.026432
+    z1[j]=0.060217
+    z1[j+1]=0.060666
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.083233 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.082617 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=9 iHalf=150:
+  Basic Jacobian: -0.182134
+  Odd contrib: -0.677957
+  tau_val = -0.351624
+  GEOMETRY DERIVATIVES:
+    ru12=0.051632 (dR/dtheta avg)
+    zu12=0.051632 (dZ/dtheta avg)
+    rs=3.535133 (dR/ds)
+    zs=0.007601 (dZ/ds)
+    r12=9.135530 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.025057
+    r1[j+1]=9.246003
+    z1[j]=0.048307
+    z1[j+1]=0.048782
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.063308 zuo_o=0.067007 r1o_o=5.184258
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.062691 zuo_i=0.067007 r1o_i=5.059468
+DEBUG TAU CALC kl=7 jH=9 iHalf=151:
+  Basic Jacobian: -0.098270
+  Odd contrib: -0.359079
+  tau_val = -0.188040
+  GEOMETRY DERIVATIVES:
+    ru12=0.067461 (dR/dtheta avg)
+    zu12=0.027943 (dZ/dtheta avg)
+    rs=3.535133 (dR/ds)
+    zs=0.007601 (dZ/ds)
+    r12=9.159219 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.048746
+    r1[j+1]=9.269692
+    z1[j]=0.064135
+    z1[j+1]=0.064611
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.083850 zuo_o=0.036264 r1o_o=5.215001
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.083233 zuo_i=0.036264 r1o_i=5.090211
+DEBUG TAU CALC kl=8 jH=9 iHalf=152:
+  Basic Jacobian: 0.000555
+  Odd contrib: 0.017200
+  tau_val = 0.004855
+  GEOMETRY DERIVATIVES:
+    ru12=0.073019 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.535133 (dR/ds)
+    zs=0.007601 (dZ/ds)
+    r12=9.187163 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.076690
+    r1[j+1]=9.297635
+    z1[j]=0.069694
+    z1[j+1]=0.070169
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.091063 zuo_o=0.000000 r1o_o=5.251264
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.090447 zuo_i=0.000000 r1o_i=5.126475
+DEBUG TAU CALC kl=9 jH=9 iHalf=153:
+  Basic Jacobian: 0.000513
+  Odd contrib: 0.017258
+  tau_val = 0.004827
+  GEOMETRY DERIVATIVES:
+    ru12=0.067461 (dR/dtheta avg)
+    zu12=-0.027943 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.007601 (dZ/ds)
+    r12=0.027943 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.027943
+    r1[j+1]=0.027943
+    z1[j]=0.064135
+    z1[j+1]=0.064611
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.083850 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.083233 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=10 iHalf=166:
+  Basic Jacobian: -0.195745
+  Odd contrib: -0.694598
+  tau_val = -0.369394
+  GEOMETRY DERIVATIVES:
+    ru12=0.054282 (dR/dtheta avg)
+    zu12=0.054282 (dZ/dtheta avg)
+    rs=3.614082 (dR/ds)
+    zs=0.007991 (dZ/ds)
+    r12=9.563933 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.450993
+    r1[j+1]=9.676873
+    z1[j]=0.051285
+    z1[j+1]=0.051785
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.063924 zuo_o=0.067007 r1o_o=5.309047
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.063308 zuo_i=0.067007 r1o_i=5.184258
+DEBUG TAU CALC kl=7 jH=10 iHalf=167:
+  Basic Jacobian: -0.105604
+  Odd contrib: -0.368021
+  tau_val = -0.197610
+  GEOMETRY DERIVATIVES:
+    ru12=0.070922 (dR/dtheta avg)
+    zu12=0.029377 (dZ/dtheta avg)
+    rs=3.614082 (dR/ds)
+    zs=0.007991 (dZ/ds)
+    r12=9.588838 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.475898
+    r1[j+1]=9.701778
+    z1[j]=0.067926
+    z1[j+1]=0.068425
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.084466 zuo_o=0.036264 r1o_o=5.339790
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.083850 zuo_i=0.036264 r1o_i=5.215001
+DEBUG TAU CALC kl=8 jH=10 iHalf=168:
+  Basic Jacobian: 0.000613
+  Odd contrib: 0.017317
+  tau_val = 0.004943
+  GEOMETRY DERIVATIVES:
+    ru12=0.076766 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.614082 (dR/ds)
+    zs=0.007991 (dZ/ds)
+    r12=9.618215 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.505275
+    r1[j+1]=9.731155
+    z1[j]=0.073769
+    z1[j+1]=0.074269
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.091680 zuo_o=0.000000 r1o_o=5.376054
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.091063 zuo_i=0.000000 r1o_i=5.251264
+DEBUG TAU CALC kl=9 jH=10 iHalf=169:
+  Basic Jacobian: 0.000567
+  Odd contrib: 0.017366
+  tau_val = 0.004908
+  GEOMETRY DERIVATIVES:
+    ru12=0.070922 (dR/dtheta avg)
+    zu12=-0.029377 (dZ/dtheta avg)
+    rs=-0.000000 (dR/ds)
+    zs=0.007991 (dZ/ds)
+    r12=0.029377 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.029377
+    r1[j+1]=0.029377
+    z1[j]=0.067926
+    z1[j+1]=0.068425
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.084466 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.083850 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=11 iHalf=182:
+  Basic Jacobian: -0.209109
+  Odd contrib: -0.711238
+  tau_val = -0.386918
+  GEOMETRY DERIVATIVES:
+    ru12=0.056808 (dR/dtheta avg)
+    zu12=0.056808 (dZ/dtheta avg)
+    rs=3.689352 (dR/ds)
+    zs=0.008362 (dZ/ds)
+    r12=9.992309 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.877017
+    r1[j+1]=10.107602
+    z1[j]=0.054195
+    z1[j+1]=0.054717
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.064541 zuo_o=0.067007 r1o_o=5.433836
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.063924 zuo_i=0.067007 r1o_i=5.309047
+DEBUG TAU CALC kl=7 jH=11 iHalf=183:
+  Basic Jacobian: -0.112805
+  Odd contrib: -0.376964
+  tau_val = -0.207046
+  GEOMETRY DERIVATIVES:
+    ru12=0.074223 (dR/dtheta avg)
+    zu12=0.030744 (dZ/dtheta avg)
+    rs=3.689352 (dR/ds)
+    zs=0.008362 (dZ/ds)
+    r12=10.018373 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.903081
+    r1[j+1]=10.133665
+    z1[j]=0.071610
+    z1[j+1]=0.072132
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.085083 zuo_o=0.036264 r1o_o=5.464579
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.084466 zuo_i=0.036264 r1o_i=5.339790
+DEBUG TAU CALC kl=8 jH=11 iHalf=184:
+  Basic Jacobian: 0.000672
+  Odd contrib: 0.017434
+  tau_val = 0.005030
+  GEOMETRY DERIVATIVES:
+    ru12=0.080338 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.689352 (dR/ds)
+    zs=0.008362 (dZ/ds)
+    r12=10.049117 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=9.933825
+    r1[j+1]=10.164409
+    z1[j]=0.077725
+    z1[j+1]=0.078248
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.092296 zuo_o=0.000000 r1o_o=5.500843
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.091680 zuo_i=0.000000 r1o_i=5.376054
+DEBUG TAU CALC kl=9 jH=11 iHalf=185:
+  Basic Jacobian: 0.000621
+  Odd contrib: 0.017474
+  tau_val = 0.004989
+  GEOMETRY DERIVATIVES:
+    ru12=0.074223 (dR/dtheta avg)
+    zu12=-0.030744 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.008362 (dZ/ds)
+    r12=0.030744 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.030744
+    r1[j+1]=0.030744
+    z1[j]=0.071610
+    z1[j+1]=0.072132
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.085083 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.084466 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=12 iHalf=198:
+  Basic Jacobian: -0.222258
+  Odd contrib: -0.727879
+  tau_val = -0.404228
+  GEOMETRY DERIVATIVES:
+    ru12=0.059226 (dR/dtheta avg)
+    zu12=0.059226 (dZ/dtheta avg)
+    rs=3.761415 (dR/ds)
+    zs=0.008718 (dZ/ds)
+    r12=10.421265 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.303721
+    r1[j+1]=10.538809
+    z1[j]=0.057047
+    z1[j+1]=0.057592
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.065157 zuo_o=0.067007 r1o_o=5.558625
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.064541 zuo_i=0.067007 r1o_i=5.433836
+DEBUG TAU CALC kl=7 jH=12 iHalf=199:
+  Basic Jacobian: -0.119890
+  Odd contrib: -0.385907
+  tau_val = -0.216367
+  GEOMETRY DERIVATIVES:
+    ru12=0.077383 (dR/dtheta avg)
+    zu12=0.032053 (dZ/dtheta avg)
+    rs=3.761415 (dR/ds)
+    zs=0.008718 (dZ/ds)
+    r12=10.448438 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.330894
+    r1[j+1]=10.565983
+    z1[j]=0.075203
+    z1[j+1]=0.075748
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.085699 zuo_o=0.036264 r1o_o=5.589368
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.085083 zuo_i=0.036264 r1o_i=5.464579
+DEBUG TAU CALC kl=8 jH=12 iHalf=200:
+  Basic Jacobian: 0.000730
+  Odd contrib: 0.017551
+  tau_val = 0.005118
+  GEOMETRY DERIVATIVES:
+    ru12=0.083759 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.761415 (dR/ds)
+    zs=0.008718 (dZ/ds)
+    r12=10.480491 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.362947
+    r1[j+1]=10.598036
+    z1[j]=0.081579
+    z1[j+1]=0.082124
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.092912 zuo_o=0.000000 r1o_o=5.625632
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.092296 zuo_i=0.000000 r1o_i=5.500843
+DEBUG TAU CALC kl=9 jH=12 iHalf=201:
+  Basic Jacobian: 0.000675
+  Odd contrib: 0.017582
+  tau_val = 0.005070
+  GEOMETRY DERIVATIVES:
+    ru12=0.077383 (dR/dtheta avg)
+    zu12=-0.032053 (dZ/dtheta avg)
+    rs=-0.000000 (dR/ds)
+    zs=0.008718 (dZ/ds)
+    r12=0.032053 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.032053
+    r1[j+1]=0.032053
+    z1[j]=0.075203
+    z1[j+1]=0.075748
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.085699 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.085083 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=13 iHalf=214:
+  Basic Jacobian: -0.235218
+  Odd contrib: -0.744520
+  tau_val = -0.421348
+  GEOMETRY DERIVATIVES:
+    ru12=0.061550 (dR/dtheta avg)
+    zu12=0.061550 (dZ/dtheta avg)
+    rs=3.830648 (dR/ds)
+    zs=0.009061 (dZ/ds)
+    r12=10.851263 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.731556
+    r1[j+1]=10.970971
+    z1[j]=0.059851
+    z1[j+1]=0.060417
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.065774 zuo_o=0.067007 r1o_o=5.683415
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.065157 zuo_i=0.067007 r1o_i=5.558625
+DEBUG TAU CALC kl=7 jH=13 iHalf=215:
+  Basic Jacobian: -0.126872
+  Odd contrib: -0.394849
+  tau_val = -0.225584
+  GEOMETRY DERIVATIVES:
+    ru12=0.080419 (dR/dtheta avg)
+    zu12=0.033310 (dZ/dtheta avg)
+    rs=3.830648 (dR/ds)
+    zs=0.009061 (dZ/ds)
+    r12=10.879503 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.759795
+    r1[j+1]=10.999210
+    z1[j]=0.078720
+    z1[j+1]=0.079286
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.086316 zuo_o=0.036264 r1o_o=5.714158
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.085699 zuo_i=0.036264 r1o_i=5.589368
+DEBUG TAU CALC kl=8 jH=13 iHalf=216:
+  Basic Jacobian: 0.000789
+  Odd contrib: 0.017668
+  tau_val = 0.005206
+  GEOMETRY DERIVATIVES:
+    ru12=0.087044 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.830648 (dR/ds)
+    zs=0.009061 (dZ/ds)
+    r12=10.912813 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=10.793105
+    r1[j+1]=11.032521
+    z1[j]=0.085346
+    z1[j+1]=0.085912
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.093529 zuo_o=0.000000 r1o_o=5.750421
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.092912 zuo_i=0.000000 r1o_i=5.625632
+DEBUG TAU CALC kl=9 jH=13 iHalf=217:
+  Basic Jacobian: 0.000729
+  Odd contrib: 0.017690
+  tau_val = 0.005151
+  GEOMETRY DERIVATIVES:
+    ru12=0.080419 (dR/dtheta avg)
+    zu12=-0.033310 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.009061 (dZ/ds)
+    r12=0.033310 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.033310
+    r1[j+1]=0.033310
+    z1[j]=0.078720
+    z1[j+1]=0.079286
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.086316 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.085699 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=14 iHalf=230:
+  Basic Jacobian: -0.248008
+  Odd contrib: -0.761161
+  tau_val = -0.438298
+  GEOMETRY DERIVATIVES:
+    ru12=0.063789 (dR/dtheta avg)
+    zu12=0.063789 (dZ/dtheta avg)
+    rs=3.897362 (dR/ds)
+    zs=0.009390 (dZ/ds)
+    r12=11.282664 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.160871
+    r1[j+1]=11.404456
+    z1[j]=0.062615
+    z1[j+1]=0.063202
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.066390 zuo_o=0.067007 r1o_o=5.808204
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.065774 zuo_i=0.067007 r1o_i=5.683415
+DEBUG TAU CALC kl=7 jH=14 iHalf=231:
+  Basic Jacobian: -0.133763
+  Odd contrib: -0.403792
+  tau_val = -0.234711
+  GEOMETRY DERIVATIVES:
+    ru12=0.083344 (dR/dtheta avg)
+    zu12=0.034522 (dZ/dtheta avg)
+    rs=3.897362 (dR/ds)
+    zs=0.009390 (dZ/ds)
+    r12=11.311930 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.190138
+    r1[j+1]=11.433723
+    z1[j]=0.082170
+    z1[j+1]=0.082757
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.086932 zuo_o=0.036264 r1o_o=5.838947
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.086316 zuo_i=0.036264 r1o_i=5.714158
+DEBUG TAU CALC kl=8 jH=14 iHalf=232:
+  Basic Jacobian: 0.000847
+  Odd contrib: 0.017784
+  tau_val = 0.005293
+  GEOMETRY DERIVATIVES:
+    ru12=0.090211 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.897362 (dR/ds)
+    zs=0.009390 (dZ/ds)
+    r12=11.346452 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.224660
+    r1[j+1]=11.468245
+    z1[j]=0.089037
+    z1[j+1]=0.089624
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094145 zuo_o=0.000000 r1o_o=5.875211
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.093529 zuo_i=0.000000 r1o_i=5.750421
+DEBUG TAU CALC kl=9 jH=14 iHalf=233:
+  Basic Jacobian: 0.000783
+  Odd contrib: 0.017798
+  tau_val = 0.005232
+  GEOMETRY DERIVATIVES:
+    ru12=0.083344 (dR/dtheta avg)
+    zu12=-0.034522 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.009390 (dZ/ds)
+    r12=0.034522 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.034522
+    r1[j+1]=0.034522
+    z1[j]=0.082170
+    z1[j+1]=0.082757
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.086932 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.086316 zuo_i=-0.036264 r1o_i=0.036264
+DEBUG TAU CALC kl=6 jH=15 iHalf=246:
+  Basic Jacobian: -0.260647
+  Odd contrib: -0.777802
+  tau_val = -0.455098
+  GEOMETRY DERIVATIVES:
+    ru12=0.065952 (dR/dtheta avg)
+    zu12=0.065952 (dZ/dtheta avg)
+    rs=3.961811 (dR/ds)
+    zs=0.009708 (dZ/ds)
+    r12=11.715748 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.591941
+    r1[j+1]=11.839554
+    z1[j]=0.065345
+    z1[j+1]=0.065952
+  ODD COMPONENTS: ruo_o=0.067007 z1o_o=0.067007 zuo_o=0.067007 r1o_o=5.932993
+  m_ls_ odd: ruo_i=0.067007 z1o_i=0.066390 zuo_i=0.067007 r1o_i=5.808204
+DEBUG TAU CALC kl=7 jH=15 iHalf=247:
+  Basic Jacobian: -0.140571
+  Odd contrib: -0.412735
+  tau_val = -0.243755
+  GEOMETRY DERIVATIVES:
+    ru12=0.086170 (dR/dtheta avg)
+    zu12=0.035693 (dZ/dtheta avg)
+    rs=3.961811 (dR/ds)
+    zs=0.009708 (dZ/ds)
+    r12=11.746007 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.622200
+    r1[j+1]=11.869813
+    z1[j]=0.085563
+    z1[j+1]=0.086170
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=0.036264 r1o_o=5.963736
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.086932 zuo_i=0.036264 r1o_i=5.838947
+DEBUG TAU CALC kl=8 jH=15 iHalf=248:
+  Basic Jacobian: 0.000906
+  Odd contrib: 0.017901
+  tau_val = 0.005381
+  GEOMETRY DERIVATIVES:
+    ru12=0.093270 (dR/dtheta avg)
+    zu12=0.000000 (dZ/dtheta avg)
+    rs=3.961811 (dR/ds)
+    zs=0.009708 (dZ/ds)
+    r12=11.781699 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=11.657893
+    r1[j+1]=11.905506
+    z1[j]=0.092663
+    z1[j+1]=0.093270
+  ODD COMPONENTS: ruo_o=0.094762 z1o_o=0.094762 zuo_o=0.000000 r1o_o=6.000000
+  m_ls_ odd: ruo_i=0.094762 z1o_i=0.094145 zuo_i=0.000000 r1o_i=5.875211
+DEBUG TAU CALC kl=9 jH=15 iHalf=249:
+  Basic Jacobian: 0.000837
+  Odd contrib: 0.017906
+  tau_val = 0.005313
+  GEOMETRY DERIVATIVES:
+    ru12=0.086170 (dR/dtheta avg)
+    zu12=-0.035693 (dZ/dtheta avg)
+    rs=0.000000 (dR/ds)
+    zs=0.009708 (dZ/ds)
+    r12=0.035693 (R at half-grid)
+    deltaS=0.062500 (grid spacing)
+  FULL GRID VALUES:
+    r1[j]=0.035693
+    r1[j+1]=0.035693
+    z1[j]=0.085563
+    z1[j+1]=0.086170
+  ODD COMPONENTS: ruo_o=0.087549 z1o_o=0.087549 zuo_o=-0.036264 r1o_o=0.036264
+  m_ls_ odd: ruo_i=0.087549 z1o_i=0.086932 zuo_i=-0.036264 r1o_i=0.036264
+
+DEBUG JACOBIAN CHECK:
+  Final minTau=-1.387711, maxTau=1.311029
+  minTau * maxTau = -1.819330
+  localBadJacobian = 1 (condition: < 0.0)
+  Range spans: BOTH sides of zero
+
+============================================================
+VMEC++ EXECUTION COMPLETED
+============================================================
+❌ VMEC++ failed to converge
+Error: INTERNAL: Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.
+
+=== DEBUG OUTPUT CAPTURE COMPLETE ===
+Review the debug output above for:
+1. Array bounds debugging
+2. Tau calculation components (tau1, tau2, odd_contrib)
+3. Geometry derivatives (ru12, zu12, rs, zs)
+4. Min/max tau values and Jacobian check
+5. Any non-finite values or errors

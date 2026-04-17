@@ -1,0 +1,10 @@
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+F0000 00:00:1753266345.331330 3171756 vmec_standalone.cc:29] Check failed: indata_json is OK (NOT_FOUND: File solovev.json not found.) Could not read input file 'solovev.json': NOT_FOUND: File solovev.json not found.
+*** Check failure stack trace: ***
+    @     0x563474a8ffe1  absl::lts_20230802::log_internal::LogMessage::SendToLog()
+    @     0x563474a905d9  absl::lts_20230802::log_internal::LogMessageFatal::~LogMessageFatal()
+    @     0x56347495462c  main.cold
+    @     0x7fb949a376b5  (unknown)
+    @     0x7fb949a37769  __libc_start_main
+    @     0x56347496f775  _start
+timeout: the monitored command dumped core
