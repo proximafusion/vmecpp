@@ -98,15 +98,17 @@ def compute_bad_curvature(
     ns = wout.ns
     j_lo = max(1, surface_index - 1)
     j_hi = min(ns - 1, surface_index + 1)
-    # Spacing in s between the two neighboring half-grid surfaces
-    ds = (j_hi - j_lo) / (ns - 1)
+    # Actual s-coordinate distance between the two surfaces used for differencing.
+    # For interior points j_hi - j_lo = 2 (centered), for boundary points it is 1
+    # (one-sided).  Dividing by delta_s handles both cases correctly.
+    delta_s = (j_hi - j_lo) / (ns - 1)
 
     b_lo = reconstruct_b_on_surface(wout, j_lo, grid_theta, grid_phi)
     b_hi = reconstruct_b_on_surface(wout, j_hi, grid_theta, grid_phi)
     b_mid = reconstruct_b_on_surface(wout, surface_index, grid_theta, grid_phi)
 
     # kappa_n = -d(ln B)/ds = -(dB/ds) / B
-    kappa_n = -(b_hi - b_lo) / (2.0 * ds * b_mid)
+    kappa_n = -(b_hi - b_lo) / (delta_s * b_mid)
     return kappa_n
 
 
@@ -140,7 +142,7 @@ if __name__ == "__main__":
 
     # --- Panel 1: |B| ---
     im0 = axes[0].pcolormesh(phi_deg, theta_deg, b, cmap="plasma", shading="auto")
-    fig.colorbar(im0, ax=axes[0], label="|B| / T")
+    fig.colorbar(im0, ax=axes[0], label="|B| (VMEC output units)")
     b_levels = np.linspace(b.min(), b.max(), 10)
     axes[0].contour(
         phi_deg,
