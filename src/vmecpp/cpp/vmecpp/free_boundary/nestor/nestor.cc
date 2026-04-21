@@ -126,7 +126,6 @@ bool Nestor::update(
 
   // thread-local tangential grid point range
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  const int numLocal = tp_.ztMax - tp_.ztMin;
 
   potU.setZero();
   potV.setZero();
