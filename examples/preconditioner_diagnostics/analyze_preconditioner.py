@@ -47,27 +47,36 @@ except ImportError:
 
 # Physics-based constants for the preconditioner
 # These values are derived from the VMEC algorithm and documented in the codebase
+# See src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.cc for reference
 
 # Scaling factors for the poloidal and toroidal mode contributions
 # These empirical values come from the relative importance of m^2 and n^2 terms
-# in the MHD force balance equations
+# in the MHD force balance equations (simplified approximation of VMEC's treatment)
 POLOIDAL_MODE_SCALING = 0.1  # Scaling for m^2 (poloidal) contribution
 TOROIDAL_MODE_SCALING = 0.05  # Scaling for n^2 (toroidal) contribution
 
 # Edge pedestal: small increase at LCFS to prevent zero eigenvalues
 # This is particularly important for free-boundary cases with Neumann conditions
+# See assembleRZPreconditioner() in ideal_mhd_model.cc, line ~3195
 EDGE_PEDESTAL_FACTOR = 0.05  # 5% increase at LCFS for numerical stability
 
 # Damping threshold for high-m modes (m > 16)
 # Modes with m > 16 are damped to improve numerical stability
-M_DAMPING_THRESHOLD_SQ = 16.0 * 16.0  # = 256, threshold for high-m mode damping
+# See updateLambdaPreconditioner() in ideal_mhd_model.cc, line ~2666
+M_DAMPING_THRESHOLD = 16  # Modes above this threshold are damped
+M_DAMPING_THRESHOLD_SQ = float(M_DAMPING_THRESHOLD * M_DAMPING_THRESHOLD)  # = 256
 
 # Lambda preconditioner parameters from VMEC
+# See updateLambdaPreconditioner() in ideal_mhd_model.cc
 DAMPING_FACTOR_LAMBDA = 2.0  # Damping factor for lambda preconditioner
 LAMSCALE_DEFAULT = 1.0  # Default lambda scaling factor
 
 # VMEC's pressure factor for radial preconditioner
+# See computePreconditioningMatrix() in ideal_mhd_model.cc, line ~2691
 P_FACTOR_RADIAL = -4.0  # Multiplier in radial preconditioner computation
+
+# Valid scaling methods for diagonal preconditioning analysis
+VALID_SCALING_METHODS = ("row", "col", "diag", "symmetric")
 
 
 @dataclass
@@ -196,8 +205,7 @@ def diagonal_scaling_from_matrix(
         col_norms = np.array([linalg.norm(matrix[:, j], ord=1) for j in range(n)])
         scale = np.sqrt(row_norms * col_norms)
     else:
-        valid_methods = ["row", "col", "diag", "symmetric"]
-        msg = f"Unknown scaling method: {method}. Valid methods are: {', '.join(valid_methods)}"
+        msg = f"Unknown scaling method: {method}. Valid methods are: {', '.join(VALID_SCALING_METHODS)}"
         raise ValueError(msg)
 
     # Avoid division by zero
@@ -259,9 +267,7 @@ def analyze_tridiagonal_preconditioning(
     }
 
     # Test different diagonal preconditioning strategies
-    strategies = ["row", "col", "diag", "symmetric"]
-
-    for strategy in strategies:
+    for strategy in VALID_SCALING_METHODS:
         scale = diagonal_scaling_from_matrix(dense, method=strategy)
         # Apply as left-right symmetric scaling
         precond = apply_diagonal_preconditioning(dense, scale, scale)
@@ -276,7 +282,7 @@ def analyze_tridiagonal_preconditioning(
 
     # Find the best strategy
     best_strategy = min(
-        strategies,
+        VALID_SCALING_METHODS,
         key=lambda s: results["scaling_strategies"][s]["condition_number"],
     )
     results["best_strategy"] = best_strategy
@@ -583,9 +589,8 @@ def generate_diagnostic_plots(
 
     # 4. Preconditioning improvement analysis
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    strategies = ["row", "col", "diag", "symmetric"]
 
-    for idx, strategy in enumerate(strategies):
+    for idx, strategy in enumerate(VALID_SCALING_METHODS):
         ax = axes.flat[idx]
 
         improvement = np.zeros((diagnostics.mpol, diagnostics.ntor + 1))
