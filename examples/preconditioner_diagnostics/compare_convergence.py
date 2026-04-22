@@ -83,15 +83,15 @@ def run_test_case(input_file: Path, verbose: bool = False) -> dict:
 def format_results(results: list[dict]) -> str:
     """Format results as a markdown table."""
     lines = [
-        "| Test Case | Iterations | Final FSQR | Final FSQZ | Final FSQL | Converged |",
-        "|-----------|------------|------------|------------|------------|-----------|",
+        "| Test Case | Iterations | Final FSQR | Final FSQZ | Final FSQL | Jacobian Resets | Converged |",
+        "|-----------|------------|------------|------------|------------|-----------------|-----------|",
     ]
 
     for r in results:
         converged = "Yes" if r["converged"] else "No"
         lines.append(
             f"| {r['input_file']} | {r['itfsq']} | {r['fsqr']:.2e} | "
-            f"{r['fsqz']:.2e} | {r['fsql']:.2e} | {converged} |"
+            f"{r['fsqz']:.2e} | {r['fsql']:.2e} | {r['jacobian_resets']} | {converged} |"
         )
 
     return "\n".join(lines)

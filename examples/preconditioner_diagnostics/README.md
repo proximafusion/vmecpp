@@ -152,7 +152,7 @@ Testing on standard VMEC++ test cases showed **no improvement** in convergence:
 |-----------|----------------------|----------------------------------|
 | W7X       | 2961                 | 2961                             |
 | CTH-like  | 3025                 | 3025                             |
-| Solovev   | ~900                 | ~900                             |
+| Solovev   | 903                  | 903                              |
 
 ### Explanation
 

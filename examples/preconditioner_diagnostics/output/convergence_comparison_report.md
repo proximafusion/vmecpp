@@ -8,11 +8,11 @@ on the radial tridiagonal solver.
 
 ## Test Results
 
-| Test Case | Iterations | Final FSQR | Final FSQZ | Final FSQL | Converged |
-|-----------|------------|------------|------------|------------|-----------|
-| w7x.json | 2961 | 9.92e-13 | 2.20e-13 | 2.24e-13 | Yes |
-| cth_like_fixed_bdy.json | 3025 | 9.79e-21 | 1.76e-21 | 5.84e-21 | Yes |
-| solovev.json | 903 | 9.58e-17 | 4.27e-18 | 5.05e-22 | Yes |
+| Test Case | Iterations | Final FSQR | Final FSQZ | Final FSQL | Jacobian Resets | Converged |
+|-----------|------------|------------|------------|------------|-----------------|-----------|
+| w7x.json | 2961 | 9.92e-13 | 2.20e-13 | 2.24e-13 | 5 | Yes |
+| cth_like_fixed_bdy.json | 3025 | 9.78e-21 | 1.75e-21 | 5.84e-21 | 0 | Yes |
+| solovev.json | 903 | 9.58e-17 | 4.27e-18 | 5.06e-22 | 0 | Yes |
 
 ## Analysis
 
