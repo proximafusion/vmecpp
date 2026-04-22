@@ -3151,12 +3151,27 @@ void IdealMhdModel::assembleRZPreconditioner() {
           }
 
           // diagonal: jF-th forces full-grid pos
-          dr[idx_mn] = -(ard[(jF - r_.nsMinF) * 2 + m_parity] +
-                         brd[(jF - r_.nsMinF) * 2 + m_parity] * m * m +
-                         cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp);
-          dz[idx_mn] = -(azd[(jF - r_.nsMinF) * 2 + m_parity] +
-                         bzd[(jF - r_.nsMinF) * 2 + m_parity] * m * m +
-                         cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp);
+          // Candidate (b): add a field-line-bending stiffness term
+          //   (m * iota - n * nfp)^2
+          // scaled by cxd. The existing m^2 and (n*nfp)^2 terms are
+          // independent poloidal and toroidal second derivatives; they miss
+          // the cross term that captures stiffness along the actual field
+          // line. For W7-X (iota ~ 1, nfp = 5) this term is dominated by
+          // the (n * nfp)^2 part but non-trivially shifts low-(m, n) modes.
+          const double iota_jF =
+              (jF - r_.nsMinF1 < static_cast<int>(m_p_.iotaF.size()))
+                  ? m_p_.iotaF[jF - r_.nsMinF1]
+                  : 0.0;
+          const double k_par = m * iota_jF - n * s_.nfp;
+          const double shear_stiff = cxd[jF - r_.nsMinF] * k_par * k_par;
+          dr[idx_mn] =
+              -(ard[(jF - r_.nsMinF) * 2 + m_parity] +
+                brd[(jF - r_.nsMinF) * 2 + m_parity] * m * m +
+                cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp + shear_stiff);
+          dz[idx_mn] =
+              -(azd[(jF - r_.nsMinF) * 2 + m_parity] +
+                bzd[(jF - r_.nsMinF) * 2 + m_parity] * m * m +
+                cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp + shear_stiff);
 
           // sub-diagonal: half-grid pos inside jF-th forces full-grid point
           if (jF > 0) {
