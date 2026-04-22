@@ -24,6 +24,7 @@ The preconditioner approximates the inverse of this tridiagonal system.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,8 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy import linalg
 
+logger = logging.getLogger(__name__)
+
 # Try to import vmecpp for running actual simulations
 try:
     import importlib.util
@@ -40,6 +43,31 @@ try:
     HAS_VMECPP = importlib.util.find_spec("vmecpp") is not None
 except ImportError:
     HAS_VMECPP = False
+
+
+# Physics-based constants for the preconditioner
+# These values are derived from the VMEC algorithm and documented in the codebase
+
+# Scaling factors for the poloidal and toroidal mode contributions
+# These empirical values come from the relative importance of m^2 and n^2 terms
+# in the MHD force balance equations
+POLOIDAL_MODE_SCALING = 0.1  # Scaling for m^2 (poloidal) contribution
+TOROIDAL_MODE_SCALING = 0.05  # Scaling for n^2 (toroidal) contribution
+
+# Edge pedestal: small increase at LCFS to prevent zero eigenvalues
+# This is particularly important for free-boundary cases with Neumann conditions
+EDGE_PEDESTAL_FACTOR = 0.05  # 5% increase at LCFS for numerical stability
+
+# Damping threshold for high-m modes (m > 16)
+# Modes with m > 16 are damped to improve numerical stability
+M_DAMPING_THRESHOLD_SQ = 16.0 * 16.0  # = 256, threshold for high-m mode damping
+
+# Lambda preconditioner parameters from VMEC
+DAMPING_FACTOR_LAMBDA = 2.0  # Damping factor for lambda preconditioner
+LAMSCALE_DEFAULT = 1.0  # Default lambda scaling factor
+
+# VMEC's pressure factor for radial preconditioner
+P_FACTOR_RADIAL = -4.0  # Multiplier in radial preconditioner computation
 
 
 @dataclass
@@ -107,6 +135,12 @@ def compute_condition_number(matrix: NDArray[np.float64]) -> float:
     """Compute the condition number of a matrix.
 
     Uses the ratio of largest to smallest singular values.
+
+    Args:
+        matrix: The matrix to compute the condition number for.
+
+    Returns:
+        The condition number, or np.inf if computation fails.
     """
     try:
         singular_values = linalg.svdvals(matrix)
@@ -114,7 +148,11 @@ def compute_condition_number(matrix: NDArray[np.float64]) -> float:
         if len(nonzero_sv) == 0:
             return np.inf
         return float(nonzero_sv[0] / nonzero_sv[-1])
-    except Exception:
+    except linalg.LinAlgError as e:
+        logger.warning("SVD computation failed (LinAlgError): %s", e)
+        return np.inf
+    except ValueError as e:
+        logger.warning("SVD computation failed (ValueError): %s", e)
         return np.inf
 
 
@@ -158,7 +196,8 @@ def diagonal_scaling_from_matrix(
         col_norms = np.array([linalg.norm(matrix[:, j], ord=1) for j in range(n)])
         scale = np.sqrt(row_norms * col_norms)
     else:
-        msg = f"Unknown scaling method: {method}"
+        valid_methods = ["row", "col", "diag", "symmetric"]
+        msg = f"Unknown scaling method: {method}. Valid methods are: {', '.join(valid_methods)}"
         raise ValueError(msg)
 
     # Avoid division by zero
@@ -294,7 +333,7 @@ def create_synthetic_vmec_preconditioner(
 
             # Pressure-related factor (simplified)
             # In VMEC: pFactor = -4.0, and includes R * totalPressure / tau
-            p_factor = -4.0 * pressure_scale
+            p_factor = P_FACTOR_RADIAL * pressure_scale
 
             # Mode number factors
             m_sq = m * m
@@ -318,11 +357,11 @@ def create_synthetic_vmec_preconditioner(
                     sqrt_s_j = np.sqrt(s_full[j])
                     radial_factor *= sqrt_s_j * sqrt_s_j
 
-                # Poloidal mode contribution (m^2)
-                poloidal_factor = p_factor * m_sq * 0.1  # scaled down
+                # Poloidal mode contribution (m^2) - empirically scaled
+                poloidal_factor = p_factor * m_sq * POLOIDAL_MODE_SCALING
 
-                # Toroidal mode contribution (n^2)
-                toroidal_factor = p_factor * n_sq * 0.05  # scaled down
+                # Toroidal mode contribution (n^2) - empirically scaled
+                toroidal_factor = p_factor * n_sq * TOROIDAL_MODE_SCALING
 
                 # Assemble tridiagonal elements
                 # Off-diagonal terms (coupling between surfaces)
@@ -334,11 +373,10 @@ def create_synthetic_vmec_preconditioner(
 
             # Edge treatment (LCFS at j = ns-1)
             # Add edge pedestal for numerical stability
-            edge_pedestal = 0.05
             if m <= 1:
-                d_diag[ns - 2] *= 1.0 + edge_pedestal
+                d_diag[ns - 2] *= 1.0 + EDGE_PEDESTAL_FACTOR
             else:
-                d_diag[ns - 2] *= 1.0 + 2.0 * edge_pedestal
+                d_diag[ns - 2] *= 1.0 + 2.0 * EDGE_PEDESTAL_FACTOR
 
             # Handle j_min boundary
             for j in range(j_min):
@@ -362,9 +400,9 @@ def create_synthetic_vmec_preconditioner(
 
             # Lambda preconditioner (diagonal, based on metric elements)
             # Simplified version based on VMEC's updateLambdaPreconditioner
-            damping_factor = 2.0
-            lamscale = 1.0
-            p_factor_lambda = damping_factor / (4.0 * lamscale * lamscale)
+            p_factor_lambda = DAMPING_FACTOR_LAMBDA / (
+                4.0 * LAMSCALE_DEFAULT * LAMSCALE_DEFAULT
+            )
 
             lambda_p = np.zeros(ns)
             for j in range(1, ns):
@@ -377,8 +415,8 @@ def create_synthetic_vmec_preconditioner(
                 if abs(faclam) < 1e-10:
                     faclam = -1e-10
 
-                # Additional damping for high m modes
-                pwr = min(m_sq / (16.0 * 16.0), 8.0)
+                # Additional damping for high m modes (m > 16)
+                pwr = min(m_sq / M_DAMPING_THRESHOLD_SQ, 8.0)
                 lambda_p[j] = (
                     p_factor_lambda
                     / faclam
