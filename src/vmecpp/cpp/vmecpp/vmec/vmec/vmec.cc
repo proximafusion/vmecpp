@@ -1298,6 +1298,21 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
     logger_.LogIteration(iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1,
                          fc_.fsqz1, fc_.fsql1, delt0r, r00, energy, betaVolAvg,
                          volAvgM, delbsq);
+
+    // Spectral-truncation diagnostic: quantifies the fraction of real-space
+    // force energy that falls outside the retained (mpol, ntor) Fourier band
+    // -- i.e., how much of what VMEC++ is integrating cannot be represented
+    // by its own spectral basis. Only the boundary-owning thread reports,
+    // consistent with the surrounding logging.
+    if (m_[thread_id]->IsSpectralDiagnosticEnabled()) {
+      const auto& r = m_[thread_id]->GetLastSpectralTruncationReport();
+      if (r.populated) {
+        std::cout << absl::StrFormat(
+            "SPECTRAL-TRUNC  iter=%-6d  f_R_max_discard=%.3e  "
+            "f_Z_max_discard=%.3e  f_L_max_discard=%.3e\n",
+            iter2, r.r_max_discarded, r.z_max_discarded, r.l_max_discarded);
+      }
+    }
   }  // thread which has boundary
 }
 

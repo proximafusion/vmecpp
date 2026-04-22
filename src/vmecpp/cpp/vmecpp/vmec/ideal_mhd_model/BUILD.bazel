@@ -25,3 +25,19 @@ cc_library(
         "@abseil-cpp//absl/status",
     ],
 )
+
+cc_test(
+    name = "spectral_truncation_test",
+    srcs = ["spectral_truncation_test.cc"],
+    deps = [
+        ":ideal_mhd_model",
+        "//vmecpp/common/flow_control:flow_control",
+        "//vmecpp/common/fourier_basis_fast_poloidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/util:util",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "@abseil-cpp//absl/algorithm:container",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
