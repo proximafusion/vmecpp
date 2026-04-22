@@ -127,3 +127,55 @@ Based on the analysis:
 - Integration with actual VMEC++ runs to extract real matrices
 - Adaptive preconditioning based on mode-dependent analysis
 - Investigation of more sophisticated preconditioners (ILU, multigrid, etc.)
+
+## Experimental Results: Column Scaling Preconditioning
+
+### Background
+
+The analysis above suggested that column scaling (dividing each column by its
+1-norm) could improve the condition number of the tridiagonal preconditioner
+matrices by 5-6x on average.
+
+### Implementation
+
+Column scaling was implemented in the tridiagonal solver by:
+1. Computing the 1-norm of each column
+2. Scaling the matrix elements accordingly
+3. Solving with the Thomas algorithm
+4. Un-scaling the solution
+
+### Results
+
+Testing on standard VMEC++ test cases showed **no improvement** in convergence:
+
+| Test Case | Iterations (baseline) | Iterations (with column scaling) |
+|-----------|----------------------|----------------------------------|
+| W7X       | 2961                 | 2961                             |
+| CTH-like  | 3025                 | 3025                             |
+| Solovev   | ~900                 | ~900                             |
+
+### Explanation
+
+Column scaling in the tridiagonal solver does not affect convergence because:
+
+1. **Numerical stability**: The Thomas algorithm is already numerically stable
+   for well-conditioned tridiagonal systems.
+
+2. **Same mathematical solution**: Column scaling changes the numerical path
+   but not the mathematical solution, so the outer iteration behavior is
+   unchanged.
+
+3. **Well-conditioned matrices**: The actual VMEC preconditioner matrices
+   appear to be better conditioned than the synthetic matrices used in the
+   analysis.
+
+### Conclusion
+
+To improve VMEC++ convergence, more fundamental changes to the preconditioning
+operator would be needed, such as:
+- Mode-dependent scaling in the preconditioner assembly
+- Adaptive time stepping based on convergence rate
+- Improved edge and axis treatment
+
+See `compare_convergence.py` for the testing script and
+`output/convergence_comparison_report.md` for detailed results.
