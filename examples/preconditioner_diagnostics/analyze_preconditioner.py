@@ -36,14 +36,6 @@ from scipy import linalg
 
 logger = logging.getLogger(__name__)
 
-# Try to import vmecpp for running actual simulations
-try:
-    import importlib.util
-
-    HAS_VMECPP = importlib.util.find_spec("vmecpp") is not None
-except ImportError:
-    HAS_VMECPP = False
-
 
 # Physics-based constants for the preconditioner
 # These values are derived from the VMEC algorithm and documented in the codebase
