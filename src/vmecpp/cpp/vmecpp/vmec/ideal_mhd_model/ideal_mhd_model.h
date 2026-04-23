@@ -73,13 +73,12 @@ void deAliasConstraintForce(const RadialPartitioning& rp,
 // Per radial surface, separately for the R, Z, and lambda force components:
 //   discarded_fraction = E_discarded / E_total
 // where E_total is the Parseval sum over the full Nyquist band
-// (0..mnyq, 0..nnyq) and E_discarded is the sum over modes
-// (m >= mpol or |n| > ntor).
-//
-// Only the MHD force block (armn/brmn/azmn/bzmn/blmn/clmn/crmn/czmn) is
-// included; the spectral-condensation terms (frcon/fzcon) are regularizers,
-// not the physics force, and are excluded. 3D symmetric path only (lthreed
-// required, lasym not supported).
+// (0..mnyq, 0..nnyq) and E_kept is the Parseval sum over the retained band
+// (0..mpol-1, 0..ntor). Implementation-wise, E_kept reads the coefficients
+// the production DFT has already scattered into `physical_f_kept`, and
+// E_total is obtained by running that same DFT again on a "wide" Sizes
+// covering the full Nyquist band. 3D symmetric path only (lthreed required,
+// lasym not supported).
 struct SpectralTruncationReport {
   // Per-surface discarded fractions (size nsMaxF - nsMinF). Index is local
   // to the radial partition; global surface index is jF = nsMinF + local.
@@ -97,7 +96,8 @@ struct SpectralTruncationReport {
 };
 
 SpectralTruncationReport ComputeForceSpectralTruncation(
-    const RealSpaceForces& d, const RadialPartitioning& rp,
+    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
+    const FourierForces& physical_f_kept, const RadialPartitioning& rp,
     const FlowControl& fc, const Sizes& s, const FourierBasisFastPoloidal& fb,
     VacuumPressureState vacuum_pressure_state);
 

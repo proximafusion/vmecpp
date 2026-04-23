@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <numbers>
 #include <span>
 #include <vector>
@@ -71,31 +72,74 @@ void HandOverMagneticAxis(vmecpp::HandoverStorage& m_h,
 
 }  // namespace
 
-void vmecpp::ForcesToFourier3DSymmFastPoloidal(
-    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
-    const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
-    const FourierBasisFastPoloidal& fb,
-    VacuumPressureState vacuum_pressure_state,
-    FourierForces& m_physical_forces) {
+namespace {
+
+// A view over the six R/Z/lambda Fourier-force coefficient channels that the
+// 3D symmetric DFT writes into. Decoupled from `FourierForces` so the
+// spectral-truncation diagnostic can scatter into a plain Eigen buffer sized
+// for a wider (mnyq+1, nnyq) band without having to clone Sizes.
+struct FourierForcesSink3DSymm {
+  std::span<double> frcc;
+  std::span<double> frss;
+  std::span<double> fzsc;
+  std::span<double> fzcs;
+  std::span<double> flsc;
+  std::span<double> flcs;
+
+  void SetZero() {
+    std::fill(frcc.begin(), frcc.end(), 0.0);
+    std::fill(frss.begin(), frss.end(), 0.0);
+    std::fill(fzsc.begin(), fzsc.end(), 0.0);
+    std::fill(fzcs.begin(), fzcs.end(), 0.0);
+    std::fill(flsc.begin(), flsc.end(), 0.0);
+    std::fill(flcs.begin(), flcs.end(), 0.0);
+  }
+};
+
+FourierForcesSink3DSymm SinkFrom(vmecpp::FourierForces& f) {
+  return FourierForcesSink3DSymm{
+      .frcc = f.frcc,
+      .frss = f.frss,
+      .fzsc = f.fzsc,
+      .fzcs = f.fzcs,
+      .flsc = f.flsc,
+      .flcs = f.flcs,
+  };
+}
+
+// Shared implementation of the 3D symmetric forces-to-Fourier DFT. The
+// spectral output bounds (`mpol_out` and `ntor_out + 1`) are decoupled from
+// the real-space grid sizes in `s`; this lets the spectral-truncation
+// diagnostic re-use the DFT on a wider band (0..mnyq, 0..nnyq) without
+// cloning Sizes or FourierBasis. `xmpq_out` must have length `mpol_out`;
+// entries beyond the physical mpol contribute no spectral-condensation
+// admixture, matching the narrow call.
+void ForcesToFourier3DSymmFastPoloidalImpl(
+    const vmecpp::RealSpaceForces& d, const Eigen::VectorXd& xmpq_out,
+    const vmecpp::RadialPartitioning& rp, const vmecpp::FlowControl& fc,
+    const vmecpp::Sizes& s, const vmecpp::FourierBasisFastPoloidal& fb,
+    vmecpp::VacuumPressureState vacuum_pressure_state, int mpol_out,
+    int ntor_out, FourierForcesSink3DSymm m_physical_forces) {
   // in here, we can safely assume lthreed == true
 
   // fill target force arrays with zeros
-  m_physical_forces.setZero();
+  m_physical_forces.SetZero();
 
   int jMaxRZ = std::min(rp.nsMaxF, fc.ns - 1);
 
   if (fc.lfreeb &&
-      (vacuum_pressure_state == VacuumPressureState::kInitialized ||
-       vacuum_pressure_state == VacuumPressureState::kActive)) {
+      (vacuum_pressure_state == vmecpp::VacuumPressureState::kInitialized ||
+       vacuum_pressure_state == vmecpp::VacuumPressureState::kActive)) {
     // free-boundary: up to jMaxRZ=ns
     jMaxRZ = std::min(rp.nsMaxF, fc.ns);
   }
 
   // axis lambda stays zero (no contribution from any m)
   const int jMinL = 1;
+  const int ntorp1_out = ntor_out + 1;
 
   for (int jF = rp.nsMinF; jF < jMaxRZ; ++jF) {
-    const int mmax = jF == 0 ? 1 : s.mpol;
+    const int mmax = jF == 0 ? 1 : mpol_out;
     for (int m = 0; m < mmax; ++m) {
       const bool m_even = m % 2 == 0;
 
@@ -156,9 +200,9 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         // contributions. Materialize to avoid re-evaluation in each dot
         // product.
         const Eigen::VectorXd tempR_seg =
-            (armn_seg + xmpq[m] * frcon_seg).eval();
+            (armn_seg + xmpq_out[m] * frcon_seg).eval();
         const Eigen::VectorXd tempZ_seg =
-            (azmn_seg + xmpq[m] * fzcon_seg).eval();
+            (azmn_seg + xmpq_out[m] * fzcon_seg).eval();
 
         double rmkcc = tempR_seg.dot(cosmui_seg) + brmn_seg.dot(sinmumi_seg);
         double rmkss = tempR_seg.dot(sinmui_seg) + brmn_seg.dot(cosmumi_seg);
@@ -166,23 +210,22 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         double zmkcs = tempZ_seg.dot(cosmui_seg) + bzmn_seg.dot(sinmumi_seg);
 
         // Vectorized toroidal scatter: segment ops replace scalar n-loop
-        const int ntorp1 = s.ntor + 1;
-        const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
+        const int idx_mn_base = ((jF - rp.nsMinF) * mpol_out + m) * ntorp1_out;
         const int idx_kn_base = k * (s.nnyq2 + 1);
 
-        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
-        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
-        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
-        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
+        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1_out);
+        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1_out);
+        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1_out);
+        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1_out);
 
         Eigen::Map<Eigen::VectorXd> frcc_seg(
-            m_physical_forces.frcc.data() + idx_mn_base, ntorp1);
+            m_physical_forces.frcc.data() + idx_mn_base, ntorp1_out);
         Eigen::Map<Eigen::VectorXd> frss_seg(
-            m_physical_forces.frss.data() + idx_mn_base, ntorp1);
+            m_physical_forces.frss.data() + idx_mn_base, ntorp1_out);
         Eigen::Map<Eigen::VectorXd> fzsc_seg(
-            m_physical_forces.fzsc.data() + idx_mn_base, ntorp1);
+            m_physical_forces.fzsc.data() + idx_mn_base, ntorp1_out);
         Eigen::Map<Eigen::VectorXd> fzcs_seg(
-            m_physical_forces.fzcs.data() + idx_mn_base, ntorp1);
+            m_physical_forces.fzcs.data() + idx_mn_base, ntorp1_out);
 
         frcc_seg += rmkcc * cosnv_seg + rmkcc_n * sinnvn_seg;
         frss_seg += rmkss * sinnv_seg + rmkss_n * cosnvn_seg;
@@ -191,9 +234,9 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
 
         if (jMinL <= jF) {
           Eigen::Map<Eigen::VectorXd> flsc_seg(
-              m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
+              m_physical_forces.flsc.data() + idx_mn_base, ntorp1_out);
           Eigen::Map<Eigen::VectorXd> flcs_seg(
-              m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
+              m_physical_forces.flcs.data() + idx_mn_base, ntorp1_out);
           flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
           flcs_seg += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
         }
@@ -204,7 +247,7 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
   // repeat the above just for jMaxRZ to nsMaxFIncludingLcfs, just for flsc,
   // flcs
   for (int jF = jMaxRZ; jF < rp.nsMaxFIncludingLcfs; ++jF) {
-    for (int m = 0; m < s.mpol; ++m) {
+    for (int m = 0; m < mpol_out; ++m) {
       const bool m_even = m % 2 == 0;
 
       const auto& blmn = m_even ? d.blmn_e : d.blmn_o;
@@ -231,19 +274,18 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         double lmksc_n = -clmn_seg.dot(sinmui_seg);
 
         // Vectorized toroidal scatter for lambda-only section
-        const int ntorp1 = s.ntor + 1;
-        const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
+        const int idx_mn_base = ((jF - rp.nsMinF) * mpol_out + m) * ntorp1_out;
         const int idx_kn_base = k * (s.nnyq2 + 1);
 
-        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
-        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
-        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
-        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
+        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1_out);
+        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1_out);
+        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1_out);
+        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1_out);
 
         Eigen::Map<Eigen::VectorXd> flsc_seg(
-            m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
+            m_physical_forces.flsc.data() + idx_mn_base, ntorp1_out);
         Eigen::Map<Eigen::VectorXd> flcs_seg(
-            m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
+            m_physical_forces.flcs.data() + idx_mn_base, ntorp1_out);
 
         flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
         flcs_seg += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
@@ -252,20 +294,140 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
   }  // jF
 }
 
+}  // namespace
+
+void vmecpp::ForcesToFourier3DSymmFastPoloidal(
+    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
+    const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
+    const FourierBasisFastPoloidal& fb,
+    VacuumPressureState vacuum_pressure_state,
+    FourierForces& m_physical_forces) {
+  ForcesToFourier3DSymmFastPoloidalImpl(d, xmpq, rp, fc, s, fb,
+                                        vacuum_pressure_state, s.mpol, s.ntor,
+                                        SinkFrom(m_physical_forces));
+}
+
+namespace {
+
+// Per-surface Parseval sum over a block of Fourier force coefficients laid
+// out in row-major (surface, m, n) order with the given `mpol_out` and
+// `ntor_out + 1` spectral bounds. Mirrors the reduction in
+// `FourierForces::residuals` but exposes per-surface values so the
+// spectral-truncation diagnostic can compare a narrow-band sum and a
+// wide-band sum with identical bookkeeping. 3D symmetric path only (so the
+// R channel carries frcc + frss, Z carries fzsc + fzcs, lambda carries
+// flsc + flcs).
+struct PerSurfaceL2 {
+  std::vector<double> r;
+  std::vector<double> z;
+  std::vector<double> l;
+};
+
+PerSurfaceL2 AccumulatePerSurfaceParseval3DSymm(
+    const FourierForcesSink3DSymm& f, const vmecpp::RadialPartitioning& rp,
+    const vmecpp::FlowControl& fc,
+    vmecpp::VacuumPressureState vacuum_pressure_state, int mpol_out,
+    int ntor_out) {
+  const int num_local = rp.nsMaxF - rp.nsMinF;
+  PerSurfaceL2 out{std::vector<double>(num_local, 0.0),
+                   std::vector<double>(num_local, 0.0),
+                   std::vector<double>(num_local, 0.0)};
+
+  int jMaxRZ = std::min(rp.nsMaxF, fc.ns - 1);
+  if (fc.lfreeb &&
+      (vacuum_pressure_state == vmecpp::VacuumPressureState::kInitialized ||
+       vacuum_pressure_state == vmecpp::VacuumPressureState::kActive)) {
+    jMaxRZ = std::min(rp.nsMaxF, fc.ns);
+  }
+  const int ntorp1 = ntor_out + 1;
+  for (int jF = rp.nsMinF; jF < rp.nsMaxF; ++jF) {
+    const int local_j = jF - rp.nsMinF;
+    for (int m = 0; m < mpol_out; ++m) {
+      for (int n = 0; n < ntorp1; ++n) {
+        const int idx_fc = ((jF - rp.nsMinF) * mpol_out + m) * ntorp1 + n;
+        if (jF < jMaxRZ) {
+          out.r[local_j] += f.frcc[idx_fc] * f.frcc[idx_fc];
+          out.r[local_j] += f.frss[idx_fc] * f.frss[idx_fc];
+          out.z[local_j] += f.fzsc[idx_fc] * f.fzsc[idx_fc];
+          out.z[local_j] += f.fzcs[idx_fc] * f.fzcs[idx_fc];
+        }
+        out.l[local_j] += f.flsc[idx_fc] * f.flsc[idx_fc];
+        out.l[local_j] += f.flcs[idx_fc] * f.flcs[idx_fc];
+      }
+    }
+  }
+  return out;
+}
+
+// Stack-scope storage for a wide-band Fourier-force buffer. Keeps the Eigen
+// allocations alive while the diagnostic is running; hands out a sink view
+// that the shared DFT impl can scatter into.
+struct WideFourierForcesStorage {
+  Eigen::VectorXd frcc, frss, fzsc, fzcs, flsc, flcs;
+
+  void Allocate(int size) {
+    frcc.setZero(size);
+    frss.setZero(size);
+    fzsc.setZero(size);
+    fzcs.setZero(size);
+    flsc.setZero(size);
+    flcs.setZero(size);
+  }
+
+  FourierForcesSink3DSymm AsSink() {
+    return FourierForcesSink3DSymm{
+        .frcc = std::span<double>(frcc.data(), frcc.size()),
+        .frss = std::span<double>(frss.data(), frss.size()),
+        .fzsc = std::span<double>(fzsc.data(), fzsc.size()),
+        .fzcs = std::span<double>(fzcs.data(), fzcs.size()),
+        .flsc = std::span<double>(flsc.data(), flsc.size()),
+        .flcs = std::span<double>(flcs.data(), flcs.size()),
+    };
+  }
+};
+
+// Read-only sink view over a FourierForces for the Parseval reduction. The
+// reduction is the only consumer of this view, so the const_cast is safe.
+FourierForcesSink3DSymm ConstSinkFrom(const vmecpp::FourierForces& f) {
+  return FourierForcesSink3DSymm{
+      .frcc =
+          std::span<double>(const_cast<double*>(f.frcc.data()), f.frcc.size()),
+      .frss =
+          std::span<double>(const_cast<double*>(f.frss.data()), f.frss.size()),
+      .fzsc =
+          std::span<double>(const_cast<double*>(f.fzsc.data()), f.fzsc.size()),
+      .fzcs =
+          std::span<double>(const_cast<double*>(f.fzcs.data()), f.fzcs.size()),
+      .flsc =
+          std::span<double>(const_cast<double*>(f.flsc.data()), f.flsc.size()),
+      .flcs =
+          std::span<double>(const_cast<double*>(f.flcs.data()), f.flcs.size()),
+  };
+}
+
+}  // namespace
+
 vmecpp::SpectralTruncationReport vmecpp::ComputeForceSpectralTruncation(
-    const RealSpaceForces& d, const RadialPartitioning& rp,
+    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
+    const FourierForces& physical_f_kept, const RadialPartitioning& rp,
     const FlowControl& fc, const Sizes& s, const FourierBasisFastPoloidal& fb,
     VacuumPressureState vacuum_pressure_state) {
-  // Mirrors ForcesToFourier3DSymmFastPoloidal, but projects the real-space
-  // MHD force onto the full Nyquist band (m in [0, mnyq], n in [0, nnyq])
-  // instead of the retained band (m in [0, mpol-1], n in [0, ntor]). By
-  // Parseval, the sum of squared coefficients over the full band equals the
-  // integration-weighted real-space L2 norm, so comparing the kept-band sum
-  // to the full-band sum quantifies the fraction of force energy that the
-  // production DFT silently discards.
+  // Quantify how much real-space force L2 energy the production DFT silently
+  // discards when projecting onto the retained (mpol, ntor) band.
   //
-  // Intentionally excluded: spectral-condensation terms (xmpq * frcon /
-  // fzcon) -- these are a regularizer and not the physics force residual.
+  // Strategy: re-use the shared `ForcesToFourier3DSymmFastPoloidalImpl` but
+  // with wider spectral bounds (0..mnyq poloidal, 0..nnyq toroidal) -- the
+  // full band the real-space grid can represent by Parseval. The narrow
+  // (production) and wide projections share the same real-space forces `d`,
+  // the same basis arrays `fb`, and the same radial partition `rp`; only
+  // the output bounds differ. E_total is a Parseval sum over the wide
+  // output; E_kept is a Parseval sum over the already-computed
+  // `physical_f_kept` output.
+  //
+  // `xmpq` is zero-extended to the wide mpol. Spectral-condensation is only
+  // defined for m in [0, s.mpol), so leaving the tail at zero keeps the
+  // wide-band output physically consistent with the narrow one on the
+  // shared low-m block.
 
   SpectralTruncationReport report;
   const int num_local_surfaces = rp.nsMaxF - rp.nsMinF;
@@ -273,176 +435,32 @@ vmecpp::SpectralTruncationReport vmecpp::ComputeForceSpectralTruncation(
   report.z_discarded_fraction.assign(num_local_surfaces, 0.0);
   report.l_discarded_fraction.assign(num_local_surfaces, 0.0);
 
-  int jMaxRZ = std::min(rp.nsMaxF, fc.ns - 1);
-  if (fc.lfreeb &&
-      (vacuum_pressure_state == VacuumPressureState::kInitialized ||
-       vacuum_pressure_state == VacuumPressureState::kActive)) {
-    jMaxRZ = std::min(rp.nsMaxF, fc.ns);
-  }
+  const int mpol_wide = s.mnyq + 1;
+  const int ntor_wide = s.nnyq;
+  const int num_surfaces_incl_boundary = rp.nsMaxFIncludingLcfs - rp.nsMinF;
+  const int wide_block =
+      num_surfaces_incl_boundary * mpol_wide * (ntor_wide + 1);
 
-  const int jMinL = 1;
+  Eigen::VectorXd xmpq_wide = Eigen::VectorXd::Zero(mpol_wide);
+  xmpq_wide.head(s.mpol) = xmpq;
 
-  const int m_max = s.mnyq + 1;      // poloidal modes 0..mnyq inclusive
-  const int n_max = s.nnyq + 1;      // toroidal modes 0..nnyq inclusive
-  const int mpol_kept = s.mpol;      // retained poloidal modes: 0..mpol-1
-  const int ntor_kept = s.ntor + 1;  // retained toroidal modes: 0..ntor
-  const int stride_n = s.nnyq2 + 1;  // toroidal basis row stride
+  WideFourierForcesStorage wide;
+  wide.Allocate(wide_block);
+  ForcesToFourier3DSymmFastPoloidalImpl(d, xmpq_wide, rp, fc, s, fb,
+                                        vacuum_pressure_state, mpol_wide,
+                                        ntor_wide, wide.AsSink());
 
-  // Per-surface accumulators for (E_kept, E_total) for R, Z, lambda.
-  std::vector<double> r_kept(num_local_surfaces, 0.0);
-  std::vector<double> r_total(num_local_surfaces, 0.0);
-  std::vector<double> z_kept(num_local_surfaces, 0.0);
-  std::vector<double> z_total(num_local_surfaces, 0.0);
-  std::vector<double> l_kept(num_local_surfaces, 0.0);
-  std::vector<double> l_total(num_local_surfaces, 0.0);
+  const auto total = AccumulatePerSurfaceParseval3DSymm(
+      wide.AsSink(), rp, fc, vacuum_pressure_state, mpol_wide, ntor_wide);
+  const auto kept =
+      AccumulatePerSurfaceParseval3DSymm(ConstSinkFrom(physical_f_kept), rp, fc,
+                                         vacuum_pressure_state, s.mpol, s.ntor);
 
-  // Build (m, n) Fourier coefficients on the full Nyquist band for each
-  // surface, then compute Parseval sums. Keeping a per-surface scratch of
-  // size m_max * n_max bounds memory by O(mnyq * nnyq) ~ O(ntheta * nzeta).
-  const int band_size = m_max * n_max;
-  Eigen::VectorXd frcc(band_size);
-  Eigen::VectorXd frss(band_size);
-  Eigen::VectorXd fzsc(band_size);
-  Eigen::VectorXd fzcs(band_size);
-  Eigen::VectorXd flsc(band_size);
-  Eigen::VectorXd flcs(band_size);
-
-  for (int jF = rp.nsMinF; jF < jMaxRZ; ++jF) {
-    const int local_j = jF - rp.nsMinF;
-    const int mmax = jF == 0 ? 1 : m_max;
-
-    frcc.setZero();
-    frss.setZero();
-    fzsc.setZero();
-    fzcs.setZero();
-    flsc.setZero();
-    flcs.setZero();
-    const bool compute_lambda = (jF >= jMinL);
-
-    for (int m = 0; m < mmax; ++m) {
-      const bool m_even = m % 2 == 0;
-      const auto& armn = m_even ? d.armn_e : d.armn_o;
-      const auto& azmn = m_even ? d.azmn_e : d.azmn_o;
-      const auto& blmn = m_even ? d.blmn_e : d.blmn_o;
-      const auto& brmn = m_even ? d.brmn_e : d.brmn_o;
-      const auto& bzmn = m_even ? d.bzmn_e : d.bzmn_o;
-      const auto& clmn = m_even ? d.clmn_e : d.clmn_o;
-      const auto& crmn = m_even ? d.crmn_e : d.crmn_o;
-      const auto& czmn = m_even ? d.czmn_e : d.czmn_o;
-
-      for (int k = 0; k < s.nZeta; ++k) {
-        const int idx_kl_base = ((jF - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
-        const int idx_ml_base = m * s.nThetaReduced;
-
-        auto cosmui_seg = fb.cosmui.segment(idx_ml_base, s.nThetaReduced);
-        auto sinmui_seg = fb.sinmui.segment(idx_ml_base, s.nThetaReduced);
-        auto cosmumi_seg = fb.cosmumi.segment(idx_ml_base, s.nThetaReduced);
-        auto sinmumi_seg = fb.sinmumi.segment(idx_ml_base, s.nThetaReduced);
-
-        auto armn_seg = Eigen::Map<const Eigen::VectorXd>(
-            armn.data() + idx_kl_base, s.nThetaReduced);
-        auto azmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            azmn.data() + idx_kl_base, s.nThetaReduced);
-        auto brmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            brmn.data() + idx_kl_base, s.nThetaReduced);
-        auto bzmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            bzmn.data() + idx_kl_base, s.nThetaReduced);
-        auto crmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            crmn.data() + idx_kl_base, s.nThetaReduced);
-        auto czmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            czmn.data() + idx_kl_base, s.nThetaReduced);
-
-        const double rmkcc =
-            armn_seg.dot(cosmui_seg) + brmn_seg.dot(sinmumi_seg);
-        const double rmkss =
-            armn_seg.dot(sinmui_seg) + brmn_seg.dot(cosmumi_seg);
-        const double zmksc =
-            azmn_seg.dot(sinmui_seg) + bzmn_seg.dot(cosmumi_seg);
-        const double zmkcs =
-            azmn_seg.dot(cosmui_seg) + bzmn_seg.dot(sinmumi_seg);
-        const double rmkcc_n = -crmn_seg.dot(cosmui_seg);
-        const double rmkss_n = -crmn_seg.dot(sinmui_seg);
-        const double zmkcs_n = -czmn_seg.dot(cosmui_seg);
-        const double zmksc_n = -czmn_seg.dot(sinmui_seg);
-
-        double lmksc = 0.0, lmkcs = 0.0, lmksc_n = 0.0, lmkcs_n = 0.0;
-        if (compute_lambda) {
-          auto blmn_seg = Eigen::Map<const Eigen::VectorXd>(
-              blmn.data() + idx_kl_base, s.nThetaReduced);
-          auto clmn_seg = Eigen::Map<const Eigen::VectorXd>(
-              clmn.data() + idx_kl_base, s.nThetaReduced);
-          lmksc = blmn_seg.dot(cosmumi_seg);
-          lmkcs = blmn_seg.dot(sinmumi_seg);
-          lmkcs_n = -clmn_seg.dot(cosmui_seg);
-          lmksc_n = -clmn_seg.dot(sinmui_seg);
-        }
-
-        const int idx_kn_base = k * stride_n;
-        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, n_max);
-        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, n_max);
-        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, n_max);
-        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, n_max);
-
-        Eigen::Map<Eigen::VectorXd> frcc_row(frcc.data() + m * n_max, n_max);
-        Eigen::Map<Eigen::VectorXd> frss_row(frss.data() + m * n_max, n_max);
-        Eigen::Map<Eigen::VectorXd> fzsc_row(fzsc.data() + m * n_max, n_max);
-        Eigen::Map<Eigen::VectorXd> fzcs_row(fzcs.data() + m * n_max, n_max);
-
-        frcc_row += rmkcc * cosnv_seg + rmkcc_n * sinnvn_seg;
-        frss_row += rmkss * sinnv_seg + rmkss_n * cosnvn_seg;
-        fzsc_row += zmksc * cosnv_seg + zmksc_n * sinnvn_seg;
-        fzcs_row += zmkcs * sinnv_seg + zmkcs_n * cosnvn_seg;
-
-        if (compute_lambda) {
-          Eigen::Map<Eigen::VectorXd> flsc_row(flsc.data() + m * n_max, n_max);
-          Eigen::Map<Eigen::VectorXd> flcs_row(flcs.data() + m * n_max, n_max);
-          flsc_row += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
-          flcs_row += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
-        }
-      }  // k
-    }  // m
-
-    // Parseval sums over the Nyquist band. Split into kept
-    // (m < mpol && n < ntor+1) and total; discarded = total - kept.
-    double r_total_j = 0.0, r_kept_j = 0.0;
-    double z_total_j = 0.0, z_kept_j = 0.0;
-    double l_total_j = 0.0, l_kept_j = 0.0;
-    for (int m = 0; m < mmax; ++m) {
-      const bool m_in_kept = (m < mpol_kept);
-      for (int n = 0; n < n_max; ++n) {
-        const int idx_mn = m * n_max + n;
-        const double r_sq =
-            frcc[idx_mn] * frcc[idx_mn] + frss[idx_mn] * frss[idx_mn];
-        const double z_sq =
-            fzsc[idx_mn] * fzsc[idx_mn] + fzcs[idx_mn] * fzcs[idx_mn];
-        const double l_sq =
-            flsc[idx_mn] * flsc[idx_mn] + flcs[idx_mn] * flcs[idx_mn];
-        r_total_j += r_sq;
-        z_total_j += z_sq;
-        l_total_j += l_sq;
-        if (m_in_kept && n < ntor_kept) {
-          r_kept_j += r_sq;
-          z_kept_j += z_sq;
-          l_kept_j += l_sq;
-        }
-      }
-    }
-    r_total[local_j] = r_total_j;
-    r_kept[local_j] = r_kept_j;
-    z_total[local_j] = z_total_j;
-    z_kept[local_j] = z_kept_j;
-    l_total[local_j] = l_total_j;
-    l_kept[local_j] = l_kept_j;
-  }  // jF
-
-  // Convert kept/total into discarded fractions. A surface with zero total
-  // force energy (e.g., just inside the axis on a converged axisymmetric
-  // run) reports 0 by convention -- no denominator signal to compare to.
-  auto to_fraction = [](double kept, double total) {
-    if (total <= 0.0) {
+  auto to_fraction = [](double kept_j, double total_j) {
+    if (total_j <= 0.0) {
       return 0.0;
     }
-    const double f = 1.0 - kept / total;
+    const double f = 1.0 - kept_j / total_j;
     if (f < 0.0) return 0.0;
     if (f > 1.0) return 1.0;
     return f;
@@ -450,11 +468,11 @@ vmecpp::SpectralTruncationReport vmecpp::ComputeForceSpectralTruncation(
 
   for (int local_j = 0; local_j < num_local_surfaces; ++local_j) {
     report.r_discarded_fraction[local_j] =
-        to_fraction(r_kept[local_j], r_total[local_j]);
+        to_fraction(kept.r[local_j], total.r[local_j]);
     report.z_discarded_fraction[local_j] =
-        to_fraction(z_kept[local_j], z_total[local_j]);
+        to_fraction(kept.z[local_j], total.z[local_j]);
     report.l_discarded_fraction[local_j] =
-        to_fraction(l_kept[local_j], l_total[local_j]);
+        to_fraction(kept.l[local_j], total.l[local_j]);
     report.r_max_discarded =
         std::max(report.r_max_discarded, report.r_discarded_fraction[local_j]);
     report.z_max_discarded =
@@ -1367,8 +1385,48 @@ absl::StatusOr<bool> IdealMhdModel::update(
         .fzcon_e = fzcon_e,
         .fzcon_o = fzcon_o,
     };
-    last_spectral_truncation_report_ = ComputeForceSpectralTruncation(
-        input_data, r_, m_fc_, s_, t_, m_vacuum_pressure_state_);
+    last_spectral_truncation_report_ =
+        ComputeForceSpectralTruncation(input_data, xmpq, m_physical_f, r_,
+                                       m_fc_, s_, t_, m_vacuum_pressure_state_);
+
+    // Cross-thread reduction: each thread has a per-partition max, take the
+    // global max so Vmec::Printout can push a single scalar onto the
+    // iteration time-trace. Init on one thread, then merge under critical.
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    {
+      m_fc.spectral_r_max_discarded = 0.0;
+      m_fc.spectral_z_max_discarded = 0.0;
+      m_fc.spectral_l_max_discarded = 0.0;
+    }
+#ifdef _OPENMP
+#pragma omp critical
+#endif  // _OPENMP
+    {
+      m_fc.spectral_r_max_discarded =
+          std::max(m_fc.spectral_r_max_discarded,
+                   last_spectral_truncation_report_.r_max_discarded);
+      m_fc.spectral_z_max_discarded =
+          std::max(m_fc.spectral_z_max_discarded,
+                   last_spectral_truncation_report_.z_max_discarded);
+      m_fc.spectral_l_max_discarded =
+          std::max(m_fc.spectral_l_max_discarded,
+                   last_spectral_truncation_report_.l_max_discarded);
+    }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  } else {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    {
+      const double nan = std::numeric_limits<double>::quiet_NaN();
+      m_fc.spectral_r_max_discarded = nan;
+      m_fc.spectral_z_max_discarded = nan;
+      m_fc.spectral_l_max_discarded = nan;
+    }
   }
 
   m_physical_f.decomposeInto(m_decomposed_f, m_p_.scalxc);

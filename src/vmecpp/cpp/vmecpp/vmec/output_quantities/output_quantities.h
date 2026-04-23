@@ -1166,6 +1166,13 @@ struct WOutFileContents {
   Eigen::VectorXd force_residual_r;
   Eigen::VectorXd force_residual_z;
   Eigen::VectorXd force_residual_lambda;
+  // Per-iteration spectral-truncation diagnostic. Fraction of real-space
+  // force L2 energy (R / Z / lambda) that lies outside the retained
+  // (mpol, ntor) Fourier band, maxed across radial surfaces. NaN when the
+  // diagnostic is disabled, so these stay index-aligned with fsqt.
+  Eigen::VectorXd force_discarded_r;
+  Eigen::VectorXd force_discarded_z;
+  Eigen::VectorXd force_discarded_lambda;
   Eigen::VectorXd delbsq;
   Eigen::VectorXi restart_reason_timetrace;
 

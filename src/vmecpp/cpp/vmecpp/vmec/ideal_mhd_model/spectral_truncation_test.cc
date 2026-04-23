@@ -11,6 +11,7 @@
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
+#include "vmecpp/vmec/fourier_forces/fourier_forces.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_data.h"
 #include "vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
@@ -105,11 +106,15 @@ double ComputeRDiscardForSingleMode(int mpol, int ntor, int ntheta, int nzeta,
   FlowControl fc(/*lfreeb=*/false, /*delt=*/1.0, /*num_grids=*/1);
   fc.ns = ns;
 
-  const int num_local = rp.nsMaxF - rp.nsMinF;
+  // The production DFT accesses lambda forces up to nsMaxFIncludingLcfs, one
+  // past nsMaxF when this partition owns the boundary -- so the real-space
+  // buffers must include that extra slice even though we only seed within
+  // the R/Z range.
+  const int num_local_max = rp.nsMaxFIncludingLcfs - rp.nsMinF;
   const int per_surf = nzeta * sizes.nThetaEff;
 
   ForceArrays arrays;
-  arrays.allocate(num_local * per_surf);
+  arrays.allocate(num_local_max * per_surf);
 
   // Seed a single cosine mode on the first local surface. Pick an offset
   // so that local_j=0 corresponds to jF=nsMinF; by construction nsMinF>=0.
@@ -132,8 +137,18 @@ double ComputeRDiscardForSingleMode(int mpol, int ntor, int ntheta, int nzeta,
     }
   }
 
-  const auto report = ComputeForceSpectralTruncation(
-      arrays.view(), rp, fc, sizes, fb, VacuumPressureState::kOff);
+  // Run the production narrow DFT first to populate the kept-band Fourier
+  // force coefficients -- the diagnostic consumes these as its "E_kept"
+  // input. With xmpq=0 there is no spectral-condensation admixture so the
+  // narrow DFT output reflects pure `armn` projection.
+  Eigen::VectorXd xmpq = Eigen::VectorXd::Zero(sizes.mpol);
+  FourierForces physical_f_kept(&sizes, &rp, ns);
+  ForcesToFourier3DSymmFastPoloidal(arrays.view(), xmpq, rp, fc, sizes, fb,
+                                    VacuumPressureState::kOff, physical_f_kept);
+
+  const auto report =
+      ComputeForceSpectralTruncation(arrays.view(), xmpq, physical_f_kept, rp,
+                                     fc, sizes, fb, VacuumPressureState::kOff);
 
   return report.r_discarded_fraction[local_j_seed];
 }

@@ -4431,6 +4431,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.force_residual_r = ToEigenVector(fc.force_residual_r);
   wout.force_residual_z = ToEigenVector(fc.force_residual_z);
   wout.force_residual_lambda = ToEigenVector(fc.force_residual_lambda);
+  wout.force_discarded_r = ToEigenVector(fc.force_discarded_r);
+  wout.force_discarded_z = ToEigenVector(fc.force_discarded_z);
+  wout.force_discarded_lambda = ToEigenVector(fc.force_discarded_lambda);
   wout.fsqt = wout.force_residual_r + wout.force_residual_z +
               wout.force_residual_lambda;
   wout.delbsq = ToEigenVector(fc.delbsq);
