@@ -346,7 +346,7 @@ VMEC++:
    * `xnpot` - not declared yet
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
-- VMEC++ only computes the output quantities if the run converged
+- VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
 - The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
 - The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
 
