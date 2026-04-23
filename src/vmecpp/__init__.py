@@ -876,6 +876,29 @@ class VmecWOut(BaseModelWithNumpy):
     )
     """Evolution of the lambda force residual along the run."""
 
+    force_discarded_r: jt.Float[np.ndarray, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Fraction of real-space R-force L2 energy outside the retained (mpol, ntor)
+    Fourier band, per iteration.
+
+    Max across radial surfaces. NaN when the spectral-truncation diagnostic
+    is disabled (``VMECPP_SPECTRAL_DIAGNOSTIC`` unset), so the vector stays
+    index-aligned with ``force_residual_r``.
+    """
+
+    force_discarded_z: jt.Float[np.ndarray, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Fraction of real-space Z-force L2 energy outside the retained (mpol, ntor)
+    Fourier band, per iteration."""
+
+    force_discarded_lambda: jt.Float[np.ndarray, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Fraction of real-space lambda-force L2 energy outside the retained (mpol, ntor)
+    Fourier band, per iteration."""
+
     delbsq: jt.Float[np.ndarray, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )

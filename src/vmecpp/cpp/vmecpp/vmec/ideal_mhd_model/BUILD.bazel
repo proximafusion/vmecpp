@@ -35,6 +35,7 @@ cc_test(
         "//vmecpp/common/fourier_basis_fast_poloidal",
         "//vmecpp/common/sizes:sizes",
         "//vmecpp/common/util:util",
+        "//vmecpp/vmec/fourier_forces:fourier_forces",
         "//vmecpp/vmec/radial_partitioning:radial_partitioning",
         "@abseil-cpp//absl/algorithm:container",
         "@googletest//:gtest_main",

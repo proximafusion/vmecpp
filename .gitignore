@@ -18,3 +18,12 @@ src/vmecpp/cpp/_vmecpp.so
 
 # developers will clone this in order to have the full test suite available
 src/vmecpp/cpp/vmecpp_large_cpp_tests/
+
+# Precond Jacobian extractions (too large for git)
+demos/precond_diagnostic/jacobian/*.npz
+demos/precond_diagnostic/w7x_reduced.out.h5
+demos/precond_diagnostic/**/baseline_spectrum.csv
+demos/precond_diagnostic/**/candA_spectrum.csv
+demos/precond_diagnostic/**/candB_spectrum.csv
+demos/precond_diagnostic/**/candC_spectrum.csv
+demos/precond_diagnostic/force_spectrum_baseline.csv

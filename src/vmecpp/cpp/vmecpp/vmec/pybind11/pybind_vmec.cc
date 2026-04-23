@@ -541,6 +541,12 @@ PYBIND11_MODULE(_vmecpp, m) {
                      &vmecpp::WOutFileContents::force_residual_z)
       .def_readwrite("force_residual_lambda",
                      &vmecpp::WOutFileContents::force_residual_lambda)
+      .def_readwrite("force_discarded_r",
+                     &vmecpp::WOutFileContents::force_discarded_r)
+      .def_readwrite("force_discarded_z",
+                     &vmecpp::WOutFileContents::force_discarded_z)
+      .def_readwrite("force_discarded_lambda",
+                     &vmecpp::WOutFileContents::force_discarded_lambda)
       .def_readwrite("fsqt", &vmecpp::WOutFileContents::fsqt)
       .def_readwrite("delbsq", &vmecpp::WOutFileContents::delbsq)
       .def_readwrite("wdot", &vmecpp::WOutFileContents::wdot)
