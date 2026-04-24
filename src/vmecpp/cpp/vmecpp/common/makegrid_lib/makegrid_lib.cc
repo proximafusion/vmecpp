@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -447,28 +448,32 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
   // When normalizing by currents, migrate num_windings into the circuit current
   // so that the response table represents field per unit current-turn. Without
   // this step the num_windings factor would remain in the result regardless of
-  // the normalize_by_currents flag.
-  MagneticConfiguration effective_magnetic_configuration = magnetic_configuration;
+  // the normalize_by_currents flag. The copy is only created when needed.
+  std::optional<MagneticConfiguration> migrated_configuration;
   if (makegrid_parameters.normalize_by_currents) {
+    migrated_configuration = magnetic_configuration;
     absl::Status migrate_status =
-        NumWindingsToCircuitCurrents(effective_magnetic_configuration);
+        NumWindingsToCircuitCurrents(*migrated_configuration);
     if (!migrate_status.ok()) {
       return migrate_status;
     }
   }
+  const MagneticConfiguration& effective_configuration =
+      migrated_configuration.has_value() ? *migrated_configuration
+                                         : magnetic_configuration;
 
   // Make a backup of the full vector of original circuit currents,
   // but only after num_windings has potentially been migrated into circuit
   // currents.
   absl::StatusOr<Eigen::VectorXd> maybe_original_currents =
-      GetCircuitCurrents(effective_magnetic_configuration);
+      GetCircuitCurrents(effective_configuration);
   if (!maybe_original_currents.ok()) {
     return maybe_original_currents.status();
   }
   const Eigen::VectorXd& original_currents = *maybe_original_currents;
 
   const int number_of_serial_circuits =
-      effective_magnetic_configuration.serial_circuits_size();
+      effective_configuration.serial_circuits_size();
 
   MagneticFieldResponseTable response_table_b;
   response_table_b.parameters = makegrid_parameters;
@@ -493,8 +498,7 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
        ++circuit_index) {
     // make second internal copy for being able to set inidividually only one
     // circuit current to != 0
-    MagneticConfiguration m_magnetic_configuration =
-        effective_magnetic_configuration;
+    MagneticConfiguration m_magnetic_configuration = effective_configuration;
 
     Eigen::VectorXd currents_for_circuit;
     currents_for_circuit.setZero(number_of_serial_circuits);
@@ -605,28 +609,33 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
   // When normalizing by currents, migrate num_windings into the circuit current
   // so that the response table represents vector potential per unit
   // current-turn. Without this step the num_windings factor would remain in the
-  // result regardless of the normalize_by_currents flag.
-  MagneticConfiguration effective_magnetic_configuration = magnetic_configuration;
+  // result regardless of the normalize_by_currents flag. The copy is only
+  // created when needed.
+  std::optional<MagneticConfiguration> migrated_configuration;
   if (makegrid_parameters.normalize_by_currents) {
+    migrated_configuration = magnetic_configuration;
     absl::Status migrate_status =
-        NumWindingsToCircuitCurrents(effective_magnetic_configuration);
+        NumWindingsToCircuitCurrents(*migrated_configuration);
     if (!migrate_status.ok()) {
       return migrate_status;
     }
   }
+  const MagneticConfiguration& effective_configuration =
+      migrated_configuration.has_value() ? *migrated_configuration
+                                         : magnetic_configuration;
 
   // Make a backup of the full vector of original circuit currents,
   // but only after num_windings has potentially been migrated into circuit
   // currents.
   absl::StatusOr<Eigen::VectorXd> maybe_original_currents =
-      GetCircuitCurrents(effective_magnetic_configuration);
+      GetCircuitCurrents(effective_configuration);
   if (!maybe_original_currents.ok()) {
     return maybe_original_currents.status();
   }
   const Eigen::VectorXd& original_currents = *maybe_original_currents;
 
   const int number_of_serial_circuits =
-      effective_magnetic_configuration.serial_circuits_size();
+      effective_configuration.serial_circuits_size();
 
   MakegridCachedVectorPotential response_table_a;
   response_table_a.parameters = makegrid_parameters;
@@ -651,8 +660,7 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
        ++circuit_index) {
     // make second internal copy for being able to set inidividually only one
     // circuit current to != 0
-    MagneticConfiguration m_magnetic_configuration =
-        effective_magnetic_configuration;
+    MagneticConfiguration m_magnetic_configuration = effective_configuration;
 
     Eigen::VectorXd currents_for_circuit;
     currents_for_circuit.setZero(number_of_serial_circuits);
