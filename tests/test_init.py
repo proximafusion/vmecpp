@@ -520,6 +520,14 @@ def test_vmec_input_validation():
         for lasym_field in ["rbs", "zbc", "raxis_s", "zaxis_c"]:
             del vmec_input_dict_from_json[lasym_field]
 
+    # Python-only fields have no counterpart in C++ VmecINDATA; remove before comparing.
+    for python_only_field in [
+        "initialization_method",
+        "geometric_init_L_max",
+        "geometric_init_omega",
+    ]:
+        del vmec_input_dict_from_json[python_only_field]
+
     assert indata_dict_from_json == vmec_input_dict_from_json
 
 

@@ -359,6 +359,30 @@ class VmecInput(BaseModelWithNumpy):
     Otherwise a RuntimeError will be raised.
     """
 
+    initialization_method: typing.Literal["default", "geometric_action"] = "default"
+    """Method for constructing the initial trial flux surfaces before VMEC iteration.
+
+    - "default": use VMEC's built-in linear interpolation between axis and boundary.
+    - "geometric_action": run the Python geometric initializer that minimizes a
+      purely geometric action (Fourier-Zernike basis) to produce nested trial
+      surfaces and an improved axis guess before the VMEC solve.
+    """
+
+    geometric_init_L_max: int = 4
+    """Maximum Zernike radial order for the geometric initializer.
+
+    Only used when initialization_method == "geometric_action".
+    Higher values give more radial flexibility (at higher computational cost).
+    Must be >= 2 for any free Zernike variables to exist (K_max = L_max // 2).
+    """
+
+    geometric_init_omega: float = 0.01
+    """Curvature-penalty weight omega for the geometric initializer.
+
+    Only used when initialization_method == "geometric_action".
+    Larger values push toward straighter radial coordinate lines.
+    """
+
     raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = pydantic.Field(
         default_factory=lambda: np.array([0.0])
     )
@@ -545,8 +569,18 @@ class VmecInput(BaseModelWithNumpy):
     ) -> VmecInput:
         # The VmecInput.model_validate() is strict in its data model, all fields need to be present and valid.
         # VmecInput does _not_ have any default values.
+        # Python-only fields are not present on the C++ object; provide their defaults.
+        _python_only_defaults: dict[str, typing.Any] = {
+            "initialization_method": "default",
+            "geometric_init_L_max": 4,
+            "geometric_init_omega": 0.01,
+        }
         vmec_input_dict = {
-            attr_name: getattr(vmecindata, attr_name)
+            attr_name: (
+                _python_only_defaults[attr_name]
+                if attr_name in _python_only_defaults
+                else getattr(vmecindata, attr_name)
+            )
             for attr_name in VmecInput.model_fields
         }
         vmec_input_dict["ns_array"] = vmec_input_dict["ns_array"].astype(np.int64)
@@ -579,8 +613,20 @@ class VmecInput(BaseModelWithNumpy):
             "zbc",
         }
 
+        # Fields that exist only in the Python VmecInput and have no counterpart
+        # in the C++ VmecINDATA; they must be excluded from the setattr loop.
+        python_only_attrs = {
+            "initialization_method",
+            "geometric_init_L_max",
+            "geometric_init_omega",
+        }
+
         for attr in VmecInput.model_fields:
-            if attr in readonly_attrs or attr == "free_boundary_method":
+            if (
+                attr in readonly_attrs
+                or attr in python_only_attrs
+                or attr == "free_boundary_method"
+            ):
                 continue  # these must be set separately
             setattr(cpp_indata, attr, getattr(self, attr))
 
@@ -1778,6 +1824,68 @@ def _print_progress_tip_once() -> None:
         )
 
 
+def _apply_geometric_initialization(input: VmecInput) -> VmecInput:
+    """Run the geometric initializer and return a VmecInput with updated axis.
+
+    On success, updates raxis_c and zaxis_s with the values from the geometric
+    initializer. Falls back to the original input if the initializer raises an
+    exception or produces a Jacobian that is mostly negative.
+
+    Args:
+        input: Original VmecInput (initialization_method == "geometric_action").
+
+    Returns:
+        Possibly updated VmecInput with improved raxis_c / zaxis_s.
+    """
+    from vmecpp.geometric_initializer import (  # noqa: PLC0415
+        GeometricInitializerConfig,
+        compute_geometric_initialization,
+    )
+
+    ns_for_init = int(input.ns_array[-1])
+    cfg = GeometricInitializerConfig(
+        L_max=input.geometric_init_L_max,
+        omega=input.geometric_init_omega,
+    )
+
+    try:
+        result = compute_geometric_initialization(
+            rbc=input.rbc,
+            zbs=input.zbs,
+            mpol=input.mpol,
+            ntor=input.ntor,
+            nfp=input.nfp,
+            ns=ns_for_init,
+            config=cfg,
+        )
+    except Exception:
+        logger.exception(
+            "Geometric initializer raised an exception; falling back to VMEC default."
+        )
+        return input
+
+    diag = result.diagnostics
+    if diag.frac_negative_jacobian > 0.5:
+        logger.warning(
+            "Geometric initializer produced %.1f%% negative-Jacobian points "
+            "(min_jac=%.4g); falling back to VMEC default initialization.",
+            100.0 * diag.frac_negative_jacobian,
+            diag.min_jacobian,
+        )
+        return input
+
+    # Resize raxis_c / zaxis_s to match ntor+1 elements expected by VmecInput
+    ntor_p1 = input.ntor + 1
+    raxis_c_new = np.zeros(ntor_p1)
+    zaxis_s_new = np.zeros(ntor_p1)
+    n_copy = min(ntor_p1, len(result.raxis_c))
+    raxis_c_new[:n_copy] = result.raxis_c[:n_copy]
+    n_copy_z = min(ntor_p1, len(result.zaxis_s))
+    zaxis_s_new[:n_copy_z] = result.zaxis_s[:n_copy_z]
+
+    return input.model_copy(update={"raxis_c": raxis_c_new, "zaxis_s": zaxis_s_new})
+
+
 def run(
     input: VmecInput,
     magnetic_field: MagneticFieldResponseTable | None = None,
@@ -1814,6 +1922,11 @@ def run(
         0.2033313711
     """
     input = VmecInput.model_validate(input)
+
+    # Apply geometric initializer before the VMEC solve when requested.
+    if input.initialization_method == "geometric_action" and restart_from is None:
+        input = _apply_geometric_initialization(input)
+
     cpp_indata = input._to_cpp_vmecindata()
 
     if restart_from is None:

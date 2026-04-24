@@ -110,6 +110,11 @@ omit = [
   "src/vmecpp/__about__.py",
 ]
 
+[tool.pytest.ini_options]
+markers = [
+  "slow: marks tests as slow (require full VMEC convergence runs; deselect with '-m not slow')",
+]
+
 [tool.coverage.paths]
 vmecpp = ["src/vmecpp", "*/vmecpp/src/vmecpp"]
 tests = ["tests", "*/vmecpp/tests"]
