@@ -9,11 +9,11 @@ geometric action before solving MHD force balance.
 
 The action minimized is:
 
-    S = sum_{i,j,k} (0.5 * s_i * A_{ijk}^2 + omega * L_{ijk}^2)
+    S = sum over (i,j,k) of [0.5 * s_i * A_ijk^2 + omega * L_ijk^2]
 
 where:
-    A_{ijk} = dR/ds * dZ/dtheta - dR/dtheta * dZ/ds  (2D Jacobian at grid point)
-    L_{ijk}^2 = (dR/ds)^2 + (dZ/ds)^2               (squared radial line length)
+    A_ijk = dR/ds * dZ/dtheta - dR/dtheta * dZ/ds  (2D Jacobian at grid point)
+    L_ijk^2 = (dR/ds)^2 + (dZ/ds)^2               (squared radial line length)
 
 Minimizing S with the boundary fixed distributes flux surfaces as uniformly as
 possible (penalizing Jacobian concentration and sign changes) while keeping
@@ -21,17 +21,17 @@ radial coordinate lines short (smooth mapping from axis to boundary).
 
 The Fourier-Zernike volume representation is:
 
-    R(s, theta, zeta) = sum_{n,m,k} r_{nmk} * f_{m,k}(s) * cos(m*theta - n*nfp*zeta)
-    Z(s, theta, zeta) = sum_{n,m,k} z_{nmk} * f_{m,k}(s) * sin(m*theta - n*nfp*zeta)
+    R(s, theta, zeta) = sum(n,m,k) r_nmk * f_mk(s) * cos(m*theta - n*nfp*zeta)
+    Z(s, theta, zeta) = sum(n,m,k) z_nmk * f_mk(s) * sin(m*theta - n*nfp*zeta)
 
 with radial basis functions:
 
-    f_{m,k}(s) = s^m * P_k(2s - 1)
+    f_mk(s) = s^m * P_k(2*s - 1)
 
-where P_k is the Legendre polynomial of degree k. Note that f_{m,k}(1) = 1 for
+where P_k is the Legendre polynomial of degree k. Note that f_mk(1) = 1 for
 all (m, k), so the boundary constraint reduces to:
 
-    r_{nm0} = rbc[m, n] - sum_{k>=1} r_{nmk}
+    r_nm0 = rbc[m, n] - sum over k>=1 of r_nmk
 
 This eliminates the k=0 Zernike coefficient analytically, leaving the k>=1
 coefficients as free optimization variables.
@@ -131,7 +131,7 @@ def _legendre_values_and_derivatives(
 ) -> tuple[jax.Array, jax.Array]:
     """Evaluate Legendre polynomials P_0..P_{K_max} and their x-derivatives at x.
 
-    Uses the three-term recurrence for P_k and the associated recurrence for P_k'.
+    Uses the three-term recurrence for P_k and the associated recurrence for dP_k/dx.
 
     Args:
         x: Points, shape (...,).
@@ -139,7 +139,7 @@ def _legendre_values_and_derivatives(
 
     Returns:
         P: shape (..., K_max+1) with P[..., k] = P_k(x).
-        dP: shape (..., K_max+1) with dP[..., k] = P_k'(x).
+        dP: shape (..., K_max+1) with dP[..., k] = dP_k/dx(x).
     """
     shape = x.shape
     # Initialize storage; use list-of-slices trick to allow JAX tracing
@@ -149,7 +149,7 @@ def _legendre_values_and_derivatives(
         P_list.append(pk)
     P = jnp.stack(P_list[: K_max + 1], axis=-1)  # (..., K_max+1)
 
-    # Derivatives via recurrence (k+1)*P_{k+1}' = (2k+1)*P_k + (2k+1)*x*P_k' - k*P_{k-1}'
+    # Derivatives via recurrence: (k+1)*dP[k+1]/dx = (2k+1)*P_k + (2k+1)*x*dP_k/dx - k*dP[k-1]/dx
     dP_list = [jnp.zeros(shape), jnp.ones(shape)]
     for k in range(1, K_max):
         dpk1 = (
@@ -164,7 +164,7 @@ def _legendre_values_and_derivatives(
 def _compute_radial_basis(
     s: jax.Array, mpol: int, K_max: int
 ) -> tuple[jax.Array, jax.Array]:
-    """Compute f_{m,k}(s) = s^m * P_k(2s-1) and its s-derivative.
+    """Compute f_mk(s) = s^m * P_k(2*s - 1) and its s-derivative.
 
     Args:
         s: Radial grid, shape (n_s,).
@@ -172,19 +172,19 @@ def _compute_radial_basis(
         K_max: Maximum radial order.
 
     Returns:
-        basis: shape (n_s, mpol, K_max+1), where basis[i, m, k] = f_{m,k}(s_i).
+        basis: shape (n_s, mpol, K_max+1), where basis[i, m, k] = f_mk(s_i).
         d_basis: shape (n_s, mpol, K_max+1), d/ds of basis.
     """
     x = 2.0 * s - 1.0  # map s in [0, 1] to x in [-1, 1]
     P, dP_dx = _legendre_values_and_derivatives(x, K_max)
-    # d/ds [P_k(2s-1)] = 2 * P_k'(2s-1)
+    # d/ds [P_k(2*s - 1)] = 2 * dP_k/dx(2*s - 1)
     dP_ds = 2.0 * dP_dx  # (n_s, K_max+1)
 
     # s^m for m=0,...,mpol-1: shape (n_s, mpol)
     m_vals = jnp.arange(mpol, dtype=jnp.float64)
     s_powers = s[:, None] ** m_vals[None, :]  # (n_s, mpol)
 
-    # d/ds [s^m] = m * s^{m-1}; handle m=0 separately (derivative = 0)
+    # d/ds [s^m] = m * s^(m-1); handle m=0 separately (derivative = 0)
     ds_powers_raw = m_vals[None, :] * s[:, None] ** jnp.where(
         m_vals > 0, m_vals - 1.0, 0.0
     )
