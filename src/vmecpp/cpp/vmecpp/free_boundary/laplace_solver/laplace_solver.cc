@@ -64,13 +64,16 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
     const Eigen::VectorXd &greenp) {
   grpmn_sin.setZero();
 
+  Eigen::VectorXd g1_symm(nf + 1);
+  Eigen::VectorXd g2_symm(nf + 1);
+
   for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
     const int klpRel = klp - tp_.ztMin;
     for (int l = 0; l < s_.nThetaReduced; ++l) {
       const int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
 
-      Eigen::VectorXd g1_symm = Eigen::VectorXd::Zero(nf + 1);
-      Eigen::VectorXd g2_symm = Eigen::VectorXd::Zero(nf + 1);
+      g1_symm.setZero();
+      g2_symm.setZero();
 
       for (int k = 0; k < s_.nZeta; ++k) {
         const int kRev = (s_.nZeta - k) % s_.nZeta;
