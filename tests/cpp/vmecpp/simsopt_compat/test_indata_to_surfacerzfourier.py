@@ -28,7 +28,10 @@ def test_surfacerzfourier_from_vmecppindata_no_ntheta_nphi():
 
     reference_surface = geo.SurfaceRZFourier.from_vmec_input(str(fortran_indata_file))
 
-    with tempfile.TemporaryDirectory():
+    with (
+        tempfile.TemporaryDirectory() as tmpdir,
+        _util.change_working_directory_to(Path(tmpdir)),
+    ):
         vmecpp_indata_file = _util.indata_to_json(fortran_indata_file)
         test_surface = simsopt_compat.surfacerzfourier_from_vmecppindata(
             Path(vmecpp_indata_file)
