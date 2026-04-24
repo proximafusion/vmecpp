@@ -22,6 +22,7 @@
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
+#include "vmecpp/vmec/vmec_jacobian_probe/vmec_jacobian_probe.h"
 
 namespace py = pybind11;
 using Eigen::VectorXd;
@@ -540,6 +541,12 @@ PYBIND11_MODULE(_vmecpp, m) {
                      &vmecpp::WOutFileContents::force_residual_z)
       .def_readwrite("force_residual_lambda",
                      &vmecpp::WOutFileContents::force_residual_lambda)
+      .def_readwrite("force_discarded_r",
+                     &vmecpp::WOutFileContents::force_discarded_r)
+      .def_readwrite("force_discarded_z",
+                     &vmecpp::WOutFileContents::force_discarded_z)
+      .def_readwrite("force_discarded_lambda",
+                     &vmecpp::WOutFileContents::force_discarded_lambda)
       .def_readwrite("fsqt", &vmecpp::WOutFileContents::fsqt)
       .def_readwrite("delbsq", &vmecpp::WOutFileContents::delbsq)
       .def_readwrite("wdot", &vmecpp::WOutFileContents::wdot)
@@ -800,4 +807,72 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
       py::arg("verbose") = vmecpp::OutputMode::kProgress);
+
+  // ------------------------------------------------------------------
+  // VmecJacobianProbe: diagnostic for preconditioner / Jacobian analysis
+  // via finite differences. Intentionally minimal, single-thread only.
+  // ------------------------------------------------------------------
+  py::class_<vmecpp::VmecJacobianProbe>(m, "VmecJacobianProbe")
+      .def(py::init<const vmecpp::VmecINDATA &>(), py::arg("indata"))
+      .def("run_to_convergence",
+           [](vmecpp::VmecJacobianProbe &self) {
+             auto s = self.RunToConvergence();
+             if (!s.ok()) throw std::runtime_error(std::string(s.message()));
+           })
+      .def("snapshot_state", &vmecpp::VmecJacobianProbe::SnapshotState)
+      .def("restore_state", &vmecpp::VmecJacobianProbe::RestoreState)
+      .def("num_state_vars", &vmecpp::VmecJacobianProbe::NumStateVars)
+      .def("num_full_surfaces", &vmecpp::VmecJacobianProbe::NumFullSurfaces)
+      .def("mpol", &vmecpp::VmecJacobianProbe::Mpol)
+      .def("ntor_plus_one", &vmecpp::VmecJacobianProbe::NtorPlusOne)
+      .def("num_basis", &vmecpp::VmecJacobianProbe::NumBasis)
+      .def("is_axisymmetric", &vmecpp::VmecJacobianProbe::IsAxisymmetric)
+      .def("is_asymmetric", &vmecpp::VmecJacobianProbe::IsAsymmetric)
+      .def("get_basis_names", &vmecpp::VmecJacobianProbe::GetBasisNames)
+      .def("get_state_vector", &vmecpp::VmecJacobianProbe::GetStateVector)
+      .def("set_state_vector", &vmecpp::VmecJacobianProbe::SetStateVector,
+           py::arg("x"))
+      .def(
+          "evaluate_forces",
+          [](vmecpp::VmecJacobianProbe &self, bool preconditioned) {
+            auto s = self.EvaluateForces(preconditioned);
+            if (!s.ok())
+              throw std::runtime_error(std::string(s.status().message()));
+            return s.value();
+          },
+          py::arg("preconditioned"))
+      .def("index_jF",
+           [](const vmecpp::VmecJacobianProbe &self) {
+             const auto &idx = self.Index();
+             Eigen::VectorXi out(idx.size());
+             for (size_t i = 0; i < idx.size(); ++i) out[i] = idx[i].jF;
+             return out;
+           })
+      .def("index_m",
+           [](const vmecpp::VmecJacobianProbe &self) {
+             const auto &idx = self.Index();
+             Eigen::VectorXi out(idx.size());
+             for (size_t i = 0; i < idx.size(); ++i) out[i] = idx[i].m;
+             return out;
+           })
+      .def("index_n",
+           [](const vmecpp::VmecJacobianProbe &self) {
+             const auto &idx = self.Index();
+             Eigen::VectorXi out(idx.size());
+             for (size_t i = 0; i < idx.size(); ++i) out[i] = idx[i].n;
+             return out;
+           })
+      .def("index_basis",
+           [](const vmecpp::VmecJacobianProbe &self) {
+             const auto &idx = self.Index();
+             Eigen::VectorXi out(idx.size());
+             for (size_t i = 0; i < idx.size(); ++i) out[i] = idx[i].basis_id;
+             return out;
+           })
+      .def("index_comp", [](const vmecpp::VmecJacobianProbe &self) {
+        const auto &idx = self.Index();
+        Eigen::VectorXi out(idx.size());
+        for (size_t i = 0; i < idx.size(); ++i) out[i] = idx[i].comp_id;
+        return out;
+      });
 }  // NOLINT(readability/fn_size)

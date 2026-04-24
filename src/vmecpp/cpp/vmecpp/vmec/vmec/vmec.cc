@@ -1238,6 +1238,9 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     fc_.force_residual_r.push_back(fc_.fsqr);
     fc_.force_residual_z.push_back(fc_.fsqz);
     fc_.force_residual_lambda.push_back(fc_.fsql);
+    fc_.force_discarded_r.push_back(fc_.spectral_r_max_discarded);
+    fc_.force_discarded_z.push_back(fc_.spectral_z_max_discarded);
+    fc_.force_discarded_lambda.push_back(fc_.spectral_l_max_discarded);
     if (fc_.lfreeb) {
       // delbsq is only available on the LCFS thread
       fc_.delbsq.push_back(m_[thread_id]->get_delbsq());

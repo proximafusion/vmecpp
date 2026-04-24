@@ -93,6 +93,25 @@ class FlowControl {
   std::vector<double> force_residual_z;
   std::vector<double> force_residual_lambda;
 
+  // Spectral-truncation diagnostic, one entry per iteration that logs the
+  // force residual. Each entry is the max across radial surfaces of the
+  // fraction of real-space force L2 energy (R, Z, lambda respectively) that
+  // lies outside the retained (mpol, ntor) Fourier band. NaN when the
+  // diagnostic is disabled (VMECPP_SPECTRAL_DIAGNOSTIC=0 / unset), so the
+  // vectors stay index-aligned with `force_residual_r` etc.
+  std::vector<double> force_discarded_r;
+  std::vector<double> force_discarded_z;
+  std::vector<double> force_discarded_lambda;
+
+  // Cross-thread reduction targets for the spectral-truncation diagnostic:
+  // max of per-surface discarded fractions across the radial partition. Set
+  // to NaN when no diagnostic ran this iteration. IdealMhdModel::update()
+  // populates these each iteration (via an OMP critical section across
+  // threads) so Vmec::Printout can push them onto the time-trace vectors.
+  double spectral_r_max_discarded;
+  double spectral_z_max_discarded;
+  double spectral_l_max_discarded;
+
   // Preconditioned cumulative force residuals (radial, vertical and lambda)
   // Populated by `evalFResPrecd`
   double fsqr1, fsqz1, fsql1;

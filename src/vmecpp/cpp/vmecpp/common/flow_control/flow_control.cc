@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/flow_control/flow_control.h"
 
+#include <limits>
+
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 
@@ -62,6 +64,11 @@ FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
   fResPrecd.setZero();
 
   ns_old = 0;
+
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  spectral_r_max_discarded = nan;
+  spectral_z_max_discarded = nan;
+  spectral_l_max_discarded = nan;
 }
 
 int FlowControl::max_threads() const { return max_threads_; }

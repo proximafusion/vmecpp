@@ -1,0 +1,38 @@
+Total iterations sampled: 59
+Final sampled iter: 2900
+
+Top (m, n) modes in final iter, component R:
+  m= 0 n= 1  L2=1.521e-08
+  m= 1 n= 0  L2=1.181e-08
+  m= 1 n= 1  L2=8.913e-09
+  m= 3 n= 0  L2=8.883e-09
+  m= 0 n= 0  L2=8.066e-09
+  m= 4 n= 1  L2=7.074e-09
+  m= 3 n= 1  L2=6.616e-09
+  m= 5 n= 1  L2=6.226e-09
+  m= 0 n= 2  L2=5.311e-09
+  m= 2 n= 1  L2=5.190e-09
+
+Top (m, n) modes in final iter, component Z:
+  m= 3 n= 1  L2=9.691e-09
+  m= 5 n= 1  L2=7.123e-09
+  m= 1 n= 0  L2=6.484e-09
+  m= 4 n= 1  L2=5.269e-09
+  m= 2 n= 0  L2=5.172e-09
+  m= 0 n= 2  L2=4.725e-09
+  m= 1 n= 1  L2=4.674e-09
+  m= 2 n= 1  L2=4.566e-09
+  m= 4 n= 0  L2=4.009e-09
+  m= 2 n= 2  L2=3.589e-09
+
+Top (m, n) modes in final iter, component L:
+  m= 1 n= 0  L2=5.819e-08
+  m= 5 n= 1  L2=4.494e-08
+  m= 4 n= 1  L2=4.423e-08
+  m= 1 n= 1  L2=4.116e-08
+  m= 2 n= 0  L2=3.995e-08
+  m= 6 n= 1  L2=3.783e-08
+  m= 3 n= 0  L2=3.573e-08
+  m= 3 n= 1  L2=2.860e-08
+  m= 4 n= 0  L2=2.464e-08
+  m= 2 n= 1  L2=2.320e-08

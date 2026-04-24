@@ -8,6 +8,7 @@
 #include <Eigen/Dense>
 #include <climits>
 #include <span>
+#include <vector>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -59,6 +60,46 @@ void deAliasConstraintForce(const RadialPartitioning& rp,
                             const Eigen::VectorXd& gConEff,
                             Eigen::VectorXd& m_gsc, Eigen::VectorXd& m_gcs,
                             Eigen::VectorXd& m_gCon);
+
+// Quantifies how much of the real-space MHD force's L2 energy lies outside
+// the retained (mpol, ntor) Fourier band -- i.e., the fraction that is
+// silently discarded when `ForcesToFourier3DSymmFastPoloidal` projects onto
+// the truncated spectrum. A fraction near 0 means the Fourier resolution is
+// adequate for the current force field; a fraction close to 1 means the
+// energy minimization is largely integrating content that cannot be
+// represented at all, and convergence metrics should be treated with
+// skepticism.
+//
+// Per radial surface, separately for the R, Z, and lambda force components:
+//   discarded_fraction = E_discarded / E_total
+// where E_total is the Parseval sum over the full Nyquist band
+// (0..mnyq, 0..nnyq) and E_kept is the Parseval sum over the retained band
+// (0..mpol-1, 0..ntor). Implementation-wise, E_kept reads the coefficients
+// the production DFT has already scattered into `physical_f_kept`, and
+// E_total is obtained by running that same DFT again on a "wide" Sizes
+// covering the full Nyquist band. 3D symmetric path only (lthreed required,
+// lasym not supported).
+struct SpectralTruncationReport {
+  // Per-surface discarded fractions (size nsMaxF - nsMinF). Index is local
+  // to the radial partition; global surface index is jF = nsMinF + local.
+  std::vector<double> r_discarded_fraction;
+  std::vector<double> z_discarded_fraction;
+  std::vector<double> l_discarded_fraction;
+
+  // Maxima across the radial partition (for quick scalar logging).
+  double r_max_discarded = 0.0;
+  double z_max_discarded = 0.0;
+  double l_max_discarded = 0.0;
+
+  // True if the diagnostic was actually evaluated (vs. default-constructed).
+  bool populated = false;
+};
+
+SpectralTruncationReport ComputeForceSpectralTruncation(
+    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
+    const FourierForces& physical_f_kept, const RadialPartitioning& rp,
+    const FlowControl& fc, const Sizes& s, const FourierBasisFastPoloidal& fb,
+    VacuumPressureState vacuum_pressure_state);
 
 class IdealMhdModel {
  public:
@@ -220,6 +261,18 @@ class IdealMhdModel {
   // `ivacskip` is the current counter that controls whether a full update or a
   // partial update of the Nestor free boundary force contribution is computed.
   int get_ivacskip() const;
+
+  // True iff the spectral-truncation diagnostic is enabled for this run.
+  // Controlled by the environment variable VMECPP_SPECTRAL_DIAGNOSTIC.
+  bool IsSpectralDiagnosticEnabled() const {
+    return spectral_diagnostic_enabled_;
+  }
+
+  // Most recent diagnostic report (populated only when the diagnostic is
+  // enabled and has run at least once on this thread's radial partition).
+  const SpectralTruncationReport& GetLastSpectralTruncationReport() const {
+    return last_spectral_truncation_report_;
+  }
 
   /**********************************************/
 
@@ -465,6 +518,12 @@ class IdealMhdModel {
   // counter how many vacuum iterations have passed since last full update
   // --> counts modulo nvacskip
   int ivacskip;
+
+  // Spectral-truncation diagnostic: when true, a Nyquist-band force DFT is
+  // performed after each `forcesToFourier` call, and the discarded-energy
+  // fractions are stored in `last_spectral_truncation_report_`.
+  bool spectral_diagnostic_enabled_ = false;
+  SpectralTruncationReport last_spectral_truncation_report_;
 };
 
 }  // namespace vmecpp
