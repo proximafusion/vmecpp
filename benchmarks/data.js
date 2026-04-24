@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1776932212860,
+  "lastUpdate": 1777033941112,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16122,6 +16122,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.013614098861036131",
             "extra": "mean: 9.855875300999989 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "51527dfb71c83aee7a8d83df6203758e2c78ef18",
+          "message": "Miller recurrence relation for numerically stable NESTOR at high mpol/ntor (#484)\n\nA stable recurrence relation that will help free boundary convergence of any free boundary computation >=12 mpol or ntor. \r\n\r\n![image.png](https://app.graphite.com/user-attachments/assets/54557a41-e8c4-40d7-8184-68fc73a44ce9.png)\r\n\r\nSpuriously growing error at high mode numbers",
+          "timestamp": "2026-04-24T12:28:08Z",
+          "tree_id": "46ee572b3021f833c339ffbbac9effe65b0f54e2",
+          "url": "https://github.com/proximafusion/vmecpp/commit/51527dfb71c83aee7a8d83df6203758e2c78ef18"
+        },
+        "date": 1777033939855,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.9422803085841718,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0012329257788555586",
+            "extra": "mean: 339.8724441999889 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.928693501997443,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00237653330579315",
+            "extra": "mean: 341.44918179999877 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23291252961650874,
+            "unit": "iter/sec",
+            "range": "stddev: 0.032161959000972094",
+            "extra": "mean: 4.293457297666653 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5679117544156642,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008313450350129358",
+            "extra": "mean: 1.7608369473333407 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.27916794504298825,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009364344750837604",
+            "extra": "mean: 3.582073149000015 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10004713222066393,
+            "unit": "iter/sec",
+            "range": "stddev: 0.020810049308553808",
+            "extra": "mean: 9.995288998333308 sec\nrounds: 3"
           }
         ]
       }
