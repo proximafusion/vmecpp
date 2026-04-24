@@ -96,6 +96,41 @@ absl::Status VectorPotential(
     std::vector<std::vector<double> > &m_vector_potential,
     bool check_current_carrier = true);
 
+// Flat AoS (array-of-structs) overloads for high-performance use:
+// evaluation_positions_aos stores {x0,y0,z0, x1,y1,z1, ...} for N points.
+// m_magnetic_field_aos (resp. m_vector_potential_aos) must be initialized to
+// zero by the caller before the first call; ABSCAB only accumulates into it.
+
+absl::Status MagneticField(
+    const CircularFilament &circular_filament, double current,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_magnetic_field_aos, bool check_current_carrier = true);
+
+absl::Status MagneticField(
+    const PolygonFilament &polygon_filament, double current,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_magnetic_field_aos, bool check_current_carrier = true);
+
+absl::Status MagneticField(
+    const MagneticConfiguration &magnetic_configuration,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_magnetic_field_aos, bool check_current_carrier = true);
+
+absl::Status VectorPotential(
+    const CircularFilament &circular_filament, double current,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_vector_potential_aos, bool check_current_carrier = true);
+
+absl::Status VectorPotential(
+    const PolygonFilament &polygon_filament, double current,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_vector_potential_aos, bool check_current_carrier = true);
+
+absl::Status VectorPotential(
+    const MagneticConfiguration &magnetic_configuration,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_vector_potential_aos, bool check_current_carrier = true);
+
 // Compute the linking current between a given magnetic configuration
 // and a given closed curve, e.g., the magnetic axis.
 // The number of sampling points along the axis is chosen

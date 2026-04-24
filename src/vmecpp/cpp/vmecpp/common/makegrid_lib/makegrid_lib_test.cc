@@ -138,10 +138,9 @@ TEST(TestMakegridLib, CheckMakeCylindricalGrid) {
       MakeCylindricalGrid(makegrid_parameters);
   ASSERT_OK(cylindrical_grid_eigen);
 
-  // MakeCylindricalGrid() returns a 3xN matrix, instead of Nx3, so we tranpose
-  // to keep the test the same:
+  // MakeCylindricalGrid() returns an Nx3 matrix (AoS layout).
   absl::StatusOr<std::vector<std::vector<double>>> cylindrical_grid =
-      EigenToStl(cylindrical_grid_eigen.value().transpose());
+      EigenToStl(cylindrical_grid_eigen.value());
 
   int num_phi_effective = makegrid_parameters.number_of_phi_grid_points;
   if (makegrid_parameters.assume_stellarator_symmetry) {
@@ -469,11 +468,11 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
   absl::StatusOr<RowMatrix3Xd> cylindrical_grid_eigen =
       MakeCylindricalGrid(makegrid_parameters);
   ASSERT_OK(cylindrical_grid_eigen);
+  // MakeCylindricalGrid() returns an Nx3 matrix (AoS layout).
   absl::StatusOr<std::vector<std::vector<double>>> cylindrical_grid =
-      EigenToStl(cylindrical_grid_eigen.value().transpose());
+      EigenToStl(cylindrical_grid_eigen.value());
 
   const std::size_t number_of_evaluation_locations = cylindrical_grid->size();
-
   // compute magnetic field cache
   absl::StatusOr<MagneticFieldResponseTable> magnetic_response_table =
       ComputeMagneticFieldResponseTable(makegrid_parameters,
@@ -628,10 +627,9 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
       MakeCylindricalGrid(makegrid_parameters);
   ASSERT_OK(cylindrical_grid_eigen);
 
-  // MakeCylindricalGrid() returns a 3xN matrix, instead of Nx3, so we tranpose
-  // to keep the test the same:
+  // MakeCylindricalGrid() returns an Nx3 matrix (AoS layout).
   absl::StatusOr<std::vector<std::vector<double>>> cylindrical_grid =
-      EigenToStl(cylindrical_grid_eigen.value().transpose());
+      EigenToStl(cylindrical_grid_eigen.value());
 
   const std::size_t number_of_evaluation_locations = cylindrical_grid->size();
 
