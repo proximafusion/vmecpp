@@ -6,9 +6,6 @@
 
 #include <algorithm>
 #include <string>
-#include <vector>
-
-#include "absl/algorithm/container.h"
 
 namespace vmecpp {
 
@@ -58,20 +55,18 @@ void RegularizedIntegrals::computeConstants() {
   }  // k
 }
 
-void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
-  // thread-local tangential grid point range
-  const int numLocal = tp_.ztMax - tp_.ztMin;
+void RegularizedIntegrals::update(const Eigen::VectorXd& bDotN) {
   const int theta_by_nzeta = s_.nThetaEven * s_.nZeta;
   const double twopidivnfp = 2.0 * M_PI / s_.nfp;
 
-  absl::c_fill_n(greenp, numLocal * theta_by_nzeta, 0);
-  absl::c_fill_n(gstore, theta_by_nzeta, 0);
+  greenp.setZero();
+  gstore.setZero();
 
   // storage for intermediate results
-  std::vector<double> ga1_buf(s_.nZeta);
-  std::vector<double> ga2_buf(s_.nZeta);
-  std::vector<double> htemp_buf(s_.nZeta);
-  std::vector<double> ftemp_buf(s_.nZeta);
+  Eigen::VectorXd ga1_buf(s_.nZeta);
+  Eigen::VectorXd ga2_buf(s_.nZeta);
+  Eigen::VectorXd htemp_buf(s_.nZeta);
+  Eigen::VectorXd ftemp_buf(s_.nZeta);
 
   for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
     const int ip_idx_base = (klp - tp_.ztMin) * theta_by_nzeta;
