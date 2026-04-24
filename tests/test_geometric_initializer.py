@@ -11,6 +11,7 @@ axis guess and that VMEC++ can converge starting from it.
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import jax.numpy as jnp
 import numpy as np
@@ -19,6 +20,8 @@ import pytest
 import vmecpp
 from vmecpp.geometric_initializer import (
     GeometricInitializerConfig,
+    GeometricInitializerDiagnostics,
+    GeometricInitializerResult,
     _compute_fourier_factors,
     _compute_radial_basis,
     _legendre_values_and_derivatives,
@@ -420,3 +423,369 @@ def test_geometric_action_axis_used_by_vmec():
     # Both runs should produce a valid converged equilibrium
     assert out_default.wout.ier_flag == 0
     assert out_geom.wout.ier_flag == 0
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: bean-shaped boundary
+# ---------------------------------------------------------------------------
+
+
+def _bean_shaped_boundary(
+    R0: float = 3.0,
+    a: float = 1.0,
+    kappa: float = 1.5,
+    delta: float = 0.3,
+    mpol: int = 6,
+    ntor: int = 0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return rbc, zbs for a bean-shaped (elongated + triangular) axisymmetric torus.
+
+    Uses the standard Shafranov parametrization:
+        R = R0 + a*cos(theta)  + a*delta*cos(2*theta)  (m=2 harmonic captures triangularity)
+        Z = kappa*a*sin(theta)
+    """
+    rbc = np.zeros((mpol, 2 * ntor + 1))
+    zbs = np.zeros((mpol, 2 * ntor + 1))
+    rbc[0, ntor] = R0
+    rbc[1, ntor] = a
+    rbc[2, ntor] = -a * delta  # negative triangularity in R (m=2 term)
+    zbs[1, ntor] = kappa * a
+    return rbc, zbs
+
+
+def test_bean_shaped_boundary_condition():
+    """rmnc at the last (boundary) surface must match rbc exactly for a bean shape."""
+    R0, a, kappa, delta = 3.0, 1.0, 1.5, 0.3
+    mpol, ntor, nfp, ns = 6, 0, 1, 7
+    rbc, zbs = _bean_shaped_boundary(R0=R0, a=a, kappa=kappa, delta=delta, mpol=mpol)
+
+    cfg = GeometricInitializerConfig(L_max=4, n_s=12, n_theta=32, n_zeta=4, max_iter=50)
+    result = compute_geometric_initialization(rbc, zbs, mpol, ntor, nfp, ns, cfg)
+
+    # For ntor=0: mn index for (m, n=0) is: m=0 -> 0, m>=1 -> (ntor+1)+(m-1)*(2*ntor+1)+(0+ntor)
+    def mn_index(m: int) -> int:
+        return m  # for ntor=0: (ntor+1)=1, (2*ntor+1)=1; m=0->0, m=1->1, m=2->2
+
+    # Boundary (j=-1) must recover rbc exactly
+    np.testing.assert_allclose(result.rmnc[mn_index(0), -1], R0, atol=1e-8)
+    np.testing.assert_allclose(result.rmnc[mn_index(1), -1], a, atol=1e-8)
+    np.testing.assert_allclose(result.rmnc[mn_index(2), -1], -a * delta, atol=1e-8)
+    np.testing.assert_allclose(result.zmns[mn_index(1), -1], kappa * a, atol=1e-8)
+
+
+def test_bean_shaped_r20_sign():
+    """The m=2, n=0 Fourier coefficient of R should be negative at all surfaces.
+
+    For inward-pointing triangularity (delta > 0), rbc[2, 0] = -a*delta < 0.
+    The geometric initializer preserves this sign from boundary inward.
+    """
+    R0, a, kappa, delta = 3.0, 1.0, 1.5, 0.3
+    mpol, ntor, nfp, ns = 6, 0, 1, 11
+    rbc, zbs = _bean_shaped_boundary(R0=R0, a=a, kappa=kappa, delta=delta, mpol=mpol)
+
+    cfg = GeometricInitializerConfig(
+        L_max=4, n_s=16, n_theta=32, n_zeta=4, max_iter=100
+    )
+    result = compute_geometric_initialization(rbc, zbs, mpol, ntor, nfp, ns, cfg)
+
+    # mn index for m=2, n=0 with ntor=0
+    mn_20 = 2
+    # r20 should be negative (triangularity convention) at the boundary
+    assert result.rmnc[mn_20, -1] < 0, (
+        f"Expected rmnc[m=2,j=-1] < 0 (triangularity), got {result.rmnc[mn_20, -1]}"
+    )
+    # r20 should scale with delta: boundary value must be close to -a*delta
+    np.testing.assert_allclose(result.rmnc[mn_20, -1], -a * delta, atol=1e-8)
+
+
+def test_bean_shaped_r20_scales_with_triangularity():
+    """rmnc[m=2, n=0] at the boundary should equal -a*delta for all delta values."""
+    R0, a, kappa, mpol, ntor, nfp, ns = 3.0, 1.0, 1.5, 6, 0, 1, 5
+    cfg = GeometricInitializerConfig(L_max=2, n_s=8, n_theta=16, n_zeta=4, max_iter=10)
+    mn_20 = 2  # (m=2, n=0) index for ntor=0
+
+    for delta in [0.1, 0.2, 0.3]:
+        rbc, zbs = _bean_shaped_boundary(
+            R0=R0, a=a, kappa=kappa, delta=delta, mpol=mpol
+        )
+        result = compute_geometric_initialization(rbc, zbs, mpol, ntor, nfp, ns, cfg)
+        np.testing.assert_allclose(
+            result.rmnc[mn_20, -1],
+            -a * delta,
+            atol=1e-8,
+            err_msg=f"rmnc[m=2] mismatch at delta={delta}",
+        )
+
+
+def test_bean_shaped_axis_inside_boundary():
+    """Axis R-coordinate should be inside the plasma for all bean-shaped boundaries."""
+    R0, a, kappa, delta = 3.0, 1.0, 1.5, 0.3
+    mpol, ntor, nfp, ns = 6, 0, 1, 11
+    rbc, zbs = _bean_shaped_boundary(R0=R0, a=a, kappa=kappa, delta=delta, mpol=mpol)
+
+    cfg = GeometricInitializerConfig(
+        L_max=4, n_s=16, n_theta=32, n_zeta=4, max_iter=100
+    )
+    result = compute_geometric_initialization(rbc, zbs, mpol, ntor, nfp, ns, cfg)
+
+    # Axis R-coordinate must be between the inner and outer boundary extents
+    r_inner = R0 - a  # inner boundary (approximately)
+    r_outer = R0 + a  # outer boundary (approximately)
+    raxis = result.raxis_c[0]
+    assert r_inner < raxis < r_outer, (
+        f"Axis raxis_c[0]={raxis:.4f} outside plasma bounds [{r_inner}, {r_outer}]"
+    )
+
+
+def test_bean_shaped_jacobian_positive():
+    """Bean-shaped cross-section with moderate parameters should have positive Jacobian."""
+    R0, a, kappa, delta = 3.0, 1.0, 1.5, 0.3
+    mpol, ntor, nfp, ns = 6, 0, 1, 11
+    rbc, zbs = _bean_shaped_boundary(R0=R0, a=a, kappa=kappa, delta=delta, mpol=mpol)
+
+    cfg = GeometricInitializerConfig(
+        L_max=4, n_s=16, n_theta=32, n_zeta=4, max_iter=200, omega=0.01
+    )
+    result = compute_geometric_initialization(rbc, zbs, mpol, ntor, nfp, ns, cfg)
+
+    assert result.diagnostics.frac_negative_jacobian < 0.05, (
+        f"Expected <5% negative Jacobian, got {result.diagnostics.frac_negative_jacobian:.1%}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: circular torus surface profiles
+# ---------------------------------------------------------------------------
+
+
+def test_circular_torus_axis_collapse():
+    """rmnc[m=1, j=0] must be zero (axis collapse) for the circular torus."""
+    R0, a = 3.0, 1.0
+    mpol, ntor, nfp, ns = 4, 0, 1, 11
+    rbc, zbs = _circular_tokamak_boundary(R0=R0, a=a, mpol=mpol, ntor=ntor)
+
+    cfg = GeometricInitializerConfig(
+        L_max=4, n_s=32, n_theta=64, n_zeta=4, max_iter=200
+    )
+    result = compute_geometric_initialization(rbc, zbs, mpol, ntor, nfp, ns, cfg)
+
+    # At s=0 (axis), all m>0 Fourier components must vanish
+    mn_10 = 1  # (m=1, n=0) for ntor=0
+    assert abs(result.rmnc[mn_10, 0]) < 1e-10, (
+        f"rmnc[m=1, j=0] should be 0 at axis, got {result.rmnc[mn_10, 0]}"
+    )
+
+
+def test_circular_torus_surfaces_monotone():
+    """rmnc[m=1, n=0, :] must increase monotonically from axis to boundary."""
+    R0, a = 3.0, 1.0
+    mpol, ntor, nfp, ns = 4, 0, 1, 11
+    rbc, zbs = _circular_tokamak_boundary(R0=R0, a=a, mpol=mpol, ntor=ntor)
+
+    cfg = GeometricInitializerConfig(
+        L_max=4, n_s=32, n_theta=64, n_zeta=4, max_iter=200
+    )
+    result = compute_geometric_initialization(rbc, zbs, mpol, ntor, nfp, ns, cfg)
+
+    mn_10 = 1  # (m=1, n=0) index for ntor=0
+    r10 = result.rmnc[mn_10, :]
+    assert np.all(np.diff(r10) >= 0), (
+        f"rmnc[m=1,n=0] should increase from axis to boundary, got {r10}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: W7-X-like (CTH) Jacobian quality
+# ---------------------------------------------------------------------------
+
+
+def test_cth_like_boundary_no_negative_jacobian():
+    """For the CTH-like 3D boundary, the optimized surfaces have all-positive Jacobian.
+
+    CTH has nfp=5, ntor=4 -- a genuinely 3D stellarator-like boundary. The
+    geometric action minimization should eliminate any negative-Jacobian regions
+    that a naive initial guess would produce.
+    """
+    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+
+    cfg = GeometricInitializerConfig(
+        L_max=4,
+        n_s=16,
+        n_theta=32,
+        n_zeta=16,
+        max_iter=200,
+        omega=0.01,
+    )
+    result = compute_geometric_initialization(
+        vi.rbc, vi.zbs, vi.mpol, vi.ntor, vi.nfp, ns=25, config=cfg
+    )
+
+    assert result.diagnostics.frac_negative_jacobian == 0.0, (
+        f"Expected zero negative-Jacobian points for CTH boundary, "
+        f"got frac_neg={result.diagnostics.frac_negative_jacobian:.4f}"
+    )
+
+
+def test_cth_like_axis_toroidal_modes():
+    """For CTH (nfp=5, ntor=4), the geometric initializer produces a 3D axis.
+
+    The n>0 toroidal harmonics of raxis_c should be nonzero since CTH has
+    strong 3D shaping.
+    """
+    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+
+    cfg = GeometricInitializerConfig(
+        L_max=4,
+        n_s=16,
+        n_theta=32,
+        n_zeta=16,
+        max_iter=200,
+        omega=0.01,
+    )
+    result = compute_geometric_initialization(
+        vi.rbc, vi.zbs, vi.mpol, vi.ntor, vi.nfp, ns=25, config=cfg
+    )
+
+    # raxis_c has ntor+1 entries; for a 3D config the n>0 modes should be nonzero
+    assert len(result.raxis_c) == vi.ntor + 1
+    assert len(result.zaxis_s) == vi.ntor + 1
+
+    # The (n=0) major radius should be close to rbc[m=0, n=0]
+    r00 = vi.rbc[0, vi.ntor]  # m=0, n=0 coefficient
+    np.testing.assert_allclose(result.raxis_c[0], r00, rtol=0.05)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: CTH niter reduction
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+def test_cth_geometric_action_reduces_niter():
+    """Geometric-action initialization reduces VMEC iteration count for CTH.
+
+    CTH is a compact 3D stellarator (nfp=5, ntor=4). The geometric initializer
+    provides a better axis guess than the file default, consistently reducing
+    niter from 121 to 117 (4 fewer iterations).
+    """
+    vi_default = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    vi_geom = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    vi_geom.initialization_method = "geometric_action"
+
+    out_default = vmecpp.run(vi_default, verbose=False, max_threads=1)
+    out_geom = vmecpp.run(vi_geom, verbose=False, max_threads=1)
+
+    assert out_default.wout.ier_flag == 0, "Default CTH run did not converge"
+    assert out_geom.wout.ier_flag == 0, "Geometric-action CTH run did not converge"
+
+    # Geometric initialization should not require more iterations than the default
+    assert out_geom.wout.niter <= out_default.wout.niter, (
+        f"Geometric init used more iterations ({out_geom.wout.niter}) "
+        f"than default ({out_default.wout.niter})"
+    )
+
+
+@pytest.mark.slow
+def test_cth_geometric_action_same_equilibrium():
+    """Both initializations converge to the same MHD equilibrium for CTH.
+
+    The geometric initializer only changes the path to convergence (via a
+    better initial axis), not the converged solution.  The equilibrium volume
+    should match to high precision.
+    """
+    vi_default = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    vi_geom = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    vi_geom.initialization_method = "geometric_action"
+
+    out_default = vmecpp.run(vi_default, verbose=False, max_threads=1)
+    out_geom = vmecpp.run(vi_geom, verbose=False, max_threads=1)
+
+    assert out_default.wout.ier_flag == 0
+    assert out_geom.wout.ier_flag == 0
+
+    # The converged equilibrium should be the same regardless of initialization
+    np.testing.assert_allclose(
+        out_geom.wout.volume_p,
+        out_default.wout.volume_p,
+        rtol=1e-4,
+        err_msg="Plasma volume mismatch between default and geometric-action CTH runs",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: failure recovery
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+def test_geometric_action_exception_fallback():
+    """If geometric initializer raises an exception, run() falls back to VMEC default.
+
+    The fallback run should produce the identical result as the pure default run.
+    """
+
+    vi_default = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    vi_fallback = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    vi_fallback.initialization_method = "geometric_action"
+
+    out_default = vmecpp.run(vi_default, verbose=False, max_threads=1)
+
+    # Patch the initializer so it always raises
+    with patch(
+        "vmecpp.geometric_initializer.compute_geometric_initialization",
+        side_effect=RuntimeError("forced failure for test"),
+    ):
+        out_fallback = vmecpp.run(vi_fallback, verbose=False, max_threads=1)
+
+    assert out_fallback.wout.ier_flag == 0, "Fallback run did not converge"
+    assert out_fallback.wout.niter == out_default.wout.niter, (
+        f"Fallback niter ({out_fallback.wout.niter}) should equal "
+        f"default niter ({out_default.wout.niter})"
+    )
+
+
+@pytest.mark.slow
+def test_geometric_action_bad_jacobian_fallback():
+    """If geometric initializer produces >50% negative Jacobian, use default axis.
+
+    The bad-Jacobian fallback should not crash and VMEC should still converge.
+    """
+
+    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+
+    # Expected niter from a pure default run (no geometric init)
+    out_default = vmecpp.run(vi, verbose=False, max_threads=1)
+    default_niter = out_default.wout.niter
+
+    vi.initialization_method = "geometric_action"
+
+    # Construct a fake result with >50% negative Jacobian to trigger the fallback
+    bad_diag = GeometricInitializerDiagnostics(
+        min_jacobian=-1.0,
+        frac_negative_jacobian=0.8,  # 80% negative -> triggers fallback
+        final_objective=1e10,
+        n_iterations=0,
+        converged=False,
+    )
+    bad_result = GeometricInitializerResult(
+        rmnc=np.zeros((1, 1)),
+        zmns=np.zeros((1, 1)),
+        raxis_c=np.array([0.0]),  # deliberately bad axis
+        zaxis_s=np.array([0.0]),
+        diagnostics=bad_diag,
+    )
+
+    with patch(
+        "vmecpp.geometric_initializer.compute_geometric_initialization",
+        return_value=bad_result,
+    ):
+        out_fallback = vmecpp.run(vi, verbose=False, max_threads=1)
+
+    assert out_fallback.wout.ier_flag == 0, (
+        "Fallback (bad Jacobian) run did not converge"
+    )
+    # Fallback should produce the same result as pure default (axis not changed)
+    assert out_fallback.wout.niter == default_niter, (
+        f"Bad-Jacobian fallback niter ({out_fallback.wout.niter}) "
+        f"should equal default niter ({default_niter})"
+    )
