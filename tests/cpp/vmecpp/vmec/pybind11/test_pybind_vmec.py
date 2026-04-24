@@ -27,8 +27,7 @@ def is_close_ra(actual, expected, tolerance, context=""):
     expected_shape = np.shape(expected)
     if len(actual_shape) != len(expected_shape):
         print(
-            "rank mismatch: actual is rank-%d, expected is rank-%d"
-            % (len(actual_shape), len(expected_shape))
+            f"rank mismatch: actual is rank-{len(actual_shape)}, expected is rank-{len(expected_shape)}"
         )
         return False
 
@@ -39,7 +38,7 @@ def is_close_ra(actual, expected, tolerance, context=""):
 
         for i, a in enumerate(actual):
             e = expected[i]
-            all_good &= is_close_ra(a, e, tolerance, " at %d" % (i,))
+            all_good &= is_close_ra(a, e, tolerance, f" at {i}")
     else:
         # This is the actual test, on scalars.
         ra_err = (actual - expected) / (1.0 + abs(expected))
@@ -220,7 +219,7 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.mercier.Dgeod, wout["DGeod"][()], 1.0e-8)
 
     # wout
-    assert output_quantities.wout.sign_of_jacobian == wout["signgs"][()]
+    assert output_quantities.wout.signgs == wout["signgs"][()]
     assert output_quantities.wout.gamma == wout["gamma"][()]
 
     assert (
@@ -237,77 +236,19 @@ def test_output_quantities():
     )
 
     # mass profile: am, am_aux_s, am_aux_f
-    last_zero = 0
-
-    while wout["am"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.am, wout["am"][()][: last_zero + 1], 1.0e-15
-    )
-    last_zero = 0
-    while wout["am_aux_s"][()][last_zero] != -1.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.am_aux_s,
-        wout["am_aux_s"][()][: last_zero + 1],
-        1.0e-15,
-    )
-    last_zero = 0
-    while wout["am_aux_f"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.am_aux_f,
-        wout["am_aux_f"][()][: last_zero + 1],
-        1.0e-15,
-    )
+    assert is_close_ra(output_quantities.wout.am, wout["am"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.am_aux_s, wout["am_aux_s"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.am_aux_f, wout["am_aux_f"][()], 1.0e-15)
 
     # current profile: ac, ac_aux_s, ac_aux_f
-    last_zero = 0
-    while wout["ac"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ac, wout["ac"][()][: last_zero + 1], 1.0e-15
-    )
-    last_zero = 0
-    while wout["ac_aux_s"][()][last_zero] != -1.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ac_aux_s,
-        wout["ac_aux_s"][()][: last_zero + 1],
-        1.0e-15,
-    )
-    last_zero = 0
-    while wout["ac_aux_f"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ac_aux_f,
-        wout["ac_aux_f"][()][: last_zero + 1],
-        1.0e-15,
-    )
+    assert is_close_ra(output_quantities.wout.ac, wout["ac"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ac_aux_s, wout["ac_aux_s"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ac_aux_f, wout["ac_aux_f"][()], 1.0e-15)
 
     # iota profile: ai, ai_aux_s, ai_aux_f
-    last_zero = 0
-    while wout["ai"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ai, wout["ai"][()][: last_zero + 1], 1.0e-15
-    )
-    last_zero = 0
-    while wout["ai_aux_s"][()][last_zero] != -1.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ai_aux_s,
-        wout["ai_aux_s"][()][: last_zero + 1],
-        1.0e-15,
-    )
-    last_zero = 0
-    while wout["ai_aux_f"][()][last_zero] != 0.0:
-        last_zero += 1
-    assert is_close_ra(
-        output_quantities.wout.ai_aux_f,
-        wout["ai_aux_f"][()][: last_zero + 1],
-        1.0e-15,
-    )
+    assert is_close_ra(output_quantities.wout.ai, wout["ai"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ai_aux_s, wout["ai_aux_s"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ai_aux_f, wout["ai_aux_f"][()], 1.0e-15)
 
     assert output_quantities.wout.nfp == wout["nfp"][()]
     assert output_quantities.wout.mpol == wout["mpol"][()]
@@ -316,7 +257,7 @@ def test_output_quantities():
 
     assert output_quantities.wout.ns == wout["ns"][()]
     assert output_quantities.wout.ftolv == wout["ftolv"][()]
-    assert output_quantities.wout.maximum_iterations == wout["niter"][()]
+    assert output_quantities.wout.niter == wout["niter"][()]
 
     assert output_quantities.wout.lfreeb == (wout["lfreeb__logical__"][()] != 0)
     assert (
@@ -347,7 +288,7 @@ def test_output_quantities():
 
     assert is_close_ra(output_quantities.wout.aspect, wout["aspect"][()], 1.0e-11)
 
-    assert is_close_ra(output_quantities.wout.betatot, wout["betatotal"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.betatotal, wout["betatotal"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.betapol, wout["betapol"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.betator, wout["betator"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.betaxis, wout["betaxis"][()], 1.0e-11)
@@ -357,13 +298,13 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.rbtor, wout["rbtor"][()], 1.0e-11)
 
     assert is_close_ra(output_quantities.wout.IonLarmor, wout["IonLarmor"][()], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.VolAvgB, wout["volavgB"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.volavgB, wout["volavgB"][()], 1.0e-11)
 
     assert is_close_ra(output_quantities.wout.ctor, wout["ctor"][()], 1.0e-6)
 
     assert is_close_ra(output_quantities.wout.Aminor_p, wout["Aminor_p"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.Rmajor_p, wout["Rmajor_p"][()], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.volume_p, wout["volume_p"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.volume, wout["volume_p"][()], 1.0e-11)
 
     assert is_close_ra(output_quantities.wout.fsqr, wout["fsqr"][()], 1.0e-11)
     assert is_close_ra(output_quantities.wout.fsqz, wout["fsqz"][()], 1.0e-11)
@@ -372,39 +313,35 @@ def test_output_quantities():
     # -------------------
     # one-dimensional array quantities
 
-    assert is_close_ra(output_quantities.wout.iota_full, wout["iotaf"][()], 1.0e-6)
-    assert is_close_ra(
-        output_quantities.wout.safety_factor, wout["q_factor"][()], 1.0e-10
-    )
-    assert is_close_ra(output_quantities.wout.pressure_full, wout["presf"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.toroidal_flux, wout["phi"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.iotaf, wout["iotaf"][()], 1.0e-6)
+    assert is_close_ra(output_quantities.wout.q_factor, wout["q_factor"][()], 1.0e-10)
+    assert is_close_ra(output_quantities.wout.presf, wout["presf"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.phi, wout["phi"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.phipf, wout["phipf"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.poloidal_flux, wout["chi"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.chi, wout["chi"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.chipf, wout["chipf"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.jcuru, wout["jcuru"][()], 1.0e-6)
     assert is_close_ra(output_quantities.wout.jcurv, wout["jcurv"][()], 1.0e-6)
 
-    assert is_close_ra(output_quantities.wout.iota_half, wout["iotas"][()][1:], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.mass, wout["mass"][()][1:], 1.0e-8)
-    assert is_close_ra(
-        output_quantities.wout.pressure_half, wout["pres"][()][1:], 1.0e-8
-    )
-    assert is_close_ra(output_quantities.wout.beta, wout["beta_vol"][()][1:], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.buco, wout["buco"][()][1:], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.bvco, wout["bvco"][()][1:], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.dVds, wout["vp"][()][1:], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.spectral_width, wout["specw"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.phips, wout["phips"][()][1:], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.overr, wout["over_r"][()][1:], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.iotas, wout["iotas"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.mass, wout["mass"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.pres, wout["pres"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.beta_vol, wout["beta_vol"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.buco, wout["buco"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.bvco, wout["bvco"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.vp, wout["vp"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.specw, wout["specw"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.phips, wout["phips"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.over_r, wout["over_r"][()], 1.0e-8)
 
     assert is_close_ra(output_quantities.wout.jdotb, wout["jdotb"][()], 1.0e-5)
     assert is_close_ra(output_quantities.wout.bdotgradv, wout["bdotgradv"][()], 1.0e-8)
 
     assert is_close_ra(output_quantities.wout.DMerc, wout["DMerc"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.Dshear, wout["DShear"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.Dwell, wout["DWell"][()], 1.0e-9)
-    assert is_close_ra(output_quantities.wout.Dcurr, wout["DCurr"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.Dgeod, wout["DGeod"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.DShear, wout["DShear"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.DWell, wout["DWell"][()], 1.0e-9)
+    assert is_close_ra(output_quantities.wout.DCurr, wout["DCurr"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.DGeod, wout["DGeod"][()], 1.0e-8)
 
     # Fortran VMEC defines equif over all flux surfaces,
     # but then skips the axis and boundary during writing.
@@ -425,17 +362,17 @@ def test_output_quantities():
     # -------------------
     # stellarator-symmetric Fourier coefficients
 
-    assert is_close_ra(output_quantities.wout.raxis_c, wout["raxis_cc"][()], 1.0e-11)
-    assert is_close_ra(output_quantities.wout.zaxis_s, wout["zaxis_cs"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.raxis_cc, wout["raxis_cc"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.zaxis_cs, wout["zaxis_cs"][()], 1.0e-11)
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.rmnc, [ns, mnmax], order="C"),
+        np.reshape(output_quantities.wout.rmnc, [mnmax, ns], order="C").T,
         wout["rmnc"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.zmns, [ns, mnmax], order="C"),
+        np.reshape(output_quantities.wout.zmns, [mnmax, ns], order="C").T,
         wout["zmns"][()],
         1.0e-11,
     )
@@ -443,50 +380,50 @@ def test_output_quantities():
     # NOTE: lmns_full is not available from Fortran VMEC
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.lmns, [ns - 1, mnmax], order="C"),
-        wout["lmns"][()][1:, :],
+        np.reshape(output_quantities.wout.lmns, [mnmax, ns], order="C").T,
+        wout["lmns"][()],
         1.0e-10,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.gmnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["gmnc"][()][1:, :],
+        np.reshape(output_quantities.wout.gmnc, [mnmax_nyq, ns], order="C").T,
+        wout["gmnc"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bmnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["bmnc"][()][1:, :],
+        np.reshape(output_quantities.wout.bmnc, [mnmax_nyq, ns], order="C").T,
+        wout["bmnc"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsubumnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["bsubumnc"][()][1:, :],
+        np.reshape(output_quantities.wout.bsubumnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsubumnc"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsubvmnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["bsubvmnc"][()][1:, :],
+        np.reshape(output_quantities.wout.bsubvmnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsubvmnc"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsubsmns, [ns, mnmax_nyq], order="C"),
+        np.reshape(output_quantities.wout.bsubsmns, [mnmax_nyq, ns], order="C").T,
         wout["bsubsmns"][()],
         1.0e-11,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsupumnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["bsupumnc"][()][1:, :],
+        np.reshape(output_quantities.wout.bsupumnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsupumnc"][()],
         1.0e-10,
     )
 
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsupvmnc, [ns - 1, mnmax_nyq], order="C"),
-        wout["bsupvmnc"][()][1:, :],
+        np.reshape(output_quantities.wout.bsupvmnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsupvmnc"][()],
         1.0e-11,
     )
 

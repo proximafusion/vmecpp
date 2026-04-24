@@ -9,7 +9,6 @@
 #include <cstdio>
 #include <iostream>
 #include <string>
-#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
@@ -73,14 +72,17 @@ RadialProfiles::RadialProfiles(const RadialPartitioning* r,
   dVdsF.resize(r_.nsMaxFi - r_.nsMinFi);
   equiF.resize(r_.nsMaxFi - r_.nsMinFi);
 
-  spectral_width.resize(r_.nsMaxF1 - r_.nsMinF1, 0.0);
+  spectral_width.resize(r_.nsMaxF1 - r_.nsMinF1);
+  spectral_width.setZero();
 
   // ---------------------------------
 
   scalxc.resize((r_.nsMaxF1 - r_.nsMinF1) * 2);
 
-  sm.resize(r_.nsMaxH - r_.nsMinH, 0.0);
-  sp.resize(r_.nsMaxH - r_.nsMinH, 0.0);
+  sm.resize(r_.nsMaxH - r_.nsMinH);
+  sm.setZero();
+  sp.resize(r_.nsMaxH - r_.nsMinH);
+  sp.setZero();
 }
 
 void RadialProfiles::setupInputProfiles() {
@@ -277,29 +279,18 @@ double RadialProfiles::torfluxDeriv(double x) {
 
 /**
  * Compute radial profile of enclosed toroidal flux
- * by trapezoidal quadrature.
- * TODO: why not directly eval the aphi polynomial here?
  *
  * @param x
  * @return
  */
 double RadialProfiles::torflux(double x) {
-  //  trapezoidal integration outwards from 0 to x in N=100 steps
-  const int N = 100;
-  double delta_x = x / N;
-
+  //  Analytic evaluation of the polynomial (0 at x=0)
+  //  using Horner's method
   double torflux = 0.0;
-  for (int i = 0; i <= N; ++i) {
-    double contribution = torfluxDeriv(i * delta_x);
-    if (i == 0 || i == N) {
-      torflux += 0.5 * contribution;
-    } else {
-      torflux += contribution;
-    }
+  for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
+    torflux = x * torflux + id_.aphi[i];
   }
-  torflux *= delta_x;
-
-  return torflux;
+  return torflux * x;
 }
 
 /**
@@ -655,10 +646,9 @@ double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
   if (n < 2 || n != static_cast<int>(splineValues.size())) {
     return 0.0;
   }
-
   auto it = std::lower_bound(splineKnots.begin(), splineKnots.end(), x);
-  if (it == splineKnots.end()) {
-    // x is out of bounds
+  if (it >= (splineKnots.end() - 1)) {
+    // x is out of bounds (or x1 = it+1 would be out of bounds)
     return splineValues[n - 1];
   }
   if (it == splineKnots.begin()) {

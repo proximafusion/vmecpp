@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include <pybind11/eigen.h>     // to wrap Eigen matrices
 #include <pybind11/iostream.h>  // py::add_ostream_redirect
+#include <pybind11/native_enum.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>  // to wrap std::vector
 #include <pybind11/stl/filesystem.h>
@@ -194,12 +195,26 @@ PYBIND11_MODULE(_vmecpp, m) {
             return w.zbc;
           });
 
-  py::enum_<vmecpp::FreeBoundaryMethod>(m, "FreeBoundaryMethod")
+  py::native_enum<vmecpp::FreeBoundaryMethod>(m, "FreeBoundaryMethod",
+                                              "enum.Enum")
       .value("NESTOR", vmecpp::FreeBoundaryMethod::NESTOR)
-      .value("BIEST", vmecpp::FreeBoundaryMethod::BIEST);
+      .value("ONLY_COILS", vmecpp::FreeBoundaryMethod::ONLY_COILS)
+      .value("BIEST", vmecpp::FreeBoundaryMethod::BIEST)
+      .export_values()
+      .finalize();
 
-  py::enum_<vmecpp::IterationStyle>(m, "IterationStyle")
-      .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52);
+  py::native_enum<vmecpp::OutputMode>(m, "OutputMode", "enum.IntEnum")
+      .value("SILENT", vmecpp::OutputMode::kSilent)
+      .value("LEGACY", vmecpp::OutputMode::kLegacy)
+      .value("PROGRESS", vmecpp::OutputMode::kProgress)
+      .value("PROGRESS_NON_TTY", vmecpp::OutputMode::kProgressNonTTY)
+      .export_values()
+      .finalize();
+
+  py::native_enum<vmecpp::IterationStyle>(m, "IterationStyle", "enum.Enum")
+      .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52)
+      .export_values()
+      .finalize();
 
   py::class_<vmecpp::VmecCheckpoint>(m, "VmecCheckpoint");
 
@@ -430,12 +445,11 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::class_<vmecpp::WOutFileContents>(m, "WOutFileContents")
       .def(py::init<const vmecpp::WOutFileContents &>(), py::arg("wout"))
       .def(py::init())
-      .def_readwrite("version", &vmecpp::WOutFileContents::version)
+      .def_readwrite("version_", &vmecpp::WOutFileContents::version_)
       .def_readwrite("input_extension",
                      &vmecpp::WOutFileContents::input_extension)
       //
-      .def_readwrite("sign_of_jacobian",
-                     &vmecpp::WOutFileContents::sign_of_jacobian)
+      .def_readwrite("signgs", &vmecpp::WOutFileContents::signgs)
       //
       .def_readwrite("gamma", &vmecpp::WOutFileContents::gamma)
       //
@@ -460,11 +474,11 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("mpol", &vmecpp::WOutFileContents::mpol)
       .def_readwrite("ntor", &vmecpp::WOutFileContents::ntor)
       .def_readwrite("lasym", &vmecpp::WOutFileContents::lasym)
+      .def_readwrite("lrfp", &vmecpp::WOutFileContents::lrfp)
       //
       .def_readwrite("ns", &vmecpp::WOutFileContents::ns)
       .def_readwrite("ftolv", &vmecpp::WOutFileContents::ftolv)
-      .def_readwrite("maximum_iterations",
-                     &vmecpp::WOutFileContents::maximum_iterations)
+      .def_readwrite("niter", &vmecpp::WOutFileContents::niter)
       //
       .def_readwrite("lfreeb", &vmecpp::WOutFileContents::lfreeb)
       .def_readwrite("mgrid_file", &vmecpp::WOutFileContents::mgrid_file)
@@ -486,7 +500,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       //
       .def_readwrite("aspect", &vmecpp::WOutFileContents::aspect)
       //
-      .def_readwrite("betatot", &vmecpp::WOutFileContents::betatot)
+      .def_readwrite("betatotal", &vmecpp::WOutFileContents::betatotal)
       .def_readwrite("betapol", &vmecpp::WOutFileContents::betapol)
       .def_readwrite("betator", &vmecpp::WOutFileContents::betator)
       .def_readwrite("betaxis", &vmecpp::WOutFileContents::betaxis)
@@ -497,25 +511,25 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("rbtor", &vmecpp::WOutFileContents::rbtor)
       //
       .def_readwrite("IonLarmor", &vmecpp::WOutFileContents::IonLarmor)
-      .def_readwrite("VolAvgB", &vmecpp::WOutFileContents::VolAvgB)
+      .def_readwrite("volavgB", &vmecpp::WOutFileContents::volavgB)
       //
       .def_readwrite("ctor", &vmecpp::WOutFileContents::ctor)
       //
       .def_readwrite("Aminor_p", &vmecpp::WOutFileContents::Aminor_p)
       .def_readwrite("Rmajor_p", &vmecpp::WOutFileContents::Rmajor_p)
-      .def_readwrite("volume_p", &vmecpp::WOutFileContents::volume_p)
+      .def_readwrite("volume", &vmecpp::WOutFileContents::volume)
       //
       .def_readwrite("fsqr", &vmecpp::WOutFileContents::fsqr)
       .def_readwrite("fsqz", &vmecpp::WOutFileContents::fsqz)
       .def_readwrite("fsql", &vmecpp::WOutFileContents::fsql)
       .def_readwrite("itfsq", &vmecpp::WOutFileContents::itfsq)
       //
-      .def_readwrite("iota_full", &vmecpp::WOutFileContents::iota_full)
-      .def_readwrite("safety_factor", &vmecpp::WOutFileContents::safety_factor)
-      .def_readwrite("pressure_full", &vmecpp::WOutFileContents::pressure_full)
-      .def_readwrite("toroidal_flux", &vmecpp::WOutFileContents::toroidal_flux)
+      .def_readwrite("iotaf", &vmecpp::WOutFileContents::iotaf)
+      .def_readwrite("q_factor", &vmecpp::WOutFileContents::q_factor)
+      .def_readwrite("presf", &vmecpp::WOutFileContents::presf)
+      .def_readwrite("phi", &vmecpp::WOutFileContents::phi)
       .def_readwrite("phipf", &vmecpp::WOutFileContents::phipf)
-      .def_readwrite("poloidal_flux", &vmecpp::WOutFileContents::poloidal_flux)
+      .def_readwrite("chi", &vmecpp::WOutFileContents::chi)
       .def_readwrite("chipf", &vmecpp::WOutFileContents::chipf)
       .def_readwrite("jcuru", &vmecpp::WOutFileContents::jcuru)
       .def_readwrite("jcurv", &vmecpp::WOutFileContents::jcurv)
@@ -529,30 +543,29 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("fsqt", &vmecpp::WOutFileContents::fsqt)
       .def_readwrite("delbsq", &vmecpp::WOutFileContents::delbsq)
       .def_readwrite("wdot", &vmecpp::WOutFileContents::wdot)
-      .def_readwrite("restart_reasons",
-                     &vmecpp::WOutFileContents::restart_reasons)
+      .def_readwrite("restart_reason_timetrace",
+                     &vmecpp::WOutFileContents::restart_reason_timetrace)
       //
-      .def_readwrite("iota_half", &vmecpp::WOutFileContents::iota_half)
+      .def_readwrite("iotas", &vmecpp::WOutFileContents::iotas)
       .def_readwrite("mass", &vmecpp::WOutFileContents::mass)
-      .def_readwrite("pressure_half", &vmecpp::WOutFileContents::pressure_half)
-      .def_readwrite("beta", &vmecpp::WOutFileContents::beta)
+      .def_readwrite("pres", &vmecpp::WOutFileContents::pres)
+      .def_readwrite("beta_vol", &vmecpp::WOutFileContents::beta_vol)
       .def_readwrite("buco", &vmecpp::WOutFileContents::buco)
       .def_readwrite("bvco", &vmecpp::WOutFileContents::bvco)
-      .def_readwrite("dVds", &vmecpp::WOutFileContents::dVds)
-      .def_readwrite("spectral_width",
-                     &vmecpp::WOutFileContents::spectral_width)
+      .def_readwrite("vp", &vmecpp::WOutFileContents::vp)
+      .def_readwrite("specw", &vmecpp::WOutFileContents::specw)
       .def_readwrite("phips", &vmecpp::WOutFileContents::phips)
-      .def_readwrite("overr", &vmecpp::WOutFileContents::overr)
+      .def_readwrite("over_r", &vmecpp::WOutFileContents::over_r)
       //
       .def_readwrite("jdotb", &vmecpp::WOutFileContents::jdotb)
       .def_readwrite("bdotb", &vmecpp::WOutFileContents::bdotb)
       .def_readwrite("bdotgradv", &vmecpp::WOutFileContents::bdotgradv)
       //
       .def_readwrite("DMerc", &vmecpp::WOutFileContents::DMerc)
-      .def_readwrite("Dshear", &vmecpp::WOutFileContents::Dshear)
-      .def_readwrite("Dwell", &vmecpp::WOutFileContents::Dwell)
-      .def_readwrite("Dcurr", &vmecpp::WOutFileContents::Dcurr)
-      .def_readwrite("Dgeod", &vmecpp::WOutFileContents::Dgeod)
+      .def_readwrite("DShear", &vmecpp::WOutFileContents::DShear)
+      .def_readwrite("DWell", &vmecpp::WOutFileContents::DWell)
+      .def_readwrite("DCurr", &vmecpp::WOutFileContents::DCurr)
+      .def_readwrite("DGeod", &vmecpp::WOutFileContents::DGeod)
       //
       .def_readwrite("equif", &vmecpp::WOutFileContents::equif)
       //
@@ -565,8 +578,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("xm_nyq", &vmecpp::WOutFileContents::xm_nyq)
       .def_readwrite("xn_nyq", &vmecpp::WOutFileContents::xn_nyq)
       //
-      .def_readwrite("raxis_c", &vmecpp::WOutFileContents::raxis_c)
-      .def_readwrite("zaxis_s", &vmecpp::WOutFileContents::zaxis_s)
+      .def_readwrite("raxis_cc", &vmecpp::WOutFileContents::raxis_cc)
+      .def_readwrite("zaxis_cs", &vmecpp::WOutFileContents::zaxis_cs)
       //
       .def_readwrite("rmnc", &vmecpp::WOutFileContents::rmnc)
       .def_readwrite("zmns", &vmecpp::WOutFileContents::zmns)
@@ -581,8 +594,11 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bsupumnc", &vmecpp::WOutFileContents::bsupumnc)
       .def_readwrite("bsupvmnc", &vmecpp::WOutFileContents::bsupvmnc)
       //
-      .def_readwrite("raxis_s", &vmecpp::WOutFileContents::raxis_s)
-      .def_readwrite("zaxis_c", &vmecpp::WOutFileContents::zaxis_c)
+      .def_readwrite("currumnc", &vmecpp::WOutFileContents::currumnc)
+      .def_readwrite("currvmnc", &vmecpp::WOutFileContents::currvmnc)
+      //
+      .def_readwrite("raxis_cs", &vmecpp::WOutFileContents::raxis_cs)
+      .def_readwrite("zaxis_cc", &vmecpp::WOutFileContents::zaxis_cc)
       // non-stellarator symmetric
       .def_readwrite("rmns", &vmecpp::WOutFileContents::rmns)
       .def_readwrite("zmnc", &vmecpp::WOutFileContents::zmnc)
@@ -595,7 +611,10 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bsubsmnc", &vmecpp::WOutFileContents::bsubsmnc)
       .def_readwrite("bsubsmnc_full", &vmecpp::WOutFileContents::bsubsmnc_full)
       .def_readwrite("bsupumns", &vmecpp::WOutFileContents::bsupumns)
-      .def_readwrite("bsupvmns", &vmecpp::WOutFileContents::bsupvmns);
+      .def_readwrite("bsupvmns", &vmecpp::WOutFileContents::bsupvmns)
+      //
+      .def_readwrite("currumns", &vmecpp::WOutFileContents::currumns)
+      .def_readwrite("currvmns", &vmecpp::WOutFileContents::currvmns);
 
   py::class_<vmecpp::OutputQuantities>(m, "OutputQuantities")
       .def_readonly("jxbout", &vmecpp::OutputQuantities::jxbout)
@@ -648,13 +667,33 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATA &indata,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads,
-         bool verbose = true) -> vmecpp::OutputQuantities {
-        auto ret =
-            vmecpp::run(indata, std::move(initial_state), max_threads, verbose);
+         vmecpp::OutputMode verbose) -> vmecpp::OutputQuantities {
+        bool was_interrupted = false;
+        auto interrupt_check = [&was_interrupted]() -> bool {
+          if (was_interrupted) {
+            return true;
+          }
+          py::gil_scoped_acquire acquire;
+          if (PyErr_CheckSignals() != 0) {
+            was_interrupted = true;
+            return true;
+          }
+          return false;
+        };
+        absl::StatusOr<vmecpp::OutputQuantities> ret;
+        {
+          py::gil_scoped_release release;
+          ret = vmecpp::run(indata, std::move(initial_state), max_threads,
+                            verbose, interrupt_check);
+        }
+        if (was_interrupted) {
+          throw py::error_already_set();
+        }
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
-      py::arg("max_threads") = std::nullopt, py::arg("verbose") = true);
+      py::arg("max_threads") = std::nullopt,
+      py::arg("verbose") = vmecpp::OutputMode::kProgress);
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,
@@ -734,12 +773,31 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATA &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
          std::optional<vmecpp::HotRestartState> initial_state,
-         std::optional<int> max_threads, bool verbose = true) {
-        auto ret = vmecpp::run(indata, magnetic_response_table,
-                               std::move(initial_state), max_threads, verbose);
+         std::optional<int> max_threads, vmecpp::OutputMode verbose) {
+        bool was_interrupted = false;
+        auto interrupt_check = [&was_interrupted]() -> bool {
+          if (was_interrupted) return true;
+          py::gil_scoped_acquire acquire;
+          if (PyErr_CheckSignals() != 0) {
+            was_interrupted = true;
+            return true;
+          }
+          return false;
+        };
+        absl::StatusOr<vmecpp::OutputQuantities> ret;
+        {
+          py::gil_scoped_release release;
+          ret = vmecpp::run(indata, magnetic_response_table,
+                            std::move(initial_state), max_threads, verbose,
+                            interrupt_check);
+        }
+        if (was_interrupted) {
+          throw py::error_already_set();
+        }
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("magnetic_response_table"),
       py::arg("initial_state") = std::nullopt,
-      py::arg("max_threads") = std::nullopt, py::arg("verbose") = true);
+      py::arg("max_threads") = std::nullopt,
+      py::arg("verbose") = vmecpp::OutputMode::kProgress);
 }  // NOLINT(readability/fn_size)

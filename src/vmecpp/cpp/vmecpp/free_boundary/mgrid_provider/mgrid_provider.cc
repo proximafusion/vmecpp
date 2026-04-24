@@ -150,9 +150,9 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
 }
 
 absl::Status MGridProvider::LoadFields(
-    const makegrid::MakegridParameters& mgrid_params,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     const Eigen::VectorXd& coil_currents) {
+  const auto& mgrid_params = magnetic_response_table.parameters;
   if (coil_currents.size() != magnetic_response_table.b_p.rows()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Number of currents %d does not match number of coil fields in the "

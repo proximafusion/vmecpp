@@ -1,0 +1,47 @@
+name: "Copilot Setup Steps"
+
+# Automatically run the setup steps when they are changed to allow for easy
+# validation, and allow manual testing through the repository's "Actions" tab.
+on:
+    workflow_dispatch:
+    push:
+        paths:
+            - .github/workflows/copilot-setup-steps.yml
+    pull_request:
+        paths:
+            - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+    # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+    copilot-setup-steps:
+        runs-on: ubuntu-latest
+
+        permissions:
+            contents: read
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  lfs: true
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+                  cache: "pip"
+
+            - name: Install system dependencies (Ubuntu)
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y \
+                      build-essential \
+                      cmake \
+                      libnetcdf-dev \
+                      liblapack-dev \
+                      libomp-dev \
+                      libhdf5-dev \
+                      python3-dev
+
+            - name: Install vmecpp with test dependencies
+              run: pip install -e .[test]

@@ -143,9 +143,9 @@ def serialize_special_field(
         field_type = field_info.annotation
         field_metadata = field_info.metadata
     else:
-        assert (
-            field_name in cls.model_computed_fields
-        ), f"Field {field_name} must be either a field or a computed field."
+        assert field_name in cls.model_computed_fields, (
+            f"Field {field_name} must be either a field or a computed field."
+        )
         computed_field_info = cls.model_computed_fields[field_name]
         field_type = computed_field_info.return_type
         field_metadata = []  # Computed fields cannot use Annotated[...] for now.

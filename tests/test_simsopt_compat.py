@@ -3,13 +3,17 @@
 # SPDX-License-Identifier: MIT
 """Tests for VMEC++'s'SIMSOPT compatibility layer."""
 
+import json
 import math
 from pathlib import Path
+from unittest.mock import patch
 
 import netCDF4
 import numpy as np
 import pytest
 from simsopt import mhd as simsopt_mhd
+from simsopt._core.optimizable import Optimizable
+from simsopt.geo import SurfaceRZFourier
 
 from vmecpp import _util, ensure_vmec2000_input, simsopt_compat
 
@@ -105,9 +109,8 @@ def test_mean_shear(vmec, reference_wout):
         ("bsupvmnc", "mnmax_nyq"),
         ("bsubsmns", "mnmax_nyq"),
         ("gmnc", "mnmax_nyq"),
-        # NOTE: VMEC++ does not implement these and they are not used anywhere
-        # ("currumnc", "mnmax_nyq"),
-        # ("currvmnc", "mnmax_nyq"),
+        ("currumnc", "mnmax_nyq"),
+        ("currvmnc", "mnmax_nyq"),
     ],
 )
 def test_wout_attributes_shape(vmec, attribute_name, mnmax_size_name):
@@ -133,6 +136,118 @@ def test_changing_boundary():
     np.testing.assert_allclose(
         vmec.wout.aspect, expected_aspect_ratio, rtol=5e-2, atol=0.0
     )
+
+
+def _assign_low_res_boundary(vmec: simsopt_compat.Vmec) -> SurfaceRZFourier:
+    assert vmec.indata is not None
+
+    boundary = SurfaceRZFourier(mpol=1, ntor=1, nfp=vmec.indata.nfp)
+    vmec.boundary = boundary
+    return boundary
+
+
+def _make_asymmetric_vmec() -> simsopt_compat.Vmec:
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "input.up_down_asymmetric_tokamak")
+    assert vmec.indata is not None
+    assert vmec.indata.lasym
+    assert vmec.indata.rbs is not None
+    assert vmec.indata.zbc is not None
+    return vmec
+
+
+def _get_input_json(vmec: simsopt_compat.Vmec) -> dict[str, object]:
+    return json.loads(vmec.get_input())
+
+
+def test_run_preserves_assigned_boundary_identity_and_dofs():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    surf = _assign_low_res_boundary(vmec)
+
+    original_num_dofs = len(vmec.x)
+    vmec.run()
+
+    assert vmec.boundary is surf
+    assert len(vmec.x) == original_num_dofs
+
+
+def test_assigned_boundary_stays_connected_after_run():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    surf = _assign_low_res_boundary(vmec)
+    vmec.run()
+
+    assert not vmec.need_to_run_code
+    surf.set_rc(1, 0, surf.get_rc(1, 0) + 0.1)
+    assert vmec.need_to_run_code
+
+
+def test_set_mpol_ntor_preserves_children_of_boundary():
+    """Other Optimizable objects that depend on the boundary stay connected after
+    set_mpol_ntor forces a boundary resize.
+
+    In the current simsopt, SurfaceRZFourier.change_resolution() modifies the surface
+    in-place and returns None, so the boundary object identity is preserved. This test
+    mocks change_resolution to return a new object, exercising the defensive children-
+    transfer code path for surface types that create a new object.
+    """
+
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    surf = _assign_low_res_boundary(vmec)  # mpol=1, ntor=1, different from indata
+
+    # Create a second dependent that also listens to surf
+    dependent = Optimizable(depends_on=[surf])
+    assert surf in dependent.parents
+
+    # Simulate change_resolution returning a new surface object (non-in-place resize)
+    target_mpol, target_ntor = 3, 3  # _surface_rzfourier_resolution(4, 3) = (3, 3)
+    replacement = SurfaceRZFourier(mpol=target_mpol, ntor=target_ntor, nfp=surf.nfp)
+    with patch.object(surf, "change_resolution", return_value=replacement):
+        vmec.set_mpol_ntor(new_mpol=4, new_ntor=3)
+
+    new_surf = vmec.boundary
+    assert new_surf is replacement  # New surface was installed
+
+    # dependent should now point to new_surf, not the stale surf
+    assert new_surf in dependent.parents
+    assert surf not in dependent.parents
+
+
+def test_get_input_preserves_assigned_boundary_identity_and_dofs():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "li383_low_res.json")
+    surf = _assign_low_res_boundary(vmec)
+
+    original_num_dofs = len(vmec.x)
+    indata_json = vmec.get_input()
+
+    assert indata_json
+    assert vmec.boundary is surf
+    assert len(vmec.x) == original_num_dofs
+
+
+def test_set_indata_writes_and_clears_asymmetric_rbs_coefficients():
+    vmec = _make_asymmetric_vmec()
+    indata = vmec.indata
+    assert indata is not None
+    assert indata.rbs is not None
+
+    vmec.boundary.set_rs(1, 0, 0.723)
+    vmec.set_indata()
+    np.testing.assert_allclose(indata.rbs[1, 0], 0.723)
+
+    vmec.boundary.set_rs(1, 0, 0.0)
+    vmec.set_indata()
+    np.testing.assert_allclose(indata.rbs[1, 0], 0.0)
+
+
+def test_get_input_writes_and_clears_asymmetric_zbc_coefficients():
+    vmec = _make_asymmetric_vmec()
+
+    vmec.boundary.set_zc(0, 0, 0.456)
+    indata_json = _get_input_json(vmec)
+    assert indata_json["zbc"] == [{"m": 0, "n": 0, "value": 0.456}]
+
+    vmec.boundary.set_zc(0, 0, 0.0)
+    indata_json = _get_input_json(vmec)
+    assert indata_json["zbc"] == []
 
 
 def test_changing_mpol_ntor(vmec):
@@ -163,6 +278,7 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
     pytest.importorskip("vmec")
 
     vmecpp_input_file = TEST_DATA_DIR / "cma.json"
+    asymmetric_fields = {"rbs", "zbc", "raxis_s", "zaxis_c"}
 
     with ensure_vmec2000_input(vmecpp_input_file) as converted_indata_file:
         vmec2000 = simsopt_mhd.Vmec(str(converted_indata_file))
@@ -176,22 +292,33 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
     for varname in type(indata).model_fields:
         # These are not present in the legacy VMEC2000 INDATA namelist,
         # therefore skip them.
-        if varname.startswith("_") or varname in [
-            "return_outputs_even_if_not_converged",
-        ]:
+        if varname.startswith("_") or varname == "return_outputs_even_if_not_converged":
             continue
 
         vmecpp_var = getattr(indata, varname)
         if callable(vmecpp_var):
             continue  # this is a method, not a variable
-        if vmecpp_var is None:
-            continue
 
         varname_vmec2000 = varname
         if varname[1:-1] == "axis_":
             # these are called differently in VMEC2000, e.g. raxis_c -> raxis_cc
             varname_vmec2000 = f"{varname[:-1]}c{varname[-1]}"
         vmec2000_var = getattr(vmec2000.indata, varname_vmec2000)
+
+        if vmecpp_var is None:
+            assert varname in asymmetric_fields
+            assert not indata.lasym
+
+            if varname in {"raxis_s", "zaxis_c"}:
+                np.testing.assert_allclose(vmec2000_var[: indata.ntor + 1], 0.0)
+            else:
+                ntor = indata.ntor
+                vmec2000_var_truncated = vmec2000_var.T[: indata.mpol, :]
+                vmec2000_var_truncated = vmec2000_var_truncated[
+                    :, 101 - ntor : 101 + ntor + 1
+                ]
+                np.testing.assert_allclose(vmec2000_var_truncated, 0.0)
+            continue
 
         if isinstance(vmecpp_var, str | int | bool):
             if isinstance(vmec2000_var, bytes):
@@ -238,27 +365,20 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
                 if len(vmecpp_var.shape) == 1:
                     vmec2000_var_truncated = vmec2000_var[: len(vmecpp_var)]
                 else:
-                    assert vmecpp.indata is not None  # for pyright
-                    # RBS and ZBC might be just empty
-                    if varname in {"rbs", "zbc"} and not vmecpp.indata.lasym:
-                        vmec2000_var_truncated = np.zeros(shape=(0, 0))
-                    else:
-                        # must be 2D RBC, ZBS. here there is a triple mismatch:
-                        # 1. VMEC2000 uses layout (n, m) while VMEC++ uses (m, n)
-                        # 2. VMEC2000 pre-allocates an array with shape (203, 101)
-                        #    while VMEC++ allocates according to mpol, ntor
-                        # 3. for the `n` index values are laid out as
-                        #    [-ntor, ..., 0, ..., ntor] (with ntor being the one from
-                        #    the file for VMEC++, and 101 for VMEC2000), so we need to
-                        #    truncate the entries in vmec2000_var symmetrically around
-                        #    the center
-                        # First we transpose and truncate the rows:
-                        vmec2000_var_truncated = vmec2000_var.T[
-                            : vmecpp_var.shape[0], :
-                        ]
-                        # Now we truncate the columns symmetrically around the center:
-                        ntor = vmecpp.indata.ntor
-                        vmec2000_var_truncated = vmec2000_var_truncated[
-                            :, 101 - ntor : 101 + ntor + 1
-                        ]
+                    # must be 2D RBC, ZBS. here there is a triple mismatch:
+                    # 1. VMEC2000 uses layout (n, m) while VMEC++ uses (m, n)
+                    # 2. VMEC2000 pre-allocates an array with shape (203, 101)
+                    #    while VMEC++ allocates according to mpol, ntor
+                    # 3. for the `n` index values are laid out as
+                    #    [-ntor, ..., 0, ..., ntor] (with ntor being the one from
+                    #    the file for VMEC++, and 101 for VMEC2000), so we need to
+                    #    truncate the entries in vmec2000_var symmetrically around
+                    #    the center
+                    # First we transpose and truncate the rows:
+                    vmec2000_var_truncated = vmec2000_var.T[: vmecpp_var.shape[0], :]
+                    # Now we truncate the columns symmetrically around the center:
+                    ntor = indata.ntor
+                    vmec2000_var_truncated = vmec2000_var_truncated[
+                        :, 101 - ntor : 101 + ntor + 1
+                    ]
                 np.testing.assert_allclose(vmecpp_var, vmec2000_var_truncated)

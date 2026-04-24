@@ -28,7 +28,10 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/free_boundary/nestor/nestor.h"
+#include "vmecpp/free_boundary/only_coils/only_coils.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 
 namespace {
 void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
@@ -107,8 +110,14 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
-    std::optional<int> max_threads, bool verbose) {
-  Vmec v = Vmec(indata, max_threads, verbose);
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback) {
+  auto maybe_vmec = Vmec::FromIndata(indata, nullptr, max_threads, verbose,
+                                     std::move(interrupt_callback));
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
+  }
+  Vmec& v = **maybe_vmec;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -125,12 +134,15 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<HotRestartState> initial_state,
-    std::optional<int> max_threads, bool verbose) {
-  Vmec v(indata, max_threads, verbose);
-  absl::Status mgrid_status = v.LoadMGrid(magnetic_response_table);
-  if (!mgrid_status.ok()) {
-    return mgrid_status;
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback) {
+  auto maybe_vmec =
+      Vmec::FromIndata(indata, &magnetic_response_table, max_threads, verbose,
+                       std::move(interrupt_callback));
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
   }
+  Vmec& v = **maybe_vmec;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -145,8 +157,34 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
 
 namespace vmecpp {
 
+absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
+    const VmecINDATA& indata,
+    const makegrid::MagneticFieldResponseTable* magnetic_response_table,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback) {
+  auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
+                                  std::move(interrupt_callback));
+
+  // This part of Vmec initialization requires Status handling, and is therefore
+  // in this factory method instead of the constructor.
+  if (indata.lfreeb) {
+    absl::Status s{};
+    if (magnetic_response_table == nullptr) {
+      s = v->mgrid_.LoadFile(indata.mgrid_file, indata.extcur);
+    } else {
+      s = v->mgrid_.LoadFields(*magnetic_response_table, indata.extcur);
+    }
+    if (!s.ok()) {
+      return s;
+    }
+  }
+
+  return v;
+}
+
+// initialize based on input file contents
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
-           bool verbose)
+           OutputMode verbose, InterruptCallback interrupt_callback)
     : indata_(indata),
       s_(indata_),
       t_(&s_),
@@ -154,7 +192,9 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       h_(&s_),
       fc_(indata_.lfreeb, indata_.delt,
           static_cast<int>(indata_.ns_array.size()), max_threads),
-      verbose_(verbose),
+      verbose_(verbose != OutputMode::kSilent),
+      logger_(std::cout, verbose),
+      interrupt_callback_(std::move(interrupt_callback)),
       vacuum_pressure_state_(VacuumPressureState::kOff),
       status_(VmecStatus::NORMAL_TERMINATION),
       iter2_(1),
@@ -172,37 +212,24 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     // 0 : (mpol + 1)
     int mf = s_.mpol + 1;
     int mnpd = (2 * nf + 1) * (mf + 1);
-    matrixShare.resize(mnpd * mnpd, 0.0);
-    iPiv.resize(mnpd, 0);
-    bvecShare.resize(mnpd, 0.0);
+    matrixShare.setZero(mnpd * mnpd);
+    iPiv.setZero(mnpd);
+    bvecShare.setZero(mnpd);
 
-    // not so nice to do this here, but meh...
-    h_.vacuum_magnetic_pressure.resize(s_.nZnT, 0.0);
+    h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
+    h_.vacuum_b_r.setZero(s_.nZnT);
+    h_.vacuum_b_phi.setZero(s_.nZnT);
+    h_.vacuum_b_z.setZero(s_.nZnT);
 
-    h_.vacuum_b_r.resize(s_.nZnT);
-    h_.vacuum_b_phi.resize(s_.nZnT);
-    h_.vacuum_b_z.resize(s_.nZnT);
+    // TODO(jons): move this check to better-suited place
+    if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
+        (indata_.curtor != 0.0 || indata_.pres_scale != 0.0)) {
+      throw std::invalid_argument(
+          absl::StrCat("curtor and pres_scale must be zero when using "
+                       "'only_coils' free boundary method, but were ",
+                       indata_.curtor, " and ", indata_.pres_scale));
+    }  // check that cutor==0 and pres_scale==0 for only_coils
   }
-}
-
-absl::Status Vmec::LoadMGrid(
-    const makegrid::MagneticFieldResponseTable& magnetic_response_table) {
-  if (!fc_.lfreeb) {
-    return absl::InvalidArgumentError(
-        "The MGridProvider is only required for free-boundary VMEC++ runs.");
-  }
-
-  return mgrid_.LoadFields(magnetic_response_table.parameters,
-                           magnetic_response_table, indata_.extcur);
-}
-
-absl::Status Vmec::LoadMGrid() {
-  if (!fc_.lfreeb) {
-    return absl::InvalidArgumentError(
-        "The MGridProvider is only required for free-boundary VMEC++ runs.");
-  }
-
-  return mgrid_.LoadFile(indata_.mgrid_file, indata_.extcur);
 }
 
 // main worker method; equivalent of vmec.f90
@@ -213,9 +240,9 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                std::optional<HotRestartState> initial_state) {
   if (indata_.lfreeb) {
     if (!mgrid_.IsLoaded()) {
-      // if we have a free-boundary VMEC run, we may need to load the
-      // magnetic field response table
-      absl::Status status = LoadMGrid();
+      // Fallback: load mgrid from file if constructed directly via the public
+      // constructor instead of the FromIndata factory method.
+      absl::Status status = mgrid_.LoadFile(indata_.mgrid_file, indata_.extcur);
       if (!status.ok()) {
         return status;
       }
@@ -305,6 +332,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         fc_.niterv = indata_.niter_array[igrid];
       }
 
+      // notify logger of the next multigrid stage
+      logger_.BeginStage(igrid, max_grids + jacob_off_, fc_.nsval, s_.mnmax,
+                         fc_.ftolv, fc_.niterv, fc_.lfreeb);
+
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
       // value
@@ -325,8 +356,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       if (status_ != VmecStatus::NORMAL_TERMINATION &&
           status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
         const auto msg = absl::StrFormat(
-            "FATAL ERROR in SolveEquilibrium.\nVmec status "
-            "code: %s\nVmecINDATA had these contents:\n%s",
+            "FATAL ERROR in SolveEquilibrium: %s\n"
+            "VmecINDATA had these contents:\n%s",
             VmecStatusAsString(status_), *indata_.ToJson());
 
         return absl::InternalError(msg);
@@ -363,8 +394,25 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       r_, decomposed_x_, m_, p_, checkpoint, vacuum_pressure_state_, status_,
       iter2_);
 
-  if (verbose_) {
-    std::cout << "\nNUMBER OF JACOBIAN RESETS = " << fc_.ijacob << '\n';
+  {
+    const auto& w = output_quantities_.wout;
+    RunSummary summary;
+    summary.converged = (status_ == VmecStatus::SUCCESSFUL_TERMINATION);
+    summary.total_iterations = w.itfsq;
+    summary.num_jacobian_resets = fc_.ijacob;
+    summary.fsqr = w.fsqr;
+    summary.fsqz = w.fsqz;
+    summary.fsql = w.fsql;
+    summary.ftolv = fc_.ftolv;
+    summary.betatot = w.betatotal;
+    summary.betapol = w.betapol;
+    summary.betator = w.betator;
+    summary.w_mhd = h_.mhdEnergy * 4.0 * M_PI * M_PI;
+    summary.rax = w.Rmajor_p;
+    summary.aminor = w.Aminor_p;
+    summary.rmajor = w.Rmajor_p;
+    summary.b0 = w.b0;
+    logger_.EndRun(summary);
   }
 
   return false;
@@ -375,11 +423,7 @@ bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
     const std::optional<HotRestartState>& initial_state) {
-  if (verbose_) {
-    std::cout << absl::StrFormat(
-        "\n NS = %d   NO. FOURIER MODES = %d   FTOLV = %9.3e   NITER = %d\n",
-        nsval, s_.mnmax, fc_.ftolv, fc_.niterv);
-  }
+  // Stage info output is now handled by logger_.BeginStage() in run().
 
   // Set timestep control parameters
   fc_.fsq = 1.0;
@@ -482,9 +526,24 @@ bool Vmec::InitializeRadial(
 
         if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
           fb_[thread_id] = std::make_unique<Nestor>(
-              &s_, tp_[thread_id].get(), &mgrid_, matrixShare, bvecShare,
-              h_.vacuum_magnetic_pressure, iPiv, h_.vacuum_b_r, h_.vacuum_b_phi,
-              h_.vacuum_b_z);
+              &s_, tp_[thread_id].get(), &mgrid_,
+              std::span<double>(matrixShare.data(), matrixShare.size()),
+              std::span<double>(bvecShare.data(), bvecShare.size()),
+              std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                                h_.vacuum_magnetic_pressure.size()),
+              std::span<int>(iPiv.data(), iPiv.size()),
+              std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+              std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+              std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+        } else if (indata_.free_boundary_method ==
+                   FreeBoundaryMethod::ONLY_COILS) {
+          fb_[thread_id] = std::make_unique<OnlyCoils>(
+              &s_, tp_[thread_id].get(), &mgrid_,
+              std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                                h_.vacuum_magnetic_pressure.size()),
+              std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+              std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+              std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
         } else {
           LOG(FATAL) << absl::StrCat("free boundary method '",
                                      ToString(indata_.free_boundary_method),
@@ -621,28 +680,7 @@ bool Vmec::InitializeRadial(
 // resetting the time step.
 absl::StatusOr<bool> Vmec::SolveEquilibrium(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing) {
-  if (verbose_) {
-    std::cout << '\n';
-    if (fc_.lfreeb) {
-      std::cout
-          << " ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz      "
-             "fsql   |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  "
-             "<M>  |  DELBSQ  \n";
-      std::cout
-          << "------+------------------------------+-----------------------"
-             "-------+----------+-----------+------------+------------+----"
-             "---+----------\n";
-    } else {
-      std::cout
-          << " ITER |    FSQR     FSQZ     FSQL    |    fsqr     fsqz    "
-             "  fsql  "
-             " |   DELT   |  RAX(v=0) |    W_MHD   |   <BETA>   |  <M>  \n";
-      std::cout
-          << "------+------------------------------+---------------------"
-             "--------"
-             "-+----------+-----------+------------+------------+-------\n";
-    }
-  }
+  // Table header output is now handled by logger_.BeginStage() in run().
 
   absl::Status status_of_all_threads = absl::OkStatus();
   bool any_checkpoint_reached = false;
@@ -704,14 +742,17 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     }
   }  // omp parallel
 
+  if (interrupted_) {
+    return absl::CancelledError("Run interrupted by user");
+  }
+
   if (!status_of_all_threads.ok()) {
     return status_of_all_threads;
   }
 
-  if (!any_checkpoint_reached && verbose_) {
+  if (!any_checkpoint_reached) {
     // write MHD energy at end of iterations for current number of surfaces
-    std::cout << absl::StrFormat("MHD Energy = %12.6e\n",
-                                 h_.mhdEnergy * 4.0 * M_PI * M_PI);
+    logger_.EndStage(h_.mhdEnergy * 4.0 * M_PI * M_PI);
   }
 
   return any_checkpoint_reached;
@@ -874,11 +915,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         fc_.delt0r = scale * indata_.delt;
 
         if (verbose_) {
-          std::cout << absl::StrFormat(
-              "HAVING A CONVERGENCE PROBLEM: RESETTING DELT TO %8.3f. "
-              " If this does NOT resolve the problem,"
-              " try changing (decrease OR increase) the value of DELT\n",
-              fc_.delt0r);
+          std::cout
+              << absl::StrFormat(
+                     "HAVING A CONVERGENCE PROBLEM: RESETTING DELT TO %8.3f. "
+                     " If this does NOT resolve the problem,"
+                     " try changing (decrease OR increase) the value of DELT\n",
+                     fc_.delt0r)
+              << std::flush;
         }
 
         // done by restart_iter already...
@@ -976,12 +1019,29 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // flag inside `Printout`.
         Printout(fc_.delt0r, thread_id, iter2);
 
+        // Check for interrupt signal (e.g., Ctrl+C from Python).
+        // Only the master thread calls the callback; the subsequent barrier
+        // ensures all threads see the updated m_liter_flag.
+        // It MUST be the master thread, other threads cannot acquire the GIL.
+#ifdef _OPENMP
+#pragma omp master
+#endif  // _OPENMP
+        {
+          if (interrupt_callback_ && interrupt_callback_()) {
+            m_liter_flag = false;
+#pragma omp atomic write
+            interrupted_ = true;
+            std::cout << "Received interrupt signal from Python thread.\n";
+          }
+        }
+
         if (checkpoint == VmecCheckpoint::PRINTOUT &&
             iter2 >= iterations_before_checkpointing) {
           return SolveEqLoopStatus::CHECKPOINT_REACHED;
         }
       }
     }
+
 // protect read of vacuum_pressure_state_ in get_delbsq called by Printout above
 // from write below
 #ifdef _OPENMP
@@ -1034,7 +1094,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
     decomposed_v_[thread_id]->setZero();
 
     // restore state from backup
-    decomposed_x_[thread_id]->copyFrom(*physical_x_backup_[thread_id]);
+    *decomposed_x_[thread_id] = *physical_x_backup_[thread_id];
 
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1063,7 +1123,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
     decomposed_v_[thread_id]->setZero();
 
     // restore state from backup
-    decomposed_x_[thread_id]->copyFrom(*physical_x_backup_[thread_id]);
+    *decomposed_x_[thread_id] = *physical_x_backup_[thread_id];
 
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1083,7 +1143,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
     // save current state vector, e.g. restart_reason == NO_RESTART
 
     // update backup
-    physical_x_backup_[thread_id]->copyFrom(*decomposed_x_[thread_id]);
+    *physical_x_backup_[thread_id] = *decomposed_x_[thread_id];
   }
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1145,12 +1205,15 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     if (iter2_ == iter1_) {
       // initialize all entries in otau to 0.15/time_step --> required for
       // averaging otau: "over" tau --> 1/tau ???
-      absl::c_fill(invTau_, 0.15 / time_step);
+      invTau_.setConstant(0.15 / time_step);
     }
 
     // shift elements for averaging to the left to make space at end for new
     // entry (oldest entry ends up at the end and will be overwritten later)
-    absl::c_rotate(invTau_, invTau_.begin() + 1);
+    {
+      Eigen::VectorXd tmp = invTau_.tail(invTau_.size() - 1);
+      invTau_.head(invTau_.size() - 1) = tmp;
+    }
 
     if (iter2_ > iter1_) {
       double invtau_numerator = 0.;
@@ -1162,7 +1225,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 
       // overwrite oldest entry (at last index after rotation above) with the
       // new value of 1/tau
-      invTau_.back() = invtau_numerator / time_step;
+      invTau_[invTau_.size() - 1] = invtau_numerator / time_step;
     }
 
     // update backup copy of fsq1 --> here, fsq is fsq1 of previous iteration
@@ -1186,7 +1249,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   }
 
   // averaging over ndamp entries : 1/ndamp*sum(invTau)
-  const double otav = absl::c_accumulate(invTau_, 0.) / kNDamp;
+  const double otav = invTau_.sum() / kNDamp;
 
   const double dtau = time_step * otav / 2.0;
   const double b1 = 1.0 - dtau;
@@ -1212,7 +1275,7 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
 #pragma omp barrier
 #endif  // _OPENMP
 
-  if (verbose_ && r_[thread_id]->nsMaxF1 == fc_.ns) {
+  if (r_[thread_id]->nsMaxF1 == fc_.ns) {
     // only the thread that computes the free-boundary force can compute
     // delbsq
 
@@ -1232,20 +1295,9 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
     // mismatch in |B|^2 at LCFS for free-boundary
     double delbsq = m_[thread_id]->get_delbsq();
 
-    if (fc_.lfreeb) {
-      std::cout << absl::StrFormat(
-          "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
-          "%.3e | %.4e | %.4e | %5.3f | %.3e\n",
-          iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
-          delt0r, r00, energy, betaVolAvg, volAvgM, delbsq);
-    } else {
-      // omit DELBSQ column in fixed-boundary case
-      std::cout << absl::StrFormat(
-          "%5d | %.2e  %.2e  %.2e | %.2e  %.2e  %.2e | %.2e | "
-          "%.3e | %.4e | %.4e | %5.3f\n",
-          iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1, fc_.fsqz1, fc_.fsql1,
-          delt0r, r00, energy, betaVolAvg, volAvgM);
-    }
+    logger_.LogIteration(iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1,
+                         fc_.fsqz1, fc_.fsql1, delt0r, r00, energy, betaVolAvg,
+                         volAvgM, delbsq);
   }  // thread which has boundary
 }
 
@@ -1584,11 +1636,11 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
 
 void Vmec::InterpolateToNextMultigridStep(
     int ns_new, int ns_old,
-    const std::vector<std::unique_ptr<RadialProfiles> >& p,
-    const std::vector<std::unique_ptr<RadialPartitioning> >& r_new,
-    const std::vector<std::unique_ptr<RadialPartitioning> >& r_old,
-    std::vector<std::unique_ptr<FourierGeometry> >& m_x_new,
-    std::vector<std::unique_ptr<FourierGeometry> >& m_x_old) {
+    const std::vector<std::unique_ptr<RadialProfiles>>& p,
+    const std::vector<std::unique_ptr<RadialPartitioning>>& r_new,
+    const std::vector<std::unique_ptr<RadialPartitioning>>& r_old,
+    std::vector<std::unique_ptr<FourierGeometry>>& m_x_new,
+    std::vector<std::unique_ptr<FourierGeometry>>& m_x_old) {
   // INTERPOLATE R,Z AND LAMBDA ON FULL GRID
   // (EXTRAPOLATE M=1 MODES,OVER SQRT(S), TO ORIGIN)
   // ON ENTRY, XOLD = X(COARSE MESH) * SCALXC(COARSE MESH)

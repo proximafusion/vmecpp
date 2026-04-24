@@ -5,9 +5,9 @@
 #ifndef VMECPP_COMMON_MAKEGRID_LIB_MAKEGRID_LIB_H_
 #define VMECPP_COMMON_MAKEGRID_LIB_MAKEGRID_LIB_H_
 
+#include <Eigen/Dense>
 #include <filesystem>
 #include <string>
-#include <vector>
 
 #include "absl/status/statusor.h"
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
@@ -137,7 +137,7 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
 absl::Status WriteMakegridNetCDFFile(
     const std::string& makegrid_filename,
     const MakegridParameters& makegrid_parameters,
-    const std::vector<double>& circuit_currents,
+    const Eigen::VectorXd& circuit_currents,
     const MagneticFieldResponseTable& magnetic_response_table,
     const std::optional<MakegridCachedVectorPotential>& vector_potential_cache);
 

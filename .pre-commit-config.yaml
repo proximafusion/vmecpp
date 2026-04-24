@@ -1,16 +1,10 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: "v0.7.1"
+    rev: "v0.15.0"
     hooks:
       - id: ruff-format
       - id: ruff
         args: ["--fix", "--show-fixes"]
-  - repo: https://github.com/adamchainz/blacken-docs
-    rev: "1.19.1"
-    hooks:
-    - id: blacken-docs
-      additional_dependencies:
-      - black==22.12.0
   - repo: https://github.com/PyCQA/docformatter
     rev: eb1df34
     hooks:

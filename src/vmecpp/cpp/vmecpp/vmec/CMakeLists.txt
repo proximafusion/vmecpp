@@ -5,6 +5,7 @@ add_subdirectory(fourier_geometry)
 add_subdirectory(fourier_velocity)
 add_subdirectory(handover_storage)
 add_subdirectory(ideal_mhd_model)
+add_subdirectory(iteration_logger)
 add_subdirectory(output_quantities)
 add_subdirectory(profile_parameterization_data)
 # pybind11 is handled in the main CMakeLists.txt

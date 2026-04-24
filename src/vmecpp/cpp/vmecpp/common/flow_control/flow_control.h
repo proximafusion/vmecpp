@@ -5,6 +5,7 @@
 #ifndef VMECPP_COMMON_FLOW_CONTROL_FLOW_CONTROL_H_
 #define VMECPP_COMMON_FLOW_CONTROL_FLOW_CONTROL_H_
 
+#include <Eigen/Dense>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -108,8 +109,8 @@ class FlowControl {
 
   double res0;
 
-  std::vector<double> fResInvar;
-  std::vector<double> fResPrecd;
+  Eigen::Vector3d fResInvar;
+  Eigen::Vector3d fResPrecd;
 
  private:
   const int max_threads_;

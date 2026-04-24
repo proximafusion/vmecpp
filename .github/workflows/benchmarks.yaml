@@ -1,0 +1,49 @@
+name: Benchmarks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
+
+      - name: Install vmecpp with benchmark dependencies
+        run: |
+          pip install uv
+          uv pip install --system -v .[benchmark]
+
+      - name: Run benchmarks
+        run: |
+          pytest benchmarks/test_benchmarks.py --benchmark-json=benchmark_results.json
+
+      - name: Compare benchmark result
+        if: github.event_name == 'pull_request'
+        uses: benchmark-action/github-action-benchmark@v1.21.0
+        with:
+          tool: "pytest"
+          output-file-path: benchmark_results.json
+          gh-pages-branch: benchmark-runs
+          benchmark-data-dir-path: benchmarks
+          auto-push: false
+          comment-on-alert: true
+          alert-threshold: "150%"
+          fail-on-alert: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}

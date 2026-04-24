@@ -78,6 +78,12 @@ class SingularIntegrals {
   // Slm * cos(mu + nv), Slp * cos(mu - nv)
   std::vector<double> grpmn_cos;
 
+  void prepareUpdate(const std::vector<double>& a,
+                     const std::vector<double>& b2,
+                     const std::vector<double>& c, const std::vector<double>& A,
+                     const std::vector<double>& B2,
+                     const std::vector<double>& C, bool fullUpdate);
+
  private:
   const Sizes& s_;
   const FourierBasisFastToroidal& fb_;
@@ -86,11 +92,6 @@ class SingularIntegrals {
 
   void computeCoefficients();
 
-  void prepareUpdate(const std::vector<double>& a,
-                     const std::vector<double>& b2,
-                     const std::vector<double>& c, const std::vector<double>& A,
-                     const std::vector<double>& B2,
-                     const std::vector<double>& C, bool fullUpdate);
   void performUpdate(const std::vector<double>& bDotN, bool fullUpdate);
 
   int nf;

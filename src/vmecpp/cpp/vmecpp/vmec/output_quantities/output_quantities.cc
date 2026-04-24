@@ -42,6 +42,15 @@ VectorXd NonEmptyVectorOr(const Eigen::VectorXd& vec, const double val) {
   WriteH5Dataset(x, absl::StrFormat("%s/%s", H5key, #x), file);
 #define READMEMBER(x) \
   ReadH5Dataset(m_obj.x, absl::StrFormat("%s/%s", H5key, #x), from_file);
+// Read a field that was renamed: try new name, fall back to old_name.
+// Only for fields whose memory layout did not change (scalars, same-size 1D).
+#define READMEMBER_COMPAT(x, old_name)                                \
+  if (from_file.nameExists(absl::StrFormat("%s/%s", H5key, #x))) {    \
+    READMEMBER(x);                                                    \
+  } else {                                                            \
+    ReadH5Dataset(m_obj.x, absl::StrFormat("%s/%s", H5key, old_name), \
+                  from_file);                                         \
+  }
 
 // Write object to the specified HDF5 file, under key "vmecinternalresults".
 absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
@@ -795,9 +804,9 @@ absl::Status vmecpp::Threed1ShafranovIntegrals::LoadInto(
 absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   file.createGroup(this->H5key);
 
-  WRITEMEMBER(version);
+  WRITEMEMBER(version_);
   // TODO(jurasic) input_extension
-  WRITEMEMBER(sign_of_jacobian);
+  WRITEMEMBER(signgs);
   WRITEMEMBER(gamma);
   WRITEMEMBER(pcurr_type);
   WRITEMEMBER(pmass_type);
@@ -817,7 +826,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(lasym);
   WRITEMEMBER(ns);
   WRITEMEMBER(ftolv);
-  WRITEMEMBER(maximum_iterations);
+  WRITEMEMBER(niter);
   WRITEMEMBER(lfreeb);
   WRITEMEMBER(mgrid_file);
   WRITEMEMBER(nextcur);
@@ -832,7 +841,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(mnmax_nyq);
   WRITEMEMBER(ier_flag);
   WRITEMEMBER(aspect);
-  WRITEMEMBER(betatot);
+  WRITEMEMBER(betatotal);
   WRITEMEMBER(betapol);
   WRITEMEMBER(betator);
   WRITEMEMBER(betaxis);
@@ -840,43 +849,43 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(rbtor0);
   WRITEMEMBER(rbtor);
   WRITEMEMBER(IonLarmor);
-  WRITEMEMBER(VolAvgB);
+  WRITEMEMBER(volavgB);
   WRITEMEMBER(ctor);
   WRITEMEMBER(Aminor_p);
   WRITEMEMBER(Rmajor_p);
-  WRITEMEMBER(volume_p);
+  WRITEMEMBER(volume);
   WRITEMEMBER(fsqr);
   WRITEMEMBER(fsqz);
   WRITEMEMBER(fsql);
-  WRITEMEMBER(iota_full);
-  WRITEMEMBER(safety_factor);
-  WRITEMEMBER(pressure_full);
-  WRITEMEMBER(toroidal_flux);
+  WRITEMEMBER(iotaf);
+  WRITEMEMBER(q_factor);
+  WRITEMEMBER(presf);
+  WRITEMEMBER(phi);
   WRITEMEMBER(phipf);
-  WRITEMEMBER(poloidal_flux);
+  WRITEMEMBER(chi);
   WRITEMEMBER(chipf);
   WRITEMEMBER(jcuru);
   WRITEMEMBER(jcurv);
-  WRITEMEMBER(iota_half);
+  WRITEMEMBER(iotas);
   WRITEMEMBER(mass);
-  WRITEMEMBER(pressure_half);
-  WRITEMEMBER(beta);
+  WRITEMEMBER(pres);
+  WRITEMEMBER(beta_vol);
   WRITEMEMBER(buco);
   WRITEMEMBER(bvco);
-  WRITEMEMBER(dVds);
-  WRITEMEMBER(spectral_width);
+  WRITEMEMBER(vp);
+  WRITEMEMBER(specw);
   WRITEMEMBER(phips);
-  WRITEMEMBER(overr);
+  WRITEMEMBER(over_r);
   WRITEMEMBER(jdotb);
   // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
   // reference files with all quantities once that is done
   //  WRITEMEMBER(bdotb);
   WRITEMEMBER(bdotgradv);
   WRITEMEMBER(DMerc);
-  WRITEMEMBER(Dshear);
-  WRITEMEMBER(Dwell);
-  WRITEMEMBER(Dcurr);
-  WRITEMEMBER(Dgeod);
+  WRITEMEMBER(DShear);
+  WRITEMEMBER(DWell);
+  WRITEMEMBER(DCurr);
+  WRITEMEMBER(DGeod);
   WRITEMEMBER(equif);
   WRITEMEMBER(curlabel);
   WRITEMEMBER(potvac);
@@ -884,8 +893,8 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(xn);
   WRITEMEMBER(xm_nyq);
   WRITEMEMBER(xn_nyq);
-  WRITEMEMBER(raxis_c);
-  WRITEMEMBER(zaxis_s);
+  WRITEMEMBER(raxis_cc);
+  WRITEMEMBER(zaxis_cs);
   WRITEMEMBER(rmnc);
   WRITEMEMBER(zmns);
   WRITEMEMBER(lmns_full);
@@ -898,8 +907,10 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(bsubsmns_full);
   WRITEMEMBER(bsupumnc);
   WRITEMEMBER(bsupvmnc);
-  WRITEMEMBER(raxis_s);
-  WRITEMEMBER(zaxis_c);
+  WRITEMEMBER(currumnc);
+  WRITEMEMBER(currvmnc);
+  WRITEMEMBER(raxis_cs);
+  WRITEMEMBER(zaxis_cc);
   WRITEMEMBER(rmns);
   WRITEMEMBER(zmnc);
   WRITEMEMBER(lmnc_full);
@@ -912,15 +923,26 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(bsubsmnc_full);
   WRITEMEMBER(bsupumns);
   WRITEMEMBER(bsupvmns);
+  WRITEMEMBER(currumns);
+  WRITEMEMBER(currvmns);
 
   return absl::OkStatus();
 }
 
 absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
                                                 H5::H5File& from_file) {
-  READMEMBER(version);
+  // version_ changed type from std::string to double. Old HDF5 files store
+  // a string under "version"; new files store a double under "version_".
+  if (from_file.nameExists(absl::StrFormat("%s/%s", H5key, "version_"))) {
+    READMEMBER(version_);
+  } else {
+    std::string version_str;
+    ReadH5Dataset(version_str, absl::StrFormat("%s/%s", H5key, "version"),
+                  from_file);
+    m_obj.version_ = std::stod(version_str);
+  }
   // TODO(jurasic) input_extension
-  READMEMBER(sign_of_jacobian);
+  READMEMBER_COMPAT(signgs, "sign_of_jacobian");
   READMEMBER(gamma);
   READMEMBER(pcurr_type);
   READMEMBER(pmass_type);
@@ -940,7 +962,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(lasym);
   READMEMBER(ns);
   READMEMBER(ftolv);
-  READMEMBER(maximum_iterations);
+  READMEMBER_COMPAT(niter, "maximum_iterations");
   READMEMBER(lfreeb);
   READMEMBER(mgrid_file);
   // Compatibility with HDF5 files that do not have the nextcur and extcur
@@ -962,7 +984,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(mnmax_nyq);
   READMEMBER(ier_flag);
   READMEMBER(aspect);
-  READMEMBER(betatot);
+  READMEMBER_COMPAT(betatotal, "betatot");
   READMEMBER(betapol);
   READMEMBER(betator);
   READMEMBER(betaxis);
@@ -970,43 +992,68 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(rbtor0);
   READMEMBER(rbtor);
   READMEMBER(IonLarmor);
-  READMEMBER(VolAvgB);
+  READMEMBER_COMPAT(volavgB, "VolAvgB");
   READMEMBER(ctor);
   READMEMBER(Aminor_p);
   READMEMBER(Rmajor_p);
-  READMEMBER(volume_p);
+  READMEMBER_COMPAT(volume, "volume_p");
   READMEMBER(fsqr);
   READMEMBER(fsqz);
   READMEMBER(fsql);
-  READMEMBER(iota_full);
-  READMEMBER(safety_factor);
-  READMEMBER(pressure_full);
-  READMEMBER(toroidal_flux);
+  READMEMBER_COMPAT(iotaf, "iota_full");
+  READMEMBER_COMPAT(q_factor, "safety_factor");
+  READMEMBER_COMPAT(presf, "pressure_full");
+  READMEMBER_COMPAT(phi, "toroidal_flux");
   READMEMBER(phipf);
-  READMEMBER(poloidal_flux);
+  READMEMBER_COMPAT(chi, "poloidal_flux");
   READMEMBER(chipf);
   READMEMBER(jcuru);
   READMEMBER(jcurv);
-  READMEMBER(iota_half);
-  READMEMBER(mass);
-  READMEMBER(pressure_half);
-  READMEMBER(beta);
-  READMEMBER(buco);
-  READMEMBER(bvco);
-  READMEMBER(dVds);
-  READMEMBER(spectral_width);
-  READMEMBER(phips);
-  READMEMBER(overr);
+  // Half-grid 1D arrays: old HDF5 files store these under old names with
+  // size ns-1. Read into the tail of the ns-sized array, leaving [0]=0.
+  READMEMBER_COMPAT(specw, "spectral_width");
+  // Half-grid 1D arrays: old HDF5 files store these under old names with
+  // size ns-1. Read into the tail of the ns-sized array, leaving [0]=0.
+  if (from_file.nameExists(absl::StrFormat("%s/%s", H5key, "iotas"))) {
+    READMEMBER(iotas);
+    READMEMBER(mass);
+    READMEMBER(pres);
+    READMEMBER(beta_vol);
+    READMEMBER(buco);
+    READMEMBER(bvco);
+    READMEMBER(vp);
+    READMEMBER(phips);
+    READMEMBER(over_r);
+  } else {
+    // Legacy format: ns-1 sized arrays with old names.
+    // Read into temporaries and pad to ns with a leading zero.
+    auto ReadHalfGridCompat = [&](Eigen::VectorXd& dest,
+                                  const std::string& old_name) {
+      Eigen::VectorXd tmp;
+      ReadH5Dataset(tmp, absl::StrFormat("%s/%s", H5key, old_name), from_file);
+      dest = Eigen::VectorXd::Zero(tmp.size() + 1);
+      dest.tail(tmp.size()) = tmp;
+    };
+    ReadHalfGridCompat(m_obj.iotas, "iota_half");
+    ReadHalfGridCompat(m_obj.mass, "mass");
+    ReadHalfGridCompat(m_obj.pres, "pressure_half");
+    ReadHalfGridCompat(m_obj.beta_vol, "beta");
+    ReadHalfGridCompat(m_obj.buco, "buco");
+    ReadHalfGridCompat(m_obj.bvco, "bvco");
+    ReadHalfGridCompat(m_obj.vp, "dVds");
+    ReadHalfGridCompat(m_obj.phips, "phips");
+    ReadHalfGridCompat(m_obj.over_r, "overr");
+  }
   READMEMBER(jdotb);
   // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
   // reference files with all quantities once that is done
   //  READMEMBER(bdotb);
   READMEMBER(bdotgradv);
   READMEMBER(DMerc);
-  READMEMBER(Dshear);
-  READMEMBER(Dwell);
-  READMEMBER(Dcurr);
-  READMEMBER(Dgeod);
+  READMEMBER_COMPAT(DShear, "Dshear");
+  READMEMBER_COMPAT(DWell, "Dwell");
+  READMEMBER_COMPAT(DCurr, "Dcurr");
+  READMEMBER_COMPAT(DGeod, "Dgeod");
   READMEMBER(equif);
   READMEMBER(curlabel);
   READMEMBER(potvac);
@@ -1014,34 +1061,81 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(xn);
   READMEMBER(xm_nyq);
   READMEMBER(xn_nyq);
-  READMEMBER(raxis_c);
-  READMEMBER(zaxis_s);
-  READMEMBER(rmnc);
-  READMEMBER(zmns);
-  READMEMBER(lmns_full);
-  READMEMBER(lmns);
-  READMEMBER(gmnc);
-  READMEMBER(bmnc);
-  READMEMBER(bsubumnc);
-  READMEMBER(bsubvmnc);
-  READMEMBER(bsubsmns);
+  READMEMBER_COMPAT(raxis_cc, "raxis_c");
+  READMEMBER_COMPAT(zaxis_cs, "zaxis_s");
+
+  // 2D Fourier arrays: old HDF5 files store (ns, mnmax) layout,
+  // new format uses (mnmax, ns). Detect by checking if dimensions match.
+  // Also handle half-grid arrays that changed from (ns-1, mnmax) to (mnmax,
+  // ns).
+  auto ReadAndTranspose2D = [&](RowMatrixXd& dest, const std::string& name) {
+    RowMatrixXd tmp;
+    ReadH5Dataset(tmp, absl::StrFormat("%s/%s", H5key, name), from_file);
+    // If rows > cols, this is old (ns, mnmax) layout; transpose it.
+    // New layout is (mnmax, ns) where mnmax < ns is not guaranteed,
+    // so we check if the stored shape matches (mnmax, ns) or (ns, mnmax).
+    // We know mnmax and ns from already-read fields.
+    if (tmp.rows() == m_obj.ns &&
+        (tmp.cols() == m_obj.mnmax || tmp.cols() == m_obj.mnmax_nyq)) {
+      dest = tmp.transpose();
+    } else {
+      dest = tmp;
+    }
+  };
+  auto ReadAndTransposePadHalfGrid2D =
+      [&](RowMatrixXd& dest, const std::string& name, int mnsize) {
+        RowMatrixXd tmp;
+        ReadH5Dataset(tmp, absl::StrFormat("%s/%s", H5key, name), from_file);
+        // Old format: (ns-1, mnsize) -> transpose and pad to (mnsize, ns)
+        if (tmp.rows() == m_obj.ns - 1 && tmp.cols() == mnsize) {
+          dest = RowMatrixXd::Zero(mnsize, m_obj.ns);
+          dest.rightCols(m_obj.ns - 1) = tmp.transpose();
+        } else if (tmp.rows() == m_obj.ns && tmp.cols() == mnsize) {
+          // Old full-grid format (ns, mnsize) e.g. bsubsmns -> transpose
+          dest = tmp.transpose();
+        } else {
+          dest = tmp;
+        }
+      };
+
+  ReadAndTranspose2D(m_obj.rmnc, "rmnc");
+  ReadAndTranspose2D(m_obj.zmns, "zmns");
+  ReadAndTranspose2D(m_obj.lmns_full, "lmns_full");
+  ReadAndTransposePadHalfGrid2D(m_obj.lmns, "lmns", m_obj.mnmax);
+  ReadAndTransposePadHalfGrid2D(m_obj.gmnc, "gmnc", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bmnc, "bmnc", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubumnc, "bsubumnc", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubvmnc, "bsubvmnc", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubsmns, "bsubsmns", m_obj.mnmax_nyq);
   READMEMBER(bsubsmns_full);
-  READMEMBER(bsupumnc);
-  READMEMBER(bsupvmnc);
-  READMEMBER(raxis_s);
-  READMEMBER(zaxis_c);
-  READMEMBER(rmns);
-  READMEMBER(zmnc);
-  READMEMBER(lmnc_full);
-  READMEMBER(lmnc);
-  READMEMBER(gmns);
-  READMEMBER(bmns);
-  READMEMBER(bsubumns);
-  READMEMBER(bsubvmns);
-  READMEMBER(bsubsmnc);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsupumnc, "bsupumnc", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsupvmnc, "bsupvmnc", m_obj.mnmax_nyq);
+  if (from_file.nameExists(absl::StrFormat("%s/currumnc", H5key))) {
+    ReadAndTranspose2D(m_obj.currumnc, "currumnc");
+  }
+  if (from_file.nameExists(absl::StrFormat("%s/currvmnc", H5key))) {
+    ReadAndTranspose2D(m_obj.currvmnc, "currvmnc");
+  }
+  READMEMBER_COMPAT(raxis_cs, "raxis_s");
+  READMEMBER_COMPAT(zaxis_cc, "zaxis_c");
+  ReadAndTranspose2D(m_obj.rmns, "rmns");
+  ReadAndTranspose2D(m_obj.zmnc, "zmnc");
+  ReadAndTranspose2D(m_obj.lmnc_full, "lmnc_full");
+  ReadAndTransposePadHalfGrid2D(m_obj.lmnc, "lmnc", m_obj.mnmax);
+  ReadAndTransposePadHalfGrid2D(m_obj.gmns, "gmns", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bmns, "bmns", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubumns, "bsubumns", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubvmns, "bsubvmns", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsubsmnc, "bsubsmnc", m_obj.mnmax_nyq);
   READMEMBER(bsubsmnc_full);
-  READMEMBER(bsupumns);
-  READMEMBER(bsupvmns);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsupumns, "bsupumns", m_obj.mnmax_nyq);
+  ReadAndTransposePadHalfGrid2D(m_obj.bsupvmns, "bsupvmns", m_obj.mnmax_nyq);
+  if (from_file.nameExists(absl::StrFormat("%s/currumns", H5key))) {
+    ReadAndTranspose2D(m_obj.currumns, "currumns");
+  }
+  if (from_file.nameExists(absl::StrFormat("%s/currvmns", H5key))) {
+    ReadAndTranspose2D(m_obj.currvmns, "currvmns");
+  }
 
   return absl::OkStatus();
 }
@@ -4217,7 +4311,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // take version from educational_VMEC for now
   // TODO(jons): Upgrade VMEC++ to match PARVMEC and then change version to
   // "9.0".
-  wout.version = "8.52";
+  wout.version_ = 8.52;
 
   // We cannot provide a meaningful value for input_extension here, as we run
   // from a json input, but the input_extension indicates the existence of a
@@ -4225,7 +4319,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // To avoid confusion we leave it blank.
   wout.input_extension = "";
 
-  wout.sign_of_jacobian = m_vmec_internal_results.sign_of_jacobian;
+  wout.signgs = m_vmec_internal_results.sign_of_jacobian;
 
   // TODO(jons): Extend data set such that all input file contents are available
   // in the output file.
@@ -4246,6 +4340,29 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.ai_aux_s = NonEmptyVectorOr(indata.ai_aux_s, -1.0);
   wout.ai_aux_f = NonEmptyVectorOr(indata.ai_aux_f, 0.0);
 
+  // Right-pad profile arrays to match Fortran VMEC output sizes.
+  constexpr int kPreset = 21;
+  constexpr int kNdfmax = 101;
+
+  auto PadVector = [](Eigen::VectorXd& vec, int target_size, double pad_value) {
+    if (vec.size() < target_size) {
+      const int old_size = vec.size();
+      vec.conservativeResize(target_size);
+      vec.tail(target_size - old_size).setConstant(pad_value);
+    }
+  };
+
+  PadVector(wout.am, kPreset, 0.0);
+  PadVector(wout.ac, kPreset, 0.0);
+  PadVector(wout.ai, kPreset, 0.0);
+
+  PadVector(wout.am_aux_s, kNdfmax, -1.0);
+  PadVector(wout.am_aux_f, kNdfmax, 0.0);
+  PadVector(wout.ac_aux_s, kNdfmax, -1.0);
+  PadVector(wout.ac_aux_f, kNdfmax, 0.0);
+  PadVector(wout.ai_aux_s, kNdfmax, -1.0);
+  PadVector(wout.ai_aux_f, kNdfmax, 0.0);
+
   wout.nfp = indata.nfp;
   wout.mpol = indata.mpol;
   wout.ntor = indata.ntor;
@@ -4256,7 +4373,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   // TODO(jons): Technically, this is not an input but an output (should go into
   // output data section).
-  wout.maximum_iterations = iter2;
+  wout.niter = iter2;
 
   wout.lfreeb = indata.lfreeb;
   wout.mgrid_file = indata.mgrid_file;
@@ -4288,7 +4405,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   wout.aspect = threed1_geomag.aspect;
 
-  wout.betatot = threed1_betas.betatot;
+  wout.betatotal = threed1_betas.betatot;
   wout.betapol = threed1_betas.betapol;
   wout.betator = threed1_betas.betator;
   wout.betaxis = threed1_betas.betaxis;
@@ -4299,13 +4416,13 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.rbtor = handover_storage.rBtor;
 
   wout.IonLarmor = threed1_geomag.IonLarmor;
-  wout.VolAvgB = threed1_geomag.VolAvgB;
+  wout.volavgB = threed1_geomag.VolAvgB;
 
   wout.ctor = handover_storage.cTor / MU_0;
 
   wout.Aminor_p = threed1_geomag.Aminor_p;
   wout.Rmajor_p = threed1_geomag.Rmajor_p;
-  wout.volume_p = threed1_geomag.volume_p;
+  wout.volume = threed1_geomag.volume_p;
 
   wout.fsqr = fc.fsqr;
   wout.fsqz = fc.fsqz;
@@ -4318,11 +4435,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               wout.force_residual_lambda;
   wout.delbsq = ToEigenVector(fc.delbsq);
   // Convert status codes to integer values
-  wout.restart_reasons = Eigen::VectorXi::Zero(fc.restart_reasons.size());
+  wout.restart_reason_timetrace =
+      Eigen::VectorXi::Zero(fc.restart_reasons.size());
   for (Eigen::Index i = 0;
        i < static_cast<Eigen::Index>(fc.restart_reasons.size()); ++i) {
     // VmecStatusCode
-    wout.restart_reasons(i) = static_cast<int>(fc.restart_reasons[i]);
+    wout.restart_reason_timetrace(i) = static_cast<int>(fc.restart_reasons[i]);
   }
   wout.itfsq = wout.fsqt.size();
   // First entry is the staring energy W
@@ -4337,21 +4455,21 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // -------------------
   // one-dimensional array quantities
 
-  wout.iota_full = m_vmec_internal_results.iotaF;
+  wout.iotaf = m_vmec_internal_results.iotaF;
 
-  wout.safety_factor = VectorXd::Ones(fc.ns) * DBL_MAX;
+  wout.q_factor = VectorXd::Ones(fc.ns) * DBL_MAX;
 
-  wout.pressure_full = VectorXd::Zero(fc.ns);
+  wout.presf = VectorXd::Zero(fc.ns);
   wout.phipf = VectorXd::Zero(fc.ns);
   wout.chipf = VectorXd::Zero(fc.ns);
   wout.jcuru = VectorXd::Zero(fc.ns);
   wout.jcurv = VectorXd::Zero(fc.ns);
 
   for (int jF = 0; jF < fc.ns; ++jF) {
-    if (wout.iota_full[jF] != 0.0) {
-      wout.safety_factor[jF] = 1.0 / wout.iota_full[jF];
+    if (wout.iotaf[jF] != 0.0) {
+      wout.q_factor[jF] = 1.0 / wout.iotaf[jF];
     }
-    wout.pressure_full[jF] = threed1_first_table_intermediate.presf[jF] / MU_0;
+    wout.presf[jF] = threed1_first_table_intermediate.presf[jF] / MU_0;
     wout.phipf[jF] = m_vmec_internal_results.sign_of_jacobian * 2.0 * M_PI *
                      m_vmec_internal_results.phipF[jF];
     wout.chipf[jF] = m_vmec_internal_results.sign_of_jacobian * 2.0 * M_PI *
@@ -4359,33 +4477,40 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     wout.jcuru[jF] = threed1_first_table_intermediate.jcuru[jF] / MU_0;
     wout.jcurv[jF] = threed1_first_table_intermediate.jcurv[jF] / MU_0;
   }  // jF
-  wout.toroidal_flux = m_vmec_internal_results.phiF;
-  wout.poloidal_flux = threed1_first_table_intermediate.chi;
-  wout.spectral_width = m_vmec_internal_results.spectral_width;
+  wout.phi = m_vmec_internal_results.phiF;
+  wout.chi = threed1_first_table_intermediate.chi;
+  wout.specw = m_vmec_internal_results.spectral_width;
 
-  wout.mass.resize(fc.ns - 1);
-  wout.pressure_half.resize(fc.ns - 1);
+  wout.mass = VectorXd::Zero(fc.ns);
+  wout.pres = VectorXd::Zero(fc.ns);
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
-    wout.mass[jH] = m_vmec_internal_results.massH[jH] / MU_0;
-    wout.pressure_half[jH] = m_vmec_internal_results.presH[jH] / MU_0;
+    wout.mass[jH + 1] = m_vmec_internal_results.massH[jH] / MU_0;
+    wout.pres[jH + 1] = m_vmec_internal_results.presH[jH] / MU_0;
   }  // jH
-  wout.iota_half = m_vmec_internal_results.iotaH;
-  wout.beta = threed1_first_table_intermediate.beta_vol;
-  wout.buco = threed1_first_table_intermediate.bucoH;
-  wout.bvco = threed1_first_table_intermediate.bvcoH;
-  wout.dVds = m_vmec_internal_results.dVdsH;
-  wout.phips = m_vmec_internal_results.phipH;
-  wout.overr = threed1_first_table_intermediate.overr;
+  wout.iotas = VectorXd::Zero(fc.ns);
+  wout.iotas.tail(fc.ns - 1) = m_vmec_internal_results.iotaH;
+  wout.beta_vol = VectorXd::Zero(fc.ns);
+  wout.beta_vol.tail(fc.ns - 1) = threed1_first_table_intermediate.beta_vol;
+  wout.buco = VectorXd::Zero(fc.ns);
+  wout.buco.tail(fc.ns - 1) = threed1_first_table_intermediate.bucoH;
+  wout.bvco = VectorXd::Zero(fc.ns);
+  wout.bvco.tail(fc.ns - 1) = threed1_first_table_intermediate.bvcoH;
+  wout.vp = VectorXd::Zero(fc.ns);
+  wout.vp.tail(fc.ns - 1) = m_vmec_internal_results.dVdsH;
+  wout.phips = VectorXd::Zero(fc.ns);
+  wout.phips.tail(fc.ns - 1) = m_vmec_internal_results.phipH;
+  wout.over_r = VectorXd::Zero(fc.ns);
+  wout.over_r.tail(fc.ns - 1) = threed1_first_table_intermediate.overr;
 
   wout.jdotb = jxbout.jdotb;
   wout.bdotb = jxbout.bdotb;
   wout.bdotgradv = jxbout.bdotgradv;
 
   wout.DMerc = mercier.DMerc;
-  wout.Dshear = mercier.Dshear;
-  wout.Dwell = mercier.Dwell;
-  wout.Dcurr = mercier.Dcurr;
-  wout.Dgeod = mercier.Dgeod;
+  wout.DShear = mercier.Dshear;
+  wout.DWell = mercier.Dwell;
+  wout.DCurr = mercier.Dcurr;
+  wout.DGeod = mercier.Dgeod;
 
   wout.equif = threed1_first_table.radial_force;
 
@@ -4394,17 +4519,17 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // -------------------
   // mode numbers for Fourier coefficient arrays below
 
-  // copy STL vectors into Eigen vectors
-  wout.xm = ToEigenVector(t.xm);
-  wout.xn = ToEigenVector(t.xn);
-  wout.xm_nyq = ToEigenVector(t.xm_nyq);
-  wout.xn_nyq = ToEigenVector(t.xn_nyq);
+  // copy Eigen vectors into wout
+  wout.xm = t.xm;
+  wout.xn = t.xn;
+  wout.xm_nyq = t.xm_nyq;
+  wout.xn_nyq = t.xn_nyq;
 
   // -------------------
   // stellarator-symmetric Fourier coefficients
 
-  wout.raxis_c = threed1_axis.raxis_symm;
-  wout.zaxis_s = threed1_axis.zaxis_symm;
+  wout.raxis_cc = threed1_axis.raxis_symm;
+  wout.zaxis_cs = threed1_axis.zaxis_symm;
 
   // NYQUIST FREQUENCY REQUIRES FACTOR OF 1/2
   std::vector<double> cosmui(s.nThetaReduced * (s.mnyq2 + 1));
@@ -4451,9 +4576,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // CONVERT TO rmnc, zmns, lmns, etc EXTERNAL representation (without internal
   // mscale, nscale) IF B^v ~ phip + lamu, MUST DIVIDE BY phipf(js) below to
   // maintain old-style format
-  wout.rmnc = RowMatrixXd::Zero(fc.ns, s.mnmax);
-  wout.zmns = RowMatrixXd::Zero(fc.ns, s.mnmax);
-  wout.lmns_full = RowMatrixXd::Zero(fc.ns, s.mnmax);
+  wout.rmnc = RowMatrixXd::Zero(s.mnmax, fc.ns);
+  wout.zmns = RowMatrixXd::Zero(s.mnmax, fc.ns);
+  wout.lmns_full = RowMatrixXd::Zero(s.mnmax, fc.ns);
   for (int jF = 0; jF < fc.ns; ++jF) {
     std::vector<double> rmnc1(s.mnmax, 0.0);
     std::vector<double> zmns1(s.mnmax, 0.0);
@@ -4523,37 +4648,36 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                               << " should be mnmax=" << s.mnmax;
 
     for (int mn = 0; mn < s.mnmax; ++mn) {
-      wout.rmnc(jF * s.mnmax + mn) = rmnc1[mn];
-      wout.zmns(jF * s.mnmax + mn) = zmns1[mn];
-      wout.lmns_full(jF * s.mnmax + mn) =
+      wout.rmnc(mn, jF) = rmnc1[mn];
+      wout.zmns(mn, jF) = zmns1[mn];
+      wout.lmns_full(mn, jF) =
           lmns1[mn] / m_vmec_internal_results.phipF[jF] * constants.lamscale;
     }  // mn
   }  // jF
 
   // INTERPOLATE LAMBDA ONTO HALF-MESH FOR BACKWARDS CONSISTENCY WITH EARLIER
   // VERSIONS OF VMEC AND SMOOTHS POSSIBLE UNPHYSICAL "WIGGLE" ON RADIAL MESH
-  wout.lmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax);
+  wout.lmns = RowMatrixXd::Zero(s.mnmax, fc.ns);
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     const int jFi = jH;
     const int jFo = jH + 1;
 
     for (int mn = 0; mn < s.mnmax; ++mn) {
-      const double lmns_outside = wout.lmns_full(jFo * s.mnmax + mn);
+      const double lmns_outside = wout.lmns_full(mn, jFo);
 
-      double lmns_inside = wout.lmns_full(jFi * s.mnmax + mn);
+      double lmns_inside = wout.lmns_full(mn, jFi);
       if (jFi == 0 && wout.xm[mn] <= 1) {
         lmns_inside = lmns_outside;
       }
 
       if (wout.xm[mn] % 2 == 0) {
         // m is even
-        wout.lmns(jH * s.mnmax + mn) = (lmns_outside + lmns_inside) / 2.0;
+        wout.lmns(mn, jH + 1) = (lmns_outside + lmns_inside) / 2.0;
       } else {
         // m is odd
         const double sm = m_vmec_internal_results.sm[jH];
         const double sp = m_vmec_internal_results.sp[jH];
-        wout.lmns(jH * s.mnmax + mn) =
-            (sm * lmns_outside + sp * lmns_inside) / 2.0;
+        wout.lmns(mn, jH + 1) = (sm * lmns_outside + sp * lmns_inside) / 2.0;
       }
     }  // mn
   }  // jH
@@ -4588,36 +4712,33 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // Fourier-transform derived quantities for each surface individually
 
   // half-grid
-  wout.gmnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
-  wout.bmnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
-  wout.bsubumnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
-  wout.bsubvmnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+  wout.gmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  wout.bmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  wout.bsubumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  wout.bsubvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
 
   // Note: bsubsmns is a half-grid quantity,
   // but stored in Fortran VMEC fashion offset by 1 index to the right,
   // in order to also have the (wrong) extrapolation
   // beyond the axis on the j=0 grid point
   // for backwards compatibility.
-  wout.bsubsmns = RowMatrixXd::Zero(fc.ns, s.mnmax_nyq);
+  wout.bsubsmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
 
-  wout.bsupumnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
-  wout.bsupvmnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+  wout.bsupumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  wout.bsupvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
 
   // Initialize asymmetric arrays for lasym=true cases
   if (s.lasym) {
-    wout.gmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
-    wout.bmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
-    wout.bsubumns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
-    wout.bsubvmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
-    wout.bsubsmnc = RowMatrixXd::Zero(fc.ns, s.mnmax_nyq);
-    wout.bsupumns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
-    wout.bsupvmns = RowMatrixXd::Zero(fc.ns - 1, s.mnmax_nyq);
+    wout.gmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.bmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsubumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsubvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsubsmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsupumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsupvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   }
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-      const int idx_mn_nyq = jH * s.mnmax_nyq + mn_nyq;
-      const int idx_mn_nyq1 = (jH + 1) * s.mnmax_nyq + mn_nyq;
-
       const int m = wout.xm_nyq[mn_nyq];
       const int n = wout.xn_nyq[mn_nyq] / wout.nfp;
       const int abs_n = std::abs(n);
@@ -4644,17 +4765,18 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                                         sign_n * cosmui[ml] * t.sinnv[kn]);
 
           const int idx_kl = (jH * s.nZeta + k) * s.nThetaEff + l;
-          wout.gmnc(idx_mn_nyq) +=
+          wout.gmnc(mn_nyq, jH + 1) +=
               tcosi * m_vmec_internal_results.gsqrt(idx_kl);
-          wout.bmnc(idx_mn_nyq) += tcosi * magnetic_pressure[idx_kl];
-          wout.bsubumnc(idx_mn_nyq) +=
+          wout.bmnc(mn_nyq, jH + 1) += tcosi * magnetic_pressure[idx_kl];
+          wout.bsubumnc(mn_nyq, jH + 1) +=
               tcosi * m_vmec_internal_results.bsubu(idx_kl);
-          wout.bsubvmnc(idx_mn_nyq) +=
+          wout.bsubvmnc(mn_nyq, jH + 1) +=
               tcosi * m_vmec_internal_results.bsubv(idx_kl);
-          wout.bsubsmns(idx_mn_nyq1) += tsini * bsubs_half.bsubs_half(idx_kl);
-          wout.bsupumnc(idx_mn_nyq) +=
+          wout.bsubsmns(mn_nyq, jH + 1) +=
+              tsini * bsubs_half.bsubs_half(idx_kl);
+          wout.bsupumnc(mn_nyq, jH + 1) +=
               tcosi * m_vmec_internal_results.bsupu(idx_kl);
-          wout.bsupvmnc(idx_mn_nyq) +=
+          wout.bsupvmnc(mn_nyq, jH + 1) +=
               tcosi * m_vmec_internal_results.bsupv(idx_kl);
 
           // Add asymmetric contributions for lasym=true cases
@@ -4688,14 +4810,14 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                                              bsubs_half.bsubs_half(idx_kl_rev));
 
             // Add asymmetric contributions to sin arrays
-            wout.gmns(idx_mn_nyq) += tsini * gsqrt_asym;
-            wout.bmns(idx_mn_nyq) += tsini * bmagn_asym;
-            wout.bsubumns(idx_mn_nyq) += tsini * bsubu_asym;
-            wout.bsubvmns(idx_mn_nyq) += tsini * bsubv_asym;
-            wout.bsubsmnc(idx_mn_nyq1) +=
+            wout.gmns(mn_nyq, jH + 1) += tsini * gsqrt_asym;
+            wout.bmns(mn_nyq, jH + 1) += tsini * bmagn_asym;
+            wout.bsubumns(mn_nyq, jH + 1) += tsini * bsubu_asym;
+            wout.bsubvmns(mn_nyq, jH + 1) += tsini * bsubv_asym;
+            wout.bsubsmnc(mn_nyq, jH + 1) +=
                 tcosi * bsubs_asym;  // cos mode for bsubs
-            wout.bsupumns(idx_mn_nyq) += tsini * bsupu_asym;
-            wout.bsupvmns(idx_mn_nyq) += tsini * bsupv_asym;
+            wout.bsupumns(mn_nyq, jH + 1) += tsini * bsupu_asym;
+            wout.bsupvmns(mn_nyq, jH + 1) += tsini * bsupv_asym;
           }
         }  // k
       }  // l
@@ -4715,16 +4837,16 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // computed in jxbforce, and is available in the jxbout file contents in
   // realspace as bsubs3.
   for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-    wout.bsubsmns(0, mn_nyq) =
-        2.0 * wout.bsubsmns(1, mn_nyq) - wout.bsubsmns(2, mn_nyq);
+    wout.bsubsmns(mn_nyq, 0) =
+        2.0 * wout.bsubsmns(mn_nyq, 1) - wout.bsubsmns(mn_nyq, 2);
   }  // mn_nyq
 
   // -------------------
   // non-stellarator-symmetric Fourier coefficients
 
   if (s.lasym) {
-    wout.raxis_s = threed1_axis.raxis_asym;
-    wout.zaxis_c = threed1_axis.zaxis_asym;
+    wout.raxis_cs = threed1_axis.raxis_asym;
+    wout.zaxis_cc = threed1_axis.zaxis_asym;
 
     // MUST CONVERT m=1 MODES... FROM INTERNAL TO PHYSICAL FORM
     // Extrapolation of m=0 Lambda (cs) modes, which are not evolved at j=1,
@@ -4746,9 +4868,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     // internal mscale, nscale) IF B^v ~ phip + lamu, MUST DIVIDE BY phipf(js)
     // below to maintain old-style format
 
-    wout.rmns = RowMatrixXd::Zero(fc.ns, s.mnmax);
-    wout.zmnc = RowMatrixXd::Zero(fc.ns, s.mnmax);
-    wout.lmnc_full = RowMatrixXd::Zero(fc.ns, s.mnmax);
+    wout.rmns = RowMatrixXd::Zero(s.mnmax, fc.ns);
+    wout.zmnc = RowMatrixXd::Zero(s.mnmax, fc.ns);
+    wout.lmnc_full = RowMatrixXd::Zero(s.mnmax, fc.ns);
     for (int jF = 0; jF < fc.ns; ++jF) {
       std::vector<double> rmns1(s.mnmax, 0.0);
       std::vector<double> zmnc1(s.mnmax, 0.0);
@@ -4818,9 +4940,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                                 << " should be mnmax=" << s.mnmax;
 
       for (int mn = 0; mn < s.mnmax; ++mn) {
-        wout.rmns(jF * s.mnmax + mn) = rmns1[mn];
-        wout.zmnc(jF * s.mnmax + mn) = zmnc1[mn];
-        wout.lmnc_full(jF * s.mnmax + mn) =
+        wout.rmns(mn, jF) = rmns1[mn];
+        wout.zmnc(mn, jF) = zmnc1[mn];
+        wout.lmnc_full(mn, jF) =
             lmnc1[mn] / m_vmec_internal_results.phipF[jF] * constants.lamscale;
       }  // mn
     }  // jF
@@ -4828,23 +4950,23 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     // INTERPOLATE LAMBDA ONTO HALF-MESH FOR BACKWARDS CONSISTENCY WITH EARLIER
     // VERSIONS OF VMEC AND SMOOTHS POSSIBLE UNPHYSICAL "WIGGLE" ON RADIAL MESH
 
-    wout.lmnc = RowMatrixXd::Zero(fc.ns - 1, s.mnmax);
+    wout.lmnc = RowMatrixXd::Zero(s.mnmax, fc.ns);
     for (int jH = 0; jH < fc.ns - 1; ++jH) {
       const int jFi = jH;
       const int jFo = jH + 1;
 
       for (int mn = 0; mn < s.mnmax; ++mn) {
-        const double lmnc_outside = wout.lmnc_full(jFo * s.mnmax + mn);
+        const double lmnc_outside = wout.lmnc_full(mn, jFo);
 
-        double lmnc_inside = wout.lmnc_full(jFi * s.mnmax + mn);
+        double lmnc_inside = wout.lmnc_full(mn, jFi);
         if (jFi == 0 && wout.xm[mn] <= 1) {
           lmnc_inside = lmnc_outside;
         }
 
         if (wout.xm[mn] % 2 == 0) {
-          wout.lmnc(jH * s.mnmax + mn) = (lmnc_inside + lmnc_outside) * 0.5;
+          wout.lmnc(mn, jH + 1) = (lmnc_inside + lmnc_outside) * 0.5;
         } else {
-          wout.lmnc(jH * s.mnmax + mn) = (lmnc_outside - lmnc_inside) * 0.5;
+          wout.lmnc(mn, jH + 1) = (lmnc_outside - lmnc_inside) * 0.5;
         }
       }  // mn
     }  // jH
@@ -4853,14 +4975,158 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // RESTORE nyq ENDPOINT VALUES
   // --> not needed here, since cosmui and cosnv were duplicated in local scope
 
+  // -------------------
+  // Compute current density Fourier coefficients from covariant B components.
+  // This is a 1:1 port of the Fortran Compute_Currents subroutine.
+  // currXmn == sqrt(g) * J^X, X = theta (u), zeta (v)
+  //
+  // From Ampere's law in flux coordinates:
+  //   sqrt(g) * J^theta = (1/mu0) * (dB_s/dzeta - dB_zeta/ds)
+  //   sqrt(g) * J^zeta  = (1/mu0) * (dB_theta/ds - dB_s/dtheta)
+  //
+  // In Fourier space (combined basis cos(m*theta - n*nfp*zeta)):
+  //   currumnc(m,n) = (1/mu0) * (-n_nfp * Bs_interp - dBzeta_cos/ds)
+  //   currvmnc(m,n) = (1/mu0) * (-m     * Bs_interp + dBtheta_cos/ds)
+  //
+  // Radial derivatives use sqrt(s) regularization for odd-m modes.
+  {
+    const double ohs = 1.0 / fc.deltaS;
+
+    wout.currumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.currvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    if (s.lasym) {
+      wout.currumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+      wout.currvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    }
+
+    // Interior full-grid points: j_f = 1 .. ns-2
+    // In the wout storage convention (Fortran-style offset by 1),
+    // bsub*(:, j_f) and bsub*(:, j_f+1) are the neighboring half-grid data.
+    // sqrtSH[j_f-1] and sqrtSH[j_f] are the corresponding sqrt(s) values.
+    // sqrtSF[j_f] is the full-grid sqrt(s).
+    for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
+      const double sqrt_s_half_inner = m_vmec_internal_results.sqrtSH[j_f - 1];
+      const double sqrt_s_half_outer = m_vmec_internal_results.sqrtSH[j_f];
+      const double sqrt_s_full = m_vmec_internal_results.sqrtSF[j_f];
+
+      for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+        const int m = wout.xm_nyq[mn];
+        const double n_nfp = static_cast<double>(wout.xn_nyq[mn]);
+
+        double t1 = 0.0;
+        double t2 = 0.0;
+        double t3 = 0.0;
+
+        if (m % 2 == 1) {
+          // odd m: regularized derivatives
+          t1 = 0.5 *
+               (sqrt_s_half_outer * wout.bsubsmns(mn, j_f + 1) +
+                sqrt_s_half_inner * wout.bsubsmns(mn, j_f)) /
+               sqrt_s_full;
+
+          const double bu0 = wout.bsubumnc(mn, j_f) / sqrt_s_half_inner;
+          const double bu1 = wout.bsubumnc(mn, j_f + 1) / sqrt_s_half_outer;
+          t2 = ohs * (bu1 - bu0) * sqrt_s_full +
+               0.25 * (bu0 + bu1) / sqrt_s_full;
+
+          const double bv0 = wout.bsubvmnc(mn, j_f) / sqrt_s_half_inner;
+          const double bv1 = wout.bsubvmnc(mn, j_f + 1) / sqrt_s_half_outer;
+          t3 = ohs * (bv1 - bv0) * sqrt_s_full +
+               0.25 * (bv0 + bv1) / sqrt_s_full;
+        } else {
+          // even m: simple finite differences
+          t1 = 0.5 * (wout.bsubsmns(mn, j_f + 1) + wout.bsubsmns(mn, j_f));
+          t2 = ohs * (wout.bsubumnc(mn, j_f + 1) - wout.bsubumnc(mn, j_f));
+          t3 = ohs * (wout.bsubvmnc(mn, j_f + 1) - wout.bsubvmnc(mn, j_f));
+        }
+
+        wout.currumnc(mn, j_f) = -n_nfp * t1 - t3;
+        wout.currvmnc(mn, j_f) = -m * t1 + t2;
+
+        if (s.lasym) {
+          double t1a = 0.0;
+          double t2a = 0.0;
+          double t3a = 0.0;
+
+          if (m % 2 == 1) {
+            t1a = 0.5 *
+                  (sqrt_s_half_outer * wout.bsubsmnc(mn, j_f + 1) +
+                   sqrt_s_half_inner * wout.bsubsmnc(mn, j_f)) /
+                  sqrt_s_full;
+
+            const double bu0a = wout.bsubumns(mn, j_f) / sqrt_s_half_outer;
+            const double bu1a = wout.bsubumns(mn, j_f + 1) / sqrt_s_half_outer;
+            t2a = ohs * (bu1a - bu0a) * sqrt_s_full +
+                  0.25 * (bu0a + bu1a) / sqrt_s_full;
+
+            const double bv0a = wout.bsubvmns(mn, j_f) / sqrt_s_half_inner;
+            const double bv1a = wout.bsubvmns(mn, j_f + 1) / sqrt_s_half_outer;
+            t3a = ohs * (bv1a - bv0a) * sqrt_s_full +
+                  0.25 * (bv0a + bv1a) / sqrt_s_full;
+          } else {
+            t1a = 0.5 * (wout.bsubsmnc(mn, j_f + 1) + wout.bsubsmnc(mn, j_f));
+            t2a = ohs * (wout.bsubumns(mn, j_f + 1) - wout.bsubumns(mn, j_f));
+            t3a = ohs * (wout.bsubvmns(mn, j_f + 1) - wout.bsubvmns(mn, j_f));
+          }
+
+          wout.currumns(mn, j_f) = n_nfp * t1a - t3a;
+          wout.currvmns(mn, j_f) = m * t1a + t2a;
+        }
+      }  // mn
+    }  // j_f
+
+    // Axis (j_f=0): extrapolate for m <= 1, zero for m > 1
+    for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+      if (wout.xm_nyq[mn] <= 1) {
+        wout.currumnc(mn, 0) =
+            2.0 * wout.currumnc(mn, 1) - wout.currumnc(mn, 2);
+        wout.currvmnc(mn, 0) =
+            2.0 * wout.currvmnc(mn, 1) - wout.currvmnc(mn, 2);
+      }
+      // m > 1: already zero from initialization
+    }
+
+    // Edge (j_f=ns-1): linear extrapolation
+    for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+      wout.currumnc(mn, fc.ns - 1) =
+          2.0 * wout.currumnc(mn, fc.ns - 2) - wout.currumnc(mn, fc.ns - 3);
+      wout.currvmnc(mn, fc.ns - 1) =
+          2.0 * wout.currvmnc(mn, fc.ns - 2) - wout.currvmnc(mn, fc.ns - 3);
+    }
+
+    // Divide by mu_0 to convert to SI units (Amperes)
+    wout.currumnc /= MU_0;
+    wout.currvmnc /= MU_0;
+
+    if (s.lasym) {
+      for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+        if (wout.xm_nyq[mn] <= 1) {
+          wout.currumns(mn, 0) =
+              2.0 * wout.currumns(mn, 1) - wout.currumns(mn, 2);
+          wout.currvmns(mn, 0) =
+              2.0 * wout.currvmns(mn, 1) - wout.currvmns(mn, 2);
+        }
+      }
+
+      for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+        wout.currumns(mn, fc.ns - 1) =
+            2.0 * wout.currumns(mn, fc.ns - 2) - wout.currumns(mn, fc.ns - 3);
+        wout.currvmns(mn, fc.ns - 1) =
+            2.0 * wout.currvmns(mn, fc.ns - 2) - wout.currvmns(mn, fc.ns - 3);
+      }
+
+      wout.currumns /= MU_0;
+      wout.currvmns /= MU_0;
+    }
+  }
+
   return wout;
 }  // NOLINT(readability/fn_size)
 
 void vmecpp::CompareWOut(const WOutFileContents& test_wout,
                          const WOutFileContents& expected_wout,
-                         double tolerance,
-                         bool check_equal_maximum_iterations) {
-  CHECK_EQ(test_wout.sign_of_jacobian, expected_wout.sign_of_jacobian);
+                         double tolerance, bool check_equal_niter) {
+  CHECK_EQ(test_wout.signgs, expected_wout.signgs);
   CHECK_EQ(test_wout.gamma, expected_wout.gamma);
   CHECK_EQ(test_wout.pcurr_type, expected_wout.pcurr_type);
   CHECK_EQ(test_wout.pmass_type, expected_wout.pmass_type);
@@ -4877,8 +5143,8 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
 
   CHECK_EQ(test_wout.ns, expected_wout.ns);
   CHECK_EQ(test_wout.ftolv, expected_wout.ftolv);
-  if (check_equal_maximum_iterations) {
-    CHECK_EQ(test_wout.maximum_iterations, expected_wout.maximum_iterations);
+  if (check_equal_niter) {
+    CHECK_EQ(test_wout.niter, expected_wout.niter);
   }
 
   CHECK_EQ(test_wout.lfreeb, expected_wout.lfreeb);
@@ -4901,7 +5167,7 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
 
   CHECK(IsCloseRelAbs(expected_wout.aspect, test_wout.aspect, tolerance));
 
-  CHECK(IsCloseRelAbs(expected_wout.betatot, test_wout.betatot, tolerance));
+  CHECK(IsCloseRelAbs(expected_wout.betatotal, test_wout.betatotal, tolerance));
   CHECK(IsCloseRelAbs(expected_wout.betapol, test_wout.betapol, tolerance));
   CHECK(IsCloseRelAbs(expected_wout.betator, test_wout.betator, tolerance));
   CHECK(IsCloseRelAbs(expected_wout.betaxis, test_wout.betaxis, tolerance));
@@ -4912,13 +5178,13 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
   CHECK(IsCloseRelAbs(expected_wout.rbtor, test_wout.rbtor, tolerance));
 
   CHECK(IsCloseRelAbs(expected_wout.IonLarmor, test_wout.IonLarmor, tolerance));
-  CHECK(IsCloseRelAbs(expected_wout.VolAvgB, test_wout.VolAvgB, tolerance));
+  CHECK(IsCloseRelAbs(expected_wout.volavgB, test_wout.volavgB, tolerance));
 
   CHECK(IsCloseRelAbs(expected_wout.ctor, test_wout.ctor, tolerance));
 
   CHECK(IsCloseRelAbs(expected_wout.Aminor_p, test_wout.Aminor_p, tolerance));
   CHECK(IsCloseRelAbs(expected_wout.Rmajor_p, test_wout.Rmajor_p, tolerance));
-  CHECK(IsCloseRelAbs(expected_wout.volume_p, test_wout.volume_p, tolerance));
+  CHECK(IsCloseRelAbs(expected_wout.volume, test_wout.volume, tolerance));
 
   CHECK(IsCloseRelAbs(expected_wout.fsqr, test_wout.fsqr, tolerance));
   CHECK(IsCloseRelAbs(expected_wout.fsqz, test_wout.fsqz, tolerance));
@@ -4927,18 +5193,16 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
   // -------------------
   // one-dimensional array quantities
 
-  const int ns = static_cast<int>(expected_wout.iota_full.size());
+  const int ns = static_cast<int>(expected_wout.iotaf.size());
   for (int jF = 0; jF < ns; ++jF) {
-    CHECK(IsCloseRelAbs(expected_wout.iota_full[jF], test_wout.iota_full[jF],
+    CHECK(
+        IsCloseRelAbs(expected_wout.iotaf[jF], test_wout.iotaf[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.q_factor[jF], test_wout.q_factor[jF],
                         tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.safety_factor[jF],
-                        test_wout.safety_factor[jF], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.pressure_full[jF],
-                        test_wout.pressure_full[jF], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.toroidal_flux[jF],
-                        test_wout.toroidal_flux[jF], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.poloidal_flux[jF],
-                        test_wout.poloidal_flux[jF], tolerance));
+    CHECK(
+        IsCloseRelAbs(expected_wout.presf[jF], test_wout.presf[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.phi[jF], test_wout.phi[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.chi[jF], test_wout.chi[jF], tolerance));
     CHECK(
         IsCloseRelAbs(expected_wout.phipf[jF], test_wout.phipf[jF], tolerance));
     CHECK(
@@ -4949,25 +5213,25 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
     CHECK(
         IsCloseRelAbs(expected_wout.jcurv[jF], test_wout.jcurv[jF], tolerance))
         << "jF = " << jF;
-    CHECK(IsCloseRelAbs(expected_wout.spectral_width[jF],
-                        test_wout.spectral_width[jF], tolerance));
+    CHECK(
+        IsCloseRelAbs(expected_wout.specw[jF], test_wout.specw[jF], tolerance));
   }  // jF
 
-  for (int jH = 0; jH < ns - 1; ++jH) {
-    CHECK(IsCloseRelAbs(expected_wout.iota_half[jH], test_wout.iota_half[jH],
+  for (int jF = 0; jF < ns; ++jF) {
+    CHECK(
+        IsCloseRelAbs(expected_wout.iotas[jF], test_wout.iotas[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.mass[jF], test_wout.mass[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.pres[jF], test_wout.pres[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.beta_vol[jF], test_wout.beta_vol[jF],
                         tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.mass[jH], test_wout.mass[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.pressure_half[jH],
-                        test_wout.pressure_half[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.beta[jH], test_wout.beta[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.buco[jH], test_wout.buco[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.bvco[jH], test_wout.bvco[jH], tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.dVds[jH], test_wout.dVds[jH], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.buco[jF], test_wout.buco[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.bvco[jF], test_wout.bvco[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.vp[jF], test_wout.vp[jF], tolerance));
     CHECK(
-        IsCloseRelAbs(expected_wout.phips[jH], test_wout.phips[jH], tolerance));
-    CHECK(
-        IsCloseRelAbs(expected_wout.overr[jH], test_wout.overr[jH], tolerance));
-  }  // jH
+        IsCloseRelAbs(expected_wout.phips[jF], test_wout.phips[jF], tolerance));
+    CHECK(IsCloseRelAbs(expected_wout.over_r[jF], test_wout.over_r[jF],
+                        tolerance));
+  }  // jF
 
   for (int jF = 0; jF < ns; ++jF) {
     CHECK(
@@ -4982,17 +5246,17 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
     CHECK(
         IsCloseRelAbs(expected_wout.DMerc[jF], test_wout.DMerc[jF], tolerance))
         << "jF = " << jF;
-    CHECK(IsCloseRelAbs(expected_wout.Dshear[jF], test_wout.Dshear[jF],
+    CHECK(IsCloseRelAbs(expected_wout.DShear[jF], test_wout.DShear[jF],
                         tolerance))
         << "jF = " << jF;
     CHECK(
-        IsCloseRelAbs(expected_wout.Dwell[jF], test_wout.Dwell[jF], tolerance))
+        IsCloseRelAbs(expected_wout.DWell[jF], test_wout.DWell[jF], tolerance))
         << "jF = " << jF;
     CHECK(
-        IsCloseRelAbs(expected_wout.Dcurr[jF], test_wout.Dcurr[jF], tolerance))
+        IsCloseRelAbs(expected_wout.DCurr[jF], test_wout.DCurr[jF], tolerance))
         << "jF = " << jF;
     CHECK(
-        IsCloseRelAbs(expected_wout.Dgeod[jF], test_wout.Dgeod[jF], tolerance))
+        IsCloseRelAbs(expected_wout.DGeod[jF], test_wout.DGeod[jF], tolerance))
         << "jF = " << jF;
   }  // jF
 
@@ -5019,80 +5283,82 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
   // stellarator-symmetric Fourier coefficients
 
   for (int n = 0; n <= test_wout.ntor; ++n) {
-    CHECK(IsCloseRelAbs(expected_wout.raxis_c[n], test_wout.raxis_c[n],
+    CHECK(IsCloseRelAbs(expected_wout.raxis_cc[n], test_wout.raxis_cc[n],
                         tolerance));
-    CHECK(IsCloseRelAbs(expected_wout.zaxis_s[n], test_wout.zaxis_s[n],
+    CHECK(IsCloseRelAbs(expected_wout.zaxis_cs[n], test_wout.zaxis_cs[n],
                         tolerance));
   }  // n
 
   for (int jF = 0; jF < ns; ++jF) {
     for (int mn = 0; mn < test_wout.mnmax; ++mn) {
-      CHECK(IsCloseRelAbs(expected_wout.rmnc(jF * test_wout.mnmax + mn),
-                          test_wout.rmnc(jF * test_wout.mnmax + mn), tolerance))
+      CHECK(IsCloseRelAbs(expected_wout.rmnc(mn, jF), test_wout.rmnc(mn, jF),
+                          tolerance))
           << "jF = " << jF << " mn = " << mn;
-      CHECK(IsCloseRelAbs(expected_wout.zmns(jF * test_wout.mnmax + mn),
-                          test_wout.zmns(jF * test_wout.mnmax + mn), tolerance))
+      CHECK(IsCloseRelAbs(expected_wout.zmns(mn, jF), test_wout.zmns(mn, jF),
+                          tolerance))
           << "jF = " << jF << " mn = " << mn;
     }  // mn
   }  // jF
 
-  for (int jH = 0; jH < ns - 1; ++jH) {
+  for (int jF = 0; jF < ns; ++jF) {
     for (int mn = 0; mn < test_wout.mnmax; ++mn) {
-      CHECK(IsCloseRelAbs(expected_wout.lmns(jH * test_wout.mnmax + mn),
-                          test_wout.lmns(jH * test_wout.mnmax + mn), tolerance))
-          << "jH = " << jH << " mn = " << mn;
+      CHECK(IsCloseRelAbs(expected_wout.lmns(mn, jF), test_wout.lmns(mn, jF),
+                          tolerance))
+          << "jF = " << jF << " mn = " << mn;
     }  // mn
-  }  // jH
+  }  // jF
 
-  for (int jH = 0; jH < ns - 1; ++jH) {
+  for (int jF = 0; jF < ns; ++jF) {
     for (int mn_nyq = 0; mn_nyq < test_wout.mnmax_nyq; ++mn_nyq) {
-      CHECK(IsCloseRelAbs(expected_wout.gmnc(jH * test_wout.mnmax_nyq + mn_nyq),
-                          test_wout.gmnc(jH * test_wout.mnmax_nyq + mn_nyq),
-                          tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
-      CHECK(IsCloseRelAbs(expected_wout.bmnc(jH * test_wout.mnmax_nyq + mn_nyq),
-                          test_wout.bmnc(jH * test_wout.mnmax_nyq + mn_nyq),
-                          tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
-      CHECK(IsCloseRelAbs(
-          expected_wout.bsubumnc(jH * test_wout.mnmax_nyq + mn_nyq),
-          test_wout.bsubumnc(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
-      CHECK(IsCloseRelAbs(
-          expected_wout.bsubvmnc(jH * test_wout.mnmax_nyq + mn_nyq),
-          test_wout.bsubvmnc(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
-      CHECK(IsCloseRelAbs(
-          expected_wout.bsubsmns(jH * test_wout.mnmax_nyq + mn_nyq),
-          test_wout.bsubsmns(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
-      CHECK(IsCloseRelAbs(
-          expected_wout.bsupumnc(jH * test_wout.mnmax_nyq + mn_nyq),
-          test_wout.bsupumnc(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
-      CHECK(IsCloseRelAbs(
-          expected_wout.bsupvmnc(jH * test_wout.mnmax_nyq + mn_nyq),
-          test_wout.bsupvmnc(jH * test_wout.mnmax_nyq + mn_nyq), tolerance))
-          << "jH = " << jH << " mn_nyq = " << mn_nyq;
+      CHECK(IsCloseRelAbs(expected_wout.gmnc(mn_nyq, jF),
+                          test_wout.gmnc(mn_nyq, jF), tolerance))
+          << "jF = " << jF << " mn_nyq = " << mn_nyq;
+      CHECK(IsCloseRelAbs(expected_wout.bmnc(mn_nyq, jF),
+                          test_wout.bmnc(mn_nyq, jF), tolerance))
+          << "jF = " << jF << " mn_nyq = " << mn_nyq;
+      CHECK(IsCloseRelAbs(expected_wout.bsubumnc(mn_nyq, jF),
+                          test_wout.bsubumnc(mn_nyq, jF), tolerance))
+          << "jF = " << jF << " mn_nyq = " << mn_nyq;
+      CHECK(IsCloseRelAbs(expected_wout.bsubvmnc(mn_nyq, jF),
+                          test_wout.bsubvmnc(mn_nyq, jF), tolerance))
+          << "jF = " << jF << " mn_nyq = " << mn_nyq;
+      CHECK(IsCloseRelAbs(expected_wout.bsubsmns(mn_nyq, jF),
+                          test_wout.bsubsmns(mn_nyq, jF), tolerance))
+          << "jF = " << jF << " mn_nyq = " << mn_nyq;
+      CHECK(IsCloseRelAbs(expected_wout.bsupumnc(mn_nyq, jF),
+                          test_wout.bsupumnc(mn_nyq, jF), tolerance))
+          << "jF = " << jF << " mn_nyq = " << mn_nyq;
+      CHECK(IsCloseRelAbs(expected_wout.bsupvmnc(mn_nyq, jF),
+                          test_wout.bsupvmnc(mn_nyq, jF), tolerance))
+          << "jF = " << jF << " mn_nyq = " << mn_nyq;
+      // Current density coefficients are computed via finite differences
+      // of covariant B Fourier coefficients, which amplifies differences.
+      // Skip when base tolerance is very loose (e.g. hot restart comparisons
+      // where bsub fields already differ by ~10%), as finite differencing
+      // amplifies those to >100% for current density, making comparison
+      // meaningless. Also skip axis/edge extrapolation points and cases
+      // where the arrays are empty (e.g. loaded from old HDF5 files).
+      if (expected_wout.currumnc.size() > 0 && test_wout.currumnc.size() > 0 &&
+          jF > 0 && jF < ns - 1 && tolerance < 1.0e-2) {
+        const double curr_tol = std::max(tolerance * 10.0, 1.0e-4);
+        CHECK(IsCloseRelAbs(expected_wout.currumnc(mn_nyq, jF),
+                            test_wout.currumnc(mn_nyq, jF), curr_tol))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+        CHECK(IsCloseRelAbs(expected_wout.currvmnc(mn_nyq, jF),
+                            test_wout.currvmnc(mn_nyq, jF), curr_tol))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+      }
     }  // mn_nyq
-  }  // jH
-
-  // also test the wrong extrapolation of bsubsmns
-  // beyond the magnetic axis for backward compatibility
-  for (int mn_nyq = 0; mn_nyq < test_wout.mnmax_nyq; ++mn_nyq) {
-    CHECK(IsCloseRelAbs(
-        expected_wout.bsubsmns(0 * test_wout.mnmax_nyq + mn_nyq),
-        test_wout.bsubsmns(0 * test_wout.mnmax_nyq + mn_nyq), tolerance));
-  }  // mn_nyq
+  }  // jF
 
   // -------------------
   // non-stellarator-symmetric Fourier coefficients
 
   if (test_wout.lasym) {
     for (int n = 0; n <= test_wout.ntor; ++n) {
-      CHECK(IsCloseRelAbs(expected_wout.raxis_s[n], test_wout.raxis_s[n],
+      CHECK(IsCloseRelAbs(expected_wout.raxis_cs[n], test_wout.raxis_cs[n],
                           tolerance));
-      CHECK(IsCloseRelAbs(expected_wout.zaxis_c[n], test_wout.zaxis_c[n],
+      CHECK(IsCloseRelAbs(expected_wout.zaxis_cc[n], test_wout.zaxis_cc[n],
                           tolerance));
     }  // n
   }

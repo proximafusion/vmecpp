@@ -758,7 +758,7 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
 absl::Status WriteMakegridNetCDFFile(
     const std::string& makegrid_filename,
     const MakegridParameters& makegrid_parameters,
-    const std::vector<double>& circuit_currents,
+    const Eigen::VectorXd& circuit_currents,
     const MagneticFieldResponseTable& response_table_b,
     const std::optional<MakegridCachedVectorPotential>& response_table_a) {
   static constexpr int kStringSize = 30;

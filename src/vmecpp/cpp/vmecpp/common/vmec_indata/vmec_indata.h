@@ -30,6 +30,10 @@ enum class FreeBoundaryMethod : std::uint8_t {
   // for the free-boundary force contribution
   NESTOR,
 
+  // use just the coils field
+  // for the free-boundary force contribution
+  ONLY_COILS,
+
   // use the Boundary Integral Equation Solver for Toroidal systems
   // for the free-boundary force contribution
   BIEST

@@ -82,6 +82,7 @@ jobs:
     steps:
       - name: Install Python (Distro-Specific)
         run: |
+          PYTHON=python3  # default, overridden below if needed
           case ${{ matrix.distro }} in
             ubuntu*|debian*)
               apt update
@@ -92,13 +93,20 @@ jobs:
               dnf -y install python-pip git-lfs
               ;;
             archlinux*)
-              pacman -Sy --noconfirm python313-pip git-lfs
+              # Arch rolls to Python 3.14+ but not all deps support it yet.
+              # Install python313 from the AUR to get Python 3.13.
+              pacman -Syu --noconfirm base-devel git git-lfs
+              useradd -m builder
+              echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+              su builder -c 'cd /tmp && git clone https://aur.archlinux.org/python313.git && cd python313 && makepkg -si --noconfirm'
+              PYTHON=python3.13
               ;;
             *)
               echo "Unsupported distribution: ${{ matrix.distro }}"
               exit 1
               ;;
           esac
+          echo "PYTHON=$PYTHON" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           lfs: true
@@ -116,9 +124,9 @@ jobs:
         run: |
           ls wheelhouse/
 
-          python3 -m venv venv
+          $PYTHON -m venv venv
           . venv/bin/activate
-          wheel_filename=$(find wheelhouse/$(python --version | awk '{print $2}' | awk -F. '{printf "vmecpp*-cp%s%s-*manylinux*.whl", $1, $2}'))
+          wheel_filename=$(find wheelhouse/$($PYTHON --version | awk '{print $2}' | awk -F. '{printf "vmecpp*-cp%s%s-*manylinux*.whl", $1, $2}'))
           echo "Found matching wheel: $wheel_filename"
           pip install $wheel_filename
 

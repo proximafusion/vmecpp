@@ -5,9 +5,9 @@
 #ifndef VMECPP_VMEC_IDEAL_MHD_MODEL_IDEAL_MHD_MODEL_H_
 #define VMECPP_VMEC_IDEAL_MHD_MODEL_IDEAL_MHD_MODEL_H_
 
+#include <Eigen/Dense>
 #include <climits>
 #include <span>
-#include <vector>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -35,7 +35,7 @@ namespace vmecpp {
 // "FastPoloidal" indicates that, in real space, iterations use the
 // poloidal coordinate as the fast index.
 void ForcesToFourier3DSymmFastPoloidal(
-    const RealSpaceForces& d, const std::vector<double>& xmpq,
+    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
     const FourierBasisFastPoloidal& fb,
     VacuumPressureState vacuum_pressure_state,
@@ -45,7 +45,7 @@ void ForcesToFourier3DSymmFastPoloidal(
 // "FastPoloidal" indicates that, in real space, iterations use the
 // poloidal coordinate as the fast index.
 void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
-                                     const std::vector<double>& xmpq,
+                                     const Eigen::VectorXd& xmpq,
                                      const RadialPartitioning& r,
                                      const Sizes& s, const RadialProfiles& rp,
                                      const FourierBasisFastPoloidal& fb,
@@ -54,12 +54,11 @@ void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
 // Implemented as a free function for easier testing and benchmarking.
 void deAliasConstraintForce(const RadialPartitioning& rp,
                             const FourierBasisFastPoloidal& fb, const Sizes& s_,
-                            const std::vector<double>& faccon,
-                            const std::vector<double>& tcon,
-                            const std::vector<double>& gConEff,
-                            std::vector<double>& m_gsc,
-                            std::vector<double>& m_gcs,
-                            std::vector<double>& m_gCon);
+                            const Eigen::VectorXd& faccon,
+                            const Eigen::VectorXd& tcon,
+                            const Eigen::VectorXd& gConEff,
+                            Eigen::VectorXd& m_gsc, Eigen::VectorXd& m_gcs,
+                            Eigen::VectorXd& m_gCon);
 
 class IdealMhdModel {
  public:
@@ -74,11 +73,11 @@ class IdealMhdModel {
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
-  void evalFResInvar(const std::vector<double>& localFResInvar);
+  void evalFResInvar(const Eigen::VectorXd& localFResInvar);
 
   // Compute the preconditioned force residuals.
   // Will put them into the provided array as { fsqr1, fsqz1, fsql1 }.
-  void evalFResPrecd(const std::vector<double>& localFResPrecd);
+  void evalFResPrecd(const Eigen::VectorXd& localFResPrecd);
 
   // Return true/false depending on whether the VmecCheckpoint was reached,
   // or an error status if something went wrong.
@@ -194,11 +193,11 @@ class IdealMhdModel {
   // Support function for computing the radial preconditioner matrix elements
   // for R and Z.
   void computePreconditioningMatrix(
-      const std::vector<double>& xs, const std::vector<double>& xu12,
-      const std::vector<double>& xu_e, const std::vector<double>& xu_o,
-      const std::vector<double>& x1_o, std::vector<double>& m_axm,
-      std::vector<double>& m_axd, std::vector<double>& m_bxm,
-      std::vector<double>& m_bxd, std::vector<double>& m_cxd);
+      const Eigen::VectorXd& xs, const Eigen::VectorXd& xu12,
+      const Eigen::VectorXd& xu_e, const Eigen::VectorXd& xu_o,
+      const Eigen::VectorXd& x1_o, Eigen::VectorXd& m_axm,
+      Eigen::VectorXd& m_axd, Eigen::VectorXd& m_bxm, Eigen::VectorXd& m_bxd,
+      Eigen::VectorXd& m_cxd);
 
   // Applies the radial preconditioner for the m=1 Fourier coefficients of R and
   // Z.
@@ -225,195 +224,195 @@ class IdealMhdModel {
   /**********************************************/
 
   // R on full-grid
-  std::vector<double> r1_e;
-  std::vector<double> r1_o;
+  Eigen::VectorXd r1_e;
+  Eigen::VectorXd r1_o;
 
   // dRdTheta on full-grid
-  std::vector<double> ru_e;
-  std::vector<double> ru_o;
+  Eigen::VectorXd ru_e;
+  Eigen::VectorXd ru_o;
 
   // dRdZeta on full-grid
-  std::vector<double> rv_e;
-  std::vector<double> rv_o;
+  Eigen::VectorXd rv_e;
+  Eigen::VectorXd rv_o;
 
   // Z on full-grid
-  std::vector<double> z1_e;
-  std::vector<double> z1_o;
+  Eigen::VectorXd z1_e;
+  Eigen::VectorXd z1_o;
 
   // dZdTheta on full-grid
-  std::vector<double> zu_e;
-  std::vector<double> zu_o;
+  Eigen::VectorXd zu_e;
+  Eigen::VectorXd zu_o;
 
   // dZdZeta on full-grid
-  std::vector<double> zv_e;
-  std::vector<double> zv_o;
+  Eigen::VectorXd zv_e;
+  Eigen::VectorXd zv_o;
 
   // d(lambda)dTheta on full-grid
-  std::vector<double> lu_e;
-  std::vector<double> lu_o;
+  Eigen::VectorXd lu_e;
+  Eigen::VectorXd lu_o;
 
   // d(lambda)dZeta on full-grid
-  std::vector<double> lv_e;
-  std::vector<double> lv_o;
+  Eigen::VectorXd lv_e;
+  Eigen::VectorXd lv_o;
 
   // constraint force contribution X on full-grid
-  std::vector<double> rCon;
+  Eigen::VectorXd rCon;
 
   // constraint force contribution Y on full-grid
   // In free-boundary this starts as a large value and is slowly reduced to zero
   // to gradually increase the vacuum pressure constraint (force felt from the
   // B^2 contribution).
-  std::vector<double> zCon;
+  Eigen::VectorXd zCon;
 
   // initial constraint force contribution X on full-grid.
   // In free-boundary this starts as a large value and is slowly reduced to zero
   // to gradually increase the vacuum pressure constraint (force felt from the
   // B^2 contribution).
-  std::vector<double> rCon0;
+  Eigen::VectorXd rCon0;
 
   // initial constraint force contribution Y on full-grid
-  std::vector<double> zCon0;
+  Eigen::VectorXd zCon0;
 
   // dRdTheta combined on full-grid
-  std::vector<double> ruFull;
+  Eigen::VectorXd ruFull;
 
   // dRdZeta combined on full-grid
-  std::vector<double> zuFull;
+  Eigen::VectorXd zuFull;
 
   /**********************************************/
 
   // R on half-grid
-  std::vector<double> r12;
+  Eigen::VectorXd r12;
 
   // dRdTheta on half-grid
-  std::vector<double> ru12;
+  Eigen::VectorXd ru12;
 
   // dZdTheta on half-grid
-  std::vector<double> zu12;
+  Eigen::VectorXd zu12;
 
   // dRdS on half-grid (without 0.5/sqrt(s) contrib)
-  std::vector<double> rs;
+  Eigen::VectorXd rs;
 
   // dZdS on half-grid (without 0.5/sqrt(s) contrib)
-  std::vector<double> zs;
+  Eigen::VectorXd zs;
 
   // sqrt(g)/R on half-grid
-  std::vector<double> tau;
+  Eigen::VectorXd tau;
 
   /**********************************************/
 
   // sqrt(g) == Jacobian on half-grid
-  std::vector<double> gsqrt;
+  Eigen::VectorXd gsqrt;
 
   // metric elements
-  std::vector<double> guu;
-  std::vector<double> guv;
-  std::vector<double> gvv;
+  Eigen::VectorXd guu;
+  Eigen::VectorXd guv;
+  Eigen::VectorXd gvv;
 
   /**********************************************/
 
   // contravariant magnetic field components
-  std::vector<double> bsupu;
-  std::vector<double> bsupv;
+  Eigen::VectorXd bsupu;
+  Eigen::VectorXd bsupv;
 
   /**********************************************/
 
   // covariant magnetic field components
-  std::vector<double> bsubu;
-  std::vector<double> bsubv;
+  Eigen::VectorXd bsubu;
+  Eigen::VectorXd bsubv;
 
   /**********************************************/
 
   // |B|^2/(2 mu_0) + p
-  std::vector<double> totalPressure;
+  Eigen::VectorXd totalPressure;
 
   // r * |B_vac|^2 at LCFS
-  std::vector<double> rBSq;
+  Eigen::VectorXd rBSq;
 
   // (|B|^2/(2 mu_0) + p) on inside of LCFS
-  std::vector<double> insideTotalPressure;
+  Eigen::VectorXd insideTotalPressure;
 
   // mismatch in |B|^2 between plasma and vacuum regions at LCFS
-  std::vector<double> delBSq;
+  Eigen::VectorXd delBSq;
 
   /**********************************************/
 
   // real-space forces
-  std::vector<double> armn_e;
-  std::vector<double> armn_o;
-  std::vector<double> brmn_e;
-  std::vector<double> brmn_o;
-  std::vector<double> crmn_e;
-  std::vector<double> crmn_o;
+  Eigen::VectorXd armn_e;
+  Eigen::VectorXd armn_o;
+  Eigen::VectorXd brmn_e;
+  Eigen::VectorXd brmn_o;
+  Eigen::VectorXd crmn_e;
+  Eigen::VectorXd crmn_o;
   // ---------
-  std::vector<double> azmn_e;
-  std::vector<double> azmn_o;
-  std::vector<double> bzmn_e;
-  std::vector<double> bzmn_o;
-  std::vector<double> czmn_e;
-  std::vector<double> czmn_o;
+  Eigen::VectorXd azmn_e;
+  Eigen::VectorXd azmn_o;
+  Eigen::VectorXd bzmn_e;
+  Eigen::VectorXd bzmn_o;
+  Eigen::VectorXd czmn_e;
+  Eigen::VectorXd czmn_o;
   // ---------
-  std::vector<double> blmn_e;
-  std::vector<double> blmn_o;
-  std::vector<double> clmn_e;
-  std::vector<double> clmn_o;
+  Eigen::VectorXd blmn_e;
+  Eigen::VectorXd blmn_o;
+  Eigen::VectorXd clmn_e;
+  Eigen::VectorXd clmn_o;
 
   /**********************************************/
 
   // lambda preconditioner
-  std::vector<double> bLambda;
-  std::vector<double> dLambda;
-  std::vector<double> cLambda;
-  std::vector<double> lambdaPreconditioner;
+  Eigen::VectorXd bLambda;
+  Eigen::VectorXd dLambda;
+  Eigen::VectorXd cLambda;
+  Eigen::VectorXd lambdaPreconditioner;
 
   // R,Z preconditioner
-  std::vector<double> ax;
-  std::vector<double> bx;
-  std::vector<double> cx;
+  Eigen::VectorXd ax;
+  Eigen::VectorXd bx;
+  Eigen::VectorXd cx;
 
-  std::vector<double> arm;
-  std::vector<double> ard;
-  std::vector<double> brm;
-  std::vector<double> brd;
-  std::vector<double> azm;
-  std::vector<double> azd;
-  std::vector<double> bzm;
-  std::vector<double> bzd;
+  Eigen::VectorXd arm;
+  Eigen::VectorXd ard;
+  Eigen::VectorXd brm;
+  Eigen::VectorXd brd;
+  Eigen::VectorXd azm;
+  Eigen::VectorXd azd;
+  Eigen::VectorXd bzm;
+  Eigen::VectorXd bzd;
   // crd == czd --> cxd
-  std::vector<double> cxd;
+  Eigen::VectorXd cxd;
 
-  std::vector<double> ar;
-  std::vector<double> dr;
-  std::vector<double> br;
-  std::vector<double> az;
-  std::vector<double> dz;
-  std::vector<double> bz;
+  Eigen::VectorXd ar;
+  Eigen::VectorXd dr;
+  Eigen::VectorXd br;
+  Eigen::VectorXd az;
+  Eigen::VectorXd dz;
+  Eigen::VectorXd bz;
 
   /**********************************************/
 
   // constraint force ingredients
-  std::vector<double> xmpq;
-  std::vector<double> faccon;
+  Eigen::VectorXd xmpq;
+  Eigen::VectorXd faccon;
 
   // radial profile of constraint force multiplier
-  std::vector<double> tcon;
+  Eigen::VectorXd tcon;
 
   // effective constraint force - still to be de-aliased
-  std::vector<double> gConEff;
+  Eigen::VectorXd gConEff;
 
   // Fourier coefficients of constraint force - used during de-aliasing
-  std::vector<double> gsc;
-  std::vector<double> gcs;
+  Eigen::VectorXd gsc;
+  Eigen::VectorXd gcs;
 
   // de-aliased constraint force - what enters the Fourier coefficients of the
   // forces
-  std::vector<double> gCon;
+  Eigen::VectorXd gCon;
 
   // Fourier coefficients of constraint force, de-aliased
-  std::vector<double> frcon_e;
-  std::vector<double> frcon_o;
-  std::vector<double> fzcon_e;
-  std::vector<double> fzcon_o;
+  Eigen::VectorXd frcon_e;
+  Eigen::VectorXd frcon_o;
+  Eigen::VectorXd fzcon_e;
+  Eigen::VectorXd fzcon_o;
 
  private:
   FlowControl& m_fc_;
@@ -449,7 +448,7 @@ class IdealMhdModel {
 
   // [mnsize] minimum flux surface index for which to apply radial
   // preconditioner for R and Z
-  std::vector<int> jMin;
+  Eigen::VectorXi jMin;
 
   // ****** IDENTICAL THREAD LOCALS *******
   // In multi-thread runs, the following data members

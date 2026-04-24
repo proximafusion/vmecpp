@@ -1,0 +1,13 @@
+load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
+cc_binary(
+    name = "makegrid",
+    srcs = ["makegrid.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//util/file_io",
+        "//util/json_io",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/makegrid_lib",
+        "@abseil-cpp//absl/strings",
+    ],
+)

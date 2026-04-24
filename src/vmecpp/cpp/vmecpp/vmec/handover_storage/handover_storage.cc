@@ -26,8 +26,8 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
   bSubUVac = 0.0;
   bSubVVac = 0.0;
 
-  rCon_LCFS.resize(s_.nZnT);
-  zCon_LCFS.resize(s_.nZnT);
+  rCon_LCFS.setZero(s_.nZnT);
+  zCon_LCFS.setZero(s_.nZnT);
 
   num_threads_ = 1;
   num_basis_ = 0;
@@ -40,18 +40,18 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
   spectral_width_numerator_ = 0.0;
   spectral_width_denominator_ = 0.0;
 
-  rAxis.resize(s_.nZeta);
-  zAxis.resize(s_.nZeta);
+  rAxis.setZero(s_.nZeta);
+  zAxis.setZero(s_.nZeta);
 
-  rCC_LCFS.resize(mnsize);
-  rSS_LCFS.resize(mnsize);
-  zSC_LCFS.resize(mnsize);
-  zCS_LCFS.resize(mnsize);
+  rCC_LCFS.setZero(mnsize);
+  rSS_LCFS.setZero(mnsize);
+  zSC_LCFS.setZero(mnsize);
+  zCS_LCFS.setZero(mnsize);
   if (s_.lasym) {
-    rSC_LCFS.resize(mnsize);
-    rCS_LCFS.resize(mnsize);
-    zCC_LCFS.resize(mnsize);
-    zSS_LCFS.resize(mnsize);
+    rSC_LCFS.setZero(mnsize);
+    rCS_LCFS.setZero(mnsize);
+    zCC_LCFS.setZero(mnsize);
+    zSS_LCFS.setZero(mnsize);
   }
 }
 
@@ -166,8 +166,8 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     handover_cZ.setZero();
 
     // handover_aR/aZ: flat [mnsize]
-    handover_aR.assign(mnsize, 0.0);
-    handover_aZ.assign(mnsize, 0.0);
+    handover_aR.setZero(mnsize);
+    handover_aZ.setZero(mnsize);
   }
 
 }  // allocate

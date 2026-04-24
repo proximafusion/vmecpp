@@ -4,8 +4,6 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/nestor/nestor.h"
 
-#include "absl/algorithm/container.h"
-
 namespace vmecpp {
 
 Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
@@ -24,11 +22,11 @@ Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
       bvecShare(bvecShare) {
   int numLocal = tp_.ztMax - tp_.ztMin;
 
-  potU.resize(numLocal);
-  potV.resize(numLocal);
+  potU.setZero(numLocal);
+  potV.setZero(numLocal);
 
-  bSubU.resize(numLocal);
-  bSubV.resize(numLocal);
+  bSubU.setZero(numLocal);
+  bSubV.setZero(numLocal);
 }
 
 bool Nestor::update(
@@ -128,10 +126,9 @@ bool Nestor::update(
 
   // thread-local tangential grid point range
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  const int numLocal = tp_.ztMax - tp_.ztMin;
 
-  absl::c_fill_n(potU, numLocal, 0);
-  absl::c_fill_n(potV, numLocal, 0);
+  potU.setZero();
+  potV.setZero();
 
   // inv-DFT with tangential derivatives
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
