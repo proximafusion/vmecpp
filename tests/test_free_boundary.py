@@ -185,4 +185,59 @@ def test_magnetic_field_response_table_loading(makegrid_params):
     )
     assert response.b_p.shape == response.b_r.shape
     assert response.b_z.shape == response.b_p.shape
-    assert response.b_r[0, 0] == pytest.approx(-9.78847973e-06, abs=1e-8, rel=1e-6)
+    assert response.b_r[0, 0] == pytest.approx(-1.04038999e-07, abs=1e-10, rel=1e-6)
+
+
+def test_normalize_by_currents(makegrid_params: vmecpp.MakegridParameters):
+    makegrid_params.normalize_by_currents = True
+    response_normalized = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+
+    makegrid_params.normalize_by_currents = False
+    response_unnormalized = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    assert not np.allclose(
+        response_normalized.b_r[0], response_unnormalized.b_r[0]
+    ), "The two responses should be different when normalize_by_currents is True/False but were identical"
+    assert not np.allclose(
+        response_normalized.b_z[0], response_unnormalized.b_z[0]
+    ), "The two responses should be different when normalize_by_currents is True/False but were identical"
+    assert not np.allclose(
+        response_normalized.b_p[0], response_unnormalized.b_p[0]
+    ), "The two responses should be different when normalize_by_currents is True/False but were identical"
+
+
+def test_magnetic_field_response_table_scaled_raw(makegrid_params):
+    assert makegrid_params.normalize_by_currents
+    scaled_response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR
+        / ".."
+        / "common"
+        / "makegrid_lib"
+        / "test_data"
+        / "coils.test_symmetric_odd",
+        makegrid_params,
+    )
+    makegrid_params.normalize_by_currents = False
+    raw_response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR
+        / ".."
+        / "common"
+        / "makegrid_lib"
+        / "test_data"
+        / "coils.test_symmetric_odd",
+        makegrid_params,
+    )
+    assert scaled_response.b_r.shape[0] == 2
+    assert scaled_response.b_r.shape == raw_response.b_r.shape
+    assert scaled_response.b_z.shape == raw_response.b_z.shape
+    assert scaled_response.b_p.shape == raw_response.b_p.shape
+    # The scaled response should be the raw response divided by the currents
+    np.testing.assert_allclose(
+        scaled_response.b_r[0] * 96, raw_response.b_r[0], atol=1e-9
+    )
+    np.testing.assert_allclose(
+        scaled_response.b_r[1] * -16, raw_response.b_r[1], atol=1e-9
+    )
