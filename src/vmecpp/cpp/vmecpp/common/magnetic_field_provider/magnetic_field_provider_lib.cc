@@ -545,6 +545,302 @@ absl::Status VectorPotential(
   return absl::OkStatus();
 }  // VectorPotential for MagneticConfiguration
 
+// ----------------
+// Flat AoS overloads: evaluation_positions_aos = [x0,y0,z0, x1,y1,z1, ...]
+// m_*_aos must be initialized to zero by the caller before the first call.
+
+absl::Status MagneticField(
+    const CircularFilament &circular_filament, double current,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_magnetic_field_aos, bool check_current_carrier) {
+  if (check_current_carrier) {
+    absl::Status status = IsCircularFilamentFullyPopulated(circular_filament);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  if (current == 0.0) {
+    return absl::OkStatus();
+  }
+
+  const Vector3d &center_vector = circular_filament.center();
+  std::vector<double> center = {
+      center_vector.x(),
+      center_vector.y(),
+      center_vector.z(),
+  };
+
+  const Vector3d &normal_vector = circular_filament.normal();
+  std::vector<double> normal = {
+      normal_vector.x(),
+      normal_vector.y(),
+      normal_vector.z(),
+  };
+
+  const double radius = circular_filament.radius();
+
+  // evaluation_positions_aos is already in the flat AoS format that ABSCAB
+  // expects. Pass it directly and accumulate into m_magnetic_field_aos.
+  // ABSCAB takes non-const double* but does not modify the evaluation positions.
+  abscab::magneticFieldCircularFilament(center.data(), normal.data(), radius,
+                                        current, num_evaluation_positions,
+                                        const_cast<double *>(evaluation_positions_aos),
+                                        m_magnetic_field_aos);
+
+  return absl::OkStatus();
+}  // MagneticField (AoS) for CircularFilament
+
+absl::Status MagneticField(
+    const PolygonFilament &polygon_filament, double current,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_magnetic_field_aos, bool check_current_carrier) {
+  if (check_current_carrier) {
+    absl::Status status = IsPolygonFilamentFullyPopulated(polygon_filament);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  if (current == 0.0) {
+    return absl::OkStatus();
+  }
+
+  std::vector<double> vertices_1d(polygon_filament.vertices_size() * 3);
+  for (int i = 0; i < polygon_filament.vertices_size(); ++i) {
+    const Vector3d &vertex = polygon_filament.vertices(i);
+    vertices_1d[i * 3 + 0] = vertex.x();
+    vertices_1d[i * 3 + 1] = vertex.y();
+    vertices_1d[i * 3 + 2] = vertex.z();
+  }
+
+  // evaluation_positions_aos is already in the flat AoS format that ABSCAB
+  // expects. Pass it directly and accumulate into m_magnetic_field_aos.
+  // ABSCAB takes non-const double* but does not modify the evaluation positions.
+  abscab::magneticFieldPolygonFilament(
+      polygon_filament.vertices_size(), vertices_1d.data(), current,
+      num_evaluation_positions,
+      const_cast<double *>(evaluation_positions_aos), m_magnetic_field_aos);
+
+  return absl::OkStatus();
+}  // MagneticField (AoS) for PolygonFilament
+
+absl::Status MagneticField(
+    const MagneticConfiguration &magnetic_configuration,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_magnetic_field_aos, bool check_current_carrier) {
+  if (check_current_carrier) {
+    absl::Status status =
+        IsMagneticConfigurationFullyPopulated(magnetic_configuration);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
+  for (const SerialCircuit &serial_circuit :
+       magnetic_configuration.serial_circuits()) {
+    if (!serial_circuit.has_current() || serial_circuit.current() == 0.0) {
+      continue;
+    }
+
+    for (const Coil &coil : serial_circuit.coils()) {
+      double current = 0.0;
+      if (coil.has_num_windings()) {
+        current = serial_circuit.current() * coil.num_windings();
+      } else {
+        current = serial_circuit.current();
+      }
+
+      for (const CurrentCarrier &current_carrier : coil.current_carriers()) {
+        switch (current_carrier.type_case()) {
+          case CurrentCarrier::TypeCase::kInfiniteStraightFilament: {
+            // Convert AoS flat arrays to nested STL for the existing overload.
+            std::vector<std::vector<double>> eval_stl(num_evaluation_positions,
+                                                      std::vector<double>(3));
+            for (int i = 0; i < num_evaluation_positions; ++i) {
+              eval_stl[i][0] = evaluation_positions_aos[i * 3 + 0];
+              eval_stl[i][1] = evaluation_positions_aos[i * 3 + 1];
+              eval_stl[i][2] = evaluation_positions_aos[i * 3 + 2];
+            }
+            std::vector<std::vector<double>> field_stl(
+                num_evaluation_positions, std::vector<double>(3, 0.0));
+            CHECK_OK(MagneticField(
+                current_carrier.infinite_straight_filament(), current,
+                eval_stl, field_stl, false));
+            for (int i = 0; i < num_evaluation_positions; ++i) {
+              m_magnetic_field_aos[i * 3 + 0] += field_stl[i][0];
+              m_magnetic_field_aos[i * 3 + 1] += field_stl[i][1];
+              m_magnetic_field_aos[i * 3 + 2] += field_stl[i][2];
+            }
+            break;
+          }
+          case CurrentCarrier::TypeCase::kCircularFilament:
+            CHECK_OK(MagneticField(current_carrier.circular_filament(), current,
+                                   num_evaluation_positions,
+                                   evaluation_positions_aos,
+                                   m_magnetic_field_aos, false));
+            break;
+          case CurrentCarrier::TypeCase::kPolygonFilament:
+            CHECK_OK(MagneticField(current_carrier.polygon_filament(), current,
+                                   num_evaluation_positions,
+                                   evaluation_positions_aos,
+                                   m_magnetic_field_aos, false));
+            break;
+          case CurrentCarrier::TypeCase::kTypeNotSet:
+            break;
+          default:
+            std::stringstream error_message;
+            error_message << "current carrier type ";
+            error_message << current_carrier.type_case();
+            error_message << " not implemented yet.";
+            LOG(FATAL) << error_message.str();
+        }
+      }  // CurrentCarrier
+    }  // Coil
+  }  // SerialCircuit
+
+  return absl::OkStatus();
+}  // MagneticField (AoS) for MagneticConfiguration
+
+absl::Status VectorPotential(
+    const CircularFilament &circular_filament, double current,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_vector_potential_aos, bool check_current_carrier) {
+  if (check_current_carrier) {
+    absl::Status status = IsCircularFilamentFullyPopulated(circular_filament);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  if (current == 0.0) {
+    return absl::OkStatus();
+  }
+
+  const Vector3d &center_vector = circular_filament.center();
+  std::vector<double> center = {
+      center_vector.x(),
+      center_vector.y(),
+      center_vector.z(),
+  };
+
+  const Vector3d &normal_vector = circular_filament.normal();
+  std::vector<double> normal = {
+      normal_vector.x(),
+      normal_vector.y(),
+      normal_vector.z(),
+  };
+
+  const double radius = circular_filament.radius();
+
+  // FIXME(jons): Figure out what the actual sign definition must be.
+  // For now, adjusted to agree with MAKEGRID.
+  // ABSCAB takes non-const double* but does not modify the evaluation positions.
+  abscab::vectorPotentialCircularFilament(center.data(), normal.data(), radius,
+                                          -current, num_evaluation_positions,
+                                          const_cast<double *>(evaluation_positions_aos),
+                                          m_vector_potential_aos);
+
+  return absl::OkStatus();
+}  // VectorPotential (AoS) for CircularFilament
+
+absl::Status VectorPotential(
+    const PolygonFilament &polygon_filament, double current,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_vector_potential_aos, bool check_current_carrier) {
+  if (check_current_carrier) {
+    absl::Status status = IsPolygonFilamentFullyPopulated(polygon_filament);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  if (current == 0.0) {
+    return absl::OkStatus();
+  }
+
+  std::vector<double> vertices_1d(polygon_filament.vertices_size() * 3);
+  for (int i = 0; i < polygon_filament.vertices_size(); ++i) {
+    const Vector3d &vertex = polygon_filament.vertices(i);
+    vertices_1d[i * 3 + 0] = vertex.x();
+    vertices_1d[i * 3 + 1] = vertex.y();
+    vertices_1d[i * 3 + 2] = vertex.z();
+  }
+
+  // ABSCAB takes non-const double* but does not modify the evaluation positions.
+  abscab::vectorPotentialPolygonFilament(
+      polygon_filament.vertices_size(), vertices_1d.data(), current,
+      num_evaluation_positions,
+      const_cast<double *>(evaluation_positions_aos), m_vector_potential_aos);
+
+  return absl::OkStatus();
+}  // VectorPotential (AoS) for PolygonFilament
+
+absl::Status VectorPotential(
+    const MagneticConfiguration &magnetic_configuration,
+    int num_evaluation_positions, const double *evaluation_positions_aos,
+    double *m_vector_potential_aos, bool check_current_carrier) {
+  if (check_current_carrier) {
+    absl::Status status =
+        IsMagneticConfigurationFullyPopulated(magnetic_configuration);
+    if (!status.ok()) {
+      return status;
+    }
+
+    for (const SerialCircuit &serial_circuit :
+         magnetic_configuration.serial_circuits()) {
+      for (const Coil &coil : serial_circuit.coils()) {
+        for (const CurrentCarrier &current_carrier : coil.current_carriers()) {
+          if (current_carrier.has_infinite_straight_filament()) {
+            return absl::InvalidArgumentError(
+                "Cannot compute the magnetic vector potential of an infinite "
+                "straight filament.");
+          }
+        }
+      }
+    }
+  }
+
+  for (const SerialCircuit &serial_circuit :
+       magnetic_configuration.serial_circuits()) {
+    if (!serial_circuit.has_current() || serial_circuit.current() == 0.0) {
+      continue;
+    }
+
+    for (const Coil &coil : serial_circuit.coils()) {
+      double current = 0.0;
+      if (coil.has_num_windings()) {
+        current = serial_circuit.current() * coil.num_windings();
+      } else {
+        current = serial_circuit.current();
+      }
+
+      for (const CurrentCarrier &current_carrier : coil.current_carriers()) {
+        switch (current_carrier.type_case()) {
+          case CurrentCarrier::TypeCase::kCircularFilament:
+            CHECK_OK(VectorPotential(current_carrier.circular_filament(),
+                                     current, num_evaluation_positions,
+                                     evaluation_positions_aos,
+                                     m_vector_potential_aos, false));
+            break;
+          case CurrentCarrier::TypeCase::kPolygonFilament:
+            CHECK_OK(VectorPotential(current_carrier.polygon_filament(),
+                                     current, num_evaluation_positions,
+                                     evaluation_positions_aos,
+                                     m_vector_potential_aos, false));
+            break;
+          case CurrentCarrier::TypeCase::kTypeNotSet:
+            break;
+          default:
+            std::stringstream error_message;
+            error_message << "current carrier type ";
+            error_message << current_carrier.type_case();
+            error_message << " not implemented yet.";
+            LOG(FATAL) << error_message.str();
+        }
+      }  // CurrentCarrier
+    }  // Coil
+  }  // SerialCircuit
+
+  return absl::OkStatus();
+}  // VectorPotential (AoS) for MagneticConfiguration
+
 absl::StatusOr<double> LinkingCurrent(
     const MagneticConfiguration &magnetic_configuration,
     const CurveRZFourier &axis_coefficients) {
