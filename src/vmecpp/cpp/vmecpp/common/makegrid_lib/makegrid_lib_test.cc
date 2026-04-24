@@ -757,4 +757,100 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
 // -> in particular, make sure that the consistency of number of serial circuits
 // in the response table and the number of circuit currents is properly checked
 
+TEST(TestMakegridLib,
+     CheckNormalizeByCurrentsScalesMagneticFieldResponseTable) {
+  static constexpr double kTolerance = 1.0e-6;
+
+  // Use a small grid (no stellarator symmetry) to keep the test fast while
+  // still exercising all grid points.
+  MakegridParameters makegrid_parameters = {
+      .normalize_by_currents = false,
+      .assume_stellarator_symmetry = false,
+      .number_of_field_periods = 1,
+      .r_grid_minimum = 1.0,
+      .r_grid_maximum = 2.0,
+      .number_of_r_grid_points = 3,
+      .z_grid_minimum = -0.5,
+      .z_grid_maximum = 0.5,
+      .number_of_z_grid_points = 3,
+      .number_of_phi_grid_points = 4};
+
+  // Build a simple MagneticConfiguration with a single circuit, single coil,
+  // and a single circular filament. Using non-trivial current and num_windings
+  // ensures that the test is sensitive to the normalization factor.
+  static constexpr double kCurrent = 5.0;
+  static constexpr double kNumWindings = 7.0;
+
+  MagneticConfiguration magnetic_configuration;
+  SerialCircuit* serial_circuit = magnetic_configuration.add_serial_circuits();
+  serial_circuit->set_current(kCurrent);
+
+  Coil* coil = serial_circuit->add_coils();
+  coil->set_num_windings(kNumWindings);
+
+  CurrentCarrier* current_carrier = coil->add_current_carriers();
+  CircularFilament* circular_filament =
+      current_carrier->mutable_circular_filament();
+  circular_filament->set_radius(1.5);
+
+  Vector3d* center = circular_filament->mutable_center();
+  center->set_x(0.0);
+  center->set_y(0.0);
+  center->set_z(0.0);
+
+  Vector3d* normal = circular_filament->mutable_normal();
+  normal->set_x(0.0);
+  normal->set_y(0.0);
+  normal->set_z(1.0);
+
+  // The raw field must equal the normalized field scaled by
+  // current * num_windings at every grid point.
+  const double expected_factor = kCurrent * kNumWindings;
+
+  // Compute the raw (unnormalized) response table.
+  absl::StatusOr<MagneticFieldResponseTable> raw_response_table =
+      ComputeMagneticFieldResponseTable(makegrid_parameters,
+                                        magnetic_configuration);
+  ASSERT_OK(raw_response_table);
+
+  // Compute the normalized response table (field per unit current-turn).
+  MakegridParameters normalized_params = makegrid_parameters;
+  normalized_params.normalize_by_currents = true;
+  absl::StatusOr<MagneticFieldResponseTable> normalized_response_table =
+      ComputeMagneticFieldResponseTable(normalized_params,
+                                        magnetic_configuration);
+  ASSERT_OK(normalized_response_table);
+
+  const int number_of_serial_circuits =
+      magnetic_configuration.serial_circuits_size();
+  const int total_number_of_grid_points =
+      makegrid_parameters.number_of_phi_grid_points *
+      makegrid_parameters.number_of_z_grid_points *
+      makegrid_parameters.number_of_r_grid_points;
+
+  // The raw field must equal the normalized field scaled by current *
+  // num_windings at every grid point and for every circuit.
+  for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
+       ++circuit_index) {
+    for (int grid_index = 0; grid_index < total_number_of_grid_points;
+         ++grid_index) {
+      EXPECT_TRUE(IsCloseRelAbs(
+          raw_response_table->b_r(circuit_index, grid_index),
+          normalized_response_table->b_r(circuit_index, grid_index) *
+              expected_factor,
+          kTolerance));
+      EXPECT_TRUE(IsCloseRelAbs(
+          raw_response_table->b_p(circuit_index, grid_index),
+          normalized_response_table->b_p(circuit_index, grid_index) *
+              expected_factor,
+          kTolerance));
+      EXPECT_TRUE(IsCloseRelAbs(
+          raw_response_table->b_z(circuit_index, grid_index),
+          normalized_response_table->b_z(circuit_index, grid_index) *
+              expected_factor,
+          kTolerance));
+    }  // grid_index
+  }  // circuit_index
+}  // CheckNormalizeByCurrentsScalesMagneticFieldResponseTable
+
 }  // namespace makegrid
