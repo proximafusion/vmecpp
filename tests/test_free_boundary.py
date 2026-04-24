@@ -167,7 +167,19 @@ def test_response_table_py_to_cpp_copy(makegrid_params):
     assert cpp_response_table.b_r.base is not response_table.b_r.base
 
 
-def test_magnetic_field_response_table_loading(makegrid_params):
+def test_magnetic_field_response_table_loading():
+    makegrid_params = vmecpp.MakegridParameters(
+        normalize_by_currents=False,
+        assume_stellarator_symmetry=True,
+        number_of_field_periods=2,
+        r_grid_minimum=0.1,
+        r_grid_maximum=1.0,
+        number_of_r_grid_points=10,
+        z_grid_minimum=-0.5,
+        z_grid_maximum=0.5,
+        number_of_z_grid_points=20,
+        number_of_phi_grid_points=20,
+    )
     invalid_coils_file = "path/to/invalid_coils_file"
     with pytest.raises(RuntimeError):
         vmecpp.MagneticFieldResponseTable.from_coils_file(
