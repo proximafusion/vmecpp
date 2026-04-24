@@ -18,7 +18,10 @@ namespace makegrid {
 using magnetics::MagneticConfiguration;
 
 using vmecpp::RowMatrixXd;
-using RowMatrix3Xd = Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>;
+// N x 3 row-major matrix: row i stores (x_i, y_i, z_i),
+// and .data() gives the flat AoS array [x0,y0,z0,x1,y1,z1,...].
+// This layout is optimal for ABSCAB and for per-point access.
+using RowMatrix3Xd = Eigen::Matrix<double, Eigen::Dynamic, 3, Eigen::RowMajor>;
 
 struct MakegridParameters {
   // If true, normalize the magnetic field to the coil currents and number of
