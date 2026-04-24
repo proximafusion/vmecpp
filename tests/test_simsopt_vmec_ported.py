@@ -8,6 +8,7 @@ https://github.com/hiddenSymmetries/simsopt/blob/50f41d6b020d09d9a13f179a4275248
 
 import logging
 import math
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -362,11 +363,12 @@ def test_write_input():
         infilename = TEST_DATA_DIR / f"{config}.json"
         outfilename = TEST_DATA_DIR / f"wout_{config}_reference.nc"
         vmec1 = Vmec(str(infilename))
-        newfile = "input.test"
-        vmec1.write_input(newfile)
-        # Now read in the newly created input file and run:
-        vmec2 = Vmec(newfile)
-        vmec2.run()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            newfile = Path(tmpdir) / "input.test"
+            vmec1.write_input(newfile)
+            # Now read in the newly created input file and run:
+            vmec2 = Vmec(str(newfile))
+            vmec2.run()
         assert vmec2.wout is not None
         # Read in reference values and compare:
         vmec3 = Vmec(str(outfilename))
