@@ -10,7 +10,7 @@ endif()
 
 set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -fno-math-errno")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-math-errno")
 
 # use ccache if available
 find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
@@ -51,7 +51,7 @@ endif()
 FetchContent_Declare(
   eigen
   GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-  GIT_TAG tags/3.4.0
+  GIT_TAG tags/5.0.1
   GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(eigen)
@@ -78,7 +78,7 @@ FetchContent_Declare(
 FetchContent_Declare(
   pybind11
   GIT_REPOSITORY https://github.com/pybind/pybind11.git
-  GIT_TAG "v2.13.6"
+  GIT_TAG "v3.0.0"
   GIT_SHALLOW TRUE
 )
 FetchContent_Declare(

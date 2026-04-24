@@ -55,6 +55,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [Arch](#arch-linux)
   - [Fedora](#fedora)
   - [MacOS](#macos)
+  - [With Nix](#with-nix)
   - [As part of a conda environment](#as-part-of-a-conda-environment)
   - [C++ build from source](#c-build-from-source)
 - [Hot restart](#hot-restart)
@@ -219,6 +220,20 @@ export HDF5_ROOT=$(brew --prefix hdf5)
 python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
 ```
 
+### With Nix (Community support)
+
+For a Linux development shell with the latest supported Python version:
+
+```shell
+nix develop
+python --version
+python -m pip install -e .[test]
+```
+
+The shell provides Python 3.13 together with the native build dependencies needed
+to build and test VMEC++, including CMake, GCC, GFortran, HDF5, NetCDF, LAPACK,
+OpenMPI, and Git LFS.
+
 ### As part of a conda environment
 
 VMEC++ is currently not packaged for conda, but all its dependencies are and VMEC++
@@ -331,7 +346,7 @@ VMEC++:
    * `xnpot` - not declared yet
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
-- VMEC++ only computes the output quantities if the run converged
+- VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
 - The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
 - The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
 

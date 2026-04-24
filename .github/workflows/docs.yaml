@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -17,7 +17,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  benchmark:
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
+
+      - name: Install vmecpp with benchmark dependencies
+        run: |
+          pip install uv
+          uv pip install --system -v .[benchmark]
+
+      - name: Run benchmarks
+        run: |
+          pytest benchmarks/test_benchmarks.py --benchmark-json=benchmark_results.json
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1.21.0
+        with:
+          tool: "pytest"
+          output-file-path: benchmark_results.json
+          gh-pages-branch: benchmark-runs
+          benchmark-data-dir-path: benchmarks
+          alert-threshold: "150%"
+          fail-on-alert: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+
   build-docs:
+    if: always()
+    needs: benchmark
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -30,10 +70,21 @@ jobs:
           python-version: "3.10"
       - name: Build docs
         run: |
+          sudo apt-get update
           sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
           # must actually install the package otherwise sphinx can't autogenerate the API reference
-          python -m pip install -vvv .[docs]
+          python -m pip install -v .[docs]
           sphinx-apidoc --module-first --no-toc --force --separate -o docs/api src/vmecpp/ && sphinx-build docs html_docs
+      - name: Fetch benchmark dashboard
+        run: |
+          git fetch origin benchmark-runs --depth=1 || true
+          if git rev-parse --verify origin/benchmark-runs >/dev/null 2>&1; then
+            git worktree add benchmark-runs-data origin/benchmark-runs
+            if [ -d benchmark-runs-data/benchmarks ]; then
+              cp -r benchmark-runs-data/benchmarks html_docs/benchmarks
+            fi
+            git worktree remove benchmark-runs-data --force
+          fi
       - name: Upload artifacts
         uses: actions/upload-pages-artifact@v3
         with:

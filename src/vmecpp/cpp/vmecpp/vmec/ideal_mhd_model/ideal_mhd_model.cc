@@ -57,9 +57,8 @@ void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
 }  // HandOverBoundaryGeometry
 
 void HandOverMagneticAxis(vmecpp::HandoverStorage& m_h,
-                          const std::vector<double>& r1_e,
-                          const std::vector<double>& z1_e,
-                          const vmecpp::Sizes& s) {
+                          const Eigen::VectorXd& r1_e,
+                          const Eigen::VectorXd& z1_e, const vmecpp::Sizes& s) {
   for (int k = 0; k < s.nZeta; ++k) {
     // we are interested in l == 0
     int idx_kl = k * s.nThetaEff;
@@ -71,7 +70,7 @@ void HandOverMagneticAxis(vmecpp::HandoverStorage& m_h,
 }  // namespace
 
 void vmecpp::ForcesToFourier3DSymmFastPoloidal(
-    const RealSpaceForces& d, const std::vector<double>& xmpq,
+    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
     const FourierBasisFastPoloidal& fb,
     VacuumPressureState vacuum_pressure_state,
@@ -110,75 +109,92 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
       const auto& fzcon = m_even ? d.fzcon_e : d.fzcon_o;
 
       for (int k = 0; k < s.nZeta; ++k) {
-        double rmkcc = 0.0;
-        double rmkcc_n = 0.0;
-        double rmkss = 0.0;
-        double rmkss_n = 0.0;
-        double zmksc = 0.0;
-        double zmksc_n = 0.0;
-        double zmkcs = 0.0;
-        double zmkcs_n = 0.0;
-        double lmksc = 0.0;
-        double lmksc_n = 0.0;
-        double lmkcs = 0.0;
-        double lmkcs_n = 0.0;
-
         const int idx_kl_base = ((jF - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
         const int idx_ml_base = m * s.nThetaReduced;
 
-        // NOTE: nThetaReduced is usually pretty small, 9 for cma.json
-        // and 16 for w7x_ref_167_12_12.json, so in our benchmark forcing
-        // the compiler to auto-vectorize this loop was a pessimization.
-        for (int l = 0; l < s.nThetaReduced; ++l) {
-          const int idx_kl = idx_kl_base + l;
-          const int idx_ml = idx_ml_base + l;
+        // Vectorized poloidal loop using Eigen operations
+        auto cosmui_seg = fb.cosmui.segment(idx_ml_base, s.nThetaReduced);
+        auto sinmui_seg = fb.sinmui.segment(idx_ml_base, s.nThetaReduced);
+        auto cosmumi_seg = fb.cosmumi.segment(idx_ml_base, s.nThetaReduced);
+        auto sinmumi_seg = fb.sinmumi.segment(idx_ml_base, s.nThetaReduced);
 
-          const double cosmui = fb.cosmui[idx_ml];
-          const double sinmui = fb.sinmui[idx_ml];
-          const double cosmumi = fb.cosmumi[idx_ml];
-          const double sinmumi = fb.sinmumi[idx_ml];
+        auto blmn_seg = Eigen::Map<const Eigen::VectorXd>(
+            blmn.data() + idx_kl_base, s.nThetaReduced);
+        auto clmn_seg = Eigen::Map<const Eigen::VectorXd>(
+            clmn.data() + idx_kl_base, s.nThetaReduced);
+        auto crmn_seg = Eigen::Map<const Eigen::VectorXd>(
+            crmn.data() + idx_kl_base, s.nThetaReduced);
+        auto czmn_seg = Eigen::Map<const Eigen::VectorXd>(
+            czmn.data() + idx_kl_base, s.nThetaReduced);
+        auto armn_seg = Eigen::Map<const Eigen::VectorXd>(
+            armn.data() + idx_kl_base, s.nThetaReduced);
+        auto azmn_seg = Eigen::Map<const Eigen::VectorXd>(
+            azmn.data() + idx_kl_base, s.nThetaReduced);
+        auto brmn_seg = Eigen::Map<const Eigen::VectorXd>(
+            brmn.data() + idx_kl_base, s.nThetaReduced);
+        auto bzmn_seg = Eigen::Map<const Eigen::VectorXd>(
+            bzmn.data() + idx_kl_base, s.nThetaReduced);
+        auto frcon_seg = Eigen::Map<const Eigen::VectorXd>(
+            frcon.data() + idx_kl_base, s.nThetaReduced);
+        auto fzcon_seg = Eigen::Map<const Eigen::VectorXd>(
+            fzcon.data() + idx_kl_base, s.nThetaReduced);
 
-          lmksc += blmn[idx_kl] * cosmumi;   // --> flsc (no A)
-          lmkcs += blmn[idx_kl] * sinmumi;   // --> flcs
-          lmkcs_n -= clmn[idx_kl] * cosmui;  // --> flcs
-          lmksc_n -= clmn[idx_kl] * sinmui;  // --> flsc
+        double lmksc = blmn_seg.dot(cosmumi_seg);
+        double lmkcs = blmn_seg.dot(sinmumi_seg);
+        double lmkcs_n = -clmn_seg.dot(cosmui_seg);
+        double lmksc_n = -clmn_seg.dot(sinmui_seg);
 
-          rmkcc_n -= crmn[idx_kl] * cosmui;  // --> frcc
-          zmkcs_n -= czmn[idx_kl] * cosmui;  // --> fzcs
+        double rmkcc_n = -crmn_seg.dot(cosmui_seg);
+        double zmkcs_n = -czmn_seg.dot(cosmui_seg);
 
-          rmkss_n -= crmn[idx_kl] * sinmui;  // --> frss
-          zmksc_n -= czmn[idx_kl] * sinmui;  // --> fzsc
+        double rmkss_n = -crmn_seg.dot(sinmui_seg);
+        double zmksc_n = -czmn_seg.dot(sinmui_seg);
 
-          // assemble effective R and Z forces from MHD and spectral
-          // condensation contributions
-          const double tempR = armn[idx_kl] + xmpq[m] * frcon[idx_kl];
-          const double tempZ = azmn[idx_kl] + xmpq[m] * fzcon[idx_kl];
+        // Assemble effective R and Z forces from MHD and spectral condensation
+        // contributions. Materialize to avoid re-evaluation in each dot
+        // product.
+        const Eigen::VectorXd tempR_seg =
+            (armn_seg + xmpq[m] * frcon_seg).eval();
+        const Eigen::VectorXd tempZ_seg =
+            (azmn_seg + xmpq[m] * fzcon_seg).eval();
 
-          rmkcc += tempR * cosmui + brmn[idx_kl] * sinmumi;  // --> frcc
-          rmkss += tempR * sinmui + brmn[idx_kl] * cosmumi;  // --> frss
-          zmksc += tempZ * sinmui + bzmn[idx_kl] * cosmumi;  // --> fzsc
-          zmkcs += tempZ * cosmui + bzmn[idx_kl] * sinmumi;  // --> fzcs
-        }  // l
+        double rmkcc = tempR_seg.dot(cosmui_seg) + brmn_seg.dot(sinmumi_seg);
+        double rmkss = tempR_seg.dot(sinmui_seg) + brmn_seg.dot(cosmumi_seg);
+        double zmksc = tempZ_seg.dot(sinmui_seg) + bzmn_seg.dot(cosmumi_seg);
+        double zmkcs = tempZ_seg.dot(cosmui_seg) + bzmn_seg.dot(sinmumi_seg);
 
-        for (int n = 0; n < s.ntor + 1; ++n) {
-          const int idx_mn = ((jF - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
-          const int idx_kn = k * (s.nnyq2 + 1) + n;
+        // Vectorized toroidal scatter: segment ops replace scalar n-loop
+        const int ntorp1 = s.ntor + 1;
+        const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
+        const int idx_kn_base = k * (s.nnyq2 + 1);
 
-          const double cosnv = fb.cosnv[idx_kn];
-          const double sinnv = fb.sinnv[idx_kn];
-          const double cosnvn = fb.cosnvn[idx_kn];
-          const double sinnvn = fb.sinnvn[idx_kn];
+        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
+        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
+        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
+        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
 
-          m_physical_forces.frcc[idx_mn] += rmkcc * cosnv + rmkcc_n * sinnvn;
-          m_physical_forces.frss[idx_mn] += rmkss * sinnv + rmkss_n * cosnvn;
-          m_physical_forces.fzsc[idx_mn] += zmksc * cosnv + zmksc_n * sinnvn;
-          m_physical_forces.fzcs[idx_mn] += zmkcs * sinnv + zmkcs_n * cosnvn;
+        Eigen::Map<Eigen::VectorXd> frcc_seg(
+            m_physical_forces.frcc.data() + idx_mn_base, ntorp1);
+        Eigen::Map<Eigen::VectorXd> frss_seg(
+            m_physical_forces.frss.data() + idx_mn_base, ntorp1);
+        Eigen::Map<Eigen::VectorXd> fzsc_seg(
+            m_physical_forces.fzsc.data() + idx_mn_base, ntorp1);
+        Eigen::Map<Eigen::VectorXd> fzcs_seg(
+            m_physical_forces.fzcs.data() + idx_mn_base, ntorp1);
 
-          if (jMinL <= jF) {
-            m_physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
-            m_physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
-          }
-        }  // n
+        frcc_seg += rmkcc * cosnv_seg + rmkcc_n * sinnvn_seg;
+        frss_seg += rmkss * sinnv_seg + rmkss_n * cosnvn_seg;
+        fzsc_seg += zmksc * cosnv_seg + zmksc_n * sinnvn_seg;
+        fzcs_seg += zmkcs * sinnv_seg + zmkcs_n * cosnvn_seg;
+
+        if (jMinL <= jF) {
+          Eigen::Map<Eigen::VectorXd> flsc_seg(
+              m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
+          Eigen::Map<Eigen::VectorXd> flcs_seg(
+              m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
+          flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
+          flcs_seg += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
+        }
       }  // k
     }  // m
   }  // jF
@@ -193,48 +209,49 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
       const auto& clmn = m_even ? d.clmn_e : d.clmn_o;
 
       for (int k = 0; k < s.nZeta; ++k) {
-        double lmksc = 0.0;
-        double lmksc_n = 0.0;
-        double lmkcs = 0.0;
-        double lmkcs_n = 0.0;
-
         const int idx_kl_base = ((jF - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
         const int idx_ml_base = m * s.nThetaReduced;
 
-        for (int l = 0; l < s.nThetaReduced; ++l) {
-          const int idx_kl = idx_kl_base + l;
-          const int idx_ml = idx_ml_base + l;
+        // Vectorized poloidal loop using Eigen operations
+        auto cosmui_seg = fb.cosmui.segment(idx_ml_base, s.nThetaReduced);
+        auto sinmui_seg = fb.sinmui.segment(idx_ml_base, s.nThetaReduced);
+        auto cosmumi_seg = fb.cosmumi.segment(idx_ml_base, s.nThetaReduced);
+        auto sinmumi_seg = fb.sinmumi.segment(idx_ml_base, s.nThetaReduced);
 
-          const double cosmui = fb.cosmui[idx_ml];
-          const double sinmui = fb.sinmui[idx_ml];
-          const double cosmumi = fb.cosmumi[idx_ml];
-          const double sinmumi = fb.sinmumi[idx_ml];
+        auto blmn_seg = Eigen::Map<const Eigen::VectorXd>(
+            blmn.data() + idx_kl_base, s.nThetaReduced);
+        auto clmn_seg = Eigen::Map<const Eigen::VectorXd>(
+            clmn.data() + idx_kl_base, s.nThetaReduced);
 
-          lmksc += blmn[idx_kl] * cosmumi;   // --> flsc (no A)
-          lmkcs += blmn[idx_kl] * sinmumi;   // --> flcs
-          lmkcs_n -= clmn[idx_kl] * cosmui;  // --> flcs
-          lmksc_n -= clmn[idx_kl] * sinmui;  // --> flsc
-        }  // l
+        double lmksc = blmn_seg.dot(cosmumi_seg);
+        double lmkcs = blmn_seg.dot(sinmumi_seg);
+        double lmkcs_n = -clmn_seg.dot(cosmui_seg);
+        double lmksc_n = -clmn_seg.dot(sinmui_seg);
 
-        for (int n = 0; n < s.ntor + 1; ++n) {
-          const int idx_mn = ((jF - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
-          const int idx_kn = k * (s.nnyq2 + 1) + n;
+        // Vectorized toroidal scatter for lambda-only section
+        const int ntorp1 = s.ntor + 1;
+        const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
+        const int idx_kn_base = k * (s.nnyq2 + 1);
 
-          const double cosnv = fb.cosnv[idx_kn];
-          const double sinnv = fb.sinnv[idx_kn];
-          const double cosnvn = fb.cosnvn[idx_kn];
-          const double sinnvn = fb.sinnvn[idx_kn];
+        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
+        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
+        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
+        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
 
-          m_physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
-          m_physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
-        }  // n
+        Eigen::Map<Eigen::VectorXd> flsc_seg(
+            m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
+        Eigen::Map<Eigen::VectorXd> flcs_seg(
+            m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
+
+        flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
+        flcs_seg += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
       }  // k
     }  // m
   }  // jF
 }
 
 void vmecpp::FourierToReal3DSymmFastPoloidal(
-    const FourierGeometry& physical_x, const std::vector<double>& xmpq,
+    const FourierGeometry& physical_x, const Eigen::VectorXd& xmpq,
     const RadialPartitioning& r, const Sizes& s, const RadialProfiles& rp,
     const FourierBasisFastPoloidal& fb, RealSpaceGeometry& m_geometry) {
   // can safely assume lthreed == true in here
@@ -293,100 +310,97 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
       }
 
       for (int k = 0; k < s.nZeta; ++k) {
-        double rmkcc = 0.0;
-        double rmkcc_n = 0.0;
-        double rmkss = 0.0;
-        double rmkss_n = 0.0;
-        double zmksc = 0.0;
-        double zmksc_n = 0.0;
-        double zmkcs = 0.0;
-        double zmkcs_n = 0.0;
-        double lmksc = 0.0;
-        double lmksc_n = 0.0;
-        double lmkcs = 0.0;
-        double lmkcs_n = 0.0;
+        // INVERSE TRANSFORM IN N-ZETA, FOR FIXED M
+        // Vectorized toroidal accumulation loop
+        const int idx_kn_base = k * (s.nnyq2 + 1);
+        const int idx_mn_base = ((jF - nsMinF1) * s.mpol + m) * (s.ntor + 1);
 
-        for (int n = 0; n < s.ntor + 1; ++n) {
-          // INVERSE TRANSFORM IN N-ZETA, FOR FIXED M
+        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, s.ntor + 1);
+        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, s.ntor + 1);
+        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, s.ntor + 1);
+        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, s.ntor + 1);
 
-          const int idx_kn = k * (s.nnyq2 + 1) + n;
+        auto rmncc_seg = Eigen::Map<const Eigen::VectorXd>(
+            physical_x.rmncc.data() + idx_mn_base, s.ntor + 1);
+        auto rmnss_seg = Eigen::Map<const Eigen::VectorXd>(
+            physical_x.rmnss.data() + idx_mn_base, s.ntor + 1);
+        auto zmnsc_seg = Eigen::Map<const Eigen::VectorXd>(
+            physical_x.zmnsc.data() + idx_mn_base, s.ntor + 1);
+        auto zmncs_seg = Eigen::Map<const Eigen::VectorXd>(
+            physical_x.zmncs.data() + idx_mn_base, s.ntor + 1);
+        auto lmnsc_seg = Eigen::Map<const Eigen::VectorXd>(
+            physical_x.lmnsc.data() + idx_mn_base, s.ntor + 1);
+        auto lmncs_seg = Eigen::Map<const Eigen::VectorXd>(
+            physical_x.lmncs.data() + idx_mn_base, s.ntor + 1);
 
-          double cosnv = fb.cosnv[idx_kn];
-          double sinnv = fb.sinnv[idx_kn];
-          double sinnvn = fb.sinnvn[idx_kn];
-          double cosnvn = fb.cosnvn[idx_kn];
-
-          int idx_mn = ((jF - nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
-
-          rmkcc += physical_x.rmncc[idx_mn] * cosnv;
-          rmkcc_n += physical_x.rmncc[idx_mn] * sinnvn;
-          rmkss += physical_x.rmnss[idx_mn] * sinnv;
-          rmkss_n += physical_x.rmnss[idx_mn] * cosnvn;
-          zmksc += physical_x.zmnsc[idx_mn] * cosnv;
-          zmksc_n += physical_x.zmnsc[idx_mn] * sinnvn;
-          zmkcs += physical_x.zmncs[idx_mn] * sinnv;
-          zmkcs_n += physical_x.zmncs[idx_mn] * cosnvn;
-          lmksc += physical_x.lmnsc[idx_mn] * cosnv;
-          lmksc_n += physical_x.lmnsc[idx_mn] * sinnvn;
-          lmkcs += physical_x.lmncs[idx_mn] * sinnv;
-          lmkcs_n += physical_x.lmncs[idx_mn] * cosnvn;
-        }  // n
+        double rmkcc = rmncc_seg.dot(cosnv_seg);
+        double rmkcc_n = rmncc_seg.dot(sinnvn_seg);
+        double rmkss = rmnss_seg.dot(sinnv_seg);
+        double rmkss_n = rmnss_seg.dot(cosnvn_seg);
+        double zmksc = zmnsc_seg.dot(cosnv_seg);
+        double zmksc_n = zmnsc_seg.dot(sinnvn_seg);
+        double zmkcs = zmncs_seg.dot(sinnv_seg);
+        double zmkcs_n = zmncs_seg.dot(cosnvn_seg);
+        double lmksc = lmnsc_seg.dot(cosnv_seg);
+        double lmksc_n = lmnsc_seg.dot(sinnvn_seg);
+        double lmkcs = lmncs_seg.dot(sinnv_seg);
+        double lmkcs_n = lmncs_seg.dot(cosnvn_seg);
 
         // INVERSE TRANSFORM IN M-THETA, FOR ALL RADIAL, ZETA VALUES
         const int idx_kl_base = ((jF - nsMinF1) * s.nZeta + k) * s.nThetaEff;
 
-        // the loop over l is split to help compiler auto-vectorization
-        for (int l = 0; l < s.nThetaReduced; ++l) {
-          const int idx_ml = idx_ml_base + l;
+        // Vectorized poloidal loops using Eigen operations
+        auto sinmum_seg = fb.sinmum.segment(idx_ml_base, s.nThetaReduced);
+        auto cosmum_seg = fb.cosmum.segment(idx_ml_base, s.nThetaReduced);
 
-          const double sinmum = fb.sinmum[idx_ml];
-          const double cosmum = fb.cosmum[idx_ml];
+        auto ru_seg = Eigen::Map<Eigen::VectorXd>(ru.data() + idx_kl_base,
+                                                  s.nThetaReduced);
+        auto zu_seg = Eigen::Map<Eigen::VectorXd>(zu.data() + idx_kl_base,
+                                                  s.nThetaReduced);
+        auto lu_seg = Eigen::Map<Eigen::VectorXd>(lu.data() + idx_kl_base,
+                                                  s.nThetaReduced);
 
-          const int idx_kl = idx_kl_base + l;
-          ru[idx_kl] += rmkcc * sinmum + rmkss * cosmum;
-          zu[idx_kl] += zmksc * cosmum + zmkcs * sinmum;
-          lu[idx_kl] += lmksc * cosmum + lmkcs * sinmum;
-        }  // l
+        // NOTE: element-wise multiplication
+        ru_seg += rmkcc * sinmum_seg + rmkss * cosmum_seg;
+        zu_seg += zmksc * cosmum_seg + zmkcs * sinmum_seg;
+        lu_seg += lmksc * cosmum_seg + lmkcs * sinmum_seg;
 
-        for (int l = 0; l < s.nThetaReduced; ++l) {
-          const int idx_kl = idx_kl_base + l;
-          const int idx_ml = idx_ml_base + l;
+        auto cosmu_seg = fb.cosmu.segment(idx_ml_base, s.nThetaReduced);
+        auto sinmu_seg = fb.sinmu.segment(idx_ml_base, s.nThetaReduced);
 
-          const double cosmu = fb.cosmu[idx_ml];
-          const double sinmu = fb.sinmu[idx_ml];
-          rv[idx_kl] += rmkcc_n * cosmu + rmkss_n * sinmu;
-          zv[idx_kl] += zmksc_n * sinmu + zmkcs_n * cosmu;
-          // it is here that lv gets a negative sign!
-          lv[idx_kl] -= lmksc_n * sinmu + lmkcs_n * cosmu;
-        }  // l
+        auto rv_seg = Eigen::Map<Eigen::VectorXd>(rv.data() + idx_kl_base,
+                                                  s.nThetaReduced);
+        auto zv_seg = Eigen::Map<Eigen::VectorXd>(zv.data() + idx_kl_base,
+                                                  s.nThetaReduced);
+        auto lv_seg = Eigen::Map<Eigen::VectorXd>(lv.data() + idx_kl_base,
+                                                  s.nThetaReduced);
 
-        for (int l = 0; l < s.nThetaReduced; ++l) {
-          const int idx_ml = idx_ml_base + l;
+        // NOTE: element-wise multiplication
+        rv_seg += rmkcc_n * cosmu_seg + rmkss_n * sinmu_seg;
+        zv_seg += zmksc_n * sinmu_seg + zmkcs_n * cosmu_seg;
+        // it is here that lv gets a negative sign!
+        lv_seg -= lmksc_n * sinmu_seg + lmkcs_n * cosmu_seg;
 
-          const double cosmu = fb.cosmu[idx_ml];
-          const double sinmu = fb.sinmu[idx_ml];
+        auto r1_seg = Eigen::Map<Eigen::VectorXd>(r1.data() + idx_kl_base,
+                                                  s.nThetaReduced);
+        auto z1_seg = Eigen::Map<Eigen::VectorXd>(z1.data() + idx_kl_base,
+                                                  s.nThetaReduced);
 
-          const int idx_kl = idx_kl_base + l;
-
-          r1[idx_kl] += rmkcc * cosmu + rmkss * sinmu;
-          z1[idx_kl] += zmksc * sinmu + zmkcs * cosmu;
-        }  // l
+        r1_seg += rmkcc * cosmu_seg + rmkss * sinmu_seg;
+        z1_seg += zmksc * sinmu_seg + zmkcs * cosmu_seg;
 
         if (nsMinF <= jF && jF < r.nsMaxFIncludingLcfs) {
-          for (int l = 0; l < s.nThetaReduced; ++l) {
-            const int idx_ml = idx_ml_base + l;
-            const double cosmu = fb.cosmu[idx_ml];
-            const double sinmu = fb.sinmu[idx_ml];
+          // spectral condensation is local per flux surface
+          const int idx_con_base = ((jF - nsMinF) * s.nZeta + k) * s.nThetaEff;
 
-            // spectral condensation is local per flux surface
-            // --> no need for numFull1
-            const int idx_con = ((jF - nsMinF) * s.nZeta + k) * s.nThetaEff + l;
-            m_geometry.rCon[idx_con] +=
-                (rmkcc * cosmu + rmkss * sinmu) * con_factor;
-            m_geometry.zCon[idx_con] +=
-                (zmksc * sinmu + zmkcs * cosmu) * con_factor;
-          }
-        }  // l
+          auto rCon_seg = Eigen::Map<Eigen::VectorXd>(
+              m_geometry.rCon.data() + idx_con_base, s.nThetaReduced);
+          auto zCon_seg = Eigen::Map<Eigen::VectorXd>(
+              m_geometry.zCon.data() + idx_con_base, s.nThetaReduced);
+
+          rCon_seg += (rmkcc * cosmu_seg + rmkss * sinmu_seg) * con_factor;
+          zCon_seg += (zmksc * sinmu_seg + zmkcs * cosmu_seg) * con_factor;
+        }
       }  // k
     }  // m
   }  // j
@@ -396,9 +410,9 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
 void vmecpp::deAliasConstraintForce(
     const vmecpp::RadialPartitioning& rp,
     const vmecpp::FourierBasisFastPoloidal& fb, const vmecpp::Sizes& s_,
-    const std::vector<double>& faccon, const std::vector<double>& tcon,
-    const std::vector<double>& gConEff, std::vector<double>& m_gsc,
-    std::vector<double>& m_gcs, std::vector<double>& m_gCon) {
+    const Eigen::VectorXd& faccon, const Eigen::VectorXd& tcon,
+    const Eigen::VectorXd& gConEff, Eigen::VectorXd& m_gsc,
+    Eigen::VectorXd& m_gcs, Eigen::VectorXd& m_gCon) {
   absl::c_fill_n(m_gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
 
   // no constraint on axis --> has no poloidal angle
@@ -413,18 +427,18 @@ void vmecpp::deAliasConstraintForce(
       absl::c_fill_n(m_gcs, s_.ntor + 1, 0);
 
       for (int k = 0; k < s_.nZeta; ++k) {
-        double w0 = 0.0;
-        double w1 = 0.0;
-
         // fwd transform in poloidal direction
         // integrate poloidally to get m-th poloidal Fourier coefficient
-        for (int l = 0; l < s_.nThetaReduced; ++l) {
-          const int idx_ml = m * s_.nThetaReduced + l;
+        const int kl_base = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
+        const int ml_base = m * s_.nThetaReduced;
 
-          int idx_kl = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
-          w0 += gConEff[idx_kl] * fb.sinmui[idx_ml];
-          w1 += gConEff[idx_kl] * fb.cosmui[idx_ml];
-        }  // l
+        auto gConEff_seg = Eigen::Map<const Eigen::VectorXd>(
+            gConEff.data() + kl_base, s_.nThetaReduced);
+        auto sinmui_seg = fb.sinmui.segment(ml_base, s_.nThetaReduced);
+        auto cosmui_seg = fb.cosmui.segment(ml_base, s_.nThetaReduced);
+
+        double w0 = gConEff_seg.dot(sinmui_seg);
+        double w1 = gConEff_seg.dot(cosmui_seg);
 
         // forward Fourier transform in toroidal direction for full set of mode
         // numbers (n = 0, 1, ..., ntor)
@@ -444,15 +458,18 @@ void vmecpp::deAliasConstraintForce(
 
       // inverse Fourier-transform from reduced set of mode numbers
       for (int k = 0; k < s_.nZeta; ++k) {
-        double w0 = 0.0;
-        double w1 = 0.0;
-
         // collect contribution to current grid point from n-th toroidal mode
-        for (int n = 0; n < s_.ntor + 1; ++n) {
-          int idx_kn = k * (s_.nnyq2 + 1) + n;
-          w0 += m_gsc[n] * fb.cosnv[idx_kn];
-          w1 += m_gcs[n] * fb.sinnv[idx_kn];
-        }  // n
+        const int kn_base = k * (s_.nnyq2 + 1);
+        auto cosnv_seg = fb.cosnv.segment(kn_base, s_.ntor + 1);
+        auto sinnv_seg = fb.sinnv.segment(kn_base, s_.ntor + 1);
+
+        auto m_gsc_seg =
+            Eigen::Map<const Eigen::VectorXd>(m_gsc.data(), s_.ntor + 1);
+        auto m_gcs_seg =
+            Eigen::Map<const Eigen::VectorXd>(m_gcs.data(), s_.ntor + 1);
+
+        double w0 = m_gsc_seg.dot(cosnv_seg);
+        double w1 = m_gcs_seg.dot(sinnv_seg);
 
         // inv transform in poloidal direction
         for (int l = 0; l < s_.nThetaReduced; ++l) {
@@ -502,8 +519,8 @@ IdealMhdModel::IdealMhdModel(
   tcon0 = 0.0;
 
   // allocate arrays
-  xmpq.resize(s_.mpol);
-  faccon.resize(s_.mpol);
+  xmpq.setZero(s_.mpol);
+  faccon.setZero(s_.mpol);
   for (int m = 0; m < s_.mpol; ++m) {
     xmpq[m] = m * (m - 1);
     if (m > 1) {
@@ -514,128 +531,128 @@ IdealMhdModel::IdealMhdModel(
   int nrzt1 = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
   int nrzt = s_.nZnT * (r_.nsMaxF - r_.nsMinF);
 
-  r1_e.resize(nrzt1);
-  r1_o.resize(nrzt1);
-  ru_e.resize(nrzt1);
-  ru_o.resize(nrzt1);
-  z1_e.resize(nrzt1);
-  z1_o.resize(nrzt1);
-  zu_e.resize(nrzt1);
-  zu_o.resize(nrzt1);
-  lu_e.resize(nrzt1);
-  lu_o.resize(nrzt1);
+  r1_e.setZero(nrzt1);
+  r1_o.setZero(nrzt1);
+  ru_e.setZero(nrzt1);
+  ru_o.setZero(nrzt1);
+  z1_e.setZero(nrzt1);
+  z1_o.setZero(nrzt1);
+  zu_e.setZero(nrzt1);
+  zu_o.setZero(nrzt1);
+  lu_e.setZero(nrzt1);
+  lu_o.setZero(nrzt1);
 
   if (s_.lthreed) {
-    rv_e.resize(nrzt1);
-    rv_o.resize(nrzt1);
-    zv_e.resize(nrzt1);
-    zv_o.resize(nrzt1);
-    lv_e.resize(nrzt1);
-    lv_o.resize(nrzt1);
+    rv_e.setZero(nrzt1);
+    rv_o.setZero(nrzt1);
+    zv_e.setZero(nrzt1);
+    zv_o.setZero(nrzt1);
+    lv_e.setZero(nrzt1);
+    lv_o.setZero(nrzt1);
   }
 
   int nrztIncludingBoundary = s_.nZnT * (r_.nsMaxFIncludingLcfs - r_.nsMinF);
 
-  ruFull.resize(nrztIncludingBoundary);
-  zuFull.resize(nrztIncludingBoundary);
+  ruFull.setZero(nrztIncludingBoundary);
+  zuFull.setZero(nrztIncludingBoundary);
 
-  rCon.resize(nrztIncludingBoundary);
-  zCon.resize(nrztIncludingBoundary);
+  rCon.setZero(nrztIncludingBoundary);
+  zCon.setZero(nrztIncludingBoundary);
 
-  rCon0.resize(nrztIncludingBoundary);
-  zCon0.resize(nrztIncludingBoundary);
+  rCon0.setZero(nrztIncludingBoundary);
+  zCon0.setZero(nrztIncludingBoundary);
 
-  r12.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  ru12.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  zu12.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  rs.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  zs.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  tau.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  r12.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  ru12.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  zu12.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  rs.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  zs.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  tau.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
-  gsqrt.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  gsqrt.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
-  guu.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  guu.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
   if (s_.lthreed) {
-    guv.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+    guv.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
   }
-  gvv.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  gvv.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
-  bsupu.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  bsupv.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  bsupu.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  bsupv.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
-  bsubu.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  bsubv.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  bsubu.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  bsubv.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
-  totalPressure.resize((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  rBSq.resize(s_.nZnT);
+  totalPressure.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
+  rBSq.setZero(s_.nZnT);
 
-  insideTotalPressure.resize(s_.nZnT);
-  delBSq.resize(s_.nZnT);
+  insideTotalPressure.setZero(s_.nZnT);
+  delBSq.setZero(s_.nZnT);
 
-  armn_e.resize(nrzt);
-  armn_o.resize(nrzt);
-  brmn_e.resize(nrzt);
-  brmn_o.resize(nrzt);
-  azmn_e.resize(nrzt);
-  azmn_o.resize(nrzt);
-  bzmn_e.resize(nrzt);
-  bzmn_o.resize(nrzt);
-  blmn_e.resize(nrztIncludingBoundary);
-  blmn_o.resize(nrztIncludingBoundary);
+  armn_e.setZero(nrzt);
+  armn_o.setZero(nrzt);
+  brmn_e.setZero(nrzt);
+  brmn_o.setZero(nrzt);
+  azmn_e.setZero(nrzt);
+  azmn_o.setZero(nrzt);
+  bzmn_e.setZero(nrzt);
+  bzmn_o.setZero(nrzt);
+  blmn_e.setZero(nrztIncludingBoundary);
+  blmn_o.setZero(nrztIncludingBoundary);
 
   if (s_.lthreed) {
-    crmn_e.resize(nrzt);
-    crmn_o.resize(nrzt);
-    czmn_e.resize(nrzt);
-    czmn_o.resize(nrzt);
-    clmn_e.resize(nrztIncludingBoundary);
-    clmn_o.resize(nrztIncludingBoundary);
+    crmn_e.setZero(nrzt);
+    crmn_o.setZero(nrzt);
+    czmn_e.setZero(nrzt);
+    czmn_o.setZero(nrzt);
+    clmn_e.setZero(nrztIncludingBoundary);
+    clmn_o.setZero(nrztIncludingBoundary);
   }
 
   // TODO(jons): +1 only if at LCFS
-  bLambda.resize(r_.nsMaxF1 - r_.nsMinF1 + 1);
-  dLambda.resize(r_.nsMaxF1 - r_.nsMinF1 + 1);
-  cLambda.resize(r_.nsMaxF1 - r_.nsMinF1 + 1);
-  lambdaPreconditioner.resize((r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.mpol *
-                              (s_.ntor + 1));
+  bLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
+  dLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
+  cLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
+  lambdaPreconditioner.setZero((r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.mpol *
+                               (s_.ntor + 1));
 
-  ax.resize((r_.nsMaxH - r_.nsMinH) * 4);
-  bx.resize((r_.nsMaxH - r_.nsMinH) * 3);
-  cx.resize(r_.nsMaxH - r_.nsMinH);
+  ax.setZero((r_.nsMaxH - r_.nsMinH) * 4);
+  bx.setZero((r_.nsMaxH - r_.nsMinH) * 3);
+  cx.setZero(r_.nsMaxH - r_.nsMinH);
 
-  arm.resize((r_.nsMaxH - r_.nsMinH) * 2);
-  azm.resize((r_.nsMaxH - r_.nsMinH) * 2);
-  brm.resize((r_.nsMaxH - r_.nsMinH) * 2);
-  bzm.resize((r_.nsMaxH - r_.nsMinH) * 2);
+  arm.setZero((r_.nsMaxH - r_.nsMinH) * 2);
+  azm.setZero((r_.nsMaxH - r_.nsMinH) * 2);
+  brm.setZero((r_.nsMaxH - r_.nsMinH) * 2);
+  bzm.setZero((r_.nsMaxH - r_.nsMinH) * 2);
 
-  ard.resize((r_.nsMaxF - r_.nsMinF) * 2);
-  brd.resize((r_.nsMaxF - r_.nsMinF) * 2);
-  azd.resize((r_.nsMaxF - r_.nsMinF) * 2);
-  bzd.resize((r_.nsMaxF - r_.nsMinF) * 2);
-  cxd.resize(r_.nsMaxF - r_.nsMinF);
+  ard.setZero((r_.nsMaxF - r_.nsMinF) * 2);
+  brd.setZero((r_.nsMaxF - r_.nsMinF) * 2);
+  azd.setZero((r_.nsMaxF - r_.nsMinF) * 2);
+  bzd.setZero((r_.nsMaxF - r_.nsMinF) * 2);
+  cxd.setZero(r_.nsMaxF - r_.nsMinF);
 
   // leave one entry at beginning as target to put in the data sent from the MPI
   // rank next inside
-  ar.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  az.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  dr.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  dz.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  br.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  bz.resize((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  ar.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  az.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  dr.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  dz.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  br.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  bz.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
 
-  tcon.resize(r_.nsMaxFIncludingLcfs - r_.nsMinF);
+  tcon.setZero(r_.nsMaxFIncludingLcfs - r_.nsMinF);
 
-  gConEff.resize(nrztIncludingBoundary);
-  gsc.resize(s_.ntor + 1);
-  gcs.resize(s_.ntor + 1);
-  gCon.resize(nrztIncludingBoundary);
+  gConEff.setZero(nrztIncludingBoundary);
+  gsc.setZero(s_.ntor + 1);
+  gcs.setZero(s_.ntor + 1);
+  gCon.setZero(nrztIncludingBoundary);
 
-  frcon_e.resize(nrzt);
-  frcon_o.resize(nrzt);
-  fzcon_e.resize(nrzt);
-  fzcon_o.resize(nrzt);
+  frcon_e.setZero(nrzt);
+  frcon_o.setZero(nrzt);
+  fzcon_e.setZero(nrzt);
+  fzcon_o.setZero(nrzt);
 
-  jMin.resize(s_.mpol * (s_.ntor + 1));
+  jMin.setZero(s_.mpol * (s_.ntor + 1));
 }
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
@@ -645,7 +662,7 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
   this->tcon0 = tcon0;
 }
 
-void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
+void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -684,7 +701,7 @@ void IdealMhdModel::evalFResInvar(const std::vector<double>& localFResInvar) {
   }
 }
 
-void IdealMhdModel::evalFResPrecd(const std::vector<double>& localFResPrecd) {
+void IdealMhdModel::evalFResPrecd(const Eigen::VectorXd& localFResPrecd) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -1144,7 +1161,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
                                         VacuumPressureState::kInitialized);
   bool includeEdgeRZForces =
       ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
-  std::vector<double> localFResInvar(3, 0.0);
+  Eigen::VectorXd localFResInvar = Eigen::VectorXd::Zero(3);
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 
   evalFResInvar(localFResInvar);
@@ -1179,7 +1196,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  std::vector<double> localFResPrecd(3, 0.0);
+  Eigen::VectorXd localFResPrecd = Eigen::VectorXd::Zero(3);
   m_decomposed_f.residuals(localFResPrecd, true);
 
   evalFResPrecd(localFResPrecd);
@@ -1978,27 +1995,16 @@ void IdealMhdModel::computeBContra() {
 
 // Compute covariant magnetic field components.
 void IdealMhdModel::computeBCo() {
-  // bsubu, bsubv
-
+  // bsubu = g * B^contra: index lowering via metric tensor
   if (s_.lthreed) {
     // 3D case: need all of guu, guv, gvv
-    for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-        bsubu[iHalf] = guu[iHalf] * bsupu[iHalf] + guv[iHalf] * bsupv[iHalf];
-        bsubv[iHalf] = guv[iHalf] * bsupu[iHalf] + gvv[iHalf] * bsupv[iHalf];
-      }  // kl
-    }  // jH
+    bsubu = guu.cwiseProduct(bsupu) + guv.cwiseProduct(bsupv);
+    bsubv = guv.cwiseProduct(bsupu) + gvv.cwiseProduct(bsupv);
   } else {
     // 2D case: can ignore guv (not even allocated)
-    for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-        bsubu[iHalf] = guu[iHalf] * bsupu[iHalf];
-        bsubv[iHalf] = gvv[iHalf] * bsupv[iHalf];
-      }  // kl
-    }  // jH
-  }  // lthreed
+    bsubu = guu.cwiseProduct(bsupu);
+    bsubv = gvv.cwiseProduct(bsupv);
+  }
 }
 
 void IdealMhdModel::pressureAndEnergies() {
@@ -2026,28 +2032,31 @@ void IdealMhdModel::pressureAndEnergies() {
   // --> multiply it in here for thermal energy
   localThermalEnergy *= m_fc_.deltaS;
 
+  // magnetic pressure is |B|^2/2 = 0.5*(B^u*B_u + B^v*B_v)
+  // Compute as a vectorized operation over all half-grid points
+  // temporarily re-use `totalPressure` to store only magnetic pressure; kinetic
+  // pressure presH will be added below
+  totalPressure = 0.5 * (bsupu.cwiseProduct(bsubu) + bsupv.cwiseProduct(bsubv));
+
+  // Accumulate magnetic energy and add kinetic pressure per surface
   double localMagneticEnergy = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
+    const int offset = (jH - r_.nsMinH) * s_.nZnT;
 
-      // magnetic pressure is |B|^2/2 = 0.5*(B^u*B_u + B^v*B_v)
-      double magneticPressure =
-          0.5 * (bsupu[iHalf] * bsubu[iHalf] + bsupv[iHalf] * bsubv[iHalf]);
-
-      // perform volume integral over magnetic pressure for magnetic energy
-      // This must be done over UNIQUE half-grid points !!!
-      // --> The standard partitioning has half-grid points between
-      //     neighboring ranks that are handled by both ranks.
-      if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
+    // perform volume integral over magnetic pressure for magnetic energy
+    // This must be done over UNIQUE half-grid points !!!
+    if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
+      for (int kl = 0; kl < s_.nZnT; ++kl) {
         int l = kl % s_.nThetaEff;
-        localMagneticEnergy += gsqrt[iHalf] * magneticPressure * s_.wInt[l];
+        localMagneticEnergy +=
+            gsqrt[offset + kl] * totalPressure[offset + kl] * s_.wInt[l];
       }
+    }
 
-      // now can ADD KINETIC PRESSURE TO MAGNETIC PRESSURE
-      // to compute the total pressure
-      totalPressure[iHalf] = magneticPressure + m_p_.presH[jH - r_.nsMinH];
-    }  // kl
+    // now ADD KINETIC PRESSURE to magnetic pressure in order to compute the
+    // total pressure
+    totalPressure.segment(offset, s_.nZnT).array() +=
+        m_p_.presH[jH - r_.nsMinH];
   }  // jH
 
   // magneticEnergy could be negative due to negative sign of Jacobian (gsqrt)
@@ -2363,26 +2372,30 @@ void IdealMhdModel::computeMHDForces() {
     sqrtSHi = m_p_.sqrtSH[j0 - r_.nsMinH];
   } else {
     // defaults to 0: no contribution from half-grid point inside the axis
-    absl::c_fill_n(m_ls_.P_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.rup_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.zup_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.rsp_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.zsp_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.taup_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.gbubu_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.gbubv_i, s_.nZnT, 0);
-    absl::c_fill_n(m_ls_.gbvbv_i, s_.nZnT, 0);
+    m_ls_.P_i.setZero();
+    m_ls_.rup_i.setZero();
+    m_ls_.zup_i.setZero();
+    m_ls_.rsp_i.setZero();
+    m_ls_.zsp_i.setZero();
+    m_ls_.taup_i.setZero();
+    m_ls_.gbubu_i.setZero();
+    m_ls_.gbubv_i.setZero();
+    m_ls_.gbvbv_i.setZero();
   }
 
-  std::vector<double> P_o(s_.nZnT);      //  r12 * totalPressure = P
-  std::vector<double> rup_o(s_.nZnT);    // ru12 * P
-  std::vector<double> zup_o(s_.nZnT);    // zu12 * P
-  std::vector<double> rsp_o(s_.nZnT);    //   rs * P
-  std::vector<double> zsp_o(s_.nZnT);    //   zs * P
-  std::vector<double> taup_o(s_.nZnT);   //  tau * P
-  std::vector<double> gbubu_o(s_.nZnT);  // gsqrt * bsupu * bsupu
-  std::vector<double> gbubv_o(s_.nZnT);  // gsqrt * bsupu * bsupv
-  std::vector<double> gbvbv_o(s_.nZnT);  // gsqrt * bsupv * bsupv
+  Eigen::VectorXd P_o =
+      Eigen::VectorXd::Zero(s_.nZnT);  //  r12 * totalPressure = P
+  Eigen::VectorXd rup_o = Eigen::VectorXd::Zero(s_.nZnT);   // ru12 * P
+  Eigen::VectorXd zup_o = Eigen::VectorXd::Zero(s_.nZnT);   // zu12 * P
+  Eigen::VectorXd rsp_o = Eigen::VectorXd::Zero(s_.nZnT);   //   rs * P
+  Eigen::VectorXd zsp_o = Eigen::VectorXd::Zero(s_.nZnT);   //   zs * P
+  Eigen::VectorXd taup_o = Eigen::VectorXd::Zero(s_.nZnT);  //  tau * P
+  Eigen::VectorXd gbubu_o =
+      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupu * bsupu
+  Eigen::VectorXd gbubv_o =
+      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupu * bsupv
+  Eigen::VectorXd gbvbv_o =
+      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupv * bsupv
 
   for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
     const double sFull =
@@ -2416,248 +2429,111 @@ void IdealMhdModel::computeMHDForces() {
         gbvbv_o[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
       }  // kl
     } else {
-      absl::c_fill(P_o, 0.);
-      absl::c_fill(rup_o, 0.);
-      absl::c_fill(zup_o, 0.);
-      absl::c_fill(rsp_o, 0.);
-      absl::c_fill(zsp_o, 0.);
-      absl::c_fill(taup_o, 0.);
-      absl::c_fill(gbubu_o, 0.);
-      absl::c_fill(gbubv_o, 0.);
-      absl::c_fill(gbvbv_o, 0.);
+      P_o.setZero();
+      rup_o.setZero();
+      zup_o.setZero();
+      rsp_o.setZero();
+      zsp_o.setZero();
+      taup_o.setZero();
+      gbubu_o.setZero();
+      gbubv_o.setZero();
+      gbvbv_o.setZero();
     }
 
-    // NOTE: the loop over kl is split in many separate loops to help compiler
-    // auto-vectorization
+    // Segment views into geometry and force arrays for this surface
+    const int nZnT = s_.nZnT;
+    const int g_off = (jF - r_.nsMinF1) * nZnT;
+    const int f_off = (jF - r_.nsMinF) * nZnT;
+    const auto r1e = r1_e.segment(g_off, nZnT);
+    const auto r1o = r1_o.segment(g_off, nZnT);
+    const auto rue = ru_e.segment(g_off, nZnT);
+    const auto ruo = ru_o.segment(g_off, nZnT);
+    const auto zue = zu_e.segment(g_off, nZnT);
+    const auto zuo = zu_o.segment(g_off, nZnT);
+    const auto z1o = z1_o.segment(g_off, nZnT);
+
+    // Pre-compute common sub-expressions (averages and weighted averages)
+    const double invDS = 1.0 / m_fc_.deltaS;
+    const double invSHo = 1.0 / sqrtSHo;
+    const double invSHi = 1.0 / sqrtSHi;
+    const Eigen::VectorXd P_avg = 0.5 * (P_o + m_ls_.P_i);
+    const Eigen::VectorXd P_wavg = 0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
+
+    const Eigen::VectorXd gbubu_avg = 0.5 * (gbubu_o + m_ls_.gbubu_i);
+    const Eigen::VectorXd gbubu_wavg =
+        0.5 * (gbubu_o * sqrtSHo + m_ls_.gbubu_i * sqrtSHi);
+    const Eigen::VectorXd gbvbv_avg = 0.5 * (gbvbv_o + m_ls_.gbvbv_i);
+    const Eigen::VectorXd gbvbv_wavg =
+        0.5 * (gbvbv_o * sqrtSHo + m_ls_.gbvbv_i * sqrtSHi);
 
     // A_R force
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-      // A_R force
-      armn_e[idx_f] =
-          (zup_o[kl] - m_ls_.zup_i[kl]) / m_fc_.deltaS +
-          0.5 * (taup_o[kl] + m_ls_.taup_i[kl]) -
-          0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * r1_e[idx_g] -
-          0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-              r1_o[idx_g];
-    }
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      armn_o[idx_f] =
-          (zup_o[kl] * sqrtSHo - m_ls_.zup_i[kl] * sqrtSHi) / m_fc_.deltaS -
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * zu_e[idx_g] -
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * zu_o[idx_g] +
-          0.5 * (taup_o[kl] * sqrtSHo + m_ls_.taup_i[kl] * sqrtSHi) -
-          0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-              r1_e[idx_g] -
-          0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * r1_o[idx_g] * sFull;
-    }
+    armn_e.segment(f_off, nZnT) =
+        (zup_o - m_ls_.zup_i) * invDS + 0.5 * (taup_o + m_ls_.taup_i) -
+        gbvbv_avg.cwiseProduct(r1e) - gbvbv_wavg.cwiseProduct(r1o);
+    armn_o.segment(f_off, nZnT) =
+        (zup_o * sqrtSHo - m_ls_.zup_i * sqrtSHi) * invDS -
+        0.5 * P_wavg.cwiseProduct(zue) - 0.5 * P_avg.cwiseProduct(zuo) +
+        0.5 * (taup_o * sqrtSHo + m_ls_.taup_i * sqrtSHi) -
+        gbvbv_wavg.cwiseProduct(r1e) - gbvbv_avg.cwiseProduct(r1o) * sFull;
 
     // A_Z force
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      azmn_e[idx_f] = -(rup_o[kl] - m_ls_.rup_i[kl]) / m_fc_.deltaS;
-    }
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      azmn_o[idx_f] =
-          -(rup_o[kl] * sqrtSHo - m_ls_.rup_i[kl] * sqrtSHi) / m_fc_.deltaS +
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * ru_e[idx_g] +
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * ru_o[idx_g];
-    }
+    azmn_e.segment(f_off, nZnT) = -(rup_o - m_ls_.rup_i) * invDS;
+    azmn_o.segment(f_off, nZnT) =
+        -(rup_o * sqrtSHo - m_ls_.rup_i * sqrtSHi) * invDS +
+        0.5 * P_wavg.cwiseProduct(rue) + 0.5 * P_avg.cwiseProduct(ruo);
 
     // B_R force
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      brmn_e[idx_f] =
-          0.5 * (zsp_o[kl] + m_ls_.zsp_i[kl]) +
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * z1_o[idx_g] -
-          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * ru_e[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
-              ru_o[idx_g];
-    }
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      brmn_o[idx_f] =
-          0.5 * (zsp_o[kl] * sqrtSHo + m_ls_.zsp_i[kl] * sqrtSHi) +
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * z1_o[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
-              ru_e[idx_g] -
-          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * ru_o[idx_g] * sFull;
-    }
+    brmn_e.segment(f_off, nZnT) =
+        0.5 * (zsp_o + m_ls_.zsp_i) + 0.5 * P_wavg.cwiseProduct(z1o) -
+        gbubu_avg.cwiseProduct(rue) - gbubu_wavg.cwiseProduct(ruo);
+    brmn_o.segment(f_off, nZnT) =
+        0.5 * (zsp_o * sqrtSHo + m_ls_.zsp_i * sqrtSHi) +
+        0.5 * P_avg.cwiseProduct(z1o) - gbubu_wavg.cwiseProduct(rue) -
+        gbubu_avg.cwiseProduct(ruo) * sFull;
 
     // B_Z force
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      bzmn_e[idx_f] =
-          -0.5 * (rsp_o[kl] + m_ls_.rsp_i[kl]) -
-          0.25 * (P_o[kl] / sqrtSHo + m_ls_.P_i[kl] / sqrtSHi) * r1_o[idx_g] -
-          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * zu_e[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
-              zu_o[idx_g];
-    }
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // index in geometry arrays
-      int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-      // index in force arrays
-      int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      bzmn_o[idx_f] =
-          -0.5 * (rsp_o[kl] * sqrtSHo + m_ls_.rsp_i[kl] * sqrtSHi) -
-          0.25 * (P_o[kl] + m_ls_.P_i[kl]) * r1_o[idx_g] -
-          0.5 * (gbubu_o[kl] * sqrtSHo + m_ls_.gbubu_i[kl] * sqrtSHi) *
-              zu_e[idx_g] -
-          0.5 * (gbubu_o[kl] + m_ls_.gbubu_i[kl]) * zu_o[idx_g] * sFull;
-    }
+    bzmn_e.segment(f_off, nZnT) =
+        -0.5 * (rsp_o + m_ls_.rsp_i) - 0.5 * P_wavg.cwiseProduct(r1o) -
+        gbubu_avg.cwiseProduct(zue) - gbubu_wavg.cwiseProduct(zuo);
+    bzmn_o.segment(f_off, nZnT) =
+        -0.5 * (rsp_o * sqrtSHo + m_ls_.rsp_i * sqrtSHi) -
+        0.5 * P_avg.cwiseProduct(r1o) - gbubu_wavg.cwiseProduct(zue) -
+        gbubu_avg.cwiseProduct(zuo) * sFull;
 
     if (s_.lthreed) {
-      // B_R force
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
+      const Eigen::VectorXd gbubv_avg = 0.5 * (gbubv_o + m_ls_.gbubv_i);
+      const Eigen::VectorXd gbubv_wavg =
+          0.5 * (gbubv_o * sqrtSHo + m_ls_.gbubv_i * sqrtSHi);
+      const auto rve = rv_e.segment(g_off, nZnT);
+      const auto rvo = rv_o.segment(g_off, nZnT);
+      const auto zve = zv_e.segment(g_off, nZnT);
+      const auto zvo = zv_o.segment(g_off, nZnT);
 
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        brmn_e[idx_f] +=
-            -0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * rv_e[idx_g] -
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                rv_o[idx_g];
-      }
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        brmn_o[idx_f] +=
-            -0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                rv_e[idx_g] -
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * rv_o[idx_g] * sFull;
-      }
-
-      // B_Z force
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        bzmn_e[idx_f] +=
-            -0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zv_e[idx_g] -
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                zv_o[idx_g];
-      }
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        bzmn_o[idx_f] +=
-            -0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                zv_e[idx_g] -
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zv_o[idx_g] * sFull;
-      }
+      // 3D contributions to B_R and B_Z
+      brmn_e.segment(f_off, nZnT) -=
+          gbubv_avg.cwiseProduct(rve) + gbubv_wavg.cwiseProduct(rvo);
+      brmn_o.segment(f_off, nZnT) -=
+          gbubv_wavg.cwiseProduct(rve) + gbubv_avg.cwiseProduct(rvo) * sFull;
+      bzmn_e.segment(f_off, nZnT) -=
+          gbubv_avg.cwiseProduct(zve) + gbubv_wavg.cwiseProduct(zvo);
+      bzmn_o.segment(f_off, nZnT) -=
+          gbubv_wavg.cwiseProduct(zve) + gbubv_avg.cwiseProduct(zvo) * sFull;
 
       // C_R force
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        crmn_e[idx_f] =
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * ru_e[idx_g] +
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                ru_o[idx_g] +
-            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * rv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-                rv_o[idx_g];
-      }
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        crmn_o[idx_f] =
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                ru_e[idx_g] +
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * ru_o[idx_g] * sFull +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-                rv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * rv_o[idx_g] * sFull;
-      }
+      crmn_e.segment(f_off, nZnT) =
+          gbubv_avg.cwiseProduct(rue) + gbubv_wavg.cwiseProduct(ruo) +
+          gbvbv_avg.cwiseProduct(rve) + gbvbv_wavg.cwiseProduct(rvo);
+      crmn_o.segment(f_off, nZnT) =
+          gbubv_wavg.cwiseProduct(rue) + gbubv_avg.cwiseProduct(ruo) * sFull +
+          gbvbv_wavg.cwiseProduct(rve) + gbvbv_avg.cwiseProduct(rvo) * sFull;
 
       // C_Z force
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        czmn_e[idx_f] =
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zu_e[idx_g] +
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                zu_o[idx_g] +
-            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * zv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-                zv_o[idx_g];
-      }
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // index in geometry arrays
-        int idx_g = (jF - r_.nsMinF1) * s_.nZnT + kl;
-
-        // index in force arrays
-        int idx_f = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-        czmn_o[idx_f] =
-            0.5 * (gbubv_o[kl] * sqrtSHo + m_ls_.gbubv_i[kl] * sqrtSHi) *
-                zu_e[idx_g] +
-            0.5 * (gbubv_o[kl] + m_ls_.gbubv_i[kl]) * zu_o[idx_g] * sFull +
-            0.5 * (gbvbv_o[kl] * sqrtSHo + m_ls_.gbvbv_i[kl] * sqrtSHi) *
-                zv_e[idx_g] +
-            0.5 * (gbvbv_o[kl] + m_ls_.gbvbv_i[kl]) * zv_o[idx_g] * sFull;
-      }
+      czmn_e.segment(f_off, nZnT) =
+          gbubv_avg.cwiseProduct(zue) + gbubv_wavg.cwiseProduct(zuo) +
+          gbvbv_avg.cwiseProduct(zve) + gbvbv_wavg.cwiseProduct(zvo);
+      czmn_o.segment(f_off, nZnT) =
+          gbubv_wavg.cwiseProduct(zue) + gbubv_avg.cwiseProduct(zuo) * sFull +
+          gbvbv_wavg.cwiseProduct(zve) + gbvbv_avg.cwiseProduct(zvo) * sFull;
     }  // lthreed
 
     // shift to next point
@@ -2803,11 +2679,10 @@ void IdealMhdModel::updateLambdaPreconditioner() {
  * The diagonal terms (..d) are on the forces full-grid.
  */
 void IdealMhdModel::computePreconditioningMatrix(
-    const std::vector<double>& xs, const std::vector<double>& xu12,
-    const std::vector<double>& xu_e, const std::vector<double>& xu_o,
-    const std::vector<double>& x1_o, std::vector<double>& m_axm,
-    std::vector<double>& m_axd, std::vector<double>& m_bxm,
-    std::vector<double>& m_bxd, std::vector<double>& m_cxd) {
+    const Eigen::VectorXd& xs, const Eigen::VectorXd& xu12,
+    const Eigen::VectorXd& xu_e, const Eigen::VectorXd& xu_o,
+    const Eigen::VectorXd& x1_o, Eigen::VectorXd& m_axm, Eigen::VectorXd& m_axd,
+    Eigen::VectorXd& m_bxm, Eigen::VectorXd& m_bxd, Eigen::VectorXd& m_cxd) {
   // zs, zu12, zu, z1 --> arm, ard, brm, brd, cxd
   // rs, ru12, ru, r1 --> azm, azd, bzm, bzd, cxd
 
@@ -2885,8 +2760,8 @@ void IdealMhdModel::computePreconditioningMatrix(
     }  // kl
   }  // jH
 
-  const std::vector<double>& sm = m_p_.sm;
-  const std::vector<double>& sp = m_p_.sp;
+  const Eigen::VectorXd& sm = m_p_.sm;
+  const Eigen::VectorXd& sp = m_p_.sp;
 
   // radial assembly of preconditioning matrix element components
   // All this sm, sp logic seems to be related to the odd-m scaling factors...

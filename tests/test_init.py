@@ -9,11 +9,16 @@ Physics correctness is checked at the level of the C++ core.
 
 import json
 import os
+import signal
+import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 
 import netCDF4
 import numpy as np
+import pydantic
 import pytest
 
 import vmecpp
@@ -167,8 +172,6 @@ _MISSING_FORTRAN_VARIABLES = [
     "lmove_axis__logical__",
     "mnyq",
     "nnyq",
-    "currumnc",
-    "currvmnc",
     "curlabel",
     "potvac",
     "nobser",
@@ -237,13 +240,20 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
             )
         # np.asarray is needed to convert the masked array to a regular array.
         # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
+        # Current density coefficients are computed via finite differences of
+        # covariant B field Fourier coefficients, which amplifies floating-point
+        # non-determinism (e.g., from OpenMP reduction order).
+        rtol = 1e-3 if varname in ("currumnc", "currvmnc") else 1e-6
         np.testing.assert_allclose(
             np.asarray(test_value[:]),
             np.asarray(expected_value[:]),
             err_msg=error_msg,
-            rtol=1e-6,
+            rtol=rtol,
             atol=1e-7,
             equal_nan=True,
+        )
+        assert test_value.dtype == expected_value.dtype, (
+            error_msg + f" (dtype {test_value.dtype} != {expected_value.dtype})"
         )
 
 
@@ -276,6 +286,11 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
     # because they are not numerically well-defined.
     enlarged_tolerances = {
         "jdotb": {"rtol": 1.0e-5, "atol": 1.0e-4},
+        # Current density Fourier coefficients are computed via finite
+        # differences of covariant B components, which amplifies floating-point
+        # non-determinism (e.g., from OpenMP reduction order).
+        "currumnc": {"rtol": 1.0e-4, "atol": 1.0e-4},
+        "currvmnc": {"rtol": 1.0e-4, "atol": 1.0e-4},
     }
 
     for varname, expected_value in expected_dataset.variables.items():
@@ -497,8 +512,7 @@ def test_vmec_input_validation():
     # The test_file json may exclude fields that have default values,
     # while the parsed versions should have all fields populated.
     indata_dict_from_json = json.loads(vmec_input._to_cpp_vmecindata().to_json())
-    # TODO(jurasic): These quantities are not yet present in VmecInput, since there's only one option atm.
-    del indata_dict_from_json["free_boundary_method"]
+    # TODO(jurasic): iteration_style is not yet present in VmecInput, since there's only one option atm.
     del indata_dict_from_json["iteration_style"]
     vmec_input_dict_from_json = json.loads(vmec_input.model_dump_json())
 
@@ -586,7 +600,7 @@ def test_populate_raw_profile_knots():
     def f(s):
         return s**2
 
-    vmecpp.populate_raw_profile(vmec_input, "pressure", f)
+    vmec_input = vmecpp.populate_raw_profile(vmec_input, "pressure", f)
 
     s_values = set()
     for ns in vmec_input.ns_array:
@@ -622,3 +636,101 @@ def test_python_defaults_match_cpp_defaults():
             np.testing.assert_array_equal(py_val, cpp_val)
         else:
             assert py_val == cpp_val
+
+
+def test_ctrl_c_interrupts_run():
+    """Test that a VMEC++ run can be interrupted with SIGINT (Ctrl+C).
+
+    Launches a subprocess that starts a long VMEC++ run, sends SIGINT after the run has
+    started, and verifies that the process terminates with KeyboardInterrupt rather than
+    running to completion.
+    """
+    script = f"""\
+import sys
+import vmecpp
+from pathlib import Path
+
+vmec_input = vmecpp.VmecInput.from_file(
+    Path({str(TEST_DATA_DIR)!r}) / "cma.json"
+)
+# Use many iterations to ensure the run doesn't finish before the signal
+vmec_input.niter_array[-1] = 100000
+vmec_input.ftol_array[-1] = 1.0e-18  # Don't terminate due to tolerance
+try:
+    vmecpp.run(vmec_input, verbose=True, max_threads=1)
+    # Should not reach here
+    print("RUN_COMPLETED")
+except KeyboardInterrupt:
+    print("KEYBOARD_INTERRUPT")
+"""
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", script],
+        # Merge stderr into stdout so editable-install build output
+        # doesn't block the stdout readline loop
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    # Wait for the subprocess to signal that it's about to start the run.
+    deadline = time.monotonic() + 60
+    partial_output = ""
+    assert proc.stdout
+    while time.monotonic() < deadline:
+        line = proc.stdout.readline()
+        if not line:
+            break
+        partial_output += line
+        # The tabular output of the first force iteration
+        if "    1 |" in line:
+            break
+    else:
+        raise RuntimeError(
+            "The vmecpp subprocess did not start in time. Progress: \n" + partial_output
+        )
+
+    proc.send_signal(signal.SIGINT)
+
+    remaining_output = proc.communicate(timeout=30)[0]
+    output = partial_output + remaining_output
+    assert "KEYBOARD_INTERRUPT" in output, (
+        f"Expected KeyboardInterrupt but got:\noutput: {output}"
+    )
+    assert "RUN_COMPLETED" not in output
+
+
+def test_subclass_outer_wrap_serializer_not_overridden(cma_output: vmecpp.VmecOutput):
+    """Subclass wrap serializers that operate on the arrays must not be overridden by
+    VmecWOut's inner serializers.
+
+    This ensures that VmecWOut's field-level serializers (e.g. a PlainSerializer on
+    extcur) pass through values that are not numpy arrays, so an outer framework can
+    replace arrays with custom representations during serialization.
+    """
+
+    class OuterSerializer(pydantic.BaseModel):
+        model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+        @pydantic.field_serializer("*", mode="wrap", when_used="always")
+        def _outer_encode(
+            self,
+            value: object,
+            handler: pydantic.SerializerFunctionWrapHandler,
+            _: pydantic.FieldSerializationInfo,
+        ) -> object:
+            if isinstance(value, np.ndarray):
+                return {"__custom_encoded__": True}
+            return handler(value)
+
+    class CustomWOut(OuterSerializer, vmecpp.VmecWOut):
+        pass
+
+    custom = CustomWOut.model_validate(cma_output.wout.model_dump())
+    dumped = custom.model_dump(mode="json")
+
+    # Plain array field — goes through _serialize_field wrap serializer.
+    assert dumped["rmnc"].get("__custom_encoded__")
+    # SerializeIntAsFloat field — has its own PlainSerializer/WrapSerializer.
+    assert dumped["xm"].get("__custom_encoded__")
+    # extcur field — has its own PlainSerializer/WrapSerializer.
+    assert dumped["extcur"].get("__custom_encoded__")

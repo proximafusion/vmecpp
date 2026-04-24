@@ -6,6 +6,7 @@
 #define VMECPP_VMEC_VMEC_VMEC_H_
 
 #include <climits>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>  // std::move
@@ -24,8 +25,8 @@
 #include "vmecpp/vmec/fourier_velocity/fourier_velocity.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.h"
+#include "vmecpp/vmec/iteration_logger/iteration_logger.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
-#include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
@@ -48,11 +49,17 @@ struct HotRestartState {
         indata(std::move(output_quantities.indata)) {}
 };
 
+// Callback that returns true if execution should be interrupted (e.g., Ctrl+C).
+// Called periodically from the iteration loop.
+using InterruptCallback = std::function<bool()>;
+
 // This is the preferred way to run VMEC++.
 absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
     std::optional<HotRestartState> initial_state = std::nullopt,
-    std::optional<int> max_threads = std::nullopt, bool verbose = true);
+    std::optional<int> max_threads = std::nullopt,
+    OutputMode verbose = OutputMode::kLegacy,
+    InterruptCallback interrupt_callback = nullptr);
 
 // This overload enables free-boundary runs with an in-memory mgrid file.
 // The mgrid_file entry in `indata` will be ignored.
@@ -62,10 +69,28 @@ absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<HotRestartState> initial_state = std::nullopt,
-    std::optional<int> max_threads = std::nullopt, bool verbose = true);
+    std::optional<int> max_threads = std::nullopt,
+    OutputMode verbose = OutputMode::kLegacy,
+    InterruptCallback interrupt_callback = nullptr);
 
 class Vmec {
  public:
+  // Prefer using the FromIndata factory method, which handles both fixed-
+  // and free-boundary initialization with proper error handling.
+  // This constructor is public for use in external test code.
+  explicit Vmec(const VmecINDATA& indata,
+                std::optional<int> max_threads = std::nullopt,
+                OutputMode verbose = OutputMode::kLegacy,
+                InterruptCallback interrupt_callback = nullptr);
+
+  // Vmec must not be moved or copied because members (t_, b_, h_) store
+  // raw pointers to sibling members (s_, t_). Moving would leave those
+  // pointers dangling.
+  Vmec(const Vmec&) = delete;
+  Vmec& operator=(const Vmec&) = delete;
+  Vmec(Vmec&&) = delete;
+  Vmec& operator=(Vmec&&) = delete;
+
   // sign of Jacobian between cylindrical and flux coordinates
   // This is called `signgs` in Fortran VMEC.
   static constexpr int kSignOfJacobian = -1;
@@ -73,20 +98,16 @@ class Vmec {
   // scaling factor for blending between two different ways to compute B^zeta
   static constexpr double kPDamp = 0.05;
 
-  // VMEC++ constructor is only valid for fixed-boundary input files.
-  // Free-boundary runs will complete initialization by loading the mgrid
-  // contents when run is called, to have graceful error handling with absl.
-  explicit Vmec(const VmecINDATA& indata,
-                std::optional<int> max_threads = std::nullopt,
-                bool verbose = true);
-
-  // Mgrid loading for free-boundary VMEC++ from a precomputed response-table is
-  // done outside of the Vmec constructor for improved exception handling
-  absl::Status LoadMGrid(
-      const makegrid::MagneticFieldResponseTable& magnetic_response_table);
-  // Mgrid loading for free-boundary VMEC++ from the indata_.mgrid_file path is
-  // done outside of the Vmec constructor for improved exception handling
-  absl::Status LoadMGrid();
+  // Factory method for creating a Vmec instance.
+  // Handles mgrid loading for free-boundary runs with proper error handling.
+  // Returns a unique_ptr because Vmec is non-movable.
+  static absl::StatusOr<std::unique_ptr<Vmec>> FromIndata(
+      const VmecINDATA& indata,
+      const makegrid::MagneticFieldResponseTable* magnetic_response_table =
+          nullptr,
+      std::optional<int> max_threads = std::nullopt,
+      OutputMode verbose = OutputMode::kLegacy,
+      InterruptCallback interrupt_callback = nullptr);
 
   absl::StatusOr<bool> run(
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
@@ -113,11 +134,11 @@ class Vmec {
   void PerformTimeStep(double fac, double b1, double time_step, int thread_id);
   void InterpolateToNextMultigridStep(
       int ns_new, int ns_old,
-      const std::vector<std::unique_ptr<RadialProfiles> >& p,
-      const std::vector<std::unique_ptr<RadialPartitioning> >& r_new,
-      const std::vector<std::unique_ptr<RadialPartitioning> >& r_old,
-      std::vector<std::unique_ptr<FourierGeometry> >& m_x_new,
-      std::vector<std::unique_ptr<FourierGeometry> >& m_x_old);
+      const std::vector<std::unique_ptr<RadialProfiles>>& p,
+      const std::vector<std::unique_ptr<RadialPartitioning>>& r_new,
+      const std::vector<std::unique_ptr<RadialPartitioning>>& r_old,
+      std::vector<std::unique_ptr<FourierGeometry>>& m_x_new,
+      std::vector<std::unique_ptr<FourierGeometry>>& m_x_old);
   // -------------------
 
   bool updateFwdModel(IdealMhdModel& m_m, FourierGeometry& m_decomposed_x,
@@ -163,30 +184,30 @@ class Vmec {
   OutputQuantities output_quantities_;
 
   int num_threads_;
-  std::vector<std::unique_ptr<RadialPartitioning> > r_;
-  std::vector<std::unique_ptr<ThreadLocalStorage> > ls_;
-  std::vector<std::unique_ptr<RadialProfiles> > p_;
-  std::vector<std::unique_ptr<FreeBoundaryBase> > fb_;
-  std::vector<std::unique_ptr<TangentialPartitioning> > tp_;
-  std::vector<std::unique_ptr<IdealMhdModel> > m_;
-  std::vector<std::unique_ptr<FourierGeometry> > decomposed_x_;
-  std::vector<std::unique_ptr<FourierGeometry> > physical_x_backup_;
-  std::vector<std::unique_ptr<FourierGeometry> > physical_x_;
-  std::vector<std::unique_ptr<FourierForces> > decomposed_f_;
-  std::vector<std::unique_ptr<FourierForces> > physical_f_;
-  std::vector<std::unique_ptr<FourierVelocity> > decomposed_v_;
+  std::vector<std::unique_ptr<RadialPartitioning>> r_;
+  std::vector<std::unique_ptr<ThreadLocalStorage>> ls_;
+  std::vector<std::unique_ptr<RadialProfiles>> p_;
+  std::vector<std::unique_ptr<FreeBoundaryBase>> fb_;
+  std::vector<std::unique_ptr<TangentialPartitioning>> tp_;
+  std::vector<std::unique_ptr<IdealMhdModel>> m_;
+  std::vector<std::unique_ptr<FourierGeometry>> decomposed_x_;
+  std::vector<std::unique_ptr<FourierGeometry>> physical_x_backup_;
+  std::vector<std::unique_ptr<FourierGeometry>> physical_x_;
+  std::vector<std::unique_ptr<FourierForces>> decomposed_f_;
+  std::vector<std::unique_ptr<FourierForces>> physical_f_;
+  std::vector<std::unique_ptr<FourierVelocity>> decomposed_v_;
 
-  std::vector<double> sj;
-  std::vector<int> js1;
-  std::vector<int> js2;
-  std::vector<double> s1;
-  std::vector<double> xint;
-  std::vector<std::unique_ptr<FourierGeometry> > old_xc_scaled_;
-  std::vector<std::unique_ptr<RadialPartitioning> > old_r_;
+  Eigen::VectorXd sj;
+  Eigen::VectorXi js1;
+  Eigen::VectorXi js2;
+  Eigen::VectorXd s1;
+  Eigen::VectorXd xint;
+  std::vector<std::unique_ptr<FourierGeometry>> old_xc_scaled_;
+  std::vector<std::unique_ptr<RadialPartitioning>> old_r_;
 
-  std::vector<double> matrixShare;
-  std::vector<int> iPiv;
-  std::vector<double> bvecShare;
+  Eigen::VectorXd matrixShare;
+  Eigen::VectorXi iPiv;
+  Eigen::VectorXd bvecShare;
 
  private:
   enum class SolveEqLoopStatus : std::uint8_t {
@@ -202,6 +223,15 @@ class Vmec {
 
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
+
+  // handles all formatted iteration output (progress bars or legacy table)
+  IterationLogger logger_;
+
+  // optional callback to check for interrupt signals (e.g., Ctrl+C)
+  InterruptCallback interrupt_callback_;
+
+  // set to true when the interrupt callback signals an interrupt
+  bool interrupted_ = false;
 
   // initialization state counter for Nestor. Called ivac in Fortran VMEC.
   VacuumPressureState vacuum_pressure_state_;
@@ -227,7 +257,7 @@ class Vmec {
   // history size for averaging of 1/tau
   static constexpr int kNDamp = 10;
 
-  std::vector<double> invTau_;
+  Eigen::VectorXd invTau_;
 
   // iter2 at last update of preconditioner update
   int last_preconditioner_update_;

@@ -26,22 +26,34 @@ FourierCoeffs::FourierCoeffs(const Sizes* s, const RadialPartitioning* r,
   int num_fc_RZ = (jMaxIncludingBoundary - nsMin) * s_.mpol * (s_.ntor + 1);
   int num_fc_L = (jMaxIncludingBoundary - nsMin) * s_.mpol * (s_.ntor + 1);
 
-  rcc.resize(num_fc_RZ, 0.0);
-  zsc.resize(num_fc_RZ, 0.0);
-  lsc.resize(num_fc_L, 0.0);
+  rcc.resize(num_fc_RZ);
+  rcc.setZero();
+  zsc.resize(num_fc_RZ);
+  zsc.setZero();
+  lsc.resize(num_fc_L);
+  lsc.setZero();
   if (s_.lthreed) {
-    rss.resize(num_fc_RZ, 0.0);
-    zcs.resize(num_fc_RZ, 0.0);
-    lcs.resize(num_fc_L, 0.0);
+    rss.resize(num_fc_RZ);
+    rss.setZero();
+    zcs.resize(num_fc_RZ);
+    zcs.setZero();
+    lcs.resize(num_fc_L);
+    lcs.setZero();
   }
   if (s_.lasym) {
-    rsc.resize(num_fc_RZ, 0.0);
-    zcc.resize(num_fc_RZ, 0.0);
-    lcc.resize(num_fc_L, 0.0);
+    rsc.resize(num_fc_RZ);
+    rsc.setZero();
+    zcc.resize(num_fc_RZ);
+    zcc.setZero();
+    lcc.resize(num_fc_L);
+    lcc.setZero();
     if (s_.lthreed) {
-      rcs.resize(num_fc_RZ, 0.0);
-      zss.resize(num_fc_RZ, 0.0);
-      lss.resize(num_fc_L, 0.0);
+      rcs.resize(num_fc_RZ);
+      rcs.setZero();
+      zss.resize(num_fc_RZ);
+      zss.setZero();
+      lss.resize(num_fc_L);
+      lss.setZero();
     }
   }
 }
@@ -109,7 +121,7 @@ void FourierCoeffs::setZero() {
 
 /** apply even/odd-m decomposition */
 void FourierCoeffs::decomposeInto(FourierCoeffs& m_x,
-                                  const std::vector<double>& scalxc) const {
+                                  const Eigen::VectorXd& scalxc) const {
   // TODO(jons): understand correct limits in fixed-boundary vs. free-boundary
   int jMaxIncludingBoundary = nsMax_;
   if (r_.nsMaxF1 == ns) {

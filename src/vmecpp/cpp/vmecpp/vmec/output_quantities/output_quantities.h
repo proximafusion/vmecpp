@@ -985,12 +985,12 @@ struct WOutFileContents {
   // copy of input data
 
   // version identifier for this VMEC implementation
-  std::string version;
+  double version_;
 
   std::string input_extension;
 
   // sign of Jacobian between cylindrical and flux coordinates; hardcoded to -1
-  int sign_of_jacobian;
+  int signgs;
 
   // adiabatic index
   double gamma;
@@ -1046,6 +1046,9 @@ struct WOutFileContents {
   // flag to indicate a non-stellarator-symmetric case
   bool lasym = false;
 
+  // flag to indicate whether iota or safety factor (q) is used as input
+  bool lrfp = false;
+
   // final radial resolution
   // == number of flux surfaces
   // == number of full-grid points
@@ -1055,7 +1058,7 @@ struct WOutFileContents {
   double ftolv;
 
   // iterations required until convergence
-  int maximum_iterations;
+  int niter;
 
   // flag to indicate a free-boundary run
   bool lfreeb = false;
@@ -1102,7 +1105,7 @@ struct WOutFileContents {
 
   double aspect;
 
-  double betatot;
+  double betatotal;
   double betapol;
   double betator;
   double betaxis;
@@ -1113,13 +1116,13 @@ struct WOutFileContents {
   double rbtor;
 
   double IonLarmor;
-  double VolAvgB;
+  double volavgB;
 
   double ctor;
 
   double Aminor_p;
   double Rmajor_p;
-  double volume_p;
+  double volume;
 
   double fsqr;
   double fsqz;
@@ -1134,22 +1137,22 @@ struct WOutFileContents {
   // one-dimensional array quantities
 
   // full-grid: rotational_transform
-  Eigen::VectorXd iota_full;
+  Eigen::VectorXd iotaf;
 
   // full-grid: 1 / iota (where iota != 0)
-  Eigen::VectorXd safety_factor;
+  Eigen::VectorXd q_factor;
 
   // full-grid: pressure in Pa
-  Eigen::VectorXd pressure_full;
+  Eigen::VectorXd presf;
 
   // full-grid: enclosed toroidal magnetic flux (phi) in Vs
-  Eigen::VectorXd toroidal_flux;
+  Eigen::VectorXd phi;
 
   // full-grid: toroidal flux differential (phi-prime)
   Eigen::VectorXd phipf;
 
   // full-grid: enclosed poloidal magnetic flux (chi) in Vs
-  Eigen::VectorXd poloidal_flux;
+  Eigen::VectorXd chi;
 
   // full-grid: poloidal flux differential (chi-prime)
   Eigen::VectorXd chipf;
@@ -1164,33 +1167,33 @@ struct WOutFileContents {
   Eigen::VectorXd force_residual_z;
   Eigen::VectorXd force_residual_lambda;
   Eigen::VectorXd delbsq;
-  Eigen::VectorXi restart_reasons;
+  Eigen::VectorXi restart_reason_timetrace;
 
   // Gradient of the energy at each iteration
   Eigen::VectorXd wdot;
 
   // ---------
 
-  Eigen::VectorXd iota_half;
+  Eigen::VectorXd iotas;
   Eigen::VectorXd mass;
-  Eigen::VectorXd pressure_half;
-  Eigen::VectorXd beta;
+  Eigen::VectorXd pres;
+  Eigen::VectorXd beta_vol;
   Eigen::VectorXd buco;
   Eigen::VectorXd bvco;
-  Eigen::VectorXd dVds;
-  Eigen::VectorXd spectral_width;
+  Eigen::VectorXd vp;
+  Eigen::VectorXd specw;
   Eigen::VectorXd phips;
-  Eigen::VectorXd overr;
+  Eigen::VectorXd over_r;
 
   Eigen::VectorXd jdotb;
   Eigen::VectorXd bdotb;
   Eigen::VectorXd bdotgradv;
 
   Eigen::VectorXd DMerc;
-  Eigen::VectorXd Dshear;
-  Eigen::VectorXd Dwell;
-  Eigen::VectorXd Dcurr;
-  Eigen::VectorXd Dgeod;
+  Eigen::VectorXd DShear;
+  Eigen::VectorXd DWell;
+  Eigen::VectorXd DCurr;
+  Eigen::VectorXd DGeod;
 
   Eigen::VectorXd equif;
 
@@ -1210,8 +1213,8 @@ struct WOutFileContents {
   // -------------------
   // stellarator-symmetric Fourier coefficients
 
-  Eigen::VectorXd raxis_c;
-  Eigen::VectorXd zaxis_s;
+  Eigen::VectorXd raxis_cc;
+  Eigen::VectorXd zaxis_cs;
 
   // full-grid: R
   RowMatrixXd rmnc;
@@ -1251,11 +1254,17 @@ struct WOutFileContents {
   // half-grid: contravariant B^\zeta
   RowMatrixXd bsupvmnc;
 
+  // full-grid: sqrt(g) * J^\theta, Fourier coefficients (cos)
+  RowMatrixXd currumnc;
+
+  // full-grid: sqrt(g) * J^\zeta, Fourier coefficients (cos)
+  RowMatrixXd currvmnc;
+
   // -------------------
   // non-stellarator-symmetric Fourier coefficients
 
-  Eigen::VectorXd raxis_s;
-  Eigen::VectorXd zaxis_c;
+  Eigen::VectorXd raxis_cs;
+  Eigen::VectorXd zaxis_cc;
 
   // full-grid: R
   RowMatrixXd rmns;
@@ -1294,6 +1303,12 @@ struct WOutFileContents {
 
   // half-grid: contravariant B^\zeta
   RowMatrixXd bsupvmns;
+
+  // full-grid: sqrt(g) * J^\theta, Fourier coefficients (sin)
+  RowMatrixXd currumns;
+
+  // full-grid: sqrt(g) * J^\zeta, Fourier coefficients (sin)
+  RowMatrixXd currvmns;
 
   bool operator==(const WOutFileContents&) const = default;
   bool operator!=(const WOutFileContents& o) const { return !(*this == o); }
@@ -1508,7 +1523,7 @@ WOutFileContents ComputeWOutFileContents(
 // metric.
 void CompareWOut(const WOutFileContents& test_wout,
                  const WOutFileContents& expected_wout, double tolerance,
-                 bool check_equal_maximum_iterations = true);
+                 bool check_equal_niter = true);
 }  // namespace vmecpp
 
 #endif  // VMECPP_VMEC_OUTPUT_QUANTITIES_OUTPUT_QUANTITIES_H_
