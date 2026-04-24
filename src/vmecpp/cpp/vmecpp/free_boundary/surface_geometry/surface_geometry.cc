@@ -4,8 +4,6 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/surface_geometry/surface_geometry.h"
 
-#include "absl/algorithm/container.h"  // c_fill_n
-
 namespace vmecpp {
 
 SurfaceGeometry::SurfaceGeometry(const Sizes* s,
@@ -119,24 +117,23 @@ void SurfaceGeometry::inverseDFT(
 
   // ----------------
 
-  absl::c_fill_n(r1b, s_.nThetaEven * s_.nZeta, 0);
-  absl::c_fill_n(z1b, s_.nThetaEven * s_.nZeta, 0);
+  r1b.setZero();
+  z1b.setZero();
 
   // ----------------
-  int numLocal = tp_.ztMax - tp_.ztMin;
 
-  absl::c_fill_n(rub, numLocal, 0);
-  absl::c_fill_n(rvb, numLocal, 0);
-  absl::c_fill_n(zub, numLocal, 0);
-  absl::c_fill_n(zvb, numLocal, 0);
+  rub.setZero();
+  rvb.setZero();
+  zub.setZero();
+  zvb.setZero();
 
   if (fullUpdate) {
-    absl::c_fill_n(ruu, numLocal, 0);
-    absl::c_fill_n(ruv, numLocal, 0);
-    absl::c_fill_n(rvv, numLocal, 0);
-    absl::c_fill_n(zuu, numLocal, 0);
-    absl::c_fill_n(zuv, numLocal, 0);
-    absl::c_fill_n(zvv, numLocal, 0);
+    ruu.setZero();
+    ruv.setZero();
+    rvv.setZero();
+    zuu.setZero();
+    zuv.setZero();
+    zvv.setZero();
   }
 
   for (int n = 0; n < s_.ntor + 1; ++n) {

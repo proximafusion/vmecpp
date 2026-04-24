@@ -12,7 +12,6 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
-
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "util/netcdf_io/netcdf_io.h"
@@ -100,9 +99,9 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
 
   // Resize and make sure that the accumulation arrays are reset to zeros
   // if they contained previous contents from an earlier call to this routine.
-  bR.resize(numPhi * numZ * numR, 0.0);
-  bP.resize(numPhi * numZ * numR, 0.0);
-  bZ.resize(numPhi * numZ * numR, 0.0);
+  bR.setZero(numPhi * numZ * numR);
+  bP.setZero(numPhi * numZ * numR);
+  bZ.setZero(numPhi * numZ * numR);
 
   // combine coil contributions, weighted by coil currents
   for (int i = 0; i < nextcur; ++i) {
@@ -184,9 +183,9 @@ absl::Status MGridProvider::LoadFields(
 
   // TODO(eguiraud): factor out this part that is duplicated
   const int num_grid_points = numPhi * numZ * numR;
-  bR.resize(num_grid_points, 0.0);
-  bP.resize(num_grid_points, 0.0);
-  bZ.resize(num_grid_points, 0.0);
+  bR.setZero(num_grid_points);
+  bP.setZero(num_grid_points);
+  bZ.setZero(num_grid_points);
 
   // combine coil contributions, weighted by coil currents
   for (int i = 0; i < nextcur; ++i) {
@@ -206,9 +205,9 @@ absl::Status MGridProvider::LoadFields(
   return absl::OkStatus();
 }
 
-void MGridProvider::SetFixedMagneticField(const std::vector<double>& fixed_br,
-                                          const std::vector<double>& fixed_bp,
-                                          const std::vector<double>& fixed_bz) {
+void MGridProvider::SetFixedMagneticField(const Eigen::VectorXd& fixed_br,
+                                          const Eigen::VectorXd& fixed_bp,
+                                          const Eigen::VectorXd& fixed_bz) {
   // copy into local storage
   fixed_br_ = fixed_br;
   fixed_bp_ = fixed_bp;
@@ -220,11 +219,11 @@ void MGridProvider::SetFixedMagneticField(const std::vector<double>& fixed_br,
 
 // interpolate mgrid file at current flux surface
 void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
-                                const std::vector<double>& rLCFS,
-                                const std::vector<double>& zLCFS,
-                                std::vector<double>& m_interpBr,
-                                std::vector<double>& m_interpBp,
-                                std::vector<double>& m_interpBz) const {
+                                const Eigen::VectorXd& rLCFS,
+                                const Eigen::VectorXd& zLCFS,
+                                Eigen::VectorXd& m_interpBr,
+                                Eigen::VectorXd& m_interpBp,
+                                Eigen::VectorXd& m_interpBz) const {
   CHECK(has_mgrid_loaded_) << "no mgrid loaded";
 
   if (has_fixed_field_) {

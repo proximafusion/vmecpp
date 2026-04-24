@@ -8,9 +8,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <vector>
-
-#include "absl/algorithm/container.h"
 
 namespace vmecpp {
 
@@ -54,26 +51,18 @@ SingularIntegrals::SingularIntegrals(const Sizes* s,
   Tl1m.resize(numLocal);
 
   // (mf + nf + 1) + 1 -> one extra entry for last iteration of fl loop
-  Tlp.resize(mf + nf + 2);
-  Tlm.resize(mf + nf + 2);
-  for (int fl = 0; fl < mf + nf + 2; ++fl) {
-    Tlp[fl].resize(numLocal);
-    Tlm[fl].resize(numLocal);
-  }
+  Tlp.resize(mf + nf + 2, numLocal);
+  Tlm.resize(mf + nf + 2, numLocal);
 
-  Slp.resize(mf + nf + 1);
-  Slm.resize(mf + nf + 1);
-  for (int fl = 0; fl < mf + nf + 1; ++fl) {
-    Slp[fl].resize(numLocal);
-    Slm[fl].resize(numLocal);
-  }
+  Slp.resize(mf + nf + 1, numLocal);
+  Slm.resize(mf + nf + 1, numLocal);
 
   const int mnfull = (2 * nf + 1) * (mf + 1);
-  bvec_sin.resize(mnfull, 0.0);
-  grpmn_sin.resize(mnfull * numLocal, 0.0);
+  bvec_sin.setZero(mnfull);
+  grpmn_sin.setZero(mnfull * numLocal);
   if (s->lasym) {
-    bvec_cos.resize(mnfull, 0.0);
-    grpmn_cos.resize(mnfull * numLocal, 0.0);
+    bvec_cos.setZero(mnfull);
+    grpmn_cos.setZero(mnfull * numLocal);
   }
 
   // -------------
@@ -84,7 +73,7 @@ SingularIntegrals::SingularIntegrals(const Sizes* s,
 void SingularIntegrals::computeCoefficients() {
   // below loop sets only parts of cmn,
   // so initialize all entries to zero once here
-  absl::c_fill_n(cmn, (1 + mf + nf) * (nf + 1) * (mf + 1), 0);
+  cmn.setZero();
 
   // cmn from scratch: Algorithm 1 in TNOV
   for (int n = 0; n < nf + 1; ++n) {
@@ -156,7 +145,7 @@ void SingularIntegrals::computeCoefficients() {
   }  // n
 }  // computeCoefficients
 
-void SingularIntegrals::update(const std::vector<double>& bDotN,
+void SingularIntegrals::update(const Eigen::VectorXd& bDotN,
                                bool fullUpdate) {
 #ifdef _OPENMP
 #pragma omp barrier
@@ -176,12 +165,12 @@ void SingularIntegrals::update(const std::vector<double>& bDotN,
 #endif  // _OPENMP
 }  // update
 
-void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
-                                      const std::vector<double>& b2,
-                                      const std::vector<double>& c,
-                                      const std::vector<double>& A,
-                                      const std::vector<double>& B2,
-                                      const std::vector<double>& C,
+void SingularIntegrals::prepareUpdate(const Eigen::VectorXd& a,
+                                      const Eigen::VectorXd& b2,
+                                      const Eigen::VectorXd& c,
+                                      const Eigen::VectorXd& A,
+                                      const Eigen::VectorXd& B2,
+                                      const Eigen::VectorXd& C,
                                       bool fullUpdate) {
   int numLocal = tp_.ztMax - tp_.ztMin;
   for (int kl = 0; kl < numLocal; ++kl) {
@@ -267,7 +256,7 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
         static_cast<double>(kL) * logRatioM > kLogGrowthThreshold;
 
     // --- T^+: A = ap, B = am ---
-    Tlp[0][kl] = T0p;
+    Tlp(0, kl) = T0p;
     if (useBackwardP) {
       // forward unstable -> use backward recurrence.
       double T_hi = 0.0;
@@ -280,12 +269,12 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
         T_hi = T_cur;
         T_cur = T_lo;
         if (l - 1 <= kL) {
-          Tlp[l - 1][kl] = T_lo;
+          Tlp(l - 1, kl) = T_lo;
         }
       }
-      const double scaleP = T0p / Tlp[0][kl];
+      const double scaleP = T0p / Tlp(0, kl);
       for (int l = 0; l <= kL; ++l) {
-        Tlp[l][kl] *= scaleP;
+        Tlp(l, kl) *= scaleP;
       }
     } else {
       // forward stable.
@@ -295,15 +284,15 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
         sgn = -sgn;
         const double rhs = sqrtc2[kl] + sgn * sqrta2[kl];
         const double T_next =
-            (rhs - (2 * fl + 1) * d[kl] * Tlp[fl][kl] - fl * am[kl] * T_prev) /
+            (rhs - (2 * fl + 1) * d[kl] * Tlp(fl, kl) - fl * am[kl] * T_prev) /
             (ap[kl] * (fl + 1));
-        T_prev = Tlp[fl][kl];
-        Tlp[fl + 1][kl] = T_next;
+        T_prev = Tlp(fl, kl);
+        Tlp(fl + 1, kl) = T_next;
       }
     }
 
     // --- T^-: A = am, B = ap ---
-    Tlm[0][kl] = T0m;
+    Tlm(0, kl) = T0m;
     if (useBackwardM) {
       // forward unstable -> use backward recurrence.
       double T_hi = 0.0;
@@ -316,12 +305,12 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
         T_hi = T_cur;
         T_cur = T_lo;
         if (l - 1 <= kL) {
-          Tlm[l - 1][kl] = T_lo;
+          Tlm(l - 1, kl) = T_lo;
         }
       }
-      const double scaleM = T0m / Tlm[0][kl];
+      const double scaleM = T0m / Tlm(0, kl);
       for (int l = 0; l <= kL; ++l) {
-        Tlm[l][kl] *= scaleM;
+        Tlm(l, kl) *= scaleM;
       }
     } else {
       // forward stable.
@@ -331,35 +320,34 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
         sgn = -sgn;
         const double rhs = sqrtc2[kl] + sgn * sqrta2[kl];
         const double T_next =
-            (rhs - (2 * fl + 1) * d[kl] * Tlm[fl][kl] - fl * ap[kl] * T_prev) /
+            (rhs - (2 * fl + 1) * d[kl] * Tlm(fl, kl) - fl * ap[kl] * T_prev) /
             (am[kl] * (fl + 1));
-        T_prev = Tlm[fl][kl];
-        Tlm[fl + 1][kl] = T_next;
+        T_prev = Tlm(fl, kl);
+        Tlm(fl + 1, kl) = T_next;
       }
     }
   }  // kl
 }  // prepareUpdate
 
-void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
+void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
                                       bool fullUpdate) {
   const int numLocal = tp_.ztMax - tp_.ztMin;
 
-  const int mnfull = (2 * nf + 1) * (mf + 1);
-  absl::c_fill_n(bvec_sin, mnfull, 0.0);
+  bvec_sin.setZero();
   if (s_.lasym) {
-    absl::c_fill_n(bvec_cos, mnfull, 0.0);
+    bvec_cos.setZero();
   }
 
   if (fullUpdate) {
-    absl::c_fill_n(grpmn_sin, mnfull * numLocal, 0.0);
+    grpmn_sin.setZero();
     if (s_.lasym) {
-      absl::c_fill_n(grpmn_cos, mnfull * numLocal, 0.0);
+      grpmn_cos.setZero();
     }
   }
 
   // Tl1p/Tl1m hold T^{\pm}_{fl-1} for the Slp/Slm formula; T^{\pm}_{-1} = 0.
-  absl::c_fill(Tl1p, 0.0);
-  absl::c_fill(Tl1m, 0.0);
+  Tl1p.setZero();
+  Tl1m.setZero();
 
   int sgn = 1;
   for (int fl = 0; fl < 1 + nf + mf; ++fl) {
@@ -369,11 +357,11 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
       for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
         const int klRel = kl - tp_.ztMin;
 
-        Slp[fl][klRel] = (R1p[klRel] * fl + Ra1p[klRel]) * Tlp[fl][klRel] +
+        Slp(fl, klRel) = (R1p[klRel] * fl + Ra1p[klRel]) * Tlp(fl, klRel) +
                          R0p[klRel] * fl * Tl1p[klRel] -
                          (R0p[klRel] + R1p[klRel]) / sqrtc2[klRel] +
                          sgn * (R0p[klRel] - R1p[klRel]) / sqrta2[klRel];
-        Slm[fl][klRel] = (R1m[klRel] * fl + Ra1m[klRel]) * Tlm[fl][klRel] +
+        Slm(fl, klRel) = (R1m[klRel] * fl + Ra1m[klRel]) * Tlm(fl, klRel) +
                          R0m[klRel] * fl * Tl1m[klRel] -
                          (R0m[klRel] + R1m[klRel]) / sqrtc2[klRel] +
                          sgn * (R0m[klRel] - R1m[klRel]) / sqrta2[klRel];
@@ -405,11 +393,11 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
                                  fb_.cosmu[idx_lm] * fb_.sinnv[idx_nk]) *
                                 cmns_factor;
 
-            bvec_sin[idx_m_posn] += (Tlp[fl][klRel] + Tlm[fl][klRel]) *
+            bvec_sin[idx_m_posn] += (Tlp(fl, klRel) + Tlm(fl, klRel)) *
                                     bDotN[klRel] * s_.wInt[l] * sinp;
             if (fullUpdate) {
               grpmn_sin[idx_m_posn * numLocal + klRel] +=
-                  (Slp[fl][klRel] + Slm[fl][klRel]) * sinp;
+                  (Slp(fl, klRel) + Slm(fl, klRel)) * sinp;
             }
 
             if (s_.lasym) {
@@ -418,11 +406,11 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
                                    fb_.sinmu[idx_lm] * fb_.sinnv[idx_nk]) *
                                   cmns_factor;
 
-              bvec_cos[idx_m_posn] += (Tlp[fl][klRel] + Tlm[fl][klRel]) *
+              bvec_cos[idx_m_posn] += (Tlp(fl, klRel) + Tlm(fl, klRel)) *
                                       bDotN[klRel] * s_.wInt[l] * cosp;
               if (fullUpdate) {
                 grpmn_cos[idx_m_posn * numLocal + klRel] +=
-                    (Slp[fl][klRel] + Slm[fl][klRel]) * cosp;
+                    (Slp(fl, klRel) + Slm(fl, klRel)) * cosp;
               }
             }
           }  // kl
@@ -463,10 +451,10 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
               const double sinp3 = coeff1 * fb_.cosnv[idx_nk + 3] -
                                    coeff2 * fb_.sinnv[idx_nk + 3];
 
-              buf_m_posn[0] += Tlp[fl][klRel + 0] * c0 * sinp0;
-              buf_m_posn[1] += Tlp[fl][klRel + 1] * c1 * sinp1;
-              buf_m_posn[2] += Tlp[fl][klRel + 2] * c2 * sinp2;
-              buf_m_posn[3] += Tlp[fl][klRel + 3] * c3 * sinp3;
+              buf_m_posn[0] += Tlp(fl, klRel + 0) * c0 * sinp0;
+              buf_m_posn[1] += Tlp(fl, klRel + 1) * c1 * sinp1;
+              buf_m_posn[2] += Tlp(fl, klRel + 2) * c2 * sinp2;
+              buf_m_posn[3] += Tlp(fl, klRel + 3) * c3 * sinp3;
 
               // sin(mu + |n|v) * cmns(l,n,m)
               const double sinm0 = coeff1 * fb_.cosnv[idx_nk + 0] +
@@ -478,29 +466,29 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
               const double sinm3 = coeff1 * fb_.cosnv[idx_nk + 3] +
                                    coeff2 * fb_.sinnv[idx_nk + 3];
 
-              buf_m_negn[0] += Tlm[fl][klRel + 0] * c0 * sinm0;
-              buf_m_negn[1] += Tlm[fl][klRel + 1] * c1 * sinm1;
-              buf_m_negn[2] += Tlm[fl][klRel + 2] * c2 * sinm2;
-              buf_m_negn[3] += Tlm[fl][klRel + 3] * c3 * sinm3;
+              buf_m_negn[0] += Tlm(fl, klRel + 0) * c0 * sinm0;
+              buf_m_negn[1] += Tlm(fl, klRel + 1) * c1 * sinm1;
+              buf_m_negn[2] += Tlm(fl, klRel + 2) * c2 * sinm2;
+              buf_m_negn[3] += Tlm(fl, klRel + 3) * c3 * sinm3;
 
               if (fullUpdate) {
                 grpmn_sin[idx_m_posn * numLocal + klRel + 0] +=
-                    Slp[fl][klRel + 0] * sinp0;
+                    Slp(fl, klRel + 0) * sinp0;
                 grpmn_sin[idx_m_posn * numLocal + klRel + 1] +=
-                    Slp[fl][klRel + 1] * sinp1;
+                    Slp(fl, klRel + 1) * sinp1;
                 grpmn_sin[idx_m_posn * numLocal + klRel + 2] +=
-                    Slp[fl][klRel + 2] * sinp2;
+                    Slp(fl, klRel + 2) * sinp2;
                 grpmn_sin[idx_m_posn * numLocal + klRel + 3] +=
-                    Slp[fl][klRel + 3] * sinp3;
+                    Slp(fl, klRel + 3) * sinp3;
 
                 grpmn_sin[idx_m_negn * numLocal + klRel + 0] +=
-                    Slm[fl][klRel + 0] * sinm0;
+                    Slm(fl, klRel + 0) * sinm0;
                 grpmn_sin[idx_m_negn * numLocal + klRel + 1] +=
-                    Slm[fl][klRel + 1] * sinm1;
+                    Slm(fl, klRel + 1) * sinm1;
                 grpmn_sin[idx_m_negn * numLocal + klRel + 2] +=
-                    Slm[fl][klRel + 2] * sinm2;
+                    Slm(fl, klRel + 2) * sinm2;
                 grpmn_sin[idx_m_negn * numLocal + klRel + 3] +=
-                    Slm[fl][klRel + 3] * sinm3;
+                    Slm(fl, klRel + 3) * sinm3;
               }
             }
 
@@ -527,14 +515,14 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
                 const double sinp = coeff1 - coeff2;
 
                 const double c = bDotN[klRel] * s_.wInt[l];
-                bvec_sin[idx_m_posn] += Tlp[fl][klRel] * c * sinp;
-                bvec_sin[idx_m_negn] += Tlm[fl][klRel] * c * sinm;
+                bvec_sin[idx_m_posn] += Tlp(fl, klRel) * c * sinp;
+                bvec_sin[idx_m_negn] += Tlm(fl, klRel) * c * sinm;
 
                 if (fullUpdate) {
                   grpmn_sin[idx_m_posn * numLocal + klRel] +=
-                      Slp[fl][klRel] * sinp;
+                      Slp(fl, klRel) * sinp;
                   grpmn_sin[idx_m_negn * numLocal + klRel] +=
-                      Slm[fl][klRel] * sinm;
+                      Slm(fl, klRel) * sinm;
                 }
               }
             }
@@ -564,14 +552,14 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
               const double cosp = coeff1 + coeff2;
 
               bvec_cos[idx_m_posn] +=
-                  Tlp[fl][klRel] * bDotN[klRel] * s_.wInt[l] * cosp;
+                  Tlp(fl, klRel) * bDotN[klRel] * s_.wInt[l] * cosp;
               bvec_cos[idx_m_negn] +=
-                  Tlm[fl][klRel] * bDotN[klRel] * s_.wInt[l] * cosm;
+                  Tlm(fl, klRel) * bDotN[klRel] * s_.wInt[l] * cosm;
               if (fullUpdate) {
                 grpmn_cos[idx_m_posn * numLocal + klRel] +=
-                    Slp[fl][klRel] * cosp;
+                    Slp(fl, klRel) * cosp;
                 grpmn_cos[idx_m_negn * numLocal + klRel] +=
-                    Slm[fl][klRel] * cosm;
+                    Slm(fl, klRel) * cosm;
               }
             }
           }  // kl
@@ -583,10 +571,8 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
     // Update sgn and shift Tl1p/Tl1m to T^{\pm}_{fl} for the Slp/Slm formula
     // in the next iteration.
     sgn = -sgn;
-    for (int kl = 0; kl < numLocal; ++kl) {
-      Tl1p[kl] = Tlp[fl][kl];
-      Tl1m[kl] = Tlm[fl][kl];
-    }  // kl
+    Tl1p = Tlp.row(fl).transpose();
+    Tl1m = Tlm.row(fl).transpose();
   }  // fl
 }  // performUpdate
 

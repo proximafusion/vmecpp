@@ -5,7 +5,6 @@
 #include "vmecpp/free_boundary/laplace_solver/laplace_solver.h"
 
 #include <iostream>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -62,17 +61,16 @@ LaplaceSolver::LaplaceSolver(const Sizes *s, const FourierBasisFastToroidal *fb,
 
 // fourp()-equivalent
 void LaplaceSolver::TransformGreensFunctionDerivative(
-    const std::vector<double> &greenp) {
-  const int mnpd = (2 * nf + 1) * (mf + 1);
-  absl::c_fill_n(grpmn_sin, mnpd * numLocal, 0);
+    const Eigen::VectorXd &greenp) {
+  grpmn_sin.setZero();
 
   for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
     const int klpRel = klp - tp_.ztMin;
     for (int l = 0; l < s_.nThetaReduced; ++l) {
       const int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
 
-      std::vector<double> g1_symm(nf + 1);
-      std::vector<double> g2_symm(nf + 1);
+      Eigen::VectorXd g1_symm = Eigen::VectorXd::Zero(nf + 1);
+      Eigen::VectorXd g2_symm = Eigen::VectorXd::Zero(nf + 1);
 
       for (int k = 0; k < s_.nZeta; ++k) {
         const int kRev = (s_.nZeta - k) % s_.nZeta;
@@ -125,7 +123,7 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
   }  // kl'
 }  // TransformGreensFunctionDerivative
 
-void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double> &gstore) {
+void LaplaceSolver::SymmetriseSourceTerm(const Eigen::VectorXd &gstore) {
   for (int l = 0; l < s_.nThetaReduced; ++l) {
     int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
     for (int k = 0; k < s_.nZeta; ++k) {
@@ -141,7 +139,7 @@ void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double> &gstore) {
 }  // SymmetriseSourceTerm
 
 void LaplaceSolver::AccumulateFullGrpmn(
-    const std::vector<double> &grpmn_sin_singular) {
+    const Eigen::VectorXd &grpmn_sin_singular) {
   const int mnpd = (mf + 1) * (2 * nf + 1);
   for (int mn = 0; mn < mnpd; ++mn) {
     for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
@@ -155,9 +153,8 @@ void LaplaceSolver::AccumulateFullGrpmn(
 }  // AccumulateFullGrpmn
 
 void LaplaceSolver::PerformToroidalFourierTransforms() {
-  const int size_b = s_.nThetaReduced * (2 * nf + 1);
-  absl::c_fill_n(bcos, size_b, 0);
-  absl::c_fill_n(bsin, size_b, 0);
+  bcos.setZero();
+  bsin.setZero();
 
   for (int n = 0; n < nf + 1; ++n) {
     for (int l = 0; l < s_.nThetaReduced; ++l) {
@@ -188,9 +185,8 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
   }  // n
 
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  const int size_a_temp = mnpd * (2 * nf + 1) * s_.nThetaEff;
-  absl::c_fill_n(actemp, size_a_temp, 0);
-  absl::c_fill_n(astemp, size_a_temp, 0);
+  actemp.setZero();
+  astemp.setZero();
 
   // PERFORM KV (TOROIDAL ANGLE) TRANSFORM
   // For every n, compute an integral over the toroidal grid index k.
@@ -235,8 +231,8 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
 
 void LaplaceSolver::PerformPoloidalFourierTransforms() {
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  absl::c_fill_n(bvec_sin, mnpd, 0);
-  absl::c_fill_n(amat_sin_sin, mnpd * mnpd, 0);
+  bvec_sin.setZero();
+  amat_sin_sin.setZero();
 
   for (int all_n = 0; all_n < 2 * nf + 1; ++all_n) {
     for (int m = 0; m < mf + 1; ++m) {
@@ -358,7 +354,7 @@ void LaplaceSolver::DecomposeMatrix() {
 }  // DecomposeMatrix
 
 void LaplaceSolver::SolveForPotential(
-    const std::vector<double> &bvec_sin_singular) {
+    const Eigen::VectorXd &bvec_sin_singular) {
   int mnpd = (mf + 1) * (2 * nf + 1);
 #ifdef _OPENMP
 #pragma omp single
