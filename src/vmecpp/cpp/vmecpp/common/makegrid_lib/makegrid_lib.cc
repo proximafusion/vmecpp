@@ -479,8 +479,7 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
   // Make a single copy of the configuration and pre-zero all circuit currents.
   // Inside the loop we enable one circuit at a time and reset after.
   MagneticConfiguration magnetic_configuration_copy = magnetic_configuration;
-  Eigen::VectorXd all_zeros =
-      Eigen::VectorXd::Zero(number_of_serial_circuits);
+  Eigen::VectorXd all_zeros = Eigen::VectorXd::Zero(number_of_serial_circuits);
   absl::Status zero_status =
       SetCircuitCurrents(all_zeros, magnetic_configuration_copy);
   if (!zero_status.ok()) {
@@ -520,10 +519,9 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     // independent circuits and many evaluation locations, rather than many
     // independent circuits but few evaluation locations. This is done inside of
     // ABSCAB, which is used within this call to `MagneticField`.
-    absl::Status magnetic_field_status =
-        MagneticField(magnetic_configuration_copy, number_of_evaluation_points,
-                      maybe_cylindrical_grid.value().data(),
-                      magnetic_field.data());
+    absl::Status magnetic_field_status = MagneticField(
+        magnetic_configuration_copy, number_of_evaluation_points,
+        maybe_cylindrical_grid.value().data(), magnetic_field.data());
     if (!magnetic_field_status.ok()) {
       status[circuit_index] = magnetic_field_status;
     } else {
@@ -622,8 +620,7 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
 
   // Make a single copy of the configuration and pre-zero all circuit currents.
   MagneticConfiguration magnetic_configuration_copy = magnetic_configuration;
-  Eigen::VectorXd all_zeros =
-      Eigen::VectorXd::Zero(number_of_serial_circuits);
+  Eigen::VectorXd all_zeros = Eigen::VectorXd::Zero(number_of_serial_circuits);
   absl::Status zero_status =
       SetCircuitCurrents(all_zeros, magnetic_configuration_copy);
   if (!zero_status.ok()) {
@@ -663,10 +660,9 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     // independent circuits and many evaluation locations, rather than many
     // independent circuits but few evaluation locations. This is done inside of
     // ABSCAB, which is used within this call to `VectorPotential`.
-    absl::Status vector_potential_status =
-        VectorPotential(magnetic_configuration_copy, number_of_evaluation_points,
-                        maybe_cylindrical_grid.value().data(),
-                        vector_potential.data());
+    absl::Status vector_potential_status = VectorPotential(
+        magnetic_configuration_copy, number_of_evaluation_points,
+        maybe_cylindrical_grid.value().data(), vector_potential.data());
 
     // Reset this circuit's current to zero for the next iteration.
     currents_for_circuit[circuit_index] = 0.0;

@@ -101,30 +101,35 @@ absl::Status VectorPotential(
 // m_magnetic_field_aos (resp. m_vector_potential_aos) must be initialized to
 // zero by the caller before the first call; ABSCAB only accumulates into it.
 
-absl::Status MagneticField(
-    const CircularFilament &circular_filament, double current,
-    int num_evaluation_positions, const double *evaluation_positions_aos,
-    double *m_magnetic_field_aos, bool check_current_carrier = true);
+absl::Status MagneticField(const CircularFilament &circular_filament,
+                           double current, int num_evaluation_positions,
+                           const double *evaluation_positions_aos,
+                           double *m_magnetic_field_aos,
+                           bool check_current_carrier = true);
 
-absl::Status MagneticField(
-    const PolygonFilament &polygon_filament, double current,
-    int num_evaluation_positions, const double *evaluation_positions_aos,
-    double *m_magnetic_field_aos, bool check_current_carrier = true);
+absl::Status MagneticField(const PolygonFilament &polygon_filament,
+                           double current, int num_evaluation_positions,
+                           const double *evaluation_positions_aos,
+                           double *m_magnetic_field_aos,
+                           bool check_current_carrier = true);
 
-absl::Status MagneticField(
-    const MagneticConfiguration &magnetic_configuration,
-    int num_evaluation_positions, const double *evaluation_positions_aos,
-    double *m_magnetic_field_aos, bool check_current_carrier = true);
+absl::Status MagneticField(const MagneticConfiguration &magnetic_configuration,
+                           int num_evaluation_positions,
+                           const double *evaluation_positions_aos,
+                           double *m_magnetic_field_aos,
+                           bool check_current_carrier = true);
 
-absl::Status VectorPotential(
-    const CircularFilament &circular_filament, double current,
-    int num_evaluation_positions, const double *evaluation_positions_aos,
-    double *m_vector_potential_aos, bool check_current_carrier = true);
+absl::Status VectorPotential(const CircularFilament &circular_filament,
+                             double current, int num_evaluation_positions,
+                             const double *evaluation_positions_aos,
+                             double *m_vector_potential_aos,
+                             bool check_current_carrier = true);
 
-absl::Status VectorPotential(
-    const PolygonFilament &polygon_filament, double current,
-    int num_evaluation_positions, const double *evaluation_positions_aos,
-    double *m_vector_potential_aos, bool check_current_carrier = true);
+absl::Status VectorPotential(const PolygonFilament &polygon_filament,
+                             double current, int num_evaluation_positions,
+                             const double *evaluation_positions_aos,
+                             double *m_vector_potential_aos,
+                             bool check_current_carrier = true);
 
 absl::Status VectorPotential(
     const MagneticConfiguration &magnetic_configuration,
