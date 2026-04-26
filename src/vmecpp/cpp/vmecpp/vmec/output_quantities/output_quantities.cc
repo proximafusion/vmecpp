@@ -2052,56 +2052,56 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
     // bs_s(v,u) = .5*( bs(v,u) - bs(-v,-u) )     ! * SIN(mu - nv)
     // bs_a(v,u) = .5*( bs(v,u) + bs(-v,-u) )     ! * COS(mu - nv)
     for (int jF = 0; jF < vmec_internal_results.num_full; ++jF) {
-      for (int kl = 0; kl < vmec_internal_results.nZnT_reduced; ++kl) {
-        const int source_index = jF * s.nZnT + kl;
+      for (int k = 0; k < s.nZeta; ++k) {
+        for (int l = 0; l < s.nThetaReduced; ++l) {
+          const int kl = k * s.nThetaReduced + l;
+          const int source_index = jF * s.nZnT + k * s.nThetaEff + l;
 
-        const int k = kl / s.nThetaReduced;
-        const int l = kl % s.nThetaReduced;
+          const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
+          const int k_reversed = (s.nZeta - k) % s.nZeta;
+          const int source_index_reversed =
+              jF * s.nZnT + k_reversed * s.nThetaEff + l_reversed;
 
-        const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
-        const int k_reversed = (s.nZeta - k) % s.nZeta;
-        const int kl_reversed = k_reversed * s.nThetaEven + l_reversed;
+          const int target_index =
+              jF * vmec_internal_results.nZnT_reduced + kl;
 
-        const int source_index_reversed = jF * s.nZnT + kl_reversed;
-
-        const int target_index = jF * vmec_internal_results.nZnT_reduced + kl;
-
-        decomposed_bcov.bsubs_s(target_index) =
-            bsubs_full.bsubs_full(source_index) -
-            bsubs_full.bsubs_full(source_index_reversed);
-        decomposed_bcov.bsubs_a(target_index) =
-            bsubs_full.bsubs_full(source_index) +
-            bsubs_full.bsubs_full(source_index_reversed);
-      }  // kl
+          decomposed_bcov.bsubs_s(target_index) =
+              bsubs_full.bsubs_full(source_index) -
+              bsubs_full.bsubs_full(source_index_reversed);
+          decomposed_bcov.bsubs_a(target_index) =
+              bsubs_full.bsubs_full(source_index) +
+              bsubs_full.bsubs_full(source_index_reversed);
+        }  // l
+      }  // k
     }  // jF
     for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
-      for (int kl = 0; kl < s.nZnT; ++kl) {
-        const int source_index = jH * s.nZnT + kl;
+      for (int k = 0; k < s.nZeta; ++k) {
+        for (int l = 0; l < s.nThetaReduced; ++l) {
+          const int kl = k * s.nThetaReduced + l;
+          const int source_index = jH * s.nZnT + k * s.nThetaEff + l;
 
-        const int k = kl / s.nThetaEff;
-        const int l = kl % s.nThetaEff;
+          const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
+          const int k_reversed = (s.nZeta - k) % s.nZeta;
+          const int source_index_reversed =
+              jH * s.nZnT + k_reversed * s.nThetaEff + l_reversed;
 
-        const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
-        const int k_reversed = (s.nZeta - k) % s.nZeta;
-        const int kl_reversed = k_reversed * s.nThetaEven + l_reversed;
+          const int target_index =
+              jH * vmec_internal_results.nZnT_reduced + kl;
 
-        const int source_index_reversed = jH * s.nZnT + kl_reversed;
-
-        const int target_index = jH * vmec_internal_results.nZnT_reduced + kl;
-
-        decomposed_bcov.bsubu_s(target_index) =
-            vmec_internal_results.bsubu(source_index) +
-            vmec_internal_results.bsubu(source_index_reversed);
-        decomposed_bcov.bsubu_a(target_index) =
-            vmec_internal_results.bsubu(source_index) -
-            vmec_internal_results.bsubu(source_index_reversed);
-        decomposed_bcov.bsubv_s(target_index) =
-            vmec_internal_results.bsubv(source_index) +
-            vmec_internal_results.bsubv(source_index_reversed);
-        decomposed_bcov.bsubv_a(target_index) =
-            vmec_internal_results.bsubv(source_index) -
-            vmec_internal_results.bsubv(source_index_reversed);
-      }  // kl
+          decomposed_bcov.bsubu_s(target_index) =
+              vmec_internal_results.bsubu(source_index) +
+              vmec_internal_results.bsubu(source_index_reversed);
+          decomposed_bcov.bsubu_a(target_index) =
+              vmec_internal_results.bsubu(source_index) -
+              vmec_internal_results.bsubu(source_index_reversed);
+          decomposed_bcov.bsubv_s(target_index) =
+              vmec_internal_results.bsubv(source_index) +
+              vmec_internal_results.bsubv(source_index_reversed);
+          decomposed_bcov.bsubv_a(target_index) =
+              vmec_internal_results.bsubv(source_index) -
+              vmec_internal_results.bsubv(source_index_reversed);
+        }  // l
+      }  // k
     }  // jH
   } else {
     // stellarator-symmetric case: simply copy over data

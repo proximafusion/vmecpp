@@ -135,6 +135,15 @@ VmecINDATA::VmecINDATA() {
   gamma = 0.0;
   spres_ped = 1.0;
 
+  // anisotropy / flow profiles
+  bcrit = 1.0;
+  pt_type = "power_series";
+  at.resize(1);
+  at[0] = 1.0;
+  ph_type = "power_series";
+  ah.resize(1);
+  ah[0] = 0.0;
+
   // (initial guess for) iota profile
   piota_type = "power_series";
   // ai left empty
@@ -203,6 +212,12 @@ void VmecINDATA::SetMpolNtor(int new_mpol, int new_ntor) {
   zaxis_s(shortest_range) = old_axis_fc(shortest_range);
 
   if (lasym) {
+    if (!raxis_s.has_value()) {
+      raxis_s = VectorXd::Zero(ntor + 1);
+    }
+    if (!zaxis_c.has_value()) {
+      zaxis_c = VectorXd::Zero(ntor + 1);
+    }
     old_axis_fc = raxis_s.value();
     raxis_s = VectorXd::Zero(new_ntor + 1);
     (*raxis_s)(shortest_range) = old_axis_fc(shortest_range);
@@ -232,6 +247,12 @@ void VmecINDATA::SetMpolNtor(int new_mpol, int new_ntor) {
   zbs = resized_2d_coeff(zbs);
 
   if (lasym) {
+    if (!rbs.has_value()) {
+      rbs = RowMatrixXd::Zero(mpol, 2 * ntor + 1);
+    }
+    if (!zbc.has_value()) {
+      zbc = RowMatrixXd::Zero(mpol, 2 * ntor + 1);
+    }
     rbs = resized_2d_coeff(rbs.value());
     zbc = resized_2d_coeff(zbc.value());
   }
@@ -258,6 +279,9 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(pres_scale, "/indata/pres_scale", file);
   WriteH5Dataset(gamma, "/indata/gamma", file);
   WriteH5Dataset(spres_ped, "/indata/spres_ped", file);
+  WriteH5Dataset(bcrit, "/indata/bcrit", file);
+  WriteH5Dataset(pt_type, "/indata/pt_type", file);
+  WriteH5Dataset(ph_type, "/indata/ph_type", file);
   WriteH5Dataset(piota_type, "/indata/piota_type", file);
   WriteH5Dataset(pcurr_type, "/indata/pcurr_type", file);
   WriteH5Dataset(curtor, "/indata/curtor", file);
@@ -285,6 +309,12 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(am, "/indata/am", file);
   WriteH5Dataset(am_aux_s, "/indata/am_aux_s", file);
   WriteH5Dataset(am_aux_f, "/indata/am_aux_f", file);
+  WriteH5Dataset(at, "/indata/at", file);
+  WriteH5Dataset(at_aux_s, "/indata/at_aux_s", file);
+  WriteH5Dataset(at_aux_f, "/indata/at_aux_f", file);
+  WriteH5Dataset(ah, "/indata/ah", file);
+  WriteH5Dataset(ah_aux_s, "/indata/ah_aux_s", file);
+  WriteH5Dataset(ah_aux_f, "/indata/ah_aux_f", file);
   WriteH5Dataset(ai, "/indata/ai", file);
   WriteH5Dataset(ai_aux_s, "/indata/ai_aux_s", file);
   WriteH5Dataset(ai_aux_f, "/indata/ai_aux_f", file);
@@ -331,6 +361,21 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.pres_scale, "/indata/pres_scale", from_file);
   ReadH5Dataset(m_indata.gamma, "/indata/gamma", from_file);
   ReadH5Dataset(m_indata.spres_ped, "/indata/spres_ped", from_file);
+  if (H5Lexists(from_file.getId(), "/indata/bcrit", 0) == 1) {
+    ReadH5Dataset(m_indata.bcrit, "/indata/bcrit", from_file);
+  } else {
+    m_indata.bcrit = 1.0;
+  }
+  if (H5Lexists(from_file.getId(), "/indata/pt_type", 0) == 1) {
+    ReadH5Dataset(m_indata.pt_type, "/indata/pt_type", from_file);
+  } else {
+    m_indata.pt_type = "power_series";
+  }
+  if (H5Lexists(from_file.getId(), "/indata/ph_type", 0) == 1) {
+    ReadH5Dataset(m_indata.ph_type, "/indata/ph_type", from_file);
+  } else {
+    m_indata.ph_type = "power_series";
+  }
   ReadH5Dataset(m_indata.piota_type, "/indata/piota_type", from_file);
   ReadH5Dataset(m_indata.pcurr_type, "/indata/pcurr_type", from_file);
   ReadH5Dataset(m_indata.curtor, "/indata/curtor", from_file);
@@ -386,6 +431,38 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.am, "/indata/am", from_file);
   ReadH5Dataset(m_indata.am_aux_s, "/indata/am_aux_s", from_file);
   ReadH5Dataset(m_indata.am_aux_f, "/indata/am_aux_f", from_file);
+  if (H5Lexists(from_file.getId(), "/indata/at", 0) == 1) {
+    ReadH5Dataset(m_indata.at, "/indata/at", from_file);
+  } else {
+    m_indata.at.resize(1);
+    m_indata.at[0] = 1.0;
+  }
+  if (H5Lexists(from_file.getId(), "/indata/at_aux_s", 0) == 1) {
+    ReadH5Dataset(m_indata.at_aux_s, "/indata/at_aux_s", from_file);
+  } else {
+    m_indata.at_aux_s.resize(0);
+  }
+  if (H5Lexists(from_file.getId(), "/indata/at_aux_f", 0) == 1) {
+    ReadH5Dataset(m_indata.at_aux_f, "/indata/at_aux_f", from_file);
+  } else {
+    m_indata.at_aux_f.resize(0);
+  }
+  if (H5Lexists(from_file.getId(), "/indata/ah", 0) == 1) {
+    ReadH5Dataset(m_indata.ah, "/indata/ah", from_file);
+  } else {
+    m_indata.ah.resize(1);
+    m_indata.ah[0] = 0.0;
+  }
+  if (H5Lexists(from_file.getId(), "/indata/ah_aux_s", 0) == 1) {
+    ReadH5Dataset(m_indata.ah_aux_s, "/indata/ah_aux_s", from_file);
+  } else {
+    m_indata.ah_aux_s.resize(0);
+  }
+  if (H5Lexists(from_file.getId(), "/indata/ah_aux_f", 0) == 1) {
+    ReadH5Dataset(m_indata.ah_aux_f, "/indata/ah_aux_f", from_file);
+  } else {
+    m_indata.ah_aux_f.resize(0);
+  }
   ReadH5Dataset(m_indata.ai, "/indata/ai", from_file);
   ReadH5Dataset(m_indata.ai_aux_s, "/indata/ai_aux_s", from_file);
   ReadH5Dataset(m_indata.ai_aux_f, "/indata/ai_aux_f", from_file);
@@ -641,6 +718,92 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
   if (maybe_spres_ped->has_value()) {
     vmec_indata.spres_ped = maybe_spres_ped->value();
+  }
+
+  // -----------------------------------------------
+
+  auto maybe_bcrit = JsonReadDouble(j, "bcrit");
+  if (!maybe_bcrit.ok()) {
+    return maybe_bcrit.status();
+  }
+  if (maybe_bcrit->has_value()) {
+    vmec_indata.bcrit = maybe_bcrit->value();
+  }
+
+  auto maybe_pt_type = JsonReadString(j, "pt_type");
+  if (!maybe_pt_type.ok()) {
+    return maybe_pt_type.status();
+  }
+  if (maybe_pt_type->has_value()) {
+    vmec_indata.pt_type = maybe_pt_type->value();
+  }
+
+  auto maybe_at = JsonReadVectorDouble(j, "at");
+  if (!maybe_at.ok()) {
+    return maybe_at.status();
+  }
+  if (maybe_at->has_value()) {
+    vmec_indata.at = maybe_at->value();
+  }
+
+  auto maybe_at_aux_s = JsonReadVectorDouble(j, "at_aux_s");
+  if (!maybe_at_aux_s.ok()) {
+    return maybe_at_aux_s.status();
+  }
+  if (maybe_at_aux_s->has_value()) {
+    vmec_indata.at_aux_s = maybe_at_aux_s->value();
+  }
+
+  auto maybe_at_aux_f = JsonReadVectorDouble(j, "at_aux_f");
+  if (!maybe_at_aux_f.ok()) {
+    return maybe_at_aux_f.status();
+  }
+  if (maybe_at_aux_f->has_value()) {
+    vmec_indata.at_aux_f = maybe_at_aux_f->value();
+  }
+
+  if (vmec_indata.at_aux_f.size() != vmec_indata.at_aux_s.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "length of at_aux_f (%ld) does not match length of at_aux_s (%ld)\n",
+        vmec_indata.at_aux_f.size(), vmec_indata.at_aux_s.size()));
+  }
+
+  auto maybe_ph_type = JsonReadString(j, "ph_type");
+  if (!maybe_ph_type.ok()) {
+    return maybe_ph_type.status();
+  }
+  if (maybe_ph_type->has_value()) {
+    vmec_indata.ph_type = maybe_ph_type->value();
+  }
+
+  auto maybe_ah = JsonReadVectorDouble(j, "ah");
+  if (!maybe_ah.ok()) {
+    return maybe_ah.status();
+  }
+  if (maybe_ah->has_value()) {
+    vmec_indata.ah = maybe_ah->value();
+  }
+
+  auto maybe_ah_aux_s = JsonReadVectorDouble(j, "ah_aux_s");
+  if (!maybe_ah_aux_s.ok()) {
+    return maybe_ah_aux_s.status();
+  }
+  if (maybe_ah_aux_s->has_value()) {
+    vmec_indata.ah_aux_s = maybe_ah_aux_s->value();
+  }
+
+  auto maybe_ah_aux_f = JsonReadVectorDouble(j, "ah_aux_f");
+  if (!maybe_ah_aux_f.ok()) {
+    return maybe_ah_aux_f.status();
+  }
+  if (maybe_ah_aux_f->has_value()) {
+    vmec_indata.ah_aux_f = maybe_ah_aux_f->value();
+  }
+
+  if (vmec_indata.ah_aux_f.size() != vmec_indata.ah_aux_s.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "length of ah_aux_f (%ld) does not match length of ah_aux_s (%ld)\n",
+        vmec_indata.ah_aux_f.size(), vmec_indata.ah_aux_s.size()));
   }
 
   // -----------------------------------------------
@@ -1103,6 +1266,15 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["pres_scale"] = pres_scale;
   output["gamma"] = gamma;
   output["spres_ped"] = spres_ped;
+  output["bcrit"] = bcrit;
+  output["pt_type"] = pt_type;
+  output["at"] = at;
+  output["at_aux_s"] = at_aux_s;
+  output["at_aux_f"] = at_aux_f;
+  output["ph_type"] = ph_type;
+  output["ah"] = ah;
+  output["ah_aux_s"] = ah_aux_s;
+  output["ah_aux_f"] = ah_aux_f;
 
   // (Initial Guess for) Rotational Transform Profile
   output["piota_type"] = piota_type;

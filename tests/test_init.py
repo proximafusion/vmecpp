@@ -85,6 +85,137 @@ def test_get_outputs_if_non_converged_if_wanted():
     assert not np.all(vmec_output.jxbout.jxb_gradp == 0.0)
 
 
+def test_get_outputs_for_asymmetric_tokamak_if_non_converged():
+    """Test that short asymmetric runs can still return output quantities."""
+
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+    )
+    vmec_input.niter_array[-1] = 2
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    assert vmec_output.wout is not None
+    assert vmec_output.wout.lasym
+    assert vmec_output.wout.niter >= 2
+    assert np.isfinite(vmec_output.wout.raxis_cc[0])
+    assert np.isfinite(vmec_output.wout.zaxis_cs[0])
+    assert not np.all(vmec_output.jxbout.bsubu3 == 0.0)
+
+
+def test_asymmetric_tokamak_short_run_reaches_small_residuals():
+    """Test that the asymmetric tokamak follows the corrected force trajectory."""
+
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+    )
+    vmec_input.niter_array[-1] = 200
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    assert vmec_output.wout is not None
+    assert vmec_output.wout.fsqr < 1.0e-6
+    assert vmec_output.wout.fsqz < 1.0e-6
+    assert vmec_output.wout.raxis_cc[0] < 6.09
+    assert vmec_output.wout.zaxis_cc[0] > 0.09
+
+
+def test_landreman_low_res_recovers_axis_and_converges():
+    """Test that retry-time axis recovery handles the low-res asymmetric case."""
+
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.LandremanSenguptaPlunk_section5p3_low_res"
+    )
+    vmec_input.niter_array[-1] = 200
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    assert vmec_output.wout is not None
+    assert vmec_output.wout.ier_flag == 0
+    assert vmec_output.wout.fsqr < 1.0e-5
+    assert vmec_output.wout.fsqz < 1.0e-5
+    assert vmec_output.wout.raxis_cc[0] == pytest.approx(0.9945761, abs=1.0e-2)
+    assert vmec_output.wout.zaxis_cc[0] == pytest.approx(-0.0021634, abs=5.0e-3)
+
+
+def test_landreman_low_res_default_threads_do_not_crash():
+    """Test that the low-res asymmetric retry path is safe with default threading."""
+
+    script = f"""
+from pathlib import Path
+import json
+import vmecpp
+
+input_file = Path({str(TEST_DATA_DIR / "input.LandremanSenguptaPlunk_section5p3_low_res")!r})
+vmec_input = vmecpp.VmecInput.from_file(input_file)
+vmec_input.niter_array[-1] = 200
+vmec_input.return_outputs_even_if_not_converged = True
+vmec_output = vmecpp.run(vmec_input, verbose=False)
+print(json.dumps({{
+    "ier_flag": int(vmec_output.wout.ier_flag),
+    "fsqr": float(vmec_output.wout.fsqr),
+    "fsqz": float(vmec_output.wout.fsqz),
+}}))
+"""
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    result = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert result["ier_flag"] == 0
+    assert result["fsqr"] < 1.0e-5
+    assert result["fsqz"] < 1.0e-5
+
+
+def test_asymmetric_tokamak_matches_reference_axis_scalars():
+    """Test key asymmetric tokamak scalars against the VMEC2000 reference run."""
+
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+    )
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    assert vmec_output.wout.ier_flag == 0
+    assert vmec_output.wout.fsqr < 1.0e-6
+    assert vmec_output.wout.fsqz < 1.0e-6
+    assert vmec_output.wout.aspect == pytest.approx(10.1, abs=1.0e-12)
+    assert vmec_output.wout.raxis_cc[0] == pytest.approx(6.03903441199, abs=3.0e-3)
+    assert vmec_output.wout.zaxis_cc[0] == pytest.approx(7.78888829013e-2, abs=1.0e-3)
+    assert vmec_output.wout.raxis_cs[0] == pytest.approx(0.0, abs=1.0e-12)
+    assert vmec_output.wout.zaxis_cs[0] == pytest.approx(0.0, abs=1.0e-12)
+
+
+def test_asymmetric_tokamak_wout_can_be_saved_on_python_314():
+    """Test that optional asymmetric arrays do not break wout saving."""
+
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+    )
+    vmec_input.niter_array[-1] = 2
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    with tempfile.NamedTemporaryFile(suffix=".nc") as tmp_file:
+        vmec_output.wout.save(tmp_file.name)
+        reloaded_wout = vmecpp.VmecWOut.from_wout_file(tmp_file.name)
+
+    assert reloaded_wout.lasym
+    assert np.isfinite(reloaded_wout.raxis_cc[0])
+    assert np.isfinite(reloaded_wout.zaxis_cs[0])
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
@@ -165,6 +296,34 @@ def test_asymmetric_tokamak_input_io():
     assert vmec_input.zbc[0, 0] == pytest.approx(0.0)
     assert vmec_input.raxis_s[0] == pytest.approx(0.0)
     assert vmec_input.zaxis_c[0] == pytest.approx(0.0)
+
+
+def test_asymmetric_tokamak_to_cpp_indata():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "input.up_down_asymmetric_tokamak")
+
+    cpp_indata = vmec_input._to_cpp_vmecindata()
+
+    assert cpp_indata.lasym
+    assert cpp_indata.rbs.shape == (vmec_input.mpol, 2 * vmec_input.ntor + 1)
+    assert cpp_indata.zbc.shape == (vmec_input.mpol, 2 * vmec_input.ntor + 1)
+
+
+def test_anisotropic_profile_fields_roundtrip_from_indata():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "input.anisotropic_profile_parse")
+
+    assert vmec_input.lasym is True
+    assert vmec_input.bcrit == pytest.approx(1.0)
+    assert vmec_input.pt_type == "power_series"
+    assert vmec_input.ph_type == "power_series"
+    np.testing.assert_allclose(vmec_input.at, np.array([1.0, 0.0, 0.0]))
+    np.testing.assert_allclose(vmec_input.ah, np.array([0.0, 0.0, 0.0]))
+
+    cpp_indata = vmec_input._to_cpp_vmecindata()
+
+    assert cpp_indata.pt_type == "power_series"
+    assert cpp_indata.ph_type == "power_series"
+    np.testing.assert_allclose(cpp_indata.at, np.array([1.0, 0.0, 0.0]))
+    np.testing.assert_allclose(cpp_indata.ah, np.array([0.0, 0.0, 0.0]))
 
 
 _MISSING_FORTRAN_VARIABLES = [
