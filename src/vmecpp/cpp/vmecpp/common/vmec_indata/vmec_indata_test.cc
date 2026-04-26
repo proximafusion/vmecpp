@@ -140,6 +140,15 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.pres_scale, 1.0);
   EXPECT_EQ(indata.gamma, 0.0);
   EXPECT_EQ(indata.spres_ped, 1.0);
+  EXPECT_EQ(indata.bcrit, 1.0);
+  EXPECT_EQ(indata.pt_type, "power_series");
+  EXPECT_THAT(indata.at, ElementsAre(1.0));
+  EXPECT_EQ(indata.at_aux_s.size(), 0);
+  EXPECT_EQ(indata.at_aux_f.size(), 0);
+  EXPECT_EQ(indata.ph_type, "power_series");
+  EXPECT_THAT(indata.ah, ElementsAre(0.0));
+  EXPECT_EQ(indata.ah_aux_s.size(), 0);
+  EXPECT_EQ(indata.ah_aux_f.size(), 0);
 
   // (initial guess for) iota profile
   EXPECT_EQ(indata.piota_type, "power_series");
@@ -277,6 +286,15 @@ TEST(TestVmecINDATA, HDF5IO) {
   EXPECT_EQ(indata.pres_scale, indata_from_file.pres_scale);
   EXPECT_EQ(indata.gamma, indata_from_file.gamma);
   EXPECT_EQ(indata.spres_ped, indata_from_file.spres_ped);
+  EXPECT_EQ(indata.bcrit, indata_from_file.bcrit);
+  EXPECT_EQ(indata.pt_type, indata_from_file.pt_type);
+  EXPECT_EQ(indata.at, indata_from_file.at);
+  EXPECT_EQ(indata.at_aux_s, indata_from_file.at_aux_s);
+  EXPECT_EQ(indata.at_aux_f, indata_from_file.at_aux_f);
+  EXPECT_EQ(indata.ph_type, indata_from_file.ph_type);
+  EXPECT_EQ(indata.ah, indata_from_file.ah);
+  EXPECT_EQ(indata.ah_aux_s, indata_from_file.ah_aux_s);
+  EXPECT_EQ(indata.ah_aux_f, indata_from_file.ah_aux_f);
   EXPECT_EQ(indata.piota_type, indata_from_file.piota_type);
   EXPECT_EQ(indata.ai, indata_from_file.ai);
   EXPECT_EQ(indata.ai_aux_s, indata_from_file.ai_aux_s);
@@ -404,6 +422,15 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.pres_scale, indata.pres_scale);
   EXPECT_EQ(copy.gamma, indata.gamma);
   EXPECT_EQ(copy.spres_ped, indata.spres_ped);
+  EXPECT_EQ(copy.bcrit, indata.bcrit);
+  EXPECT_EQ(copy.pt_type, indata.pt_type);
+  EXPECT_EQ(copy.at, indata.at);
+  EXPECT_EQ(copy.at_aux_s, indata.at_aux_s);
+  EXPECT_EQ(copy.at_aux_f, indata.at_aux_f);
+  EXPECT_EQ(copy.ph_type, indata.ph_type);
+  EXPECT_EQ(copy.ah, indata.ah);
+  EXPECT_EQ(copy.ah_aux_s, indata.ah_aux_s);
+  EXPECT_EQ(copy.ah_aux_f, indata.ah_aux_f);
   EXPECT_EQ(copy.piota_type, indata.piota_type);
   EXPECT_EQ(copy.ai, indata.ai);
   EXPECT_EQ(copy.ai_aux_s, indata.ai_aux_s);

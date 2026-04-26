@@ -134,6 +134,36 @@ class VmecINDATA {
   double spres_ped;
 
   // ---------------------------------
+  // anisotropy / flow profiles
+
+  // hot particle energy deposition value for |B|
+  double bcrit;
+
+  // parametrization of temperature anisotropy profile
+  std::string pt_type;
+
+  // temperature anisotropy profile coefficients
+  Eigen::VectorXd at;
+
+  // [at_auxLen] spline anisotropy profile: knot locations in s
+  Eigen::VectorXd at_aux_s;
+
+  // [at_auxLen] spline anisotropy profile: values at knots
+  Eigen::VectorXd at_aux_f;
+
+  // parametrization of toroidal rotation profile
+  std::string ph_type;
+
+  // toroidal rotation profile coefficients
+  Eigen::VectorXd ah;
+
+  // [ah_auxLen] spline rotation profile: knot locations in s
+  Eigen::VectorXd ah_aux_s;
+
+  // [ah_auxLen] spline rotation profile: values at knots
+  Eigen::VectorXd ah_aux_f;
+
+  // ---------------------------------
   // (initial guess for) iota profile
 
   // parametrization of iota profile

@@ -7,7 +7,7 @@ name = "vmecpp"
 dynamic = ["version"]
 description = "Proxima Fusion's reimplementation of the Variational Moments Equilibrium Code (VMEC), a free-boundary ideal-MHD equilibrium solver for stellarators and Tokamaks."
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10,<3.15"
 license = "MIT"
 license-files = ["LICENSE.txt"]
 keywords = []
@@ -25,6 +25,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = [
@@ -35,7 +36,8 @@ dependencies = [
   "jaxtyping>=0.2.6",
   "jax!=0.5.2", # To prevent a circular import bug in jax on arch Linux
   "jax!=0.5.1", # To prevent a circular import bug in jax on arch Linux
-  "simsopt>=1.8.1",
+  "simsopt>=1.8.1; python_version < '3.14'",
+  "simsopt @ git+https://github.com/itpplasma/simsopt.git@python-3-14-build-support ; python_version >= '3.14'",
 ]
 
 [project.scripts]
@@ -92,7 +94,7 @@ version_file = "src/vmecpp/__about__.py"
 archs = ["native"]
 skip = ["*-musllinux*"]
 build-frontend = "build[uv]" # More modern package manager than pip, with faster builds
-test-skip = ["cp314-*", "cp314t-*"] # Skip tests on Python 3.14 until all our dependencies start supporting it. The wheels are still valid, and become installable the moment simsopt releases 3.14 support.
+test-skip = ["cp314t-*"] # Keep free-threaded CPython skipped; Python 3.14 now installs through the temporary simsopt fork until upstream support lands.
 test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py"
 

@@ -33,6 +33,22 @@ logger = logging.getLogger(__name__)
 _ArrayType = typing.TypeVar("_ArrayType")
 
 
+def _jaxtyping_array_annotation(annotation: typing.Any) -> type[jt.AbstractArray] | None:
+    if isinstance(annotation, type):
+        try:
+            if issubclass(annotation, jt.AbstractArray):
+                return annotation
+        except TypeError:
+            return None
+
+    for nested_annotation in typing.get_args(annotation):
+        array_annotation = _jaxtyping_array_annotation(nested_annotation)
+        if array_annotation is not None:
+            return array_annotation
+
+    return None
+
+
 def _wrap_dense_to_sparse(
     value: typing.Any,
     handler: pydantic.SerializerFunctionWrapHandler,
@@ -263,6 +279,45 @@ class VmecInput(BaseModelWithNumpy):
 
     Outside this radial location, pressure is constant.
     """
+
+    bcrit: float = 1.0
+    """Hot particle energy deposition value for |B|."""
+
+    pt_type: ProfileType = "power_series"
+    """Parametrization of the anisotropy or flow temperature profile."""
+
+    at: jt.Float[np.ndarray, "at_len"] = pydantic.Field(
+        default_factory=lambda: np.array([1.0])
+    )
+    """Anisotropy or flow temperature profile coefficients."""
+
+    at_aux_s: jt.Float[np.ndarray, "at_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Spline anisotropy profile: knot locations in s."""
+
+    at_aux_f: jt.Float[np.ndarray, "at_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Spline anisotropy profile: values at knots."""
+
+    ph_type: ProfileType = "power_series"
+    """Parametrization of the toroidal rotation profile."""
+
+    ah: jt.Float[np.ndarray, "ah_len"] = pydantic.Field(
+        default_factory=lambda: np.array([0.0])
+    )
+    """Toroidal rotation profile coefficients."""
+
+    ah_aux_s: jt.Float[np.ndarray, "ah_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Spline toroidal rotation profile: knot locations in s."""
+
+    ah_aux_f: jt.Float[np.ndarray, "ah_aux_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Spline toroidal rotation profile: values at knots."""
 
     piota_type: ProfileType = "power_series"
     """Parametrization of iota (rotational transform) profile."""
@@ -1348,14 +1403,13 @@ class VmecWOut(BaseModelWithNumpy):
                     shape_string = tuple(
                         [f"dim_{dim:05d}" for dim in value_array.shape]
                     )
-                    if (
-                        field_info is not None  # is a model field
-                        and field_info.annotation is not None  # has an annotation
-                        and issubclass(
-                            field_info.annotation,
-                            jt.AbstractArray,
+                    array_annotation = None
+                    if field_info is not None:
+                        array_annotation = _jaxtyping_array_annotation(
+                            field_info.annotation
                         )
-                    ):
+
+                    if array_annotation is not None:
                         # Extract the dimension names used for NetCDF wout when available
                         shape_string = tuple(
                             [
@@ -1363,7 +1417,7 @@ class VmecWOut(BaseModelWithNumpy):
                                 if isinstance(dim, jt._array_types._NamedDim)
                                 else dim_default_name
                                 for dim, dim_default_name in zip(
-                                    field_info.annotation.dims,
+                                    array_annotation.dims,
                                     shape_string,
                                     strict=True,
                                 )
