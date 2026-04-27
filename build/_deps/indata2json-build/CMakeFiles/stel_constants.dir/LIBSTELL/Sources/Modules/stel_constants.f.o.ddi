@@ -1,0 +1,25 @@
+{
+	"revision" : 0,
+	"rules" : 
+	[
+		{
+			"outputs" : [],
+			"primary-output" : "_deps/indata2json-build/CMakeFiles/stel_constants.dir/LIBSTELL/Sources/Modules/stel_constants.f.o",
+			"provides" : 
+			[
+				{
+					"compiled-module-path" : "_deps/indata2json-build/stel_constants.mod",
+					"is-interface" : true,
+					"logical-name" : "stel_constants.mod"
+				}
+			],
+			"requires" : 
+			[
+				{
+					"logical-name" : "stel_kinds.mod"
+				}
+			]
+		}
+	],
+	"version" : 0
+}

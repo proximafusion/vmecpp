@@ -1,0 +1,12 @@
+{
+	"modules" : 
+	{
+		"stel_kinds.mod" : 
+		{
+			"bmi" : "/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-build/stel_kinds.mod",
+			"is-private" : false
+		}
+	},
+	"references" : {},
+	"usages" : {}
+}

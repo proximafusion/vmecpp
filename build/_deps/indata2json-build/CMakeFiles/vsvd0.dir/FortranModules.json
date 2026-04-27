@@ -1,0 +1,12 @@
+{
+	"modules" : 
+	{
+		"vsvd0.mod" : 
+		{
+			"bmi" : "/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-build/vsvd0.mod",
+			"is-private" : false
+		}
+	},
+	"references" : {},
+	"usages" : {}
+}

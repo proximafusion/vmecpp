@@ -1,0 +1,3 @@
+/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/CMakeFiles/abscab-cpp-populate.dir
+/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/CMakeFiles/edit_cache.dir
+/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,21 @@
+# ninja log v7
+0	4	1777331626044801505	nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-mkdir	dff3ff9f59ca132b
+0	4	1777331626044801505	/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-mkdir	dff3ff9f59ca132b
+4	314	1777331626355052920	nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-download	333a3560ee8398c8
+4	314	1777331626355052920	/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-download	333a3560ee8398c8
+314	317	1777331626357804861	nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-update	2ea6a18656f80fd3
+314	317	1777331626357804861	/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-update	2ea6a18656f80fd3
+317	320	1777331626360804893	nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-patch	79cb3db2c65f44c9
+317	320	1777331626360804893	/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-patch	79cb3db2c65f44c9
+320	322	1777331626363804926	nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-configure	8b110774a60987f
+320	322	1777331626363804926	/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-configure	8b110774a60987f
+323	325	1777331626366804958	nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-build	76f3848e85949ee2
+323	325	1777331626366804958	/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-build	76f3848e85949ee2
+325	328	1777331626369804990	nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-install	f70ad3d347711863
+325	328	1777331626369804990	/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-install	f70ad3d347711863
+328	331	1777331626372805022	nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-test	fa75b6cfe4f97ca6
+328	331	1777331626372805022	/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-test	fa75b6cfe4f97ca6
+331	335	1777331626376805065	CMakeFiles/nlohmann_json-populate-complete	cf8db87e21bde8c5
+331	335	1777331626376805065	nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-done	cf8db87e21bde8c5
+331	335	1777331626376805065	/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/CMakeFiles/nlohmann_json-populate-complete	cf8db87e21bde8c5
+331	335	1777331626376805065	/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-done	cf8db87e21bde8c5

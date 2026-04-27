@@ -1,0 +1,21 @@
+# ninja log v7
+0	3	1777331633359879561	pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-mkdir	c3810f5a8b7dc276
+0	3	1777331633359879561	/home/runner/work/vmecpp/vmecpp/build/_deps/pybind11-subbuild/pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-mkdir	c3810f5a8b7dc276
+3	1401	1777331634757894463	pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-download	aa4763f239aed68
+3	1401	1777331634757894463	/home/runner/work/vmecpp/vmecpp/build/_deps/pybind11-subbuild/pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-download	aa4763f239aed68
+1401	1408	1777331634757894463	pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-update	a482f40ef5835679
+1401	1408	1777331634757894463	/home/runner/work/vmecpp/vmecpp/build/_deps/pybind11-subbuild/pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-update	a482f40ef5835679
+1408	1411	1777331634767894569	pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-patch	1de169a6a598d292
+1408	1411	1777331634767894569	/home/runner/work/vmecpp/vmecpp/build/_deps/pybind11-subbuild/pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-patch	1de169a6a598d292
+1411	1414	1777331634770894601	pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-configure	415c1e0c1ab067c7
+1411	1414	1777331634770894601	/home/runner/work/vmecpp/vmecpp/build/_deps/pybind11-subbuild/pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-configure	415c1e0c1ab067c7
+1414	1417	1777331634773894633	pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-build	f48776f769b8cefb
+1414	1417	1777331634773894633	/home/runner/work/vmecpp/vmecpp/build/_deps/pybind11-subbuild/pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-build	f48776f769b8cefb
+1417	1420	1777331634775894655	pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-install	f93870652770bfda
+1417	1420	1777331634775894655	/home/runner/work/vmecpp/vmecpp/build/_deps/pybind11-subbuild/pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-install	f93870652770bfda
+1420	1423	1777331634778894687	pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-test	a153b02f32667189
+1420	1423	1777331634778894687	/home/runner/work/vmecpp/vmecpp/build/_deps/pybind11-subbuild/pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-test	a153b02f32667189
+1423	1427	1777331634782894729	CMakeFiles/pybind11-populate-complete	7a15341d9e87a969
+1423	1427	1777331634782894729	pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-done	7a15341d9e87a969
+1423	1427	1777331634782894729	/home/runner/work/vmecpp/vmecpp/build/_deps/pybind11-subbuild/CMakeFiles/pybind11-populate-complete	7a15341d9e87a969
+1423	1427	1777331634782894729	/home/runner/work/vmecpp/vmecpp/build/_deps/pybind11-subbuild/pybind11-populate-prefix/src/pybind11-populate-stamp/pybind11-populate-done	7a15341d9e87a969

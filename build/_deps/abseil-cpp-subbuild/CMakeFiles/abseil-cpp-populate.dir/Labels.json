@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/CMakeFiles/abseil-cpp-populate"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/CMakeFiles/abseil-cpp-populate.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/CMakeFiles/abseil-cpp-populate-complete.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/abseil-cpp-populate-prefix/src/abseil-cpp-populate-stamp/abseil-cpp-populate-build.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/abseil-cpp-populate-prefix/src/abseil-cpp-populate-stamp/abseil-cpp-populate-configure.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/abseil-cpp-populate-prefix/src/abseil-cpp-populate-stamp/abseil-cpp-populate-download.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/abseil-cpp-populate-prefix/src/abseil-cpp-populate-stamp/abseil-cpp-populate-install.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/abseil-cpp-populate-prefix/src/abseil-cpp-populate-stamp/abseil-cpp-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/abseil-cpp-populate-prefix/src/abseil-cpp-populate-stamp/abseil-cpp-populate-patch.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/abseil-cpp-populate-prefix/src/abseil-cpp-populate-stamp/abseil-cpp-populate-test.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-subbuild/abseil-cpp-populate-prefix/src/abseil-cpp-populate-stamp/abseil-cpp-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"abseil-cpp-populate"
+		],
+		"name" : "abseil-cpp-populate"
+	}
+}

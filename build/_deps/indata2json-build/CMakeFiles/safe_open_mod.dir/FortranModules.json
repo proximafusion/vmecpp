@@ -1,0 +1,12 @@
+{
+	"modules" : 
+	{
+		"safe_open_mod.mod" : 
+		{
+			"bmi" : "/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-build/safe_open_mod.mod",
+			"is-private" : false
+		}
+	},
+	"references" : {},
+	"usages" : {}
+}

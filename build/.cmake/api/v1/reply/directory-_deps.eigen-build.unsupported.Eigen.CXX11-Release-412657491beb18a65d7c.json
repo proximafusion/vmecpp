@@ -1,0 +1,61 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"build/_deps/eigen-src/unsupported/Eigen/CXX11/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 3,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 8,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Devel",
+			"destination" : "include/eigen3/unsupported/Eigen/CXX11",
+			"paths" : 
+			[
+				"build/_deps/eigen-src/unsupported/Eigen/CXX11/Tensor",
+				"build/_deps/eigen-src/unsupported/Eigen/CXX11/TensorSymmetry",
+				"build/_deps/eigen-src/unsupported/Eigen/CXX11/ThreadPool"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "Devel",
+			"destination" : "include/eigen3/unsupported/Eigen/CXX11",
+			"paths" : 
+			[
+				"build/_deps/eigen-src/unsupported/Eigen/CXX11/src"
+			],
+			"type" : "directory"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "_deps/eigen-build/unsupported/Eigen/CXX11",
+		"source" : "build/_deps/eigen-src/unsupported/Eigen/CXX11"
+	}
+}

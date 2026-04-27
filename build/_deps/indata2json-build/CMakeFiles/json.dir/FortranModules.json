@@ -1,0 +1,12 @@
+{
+	"modules" : 
+	{
+		"json.mod" : 
+		{
+			"bmi" : "/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-build/json.mod",
+			"is-private" : false
+		}
+	},
+	"references" : {},
+	"usages" : {}
+}

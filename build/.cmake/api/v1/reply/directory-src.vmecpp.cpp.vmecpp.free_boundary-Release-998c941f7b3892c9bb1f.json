@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "src/vmecpp/cpp/vmecpp/free_boundary",
+		"source" : "src/vmecpp/cpp/vmecpp/free_boundary"
+	}
+}

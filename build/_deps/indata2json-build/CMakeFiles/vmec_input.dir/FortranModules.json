@@ -1,0 +1,12 @@
+{
+	"modules" : 
+	{
+		"vmec_input.mod" : 
+		{
+			"bmi" : "/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-build/vmec_input.mod",
+			"is-private" : false
+		}
+	},
+	"references" : {},
+	"usages" : {}
+}

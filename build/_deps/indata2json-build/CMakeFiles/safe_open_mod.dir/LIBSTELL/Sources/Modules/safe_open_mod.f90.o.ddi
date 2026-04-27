@@ -1,0 +1,20 @@
+{
+	"revision" : 0,
+	"rules" : 
+	[
+		{
+			"outputs" : [],
+			"primary-output" : "_deps/indata2json-build/CMakeFiles/safe_open_mod.dir/LIBSTELL/Sources/Modules/safe_open_mod.f90.o",
+			"provides" : 
+			[
+				{
+					"compiled-module-path" : "_deps/indata2json-build/safe_open_mod.mod",
+					"is-interface" : true,
+					"logical-name" : "safe_open_mod.mod"
+				}
+			],
+			"requires" : []
+		}
+	],
+	"version" : 0
+}

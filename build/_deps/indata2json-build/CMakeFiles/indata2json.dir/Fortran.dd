@@ -1,0 +1,3 @@
+ninja_dyndep_version = 1.0
+build _deps/indata2json-build/CMakeFiles/indata2json.dir/src/indata2json.f90.o: dyndep | _deps/indata2json-build/json.mod _deps/indata2json-build/nzl.mod _deps/indata2json-build/safe_open_mod.mod _deps/indata2json-build/stel_constants.mod _deps/indata2json-build/vmec_input.mod _deps/indata2json-build/vparams.mod
+

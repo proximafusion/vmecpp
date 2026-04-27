@@ -1,0 +1,74 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 136,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 137,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "vmecpp/cpp/.",
+			"paths" : 
+			[
+				"_vmecpp.cpython-312-x86_64-linux-gnu.so"
+			],
+			"targetId" : "_vmecpp::@6890427a1f51a3e7e1df",
+			"targetIndex" : 28,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "Unspecified",
+			"destination" : "vmecpp/cpp/third_party/indata2json",
+			"paths" : 
+			[
+				"_deps/indata2json-build/indata2json"
+			],
+			"targetId" : "indata2json::@2b67e5439d93740de933",
+			"targetIndex" : 120,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "Unspecified",
+			"cxxModuleBmiTarget" : 
+			{
+				"id" : "indata2json::@2b67e5439d93740de933",
+				"index" : 120
+			},
+			"destination" : "vmecpp/cpp/third_party/indata2json",
+			"type" : "cxxModuleBmi"
+		}
+	],
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	}
+}

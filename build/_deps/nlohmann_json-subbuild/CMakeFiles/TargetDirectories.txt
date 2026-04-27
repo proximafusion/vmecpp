@@ -1,0 +1,3 @@
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/CMakeFiles/nlohmann_json-populate.dir
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/CMakeFiles/edit_cache.dir
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/CMakeFiles/rebuild_cache.dir

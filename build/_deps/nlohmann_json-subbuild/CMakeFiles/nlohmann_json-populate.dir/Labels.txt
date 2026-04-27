@@ -1,0 +1,14 @@
+# Target labels
+ nlohmann_json-populate
+# Source files and their labels
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/CMakeFiles/nlohmann_json-populate
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/CMakeFiles/nlohmann_json-populate.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/CMakeFiles/nlohmann_json-populate-complete.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-build.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-configure.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-download.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-install.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-mkdir.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-patch.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-test.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-subbuild/nlohmann_json-populate-prefix/src/nlohmann_json-populate-stamp/nlohmann_json-populate-update.rule

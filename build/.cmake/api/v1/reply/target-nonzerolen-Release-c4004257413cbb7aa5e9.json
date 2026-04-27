@@ -1,0 +1,144 @@
+{
+	"archive" : {},
+	"artifacts" : 
+	[
+		{
+			"path" : "_deps/indata2json-build/libnonzerolen.a"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"target_link_libraries",
+			"target_compile_options",
+			"include_directories"
+		],
+		"files" : 
+		[
+			"build/_deps/indata2json-src/CMakeLists.txt",
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 65,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 67,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 66,
+				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 28,
+				"parent" : 4
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 58,
+				"parent" : 4
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 91,
+				"parent" : 4
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-cpp -lgfortran -DLINUX -O3 -J_deps/indata2json-build"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-std=legacy"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 5,
+					"path" : "/usr/include/hdf5/serial"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "/home/runner/work/vmecpp/vmecpp/build/_deps/eigen-src"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-src"
+				}
+			],
+			"language" : "Fortran",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "stel_kinds::@2b67e5439d93740de933"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "stel_constants::@2b67e5439d93740de933"
+		}
+	],
+	"id" : "nonzerolen::@2b67e5439d93740de933",
+	"name" : "nonzerolen",
+	"nameOnDisk" : "libnonzerolen.a",
+	"paths" : 
+	{
+		"build" : "_deps/indata2json-build",
+		"source" : "build/_deps/indata2json-src"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "build/_deps/indata2json-src/src/nonzerolen.f90",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

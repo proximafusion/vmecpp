@@ -1,0 +1,4 @@
+ninja_dyndep_version = 1.0
+build _deps/indata2json-build/CMakeFiles/stel_kinds.dir/LIBSTELL/Sources/Modules/stel_kinds.f.o | _deps/indata2json-build/stel_kinds.mod: dyndep
+  restat = 1
+

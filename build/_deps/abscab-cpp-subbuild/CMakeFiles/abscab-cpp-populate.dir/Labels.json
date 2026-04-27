@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/CMakeFiles/abscab-cpp-populate"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/CMakeFiles/abscab-cpp-populate.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/CMakeFiles/abscab-cpp-populate-complete.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/abscab-cpp-populate-prefix/src/abscab-cpp-populate-stamp/abscab-cpp-populate-build.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/abscab-cpp-populate-prefix/src/abscab-cpp-populate-stamp/abscab-cpp-populate-configure.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/abscab-cpp-populate-prefix/src/abscab-cpp-populate-stamp/abscab-cpp-populate-download.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/abscab-cpp-populate-prefix/src/abscab-cpp-populate-stamp/abscab-cpp-populate-install.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/abscab-cpp-populate-prefix/src/abscab-cpp-populate-stamp/abscab-cpp-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/abscab-cpp-populate-prefix/src/abscab-cpp-populate-stamp/abscab-cpp-populate-patch.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/abscab-cpp-populate-prefix/src/abscab-cpp-populate-stamp/abscab-cpp-populate-test.rule"
+		},
+		{
+			"file" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-subbuild/abscab-cpp-populate-prefix/src/abscab-cpp-populate-stamp/abscab-cpp-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"abscab-cpp-populate"
+		],
+		"name" : "abscab-cpp-populate"
+	}
+}

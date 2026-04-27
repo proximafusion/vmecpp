@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "src/vmecpp/cpp/vmecpp/vmec/thread_local_storage",
+		"source" : "src/vmecpp/cpp/vmecpp/vmec/thread_local_storage"
+	}
+}

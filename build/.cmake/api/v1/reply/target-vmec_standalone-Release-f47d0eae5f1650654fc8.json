@@ -1,0 +1,1216 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "vmec_standalone"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_executable",
+			"target_link_libraries",
+			"set_target_properties",
+			"include",
+			"find_package",
+			"_add_lapack_target",
+			"_add_blas_target",
+			"_lapack_find_dependency",
+			"absl_cc_library",
+			"set_property",
+			"include_directories"
+		],
+		"files" : 
+		[
+			"CMakeLists.txt",
+			"/usr/lib/x86_64-linux-gnu/cmake/netCDF/netCDFTargets.cmake",
+			"/usr/lib/x86_64-linux-gnu/cmake/netCDF/netCDFConfig.cmake",
+			"/usr/local/share/cmake-3.31/Modules/FindLAPACK.cmake",
+			"/usr/local/share/cmake-3.31/Modules/FindBLAS.cmake",
+			"build/_deps/abseil-cpp-src/CMake/AbseilHelpers.cmake",
+			"build/_deps/abseil-cpp-src/absl/log/CMakeLists.txt",
+			"build/_deps/abseil-cpp-src/absl/hash/CMakeLists.txt",
+			"build/_deps/abseil-cpp-src/absl/status/CMakeLists.txt",
+			"build/_deps/abseil-cpp-src/absl/strings/CMakeLists.txt",
+			"build/_deps/abseil-cpp-src/absl/synchronization/CMakeLists.txt",
+			"build/_deps/abseil-cpp-src/absl/debugging/CMakeLists.txt",
+			"build/_deps/abseil-cpp-src/absl/time/CMakeLists.txt",
+			"build/_deps/abseil-cpp-src/absl/crc/CMakeLists.txt",
+			"build/_deps/abseil-cpp-src/absl/base/CMakeLists.txt",
+			"build/_deps/abseil-cpp-src/absl/types/CMakeLists.txt",
+			"/usr/local/share/cmake-3.31/Modules/FindOpenMP.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 124,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 125,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 112,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 113,
+				"parent" : 0
+			},
+			{
+				"command" : 4,
+				"file" : 0,
+				"line" : 30,
+				"parent" : 0
+			},
+			{
+				"file" : 2,
+				"parent" : 5
+			},
+			{
+				"command" : 3,
+				"file" : 2,
+				"line" : 39,
+				"parent" : 6
+			},
+			{
+				"file" : 1,
+				"parent" : 7
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 71,
+				"parent" : 8
+			},
+			{
+				"command" : 4,
+				"file" : 0,
+				"line" : 63,
+				"parent" : 0
+			},
+			{
+				"file" : 3,
+				"parent" : 10
+			},
+			{
+				"command" : 5,
+				"file" : 3,
+				"line" : 812,
+				"parent" : 11
+			},
+			{
+				"command" : 2,
+				"file" : 3,
+				"line" : 136,
+				"parent" : 12
+			},
+			{
+				"command" : 7,
+				"file" : 3,
+				"line" : 283,
+				"parent" : 11
+			},
+			{
+				"command" : 4,
+				"file" : 3,
+				"line" : 247,
+				"parent" : 14
+			},
+			{
+				"file" : 4,
+				"parent" : 15
+			},
+			{
+				"command" : 6,
+				"file" : 4,
+				"line" : 1422,
+				"parent" : 16
+			},
+			{
+				"command" : 2,
+				"file" : 4,
+				"line" : 272,
+				"parent" : 17
+			},
+			{
+				"file" : 6
+			},
+			{
+				"command" : 8,
+				"file" : 6,
+				"line" : 426,
+				"parent" : 19
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 332,
+				"parent" : 20
+			},
+			{
+				"command" : 8,
+				"file" : 6,
+				"line" : 35,
+				"parent" : 19
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 22
+			},
+			{
+				"command" : 8,
+				"file" : 6,
+				"line" : 182,
+				"parent" : 19
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 24
+			},
+			{
+				"command" : 8,
+				"file" : 6,
+				"line" : 708,
+				"parent" : 19
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 332,
+				"parent" : 26
+			},
+			{
+				"command" : 8,
+				"file" : 6,
+				"line" : 685,
+				"parent" : 19
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 28
+			},
+			{
+				"command" : 8,
+				"file" : 6,
+				"line" : 495,
+				"parent" : 19
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 30
+			},
+			{
+				"file" : 7
+			},
+			{
+				"command" : 8,
+				"file" : 7,
+				"line" : 17,
+				"parent" : 32
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 33
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 116,
+				"parent" : 0
+			},
+			{
+				"file" : 8
+			},
+			{
+				"command" : 8,
+				"file" : 8,
+				"line" : 16,
+				"parent" : 36
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 37
+			},
+			{
+				"file" : 9
+			},
+			{
+				"command" : 8,
+				"file" : 9,
+				"line" : 968,
+				"parent" : 39
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 40
+			},
+			{
+				"command" : 8,
+				"file" : 9,
+				"line" : 747,
+				"parent" : 39
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 42
+			},
+			{
+				"command" : 8,
+				"file" : 9,
+				"line" : 826,
+				"parent" : 39
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 44
+			},
+			{
+				"file" : 10
+			},
+			{
+				"command" : 8,
+				"file" : 10,
+				"line" : 69,
+				"parent" : 46
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 47
+			},
+			{
+				"file" : 11
+			},
+			{
+				"command" : 8,
+				"file" : 11,
+				"line" : 19,
+				"parent" : 49
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 50
+			},
+			{
+				"command" : 8,
+				"file" : 11,
+				"line" : 62,
+				"parent" : 49
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 52
+			},
+			{
+				"command" : 8,
+				"file" : 11,
+				"line" : 194,
+				"parent" : 49
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 54
+			},
+			{
+				"command" : 8,
+				"file" : 11,
+				"line" : 283,
+				"parent" : 49
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 56
+			},
+			{
+				"command" : 8,
+				"file" : 11,
+				"line" : 253,
+				"parent" : 49
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 58
+			},
+			{
+				"file" : 12
+			},
+			{
+				"command" : 8,
+				"file" : 12,
+				"line" : 17,
+				"parent" : 60
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 61
+			},
+			{
+				"command" : 8,
+				"file" : 9,
+				"line" : 468,
+				"parent" : 39
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 332,
+				"parent" : 63
+			},
+			{
+				"command" : 8,
+				"file" : 9,
+				"line" : 35,
+				"parent" : 39
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 65
+			},
+			{
+				"file" : 13
+			},
+			{
+				"command" : 8,
+				"file" : 13,
+				"line" : 54,
+				"parent" : 67
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 68
+			},
+			{
+				"file" : 14
+			},
+			{
+				"command" : 8,
+				"file" : 14,
+				"line" : 217,
+				"parent" : 70
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 268,
+				"parent" : 71
+			},
+			{
+				"file" : 15
+			},
+			{
+				"command" : 8,
+				"file" : 15,
+				"line" : 165,
+				"parent" : 73
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 332,
+				"parent" : 74
+			},
+			{
+				"command" : 8,
+				"file" : 15,
+				"line" : 246,
+				"parent" : 73
+			},
+			{
+				"command" : 1,
+				"file" : 5,
+				"line" : 332,
+				"parent" : 76
+			},
+			{
+				"command" : 4,
+				"file" : 0,
+				"line" : 25,
+				"parent" : 0
+			},
+			{
+				"file" : 16,
+				"parent" : 78
+			},
+			{
+				"command" : 9,
+				"file" : 16,
+				"line" : 655,
+				"parent" : 79
+			},
+			{
+				"command" : 10,
+				"file" : 0,
+				"line" : 28,
+				"parent" : 0
+			},
+			{
+				"command" : 10,
+				"file" : 0,
+				"line" : 58,
+				"parent" : 0
+			},
+			{
+				"command" : 10,
+				"file" : 0,
+				"line" : 91,
+				"parent" : 0
+			},
+			{
+				"command" : 10,
+				"file" : 0,
+				"line" : 97,
+				"parent" : 0
+			},
+			{
+				"command" : 10,
+				"file" : 0,
+				"line" : 103,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-fPIC -Wall -Wextra -O3 -DNDEBUG -fno-math-errno -std=gnu++20"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 81,
+					"path" : "/usr/include/hdf5/serial"
+				},
+				{
+					"backtrace" : 82,
+					"path" : "/home/runner/work/vmecpp/vmecpp/build/_deps/eigen-src"
+				},
+				{
+					"backtrace" : 83,
+					"path" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-src"
+				},
+				{
+					"backtrace" : 84,
+					"path" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-src"
+				},
+				{
+					"backtrace" : 85,
+					"path" : "/home/runner/work/vmecpp/vmecpp/src/vmecpp/cpp"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					1
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "vmecpp_core::@6890427a1f51a3e7e1df"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_severity::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_raw_logging_internal::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_spinlock_wait::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_malloc_internal::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_base::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_throw_delegate::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_strerror::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_crc_cpu_detect::@e7b73a99dc329af715ea"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_crc_internal::@e7b73a99dc329af715ea"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_crc32c::@e7b73a99dc329af715ea"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_crc_cord_state::@e7b73a99dc329af715ea"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_stacktrace::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_symbolize::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_examine_stack::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_debugging_internal::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_demangle_internal::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_decode_rust_punycode::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_demangle_rust::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_utf8_for_code_point::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_hash::@e82b4f9cfb0ccfacbdfd"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_city::@e82b4f9cfb0ccfacbdfd"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_low_level_hash::@e82b4f9cfb0ccfacbdfd"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_check_op::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_conditions::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_format::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_globals::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_proto::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_message::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_log_sink_set::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_nullguard::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_globals::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_entry::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_sink::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_vlog_config_internal::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_fnmatch::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_int128::@9d8e9017d0346130c5af"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_exponential_biased::@610112b8222b7e6b2b6f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_status::@eec4915894d7ef1676bd"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_statusor::@eec4915894d7ef1676bd"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_string_view::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_strings::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_strings_internal::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_str_format_internal::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_cord_internal::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_cordz_functions::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_cordz_handle::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_cordz_info::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_cord::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_graphcycles_internal::@f8dca903cb46e5e9bef2"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_kernel_timeout_internal::@f8dca903cb46e5e9bef2"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_synchronization::@f8dca903cb46e5e9bef2"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_time::@b4524c795b0f97a08e67"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_civil_time::@b4524c795b0f97a08e67"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_time_zone::@b4524c795b0f97a08e67"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_bad_optional_access::@91b7f7e4da4a6a5cf896"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_bad_variant_access::@91b7f7e4da4a6a5cf896"
+		}
+	],
+	"id" : "vmec_standalone::@6890427a1f51a3e7e1df",
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "-fPIC -Wall -Wextra -O3 -DNDEBUG -fno-math-errno",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "-Wl,-rpath,/usr/lib/x86_64-linux-gnu/hdf5/serial",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "libvmecpp_core.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5_cpp.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 4,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libnetcdf.so.19",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 9,
+				"fragment" : "-ldl",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 9,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5_hl.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libcrypto.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libcurl.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libsz.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libz.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libdl.a",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "-lm",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 9,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libxml2.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/liblapack.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 18,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libblas.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 21,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_internal_check_op.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 21,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_internal_conditions.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 21,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_internal_message.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_internal_nullguard.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 25,
+				"fragment" : "_deps/abseil-cpp-build/absl/debugging/libabsl_examine_stack.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 25,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_internal_format.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 25,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_internal_proto.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 25,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_internal_log_sink_set.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 25,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_internal_globals.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 25,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_globals.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 27,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_vlog_config_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 29,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_internal_fnmatch.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 31,
+				"fragment" : "_deps/abseil-cpp-build/absl/hash/libabsl_hash.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "_deps/abseil-cpp-build/absl/hash/libabsl_city.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "_deps/abseil-cpp-build/absl/hash/libabsl_low_level_hash.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 25,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_sink.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 25,
+				"fragment" : "_deps/abseil-cpp-build/absl/log/libabsl_log_entry.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 35,
+				"fragment" : "_deps/abseil-cpp-build/absl/status/libabsl_statusor.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 35,
+				"fragment" : "_deps/abseil-cpp-build/absl/status/libabsl_status.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 38,
+				"fragment" : "_deps/abseil-cpp-build/absl/strings/libabsl_cord.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "_deps/abseil-cpp-build/absl/strings/libabsl_cordz_info.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "_deps/abseil-cpp-build/absl/strings/libabsl_cord_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "_deps/abseil-cpp-build/absl/strings/libabsl_cordz_functions.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 43,
+				"fragment" : "_deps/abseil-cpp-build/absl/profiling/libabsl_exponential_biased.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 45,
+				"fragment" : "_deps/abseil-cpp-build/absl/strings/libabsl_cordz_handle.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 35,
+				"fragment" : "_deps/abseil-cpp-build/absl/synchronization/libabsl_synchronization.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 48,
+				"fragment" : "_deps/abseil-cpp-build/absl/synchronization/libabsl_graphcycles_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 48,
+				"fragment" : "_deps/abseil-cpp-build/absl/synchronization/libabsl_kernel_timeout_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 48,
+				"fragment" : "_deps/abseil-cpp-build/absl/debugging/libabsl_stacktrace.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 48,
+				"fragment" : "_deps/abseil-cpp-build/absl/debugging/libabsl_symbolize.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 48,
+				"fragment" : "_deps/abseil-cpp-build/absl/base/libabsl_malloc_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 51,
+				"fragment" : "_deps/abseil-cpp-build/absl/debugging/libabsl_debugging_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 53,
+				"fragment" : "_deps/abseil-cpp-build/absl/debugging/libabsl_demangle_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 55,
+				"fragment" : "_deps/abseil-cpp-build/absl/debugging/libabsl_demangle_rust.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 57,
+				"fragment" : "_deps/abseil-cpp-build/absl/debugging/libabsl_decode_rust_punycode.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 59,
+				"fragment" : "_deps/abseil-cpp-build/absl/debugging/libabsl_utf8_for_code_point.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 48,
+				"fragment" : "_deps/abseil-cpp-build/absl/time/libabsl_time.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 62,
+				"fragment" : "_deps/abseil-cpp-build/absl/time/libabsl_civil_time.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 62,
+				"fragment" : "_deps/abseil-cpp-build/absl/time/libabsl_time_zone.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "_deps/abseil-cpp-build/absl/crc/libabsl_crc_cord_state.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "_deps/abseil-cpp-build/absl/crc/libabsl_crc32c.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 64,
+				"fragment" : "_deps/abseil-cpp-build/absl/strings/libabsl_str_format_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 35,
+				"fragment" : "_deps/abseil-cpp-build/absl/strings/libabsl_strings.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 66,
+				"fragment" : "_deps/abseil-cpp-build/absl/strings/libabsl_strings_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 35,
+				"fragment" : "_deps/abseil-cpp-build/absl/strings/libabsl_string_view.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 66,
+				"fragment" : "_deps/abseil-cpp-build/absl/numeric/libabsl_int128.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 69,
+				"fragment" : "_deps/abseil-cpp-build/absl/crc/libabsl_crc_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 69,
+				"fragment" : "_deps/abseil-cpp-build/absl/crc/libabsl_crc_cpu_detect.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 35,
+				"fragment" : "_deps/abseil-cpp-build/absl/base/libabsl_base.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 72,
+				"fragment" : "_deps/abseil-cpp-build/absl/base/libabsl_spinlock_wait.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 72,
+				"fragment" : "-lrt",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 66,
+				"fragment" : "_deps/abseil-cpp-build/absl/base/libabsl_throw_delegate.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 75,
+				"fragment" : "_deps/abseil-cpp-build/absl/types/libabsl_bad_optional_access.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 38,
+				"fragment" : "_deps/abseil-cpp-build/absl/base/libabsl_strerror.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 77,
+				"fragment" : "_deps/abseil-cpp-build/absl/types/libabsl_bad_variant_access.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 72,
+				"fragment" : "_deps/abseil-cpp-build/absl/base/libabsl_raw_logging_internal.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 72,
+				"fragment" : "_deps/abseil-cpp-build/absl/base/libabsl_log_severity.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 80,
+				"fragment" : "/usr/lib/gcc/x86_64-linux-gnu/13/libgomp.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libpthread.a",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX"
+	},
+	"name" : "vmec_standalone",
+	"nameOnDisk" : "vmec_standalone",
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/vmec_standalone/vmec_standalone.cc",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "EXECUTABLE"
+}

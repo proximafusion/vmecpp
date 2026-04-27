@@ -1,0 +1,14 @@
+# Target labels
+ indata2json-populate
+# Source files and their labels
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/CMakeFiles/indata2json-populate
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/CMakeFiles/indata2json-populate.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/CMakeFiles/indata2json-populate-complete.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/indata2json-populate-prefix/src/indata2json-populate-stamp/indata2json-populate-build.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/indata2json-populate-prefix/src/indata2json-populate-stamp/indata2json-populate-configure.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/indata2json-populate-prefix/src/indata2json-populate-stamp/indata2json-populate-download.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/indata2json-populate-prefix/src/indata2json-populate-stamp/indata2json-populate-install.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/indata2json-populate-prefix/src/indata2json-populate-stamp/indata2json-populate-mkdir.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/indata2json-populate-prefix/src/indata2json-populate-stamp/indata2json-populate-patch.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/indata2json-populate-prefix/src/indata2json-populate-stamp/indata2json-populate-test.rule
+/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-subbuild/indata2json-populate-prefix/src/indata2json-populate-stamp/indata2json-populate-update.rule

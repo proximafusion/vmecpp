@@ -1,0 +1,12 @@
+{
+	"modules" : 
+	{
+		"nzl.mod" : 
+		{
+			"bmi" : "/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-build/nzl.mod",
+			"is-private" : false
+		}
+	},
+	"references" : {},
+	"usages" : {}
+}

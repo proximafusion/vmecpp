@@ -1,0 +1,12 @@
+{
+	"modules" : 
+	{
+		"stel_constants.mod" : 
+		{
+			"bmi" : "/home/runner/work/vmecpp/vmecpp/build/_deps/indata2json-build/stel_constants.mod",
+			"is-private" : false
+		}
+	},
+	"references" : {},
+	"usages" : {}
+}

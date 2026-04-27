@@ -1,0 +1,20 @@
+{
+	"revision" : 0,
+	"rules" : 
+	[
+		{
+			"outputs" : [],
+			"primary-output" : "_deps/indata2json-build/CMakeFiles/json.dir/json-fortran/json.f90.o",
+			"provides" : 
+			[
+				{
+					"compiled-module-path" : "_deps/indata2json-build/json.mod",
+					"is-interface" : true,
+					"logical-name" : "json.mod"
+				}
+			],
+			"requires" : []
+		}
+	],
+	"version" : 0
+}

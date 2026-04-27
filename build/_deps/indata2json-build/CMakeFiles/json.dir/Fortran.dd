@@ -1,0 +1,4 @@
+ninja_dyndep_version = 1.0
+build _deps/indata2json-build/CMakeFiles/json.dir/json-fortran/json.f90.o | _deps/indata2json-build/json.mod: dyndep
+  restat = 1
+

@@ -1,0 +1,3 @@
+ninja_dyndep_version = 1.0
+build _deps/indata2json-build/CMakeFiles/getcarg.dir/LIBSTELL/Sources/Miscel/getcarg.f90.o: dyndep
+

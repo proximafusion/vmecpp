@@ -1,0 +1,1004 @@
+{
+	"archive" : {},
+	"artifacts" : 
+	[
+		{
+			"path" : "libvmecpp_core.a"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"target_link_libraries",
+			"include_directories"
+		],
+		"files" : 
+		[
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 111,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 116,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 119,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 28,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 58,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 91,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 97,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 103,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 114,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-fPIC -Wall -Wextra -O3 -DNDEBUG -fno-math-errno -std=gnu++20"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-fopenmp"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 4,
+					"path" : "/usr/include/hdf5/serial"
+				},
+				{
+					"backtrace" : 5,
+					"path" : "/home/runner/work/vmecpp/vmecpp/build/_deps/eigen-src"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abscab-cpp-src"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "/home/runner/work/vmecpp/vmecpp/build/_deps/abseil-cpp-src"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "/home/runner/work/vmecpp/vmecpp/src/vmecpp/cpp"
+				},
+				{
+					"backtrace" : 9,
+					"path" : "/home/runner/work/vmecpp/vmecpp/build/_deps/nlohmann_json-src/include"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					9,
+					2
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0,
+				2,
+				4,
+				6,
+				8,
+				10,
+				13,
+				15,
+				17,
+				19,
+				22,
+				24,
+				26,
+				28,
+				30,
+				32,
+				34,
+				36,
+				39,
+				41,
+				43,
+				45,
+				47,
+				49,
+				51,
+				53,
+				55,
+				57,
+				59,
+				61,
+				63,
+				65,
+				67,
+				70,
+				72,
+				74,
+				76,
+				78,
+				80,
+				82,
+				84,
+				86
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_severity::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_raw_logging_internal::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_spinlock_wait::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_malloc_internal::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_base::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_throw_delegate::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_strerror::@649cb5ab055927a76ab5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_crc_cpu_detect::@e7b73a99dc329af715ea"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_crc_internal::@e7b73a99dc329af715ea"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_crc32c::@e7b73a99dc329af715ea"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_crc_cord_state::@e7b73a99dc329af715ea"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_stacktrace::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_symbolize::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_examine_stack::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_debugging_internal::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_demangle_internal::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_decode_rust_punycode::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_demangle_rust::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_utf8_for_code_point::@29ce828be0197ec6dd61"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_hash::@e82b4f9cfb0ccfacbdfd"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_city::@e82b4f9cfb0ccfacbdfd"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_low_level_hash::@e82b4f9cfb0ccfacbdfd"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_check_op::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_conditions::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_format::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_globals::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_proto::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_message::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_log_sink_set::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_nullguard::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_globals::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_entry::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_sink::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_vlog_config_internal::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_log_internal_fnmatch::@ec0c5076da8ab1df7c81"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_int128::@9d8e9017d0346130c5af"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_exponential_biased::@610112b8222b7e6b2b6f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_status::@eec4915894d7ef1676bd"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_statusor::@eec4915894d7ef1676bd"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_string_view::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_strings::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_strings_internal::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_str_format_internal::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_cord_internal::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_cordz_functions::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_cordz_handle::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_cordz_info::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_cord::@cadd5db28f0587d4097f"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_graphcycles_internal::@f8dca903cb46e5e9bef2"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_kernel_timeout_internal::@f8dca903cb46e5e9bef2"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_synchronization::@f8dca903cb46e5e9bef2"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_time::@b4524c795b0f97a08e67"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_civil_time::@b4524c795b0f97a08e67"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_time_zone::@b4524c795b0f97a08e67"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_bad_optional_access::@91b7f7e4da4a6a5cf896"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "absl_bad_variant_access::@91b7f7e4da4a6a5cf896"
+		}
+	],
+	"id" : "vmecpp_core::@6890427a1f51a3e7e1df",
+	"name" : "vmecpp_core",
+	"nameOnDisk" : "libvmecpp_core.a",
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				2,
+				4,
+				6,
+				8,
+				10,
+				13,
+				15,
+				17,
+				19,
+				22,
+				24,
+				26,
+				28,
+				30,
+				32,
+				34,
+				36,
+				39,
+				41,
+				43,
+				45,
+				47,
+				49,
+				51,
+				53,
+				55,
+				57,
+				59,
+				61,
+				63,
+				65,
+				67,
+				70,
+				72,
+				74,
+				76,
+				78,
+				80,
+				82,
+				84,
+				86
+			]
+		},
+		{
+			"name" : "Header Files",
+			"sourceIndexes" : 
+			[
+				1,
+				3,
+				5,
+				7,
+				9,
+				11,
+				12,
+				14,
+				16,
+				18,
+				20,
+				21,
+				23,
+				25,
+				27,
+				29,
+				31,
+				33,
+				35,
+				37,
+				38,
+				40,
+				42,
+				44,
+				46,
+				48,
+				50,
+				52,
+				54,
+				56,
+				58,
+				60,
+				62,
+				64,
+				66,
+				68,
+				69,
+				71,
+				73,
+				75,
+				77,
+				79,
+				81,
+				83,
+				85,
+				87
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "build/_deps/abscab-cpp-src/abscab/abscab.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "build/_deps/abscab-cpp-src/abscab/abscab.hh",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/util/file_io/file_io.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/util/file_io/file_io.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/util/hdf5_io/hdf5_io.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/util/hdf5_io/hdf5_io.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/util/json_io/json_io.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/util/json_io/json_io.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/util/netcdf_io/netcdf_io.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/util/netcdf_io/netcdf_io.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/util/testing/numerical_comparison_lib.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/util/testing/numerical_comparison_lib.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/composed_types_definition/composed_types.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/composed_types_lib/composed_types_lib.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/composed_types_lib/composed_types_lib.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/flow_control/flow_control.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/flow_control/flow_control.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/magnetic_configuration_definition/magnetic_configuration.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/makegrid_lib/makegrid_lib.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/makegrid_lib/makegrid_lib.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/sizes/sizes.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/sizes/sizes.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/util/util.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/util/util.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/vmec_indata/boundary_from_json.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/vmec_indata/boundary_from_json.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/common/vmec_indata/vmec_indata.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/common/vmec_indata/vmec_indata.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/external_magnetic_field/external_magnetic_field.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/external_magnetic_field/external_magnetic_field.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/free_boundary_base/free_boundary_base.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/laplace_solver/laplace_solver.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/laplace_solver/laplace_solver.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/mgrid_provider/mgrid_provider.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/mgrid_provider/mgrid_provider.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/nestor/nestor.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/nestor/nestor.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/only_coils/only_coils.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/only_coils/only_coils.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/regularized_integrals/regularized_integrals.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/regularized_integrals/regularized_integrals.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/singular_integrals/singular_integrals.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/singular_integrals/singular_integrals.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/surface_geometry/surface_geometry.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/surface_geometry/surface_geometry.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/tangential_partitioning/tangential_partitioning.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/free_boundary/tangential_partitioning/tangential_partitioning.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/boundaries/boundaries.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/boundaries/boundaries.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/boundaries/guess_magnetic_axis.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/boundaries/guess_magnetic_axis.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/fourier_coefficients/fourier_coefficients.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/fourier_coefficients/fourier_coefficients.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/fourier_forces/fourier_forces.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/fourier_forces/fourier_forces.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/fourier_geometry/fourier_geometry.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/fourier_geometry/fourier_geometry.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/fourier_velocity/fourier_velocity.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/fourier_velocity/fourier_velocity.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/handover_storage/handover_storage.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/handover_storage/handover_storage.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/dft_data.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/iteration_logger/iteration_logger.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/iteration_logger/iteration_logger.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/output_quantities/output_quantities.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/output_quantities/output_quantities.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/radial_partitioning/radial_partitioning.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/radial_partitioning/radial_partitioning.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/radial_profiles/radial_profiles.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/radial_profiles/radial_profiles.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/thread_local_storage/thread_local_storage.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/thread_local_storage/thread_local_storage.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/vmec/vmec.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/vmec/vmec.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/vmec_constants/vmec_constants.cc",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "src/vmecpp/cpp/vmecpp/vmec/vmec_constants/vmec_constants.h",
+			"sourceGroupIndex" : 1
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}
