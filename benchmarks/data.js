@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777279535702,
+  "lastUpdate": 1777299976423,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16254,6 +16254,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.048674544790800155",
             "extra": "mean: 9.407208622666644 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "198982749+Copilot@users.noreply.github.com",
+            "name": "Copilot",
+            "username": "Copilot"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9c2041a1d23a6d9c69f9d98caff279d7166f4282",
+          "message": "Fix normalize_by_currents having no effect on MagneticFieldResponseTable (#487)\n\n`normalize_by_currents` was silently ignored in `ComputeMagneticFieldResponseTable` and `ComputeVectorPotentialCache`. The coils file parser always sets `serial_circuit.current = 1.0`, so normalizing by setting the current to `1.0` was a no-op — the actual current information lives in `coil.num_windings`, which was never factored in. Normalized and raw results were always identical.\n\n## Changes\n\n- **`makegrid_lib.cc`** — When `normalize_by_currents = true`, call `NumWindingsToCircuitCurrents()` internally before computing. This migrates `num_windings` into `serial_circuit.current` (making `current = original_current × num_windings`, `num_windings = ±1`) so that subsequently setting `current = 1.0` correctly yields field per unit current-turn. A `MagneticConfiguration` copy is only created when normalization is requested. Applied identically to both `ComputeMagneticFieldResponseTable` and `ComputeVectorPotentialCache`.\n\n- **`makegrid.cc`** — Removed the now-redundant explicit `NumWindingsToCircuitCurrents` call; the migration is now encapsulated inside the library functions.\n\n- **`makegrid_lib_test.cc`** — Added `CheckNormalizeByCurrentsScalesMagneticFieldResponseTable`: builds a single-circuit config with `current = 5.0`, `num_windings = 7`, and asserts that the raw response table equals the normalized table scaled by `current × num_windings = 35` at every grid point.\n\n- **`tests/test_free_boundary.py`** — Changed `test_magnetic_field_response_table_loading` to use `normalize_by_currents=False`. The test coils file has non-uniform `num_windings` across coils within a circuit (e.g. 96 and −16), which is incompatible with `NumWindingsToCircuitCurrents` and makes the normalization semantics undefined for that configuration.\n\n## Before / After\n\n```python\n# Before fix: normalized == raw (normalize_by_currents had no effect)\nraw   = MagneticFieldResponseTable.from_coils_file(coils, params_raw)\nnormd = MagneticFieldResponseTable.from_coils_file(coils, params_normalized)\nassert np.allclose(raw.b_r, normd.b_r)  # True — bug\n\n# After fix: raw == normalized * current * num_windings\nassert np.allclose(raw.b_r, normd.b_r * current * num_windings)  # True — correct\n```",
+          "timestamp": "2026-04-27T14:21:51Z",
+          "tree_id": "b2a4004f87cba6621d18e876a2da25becd03f3da",
+          "url": "https://github.com/proximafusion/vmecpp/commit/9c2041a1d23a6d9c69f9d98caff279d7166f4282"
+        },
+        "date": 1777299975041,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.049966320289393,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002430211213190244",
+            "extra": "mean: 327.8724730000022 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 3.052623802597628,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0011701277589351803",
+            "extra": "mean: 327.5870413999428 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2440246791997162,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011949913172248972",
+            "extra": "mean: 4.097946171999979 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5570816407863026,
+            "unit": "iter/sec",
+            "range": "stddev: 0.006943725269760385",
+            "extra": "mean: 1.7950690290000086 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.24765920692432888,
+            "unit": "iter/sec",
+            "range": "stddev: 0.010785219993034572",
+            "extra": "mean: 4.037806679666649 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.09715062746895459,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005283342459474938",
+            "extra": "mean: 10.293294300333363 sec\nrounds: 3"
           }
         ]
       }
