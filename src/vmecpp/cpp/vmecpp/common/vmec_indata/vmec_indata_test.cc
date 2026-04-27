@@ -47,9 +47,9 @@ TEST(TestVmecINDATA, CheckParseJsonBoundary) {
       R"({"rbc":[{"m":0,"n":0,"value":3.999},{"m":1,"n":0,"value":1.026},{"m":2,"n":0,"value":-0.068}],"string_variable":"test string"})"_json;
 
   std::vector<BoundaryCoefficient> expected_coefficients = {
-      {/*m=*/0, /*n=*/0, /*value=*/3.999},
-      {/*m=*/1, /*n=*/0, /*value=*/1.026},
-      {/*m=*/2, /*n=*/0, /*value=*/-0.068}};
+      {.m = 0, .n = 0, .value = 3.999},
+      {.m = 1, .n = 0, .value = 1.026},
+      {.m = 2, .n = 0, .value = -0.068}};
 
   // test check for correct type
   auto read_string_as_boundary =

@@ -4,8 +4,6 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/flow_control/flow_control.h"
 
-#include <utility>
-
 #include "absl/log/check.h"
 #ifdef _OPENMP
 #include <omp.h>
@@ -24,7 +22,7 @@ RestartReason RestartReasonFromInt(int restart_reason) {
     case 4:
       return RestartReason::HUGE_INITIAL_FORCES;
     default:
-      std::unreachable();
+      __builtin_unreachable();
   }
 }
 

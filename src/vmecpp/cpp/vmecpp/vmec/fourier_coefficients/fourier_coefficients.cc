@@ -305,7 +305,7 @@ double FourierCoeffs::GetXcElement(int rzl, int idx_basis, int jF, int n,
   error_message << " m=" << m;
   LOG(FATAL) << error_message.str();
 
-  std::unreachable();
+  __builtin_unreachable();
   return 0.0;
 }
 
