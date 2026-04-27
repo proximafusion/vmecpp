@@ -1752,9 +1752,27 @@ void Vmec::InterpolateToNextMultigridStep(
       js2[jNew] = std::min(js1[jNew] + 1, ns_old - 1);
 
       s1[jNew] = js1[jNew] * hs_old;
+      const double s2_val = js2[jNew] * hs_old;
 
-      // interpolation weight
-      xint[jNew] = (sj[jNew] - s1[jNew]) / hs_old;
+      // Use sqrt-weighted interpolation (linear in rho = sqrt(s))
+      // instead of linear interpolation in s.
+      // For values q_i at s_i and q_{i+1} at s_{i+1}, interpolate using:
+      //   q_h = w_i * q_i + w_{i+1} * q_{i+1}
+      // where:
+      //   w_i     = (sqrt(s_{i+1}) - sqrt(s_h)) / (sqrt(s_{i+1}) - sqrt(s_i))
+      //   w_{i+1} = (sqrt(s_h) - sqrt(s_i))     / (sqrt(s_{i+1}) - sqrt(s_i))
+      // This correctly accounts for the radial coordinate r ~ sqrt(s).
+      const double sqrt_s1 = std::sqrt(s1[jNew]);
+      const double sqrt_s2 = std::sqrt(s2_val);
+      const double sqrt_sj = std::sqrt(sj[jNew]);
+      const double denom = sqrt_s2 - sqrt_s1;
+      // xint is the weight on the outer (js2) point
+      if (denom > 1.0e-14) {
+        xint[jNew] = (sqrt_sj - sqrt_s1) / denom;
+      } else {
+        // At axis or when s1 == s2, use simple average
+        xint[jNew] = 0.5;
+      }
       xint[jNew] = std::min(1.0, xint[jNew]);
       xint[jNew] = std::max(0.0, xint[jNew]);
 
