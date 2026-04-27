@@ -4,9 +4,9 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/flow_control/flow_control.h"
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
+#include <utility>
 
+#include "absl/log/check.h"
 #ifdef _OPENMP
 #include <omp.h>
 #endif  // _OPENMP
@@ -24,7 +24,7 @@ RestartReason RestartReasonFromInt(int restart_reason) {
     case 4:
       return RestartReason::HUGE_INITIAL_FORCES;
     default:
-      LOG(FATAL) << "Invalid restart_reason value: " << restart_reason;
+      std::unreachable();
   }
 }
 
