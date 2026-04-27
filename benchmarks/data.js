@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777033941112,
+  "lastUpdate": 1777279535702,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16188,6 +16188,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.020810049308553808",
             "extra": "mean: 9.995288998333308 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "198982749+Copilot@users.noreply.github.com",
+            "name": "Copilot",
+            "username": "Copilot"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f3f1a1068147acd40e45ed847d5a8cc06015b2a3",
+          "message": "fix: write test output files to temp directories instead of CWD (#489)\n\nfix: create cma.json and input.test in temp directories during tests\n\nAgent-Logs-Url: https://github.com/proximafusion/vmecpp/sessions/ac967efc-3dbd-45b3-8844-7369cb137209\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-04-27T10:41:19+02:00",
+          "tree_id": "d77249fb049a39855dbb393d8b2771a785f8e3b0",
+          "url": "https://github.com/proximafusion/vmecpp/commit/f3f1a1068147acd40e45ed847d5a8cc06015b2a3"
+        },
+        "date": 1777279533929,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.133377765005985,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00258390138788545",
+            "extra": "mean: 319.14441060000627 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 3.145997092444199,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006765663096218686",
+            "extra": "mean: 317.86424800001214 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.20094960150214625,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009964249369552316",
+            "extra": "mean: 4.976372147666685 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5642366774702058,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005611477276268905",
+            "extra": "mean: 1.772305913333336 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.30293514672498484,
+            "unit": "iter/sec",
+            "range": "stddev: 0.02767194728609154",
+            "extra": "mean: 3.301036577666688 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10630145881855992,
+            "unit": "iter/sec",
+            "range": "stddev: 0.048674544790800155",
+            "extra": "mean: 9.407208622666644 sec\nrounds: 3"
           }
         ]
       }
