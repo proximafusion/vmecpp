@@ -127,6 +127,14 @@ static constexpr double kForceResidualThreshold = 1.0e-2;
  */
 static constexpr double kTangentialEpsilon = 1.0e-15;
 
+/**
+ * Minimum denominator for sqrt-weighted multigrid interpolation.
+ * Used in: vmec.cc for InterpolateToNextMultigridStep
+ * Context: Prevents division by zero when interpolation points are at or
+ * near the magnetic axis where sqrt(s) approaches zero.
+ */
+static constexpr double kSqrtInterpolationMinDenom = 1.0e-14;
+
 // ========== Iteration Control Constants ==========
 
 /**

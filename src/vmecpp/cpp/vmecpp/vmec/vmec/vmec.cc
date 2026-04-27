@@ -32,6 +32,7 @@
 #include "vmecpp/free_boundary/only_coils/only_coils.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
+#include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
 
 namespace {
 void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
@@ -1767,7 +1768,7 @@ void Vmec::InterpolateToNextMultigridStep(
       const double sqrt_sj = std::sqrt(sj[jNew]);
       const double denom = sqrt_s2 - sqrt_s1;
       // xint is the weight on the outer (js2) point
-      if (denom > 1.0e-14) {
+      if (denom > vmec_algorithm_constants::kSqrtInterpolationMinDenom) {
         xint[jNew] = (sqrt_sj - sqrt_s1) / denom;
       } else {
         // At axis or when s1 == s2, use simple average
