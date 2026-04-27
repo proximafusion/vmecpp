@@ -24,7 +24,7 @@ void AndersonAccelerator::SaveOldPressure(
 
 void AndersonAccelerator::Apply(Eigen::VectorXd& vacuum_pressure) {
   // Only apply when we have a saved previous pressure (x_k).
-  if (old_pressure_.size() == 0) {
+  if (old_pressure_.empty()) {
     return;
   }
 
@@ -37,8 +37,8 @@ void AndersonAccelerator::Apply(Eigen::VectorXd& vacuum_pressure) {
   // a settled iterate. Clear history to avoid stale data on the next call.
   const double pressure_scale = std::max(1.0, vacuum_pressure.norm());
   if (r_k.norm() < 1.0e-9 * pressure_scale) {
-    prev_nestor_output_.resize(0);
-    prev_residual_.resize(0);
+    prev_nestor_output_.clear();
+    prev_residual_.clear();
     return;
   }
 
@@ -56,7 +56,7 @@ void AndersonAccelerator::Apply(Eigen::VectorXd& vacuum_pressure) {
   // This reduces to a single well-conditioned scalar problem (no matrix
   // inversion) and converges in ONE Nestor call for linear fixed-point
   // iterations with any contraction factor.
-  if (prev_nestor_output_.size() > 0) {
+  if (!prev_nestor_output_.empty()) {
     const Eigen::VectorXd delta_r = r_k - prev_residual_;
     const double denom = delta_r.squaredNorm();
 
