@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777299976423,
+  "lastUpdate": 1777305781713,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16320,6 +16320,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.005283342459474938",
             "extra": "mean: 10.293294300333363 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d6875c57529a77d7e32e6845b9d3ee40afdda5b3",
+          "message": "Abseil errors instead of LOG(FATAL) (#493)\n\n`LOG(FATAL) <<`  -> `return absl::InvalidArgumentError(` in a few places.\nclang-tidy is enabled in pre-commit, so whitespace formatting changed.",
+          "timestamp": "2026-04-27T15:58:22Z",
+          "tree_id": "a4313fa42f5838bf688910bffd3f9f3d68f9827b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/d6875c57529a77d7e32e6845b9d3ee40afdda5b3"
+        },
+        "date": 1777305780720,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.8508630558275074,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004830365187741993",
+            "extra": "mean: 350.770970200017 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.8708363495344122,
+            "unit": "iter/sec",
+            "range": "stddev: 0.001227015915010409",
+            "extra": "mean: 348.3305484000084 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23166512118964622,
+            "unit": "iter/sec",
+            "range": "stddev: 0.06057754256214197",
+            "extra": "mean: 4.316575559 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5627987472932756,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0028650724069687206",
+            "extra": "mean: 1.7768340900000226 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.277522072743032,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009963664380678233",
+            "extra": "mean: 3.603316990666675 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10015096184125961,
+            "unit": "iter/sec",
+            "range": "stddev: 0.05064998514239424",
+            "extra": "mean: 9.984926570999997 sec\nrounds: 3"
           }
         ]
       }
