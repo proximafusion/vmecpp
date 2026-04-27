@@ -23,6 +23,7 @@
 #include "vmecpp/vmec/fourier_forces/fourier_forces.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
+#include "vmecpp/vmec/ideal_mhd_model/anderson_accelerator.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_data.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
@@ -62,12 +63,14 @@ void deAliasConstraintForce(const RadialPartitioning& rp,
 
 class IdealMhdModel {
  public:
+  // m_anderson is optional (nullptr for fixed-boundary runs).
   IdealMhdModel(FlowControl* m_fc, const Sizes* s,
                 const FourierBasisFastPoloidal* t, RadialProfiles* m_p,
                 const VmecConstants* constants, ThreadLocalStorage* m_ls,
                 HandoverStorage* m_h, const RadialPartitioning* r,
                 FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
-                VacuumPressureState* m_vacuum_pressure_state);
+                VacuumPressureState* m_vacuum_pressure_state,
+                AndersonAccelerator* m_anderson = nullptr);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
 
@@ -425,6 +428,9 @@ class IdealMhdModel {
   const RadialPartitioning& r_;
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
+  // Optional Anderson accelerator for the free-boundary vacuum-pressure
+  // coupling. Null for fixed-boundary runs.
+  AndersonAccelerator* m_anderson_accelerator_;
 
   int signOfJacobian;
 

@@ -24,6 +24,7 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/fourier_velocity/fourier_velocity.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
+#include "vmecpp/vmec/ideal_mhd_model/anderson_accelerator.h"
 #include "vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.h"
 #include "vmecpp/vmec/iteration_logger/iteration_logger.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
@@ -235,6 +236,10 @@ class Vmec {
 
   // initialization state counter for Nestor. Called ivac in Fortran VMEC.
   VacuumPressureState vacuum_pressure_state_;
+
+  // Anderson accelerator for the free-boundary vacuum-pressure coupling.
+  // Null for fixed-boundary runs.
+  std::unique_ptr<AndersonAccelerator> anderson_accelerator_;
 
   // 0 if in regular multi-grid sequence;
   // 1 if have tried from scratch with intermediate ns=3, ftolv=1.0e-4

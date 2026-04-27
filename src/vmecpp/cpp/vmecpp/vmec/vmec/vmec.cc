@@ -221,6 +221,13 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     h_.vacuum_b_phi.setZero(s_.nZnT);
     h_.vacuum_b_z.setZero(s_.nZnT);
 
+    // Anderson accelerator for the vacuum-pressure Picard iteration.
+    // History size 5 provides a good balance between acceleration and
+    // numerical stability for typical free-boundary runs.
+    static constexpr int kAndersonHistorySize = 5;
+    anderson_accelerator_ =
+        std::make_unique<AndersonAccelerator>(kAndersonHistorySize);
+
     // TODO(jons): move this check to better-suited place
     if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
         (indata_.curtor != 0.0 || indata_.pres_scale != 0.0)) {
@@ -555,7 +562,8 @@ bool Vmec::InitializeRadial(
       m_[thread_id] = std::make_unique<IdealMhdModel>(
           &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
           ls_[thread_id].get(), &h_, r_[thread_id].get(), fb_[thread_id].get(),
-          kSignOfJacobian, indata_.nvacskip, &vacuum_pressure_state_);
+          kSignOfJacobian, indata_.nvacskip, &vacuum_pressure_state_,
+          anderson_accelerator_.get());
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0);
     }  // thread_id
 

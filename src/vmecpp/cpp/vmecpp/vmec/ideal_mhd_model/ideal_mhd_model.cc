@@ -492,7 +492,8 @@ IdealMhdModel::IdealMhdModel(
     RadialProfiles* m_p, const VmecConstants* constants,
     ThreadLocalStorage* m_ls, HandoverStorage* m_h, const RadialPartitioning* r,
     FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
-    VacuumPressureState* m_vacuum_pressure_state)
+    VacuumPressureState* m_vacuum_pressure_state,
+    AndersonAccelerator* m_anderson)
     : m_fc_(*m_fc),
       s_(*s),
       t_(*t),
@@ -503,6 +504,7 @@ IdealMhdModel::IdealMhdModel(
       r_(*r),
       m_fb_(m_fb),
       m_vacuum_pressure_state_(*m_vacuum_pressure_state),
+      m_anderson_accelerator_(m_anderson),
       signOfJacobian(signOfJacobian),
       nvacskip(nvacskip),
       ivacskip(0) {
@@ -944,6 +946,19 @@ absl::StatusOr<bool> IdealMhdModel::update(
       {
         m_last_full_update_nestor = iter2;
       }
+
+      // Save old vacuum pressure before Nestor updates it.
+      // The barrier at line 950 ensures this completes before the Nestor call.
+      if (m_vacuum_pressure_state_ == VacuumPressureState::kActive &&
+          m_anderson_accelerator_ != nullptr) {
+#ifdef _OPENMP
+#pragma omp single nowait
+#endif  // _OPENMP
+        {
+          m_anderson_accelerator_->SaveOldPressure(
+              m_h_.vacuum_magnetic_pressure);
+        }
+      }
     }
 // protects read of `m_vacuum_pressure_state_` below from the write above
 #ifdef _OPENMP
@@ -1017,6 +1032,22 @@ absl::StatusOr<bool> IdealMhdModel::update(
         }  // fullUpdate printout
       }
 
+      // Apply Anderson acceleration to the vacuum pressure after a full
+      // Nestor update, once the vacuum coupling is fully active.
+      // The implicit barrier from the omp single above ensures all threads
+      // have completed their Nestor calls before the mixing is applied.
+      if (ivacskip == 0 &&
+          m_vacuum_pressure_state_ == VacuumPressureState::kActive &&
+          m_anderson_accelerator_ != nullptr) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        {
+          m_anderson_accelerator_->Apply(m_h_.vacuum_magnetic_pressure);
+        }
+        // The implicit barrier ensures all threads see the updated pressure.
+      }
+
       if (m_h_.rBtor * m_h_.bSubVVac < 0.0) {
         return absl::InternalError(
             "IdealMHDModel::update: rbtor and bsubvvac must have the same "
@@ -1033,7 +1064,14 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-        m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+        {
+          m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+          // Clear the Anderson history: the soft restart changes the
+          // equilibrium state, making old vacuum-pressure samples stale.
+          if (m_anderson_accelerator_ != nullptr) {
+            m_anderson_accelerator_->Reset();
+          }
+        }
         m_need_restart = true;
       } else {
         m_need_restart = false;
