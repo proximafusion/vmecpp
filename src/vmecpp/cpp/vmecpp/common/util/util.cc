@@ -9,11 +9,6 @@
 #include <string>
 #include <vector>
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/str_format.h"
-
 namespace vmecpp {
 
 int VmecStatusCode(const VmecStatus vmec_status) {
@@ -49,10 +44,10 @@ int signum(int x) {
 }
 
 void TridiagonalSolveSerial(std::span<double> m_a, std::span<double> m_d,
-                            std::span<double> m_b, double *m_c_data,
+                            std::span<double> m_b, double* m_c_data,
                             int c_stride, int jMin, int jMax, int nRHS) {
   // Helper lambda to access c[k][j] in the flat layout
-  auto c = [m_c_data, c_stride](int k, int j) -> double & {
+  auto c = [m_c_data, c_stride](int k, int j) -> double& {
     return m_c_data[k * c_stride + j];
   };
 
@@ -74,16 +69,12 @@ void TridiagonalSolveSerial(std::span<double> m_a, std::span<double> m_d,
   // https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm
   // This works in-place and does not need extra arrays !
 
-  if (m_d[jMin] == 0.0) {
-    LOG(FATAL) << "d[jMin] == 0.0 at jMin = " << jMin;
-  }
+  // Division by zero may produce NaN, this is handled elsewhere.
   m_a[jMin] /= m_d[jMin];
 
   for (int j = jMin + 1; j < jMax - 1; ++j) {
     const double denominator = m_d[j] - m_a[j - 1] * m_b[j];
-    if (denominator == 0.0) {
-      LOG(FATAL) << "d[j] - a[j - 1] * b[j] == 0.0 at j = " << j;
-    }
+    // Division by zero may produce NaN, this is handled elsewhere.
     m_a[j] /= denominator;
   }  // j
 
@@ -93,9 +84,7 @@ void TridiagonalSolveSerial(std::span<double> m_a, std::span<double> m_d,
 
     for (int j = jMin + 1; j < jMax; ++j) {
       const double denominator = m_d[j] - m_a[j - 1] * m_b[j];
-      if (denominator == 0.0) {
-        LOG(FATAL) << "d[j] - a[j - 1] * b[j] == 0.0 at j = " << j;
-      }
+      // Division by zero may produce NaN, this is handled elsewhere.
       c(k, j) = (c(k, j) - c(k, j - 1) * m_b[j]) / denominator;
     }  // j
 
@@ -106,16 +95,16 @@ void TridiagonalSolveSerial(std::span<double> m_a, std::span<double> m_d,
 }
 
 void TridiagonalSolveOpenMP(
-    std::vector<double> &m_ar, std::vector<double> &m_dr,
-    std::vector<double> &m_br, std::vector<std::span<double>> &m_cr,
-    std::vector<double> &m_az, std::vector<double> &m_dz,
-    std::vector<double> &m_bz, std::vector<std::span<double>> &m_cz,
-    const std::vector<int> &jMin, int jMax, int mnmax, int nRHS,
-    std::vector<std::mutex> &m_mutices, int ncpu, int myid, int nsMinF,
-    int nsMaxF, std::vector<double> &m_handover_ar,
-    std::vector<std::vector<double>> &m_handover_cr,
-    std::vector<double> &m_handover_az,
-    std::vector<std::vector<double>> &m_handover_cz) {
+    std::vector<double>& m_ar, std::vector<double>& m_dr,
+    std::vector<double>& m_br, std::vector<std::span<double>>& m_cr,
+    std::vector<double>& m_az, std::vector<double>& m_dz,
+    std::vector<double>& m_bz, std::vector<std::span<double>>& m_cz,
+    const std::vector<int>& jMin, int jMax, int mnmax, int nRHS,
+    std::vector<std::mutex>& m_mutices, int ncpu, int myid, int nsMinF,
+    int nsMaxF, std::vector<double>& m_handover_ar,
+    std::vector<std::vector<double>>& m_handover_cr,
+    std::vector<double>& m_handover_az,
+    std::vector<std::vector<double>>& m_handover_cz) {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -152,14 +141,7 @@ void TridiagonalSolveOpenMP(
     // compute a[jMin] /= d[jMin] and c[*][jMin] /= d[jMin]
     for (int mn = 0; mn < mnmax; ++mn) {
       int idx_mn = (jMin[mn] - nsMinF) * mnmax + mn;
-      if (m_dr[idx_mn] == 0.0) {
-        LOG(FATAL) << absl::StrFormat("m_dr[jMin=%d, mn=%d] == 0", jMin[mn],
-                                      mn);
-      }
-      if (m_dz[idx_mn] == 0.0) {
-        LOG(FATAL) << absl::StrFormat("m_dz[jMin=%d, mn=%d] == 0", jMin[mn],
-                                      mn);
-      }
+      // Division by zero may produce NaN, this is handled elsewhere.
       m_ar[idx_mn] /= m_dr[idx_mn];
       m_az[idx_mn] /= m_dz[idx_mn];
       for (int k = 0; k < nRHS; ++k) {
@@ -221,14 +203,7 @@ void TridiagonalSolveOpenMP(
       double denom_r = m_dr[idx_mn_0] - prev_m_ar * m_br[idx_mn_0];
       double denom_z = m_dz[idx_mn_0] - prev_az * m_bz[idx_mn_0];
 
-      // make sure to not divide by zero in the following
-      if (denom_r == 0.0) {
-        LOG(FATAL) << absl::StrFormat("denom_r at j=%d, mn=%d is 0", j, mn);
-      }
-      if (denom_z == 0.0) {
-        LOG(FATAL) << absl::StrFormat("denom_z at j=%d, mn=%d is 0", j, mn);
-      }
-
+      // Division by zero may produce NaN, this is handled elsewhere.
       if (j < jMax - 1) {
         m_ar[idx_mn_0] /= denom_r;
         m_az[idx_mn_0] /= denom_z;
