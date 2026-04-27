@@ -1,0 +1,42 @@
+name: C++ TSAN tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Cancel currently running job if a new one comes along for the same branch or tag.
+# From https://stackoverflow.com/a/72408109.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+jobs:
+  tsan:
+    name: Build and run tsan tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true  # for the mgrid test data
+      - name: Build TSAN Docker image
+        run: docker build -t proximafusion/tsan src/vmecpp/cpp/docker/tsan
+      - uses: actions/checkout@v4
+        with:
+          repository: proximafusion/vmecpp_large_cpp_tests
+          path: src/vmecpp/cpp/vmecpp_large_cpp_tests
+          lfs: true
+      - name: Mount bazel cache
+        uses: actions/cache@v4
+        with:
+          path: "~/.cache/bazel"
+          key: bazel-tsan
+      - name: Run TSAN tests in Docker
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/vmecpp \
+            -v ~/.cache/bazel:/root/.cache/bazel \
+            proximafusion/tsan \
+            bash -c "cd /vmecpp/src/vmecpp/cpp && bazel test --config=tsan_archer_in_docker --jobs=1 --test_output=errors -- //vmecpp/... -//vmecpp/vmec/pybind11/..."
