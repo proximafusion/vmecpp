@@ -54,25 +54,6 @@ int main(int argc, char** argv) {
   const MagneticConfiguration& magnetic_configuration =
       *maybe_magnetic_configuration;
 
-  // make first internal copy to be able to
-  // migrate num_windings into circuit currents
-  MagneticConfiguration m_magnetic_configuration = magnetic_configuration;
-
-  // Normalized mode actually means in MAKEGRID-speak
-  // that the data from the 4-th column in the `coils.` file is divided out,
-  // and that is parsed here into the number of windings in each Coil.
-  // Hence, need to:
-  // a) make sure that num_windings is the same
-  //    for all Coils in a given SerialCircuit
-  // b) "migrate" the num_windings factor into
-  //    the circuit current, so that
-  //    num_windings can be 1
-  // c) set the number of windings to 1.0
-  //    if normalize_by_currents is true
-  if (makegrid_parameters.normalize_by_currents) {
-    CHECK_OK(NumWindingsToCircuitCurrents(m_magnetic_configuration));
-  }
-
   absl::StatusOr<Eigen::VectorXd> maybe_circuit_currents =
       GetCircuitCurrents(magnetic_configuration);
   CHECK_OK(maybe_circuit_currents);
@@ -81,14 +62,13 @@ int main(int argc, char** argv) {
   // compute the magnetic field cache and the vector potential cache
   absl::StatusOr<MagneticFieldResponseTable> maybe_magnetic_response_table =
       ComputeMagneticFieldResponseTable(makegrid_parameters,
-                                        m_magnetic_configuration);
+                                        magnetic_configuration);
   CHECK_OK(maybe_magnetic_response_table);
   const MagneticFieldResponseTable& magnetic_response_table =
       *maybe_magnetic_response_table;
 
   absl::StatusOr<MakegridCachedVectorPotential> maybe_vector_potential_cache =
-      ComputeVectorPotentialCache(makegrid_parameters,
-                                  m_magnetic_configuration);
+      ComputeVectorPotentialCache(makegrid_parameters, magnetic_configuration);
   CHECK_OK(maybe_vector_potential_cache);
   const MakegridCachedVectorPotential& vector_potential_cache =
       *maybe_vector_potential_cache;

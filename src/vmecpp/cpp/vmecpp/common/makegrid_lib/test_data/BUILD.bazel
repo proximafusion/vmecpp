@@ -18,6 +18,7 @@ filegroup(
         "coils.test_symmetric_even",
         "extcur.test_symmetric_even",
         "mgrid_test_symmetric_even.nc",
+        "mgrid_test_symmetric_even_scaled.nc",
     ],
 )
 
