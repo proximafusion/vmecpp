@@ -366,7 +366,7 @@ absl::Status MoveRadially(double radial_step,
             error_message << "current carrier type ";
             error_message << m_current_carrier->type_case();
             error_message << " not implemented yet.";
-            LOG(FATAL) << error_message.str();
+            return absl::InvalidArgumentError(error_message.str());
         }
       }  // CurrentCarrier
     }  // Coil
