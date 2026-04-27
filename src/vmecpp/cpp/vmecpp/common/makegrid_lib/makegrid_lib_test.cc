@@ -431,22 +431,48 @@ absl::StatusOr<std::vector<bool>> IsTooCloseToCurrentCarrierForComparison(
   return exclude_from_comparison;
 }  // IsTooCloseToCurrentCarrierForComparison
 
-TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
-  static constexpr double kTolerance = 1.0e-6;
+// Parameters for the reference-comparison parameterized tests below.
+// Each instance selects a normalize_by_currents mode and the corresponding
+// Fortran MAKEGRID reference file.
+struct MakegridReferenceTestParams {
+  bool normalize_by_currents;
+  std::string reference_nc_file;
+};
 
+// Shared setup used by both B-field and vector-potential parameterized suites.
+// Loads coils.test_symmetric_even with stellarator symmetry and returns the
+// cylindrical grid, magnetic configuration, and open NetCDF file id.
+struct MakegridReferenceTestFixture
+    : public ::testing::TestWithParam<MakegridReferenceTestParams> {
   // NOTE: These parameters have to be consistent with the MGRID_NLI namelist
   // in the `coils.test_*` input files.
-  MakegridParameters makegrid_parameters = {
-      // corresponding to mgrid_mode = 'R'
-      .normalize_by_currents = false, .assume_stellarator_symmetry = true,
-      .number_of_field_periods = 5,   .r_grid_minimum = 1.0,
-      .r_grid_maximum = 2.0,          .number_of_r_grid_points = 11,
-      .z_grid_minimum = -0.6,         .z_grid_maximum = 0.6,
-      .number_of_z_grid_points = 13,  .number_of_phi_grid_points = 18};
+  static MakegridParameters MakeParams(bool normalize_by_currents) {
+    return {.normalize_by_currents = normalize_by_currents,
+            .assume_stellarator_symmetry = true,
+            .number_of_field_periods = 5,
+            .r_grid_minimum = 1.0,
+            .r_grid_maximum = 2.0,
+            .number_of_r_grid_points = 11,
+            .z_grid_minimum = -0.6,
+            .z_grid_maximum = 0.6,
+            .number_of_z_grid_points = 13,
+            .number_of_phi_grid_points = 18};
+  }
+};
 
-  // for now, make sure that the struct initialization above correctly
-  // identified the members
-  ASSERT_FALSE(makegrid_parameters.normalize_by_currents);
+// Parameterized test: B-field response table vs. Fortran MAKEGRID reference.
+// Covers both mgrid_mode='R' (raw, normalize_by_currents=false) and
+// mgrid_mode='S' (scaled, normalize_by_currents=true).
+using CheckComputeMagneticFieldResponseTable = MakegridReferenceTestFixture;
+
+TEST_P(CheckComputeMagneticFieldResponseTable, MatchesFortranReference) {
+  static constexpr double kTolerance = 1.0e-6;
+
+  const MakegridReferenceTestParams& p = GetParam();
+  const MakegridParameters makegrid_parameters =
+      MakeParams(p.normalize_by_currents);
+
+  ASSERT_EQ(makegrid_parameters.normalize_by_currents, p.normalize_by_currents);
   ASSERT_TRUE(makegrid_parameters.assume_stellarator_symmetry);
   ASSERT_EQ(makegrid_parameters.number_of_field_periods, 5);
   ASSERT_EQ(makegrid_parameters.r_grid_minimum, 1.0);
@@ -457,7 +483,6 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
   ASSERT_EQ(makegrid_parameters.number_of_z_grid_points, 13);
   ASSERT_EQ(makegrid_parameters.number_of_phi_grid_points, 18);
 
-  // load the MagneticConfiguration from the MAKEGRID input file
   absl::StatusOr<MagneticConfiguration> magnetic_configuration =
       ImportMagneticConfigurationFromCoilsFile(
           "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_even");
@@ -482,38 +507,21 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
 
   // Load NetCDF mgrid file and make sure dimensions are consistent.
   int ncid = 0;
-  ASSERT_EQ(
-      nc_open(
-          "vmecpp/common/makegrid_lib/test_data/mgrid_test_symmetric_even.nc",
-          NC_NOWRITE, &ncid),
-      NC_NOERR);
+  ASSERT_EQ(nc_open(p.reference_nc_file.c_str(), NC_NOWRITE, &ncid), NC_NOERR);
 
-  const int nfp = NetcdfReadInt(ncid, "nfp");
-  EXPECT_EQ(nfp, makegrid_parameters.number_of_field_periods);
-
-  const int numR = NetcdfReadInt(ncid, "ir");
-  EXPECT_EQ(numR, makegrid_parameters.number_of_r_grid_points);
-
-  const double minR = NetcdfReadDouble(ncid, "rmin");
-  EXPECT_EQ(minR, makegrid_parameters.r_grid_minimum);
-
-  const double maxR = NetcdfReadDouble(ncid, "rmax");
-  EXPECT_EQ(maxR, makegrid_parameters.r_grid_maximum);
-
-  const int numZ = NetcdfReadInt(ncid, "jz");
-  EXPECT_EQ(numZ, makegrid_parameters.number_of_z_grid_points);
-
-  const double minZ = NetcdfReadDouble(ncid, "zmin");
-  EXPECT_EQ(minZ, makegrid_parameters.z_grid_minimum);
-
-  const double maxZ = NetcdfReadDouble(ncid, "zmax");
-  EXPECT_EQ(maxZ, makegrid_parameters.z_grid_maximum);
-
-  const int numPhi = NetcdfReadInt(ncid, "kp");
-  EXPECT_EQ(numPhi, makegrid_parameters.number_of_phi_grid_points);
-
-  const int nextcur = NetcdfReadInt(ncid, "nextcur");
-  EXPECT_EQ(nextcur, number_of_serial_circuits);
+  EXPECT_EQ(NetcdfReadInt(ncid, "nfp"),
+            makegrid_parameters.number_of_field_periods);
+  EXPECT_EQ(NetcdfReadInt(ncid, "ir"),
+            makegrid_parameters.number_of_r_grid_points);
+  EXPECT_EQ(NetcdfReadDouble(ncid, "rmin"), makegrid_parameters.r_grid_minimum);
+  EXPECT_EQ(NetcdfReadDouble(ncid, "rmax"), makegrid_parameters.r_grid_maximum);
+  EXPECT_EQ(NetcdfReadInt(ncid, "jz"),
+            makegrid_parameters.number_of_z_grid_points);
+  EXPECT_EQ(NetcdfReadDouble(ncid, "zmin"), makegrid_parameters.z_grid_minimum);
+  EXPECT_EQ(NetcdfReadDouble(ncid, "zmax"), makegrid_parameters.z_grid_maximum);
+  EXPECT_EQ(NetcdfReadInt(ncid, "kp"),
+            makegrid_parameters.number_of_phi_grid_points);
+  EXPECT_EQ(NetcdfReadInt(ncid, "nextcur"), number_of_serial_circuits);
 
   for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
        ++circuit_index) {
@@ -528,17 +536,12 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
     ASSERT_OK(exclude_from_comparison);
 
     // load mgrid data from NetCDF file
-    std::string br_variable = absl::StrFormat("br_%03d", circuit_index + 1);
     std::vector<std::vector<std::vector<double>>> b_r_contribution =
-        NetcdfReadArray3D(ncid, br_variable);
-
-    std::string bp_variable = absl::StrFormat("bp_%03d", circuit_index + 1);
+        NetcdfReadArray3D(ncid, absl::StrFormat("br_%03d", circuit_index + 1));
     std::vector<std::vector<std::vector<double>>> b_p_contribution =
-        NetcdfReadArray3D(ncid, bp_variable);
-
-    std::string bz_variable = absl::StrFormat("bz_%03d", circuit_index + 1);
+        NetcdfReadArray3D(ncid, absl::StrFormat("bp_%03d", circuit_index + 1));
     std::vector<std::vector<std::vector<double>>> b_z_contribution =
-        NetcdfReadArray3D(ncid, bz_variable);
+        NetcdfReadArray3D(ncid, absl::StrFormat("bz_%03d", circuit_index + 1));
 
     // perform comparison of points that are not explicitly excluded from the
     // comparison
@@ -587,35 +590,35 @@ TEST(TestMakegridLib, CheckComputeMagneticFieldResponseTable) {
   }  // circuit_index
 
   ASSERT_EQ(nc_close(ncid), NC_NOERR);
-}  // CheckComputeMagneticFieldResponseTable
+}  // CheckComputeMagneticFieldResponseTable/MatchesFortranReference
 
-TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
+INSTANTIATE_TEST_SUITE_P(
+    SymmetricEven, CheckComputeMagneticFieldResponseTable,
+    ::testing::Values(
+        MakegridReferenceTestParams{
+            .normalize_by_currents = false,
+            .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                                 "mgrid_test_symmetric_even.nc"},
+        MakegridReferenceTestParams{
+            .normalize_by_currents = true,
+            .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                                 "mgrid_test_symmetric_even_scaled.nc"}),
+    [](const ::testing::TestParamInfo<MakegridReferenceTestParams>& info) {
+      return info.param.normalize_by_currents ? "Scaled" : "Raw";
+    });
+
+// Parameterized test: vector-potential cache vs. Fortran MAKEGRID reference.
+// Covers both mgrid_mode='R' (raw, normalize_by_currents=false) and
+// mgrid_mode='S' (scaled, normalize_by_currents=true).
+using CheckComputeVectorPotentialCache = MakegridReferenceTestFixture;
+
+TEST_P(CheckComputeVectorPotentialCache, MatchesFortranReference) {
   static constexpr double kTolerance = 1.0e-6;
 
-  // NOTE: These parameters have to be consistent with the MGRID_NLI namelist
-  // in the `coils.test_*` input files.
-  MakegridParameters makegrid_parameters = {
-      // corresponding to mgrid_mode = 'R'
-      .normalize_by_currents = false, .assume_stellarator_symmetry = true,
-      .number_of_field_periods = 5,   .r_grid_minimum = 1.0,
-      .r_grid_maximum = 2.0,          .number_of_r_grid_points = 11,
-      .z_grid_minimum = -0.6,         .z_grid_maximum = 0.6,
-      .number_of_z_grid_points = 13,  .number_of_phi_grid_points = 18};
+  const MakegridReferenceTestParams& p = GetParam();
+  const MakegridParameters makegrid_parameters =
+      MakeParams(p.normalize_by_currents);
 
-  // for now, make sure that the struct initialization above correctly
-  // identified the members
-  ASSERT_FALSE(makegrid_parameters.normalize_by_currents);
-  ASSERT_TRUE(makegrid_parameters.assume_stellarator_symmetry);
-  ASSERT_EQ(makegrid_parameters.number_of_field_periods, 5);
-  ASSERT_EQ(makegrid_parameters.r_grid_minimum, 1.0);
-  ASSERT_EQ(makegrid_parameters.r_grid_maximum, 2.0);
-  ASSERT_EQ(makegrid_parameters.number_of_r_grid_points, 11);
-  ASSERT_EQ(makegrid_parameters.z_grid_minimum, -0.6);
-  ASSERT_EQ(makegrid_parameters.z_grid_maximum, 0.6);
-  ASSERT_EQ(makegrid_parameters.number_of_z_grid_points, 13);
-  ASSERT_EQ(makegrid_parameters.number_of_phi_grid_points, 18);
-
-  // load the MagneticConfiguration from the MAKEGRID input file
   absl::StatusOr<MagneticConfiguration> magnetic_configuration =
       ImportMagneticConfigurationFromCoilsFile(
           "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_even");
@@ -642,11 +645,7 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
 
   // Load NetCDF mgrid file and make sure dimensions are consistent.
   int ncid = 0;
-  ASSERT_EQ(
-      nc_open(
-          "vmecpp/common/makegrid_lib/test_data/mgrid_test_symmetric_even.nc",
-          NC_NOWRITE, &ncid),
-      NC_NOERR);
+  ASSERT_EQ(nc_open(p.reference_nc_file.c_str(), NC_NOWRITE, &ncid), NC_NOERR);
 
   const int nfp = NetcdfReadInt(ncid, "nfp");
   EXPECT_EQ(nfp, makegrid_parameters.number_of_field_periods);
@@ -688,17 +687,12 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
     ASSERT_OK(exclude_from_comparison);
 
     // load mgrid data from NetCDF file
-    std::string ar_variable = absl::StrFormat("ar_%03d", circuit_index + 1);
     std::vector<std::vector<std::vector<double>>> a_r_contribution =
-        NetcdfReadArray3D(ncid, ar_variable);
-
-    std::string ap_variable = absl::StrFormat("ap_%03d", circuit_index + 1);
+        NetcdfReadArray3D(ncid, absl::StrFormat("ar_%03d", circuit_index + 1));
     std::vector<std::vector<std::vector<double>>> a_p_contribution =
-        NetcdfReadArray3D(ncid, ap_variable);
-
-    std::string az_variable = absl::StrFormat("az_%03d", circuit_index + 1);
+        NetcdfReadArray3D(ncid, absl::StrFormat("ap_%03d", circuit_index + 1));
     std::vector<std::vector<std::vector<double>>> a_z_contribution =
-        NetcdfReadArray3D(ncid, az_variable);
+        NetcdfReadArray3D(ncid, absl::StrFormat("az_%03d", circuit_index + 1));
 
     // perform comparison of points that are not explicitly excluded from the
     // comparison
@@ -747,7 +741,22 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
   }  // circuit_index
 
   ASSERT_EQ(nc_close(ncid), NC_NOERR);
-}  // CheckComputeVectorPotentialCache
+}  // CheckComputeVectorPotentialCache/MatchesFortranReference
+
+INSTANTIATE_TEST_SUITE_P(
+    SymmetricEven, CheckComputeVectorPotentialCache,
+    ::testing::Values(
+        MakegridReferenceTestParams{
+            .normalize_by_currents = false,
+            .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                                 "mgrid_test_symmetric_even.nc"},
+        MakegridReferenceTestParams{
+            .normalize_by_currents = true,
+            .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                                 "mgrid_test_symmetric_even_scaled.nc"}),
+    [](const ::testing::TestParamInfo<MakegridReferenceTestParams>& info) {
+      return info.param.normalize_by_currents ? "Scaled" : "Raw";
+    });
 
 // TODO(jons): implement test of non-stellarator-symmetric mgrid file
 // TODO(jons): implement test of stellarator-symmetric mgrid file using
@@ -756,5 +765,101 @@ TEST(TestMakegridLib, CheckComputeVectorPotentialCache) {
 // TODO(jons): add test of WriteMakegridNetCDFFile
 // -> in particular, make sure that the consistency of number of serial circuits
 // in the response table and the number of circuit currents is properly checked
+
+TEST(TestMakegridLib,
+     CheckNormalizeByCurrentsScalesMagneticFieldResponseTable) {
+  static constexpr double kTolerance = 1.0e-6;
+
+  // Use a small grid (no stellarator symmetry) to keep the test fast while
+  // still exercising all grid points.
+  MakegridParameters makegrid_parameters = {
+      .normalize_by_currents = false,
+      .assume_stellarator_symmetry = false,
+      .number_of_field_periods = 1,
+      .r_grid_minimum = 1.0,
+      .r_grid_maximum = 2.0,
+      .number_of_r_grid_points = 3,
+      .z_grid_minimum = -0.5,
+      .z_grid_maximum = 0.5,
+      .number_of_z_grid_points = 3,
+      .number_of_phi_grid_points = 4};
+
+  // Build a simple MagneticConfiguration with a single circuit, single coil,
+  // and a single circular filament. Using non-trivial current and num_windings
+  // ensures that the test is sensitive to the normalization factor.
+  static constexpr double kCurrent = 5.0;
+  static constexpr double kNumWindings = 7.0;
+
+  MagneticConfiguration magnetic_configuration;
+  SerialCircuit* serial_circuit = magnetic_configuration.add_serial_circuits();
+  serial_circuit->set_current(kCurrent);
+
+  Coil* coil = serial_circuit->add_coils();
+  coil->set_num_windings(kNumWindings);
+
+  CurrentCarrier* current_carrier = coil->add_current_carriers();
+  CircularFilament* circular_filament =
+      current_carrier->mutable_circular_filament();
+  circular_filament->set_radius(1.5);
+
+  Vector3d* center = circular_filament->mutable_center();
+  center->set_x(0.0);
+  center->set_y(0.0);
+  center->set_z(0.0);
+
+  Vector3d* normal = circular_filament->mutable_normal();
+  normal->set_x(0.0);
+  normal->set_y(0.0);
+  normal->set_z(1.0);
+
+  // The raw field must equal the normalized field scaled by
+  // current * num_windings at every grid point.
+  const double expected_factor = kCurrent * kNumWindings;
+
+  // Compute the raw (unnormalized) response table.
+  absl::StatusOr<MagneticFieldResponseTable> raw_response_table =
+      ComputeMagneticFieldResponseTable(makegrid_parameters,
+                                        magnetic_configuration);
+  ASSERT_OK(raw_response_table);
+
+  // Compute the normalized response table (field per unit current-turn).
+  MakegridParameters normalized_params = makegrid_parameters;
+  normalized_params.normalize_by_currents = true;
+  absl::StatusOr<MagneticFieldResponseTable> normalized_response_table =
+      ComputeMagneticFieldResponseTable(normalized_params,
+                                        magnetic_configuration);
+  ASSERT_OK(normalized_response_table);
+
+  const int number_of_serial_circuits =
+      magnetic_configuration.serial_circuits_size();
+  const int total_number_of_grid_points =
+      makegrid_parameters.number_of_phi_grid_points *
+      makegrid_parameters.number_of_z_grid_points *
+      makegrid_parameters.number_of_r_grid_points;
+
+  // The raw field must equal the normalized field scaled by current *
+  // num_windings at every grid point and for every circuit.
+  for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
+       ++circuit_index) {
+    for (int grid_index = 0; grid_index < total_number_of_grid_points;
+         ++grid_index) {
+      EXPECT_TRUE(IsCloseRelAbs(
+          raw_response_table->b_r(circuit_index, grid_index),
+          normalized_response_table->b_r(circuit_index, grid_index) *
+              expected_factor,
+          kTolerance));
+      EXPECT_TRUE(IsCloseRelAbs(
+          raw_response_table->b_p(circuit_index, grid_index),
+          normalized_response_table->b_p(circuit_index, grid_index) *
+              expected_factor,
+          kTolerance));
+      EXPECT_TRUE(IsCloseRelAbs(
+          raw_response_table->b_z(circuit_index, grid_index),
+          normalized_response_table->b_z(circuit_index, grid_index) *
+              expected_factor,
+          kTolerance));
+    }  // grid_index
+  }  // circuit_index
+}  // CheckNormalizeByCurrentsScalesMagneticFieldResponseTable
 
 }  // namespace makegrid
