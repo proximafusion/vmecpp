@@ -317,7 +317,7 @@ absl::StatusOr<RowMatrix3Xd> MakeCylindricalGrid(
   const int total_number_of_grid_points = num_phi_effective * num_z * num_r;
 
   RowMatrix3Xd cylindrical_grid{
-      RowMatrix3Xd::Zero(3, total_number_of_grid_points)};
+      RowMatrix3Xd::Zero(total_number_of_grid_points, 3)};
 
   for (int phi_index = 0; phi_index < num_phi_effective; ++phi_index) {
     const double phi = phi_index * delta_phi;
@@ -333,10 +333,10 @@ absl::StatusOr<RowMatrix3Xd> MakeCylindricalGrid(
 
         const int linear_index =
             (phi_index * num_z + z_index) * num_r + r_index;
-        // TODO(jurasic) bad loop order
-        cylindrical_grid(0, linear_index) = x;
-        cylindrical_grid(1, linear_index) = y;
-        cylindrical_grid(2, linear_index) = z;
+        // N x 3 row-major: writing all 3 coords of a point is contiguous.
+        cylindrical_grid(linear_index, 0) = x;
+        cylindrical_grid(linear_index, 1) = y;
+        cylindrical_grid(linear_index, 2) = z;
       }  // r_index
     }  // z_index
   }  // phi_index
@@ -345,7 +345,8 @@ absl::StatusOr<RowMatrix3Xd> MakeCylindricalGrid(
 }  // MakeCylindricalGrid
 
 // Convert the cartesian magnetic field response to cylindrical coordinates
-// using the precomputed sin and cos terms
+// using the precomputed sin and cos terms.
+// magnetic_field is N x 3 row-major: row i stores (Bx_i, By_i, Bz_i).
 template <typename Derived3>
 void CartesianToCylindricalField(
     const Eigen::VectorXd& cos_phi, const Eigen::VectorXd& sin_phi,
@@ -372,8 +373,9 @@ void CartesianToCylindricalField(
 #endif  // _OPENMP
   for (Eigen::Index linear_index = 0;
        linear_index < number_of_evaluation_points; ++linear_index) {
-    const double b_x = magnetic_field(0, linear_index);
-    const double b_y = magnetic_field(1, linear_index);
+    // magnetic_field is N x 3 row-major: accessing (i, 0/1/2) is contiguous.
+    const double b_x = magnetic_field(linear_index, 0);
+    const double b_y = magnetic_field(linear_index, 1);
 
     const Eigen::Index index_phi = linear_index / (num_z * num_r);
     const double b_r = b_x * cos_phi[index_phi] + b_y * sin_phi[index_phi];
@@ -381,9 +383,8 @@ void CartesianToCylindricalField(
 
     m_b_r[linear_index] = b_r;
     m_b_p[linear_index] = b_p;
+    m_b_z[linear_index] = magnetic_field(linear_index, 2);
   }  // linear_index
-  //
-  m_b_z.head(number_of_evaluation_points) = magnetic_field.row(2);
 
   // mirror into other stellarator-symmetric part of grid
   // if making use of stellarator symmetry
@@ -423,7 +424,7 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
   // evaluate the magnetic field. If stellarator symmetry is activated, this
   // might be less grid points that what gets stored in the mgrid file.
   const int number_of_evaluation_points =
-      static_cast<int>(maybe_cylindrical_grid.value().cols());
+      static_cast<int>(maybe_cylindrical_grid.value().rows());
 
   // shorthand variables for grid dimensions
   const int num_field_periods = makegrid_parameters.number_of_field_periods;
@@ -470,6 +471,23 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
 
   std::vector<absl::Status> status(number_of_serial_circuits);
 
+  // Pre-allocate the Cartesian field buffer once and reuse across circuits
+  // by zeroing it at the start of each circuit iteration.
+  RowMatrix3Xd magnetic_field =
+      RowMatrix3Xd::Zero(number_of_evaluation_points, 3);
+
+  // Make a single copy of the configuration and pre-zero all circuit currents.
+  // Inside the loop we enable one circuit at a time and reset after.
+  MagneticConfiguration magnetic_configuration_copy = magnetic_configuration;
+  Eigen::VectorXd all_zeros = Eigen::VectorXd::Zero(number_of_serial_circuits);
+  absl::Status zero_status =
+      SetCircuitCurrents(all_zeros, magnetic_configuration_copy);
+  if (!zero_status.ok()) {
+    return zero_status;
+  }
+  Eigen::VectorXd currents_for_circuit =
+      Eigen::VectorXd::Zero(number_of_serial_circuits);
+
   // Now compute the magnetic field for each SerialCircuit individually in the
   // MagneticConfiguration. This is conveniently done by setting the currents to
   // all zeros and only restore the current for the SerialCircuit under
@@ -478,12 +496,6 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
   // current of a given SerialCircuit is identically zero.
   for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
        ++circuit_index) {
-    // make second internal copy for being able to set inidividually only one
-    // circuit current to != 0
-    MagneticConfiguration m_magnetic_configuration = magnetic_configuration;
-
-    Eigen::VectorXd currents_for_circuit;
-    currents_for_circuit.setZero(number_of_serial_circuits);
     if (makegrid_parameters.normalize_by_currents) {
       currents_for_circuit[circuit_index] = 1.0;
     } else {
@@ -491,32 +503,15 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     }
 
     absl::Status set_currents_status =
-        SetCircuitCurrents(currents_for_circuit, m_magnetic_configuration);
+        SetCircuitCurrents(currents_for_circuit, magnetic_configuration_copy);
     if (!set_currents_status.ok()) {
       status[circuit_index] = set_currents_status;
+      currents_for_circuit[circuit_index] = 0.0;
       continue;
     }
 
-    // Evaluation result B (n, 3) in cartesian coordinates
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> magnetic_field_stl(
-        number_of_evaluation_points);
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      magnetic_field_stl[i].resize(3, 0.0);
-    }
-
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> cylindrical_grid_stl{
-        static_cast<std::size_t>(maybe_cylindrical_grid.value().cols())};
-    CHECK_EQ(static_cast<std::size_t>(number_of_evaluation_points),
-             cylindrical_grid_stl.size());
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      cylindrical_grid_stl[i].resize(3);
-      for (int j = 0; j < 3; ++j) {
-        cylindrical_grid_stl[i][j] = maybe_cylindrical_grid.value()(j, i);
-      }
-    }
-    CHECK_EQ(magnetic_field_stl.size(), cylindrical_grid_stl.size());
+    // Reset field buffer to zero for this circuit's accumulation.
+    magnetic_field.setZero();
 
     // We parallelize over linear index of evaluation locations, since that
     // allows us to use more CPUs and parallelize also for configurations with
@@ -524,21 +519,26 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     // independent circuits and many evaluation locations, rather than many
     // independent circuits but few evaluation locations. This is done inside of
     // ABSCAB, which is used within this call to `MagneticField`.
-    absl::Status magnetic_field_status =
-        MagneticField(m_magnetic_configuration, cylindrical_grid_stl,
-                      /*m_magnetic_field=*/magnetic_field_stl);
+    absl::Status magnetic_field_status = MagneticField(
+        magnetic_configuration_copy, number_of_evaluation_points,
+        maybe_cylindrical_grid.value().data(), magnetic_field.data());
     if (!magnetic_field_status.ok()) {
       status[circuit_index] = magnetic_field_status;
-      continue;
+    } else {
+      CartesianToCylindricalField(cos_phi, sin_phi, magnetic_field, num_z,
+                                  num_r, number_of_evaluation_points,
+                                  response_table_b.b_r.row(circuit_index),
+                                  response_table_b.b_p.row(circuit_index),
+                                  response_table_b.b_z.row(circuit_index));
     }
-    RowMatrix3Xd magnetic_field =
-        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
-    magnetic_field = vmecpp::ToEigenMatrix(magnetic_field_stl).transpose();
-    CartesianToCylindricalField(cos_phi, sin_phi, magnetic_field, num_z, num_r,
-                                number_of_evaluation_points,
-                                response_table_b.b_r.row(circuit_index),
-                                response_table_b.b_p.row(circuit_index),
-                                response_table_b.b_z.row(circuit_index));
+
+    // Reset this circuit's current to zero for the next iteration.
+    currents_for_circuit[circuit_index] = 0.0;
+    absl::Status reset_status =
+        SetCircuitCurrents(currents_for_circuit, magnetic_configuration_copy);
+    if (!reset_status.ok()) {
+      return reset_status;
+    }
 
     LOG(INFO) << absl::StrFormat("B %2d/%2d: done", circuit_index + 1,
                                  number_of_serial_circuits);
@@ -567,7 +567,7 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
   // evaluate the magnetic field. If stellarator symmetry is activated, this
   // might be less grid points that what gets stored in the mgrid file.
   const int number_of_evaluation_points =
-      static_cast<int>(maybe_cylindrical_grid.value().cols());
+      static_cast<int>(maybe_cylindrical_grid.value().rows());
 
   // shorthand variables for grid dimensions
   const int num_field_periods = makegrid_parameters.number_of_field_periods;
@@ -614,6 +614,21 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
 
   std::vector<absl::Status> status(number_of_serial_circuits);
 
+  // Pre-allocate the Cartesian vector potential buffer once and reuse.
+  RowMatrix3Xd vector_potential =
+      RowMatrix3Xd::Zero(number_of_evaluation_points, 3);
+
+  // Make a single copy of the configuration and pre-zero all circuit currents.
+  MagneticConfiguration magnetic_configuration_copy = magnetic_configuration;
+  Eigen::VectorXd all_zeros = Eigen::VectorXd::Zero(number_of_serial_circuits);
+  absl::Status zero_status =
+      SetCircuitCurrents(all_zeros, magnetic_configuration_copy);
+  if (!zero_status.ok()) {
+    return zero_status;
+  }
+  Eigen::VectorXd currents_for_circuit =
+      Eigen::VectorXd::Zero(number_of_serial_circuits);
+
   // Now compute the vector potential for each SerialCircuit individually in the
   // MagneticConfiguration. This is conveniently done by setting the currents to
   // all zeros and only restore the current for the SerialCircuit under
@@ -622,12 +637,6 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
   // current of a given SerialCircuit is identically zero.
   for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
        ++circuit_index) {
-    // make second internal copy for being able to set inidividually only one
-    // circuit current to != 0
-    MagneticConfiguration m_magnetic_configuration = magnetic_configuration;
-
-    Eigen::VectorXd currents_for_circuit;
-    currents_for_circuit.setZero(number_of_serial_circuits);
     if (makegrid_parameters.normalize_by_currents) {
       currents_for_circuit[circuit_index] = 1.0;
     } else {
@@ -635,28 +644,15 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     }
 
     absl::Status set_currents_status =
-        SetCircuitCurrents(currents_for_circuit, m_magnetic_configuration);
+        SetCircuitCurrents(currents_for_circuit, magnetic_configuration_copy);
     if (!set_currents_status.ok()) {
       status[circuit_index] = set_currents_status;
+      currents_for_circuit[circuit_index] = 0.0;
       continue;
     }
 
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> vector_potential_stl(
-        number_of_evaluation_points);
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      vector_potential_stl[i].resize(3, 0.0);
-    }
-
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> cylindrical_grid_stl{
-        static_cast<std::size_t>(maybe_cylindrical_grid.value().cols())};
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      cylindrical_grid_stl[i].resize(3);
-      for (int j = 0; j < 3; ++j) {
-        cylindrical_grid_stl[i][j] = maybe_cylindrical_grid.value()(j, i);
-      }
-    }
+    // Reset buffer to zero for this circuit's accumulation.
+    vector_potential.setZero();
 
     // We parallelize over linear index of evaluation locations, since that
     // allows us to use more CPUs and parallelize also for configurations with
@@ -664,16 +660,22 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     // independent circuits and many evaluation locations, rather than many
     // independent circuits but few evaluation locations. This is done inside of
     // ABSCAB, which is used within this call to `VectorPotential`.
-    absl::Status vector_potential_status =
-        VectorPotential(m_magnetic_configuration, cylindrical_grid_stl,
-                        /*m_vector_potential=*/vector_potential_stl);
+    absl::Status vector_potential_status = VectorPotential(
+        magnetic_configuration_copy, number_of_evaluation_points,
+        maybe_cylindrical_grid.value().data(), vector_potential.data());
+
+    // Reset this circuit's current to zero for the next iteration.
+    currents_for_circuit[circuit_index] = 0.0;
+    absl::Status reset_status =
+        SetCircuitCurrents(currents_for_circuit, magnetic_configuration_copy);
+    if (!reset_status.ok()) {
+      return reset_status;
+    }
+
     if (!vector_potential_status.ok()) {
       status[circuit_index] = vector_potential_status;
       continue;
     }
-    RowMatrix3Xd vector_potential =
-        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
-    vector_potential = vmecpp::ToEigenMatrix(vector_potential_stl).transpose();
 
     // ABSCAB computes the Cartesian components of the vector potential,
     // so we need to convert the x and y componets into r and phi
@@ -684,9 +686,10 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
 #endif  // _OPENMP
     for (int linear_index = 0; linear_index < number_of_evaluation_points;
          ++linear_index) {
-      const double a_x = vector_potential(0, linear_index);
-      const double a_y = vector_potential(1, linear_index);
-      const double a_z = vector_potential(2, linear_index);
+      // vector_potential is N x 3 row-major: (i, 0/1/2) is contiguous.
+      const double a_x = vector_potential(linear_index, 0);
+      const double a_y = vector_potential(linear_index, 1);
+      const double a_z = vector_potential(linear_index, 2);
 
       const size_t index_phi = linear_index / (num_z * num_r);
       const double a_r = a_x * cos_phi[index_phi] + a_y * sin_phi[index_phi];
