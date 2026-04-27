@@ -281,7 +281,7 @@ absl::Status NumWindingsToCircuitCurrents(
                  std::abs(unique_num_windings)) {
         return absl::InvalidArgumentError(absl::StrCat(
             "not all num_windings are |equal| in coil: |", coil.num_windings(),
-            "| =!= |", unique_num_windings, "|"));
+            "| != |", unique_num_windings, "|"));
       }
       num_windings_signs[idx_coil] =
           coil.num_windings() * unique_num_windings < 0 ? -1 : 1;
