@@ -18,39 +18,39 @@ class LaplaceSolver {
  public:
   LaplaceSolver(const Sizes* s, const FourierBasisFastToroidal* fb,
                 const TangentialPartitioning* tp, int nf, int mf,
-                std::span<double> matrixShare, std::span<int> iPiv,
-                std::span<double> bvecShare);
+                std::span<real_t> matrixShare, std::span<int> iPiv,
+                std::span<real_t> bvecShare);
 
-  void TransformGreensFunctionDerivative(const std::vector<double>& greenp);
-  void SymmetriseSourceTerm(const std::vector<double>& gstore);
-  void AccumulateFullGrpmn(const std::vector<double>& grpmn_sin_singular);
+  void TransformGreensFunctionDerivative(const std::vector<real_t>& greenp);
+  void SymmetriseSourceTerm(const std::vector<real_t>& gstore);
+  void AccumulateFullGrpmn(const std::vector<real_t>& grpmn_sin_singular);
   void PerformToroidalFourierTransforms();
   void PerformPoloidalFourierTransforms();
 
   void BuildMatrix();
   void DecomposeMatrix();
-  void SolveForPotential(const std::vector<double>& bvec_sin_singular);
+  void SolveForPotential(const std::vector<real_t>& bvec_sin_singular);
 
   // Green's function derivative Fourier transform, non-singular part,
   // stellarator-symmetric
-  std::vector<double> grpmn_sin;
+  std::vector<real_t> grpmn_sin;
 
   // Green's function derivative Fourier transform, non-singular part,
   // non-stellarator-symmetric
-  std::vector<double> grpmn_cos;
+  std::vector<real_t> grpmn_cos;
 
   // symmetrized source term, stellarator-symmetric
-  std::vector<double> gstore_symm;
+  std::vector<real_t> gstore_symm;
 
-  std::vector<double> bcos;
-  std::vector<double> bsin;
+  std::vector<real_t> bcos;
+  std::vector<real_t> bsin;
 
-  std::vector<double> actemp;
-  std::vector<double> astemp;
+  std::vector<real_t> actemp;
+  std::vector<real_t> astemp;
 
   // linear system to be solved
-  std::vector<double> bvec_sin;
-  std::vector<double> amat_sin_sin;
+  std::vector<real_t> bvec_sin;
+  std::vector<real_t> amat_sin_sin;
 
  private:
   const Sizes& s_;
@@ -62,16 +62,16 @@ class LaplaceSolver {
 
   // needed for LAPACK's dgetrf
   // non-owning pointers
-  std::span<double> matrixShare;
+  std::span<real_t> matrixShare;
   std::span<int> iPiv;
-  std::span<double> bvecShare;
+  std::span<real_t> bvecShare;
 
   // ----------------
 
   int numLocal;
 
-  std::vector<double> grpOdd;
-  std::vector<double> grpEvn;
+  std::vector<real_t> grpOdd;
+  std::vector<real_t> grpEvn;
 };
 
 }  // namespace vmecpp

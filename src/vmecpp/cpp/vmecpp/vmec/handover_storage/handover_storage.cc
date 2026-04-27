@@ -183,7 +183,7 @@ void HandoverStorage::RegisterSpectralWidthContribution(
   spectral_width_denominator_ += spectral_width_contribution.denominator;
 }  // RegisterSpectralWidthContribution
 
-double HandoverStorage::VolumeAveragedSpectralWidth() const {
+real_t HandoverStorage::VolumeAveragedSpectralWidth() const {
   return spectral_width_numerator_ / spectral_width_denominator_;
 }  // VolumeAveragedSpectralWidth
 

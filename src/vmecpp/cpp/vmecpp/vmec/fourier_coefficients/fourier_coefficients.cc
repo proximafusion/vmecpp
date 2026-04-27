@@ -120,8 +120,9 @@ void FourierCoeffs::setZero() {
 }
 
 /** apply even/odd-m decomposition */
-void FourierCoeffs::decomposeInto(FourierCoeffs& m_x,
-                                  const Eigen::VectorXd& scalxc) const {
+void FourierCoeffs::decomposeInto(
+    FourierCoeffs& m_x,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& scalxc) const {
   // TODO(jons): understand correct limits in fixed-boundary vs. free-boundary
   int jMaxIncludingBoundary = nsMax_;
   if (r_.nsMaxF1 == ns) {
@@ -139,7 +140,7 @@ void FourierCoeffs::decomposeInto(FourierCoeffs& m_x,
         int m_parity = m % 2;
 
         // scalxc is always defined on numFull1
-        double scal = scalxc[(jF - r_.nsMinF1) * 2 + m_parity];
+        real_t scal = scalxc[(jF - r_.nsMinF1) * 2 + m_parity];
 
         if (jF < jMaxRZ) {
           m_x.rcc[idx_fc] = rcc[idx_fc] * scal;
@@ -173,7 +174,7 @@ void FourierCoeffs::decomposeInto(FourierCoeffs& m_x,
 }
 
 /** (un)do m=1 constraint to couple R_ss,Z_cs as well as R_sc,Z_cc */
-void FourierCoeffs::m1Constraint(double scalingFactor,
+void FourierCoeffs::m1Constraint(real_t scalingFactor,
                                  std::optional<int> jMax) {
   int nsMaxToUse = nsMax_;
   if (jMax.has_value()) {
@@ -185,12 +186,12 @@ void FourierCoeffs::m1Constraint(double scalingFactor,
       int m = 1;
       int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
       if (s_.lthreed) {
-        double old_rss = rss[idx_fc];
+        real_t old_rss = rss[idx_fc];
         rss[idx_fc] = (old_rss + zcs[idx_fc]) * scalingFactor;
         zcs[idx_fc] = (old_rss - zcs[idx_fc]) * scalingFactor;
       }
       if (s_.lasym) {
-        double old_rsc = rsc[idx_fc];
+        real_t old_rsc = rsc[idx_fc];
         rsc[idx_fc] = (old_rsc + zcc[idx_fc]) * scalingFactor;
         zcc[idx_fc] = (old_rsc - zcc[idx_fc]) * scalingFactor;
       }
@@ -198,10 +199,10 @@ void FourierCoeffs::m1Constraint(double scalingFactor,
   }  // j
 }
 
-double FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
+real_t FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
                              int nsMaxHere) const {
   // accumulator for local thread
-  double local_norm2 = 0.0;
+  real_t local_norm2 = 0.0;
 
   for (int jF = nsMinHere; jF < nsMaxHere; ++jF) {
     for (int m = 0; m < s_.mpol; ++m) {
@@ -233,7 +234,7 @@ double FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
   return local_norm2;
 }
 
-double FourierCoeffs::GetXcElement(int rzl, int idx_basis, int jF, int n,
+real_t FourierCoeffs::GetXcElement(int rzl, int idx_basis, int jF, int n,
                                    int m) const {
   int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
 

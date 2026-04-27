@@ -10,6 +10,8 @@
 #include <optional>
 #include <vector>
 
+#include "vmecpp/common/util/real_type.h"
+
 namespace vmecpp {
 
 // enumerates values of `restart_reason`
@@ -37,7 +39,7 @@ class FlowControl {
   // ns4: number of iterations between update of radial preconditioner matrix
   static constexpr int kPreconditionerUpdateInterval = 25;
 
-  FlowControl(bool lfreeb, double delt, int num_grids,
+  FlowControl(bool lfreeb, real_t delt, int num_grids,
               std::optional<int> max_threads = std::nullopt);
 
   int max_threads() const;
@@ -65,10 +67,10 @@ class FlowControl {
   int nsval;
 
   // radial grid spacing of flux surfaces: 1.0 / (ns - 1.0)
-  double deltaS;
+  real_t deltaS;
 
   // current force tolerance
-  double ftolv;
+  real_t ftolv;
 
   // current maximum number of iterations
   int niterv;
@@ -81,33 +83,33 @@ class FlowControl {
   int ns_min;
   int ns_old;
 
-  double delt0r;
+  real_t delt0r;
 
   // Cumulative force residuals (radial, vertical and lambda)
   // Populated by `evalFResInvar`
-  double fsqr, fsqz, fsql;
+  real_t fsqr, fsqz, fsql;
 
   // Time-trace of the invariant force residuals during convergence
   // fsqt = (force_residual_r + force_residual_z + force_residual_lambda)
-  std::vector<double> force_residual_r;
-  std::vector<double> force_residual_z;
-  std::vector<double> force_residual_lambda;
+  std::vector<real_t> force_residual_r;
+  std::vector<real_t> force_residual_z;
+  std::vector<real_t> force_residual_lambda;
 
   // Preconditioned cumulative force residuals (radial, vertical and lambda)
   // Populated by `evalFResPrecd`
-  double fsqr1, fsqz1, fsql1;
-  double fsq;
+  real_t fsqr1, fsqz1, fsql1;
+  real_t fsq;
 
-  std::vector<double> mhd_energy;
+  std::vector<real_t> mhd_energy;
 
   // Time-trace of the force at the vacuum boundary (only for free-boundary)
-  std::vector<double> delbsq;
+  std::vector<real_t> delbsq;
   // Time-trace of the restart reasons, for debugging purposes. Each restart is
   // a pair of <iteration, reason> (e.g. to see how many jacobian resets
   // occurred)
   std::vector<RestartReason> restart_reasons;
 
-  double res0;
+  real_t res0;
 
   Eigen::Vector3d fResInvar;
   Eigen::Vector3d fResPrecd;

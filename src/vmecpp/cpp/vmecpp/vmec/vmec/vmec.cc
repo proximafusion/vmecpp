@@ -421,7 +421,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 // initialize_radial quantities, return true if a checkpoint was reached
 bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
-    int ns_old, double& m_delt0,
+    int ns_old, real_t& m_delt0,
     const std::optional<HotRestartState>& initial_state) {
   // Stage info output is now handled by logger_.BeginStage() in run().
 
@@ -527,23 +527,23 @@ bool Vmec::InitializeRadial(
         if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
           fb_[thread_id] = std::make_unique<Nestor>(
               &s_, tp_[thread_id].get(), &mgrid_,
-              std::span<double>(matrixShare.data(), matrixShare.size()),
-              std::span<double>(bvecShare.data(), bvecShare.size()),
-              std::span<double>(h_.vacuum_magnetic_pressure.data(),
+              std::span<real_t>(matrixShare.data(), matrixShare.size()),
+              std::span<real_t>(bvecShare.data(), bvecShare.size()),
+              std::span<real_t>(h_.vacuum_magnetic_pressure.data(),
                                 h_.vacuum_magnetic_pressure.size()),
               std::span<int>(iPiv.data(), iPiv.size()),
-              std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-              std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
-              std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+              std::span<real_t>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+              std::span<real_t>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+              std::span<real_t>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
         } else if (indata_.free_boundary_method ==
                    FreeBoundaryMethod::ONLY_COILS) {
           fb_[thread_id] = std::make_unique<OnlyCoils>(
               &s_, tp_[thread_id].get(), &mgrid_,
-              std::span<double>(h_.vacuum_magnetic_pressure.data(),
+              std::span<real_t>(h_.vacuum_magnetic_pressure.data(),
                                 h_.vacuum_magnetic_pressure.size()),
-              std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-              std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
-              std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+              std::span<real_t>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+              std::span<real_t>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+              std::span<real_t>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
         } else {
           LOG(FATAL) << absl::StrCat("free boundary method '",
                                      ToString(indata_.free_boundary_method),
@@ -651,7 +651,7 @@ bool Vmec::InitializeRadial(
 
       // TODO(jons): what exactly happens here?
       // Why do we mask potential changes on `indata_.delt` by passing a copy?
-      double delt_for_restart_iter = indata_.delt;
+      real_t delt_for_restart_iter = indata_.delt;
       RestartIteration(delt_for_restart_iter, thread_id);
     }
 
@@ -910,7 +910,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #endif  // _OPENMP
       {
         // fc_.ijacob is incremented in RestartIteration
-        const double scale = fc_.ijacob < 50 ? 0.98 : 0.96;
+        const real_t scale = fc_.ijacob < 50 ? 0.98 : 0.96;
 
         fc_.delt0r = scale * indata_.delt;
 
@@ -1082,7 +1082,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 }
 
 // aligned visually with restart_iter.f90
-void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
+void Vmec::RestartIteration(real_t& m_delt0r, int thread_id) {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -1152,7 +1152,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 
 absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
                                   int iterations_before_checkpointing,
-                                  double time_step, int thread_id,
+                                  real_t time_step, int thread_id,
                                   bool& m_liter_flag) {
 #ifdef _OPENMP
 #pragma omp single
@@ -1205,7 +1205,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 #endif  // _OPENMP
   {
     // sum of preconditioned force residuals in current iteration
-    const double fsq1 = fc_.fsqr1 + fc_.fsqz1 + fc_.fsql1;
+    const real_t fsq1 = fc_.fsqr1 + fc_.fsqz1 + fc_.fsql1;
 
     if (iter2_ == iter1_) {
       // initialize all entries in otau to 0.15/time_step --> required for
@@ -1216,16 +1216,18 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     // shift elements for averaging to the left to make space at end for new
     // entry (oldest entry ends up at the end and will be overwritten later)
     {
-      Eigen::VectorXd tmp = invTau_.tail(invTau_.size() - 1);
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1> tmp =
+          invTau_.tail(invTau_.size() - 1);
       invTau_.head(invTau_.size() - 1) = tmp;
     }
 
     if (iter2_ > iter1_) {
-      double invtau_numerator = 0.;
+      real_t invtau_numerator = 0.;
       if (fsq1 != 0.) {
         // fsq is 1 (first iteration) or fsq1 from previous iteration
         // fsq1/fsq is y_n assuming monotonic decrease of energy
-        invtau_numerator = std::min(std::abs(std::log(fsq1 / fc_.fsq)), 0.15);
+        invtau_numerator = std::min(std::abs(std::log(fsq1 / fc_.fsq)),
+                                    static_cast<real_t>(0.15));
       }
 
       // overwrite oldest entry (at last index after rotation above) with the
@@ -1254,11 +1256,11 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   }
 
   // averaging over ndamp entries : 1/ndamp*sum(invTau)
-  const double otav = invTau_.sum() / kNDamp;
+  const real_t otav = invTau_.sum() / kNDamp;
 
-  const double dtau = time_step * otav / 2.0;
-  const double b1 = 1.0 - dtau;
-  const double fac = 1.0 / (1.0 + dtau);
+  const real_t dtau = time_step * otav / 2.0;
+  const real_t b1 = 1.0 - dtau;
+  const real_t fac = 1.0 / (1.0 + dtau);
 
   // THIS IS THE TIME-STEP ALGORITHM. IT IS ESSENTIALLY A CONJUGATE
   // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
@@ -1268,7 +1270,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   return false;
 }
 
-void Vmec::Printout(double delt0r, int thread_id, int iter2) {
+void Vmec::Printout(real_t delt0r, int thread_id, int iter2) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -1286,19 +1288,19 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
 
     // radial location of magnetic axis at zeta = 0
     const GeometricOffset& geometric_offset = h_.GetGeometricOffset();
-    double r00 = geometric_offset.r_00;
+    real_t r00 = geometric_offset.r_00;
 
     // MHD energy (in SI units, i.e., Joules?)
-    double energy = h_.mhdEnergy * 4.0 * M_PI * M_PI;
+    real_t energy = h_.mhdEnergy * 4.0 * M_PI * M_PI;
 
     // volume-averaged beta
-    double betaVolAvg = h_.thermalEnergy / h_.magneticEnergy;
+    real_t betaVolAvg = h_.thermalEnergy / h_.magneticEnergy;
 
     // volume-averaged spectral width <M>
-    double volAvgM = h_.VolumeAveragedSpectralWidth();
+    real_t volAvgM = h_.VolumeAveragedSpectralWidth();
 
     // mismatch in |B|^2 at LCFS for free-boundary
-    double delbsq = m_[thread_id]->get_delbsq();
+    real_t delbsq = m_[thread_id]->get_delbsq();
 
     logger_.LogIteration(iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1,
                          fc_.fsqz1, fc_.fsql1, delt0r, r00, energy, betaVolAvg,
@@ -1323,7 +1325,7 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
   // triggered at activation of vacuum forces.
   // all threads return the same value for this flag.
   if (need_restart) {
-    double delt0 = indata_.delt;
+    real_t delt0 = indata_.delt;
     RestartIteration(delt0, thread_id);
 
 #ifdef _OPENMP
@@ -1340,7 +1342,7 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
   return reached_checkpoint;
 }
 
-void Vmec::PerformTimeStep(double fac, double b1, double time_step,
+void Vmec::PerformTimeStep(real_t fac, real_t b1, real_t time_step,
                            int thread_id) {
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1360,8 +1362,8 @@ void Vmec::PerformTimeStep(double fac, double b1, double time_step,
 // velocity_scale == fac
 // conjugation_parameter == b1
 void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
-                           const RadialPartitioning& r, double velocity_scale,
-                           double conjugation_parameter, double time_step,
+                           const RadialPartitioning& r, real_t velocity_scale,
+                           real_t conjugation_parameter, real_t time_step,
                            FourierGeometry& m_decomposed_x,
                            FourierVelocity& m_decomposed_v,
                            const FourierForces& decomposed_f,
@@ -1651,7 +1653,7 @@ void Vmec::InterpolateToNextMultigridStep(
   // ON ENTRY, XOLD = X(COARSE MESH) * SCALXC(COARSE MESH)
   // ON EXIT,  XNEW = X(NEW MESH)   [ NOT SCALED BY 1/SQRTS ]
 
-  const double hs_old = 1.0 / (ns_old - 1.0);
+  const real_t hs_old = 1.0 / (ns_old - 1.0);
 
   const int num_threads_new = static_cast<int>(r_new.size());
   const int num_threads_old = static_cast<int>(r_old.size());
@@ -1760,8 +1762,8 @@ void Vmec::InterpolateToNextMultigridStep(
 
       // interpolation weight
       xint[jNew] = (sj[jNew] - s1[jNew]) / hs_old;
-      xint[jNew] = std::min(1.0, xint[jNew]);
-      xint[jNew] = std::max(0.0, xint[jNew]);
+      xint[jNew] = std::min(static_cast<real_t>(1.0), xint[jNew]);
+      xint[jNew] = std::max(static_cast<real_t>(0.0), xint[jNew]);
 
       // now need to figure out source threads, which have js1 and js2
       // and the target thread that has jNew
@@ -1797,7 +1799,7 @@ void Vmec::InterpolateToNextMultigridStep(
                   (s_.ntor + 1) +
               n;
 
-          const double scalxc =
+          const real_t scalxc =
               p[thread_id]
                   ->scalxc[(jNew - r_new[thread_id]->nsMinF1) * 2 + m_parity];
 

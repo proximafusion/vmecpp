@@ -27,17 +27,17 @@ class SurfaceGeometryMockup {
       bool lasym = false, int nphi = 36, int ntheta = 0, int nfp = 5);
 
   SurfaceGeometryMockup(bool lasym, int nfp, int mpol, int ntor, int ntheta,
-                        int nphi, std::vector<double>& m_rmnc,
-                        std::vector<double>& m_rmns,
-                        std::vector<double>& m_zmns,
-                        std::vector<double>& m_zmnc, int num_threads = 1,
+                        int nphi, std::vector<real_t>& m_rmnc,
+                        std::vector<real_t>& m_rmns,
+                        std::vector<real_t>& m_zmns,
+                        std::vector<real_t>& m_zmnc, int num_threads = 1,
                         int thread_id = 0);
 
   bool lasym;
-  std::vector<double> rmnc;
-  std::vector<double> rmns;
-  std::vector<double> zmns;
-  std::vector<double> zmnc;
+  std::vector<real_t> rmnc;
+  std::vector<real_t> rmns;
+  std::vector<real_t> zmns;
+  std::vector<real_t> zmnc;
 
   Sizes s;
   FourierBasisFastToroidal fb;

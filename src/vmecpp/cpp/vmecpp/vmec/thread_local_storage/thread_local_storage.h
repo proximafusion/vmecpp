@@ -19,39 +19,39 @@ class ThreadLocalStorage {
   explicit ThreadLocalStorage(const Sizes* s);
 
   // inv-DFT of geometry
-  Eigen::VectorXd r1e_i;
-  Eigen::VectorXd r1o_i;
-  Eigen::VectorXd rue_i;
-  Eigen::VectorXd ruo_i;
-  Eigen::VectorXd rve_i;
-  Eigen::VectorXd rvo_i;
-  Eigen::VectorXd z1e_i;
-  Eigen::VectorXd z1o_i;
-  Eigen::VectorXd zue_i;
-  Eigen::VectorXd zuo_i;
-  Eigen::VectorXd zve_i;
-  Eigen::VectorXd zvo_i;
-  Eigen::VectorXd lue_i;
-  Eigen::VectorXd luo_i;
-  Eigen::VectorXd lve_i;
-  Eigen::VectorXd lvo_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> r1e_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> r1o_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rue_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> ruo_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rve_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rvo_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> z1e_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> z1o_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zue_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zuo_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zve_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zvo_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> lue_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> luo_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> lve_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> lvo_i;
 
   // hybrid lambda forces
-  Eigen::VectorXd bsubu_i;
-  Eigen::VectorXd bsubv_i;
-  Eigen::VectorXd gvv_gsqrt_i;  // gvv / gsqrt
-  Eigen::VectorXd guv_bsupu_i;  // guv * bsupu
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bsubu_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bsubv_i;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> gvv_gsqrt_i;  // gvv / gsqrt
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> guv_bsupu_i;  // guv * bsupu
 
   // R, Z MHD forces
-  Eigen::VectorXd P_i;      // r12 * totalPressure = P
-  Eigen::VectorXd rup_i;    // ru12 * P
-  Eigen::VectorXd zup_i;    // zu12 * P
-  Eigen::VectorXd rsp_i;    //   rs * P
-  Eigen::VectorXd zsp_i;    //   zs * P
-  Eigen::VectorXd taup_i;   //  tau * P
-  Eigen::VectorXd gbubu_i;  // gsqrt * bsupu * bsupu
-  Eigen::VectorXd gbubv_i;  // gsqrt * bsupu * bsupv
-  Eigen::VectorXd gbvbv_i;  // gsqrt * bsupv * bsupv
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> P_i;      // r12 * totalPressure = P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rup_i;    // ru12 * P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zup_i;    // zu12 * P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rsp_i;    //   rs * P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zsp_i;    //   zs * P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> taup_i;   //  tau * P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbubu_i;  // gsqrt * bsupu * bsupu
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbubv_i;  // gsqrt * bsupu * bsupv
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbvbv_i;  // gsqrt * bsupv * bsupv
 };
 
 }  // namespace vmecpp

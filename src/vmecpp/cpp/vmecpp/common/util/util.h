@@ -5,7 +5,7 @@
 #ifndef VMECPP_COMMON_UTIL_UTIL_H_
 #define VMECPP_COMMON_UTIL_UTIL_H_
 
-#include <Eigen/Dense>  // VectorXd, Matrix
+#include <Eigen/Dense>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "absl/log/check.h"
+#include "vmecpp/common/util/real_type.h"
 #include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
 
 #ifdef _OPENMP
@@ -26,18 +27,15 @@
 
 namespace vmecpp {
 
-// Eigen defaults to column-major ordering, but we prefer row-major for two
-// reasons:
-// - the data will be mostly handled as numpy arrays via pybind11, and numpy's
-// default is row-major
-// - lots of code in output_quantities.cc expects row-major when iterating over
-// elements with a linear index
+// Row-major double matrix used at I/O boundaries (JSON parsing, pybind11
+// numpy arrays). Internal physics code uses RowMatrixXr (real_t / long double).
 using RowMatrixXd =
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
-inline Eigen::VectorXd ToEigenVector(const std::vector<double> &v) {
-  return Eigen::Map<const Eigen::VectorXd>(v.data(),
-                                           static_cast<Eigen::Index>(v.size()));
+inline Eigen::Matrix<real_t, Eigen::Dynamic, 1> ToEigenVector(
+    const std::vector<real_t> &v) {
+  return Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+      v.data(), static_cast<Eigen::Index>(v.size()));
 }
 
 inline Eigen::VectorXi ToEigenVector(const std::vector<int> &v) {
@@ -45,13 +43,21 @@ inline Eigen::VectorXi ToEigenVector(const std::vector<int> &v) {
                                            static_cast<Eigen::Index>(v.size()));
 }
 
+inline vmecpp::RowMatrixXr ToEigenMatrix(const std::vector<real_t> &v,
+                                         Eigen::Index size1,
+                                         Eigen::Index size2) {
+  return Eigen::Map<const vmecpp::RowMatrixXr>(v.data(), size1, size2);
+}
+
+// I/O boundary overload: convert flat double vector to row-major double matrix
 inline vmecpp::RowMatrixXd ToEigenMatrix(const std::vector<double> &v,
                                          Eigen::Index size1,
                                          Eigen::Index size2) {
   return Eigen::Map<const vmecpp::RowMatrixXd>(v.data(), size1, size2);
 }
 
-// Convert a rectangular nested STL vector to the corresponding Eigen matrix
+// I/O boundary overload: convert nested double vector to double row-major
+// matrix
 inline vmecpp::RowMatrixXd ToEigenMatrix(
     const std::vector<std::vector<double>> &v) {
   const std::size_t outer_size = v.size();
@@ -60,8 +66,26 @@ inline vmecpp::RowMatrixXd ToEigenMatrix(
   for (const auto &row : v) {
     CHECK_EQ(row.size(), inner_size);
   }
-
   vmecpp::RowMatrixXd m(outer_size, inner_size);
+  for (int i = 0; i < m.rows(); ++i) {
+    for (int j = 0; j < m.cols(); ++j) {
+      m(i, j) = v[i][j];
+    }
+  }
+  return m;
+}
+
+// Convert a rectangular nested STL vector to the corresponding Eigen matrix
+inline vmecpp::RowMatrixXr ToEigenMatrix(
+    const std::vector<std::vector<real_t>> &v) {
+  const std::size_t outer_size = v.size();
+  CHECK_GT(outer_size, 0u);
+  const std::size_t inner_size = v[0].size();
+  for (const auto &row : v) {
+    CHECK_EQ(row.size(), inner_size);
+  }
+
+  vmecpp::RowMatrixXr m(outer_size, inner_size);
 
   for (int i = 0; i < m.rows(); ++i) {
     for (int j = 0; j < m.cols(); ++j) {
@@ -181,8 +205,8 @@ std::string VmecStatusAsString(const VmecStatus vmec_status);
 // as it is the official value after re-definition of the SI system.
 // However, for now, use the old definition for 1:1 comparison against Fortran
 // VMEC.
-// static constexpr double MU_0 = 1.25663706212e-6;
-static constexpr double MU_0 = 4.0e-7 * M_PI;
+// static constexpr real_t MU_0 = 1.25663706212e-6L;
+static constexpr real_t MU_0 = 4.0e-7L * M_PI;
 
 // ----------------------
 // simple math
@@ -200,8 +224,8 @@ int signum(int x);
 // a,d,b contain the tri-diagonal matrix and are modified in-place
 // m_c_data: RHS on entry, solution on exit. Layout: [k * c_stride + j]
 // Access: c[k][j] = m_c_data[k * c_stride + j], c_stride typically = ns
-void TridiagonalSolveSerial(std::span<double> m_a, std::span<double> m_d,
-                            std::span<double> m_b, double *m_c_data,
+void TridiagonalSolveSerial(std::span<real_t> m_a, std::span<real_t> m_d,
+                            std::span<real_t> m_b, real_t *m_c_data,
                             int c_stride, int jMin, int jMax, int nRHS);
 
 // OpenMP-enabled tri-diagonal solver
@@ -219,16 +243,16 @@ void TridiagonalSolveSerial(std::span<double> m_a, std::span<double> m_d,
 // a,d,b contain the tri-diagonal matrix and is modified in-place
 // c     contains the RHS on entry and the solution vectors on exit
 void TridiagonalSolveOpenMP(
-    std::vector<double> &m_ar, std::vector<double> &m_dr,
-    std::vector<double> &m_br, std::vector<std::span<double>> &m_cr,
-    std::vector<double> &m_az, std::vector<double> &m_dz,
-    std::vector<double> &m_bz, std::vector<std::span<double>> &m_cz,
+    std::vector<real_t> &m_ar, std::vector<real_t> &m_dr,
+    std::vector<real_t> &m_br, std::vector<std::span<real_t>> &m_cr,
+    std::vector<real_t> &m_az, std::vector<real_t> &m_dz,
+    std::vector<real_t> &m_bz, std::vector<std::span<real_t>> &m_cz,
     const std::vector<int> &jMin, int jMax, int mnmax, int nRHS,
     std::vector<std::mutex> &m_mutices, int ncpu, int myid, int nsMinF,
-    int nsMaxF, std::vector<double> &m_handover_ar,
-    std::vector<std::vector<double>> &m_handover_cr,
-    std::vector<double> &m_handover_az,
-    std::vector<std::vector<double>> &m_handover_cz);
+    int nsMaxF, std::vector<real_t> &m_handover_ar,
+    std::vector<std::vector<real_t>> &m_handover_cr,
+    std::vector<real_t> &m_handover_az,
+    std::vector<std::vector<real_t>> &m_handover_cz);
 
 // ----------------------
 // VMEC-specific

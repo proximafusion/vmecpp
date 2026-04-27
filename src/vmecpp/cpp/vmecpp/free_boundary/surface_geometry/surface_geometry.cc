@@ -62,16 +62,16 @@ SurfaceGeometry::SurfaceGeometry(const Sizes* s,
 }
 
 void SurfaceGeometry::computeConstants() {
-  double omega_per = 2.0 * M_PI / s_.nfp;
+  real_t omega_per = 2.0 * M_PI / s_.nfp;
   for (int p = 0; p < s_.nfp; ++p) {
-    double phi_per = omega_per * p;
+    real_t phi_per = omega_per * p;
     cos_per[p] = cos(phi_per);
     sin_per[p] = sin(phi_per);
   }
 
-  double omega_phi = 2.0 * M_PI / (s_.nfp * s_.nZeta);
+  real_t omega_phi = 2.0 * M_PI / (s_.nfp * s_.nZeta);
   for (int k = 0; k < s_.nZeta; ++k) {
-    double phi = omega_phi * k;
+    real_t phi = omega_phi * k;
     cos_phi[k] = cos(phi);
     sin_phi[k] = sin(phi);
   }
@@ -80,10 +80,10 @@ void SurfaceGeometry::computeConstants() {
 // Evaluate the Fourier series for the surface geometry
 // and compute quantities depending on it.
 void SurfaceGeometry::update(
-    const std::span<const double> rCC, const std::span<const double> rSS,
-    const std::span<const double> rSC, const std::span<const double> rCS,
-    const std::span<const double> zSC, const std::span<const double> zCS,
-    const std::span<const double> zCC, const std::span<const double> zSS,
+    const std::span<const real_t> rCC, const std::span<const real_t> rSS,
+    const std::span<const real_t> rSC, const std::span<const real_t> rCS,
+    const std::span<const real_t> zSC, const std::span<const real_t> zCS,
+    const std::span<const real_t> zCC, const std::span<const real_t> zSS,
     int signOfJacobian, bool fullUpdate) {
 #ifdef _OPENMP
 #pragma omp barrier
@@ -106,10 +106,10 @@ void SurfaceGeometry::update(
 // geometry into realspace and compute 1st- and 2nd-order tangential
 // derivatives.
 void SurfaceGeometry::inverseDFT(
-    const std::span<const double> rCC, const std::span<const double> rSS,
-    const std::span<const double> rSC, const std::span<const double> rCS,
-    const std::span<const double> zSC, const std::span<const double> zCS,
-    const std::span<const double> zCC, const std::span<const double> zSS,
+    const std::span<const real_t> rCC, const std::span<const real_t> rSS,
+    const std::span<const real_t> rSC, const std::span<const real_t> rCS,
+    const std::span<const real_t> zSC, const std::span<const real_t> zCS,
+    const std::span<const real_t> zCC, const std::span<const real_t> zSS,
     bool fullUpdate) {
   // TODO(jons): implement lasym-related code
   (void)rSC;
@@ -147,22 +147,22 @@ void SurfaceGeometry::inverseDFT(
     int lMax = tp_.ztMax / s_.nZeta;
 
     for (int l = 0; l < s_.nThetaReduced; ++l) {
-      double rmkcc = 0.0;
-      double rmkss = 0.0;
-      double zmksc = 0.0;
-      double zmkcs = 0.0;
+      real_t rmkcc = 0.0;
+      real_t rmkss = 0.0;
+      real_t zmksc = 0.0;
+      real_t zmkcs = 0.0;
 
       // ----------------
 
-      double rmkcc_m = 0.0;
-      double rmkcc_mm = 0.0;
-      double rmkss_m = 0.0;
-      double rmkss_mm = 0.0;
+      real_t rmkcc_m = 0.0;
+      real_t rmkcc_mm = 0.0;
+      real_t rmkss_m = 0.0;
+      real_t rmkss_mm = 0.0;
 
-      double zmksc_m = 0.0;
-      double zmksc_mm = 0.0;
-      double zmkcs_m = 0.0;
-      double zmkcs_mm = 0.0;
+      real_t zmksc_m = 0.0;
+      real_t zmksc_mm = 0.0;
+      real_t zmkcs_m = 0.0;
+      real_t zmkcs_mm = 0.0;
 
       for (int m = 0; m < s_.mpol; ++m) {
         int idx_mn = n * s_.mpol + m;
@@ -170,8 +170,8 @@ void SurfaceGeometry::inverseDFT(
         // needed for second-order poloidal derivatives
         int mSq = m * m;
 
-        double cosmu = fb_.cosmu[l * (s_.mnyq2 + 1) + m];
-        double sinmu = fb_.sinmu[l * (s_.mnyq2 + 1) + m];
+        real_t cosmu = fb_.cosmu[l * (s_.mnyq2 + 1) + m];
+        real_t sinmu = fb_.sinmu[l * (s_.mnyq2 + 1) + m];
 
         rmkcc += rCC[idx_mn] * cosmu;
         rmkss += rSS[idx_mn] * sinmu;
@@ -186,10 +186,10 @@ void SurfaceGeometry::inverseDFT(
           // --> these would be excluded here, but they still need to do some
           // work here!
 
-          double cosmum = fb_.cosmum[l * (s_.mnyq2 + 1) + m];
-          double sinmum = fb_.sinmum[l * (s_.mnyq2 + 1) + m];
-          double cosmumm = -mSq * fb_.cosmu[l * (s_.mnyq2 + 1) + m];
-          double sinmumm = -mSq * fb_.sinmu[l * (s_.mnyq2 + 1) + m];
+          real_t cosmum = fb_.cosmum[l * (s_.mnyq2 + 1) + m];
+          real_t sinmum = fb_.sinmum[l * (s_.mnyq2 + 1) + m];
+          real_t cosmumm = -mSq * fb_.cosmu[l * (s_.mnyq2 + 1) + m];
+          real_t sinmumm = -mSq * fb_.sinmu[l * (s_.mnyq2 + 1) + m];
 
           rmkcc_m += rCC[idx_mn] * sinmum;
           rmkcc_mm += rCC[idx_mn] * cosmumm;
@@ -206,8 +206,8 @@ void SurfaceGeometry::inverseDFT(
       for (int k = 0; k < s_.nZeta; ++k) {
         int idx_kl = l * s_.nZeta + k;
 
-        double cosnv = fb_.cosnv[n * s_.nZeta + k];
-        double sinnv = fb_.sinnv[n * s_.nZeta + k];
+        real_t cosnv = fb_.cosnv[n * s_.nZeta + k];
+        real_t sinnv = fb_.sinnv[n * s_.nZeta + k];
 
         r1b[idx_kl] += rmkcc * cosnv + rmkss * sinnv;
         z1b[idx_kl] += zmksc * cosnv + zmkcs * sinnv;
@@ -215,8 +215,8 @@ void SurfaceGeometry::inverseDFT(
         // ----------------
 
         if (tp_.ztMin <= idx_kl && idx_kl < tp_.ztMax) {
-          double cosnvn = fb_.cosnvn[n * s_.nZeta + k];
-          double sinnvn = fb_.sinnvn[n * s_.nZeta + k];
+          real_t cosnvn = fb_.cosnvn[n * s_.nZeta + k];
+          real_t sinnvn = fb_.sinnvn[n * s_.nZeta + k];
 
           rub[idx_kl - tp_.ztMin] += rmkcc_m * cosnv + rmkss_m * sinnv;
           rvb[idx_kl - tp_.ztMin] += rmkcc * sinnvn + rmkss * cosnvn;
@@ -224,8 +224,8 @@ void SurfaceGeometry::inverseDFT(
           zvb[idx_kl - tp_.ztMin] += zmksc * sinnvn + zmkcs * cosnvn;
 
           if (fullUpdate) {
-            double cosnvnn = -nSq * fb_.cosnv[n * s_.nZeta + k];
-            double sinnvnn = -nSq * fb_.sinnv[n * s_.nZeta + k];
+            real_t cosnvnn = -nSq * fb_.cosnv[n * s_.nZeta + k];
+            real_t sinnvnn = -nSq * fb_.sinnv[n * s_.nZeta + k];
 
             ruu[idx_kl - tp_.ztMin] += rmkcc_mm * cosnv + rmkss_mm * sinnv;
             ruv[idx_kl - tp_.ztMin] += rmkcc_m * sinnvn + rmkss_m * cosnvn;

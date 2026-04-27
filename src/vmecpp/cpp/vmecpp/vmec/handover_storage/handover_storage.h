@@ -12,6 +12,7 @@
 
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/util/real_type.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 
@@ -21,19 +22,19 @@ namespace vmecpp {
 // Note that these correspond to an invalid spectral width,
 // as a division-by-zero would occur.
 struct SpectralWidthContribution {
-  double numerator = 0.0;
-  double denominator = 0.0;
+  real_t numerator = 0.0;
+  real_t denominator = 0.0;
 };
 
 // Size of the plasma in radial direction.
 struct RadialExtent {
-  double r_outer = 0.0;
-  double r_inner = 0.0;
+  real_t r_outer = 0.0;
+  real_t r_inner = 0.0;
 };
 
 struct GeometricOffset {
-  double r_00 = 0.0;
-  double z_00 = 0.0;
+  real_t r_00 = 0.0;
+  real_t z_00 = 0.0;
 };
 
 class HandoverStorage {
@@ -45,7 +46,7 @@ class HandoverStorage {
   void ResetSpectralWidthAccumulators();
   void RegisterSpectralWidthContribution(
       const SpectralWidthContribution& spectral_width_contribution);
-  double VolumeAveragedSpectralWidth() const;
+  real_t VolumeAveragedSpectralWidth() const;
 
   void SetRadialExtent(const RadialExtent& radial_extent);
   void SetGeometricOffset(const GeometricOffset& geometric_offset);
@@ -55,126 +56,126 @@ class HandoverStorage {
 
   // -------------------
 
-  double thermalEnergy;
-  double magneticEnergy;
-  double mhdEnergy;
+  real_t thermalEnergy;
+  real_t magneticEnergy;
+  real_t mhdEnergy;
 
   /** plasma volume in m^3/(2pi)^2 */
-  double plasmaVolume;
+  real_t plasmaVolume;
 
   // initial plasma volume (at start of multi-grid step) in m^3
-  double voli;
+  real_t voli;
 
   // force residual normalization factor for R and Z
-  double fNormRZ;
+  real_t fNormRZ;
 
   // force residual normalization factor for lambda
-  double fNormL;
+  real_t fNormL;
 
   // preconditioned force residual normalization factor for R, Z and lambda
-  double fNorm1;
+  real_t fNorm1;
 
   // poloidal current at axis
-  double rBtor0;
+  real_t rBtor0;
 
   // poloidal current at LCFS; rBtor / MU_0 is in Amperes
-  double rBtor;
+  real_t rBtor;
 
   // net enclosed toroidal current at LCFS; cTor / MU_0 is in Amperes
-  double cTor;
+  real_t cTor;
 
   // net toroidal current from vacuum; bSubUVac / MU_0 is in Amperes
-  double bSubUVac;
+  real_t bSubUVac;
 
   // poloidal current at LCFS from vacuum; bSubVVac * 2 * pi / MU_0 is in
   // Amperes
-  double bSubVVac;
+  real_t bSubVVac;
 
   // Used only in rzConIntoVolume() to extrapolate the constraint force
   // contribution from the LCFS into the plasma volume.
   // TODO(jurasic) this should have a smaller scope.
-  Eigen::VectorXd rCon_LCFS;
-  Eigen::VectorXd zCon_LCFS;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rCon_LCFS;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zCon_LCFS;
 
-  // Inter-thread handover storage: RowMatrixXd [num_threads, mnsize]
+  // Inter-thread handover storage: RowMatrixXr [num_threads, mnsize]
   // _i arrays: inside boundary, _o arrays: outside boundary
 
-  RowMatrixXd rmncc_i;
-  RowMatrixXd rmnss_i;
-  RowMatrixXd zmnsc_i;
-  RowMatrixXd zmncs_i;
-  RowMatrixXd lmnsc_i;
-  RowMatrixXd lmncs_i;
+  RowMatrixXr rmncc_i;
+  RowMatrixXr rmnss_i;
+  RowMatrixXr zmnsc_i;
+  RowMatrixXr zmncs_i;
+  RowMatrixXr lmnsc_i;
+  RowMatrixXr lmncs_i;
   // Asymmetric arrays for lasym=true
-  RowMatrixXd rmnsc_i;
-  RowMatrixXd rmncs_i;
-  RowMatrixXd zmncc_i;
-  RowMatrixXd zmnss_i;
-  RowMatrixXd lmncc_i;
-  RowMatrixXd lmnss_i;
+  RowMatrixXr rmnsc_i;
+  RowMatrixXr rmncs_i;
+  RowMatrixXr zmncc_i;
+  RowMatrixXr zmnss_i;
+  RowMatrixXr lmncc_i;
+  RowMatrixXr lmnss_i;
 
-  RowMatrixXd rmncc_o;
-  RowMatrixXd rmnss_o;
-  RowMatrixXd zmnsc_o;
-  RowMatrixXd zmncs_o;
-  RowMatrixXd lmnsc_o;
-  RowMatrixXd lmncs_o;
+  RowMatrixXr rmncc_o;
+  RowMatrixXr rmnss_o;
+  RowMatrixXr zmnsc_o;
+  RowMatrixXr zmncs_o;
+  RowMatrixXr lmnsc_o;
+  RowMatrixXr lmncs_o;
   // Asymmetric arrays for lasym=true
-  RowMatrixXd rmnsc_o;
-  RowMatrixXd rmncs_o;
-  RowMatrixXd zmncc_o;
-  RowMatrixXd zmnss_o;
-  RowMatrixXd lmncc_o;
-  RowMatrixXd lmnss_o;
+  RowMatrixXr rmnsc_o;
+  RowMatrixXr rmncs_o;
+  RowMatrixXr zmncc_o;
+  RowMatrixXr zmnss_o;
+  RowMatrixXr lmncc_o;
+  RowMatrixXr lmnss_o;
 
   // Serial tri-diagonal solver storage
-  // Matrix: RowMatrixXd [mn, j], RHS: vector of RowMatrixXd [mn][basis, j]
+  // Matrix: RowMatrixXr [mn, j], RHS: vector of RowMatrixXr [mn][basis, j]
 
   int mnsize;
-  RowMatrixXd all_ar;  // [mnsize, ns]
-  RowMatrixXd all_az;
-  RowMatrixXd all_dr;
-  RowMatrixXd all_dz;
-  RowMatrixXd all_br;
-  RowMatrixXd all_bz;
+  RowMatrixXr all_ar;  // [mnsize, ns]
+  RowMatrixXr all_az;
+  RowMatrixXr all_dr;
+  RowMatrixXr all_dz;
+  RowMatrixXr all_br;
+  RowMatrixXr all_bz;
 
   // [mnsize] -> [num_basis, ns]
-  std::vector<RowMatrixXd> all_cr;
-  std::vector<RowMatrixXd> all_cz;
+  std::vector<RowMatrixXr> all_cr;
+  std::vector<RowMatrixXr> all_cz;
 
   // Parallel tri-diagonal solver storage
-  // handover_cR/cZ: RowMatrixXd [num_basis, mnsize], handover_aR/aZ: flat
+  // handover_cR/cZ: RowMatrixXr [num_basis, mnsize], handover_aR/aZ: flat
   // [mnsize]
 
-  RowMatrixXd handover_cR;      // [num_basis, mnsize]
-  Eigen::VectorXd handover_aR;  // [mnsize]
-  RowMatrixXd handover_cZ;
-  Eigen::VectorXd handover_aZ;
+  RowMatrixXr handover_cR;                               // [num_basis, mnsize]
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> handover_aR;  // [mnsize]
+  RowMatrixXr handover_cZ;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> handover_aZ;
   // magnetic axis geometry for NESTOR
-  Eigen::VectorXd rAxis;
-  Eigen::VectorXd zAxis;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rAxis;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zAxis;
 
   // LCFS geometry for NESTOR
-  Eigen::VectorXd rCC_LCFS;
-  Eigen::VectorXd rSS_LCFS;
-  Eigen::VectorXd rSC_LCFS;
-  Eigen::VectorXd rCS_LCFS;
-  Eigen::VectorXd zSC_LCFS;
-  Eigen::VectorXd zCS_LCFS;
-  Eigen::VectorXd zCC_LCFS;
-  Eigen::VectorXd zSS_LCFS;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rCC_LCFS;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rSS_LCFS;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rSC_LCFS;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rCS_LCFS;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zSC_LCFS;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zCS_LCFS;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zCC_LCFS;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zSS_LCFS;
 
   // [nZnT] vacuum magnetic pressure |B_vac^2|/2 at the plasma boundary
-  Eigen::VectorXd vacuum_magnetic_pressure;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> vacuum_magnetic_pressure;
 
   // [nZnT] cylindrical B^R of Nestor's vacuum magnetic field
-  Eigen::VectorXd vacuum_b_r;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> vacuum_b_r;
 
   // [nZnT] cylindrical B^phi of Nestor's vacuum magnetic field
-  Eigen::VectorXd vacuum_b_phi;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> vacuum_b_phi;
 
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
-  Eigen::VectorXd vacuum_b_z;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> vacuum_b_z;
 
  private:
   const Sizes& s_;
@@ -182,8 +183,8 @@ class HandoverStorage {
   int num_threads_;
   int num_basis_;
 
-  double spectral_width_numerator_;
-  double spectral_width_denominator_;
+  real_t spectral_width_numerator_;
+  real_t spectral_width_denominator_;
 
   RadialExtent radial_extent_;
   GeometricOffset geometric_offset_;

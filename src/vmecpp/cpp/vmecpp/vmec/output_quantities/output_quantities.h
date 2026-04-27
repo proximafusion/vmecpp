@@ -5,7 +5,7 @@
 #ifndef VMECPP_VMEC_OUTPUT_QUANTITIES_OUTPUT_QUANTITIES_H_
 #define VMECPP_VMEC_OUTPUT_QUANTITIES_OUTPUT_QUANTITIES_H_
 
-#include <Eigen/Dense>  // VectorXd
+#include <Eigen/Dense>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -15,6 +15,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/util/real_type.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
@@ -37,149 +38,149 @@ struct VmecInternalResults {
   // nZeta * nThetaReduced: always one half-period (for DFTs)
   int nZnT_reduced;
 
-  Eigen::VectorXd sqrtSH;
-  Eigen::VectorXd sqrtSF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sqrtSH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sqrtSF;
 
-  Eigen::VectorXd sm;
-  Eigen::VectorXd sp;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sm;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sp;
 
   // [ns] radial derivative of enclosed toroidal magnetic flux on full-grid
-  Eigen::VectorXd phipF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phipF;
 
   // [ns] radial derivative of enclosed poloidal magnetic flux on full-grid
-  Eigen::VectorXd chipF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> chipF;
 
   // [ns - 1] radial derivative of enclosed toroidal magnetic flux on half-grid
-  Eigen::VectorXd phipH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phipH;
 
   // [ns - 1] radial derivative of enclosed poloidal magnetic flux on half-grid
-  Eigen::VectorXd chipH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> chipH;
 
   // [ns - 1] enclosed current profile on half-grid
-  Eigen::VectorXd currH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> currH;
 
   // [ns] enclosed toroidal magnetic flux on full-grid; computed in
   // RecomputeToroidalFlux here!
-  Eigen::VectorXd phiF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phiF;
 
   // [ns] rotational transform on full-grid
-  Eigen::VectorXd iotaF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> iotaF;
 
   // [ns] surface-averaged spectral width profile on full-grid
-  Eigen::VectorXd spectral_width;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> spectral_width;
 
   // enclosed poloidal current on half-grid
-  Eigen::VectorXd bvcoH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bvcoH;
 
   // [num_half] d(volume)/ds on half-grid
-  Eigen::VectorXd dVdsH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> dVdsH;
 
   // [num_half] mass profile on half-grid
-  Eigen::VectorXd massH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> massH;
 
   // [num_half] kinetic pressure on half-grid
-  Eigen::VectorXd presH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> presH;
 
   // [num_half] rotational transform profile on half-grid
-  Eigen::VectorXd iotaH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> iotaH;
 
   // -------------------
   // state vector
   // (num_full, mnsize)
-  RowMatrixXd rmncc;
-  RowMatrixXd rmnss;
-  RowMatrixXd rmnsc;
-  RowMatrixXd rmncs;
+  RowMatrixXr rmncc;
+  RowMatrixXr rmnss;
+  RowMatrixXr rmnsc;
+  RowMatrixXr rmncs;
 
-  RowMatrixXd zmnsc;
-  RowMatrixXd zmncs;
-  RowMatrixXd zmncc;
-  RowMatrixXd zmnss;
+  RowMatrixXr zmnsc;
+  RowMatrixXr zmncs;
+  RowMatrixXr zmncc;
+  RowMatrixXr zmnss;
 
-  RowMatrixXd lmnsc;
-  RowMatrixXd lmncs;
-  RowMatrixXd lmncc;
-  RowMatrixXd lmnss;
+  RowMatrixXr lmnsc;
+  RowMatrixXr lmncs;
+  RowMatrixXr lmncc;
+  RowMatrixXr lmnss;
 
   // -------------------
   // from inv-DFTs
 
   // (num_full, nZnT)
-  RowMatrixXd r_e;
-  RowMatrixXd r_o;
-  RowMatrixXd z_e;
-  RowMatrixXd z_o;
+  RowMatrixXr r_e;
+  RowMatrixXr r_o;
+  RowMatrixXr z_e;
+  RowMatrixXr z_o;
 
   // dX/dTheta for R, Z on full-grid
-  RowMatrixXd ru_e;
-  RowMatrixXd ru_o;
-  RowMatrixXd zu_e;
-  RowMatrixXd zu_o;
+  RowMatrixXr ru_e;
+  RowMatrixXr ru_o;
+  RowMatrixXr zu_e;
+  RowMatrixXr zu_o;
 
   // dX/dZeta for R, Z on full-grid
-  RowMatrixXd rv_e;
-  RowMatrixXd rv_o;
-  RowMatrixXd zv_e;
-  RowMatrixXd zv_o;
+  RowMatrixXr rv_e;
+  RowMatrixXr rv_o;
+  RowMatrixXr zv_e;
+  RowMatrixXr zv_o;
 
   // -------------------
   // from even-m and odd-m contributions
 
-  RowMatrixXd ruFull;
-  RowMatrixXd zuFull;
+  RowMatrixXr ruFull;
+  RowMatrixXr zuFull;
 
   // -------------------
   // from Jacobian calculation
 
   // R on half-grid
   // (num_half, nZnT)
-  RowMatrixXd r12;
+  RowMatrixXr r12;
 
   // dX/dTheta for R, Z on the half-grid
-  RowMatrixXd ru12;
-  RowMatrixXd zu12;
+  RowMatrixXr ru12;
+  RowMatrixXr zu12;
 
   // parts of dX/ds for R, Z on half-grid from Jacobian calculation
-  RowMatrixXd rs;
-  RowMatrixXd zs;
+  RowMatrixXr rs;
+  RowMatrixXr zs;
 
   // Jacobian on half-grid
   // (num_half, nZnT)
-  RowMatrixXd gsqrt;
+  RowMatrixXr gsqrt;
 
   // -------------------
   // metric elements
 
-  RowMatrixXd guu;
-  RowMatrixXd guv;
-  RowMatrixXd gvv;
+  RowMatrixXr guu;
+  RowMatrixXr guv;
+  RowMatrixXr gvv;
 
   // -------------------
   // magnetic field
 
   // contravariant magnetic field components on half-grid
   // (num_half, nZnT)
-  RowMatrixXd bsupu;
-  RowMatrixXd bsupv;
+  RowMatrixXr bsupu;
+  RowMatrixXr bsupv;
 
   // covariant magnetic field components on half-grid
   // (num_half, nZnT)
-  RowMatrixXd bsubu;
-  RowMatrixXd bsubv;
+  RowMatrixXr bsubu;
+  RowMatrixXr bsubv;
 
   // covariant magnetic field components on full-grid from lambda force
   // (num_full, nZnT)
-  RowMatrixXd bsubvF;
+  RowMatrixXr bsubvF;
 
   // (|B|^2 + mu_0 p) on half-grid
   // (num_half, nZnT)
-  RowMatrixXd total_pressure;
+  RowMatrixXr total_pressure;
 
   // -------------------
   // (more or less) directly from input data
 
   // mu_0 * curtor (from INDATA) -> prescribed toroidal current in A
-  double currv;
+  real_t currv;
 
   bool operator==(const VmecInternalResults&) const = default;
   bool operator!=(const VmecInternalResults& o) const { return !(*this == o); }
@@ -207,21 +208,21 @@ struct RemainingMetric {
 
   // dX/dZeta for R, Z on the half-grid
   // (num_half, nZnT)
-  RowMatrixXd rv12;
+  RowMatrixXr rv12;
   // (num_full, nZnT)
-  RowMatrixXd zv12;
+  RowMatrixXr zv12;
 
   // full dX/ds for R, Z on half-grid
   // (num_half, nZnT)
-  RowMatrixXd rs12;
+  RowMatrixXr rs12;
   // (num_full, nZnT)
-  RowMatrixXd zs12;
+  RowMatrixXr zs12;
 
   // metric elements on half-grid
   // (num_half, nZnT)
-  RowMatrixXd gsu;
+  RowMatrixXr gsu;
   // (num_full, nZnT)
-  RowMatrixXd gsv;
+  RowMatrixXr gsv;
 
   bool operator==(const RemainingMetric&) const = default;
   bool operator!=(const RemainingMetric& o) const { return !(*this == o); }
@@ -240,9 +241,9 @@ struct RemainingMetric {
 struct CylindricalComponentsOfB {
   // cylindrical components of magnetic field on half-grid
   // (num_half, nZnT)
-  RowMatrixXd b_r;
-  RowMatrixXd b_phi;
-  RowMatrixXd b_z;
+  RowMatrixXr b_r;
+  RowMatrixXr b_phi;
+  RowMatrixXr b_z;
 
   bool operator==(const CylindricalComponentsOfB&) const = default;
   bool operator!=(const CylindricalComponentsOfB& o) const {
@@ -264,7 +265,7 @@ struct CylindricalComponentsOfB {
 struct BSubSHalf {
   //  covariant magnetic field component on half-grid
   // (num_half, nZnT)
-  RowMatrixXd bsubs_half;
+  RowMatrixXr bsubs_half;
 
   bool operator==(const BSubSHalf&) const = default;
   bool operator!=(const BSubSHalf& o) const { return !(*this == o); }
@@ -283,7 +284,7 @@ struct BSubSHalf {
 struct BSubSFull {
   // covariant magnetic field component on full-grid
   // (num_full * nZnT)
-  RowMatrixXd bsubs_full;
+  RowMatrixXr bsubs_full;
 
   bool operator==(const BSubSFull&) const = default;
   bool operator!=(const BSubSFull& o) const { return !(*this == o); }
@@ -302,45 +303,45 @@ struct BSubSFull {
 struct SymmetryDecomposedCovariantB {
   // stellarator-symmetric B_s
   // (num_full, nZnT_reduced)
-  RowMatrixXd bsubs_s;
+  RowMatrixXr bsubs_s;
 
   // non-stellarator-symmetric B_s
   // (num_full, nZnT_reduced)
-  RowMatrixXd bsubs_a;
+  RowMatrixXr bsubs_a;
 
   // stellarator-symmetric B_theta
   // (num_half, nZnT_reduced)
-  RowMatrixXd bsubu_s;
+  RowMatrixXr bsubu_s;
 
   // non-stellarator-symmetric B_theta
   // (num_half, nZnT_reduced)
-  RowMatrixXd bsubu_a;
+  RowMatrixXr bsubu_a;
 
   //  stellarator-symmetric B_zeta
   // (num_half, nZnT_reduced)
-  RowMatrixXd bsubv_s;
+  RowMatrixXr bsubv_s;
 
   // non-stellarator-symmetric B_zeta
   // [num_half x nZnT_reduced]
-  RowMatrixXd bsubv_a;
+  RowMatrixXr bsubv_a;
 };
 
 struct CovariantBDerivatives {
   // d(B_s)/dTheta
   // (num_full, nZnT)
-  RowMatrixXd bsubsu;
+  RowMatrixXr bsubsu;
 
   // d(B_s)/dZeta
   // (num_full, nZnT)
-  RowMatrixXd bsubsv;
+  RowMatrixXr bsubsv;
 
   // d(B_theta)/dZeta
   // (num_half, nZnT)
-  RowMatrixXd bsubuv;
+  RowMatrixXr bsubuv;
 
   // d(B_zeta)/dTheta
   // (num_half, nZnT)
-  RowMatrixXd bsubvu;
+  RowMatrixXr bsubvu;
 
   bool operator==(const CovariantBDerivatives&) const = default;
   bool operator!=(const CovariantBDerivatives& o) const {
@@ -361,42 +362,42 @@ struct CovariantBDerivatives {
 
 struct JxBOutFileContents {
   // (num_full, nZnT)
-  RowMatrixXd itheta;
-  RowMatrixXd izeta;
-  RowMatrixXd bdotk;
+  RowMatrixXr itheta;
+  RowMatrixXr izeta;
+  RowMatrixXr bdotk;
 
-  Eigen::VectorXd amaxfor;
-  Eigen::VectorXd aminfor;
-  Eigen::VectorXd avforce;
-  Eigen::VectorXd pprim;
-  Eigen::VectorXd jdotb;
-  Eigen::VectorXd bdotb;
-  Eigen::VectorXd bdotgradv;
-  Eigen::VectorXd jpar2;
-  Eigen::VectorXd jperp2;
-  Eigen::VectorXd phin;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> amaxfor;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> aminfor;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> avforce;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> pprim;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jdotb;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bdotb;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bdotgradv;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jpar2;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jperp2;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phin;
 
   // (num_full, nZnT)
-  RowMatrixXd jsupu3;
-  RowMatrixXd jsupv3;
+  RowMatrixXr jsupu3;
+  RowMatrixXr jsupv3;
 
   // (num_half, nZnT)
-  RowMatrixXd jsups3;
+  RowMatrixXr jsups3;
 
   // (num_full, nZnT)
-  RowMatrixXd bsupu3;
-  RowMatrixXd bsupv3;
-  RowMatrixXd jcrossb;
-  RowMatrixXd jxb_gradp;
-  RowMatrixXd jdotb_sqrtg;
-  RowMatrixXd sqrtg3;
+  RowMatrixXr bsupu3;
+  RowMatrixXr bsupv3;
+  RowMatrixXr jcrossb;
+  RowMatrixXr jxb_gradp;
+  RowMatrixXr jdotb_sqrtg;
+  RowMatrixXr sqrtg3;
 
   // (num_half, nZnT)
-  RowMatrixXd bsubu3;
-  RowMatrixXd bsubv3;
+  RowMatrixXr bsubu3;
+  RowMatrixXr bsubv3;
 
   // (num_full, nZnT)
-  RowMatrixXd bsubs3;
+  RowMatrixXr bsubs3;
 
   bool operator==(const JxBOutFileContents&) const = default;
   bool operator!=(const JxBOutFileContents& o) const { return !(*this == o); }
@@ -415,58 +416,58 @@ struct JxBOutFileContents {
 
 struct MercierStabilityIntermediateQuantities {
   // normalized toroidal flux on full-grid
-  Eigen::VectorXd s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> s;
 
   // magnetic shear == radial derivative of iota on full grid
-  Eigen::VectorXd shear;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> shear;
 
   // magnetic well == d^2V/ds^2 on full grid
-  Eigen::VectorXd vpp;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> vpp;
 
   // radial derivative of kinetic pressure on full grid
-  Eigen::VectorXd d_pressure_d_s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> d_pressure_d_s;
 
   // d(I_tor)/ds on full grid
-  Eigen::VectorXd d_toroidal_current_d_s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> d_toroidal_current_d_s;
 
   // real, physical d(phi)/ds on half-grid
-  Eigen::VectorXd phip_realH;
-  Eigen::VectorXd phip_realF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phip_realH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phip_realF;
 
   // dV/d(PHI) on half mesh
-  Eigen::VectorXd vp_real;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> vp_real;
 
   // toroidal current on half-grid
-  Eigen::VectorXd torcur;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> torcur;
 
   // Jacobian on full-grid
   // (num_full, nZnT)
-  RowMatrixXd gsqrt_full;
+  RowMatrixXr gsqrt_full;
 
   // B \cdot j on full-grid
   // (num_full, nZnT)
-  RowMatrixXd bdotj;
+  RowMatrixXr bdotj;
 
   // 1.0 / gpp on full-grid
   // (num_full, nZnT)
   // TODO(jons): figure out what this really is
-  RowMatrixXd gpp;
+  RowMatrixXr gpp;
 
   // |B|^2 on half grid
   // (num_half, nZnT)
-  RowMatrixXd b2;
+  RowMatrixXr b2;
 
   // <1/B**2> on full-grid
-  Eigen::VectorXd tpp;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> tpp;
 
   // <b*b/|grad-phi|**3> on full-grid
-  Eigen::VectorXd tbb;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> tbb;
 
   // <j*b/|grad-phi|**3>
-  Eigen::VectorXd tjb;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> tjb;
 
   // <(j*b)2/b**2*|grad-phi|**3>
-  Eigen::VectorXd tjj;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> tjj;
 
   bool operator==(const MercierStabilityIntermediateQuantities&) const =
       default;
@@ -488,53 +489,53 @@ struct MercierStabilityIntermediateQuantities {
 
 struct MercierFileContents {
   // normalized toroidal flux on full-grid
-  Eigen::VectorXd s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> s;
 
   // -------------------
 
   // toroidal magnetic flux on full-grid
-  Eigen::VectorXd toroidal_flux;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> toroidal_flux;
 
   // rotational transform on full grid
-  Eigen::VectorXd iota;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> iota;
 
   // magnetic shear == radial derivative of iota on full grid
-  Eigen::VectorXd shear;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> shear;
 
   // dV/ds on full grid
-  Eigen::VectorXd d_volume_d_s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> d_volume_d_s;
 
   // magnetic well == d^2V/ds^2 on full grid
-  Eigen::VectorXd well;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> well;
 
   // I_tor on full grid
-  Eigen::VectorXd toroidal_current;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> toroidal_current;
 
   // d(I_tor)/ds on full grid
-  Eigen::VectorXd d_toroidal_current_d_s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> d_toroidal_current_d_s;
 
   // kinetic pressure on full grid
-  Eigen::VectorXd pressure;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> pressure;
 
   // radial derivative of kinetic pressure on full grid
-  Eigen::VectorXd d_pressure_d_s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> d_pressure_d_s;
 
   // -------------------
 
   // Mercier criterion on full grid
-  Eigen::VectorXd DMerc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> DMerc;
 
   // shear contribution to Mercier criterion on full grid
-  Eigen::VectorXd Dshear;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> Dshear;
 
   // magnetic well contribution to Mercier criterion on full grid
-  Eigen::VectorXd Dwell;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> Dwell;
 
   // toroidal current contribution to Mercier criterion on full grid
-  Eigen::VectorXd Dcurr;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> Dcurr;
 
   // geodesic curvature contribution to Mercier criterion on full grid
-  Eigen::VectorXd Dgeod;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> Dgeod;
 
   bool operator==(const MercierFileContents&) const = default;
   bool operator!=(const MercierFileContents& o) const { return !(*this == o); }
@@ -554,56 +555,56 @@ struct MercierFileContents {
 struct Threed1FirstTableIntermediate {
   // ready-to-integrate Jacobian on half-grid
   // (num_half, nZnT)
-  RowMatrixXd tau;
+  RowMatrixXr tau;
 
   // [num_half] surface-averaged beta profile
-  Eigen::VectorXd beta_vol;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> beta_vol;
 
   // [num_half] <tau / R> / V'
   // TODO(jons): figure out what this really is
-  Eigen::VectorXd overr;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> overr;
 
   // plasma beta on magnetic axis
-  double beta_axis;
+  real_t beta_axis;
 
   // [num_full] pressure on full-grid
-  Eigen::VectorXd presf;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> presf;
 
   // [num_full] phip * 2 * pi * sign_of_jacobian on full-grid
-  Eigen::VectorXd phipf_loc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phipf_loc;
 
   // [num_full] toroidal flux profile on full-grid
-  Eigen::VectorXd phi1;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phi1;
 
   // [num_full] poloidal flux profile on full-grid
-  Eigen::VectorXd chi1;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> chi1;
 
   // [num_full] 2 pi * poloidal flux profile on full-grid
-  Eigen::VectorXd chi;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> chi;
 
-  Eigen::VectorXd bvcoH;
-  Eigen::VectorXd bucoH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bvcoH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bucoH;
 
   // [num_full] toroidal current density profile on full-grid
-  Eigen::VectorXd jcurv;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jcurv;
 
   // [num_full] poloidal current density profile on full-grid
-  Eigen::VectorXd jcuru;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jcuru;
 
   // [num_full] radial derivative of pressure on full-grid
-  Eigen::VectorXd presgrad;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> presgrad;
 
   // [num_full] dV/d(phi) on full-grid
-  Eigen::VectorXd vpphi;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> vpphi;
 
   // [num_full] radial force balance residual on full-grid
-  Eigen::VectorXd equif;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> equif;
 
   // [num_full] toroidal current profile on full-grid
-  Eigen::VectorXd bucof;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bucof;
 
   // [num_full] poloidal current profile on full-grid
-  Eigen::VectorXd bvcof;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bvcof;
 
   bool operator==(const Threed1FirstTableIntermediate&) const = default;
   bool operator!=(const Threed1FirstTableIntermediate& o) const {
@@ -624,46 +625,46 @@ struct Threed1FirstTableIntermediate {
 
 struct Threed1FirstTable {
   // [num_full] S: normalized toroidal flux on full-grid
-  Eigen::VectorXd s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> s;
 
   // [num_full] <RADIAL FORCE>: radial force balance residual on full-grid
-  Eigen::VectorXd radial_force;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> radial_force;
 
   // [num_full] TOROIDAL FLUX: toroidal flux profile on full-grid
-  Eigen::VectorXd toroidal_flux;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> toroidal_flux;
 
   // [num_full] IOTA: rotational transform profile on full-grid
-  Eigen::VectorXd iota;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> iota;
 
   // [num_full] <JSUPU>: surface-averaged poloidal current density on full-grid
-  Eigen::VectorXd avg_jsupu;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> avg_jsupu;
 
   // [num_full] <JSUPV>: surface-averaged toroidal current density on full-grid
-  Eigen::VectorXd avg_jsupv;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> avg_jsupv;
 
   // [num_full] d(VOL)/d(PHI): differential volume on full-grid
-  Eigen::VectorXd d_volume_d_phi;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> d_volume_d_phi;
 
   // [num_full] d(PRES)/d(PHI): radial derivative of pressure on full-grid
-  Eigen::VectorXd d_pressure_d_phi;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> d_pressure_d_phi;
 
   // [num_full] <M>: surface-averaged spectral width profile on full-grid
-  Eigen::VectorXd spectral_width;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> spectral_width;
 
   // [num_full] PRESF: pressure on full-grid in Pa (no mu_0!)
-  Eigen::VectorXd pressure;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> pressure;
 
   // [num_full] <BSUBU>: toroidal current profile on full-grid
-  Eigen::VectorXd buco_full;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> buco_full;
 
   // [num_full] <BSUBV>: poloidal current profile on full-grid
-  Eigen::VectorXd bvco_full;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bvco_full;
 
   // [num_full] <J.B>: parallel current density profile on full-grid
-  Eigen::VectorXd j_dot_b;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> j_dot_b;
 
   // [num_full] <B.B>: <|B|^2> profile on full-grid
-  Eigen::VectorXd b_dot_b;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> b_dot_b;
 
   bool operator==(const Threed1FirstTable&) const = default;
   bool operator!=(const Threed1FirstTable& o) const { return !(*this == o); }
@@ -680,48 +681,48 @@ struct Threed1FirstTable {
 };
 
 struct Threed1GeometricAndMagneticQuantitiesIntermediate {
-  double anorm;
-  double vnorm;
+  real_t anorm;
+  real_t vnorm;
 
   // differential surface area element |dS|, already with poloidal integration
   // weights
-  Eigen::VectorXd surf_area;
-  double circumference_sum;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> surf_area;
+  real_t circumference_sum;
 
-  double rcenin;
-  double aminr2in;
-  double bminz2in;
-  double bminz2;
+  real_t rcenin;
+  real_t aminr2in;
+  real_t bminz2in;
+  real_t bminz2;
 
-  double sump;
+  real_t sump;
 
-  Eigen::VectorXd btor_vac;
-  Eigen::VectorXd btor1;
-  Eigen::VectorXd dbtor;
-  Eigen::VectorXd phat;
-  Eigen::VectorXd redge;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> btor_vac;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> btor1;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> dbtor;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phat;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> redge;
 
-  double delphid_exact;
-  double musubi;
-  double rshaf1;
-  double rshaf2;
-  double rshaf;
+  real_t delphid_exact;
+  real_t musubi;
+  real_t rshaf1;
+  real_t rshaf2;
+  real_t rshaf;
 
-  double fpsi0;
+  real_t fpsi0;
 
-  double sumbtot;
-  double sumbtor;
-  double sumbpol;
-  double sump20;
-  double sump2;
+  real_t sumbtot;
+  real_t sumbtor;
+  real_t sumbpol;
+  real_t sump20;
+  real_t sump2;
 
-  Eigen::VectorXd jPS2;
-  double jpar_perp_sum;
-  double jparPS_perp_sum;
-  double s2;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jPS2;
+  real_t jpar_perp_sum;
+  real_t jparPS_perp_sum;
+  real_t s2;
 
-  double fac;
-  Eigen::VectorXd r3v;
+  real_t fac;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> r3v;
 
   bool operator==(
       const Threed1GeometricAndMagneticQuantitiesIntermediate&) const = default;
@@ -745,76 +746,76 @@ struct Threed1GeometricAndMagneticQuantitiesIntermediate {
 };
 
 struct Threed1GeometricAndMagneticQuantities {
-  double toroidal_flux;
+  real_t toroidal_flux;
 
-  double circum_p;
-  double surf_area_p;
+  real_t circum_p;
+  real_t surf_area_p;
 
-  double cross_area_p;
-  double volume_p;
+  real_t cross_area_p;
+  real_t volume_p;
 
-  double Rmajor_p;
-  double Aminor_p;
-  double aspect;
+  real_t Rmajor_p;
+  real_t Aminor_p;
+  real_t aspect;
 
-  double kappa_p;
-  double rcen;
+  real_t kappa_p;
+  real_t rcen;
 
   // volume-averaged minor radius
-  double aminr1;
+  real_t aminr1;
 
-  double pavg;
-  double factor;
+  real_t pavg;
+  real_t factor;
 
-  double b0;
+  real_t b0;
 
-  double rmax_surf;
-  double rmin_surf;
-  double zmax_surf;
+  real_t rmax_surf;
+  real_t rmin_surf;
+  real_t zmax_surf;
 
   // (num_half, nThetaReduced)
-  RowMatrixXd bmin;
+  RowMatrixXr bmin;
   // (num_half, nThetaReduced)
-  RowMatrixXd bmax;
+  RowMatrixXr bmax;
 
-  Eigen::VectorXd waist;
-  Eigen::VectorXd height;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> waist;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> height;
 
-  double betapol;
-  double betatot;
-  double betator;
-  double VolAvgB;
-  double IonLarmor;
+  real_t betapol;
+  real_t betatot;
+  real_t betator;
+  real_t VolAvgB;
+  real_t IonLarmor;
 
-  double jpar_perp;
-  double jparPS_perp;
+  real_t jpar_perp;
+  real_t jparPS_perp;
 
   // net toroidal current in A
-  double toroidal_current;
+  real_t toroidal_current;
 
-  double rbtor;
-  double rbtor0;
+  real_t rbtor;
+  real_t rbtor0;
 
   // poloidal magnetic flux on full-grid
-  Eigen::VectorXd psi;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> psi;
 
   // Geometric minor radius
-  Eigen::VectorXd ygeo;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> ygeo;
 
   // Geometric indentation
-  Eigen::VectorXd yinden;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> yinden;
 
   // Geometric ellipticity
-  Eigen::VectorXd yellip;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> yellip;
 
   // Geometric triangularity
-  Eigen::VectorXd ytrian;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> ytrian;
 
   // Geometric shift measured from magnetic axis
-  Eigen::VectorXd yshift;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> yshift;
 
-  Eigen::VectorXd loc_jpar_perp;
-  Eigen::VectorXd loc_jparPS_perp;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> loc_jpar_perp;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> loc_jparPS_perp;
 
   bool operator==(const Threed1GeometricAndMagneticQuantities&) const = default;
   bool operator!=(const Threed1GeometricAndMagneticQuantities& o) const {
@@ -835,20 +836,20 @@ struct Threed1GeometricAndMagneticQuantities {
 
 // Volume Integrals (Joules) and Volume Averages (Pascals)
 struct Threed1Volumetrics {
-  double int_p;
-  double avg_p;
+  real_t int_p;
+  real_t avg_p;
 
-  double int_bpol;
-  double avg_bpol;
+  real_t int_bpol;
+  real_t avg_bpol;
 
-  double int_btor;
-  double avg_btor;
+  real_t int_btor;
+  real_t avg_btor;
 
-  double int_modb;
-  double avg_modb;
+  real_t int_modb;
+  real_t avg_modb;
 
-  double int_ekin;
-  double avg_ekin;
+  real_t int_ekin;
+  real_t avg_ekin;
 
   bool operator==(const Threed1Volumetrics&) const = default;
   bool operator!=(const Threed1Volumetrics& o) const { return !(*this == o); }
@@ -869,19 +870,19 @@ struct Threed1Volumetrics {
 struct Threed1AxisGeometry {
   // [ntor + 1] stellarator-symmetric Fourier coefficients of axis: R * cos(n *
   // zeta)
-  Eigen::VectorXd raxis_symm;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> raxis_symm;
 
   // [ntor + 1] stellarator-symmetric Fourier coefficients of axis: Z * sin(n *
   // zeta)
-  Eigen::VectorXd zaxis_symm;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zaxis_symm;
 
   // [ntor + 1] non-stellarator-symmetric Fourier coefficients of axis: R *
   // sin(n * zeta)
-  Eigen::VectorXd raxis_asym;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> raxis_asym;
 
   // [ntor + 1] non-stellarator-symmetric Fourier coefficients of axis: Z *
   // cos(n * zeta)
-  Eigen::VectorXd zaxis_asym;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zaxis_asym;
 
   bool operator==(const Threed1AxisGeometry&) const = default;
   bool operator!=(const Threed1AxisGeometry& o) const { return !(*this == o); }
@@ -901,22 +902,22 @@ struct Threed1AxisGeometry {
 // beta values from volume averages over plasma
 struct Threed1Betas {
   // beta total
-  double betatot;
+  real_t betatot;
 
   // beta poloidal
-  double betapol;
+  real_t betapol;
 
   // beta toroidal
-  double betator;
+  real_t betator;
 
   // R * Btor-vac
-  double rbtor;
+  real_t rbtor;
 
   // Peak Beta (on axis)
-  double betaxis;
+  real_t betaxis;
 
   // Beta-star
-  double betstr;
+  real_t betstr;
 
   bool operator==(const Threed1Betas&) const = default;
   bool operator!=(const Threed1Betas& o) const { return !(*this == o); }
@@ -942,26 +943,26 @@ struct Threed1Betas {
 // The quantity lsubi gives the ratio of volume poloidal field energy
 // to the field energy estimated from the surface integral in Eq. (8).
 struct Threed1ShafranovIntegrals {
-  double scaling_ratio;
+  real_t scaling_ratio;
 
-  double r_lao;
-  double f_lao;
-  double f_geo;
+  real_t r_lao;
+  real_t f_lao;
+  real_t f_geo;
 
-  double smaleli;
-  double betai;
-  double musubi;
-  double lambda;
+  real_t smaleli;
+  real_t betai;
+  real_t musubi;
+  real_t lambda;
 
-  double s11;
-  double s12;
-  double s13;
-  double s2;
-  double s3;
+  real_t s11;
+  real_t s12;
+  real_t s13;
+  real_t s2;
+  real_t s3;
 
-  double delta1;
-  double delta2;
-  double delta3;
+  real_t delta1;
+  real_t delta2;
+  real_t delta3;
 
   bool operator==(const Threed1ShafranovIntegrals&) const = default;
   bool operator!=(const Threed1ShafranovIntegrals& o) const {
@@ -985,7 +986,7 @@ struct WOutFileContents {
   // copy of input data
 
   // version identifier for this VMEC implementation
-  double version_;
+  real_t version_;
 
   std::string input_extension;
 
@@ -993,7 +994,7 @@ struct WOutFileContents {
   int signgs;
 
   // adiabatic index
-  double gamma;
+  real_t gamma;
 
   // parameterization identifier for toroidal current profile
   std::string pcurr_type;
@@ -1006,33 +1007,33 @@ struct WOutFileContents {
 
   // pressure profile coefficients
   // interpretation depends on value of `pmass_type`
-  Eigen::VectorXd am;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> am;
 
   // toroidal current profile coefficients
   // interpretation depends on value of `pcurr_type`
-  Eigen::VectorXd ac;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> ac;
 
   // iota profile coefficients
   // interpretation depends on value of `piota_type`
-  Eigen::VectorXd ai;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> ai;
 
   // knots for discrete mass/pressure profile
-  Eigen::VectorXd am_aux_s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> am_aux_s;
 
   // values for discrete mass/pressure profile
-  Eigen::VectorXd am_aux_f;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> am_aux_f;
 
   // knots for discrete toroidal current profile
-  Eigen::VectorXd ac_aux_s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> ac_aux_s;
 
   // values for discrete toroidal current profile
-  Eigen::VectorXd ac_aux_f;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> ac_aux_f;
 
   // knots for discrete iota profile
-  Eigen::VectorXd ai_aux_s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> ai_aux_s;
 
   // values for discrete iota profile
-  Eigen::VectorXd ai_aux_f;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> ai_aux_f;
 
   // number of toroidal field periods
   int nfp;
@@ -1080,19 +1081,19 @@ struct WOutFileContents {
   // scalar quantities
 
   // magnetic energy
-  double wb;
+  real_t wb;
 
   // thermal energy
-  double wp;
+  real_t wp;
 
   // maximum R of LCFS
-  double rmax_surf;
+  real_t rmax_surf;
 
   // minimum R of LCFS
-  double rmin_surf;
+  real_t rmin_surf;
 
   // maximum |Z| of LCFS
-  double zmax_surf;
+  real_t zmax_surf;
 
   // number of Fourier coefficients in state vector (R, Z, lambda)
   int mnmax;
@@ -1103,30 +1104,30 @@ struct WOutFileContents {
 
   int ier_flag;
 
-  double aspect;
+  real_t aspect;
 
-  double betatotal;
-  double betapol;
-  double betator;
-  double betaxis;
+  real_t betatotal;
+  real_t betapol;
+  real_t betator;
+  real_t betaxis;
 
-  double b0;
+  real_t b0;
 
-  double rbtor0;
-  double rbtor;
+  real_t rbtor0;
+  real_t rbtor;
 
-  double IonLarmor;
-  double volavgB;
+  real_t IonLarmor;
+  real_t volavgB;
 
-  double ctor;
+  real_t ctor;
 
-  double Aminor_p;
-  double Rmajor_p;
-  double volume;
+  real_t Aminor_p;
+  real_t Rmajor_p;
+  real_t volume;
 
-  double fsqr;
-  double fsqz;
-  double fsql;
+  real_t fsqr;
+  real_t fsqz;
+  real_t fsql;
 
   // Number of "time steps" of the force relaxation that were actually required
   // to achieve convergence. (How many of the maximum niter steps we ended up
@@ -1137,65 +1138,65 @@ struct WOutFileContents {
   // one-dimensional array quantities
 
   // full-grid: rotational_transform
-  Eigen::VectorXd iotaf;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> iotaf;
 
   // full-grid: 1 / iota (where iota != 0)
-  Eigen::VectorXd q_factor;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> q_factor;
 
   // full-grid: pressure in Pa
-  Eigen::VectorXd presf;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> presf;
 
   // full-grid: enclosed toroidal magnetic flux (phi) in Vs
-  Eigen::VectorXd phi;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phi;
 
   // full-grid: toroidal flux differential (phi-prime)
-  Eigen::VectorXd phipf;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phipf;
 
   // full-grid: enclosed poloidal magnetic flux (chi) in Vs
-  Eigen::VectorXd chi;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> chi;
 
   // full-grid: poloidal flux differential (chi-prime)
-  Eigen::VectorXd chipf;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> chipf;
 
-  Eigen::VectorXd jcuru;
-  Eigen::VectorXd jcurv;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jcuru;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jcurv;
 
   // Convergence quantities (one entry per time step)
   // Force residual at each iteration
-  Eigen::VectorXd fsqt;
-  Eigen::VectorXd force_residual_r;
-  Eigen::VectorXd force_residual_z;
-  Eigen::VectorXd force_residual_lambda;
-  Eigen::VectorXd delbsq;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> fsqt;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> force_residual_r;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> force_residual_z;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> force_residual_lambda;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> delbsq;
   Eigen::VectorXi restart_reason_timetrace;
 
   // Gradient of the energy at each iteration
-  Eigen::VectorXd wdot;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> wdot;
 
   // ---------
 
-  Eigen::VectorXd iotas;
-  Eigen::VectorXd mass;
-  Eigen::VectorXd pres;
-  Eigen::VectorXd beta_vol;
-  Eigen::VectorXd buco;
-  Eigen::VectorXd bvco;
-  Eigen::VectorXd vp;
-  Eigen::VectorXd specw;
-  Eigen::VectorXd phips;
-  Eigen::VectorXd over_r;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> iotas;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> mass;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> pres;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> beta_vol;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> buco;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bvco;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> vp;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> specw;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phips;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> over_r;
 
-  Eigen::VectorXd jdotb;
-  Eigen::VectorXd bdotb;
-  Eigen::VectorXd bdotgradv;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jdotb;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bdotb;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bdotgradv;
 
-  Eigen::VectorXd DMerc;
-  Eigen::VectorXd DShear;
-  Eigen::VectorXd DWell;
-  Eigen::VectorXd DCurr;
-  Eigen::VectorXd DGeod;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> DMerc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> DShear;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> DWell;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> DCurr;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> DGeod;
 
-  Eigen::VectorXd equif;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> equif;
 
   std::vector<std::string> curlabel;
 
@@ -1213,102 +1214,102 @@ struct WOutFileContents {
   // -------------------
   // stellarator-symmetric Fourier coefficients
 
-  Eigen::VectorXd raxis_cc;
-  Eigen::VectorXd zaxis_cs;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> raxis_cc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zaxis_cs;
 
   // full-grid: R
-  RowMatrixXd rmnc;
+  RowMatrixXr rmnc;
 
   // full-grid: Z
-  RowMatrixXd zmns;
+  RowMatrixXr zmns;
 
   // full-grid: lambda
   // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd lmns_full;
+  RowMatrixXr lmns_full;
 
   // half-grid: lambda
-  RowMatrixXd lmns;
+  RowMatrixXr lmns;
 
   // half-grid: Jacobian
-  RowMatrixXd gmnc;
+  RowMatrixXr gmnc;
 
   // half-grid: |B|
-  RowMatrixXd bmnc;
+  RowMatrixXr bmnc;
 
   // half-grid: covariant B_\theta
-  RowMatrixXd bsubumnc;
+  RowMatrixXr bsubumnc;
 
   // half-grid: covariant B_\zeta
-  RowMatrixXd bsubvmnc;
+  RowMatrixXr bsubvmnc;
 
   // half-grid: covariant B_s
-  RowMatrixXd bsubsmns;
+  RowMatrixXr bsubsmns;
 
   // full-grid: covariant B_s
   // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd bsubsmns_full;
+  RowMatrixXr bsubsmns_full;
 
   // half-grid: contravariant B^\theta
-  RowMatrixXd bsupumnc;
+  RowMatrixXr bsupumnc;
 
   // half-grid: contravariant B^\zeta
-  RowMatrixXd bsupvmnc;
+  RowMatrixXr bsupvmnc;
 
   // full-grid: sqrt(g) * J^\theta, Fourier coefficients (cos)
-  RowMatrixXd currumnc;
+  RowMatrixXr currumnc;
 
   // full-grid: sqrt(g) * J^\zeta, Fourier coefficients (cos)
-  RowMatrixXd currvmnc;
+  RowMatrixXr currvmnc;
 
   // -------------------
   // non-stellarator-symmetric Fourier coefficients
 
-  Eigen::VectorXd raxis_cs;
-  Eigen::VectorXd zaxis_cc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> raxis_cs;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zaxis_cc;
 
   // full-grid: R
-  RowMatrixXd rmns;
+  RowMatrixXr rmns;
 
   // full-grid: Z
-  RowMatrixXd zmnc;
+  RowMatrixXr zmnc;
 
   // full-grid: lambda
   // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd lmnc_full;
+  RowMatrixXr lmnc_full;
 
   // half-grid: lambda
-  RowMatrixXd lmnc;
+  RowMatrixXr lmnc;
 
   // half-grid: Jacobian
-  RowMatrixXd gmns;
+  RowMatrixXr gmns;
 
   // half-grid: |B|
-  RowMatrixXd bmns;
+  RowMatrixXr bmns;
 
   // half-grid: covariant B_\theta
-  RowMatrixXd bsubumns;
+  RowMatrixXr bsubumns;
 
   // half-grid: covariant B_\zeta
-  RowMatrixXd bsubvmns;
+  RowMatrixXr bsubvmns;
 
   // half-grid: covariant B_s
-  RowMatrixXd bsubsmnc;
+  RowMatrixXr bsubsmnc;
 
   // full-grid: covariant B_s
   // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd bsubsmnc_full;
+  RowMatrixXr bsubsmnc_full;
 
   // half-grid: contravariant B^\theta
-  RowMatrixXd bsupumns;
+  RowMatrixXr bsupumns;
 
   // half-grid: contravariant B^\zeta
-  RowMatrixXd bsupvmns;
+  RowMatrixXr bsupvmns;
 
   // full-grid: sqrt(g) * J^\theta, Fourier coefficients (sin)
-  RowMatrixXd currumns;
+  RowMatrixXr currumns;
 
   // full-grid: sqrt(g) * J^\zeta, Fourier coefficients (sin)
-  RowMatrixXd currvmns;
+  RowMatrixXr currvmns;
 
   bool operator==(const WOutFileContents&) const = default;
   bool operator!=(const WOutFileContents& o) const { return !(*this == o); }
@@ -1522,7 +1523,7 @@ WOutFileContents ComputeWOutFileContents(
 // The comparison is performed using the specified tolerance in the "relabs"
 // metric.
 void CompareWOut(const WOutFileContents& test_wout,
-                 const WOutFileContents& expected_wout, double tolerance,
+                 const WOutFileContents& expected_wout, real_t tolerance,
                  bool check_equal_niter = true);
 }  // namespace vmecpp
 

@@ -104,14 +104,14 @@ void FourierGeometry::interpFromBoundaryAndAxis(
         int idx_bdy = m * (s_.ntor + 1) + n;
         int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
 
-        double basis_norm = 1.0 / (t.mscale[m] * t.nscale[n]);
+        real_t basis_norm = 1.0 / (t.mscale[m] * t.nscale[n]);
 
         if (m == 0) {
           // m=0-terms: only cos(m*theta) contribute
 
           // interpolate geometry between magnetic axis and LCFS into plasma
           // volume
-          double interpolationWeight =
+          real_t interpolationWeight =
               p.sqrtSF[jF - r_.nsMinF1] * p.sqrtSF[jF - r_.nsMinF1];
 
           rmncc[idx_fc] =
@@ -146,7 +146,7 @@ void FourierGeometry::interpFromBoundaryAndAxis(
 
           // weighting factor for radial interpolation between 0 at axis and 1
           // at boundary
-          double interpolationWeight = pow(p.sqrtSF[jF - r_.nsMinF1], m);
+          real_t interpolationWeight = pow(p.sqrtSF[jF - r_.nsMinF1], m);
 
           rmncc[idx_fc] = basis_norm * interpolationWeight * b.rbcc[idx_bdy];
           zmnsc[idx_fc] = basis_norm * interpolationWeight * b.zbsc[idx_bdy];
@@ -171,9 +171,9 @@ void FourierGeometry::interpFromBoundaryAndAxis(
 }
 
 void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
-                                    const RowMatrixXd& rmnc,
-                                    const RowMatrixXd& zmns,
-                                    const RowMatrixXd& lmns_full,
+                                    const RowMatrixXr& rmnc,
+                                    const RowMatrixXr& zmns,
+                                    const RowMatrixXr& lmns_full,
                                     const RadialProfiles& p,
                                     const VmecConstants& constants,
                                     const Boundaries* b) {
@@ -183,19 +183,19 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
   const int max_ns_to_set_rz_on_from_state_locally =
       std::min(nsMax_, max_ns_to_set_rz_on_from_state);
   for (int jF = nsMin_; jF < max_ns_to_set_rz_on_from_state_locally; ++jF) {
-    const Eigen::VectorXd rmnc_col = rmnc.col(jF);
-    const std::vector<double> rmnc_col_vector(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1> rmnc_col = rmnc.col(jF);
+    const std::vector<real_t> rmnc_col_vector(
         rmnc_col.data(), rmnc_col.data() + rmnc_col.size());
-    std::vector<double> rmncc_at_jF(s_.mpol * (s_.ntor + 1));
-    std::vector<double> rmnss_at_jF(s_.mpol * (s_.ntor + 1));
+    std::vector<real_t> rmncc_at_jF(s_.mpol * (s_.ntor + 1));
+    std::vector<real_t> rmnss_at_jF(s_.mpol * (s_.ntor + 1));
     fb.cos_to_cc_ss(rmnc_col_vector, rmncc_at_jF, rmnss_at_jF, s_.ntor,
                     s_.mpol);
 
-    const Eigen::VectorXd zmns_col = zmns.col(jF);
-    const std::vector<double> zmns_col_vector(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1> zmns_col = zmns.col(jF);
+    const std::vector<real_t> zmns_col_vector(
         zmns_col.data(), zmns_col.data() + zmns_col.size());
-    std::vector<double> zmnsc_at_jF(s_.mpol * (s_.ntor + 1));
-    std::vector<double> zmncs_at_jF(s_.mpol * (s_.ntor + 1));
+    std::vector<real_t> zmnsc_at_jF(s_.mpol * (s_.ntor + 1));
+    std::vector<real_t> zmncs_at_jF(s_.mpol * (s_.ntor + 1));
     fb.sin_to_sc_cs(zmns_col_vector, zmnsc_at_jF, zmncs_at_jF, s_.ntor,
                     s_.mpol);
 
@@ -218,11 +218,11 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
   // the lambda Fourier coefficients on every flux surface,
   // __including__ the plasma boundary.
   for (int jF = nsMin_; jF < nsMax_; ++jF) {
-    const Eigen::VectorXd lmns_col = lmns_full.col(jF);
-    const std::vector<double> lmns_col_vector(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1> lmns_col = lmns_full.col(jF);
+    const std::vector<real_t> lmns_col_vector(
         lmns_col.data(), lmns_col.data() + lmns_col.size());
-    std::vector<double> lmnsc_at_jF(s_.mpol * (s_.ntor + 1));
-    std::vector<double> lmncs_at_jF(s_.mpol * (s_.ntor + 1));
+    std::vector<real_t> lmnsc_at_jF(s_.mpol * (s_.ntor + 1));
+    std::vector<real_t> lmncs_at_jF(s_.mpol * (s_.ntor + 1));
     fb.sin_to_sc_cs(lmns_col_vector, lmnsc_at_jF, lmncs_at_jF, s_.ntor,
                     s_.mpol);
 
@@ -233,7 +233,7 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
 
         // undo lambda un-scaling that was done when writing the wout file
         // contents
-        const double lambda_unscaling =
+        const real_t lambda_unscaling =
             constants.lamscale / p.phipF[jF - r_.nsMinF1];
 
         lmnsc[idx_jmn] = lmnsc_at_jF[idx_mn] / lambda_unscaling;
@@ -268,7 +268,7 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
       for (int n = 0; n < s_.ntor + 1; ++n) {
         int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
 
-        double basis_norm = 1.0 / (fb.mscale[m] * fb.nscale[n]);
+        real_t basis_norm = 1.0 / (fb.mscale[m] * fb.nscale[n]);
 
         rmncc[idx_fc] *= basis_norm;
         zmnsc[idx_fc] *= basis_norm;
@@ -364,20 +364,22 @@ void FourierGeometry::ComputeSpectralWidth(
 
   // compute only on unique full-grid points
   for (int jF = minimum_j; jF < nsMax_; ++jF) {
-    double spectral_width_numerator = 0.0;
-    double spectral_width_denominator = 0.0;
+    real_t spectral_width_numerator = 0.0;
+    real_t spectral_width_denominator = 0.0;
 
     // note that we exclude m = 0
     for (int m = 1; m < s_.mpol; ++m) {
       for (int n = 0; n < s_.ntor + 1; ++n) {
         int fourier_index = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
 
-        const double basis_norm =
+        const real_t basis_norm =
             fourier_basis.mscale[m] * fourier_basis.nscale[n];
 
         // Use Eigen for vectorized norm computation
-        Eigen::Vector4d r_coefficients = Eigen::Vector4d::Zero();
-        Eigen::Vector4d z_coefficients = Eigen::Vector4d::Zero();
+        Eigen::Vector<real_t, 4> r_coefficients =
+            Eigen::Vector<real_t, 4>::Zero();
+        Eigen::Vector<real_t, 4> z_coefficients =
+            Eigen::Vector<real_t, 4>::Zero();
         int basis_dimension = 0;
 
         r_coefficients[basis_dimension] = rmncc[fourier_index];
@@ -390,8 +392,8 @@ void FourierGeometry::ComputeSpectralWidth(
         // TO REQUIRED rsc, zcc FORMS
         if (s_.lthreed) {
           if (m == 1) {
-            const double r_plus = rmnss[fourier_index];
-            const double r_minus = zmncs[fourier_index];
+            const real_t r_plus = rmnss[fourier_index];
+            const real_t r_minus = zmncs[fourier_index];
             // rmnss
             r_coefficients[basis_dimension] = r_plus + r_minus;
             // zmncs
@@ -404,8 +406,8 @@ void FourierGeometry::ComputeSpectralWidth(
         }
         if (s_.lasym) {
           if (m == 1) {
-            const double r_plus = rmnsc[fourier_index];
-            const double r_minus = zmncc[fourier_index];
+            const real_t r_plus = rmnsc[fourier_index];
+            const real_t r_minus = zmncc[fourier_index];
             // rmnsc
             r_coefficients[basis_dimension] = r_plus + r_minus;
             // zmncc
@@ -424,7 +426,7 @@ void FourierGeometry::ComputeSpectralWidth(
         }
 
         // Vectorized squared norm computation
-        double coefficient_norm =
+        real_t coefficient_norm =
             r_coefficients.head(basis_dimension).squaredNorm() +
             z_coefficients.head(basis_dimension).squaredNorm();
         coefficient_norm *= basis_norm * basis_norm;

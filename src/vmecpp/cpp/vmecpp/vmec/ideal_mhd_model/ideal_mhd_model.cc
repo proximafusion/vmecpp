@@ -56,9 +56,11 @@ void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
   }
 }  // HandOverBoundaryGeometry
 
-void HandOverMagneticAxis(vmecpp::HandoverStorage& m_h,
-                          const Eigen::VectorXd& r1_e,
-                          const Eigen::VectorXd& z1_e, const vmecpp::Sizes& s) {
+void HandOverMagneticAxis(
+    vmecpp::HandoverStorage& m_h,
+    const Eigen::Matrix<vmecpp::real_t, Eigen::Dynamic, 1>& r1_e,
+    const Eigen::Matrix<vmecpp::real_t, Eigen::Dynamic, 1>& z1_e,
+    const vmecpp::Sizes& s) {
   for (int k = 0; k < s.nZeta; ++k) {
     // we are interested in l == 0
     int idx_kl = k * s.nThetaEff;
@@ -70,7 +72,8 @@ void HandOverMagneticAxis(vmecpp::HandoverStorage& m_h,
 }  // namespace
 
 void vmecpp::ForcesToFourier3DSymmFastPoloidal(
-    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
+    const RealSpaceForces& d,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
     const FourierBasisFastPoloidal& fb,
     VacuumPressureState vacuum_pressure_state,
@@ -118,50 +121,60 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         auto cosmumi_seg = fb.cosmumi.segment(idx_ml_base, s.nThetaReduced);
         auto sinmumi_seg = fb.sinmumi.segment(idx_ml_base, s.nThetaReduced);
 
-        auto blmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            blmn.data() + idx_kl_base, s.nThetaReduced);
-        auto clmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            clmn.data() + idx_kl_base, s.nThetaReduced);
-        auto crmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            crmn.data() + idx_kl_base, s.nThetaReduced);
-        auto czmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            czmn.data() + idx_kl_base, s.nThetaReduced);
-        auto armn_seg = Eigen::Map<const Eigen::VectorXd>(
-            armn.data() + idx_kl_base, s.nThetaReduced);
-        auto azmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            azmn.data() + idx_kl_base, s.nThetaReduced);
-        auto brmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            brmn.data() + idx_kl_base, s.nThetaReduced);
-        auto bzmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            bzmn.data() + idx_kl_base, s.nThetaReduced);
-        auto frcon_seg = Eigen::Map<const Eigen::VectorXd>(
-            frcon.data() + idx_kl_base, s.nThetaReduced);
-        auto fzcon_seg = Eigen::Map<const Eigen::VectorXd>(
-            fzcon.data() + idx_kl_base, s.nThetaReduced);
+        auto blmn_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                blmn.data() + idx_kl_base, s.nThetaReduced);
+        auto clmn_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                clmn.data() + idx_kl_base, s.nThetaReduced);
+        auto crmn_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                crmn.data() + idx_kl_base, s.nThetaReduced);
+        auto czmn_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                czmn.data() + idx_kl_base, s.nThetaReduced);
+        auto armn_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                armn.data() + idx_kl_base, s.nThetaReduced);
+        auto azmn_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                azmn.data() + idx_kl_base, s.nThetaReduced);
+        auto brmn_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                brmn.data() + idx_kl_base, s.nThetaReduced);
+        auto bzmn_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                bzmn.data() + idx_kl_base, s.nThetaReduced);
+        auto frcon_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                frcon.data() + idx_kl_base, s.nThetaReduced);
+        auto fzcon_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                fzcon.data() + idx_kl_base, s.nThetaReduced);
 
-        double lmksc = blmn_seg.dot(cosmumi_seg);
-        double lmkcs = blmn_seg.dot(sinmumi_seg);
-        double lmkcs_n = -clmn_seg.dot(cosmui_seg);
-        double lmksc_n = -clmn_seg.dot(sinmui_seg);
+        real_t lmksc = blmn_seg.dot(cosmumi_seg);
+        real_t lmkcs = blmn_seg.dot(sinmumi_seg);
+        real_t lmkcs_n = -clmn_seg.dot(cosmui_seg);
+        real_t lmksc_n = -clmn_seg.dot(sinmui_seg);
 
-        double rmkcc_n = -crmn_seg.dot(cosmui_seg);
-        double zmkcs_n = -czmn_seg.dot(cosmui_seg);
+        real_t rmkcc_n = -crmn_seg.dot(cosmui_seg);
+        real_t zmkcs_n = -czmn_seg.dot(cosmui_seg);
 
-        double rmkss_n = -crmn_seg.dot(sinmui_seg);
-        double zmksc_n = -czmn_seg.dot(sinmui_seg);
+        real_t rmkss_n = -crmn_seg.dot(sinmui_seg);
+        real_t zmksc_n = -czmn_seg.dot(sinmui_seg);
 
         // Assemble effective R and Z forces from MHD and spectral condensation
         // contributions. Materialize to avoid re-evaluation in each dot
         // product.
-        const Eigen::VectorXd tempR_seg =
+        const Eigen::Matrix<real_t, Eigen::Dynamic, 1> tempR_seg =
             (armn_seg + xmpq[m] * frcon_seg).eval();
-        const Eigen::VectorXd tempZ_seg =
+        const Eigen::Matrix<real_t, Eigen::Dynamic, 1> tempZ_seg =
             (azmn_seg + xmpq[m] * fzcon_seg).eval();
 
-        double rmkcc = tempR_seg.dot(cosmui_seg) + brmn_seg.dot(sinmumi_seg);
-        double rmkss = tempR_seg.dot(sinmui_seg) + brmn_seg.dot(cosmumi_seg);
-        double zmksc = tempZ_seg.dot(sinmui_seg) + bzmn_seg.dot(cosmumi_seg);
-        double zmkcs = tempZ_seg.dot(cosmui_seg) + bzmn_seg.dot(sinmumi_seg);
+        real_t rmkcc = tempR_seg.dot(cosmui_seg) + brmn_seg.dot(sinmumi_seg);
+        real_t rmkss = tempR_seg.dot(sinmui_seg) + brmn_seg.dot(cosmumi_seg);
+        real_t zmksc = tempZ_seg.dot(sinmui_seg) + bzmn_seg.dot(cosmumi_seg);
+        real_t zmkcs = tempZ_seg.dot(cosmui_seg) + bzmn_seg.dot(sinmumi_seg);
 
         // Vectorized toroidal scatter: segment ops replace scalar n-loop
         const int ntorp1 = s.ntor + 1;
@@ -173,13 +186,13 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
         auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
 
-        Eigen::Map<Eigen::VectorXd> frcc_seg(
+        Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>> frcc_seg(
             m_physical_forces.frcc.data() + idx_mn_base, ntorp1);
-        Eigen::Map<Eigen::VectorXd> frss_seg(
+        Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>> frss_seg(
             m_physical_forces.frss.data() + idx_mn_base, ntorp1);
-        Eigen::Map<Eigen::VectorXd> fzsc_seg(
+        Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>> fzsc_seg(
             m_physical_forces.fzsc.data() + idx_mn_base, ntorp1);
-        Eigen::Map<Eigen::VectorXd> fzcs_seg(
+        Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>> fzcs_seg(
             m_physical_forces.fzcs.data() + idx_mn_base, ntorp1);
 
         frcc_seg += rmkcc * cosnv_seg + rmkcc_n * sinnvn_seg;
@@ -188,9 +201,9 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         fzcs_seg += zmkcs * sinnv_seg + zmkcs_n * cosnvn_seg;
 
         if (jMinL <= jF) {
-          Eigen::Map<Eigen::VectorXd> flsc_seg(
+          Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>> flsc_seg(
               m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
-          Eigen::Map<Eigen::VectorXd> flcs_seg(
+          Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>> flcs_seg(
               m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
           flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
           flcs_seg += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
@@ -218,15 +231,17 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         auto cosmumi_seg = fb.cosmumi.segment(idx_ml_base, s.nThetaReduced);
         auto sinmumi_seg = fb.sinmumi.segment(idx_ml_base, s.nThetaReduced);
 
-        auto blmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            blmn.data() + idx_kl_base, s.nThetaReduced);
-        auto clmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            clmn.data() + idx_kl_base, s.nThetaReduced);
+        auto blmn_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                blmn.data() + idx_kl_base, s.nThetaReduced);
+        auto clmn_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                clmn.data() + idx_kl_base, s.nThetaReduced);
 
-        double lmksc = blmn_seg.dot(cosmumi_seg);
-        double lmkcs = blmn_seg.dot(sinmumi_seg);
-        double lmkcs_n = -clmn_seg.dot(cosmui_seg);
-        double lmksc_n = -clmn_seg.dot(sinmui_seg);
+        real_t lmksc = blmn_seg.dot(cosmumi_seg);
+        real_t lmkcs = blmn_seg.dot(sinmumi_seg);
+        real_t lmkcs_n = -clmn_seg.dot(cosmui_seg);
+        real_t lmksc_n = -clmn_seg.dot(sinmui_seg);
 
         // Vectorized toroidal scatter for lambda-only section
         const int ntorp1 = s.ntor + 1;
@@ -238,9 +253,9 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
         auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
         auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
 
-        Eigen::Map<Eigen::VectorXd> flsc_seg(
+        Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>> flsc_seg(
             m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
-        Eigen::Map<Eigen::VectorXd> flcs_seg(
+        Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>> flcs_seg(
             m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
 
         flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
@@ -251,7 +266,8 @@ void vmecpp::ForcesToFourier3DSymmFastPoloidal(
 }
 
 void vmecpp::FourierToReal3DSymmFastPoloidal(
-    const FourierGeometry& physical_x, const Eigen::VectorXd& xmpq,
+    const FourierGeometry& physical_x,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& xmpq,
     const RadialPartitioning& r, const Sizes& s, const RadialProfiles& rp,
     const FourierBasisFastPoloidal& fb, RealSpaceGeometry& m_geometry) {
   // can safely assume lthreed == true in here
@@ -285,7 +301,7 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
       const int idx_ml_base = m * s.nThetaReduced;
 
       // with sqrtS for odd-m
-      const double con_factor =
+      const real_t con_factor =
           m_even ? xmpq[m] : xmpq[m] * rp.sqrtSF[jF - nsMinF1];
 
       auto& r1 = m_even ? m_geometry.r1_e : m_geometry.r1_o;
@@ -320,31 +336,37 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
         auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, s.ntor + 1);
         auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, s.ntor + 1);
 
-        auto rmncc_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.rmncc.data() + idx_mn_base, s.ntor + 1);
-        auto rmnss_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.rmnss.data() + idx_mn_base, s.ntor + 1);
-        auto zmnsc_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.zmnsc.data() + idx_mn_base, s.ntor + 1);
-        auto zmncs_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.zmncs.data() + idx_mn_base, s.ntor + 1);
-        auto lmnsc_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.lmnsc.data() + idx_mn_base, s.ntor + 1);
-        auto lmncs_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.lmncs.data() + idx_mn_base, s.ntor + 1);
+        auto rmncc_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                physical_x.rmncc.data() + idx_mn_base, s.ntor + 1);
+        auto rmnss_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                physical_x.rmnss.data() + idx_mn_base, s.ntor + 1);
+        auto zmnsc_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                physical_x.zmnsc.data() + idx_mn_base, s.ntor + 1);
+        auto zmncs_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                physical_x.zmncs.data() + idx_mn_base, s.ntor + 1);
+        auto lmnsc_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                physical_x.lmnsc.data() + idx_mn_base, s.ntor + 1);
+        auto lmncs_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                physical_x.lmncs.data() + idx_mn_base, s.ntor + 1);
 
-        double rmkcc = rmncc_seg.dot(cosnv_seg);
-        double rmkcc_n = rmncc_seg.dot(sinnvn_seg);
-        double rmkss = rmnss_seg.dot(sinnv_seg);
-        double rmkss_n = rmnss_seg.dot(cosnvn_seg);
-        double zmksc = zmnsc_seg.dot(cosnv_seg);
-        double zmksc_n = zmnsc_seg.dot(sinnvn_seg);
-        double zmkcs = zmncs_seg.dot(sinnv_seg);
-        double zmkcs_n = zmncs_seg.dot(cosnvn_seg);
-        double lmksc = lmnsc_seg.dot(cosnv_seg);
-        double lmksc_n = lmnsc_seg.dot(sinnvn_seg);
-        double lmkcs = lmncs_seg.dot(sinnv_seg);
-        double lmkcs_n = lmncs_seg.dot(cosnvn_seg);
+        real_t rmkcc = rmncc_seg.dot(cosnv_seg);
+        real_t rmkcc_n = rmncc_seg.dot(sinnvn_seg);
+        real_t rmkss = rmnss_seg.dot(sinnv_seg);
+        real_t rmkss_n = rmnss_seg.dot(cosnvn_seg);
+        real_t zmksc = zmnsc_seg.dot(cosnv_seg);
+        real_t zmksc_n = zmnsc_seg.dot(sinnvn_seg);
+        real_t zmkcs = zmncs_seg.dot(sinnv_seg);
+        real_t zmkcs_n = zmncs_seg.dot(cosnvn_seg);
+        real_t lmksc = lmnsc_seg.dot(cosnv_seg);
+        real_t lmksc_n = lmnsc_seg.dot(sinnvn_seg);
+        real_t lmkcs = lmncs_seg.dot(sinnv_seg);
+        real_t lmkcs_n = lmncs_seg.dot(cosnvn_seg);
 
         // INVERSE TRANSFORM IN M-THETA, FOR ALL RADIAL, ZETA VALUES
         const int idx_kl_base = ((jF - nsMinF1) * s.nZeta + k) * s.nThetaEff;
@@ -353,12 +375,12 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
         auto sinmum_seg = fb.sinmum.segment(idx_ml_base, s.nThetaReduced);
         auto cosmum_seg = fb.cosmum.segment(idx_ml_base, s.nThetaReduced);
 
-        auto ru_seg = Eigen::Map<Eigen::VectorXd>(ru.data() + idx_kl_base,
-                                                  s.nThetaReduced);
-        auto zu_seg = Eigen::Map<Eigen::VectorXd>(zu.data() + idx_kl_base,
-                                                  s.nThetaReduced);
-        auto lu_seg = Eigen::Map<Eigen::VectorXd>(lu.data() + idx_kl_base,
-                                                  s.nThetaReduced);
+        auto ru_seg = Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+            ru.data() + idx_kl_base, s.nThetaReduced);
+        auto zu_seg = Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+            zu.data() + idx_kl_base, s.nThetaReduced);
+        auto lu_seg = Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+            lu.data() + idx_kl_base, s.nThetaReduced);
 
         // NOTE: element-wise multiplication
         ru_seg += rmkcc * sinmum_seg + rmkss * cosmum_seg;
@@ -368,12 +390,12 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
         auto cosmu_seg = fb.cosmu.segment(idx_ml_base, s.nThetaReduced);
         auto sinmu_seg = fb.sinmu.segment(idx_ml_base, s.nThetaReduced);
 
-        auto rv_seg = Eigen::Map<Eigen::VectorXd>(rv.data() + idx_kl_base,
-                                                  s.nThetaReduced);
-        auto zv_seg = Eigen::Map<Eigen::VectorXd>(zv.data() + idx_kl_base,
-                                                  s.nThetaReduced);
-        auto lv_seg = Eigen::Map<Eigen::VectorXd>(lv.data() + idx_kl_base,
-                                                  s.nThetaReduced);
+        auto rv_seg = Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+            rv.data() + idx_kl_base, s.nThetaReduced);
+        auto zv_seg = Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+            zv.data() + idx_kl_base, s.nThetaReduced);
+        auto lv_seg = Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+            lv.data() + idx_kl_base, s.nThetaReduced);
 
         // NOTE: element-wise multiplication
         rv_seg += rmkcc_n * cosmu_seg + rmkss_n * sinmu_seg;
@@ -381,10 +403,10 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
         // it is here that lv gets a negative sign!
         lv_seg -= lmksc_n * sinmu_seg + lmkcs_n * cosmu_seg;
 
-        auto r1_seg = Eigen::Map<Eigen::VectorXd>(r1.data() + idx_kl_base,
-                                                  s.nThetaReduced);
-        auto z1_seg = Eigen::Map<Eigen::VectorXd>(z1.data() + idx_kl_base,
-                                                  s.nThetaReduced);
+        auto r1_seg = Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+            r1.data() + idx_kl_base, s.nThetaReduced);
+        auto z1_seg = Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+            z1.data() + idx_kl_base, s.nThetaReduced);
 
         r1_seg += rmkcc * cosmu_seg + rmkss * sinmu_seg;
         z1_seg += zmksc * sinmu_seg + zmkcs * cosmu_seg;
@@ -393,9 +415,9 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
           // spectral condensation is local per flux surface
           const int idx_con_base = ((jF - nsMinF) * s.nZeta + k) * s.nThetaEff;
 
-          auto rCon_seg = Eigen::Map<Eigen::VectorXd>(
+          auto rCon_seg = Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
               m_geometry.rCon.data() + idx_con_base, s.nThetaReduced);
-          auto zCon_seg = Eigen::Map<Eigen::VectorXd>(
+          auto zCon_seg = Eigen::Map<Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
               m_geometry.zCon.data() + idx_con_base, s.nThetaReduced);
 
           rCon_seg += (rmkcc * cosmu_seg + rmkss * sinmu_seg) * con_factor;
@@ -410,9 +432,12 @@ void vmecpp::FourierToReal3DSymmFastPoloidal(
 void vmecpp::deAliasConstraintForce(
     const vmecpp::RadialPartitioning& rp,
     const vmecpp::FourierBasisFastPoloidal& fb, const vmecpp::Sizes& s_,
-    const Eigen::VectorXd& faccon, const Eigen::VectorXd& tcon,
-    const Eigen::VectorXd& gConEff, Eigen::VectorXd& m_gsc,
-    Eigen::VectorXd& m_gcs, Eigen::VectorXd& m_gCon) {
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& faccon,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& tcon,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& gConEff,
+    Eigen::Matrix<real_t, Eigen::Dynamic, 1>& m_gsc,
+    Eigen::Matrix<real_t, Eigen::Dynamic, 1>& m_gcs,
+    Eigen::Matrix<real_t, Eigen::Dynamic, 1>& m_gCon) {
   absl::c_fill_n(m_gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
 
   // no constraint on axis --> has no poloidal angle
@@ -432,13 +457,14 @@ void vmecpp::deAliasConstraintForce(
         const int kl_base = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
         const int ml_base = m * s_.nThetaReduced;
 
-        auto gConEff_seg = Eigen::Map<const Eigen::VectorXd>(
-            gConEff.data() + kl_base, s_.nThetaReduced);
+        auto gConEff_seg =
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                gConEff.data() + kl_base, s_.nThetaReduced);
         auto sinmui_seg = fb.sinmui.segment(ml_base, s_.nThetaReduced);
         auto cosmui_seg = fb.cosmui.segment(ml_base, s_.nThetaReduced);
 
-        double w0 = gConEff_seg.dot(sinmui_seg);
-        double w1 = gConEff_seg.dot(cosmui_seg);
+        real_t w0 = gConEff_seg.dot(sinmui_seg);
+        real_t w1 = gConEff_seg.dot(cosmui_seg);
 
         // forward Fourier transform in toroidal direction for full set of mode
         // numbers (n = 0, 1, ..., ntor)
@@ -464,12 +490,14 @@ void vmecpp::deAliasConstraintForce(
         auto sinnv_seg = fb.sinnv.segment(kn_base, s_.ntor + 1);
 
         auto m_gsc_seg =
-            Eigen::Map<const Eigen::VectorXd>(m_gsc.data(), s_.ntor + 1);
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                m_gsc.data(), s_.ntor + 1);
         auto m_gcs_seg =
-            Eigen::Map<const Eigen::VectorXd>(m_gcs.data(), s_.ntor + 1);
+            Eigen::Map<const Eigen::Matrix<real_t, Eigen::Dynamic, 1>>(
+                m_gcs.data(), s_.ntor + 1);
 
-        double w0 = m_gsc_seg.dot(cosnv_seg);
-        double w1 = m_gcs_seg.dot(sinnv_seg);
+        real_t w0 = m_gsc_seg.dot(cosnv_seg);
+        real_t w1 = m_gcs_seg.dot(sinnv_seg);
 
         // inv transform in poloidal direction
         for (int l = 0; l < s_.nThetaReduced; ++l) {
@@ -662,7 +690,8 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
   this->tcon0 = tcon0;
 }
 
-void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
+void IdealMhdModel::evalFResInvar(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& localFResInvar) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -693,7 +722,7 @@ void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
   {
     // set new values
     // TODO(jons): what is `r1scale`?
-    constexpr double r1scale = 0.25;
+    constexpr real_t r1scale = 0.25;
 
     m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * r1scale;
     m_fc_.fsqz = m_fc_.fResInvar[1] * m_h_.fNormRZ * r1scale;
@@ -701,7 +730,8 @@ void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
   }
 }
 
-void IdealMhdModel::evalFResPrecd(const Eigen::VectorXd& localFResPrecd) {
+void IdealMhdModel::evalFResPrecd(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& localFResPrecd) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -934,8 +964,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
     // EXTEND NVACSKIP AS EQUILIBRIUM CONVERGES
     if (ivacskip == 0) {
-      const int new_nvacskip = static_cast<int>(
-          1.0 / std::max(0.1, 1.0e11 * (m_fc_.fsqr + m_fc_.fsqz)));
+      const int new_nvacskip =
+          static_cast<int>(1.0 / std::max(static_cast<real_t>(0.1),
+                                          1.0e11 * (m_fc_.fsqr + m_fc_.fsqz)));
       nvacskip = std::max(nvacskip, new_nvacskip);
 
 #ifdef _OPENMP
@@ -981,7 +1012,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
-      const double netToroidalCurrent = m_h_.cTor / MU_0;
+      const real_t netToroidalCurrent = m_h_.cTor / MU_0;
       bool reached_checkpoint = m_fb_->update(
           m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
           m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
@@ -1003,7 +1034,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
           if (verbose) {
             // bSubUVac and cTor contain 2*pi already; see Nestor.cc for
             // bSubUVac and above for cTor
-            const double fac = 1.0e-6 / MU_0;  // in MA
+            const real_t fac = 1.0e-6 / MU_0;  // in MA
             std::cout << "\n";
             std::cout << absl::StrFormat(
                 "2*pi * a * -BPOL(vac) = %10.2e MA       R * BTOR(vacuum) = "
@@ -1043,7 +1074,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
         // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS PRECONDITIONER!
         // double edgePressure = 1.5 * p.presH[r.nsMaxH-1 - r.nsMinH] - 0.5 *
         // p.presH[r.nsMinH - r.nsMinH];
-        double edgePressure =
+        real_t edgePressure =
             m_p_.evalMassProfile((m_fc_.ns - 1.5) / (m_fc_.ns - 1.0));
         if (edgePressure != 0.0) {
           edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
@@ -1064,7 +1095,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
           const int k = kl / s_.nThetaEff;
           const int l = kl % s_.nThetaEff;
           const int idx_lk = l * s_.nZeta + k;
-          double outsideEdgePressure =
+          real_t outsideEdgePressure =
               m_h_.vacuum_magnetic_pressure[idx_lk] + edgePressure;
 
           // term to enter MHD forces
@@ -1161,7 +1192,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
                                         VacuumPressureState::kInitialized);
   bool includeEdgeRZForces =
       ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
-  Eigen::VectorXd localFResInvar = Eigen::VectorXd::Zero(3);
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> localFResInvar =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(3);
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 
   evalFResInvar(localFResInvar);
@@ -1196,7 +1228,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  Eigen::VectorXd localFResPrecd = Eigen::VectorXd::Zero(3);
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> localFResPrecd =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(3);
   m_decomposed_f.residuals(localFResPrecd, true);
 
   evalFResPrecd(localFResPrecd);
@@ -1330,9 +1363,9 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
 #endif  // _OPENMP
 
   for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
-    double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
-    double* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
-    double* src_lsc = &(physical_x.lmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    real_t* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    real_t* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    real_t* src_lsc = &(physical_x.lmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
 
     for (int l = 0; l < s_.nThetaReduced; ++l) {
       std::array<double, 2> rnkcc = {0.0, 0.0};
@@ -1362,35 +1395,35 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
       for (int m = 0; m < num_m; ++m) {
         const int m_parity = m % 2;
         const int idx_ml = m * s_.nThetaReduced + l;
-        const double cosmu = t_.cosmu[idx_ml];
+        const real_t cosmu = t_.cosmu[idx_ml];
         rnkcc[m_parity] += src_rcc[m] * cosmu;
       }
 
       for (int m = 0; m < num_m; ++m) {
         const int m_parity = m % 2;
         const int idx_ml = m * s_.nThetaReduced + l;
-        const double sinmum = t_.sinmum[idx_ml];
+        const real_t sinmum = t_.sinmum[idx_ml];
         rnkcc_m[m_parity] += src_rcc[m] * sinmum;
       }
 
       for (int m = 0; m < num_m; ++m) {
         const int m_parity = m % 2;
         const int idx_ml = m * s_.nThetaReduced + l;
-        const double sinmu = t_.sinmu[idx_ml];
+        const real_t sinmu = t_.sinmu[idx_ml];
         znksc[m_parity] += src_zsc[m] * sinmu;
       }
 
       for (int m = 0; m < num_m; ++m) {
         const int m_parity = m % 2;
         const int idx_ml = m * s_.nThetaReduced + l;
-        const double cosmum = t_.cosmum[idx_ml];
+        const real_t cosmum = t_.cosmum[idx_ml];
         znksc_m[m_parity] += src_zsc[m] * cosmum;
       }
 
       for (int m = 0; m < num_m; ++m) {
         const int m_parity = m % 2;
         const int idx_ml = m * s_.nThetaReduced + l;
-        const double cosmum = t_.cosmum[idx_ml];
+        const real_t cosmum = t_.cosmum[idx_ml];
         lnksc_m[m_parity] += src_lsc[m] * cosmum;
       }
 
@@ -1413,8 +1446,8 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
   // innermost loops.
 
   for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
-    double* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    real_t* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    real_t* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
 
     // NOTE: The axis only gets contributions up to m=1.
     // This is counterintuitive on its own, since the axis is a
@@ -1452,24 +1485,24 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
     //       scale *= m_p_.sqrtSF[jF - r_.nsMinF1];
     //   }
     // with the following code:
-    //   const double scale = xmpq[m] * (1 - m_parity + m_parity *
+    //   const real_t scale = xmpq[m] * (1 - m_parity + m_parity *
     //   m_p_.sqrtSF[jF - r_.nsMinF1]);
 
     for (int m = 0; m < num_m; ++m) {
       const int m_parity = m % 2;
-      const double scale =
+      const real_t scale =
           xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]);
 
       for (int l = 0; l < s_.nThetaReduced; ++l) {
         const int idx_ml = m * s_.nThetaReduced + l;
-        const double cosmu = t_.cosmu[idx_ml];
+        const real_t cosmu = t_.cosmu[idx_ml];
         const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
         rCon[idx_con] += src_rcc[m] * cosmu * scale;
       }  // l
 
       for (int l = 0; l < s_.nThetaReduced; ++l) {
         const int idx_ml = m * s_.nThetaReduced + l;
-        const double sinmu = t_.sinmu[idx_ml];
+        const real_t sinmu = t_.sinmu[idx_ml];
         const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
         zCon[idx_con] += src_zsc[m] * sinmu * scale;
       }  // l
@@ -1503,7 +1536,7 @@ void IdealMhdModel::rzConIntoVolume() {
 
   // step 2: all threads interpolate into volume
   for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    double sFull = m_p_.sqrtSF[jF - r_.nsMinF1] * m_p_.sqrtSF[jF - r_.nsMinF1];
+    real_t sFull = m_p_.sqrtSF[jF - r_.nsMinF1] * m_p_.sqrtSF[jF - r_.nsMinF1];
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
       rCon0[idx_kl] = m_h_.rCon_LCFS[kl] * sFull;
@@ -1515,8 +1548,8 @@ void IdealMhdModel::rzConIntoVolume() {
 void IdealMhdModel::computeJacobian() {
   // r12, ru12, zu12, rs, zs, tau
 
-  double minTau = 0.0;
-  double maxTau = 0.0;
+  real_t minTau = 0.0;
+  real_t maxTau = 0.0;
 
   // contributions from full-grid surface _i_nside j-th half-grid surface
   int j0 = r_.nsMinF1;
@@ -1533,18 +1566,18 @@ void IdealMhdModel::computeJacobian() {
 
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
+    real_t sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
 
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // contributions from full-grid surface _o_utside j-th half-grid surface
-      double r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double z1e_o = z1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double z1o_o = z1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double rue_o = ru_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double ruo_o = ru_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zue_o = zu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zuo_o = zu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t z1e_o = z1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t z1o_o = z1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t rue_o = ru_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t ruo_o = ru_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t zue_o = zu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t zuo_o = zu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
 
       int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
 
@@ -1571,13 +1604,13 @@ void IdealMhdModel::computeJacobian() {
           m_fc_.deltaS;
 
       // sqrt(g)/R on half-grid: assemble as governed by product rule
-      double tau1 = ru12[iHalf] * zs[iHalf] - rs[iHalf] * zu12[iHalf];
-      double tau2 = ruo_o * z1o_o + m_ls_.ruo_i[kl] * m_ls_.z1o_i[kl] -
+      real_t tau1 = ru12[iHalf] * zs[iHalf] - rs[iHalf] * zu12[iHalf];
+      real_t tau2 = ruo_o * z1o_o + m_ls_.ruo_i[kl] * m_ls_.z1o_i[kl] -
                     zuo_o * r1o_o - m_ls_.zuo_i[kl] * m_ls_.r1o_i[kl] +
                     (rue_o * z1o_o + m_ls_.rue_i[kl] * m_ls_.z1o_i[kl] -
                      zue_o * r1o_o - m_ls_.zue_i[kl] * m_ls_.r1o_i[kl]) /
                         sqrtSH;
-      double tau_val = tau1 + dSHalfDsInterp * tau2;
+      real_t tau_val = tau1 + dSHalfDsInterp * tau2;
 
       if (tau_val < minTau || minTau == 0.0) {
         minTau = tau_val;
@@ -1642,16 +1675,16 @@ void IdealMhdModel::computeMetricElements() {
   }
 
   // s on inner full-grid pos
-  double sF_i =
+  real_t sF_i =
       m_p_.sqrtSF[r_.nsMinH - r_.nsMinF1] * m_p_.sqrtSF[r_.nsMinH - r_.nsMinF1];
 
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // s on outside full-grid pos
-    double sF_o =
+    real_t sF_o =
         m_p_.sqrtSF[jH + 1 - r_.nsMinF1] * m_p_.sqrtSF[jH + 1 - r_.nsMinF1];
 
     // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
+    real_t sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
 
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
@@ -1664,12 +1697,12 @@ void IdealMhdModel::computeMetricElements() {
       gsqrt[iHalf] = tau[iHalf] * r12[iHalf];
 
       // contributions from full-grid surface _o_utside j-th half-grid surface
-      double r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double rue_o = ru_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double ruo_o = ru_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zue_o = zu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zuo_o = zu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t rue_o = ru_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t ruo_o = ru_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t zue_o = zu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t zuo_o = zu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
 
       // g_{\theta,\theta} is needed for both 2D and 3D cases
       guu[iHalf] = 0.5 * ((m_ls_.rue_i[kl] * m_ls_.rue_i[kl] +
@@ -1689,10 +1722,10 @@ void IdealMhdModel::computeMetricElements() {
                    sqrtSH * (m_ls_.r1e_i[kl] * m_ls_.r1o_i[kl] + r1e_o * r1o_o);
 
       if (s_.lthreed) {
-        double rve_o = rv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double rvo_o = rv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double zve_o = zv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double zvo_o = zv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+        real_t rve_o = rv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+        real_t rvo_o = rv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+        real_t zve_o = zv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+        real_t zvo_o = zv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
 
         // g_{\theta,\zeta} is only needed for the 3D case
         guv[iHalf] = 0.5 * ((m_ls_.rue_i[kl] * m_ls_.rve_i[kl] +
@@ -1770,7 +1803,7 @@ void IdealMhdModel::updateDifferentialVolume() {
 
 // first iteration of a multi-grid step
 void IdealMhdModel::computeInitialVolume() {
-  double localPlasmaVolume = 0.0;
+  real_t localPlasmaVolume = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // radial integral to get plasma volume
     // This must be done over UNIQUE half-grid points !!!
@@ -1800,7 +1833,7 @@ void IdealMhdModel::computeInitialVolume() {
 }  // computeInitialVolume
 
 void IdealMhdModel::updateVolume() {
-  double localPlasmaVolume = 0.0;
+  real_t localPlasmaVolume = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // radial integral to get plasma volume
     // This must be done over UNIQUE half-grid points !!!
@@ -1863,7 +1896,7 @@ void IdealMhdModel::computeBContra() {
 
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
+    real_t sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
 
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
@@ -1881,10 +1914,10 @@ void IdealMhdModel::computeBContra() {
           m_p_.phipF[jH + 1 - r_.nsMinH];
 
       // contributions from full-grid surface _o_utside j-th half-grid surface
-      double lue_o = lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double luo_o = lu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double lve_o = 0.0;
-      double lvo_o = 0.0;
+      real_t lue_o = lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t luo_o = lu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
+      real_t lve_o = 0.0;
+      real_t lvo_o = 0.0;
       if (s_.lthreed) {
         lve_o = lv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
         lvo_o = lv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
@@ -1922,8 +1955,8 @@ void IdealMhdModel::computeBContra() {
     // --> compute chi' consistent with prescribed toroidal current
 
     for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-      double jvPlasma = 0.0;
-      double avg_guu_gsqrt = 0.0;
+      real_t jvPlasma = 0.0;
+      real_t avg_guu_gsqrt = 0.0;
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
         int l = kl % s_.nThetaEff;
@@ -2012,7 +2045,7 @@ void IdealMhdModel::pressureAndEnergies() {
   // presH, totalPressure
   // thermalEnergy, magneticEnergy, mhdEnergy
 
-  double localThermalEnergy = 0.0;
+  real_t localThermalEnergy = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // compute pressure from mass, dV/ds and adiabatic index (gamma)
     m_p_.presH[jH - r_.nsMinH] =
@@ -2040,7 +2073,7 @@ void IdealMhdModel::pressureAndEnergies() {
   totalPressure = 0.5 * (bsupu.cwiseProduct(bsubu) + bsupv.cwiseProduct(bsubv));
 
   // Accumulate magnetic energy and add kinetic pressure per surface
-  double localMagneticEnergy = 0.0;
+  real_t localMagneticEnergy = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     const int offset = (jH - r_.nsMinH) * s_.nZnT;
 
@@ -2112,7 +2145,7 @@ void IdealMhdModel::radialForceBalance() {
     }  // kl
   }  // jH
 
-  double signByDeltaS = signOfJacobian / m_fc_.deltaS;
+  real_t signByDeltaS = signOfJacobian / m_fc_.deltaS;
 
   // Compute derivatives on interior full-grid knots
   // and from them, evaluate radial force balance residual.
@@ -2151,7 +2184,7 @@ void IdealMhdModel::hybridLambdaForce() {
 
   // obtain first inside point
   int j0 = r_.nsMinF;
-  double sqrtSHi = 0.0;
+  real_t sqrtSHi = 0.0;
   if (j0 > 0) {
     sqrtSHi = m_p_.sqrtSH[j0 - 1 - r_.nsMinH];
   }
@@ -2176,7 +2209,7 @@ void IdealMhdModel::hybridLambdaForce() {
   }  // kl
 
   for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    double sqrtSHo = 0.0;
+    real_t sqrtSHo = 0.0;
     if (jF < r_.nsMaxH) {
       sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
     }
@@ -2184,11 +2217,11 @@ void IdealMhdModel::hybridLambdaForce() {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       // obtain next outside point
       // defaults to 0: no contribution from half-grid point outside LCFS
-      double bsubv_o = 0.0;
+      real_t bsubv_o = 0.0;
       // gvv / gsqrt
-      double gvv_gsqrt_o = 0.0;
+      real_t gvv_gsqrt_o = 0.0;
       // guv * bsupu
-      double guv_bsupu_o = 0.0;
+      real_t guv_bsupu_o = 0.0;
       if (jF < r_.nsMaxH) {
         // for the j-th forces full-grid point, the j-th half-grid point is
         // outside
@@ -2201,23 +2234,23 @@ void IdealMhdModel::hybridLambdaForce() {
       }
 
       // alternative way to interpolate bsubv onto the full-grid
-      double gvv_gsqrt_lu_e = 0.5 * (m_ls_.gvv_gsqrt_i[kl] + gvv_gsqrt_o) *
+      real_t gvv_gsqrt_lu_e = 0.5 * (m_ls_.gvv_gsqrt_i[kl] + gvv_gsqrt_o) *
                               lu_e[(jF - r_.nsMinF1) * s_.nZnT + kl];
-      double gvv_gsqrt_lu_o =
+      real_t gvv_gsqrt_lu_o =
           0.5 * (m_ls_.gvv_gsqrt_i[kl] * sqrtSHi + gvv_gsqrt_o * sqrtSHo) *
           lu_o[(jF - r_.nsMinF1) * s_.nZnT + kl];
 
-      double gvv_gsqrt_lu = gvv_gsqrt_lu_e + gvv_gsqrt_lu_o;
-      double bsubv_alternative = gvv_gsqrt_lu;
+      real_t gvv_gsqrt_lu = gvv_gsqrt_lu_e + gvv_gsqrt_lu_o;
+      real_t bsubv_alternative = gvv_gsqrt_lu;
       if (s_.lthreed) {
-        double guv_bsupu = 0.5 * (m_ls_.guv_bsupu_i[kl] + guv_bsupu_o);
+        real_t guv_bsupu = 0.5 * (m_ls_.guv_bsupu_i[kl] + guv_bsupu_o);
         bsubv_alternative += guv_bsupu;
       }
 
-      const double bsubv_average = 0.5 * (bsubv_o + m_ls_.bsubv_i[kl]);
+      const real_t bsubv_average = 0.5 * (bsubv_o + m_ls_.bsubv_i[kl]);
 
       // blend together two ways of interpolating bsubv
-      double _blmn =
+      real_t _blmn =
           bsubv_average * (1.0 - m_p_.radialBlending[jF - r_.nsMinF1]) +
           bsubv_alternative * m_p_.radialBlending[jF - r_.nsMinF1];
 
@@ -2234,12 +2267,12 @@ void IdealMhdModel::hybridLambdaForce() {
       if (s_.lthreed) {
         // obtain next outside point
         // defaults to 0 for half-grid point outside LCFS
-        double bsubu_o = 0.0;
+        real_t bsubu_o = 0.0;
         if (jF < r_.nsMaxH) {
           bsubu_o = bsubu[(jF - r_.nsMinH) * s_.nZnT + kl];
         }
 
-        double _clmn = 0.5 * (bsubu_o + m_ls_.bsubu_i[kl]);
+        real_t _clmn = 0.5 * (bsubu_o + m_ls_.bsubu_i[kl]);
 
         if (jF > 0) {
           // TODO(jons): no lamscale and (-1) factor for axis lambda force?
@@ -2274,11 +2307,11 @@ void IdealMhdModel::hybridLambdaForce() {
 // Compute normalization factors for force residuals.
 void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
   // r2 in Fortran VMEC
-  double energyDensity =
+  real_t energyDensity =
       std::max(m_h_.magneticEnergy, m_h_.thermalEnergy) / m_h_.plasmaVolume;
 
-  double localForceNormSumRZ = 0.0;
-  double localForceNormSumL = 0.0;
+  real_t localForceNormSumRZ = 0.0;
+  real_t localForceNormSumL = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
@@ -2303,7 +2336,7 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
   // decomposed_x is over nsMinF1 ... nsMaxF1 --> would count overlapping
   // elements twice !!!
   const int nsMinHere = r_.nsMinF;
-  double localForceNorm1 =
+  real_t localForceNorm1 =
       decomposed_x.rzNorm(false, nsMinHere, r_.nsMaxFIncludingLcfs);
 
 #ifdef _OPENMP
@@ -2353,7 +2386,7 @@ void IdealMhdModel::computeMHDForces() {
 
   // obtain first inside point
   // stuff gets divided by sqrtSHi, so cannot be 0
-  double sqrtSHi = 1.0;
+  real_t sqrtSHi = 1.0;
   if (r_.nsMinF > 0) {
     // for the rel-0-th forces full-grid point, the rel-0-th half-grid point is
     // inside
@@ -2384,25 +2417,34 @@ void IdealMhdModel::computeMHDForces() {
     m_ls_.gbvbv_i.setZero();
   }
 
-  Eigen::VectorXd P_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  //  r12 * totalPressure = P
-  Eigen::VectorXd rup_o = Eigen::VectorXd::Zero(s_.nZnT);   // ru12 * P
-  Eigen::VectorXd zup_o = Eigen::VectorXd::Zero(s_.nZnT);   // zu12 * P
-  Eigen::VectorXd rsp_o = Eigen::VectorXd::Zero(s_.nZnT);   //   rs * P
-  Eigen::VectorXd zsp_o = Eigen::VectorXd::Zero(s_.nZnT);   //   zs * P
-  Eigen::VectorXd taup_o = Eigen::VectorXd::Zero(s_.nZnT);  //  tau * P
-  Eigen::VectorXd gbubu_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupu * bsupu
-  Eigen::VectorXd gbubv_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupu * bsupv
-  Eigen::VectorXd gbvbv_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupv * bsupv
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> P_o =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+          s_.nZnT);  //  r12 * totalPressure = P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rup_o =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s_.nZnT);  // ru12 * P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zup_o =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s_.nZnT);  // zu12 * P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rsp_o =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s_.nZnT);  //   rs * P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zsp_o =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s_.nZnT);  //   zs * P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> taup_o =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s_.nZnT);  //  tau * P
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbubu_o =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+          s_.nZnT);  // gsqrt * bsupu * bsupu
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbubv_o =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+          s_.nZnT);  // gsqrt * bsupu * bsupv
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbvbv_o =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+          s_.nZnT);  // gsqrt * bsupv * bsupv
 
   for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
-    const double sFull =
+    const real_t sFull =
         m_p_.sqrtSF[jF - r_.nsMinF1] * m_p_.sqrtSF[jF - r_.nsMinF1];
     // stuff gets divided by sqrtSHo, so cannot be 0
-    double sqrtSHo = 1.0;
+    real_t sqrtSHo = 1.0;
     if (jF < r_.nsMaxH) {
       sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
     }
@@ -2454,17 +2496,21 @@ void IdealMhdModel::computeMHDForces() {
     const auto z1o = z1_o.segment(g_off, nZnT);
 
     // Pre-compute common sub-expressions (averages and weighted averages)
-    const double invDS = 1.0 / m_fc_.deltaS;
-    const double invSHo = 1.0 / sqrtSHo;
-    const double invSHi = 1.0 / sqrtSHi;
-    const Eigen::VectorXd P_avg = 0.5 * (P_o + m_ls_.P_i);
-    const Eigen::VectorXd P_wavg = 0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
+    const real_t invDS = 1.0 / m_fc_.deltaS;
+    const real_t invSHo = 1.0 / sqrtSHo;
+    const real_t invSHi = 1.0 / sqrtSHi;
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1> P_avg =
+        0.5 * (P_o + m_ls_.P_i);
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1> P_wavg =
+        0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
 
-    const Eigen::VectorXd gbubu_avg = 0.5 * (gbubu_o + m_ls_.gbubu_i);
-    const Eigen::VectorXd gbubu_wavg =
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbubu_avg =
+        0.5 * (gbubu_o + m_ls_.gbubu_i);
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbubu_wavg =
         0.5 * (gbubu_o * sqrtSHo + m_ls_.gbubu_i * sqrtSHi);
-    const Eigen::VectorXd gbvbv_avg = 0.5 * (gbvbv_o + m_ls_.gbvbv_i);
-    const Eigen::VectorXd gbvbv_wavg =
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbvbv_avg =
+        0.5 * (gbvbv_o + m_ls_.gbvbv_i);
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbvbv_wavg =
         0.5 * (gbvbv_o * sqrtSHo + m_ls_.gbvbv_i * sqrtSHi);
 
     // A_R force
@@ -2502,8 +2548,9 @@ void IdealMhdModel::computeMHDForces() {
         gbubu_avg.cwiseProduct(zuo) * sFull;
 
     if (s_.lthreed) {
-      const Eigen::VectorXd gbubv_avg = 0.5 * (gbubv_o + m_ls_.gbubv_i);
-      const Eigen::VectorXd gbubv_wavg =
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbubv_avg =
+          0.5 * (gbubv_o + m_ls_.gbubv_i);
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1> gbubv_wavg =
           0.5 * (gbubv_o * sqrtSHo + m_ls_.gbubv_i * sqrtSHi);
       const auto rve = rv_e.segment(g_off, nZnT);
       const auto rvo = rv_o.segment(g_off, nZnT);
@@ -2578,7 +2625,7 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // lambdaPreconditioner
 
   // TODO(jons): what is this ?
-  const double pFactor =
+  const real_t pFactor =
       dampingFactor / (4.0 * constants_.lamscale * constants_.lamscale);
 
   // evaluate preconditioning matrix elements on half-grid
@@ -2636,7 +2683,7 @@ void IdealMhdModel::updateLambdaPreconditioner() {
 
   for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
     for (int n = 0; n < s_.ntor + 1; ++n) {
-      double tnn = n * s_.nfp * n * s_.nfp;
+      real_t tnn = n * s_.nfp * n * s_.nfp;
 
       for (int m = 0; m < s_.mpol; ++m) {
         if (m == 0 && n == 0) {
@@ -2648,10 +2695,10 @@ void IdealMhdModel::updateLambdaPreconditioner() {
         int tmm = m * m;
 
         // TODO(jons): what is this ? (see below)
-        double pwr = std::min(tmm / (16.0 * 16.0), 8.0);
-        double tmn = 2.0 * m * n * s_.nfp;
+        real_t pwr = std::min(tmm / (16.0 * 16.0), 8.0);
+        real_t tmn = 2.0 * m * n * s_.nfp;
 
-        double faclam =
+        real_t faclam =
             tnn * bLambda[jF - r_.nsMinF] +
             tmn * copysign(dLambda[jF - r_.nsMinF], bLambda[jF - r_.nsMinF]) +
             tmm * cLambda[jF - r_.nsMinF];
@@ -2680,16 +2727,22 @@ void IdealMhdModel::updateLambdaPreconditioner() {
  * The diagonal terms (..d) are on the forces full-grid.
  */
 void IdealMhdModel::computePreconditioningMatrix(
-    const Eigen::VectorXd& xs, const Eigen::VectorXd& xu12,
-    const Eigen::VectorXd& xu_e, const Eigen::VectorXd& xu_o,
-    const Eigen::VectorXd& x1_o, Eigen::VectorXd& m_axm, Eigen::VectorXd& m_axd,
-    Eigen::VectorXd& m_bxm, Eigen::VectorXd& m_bxd, Eigen::VectorXd& m_cxd) {
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& xs,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& xu12,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& xu_e,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& xu_o,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& x1_o,
+    Eigen::Matrix<real_t, Eigen::Dynamic, 1>& m_axm,
+    Eigen::Matrix<real_t, Eigen::Dynamic, 1>& m_axd,
+    Eigen::Matrix<real_t, Eigen::Dynamic, 1>& m_bxm,
+    Eigen::Matrix<real_t, Eigen::Dynamic, 1>& m_bxd,
+    Eigen::Matrix<real_t, Eigen::Dynamic, 1>& m_cxd) {
   // zs, zu12, zu, z1 --> arm, ard, brm, brd, cxd
   // rs, ru12, ru, r1 --> azm, azd, bzm, bzd, cxd
 
   // restored in v8.51
   // TODO(jons): what is this?
-  double pFactor = -4.0;
+  real_t pFactor = -4.0;
 
   // zero intermediate work arrays
   absl::c_fill_n(ax, (r_.nsMaxH - r_.nsMinH) * 4, 0);
@@ -2705,16 +2758,16 @@ void IdealMhdModel::computePreconditioningMatrix(
 
       int l = kl % s_.nThetaEff;
 
-      double pTau =
+      real_t pTau =
           pFactor * r12[iHalf] * totalPressure[iHalf] / tau[iHalf] * s_.wInt[l];
 
       // COMPUTE DOMINANT (1/DELTA-S)**2 PRECONDITIONING MATRIX ELEMENTS
 
-      double t1a = xu12[iHalf] / m_fc_.deltaS;
-      double t2a =
+      real_t t1a = xu12[iHalf] / m_fc_.deltaS;
+      real_t t2a =
           0.25 * (xu_e[iFull_1] / m_p_.sqrtSH[jH - r_.nsMinH] + xu_o[iFull_1]) /
           m_p_.sqrtSH[jH - r_.nsMinH];
-      double t3a =
+      real_t t3a =
           0.25 * (xu_e[iFull_0] / m_p_.sqrtSH[jH - r_.nsMinH] + xu_o[iFull_0]) /
           m_p_.sqrtSH[jH - r_.nsMinH];
 
@@ -2737,9 +2790,9 @@ void IdealMhdModel::computePreconditioningMatrix(
 
       // assemble full radial derivative; incl radial interpolation of odd-m X
       // contrib (?)
-      double t1b =
+      real_t t1b =
           0.5 * (xs[iHalf] + 0.5 / m_p_.sqrtSH[jH - r_.nsMinH] * x1_o[iFull_1]);
-      double t2b =
+      real_t t2b =
           0.5 * (xs[iHalf] + 0.5 / m_p_.sqrtSH[jH - r_.nsMinH] * x1_o[iFull_0]);
 
       // even-m and odd-m
@@ -2761,8 +2814,8 @@ void IdealMhdModel::computePreconditioningMatrix(
     }  // kl
   }  // jH
 
-  const Eigen::VectorXd& sm = m_p_.sm;
-  const Eigen::VectorXd& sp = m_p_.sp;
+  const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& sm = m_p_.sm;
+  const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& sp = m_p_.sp;
 
   // radial assembly of preconditioning matrix element components
   // All this sm, sp logic seems to be related to the odd-m scaling factors...
@@ -2815,7 +2868,7 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
 
   // TODO(jons): some parabola in ns,
   // but why these specific values of the parameters ?
-  double tcon_multiplier =
+  real_t tcon_multiplier =
       tcon0 * (1.0 + m_fc_.ns * (1.0 / 60.0 + m_fc_.ns / (200.0 * 120.0)));
 
   // Scaling of ard, azd (2*r0scale**2);
@@ -2830,8 +2883,8 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
   }
 
   for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxF; ++jF) {
-    double arNorm = 0.0;
-    double azNorm = 0.0;
+    real_t arNorm = 0.0;
+    real_t azNorm = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
       int l = kl % s_.nThetaEff;
@@ -2846,7 +2899,7 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
       return absl::InternalError("azNorm should never be 0.0.");
     }
 
-    double tcon_base =
+    real_t tcon_base =
         std::min(fabs(ard[(jF - r_.nsMinF) * 2 + kEvenParity] / arNorm),
                  fabs(azd[(jF - r_.nsMinF) * 2 + kEvenParity] / azNorm));
 
@@ -2918,8 +2971,8 @@ void IdealMhdModel::assembleTotalForces() {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
 
-      double brcon = (rCon[idx_kl] - rCon0[idx_kl]) * gCon[idx_kl];
-      double bzcon = (zCon[idx_kl] - zCon0[idx_kl]) * gCon[idx_kl];
+      real_t brcon = (rCon[idx_kl] - rCon0[idx_kl]) * gCon[idx_kl];
+      real_t bzcon = (zCon[idx_kl] - zCon0[idx_kl]) * gCon[idx_kl];
 
       brmn_e[idx_kl] += brcon;
       bzmn_e[idx_kl] += bzcon;
@@ -3027,25 +3080,25 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
       for (int l = 0; l < s_.nThetaReduced; ++l) {
         const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
 
-        const double rnkcc = armn[idx_jl];
-        const double rnkcc_m = brmn[idx_jl];
-        const double znksc = azmn[idx_jl];
-        const double znksc_m = bzmn[idx_jl];
+        const real_t rnkcc = armn[idx_jl];
+        const real_t rnkcc_m = brmn[idx_jl];
+        const real_t znksc = azmn[idx_jl];
+        const real_t znksc_m = bzmn[idx_jl];
 
-        const double rcon_cc = frcon[idx_jl];
-        const double zcon_sc = fzcon[idx_jl];
+        const real_t rcon_cc = frcon[idx_jl];
+        const real_t zcon_sc = fzcon[idx_jl];
 
         const int idx_ml = m * s_.nThetaReduced + l;
-        const double cosmui = t_.cosmui[idx_ml];
-        const double sinmumi = t_.sinmumi[idx_ml];
-        const double sinmui = t_.sinmui[idx_ml];
-        const double cosmumi = t_.cosmumi[idx_ml];
+        const real_t cosmui = t_.cosmui[idx_ml];
+        const real_t sinmumi = t_.sinmumi[idx_ml];
+        const real_t sinmui = t_.sinmui[idx_ml];
+        const real_t cosmumi = t_.cosmumi[idx_ml];
         // assemble effective R and Z forces from MHD and spectral condensation
         // contributions
-        const double _rcc = rnkcc + xmpq[m] * rcon_cc;
+        const real_t _rcc = rnkcc + xmpq[m] * rcon_cc;
         m_physical_f.frcc[idx_jm] += _rcc * cosmui + rnkcc_m * sinmumi;
 
-        const double _zsc = znksc + xmpq[m] * zcon_sc;
+        const real_t _zsc = znksc + xmpq[m] * zcon_sc;
         m_physical_f.fzsc[idx_jm] += _zsc * sinmui + znksc_m * cosmumi;
       }  // m
     }  // l
@@ -3063,9 +3116,9 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
 
       for (int l = 0; l < s_.nThetaReduced; ++l) {
         const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        const double lnksc_m = blmn[idx_jl];
+        const real_t lnksc_m = blmn[idx_jl];
 
-        const double cosmumi = t_.cosmumi[m * s_.nThetaReduced + l];
+        const real_t cosmumi = t_.cosmumi[m * s_.nThetaReduced + l];
         m_physical_f.flsc[idx_jm] += lnksc_m * cosmumi;
       }  // m
     }  // l
@@ -3086,13 +3139,13 @@ void IdealMhdModel::applyM1Preconditioner(FourierForces& m_decomposed_f) {
       int m = 1;
       int mPar = m % 2;
 
-      double denom =
+      real_t denom =
           ard[(jF - r_.nsMinF) * 2 + mPar] + brd[(jF - r_.nsMinF) * 2 + mPar] +
           azd[(jF - r_.nsMinF) * 2 + mPar] + bzd[(jF - r_.nsMinF) * 2 + mPar];
-      double forceScaleR = (ard[(jF - r_.nsMinF) * 2 + mPar] +
+      real_t forceScaleR = (ard[(jF - r_.nsMinF) * 2 + mPar] +
                             brd[(jF - r_.nsMinF) * 2 + mPar]) /
                            denom;
-      double forceScaleZ = (azd[(jF - r_.nsMinF) * 2 + mPar] +
+      real_t forceScaleZ = (azd[(jF - r_.nsMinF) * 2 + mPar] +
                             bzd[(jF - r_.nsMinF) * 2 + mPar]) /
                            denom;
 
@@ -3193,7 +3246,7 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // SMALL EDGE PEDESTAL NEEDED TO IMPROVE CONVERGENCE
     // IN PARTICULAR, NEEDED TO ACCOUNT FOR POTENTIAL ZERO
     // EIGENVALUE DUE TO NEUMANN (GRADIENT) CONDITION AT EDGE
-    const double edge_pedestal = 0.05;
+    const real_t edge_pedestal = 0.05;
     for (int n = 0; n < s_.ntor + 1; ++n) {
       {
         int m = 0;
@@ -3222,8 +3275,8 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // COEFFICIENT OF < Ru (R Pvac)> ~ -fac*(z-zeq) WHERE fac (EIGENVALUE, OR
     // FIELD INDEX) DEPENDS ON THE EQUILIBRIUM MAGNETIC FIELD AND CURRENT,
     // AND zeq IS THE EQUILIBRIUM EDGE VALUE OF Z00
-    double fac = 0.25;
-    double multFact = std::min(fac, fac * m_fc_.deltaS * 15.0);
+    real_t fac = 0.25;
+    real_t multFact = std::min(fac, fac * m_fc_.deltaS * 15.0);
 
     // METHOD 1: SUBTRACT (INSTABILITY) Pedge ~ fac*z/hs FROM PRECONDITIONER AT
     // EDGE iflag parameter is used in Fortran VMEC to enable this feature only
@@ -3261,8 +3314,8 @@ void IdealMhdModel::assembleRZPreconditioner() {
 // serial variant
 absl::Status IdealMhdModel::applyRZPreconditioner(
     FourierForces& m_decomposed_f) {
-  std::vector<std::span<double>> cR(s_.num_basis);
-  std::vector<std::span<double>> cZ(s_.num_basis);
+  std::vector<std::span<real_t>> cR(s_.num_basis);
+  std::vector<std::span<real_t>> cZ(s_.num_basis);
   {
     int idx_basis = 0;
 
@@ -3340,14 +3393,14 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   // Uses span accessors to pass contiguous radial slices to the solver
   const int ns = m_h_.all_ar.cols();
   for (int mn = mnmin; mn < mnmax; ++mn) {
-    TridiagonalSolveSerial(std::span<double>(m_h_.all_ar.row(mn).data(), ns),
-                           std::span<double>(m_h_.all_dr.row(mn).data(), ns),
-                           std::span<double>(m_h_.all_br.row(mn).data(), ns),
+    TridiagonalSolveSerial(std::span<real_t>(m_h_.all_ar.row(mn).data(), ns),
+                           std::span<real_t>(m_h_.all_dr.row(mn).data(), ns),
+                           std::span<real_t>(m_h_.all_br.row(mn).data(), ns),
                            m_h_.all_cr[mn].data(), ns, jMin[mn], jMax,
                            s_.num_basis);
-    TridiagonalSolveSerial(std::span<double>(m_h_.all_az.row(mn).data(), ns),
-                           std::span<double>(m_h_.all_dz.row(mn).data(), ns),
-                           std::span<double>(m_h_.all_bz.row(mn).data(), ns),
+    TridiagonalSolveSerial(std::span<real_t>(m_h_.all_az.row(mn).data(), ns),
+                           std::span<real_t>(m_h_.all_dz.row(mn).data(), ns),
+                           std::span<real_t>(m_h_.all_bz.row(mn).data(), ns),
                            m_h_.all_cz[mn].data(), ns, jMin[mn], jMax,
                            s_.num_basis);
   }  // mn
@@ -3448,11 +3501,11 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
   }  // j
 }
 
-double IdealMhdModel::get_delbsq() const {
-  double delBSqAvg = 0.0;
+real_t IdealMhdModel::get_delbsq() const {
+  real_t delBSqAvg = 0.0;
   if (m_fc_.lfreeb &&
       m_vacuum_pressure_state_ == VacuumPressureState::kActive) {
-    double delBSqNorm = 0.0;
+    real_t delBSqNorm = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int l = kl % s_.nThetaEff;
       delBSqAvg += delBSq[kl] * s_.wInt[l];

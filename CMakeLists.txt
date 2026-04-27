@@ -8,7 +8,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
+set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra -fext-numeric-literals")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-math-errno")
 
@@ -114,6 +114,7 @@ target_link_libraries(vmecpp_core PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
 target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synchronization absl::strings absl::str_format absl::log absl::string_view absl::check absl::status absl::statusor)
+target_link_libraries(vmecpp_core PRIVATE quadmath)
 
 if(OpenMP_CXX_FOUND)
   target_link_libraries(vmecpp_core PRIVATE OpenMP::OpenMP_CXX)

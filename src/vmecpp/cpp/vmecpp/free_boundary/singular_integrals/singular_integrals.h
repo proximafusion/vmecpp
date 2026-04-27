@@ -21,68 +21,68 @@ class SingularIntegrals {
                     const TangentialPartitioning* tp, const SurfaceGeometry* sg,
                     int nf, int mf);
 
-  void update(const std::vector<double>& bDotN, bool fullUpdate);
+  void update(const std::vector<real_t>& bDotN, bool fullUpdate);
 
   int numSC;
   int numCS;
   int nzLen;  // non-zero length
 
-  std::vector<double> cmn;
-  std::vector<double> cmns;
+  std::vector<real_t> cmn;
+  std::vector<real_t> cmns;
 
-  std::vector<double> ap;
-  std::vector<double> am;
-  std::vector<double> d;
-  std::vector<double> sqrtc2;
-  std::vector<double> sqrta2;
-  std::vector<double> delta4;
+  std::vector<real_t> ap;
+  std::vector<real_t> am;
+  std::vector<real_t> d;
+  std::vector<real_t> sqrtc2;
+  std::vector<real_t> sqrta2;
+  std::vector<real_t> delta4;
 
-  std::vector<double> Ap;
-  std::vector<double> Am;
-  std::vector<double> D;
+  std::vector<real_t> Ap;
+  std::vector<real_t> Am;
+  std::vector<real_t> D;
 
-  std::vector<double> R1p;
-  std::vector<double> R1m;
-  std::vector<double> R0p;
-  std::vector<double> R0m;
-  std::vector<double> Ra1p;
-  std::vector<double> Ra1m;
+  std::vector<real_t> R1p;
+  std::vector<real_t> R1m;
+  std::vector<real_t> R0p;
+  std::vector<real_t> R0m;
+  std::vector<real_t> Ra1p;
+  std::vector<real_t> Ra1m;
 
   // l-2
-  std::vector<double> Tl2p;
+  std::vector<real_t> Tl2p;
   // l-2
-  std::vector<double> Tl2m;
+  std::vector<real_t> Tl2m;
   // l-1
-  std::vector<double> Tl1p;
+  std::vector<real_t> Tl1p;
   // l-1
-  std::vector<double> Tl1m;
+  std::vector<real_t> Tl1m;
   // l
-  std::vector<std::vector<double> > Tlp;
+  std::vector<std::vector<real_t> > Tlp;
   // l
-  std::vector<std::vector<double> > Tlm;
+  std::vector<std::vector<real_t> > Tlm;
 
   // l
-  std::vector<std::vector<double> > Slp;
+  std::vector<std::vector<real_t> > Slp;
   // l
-  std::vector<std::vector<double> > Slm;
+  std::vector<std::vector<real_t> > Slm;
 
   // sum_kl { Tlm * sin(mu + nv), Tlp * sin(mu - nv) }
-  std::vector<double> bvec_sin;
+  std::vector<real_t> bvec_sin;
 
   // sum_kl { Tlm * cos(mu + nv), Tlp * cos(mu - nv) }
-  std::vector<double> bvec_cos;
+  std::vector<real_t> bvec_cos;
 
   // Slm * sin(mu + nv), Slp * sin(mu - nv)
-  std::vector<double> grpmn_sin;
+  std::vector<real_t> grpmn_sin;
 
   // Slm * cos(mu + nv), Slp * cos(mu - nv)
-  std::vector<double> grpmn_cos;
+  std::vector<real_t> grpmn_cos;
 
-  void prepareUpdate(const std::vector<double>& a,
-                     const std::vector<double>& b2,
-                     const std::vector<double>& c, const std::vector<double>& A,
-                     const std::vector<double>& B2,
-                     const std::vector<double>& C, bool fullUpdate);
+  void prepareUpdate(const std::vector<real_t>& a,
+                     const std::vector<real_t>& b2,
+                     const std::vector<real_t>& c, const std::vector<real_t>& A,
+                     const std::vector<real_t>& B2,
+                     const std::vector<real_t>& C, bool fullUpdate);
 
  private:
   const Sizes& s_;
@@ -92,7 +92,7 @@ class SingularIntegrals {
 
   void computeCoefficients();
 
-  void performUpdate(const std::vector<double>& bDotN, bool fullUpdate);
+  void performUpdate(const std::vector<real_t>& bDotN, bool fullUpdate);
 
   int nf;
   int mf;

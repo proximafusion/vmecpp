@@ -58,7 +58,7 @@ class Sizes {
   int nZnT;
 
   // [nThetaEff] poloidal integration weights
-  Eigen::VectorXd wInt;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> wInt;
 
   // number of Fourier coefficients in one of the 2D arrays (cc, ss, ...)
   int mnsize;

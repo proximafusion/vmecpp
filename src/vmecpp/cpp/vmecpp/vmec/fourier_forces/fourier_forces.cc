@@ -103,7 +103,7 @@ void FourierForces::zeroZForceForM1() {
 }
 
 /** Compute the force residuals and write them into the provided [3] array. */
-void FourierForces::residuals(Eigen::VectorXd& fRes,
+void FourierForces::residuals(Eigen::Matrix<real_t, Eigen::Dynamic, 1>& fRes,
                               bool includeEdgeRZForces) const {
   int jMaxRZ = std::min(nsMax_, ns - 1);
   if (includeEdgeRZForces && r_.nsMaxF1 == ns) {
@@ -115,9 +115,9 @@ void FourierForces::residuals(Eigen::VectorXd& fRes,
     jMaxIncludeBoundary = ns;
   }
 
-  double local_fResR = 0.0;
-  double local_fResZ = 0.0;
-  double local_fResL = 0.0;
+  real_t local_fResR = 0.0;
+  real_t local_fResZ = 0.0;
+  real_t local_fResL = 0.0;
   for (int jF = nsMin_; jF < jMaxIncludeBoundary; ++jF) {
     for (int m = 0; m < s_.mpol; ++m) {
       for (int n = 0; n < s_.ntor + 1; ++n) {

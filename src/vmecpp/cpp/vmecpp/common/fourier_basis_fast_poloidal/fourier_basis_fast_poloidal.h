@@ -9,6 +9,7 @@
 #include <span>
 
 #include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/util/real_type.h"
 
 namespace vmecpp {
 
@@ -43,13 +44,13 @@ class FourierBasisFastPoloidal {
   // Applied to cos(m*\theta) and sin(m*\theta) basis functions for DFT
   // normalization Enables proper normalization: 1/\pi for m>0 modes, 1/(2\pi)
   // for m=0 mode
-  Eigen::VectorXd mscale;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> mscale;
 
   // [nnyq2+1] Toroidal mode scaling factors: sqrt(2) for n>0, 1.0 for n=0
   // Applied to cos(n*\zeta) and sin(n*\zeta) basis functions for DFT
   // normalization Enables proper normalization: 1/\pi for n>0 modes, 1/(2\pi)
   // for n=0 mode
-  Eigen::VectorXd nscale;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> nscale;
 
   // ============================================================================
   // POLOIDAL BASIS FUNCTIONS (m-major layout: [m][l])
@@ -59,23 +60,23 @@ class FourierBasisFastPoloidal {
   // Layout: cosmu[m*nThetaReduced + l] = cos(m*\theta[l]) * mscale[m]
   // \theta[l] = 2*\pi*l/nThetaEven for l=0...nThetaReduced-1 (reduced [0,\pi]
   // interval)
-  Eigen::VectorXd cosmu;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> cosmu;
 
   // [nThetaReduced * (mnyq2+1)] Pre-scaled poloidal sine basis
   // Layout: sinmu[m*nThetaReduced + l] = sin(m*\theta[l]) * mscale[m]
-  Eigen::VectorXd sinmu;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sinmu;
 
   // [nThetaReduced * (mnyq2+1)] Pre-scaled poloidal cosine derivative
   // Layout: cosmum[m*nThetaReduced + l] = m * cos(m*\theta[l]) * mscale[m]
   // Used for computing \partial/\partial\theta derivatives in force
   // calculations
-  Eigen::VectorXd cosmum;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> cosmum;
 
   // [nThetaReduced * (mnyq2+1)] Pre-scaled poloidal sine derivative
   // Layout: sinmum[m*nThetaReduced + l] = -m * sin(m*\theta[l]) * mscale[m]
   // Used for computing \partial/\partial\theta derivatives in force
   // calculations
-  Eigen::VectorXd sinmum;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sinmum;
 
   // ============================================================================
   // POLOIDAL BASIS WITH INTEGRATION WEIGHTS
@@ -84,21 +85,21 @@ class FourierBasisFastPoloidal {
   // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal cosine basis
   // Layout: cosmui[m*nThetaReduced + l] = cosmu[m*nThetaReduced + l] * intNorm
   // intNorm = 1/(nZeta*(nThetaReduced-1)), with boundary point factor 1/2
-  Eigen::VectorXd cosmui;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> cosmui;
 
   // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal sine basis
   // Layout: sinmui[m*nThetaReduced + l] = sinmu[m*nThetaReduced + l] * intNorm
-  Eigen::VectorXd sinmui;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sinmui;
 
   // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal cosine derivative
   // Layout: cosmumi[m*nThetaReduced + l] = cosmum[m*nThetaReduced + l] *
   // intNorm
-  Eigen::VectorXd cosmumi;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> cosmumi;
 
   // [nThetaReduced * (mnyq2+1)] Integration-weighted poloidal sine derivative
   // Layout: sinmumi[m*nThetaReduced + l] = sinmum[m*nThetaReduced + l] *
   // intNorm
-  Eigen::VectorXd sinmumi;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sinmumi;
 
   // ============================================================================
   // TOROIDAL BASIS FUNCTIONS (zeta-major layout: [k][n])
@@ -107,23 +108,23 @@ class FourierBasisFastPoloidal {
   // [(nnyq2+1) * nZeta] Pre-scaled toroidal cosine basis
   // Layout: cosnv[k*(nnyq2+1) + n] = cos(n*\zeta[k]) * nscale[n]
   // \zeta[k] = 2*\pi*k/nZeta for k=0...nZeta-1 (full [0,2\pi] interval)
-  Eigen::VectorXd cosnv;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> cosnv;
 
   // [(nnyq2+1) * nZeta] Pre-scaled toroidal sine basis
   // Layout: sinnv[k*(nnyq2+1) + n] = sin(n*\zeta[k]) * nscale[n]
-  Eigen::VectorXd sinnv;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sinnv;
 
   // [(nnyq2+1) * nZeta] Pre-scaled toroidal cosine derivative with nfp factor
   // Layout: cosnvn[k*(nnyq2+1) + n] = n*nfp * cos(n*\zeta[k]) * nscale[n]
   // Factor nfp converts \partial/\partial\zeta to \partial/\partial\phi
   // derivatives
-  Eigen::VectorXd cosnvn;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> cosnvn;
 
   // [(nnyq2+1) * nZeta] Pre-scaled toroidal sine derivative with nfp factor
   // Layout: sinnvn[k*(nnyq2+1) + n] = -n*nfp * sin(n*\zeta[k]) * nscale[n]
   // Factor nfp converts \partial/\partial\zeta to \partial/\partial\phi
   // derivatives
-  Eigen::VectorXd sinnvn;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sinnvn;
 
   // ============================================================================
   // FOURIER BASIS CONVERSION FUNCTIONS
@@ -178,8 +179,8 @@ class FourierBasisFastPoloidal {
    * @param m_size Poloidal mode range: m in [0, m_size-1]
    * @return Total number of modes processed (mnmax)
    */
-  int cos_to_cc_ss(const std::span<const double> fcCos,
-                   std::span<double> m_fcCC, std::span<double> m_fcSS,
+  int cos_to_cc_ss(const std::span<const real_t> fcCos,
+                   std::span<real_t> m_fcCC, std::span<real_t> m_fcSS,
                    int n_size, int m_size) const;
 
   /**
@@ -207,8 +208,8 @@ class FourierBasisFastPoloidal {
    * @param m_size Poloidal mode range: m in [0, m_size-1]
    * @return Total number of modes processed (mnmax)
    */
-  int sin_to_sc_cs(const std::span<const double> fcSin,
-                   std::span<double> m_fcSC, std::span<double> m_fcCS,
+  int sin_to_sc_cs(const std::span<const real_t> fcSin,
+                   std::span<real_t> m_fcSC, std::span<real_t> m_fcCS,
                    int n_size, int m_size) const;
 
   /**
@@ -236,9 +237,9 @@ class FourierBasisFastPoloidal {
    * @param m_size Poloidal mode range: m in [0, m_size-1]
    * @return Total number of modes processed (mnmax)
    */
-  int cc_ss_to_cos(const std::span<const double> fcCC,
-                   const std::span<const double> fcSS,
-                   std::span<double> m_fcCos, int n_size, int m_size) const;
+  int cc_ss_to_cos(const std::span<const real_t> fcCC,
+                   const std::span<const real_t> fcSS,
+                   std::span<real_t> m_fcCos, int n_size, int m_size) const;
 
   /**
    * Convert coefficients from separable product basis back to combined sine
@@ -265,9 +266,9 @@ class FourierBasisFastPoloidal {
    * @param m_size Poloidal mode range: m in [0, m_size-1]
    * @return Total number of modes processed (mnmax)
    */
-  int sc_cs_to_sin(const std::span<const double> fcSC,
-                   const std::span<const double> fcCS,
-                   std::span<double> m_fcSin, int n_size, int m_size) const;
+  int sc_cs_to_sin(const std::span<const real_t> fcSC,
+                   const std::span<const real_t> fcCS,
+                   std::span<real_t> m_fcSin, int n_size, int m_size) const;
 
   int mnIdx(int m, int n) const;
   int mnMax(int m_size, int n_size) const;

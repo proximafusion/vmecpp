@@ -9,6 +9,8 @@
 #include <cmath>
 #include <numbers>
 
+#include "vmecpp/common/util/real_type.h"
+
 namespace vmecpp {
 
 /**
@@ -34,7 +36,7 @@ static constexpr int kSignOfJacobian = -1;
  * Historical name: kPDamp from Fortran VMEC.
  * Also defined in vmec.h as kPDamp.
  */
-static constexpr double kMagneticFieldBlendingFactor = 0.05;
+static constexpr real_t kMagneticFieldBlendingFactor = 0.05L;
 
 /**
  * Vacuum magnetic permeability \mu_0 in Vs/Am.
@@ -44,21 +46,21 @@ static constexpr double kMagneticFieldBlendingFactor = 0.05;
  * Files: magnetic_field_provider_lib.cc, external_magnetic_field.cc
  * Traditional definition: \mu_0 = 4\pi \times 10^{-7} Vs/Am
  */
-static constexpr double kVacuumPermeability = 4.0e-7 * M_PI;
+static constexpr real_t kVacuumPermeability = 4.0e-7L * M_PI;
 
 /**
  * Ion Larmor radius calculation coefficient.
  * Used in: output_quantities.cc for plasma parameter calculations
  * Context: Relates ion gyroradius to plasma parameters
  */
-static constexpr double kIonLarmorRadiusCoefficient = 3.2e-3;
+static constexpr real_t kIonLarmorRadiusCoefficient = 3.2e-3L;
 
 /**
  * Eigenvalue avoidance factor for numerical stability.
  * Used in: ideal_mhd_model.cc to avoid singular matrix systems
  * Context: Prevents division by zero in eigenvalue computations
  */
-static constexpr double kEigenvalueAvoidanceFactor = -1.0e-10;
+static constexpr real_t kEigenvalueAvoidanceFactor = -1.0e-10L;
 
 // ========== Mathematical Constants ==========
 
@@ -67,21 +69,21 @@ static constexpr double kEigenvalueAvoidanceFactor = -1.0e-10;
  * Used throughout for: volume integrals, flux surface calculations
  * Appears 40+ times across the codebase for torus geometry
  */
-static constexpr double kToroidalNormalizationFactor = 2.0 * M_PI;
+static constexpr real_t kToroidalNormalizationFactor = 2.0L * M_PI;
 
 /**
  * Toroidal volume factor: (2\pi)^2
  * Used in: volume calculations requiring full torus integration
  * Context: Volume = \iiint d\rho d\theta d\zeta over torus
  */
-static constexpr double kToroidalVolumeFactor = 4.0 * M_PI * M_PI;
+static constexpr real_t kToroidalVolumeFactor = 4.0L * M_PI * M_PI;
 
 /**
  * Constraint scaling factor: 1/\sqrt{2}
  * Used in: DFT normalization and constraint scaling
  * Context: Preserves orthogonality in Fourier transformations
  */
-static constexpr double kConstraintScalingFactor = 1.0 / std::numbers::sqrt2;
+static constexpr real_t kConstraintScalingFactor = 1.0L / std::numbers::sqrt2;
 
 // ========== Convergence and Tolerance Constants ==========
 
@@ -90,42 +92,42 @@ static constexpr double kConstraintScalingFactor = 1.0 / std::numbers::sqrt2;
  * Used in: vmec_indata.h as kFTolDefault
  * Context: ||F|| < kDefaultForceTolerance indicates equilibrium
  */
-static constexpr double kDefaultForceTolerance = 1.0e-10;
+static constexpr real_t kDefaultForceTolerance = 1.0e-10L;
 
 /**
  * Fast convergence detection threshold.
  * Used in: ideal_mhd_model.cc for convergence acceleration
  * Context: When ||F|| < threshold, apply special techniques
  */
-static constexpr double kFastConvergenceThreshold = 1.0e-6;
+static constexpr real_t kFastConvergenceThreshold = 1.0e-6L;
 
 /**
  * Vacuum pressure activation threshold.
  * Used in: ideal_mhd_model.cc for free-boundary calculations
  * Context: Gradual activation of vacuum pressure forces
  */
-static constexpr double kVacuumPressureThreshold = 1.0e-3;
+static constexpr real_t kVacuumPressureThreshold = 1.0e-3L;
 
 /**
  * Current density scaling factor.
  * Used in: ideal_mhd_model.cc for current profile normalization
  * Context: J \cdot B force balance computations
  */
-static constexpr double kCurrentScalingFactor = 1.0e-6;
+static constexpr real_t kCurrentScalingFactor = 1.0e-6L;
 
 /**
  * Force residual threshold for iteration decisions.
  * Used in: vmec.cc for determining when to continue iterations
  * Context: ||F_residual|| < threshold \rightarrow good convergence
  */
-static constexpr double kForceResidualThreshold = 1.0e-2;
+static constexpr real_t kForceResidualThreshold = 1.0e-2L;
 
 /**
  * Tangential epsilon for numerical stability in surface integrals.
  * Used in: regularized_integrals.cc for singular integral regularization
  * Context: Prevents division by zero in surface-surface interactions
  */
-static constexpr double kTangentialEpsilon = 1.0e-15;
+static constexpr real_t kTangentialEpsilon = 1.0e-15L;
 
 // ========== Iteration Control Constants ==========
 
@@ -208,38 +210,38 @@ static constexpr int kStringBufferSize = 30;
  * Used in: constraint reduction, parameter adjustments
  * Context: Conservative scaling to maintain numerical stability
  */
-static constexpr double kGeneralScalingFactor = 0.9;
+static constexpr real_t kGeneralScalingFactor = 0.9L;
 
 /**
  * Jacobian scaling factors for specific iteration ranges.
  * Used in: vmec.cc for adaptive scaling based on iteration count
  * Context: Scale factors applied at iterations 25 and 50
  */
-static constexpr double kJacobianScaling25 = 0.98;
-static constexpr double kJacobianScaling50 = 0.96;
+static constexpr real_t kJacobianScaling25 = 0.98L;
+static constexpr real_t kJacobianScaling50 = 0.96L;
 
 /**
  * Edge pedestal factor for boundary layer physics.
  * Used in: ideal_mhd_model.cc for edge physics modeling
  * Context: Controls edge gradient steepness in H-mode-like profiles
  */
-static constexpr double kEdgePedestalFactor = 0.05;
+static constexpr real_t kEdgePedestalFactor = 0.05L;
 
 /**
  * Mode damping parameters for numerical stability.
  * Used in: ideal_mhd_model.cc for suppressing unstable modes
  * Context: Prevents numerical instabilities in Fourier space
  */
-static constexpr double kModeDampingLarge = 16.0 * 16.0;
-static constexpr double kModeDampingSmall = 8.0;
+static constexpr real_t kModeDampingLarge = 16.0L * 16.0L;
+static constexpr real_t kModeDampingSmall = 8.0L;
 
 /**
  * Vacuum frequency adjustment factors.
  * Used in: ideal_mhd_model.cc for free-boundary force balance
  * Context: Balances plasma and vacuum contributions
  */
-static constexpr double kVacuumFrequencyLow = 0.1;
-static constexpr double kVacuumFrequencyHigh = 1.0e11;
+static constexpr real_t kVacuumFrequencyLow = 0.1L;
+static constexpr real_t kVacuumFrequencyHigh = 1.0e11L;
 
 // ========== Symmetry and Parity Constants ==========
 
@@ -265,7 +267,7 @@ static constexpr int kOddParity = 1;
  * Context: High-accuracy integration of radial pressure profiles
  * Mathematical basis: \int_{-1}^1 f(x)dx \approx \sum_i w_i f(x_i)
  */
-static constexpr std::array<double, 10> kGaussLegendreWeights10 = {
+static constexpr std::array<real_t, 10> kGaussLegendreWeights10 = {
     0.0666713443086881, 0.1494513491505806, 0.2190863625159820,
     0.2692667193099963, 0.2955242247147529, 0.2955242247147529,
     0.2692667193099963, 0.2190863625159820, 0.1494513491505806,
@@ -276,7 +278,7 @@ static constexpr std::array<double, 10> kGaussLegendreWeights10 = {
  * Used in: radial_profiles.cc for accurate pressure integration
  * Context: Optimal sampling points for polynomial integration
  */
-static constexpr std::array<double, 10> kGaussLegendreAbscissae10 = {
+static constexpr std::array<real_t, 10> kGaussLegendreAbscissae10 = {
     -0.9739065285171717, -0.8650633666889845, -0.6794095682990244,
     -0.4333953941292472, -0.1488743389816312, 0.1488743389816312,
     0.4333953941292472,  0.6794095682990244,  0.8650633666889845,

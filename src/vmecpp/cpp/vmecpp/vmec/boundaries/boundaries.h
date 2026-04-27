@@ -9,6 +9,7 @@
 
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/util/real_type.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 
@@ -21,7 +22,7 @@ class Boundaries {
              int sign_of_jacobian);
 
   bool setupFromIndata(const VmecINDATA& id, bool verbose = true);
-  void ensureM1Constrained(double scaling_factor);
+  void ensureM1Constrained(real_t scaling_factor);
 
   // This object is initialized with an initial guess for the magnetic axis
   // geometry via setupFromIndata() that is provided by the user. This method
@@ -36,20 +37,20 @@ class Boundaries {
   void RecomputeMagneticAxisToFixJacobianSign(int number_of_flux_surfaces,
                                               int sign_of_jacobian);
 
-  Eigen::VectorXd raxis_c;
-  Eigen::VectorXd zaxis_s;
-  Eigen::VectorXd raxis_s;
-  Eigen::VectorXd zaxis_c;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> raxis_c;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zaxis_s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> raxis_s;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zaxis_c;
 
-  Eigen::VectorXd rbcc;
-  Eigen::VectorXd rbss;
-  Eigen::VectorXd rbsc;
-  Eigen::VectorXd rbcs;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rbcc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rbss;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rbsc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rbcs;
 
-  Eigen::VectorXd zbsc;
-  Eigen::VectorXd zbcs;
-  Eigen::VectorXd zbcc;
-  Eigen::VectorXd zbss;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zbsc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zbcs;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zbcc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zbss;
 
  private:
   const Sizes& s_;

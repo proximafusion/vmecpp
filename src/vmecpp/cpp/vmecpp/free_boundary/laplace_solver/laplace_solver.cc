@@ -22,8 +22,8 @@ namespace vmecpp {
 
 LaplaceSolver::LaplaceSolver(const Sizes *s, const FourierBasisFastToroidal *fb,
                              const TangentialPartitioning *tp, int nf, int mf,
-                             std::span<double> matrixShare, std::span<int> iPiv,
-                             std::span<double> bvecShare)
+                             std::span<real_t> matrixShare, std::span<int> iPiv,
+                             std::span<real_t> bvecShare)
     : s_(*s),
       fb_(*fb),
       tp_(*tp),
@@ -62,7 +62,7 @@ LaplaceSolver::LaplaceSolver(const Sizes *s, const FourierBasisFastToroidal *fb,
 
 // fourp()-equivalent
 void LaplaceSolver::TransformGreensFunctionDerivative(
-    const std::vector<double> &greenp) {
+    const std::vector<real_t> &greenp) {
   const int mnpd = (2 * nf + 1) * (mf + 1);
   absl::c_fill_n(grpmn_sin, mnpd * numLocal, 0);
 
@@ -71,8 +71,8 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
     for (int l = 0; l < s_.nThetaReduced; ++l) {
       const int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
 
-      std::vector<double> g1_symm(nf + 1);
-      std::vector<double> g2_symm(nf + 1);
+      std::vector<real_t> g1_symm(nf + 1);
+      std::vector<real_t> g2_symm(nf + 1);
 
       for (int k = 0; k < s_.nZeta; ++k) {
         const int kRev = (s_.nZeta - k) % s_.nZeta;
@@ -85,10 +85,10 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
 
           const int klpOff = (klp - tp_.ztMin) * s_.nThetaEven * s_.nZeta;
 
-          const double cosn = fb_.cosnv[idx_nk] / fb_.nscale[n];
-          const double sinn = fb_.sinnv[idx_nk] / fb_.nscale[n];
+          const real_t cosn = fb_.cosnv[idx_nk] / fb_.nscale[n];
+          const real_t sinn = fb_.sinnv[idx_nk] / fb_.nscale[n];
 
-          const double kernel_odd =
+          const real_t kernel_odd =
               (greenp[klpOff + kl] - greenp[klpOff + klRev]) * 0.5;
 
           // TODO(jons): finish this when implementing non-stellarator-symmetric
@@ -105,15 +105,15 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
       for (int m = 0; m < mf + 1; ++m) {
         const int idx_lm = l * (s_.mnyq2 + 1) + m;
 
-        double cosmui = fb_.cosmui[idx_lm] / fb_.mscale[m];
-        double sinmui = fb_.sinmui[idx_lm] / fb_.mscale[m];
+        real_t cosmui = fb_.cosmui[idx_lm] / fb_.mscale[m];
+        real_t sinmui = fb_.sinmui[idx_lm] / fb_.mscale[m];
 
         for (int n = 0; n < nf + 1; ++n) {
           const int idx_m_posn = (nf + n) * (mf + 1) + m;
           const int idx_m_negn = (nf - n) * (mf + 1) + m;
 
-          const double gcos_symm = g1_symm[n] * sinmui;
-          const double gsin_symm = g2_symm[n] * cosmui;
+          const real_t gcos_symm = g1_symm[n] * sinmui;
+          const real_t gsin_symm = g2_symm[n] * cosmui;
 
           grpmn_sin[idx_m_posn * numLocal + klpRel] += gcos_symm - gsin_symm;
           if (n > 0) {
@@ -125,7 +125,7 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
   }  // kl'
 }  // TransformGreensFunctionDerivative
 
-void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double> &gstore) {
+void LaplaceSolver::SymmetriseSourceTerm(const std::vector<real_t> &gstore) {
   for (int l = 0; l < s_.nThetaReduced; ++l) {
     int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
     for (int k = 0; k < s_.nZeta; ++k) {
@@ -141,7 +141,7 @@ void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double> &gstore) {
 }  // SymmetriseSourceTerm
 
 void LaplaceSolver::AccumulateFullGrpmn(
-    const std::vector<double> &grpmn_sin_singular) {
+    const std::vector<real_t> &grpmn_sin_singular) {
   const int mnpd = (mf + 1) * (2 * nf + 1);
   for (int mn = 0; mn < mnpd; ++mn) {
     for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
@@ -166,8 +166,8 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
       for (int k = 0; k < s_.nZeta; ++k) {
         const int idx_nk = n * s_.nZeta + k;
 
-        const double cosn = fb_.cosnv[idx_nk] / fb_.nscale[n];
-        const double sinn = fb_.sinnv[idx_nk] / fb_.nscale[n];
+        const real_t cosn = fb_.cosnv[idx_nk] / fb_.nscale[n];
+        const real_t sinn = fb_.sinnv[idx_nk] / fb_.nscale[n];
 
         const int idx_kl = l * s_.nZeta + k;
 
@@ -206,8 +206,8 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
         const int idx_a_posn =
             (mn * (2 * nf + 1) + (nf + n)) * s_.nThetaEff + l;
 
-        const double cosn = fb_.cosnv[idx_nk] / fb_.nscale[n];
-        const double sinn = fb_.sinnv[idx_nk] / fb_.nscale[n];
+        const real_t cosn = fb_.cosnv[idx_nk] / fb_.nscale[n];
+        const real_t sinn = fb_.sinnv[idx_nk] / fb_.nscale[n];
 
         actemp[idx_a_posn] += cosn * grpmn_sin[mn * numLocal + klpRel];
         astemp[idx_a_posn] += sinn * grpmn_sin[mn * numLocal + klpRel];
@@ -243,8 +243,8 @@ void LaplaceSolver::PerformPoloidalFourierTransforms() {
       for (int l = 0; l < s_.nThetaReduced; ++l) {
         const int idx_lm = l * (s_.mnyq2 + 1) + m;
 
-        double cosmui = fb_.cosmui[idx_lm] / fb_.mscale[m];
-        double sinmui = fb_.sinmui[idx_lm] / fb_.mscale[m];
+        real_t cosmui = fb_.cosmui[idx_lm] / fb_.mscale[m];
+        real_t sinmui = fb_.sinmui[idx_lm] / fb_.mscale[m];
 
         const int idx_l_all_n = all_n * s_.nThetaReduced + l;
         bvec_sin[all_n * (mf + 1) + m] +=
@@ -264,8 +264,8 @@ void LaplaceSolver::PerformPoloidalFourierTransforms() {
         for (int m = 0; m < mf + 1; ++m) {
           const int idx_lm = l * (s_.mnyq2 + 1) + m;
 
-          const double cosmui = fb_.cosmui[idx_lm] / fb_.mscale[m];
-          const double sinmui = fb_.sinmui[idx_lm] / fb_.mscale[m];
+          const real_t cosmui = fb_.cosmui[idx_lm] / fb_.mscale[m];
+          const real_t sinmui = fb_.sinmui[idx_lm] / fb_.mscale[m];
 
           const int idx_atemp = (mn * (2 * nf + 1) + all_n) * s_.nThetaEff + l;
 
@@ -344,7 +344,8 @@ void LaplaceSolver::DecomposeMatrix() {
   // perform LU factorization of the matrix
   // (only needed when matrix is updated --> every nvacskip iterations)
   int info;
-  dgetrf_(&mnpd, &mnpd, matrixShare.data(), &mnpd, iPiv.data(), &info);
+  dgetrf_(&mnpd, &mnpd, reinterpret_cast<double *>(matrixShare.data()), &mnpd,
+          iPiv.data(), &info);
 
   if (info < 0) {
     std::cout << -info << "-th argument to dgetrf is wrong\n";
@@ -358,7 +359,7 @@ void LaplaceSolver::DecomposeMatrix() {
 }  // DecomposeMatrix
 
 void LaplaceSolver::SolveForPotential(
-    const std::vector<double> &bvec_sin_singular) {
+    const std::vector<real_t> &bvec_sin_singular) {
   int mnpd = (mf + 1) * (2 * nf + 1);
 #ifdef _OPENMP
 #pragma omp single
@@ -399,8 +400,9 @@ void LaplaceSolver::SolveForPotential(
     int one = 1;
     int info;
     char no_transpose = 'N';
-    dgetrs_(&no_transpose, &mnpd, &one, matrixShare.data(), &mnpd, iPiv.data(),
-            bvecShare.data(), &mnpd, &info);
+    dgetrs_(&no_transpose, &mnpd, &one,
+            reinterpret_cast<double *>(matrixShare.data()), &mnpd, iPiv.data(),
+            reinterpret_cast<double *>(bvecShare.data()), &mnpd, &info);
 
     if (info < 0) {
       std::cout << -info << "-th argument to dgetrs wrong\n";

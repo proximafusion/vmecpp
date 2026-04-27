@@ -142,14 +142,16 @@ absl::Status vmecpp::VmecInternalResults::LoadInto(
                 0) == 1) {
     READMEMBER(chipH);
   } else {
-    m_obj.chipH = Eigen::VectorXd::Zero(m_obj.phipH.size());
+    m_obj.chipH =
+        Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(m_obj.phipH.size());
   }
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(), absl::StrFormat("%s/currH", H5key).c_str(),
                 0) == 1) {
     READMEMBER(currH);
   } else {
-    m_obj.currH = Eigen::VectorXd::Zero(m_obj.phipH.size());
+    m_obj.currH =
+        Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(m_obj.phipH.size());
   }
   READMEMBER(phiF);
   READMEMBER(iotaF);
@@ -1027,11 +1029,11 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   } else {
     // Legacy format: ns-1 sized arrays with old names.
     // Read into temporaries and pad to ns with a leading zero.
-    auto ReadHalfGridCompat = [&](Eigen::VectorXd& dest,
-                                  const std::string& old_name) {
-      Eigen::VectorXd tmp;
+    auto ReadHalfGridCompat = [&](auto& dest, const std::string& old_name) {
+      using DestT = std::remove_reference_t<decltype(dest)>;
+      DestT tmp;
       ReadH5Dataset(tmp, absl::StrFormat("%s/%s", H5key, old_name), from_file);
-      dest = Eigen::VectorXd::Zero(tmp.size() + 1);
+      dest = DestT::Zero(tmp.size() + 1);
       dest.tail(tmp.size()) = tmp;
     };
     ReadHalfGridCompat(m_obj.iotas, "iota_half");
@@ -1068,13 +1070,10 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   // new format uses (mnmax, ns). Detect by checking if dimensions match.
   // Also handle half-grid arrays that changed from (ns-1, mnmax) to (mnmax,
   // ns).
-  auto ReadAndTranspose2D = [&](RowMatrixXd& dest, const std::string& name) {
-    RowMatrixXd tmp;
+  auto ReadAndTranspose2D = [&](auto& dest, const std::string& name) {
+    using DestT = std::remove_reference_t<decltype(dest)>;
+    DestT tmp;
     ReadH5Dataset(tmp, absl::StrFormat("%s/%s", H5key, name), from_file);
-    // If rows > cols, this is old (ns, mnmax) layout; transpose it.
-    // New layout is (mnmax, ns) where mnmax < ns is not guaranteed,
-    // so we check if the stored shape matches (mnmax, ns) or (ns, mnmax).
-    // We know mnmax and ns from already-read fields.
     if (tmp.rows() == m_obj.ns &&
         (tmp.cols() == m_obj.mnmax || tmp.cols() == m_obj.mnmax_nyq)) {
       dest = tmp.transpose();
@@ -1082,21 +1081,22 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
       dest = tmp;
     }
   };
-  auto ReadAndTransposePadHalfGrid2D =
-      [&](RowMatrixXd& dest, const std::string& name, int mnsize) {
-        RowMatrixXd tmp;
-        ReadH5Dataset(tmp, absl::StrFormat("%s/%s", H5key, name), from_file);
-        // Old format: (ns-1, mnsize) -> transpose and pad to (mnsize, ns)
-        if (tmp.rows() == m_obj.ns - 1 && tmp.cols() == mnsize) {
-          dest = RowMatrixXd::Zero(mnsize, m_obj.ns);
-          dest.rightCols(m_obj.ns - 1) = tmp.transpose();
-        } else if (tmp.rows() == m_obj.ns && tmp.cols() == mnsize) {
-          // Old full-grid format (ns, mnsize) e.g. bsubsmns -> transpose
-          dest = tmp.transpose();
-        } else {
-          dest = tmp;
-        }
-      };
+  auto ReadAndTransposePadHalfGrid2D = [&](auto& dest, const std::string& name,
+                                           int mnsize) {
+    using DestT = std::remove_reference_t<decltype(dest)>;
+    DestT tmp;
+    ReadH5Dataset(tmp, absl::StrFormat("%s/%s", H5key, name), from_file);
+    // Old format: (ns-1, mnsize) -> transpose and pad to (mnsize, ns)
+    if (tmp.rows() == m_obj.ns - 1 && tmp.cols() == mnsize) {
+      dest = DestT::Zero(mnsize, m_obj.ns);
+      dest.rightCols(m_obj.ns - 1) = tmp.transpose();
+    } else if (tmp.rows() == m_obj.ns && tmp.cols() == mnsize) {
+      // Old full-grid format (ns, mnsize) e.g. bsubsmns -> transpose
+      dest = tmp.transpose();
+    } else {
+      dest = tmp;
+    }
+  };
 
   ReadAndTranspose2D(m_obj.rmnc, "rmnc");
   ReadAndTranspose2D(m_obj.zmns, "zmns");
@@ -1572,89 +1572,104 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
 
   results.nZnT_reduced = s.nThetaReduced * s.nZeta;
 
-  results.sqrtSH = VectorXd::Zero(results.num_half);
-  results.sqrtSF = VectorXd::Zero(results.num_full);
+  results.sqrtSH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
+  results.sqrtSF =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_full);
 
-  results.sm = VectorXd::Zero(results.num_half);
-  results.sp = VectorXd::Zero(results.num_half);
+  results.sm = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
+  results.sp = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
 
-  results.phipF = VectorXd::Zero(results.num_full);
-  results.chipF = VectorXd::Zero(results.num_full);
+  results.phipF =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_full);
+  results.chipF =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_full);
 
   // computed in RecomputeToroidalFlux here!
-  results.phiF = VectorXd::Zero(results.num_full);
+  results.phiF =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_full);
 
-  results.iotaF = VectorXd::Zero(results.num_full);
-  results.spectral_width = VectorXd::Zero(results.num_full);
+  results.iotaF =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_full);
+  results.spectral_width =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_full);
 
-  results.phipH = VectorXd::Zero(results.num_half);
-  results.chipH = VectorXd::Zero(results.num_half);
-  results.bvcoH = VectorXd::Zero(results.num_half);
-  results.dVdsH = VectorXd::Zero(results.num_half);
-  results.massH = VectorXd::Zero(results.num_half);
-  results.presH = VectorXd::Zero(results.num_half);
-  results.iotaH = VectorXd::Zero(results.num_half);
-  results.currH = VectorXd::Zero(results.num_half);
+  results.phipH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
+  results.chipH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
+  results.bvcoH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
+  results.dVdsH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
+  results.massH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
+  results.presH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
+  results.iotaH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
+  results.currH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(results.num_half);
 
   // state vector
-  results.rmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  results.zmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  results.lmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
+  results.rmncc = RowMatrixXr::Zero(results.num_full, s.mnsize);
+  results.zmnsc = RowMatrixXr::Zero(results.num_full, s.mnsize);
+  results.lmnsc = RowMatrixXr::Zero(results.num_full, s.mnsize);
   if (s.lthreed) {
-    results.rmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.zmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.lmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
+    results.rmnss = RowMatrixXr::Zero(results.num_full, s.mnsize);
+    results.zmncs = RowMatrixXr::Zero(results.num_full, s.mnsize);
+    results.lmncs = RowMatrixXr::Zero(results.num_full, s.mnsize);
   }
   if (s.lasym) {
-    results.rmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.zmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.lmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
+    results.rmnsc = RowMatrixXr::Zero(results.num_full, s.mnsize);
+    results.zmncc = RowMatrixXr::Zero(results.num_full, s.mnsize);
+    results.lmncc = RowMatrixXr::Zero(results.num_full, s.mnsize);
     if (s.lthreed) {
-      results.rmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-      results.zmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-      results.lmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
+      results.rmncs = RowMatrixXr::Zero(results.num_full, s.mnsize);
+      results.zmnss = RowMatrixXr::Zero(results.num_full, s.mnsize);
+      results.lmnss = RowMatrixXr::Zero(results.num_full, s.mnsize);
     }
   }
 
   // from inv-DFTs
-  results.r_e = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.r_o = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.z_e = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.z_o = RowMatrixXd::Zero(results.num_full, s.nZnT);
+  results.r_e = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.r_o = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.z_e = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.z_o = RowMatrixXr::Zero(results.num_full, s.nZnT);
 
-  results.ru_e = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.ru_o = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.zu_e = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.zu_o = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.rv_e = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.rv_o = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.zv_e = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.zv_o = RowMatrixXd::Zero(results.num_full, s.nZnT);
+  results.ru_e = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.ru_o = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.zu_e = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.zu_o = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.rv_e = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.rv_o = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.zv_e = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.zv_o = RowMatrixXr::Zero(results.num_full, s.nZnT);
 
   // from even-m and odd-m contributions
-  results.ruFull = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.zuFull = RowMatrixXd::Zero(results.num_full, s.nZnT);
+  results.ruFull = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.zuFull = RowMatrixXr::Zero(results.num_full, s.nZnT);
 
   // from Jacobian
-  results.r12 = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.ru12 = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.zu12 = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.rs = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.zs = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.gsqrt = RowMatrixXd::Zero(results.num_half, s.nZnT);
+  results.r12 = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.ru12 = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.zu12 = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.rs = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.zs = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.gsqrt = RowMatrixXr::Zero(results.num_half, s.nZnT);
 
   // metric elements
-  results.guu = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.guv = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.gvv = RowMatrixXd::Zero(results.num_half, s.nZnT);
+  results.guu = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.guv = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.gvv = RowMatrixXr::Zero(results.num_half, s.nZnT);
 
   // magnetic field
-  results.bsupu = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.bsupv = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.bsubu = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.bsubv = RowMatrixXd::Zero(results.num_half, s.nZnT);
-  results.bsubvF = RowMatrixXd::Zero(results.num_full, s.nZnT);
-  results.total_pressure = RowMatrixXd::Zero(results.num_half, s.nZnT);
+  results.bsupu = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.bsupv = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.bsubu = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.bsubv = RowMatrixXr::Zero(results.num_half, s.nZnT);
+  results.bsubvF = RowMatrixXr::Zero(results.num_full, s.nZnT);
+  results.total_pressure = RowMatrixXr::Zero(results.num_half, s.nZnT);
 
   const std::size_t num_threads = radial_partitioning.size();
   for (std::size_t thread_id = 0; thread_id < num_threads; ++thread_id) {
@@ -1896,17 +1911,17 @@ vmecpp::RemainingMetric vmecpp::ComputeRemainingMetric(
 
   // for bss
   remaining_metric.rv12 =
-      RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
+      RowMatrixXr::Zero(vmec_internal_results.num_half, s.nZnT);
   remaining_metric.zv12 =
-      RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
+      RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
   remaining_metric.rs12 =
-      RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
+      RowMatrixXr::Zero(vmec_internal_results.num_half, s.nZnT);
   remaining_metric.zs12 =
-      RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
+      RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
   remaining_metric.gsu =
-      RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
+      RowMatrixXr::Zero(vmec_internal_results.num_half, s.nZnT);
   remaining_metric.gsv =
-      RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
+      RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
 
   for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
@@ -1962,10 +1977,10 @@ vmecpp::CylindricalComponentsOfB vmecpp::BCylindricalComponents(
     const RemainingMetric& remaining_metric) {
   CylindricalComponentsOfB b_cylindrical;
 
-  b_cylindrical.b_r = RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
+  b_cylindrical.b_r = RowMatrixXr::Zero(vmec_internal_results.num_half, s.nZnT);
   b_cylindrical.b_phi =
-      RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
-  b_cylindrical.b_z = RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
+      RowMatrixXr::Zero(vmec_internal_results.num_half, s.nZnT);
+  b_cylindrical.b_z = RowMatrixXr::Zero(vmec_internal_results.num_half, s.nZnT);
 
   for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
@@ -1990,7 +2005,7 @@ vmecpp::BSubSHalf vmecpp::ComputeBSubSOnHalfGrid(
     const RemainingMetric& remaining_metric) {
   BSubSHalf bsubs_half;
   bsubs_half.bsubs_half =
-      RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
+      RowMatrixXr::Zero(vmec_internal_results.num_half, s.nZnT);
 
   for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
@@ -2009,7 +2024,7 @@ vmecpp::BSubSFull vmecpp::PutBSubSOnFullGrid(
     const BSubSHalf& bsubs_half) {
   BSubSFull bsubs_full;
   bsubs_full.bsubs_full =
-      RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
+      RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
 
   // ignore axis and boundary for now
   for (int jF = 1; jF < vmec_internal_results.num_full - 1; ++jF) {
@@ -2031,19 +2046,19 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
     const BSubSFull& bsubs_full) {
   SymmetryDecomposedCovariantB decomposed_bcov;
 
-  decomposed_bcov.bsubs_s = RowMatrixXd::Zero(
+  decomposed_bcov.bsubs_s = RowMatrixXr::Zero(
       vmec_internal_results.num_full, vmec_internal_results.nZnT_reduced);
-  decomposed_bcov.bsubu_s = RowMatrixXd::Zero(
+  decomposed_bcov.bsubu_s = RowMatrixXr::Zero(
       vmec_internal_results.num_half, vmec_internal_results.nZnT_reduced);
-  decomposed_bcov.bsubv_s = RowMatrixXd::Zero(
+  decomposed_bcov.bsubv_s = RowMatrixXr::Zero(
       vmec_internal_results.num_half, vmec_internal_results.nZnT_reduced);
 
   if (s.lasym) {
-    decomposed_bcov.bsubs_a = RowMatrixXd::Zero(
+    decomposed_bcov.bsubs_a = RowMatrixXr::Zero(
         vmec_internal_results.num_full, vmec_internal_results.nZnT_reduced);
-    decomposed_bcov.bsubu_a = RowMatrixXd::Zero(
+    decomposed_bcov.bsubu_a = RowMatrixXr::Zero(
         vmec_internal_results.num_half, vmec_internal_results.nZnT_reduced);
-    decomposed_bcov.bsubv_a = RowMatrixXd::Zero(
+    decomposed_bcov.bsubv_a = RowMatrixXr::Zero(
         vmec_internal_results.num_half, vmec_internal_results.nZnT_reduced);
 
     // fsym_fft:
@@ -2135,15 +2150,15 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
   CovariantBDerivatives covariant_b_derivatives;
 
   covariant_b_derivatives.bsubsu =
-      RowMatrixXd::Zero(m_vmec_internal_results.num_full, s.nZnT);
+      RowMatrixXr::Zero(m_vmec_internal_results.num_full, s.nZnT);
   covariant_b_derivatives.bsubsv =
-      RowMatrixXd::Zero(m_vmec_internal_results.num_full, s.nZnT);
+      RowMatrixXr::Zero(m_vmec_internal_results.num_full, s.nZnT);
 
   // TODO(jons): no split into (non-)stellarator-symmetric contributions?
   covariant_b_derivatives.bsubuv =
-      RowMatrixXd::Zero(m_vmec_internal_results.num_half, s.nZnT);
+      RowMatrixXr::Zero(m_vmec_internal_results.num_half, s.nZnT);
   covariant_b_derivatives.bsubvu =
-      RowMatrixXd::Zero(m_vmec_internal_results.num_half, s.nZnT);
+      RowMatrixXr::Zero(m_vmec_internal_results.num_half, s.nZnT);
 
   std::vector<double> bsubsu_s(m_vmec_internal_results.num_full * s.nZnT, 0.0);
   std::vector<double> bsubsv_s(m_vmec_internal_results.num_full * s.nZnT, 0.0);
@@ -2497,40 +2512,50 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     const bool return_outputs_even_if_not_converged, VmecStatus vmec_status) {
   JxBOutFileContents jxbout;
 
-  jxbout.itheta = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
-  jxbout.izeta = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
-  jxbout.bdotk = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.itheta = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.izeta = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.bdotk = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
 
-  jxbout.amaxfor = VectorXd::Zero(vmec_internal_results.num_full);
-  jxbout.aminfor = VectorXd::Zero(vmec_internal_results.num_full);
-  jxbout.avforce = VectorXd::Zero(vmec_internal_results.num_full);
-  jxbout.pprim = VectorXd::Zero(vmec_internal_results.num_full);
-  jxbout.jdotb = VectorXd::Zero(vmec_internal_results.num_full);
-  jxbout.bdotb = VectorXd::Zero(vmec_internal_results.num_full);
-  jxbout.bdotgradv = VectorXd::Zero(vmec_internal_results.num_full);
-  jxbout.jpar2 = VectorXd::Zero(vmec_internal_results.num_full);
-  jxbout.jperp2 = VectorXd::Zero(vmec_internal_results.num_full);
-  jxbout.phin = VectorXd::Zero(vmec_internal_results.num_full);
+  jxbout.amaxfor = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+      vmec_internal_results.num_full);
+  jxbout.aminfor = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+      vmec_internal_results.num_full);
+  jxbout.avforce = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+      vmec_internal_results.num_full);
+  jxbout.pprim = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+      vmec_internal_results.num_full);
+  jxbout.jdotb = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+      vmec_internal_results.num_full);
+  jxbout.bdotb = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+      vmec_internal_results.num_full);
+  jxbout.bdotgradv = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+      vmec_internal_results.num_full);
+  jxbout.jpar2 = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+      vmec_internal_results.num_full);
+  jxbout.jperp2 = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+      vmec_internal_results.num_full);
+  jxbout.phin = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(
+      vmec_internal_results.num_full);
 
   jxbout.phin[fc.ns - 1] = 1.0;
 
-  jxbout.jsupu3 = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
-  jxbout.jsupv3 = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
-  jxbout.jsups3 = RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
+  jxbout.jsupu3 = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.jsupv3 = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.jsups3 = RowMatrixXr::Zero(vmec_internal_results.num_half, s.nZnT);
 
-  jxbout.bsupu3 = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
-  jxbout.bsupv3 = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.bsupu3 = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.bsupv3 = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
 
-  jxbout.jcrossb = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
-  jxbout.jxb_gradp = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.jcrossb = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.jxb_gradp = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
   jxbout.jdotb_sqrtg =
-      RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
+      RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
 
-  jxbout.sqrtg3 = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.sqrtg3 = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
 
-  jxbout.bsubu3 = RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
-  jxbout.bsubv3 = RowMatrixXd::Zero(vmec_internal_results.num_half, s.nZnT);
-  jxbout.bsubs3 = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
+  jxbout.bsubu3 = RowMatrixXr::Zero(vmec_internal_results.num_half, s.nZnT);
+  jxbout.bsubv3 = RowMatrixXr::Zero(vmec_internal_results.num_half, s.nZnT);
+  jxbout.bsubs3 = RowMatrixXr::Zero(vmec_internal_results.num_full, s.nZnT);
 
   std::vector<double> pprim(fc.ns, 0.0);
 
@@ -2872,25 +2897,38 @@ vmecpp::ComputeIntermediateMercierQuantities(
 
   MercierStabilityIntermediateQuantities mercier_intermediate;
 
-  mercier_intermediate.s = VectorXd::Zero(fc.ns);
-  mercier_intermediate.shear = VectorXd::Zero(fc.ns);
-  mercier_intermediate.vpp = VectorXd::Zero(fc.ns);
-  mercier_intermediate.d_pressure_d_s = VectorXd::Zero(fc.ns);
-  mercier_intermediate.d_toroidal_current_d_s = VectorXd::Zero(fc.ns);
-  mercier_intermediate.phip_realH = VectorXd::Zero(fc.ns - 1);
-  mercier_intermediate.phip_realF = VectorXd::Zero(fc.ns);
-  mercier_intermediate.vp_real = VectorXd::Zero(fc.ns - 1);
-  mercier_intermediate.torcur = VectorXd::Zero(fc.ns - 1);
+  mercier_intermediate.s =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier_intermediate.shear =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier_intermediate.vpp =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier_intermediate.d_pressure_d_s =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier_intermediate.d_toroidal_current_d_s =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier_intermediate.phip_realH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns - 1);
+  mercier_intermediate.phip_realF =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier_intermediate.vp_real =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns - 1);
+  mercier_intermediate.torcur =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns - 1);
 
-  mercier_intermediate.gsqrt_full = RowMatrixXd::Zero(fc.ns, s.nZnT);
-  mercier_intermediate.bdotj = RowMatrixXd::Zero(fc.ns, s.nZnT);
-  mercier_intermediate.gpp = RowMatrixXd::Zero(fc.ns, s.nZnT);
-  mercier_intermediate.b2 = RowMatrixXd::Zero(fc.ns - 1, s.nZnT);
+  mercier_intermediate.gsqrt_full = RowMatrixXr::Zero(fc.ns, s.nZnT);
+  mercier_intermediate.bdotj = RowMatrixXr::Zero(fc.ns, s.nZnT);
+  mercier_intermediate.gpp = RowMatrixXr::Zero(fc.ns, s.nZnT);
+  mercier_intermediate.b2 = RowMatrixXr::Zero(fc.ns - 1, s.nZnT);
 
-  mercier_intermediate.tpp = VectorXd::Zero(fc.ns);
-  mercier_intermediate.tbb = VectorXd::Zero(fc.ns);
-  mercier_intermediate.tjb = VectorXd::Zero(fc.ns);
-  mercier_intermediate.tjj = VectorXd::Zero(fc.ns);
+  mercier_intermediate.tpp =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier_intermediate.tbb =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier_intermediate.tjb =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier_intermediate.tjj =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
 
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     // NOTE: phip_real should be > 0 to get the correct physical sign of
@@ -3080,24 +3118,27 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
     const MercierStabilityIntermediateQuantities& mercier_intermediate) {
   MercierFileContents mercier;
 
-  mercier.s = VectorXd::Zero(fc.ns);
-  mercier.toroidal_flux = VectorXd::Zero(fc.ns);
-  mercier.iota = VectorXd::Zero(fc.ns);
-  mercier.shear = VectorXd::Zero(fc.ns);
-  mercier.d_volume_d_s = VectorXd::Zero(fc.ns);
-  mercier.well = VectorXd::Zero(fc.ns);
-  mercier.toroidal_current = VectorXd::Zero(fc.ns);
-  mercier.d_toroidal_current_d_s = VectorXd::Zero(fc.ns);
-  mercier.pressure = VectorXd::Zero(fc.ns);
-  mercier.d_pressure_d_s = VectorXd::Zero(fc.ns);
+  mercier.s = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.toroidal_flux = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.iota = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.shear = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.d_volume_d_s = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.well = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.toroidal_current =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.d_toroidal_current_d_s =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.pressure = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.d_pressure_d_s =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
 
   // -------------------
 
-  mercier.DMerc = VectorXd::Zero(fc.ns);
-  mercier.Dshear = VectorXd::Zero(fc.ns);
-  mercier.Dwell = VectorXd::Zero(fc.ns);
-  mercier.Dcurr = VectorXd::Zero(fc.ns);
-  mercier.Dgeod = VectorXd::Zero(fc.ns);
+  mercier.DMerc = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.Dshear = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.Dwell = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.Dcurr = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  mercier.Dgeod = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
 
   // first table in Mercier output file
   for (int jF = 1; jF < fc.ns - 1; ++jF) {
@@ -3195,27 +3236,43 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
     const VmecInternalResults& vmec_internal_results) {
   Threed1FirstTableIntermediate threed1_first_table_intermediate;
 
-  threed1_first_table_intermediate.tau = RowMatrixXd::Zero(fc.ns - 1, s.nZnT);
+  threed1_first_table_intermediate.tau = RowMatrixXr::Zero(fc.ns - 1, s.nZnT);
 
   // [ns - 1]
-  threed1_first_table_intermediate.beta_vol = VectorXd::Zero(fc.ns - 1);
-  threed1_first_table_intermediate.overr = VectorXd::Zero(fc.ns - 1);
-  threed1_first_table_intermediate.bvcoH = VectorXd::Zero(fc.ns - 1);
-  threed1_first_table_intermediate.bucoH = VectorXd::Zero(fc.ns - 1);
+  threed1_first_table_intermediate.beta_vol =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns - 1);
+  threed1_first_table_intermediate.overr =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns - 1);
+  threed1_first_table_intermediate.bvcoH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns - 1);
+  threed1_first_table_intermediate.bucoH =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns - 1);
 
   // [ns]
-  threed1_first_table_intermediate.presf = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.phipf_loc = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.phi1 = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.chi1 = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.chi = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.jcurv = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.jcuru = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.presgrad = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.vpphi = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.equif = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.bucof = VectorXd::Zero(fc.ns);
-  threed1_first_table_intermediate.bvcof = VectorXd::Zero(fc.ns);
+  threed1_first_table_intermediate.presf =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.phipf_loc =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.phi1 =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.chi1 =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.chi =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.jcurv =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.jcuru =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.presgrad =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.vpphi =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.equif =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.bucof =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table_intermediate.bvcof =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
 
   // NOTE:  S=normalized toroidal flux (0 - 1)
   //        U=poloidal angle (0 - 2*pi)
@@ -3442,20 +3499,33 @@ vmecpp::Threed1FirstTable vmecpp::ComputeThreed1FirstTable(
 
   Threed1FirstTable threed1_first_table;
 
-  threed1_first_table.s = VectorXd::Zero(fc.ns);
-  threed1_first_table.radial_force = VectorXd::Zero(fc.ns);
-  threed1_first_table.toroidal_flux = VectorXd::Zero(fc.ns);
-  threed1_first_table.iota = VectorXd::Zero(fc.ns);
-  threed1_first_table.avg_jsupu = VectorXd::Zero(fc.ns);
-  threed1_first_table.avg_jsupv = VectorXd::Zero(fc.ns);
-  threed1_first_table.d_volume_d_phi = VectorXd::Zero(fc.ns);
-  threed1_first_table.d_pressure_d_phi = VectorXd::Zero(fc.ns);
-  threed1_first_table.spectral_width = VectorXd::Zero(fc.ns);
-  threed1_first_table.pressure = VectorXd::Zero(fc.ns);
-  threed1_first_table.buco_full = VectorXd::Zero(fc.ns);
-  threed1_first_table.bvco_full = VectorXd::Zero(fc.ns);
-  threed1_first_table.j_dot_b = VectorXd::Zero(fc.ns);
-  threed1_first_table.b_dot_b = VectorXd::Zero(fc.ns);
+  threed1_first_table.s = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.radial_force =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.toroidal_flux =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.iota =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.avg_jsupu =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.avg_jsupv =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.d_volume_d_phi =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.d_pressure_d_phi =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.spectral_width =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.pressure =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.buco_full =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.bvco_full =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.j_dot_b =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  threed1_first_table.b_dot_b =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
 
   // NOTE: phipf = phipf_loc/(twopi), phipf_loc ACTUAL (twopi factor) Toroidal
   // flux derivative SPH/JDH (060211): remove twopi factors from <JSUPU,V>
@@ -3543,7 +3613,8 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
 
   // Calculate poloidal circumference and normal surface area and aspect ratio
   // Normal is | dr/du X dr/dv | = SQRT [R**2 guu + (RuZv - RvZu)**2]
-  intermediate.surf_area = VectorXd::Zero(s.nZnT);
+  intermediate.surf_area =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s.nZnT);
   intermediate.circumference_sum = 0.0;
   for (int kl = 0; kl < s.nZnT; ++kl) {
     const int l = kl % s.nThetaEff;
@@ -3593,10 +3664,11 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
   // rshaf [= RT in Eq.(12), Phys Fluids B 5 (1993) 3119]
   //
   // Note: tau = |gsqrt|*wint
-  intermediate.btor_vac = VectorXd::Zero(s.nZnT);
-  intermediate.btor1 = VectorXd::Zero(s.nZnT);
-  intermediate.dbtor = VectorXd::Zero(s.nZnT);
-  intermediate.phat = VectorXd::Zero(s.nZnT);
+  intermediate.btor_vac =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s.nZnT);
+  intermediate.btor1 = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s.nZnT);
+  intermediate.dbtor = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s.nZnT);
+  intermediate.phat = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s.nZnT);
 
   // Eq. 20 in Shafranov
   intermediate.delphid_exact = 0.0;
@@ -3646,7 +3718,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
   intermediate.fpsi0 = 1.5 * threed1_first_table_intermediate.bvcoH[0] -
                        0.5 * threed1_first_table_intermediate.bvcoH[1];
 
-  intermediate.redge = VectorXd::Zero(s.nZnT);
+  intermediate.redge = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s.nZnT);
   for (int kl = 0; kl < s.nZnT; ++kl) {
     const int lcfs_kl = (fc.ns - 1) * s.nZnT + kl;
     intermediate.redge[kl] =
@@ -3731,7 +3803,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
   // TODO(jons): figure out what fac is and assign a better name
   intermediate.fac =
       2.0 * M_PI * fc.deltaS * vmec_internal_results.sign_of_jacobian;
-  intermediate.r3v = VectorXd::Zero(fc.ns - 1);
+  intermediate.r3v = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns - 1);
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     intermediate.r3v[jH] = intermediate.fac * vmec_internal_results.phipH[jH] *
                            vmec_internal_results.iotaH[jH];
@@ -3845,13 +3917,14 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
         vmec_internal_results.r_e(lcfs_kl) + vmec_internal_results.r_o(lcfs_kl);
     const double z =
         vmec_internal_results.z_e(lcfs_kl) + vmec_internal_results.z_o(lcfs_kl);
-    result.rmax_surf = std::max(result.rmax_surf, r);
-    result.rmin_surf = std::min(result.rmin_surf, r);
-    result.zmax_surf = std::max(result.zmax_surf, z);
+    result.rmax_surf = std::max(result.rmax_surf, static_cast<real_t>(r));
+    result.rmin_surf = std::min(result.rmin_surf, static_cast<real_t>(r));
+    result.zmax_surf = std::max(result.zmax_surf, static_cast<real_t>(z));
   }  // kl
 
-  result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaReduced) * DBL_MAX;
-  result.bmax = RowMatrixXd::Zero(fc.ns - 1, s.nThetaReduced);
+  result.bmin = RowMatrixXr::Ones(fc.ns - 1, s.nThetaReduced) *
+                static_cast<real_t>(DBL_MAX);
+  result.bmax = RowMatrixXr::Zero(fc.ns - 1, s.nThetaReduced);
 
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int k = 0; k < s.nZeta; ++k) {
@@ -3862,10 +3935,10 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
         const double mod_b =
             std::sqrt(2.0 * (vmec_internal_results.total_pressure(index_half) -
                              vmec_internal_results.presH[jH]));
-        result.bmax(jH * s.nThetaReduced + l) =
-            std::max(result.bmax(jH * s.nThetaEff + l), mod_b);
-        result.bmin(jH * s.nThetaReduced + l) =
-            std::min(result.bmin(jH * s.nThetaEff + l), mod_b);
+        result.bmax(jH * s.nThetaReduced + l) = std::max(
+            result.bmax(jH * s.nThetaEff + l), static_cast<real_t>(mod_b));
+        result.bmin(jH * s.nThetaReduced + l) = std::min(
+            result.bmin(jH * s.nThetaEff + l), static_cast<real_t>(mod_b));
       }  // k
     }  // l
   }  // jH
@@ -3876,8 +3949,10 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   if (s.ntor > 0) {
     symmetry_planes_count = 2;
   }
-  result.waist = VectorXd::Zero(symmetry_planes_count);
-  result.height = VectorXd::Zero(symmetry_planes_count);
+  result.waist =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(symmetry_planes_count);
+  result.height =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(symmetry_planes_count);
 
   int symmetry_plane_index = 0;
   for (int k = 0; k < s.nZeta / 2 + 1; ++k) {
@@ -3902,7 +3977,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
       const double z = vmec_internal_results.z_e(index_zeta) +
                        vmec_internal_results.z_o(index_zeta);
       result.height[symmetry_plane_index] =
-          std::max(result.height[symmetry_plane_index], z);
+          std::max(result.height[symmetry_plane_index], static_cast<real_t>(z));
     }  // l
     result.height[symmetry_plane_index] *= 2.0;
 
@@ -3930,15 +4005,16 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   result.rbtor = handover_storage.rBtor;
   result.rbtor0 = handover_storage.rBtor0;
 
-  result.psi = VectorXd::Zero(fc.ns);
+  result.psi = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
   for (int jF = 1; jF < fc.ns; ++jF) {
     const int jFi = jF - 1;
     const int jHi = jF - 1;
     result.psi[jF] = result.psi[jFi] + intermediate.r3v[jHi];
   }  // jF
 
-  result.loc_jpar_perp = VectorXd::Zero(fc.ns);
-  result.loc_jparPS_perp = VectorXd::Zero(fc.ns);
+  result.loc_jpar_perp = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  result.loc_jparPS_perp =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
   for (int jF = 1; jF < fc.ns; ++jF) {
     double jperp2 = DBL_EPSILON;
     if (jxbout.jperp2[jF] != 0.0) {
@@ -3955,11 +4031,11 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
     }
   }  // jF
 
-  result.ygeo = VectorXd::Zero(2 * fc.ns);
-  result.yinden = VectorXd::Zero(2 * fc.ns);
-  result.yellip = VectorXd::Zero(2 * fc.ns);
-  result.ytrian = VectorXd::Zero(2 * fc.ns);
-  result.yshift = VectorXd::Zero(2 * fc.ns);
+  result.ygeo = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(2 * fc.ns);
+  result.yinden = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(2 * fc.ns);
+  result.yellip = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(2 * fc.ns);
+  result.ytrian = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(2 * fc.ns);
+  result.yshift = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(2 * fc.ns);
   for (int nplanes = 0; nplanes < 2; ++nplanes) {
     // phi = 0 deg -> first symmetry plane per toroidal module
     int k = 0;
@@ -4106,11 +4182,15 @@ vmecpp::Threed1AxisGeometry vmecpp::ComputeThreed1AxisGeometry(
     const VmecInternalResults& vmec_internal_results) {
   Threed1AxisGeometry result;
 
-  result.raxis_symm = VectorXd::Zero(s.ntor + 1);
-  result.zaxis_symm = VectorXd::Zero(s.ntor + 1);
+  result.raxis_symm =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s.ntor + 1);
+  result.zaxis_symm =
+      Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s.ntor + 1);
   if (s.lasym) {
-    result.raxis_asym = VectorXd::Zero(s.ntor + 1);
-    result.zaxis_asym = VectorXd::Zero(s.ntor + 1);
+    result.raxis_asym =
+        Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s.ntor + 1);
+    result.zaxis_asym =
+        Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(s.ntor + 1);
   }
 
   // magnetic axis is at radial index 0
@@ -4330,21 +4410,21 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.piota_type = indata.piota_type;
 
   // mass profile: am, am_aux_s, am_aux_f
-  wout.am = NonEmptyVectorOr(indata.am, 0.0);
-  wout.am_aux_s = NonEmptyVectorOr(indata.am_aux_s, -1.0);
-  wout.am_aux_f = NonEmptyVectorOr(indata.am_aux_f, 0.0);
-  wout.ac = NonEmptyVectorOr(indata.ac, 0.0);
-  wout.ac_aux_s = NonEmptyVectorOr(indata.ac_aux_s, -1.0);
-  wout.ac_aux_f = NonEmptyVectorOr(indata.ac_aux_f, 0.0);
-  wout.ai = NonEmptyVectorOr(indata.ai, 0.0);
-  wout.ai_aux_s = NonEmptyVectorOr(indata.ai_aux_s, -1.0);
-  wout.ai_aux_f = NonEmptyVectorOr(indata.ai_aux_f, 0.0);
+  wout.am = NonEmptyVectorOr(indata.am, 0.0).cast<real_t>();
+  wout.am_aux_s = NonEmptyVectorOr(indata.am_aux_s, -1.0).cast<real_t>();
+  wout.am_aux_f = NonEmptyVectorOr(indata.am_aux_f, 0.0).cast<real_t>();
+  wout.ac = NonEmptyVectorOr(indata.ac, 0.0).cast<real_t>();
+  wout.ac_aux_s = NonEmptyVectorOr(indata.ac_aux_s, -1.0).cast<real_t>();
+  wout.ac_aux_f = NonEmptyVectorOr(indata.ac_aux_f, 0.0).cast<real_t>();
+  wout.ai = NonEmptyVectorOr(indata.ai, 0.0).cast<real_t>();
+  wout.ai_aux_s = NonEmptyVectorOr(indata.ai_aux_s, -1.0).cast<real_t>();
+  wout.ai_aux_f = NonEmptyVectorOr(indata.ai_aux_f, 0.0).cast<real_t>();
 
   // Right-pad profile arrays to match Fortran VMEC output sizes.
   constexpr int kPreset = 21;
   constexpr int kNdfmax = 101;
 
-  auto PadVector = [](Eigen::VectorXd& vec, int target_size, double pad_value) {
+  auto PadVector = [](auto& vec, int target_size, double pad_value) {
     if (vec.size() < target_size) {
       const int old_size = vec.size();
       vec.conservativeResize(target_size);
@@ -4457,13 +4537,14 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   wout.iotaf = m_vmec_internal_results.iotaF;
 
-  wout.q_factor = VectorXd::Ones(fc.ns) * DBL_MAX;
+  wout.q_factor = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Ones(fc.ns) *
+                  static_cast<real_t>(DBL_MAX);
 
-  wout.presf = VectorXd::Zero(fc.ns);
-  wout.phipf = VectorXd::Zero(fc.ns);
-  wout.chipf = VectorXd::Zero(fc.ns);
-  wout.jcuru = VectorXd::Zero(fc.ns);
-  wout.jcurv = VectorXd::Zero(fc.ns);
+  wout.presf = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  wout.phipf = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  wout.chipf = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  wout.jcuru = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  wout.jcurv = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
 
   for (int jF = 0; jF < fc.ns; ++jF) {
     if (wout.iotaf[jF] != 0.0) {
@@ -4481,25 +4562,25 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.chi = threed1_first_table_intermediate.chi;
   wout.specw = m_vmec_internal_results.spectral_width;
 
-  wout.mass = VectorXd::Zero(fc.ns);
-  wout.pres = VectorXd::Zero(fc.ns);
+  wout.mass = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
+  wout.pres = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     wout.mass[jH + 1] = m_vmec_internal_results.massH[jH] / MU_0;
     wout.pres[jH + 1] = m_vmec_internal_results.presH[jH] / MU_0;
   }  // jH
-  wout.iotas = VectorXd::Zero(fc.ns);
+  wout.iotas = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
   wout.iotas.tail(fc.ns - 1) = m_vmec_internal_results.iotaH;
-  wout.beta_vol = VectorXd::Zero(fc.ns);
+  wout.beta_vol = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
   wout.beta_vol.tail(fc.ns - 1) = threed1_first_table_intermediate.beta_vol;
-  wout.buco = VectorXd::Zero(fc.ns);
+  wout.buco = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
   wout.buco.tail(fc.ns - 1) = threed1_first_table_intermediate.bucoH;
-  wout.bvco = VectorXd::Zero(fc.ns);
+  wout.bvco = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
   wout.bvco.tail(fc.ns - 1) = threed1_first_table_intermediate.bvcoH;
-  wout.vp = VectorXd::Zero(fc.ns);
+  wout.vp = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
   wout.vp.tail(fc.ns - 1) = m_vmec_internal_results.dVdsH;
-  wout.phips = VectorXd::Zero(fc.ns);
+  wout.phips = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
   wout.phips.tail(fc.ns - 1) = m_vmec_internal_results.phipH;
-  wout.over_r = VectorXd::Zero(fc.ns);
+  wout.over_r = Eigen::Matrix<real_t, Eigen::Dynamic, 1>::Zero(fc.ns);
   wout.over_r.tail(fc.ns - 1) = threed1_first_table_intermediate.overr;
 
   wout.jdotb = jxbout.jdotb;
@@ -4576,9 +4657,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // CONVERT TO rmnc, zmns, lmns, etc EXTERNAL representation (without internal
   // mscale, nscale) IF B^v ~ phip + lamu, MUST DIVIDE BY phipf(js) below to
   // maintain old-style format
-  wout.rmnc = RowMatrixXd::Zero(s.mnmax, fc.ns);
-  wout.zmns = RowMatrixXd::Zero(s.mnmax, fc.ns);
-  wout.lmns_full = RowMatrixXd::Zero(s.mnmax, fc.ns);
+  wout.rmnc = RowMatrixXr::Zero(s.mnmax, fc.ns);
+  wout.zmns = RowMatrixXr::Zero(s.mnmax, fc.ns);
+  wout.lmns_full = RowMatrixXr::Zero(s.mnmax, fc.ns);
   for (int jF = 0; jF < fc.ns; ++jF) {
     std::vector<double> rmnc1(s.mnmax, 0.0);
     std::vector<double> zmns1(s.mnmax, 0.0);
@@ -4657,7 +4738,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   // INTERPOLATE LAMBDA ONTO HALF-MESH FOR BACKWARDS CONSISTENCY WITH EARLIER
   // VERSIONS OF VMEC AND SMOOTHS POSSIBLE UNPHYSICAL "WIGGLE" ON RADIAL MESH
-  wout.lmns = RowMatrixXd::Zero(s.mnmax, fc.ns);
+  wout.lmns = RowMatrixXr::Zero(s.mnmax, fc.ns);
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     const int jFi = jH;
     const int jFo = jH + 1;
@@ -4712,30 +4793,30 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // Fourier-transform derived quantities for each surface individually
 
   // half-grid
-  wout.gmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-  wout.bmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-  wout.bsubumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-  wout.bsubvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  wout.gmnc = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+  wout.bmnc = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+  wout.bsubumnc = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+  wout.bsubvmnc = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
 
   // Note: bsubsmns is a half-grid quantity,
   // but stored in Fortran VMEC fashion offset by 1 index to the right,
   // in order to also have the (wrong) extrapolation
   // beyond the axis on the j=0 grid point
   // for backwards compatibility.
-  wout.bsubsmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  wout.bsubsmns = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
 
-  wout.bsupumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-  wout.bsupvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  wout.bsupumnc = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+  wout.bsupvmnc = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
 
   // Initialize asymmetric arrays for lasym=true cases
   if (s.lasym) {
-    wout.gmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-    wout.bmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-    wout.bsubumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-    wout.bsubvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-    wout.bsubsmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-    wout.bsupumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-    wout.bsupvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.gmns = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+    wout.bmns = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsubumns = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsubvmns = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsubsmnc = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsupumns = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsupvmns = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
   }
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
@@ -4868,9 +4949,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     // internal mscale, nscale) IF B^v ~ phip + lamu, MUST DIVIDE BY phipf(js)
     // below to maintain old-style format
 
-    wout.rmns = RowMatrixXd::Zero(s.mnmax, fc.ns);
-    wout.zmnc = RowMatrixXd::Zero(s.mnmax, fc.ns);
-    wout.lmnc_full = RowMatrixXd::Zero(s.mnmax, fc.ns);
+    wout.rmns = RowMatrixXr::Zero(s.mnmax, fc.ns);
+    wout.zmnc = RowMatrixXr::Zero(s.mnmax, fc.ns);
+    wout.lmnc_full = RowMatrixXr::Zero(s.mnmax, fc.ns);
     for (int jF = 0; jF < fc.ns; ++jF) {
       std::vector<double> rmns1(s.mnmax, 0.0);
       std::vector<double> zmnc1(s.mnmax, 0.0);
@@ -4950,7 +5031,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     // INTERPOLATE LAMBDA ONTO HALF-MESH FOR BACKWARDS CONSISTENCY WITH EARLIER
     // VERSIONS OF VMEC AND SMOOTHS POSSIBLE UNPHYSICAL "WIGGLE" ON RADIAL MESH
 
-    wout.lmnc = RowMatrixXd::Zero(s.mnmax, fc.ns);
+    wout.lmnc = RowMatrixXr::Zero(s.mnmax, fc.ns);
     for (int jH = 0; jH < fc.ns - 1; ++jH) {
       const int jFi = jH;
       const int jFo = jH + 1;
@@ -4992,11 +5073,11 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   {
     const double ohs = 1.0 / fc.deltaS;
 
-    wout.currumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-    wout.currvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.currumnc = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+    wout.currvmnc = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
     if (s.lasym) {
-      wout.currumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-      wout.currvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+      wout.currumns = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
+      wout.currvmns = RowMatrixXr::Zero(s.mnmax_nyq, fc.ns);
     }
 
     // Interior full-grid points: j_f = 1 .. ns-2
@@ -5125,16 +5206,22 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
 void vmecpp::CompareWOut(const WOutFileContents& test_wout,
                          const WOutFileContents& expected_wout,
-                         double tolerance, bool check_equal_niter) {
+                         real_t tolerance, bool check_equal_niter) {
   CHECK_EQ(test_wout.signgs, expected_wout.signgs);
   CHECK_EQ(test_wout.gamma, expected_wout.gamma);
   CHECK_EQ(test_wout.pcurr_type, expected_wout.pcurr_type);
   CHECK_EQ(test_wout.pmass_type, expected_wout.pmass_type);
   CHECK_EQ(test_wout.piota_type, expected_wout.piota_type);
 
-  CHECK(IsVectorCloseRelAbs(expected_wout.am, test_wout.am, tolerance));
-  CHECK(IsVectorCloseRelAbs(expected_wout.ac, test_wout.ac, tolerance));
-  CHECK(IsVectorCloseRelAbs(expected_wout.ai, test_wout.ai, tolerance));
+  CHECK(IsVectorCloseRelAbs(expected_wout.am.cast<double>(),
+                            test_wout.am.cast<double>(),
+                            static_cast<double>(tolerance)));
+  CHECK(IsVectorCloseRelAbs(expected_wout.ac.cast<double>(),
+                            test_wout.ac.cast<double>(),
+                            static_cast<double>(tolerance)));
+  CHECK(IsVectorCloseRelAbs(expected_wout.ai.cast<double>(),
+                            test_wout.ai.cast<double>(),
+                            static_cast<double>(tolerance)));
 
   CHECK_EQ(test_wout.nfp, expected_wout.nfp);
   CHECK_EQ(test_wout.mpol, expected_wout.mpol);
@@ -5340,7 +5427,7 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
       // where the arrays are empty (e.g. loaded from old HDF5 files).
       if (expected_wout.currumnc.size() > 0 && test_wout.currumnc.size() > 0 &&
           jF > 0 && jF < ns - 1 && tolerance < 1.0e-2) {
-        const double curr_tol = std::max(tolerance * 10.0, 1.0e-4);
+        const real_t curr_tol = std::max(tolerance * 10.0L, 1.0e-4L);
         CHECK(IsCloseRelAbs(expected_wout.currumnc(mn_nyq, jF),
                             test_wout.currumnc(mn_nyq, jF), curr_tol))
             << "jF = " << jF << " mn_nyq = " << mn_nyq;

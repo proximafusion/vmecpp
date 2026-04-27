@@ -24,7 +24,7 @@ namespace vmecpp {
 RadialProfiles::RadialProfiles(const RadialPartitioning* r,
                                HandoverStorage* m_h, const VmecINDATA* id,
                                const FlowControl* fc, int signOfJacobian,
-                               double pDamp)
+                               real_t pDamp)
     : r_(*r),
       m_h_(*m_h),
       id_(*id),
@@ -249,7 +249,7 @@ std::string RadialProfiles::profileTypeToString(ProfileType profileType) {
 /** Compute the maximum toroidal and poloidal magnetic fluxes. */
 void RadialProfiles::computeMagneticFluxes() {
   maxToroidalFlux = signOfJacobian * id_.phiedge / (2.0 * M_PI);
-  double edgeToroidalFluxFromProfile = torflux(1.0);
+  real_t edgeToroidalFluxFromProfile = torflux(1.0);
   if (edgeToroidalFluxFromProfile != 0.0) {
     maxToroidalFlux /= edgeToroidalFluxFromProfile;
   }
@@ -258,7 +258,7 @@ void RadialProfiles::computeMagneticFluxes() {
   // This assumes that the same scaling factor (=phiedge) is used for phi' and
   // chi'.
   maxPoloidalFlux = maxToroidalFlux;
-  double edgePoloidalFluxFromProfile = polflux(1.0);
+  real_t edgePoloidalFluxFromProfile = polflux(1.0);
   if (edgePoloidalFluxFromProfile != 0.0) {
     maxPoloidalFlux /= edgePoloidalFluxFromProfile;
   }
@@ -269,8 +269,8 @@ void RadialProfiles::computeMagneticFluxes() {
  * @param x evaluation position
  * @return d(aphi)/dx at x
  */
-double RadialProfiles::torfluxDeriv(double x) {
-  double torflux_deriv = 0.0;
+real_t RadialProfiles::torfluxDeriv(real_t x) {
+  real_t torflux_deriv = 0.0;
   for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
     torflux_deriv = x * torflux_deriv + (i + 1) * id_.aphi[i];
   }
@@ -283,10 +283,10 @@ double RadialProfiles::torfluxDeriv(double x) {
  * @param x
  * @return
  */
-double RadialProfiles::torflux(double x) {
+real_t RadialProfiles::torflux(real_t x) {
   //  Analytic evaluation of the polynomial (0 at x=0)
   //  using Horner's method
-  double torflux = 0.0;
+  real_t torflux = 0.0;
   for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
     torflux = x * torflux + id_.aphi[i];
   }
@@ -299,15 +299,15 @@ double RadialProfiles::torflux(double x) {
  * @param x
  * @return
  */
-double RadialProfiles::polfluxDeriv(double x) {
+real_t RadialProfiles::polfluxDeriv(real_t x) {
   // figure out what toroidal flux x corresponds to
-  double tf = std::min(torflux(x), 1.0);
+  real_t tf = std::min(torflux(x), 1.0L);
 
   // profiles are always specified in toroidal flux --> eval at toroidal flux
   // corresponding to x
-  double iota = evalIotaProfile(tf);
+  real_t iota = evalIotaProfile(tf);
 
-  double polflux_deriv = iota * torfluxDeriv(x);
+  real_t polflux_deriv = iota * torfluxDeriv(x);
   return polflux_deriv;
 }
 
@@ -318,14 +318,14 @@ double RadialProfiles::polfluxDeriv(double x) {
  * @param x
  * @return
  */
-double RadialProfiles::polflux(double x) {
+real_t RadialProfiles::polflux(real_t x) {
   // trapezoidal integration outwards from 0 to x in N=100 steps
   const int N = 100;
-  double delta_x = x / N;
+  real_t delta_x = x / N;
 
-  double polflux = 0.0;
+  real_t polflux = 0.0;
   for (int i = 0; i <= N; ++i) {
-    double contribution = polfluxDeriv(i * delta_x);
+    real_t contribution = polfluxDeriv(i * delta_x);
     if (i == 0 || i == N) {
       polflux += 0.5 * contribution;
     } else {
@@ -337,42 +337,49 @@ double RadialProfiles::polflux(double x) {
   return polflux;
 }
 
-double RadialProfiles::evalMassProfile(double x) {
+real_t RadialProfiles::evalMassProfile(real_t x) {
   // apply bloating factor
   // only allowed for current and pressure profile (checked in
   // VmecIndata.sanitize())
-  double normX = std::min(fabs(x * id_.bloat), 1.0);
+  real_t normX = std::min(static_cast<real_t>(std::fabs(x * id_.bloat)), 1.0L);
 
-  double p = evalProfileFunction(pmassType, id_.am, id_.am_aux_s, id_.am_aux_f,
+  real_t p = evalProfileFunction(pmassType, id_.am.cast<real_t>().eval(),
+                                 id_.am_aux_s.cast<real_t>().eval(),
+                                 id_.am_aux_f.cast<real_t>().eval(),
                                  /*shouldIntegrate=*/false, normX);
 
   return p * pressureScalingFactor;
 }
 
-double RadialProfiles::evalIotaProfile(double x) {
-  double p = evalProfileFunction(piotaType, id_.ai, id_.ai_aux_s, id_.ai_aux_f,
+real_t RadialProfiles::evalIotaProfile(real_t x) {
+  real_t p = evalProfileFunction(piotaType, id_.ai.cast<real_t>().eval(),
+                                 id_.ai_aux_s.cast<real_t>().eval(),
+                                 id_.ai_aux_f.cast<real_t>().eval(),
                                  /*shouldIntegrate=*/false, x);
 
   return p;
 }
 
-double RadialProfiles::evalCurrProfile(double x) {
+real_t RadialProfiles::evalCurrProfile(real_t x) {
   // apply bloating factor
   // only allowed for current and pressure profile (checked in
   // VmecIndata.sanitize())
-  double normX = std::min(std::abs(x * id_.bloat), 1.0);
+  real_t normX = std::min(std::abs(x * id_.bloat), 1.0L);
 
-  double p = evalProfileFunction(pcurrType, id_.ac, id_.ac_aux_s, id_.ac_aux_f,
+  real_t p = evalProfileFunction(pcurrType, id_.ac.cast<real_t>().eval(),
+                                 id_.ac_aux_s.cast<real_t>().eval(),
+                                 id_.ac_aux_f.cast<real_t>().eval(),
                                  /*shouldIntegrate=*/true, normX);
 
   return p;
 }
 
-double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
-                                           const Eigen::VectorXd& coeffs,
-                                           const Eigen::VectorXd& splineKnots,
-                                           const Eigen::VectorXd& splineValues,
-                                           bool shouldIntegrate, double normX) {
+real_t RadialProfiles::evalProfileFunction(
+    const ProfileParameterization& param,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues,
+    bool shouldIntegrate, real_t normX) {
   switch (param) {
     case ProfileParameterization::POWER_SERIES:
       return evalPowerSeries(coeffs, normX, shouldIntegrate);
@@ -422,14 +429,15 @@ double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
   return 0.0;
 }
 
-double RadialProfiles::evalPowerSeries(const Eigen::VectorXd& coeffs, double x,
-                                       bool should_integrate) {
-  double ret = 0.0;
+real_t RadialProfiles::evalPowerSeries(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x,
+    bool should_integrate) {
+  real_t ret = 0.0;
 
-  for (Eigen::VectorXd::Index i = coeffs.size() - 1; i >= 0; i--) {
-    const double coeff = coeffs[i];
+  for (Eigen::Index i = coeffs.size() - 1; i >= 0; i--) {
+    const real_t coeff = coeffs[i];
     if (should_integrate) {
-      ret = x * ret + coeff / static_cast<double>(i + 1);
+      ret = x * ret + coeff / static_cast<real_t>(i + 1);
     } else {
       ret = x * ret + coeff;
     }
@@ -440,25 +448,27 @@ double RadialProfiles::evalPowerSeries(const Eigen::VectorXd& coeffs, double x,
   return ret;
 }
 
-double RadialProfiles::evalPowerSeriesI(const Eigen::VectorXd& coeffs,
-                                        double x) {
-  double ret = 0.0;
-  for (Eigen::VectorXd::Index i = coeffs.size() - 1; i >= 0; i--) {
-    const double coeff = coeffs[i];
+real_t RadialProfiles::evalPowerSeriesI(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x) {
+  real_t ret = 0.0;
+  for (Eigen::Index i = coeffs.size() - 1; i >= 0; i--) {
+    const real_t coeff = coeffs[i];
     ret = (ret + coeff) * x;
   }
   return ret;
 }
 
-double RadialProfiles::evalGaussTrunc(const Eigen::VectorXd& coeffs, double x) {
+real_t RadialProfiles::evalGaussTrunc(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x) {
   // TODO(jons): implement `gauss_trunc`
   (void)coeffs;
   (void)x;
   return 0.0;
 }
 
-double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
-  double ret = 0.0;
+real_t RadialProfiles::evalSumAtan(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x) {
+  real_t ret = 0.0;
 
   if (coeffs.size() > 0) {
     ret = coeffs[0];
@@ -506,14 +516,15 @@ double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
   return ret;
 }
 
-double RadialProfiles::evalTwoLorentz(const Eigen::VectorXd& coeffs, double x) {
+real_t RadialProfiles::evalTwoLorentz(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x) {
   if (coeffs.size() < 8) {
     LOG(WARNING)
         << "too few coefficients for 'two_lorentz' profile; need 8, got "
         << coeffs.size() << "\n";
     return 0.0;
   }
-  double ret = 0.0;
+  real_t ret = 0.0;
   ret =
       coeffs[0] *
       (coeffs[1] *
@@ -539,14 +550,15 @@ double RadialProfiles::evalTwoLorentz(const Eigen::VectorXd& coeffs, double x) {
   return ret;
 }
 
-double RadialProfiles::evalTwoPower(const Eigen::VectorXd& coeffs, double x,
-                                    bool shouldIntegrate) {
+real_t RadialProfiles::evalTwoPower(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x,
+    bool shouldIntegrate) {
   if (coeffs.size() < 3) {
     LOG(WARNING) << "too few coefficients for 'two_power' profile; need 3, got "
                  << coeffs.size() << "\n";
     return 0.0;
   }
-  double ret = 0.0;
+  real_t ret = 0.0;
   if (!shouldIntegrate) {
     // p(s) = am(0) * [1 - s**am(1)]**am(2)
     ret = coeffs[0] * std::pow(1.0 - std::pow(x, coeffs[1]), coeffs[2]);
@@ -566,7 +578,7 @@ double RadialProfiles::evalTwoPower(const Eigen::VectorXd& coeffs, double x,
 
     ret = 0.0;
     for (int i = 0; i < ngl; ++i) {
-      const double xp = x * glx[i];
+      const real_t xp = x * glx[i];
       ret += glw[i] * coeffs[0] *
              std::pow(1.0 - std::pow(xp, coeffs[1]), coeffs[2]);
     }
@@ -575,16 +587,17 @@ double RadialProfiles::evalTwoPower(const Eigen::VectorXd& coeffs, double x,
   return ret;
 }
 
-double RadialProfiles::evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x) {
+real_t RadialProfiles::evalTwoPowerGs(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x) {
   // TODO(jons): implement `two_power_gs`
   (void)coeffs;
   (void)x;
   return 0.0;
 }
 
-double RadialProfiles::evalAkima(const Eigen::VectorXd& splineKnots,
-                                 const Eigen::VectorXd& splineValues,
-                                 double x) {
+real_t RadialProfiles::evalAkima(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues, real_t x) {
   // TODO(jons): implement `akima_spline`
   (void)splineKnots;
   (void)splineValues;
@@ -592,9 +605,9 @@ double RadialProfiles::evalAkima(const Eigen::VectorXd& splineKnots,
   return 0.0;
 }
 
-double RadialProfiles::evalAkimaIntegrated(const Eigen::VectorXd& splineKnots,
-                                           const Eigen::VectorXd& splineValues,
-                                           double x) {
+real_t RadialProfiles::evalAkimaIntegrated(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues, real_t x) {
   // TODO(jons): implement `akima_spline_i`
   (void)splineKnots;
   (void)splineValues;
@@ -602,9 +615,9 @@ double RadialProfiles::evalAkimaIntegrated(const Eigen::VectorXd& splineKnots,
   return 0.0;
 }
 
-double RadialProfiles::evalCubic(const Eigen::VectorXd& splineKnots,
-                                 const Eigen::VectorXd& splineValues,
-                                 double x) {
+real_t RadialProfiles::evalCubic(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues, real_t x) {
   // TODO(jons): implement `cubic_spline`
   (void)splineKnots;
   (void)splineValues;
@@ -612,9 +625,9 @@ double RadialProfiles::evalCubic(const Eigen::VectorXd& splineKnots,
   return 0.0;
 }
 
-double RadialProfiles::evalCubicIntegrated(const Eigen::VectorXd& splineKnots,
-                                           const Eigen::VectorXd& splineValues,
-                                           double x) {
+real_t RadialProfiles::evalCubicIntegrated(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues, real_t x) {
   // TODO(jons): implement `cubic_spline_i`
   (void)splineKnots;
   (void)splineValues;
@@ -623,14 +636,16 @@ double RadialProfiles::evalCubicIntegrated(const Eigen::VectorXd& splineKnots,
   return 0.0;
 }
 
-double RadialProfiles::evalPedestal(const Eigen::VectorXd& coeffs, double x) {
+real_t RadialProfiles::evalPedestal(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x) {
   // TODO(jons): implement `pedestal`
   (void)coeffs;
   (void)x;
   return 0.0;
 }
 
-double RadialProfiles::evalRational(const Eigen::VectorXd& coeffs, double x) {
+real_t RadialProfiles::evalRational(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x) {
   // TODO(jons): implement `rational`
   (void)coeffs;
   (void)x;
@@ -639,9 +654,9 @@ double RadialProfiles::evalRational(const Eigen::VectorXd& coeffs, double x) {
 
 // Linear interpolation between closest points and associated knots.
 // Clamp the profile if x is outside the range of knots.
-double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
-                                       const Eigen::VectorXd& splineValues,
-                                       double x) {
+real_t RadialProfiles::evalLineSegment(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues, real_t x) {
   const int n = static_cast<int>(splineKnots.size());
   if (n < 2 || n != static_cast<int>(splineValues.size())) {
     return 0.0;
@@ -655,31 +670,31 @@ double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
     // x is below the first knot
     return splineValues[0];
   }
-  const double x0 = *it;
-  const double x1 = *(it + 1);
+  const real_t x0 = *it;
+  const real_t x1 = *(it + 1);
   int ilow = static_cast<int>(std::distance(splineKnots.begin(), it));
-  const double y0 = splineValues[ilow];
-  const double y1 = splineValues[ilow + 1];
-  const double t = (x - x0) / (x1 - x0);
+  const real_t y0 = splineValues[ilow];
+  const real_t y1 = splineValues[ilow + 1];
+  const real_t t = (x - x0) / (x1 - x0);
   return (1.0 - t) * y0 + t * y1;
 }
 
-double RadialProfiles::evalLineSegmentIntegrated(
-    const Eigen::VectorXd& splineKnots, const Eigen::VectorXd& splineValues,
-    double x) {
+real_t RadialProfiles::evalLineSegmentIntegrated(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues, real_t x) {
   const int n = static_cast<int>(splineKnots.size());
   if (n < 2 || n != static_cast<int>(splineValues.size())) {
     return 0.0;
   }
 
-  auto integrate_segment = [](double x0, double x1, double y0, double y1) {
-    const double m = (y1 - y0) / (x1 - x0);
-    const double b = y0 - m * x0;
+  auto integrate_segment = [](real_t x0, real_t x1, real_t y0, real_t y1) {
+    const real_t m = (y1 - y0) / (x1 - x0);
+    const real_t b = y0 - m * x0;
     return m * 0.5 * (x1 * x1 - x0 * x0) + b * (x1 - x0);
   };
 
-  double xi = x;
-  double result = 0.0;
+  real_t xi = x;
+  real_t result = 0.0;
 
   if (xi <= splineKnots[0]) {
     result += integrate_segment(0.0, xi, splineValues[0],
@@ -694,10 +709,10 @@ double RadialProfiles::evalLineSegmentIntegrated(
     ++idx;
   }
 
-  const double x0 = splineKnots[idx];
-  const double x1 = std::min(xi, splineKnots[idx + 1]);
-  const double y0 = splineValues[idx];
-  const double y1 = splineValues[idx + 1];
+  const real_t x0 = splineKnots[idx];
+  const real_t x1 = std::min(xi, splineKnots[idx + 1]);
+  const real_t y0 = splineValues[idx];
+  const real_t y1 = splineValues[idx + 1];
   result += integrate_segment(x0, x1, y0, y1);
 
   if (xi > splineKnots[n - 1]) {
@@ -708,8 +723,8 @@ double RadialProfiles::evalLineSegmentIntegrated(
   return result;
 }
 
-double RadialProfiles::evalNiceQuadratic(const Eigen::VectorXd& coeffs,
-                                         double x) {
+real_t RadialProfiles::evalNiceQuadratic(
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x) {
   // TODO(jons): implement `nice_quadratic`
   (void)coeffs;
   (void)x;
@@ -720,7 +735,7 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
                                         VmecConstants& m_vmecconst) {
   // R_00 of initial boundary is ~ major radius
   // and used as normalization factor for mass profile
-  const double r00 = id_.rbc(0, id_.ntor);
+  const real_t r00 = id_.rbc(0, id_.ntor);
 
   // scale profile of enclosed toroidal current to prescribed net toroidal
   // current,
@@ -728,7 +743,7 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
 
   // only scale current profile if value at edge is "sufficiently non-zero"
   // outermost value of enclosed current profile -->
-  const double edgeCurrent = evalCurrProfile(1.0);
+  const real_t edgeCurrent = evalCurrProfile(1.0);
   Itor = 0.0;
   // TODO(jons): eps*currv instead of eps*curtor?
   if (std::abs(edgeCurrent) > std::abs(DBL_EPSILON * id_.curtor)) {
@@ -737,11 +752,11 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     Itor = signOfJacobian * currv / (2.0 * M_PI * edgeCurrent);
   }
 
-  double local_rmsPhiP = 0.0;
+  real_t local_rmsPhiP = 0.0;
 
   // half-grid
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    const double halfGridPos = (jH + 0.5) / (fc_.ns - 1.0);
+    const real_t halfGridPos = (jH + 0.5) / (fc_.ns - 1.0);
 
     // normalized toroidal flux array
     sqrtSH[jH - r_.nsMinH] = std::sqrt(halfGridPos);
@@ -749,7 +764,7 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     phipH[jH - r_.nsMinH] = maxToroidalFlux * torfluxDeriv(halfGridPos);
     chipH[jH - r_.nsMinH] = maxToroidalFlux * polfluxDeriv(halfGridPos);
 
-    const double toroidalFlux = std::min(torflux(halfGridPos), 1.0);
+    const real_t toroidalFlux = std::min(torflux(halfGridPos), 1.0L);
     iotaH[jH - r_.nsMinH] = evalIotaProfile(toroidalFlux);
     currH[jH - r_.nsMinH] = evalCurrProfile(toroidalFlux);
 
@@ -767,13 +782,14 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     // mass profile
 
     // effectively vpnorm == phipH[jH]
-    const double vpnorm = maxToroidalFlux * torfluxDeriv(halfGridPos);
-    const double massEvalPos = std::min(halfGridPos, id_.spres_ped);
+    const real_t vpnorm = maxToroidalFlux * torfluxDeriv(halfGridPos);
+    const real_t massEvalPos =
+        std::min(halfGridPos, static_cast<real_t>(id_.spres_ped));
     // if (massEvalPos > id_.spres_ped) {
     //     massEvalPos = id_.spres_ped;
     // }
-    const double massEvalTorFlux = std::min(torflux(massEvalPos), 1.0);
-    const double mass = evalMassProfile(massEvalTorFlux);
+    const real_t massEvalTorFlux = std::min(torflux(massEvalPos), 1.0L);
+    const real_t mass = evalMassProfile(massEvalTorFlux);
     massH[jH - r_.nsMinH] = mass * std::pow(std::abs(vpnorm) * r00, id_.gamma);
 
     // This must be done over UNIQUE half-grid points !!!
@@ -789,11 +805,11 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
 
   // ------------------------------------------
 
-  const double sqrtS1 = sqrt(1.0 / (fc_.ns - 1));
+  const real_t sqrtS1 = sqrt(1.0 / (fc_.ns - 1));
 
   // full-grid
   for (int jF1 = r_.nsMinF1; jF1 < r_.nsMaxF1; ++jF1) {
-    const double fullGridPos = jF1 / (fc_.ns - 1.0);
+    const real_t fullGridPos = jF1 / (fc_.ns - 1.0);
 
     // normalized toroidal flux array
     sqrtSF[jF1 - r_.nsMinF1] = std::sqrt(fullGridPos);
@@ -801,7 +817,7 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     phipF[jF1 - r_.nsMinF1] = maxToroidalFlux * torfluxDeriv(fullGridPos);
     chipF[jF1 - r_.nsMinF1] = maxToroidalFlux * polfluxDeriv(fullGridPos);
 
-    const double toroidalFlux = std::min(torflux(fullGridPos), 1.0);
+    const real_t toroidalFlux = std::min(torflux(fullGridPos), 1.0L);
     iotaF[jF1 - r_.nsMinF1] = evalIotaProfile(toroidalFlux);
 
     // TODO(jons): this is still weird
@@ -852,7 +868,7 @@ void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
       const int jFi = jH;
       const int jFo = jH + 1;
 
-      const double spectral_width_on_half_grid =
+      const real_t spectral_width_on_half_grid =
           (spectral_width[jFo - r_.nsMinF1] +
            spectral_width[jFi - r_.nsMinF1]) /
           2.0;

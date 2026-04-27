@@ -34,11 +34,11 @@ RegularizedIntegrals::RegularizedIntegrals(const Sizes* s,
 }
 
 void RegularizedIntegrals::computeConstants() {
-  const double epsTan = 1.0e-15;
-  const double bigNo = 1.0e50;
+  const real_t epsTan = 1.0e-15;
+  const real_t bigNo = 1.0e50;
 
   for (int l = 0; l < s_.nThetaEven; ++l) {
-    const double argu = M_PI / s_.nThetaEven * l;
+    const real_t argu = M_PI / s_.nThetaEven * l;
     if (std::abs(argu - 0.5 * M_PI) < epsTan) {
       // mask singularities at pi/2
       tanu[l] = bigNo;
@@ -48,7 +48,7 @@ void RegularizedIntegrals::computeConstants() {
   }  // l
 
   for (int k = 0; k < s_.nZeta; ++k) {
-    const double argv = M_PI / s_.nZeta * k;
+    const real_t argv = M_PI / s_.nZeta * k;
     if (std::abs(argv - 0.5 * M_PI) < epsTan) {
       // mask singularity at pi/2
       tanv[k] = bigNo;
@@ -58,30 +58,30 @@ void RegularizedIntegrals::computeConstants() {
   }  // k
 }
 
-void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
+void RegularizedIntegrals::update(const std::vector<real_t>& bDotN) {
   // thread-local tangential grid point range
   const int numLocal = tp_.ztMax - tp_.ztMin;
   const int theta_by_nzeta = s_.nThetaEven * s_.nZeta;
-  const double twopidivnfp = 2.0 * M_PI / s_.nfp;
+  const real_t twopidivnfp = 2.0 * M_PI / s_.nfp;
 
   absl::c_fill_n(greenp, numLocal * theta_by_nzeta, 0);
   absl::c_fill_n(gstore, theta_by_nzeta, 0);
 
   // storage for intermediate results
-  std::vector<double> ga1_buf(s_.nZeta);
-  std::vector<double> ga2_buf(s_.nZeta);
-  std::vector<double> htemp_buf(s_.nZeta);
-  std::vector<double> ftemp_buf(s_.nZeta);
+  std::vector<real_t> ga1_buf(s_.nZeta);
+  std::vector<real_t> ga2_buf(s_.nZeta);
+  std::vector<real_t> htemp_buf(s_.nZeta);
+  std::vector<real_t> ftemp_buf(s_.nZeta);
 
   for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
     const int ip_idx_base = (klp - tp_.ztMin) * theta_by_nzeta;
     int lp = klp / s_.nZeta;
     int kp = klp % s_.nZeta;
 
-    double bexni = bDotN[klp - tp_.ztMin] * s_.wInt[lp];
+    real_t bexni = bDotN[klp - tp_.ztMin] * s_.wInt[lp];
 
-    double xp = sg_.rcosuv[klp];
-    double yp = sg_.rsinuv[klp];
+    real_t xp = sg_.rcosuv[klp];
+    real_t yp = sg_.rsinuv[klp];
 
     // index of toridal field period; 0, 1, ..., (nfp-1)
     int p = 0;
@@ -90,13 +90,13 @@ void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
     // yper == yp in first period
     // sxsave == snr in first period (TODO(jons): really?)
     // sysave == snv in first period (TODO(jons): really?)
-    double xper = xp * sg_.cos_per[p] - yp * sg_.sin_per[p];
-    double yper = xp * sg_.sin_per[p] + yp * sg_.cos_per[p];
+    real_t xper = xp * sg_.cos_per[p] - yp * sg_.sin_per[p];
+    real_t yper = xp * sg_.sin_per[p] + yp * sg_.cos_per[p];
 
-    double sxsave =
+    real_t sxsave =
         (sg_.snr[klp - tp_.ztMin] * xper - sg_.snv[klp - tp_.ztMin] * yper) /
         sg_.r1b[klp];
-    double sysave =
+    real_t sysave =
         (sg_.snr[klp - tp_.ztMin] * yper + sg_.snv[klp - tp_.ztMin] * xper) /
         sg_.r1b[klp];
 
@@ -159,7 +159,7 @@ void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
                                  (sg_.rcosuv[kl] * sxsave +
                                   sg_.rsinuv[kl] * sysave + dsave[kl]) -
                              ga1_buf[k] * ga2_buf[k]);
-          const double g = twopidivnfp * (htemp_buf[k] - ga1_buf[k]);
+          const real_t g = twopidivnfp * (htemp_buf[k] - ga1_buf[k]);
           gstore[kl] += bexni * g;
         }
       }  // kl
@@ -173,27 +173,27 @@ void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
 
     // all following field periods
     for (int p = 1; p < s_.nfp; ++p) {
-      double xper = xp * sg_.cos_per[p] - yp * sg_.sin_per[p];
-      double yper = xp * sg_.sin_per[p] + yp * sg_.cos_per[p];
-      double sxsave =
+      real_t xper = xp * sg_.cos_per[p] - yp * sg_.sin_per[p];
+      real_t yper = xp * sg_.sin_per[p] + yp * sg_.cos_per[p];
+      real_t sxsave =
           (sg_.snr[klp - tp_.ztMin] * xper - sg_.snv[klp - tp_.ztMin] * yper) /
           sg_.r1b[klp];
-      double sysave =
+      real_t sysave =
           (sg_.snr[klp - tp_.ztMin] * yper + sg_.snv[klp - tp_.ztMin] * xper) /
           sg_.r1b[klp];
 
       for (int kl = 0; kl < theta_by_nzeta; ++kl) {
-        double ftemp =
+        real_t ftemp =
             1.0 /
             (gsave[kl] - 2 * (xper * sg_.rcosuv[kl] + yper * sg_.rsinuv[kl]));
-        double htemp = sqrt(ftemp);
+        real_t htemp = sqrt(ftemp);
 
         // 2 pi from Laplace equation (TODO(jons): really?)
         // 1/nfp to make the toroidal integral below over the whole machine
         greenp[ip_idx_base + kl] +=
             twopidivnfp * htemp * ftemp *
             (sg_.rcosuv[kl] * sxsave + sg_.rsinuv[kl] * sysave + dsave[kl]);
-        const double g = twopidivnfp * htemp;
+        const real_t g = twopidivnfp * htemp;
         gstore[kl] += bexni * g;
       }  // kl
     }  // p

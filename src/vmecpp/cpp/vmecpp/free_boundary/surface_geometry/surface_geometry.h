@@ -21,133 +21,133 @@ class SurfaceGeometry {
                   const TangentialPartitioning* tp);
 
   void update(
-      const std::span<const double> rCC, const std::span<const double> rSS,
-      const std::span<const double> rSC, const std::span<const double> rCS,
-      const std::span<const double> zSC, const std::span<const double> zCS,
-      const std::span<const double> zCC, const std::span<const double> zSS,
+      const std::span<const real_t> rCC, const std::span<const real_t> rSS,
+      const std::span<const real_t> rSC, const std::span<const real_t> rCS,
+      const std::span<const real_t> zSC, const std::span<const real_t> zCS,
+      const std::span<const real_t> zCC, const std::span<const real_t> zSS,
       int signOfJacobian, bool fullUpdate);
 
   // [nfp] cos(2 pi / nfp * p)
-  std::vector<double> cos_per;
+  std::vector<real_t> cos_per;
 
   // [nfp] sin(2 pi / nfp * p)
-  std::vector<double> sin_per;
+  std::vector<real_t> sin_per;
 
   // [nZeta] cos(phi)
-  std::vector<double> cos_phi;
+  std::vector<real_t> cos_phi;
 
   // [nZeta] sin(phi)
-  std::vector<double> sin_phi;
+  std::vector<real_t> sin_phi;
 
   // -----------------
 
   // R
   // full surface
-  std::vector<double> r1b;
+  std::vector<real_t> r1b;
 
   // dR/dTheta
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> rub;
+  std::vector<real_t> rub;
 
   // dR/dPhi
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> rvb;
+  std::vector<real_t> rvb;
 
   // Z
   // full surface
-  std::vector<double> z1b;
+  std::vector<real_t> z1b;
 
   // dZ/dTheta
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> zub;
+  std::vector<real_t> zub;
 
   // dZ/dPhi
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> zvb;
+  std::vector<real_t> zvb;
 
   // d^2R/dTheta^2
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> ruu;
+  std::vector<real_t> ruu;
 
   // d^2R/(dTheta dPhi)
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> ruv;
+  std::vector<real_t> ruv;
 
   // d^2R/dPhi^2
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> rvv;
+  std::vector<real_t> rvv;
 
   // d^2Z/dTheta^2
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> zuu;
+  std::vector<real_t> zuu;
 
   // d^2Z/(dTheta dPhi)
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> zuv;
+  std::vector<real_t> zuv;
 
   // d^2Z/dPhi^2
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> zvv;
+  std::vector<real_t> zvv;
 
   // N^r * signOfJacobian
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> snr;
+  std::vector<real_t> snr;
 
   // N^phi * signOfJacobian
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> snv;
+  std::vector<real_t> snv;
 
   // N^z * signOfJacobian
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> snz;
+  std::vector<real_t> snz;
 
   // g_{theta,theta}
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> guu;
+  std::vector<real_t> guu;
 
   // 2 * g_{theta,zeta} = 2/nfp * g_{theta,phi}
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> guv;
+  std::vector<real_t> guv;
 
   // g_{zeta,zeta} = 1/(nfp*nfp) g_{phi,phi}
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> gvv;
+  std::vector<real_t> gvv;
 
   // 1/2 d^2X/dTheta^2 dot N
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> auu;
+  std::vector<real_t> auu;
 
   // d^2X/(dTheta dZeta) dot N
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> auv;
+  std::vector<real_t> auv;
 
   // 1/2 d^2X/dZeta^2 dot N
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> avv;
+  std::vector<real_t> avv;
 
   // - (R N^R + Z N^Z)
   // needed for dsave --> (X - X') dot N'
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> drv;
+  std::vector<real_t> drv;
 
   // R^2 + Z^2
   // needed for gsave --> |X - X'|^2
   // full surface
-  std::vector<double> rzb2;
+  std::vector<real_t> rzb2;
 
   // x
   // full surface
-  std::vector<double> rcosuv;
+  std::vector<real_t> rcosuv;
 
   // y
   // full surface
-  std::vector<double> rsinuv;
+  std::vector<real_t> rsinuv;
 
  private:
   const Sizes& s_;
@@ -156,19 +156,19 @@ class SurfaceGeometry {
 
   void computeConstants();
 
-  void inverseDFT(const std::span<const double> rCC,
-                  const std::span<const double> rSS,
-                  const std::span<const double> rSC,
-                  const std::span<const double> rCS,
-                  const std::span<const double> zSC,
-                  const std::span<const double> zCS,
-                  const std::span<const double> zCC,
-                  const std::span<const double> zSS, bool fullUpdate);
+  void inverseDFT(const std::span<const real_t> rCC,
+                  const std::span<const real_t> rSS,
+                  const std::span<const real_t> rSC,
+                  const std::span<const real_t> rCS,
+                  const std::span<const real_t> zSC,
+                  const std::span<const real_t> zCS,
+                  const std::span<const real_t> zCC,
+                  const std::span<const real_t> zSS, bool fullUpdate);
 
   void derivedSurfaceQuantities(int signOfJacobian, bool fullUpdate);
 
-  std::vector<double> r1b_asym;
-  std::vector<double> z1b_asym;
+  std::vector<real_t> r1b_asym;
+  std::vector<real_t> z1b_asym;
 };
 
 }  // namespace vmecpp

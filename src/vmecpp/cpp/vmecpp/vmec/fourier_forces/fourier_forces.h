@@ -8,6 +8,7 @@
 #include <Eigen/Dense>
 #include <span>
 
+#include "vmecpp/common/util/real_type.h"
 #include "vmecpp/vmec/fourier_coefficients/fourier_coefficients.h"
 
 namespace vmecpp {
@@ -21,23 +22,24 @@ class FourierForces : public FourierCoeffs {
   FourierForces& operator=(FourierForces&& other) noexcept;
 
   void zeroZForceForM1();
-  void residuals(Eigen::VectorXd& fRes, bool includeEdgeRZ) const;
+  void residuals(Eigen::Matrix<real_t, Eigen::Dynamic, 1>& fRes,
+                 bool includeEdgeRZ) const;
 
   // appropriately-named variables for the data in FourierCoeffs
-  std::span<double> frcc;
-  std::span<double> frss;
-  std::span<double> frsc;
-  std::span<double> frcs;
+  std::span<real_t> frcc;
+  std::span<real_t> frss;
+  std::span<real_t> frsc;
+  std::span<real_t> frcs;
 
-  std::span<double> fzsc;
-  std::span<double> fzcs;
-  std::span<double> fzcc;
-  std::span<double> fzss;
+  std::span<real_t> fzsc;
+  std::span<real_t> fzcs;
+  std::span<real_t> fzcc;
+  std::span<real_t> fzss;
 
-  std::span<double> flsc;
-  std::span<double> flcs;
-  std::span<double> flcc;
-  std::span<double> flss;
+  std::span<real_t> flsc;
+  std::span<real_t> flcs;
+  std::span<real_t> flcc;
+  std::span<real_t> flss;
 
  private:
   void BindSpans();

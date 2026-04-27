@@ -38,15 +38,27 @@ ExternalMagneticField::ExternalMagneticField(const Sizes* s,
 }
 
 // rAxis, zAxis are provided over a single module
-void ExternalMagneticField::update(const std::span<const double> rAxis,
-                                   const std::span<const double> zAxis,
-                                   double netToroidalCurrent) {
+void ExternalMagneticField::update(const std::span<const real_t> rAxis,
+                                   const std::span<const real_t> zAxis,
+                                   real_t netToroidalCurrent) {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
 
-  mgrid_.interpolate(tp_.ztMin, tp_.ztMax, s_.nZeta, sg_.r1b, sg_.z1b, interpBr,
-                     interpBp, interpBz);
+  // mgrid is an I/O-boundary type and operates in double precision.
+  // Convert real_t buffers to double, call, then convert results back.
+  {
+    std::vector<double> r1b_d(sg_.r1b.begin(), sg_.r1b.end());
+    std::vector<double> z1b_d(sg_.z1b.begin(), sg_.z1b.end());
+    std::vector<double> interpBr_d(interpBr.size());
+    std::vector<double> interpBp_d(interpBp.size());
+    std::vector<double> interpBz_d(interpBz.size());
+    mgrid_.interpolate(tp_.ztMin, tp_.ztMax, s_.nZeta, r1b_d, z1b_d, interpBr_d,
+                       interpBp_d, interpBz_d);
+    std::copy(interpBr_d.begin(), interpBr_d.end(), interpBr.begin());
+    std::copy(interpBp_d.begin(), interpBp_d.end(), interpBp.begin());
+    std::copy(interpBz_d.begin(), interpBz_d.end(), interpBz.begin());
+  }
 
 #ifdef _OPENMP
 #pragma omp barrier
@@ -71,8 +83,8 @@ void ExternalMagneticField::update(const std::span<const double> rAxis,
 
 // add in contribution from net toroidal current along magnetic axis
 void ExternalMagneticField::AddAxisCurrentFieldAbscab(
-    const std::span<const double> rAxis, const std::span<const double> zAxis,
-    double netToroidalCurrent) {
+    const std::span<const real_t> rAxis, const std::span<const real_t> zAxis,
+    real_t netToroidalCurrent) {
   // copy over axis geometry in first module
   // and convert to Cartesian coordinates
   for (int k = 0; k < s_.nZeta; ++k) {
@@ -127,21 +139,22 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
 
   // compute magnetic field due to line current along magnetic axis
   int numProcessors = 1;  // Nestor itself is already parallelized via OpenMP
-  abscab::magneticFieldPolygonFilament(s_.nZeta * s_.nfp + 1, axisXYZ.data(),
-                                       axis_current, tp_.ztMax - tp_.ztMin,
-                                       surfaceXYZ.data(), bCoilsXYZ.data(),
-                                       numProcessors);
+  abscab::magneticFieldPolygonFilament(
+      s_.nZeta * s_.nfp + 1, reinterpret_cast<double*>(axisXYZ.data()),
+      static_cast<double>(axis_current), tp_.ztMax - tp_.ztMin,
+      reinterpret_cast<double*>(surfaceXYZ.data()),
+      reinterpret_cast<double*>(bCoilsXYZ.data()), numProcessors);
 
   // transform bCoilsXYZ into cylindrical coordinates
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
     int k = kl % s_.nZeta;
 
-    double _bX = bCoilsXYZ[3 * (kl - tp_.ztMin) + 0];
-    double _bY = bCoilsXYZ[3 * (kl - tp_.ztMin) + 1];
-    double _bZ = bCoilsXYZ[3 * (kl - tp_.ztMin) + 2];
+    real_t _bX = bCoilsXYZ[3 * (kl - tp_.ztMin) + 0];
+    real_t _bY = bCoilsXYZ[3 * (kl - tp_.ztMin) + 1];
+    real_t _bZ = bCoilsXYZ[3 * (kl - tp_.ztMin) + 2];
 
-    double _bR = sg_.cos_phi[k] * _bX + sg_.sin_phi[k] * _bY;
-    double _bP = sg_.cos_phi[k] * _bY - sg_.sin_phi[k] * _bX;
+    real_t _bR = sg_.cos_phi[k] * _bX + sg_.sin_phi[k] * _bY;
+    real_t _bP = sg_.cos_phi[k] * _bY - sg_.sin_phi[k] * _bX;
 
     curtorBr[kl - tp_.ztMin] = _bR;
     curtorBp[kl - tp_.ztMin] = _bP;
@@ -150,8 +163,8 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
 }
 
 void ExternalMagneticField::AddAxisCurrentFieldSimple(
-    const std::span<const double> rAxis, const std::span<const double> zAxis,
-    double netToroidalCurrent) {
+    const std::span<const real_t> rAxis, const std::span<const real_t> zAxis,
+    real_t netToroidalCurrent) {
   // copy over axis geometry in first module
   // and convert to Cartesian coordinates
   for (int k = 0; k < s_.nZeta; ++k) {
@@ -209,44 +222,44 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
   // 1.0e-7 == mu0/4 pi
   // NOTE: The factor of 2 comes from the Hanson-Hirshman Biot-Savart formula,
   // which is Eqn. (8) in Hanson & Hirshman (2002) [Physics of Plasmas 9, 4410].
-  const double magnetic_field_scale = 1.0e-7 * netToroidalCurrent * 2.0;
+  const real_t magnetic_field_scale = 1.0e-7 * netToroidalCurrent * 2.0;
 
   for (int source_index = 0; source_index < s_.nZeta * s_.nfp; ++source_index) {
-    const double segment_dx =
+    const real_t segment_dx =
         axisXYZ[(source_index + 1) * 3 + 0] - axisXYZ[source_index * 3 + 0];
-    const double segment_dy =
+    const real_t segment_dy =
         axisXYZ[(source_index + 1) * 3 + 1] - axisXYZ[source_index * 3 + 1];
-    const double segment_dz =
+    const real_t segment_dz =
         axisXYZ[(source_index + 1) * 3 + 2] - axisXYZ[source_index * 3 + 2];
 
-    const double segment_length =
+    const real_t segment_length =
         std::sqrt(segment_dx * segment_dx + segment_dy * segment_dy +
                   segment_dz * segment_dz);
 
     for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
       const int kl_local = kl - tp_.ztMin;
 
-      const double r_i_x =
+      const real_t r_i_x =
           surfaceXYZ[kl_local * 3 + 0] - axisXYZ[source_index * 3 + 0];
-      const double r_i_y =
+      const real_t r_i_y =
           surfaceXYZ[kl_local * 3 + 1] - axisXYZ[source_index * 3 + 1];
-      const double r_i_z =
+      const real_t r_i_z =
           surfaceXYZ[kl_local * 3 + 2] - axisXYZ[source_index * 3 + 2];
-      const double r_i =
+      const real_t r_i =
           std::sqrt(r_i_x * r_i_x + r_i_y * r_i_y + r_i_z * r_i_z);
 
-      const double r_f_x =
+      const real_t r_f_x =
           surfaceXYZ[kl_local * 3 + 0] - axisXYZ[(source_index + 1) * 3 + 0];
-      const double r_f_y =
+      const real_t r_f_y =
           surfaceXYZ[kl_local * 3 + 1] - axisXYZ[(source_index + 1) * 3 + 1];
-      const double r_f_z =
+      const real_t r_f_z =
           surfaceXYZ[kl_local * 3 + 2] - axisXYZ[(source_index + 1) * 3 + 2];
-      const double r_f =
+      const real_t r_f =
           std::sqrt(r_f_x * r_f_x + r_f_y * r_f_y + r_f_z * r_f_z);
 
-      const double r_i_plus_r_f = r_i + r_f;
+      const real_t r_i_plus_r_f = r_i + r_f;
 
-      const double magnetic_field_magnitude =
+      const real_t magnetic_field_magnitude =
           magnetic_field_scale * r_i_plus_r_f /
           (r_i * r_f *
            (r_i_plus_r_f * r_i_plus_r_f - segment_length * segment_length));
@@ -270,12 +283,12 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
     int k = kl % s_.nZeta;
 
-    double _bX = bCoilsXYZ[3 * (kl - tp_.ztMin) + 0];
-    double _bY = bCoilsXYZ[3 * (kl - tp_.ztMin) + 1];
-    double _bZ = bCoilsXYZ[3 * (kl - tp_.ztMin) + 2];
+    real_t _bX = bCoilsXYZ[3 * (kl - tp_.ztMin) + 0];
+    real_t _bY = bCoilsXYZ[3 * (kl - tp_.ztMin) + 1];
+    real_t _bZ = bCoilsXYZ[3 * (kl - tp_.ztMin) + 2];
 
-    double _bR = sg_.cos_phi[k] * _bX + sg_.sin_phi[k] * _bY;
-    double _bP = sg_.cos_phi[k] * _bY - sg_.sin_phi[k] * _bX;
+    real_t _bR = sg_.cos_phi[k] * _bX + sg_.sin_phi[k] * _bY;
+    real_t _bP = sg_.cos_phi[k] * _bY - sg_.sin_phi[k] * _bX;
 
     curtorBr[kl - tp_.ztMin] = _bR;
     curtorBp[kl - tp_.ztMin] = _bP;
@@ -289,9 +302,9 @@ void ExternalMagneticField::covariantAndNormalComponents() {
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
     // add contributions together
     // --> helps in debugging to have them separate until here
-    double fullBr = interpBr[kl - tp_.ztMin] + curtorBr[kl - tp_.ztMin];
-    double fullBp = interpBp[kl - tp_.ztMin] + curtorBp[kl - tp_.ztMin];
-    double fullBz = interpBz[kl - tp_.ztMin] + curtorBz[kl - tp_.ztMin];
+    real_t fullBr = interpBr[kl - tp_.ztMin] + curtorBr[kl - tp_.ztMin];
+    real_t fullBp = interpBp[kl - tp_.ztMin] + curtorBp[kl - tp_.ztMin];
+    real_t fullBz = interpBz[kl - tp_.ztMin] + curtorBz[kl - tp_.ztMin];
 
     // covariant components
     bSubU[kl - tp_.ztMin] =

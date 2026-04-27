@@ -21,29 +21,29 @@ class ExternalMagneticField {
   ExternalMagneticField(const Sizes* s, const TangentialPartitioning* tp,
                         const SurfaceGeometry* sg, const MGridProvider* mgrid);
 
-  void update(const std::span<const double> rAxis,
-              const std::span<const double> zAxis, double netToroidalCurrent);
+  void update(const std::span<const real_t> rAxis,
+              const std::span<const real_t> zAxis, real_t netToroidalCurrent);
 
   // axis geometry around whole machine
-  std::vector<double> axisXYZ;
-  std::vector<double> surfaceXYZ;
-  std::vector<double> bCoilsXYZ;
+  std::vector<real_t> axisXYZ;
+  std::vector<real_t> surfaceXYZ;
+  std::vector<real_t> bCoilsXYZ;
 
   // interpolated magnetic field from mgrid
-  std::vector<double> interpBr;
-  std::vector<double> interpBp;
-  std::vector<double> interpBz;
+  std::vector<real_t> interpBr;
+  std::vector<real_t> interpBp;
+  std::vector<real_t> interpBz;
 
   // interpolated magnetic field from mgrid
-  double axis_current;
-  std::vector<double> curtorBr;
-  std::vector<double> curtorBp;
-  std::vector<double> curtorBz;
+  real_t axis_current;
+  std::vector<real_t> curtorBr;
+  std::vector<real_t> curtorBp;
+  std::vector<real_t> curtorBz;
 
   // outputs to Nestor
-  std::vector<double> bSubU;
-  std::vector<double> bSubV;
-  std::vector<double> bDotN;
+  std::vector<real_t> bSubU;
+  std::vector<real_t> bSubV;
+  std::vector<real_t> bDotN;
 
  private:
   // We /can/ use ABSCAB to compute the magnetic field due to the axis current,
@@ -72,16 +72,16 @@ class ExternalMagneticField {
   // Compute the contribution to the external magnetic field from net toroidal
   // current along magnetic axis. Here, the contribution is computed using
   // ABSCAB.
-  void AddAxisCurrentFieldAbscab(const std::span<const double> rAxis,
-                                 const std::span<const double> zAxis,
-                                 double netToroidalCurrent);
+  void AddAxisCurrentFieldAbscab(const std::span<const real_t> rAxis,
+                                 const std::span<const real_t> zAxis,
+                                 real_t netToroidalCurrent);
 
   // Compute the contribution to the external magnetic field from net toroidal
   // current along magnetic axis. Here, this contribution is computed using a
   // straightforward implementation of the Hanson-Hirshman 2002 paper.
-  void AddAxisCurrentFieldSimple(const std::span<const double> rAxis,
-                                 const std::span<const double> zAxis,
-                                 double netToroidalCurrent);
+  void AddAxisCurrentFieldSimple(const std::span<const real_t> rAxis,
+                                 const std::span<const real_t> zAxis,
+                                 real_t netToroidalCurrent);
 
   void covariantAndNormalComponents();
 };

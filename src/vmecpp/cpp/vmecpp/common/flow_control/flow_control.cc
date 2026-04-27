@@ -40,7 +40,7 @@ int get_max_threads(std::optional<int> max_threads) {
   return max_threads.value();
 }
 
-FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
+FlowControl::FlowControl(bool lfreeb, real_t delt, int num_grids,
                          std::optional<int> max_threads)
     : lfreeb(lfreeb), max_threads_(get_max_threads(max_threads)) {
   fsq = 1.0;

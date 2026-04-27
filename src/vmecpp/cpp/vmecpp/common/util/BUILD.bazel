@@ -4,7 +4,7 @@
 cc_library(
     name = "util",
     srcs = ["util.cc"],
-    hdrs = ["util.h"],
+    hdrs = ["util.h", "real_type.h"],
     visibility = ["//visibility:public"],
     deps = [
         "@abseil-cpp//absl/log:check",

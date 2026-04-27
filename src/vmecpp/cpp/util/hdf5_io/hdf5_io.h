@@ -131,6 +131,65 @@ extern template void ReadH5Dataset(int& v, const std::string& dataset,
 extern template void ReadH5Dataset(bool& v, const std::string& dataset,
                                    H5::H5File& file);
 
+// Overloads for long double / real_t scalars and Eigen containers.
+// HDF5 storage stays as double (the file format); conversion happens here.
+inline void WriteH5Dataset(long double v, const std::string& name,
+                           H5::H5File& file) {
+  WriteH5Dataset(static_cast<double>(v), name, file);
+}
+
+inline void ReadH5Dataset(long double& v, const std::string& dataset,
+                          H5::H5File& file) {
+  double tmp = 0.0;
+  ReadH5Dataset(tmp, dataset, file);
+  v = static_cast<long double>(tmp);
+}
+
+using RowMatrixXld =
+    Eigen::Matrix<long double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
+inline void WriteH5Dataset(const RowMatrixXld& m, const std::string& name,
+                           H5::H5File& file) {
+  RowMatrixXd tmp = m.cast<double>();
+  WriteH5Dataset(tmp, name, file);
+}
+
+inline void ReadH5Dataset(RowMatrixXld& m, const std::string& dataset,
+                          H5::H5File& file) {
+  RowMatrixXd tmp;
+  ReadH5Dataset(tmp, dataset, file);
+  m = tmp.cast<long double>();
+}
+
+// Eigen column vector of long double
+inline void WriteH5Dataset(
+    const Eigen::Matrix<long double, Eigen::Dynamic, 1>& v,
+    const std::string& name, H5::H5File& file) {
+  Eigen::VectorXd tmp = v.cast<double>();
+  WriteH5Dataset(tmp, name, file);
+}
+
+inline void ReadH5Dataset(Eigen::Matrix<long double, Eigen::Dynamic, 1>& v,
+                          const std::string& dataset, H5::H5File& file) {
+  Eigen::VectorXd tmp;
+  ReadH5Dataset(tmp, dataset, file);
+  v = tmp.cast<long double>();
+}
+
+// std::vector<long double>
+inline void WriteH5Dataset(const std::vector<long double>& v,
+                           const std::string& name, H5::H5File& file) {
+  std::vector<double> tmp(v.begin(), v.end());
+  WriteH5Dataset(tmp, name, file);
+}
+
+inline void ReadH5Dataset(std::vector<long double>& v,
+                          const std::string& dataset, H5::H5File& file) {
+  std::vector<double> tmp;
+  ReadH5Dataset(tmp, dataset, file);
+  v.assign(tmp.begin(), tmp.end());
+}
+
 // Determine the rank of a given HDF5 dataset,
 // i.e., the number of array dimensions
 int GetRank(const H5::DataSet& dataset);

@@ -14,49 +14,49 @@ namespace vmecpp {
 // TODO(eguiraud): use this struct as a data member in IdealMHDModel (with
 // vectors instead of spans).
 struct RealSpaceForces {
-  std::span<const double> armn_e;
-  std::span<const double> armn_o;
-  std::span<const double> azmn_e;
-  std::span<const double> azmn_o;
-  std::span<const double> blmn_e;
-  std::span<const double> blmn_o;
-  std::span<const double> brmn_e;
-  std::span<const double> brmn_o;
-  std::span<const double> bzmn_e;
-  std::span<const double> bzmn_o;
-  std::span<const double> clmn_e;
-  std::span<const double> clmn_o;
-  std::span<const double> crmn_e;
-  std::span<const double> crmn_o;
-  std::span<const double> czmn_e;
-  std::span<const double> czmn_o;
-  std::span<const double> frcon_e;
-  std::span<const double> frcon_o;
-  std::span<const double> fzcon_e;
-  std::span<const double> fzcon_o;
+  std::span<const real_t> armn_e;
+  std::span<const real_t> armn_o;
+  std::span<const real_t> azmn_e;
+  std::span<const real_t> azmn_o;
+  std::span<const real_t> blmn_e;
+  std::span<const real_t> blmn_o;
+  std::span<const real_t> brmn_e;
+  std::span<const real_t> brmn_o;
+  std::span<const real_t> bzmn_e;
+  std::span<const real_t> bzmn_o;
+  std::span<const real_t> clmn_e;
+  std::span<const real_t> clmn_o;
+  std::span<const real_t> crmn_e;
+  std::span<const real_t> crmn_o;
+  std::span<const real_t> czmn_e;
+  std::span<const real_t> czmn_o;
+  std::span<const real_t> frcon_e;
+  std::span<const real_t> frcon_o;
+  std::span<const real_t> fzcon_e;
+  std::span<const real_t> fzcon_o;
 };
 
 // A bundle of views over (non-const) data required by the "FourierToReal"
 // calculations
 struct RealSpaceGeometry {
-  std::span<double> r1_e;
-  std::span<double> r1_o;
-  std::span<double> ru_e;
-  std::span<double> ru_o;
-  std::span<double> rv_e;
-  std::span<double> rv_o;
-  std::span<double> z1_e;
-  std::span<double> z1_o;
-  std::span<double> zu_e;
-  std::span<double> zu_o;
-  std::span<double> zv_e;
-  std::span<double> zv_o;
-  std::span<double> lu_e;
-  std::span<double> lu_o;
-  std::span<double> lv_e;
-  std::span<double> lv_o;
-  std::span<double> rCon;
-  std::span<double> zCon;
+  std::span<real_t> r1_e;
+  std::span<real_t> r1_o;
+  std::span<real_t> ru_e;
+  std::span<real_t> ru_o;
+  std::span<real_t> rv_e;
+  std::span<real_t> rv_o;
+  std::span<real_t> z1_e;
+  std::span<real_t> z1_o;
+  std::span<real_t> zu_e;
+  std::span<real_t> zu_o;
+  std::span<real_t> zv_e;
+  std::span<real_t> zv_o;
+  std::span<real_t> lu_e;
+  std::span<real_t> lu_o;
+  std::span<real_t> lv_e;
+  std::span<real_t> lv_o;
+  std::span<real_t> rCon;
+  std::span<real_t> zCon;
 };
 
 }  // namespace vmecpp

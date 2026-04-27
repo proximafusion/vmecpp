@@ -31,30 +31,130 @@ using vmecpp::VmecINDATA;
 
 namespace {
 
-// Add a property that gets/sets an Eigen data members to a Pybind11 wrapper.
-// Simply using e.g. def_readwrite("mat", &WOutFileContents::mat) does
-// not work because, under the hood, def_readwrite casts the data member to
-// const before returning it from the getter (so the "write" part of
-// "readwrite" refers to the data member itself, but not its contents). The
-// getter function added here instead allows modification of the matrix or
-// vector elements themselves.
+// Add a property that gets/sets an Eigen data member to a Pybind11 wrapper,
+// converting between the internal real_t (long double) storage and Python's
+// float64 (double) numpy arrays at the I/O boundary.
 //
-// Use as: def_eigen_property(pywrapperclass, "rmnc", &WOutFileContents::rmnc);
+// For VmecINDATA members that are already double (RowMatrixXd / VectorXd),
+// the getter returns a non-const reference so Python can mutate elements.
+//
+// For output struct members that use RowMatrixXr / Eigen::Matrix<real_t,...>,
+// the getter copies and casts to double for Python; the setter casts back.
+//
+// Use as: DefEigenProperty(pywrapperclass, "rmnc", &WOutFileContents::rmnc);
 template <typename PywrapperClass, typename EigenMatrix, typename Class>
 void DefEigenProperty(PywrapperClass &pywrapper, const std::string &name,
                       EigenMatrix Class::*member_ptr) {
-  static_assert(std::is_same_v<EigenMatrix, vmecpp::RowMatrixXd> ||
+  static_assert(
+      std::is_same_v<EigenMatrix, vmecpp::RowMatrixXd> ||
+      std::is_same_v<EigenMatrix, Eigen::VectorXd> ||
+      std::is_same_v<EigenMatrix, Eigen::VectorXi> ||
+      std::is_same_v<EigenMatrix, vmecpp::RowMatrixXr> ||
+      std::is_same_v<EigenMatrix,
+                     Eigen::Matrix<vmecpp::real_t, Eigen::Dynamic, 1>>);
+
+  if constexpr (std::is_same_v<EigenMatrix, vmecpp::RowMatrixXd> ||
                 std::is_same_v<EigenMatrix, Eigen::VectorXd> ||
-                std::is_same_v<EigenMatrix, Eigen::VectorXi>);
-  // similar to what pybind11's def_readwrite does, but returning a non-const
-  // value from the getter
-  auto getter = [member_ptr](Class &obj) -> EigenMatrix & {
-    return obj.*member_ptr;
-  };
-  auto setter = [member_ptr](Class &obj, const EigenMatrix &val) {
-    obj.*member_ptr = val;
-  };
-  pywrapper.def_property(name.c_str(), getter, setter);
+                std::is_same_v<EigenMatrix, Eigen::VectorXi>) {
+    // double storage: return mutable reference so Python can modify elements
+    auto getter = [member_ptr](Class &obj) -> EigenMatrix & {
+      return obj.*member_ptr;
+    };
+    auto setter = [member_ptr](Class &obj, const EigenMatrix &val) {
+      obj.*member_ptr = val;
+    };
+    pywrapper.def_property(name.c_str(), getter, setter);
+  } else if constexpr (std::is_same_v<
+                           EigenMatrix,
+                           Eigen::Matrix<vmecpp::real_t, Eigen::Dynamic, 1>>) {
+    // real_t column vector: cast to double and expose as 1-D numpy array
+    auto getter = [member_ptr](const Class &obj) -> Eigen::VectorXd {
+      return (obj.*member_ptr).template cast<double>();
+    };
+    auto setter = [member_ptr](Class &obj, const Eigen::VectorXd &val) {
+      obj.*member_ptr = val.cast<vmecpp::real_t>();
+    };
+    pywrapper.def_property(name.c_str(), getter, setter);
+  } else {
+    // real_t row-major matrix: cast to double row-major matrix
+    auto getter = [member_ptr](const Class &obj) -> vmecpp::RowMatrixXd {
+      return (obj.*member_ptr).template cast<double>();
+    };
+    auto setter = [member_ptr](Class &obj, const vmecpp::RowMatrixXd &val) {
+      obj.*member_ptr = val.cast<vmecpp::real_t>();
+    };
+    pywrapper.def_property(name.c_str(), getter, setter);
+  }
+}
+
+// Add a readonly property for an Eigen real_t member, returning a double copy.
+// Use instead of def_readonly for RowMatrixXr / Eigen::Matrix<real_t,...>
+// members since pybind11 has no built-in caster for long double.
+template <typename PywrapperClass, typename EigenMatrix, typename Class>
+void DefEigenReadonly(PywrapperClass &pywrapper, const std::string &name,
+                      EigenMatrix Class::*member_ptr) {
+  if constexpr (std::is_same_v<EigenMatrix, Eigen::Matrix<vmecpp::real_t,
+                                                          Eigen::Dynamic, 1>>) {
+    pywrapper.def_property_readonly(
+        name.c_str(), [member_ptr](const Class &obj) -> Eigen::VectorXd {
+          return (obj.*member_ptr).template cast<double>();
+        });
+  } else {
+    pywrapper.def_property_readonly(
+        name.c_str(), [member_ptr](const Class &obj) -> vmecpp::RowMatrixXd {
+          return (obj.*member_ptr).template cast<double>();
+        });
+  }
+}
+
+// Add a readonly property for a real_t scalar member, returning a double.
+template <typename PywrapperClass, typename Class>
+void DefRealReadonly(PywrapperClass &pywrapper, const std::string &name,
+                     vmecpp::real_t Class::*member_ptr) {
+  pywrapper.def_property_readonly(name.c_str(),
+                                  [member_ptr](const Class &obj) -> double {
+                                    return static_cast<double>(obj.*member_ptr);
+                                  });
+}
+
+// Add a property that gets/sets a real_t scalar member as a Python float
+// (double). Needed because pybind11 has no built-in caster for long double.
+template <typename PywrapperClass, typename Class>
+void DefRealProperty(PywrapperClass &pywrapper, const std::string &name,
+                     vmecpp::real_t Class::*member_ptr) {
+  pywrapper.def_property(
+      name.c_str(),
+      [member_ptr](const Class &obj) -> double {
+        return static_cast<double>(obj.*member_ptr);
+      },
+      [member_ptr](Class &obj, double val) {
+        obj.*member_ptr = static_cast<vmecpp::real_t>(val);
+      });
+}
+
+// Add a property that gets/sets a std::vector<real_t> member as a Python list
+// of floats (doubles).
+template <typename PywrapperClass, typename Class>
+void DefRealVecProperty(PywrapperClass &pywrapper, const std::string &name,
+                        std::vector<vmecpp::real_t> Class::*member_ptr) {
+  pywrapper.def_property(
+      name.c_str(),
+      [member_ptr](const Class &obj) -> std::vector<double> {
+        const auto &v = obj.*member_ptr;
+        std::vector<double> out;
+        out.reserve(v.size());
+        for (auto x : v) {
+          out.push_back(static_cast<double>(x));
+        }
+        return out;
+      },
+      [member_ptr](Class &obj, const std::vector<double> &val) {
+        auto &v = obj.*member_ptr;
+        v.resize(val.size());
+        for (std::size_t i = 0; i < val.size(); ++i) {
+          v[i] = static_cast<vmecpp::real_t>(val[i]);
+        }
+      });
 }
 
 template <typename T>
@@ -218,403 +318,337 @@ PYBIND11_MODULE(_vmecpp, m) {
 
   py::class_<vmecpp::VmecCheckpoint>(m, "VmecCheckpoint");
 
-  py::class_<vmecpp::JxBOutFileContents>(m, "JxBOutFileContents")
-      .def_readonly("itheta", &vmecpp::JxBOutFileContents::itheta)
-      .def_readonly("izeta", &vmecpp::JxBOutFileContents::izeta)
-      .def_readonly("bdotk", &vmecpp::JxBOutFileContents::bdotk)
-      //
-      .def_readonly("amaxfor", &vmecpp::JxBOutFileContents::amaxfor)
-      .def_readonly("aminfor", &vmecpp::JxBOutFileContents::aminfor)
-      .def_readonly("avforce", &vmecpp::JxBOutFileContents::avforce)
-      .def_readonly("pprim", &vmecpp::JxBOutFileContents::pprim)
-      .def_readonly("jdotb", &vmecpp::JxBOutFileContents::jdotb)
-      .def_readonly("bdotb", &vmecpp::JxBOutFileContents::bdotb)
-      .def_readonly("bdotgradv", &vmecpp::JxBOutFileContents::bdotgradv)
-      .def_readonly("jpar2", &vmecpp::JxBOutFileContents::jpar2)
-      .def_readonly("jperp2", &vmecpp::JxBOutFileContents::jperp2)
-      .def_readonly("phin", &vmecpp::JxBOutFileContents::phin)
-      //
-      .def_readonly("jsupu3", &vmecpp::JxBOutFileContents::jsupu3)
-      .def_readonly("jsupv3", &vmecpp::JxBOutFileContents::jsupv3)
-      .def_readonly("jsups3", &vmecpp::JxBOutFileContents::jsups3)
-      .def_readonly("bsupu3", &vmecpp::JxBOutFileContents::bsupu3)
-      .def_readonly("bsupv3", &vmecpp::JxBOutFileContents::bsupv3)
-      .def_readonly("jcrossb", &vmecpp::JxBOutFileContents::jcrossb)
-      .def_readonly("jxb_gradp", &vmecpp::JxBOutFileContents::jxb_gradp)
-      .def_readonly("jdotb_sqrtg", &vmecpp::JxBOutFileContents::jdotb_sqrtg)
-      .def_readonly("sqrtg3", &vmecpp::JxBOutFileContents::sqrtg3)
-      .def_readonly("bsubu3", &vmecpp::JxBOutFileContents::bsubu3)
-      .def_readonly("bsubv3", &vmecpp::JxBOutFileContents::bsubv3)
-      .def_readonly("bsubs3", &vmecpp::JxBOutFileContents::bsubs3);
+  {
+    auto c = py::class_<vmecpp::JxBOutFileContents>(m, "JxBOutFileContents");
+    DefEigenReadonly(c, "itheta", &vmecpp::JxBOutFileContents::itheta);
+    DefEigenReadonly(c, "izeta", &vmecpp::JxBOutFileContents::izeta);
+    DefEigenReadonly(c, "bdotk", &vmecpp::JxBOutFileContents::bdotk);
+    DefEigenReadonly(c, "amaxfor", &vmecpp::JxBOutFileContents::amaxfor);
+    DefEigenReadonly(c, "aminfor", &vmecpp::JxBOutFileContents::aminfor);
+    DefEigenReadonly(c, "avforce", &vmecpp::JxBOutFileContents::avforce);
+    DefEigenReadonly(c, "pprim", &vmecpp::JxBOutFileContents::pprim);
+    DefEigenReadonly(c, "jdotb", &vmecpp::JxBOutFileContents::jdotb);
+    DefEigenReadonly(c, "bdotb", &vmecpp::JxBOutFileContents::bdotb);
+    DefEigenReadonly(c, "bdotgradv", &vmecpp::JxBOutFileContents::bdotgradv);
+    DefEigenReadonly(c, "jpar2", &vmecpp::JxBOutFileContents::jpar2);
+    DefEigenReadonly(c, "jperp2", &vmecpp::JxBOutFileContents::jperp2);
+    DefEigenReadonly(c, "phin", &vmecpp::JxBOutFileContents::phin);
+    DefEigenReadonly(c, "jsupu3", &vmecpp::JxBOutFileContents::jsupu3);
+    DefEigenReadonly(c, "jsupv3", &vmecpp::JxBOutFileContents::jsupv3);
+    DefEigenReadonly(c, "jsups3", &vmecpp::JxBOutFileContents::jsups3);
+    DefEigenReadonly(c, "bsupu3", &vmecpp::JxBOutFileContents::bsupu3);
+    DefEigenReadonly(c, "bsupv3", &vmecpp::JxBOutFileContents::bsupv3);
+    DefEigenReadonly(c, "jcrossb", &vmecpp::JxBOutFileContents::jcrossb);
+    DefEigenReadonly(c, "jxb_gradp", &vmecpp::JxBOutFileContents::jxb_gradp);
+    DefEigenReadonly(c, "jdotb_sqrtg",
+                     &vmecpp::JxBOutFileContents::jdotb_sqrtg);
+    DefEigenReadonly(c, "sqrtg3", &vmecpp::JxBOutFileContents::sqrtg3);
+    DefEigenReadonly(c, "bsubu3", &vmecpp::JxBOutFileContents::bsubu3);
+    DefEigenReadonly(c, "bsubv3", &vmecpp::JxBOutFileContents::bsubv3);
+    DefEigenReadonly(c, "bsubs3", &vmecpp::JxBOutFileContents::bsubs3);
+  }
 
-  py::class_<vmecpp::MercierFileContents>(m, "MercierFileContents")
-      .def_readonly("s", &vmecpp::MercierFileContents::s)
-      //
-      .def_readonly("toroidal_flux",
-                    &vmecpp::MercierFileContents::toroidal_flux)
-      .def_readonly("iota", &vmecpp::MercierFileContents::iota)
-      .def_readonly("shear", &vmecpp::MercierFileContents::shear)
-      .def_readonly("d_volume_d_s", &vmecpp::MercierFileContents::d_volume_d_s)
-      .def_readonly("well", &vmecpp::MercierFileContents::well)
-      .def_readonly("toroidal_current",
-                    &vmecpp::MercierFileContents::toroidal_current)
-      .def_readonly("d_toroidal_current_d_s",
-                    &vmecpp::MercierFileContents::d_toroidal_current_d_s)
-      .def_readonly("pressure", &vmecpp::MercierFileContents::pressure)
-      .def_readonly("d_pressure_d_s",
-                    &vmecpp::MercierFileContents::d_pressure_d_s)
-      //
-      .def_readonly("DMerc", &vmecpp::MercierFileContents::DMerc)
-      .def_readonly("Dshear", &vmecpp::MercierFileContents::Dshear)
-      .def_readonly("Dwell", &vmecpp::MercierFileContents::Dwell)
-      .def_readonly("Dcurr", &vmecpp::MercierFileContents::Dcurr)
-      .def_readonly("Dgeod", &vmecpp::MercierFileContents::Dgeod);
+  {
+    auto c = py::class_<vmecpp::MercierFileContents>(m, "MercierFileContents");
+    DefEigenReadonly(c, "s", &vmecpp::MercierFileContents::s);
+    DefEigenReadonly(c, "toroidal_flux",
+                     &vmecpp::MercierFileContents::toroidal_flux);
+    DefEigenReadonly(c, "iota", &vmecpp::MercierFileContents::iota);
+    DefEigenReadonly(c, "shear", &vmecpp::MercierFileContents::shear);
+    DefEigenReadonly(c, "d_volume_d_s",
+                     &vmecpp::MercierFileContents::d_volume_d_s);
+    DefEigenReadonly(c, "well", &vmecpp::MercierFileContents::well);
+    DefEigenReadonly(c, "toroidal_current",
+                     &vmecpp::MercierFileContents::toroidal_current);
+    DefEigenReadonly(c, "d_toroidal_current_d_s",
+                     &vmecpp::MercierFileContents::d_toroidal_current_d_s);
+    DefEigenReadonly(c, "pressure", &vmecpp::MercierFileContents::pressure);
+    DefEigenReadonly(c, "d_pressure_d_s",
+                     &vmecpp::MercierFileContents::d_pressure_d_s);
+    DefEigenReadonly(c, "DMerc", &vmecpp::MercierFileContents::DMerc);
+    DefEigenReadonly(c, "Dshear", &vmecpp::MercierFileContents::Dshear);
+    DefEigenReadonly(c, "Dwell", &vmecpp::MercierFileContents::Dwell);
+    DefEigenReadonly(c, "Dcurr", &vmecpp::MercierFileContents::Dcurr);
+    DefEigenReadonly(c, "Dgeod", &vmecpp::MercierFileContents::Dgeod);
+  }
 
-  py::class_<vmecpp::Threed1FirstTable>(m, "Threed1FirstTable")
-      .def_readonly("s", &vmecpp::Threed1FirstTable::s)
-      .def_readonly("radial_force", &vmecpp::Threed1FirstTable::radial_force)
-      .def_readonly("toroidal_flux", &vmecpp::Threed1FirstTable::toroidal_flux)
-      .def_readonly("iota", &vmecpp::Threed1FirstTable::iota)
-      .def_readonly("avg_jsupu", &vmecpp::Threed1FirstTable::avg_jsupu)
-      .def_readonly("avg_jsupv", &vmecpp::Threed1FirstTable::avg_jsupv)
-      .def_readonly("d_volume_d_phi",
-                    &vmecpp::Threed1FirstTable::d_volume_d_phi)
-      .def_readonly("d_pressure_d_phi",
-                    &vmecpp::Threed1FirstTable::d_pressure_d_phi)
-      .def_readonly("spectral_width",
-                    &vmecpp::Threed1FirstTable::spectral_width)
-      .def_readonly("pressure", &vmecpp::Threed1FirstTable::pressure)
-      .def_readonly("buco_full", &vmecpp::Threed1FirstTable::buco_full)
-      .def_readonly("bvco_full", &vmecpp::Threed1FirstTable::bvco_full)
-      .def_readonly("j_dot_b", &vmecpp::Threed1FirstTable::j_dot_b)
-      .def_readonly("b_dot_b", &vmecpp::Threed1FirstTable::b_dot_b);
+  {
+    auto c = py::class_<vmecpp::Threed1FirstTable>(m, "Threed1FirstTable");
+    DefEigenReadonly(c, "s", &vmecpp::Threed1FirstTable::s);
+    DefEigenReadonly(c, "radial_force",
+                     &vmecpp::Threed1FirstTable::radial_force);
+    DefEigenReadonly(c, "toroidal_flux",
+                     &vmecpp::Threed1FirstTable::toroidal_flux);
+    DefEigenReadonly(c, "iota", &vmecpp::Threed1FirstTable::iota);
+    DefEigenReadonly(c, "avg_jsupu", &vmecpp::Threed1FirstTable::avg_jsupu);
+    DefEigenReadonly(c, "avg_jsupv", &vmecpp::Threed1FirstTable::avg_jsupv);
+    DefEigenReadonly(c, "d_volume_d_phi",
+                     &vmecpp::Threed1FirstTable::d_volume_d_phi);
+    DefEigenReadonly(c, "d_pressure_d_phi",
+                     &vmecpp::Threed1FirstTable::d_pressure_d_phi);
+    DefEigenReadonly(c, "spectral_width",
+                     &vmecpp::Threed1FirstTable::spectral_width);
+    DefEigenReadonly(c, "pressure", &vmecpp::Threed1FirstTable::pressure);
+    DefEigenReadonly(c, "buco_full", &vmecpp::Threed1FirstTable::buco_full);
+    DefEigenReadonly(c, "bvco_full", &vmecpp::Threed1FirstTable::bvco_full);
+    DefEigenReadonly(c, "j_dot_b", &vmecpp::Threed1FirstTable::j_dot_b);
+    DefEigenReadonly(c, "b_dot_b", &vmecpp::Threed1FirstTable::b_dot_b);
+  }
 
-  py::class_<vmecpp::Threed1GeometricAndMagneticQuantities>(
-      m, "Threed1GeometricAndMagneticQuantities")
-      .def_readonly(
-          "toroidal_flux",
-          &vmecpp::Threed1GeometricAndMagneticQuantities::toroidal_flux)
-      //
-      .def_readonly("circum_p",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::circum_p)
-      .def_readonly("surf_area_p",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::surf_area_p)
-      //
-      .def_readonly(
-          "cross_area_p",
-          &vmecpp::Threed1GeometricAndMagneticQuantities::cross_area_p)
-      .def_readonly("volume_p",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::volume_p)
-      //
-      .def_readonly("Rmajor_p",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::Rmajor_p)
-      .def_readonly("Aminor_p",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::Aminor_p)
-      .def_readonly("aspect",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::aspect)
-      //
-      .def_readonly("kappa_p",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::kappa_p)
-      .def_readonly("rcen",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::rcen)
-      //
-      .def_readonly("aminr1",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::aminr1)
-      //
-      .def_readonly("pavg",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::pavg)
-      .def_readonly("factor",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::factor)
-      //
-      .def_readonly("b0", &vmecpp::Threed1GeometricAndMagneticQuantities::b0)
-      //
-      .def_readonly("rmax_surf",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::rmax_surf)
-      .def_readonly("rmin_surf",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::rmin_surf)
-      .def_readonly("zmax_surf",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::zmax_surf)
-      //
-      .def_readonly("bmin",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::bmin)
-      .def_readonly("bmax",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::bmax)
-      //
-      .def_readonly("waist",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::waist)
-      .def_readonly("height",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::height)
-      //
-      .def_readonly("betapol",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::betapol)
-      .def_readonly("betatot",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::betatot)
-      .def_readonly("betator",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::betator)
-      .def_readonly("VolAvgB",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::VolAvgB)
-      .def_readonly("IonLarmor",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::IonLarmor)
-      //
-      .def_readonly("jpar_perp",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::jpar_perp)
-      .def_readonly("jparPS_perp",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::jparPS_perp)
-      //
-      .def_readonly(
-          "toroidal_current",
-          &vmecpp::Threed1GeometricAndMagneticQuantities::toroidal_current)
-      //
-      .def_readonly("rbtor",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::rbtor)
-      .def_readonly("rbtor0",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::rbtor0)
-      //
-      .def_readonly("psi", &vmecpp::Threed1GeometricAndMagneticQuantities::psi)
-      .def_readonly("ygeo",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::ygeo)
-      .def_readonly("yinden",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::yinden)
-      .def_readonly("yellip",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::yellip)
-      .def_readonly("ytrian",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::ytrian)
-      .def_readonly("yshift",
-                    &vmecpp::Threed1GeometricAndMagneticQuantities::yshift)
-      //
-      .def_readonly(
-          "loc_jpar_perp",
-          &vmecpp::Threed1GeometricAndMagneticQuantities::loc_jpar_perp)
-      .def_readonly(
-          "loc_jparPS_perp",
-          &vmecpp::Threed1GeometricAndMagneticQuantities::loc_jparPS_perp);
+  {
+    using T = vmecpp::Threed1GeometricAndMagneticQuantities;
+    auto c = py::class_<T>(m, "Threed1GeometricAndMagneticQuantities");
+    DefRealReadonly(c, "toroidal_flux", &T::toroidal_flux);
+    DefRealReadonly(c, "circum_p", &T::circum_p);
+    DefRealReadonly(c, "surf_area_p", &T::surf_area_p);
+    DefRealReadonly(c, "cross_area_p", &T::cross_area_p);
+    DefRealReadonly(c, "volume_p", &T::volume_p);
+    DefRealReadonly(c, "Rmajor_p", &T::Rmajor_p);
+    DefRealReadonly(c, "Aminor_p", &T::Aminor_p);
+    DefRealReadonly(c, "aspect", &T::aspect);
+    DefRealReadonly(c, "kappa_p", &T::kappa_p);
+    DefRealReadonly(c, "rcen", &T::rcen);
+    DefRealReadonly(c, "aminr1", &T::aminr1);
+    DefRealReadonly(c, "pavg", &T::pavg);
+    DefRealReadonly(c, "factor", &T::factor);
+    DefRealReadonly(c, "b0", &T::b0);
+    DefRealReadonly(c, "rmax_surf", &T::rmax_surf);
+    DefRealReadonly(c, "rmin_surf", &T::rmin_surf);
+    DefRealReadonly(c, "zmax_surf", &T::zmax_surf);
+    DefEigenReadonly(c, "bmin", &T::bmin);
+    DefEigenReadonly(c, "bmax", &T::bmax);
+    DefEigenReadonly(c, "waist", &T::waist);
+    DefEigenReadonly(c, "height", &T::height);
+    DefRealReadonly(c, "betapol", &T::betapol);
+    DefRealReadonly(c, "betatot", &T::betatot);
+    DefRealReadonly(c, "betator", &T::betator);
+    DefRealReadonly(c, "VolAvgB", &T::VolAvgB);
+    DefRealReadonly(c, "IonLarmor", &T::IonLarmor);
+    DefRealReadonly(c, "jpar_perp", &T::jpar_perp);
+    DefRealReadonly(c, "jparPS_perp", &T::jparPS_perp);
+    DefRealReadonly(c, "toroidal_current", &T::toroidal_current);
+    DefRealReadonly(c, "rbtor", &T::rbtor);
+    DefRealReadonly(c, "rbtor0", &T::rbtor0);
+    DefEigenReadonly(c, "psi", &T::psi);
+    DefEigenReadonly(c, "ygeo", &T::ygeo);
+    DefEigenReadonly(c, "yinden", &T::yinden);
+    DefEigenReadonly(c, "yellip", &T::yellip);
+    DefEigenReadonly(c, "ytrian", &T::ytrian);
+    DefEigenReadonly(c, "yshift", &T::yshift);
+    DefEigenReadonly(c, "loc_jpar_perp", &T::loc_jpar_perp);
+    DefEigenReadonly(c, "loc_jparPS_perp", &T::loc_jparPS_perp);
+  }
 
-  py::class_<vmecpp::Threed1Volumetrics>(m, "Threed1Volumetrics")
-      .def_readonly("int_p", &vmecpp::Threed1Volumetrics::int_p)
-      .def_readonly("avg_p", &vmecpp::Threed1Volumetrics::avg_p)
-      //
-      .def_readonly("int_bpol", &vmecpp::Threed1Volumetrics::int_bpol)
-      .def_readonly("avg_bpol", &vmecpp::Threed1Volumetrics::avg_bpol)
-      //
-      .def_readonly("int_btor", &vmecpp::Threed1Volumetrics::int_btor)
-      .def_readonly("avg_btor", &vmecpp::Threed1Volumetrics::avg_btor)
-      //
-      .def_readonly("int_modb", &vmecpp::Threed1Volumetrics::int_modb)
-      .def_readonly("avg_modb", &vmecpp::Threed1Volumetrics::avg_modb)
-      //
-      .def_readonly("int_ekin", &vmecpp::Threed1Volumetrics::int_ekin)
-      .def_readonly("avg_ekin", &vmecpp::Threed1Volumetrics::avg_ekin);
+  {
+    auto c = py::class_<vmecpp::Threed1Volumetrics>(m, "Threed1Volumetrics");
+    DefRealReadonly(c, "int_p", &vmecpp::Threed1Volumetrics::int_p);
+    DefRealReadonly(c, "avg_p", &vmecpp::Threed1Volumetrics::avg_p);
+    DefRealReadonly(c, "int_bpol", &vmecpp::Threed1Volumetrics::int_bpol);
+    DefRealReadonly(c, "avg_bpol", &vmecpp::Threed1Volumetrics::avg_bpol);
+    DefRealReadonly(c, "int_btor", &vmecpp::Threed1Volumetrics::int_btor);
+    DefRealReadonly(c, "avg_btor", &vmecpp::Threed1Volumetrics::avg_btor);
+    DefRealReadonly(c, "int_modb", &vmecpp::Threed1Volumetrics::int_modb);
+    DefRealReadonly(c, "avg_modb", &vmecpp::Threed1Volumetrics::avg_modb);
+    DefRealReadonly(c, "int_ekin", &vmecpp::Threed1Volumetrics::int_ekin);
+    DefRealReadonly(c, "avg_ekin", &vmecpp::Threed1Volumetrics::avg_ekin);
+  }
 
-  py::class_<vmecpp::Threed1AxisGeometry>(m, "Threed1AxisGeometry")
-      .def_readonly("raxis_symm", &vmecpp::Threed1AxisGeometry::raxis_symm)
-      .def_readonly("zaxis_symm", &vmecpp::Threed1AxisGeometry::zaxis_symm)
-      .def_readonly("raxis_asym", &vmecpp::Threed1AxisGeometry::raxis_asym)
-      .def_readonly("zaxis_asym", &vmecpp::Threed1AxisGeometry::zaxis_asym);
+  {
+    auto c = py::class_<vmecpp::Threed1AxisGeometry>(m, "Threed1AxisGeometry");
+    DefEigenReadonly(c, "raxis_symm", &vmecpp::Threed1AxisGeometry::raxis_symm);
+    DefEigenReadonly(c, "zaxis_symm", &vmecpp::Threed1AxisGeometry::zaxis_symm);
+    DefEigenReadonly(c, "raxis_asym", &vmecpp::Threed1AxisGeometry::raxis_asym);
+    DefEigenReadonly(c, "zaxis_asym", &vmecpp::Threed1AxisGeometry::zaxis_asym);
+  }
 
-  py::class_<vmecpp::Threed1Betas>(m, "Threed1Betas")
-      .def_readonly("betatot", &vmecpp::Threed1Betas::betatot)
-      .def_readonly("betapol", &vmecpp::Threed1Betas::betapol)
-      .def_readonly("betator", &vmecpp::Threed1Betas::betator)
-      .def_readonly("rbtor", &vmecpp::Threed1Betas::rbtor)
-      .def_readonly("betaxis", &vmecpp::Threed1Betas::betaxis)
-      .def_readonly("betstr", &vmecpp::Threed1Betas::betstr);
+  {
+    auto c = py::class_<vmecpp::Threed1Betas>(m, "Threed1Betas");
+    DefRealReadonly(c, "betatot", &vmecpp::Threed1Betas::betatot);
+    DefRealReadonly(c, "betapol", &vmecpp::Threed1Betas::betapol);
+    DefRealReadonly(c, "betator", &vmecpp::Threed1Betas::betator);
+    DefRealReadonly(c, "rbtor", &vmecpp::Threed1Betas::rbtor);
+    DefRealReadonly(c, "betaxis", &vmecpp::Threed1Betas::betaxis);
+    DefRealReadonly(c, "betstr", &vmecpp::Threed1Betas::betstr);
+  }
 
-  py::class_<vmecpp::Threed1ShafranovIntegrals>(m, "Threed1ShafranovIntegrals")
-      .def_readonly("scaling_ratio",
-                    &vmecpp::Threed1ShafranovIntegrals::scaling_ratio)
-      //
-      .def_readonly("r_lao", &vmecpp::Threed1ShafranovIntegrals::r_lao)
-      .def_readonly("f_lao", &vmecpp::Threed1ShafranovIntegrals::f_lao)
-      .def_readonly("f_geo", &vmecpp::Threed1ShafranovIntegrals::f_geo)
-      //
-      .def_readonly("smaleli", &vmecpp::Threed1ShafranovIntegrals::smaleli)
-      .def_readonly("betai", &vmecpp::Threed1ShafranovIntegrals::betai)
-      .def_readonly("musubi", &vmecpp::Threed1ShafranovIntegrals::musubi)
-      .def_readonly("lambda", &vmecpp::Threed1ShafranovIntegrals::lambda)
-      //
-      .def_readonly("s11", &vmecpp::Threed1ShafranovIntegrals::s11)
-      .def_readonly("s12", &vmecpp::Threed1ShafranovIntegrals::s12)
-      .def_readonly("s13", &vmecpp::Threed1ShafranovIntegrals::s13)
-      .def_readonly("s2", &vmecpp::Threed1ShafranovIntegrals::s2)
-      .def_readonly("s3", &vmecpp::Threed1ShafranovIntegrals::s3)
-      //
-      .def_readonly("delta1", &vmecpp::Threed1ShafranovIntegrals::delta1)
-      .def_readonly("delta2", &vmecpp::Threed1ShafranovIntegrals::delta2)
-      .def_readonly("delta3", &vmecpp::Threed1ShafranovIntegrals::delta3);
+  {
+    using T = vmecpp::Threed1ShafranovIntegrals;
+    auto c = py::class_<T>(m, "Threed1ShafranovIntegrals");
+    DefRealReadonly(c, "scaling_ratio", &T::scaling_ratio);
+    DefRealReadonly(c, "r_lao", &T::r_lao);
+    DefRealReadonly(c, "f_lao", &T::f_lao);
+    DefRealReadonly(c, "f_geo", &T::f_geo);
+    DefRealReadonly(c, "smaleli", &T::smaleli);
+    DefRealReadonly(c, "betai", &T::betai);
+    DefRealReadonly(c, "musubi", &T::musubi);
+    DefRealReadonly(c, "lambda", &T::lambda);
+    DefRealReadonly(c, "s11", &T::s11);
+    DefRealReadonly(c, "s12", &T::s12);
+    DefRealReadonly(c, "s13", &T::s13);
+    DefRealReadonly(c, "s2", &T::s2);
+    DefRealReadonly(c, "s3", &T::s3);
+    DefRealReadonly(c, "delta1", &T::delta1);
+    DefRealReadonly(c, "delta2", &T::delta2);
+    DefRealReadonly(c, "delta3", &T::delta3);
+  }
 
-  py::class_<vmecpp::WOutFileContents>(m, "WOutFileContents")
-      .def(py::init<const vmecpp::WOutFileContents &>(), py::arg("wout"))
-      .def(py::init())
-      .def_readwrite("version_", &vmecpp::WOutFileContents::version_)
-      .def_readwrite("input_extension",
-                     &vmecpp::WOutFileContents::input_extension)
-      //
-      .def_readwrite("signgs", &vmecpp::WOutFileContents::signgs)
-      //
-      .def_readwrite("gamma", &vmecpp::WOutFileContents::gamma)
-      //
-      .def_readwrite("pcurr_type", &vmecpp::WOutFileContents::pcurr_type)
-      .def_readwrite("pmass_type", &vmecpp::WOutFileContents::pmass_type)
-      .def_readwrite("piota_type", &vmecpp::WOutFileContents::piota_type)
-      //
-      .def_readwrite("am", &vmecpp::WOutFileContents::am)
-      .def_readwrite("ac", &vmecpp::WOutFileContents::ac)
-      .def_readwrite("ai", &vmecpp::WOutFileContents::ai)
-      //
-      .def_readwrite("am_aux_s", &vmecpp::WOutFileContents::am_aux_s)
-      .def_readwrite("am_aux_f", &vmecpp::WOutFileContents::am_aux_f)
-      //
-      .def_readwrite("ac_aux_s", &vmecpp::WOutFileContents::ac_aux_s)
-      .def_readwrite("ac_aux_f", &vmecpp::WOutFileContents::ac_aux_f)
-      //
-      .def_readwrite("ai_aux_s", &vmecpp::WOutFileContents::ai_aux_s)
-      .def_readwrite("ai_aux_f", &vmecpp::WOutFileContents::ai_aux_f)
-      //
-      .def_readwrite("nfp", &vmecpp::WOutFileContents::nfp)
-      .def_readwrite("mpol", &vmecpp::WOutFileContents::mpol)
-      .def_readwrite("ntor", &vmecpp::WOutFileContents::ntor)
-      .def_readwrite("lasym", &vmecpp::WOutFileContents::lasym)
-      .def_readwrite("lrfp", &vmecpp::WOutFileContents::lrfp)
-      //
-      .def_readwrite("ns", &vmecpp::WOutFileContents::ns)
-      .def_readwrite("ftolv", &vmecpp::WOutFileContents::ftolv)
-      .def_readwrite("niter", &vmecpp::WOutFileContents::niter)
-      //
-      .def_readwrite("lfreeb", &vmecpp::WOutFileContents::lfreeb)
-      .def_readwrite("mgrid_file", &vmecpp::WOutFileContents::mgrid_file)
-      .def_readwrite("nextcur", &vmecpp::WOutFileContents::nextcur)
-      .def_readwrite("extcur", &vmecpp::WOutFileContents::extcur)
-      .def_readwrite("mgrid_mode", &vmecpp::WOutFileContents::mgrid_mode)
-      //
-      .def_readwrite("wb", &vmecpp::WOutFileContents::wb)
-      .def_readwrite("wp", &vmecpp::WOutFileContents::wp)
-      //
-      .def_readwrite("rmax_surf", &vmecpp::WOutFileContents::rmax_surf)
-      .def_readwrite("rmin_surf", &vmecpp::WOutFileContents::rmin_surf)
-      .def_readwrite("zmax_surf", &vmecpp::WOutFileContents::zmax_surf)
-      //
-      .def_readwrite("mnmax", &vmecpp::WOutFileContents::mnmax)
-      .def_readwrite("mnmax_nyq", &vmecpp::WOutFileContents::mnmax_nyq)
-      //
-      .def_readwrite("ier_flag", &vmecpp::WOutFileContents::ier_flag)
-      //
-      .def_readwrite("aspect", &vmecpp::WOutFileContents::aspect)
-      //
-      .def_readwrite("betatotal", &vmecpp::WOutFileContents::betatotal)
-      .def_readwrite("betapol", &vmecpp::WOutFileContents::betapol)
-      .def_readwrite("betator", &vmecpp::WOutFileContents::betator)
-      .def_readwrite("betaxis", &vmecpp::WOutFileContents::betaxis)
-      //
-      .def_readwrite("b0", &vmecpp::WOutFileContents::b0)
-      //
-      .def_readwrite("rbtor0", &vmecpp::WOutFileContents::rbtor0)
-      .def_readwrite("rbtor", &vmecpp::WOutFileContents::rbtor)
-      //
-      .def_readwrite("IonLarmor", &vmecpp::WOutFileContents::IonLarmor)
-      .def_readwrite("volavgB", &vmecpp::WOutFileContents::volavgB)
-      //
-      .def_readwrite("ctor", &vmecpp::WOutFileContents::ctor)
-      //
-      .def_readwrite("Aminor_p", &vmecpp::WOutFileContents::Aminor_p)
-      .def_readwrite("Rmajor_p", &vmecpp::WOutFileContents::Rmajor_p)
-      .def_readwrite("volume", &vmecpp::WOutFileContents::volume)
-      //
-      .def_readwrite("fsqr", &vmecpp::WOutFileContents::fsqr)
-      .def_readwrite("fsqz", &vmecpp::WOutFileContents::fsqz)
-      .def_readwrite("fsql", &vmecpp::WOutFileContents::fsql)
-      .def_readwrite("itfsq", &vmecpp::WOutFileContents::itfsq)
-      //
-      .def_readwrite("iotaf", &vmecpp::WOutFileContents::iotaf)
-      .def_readwrite("q_factor", &vmecpp::WOutFileContents::q_factor)
-      .def_readwrite("presf", &vmecpp::WOutFileContents::presf)
-      .def_readwrite("phi", &vmecpp::WOutFileContents::phi)
-      .def_readwrite("phipf", &vmecpp::WOutFileContents::phipf)
-      .def_readwrite("chi", &vmecpp::WOutFileContents::chi)
-      .def_readwrite("chipf", &vmecpp::WOutFileContents::chipf)
-      .def_readwrite("jcuru", &vmecpp::WOutFileContents::jcuru)
-      .def_readwrite("jcurv", &vmecpp::WOutFileContents::jcurv)
-      //
-      .def_readwrite("force_residual_r",
-                     &vmecpp::WOutFileContents::force_residual_r)
-      .def_readwrite("force_residual_z",
-                     &vmecpp::WOutFileContents::force_residual_z)
-      .def_readwrite("force_residual_lambda",
-                     &vmecpp::WOutFileContents::force_residual_lambda)
-      .def_readwrite("fsqt", &vmecpp::WOutFileContents::fsqt)
-      .def_readwrite("delbsq", &vmecpp::WOutFileContents::delbsq)
-      .def_readwrite("wdot", &vmecpp::WOutFileContents::wdot)
-      .def_readwrite("restart_reason_timetrace",
-                     &vmecpp::WOutFileContents::restart_reason_timetrace)
-      //
-      .def_readwrite("iotas", &vmecpp::WOutFileContents::iotas)
-      .def_readwrite("mass", &vmecpp::WOutFileContents::mass)
-      .def_readwrite("pres", &vmecpp::WOutFileContents::pres)
-      .def_readwrite("beta_vol", &vmecpp::WOutFileContents::beta_vol)
-      .def_readwrite("buco", &vmecpp::WOutFileContents::buco)
-      .def_readwrite("bvco", &vmecpp::WOutFileContents::bvco)
-      .def_readwrite("vp", &vmecpp::WOutFileContents::vp)
-      .def_readwrite("specw", &vmecpp::WOutFileContents::specw)
-      .def_readwrite("phips", &vmecpp::WOutFileContents::phips)
-      .def_readwrite("over_r", &vmecpp::WOutFileContents::over_r)
-      //
-      .def_readwrite("jdotb", &vmecpp::WOutFileContents::jdotb)
-      .def_readwrite("bdotb", &vmecpp::WOutFileContents::bdotb)
-      .def_readwrite("bdotgradv", &vmecpp::WOutFileContents::bdotgradv)
-      //
-      .def_readwrite("DMerc", &vmecpp::WOutFileContents::DMerc)
-      .def_readwrite("DShear", &vmecpp::WOutFileContents::DShear)
-      .def_readwrite("DWell", &vmecpp::WOutFileContents::DWell)
-      .def_readwrite("DCurr", &vmecpp::WOutFileContents::DCurr)
-      .def_readwrite("DGeod", &vmecpp::WOutFileContents::DGeod)
-      //
-      .def_readwrite("equif", &vmecpp::WOutFileContents::equif)
-      //
-      .def_readwrite("curlabel", &vmecpp::WOutFileContents::curlabel)
-      //
-      .def_readwrite("potvac", &vmecpp::WOutFileContents::potvac)
-      //
-      .def_readwrite("xm", &vmecpp::WOutFileContents::xm)
-      .def_readwrite("xn", &vmecpp::WOutFileContents::xn)
-      .def_readwrite("xm_nyq", &vmecpp::WOutFileContents::xm_nyq)
-      .def_readwrite("xn_nyq", &vmecpp::WOutFileContents::xn_nyq)
-      //
-      .def_readwrite("raxis_cc", &vmecpp::WOutFileContents::raxis_cc)
-      .def_readwrite("zaxis_cs", &vmecpp::WOutFileContents::zaxis_cs)
-      //
-      .def_readwrite("rmnc", &vmecpp::WOutFileContents::rmnc)
-      .def_readwrite("zmns", &vmecpp::WOutFileContents::zmns)
-      .def_readwrite("lmns_full", &vmecpp::WOutFileContents::lmns_full)
-      .def_readwrite("lmns", &vmecpp::WOutFileContents::lmns)
-      .def_readwrite("gmnc", &vmecpp::WOutFileContents::gmnc)
-      .def_readwrite("bmnc", &vmecpp::WOutFileContents::bmnc)
-      .def_readwrite("bsubumnc", &vmecpp::WOutFileContents::bsubumnc)
-      .def_readwrite("bsubvmnc", &vmecpp::WOutFileContents::bsubvmnc)
-      .def_readwrite("bsubsmns", &vmecpp::WOutFileContents::bsubsmns)
-      .def_readwrite("bsubsmns_full", &vmecpp::WOutFileContents::bsubsmns_full)
-      .def_readwrite("bsupumnc", &vmecpp::WOutFileContents::bsupumnc)
-      .def_readwrite("bsupvmnc", &vmecpp::WOutFileContents::bsupvmnc)
-      //
-      .def_readwrite("currumnc", &vmecpp::WOutFileContents::currumnc)
-      .def_readwrite("currvmnc", &vmecpp::WOutFileContents::currvmnc)
-      //
-      .def_readwrite("raxis_cs", &vmecpp::WOutFileContents::raxis_cs)
-      .def_readwrite("zaxis_cc", &vmecpp::WOutFileContents::zaxis_cc)
-      // non-stellarator symmetric
-      .def_readwrite("rmns", &vmecpp::WOutFileContents::rmns)
-      .def_readwrite("zmnc", &vmecpp::WOutFileContents::zmnc)
-      .def_readwrite("lmnc_full", &vmecpp::WOutFileContents::lmnc_full)
-      .def_readwrite("lmnc", &vmecpp::WOutFileContents::lmnc)
-      .def_readwrite("gmns", &vmecpp::WOutFileContents::gmns)
-      .def_readwrite("bmns", &vmecpp::WOutFileContents::bmns)
-      .def_readwrite("bsubumns", &vmecpp::WOutFileContents::bsubumns)
-      .def_readwrite("bsubvmns", &vmecpp::WOutFileContents::bsubvmns)
-      .def_readwrite("bsubsmnc", &vmecpp::WOutFileContents::bsubsmnc)
-      .def_readwrite("bsubsmnc_full", &vmecpp::WOutFileContents::bsubsmnc_full)
-      .def_readwrite("bsupumns", &vmecpp::WOutFileContents::bsupumns)
-      .def_readwrite("bsupvmns", &vmecpp::WOutFileContents::bsupvmns)
-      //
-      .def_readwrite("currumns", &vmecpp::WOutFileContents::currumns)
-      .def_readwrite("currvmns", &vmecpp::WOutFileContents::currvmns);
+  auto pywout =
+      py::class_<vmecpp::WOutFileContents>(m, "WOutFileContents")
+          .def(py::init<const vmecpp::WOutFileContents &>(), py::arg("wout"))
+          .def(py::init())
+          //
+          .def_readwrite("input_extension",
+                         &vmecpp::WOutFileContents::input_extension)
+          //
+          .def_readwrite("signgs", &vmecpp::WOutFileContents::signgs)
+          //
+          .def_readwrite("pcurr_type", &vmecpp::WOutFileContents::pcurr_type)
+          .def_readwrite("pmass_type", &vmecpp::WOutFileContents::pmass_type)
+          .def_readwrite("piota_type", &vmecpp::WOutFileContents::piota_type)
+          //
+          .def_readwrite("nfp", &vmecpp::WOutFileContents::nfp)
+          .def_readwrite("mpol", &vmecpp::WOutFileContents::mpol)
+          .def_readwrite("ntor", &vmecpp::WOutFileContents::ntor)
+          .def_readwrite("lasym", &vmecpp::WOutFileContents::lasym)
+          .def_readwrite("lrfp", &vmecpp::WOutFileContents::lrfp)
+          //
+          .def_readwrite("ns", &vmecpp::WOutFileContents::ns)
+          .def_readwrite("ftolv", &vmecpp::WOutFileContents::ftolv)
+          .def_readwrite("niter", &vmecpp::WOutFileContents::niter)
+          //
+          .def_readwrite("lfreeb", &vmecpp::WOutFileContents::lfreeb)
+          .def_readwrite("mgrid_file", &vmecpp::WOutFileContents::mgrid_file)
+          .def_readwrite("nextcur", &vmecpp::WOutFileContents::nextcur)
+          .def_readwrite("extcur", &vmecpp::WOutFileContents::extcur)
+          .def_readwrite("mgrid_mode", &vmecpp::WOutFileContents::mgrid_mode)
+          //
+          .def_readwrite("mnmax", &vmecpp::WOutFileContents::mnmax)
+          .def_readwrite("mnmax_nyq", &vmecpp::WOutFileContents::mnmax_nyq)
+          //
+          .def_readwrite("ier_flag", &vmecpp::WOutFileContents::ier_flag)
+          //
+          .def_readwrite("itfsq", &vmecpp::WOutFileContents::itfsq)
+          //
+          .def_readwrite("restart_reason_timetrace",
+                         &vmecpp::WOutFileContents::restart_reason_timetrace)
+          //
+          .def_readwrite("curlabel", &vmecpp::WOutFileContents::curlabel)
+          //
+          .def_readwrite("potvac", &vmecpp::WOutFileContents::potvac)
+          //
+          .def_readwrite("xm", &vmecpp::WOutFileContents::xm)
+          .def_readwrite("xn", &vmecpp::WOutFileContents::xn)
+          .def_readwrite("xm_nyq", &vmecpp::WOutFileContents::xm_nyq)
+          .def_readwrite("xn_nyq", &vmecpp::WOutFileContents::xn_nyq);
+
+  // real_t scalars: exposed as Python float (double) with explicit cast
+  DefRealProperty(pywout, "version_", &vmecpp::WOutFileContents::version_);
+  DefRealProperty(pywout, "gamma", &vmecpp::WOutFileContents::gamma);
+  DefRealProperty(pywout, "wb", &vmecpp::WOutFileContents::wb);
+  DefRealProperty(pywout, "wp", &vmecpp::WOutFileContents::wp);
+  DefRealProperty(pywout, "rmax_surf", &vmecpp::WOutFileContents::rmax_surf);
+  DefRealProperty(pywout, "rmin_surf", &vmecpp::WOutFileContents::rmin_surf);
+  DefRealProperty(pywout, "zmax_surf", &vmecpp::WOutFileContents::zmax_surf);
+  DefRealProperty(pywout, "aspect", &vmecpp::WOutFileContents::aspect);
+  DefRealProperty(pywout, "betatotal", &vmecpp::WOutFileContents::betatotal);
+  DefRealProperty(pywout, "betapol", &vmecpp::WOutFileContents::betapol);
+  DefRealProperty(pywout, "betator", &vmecpp::WOutFileContents::betator);
+  DefRealProperty(pywout, "betaxis", &vmecpp::WOutFileContents::betaxis);
+  DefRealProperty(pywout, "b0", &vmecpp::WOutFileContents::b0);
+  DefRealProperty(pywout, "rbtor0", &vmecpp::WOutFileContents::rbtor0);
+  DefRealProperty(pywout, "rbtor", &vmecpp::WOutFileContents::rbtor);
+  DefRealProperty(pywout, "IonLarmor", &vmecpp::WOutFileContents::IonLarmor);
+  DefRealProperty(pywout, "volavgB", &vmecpp::WOutFileContents::volavgB);
+  DefRealProperty(pywout, "ctor", &vmecpp::WOutFileContents::ctor);
+  DefRealProperty(pywout, "Aminor_p", &vmecpp::WOutFileContents::Aminor_p);
+  DefRealProperty(pywout, "Rmajor_p", &vmecpp::WOutFileContents::Rmajor_p);
+  DefRealProperty(pywout, "volume", &vmecpp::WOutFileContents::volume);
+  DefRealProperty(pywout, "fsqr", &vmecpp::WOutFileContents::fsqr);
+  DefRealProperty(pywout, "fsqz", &vmecpp::WOutFileContents::fsqz);
+  DefRealProperty(pywout, "fsql", &vmecpp::WOutFileContents::fsql);
+
+  // Eigen::Matrix<real_t,...> 1D and 2D arrays: cast to double at boundary
+  DefEigenProperty(pywout, "am", &vmecpp::WOutFileContents::am);
+  DefEigenProperty(pywout, "ac", &vmecpp::WOutFileContents::ac);
+  DefEigenProperty(pywout, "ai", &vmecpp::WOutFileContents::ai);
+  DefEigenProperty(pywout, "am_aux_s", &vmecpp::WOutFileContents::am_aux_s);
+  DefEigenProperty(pywout, "am_aux_f", &vmecpp::WOutFileContents::am_aux_f);
+  DefEigenProperty(pywout, "ac_aux_s", &vmecpp::WOutFileContents::ac_aux_s);
+  DefEigenProperty(pywout, "ac_aux_f", &vmecpp::WOutFileContents::ac_aux_f);
+  DefEigenProperty(pywout, "ai_aux_s", &vmecpp::WOutFileContents::ai_aux_s);
+  DefEigenProperty(pywout, "ai_aux_f", &vmecpp::WOutFileContents::ai_aux_f);
+  DefEigenProperty(pywout, "iotaf", &vmecpp::WOutFileContents::iotaf);
+  DefEigenProperty(pywout, "q_factor", &vmecpp::WOutFileContents::q_factor);
+  DefEigenProperty(pywout, "presf", &vmecpp::WOutFileContents::presf);
+  DefEigenProperty(pywout, "phi", &vmecpp::WOutFileContents::phi);
+  DefEigenProperty(pywout, "phipf", &vmecpp::WOutFileContents::phipf);
+  DefEigenProperty(pywout, "chi", &vmecpp::WOutFileContents::chi);
+  DefEigenProperty(pywout, "chipf", &vmecpp::WOutFileContents::chipf);
+  DefEigenProperty(pywout, "jcuru", &vmecpp::WOutFileContents::jcuru);
+  DefEigenProperty(pywout, "jcurv", &vmecpp::WOutFileContents::jcurv);
+  DefEigenProperty(pywout, "force_residual_r",
+                   &vmecpp::WOutFileContents::force_residual_r);
+  DefEigenProperty(pywout, "force_residual_z",
+                   &vmecpp::WOutFileContents::force_residual_z);
+  DefEigenProperty(pywout, "force_residual_lambda",
+                   &vmecpp::WOutFileContents::force_residual_lambda);
+  DefEigenProperty(pywout, "fsqt", &vmecpp::WOutFileContents::fsqt);
+  DefEigenProperty(pywout, "delbsq", &vmecpp::WOutFileContents::delbsq);
+  DefEigenProperty(pywout, "wdot", &vmecpp::WOutFileContents::wdot);
+  DefEigenProperty(pywout, "iotas", &vmecpp::WOutFileContents::iotas);
+  DefEigenProperty(pywout, "mass", &vmecpp::WOutFileContents::mass);
+  DefEigenProperty(pywout, "pres", &vmecpp::WOutFileContents::pres);
+  DefEigenProperty(pywout, "beta_vol", &vmecpp::WOutFileContents::beta_vol);
+  DefEigenProperty(pywout, "buco", &vmecpp::WOutFileContents::buco);
+  DefEigenProperty(pywout, "bvco", &vmecpp::WOutFileContents::bvco);
+  DefEigenProperty(pywout, "vp", &vmecpp::WOutFileContents::vp);
+  DefEigenProperty(pywout, "specw", &vmecpp::WOutFileContents::specw);
+  DefEigenProperty(pywout, "phips", &vmecpp::WOutFileContents::phips);
+  DefEigenProperty(pywout, "over_r", &vmecpp::WOutFileContents::over_r);
+  DefEigenProperty(pywout, "jdotb", &vmecpp::WOutFileContents::jdotb);
+  DefEigenProperty(pywout, "bdotb", &vmecpp::WOutFileContents::bdotb);
+  DefEigenProperty(pywout, "bdotgradv", &vmecpp::WOutFileContents::bdotgradv);
+  DefEigenProperty(pywout, "DMerc", &vmecpp::WOutFileContents::DMerc);
+  DefEigenProperty(pywout, "DShear", &vmecpp::WOutFileContents::DShear);
+  DefEigenProperty(pywout, "DWell", &vmecpp::WOutFileContents::DWell);
+  DefEigenProperty(pywout, "DCurr", &vmecpp::WOutFileContents::DCurr);
+  DefEigenProperty(pywout, "DGeod", &vmecpp::WOutFileContents::DGeod);
+  DefEigenProperty(pywout, "equif", &vmecpp::WOutFileContents::equif);
+  DefEigenProperty(pywout, "raxis_cc", &vmecpp::WOutFileContents::raxis_cc);
+  DefEigenProperty(pywout, "zaxis_cs", &vmecpp::WOutFileContents::zaxis_cs);
+  DefEigenProperty(pywout, "rmnc", &vmecpp::WOutFileContents::rmnc);
+  DefEigenProperty(pywout, "zmns", &vmecpp::WOutFileContents::zmns);
+  DefEigenProperty(pywout, "lmns_full", &vmecpp::WOutFileContents::lmns_full);
+  DefEigenProperty(pywout, "lmns", &vmecpp::WOutFileContents::lmns);
+  DefEigenProperty(pywout, "gmnc", &vmecpp::WOutFileContents::gmnc);
+  DefEigenProperty(pywout, "bmnc", &vmecpp::WOutFileContents::bmnc);
+  DefEigenProperty(pywout, "bsubumnc", &vmecpp::WOutFileContents::bsubumnc);
+  DefEigenProperty(pywout, "bsubvmnc", &vmecpp::WOutFileContents::bsubvmnc);
+  DefEigenProperty(pywout, "bsubsmns", &vmecpp::WOutFileContents::bsubsmns);
+  DefEigenProperty(pywout, "bsubsmns_full",
+                   &vmecpp::WOutFileContents::bsubsmns_full);
+  DefEigenProperty(pywout, "bsupumnc", &vmecpp::WOutFileContents::bsupumnc);
+  DefEigenProperty(pywout, "bsupvmnc", &vmecpp::WOutFileContents::bsupvmnc);
+  DefEigenProperty(pywout, "currumnc", &vmecpp::WOutFileContents::currumnc);
+  DefEigenProperty(pywout, "currvmnc", &vmecpp::WOutFileContents::currvmnc);
+  DefEigenProperty(pywout, "raxis_cs", &vmecpp::WOutFileContents::raxis_cs);
+  DefEigenProperty(pywout, "zaxis_cc", &vmecpp::WOutFileContents::zaxis_cc);
+  // non-stellarator symmetric
+  DefEigenProperty(pywout, "rmns", &vmecpp::WOutFileContents::rmns);
+  DefEigenProperty(pywout, "zmnc", &vmecpp::WOutFileContents::zmnc);
+  DefEigenProperty(pywout, "lmnc_full", &vmecpp::WOutFileContents::lmnc_full);
+  DefEigenProperty(pywout, "lmnc", &vmecpp::WOutFileContents::lmnc);
+  DefEigenProperty(pywout, "gmns", &vmecpp::WOutFileContents::gmns);
+  DefEigenProperty(pywout, "bmns", &vmecpp::WOutFileContents::bmns);
+  DefEigenProperty(pywout, "bsubumns", &vmecpp::WOutFileContents::bsubumns);
+  DefEigenProperty(pywout, "bsubvmns", &vmecpp::WOutFileContents::bsubvmns);
+  DefEigenProperty(pywout, "bsubsmnc", &vmecpp::WOutFileContents::bsubsmnc);
+  DefEigenProperty(pywout, "bsubsmnc_full",
+                   &vmecpp::WOutFileContents::bsubsmnc_full);
+  DefEigenProperty(pywout, "bsupumns", &vmecpp::WOutFileContents::bsupumns);
+  DefEigenProperty(pywout, "bsupvmns", &vmecpp::WOutFileContents::bsupvmns);
+  DefEigenProperty(pywout, "currumns", &vmecpp::WOutFileContents::currumns);
+  DefEigenProperty(pywout, "currvmns", &vmecpp::WOutFileContents::currvmns);
 
   py::class_<vmecpp::OutputQuantities>(m, "OutputQuantities")
       .def_readonly("jxbout", &vmecpp::OutputQuantities::jxbout)

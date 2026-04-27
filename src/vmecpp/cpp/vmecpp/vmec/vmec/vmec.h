@@ -96,7 +96,7 @@ class Vmec {
   static constexpr int kSignOfJacobian = -1;
 
   // scaling factor for blending between two different ways to compute B^zeta
-  static constexpr double kPDamp = 0.05;
+  static constexpr real_t kPDamp = 0.05L;
 
   // Factory method for creating a Vmec instance.
   // Handles mgrid loading for free-boundary runs with proper error handling.
@@ -119,19 +119,19 @@ class Vmec {
 
   bool InitializeRadial(
       VmecCheckpoint checkpoint, int maximum_iterations, int nsval, int ns_old,
-      double& m_delt0,
+      real_t& m_delt0,
       const std::optional<HotRestartState>& initial_state = std::nullopt);
   absl::StatusOr<bool> SolveEquilibrium(VmecCheckpoint checkpoint,
                                         int maximum_iterations);
-  void RestartIteration(double& m_delt0r, int thread_id);
+  void RestartIteration(real_t& m_delt0r, int thread_id);
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
-                              double time_step, int thread_id,
+                              real_t time_step, int thread_id,
                               bool& m_liter_flag);
-  void Printout(double delt0r, int thread_id, int iter2);
+  void Printout(real_t delt0r, int thread_id, int iter2);
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
                                           int thread_id);
-  void PerformTimeStep(double fac, double b1, double time_step, int thread_id);
+  void PerformTimeStep(real_t fac, real_t b1, real_t time_step, int thread_id);
   void InterpolateToNextMultigridStep(
       int ns_new, int ns_old,
       const std::vector<std::unique_ptr<RadialProfiles>>& p,
@@ -154,8 +154,8 @@ class Vmec {
               const FourierForces& decomposed_f, const FlowControl& fc);
 
   void performTimeStep(const Sizes& s, const FlowControl& fc,
-                       const RadialPartitioning& r, double velocityScale,
-                       double conjugationParameter, double time_step,
+                       const RadialPartitioning& r, real_t velocityScale,
+                       real_t conjugationParameter, real_t time_step,
                        FourierGeometry& m_decomposed_x,
                        FourierVelocity& m_decomposed_v,
                        const FourierForces& decomposed_f,
@@ -197,17 +197,17 @@ class Vmec {
   std::vector<std::unique_ptr<FourierForces>> physical_f_;
   std::vector<std::unique_ptr<FourierVelocity>> decomposed_v_;
 
-  Eigen::VectorXd sj;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sj;
   Eigen::VectorXi js1;
   Eigen::VectorXi js2;
-  Eigen::VectorXd s1;
-  Eigen::VectorXd xint;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> s1;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> xint;
   std::vector<std::unique_ptr<FourierGeometry>> old_xc_scaled_;
   std::vector<std::unique_ptr<RadialPartitioning>> old_r_;
 
-  Eigen::VectorXd matrixShare;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> matrixShare;
   Eigen::VectorXi iPiv;
-  Eigen::VectorXd bvecShare;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bvecShare;
 
  private:
   enum class SolveEqLoopStatus : std::uint8_t {
@@ -257,7 +257,7 @@ class Vmec {
   // history size for averaging of 1/tau
   static constexpr int kNDamp = 10;
 
-  Eigen::VectorXd invTau_;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> invTau_;
 
   // iter2 at last update of preconditioner update
   int last_preconditioner_update_;

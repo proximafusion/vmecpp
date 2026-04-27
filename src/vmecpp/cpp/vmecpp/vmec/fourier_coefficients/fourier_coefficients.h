@@ -27,8 +27,10 @@ class FourierCoeffs {
 
   void setZero();
 
-  void decomposeInto(FourierCoeffs& m_x, const Eigen::VectorXd& scalxc) const;
-  void m1Constraint(double scalingFactor,
+  void decomposeInto(
+      FourierCoeffs& m_x,
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& scalxc) const;
+  void m1Constraint(real_t scalingFactor,
                     std::optional<int> jMax = std::nullopt);
 
   // Get the sum of squared coefficients for R and Z.
@@ -36,9 +38,9 @@ class FourierCoeffs {
   // left out. The range of flux surface to count in is specified as [nsMinHere,
   // nsMaxHere[ in order to allow to not count stuff twice at the borders in
   // different threads.
-  double rzNorm(bool includeOffset, int nsMinHere, int nsMaxHere) const;
+  real_t rzNorm(bool includeOffset, int nsMinHere, int nsMaxHere) const;
 
-  double GetXcElement(int rzl, int basis_index, int j, int n, int m) const;
+  real_t GetXcElement(int rzl, int basis_index, int j, int n, int m) const;
 
   int nsMin() const;
   int nsMax() const;
@@ -52,44 +54,44 @@ class FourierCoeffs {
   const int ns;
 
   // [ns x numFC] R ~ cos(m*theta)*cos(n*zeta)
-  Eigen::VectorXd rcc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rcc;
 
   // [ns x numFC] R ~ sin(m*theta)*sin(n*zeta)
-  Eigen::VectorXd rss;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rss;
 
   // [ns x numFC] R ~ sin(m*theta)*cos(n*zeta)
-  Eigen::VectorXd rsc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rsc;
 
   // [ns x numFC] R ~ cos(m*theta)*sin(n*zeta)
-  Eigen::VectorXd rcs;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> rcs;
 
   //***************/
 
   // [ns x numFC] Z ~ sin(m*theta)*cos(n*zeta)
-  Eigen::VectorXd zsc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zsc;
 
   // [ns x numFC] Z ~ cos(m*theta)*sin(n*zeta)
-  Eigen::VectorXd zcs;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zcs;
 
   // [ns x numFC] Z ~ cos(m*theta)*cos(n*zeta)
-  Eigen::VectorXd zcc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zcc;
 
   // [ns x numFC] Z ~ sin(m*theta)*sin(n*zeta)
-  Eigen::VectorXd zss;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> zss;
 
   //***************/
 
   // [ns x numFC] lambda ~ sin(m*theta)*cos(n*zeta)
-  Eigen::VectorXd lsc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> lsc;
 
   // [ns x numFC] lambda ~ cos(m*theta)*sin(n*zeta)
-  Eigen::VectorXd lcs;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> lcs;
 
   // [ns x numFC] lambda ~ cos(m*theta)*cos(n*zeta)
-  Eigen::VectorXd lcc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> lcc;
 
   // [ns x numFC] lambda ~ sin(m*theta)*sin(n*zeta)
-  Eigen::VectorXd lss;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> lss;
 };
 
 }  // namespace vmecpp

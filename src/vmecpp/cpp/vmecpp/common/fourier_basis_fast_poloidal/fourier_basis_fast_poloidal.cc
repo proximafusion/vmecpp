@@ -134,9 +134,9 @@ void FourierBasisFastPoloidal::computeFourierBasisFastPoloidal(int nfp) {
 }
 
 // convert cos(xm[mn] theta - xn[mn] zeta) into 2D FC array form
-int FourierBasisFastPoloidal::cos_to_cc_ss(const std::span<const double> fcCos,
-                                           std::span<double> m_fcCC,
-                                           std::span<double> m_fcSS, int n_size,
+int FourierBasisFastPoloidal::cos_to_cc_ss(const std::span<const real_t> fcCos,
+                                           std::span<real_t> m_fcCC,
+                                           std::span<real_t> m_fcSS, int n_size,
                                            int m_size) const {
   // m = 0: n =  0, 1, ..., ntor --> ntor + 1
   // m > 0: n = -ntor, ..., ntor --> (mpol - 1) * (2 * ntor + 1)
@@ -185,9 +185,9 @@ int FourierBasisFastPoloidal::cos_to_cc_ss(const std::span<const double> fcCos,
   return mnmax;
 }
 
-int FourierBasisFastPoloidal::sin_to_sc_cs(const std::span<const double> fcSin,
-                                           std::span<double> m_fcSC,
-                                           std::span<double> m_fcCS, int n_size,
+int FourierBasisFastPoloidal::sin_to_sc_cs(const std::span<const real_t> fcSin,
+                                           std::span<real_t> m_fcSC,
+                                           std::span<real_t> m_fcCS, int n_size,
                                            int m_size) const {
   // m = 0: n =  0, 1, ..., ntor --> ntor + 1
   // m > 0: n = -ntor, ..., ntor --> (mpol - 1) * (2 * ntor + 1)
@@ -238,9 +238,9 @@ int FourierBasisFastPoloidal::sin_to_sc_cs(const std::span<const double> fcSin,
   return mnmax;
 }
 
-int FourierBasisFastPoloidal::cc_ss_to_cos(const std::span<const double> fcCC,
-                                           const std::span<const double> fcSS,
-                                           std::span<double> m_fcCos,
+int FourierBasisFastPoloidal::cc_ss_to_cos(const std::span<const real_t> fcCC,
+                                           const std::span<const real_t> fcSS,
+                                           std::span<real_t> m_fcCos,
                                            int n_size, int m_size) const {
   // m = 0: n =  0, 1, ..., ntor --> ntor + 1
   // m > 0: n = -ntor, ..., ntor --> (mpol - 1) * (2 * ntor + 1)
@@ -284,9 +284,9 @@ int FourierBasisFastPoloidal::cc_ss_to_cos(const std::span<const double> fcCC,
   return mnmax;
 }
 
-int FourierBasisFastPoloidal::sc_cs_to_sin(const std::span<const double> fcSC,
-                                           const std::span<const double> fcCS,
-                                           std::span<double> m_fcSin,
+int FourierBasisFastPoloidal::sc_cs_to_sin(const std::span<const real_t> fcSC,
+                                           const std::span<const real_t> fcCS,
+                                           std::span<real_t> m_fcSin,
                                            int n_size, int m_size) const {
   // m = 0: n =  0, 1, ..., ntor --> ntor + 1
   // m > 0: n = -ntor, ..., ntor --> (mpol - 1) * (2 * ntor + 1)

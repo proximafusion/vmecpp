@@ -20,20 +20,20 @@ class FourierVelocity : public FourierCoeffs {
   FourierVelocity& operator=(FourierVelocity&& other) noexcept;
 
   // appropriately-named variables for the data in FourierCoeffs
-  std::span<double> vrcc;
-  std::span<double> vrss;
-  std::span<double> vrsc;
-  std::span<double> vrcs;
+  std::span<real_t> vrcc;
+  std::span<real_t> vrss;
+  std::span<real_t> vrsc;
+  std::span<real_t> vrcs;
 
-  std::span<double> vzsc;
-  std::span<double> vzcs;
-  std::span<double> vzcc;
-  std::span<double> vzss;
+  std::span<real_t> vzsc;
+  std::span<real_t> vzcs;
+  std::span<real_t> vzcc;
+  std::span<real_t> vzss;
 
-  std::span<double> vlsc;
-  std::span<double> vlcs;
-  std::span<double> vlcc;
-  std::span<double> vlss;
+  std::span<real_t> vlsc;
+  std::span<real_t> vlcs;
+  std::span<real_t> vlcc;
+  std::span<real_t> vlss;
 
  private:
   void BindSpans();

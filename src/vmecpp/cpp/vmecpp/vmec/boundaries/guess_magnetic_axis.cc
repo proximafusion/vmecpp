@@ -11,13 +11,19 @@ namespace vmecpp {
 
 RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
     int number_of_flux_surfaces, int sign_of_jacobian, const Sizes& s,
-    const FourierBasisFastPoloidal& t, const Eigen::VectorXd& rbcc,
-    const Eigen::VectorXd& rbss, const Eigen::VectorXd& rbsc,
-    const Eigen::VectorXd& rbcs, const Eigen::VectorXd& zbsc,
-    const Eigen::VectorXd& zbcs, const Eigen::VectorXd& zbcc,
-    const Eigen::VectorXd& zbss, const Eigen::VectorXd& raxis_c,
-    const Eigen::VectorXd& raxis_s, const Eigen::VectorXd& zaxis_s,
-    const Eigen::VectorXd& zaxis_c) {
+    const FourierBasisFastPoloidal& t,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& rbcc,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& rbss,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& rbsc,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& rbcs,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& zbsc,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& zbcs,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& zbcc,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& zbss,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& raxis_c,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& raxis_s,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& zaxis_s,
+    const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& zaxis_c) {
   RecomputeAxisWorkspace w;
 
   w.r_axis.resize(s.nZeta);
@@ -82,23 +88,23 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   const int ns12 = (number_of_flux_surfaces + 1) / 2 - 1;
 
   // radial step size between boundary (ns - 1) and ~mid-radius (ns12)
-  const double delta_s =
+  const real_t delta_s =
       (number_of_flux_surfaces - 1 - ns12) / (number_of_flux_surfaces - 1.0);
 
   // sqrt(s_j) at j = ns12, where s is the normalized radial coordinate
-  const double sqrtSF12 = std::sqrt(ns12 / (number_of_flux_surfaces - 1.0));
+  const real_t sqrtSF12 = std::sqrt(ns12 / (number_of_flux_surfaces - 1.0));
 
   // start: interpolate Fourier coefficients between initial guess for axis and
   // boundary
 
-  std::vector<std::vector<double> > rcc_half(s.mpol);
-  std::vector<std::vector<double> > rss_half;
-  std::vector<std::vector<double> > rsc_half;
-  std::vector<std::vector<double> > rcs_half;
-  std::vector<std::vector<double> > zsc_half(s.mpol);
-  std::vector<std::vector<double> > zcs_half;
-  std::vector<std::vector<double> > zcc_half;
-  std::vector<std::vector<double> > zss_half;
+  std::vector<std::vector<real_t> > rcc_half(s.mpol);
+  std::vector<std::vector<real_t> > rss_half;
+  std::vector<std::vector<real_t> > rsc_half;
+  std::vector<std::vector<real_t> > rcs_half;
+  std::vector<std::vector<real_t> > zsc_half(s.mpol);
+  std::vector<std::vector<real_t> > zcs_half;
+  std::vector<std::vector<real_t> > zcc_half;
+  std::vector<std::vector<real_t> > zss_half;
   if (s.lthreed) {
     rss_half.resize(s.mpol);
     zcs_half.resize(s.mpol);
@@ -113,11 +119,11 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   }
 
   // undo m=1 constraint
-  const double scalingFactor = 1.0;
-  std::vector<std::vector<double> > rss_boundary;  // lthreed
-  std::vector<std::vector<double> > zcs_boundary;  // lthreed
-  std::vector<std::vector<double> > rsc_boundary;  // lasym
-  std::vector<std::vector<double> > zcc_boundary;  // lasym
+  const real_t scalingFactor = 1.0;
+  std::vector<std::vector<real_t> > rss_boundary;  // lthreed
+  std::vector<std::vector<real_t> > zcs_boundary;  // lthreed
+  std::vector<std::vector<real_t> > rsc_boundary;  // lasym
+  std::vector<std::vector<real_t> > zcc_boundary;  // lasym
   if (s.lthreed) {
     rss_boundary.resize(s.mpol);
     zcs_boundary.resize(s.mpol);
@@ -176,7 +182,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
 
       if (m == 0) {
         // m = 0: linear interpolation in s between axis and boundary
-        const double interpolation_weight = sqrtSF12 * sqrtSF12;
+        const real_t interpolation_weight = sqrtSF12 * sqrtSF12;
 
         rcc_half[m][n] = (interpolation_weight * rbcc[idx_mn] +
                           (1.0 - interpolation_weight) * raxis_c[n]);
@@ -202,7 +208,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
         }
       } else {
         // m > 0: scale boundary into volume by s^(m/2) == sqrt(s)^m == rho^m
-        const double interpolation_weight = std::pow(sqrtSF12, m);
+        const real_t interpolation_weight = std::pow(sqrtSF12, m);
 
         rcc_half[m][n] = interpolation_weight * rbcc[idx_mn];
         zsc_half[m][n] = interpolation_weight * zbsc[idx_mn];
@@ -246,7 +252,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
           int idx_kn = k * (s.nnyq2 + 1) + n;
           int idx_mn = m * (s.ntor + 1) + n;
 
-          const double basis_norm = 1.0 / (t.mscale[m] * t.nscale[n]);
+          const real_t basis_norm = 1.0 / (t.mscale[m] * t.nscale[n]);
 
           w.r_lcfs[k][l] +=
               basis_norm * rbcc[idx_mn] * t.cosmu[idx_ml] * t.cosnv[idx_kn];
@@ -366,7 +372,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
     for (int n = 0; n <= s.ntor; ++n) {
       int idx_kn = k * (s.nnyq2 + 1) + n;
 
-      const double basis_norm = 1.0 / (t.mscale[m0] * t.nscale[n]);
+      const real_t basis_norm = 1.0 / (t.mscale[m0] * t.nscale[n]);
 
       w.r_axis[k] += raxis_c[n] * t.cosnv[idx_kn] * basis_norm;
       w.z_axis[k] -= zaxis_s[n] * t.sinnv[idx_kn] * basis_norm;
@@ -381,18 +387,18 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   // the new axis position is estimated
   for (int k = 0; k < s.nZeta / 2 + 1; ++k) {
     // compute grid extent
-    const double min_r =
+    const real_t min_r =
         *std::min_element(w.r_lcfs[k].begin(), w.r_lcfs[k].end());
-    const double max_r =
+    const real_t max_r =
         *std::max_element(w.r_lcfs[k].begin(), w.r_lcfs[k].end());
-    const double min_z =
+    const real_t min_z =
         *std::min_element(w.z_lcfs[k].begin(), w.z_lcfs[k].end());
-    const double max_z =
+    const real_t max_z =
         *std::max_element(w.z_lcfs[k].begin(), w.z_lcfs[k].end());
 
     // grid step sizes
-    const double delta_r = (max_r - min_r) / (kNumberOfGridPoints - 1.0);
-    const double delta_z = (max_z - min_z) / (kNumberOfGridPoints - 1.0);
+    const real_t delta_r = (max_r - min_r) / (kNumberOfGridPoints - 1.0);
+    const real_t delta_z = (max_z - min_z) / (kNumberOfGridPoints - 1.0);
 
     // compute initial guess for new axis: center of grid in each toroidal plane
     w.new_r_axis[k] = (max_r + min_r) / 2.0;
@@ -408,10 +414,10 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
                      w.d_z_d_theta_half[k][l] * w.d_r_d_s_half[k][l];
     }  // l
 
-    double min_tau = 0.0;
+    real_t min_tau = 0.0;
 
     for (int index_z = 0; index_z < kNumberOfGridPoints; ++index_z) {
-      double z_grid = min_z + index_z * delta_z;
+      real_t z_grid = min_z + index_z * delta_z;
 
       // early exit in some cases(?)
       if (!s.lasym && (k == 0 || k == s.nZeta / 2)) {
@@ -422,7 +428,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
       }
 
       for (int index_r = 0; index_r < kNumberOfGridPoints; ++index_r) {
-        double r_grid = min_r + index_r * delta_r;
+        real_t r_grid = min_r + index_r * delta_r;
 
         // Find position of magnetic axis that maximizes the minimum Jacobian
         // value.
@@ -433,7 +439,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
                          w.d_z_d_theta_half[k][l] * r_grid);
         }  // l
 
-        double min_tau_temp =
+        real_t min_tau_temp =
             *std::min_element(w.tau[k].begin(), w.tau[k].end());
 
         if (min_tau_temp > min_tau) {
@@ -462,7 +468,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   }  // !lasym
 
   // Fourier-transform the axis guess
-  const double delta_v = 2.0 / s.nZeta;
+  const real_t delta_v = 2.0 / s.nZeta;
   for (int k = 0; k < s.nZeta; ++k) {
     for (int n = 0; n <= s.ntor; ++n) {
       // accumulate all contributions to the toroidal Fourier integral

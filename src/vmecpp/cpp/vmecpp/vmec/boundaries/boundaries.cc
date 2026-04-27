@@ -67,7 +67,7 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
 
   // check for necessity to shift poloidal angle
   // to achieve unique poloidal angle
-  double delta = 0.0;
+  real_t delta = 0.0;
   if (s_.lasym) {
     // comment by Matt Landreman in Simsopt Slack:
     // > When lasym=.true.,  vmec claims to shift theta for the provided
@@ -106,8 +106,8 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
   }
 
   for (int m = 0; m < s_.mpol; ++m) {
-    double cosMDelta = 1.0;
-    double sinMDelta = 0.0;
+    real_t cosMDelta = 1.0;
+    real_t sinMDelta = 0.0;
     if (delta != 0.0) {
       cosMDelta = cos(m * delta);
       sinMDelta = sin(m * delta);
@@ -118,10 +118,10 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
       int source_n = s_.ntor + n;
 
       int target_n = abs(n);
-      double sign_n = signum(n);
+      real_t sign_n = signum(n);
 
-      double rbc;
-      double zbs;
+      real_t rbc;
+      real_t zbs;
       if (!s_.lasym || delta == 0.0) {
         rbc = id.rbc(m, source_n);
         zbs = id.zbs(m, source_n);
@@ -146,8 +146,8 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
       }
 
       if (s_.lasym) {
-        double rbs;
-        double zbc;
+        real_t rbs;
+        real_t zbc;
         if (delta == 0.0) {
           rbs = (*id.rbs)(m, source_n);
           zbc = (*id.zbc)(m, source_n);
@@ -182,8 +182,8 @@ bool Boundaries::checkSignOfJacobian() {
    * clockwise.
    */
 
-  double rTest = 0.0;
-  double zTest = 0.0;
+  real_t rTest = 0.0;
+  real_t zTest = 0.0;
   for (int n = 0; n < s_.ntor + 1; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
@@ -236,17 +236,17 @@ void Boundaries::flipTheta() {
  * Essentially, the initial boundary is re-scaled to yield a unique poloidal
  * origin.
  */
-void Boundaries::ensureM1Constrained(const double scaling_factor) {
+void Boundaries::ensureM1Constrained(const real_t scaling_factor) {
   for (int n = 0; n <= s_.ntor; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
     if (s_.lthreed) {
-      double backup_rss = rbss[idx_mn];
+      real_t backup_rss = rbss[idx_mn];
       rbss[idx_mn] = (backup_rss + zbcs[idx_mn]) * scaling_factor;
       zbcs[idx_mn] = (backup_rss - zbcs[idx_mn]) * scaling_factor;
     }
     if (s_.lasym) {
-      double backup_rsc = rbsc[idx_mn];
+      real_t backup_rsc = rbsc[idx_mn];
       rbsc[idx_mn] = (backup_rsc + zbcc[idx_mn]) * scaling_factor;
       zbcc[idx_mn] = (backup_rsc - zbcc[idx_mn]) * scaling_factor;
     }

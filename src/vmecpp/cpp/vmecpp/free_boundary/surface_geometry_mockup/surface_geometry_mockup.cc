@@ -45,45 +45,49 @@ SurfaceGeometryMockup SurfaceGeometryMockup::InitializeFromFile(
     LOG(FATAL) << xn.status().message();
   }
 
-  absl::StatusOr<std::vector<double>> rmnc =
+  absl::StatusOr<std::vector<real_t>> rmnc_double =
       composed_types::CoefficientsRCos(*maybe_surface);
-  if (!rmnc.ok()) {
-    LOG(FATAL) << rmnc.status().message();
+  if (!rmnc_double.ok()) {
+    LOG(FATAL) << rmnc_double.status().message();
   }
+  std::vector<real_t> rmnc(rmnc_double->begin(), rmnc_double->end());
 
-  absl::StatusOr<std::vector<double>> rmns =
+  absl::StatusOr<std::vector<real_t>> rmns_double =
       composed_types::CoefficientsRSin(*maybe_surface);
-  if (!rmns.ok()) {
-    LOG(FATAL) << rmns.status().message();
+  if (!rmns_double.ok()) {
+    LOG(FATAL) << rmns_double.status().message();
   }
+  std::vector<real_t> rmns(rmns_double->begin(), rmns_double->end());
 
-  absl::StatusOr<std::vector<double>> zmnc =
+  absl::StatusOr<std::vector<real_t>> zmnc_double =
       composed_types::CoefficientsZCos(*maybe_surface);
-  if (!zmnc.ok()) {
-    LOG(FATAL) << zmnc.status().message();
+  if (!zmnc_double.ok()) {
+    LOG(FATAL) << zmnc_double.status().message();
   }
+  std::vector<real_t> zmnc(zmnc_double->begin(), zmnc_double->end());
 
-  absl::StatusOr<std::vector<double>> zmns =
+  absl::StatusOr<std::vector<real_t>> zmns_double =
       composed_types::CoefficientsZSin(*maybe_surface);
-  if (!zmns.ok()) {
-    LOG(FATAL) << zmns.status().message();
+  if (!zmns_double.ok()) {
+    LOG(FATAL) << zmns_double.status().message();
   }
+  std::vector<real_t> zmns(zmns_double->begin(), zmns_double->end());
 
   const int mpol = std::ranges::max(*xm) + 1;
 
   // Note that this xn does not contain the nfp factor, as VMEC's xn does.
   const int ntor = std::ranges::max(*xn);
 
-  return SurfaceGeometryMockup(lasym, nfp, mpol, ntor, ntheta, nphi, *rmnc,
-                               *rmns, *zmns, *zmnc);
+  return SurfaceGeometryMockup(lasym, nfp, mpol, ntor, ntheta, nphi, rmnc, rmns,
+                               zmns, zmnc);
 }  // InitializeFromFile
 
 SurfaceGeometryMockup::SurfaceGeometryMockup(bool lasym, int nfp, int mpol,
                                              int ntor, int ntheta, int nphi,
-                                             std::vector<double>& m_rmnc,
-                                             std::vector<double>& m_rmns,
-                                             std::vector<double>& m_zmns,
-                                             std::vector<double>& m_zmnc,
+                                             std::vector<real_t>& m_rmnc,
+                                             std::vector<real_t>& m_rmns,
+                                             std::vector<real_t>& m_zmns,
+                                             std::vector<real_t>& m_zmnc,
                                              int num_threads, int thread_id)
     : lasym(lasym),
       rmnc(m_rmnc),
@@ -95,10 +99,10 @@ SurfaceGeometryMockup::SurfaceGeometryMockup(bool lasym, int nfp, int mpol,
       tp(s.nZnT, num_threads, thread_id),
       sg(&s, &fb, &tp) {
   // convert into 2D Fourier coefficient arrays
-  std::vector<double> rCC(s.mnsize);
-  std::vector<double> rSS(s.mnsize);
-  std::vector<double> rSC;
-  std::vector<double> rCS;
+  std::vector<real_t> rCC(s.mnsize);
+  std::vector<real_t> rSS(s.mnsize);
+  std::vector<real_t> rSC;
+  std::vector<real_t> rCS;
   fb.cos_to_cc_ss(m_rmnc, rCC, rSS, s.ntor, s.mpol);
   if (s.lasym) {
     rSC.resize(s.mnsize, 0.0);
@@ -106,10 +110,10 @@ SurfaceGeometryMockup::SurfaceGeometryMockup(bool lasym, int nfp, int mpol,
     fb.sin_to_sc_cs(m_rmns, rSC, rCS, s.ntor, s.mpol);
   }
 
-  std::vector<double> zSC(s.mnsize);
-  std::vector<double> zCS(s.mnsize);
-  std::vector<double> zCC;
-  std::vector<double> zSS;
+  std::vector<real_t> zSC(s.mnsize);
+  std::vector<real_t> zCS(s.mnsize);
+  std::vector<real_t> zCC;
+  std::vector<real_t> zSS;
   fb.sin_to_sc_cs(m_zmns, zSC, zCS, s.ntor, s.mpol);
   if (s.lasym) {
     zCC.resize(s.mnsize, 0.0);

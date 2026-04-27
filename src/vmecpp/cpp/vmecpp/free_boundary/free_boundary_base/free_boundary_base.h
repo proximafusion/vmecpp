@@ -22,10 +22,10 @@ class FreeBoundaryBase {
   virtual ~FreeBoundaryBase() = default;
 
   FreeBoundaryBase(const Sizes* s, const TangentialPartitioning* tp,
-                   const MGridProvider* mgrid, std::span<double> bSqVacShare,
-                   std::span<double> vacuum_b_r_share,
-                   std::span<double> vacuum_b_phi_share,
-                   std::span<double> vacuum_b_z_share)
+                   const MGridProvider* mgrid, std::span<real_t> bSqVacShare,
+                   std::span<real_t> vacuum_b_r_share,
+                   std::span<real_t> vacuum_b_phi_share,
+                   std::span<real_t> vacuum_b_z_share)
       : s_(*s),
         fb_(&s_),
         tp_(*tp),
@@ -37,13 +37,13 @@ class FreeBoundaryBase {
         vacuum_b_z_share_(vacuum_b_z_share) {}
 
   virtual bool update(
-      const std::span<const double> rCC, const std::span<const double> rSS,
-      const std::span<const double> rSC, const std::span<const double> rCS,
-      const std::span<const double> zSC, const std::span<const double> zCS,
-      const std::span<const double> zCC, const std::span<const double> zSS,
-      int signOfJacobian, const std::span<const double> rAxis,
-      const std::span<const double> zAxis, double* bSubUVac, double* bSubVVac,
-      double netToroidalCurrent, int m_ivacskip,
+      const std::span<const real_t> rCC, const std::span<const real_t> rSS,
+      const std::span<const real_t> rSC, const std::span<const real_t> rCS,
+      const std::span<const real_t> zSC, const std::span<const real_t> zCS,
+      const std::span<const real_t> zCC, const std::span<const real_t> zSS,
+      int signOfJacobian, const std::span<const real_t> rAxis,
+      const std::span<const real_t> zAxis, real_t* bSubUVac, real_t* bSubVVac,
+      real_t netToroidalCurrent, int m_ivacskip,
       const VmecCheckpoint& vmec_checkpoint = VmecCheckpoint::NONE,
       bool at_checkpoint_iteration = false) = 0;
 
@@ -60,17 +60,17 @@ class FreeBoundaryBase {
 
   // [nZnT] vacuum magnetic pressure |B_vac^2|/2 at the plasma boundary
   // Points to vacuum_magnetic_pressure in HandoverStorage
-  std::span<double> bSqVacShare;
+  std::span<real_t> bSqVacShare;
 
   // [nZnT] cylindrical B^R of Nestor's vacuum magnetic field
   // Points to vacuum_b_r in HandoverStorage
-  std::span<double> vacuum_b_r_share_;
+  std::span<real_t> vacuum_b_r_share_;
   // [nZnT] cylindrical B^phi of Nestor's vacuum magnetic field
   // Points to vacuum_b_phi in HandoverStorage
-  std::span<double> vacuum_b_phi_share_;
+  std::span<real_t> vacuum_b_phi_share_;
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
   // Points to vacuum_b_z in HandoverStorage
-  std::span<double> vacuum_b_z_share_;
+  std::span<real_t> vacuum_b_z_share_;
 };  // FreeBoundaryBase
 
 }  // namespace vmecpp

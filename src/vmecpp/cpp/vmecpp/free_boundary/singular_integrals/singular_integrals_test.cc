@@ -218,18 +218,18 @@ TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   ASSERT_LT(d * d, ap * am) << "test setup: need smooth integrand on [-1,1]";
 
   const int numLocal = tp.ztMax - tp.ztMin;
-  std::vector<double> a(numLocal, a_val);
-  std::vector<double> b2(numLocal, b2_val);
-  std::vector<double> c(numLocal, c_val);
-  std::vector<double> A(numLocal, 0.0);
-  std::vector<double> B2(numLocal, 0.0);
-  std::vector<double> C(numLocal, 0.0);
+  std::vector<real_t> a(numLocal, a_val);
+  std::vector<real_t> b2(numLocal, b2_val);
+  std::vector<real_t> c(numLocal, c_val);
+  std::vector<real_t> A(numLocal, 0.0);
+  std::vector<real_t> B2(numLocal, 0.0);
+  std::vector<real_t> C(numLocal, 0.0);
 
   si.prepareUpdate(a, b2, c, A, B2, C, /*fullUpdate=*/false);
 
   // Reference values via Gauss-Legendre, independent of either recurrence.
-  std::vector<double> Tp_ref(kL + 1);
-  std::vector<double> Tm_ref(kL + 1);
+  std::vector<real_t> Tp_ref(kL + 1);
+  std::vector<real_t> Tm_ref(kL + 1);
   for (int l = 0; l <= kL; ++l) {
     Tp_ref[l] = TlpReference(l, ap, am, d);
     Tm_ref[l] = TlmReference(l, ap, am, d);

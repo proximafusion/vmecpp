@@ -25,7 +25,7 @@ class RadialProfiles {
  public:
   RadialProfiles(const RadialPartitioning* s, HandoverStorage* m_h,
                  const VmecINDATA* id, const FlowControl* fc,
-                 int signOfJacobian, double pDamp);
+                 int signOfJacobian, real_t pDamp);
 
   // update profile parameterizations based on p****_type strings
   void setupInputProfiles();
@@ -40,14 +40,14 @@ class RadialProfiles {
   std::string profileTypeToString(ProfileType profileType);
 
   void computeMagneticFluxes();
-  double torfluxDeriv(double x);
-  double torflux(double x);
-  double polfluxDeriv(double x);
-  double polflux(double x);
+  real_t torfluxDeriv(real_t x);
+  real_t torflux(real_t x);
+  real_t polfluxDeriv(real_t x);
+  real_t polflux(real_t x);
 
-  double evalMassProfile(double x);
-  double evalIotaProfile(double x);
-  double evalCurrProfile(double x);
+  real_t evalMassProfile(real_t x);
+  real_t evalIotaProfile(real_t x);
+  real_t evalCurrProfile(real_t x);
 
   // Evaluate the radial profile function specified by the given
   // parameterization, which can be either an analytical function (in which case
@@ -71,37 +71,51 @@ class RadialProfiles {
   // In the end, for the current profile, this method should always return the
   // enclosed toroidal current profile.
   // TODO(jons): This function is wearing way too many hats. Chunk it up.
-  double evalProfileFunction(const ProfileParameterization& param,
-                             const Eigen::VectorXd& coeffs,
-                             const Eigen::VectorXd& splineKnots,
-                             const Eigen::VectorXd& splineValues,
-                             bool shouldIntegrate, double normX);
+  real_t evalProfileFunction(
+      const ProfileParameterization& param,
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs,
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues,
+      bool shouldIntegrate, real_t normX);
 
-  double evalPowerSeries(const Eigen::VectorXd& coeffs, double x,
-                         bool should_integrate);
-  double evalPowerSeriesI(const Eigen::VectorXd& coeffs, double x);
-  double evalGaussTrunc(const Eigen::VectorXd& coeffs, double x);
-  double evalSumAtan(const Eigen::VectorXd& coeffs, double x);
-  double evalTwoLorentz(const Eigen::VectorXd& coeffs, double x);
-  double evalTwoPower(const Eigen::VectorXd& coeffs, double x,
-                      bool shouldIntegrate);
-  double evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x);
-  double evalAkima(const Eigen::VectorXd& splineKnots,
-                   const Eigen::VectorXd& splineValues, double x);
-  double evalAkimaIntegrated(const Eigen::VectorXd& splineKnots,
-                             const Eigen::VectorXd& splineValues, double x);
-  double evalCubic(const Eigen::VectorXd& splineKnots,
-                   const Eigen::VectorXd& splineValues, double x);
-  double evalCubicIntegrated(const Eigen::VectorXd& splineKnots,
-                             const Eigen::VectorXd& splineValues, double x);
-  double evalPedestal(const Eigen::VectorXd& coeffs, double x);
-  double evalRational(const Eigen::VectorXd& coeffs, double x);
-  double evalLineSegment(const Eigen::VectorXd& splineKnots,
-                         const Eigen::VectorXd& splineValues, double x);
-  double evalLineSegmentIntegrated(const Eigen::VectorXd& splineKnots,
-                                   const Eigen::VectorXd& splineValues,
-                                   double x);
-  double evalNiceQuadratic(const Eigen::VectorXd& coeffs, double x);
+  real_t evalPowerSeries(const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs,
+                         real_t x, bool should_integrate);
+  real_t evalPowerSeriesI(
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x);
+  real_t evalGaussTrunc(const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs,
+                        real_t x);
+  real_t evalSumAtan(const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs,
+                     real_t x);
+  real_t evalTwoLorentz(const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs,
+                        real_t x);
+  real_t evalTwoPower(const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs,
+                      real_t x, bool shouldIntegrate);
+  real_t evalTwoPowerGs(const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs,
+                        real_t x);
+  real_t evalAkima(const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+                   const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues,
+                   real_t x);
+  real_t evalAkimaIntegrated(
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues, real_t x);
+  real_t evalCubic(const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+                   const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues,
+                   real_t x);
+  real_t evalCubicIntegrated(
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues, real_t x);
+  real_t evalPedestal(const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs,
+                      real_t x);
+  real_t evalRational(const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs,
+                      real_t x);
+  real_t evalLineSegment(
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues, real_t x);
+  real_t evalLineSegmentIntegrated(
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineKnots,
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& splineValues, real_t x);
+  real_t evalNiceQuadratic(
+      const Eigen::Matrix<real_t, Eigen::Dynamic, 1>& coeffs, real_t x);
 
   // Accumulate contributions to volume-averaged spectral width <M>.
   void AccumulateVolumeAveragedSpectralWidth() const;
@@ -113,72 +127,72 @@ class RadialProfiles {
   ProfileParameterization pcurrType;
 
   // half-grid
-  Eigen::VectorXd phipH;
-  Eigen::VectorXd chipH;
-  Eigen::VectorXd iotaH;
-  Eigen::VectorXd currH;
-  Eigen::VectorXd massH;
-  Eigen::VectorXd sqrtSH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phipH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> chipH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> iotaH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> currH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> massH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sqrtSH;
 
   // full-grid
-  Eigen::VectorXd phipF;
-  Eigen::VectorXd chipF;
-  Eigen::VectorXd iotaF;
-  Eigen::VectorXd sqrtSF;
-  Eigen::VectorXd radialBlending;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> phipF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> chipF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> iotaF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sqrtSF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> radialBlending;
 
   // ---------------------------------
 
-  double currv;
-  double Itor;
+  real_t currv;
+  real_t Itor;
 
-  double maxToroidalFlux;
-  double maxPoloidalFlux;
+  real_t maxToroidalFlux;
+  real_t maxPoloidalFlux;
 
-  double pressureScalingFactor;
+  real_t pressureScalingFactor;
 
   /** sm[j] = sqrt(s_{j-1/2}) / sqrt(s_j) for all force-j (numFull) */
-  Eigen::VectorXd sm;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sm;
 
   /** sp[j] = sqrt(s_{j+1/2}) / sqrt(s_j) for all force-j (numFull) */
-  Eigen::VectorXd sp;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> sp;
 
   // part 2: derived radial profiles
 
   /** differential volume, half-grid */
-  Eigen::VectorXd dVdsH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> dVdsH;
 
   /** kinetic pressure, half-grid */
-  Eigen::VectorXd presH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> presH;
 
   /** enclosed poloidal current, half-grid */
-  Eigen::VectorXd bvcoH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bvcoH;
 
   /** enclosed toroidal current, half-grid */
-  Eigen::VectorXd bucoH;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> bucoH;
 
   /** poloidal current density, interior full-grid */
-  Eigen::VectorXd jcuruF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jcuruF;
 
   /** toroidal current density, interior full-grid */
-  Eigen::VectorXd jcurvF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> jcurvF;
 
   /** pressure gradient, interior full-grid */
-  Eigen::VectorXd presgradF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> presgradF;
 
   /** differential volume, interior full-grid */
-  Eigen::VectorXd dVdsF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> dVdsF;
 
   /** radial force balance residual, interior full-grid */
-  Eigen::VectorXd equiF;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> equiF;
 
   // [nsMinF1 ... nsMaxF1] surface-averaged spectral width profile on full-grid
-  Eigen::VectorXd spectral_width;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> spectral_width;
 
   // ---------------------------------
 
   /** [ns x 2] 1/sqrtSF for odd-m; 1 for even-m */
-  Eigen::VectorXd scalxc;
+  Eigen::Matrix<real_t, Eigen::Dynamic, 1> scalxc;
 
  private:
   const RadialPartitioning& r_;
@@ -187,7 +201,7 @@ class RadialProfiles {
   const FlowControl& fc_;
 
   const int signOfJacobian;
-  const double pDamp;
+  const real_t pDamp;
 
   std::vector<ProfileParameterizationData> ALL_PARAMS;
 

@@ -34,8 +34,8 @@ class FourierGeometry : public FourierCoeffs {
   // This latter use case applies to fixed-boundary hot-restart operation of
   // VMEC++.
   void InitFromState(const FourierBasisFastPoloidal &fb,
-                     const RowMatrixXd &rmnc, const RowMatrixXd &zmns,
-                     const RowMatrixXd &lmns_full, const RadialProfiles &p,
+                     const RowMatrixXr &rmnc, const RowMatrixXr &zmns,
+                     const RowMatrixXr &lmns_full, const RadialProfiles &p,
                      const VmecConstants &constants,
                      const Boundaries *b = nullptr);
 
@@ -51,44 +51,44 @@ class FourierGeometry : public FourierCoeffs {
   // FourierCoeffs
 
   // contrib to R ~ cos(m * theta) * cos(n * zeta)
-  std::span<double> rmncc;
+  std::span<real_t> rmncc;
 
   // contrib to R ~ sin(m * theta) * sin(n * zeta)
-  std::span<double> rmnss;
+  std::span<real_t> rmnss;
 
   // contrib to R ~ sin(m * theta) * cos(n * zeta)
-  std::span<double> rmnsc;
+  std::span<real_t> rmnsc;
 
   // contrib to R ~ cos(m * theta) * sin(n * zeta)
-  std::span<double> rmncs;
+  std::span<real_t> rmncs;
 
   // -----------
 
   // contrib to Z ~ sin(m * theta) * cos(n * zeta)
-  std::span<double> zmnsc;
+  std::span<real_t> zmnsc;
 
   // contrib to Z ~ cos(m * theta) * sin(n * zeta)
-  std::span<double> zmncs;
+  std::span<real_t> zmncs;
 
   // contrib to Z ~ cos(m * theta) * cos(n * zeta)
-  std::span<double> zmncc;
+  std::span<real_t> zmncc;
 
   // contrib to Z ~ sin(m * theta) * sin(n * zeta)
-  std::span<double> zmnss;
+  std::span<real_t> zmnss;
 
   // -----------
 
   // contrib to lambda ~ sin(m * theta) * cos(n * zeta)
-  std::span<double> lmnsc;
+  std::span<real_t> lmnsc;
 
   // contrib to lambda ~ cos(m * theta) * sin(n * zeta)
-  std::span<double> lmncs;
+  std::span<real_t> lmncs;
 
   // contrib to lambda ~ cos(m * theta) * cos(n * zeta)
-  std::span<double> lmncc;
+  std::span<real_t> lmncc;
 
   // contrib to lambda ~ sin(m * theta) * sin(n * zeta)
-  std::span<double> lmnss;
+  std::span<real_t> lmnss;
 
  private:
   void BindSpans();

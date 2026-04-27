@@ -20,16 +20,16 @@ class RegularizedIntegrals {
   RegularizedIntegrals(const Sizes* s, const TangentialPartitioning* tp,
                        const SurfaceGeometry* sg);
 
-  void update(const std::vector<double>& bDotN);
+  void update(const std::vector<real_t>& bDotN);
 
-  std::vector<double> gsave;
-  std::vector<double> dsave;
+  std::vector<real_t> gsave;
+  std::vector<real_t> dsave;
 
-  std::vector<double> tanu;
-  std::vector<double> tanv;
+  std::vector<real_t> tanu;
+  std::vector<real_t> tanv;
 
-  std::vector<double> greenp;
-  std::vector<double> gstore;
+  std::vector<real_t> greenp;
+  std::vector<real_t> gstore;
 
  private:
   const Sizes& s_;

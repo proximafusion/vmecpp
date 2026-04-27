@@ -98,9 +98,9 @@ void SingularIntegrals::computeCoefficients() {
       // also: s_mn = 0.5*(m + n + abs(m - n)) == max(m, n)
       int s_mn = std::max(m, n);
 
-      double f1 = 1.0;
-      double f2 = 1.0;
-      double f3 = 1.0;
+      real_t f1 = 1.0;
+      real_t f2 = 1.0;
+      real_t f3 = 1.0;
 
       for (int i = 1; i <= k_mn; ++i) {
         f1 *= s_mn - i + 1;
@@ -156,7 +156,7 @@ void SingularIntegrals::computeCoefficients() {
   }  // n
 }  // computeCoefficients
 
-void SingularIntegrals::update(const std::vector<double>& bDotN,
+void SingularIntegrals::update(const std::vector<real_t>& bDotN,
                                bool fullUpdate) {
 #ifdef _OPENMP
 #pragma omp barrier
@@ -176,12 +176,12 @@ void SingularIntegrals::update(const std::vector<double>& bDotN,
 #endif  // _OPENMP
 }  // update
 
-void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
-                                      const std::vector<double>& b2,
-                                      const std::vector<double>& c,
-                                      const std::vector<double>& A,
-                                      const std::vector<double>& B2,
-                                      const std::vector<double>& C,
+void SingularIntegrals::prepareUpdate(const std::vector<real_t>& a,
+                                      const std::vector<real_t>& b2,
+                                      const std::vector<real_t>& c,
+                                      const std::vector<real_t>& A,
+                                      const std::vector<real_t>& B2,
+                                      const std::vector<real_t>& C,
                                       bool fullUpdate) {
   int numLocal = tp_.ztMax - tp_.ztMin;
   for (int kl = 0; kl < numLocal; ++kl) {
@@ -215,14 +215,14 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
       Ra1m[kl] = Am[kl] / am[kl];
     }  // fullUpdate
 
-    const double sqrtap = sqrt(ap[kl]);
-    const double sqrtam = sqrt(am[kl]);
+    const real_t sqrtap = sqrt(ap[kl]);
+    const real_t sqrtam = sqrt(am[kl]);
 
     // Compute T^{\pm}_0 analytically (eq. 6.207 in the_numerics_of_vmecpp.pdf).
-    const double T0p = log((sqrtap * sqrtc2[kl] + ap[kl] + d[kl]) /
+    const real_t T0p = log((sqrtap * sqrtc2[kl] + ap[kl] + d[kl]) /
                            (sqrtap * sqrta2[kl] - ap[kl] + d[kl])) /
                        sqrtap;
-    const double T0m = log((sqrtam * sqrtc2[kl] + am[kl] + d[kl]) /
+    const real_t T0m = log((sqrtam * sqrtc2[kl] + am[kl] + d[kl]) /
                            (sqrtam * sqrta2[kl] - am[kl] + d[kl])) /
                        sqrtam;
 
@@ -256,25 +256,25 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
     // Near-degenerate kl (|r1|~|r2|~1) fall in the forward branch, where
     // zero-seed Miller is known to misconverge (spurious modes never damp).
     // Formula: kL * ln(B/A) < ln(1e10) -> B/A < exp(ln(1e10)/kL).
-    constexpr double kLogGrowthThreshold = 10.0 * 2.30258509299;  // ln(1e10)
-    const double logRatioP =
+    constexpr real_t kLogGrowthThreshold = 10.0 * 2.30258509299;  // ln(1e10)
+    const real_t logRatioP =
         (am[kl] > ap[kl] && ap[kl] > 0.0) ? std::log(am[kl] / ap[kl]) : 0.0;
     const bool useBackwardP =
-        static_cast<double>(kL) * logRatioP > kLogGrowthThreshold;
-    const double logRatioM =
+        static_cast<real_t>(kL) * logRatioP > kLogGrowthThreshold;
+    const real_t logRatioM =
         (ap[kl] > am[kl] && am[kl] > 0.0) ? std::log(ap[kl] / am[kl]) : 0.0;
     const bool useBackwardM =
-        static_cast<double>(kL) * logRatioM > kLogGrowthThreshold;
+        static_cast<real_t>(kL) * logRatioM > kLogGrowthThreshold;
 
     // --- T^+: A = ap, B = am ---
     Tlp[0][kl] = T0p;
     if (useBackwardP) {
       // forward unstable -> use backward recurrence.
-      double T_hi = 0.0;
-      double T_cur = 1.0e-300;
+      real_t T_hi = 0.0;
+      real_t T_cur = 1.0e-300;
       for (int l = kLtail; l >= 1; --l) {
-        const double rhs = sqrtc2[kl] + (l % 2 == 0 ? -1.0 : 1.0) * sqrta2[kl];
-        const double T_lo =
+        const real_t rhs = sqrtc2[kl] + (l % 2 == 0 ? -1.0 : 1.0) * sqrta2[kl];
+        const real_t T_lo =
             (rhs - (2 * l + 1) * d[kl] * T_cur - (l + 1) * ap[kl] * T_hi) /
             (l * am[kl]);
         T_hi = T_cur;
@@ -283,18 +283,18 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
           Tlp[l - 1][kl] = T_lo;
         }
       }
-      const double scaleP = T0p / Tlp[0][kl];
+      const real_t scaleP = T0p / Tlp[0][kl];
       for (int l = 0; l <= kL; ++l) {
         Tlp[l][kl] *= scaleP;
       }
     } else {
       // forward stable.
-      double T_prev = 0.0;  // T^+_{-1}
+      real_t T_prev = 0.0;  // T^+_{-1}
       int sgn = 1;
       for (int fl = 0; fl < kL; ++fl) {
         sgn = -sgn;
-        const double rhs = sqrtc2[kl] + sgn * sqrta2[kl];
-        const double T_next =
+        const real_t rhs = sqrtc2[kl] + sgn * sqrta2[kl];
+        const real_t T_next =
             (rhs - (2 * fl + 1) * d[kl] * Tlp[fl][kl] - fl * am[kl] * T_prev) /
             (ap[kl] * (fl + 1));
         T_prev = Tlp[fl][kl];
@@ -306,11 +306,11 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
     Tlm[0][kl] = T0m;
     if (useBackwardM) {
       // forward unstable -> use backward recurrence.
-      double T_hi = 0.0;
-      double T_cur = 1.0e-300;
+      real_t T_hi = 0.0;
+      real_t T_cur = 1.0e-300;
       for (int l = kLtail; l >= 1; --l) {
-        const double rhs = sqrtc2[kl] + (l % 2 == 0 ? -1.0 : 1.0) * sqrta2[kl];
-        const double T_lo =
+        const real_t rhs = sqrtc2[kl] + (l % 2 == 0 ? -1.0 : 1.0) * sqrta2[kl];
+        const real_t T_lo =
             (rhs - (2 * l + 1) * d[kl] * T_cur - (l + 1) * am[kl] * T_hi) /
             (l * ap[kl]);
         T_hi = T_cur;
@@ -319,18 +319,18 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
           Tlm[l - 1][kl] = T_lo;
         }
       }
-      const double scaleM = T0m / Tlm[0][kl];
+      const real_t scaleM = T0m / Tlm[0][kl];
       for (int l = 0; l <= kL; ++l) {
         Tlm[l][kl] *= scaleM;
       }
     } else {
       // forward stable.
-      double T_prev = 0.0;  // T^-_{-1}
+      real_t T_prev = 0.0;  // T^-_{-1}
       int sgn = 1;
       for (int fl = 0; fl < kL; ++fl) {
         sgn = -sgn;
-        const double rhs = sqrtc2[kl] + sgn * sqrta2[kl];
-        const double T_next =
+        const real_t rhs = sqrtc2[kl] + sgn * sqrta2[kl];
+        const real_t T_next =
             (rhs - (2 * fl + 1) * d[kl] * Tlm[fl][kl] - fl * ap[kl] * T_prev) /
             (am[kl] * (fl + 1));
         T_prev = Tlm[fl][kl];
@@ -340,7 +340,7 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
   }  // kl
 }  // prepareUpdate
 
-void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
+void SingularIntegrals::performUpdate(const std::vector<real_t>& bDotN,
                                       bool fullUpdate) {
   const int numLocal = tp_.ztMax - tp_.ztMin;
 
@@ -386,7 +386,7 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
         const int idx_m_negn = (nf - n) * (mf + 1) + m;
 
         const int idx_lnm = (fl * (nf + 1) + n) * (mf + 1) + m;
-        const double cmns_factor =
+        const real_t cmns_factor =
             cmns[idx_lnm] / (fb_.mscale[m] * fb_.nscale[n]);
 
         if (n == 0 || m == 0) {
@@ -401,7 +401,7 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
             const int idx_nk = n * s_.nZeta + k;
 
             // sin(mu - |n|v) * cmns(l,n,m)
-            const double sinp = (fb_.sinmu[idx_lm] * fb_.cosnv[idx_nk] -
+            const real_t sinp = (fb_.sinmu[idx_lm] * fb_.cosnv[idx_nk] -
                                  fb_.cosmu[idx_lm] * fb_.sinnv[idx_nk]) *
                                 cmns_factor;
 
@@ -414,7 +414,7 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
 
             if (s_.lasym) {
               // cos(mu - |n|v) * cmns(l,n,m)
-              const double cosp = (fb_.cosmu[idx_lm] * fb_.cosnv[idx_nk] +
+              const real_t cosp = (fb_.cosmu[idx_lm] * fb_.cosnv[idx_nk] +
                                    fb_.sinmu[idx_lm] * fb_.sinnv[idx_nk]) *
                                   cmns_factor;
 
@@ -436,11 +436,11 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
             const int idx_lm = l * (s_.mnyq2 + 1) + m;
             const int remaining = std::min(s_.nZeta - k, tp_.ztMax - kl);
 
-            const double coeff1 = fb_.sinmu[idx_lm] * cmns_factor;
-            const double coeff2 = fb_.cosmu[idx_lm] * cmns_factor;
+            const real_t coeff1 = fb_.sinmu[idx_lm] * cmns_factor;
+            const real_t coeff2 = fb_.cosmu[idx_lm] * cmns_factor;
 
-            std::array<double, 4> buf_m_posn{};
-            std::array<double, 4> buf_m_negn{};
+            std::array<real_t, 4> buf_m_posn{};
+            std::array<real_t, 4> buf_m_negn{};
 
             int i = 0;
             for (; i + 3 < remaining; i += 4, k += 4, kl += 4) {
@@ -449,18 +449,18 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
               const int idx_nk = n * s_.nZeta + k;
 
               const double c0 = bDotN[klRel + 0] * s_.wInt[l];
-              const double c1 = bDotN[klRel + 1] * s_.wInt[l];
-              const double c2 = bDotN[klRel + 2] * s_.wInt[l];
-              const double c3 = bDotN[klRel + 3] * s_.wInt[l];
+              const real_t c1 = bDotN[klRel + 1] * s_.wInt[l];
+              const real_t c2 = bDotN[klRel + 2] * s_.wInt[l];
+              const real_t c3 = bDotN[klRel + 3] * s_.wInt[l];
 
               // sin(mu - |n|v) * cmns(l,n,m)
-              const double sinp0 = coeff1 * fb_.cosnv[idx_nk + 0] -
+              const real_t sinp0 = coeff1 * fb_.cosnv[idx_nk + 0] -
                                    coeff2 * fb_.sinnv[idx_nk + 0];
-              const double sinp1 = coeff1 * fb_.cosnv[idx_nk + 1] -
+              const real_t sinp1 = coeff1 * fb_.cosnv[idx_nk + 1] -
                                    coeff2 * fb_.sinnv[idx_nk + 1];
-              const double sinp2 = coeff1 * fb_.cosnv[idx_nk + 2] -
+              const real_t sinp2 = coeff1 * fb_.cosnv[idx_nk + 2] -
                                    coeff2 * fb_.sinnv[idx_nk + 2];
-              const double sinp3 = coeff1 * fb_.cosnv[idx_nk + 3] -
+              const real_t sinp3 = coeff1 * fb_.cosnv[idx_nk + 3] -
                                    coeff2 * fb_.sinnv[idx_nk + 3];
 
               buf_m_posn[0] += Tlp[fl][klRel + 0] * c0 * sinp0;
@@ -469,13 +469,13 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
               buf_m_posn[3] += Tlp[fl][klRel + 3] * c3 * sinp3;
 
               // sin(mu + |n|v) * cmns(l,n,m)
-              const double sinm0 = coeff1 * fb_.cosnv[idx_nk + 0] +
+              const real_t sinm0 = coeff1 * fb_.cosnv[idx_nk + 0] +
                                    coeff2 * fb_.sinnv[idx_nk + 0];
-              const double sinm1 = coeff1 * fb_.cosnv[idx_nk + 1] +
+              const real_t sinm1 = coeff1 * fb_.cosnv[idx_nk + 1] +
                                    coeff2 * fb_.sinnv[idx_nk + 1];
-              const double sinm2 = coeff1 * fb_.cosnv[idx_nk + 2] +
+              const real_t sinm2 = coeff1 * fb_.cosnv[idx_nk + 2] +
                                    coeff2 * fb_.sinnv[idx_nk + 2];
-              const double sinm3 = coeff1 * fb_.cosnv[idx_nk + 3] +
+              const real_t sinm3 = coeff1 * fb_.cosnv[idx_nk + 3] +
                                    coeff2 * fb_.sinnv[idx_nk + 3];
 
               buf_m_negn[0] += Tlm[fl][klRel + 0] * c0 * sinm0;
@@ -515,18 +515,18 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
                 const int klRel = kl - tp_.ztMin;
                 const int idx_nk = n * s_.nZeta + k;
 
-                const double coeff1 =
+                const real_t coeff1 =
                     fb_.sinmu[idx_lm] * fb_.cosnv[idx_nk] * cmns_factor;
-                const double coeff2 =
+                const real_t coeff2 =
                     fb_.cosmu[idx_lm] * fb_.sinnv[idx_nk] * cmns_factor;
 
                 // sin(mu + |n|v) * cmns(l,n,m)
-                const double sinm = coeff1 + coeff2;
+                const real_t sinm = coeff1 + coeff2;
 
                 // sin(mu - |n|v) * cmns(l,n,m)
-                const double sinp = coeff1 - coeff2;
+                const real_t sinp = coeff1 - coeff2;
 
-                const double c = bDotN[klRel] * s_.wInt[l];
+                const real_t c = bDotN[klRel] * s_.wInt[l];
                 bvec_sin[idx_m_posn] += Tlp[fl][klRel] * c * sinp;
                 bvec_sin[idx_m_negn] += Tlm[fl][klRel] * c * sinm;
 
@@ -552,16 +552,16 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
               const int idx_lm = l * (s_.mnyq2 + 1) + m;
               const int idx_nk = n * s_.nZeta + k;
 
-              const double coeff1 =
+              const real_t coeff1 =
                   fb_.cosmu[idx_lm] * fb_.cosnv[idx_nk] * cmns_factor;
-              const double coeff2 =
+              const real_t coeff2 =
                   fb_.sinmu[idx_lm] * fb_.sinnv[idx_nk] * cmns_factor;
 
               // cos(mu + |n|v) * cmns(l,n,m)
-              const double cosm = coeff1 - coeff2;
+              const real_t cosm = coeff1 - coeff2;
 
               // cos(mu - |n|v) * cmns(l,n,m)
-              const double cosp = coeff1 + coeff2;
+              const real_t cosp = coeff1 + coeff2;
 
               bvec_cos[idx_m_posn] +=
                   Tlp[fl][klRel] * bDotN[klRel] * s_.wInt[l] * cosp;
