@@ -34,4 +34,5 @@ cc_test(
         "//util/netcdf_io",
         "//util/testing:numerical_comparison_lib",
     ],
+    size = "small",
 )

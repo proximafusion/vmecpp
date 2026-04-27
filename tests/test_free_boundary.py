@@ -167,34 +167,41 @@ def test_response_table_py_to_cpp_copy(makegrid_params):
     assert cpp_response_table.b_r.base is not response_table.b_r.base
 
 
-def test_magnetic_field_response_table_loading():
-    makegrid_params = vmecpp.MakegridParameters(
-        normalize_by_currents=False,
-        assume_stellarator_symmetry=True,
-        number_of_field_periods=2,
-        r_grid_minimum=0.1,
-        r_grid_maximum=1.0,
-        number_of_r_grid_points=10,
-        z_grid_minimum=-0.5,
-        z_grid_maximum=0.5,
-        number_of_z_grid_points=20,
-        number_of_phi_grid_points=20,
-    )
+def test_invalid_path_magnetic_field_response_table(makegrid_params):
     invalid_coils_file = "path/to/invalid_coils_file"
     with pytest.raises(RuntimeError):
         vmecpp.MagneticFieldResponseTable.from_coils_file(
             invalid_coils_file, makegrid_params
         )
-    # Test with a valid file
-    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+
+
+def test_magnetic_field_response_table_scaled_raw(makegrid_params):
+    assert makegrid_params.normalize_by_currents
+    coils_path = (
         TEST_DATA_DIR
         / ".."
         / "common"
         / "makegrid_lib"
         / "test_data"
-        / "coils.test_symmetric_even",
-        makegrid_params,
+        / "coils.test_symmetric_odd"
     )
-    assert response.b_p.shape == response.b_r.shape
-    assert response.b_z.shape == response.b_p.shape
-    assert response.b_r[0, 0] == pytest.approx(-9.78847973e-06, abs=1e-8, rel=1e-6)
+    scaled_response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        coils_path, makegrid_params
+    )
+    makegrid_params.normalize_by_currents = False
+    raw_response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        coils_path, makegrid_params
+    )
+    assert scaled_response.b_r.shape[0] == 2
+    assert scaled_response.b_r.shape == raw_response.b_r.shape
+    assert scaled_response.b_z.shape == raw_response.b_z.shape
+    assert scaled_response.b_p.shape == raw_response.b_p.shape
+    # The scaled response should be the raw response divided by the currents
+    extcur = [96.0, -36.0]
+    for i, single_current in enumerate(extcur):
+        np.testing.assert_allclose(
+            scaled_response.b_r[i] * single_current,
+            raw_response.b_r[i],
+            atol=1e-14,
+            rtol=0.0,
+        )

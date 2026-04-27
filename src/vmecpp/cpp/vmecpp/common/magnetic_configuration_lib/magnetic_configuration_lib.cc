@@ -262,40 +262,26 @@ absl::Status NumWindingsToCircuitCurrents(
         m_magnetic_configuration.mutable_serial_circuits(idx_circuit);
     const int num_coils = m_serial_circuit->coils_size();
 
-    // step 1: determine unique number of windings in all coils (and error out
-    // if not all num_windings are the same)
-    double unique_num_windings = 0.0;
-    // This contains the sign of the number of windings of each circuit
-    // with respect to the first circuit.
-    // The first element is thus always expected to be 1.
-    // It is used in stellarator-symmetrically-flipped coils,
-    // where the order of the points along the coil stayed the same
-    // and the stellarator-symmetric reversal of the poloidal coordinate
-    // was incorporated by reversing the sign of the number of windings instead.
-    std::vector<int> num_windings_signs(num_coils);
-    for (int idx_coil = 0; idx_coil < num_coils; ++idx_coil) {
-      const Coil& coil = m_serial_circuit->coils(idx_coil);
-      if (idx_coil == 0) {
-        unique_num_windings = coil.num_windings();
-      } else if (std::abs(coil.num_windings()) !=
-                 std::abs(unique_num_windings)) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "not all num_windings are |equal| in coil: |", coil.num_windings(),
-            "| =!= |", unique_num_windings, "|"));
-      }
-      num_windings_signs[idx_coil] =
-          coil.num_windings() * unique_num_windings < 0 ? -1 : 1;
-    }
+    // Use the first coil's num_windings as the reference for normalization.
+    // Fortran MAKEGRID normalizes by the first coil's num_windings even when
+    // coils within a circuit have different magnitudes (e.g., a TF coil at
+    // 96 turns and PF coils at -16 turns) but share the same current
+    const double reference_num_windings =
+        m_serial_circuit->coils(0).num_windings();
 
-    // step 2: migrate num_windings into circuit current
+    // step 1: migrate num_windings into circuit current using the reference
     const double current_times_num_windings =
-        m_serial_circuit->current() * unique_num_windings;
+        m_serial_circuit->current() * reference_num_windings;
     m_serial_circuit->set_current(current_times_num_windings);
 
-    // step 3: set num_windings to +1 or -1 in all coils
+    // step 2: Normalize each coil's num_windings by the reference.
+    // For circuits where all coils share the same |num_windings|, this reduces
+    // to +/-1. For circuits with varying num_windings (e.g., TF coil + PF
+    // coils), each coil contributes proportionally, matching Fortran MAKEGRID
+    // output: field_scaled = sum_i(w_i/w_ref * B_i).
     for (int idx_coil = 0; idx_coil < num_coils; ++idx_coil) {
       Coil* m_coil = m_serial_circuit->mutable_coils(idx_coil);
-      m_coil->set_num_windings(num_windings_signs[idx_coil]);
+      m_coil->set_num_windings(m_coil->num_windings() / reference_num_windings);
     }
   }
 
