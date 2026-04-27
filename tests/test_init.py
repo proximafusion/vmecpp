@@ -242,8 +242,9 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
         # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
         # Current density coefficients are computed via finite differences of
         # covariant B field Fourier coefficients, which amplifies floating-point
-        # non-determinism (e.g., from OpenMP reduction order).
-        rtol = 1e-3 if varname in ("currumnc", "currvmnc") else 1e-6
+        # non-determinism (e.g., from OpenMP reduction order). Similarly, jdotb
+        # exhibits non-determinism due to its computation involving reductions.
+        rtol = 1e-3 if varname in ("currumnc", "currvmnc", "jdotb") else 1e-6
         np.testing.assert_allclose(
             np.asarray(test_value[:]),
             np.asarray(expected_value[:]),
