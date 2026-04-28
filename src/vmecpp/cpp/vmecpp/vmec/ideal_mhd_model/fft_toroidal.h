@@ -37,15 +37,17 @@ namespace vmecpp {
 //   n     = nZeta  (number of toroidal grid points, transform length)
 //   nhalf = n/2+1  (half-spectrum size, CCE packing)
 //   nfp   = number of toroidal field periods (factor in derivative spectra)
+//   mpol  = number of poloidal modes (sets the per-surface batch size)
 //
 // CCE (complex conjugate-even) half-spectrum layout (2*nhalf doubles):
 //   [re0, 0, re1, im1, re2, im2, ..., re(N/2), 0]
-// Fill* helpers write to CplxBuf (double[2]) regardless of backend.
+// Fill* helpers write to CplxBuf (double[2]).
 class ToroidalFftPlans {
  public:
-  // Create synthesis (c2r) and analysis (r2c) descriptors for transforms of
-  // length n.
-  explicit ToroidalFftPlans(int n, int nfp);
+  // Create batched MKL descriptors of length n.
+  // mpol determines the size of the "full" per-surface batch
+  // (kBatch * mpol transforms per call).
+  ToroidalFftPlans(int n, int nfp, int mpol);
   ~ToroidalFftPlans();
 
   // Non-copyable, non-movable (descriptors hold raw MKL resources).
@@ -63,18 +65,32 @@ class ToroidalFftPlans {
   // Number of field periods.
   int nfp;
 
+  // Number of poloidal modes (sets per-surface batch size).
+  int mpol;
+
+  // Number of quantities transformed per (jF, m) pair:
+  //   {R_cc, R_ss, dR_cc, dR_ss, Z_sc, Z_cs, dZ_sc, dZ_cs,
+  //    L_sc, L_cs, dL_sc, dL_cs}.
+  static constexpr int kBatch = 12;
+
+  // Single-transform descriptors (used for legacy/per-quantity transforms).
   // Synthesis (c2r / backward): CCE input -> real output.
   DFTI_DESCRIPTOR_HANDLE desc_c2r;
-
   // Analysis (r2c / forward): real input -> CCE output.
   DFTI_DESCRIPTOR_HANDLE desc_r2c;
+
+  // Per-surface batched descriptors: kBatch * mpol transforms in one call.
+  // Buffer layout: 12*mpol contiguous half-spectra (c2r input) or signals
+  // (r2c input), packed in slot order (m, quantity).
+  DFTI_DESCRIPTOR_HANDLE desc_full_c2r;
+  DFTI_DESCRIPTOR_HANDLE desc_full_r2c;
 };
 
 // MKL-accelerated forward transform: Fourier coefficients -> real space.
 //
 // Drop-in replacement for FourierToReal3DSymmFastPoloidal.
 // Replaces the O(nZeta * ntor) inner-n dot-product loop with
-// O(nZeta * log(nZeta)) MKL DFTI c2r transforms.
+// O(nZeta * log(nZeta)) MKL DFTI c2r transforms, batched per surface.
 //
 // The toroidal basis arrays cosnv/sinnv/cosnvn/sinnvn in
 // FourierBasisFastPoloidal incorporate nscale[n] = sqrt(2) for n > 0. The FFT
@@ -90,7 +106,7 @@ void FourierToReal3DSymmFastPoloidalFft(
 //
 // Drop-in replacement for ForcesToFourier3DSymmFastPoloidal.
 // Replaces the O(nZeta * ntor) toroidal scatter loop with
-// O(nZeta * log(nZeta)) MKL DFTI r2c transforms.
+// O(nZeta * log(nZeta)) MKL DFTI r2c transforms, batched per surface.
 void ForcesToFourier3DSymmFastPoloidalFft(
     const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,

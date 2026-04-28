@@ -504,7 +504,7 @@ IdealMhdModel::IdealMhdModel(
       m_fb_(m_fb),
       m_vacuum_pressure_state_(*m_vacuum_pressure_state),
 #ifdef VMECPP_USE_MKL
-      fft_plans_(s->nZeta, s->nfp),
+      fft_plans_(s->nZeta, s->nfp, s->mpol),
 #endif
       signOfJacobian(signOfJacobian),
       nvacskip(nvacskip),
