@@ -5,7 +5,6 @@
 #include "vmecpp/free_boundary/laplace_solver/laplace_solver.h"
 
 #include <iostream>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -58,21 +57,41 @@ LaplaceSolver::LaplaceSolver(const Sizes *s, const FourierBasisFastToroidal *fb,
 
   bvec_sin.resize(mnpd);
   amat_sin_sin.resize(mnpd * mnpd);
+
+  // Precompute scaled Fourier basis matrices for GEMM-based transforms.
+  cosnv_scaled_.resize(nf + 1, s_.nZeta);
+  sinnv_scaled_.resize(nf + 1, s_.nZeta);
+  for (int n = 0; n < nf + 1; ++n) {
+    for (int k = 0; k < s_.nZeta; ++k) {
+      cosnv_scaled_(n, k) = fb_.cosnv[n * s_.nZeta + k] / fb_.nscale[n];
+      sinnv_scaled_(n, k) = fb_.sinnv[n * s_.nZeta + k] / fb_.nscale[n];
+    }
+  }
+  sinmui_mat_.resize(s_.nThetaReduced, mf + 1);
+  cosmui_mat_.resize(s_.nThetaReduced, mf + 1);
+  for (int l = 0; l < s_.nThetaReduced; ++l) {
+    for (int m = 0; m < mf + 1; ++m) {
+      sinmui_mat_(l, m) = fb_.sinmui[l * (s_.mnyq2 + 1) + m] / fb_.mscale[m];
+      cosmui_mat_(l, m) = fb_.cosmui[l * (s_.mnyq2 + 1) + m] / fb_.mscale[m];
+    }
+  }
 }
 
 // fourp()-equivalent
 void LaplaceSolver::TransformGreensFunctionDerivative(
-    const std::vector<double> &greenp) {
-  const int mnpd = (2 * nf + 1) * (mf + 1);
-  absl::c_fill_n(grpmn_sin, mnpd * numLocal, 0);
+    const Eigen::VectorXd &greenp) {
+  grpmn_sin.setZero();
+
+  Eigen::VectorXd g1_symm(nf + 1);
+  Eigen::VectorXd g2_symm(nf + 1);
 
   for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
     const int klpRel = klp - tp_.ztMin;
     for (int l = 0; l < s_.nThetaReduced; ++l) {
       const int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
 
-      std::vector<double> g1_symm(nf + 1);
-      std::vector<double> g2_symm(nf + 1);
+      g1_symm.setZero();
+      g2_symm.setZero();
 
       for (int k = 0; k < s_.nZeta; ++k) {
         const int kRev = (s_.nZeta - k) % s_.nZeta;
@@ -125,7 +144,7 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
   }  // kl'
 }  // TransformGreensFunctionDerivative
 
-void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double> &gstore) {
+void LaplaceSolver::SymmetriseSourceTerm(const Eigen::VectorXd &gstore) {
   for (int l = 0; l < s_.nThetaReduced; ++l) {
     int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
     for (int k = 0; k < s_.nZeta; ++k) {
@@ -141,23 +160,14 @@ void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double> &gstore) {
 }  // SymmetriseSourceTerm
 
 void LaplaceSolver::AccumulateFullGrpmn(
-    const std::vector<double> &grpmn_sin_singular) {
-  const int mnpd = (mf + 1) * (2 * nf + 1);
-  for (int mn = 0; mn < mnpd; ++mn) {
-    for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
-      const int klpRel = klp - tp_.ztMin;
-
-      // need scale factor 1/nfp for singular term!
-      grpmn_sin[mn * numLocal + klpRel] +=
-          grpmn_sin_singular[mn * numLocal + klpRel] / s_.nfp;
-    }  // kl'
-  }  // mn
+    const Eigen::VectorXd &grpmn_sin_singular) {
+  // scale singular contribution by 1/nfp and accumulate
+  grpmn_sin += grpmn_sin_singular / static_cast<double>(s_.nfp);
 }  // AccumulateFullGrpmn
 
 void LaplaceSolver::PerformToroidalFourierTransforms() {
-  const int size_b = s_.nThetaReduced * (2 * nf + 1);
-  absl::c_fill_n(bcos, size_b, 0);
-  absl::c_fill_n(bsin, size_b, 0);
+  bcos.setZero();
+  bsin.setZero();
 
   for (int n = 0; n < nf + 1; ++n) {
     for (int l = 0; l < s_.nThetaReduced; ++l) {
@@ -166,8 +176,8 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
       for (int k = 0; k < s_.nZeta; ++k) {
         const int idx_nk = n * s_.nZeta + k;
 
-        const double cosn = fb_.cosnv[idx_nk] / fb_.nscale[n];
-        const double sinn = fb_.sinnv[idx_nk] / fb_.nscale[n];
+        const double cosn = cosnv_scaled_(n, k);
+        const double sinn = sinnv_scaled_(n, k);
 
         const int idx_kl = l * s_.nZeta + k;
 
@@ -188,9 +198,8 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
   }  // n
 
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  const int size_a_temp = mnpd * (2 * nf + 1) * s_.nThetaEff;
-  absl::c_fill_n(actemp, size_a_temp, 0);
-  absl::c_fill_n(astemp, size_a_temp, 0);
+  actemp.setZero();
+  astemp.setZero();
 
   // PERFORM KV (TOROIDAL ANGLE) TRANSFORM
   // For every n, compute an integral over the toroidal grid index k.
@@ -201,16 +210,13 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
         const int l = klp / s_.nZeta;
         const int k = klp % s_.nZeta;
 
-        const int idx_nk = n * s_.nZeta + k;
-
         const int idx_a_posn =
             (mn * (2 * nf + 1) + (nf + n)) * s_.nThetaEff + l;
 
-        const double cosn = fb_.cosnv[idx_nk] / fb_.nscale[n];
-        const double sinn = fb_.sinnv[idx_nk] / fb_.nscale[n];
-
-        actemp[idx_a_posn] += cosn * grpmn_sin[mn * numLocal + klpRel];
-        astemp[idx_a_posn] += sinn * grpmn_sin[mn * numLocal + klpRel];
+        actemp[idx_a_posn] +=
+            cosnv_scaled_(n, k) * grpmn_sin[mn * numLocal + klpRel];
+        astemp[idx_a_posn] +=
+            sinnv_scaled_(n, k) * grpmn_sin[mn * numLocal + klpRel];
       }  // kl'
     }  // n
   }  // mn
@@ -235,47 +241,60 @@ void LaplaceSolver::PerformToroidalFourierTransforms() {
 
 void LaplaceSolver::PerformPoloidalFourierTransforms() {
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  absl::c_fill_n(bvec_sin, mnpd, 0);
-  absl::c_fill_n(amat_sin_sin, mnpd * mnpd, 0);
+  bvec_sin.setZero();
+  amat_sin_sin.setZero();
+
+  // PERFORM KU (POLOIDAL ANGLE) TRANSFORM for bvec_sin.
+  // bcos_mat: (2*nf+1, nThetaReduced), sinmui_mat_: (nThetaReduced, mf+1)
+  // bvec_sin_mat[all_n, m] = sum_l bcos[all_n, l]*sinmui[l,m]
+  //                                - bsin[all_n, l]*cosmui[l,m]
+  Eigen::Map<const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
+                                 Eigen::RowMajor>>
+      bcos_mat(bcos.data(), 2 * nf + 1, s_.nThetaReduced);
+  Eigen::Map<const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
+                                 Eigen::RowMajor>>
+      bsin_mat(bsin.data(), 2 * nf + 1, s_.nThetaReduced);
+  Eigen::Map<
+      Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+      bvec_sin_mat(bvec_sin.data(), 2 * nf + 1, mf + 1);
+
+  // (2*nf+1, nTR) @ (nTR, mf+1) = (2*nf+1, mf+1)
+  bvec_sin_mat.noalias() = bcos_mat * sinmui_mat_ - bsin_mat * cosmui_mat_;
+
+  // PERFORM KU (POLOIDAL ANGLE) TRANSFORM for amat_sin_sin.
+  // amat_sin_sin has layout [all_n*(mf+1)+m, mn] (row = amat row, col = mn).
+  // actemp_2d: (mnpd*(2*nf+1), nThetaEff) row-major.
+  // For each all_n, actemp slice at row mn is at
+  //   offset (mn*(2*nf+1)+all_n)*nThetaEff with outer stride (2*nf+1)*nThetaEff
+  // amat[all_n*(mf+1)+m, mn] = sum_l ac_slice[mn,l]*sinmui[l,m]
+  //                                 - as_slice[mn,l]*cosmui[l,m]
+  Eigen::Map<
+      Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+      amat_2d(amat_sin_sin.data(), mnpd, mnpd);
+
+  using OuterStrideType = Eigen::OuterStride<Eigen::Dynamic>;
+  const int outer_stride = (2 * nf + 1) * s_.nThetaEff;
 
   for (int all_n = 0; all_n < 2 * nf + 1; ++all_n) {
-    for (int m = 0; m < mf + 1; ++m) {
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_lm = l * (s_.mnyq2 + 1) + m;
+    // ac_slice(mn, l) = actemp[(mn*(2*nf+1)+all_n)*nThetaEff + l]
+    // Row-major, outer stride between consecutive mn-rows is outer_stride.
+    Eigen::Map<const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
+                                   Eigen::RowMajor>,
+               0, OuterStrideType>
+        ac_slice(actemp.data() + all_n * s_.nThetaEff, mnpd, s_.nThetaEff,
+                 OuterStrideType(outer_stride));
+    Eigen::Map<const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
+                                   Eigen::RowMajor>,
+               0, OuterStrideType>
+        as_slice(astemp.data() + all_n * s_.nThetaEff, mnpd, s_.nThetaEff,
+                 OuterStrideType(outer_stride));
 
-        double cosmui = fb_.cosmui[idx_lm] / fb_.mscale[m];
-        double sinmui = fb_.sinmui[idx_lm] / fb_.mscale[m];
-
-        const int idx_l_all_n = all_n * s_.nThetaReduced + l;
-        bvec_sin[all_n * (mf + 1) + m] +=
-            bcos[idx_l_all_n] * sinmui - bsin[idx_l_all_n] * cosmui;
-      }  // l
-    }  // m
+    // (ac_slice @ sinmui_mat_): (mnpd, nTR) @ (nTR, mf+1) = (mnpd, mf+1)
+    // Target block rows = all_n*(mf+1)..all_n*(mf+1)+mf, cols = all mn
+    // We need transposed result: (mf+1, mnpd)
+    amat_2d.middleRows(all_n * (mf + 1), mf + 1).noalias() +=
+        (ac_slice * sinmui_mat_ - as_slice * cosmui_mat_).transpose();
   }  // all_n
-
-  // -----------------
-
-  for (int mn = 0; mn < mnpd; ++mn) {
-    // linear index over all -nf:nf
-    for (int all_n = 0; all_n < 2 * nf + 1; ++all_n) {
-      // NOTE: This is a little uneconomic,
-      // as not all l have been touched by this thread.
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        for (int m = 0; m < mf + 1; ++m) {
-          const int idx_lm = l * (s_.mnyq2 + 1) + m;
-
-          const double cosmui = fb_.cosmui[idx_lm] / fb_.mscale[m];
-          const double sinmui = fb_.sinmui[idx_lm] / fb_.mscale[m];
-
-          const int idx_atemp = (mn * (2 * nf + 1) + all_n) * s_.nThetaEff + l;
-
-          const int idx_amat = (all_n * (mf + 1) + m) * mnpd + mn;
-          amat_sin_sin[idx_amat] +=
-              actemp[idx_atemp] * sinmui - astemp[idx_atemp] * cosmui;
-        }  // m
-      }  // l
-    }  // all_n
-  }  // mn
 }  // PerformPoloidalFourierTransforms
 
 void LaplaceSolver::BuildMatrix() {
@@ -358,7 +377,7 @@ void LaplaceSolver::DecomposeMatrix() {
 }  // DecomposeMatrix
 
 void LaplaceSolver::SolveForPotential(
-    const std::vector<double> &bvec_sin_singular) {
+    const Eigen::VectorXd &bvec_sin_singular) {
   int mnpd = (mf + 1) * (2 * nf + 1);
 #ifdef _OPENMP
 #pragma omp single

@@ -5,8 +5,8 @@
 #ifndef VMECPP_FREE_BOUNDARY_MGRID_PROVIDER_MGRID_PROVIDER_H_
 #define VMECPP_FREE_BOUNDARY_MGRID_PROVIDER_MGRID_PROVIDER_H_
 
+#include <Eigen/Dense>
 #include <filesystem>
-#include <vector>
 
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/sizes/sizes.h"
@@ -26,21 +26,20 @@ class MGridProvider {
       const makegrid::MagneticFieldResponseTable& magnetic_response_table,
       const Eigen::VectorXd& coil_currents);
 
-  void SetFixedMagneticField(const std::vector<double>& fixed_br,
-                             const std::vector<double>& fixed_bp,
-                             const std::vector<double>& fixed_bz);
+  void SetFixedMagneticField(const Eigen::VectorXd& fixed_br,
+                             const Eigen::VectorXd& fixed_bp,
+                             const Eigen::VectorXd& fixed_bz);
 
-  void interpolate(int ztMin, int ztMax, int nZeta,
-                   const std::vector<double>& r, const std::vector<double>& z,
-                   std::vector<double>& m_interpBr,
-                   std::vector<double>& m_interpBp,
-                   std::vector<double>& m_interpBz) const;
+  void interpolate(int ztMin, int ztMax, int nZeta, const Eigen::VectorXd& r,
+                   const Eigen::VectorXd& z, Eigen::VectorXd& m_interpBr,
+                   Eigen::VectorXd& m_interpBp,
+                   Eigen::VectorXd& m_interpBz) const;
 
   // mgrid internals below
 
-  std::vector<double> bR;
-  std::vector<double> bP;
-  std::vector<double> bZ;
+  Eigen::VectorXd bR;
+  Eigen::VectorXd bP;
+  Eigen::VectorXd bZ;
 
   int nfp;
 
@@ -66,9 +65,9 @@ class MGridProvider {
   bool has_mgrid_loaded_;
   bool has_fixed_field_;
 
-  std::vector<double> fixed_br_;
-  std::vector<double> fixed_bp_;
-  std::vector<double> fixed_bz_;
+  Eigen::VectorXd fixed_br_;
+  Eigen::VectorXd fixed_bp_;
+  Eigen::VectorXd fixed_bz_;
 };
 
 }  // namespace vmecpp

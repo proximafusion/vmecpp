@@ -27,6 +27,31 @@ Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
 
   bSubU.setZero(numLocal);
   bSubV.setZero(numLocal);
+
+  // Precompute inv-DFT basis matrices for the potU/potV computation.
+  const int mnpd = (mf + 1) * (2 * nf + 1);
+  basis_u_.resize(numLocal, mnpd);
+  basis_v_.resize(numLocal, mnpd);
+  for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
+    const int kl_local = kl - tp_.ztMin;
+    const int l = kl / s_.nZeta;
+    const int k = kl % s_.nZeta;
+    for (int mn = 0; mn < mnpd; ++mn) {
+      const int n = mn / (mf + 1) - nf;  // -nf:nf
+      const int m = mn % (mf + 1);
+      const int abs_n = std::abs(n);
+      const int sign_n = signum(n);
+      const int idx_lm = l * (s_.mnyq2 + 1) + m;
+      const double cosmu = fb_.cosmu[idx_lm] / fb_.mscale[m];
+      const double sinmu = fb_.sinmu[idx_lm] / fb_.mscale[m];
+      const int idx_nk = abs_n * s_.nZeta + k;
+      const double cosnv = fb_.cosnv[idx_nk] / fb_.nscale[abs_n];
+      const double sinnv = fb_.sinnv[idx_nk] / fb_.nscale[abs_n];
+      const double cos_mu_nv = cosmu * cosnv + sign_n * sinmu * sinnv;
+      basis_u_(kl_local, mn) = m * cos_mu_nv;
+      basis_v_(kl_local, mn) = -n * s_.nfp * cos_mu_nv;
+    }  // mn
+  }  // kl
 }
 
 bool Nestor::update(
@@ -130,31 +155,12 @@ bool Nestor::update(
   potU.setZero();
   potV.setZero();
 
-  // inv-DFT with tangential derivatives
-  for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
-    const int l = kl / s_.nZeta;
-    const int k = kl % s_.nZeta;
-    for (int mn = 0; mn < mnpd; ++mn) {
-      const int n = mn / (mf + 1) - nf;  // -nf:nf
-      const int m = mn % (mf + 1);
-
-      const int abs_n = std::abs(n);
-      const int sign_n = signum(n);
-
-      const int idx_lm = l * (s_.mnyq2 + 1) + m;
-      const double cosmu = fb_.cosmu[idx_lm] / fb_.mscale[m];
-      const double sinmu = fb_.sinmu[idx_lm] / fb_.mscale[m];
-
-      const int idx_nk = abs_n * s_.nZeta + k;
-      const double cosnv = fb_.cosnv[idx_nk] / fb_.nscale[abs_n];
-      const double sinnv = fb_.sinnv[idx_nk] / fb_.nscale[abs_n];
-
-      const double cos_mu_nv = cosmu * cosnv + sign_n * sinmu * sinnv;
-
-      potU[kl - tp_.ztMin] += bvecShare[mn] * m * cos_mu_nv;
-      potV[kl - tp_.ztMin] += bvecShare[mn] * (-n * s_.nfp) * cos_mu_nv;
-    }  // mn
-  }  // kl
+  // inv-DFT with tangential derivatives using precomputed basis matrices.
+  // basis_u_ and basis_v_ have shape (numLocal, mnpd).
+  // bvecShare has shape (mnpd,).
+  const Eigen::Map<const Eigen::VectorXd> bvec(bvecShare.data(), mnpd);
+  potU.noalias() = basis_u_ * bvec;
+  potV.noalias() = basis_v_ * bvec;
 
   // compute net covariant magnetic field components on surface
   double local_bSubUVac = 0.0;

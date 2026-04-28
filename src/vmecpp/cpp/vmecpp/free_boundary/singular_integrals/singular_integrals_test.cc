@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/singular_integrals/singular_integrals.h"
 
+#include <Eigen/Dense>
 #include <array>
 #include <cmath>
 #include <vector>
@@ -218,12 +219,12 @@ TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   ASSERT_LT(d * d, ap * am) << "test setup: need smooth integrand on [-1,1]";
 
   const int numLocal = tp.ztMax - tp.ztMin;
-  std::vector<double> a(numLocal, a_val);
-  std::vector<double> b2(numLocal, b2_val);
-  std::vector<double> c(numLocal, c_val);
-  std::vector<double> A(numLocal, 0.0);
-  std::vector<double> B2(numLocal, 0.0);
-  std::vector<double> C(numLocal, 0.0);
+  Eigen::VectorXd a = Eigen::VectorXd::Constant(numLocal, a_val);
+  Eigen::VectorXd b2 = Eigen::VectorXd::Constant(numLocal, b2_val);
+  Eigen::VectorXd c = Eigen::VectorXd::Constant(numLocal, c_val);
+  Eigen::VectorXd A = Eigen::VectorXd::Zero(numLocal);
+  Eigen::VectorXd B2 = Eigen::VectorXd::Zero(numLocal);
+  Eigen::VectorXd C = Eigen::VectorXd::Zero(numLocal);
 
   si.prepareUpdate(a, b2, c, A, B2, C, /*fullUpdate=*/false);
 
@@ -239,16 +240,16 @@ TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   // Coefficients are uniform, so every kl must give the same value.
   for (int l = 0; l <= kL; ++l) {
     for (int kl = 0; kl < numLocal; ++kl) {
-      EXPECT_TRUE(IsCloseRelAbs(Tp_ref[l], si.Tlp[l][kl], kTolerance))
+      EXPECT_TRUE(IsCloseRelAbs(Tp_ref[l], si.Tlp(l, kl), kTolerance))
           << "Tlp mismatch at mpol=" << mpol << ", ntor=" << ntor << ", l=" << l
           << ", kl=" << kl << ": quadrature ref = " << Tp_ref[l]
-          << ", computed = " << si.Tlp[l][kl]
-          << ", abs diff = " << std::abs(Tp_ref[l] - si.Tlp[l][kl]);
-      EXPECT_TRUE(IsCloseRelAbs(Tm_ref[l], si.Tlm[l][kl], kTolerance))
+          << ", computed = " << si.Tlp(l, kl)
+          << ", abs diff = " << std::abs(Tp_ref[l] - si.Tlp(l, kl));
+      EXPECT_TRUE(IsCloseRelAbs(Tm_ref[l], si.Tlm(l, kl), kTolerance))
           << "Tlm mismatch at mpol=" << mpol << ", ntor=" << ntor << ", l=" << l
           << ", kl=" << kl << ": quadrature ref = " << Tm_ref[l]
-          << ", computed = " << si.Tlm[l][kl]
-          << ", abs diff = " << std::abs(Tm_ref[l] - si.Tlm[l][kl]);
+          << ", computed = " << si.Tlm(l, kl)
+          << ", abs diff = " << std::abs(Tm_ref[l] - si.Tlm(l, kl));
     }
   }
 }

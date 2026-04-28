@@ -5,8 +5,8 @@
 #ifndef VMECPP_FREE_BOUNDARY_SURFACE_GEOMETRY_SURFACE_GEOMETRY_H_
 #define VMECPP_FREE_BOUNDARY_SURFACE_GEOMETRY_SURFACE_GEOMETRY_H_
 
+#include <Eigen/Dense>
 #include <span>
-#include <vector>
 
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
 #include "vmecpp/common/sizes/sizes.h"
@@ -28,126 +28,126 @@ class SurfaceGeometry {
       int signOfJacobian, bool fullUpdate);
 
   // [nfp] cos(2 pi / nfp * p)
-  std::vector<double> cos_per;
+  Eigen::VectorXd cos_per;
 
   // [nfp] sin(2 pi / nfp * p)
-  std::vector<double> sin_per;
+  Eigen::VectorXd sin_per;
 
   // [nZeta] cos(phi)
-  std::vector<double> cos_phi;
+  Eigen::VectorXd cos_phi;
 
   // [nZeta] sin(phi)
-  std::vector<double> sin_phi;
+  Eigen::VectorXd sin_phi;
 
   // -----------------
 
   // R
   // full surface
-  std::vector<double> r1b;
+  Eigen::VectorXd r1b;
 
   // dR/dTheta
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> rub;
+  Eigen::VectorXd rub;
 
   // dR/dPhi
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> rvb;
+  Eigen::VectorXd rvb;
 
   // Z
   // full surface
-  std::vector<double> z1b;
+  Eigen::VectorXd z1b;
 
   // dZ/dTheta
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> zub;
+  Eigen::VectorXd zub;
 
   // dZ/dPhi
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> zvb;
+  Eigen::VectorXd zvb;
 
   // d^2R/dTheta^2
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> ruu;
+  Eigen::VectorXd ruu;
 
   // d^2R/(dTheta dPhi)
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> ruv;
+  Eigen::VectorXd ruv;
 
   // d^2R/dPhi^2
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> rvv;
+  Eigen::VectorXd rvv;
 
   // d^2Z/dTheta^2
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> zuu;
+  Eigen::VectorXd zuu;
 
   // d^2Z/(dTheta dPhi)
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> zuv;
+  Eigen::VectorXd zuv;
 
   // d^2Z/dPhi^2
   // thread-local effective poloidal range (tp->numZT)
   // only needed within SurfaceGeometry() but public for testing
-  std::vector<double> zvv;
+  Eigen::VectorXd zvv;
 
   // N^r * signOfJacobian
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> snr;
+  Eigen::VectorXd snr;
 
   // N^phi * signOfJacobian
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> snv;
+  Eigen::VectorXd snv;
 
   // N^z * signOfJacobian
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> snz;
+  Eigen::VectorXd snz;
 
   // g_{theta,theta}
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> guu;
+  Eigen::VectorXd guu;
 
   // 2 * g_{theta,zeta} = 2/nfp * g_{theta,phi}
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> guv;
+  Eigen::VectorXd guv;
 
   // g_{zeta,zeta} = 1/(nfp*nfp) g_{phi,phi}
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> gvv;
+  Eigen::VectorXd gvv;
 
   // 1/2 d^2X/dTheta^2 dot N
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> auu;
+  Eigen::VectorXd auu;
 
   // d^2X/(dTheta dZeta) dot N
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> auv;
+  Eigen::VectorXd auv;
 
   // 1/2 d^2X/dZeta^2 dot N
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> avv;
+  Eigen::VectorXd avv;
 
   // - (R N^R + Z N^Z)
   // needed for dsave --> (X - X') dot N'
   // thread-local effective poloidal range (tp->numZT)
-  std::vector<double> drv;
+  Eigen::VectorXd drv;
 
   // R^2 + Z^2
   // needed for gsave --> |X - X'|^2
   // full surface
-  std::vector<double> rzb2;
+  Eigen::VectorXd rzb2;
 
   // x
   // full surface
-  std::vector<double> rcosuv;
+  Eigen::VectorXd rcosuv;
 
   // y
   // full surface
-  std::vector<double> rsinuv;
+  Eigen::VectorXd rsinuv;
 
  private:
   const Sizes& s_;
@@ -167,8 +167,8 @@ class SurfaceGeometry {
 
   void derivedSurfaceQuantities(int signOfJacobian, bool fullUpdate);
 
-  std::vector<double> r1b_asym;
-  std::vector<double> z1b_asym;
+  Eigen::VectorXd r1b_asym;
+  Eigen::VectorXd z1b_asym;
 };
 
 }  // namespace vmecpp

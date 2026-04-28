@@ -5,7 +5,7 @@
 #ifndef VMECPP_FREE_BOUNDARY_SINGULAR_INTEGRALS_SINGULAR_INTEGRALS_H_
 #define VMECPP_FREE_BOUNDARY_SINGULAR_INTEGRALS_SINGULAR_INTEGRALS_H_
 
-#include <vector>
+#include <Eigen/Dense>
 
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
 #include "vmecpp/common/sizes/sizes.h"
@@ -21,68 +21,67 @@ class SingularIntegrals {
                     const TangentialPartitioning* tp, const SurfaceGeometry* sg,
                     int nf, int mf);
 
-  void update(const std::vector<double>& bDotN, bool fullUpdate);
+  void update(const Eigen::VectorXd& bDotN, bool fullUpdate);
 
   int numSC;
   int numCS;
   int nzLen;  // non-zero length
 
-  std::vector<double> cmn;
-  std::vector<double> cmns;
+  Eigen::VectorXd cmn;
+  Eigen::VectorXd cmns;
 
-  std::vector<double> ap;
-  std::vector<double> am;
-  std::vector<double> d;
-  std::vector<double> sqrtc2;
-  std::vector<double> sqrta2;
-  std::vector<double> delta4;
+  Eigen::VectorXd ap;
+  Eigen::VectorXd am;
+  Eigen::VectorXd d;
+  Eigen::VectorXd sqrtc2;
+  Eigen::VectorXd sqrta2;
+  Eigen::VectorXd delta4;
 
-  std::vector<double> Ap;
-  std::vector<double> Am;
-  std::vector<double> D;
+  Eigen::VectorXd Ap;
+  Eigen::VectorXd Am;
+  Eigen::VectorXd D;
 
-  std::vector<double> R1p;
-  std::vector<double> R1m;
-  std::vector<double> R0p;
-  std::vector<double> R0m;
-  std::vector<double> Ra1p;
-  std::vector<double> Ra1m;
+  Eigen::VectorXd R1p;
+  Eigen::VectorXd R1m;
+  Eigen::VectorXd R0p;
+  Eigen::VectorXd R0m;
+  Eigen::VectorXd Ra1p;
+  Eigen::VectorXd Ra1m;
 
   // l-2
-  std::vector<double> Tl2p;
+  Eigen::VectorXd Tl2p;
   // l-2
-  std::vector<double> Tl2m;
+  Eigen::VectorXd Tl2m;
   // l-1
-  std::vector<double> Tl1p;
+  Eigen::VectorXd Tl1p;
   // l-1
-  std::vector<double> Tl1m;
+  Eigen::VectorXd Tl1m;
   // l
-  std::vector<std::vector<double> > Tlp;
+  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> Tlp;
   // l
-  std::vector<std::vector<double> > Tlm;
+  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> Tlm;
 
   // l
-  std::vector<std::vector<double> > Slp;
+  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> Slp;
   // l
-  std::vector<std::vector<double> > Slm;
+  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> Slm;
 
   // sum_kl { Tlm * sin(mu + nv), Tlp * sin(mu - nv) }
-  std::vector<double> bvec_sin;
+  Eigen::VectorXd bvec_sin;
 
   // sum_kl { Tlm * cos(mu + nv), Tlp * cos(mu - nv) }
-  std::vector<double> bvec_cos;
+  Eigen::VectorXd bvec_cos;
 
   // Slm * sin(mu + nv), Slp * sin(mu - nv)
-  std::vector<double> grpmn_sin;
+  Eigen::VectorXd grpmn_sin;
 
   // Slm * cos(mu + nv), Slp * cos(mu - nv)
-  std::vector<double> grpmn_cos;
+  Eigen::VectorXd grpmn_cos;
 
-  void prepareUpdate(const std::vector<double>& a,
-                     const std::vector<double>& b2,
-                     const std::vector<double>& c, const std::vector<double>& A,
-                     const std::vector<double>& B2,
-                     const std::vector<double>& C, bool fullUpdate);
+  void prepareUpdate(const Eigen::VectorXd& a, const Eigen::VectorXd& b2,
+                     const Eigen::VectorXd& c, const Eigen::VectorXd& A,
+                     const Eigen::VectorXd& B2, const Eigen::VectorXd& C,
+                     bool fullUpdate);
 
  private:
   const Sizes& s_;
@@ -92,7 +91,7 @@ class SingularIntegrals {
 
   void computeCoefficients();
 
-  void performUpdate(const std::vector<double>& bDotN, bool fullUpdate);
+  void performUpdate(const Eigen::VectorXd& bDotN, bool fullUpdate);
 
   int nf;
   int mf;

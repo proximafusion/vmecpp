@@ -65,6 +65,13 @@ class Nestor : public FreeBoundaryBase {
   LaplaceSolver ls_;
 
   std::span<double> bvecShare;
+
+  // Precomputed inv-DFT basis matrices for potU/potV computation.
+  // basis_u_(kl_local, mn) = m * cos(m*theta - n*nfp*zeta) at point kl
+  // basis_v_(kl_local, mn) = -n*nfp * cos(m*theta - n*nfp*zeta) at point kl
+  // Shape: (numLocal, mnpd)
+  Eigen::MatrixXd basis_u_;
+  Eigen::MatrixXd basis_v_;
 };
 
 }  // namespace vmecpp

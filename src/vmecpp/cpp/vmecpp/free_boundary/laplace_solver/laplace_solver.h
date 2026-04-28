@@ -5,7 +5,7 @@
 #ifndef VMECPP_FREE_BOUNDARY_LAPLACE_SOLVER_LAPLACE_SOLVER_H_
 #define VMECPP_FREE_BOUNDARY_LAPLACE_SOLVER_LAPLACE_SOLVER_H_
 
-#include <vector>
+#include <Eigen/Dense>
 
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
 #include "vmecpp/common/sizes/sizes.h"
@@ -21,36 +21,36 @@ class LaplaceSolver {
                 std::span<double> matrixShare, std::span<int> iPiv,
                 std::span<double> bvecShare);
 
-  void TransformGreensFunctionDerivative(const std::vector<double>& greenp);
-  void SymmetriseSourceTerm(const std::vector<double>& gstore);
-  void AccumulateFullGrpmn(const std::vector<double>& grpmn_sin_singular);
+  void TransformGreensFunctionDerivative(const Eigen::VectorXd& greenp);
+  void SymmetriseSourceTerm(const Eigen::VectorXd& gstore);
+  void AccumulateFullGrpmn(const Eigen::VectorXd& grpmn_sin_singular);
   void PerformToroidalFourierTransforms();
   void PerformPoloidalFourierTransforms();
 
   void BuildMatrix();
   void DecomposeMatrix();
-  void SolveForPotential(const std::vector<double>& bvec_sin_singular);
+  void SolveForPotential(const Eigen::VectorXd& bvec_sin_singular);
 
   // Green's function derivative Fourier transform, non-singular part,
   // stellarator-symmetric
-  std::vector<double> grpmn_sin;
+  Eigen::VectorXd grpmn_sin;
 
   // Green's function derivative Fourier transform, non-singular part,
   // non-stellarator-symmetric
-  std::vector<double> grpmn_cos;
+  Eigen::VectorXd grpmn_cos;
 
   // symmetrized source term, stellarator-symmetric
-  std::vector<double> gstore_symm;
+  Eigen::VectorXd gstore_symm;
 
-  std::vector<double> bcos;
-  std::vector<double> bsin;
+  Eigen::VectorXd bcos;
+  Eigen::VectorXd bsin;
 
-  std::vector<double> actemp;
-  std::vector<double> astemp;
+  Eigen::VectorXd actemp;
+  Eigen::VectorXd astemp;
 
   // linear system to be solved
-  std::vector<double> bvec_sin;
-  std::vector<double> amat_sin_sin;
+  Eigen::VectorXd bvec_sin;
+  Eigen::VectorXd amat_sin_sin;
 
  private:
   const Sizes& s_;
@@ -70,8 +70,20 @@ class LaplaceSolver {
 
   int numLocal;
 
-  std::vector<double> grpOdd;
-  std::vector<double> grpEvn;
+  Eigen::VectorXd grpOdd;
+  Eigen::VectorXd grpEvn;
+
+  // Precomputed Fourier basis matrices for GEMM acceleration.
+  // cosnv_scaled_(n, k) = fb_.cosnv[n*nZeta+k] / fb_.nscale[n]
+  // Shape: (nf+1, nZeta)
+  Eigen::MatrixXd cosnv_scaled_;
+  Eigen::MatrixXd sinnv_scaled_;
+
+  // sinmui_mat_(l, m) = fb_.sinmui[l*(mnyq2+1)+m] / fb_.mscale[m]
+  // cosmui_mat_(l, m) = fb_.cosmui[l*(mnyq2+1)+m] / fb_.mscale[m]
+  // Shape: (nThetaReduced, mf+1)
+  Eigen::MatrixXd sinmui_mat_;
+  Eigen::MatrixXd cosmui_mat_;
 };
 
 }  // namespace vmecpp
