@@ -28,7 +28,7 @@ jobs:
         id: review
         with:
           config_file: ".clang-tidy"
-          apt_packages: libhdf5-dev, liblapack-dev, libnetcdf-dev, gfortran, python3-dev, libomp-dev
+          apt_packages: libhdf5-dev, liblapack-dev, libnetcdf-dev, gfortran, python3-dev, libomp-dev, libfftw3-dev
           build_dir: build
           cmake_command: cmake -B build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS:STRING=ON build
           exclude: "./src/vmecpp/cpp/bazel-*,./src/vmecpp/cpp/external,./src/vmecpp/cpp/third_party"

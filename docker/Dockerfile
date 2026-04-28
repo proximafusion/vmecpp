@@ -10,6 +10,7 @@ RUN apt-get -q update && \
     liblapack-dev \
     libomp-dev \
     libhdf5-dev \
+    libfftw3-dev \
     python3-pip \
     python-is-python3 \
     git \

@@ -62,6 +62,7 @@
               netcdffortran
               blis
               lapack-reference
+              fftw
               nodejs
               openmpi
               git
