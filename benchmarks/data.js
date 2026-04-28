@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777362383397,
+  "lastUpdate": 1777372070078,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16584,6 +16584,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.013287802438194982",
             "extra": "mean: 10.321113313333322 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6f846de63275c49dc5f60da16e2dfb052055c50d",
+          "message": "TSAN docker setup (#492)\n\n### TL;DR\n\nAdds a GitHub Actions CI workflow for running C++ ThreadSanitizer (TSAN) tests and fixes several issues with the TSAN Docker image setup.",
+          "timestamp": "2026-04-28T10:23:06Z",
+          "tree_id": "6ea1141f29156aa8a27ad98b5fa089076d812218",
+          "url": "https://github.com/proximafusion/vmecpp/commit/6f846de63275c49dc5f60da16e2dfb052055c50d"
+        },
+        "date": 1777372069070,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.781088956194385,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009588742859761855",
+            "extra": "mean: 359.5713822000107 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.7676804752390063,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008541764307216806",
+            "extra": "mean: 361.313384600021 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.233477432691512,
+            "unit": "iter/sec",
+            "range": "stddev: 0.09293994050611155",
+            "extra": "mean: 4.283069196333315 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5612220797861354,
+            "unit": "iter/sec",
+            "range": "stddev: 0.006758200009275037",
+            "extra": "mean: 1.7818258333333385 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.2453949102594053,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0250942844816602",
+            "extra": "mean: 4.075064144333339 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.09537104508477952,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01882331518668072",
+            "extra": "mean: 10.48536271266668 sec\nrounds: 3"
           }
         ]
       }
