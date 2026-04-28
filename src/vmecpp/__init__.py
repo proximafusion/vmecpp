@@ -1208,7 +1208,7 @@ class VmecWOut(BaseModelWithNumpy):
     """Mercier stability criterion contribution due to geodesic curvature."""
 
     niter: int
-    """Maximum number of force-balance iterations allowed."""
+    """Number of force-balance iterations taken to converge."""
 
     beta_vol: jt.Float[np.ndarray, "n_surfaces"]
     """Flux-surface averaged plasma beta on half-grid."""
