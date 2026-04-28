@@ -43,7 +43,14 @@ RUN apt-get install -y curl && curl -L "https://github.com/bazelbuild/bazelisk/r
 RUN apt-get install -y \
     libnetcdf-dev \
     liblapacke-dev \
-    libfftw3-dev
+    wget
+
+# Install Intel MKL via the Intel oneAPI apt repository.
+RUN wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+    | gpg --dearmor -o /usr/share/keyrings/intel-oneapi-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/intel-oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
+    > /etc/apt/sources.list.d/oneAPI.list && \
+    apt-get update && apt-get install -y intel-oneapi-mkl-devel
 
 # Install packages for in-docker development
 RUN apt-get install -y vim

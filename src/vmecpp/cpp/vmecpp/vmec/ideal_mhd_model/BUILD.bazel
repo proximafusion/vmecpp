@@ -1,12 +1,96 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
+
+# MKL paths for local and CI builds (Intel oneAPI 2025 layout on Linux).
+MKL_INCLUDES = ["/opt/intel/oneapi/2025.1/include"]
+MKL_LIBS = [
+    "-L/opt/intel/oneapi/2025.1/lib",
+    "-lmkl_rt",
+    "-lpthread",
+    "-lm",
+    "-ldl",
+]
+
+# FFT-accelerated toroidal transforms (Intel MKL DFTI backend).
+# Only compiled when --define=use_mkl=1 is passed; otherwise this target has
+# no sources and no link deps, so ideal_mhd_model falls back to the DFT path.
+cc_library(
+    name = "fft_toroidal",
+    srcs = select({
+        "//:use_mkl": ["fft_toroidal.cc"],
+        "//conditions:default": [],
+    }),
+    hdrs = select({
+        "//:use_mkl": ["fft_toroidal.h"],
+        "//conditions:default": [],
+    }) + ["dft_data.h"],
+    visibility = ["//visibility:public"],
+    copts = select({
+        "//:use_mkl": ["-DVMECPP_USE_MKL"] + ["-I" + p for p in MKL_INCLUDES],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "//:use_mkl": MKL_LIBS,
+        "//conditions:default": [],
+    }),
+    deps = select({
+        "//:use_mkl": [
+            "//vmecpp/common/flow_control:flow_control",
+            "//vmecpp/common/fourier_basis_fast_poloidal",
+            "//vmecpp/common/sizes:sizes",
+            "//vmecpp/common/util:util",
+            "//vmecpp/vmec/fourier_forces:fourier_forces",
+            "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+            "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+            "//vmecpp/vmec/radial_profiles:radial_profiles",
+            "@eigen",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_test(
+    name = "fft_toroidal_test",
+    srcs = select({
+        "//:use_mkl": ["fft_toroidal_test.cc"],
+        "//conditions:default": [],
+    }),
+    deps = select({
+        "//:use_mkl": [
+            ":fft_toroidal",
+            ":ideal_mhd_model",
+            "//vmecpp/common/flow_control:flow_control",
+            "//vmecpp/common/fourier_basis_fast_poloidal",
+            "//vmecpp/common/sizes:sizes",
+            "//vmecpp/common/vmec_indata:vmec_indata",
+            "//vmecpp/vmec/fourier_forces:fourier_forces",
+            "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+            "//vmecpp/vmec/handover_storage:handover_storage",
+            "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+            "//vmecpp/vmec/radial_profiles:radial_profiles",
+            "@eigen",
+            "@googletest//:gtest_main",
+        ],
+        "//conditions:default": ["@googletest//:gtest_main"],
+    }),
+)
+
 cc_library(
     name = "ideal_mhd_model",
     srcs = ["ideal_mhd_model.cc"],
     hdrs = ["ideal_mhd_model.h", "dft_data.h"],
     visibility = ["//visibility:public"],
+    copts = select({
+        "//:use_mkl": ["-DVMECPP_USE_MKL"] + ["-I" + p for p in MKL_INCLUDES],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "//:use_mkl": MKL_LIBS,
+        "//conditions:default": [],
+    }),
     deps = [
+        ":fft_toroidal",
         "//vmecpp/common/flow_control:flow_control",
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",

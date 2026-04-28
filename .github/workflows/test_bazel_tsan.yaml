@@ -39,4 +39,4 @@ jobs:
             -v ${{ github.workspace }}:/vmecpp \
             -v ~/.cache/bazel:/root/.cache/bazel \
             proximafusion/tsan \
-            bash -c "cd /vmecpp/src/vmecpp/cpp && bazel test --config=tsan_archer_in_docker --jobs=1 --test_output=errors -- //vmecpp/... -//vmecpp/vmec/pybind11/..."
+            bash -c "cd /vmecpp/src/vmecpp/cpp && bazel test --config=tsan_archer_in_docker --define=use_mkl=1 --jobs=1 --test_output=errors -- //vmecpp/... -//vmecpp/vmec/pybind11/..."
