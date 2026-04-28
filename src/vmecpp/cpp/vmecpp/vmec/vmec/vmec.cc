@@ -1173,7 +1173,12 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 #endif  // _OPENMP
   {
     // COMPUTE ABSOLUTE STOPPING CRITERION
-    if (iter2_ == 1 && fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
+    // A residual is either NaN or inf, guard for highly degenerate inputs
+    bool all_residuals_finite = std::isfinite(fc_.fsqr) &&
+                                std::isfinite(fc_.fsqz) &&
+                                std::isfinite(fc_.fsql);
+    if ((iter2_ == 1 && fc_.restart_reason == RestartReason::BAD_JACOBIAN) ||
+        !all_residuals_finite) {
       // first iteration and Jacobian was not computed correctly
       status_ = VmecStatus::BAD_JACOBIAN;
     } else if (fc_.fsqr <= fc_.ftolv && fc_.fsqz <= fc_.ftolv &&

@@ -1602,7 +1602,8 @@ void IdealMhdModel::computeJacobian() {
     }  // kl
   }  // j
 
-  bool localBadJacobian = (minTau * maxTau < 0.0);
+  bool localBadJacobian =
+      (minTau * maxTau < 0.0) || !std::isfinite(minTau * maxTau);
 
   if (localBadJacobian) {
 #ifdef _OPENMP
