@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777390637076,
+  "lastUpdate": 1777391816950,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16782,6 +16782,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.06200985928249618",
             "extra": "mean: 10.453654385000013 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "198982749+Copilot@users.noreply.github.com",
+            "name": "Copilot",
+            "username": "Copilot"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a2b31a8383c130052994620d0585b075b7a13fa6",
+          "message": "Refactor LaplaceSolver to use Eigen3 for matrix operations (#499)\n\nReplaces nested scalar loops in the free boundary `LaplaceSolver` with Eigen3 matrix/vector operations, yielding substantial speedups at typical resolutions (mpol=14, ntor=14, mnpd=464).\n\n## Key changes\n\n- **Data types**: Convert all `std::vector<double>` members to `Eigen::VectorXd`\n- **Pre-computed basis matrices**: Scaled Fourier basis arrays (`cosnv_scaled`, `sinnv_scaled`, `cosmui_scaled`, `sinmui_scaled`) are now computed once in the constructor, eliminating repeated divisions by `mscale`/`nscale` in hot loops\n- **Matrix-vector products**:\n  - `TransformGreensFunctionDerivative`: toroidal transform expressed as `cosnv_scaled * kernel_odd`\n  - `PerformToroidalFourierTransforms`: batch computation via `cosnv_scaled * gstore_mat.transpose()`\n  - `PerformPoloidalFourierTransforms`: poloidal integration as `sinmui_scaled.transpose() * data`\n- **Vectorized accumulation**: `AccumulateFullGrpmn`, `BuildMatrix`, and `SolveForPotential` use `Eigen::Map` for zero-copy vectorized operations\n\n## Performance (mpol=14, ntor=14)\n\n| Function | Before | After |\n|---|---|---|\n| `TransformGreensFunctionDerivative` | 16.6 ms | 9.9 ms |\n| `PerformToroidalFourierTransforms` | 22.3 ms | 16.2 ms |\n| `PerformPoloidalFourierTransforms` | 5.6 ms | 2.1 ms |\n| End-to-end | 67 ms | 51.6 ms |",
+          "timestamp": "2026-04-28T15:52:23Z",
+          "tree_id": "7cdf4e474746688ac76d605713e9bb783da32bd4",
+          "url": "https://github.com/proximafusion/vmecpp/commit/a2b31a8383c130052994620d0585b075b7a13fa6"
+        },
+        "date": 1777391815677,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.9351940685391655,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0021372411382807946",
+            "extra": "mean: 340.69297519999964 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.92295659718525,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0017480802425878593",
+            "extra": "mean: 342.1193462000019 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23719837503774202,
+            "unit": "iter/sec",
+            "range": "stddev: 0.013878502647223605",
+            "extra": "mean: 4.215880483333346 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5771404203471673,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00598168622436895",
+            "extra": "mean: 1.7326805830000087 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.27726563047071157,
+            "unit": "iter/sec",
+            "range": "stddev: 0.015099006736975694",
+            "extra": "mean: 3.6066496893333237 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10778093195425756,
+            "unit": "iter/sec",
+            "range": "stddev: 0.05590061239334559",
+            "extra": "mean: 9.278078987333325 sec\nrounds: 3"
           }
         ]
       }
