@@ -38,16 +38,7 @@ support for being able to check OpenMP-parallelized C/C++ code.
    bazel clean --expunge
    ```
 
-5. Make sure the `LD_LIBRARY_PATH` environment variable is set to the location of
-   the `libarcher.so` library in the docker container:
-
-   ```bash
-   export LD_LIBRARY_PATH=/usr/local/lib/x86_64-unknown-linux-gnu
-   ```
-
-   TODO(jons): fix this - should not be needed (?)
-
-6. Run the unit tests for VMEC++ under TSan/Archer:
+5. Run the unit tests for VMEC++ under TSan/Archer:
 
    ```bash
    bazel test --config=tsan_archer_in_docker --test_output=streamed --nocache_test_results -- //vmecpp/... -//vmecpp/vmec/pybind11/...
@@ -56,7 +47,7 @@ support for being able to check OpenMP-parallelized C/C++ code.
    `pybind11` is disabled for now, as it does not compile yet with the new
    `clang`.
 
-7. Run example cases using the TSan-enabled executable:
+6. Run example cases using the TSan-enabled executable:
 
    ```bash
    export ARCHER_OPTIONS="verbose=1"
@@ -69,7 +60,7 @@ support for being able to check OpenMP-parallelized C/C++ code.
    bazel-bin/vmecpp/vmec/vmec_standalone/vmec_standalone vmecpp/example_inputs/w7x_ref_167_12_12.json
    ```
 
-8. Clean up the Bazel cache after the TSan/Archer work is done:
+7. Clean up the Bazel cache after the TSan/Archer work is done:
 
    ```bash
    docker> exit
