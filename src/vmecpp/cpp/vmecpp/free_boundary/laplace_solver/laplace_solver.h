@@ -5,6 +5,7 @@
 #ifndef VMECPP_FREE_BOUNDARY_LAPLACE_SOLVER_LAPLACE_SOLVER_H_
 #define VMECPP_FREE_BOUNDARY_LAPLACE_SOLVER_LAPLACE_SOLVER_H_
 
+#include <Eigen/Dense>
 #include <vector>
 
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
@@ -32,25 +33,37 @@ class LaplaceSolver {
   void SolveForPotential(const std::vector<double>& bvec_sin_singular);
 
   // Green's function derivative Fourier transform, non-singular part,
-  // stellarator-symmetric
-  std::vector<double> grpmn_sin;
+  // stellarator-symmetric.
+  // Logically [mnpd x numLocal] matrix stored as flat vector in column-major
+  // order.
+  Eigen::VectorXd grpmn_sin;
 
   // Green's function derivative Fourier transform, non-singular part,
-  // non-stellarator-symmetric
-  std::vector<double> grpmn_cos;
+  // non-stellarator-symmetric.
+  // Logically [mnpd x numLocal] matrix stored as flat vector in column-major
+  // order.
+  Eigen::VectorXd grpmn_cos;
 
-  // symmetrized source term, stellarator-symmetric
-  std::vector<double> gstore_symm;
+  // Symmetrized source term, stellarator-symmetric.
+  // Logically [nThetaReduced x nZeta] matrix stored as flat vector in row-major
+  // order.
+  Eigen::VectorXd gstore_symm;
 
-  std::vector<double> bcos;
-  std::vector<double> bsin;
+  // Fourier transform intermediate results.
+  // Logically [(2*nf+1) x nThetaReduced] matrices stored as flat vectors.
+  Eigen::VectorXd bcos;
+  Eigen::VectorXd bsin;
 
-  std::vector<double> actemp;
-  std::vector<double> astemp;
+  // Intermediate matrix transform results.
+  // Logically [mnpd * (2*nf+1) x nThetaEff] stored as flat vectors.
+  Eigen::VectorXd actemp;
+  Eigen::VectorXd astemp;
 
-  // linear system to be solved
-  std::vector<double> bvec_sin;
-  std::vector<double> amat_sin_sin;
+  // Linear system to be solved.
+  // bvec_sin: vector of size [mnpd]
+  // amat_sin_sin: logically [mnpd x mnpd] matrix stored as flat vector
+  Eigen::VectorXd bvec_sin;
+  Eigen::VectorXd amat_sin_sin;
 
  private:
   const Sizes& s_;
@@ -70,8 +83,19 @@ class LaplaceSolver {
 
   int numLocal;
 
-  std::vector<double> grpOdd;
-  std::vector<double> grpEvn;
+  // Pre-computed scaled Fourier basis matrices for efficient transforms
+  // cosnv_scaled: [(nf+1) x nZeta] - scaled toroidal cosine basis
+  // sinnv_scaled: [(nf+1) x nZeta] - scaled toroidal sine basis
+  Eigen::MatrixXd cosnv_scaled;
+  Eigen::MatrixXd sinnv_scaled;
+
+  // cosmui_scaled: [nThetaReduced x (mf+1)] - scaled poloidal cosine basis
+  // sinmui_scaled: [nThetaReduced x (mf+1)] - scaled poloidal sine basis
+  Eigen::MatrixXd cosmui_scaled;
+  Eigen::MatrixXd sinmui_scaled;
+
+  Eigen::VectorXd grpOdd;
+  Eigen::VectorXd grpEvn;
 };
 
 }  // namespace vmecpp
