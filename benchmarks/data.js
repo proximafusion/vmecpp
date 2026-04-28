@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777391816950,
+  "lastUpdate": 1777393012139,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16848,6 +16848,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.05590061239334559",
             "extra": "mean: 9.278078987333325 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "12b7f60d9a4c5417ceddaa4d5ea5ab0e25febf6a",
+          "message": "Laplace solver stellarator asym added (#502)",
+          "timestamp": "2026-04-28T16:12:25Z",
+          "tree_id": "2f14fa7d2c8decb9c434dc27157c2c2916187b00",
+          "url": "https://github.com/proximafusion/vmecpp/commit/12b7f60d9a4c5417ceddaa4d5ea5ab0e25febf6a"
+        },
+        "date": 1777393010442,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.7924840584220276,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0031324842180988936",
+            "extra": "mean: 358.1041033999952 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.8354693283889087,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0019394212835344817",
+            "extra": "mean: 352.6753013999951 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23242381114814958,
+            "unit": "iter/sec",
+            "range": "stddev: 0.006000830784702909",
+            "extra": "mean: 4.302485167333344 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5708600091038258,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004186534796919592",
+            "extra": "mean: 1.7517429563333167 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.2764778619422831,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0186049265222017",
+            "extra": "mean: 3.6169261183333297 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.1058209357212611,
+            "unit": "iter/sec",
+            "range": "stddev: 0.14032999981586503",
+            "extra": "mean: 9.449925888333306 sec\nrounds: 3"
           }
         ]
       }
