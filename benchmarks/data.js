@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777323949860,
+  "lastUpdate": 1777362383397,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16518,6 +16518,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.031027599089803265",
             "extra": "mean: 9.87134928333334 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b24222e51f3d3ab1f9acbff4139fbca21783a0b7",
+          "message": "Terminate on NaN or inf, return NaN instead of terminating in tridiagonal solve (#496)",
+          "timestamp": "2026-04-28T07:42:10Z",
+          "tree_id": "77e85f47c89c700befb46c86153741f0fbeb0185",
+          "url": "https://github.com/proximafusion/vmecpp/commit/b24222e51f3d3ab1f9acbff4139fbca21783a0b7"
+        },
+        "date": 1777362382415,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.0097061355495414,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0012731364403754989",
+            "extra": "mean: 332.2583517999874 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.9956005322473875,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0015481194652708",
+            "extra": "mean: 333.8228810000146 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.24682483016390708,
+            "unit": "iter/sec",
+            "range": "stddev: 0.04566781901144809",
+            "extra": "mean: 4.051456246666665 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5613318780447708,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0070392106613145185",
+            "extra": "mean: 1.7814773026666444 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.24605282630169978,
+            "unit": "iter/sec",
+            "range": "stddev: 0.017854601137641393",
+            "extra": "mean: 4.0641679066666825 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.09688877252303302,
+            "unit": "iter/sec",
+            "range": "stddev: 0.013287802438194982",
+            "extra": "mean: 10.321113313333322 sec\nrounds: 3"
           }
         ]
       }
