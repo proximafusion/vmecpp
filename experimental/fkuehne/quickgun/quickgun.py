@@ -269,7 +269,6 @@ def ngs_ablation_rate(
     The density and temperature are clamped to a small positive floor before
     the fractional power so that the gradient stays finite at the plasma edge
     where the profiles vanish (avoids 0^{-2/3} singularities during autodiff).
-
     Args:
         mass: Current pellet mass [kg].
         position: Pellet position along the chord [m].
@@ -279,7 +278,7 @@ def ngs_ablation_rate(
     Returns:
         Ablation rate dm/dt [kg/s] (non-positive).
     """
-    _eps = 1e-30  # gradient regularisation floor
+    _eps = 1e-30  # gradient regularization floor
     r_minor = chord_minor_radius(position, plasma)
     r_p = pellet_radius(mass, params.pellet_density)
     n_e = jnp.maximum(n_e_profile(r_minor, plasma), _eps)
@@ -307,8 +306,8 @@ def _pellet_ode(
     correctly zeroing the ablation rate once the pellet is gone.
 
     Args:
-        t: Current time [s] (not used; the ODE is autonomous).  Named ``_t``
-            to silence the unused-argument linter warning.
+        _t: Current time [s] (not used; the ODE is autonomous).  Named
+            ``_t`` to silence the unused-argument linter warning.
         state: Current ``(mass, position, velocity)`` tuple.
         args: ``(PelletParams, PlasmaProfile)`` tuple.
 
@@ -452,6 +451,8 @@ def find_velocity_for_target_depth(
         v_initial = base_params.initial_velocity
 
     def residual(velocity: jax.Array, args: None) -> jax.Array:  # noqa: ARG001
+        # args is required by the optimistix residual signature fn(y, args)
+        # even though it is unused here (all context is captured via closure).
         params = PelletParams(
             initial_mass=base_params.initial_mass,
             initial_velocity=velocity[0],
