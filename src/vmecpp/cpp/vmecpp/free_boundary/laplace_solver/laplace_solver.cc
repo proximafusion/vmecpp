@@ -100,12 +100,18 @@ LaplaceSolver::LaplaceSolver(const Sizes* s, const FourierBasisFastToroidal* fb,
 void LaplaceSolver::TransformGreensFunctionDerivative(
     const std::vector<double>& greenp) {
   grpmn_sin.setZero();
+  if (s_.lasym) {
+    grpmn_cos.setZero();
+  }
 
   // Temporary vectors for toroidal transform results - allocated once outside
   // loops
   Eigen::VectorXd g1_symm(nf + 1);
   Eigen::VectorXd g2_symm(nf + 1);
   Eigen::VectorXd kernel_odd(s_.nZeta);
+  Eigen::VectorXd g1_asym(nf + 1);
+  Eigen::VectorXd g2_asym(nf + 1);
+  Eigen::VectorXd kernel_even(s_.nZeta);
 
   for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
     const int klpRel = klp - tp_.ztMin;
@@ -114,18 +120,15 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
     for (int l = 0; l < s_.nThetaReduced; ++l) {
       const int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
 
-      // Compute kernel_odd for all k values at once
       for (int k = 0; k < s_.nZeta; ++k) {
         const int kRev = (s_.nZeta - k) % s_.nZeta;
         const int kl = l * s_.nZeta + k;
         const int klRev = lRev * s_.nZeta + kRev;
         // 0.5 factor for even/odd decomposition
         kernel_odd[k] = (greenp[klpOff + kl] - greenp[klpOff + klRev]) * 0.5;
-        // TODO(jons): finish this when implementing non-stellarator-symmetric
-        // code path double kernel_even = 0.0; if (s_.lasym) {
-        //     kernel_even = (greenp[klpOff + kl] + greenp[klpOff + klRev]) *
-        //     0.5;
-        // }
+        if (s_.lasym) {
+          kernel_even[k] = (greenp[klpOff + kl] + greenp[klpOff + klRev]) * 0.5;
+        }
       }
 
       // Compute toroidal transform using matrix-vector product
@@ -133,6 +136,10 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
       // g2_symm[n] = sum_k sinnv_scaled[n, k] * kernel_odd[k]
       g1_symm.noalias() = cosnv_scaled * kernel_odd;
       g2_symm.noalias() = sinnv_scaled * kernel_odd;
+      if (s_.lasym) {
+        g1_asym.noalias() = cosnv_scaled * kernel_even;
+        g2_asym.noalias() = sinnv_scaled * kernel_even;
+      }
 
       // Compute poloidal transform
       for (int m = 0; m < mf + 1; ++m) {
@@ -149,6 +156,24 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
           grpmn_sin[idx_m_posn * numLocal + klpRel] += gcos_symm - gsin_symm;
           if (n > 0) {
             grpmn_sin[idx_m_negn * numLocal + klpRel] += gcos_symm + gsin_symm;
+          }
+
+          if (s_.lasym) {
+            // even kernel maps to cos(mu - nv) and cos(mu + nv) basis:
+            // g1_asym*cosmui + g2_asym*sinmui = cos(mu)*cos(nv) +
+            // sin(mu)*sin(nv)
+            //   = cos(mu - nv)  [posn]
+            // g1_asym*cosmui - g2_asym*sinmui = cos(mu)*cos(nv) -
+            // sin(mu)*sin(nv)
+            //   = cos(mu + nv)  [negn]
+            const double gcos_asym = g1_asym[n] * cosmui;
+            const double gsin_asym = g2_asym[n] * sinmui;
+
+            grpmn_cos[idx_m_posn * numLocal + klpRel] += gcos_asym + gsin_asym;
+            if (n > 0) {
+              grpmn_cos[idx_m_negn * numLocal + klpRel] +=
+                  gcos_asym - gsin_asym;
+            }
           }
         }  // n
       }  // m
@@ -172,14 +197,21 @@ void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double>& gstore) {
 }  // SymmetriseSourceTerm
 
 void LaplaceSolver::AccumulateFullGrpmn(
-    const std::vector<double>& grpmn_sin_singular) {
+    const std::vector<double>& grpmn_sin_singular,
+    const std::vector<double>& grpmn_cos_singular) {
   const int mnpd = (mf + 1) * (2 * nf + 1);
   const double inv_nfp = 1.0 / s_.nfp;
 
   // Use Eigen Map to view std::vector as Eigen vector and vectorize
-  Eigen::Map<const Eigen::VectorXd> singular(grpmn_sin_singular.data(),
-                                             mnpd * numLocal);
-  grpmn_sin += singular * inv_nfp;
+  Eigen::Map<const Eigen::VectorXd> sin_singular(grpmn_sin_singular.data(),
+                                                 mnpd * numLocal);
+  grpmn_sin += sin_singular * inv_nfp;
+
+  if (s_.lasym) {
+    Eigen::Map<const Eigen::VectorXd> cos_singular(grpmn_cos_singular.data(),
+                                                   mnpd * numLocal);
+    grpmn_cos += cos_singular * inv_nfp;
+  }
 }  // AccumulateFullGrpmn
 
 void LaplaceSolver::PerformToroidalFourierTransforms() {
