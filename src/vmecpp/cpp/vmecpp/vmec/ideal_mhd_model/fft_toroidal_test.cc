@@ -76,7 +76,7 @@ TEST_P(FourierToRealFftTest, MatchesDft) {
                               /*lfreeb=*/false, /*printout=*/false);
 
   FourierBasisFastPoloidal fb(&s);
-  ToroidalFftPlans plans(s.nZeta, s.nfp, s.mpol);
+  ToroidalFftPlans plans(s.nZeta, s.nfp);
 
   // FourierGeometry with random spectral data.
   auto phys_x = std::make_unique<FourierGeometry>(&s, &rp, p.ns);
@@ -194,7 +194,7 @@ TEST_P(ForcesToFourierFftTest, MatchesDft) {
                               /*lfreeb=*/false, /*printout=*/false);
 
   FourierBasisFastPoloidal fb(&s);
-  ToroidalFftPlans plans(s.nZeta, s.nfp, s.mpol);
+  ToroidalFftPlans plans(s.nZeta, s.nfp);
 
   // Real-space forces with random data.
   const int nrzt = s.nZnT * (rp.nsMaxF - rp.nsMinF);

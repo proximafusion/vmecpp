@@ -2,14 +2,10 @@
 // <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
-//
-// This header is only compiled when VMECPP_USE_MKL is defined.
-// When MKL is not available the ideal_mhd_model falls back to the DFT path
-// and this file is not included.
 #ifndef VMECPP_VMEC_IDEAL_MHD_MODEL_FFT_TOROIDAL_H_
 #define VMECPP_VMEC_IDEAL_MHD_MODEL_FFT_TOROIDAL_H_
 
-#include <mkl_dfti.h>
+#include <fftw3.h>
 
 #include <Eigen/Dense>
 
@@ -25,32 +21,27 @@
 
 namespace vmecpp {
 
-// RAII holder for Intel MKL DFTI descriptors used by the toroidal
-// (zeta-direction) Fourier transforms.
+// RAII holder for FFTW plans used by the toroidal (zeta-direction) Fourier
+// transforms.
 //
-// Descriptors are created once during construction (before any parallel
-// execution) and can be safely re-executed concurrently from multiple threads
-// by providing thread-private input/output buffers to
-// DftiComputeBackward / DftiComputeForward.
+// Plans are created once during construction (which must occur before any
+// parallel execution) and can be safely re-executed concurrently from multiple
+// threads by providing thread-private input/output buffers to
+// fftw_execute_dft_c2r / fftw_execute_dft_r2c.
 //
 // Sizing:
 //   n     = nZeta  (number of toroidal grid points, transform length)
-//   nhalf = n/2+1  (half-spectrum size, CCE packing)
+//   nhalf = n/2+1  (half-spectrum size used by c2r and r2c plans)
 //   nfp   = number of toroidal field periods (factor in derivative spectra)
-//   mpol  = number of poloidal modes (sets the per-surface batch size)
-//
-// CCE (complex conjugate-even) half-spectrum layout (2*nhalf doubles):
-//   [re0, 0, re1, im1, re2, im2, ..., re(N/2), 0]
-// Fill* helpers write to CplxBuf (double[2]).
 class ToroidalFftPlans {
  public:
-  // Create batched MKL descriptors of length n.
-  // mpol determines the size of the "full" per-surface batch
-  // (kBatch * mpol transforms per call).
-  ToroidalFftPlans(int n, int nfp, int mpol);
+  // Create c2r (synthesis) and r2c (analysis) plans for transforms of length n.
+  // n is the number of toroidal grid points (Sizes::nZeta).
+  // nfp is the number of field periods (Sizes::nfp).
+  explicit ToroidalFftPlans(int n, int nfp);
   ~ToroidalFftPlans();
 
-  // Non-copyable, non-movable (descriptors hold raw MKL resources).
+  // Non-copyable, non-movable (plans hold raw FFTW resources).
   ToroidalFftPlans(const ToroidalFftPlans&) = delete;
   ToroidalFftPlans& operator=(const ToroidalFftPlans&) = delete;
   ToroidalFftPlans(ToroidalFftPlans&&) = delete;
@@ -59,54 +50,43 @@ class ToroidalFftPlans {
   // Transform length (= nZeta).
   int n;
 
-  // Half-spectrum size: n/2 + 1.
+  // Half-spectrum size: n/2 + 1 (input size for c2r, output size for r2c).
   int nhalf;
 
   // Number of field periods.
   int nfp;
 
-  // Number of poloidal modes (sets per-surface batch size).
-  int mpol;
+  // Synthesis plan: half-complex (size nhalf) -> real (size n).
+  // Used in FourierToReal (Fourier coefficients -> real-space values).
+  fftw_plan plan_c2r;
 
-  // Number of quantities transformed per (jF, m) pair:
-  //   {R_cc, R_ss, dR_cc, dR_ss, Z_sc, Z_cs, dZ_sc, dZ_cs,
-  //    L_sc, L_cs, dL_sc, dL_cs}.
-  static constexpr int kBatch = 12;
-
-  // Single-transform descriptors (used for legacy/per-quantity transforms).
-  // Synthesis (c2r / backward): CCE input -> real output.
-  DFTI_DESCRIPTOR_HANDLE desc_c2r;
-  // Analysis (r2c / forward): real input -> CCE output.
-  DFTI_DESCRIPTOR_HANDLE desc_r2c;
-
-  // Per-surface batched descriptors: kBatch * mpol transforms in one call.
-  // Buffer layout: 12*mpol contiguous half-spectra (c2r input) or signals
-  // (r2c input), packed in slot order (m, quantity).
-  DFTI_DESCRIPTOR_HANDLE desc_full_c2r;
-  DFTI_DESCRIPTOR_HANDLE desc_full_r2c;
+  // Analysis plan: real (size n) -> half-complex (size nhalf).
+  // Used in ForcesToFourier (real-space forces -> Fourier coefficients).
+  fftw_plan plan_r2c;
 };
 
-// MKL-accelerated forward transform: Fourier coefficients -> real space.
+// FFT-accelerated forward transform: Fourier coefficients -> real space.
 //
 // Drop-in replacement for FourierToReal3DSymmFastPoloidal.
-// Replaces the O(nZeta * ntor) inner-n dot-product loop with
-// O(nZeta * log(nZeta)) MKL DFTI c2r transforms, batched per surface.
+// Replaces the O(nZeta * ntor) toroidal dot-product inner loop with
+// O(nZeta * log(nZeta)) FFTW c2r IFFTs, giving a ~2-3x speedup.
 //
 // The toroidal basis arrays cosnv/sinnv/cosnvn/sinnvn in
-// FourierBasisFastPoloidal incorporate nscale[n] = sqrt(2) for n > 0. The FFT
-// counterpart uses the same normalization: X[0] = spec[0] * nscale[0] and
-// X[n] = spec[n]*nscale[n]/2 for n >= 1.
+// FourierBasisFastPoloidal encorporate nscale[n] = sqrt(2) for n > 0. The FFT
+// counterpart uses the same normalization: X[0] = spec[0] * nscale[0] and X[n]
+// = spec[n]*nscale[n]/2 for n >= 1, so that the c2r output matches the original
+// dot-product result.
 void FourierToReal3DSymmFastPoloidalFft(
     const FourierGeometry& physical_x, const Eigen::VectorXd& xmpq,
     const RadialPartitioning& r, const Sizes& s, const RadialProfiles& rp,
     const FourierBasisFastPoloidal& fb, const ToroidalFftPlans& plans,
     RealSpaceGeometry& m_geometry);
 
-// MKL-accelerated inverse transform: real-space forces -> Fourier coefficients.
+// FFT-accelerated inverse transform: real-space forces -> Fourier coefficients.
 //
 // Drop-in replacement for ForcesToFourier3DSymmFastPoloidal.
-// Replaces the O(nZeta * ntor) toroidal scatter loop with
-// O(nZeta * log(nZeta)) MKL DFTI r2c transforms, batched per surface.
+// Replaces the O(nZeta * ntor) toroidal scatter inner loop with
+// O(nZeta * log(nZeta)) FFTW r2c DFTs.
 void ForcesToFourier3DSymmFastPoloidalFft(
     const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,

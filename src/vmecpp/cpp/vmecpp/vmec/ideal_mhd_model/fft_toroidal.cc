@@ -4,10 +4,11 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
 
-#include <mkl_dfti.h>
+#include <fftw3.h>
 
 #include <algorithm>
-#include <vector>
+#include <cmath>
+#include <span>
 
 #include "absl/algorithm/container.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
@@ -17,93 +18,71 @@ namespace vmecpp {
 // ---------------------------------------------------------------------------
 // ToroidalFftPlans
 // ---------------------------------------------------------------------------
-//
-// MKL DFTI 1-D real transforms with CCE (complex conjugate-even) packing.
-// CCE layout (2*nhalf doubles per spectrum) is byte-identical to the FFTW
-// half-complex layout: [re0, 0, re1, im1, ..., re(N/2), 0]. This lets the
-// fill helpers and the accumulation code address the half-spectrum as
-// CplxBuf (double[2]) per bin.
-//
-// Batched transforms are configured via:
-//   DFTI_NUMBER_OF_TRANSFORMS = howmany
-//   DFTI_INPUT_DISTANCE / DFTI_OUTPUT_DISTANCE = stride between batches
-// Real-domain spectra (CCE) are 2*nhalf doubles long, real-domain signals
-// are n doubles long.
 
-ToroidalFftPlans::ToroidalFftPlans(int n_in, int nfp_in, int mpol_in)
-    : n(n_in), nhalf(n_in / 2 + 1), nfp(nfp_in), mpol(mpol_in) {
-  // Single-transform descriptor (c2r: backward, CCE -> real).
-  DftiCreateDescriptor(&desc_c2r, DFTI_DOUBLE, DFTI_REAL, 1,
-                       static_cast<MKL_LONG>(n));
-  DftiSetValue(desc_c2r, DFTI_CONJUGATE_EVEN_STORAGE, DFTI_CCE_FORMAT);
-  DftiSetValue(desc_c2r, DFTI_PLACEMENT, DFTI_NOT_INPLACE);
-  DftiCommitDescriptor(desc_c2r);
+ToroidalFftPlans::ToroidalFftPlans(int n_in, int nfp_in)
+    : n(n_in), nhalf(n_in / 2 + 1), nfp(nfp_in) {
+  // Allocate temporary aligned buffers for plan creation.
+  // Plans are safe to execute concurrently from multiple threads with separate
+  // input/output buffers (via fftw_execute_dft_c2r / fftw_execute_dft_r2c).
+  fftw_complex* in_c2r =
+      static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * nhalf));
+  double* out_c2r = static_cast<double*>(fftw_malloc(sizeof(double) * n));
 
-  // Single-transform descriptor (r2c: forward, real -> CCE).
-  DftiCreateDescriptor(&desc_r2c, DFTI_DOUBLE, DFTI_REAL, 1,
-                       static_cast<MKL_LONG>(n));
-  DftiSetValue(desc_r2c, DFTI_CONJUGATE_EVEN_STORAGE, DFTI_CCE_FORMAT);
-  DftiSetValue(desc_r2c, DFTI_PLACEMENT, DFTI_NOT_INPLACE);
-  DftiCommitDescriptor(desc_r2c);
+  plan_c2r = fftw_plan_dft_c2r_1d(n, in_c2r, out_c2r, FFTW_ESTIMATE);
 
-  // Per-surface batched descriptors: 12 * mpol transforms in one call.
-  // For c2r the input is CCE (2*nhalf doubles per spectrum) and the output
-  // is real (n doubles per signal). For r2c the directions swap.
-  const MKL_LONG full_count = static_cast<MKL_LONG>(kBatch * mpol);
-  const MKL_LONG cce_dist = static_cast<MKL_LONG>(2 * nhalf);
-  const MKL_LONG real_dist = static_cast<MKL_LONG>(n);
+  double* in_r2c = static_cast<double*>(fftw_malloc(sizeof(double) * n));
+  fftw_complex* out_r2c =
+      static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * nhalf));
 
-  DftiCreateDescriptor(&desc_full_c2r, DFTI_DOUBLE, DFTI_REAL, 1,
-                       static_cast<MKL_LONG>(n));
-  DftiSetValue(desc_full_c2r, DFTI_CONJUGATE_EVEN_STORAGE, DFTI_CCE_FORMAT);
-  DftiSetValue(desc_full_c2r, DFTI_PLACEMENT, DFTI_NOT_INPLACE);
-  DftiSetValue(desc_full_c2r, DFTI_NUMBER_OF_TRANSFORMS, full_count);
-  DftiSetValue(desc_full_c2r, DFTI_INPUT_DISTANCE, cce_dist);
-  DftiSetValue(desc_full_c2r, DFTI_OUTPUT_DISTANCE, real_dist);
-  DftiCommitDescriptor(desc_full_c2r);
+  plan_r2c = fftw_plan_dft_r2c_1d(n, in_r2c, out_r2c, FFTW_ESTIMATE);
 
-  DftiCreateDescriptor(&desc_full_r2c, DFTI_DOUBLE, DFTI_REAL, 1,
-                       static_cast<MKL_LONG>(n));
-  DftiSetValue(desc_full_r2c, DFTI_CONJUGATE_EVEN_STORAGE, DFTI_CCE_FORMAT);
-  DftiSetValue(desc_full_r2c, DFTI_PLACEMENT, DFTI_NOT_INPLACE);
-  DftiSetValue(desc_full_r2c, DFTI_NUMBER_OF_TRANSFORMS, full_count);
-  DftiSetValue(desc_full_r2c, DFTI_INPUT_DISTANCE, real_dist);
-  DftiSetValue(desc_full_r2c, DFTI_OUTPUT_DISTANCE, cce_dist);
-  DftiCommitDescriptor(desc_full_r2c);
+  fftw_free(in_c2r);
+  fftw_free(out_c2r);
+  fftw_free(in_r2c);
+  fftw_free(out_r2c);
 }
 
 ToroidalFftPlans::~ToroidalFftPlans() {
-  DftiFreeDescriptor(&desc_c2r);
-  DftiFreeDescriptor(&desc_r2c);
-  DftiFreeDescriptor(&desc_full_c2r);
-  DftiFreeDescriptor(&desc_full_r2c);
+  fftw_destroy_plan(plan_c2r);
+  fftw_destroy_plan(plan_r2c);
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers for filling the half-spectrum (c2r input)
+// Internal helpers for filling the complex half-spectrum (c2r input)
 // ---------------------------------------------------------------------------
 //
-// MKL backward (c2r) produces:
+// FFTW c2r produces:
 //   f[k] = X[0] + 2*Sum_{n=1}^{N/2-1}[Re(X[n])*cos(2*pi*n*k/N)
 //                                       - Im(X[n])*sin(2*pi*n*k/N)]
 //          + Re(X[N/2])*(-1)^k
 //
-// Mapping to VMEC toroidal basis (zeta_k = 2*pi*k/N):
-//   DCT: f[k] = Sigma_n spec[n]*nscale[n]*cos(n*phi_k)
-//     -> X[0][0] = spec[0]*nscale[0], X[n][0] = spec[n]*nscale[n]/2 (n>=1)
-//   DST: f[k] = Sigma_n spec[n]*nscale[n]*sin(n*phi_k)
-//     -> X[n][1] = -spec[n]*nscale[n]/2  (Im negative)
-//   DCT-deriv (= sinnvn contraction):
-//     -> X[n][1] = +spec[n]*n*nfp*nscale[n]/2
-//   DST-deriv (= cosnvn contraction):
-//     -> X[n][0] = spec[n]*n*nfp*nscale[n]/2
+// Mapping to VMEC toroidal basis (zeta_k = 2*pi*k/N, phi_n = n*zeta_k):
+//   DCT (cosine synthesis): Sigma_n spec[n]*nscale[n]*cos(n*phi_k)
+//     -> X[0] = spec[0]*nscale[0], X[n] = spec[n]*nscale[n]/2 (Re only)
+//
+//   DST (sine synthesis): Sigma_n spec[n]*nscale[n]*sin(n*phi_k)
+//     -> X[0] = 0, Im(X[n]) = -spec[n]*nscale[n]/2 (Im negative)
+//
+// The derivative arrays in VMEC are:
+//   cosnvn[k,n] = n*nfp * cos(n*zeta_k) * nscale[n]    -> DCT with n*nfp factor
+//   sinnvn[k,n] = -n*nfp * sin(n*zeta_k) * nscale[n]   -> DST with -n*nfp
+//   factor
+//
+// So the derivative of a DCT quantity  (e.g. rmkcc_n = Sigma rmncc * sinnvn):
+//   rmkcc_n = Sigma_n rmncc[n]*(-n*nfp)*nscale[n]*sin(n*zeta_k)
+//     -> X[0]=0, Im(X[n]) = +rmncc[n]*n*nfp*nscale[n]/2 (note: positive Im)
+//
+// And derivative of a DST quantity (e.g. rmkss_n = Sigma rmnss * cosnvn):
+//   rmkss_n = Sigma_n rmnss[n]*(n*nfp)*nscale[n]*cos(n*zeta_k)
+//     -> X[0]=0, X[n] = rmnss[n]*n*nfp*nscale[n]/2 (Re only)
 
 namespace {
 
-using CplxBuf = double[2];
-
+// Fill the c2r input for a DCT synthesis:
+//   f[k] = Sigma_{n=0}^{ntor} spec[n] * nscale[n] * cos(n*phi_k)
+// X[0] = spec[0]*nscale[0], X[n] = spec[n]*nscale[n]/2 for n=1..ntor.
 inline void FillDct(const double* spec, const Eigen::VectorXd& nscale, int ntor,
-                    int nhalf, CplxBuf* X) {
+                    int nhalf, fftw_complex* X) {
   X[0][0] = spec[0] * nscale[0];
   X[0][1] = 0.0;
   for (int n = 1; n <= ntor; ++n) {
@@ -116,8 +95,11 @@ inline void FillDct(const double* spec, const Eigen::VectorXd& nscale, int ntor,
   }
 }
 
+// Fill the c2r input for a DST synthesis:
+//   f[k] = Sigma_{n=1}^{ntor} spec[n] * nscale[n] * sin(n*phi_k)
+// X[n] has Im = -spec[n]*nscale[n]/2, Re = 0.
 inline void FillDst(const double* spec, const Eigen::VectorXd& nscale, int ntor,
-                    int nhalf, CplxBuf* X) {
+                    int nhalf, fftw_complex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;
   for (int n = 1; n <= ntor; ++n) {
@@ -130,8 +112,12 @@ inline void FillDst(const double* spec, const Eigen::VectorXd& nscale, int ntor,
   }
 }
 
+// Fill the c2r input for the zeta-derivative of a DCT quantity:
+//   f[k] = Sigma_{n=1}^{ntor} spec[n] * (-n*nfp) * nscale[n] * sin(n*phi_k)
+//        = rmkcc_n (using sinnvn[k,n] = -n*nfp*sin*nscale)
+// X[n] has Im = +spec[n]*n*nfp*nscale[n]/2, Re = 0.
 inline void FillDctDeriv(const double* spec, const Eigen::VectorXd& nscale,
-                         int ntor, int nhalf, int nfp, CplxBuf* X) {
+                         int ntor, int nhalf, int nfp, fftw_complex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;
   for (int n = 1; n <= ntor; ++n) {
@@ -144,8 +130,12 @@ inline void FillDctDeriv(const double* spec, const Eigen::VectorXd& nscale,
   }
 }
 
+// Fill the c2r input for the zeta-derivative of a DST quantity:
+//   f[k] = Sigma_{n=1}^{ntor} spec[n] * (n*nfp) * nscale[n] * cos(n*phi_k)
+//        = rmkss_n (using cosnvn[k,n] = n*nfp*cos*nscale)
+// X[n] has Re = spec[n]*n*nfp*nscale[n]/2, Im = 0.
 inline void FillDstDeriv(const double* spec, const Eigen::VectorXd& nscale,
-                         int ntor, int nhalf, int nfp, CplxBuf* X) {
+                         int ntor, int nhalf, int nfp, fftw_complex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;
   for (int n = 1; n <= ntor; ++n) {
@@ -160,6 +150,23 @@ inline void FillDstDeriv(const double* spec, const Eigen::VectorXd& nscale,
 
 }  // namespace
 
+// fftw_complex is double[2], a C array type that is not copy-constructible and
+// therefore incompatible with std::vector on libc++ (macOS). Use fftw_malloc
+// instead to get properly aligned storage and wrap it with a custom deleter.
+struct FftwComplexBuffer {
+  explicit FftwComplexBuffer(int n)
+      : ptr(static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * n))) {
+  }
+  ~FftwComplexBuffer() { fftw_free(ptr); }
+  FftwComplexBuffer(const FftwComplexBuffer&) = delete;
+  FftwComplexBuffer& operator=(const FftwComplexBuffer&) = delete;
+  fftw_complex* data() { return ptr; }
+  fftw_complex& operator[](int i) { return ptr[i]; }
+
+ private:
+  fftw_complex* ptr;
+};
+
 // ---------------------------------------------------------------------------
 // FourierToReal3DSymmFastPoloidalFft
 // ---------------------------------------------------------------------------
@@ -169,8 +176,9 @@ void FourierToReal3DSymmFastPoloidalFft(
     const RadialPartitioning& r, const Sizes& s, const RadialProfiles& rp,
     const FourierBasisFastPoloidal& fb, const ToroidalFftPlans& plans,
     RealSpaceGeometry& m_geometry) {
-  // Replaces the O(nZeta * ntor) inner-n dot-product loop with one
-  // 12*mpol-wide MKL DFTI batched backward (c2r) transform per surface.
+  // This function matches the logic of FourierToReal3DSymmFastPoloidal but
+  // replaces the O(nZeta * ntor) inner-n dot-product loop with
+  // O(nZeta * log(nZeta)) FFTW c2r IFFTs.
 
   absl::c_fill(m_geometry.r1_e, 0);
   absl::c_fill(m_geometry.r1_o, 0);
@@ -196,100 +204,30 @@ void FourierToReal3DSymmFastPoloidalFft(
   const int ntor = s.ntor;
   const int nhalf = plans.nhalf;
   const int nfp = plans.nfp;
-  const int nZeta = s.nZeta;
-  constexpr int kBatch = ToroidalFftPlans::kBatch;
 
-  const int mpol = s.mpol;
-  const int full_count = kBatch * mpol;
+  // Per-thread scratch buffers for FFTW input/output.
+  // Allocated here (once per call) to avoid repeated heap allocation in the
+  // inner loop and to keep memory usage predictable.
+  FftwComplexBuffer X(nhalf);
 
-  // Thread-local scratch reused across calls.
-  // X_batch holds 12*mpol contiguous half-spectra (each 2*nhalf doubles).
-  // Y_batch holds 12*mpol contiguous real signals (each nZeta doubles).
-  thread_local std::vector<double> X_batch;
-  thread_local std::vector<double> Y_batch;
-  if (static_cast<int>(X_batch.size()) < 2 * full_count * nhalf) {
-    X_batch.resize(2 * full_count * nhalf);
-  }
-  if (static_cast<int>(Y_batch.size()) < full_count * nZeta) {
-    Y_batch.resize(full_count * nZeta);
-  }
-  CplxBuf* X = reinterpret_cast<CplxBuf*>(X_batch.data());
-
-  // Slot indices for the 12 quantities transformed per m.
-  enum Slot {
-    kRmkcc = 0,
-    kRmkss = 1,
-    kRmkccN = 2,
-    kRmkssN = 3,
-    kZmksc = 4,
-    kZmkcs = 5,
-    kZmkscN = 6,
-    kZmkcsN = 7,
-    kLmksc = 8,
-    kLmkcs = 9,
-    kLmkscN = 10,
-    kLmkcsN = 11,
-  };
-  // Slot index = m * kBatch + quantity (all 12 quantities of one m
-  // contiguous, then next m, ...). The batched FFT handles all m's.
-  auto X_slot = [&](int m_idx, int q_idx) {
-    return X + (m_idx * kBatch + q_idx) * nhalf;
-  };
-  auto Y_slot = [&](int m_idx, int q_idx) {
-    return Y_batch.data() + (m_idx * kBatch + q_idx) * nZeta;
-  };
+  // Per-(jF, m) toroidal profiles (size nZeta each).
+  Eigen::VectorXd rmkcc(s.nZeta), rmkss(s.nZeta);
+  Eigen::VectorXd rmkcc_n(s.nZeta), rmkss_n(s.nZeta);
+  Eigen::VectorXd zmksc(s.nZeta), zmkcs(s.nZeta);
+  Eigen::VectorXd zmksc_n(s.nZeta), zmkcs_n(s.nZeta);
+  Eigen::VectorXd lmksc(s.nZeta), lmkcs(s.nZeta);
+  Eigen::VectorXd lmksc_n(s.nZeta), lmkcs_n(s.nZeta);
 
   for (int jF = nsMinF1; jF < r.nsMaxF1; ++jF) {
-    // === Pack all 12*mpol half-spectra for this surface ===
-    for (int m = 0; m < mpol; ++m) {
-      const int jMin = (m == 0 || m == 1) ? 0 : 1;
-      if (jF < jMin) {
-        // Zero out spectra so the batched FFT produces zeros for this m.
-        // (We still skip the accumulation step below for these m's.)
-        for (int q = 0; q < kBatch; ++q) {
-          CplxBuf* slot = X_slot(m, q);
-          for (int n = 0; n < nhalf; ++n) {
-            slot[n][0] = 0.0;
-            slot[n][1] = 0.0;
-          }
-        }
-        continue;
-      }
-
-      const int idx_mn_base = ((jF - nsMinF1) * s.mpol + m) * (ntor + 1);
-
-      const double* rmncc_ptr = physical_x.rmncc.data() + idx_mn_base;
-      const double* rmnss_ptr = physical_x.rmnss.data() + idx_mn_base;
-      const double* zmnsc_ptr = physical_x.zmnsc.data() + idx_mn_base;
-      const double* zmncs_ptr = physical_x.zmncs.data() + idx_mn_base;
-      const double* lmnsc_ptr = physical_x.lmnsc.data() + idx_mn_base;
-      const double* lmncs_ptr = physical_x.lmncs.data() + idx_mn_base;
-
-      FillDct(rmncc_ptr, fb.nscale, ntor, nhalf, X_slot(m, kRmkcc));
-      FillDst(rmnss_ptr, fb.nscale, ntor, nhalf, X_slot(m, kRmkss));
-      FillDctDeriv(rmncc_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kRmkccN));
-      FillDstDeriv(rmnss_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kRmkssN));
-      FillDct(zmnsc_ptr, fb.nscale, ntor, nhalf, X_slot(m, kZmksc));
-      FillDst(zmncs_ptr, fb.nscale, ntor, nhalf, X_slot(m, kZmkcs));
-      FillDctDeriv(zmnsc_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kZmkscN));
-      FillDstDeriv(zmncs_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kZmkcsN));
-      FillDct(lmnsc_ptr, fb.nscale, ntor, nhalf, X_slot(m, kLmksc));
-      FillDst(lmncs_ptr, fb.nscale, ntor, nhalf, X_slot(m, kLmkcs));
-      FillDctDeriv(lmnsc_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kLmkscN));
-      FillDstDeriv(lmncs_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kLmkcsN));
-    }
-
-    // Single 12*mpol batched c2r for the entire surface.
-    DftiComputeBackward(plans.desc_full_c2r, X_batch.data(), Y_batch.data());
-
-    // === Poloidal accumulation per m ===
-    for (int m = 0; m < mpol; ++m) {
-      const int jMin = (m == 0 || m == 1) ? 0 : 1;
-      if (jF < jMin) {
-        continue;
-      }
-
+    for (int m = 0; m < s.mpol; ++m) {
       const bool m_even = (m % 2 == 0);
+
+      // Axis only gets contributions up to m=1.
+      const int jMin = (m == 0 || m == 1) ? 0 : 1;
+      if (jF < jMin) {
+        continue;
+      }
+
       const double con_factor =
           m_even ? xmpq[m] : xmpq[m] * rp.sqrtSF[jF - nsMinF1];
 
@@ -302,19 +240,69 @@ void FourierToReal3DSymmFastPoloidalFft(
       auto& lu = m_even ? m_geometry.lu_e : m_geometry.lu_o;
       auto& lv = m_even ? m_geometry.lv_e : m_geometry.lv_o;
 
-      const double* rmkcc = Y_slot(m, kRmkcc);
-      const double* rmkss = Y_slot(m, kRmkss);
-      const double* rmkcc_n = Y_slot(m, kRmkccN);
-      const double* rmkss_n = Y_slot(m, kRmkssN);
-      const double* zmksc = Y_slot(m, kZmksc);
-      const double* zmkcs = Y_slot(m, kZmkcs);
-      const double* zmksc_n = Y_slot(m, kZmkscN);
-      const double* zmkcs_n = Y_slot(m, kZmkcsN);
-      const double* lmksc = Y_slot(m, kLmksc);
-      const double* lmkcs = Y_slot(m, kLmkcs);
-      const double* lmksc_n = Y_slot(m, kLmkscN);
-      const double* lmkcs_n = Y_slot(m, kLmkcsN);
+      const int idx_mn_base = ((jF - nsMinF1) * s.mpol + m) * (ntor + 1);
 
+      const double* rmncc_ptr = physical_x.rmncc.data() + idx_mn_base;
+      const double* rmnss_ptr = physical_x.rmnss.data() + idx_mn_base;
+      const double* zmnsc_ptr = physical_x.zmnsc.data() + idx_mn_base;
+      const double* zmncs_ptr = physical_x.zmncs.data() + idx_mn_base;
+      const double* lmnsc_ptr = physical_x.lmnsc.data() + idx_mn_base;
+      const double* lmncs_ptr = physical_x.lmncs.data() + idx_mn_base;
+
+      // === Compute toroidal profiles via c2r IFFTs ===
+
+      // rmkcc[k] = Sum_n rmncc[n]*nscale[n]*cos(n*zeta_k)
+      FillDct(rmncc_ptr, fb.nscale, ntor, nhalf, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), rmkcc.data());
+
+      // rmkss[k] = Sum_n rmnss[n]*nscale[n]*sin(n*zeta_k)
+      FillDst(rmnss_ptr, fb.nscale, ntor, nhalf, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), rmkss.data());
+
+      // rmkcc_n[k] = Sum_n rmncc[n]*(-n*nfp)*nscale[n]*sin(n*zeta_k)
+      //            (= rmncc_seg.dot(sinnvn_seg) in the DFT version)
+      FillDctDeriv(rmncc_ptr, fb.nscale, ntor, nhalf, nfp, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), rmkcc_n.data());
+
+      // rmkss_n[k] = Sum_n rmnss[n]*(n*nfp)*nscale[n]*cos(n*zeta_k)
+      //            (= rmnss_seg.dot(cosnvn_seg) in the DFT version)
+      FillDstDeriv(rmnss_ptr, fb.nscale, ntor, nhalf, nfp, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), rmkss_n.data());
+
+      // zmksc[k] = Sum_n zmnsc[n]*nscale[n]*cos(n*zeta_k)
+      FillDct(zmnsc_ptr, fb.nscale, ntor, nhalf, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), zmksc.data());
+
+      // zmkcs[k] = Sum_n zmncs[n]*nscale[n]*sin(n*zeta_k)
+      FillDst(zmncs_ptr, fb.nscale, ntor, nhalf, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), zmkcs.data());
+
+      // zmksc_n[k] = Sum_n zmnsc[n]*(-n*nfp)*nscale[n]*sin(n*zeta_k)
+      FillDctDeriv(zmnsc_ptr, fb.nscale, ntor, nhalf, nfp, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), zmksc_n.data());
+
+      // zmkcs_n[k] = Sum_n zmncs[n]*(n*nfp)*nscale[n]*cos(n*zeta_k)
+      FillDstDeriv(zmncs_ptr, fb.nscale, ntor, nhalf, nfp, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), zmkcs_n.data());
+
+      // lmksc[k] = Sum_n lmnsc[n]*nscale[n]*cos(n*zeta_k)
+      FillDct(lmnsc_ptr, fb.nscale, ntor, nhalf, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), lmksc.data());
+
+      // lmkcs[k] = Sum_n lmncs[n]*nscale[n]*sin(n*zeta_k)
+      FillDst(lmncs_ptr, fb.nscale, ntor, nhalf, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), lmkcs.data());
+
+      // lmksc_n[k] = Sum_n lmnsc[n]*(-n*nfp)*nscale[n]*sin(n*zeta_k)
+      FillDctDeriv(lmnsc_ptr, fb.nscale, ntor, nhalf, nfp, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), lmksc_n.data());
+
+      // lmkcs_n[k] = Sum_n lmncs[n]*(n*nfp)*nscale[n]*cos(n*zeta_k)
+      FillDstDeriv(lmncs_ptr, fb.nscale, ntor, nhalf, nfp, X.data());
+      fftw_execute_dft_c2r(plans.plan_c2r, X.data(), lmkcs_n.data());
+
+      // === Poloidal accumulation (identical to
+      // FourierToReal3DSymmFastPoloidal) ===
       const int idx_ml_base = m * s.nThetaReduced;
 
       auto sinmum_seg = fb.sinmum.segment(idx_ml_base, s.nThetaReduced);
@@ -322,8 +310,8 @@ void FourierToReal3DSymmFastPoloidalFft(
       auto cosmu_seg = fb.cosmu.segment(idx_ml_base, s.nThetaReduced);
       auto sinmu_seg = fb.sinmu.segment(idx_ml_base, s.nThetaReduced);
 
-      for (int k = 0; k < nZeta; ++k) {
-        const int idx_kl_base = ((jF - nsMinF1) * nZeta + k) * s.nThetaEff;
+      for (int k = 0; k < s.nZeta; ++k) {
+        const int idx_kl_base = ((jF - nsMinF1) * s.nZeta + k) * s.nThetaEff;
 
         auto ru_seg = Eigen::Map<Eigen::VectorXd>(ru.data() + idx_kl_base,
                                                   s.nThetaReduced);
@@ -354,7 +342,7 @@ void FourierToReal3DSymmFastPoloidalFft(
         z1_seg += zmksc[k] * sinmu_seg + zmkcs[k] * cosmu_seg;
 
         if (nsMinF <= jF && jF < r.nsMaxFIncludingLcfs) {
-          const int idx_con_base = ((jF - nsMinF) * nZeta + k) * s.nThetaEff;
+          const int idx_con_base = ((jF - nsMinF) * s.nZeta + k) * s.nThetaEff;
 
           auto rCon_seg = Eigen::Map<Eigen::VectorXd>(
               m_geometry.rCon.data() + idx_con_base, s.nThetaReduced);
@@ -381,8 +369,9 @@ void ForcesToFourier3DSymmFastPoloidalFft(
     const FourierBasisFastPoloidal& fb, const ToroidalFftPlans& plans,
     VacuumPressureState vacuum_pressure_state,
     FourierForces& m_physical_forces) {
-  // Replaces the O(nZeta * ntor) toroidal scatter loop with one
-  // 12*mpol-wide MKL DFTI batched forward (r2c) transform per surface.
+  // This function matches the logic of ForcesToFourier3DSymmFastPoloidal but
+  // replaces the O(nZeta * ntor) toroidal scatter loop with
+  // O(nZeta * log(nZeta)) FFTW r2c DFTs.
 
   m_physical_forces.setZero();
 
@@ -397,54 +386,27 @@ void ForcesToFourier3DSymmFastPoloidalFft(
   const int ntor = s.ntor;
   const int nhalf = plans.nhalf;
   const int nfp = plans.nfp;
-  constexpr int kBatch = ToroidalFftPlans::kBatch;
 
-  enum Slot {
-    kRmkcc = 0,
-    kRmkss = 1,
-    kRmkccN = 2,
-    kRmkssN = 3,
-    kZmksc = 4,
-    kZmkcs = 5,
-    kZmkscN = 6,
-    kZmkcsN = 7,
-    kLmksc = 8,
-    kLmkcs = 9,
-    kLmkscN = 10,
-    kLmkcsN = 11,
-  };
+  // Per-thread scratch buffers.
+  // For each (jF, m) we accumulate the k-profiles of the poloidal integrals
+  // into these, then do the r2c FFT to project onto toroidal modes.
+  Eigen::VectorXd rmkcc_buf(s.nZeta), rmkss_buf(s.nZeta);
+  Eigen::VectorXd rmkcc_n_buf(s.nZeta), rmkss_n_buf(s.nZeta);
+  Eigen::VectorXd zmksc_buf(s.nZeta), zmkcs_buf(s.nZeta);
+  Eigen::VectorXd zmksc_n_buf(s.nZeta), zmkcs_n_buf(s.nZeta);
+  Eigen::VectorXd lmksc_buf(s.nZeta), lmkcs_buf(s.nZeta);
+  Eigen::VectorXd lmksc_n_buf(s.nZeta), lmkcs_n_buf(s.nZeta);
 
-  const int mpol = s.mpol;
-  const int full_count = kBatch * mpol;
-
-  // Thread-local scratch reused across calls.
-  thread_local std::vector<double> in_batch;
-  thread_local std::vector<double> out_batch_real;
-  if (static_cast<int>(in_batch.size()) < full_count * s.nZeta) {
-    in_batch.resize(full_count * s.nZeta);
-  }
-  if (static_cast<int>(out_batch_real.size()) < 2 * full_count * nhalf) {
-    out_batch_real.resize(2 * full_count * nhalf);
-  }
-  CplxBuf* out_batch = reinterpret_cast<CplxBuf*>(out_batch_real.data());
-
-  auto in_slot = [&](int m_idx, int q_idx) {
-    return in_batch.data() + (m_idx * kBatch + q_idx) * s.nZeta;
-  };
-  auto out_slot = [&](int m_idx, int q_idx) {
-    return out_batch + (m_idx * kBatch + q_idx) * nhalf;
-  };
+  // FFT output: half-complex spectrum for each k-profile.
+  FftwComplexBuffer F_rmkcc(nhalf), F_rmkss(nhalf);
+  FftwComplexBuffer F_rmkcc_n(nhalf), F_rmkss_n(nhalf);
+  FftwComplexBuffer F_zmksc(nhalf), F_zmkcs(nhalf);
+  FftwComplexBuffer F_zmksc_n(nhalf), F_zmkcs_n(nhalf);
+  FftwComplexBuffer F_lmksc(nhalf), F_lmkcs(nhalf);
+  FftwComplexBuffer F_lmksc_n(nhalf), F_lmkcs_n(nhalf);
 
   for (int jF = rp.nsMinF; jF < jMaxRZ; ++jF) {
     const int mmax = (jF == 0) ? 1 : s.mpol;
-
-    // === Fill all input slots for this surface ===
-    // For m >= mmax (axis case), zero the inputs so the batched FFT
-    // produces zeros; the corresponding outputs are skipped on accumulation.
-    if (mmax < mpol) {
-      std::fill(in_batch.data() + mmax * kBatch * s.nZeta,
-                in_batch.data() + mpol * kBatch * s.nZeta, 0.0);
-    }
     for (int m = 0; m < mmax; ++m) {
       const bool m_even = (m % 2 == 0);
 
@@ -465,19 +427,8 @@ void ForcesToFourier3DSymmFastPoloidalFft(
       auto cosmumi_seg = fb.cosmumi.segment(idx_ml_base, s.nThetaReduced);
       auto sinmumi_seg = fb.sinmumi.segment(idx_ml_base, s.nThetaReduced);
 
-      double* rmkcc_buf = in_slot(m, kRmkcc);
-      double* rmkss_buf = in_slot(m, kRmkss);
-      double* rmkcc_n_buf = in_slot(m, kRmkccN);
-      double* rmkss_n_buf = in_slot(m, kRmkssN);
-      double* zmksc_buf = in_slot(m, kZmksc);
-      double* zmkcs_buf = in_slot(m, kZmkcs);
-      double* zmksc_n_buf = in_slot(m, kZmkscN);
-      double* zmkcs_n_buf = in_slot(m, kZmkcsN);
-      double* lmksc_buf = in_slot(m, kLmksc);
-      double* lmkcs_buf = in_slot(m, kLmkcs);
-      double* lmksc_n_buf = in_slot(m, kLmkscN);
-      double* lmkcs_n_buf = in_slot(m, kLmkcsN);
-
+      // Poloidal-integration step: for each k, compute the scalar projections
+      // (identical to the DFT version) and store in the k-profile buffers.
       for (int k = 0; k < s.nZeta; ++k) {
         const int idx_kl_base = ((jF - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
 
@@ -520,27 +471,56 @@ void ForcesToFourier3DSymmFastPoloidalFft(
         zmksc_buf[k] = tempZ.dot(sinmui_seg) + bzmn_seg.dot(cosmumi_seg);
         zmkcs_buf[k] = tempZ.dot(cosmui_seg) + bzmn_seg.dot(sinmumi_seg);
       }  // k
-    }  // m (fill)
 
-    // Single 12*mpol batched r2c for the entire surface.
-    DftiComputeForward(plans.desc_full_r2c, in_batch.data(),
-                       out_batch_real.data());
+      // === Toroidal projection via r2c FFTs ===
+      //
+      // The DFT version used:
+      //   frcc[n] += rmkcc(k)*cosnv[k,n] + rmkcc_n(k)*sinnvn[k,n]
+      // where cosnv[k,n] = cos(n*zeta_k)*nscale[n]
+      //   and sinnvn[k,n] = -n*nfp*sin(n*zeta_k)*nscale[n].
+      //
+      // r2c FFT: F[n] = Sum_k f[k]*exp(-i*2*pi*n*k/N)
+      //   Re(F[n]) = Sum_k f[k]*cos(n*zeta_k)  = DCT(f)[n]
+      //   Im(F[n]) = -Sum_k f[k]*sin(n*zeta_k) = -DST(f)[n]
+      //   -> DST(f)[n] = -Im(F[n])
+      //
+      // Therefore:
+      //   Sum_k rmkcc(k)*cos(n*zeta_k) = Re(r2c(rmkcc))[n]
+      //   Sum_k rmkcc_n(k)*(-n*nfp)*sin(n*zeta_k)
+      //     = (-n*nfp)*(-Im(r2c(rmkcc_n))[n]) = n*nfp*Im(r2c(rmkcc_n))[n]
+      //
+      // So: frcc[n] += nscale[n] * [Re(r2c(rmkcc))[n]
+      //                             + n*nfp * Im(r2c(rmkcc_n))[n]]
 
-    // === Accumulate r2c outputs into Fourier force arrays ===
-    for (int m = 0; m < mmax; ++m) {
-      const CplxBuf* F_rmkcc = out_slot(m, kRmkcc);
-      const CplxBuf* F_rmkss = out_slot(m, kRmkss);
-      const CplxBuf* F_rmkcc_n = out_slot(m, kRmkccN);
-      const CplxBuf* F_rmkss_n = out_slot(m, kRmkssN);
-      const CplxBuf* F_zmksc = out_slot(m, kZmksc);
-      const CplxBuf* F_zmkcs = out_slot(m, kZmkcs);
-      const CplxBuf* F_zmksc_n = out_slot(m, kZmkscN);
-      const CplxBuf* F_zmkcs_n = out_slot(m, kZmkcsN);
-      const CplxBuf* F_lmksc = out_slot(m, kLmksc);
-      const CplxBuf* F_lmkcs = out_slot(m, kLmkcs);
-      const CplxBuf* F_lmksc_n = out_slot(m, kLmkscN);
-      const CplxBuf* F_lmkcs_n = out_slot(m, kLmkcsN);
+      fftw_execute_dft_r2c(plans.plan_r2c, rmkcc_buf.data(), F_rmkcc.data());
+      fftw_execute_dft_r2c(plans.plan_r2c, rmkss_buf.data(), F_rmkss.data());
+      fftw_execute_dft_r2c(plans.plan_r2c, rmkcc_n_buf.data(),
+                           F_rmkcc_n.data());
+      fftw_execute_dft_r2c(plans.plan_r2c, rmkss_n_buf.data(),
+                           F_rmkss_n.data());
+      fftw_execute_dft_r2c(plans.plan_r2c, zmksc_buf.data(), F_zmksc.data());
+      fftw_execute_dft_r2c(plans.plan_r2c, zmkcs_buf.data(), F_zmkcs.data());
+      fftw_execute_dft_r2c(plans.plan_r2c, zmksc_n_buf.data(),
+                           F_zmksc_n.data());
+      fftw_execute_dft_r2c(plans.plan_r2c, zmkcs_n_buf.data(),
+                           F_zmkcs_n.data());
 
+      if (jMinL <= jF) {
+        fftw_execute_dft_r2c(plans.plan_r2c, lmksc_buf.data(), F_lmksc.data());
+        fftw_execute_dft_r2c(plans.plan_r2c, lmkcs_buf.data(), F_lmkcs.data());
+        fftw_execute_dft_r2c(plans.plan_r2c, lmksc_n_buf.data(),
+                             F_lmksc_n.data());
+        fftw_execute_dft_r2c(plans.plan_r2c, lmkcs_n_buf.data(),
+                             F_lmkcs_n.data());
+      }
+
+      // Accumulate r2c outputs into the Fourier force coefficient arrays.
+      // FFTW r2c gives the unnormalized DFT: F[n] = Sum_k
+      // f[k]*exp(-i*2*pi*n*k/N). This matches exactly what the DFT k-loop
+      // computes:
+      //   Sum_k rmkcc(k)*cosnv(k,n) = nscale[n] * Sum_k rmkcc(k)*cos(n*zeta_k)
+      //                             = nscale[n] * Re(r2c(rmkcc)[n])
+      // No division by N is needed.
       const int ntorp1 = ntor + 1;
       const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
 
@@ -553,13 +533,42 @@ void ForcesToFourier3DSymmFastPoloidalFft(
       Eigen::Map<Eigen::VectorXd> fzcs_seg(
           m_physical_forces.fzcs.data() + idx_mn_base, ntorp1);
 
+      // frcc[n] += nscale[n] * [DCT(rmkcc)[n] + n*nfp * DST(rmkcc_n)[n]]
+      //          + nscale[n] * [n*nfp * DCT(rmkss_n)[n] - DST(rmkss)[n]
+      //                        * n*nfp / n*nfp ... no, let me re-derive.
+      //
+      // From the DFT version:
+      //   frcc_seg += rmkcc * cosnv_seg + rmkcc_n * sinnvn_seg
+      // where cosnv[k,n] = cos(n*zeta_k)*nscale[n],
+      //       sinnvn[k,n] = -n*nfp*sin(n*zeta_k)*nscale[n]
+      //
+      //   frcc[n] += nscale[n]*Sum_k rmkcc(k)*cos(n*zeta_k)
+      //              + nscale[n]*(-n*nfp)*Sum_k rmkcc_n(k)*sin(n*zeta_k)
+      //            = nscale[n]*(DCT(rmkcc)[n] + n*nfp*Im(r2c(rmkcc_n))[n])
+      //   (using -Im(r2c(f)[n]) = DST(f)[n], so Sum_k f*sin = -Im(r2c(f)[n]),
+      //    and frcc gets n*nfp * (-(-Im)) = n*nfp * Im)
+      //
+      //   frss[n] += nscale[n]*Sum_k rmkss(k)*sin(n*zeta_k)
+      //              + nscale[n]*(n*nfp)*Sum_k rmkss_n(k)*cos(n*zeta_k)
+      //            = nscale[n]*(-Im(r2c(rmkss))[n] + n*nfp*Re(r2c(rmkss_n))[n])
       for (int n = 0; n <= ntor; ++n) {
         const double ns = fb.nscale[n];
         const double nfp_n = static_cast<double>(n) * nfp;
 
+        // frcc[n] += nscale[n] * [Re(r2c(rmkcc))[n] + n*nfp *
+        // Im(r2c(rmkcc_n))[n]]
         frcc_seg[n] += ns * (F_rmkcc[n][0] + nfp_n * F_rmkcc_n[n][1]);
+
+        // frss[n] += nscale[n] * [-Im(r2c(rmkss))[n] + n*nfp *
+        // Re(r2c(rmkss_n))[n]]
         frss_seg[n] += ns * (-F_rmkss[n][1] + nfp_n * F_rmkss_n[n][0]);
+
+        // fzsc[n] += nscale[n] * [Re(r2c(zmksc))[n] + n*nfp *
+        // Im(r2c(zmksc_n))[n]]
         fzsc_seg[n] += ns * (F_zmksc[n][0] + nfp_n * F_zmksc_n[n][1]);
+
+        // fzcs[n] += nscale[n] * [-Im(r2c(zmkcs))[n] + n*nfp *
+        // Re(r2c(zmkcs_n))[n]]
         fzcs_seg[n] += ns * (-F_zmkcs[n][1] + nfp_n * F_zmkcs_n[n][0]);
       }  // n
 
@@ -573,18 +582,21 @@ void ForcesToFourier3DSymmFastPoloidalFft(
           const double ns = fb.nscale[n];
           const double nfp_n = static_cast<double>(n) * nfp;
 
+          // flsc[n] += nscale[n] * [Re(r2c(lmksc))[n] + n*nfp *
+          // Im(r2c(lmksc_n))[n]]
           flsc_seg[n] += ns * (F_lmksc[n][0] + nfp_n * F_lmksc_n[n][1]);
+
+          // flcs[n] += nscale[n] * [-Im(r2c(lmkcs))[n] + n*nfp *
+          // Re(r2c(lmkcs_n))[n]]
           flcs_seg[n] += ns * (-F_lmkcs[n][1] + nfp_n * F_lmkcs_n[n][0]);
         }  // n
       }  // jMinL
-    }  // m (accumulate)
+    }  // m
   }  // jF (main loop)
 
-  // Lambda-only tail: jMaxRZ to nsMaxFIncludingLcfs.
+  // Repeat for jMaxRZ to nsMaxFIncludingLcfs: lambda forces only.
   for (int jF = jMaxRZ; jF < rp.nsMaxFIncludingLcfs; ++jF) {
-    // Fill all m's; we only read the lambda-output slots, so the other 8
-    // input slots per m can stay as-is (the FFT cost is paid regardless).
-    for (int m = 0; m < mpol; ++m) {
+    for (int m = 0; m < s.mpol; ++m) {
       const bool m_even = (m % 2 == 0);
 
       const auto& blmn = m_even ? d.blmn_e : d.blmn_o;
@@ -595,11 +607,6 @@ void ForcesToFourier3DSymmFastPoloidalFft(
       auto sinmui_seg = fb.sinmui.segment(idx_ml_base, s.nThetaReduced);
       auto cosmumi_seg = fb.cosmumi.segment(idx_ml_base, s.nThetaReduced);
       auto sinmumi_seg = fb.sinmumi.segment(idx_ml_base, s.nThetaReduced);
-
-      double* lmksc_buf = in_slot(m, kLmksc);
-      double* lmkcs_buf = in_slot(m, kLmkcs);
-      double* lmksc_n_buf = in_slot(m, kLmkscN);
-      double* lmkcs_n_buf = in_slot(m, kLmkcsN);
 
       for (int k = 0; k < s.nZeta; ++k) {
         const int idx_kl_base = ((jF - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
@@ -613,17 +620,13 @@ void ForcesToFourier3DSymmFastPoloidalFft(
         lmkcs_n_buf[k] = -clmn_seg.dot(cosmui_seg);
         lmksc_n_buf[k] = -clmn_seg.dot(sinmui_seg);
       }  // k
-    }  // m (fill)
 
-    // Single 12*mpol batched r2c (we only use the 4 lambda slots per m).
-    DftiComputeForward(plans.desc_full_r2c, in_batch.data(),
-                       out_batch_real.data());
-
-    for (int m = 0; m < mpol; ++m) {
-      const CplxBuf* F_lmksc = out_slot(m, kLmksc);
-      const CplxBuf* F_lmkcs = out_slot(m, kLmkcs);
-      const CplxBuf* F_lmksc_n = out_slot(m, kLmkscN);
-      const CplxBuf* F_lmkcs_n = out_slot(m, kLmkcsN);
+      fftw_execute_dft_r2c(plans.plan_r2c, lmksc_buf.data(), F_lmksc.data());
+      fftw_execute_dft_r2c(plans.plan_r2c, lmkcs_buf.data(), F_lmkcs.data());
+      fftw_execute_dft_r2c(plans.plan_r2c, lmksc_n_buf.data(),
+                           F_lmksc_n.data());
+      fftw_execute_dft_r2c(plans.plan_r2c, lmkcs_n_buf.data(),
+                           F_lmkcs_n.data());
 
       const int ntorp1 = ntor + 1;
       const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
@@ -640,7 +643,7 @@ void ForcesToFourier3DSymmFastPoloidalFft(
         flsc_seg[n] += ns * (F_lmksc[n][0] + nfp_n * F_lmksc_n[n][1]);
         flcs_seg[n] += ns * (-F_lmkcs[n][1] + nfp_n * F_lmkcs_n[n][0]);
       }  // n
-    }  // m (accumulate)
+    }  // m
   }  // jF (lambda-only tail)
 }
 

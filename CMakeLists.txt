@@ -27,54 +27,19 @@ find_package(OpenMP REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
 
-# FFT backend: Intel MKL when available, otherwise the slower in-house DFT.
-# MKL is detected via the MKLROOT environment variable (set by Intel oneAPI
-# setvars.sh) or by searching standard install paths.  When found, MKL DFTI
-# is used and VMECPP_USE_MKL is defined.  On platforms without MKL (e.g.
-# macOS ARM) the dispatch in ideal_mhd_model.cc falls back to the DFT path
-# and no external FFT library is required.
-set(VMECPP_FFT_LIBRARIES "")
-set(VMECPP_FFT_INCLUDE_DIRS "")
-set(VMECPP_FFT_BACKEND "none")
-
-# Try to locate MKL.
-if(NOT DEFINED ENV{MKLROOT})
-  # Intel oneAPI default layout on Linux.
-  set(_MKL_CANDIDATE_ROOTS
-    "/opt/intel/oneapi/2025.1"
-    "/opt/intel/oneapi/2024.2"
-    "/opt/intel/oneapi/2024.1"
-    "/opt/intel/oneapi"
-    "/opt/intel/mkl"
-  )
-  foreach(_root ${_MKL_CANDIDATE_ROOTS})
-    if(EXISTS "${_root}/include/mkl_dfti.h")
-      set(ENV{MKLROOT} "${_root}")
-      break()
-    endif()
-  endforeach()
-endif()
-
-if(DEFINED ENV{MKLROOT} AND EXISTS "$ENV{MKLROOT}/include/mkl_dfti.h")
-  message(STATUS "Found Intel MKL at $ENV{MKLROOT} -- using MKL FFT backend")
-  set(MKL_ROOT "$ENV{MKLROOT}")
-  set(VMECPP_FFT_INCLUDE_DIRS "${MKL_ROOT}/include")
-  set(VMECPP_FFT_LIBRARIES
-    "-L${MKL_ROOT}/lib"
-    "-lmkl_rt"
-    "-lpthread"
-    "-lm"
-    "-ldl"
-  )
-  add_compile_definitions(VMECPP_USE_MKL)
-  set(VMECPP_FFT_BACKEND "mkl" CACHE INTERNAL "FFT backend in use")
+# Find FFTW3 for FFT-accelerated toroidal transforms.
+find_package(PkgConfig)
+if(PkgConfig_FOUND)
+  pkg_check_modules(FFTW3 REQUIRED fftw3)
 else()
-  message(STATUS "Intel MKL not found -- FFT-accelerated transforms disabled, using DFT fallback")
-  set(VMECPP_FFT_BACKEND "none" CACHE INTERNAL "FFT backend in use")
-  set(VMECPP_FFT_INCLUDE_DIRS "")
-  set(VMECPP_FFT_LIBRARIES "")
+  # Fallback: try to find FFTW3 headers and library directly.
+  find_path(FFTW3_INCLUDE_DIRS fftw3.h)
+  find_library(FFTW3_LIBRARIES fftw3)
+  if(NOT FFTW3_INCLUDE_DIRS OR NOT FFTW3_LIBRARIES)
+    message(FATAL_ERROR "FFTW3 not found. Install libfftw3-dev.")
+  endif()
 endif()
-include_directories(${VMECPP_FFT_INCLUDE_DIRS})
+include_directories(${FFTW3_INCLUDE_DIRS})
 
 find_package(netCDF)
 if(NOT netCDF_FOUND)
@@ -162,7 +127,7 @@ target_link_libraries(vmecpp_core PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES
 target_link_libraries(vmecpp_core PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
-target_link_libraries(vmecpp_core PRIVATE ${VMECPP_FFT_LIBRARIES})
+target_link_libraries(vmecpp_core PRIVATE ${FFTW3_LIBRARIES})
 target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synchronization absl::strings absl::str_format absl::log absl::string_view absl::check absl::status absl::statusor)
 
 if(OpenMP_CXX_FOUND)

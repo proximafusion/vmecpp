@@ -503,9 +503,7 @@ IdealMhdModel::IdealMhdModel(
       r_(*r),
       m_fb_(m_fb),
       m_vacuum_pressure_state_(*m_vacuum_pressure_state),
-#ifdef VMECPP_USE_MKL
-      fft_plans_(s->nZeta, s->nfp, s->mpol),
-#endif
+      fft_plans_(s->nZeta, s->nfp),
       signOfJacobian(signOfJacobian),
       nvacskip(nvacskip),
       ivacskip(0) {
@@ -1308,12 +1306,8 @@ void IdealMhdModel::dft_FourierToReal_3d_symm(
                                     .rCon = rCon,
                                     .zCon = zCon};
 
-#ifdef VMECPP_USE_MKL
   FourierToReal3DSymmFastPoloidalFft(physical_x, xmpq, r_, s_, m_p_, t_,
                                      fft_plans_, geometry);
-#else
-  FourierToReal3DSymmFastPoloidal(physical_x, xmpq, r_, s_, m_p_, t_, geometry);
-#endif
 }
 
 // compute inv-DFTs on unique radial grid points
@@ -2989,14 +2983,9 @@ void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
       .fzcon_o = fzcon_o,
   };
 
-#ifdef VMECPP_USE_MKL
   ForcesToFourier3DSymmFastPoloidalFft(input_data, xmpq, r_, m_fc_, s_, t_,
                                        fft_plans_, m_vacuum_pressure_state_,
                                        m_physical_f);
-#else
-  ForcesToFourier3DSymmFastPoloidal(input_data, xmpq, r_, m_fc_, s_, t_,
-                                    m_vacuum_pressure_state_, m_physical_f);
-#endif
 }
 
 void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
