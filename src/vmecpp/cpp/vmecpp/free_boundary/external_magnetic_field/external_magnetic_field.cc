@@ -288,10 +288,10 @@ void ExternalMagneticField::covariantAndNormalComponents() {
   const auto full_bp = (interpBp + curtorBp).array();
   const auto full_bz = (interpBz + curtorBz).array();
   bSubU = full_br * sg_.rub.array() + full_bz * sg_.zub.array();
-  bSubV = full_br * sg_.rvb.array() + full_bz * sg_.zvb.array()
-        + full_bp * sg_.r1b.segment(tp_.ztMin, numLocal).array();
-  bDotN = -(full_br * sg_.snr.array() + full_bp * sg_.snv.array()
-          + full_bz * sg_.snz.array());
+  bSubV = full_br * sg_.rvb.array() + full_bz * sg_.zvb.array() +
+          full_bp * sg_.r1b.segment(tp_.ztMin, numLocal).array();
+  bDotN = -(full_br * sg_.snr.array() + full_bp * sg_.snv.array() +
+            full_bz * sg_.snz.array());
 }
 
 }  // namespace vmecpp

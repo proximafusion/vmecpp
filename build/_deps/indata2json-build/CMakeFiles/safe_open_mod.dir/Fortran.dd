@@ -1,4 +1,0 @@
-ninja_dyndep_version = 1.0
-build _deps/indata2json-build/CMakeFiles/safe_open_mod.dir/LIBSTELL/Sources/Modules/safe_open_mod.f90.o | _deps/indata2json-build/safe_open_mod.mod: dyndep
-  restat = 1
-

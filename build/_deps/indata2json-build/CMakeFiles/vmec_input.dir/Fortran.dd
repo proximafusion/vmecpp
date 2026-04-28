@@ -1,4 +1,0 @@
-ninja_dyndep_version = 1.0
-build _deps/indata2json-build/CMakeFiles/vmec_input.dir/src/vmec_input.f.o | _deps/indata2json-build/vmec_input.mod: dyndep | _deps/indata2json-build/vparams.mod _deps/indata2json-build/vsvd0.mod
-  restat = 1
-

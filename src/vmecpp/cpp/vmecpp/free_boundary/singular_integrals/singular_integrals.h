@@ -78,11 +78,10 @@ class SingularIntegrals {
   // Slm * cos(mu + nv), Slp * cos(mu - nv)
   Eigen::VectorXd grpmn_cos;
 
-  void prepareUpdate(const Eigen::VectorXd& a,
-                     const Eigen::VectorXd& b2,
+  void prepareUpdate(const Eigen::VectorXd& a, const Eigen::VectorXd& b2,
                      const Eigen::VectorXd& c, const Eigen::VectorXd& A,
-                     const Eigen::VectorXd& B2,
-                     const Eigen::VectorXd& C, bool fullUpdate);
+                     const Eigen::VectorXd& B2, const Eigen::VectorXd& C,
+                     bool fullUpdate);
 
  private:
   const Sizes& s_;

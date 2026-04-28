@@ -145,8 +145,7 @@ void SingularIntegrals::computeCoefficients() {
   }  // n
 }  // computeCoefficients
 
-void SingularIntegrals::update(const Eigen::VectorXd& bDotN,
-                               bool fullUpdate) {
+void SingularIntegrals::update(const Eigen::VectorXd& bDotN, bool fullUpdate) {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -165,13 +164,10 @@ void SingularIntegrals::update(const Eigen::VectorXd& bDotN,
 #endif  // _OPENMP
 }  // update
 
-void SingularIntegrals::prepareUpdate(const Eigen::VectorXd& a,
-                                      const Eigen::VectorXd& b2,
-                                      const Eigen::VectorXd& c,
-                                      const Eigen::VectorXd& A,
-                                      const Eigen::VectorXd& B2,
-                                      const Eigen::VectorXd& C,
-                                      bool fullUpdate) {
+void SingularIntegrals::prepareUpdate(
+    const Eigen::VectorXd& a, const Eigen::VectorXd& b2,
+    const Eigen::VectorXd& c, const Eigen::VectorXd& A,
+    const Eigen::VectorXd& B2, const Eigen::VectorXd& C, bool fullUpdate) {
   int numLocal = tp_.ztMax - tp_.ztMin;
   for (int kl = 0; kl < numLocal; ++kl) {
     // initialize constants (along expansion in l)

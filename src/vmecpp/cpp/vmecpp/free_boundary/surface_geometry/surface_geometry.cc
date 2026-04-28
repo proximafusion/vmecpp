@@ -246,53 +246,41 @@ void SurfaceGeometry::inverseDFT(
 
 void SurfaceGeometry::derivedSurfaceQuantities(int signOfJacobian,
                                                bool fullUpdate) {
-  for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
-    // surface normal vector components
-    snr[kl - tp_.ztMin] = signOfJacobian * r1b[kl] * zub[kl - tp_.ztMin];
-    snv[kl - tp_.ztMin] =
-        signOfJacobian * (rub[kl - tp_.ztMin] * zvb[kl - tp_.ztMin] -
-                          zub[kl - tp_.ztMin] * rvb[kl - tp_.ztMin]);
-    snz[kl - tp_.ztMin] = -signOfJacobian * r1b[kl] * rub[kl - tp_.ztMin];
+  const int numLocal = tp_.ztMax - tp_.ztMin;
+  const auto r1b_local = r1b.segment(tp_.ztMin, numLocal);
 
-    // metric elements; used in Imn and Kmn
-    guu[kl - tp_.ztMin] = rub[kl - tp_.ztMin] * rub[kl - tp_.ztMin] +
-                          zub[kl - tp_.ztMin] * zub[kl - tp_.ztMin];
-    guv[kl - tp_.ztMin] = 2.0 *
-                          (rub[kl - tp_.ztMin] * rvb[kl - tp_.ztMin] +
-                           zub[kl - tp_.ztMin] * zvb[kl - tp_.ztMin]) /
-                          s_.nfp;
-    gvv[kl - tp_.ztMin] =
-        (rvb[kl - tp_.ztMin] * rvb[kl - tp_.ztMin] + r1b[kl] * r1b[kl] +
-         zvb[kl - tp_.ztMin] * zvb[kl - tp_.ztMin]) /
+  // surface normal vector components
+  snr = signOfJacobian * r1b_local.array() * zub.array();
+  snv =
+      signOfJacobian * (rub.array() * zvb.array() - zub.array() * rvb.array());
+  snz = -signOfJacobian * r1b_local.array() * rub.array();
+
+  // metric elements; used in Imn and Kmn
+  guu = rub.array().square() + zub.array().square();
+  guv = 2.0 / s_.nfp * (rub.array() * rvb.array() + zub.array() * zvb.array());
+  gvv = (rvb.array().square() + r1b_local.array().square() +
+         zvb.array().square()) /
         (s_.nfp * s_.nfp);
 
-    if (fullUpdate) {
-      // d^2X/d(ij) . N (used in Kmn)
-      auu[kl - tp_.ztMin] = (ruu[kl - tp_.ztMin] * snr[kl - tp_.ztMin] +
-                             zuu[kl - tp_.ztMin] * snz[kl - tp_.ztMin]) /
-                            2;
-      auv[kl - tp_.ztMin] = (ruv[kl - tp_.ztMin] * snr[kl - tp_.ztMin] +
-                             rub[kl - tp_.ztMin] * snv[kl - tp_.ztMin] +
-                             zuv[kl - tp_.ztMin] * snz[kl - tp_.ztMin]) /
-                            s_.nfp;
-      avv[kl - tp_.ztMin] =
-          (rvb[kl - tp_.ztMin] * snv[kl - tp_.ztMin] +
-           ((rvv[kl - tp_.ztMin] - r1b[kl]) * snr[kl - tp_.ztMin] +
-            zvv[kl - tp_.ztMin] * snz[kl - tp_.ztMin]) /
-               2) /
+  if (fullUpdate) {
+    // d^2X/d(ij) . N (used in Kmn)
+    auu = 0.5 * (ruu.array() * snr.array() + zuu.array() * snz.array());
+    auv = (ruv.array() * snr.array() + rub.array() * snv.array() +
+           zuv.array() * snz.array()) /
+          s_.nfp;
+    avv = (rvb.array() * snv.array() +
+           0.5 * ((rvv.array() - r1b_local.array()) * snr.array() +
+                  zvv.array() * snz.array())) /
           (s_.nfp * s_.nfp);
 
-      // -(R N^R + Z N^Z)
-      drv[kl - tp_.ztMin] =
-          -(r1b[kl] * snr[kl - tp_.ztMin] + z1b[kl] * snz[kl - tp_.ztMin]);
-    }
-  }  // kl
+    // -(R N^R + Z N^Z)
+    drv = -(r1b_local.array() * snr.array() +
+            z1b.segment(tp_.ztMin, numLocal).array() * snz.array());
+  }
 
   if (fullUpdate) {
     // R^2 + Z^2
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      rzb2[kl] = r1b[kl] * r1b[kl] + z1b[kl] * z1b[kl];
-    }
+    rzb2 = r1b.array().square() + z1b.array().square();
 
     if (!s_.lasym) {
       // mirror into non-stellarator-symmetric half of poloidal range
@@ -312,12 +300,13 @@ void SurfaceGeometry::derivedSurfaceQuantities(int signOfJacobian,
       }  // l
     }
 
-    // x and y
-    for (int kl = 0; kl < s_.nThetaEven * s_.nZeta; ++kl) {
-      int k = kl % s_.nZeta;
-      rcosuv[kl] = r1b[kl] * cos_phi[k];
-      rsinuv[kl] = r1b[kl] * sin_phi[k];
-    }  // kl
+    // x and y - rcosuv[l*nZeta+k] = r1b[l*nZeta+k] * cos_phi[k]
+    for (int l = 0; l < s_.nThetaEven; ++l) {
+      rcosuv.segment(l * s_.nZeta, s_.nZeta) =
+          r1b.segment(l * s_.nZeta, s_.nZeta).array() * cos_phi.array();
+      rsinuv.segment(l * s_.nZeta, s_.nZeta) =
+          r1b.segment(l * s_.nZeta, s_.nZeta).array() * sin_phi.array();
+    }
   }
 }
 

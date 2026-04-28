@@ -1,8 +1,0 @@
-{
-  "source_dir": "/home/runner/work/vmecpp/vmecpp",
-  "build_dir": "/home/runner/work/vmecpp/vmecpp/build",
-  "cmake_path": "/usr/local/bin/cmake",
-  "skbuild_path": "/tmp/pip-build-env-5btlvytc/overlay/lib/python3.12/site-packages/scikit_build_core",
-  "skbuild_version": "0.11.6",
-  "python_executable": "/opt/hostedtoolcache/Python/3.12.13/x64/bin/python"
-}

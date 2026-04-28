@@ -72,6 +72,18 @@ class LaplaceSolver {
 
   Eigen::VectorXd grpOdd;
   Eigen::VectorXd grpEvn;
+
+  // Precomputed Fourier basis matrices for GEMM acceleration.
+  // cosnv_scaled_(n, k) = fb_.cosnv[n*nZeta+k] / fb_.nscale[n]
+  // Shape: (nf+1, nZeta)
+  Eigen::MatrixXd cosnv_scaled_;
+  Eigen::MatrixXd sinnv_scaled_;
+
+  // sinmui_mat_(l, m) = fb_.sinmui[l*(mnyq2+1)+m] / fb_.mscale[m]
+  // cosmui_mat_(l, m) = fb_.cosmui[l*(mnyq2+1)+m] / fb_.mscale[m]
+  // Shape: (nThetaReduced, mf+1)
+  Eigen::MatrixXd sinmui_mat_;
+  Eigen::MatrixXd cosmui_mat_;
 };
 
 }  // namespace vmecpp
