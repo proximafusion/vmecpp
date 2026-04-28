@@ -503,7 +503,7 @@ IdealMhdModel::IdealMhdModel(
       r_(*r),
       m_fb_(m_fb),
       m_vacuum_pressure_state_(*m_vacuum_pressure_state),
-      fft_plans_(s->nZeta, s->nfp),
+      fft_plans_(s->nZeta, s->nfp, s->mpol),
       signOfJacobian(signOfJacobian),
       nvacskip(nvacskip),
       ivacskip(0) {

@@ -38,7 +38,9 @@ class ToroidalFftPlans {
   // Create c2r (synthesis) and r2c (analysis) plans for transforms of length n.
   // n is the number of toroidal grid points (Sizes::nZeta).
   // nfp is the number of field periods (Sizes::nfp).
-  explicit ToroidalFftPlans(int n, int nfp);
+  // mpol is the number of poloidal modes; used to size the "full" batched
+  // plans that pack 12 transforms per m for all m in [0, mpol) into one call.
+  ToroidalFftPlans(int n, int nfp, int mpol);
   ~ToroidalFftPlans();
 
   // Non-copyable, non-movable (plans hold raw FFTW resources).
@@ -63,6 +65,26 @@ class ToroidalFftPlans {
   // Analysis plan: real (size n) -> half-complex (size nhalf).
   // Used in ForcesToFourier (real-space forces -> Fourier coefficients).
   fftw_plan plan_r2c;
+
+  // Batched plans: kBatch transforms in one call, contiguous packing.
+  // Input/output buffers are kBatch * nhalf complex (or kBatch * n real).
+  // kBatch = 12 covers the 12 quantities transformed per (jF, m) pair:
+  //   {R_cc, R_ss, dR_cc, dR_ss, Z_sc, Z_cs, dZ_sc, dZ_cs,
+  //    L_sc, L_cs, dL_sc, dL_cs}.
+  static constexpr int kBatch = 12;
+  fftw_plan plan_many_c2r;
+  fftw_plan plan_many_r2c;
+
+  // Number of poloidal modes (set at construction).
+  int mpol;
+
+  // Full batched plans: 12 * mpol transforms in one call. This batches all
+  // 12 quantities for all m=0..mpol-1 of a single radial surface, replacing
+  // the inner m-loop's mpol calls with a single FFTW call.
+  // Buffer layout: 12*mpol contiguous half-spectra (c2r input) or signals
+  // (r2c input), packed in slot order (m, quantity).
+  fftw_plan plan_full_c2r;
+  fftw_plan plan_full_r2c;
 };
 
 // FFT-accelerated forward transform: Fourier coefficients -> real space.
