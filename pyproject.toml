@@ -168,6 +168,7 @@ ignore = [
 "tests/**" = ["T20"]
 "**/*_test.py" = ["T20"]
 "examples/**" = ["T201"]
+"experimental/**" = ["T201"]
 
 [tool.pyright]
 include = ["src"]
