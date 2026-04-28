@@ -24,7 +24,8 @@ class LaplaceSolver {
 
   void TransformGreensFunctionDerivative(const std::vector<double>& greenp);
   void SymmetriseSourceTerm(const std::vector<double>& gstore);
-  void AccumulateFullGrpmn(const std::vector<double>& grpmn_sin_singular);
+  void AccumulateFullGrpmn(const std::vector<double>& grpmn_sin_singular,
+                           const std::vector<double>& grpmn_cos_singular);
   void PerformToroidalFourierTransforms();
   void PerformPoloidalFourierTransforms();
 

@@ -17,3 +17,16 @@ cc_library(
         "-llapack",
     ],
 )
+
+cc_test(
+    name = "laplace_solver_test",
+    srcs = ["laplace_solver_test.cc"],
+    deps = [
+        ":laplace_solver",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+    ],
+    size = "small",
+)
