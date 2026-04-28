@@ -24,6 +24,9 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_data.h"
+#ifdef VMECPP_HAVE_FFTW
+#include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
+#endif
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/thread_local_storage/thread_local_storage.h"
@@ -425,6 +428,17 @@ class IdealMhdModel {
   const RadialPartitioning& r_;
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
+
+#ifdef VMECPP_HAVE_FFTW
+  // Pre-computed FFTW plans for the toroidal (zeta) Fourier transforms.
+  // Created once at construction and reused across iterations.  Execution is
+  // thread-safe when using separate input/output buffers (which the FFT
+  // transform functions allocate locally).
+  //
+  // Compiled out entirely when FFTW3 is not available; in that case all calls
+  // go through the DFT path.
+  ToroidalFftPlans fft_plans_;
+#endif  // VMECPP_HAVE_FFTW
 
   int signOfJacobian;
 

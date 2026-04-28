@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install build-essential cmake libnetcdf-dev liblapack-dev python3-dev
+          sudo apt-get install build-essential cmake libnetcdf-dev liblapack-dev python3-dev libfftw3-dev
       # Parse the dependencies from the pyproject.toml file and install them,
       # without installing and building the entire vmecpp project
       - run: |
