@@ -37,6 +37,14 @@ int get_max_threads(std::optional<int> max_threads) {
   CHECK_GT(max_threads.value(), 0)
       << "The number of threads must be >=1. "
          "To automatically use all available threads, pass std::nullopt";
+#ifdef _OPENMP
+  // Size the thread pool immediately so spin-waiting threads are not created
+  // for cores that will never be used. Without this, omp_get_max_threads()
+  // returns the hardware count and the runtime may spawn that many threads
+  // before vmec_adjust_num_threads narrows the count at the first multigrid
+  // step.
+  omp_set_num_threads(max_threads.value());
+#endif  // _OPENMP
   return max_threads.value();
 }
 
