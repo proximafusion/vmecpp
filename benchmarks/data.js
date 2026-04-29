@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777468712273,
+  "lastUpdate": 1777469862974,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16980,6 +16980,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.009108587034613664",
             "extra": "mean: 9.593371426333382 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "378b4ff6edc6dd41d3afde48fc66f38723726297",
+          "message": "Reduce free boundary oversubscription due to Eigen low level parallelism on some platforms (#507)\n\nhttps://libeigen.gitlab.io/eigen/docs-3.3/TopicMultiThreading.html",
+          "timestamp": "2026-04-29T13:33:24Z",
+          "tree_id": "32526f65a9fdcc89d31c91b4fdbf874ceb6c27b9",
+          "url": "https://github.com/proximafusion/vmecpp/commit/378b4ff6edc6dd41d3afde48fc66f38723726297"
+        },
+        "date": 1777469862040,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.874432509556626,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006421349176681785",
+            "extra": "mean: 347.8947572000038 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.8244547531181063,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005017366800232232",
+            "extra": "mean: 354.05063539999446 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.23315893134128504,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01649602491634006",
+            "extra": "mean: 4.288919983666659 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5755010490250446,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002032242975793908",
+            "extra": "mean: 1.737616293999982 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.27834684313071223,
+            "unit": "iter/sec",
+            "range": "stddev: 0.017538786672929144",
+            "extra": "mean: 3.5926399909999986 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.1075708978927326,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0075226072079752375",
+            "extra": "mean: 9.296194598999989 sec\nrounds: 3"
           }
         ]
       }
