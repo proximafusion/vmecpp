@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777393012139,
+  "lastUpdate": 1777468712273,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16914,6 +16914,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.14032999981586503",
             "extra": "mean: 9.449925888333306 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c8e567fc623c429024c11a4555e0fd8a58b71679",
+          "message": "Revert \"FFTW3 dependencies (#501)\" (#506)\n\nThis reverts commit ea76d2124c0a47e294f7369d8fa36781d5f7d2fe.\n\nWe cannot use FFTW as the default implementation due to licensing concerns of GPL2.0 :(",
+          "timestamp": "2026-04-29T13:14:21Z",
+          "tree_id": "4895e3fe13cfbe6572522fbff370fdb42ef68df8",
+          "url": "https://github.com/proximafusion/vmecpp/commit/c8e567fc623c429024c11a4555e0fd8a58b71679"
+        },
+        "date": 1777468711303,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.029018823617699,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002616414792871431",
+            "extra": "mean: 330.1399093999862 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 3.000868342066641,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008423421719538336",
+            "extra": "mean: 333.236878799994 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2470806876674875,
+            "unit": "iter/sec",
+            "range": "stddev: 0.013735534073585123",
+            "extra": "mean: 4.047260874333347 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.562441398843983,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003300355210579276",
+            "extra": "mean: 1.7779630056666444 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.24693708225507077,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0286662836912394",
+            "extra": "mean: 4.049614545000016 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10423864099069949,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009108587034613664",
+            "extra": "mean: 9.593371426333382 sec\nrounds: 3"
           }
         ]
       }
