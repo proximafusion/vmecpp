@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777469862974,
+  "lastUpdate": 1777506235285,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17046,6 +17046,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0075226072079752375",
             "extra": "mean: 9.296194598999989 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7bb4582991a98dc91f165f9659e9338fefb7e8bb",
+          "message": "Reduce thread spinning on first parallel region enter (#508)",
+          "timestamp": "2026-04-29T23:39:45Z",
+          "tree_id": "c102485b620e8b188776c29b801d5c85342061c5",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7bb4582991a98dc91f165f9659e9338fefb7e8bb"
+        },
+        "date": 1777506233634,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.052794545925132,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00189988073414574",
+            "extra": "mean: 327.56871939999996 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 3.027892484723982,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0018216102670142846",
+            "extra": "mean: 330.2627174000065 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.24356177750274308,
+            "unit": "iter/sec",
+            "range": "stddev: 0.02551792454243014",
+            "extra": "mean: 4.105734529666658 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5672725284509247,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005355065909107921",
+            "extra": "mean: 1.7628211306666703 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.24695805637657814,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00982441813585457",
+            "extra": "mean: 4.0492706116666755 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10418262183004535,
+            "unit": "iter/sec",
+            "range": "stddev: 0.05525907973755539",
+            "extra": "mean: 9.598529797333327 sec\nrounds: 3"
           }
         ]
       }
