@@ -97,10 +97,10 @@ test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py"
 
 [tool.cibuildwheel.linux]
-before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel fftw3-devel"
+before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel"
 
 [tool.cibuildwheel.macos]
-before-build = "brew install gcc lapack netcdf hdf5 libomp fftw"
+before-build = "brew install gcc lapack netcdf hdf5 libomp"
 
 [tool.coverage.run]
 source_pkgs = ["vmecpp", "tests"]

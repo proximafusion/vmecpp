@@ -151,7 +151,7 @@ Ubuntu 22.04 and 24.04, as well as Debian 12 are officially supported.
 
 1. Install required system packages:
 ```shell
-sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev python3-dev libfftw3-dev
+sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev python3-dev
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
@@ -171,7 +171,7 @@ Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 1. Install required system packages:
 
 ```shell
-pacman -Sy --noconfirm python-pip gcc gcc-fortran openmp hdf5 netcdf lapack fftw
+pacman -Sy --noconfirm python-pip gcc gcc-fortran openmp hdf5 netcdf lapack
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
@@ -187,7 +187,7 @@ python -m pip install git+https://github.com/proximafusion/vmecpp
 1. Install required system packages:
 
 ```shell
-dnf install -y python3.10-devel cmake g++ gfortran libomp-devel hdf5-devel netcdf-devel lapack-devel fftw3-devel
+dnf install -y python3.10-devel cmake g++ gfortran libomp-devel hdf5-devel netcdf-devel lapack-devel
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
@@ -204,7 +204,7 @@ python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
 1. Install dependencies via [Homebrew](https://brew.sh/):
 
 ```shell
-brew install python@3.10 ninja libomp netcdf-cxx fftw git
+brew install python@3.10 ninja libomp netcdf-cxx git
 # And if they aren't pre-installed already:
 brew install gcc cmake
 ```
@@ -232,7 +232,7 @@ python -m pip install -e .[test]
 
 The shell provides Python 3.13 together with the native build dependencies needed
 to build and test VMEC++, including CMake, GCC, GFortran, HDF5, NetCDF, LAPACK,
-FFTW3, OpenMPI, and Git LFS.
+OpenMPI, and Git LFS.
 
 ### As part of a conda environment
 
