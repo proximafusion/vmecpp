@@ -119,6 +119,10 @@ if(OpenMP_CXX_FOUND)
   target_link_libraries(vmecpp_core PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
+# We multithread at the outer loop level, not for the individual Eigen operations
+# https://libeigen.gitlab.io/eigen/docs-3.3/TopicMultiThreading.html
+target_compile_definitions(vmecpp_core PRIVATE EIGEN_DONT_PARALLELIZE)
+
 
 # Now also add the vmec_standalone executable.
 add_executable(vmec_standalone ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/vmec_standalone/vmec_standalone.cc)
