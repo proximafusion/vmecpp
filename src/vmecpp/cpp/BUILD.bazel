@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+
+# Build flag: pass --define=use_mkl=1 to compile with Intel MKL FFT.
+# Example: bazel build --define=use_mkl=1 //...
+config_setting(
+    name = "use_mkl",
+    values = {"define": "use_mkl=1"},
+    visibility = ["//visibility:public"],
+)
