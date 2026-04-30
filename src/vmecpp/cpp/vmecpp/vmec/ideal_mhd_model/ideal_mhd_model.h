@@ -25,7 +25,9 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_data.h"
+#ifdef VMECPP_HAVE_FFTW
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
+#endif
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/thread_local_storage/thread_local_storage.h"
@@ -428,6 +430,7 @@ class IdealMhdModel {
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
 
+#ifdef VMECPP_HAVE_FFTW
   // Pre-computed FFTW plans for the toroidal (zeta) Fourier transforms,
   // allocated only when mpol*(ntor+1) > kFftThreshold (see ideal_mhd_model.cc);
   // otherwise nullptr and the dft_FourierToReal_3d_symm path falls back to the
@@ -436,7 +439,11 @@ class IdealMhdModel {
   // Created once at construction (single-threaded context) and reused across
   // iterations.  Execution is thread-safe when using separate input/output
   // buffers (which the FFT transform functions allocate locally).
+  //
+  // Compiled out entirely when FFTW3 is not available; in that case all calls
+  // go through the DFT path.
   std::unique_ptr<ToroidalFftPlans> fft_plans_;
+#endif  // VMECPP_HAVE_FFTW
 
   int signOfJacobian;
 

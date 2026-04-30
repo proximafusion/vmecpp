@@ -27,19 +27,38 @@ find_package(OpenMP REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
 
-# Find FFTW3 for FFT-accelerated toroidal transforms.
-find_package(PkgConfig)
-if(PkgConfig_FOUND)
-  pkg_check_modules(FFTW3 REQUIRED fftw3)
-else()
-  # Fallback: try to find FFTW3 headers and library directly.
-  find_path(FFTW3_INCLUDE_DIRS fftw3.h)
-  find_library(FFTW3_LIBRARIES fftw3)
-  if(NOT FFTW3_INCLUDE_DIRS OR NOT FFTW3_LIBRARIES)
-    message(FATAL_ERROR "FFTW3 not found. Install libfftw3-dev.")
+# Find FFTW3 for the FFT-accelerated toroidal transforms.  FFTW3 is optional:
+# when it is not available we compile out the FFT path and IdealMhdModel
+# falls back to the partial-DFT routine unconditionally.  Pass
+# -DVMECPP_USE_FFTW=OFF to force the no-FFTW configuration even when FFTW3
+# is installed.
+option(VMECPP_USE_FFTW "Use FFTW3 for FFT-accelerated toroidal transforms" ON)
+set(VMECPP_HAVE_FFTW FALSE)
+if(VMECPP_USE_FFTW)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(FFTW3 fftw3)
   endif()
+  if(NOT FFTW3_FOUND)
+    # Fallback: try to find FFTW3 headers and library directly.
+    find_path(FFTW3_INCLUDE_DIRS fftw3.h)
+    find_library(FFTW3_LIBRARIES fftw3)
+    if(FFTW3_INCLUDE_DIRS AND FFTW3_LIBRARIES)
+      set(FFTW3_FOUND TRUE)
+    endif()
+  endif()
+  if(FFTW3_FOUND)
+    set(VMECPP_HAVE_FFTW TRUE)
+    include_directories(${FFTW3_INCLUDE_DIRS})
+    message(STATUS "FFTW3 found: building with FFT-accelerated toroidal transforms.")
+  else()
+    message(STATUS
+      "FFTW3 not found: building without FFT acceleration (DFT path only). "
+      "Install libfftw3-dev to enable FFT.")
+  endif()
+else()
+  message(STATUS "VMECPP_USE_FFTW=OFF: building without FFT acceleration.")
 endif()
-include_directories(${FFTW3_INCLUDE_DIRS})
 
 find_package(netCDF)
 if(NOT netCDF_FOUND)
@@ -127,7 +146,12 @@ target_link_libraries(vmecpp_core PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES
 target_link_libraries(vmecpp_core PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
-target_link_libraries(vmecpp_core PRIVATE ${FFTW3_LIBRARIES})
+if(VMECPP_HAVE_FFTW)
+  target_link_libraries(vmecpp_core PRIVATE ${FFTW3_LIBRARIES})
+  # PUBLIC so callers including ideal_mhd_model.h (pybind11, vmec_standalone)
+  # see the same struct layout as the core library; otherwise ODR violation.
+  target_compile_definitions(vmecpp_core PUBLIC VMECPP_HAVE_FFTW)
+endif()
 target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synchronization absl::strings absl::str_format absl::log absl::string_view absl::check absl::status absl::statusor)
 
 if(OpenMP_CXX_FOUND)

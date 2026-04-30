@@ -4,6 +4,10 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
 
+// FFT path is gated on VMECPP_HAVE_FFTW; without FFTW3 this entire TU is
+// empty and IdealMhdModel uses the partial-DFT free functions instead.
+#ifdef VMECPP_HAVE_FFTW
+
 #include <fftw3.h>
 
 #include <algorithm>
@@ -705,3 +709,5 @@ void ForcesToFourier3DSymmFastPoloidalFft(
 }
 
 }  // namespace vmecpp
+
+#endif  // VMECPP_HAVE_FFTW

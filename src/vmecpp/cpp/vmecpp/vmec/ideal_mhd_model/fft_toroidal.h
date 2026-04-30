@@ -5,6 +5,12 @@
 #ifndef VMECPP_VMEC_IDEAL_MHD_MODEL_FFT_TOROIDAL_H_
 #define VMECPP_VMEC_IDEAL_MHD_MODEL_FFT_TOROIDAL_H_
 
+// FFT path is optional: gated on VMECPP_HAVE_FFTW which is set by the build
+// system (CMake / Bazel) when libfftw3 is available.  Without FFTW3, this
+// header expands to nothing -- IdealMhdModel falls back to the partial-DFT
+// path unconditionally; see ideal_mhd_model.cc for the dispatch.
+#ifdef VMECPP_HAVE_FFTW
+
 #include <fftw3.h>
 
 #include <Eigen/Dense>
@@ -117,5 +123,7 @@ void ForcesToFourier3DSymmFastPoloidalFft(
     FourierForces& m_physical_forces);
 
 }  // namespace vmecpp
+
+#endif  // VMECPP_HAVE_FFTW
 
 #endif  // VMECPP_VMEC_IDEAL_MHD_MODEL_FFT_TOROIDAL_H_
