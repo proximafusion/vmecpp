@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777506235285,
+  "lastUpdate": 1777578838555,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17112,6 +17112,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.05525907973755539",
             "extra": "mean: 9.598529797333327 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "01b1fcb56a26188eb71a74fcf9cdf0c7349e5c04",
+          "message": "Diagnose how much force residual is being truncated away (#495)\n\nFourier transform the remaining force balance error after the equilibrium converged to diagnose how much we truncated away (white box in the plot is the fourier content seen during the minimization, anything outside of it is truncated away).\nNote that spectral condensation sucessfully concentrates the majority of the force contribution into the lower fourier modes seen by the descent.\n\n![image.png](https://app.graphite.com/user-attachments/assets/75daa705-d592-42d4-8e82-4ba69ade1864.png)",
+          "timestamp": "2026-04-30T19:49:38Z",
+          "tree_id": "89a1ebe9dc8cda139a3ada16a72c43556f11f0ff",
+          "url": "https://github.com/proximafusion/vmecpp/commit/01b1fcb56a26188eb71a74fcf9cdf0c7349e5c04"
+        },
+        "date": 1777578837677,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.9355760924882475,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0009007146565170776",
+            "extra": "mean: 340.64863880001894 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.9399069893511762,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0016984067306104655",
+            "extra": "mean: 340.14681539999856 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2357870845286367,
+            "unit": "iter/sec",
+            "range": "stddev: 0.025850537133304315",
+            "extra": "mean: 4.241114402000032 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.571974672363592,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009083832177885574",
+            "extra": "mean: 1.7483291626667021 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.2781046319371572,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014350727366921697",
+            "extra": "mean: 3.5957689486666595 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10768636159380802,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00813240422388973",
+            "extra": "mean: 9.286227013333322 sec\nrounds: 3"
           }
         ]
       }
