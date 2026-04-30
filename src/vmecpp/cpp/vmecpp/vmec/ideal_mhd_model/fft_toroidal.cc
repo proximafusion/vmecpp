@@ -26,13 +26,13 @@ ToroidalFftPlans::ToroidalFftPlans(int n_in, int nfp_in, int mpol_in)
       static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * nhalf));
   double* out_c2r = static_cast<double*>(fftw_malloc(sizeof(double) * n));
 
-  plan_c2r = fftw_plan_dft_c2r_1d(n, in_c2r, out_c2r, FFTW_ESTIMATE);
+  plan_c2r = fftw_plan_dft_c2r_1d(n, in_c2r, out_c2r, FFTW_MEASURE);
 
   double* in_r2c = static_cast<double*>(fftw_malloc(sizeof(double) * n));
   fftw_complex* out_r2c =
       static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * nhalf));
 
-  plan_r2c = fftw_plan_dft_r2c_1d(n, in_r2c, out_r2c, FFTW_ESTIMATE);
+  plan_r2c = fftw_plan_dft_r2c_1d(n, in_r2c, out_r2c, FFTW_MEASURE);
 
   // Batched plans: kBatch transforms packed contiguously.
   // For c2r: input is kBatch contiguous half-spectra of length nhalf,
@@ -47,7 +47,7 @@ ToroidalFftPlans::ToroidalFftPlans(int n_in, int nfp_in, int mpol_in)
       /*in=*/in_many_c2r, /*inembed=*/nullptr, /*istride=*/1,
       /*idist=*/nhalf,
       /*out=*/out_many_c2r, /*onembed=*/nullptr, /*ostride=*/1,
-      /*odist=*/n, FFTW_ESTIMATE);
+      /*odist=*/n, FFTW_MEASURE);
 
   double* in_many_r2c =
       static_cast<double*>(fftw_malloc(sizeof(double) * n * kBatch));
@@ -58,7 +58,7 @@ ToroidalFftPlans::ToroidalFftPlans(int n_in, int nfp_in, int mpol_in)
       /*in=*/in_many_r2c, /*inembed=*/nullptr, /*istride=*/1,
       /*idist=*/n,
       /*out=*/out_many_r2c, /*onembed=*/nullptr, /*ostride=*/1,
-      /*odist=*/nhalf, FFTW_ESTIMATE);
+      /*odist=*/nhalf, FFTW_MEASURE);
 
   // Full batched plans: 12 * mpol transforms in one call (one full surface).
   const int full_count = kBatch * mpol;
@@ -71,7 +71,7 @@ ToroidalFftPlans::ToroidalFftPlans(int n_in, int nfp_in, int mpol_in)
       /*in=*/in_full_c2r, /*inembed=*/nullptr, /*istride=*/1,
       /*idist=*/nhalf,
       /*out=*/out_full_c2r, /*onembed=*/nullptr, /*ostride=*/1,
-      /*odist=*/n, FFTW_ESTIMATE);
+      /*odist=*/n, FFTW_MEASURE);
 
   double* in_full_r2c =
       static_cast<double*>(fftw_malloc(sizeof(double) * n * full_count));
@@ -82,7 +82,7 @@ ToroidalFftPlans::ToroidalFftPlans(int n_in, int nfp_in, int mpol_in)
       /*in=*/in_full_r2c, /*inembed=*/nullptr, /*istride=*/1,
       /*idist=*/n,
       /*out=*/out_full_r2c, /*onembed=*/nullptr, /*ostride=*/1,
-      /*odist=*/nhalf, FFTW_ESTIMATE);
+      /*odist=*/nhalf, FFTW_MEASURE);
 
   fftw_free(in_c2r);
   fftw_free(out_c2r);
