@@ -14,11 +14,21 @@ concurrency:
 
 jobs:
   tests:
-    name: Build and run ${{ matrix.config }} tests
+    name: Build and run ${{ matrix.config }} tests (fftw=${{ matrix.fftw }})
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         config: [opt, asan, ubsan]
+        fftw: [yes, no]
+        # Only run the no-FFTW configuration on the opt build to keep CI time
+        # down -- it's a smoke test that the DFT-only fallback compiles and
+        # runs, not a sanitizer pass on every config combination.
+        exclude:
+          - config: asan
+            fftw: no
+          - config: ubsan
+            fftw: no
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,21 +36,18 @@ jobs:
       - name: Install required system packages for Ubuntu
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential cmake liblapack-dev libomp-dev python3-dev python3-pip python-is-python3
-          # Install Intel MKL via the Intel oneAPI apt repository.
-          wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
-            | sudo gpg --dearmor -o /usr/share/keyrings/intel-oneapi-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/intel-oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
-            | sudo tee /etc/apt/sources.list.d/oneAPI.list
-          sudo apt-get update && sudo apt-get install -y intel-oneapi-mkl-devel
+      - name: Install FFTW3
+        if: ${{ matrix.fftw == 'yes' }}
+        run: sudo apt-get install -y libfftw3-dev
       - name: Mount bazel cache
         uses: actions/cache@v4
         with:
           path: "~/.cache/bazel"
-          key: bazel-${{ matrix.config }}
+          key: bazel-${{ matrix.config }}-fftw-${{ matrix.fftw }}
       - name: Build VMEC++ via bazel
         run: |
           cd src/vmecpp/cpp
-          bazel build --config=${{ matrix.config }} --define=use_mkl=1 -- //...
+          bazel build --config=${{ matrix.config }} --define=fftw=${{ matrix.fftw }} -- //...
       - uses: actions/checkout@v4
         with:
           repository: proximafusion/vmecpp_large_cpp_tests
@@ -49,8 +56,8 @@ jobs:
       - name: Build VMEC++ C++ tests via bazel
         run: |
           cd src/vmecpp/cpp
-          bazel build --config=${{ matrix.config }} --define=use_mkl=1 -- //vmecpp_large_cpp_tests/...
+          bazel build --config=${{ matrix.config }} --define=fftw=${{ matrix.fftw }} -- //vmecpp_large_cpp_tests/...
       - name: Run full C++ test suite
         run: |
           cd src/vmecpp/cpp
-          bazel test --config=${{ matrix.config }} --define=use_mkl=1 --jobs=1 --test_output=errors -- //...
+          bazel test --config=${{ matrix.config }} --define=fftw=${{ matrix.fftw }} --jobs=1 --test_output=errors -- //...
