@@ -29,6 +29,7 @@ jobs:
     name: Install and run tests
     runs-on: ${{ matrix.os }}
     strategy:
+        fail-fast: false
         matrix:
             os: [ubuntu-22.04, macos-14]
             editable: [true, false]

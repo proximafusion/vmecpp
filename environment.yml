@@ -28,6 +28,7 @@ dependencies:
   - gfortran_impl_linux-64=14.2.0=hc73f493_1
   - gxx=14.2.0=h96c4ede_1
   - gxx_impl_linux-64=14.2.0=h2c03514_1
+  - fftw=3.3.10=nompi_h62caf0e_119
   - hdf4=4.2.15=h2a13503_7
   - hdf5=1.14.3=nompi_hdf9ad27_105
   - kernel-headers_linux-64=5.14.0=h8bc681e_0
