@@ -18,6 +18,7 @@
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
+#include "vmecpp/vmec/fourier_asymmetric/fourier_asymmetric.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
@@ -1236,17 +1237,32 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
   }
 
   if (s_.lasym) {
-    // FIXME(jons): implement non-symmetric DFT variants
-    std::cerr << "asymmetric inv-DFT not implemented yet\n";
-
-    // FIXME(jons): implement symrzl
-    std::cerr << "symrzl not implemented yet\n";
-
-#ifdef _OPENMP
-    abort();
-#else
-    exit(-1);
-#endif  // _OPENMP
+    // CRITICAL: Apply M=1 constraints every iteration before transforms (jVMEC requirement)
+    FourierGeometry& mutable_physical_x = const_cast<FourierGeometry&>(physical_x);
+    
+    if (s_.lthreed) {
+      // Apply M=1 constraint to 3D symmetric arrays: rmnss <-> zmncs
+      EnsureM1Constrained(s_, 
+                          absl::MakeSpan(mutable_physical_x.rmnss), 
+                          absl::MakeSpan(mutable_physical_x.zmncs),
+                          absl::Span<double>(), absl::Span<double>());
+    }
+    
+    // Apply M=1 constraint to asymmetric arrays: rmnsc <-> zmncc  
+    EnsureM1Constrained(s_,
+                        absl::MakeSpan(mutable_physical_x.rmnsc),
+                        absl::MakeSpan(mutable_physical_x.zmncc), 
+                        absl::Span<double>(), absl::Span<double>());
+    
+    // Add asymmetric contribution to existing symmetric geometry
+    if (s_.lthreed) {
+      dft_FourierToReal_3d_asymm(physical_x);
+    } else {
+      dft_FourierToReal_2d_asymm(physical_x);
+    }
+    
+    // NOTE: The non-separated asymmetric transforms already handle symmetrization
+    // internally, so we don't need to call symmetrizeRealSpaceGeometry() here
   }  // lasym
 
   // related post-processing:
@@ -2943,17 +2959,15 @@ void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
   }
 
   if (s_.lasym) {
-    // FIXME(jons): implement non-symmetric DFT variants
-    std::cerr << "asymmetric fwd-DFT not implemented yet\n";
-
-    // FIXME(jons): implement symforce
-    std::cerr << "symforce not implemented yet\n";
-
-#ifdef _OPENMP
-    abort();
-#else
-    exit(-1);
-#endif  // _OPENMP
+    // Apply force symmetrization first (symforce equivalent)
+    symmetrizeForces();
+    
+    // Add asymmetric forward DFT to existing symmetric forces
+    if (s_.lthreed) {
+      dft_ForcesToFourier_3d_asymm(m_physical_f);
+    } else {
+      dft_ForcesToFourier_2d_asymm(m_physical_f);
+    }
   }  // lasym
 }
 
@@ -3464,5 +3478,207 @@ double IdealMhdModel::get_delbsq() const {
 }
 
 int IdealMhdModel::get_ivacskip() const { return ivacskip; }
+
+// Asymmetric DFT implementations - additive extensions to symmetric transforms
+void IdealMhdModel::dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x) {
+  // Use mnsize instead of mnmax for array indexing
+  const int coeff_size = s_.mpol * (s_.ntor + 1);  // This equals s_.mnsize
+  
+  // The FourierGeometry arrays are indexed from physical_x.nsMin(), not from r_.nsMinF
+  // We need to adjust the offset accordingly
+  const int offset = (r_.nsMinF - physical_x.nsMin()) * coeff_size;
+  const int count = (r_.nsMaxF - r_.nsMinF) * coeff_size;
+  
+  // Get spans for asymmetric coefficient arrays
+  const auto rmnsc = physical_x.rmnsc.subspan(offset, count);
+  const auto rmncs = physical_x.rmncs.subspan(offset, count);
+  const auto zmncc = physical_x.zmncc.subspan(offset, count);
+  const auto zmnss = physical_x.zmnss.subspan(offset, count);
+
+  // Get existing symmetric coefficient arrays for reference
+  const auto rmncc = physical_x.rmncc.subspan(offset, count);
+  const auto rmnss = physical_x.rmnss.subspan(offset, count);
+  const auto zmnsc = physical_x.zmnsc.subspan(offset, count);
+  const auto zmncs = physical_x.zmncs.subspan(offset, count);
+
+  // Get lambda coefficients (both symmetric and asymmetric)
+  const auto lmnsc = physical_x.lmnsc.subspan(offset, count);
+  const auto lmncs = physical_x.lmncs.subspan(offset, count);
+  const auto lmncc = physical_x.lmncc.subspan(offset, count);  // CRITICAL: asymmetric
+  const auto lmnss = physical_x.lmnss.subspan(offset, count);  // CRITICAL: asymmetric
+
+  // Output arrays - use existing arrays directly
+  const int num_realsp = (r_.nsMaxF - r_.nsMinF) * s_.nZnT;
+  
+  // Use separated transform to avoid mathematical errors in symmetrization
+  const int num_reduced = (r_.nsMaxF - r_.nsMinF) * s_.nThetaReduced * s_.nZeta;
+  
+  // Create temporary arrays for separate symmetric/asymmetric parts  
+  std::vector<double> r_sym(num_reduced), r_asym(num_reduced);
+  std::vector<double> z_sym(num_reduced), z_asym(num_reduced);
+  std::vector<double> lambda_sym(num_reduced), lambda_asym(num_reduced);
+  std::vector<double> ru_sym(num_reduced), ru_asym(num_reduced);
+  std::vector<double> zu_sym(num_reduced), zu_asym(num_reduced);
+  
+  FourierToReal3DAsymmFastPoloidalSeparated(
+      s_, rmncc, rmnss, rmnsc, rmncs, zmnsc, zmncs, zmncc, zmnss,
+      absl::MakeSpan(r_sym), absl::MakeSpan(r_asym), 
+      absl::MakeSpan(z_sym), absl::MakeSpan(z_asym), 
+      absl::MakeSpan(lambda_sym), absl::MakeSpan(lambda_asym),
+      absl::MakeSpan(ru_sym), absl::MakeSpan(ru_asym), 
+      absl::MakeSpan(zu_sym), absl::MakeSpan(zu_asym));
+  
+  // Apply correct symmetrization following jVMEC pattern
+  SymmetrizeRealSpaceGeometry(
+      absl::MakeConstSpan(r_sym), absl::MakeConstSpan(r_asym), 
+      absl::MakeConstSpan(z_sym), absl::MakeConstSpan(z_asym), 
+      absl::MakeConstSpan(lambda_sym), absl::MakeConstSpan(lambda_asym),
+      absl::MakeSpan(r1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
+      absl::MakeSpan(z1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
+      absl::MakeSpan(lu_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
+      s_);
+      
+  // CRITICAL: Compute spectral condensation for asymmetric modes (missing piece!)
+  // This must be done after symmetrization to include all theta values
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    const int js_offset = (jF - r_.nsMinF) * coeff_size;
+    
+    for (int m = 2; m < s_.mpol - 1; ++m) {
+      const double con_factor = m * (m - 1);  // xmpq[m][0]
+      
+      for (int n = 0; n <= s_.ntor; ++n) {
+        const int imn = n * s_.mpol + m + js_offset;
+        
+        // Get asymmetric Fourier coefficients
+        const double rmksc = (imn < rmnsc.size()) ? rmnsc[imn] : 0.0;
+        const double rmkcs = (imn < rmncs.size() && s_.lthreed) ? rmncs[imn] : 0.0;
+        const double zmkcc = (imn < zmncc.size()) ? zmncc[imn] : 0.0;
+        const double zmkss = (imn < zmnss.size() && s_.lthreed) ? zmnss[imn] : 0.0;
+        
+        for (int k = 0; k < s_.nZeta; ++k) {
+          const int idx_kn = k * (s_.ntor + 1) + n;
+          const double cos_nv = t_.cosnv[idx_kn];
+          const double sin_nv = t_.sinnv[idx_kn];
+          
+          // Process asymmetric contributions to spectral condensation
+          const double rmksc_n = rmksc * cos_nv - rmkcs * sin_nv;
+          const double rmkcs_n = rmkcs * cos_nv + rmksc * sin_nv;
+          const double zmkcc_n = zmkcc * cos_nv - zmkss * sin_nv;
+          const double zmkss_n = zmkss * cos_nv + zmkcc * sin_nv;
+          
+          for (int l = 0; l < s_.nThetaEff; ++l) {
+            const int idx_ml = m * s_.nThetaEff + l;
+            const double cosmu = t_.cosmu[idx_ml];
+            const double sinmu = t_.sinmu[idx_ml];
+            
+            const int idx_con = ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+            
+            // Add asymmetric contributions to spectral condensation
+            rCon[idx_con] += (rmksc_n * sinmu + rmkcs_n * cosmu) * con_factor;
+            zCon[idx_con] += (zmkcc_n * cosmu + zmkss_n * sinmu) * con_factor;
+          }
+        }
+      }
+    }
+  }
+}
+
+void IdealMhdModel::dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x) {
+  // Similar to 3D but for axisymmetric case
+  // Use mnsize instead of mnmax for asymmetric arrays
+  const int coeff_size = s_.mpol * (s_.ntor + 1);  // This equals s_.mnsize
+  
+  // The FourierGeometry arrays are indexed from physical_x.nsMin(), not from r_.nsMinF
+  // We need to adjust the offset accordingly
+  const int offset = (r_.nsMinF - physical_x.nsMin()) * coeff_size;
+  const int count = (r_.nsMaxF - r_.nsMinF) * coeff_size;
+  
+  // For 2D case, arrays with sin(n*v) terms are empty when ntor=0
+  // Use empty spans for these arrays
+  auto rmnsc = physical_x.rmnsc.empty() ? absl::Span<const double>() : physical_x.rmnsc.subspan(offset, count);
+  auto rmncs = physical_x.rmncs.empty() ? absl::Span<const double>() : physical_x.rmncs.subspan(offset, count);
+  auto zmncc = physical_x.zmncc.empty() ? absl::Span<const double>() : physical_x.zmncc.subspan(offset, count);
+  auto zmnss = physical_x.zmnss.empty() ? absl::Span<const double>() : physical_x.zmnss.subspan(offset, count);
+
+  auto rmncc = physical_x.rmncc.empty() ? absl::Span<const double>() : physical_x.rmncc.subspan(offset, count);
+  auto rmnss = physical_x.rmnss.empty() ? absl::Span<const double>() : physical_x.rmnss.subspan(offset, count);
+  auto zmnsc = physical_x.zmnsc.empty() ? absl::Span<const double>() : physical_x.zmnsc.subspan(offset, count);
+  auto zmncs = physical_x.zmncs.empty() ? absl::Span<const double>() : physical_x.zmncs.subspan(offset, count);
+
+  // Lambda coefficients (both symmetric and asymmetric)
+  auto lmnsc = physical_x.lmnsc.empty() ? absl::Span<const double>() : physical_x.lmnsc.subspan(offset, count);
+  auto lmncs = physical_x.lmncs.empty() ? absl::Span<const double>() : physical_x.lmncs.subspan(offset, count);
+  auto lmncc = physical_x.lmncc.empty() ? absl::Span<const double>() : physical_x.lmncc.subspan(offset, count);  // CRITICAL: asymmetric
+  auto lmnss = physical_x.lmnss.empty() ? absl::Span<const double>() : physical_x.lmnss.subspan(offset, count);  // CRITICAL: asymmetric
+
+  const int num_realsp = (r_.nsMaxF - r_.nsMinF) * s_.nThetaEff;
+  
+  FourierToReal2DAsymmFastPoloidal(
+      s_, rmncc, rmnss, rmnsc, rmncs, zmnsc, zmncs, zmncc, zmnss,
+      lmnsc, lmncs, lmncc, lmnss,  // CRITICAL: Lambda coefficients added
+      absl::MakeSpan(r1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
+      absl::MakeSpan(z1_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
+      absl::MakeSpan(lu_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
+      absl::MakeSpan(ru_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp),
+      absl::MakeSpan(zu_e).subspan((r_.nsMinF - r_.nsMinF1) * s_.nZnT, num_realsp));
+}
+
+void IdealMhdModel::symmetrizeRealSpaceGeometry() {
+  // NOTE: This method is kept for interface compatibility but is not needed
+  // when using the non-separated asymmetric transforms, which already handle
+  // symmetrization internally
+}
+
+void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {
+  // Add asymmetric forward DFT for forces
+  RealToFourier3DAsymmFastPoloidal(
+      s_,
+      absl::MakeConstSpan(armn_e),
+      absl::MakeConstSpan(azmn_e), 
+      absl::MakeConstSpan(blmn_e),
+      absl::MakeSpan(m_physical_f.frcc),
+      absl::MakeSpan(m_physical_f.frss),
+      absl::MakeSpan(m_physical_f.frsc),  // Asymmetric
+      absl::MakeSpan(m_physical_f.frcs),  // Asymmetric
+      absl::MakeSpan(m_physical_f.fzsc),
+      absl::MakeSpan(m_physical_f.fzcs),
+      absl::MakeSpan(m_physical_f.fzcc),  // Asymmetric
+      absl::MakeSpan(m_physical_f.fzss),  // Asymmetric
+      absl::MakeSpan(m_physical_f.flsc),
+      absl::MakeSpan(m_physical_f.flcs),
+      absl::MakeSpan(m_physical_f.flcc),  // Asymmetric
+      absl::MakeSpan(m_physical_f.flss)); // Asymmetric
+}
+
+void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
+  // Add asymmetric forward DFT for 2D forces
+  RealToFourier2DAsymmFastPoloidal(
+      s_,
+      absl::MakeConstSpan(armn_e),
+      absl::MakeConstSpan(azmn_e),
+      absl::MakeConstSpan(blmn_e),
+      absl::MakeSpan(m_physical_f.frcc),
+      absl::MakeSpan(m_physical_f.frss),
+      absl::MakeSpan(m_physical_f.frsc),
+      absl::MakeSpan(m_physical_f.frcs),
+      absl::MakeSpan(m_physical_f.fzsc),
+      absl::MakeSpan(m_physical_f.fzcs),
+      absl::MakeSpan(m_physical_f.fzcc),
+      absl::MakeSpan(m_physical_f.fzss),
+      absl::MakeSpan(m_physical_f.flsc),
+      absl::MakeSpan(m_physical_f.flcs),
+      absl::MakeSpan(m_physical_f.flcc),
+      absl::MakeSpan(m_physical_f.flss));
+}
+
+void IdealMhdModel::symmetrizeForces() {
+  // Apply symmetrization to force arrays (symforce equivalent)
+  const int num_realsp = (r_.nsMaxF - r_.nsMinF) * s_.nZnT;
+  
+  SymmetrizeForces(s_,
+                   absl::MakeSpan(armn_e).subspan(0, num_realsp),
+                   absl::MakeSpan(azmn_e).subspan(0, num_realsp),
+                   absl::MakeSpan(blmn_e).subspan(0, num_realsp));
+}
 
 }  // namespace vmecpp

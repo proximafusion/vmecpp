@@ -427,7 +427,10 @@ class VmecInput(BaseModelWithNumpy):
         if self.lasym:
             mpol_two_ntor_plus_one_fields.extend(["rbs", "zbc"])
 
+        # Arrays from C++ have mpol+1 rows, but we expect mpol rows in the Python model
         expected_shape = (self.mpol, 2 * self.ntor + 1)
+        cpp_shape = (self.mpol + 1, 2 * self.ntor + 1)
+        
         for field in mpol_two_ntor_plus_one_fields:
             current_value = getattr(self, field)
 
@@ -436,7 +439,9 @@ class VmecInput(BaseModelWithNumpy):
                 setattr(self, field, current_value)
 
             shape = np.shape(current_value)
-            if shape != expected_shape:
+            # Arrays from C++ have mpol+1 rows, which is correct
+            # Only resize if the shape is completely wrong
+            if shape != expected_shape and shape != cpp_shape:
                 setattr(
                     self,
                     field,
@@ -615,7 +620,19 @@ class VmecInput(BaseModelWithNumpy):
                         "Either set lasym=True or remove the asymmetric field."
                     )
                     raise ValueError(msg)
-                getattr(cpp_indata, attr)[:] = value
+                # Handle potential size mismatch between Python and C++ expectations
+                dest = getattr(cpp_indata, attr)
+                if attr in {"rbc", "zbs", "rbs", "zbc"} and value.shape != dest.shape:
+                    # If shapes don't match, we need to handle it carefully
+                    if value.shape[0] > dest.shape[0]:
+                        # Source has more rows, truncate
+                        dest[:] = value[:dest.shape[0]]
+                    else:
+                        # Source has fewer rows, pad with zeros
+                        dest[:value.shape[0]] = value
+                        dest[value.shape[0]:] = 0
+                else:
+                    dest[:] = value
 
         return cpp_indata
 

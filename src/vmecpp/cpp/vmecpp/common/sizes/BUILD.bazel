@@ -13,3 +13,14 @@ cc_library(
         "//vmecpp/common/vmec_indata:vmec_indata",
     ],
 )
+
+cc_test(
+    name = "sizes_ntheta_debug_test",
+    srcs = ["sizes_ntheta_debug_test.cc"],
+    deps = [
+        ":sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

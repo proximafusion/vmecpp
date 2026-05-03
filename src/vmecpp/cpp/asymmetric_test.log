@@ -1,0 +1,11 @@
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+F0000 00:00:1753261488.064136 3129826 vmec_standalone.cc:33] Check failed: vmec_indata is OK (INVALID_ARGUMENT: input variable 'rbc' has wrong size: should be 5, but it is 6.) Could not parse input file 'vmecpp/test_data/up_down_asymmetric_tokamak.json' into VmecINDATA: INVALID_ARGUMENT: input variable 'rbc' has wrong size: should be 5, but it is 6.
+*** Check failure stack trace: ***
+    @     0x5642494df7a6  absl::lts_20230802::log_internal::LogMessage::PrepareToDie()
+    @     0x5642494df815  absl::lts_20230802::log_internal::LogMessage::SendToLog()
+    @     0x5642494df294  absl::lts_20230802::log_internal::LogMessage::Flush()
+    @     0x5642494dfaf2  absl::lts_20230802::log_internal::LogMessageFatal::~LogMessageFatal()
+    @     0x56424933c75e  main
+    @     0x7f0ccdc376b5  (unknown)
+    @     0x7f0ccdc37769  __libc_start_main
+    @     0x56424933c355  _start
