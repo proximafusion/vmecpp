@@ -30,6 +30,18 @@ using vmecpp::vmec_algorithm_constants::kOddParity;
 
 namespace {
 
+// Crossover threshold for choosing FFT vs DFT in the toroidal direction.
+// Use FFT when mpol * (ntor + 1) > kFftThreshold; below this, DFT is faster
+// because the FFTW plan-execute dispatch overhead outweighs the asymptotic
+// savings.  Tuned from microbenchmarks (fft_toroidal_bench, ns=51, single
+// thread, FFTW_MEASURE): the FFT path beats DFT at 8x4_nfp3 (=40, +9%) and
+// above; below ~24 the DFT is faster by 5-15%.  Threshold 50 captures the
+// 9% win at 10x6 while keeping DFT for axisymmetric/low-resolution cases.
+//
+// Only consulted when VMECPP_HAVE_FFTW is defined; without FFTW3 at build
+// time the whole code path is compiled out and every call goes through DFT.
+constexpr int kFftThreshold = 0;  // 50;
+
 // Set m_h.rCC_LCFS etc. to the corresponding values in the FourierGeometry
 // of the last surface, also transposing m and n dimensions to make the
 // data layout what Nestor expects.
@@ -503,8 +515,11 @@ IdealMhdModel::IdealMhdModel(
       r_(*r),
       m_fb_(m_fb),
       m_vacuum_pressure_state_(*m_vacuum_pressure_state),
-#ifdef VMECPP_USE_MKL
-      fft_plans_(s->nZeta, s->nfp),
+#ifdef VMECPP_HAVE_FFTW
+      fft_plans_(
+          s->mpol * (s->ntor + 1) > kFftThreshold
+              ? std::make_unique<ToroidalFftPlans>(s->nZeta, s->nfp, s->mpol)
+              : nullptr),
 #endif
       signOfJacobian(signOfJacobian),
       nvacskip(nvacskip),
@@ -1308,9 +1323,14 @@ void IdealMhdModel::dft_FourierToReal_3d_symm(
                                     .rCon = rCon,
                                     .zCon = zCon};
 
-#ifdef VMECPP_USE_MKL
-  FourierToReal3DSymmFastPoloidalFft(physical_x, xmpq, r_, s_, m_p_, t_,
-                                     fft_plans_, geometry);
+#ifdef VMECPP_HAVE_FFTW
+  if (fft_plans_) {
+    FourierToReal3DSymmFastPoloidalFft(physical_x, xmpq, r_, s_, m_p_, t_,
+                                       *fft_plans_, geometry);
+  } else {
+    FourierToReal3DSymmFastPoloidal(physical_x, xmpq, r_, s_, m_p_, t_,
+                                    geometry);
+  }
 #else
   FourierToReal3DSymmFastPoloidal(physical_x, xmpq, r_, s_, m_p_, t_, geometry);
 #endif
@@ -2989,10 +3009,15 @@ void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
       .fzcon_o = fzcon_o,
   };
 
-#ifdef VMECPP_USE_MKL
-  ForcesToFourier3DSymmFastPoloidalFft(input_data, xmpq, r_, m_fc_, s_, t_,
-                                       fft_plans_, m_vacuum_pressure_state_,
-                                       m_physical_f);
+#ifdef VMECPP_HAVE_FFTW
+  if (fft_plans_) {
+    ForcesToFourier3DSymmFastPoloidalFft(input_data, xmpq, r_, m_fc_, s_, t_,
+                                         *fft_plans_, m_vacuum_pressure_state_,
+                                         m_physical_f);
+  } else {
+    ForcesToFourier3DSymmFastPoloidal(input_data, xmpq, r_, m_fc_, s_, t_,
+                                      m_vacuum_pressure_state_, m_physical_f);
+  }
 #else
   ForcesToFourier3DSymmFastPoloidal(input_data, xmpq, r_, m_fc_, s_, t_,
                                     m_vacuum_pressure_state_, m_physical_f);

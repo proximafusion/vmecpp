@@ -44,18 +44,12 @@ jobs:
       - name: Install required packages for MacOS
         if: ${{ contains(matrix.os, 'macos') }}
         run: |
-          brew install ninja libomp netcdf-cxx eigen lapack git
+          brew install ninja libomp netcdf-cxx eigen lapack git fftw
       - name: Install required packages for Ubuntu
         if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
-          sudo apt-get update && sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev
-          # Install Intel MKL via the Intel oneAPI apt repository.
-          wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
-            | sudo gpg --dearmor -o /usr/share/keyrings/intel-oneapi-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/intel-oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
-            | sudo tee /etc/apt/sources.list.d/oneAPI.list
-          sudo apt-get update && sudo apt-get install -y intel-oneapi-mkl-devel
+          sudo apt-get update && sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libfftw3-dev
       - name: Also install VMEC2000 (only on Ubuntu 22.04)
         if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.10' }}
         run: |

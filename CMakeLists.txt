@@ -27,54 +27,52 @@ find_package(OpenMP REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
 
-# FFT backend: Intel MKL when available, otherwise the slower in-house DFT.
-# MKL is detected via the MKLROOT environment variable (set by Intel oneAPI
-# setvars.sh) or by searching standard install paths.  When found, MKL DFTI
-# is used and VMECPP_USE_MKL is defined.  On platforms without MKL (e.g.
-# macOS ARM) the dispatch in ideal_mhd_model.cc falls back to the DFT path
-# and no external FFT library is required.
-set(VMECPP_FFT_LIBRARIES "")
-set(VMECPP_FFT_INCLUDE_DIRS "")
-set(VMECPP_FFT_BACKEND "none")
+# FFTW3 is optional but if requested it is required:
+#
+#   VMECPP_USE_FFTW=ON   (default) -- use FFTW3 for the FFT-accelerated
+#                                     toroidal transforms.  Hard error if
+#                                     FFTW3 is missing.
+#   VMECPP_USE_FFTW=OFF              -- compile out the FFT path entirely;
+#                                       IdealMhdModel uses the partial-DFT
+#                                       routine for all spectral resolutions.
+option(VMECPP_USE_FFTW "Use FFTW3 for FFT-accelerated toroidal transforms" ON)
 
-# Try to locate MKL.
-if(NOT DEFINED ENV{MKLROOT})
-  # Intel oneAPI default layout on Linux.
-  set(_MKL_CANDIDATE_ROOTS
-    "/opt/intel/oneapi/2025.1"
-    "/opt/intel/oneapi/2024.2"
-    "/opt/intel/oneapi/2024.1"
-    "/opt/intel/oneapi"
-    "/opt/intel/mkl"
-  )
-  foreach(_root ${_MKL_CANDIDATE_ROOTS})
-    if(EXISTS "${_root}/include/mkl_dfti.h")
-      set(ENV{MKLROOT} "${_root}")
-      break()
+set(VMECPP_HAVE_FFTW FALSE)
+if(VMECPP_USE_FFTW)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(FFTW3 fftw3)
+  endif()
+  if(NOT FFTW3_FOUND)
+    # Fallback: try to find FFTW3 headers and library directly.
+    find_path(FFTW3_INCLUDE_DIRS fftw3.h)
+    find_library(FFTW3_LIBRARIES fftw3)
+    if(FFTW3_INCLUDE_DIRS AND FFTW3_LIBRARIES)
+      set(FFTW3_FOUND TRUE)
     endif()
-  endforeach()
-endif()
-
-if(DEFINED ENV{MKLROOT} AND EXISTS "$ENV{MKLROOT}/include/mkl_dfti.h")
-  message(STATUS "Found Intel MKL at $ENV{MKLROOT} -- using MKL FFT backend")
-  set(MKL_ROOT "$ENV{MKLROOT}")
-  set(VMECPP_FFT_INCLUDE_DIRS "${MKL_ROOT}/include")
-  set(VMECPP_FFT_LIBRARIES
-    "-L${MKL_ROOT}/lib"
-    "-lmkl_rt"
-    "-lpthread"
-    "-lm"
-    "-ldl"
-  )
-  add_compile_definitions(VMECPP_USE_MKL)
-  set(VMECPP_FFT_BACKEND "mkl" CACHE INTERNAL "FFT backend in use")
+  endif()
+  if(FFTW3_FOUND)
+    set(VMECPP_HAVE_FFTW TRUE)
+    include_directories(${FFTW3_INCLUDE_DIRS})
+    # On Homebrew (macOS) the FFTW3 library lives under /opt/homebrew/lib,
+    # which is not on the default linker search path; pkg_check_modules
+    # exposes it as FFTW3_LIBRARY_DIRS.  Linux distros put libfftw3 on the
+    # default path so this is a no-op there.
+    if(FFTW3_LIBRARY_DIRS)
+      link_directories(${FFTW3_LIBRARY_DIRS})
+    endif()
+    message(STATUS "FFTW3 found: building with FFT-accelerated toroidal transforms.")
+  else()
+    # VMECPP_USE_FFTW=ON requires FFTW3.  Fail loudly so users who want the
+    # FFT path don't accidentally ship a DFT-only build.
+    message(FATAL_ERROR
+      "FFTW3 not found, but VMECPP_USE_FFTW=ON.  "
+      "Install libfftw3-dev (Ubuntu/Debian) or fftw (Homebrew/conda), "
+      "or pass -DVMECPP_USE_FFTW=OFF to compile out the FFT path.")
+  endif()
 else()
-  message(STATUS "Intel MKL not found -- FFT-accelerated transforms disabled, using DFT fallback")
-  set(VMECPP_FFT_BACKEND "none" CACHE INTERNAL "FFT backend in use")
-  set(VMECPP_FFT_INCLUDE_DIRS "")
-  set(VMECPP_FFT_LIBRARIES "")
+  message(STATUS "VMECPP_USE_FFTW=OFF: building without FFT acceleration.")
 endif()
-include_directories(${VMECPP_FFT_INCLUDE_DIRS})
 
 find_package(netCDF)
 if(NOT netCDF_FOUND)
@@ -162,7 +160,12 @@ target_link_libraries(vmecpp_core PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES
 target_link_libraries(vmecpp_core PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
-target_link_libraries(vmecpp_core PRIVATE ${VMECPP_FFT_LIBRARIES})
+if(VMECPP_HAVE_FFTW)
+  target_link_libraries(vmecpp_core PRIVATE ${FFTW3_LIBRARIES})
+  # PUBLIC so callers including ideal_mhd_model.h (pybind11, vmec_standalone)
+  # see the same struct layout as the core library; otherwise ODR violation.
+  target_compile_definitions(vmecpp_core PUBLIC VMECPP_HAVE_FFTW)
+endif()
 target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synchronization absl::strings absl::str_format absl::log absl::string_view absl::check absl::status absl::statusor)
 
 if(OpenMP_CXX_FOUND)

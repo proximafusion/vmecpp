@@ -24,13 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev python3-dev wget
-          # Install Intel MKL via the Intel oneAPI apt repository.
-          wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
-            | sudo gpg --dearmor -o /usr/share/keyrings/intel-oneapi-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/intel-oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
-            | sudo tee /etc/apt/sources.list.d/oneAPI.list
-          sudo apt-get update && sudo apt-get install -y intel-oneapi-mkl-devel
+          sudo apt-get install build-essential cmake libnetcdf-dev liblapack-dev python3-dev libfftw3-dev
       # Parse the dependencies from the pyproject.toml file and install them,
       # without installing and building the entire vmecpp project
       - run: |

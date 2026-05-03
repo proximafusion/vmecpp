@@ -7,6 +7,7 @@
 
 #include <Eigen/Dense>
 #include <climits>
+#include <memory>
 #include <span>
 
 #ifdef _OPENMP
@@ -24,7 +25,7 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_data.h"
-#ifdef VMECPP_USE_MKL
+#ifdef VMECPP_HAVE_FFTW
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
 #endif
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
@@ -429,13 +430,20 @@ class IdealMhdModel {
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
 
-#ifdef VMECPP_USE_MKL
-  // MKL DFTI descriptors for the toroidal (zeta) Fourier transforms.
-  // Created once at construction time (single-threaded context) and reused
-  // across all iterations. Thread-safe when using separate input/output
-  // buffers.
-  ToroidalFftPlans fft_plans_;
-#endif
+#ifdef VMECPP_HAVE_FFTW
+  // Pre-computed FFTW plans for the toroidal (zeta) Fourier transforms,
+  // allocated only when mpol*(ntor+1) > kFftThreshold (see ideal_mhd_model.cc);
+  // otherwise nullptr and the dft_FourierToReal_3d_symm path falls back to the
+  // partial-DFT routine.  At small spectral resolutions the FFT plan-execute
+  // dispatch overhead exceeds the asymptotic savings, so DFT is faster there.
+  // Created once at construction (single-threaded context) and reused across
+  // iterations.  Execution is thread-safe when using separate input/output
+  // buffers (which the FFT transform functions allocate locally).
+  //
+  // Compiled out entirely when FFTW3 is not available; in that case all calls
+  // go through the DFT path.
+  std::unique_ptr<ToroidalFftPlans> fft_plans_;
+#endif  // VMECPP_HAVE_FFTW
 
   int signOfJacobian;
 
