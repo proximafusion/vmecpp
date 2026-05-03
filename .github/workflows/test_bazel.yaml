@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   tests:
-    name: Build and run ${{ matrix.config }} tests (fftw=${{ matrix.fftw }})
+    name: Build and run ${{ matrix.config }} tests${{ matrix.fftw == 'no' && ' (no FFTW)' || '' }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false

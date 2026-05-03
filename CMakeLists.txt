@@ -54,6 +54,13 @@ if(VMECPP_USE_FFTW)
   if(FFTW3_FOUND)
     set(VMECPP_HAVE_FFTW TRUE)
     include_directories(${FFTW3_INCLUDE_DIRS})
+    # On Homebrew (macOS) the FFTW3 library lives under /opt/homebrew/lib,
+    # which is not on the default linker search path; pkg_check_modules
+    # exposes it as FFTW3_LIBRARY_DIRS.  Linux distros put libfftw3 on the
+    # default path so this is a no-op there.
+    if(FFTW3_LIBRARY_DIRS)
+      link_directories(${FFTW3_LIBRARY_DIRS})
+    endif()
     message(STATUS "FFTW3 found: building with FFT-accelerated toroidal transforms.")
   else()
     # VMECPP_USE_FFTW=ON requires FFTW3.  Fail loudly so users who want the

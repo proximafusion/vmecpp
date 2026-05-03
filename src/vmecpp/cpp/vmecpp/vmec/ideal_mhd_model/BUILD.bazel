@@ -10,6 +10,13 @@ config_setting(
     values = {"define": "fftw=no"},
 )
 
+# Optional Intel MKL FFT path.  Selected via `--define=use_mkl=1`; defaults
+# to no MKL.  Adjust these include and link lists if you want to wire up
+# the MKL backend on a specific machine -- they are only consulted under
+# the use_mkl branch of the select() below.
+MKL_INCLUDES = []
+MKL_LIBS = []
+
 cc_library(
     name = "fft_toroidal",
     srcs = ["fft_toroidal.cc"],
