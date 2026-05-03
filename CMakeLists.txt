@@ -27,12 +27,16 @@ find_package(OpenMP REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
 
-# Find FFTW3 for the FFT-accelerated toroidal transforms.  FFTW3 is optional:
-# when it is not available we compile out the FFT path and IdealMhdModel
-# falls back to the partial-DFT routine unconditionally.  Pass
-# -DVMECPP_USE_FFTW=OFF to force the no-FFTW configuration even when FFTW3
-# is installed.
+# FFTW3 is optional but if requested it is required:
+#
+#   VMECPP_USE_FFTW=ON   (default) -- use FFTW3 for the FFT-accelerated
+#                                     toroidal transforms.  Hard error if
+#                                     FFTW3 is missing.
+#   VMECPP_USE_FFTW=OFF              -- compile out the FFT path entirely;
+#                                       IdealMhdModel uses the partial-DFT
+#                                       routine for all spectral resolutions.
 option(VMECPP_USE_FFTW "Use FFTW3 for FFT-accelerated toroidal transforms" ON)
+
 set(VMECPP_HAVE_FFTW FALSE)
 if(VMECPP_USE_FFTW)
   find_package(PkgConfig QUIET)
@@ -52,9 +56,12 @@ if(VMECPP_USE_FFTW)
     include_directories(${FFTW3_INCLUDE_DIRS})
     message(STATUS "FFTW3 found: building with FFT-accelerated toroidal transforms.")
   else()
-    message(STATUS
-      "FFTW3 not found: building without FFT acceleration (DFT path only). "
-      "Install libfftw3-dev to enable FFT.")
+    # VMECPP_USE_FFTW=ON requires FFTW3.  Fail loudly so users who want the
+    # FFT path don't accidentally ship a DFT-only build.
+    message(FATAL_ERROR
+      "FFTW3 not found, but VMECPP_USE_FFTW=ON.  "
+      "Install libfftw3-dev (Ubuntu/Debian) or fftw (Homebrew/conda), "
+      "or pass -DVMECPP_USE_FFTW=OFF to compile out the FFT path.")
   endif()
 else()
   message(STATUS "VMECPP_USE_FFTW=OFF: building without FFT acceleration.")

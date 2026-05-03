@@ -40,7 +40,7 @@ namespace {
 //
 // Only consulted when VMECPP_HAVE_FFTW is defined; without FFTW3 at build
 // time the whole code path is compiled out and every call goes through DFT.
-constexpr int kFftThreshold = 50;
+constexpr int kFftThreshold = 0;  // 50;
 
 // Set m_h.rCC_LCFS etc. to the corresponding values in the FourierGeometry
 // of the last surface, also transposing m and n dimensions to make the
