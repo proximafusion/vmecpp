@@ -13,8 +13,8 @@
 
  NZETA = 36
 
- NS_ARRAY    = 99
- FTOL_ARRAY  = 1.E-12
+ NS_ARRAY    = 300
+ FTOL_ARRAY  = 1.E-9
  NITER_array = 40000
 
  NSTEP = 100
