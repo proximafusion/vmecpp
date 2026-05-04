@@ -7,7 +7,6 @@
 
 #include <Eigen/Dense>
 #include <climits>
-#include <memory>
 #include <span>
 
 #ifdef _OPENMP
@@ -431,18 +430,14 @@ class IdealMhdModel {
   VacuumPressureState& m_vacuum_pressure_state_;
 
 #ifdef VMECPP_HAVE_FFTW
-  // Pre-computed FFTW plans for the toroidal (zeta) Fourier transforms,
-  // allocated only when mpol*(ntor+1) > kFftThreshold (see ideal_mhd_model.cc);
-  // otherwise nullptr and the dft_FourierToReal_3d_symm path falls back to the
-  // partial-DFT routine.  At small spectral resolutions the FFT plan-execute
-  // dispatch overhead exceeds the asymptotic savings, so DFT is faster there.
-  // Created once at construction (single-threaded context) and reused across
-  // iterations.  Execution is thread-safe when using separate input/output
-  // buffers (which the FFT transform functions allocate locally).
+  // Pre-computed FFTW plans for the toroidal (zeta) Fourier transforms.
+  // Created once at construction and reused across iterations.  Execution is
+  // thread-safe when using separate input/output buffers (which the FFT
+  // transform functions allocate locally).
   //
   // Compiled out entirely when FFTW3 is not available; in that case all calls
   // go through the DFT path.
-  std::unique_ptr<ToroidalFftPlans> fft_plans_;
+  ToroidalFftPlans fft_plans_;
 #endif  // VMECPP_HAVE_FFTW
 
   int signOfJacobian;

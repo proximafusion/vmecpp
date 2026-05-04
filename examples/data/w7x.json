@@ -6,7 +6,7 @@
   "ntheta" : 0,
   "nzeta" : 36,
   "ns_array" : [ 99 ],
-  "ftol_array" : [ 1.0E-12 ],
+  "ftol_array" : [ 1.0E-8 ],
   "niter_array" : [ 5000 ],
   "delt" : 1.0,
   "tcon0" : 1.0,

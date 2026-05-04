@@ -99,14 +99,6 @@ cc_library(
     srcs = ["ideal_mhd_model.cc"],
     hdrs = ["ideal_mhd_model.h", "dft_data.h"],
     visibility = ["//visibility:public"],
-    copts = select({
-        "//:use_mkl": ["-DVMECPP_USE_MKL"] + ["-I" + p for p in MKL_INCLUDES],
-        "//conditions:default": [],
-    }),
-    linkopts = select({
-        "//:use_mkl": MKL_LIBS,
-        "//conditions:default": [],
-    }),
     deps = [
         ":fft_toroidal",
         "//vmecpp/common/flow_control:flow_control",
