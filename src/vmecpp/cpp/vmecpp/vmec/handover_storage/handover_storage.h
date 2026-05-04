@@ -42,8 +42,15 @@ class HandoverStorage {
 
   void allocate(const RadialPartitioning& r, int ns);
 
-  void ResetSpectralWidthAccumulators();
+  // Each thread writes its contribution into its own slot row. There is no
+  // separate reset step: the next iteration's writes overwrite the slot in
+  // full. The volume-averaged spectral width is computed by summing the
+  // slot columns lazily inside `VolumeAveragedSpectralWidth()`. This means
+  // the previous reset/critical/barrier triplet around the spectral-width
+  // accumulation is replaced by the outer barrier already present in the
+  // caller (`Vmec::Printout`).
   void RegisterSpectralWidthContribution(
+      int thread_id,
       const SpectralWidthContribution& spectral_width_contribution);
   double VolumeAveragedSpectralWidth() const;
 
@@ -188,6 +195,8 @@ class HandoverStorage {
   // under OMP_WAIT_POLICY=passive.
   RowMatrixXd fres_invar_slots_;  // [num_threads x 3]
   RowMatrixXd fres_precd_slots_;  // [num_threads x 3]
+  RowMatrixXd energy_slots_;      // [num_threads x 2] -- {thermal, magnetic}
+  RowMatrixXd spectral_width_slots_;  // [num_threads x 2] -- {numer, denom}
 
  private:
   const Sizes& s_;
@@ -195,8 +204,9 @@ class HandoverStorage {
   int num_threads_;
   int num_basis_;
 
-  double spectral_width_numerator_;
-  double spectral_width_denominator_;
+  // Spectral-width accumulators were previously two scalars updated under a
+  // critical section. They are now derived from `spectral_width_slots_` on
+  // demand inside `VolumeAveragedSpectralWidth()`.
 
   RadialExtent radial_extent_;
   GeometricOffset geometric_offset_;

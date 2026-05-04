@@ -863,13 +863,8 @@ void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
     }
   }  // jH
 
-  // RegisterSpectralWidthContribution uses #pragma omp atomic internally,
-  // so no critical section is needed here.
-  m_h_.RegisterSpectralWidthContribution(spectral_width_contribution);
-
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  m_h_.RegisterSpectralWidthContribution(r_.get_thread_id(),
+                                         spectral_width_contribution);
 }  // AccumulateVolumeAveragedSpectralWidth
 
 }  // namespace vmecpp
