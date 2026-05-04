@@ -329,86 +329,72 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
 }
 
 void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  {
-    m_fc_.fResInvar[0] = 0.0;
-    m_fc_.fResInvar[1] = 0.0;
-    m_fc_.fResInvar[2] = 0.0;
-  }
+  // Per-thread slot reduction: replaces the previous
+  //   `single { reset } / atomic+ / barrier / single { finalize }`
+  // pattern (three team rendezvous) with a single explicit barrier and
+  // a `single nowait` publish (one rendezvous). Under
+  // OMP_WAIT_POLICY=passive each removed rendezvous removes a futex-sleep
+  // round-trip on every thread, which is the dominant cost in that mode.
+  //
+  // Each thread writes its 3-element local contribution into its own row
+  // of the shared slot matrix. After the barrier every thread independently
+  // sums the columns (cheap: num_threads * 3 adds) and lands with the same
+  // total in its private stack frame. One designated thread then publishes
+  // the totals and the derived residual norms; consumers (next iteration's
+  // almost_converged check, vmec.cc convergence test) sit behind several
+  // intervening team barriers, so `nowait` on the publish is safe.
+  const int tid = r_.get_thread_id();
+  m_h_.fres_invar_slots_(tid, 0) = localFResInvar[0];
+  m_h_.fres_invar_slots_(tid, 1) = localFResInvar[1];
+  m_h_.fres_invar_slots_(tid, 2) = localFResInvar[2];
 
-  // Atomic adds (one per element) instead of a single critical section: at
-  // 4-8 threads the lock contention on a single critical was the bottleneck;
-  // splitting across three atomic ops on distinct array elements lets the
-  // hardware interleave per-element conflicts.
-#ifdef _OPENMP
-#pragma omp atomic
-#endif  // _OPENMP
-  m_fc_.fResInvar[0] += localFResInvar[0];
-#ifdef _OPENMP
-#pragma omp atomic
-#endif  // _OPENMP
-  m_fc_.fResInvar[1] += localFResInvar[1];
-#ifdef _OPENMP
-#pragma omp atomic
-#endif  // _OPENMP
-  m_fc_.fResInvar[2] += localFResInvar[2];
-
-// this is protecting reads of fResInvar as well as
-// writes to m_fc.fsqz which is read before this call
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
 
+  const Eigen::Vector3d total = m_h_.fres_invar_slots_.colwise().sum();
+
 #ifdef _OPENMP
-#pragma omp single
+#pragma omp single nowait
 #endif  // _OPENMP
   {
-    // set new values
+    m_fc_.fResInvar[0] = total[0];
+    m_fc_.fResInvar[1] = total[1];
+    m_fc_.fResInvar[2] = total[2];
     // TODO(jons): what is `r1scale`?
     constexpr double r1scale = 0.25;
-
-    m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * r1scale;
-    m_fc_.fsqz = m_fc_.fResInvar[1] * m_h_.fNormRZ * r1scale;
-    m_fc_.fsql = m_fc_.fResInvar[2] * m_h_.fNormL;
+    m_fc_.fsqr = total[0] * m_h_.fNormRZ * r1scale;
+    m_fc_.fsqz = total[1] * m_h_.fNormRZ * r1scale;
+    m_fc_.fsql = total[2] * m_h_.fNormL;
   }
 }
 
 void IdealMhdModel::evalFResPrecd(const Eigen::VectorXd& localFResPrecd) {
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  {
-    m_fc_.fResPrecd[0] = 0.0;
-    m_fc_.fResPrecd[1] = 0.0;
-    m_fc_.fResPrecd[2] = 0.0;
-  }
+  // Per-thread slot reduction; see comment in evalFResInvar() above.
+  // Consumers of fsqr1/fsqz1/fsql1 (vmec.cc:1208 single, gated behind the
+  // implicit barrier of the convergence-check single right above it) sit
+  // behind a team barrier from us, so `nowait` on the publish is safe.
+  const int tid = r_.get_thread_id();
+  m_h_.fres_precd_slots_(tid, 0) = localFResPrecd[0];
+  m_h_.fres_precd_slots_(tid, 1) = localFResPrecd[1];
+  m_h_.fres_precd_slots_(tid, 2) = localFResPrecd[2];
 
-  // Atomic adds: see comment in evalFResInvar() above.
-#ifdef _OPENMP
-#pragma omp atomic
-#endif  // _OPENMP
-  m_fc_.fResPrecd[0] += localFResPrecd[0];
-#ifdef _OPENMP
-#pragma omp atomic
-#endif  // _OPENMP
-  m_fc_.fResPrecd[1] += localFResPrecd[1];
-#ifdef _OPENMP
-#pragma omp atomic
-#endif  // _OPENMP
-  m_fc_.fResPrecd[2] += localFResPrecd[2];
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
 
+  const Eigen::Vector3d total = m_h_.fres_precd_slots_.colwise().sum();
+
 #ifdef _OPENMP
-#pragma omp single
+#pragma omp single nowait
 #endif  // _OPENMP
   {
-    m_fc_.fsqr1 = m_fc_.fResPrecd[0] * m_h_.fNorm1;
-    m_fc_.fsqz1 = m_fc_.fResPrecd[1] * m_h_.fNorm1;
-    m_fc_.fsql1 = m_fc_.fResPrecd[2] * m_fc_.deltaS;
+    m_fc_.fResPrecd[0] = total[0];
+    m_fc_.fResPrecd[1] = total[1];
+    m_fc_.fResPrecd[2] = total[2];
+    m_fc_.fsqr1 = total[0] * m_h_.fNorm1;
+    m_fc_.fsqz1 = total[1] * m_h_.fNorm1;
+    m_fc_.fsql1 = total[2] * m_fc_.deltaS;
   }
 }
 

@@ -27,7 +27,7 @@ from pathlib import Path
 
 THREAD_COUNTS = [1, 2, 4, 8]
 POLICIES = ["active", "passive"]
-REPEATS = 3
+REPEATS = 7
 
 
 def vmecpp_bin(venv: Path) -> Path:
