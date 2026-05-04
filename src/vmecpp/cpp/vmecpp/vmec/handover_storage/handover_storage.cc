@@ -168,6 +168,13 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     // handover_aR/aZ: flat [mnsize]
     handover_aR.setZero(mnsize);
     handover_aZ.setZero(mnsize);
+
+    // =========================================================================
+    // Per-thread reduction slots (3 elements: R, Z, lambda residuals each).
+    // Allocated zero so the first iteration's column-sum sees no garbage.
+    // =========================================================================
+    fres_invar_slots_.setZero(num_threads_, 3);
+    fres_precd_slots_.setZero(num_threads_, 3);
   }
 
 }  // allocate

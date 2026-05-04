@@ -176,6 +176,19 @@ class HandoverStorage {
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
   Eigen::VectorXd vacuum_b_z;
 
+  // Per-thread reduction slots for the residual reductions performed at the
+  // end of IdealMhdModel::update(). Each thread writes its three local
+  // residual contributions into row [thread_id]; one team barrier publishes
+  // the writes; the global totals are then computed by a column-wise sum
+  // (executed redundantly on every thread to avoid an extra rendezvous).
+  // Using per-thread slots replaces the previous
+  //   `single { reset } / atomic / barrier / single { finalize }`
+  // pattern (three rendezvous) with a single explicit barrier plus a
+  // `single nowait` publish (one rendezvous), which scales much better
+  // under OMP_WAIT_POLICY=passive.
+  RowMatrixXd fres_invar_slots_;  // [num_threads x 3]
+  RowMatrixXd fres_precd_slots_;  // [num_threads x 3]
+
  private:
   const Sizes& s_;
 
