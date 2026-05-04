@@ -27,9 +27,6 @@
 
 namespace vmecpp {
 
-// RAII holder for FFTW plans used by the toroidal (zeta-direction) Fourier
-// transforms.
-//
 // Plans are created once during construction (which must occur before any
 // parallel execution) and can be safely re-executed concurrently from multiple
 // threads by providing thread-private input/output buffers to

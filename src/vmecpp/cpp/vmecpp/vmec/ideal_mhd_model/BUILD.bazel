@@ -11,6 +11,24 @@ config_setting(
 )
 
 cc_library(
+    name = "dft_toroidal",
+    srcs = ["dft_toroidal.cc"],
+    hdrs = ["dft_toroidal.h", "dft_data.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/flow_control:flow_control",
+        "//vmecpp/common/fourier_basis_fast_poloidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/vmec/fourier_forces:fourier_forces",
+        "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "//vmecpp/vmec/radial_profiles:radial_profiles",
+        "@abseil-cpp//absl/algorithm:container",
+        "@eigen",
+    ],
+)
+
+cc_library(
     name = "fft_toroidal",
     srcs = ["fft_toroidal.cc"],
     hdrs = ["fft_toroidal.h", "dft_data.h"],
@@ -68,6 +86,7 @@ cc_library(
     hdrs = ["ideal_mhd_model.h", "dft_data.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":dft_toroidal",
         ":fft_toroidal",
         "//vmecpp/common/flow_control:flow_control",
         "//vmecpp/common/util:util",

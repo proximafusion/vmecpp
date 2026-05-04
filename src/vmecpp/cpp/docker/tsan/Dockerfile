@@ -42,7 +42,8 @@ RUN apt-get install -y curl && curl -L "https://github.com/bazelbuild/bazelisk/r
 # Install packages required for building VMEC++.
 RUN apt-get install -y \
     libnetcdf-dev \
-    liblapacke-dev
+    liblapacke-dev \
+    libfftw3-dev
 
 # Install packages for in-docker development
 RUN apt-get install -y vim
