@@ -34,11 +34,6 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
 
   mnsize = s_.mnsize;
 
-  // Default values for accumulation.
-  // Note that these correspond to an invalid spectral width,
-  // as a division-by-zero would occur.
-  spectral_width_numerator_ = 0.0;
-  spectral_width_denominator_ = 0.0;
 
   rAxis.setZero(s_.nZeta);
   zAxis.setZero(s_.nZeta);
@@ -175,31 +170,28 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     // =========================================================================
     fres_invar_slots_.setZero(num_threads_, 3);
     fres_precd_slots_.setZero(num_threads_, 3);
+    energy_slots_.setZero(num_threads_, 2);
+    spectral_width_slots_.setZero(num_threads_, 2);
   }
 
 }  // allocate
 
-void HandoverStorage::ResetSpectralWidthAccumulators() {
-  spectral_width_numerator_ = 0.0;
-  spectral_width_denominator_ = 0.0;
-}  // ResetSpectralWidthAccumulators
-
 void HandoverStorage::RegisterSpectralWidthContribution(
+    int thread_id,
     const SpectralWidthContribution& spectral_width_contribution) {
-  // Atomic adds so threads can register their contributions in parallel
-  // without funnelling through a critical section in the caller.
-#ifdef _OPENMP
-#pragma omp atomic
-#endif  // _OPENMP
-  spectral_width_numerator_ += spectral_width_contribution.numerator;
-#ifdef _OPENMP
-#pragma omp atomic
-#endif  // _OPENMP
-  spectral_width_denominator_ += spectral_width_contribution.denominator;
+  // Each thread owns its own row of `spectral_width_slots_`; writes do not
+  // collide. The slot is overwritten (not accumulated), so no separate
+  // reset between iterations is required.
+  spectral_width_slots_(thread_id, 0) = spectral_width_contribution.numerator;
+  spectral_width_slots_(thread_id, 1) = spectral_width_contribution.denominator;
 }  // RegisterSpectralWidthContribution
 
 double HandoverStorage::VolumeAveragedSpectralWidth() const {
-  return spectral_width_numerator_ / spectral_width_denominator_;
+  // Lazy column-sum across the per-thread slots. Cheap (num_threads adds).
+  // Caller must ensure a team barrier has separated the slot writes from
+  // this read; in vmecpp Vmec::Printout already places that barrier.
+  const Eigen::Vector2d total = spectral_width_slots_.colwise().sum();
+  return total[0] / total[1];
 }  // VolumeAveragedSpectralWidth
 
 void HandoverStorage::SetRadialExtent(const RadialExtent& radial_extent) {

@@ -1269,12 +1269,10 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 }
 
 void Vmec::Printout(double delt0r, int thread_id, int iter2) {
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  {
-    h_.ResetSpectralWidthAccumulators();
-  }
+  // Each thread overwrites its own row of HandoverStorage's spectral-width
+  // slot matrix; no separate reset is needed because the next iteration's
+  // writes overwrite the slot in full. The barrier below publishes every
+  // thread's contribution before VolumeAveragedSpectralWidth() reads them.
   p_[thread_id]->AccumulateVolumeAveragedSpectralWidth();
 #ifdef _OPENMP
 #pragma omp barrier

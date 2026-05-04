@@ -863,13 +863,13 @@ void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
     }
   }  // jH
 
-  // RegisterSpectralWidthContribution uses #pragma omp atomic internally,
-  // so no critical section is needed here.
-  m_h_.RegisterSpectralWidthContribution(spectral_width_contribution);
-
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  // Each thread writes into its own slot row in HandoverStorage; no shared
+  // accumulator and no barrier are needed here. The caller (Vmec::Printout)
+  // places a `#pragma omp barrier` after this function returns, which is
+  // the synchronisation point that publishes every thread's slot to the
+  // consumer (`HandoverStorage::VolumeAveragedSpectralWidth()`).
+  m_h_.RegisterSpectralWidthContribution(r_.get_thread_id(),
+                                          spectral_width_contribution);
 }  // AccumulateVolumeAveragedSpectralWidth
 
 }  // namespace vmecpp
