@@ -179,7 +179,15 @@ void HandoverStorage::ResetSpectralWidthAccumulators() {
 
 void HandoverStorage::RegisterSpectralWidthContribution(
     const SpectralWidthContribution& spectral_width_contribution) {
+  // Atomic adds so threads can register their contributions in parallel
+  // without funnelling through a critical section in the caller.
+#ifdef _OPENMP
+#pragma omp atomic
+#endif  // _OPENMP
   spectral_width_numerator_ += spectral_width_contribution.numerator;
+#ifdef _OPENMP
+#pragma omp atomic
+#endif  // _OPENMP
   spectral_width_denominator_ += spectral_width_contribution.denominator;
 }  // RegisterSpectralWidthContribution
 

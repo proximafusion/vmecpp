@@ -338,14 +338,22 @@ void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
     m_fc_.fResInvar[2] = 0.0;
   }
 
+  // Atomic adds (one per element) instead of a single critical section: at
+  // 4-8 threads the lock contention on a single critical was the bottleneck;
+  // splitting across three atomic ops on distinct array elements lets the
+  // hardware interleave per-element conflicts.
 #ifdef _OPENMP
-#pragma omp critical
+#pragma omp atomic
 #endif  // _OPENMP
-  {
-    m_fc_.fResInvar[0] += localFResInvar[0];
-    m_fc_.fResInvar[1] += localFResInvar[1];
-    m_fc_.fResInvar[2] += localFResInvar[2];
-  }
+  m_fc_.fResInvar[0] += localFResInvar[0];
+#ifdef _OPENMP
+#pragma omp atomic
+#endif  // _OPENMP
+  m_fc_.fResInvar[1] += localFResInvar[1];
+#ifdef _OPENMP
+#pragma omp atomic
+#endif  // _OPENMP
+  m_fc_.fResInvar[2] += localFResInvar[2];
 
 // this is protecting reads of fResInvar as well as
 // writes to m_fc.fsqz which is read before this call
@@ -377,14 +385,19 @@ void IdealMhdModel::evalFResPrecd(const Eigen::VectorXd& localFResPrecd) {
     m_fc_.fResPrecd[2] = 0.0;
   }
 
+  // Atomic adds: see comment in evalFResInvar() above.
 #ifdef _OPENMP
-#pragma omp critical
+#pragma omp atomic
 #endif  // _OPENMP
-  {
-    m_fc_.fResPrecd[0] += localFResPrecd[0];
-    m_fc_.fResPrecd[1] += localFResPrecd[1];
-    m_fc_.fResPrecd[2] += localFResPrecd[2];
-  }
+  m_fc_.fResPrecd[0] += localFResPrecd[0];
+#ifdef _OPENMP
+#pragma omp atomic
+#endif  // _OPENMP
+  m_fc_.fResPrecd[1] += localFResPrecd[1];
+#ifdef _OPENMP
+#pragma omp atomic
+#endif  // _OPENMP
+  m_fc_.fResPrecd[2] += localFResPrecd[2];
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -1282,12 +1295,13 @@ void IdealMhdModel::computeJacobian() {
       (minTau * maxTau < 0.0) || !std::isfinite(minTau * maxTau);
 
   if (localBadJacobian) {
+    // Atomic write: every thread that detects a bad Jacobian writes the same
+    // value (BAD_JACOBIAN); the atomic prevents a torn write while avoiding
+    // the per-iteration cost of acquiring the team-wide critical lock.
 #ifdef _OPENMP
-#pragma omp critical
+#pragma omp atomic write
 #endif  // _OPENMP
-    {
-      m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
-    }
+    m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
   }
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1467,7 +1481,7 @@ void IdealMhdModel::computeInitialVolume() {
 #endif  // _OPENMP
 
 #ifdef _OPENMP
-#pragma omp critical
+#pragma omp atomic
 #endif  // _OPENMP
   m_h_.voli += localPlasmaVolume * (2.0 * M_PI) * (2.0 * M_PI);
 #ifdef _OPENMP
@@ -1497,7 +1511,7 @@ void IdealMhdModel::updateVolume() {
 #endif  // _OPENMP
 
 #ifdef _OPENMP
-#pragma omp critical
+#pragma omp atomic
 #endif  // _OPENMP
   m_h_.plasmaVolume += localPlasmaVolume;
 #ifdef _OPENMP
@@ -1751,13 +1765,15 @@ void IdealMhdModel::pressureAndEnergies() {
 #pragma omp barrier
 #endif  // _OPENMP
 
+  // Atomic adds on distinct fields (see evalFResInvar comment above).
 #ifdef _OPENMP
-#pragma omp critical
+#pragma omp atomic
 #endif  // _OPENMP
-  {
-    m_h_.thermalEnergy += localThermalEnergy;
-    m_h_.magneticEnergy += localMagneticEnergy;
-  }
+  m_h_.thermalEnergy += localThermalEnergy;
+#ifdef _OPENMP
+#pragma omp atomic
+#endif  // _OPENMP
+  m_h_.magneticEnergy += localMagneticEnergy;
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -1995,14 +2011,19 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
 #pragma omp barrier
 #endif  // _OPENMP
 
+  // Atomic adds on distinct fields (see evalFResInvar comment above).
 #ifdef _OPENMP
-#pragma omp critical
+#pragma omp atomic
 #endif  // _OPENMP
-  {
-    m_h_.fNormRZ += localForceNormSumRZ;
-    m_h_.fNormL += localForceNormSumL;
-    m_h_.fNorm1 += localForceNorm1;
-  }
+  m_h_.fNormRZ += localForceNormSumRZ;
+#ifdef _OPENMP
+#pragma omp atomic
+#endif  // _OPENMP
+  m_h_.fNormL += localForceNormSumL;
+#ifdef _OPENMP
+#pragma omp atomic
+#endif  // _OPENMP
+  m_h_.fNorm1 += localForceNorm1;
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
