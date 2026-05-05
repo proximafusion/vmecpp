@@ -86,7 +86,7 @@ namespace {
 // Fill the c2r input for a DCT synthesis:
 //   f[k] = Sigma_{n=0}^{ntor} spec[n] * nscale[n] * cos(n*phi_k)
 // X[0] = spec[0]*nscale[0], X[n] = spec[n]*nscale[n]/2 for n=1..ntor.
-inline void FillDct(const double* spec, const Eigen::VectorXd& nscale, int ntor,
+inline void FillDct(const double* spec, const ModeScaleVector& nscale, int ntor,
                     int nhalf, FftComplex* X) {
   X[0][0] = spec[0] * nscale[0];
   X[0][1] = 0.0;
@@ -103,7 +103,7 @@ inline void FillDct(const double* spec, const Eigen::VectorXd& nscale, int ntor,
 // Fill the c2r input for a DST synthesis:
 //   f[k] = Sigma_{n=1}^{ntor} spec[n] * nscale[n] * sin(n*phi_k)
 // X[n] has Im = -spec[n]*nscale[n]/2, Re = 0.
-inline void FillDst(const double* spec, const Eigen::VectorXd& nscale, int ntor,
+inline void FillDst(const double* spec, const ModeScaleVector& nscale, int ntor,
                     int nhalf, FftComplex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;
@@ -121,7 +121,7 @@ inline void FillDst(const double* spec, const Eigen::VectorXd& nscale, int ntor,
 //   f[k] = Sigma_{n=1}^{ntor} spec[n] * (-n*nfp) * nscale[n] * sin(n*phi_k)
 //        = rmkcc_n (using sinnvn[k,n] = -n*nfp*sin*nscale)
 // X[n] has Im = +spec[n]*n*nfp*nscale[n]/2, Re = 0.
-inline void FillDctDeriv(const double* spec, const Eigen::VectorXd& nscale,
+inline void FillDctDeriv(const double* spec, const ModeScaleVector& nscale,
                          int ntor, int nhalf, int nfp, FftComplex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;
@@ -139,7 +139,7 @@ inline void FillDctDeriv(const double* spec, const Eigen::VectorXd& nscale,
 //   f[k] = Sigma_{n=1}^{ntor} spec[n] * (n*nfp) * nscale[n] * cos(n*phi_k)
 //        = rmkss_n (using cosnvn[k,n] = n*nfp*cos*nscale)
 // X[n] has Re = spec[n]*n*nfp*nscale[n]/2, Im = 0.
-inline void FillDstDeriv(const double* spec, const Eigen::VectorXd& nscale,
+inline void FillDstDeriv(const double* spec, const ModeScaleVector& nscale,
                          int ntor, int nhalf, int nfp, FftComplex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;

@@ -14,9 +14,6 @@
 namespace vmecpp {
 
 FourierBasisFastToroidal::FourierBasisFastToroidal(const Sizes* s) : s_(*s) {
-  mscale.resize(s_.mnyq2 + 1);
-  nscale.resize(s_.nnyq2 + 1);
-
   cosmu.resize(s_.nThetaReduced * (s_.mnyq2 + 1));
   sinmu.resize(s_.nThetaReduced * (s_.mnyq2 + 1));
   cosmum.resize(s_.nThetaReduced * (s_.mnyq2 + 1));
@@ -60,19 +57,6 @@ void FourierBasisFastToroidal::computeFourierBasisFastToroidal(int nfp) {
   // Sizes) here.
   const double intNorm = 1.0 / (s_.nZeta * (s_.nThetaReduced - 1));
 
-  // poloidal
-  for (int m = 0; m < s_.mnyq2 + 1; ++m) {
-    // DFTs for m>0 need 1/pi==2/(2pi) normalization factor
-    // vs. 1/(2pi) for the cos(m=0)-mode.
-    // --> introduce one sqrt(2) in fwd-DFT (geometry-into-realspace)
-    //     and one sqrt(2) into inv-DFT (forces-into-Fourier) via mscale
-    if (m == 0) {
-      mscale[m] = 1.0;
-    } else {
-      mscale[m] = std::numbers::sqrt2;
-    }
-  }  // m
-
   for (int l = 0; l < s_.nThetaReduced; ++l) {
     // need to compute theta grid using _full_ number of theta points!
     const double theta = kTwoPi * l / s_.nThetaEven;
@@ -101,19 +85,6 @@ void FourierBasisFastToroidal::computeFourierBasisFastToroidal(int nfp) {
       sinmumi[idx_lm] = -m * sinmui[idx_lm];
     }  // m
   }  // l
-
-  // toroidal
-  for (int n = 0; n < s_.nnyq2 + 1; ++n) {
-    // DFTs for m>0 need 1/pi==2/(2pi) normalization factor
-    // vs. 1/(2pi) for the cos(m=0)-mode.
-    // --> introduce one sqrt(2) in fwd-DFT (geometry-into-realspace)
-    //     and one sqrt(2) into inv-DFT (forces-into-Fourier) via nscale
-    if (n == 0) {
-      nscale[n] = 1.0;
-    } else {
-      nscale[n] = std::numbers::sqrt2;
-    }
-  }  // n
 
   for (int k = 0; k < s_.nZeta; ++k) {
     const double zeta = kTwoPi * k / s_.nZeta;

@@ -9,6 +9,7 @@
 #include <span>
 
 #include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/util/util.h"
 
 namespace vmecpp {
 
@@ -39,17 +40,13 @@ class FourierBasisFastPoloidal {
   // FOURIER BASIS SCALING FACTORS
   // ============================================================================
 
-  // [mnyq2+1] Poloidal mode scaling factors: sqrt(2) for m>0, 1.0 for m=0
-  // Applied to cos(m*\theta) and sin(m*\theta) basis functions for DFT
-  // normalization Enables proper normalization: 1/\pi for m>0 modes, 1/(2\pi)
-  // for m=0 mode
-  Eigen::VectorXd mscale;
+  // Poloidal mode scaling factors: sqrt(2) for m>0, 1.0 for m=0.
+  // Lazy: computed on access via operator[], no storage allocated.
+  ModeScaleVector mscale;
 
-  // [nnyq2+1] Toroidal mode scaling factors: sqrt(2) for n>0, 1.0 for n=0
-  // Applied to cos(n*\zeta) and sin(n*\zeta) basis functions for DFT
-  // normalization Enables proper normalization: 1/\pi for n>0 modes, 1/(2\pi)
-  // for n=0 mode
-  Eigen::VectorXd nscale;
+  // Toroidal mode scaling factors: sqrt(2) for n>0, 1.0 for n=0.
+  // Lazy: computed on access via operator[], no storage allocated.
+  ModeScaleVector nscale;
 
   // ============================================================================
   // POLOIDAL BASIS FUNCTIONS (m-major layout: [m][l])

@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <numbers>
 #include <span>
 #include <sstream>
 #include <string>
@@ -34,6 +35,15 @@ namespace vmecpp {
 // elements with a linear index
 using RowMatrixXd =
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
+// Lazy scale vector: returns sqrt(2) for index > 0, 1.0 for index 0.
+// Supports operator[] with the same semantics as a pre-filled VectorXd but
+// without storage.
+struct ModeScaleVector {
+  double operator[](Eigen::Index i) const {
+    return i == 0 ? 1.0 : std::numbers::sqrt2;
+  }
+};
 
 inline Eigen::VectorXd ToEigenVector(const std::vector<double> &v) {
   return Eigen::Map<const Eigen::VectorXd>(v.data(),
