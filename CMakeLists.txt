@@ -27,53 +27,6 @@ find_package(OpenMP REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
 include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
 
-# FFTW3 is optional but if requested it is required:
-#
-#   VMECPP_USE_FFTW=ON   (default) -- use FFTW3 for the FFT-accelerated
-#                                     toroidal transforms.  Hard error if
-#                                     FFTW3 is missing.
-#   VMECPP_USE_FFTW=OFF              -- compile out the FFT path entirely;
-#                                       IdealMhdModel uses the partial-DFT
-#                                       routine for all spectral resolutions.
-option(VMECPP_USE_FFTW "Use FFTW3 for FFT-accelerated toroidal transforms" ON)
-
-set(VMECPP_HAVE_FFTW FALSE)
-if(VMECPP_USE_FFTW)
-  find_package(PkgConfig QUIET)
-  if(PkgConfig_FOUND)
-    pkg_check_modules(FFTW3 fftw3)
-  endif()
-  if(NOT FFTW3_FOUND)
-    # Fallback: try to find FFTW3 headers and library directly.
-    find_path(FFTW3_INCLUDE_DIRS fftw3.h)
-    find_library(FFTW3_LIBRARIES fftw3)
-    if(FFTW3_INCLUDE_DIRS AND FFTW3_LIBRARIES)
-      set(FFTW3_FOUND TRUE)
-    endif()
-  endif()
-  if(FFTW3_FOUND)
-    set(VMECPP_HAVE_FFTW TRUE)
-    include_directories(${FFTW3_INCLUDE_DIRS})
-    # On Homebrew (macOS) the FFTW3 library lives under /opt/homebrew/lib,
-    # which is not on the default linker search path; pkg_check_modules
-    # exposes it as FFTW3_LIBRARY_DIRS.  Linux distros put libfftw3 on the
-    # default path so this is a no-op there.
-    if(FFTW3_LIBRARY_DIRS)
-      link_directories(${FFTW3_LIBRARY_DIRS})
-    endif()
-    message(STATUS "FFTW3 found: building with FFT-accelerated toroidal transforms.")
-  else()
-    # VMECPP_USE_FFTW=ON requires FFTW3.  Fail loudly so users who want the
-    # FFT path don't accidentally ship a DFT-only build.
-    message(FATAL_ERROR
-      "FFTW3 not found, but VMECPP_USE_FFTW=ON.  "
-      "Install libfftw3-dev (Ubuntu/Debian) or fftw (Homebrew/conda), "
-      "or pass -DVMECPP_USE_FFTW=OFF to compile out the FFT path.")
-  endif()
-else()
-  message(STATUS "VMECPP_USE_FFTW=OFF: building without FFT acceleration.")
-endif()
-
 find_package(netCDF)
 if(NOT netCDF_FOUND)
   # Finds the netCDF installation using CMake's PkgConfig
@@ -160,11 +113,31 @@ target_link_libraries(vmecpp_core PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES
 target_link_libraries(vmecpp_core PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
-if(VMECPP_HAVE_FFTW)
-  target_link_libraries(vmecpp_core PRIVATE ${FFTW3_LIBRARIES})
-  # PUBLIC so callers including ideal_mhd_model.h (pybind11, vmec_standalone)
-  # see the same struct layout as the core library; otherwise ODR violation.
-  target_compile_definitions(vmecpp_core PUBLIC VMECPP_HAVE_FFTW)
+
+# FFTX (SPIRAL-generated batched IPRDFT/PRDFT) for the toroidal FFT hot path.
+# The codelets are vendored under src/vmecpp/cpp/third_party/fftx_codelets/;
+# see that directory's README.md for what they cover and how to regenerate.
+# Pass -DVMECPP_USE_FFTX=OFF to fall back to the partial-DFT path.
+option(VMECPP_USE_FFTX "Use FFTX/SPIRAL kernels for toroidal transforms" ON)
+if(VMECPP_USE_FFTX)
+  set(_fftx_dir "${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/third_party/fftx_codelets")
+  file(GLOB _fftx_iprdft_srcs CONFIGURE_DEPENDS
+       "${_fftx_dir}/lib_fftx_iprdftbat_cpu_srcs/*.cpp")
+  file(GLOB _fftx_prdft_srcs  CONFIGURE_DEPENDS
+       "${_fftx_dir}/lib_fftx_prdftbat_cpu_srcs/*.cpp")
+  add_library(fftx_codelets STATIC ${_fftx_iprdft_srcs} ${_fftx_prdft_srcs})
+  target_include_directories(fftx_codelets PUBLIC
+    "${_fftx_dir}"                                                 # for <include/omega64.h>
+    "${_fftx_dir}/include"                                         # for fftx_minimal.hpp
+    "${_fftx_dir}/lib_fftx_iprdftbat_cpu_srcs"
+    "${_fftx_dir}/lib_fftx_prdftbat_cpu_srcs")
+  # Match vmecpp's release flags; codelets are >30k lines and benefit from -O3.
+  target_compile_options(fftx_codelets PRIVATE -fPIC)
+  target_link_libraries(vmecpp_core PRIVATE fftx_codelets)
+  target_compile_definitions(vmecpp_core PUBLIC VMECPP_USE_FFTX)
+  list(LENGTH _fftx_iprdft_srcs _n_iprdft)
+  list(LENGTH _fftx_prdft_srcs  _n_prdft)
+  message(STATUS "FFTX vendored codelets: ${_n_iprdft} iprdft + ${_n_prdft} prdft sources")
 endif()
 target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synchronization absl::strings absl::str_format absl::log absl::string_view absl::check absl::status absl::statusor)
 
