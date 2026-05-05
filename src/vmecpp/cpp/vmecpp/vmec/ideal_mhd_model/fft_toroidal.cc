@@ -4,18 +4,22 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
 
-// FFT path is gated on VMECPP_HAVE_FFTW; without FFTW3 this entire TU is
-// empty and IdealMhdModel uses the partial-DFT free functions instead.
-#ifdef VMECPP_HAVE_FFTW
-
-#include <fftw3.h>
+// FFT path is gated on VMECPP_USE_FFTX; without it this entire TU is empty
+// and IdealMhdModel uses the partial-DFT free functions instead.
+#ifdef VMECPP_USE_FFTX
 
 #include <algorithm>
 
 #include "absl/algorithm/container.h"
+#include "fftx_iprdftbat_cpu_public.h"
+#include "fftx_minimal.hpp"
+#include "fftx_prdftbat_cpu_public.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 
 namespace vmecpp {
+
+// Interleaved real/imag pair -- same memory layout as fftw_complex (double[2]).
+using FftComplex = double[2];
 
 // ---------------------------------------------------------------------------
 // ToroidalFftPlans
@@ -23,99 +27,36 @@ namespace vmecpp {
 
 ToroidalFftPlans::ToroidalFftPlans(int n_in, int nfp_in, int mpol_in)
     : n(n_in), nhalf(n_in / 2 + 1), nfp(nfp_in), mpol(mpol_in) {
-  // Allocate temporary aligned buffers for plan creation.
-  // Plans are safe to execute concurrently from multiple threads with separate
-  // input/output buffers (via fftw_execute_dft_c2r / fftw_execute_dft_r2c).
-  fftw_complex* in_c2r =
-      static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * nhalf));
-  double* out_c2r = static_cast<double*>(fftw_malloc(sizeof(double) * n));
-
-  plan_c2r = fftw_plan_dft_c2r_1d(n, in_c2r, out_c2r, FFTW_ESTIMATE);
-
-  double* in_r2c = static_cast<double*>(fftw_malloc(sizeof(double) * n));
-  fftw_complex* out_r2c =
-      static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * nhalf));
-
-  plan_r2c = fftw_plan_dft_r2c_1d(n, in_r2c, out_r2c, FFTW_ESTIMATE);
-
-  // Batched plans: kBatch transforms packed contiguously.
-  // For c2r: input is kBatch contiguous half-spectra of length nhalf,
-  //          output is kBatch contiguous real signals of length n.
-  fftw_complex* in_many_c2r = static_cast<fftw_complex*>(
-      fftw_malloc(sizeof(fftw_complex) * nhalf * kBatch));
-  double* out_many_c2r =
-      static_cast<double*>(fftw_malloc(sizeof(double) * n * kBatch));
-  int n_arr[1] = {n};
-  plan_many_c2r = fftw_plan_many_dft_c2r(
-      /*rank=*/1, n_arr, /*howmany=*/kBatch,
-      /*in=*/in_many_c2r, /*inembed=*/nullptr, /*istride=*/1,
-      /*idist=*/nhalf,
-      /*out=*/out_many_c2r, /*onembed=*/nullptr, /*ostride=*/1,
-      /*odist=*/n, FFTW_ESTIMATE);
-
-  double* in_many_r2c =
-      static_cast<double*>(fftw_malloc(sizeof(double) * n * kBatch));
-  fftw_complex* out_many_r2c = static_cast<fftw_complex*>(
-      fftw_malloc(sizeof(fftw_complex) * nhalf * kBatch));
-  plan_many_r2c = fftw_plan_many_dft_r2c(
-      /*rank=*/1, n_arr, /*howmany=*/kBatch,
-      /*in=*/in_many_r2c, /*inembed=*/nullptr, /*istride=*/1,
-      /*idist=*/n,
-      /*out=*/out_many_r2c, /*onembed=*/nullptr, /*ostride=*/1,
-      /*odist=*/nhalf, FFTW_ESTIMATE);
-
-  // Full batched plans: 12 * mpol transforms in one call (one full surface).
   const int full_count = kBatch * mpol;
-  fftw_complex* in_full_c2r = static_cast<fftw_complex*>(
-      fftw_malloc(sizeof(fftw_complex) * nhalf * full_count));
-  double* out_full_c2r =
-      static_cast<double*>(fftw_malloc(sizeof(double) * n * full_count));
-  plan_full_c2r = fftw_plan_many_dft_c2r(
-      /*rank=*/1, n_arr, /*howmany=*/full_count,
-      /*in=*/in_full_c2r, /*inembed=*/nullptr, /*istride=*/1,
-      /*idist=*/nhalf,
-      /*out=*/out_full_c2r, /*onembed=*/nullptr, /*ostride=*/1,
-      /*odist=*/n, FFTW_ESTIMATE);
-
-  double* in_full_r2c =
-      static_cast<double*>(fftw_malloc(sizeof(double) * n * full_count));
-  fftw_complex* out_full_r2c = static_cast<fftw_complex*>(
-      fftw_malloc(sizeof(fftw_complex) * nhalf * full_count));
-  plan_full_r2c = fftw_plan_many_dft_r2c(
-      /*rank=*/1, n_arr, /*howmany=*/full_count,
-      /*in=*/in_full_r2c, /*inembed=*/nullptr, /*istride=*/1,
-      /*idist=*/n,
-      /*out=*/out_full_r2c, /*onembed=*/nullptr, /*ostride=*/1,
-      /*odist=*/nhalf, FFTW_ESTIMATE);
-
-  fftw_free(in_c2r);
-  fftw_free(out_c2r);
-  fftw_free(in_r2c);
-  fftw_free(out_r2c);
-  fftw_free(in_many_c2r);
-  fftw_free(out_many_c2r);
-  fftw_free(in_many_r2c);
-  fftw_free(out_many_r2c);
-  fftw_free(in_full_c2r);
-  fftw_free(out_full_c2r);
-  fftw_free(in_full_r2c);
-  fftw_free(out_full_r2c);
+  fftx::point_t<4> req;
+  req[0] = n;
+  req[1] = full_count;
+  req[2] = 0;  // APar read stride
+  req[3] = 0;  // APar write stride
+  if (transformTuple_t* tup_c2r = fftx_iprdftbat_cpu_Tuple(req)) {
+    (*tup_c2r->initfp)();
+    fftx_full_c2r_run = tup_c2r->runfp;
+    fftx_full_c2r_destroy = tup_c2r->destroyfp;
+    std::free(tup_c2r);
+  }
+  if (transformTuple_t* tup_r2c = fftx_prdftbat_cpu_Tuple(req)) {
+    (*tup_r2c->initfp)();
+    fftx_full_r2c_run = tup_r2c->runfp;
+    fftx_full_r2c_destroy = tup_r2c->destroyfp;
+    std::free(tup_r2c);
+  }
 }
 
 ToroidalFftPlans::~ToroidalFftPlans() {
-  fftw_destroy_plan(plan_c2r);
-  fftw_destroy_plan(plan_r2c);
-  fftw_destroy_plan(plan_many_c2r);
-  fftw_destroy_plan(plan_many_r2c);
-  fftw_destroy_plan(plan_full_c2r);
-  fftw_destroy_plan(plan_full_r2c);
+  if (fftx_full_c2r_destroy) (*fftx_full_c2r_destroy)();
+  if (fftx_full_r2c_destroy) (*fftx_full_r2c_destroy)();
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers for filling the complex half-spectrum (c2r input)
 // ---------------------------------------------------------------------------
 //
-// FFTW c2r produces:
+// FFTX iprdftbat produces (identical to FFTW c2r):
 //   f[k] = X[0] + 2*Sum_{n=1}^{N/2-1}[Re(X[n])*cos(2*pi*n*k/N)
 //                                       - Im(X[n])*sin(2*pi*n*k/N)]
 //          + Re(X[N/2])*(-1)^k
@@ -128,9 +69,9 @@ ToroidalFftPlans::~ToroidalFftPlans() {
 //     -> X[0] = 0, Im(X[n]) = -spec[n]*nscale[n]/2 (Im negative)
 //
 // The derivative arrays in VMEC are:
-//   cosnvn[k,n] = n*nfp * cos(n*zeta_k) * nscale[n]    -> DCT with n*nfp factor
-//   sinnvn[k,n] = -n*nfp * sin(n*zeta_k) * nscale[n]   -> DST with -n*nfp
-//   factor
+//   cosnvn[k,n] = n*nfp * cos(n*zeta_k) * nscale[n]    -> DCT with n*nfp
+//   factor sinnvn[k,n] = -n*nfp * sin(n*zeta_k) * nscale[n]   -> DST with
+//   -n*nfp factor
 //
 // So the derivative of a DCT quantity  (e.g. rmkcc_n = Sigma rmncc * sinnvn):
 //   rmkcc_n = Sigma_n rmncc[n]*(-n*nfp)*nscale[n]*sin(n*zeta_k)
@@ -146,7 +87,7 @@ namespace {
 //   f[k] = Sigma_{n=0}^{ntor} spec[n] * nscale[n] * cos(n*phi_k)
 // X[0] = spec[0]*nscale[0], X[n] = spec[n]*nscale[n]/2 for n=1..ntor.
 inline void FillDct(const double* spec, const Eigen::VectorXd& nscale, int ntor,
-                    int nhalf, fftw_complex* X) {
+                    int nhalf, FftComplex* X) {
   X[0][0] = spec[0] * nscale[0];
   X[0][1] = 0.0;
   for (int n = 1; n <= ntor; ++n) {
@@ -163,7 +104,7 @@ inline void FillDct(const double* spec, const Eigen::VectorXd& nscale, int ntor,
 //   f[k] = Sigma_{n=1}^{ntor} spec[n] * nscale[n] * sin(n*phi_k)
 // X[n] has Im = -spec[n]*nscale[n]/2, Re = 0.
 inline void FillDst(const double* spec, const Eigen::VectorXd& nscale, int ntor,
-                    int nhalf, fftw_complex* X) {
+                    int nhalf, FftComplex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;
   for (int n = 1; n <= ntor; ++n) {
@@ -181,7 +122,7 @@ inline void FillDst(const double* spec, const Eigen::VectorXd& nscale, int ntor,
 //        = rmkcc_n (using sinnvn[k,n] = -n*nfp*sin*nscale)
 // X[n] has Im = +spec[n]*n*nfp*nscale[n]/2, Re = 0.
 inline void FillDctDeriv(const double* spec, const Eigen::VectorXd& nscale,
-                         int ntor, int nhalf, int nfp, fftw_complex* X) {
+                         int ntor, int nhalf, int nfp, FftComplex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;
   for (int n = 1; n <= ntor; ++n) {
@@ -199,7 +140,7 @@ inline void FillDctDeriv(const double* spec, const Eigen::VectorXd& nscale,
 //        = rmkss_n (using cosnvn[k,n] = n*nfp*cos*nscale)
 // X[n] has Re = spec[n]*n*nfp*nscale[n]/2, Im = 0.
 inline void FillDstDeriv(const double* spec, const Eigen::VectorXd& nscale,
-                         int ntor, int nhalf, int nfp, fftw_complex* X) {
+                         int ntor, int nhalf, int nfp, FftComplex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;
   for (int n = 1; n <= ntor; ++n) {
@@ -225,11 +166,7 @@ void FourierToReal3DSymmFastPoloidalFft(
     RealSpaceGeometry& m_geometry) {
   // This function matches the logic of FourierToReal3DSymmFastPoloidal but
   // replaces the O(nZeta * ntor) inner-n dot-product loop with
-  // O(nZeta * log(nZeta)) FFTW c2r IFFTs.
-  //
-  // m=0 first-write trick: see notes below; reverted because it caused
-  // numerical divergence (the rCon/zCon and lv_o handling needs more care
-  // than the simple skip below covers). Re-instate the upfront fill.
+  // O(nZeta * log(nZeta)) FFTX c2r IFFTs.
 
   absl::c_fill(m_geometry.r1_e, 0);
   absl::c_fill(m_geometry.r1_o, 0);
@@ -261,9 +198,6 @@ void FourierToReal3DSymmFastPoloidalFft(
   // Thread-local scratch reused across calls. Buffers are sized on first use
   // and re-sized only if dimensions grow. They are local to each thread that
   // executes this function (OpenMP threads keep their own copies).
-  // Store complex as 2*double to avoid std::vector<fftw_complex> issues
-  // (fftw_complex is double[2] which isn't a valid std::vector element type
-  // on all standard libs).
   const int mpol = s.mpol;
   const int full_count = kBatch * mpol;
   thread_local std::vector<double> X_batch;
@@ -274,7 +208,7 @@ void FourierToReal3DSymmFastPoloidalFft(
   if (static_cast<int>(Y_batch.size()) < full_count * nZeta) {
     Y_batch.resize(full_count * nZeta);
   }
-  fftw_complex* X = reinterpret_cast<fftw_complex*>(X_batch.data());
+  FftComplex* X = reinterpret_cast<FftComplex*>(X_batch.data());
   // Slot indices for the 12 quantities transformed per m.
   enum Slot {
     kRmkcc = 0,
@@ -292,7 +226,7 @@ void FourierToReal3DSymmFastPoloidalFft(
   };
   // Slot index = m * kBatch + quantity (all 12 quantities of one m
   // contiguous, then next m, ...). This batches all mpol*12 transforms
-  // for one radial surface into a single FFTW call.
+  // for one radial surface into a single FFTX call.
   auto X_slot = [&](int m_idx, int q_idx) {
     return X + (m_idx * kBatch + q_idx) * nhalf;
   };
@@ -306,9 +240,8 @@ void FourierToReal3DSymmFastPoloidalFft(
       const int jMin = (m == 0 || m == 1) ? 0 : 1;
       if (jF < jMin) {
         // Zero out spectra so the batched FFT produces zeros for this m.
-        // (We still skip the accumulation step below for these m's.)
         for (int q = 0; q < kBatch; ++q) {
-          fftw_complex* slot = X_slot(m, q);
+          FftComplex* slot = X_slot(m, q);
           for (int n = 0; n < nhalf; ++n) {
             slot[n][0] = 0.0;
             slot[n][1] = 0.0;
@@ -340,8 +273,9 @@ void FourierToReal3DSymmFastPoloidalFft(
       FillDstDeriv(lmncs_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kLmkcsN));
     }
 
-    // Single 12*mpol batched c2r for the entire surface.
-    fftw_execute_dft_c2r(plans.plan_full_c2r, X, Y_batch.data());
+    // Single 12*mpol batched c2r for the entire surface via FFTX.
+    // FFTX input does NOT get destroyed (unlike FFTW c2r).
+    plans.fftx_full_c2r_run(Y_batch.data(), X_batch.data());
 
     // === Poloidal accumulation per m ===
     for (int m = 0; m < mpol; ++m) {
@@ -444,7 +378,7 @@ void ForcesToFourier3DSymmFastPoloidalFft(
     FourierForces& m_physical_forces) {
   // This function matches the logic of ForcesToFourier3DSymmFastPoloidal but
   // replaces the O(nZeta * ntor) toroidal scatter loop with
-  // O(nZeta * log(nZeta)) FFTW r2c DFTs.
+  // O(nZeta * log(nZeta)) FFTX r2c DFTs.
 
   m_physical_forces.setZero();
 
@@ -490,8 +424,7 @@ void ForcesToFourier3DSymmFastPoloidalFft(
   if (static_cast<int>(out_batch_real.size()) < 2 * full_count * nhalf) {
     out_batch_real.resize(2 * full_count * nhalf);
   }
-  fftw_complex* out_batch =
-      reinterpret_cast<fftw_complex*>(out_batch_real.data());
+  FftComplex* out_batch = reinterpret_cast<FftComplex*>(out_batch_real.data());
   // Slot index = m * kBatch + quantity (all 12 quantities of one m
   // contiguous, then next m, ...). One full batched FFT covers all m's.
   auto in_slot = [&](int m_idx, int q_idx) {
@@ -588,23 +521,23 @@ void ForcesToFourier3DSymmFastPoloidalFft(
       }  // k
     }  // m (fill)
 
-    // Single 12*mpol batched r2c for the entire surface.
-    fftw_execute_dft_r2c(plans.plan_full_r2c, in_batch.data(), out_batch);
+    // Single 12*mpol batched r2c for the entire surface via FFTX.
+    plans.fftx_full_r2c_run(out_batch_real.data(), in_batch.data());
 
     // === Accumulate r2c outputs into Fourier force arrays ===
     for (int m = 0; m < mmax; ++m) {
-      const fftw_complex* F_rmkcc = out_slot(m, kRmkcc);
-      const fftw_complex* F_rmkss = out_slot(m, kRmkss);
-      const fftw_complex* F_rmkcc_n = out_slot(m, kRmkccN);
-      const fftw_complex* F_rmkss_n = out_slot(m, kRmkssN);
-      const fftw_complex* F_zmksc = out_slot(m, kZmksc);
-      const fftw_complex* F_zmkcs = out_slot(m, kZmkcs);
-      const fftw_complex* F_zmksc_n = out_slot(m, kZmkscN);
-      const fftw_complex* F_zmkcs_n = out_slot(m, kZmkcsN);
-      const fftw_complex* F_lmksc = out_slot(m, kLmksc);
-      const fftw_complex* F_lmkcs = out_slot(m, kLmkcs);
-      const fftw_complex* F_lmksc_n = out_slot(m, kLmkscN);
-      const fftw_complex* F_lmkcs_n = out_slot(m, kLmkcsN);
+      const FftComplex* F_rmkcc = out_slot(m, kRmkcc);
+      const FftComplex* F_rmkss = out_slot(m, kRmkss);
+      const FftComplex* F_rmkcc_n = out_slot(m, kRmkccN);
+      const FftComplex* F_rmkss_n = out_slot(m, kRmkssN);
+      const FftComplex* F_zmksc = out_slot(m, kZmksc);
+      const FftComplex* F_zmkcs = out_slot(m, kZmkcs);
+      const FftComplex* F_zmksc_n = out_slot(m, kZmkscN);
+      const FftComplex* F_zmkcs_n = out_slot(m, kZmkcsN);
+      const FftComplex* F_lmksc = out_slot(m, kLmksc);
+      const FftComplex* F_lmkcs = out_slot(m, kLmkcs);
+      const FftComplex* F_lmksc_n = out_slot(m, kLmkscN);
+      const FftComplex* F_lmkcs_n = out_slot(m, kLmkcsN);
 
       const int ntorp1 = ntor + 1;
       const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
@@ -618,14 +551,16 @@ void ForcesToFourier3DSymmFastPoloidalFft(
       Eigen::Map<Eigen::VectorXd> fzcs_seg(
           m_physical_forces.fzcs.data() + idx_mn_base, ntorp1);
 
+      // FFTX prdftbat folds nscale[n] into its kernel output
+      // (RCDiag(FList(...)) post-multiply baked into SPIRAL spec).  No
+      // additional ns multiply here.
       for (int n = 0; n <= ntor; ++n) {
-        const double ns = fb.nscale[n];
         const double nfp_n = static_cast<double>(n) * nfp;
 
-        frcc_seg[n] += ns * (F_rmkcc[n][0] + nfp_n * F_rmkcc_n[n][1]);
-        frss_seg[n] += ns * (-F_rmkss[n][1] + nfp_n * F_rmkss_n[n][0]);
-        fzsc_seg[n] += ns * (F_zmksc[n][0] + nfp_n * F_zmksc_n[n][1]);
-        fzcs_seg[n] += ns * (-F_zmkcs[n][1] + nfp_n * F_zmkcs_n[n][0]);
+        frcc_seg[n] += F_rmkcc[n][0] + nfp_n * F_rmkcc_n[n][1];
+        frss_seg[n] += -F_rmkss[n][1] + nfp_n * F_rmkss_n[n][0];
+        fzsc_seg[n] += F_zmksc[n][0] + nfp_n * F_zmksc_n[n][1];
+        fzcs_seg[n] += -F_zmkcs[n][1] + nfp_n * F_zmkcs_n[n][0];
       }  // n
 
       if (jMinL <= jF) {
@@ -635,11 +570,10 @@ void ForcesToFourier3DSymmFastPoloidalFft(
             m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
 
         for (int n = 0; n <= ntor; ++n) {
-          const double ns = fb.nscale[n];
           const double nfp_n = static_cast<double>(n) * nfp;
 
-          flsc_seg[n] += ns * (F_lmksc[n][0] + nfp_n * F_lmksc_n[n][1]);
-          flcs_seg[n] += ns * (-F_lmkcs[n][1] + nfp_n * F_lmkcs_n[n][0]);
+          flsc_seg[n] += F_lmksc[n][0] + nfp_n * F_lmksc_n[n][1];
+          flcs_seg[n] += -F_lmkcs[n][1] + nfp_n * F_lmkcs_n[n][0];
         }  // n
       }  // jMinL
     }  // m (accumulate)
@@ -681,13 +615,13 @@ void ForcesToFourier3DSymmFastPoloidalFft(
     }  // m (fill)
 
     // Single 12*mpol batched r2c (we only use the 4 lambda slots per m).
-    fftw_execute_dft_r2c(plans.plan_full_r2c, in_batch.data(), out_batch);
+    plans.fftx_full_r2c_run(out_batch_real.data(), in_batch.data());
 
     for (int m = 0; m < mpol; ++m) {
-      const fftw_complex* F_lmksc = out_slot(m, kLmksc);
-      const fftw_complex* F_lmkcs = out_slot(m, kLmkcs);
-      const fftw_complex* F_lmksc_n = out_slot(m, kLmkscN);
-      const fftw_complex* F_lmkcs_n = out_slot(m, kLmkcsN);
+      const FftComplex* F_lmksc = out_slot(m, kLmksc);
+      const FftComplex* F_lmkcs = out_slot(m, kLmkcs);
+      const FftComplex* F_lmksc_n = out_slot(m, kLmkscN);
+      const FftComplex* F_lmkcs_n = out_slot(m, kLmkcsN);
 
       const int ntorp1 = ntor + 1;
       const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
@@ -697,12 +631,12 @@ void ForcesToFourier3DSymmFastPoloidalFft(
       Eigen::Map<Eigen::VectorXd> flcs_seg(
           m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
 
+      // FFTX prdftbat folds nscale[n] into its kernel; no extra ns multiply.
       for (int n = 0; n <= ntor; ++n) {
-        const double ns = fb.nscale[n];
         const double nfp_n = static_cast<double>(n) * nfp;
 
-        flsc_seg[n] += ns * (F_lmksc[n][0] + nfp_n * F_lmksc_n[n][1]);
-        flcs_seg[n] += ns * (-F_lmkcs[n][1] + nfp_n * F_lmkcs_n[n][0]);
+        flsc_seg[n] += F_lmksc[n][0] + nfp_n * F_lmksc_n[n][1];
+        flcs_seg[n] += -F_lmkcs[n][1] + nfp_n * F_lmkcs_n[n][0];
       }  // n
     }  // m (accumulate)
   }  // jF (lambda-only tail)
@@ -710,4 +644,4 @@ void ForcesToFourier3DSymmFastPoloidalFft(
 
 }  // namespace vmecpp
 
-#endif  // VMECPP_HAVE_FFTW
+#endif  // VMECPP_USE_FFTX

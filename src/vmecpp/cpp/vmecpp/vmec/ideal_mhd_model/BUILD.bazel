@@ -2,12 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
-# FFTW3 is an optional dependency.  Pass `--define=fftw=no` (e.g. on platforms
-# where libfftw3 is unavailable) to compile out the FFT path; IdealMhdModel
-# then falls back to the partial-DFT routine for all spectral resolutions.
+# FFTX is an optional dependency.  Pass `--define=fftx=no` (e.g. on platforms
+# where FFTX/SPIRAL kernels are unavailable) to compile out the FFT path;
+# IdealMhdModel then falls back to the partial-DFT routine.
 config_setting(
-    name = "fftw_disabled",
-    values = {"define": "fftw=no"},
+    name = "fftx_disabled",
+    values = {"define": "fftx=no"},
 )
 
 cc_library(
@@ -34,12 +34,8 @@ cc_library(
     hdrs = ["fft_toroidal.h", "dft_data.h"],
     visibility = ["//visibility:public"],
     defines = select({
-        ":fftw_disabled": [],
-        "//conditions:default": ["VMECPP_HAVE_FFTW"],
-    }),
-    linkopts = select({
-        ":fftw_disabled": [],
-        "//conditions:default": ["-lfftw3"],
+        ":fftx_disabled": [],
+        "//conditions:default": ["VMECPP_USE_FFTX"],
     }),
     deps = [
         "//vmecpp/common/flow_control:flow_control",
@@ -58,9 +54,9 @@ cc_test(
     name = "fft_toroidal_test",
     srcs = ["fft_toroidal_test.cc"],
     # Numerical equivalence test for FFT vs DFT path; only meaningful when
-    # FFTW is available.  Disabled when fftw=no.
+    # FFTX is available.  Disabled when fftx=no.
     target_compatible_with = select({
-        ":fftw_disabled": ["@platforms//:incompatible"],
+        ":fftx_disabled": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),
     deps = [
