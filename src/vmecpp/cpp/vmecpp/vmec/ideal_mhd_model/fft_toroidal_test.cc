@@ -77,6 +77,12 @@ TEST_P(FourierToRealFftTest, MatchesDft) {
 
   FourierBasisFastPoloidal fb(&s);
   ToroidalFftPlans plans(s.nZeta, s.nfp, s.mpol);
+  if (!plans.kernels_available()) {
+    GTEST_SKIP() << "No FFTX codelet vendored for nZeta=" << s.nZeta
+                 << ", 12*mpol=" << (12 * s.mpol) << "; add this shape to "
+                 << "third_party/fftx_codelets/codegen/dftbatch-sizes.txt"
+                 << " and regenerate to enable this test.";
+  }
 
   // FourierGeometry with random spectral data.
   auto phys_x = std::make_unique<FourierGeometry>(&s, &rp, p.ns);
@@ -170,12 +176,17 @@ TEST_P(FourierToRealFftTest, MatchesDft) {
   check(zCon_d, zCon_f, "zCon");
 }
 
+// Test shapes are chosen from the codelet coverage table
+// (see third_party/fftx_codelets/README.md): even ntor in [6, 18] crossed
+// with even mpol in [6, 18], following nZeta = 2*ntor+4.  We pick four
+// representative points that span the grid.
 INSTANTIATE_TEST_SUITE_P(
     PhysicsParams, FourierToRealFftTest,
-    ::testing::Values(FftTestParams{1, 4, 2, 12, 6},    // small tokamak-like
-                      FftTestParams{5, 6, 3, 18, 10},   // medium stellarator
-                      FftTestParams{5, 12, 6, 36, 20},  // realistic W7-X-like
-                      FftTestParams{1, 2, 1, 8, 4}));   // minimal
+    ::testing::Values(FftTestParams{1, 6, 6, 16, 6},   // small (ntor=6,mpol=6)
+                      FftTestParams{5, 8, 8, 20, 10},  // medium stellarator
+                      FftTestParams{5, 12, 16, 36, 20},  // realistic W7-X-like
+                      FftTestParams{1, 18, 18, 40,
+                                    12}));  // large (ntor=18,mpol=18)
 
 // ============================================================================
 // ForcesToFourier tests
@@ -259,10 +270,10 @@ TEST_P(ForcesToFourierFftTest, MatchesDft) {
 }
 
 INSTANTIATE_TEST_SUITE_P(PhysicsParams, ForcesToFourierFftTest,
-                         ::testing::Values(FftTestParams{1, 4, 2, 12, 6},
-                                           FftTestParams{5, 6, 3, 18, 10},
-                                           FftTestParams{5, 12, 6, 36, 20},
-                                           FftTestParams{1, 2, 1, 8, 4}));
+                         ::testing::Values(FftTestParams{1, 6, 6, 16, 6},
+                                           FftTestParams{5, 8, 8, 20, 10},
+                                           FftTestParams{5, 12, 16, 36, 20},
+                                           FftTestParams{1, 18, 18, 40, 12}));
 
 }  // namespace
 }  // namespace vmecpp

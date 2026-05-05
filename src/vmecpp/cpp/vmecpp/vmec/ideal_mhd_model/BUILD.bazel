@@ -47,7 +47,10 @@ cc_library(
         "//vmecpp/vmec/radial_partitioning:radial_partitioning",
         "//vmecpp/vmec/radial_profiles:radial_profiles",
         "@eigen",
-    ],
+    ] + select({
+        ":fftx_disabled": [],
+        "//conditions:default": ["//third_party/fftx_codelets:fftx_codelets"],
+    }),
 )
 
 cc_test(
@@ -99,6 +102,7 @@ cc_library(
         "//vmecpp/free_boundary/free_boundary_base:free_boundary_base",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/log:log",
         "@abseil-cpp//absl/status",
     ],
 )

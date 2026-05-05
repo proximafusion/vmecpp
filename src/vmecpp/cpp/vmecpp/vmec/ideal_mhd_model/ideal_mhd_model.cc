@@ -14,7 +14,6 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
@@ -179,25 +178,6 @@ IdealMhdModel::IdealMhdModel(
     CHECK(m_fb_ != nullptr)
         << "Free-boundary configuration requires a Free-boundary solver";
   }
-
-#ifdef VMECPP_USE_FFTX
-  // Tell the user once whether the FFTX fast path is active for this
-  // (nZeta, 12*mpol) shape, or whether we fell back to the partial-DFT path
-  // because no vendored kernel matches.  See
-  // src/vmecpp/cpp/third_party/fftx_codelets/README.md for the coverage
-  // table and how to extend it.
-  if (fft_plans_.kernels_available()) {
-    LOG(INFO) << "Toroidal FFT backend: FFTX (nZeta=" << s_.nZeta
-              << ", 12*mpol=" << (12 * s_.mpol) << ").";
-  } else {
-    LOG(WARNING) << "Toroidal FFT backend: partial-DFT fallback "
-                 << "(no FFTX kernel for nZeta=" << s_.nZeta
-                 << ", 12*mpol=" << (12 * s_.mpol) << "). "
-                 << "Add this shape to "
-                 << "third_party/fftx_codelets/codegen/dftbatch-sizes.txt "
-                 << "and regenerate to get the FFT speedup.";
-  }
-#endif
 
   // init members
   ncurr = 0;
