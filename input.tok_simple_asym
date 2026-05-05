@@ -1,0 +1,31 @@
+&INDATA
+! Simple asymmetric tokamak for VMEC++ comparison
+  LASYM = T
+  NFP = 1
+  MPOL = 3
+  NTOR = 0
+  NS_ARRAY = 5
+  FTOL_ARRAY = 1e-06
+  NITER_ARRAY = 5
+  DELT = 0.9
+  TCON0 = 1.0
+  PHIEDGE = 1.0
+  NSTEP = 10
+  PRES_SCALE = 0.0
+  GAMMA = 0.0
+  NCURR = 0
+  PMASS_TYPE = "power_series"
+  AM = 0.0 1.0 0.0
+  PIOTA_TYPE = "power_series"
+  AI = 0.4 0.0
+  LFREEB = F
+  RAXIS_CC = 1.000000e+00 0.000000e+00 0.000000e+00 0.000000e+00
+  ZAXIS_CS = 0.000000e+00 0.000000e+00 0.000000e+00 0.000000e+00
+! Symmetric baseline
+  RBC(0,0) = 1.0
+  RBC(0,1) = 0.3
+  ZBS(0,1) = 0.3
+! Asymmetric perturbation - CRITICAL comparison point
+  RBS(0,1) = 0.001
+/
+&END

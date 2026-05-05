@@ -1,0 +1,31 @@
+{
+  "LASYM": false,
+  "NFP": 1,
+  "MPOL": 4,
+  "NTOR": 0,
+  "NTHETA": 18,
+  "NZETA": 1,
+  "NS_ARRAY": [3, 5],
+  "NITER_ARRAY": [50, 100],
+  "FTOL_ARRAY": [1.0e-6, 1.0e-8],
+  "DELT": 0.9,
+  "PHIEDGE": 1.0,
+  "NCURR": 0,
+  "PMASS_TYPE": "power_series",
+  "AM": [1.0, -1.0],
+  "PRES_SCALE": 0.1,
+  "GAMMA": 0.0,
+  "SPRES_PED": 1.0,
+  "BLOAT": 1.0,
+  "TCON0": 1.0,
+  "LFORBAL": false,
+  "RAXIS_CC": [10.0],
+  "ZAXIS_CS": [0.0],
+  "RBC": {
+    "0_0": 10.0,
+    "1_0": 1.0
+  },
+  "ZBS": {
+    "1_0": 1.0
+  }
+}

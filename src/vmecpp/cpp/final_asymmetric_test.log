@@ -1,0 +1,15 @@
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+F0000 00:00:1753325711.333047 3457494 vmec_standalone.cc:45] Check failed: out is OK (INTERNAL: Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.) Error encountered during the VMEC++ run: INTERNAL: Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.
+*** Check failure stack trace: ***
+    @     0x55c1bbff0b34  absl::lts_20230802::log_internal::LogMessage::PrepareToDie()
+    @     0x55c1bbff0ba3  absl::lts_20230802::log_internal::LogMessage::SendToLog()
+    @     0x55c1bbff0622  absl::lts_20230802::log_internal::LogMessage::Flush()
+    @     0x55c1bbff0e80  absl::lts_20230802::log_internal::LogMessageFatal::~LogMessageFatal()
+    @     0x55c1bbe548ab  main
+    @     0x7f4069c376b5  (unknown)
+    @     0x7f4069c37769  __libc_start_main
+    @     0x55c1bbe542d5  _start

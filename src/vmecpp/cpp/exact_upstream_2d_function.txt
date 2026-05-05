@@ -1,0 +1,167 @@
+void IdealMhdModel::dft_FourierToReal_2d_symm(
+    const FourierGeometry& physical_x) {
+  // can safely assume lthreed == false in here
+
+  const int num_realsp = (r_.nsMaxF1 - r_.nsMinF1) * s_.nThetaEff;
+
+  for (auto* v :
+       {&r1_e, &r1_o, &ru_e, &ru_o, &z1_e, &z1_o, &zu_e, &zu_o, &lu_e, &lu_o}) {
+    absl::c_fill_n(*v, num_realsp, 0);
+  }
+
+  int num_con = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nThetaEff;
+  absl::c_fill_n(rCon, num_con, 0);
+  absl::c_fill_n(zCon, num_con, 0);
+
+// need to wait for other threads to have filled _i and _o arrays above
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+    double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* src_lsc = &(physical_x.lmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+
+    for (int l = 0; l < s_.nThetaReduced; ++l) {
+      std::array<double, 2> rnkcc = {0.0, 0.0};
+      std::array<double, 2> rnkcc_m = {0.0, 0.0};
+      std::array<double, 2> znksc = {0.0, 0.0};
+      std::array<double, 2> znksc_m = {0.0, 0.0};
+      std::array<double, 2> lnksc_m = {0.0, 0.0};
+
+      // NOTE: The axis only gets contributions up to m=1.
+      // This is counterintuitive on its own, since the axis is a
+      // one-dimensional object, and thus has to poloidal variation of its
+      // geometry. As far as we know, this has to do with the innermost
+      // half-grid point for computing a better near-axis approximation of the
+      // Jacobian.
+      //
+      // Regular case: all poloidal contributions up to m = mpol - 1.
+      int num_m = s_.mpol;
+      if (jF == 0) {
+        // axis: num_m = 2 -> m = 0, 1
+        num_m = 2;
+      }
+
+      // TODO(jons): One could go further about optimizing this,
+      // but since the axisymmetric case is really not the main deal in VMEC++,
+      // I left it as-is for now.
+
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const double cosmu = t_.cosmu[idx_ml];
+        rnkcc[m_parity] += src_rcc[m] * cosmu;
+      }
+
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const double sinmum = t_.sinmum[idx_ml];
+        rnkcc_m[m_parity] += src_rcc[m] * sinmum;
+      }
+
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const double sinmu = t_.sinmu[idx_ml];
+        znksc[m_parity] += src_zsc[m] * sinmu;
+      }
+
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const double cosmum = t_.cosmum[idx_ml];
+        znksc_m[m_parity] += src_zsc[m] * cosmum;
+      }
+
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const double cosmum = t_.cosmum[idx_ml];
+        lnksc_m[m_parity] += src_lsc[m] * cosmum;
+      }
+
+      const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
+      r1_e[idx_jl] += rnkcc[kEvenParity];
+      ru_e[idx_jl] += rnkcc_m[kEvenParity];
+      z1_e[idx_jl] += znksc[kEvenParity];
+      zu_e[idx_jl] += znksc_m[kEvenParity];
+      lu_e[idx_jl] += lnksc_m[kEvenParity];
+      r1_o[idx_jl] += rnkcc[kOddParity];
+      ru_o[idx_jl] += rnkcc_m[kOddParity];
+      z1_o[idx_jl] += znksc[kOddParity];
+      zu_o[idx_jl] += znksc_m[kOddParity];
+      lu_o[idx_jl] += lnksc_m[kOddParity];
+    }  // l
+  }  // j
+
+  // The DFTs for rCon and zCon are done separately here,
+  // since this allows to remove the condition on the radial range from the
+  // innermost loops.
+
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    double* src_rcc = &(physical_x.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* src_zsc = &(physical_x.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+
+    // NOTE: The axis only gets contributions up to m=1.
+    // This is counterintuitive on its own, since the axis is a
+    // one-dimensional object, and thus has to poloidal variation of its
+    // geometry. As far as we know, this has to do with the innermost
+    // half-grid point for computing a better near-axis approximation of the
+    // Jacobian.
+    //
+    // Regular case: all poloidal contributions up to m = mpol - 1.
+    int num_m = s_.mpol;
+    if (jF == 0) {
+      // axis: num_m = 2 -> m = 0, 1
+      num_m = 2;
+    }
+
+    // TODO(jons): One could go further about optimizing this,
+    // but since the axisymmetric case is really not the main deal in VMEC++,
+    // I left it as-is for now.
+
+    // In the following, we need to apply a scaling factor only for the
+    // odd-parity m contributions:
+    //   m_parity == kOddParity(==1) --> * m_p_.sqrtSF[jF - r_.nsMinF1]
+    //   m_parity == kEvenParity(==0) --> * 1
+    //
+    // This expression is 0 if m_parity is 0 (=kEvenParity) and m_p_.sqrtSF[jF -
+    // r_.nsMinF1] if m_parity is 1 (==kOddParity):
+    //   m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]
+    //
+    // This expression is 1 if m_parity is 0 and 0 if m_parity is 1:
+    //   (1 - m_parity)
+    //
+    // Hence, we can replace the following conditional statement:
+    //   double scale = xmpq[m];
+    //   if (m_parity == kOddParity) {
+    //       scale *= m_p_.sqrtSF[jF - r_.nsMinF1];
+    //   }
+    // with the following code:
+    //   const double scale = xmpq[m] * (1 - m_parity + m_parity *
+    //   m_p_.sqrtSF[jF - r_.nsMinF1]);
+
+    for (int m = 0; m < num_m; ++m) {
+      const int m_parity = m % 2;
+      const double scale =
+          xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]);
+
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const double cosmu = t_.cosmu[idx_ml];
+        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        rCon[idx_con] += src_rcc[m] * cosmu * scale;
+      }  // l
+
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const double sinmu = t_.sinmu[idx_ml];
+        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        zCon[idx_con] += src_zsc[m] * sinmu * scale;
+      }  // l
+    }  // m
+  }  // jF
+}  // dft_FourierToReal_2d_symm

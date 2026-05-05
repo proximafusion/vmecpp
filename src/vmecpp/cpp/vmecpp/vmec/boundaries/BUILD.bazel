@@ -25,3 +25,14 @@ cc_library(
         "@abseil-cpp//absl/algorithm:container",
     ],
 )
+
+cc_test(
+    name = "axis_domain_test",
+    srcs = ["axis_domain_test.cc"],
+    deps = [
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

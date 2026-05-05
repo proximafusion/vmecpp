@@ -1,0 +1,34 @@
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+WARNING: Build options --compilation_mode, --copt, and --linkopt have changed, discarding analysis cache (this can be expensive, see https://bazel.build/advanced/performance/iteration-speed).
+Analyzing: target //vmecpp/vmec/vmec_standalone:vmec_standalone (0 packages loaded, 0 targets configured)
+Analyzing: target //vmecpp/vmec/vmec_standalone:vmec_standalone (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed target //vmecpp/vmec/vmec_standalone:vmec_standalone (0 packages loaded, 16800 targets configured).
+[185 / 188] Compiling vmecpp/common/vmec_indata/vmec_indata.cc; 1s linux-sandbox ... (2 actions running)
+INFO: From Compiling vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.cc:
+vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.cc: In member function 'void vmecpp::IdealMhdModel::computeJacobian()':
+vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.cc:1935:15: warning: unused variable 'next_iHalf' [-Wunused-variable]
+ 1935 |           int next_iHalf = ((r_.nsMinH + 1) - r_.nsMinH) * s_.nZnT + kl;
+      |               ^~~~~~~~~~
+[186 / 188] Compiling vmecpp/common/vmec_indata/vmec_indata.cc; 3s linux-sandbox
+[187 / 188] [Prepa] Linking vmecpp/vmec/vmec_standalone/vmec_standalone
+INFO: Found 1 target...
+Target //vmecpp/vmec/vmec_standalone:vmec_standalone up-to-date:
+  bazel-bin/vmecpp/vmec/vmec_standalone/vmec_standalone
+INFO: Elapsed time: 5.594s, Critical Path: 4.98s
+INFO: 4 processes: 1 internal, 3 linux-sandbox.
+INFO: Build completed successfully, 4 total actions
+INFO: Running command line: bazel-bin/vmecpp/vmec/vmec_standalone/vmec_standalone '--vmec_indata_json=/home/ert/code/vmecpp/src/vmecpp/test_data/solovev.json'
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+F0000 00:00:1753261433.116075 3126869 vmec_standalone.cc:29] Check failed: indata_json is OK (NOT_FOUND: File --vmec_indata_json=/home/ert/code/vmecpp/src/vmecpp/test_data/solovev.json not found.) Could not read input file '--vmec_indata_json=/home/ert/code/vmecpp/src/vmecpp/test_data/solovev.json': NOT_FOUND: File --vmec_indata_json=/home/ert/code/vmecpp/src/vmecpp/test_data/solovev.json not found.
+*** Check failure stack trace: ***
+    @     0x5557de88f7a6  absl::lts_20230802::log_internal::LogMessage::PrepareToDie()
+    @     0x5557de88f815  absl::lts_20230802::log_internal::LogMessage::SendToLog()
+    @     0x5557de88f294  absl::lts_20230802::log_internal::LogMessage::Flush()
+    @     0x5557de88faf2  absl::lts_20230802::log_internal::LogMessageFatal::~LogMessageFatal()
+    @     0x5557de6ec5e9  main
+    @     0x7f639b0376b5  (unknown)
+    @     0x7f639b037769  __libc_start_main
+    @     0x5557de6ec355  _start
