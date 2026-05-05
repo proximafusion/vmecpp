@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1777578838555,
+  "lastUpdate": 1777987615360,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17178,6 +17178,72 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00813240422388973",
             "extra": "mean: 9.286227013333322 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3ac242a3d87feef9b57e348f50131d9754ca43d1",
+          "message": "Batched FFT, 15% expected gain for w7x (#503)\n\n**Batch all poloidal modes of a surface into a single FFTW call**\r\n\r\n### Background\r\n\r\nThe VMEC++ physics loop visits every radial surface jF and every poloidal mode m. For each (jF, m) pair, two functions are called:\r\n\r\n*   FourierToReal (F2R): synthesizes real-space geometry from Fourier coefficients\r\n*   ForcesToFourier (R2F): projects real-space forces back to Fourier coefficients\r\n    \r\nEach call requires twelve 1D Fourier transforms of length nZeta (the number of toroidal grid points):\r\n\r\n\r\n|Slot\t|Transform|\tQuantity|\r\n|-------|---------|---------------|\r\n|0\t|DCT (c2r)\t|`R * cos(m*theta) * cos(n*zeta)` coefficients → real space|\r\n|1\t|DST (c2r)\t|`R * sin(m*theta) * sin(n*zeta)` coefficients → real space|\r\n|2\t|DCT-deriv (c2r)\t|`dR/dzeta via rmncc * n*nfp * sin(n*zeta)`|\r\n|3\t|DST-deriv (c2r)\t|`dR/dzeta via rmnss * n*nfp * cos(n*zeta)`|\r\n|4–7\t|same four\t|for Z|\r\n|8–11\t|same four\t|for lambda|\r\n\r\n@VisionAndMind pointed out that these can be fused into an FFT, if we discard some of the resulting elements.\r\n\r\n**F2R (c2r, synthesis):**\r\n\r\n*   Input: complex half-spectra of length `nhalf = nZeta/2 + 1`, one per slot, packed contiguously. idist = nhalf.\r\n*   Output: real signals of length nZeta, one per slot, packed contiguously. odist = nZeta.\r\n    \r\nThe half-spectrum for each slot is filled from the Fourier geometry arrays:\r\n\r\n* DCT slot: `X[0] = spec[0] * nscale[0], X[n] = spec[n] * nscale[n] / 2 for n >= 1` (real only).\r\n* DST slot: `X[n][imag] = -spec[n] * nscale[n] / 2` (imaginary negative; matches FFTW c2r sine synthesis).\r\n* Derivative of a DCT quantity: `X[n][imag] = +spec[n] * n * nfp * nscale[n] / 2` (the d/dzeta brings out a factor -n*nfp from the sine, which cancels the sign flip).\r\n* Derivative of a DST quantity: `X[n][real] = spec[n] * n * nfp * nscale[n] / 2` (cosine derivative).\r\n\r\nAfter the single batched call, the poloidal accumulation loop over k and theta consumes the outputs for each m.\r\n\r\n**R2F (r2c, analysis):**\r\n*   Input: real signals of length nZeta. idist = nZeta.\r\n*   Output: complex half-spectra of length nhalf. odist = nhalf.\r\n    \r\n\r\nFFTW r2c gives the unnormalized DFT F\\[n\\] = Sum\\_k f\\[k\\] \\* exp(-i\\*2\\*pi\\*n\\*k/N), so:\r\n*   Re(F\\[n\\]) = Sum\\_k f\\[k\\] \\* cos(n \\* zeta\\_k) — the DCT projection.    \r\n*   Im(F\\[n\\]) = -Sum\\_k f\\[k\\] \\* sin(n \\* zeta\\_k) — the negative DST projection.\r\n    \r\n\r\nThe Fourier force accumulation formulas in terms of r2c outputs are therefore:\r\n```python\r\nfrcc[n] += nscale[n] * ( Re(r2c(rmkcc))[n]  +  n*nfp * Im(r2c(rmkcc_n))[n] )\r\nfrss[n] += nscale[n] * (-Im(r2c(rmkss))[n]  +  n*nfp * Re(r2c(rmkss_n))[n] )\r\nfzsc[n] += nscale[n] * ( Re(r2c(zmksc))[n]  +  n*nfp * Im(r2c(zmksc_n))[n] )\r\nfzcs[n] += nscale[n] * (-Im(r2c(zmkcs))[n]  +  n*nfp * Re(r2c(zmkcs_n))[n] )\r\n```\r\n\r\n### Loop restructuring\r\n\r\nThe previous per-(jF, m) structure was:\r\n```python\r\nfor jF:\r\n  for m:\r\n    fill 12 half-spectra\r\n    batched FFT (size 12)\r\n    poloidal accumulation\r\n```\r\n\r\nThis PR restructures to:\r\n```python\r\nfor jF:\r\n  for m in [0, mpol):   # fill pass\r\n    fill 12 half-spectra into slot m*12 .. m*12+11\r\n  batched FFT (size 12*mpol)   # one call\r\n  for m in [0, mpol):   # accumulate pass\r\n    poloidal accumulation from slots m*12 .. m*12+11\r\n```\r\n\r\nFor m's that are skipped at a given jF (specifically m >= 2 when jF == 0, since the axis only receives m=0 and m=1 contributions), the input slots are zero-filled so the batched FFT remains correct; their outputs are skipped on accumulation.\r\n\r\n### Performance\r\n\r\n![image.png](https://app.graphite.com/user-attachments/assets/710beb58-0f28-4714-a19e-a8d4d5fb68d0.png)",
+          "timestamp": "2026-05-05T13:22:26Z",
+          "tree_id": "b48a2de956f8741c9aecfcbf733013e1a4b4f1da",
+          "url": "https://github.com/proximafusion/vmecpp/commit/3ac242a3d87feef9b57e348f50131d9754ca43d1"
+        },
+        "date": 1777987614356,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.916082500009798,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004164972852998161",
+            "extra": "mean: 342.9258259999983 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.8737229775695683,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003681802454854086",
+            "extra": "mean: 347.98065360000123 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2756121188819398,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01472324277303967",
+            "extra": "mean: 3.6282874789999937 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5854110218026759,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008791785069530317",
+            "extra": "mean: 1.7082015246666629 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.27819612318327636,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01750424180427434",
+            "extra": "mean: 3.594586396666633 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10783511684928564,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01232047713220086",
+            "extra": "mean: 9.273416946333327 sec\nrounds: 3"
           }
         ]
       }
