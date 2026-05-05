@@ -55,6 +55,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [Arch](#arch-linux)
   - [Fedora](#fedora)
   - [MacOS](#macos)
+  - [With Nix](#with-nix)
   - [As part of a conda environment](#as-part-of-a-conda-environment)
   - [C++ build from source](#c-build-from-source)
 - [Hot restart](#hot-restart)
@@ -219,6 +220,20 @@ export HDF5_ROOT=$(brew --prefix hdf5)
 python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
 ```
 
+### With Nix (Community support)
+
+For a Linux development shell with the latest supported Python version:
+
+```shell
+nix develop
+python --version
+python -m pip install -e .[test]
+```
+
+The shell provides Python 3.13 together with the native build dependencies needed
+to build and test VMEC++, including CMake, GCC, GFortran, HDF5, NetCDF, LAPACK,
+OpenMPI, and Git LFS.
+
 ### As part of a conda environment
 
 VMEC++ is currently not packaged for conda, but all its dependencies are and VMEC++
@@ -300,6 +315,7 @@ VMEC++:
 - allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
 - employs the same parallelization strategy as Fortran VMEC, but VMEC++ leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization: as a consequence it cannot parallelize over multiple nodes
+- Uses FFT kernels optimized for small mode numbers [generated using FFTX](github.com/spiral-software/fftx) instead of DFT for supported resolutions. They give a 10-20% speedup relative to the DFT counterparts.
 - implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
 
 ### Limitations with respect to the Fortran implementations
@@ -331,7 +347,7 @@ VMEC++:
    * `xnpot` - not declared yet
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
-- VMEC++ only computes the output quantities if the run converged
+- VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
 - The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
 - The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
 

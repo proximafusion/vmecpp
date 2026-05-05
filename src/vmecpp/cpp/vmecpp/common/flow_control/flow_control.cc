@@ -5,8 +5,6 @@
 #include "vmecpp/common/flow_control/flow_control.h"
 
 #include "absl/log/check.h"
-#include "absl/log/log.h"
-
 #ifdef _OPENMP
 #include <omp.h>
 #endif  // _OPENMP
@@ -24,7 +22,7 @@ RestartReason RestartReasonFromInt(int restart_reason) {
     case 4:
       return RestartReason::HUGE_INITIAL_FORCES;
     default:
-      LOG(FATAL) << "Invalid restart_reason value: " << restart_reason;
+      __builtin_unreachable();
   }
 }
 
@@ -39,6 +37,14 @@ int get_max_threads(std::optional<int> max_threads) {
   CHECK_GT(max_threads.value(), 0)
       << "The number of threads must be >=1. "
          "To automatically use all available threads, pass std::nullopt";
+#ifdef _OPENMP
+  // Size the thread pool immediately so spin-waiting threads are not created
+  // for cores that will never be used. Without this, omp_get_max_threads()
+  // returns the hardware count and the runtime may spawn that many threads
+  // before vmec_adjust_num_threads narrows the count at the first multigrid
+  // step.
+  omp_set_num_threads(max_threads.value());
+#endif  // _OPENMP
   return max_threads.value();
 }
 

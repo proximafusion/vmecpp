@@ -650,8 +650,9 @@ end)";
   EXPECT_EQ(m_magnetic_configuration.serial_circuits(1).coils(1).num_windings(),
             1.0);
 
-  // now check also a case that should not work:
-  // two filaments in the same circuit, but with different number of windings
+  // check the case where coils in the same circuit have different num_windings:
+  // the first coil's num_windings is used as the reference for normalization,
+  // matching legacy MAKEGRID scaled-mode behavior (mgrid_mode='S').
   std::string makegrid_coils_2 = R"(periods 1
 mirror NIL
 begin filament
@@ -681,10 +682,21 @@ end)";
   // and migrate `num_windings` into the circuit currents
   MagneticConfiguration m_magnetic_configuration_2 = magnetic_configuration_2;
 
-  // call under test
+  // call under test: succeeds, normalizing by the first coil's num_windings
   absl::Status status_2 =
       NumWindingsToCircuitCurrents(m_magnetic_configuration_2);
-  EXPECT_FALSE(status_2.ok());
+  ASSERT_TRUE(status_2.ok()) << status_2.message();
+
+  // current absorbs first coil's num_windings (4.0); each coil is normalized
+  // proportionally: coil 0 -> 4.0/4.0 = 1.0, coil 1 -> 4.5/4.0 = 1.125
+  EXPECT_EQ(m_magnetic_configuration_2.serial_circuits(0).current(), 4.0);
+  ASSERT_EQ(m_magnetic_configuration_2.serial_circuits(0).coils_size(), 2);
+  EXPECT_EQ(
+      m_magnetic_configuration_2.serial_circuits(0).coils(0).num_windings(),
+      1.0);
+  EXPECT_EQ(
+      m_magnetic_configuration_2.serial_circuits(0).coils(1).num_windings(),
+      4.5 / 4.0);
 }  // CheckNumWindingsToCircuitCurrents
 
 // -------------------

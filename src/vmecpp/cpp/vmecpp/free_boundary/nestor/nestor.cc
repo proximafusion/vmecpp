@@ -83,7 +83,7 @@ bool Nestor::update(
       return true;
     }
 
-    ls_.AccumulateFullGrpmn(si_.grpmn_sin);
+    ls_.AccumulateFullGrpmn(si_.grpmn_sin, si_.grpmn_cos);
     ls_.PerformToroidalFourierTransforms();
     if (vmec_checkpoint == VmecCheckpoint::VAC1_FOURI_KV_DFT &&
         at_checkpoint_iteration) {
@@ -126,7 +126,6 @@ bool Nestor::update(
 
   // thread-local tangential grid point range
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  const int numLocal = tp_.ztMax - tp_.ztMin;
 
   potU.setZero();
   potV.setZero();

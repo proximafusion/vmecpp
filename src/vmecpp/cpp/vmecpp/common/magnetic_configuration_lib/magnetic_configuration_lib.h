@@ -39,8 +39,12 @@ absl::Status SetCircuitCurrents(
     const Eigen::VectorXd& circuit_currents,
     MagneticConfiguration& m_magnetic_configuration);
 
-// Move num_windings of Coils in each SerialCircuit into common circuit current,
-// if num_windings is the same for each Coil in the given MagneticConfiguration.
+// Fold num_windings of Coils in each SerialCircuit into the circuit current,
+// normalizing each coil's num_windings by the first coil's num_windings. When
+// all coils share the same |num_windings|, this reduces each coil to +/-1.
+// When coils have varying num_windings (e.g., main + correction coils), each
+// coil contributes proportionally, matching Fortran MAKEGRID scaled-mode
+// output.
 absl::Status NumWindingsToCircuitCurrents(
     MagneticConfiguration& m_magnetic_configuration);
 
