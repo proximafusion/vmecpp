@@ -41,6 +41,7 @@ jobs:
                       liblapack-dev \
                       libomp-dev \
                       libhdf5-dev \
+                      libfftw3-dev \
                       python3-dev
 
             - name: Install vmecpp with test dependencies

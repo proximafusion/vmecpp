@@ -113,6 +113,32 @@ target_link_libraries(vmecpp_core PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES
 target_link_libraries(vmecpp_core PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
+
+# FFTX (SPIRAL-generated batched IPRDFT/PRDFT) for the toroidal FFT hot path.
+# The codelets are vendored under src/vmecpp/cpp/third_party/fftx_codelets/;
+# see that directory's README.md for what they cover and how to regenerate.
+# Pass -DVMECPP_USE_FFTX=OFF to fall back to the partial-DFT path.
+option(VMECPP_USE_FFTX "Use FFTX/SPIRAL kernels for toroidal transforms" ON)
+if(VMECPP_USE_FFTX)
+  set(_fftx_dir "${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/third_party/fftx_codelets")
+  file(GLOB _fftx_iprdft_srcs CONFIGURE_DEPENDS
+       "${_fftx_dir}/lib_fftx_iprdftbat_cpu_srcs/*.cpp")
+  file(GLOB _fftx_prdft_srcs  CONFIGURE_DEPENDS
+       "${_fftx_dir}/lib_fftx_prdftbat_cpu_srcs/*.cpp")
+  add_library(fftx_codelets STATIC ${_fftx_iprdft_srcs} ${_fftx_prdft_srcs})
+  target_include_directories(fftx_codelets PUBLIC
+    "${_fftx_dir}"                                                 # for <include/omega64.h>
+    "${_fftx_dir}/include"                                         # for fftx_minimal.hpp
+    "${_fftx_dir}/lib_fftx_iprdftbat_cpu_srcs"
+    "${_fftx_dir}/lib_fftx_prdftbat_cpu_srcs")
+  # Match vmecpp's release flags; codelets are >30k lines and benefit from -O3.
+  target_compile_options(fftx_codelets PRIVATE -fPIC)
+  target_link_libraries(vmecpp_core PRIVATE fftx_codelets)
+  target_compile_definitions(vmecpp_core PUBLIC VMECPP_USE_FFTX)
+  list(LENGTH _fftx_iprdft_srcs _n_iprdft)
+  list(LENGTH _fftx_prdft_srcs  _n_prdft)
+  message(STATUS "FFTX vendored codelets: ${_n_iprdft} iprdft + ${_n_prdft} prdft sources")
+endif()
 target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synchronization absl::strings absl::str_format absl::log absl::string_view absl::check absl::status absl::statusor)
 
 if(OpenMP_CXX_FOUND)
