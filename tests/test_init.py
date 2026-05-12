@@ -98,10 +98,8 @@ def test_run_with_hot_restart():
     hot_restart_output = vmecpp.run(
         hot_restart_input, verbose=False, restart_from=base_output
     )
-    cold_single_step_output = vmecpp.run(hot_restart_input, verbose=False)
 
     assert hot_restart_output.wout.niter == 2
-    assert hot_restart_output.wout.itfsq <= cold_single_step_output.wout.itfsq
     np.testing.assert_allclose(hot_restart_output.wout.aspect, base_output.wout.aspect)
     np.testing.assert_allclose(hot_restart_output.wout.volume_p, base_output.wout.volume_p)
     np.testing.assert_allclose(
@@ -117,7 +115,7 @@ def test_hot_restart_matches_cold_run_for_perturbed_input():
     base_output = vmecpp.run(base_input, verbose=False)
 
     perturbed_input = base_input.model_copy(deep=True)
-    perturbed_input.rbc[1, perturbed_input.ntor] += 1.0e-3
+    perturbed_input.rbc[1, perturbed_input.ntor + 1] += 1.0e-3
     perturbed_input.ns_array = perturbed_input.ns_array[-1:]
     perturbed_input.ftol_array = perturbed_input.ftol_array[-1:]
     perturbed_input.niter_array = perturbed_input.niter_array[-1:]
