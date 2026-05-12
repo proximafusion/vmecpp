@@ -115,8 +115,7 @@ def test_hot_restart_matches_cold_run_for_perturbed_input():
     base_output = vmecpp.run(base_input, verbose=False)
 
     perturbed_input = base_input.model_copy(deep=True)
-    assert perturbed_input.ntor > 0
-    perturbed_input.rbc[1, perturbed_input.ntor + 1] += 1.0e-3
+    perturbed_input.rbc[1, perturbed_input.ntor] += 1.0e-3
     perturbed_input.ns_array = perturbed_input.ns_array[-1:]
     perturbed_input.ftol_array = perturbed_input.ftol_array[-1:]
     perturbed_input.niter_array = perturbed_input.niter_array[-1:]

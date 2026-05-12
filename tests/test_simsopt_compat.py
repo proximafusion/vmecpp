@@ -156,6 +156,7 @@ def test_run_hot_restart_keeps_multigrid_configuration():
     np.testing.assert_array_equal(vmec.indata.ftol_array, original_ftol_array)
     np.testing.assert_array_equal(vmec.indata.niter_array, original_niter_array)
     assert vmec.wout is not None
+    assert vmec.wout.ier_flag == 0
     np.testing.assert_allclose(vmec.wout.aspect, base_output.wout.aspect)
     np.testing.assert_allclose(vmec.wout.volume_p, base_output.wout.volume_p)
 
