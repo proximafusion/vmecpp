@@ -23,33 +23,16 @@
 #include "vmecpp/vmec/fourier_forces/fourier_forces.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
-#include "vmecpp/vmec/ideal_mhd_model/dft_data.h"
+#include "vmecpp/vmec/ideal_mhd_model/dft_toroidal.h"
+#ifdef VMECPP_USE_FFTX
+#include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
+#endif
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/thread_local_storage/thread_local_storage.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
 namespace vmecpp {
-
-// Implemented as a free function for easier testing and benchmarking.
-// "FastPoloidal" indicates that, in real space, iterations use the
-// poloidal coordinate as the fast index.
-void ForcesToFourier3DSymmFastPoloidal(
-    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
-    const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
-    const FourierBasisFastPoloidal& fb,
-    VacuumPressureState vacuum_pressure_state,
-    FourierForces& m_physical_forces);
-
-// Implemented as a free function for easier testing and benchmarking.
-// "FastPoloidal" indicates that, in real space, iterations use the
-// poloidal coordinate as the fast index.
-void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
-                                     const Eigen::VectorXd& xmpq,
-                                     const RadialPartitioning& r,
-                                     const Sizes& s, const RadialProfiles& rp,
-                                     const FourierBasisFastPoloidal& fb,
-                                     RealSpaceGeometry& m_geometry);
 
 // Implemented as a free function for easier testing and benchmarking.
 void deAliasConstraintForce(const RadialPartitioning& rp,
@@ -425,6 +408,13 @@ class IdealMhdModel {
   const RadialPartitioning& r_;
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
+
+#ifdef VMECPP_USE_FFTX
+  // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
+  // Created once at construction and reused across iterations. Execution is
+  // thread-safe.
+  ToroidalFftPlans fft_plans_;
+#endif  // VMECPP_USE_FFTX
 
   int signOfJacobian;
 

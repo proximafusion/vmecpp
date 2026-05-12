@@ -127,6 +127,19 @@ def test_bench_fixed_boundary_cma(benchmark, cma_input):
     assert result.wout.volume == pytest.approx(0.5014, rel=1e-3)
 
 
+def test_bench_fixed_boundary_cma_6x8(benchmark, cma_input):
+    """Benchmark CMA equilibrium (stellarator, ntor=6, mpol=8)."""
+    cma_input_6x8 = cma_input.model_copy(update={"mpol": 8})
+    result = benchmark.pedantic(
+        vmecpp.run,
+        args=(cma_input_6x8,),
+        kwargs={"max_threads": 2},
+        rounds=3,
+        warmup_rounds=0,
+    )
+    assert result.wout.volume == pytest.approx(0.5014, rel=1e-3)
+
+
 # ---------------------------------------------------------------------------
 # Free-boundary benchmarks
 # ---------------------------------------------------------------------------

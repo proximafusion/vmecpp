@@ -5,6 +5,9 @@
 #include "vmecpp/free_boundary/singular_integrals/singular_integrals.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -215,16 +218,125 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
     const double sqrtap = sqrt(ap[kl]);
     const double sqrtam = sqrt(am[kl]);
 
-    // Compute initial values for T^{\pm}_l and T^{\pm}_{l-1}
-    // don't worry about Tl2p, Tl2m yet; not used before being initialized below
-    Tl1p[kl] = 0.0;
-    Tl1m[kl] = 0.0;
-    Tlp[0][kl] = log((sqrtap * sqrtc2[kl] + ap[kl] + d[kl]) /
-                     (sqrtap * sqrta2[kl] - ap[kl] + d[kl])) /
-                 sqrtap;
-    Tlm[0][kl] = log((sqrtam * sqrtc2[kl] + am[kl] + d[kl]) /
-                     (sqrtam * sqrta2[kl] - am[kl] + d[kl])) /
-                 sqrtam;
+    // Compute T^{\pm}_0 analytically (eq. 6.207 in the_numerics_of_vmecpp.pdf).
+    const double T0p = log((sqrtap * sqrtc2[kl] + ap[kl] + d[kl]) /
+                           (sqrtap * sqrta2[kl] - ap[kl] + d[kl])) /
+                       sqrtap;
+    const double T0m = log((sqrtam * sqrtc2[kl] + am[kl] + d[kl]) /
+                           (sqrtam * sqrta2[kl] - am[kl] + d[kl])) /
+                       sqrtam;
+
+    // Fill all Tlp[0..L] and Tlm[0..L] by picking the numerically stable
+    // direction of the three-term recurrence on a per-(+/-), per-kl basis.
+    //
+    // The characteristic roots of the homogeneous recurrence satisfy
+    //   A*r^2 + 2*d*r + B = 0  -> |r1 r2| = B/A.
+    // For T^+: (A, B) = (ap, am), so |r1 r2| = am/ap.
+    // For T^-: (A, B) = (am, ap), so |r1 r2| = ap/am.
+    // If B > A (at least one |r| > 1), forward iteration is unstable and
+    // backward (Miller's algorithm) is used instead; otherwise forward is fine.
+    //
+    // T^{\pm}_0 is analytic (above); T^{\pm}_{-1} = 0. Forward produces
+    // T_{l+1} from T_l and T_{l-1}; backward produces T_{l-1} from T_l and
+    // T_{l+1} via the same recurrence solved in reverse. For backward,
+    // iteration starts from a zero seed far above the required L; the result
+    // is then normalized to match the analytic T^{\pm}_0.
+    //
+    // rhs(l+1) = sqrtc2 + (-1)^{l+1}*sqrta2  (same for T^+ and T^-).
+    const int kL = mf + nf;
+    // The spurious solution is damped by (A/B)^kTailExtra per pass.
+    // For the worst realistic ratio (A/B ~ 0.5) suppression is ~0.5^50 ~ 1e-16.
+    const int kTailExtra = 50;
+    const int kLtail = kL + kTailExtra;
+
+    // Only switch to backward when the forward spurious-mode growth
+    // (|r1 r2| = B/A) would actually exceed double precision over kL steps.
+    // Threshold: forward is considered stable as long as (B/A)^kL < 1e10,
+    // i.e. spurious amplitude stays within ~1e10 of the particular solution.
+    // Near-degenerate kl (|r1|~|r2|~1) fall in the forward branch, where
+    // zero-seed Miller is known to misconverge (spurious modes never damp).
+    // Formula: kL * ln(B/A) < ln(1e10) -> B/A < exp(ln(1e10)/kL).
+    constexpr double kLogGrowthThreshold = 10.0 * 2.30258509299;  // ln(1e10)
+    const double logRatioP =
+        (am[kl] > ap[kl] && ap[kl] > 0.0) ? std::log(am[kl] / ap[kl]) : 0.0;
+    const bool useBackwardP =
+        static_cast<double>(kL) * logRatioP > kLogGrowthThreshold;
+    const double logRatioM =
+        (ap[kl] > am[kl] && am[kl] > 0.0) ? std::log(ap[kl] / am[kl]) : 0.0;
+    const bool useBackwardM =
+        static_cast<double>(kL) * logRatioM > kLogGrowthThreshold;
+
+    // --- T^+: A = ap, B = am ---
+    Tlp[0][kl] = T0p;
+    if (useBackwardP) {
+      // forward unstable -> use backward recurrence.
+      double T_hi = 0.0;
+      double T_cur = 1.0e-300;
+      for (int l = kLtail; l >= 1; --l) {
+        const double rhs = sqrtc2[kl] + (l % 2 == 0 ? -1.0 : 1.0) * sqrta2[kl];
+        const double T_lo =
+            (rhs - (2 * l + 1) * d[kl] * T_cur - (l + 1) * ap[kl] * T_hi) /
+            (l * am[kl]);
+        T_hi = T_cur;
+        T_cur = T_lo;
+        if (l - 1 <= kL) {
+          Tlp[l - 1][kl] = T_lo;
+        }
+      }
+      const double scaleP = T0p / Tlp[0][kl];
+      for (int l = 0; l <= kL; ++l) {
+        Tlp[l][kl] *= scaleP;
+      }
+    } else {
+      // forward stable.
+      double T_prev = 0.0;  // T^+_{-1}
+      int sgn = 1;
+      for (int fl = 0; fl < kL; ++fl) {
+        sgn = -sgn;
+        const double rhs = sqrtc2[kl] + sgn * sqrta2[kl];
+        const double T_next =
+            (rhs - (2 * fl + 1) * d[kl] * Tlp[fl][kl] - fl * am[kl] * T_prev) /
+            (ap[kl] * (fl + 1));
+        T_prev = Tlp[fl][kl];
+        Tlp[fl + 1][kl] = T_next;
+      }
+    }
+
+    // --- T^-: A = am, B = ap ---
+    Tlm[0][kl] = T0m;
+    if (useBackwardM) {
+      // forward unstable -> use backward recurrence.
+      double T_hi = 0.0;
+      double T_cur = 1.0e-300;
+      for (int l = kLtail; l >= 1; --l) {
+        const double rhs = sqrtc2[kl] + (l % 2 == 0 ? -1.0 : 1.0) * sqrta2[kl];
+        const double T_lo =
+            (rhs - (2 * l + 1) * d[kl] * T_cur - (l + 1) * am[kl] * T_hi) /
+            (l * ap[kl]);
+        T_hi = T_cur;
+        T_cur = T_lo;
+        if (l - 1 <= kL) {
+          Tlm[l - 1][kl] = T_lo;
+        }
+      }
+      const double scaleM = T0m / Tlm[0][kl];
+      for (int l = 0; l <= kL; ++l) {
+        Tlm[l][kl] *= scaleM;
+      }
+    } else {
+      // forward stable.
+      double T_prev = 0.0;  // T^-_{-1}
+      int sgn = 1;
+      for (int fl = 0; fl < kL; ++fl) {
+        sgn = -sgn;
+        const double rhs = sqrtc2[kl] + sgn * sqrta2[kl];
+        const double T_next =
+            (rhs - (2 * fl + 1) * d[kl] * Tlm[fl][kl] - fl * ap[kl] * T_prev) /
+            (am[kl] * (fl + 1));
+        T_prev = Tlm[fl][kl];
+        Tlm[fl + 1][kl] = T_next;
+      }
+    }
   }  // kl
 }  // prepareUpdate
 
@@ -244,6 +356,10 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
       absl::c_fill_n(grpmn_cos, mnfull * numLocal, 0.0);
     }
   }
+
+  // Tl1p/Tl1m hold T^{\pm}_{fl-1} for the Slp/Slm formula; T^{\pm}_{-1} = 0.
+  absl::c_fill(Tl1p, 0.0);
+  absl::c_fill(Tl1m, 0.0);
 
   int sgn = 1;
   for (int fl = 0; fl < 1 + nf + mf; ++fl) {
@@ -463,21 +579,13 @@ void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
       }  // m
     }  // n
 
-    // Update T^{\pm}_l and T^{\pm}_{l-1} for next l
+    // T^{\pm}_l are pre-computed in prepareUpdate via backward recurrence.
+    // Update sgn and shift Tl1p/Tl1m to T^{\pm}_{fl} for the Slp/Slm formula
+    // in the next iteration.
     sgn = -sgn;
     for (int kl = 0; kl < numLocal; ++kl) {
-      Tl2p[kl] = Tl1p[kl];
-      Tl2m[kl] = Tl1m[kl];
       Tl1p[kl] = Tlp[fl][kl];
       Tl1m[kl] = Tlm[fl][kl];
-      Tlp[fl + 1][kl] =
-          ((sqrtc2[kl] + sgn * sqrta2[kl]) -
-           (2 * (fl + 1) - 1) * d[kl] * Tl1p[kl] - fl * am[kl] * Tl2p[kl]) /
-          (ap[kl] * (fl + 1));
-      Tlm[fl + 1][kl] =
-          ((sqrtc2[kl] + sgn * sqrta2[kl]) -
-           (2 * (fl + 1) - 1) * d[kl] * Tl1m[kl] - fl * ap[kl] * Tl2m[kl]) /
-          (am[kl] * (fl + 1));
     }  // kl
   }  // fl
 }  // performUpdate
