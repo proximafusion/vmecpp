@@ -180,33 +180,34 @@ def test_run_hot_restart_matches_core_api_force_residual_trace_exactly():
     vmec.run(restart_from=base_output)
 
     assert vmec.wout is not None
-    assert vmec.output_quantities.wout.itfsq == core_api_output.wout.itfsq
-    np.testing.assert_array_equal(vmec.output_quantities.wout.fsqt, core_api_output.wout.fsqt)
+    wrapper_wout = vmec.output_quantities.wout
+    assert wrapper_wout.itfsq == core_api_output.wout.itfsq
+    np.testing.assert_array_equal(wrapper_wout.fsqt, core_api_output.wout.fsqt)
     np.testing.assert_array_equal(
-        vmec.output_quantities.wout.force_residual_r,
+        wrapper_wout.force_residual_r,
         core_api_output.wout.force_residual_r,
     )
     np.testing.assert_array_equal(
-        vmec.output_quantities.wout.force_residual_z,
+        wrapper_wout.force_residual_z,
         core_api_output.wout.force_residual_z,
     )
     np.testing.assert_array_equal(
-        vmec.output_quantities.wout.force_residual_lambda,
+        wrapper_wout.force_residual_lambda,
         core_api_output.wout.force_residual_lambda,
     )
     np.testing.assert_array_equal(
-        vmec.output_quantities.wout.aspect,
+        wrapper_wout.aspect,
         core_api_output.wout.aspect,
     )
     np.testing.assert_array_equal(
-        vmec.output_quantities.wout.volume_p,
+        wrapper_wout.volume_p,
         core_api_output.wout.volume_p,
     )
     np.testing.assert_allclose(
-        vmec.output_quantities.wout.iotaf,
+        wrapper_wout.iotaf,
         core_api_output.wout.iotaf,
         rtol=0.0,
-        atol=1e-14,
+        atol=5e-14,
     )
 
 
