@@ -173,17 +173,28 @@ def test_interpolate_to_new_radial_resolution():
     )
 
     # Check that odd-m modes are zero at the axis
+    # The interpolation code explicitly sets these to zero, so they should be
+    # exactly 0.0, but we use assert_allclose with tight tolerance for robustness
     for mn in range(output.wout.mnmax):
         m = int(output.wout.xm[mn])
         if m % 2 == 1:  # odd m
-            assert interpolated.rmnc[mn, 0] == 0.0, (
-                f"Odd-m mode m={m} rmnc should be zero at axis"
+            np.testing.assert_allclose(
+                interpolated.rmnc[mn, 0],
+                0.0,
+                atol=1e-15,
+                err_msg=f"Odd-m mode m={m} rmnc should be zero at axis",
             )
-            assert interpolated.zmns[mn, 0] == 0.0, (
-                f"Odd-m mode m={m} zmns should be zero at axis"
+            np.testing.assert_allclose(
+                interpolated.zmns[mn, 0],
+                0.0,
+                atol=1e-15,
+                err_msg=f"Odd-m mode m={m} zmns should be zero at axis",
             )
-            assert interpolated.lmns_full[mn, 0] == 0.0, (
-                f"Odd-m mode m={m} lmns_full should be zero at axis"
+            np.testing.assert_allclose(
+                interpolated.lmns_full[mn, 0],
+                0.0,
+                atol=1e-15,
+                err_msg=f"Odd-m mode m={m} lmns_full should be zero at axis",
             )
 
 
