@@ -110,8 +110,10 @@ def test_run_with_hot_restart():
     np.testing.assert_array_equal(
         hot_restart_output.wout.force_residual_lambda, np.array([])
     )
-    assert hot_restart_output.wout.aspect == base_output.wout.aspect
-    assert hot_restart_output.wout.volume_p == base_output.wout.volume_p
+    np.testing.assert_equal(hot_restart_output.wout.aspect, base_output.wout.aspect)
+    np.testing.assert_equal(
+        hot_restart_output.wout.volume_p, base_output.wout.volume_p
+    )
     np.testing.assert_allclose(
         hot_restart_output.wout.iotaf,
         base_output.wout.iotaf,
