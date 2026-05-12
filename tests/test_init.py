@@ -96,6 +96,7 @@ def _make_single_grid_restart_input(vmec_input: vmecpp.VmecInput) -> vmecpp.Vmec
 def test_run_with_hot_restart():
     base_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
     base_output = vmecpp.run(base_input, verbose=False)
+    assert base_output.wout.ier_flag == 0
 
     hot_restart_input = _make_single_grid_restart_input(base_input)
     hot_restart_output = vmecpp.run(
