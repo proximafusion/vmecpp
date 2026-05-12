@@ -85,28 +85,38 @@ def test_get_outputs_if_non_converged_if_wanted():
     assert not np.all(vmec_output.jxbout.jxb_gradp == 0.0)
 
 
-# We trust the C++ tests to cover the hot restart functionality properly,
-# here we just want to test that the Python API for it works.
+def _make_single_grid_restart_input(vmec_input: vmecpp.VmecInput) -> vmecpp.VmecInput:
+    restart_input = vmec_input.model_copy(deep=True)
+    restart_input.ns_array = restart_input.ns_array[-1:]
+    restart_input.ftol_array = restart_input.ftol_array[-1:]
+    restart_input.niter_array = restart_input.niter_array[-1:]
+    return restart_input
+
+
 def test_run_with_hot_restart():
     base_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
     base_output = vmecpp.run(base_input, verbose=False)
 
-    hot_restart_input = base_input.model_copy(deep=True)
-    hot_restart_input.ns_array = hot_restart_input.ns_array[-1:]
-    hot_restart_input.ftol_array = hot_restart_input.ftol_array[-1:]
-    hot_restart_input.niter_array = hot_restart_input.niter_array[-1:]
+    hot_restart_input = _make_single_grid_restart_input(base_input)
     hot_restart_output = vmecpp.run(
         hot_restart_input, verbose=False, restart_from=base_output
     )
 
-    assert hot_restart_output.wout.niter == 2
-    np.testing.assert_allclose(hot_restart_output.wout.aspect, base_output.wout.aspect)
-    np.testing.assert_allclose(hot_restart_output.wout.volume_p, base_output.wout.volume_p)
+    assert hot_restart_output.wout.ier_flag == 0
+    assert hot_restart_output.wout.itfsq == 0
+    np.testing.assert_array_equal(hot_restart_output.wout.fsqt, np.array([]))
+    np.testing.assert_array_equal(hot_restart_output.wout.force_residual_r, np.array([]))
+    np.testing.assert_array_equal(hot_restart_output.wout.force_residual_z, np.array([]))
+    np.testing.assert_array_equal(
+        hot_restart_output.wout.force_residual_lambda, np.array([])
+    )
+    assert hot_restart_output.wout.aspect == base_output.wout.aspect
+    assert hot_restart_output.wout.volume_p == base_output.wout.volume_p
     np.testing.assert_allclose(
         hot_restart_output.wout.iotaf,
         base_output.wout.iotaf,
-        rtol=1e-7,
-        atol=1e-9,
+        rtol=0.0,
+        atol=5e-14,
     )
 
 
@@ -114,12 +124,9 @@ def test_hot_restart_matches_cold_run_for_perturbed_input():
     base_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
     base_output = vmecpp.run(base_input, verbose=False)
 
-    perturbed_input = base_input.model_copy(deep=True)
+    perturbed_input = _make_single_grid_restart_input(base_input)
     # n=0 is stored at index ntor in VMEC's dense [-ntor, ..., 0, ..., +ntor] layout.
     perturbed_input.rbc[1, perturbed_input.ntor] += 1.0e-3
-    perturbed_input.ns_array = perturbed_input.ns_array[-1:]
-    perturbed_input.ftol_array = perturbed_input.ftol_array[-1:]
-    perturbed_input.niter_array = perturbed_input.niter_array[-1:]
 
     hot_restart_output = vmecpp.run(
         perturbed_input, verbose=False, restart_from=base_output

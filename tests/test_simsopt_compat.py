@@ -15,6 +15,7 @@ from simsopt import mhd as simsopt_mhd
 from simsopt._core.optimizable import Optimizable
 from simsopt.geo import SurfaceRZFourier
 
+import vmecpp
 from vmecpp import _util, ensure_vmec2000_input, simsopt_compat
 
 # We don't want to install tests and test data as part of the package,
@@ -159,6 +160,48 @@ def test_run_hot_restart_keeps_multigrid_configuration():
     assert vmec.wout.ier_flag == 0
     np.testing.assert_allclose(vmec.wout.aspect, base_output.wout.aspect)
     np.testing.assert_allclose(vmec.wout.volume_p, base_output.wout.volume_p)
+
+
+def test_run_hot_restart_matches_core_api_force_residual_trace_exactly():
+    base_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    base_output = vmecpp.run(base_input, verbose=False)
+
+    core_api_restart_input = base_input.model_copy(deep=True)
+    core_api_restart_input.ns_array = core_api_restart_input.ns_array[-1:]
+    core_api_restart_input.ftol_array = core_api_restart_input.ftol_array[-1:]
+    core_api_restart_input.niter_array = core_api_restart_input.niter_array[-1:]
+    core_api_output = vmecpp.run(
+        core_api_restart_input,
+        verbose=False,
+        restart_from=base_output,
+    )
+
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "cma.json", verbose=False)
+    vmec.run(restart_from=base_output)
+
+    assert vmec.wout is not None
+    assert vmec.output_quantities.wout.itfsq == core_api_output.wout.itfsq
+    np.testing.assert_array_equal(vmec.output_quantities.wout.fsqt, core_api_output.wout.fsqt)
+    np.testing.assert_array_equal(
+        vmec.output_quantities.wout.force_residual_r,
+        core_api_output.wout.force_residual_r,
+    )
+    np.testing.assert_array_equal(
+        vmec.output_quantities.wout.force_residual_z,
+        core_api_output.wout.force_residual_z,
+    )
+    np.testing.assert_array_equal(
+        vmec.output_quantities.wout.force_residual_lambda,
+        core_api_output.wout.force_residual_lambda,
+    )
+    assert vmec.output_quantities.wout.aspect == core_api_output.wout.aspect
+    assert vmec.output_quantities.wout.volume_p == core_api_output.wout.volume_p
+    np.testing.assert_allclose(
+        vmec.output_quantities.wout.iotaf,
+        core_api_output.wout.iotaf,
+        rtol=0.0,
+        atol=1e-14,
+    )
 
 
 def _assign_low_res_boundary(vmec: simsopt_compat.Vmec) -> SurfaceRZFourier:
