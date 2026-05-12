@@ -115,6 +115,7 @@ def test_hot_restart_matches_cold_run_for_perturbed_input():
     base_output = vmecpp.run(base_input, verbose=False)
 
     perturbed_input = base_input.model_copy(deep=True)
+    assert perturbed_input.ntor > 0
     perturbed_input.rbc[1, perturbed_input.ntor + 1] += 1.0e-3
     perturbed_input.ns_array = perturbed_input.ns_array[-1:]
     perturbed_input.ftol_array = perturbed_input.ftol_array[-1:]
@@ -125,12 +126,8 @@ def test_hot_restart_matches_cold_run_for_perturbed_input():
     )
 
     assert hot_restart_output.wout.ier_flag == 0
-    assert not np.allclose(
-        hot_restart_output.wout.iotaf,
-        base_output.wout.iotaf,
-        rtol=1e-3,
-        atol=1e-4,
-    )
+    iota_axis_delta = abs(hot_restart_output.wout.iotaf[0] - base_output.wout.iotaf[0])
+    assert iota_axis_delta > 1.0e-3
 
 
 @pytest.fixture(scope="module")
