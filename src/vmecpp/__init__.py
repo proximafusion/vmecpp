@@ -2034,6 +2034,13 @@ def set_profile(
 populate_raw_profile = set_profile
 
 
+# Python-side multigrid functions
+from vmecpp._multigrid import (  # noqa: E402, I001
+    interpolate_to_new_radial_resolution,
+    run_with_python_multigrid,
+)
+
+
 # Ordered this way to ensure run, VmecInput, and VmecOutput are the first three
 # items in the generated documentation.
 __all__ = [  # noqa: RUF022
@@ -2048,4 +2055,7 @@ __all__ = [  # noqa: RUF022
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
     "set_profile",
+    # Python-side multigrid
+    "interpolate_to_new_radial_resolution",
+    "run_with_python_multigrid",
 ]
