@@ -138,6 +138,28 @@ def test_changing_boundary():
     )
 
 
+def test_run_hot_restart_keeps_multigrid_configuration():
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "cma.json")
+    assert vmec.indata is not None
+
+    original_ns_array = vmec.indata.ns_array.copy()
+    original_ftol_array = vmec.indata.ftol_array.copy()
+    original_niter_array = vmec.indata.niter_array.copy()
+
+    vmec.run()
+    base_output = vmec.output_quantities
+
+    vmec.recompute_bell()
+    vmec.run(restart_from=base_output)
+
+    np.testing.assert_array_equal(vmec.indata.ns_array, original_ns_array)
+    np.testing.assert_array_equal(vmec.indata.ftol_array, original_ftol_array)
+    np.testing.assert_array_equal(vmec.indata.niter_array, original_niter_array)
+    assert vmec.wout is not None
+    np.testing.assert_allclose(vmec.wout.aspect, base_output.wout.aspect)
+    np.testing.assert_allclose(vmec.wout.volume_p, base_output.wout.volume_p)
+
+
 def _assign_low_res_boundary(vmec: simsopt_compat.Vmec) -> SurfaceRZFourier:
     assert vmec.indata is not None
 

@@ -88,21 +88,49 @@ def test_get_outputs_if_non_converged_if_wanted():
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
-    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    base_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    base_output = vmecpp.run(base_input, verbose=False)
 
-    # base run
-    vmec_output = vmecpp.run(vmec_input, verbose=False)
+    hot_restart_input = base_input.model_copy(deep=True)
+    hot_restart_input.ns_array = hot_restart_input.ns_array[-1:]
+    hot_restart_input.ftol_array = hot_restart_input.ftol_array[-1:]
+    hot_restart_input.niter_array = hot_restart_input.niter_array[-1:]
+    hot_restart_output = vmecpp.run(
+        hot_restart_input, verbose=False, restart_from=base_output
+    )
+    cold_single_step_output = vmecpp.run(hot_restart_input, verbose=False)
 
-    # now with hot restart
-    # (only a single multigrid step is supported)
-    vmec_input.ns_array = vmec_input.ns_array[-1:]
-    vmec_input.ftol_array = vmec_input.ftol_array[-1:]
-    vmec_input.niter_array = vmec_input.niter_array[-1:]
-    vmec_output_hot_restarted = vmecpp.run(
-        vmec_input, verbose=False, restart_from=vmec_output
+    assert hot_restart_output.wout.niter == 2
+    assert hot_restart_output.wout.itfsq <= cold_single_step_output.wout.itfsq
+    np.testing.assert_allclose(hot_restart_output.wout.aspect, base_output.wout.aspect)
+    np.testing.assert_allclose(hot_restart_output.wout.volume_p, base_output.wout.volume_p)
+    np.testing.assert_allclose(
+        hot_restart_output.wout.iotaf,
+        base_output.wout.iotaf,
+        rtol=1e-7,
+        atol=1e-9,
     )
 
-    assert vmec_output_hot_restarted.wout.niter == 2
+
+def test_hot_restart_matches_cold_run_for_perturbed_input():
+    base_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    base_output = vmecpp.run(base_input, verbose=False)
+
+    perturbed_input = base_input.model_copy(deep=True)
+    perturbed_input.rbc[1, perturbed_input.ntor] += 1.0e-3
+    perturbed_input.ns_array = perturbed_input.ns_array[-1:]
+    perturbed_input.ftol_array = perturbed_input.ftol_array[-1:]
+    perturbed_input.niter_array = perturbed_input.niter_array[-1:]
+
+    hot_restart_output = vmecpp.run(
+        perturbed_input, verbose=False, restart_from=base_output
+    )
+    cold_output = vmecpp.run(perturbed_input, verbose=False)
+
+    assert hot_restart_output.wout.itfsq <= cold_output.wout.itfsq
+    np.testing.assert_allclose(hot_restart_output.wout.aspect, cold_output.wout.aspect)
+    np.testing.assert_allclose(hot_restart_output.wout.volume_p, cold_output.wout.volume_p)
+    np.testing.assert_allclose(hot_restart_output.wout.iotaf, cold_output.wout.iotaf)
 
 
 @pytest.fixture(scope="module")
