@@ -90,6 +90,10 @@ def test_python_multigrid_matches_cpp():
     )
 
     # Both should converge
+    # ier_flag meanings:
+    #   0: NORMAL_TERMINATION - no fatal error but convergence criterion not reached
+    #   11: SUCCESSFUL_TERMINATION - ftolv convergence criterion satisfied
+    # Both are acceptable outcomes for this test.
     assert cpp_output.wout.ier_flag in (0, 11), (
         f"C++ multigrid did not converge: ier_flag={cpp_output.wout.ier_flag}"
     )

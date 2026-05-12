@@ -74,8 +74,13 @@ def interpolate_to_new_radial_resolution(
     zmns_old = wout.zmns
     lmns_full_old = wout.lmns_full
 
-    # Compute radial grids in sqrt(s) space
-    # The C++ code uses sqrt(s) as the interpolation coordinate
+    # Compute radial grids in sqrt(s) space.
+    # VMEC uses sqrt(s) as the interpolation coordinate because:
+    # 1. The Fourier coefficients for odd-m modes (m=1,3,5,...) have an inherent
+    #    sqrt(s) dependence near the magnetic axis due to the coordinate singularity.
+    # 2. Interpolating in sqrt(s) space gives better accuracy near the axis,
+    #    where the flux surfaces are closely spaced in physical space.
+    # 3. This choice matches the radial grid spacing used internally by VMEC.
     old_sqrt_s_full = np.sqrt(np.linspace(0.0, 1.0, ns_old, endpoint=True))
     new_sqrt_s_full = np.sqrt(np.linspace(0.0, 1.0, ns_new, endpoint=True))
 
@@ -259,6 +264,8 @@ def run_with_python_multigrid(
 
         logger.info(
             f"Multigrid step {igrid + 1}/{num_grids} completed: "
+            # fsqt can be empty if return_outputs_even_if_not_converged=True
+            # and VMEC fails very early in the iteration
             f"fsqt={vmec_output.wout.fsqt[-1] if len(vmec_output.wout.fsqt) > 0 else 'N/A'}"
         )
 
