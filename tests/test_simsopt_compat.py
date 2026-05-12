@@ -194,17 +194,13 @@ def test_run_hot_restart_matches_core_api_force_residual_trace_exactly():
         vmec.output_quantities.wout.force_residual_lambda,
         core_api_output.wout.force_residual_lambda,
     )
-    np.testing.assert_allclose(
+    np.testing.assert_array_equal(
         vmec.output_quantities.wout.aspect,
         core_api_output.wout.aspect,
-        rtol=0.0,
-        atol=0.0,
     )
-    np.testing.assert_allclose(
+    np.testing.assert_array_equal(
         vmec.output_quantities.wout.volume_p,
         core_api_output.wout.volume_p,
-        rtol=0.0,
-        atol=0.0,
     )
     np.testing.assert_allclose(
         vmec.output_quantities.wout.iotaf,
