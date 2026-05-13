@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778614215285,
+  "lastUpdate": 1778658680261,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17390,6 +17390,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00962140522294021",
             "extra": "mean: 9.139105359333314 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9b2e1e066106a9100d31aad811677c8f23fb8456",
+          "message": "Update copilot-setup-steps.yml",
+          "timestamp": "2026-05-13T09:45:01+02:00",
+          "tree_id": "213971aa8b812e90eea7f78beeed6a4d98f68681",
+          "url": "https://github.com/proximafusion/vmecpp/commit/9b2e1e066106a9100d31aad811677c8f23fb8456"
+        },
+        "date": 1778658679327,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.0321190527729116,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0008238157034833618",
+            "extra": "mean: 329.8023536000301 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 3.0239257468403586,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0037535641835226325",
+            "extra": "mean: 330.6959508000091 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2797349551768005,
+            "unit": "iter/sec",
+            "range": "stddev: 0.05083553672040978",
+            "extra": "mean: 3.5748124483333563 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5858389872839583,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004127303194521755",
+            "extra": "mean: 1.7069536539999792 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5673365082744957,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01815952749692213",
+            "extra": "mean: 1.762622333333373 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.4339720737075515,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01902946520564303",
+            "extra": "mean: 2.3042957383333564 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10483779230277211,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008001660070536544",
+            "extra": "mean: 9.538545004000033 sec\nrounds: 3"
           }
         ]
       }
