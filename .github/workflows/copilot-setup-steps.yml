@@ -44,4 +44,7 @@ jobs:
                       python3-dev
 
             - name: Install vmecpp with test dependencies
-              run: pip install -e .[test]
+              run: |
+                  pip install pre-commit
+                  pre-commit install
+                  pip install -e .[test]
