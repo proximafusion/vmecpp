@@ -18,7 +18,7 @@
 
 namespace vmecpp {
 
-// Interleaved real/imag pair -- same memory layout as fftw_complex (double[2]).
+// Interleaved real/imag pair
 using FftComplex = double[2];
 
 // ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ ToroidalFftPlans::~ToroidalFftPlans() {
 // Internal helpers for filling the complex half-spectrum (c2r input)
 // ---------------------------------------------------------------------------
 //
-// FFTX iprdftbat produces (identical to FFTW c2r):
+// FFTX iprdftbat produces:
 //   f[k] = X[0] + 2*Sum_{n=1}^{N/2-1}[Re(X[n])*cos(2*pi*n*k/N)
 //                                       - Im(X[n])*sin(2*pi*n*k/N)]
 //          + Re(X[N/2])*(-1)^k
@@ -274,7 +274,7 @@ void FourierToReal3DSymmFastPoloidalFft(
     }
 
     // Single 12*mpol batched c2r for the entire surface via FFTX.
-    // FFTX input does NOT get destroyed (unlike FFTW c2r).
+    // FFTX input does NOT get destroyed.
     plans.fftx_full_c2r_run(Y_batch.data(), X_batch.data());
 
     // === Poloidal accumulation per m ===
