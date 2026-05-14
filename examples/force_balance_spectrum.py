@@ -21,8 +21,8 @@ def _compute_vmec_sizes() -> tuple[int, int, int, int, int]:
     n_zeta = (
         vmec_input.nzeta if vmec_input.nzeta > 0 else max(1, 2 * vmec_input.ntor + 4)
     )
-    n_theta_even = 2 * (vmec_input.ntheta // 2)
-    n_theta_reduced = n_theta_even // 2 + 1
+    n_theta_reduced = output.jxbout.jxb_gradp.shape[1] // n_zeta
+    n_theta_even = 2 * (n_theta_reduced - 1)
     max_m = n_theta_even // 2
     max_n = n_zeta // 2
     return n_zeta, n_theta_even, n_theta_reduced, max_m, max_n
