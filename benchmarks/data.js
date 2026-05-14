@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778672967931,
+  "lastUpdate": 1778748864511,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17609,6 +17609,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.011076761653524631",
             "extra": "mean: 9.57666297299996 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "asim48@gmail.com",
+            "name": "Asim Arshad",
+            "username": "asim48-ctrl"
+          },
+          "committer": {
+            "email": "130992531+jons-pf@users.noreply.github.com",
+            "name": "Jonathan Schilling",
+            "username": "jons-pf"
+          },
+          "distinct": true,
+          "id": "4667d5dfa147f908c9f8d6235977e5536d70a1d5",
+          "message": "Fix force balance spectrum example shape",
+          "timestamp": "2026-05-14T10:49:46+02:00",
+          "tree_id": "aafb2c13b94ea6c1640ce5ac74433f563d72b95d",
+          "url": "https://github.com/proximafusion/vmecpp/commit/4667d5dfa147f908c9f8d6235977e5536d70a1d5"
+        },
+        "date": 1778748862850,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.8967060820535258,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0026083237526180448",
+            "extra": "mean: 345.2196984000125 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.886478214407822,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002125141738392772",
+            "extra": "mean: 346.4429404000043 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.27452101572946686,
+            "unit": "iter/sec",
+            "range": "stddev: 0.043363154516899385",
+            "extra": "mean: 3.6427083636666757 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5875984989919316,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0022451859979570614",
+            "extra": "mean: 1.7018423323333423 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5696997887717824,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009310656383567888",
+            "extra": "mean: 1.7553104630000007 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.48296600022809494,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011552388263706777",
+            "extra": "mean: 2.0705391260000092 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10801556643133961,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005453738703869209",
+            "extra": "mean: 9.257924880999932 sec\nrounds: 3"
           }
         ]
       }
