@@ -73,7 +73,7 @@ jobs:
             python -m pip install -v .[test]
           fi
       - name: Test package
-        run: python -m pytest tests/ -m "not examples"
+        run: python -m pytest tests/
       - name: Test docstring examples
         # All except for __main__.py because this crashes doctest.
         run: python -m doctest $(git ls-files src/ | grep '\.py$' | grep -v '/__main__.py$')
@@ -97,4 +97,16 @@ jobs:
       - name: Install package
         run: python -m pip install .[test]
       - name: Test example scripts
-        run: python -m pytest tests/ -m examples
+        run: |
+          # Scripts that require unavailable external assets or optional dependencies.
+          SKIP="compare_vmecpp_to_parvmec.py mpi_finite_difference.py simsopt_qh_fixed_resolution.py visualize_magnetic_field.py"
+          export MPLBACKEND=Agg OMP_NUM_THREADS=1
+          for script in examples/*.py; do
+            name=$(basename "$script")
+            if echo "$SKIP" | grep -qw "$name"; then
+              echo "SKIP $script"
+              continue
+            fi
+            echo "RUN $script"
+            python "$script"
+          done

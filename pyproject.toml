@@ -176,10 +176,5 @@ pythonVersion = "3.10"
 venvPath = "."
 venv = ".venv"
 
-[tool.pytest.ini_options]
-markers = [
-  "examples: tests that execute scripts from examples/",
-]
-
 [tool.docformatter]
 black = true  # Enables mode that plays nice with black, e.g. sets line length to 88.
