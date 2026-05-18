@@ -71,7 +71,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 This is a quick overview of the three main ways in which you can use VMEC++.
 See [examples/](https://github.com/proximafusion/vmecpp/blob/main/examples/) for some actual example scripts.
 Suitable input files are found in [`examples/data`](https://github.com/proximafusion/vmecpp/blob/main/examples/data).
-If unsure where to start, we suggest to give the [`w7x`](https://github.com/proximafusion/vmecpp/blob/main/examples/data/w7x.json) case a try, which is a five-field-period stellarator case for the [Wendelstein 7-X](https://www.ipp.mpg.de/w7x) stellarator.
+If unsure where to start, we suggest giving the [`w7x`](https://github.com/proximafusion/vmecpp/blob/main/examples/data/w7x.json) case a try, which is a five-field-period stellarator case for the [Wendelstein 7-X](https://www.ipp.mpg.de/w7x) stellarator.
 
 For example [`examples/force_residual_convergence.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/force_residual_convergence.py) runs fixed-boundary VMEC++ on the W7-X case and plots the convergence of the force residuals.
 <!-- SPHINX-END1 -->
@@ -214,7 +214,7 @@ brew install gcc cmake
 ```shell
 # tell cmake where to find gfortran and gcc as they have non-standard names
 export FC=$(which gfortran-14)
-# OpenMP headers live under a different path newer OS-X versions, so CMake can't find them
+# OpenMP headers live under a different path on newer OS-X versions, so CMake can't find them
 export OpenMP_ROOT=$(brew --prefix)/opt/libomp
 export HDF5_ROOT=$(brew --prefix hdf5)
 python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
