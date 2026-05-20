@@ -84,25 +84,34 @@ print("-" * 50)
 # ------------------------------------------------------------------
 print()
 print("Step 4: Initialising magnetic field via libascot.so ...")
-a5.input_init(bfield=True)
+try:
+    a5.input_init(bfield=True)
+except Exception as e:
+    msg = (
+        f"Failed to initialise the magnetic field: {e}\n"
+        "Ensure libascot.so is compiled and a5py is installed via setup_ascot5.sh."
+    )
+    raise RuntimeError(msg) from e
 
 r_query = 6.2  # metres
 z_query = 0.0
 phi_query = 0.0
 t_query = 0.0
 
-result = a5.input_eval(r_query, phi_query, z_query, t_query, "psi", "rho")
-psi_val = result[0]
-rho_val = result[1]
+try:
+    result = a5.input_eval(r_query, phi_query, z_query, t_query, "psi", "rho")
+    psi_val = result[0]
+    rho_val = result[1]
 
-print(
-    f"  Magnetic flux at (R={r_query} m, phi={phi_query}, z={z_query} m, t={t_query}):"
-)
-print(f"    psi = {psi_val}")
-print(f"    rho = {rho_val}")
-
-a5.input_free(bfield=True)
-print("  Magnetic field freed from memory.")
+    print(
+        f"  Magnetic flux at (R={r_query} m, phi={phi_query}, z={z_query} m,"
+        f" t={t_query}):"
+    )
+    print(f"    psi = {psi_val}")
+    print(f"    rho = {rho_val}")
+finally:
+    a5.input_free(bfield=True)
+    print("  Magnetic field freed from memory.")
 
 print()
 print("=== Demo completed successfully ===")
