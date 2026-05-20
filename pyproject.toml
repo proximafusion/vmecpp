@@ -168,10 +168,11 @@ ignore = [
 "tests/**" = ["T20"]
 "**/*_test.py" = ["T20"]
 "examples/**" = ["T201"]
+"experimental/**" = ["T201"]
 
 [tool.pyright]
 include = ["src"]
-exclude = ["build", "**/__pycache__", "src/vmecpp/cpp/bazel-cpp/"]
+exclude = ["build", "**/__pycache__", "src/vmecpp/cpp/bazel-cpp/", "experimental/"]
 pythonVersion = "3.10"
 venvPath = "."
 venv = ".venv"

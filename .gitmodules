@@ -10,3 +10,6 @@
 [submodule "indata2json"]
 	path = indata2json
 	url = https://github.com/jonathanschilling/indata2json.git
+[submodule "third_party/ascot5"]
+	path = third_party/ascot5
+	url = https://github.com/ascot4fusion/ascot5.git
