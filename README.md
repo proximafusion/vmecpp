@@ -40,7 +40,7 @@ Compared to its Fortran predecessors, VMEC++:
 - has a zero-crash policy and reports issues via standard Python exceptions
 - allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
-- typically runs just as fast or faster
+- typically runs faster
 - comes with [substantial documentation of its internal numerics](https://github.com/proximafusion/vmecpp/blob/main/docs/the_numerics_of_vmecpp.pdf)
 
 VMEC++ can run on a laptop, but it is a suitable component for large-scale stellarator optimization pipelines.
@@ -64,6 +64,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [Arch](#arch-linux)
   - [Fedora](#fedora)
   - [MacOS](#macos)
+  - [With Nix](#with-nix)
   - [As part of a conda environment](#as-part-of-a-conda-environment)
   - [C++ build from source](#c-build-from-source)
 - [Hot restart](#hot-restart)
@@ -79,7 +80,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 This is a quick overview of the three main ways in which you can use VMEC++.
 See [examples/](https://github.com/proximafusion/vmecpp/blob/main/examples/) for some actual example scripts.
 Suitable input files are found in [`examples/data`](https://github.com/proximafusion/vmecpp/blob/main/examples/data).
-If unsure where to start, we suggest to give the [`w7x`](https://github.com/proximafusion/vmecpp/blob/main/examples/data/w7x.json) case a try, which is a five-field-period stellarator case for the [Wendelstein 7-X](https://www.ipp.mpg.de/w7x) stellarator.
+If unsure where to start, we suggest giving the [`w7x`](https://github.com/proximafusion/vmecpp/blob/main/examples/data/w7x.json) case a try, which is a five-field-period stellarator case for the [Wendelstein 7-X](https://www.ipp.mpg.de/w7x) stellarator.
 
 For example [`examples/force_residual_convergence.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/force_residual_convergence.py) runs fixed-boundary VMEC++ on the W7-X case and plots the convergence of the force residuals.
 <!-- SPHINX-END1 -->
@@ -222,11 +223,25 @@ brew install gcc cmake
 ```shell
 # tell cmake where to find gfortran and gcc as they have non-standard names
 export FC=$(which gfortran-14)
-# OpenMP headers live under a different path newer OS-X versions, so CMake can't find them
+# OpenMP headers live under a different path on newer OS-X versions, so CMake can't find them
 export OpenMP_ROOT=$(brew --prefix)/opt/libomp
 export HDF5_ROOT=$(brew --prefix hdf5)
 python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
 ```
+
+### With Nix (Community support)
+
+For a Linux development shell with the latest supported Python version:
+
+```shell
+nix develop
+python --version
+python -m pip install -e .[test]
+```
+
+The shell provides Python 3.13 together with the native build dependencies needed
+to build and test VMEC++, including CMake, GCC, GFortran, HDF5, NetCDF, LAPACK,
+OpenMPI, and Git LFS.
 
 ### As part of a conda environment
 
@@ -309,6 +324,7 @@ VMEC++:
 - allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
 - employs the same parallelization strategy as Fortran VMEC, but VMEC++ leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization: as a consequence it cannot parallelize over multiple nodes
+- Uses FFT kernels optimized for small mode numbers [generated using FFTX](https://github.com/spiral-software/fftx) instead of DFT for supported resolutions. They give a 10-20% speedup relative to the DFT counterparts.
 - implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
 
 ### Limitations with respect to the Fortran implementations
@@ -340,7 +356,7 @@ VMEC++:
    * `xnpot` - not declared yet
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
-- VMEC++ only computes the output quantities if the run converged
+- VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
 - The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
 - The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
 

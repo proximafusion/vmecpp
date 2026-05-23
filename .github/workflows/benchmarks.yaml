@@ -32,6 +32,7 @@ jobs:
 
       - name: Run benchmarks
         run: |
+          export OMP_WAIT_POLICY=active
           pytest benchmarks/test_benchmarks.py --benchmark-json=benchmark_results.json
 
       - name: Compare benchmark result

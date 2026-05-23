@@ -430,7 +430,7 @@ class VmecInput(BaseModelWithNumpy):
         # Arrays from C++ have mpol+1 rows, but we expect mpol rows in the Python model
         expected_shape = (self.mpol, 2 * self.ntor + 1)
         cpp_shape = (self.mpol + 1, 2 * self.ntor + 1)
-        
+
         for field in mpol_two_ntor_plus_one_fields:
             current_value = getattr(self, field)
 
@@ -441,7 +441,7 @@ class VmecInput(BaseModelWithNumpy):
             shape = np.shape(current_value)
             # Arrays from C++ have mpol+1 rows, which is correct
             # Only resize if the shape is completely wrong
-            if shape != expected_shape and shape != cpp_shape:
+            if shape not in (expected_shape, cpp_shape):
                 setattr(
                     self,
                     field,
@@ -626,11 +626,11 @@ class VmecInput(BaseModelWithNumpy):
                     # If shapes don't match, we need to handle it carefully
                     if value.shape[0] > dest.shape[0]:
                         # Source has more rows, truncate
-                        dest[:] = value[:dest.shape[0]]
+                        dest[:] = value[: dest.shape[0]]
                     else:
                         # Source has fewer rows, pad with zeros
-                        dest[:value.shape[0]] = value
-                        dest[value.shape[0]:] = 0
+                        dest[: value.shape[0]] = value
+                        dest[value.shape[0] :] = 0
                 else:
                     dest[:] = value
 
@@ -1225,7 +1225,7 @@ class VmecWOut(BaseModelWithNumpy):
     """Mercier stability criterion contribution due to geodesic curvature."""
 
     niter: int
-    """Maximum number of force-balance iterations allowed."""
+    """Number of force-balance iterations taken to converge."""
 
     beta_vol: jt.Float[np.ndarray, "n_surfaces"]
     """Flux-surface averaged plasma beta on half-grid."""
