@@ -121,6 +121,9 @@ exclude_lines = [
   "if TYPE_CHECKING:",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests", "benchmarks"]
+
 [tool.ruff]
 line-length = 88
 
