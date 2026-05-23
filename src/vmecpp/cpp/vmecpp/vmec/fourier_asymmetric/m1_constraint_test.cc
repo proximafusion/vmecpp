@@ -2,8 +2,6 @@
 // <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
-#include "vmecpp/vmec/fourier_asymmetric/fourier_asymmetric.h"
-
 #include <cmath>
 #include <iostream>
 #include <vector>
@@ -11,6 +9,7 @@
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
 #include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/vmec/fourier_asymmetric/fourier_asymmetric.h"
 
 namespace vmecpp {
 
@@ -28,8 +27,10 @@ TEST(M1ConstraintTest, EnsureM1ConstrainedSymmetric) {
   // Create test arrays for boundary coefficients
   std::vector<double> rbss((ntor + 1) * (mpol + 1), 0.0);
   std::vector<double> zbcs((ntor + 1) * (mpol + 1), 0.0);
-  std::vector<double> rbsc((ntor + 1) * (mpol + 1), 0.0);  // Not used for lasym=false
-  std::vector<double> zbcc((ntor + 1) * (mpol + 1), 0.0);  // Not used for lasym=false
+  std::vector<double> rbsc((ntor + 1) * (mpol + 1),
+                           0.0);  // Not used for lasym=false
+  std::vector<double> zbcc((ntor + 1) * (mpol + 1),
+                           0.0);  // Not used for lasym=false
 
   // Set initial values for m=1 modes
   // Index: n * (mpol + 1) + m = n * 3 + 1
@@ -42,7 +43,7 @@ TEST(M1ConstraintTest, EnsureM1ConstrainedSymmetric) {
   EnsureM1Constrained(sizes, absl::MakeSpan(rbss), absl::MakeSpan(zbcs),
                       absl::MakeSpan(rbsc), absl::MakeSpan(zbcc));
 
-  // Verify constraint coupling: 
+  // Verify constraint coupling:
   // rbss[n,1] = (original_rbss + zbcs) / 2
   // zbcs[n,1] = (original_rbss - zbcs) / 2
   EXPECT_NEAR(rbss[0 * 3 + 1], (1.0 + 0.5) / 2.0, 1e-10);  // 0.75
@@ -63,8 +64,10 @@ TEST(M1ConstraintTest, EnsureM1ConstrainedAsymmetric) {
   Sizes sizes(lasym, nfp, mpol, ntor, ntheta, nzeta);
 
   // Create test arrays for boundary coefficients
-  std::vector<double> rbss((ntor + 1) * (mpol + 1), 0.0);  // Not used for asymmetric test
-  std::vector<double> zbcs((ntor + 1) * (mpol + 1), 0.0);  // Not used for asymmetric test
+  std::vector<double> rbss((ntor + 1) * (mpol + 1),
+                           0.0);  // Not used for asymmetric test
+  std::vector<double> zbcs((ntor + 1) * (mpol + 1),
+                           0.0);  // Not used for asymmetric test
   std::vector<double> rbsc((ntor + 1) * (mpol + 1), 0.0);
   std::vector<double> zbcc((ntor + 1) * (mpol + 1), 0.0);
 
@@ -97,7 +100,7 @@ TEST(M1ConstraintTest, ConvertToM1Constrained) {
   int nzeta = 4;
 
   Sizes sizes(lasym, nfp, mpol, ntor, ntheta, nzeta);
-  
+
   const int num_surfaces = 10;  // Test with 10 surfaces
   const int total_size = num_surfaces * (ntor + 1) * (mpol + 1);
 
@@ -117,7 +120,7 @@ TEST(M1ConstraintTest, ConvertToM1Constrained) {
   const double scaling_factor = 1.0 / sqrt(2.0);  // jVMEC uses this scaling
 
   // Call M=1 constraint function
-  ConvertToM1Constrained(sizes, num_surfaces, absl::MakeSpan(rss_rsc), 
+  ConvertToM1Constrained(sizes, num_surfaces, absl::MakeSpan(rss_rsc),
                          absl::MakeSpan(zcs_zcc), scaling_factor);
 
   // Verify constraint coupling with scaling:
@@ -128,10 +131,12 @@ TEST(M1ConstraintTest, ConvertToM1Constrained) {
       const int idx = j * (ntor + 1) * (mpol + 1) + n * (mpol + 1) + 1;
       const double original_rss_rsc = 10.0 + j + n;
       const double original_zcs_zcc = 5.0 + j + n;
-      
-      const double expected_rss_rsc = scaling_factor * (original_rss_rsc + original_zcs_zcc);
-      const double expected_zcs_zcc = scaling_factor * (original_rss_rsc - original_zcs_zcc);
-      
+
+      const double expected_rss_rsc =
+          scaling_factor * (original_rss_rsc + original_zcs_zcc);
+      const double expected_zcs_zcc =
+          scaling_factor * (original_rss_rsc - original_zcs_zcc);
+
       EXPECT_NEAR(rss_rsc[idx], expected_rss_rsc, 1e-10);
       EXPECT_NEAR(zcs_zcc[idx], expected_zcs_zcc, 1e-10);
     }

@@ -14,7 +14,8 @@ TEST(DebugOutputComparisonTest, VMECPlusPlusDetailedOutput) {
   std::cout << "1. Load exact same configuration as jVMEC test\n";
   std::cout << "2. Add debug prints at every critical calculation step\n";
   std::cout << "3. Output Jacobian components (tau1, tau2) at each surface\n";
-  std::cout << "4. Log geometry arrays (R, Z, dR/dtheta, dZ/dtheta) at each theta\n";
+  std::cout
+      << "4. Log geometry arrays (R, Z, dR/dtheta, dZ/dtheta) at each theta\n";
 
   // Use the proven asymmetric tokamak configuration
   std::string input_file =
@@ -57,7 +58,8 @@ TEST(DebugOutputComparisonTest, VMECPlusPlusDetailedOutput) {
   std::cout << "\nExpected debug output format:\n";
   std::cout << "VMEC++ DEBUG: surface=0, theta=0.000: R=6.000, Z=0.000\n";
   std::cout << "VMEC++ DEBUG: tau[j=0] = 0.850 (tau1=0.900, tau2=-0.050)\n";
-  std::cout << "VMEC++ DEBUG: Jacobian check: minTau=0.820, maxTau=0.880, product=0.722 > 0 ✓\n";
+  std::cout << "VMEC++ DEBUG: Jacobian check: minTau=0.820, maxTau=0.880, "
+               "product=0.722 > 0 ✓\n";
 
   EXPECT_TRUE(true) << "VMEC++ debug output framework designed";
 }
@@ -150,10 +152,14 @@ TEST(DebugOutputComparisonTest, ThreeCodeComparisonFramework) {
   std::cout << "4. Identify exact point where VMEC++ diverges\n";
 
   std::cout << "\nStandardized debug format (CSV-like):\n";
-  std::cout << "CODE,STAGE,SURFACE,THETA,R,Z,dR_dtheta,dZ_dtheta,tau,tau1,tau2\n";
-  std::cout << "VMEC++,GEOM,0,0.000,6.000,0.000,0.000,1.000,0.850,0.900,-0.050\n";
-  std::cout << "jVMEC,GEOM,0,0.000,6.000,0.000,0.000,1.000,0.850,0.900,-0.050\n";
-  std::cout << "EDU_VMEC,GEOM,0,0.000,6.000,0.000,0.000,1.000,0.850,0.900,-0.050\n";
+  std::cout
+      << "CODE,STAGE,SURFACE,THETA,R,Z,dR_dtheta,dZ_dtheta,tau,tau1,tau2\n";
+  std::cout
+      << "VMEC++,GEOM,0,0.000,6.000,0.000,0.000,1.000,0.850,0.900,-0.050\n";
+  std::cout
+      << "jVMEC,GEOM,0,0.000,6.000,0.000,0.000,1.000,0.850,0.900,-0.050\n";
+  std::cout
+      << "EDU_VMEC,GEOM,0,0.000,6.000,0.000,0.000,1.000,0.850,0.900,-0.050\n";
 
   std::cout << "\nComparison stages:\n";
   std::cout << "1. INIT: Initial configuration and array setup\n";

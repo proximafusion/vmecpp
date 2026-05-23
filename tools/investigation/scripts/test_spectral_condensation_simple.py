@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Simple test of asymmetric spectral condensation."""
 
-import vmecpp
 import json
 
+import vmecpp
+
 # Load test case
-with open("test_symmetric_simple.json", "r") as f:
+with open("test_symmetric_simple.json") as f:
     data = json.load(f)
 
 # Make it asymmetric
@@ -14,7 +15,7 @@ data["lasym"] = True
 # Add asymmetric perturbations
 for i, (m, n) in enumerate(zip(data["xm"], data["xn"])):
     if m == 1 and n == 0:
-        data["rbs"][i] = 0.01  # R sin component  
+        data["rbs"][i] = 0.01  # R sin component
         data["zbc"][i] = 0.01  # Z cos component
         break
 

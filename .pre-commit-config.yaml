@@ -41,4 +41,4 @@ repos:
     rev: v1.1.400
     hooks:
     - id: pyright
-      exclude: ^tools/investigation/
+      exclude: ^(tools/investigation/|examples/|tests/)

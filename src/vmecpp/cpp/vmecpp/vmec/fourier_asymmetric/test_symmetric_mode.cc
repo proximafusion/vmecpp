@@ -43,11 +43,11 @@ TEST(SymmetricModeTest, BasicSymmetricTokamak) {
   const int array_size = (indata.mpol + 1) * (2 * indata.ntor + 1);
   indata.rbc.resize(array_size, 0.0);
   indata.zbs.resize(array_size, 0.0);
-  
+
   // Only symmetric coefficients
-  indata.rbc[0] = 1.0;   // R00 - major radius
-  indata.rbc[1] = 0.3;   // R10 - minor radius  
-  indata.zbs[1] = 0.3;   // Z10 - elongation
+  indata.rbc[0] = 1.0;  // R00 - major radius
+  indata.rbc[1] = 0.3;  // R10 - minor radius
+  indata.zbs[1] = 0.3;  // Z10 - elongation
 
   // Axis arrays (symmetric only)
   indata.raxis_c = {1.0};  // Match R00
@@ -57,18 +57,18 @@ TEST(SymmetricModeTest, BasicSymmetricTokamak) {
   std::cout << "  lasym = " << indata.lasym << " (SYMMETRIC)" << std::endl;
   std::cout << "  mpol = " << indata.mpol << ", ntor = " << indata.ntor
             << std::endl;
-  std::cout << "  RBC(0,0) = " << indata.rbc[0] << " (major radius)" << std::endl;
-  std::cout << "  RBC(0,1) = " << indata.rbc[1] << " (minor radius)" << std::endl;
+  std::cout << "  RBC(0,0) = " << indata.rbc[0] << " (major radius)"
+            << std::endl;
+  std::cout << "  RBC(0,1) = " << indata.rbc[1] << " (minor radius)"
+            << std::endl;
   std::cout << "  ZBS(0,1) = " << indata.zbs[1] << " (elongation)" << std::endl;
 
-  std::cout << "\nRunning symmetric tokamak (MUST PASS)..."
-            << std::endl;
+  std::cout << "\nRunning symmetric tokamak (MUST PASS)..." << std::endl;
 
   const auto output = vmecpp::run(indata);
 
   if (output.ok()) {
-    std::cout << "\n✅ SUCCESS: Symmetric mode works correctly!"
-              << std::endl;
+    std::cout << "\n✅ SUCCESS: Symmetric mode works correctly!" << std::endl;
     const auto& wout = output->wout;
     std::cout << "  Volume = " << wout.volume_p << std::endl;
     std::cout << "  Aspect ratio = " << wout.aspect << std::endl;
@@ -78,13 +78,11 @@ TEST(SymmetricModeTest, BasicSymmetricTokamak) {
     EXPECT_GT(wout.aspect, 0.0) << "Aspect ratio should be positive";
 
   } else {
-    std::cout << "\n❌ CRITICAL: Symmetric mode failed!"
-              << std::endl;
+    std::cout << "\n❌ CRITICAL: Symmetric mode failed!" << std::endl;
     std::cout << "Error: " << output.status() << std::endl;
 
     // This is a critical regression - symmetric mode MUST work
-    FAIL() << "🚨 REGRESSION: Symmetric mode must work: "
-           << output.status();
+    FAIL() << "🚨 REGRESSION: Symmetric mode must work: " << output.status();
   }
 }
 

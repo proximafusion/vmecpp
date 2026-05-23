@@ -30,8 +30,10 @@ TEST(InputValidationTest, ValidateAsymmetricInputStructure) {
   // Calculate expected array sizes
   int coeff_size_symm = (indata.mpol + 1) * (2 * indata.ntor + 1);
   int coeff_size_asym = indata.mpol * (2 * indata.ntor + 1);
-  std::cout << "Calculated symmetric coefficient array size: " << coeff_size_symm << std::endl;
-  std::cout << "Calculated asymmetric coefficient array size: " << coeff_size_asym << std::endl;
+  std::cout << "Calculated symmetric coefficient array size: "
+            << coeff_size_symm << std::endl;
+  std::cout << "Calculated asymmetric coefficient array size: "
+            << coeff_size_asym << std::endl;
 
   // Initialize arrays
   indata.rbc.resize(coeff_size_symm, 0.0);
@@ -48,7 +50,8 @@ TEST(InputValidationTest, ValidateAsymmetricInputStructure) {
   // Test index calculations for different modes
   std::cout << "\nTesting index calculations:" << std::endl;
 
-  for (int m = 0; m <= indata.mpol; ++m) {  // Note: m goes up to mpol for symmetric arrays
+  for (int m = 0; m <= indata.mpol;
+       ++m) {  // Note: m goes up to mpol for symmetric arrays
     for (int n = -indata.ntor; n <= indata.ntor; ++n) {
       int idx = m * (2 * indata.ntor + 1) + (n + indata.ntor);
       std::cout << "  m=" << m << ", n=" << n << " -> idx=" << idx;
@@ -59,7 +62,8 @@ TEST(InputValidationTest, ValidateAsymmetricInputStructure) {
         // Test setting coefficient
         indata.rbc[idx] = 1.0 + m + 0.1 * n;
         indata.zbs[idx] = 2.0 + m + 0.1 * n;
-        if (indata.lasym && m < indata.mpol) {  // Asymmetric arrays don't include m=mpol
+        if (indata.lasym &&
+            m < indata.mpol) {  // Asymmetric arrays don't include m=mpol
           int idx_asym = m * (2 * indata.ntor + 1) + (n + indata.ntor);
           indata.rbs[idx_asym] = 0.01 * (1.0 + m + 0.1 * n);
           indata.zbc[idx_asym] = 0.01 * (2.0 + m + 0.1 * n);
@@ -111,7 +115,8 @@ TEST(InputValidationTest, ValidateAsymmetricInputStructure) {
             << std::endl;
 
   if (indata.lasym) {
-    // For asymmetric arrays, only m=0 exists (since mpol=1 and asymmetric arrays exclude m=mpol)
+    // For asymmetric arrays, only m=0 exists (since mpol=1 and asymmetric
+    // arrays exclude m=mpol)
     std::cout << "  idx(0,0) = " << idx_00 << ", rbs = " << indata.rbs[idx_00]
               << std::endl;
     std::cout << "  idx(0,0) = " << idx_00 << ", zbc = " << indata.zbc[idx_00]

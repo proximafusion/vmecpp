@@ -1,57 +1,58 @@
 #!/usr/bin/env python3
-"""
-Test to compare initialization between symmetric and asymmetric cases
-to find the root cause of dRdTheta being zero in asymmetric mode.
-"""
+"""Test to compare initialization between symmetric and asymmetric cases to find the
+root cause of dRdTheta being zero in asymmetric mode."""
 
-from vmecpp.cpp._vmecpp import Solver
+
 import numpy as np
-import json
+from vmecpp.cpp._vmecpp import Solver
+
 
 def run_single_iteration(config_dict, name):
-    """Run exactly one iteration and capture state"""
+    """Run exactly one iteration and capture state."""
     print(f"\n=== {name} ===")
     print(f"LASYM: {config_dict['LASYM']}")
-    
+
     solver = Solver(config_dict, verbose=True)
-    
+
     # Check initial state before any iteration
-    print(f"\nBefore iteration:")
+    print("\nBefore iteration:")
     hs = solver.handover_storage()
-    
+
     # Check R and Z arrays
     r_check = np.any(hs.R != 0)
     z_check = np.any(hs.Z != 0)
     print(f"R non-zero: {r_check}, Z non-zero: {z_check}")
-    
+
     # Check derivatives
     drdu_check = np.any(hs.dRdTheta != 0)
     dzdu_check = np.any(hs.dZdTheta != 0)
     print(f"dRdTheta non-zero: {drdu_check}, dZdTheta non-zero: {dzdu_check}")
-    
+
     # Run one iteration
     try:
         result = solver.iterate(1)
-        print(f"\nAfter 1 iteration:")
+        print("\nAfter 1 iteration:")
         print(f"Status: {result}")
-        
+
         hs = solver.handover_storage()
-        
+
         # Check derivatives again
         drdu_check = np.any(hs.dRdTheta != 0)
         dzdu_check = np.any(hs.dZdTheta != 0)
         print(f"dRdTheta non-zero: {drdu_check}, dZdTheta non-zero: {dzdu_check}")
-        
+
         if not drdu_check or not dzdu_check:
             print("ERROR: Derivatives are zero!")
             # Print some values
             print(f"dRdTheta sample: {hs.dRdTheta.flatten()[:10]}")
             print(f"dZdTheta sample: {hs.dZdTheta.flatten()[:10]}")
-            
+
     except Exception as e:
         print(f"ERROR during iteration: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 # Simple symmetric case
 symmetric_config = {
@@ -78,7 +79,7 @@ symmetric_config = {
     "RAXIS_CC": [10.0],
     "ZAXIS_CS": [0.0],
     "RBC": {"0_0": 10.0, "1_0": 1.0},
-    "ZBS": {"1_0": 1.0}
+    "ZBS": {"1_0": 1.0},
 }
 
 # Asymmetric version of the same

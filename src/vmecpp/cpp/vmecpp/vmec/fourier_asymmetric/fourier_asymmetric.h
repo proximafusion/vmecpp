@@ -21,13 +21,13 @@ void FourierToReal3DAsymmFastPoloidal(
     absl::Span<const double> rmncs,  // Asymmetric
     absl::Span<const double> zmnsc, absl::Span<const double> zmncs,
     absl::Span<const double> zmncc,  // Asymmetric
-    absl::Span<const double> zmnss,  // Asymmetric  
+    absl::Span<const double> zmnss,  // Asymmetric
     absl::Span<const double> lmnsc, absl::Span<const double> lmncs,
     absl::Span<const double> lmncc,  // Asymmetric CRITICAL
     absl::Span<const double> lmnss,  // Asymmetric CRITICAL
     absl::Span<double> r_real, absl::Span<double> z_real,
     absl::Span<double> lambda_real,
-    absl::Span<double> ru_real,  // ADD: dR/dtheta
+    absl::Span<double> ru_real,   // ADD: dR/dtheta
     absl::Span<double> zu_real);  // ADD: dZ/dtheta
 
 // NEW: Forward transform that outputs separate symmetric and antisymmetric
@@ -38,18 +38,18 @@ void FourierToReal3DAsymmFastPoloidalSeparated(
     absl::Span<const double> rmnsc,  // Asymmetric
     absl::Span<const double> rmncs,  // Asymmetric
     absl::Span<const double> zmnsc, absl::Span<const double> zmncs,
-    absl::Span<const double> zmncc,   // Asymmetric
-    absl::Span<const double> zmnss,   // Asymmetric
-    absl::Span<double> r_sym,         // SEPARATE symmetric output [0, π]
-    absl::Span<double> r_asym,        // SEPARATE antisymmetric output [0, π]
-    absl::Span<double> z_sym,         // SEPARATE symmetric output [0, π]
-    absl::Span<double> z_asym,        // SEPARATE antisymmetric output [0, π]
-    absl::Span<double> lambda_sym,    // SEPARATE symmetric output [0, π]
+    absl::Span<const double> zmncc,  // Asymmetric
+    absl::Span<const double> zmnss,  // Asymmetric
+    absl::Span<double> r_sym,        // SEPARATE symmetric output [0, π]
+    absl::Span<double> r_asym,       // SEPARATE antisymmetric output [0, π]
+    absl::Span<double> z_sym,        // SEPARATE symmetric output [0, π]
+    absl::Span<double> z_asym,       // SEPARATE antisymmetric output [0, π]
+    absl::Span<double> lambda_sym,   // SEPARATE symmetric output [0, π]
     absl::Span<double> lambda_asym,  // SEPARATE antisymmetric output [0, π]
-    absl::Span<double> ru_sym,        // SEPARATE symmetric dR/dtheta [0, π]
-    absl::Span<double> ru_asym,       // SEPARATE antisymmetric dR/dtheta [0, π]
-    absl::Span<double> zu_sym,        // SEPARATE symmetric dZ/dtheta [0, π]
-    absl::Span<double> zu_asym);      // SEPARATE antisymmetric dZ/dtheta [0, π]
+    absl::Span<double> ru_sym,       // SEPARATE symmetric dR/dtheta [0, π]
+    absl::Span<double> ru_asym,      // SEPARATE antisymmetric dR/dtheta [0, π]
+    absl::Span<double> zu_sym,       // SEPARATE symmetric dZ/dtheta [0, π]
+    absl::Span<double> zu_asym);     // SEPARATE antisymmetric dZ/dtheta [0, π]
 
 // 2D version for axisymmetric case
 void FourierToReal2DAsymmFastPoloidal(
@@ -57,13 +57,13 @@ void FourierToReal2DAsymmFastPoloidal(
     absl::Span<const double> rmnss, absl::Span<const double> rmnsc,
     absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
     absl::Span<const double> zmncs, absl::Span<const double> zmncc,
-    absl::Span<const double> zmnss, 
-    absl::Span<const double> lmnsc, absl::Span<const double> lmncs,
+    absl::Span<const double> zmnss, absl::Span<const double> lmnsc,
+    absl::Span<const double> lmncs,
     absl::Span<const double> lmncc,  // Asymmetric CRITICAL
     absl::Span<const double> lmnss,  // Asymmetric CRITICAL
-    absl::Span<double> r_real, absl::Span<double> z_real, 
+    absl::Span<double> r_real, absl::Span<double> z_real,
     absl::Span<double> lambda_real,
-    absl::Span<double> ru_real,  // ADD: dR/dtheta
+    absl::Span<double> ru_real,   // ADD: dR/dtheta
     absl::Span<double> zu_real);  // ADD: dZ/dtheta
 
 // Symmetrize real space geometry - FIXED VERSION
@@ -116,16 +116,14 @@ void SymmetrizeForces(const Sizes& sizes, absl::Span<double> force_r,
 
 // M=1 constraint coupling functions - PRIORITY 3 IMPLEMENTATION
 // Equivalent to jVMEC's Boundaries.ensureM1Constrained()
-void EnsureM1Constrained(const Sizes& sizes,
-                         absl::Span<double> rbss, absl::Span<double> zbcs,
-                         absl::Span<double> rbsc, absl::Span<double> zbcc);
+void EnsureM1Constrained(const Sizes& sizes, absl::Span<double> rbss,
+                         absl::Span<double> zbcs, absl::Span<double> rbsc,
+                         absl::Span<double> zbcc);
 
 // Equivalent to jVMEC's SpectralCondensation.convert_to_m1_constrained()
-void ConvertToM1Constrained(const Sizes& sizes, 
-                            int num_surfaces,
+void ConvertToM1Constrained(const Sizes& sizes, int num_surfaces,
                             absl::Span<double> rss_rsc,
-                            absl::Span<double> zcs_zcc,
-                            double scaling_factor);
+                            absl::Span<double> zcs_zcc, double scaling_factor);
 
 }  // namespace vmecpp
 

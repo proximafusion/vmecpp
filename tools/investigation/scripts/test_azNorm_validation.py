@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""
-Direct test to validate the azNorm=0 fix for asymmetric equilibria
-"""
+"""Direct test to validate the azNorm=0 fix for asymmetric equilibria."""
 
-import subprocess
 import json
 import os
+import subprocess
 from pathlib import Path
 
 # Test the asymmetric input file that was failing before
@@ -13,7 +11,7 @@ test_input = "/home/ert/code/vmecpp/benchmark_vmec/input.SOLOVEV_asym"
 
 # Check if the file exists
 if not Path(test_input).exists():
-    print(f"Creating test asymmetric input file...")
+    print("Creating test asymmetric input file...")
     # Create a simple asymmetric test case
     test_input = "test_asymmetric_input.json"
     test_data = {
@@ -58,19 +56,14 @@ if not Path(test_input).exists():
         "zaxis_s": [0.0],
         "raxis_s": [0.0],  # Asymmetric axis
         "zaxis_c": [0.0],  # Asymmetric axis
-        "rbc": [
-            {"m": 0, "n": 0, "value": 1.0},
-            {"m": 1, "n": 0, "value": 0.3}
-        ],
-        "zbs": [
-            {"m": 1, "n": 0, "value": 0.3}
-        ],
+        "rbc": [{"m": 0, "n": 0, "value": 1.0}, {"m": 1, "n": 0, "value": 0.3}],
+        "zbs": [{"m": 1, "n": 0, "value": 0.3}],
         "rbs": [
             {"m": 1, "n": 0, "value": 0.05}  # Asymmetric component
         ],
-        "zbc": []
+        "zbc": [],
     }
-    
+
     with open(test_input, "w") as f:
         json.dump(test_data, f, indent=2)
 
@@ -83,20 +76,23 @@ try:
         ["python", "-m", "vmecpp", test_input],
         capture_output=True,
         text=True,
-        timeout=30
+        timeout=30,
     )
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("VMEC++ Output:")
-    print("="*60)
+    print("=" * 60)
     print(result.stdout)
-    
+
     if result.stderr:
         print("\nErrors/Warnings:")
         print(result.stderr)
-    
+
     # Check for azNorm error
-    if "azNorm should never be 0.0" in result.stdout or "azNorm should never be 0.0" in result.stderr:
+    if (
+        "azNorm should never be 0.0" in result.stdout
+        or "azNorm should never be 0.0" in result.stderr
+    ):
         print("\n❌ FAILED: azNorm=0 error is still present!")
         print("The asymmetric Fourier transform fix is not working correctly.")
     elif result.returncode != 0:
@@ -104,16 +100,19 @@ try:
     else:
         print("\n✅ SUCCESS: No azNorm=0 error detected!")
         print("The asymmetric equilibrium ran successfully.")
-        
+
         # Try to check if output file was created
         if Path("wout_test_asymmetric_input.nc").exists():
             print("Output file created successfully.")
-        
+
 except subprocess.TimeoutExpired:
     print("\n❌ VMEC++ timed out after 30 seconds")
 except Exception as e:
     print(f"\n❌ Error running VMEC++: {e}")
 
 # Clean up
-if Path("test_asymmetric_input.json").exists() and test_input == "test_asymmetric_input.json":
+if (
+    Path("test_asymmetric_input.json").exists()
+    and test_input == "test_asymmetric_input.json"
+):
     os.unlink("test_asymmetric_input.json")

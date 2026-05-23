@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: MIT
 #include <gtest/gtest.h>
+
 #include <vector>
 
 #include "vmecpp/common/sizes/sizes.h"
@@ -60,13 +61,15 @@ TEST(AxisDomainTest, AsymmetricDoublesCoverage) {
   Sizes sizes_sym(false, nfp, mpol, ntor, ntheta, nzeta);
   Sizes sizes_asym(true, nfp, mpol, ntor, ntheta, nzeta);
 
-  const int sym_loop_count = sizes_sym.lasym ? sizes_sym.nZeta : sizes_sym.nZeta / 2 + 1;
-  const int asym_loop_count = sizes_asym.lasym ? sizes_asym.nZeta : sizes_asym.nZeta / 2 + 1;
+  const int sym_loop_count =
+      sizes_sym.lasym ? sizes_sym.nZeta : sizes_sym.nZeta / 2 + 1;
+  const int asym_loop_count =
+      sizes_asym.lasym ? sizes_asym.nZeta : sizes_asym.nZeta / 2 + 1;
 
-  EXPECT_EQ(sym_loop_count, 7);   // 12/2 + 1 = 7
-  EXPECT_EQ(asym_loop_count, 12); // Full domain
+  EXPECT_EQ(sym_loop_count, 7);    // 12/2 + 1 = 7
+  EXPECT_EQ(asym_loop_count, 12);  // Full domain
   EXPECT_EQ(asym_loop_count, nzeta);
-  
+
   // Asymmetric covers more domain than symmetric
   EXPECT_GT(asym_loop_count, sym_loop_count);
 }
@@ -74,22 +77,23 @@ TEST(AxisDomainTest, AsymmetricDoublesCoverage) {
 // Test the logic matches what's implemented in guess_magnetic_axis.cc
 TEST(AxisDomainTest, MatchesImplementationLogic) {
   std::vector<std::pair<bool, int>> test_cases = {
-    {false, 8},   // symmetric, nzeta=8
-    {true, 8},    // asymmetric, nzeta=8
-    {false, 16},  // symmetric, nzeta=16
-    {true, 16},   // asymmetric, nzeta=16
+      {false, 8},   // symmetric, nzeta=8
+      {true, 8},    // asymmetric, nzeta=8
+      {false, 16},  // symmetric, nzeta=16
+      {true, 16},   // asymmetric, nzeta=16
   };
 
   for (const auto& [lasym, nzeta] : test_cases) {
     Sizes sizes(lasym, 1, 3, 2, 16, nzeta);
-    
+
     // This is the exact logic from guess_magnetic_axis.cc line 383
     const int nZetaLoop = sizes.lasym ? sizes.nZeta : sizes.nZeta / 2 + 1;
-    
+
     if (lasym) {
       EXPECT_EQ(nZetaLoop, nzeta) << "Asymmetric should use full domain";
     } else {
-      EXPECT_EQ(nZetaLoop, nzeta / 2 + 1) << "Symmetric should use half domain + 1";
+      EXPECT_EQ(nZetaLoop, nzeta / 2 + 1)
+          << "Symmetric should use half domain + 1";
     }
   }
 }

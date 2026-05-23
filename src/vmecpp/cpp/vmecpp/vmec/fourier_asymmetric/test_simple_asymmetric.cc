@@ -23,16 +23,16 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
   // jVMEC working parameters
   indata.nfp = 1;
   indata.lasym = true;
-  indata.mpol = 3;  // Match jVMEC reference
-  indata.ntor = 0;  // Axisymmetric
-  indata.ns_array = {5};  // Very low resolution like jVMEC
+  indata.mpol = 3;             // Match jVMEC reference
+  indata.ntor = 0;             // Axisymmetric
+  indata.ns_array = {5};       // Very low resolution like jVMEC
   indata.niter_array = {100};  // More iterations for robustness
   indata.ntheta = 17;
   indata.nzeta = 1;
 
   // Zero pressure vacuum case
   indata.pres_scale = 0.0;
-  indata.am = {0.4, 0.0};  // iota profile from jVMEC
+  indata.am = {0.4, 0.0};       // iota profile from jVMEC
   indata.ftol_array = {1e-06};  // Relaxed tolerance like jVMEC
   indata.gamma = 0.0;
   indata.phiedge = 1.0;  // toroidal flux
@@ -47,12 +47,12 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
   indata.zbs.resize(array_size, 0.0);
   indata.rbs.resize(array_size, 0.0);
   indata.zbc.resize(array_size, 0.0);
-  
+
   // jVMEC reference values
-  indata.rbc[0] = 1.0;   // RBC(0,0) = 1.0 - Major radius
-  indata.rbc[1] = 0.3;   // RBC(0,1) = 0.3 - Ellipticity  
-  indata.zbs[1] = 0.3;   // ZBS(0,1) = 0.3 - Elongation
-  indata.rbs[1] = 0.001; // RBS(0,1) = 0.001 - TINY asymmetric perturbation
+  indata.rbc[0] = 1.0;    // RBC(0,0) = 1.0 - Major radius
+  indata.rbc[1] = 0.3;    // RBC(0,1) = 0.3 - Ellipticity
+  indata.zbs[1] = 0.3;    // ZBS(0,1) = 0.3 - Elongation
+  indata.rbs[1] = 0.001;  // RBS(0,1) = 0.001 - TINY asymmetric perturbation
 
   // Axis arrays (match boundary m=0)
   indata.raxis_c = {1.0};  // Match RBC(0,0)
@@ -64,15 +64,19 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
   std::cout << "  lasym = " << indata.lasym << std::endl;
   std::cout << "  mpol = " << indata.mpol << ", ntor = " << indata.ntor
             << std::endl;
-  std::cout << "  ns_array = " << indata.ns_array[0] << ", niter = " << indata.niter_array[0] << std::endl;
-  std::cout << "  ftol = " << indata.ftol_array[0] << " (relaxed tolerance)" << std::endl;
-  std::cout << "  RBC(0,0) = " << indata.rbc[0] << " (major radius)" << std::endl;
-  std::cout << "  RBC(0,1) = " << indata.rbc[1] << " (ellipticity)" << std::endl;
-  std::cout << "  ZBS(0,1) = " << indata.zbs[1] << " (elongation)" << std::endl;
-  std::cout << "  RBS(0,1) = " << indata.rbs[1] << " (asymmetric - 0.1% perturbation)" << std::endl;
-
-  std::cout << "\nRunning jVMEC reference asymmetric case..."
+  std::cout << "  ns_array = " << indata.ns_array[0]
+            << ", niter = " << indata.niter_array[0] << std::endl;
+  std::cout << "  ftol = " << indata.ftol_array[0] << " (relaxed tolerance)"
             << std::endl;
+  std::cout << "  RBC(0,0) = " << indata.rbc[0] << " (major radius)"
+            << std::endl;
+  std::cout << "  RBC(0,1) = " << indata.rbc[1] << " (ellipticity)"
+            << std::endl;
+  std::cout << "  ZBS(0,1) = " << indata.zbs[1] << " (elongation)" << std::endl;
+  std::cout << "  RBS(0,1) = " << indata.rbs[1]
+            << " (asymmetric - 0.1% perturbation)" << std::endl;
+
+  std::cout << "\nRunning jVMEC reference asymmetric case..." << std::endl;
 
   const auto output = vmecpp::run(indata);
 
@@ -92,7 +96,7 @@ TEST(SimpleAsymmetricTest, BasicAsymmetricTokamak) {
               << std::endl;
     std::cout << "Error: " << output.status() << std::endl;
 
-    // This jVMEC reference case is known to work - failure indicates 
+    // This jVMEC reference case is known to work - failure indicates
     // missing robustness mechanism in VMEC++
     FAIL() << "jVMEC reference asymmetric case should work: "
            << output.status();

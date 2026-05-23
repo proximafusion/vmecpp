@@ -123,8 +123,7 @@ TEST_F(PipelineIntegrationTest, TestCompleteAsymmetricPipeline) {
       absl::MakeSpan(r_sym), absl::MakeSpan(r_asym), absl::MakeSpan(z_sym),
       absl::MakeSpan(z_asym), absl::MakeSpan(lambda_sym),
       absl::MakeSpan(lambda_asym), absl::MakeSpan(ru_sym),
-      absl::MakeSpan(ru_asym), absl::MakeSpan(zu_sym),
-      absl::MakeSpan(zu_asym));
+      absl::MakeSpan(ru_asym), absl::MakeSpan(zu_sym), absl::MakeSpan(zu_asym));
 
   // Verify separated arrays are populated
   bool r_sym_populated = false, r_asym_populated = false;

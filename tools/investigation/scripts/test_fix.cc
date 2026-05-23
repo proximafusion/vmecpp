@@ -1,7 +1,8 @@
 
 #include <iostream>
-#include "vmecpp/common/vmec_indata/vmec_indata.h"
+
 #include "util/file_io/file_io.h"
+#include "vmecpp/common/vmec_indata/vmec_indata.h"
 
 int main() {
   auto indata_json = ReadFile("vmecpp/test_data/solovev.json");
@@ -16,8 +17,10 @@ int main() {
     return 1;
   }
 
-  std::cout << "Success! mpol=" << indata->mpol << ", ntor=" << indata->ntor << std::endl;
-  std::cout << "rbc size=" << indata->rbc.size() << ", expected=" << (indata->mpol + 1) * (2 * indata->ntor + 1) << std::endl;
+  std::cout << "Success! mpol=" << indata->mpol << ", ntor=" << indata->ntor
+            << std::endl;
+  std::cout << "rbc size=" << indata->rbc.size()
+            << ", expected=" << (indata->mpol + 1) * (2 * indata->ntor + 1)
+            << std::endl;
   return 0;
 }
-

@@ -38,8 +38,8 @@ int main() {
 
   std::cout << "\nAsymmetric boundary coefficients:\n";
   int coeff_size = config.mpol * (2 * config.ntor + 1);
-  std::cout << "  rbc size: " << config.rbc.size() << " (expected: " << coeff_size
-            << ")\n";
+  std::cout << "  rbc size: " << config.rbc.size()
+            << " (expected: " << coeff_size << ")\n";
   std::cout << "  zbs size: " << config.zbs.size() << "\n";
   std::cout << "  rbs size: " << config.rbs.size() << " (asymmetric)\n";
   std::cout << "  zbc size: " << config.zbc.size() << " (asymmetric)\n";

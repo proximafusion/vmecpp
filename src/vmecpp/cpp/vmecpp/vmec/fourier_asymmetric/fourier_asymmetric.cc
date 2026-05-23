@@ -37,7 +37,7 @@ void FourierToReal3DAsymmFastPoloidal(
   std::vector<double> asym_R(nznt, 0.0);
   std::vector<double> asym_Z(nznt, 0.0);
   std::vector<double> asym_L(nznt, 0.0);
-  
+
   // Create arrays for asymmetric derivative contributions
   std::vector<double> asym_Ru(nznt, 0.0);
   std::vector<double> asym_Zu(nznt, 0.0);
@@ -71,7 +71,8 @@ void FourierToReal3DAsymmFastPoloidal(
         if (mn < 0) continue;
 
         // Get basis functions (n >= 0 always, following jVMEC)
-        // All basis functions from fourier_basis already include nscale normalization
+        // All basis functions from fourier_basis already include nscale
+        // normalization
         int idx_nv = k * (sizes.nnyq2 + 1) + n;
         double cos_nv = fourier_basis.cosnv[idx_nv];
         double sin_nv = fourier_basis.sinnv[idx_nv];
@@ -106,14 +107,16 @@ void FourierToReal3DAsymmFastPoloidal(
         // ONLY process asymmetric contributions (symmetric already computed)
         // Get derivative basis functions
         int idx_basis_deriv = m * sizes.nThetaReduced + l;
-        double sin_mum = fourier_basis.sinmum[idx_basis_deriv];  // -m*sin(m*theta)*mscale[m]
-        double cos_mum = fourier_basis.cosmum[idx_basis_deriv];  // m*cos(m*theta)*mscale[m]
+        double sin_mum =
+            fourier_basis.sinmum[idx_basis_deriv];  // -m*sin(m*theta)*mscale[m]
+        double cos_mum =
+            fourier_basis.cosmum[idx_basis_deriv];  // m*cos(m*theta)*mscale[m]
 
         // Asymmetric contributions (stored separately for reflection)
         asym_R[idx] += rmksc_asym[k] * sin_mu;
         asym_Z[idx] += zmkcc_asym[k] * cos_mu;
         asym_L[idx] += lmkcc_asym[k] * cos_mu;  // CRITICAL: Lambda asymmetric
-        
+
         // Asymmetric derivatives using pre-computed basis functions
         asym_Ru[idx] += rmksc_asym[k] * cos_mum;  // cosmum includes m factor
         asym_Zu[idx] += zmkcc_asym[k] * sin_mum;  // sinmum includes -m factor
@@ -121,10 +124,11 @@ void FourierToReal3DAsymmFastPoloidal(
         if (sizes.lthreed) {
           asym_R[idx] += rmkcs_asym[k] * cos_mu;
           asym_Z[idx] += zmkss_asym[k] * sin_mu;
-          asym_L[idx] += lmkss_asym[k] * sin_mu;  // CRITICAL: Lambda asymmetric 3D
-          
+          asym_L[idx] +=
+              lmkss_asym[k] * sin_mu;  // CRITICAL: Lambda asymmetric 3D
+
           // Additional asymmetric derivative contributions
-          asym_Ru[idx] += rmkcs_asym[k] * sin_mum; // sinmum includes -m factor
+          asym_Ru[idx] += rmkcs_asym[k] * sin_mum;  // sinmum includes -m factor
           asym_Zu[idx] += zmkss_asym[k] * cos_mum;  // cosmum includes m factor
         }
       }
@@ -140,7 +144,7 @@ void FourierToReal3DAsymmFastPoloidal(
       r_real[idx] += asym_R[idx];
       z_real[idx] += asym_Z[idx];
       lambda_real[idx] += asym_L[idx];
-      
+
       // Add asymmetric derivative contributions
       ru_real[idx] += asym_Ru[idx];
       zu_real[idx] += asym_Zu[idx];
@@ -154,13 +158,13 @@ void FourierToReal3DAsymmFastPoloidal(
     for (int k = 0; k < nzeta; ++k) {
       int idx = l * nzeta + k;
       if (idx >= r_real.size()) continue;
-      
+
       // Find corresponding point using jVMEC reflection formula
-      int lr = ntheta1 - l;  // jVMEC: theta reflection
+      int lr = ntheta1 - l;                 // jVMEC: theta reflection
       if (lr >= ntheta2) lr = ntheta2 - 1;  // ensure within [0, pi] range
-      int kr = (nzeta - k) % nzeta;  // jVMEC: zeta reflection
+      int kr = (nzeta - k) % nzeta;         // jVMEC: zeta reflection
       int idx_reflected = lr * nzeta + kr;
-      
+
       if (idx_reflected >= 0 && idx_reflected < ntheta2 * nzeta) {
         // Apply symmetrization following jVMEC pattern:
         // For theta in [pi, 2pi]: total = symmetric - asymmetric
@@ -170,12 +174,12 @@ void FourierToReal3DAsymmFastPoloidal(
         double lambda_sym = lambda_real[idx_reflected] - asym_L[idx_reflected];
         double ru_sym = ru_real[idx_reflected] - asym_Ru[idx_reflected];
         double zu_sym = zu_real[idx_reflected] - asym_Zu[idx_reflected];
-        
+
         // Apply reflection with sign changes
         r_real[idx] = r_sym - asym_R[idx_reflected];
         z_real[idx] = -z_sym + asym_Z[idx_reflected];
         lambda_real[idx] = lambda_sym - asym_L[idx_reflected];
-        
+
         // Derivative symmetrization
         ru_real[idx] = -ru_sym - asym_Ru[idx_reflected];
         zu_real[idx] = zu_sym + asym_Zu[idx_reflected];
@@ -189,11 +193,10 @@ void FourierToReal2DAsymmFastPoloidal(
     absl::Span<const double> rmnss, absl::Span<const double> rmnsc,
     absl::Span<const double> rmncs, absl::Span<const double> zmnsc,
     absl::Span<const double> zmncs, absl::Span<const double> zmncc,
-    absl::Span<const double> zmnss,
-    absl::Span<const double> lmnsc, absl::Span<const double> lmncs,
-    absl::Span<const double> lmncc, absl::Span<const double> lmnss,
-    absl::Span<double> r_real, absl::Span<double> z_real,
-    absl::Span<double> lambda_real,
+    absl::Span<const double> zmnss, absl::Span<const double> lmnsc,
+    absl::Span<const double> lmncs, absl::Span<const double> lmncc,
+    absl::Span<const double> lmnss, absl::Span<double> r_real,
+    absl::Span<double> z_real, absl::Span<double> lambda_real,
     absl::Span<double> ru_real, absl::Span<double> zu_real) {
   const int nzeta = sizes.nZeta;
   const int ntheta2 = sizes.nThetaReduced;  // [0, pi]
@@ -210,7 +213,7 @@ void FourierToReal2DAsymmFastPoloidal(
   std::vector<double> asym_R(ntheta1 * nzeta, 0.0);
   std::vector<double> asym_Z(ntheta1 * nzeta, 0.0);
   std::vector<double> asym_L(ntheta1 * nzeta, 0.0);
-  
+
   // Create arrays for asymmetric derivative contributions
   std::vector<double> asym_Ru(ntheta1 * nzeta, 0.0);
   std::vector<double> asym_Zu(ntheta1 * nzeta, 0.0);
@@ -230,7 +233,7 @@ void FourierToReal2DAsymmFastPoloidal(
     std::fill(asym_L.begin(), asym_L.end(), 0.0);
     std::fill(asym_Ru.begin(), asym_Ru.end(), 0.0);
     std::fill(asym_Zu.begin(), asym_Zu.end(), 0.0);
-    
+
     // Process each poloidal mode m
     for (int m = 0; m < sizes.mpol; ++m) {
       // Find mode mn for (m,n=0)
@@ -246,7 +249,7 @@ void FourierToReal2DAsymmFastPoloidal(
 
       // Get coefficients for this surface
       int coeff_idx = js * sizes.mnmax + mn;
-      
+
       // Get symmetric coefficients
       double rcc = (coeff_idx < rmncc.size()) ? rmncc[coeff_idx] : 0.0;
       double zsc = (coeff_idx < zmnsc.size()) ? zmnsc[coeff_idx] : 0.0;
@@ -255,7 +258,8 @@ void FourierToReal2DAsymmFastPoloidal(
       double rsc = (coeff_idx < rmnsc.size()) ? rmnsc[coeff_idx] : 0.0;
       double zcc = (coeff_idx < zmncc.size()) ? zmncc[coeff_idx] : 0.0;
 
-      // Compute both symmetric and asymmetric contributions for full theta range
+      // Compute both symmetric and asymmetric contributions for full theta
+      // range
       for (int l = 0; l < sizes.nThetaEff; ++l) {
         // Map to basis functions (only defined for [0,pi])
         int l_basis = (l < ntheta2) ? l : (ntheta1 - l);
@@ -265,39 +269,42 @@ void FourierToReal2DAsymmFastPoloidal(
         }
         double sin_mu = fourier_basis.sinmu[idx_basis];
         double cos_mu = fourier_basis.cosmu[idx_basis];
-        
+
         // Sign adjustments for second half
         if (l >= ntheta2) {
           sin_mu = -sin_mu;  // sin(2π - θ) = -sin(θ)
         }
 
         for (int k = 0; k < nzeta; ++k) {
-          int idx_surf = js * sizes.nZnT + l * nzeta + k;  // Index in output arrays
-          
+          int idx_surf =
+              js * sizes.nZnT + l * nzeta + k;  // Index in output arrays
+
           if (idx_surf >= r_real.size()) continue;
 
           // Symmetric contributions
           r_real[idx_surf] += rcc * cos_mu;  // rmncc * cosmu
           z_real[idx_surf] += zsc * sin_mu;  // zmnsc * sinmu
-          
+
           // Symmetric derivatives
-          ru_real[idx_surf] += -m * rcc * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
-          zu_real[idx_surf] += m * zsc * cos_mu;   // d(sin(m*theta))/dtheta = m*cos(m*theta)
-          
+          ru_real[idx_surf] +=
+              -m * rcc * sin_mu;  // d(cos(m*theta))/dtheta = -m*sin(m*theta)
+          zu_real[idx_surf] +=
+              m * zsc * cos_mu;  // d(sin(m*theta))/dtheta = m*cos(m*theta)
+
           // For asymmetric part in second half, apply reflection
           if (l < ntheta2) {
             // First half: add asymmetric directly
-            r_real[idx_surf] += rsc * sin_mu;  // rmnsc * sinmu
-            z_real[idx_surf] += zcc * cos_mu;  // zmncc * cosmu
+            r_real[idx_surf] += rsc * sin_mu;        // rmnsc * sinmu
+            z_real[idx_surf] += zcc * cos_mu;        // zmncc * cosmu
             ru_real[idx_surf] += m * rsc * cos_mu;   // d(sin(m*theta))/dtheta
             zu_real[idx_surf] += -m * zcc * sin_mu;  // d(cos(m*theta))/dtheta
           } else {
             // Second half: subtract asymmetric (reflection)
             int kr = (nzeta - k) % nzeta;
-            r_real[idx_surf] -= rsc * sin_mu;  // subtract for reflection
-            z_real[idx_surf] -= zcc * cos_mu;  // note: z also gets negated
-            ru_real[idx_surf] -= m * rsc * cos_mu;   // derivative sign change
-            zu_real[idx_surf] += m * zcc * sin_mu;   // derivative sign change
+            r_real[idx_surf] -= rsc * sin_mu;       // subtract for reflection
+            z_real[idx_surf] -= zcc * cos_mu;       // note: z also gets negated
+            ru_real[idx_surf] -= m * rsc * cos_mu;  // derivative sign change
+            zu_real[idx_surf] += m * zcc * sin_mu;  // derivative sign change
           }
         }
       }
@@ -871,7 +878,7 @@ void FourierToReal3DAsymmFastPoloidalSeparated(
         z_sym[idx] += zmksc[k] * sinmu + zmkcs[k] * cosmu;
         // Lambda symmetric (for now, set to zero - can be added later)
         // lambda_sym[idx] += ...;
-        
+
         // Add symmetric derivatives
         ru_sym[idx] += -m * rmkcc[k] * sinmu + m * rmkss[k] * cosmu;
         zu_sym[idx] += m * zmksc[k] * cosmu - m * zmkcs[k] * sinmu;
@@ -881,7 +888,7 @@ void FourierToReal3DAsymmFastPoloidalSeparated(
         z_asym[idx] += zmkcc_asym[k] * cosmu + zmkss_asym[k] * sinmu;
         // Lambda antisymmetric (for now, set to zero - can be added later)
         // lambda_asym[idx] += ...;
-        
+
         // Add antisymmetric derivatives
         ru_asym[idx] += m * rmksc_asym[k] * cosmu - m * rmkcs_asym[k] * sinmu;
         zu_asym[idx] += -m * zmkcc_asym[k] * sinmu + m * zmkss_asym[k] * cosmu;
@@ -892,22 +899,20 @@ void FourierToReal3DAsymmFastPoloidalSeparated(
 
 // M=1 constraint coupling functions - PRIORITY 3 IMPLEMENTATION
 
-void EnsureM1Constrained(const Sizes& sizes,
-                         absl::Span<double> rbss, 
-                         absl::Span<double> zbcs,
-                         absl::Span<double> rbsc, 
+void EnsureM1Constrained(const Sizes& sizes, absl::Span<double> rbss,
+                         absl::Span<double> zbcs, absl::Span<double> rbsc,
                          absl::Span<double> zbcc) {
   const int ntor = sizes.ntor;
   const bool lthreed = sizes.lthreed;
   const bool lasym = sizes.lasym;
-  
+
   const int m = 1;  // M=1 mode constraint
-  
+
   // For 3D case: couple rbss[n][1] with zbcs[n][1]
   if (lthreed) {
     for (int n = 0; n <= ntor; ++n) {
       const int idx = n * (sizes.mpol + 1) + m;
-      if (idx < static_cast<int>(rbss.size()) && 
+      if (idx < static_cast<int>(rbss.size()) &&
           idx < static_cast<int>(zbcs.size())) {
         const double backup_rbss = rbss[idx];
         rbss[idx] = backup_rbss + zbcs[idx];
@@ -915,12 +920,12 @@ void EnsureM1Constrained(const Sizes& sizes,
       }
     }
   }
-  
+
   // For asymmetric case: couple rbsc[n][1] with zbcc[n][1]
   if (lasym) {
     for (int n = 0; n <= ntor; ++n) {
       const int idx = n * (sizes.mpol + 1) + m;
-      if (idx < static_cast<int>(rbsc.size()) && 
+      if (idx < static_cast<int>(rbsc.size()) &&
           idx < static_cast<int>(zbcc.size())) {
         const double backup_rbsc = rbsc[idx];
         rbsc[idx] = backup_rbsc + zbcc[idx];
@@ -930,21 +935,19 @@ void EnsureM1Constrained(const Sizes& sizes,
   }
 }
 
-void ConvertToM1Constrained(const Sizes& sizes, 
-                            int num_surfaces,
+void ConvertToM1Constrained(const Sizes& sizes, int num_surfaces,
                             absl::Span<double> rss_rsc,
-                            absl::Span<double> zcs_zcc,
-                            double scaling_factor) {
+                            absl::Span<double> zcs_zcc, double scaling_factor) {
   const int ntor = sizes.ntor;
   const int m = 1;  // M=1 mode constraint
-  
+
   // Apply M=1 constraint coupling with scaling
   for (int j = 0; j < num_surfaces; ++j) {
     for (int n = 0; n <= ntor; ++n) {
-      const int idx = j * (ntor + 1) * (sizes.mpol + 1) + 
-                      n * (sizes.mpol + 1) + m;
-      
-      if (idx < static_cast<int>(rss_rsc.size()) && 
+      const int idx =
+          j * (ntor + 1) * (sizes.mpol + 1) + n * (sizes.mpol + 1) + m;
+
+      if (idx < static_cast<int>(rss_rsc.size()) &&
           idx < static_cast<int>(zcs_zcc.size())) {
         const double backup = rss_rsc[idx];
         rss_rsc[idx] = scaling_factor * (backup + zcs_zcc[idx]);

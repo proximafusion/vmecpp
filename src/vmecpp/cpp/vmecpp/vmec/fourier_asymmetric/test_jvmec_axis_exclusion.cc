@@ -10,26 +10,32 @@ TEST(JVMECAxisExclusionTest, AxisTauExclusionAnalysis) {
 
   std::cout << "\njVMEC code (lines 386-391 commented):\n";
   std::cout << "///** needed for sign change on Jacobian */\n";
-  std::cout << "//if (Double.isNaN(minJacobian) || tau[aj][k][l] < minJacobian) {\n";
+  std::cout
+      << "//if (Double.isNaN(minJacobian) || tau[aj][k][l] < minJacobian) {\n";
   std::cout << "//    minJacobian = tau[aj][k][l];\n";
   std::cout << "//}\n";
-  std::cout << "//if (Double.isNaN(maxJacobian) || tau[aj][k][l] > maxJacobian) {\n";
+  std::cout
+      << "//if (Double.isNaN(maxJacobian) || tau[aj][k][l] > maxJacobian) {\n";
   std::cout << "//    maxJacobian = tau[aj][k][l];\n";
   std::cout << "//}\n";
 
   std::cout << "\nIMPLICATION:\n";
   std::cout << "jVMEC EXCLUDES axis tau values from Jacobian sign check!\n";
   std::cout << "Only tau values from j=1 to j=NS-1 are considered.\n";
-  std::cout << "This prevents axis-related tau sign issues from failing the check.\n";
+  std::cout
+      << "This prevents axis-related tau sign issues from failing the check.\n";
 
   std::cout << "\nVMEC++ vs jVMEC comparison:\n";
   std::cout << "VMEC++: Includes ALL surfaces (j=0 to j=NS-1) in min/max tau\n";
-  std::cout << "jVMEC:  Includes ONLY surfaces (j=1 to j=NS-1) - EXCLUDES axis!\n";
+  std::cout
+      << "jVMEC:  Includes ONLY surfaces (j=1 to j=NS-1) - EXCLUDES axis!\n";
 
   std::cout << "\nFrom VMEC++ debug output:\n";
-  std::cout << "- tau values at axis (jH=0) can be problematic in asymmetric mode\n";
+  std::cout
+      << "- tau values at axis (jH=0) can be problematic in asymmetric mode\n";
   std::cout << "- Axis extrapolation may create tau values that change sign\n";
-  std::cout << "- Including these in min/max calculation causes Jacobian failure\n";
+  std::cout
+      << "- Including these in min/max calculation causes Jacobian failure\n";
 
   std::cout << "\nPOTENTIAL SOLUTION:\n";
   std::cout << "Modify VMEC++ computeJacobian() to exclude axis tau values\n";
@@ -65,12 +71,16 @@ TEST(JVMECAxisExclusionTest, VerifyAxisExtrapolation) {
 
   std::cout << "\nCRITICAL DIFFERENCE:\n";
   std::cout << "❌ VMEC++: Includes extrapolated axis tau in min/max check\n";
-  std::cout << "✅ jVMEC:   Excludes extrapolated axis tau from min/max check\n";
+  std::cout
+      << "✅ jVMEC:   Excludes extrapolated axis tau from min/max check\n";
 
   std::cout << "\nWhy this matters:\n";
-  std::cout << "- Axis extrapolation may create tau values outside normal range\n";
-  std::cout << "- In asymmetric mode, axis tau can have different sign than interior\n";
-  std::cout << "- Including problematic axis tau causes false Jacobian failures\n";
+  std::cout
+      << "- Axis extrapolation may create tau values outside normal range\n";
+  std::cout << "- In asymmetric mode, axis tau can have different sign than "
+               "interior\n";
+  std::cout
+      << "- Including problematic axis tau causes false Jacobian failures\n";
   std::cout << "- jVMEC avoids this by excluding axis from the check\n";
 
   EXPECT_TRUE(true) << "Axis extrapolation verification completed";
@@ -100,9 +110,11 @@ TEST(JVMECAxisExclusionTest, ProposeVMECPlusPlusFix) {
   std::cout << "}\n";
 
   std::cout << "\nExpected result:\n";
-  std::cout << "✅ Exclude potentially problematic axis tau from Jacobian check\n";
+  std::cout
+      << "✅ Exclude potentially problematic axis tau from Jacobian check\n";
   std::cout << "✅ Match jVMEC behavior exactly\n";
-  std::cout << "✅ Allow asymmetric equilibria to proceed past Jacobian check\n";
+  std::cout
+      << "✅ Allow asymmetric equilibria to proceed past Jacobian check\n";
   std::cout << "✅ Achieve first convergent asymmetric equilibrium\n";
 
   std::cout << "\nValidation steps:\n";
@@ -114,7 +126,8 @@ TEST(JVMECAxisExclusionTest, ProposeVMECPlusPlusFix) {
 
   std::cout << "\nRisk assessment:\n";
   std::cout << "✅ Low risk: jVMEC has used this approach successfully\n";
-  std::cout << "✅ Conservative: Only excludes axis, keeps all other surfaces\n";
+  std::cout
+      << "✅ Conservative: Only excludes axis, keeps all other surfaces\n";
   std::cout << "✅ Validated: Same axis extrapolation already implemented\n";
 
   EXPECT_TRUE(true) << "VMEC++ fix proposal completed";
