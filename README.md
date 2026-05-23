@@ -17,6 +17,15 @@
 ![Python version](https://img.shields.io/badge/python-3.10-blue)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14800158.svg)](https://doi.org/10.5281/zenodo.14800158)
 
+## Development Notes
+
+The active development state for the tokamak and asymmetric work in this fork is documented in:
+
+- `docs/development/asymmetric/README.md`
+- `docs/development/asymmetric/current-status.md`
+
+Historical investigation notes and one-off scripts have been moved out of the repo root into `docs/development/...` and `tools/investigation/...` so the working surface stays focused on the implementation and the supported test suites.
+
 [![CI](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml)
 [![C++ core tests](https://github.com/proximafusion/vmecpp/actions/workflows/test_bazel.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/test_bazel.yaml)
 [![Publish wheels to PyPI](https://github.com/proximafusion/vmecpp/actions/workflows/pypi_publish.yml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/pypi_publish.yml)
@@ -59,7 +68,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [C++ build from source](#c-build-from-source)
 - [Hot restart](#hot-restart)
 - [Differences with respect to PARVMEC/VMEC2000](#differences-with-respect-to-parvmecvmec2000)
-- [Roadmap](#roadmap)
+- [Plans](#plans)
 - [Related repositories](#related-repositories)
 - [License](#license)
 
@@ -335,7 +344,7 @@ VMEC++:
 - The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
 - The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
 
-## Roadmap
+## Plans
 
 Some of the things we are planning for VMEC++'s future:
 - [x] free-boundary hot-restart in Python

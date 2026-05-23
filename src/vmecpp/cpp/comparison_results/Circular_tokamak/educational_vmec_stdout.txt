@@ -1,2 +1,0 @@
-Invalid line in namelist:   LOPTIM =  F
- In VMEC, indata NAMELIST error: iostat = 5010

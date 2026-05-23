@@ -15,6 +15,22 @@ src/vmecpp/__about__.py
 # bazel output directories
 bazel-*
 src/vmecpp/cpp/_vmecpp.so
+asymmetric_debug_*/
+src/vmecpp/cpp/comparison_results/
+src/vmecpp/cpp/*.log
+src/vmecpp/cpp/*.h5
+src/vmecpp/cpp/*_debug_output*.txt
+src/vmecpp/cpp/*_test.json
+src/vmecpp/cpp/*_fixed.json
+src/vmecpp/cpp/simple_test.json
+src/vmecpp/cpp/simple_asymmetric.json
+src/vmecpp/cpp/better_asymmetric.json
+src/vmecpp/cpp/solovev.json
+src/vmecpp/cpp/solovev_fixed.json
+src/vmecpp/cpp/test_asym_minimal.json
+src/vmecpp/cpp/exact_upstream_2d_function.txt
+src/vmecpp/cpp/upstream_2d_function.txt
+src/vmecpp/cpp/temp_file.cc
 
 # developers will clone this in order to have the full test suite available
 src/vmecpp/cpp/vmecpp_large_cpp_tests/

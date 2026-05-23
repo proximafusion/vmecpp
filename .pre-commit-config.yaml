@@ -3,14 +3,17 @@ repos:
     rev: "v0.15.0"
     hooks:
       - id: ruff-format
+        exclude: ^tools/investigation/
       - id: ruff
         args: ["--fix", "--show-fixes"]
+        exclude: ^tools/investigation/
   - repo: https://github.com/PyCQA/docformatter
     rev: eb1df34
     hooks:
       - id: docformatter
         additional_dependencies: [tomli]
         args: ["--in-place", "--config", "./pyproject.toml"]
+        exclude: ^tools/investigation/
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: "v5.0.0"
     hooks:
@@ -20,10 +23,12 @@ repos:
       - id: check-symlinks
       - id: check-yaml
       - id: debug-statements
+        exclude: ^tools/investigation/
       - id: end-of-file-fixer
       - id: mixed-line-ending
       - id: name-tests-test
         args: ["--pytest-test-first"]
+        exclude: ^tools/investigation/
       - id: requirements-txt-fixer
       - id: trailing-whitespace
   - repo: https://github.com/pre-commit/mirrors-clang-format
@@ -31,7 +36,9 @@ repos:
     hooks:
       - id: clang-format
         types_or: [c++, c]
+        exclude: ^tools/investigation/
   - repo: https://github.com/RobertCraigie/pyright-python
     rev: v1.1.400
     hooks:
     - id: pyright
+      exclude: ^tools/investigation/
