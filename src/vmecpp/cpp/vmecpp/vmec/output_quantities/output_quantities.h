@@ -1510,6 +1510,7 @@ WOutFileContents ComputeWOutFileContents(
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
     VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
+    const BSubSFull& bsubs_full,
     const MercierFileContents& mercier, const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
     const Threed1FirstTable& threed1_first_table,
