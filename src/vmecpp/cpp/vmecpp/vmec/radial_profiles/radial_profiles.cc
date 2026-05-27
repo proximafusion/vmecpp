@@ -36,6 +36,19 @@ constexpr std::array<double, 10> kGaussLegendreWeights01 = {
     0.1346333596549982,  0.1095431812579910, 0.0747256745752903,
     0.03333567215434407};
 
+// Compile-time self-consistency check on the tabulated nodes/weights: the rule
+// must integrate a constant and a linear function over [0, 1] exactly.
+template <typename Integrand>
+constexpr double GaussLegendreIntegral01(Integrand integrand) {
+  double result = 0.0;
+  for (std::size_t i = 0; i < kGaussLegendreNodes01.size(); ++i) {
+    result += kGaussLegendreWeights01[i] * integrand(kGaussLegendreNodes01[i]);
+  }
+  return result;
+}
+static_assert(GaussLegendreIntegral01([](double) { return 2.0; }) == 2.0);
+static_assert(GaussLegendreIntegral01([](double x) { return x; }) == 0.5);
+
 // Coefficient access with Fortran-style zero-padding: profile coefficient
 // arrays are dimensioned (0:20) in Fortran VMEC and zero-filled beyond the
 // provided entries.
@@ -94,16 +107,20 @@ AkimaCoeffs BuildAkimaCoeffs(const Eigen::VectorXd& xx,
   // edge values by quadratic extrapolation
   const double cl = (M(2) - M(1)) / (X(3) - X(1));
   const double bl = M(1) - cl * (X(2) - X(1));
-  const double cr = (M(iv - 2) - M(iv - 1)) / (X(iv) - X(iv - 2));
-  const double br = M(iv - 2) - cr * (X(iv - 1) - X(iv - 2));
+  // The right edge mirrors the left: a quadratic fit through the three nearest
+  // nodes, with cr the right-edge curvature and br the right-edge slope.
+  // Fortran VMEC's spline_akima.f instead reuses the left curvature cl on the
+  // right-edge phantom points, which gives the right boundary the wrong
+  // curvature and makes the interpolant orientation-dependent. Using cr keeps
+  // the two ends consistent (verified by AkimaIsReflectionSymmetric).
+  const double cr = (M(iv - 1) - M(iv - 2)) / (X(iv) - X(iv - 2));
+  const double br = M(iv - 1) - cr * (X(iv - 1) - X(iv));
   Y(0) = Y(1) + bl * (X(0) - X(1)) + cl * std::pow(X(0) - X(1), 2);
   Y(-1) = Y(1) + bl * (X(-1) - X(1)) + cl * std::pow(X(-1) - X(1), 2);
-  // NOTE: the right-edge extrapolation reuses cl (the left curvature), not cr.
-  // This is reproduced verbatim from Fortran VMEC for bit-for-bit agreement.
   Y(iv + 1) =
-      Y(iv) + br * (X(iv + 1) - X(iv)) + cl * std::pow(X(iv + 1) - X(iv), 2);
+      Y(iv) + br * (X(iv + 1) - X(iv)) + cr * std::pow(X(iv + 1) - X(iv), 2);
   Y(iv + 2) =
-      Y(iv) + br * (X(iv + 2) - X(iv)) + cl * std::pow(X(iv + 2) - X(iv), 2);
+      Y(iv) + br * (X(iv + 2) - X(iv)) + cr * std::pow(X(iv + 2) - X(iv), 2);
   // phantom slopes
   M(-1) = (Y(0) - Y(-1)) / (X(0) - X(-1));
   M(0) = (Y(1) - Y(0)) / (X(1) - X(0));
@@ -140,8 +157,8 @@ AkimaCoeffs BuildAkimaCoeffs(const Eigen::VectorXd& xx,
 // the boundary first-derivatives fixed by a quadratic fit to the three nearest
 // points. Ported from educational_VMEC spline_cubic.f (Numerical Recipes
 // spline()/splint() recoded).
-std::vector<double> BuildCubicSecondDerivatives(const Eigen::VectorXd& xa,
-                                                const Eigen::VectorXd& ya) {
+Eigen::VectorXd BuildCubicSecondDerivatives(const Eigen::VectorXd& xa,
+                                            const Eigen::VectorXd& ya) {
   const int n = static_cast<int>(xa.size());
   double c =
       ((ya[2] - ya[0]) / (xa[2] - xa[0]) - (ya[1] - ya[0]) / (xa[1] - xa[0])) /
@@ -152,7 +169,8 @@ std::vector<double> BuildCubicSecondDerivatives(const Eigen::VectorXd& xa,
       (xa[n - 3] - xa[n - 2]);
   const double ypn = (ya[n - 2] - ya[n - 1]) / (xa[n - 2] - xa[n - 1]) -
                      c * (xa[n - 2] - xa[n - 1]);
-  std::vector<double> y2(n, 0.0), u(n, 0.0);
+  Eigen::VectorXd y2 = Eigen::VectorXd::Zero(n);
+  Eigen::VectorXd u = Eigen::VectorXd::Zero(n);
   y2[0] = -0.5;
   u[0] = (3.0 / (xa[1] - xa[0])) * ((ya[1] - ya[0]) / (xa[1] - xa[0]) - yp1);
   for (int i = 1; i <= n - 2; ++i) {
@@ -854,18 +872,15 @@ double RadialProfiles::evalAkimaIntegrated(const Eigen::VectorXd& splineKnots,
   const AkimaCoeffs coeffs = BuildAkimaCoeffs(splineKnots, splineValues);
   const int iv = coeffs.iv;
   auto X = [&](int f) { return coeffs.xloc[f + 1]; };
-  auto A = [&](int f) { return coeffs.a[f + 1]; };
-  auto B = [&](int f) { return coeffs.b[f + 1]; };
-  auto C = [&](int f) { return coeffs.c[f + 1]; };
-  auto D = [&](int f) { return coeffs.d[f + 1]; };
   constexpr double kThird = 1.0 / 3.0;
   // integral over each complete interval [X(i), X(i+1)], i = 1 .. iv-1
   std::vector<double> interval_integral(iv, 0.0);
   for (int i = 1; i <= iv - 1; ++i) {
     const double dx = X(i + 1) - X(i);
-    interval_integral[i] = A(i) * dx + 0.5 * B(i) * dx * dx +
-                           kThird * C(i) * dx * dx * dx +
-                           0.25 * D(i) * dx * dx * dx * dx;
+    interval_integral[i] = coeffs.a[i + 1] * dx +
+                           0.5 * coeffs.b[i + 1] * dx * dx +
+                           kThird * coeffs.c[i + 1] * dx * dx * dx +
+                           0.25 * coeffs.d[i + 1] * dx * dx * dx * dx;
   }
   if (x >= X(iv)) {
     double y = 0.0;
@@ -881,8 +896,9 @@ double RadialProfiles::evalAkimaIntegrated(const Eigen::VectorXd& splineKnots,
       y += interval_integral[i];
     } else {
       const double dx = x - X(i);
-      y += dx *
-           (A(i) + dx * (0.5 * B(i) + dx * (kThird * C(i) + 0.25 * D(i) * dx)));
+      y += dx * (coeffs.a[i + 1] + dx * (0.5 * coeffs.b[i + 1] +
+                                         dx * (kThird * coeffs.c[i + 1] +
+                                               0.25 * coeffs.d[i + 1] * dx)));
       return y;
     }
   }
@@ -904,7 +920,7 @@ double RadialProfiles::evalCubic(const Eigen::VectorXd& splineKnots,
   if (x < splineKnots[0] || x > splineKnots[n - 1]) {
     return 0.0;
   }
-  const std::vector<double> y2 =
+  const Eigen::VectorXd y2 =
       BuildCubicSecondDerivatives(splineKnots, splineValues);
   const int klo = CubicLowerIndex(splineKnots, x);
   const int khi = klo + 1;
@@ -931,7 +947,7 @@ double RadialProfiles::evalCubicIntegrated(const Eigen::VectorXd& splineKnots,
   if (x < splineKnots[0] || x > splineKnots[n - 1]) {
     return 0.0;
   }
-  const std::vector<double> y2 =
+  const Eigen::VectorXd y2 =
       BuildCubicSecondDerivatives(splineKnots, splineValues);
   const int klo = CubicLowerIndex(splineKnots, x);
   const int khi = klo + 1;

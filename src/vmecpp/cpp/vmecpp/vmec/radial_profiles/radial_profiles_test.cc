@@ -136,6 +136,32 @@ TEST_F(RadialProfilesTest, SplineTooFewPointsReturnsZero) {
   EXPECT_EQ(profiles_->evalCubicIntegrated(knots, values, 0.5), 0.0);
 }
 
+// ---- corrected Akima right edge: the interpolant is reflection-symmetric ---
+// educational_VMEC's spline_akima.f reuses the left-edge curvature on the right
+// edge, so its interpolant depends on the orientation of the data. The
+// corrected right-edge curvature restores reflection symmetry: interpolating
+// the mirror image of the data at mirrored query points reproduces the original
+// interpolant, including in the right-edge region the fix touches. This holds
+// only with the corrected edge; the reused-cl behavior breaks it.
+TEST_F(RadialProfilesTest, AkimaIsReflectionSymmetric) {
+  const Eigen::VectorXd knots = Vec({0.0, 0.2, 0.45, 0.7, 1.0});
+  const Eigen::VectorXd values = Vec({0.3, 0.7, 0.55, 0.9, 0.1});
+  // mirror about the knot span [0, 1]: reverse the nodes and map x -> 1 - x.
+  const int n = static_cast<int>(knots.size());
+  Eigen::VectorXd mirrored_knots(n);
+  Eigen::VectorXd mirrored_values(n);
+  for (int i = 0; i < n; ++i) {
+    mirrored_knots[i] = 1.0 - knots[n - 1 - i];
+    mirrored_values[i] = values[n - 1 - i];
+  }
+  for (double x : {0.05, 0.18, 0.5, 0.83, 0.96}) {
+    EXPECT_NEAR(profiles_->evalAkima(knots, values, x),
+                profiles_->evalAkima(mirrored_knots, mirrored_values, 1.0 - x),
+                1e-12)
+        << "akima reflection mismatch at x=" << x;
+  }
+}
+
 // ---- gauss_trunc -----------------------------------------------------------
 TEST_F(RadialProfilesTest, GaussTruncPressureNormalizedToAxis) {
   // pressure form is normalized so that p(0) = am(0).
@@ -199,14 +225,20 @@ TEST_F(RadialProfilesTest, Rational) {
 
 // ---- numerical agreement with compiled educational_VMEC Fortran ------------
 // The golden values below are produced by fref/fref_driver.f90, which links the
-// real educational_VMEC routines (spline_akima.f, spline_akima_int.f,
-// spline_cubic.f, spline_cubic_int.f, functions.f, profile_functions.f) and
-// prints their output at exactly the inputs used here. See that driver (plus
-// fref/stubs.f90, the minimal module shim) to regenerate. The pure-arithmetic
-// spline routines agree to ~1e-13; the closed-form profiles use exp/pow/tanh
-// whose last ulp differs between the Windows libm (golden) and the Linux libm
-// (this test), so the tolerance is held at 1e-11, still many orders of
-// magnitude tighter than any indexing or formula error would produce.
+// real educational_VMEC routines (spline_cubic.f, spline_cubic_int.f,
+// functions.f, profile_functions.f) and prints their output at exactly the
+// inputs used here. See that driver (plus fref/stubs.f90, the minimal module
+// shim) to regenerate. The pure-arithmetic cubic spline agrees to ~1e-13; the
+// closed-form profiles use exp/pow/tanh whose last ulp differs between the
+// Windows libm (golden) and the Linux libm (this test), so the tolerance is
+// held at 1e-11, still many orders of magnitude tighter than any indexing or
+// formula error would produce.
+//
+// The Akima spline is intentionally absent here: its right-edge curvature is
+// corrected relative to spline_akima.f, so it no longer reproduces that
+// routine's edge values by design. It is validated by SplineNodeReproduction,
+// SplineLinearExactness, IntegratedSplineMatchesNumericIntegral, and
+// AkimaIsReflectionSymmetric instead.
 TEST_F(RadialProfilesTest, MatchesFortranReference) {
   constexpr double kTol = 1e-11;
   struct Pt {
@@ -219,25 +251,11 @@ TEST_F(RadialProfilesTest, MatchesFortranReference) {
   const Eigen::VectorXd values = Vec({0.3, 0.7, 0.55, 0.9, 0.1});
 
   for (const Pt& p :
-       {Pt{0.10, 5.69239130434782581e-01}, Pt{0.33, 6.30549342608695662e-01},
-        Pt{0.50, 6.04418120903131850e-01}, Pt{0.62, 8.75232591056081533e-01},
-        Pt{0.88, 4.33907396092841402e-01}}) {
-    EXPECT_NEAR(profiles_->evalAkima(knots, values, p.x), p.golden, kTol)
-        << "akima x=" << p.x;
-  }
-  for (const Pt& p :
        {Pt{0.10, 5.71628096527232010e-01}, Pt{0.33, 6.14644817745175098e-01},
         Pt{0.50, 5.98234681104998223e-01}, Pt{0.62, 8.11570261229004775e-01},
         Pt{0.88, 6.01700812156143461e-01}}) {
     EXPECT_NEAR(profiles_->evalCubic(knots, values, p.x), p.golden, kTol)
         << "cubic x=" << p.x;
-  }
-  for (const Pt& p :
-       {Pt{0.33, 1.97988894504347812e-01}, Pt{0.62, 3.84727929837153371e-01},
-        Pt{1.00, 6.12725595053146277e-01}}) {
-    EXPECT_NEAR(profiles_->evalAkimaIntegrated(knots, values, p.x), p.golden,
-                kTol)
-        << "akima_int x=" << p.x;
   }
   for (const Pt& p :
        {Pt{0.33, 1.96931323531569308e-01}, Pt{0.62, 3.77727303980826490e-01},
