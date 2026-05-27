@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -420,5 +421,150 @@ INSTANTIATE_TEST_SUITE_P(
                       .tolerance = 1.0e-6},
            DataSource{.identifier = "cma", .tolerance = 1.0e-6},
            DataSource{.identifier = "cth_like_free_bdy", .tolerance = 1.0e-6}));
+
+// End-to-end exercise of the spline profile path through a full equilibrium.
+// cth_like_fixed_bdy_spline_pressure.json is the cth_like_fixed_bdy case with
+// its two_power pressure (1 - s^5)^10 re-expressed as a cubic_spline sampled at
+// 201 uniform knots on [0, 1]; that spline reproduces the analytic profile to
+// 5e-9 over the interval. Running it to convergence calls evalCubic at every
+// half-grid surface on every iteration, and the converged wout is diffed
+// against the educational_VMEC golden wout_cth_like_fixed_bdy.nc that the
+// analytic two_power case is validated against, at the same 1e-6 tolerance.
+// This is the seam the leaf and dispatch tests cannot reach: a spline profile
+// driving a real solve to the Fortran-referenced equilibrium. Input-echo fields
+// (pmass_type, am) legitimately differ for a spline input and are not compared.
+TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy_spline_pressure.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  ASSERT_EQ(vmec_indata->pmass_type, "cubic_spline");
+
+  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);  // ran to convergence
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+
+  int ncid;
+  ASSERT_EQ(
+      nc_open("vmecpp/test_data/wout_cth_like_fixed_bdy.nc", NC_NOWRITE, &ncid),
+      NC_NOERR);
+
+  const double tolerance = 1.0e-6;
+  double worst_abs = 0.0;
+  // worst deviation normalized by each field's own peak magnitude, which avoids
+  // the spurious "large relative error" on quantities like the pressure that
+  // decay to zero at the plasma edge.
+  double worst_norm = 0.0;
+  std::string worst_norm_field;
+
+  auto compare = [&](const std::string& name, const std::vector<double>& ref,
+                     const std::vector<double>& val) {
+    double peak = 1e-300;
+    for (double r : ref) {
+      peak = std::max(peak, std::abs(r));
+    }
+    for (size_t i = 0; i < ref.size(); ++i) {
+      EXPECT_TRUE(IsCloseRelAbs(ref[i], val[i], tolerance))
+          << name << "[" << i << "]: ref=" << ref[i] << " val=" << val[i];
+      const double abs_dev = std::abs(ref[i] - val[i]);
+      worst_abs = std::max(worst_abs, abs_dev);
+      const double norm_dev = abs_dev / peak;
+      if (norm_dev > worst_norm) {
+        worst_norm = norm_dev;
+        worst_norm_field = name;
+      }
+    }
+  };
+  auto scalar = [&](const std::string& name, double ref, double val) {
+    compare(name, {ref}, {val});
+  };
+  auto flatten = [&](const std::vector<std::vector<double>>& ref2d, int rows,
+                     int cols, auto getter) {
+    std::vector<double> ref;
+    std::vector<double> val;
+    ref.reserve(static_cast<size_t>(rows) * cols);
+    val.reserve(static_cast<size_t>(rows) * cols);
+    for (int jF = 0; jF < rows; ++jF) {
+      for (int mn = 0; mn < cols; ++mn) {
+        ref.push_back(ref2d[jF][mn]);
+        val.push_back(getter(mn, jF));
+      }
+    }
+    return std::make_pair(ref, val);
+  };
+
+  // scalar physics quantities
+  scalar("volume_p", NetcdfReadDouble(ncid, "volume_p"), wout.volume);
+  scalar("betatotal", NetcdfReadDouble(ncid, "betatotal"), wout.betatotal);
+  scalar("aspect", NetcdfReadDouble(ncid, "aspect"), wout.aspect);
+  scalar("b0", NetcdfReadDouble(ncid, "b0"), wout.b0);
+  scalar("wp", NetcdfReadDouble(ncid, "wp"), wout.wp);
+  scalar("wb", NetcdfReadDouble(ncid, "wb"), wout.wb);
+  scalar("rbtor", NetcdfReadDouble(ncid, "rbtor"), wout.rbtor);
+  scalar("ctor", NetcdfReadDouble(ncid, "ctor"), wout.ctor);
+  scalar("Aminor_p", NetcdfReadDouble(ncid, "Aminor_p"), wout.Aminor_p);
+  scalar("Rmajor_p", NetcdfReadDouble(ncid, "Rmajor_p"), wout.Rmajor_p);
+
+  // 1D radial profiles, including the spline-driven pressure
+  std::vector<double> wpresf(fc.ns), wpres(fc.ns), wmass(fc.ns), wiotaf(fc.ns),
+      wiotas(fc.ns), wjcurv(fc.ns);
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    wpresf[jF] = wout.presf[jF];
+    wpres[jF] = wout.pres[jF];
+    wmass[jF] = wout.mass[jF];
+    wiotaf[jF] = wout.iotaf[jF];
+    wiotas[jF] = wout.iotas[jF];
+    wjcurv[jF] = wout.jcurv[jF];
+  }
+  compare("presf", NetcdfReadArray1D(ncid, "presf"), wpresf);
+  compare("pres", NetcdfReadArray1D(ncid, "pres"), wpres);
+  compare("mass", NetcdfReadArray1D(ncid, "mass"), wmass);
+  compare("iotaf", NetcdfReadArray1D(ncid, "iotaf"), wiotaf);
+  compare("iotas", NetcdfReadArray1D(ncid, "iotas"), wiotas);
+  compare("jcurv", NetcdfReadArray1D(ncid, "jcurv"), wjcurv);
+
+  // flux-surface geometry
+  auto [r_ref, r_val] =
+      flatten(NetcdfReadArray2D(ncid, "rmnc"), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.rmnc(mn, jF); });
+  compare("rmnc", r_ref, r_val);
+  auto [z_ref, z_val] =
+      flatten(NetcdfReadArray2D(ncid, "zmns"), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.zmns(mn, jF); });
+  compare("zmns", z_ref, z_val);
+  auto [l_ref, l_val] =
+      flatten(NetcdfReadArray2D(ncid, "lmns"), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.lmns(mn, jF); });
+  compare("lmns", l_ref, l_val);
+
+  // magnetic field on the Nyquist mode set
+  auto [b_ref, b_val] =
+      flatten(NetcdfReadArray2D(ncid, "bmnc"), fc.ns, s.mnmax_nyq,
+              [&](int mn, int jF) { return wout.bmnc(mn, jF); });
+  compare("bmnc", b_ref, b_val);
+  auto [bu_ref, bu_val] =
+      flatten(NetcdfReadArray2D(ncid, "bsubumnc"), fc.ns, s.mnmax_nyq,
+              [&](int mn, int jF) { return wout.bsubumnc(mn, jF); });
+  compare("bsubumnc", bu_ref, bu_val);
+  auto [bv_ref, bv_val] =
+      flatten(NetcdfReadArray2D(ncid, "bsubvmnc"), fc.ns, s.mnmax_nyq,
+              [&](int mn, int jF) { return wout.bsubvmnc(mn, jF); });
+  compare("bsubvmnc", bv_ref, bv_val);
+
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  std::cout << "[spline-vs-Fortran-golden] worst abs dev = " << worst_abs
+            << ", worst dev normalized by field peak = " << worst_norm << " ("
+            << worst_norm_field << ")" << std::endl;
+}
 
 }  // namespace vmecpp

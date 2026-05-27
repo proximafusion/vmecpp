@@ -36,6 +36,7 @@ filegroup(
     visibility = ["//visibility:public"],
     srcs = [
         "cth_like_fixed_bdy.json",
+        "cth_like_fixed_bdy_spline_pressure.json",
         "input.cth_like_fixed_bdy",
         "wout_cth_like_fixed_bdy.nc",
     ],
