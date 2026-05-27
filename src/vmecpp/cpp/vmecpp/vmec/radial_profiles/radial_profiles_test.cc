@@ -225,20 +225,20 @@ TEST_F(RadialProfilesTest, Rational) {
 
 // ---- numerical agreement with compiled educational_VMEC Fortran ------------
 // The golden values below are produced by fref/fref_driver.f90, which links the
-// real educational_VMEC routines (spline_cubic.f, spline_cubic_int.f,
-// functions.f, profile_functions.f) and prints their output at exactly the
-// inputs used here. See that driver (plus fref/stubs.f90, the minimal module
-// shim) to regenerate. The pure-arithmetic cubic spline agrees to ~1e-13; the
-// closed-form profiles use exp/pow/tanh whose last ulp differs between the
-// Windows libm (golden) and the Linux libm (this test), so the tolerance is
-// held at 1e-11, still many orders of magnitude tighter than any indexing or
-// formula error would produce.
+// real educational_VMEC routines (spline_akima.f, spline_akima_int.f,
+// spline_cubic.f, spline_cubic_int.f, functions.f, profile_functions.f) and
+// prints their output at exactly the inputs used here. See that driver (plus
+// fref/stubs.f90, the minimal module shim) to regenerate. The pure-arithmetic
+// splines agree to ~1e-13; the closed-form profiles use exp/pow/tanh whose last
+// ulp differs between the Windows libm (golden) and the Linux libm (this test),
+// so the tolerance is held at 1e-11, still many orders of magnitude tighter
+// than any indexing or formula error would produce.
 //
-// The Akima spline is intentionally absent here: its right-edge curvature is
-// corrected relative to spline_akima.f, so it no longer reproduces that
-// routine's edge values by design. It is validated by SplineNodeReproduction,
-// SplineLinearExactness, IntegratedSplineMatchesNumericIntegral, and
-// AkimaIsReflectionSymmetric instead.
+// The Akima spline reproduces educational_VMEC once spline_akima.f and
+// spline_akima_int.f carry the same right-edge curvature fix (the upper phantom
+// points use the right-edge curvature cr rather than the left-edge cl).
+// AkimaIsReflectionSymmetric additionally checks the orientation independence
+// that fix restores.
 TEST_F(RadialProfilesTest, MatchesFortranReference) {
   constexpr double kTol = 1e-11;
   struct Pt {
@@ -263,6 +263,22 @@ TEST_F(RadialProfilesTest, MatchesFortranReference) {
     EXPECT_NEAR(profiles_->evalCubicIntegrated(knots, values, p.x), p.golden,
                 kTol)
         << "cubic_int x=" << p.x;
+  }
+
+  // akima (corrected right-edge curvature, matching the fixed spline_akima.f)
+  for (const Pt& p :
+       {Pt{0.10, 5.69239130434782581e-01}, Pt{0.33, 6.30549342608695662e-01},
+        Pt{0.50, 5.91685274725274768e-01}, Pt{0.62, 8.16355910329670365e-01},
+        Pt{0.88, 5.86349010989010822e-01}}) {
+    EXPECT_NEAR(profiles_->evalAkima(knots, values, p.x), p.golden, kTol)
+        << "akima x=" << p.x;
+  }
+  for (const Pt& p :
+       {Pt{0.33, 1.97988894504347812e-01}, Pt{0.62, 3.79619151186622039e-01},
+        Pt{1.00, 6.34880554228380301e-01}}) {
+    EXPECT_NEAR(profiles_->evalAkimaIntegrated(knots, values, p.x), p.golden,
+                kTol)
+        << "akima_int x=" << p.x;
   }
 
   // gauss_trunc, ac/am = {0.7, 0.4}
