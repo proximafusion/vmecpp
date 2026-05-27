@@ -6,9 +6,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <iostream>
+#include <limits>
 #include <string>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
@@ -18,6 +21,175 @@
 
 using vmecpp::vmec_algorithm_constants::kEvenParity;
 using vmecpp::vmec_algorithm_constants::kOddParity;
+
+namespace {
+// 10-point Gauss-Legendre nodes/weights on [0, 1], as used by Fortran VMEC's
+// pcurr to integrate an I-prime(s) profile into the enclosed current I(s).
+constexpr std::array<double, 10> kGaussLegendreNodes01 = {
+    0.01304673574141414, 0.06746831665550774, 0.1602952158504878,
+    0.2833023029353764,  0.4255628305091844,  0.5744371694908156,
+    0.7166976970646236,  0.8397047841495122,  0.9325316833444923,
+    0.9869532642585859};
+constexpr std::array<double, 10> kGaussLegendreWeights01 = {
+    0.03333567215434407, 0.0747256745752903, 0.1095431812579910,
+    0.1346333596549982,  0.1477621123573764, 0.1477621123573764,
+    0.1346333596549982,  0.1095431812579910, 0.0747256745752903,
+    0.03333567215434407};
+
+// Coefficient access with Fortran-style zero-padding: profile coefficient
+// arrays are dimensioned (0:20) in Fortran VMEC and zero-filled beyond the
+// provided entries.
+double Coef(const Eigen::VectorXd& c, int i) {
+  return (i >= 0 && i < static_cast<int>(c.size())) ? c[i] : 0.0;
+}
+
+// Per-interval cubic coefficients of the Akima spline through (knots, values),
+// ported 1:1 from educational_VMEC spline_akima.f. The construction is shared
+// between the direct evaluation and the integrated variant. Fortran uses the
+// extended index range [-1, iv+2] (two phantom points at each end, with values
+// quadratically extrapolated); here cpp_index = fortran_index + 1.
+struct AkimaCoeffs {
+  int iv = 0;                      // number of active knots
+  std::vector<double> xloc;        // extended knots,           size iv + 4
+  std::vector<double> a, b, c, d;  // cubic coefficients per interval
+};
+
+AkimaCoeffs BuildAkimaCoeffs(const Eigen::VectorXd& xx,
+                             const Eigen::VectorXd& yy) {
+  const int iv = static_cast<int>(xx.size());
+  const int sz = iv + 4;
+  AkimaCoeffs r;
+  r.iv = iv;
+  r.xloc.assign(sz, 0.0);
+  r.a.assign(sz, 0.0);
+  r.b.assign(sz, 0.0);
+  r.c.assign(sz, 0.0);
+  r.d.assign(sz, 0.0);
+  std::vector<double> yloc(sz, 0.0), m(sz, 0.0), t(sz, 0.0), dm(sz, 0.0),
+      p(sz, 0.0), q(sz, 0.0);
+  // accessors using Fortran indexing (cpp = fortran + 1)
+  auto X = [&](int f) -> double& { return r.xloc[f + 1]; };
+  auto Y = [&](int f) -> double& { return yloc[f + 1]; };
+  auto M = [&](int f) -> double& { return m[f + 1]; };
+  auto DM = [&](int f) -> double& { return dm[f + 1]; };
+  auto P = [&](int f) -> double& { return p[f + 1]; };
+  auto Q = [&](int f) -> double& { return q[f + 1]; };
+  auto T = [&](int f) -> double& { return t[f + 1]; };
+  auto A = [&](int f) -> double& { return r.a[f + 1]; };
+  auto B = [&](int f) -> double& { return r.b[f + 1]; };
+  auto C = [&](int f) -> double& { return r.c[f + 1]; };
+  auto D = [&](int f) -> double& { return r.d[f + 1]; };
+
+  for (int i = 1; i <= iv; ++i) X(i) = xx[i - 1];
+  X(-1) = 2 * X(1) - X(3);
+  X(0) = X(1) + X(2) - X(3);
+  X(iv + 2) = 2 * X(iv) - X(iv - 2);
+  X(iv + 1) = X(iv) + X(iv - 1) - X(iv - 2);
+  for (int i = 1; i <= iv; ++i) Y(i) = yy[i - 1];
+
+  // interior linear slopes m(1..iv-1); the phantom yloc are still 0 here, which
+  // matches Fortran (those m entries are overwritten below).
+  for (int f = -1; f <= iv + 1; ++f)
+    M(f) = (Y(f + 1) - Y(f)) / (X(f + 1) - X(f));
+  // edge values by quadratic extrapolation
+  const double cl = (M(2) - M(1)) / (X(3) - X(1));
+  const double bl = M(1) - cl * (X(2) - X(1));
+  const double cr = (M(iv - 2) - M(iv - 1)) / (X(iv) - X(iv - 2));
+  const double br = M(iv - 2) - cr * (X(iv - 1) - X(iv - 2));
+  Y(0) = Y(1) + bl * (X(0) - X(1)) + cl * std::pow(X(0) - X(1), 2);
+  Y(-1) = Y(1) + bl * (X(-1) - X(1)) + cl * std::pow(X(-1) - X(1), 2);
+  // NOTE: the right-edge extrapolation reuses cl (the left curvature), not cr.
+  // This is reproduced verbatim from Fortran VMEC for bit-for-bit agreement.
+  Y(iv + 1) =
+      Y(iv) + br * (X(iv + 1) - X(iv)) + cl * std::pow(X(iv + 1) - X(iv), 2);
+  Y(iv + 2) =
+      Y(iv) + br * (X(iv + 2) - X(iv)) + cl * std::pow(X(iv + 2) - X(iv), 2);
+  // phantom slopes
+  M(-1) = (Y(0) - Y(-1)) / (X(0) - X(-1));
+  M(0) = (Y(1) - Y(0)) / (X(1) - X(0));
+  M(iv) = (Y(iv + 1) - Y(iv)) / (X(iv + 1) - X(iv));
+  M(iv + 1) = (Y(iv + 2) - Y(iv + 1)) / (X(iv + 2) - X(iv + 1));
+  // Akima weights for the slope estimates
+  for (int f = -1; f <= iv; ++f) DM(f) = std::abs(M(f + 1) - M(f));
+  for (int i = 1; i <= iv; ++i) {
+    const double denom = DM(i) + DM(i - 2);
+    if (denom != 0.0) {  // exclude division by zero (locally-linear regions)
+      P(i) = DM(i) / denom;
+      Q(i) = DM(i - 2) / denom;
+    }
+  }
+  for (int i = 1; i <= iv; ++i) {
+    T(i) = P(i) * M(i - 1) + Q(i) * M(i);
+    // both weights zero -> give the two slopes equal weight
+    if (P(i) + Q(i) < std::numeric_limits<double>::min())
+      T(i) = 0.5 * M(i - 1) + 0.5 * M(i);
+  }
+  for (int f = -1; f <= iv + 2; ++f) {
+    A(f) = Y(f);
+    B(f) = T(f);
+  }
+  for (int i = 1; i <= iv - 1; ++i) {
+    const double h = X(i + 1) - X(i);
+    C(i) = (3 * M(i) - T(i + 1) - 2 * T(i)) / h;
+    D(i) = (T(i + 1) + T(i) - 2 * M(i)) / (h * h);
+  }
+  return r;
+}
+
+// Second derivatives of the natural-form cubic spline through (xa, ya), with
+// the boundary first-derivatives fixed by a quadratic fit to the three nearest
+// points. Ported from educational_VMEC spline_cubic.f (Numerical Recipes
+// spline()/splint() recoded).
+std::vector<double> BuildCubicSecondDerivatives(const Eigen::VectorXd& xa,
+                                                const Eigen::VectorXd& ya) {
+  const int n = static_cast<int>(xa.size());
+  double c =
+      ((ya[2] - ya[0]) / (xa[2] - xa[0]) - (ya[1] - ya[0]) / (xa[1] - xa[0])) /
+      (xa[2] - xa[1]);
+  const double yp1 = (ya[1] - ya[0]) / (xa[1] - xa[0]) - c * (xa[1] - xa[0]);
+  c = ((ya[n - 3] - ya[n - 1]) / (xa[n - 3] - xa[n - 1]) -
+       (ya[n - 2] - ya[n - 1]) / (xa[n - 2] - xa[n - 1])) /
+      (xa[n - 3] - xa[n - 2]);
+  const double ypn = (ya[n - 2] - ya[n - 1]) / (xa[n - 2] - xa[n - 1]) -
+                     c * (xa[n - 2] - xa[n - 1]);
+  std::vector<double> y2(n, 0.0), u(n, 0.0);
+  y2[0] = -0.5;
+  u[0] = (3.0 / (xa[1] - xa[0])) * ((ya[1] - ya[0]) / (xa[1] - xa[0]) - yp1);
+  for (int i = 1; i <= n - 2; ++i) {
+    const double sig = (xa[i] - xa[i - 1]) / (xa[i + 1] - xa[i - 1]);
+    const double p = sig * y2[i - 1] + 2.0;
+    y2[i] = (sig - 1.0) / p;
+    u[i] = (6.0 *
+                ((ya[i + 1] - ya[i]) / (xa[i + 1] - xa[i]) -
+                 (ya[i] - ya[i - 1]) / (xa[i] - xa[i - 1])) /
+                (xa[i + 1] - xa[i - 1]) -
+            sig * u[i - 1]) /
+           p;
+  }
+  const double qn = 0.5;
+  const double un = (3.0 / (xa[n - 1] - xa[n - 2])) *
+                    (ypn - (ya[n - 1] - ya[n - 2]) / (xa[n - 1] - xa[n - 2]));
+  y2[n - 1] = (un - qn * u[n - 2]) / (qn * y2[n - 2] + 1.0);
+  for (int k = n - 2; k >= 0; --k) y2[k] = y2[k] * y2[k + 1] + u[k];
+  return y2;
+}
+
+// Index of the lower knot of the interval containing x (binary search), as in
+// the Numerical Recipes splint().
+int CubicLowerIndex(const Eigen::VectorXd& xa, double x) {
+  int klo = 0;
+  int khi = static_cast<int>(xa.size()) - 1;
+  while (khi - klo > 1) {
+    const int k = (khi + klo) / 2;
+    if (xa[k] > x) {
+      khi = k;
+    } else {
+      klo = k;
+    }
+  }
+  return klo;
+}
+}  // namespace
 
 namespace vmecpp {
 
@@ -379,7 +551,7 @@ double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
     case ProfileParameterization::POWER_SERIES_I:
       return evalPowerSeriesI(coeffs, normX);
     case ProfileParameterization::GAUSS_TRUNC:
-      return evalGaussTrunc(coeffs, normX);
+      return evalGaussTrunc(coeffs, normX, shouldIntegrate);
     case ProfileParameterization::SUM_ATAN:
       return evalSumAtan(coeffs, normX);
     case ProfileParameterization::TWO_LORENTZ:
@@ -387,7 +559,7 @@ double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
     case ProfileParameterization::TWO_POWER:
       return evalTwoPower(coeffs, normX, shouldIntegrate);
     case ProfileParameterization::TWO_POWER_GS:
-      return evalTwoPowerGs(coeffs, normX);
+      return evalTwoPowerGs(coeffs, normX, shouldIntegrate);
     case ProfileParameterization::AKIMA_SPLINE:
     case ProfileParameterization::AKIMA_SPLINE_I:
       return evalAkima(splineKnots, splineValues, normX);
@@ -399,7 +571,7 @@ double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
     case ProfileParameterization::CUBIC_SPLINE_IP:
       return evalCubicIntegrated(splineKnots, splineValues, normX);
     case ProfileParameterization::PEDESTAL:
-      return evalPedestal(coeffs, normX);
+      return evalPedestal(coeffs, normX, shouldIntegrate);
     case ProfileParameterization::RATIONAL:
       return evalRational(coeffs, normX);
     case ProfileParameterization::LINE_SEGMENT:
@@ -450,11 +622,32 @@ double RadialProfiles::evalPowerSeriesI(const Eigen::VectorXd& coeffs,
   return ret;
 }
 
-double RadialProfiles::evalGaussTrunc(const Eigen::VectorXd& coeffs, double x) {
-  // TODO(jons): implement `gauss_trunc`
-  (void)coeffs;
-  (void)x;
-  return 0.0;
+double RadialProfiles::evalGaussTrunc(const Eigen::VectorXd& coeffs, double x,
+                                      bool shouldIntegrate) {
+  // Truncated Gaussian. Ported from Fortran VMEC pmass/pcurr 'gauss_trunc'.
+  if (coeffs.size() < 2) {
+    LOG(WARNING)
+        << "too few coefficients for 'gauss_trunc' profile; need 2, got "
+        << coeffs.size() << "\n";
+    return 0.0;
+  }
+  const double a0 = coeffs[0];
+  const double a1 = coeffs[1];
+  const double edge = std::exp(-std::pow(1.0 / a1, 2));
+  if (!shouldIntegrate) {
+    // pressure: p(s) = a0/(1 - exp(-(1/a1)^2)) * (exp(-(s/a1)^2) - edge),
+    // normalized so that p(0) = a0.
+    return (a0 / (1.0 - edge)) * (std::exp(-std::pow(x / a1, 2)) - edge);
+  }
+  // current: I(s) = integral_0^x of I-prime(s') = a0*(exp(-(s'/a1)^2) - edge),
+  // evaluated by 10-point Gauss-Legendre quadrature.
+  double integral = 0.0;
+  for (int i = 0; i < 10; ++i) {
+    const double xp = x * kGaussLegendreNodes01[i];
+    integral += kGaussLegendreWeights01[i] * a0 *
+                (std::exp(-std::pow(xp / a1, 2)) - edge);
+  }
+  return integral * x;
 }
 
 double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
@@ -575,66 +768,266 @@ double RadialProfiles::evalTwoPower(const Eigen::VectorXd& coeffs, double x,
   return ret;
 }
 
-double RadialProfiles::evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x) {
-  // TODO(jons): implement `two_power_gs`
-  (void)coeffs;
-  (void)x;
-  return 0.0;
+double RadialProfiles::evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x,
+                                      bool shouldIntegrate) {
+  // two_power with Gaussian peaks:
+  //   two_power(s) * (1 + sum_{i=3,6,...,18} c(i)*exp(-((s -
+  //   c(i+1))/c(i+2))^2))
+  // with two_power(s) = c0 * (1 - s^c1)^c2. Ported from Fortran VMEC
+  // functions.f (two_power_gs) and pmass/pcurr 'two_power_gs'.
+  if (coeffs.size() < 3) {
+    LOG(WARNING)
+        << "too few coefficients for 'two_power_gs' profile; need 3, got "
+        << coeffs.size() << "\n";
+    return 0.0;
+  }
+  auto raw = [&coeffs](double s) {
+    const double two_power =
+        Coef(coeffs, 0) *
+        std::pow(1.0 - std::pow(s, Coef(coeffs, 1)), Coef(coeffs, 2));
+    double gaussian = 1.0;
+    for (int i = 3; i <= 18; i += 3) {
+      const double amplitude = Coef(coeffs, i);
+      if (amplitude != 0.0) {
+        gaussian += amplitude *
+                    std::exp(-std::pow(
+                        (s - Coef(coeffs, i + 1)) / Coef(coeffs, i + 2), 2));
+      }
+    }
+    return two_power * gaussian;
+  };
+  if (!shouldIntegrate) {
+    return raw(x);
+  }
+  // current: integrate I-prime via 10-point Gauss-Legendre quadrature.
+  double integral = 0.0;
+  for (int i = 0; i < 10; ++i) {
+    integral += kGaussLegendreWeights01[i] * raw(x * kGaussLegendreNodes01[i]);
+  }
+  return integral * x;
 }
 
 double RadialProfiles::evalAkima(const Eigen::VectorXd& splineKnots,
                                  const Eigen::VectorXd& splineValues,
                                  double x) {
-  // TODO(jons): implement `akima_spline`
-  (void)splineKnots;
-  (void)splineValues;
-  (void)x;
+  // Akima spline interpolation. Ported from Fortran VMEC spline_akima.f.
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 4 || n != static_cast<int>(splineValues.size())) {
+    LOG(WARNING)
+        << "'akima_spline' profile needs at least 4 spline points; got " << n
+        << " knots and " << splineValues.size() << " values\n";
+    return 0.0;
+  }
+  const AkimaCoeffs coeffs = BuildAkimaCoeffs(splineKnots, splineValues);
+  const int iv = coeffs.iv;
+  auto X = [&](int f) { return coeffs.xloc[f + 1]; };
+  // Outside the knot range Fortran returns 0 (and raises an error flag).
+  if (x < X(1) || x > X(iv)) {
+    return 0.0;
+  }
+  if (x == X(iv)) {
+    return splineValues[iv - 1];
+  }
+  for (int i = 1; i <= iv - 1; ++i) {
+    if (x >= X(i) && x < X(i + 1)) {
+      const double dx = x - X(i);
+      return coeffs.a[i + 1] +
+             dx * (coeffs.b[i + 1] +
+                   dx * (coeffs.c[i + 1] + coeffs.d[i + 1] * dx));
+    }
+  }
   return 0.0;
 }
 
 double RadialProfiles::evalAkimaIntegrated(const Eigen::VectorXd& splineKnots,
                                            const Eigen::VectorXd& splineValues,
                                            double x) {
-  // TODO(jons): implement `akima_spline_i`
-  (void)splineKnots;
-  (void)splineValues;
-  (void)x;
-  return 0.0;
+  // Integral from the first knot to x of the Akima spline (enclosed current
+  // from an I-prime profile). Ported from Fortran VMEC spline_akima_int.f.
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 4 || n != static_cast<int>(splineValues.size())) {
+    LOG(WARNING)
+        << "'akima_spline_ip' profile needs at least 4 spline points; got " << n
+        << " knots and " << splineValues.size() << " values\n";
+    return 0.0;
+  }
+  const AkimaCoeffs coeffs = BuildAkimaCoeffs(splineKnots, splineValues);
+  const int iv = coeffs.iv;
+  auto X = [&](int f) { return coeffs.xloc[f + 1]; };
+  auto A = [&](int f) { return coeffs.a[f + 1]; };
+  auto B = [&](int f) { return coeffs.b[f + 1]; };
+  auto C = [&](int f) { return coeffs.c[f + 1]; };
+  auto D = [&](int f) { return coeffs.d[f + 1]; };
+  constexpr double kThird = 1.0 / 3.0;
+  // integral over each complete interval [X(i), X(i+1)], i = 1 .. iv-1
+  std::vector<double> interval_integral(iv, 0.0);
+  for (int i = 1; i <= iv - 1; ++i) {
+    const double dx = X(i + 1) - X(i);
+    interval_integral[i] = A(i) * dx + 0.5 * B(i) * dx * dx +
+                           kThird * C(i) * dx * dx * dx +
+                           0.25 * D(i) * dx * dx * dx * dx;
+  }
+  if (x >= X(iv)) {
+    double y = 0.0;
+    for (int i = 1; i <= iv - 1; ++i) y += interval_integral[i];
+    return y;
+  }
+  if (x <= X(1)) {
+    return 0.0;
+  }
+  double y = 0.0;
+  for (int i = 1; i <= iv - 1; ++i) {
+    if (x >= X(i + 1)) {
+      y += interval_integral[i];
+    } else {
+      const double dx = x - X(i);
+      y += dx *
+           (A(i) + dx * (0.5 * B(i) + dx * (kThird * C(i) + 0.25 * D(i) * dx)));
+      return y;
+    }
+  }
+  return y;
 }
 
 double RadialProfiles::evalCubic(const Eigen::VectorXd& splineKnots,
                                  const Eigen::VectorXd& splineValues,
                                  double x) {
-  // TODO(jons): implement `cubic_spline`
-  (void)splineKnots;
-  (void)splineValues;
-  (void)x;
-  return 0.0;
+  // Cubic spline interpolation (Numerical Recipes spline/splint, boundary
+  // derivatives by quadratic fit). Ported from Fortran VMEC spline_cubic.f.
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 4 || n != static_cast<int>(splineValues.size())) {
+    LOG(WARNING)
+        << "'cubic_spline' profile needs at least 4 spline points; got " << n
+        << " knots and " << splineValues.size() << " values\n";
+    return 0.0;
+  }
+  if (x < splineKnots[0] || x > splineKnots[n - 1]) {
+    return 0.0;
+  }
+  const std::vector<double> y2 =
+      BuildCubicSecondDerivatives(splineKnots, splineValues);
+  const int klo = CubicLowerIndex(splineKnots, x);
+  const int khi = klo + 1;
+  const double h = splineKnots[khi] - splineKnots[klo];
+  const double a = (splineKnots[khi] - x) / h;
+  const double b = (x - splineKnots[klo]) / h;
+  return a * splineValues[klo] + b * splineValues[khi] +
+         ((a * a * a - a) * y2[klo] + (b * b * b - b) * y2[khi]) * (h * h) /
+             6.0;
 }
 
 double RadialProfiles::evalCubicIntegrated(const Eigen::VectorXd& splineKnots,
                                            const Eigen::VectorXd& splineValues,
                                            double x) {
-  // TODO(jons): implement `cubic_spline_i`
-  (void)splineKnots;
-  (void)splineValues;
-  (void)x;
-
-  return 0.0;
+  // Integral from the first knot to x of the cubic spline (enclosed current
+  // from an I-prime profile). Ported from Fortran VMEC spline_cubic_int.f.
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 4 || n != static_cast<int>(splineValues.size())) {
+    LOG(WARNING)
+        << "'cubic_spline_ip' profile needs at least 4 spline points; got " << n
+        << " knots and " << splineValues.size() << " values\n";
+    return 0.0;
+  }
+  if (x < splineKnots[0] || x > splineKnots[n - 1]) {
+    return 0.0;
+  }
+  const std::vector<double> y2 =
+      BuildCubicSecondDerivatives(splineKnots, splineValues);
+  const int klo = CubicLowerIndex(splineKnots, x);
+  const int khi = klo + 1;
+  // integral over the complete intervals before the one containing x
+  double prefix = 0.0;
+  for (int i = 0; i < klo; ++i) {
+    const double dxa = splineKnots[i + 1] - splineKnots[i];
+    prefix += 0.5 * dxa * (splineValues[i + 1] + splineValues[i]) -
+              (dxa * dxa * dxa) * (y2[i + 1] + y2[i]) / 24.0;
+  }
+  const double h = splineKnots[khi] - splineKnots[klo];
+  const double dx = x - splineKnots[klo];
+  const double dya = splineValues[khi] - splineValues[klo];
+  const double dy2a = y2[khi] - y2[klo];
+  const double y = splineValues[klo] * dx + 0.5 * dya * dx * dx / h +
+                   y2[klo] * dx * dx * (2 * dx - 3 * h) / 12.0 +
+                   dy2a * dx * dx * (dx * dx - 2 * h * h) / (h * 24.0);
+  return y + prefix;
 }
 
-double RadialProfiles::evalPedestal(const Eigen::VectorXd& coeffs, double x) {
-  // TODO(jons): implement `pedestal`
-  (void)coeffs;
-  (void)x;
-  return 0.0;
+double RadialProfiles::evalPedestal(const Eigen::VectorXd& coeffs, double x,
+                                    bool shouldIntegrate) {
+  // Pedestal profile. Ported from Fortran VMEC pcurr/pmass 'pedestal'. The
+  // enclosed-current and pressure variants use different coefficient layouts,
+  // selected here by shouldIntegrate (true for the current profile). Neither
+  // form is numerically integrated: the current variant's polynomial backbone
+  // already represents I(s).
+  if (shouldIntegrate) {
+    // current: polynomial backbone c(0..7) (in already-enclosed-current form)
+    // plus three tanh pedestal terms.
+    double value = 0.0;
+    for (int i = 7; i >= 0; --i) {
+      value = x * value + Coef(coeffs, i) / (i + 1.0);
+    }
+    value *= x;
+
+    double width = Coef(coeffs, 11);
+    double amplitude = Coef(coeffs, 8);
+    double normalization;
+    if (width <= 0.0) {
+      // disable the first pedestal term
+      amplitude = 0.0;
+      normalization = 0.0;
+      width = 1.0e30;
+    } else {
+      normalization = 1.0 / (std::tanh(2.0 * Coef(coeffs, 10) / width) -
+                             std::tanh(2.0 * (Coef(coeffs, 10) - 1) / width));
+    }
+    const double width1 = std::max(Coef(coeffs, 16), 0.01);
+    const double width2 = std::max(Coef(coeffs, 20), 0.01);
+    const double g1 = (x - Coef(coeffs, 15)) / width1;
+    const double g3 = (-Coef(coeffs, 15)) / width1;
+    const double g2 = (x - Coef(coeffs, 19)) / width2;
+    const double g4 = (-Coef(coeffs, 19)) / width2;
+    value += normalization * amplitude *
+                 (std::tanh(2.0 * Coef(coeffs, 10) / width) -
+                  std::tanh(2.0 * (Coef(coeffs, 10) - std::sqrt(x)) / width)) +
+             Coef(coeffs, 13) * (std::tanh(g1) - std::tanh(g3)) +
+             Coef(coeffs, 17) * (std::tanh(g2) - std::tanh(g4));
+    return value;
+  }
+  // pressure: polynomial backbone c(0..15) plus one tanh pedestal term.
+  double value = 0.0;
+  for (int i = 15; i >= 0; --i) {
+    value = x * value + Coef(coeffs, i);
+  }
+
+  double width = Coef(coeffs, 19);
+  double normalization;
+  if (width <= 0.0) {
+    normalization = 0.0;
+    width = 1.0e30;
+  } else {
+    normalization = 1.0 / (std::tanh(2.0 * Coef(coeffs, 18) / width) -
+                           std::tanh(2.0 * (Coef(coeffs, 18) - 1) / width));
+  }
+  value += normalization * Coef(coeffs, 17) *
+           (std::tanh(2.0 * (Coef(coeffs, 18) - std::sqrt(x)) / width) -
+            std::tanh(2.0 * (Coef(coeffs, 18) - 1.0) / width));
+  return value;
 }
 
 double RadialProfiles::evalRational(const Eigen::VectorXd& coeffs, double x) {
-  // TODO(jons): implement `rational`
-  (void)coeffs;
-  (void)x;
-  return 0.0;
+  // Ratio of polynomials: numerator coefficients c(0..9), denominator
+  // coefficients c(10..). Ported from Fortran VMEC pcurr/piota/pmass
+  // 'rational'.
+  double numerator = 0.0;
+  for (int i = 9; i >= 0; --i) {
+    numerator = x * numerator + Coef(coeffs, i);
+  }
+  double denominator = 0.0;
+  for (int i = static_cast<int>(coeffs.size()) - 1; i >= 10; --i) {
+    denominator = x * denominator + Coef(coeffs, i);
+  }
+  return (denominator != 0.0) ? numerator / denominator
+                              : std::numeric_limits<double>::max();
 }
 
 // Linear interpolation between closest points and associated knots.
@@ -710,10 +1103,11 @@ double RadialProfiles::evalLineSegmentIntegrated(
 
 double RadialProfiles::evalNiceQuadratic(const Eigen::VectorXd& coeffs,
                                          double x) {
-  // TODO(jons): implement `nice_quadratic`
-  (void)coeffs;
-  (void)x;
-  return 0.0;
+  // iota(s) = a0*(1 - s) + a1*s + 4*a2*s*(1 - s): a0 and a1 are the values at
+  // s = 0 and s = 1, a2 is the shift of iota(1/2) from the straight line.
+  // Ported from Fortran VMEC piota 'nice_quadratic'.
+  return Coef(coeffs, 0) * (1.0 - x) + Coef(coeffs, 1) * x +
+         4.0 * Coef(coeffs, 2) * x * (1.0 - x);
 }
 
 void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
