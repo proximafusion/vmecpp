@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780002990653,
+  "lastUpdate": 1780003472901,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17974,6 +17974,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.021534706553407446",
             "extra": "mean: 9.293991487999998 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8596e70339522c3c4959a1af1e278c758d6c04bb",
+          "message": "tests: cross-check vmecpp/test_data and vmecpp_large_cpp_tests inputs via indata2json (#534)\n\n* tests: cross-check vmecpp/test_data and vmecpp_large_cpp_tests inputs via indata2json\n\n* ci: check out vmecpp_large_cpp_tests in the pytest job so the input-consistency test runs\n\n* tests: apply docformatter to input-consistency docstring\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-05-28T23:19:33+02:00",
+          "tree_id": "a1625da2614ebf437f5631901fb16e3abf41914f",
+          "url": "https://github.com/proximafusion/vmecpp/commit/8596e70339522c3c4959a1af1e278c758d6c04bb"
+        },
+        "date": 1780003471921,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.01741555884295,
+            "unit": "iter/sec",
+            "range": "stddev: 0.001064541919615837",
+            "extra": "mean: 331.40943980001794 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 3.0151480101329464,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007588624224317584",
+            "extra": "mean: 331.6586770000413 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2826184934762502,
+            "unit": "iter/sec",
+            "range": "stddev: 0.037025090713056215",
+            "extra": "mean: 3.538338866999993 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5823111083266599,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005872555560249894",
+            "extra": "mean: 1.7172950776666767 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5602860179290837,
+            "unit": "iter/sec",
+            "range": "stddev: 0.013989365140807966",
+            "extra": "mean: 1.7848027043333634 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.43394663691378366,
+            "unit": "iter/sec",
+            "range": "stddev: 0.023025328642117066",
+            "extra": "mean: 2.3044308099999853 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10466973695643568,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014329140434008346",
+            "extra": "mean: 9.553859874666614 sec\nrounds: 3"
           }
         ]
       }
