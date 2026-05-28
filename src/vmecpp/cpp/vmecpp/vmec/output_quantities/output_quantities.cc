@@ -3706,6 +3706,10 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
   intermediate.sump2 = intermediate.vnorm * p2_sum;
 
   intermediate.jPS2.resize(fc.ns);
+  // The axis (jF=0) and edge (jF=ns-1) entries are never assigned in the loop
+  // below, but the whole array is serialized; zero them so the output is
+  // deterministic instead of uninitialized memory.
+  intermediate.jPS2.setZero();
   intermediate.jpar_perp_sum = 0.0;
   intermediate.jparPS_perp_sum = 0.0;
   intermediate.s2 = 0.0;
