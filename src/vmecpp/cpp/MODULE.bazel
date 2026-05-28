@@ -32,3 +32,10 @@ python.toolchain(
 
 # zlib is needed for NetCDF4's version of HDF5
 bazel_dep(name = "zlib", version = "1.3.1.bcr.5")
+
+# Dependencies not yet available as Bazel modules (abscab-cpp, HDF5, NetCDF).
+# Exposed through a module extension rather than WORKSPACE.bazel so that modules
+# depending on vmecpp resolve them automatically (WORKSPACE repositories do not
+# propagate to downstream modules).
+non_module_deps = use_extension("//third_party:non_module_deps.bzl", "non_module_deps")
+use_repo(non_module_deps, "abscab_cpp", "hdf5", "netcdf4")

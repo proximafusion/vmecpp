@@ -156,6 +156,59 @@
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
+    "//third_party:non_module_deps.bzl%non_module_deps": {
+      "general": {
+        "bzlTransitiveDigest": "6743Bvu2xD+elXHr9fABrgLuTNtruCDIY08uZzun/7c=",
+        "usagesDigest": "K/CX77W1ZsxEL9QA1NwdwoaVteO5CO2nnGSFVQ1DqyQ=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "abscab_cpp": {
+            "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
+            "ruleClassName": "http_archive",
+            "attributes": {
+              "urls": [
+                "https://github.com/jonathanschilling/abscab-cpp/archive/refs/tags/v1.0.3.tar.gz"
+              ],
+              "strip_prefix": "abscab-cpp-1.0.3",
+              "sha256": "d7d4d8060117ac047ca7a3c5824f79cc7d8f42c538e542946650b188c7d2e145"
+            }
+          },
+          "hdf5": {
+            "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
+            "ruleClassName": "http_archive",
+            "attributes": {
+              "build_file_content": "filegroup(\r\n    name = \"all_srcs\",\r\n    srcs = glob([\"**\"]),\r\n    visibility = [\"//visibility:public\"],\r\n)\r\n",
+              "sha256": "df5ee33c74d5efb59738075ef96f4201588e1f1eeb233f047ac7fd1072dee1f6",
+              "urls": [
+                "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_3.tar.gz"
+              ],
+              "strip_prefix": "hdf5-hdf5-1_14_3"
+            }
+          },
+          "netcdf4": {
+            "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
+            "ruleClassName": "http_archive",
+            "attributes": {
+              "build_file_content": "filegroup(\r\n    name = \"all_srcs\",\r\n    srcs = glob([\"**\"]),\r\n    visibility = [\"//visibility:public\"],\r\n)\r\n",
+              "integrity": "sha256-mQ9G1JUl1qtdxCSfhoTG3ur1Teb+xjoYfp+zgswP/f8=",
+              "urls": [
+                "https://github.com/Unidata/netcdf-c/archive/refs/tags/v4.9.3.tar.gz"
+              ],
+              "strip_prefix": "netcdf-c-4.9.3"
+            }
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "",
+            "bazel_tools",
+            "bazel_tools"
+          ]
+        ]
+      }
+    },
     "@@apple_support~//crosstool:setup.bzl%apple_cc_configure_extension": {
       "general": {
         "bzlTransitiveDigest": "PjIds3feoYE8SGbbIq2SFTZy3zmxeO2tQevJZNDo7iY=",
