@@ -1,10 +1,9 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Guarantee that the public input files in the main repo
-(``vmecpp/test_data``) and the instrumented copies used by the large
-integration tests (``vmecpp_large_cpp_tests/test_data``) describe identical
-equilibria.
+"""Guarantee that the public input files in the main repo (``vmecpp/test_data``) and the
+instrumented copies used by the large integration tests
+(``vmecpp_large_cpp_tests/test_data``) describe identical equilibria.
 
 The large-tests inputs carry an extra block of ``dump_*`` flags (and
 ``iter2_to_dump``) that make Fortran VMEC emit the per-step reference data the
