@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779096650376,
+  "lastUpdate": 1780002990653,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17901,6 +17901,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.02374263750619059",
             "extra": "mean: 9.22145973066669 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8d14954abd147b871352ae1522eb3973c5ba3081",
+          "message": "bazel: make vmecpp usable as a Bazel module (#532)\n\nbazel: expose non-module deps via an extension so vmecpp is consumable\n\nWORKSPACE repositories do not propagate to modules that depend on vmecpp, so\nabscab_cpp, hdf5, and netcdf4 (declared in WORKSPACE.bazel) were unavailable to\na downstream bzlmod consumer, which left vmecpp not usable as a Bazel module.\nMove the three http_archives into a module extension at\n//third_party:non_module_deps.bzl, pull them in from MODULE.bazel via use_repo,\nand remove WORKSPACE.bazel. The third_party hdf5/netcdf4 cmake builds and every\nrepository reference are unchanged.\n\nA downstream module depending on vmecpp through local_path_override failed\nanalysis with \"no repository visible as @abscab_cpp\" before this change, and\nresolves, builds, and links against //vmecpp/vmec/vmec:vmec after it.",
+          "timestamp": "2026-05-28T23:12:08+02:00",
+          "tree_id": "87a632621a184995f103204598cb64adbcc5d063",
+          "url": "https://github.com/proximafusion/vmecpp/commit/8d14954abd147b871352ae1522eb3973c5ba3081"
+        },
+        "date": 1780002988971,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.8814586203559456,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0016739102118562901",
+            "extra": "mean: 347.0464551999953 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.8734565404909334,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0010211104834350368",
+            "extra": "mean: 348.0129196000121 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.27392274442247994,
+            "unit": "iter/sec",
+            "range": "stddev: 0.04993283517021254",
+            "extra": "mean: 3.6506643583333394 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.57854378455926,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009229844316567523",
+            "extra": "mean: 1.7284776479999853 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5662806273932036,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011813004362460279",
+            "extra": "mean: 1.7659089003333293 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.48397290031881507,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009167314738881459",
+            "extra": "mean: 2.0662313930000096 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10759639723052866,
+            "unit": "iter/sec",
+            "range": "stddev: 0.021534706553407446",
+            "extra": "mean: 9.293991487999998 sec\nrounds: 3"
           }
         ]
       }
