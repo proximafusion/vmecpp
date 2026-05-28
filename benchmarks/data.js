@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780003472901,
+  "lastUpdate": 1780004658336,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18047,6 +18047,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.014329140434008346",
             "extra": "mean: 9.553859874666614 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ca4fc48fa3f627ded8128565b54c00f068a0b80b",
+          "message": "Populate full-grid bsubsmns_full in wout (#530)\n\n* output_quantities: populate full-grid bsubsmns_full\n\nbsubsmns_full was declared, serialized, and read back, but never\ncomputed, so every wout shipped it as an empty 0x0 dataset. Pass the\nfull-grid realspace B_s (bsubs_full) into ComputeWOutFileContents and\nforward sine-transform it onto the Nyquist mode set, mirroring the\nhalf-grid bsubsmns. On interior surfaces bsubsmns_full matches the\nradial interpolation of bsubsmns to round-off.\n\n* output_quantities: test bsubsmns_full equals interpolated bsubsmns\n\nParameterized regression test asserting the full-grid B_s coefficients\nequal the radial interpolation of the half-grid bsubsmns on interior\nsurfaces: bsubsmns_full(:, jF) == 0.5*(bsubsmns(:, jF+1) + bsubsmns(:, jF)),\nwhich holds because the half->full interpolation commutes with the\nangular DFT. Also guards the empty-array regression that this branch\nfixes. Verified across all instantiated cases (max relabs <= 7e-17).\n\n* output_quantities: clang-format ComputeWOutFileContents signature\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-05-28T23:40:09+02:00",
+          "tree_id": "b0eb42db2d5fdc07733bcbb41e64fd47d67a2129",
+          "url": "https://github.com/proximafusion/vmecpp/commit/ca4fc48fa3f627ded8128565b54c00f068a0b80b"
+        },
+        "date": 1780004656941,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.167261131491628,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0016039251966041526",
+            "extra": "mean: 315.73020300004373 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 3.1504174141142194,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0019943305694184125",
+            "extra": "mean: 317.4182556000005 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2319910362239368,
+            "unit": "iter/sec",
+            "range": "stddev: 0.022483284697008915",
+            "extra": "mean: 4.310511372666649 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5796042323621587,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0016794549879465578",
+            "extra": "mean: 1.7253152136666283 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5768772632167608,
+            "unit": "iter/sec",
+            "range": "stddev: 0.001957366018109429",
+            "extra": "mean: 1.7334709890000493 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.5321708893280638,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01149312360271712",
+            "extra": "mean: 1.8790956440000552 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.11658510765426967,
+            "unit": "iter/sec",
+            "range": "stddev: 0.016926417569559482",
+            "extra": "mean: 8.577424854000014 sec\nrounds: 3"
           }
         ]
       }
