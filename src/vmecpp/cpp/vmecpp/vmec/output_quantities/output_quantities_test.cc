@@ -620,4 +620,59 @@ TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
             << worst_norm_field << ")" << std::endl;
 }
 
+// lforbal through the non-stellarator-symmetric (lasym) free-boundary path.
+// With lforbal = true the flux-averaged m=1,n=0 force balance evolves those
+// components, so the converged equilibrium differs from the variational one.
+// educational_VMEC applies lforbal only to the symmetric (frcc/fzsc) m=1
+// components, so this runs the asymmetric cth-like free-boundary case both ways
+// and checks that the lforbal run converges and changes the equilibrium,
+// exercising the full lasym code path (full-grid cos01/sin01 + asymmetric DFT).
+TEST(CthLikeFreeBoundaryAsymLforbal, LforbalConvergesAndModifiesEquilibrium) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base.ok());
+  ASSERT_TRUE(base->lasym);
+  ASSERT_FALSE(base->lforbal);
+
+  // Run the case and flatten the R,Z spectra so the two solves can be compared
+  // after their Vmec objects go out of scope.
+  auto solve = [](const VmecINDATA& indata) -> std::vector<double> {
+    auto maybe_vmec = Vmec::FromIndata(indata);
+    EXPECT_TRUE(maybe_vmec.ok());
+    Vmec& vmec = **maybe_vmec;
+    const bool reached_checkpoint = vmec.run().value();
+    EXPECT_FALSE(reached_checkpoint);  // ran to convergence
+    const WOutFileContents& wout = vmec.output_quantities_.wout;
+    std::vector<double> rz;
+    rz.reserve(static_cast<size_t>(vmec.fc_.ns) * vmec.s_.mnmax * 2);
+    for (int jF = 0; jF < vmec.fc_.ns; ++jF) {
+      for (int mn = 0; mn < vmec.s_.mnmax; ++mn) {
+        rz.push_back(wout.rmnc(mn, jF));
+        rz.push_back(wout.zmns(mn, jF));
+      }
+    }
+    return rz;
+  };
+
+  const std::vector<double> variational = solve(*base);
+
+  VmecINDATA with_lforbal = *base;
+  with_lforbal.lforbal = true;
+  const std::vector<double> lforbal = solve(with_lforbal);
+
+  ASSERT_EQ(lforbal.size(), variational.size());
+  double max_abs_diff = 0.0;
+  for (size_t i = 0; i < lforbal.size(); ++i) {
+    max_abs_diff =
+        std::max(max_abs_diff, std::abs(lforbal[i] - variational[i]));
+  }
+  EXPECT_GT(max_abs_diff, 1e-9)
+      << "lforbal did not change the converged lasym equilibrium";
+
+  std::cout << "[lforbal-lasym] max |R,Z| change vs variational = "
+            << max_abs_diff << std::endl;
+}
+
 }  // namespace vmecpp
