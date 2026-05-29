@@ -322,7 +322,6 @@ VMEC++:
 - non-stellarator-symmetric terms (`lasym == true`) are not supported yet
 - free-boundary works only for `ntor > 0` - axisymmetric (`ntor = 0`) free-boundary runs don't work yet
 - `lgiveup`/`fgiveup` logic for early termination of a multi-grid sequence is not implemented yet
-- `lbsubs` logic in computing outputs is not implemented yet
 - `lforbal` logic for non-variational forces near the magnetic axis is not implemented yet
 - `lrfp` flag is available for wout compatibility, but RFP-specific physics is not implemented yet - only stellarators/Tokamaks for now
 - several profile parameterizations are not fully implemented yet:

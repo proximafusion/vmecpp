@@ -75,3 +75,14 @@ filegroup(
         "wout_cth_like_free_bdy.nc",
     ],
 )
+
+# A lasym = true axisymmetric tokamak: up-down-asymmetric boundary (nonzero
+# rbs m=1, m=2) on top of a circular cross-section, no pressure, simple iota
+# profile. Used by lbsubs_test to exercise the lasym + lbsubs input wiring.
+filegroup(
+    name = "up_down_asym",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "up_down_asym.json",
+    ],
+)

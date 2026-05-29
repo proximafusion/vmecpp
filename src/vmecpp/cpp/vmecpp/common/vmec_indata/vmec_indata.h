@@ -207,6 +207,16 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // If true, re-compute the full-grid covariant B_s by solving the radial
+  // force balance equation
+  //   bsupu * d(B_s)/du + bsupv * d(B_s)/dv = brho
+  // in spectral space at every interior surface (lbsubs flag in Fortran VMEC).
+  // The default (false) keeps B_s as the linear half->full interpolation of
+  // the metric-element B_s plus the axis/edge extrapolation. Affects the
+  // jxbout diagnostic and the bsubsmn{s,c} coefficients in the wout file; the
+  // equilibrium iteration is unchanged.
+  bool lbsubs;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)
