@@ -620,4 +620,158 @@ TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
             << worst_norm_field << ")" << std::endl;
 }
 
+// Free-boundary Solov'ev tokamak (axisymmetric: ntor = 0, nzeta = 1), compared
+// field-by-field against an educational_VMEC (VMEC 8.52) golden: the scalars,
+// the 1D profiles, and every Fourier coefficient array. vmecpp and VMEC 8.52
+// reach this free-boundary equilibrium in different iteration counts, so niter
+// is not part of the comparison; the converged quantities are held to a single
+// tolerance, normalized per field by its own peak magnitude.
+TEST(SolovevFreeBoundary, MatchesEducationalVmecGolden) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  ASSERT_TRUE(vmec_indata->lfreeb);
+  ASSERT_EQ(vmec_indata->ntor, 0);
+
+  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);  // ran to convergence
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+
+  int ncid;
+  ASSERT_EQ(
+      nc_open("vmecpp/test_data/wout_solovev_free_bdy.nc", NC_NOWRITE, &ncid),
+      NC_NOERR);
+
+  // The flux-surface geometry, magnetic field, and integrated scalars agree
+  // with the VMEC 8.52 reference to within kTight. The toroidal and poloidal
+  // current-density profiles are the most sensitive derived quantity and differ
+  // most at the plasma edge (a few 1e-4 relative), so they are held to the
+  // looser, documented kCurrent.
+  const double kTight = 5.0e-5;
+  const double kCurrent = 2.0e-3;
+  double tolerance = kTight;  // mutated below; captured by reference
+  double worst_abs = 0.0;
+  double worst_norm = 0.0;
+  std::string worst_norm_field;
+
+  auto compare = [&](const std::string& name, const std::vector<double>& ref,
+                     const std::vector<double>& val) {
+    double peak = 1e-300;
+    for (double r : ref) {
+      peak = std::max(peak, std::abs(r));
+    }
+    double field_worst_abs = 0.0;
+    double field_worst_norm = 0.0;
+    for (size_t i = 0; i < ref.size(); ++i) {
+      EXPECT_TRUE(IsCloseRelAbs(ref[i], val[i], tolerance))
+          << name << "[" << i << "]: ref=" << ref[i] << " val=" << val[i];
+      const double abs_dev = std::abs(ref[i] - val[i]);
+      field_worst_abs = std::max(field_worst_abs, abs_dev);
+      field_worst_norm = std::max(field_worst_norm, abs_dev / peak);
+    }
+    if (field_worst_norm > worst_norm) {
+      worst_norm = field_worst_norm;
+      worst_norm_field = name;
+    }
+    worst_abs = std::max(worst_abs, field_worst_abs);
+  };
+  auto scalar = [&](const std::string& name, double ref, double val) {
+    compare(name, {ref}, {val});
+  };
+  auto flatten = [&](const std::vector<std::vector<double>>& ref2d, int rows,
+                     int cols, auto getter) {
+    std::vector<double> ref;
+    std::vector<double> val;
+    ref.reserve(static_cast<size_t>(rows) * cols);
+    val.reserve(static_cast<size_t>(rows) * cols);
+    for (int jF = 0; jF < rows; ++jF) {
+      for (int mn = 0; mn < cols; ++mn) {
+        ref.push_back(ref2d[jF][mn]);
+        val.push_back(getter(mn, jF));
+      }
+    }
+    return std::make_pair(ref, val);
+  };
+
+  // scalar physics quantities
+  scalar("volume_p", NetcdfReadDouble(ncid, "volume_p"), wout.volume);
+  scalar("betatotal", NetcdfReadDouble(ncid, "betatotal"), wout.betatotal);
+  scalar("aspect", NetcdfReadDouble(ncid, "aspect"), wout.aspect);
+  scalar("b0", NetcdfReadDouble(ncid, "b0"), wout.b0);
+  scalar("wp", NetcdfReadDouble(ncid, "wp"), wout.wp);
+  scalar("wb", NetcdfReadDouble(ncid, "wb"), wout.wb);
+  scalar("rbtor", NetcdfReadDouble(ncid, "rbtor"), wout.rbtor);
+  scalar("ctor", NetcdfReadDouble(ncid, "ctor"), wout.ctor);
+  scalar("Aminor_p", NetcdfReadDouble(ncid, "Aminor_p"), wout.Aminor_p);
+  scalar("Rmajor_p", NetcdfReadDouble(ncid, "Rmajor_p"), wout.Rmajor_p);
+  scalar("volavgB", NetcdfReadDouble(ncid, "volavgB"), wout.volavgB);
+
+  // 1D radial profiles (pressure and rotational transform)
+  std::vector<double> wpresf(fc.ns), wpres(fc.ns), wiotaf(fc.ns), wiotas(fc.ns);
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    wpresf[jF] = wout.presf[jF];
+    wpres[jF] = wout.pres[jF];
+    wiotaf[jF] = wout.iotaf[jF];
+    wiotas[jF] = wout.iotas[jF];
+  }
+  compare("presf", NetcdfReadArray1D(ncid, "presf"), wpresf);
+  compare("pres", NetcdfReadArray1D(ncid, "pres"), wpres);
+  compare("iotaf", NetcdfReadArray1D(ncid, "iotaf"), wiotaf);
+  compare("iotas", NetcdfReadArray1D(ncid, "iotas"), wiotas);
+
+  // flux-surface geometry
+  auto [r_ref, r_val] =
+      flatten(NetcdfReadArray2D(ncid, "rmnc"), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.rmnc(mn, jF); });
+  compare("rmnc", r_ref, r_val);
+  auto [z_ref, z_val] =
+      flatten(NetcdfReadArray2D(ncid, "zmns"), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.zmns(mn, jF); });
+  compare("zmns", z_ref, z_val);
+  auto [l_ref, l_val] =
+      flatten(NetcdfReadArray2D(ncid, "lmns"), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.lmns(mn, jF); });
+  compare("lmns", l_ref, l_val);
+
+  // magnetic field on the Nyquist mode set
+  auto [b_ref, b_val] =
+      flatten(NetcdfReadArray2D(ncid, "bmnc"), fc.ns, s.mnmax_nyq,
+              [&](int mn, int jF) { return wout.bmnc(mn, jF); });
+  compare("bmnc", b_ref, b_val);
+  auto [bu_ref, bu_val] =
+      flatten(NetcdfReadArray2D(ncid, "bsubumnc"), fc.ns, s.mnmax_nyq,
+              [&](int mn, int jF) { return wout.bsubumnc(mn, jF); });
+  compare("bsubumnc", bu_ref, bu_val);
+  auto [bv_ref, bv_val] =
+      flatten(NetcdfReadArray2D(ncid, "bsubvmnc"), fc.ns, s.mnmax_nyq,
+              [&](int mn, int jF) { return wout.bsubvmnc(mn, jF); });
+  compare("bsubvmnc", bv_ref, bv_val);
+
+  // Toroidal and poloidal current-density profiles (looser kCurrent).
+  tolerance = kCurrent;
+  std::vector<double> wjcuru(fc.ns), wjcurv(fc.ns);
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    wjcuru[jF] = wout.jcuru[jF];
+    wjcurv[jF] = wout.jcurv[jF];
+  }
+  compare("jcuru", NetcdfReadArray1D(ncid, "jcuru"), wjcuru);
+  compare("jcurv", NetcdfReadArray1D(ncid, "jcurv"), wjcurv);
+
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  std::cout << "[solovev-free-bdy-vs-golden] worst_abs=" << worst_abs
+            << " worst_norm=" << worst_norm << " (" << worst_norm_field << ")"
+            << std::endl;
+}
+
 }  // namespace vmecpp

@@ -84,5 +84,7 @@ filegroup(
         "makegrid_parameters_solovev.json",
         "solovev_free_bdy.json",
         "input.solovev_free_bdy",
+        "mgrid_solovev.nc",
+        "wout_solovev_free_bdy.nc",
     ],
 )

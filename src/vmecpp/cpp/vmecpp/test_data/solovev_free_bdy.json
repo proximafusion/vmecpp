@@ -33,7 +33,7 @@
 0.48999999999999999,
 -0.29999999999999999],
 "lfreeb":true,
-"mgrid_file":"mgrid_solovev.nc",
+"mgrid_file":"vmecpp/test_data/mgrid_solovev.nc",
 "extcur":[
 3884526.4098763089,
 -293557.71237379522,
