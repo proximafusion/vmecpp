@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780004658336,
+  "lastUpdate": 1780052271437,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18120,6 +18120,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.016926417569559482",
             "extra": "mean: 8.577424854000014 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a14f9448e88d417947535cb4ab0453a2fc620b0b",
+          "message": "radial_profiles: implement spline and analytic profile evaluators (#531)\n\n* radial_profiles: implement spline and analytic profile evaluators\n\nevalProfileFunction dispatches to per-parameterization evaluators, but\nnine returned 0.0 as placeholders: gauss_trunc, two_power_gs,\nakima_spline(_i/_ip), cubic_spline(_i/_ip), pedestal, rational, and\nnice_quadratic. Any input selecting one for its pressure, current, or\niota profile produced a zero profile instead of the requested one.\n\nPort each from educational_VMEC: gauss_trunc, pedestal, and rational\nfrom the pcurr/piota/pmass cases in profile_functions.f; two_power_gs\nfrom functions.f; the four splines from spline_akima.f,\nspline_akima_int.f, spline_cubic.f, and spline_cubic_int.f. The\ntruncated-Gaussian and two-power-with-Gaussian current profiles\nintegrate I-prime(s) with the same 10-point Gauss-Legendre rule pcurr\nuses; gauss_trunc, two_power_gs, and pedestal serve both pressure and\ncurrent, so they take shouldIntegrate like the existing evalTwoPower and\nthe dispatcher threads it through. Spline coefficient construction is\nshared between the direct and integrated variants via file-local helpers\n(BuildAkimaCoeffs, BuildCubicSecondDerivatives), reproduced from the\nFortran including the spline_akima.f edge convention where both\nright-edge phantom points reuse the left curvature.\n\n* radial_profiles: test profile evaluators against educational_VMEC\n\nAdd a cc_test for the nine evaluators. Invariant cases cover spline node\nreproduction, polynomial exactness, the integrated spline against a fine\nnumerical integral, and the functions.f two_power_gs self-test.\nMatchesFortranReference asserts the evaluators reproduce values printed\nby the compiled educational_VMEC spline_*.f / functions.f /\nprofile_functions.f routines at 37 points to 1e-11. Two further cases\ndrive the production path (setupInputProfiles) so spline and analytic\nprofiles reach the evaluators with the am/ai/ac aux arrays wired through\nevalProfileFunction. 16 cases, all passing.\n\n* output_quantities: check a spline-pressure equilibrium against the golden\n\nAdd cth_like_fixed_bdy_spline_pressure.json: the cth_like_fixed_bdy case\nwith its two_power pressure (1 - s^5)^10 re-expressed as a cubic_spline\nsampled at 201 uniform knots, which reproduces the analytic profile to\n5e-9. A new test runs it to convergence and diffs the converged wout\nagainst the educational_VMEC golden wout_cth_like_fixed_bdy.nc that the\nanalytic case is validated against. Every compared field agrees within\nthe case's 1e-6 tolerance; the worst deviation normalized by field peak\nis 3.6e-9, on the spline-driven pressure. This exercises evalCubic on\nevery half-grid surface of a real solve. output_quantities_test runs\n7/7 with the six analytic V&V cases unchanged.\n\n* radial_profiles: address review feedback\n\n- Correct the Akima spline right-edge curvature. spline_akima.f reuses the\n  left-edge curvature cl on the right-edge phantom points, which gives the\n  right boundary the wrong curvature and makes the interpolant\n  orientation-dependent; use the right-edge curvature cr so both ends are fit\n  consistently. Drop the Akima entries from the educational_VMEC golden\n  comparison, since reproducing them would re-import the bug, and validate the\n  corrected spline with a reflection-symmetry test alongside the existing\n  node-reproduction, linear-exactness, and integral-vs-numeric invariants.\n- Add a constexpr static_assert that the Gauss-Legendre nodes and weights\n  integrate a constant and a linear function over [0, 1] exactly.\n- Use Eigen::VectorXd instead of std::vector<double> for the cubic-spline\n  second-derivative work arrays.\n- Inline the +1 index offsets in evalAkimaIntegrated to match evalAkima.\n\n* radial_profiles: restore the Akima educational_VMEC reference golden\n\neducational_VMEC's spline_akima.f and spline_akima_int.f now carry the same right-edge curvature fix as evalAkima, so the evaluators reproduce the Fortran reference again. Restore the akima and akima_int rows in MatchesFortranReference with values regenerated from the corrected routines; AkimaIsReflectionSymmetric continues to cover the edge fix.\n\n* Re-trigger CI after GitHub billing restoration\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-05-29T12:53:35+02:00",
+          "tree_id": "551fabc736ae3a92dda5670a0e3d44ba063c0663",
+          "url": "https://github.com/proximafusion/vmecpp/commit/a14f9448e88d417947535cb4ab0453a2fc620b0b"
+        },
+        "date": 1780052270417,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.98642608718883,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002629510504867032",
+            "extra": "mean: 334.84840100004476 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.971291545106956,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002085597313900409",
+            "extra": "mean: 336.5539815999455 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.27280714956943286,
+            "unit": "iter/sec",
+            "range": "stddev: 0.018245286814074307",
+            "extra": "mean: 3.665593081333403 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5727548921865809,
+            "unit": "iter/sec",
+            "range": "stddev: 0.010854190797551044",
+            "extra": "mean: 1.7459475486666634 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5382961177871243,
+            "unit": "iter/sec",
+            "range": "stddev: 0.12845500071090687",
+            "extra": "mean: 1.85771356500004 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.43428113237657534,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002780530549886266",
+            "extra": "mean: 2.302655872999973 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10373036304424312,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0131165540550758",
+            "extra": "mean: 9.640378869333366 sec\nrounds: 3"
           }
         ]
       }
