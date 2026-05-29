@@ -170,3 +170,58 @@ TEST(TestVmec, CheckInMemoryMgrid) {
   vmecpp::CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
                       /*tolerance=*/1e-7);
 }  // CheckInMemoryMgrid
+
+// A free-boundary run whose ntor is raised above the highest populated
+// toroidal mode triggers the sparse-toroidal layout (the active set is derived
+// from the non-zero boundary/axis coefficients). The extra toroidal columns
+// are exactly zero, so the sparse run must converge to the same equilibrium as
+// the dense run at the original ntor. This exercises the sparse -> dense
+// scatter in HandOverBoundaryGeometry and confirms the Nestor vacuum coupling
+// is unaffected by the sparse internal layout.
+//
+// Note: unlike the fixed-boundary case, this is NOT bit-identical. Nestor's
+// vacuum solve uses nf = ntor toroidal modes, so raising ntor changes the
+// toroidal resolution of the vacuum field (and the constraint de-aliasing
+// band) even though the plasma boundary is unchanged. The two converged
+// equilibria therefore agree only to a physical tolerance (~1e-5 relative),
+// not to round-off. The point of the test is that the sparse free-boundary
+// path runs and lands on the same equilibrium, not that it reproduces the
+// dense discretization exactly.
+TEST(TestVmec, CheckSparseToroidalFreeBoundaryMatchesDense) {
+  const std::string filename = "vmecpp/test_data/cth_like_free_bdy.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+
+  // Dense reference run at the native resolution (all |n| <= ntor populated).
+  const VmecINDATA dense_indata = maybe_indata.value();
+  const auto dense_output = vmecpp::run(dense_indata);
+  ASSERT_TRUE(dense_output.ok()) << dense_output.status();
+
+  // Sparse run: raise ntor well above the populated modes so the high-n columns
+  // are zero-padded; the active toroidal set is then a strict subset of
+  // {0, ..., ntor} and the sparse-toroidal path is taken.
+  VmecINDATA sparse_indata = maybe_indata.value();
+  const int dense_ntor = dense_indata.ntor;
+  sparse_indata.SetMpolNtor(sparse_indata.mpol, /*new_ntor=*/dense_ntor + 6);
+  const auto sparse_output = vmecpp::run(sparse_indata);
+  ASSERT_TRUE(sparse_output.ok()) << sparse_output.status();
+
+  // The external wout stays dense in both runs; the sparse run simply carries
+  // zeros in the high-n columns. Restricting attention to the shared modes, the
+  // two equilibria must agree to solver tolerance.
+  EXPECT_EQ(dense_output->wout.ntor, dense_ntor);
+  EXPECT_EQ(sparse_output->wout.ntor, dense_ntor + 6);
+  EXPECT_NEAR(sparse_output->wout.volume, dense_output->wout.volume,
+              1e-5 * std::abs(dense_output->wout.volume));
+  EXPECT_NEAR(sparse_output->wout.betatotal, dense_output->wout.betatotal,
+              1e-4 * std::abs(dense_output->wout.betatotal) + 1e-12);
+  ASSERT_EQ(sparse_output->wout.iotaf.size(), dense_output->wout.iotaf.size());
+  for (int j = 0; j < dense_output->wout.iotaf.size(); ++j) {
+    EXPECT_NEAR(sparse_output->wout.iotaf[j], dense_output->wout.iotaf[j],
+                1e-5 * std::abs(dense_output->wout.iotaf[j]) + 1e-7)
+        << "iotaf mismatch at flux surface " << j;
+  }
+}  // CheckSparseToroidalFreeBoundaryMatchesDense
