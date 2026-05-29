@@ -36,6 +36,9 @@ namespace {
 void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
                               const vmecpp::FourierGeometry& physical_x,
                               const vmecpp::Sizes& sizes, int offset) {
+  // NOTE: sparse-toroidal handling is rejected for free-boundary runs (see the
+  // guard in the IdealMhdModel constructor), so here the FC arrays use the
+  // dense layout (n_active == ntor+1) and idx_mn below is the dense index.
   const int ntorp1 = sizes.ntor + 1;
   for (int m = 0; m < sizes.mpol; ++m) {
     for (int n = 0; n < ntorp1; ++n) {
@@ -86,8 +89,8 @@ void vmecpp::deAliasConstraintForce(
 
   for (int jF = std::max(jMin, rp.nsMinF); jF < rp.nsMaxF; ++jF) {
     for (int m = 1; m < s_.mpol - 1; ++m) {
-      absl::c_fill_n(m_gsc, s_.ntor + 1, 0);
-      absl::c_fill_n(m_gcs, s_.ntor + 1, 0);
+      absl::c_fill_n(m_gsc, s_.n_active, 0);
+      absl::c_fill_n(m_gcs, s_.n_active, 0);
 
       for (int k = 0; k < s_.nZeta; ++k) {
         // fwd transform in poloidal direction
@@ -103,14 +106,14 @@ void vmecpp::deAliasConstraintForce(
         double w0 = gConEff_seg.dot(sinmui_seg);
         double w1 = gConEff_seg.dot(cosmui_seg);
 
-        // forward Fourier transform in toroidal direction for full set of mode
-        // numbers (n = 0, 1, ..., ntor)
-        for (int n = 0; n < s_.ntor + 1; ++n) {
-          int idx_kn = k * (s_.nnyq2 + 1) + n;
+        // forward Fourier transform in toroidal direction over the active
+        // toroidal modes only (compacted basis)
+        for (int c = 0; c < s_.n_active; ++c) {
+          int idx_kn = k * s_.n_active + c;
 
           // NOTE: `tcon` comes into play here
-          m_gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
-          m_gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
+          m_gsc[c] += fb.cosnv_active[idx_kn] * w0 * tcon[jF - rp.nsMinF];
+          m_gcs[c] += fb.sinnv_active[idx_kn] * w1 * tcon[jF - rp.nsMinF];
         }
       }  // k
 
@@ -122,14 +125,14 @@ void vmecpp::deAliasConstraintForce(
       // inverse Fourier-transform from reduced set of mode numbers
       for (int k = 0; k < s_.nZeta; ++k) {
         // collect contribution to current grid point from n-th toroidal mode
-        const int kn_base = k * (s_.nnyq2 + 1);
-        auto cosnv_seg = fb.cosnv.segment(kn_base, s_.ntor + 1);
-        auto sinnv_seg = fb.sinnv.segment(kn_base, s_.ntor + 1);
+        const int kn_base = k * s_.n_active;
+        auto cosnv_seg = fb.cosnv_active.segment(kn_base, s_.n_active);
+        auto sinnv_seg = fb.sinnv_active.segment(kn_base, s_.n_active);
 
         auto m_gsc_seg =
-            Eigen::Map<const Eigen::VectorXd>(m_gsc.data(), s_.ntor + 1);
+            Eigen::Map<const Eigen::VectorXd>(m_gsc.data(), s_.n_active);
         auto m_gcs_seg =
-            Eigen::Map<const Eigen::VectorXd>(m_gcs.data(), s_.ntor + 1);
+            Eigen::Map<const Eigen::VectorXd>(m_gcs.data(), s_.n_active);
 
         double w0 = m_gsc_seg.dot(cosnv_seg);
         double w1 = m_gcs_seg.dot(sinnv_seg);
@@ -174,6 +177,20 @@ IdealMhdModel::IdealMhdModel(
       ivacskip(0) {
   CHECK_GE(nvacskip, 0)
       << "Should never happen: should be checked by VmecINDATA";
+
+  // Sparse-toroidal handling is currently implemented only for the
+  // stellarator-symmetric 3D DFT path (the FFTX dispatch is guarded to fall
+  // back to the DFT kernels when sparse). Reject unsupported combinations
+  // early with a clear message rather than silently producing wrong results.
+  if (s_.is_sparse_toroidal) {
+    CHECK(!s_.lasym) << "sparse-toroidal handling is not supported for "
+                        "non-stellarator-symmetric (lasym) runs";
+    CHECK(s_.lthreed) << "sparse-toroidal handling only applies to 3D "
+                         "(lthreed) runs";
+    CHECK(!m_fc_.lfreeb) << "sparse-toroidal handling is not supported for "
+                            "free-boundary runs (Nestor uses the dense "
+                            "toroidal layout)";
+  }
   if (m_fc_.lfreeb) {
     CHECK(m_fb_ != nullptr)
         << "Free-boundary configuration requires a Free-boundary solver";
@@ -279,8 +296,8 @@ IdealMhdModel::IdealMhdModel(
   bLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
   dLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
   cLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
-  lambdaPreconditioner.setZero((r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.mpol *
-                               (s_.ntor + 1));
+  lambdaPreconditioner.setZero((r_.nsMaxFIncludingLcfs - r_.nsMinF) *
+                               s_.mnsize);
 
   ax.setZero((r_.nsMaxH - r_.nsMinH) * 4);
   bx.setZero((r_.nsMaxH - r_.nsMinH) * 3);
@@ -299,18 +316,18 @@ IdealMhdModel::IdealMhdModel(
 
   // leave one entry at beginning as target to put in the data sent from the MPI
   // rank next inside
-  ar.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  az.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  dr.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  dz.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  br.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
-  bz.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  ar.setZero((r_.nsMaxF - r_.nsMinF) * s_.mnsize);
+  az.setZero((r_.nsMaxF - r_.nsMinF) * s_.mnsize);
+  dr.setZero((r_.nsMaxF - r_.nsMinF) * s_.mnsize);
+  dz.setZero((r_.nsMaxF - r_.nsMinF) * s_.mnsize);
+  br.setZero((r_.nsMaxF - r_.nsMinF) * s_.mnsize);
+  bz.setZero((r_.nsMaxF - r_.nsMinF) * s_.mnsize);
 
   tcon.setZero(r_.nsMaxFIncludingLcfs - r_.nsMinF);
 
   gConEff.setZero(nrztIncludingBoundary);
-  gsc.setZero(s_.ntor + 1);
-  gcs.setZero(s_.ntor + 1);
+  gsc.setZero(s_.n_active);
+  gcs.setZero(s_.n_active);
   gCon.setZero(nrztIncludingBoundary);
 
   frcon_e.setZero(nrzt);
@@ -318,7 +335,7 @@ IdealMhdModel::IdealMhdModel(
   fzcon_e.setZero(nrzt);
   fzcon_o.setZero(nrzt);
 
-  jMin.setZero(s_.mpol * (s_.ntor + 1));
+  jMin.setZero(s_.mnsize);
 }
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
@@ -972,7 +989,10 @@ void IdealMhdModel::dft_FourierToReal_3d_symm(
                                     .zCon = zCon};
 
 #ifdef VMECPP_USE_FFTX
-  if (fft_plans_.kernels_available()) {
+  // The FFTX path assumes the dense toroidal coefficient layout;
+  // sparse-toroidal runs must use the DFT fallback (which consumes the
+  // compacted basis arrays).
+  if (fft_plans_.kernels_available() && !s_.is_sparse_toroidal) {
     FourierToReal3DSymmFastPoloidalFft(physical_x, xmpq, r_, s_, m_p_, t_,
                                        fft_plans_, geometry);
   } else {
@@ -2307,11 +2327,11 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // assemble lambda preconditioning matrix
   // TODO(jons): maybe not needed, since direct assignments below?
   absl::c_fill_n(lambdaPreconditioner,
-                 (r_.nsMaxFIncludingLcfs - r_.nsMinF) * (s_.ntor + 1) * s_.mpol,
-                 0);
+                 (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.mnsize, 0);
 
   for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    for (int n = 0; n < s_.ntor + 1; ++n) {
+    for (int c = 0; c < s_.n_active; ++c) {
+      const int n = s_.active_n[c];
       double tnn = n * s_.nfp * n * s_.nfp;
 
       for (int m = 0; m < s_.mpol; ++m) {
@@ -2319,7 +2339,7 @@ void IdealMhdModel::updateLambdaPreconditioner() {
           continue;
         }
 
-        int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+        int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * s_.n_active + c;
 
         int tmm = m * m;
 
@@ -2658,7 +2678,10 @@ void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
   };
 
 #ifdef VMECPP_USE_FFTX
-  if (fft_plans_.kernels_available()) {
+  // The FFTX path assumes the dense toroidal coefficient layout;
+  // sparse-toroidal runs must use the DFT fallback (which consumes the
+  // compacted basis arrays).
+  if (fft_plans_.kernels_available() && !s_.is_sparse_toroidal) {
     ForcesToFourier3DSymmFastPoloidalFft(input_data, xmpq, r_, m_fc_, s_, t_,
                                          fft_plans_, m_vacuum_pressure_state_,
                                          m_physical_f);
@@ -2769,7 +2792,7 @@ void IdealMhdModel::applyM1Preconditioner(FourierForces& m_decomposed_f) {
   }
 
   for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
-    for (int n = 0; n < s_.ntor + 1; ++n) {
+    for (int c = 0; c < s_.n_active; ++c) {
       int m = 1;
       int mPar = m % 2;
 
@@ -2783,7 +2806,7 @@ void IdealMhdModel::applyM1Preconditioner(FourierForces& m_decomposed_f) {
                             bzd[(jF - r_.nsMinF) * 2 + mPar]) /
                            denom;
 
-      int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+      int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * s_.n_active + c;
 
       if (s_.lthreed) {
         m_decomposed_f.frss[idx_mn] *= forceScaleR;
@@ -2810,8 +2833,8 @@ void IdealMhdModel::assembleRZPreconditioner() {
       jMin = 1;
     }
 
-    for (int n = 0; n < s_.ntor + 1; ++n) {
-      int mn = m * (s_.ntor + 1) + n;
+    for (int c = 0; c < s_.n_active; ++c) {
+      int mn = m * s_.n_active + c;
       this->jMin[mn] = jMin;
     }
   }
@@ -2826,9 +2849,10 @@ void IdealMhdModel::assembleRZPreconditioner() {
   for (int jF = r_.nsMinF; jF < std::min(r_.nsMaxF, jMax); ++jF) {
     for (int m = 0; m < s_.mpol; ++m) {
       const int m_parity = m % 2;
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        int mn = m * (s_.ntor + 1) + n;
-        int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+      for (int c = 0; c < s_.n_active; ++c) {
+        const int n = s_.active_n[c];
+        int mn = m * s_.n_active + c;
+        int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * s_.n_active + c;
         if (jF >= jMin[mn]) {
           // sup-diagonal: half-grid pos outside jF-th forces full-grid point
           if (jF < r_.nsMaxH) {
@@ -2881,24 +2905,24 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // IN PARTICULAR, NEEDED TO ACCOUNT FOR POTENTIAL ZERO
     // EIGENVALUE DUE TO NEUMANN (GRADIENT) CONDITION AT EDGE
     const double edge_pedestal = 0.05;
-    for (int n = 0; n < s_.ntor + 1; ++n) {
+    for (int c = 0; c < s_.n_active; ++c) {
       {
         int m = 0;
         int idx_mn =
-            ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+            ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * s_.n_active + c;
         dr[idx_mn] *= 1.0 + edge_pedestal;
         dz[idx_mn] *= 1.0 + edge_pedestal;
       }
       {
         int m = 1;
         int idx_mn =
-            ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+            ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * s_.n_active + c;
         dr[idx_mn] *= 1.0 + edge_pedestal;
         dz[idx_mn] *= 1.0 + edge_pedestal;
       }
       for (int m = 2; m < s_.mpol; ++m) {
         int idx_mn =
-            ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+            ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * s_.n_active + c;
         dr[idx_mn] *= 1.0 + 2.0 * edge_pedestal;
         dz[idx_mn] *= 1.0 + 2.0 * edge_pedestal;
       }
@@ -2915,7 +2939,7 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // METHOD 1: SUBTRACT (INSTABILITY) Pedge ~ fac*z/hs FROM PRECONDITIONER AT
     // EDGE iflag parameter is used in Fortran VMEC to enable this feature only
     // for Z forces !
-    int idx_00 = (m_fc_.ns - 1 - r_.nsMinF) * s_.mpol * (s_.ntor + 1);
+    int idx_00 = (m_fc_.ns - 1 - r_.nsMinF) * s_.mnsize;
     dz[idx_00] *= (1.0 - multFact) / (1.0 + edge_pedestal);
   }
 
@@ -3117,8 +3141,8 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
 void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
   for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
     for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n <= s_.ntor; ++n) {
-        int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
+      for (int c = 0; c < s_.n_active; ++c) {
+        int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * s_.n_active + c;
 
         m_decomposed_f.flsc[idx_mn] *= lambdaPreconditioner[idx_mn];
         if (s_.lthreed) {

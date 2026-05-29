@@ -1372,9 +1372,9 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
 
   for (int jF = r.nsMinF; jF < r.nsMaxFIncludingLcfs; ++jF) {
     for (int m = 0; m < s.mpol; ++m) {
-      for (int n = 0; n < s.ntor + 1; ++n) {
-        const int idx_mn = ((jF - r.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
-        const int idx_mn1 = ((jF - r.nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
+      for (int c = 0; c < s.n_active; ++c) {
+        const int idx_mn = ((jF - r.nsMinF) * s.mpol + m) * s.n_active + c;
+        const int idx_mn1 = ((jF - r.nsMinF1) * s.mpol + m) * s.n_active + c;
 
         // update velocity
         m_decomposed_v.vrcc[idx_mn] =
