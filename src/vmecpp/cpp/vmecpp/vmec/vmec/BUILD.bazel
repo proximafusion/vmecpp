@@ -55,6 +55,7 @@ cc_test(
     srcs = ["vmec_in_memory_mgrid_test.cc"],
     data = [
         "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp/test_data:solovev_free_bdy",
     ],
     deps = [
         "@googletest//:gtest_main",

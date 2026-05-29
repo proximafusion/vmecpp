@@ -56,9 +56,33 @@ void RegularizedIntegrals::computeConstants() {
       tanv[k] = 2.0 * std::tan(argv);
     }
   }  // k
+
+  // For an axisymmetric (nZeta == 1) plasma the toroidal direction is resolved
+  // by nvper_ toroidal images rather than the surface grid; precompute the
+  // analytic-approximation toroidal-angle factor at each image angle.
+  nvper_ = (s_.nZeta == 1) ? kAxisymmetricToroidalImages : s_.nfp;
+  if (s_.nZeta == 1) {
+    tanv_per_.resize(nvper_);
+    for (int p = 0; p < nvper_; ++p) {
+      const double argv = M_PI * p / nvper_;
+      if (std::abs(argv - 0.5 * M_PI) < epsTan) {
+        // mask singularity at pi/2
+        tanv_per_[p] = bigNo;
+      } else {
+        tanv_per_[p] = 2.0 * std::tan(argv);
+      }
+    }  // p
+  }
 }
 
 void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
+  if (s_.nZeta == 1) {
+    // Axisymmetric plasma: the surface grid has a single toroidal plane, so the
+    // toroidal integral is performed over nvper_ toroidal images instead.
+    updateAxisymmetric(bDotN);
+    return;
+  }
+
   // thread-local tangential grid point range
   const int numLocal = tp_.ztMax - tp_.ztMin;
   const int theta_by_nzeta = s_.nThetaEven * s_.nZeta;
@@ -195,6 +219,91 @@ void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
             (sg_.rcosuv[kl] * sxsave + sg_.rsinuv[kl] * sysave + dsave[kl]);
         const double g = twopidivnfp * htemp;
         gstore[kl] += bexni * g;
+      }  // kl
+    }  // p
+  }  // klp
+}
+
+void RegularizedIntegrals::updateAxisymmetric(
+    const std::vector<double>& bDotN) {
+  // Axisymmetric (nZeta == 1) Green's-function regularization. The single
+  // toroidal plane of the surface grid does not resolve the toroidal angle, so
+  // the toroidal integral of the regularized Green's function is performed by
+  // summing over nvper_ equally-spaced toroidal images of the evaluation point
+  // (educational_VMEC greenf with nvper = 64 for the tokamak). The analytic
+  // approximation is subtracted at every image; its closed-form toroidal
+  // integral is added back in SingularIntegrals.
+  const int numLocal = tp_.ztMax - tp_.ztMin;
+  const int nThetaEven = s_.nThetaEven;  // == theta_by_nzeta since nZeta == 1
+
+  absl::c_fill_n(greenp, numLocal * nThetaEven, 0);
+  absl::c_fill_n(gstore, nThetaEven, 0);
+
+  // 2 pi from the Laplace equation; 1/nvper_ turns the toroidal image sum into
+  // a toroidal integral over the whole machine.
+  const double toroidal_measure = 2.0 * M_PI / nvper_;
+
+  for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
+    const int ip_idx_base = (klp - tp_.ztMin) * nThetaEven;
+    const int klpRel = klp - tp_.ztMin;
+    const int lp = klp;  // k == 0 since nZeta == 1
+
+    const double bexni = bDotN[klpRel] * s_.wInt[lp];
+
+    // source slice at zeta = 0: rcosuv == r1b, rsinuv == 0
+    const double xp = sg_.rcosuv[klp];
+    const double yp = sg_.rsinuv[klp];
+
+    for (int kl = 0; kl < nThetaEven; ++kl) {
+      gsave[kl] = sg_.rzb2[klp] + sg_.rzb2[kl] - 2 * sg_.z1b[kl] * sg_.z1b[klp];
+      dsave[kl] = sg_.drv[klpRel] + sg_.z1b[kl] * sg_.snz[klpRel];
+    }
+
+    // integrate over the toroidal direction by summing the rotated images of
+    // the evaluation point around the whole torus
+    for (int p = 0; p < nvper_; ++p) {
+      const double cosper = std::cos(toroidal_measure * p);
+      const double sinper = std::sin(toroidal_measure * p);
+
+      const double xper = xp * cosper - yp * sinper;
+      const double yper = xp * sinper + yp * cosper;
+
+      const double sxsave =
+          (sg_.snr[klpRel] * xper - sg_.snv[klpRel] * yper) / sg_.r1b[klp];
+      const double sysave =
+          (sg_.snr[klpRel] * yper + sg_.snv[klpRel] * xper) / sg_.r1b[klp];
+
+      const double tanv_p = tanv_per_[p];
+
+      for (int kl = 0; kl < nThetaEven; ++kl) {
+        // The exact singularity (image coincides with the source point) is
+        // handled analytically in SingularIntegrals; skip it here.
+        if (p == 0 && kl == klp) {
+          continue;
+        }
+
+        const int delta_l = (kl - lp + nThetaEven) % nThetaEven;
+
+        double ga1 = sg_.guu[klpRel] * tanu[delta_l] * tanu[delta_l] +
+                     sg_.guv[klpRel] * tanu[delta_l] * tanv_p +
+                     sg_.gvv[klpRel] * tanv_p * tanv_p;
+        double ga2 = sg_.auu[klpRel] * tanu[delta_l] * tanu[delta_l] +
+                     sg_.auv[klpRel] * tanu[delta_l] * tanv_p +
+                     sg_.avv[klpRel] * tanv_p * tanv_p;
+        ga2 /= ga1;
+        ga1 = 1.0 / std::sqrt(ga1);
+
+        const double ftemp =
+            1.0 /
+            (gsave[kl] - 2 * (xper * sg_.rcosuv[kl] + yper * sg_.rsinuv[kl]));
+        const double htemp = std::sqrt(ftemp);
+
+        greenp[ip_idx_base + kl] +=
+            toroidal_measure * (htemp * ftemp *
+                                    (sg_.rcosuv[kl] * sxsave +
+                                     sg_.rsinuv[kl] * sysave + dsave[kl]) -
+                                ga1 * ga2);
+        gstore[kl] += bexni * toroidal_measure * (htemp - ga1);
       }  // kl
     }  // p
   }  // klp

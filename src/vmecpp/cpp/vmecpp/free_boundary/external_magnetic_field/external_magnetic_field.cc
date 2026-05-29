@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/external_magnetic_field/external_magnetic_field.h"
 
+#include <cmath>
+
 #include "abscab/abscab.hh"
 #include "absl/algorithm/container.h"
 
@@ -14,9 +16,16 @@ ExternalMagneticField::ExternalMagneticField(const Sizes* s,
                                              const SurfaceGeometry* sg,
                                              const MGridProvider* mgrid)
     : s_(*s), tp_(*tp), sg_(*sg), mgrid_(*mgrid) {
-  // nzeta points per each of the nfp field periods,
+  // For an axisymmetric (nZeta == 1) plasma the toroidal direction is not
+  // resolved by the surface grid, so the axis-current filament is replicated
+  // over nvper equally-spaced toroidal angles (matching educational_VMEC's
+  // nvper = 64 for the tokamak); otherwise nvper is the number of field
+  // periods.
+  nvper_ = (s_.nZeta == 1) ? kAxisymmetricToroidalReplication : s_.nfp;
+
+  // nzeta points per each of the nvper toroidal replications,
   // and then one more point to close the loop
-  axisXYZ.resize(3 * (s_.nZeta * s_.nfp + 1));
+  axisXYZ.resize(3 * (s_.nZeta * nvper_ + 1));
 
   // thread-local tangential grid point range
   const int numLocal = tp_.ztMax - tp_.ztMin;
@@ -81,23 +90,26 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
     axisXYZ[k * 3 + 2] = zAxis[k];
   }  // k
 
-  // rotate into other modules
-  for (int p = 1; p < s_.nfp; ++p) {
+  // rotate into the other toroidal replications (field periods for a
+  // stellarator; for an axisymmetric plasma, nvper equally-spaced angles that
+  // resolve the otherwise-unsampled toroidal direction)
+  const double omega_per = 2.0 * M_PI / nvper_;
+  for (int p = 1; p < nvper_; ++p) {
+    const double cos_per = std::cos(omega_per * p);
+    const double sin_per = std::sin(omega_per * p);
     for (int k = 0; k < s_.nZeta; ++k) {
       axisXYZ[(p * s_.nZeta + k) * 3 + 0] =
-          sg_.cos_per[p] * axisXYZ[k * 3 + 0] -
-          sg_.sin_per[p] * axisXYZ[k * 3 + 1];
+          cos_per * axisXYZ[k * 3 + 0] - sin_per * axisXYZ[k * 3 + 1];
       axisXYZ[(p * s_.nZeta + k) * 3 + 1] =
-          sg_.sin_per[p] * axisXYZ[k * 3 + 0] +
-          sg_.cos_per[p] * axisXYZ[k * 3 + 1];
+          sin_per * axisXYZ[k * 3 + 0] + cos_per * axisXYZ[k * 3 + 1];
       axisXYZ[(p * s_.nZeta + k) * 3 + 2] = zAxis[k];
     }  // k
-  }  // field periods
+  }  // toroidal replications
 
   // close the loop
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 0] = axisXYZ[0];
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 1] = axisXYZ[1];
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 2] = axisXYZ[2];
+  axisXYZ[s_.nZeta * nvper_ * 3 + 0] = axisXYZ[0];
+  axisXYZ[s_.nZeta * nvper_ * 3 + 1] = axisXYZ[1];
+  axisXYZ[s_.nZeta * nvper_ * 3 + 2] = axisXYZ[2];
 
   // convert points on surface into surfaceXYZ
   // TODO(jons): might be useful to have interface in abscab,
@@ -127,7 +139,7 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
 
   // compute magnetic field due to line current along magnetic axis
   int numProcessors = 1;  // Nestor itself is already parallelized via OpenMP
-  abscab::magneticFieldPolygonFilament(s_.nZeta * s_.nfp + 1, axisXYZ.data(),
+  abscab::magneticFieldPolygonFilament(s_.nZeta * nvper_ + 1, axisXYZ.data(),
                                        axis_current, tp_.ztMax - tp_.ztMin,
                                        surfaceXYZ.data(), bCoilsXYZ.data(),
                                        numProcessors);
@@ -160,23 +172,26 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
     axisXYZ[k * 3 + 2] = zAxis[k];
   }  // k
 
-  // rotate into other modules
-  for (int p = 1; p < s_.nfp; ++p) {
+  // rotate into the other toroidal replications (field periods for a
+  // stellarator; for an axisymmetric plasma, nvper equally-spaced angles that
+  // resolve the otherwise-unsampled toroidal direction)
+  const double omega_per = 2.0 * M_PI / nvper_;
+  for (int p = 1; p < nvper_; ++p) {
+    const double cos_per = std::cos(omega_per * p);
+    const double sin_per = std::sin(omega_per * p);
     for (int k = 0; k < s_.nZeta; ++k) {
       axisXYZ[(p * s_.nZeta + k) * 3 + 0] =
-          sg_.cos_per[p] * axisXYZ[k * 3 + 0] -
-          sg_.sin_per[p] * axisXYZ[k * 3 + 1];
+          cos_per * axisXYZ[k * 3 + 0] - sin_per * axisXYZ[k * 3 + 1];
       axisXYZ[(p * s_.nZeta + k) * 3 + 1] =
-          sg_.sin_per[p] * axisXYZ[k * 3 + 0] +
-          sg_.cos_per[p] * axisXYZ[k * 3 + 1];
+          sin_per * axisXYZ[k * 3 + 0] + cos_per * axisXYZ[k * 3 + 1];
       axisXYZ[(p * s_.nZeta + k) * 3 + 2] = zAxis[k];
     }  // k
-  }  // field periods
+  }  // toroidal replications
 
   // close the loop
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 0] = axisXYZ[0];
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 1] = axisXYZ[1];
-  axisXYZ[s_.nZeta * s_.nfp * 3 + 2] = axisXYZ[2];
+  axisXYZ[s_.nZeta * nvper_ * 3 + 0] = axisXYZ[0];
+  axisXYZ[s_.nZeta * nvper_ * 3 + 1] = axisXYZ[1];
+  axisXYZ[s_.nZeta * nvper_ * 3 + 2] = axisXYZ[2];
 
   // convert points on surface into surfaceXYZ
   // TODO(jons): might be useful to have interface in abscab,
@@ -211,7 +226,7 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
   // which is Eqn. (8) in Hanson & Hirshman (2002) [Physics of Plasmas 9, 4410].
   const double magnetic_field_scale = 1.0e-7 * netToroidalCurrent * 2.0;
 
-  for (int source_index = 0; source_index < s_.nZeta * s_.nfp; ++source_index) {
+  for (int source_index = 0; source_index < s_.nZeta * nvper_; ++source_index) {
     const double segment_dx =
         axisXYZ[(source_index + 1) * 3 + 0] - axisXYZ[source_index * 3 + 0];
     const double segment_dy =
