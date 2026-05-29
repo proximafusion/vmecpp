@@ -1539,8 +1539,8 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     output_quantities.wout = ComputeWOutFileContents(
         indata, s, t, fc, constants, h, mgrid_mode,
         /*m_vmec_internal_results=*/output_quantities.vmec_internal_results,
-        output_quantities.bsubs_half, output_quantities.mercier,
-        output_quantities.jxbout,
+        output_quantities.bsubs_half, output_quantities.bsubs_full,
+        output_quantities.mercier, output_quantities.jxbout,
         output_quantities.threed1_first_table_intermediate,
         output_quantities.threed1_first_table,
         output_quantities.threed1_geometric_magnetic,
@@ -4297,7 +4297,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
     VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
-    const MercierFileContents& mercier, const JxBOutFileContents& jxbout,
+    const BSubSFull& bsubs_full, const MercierFileContents& mercier,
+    const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,
@@ -4844,6 +4845,44 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     wout.bsubsmns(mn_nyq, 0) =
         2.0 * wout.bsubsmns(mn_nyq, 1) - wout.bsubsmns(mn_nyq, 2);
   }  // mn_nyq
+
+  // -------------------
+  // Full-grid covariant B_s Fourier coefficients (bsubsmns_full).
+  // bsubsmns above is the on-grid (half-grid) B_s; bsubsmns_full is the forward
+  // sine transform of the full-grid realspace B_s (bsubs_full, interpolated to
+  // the full grid and extrapolated to axis/edge in PutBSubSOnFullGrid /
+  // ExtrapolateBSubS). Since the radial half->full interpolation is linear and
+  // commutes with the angular DFT, bsubsmns_full(:, jF) for interior jF equals
+  // 0.5 * (bsubsmns(:, jF+1) + bsubsmns(:, jF)).
+  wout.bsubsmns_full = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
+      const int m = wout.xm_nyq[mn_nyq];
+      const int n = wout.xn_nyq[mn_nyq] / wout.nfp;
+      const int abs_n = std::abs(n);
+      const int sign_n = signum(n);
+
+      double dmult = t.mscale[m] * t.nscale[abs_n] * tmult;
+      if (m == 0 || n == 0) {
+        dmult *= 2.0;
+      }
+
+      for (int l = 0; l < s.nThetaReduced; ++l) {
+        const int ml = m * s.nThetaReduced + l;
+        for (int k = 0; k < s.nZeta; ++k) {
+          const int kn = k * (s.nnyq2 + 1) + abs_n;
+
+          // sin(mu - nv)
+          const double tsini = dmult * (t.sinmui[ml] * cosnv[kn] -
+                                        sign_n * cosmui[ml] * t.sinnv[kn]);
+
+          const int idx_kl = (jF * s.nZeta + k) * s.nThetaEff + l;
+          wout.bsubsmns_full(mn_nyq, jF) +=
+              tsini * bsubs_full.bsubs_full(idx_kl);
+        }  // k
+      }  // l
+    }  // mn_nyq
+  }  // jF
 
   // -------------------
   // non-stellarator-symmetric Fourier coefficients

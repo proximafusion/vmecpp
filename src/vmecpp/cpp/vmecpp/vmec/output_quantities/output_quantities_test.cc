@@ -412,6 +412,59 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   ASSERT_EQ(nc_close(ncid), NC_NOERR);
 }  // CheckWOutFileContents
 
+// bsubsmns_full holds the full-grid covariant B_s Fourier coefficients. It is
+// the forward transform of the full-grid realspace B_s, which is the radial
+// half->full interpolation (in PutBSubSOnFullGrid) of the half-grid B_s that
+// underlies bsubsmns. Since that radial interpolation is linear and commutes
+// with the angular DFT, on the interior full-grid surfaces (where the full-grid
+// value is the average of the two neighboring half-grid values) the transforms
+// must satisfy
+//   bsubsmns_full(:, jF) == 0.5 * (bsubsmns(:, jF+1) + bsubsmns(:, jF)).
+// The axis (jF=0) and edge (jF=ns-1) are extrapolated in realspace
+// (ExtrapolateBSubS), so they are excluded. This also guards the regression
+// where bsubsmns_full was never assigned and was emitted as an empty (0, 0)
+// array.
+TEST_P(WOutFileContentsTest, BSubSFullMatchesInterpolatedBSubSHalf) {
+  const std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+
+  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+
+  // Both arrays must be fully sized on the Nyquist mode set over all surfaces;
+  // in particular bsubsmns_full must not be the empty matrix it used to default
+  // to.
+  ASSERT_EQ(wout.bsubsmns_full.rows(), wout.mnmax_nyq);
+  ASSERT_EQ(wout.bsubsmns_full.cols(), wout.ns);
+  ASSERT_EQ(wout.bsubsmns.rows(), wout.mnmax_nyq);
+  ASSERT_EQ(wout.bsubsmns.cols(), wout.ns);
+
+  // The identity is mathematical (up to round-off), so use a tight tolerance
+  // independent of the case-specific reference tolerance.
+  constexpr double kInterpolationTolerance = 1.0e-10;
+  for (int jF = 1; jF < wout.ns - 1; ++jF) {
+    for (int mn_nyq = 0; mn_nyq < wout.mnmax_nyq; ++mn_nyq) {
+      const double interpolated =
+          0.5 * (wout.bsubsmns(mn_nyq, jF + 1) + wout.bsubsmns(mn_nyq, jF));
+      EXPECT_TRUE(IsCloseRelAbs(interpolated, wout.bsubsmns_full(mn_nyq, jF),
+                                kInterpolationTolerance))
+          << "jF = " << jF << ", mn_nyq = " << mn_nyq;
+    }  // mn_nyq
+  }  // jF
+}  // BSubSFullMatchesInterpolatedBSubSHalf
+
 INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantities, WOutFileContentsTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-7},
