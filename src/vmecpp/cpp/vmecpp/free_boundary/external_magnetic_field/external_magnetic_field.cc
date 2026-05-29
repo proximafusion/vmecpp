@@ -286,6 +286,12 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
 // compute bSubU, bSubV: covariant components of external magnetic field
 // and bDotN: normal component of external magnetic field
 void ExternalMagneticField::covariantAndNormalComponents() {
+  // The surface poloidal/toroidal derivative arrays (rub, zub, rvb, zvb) are
+  // stored full-range (offset 0) for lasym and thread-local (offset tp_.ztMin)
+  // for the symmetric case, matching SurfaceGeometry::derivedSurfaceQuantities.
+  // r1b and the normals snr/snv/snz are always thread-local-agnostic /
+  // thread-local respectively, so only the derivative reads need this offset.
+  const int derivOffset = s_.lasym ? 0 : tp_.ztMin;
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
     // add contributions together
     // --> helps in debugging to have them separate until here
@@ -295,9 +301,9 @@ void ExternalMagneticField::covariantAndNormalComponents() {
 
     // covariant components
     bSubU[kl - tp_.ztMin] =
-        fullBr * sg_.rub[kl - tp_.ztMin] + fullBz * sg_.zub[kl - tp_.ztMin];
-    bSubV[kl - tp_.ztMin] = fullBr * sg_.rvb[kl - tp_.ztMin] +
-                            fullBz * sg_.zvb[kl - tp_.ztMin] +
+        fullBr * sg_.rub[kl - derivOffset] + fullBz * sg_.zub[kl - derivOffset];
+    bSubV[kl - tp_.ztMin] = fullBr * sg_.rvb[kl - derivOffset] +
+                            fullBz * sg_.zvb[kl - derivOffset] +
                             fullBp * sg_.r1b[kl];
 
     // normal component

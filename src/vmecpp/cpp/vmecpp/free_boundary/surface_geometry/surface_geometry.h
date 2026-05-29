@@ -149,6 +149,23 @@ class SurfaceGeometry {
   // full surface
   std::vector<double> rsinuv;
 
+  // Non-stellarator-symmetric (lasym) antisymmetric contributions. r1b/z1b are
+  // full-surface; the derivative arrays span the reduced poloidal range. The
+  // inverse DFT accumulates these and combines them with the symmetric parts
+  // to fill the full poloidal interval.
+  std::vector<double> r1b_asym;
+  std::vector<double> z1b_asym;
+  std::vector<double> rub_asym;
+  std::vector<double> rvb_asym;
+  std::vector<double> zub_asym;
+  std::vector<double> zvb_asym;
+  std::vector<double> ruu_asym;
+  std::vector<double> ruv_asym;
+  std::vector<double> rvv_asym;
+  std::vector<double> zuu_asym;
+  std::vector<double> zuv_asym;
+  std::vector<double> zvv_asym;
+
  private:
   const Sizes& s_;
   const FourierBasisFastToroidal& fb_;
@@ -166,9 +183,6 @@ class SurfaceGeometry {
                   const std::span<const double> zSS, bool fullUpdate);
 
   void derivedSurfaceQuantities(int signOfJacobian, bool fullUpdate);
-
-  std::vector<double> r1b_asym;
-  std::vector<double> z1b_asym;
 };
 
 }  // namespace vmecpp

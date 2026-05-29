@@ -31,7 +31,11 @@ class LaplaceSolver {
 
   void BuildMatrix();
   void DecomposeMatrix();
-  void SolveForPotential(const std::vector<double>& bvec_sin_singular);
+  // For lasym = false, only bvec_sin_singular is consumed and bvec_cos_singular
+  // may be an empty span. For lasym = true both halves are required and
+  // bvecShare must be sized for 2 * mnpd entries.
+  void SolveForPotential(const std::vector<double>& bvec_sin_singular,
+                         const std::vector<double>& bvec_cos_singular = {});
 
   // Green's function derivative Fourier transform, non-singular part,
   // stellarator-symmetric.
@@ -45,26 +49,44 @@ class LaplaceSolver {
   // order.
   Eigen::VectorXd grpmn_cos;
 
-  // Symmetrized source term, stellarator-symmetric.
-  // Logically [nThetaReduced x nZeta] matrix stored as flat vector in row-major
-  // order.
+  // Symmetrized source term, sin (anti-symmetric under (u,v) -> (-u,-v))
+  // half. Logically [nThetaReduced x nZeta] in row-major order.
   Eigen::VectorXd gstore_symm;
 
-  // Fourier transform intermediate results.
+  // Symmetrized source term, cos (symmetric under (u,v) -> (-u,-v)) half.
+  // Same layout as gstore_symm; only allocated for lasym.
+  Eigen::VectorXd gstore_asym;
+
+  // Fourier transform intermediate results for the sin-basis source.
   // Logically [(2*nf+1) x nThetaReduced] matrices stored as flat vectors.
   Eigen::VectorXd bcos;
   Eigen::VectorXd bsin;
 
-  // Intermediate matrix transform results.
+  // Fourier transform intermediate results for the cos-basis source
+  // (lasym only). Same shape as bcos / bsin.
+  Eigen::VectorXd bcos_asym;
+  Eigen::VectorXd bsin_asym;
+
+  // Intermediate matrix transform results for the sin-basis kernel.
   // Logically [mnpd * (2*nf+1) x nThetaEff] stored as flat vectors.
   Eigen::VectorXd actemp;
   Eigen::VectorXd astemp;
 
-  // Linear system to be solved.
-  // bvec_sin: vector of size [mnpd]
-  // amat_sin_sin: logically [mnpd x mnpd] matrix stored as flat vector
+  // Intermediate matrix transform results for the cos-basis kernel
+  // (lasym only). Same shape as actemp / astemp.
+  Eigen::VectorXd actemp_cos;
+  Eigen::VectorXd astemp_cos;
+
+  // Linear system blocks. The full lasym amatsq has four (mnpd x mnpd)
+  // quadrants: sin-sin (top-left), sin-cos (top-right), cos-sin
+  // (bottom-left), cos-cos (bottom-right). For lasym = false only
+  // amat_sin_sin and bvec_sin are populated.
   Eigen::VectorXd bvec_sin;
+  Eigen::VectorXd bvec_cos;
   Eigen::VectorXd amat_sin_sin;
+  Eigen::VectorXd amat_sin_cos;
+  Eigen::VectorXd amat_cos_sin;
+  Eigen::VectorXd amat_cos_cos;
 
  private:
   const Sizes& s_;

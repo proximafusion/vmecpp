@@ -2067,19 +2067,19 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         const int target_index = jF * vmec_internal_results.nZnT_reduced + kl;
 
         decomposed_bcov.bsubs_s(target_index) =
-            bsubs_full.bsubs_full(source_index) -
-            bsubs_full.bsubs_full(source_index_reversed);
+            0.5 * (bsubs_full.bsubs_full(source_index) -
+                   bsubs_full.bsubs_full(source_index_reversed));
         decomposed_bcov.bsubs_a(target_index) =
-            bsubs_full.bsubs_full(source_index) +
-            bsubs_full.bsubs_full(source_index_reversed);
+            0.5 * (bsubs_full.bsubs_full(source_index) +
+                   bsubs_full.bsubs_full(source_index_reversed));
       }  // kl
     }  // jF
     for (int jH = 0; jH < vmec_internal_results.num_half; ++jH) {
-      for (int kl = 0; kl < s.nZnT; ++kl) {
-        const int source_index = jH * s.nZnT + kl;
+      for (int kl = 0; kl < vmec_internal_results.nZnT_reduced; ++kl) {
+        const int k = kl / s.nThetaReduced;
+        const int l = kl % s.nThetaReduced;
 
-        const int k = kl / s.nThetaEff;
-        const int l = kl % s.nThetaEff;
+        const int source_index = jH * s.nZnT + (k * s.nThetaEven + l);
 
         const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
         const int k_reversed = (s.nZeta - k) % s.nZeta;
@@ -2090,17 +2090,17 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         const int target_index = jH * vmec_internal_results.nZnT_reduced + kl;
 
         decomposed_bcov.bsubu_s(target_index) =
-            vmec_internal_results.bsubu(source_index) +
-            vmec_internal_results.bsubu(source_index_reversed);
+            0.5 * (vmec_internal_results.bsubu(source_index) +
+                   vmec_internal_results.bsubu(source_index_reversed));
         decomposed_bcov.bsubu_a(target_index) =
-            vmec_internal_results.bsubu(source_index) -
-            vmec_internal_results.bsubu(source_index_reversed);
+            0.5 * (vmec_internal_results.bsubu(source_index) -
+                   vmec_internal_results.bsubu(source_index_reversed));
         decomposed_bcov.bsubv_s(target_index) =
-            vmec_internal_results.bsubv(source_index) +
-            vmec_internal_results.bsubv(source_index_reversed);
+            0.5 * (vmec_internal_results.bsubv(source_index) +
+                   vmec_internal_results.bsubv(source_index_reversed));
         decomposed_bcov.bsubv_a(target_index) =
-            vmec_internal_results.bsubv(source_index) -
-            vmec_internal_results.bsubv(source_index_reversed);
+            0.5 * (vmec_internal_results.bsubv(source_index) -
+                   vmec_internal_results.bsubv(source_index_reversed));
       }  // kl
     }  // jH
   } else {
@@ -2377,13 +2377,17 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
   if (s.lasym) {
     // EXTEND FILTERED bsubu, bsubv TO NTHETA3 MESH
     // fext_fft
+    // bsubu_filtered_{s,a} are stored in the reduced (nThetaReduced) poloidal
+    // layout, while the target bsubu/bsubv use the full (nThetaEff) layout, so
+    // the source and target within-surface strides differ for nZeta > 1.
+    const int nZnT_reduced = m_vmec_internal_results.nZnT_reduced;
     for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
       for (int k = 0; k < s.nZeta; ++k) {
+        const int k_reversed = (s.nZeta - k) % s.nZeta;
         for (int l = 0; l < s.nThetaReduced; ++l) {
-          const int kl = k * s.nThetaReduced + l;
           const int source_index =
-              jH * m_vmec_internal_results.nZnT_reduced + kl;
-          const int target_index = jH * s.nZnT + kl;
+              jH * nZnT_reduced + (k * s.nThetaReduced + l);
+          const int target_index = jH * s.nZnT + (k * s.nThetaEff + l);
 
           m_vmec_internal_results.bsubu(target_index) =
               bsubu_filtered_s[source_index] + bsubu_filtered_a[source_index];
@@ -2391,15 +2395,10 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               bsubv_filtered_s[source_index] + bsubv_filtered_a[source_index];
         }  // l
         for (int l = s.nThetaReduced; l < s.nThetaEven; ++l) {
-          const int kl = k * s.nThetaEven + l;
-
           const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
-          const int k_reversed = (s.nZeta - k) % s.nZeta;
-          const int kl_reversed = k_reversed * s.nThetaEven + l_reversed;
-
-          const int source_index_reversed = jH * s.nZnT + kl_reversed;
-
-          const int target_index = jH * s.nZnT + kl;
+          const int source_index_reversed =
+              jH * nZnT_reduced + (k_reversed * s.nThetaReduced + l_reversed);
+          const int target_index = jH * s.nZnT + (k * s.nThetaEff + l);
 
           m_vmec_internal_results.bsubu(target_index) =
               bsubu_filtered_s[source_index_reversed] -
@@ -2424,18 +2423,18 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
   // EXTEND bsubsu, bsubsv TO NTHETA3 MESH
   if (s.lasym) {
     // fsym_invfft
+    // bsubsu_{s,a} are stored in the reduced (nThetaReduced) poloidal layout,
+    // while bsubsu/bsubsv use the full (nThetaEff) layout, so source and target
+    // within-surface strides differ for nZeta > 1.
+    const int nZnT_reduced = m_vmec_internal_results.nZnT_reduced;
     for (int jF = 0; jF < m_vmec_internal_results.num_full; ++jF) {
       for (int k = 0; k < s.nZeta; ++k) {
+        const int k_reversed = (s.nZeta - k) % s.nZeta;
         for (int l = s.nThetaReduced; l < s.nThetaEven; ++l) {
-          const int kl = k * s.nThetaEven + l;
-
           const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
-          const int k_reversed = (s.nZeta - k) % s.nZeta;
-          const int kl_reversed = k_reversed * s.nThetaEven + l_reversed;
-
-          const int source_index_reversed = jF * s.nZnT + kl_reversed;
-
-          const int target_index = jF * s.nZnT + kl;
+          const int source_index_reversed =
+              jF * nZnT_reduced + (k_reversed * s.nThetaReduced + l_reversed);
+          const int target_index = jF * s.nZnT + (k * s.nThetaEff + l);
 
           covariant_b_derivatives.bsubsu(target_index) =
               bsubsu_s[source_index_reversed] - bsubsu_a[source_index_reversed];
@@ -2443,10 +2442,9 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
               bsubsv_s[source_index_reversed] - bsubsv_a[source_index_reversed];
         }  // l
         for (int l = 0; l < s.nThetaReduced; ++l) {
-          const int kl = k * s.nThetaReduced + l;
           const int source_index =
-              jF * m_vmec_internal_results.nZnT_reduced + kl;
-          const int target_index = jF * s.nZnT + kl;
+              jF * nZnT_reduced + (k * s.nThetaReduced + l);
+          const int target_index = jF * s.nZnT + (k * s.nThetaEff + l);
 
           covariant_b_derivatives.bsubsu(target_index) =
               bsubsu_s[source_index] + bsubsu_a[source_index];
@@ -3860,16 +3858,18 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int k = 0; k < s.nZeta; ++k) {
       for (int l = 0; l < s.nThetaReduced; ++l) {
-        const int kl = k * s.nThetaReduced + l;
+        // total_pressure is stored with the full nThetaEff within-surface
+        // stride; bmax/bmin only need the reduced poloidal range.
+        const int kl = k * s.nThetaEff + l;
         const int index_half = jH * s.nZnT + kl;
 
         const double mod_b =
             std::sqrt(2.0 * (vmec_internal_results.total_pressure(index_half) -
                              vmec_internal_results.presH[jH]));
         result.bmax(jH * s.nThetaReduced + l) =
-            std::max(result.bmax(jH * s.nThetaEff + l), mod_b);
+            std::max(result.bmax(jH * s.nThetaReduced + l), mod_b);
         result.bmin(jH * s.nThetaReduced + l) =
-            std::min(result.bmin(jH * s.nThetaEff + l), mod_b);
+            std::min(result.bmin(jH * s.nThetaReduced + l), mod_b);
       }  // k
     }  // l
   }  // jH

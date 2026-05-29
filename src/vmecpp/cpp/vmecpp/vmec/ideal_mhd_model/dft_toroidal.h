@@ -32,6 +32,25 @@ void ForcesToFourier3DSymmFastPoloidal(
     VacuumPressureState vacuum_pressure_state,
     FourierForces& m_physical_forces);
 
+// Non-stellarator-symmetric (lasym) counterparts. The inverse accumulates the
+// antisymmetric-parity geometry into the *_asym arrays carried by m_geometry;
+// the forward projects the antisymmetric-parity force halves onto the
+// frsc / fzcc / flcc coefficients. Both are the cos<->sin mirror of the
+// symmetric functions above (educational_VMEC totzspa / tomnspa).
+void FourierToReal3DAsymFastPoloidal(const FourierGeometry& physical_x,
+                                     const Eigen::VectorXd& xmpq,
+                                     const RadialPartitioning& r,
+                                     const Sizes& s, const RadialProfiles& rp,
+                                     const FourierBasisFastPoloidal& fb,
+                                     RealSpaceGeometry& m_geometry);
+
+void ForcesToFourier3DAsymFastPoloidal(
+    const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
+    const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
+    const FourierBasisFastPoloidal& fb,
+    VacuumPressureState vacuum_pressure_state,
+    FourierForces& m_physical_forces);
+
 }  // namespace vmecpp
 
 #endif  // VMECPP_VMEC_IDEAL_MHD_MODEL_DFT_TOROIDAL_H_
