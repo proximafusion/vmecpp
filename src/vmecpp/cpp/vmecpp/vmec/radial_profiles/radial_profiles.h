@@ -80,12 +80,14 @@ class RadialProfiles {
   double evalPowerSeries(const Eigen::VectorXd& coeffs, double x,
                          bool should_integrate);
   double evalPowerSeriesI(const Eigen::VectorXd& coeffs, double x);
-  double evalGaussTrunc(const Eigen::VectorXd& coeffs, double x);
+  double evalGaussTrunc(const Eigen::VectorXd& coeffs, double x,
+                        bool shouldIntegrate);
   double evalSumAtan(const Eigen::VectorXd& coeffs, double x);
   double evalTwoLorentz(const Eigen::VectorXd& coeffs, double x);
   double evalTwoPower(const Eigen::VectorXd& coeffs, double x,
                       bool shouldIntegrate);
-  double evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x);
+  double evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x,
+                        bool shouldIntegrate);
   double evalAkima(const Eigen::VectorXd& splineKnots,
                    const Eigen::VectorXd& splineValues, double x);
   double evalAkimaIntegrated(const Eigen::VectorXd& splineKnots,
@@ -94,7 +96,8 @@ class RadialProfiles {
                    const Eigen::VectorXd& splineValues, double x);
   double evalCubicIntegrated(const Eigen::VectorXd& splineKnots,
                              const Eigen::VectorXd& splineValues, double x);
-  double evalPedestal(const Eigen::VectorXd& coeffs, double x);
+  double evalPedestal(const Eigen::VectorXd& coeffs, double x,
+                      bool shouldIntegrate);
   double evalRational(const Eigen::VectorXd& coeffs, double x);
   double evalLineSegment(const Eigen::VectorXd& splineKnots,
                          const Eigen::VectorXd& splineValues, double x);

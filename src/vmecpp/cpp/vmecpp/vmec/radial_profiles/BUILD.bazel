@@ -17,3 +17,18 @@ cc_library(
         "//vmecpp/vmec/profile_parameterization_data:profile_parameterization_data",
     ],
 )
+
+cc_test(
+    name = "radial_profiles_test",
+    srcs = ["radial_profiles_test.cc"],
+    deps = [
+        ":radial_profiles",
+        "@eigen",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/flow_control:flow_control",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/handover_storage:handover_storage",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+    ],
+)
