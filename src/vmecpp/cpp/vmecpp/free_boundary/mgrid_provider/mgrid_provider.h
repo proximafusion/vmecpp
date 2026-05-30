@@ -30,9 +30,8 @@ class MGridProvider {
                              const Eigen::VectorXd& fixed_bp,
                              const Eigen::VectorXd& fixed_bz);
 
-  void interpolate(int ztMin, int ztMax, int nZeta,
-                   const Eigen::VectorXd& r, const Eigen::VectorXd& z,
-                   Eigen::VectorXd& m_interpBr,
+  void interpolate(int ztMin, int ztMax, int nZeta, const Eigen::VectorXd& r,
+                   const Eigen::VectorXd& z, Eigen::VectorXd& m_interpBr,
                    Eigen::VectorXd& m_interpBp,
                    Eigen::VectorXd& m_interpBz) const;
 
