@@ -334,6 +334,11 @@ class VmecModel {
   double ftolv() const { return vmec_->fc_.ftolv; }
   int niterv() const { return vmec_->fc_.niterv; }
   double delt() const { return vmec_->indata_.delt; }
+  // Iteration style ("vmec_8_52" or "parvmec"); selects the time-step control
+  // variant in vmecpp._iteration.
+  std::string iteration_style() const {
+    return vmecpp::ToString(vmec_->indata_.iteration_style);
+  }
   int ns() const { return vmec_->fc_.ns; }
   int mpol() const { return vmec_->s_.mpol; }
   int ntor() const { return vmec_->s_.ntor; }
@@ -507,6 +512,7 @@ PYBIND11_MODULE(_vmecpp, m) {
 
   py::native_enum<vmecpp::IterationStyle>(m, "IterationStyle", "enum.Enum")
       .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52)
+      .value("PARVMEC", vmecpp::IterationStyle::PARVMEC)
       .export_values()
       .finalize();
 
@@ -1129,6 +1135,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("ftolv", &VmecModel::ftolv)
       .def_property_readonly("niterv", &VmecModel::niterv)
       .def_property_readonly("delt", &VmecModel::delt)
+      .def_property_readonly("iteration_style", &VmecModel::iteration_style)
       .def_property_readonly("ns", &VmecModel::ns)
       .def_property_readonly("mpol", &VmecModel::mpol)
       .def_property_readonly("ntor", &VmecModel::ntor)
