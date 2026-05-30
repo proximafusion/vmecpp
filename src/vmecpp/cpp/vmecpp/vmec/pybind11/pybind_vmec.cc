@@ -77,6 +77,300 @@ vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
   return vmecpp::HotRestartState(std::move(wout), indata);
 }
 
+// The active R/Z/lambda Fourier-component spans of a FourierGeometry, in a
+// fixed canonical order set by (lthreed, lasym). Used to (un)flatten the VMEC++
+// decision vector for Python. FourierForces shares the same underlying
+// FourierCoeffs storage layout, so the same ordering applies.
+std::vector<std::span<double>> ActiveSpans(vmecpp::FourierGeometry &x,
+                                           const vmecpp::Sizes &s) {
+  std::vector<std::span<double>> out = {x.rmncc};
+  if (s.lthreed) out.push_back(x.rmnss);
+  if (s.lasym) out.push_back(x.rmnsc);
+  if (s.lasym && s.lthreed) out.push_back(x.rmncs);
+  out.push_back(x.zmnsc);
+  if (s.lthreed) out.push_back(x.zmncs);
+  if (s.lasym) out.push_back(x.zmncc);
+  if (s.lasym && s.lthreed) out.push_back(x.zmnss);
+  out.push_back(x.lmnsc);
+  if (s.lthreed) out.push_back(x.lmncs);
+  if (s.lasym) out.push_back(x.lmncc);
+  if (s.lasym && s.lthreed) out.push_back(x.lmnss);
+  return out;
+}
+
+std::vector<std::span<double>> ActiveSpans(vmecpp::FourierForces &x,
+                                           const vmecpp::Sizes &s) {
+  std::vector<std::span<double>> out = {x.frcc};
+  if (s.lthreed) out.push_back(x.frss);
+  if (s.lasym) out.push_back(x.frsc);
+  if (s.lasym && s.lthreed) out.push_back(x.frcs);
+  out.push_back(x.fzsc);
+  if (s.lthreed) out.push_back(x.fzcs);
+  if (s.lasym) out.push_back(x.fzcc);
+  if (s.lasym && s.lthreed) out.push_back(x.fzss);
+  out.push_back(x.flsc);
+  if (s.lthreed) out.push_back(x.flcs);
+  if (s.lasym) out.push_back(x.flcc);
+  if (s.lasym && s.lthreed) out.push_back(x.flss);
+  return out;
+}
+
+template <typename FourierObject>
+Eigen::VectorXd FlattenActive(FourierObject &x, const vmecpp::Sizes &s) {
+  const std::vector<std::span<double>> spans = ActiveSpans(x, s);
+  Eigen::Index total = 0;
+  for (const auto &sp : spans) total += static_cast<Eigen::Index>(sp.size());
+  Eigen::VectorXd out(total);
+  Eigen::Index offset = 0;
+  for (const auto &sp : spans) {
+    const Eigen::Index n = static_cast<Eigen::Index>(sp.size());
+    out.segment(offset, n) = Eigen::Map<const Eigen::VectorXd>(sp.data(), n);
+    offset += n;
+  }
+  return out;
+}
+
+template <typename FourierObject>
+void UnflattenActive(FourierObject &m_x, const vmecpp::Sizes &s,
+                     const Eigen::VectorXd &flat) {
+  const std::vector<std::span<double>> spans = ActiveSpans(m_x, s);
+  Eigen::Index total = 0;
+  for (const auto &sp : spans) total += static_cast<Eigen::Index>(sp.size());
+  if (flat.size() != total) {
+    throw std::runtime_error(
+        "VmecModel.set_state: state vector has wrong length (got " +
+        std::to_string(flat.size()) + ", expected " + std::to_string(total) +
+        ")");
+  }
+  Eigen::Index offset = 0;
+  for (auto &sp : spans) {
+    const Eigen::Index n = static_cast<Eigen::Index>(sp.size());
+    Eigen::Map<Eigen::VectorXd>(sp.data(), n) = flat.segment(offset, n);
+    offset += n;
+  }
+}
+
+// Single-resolution, single-threaded VMEC++ iteration model.
+//
+// Exposes the VMEC++ forward model (flux-surface geometry -> MHD forces) and
+// the low-level time-step / restart primitives, so the equilibrium iteration
+// ("time stepping" toward force balance) can be driven from Python. The
+// expensive forward model and the per-step Fourier-coefficient arithmetic stay
+// in C++; the iteration *logic* (damping, time-step control, restart decisions,
+// convergence test) is owned by the Python caller. See vmecpp._iteration.
+class VmecModel {
+ public:
+  explicit VmecModel(std::unique_ptr<vmecpp::Vmec> vmec)
+      : vmec_(std::move(vmec)) {}
+
+  // Build a single-threaded Vmec, initialized at a single radial resolution
+  // (the inner solve VMEC++ performs at one multi-grid step). The Python loop
+  // owns the multi-grid sequencing.
+  static std::unique_ptr<VmecModel> Create(
+      const VmecINDATA &indata, int ns,
+      std::optional<vmecpp::HotRestartState> initial_state) {
+    auto vmec_or = vmecpp::Vmec::FromIndata(
+        indata, /*magnetic_response_table=*/nullptr, /*max_threads=*/1,
+        vmecpp::OutputMode::kSilent);
+    if (!vmec_or.ok()) {
+      throw std::runtime_error(std::string(vmec_or.status().message()));
+    }
+    auto model = std::make_unique<VmecModel>(std::move(vmec_or.value()));
+    vmecpp::Vmec &v = *model->vmec_;
+
+    // Mirror the per-multi-grid-step setup that Vmec::run performs before
+    // SolveEquilibrium (vmec.cc), for a single ns value.
+    v.fc_.ns_old = 0;
+    v.fc_.delt0r = v.indata_.delt;
+    v.fc_.ns_min = 3;
+    v.fc_.nsval = ns;
+
+    // ftol/niter for this resolution: use the ns_array entry matching ns, else
+    // the last entry of the arrays.
+    const Eigen::VectorXi &ns_array = v.indata_.ns_array;
+    int idx = static_cast<int>(ns_array.size()) - 1;
+    for (int i = 0; i < ns_array.size(); ++i) {
+      if (ns_array[i] == ns) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx >= 0 && idx < v.indata_.ftol_array.size()) {
+      v.fc_.ftolv = v.indata_.ftol_array[idx];
+    }
+    if (idx >= 0 && idx < v.indata_.niter_array.size()) {
+      v.fc_.niterv = v.indata_.niter_array[idx];
+    }
+
+    double delt0 = v.indata_.delt;
+    v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, ns,
+                       /*ns_old=*/0, delt0, initial_state);
+    return model;
+  }
+
+  // Forward model: evaluate the MHD forces for the current geometry at the
+  // given iteration counters. The preconditioner-update schedule keys on
+  // (iter2 - iter1) (IdealMhdModel::shouldUpdateRadialPreconditioner), so the
+  // Python loop must pass its own counters here, exactly as the C++
+  // Vmec::SolveEquilibriumLoop advances iter1_/iter2_. After this call the
+  // residual members (fsqr/fsqz/fsql, fsqr1/fsqz1/fsql1) reflect the current
+  // decision vector. This is the body of Vmec::UpdateForwardModel with
+  // caller-supplied counters; for free-boundary runs the caller should react to
+  // `need_restart` (a vacuum-activation restart).
+  void Evaluate(int iter1, int iter2) {
+    bool need_restart = false;
+    std::string error_message;
+    // Run inside a single-thread OpenMP parallel region so the omp single /
+    // barrier directives inside IdealMhdModel::update have the team context
+    // they get in Vmec::SolveEquilibrium. Orphaned directives (outside any
+    // parallel region) are not well-defined and give inconsistent results for
+    // some configurations (e.g. ncurr=1).
+#ifdef _OPENMP
+#pragma omp parallel num_threads(1)
+#endif
+    {
+      auto s = vmec_->m_[0]->update(
+          *vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+          *vmec_->decomposed_f_[0], *vmec_->physical_f_[0], need_restart,
+          last_preconditioner_update_, last_full_update_nestor_, vmec_->fc_,
+          iter1, iter2, vmecpp::VmecCheckpoint::NONE, INT_MAX,
+          /*verbose=*/false);
+      if (!s.ok()) {
+        error_message = std::string(s.status().message());
+      }
+    }
+    if (!error_message.empty()) {
+      throw std::runtime_error(error_message);
+    }
+    last_need_restart_ = need_restart;
+  }
+  bool need_restart() const { return last_need_restart_; }
+
+  // The Garabedian-style time step (PerformTimeStep): for each Fourier
+  // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
+  void PerformTimeStep(double velocity_scale, double conjugation_parameter,
+                       double time_step) {
+    vmec_->PerformTimeStep(velocity_scale, conjugation_parameter, time_step,
+                           /*thread_id=*/0);
+  }
+
+  // Restart primitives (decomposed RestartIteration).
+  void SaveBackup() {
+    *vmec_->physical_x_backup_[0] = *vmec_->decomposed_x_[0];
+  }
+  void RestoreBackup() {
+    vmec_->decomposed_v_[0]->setZero();
+    *vmec_->decomposed_x_[0] = *vmec_->physical_x_backup_[0];
+  }
+  void ZeroVelocity() { vmec_->decomposed_v_[0]->setZero(); }
+
+  // Reset to the (possibly re-guessed) initial profile; used on bad Jacobian.
+  void ResetToInitialGuess() {
+    vmec_->decomposed_x_[0]->setZero();
+    vmec_->decomposed_x_[0]->interpFromBoundaryAndAxis(vmec_->t_, vmec_->b_,
+                                                       *vmec_->p_[0]);
+  }
+  void RecomputeAxis() {
+    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(
+        vmec_->fc_.nsval, vmecpp::Vmec::kSignOfJacobian);
+  }
+
+  // Recompute the magnetic axis to fix the Jacobian sign, then re-initialize
+  // the radial state from the new axis. This is the C++ axis reguess in
+  // Vmec::SolveEquilibriumLoop, but it re-runs InitializeRadial so the forward
+  // model (preconditioner + scratch) starts clean; the in-place reset alone
+  // leaves stale forward-model state from the failed evaluation, which the C++
+  // single continuous parallel region tolerates but a step-by-step driver does
+  // not.
+  void Reinitialize() {
+    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(
+        vmec_->fc_.nsval, vmecpp::Vmec::kSignOfJacobian);
+    double delt0 = vmec_->indata_.delt;
+    vmec_->InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX,
+                            vmec_->fc_.nsval, /*ns_old=*/0, delt0,
+                            std::nullopt);
+    last_preconditioner_update_ = 0;
+    last_full_update_nestor_ = 0;
+  }
+
+  // Reference C++ inner iteration (the loop being ported), for verification.
+  void Solve() {
+    auto s = vmec_->SolveEquilibrium(vmecpp::VmecCheckpoint::NONE, INT_MAX);
+    if (!s.ok()) {
+      throw std::runtime_error(std::string(s.status().message()));
+    }
+  }
+
+  // Flat decision vector (decomposed, i.e. preconditioner-scaled coefficients).
+  Eigen::VectorXd GetState() {
+    return FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+  }
+  void SetState(const Eigen::VectorXd &flat) {
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
+  }
+  // Flat force vector (decomposed/preconditioned), valid after Evaluate().
+  Eigen::VectorXd GetForces() {
+    return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+  }
+
+  // Residuals (set by Evaluate()): invariant {fsqr,fsqz,fsql} and
+  // preconditioned {fsqr1,fsqz1,fsql1}.
+  double fsqr() const { return vmec_->fc_.fsqr; }
+  double fsqz() const { return vmec_->fc_.fsqz; }
+  double fsql() const { return vmec_->fc_.fsql; }
+  double fsqr1() const { return vmec_->fc_.fsqr1; }
+  double fsqz1() const { return vmec_->fc_.fsqz1; }
+  double fsql1() const { return vmec_->fc_.fsql1; }
+  double mhd_energy() const { return vmec_->h_.mhdEnergy; }
+
+  int restart_reason() const {
+    return static_cast<int>(vmec_->fc_.restart_reason);
+  }
+  void set_restart_reason(int reason) {
+    vmec_->fc_.restart_reason = vmecpp::RestartReasonFromInt(reason);
+  }
+  int status() const { return static_cast<int>(vmec_->get_status()); }
+
+  double ftolv() const { return vmec_->fc_.ftolv; }
+  int niterv() const { return vmec_->fc_.niterv; }
+  double delt() const { return vmec_->indata_.delt; }
+  int ns() const { return vmec_->fc_.ns; }
+  int mpol() const { return vmec_->s_.mpol; }
+  int ntor() const { return vmec_->s_.ntor; }
+  bool lthreed() const { return vmec_->s_.lthreed; }
+  bool lasym() const { return vmec_->s_.lasym; }
+
+  // Invariant force-residual traces recorded during the C++ Solve().
+  std::vector<double> force_residual_r() const {
+    return vmec_->fc_.force_residual_r;
+  }
+  std::vector<double> force_residual_z() const {
+    return vmec_->fc_.force_residual_z;
+  }
+  std::vector<double> force_residual_lambda() const {
+    return vmec_->fc_.force_residual_lambda;
+  }
+
+  int ijacob() const { return vmec_->fc_.ijacob; }
+  Eigen::VectorXd raxis_c() const { return vmec_->b_.raxis_c; }
+  static bool openmp_enabled() {
+#ifdef _OPENMP
+    return true;
+#else
+    return false;
+#endif
+  }
+
+  std::unique_ptr<vmecpp::Vmec> vmec_;
+
+  // Preconditioner / Nestor update bookkeeping, mirroring the like-named Vmec
+  // members; the Python loop drives the iteration counters via Evaluate, so the
+  // wrapper keeps these running values across calls.
+  int last_preconditioner_update_ = 0;
+  int last_full_update_nestor_ = 0;
+  bool last_need_restart_ = false;
+};
+
 }  // anonymous namespace
 
 // IMPORTANT: The first argument must be the name of the module, else
@@ -800,4 +1094,51 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
       py::arg("verbose") = vmecpp::OutputMode::kProgress);
+
+  // Single-resolution iteration model: exposes the forward model and the
+  // time-step / restart primitives so the equilibrium iteration can be driven
+  // from Python (see vmecpp._iteration).
+  py::class_<VmecModel>(m, "VmecModel")
+      .def_static("create", &VmecModel::Create, py::arg("indata"),
+                  py::arg("ns"), py::arg("initial_state") = std::nullopt)
+      .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"))
+      .def_property_readonly("need_restart", &VmecModel::need_restart)
+      .def("perform_time_step", &VmecModel::PerformTimeStep,
+           py::arg("velocity_scale"), py::arg("conjugation_parameter"),
+           py::arg("time_step"))
+      .def("save_backup", &VmecModel::SaveBackup)
+      .def("restore_backup", &VmecModel::RestoreBackup)
+      .def("zero_velocity", &VmecModel::ZeroVelocity)
+      .def("reset_to_initial_guess", &VmecModel::ResetToInitialGuess)
+      .def("recompute_axis", &VmecModel::RecomputeAxis)
+      .def("reinitialize", &VmecModel::Reinitialize)
+      .def("solve", &VmecModel::Solve)
+      .def("get_state", &VmecModel::GetState)
+      .def("set_state", &VmecModel::SetState, py::arg("state"))
+      .def("get_forces", &VmecModel::GetForces)
+      .def_property_readonly("fsqr", &VmecModel::fsqr)
+      .def_property_readonly("fsqz", &VmecModel::fsqz)
+      .def_property_readonly("fsql", &VmecModel::fsql)
+      .def_property_readonly("fsqr1", &VmecModel::fsqr1)
+      .def_property_readonly("fsqz1", &VmecModel::fsqz1)
+      .def_property_readonly("fsql1", &VmecModel::fsql1)
+      .def_property_readonly("mhd_energy", &VmecModel::mhd_energy)
+      .def_property("restart_reason", &VmecModel::restart_reason,
+                    &VmecModel::set_restart_reason)
+      .def_property_readonly("status", &VmecModel::status)
+      .def_property_readonly("ftolv", &VmecModel::ftolv)
+      .def_property_readonly("niterv", &VmecModel::niterv)
+      .def_property_readonly("delt", &VmecModel::delt)
+      .def_property_readonly("ns", &VmecModel::ns)
+      .def_property_readonly("mpol", &VmecModel::mpol)
+      .def_property_readonly("ntor", &VmecModel::ntor)
+      .def_property_readonly("lthreed", &VmecModel::lthreed)
+      .def_property_readonly("lasym", &VmecModel::lasym)
+      .def_property_readonly("force_residual_r", &VmecModel::force_residual_r)
+      .def_property_readonly("force_residual_z", &VmecModel::force_residual_z)
+      .def_property_readonly("force_residual_lambda",
+                             &VmecModel::force_residual_lambda)
+      .def_property_readonly("ijacob", &VmecModel::ijacob)
+      .def_property_readonly("raxis_c", &VmecModel::raxis_c)
+      .def_static("openmp_enabled", &VmecModel::openmp_enabled);
 }  // NOLINT(readability/fn_size)
