@@ -19,6 +19,7 @@ import netCDF4
 import numpy as np
 import pydantic
 
+from vmecpp import _objectives as objectives
 from vmecpp import _util
 from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
@@ -2048,4 +2049,5 @@ __all__ = [  # noqa: RUF022
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
     "set_profile",
+    "objectives",
 ]
