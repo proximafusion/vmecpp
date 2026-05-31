@@ -1,0 +1,134 @@
+[
+  {
+    "method": "default",
+    "status": "ok",
+    "fsqt0": 0.3020947800818385,
+    "fsqt_final": 1.6834299642468214e-11,
+    "niter": 497,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 0.31539671012331183,
+    "config": "cth_like_fixed_bdy"
+  },
+  {
+    "method": "zeno",
+    "status": "ok",
+    "fsqt0": 0.10209171109816195,
+    "fsqt_final": 1.6490429580237907e-11,
+    "niter": 506,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 0.31539671012331183,
+    "config": "cth_like_fixed_bdy"
+  },
+  {
+    "method": "map2disc",
+    "status": "ok",
+    "fsqt0": 0.1056412921454932,
+    "fsqt_final": 1.6174071803127714e-11,
+    "niter": 507,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 0.31539671012331183,
+    "config": "cth_like_fixed_bdy"
+  },
+  {
+    "method": "default",
+    "status": "ok",
+    "fsqt0": 0.13737819895657225,
+    "fsqt_final": 1.1179384589533256e-11,
+    "niter": 239,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 126.87192764523259,
+    "config": "solovev"
+  },
+  {
+    "method": "zeno",
+    "status": "ok",
+    "fsqt0": 0.056759364147330044,
+    "fsqt_final": 1.1174670445648248e-11,
+    "niter": 244,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 126.87192764523259,
+    "config": "solovev"
+  },
+  {
+    "method": "map2disc",
+    "status": "ok",
+    "fsqt0": 0.09462120205470523,
+    "fsqt_final": 1.0889531591140589e-11,
+    "niter": 241,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 126.87192764523259,
+    "config": "solovev"
+  },
+  {
+    "method": "default",
+    "status": "ok",
+    "fsqt0": 0.07505488751817899,
+    "fsqt_final": 2.0417133563994223e-11,
+    "niter": 317,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 473.74101125228947,
+    "config": "circular_tokamak"
+  },
+  {
+    "method": "zeno",
+    "status": "ok",
+    "fsqt0": 70.4446613560646,
+    "fsqt_final": 1.9888357016927983e-11,
+    "niter": 784,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 473.74101125228947,
+    "config": "circular_tokamak"
+  },
+  {
+    "method": "map2disc",
+    "status": "ok",
+    "fsqt0": 0.07505488751816798,
+    "fsqt_final": 2.0417131850642922e-11,
+    "niter": 317,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 473.74101125228947,
+    "config": "circular_tokamak"
+  },
+  {
+    "method": "default",
+    "status": "ok",
+    "fsqt0": 12555.581895754587,
+    "fsqt_final": 1.0370478370594148e-11,
+    "niter": 1703,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 0.5013527457178715,
+    "config": "cma"
+  },
+  {
+    "method": "zeno",
+    "status": "ok",
+    "fsqt0": 12555.581895754587,
+    "fsqt_final": 1.0370478370594148e-11,
+    "niter": 1703,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 0.5013527457178715,
+    "config": "cma"
+  },
+  {
+    "method": "map2disc",
+    "status": "ok",
+    "fsqt0": 0.5025124526241459,
+    "fsqt_final": 1.0454298205914818e-11,
+    "niter": 1569,
+    "ftolv": 1e-11,
+    "converged": true,
+    "volume": 0.5013527457178715,
+    "config": "cma"
+  }
+]
