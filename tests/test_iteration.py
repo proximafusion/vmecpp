@@ -65,13 +65,11 @@ def test_python_iteration_reproduces_cpp_inner_solve(
 
     cpp_state = np.asarray(reference.get_state())
     py_state = np.asarray(model.get_state())
-    assert cpp_state.shape == py_state.shape
-    assert np.max(np.abs(cpp_state - py_state)) < 1.0e-9
+    np.testing.assert_allclose(py_state, cpp_state, rtol=0, atol=1.0e-9)
 
     cpp_trace = np.asarray(reference.force_residual_r)
     py_trace = np.asarray(result.force_residual_r)
-    assert len(cpp_trace) == len(py_trace)
-    assert np.max(np.abs(cpp_trace - py_trace)) < 1.0e-10
+    np.testing.assert_allclose(py_trace, cpp_trace, rtol=0, atol=1.0e-10)
 
 
 def test_python_iteration_recovers_from_bad_initial_jacobian():
