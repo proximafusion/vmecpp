@@ -53,7 +53,7 @@ class RegularizedIntegrals {
   // Axisymmetric (nZeta == 1) specialization of update(): performs the toroidal
   // integral by summing over nvper_ toroidal images of the evaluation point,
   // since the single-plane surface grid does not resolve the toroidal angle.
-  void updateAxisymmetric(const std::vector<double>& bDotN);
+  void updateAxisymmetric(const Eigen::VectorXd& bDotN);
 };
 
 }  // namespace vmecpp
