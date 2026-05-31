@@ -77,7 +77,7 @@ TEST_P(TransformGreensFunctionDerivativeTest, SingleModeRoundTrip) {
   const int nThetaEven = s.nThetaEven;
   const int nZeta = s.nZeta;
 
-  std::vector<double> greenp(numLocal * nThetaEven * nZeta, 0.0);
+  Eigen::VectorXd greenp = Eigen::VectorXd::Zero(numLocal * nThetaEven * nZeta);
 
   for (int klpRel = 0; klpRel < numLocal; ++klpRel) {
     for (int l = 0; l < nThetaEven; ++l) {
@@ -226,15 +226,16 @@ TEST(LaplaceSolverTest, ZeroKernelSolveGivesHalfInverse) {
                    std::span<int>(iPiv), std::span<double>(bvecShare));
 
   // Zero greenp: no double-layer kernel contribution.
-  std::vector<double> greenp(numLocal * s.nThetaEven * s.nZeta, 0.0);
+  Eigen::VectorXd greenp =
+      Eigen::VectorXd::Zero(numLocal * s.nThetaEven * s.nZeta);
   ls.TransformGreensFunctionDerivative(greenp);
 
-  std::vector<double> grpmn_sin_singular(mnpd * numLocal, 0.0);
-  std::vector<double> grpmn_cos_singular(mnpd * numLocal, 0.0);
+  Eigen::VectorXd grpmn_sin_singular = Eigen::VectorXd::Zero(mnpd * numLocal);
+  Eigen::VectorXd grpmn_cos_singular = Eigen::VectorXd::Zero(mnpd * numLocal);
   ls.AccumulateFullGrpmn(grpmn_sin_singular, grpmn_cos_singular);
 
   // Zero gstore: no source term from regularized integrals.
-  std::vector<double> gstore(s.nThetaEven * s.nZeta, 0.0);
+  Eigen::VectorXd gstore = Eigen::VectorXd::Zero(s.nThetaEven * s.nZeta);
   ls.SymmetriseSourceTerm(gstore);
   ls.PerformToroidalFourierTransforms();
   ls.PerformPoloidalFourierTransforms();
@@ -245,7 +246,7 @@ TEST(LaplaceSolverTest, ZeroKernelSolveGivesHalfInverse) {
   const int m0 = 2;
   const int n0 = 1;
   const int idx_posn = (nf + n0) * (mf + 1) + m0;
-  std::vector<double> bvec_sin_singular(mnpd, 0.0);
+  Eigen::VectorXd bvec_sin_singular = Eigen::VectorXd::Zero(mnpd);
   bvec_sin_singular[idx_posn] = 1.0;
 
   ls.SolveForPotential(bvec_sin_singular);

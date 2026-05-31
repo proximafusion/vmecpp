@@ -218,12 +218,12 @@ TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   ASSERT_LT(d * d, ap * am) << "test setup: need smooth integrand on [-1,1]";
 
   const int numLocal = tp.ztMax - tp.ztMin;
-  std::vector<double> a(numLocal, a_val);
-  std::vector<double> b2(numLocal, b2_val);
-  std::vector<double> c(numLocal, c_val);
-  std::vector<double> A(numLocal, 0.0);
-  std::vector<double> B2(numLocal, 0.0);
-  std::vector<double> C(numLocal, 0.0);
+  Eigen::VectorXd a = Eigen::VectorXd::Constant(numLocal, a_val);
+  Eigen::VectorXd b2 = Eigen::VectorXd::Constant(numLocal, b2_val);
+  Eigen::VectorXd c = Eigen::VectorXd::Constant(numLocal, c_val);
+  Eigen::VectorXd A = Eigen::VectorXd::Zero(numLocal);
+  Eigen::VectorXd B2 = Eigen::VectorXd::Zero(numLocal);
+  Eigen::VectorXd C = Eigen::VectorXd::Zero(numLocal);
 
   si.prepareUpdate(a, b2, c, A, B2, C, /*fullUpdate=*/false);
 
