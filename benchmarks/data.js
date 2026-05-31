@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780052271437,
+  "lastUpdate": 1780225496831,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18193,6 +18193,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0131165540550758",
             "extra": "mean: 9.640378869333366 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4d8a378fdd27c735c568b187e2bcf5107cb5ea78",
+          "message": "Complete the Eigen3 port of the free-boundary code (#543)\n\n* free_boundary: migrate the NESTOR modules to Eigen storage\n\n* clang-format mgrid_provider.h",
+          "timestamp": "2026-05-31T13:00:34+02:00",
+          "tree_id": "2a4b84595103ac514d38fbc52f6506f9416de2e7",
+          "url": "https://github.com/proximafusion/vmecpp/commit/4d8a378fdd27c735c568b187e2bcf5107cb5ea78"
+        },
+        "date": 1780225495220,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.8009492560437455,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0012385746610563792",
+            "extra": "mean: 357.0218195999985 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.8172214082978626,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003718810266018116",
+            "extra": "mean: 354.9596765999979 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.26889540609668716,
+            "unit": "iter/sec",
+            "range": "stddev: 0.06786653789653356",
+            "extra": "mean: 3.718918127000014 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5839223787388381,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0015277048887866048",
+            "extra": "mean: 1.7125563883333446 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5642481646666103,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011003639860765111",
+            "extra": "mean: 1.7722698319999968 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.48278495054892195,
+            "unit": "iter/sec",
+            "range": "stddev: 0.007244221941579701",
+            "extra": "mean: 2.071315601000009 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.1077876922575809,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011839135612874524",
+            "extra": "mean: 9.27749707833334 sec\nrounds: 3"
           }
         ]
       }
