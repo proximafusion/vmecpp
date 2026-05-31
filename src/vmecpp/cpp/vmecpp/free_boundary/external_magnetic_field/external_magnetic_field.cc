@@ -134,8 +134,7 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
   // since ABSCAB only adds to whatever is in there.
   // If we don't do this, the axis current contributions effectively pile up,
   // iteration after iteration (don't ask how I know about this...).
-  const int numLocal = tp_.ztMax - tp_.ztMin;
-  absl::c_fill_n(bCoilsXYZ, 3 * numLocal, 0);
+  bCoilsXYZ.setZero();
 
   // compute magnetic field due to line current along magnetic axis
   int numProcessors = 1;  // Nestor itself is already parallelized via OpenMP
@@ -218,8 +217,7 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
   // Initialize target storage for axis-current magnetic field to zero.
   // If we don't do this, the axis current contributions effectively pile up,
   // iteration after iteration (don't ask how I know about this...).
-  const int numLocal = tp_.ztMax - tp_.ztMin;
-  absl::c_fill_n(bCoilsXYZ, 3 * numLocal, 0);
+  bCoilsXYZ.setZero();
 
   // 1.0e-7 == mu0/4 pi
   // NOTE: The factor of 2 comes from the Hanson-Hirshman Biot-Savart formula,

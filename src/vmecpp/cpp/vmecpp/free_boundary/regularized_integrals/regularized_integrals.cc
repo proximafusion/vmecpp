@@ -75,7 +75,7 @@ void RegularizedIntegrals::computeConstants() {
   }
 }
 
-void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
+void RegularizedIntegrals::update(const Eigen::VectorXd& bDotN) {
   if (s_.nZeta == 1) {
     // Axisymmetric plasma: the surface grid has a single toroidal plane, so the
     // toroidal integral is performed over nvper_ toroidal images instead.
@@ -84,12 +84,11 @@ void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
   }
 
   // thread-local tangential grid point range
-  const int numLocal = tp_.ztMax - tp_.ztMin;
   const int theta_by_nzeta = s_.nThetaEven * s_.nZeta;
   const double twopidivnfp = 2.0 * M_PI / s_.nfp;
 
-  absl::c_fill_n(greenp, numLocal * theta_by_nzeta, 0);
-  absl::c_fill_n(gstore, theta_by_nzeta, 0);
+  greenp.setZero();
+  gstore.setZero();
 
   // storage for intermediate results
   std::vector<double> ga1_buf(s_.nZeta);
@@ -225,7 +224,7 @@ void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
 }
 
 void RegularizedIntegrals::updateAxisymmetric(
-    const std::vector<double>& bDotN) {
+    const Eigen::VectorXd& bDotN) {
   // Axisymmetric (nZeta == 1) Green's-function regularization. The single
   // toroidal plane of the surface grid does not resolve the toroidal angle, so
   // the toroidal integral of the regularized Green's function is performed by

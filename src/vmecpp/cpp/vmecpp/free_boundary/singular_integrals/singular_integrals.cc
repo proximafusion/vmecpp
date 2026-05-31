@@ -10,8 +10,6 @@
 #include <cstring>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-
 namespace vmecpp {
 
 SingularIntegrals::SingularIntegrals(const Sizes* s,
@@ -69,11 +67,11 @@ SingularIntegrals::SingularIntegrals(const Sizes* s,
   }
 
   const int mnfull = (2 * nf + 1) * (mf + 1);
-  bvec_sin.resize(mnfull, 0.0);
-  grpmn_sin.resize(mnfull * numLocal, 0.0);
+  bvec_sin.setZero(mnfull);
+  grpmn_sin.setZero(mnfull * numLocal);
   if (s->lasym) {
-    bvec_cos.resize(mnfull, 0.0);
-    grpmn_cos.resize(mnfull * numLocal, 0.0);
+    bvec_cos.setZero(mnfull);
+    grpmn_cos.setZero(mnfull * numLocal);
   }
 
   // -------------
@@ -84,7 +82,7 @@ SingularIntegrals::SingularIntegrals(const Sizes* s,
 void SingularIntegrals::computeCoefficients() {
   // below loop sets only parts of cmn,
   // so initialize all entries to zero once here
-  absl::c_fill_n(cmn, (1 + mf + nf) * (nf + 1) * (mf + 1), 0);
+  cmn.setZero();
 
   // cmn from scratch: Algorithm 1 in TNOV
   for (int n = 0; n < nf + 1; ++n) {
@@ -156,8 +154,7 @@ void SingularIntegrals::computeCoefficients() {
   }  // n
 }  // computeCoefficients
 
-void SingularIntegrals::update(const std::vector<double>& bDotN,
-                               bool fullUpdate) {
+void SingularIntegrals::update(const Eigen::VectorXd& bDotN, bool fullUpdate) {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -176,13 +173,10 @@ void SingularIntegrals::update(const std::vector<double>& bDotN,
 #endif  // _OPENMP
 }  // update
 
-void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
-                                      const std::vector<double>& b2,
-                                      const std::vector<double>& c,
-                                      const std::vector<double>& A,
-                                      const std::vector<double>& B2,
-                                      const std::vector<double>& C,
-                                      bool fullUpdate) {
+void SingularIntegrals::prepareUpdate(
+    const Eigen::VectorXd& a, const Eigen::VectorXd& b2,
+    const Eigen::VectorXd& c, const Eigen::VectorXd& A,
+    const Eigen::VectorXd& B2, const Eigen::VectorXd& C, bool fullUpdate) {
   int numLocal = tp_.ztMax - tp_.ztMin;
   for (int kl = 0; kl < numLocal; ++kl) {
     // initialize constants (along expansion in l)
@@ -340,26 +334,25 @@ void SingularIntegrals::prepareUpdate(const std::vector<double>& a,
   }  // kl
 }  // prepareUpdate
 
-void SingularIntegrals::performUpdate(const std::vector<double>& bDotN,
+void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
                                       bool fullUpdate) {
   const int numLocal = tp_.ztMax - tp_.ztMin;
 
-  const int mnfull = (2 * nf + 1) * (mf + 1);
-  absl::c_fill_n(bvec_sin, mnfull, 0.0);
+  bvec_sin.setZero();
   if (s_.lasym) {
-    absl::c_fill_n(bvec_cos, mnfull, 0.0);
+    bvec_cos.setZero();
   }
 
   if (fullUpdate) {
-    absl::c_fill_n(grpmn_sin, mnfull * numLocal, 0.0);
+    grpmn_sin.setZero();
     if (s_.lasym) {
-      absl::c_fill_n(grpmn_cos, mnfull * numLocal, 0.0);
+      grpmn_cos.setZero();
     }
   }
 
   // Tl1p/Tl1m hold T^{\pm}_{fl-1} for the Slp/Slm formula; T^{\pm}_{-1} = 0.
-  absl::c_fill(Tl1p, 0.0);
-  absl::c_fill(Tl1m, 0.0);
+  Tl1p.setZero();
+  Tl1m.setZero();
 
   int sgn = 1;
   for (int fl = 0; fl < 1 + nf + mf; ++fl) {
