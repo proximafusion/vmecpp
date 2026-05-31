@@ -223,8 +223,7 @@ void RegularizedIntegrals::update(const Eigen::VectorXd& bDotN) {
   }  // klp
 }
 
-void RegularizedIntegrals::updateAxisymmetric(
-    const Eigen::VectorXd& bDotN) {
+void RegularizedIntegrals::updateAxisymmetric(const Eigen::VectorXd& bDotN) {
   // Axisymmetric (nZeta == 1) Green's-function regularization. The single
   // toroidal plane of the surface grid does not resolve the toroidal angle, so
   // the toroidal integral of the regularized Green's function is performed by
