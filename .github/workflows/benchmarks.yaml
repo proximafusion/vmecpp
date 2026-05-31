@@ -33,6 +33,7 @@ jobs:
       - name: Run benchmarks
         run: |
           export OMP_WAIT_POLICY=active
+          export OPENBLAS_NUM_THREADS=1
           pytest benchmarks/test_benchmarks.py --benchmark-json=benchmark_results.json
 
       - name: Compare benchmark result
@@ -45,6 +46,6 @@ jobs:
           benchmark-data-dir-path: benchmarks
           auto-push: false
           comment-on-alert: true
-          alert-threshold: "150%"
+          alert-threshold: "120%"
           fail-on-alert: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
