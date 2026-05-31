@@ -43,15 +43,21 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
   rAxis.setZero(s_.nZeta);
   zAxis.setZero(s_.nZeta);
 
-  rCC_LCFS.setZero(mnsize);
-  rSS_LCFS.setZero(mnsize);
-  zSC_LCFS.setZero(mnsize);
-  zCS_LCFS.setZero(mnsize);
+  // The LCFS boundary geometry handed over to Nestor must use the DENSE
+  // toroidal layout [n * mpol + m] over the full n = 0..ntor, because Nestor
+  // (FourierBasisFastToroidal) is dense in the toroidal direction. For a
+  // sparse-toroidal run the internal mnsize = mpol * n_active is smaller; the
+  // inactive toroidal columns are filled with zeros during the handover.
+  const int dense_mnsize = s_.mpol * (s_.ntor + 1);
+  rCC_LCFS.setZero(dense_mnsize);
+  rSS_LCFS.setZero(dense_mnsize);
+  zSC_LCFS.setZero(dense_mnsize);
+  zCS_LCFS.setZero(dense_mnsize);
   if (s_.lasym) {
-    rSC_LCFS.setZero(mnsize);
-    rCS_LCFS.setZero(mnsize);
-    zCC_LCFS.setZero(mnsize);
-    zSS_LCFS.setZero(mnsize);
+    rSC_LCFS.setZero(dense_mnsize);
+    rCS_LCFS.setZero(dense_mnsize);
+    zCC_LCFS.setZero(dense_mnsize);
+    zSS_LCFS.setZero(dense_mnsize);
   }
 }
 

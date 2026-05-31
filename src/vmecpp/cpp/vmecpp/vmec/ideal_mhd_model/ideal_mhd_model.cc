@@ -33,16 +33,26 @@ namespace {
 // Set m_h.rCC_LCFS etc. to the corresponding values in the FourierGeometry
 // of the last surface, also transposing m and n dimensions to make the
 // data layout what Nestor expects.
+//
+// The source FourierGeometry arrays use the INTERNAL product-basis layout,
+// strided by sizes.n_active per (m): idx_mn = m * n_active + c, where c is the
+// compact index of physical toroidal mode n = sizes.active_n[c]. For a dense
+// run n_active == ntor+1 and active_n[c] == c, so this reduces to the classic
+// m * (ntor+1) + n indexing.
+//
+// The target LCFS arrays use the DENSE n-major layout [n * mpol + m] that
+// Nestor expects (Nestor is dense in the toroidal direction). The LCFS arrays
+// are zero-initialized in HandoverStorage::HandoverStorage, so for a sparse
+// run the inactive toroidal columns remain zero and only the active columns
+// are written here.
 void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
                               const vmecpp::FourierGeometry& physical_x,
                               const vmecpp::Sizes& sizes, int offset) {
-  // NOTE: sparse-toroidal handling is rejected for free-boundary runs (see the
-  // guard in the IdealMhdModel constructor), so here the FC arrays use the
-  // dense layout (n_active == ntor+1) and idx_mn below is the dense index.
-  const int ntorp1 = sizes.ntor + 1;
+  const int nact = sizes.n_active;
   for (int m = 0; m < sizes.mpol; ++m) {
-    for (int n = 0; n < ntorp1; ++n) {
-      const int idx_mn = m * ntorp1 + n;
+    for (int c = 0; c < nact; ++c) {
+      const int n = sizes.active_n[c];
+      const int idx_mn = m * nact + c;
       const int idx_nm = n * sizes.mpol + m;
       m_h.rCC_LCFS[idx_nm] = physical_x.rmncc[offset + idx_mn];
       m_h.rSS_LCFS[idx_nm] = physical_x.rmnss[offset + idx_mn];
@@ -182,14 +192,16 @@ IdealMhdModel::IdealMhdModel(
   // stellarator-symmetric 3D DFT path (the FFTX dispatch is guarded to fall
   // back to the DFT kernels when sparse). Reject unsupported combinations
   // early with a clear message rather than silently producing wrong results.
+  // Free-boundary (Nestor) runs ARE supported: Nestor itself is dense in the
+  // toroidal direction, and HandOverBoundaryGeometry scatters the sparse
+  // internal coefficients into the dense LCFS layout (inactive columns zero),
+  // while the vacuum field comes back in real space, so no sparse plumbing is
+  // needed inside Nestor.
   if (s_.is_sparse_toroidal) {
     CHECK(!s_.lasym) << "sparse-toroidal handling is not supported for "
                         "non-stellarator-symmetric (lasym) runs";
     CHECK(s_.lthreed) << "sparse-toroidal handling only applies to 3D "
                          "(lthreed) runs";
-    CHECK(!m_fc_.lfreeb) << "sparse-toroidal handling is not supported for "
-                            "free-boundary runs (Nestor uses the dense "
-                            "toroidal layout)";
   }
   if (m_fc_.lfreeb) {
     CHECK(m_fb_ != nullptr)
