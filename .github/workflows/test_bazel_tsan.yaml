@@ -17,12 +17,28 @@ jobs:
   tsan:
     name: Build and run tsan tests
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true  # for the mgrid test data
-      - name: Build TSAN Docker image
-        run: docker build -t proximafusion/tsan src/vmecpp/cpp/docker/tsan
+      # The TSAN image (clang/libomp with ThreadSanitizer support) takes ~1h to
+      # build, so it is prebuilt and pushed to GHCR by build_tsan_image.yaml and
+      # only rebuilt when src/vmecpp/cpp/docker/tsan/ changes. Here we just pull
+      # the cached image.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull TSAN Docker image
+        run: |
+          IMAGE=ghcr.io/${{ github.repository_owner }}/vmecpp-tsan:latest
+          docker pull "${IMAGE,,}"
+          docker tag "${IMAGE,,}" proximafusion/tsan
       - uses: actions/checkout@v4
         with:
           repository: proximafusion/vmecpp_large_cpp_tests
