@@ -168,7 +168,7 @@ class VmecModel {
   // owns the multi-grid sequencing.
   static std::unique_ptr<VmecModel> Create(
       const VmecINDATA &indata, int ns,
-      std::optional<vmecpp::HotRestartState> initial_state) {
+      const std::optional<vmecpp::HotRestartState> &initial_state) {
     auto vmec_or = vmecpp::Vmec::FromIndata(
         indata, /*magnetic_response_table=*/nullptr, /*max_threads=*/1,
         vmecpp::OutputMode::kSilent);
@@ -249,28 +249,28 @@ class VmecModel {
   // The Garabedian-style time step (PerformTimeStep): for each Fourier
   // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
   void PerformTimeStep(double velocity_scale, double conjugation_parameter,
-                       double time_step) {
+                       double time_step) const {
     vmec_->PerformTimeStep(velocity_scale, conjugation_parameter, time_step,
                            /*thread_id=*/0);
   }
 
   // Restart primitives (decomposed RestartIteration).
-  void SaveBackup() {
+  void SaveBackup() const {
     *vmec_->physical_x_backup_[0] = *vmec_->decomposed_x_[0];
   }
-  void RestoreBackup() {
+  void RestoreBackup() const {
     vmec_->decomposed_v_[0]->setZero();
     *vmec_->decomposed_x_[0] = *vmec_->physical_x_backup_[0];
   }
-  void ZeroVelocity() { vmec_->decomposed_v_[0]->setZero(); }
+  void ZeroVelocity() const { vmec_->decomposed_v_[0]->setZero(); }
 
   // Reset to the (possibly re-guessed) initial profile; used on bad Jacobian.
-  void ResetToInitialGuess() {
+  void ResetToInitialGuess() const {
     vmec_->decomposed_x_[0]->setZero();
     vmec_->decomposed_x_[0]->interpFromBoundaryAndAxis(vmec_->t_, vmec_->b_,
                                                        *vmec_->p_[0]);
   }
-  void RecomputeAxis() {
+  void RecomputeAxis() const {
     vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(
         vmec_->fc_.nsval, vmecpp::Vmec::kSignOfJacobian);
   }
@@ -294,7 +294,7 @@ class VmecModel {
   }
 
   // Reference C++ inner iteration (the loop being ported), for verification.
-  void Solve() {
+  void Solve() const {
     auto s = vmec_->SolveEquilibrium(vmecpp::VmecCheckpoint::NONE, INT_MAX);
     if (!s.ok()) {
       throw std::runtime_error(std::string(s.status().message()));
@@ -302,14 +302,14 @@ class VmecModel {
   }
 
   // Flat decision vector (decomposed, i.e. preconditioner-scaled coefficients).
-  Eigen::VectorXd GetState() {
+  Eigen::VectorXd GetState() const {
     return FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
   }
-  void SetState(const Eigen::VectorXd &flat) {
+  void SetState(const Eigen::VectorXd &flat) const {
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
   }
   // Flat force vector (decomposed/preconditioned), valid after Evaluate().
-  Eigen::VectorXd GetForces() {
+  Eigen::VectorXd GetForces() const {
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
 
@@ -326,7 +326,7 @@ class VmecModel {
   int restart_reason() const {
     return static_cast<int>(vmec_->fc_.restart_reason);
   }
-  void set_restart_reason(int reason) {
+  void set_restart_reason(int reason) const {
     vmec_->fc_.restart_reason = vmecpp::RestartReasonFromInt(reason);
   }
   int status() const { return static_cast<int>(vmec_->get_status()); }

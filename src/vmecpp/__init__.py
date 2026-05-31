@@ -25,7 +25,6 @@ from vmecpp._free_boundary import (
     MakegridParameters,
 )
 from vmecpp._iteration import IterationResult, iterate, solve_equilibrium
-from vmecpp._optimization import BoundaryOptimizationResult, optimize_boundary
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
@@ -2053,6 +2052,4 @@ __all__ = [  # noqa: RUF022
     "iterate",
     "solve_equilibrium",
     "IterationResult",
-    "optimize_boundary",
-    "BoundaryOptimizationResult",
 ]
