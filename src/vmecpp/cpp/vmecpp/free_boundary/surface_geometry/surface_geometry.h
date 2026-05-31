@@ -149,6 +149,25 @@ class SurfaceGeometry {
   // full surface
   Eigen::VectorXd rsinuv;
 
+  // Non-stellarator-symmetric (lasym) antisymmetric contributions, computed on
+  // the reduced poloidal range and combined with the symmetric parts above to
+  // fill the full poloidal range (see inverseDFT). r1b/z1b are full-surface;
+  // the derivative arrays are thread-local like their symmetric counterparts.
+  // Only needed within SurfaceGeometry() but public for testing, like the
+  // symmetric arrays above.
+  std::vector<double> r1b_asym;
+  std::vector<double> z1b_asym;
+  std::vector<double> rub_asym;
+  std::vector<double> rvb_asym;
+  std::vector<double> zub_asym;
+  std::vector<double> zvb_asym;
+  std::vector<double> ruu_asym;
+  std::vector<double> ruv_asym;
+  std::vector<double> rvv_asym;
+  std::vector<double> zuu_asym;
+  std::vector<double> zuv_asym;
+  std::vector<double> zvv_asym;
+
  private:
   const Sizes& s_;
   const FourierBasisFastToroidal& fb_;
@@ -166,9 +185,6 @@ class SurfaceGeometry {
                   const std::span<const double> zSS, bool fullUpdate);
 
   void derivedSurfaceQuantities(int signOfJacobian, bool fullUpdate);
-
-  Eigen::VectorXd r1b_asym;
-  Eigen::VectorXd z1b_asym;
 };
 
 }  // namespace vmecpp
