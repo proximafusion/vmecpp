@@ -170,3 +170,24 @@ TEST(TestVmec, CheckInMemoryMgrid) {
   vmecpp::CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
                       /*tolerance=*/1e-7);
 }  // CheckInMemoryMgrid
+
+// A multi-grid free-boundary equilibrium (cth_like_free_bdy with an added grid
+// step) must converge. The free-boundary (Nestor) solver, together with its
+// accumulated vacuum response matrix and right-hand side, is kept in memory
+// across the multi-grid steps (reproducing Fortran VMEC's persistent vacuum
+// state), so this also exercises that the reused solver state stays valid
+// across a grid-size change. The step-by-step agreement against the Fortran
+// reference is exercised in vmecpp_large_cpp_tests.
+TEST(TestVmec, MultiGridFreeBoundary) {
+  const std::string filename =
+      "vmecpp/test_data/cth_like_free_bdy_multigrid.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_EQ(indata->ns_array.size(), 2u);
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok());
+}  // MultiGridFreeBoundary
