@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780231618827,
+  "lastUpdate": 1780235909810,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18339,6 +18339,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.012506437609630744",
             "extra": "mean: 8.508582545666647 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c945b86dc692a2c60b1d3832095c2d68f719e25f",
+          "message": "free_boundary: multi-grid test case and opt-in to persist the Nestor solver across grid steps (#535)\n\nfree_boundary: persist the Nestor solver across multi-grid steps and add a multi-grid test\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-05-31T15:54:14+02:00",
+          "tree_id": "d1ce5591064c5a20b3c3b95506696129531a660c",
+          "url": "https://github.com/proximafusion/vmecpp/commit/c945b86dc692a2c60b1d3832095c2d68f719e25f"
+        },
+        "date": 1780235908804,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.9701140065728806,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0032896680249525235",
+            "extra": "mean: 336.6874125999857 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.872256595850773,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011663306527763012",
+            "extra": "mean: 348.15830920001645 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2718331877463189,
+            "unit": "iter/sec",
+            "range": "stddev: 0.017088375643618512",
+            "extra": "mean: 3.6787266790000026 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5799657456378193,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005199252627296805",
+            "extra": "mean: 1.724239763333344 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5609349190399731,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008303194417691595",
+            "extra": "mean: 1.782738007666694 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.43422316438098796,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008481793955347434",
+            "extra": "mean: 2.302963273333338 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.103967178285981,
+            "unit": "iter/sec",
+            "range": "stddev: 0.013480897179049735",
+            "extra": "mean: 9.61842012533335 sec\nrounds: 3"
           }
         ]
       }
