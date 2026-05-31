@@ -5,7 +5,7 @@
 #ifndef VMECPP_FREE_BOUNDARY_REGULARIZED_INTEGRALS_REGULARIZED_INTEGRALS_H_
 #define VMECPP_FREE_BOUNDARY_REGULARIZED_INTEGRALS_REGULARIZED_INTEGRALS_H_
 
-#include <vector>
+#include <Eigen/Dense>
 
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
 #include "vmecpp/common/sizes/sizes.h"
@@ -20,16 +20,16 @@ class RegularizedIntegrals {
   RegularizedIntegrals(const Sizes* s, const TangentialPartitioning* tp,
                        const SurfaceGeometry* sg);
 
-  void update(const std::vector<double>& bDotN);
+  void update(const Eigen::VectorXd& bDotN);
 
-  std::vector<double> gsave;
-  std::vector<double> dsave;
+  Eigen::VectorXd gsave;
+  Eigen::VectorXd dsave;
 
-  std::vector<double> tanu;
-  std::vector<double> tanv;
+  Eigen::VectorXd tanu;
+  Eigen::VectorXd tanv;
 
-  std::vector<double> greenp;
-  std::vector<double> gstore;
+  Eigen::VectorXd greenp;
+  Eigen::VectorXd gstore;
 
  private:
   const Sizes& s_;
