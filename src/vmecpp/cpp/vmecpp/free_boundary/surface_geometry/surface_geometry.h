@@ -155,18 +155,18 @@ class SurfaceGeometry {
   // the derivative arrays are thread-local like their symmetric counterparts.
   // Only needed within SurfaceGeometry() but public for testing, like the
   // symmetric arrays above.
-  std::vector<double> r1b_asym;
-  std::vector<double> z1b_asym;
-  std::vector<double> rub_asym;
-  std::vector<double> rvb_asym;
-  std::vector<double> zub_asym;
-  std::vector<double> zvb_asym;
-  std::vector<double> ruu_asym;
-  std::vector<double> ruv_asym;
-  std::vector<double> rvv_asym;
-  std::vector<double> zuu_asym;
-  std::vector<double> zuv_asym;
-  std::vector<double> zvv_asym;
+  Eigen::VectorXd r1b_asym;
+  Eigen::VectorXd z1b_asym;
+  Eigen::VectorXd rub_asym;
+  Eigen::VectorXd rvb_asym;
+  Eigen::VectorXd zub_asym;
+  Eigen::VectorXd zvb_asym;
+  Eigen::VectorXd ruu_asym;
+  Eigen::VectorXd ruv_asym;
+  Eigen::VectorXd rvv_asym;
+  Eigen::VectorXd zuu_asym;
+  Eigen::VectorXd zuv_asym;
+  Eigen::VectorXd zvv_asym;
 
  private:
   const Sizes& s_;

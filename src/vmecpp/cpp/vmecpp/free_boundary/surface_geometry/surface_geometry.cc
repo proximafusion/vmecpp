@@ -4,8 +4,6 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/surface_geometry/surface_geometry.h"
 
-#include "absl/algorithm/container.h"
-
 namespace vmecpp {
 
 SurfaceGeometry::SurfaceGeometry(const Sizes* s,
@@ -142,8 +140,8 @@ void SurfaceGeometry::inverseDFT(
   r1b.setZero();
   z1b.setZero();
   if (s_.lasym) {
-    absl::c_fill_n(r1b_asym, s_.nThetaEven * s_.nZeta, 0);
-    absl::c_fill_n(z1b_asym, s_.nThetaEven * s_.nZeta, 0);
+    r1b_asym.setZero();
+    z1b_asym.setZero();
   }
 
   // ----------------
@@ -151,19 +149,17 @@ void SurfaceGeometry::inverseDFT(
   // For lasym the derivative arrays span the full poloidal range and are
   // indexed by the absolute tangential index (offset 0); for the symmetric case
   // they are thread-local and indexed relative to tp_.ztMin.
-  const int numLocal = tp_.ztMax - tp_.ztMin;
   const int derivOffset = s_.lasym ? 0 : tp_.ztMin;
-  const int derivSize = s_.lasym ? s_.nZnT : numLocal;
 
   rub.setZero();
   rvb.setZero();
   zub.setZero();
   zvb.setZero();
   if (s_.lasym) {
-    absl::c_fill_n(rub_asym, derivSize, 0);
-    absl::c_fill_n(rvb_asym, derivSize, 0);
-    absl::c_fill_n(zub_asym, derivSize, 0);
-    absl::c_fill_n(zvb_asym, derivSize, 0);
+    rub_asym.setZero();
+    rvb_asym.setZero();
+    zub_asym.setZero();
+    zvb_asym.setZero();
   }
 
   if (fullUpdate) {
@@ -174,12 +170,12 @@ void SurfaceGeometry::inverseDFT(
     zuv.setZero();
     zvv.setZero();
     if (s_.lasym) {
-      absl::c_fill_n(ruu_asym, derivSize, 0);
-      absl::c_fill_n(ruv_asym, derivSize, 0);
-      absl::c_fill_n(rvv_asym, derivSize, 0);
-      absl::c_fill_n(zuu_asym, derivSize, 0);
-      absl::c_fill_n(zuv_asym, derivSize, 0);
-      absl::c_fill_n(zvv_asym, derivSize, 0);
+      ruu_asym.setZero();
+      ruv_asym.setZero();
+      rvv_asym.setZero();
+      zuu_asym.setZero();
+      zuv_asym.setZero();
+      zvv_asym.setZero();
     }
   }
 
