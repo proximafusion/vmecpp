@@ -58,14 +58,13 @@ void RegularizedIntegrals::computeConstants() {
   }  // k
 }
 
-void RegularizedIntegrals::update(const std::vector<double>& bDotN) {
+void RegularizedIntegrals::update(const Eigen::VectorXd& bDotN) {
   // thread-local tangential grid point range
-  const int numLocal = tp_.ztMax - tp_.ztMin;
   const int theta_by_nzeta = s_.nThetaEven * s_.nZeta;
   const double twopidivnfp = 2.0 * M_PI / s_.nfp;
 
-  absl::c_fill_n(greenp, numLocal * theta_by_nzeta, 0);
-  absl::c_fill_n(gstore, theta_by_nzeta, 0);
+  greenp.setZero();
+  gstore.setZero();
 
   // storage for intermediate results
   std::vector<double> ga1_buf(s_.nZeta);
