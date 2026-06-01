@@ -32,11 +32,28 @@ class RegularizedIntegrals {
   Eigen::VectorXd gstore;
 
  private:
+  // educational_VMEC resolves the toroidal direction of an axisymmetric
+  // (nZeta == 1) plasma with this many toroidal images (nvper for the tokamak).
+  static constexpr int kAxisymmetricToroidalImages = 64;
+
   const Sizes& s_;
   const TangentialPartitioning& tp_;
   const SurfaceGeometry& sg_;
 
+  // Number of toroidal images used to perform the toroidal integral of the
+  // Green's function: kAxisymmetricToroidalImages for an axisymmetric plasma
+  // (nZeta == 1), the number of field periods otherwise.
+  int nvper_;
+  // 2 tan(pi p / nvper_): the toroidal-angle factor of the analytic
+  // approximation at toroidal image p (axisymmetric case only).
+  std::vector<double> tanv_per_;
+
   void computeConstants();
+
+  // Axisymmetric (nZeta == 1) specialization of update(): performs the toroidal
+  // integral by summing over nvper_ toroidal images of the evaluation point,
+  // since the single-plane surface grid does not resolve the toroidal angle.
+  void updateAxisymmetric(const Eigen::VectorXd& bDotN);
 };
 
 }  // namespace vmecpp

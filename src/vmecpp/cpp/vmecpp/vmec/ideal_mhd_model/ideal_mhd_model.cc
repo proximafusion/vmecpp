@@ -42,15 +42,23 @@ void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
       const int idx_mn = m * ntorp1 + n;
       const int idx_nm = n * sizes.mpol + m;
       m_h.rCC_LCFS[idx_nm] = physical_x.rmncc[offset + idx_mn];
-      m_h.rSS_LCFS[idx_nm] = physical_x.rmnss[offset + idx_mn];
       m_h.zSC_LCFS[idx_nm] = physical_x.zmnsc[offset + idx_mn];
-      m_h.zCS_LCFS[idx_nm] = physical_x.zmncs[offset + idx_mn];
+
+      // The sin(n v) Fourier components vanish for an axisymmetric (ntor = 0)
+      // run, and their FourierGeometry storage is only allocated when lthreed.
+      // Skip them there; the corresponding *_LCFS targets stay zero.
+      if (sizes.lthreed) {
+        m_h.rSS_LCFS[idx_nm] = physical_x.rmnss[offset + idx_mn];
+        m_h.zCS_LCFS[idx_nm] = physical_x.zmncs[offset + idx_mn];
+      }
 
       if (sizes.lasym) {
         m_h.rSC_LCFS[idx_nm] = physical_x.rmnsc[offset + idx_mn];
-        m_h.rCS_LCFS[idx_nm] = physical_x.rmncs[offset + idx_mn];
         m_h.zCC_LCFS[idx_nm] = physical_x.zmncc[offset + idx_mn];
-        m_h.zSS_LCFS[idx_nm] = physical_x.zmnss[offset + idx_mn];
+        if (sizes.lthreed) {
+          m_h.rCS_LCFS[idx_nm] = physical_x.rmncs[offset + idx_mn];
+          m_h.zSS_LCFS[idx_nm] = physical_x.zmnss[offset + idx_mn];
+        }
       }
     }
   }
@@ -322,10 +330,31 @@ IdealMhdModel::IdealMhdModel(
 }
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
-                                  double tcon0) {
+                                  double tcon0, bool lforbal) {
   this->ncurr = ncurr;
   this->adiabaticIndex = adiabaticIndex;
   this->tcon0 = tcon0;
+  this->lforbal = lforbal;
+
+  if (lforbal) {
+    // m=1,n=0 force-balance factors (full grid) and the m=1 trig weights on the
+    // (theta, zeta) grid. cos01 = cos(u) * mscale(1), sin01 = -sin(u) *
+    // mscale(1), i.e. educational_VMEC fixaray cos01/sin01 at m=1, n=0.
+    const int num_full = r_.nsMaxF - r_.nsMinF;
+    rzu_fac.setZero(num_full);
+    rru_fac.setZero(num_full);
+    frcc_fac.setZero(num_full);
+    fzsc_fac.setZero(num_full);
+    cos01.setZero(s_.nZnT);
+    sin01.setZero(s_.nZnT);
+    for (int kl = 0; kl < s_.nZnT; ++kl) {
+      const int l = kl % s_.nThetaEff;
+      // cosmu/sinmu are laid out as [m * nThetaReduced + l] and already include
+      // mscale(m); the m=1 row is the cos01/sin01 weight (symmetric grid).
+      cos01[kl] = t_.cosmu[s_.nThetaReduced + l];
+      sin01[kl] = -t_.sinmu[s_.nThetaReduced + l];
+    }
+  }
 }
 
 void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
@@ -629,9 +658,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
       if (r_.nsMaxF1 == m_fc_.ns) {
         // can only get this from thread that has the LCFS !!!
-
-        // TODO(jons): respect lthreed in case of a free-boundary axisymmetric
-        // run
         HandOverBoundaryGeometry(
             m_h_, m_physical_x, s_,
             /*offset=*/(r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.mnsize);
@@ -2237,16 +2263,32 @@ void IdealMhdModel::updateRadialPreconditioner() {
   updateLambdaPreconditioner();
 
   // compute preconditioning matrix for R
-  // TODO(jons): also cos01, rzu_fac for lforbal
   computePreconditioningMatrix(zs, zu12, zu_e, zu_o, z1_o, arm, ard, brm, brd,
-                               cxd);
+                               cxd, cos01, rzu_fac);
 
   // compute preconditioning matrix for Z
-  // TODO(jons): also sin01, rru_fac for lforbal
   computePreconditioningMatrix(rs, ru12, ru_e, ru_o, r1_o, azm, azd, bzm, bzd,
-                               cxd);
+                               cxd, sin01, rru_fac);
 
-  // (compute stuff for lforbal: scaleEqFactor --> later)
+  if (lforbal) {
+    // Form the m=1,n=0 force-balance factors from the R/Z preconditioner
+    // diagonals (educational_VMEC bcovar): scale by sqrt(s), take the
+    // reciprocals frcc_fac/fzsc_fac, then halve rzu_fac/rru_fac. Interior
+    // full-grid surfaces only.
+    for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
+      if (jF == 0 || jF >= m_fc_.ns - 1) {
+        continue;
+      }
+      const int i = jF - r_.nsMinF;
+      const double sj = m_p_.sqrtSF[jF - r_.nsMinF1];
+      rzu_fac[i] *= sj;
+      rru_fac[i] *= sj;
+      frcc_fac[i] = 1.0 / rzu_fac[i];
+      rzu_fac[i] *= 0.5;
+      fzsc_fac[i] = -1.0 / rru_fac[i];
+      rru_fac[i] *= 0.5;
+    }
+  }
 }
 
 void IdealMhdModel::updateLambdaPreconditioner() {
@@ -2359,9 +2401,19 @@ void IdealMhdModel::computePreconditioningMatrix(
     const Eigen::VectorXd& xs, const Eigen::VectorXd& xu12,
     const Eigen::VectorXd& xu_e, const Eigen::VectorXd& xu_o,
     const Eigen::VectorXd& x1_o, Eigen::VectorXd& m_axm, Eigen::VectorXd& m_axd,
-    Eigen::VectorXd& m_bxm, Eigen::VectorXd& m_bxd, Eigen::VectorXd& m_cxd) {
+    Eigen::VectorXd& m_bxm, Eigen::VectorXd& m_bxd, Eigen::VectorXd& m_cxd,
+    const Eigen::VectorXd& trigmult, Eigen::VectorXd& m_eqfactor) {
   // zs, zu12, zu, z1 --> arm, ard, brm, brd, cxd
   // rs, ru12, ru, r1 --> azm, azd, bzm, bzd, cxd
+
+  // lforbal: when m_eqfactor is sized, accumulate the flux-averaged
+  // force-balance weight (temp_h, half-grid) using the m=1 trig weights
+  // trigmult, and assemble the force-balance scale factor below.
+  const bool do_eqfactor = m_eqfactor.size() > 0;
+  Eigen::VectorXd temp_h;
+  if (do_eqfactor) {
+    temp_h.setZero(r_.nsMaxH - r_.nsMinH);
+  }
 
   // restored in v8.51
   // TODO(jons): what is this?
@@ -2434,6 +2486,14 @@ void IdealMhdModel::computePreconditioningMatrix(
       // --> essentially, 0.25 * pFactor simply introduces a (-1) here!
       cx[jH - r_.nsMinH] += 0.25 * pFactor * bsupv[iHalf] * bsupv[iHalf] *
                             gsqrt[iHalf] * s_.wInt[l];
+
+      if (do_eqfactor) {
+        // Fortran precondn: temp(js) += (pfactor*r12*bsq*wint)*trigmult*xu12.
+        // pTau = pFactor*r12*totalPressure/tau*wInt, so pTau*tau equals that
+        // weight (r0scale == 1, as noted for cx above).
+        temp_h[jH - r_.nsMinH] +=
+            pTau * tau[iHalf] * trigmult[kl] * xu12[iHalf];
+      }
     }  // kl
   }  // jH
 
@@ -2479,6 +2539,25 @@ void IdealMhdModel::computePreconditioningMatrix(
     // diagonal, n^2 (toroidal), on forces full-grid
     m_cxd[jF - r_.nsMinF] =
         (jF > 0 ? cx[jH_i] : 0.0) + (jF < m_fc_.ns - 1 ? cx[jH_o] : 0.0);
+  }
+
+  if (do_eqfactor) {
+    // Flux-averaged force-balance scale factor (educational_VMEC precondn):
+    // temp /= vp (half grid), couple js and js+1 onto the full grid (signgs),
+    // then eqfactor = axd(m=1) * hs^2 / temp on interior full-grid surfaces.
+    const double hs2 = m_fc_.deltaS * m_fc_.deltaS;
+    for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
+      const int jH_i = jF - 1 - r_.nsMinH;
+      const int jH_o = jF - r_.nsMinH;
+      double temp_f =
+          (jF > 0 ? temp_h[jH_i] / m_p_.dVdsH[jH_i] : 0.0) +
+          (jF < m_fc_.ns - 1 ? temp_h[jH_o] / m_p_.dVdsH[jH_o] : 0.0);
+      temp_f *= signOfJacobian;
+      const double axd_m1 = m_axd[(jF - r_.nsMinF) * 2 + kOddParity];
+      m_eqfactor[jF - r_.nsMinF] =
+          (jF > 0 && jF < m_fc_.ns - 1 && temp_f != 0.0) ? axd_m1 * hs2 / temp_f
+                                                         : 0.0;
+    }
   }
 }
 
@@ -2631,6 +2710,27 @@ void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
     exit(-1);
 #endif  // _OPENMP
   }  // lasym
+
+  if (lforbal) {
+    // lforbal (educational_VMEC tomnsps): replace the m=1, n=0 R,Z forces with
+    // the flux-averaged radial force balance. equiF lives on the interior full
+    // grid [nsMinFi, nsMaxFi); the force-balance factors live on [nsMinF,
+    // nsMaxF). r0scale == 1, so the EQUIF weight is c = nscale(0).
+    const double c = t_.nscale[0];
+    for (int jF = r_.nsMinFi; jF < r_.nsMaxFi; ++jF) {
+      if (jF == 0 || jF >= m_fc_.ns - 1) {
+        continue;
+      }
+      const int i = jF - r_.nsMinF;
+      const int idx_mn = ((jF - r_.nsMinF) * s_.mpol + 1) * (s_.ntor + 1);
+      const double equif = m_p_.equiF[jF - r_.nsMinFi];
+      const double frcc = m_physical_f.frcc[idx_mn];
+      const double fzsc = m_physical_f.fzsc[idx_mn];
+      const double work1 = frcc_fac[i] * frcc + fzsc_fac[i] * fzsc;
+      m_physical_f.frcc[idx_mn] = rzu_fac[i] * (c * equif + work1);
+      m_physical_f.fzsc[idx_mn] = rru_fac[i] * (c * equif - work1);
+    }
+  }
 }
 
 void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
