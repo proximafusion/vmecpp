@@ -22,16 +22,16 @@ class LaplaceSolver {
                 std::span<double> matrixShare, std::span<int> iPiv,
                 std::span<double> bvecShare);
 
-  void TransformGreensFunctionDerivative(const std::vector<double>& greenp);
-  void SymmetriseSourceTerm(const std::vector<double>& gstore);
-  void AccumulateFullGrpmn(const std::vector<double>& grpmn_sin_singular,
-                           const std::vector<double>& grpmn_cos_singular);
+  void TransformGreensFunctionDerivative(const Eigen::VectorXd& greenp);
+  void SymmetriseSourceTerm(const Eigen::VectorXd& gstore);
+  void AccumulateFullGrpmn(const Eigen::VectorXd& grpmn_sin_singular,
+                           const Eigen::VectorXd& grpmn_cos_singular);
   void PerformToroidalFourierTransforms();
   void PerformPoloidalFourierTransforms();
 
   void BuildMatrix();
   void DecomposeMatrix();
-  void SolveForPotential(const std::vector<double>& bvec_sin_singular);
+  void SolveForPotential(const Eigen::VectorXd& bvec_sin_singular);
 
   // Green's function derivative Fourier transform, non-singular part,
   // stellarator-symmetric.
