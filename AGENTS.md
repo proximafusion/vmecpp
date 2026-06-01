@@ -1,20 +1,15 @@
 # AGENTS.md
 
-This file provides guidance to AI agents (Claude Code, GitHub Copilot, etc.) when working with code in this repository.
-
 ## Development Commands
 
 ### Building and Installation
 ```bash
-# Build C++ core with CMake
-cmake -B build
-cmake --build build --parallel
-
 # Install as editable Python package (rebuilds C++ automatically on changes)
 pip install -e .
 
-# Install from source
-pip install git+https://github.com/proximafusion/vmecpp
+# Build C++ core with CMake manually
+cmake -B build
+cmake --build build --parallel
 ```
 
 ### Testing
@@ -24,21 +19,13 @@ pytest
 
 # Run specific test file
 pytest tests/test_simsopt_compat.py
-
-# Run C++ tests (requires separate repo)
-# See: https://github.com/proximafusion/vmecpp_large_cpp_tests
 ```
 
 ### Code Quality
 ```bash
-# Lint and format code
 ruff check
 ruff format
-
-# Type checking
 pyright
-
-# Pre-commit checks (runs automatically on commit)
 pre-commit run --all-files
 ```
 
@@ -70,7 +57,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 
 ### Core Components
 
-**C++ Computational Engine** (`src/vmecpp/cpp/vmecpp/`):
+**C++ Core Computations** (`src/vmecpp/cpp/vmecpp/`):
 - **VMEC Solver** (`vmec/vmec/`): Main iterative equilibrium solver using multigrid methods
 - **Ideal MHD Model** (`vmec/ideal_mhd_model/`): Physics equations and force calculations
 - **Fourier Transforms** (`common/fourier_basis_fast_*`): Fast transforms for spectral decomposition
@@ -86,7 +73,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 **Python-C++ Bridge** (`src/vmecpp/cpp/vmecpp/vmec/pybind11/`):
 - Automatic NumPy ↔ Eigen conversion
 - Exception translation from C++ to Python
-- Memory-efficient data sharing
+- In-Memory data sharing
 
 **SIMSOPT Compatibility** (`src/vmecpp/simsopt_compat.py`):
 - Drop-in replacement for SIMSOPT's Vmec class
@@ -134,39 +121,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 - Must pass `modernize-avoid-c-arrays` checks
 - Files must end with newline (`end-of-file-fixer`)
 
-### Python Code
-
-- **Style**: Follows `ruff` linting and formatting with line length 88
-- **Type Checking**: Must pass `pyright` type validation
-- **Documentation**: Use `docformatter` for consistent docstring formatting
-
-### Development Workflow
-
-1. **Before making C++ changes**:
-   ```bash
-   cd src/vmecpp/cpp
-   bazel build //...  # Ensure current code builds
-   ```
-
-2. **After making changes**:
-   ```bash
-   # Run pre-commit checks
-   pre-commit run --files path/to/modified/files
-
-   # Build and test
-   bazel build //...
-   bazel test //vmecpp/...
-   ```
-
-3. **Incremental development**: Make small, focused changes that can be validated independently
-
-## File Structure Guidelines
-
-- **C++ core**: `src/vmecpp/cpp/vmecpp/` - Physics computations, numerical algorithms
-- **Python API**: `src/vmecpp/` - High-level interface, data models
-- **Tests**: `tests/` - Python tests, `tests/cpp/` - C++ integration tests
-- **Examples**: `examples/` - Usage examples, sample input files in `examples/data/`
-- **Build artifacts**: `build/` (CMake), `dist/` (Python wheels)
+**Incremental development**: Make small, focused changes that can be validated independently
 
 ## Physics Domain Knowledge
 
@@ -191,6 +146,12 @@ VMEC++ uses **two different Fourier representations**:
 - `bsupv_`: B^\zeta contravariant magnetic field component
 - `iotaf_`: Rotational transform on full grid
 - `presf_`: Pressure on full grid
+
+**Localized domain docs**: deeper notes on the solver control flow live next to the code:
+- `src/vmecpp/cpp/vmecpp/vmec/vmec/AGENTS.md` -- multigrid iteration, descent algorithm,
+  restart/hot-restart logic, convergence.
+- `src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/AGENTS.md` -- staggered full/half radial grid,
+  the forward/inverse DFT/FFT and de-alias hot kernels, post-processing boundary.
 
 ## Development Notes
 
@@ -237,7 +198,7 @@ vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
 # Use in SIMSOPT optimization workflows
 ```
 
-## Agent-Specific Guidelines
+## Naming and Conventions
 
 **For Code Changes**:
 1. **MANDATORY: Always check compliance with VMECPP_NAMING_GUIDE.md before proposing ANY changes**
@@ -246,20 +207,12 @@ vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
    - Check function parameter conventions (`m_` prefix for mutable parameters)
    - Validate against Google C++ Style Guide adaptations
 2. **MANDATORY: Only use ASCII characters in ALL changes**
-   - Never use Unicode, special symbols, or non-ASCII characters in code
-   - Never use Unicode, special symbols, or non-ASCII characters in comments
-   - Never use Unicode, special symbols, or non-ASCII characters in documentation
+   - Never use Unicode, special symbols, or non-ASCII characters in code,comments or documentation
    - Use LaTeX notation for mathematics (e.g., `\nabla p`, `\sum_{m,n}`, `\lambda`)
-   - Replace any non-ASCII characters with proper ASCII equivalents
 3. Always validate changes with pre-commit hooks before suggesting commits
 4. Use incremental development approach (small, testable changes)
 5. Respect the physics domain knowledge embedded in variable names
 6. Follow the naming guide strictly for new code
-
-**For Code Analysis**:
-1. Use Task tool for broad searches across the codebase
-2. Use Grep/Glob for targeted searches when you know specific patterns
-3. Read existing files to understand patterns before proposing changes
 
 **For Testing**:
 1. Always build and test C++ changes: `bazel build //... && bazel test //vmecpp/...`

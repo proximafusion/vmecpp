@@ -28,17 +28,23 @@ SurfaceGeometry::SurfaceGeometry(const Sizes* s,
   // thread-local tangential grid point range
   int numLocal = tp_.ztMax - tp_.ztMin;
 
-  rub.resize(numLocal);
-  rvb.resize(numLocal);
-  zub.resize(numLocal);
-  zvb.resize(numLocal);
+  // For lasym the surface derivatives are needed over the full poloidal range
+  // (so the antisymmetric pieces can be mirrored into ]pi,2pi[), so each thread
+  // holds the full set, like r1b/z1b. For the stellarator-symmetric case they
+  // stay thread-local.
+  const int derivSize = s_.lasym ? s_.nZnT : numLocal;
 
-  ruu.resize(numLocal);
-  ruv.resize(numLocal);
-  rvv.resize(numLocal);
-  zuu.resize(numLocal);
-  zuv.resize(numLocal);
-  zvv.resize(numLocal);
+  rub.resize(derivSize);
+  rvb.resize(derivSize);
+  zub.resize(derivSize);
+  zvb.resize(derivSize);
+
+  ruu.resize(derivSize);
+  ruv.resize(derivSize);
+  rvv.resize(derivSize);
+  zuu.resize(derivSize);
+  zuv.resize(derivSize);
+  zvv.resize(derivSize);
 
   snr.resize(numLocal);
   snv.resize(numLocal);
@@ -53,6 +59,22 @@ SurfaceGeometry::SurfaceGeometry(const Sizes* s,
   avv.resize(numLocal);
 
   drv.resize(numLocal);
+
+  // Non-stellarator-symmetric antisymmetric pieces (only allocated for lasym).
+  if (s_.lasym) {
+    r1b_asym.resize(s_.nZnT);
+    z1b_asym.resize(s_.nZnT);
+    rub_asym.resize(s_.nZnT);
+    rvb_asym.resize(s_.nZnT);
+    zub_asym.resize(s_.nZnT);
+    zvb_asym.resize(s_.nZnT);
+    ruu_asym.resize(s_.nZnT);
+    ruv_asym.resize(s_.nZnT);
+    rvv_asym.resize(s_.nZnT);
+    zuu_asym.resize(s_.nZnT);
+    zuv_asym.resize(s_.nZnT);
+    zvv_asym.resize(s_.nZnT);
+  }
 
   // -----------------
 
@@ -109,23 +131,36 @@ void SurfaceGeometry::inverseDFT(
     const std::span<const double> zSC, const std::span<const double> zCS,
     const std::span<const double> zCC, const std::span<const double> zSS,
     bool fullUpdate) {
-  // TODO(jons): implement lasym-related code
-  (void)rSC;
-  (void)rCS;
-  (void)zCC;
-  (void)zSS;
+  // The non-stellarator-symmetric coefficients rSC/rCS/zCC/zSS are folded in
+  // below, guarded by s_.lasym. For stellarator-symmetric runs those spans are
+  // empty and the antisymmetric arrays are neither allocated nor touched.
 
   // ----------------
 
   r1b.setZero();
   z1b.setZero();
+  if (s_.lasym) {
+    r1b_asym.setZero();
+    z1b_asym.setZero();
+  }
 
   // ----------------
+
+  // For lasym the derivative arrays span the full poloidal range and are
+  // indexed by the absolute tangential index (offset 0); for the symmetric case
+  // they are thread-local and indexed relative to tp_.ztMin.
+  const int derivOffset = s_.lasym ? 0 : tp_.ztMin;
 
   rub.setZero();
   rvb.setZero();
   zub.setZero();
   zvb.setZero();
+  if (s_.lasym) {
+    rub_asym.setZero();
+    rvb_asym.setZero();
+    zub_asym.setZero();
+    zvb_asym.setZero();
+  }
 
   if (fullUpdate) {
     ruu.setZero();
@@ -134,6 +169,14 @@ void SurfaceGeometry::inverseDFT(
     zuu.setZero();
     zuv.setZero();
     zvv.setZero();
+    if (s_.lasym) {
+      ruu_asym.setZero();
+      ruv_asym.setZero();
+      rvv_asym.setZero();
+      zuu_asym.setZero();
+      zuv_asym.setZero();
+      zvv_asym.setZero();
+    }
   }
 
   for (int n = 0; n < s_.ntor + 1; ++n) {
@@ -161,6 +204,21 @@ void SurfaceGeometry::inverseDFT(
       double zmkcs_m = 0.0;
       double zmkcs_mm = 0.0;
 
+      // antisymmetric (lasym) accumulators: R uses rSC*sin(mu)*cos(nv) +
+      // rCS*cos(mu)*sin(nv); Z uses zCC*cos(mu)*cos(nv) + zSS*sin(mu)*sin(nv).
+      double rmksc = 0.0;
+      double rmkcs = 0.0;
+      double zmkcc = 0.0;
+      double zmkss = 0.0;
+      double rmksc_m = 0.0;
+      double rmksc_mm = 0.0;
+      double rmkcs_m = 0.0;
+      double rmkcs_mm = 0.0;
+      double zmkcc_m = 0.0;
+      double zmkcc_mm = 0.0;
+      double zmkss_m = 0.0;
+      double zmkss_mm = 0.0;
+
       for (int m = 0; m < s_.mpol; ++m) {
         int idx_mn = n * s_.mpol + m;
 
@@ -174,6 +232,13 @@ void SurfaceGeometry::inverseDFT(
         rmkss += rSS[idx_mn] * sinmu;
         zmksc += zSC[idx_mn] * sinmu;
         zmkcs += zCS[idx_mn] * cosmu;
+
+        if (s_.lasym) {
+          rmksc += rSC[idx_mn] * sinmu;
+          rmkcs += rCS[idx_mn] * cosmu;
+          zmkcc += zCC[idx_mn] * cosmu;
+          zmkss += zSS[idx_mn] * sinmu;
+        }
 
         // ----------------
 
@@ -197,6 +262,17 @@ void SurfaceGeometry::inverseDFT(
           zmksc_mm += zSC[idx_mn] * sinmumm;
           zmkcs_m += zCS[idx_mn] * sinmum;
           zmkcs_mm += zCS[idx_mn] * cosmumm;
+
+          if (s_.lasym) {
+            rmksc_m += rSC[idx_mn] * cosmum;
+            rmksc_mm += rSC[idx_mn] * sinmumm;
+            rmkcs_m += rCS[idx_mn] * sinmum;
+            rmkcs_mm += rCS[idx_mn] * cosmumm;
+            zmkcc_m += zCC[idx_mn] * sinmum;
+            zmkcc_mm += zCC[idx_mn] * cosmumm;
+            zmkss_m += zSS[idx_mn] * cosmum;
+            zmkss_mm += zSS[idx_mn] * sinmumm;
+          }
         }
       }  // m
 
@@ -209,27 +285,57 @@ void SurfaceGeometry::inverseDFT(
         r1b[idx_kl] += rmkcc * cosnv + rmkss * sinnv;
         z1b[idx_kl] += zmksc * cosnv + zmkcs * sinnv;
 
+        if (s_.lasym) {
+          r1b_asym[idx_kl] += rmksc * cosnv + rmkcs * sinnv;
+          z1b_asym[idx_kl] += zmkcc * cosnv + zmkss * sinnv;
+        }
+
         // ----------------
 
-        if (tp_.ztMin <= idx_kl && idx_kl < tp_.ztMax) {
+        // For lasym every thread computes the derivatives over the full reduced
+        // poloidal range (so it can mirror them itself); the symmetric case
+        // only computes its thread-local slice.
+        if (s_.lasym || (tp_.ztMin <= idx_kl && idx_kl < tp_.ztMax)) {
           double cosnvn = fb_.cosnvn[n * s_.nZeta + k];
           double sinnvn = fb_.sinnvn[n * s_.nZeta + k];
 
-          rub[idx_kl - tp_.ztMin] += rmkcc_m * cosnv + rmkss_m * sinnv;
-          rvb[idx_kl - tp_.ztMin] += rmkcc * sinnvn + rmkss * cosnvn;
-          zub[idx_kl - tp_.ztMin] += zmksc_m * cosnv + zmkcs_m * sinnv;
-          zvb[idx_kl - tp_.ztMin] += zmksc * sinnvn + zmkcs * cosnvn;
+          rub[idx_kl - derivOffset] += rmkcc_m * cosnv + rmkss_m * sinnv;
+          rvb[idx_kl - derivOffset] += rmkcc * sinnvn + rmkss * cosnvn;
+          zub[idx_kl - derivOffset] += zmksc_m * cosnv + zmkcs_m * sinnv;
+          zvb[idx_kl - derivOffset] += zmksc * sinnvn + zmkcs * cosnvn;
+
+          if (s_.lasym) {
+            rub_asym[idx_kl - derivOffset] += rmksc_m * cosnv + rmkcs_m * sinnv;
+            rvb_asym[idx_kl - derivOffset] += rmksc * sinnvn + rmkcs * cosnvn;
+            zub_asym[idx_kl - derivOffset] += zmkcc_m * cosnv + zmkss_m * sinnv;
+            zvb_asym[idx_kl - derivOffset] += zmkcc * sinnvn + zmkss * cosnvn;
+          }
 
           if (fullUpdate) {
             double cosnvnn = -nSq * fb_.cosnv[n * s_.nZeta + k];
             double sinnvnn = -nSq * fb_.sinnv[n * s_.nZeta + k];
 
-            ruu[idx_kl - tp_.ztMin] += rmkcc_mm * cosnv + rmkss_mm * sinnv;
-            ruv[idx_kl - tp_.ztMin] += rmkcc_m * sinnvn + rmkss_m * cosnvn;
-            rvv[idx_kl - tp_.ztMin] += rmkcc * cosnvnn + rmkss * sinnvnn;
-            zuu[idx_kl - tp_.ztMin] += zmksc_mm * cosnv + zmkcs_mm * sinnv;
-            zuv[idx_kl - tp_.ztMin] += zmksc_m * sinnvn + zmkcs_m * cosnvn;
-            zvv[idx_kl - tp_.ztMin] += zmksc * cosnvnn + zmkcs * sinnvnn;
+            ruu[idx_kl - derivOffset] += rmkcc_mm * cosnv + rmkss_mm * sinnv;
+            ruv[idx_kl - derivOffset] += rmkcc_m * sinnvn + rmkss_m * cosnvn;
+            rvv[idx_kl - derivOffset] += rmkcc * cosnvnn + rmkss * sinnvnn;
+            zuu[idx_kl - derivOffset] += zmksc_mm * cosnv + zmkcs_mm * sinnv;
+            zuv[idx_kl - derivOffset] += zmksc_m * sinnvn + zmkcs_m * cosnvn;
+            zvv[idx_kl - derivOffset] += zmksc * cosnvnn + zmkcs * sinnvnn;
+
+            if (s_.lasym) {
+              ruu_asym[idx_kl - derivOffset] +=
+                  rmksc_mm * cosnv + rmkcs_mm * sinnv;
+              ruv_asym[idx_kl - derivOffset] +=
+                  rmksc_m * sinnvn + rmkcs_m * cosnvn;
+              rvv_asym[idx_kl - derivOffset] +=
+                  rmksc * cosnvnn + rmkcs * sinnvnn;
+              zuu_asym[idx_kl - derivOffset] +=
+                  zmkcc_mm * cosnv + zmkss_mm * sinnv;
+              zuv_asym[idx_kl - derivOffset] +=
+                  zmkcc_m * sinnvn + zmkss_m * cosnvn;
+              zvv_asym[idx_kl - derivOffset] +=
+                  zmkcc * cosnvnn + zmkss * sinnvnn;
+            }
           }
         }
       }  // k
@@ -237,54 +343,96 @@ void SurfaceGeometry::inverseDFT(
   }  // n
 
   if (s_.lasym) {
-    // mirror quantities into respective
-    // non-symmetric other half of poloidal interval ]pi,2pi[
+    // Build the full poloidal range from the symmetric and antisymmetric pieces
+    // (cf. educational_VMEC symrzl). The second poloidal half ]pi,2pi[ is the
+    // parity-signed mirror of (symmetric - antisymmetric) at the reflected
+    // point (theta -> 2pi-theta, zeta -> 2pi-zeta); the first half [0,pi] is
+    // the sum. R, Ruu, Ruv, Rvv, Zu, Zv are even under that reflection (mirror
+    // = +sym - asym); Ru, Rv, Z, Zuu, Zuv, Zvv are odd (mirror = -sym + asym).
+    // The second half is done first, while the arrays still hold the pure
+    // symmetric values.
+    for (int l = 1; l < s_.nThetaReduced - 1; ++l) {
+      const int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int kRev = (s_.nZeta - k) % s_.nZeta;
+        const int kl = l * s_.nZeta + k;
+        const int klRev = lRev * s_.nZeta + kRev;
 
-    // TODO(jons)
+        r1b[klRev] = r1b[kl] - r1b_asym[kl];
+        z1b[klRev] = -z1b[kl] + z1b_asym[kl];
+
+        rub[klRev] = -rub[kl] + rub_asym[kl];
+        rvb[klRev] = -rvb[kl] + rvb_asym[kl];
+        zub[klRev] = zub[kl] - zub_asym[kl];
+        zvb[klRev] = zvb[kl] - zvb_asym[kl];
+
+        if (fullUpdate) {
+          ruu[klRev] = ruu[kl] - ruu_asym[kl];
+          ruv[klRev] = ruv[kl] - ruv_asym[kl];
+          rvv[klRev] = rvv[kl] - rvv_asym[kl];
+          zuu[klRev] = -zuu[kl] + zuu_asym[kl];
+          zuv[klRev] = -zuv[kl] + zuv_asym[kl];
+          zvv[klRev] = -zvv[kl] + zvv_asym[kl];
+        }
+      }  // k
+    }  // l
+
+    // first poloidal half [0,pi]: symmetric + antisymmetric
+    for (int l = 0; l < s_.nThetaReduced; ++l) {
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int kl = l * s_.nZeta + k;
+
+        r1b[kl] += r1b_asym[kl];
+        z1b[kl] += z1b_asym[kl];
+
+        rub[kl] += rub_asym[kl];
+        rvb[kl] += rvb_asym[kl];
+        zub[kl] += zub_asym[kl];
+        zvb[kl] += zvb_asym[kl];
+
+        if (fullUpdate) {
+          ruu[kl] += ruu_asym[kl];
+          ruv[kl] += ruv_asym[kl];
+          rvv[kl] += rvv_asym[kl];
+          zuu[kl] += zuu_asym[kl];
+          zuv[kl] += zuv_asym[kl];
+          zvv[kl] += zvv_asym[kl];
+        }
+      }  // k
+    }  // l
   }
 }
 
 void SurfaceGeometry::derivedSurfaceQuantities(int signOfJacobian,
                                                bool fullUpdate) {
+  // Derivatives are full-range (offset 0) for lasym and thread-local for the
+  // symmetric case; the derived per-slice outputs stay thread-local.
+  const int derivOffset = s_.lasym ? 0 : tp_.ztMin;
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
+    const int o = kl - tp_.ztMin;    // thread-local output index
+    const int d = kl - derivOffset;  // derivative index (full-range for lasym)
+
     // surface normal vector components
-    snr[kl - tp_.ztMin] = signOfJacobian * r1b[kl] * zub[kl - tp_.ztMin];
-    snv[kl - tp_.ztMin] =
-        signOfJacobian * (rub[kl - tp_.ztMin] * zvb[kl - tp_.ztMin] -
-                          zub[kl - tp_.ztMin] * rvb[kl - tp_.ztMin]);
-    snz[kl - tp_.ztMin] = -signOfJacobian * r1b[kl] * rub[kl - tp_.ztMin];
+    snr[o] = signOfJacobian * r1b[kl] * zub[d];
+    snv[o] = signOfJacobian * (rub[d] * zvb[d] - zub[d] * rvb[d]);
+    snz[o] = -signOfJacobian * r1b[kl] * rub[d];
 
     // metric elements; used in Imn and Kmn
-    guu[kl - tp_.ztMin] = rub[kl - tp_.ztMin] * rub[kl - tp_.ztMin] +
-                          zub[kl - tp_.ztMin] * zub[kl - tp_.ztMin];
-    guv[kl - tp_.ztMin] = 2.0 *
-                          (rub[kl - tp_.ztMin] * rvb[kl - tp_.ztMin] +
-                           zub[kl - tp_.ztMin] * zvb[kl - tp_.ztMin]) /
-                          s_.nfp;
-    gvv[kl - tp_.ztMin] =
-        (rvb[kl - tp_.ztMin] * rvb[kl - tp_.ztMin] + r1b[kl] * r1b[kl] +
-         zvb[kl - tp_.ztMin] * zvb[kl - tp_.ztMin]) /
-        (s_.nfp * s_.nfp);
+    guu[o] = rub[d] * rub[d] + zub[d] * zub[d];
+    guv[o] = 2.0 * (rub[d] * rvb[d] + zub[d] * zvb[d]) / s_.nfp;
+    gvv[o] = (rvb[d] * rvb[d] + r1b[kl] * r1b[kl] + zvb[d] * zvb[d]) /
+             (s_.nfp * s_.nfp);
 
     if (fullUpdate) {
       // d^2X/d(ij) . N (used in Kmn)
-      auu[kl - tp_.ztMin] = (ruu[kl - tp_.ztMin] * snr[kl - tp_.ztMin] +
-                             zuu[kl - tp_.ztMin] * snz[kl - tp_.ztMin]) /
-                            2;
-      auv[kl - tp_.ztMin] = (ruv[kl - tp_.ztMin] * snr[kl - tp_.ztMin] +
-                             rub[kl - tp_.ztMin] * snv[kl - tp_.ztMin] +
-                             zuv[kl - tp_.ztMin] * snz[kl - tp_.ztMin]) /
-                            s_.nfp;
-      avv[kl - tp_.ztMin] =
-          (rvb[kl - tp_.ztMin] * snv[kl - tp_.ztMin] +
-           ((rvv[kl - tp_.ztMin] - r1b[kl]) * snr[kl - tp_.ztMin] +
-            zvv[kl - tp_.ztMin] * snz[kl - tp_.ztMin]) /
-               2) /
-          (s_.nfp * s_.nfp);
+      auu[o] = (ruu[d] * snr[o] + zuu[d] * snz[o]) / 2;
+      auv[o] = (ruv[d] * snr[o] + rub[d] * snv[o] + zuv[d] * snz[o]) / s_.nfp;
+      avv[o] = (rvb[d] * snv[o] +
+                ((rvv[d] - r1b[kl]) * snr[o] + zvv[d] * snz[o]) / 2) /
+               (s_.nfp * s_.nfp);
 
       // -(R N^R + Z N^Z)
-      drv[kl - tp_.ztMin] =
-          -(r1b[kl] * snr[kl - tp_.ztMin] + z1b[kl] * snz[kl - tp_.ztMin]);
+      drv[o] = -(r1b[kl] * snr[o] + z1b[kl] * snz[o]);
     }
   }  // kl
 

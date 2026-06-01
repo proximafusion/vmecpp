@@ -31,6 +31,8 @@ jobs:
           apt_packages: libhdf5-dev, liblapack-dev, libnetcdf-dev, gfortran, python3-dev, libomp-dev
           build_dir: build
           cmake_command: cmake -B build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS:STRING=ON build
+          # bazel-built test files have no cmake compile_commands entry, so
+          # clang-tidy cannot resolve <gtest/gtest.h>; exclude them from review
           exclude: "./src/vmecpp/cpp/bazel-*,./src/vmecpp/cpp/external,./src/vmecpp/cpp/third_party,*_test.cc"
           # turn off "LGTM" comments: we only want pings about warnings/errors
           lgtm_comment_body: ""
