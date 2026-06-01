@@ -14,3 +14,24 @@ cc_library(
         "@abseil-cpp//absl/algorithm:container"
     ],
 )
+
+cc_test(
+    name = "surface_geometry_test",
+    srcs = ["surface_geometry_test.cc"],
+    data = [
+        "lcfs_asym.SurfaceRZFourier.csv",
+    ],
+    deps = [
+        ":surface_geometry",
+        "//vmecpp/free_boundary/surface_geometry_mockup:surface_geometry_mockup",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/util:util",
+        "//vmecpp/vmec/vmec:vmec",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "@nlohmann_json//:json",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

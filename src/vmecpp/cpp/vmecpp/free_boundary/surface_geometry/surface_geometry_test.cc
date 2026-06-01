@@ -12,7 +12,6 @@
 
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
 #include "util/file_io/file_io.h"
@@ -32,6 +31,18 @@ using testing::IsCloseRelAbs;
 
 using ::testing::TestWithParam;
 using ::testing::Values;
+
+namespace {
+double dot3x3(const std::array<double, 3>& a, const std::array<double, 3>& b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+void cross3x3(std::array<double, 3>& m_result, const std::array<double, 3>& a,
+              const std::array<double, 3>& b) {
+  m_result[0] = a[1] * b[2] - a[2] * b[1];
+  m_result[1] = a[2] * b[0] - a[0] * b[2];
+  m_result[2] = a[0] * b[1] - a[1] * b[0];
+}
+}  // namespace
 
 TEST(TestSurfaceGeometry, CheckConstants) {
   const double tolerance = 1.0e-12;
@@ -53,14 +64,11 @@ TEST(TestSurfaceGeometry, CheckConstants) {
   }
 }
 
-TEST(TestSurfaceGeometry, CheckInvDFT) {
+void ValidateInverseDFT(const SurfaceGeometryMockup& surface_geometry_mockup) {
   const double tolerance = 1.0e-12;
 
   // tolerance for finite-difference derivative approximations
   const double fdTol = 1.0e-6;
-
-  SurfaceGeometryMockup surface_geometry_mockup =
-      SurfaceGeometryMockup::InitializeFromFile();
 
   const Sizes& s = surface_geometry_mockup.s;
   const SurfaceGeometry& sg = surface_geometry_mockup.sg;
@@ -233,9 +241,9 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
           refR_tm_zm[kl] +=
               surface_geometry_mockup.rmns[mn] * sin(kernel_tm_zm);
           refRu[kl] +=
-              surface_geometry_mockup.rmns[mn] * cos(kernel) * (-fb.xm[mn]);
+              surface_geometry_mockup.rmns[mn] * cos(kernel) * fb.xm[mn];
           refRv[kl] +=
-              surface_geometry_mockup.rmns[mn] * cos(kernel) * fb.xn[mn];
+              surface_geometry_mockup.rmns[mn] * cos(kernel) * (-fb.xn[mn]);
           refRuu[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
                         (-fb.xm[mn] * fb.xm[mn]);
           refRuv[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
@@ -256,9 +264,9 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
           refZ_tm_zm[kl] +=
               surface_geometry_mockup.zmnc[mn] * cos(kernel_tm_zm);
           refZu[kl] +=
-              surface_geometry_mockup.zmnc[mn] * sin(kernel) * fb.xm[mn];
+              surface_geometry_mockup.zmnc[mn] * sin(kernel) * (-fb.xm[mn]);
           refZv[kl] +=
-              surface_geometry_mockup.zmnc[mn] * sin(kernel) * (-fb.xn[mn]);
+              surface_geometry_mockup.zmnc[mn] * sin(kernel) * fb.xn[mn];
           refZuu[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
                         (-fb.xm[mn] * fb.xm[mn]);
           refZuv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
@@ -413,11 +421,22 @@ TEST(TestSurfaceGeometry, CheckInvDFT) {
   }  // l
 }
 
-TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
-  double tolerance = 1.0e-12;
+TEST(TestSurfaceGeometry, CheckInvDFT) {
+  ValidateInverseDFT(SurfaceGeometryMockup::InitializeFromFile());
+}
 
-  SurfaceGeometryMockup surface_geometry_mockup =
-      SurfaceGeometryMockup::InitializeFromFile();
+// Non-stellarator-symmetric inverse DFT: validates the asymmetric-parity terms
+// and the symrzl combination over the full poloidal range against the analytic
+// reference (which itself includes the lasym contributions).
+TEST(TestSurfaceGeometry, CheckInvDFTAsymmetric) {
+  ValidateInverseDFT(SurfaceGeometryMockup::InitializeFromFile(
+      "vmecpp/free_boundary/surface_geometry/lcfs_asym.SurfaceRZFourier.csv",
+      /*lasym=*/true, /*nphi=*/36, /*ntheta=*/0, /*nfp=*/3));
+}
+
+void ValidateDerivedQuantities(
+    const SurfaceGeometryMockup& surface_geometry_mockup) {
+  double tolerance = 1.0e-12;
 
   const Sizes& s = surface_geometry_mockup.s;
   const FourierBasisFastToroidal& fb = surface_geometry_mockup.fb;
@@ -510,9 +529,9 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
 
         if (s.lasym) {
           refRu[kl] +=
-              surface_geometry_mockup.rmns[mn] * cos(kernel) * (-fb.xm[mn]);
+              surface_geometry_mockup.rmns[mn] * cos(kernel) * fb.xm[mn];
           refRv[kl] +=
-              surface_geometry_mockup.rmns[mn] * cos(kernel) * fb.xn[mn];
+              surface_geometry_mockup.rmns[mn] * cos(kernel) * (-fb.xn[mn]);
           refRuu[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
                         (-fb.xm[mn] * fb.xm[mn]);
           refRuv[kl] += surface_geometry_mockup.rmns[mn] * sin(kernel) *
@@ -521,9 +540,9 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
                         (-fb.xn[mn] * fb.xn[mn]);
 
           refZu[kl] +=
-              surface_geometry_mockup.zmnc[mn] * sin(kernel) * fb.xm[mn];
+              surface_geometry_mockup.zmnc[mn] * sin(kernel) * (-fb.xm[mn]);
           refZv[kl] +=
-              surface_geometry_mockup.zmnc[mn] * sin(kernel) * (-fb.xn[mn]);
+              surface_geometry_mockup.zmnc[mn] * sin(kernel) * fb.xn[mn];
           refZuu[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
                         (-fb.xm[mn] * fb.xm[mn]);
           refZuv[kl] += surface_geometry_mockup.zmnc[mn] * cos(kernel) *
@@ -668,6 +687,18 @@ TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
           << "at k=" << k << " l=" << l;
     }  // k
   }  // l
+}
+
+TEST(TestSurfaceGeometry, CheckDerivedQuantities) {
+  ValidateDerivedQuantities(SurfaceGeometryMockup::InitializeFromFile());
+}
+
+// Non-stellarator-symmetric derived quantities (normal, metric, second-form):
+// exercises the full-range derivatives produced by the lasym combination.
+TEST(TestSurfaceGeometry, CheckDerivedQuantitiesAsymmetric) {
+  ValidateDerivedQuantities(SurfaceGeometryMockup::InitializeFromFile(
+      "vmecpp/free_boundary/surface_geometry/lcfs_asym.SurfaceRZFourier.csv",
+      /*lasym=*/true, /*nphi=*/36, /*ntheta=*/0, /*nfp=*/3));
 }
 
 }  // namespace vmecpp

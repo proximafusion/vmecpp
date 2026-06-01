@@ -521,34 +521,44 @@ bool Vmec::InitializeRadial(
 
       // setup free-boundary solver
       if (fc_.lfreeb) {
-        tp_[thread_id] = std::make_unique<TangentialPartitioning>(
-            s_.nZnT, num_threads_, thread_id);
+        // Keep the existing free-boundary solver (and its accumulated vacuum
+        // response matrix and RHS, which live in ns-independent Fourier space)
+        // across multi-grid steps, reproducing Fortran VMEC's persistent vacuum
+        // state. On the first grid step there is no solver yet and it is built;
+        // later steps reuse it.
+        const bool reuse_solver = fb_[thread_id] != nullptr;
+        if (!reuse_solver) {
+          tp_[thread_id] = std::make_unique<TangentialPartitioning>(
+              s_.nZnT, num_threads_, thread_id);
 
-        if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
-          fb_[thread_id] = std::make_unique<Nestor>(
-              &s_, tp_[thread_id].get(), &mgrid_,
-              std::span<double>(matrixShare.data(), matrixShare.size()),
-              std::span<double>(bvecShare.data(), bvecShare.size()),
-              std::span<double>(h_.vacuum_magnetic_pressure.data(),
-                                h_.vacuum_magnetic_pressure.size()),
-              std::span<int>(iPiv.data(), iPiv.size()),
-              std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-              std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
-              std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
-        } else if (indata_.free_boundary_method ==
-                   FreeBoundaryMethod::ONLY_COILS) {
-          fb_[thread_id] = std::make_unique<OnlyCoils>(
-              &s_, tp_[thread_id].get(), &mgrid_,
-              std::span<double>(h_.vacuum_magnetic_pressure.data(),
-                                h_.vacuum_magnetic_pressure.size()),
-              std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-              std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
-              std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
-        } else {
-          LOG(FATAL) << absl::StrCat("free boundary method '",
-                                     ToString(indata_.free_boundary_method),
-                                     "' not implemented yet");
-        }  // indata_.free_boundary_method
+          if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
+            fb_[thread_id] = std::make_unique<Nestor>(
+                &s_, tp_[thread_id].get(), &mgrid_,
+                std::span<double>(matrixShare.data(), matrixShare.size()),
+                std::span<double>(bvecShare.data(), bvecShare.size()),
+                std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                                  h_.vacuum_magnetic_pressure.size()),
+                std::span<int>(iPiv.data(), iPiv.size()),
+                std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+                std::span<double>(h_.vacuum_b_phi.data(),
+                                  h_.vacuum_b_phi.size()),
+                std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+          } else if (indata_.free_boundary_method ==
+                     FreeBoundaryMethod::ONLY_COILS) {
+            fb_[thread_id] = std::make_unique<OnlyCoils>(
+                &s_, tp_[thread_id].get(), &mgrid_,
+                std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                                  h_.vacuum_magnetic_pressure.size()),
+                std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+                std::span<double>(h_.vacuum_b_phi.data(),
+                                  h_.vacuum_b_phi.size()),
+                std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+          } else {
+            LOG(FATAL) << absl::StrCat("free boundary method '",
+                                       ToString(indata_.free_boundary_method),
+                                       "' not implemented yet");
+          }  // indata_.free_boundary_method
+        }  // !reuse_solver
       }  // lfreeb
 
       // setup MHD model
