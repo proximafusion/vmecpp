@@ -88,3 +88,12 @@ filegroup(
         "wout_solovev_free_bdy.nc",
     ],
 )
+
+filegroup(
+    name = "cth_like_free_bdy_multigrid",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "mgrid_cth_like.nc",
+        "cth_like_free_bdy_multigrid.json",
+    ],
+)
