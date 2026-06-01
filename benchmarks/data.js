@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780235909810,
+  "lastUpdate": 1780355049325,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18412,6 +18412,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.013480897179049735",
             "extra": "mean: 9.61842012533335 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0138a54cf5c8b36d5b9229f68685f8cc331a2c4d",
+          "message": "free_boundary: implement non-stellarator-symmetric surface geometry (#533)\n\n* free_boundary: implement non-stellarator-symmetric surface geometry\n\nAdd support for non-stellarator-symmetric (lasym) free-boundary surface\ngeometry. The antisymmetric R/Z contributions are computed on the reduced\npoloidal range and folded with the symmetric parts to populate the full\npoloidal range, following educational_VMEC's symrzl. For lasym the surface\nderivative arrays span the full poloidal range so each thread can mirror its\nown slice; the stellarator-symmetric path is unchanged.\n\n* free_boundary: store lasym antisymmetric surface arrays as Eigen::VectorXd",
+          "timestamp": "2026-06-02T00:59:48+02:00",
+          "tree_id": "d39ce9ccbe6b761888e0a2bafef155883520004b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/0138a54cf5c8b36d5b9229f68685f8cc331a2c4d"
+        },
+        "date": 1780355048119,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.913343225710733,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004048696902262115",
+            "extra": "mean: 343.2482623999931 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.885592555574248,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0017347003571573294",
+            "extra": "mean: 346.5492722000022 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2700858075520696,
+            "unit": "iter/sec",
+            "range": "stddev: 0.028371299176266084",
+            "extra": "mean: 3.7025270193333313 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5848788813336069,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004686579288153338",
+            "extra": "mean: 1.7097556979999997 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5623869195615652,
+            "unit": "iter/sec",
+            "range": "stddev: 0.025936832406306773",
+            "extra": "mean: 1.778135239666663 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.48576853524322583,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01000973583175321",
+            "extra": "mean: 2.058593604666669 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10741544294544382,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004940188819795549",
+            "extra": "mean: 9.309648338999997 sec\nrounds: 3"
           }
         ]
       }
