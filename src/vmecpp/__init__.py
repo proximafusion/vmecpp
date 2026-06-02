@@ -24,7 +24,13 @@ from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
     MakegridParameters,
 )
-from vmecpp._iteration import IterationResult, iterate, solve_equilibrium
+from vmecpp._iteration import (
+    IterationResult,
+    IterationState,
+    RestartReason,
+    iterate,
+    solve_equilibrium,
+)
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
@@ -84,18 +90,6 @@ MgridModeType: typing.TypeAlias = typing.Annotated[
 """[Scaled, Raw, Unset]"""
 
 ProfileType = typing.Annotated[str, pydantic.Field(max_length=20)]
-
-
-class RestartReason(enum.Enum):
-    BAD_JACOBIAN = 2
-    """Irst == 2, bad Jacobian, flux surfaces are overlapping."""
-
-    BAD_PROGRESS = 3
-    """Irst == 3, bad progress, residuals not decaying as expected."""
-
-    HUGE_INITIAL_FORCES = 4
-    """Irst == 4, huge initial forces, flux surfaces are too close to each other (but
-    not overlapping yet)"""
 
 
 class FreeBoundaryMethod(str, enum.Enum):
@@ -2429,4 +2423,5 @@ __all__ = [  # noqa: RUF022
     "iterate",
     "solve_equilibrium",
     "IterationResult",
+    "IterationState",
 ]
