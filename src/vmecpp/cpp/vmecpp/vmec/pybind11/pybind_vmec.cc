@@ -220,6 +220,13 @@ class VmecModel {
   void Evaluate(int iter1, int iter2) {
     bool need_restart = false;
     std::string error_message;
+    // Clear the restart reason before evaluating the forward model, exactly as
+    // Vmec::Evolve does at its start (vmec.cc): the forward model only *sets* a
+    // reason (BAD_JACOBIAN when the Jacobian flips, HUGE_INITIAL_FORCES at
+    // iter2 == 1), it never clears one, so without this reset a single bad
+    // iteration's reason would stick to every later evaluation and poison the
+    // caller's time-step / restart control.
+    vmec_->fc_.restart_reason = vmecpp::RestartReason::NO_RESTART;
     // Run inside a single-thread OpenMP parallel region so the omp single /
     // barrier directives inside IdealMhdModel::update have the team context
     // they get in Vmec::SolveEquilibrium. Orphaned directives (outside any
@@ -293,6 +300,58 @@ class VmecModel {
     last_full_update_nestor_ = 0;
   }
 
+  // Advance to the next (finer) multi-grid resolution, interpolating the
+  // currently-converged geometry onto the new ns grid as the initial guess.
+  //
+  // This is the per-multi-grid-step setup Vmec::run performs between inner
+  // solves (vmec.cc lines 680-681 then InitializeRadial with ns_old != 0):
+  // record the current ns as ns_old so InitializeRadial's `linterp` path runs
+  // the C++ radial interpolation (InterpolateToNextMultigridStep -- linear in
+  // s, odd-m extrapolated to the axis) on the converged decomposed_x_, and pick
+  // up the ftol/niter for the new resolution. The Python loop owns the
+  // multi-grid sequencing; call this between solve_equilibrium calls to drive
+  // the coarse->fine ramp from Python. `new_ns` must be finer than the current
+  // ns (multi-grid only refines).
+  void RefineTo(int new_ns) {
+    vmecpp::Vmec &v = *vmec_;
+    if (new_ns <= v.fc_.ns) {
+      throw std::runtime_error("VmecModel.refine_to: new_ns (" +
+                               std::to_string(new_ns) +
+                               ") must be finer than the current ns (" +
+                               std::to_string(v.fc_.ns) + ")");
+    }
+
+    // Mark the current (converged) resolution as the coarse grid to interpolate
+    // from -- this is what run() does at the bottom of each multi-grid step.
+    const int ns_old = v.fc_.ns;
+    v.fc_.ns_old = ns_old;
+    v.fc_.neqs_old = v.fc_.neqs;
+
+    // ftol/niter for the new resolution: the ns_array entry matching new_ns,
+    // else the last entry (mirrors Create()).
+    const Eigen::VectorXi &ns_array = v.indata_.ns_array;
+    int idx = static_cast<int>(ns_array.size()) - 1;
+    for (int i = 0; i < ns_array.size(); ++i) {
+      if (ns_array[i] == new_ns) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx >= 0 && idx < v.indata_.ftol_array.size()) {
+      v.fc_.ftolv = v.indata_.ftol_array[idx];
+    }
+    if (idx >= 0 && idx < v.indata_.niter_array.size()) {
+      v.fc_.niterv = v.indata_.niter_array[idx];
+    }
+    v.fc_.nsval = new_ns;
+
+    double delt0 = v.indata_.delt;
+    v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, new_ns, ns_old,
+                       delt0, std::nullopt);
+    last_preconditioner_update_ = 0;
+    last_full_update_nestor_ = 0;
+  }
+
   // Reference C++ inner iteration (the loop being ported), for verification.
   void Solve() const {
     auto s = vmec_->SolveEquilibrium(vmecpp::VmecCheckpoint::NONE, INT_MAX);
@@ -354,6 +413,17 @@ class VmecModel {
   }
   std::vector<double> force_residual_lambda() const {
     return vmec_->fc_.force_residual_lambda;
+  }
+  // Per-iteration restart-reason trace recorded alongside the residual traces
+  // (one entry per recorded force iteration); NO_RESTART=1, BAD_JACOBIAN=2,
+  // BAD_PROGRESS=3, HUGE_INITIAL_FORCES=4.
+  std::vector<int> restart_reasons() const {
+    std::vector<int> out;
+    out.reserve(vmec_->fc_.restart_reasons.size());
+    for (const auto &r : vmec_->fc_.restart_reasons) {
+      out.push_back(static_cast<int>(r));
+    }
+    return out;
   }
 
   int ijacob() const { return vmec_->fc_.ijacob; }
@@ -1118,6 +1188,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("reset_to_initial_guess", &VmecModel::ResetToInitialGuess)
       .def("recompute_axis", &VmecModel::RecomputeAxis)
       .def("reinitialize", &VmecModel::Reinitialize)
+      .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"))
       .def("solve", &VmecModel::Solve)
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
@@ -1145,6 +1216,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("force_residual_z", &VmecModel::force_residual_z)
       .def_property_readonly("force_residual_lambda",
                              &VmecModel::force_residual_lambda)
+      .def_property_readonly("restart_reasons", &VmecModel::restart_reasons)
       .def_property_readonly("ijacob", &VmecModel::ijacob)
       .def_property_readonly("raxis_c", &VmecModel::raxis_c)
       .def_static("openmp_enabled", &VmecModel::openmp_enabled);
