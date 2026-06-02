@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/nestor/nestor.h"
 
+#include <cmath>
+
 namespace vmecpp {
 
 Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
@@ -117,7 +119,9 @@ bool Nestor::update(
     return true;
   }
 
-  ls_.SolveForPotential(si_.bvec_sin);
+  // bvec_cos is empty for the stellarator-symmetric case and is ignored by the
+  // solver there, so a single call covers both the symmetric and lasym paths.
+  ls_.SolveForPotential(si_.bvec_sin, si_.bvec_cos);
 
   if (vmec_checkpoint == VmecCheckpoint::VAC1_SOLVER &&
       at_checkpoint_iteration) {
@@ -130,10 +134,21 @@ bool Nestor::update(
   potU.setZero();
   potV.setZero();
 
-  // inv-DFT with tangential derivatives
+  // inv-DFT with tangential derivatives. bvecShare holds [potsin; potcos]
+  // for lasym = true (the top mnpd is the sin(mu-nv) coefficient set, the
+  // bottom mnpd is the cos(mu-nv) coefficient set). potu/potv receive
+  //   m * potsin * cos(mu - nv) - m * potcos * sin(mu - nv)
+  //  -n * nfp * potsin * cos(mu - nv) + n * nfp * potcos * sin(mu - nv)
+  // per Fortran NESTOR/vacuum.f90 lines 162-174.
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
     const int l = kl / s_.nZeta;
     const int k = kl % s_.nZeta;
+    // The poloidal basis cosmu/sinmu is tabulated only on the reduced theta
+    // range [0, nThetaReduced). The lasym free-boundary surface spans the full
+    // theta range, so for l >= nThetaReduced reflect via stellarator symmetry
+    // (theta -> -theta): cos(m*theta) is even, sin(m*theta) is odd.
+    const int lr = (l < s_.nThetaReduced) ? l : (s_.nThetaEven - l);
+    const double sgnmu = (l < s_.nThetaReduced) ? 1.0 : -1.0;
     for (int mn = 0; mn < mnpd; ++mn) {
       const int n = mn / (mf + 1) - nf;  // -nf:nf
       const int m = mn % (mf + 1);
@@ -141,9 +156,9 @@ bool Nestor::update(
       const int abs_n = std::abs(n);
       const int sign_n = signum(n);
 
-      const int idx_lm = l * (s_.mnyq2 + 1) + m;
+      const int idx_lm = lr * (s_.mnyq2 + 1) + m;
       const double cosmu = fb_.cosmu[idx_lm] / fb_.mscale[m];
-      const double sinmu = fb_.sinmu[idx_lm] / fb_.mscale[m];
+      const double sinmu = sgnmu * fb_.sinmu[idx_lm] / fb_.mscale[m];
 
       const int idx_nk = abs_n * s_.nZeta + k;
       const double cosnv = fb_.cosnv[idx_nk] / fb_.nscale[abs_n];
@@ -153,6 +168,13 @@ bool Nestor::update(
 
       potU[kl - tp_.ztMin] += bvecShare[mn] * m * cos_mu_nv;
       potV[kl - tp_.ztMin] += bvecShare[mn] * (-n * s_.nfp) * cos_mu_nv;
+
+      if (s_.lasym) {
+        const double sin_mu_nv = sinmu * cosnv - sign_n * cosmu * sinnv;
+        const double potcos = bvecShare[mnpd + mn];
+        potU[kl - tp_.ztMin] -= potcos * m * sin_mu_nv;
+        potV[kl - tp_.ztMin] -= potcos * (-n * s_.nfp) * sin_mu_nv;
+      }
     }  // mn
   }  // kl
 
@@ -212,12 +234,16 @@ bool Nestor::update(
     bSqVacShare[kl] =
         (bSubU[kl - tp_.ztMin] * bSupU + bSubV[kl - tp_.ztMin] * bSupV) * 0.5;
 
-    // cylindrical components of vacuum magnetic field
+    // cylindrical components of vacuum magnetic field.
+    // rub/rvb/zub/zvb are full-range (offset 0) for lasym, thread-local
+    // otherwise (see SurfaceGeometry::derivedSurfaceQuantities); r1b is
+    // always full-range.
+    const int derivOffset = s_.lasym ? 0 : tp_.ztMin;
     vacuum_b_r_share_[kl] =
-        sg_.rub[kl - tp_.ztMin] * bSupU + sg_.rvb[kl - tp_.ztMin] * bSupV;
+        sg_.rub[kl - derivOffset] * bSupU + sg_.rvb[kl - derivOffset] * bSupV;
     vacuum_b_phi_share_[kl] = sg_.r1b[kl] * bSupV;
     vacuum_b_z_share_[kl] =
-        sg_.zub[kl - tp_.ztMin] * bSupU + sg_.zvb[kl - tp_.ztMin] * bSupV;
+        sg_.zub[kl - derivOffset] * bSupU + sg_.zvb[kl - derivOffset] * bSupV;
   }  // kl
 
   // ... done ...

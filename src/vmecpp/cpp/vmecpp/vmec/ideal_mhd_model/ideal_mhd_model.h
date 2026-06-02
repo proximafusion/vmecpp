@@ -83,9 +83,23 @@ class IdealMhdModel {
   // Dispatching dft_FourierToReal_3d_symm
   void dft_FourierToReal_3d_symm(const FourierGeometry& physical_x);
 
+  // Inverse-DFT of the non-stellarator-symmetric (lasym) contributions, 3D
+  // case. Accumulates the antisymmetric-parity pieces into the *_asym arrays.
+  void dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x);
+
   // Inverse-DFT for flux surface geometry and lambda, 2D axisymmetric (Tokamak)
   // case
   void dft_FourierToReal_2d_symm(const FourierGeometry& physical_x);
+
+  // Inverse-DFT of the non-stellarator-symmetric (lasym) contributions to flux
+  // surface geometry and lambda, 2D axisymmetric case. Accumulates the
+  // antisymmetric-parity pieces into the *_asym scratch arrays on the reduced
+  // poloidal interval [0, pi].
+  void dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x);
+
+  // Combine the symmetric and antisymmetric real-space geometry contributions
+  // over the full poloidal interval [0, 2pi[ (educational_VMEC symrzl).
+  void symrzl();
 
   // Extrapolates ingredients for the spectral condensation force
   // from the LCFS into the plasma volume.
@@ -159,8 +173,22 @@ class IdealMhdModel {
   // Dispatching dft_ForcesToFourier_3d_symm
   void dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f);
 
+  // Forward-DFT of the non-stellarator-symmetric (lasym) force contributions,
+  // 3D case. Projects the antisymmetric-parity halves onto frsc/frcs/fzcc/etc.
+  void dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f);
+
   // Computes the forward-DFT of forces for the 2D axisymmetric (Tokamak) case.
   void dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f);
+
+  // Split the real-space forces into their standard- and reversed-parity halves
+  // on the reduced poloidal interval, storing the reversed-parity halves in the
+  // *_asym scratch arrays (educational_VMEC symforce).
+  void symforce();
+
+  // Forward-DFT of the non-stellarator-symmetric (lasym) force contributions,
+  // 2D axisymmetric case. Projects the antisymmetric-parity halves onto the
+  // frsc / fzcc / flcc coefficients.
+  void dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f);
 
   // Checks if the radial preconditioner matrix elements should be updated.
   // They don't change so much during iterations, so one can get away with
@@ -256,6 +284,21 @@ class IdealMhdModel {
   // initial constraint force contribution Y on full-grid
   Eigen::VectorXd zCon0;
 
+  // Non-stellarator-symmetric (lasym) real-space geometry scratch. These hold
+  // the antisymmetric-parity contributions on the reduced poloidal interval
+  // [0, pi]; symrzl combines them with the symmetric arrays above to fill the
+  // full interval [0, 2pi[. Only allocated when lasym is enabled.
+  Eigen::VectorXd r1_asym_e, r1_asym_o;
+  Eigen::VectorXd ru_asym_e, ru_asym_o;
+  Eigen::VectorXd rv_asym_e, rv_asym_o;
+  Eigen::VectorXd z1_asym_e, z1_asym_o;
+  Eigen::VectorXd zu_asym_e, zu_asym_o;
+  Eigen::VectorXd zv_asym_e, zv_asym_o;
+  Eigen::VectorXd lu_asym_e, lu_asym_o;
+  Eigen::VectorXd lv_asym_e, lv_asym_o;
+  Eigen::VectorXd rCon_asym;
+  Eigen::VectorXd zCon_asym;
+
   // dRdTheta combined on full-grid
   Eigen::VectorXd ruFull;
 
@@ -340,6 +383,18 @@ class IdealMhdModel {
   Eigen::VectorXd clmn_e;
   Eigen::VectorXd clmn_o;
 
+  // Non-stellarator-symmetric (lasym) real-space force scratch: the
+  // reversed-parity halves produced by symforce. Only allocated when lasym is
+  // enabled.
+  Eigen::VectorXd armn_asym_e, armn_asym_o;
+  Eigen::VectorXd brmn_asym_e, brmn_asym_o;
+  Eigen::VectorXd crmn_asym_e, crmn_asym_o;
+  Eigen::VectorXd azmn_asym_e, azmn_asym_o;
+  Eigen::VectorXd bzmn_asym_e, bzmn_asym_o;
+  Eigen::VectorXd czmn_asym_e, czmn_asym_o;
+  Eigen::VectorXd blmn_asym_e, blmn_asym_o;
+  Eigen::VectorXd clmn_asym_e, clmn_asym_o;
+
   /**********************************************/
 
   // lambda preconditioner
@@ -396,6 +451,10 @@ class IdealMhdModel {
   Eigen::VectorXd frcon_o;
   Eigen::VectorXd fzcon_e;
   Eigen::VectorXd fzcon_o;
+
+  // lasym reversed-parity constraint-force halves (symforce).
+  Eigen::VectorXd frcon_asym_e, frcon_asym_o;
+  Eigen::VectorXd fzcon_asym_e, fzcon_asym_o;
 
  private:
   FlowControl& m_fc_;

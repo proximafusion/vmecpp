@@ -212,9 +212,13 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     // 0 : (mpol + 1)
     int mf = s_.mpol + 1;
     int mnpd = (2 * nf + 1) * (mf + 1);
-    matrixShare.setZero(mnpd * mnpd);
-    iPiv.setZero(mnpd);
-    bvecShare.setZero(mnpd);
+    // For lasym = true the scalar potential carries both sin(mu-nv) and
+    // cos(mu-nv) coefficients, doubling the Nestor linear system to
+    // mnpd2 = 2 * mnpd (analog of mnpd2 in the Fortran vacmod / scalpot).
+    int mnpd_dim = s_.lasym ? 2 * mnpd : mnpd;
+    matrixShare.setZero(mnpd_dim * mnpd_dim);
+    iPiv.setZero(mnpd_dim);
+    bvecShare.setZero(mnpd_dim);
 
     h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
     h_.vacuum_b_r.setZero(s_.nZnT);
