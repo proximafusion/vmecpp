@@ -75,3 +75,25 @@ filegroup(
         "wout_cth_like_free_bdy.nc",
     ],
 )
+
+filegroup(
+    name = "solovev_free_bdy",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "coils.solovev",
+        "makegrid_parameters_solovev.json",
+        "solovev_free_bdy.json",
+        "input.solovev_free_bdy",
+        "mgrid_solovev.nc",
+        "wout_solovev_free_bdy.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_free_bdy_multigrid",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "mgrid_cth_like.nc",
+        "cth_like_free_bdy_multigrid.json",
+    ],
+)

@@ -98,7 +98,7 @@ LaplaceSolver::LaplaceSolver(const Sizes* s, const FourierBasisFastToroidal* fb,
 
 // fourp()-equivalent
 void LaplaceSolver::TransformGreensFunctionDerivative(
-    const std::vector<double>& greenp) {
+    const Eigen::VectorXd& greenp) {
   grpmn_sin.setZero();
   if (s_.lasym) {
     grpmn_cos.setZero();
@@ -181,7 +181,7 @@ void LaplaceSolver::TransformGreensFunctionDerivative(
   }  // kl'
 }  // TransformGreensFunctionDerivative
 
-void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double>& gstore) {
+void LaplaceSolver::SymmetriseSourceTerm(const Eigen::VectorXd& gstore) {
   for (int l = 0; l < s_.nThetaReduced; ++l) {
     const int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
     for (int k = 0; k < s_.nZeta; ++k) {
@@ -197,8 +197,8 @@ void LaplaceSolver::SymmetriseSourceTerm(const std::vector<double>& gstore) {
 }  // SymmetriseSourceTerm
 
 void LaplaceSolver::AccumulateFullGrpmn(
-    const std::vector<double>& grpmn_sin_singular,
-    const std::vector<double>& grpmn_cos_singular) {
+    const Eigen::VectorXd& grpmn_sin_singular,
+    const Eigen::VectorXd& grpmn_cos_singular) {
   const int mnpd = (mf + 1) * (2 * nf + 1);
   const double inv_nfp = 1.0 / s_.nfp;
 
@@ -434,7 +434,7 @@ void LaplaceSolver::DecomposeMatrix() {
 }  // DecomposeMatrix
 
 void LaplaceSolver::SolveForPotential(
-    const std::vector<double>& bvec_sin_singular) {
+    const Eigen::VectorXd& bvec_sin_singular) {
   int mnpd = (mf + 1) * (2 * nf + 1);
   const double inv_nfp = 1.0 / s_.nfp;
 

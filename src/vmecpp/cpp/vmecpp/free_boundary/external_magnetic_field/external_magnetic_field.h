@@ -5,8 +5,8 @@
 #ifndef VMECPP_FREE_BOUNDARY_EXTERNAL_MAGNETIC_FIELD_EXTERNAL_MAGNETIC_FIELD_H_
 #define VMECPP_FREE_BOUNDARY_EXTERNAL_MAGNETIC_FIELD_EXTERNAL_MAGNETIC_FIELD_H_
 
+#include <Eigen/Dense>
 #include <span>
-#include <vector>
 
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
@@ -25,25 +25,25 @@ class ExternalMagneticField {
               const std::span<const double> zAxis, double netToroidalCurrent);
 
   // axis geometry around whole machine
-  std::vector<double> axisXYZ;
-  std::vector<double> surfaceXYZ;
-  std::vector<double> bCoilsXYZ;
+  Eigen::VectorXd axisXYZ;
+  Eigen::VectorXd surfaceXYZ;
+  Eigen::VectorXd bCoilsXYZ;
 
   // interpolated magnetic field from mgrid
-  std::vector<double> interpBr;
-  std::vector<double> interpBp;
-  std::vector<double> interpBz;
+  Eigen::VectorXd interpBr;
+  Eigen::VectorXd interpBp;
+  Eigen::VectorXd interpBz;
 
   // interpolated magnetic field from mgrid
   double axis_current;
-  std::vector<double> curtorBr;
-  std::vector<double> curtorBp;
-  std::vector<double> curtorBz;
+  Eigen::VectorXd curtorBr;
+  Eigen::VectorXd curtorBp;
+  Eigen::VectorXd curtorBz;
 
   // outputs to Nestor
-  std::vector<double> bSubU;
-  std::vector<double> bSubV;
-  std::vector<double> bDotN;
+  Eigen::VectorXd bSubU;
+  Eigen::VectorXd bSubV;
+  Eigen::VectorXd bDotN;
 
  private:
   // We /can/ use ABSCAB to compute the magnetic field due to the axis current,
@@ -60,6 +60,14 @@ class ExternalMagneticField {
   // educational_VMEC branch and re-generate test data; use `master` for
   // ABSCAB-version and `no_abscab_in_belicu` for simple version.
   static constexpr bool kUseAbscabForAxisCurrent = false;
+
+  // For an axisymmetric (nZeta == 1) plasma the toroidal direction is not
+  // resolved by the surface grid; the net-toroidal-current axis filament is
+  // then replicated over this many equally-spaced toroidal angles to resolve
+  // it (educational_VMEC uses nvper = 64 for the tokamak case). For nZeta > 1,
+  // nvper is the number of field periods.
+  static constexpr int kAxisymmetricToroidalReplication = 64;
+  int nvper_;
 
   const Sizes& s_;
   const TangentialPartitioning& tp_;
