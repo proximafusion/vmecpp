@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780355715386,
+  "lastUpdate": 1780381333992,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18558,6 +18558,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.011864026303826231",
             "extra": "mean: 9.334953313000009 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a8268b821e9e2570f33ec47323823c90e873313e",
+          "message": "free_boundary: implement axisymmetric (nzeta=1) free-boundary support (#536)\n\n* free_boundary: implement axisymmetric (nzeta=1) free-boundary support\n\n* free_boundary:\n\n* Update regularized_integrals.cc\n\n* Update regularized_integrals.h\n\n* ci: restore benchmarks.yaml to match main\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-06-02T08:18:05+02:00",
+          "tree_id": "3ba41eaa4b12a01ed15c5589262cdda109e0830b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/a8268b821e9e2570f33ec47323823c90e873313e"
+        },
+        "date": 1780381332057,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.164384388917855,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0016947854378859917",
+            "extra": "mean: 316.01723340000945 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 3.1396456345017656,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0018635648572434833",
+            "extra": "mean: 318.5072827999875 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.22958613027771627,
+            "unit": "iter/sec",
+            "range": "stddev: 0.010086749213832583",
+            "extra": "mean: 4.355663814666684 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5801526535333233,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005742840002427368",
+            "extra": "mean: 1.7236842646666635 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5751543582587193,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00800226523535465",
+            "extra": "mean: 1.7386636920000076 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.5312870992523896,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005972166738872778",
+            "extra": "mean: 1.8822214983333272 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.11641135082799046,
+            "unit": "iter/sec",
+            "range": "stddev: 0.02567185508087849",
+            "extra": "mean: 8.59022761 sec\nrounds: 3"
           }
         ]
       }
