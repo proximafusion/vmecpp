@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780381333992,
+  "lastUpdate": 1780383223805,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18631,6 +18631,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.02567185508087849",
             "extra": "mean: 8.59022761 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5f3407175584ab13b2f0c1b5a5623f207e5ea654",
+          "message": "Expose the forward model and drive the equilibrium iteration from Python (#546)\n\n* Expose the VMEC++ forward model to Python and port the equilibrium iteration\n\n* Add PARVMEC and robust iteration styles and boundary optimization\n\nTwo time-step-control styles join VMEC 8.52 in the Python iteration loop.\nPARVMEC (VMEC2000 9.0) reverts the geometry only when the preconditioned or\ninvariant residual grows past 1e4x its minimum, versus the 100x leash of\nVMEC 8.52, and then gently and without escalating toward give-up. The robust\ncommon-ground scheme pairs that permissive revert with the slow-progress\nsafeguard of VMEC 8.52. The forward model is style-agnostic, so the three styles\nshare it and differ only in how a growing residual is handled; absent a restart\nthey take an identical path.\n\noptimize_boundary couples the iteration to a boundary-shape objective, solving\neach candidate boundary to force balance with the Python loop.\n\nExpose iteration_style on VmecModel and bind the PARVMEC enum value.\n\n* iteration: drop boundary optimization, make VmecModel bindings const\n\nBoundary optimization (optimize_boundary) and its scipy dependency move out of\nvmecpp, which keeps the package import lightweight. The VmecModel iteration\nbindings are marked const.\n\n* test: compare state and force trace with np.testing.assert_allclose\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-06-02T08:49:24+02:00",
+          "tree_id": "b911431cff5a48c2af7038c5e16230a4306b0977",
+          "url": "https://github.com/proximafusion/vmecpp/commit/5f3407175584ab13b2f0c1b5a5623f207e5ea654"
+        },
+        "date": 1780383222746,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.73288183556502,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004722512703590556",
+            "extra": "mean: 365.9141009999985 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.7667427886328535,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005883389802676762",
+            "extra": "mean: 361.43583859999353 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2672305620375821,
+            "unit": "iter/sec",
+            "range": "stddev: 0.03258710920633114",
+            "extra": "mean: 3.742086954333331 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5738163697703571,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011047338554577893",
+            "extra": "mean: 1.7427177973333225 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5591267350805413,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004007619414814253",
+            "extra": "mean: 1.7885032806666838 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.43196410439113203,
+            "unit": "iter/sec",
+            "range": "stddev: 0.015012092965234022",
+            "extra": "mean: 2.315007172666659 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.1030208239128015,
+            "unit": "iter/sec",
+            "range": "stddev: 0.04471489333664913",
+            "extra": "mean: 9.706775407333339 sec\nrounds: 3"
           }
         ]
       }
