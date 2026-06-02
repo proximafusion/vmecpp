@@ -61,6 +61,14 @@ class ExternalMagneticField {
   // ABSCAB-version and `no_abscab_in_belicu` for simple version.
   static constexpr bool kUseAbscabForAxisCurrent = false;
 
+  // For an axisymmetric (nZeta == 1) plasma the toroidal direction is not
+  // resolved by the surface grid; the net-toroidal-current axis filament is
+  // then replicated over this many equally-spaced toroidal angles to resolve
+  // it (educational_VMEC uses nvper = 64 for the tokamak case). For nZeta > 1,
+  // nvper is the number of field periods.
+  static constexpr int kAxisymmetricToroidalReplication = 64;
+  int nvper_;
+
   const Sizes& s_;
   const TangentialPartitioning& tp_;
 

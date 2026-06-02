@@ -24,7 +24,6 @@ using ::testing::Values;
 using file_io::ReadFile;
 using magnetics::ImportMagneticConfigurationFromCoilsFile;
 using makegrid::ImportMakegridParametersFromFile;
-using testing::IsCloseRelAbs;
 using vmecpp::RadialPartitioning;
 using vmecpp::Sizes;
 using vmecpp::Vmec;
@@ -79,5 +78,49 @@ TEST(TestVmec, CheckInMemoryMgrid) {
 
   // compare wout contents
   vmecpp::CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
+                      /*tolerance=*/1e-7);
+}
+
+// Axisymmetric (ntor = 0, nzeta = 1) free-boundary tokamak (solovev_free_bdy).
+// The committed-mgrid run is validated field-by-field against the
+// educational_VMEC golden in WOutFileContentsTest (output_quantities_test).
+// This test additionally requires the in-memory makegrid path, built from the
+// coils file for a single toroidal plane, to reproduce the committed-mgrid run
+// across the whole wout.
+TEST(TestVmec, SolovevFreeBoundaryAxisymmetric) {
+  const std::string filename = "vmecpp/test_data/solovev_free_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA& indata = maybe_indata.value();
+
+  // Run with the committed on-disk mgrid referenced by the input file.
+  const auto disk_output = vmecpp::run(indata);
+  ASSERT_TRUE(disk_output.ok());
+
+  // Build the field response table in memory from the coils file and run again.
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.solovev");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+
+  const auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_solovev.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+
+  const auto maybe_magnetic_response_table =
+      makegrid::ComputeMagneticFieldResponseTable(
+          *maybe_makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_magnetic_response_table.ok());
+
+  indata.mgrid_file = "";  // use the in-memory response table instead of disk
+  const auto inmemory_output =
+      vmecpp::run(indata, *maybe_magnetic_response_table);
+  ASSERT_TRUE(inmemory_output.ok());
+
+  // The in-memory makegrid path must reproduce the committed-mgrid run.
+  vmecpp::CompareWOut(inmemory_output->wout, disk_output->wout,
                       /*tolerance=*/1e-7);
 }
