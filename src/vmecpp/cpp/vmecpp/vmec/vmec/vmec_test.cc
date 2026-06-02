@@ -216,32 +216,65 @@ TEST(TestVmec, LasymAxisymmetricDegeneratesToSymmetric) {
   // coefficients of the lasym run must stay at zero.
   const auto& sym = symmetric_output->wout;
   const auto& asym = asymmetric_output->wout;
-  const double tol = 1.0e-9;
+  const double kTol = 1.0e-10;
 
   ASSERT_EQ(asym.ns, sym.ns);
-  EXPECT_TRUE(IsCloseRelAbs(sym.wb, asym.wb, tol)) << "wb";
-  EXPECT_TRUE(IsCloseRelAbs(sym.wp, asym.wp, tol)) << "wp";
-  EXPECT_TRUE(IsCloseRelAbs(sym.volume, asym.volume, tol)) << "volume";
-  EXPECT_TRUE(IsCloseRelAbs(sym.aspect, asym.aspect, tol)) << "aspect";
-  EXPECT_TRUE(IsCloseRelAbs(sym.betatotal, asym.betatotal, tol)) << "betatotal";
-  // b0 (field on the magnetic axis) is reproduced through the lasym covariant-B
-  // output decomposition, so it validates that normalization; it is held to a
-  // looser tolerance than the global integrals because it is sensitive to the
-  // near-axis modes that settle at the convergence floor and so differ slightly
-  // between the reduced-range and full-range arithmetic paths.
-  EXPECT_TRUE(IsCloseRelAbs(sym.b0, asym.b0, 1.0e-3)) << "b0";
-  EXPECT_TRUE(IsCloseRelAbs(sym.Aminor_p, asym.Aminor_p, tol)) << "Aminor_p";
-  EXPECT_TRUE(IsCloseRelAbs(sym.Rmajor_p, asym.Rmajor_p, tol)) << "Rmajor_p";
 
-  // Only the integral/scalar quantities are asserted, and tightly (1e-9): they
-  // are insensitive to the convergence-noise floor and so are the robust
-  // signal that the lasym path reproduced the same equilibrium. Individual
-  // Fourier coefficients are not asserted here, because the reduced-range and
-  // full-range (symforce-folded) arithmetic paths converge on the force
-  // residual and the weakly-constrained small/antisymmetric modes settle at a
-  // ~1e-6 floor that differs between paths without changing the equilibrium.
-  // The Fourier geometry, symmetric and antisymmetric, is validated against an
-  // educational_VMEC golden separately.
+  // Integrated scalars, including b0 (it agrees to ~1e-14, not the 1e-3 a
+  // previous normalization gap suggested).
+  EXPECT_TRUE(IsCloseRelAbs(sym.wb, asym.wb, kTol)) << "wb";
+  EXPECT_TRUE(IsCloseRelAbs(sym.wp, asym.wp, kTol)) << "wp";
+  EXPECT_TRUE(IsCloseRelAbs(sym.volume, asym.volume, kTol)) << "volume";
+  EXPECT_TRUE(IsCloseRelAbs(sym.aspect, asym.aspect, kTol)) << "aspect";
+  EXPECT_TRUE(IsCloseRelAbs(sym.betatotal, asym.betatotal, kTol))
+      << "betatotal";
+  EXPECT_TRUE(IsCloseRelAbs(sym.b0, asym.b0, kTol)) << "b0";
+  EXPECT_TRUE(IsCloseRelAbs(sym.Aminor_p, asym.Aminor_p, kTol)) << "Aminor_p";
+  EXPECT_TRUE(IsCloseRelAbs(sym.Rmajor_p, asym.Rmajor_p, kTol)) << "Rmajor_p";
+
+  // Peak-normalized max difference between two coefficient arrays.
+  auto rel_max = [](const auto& a, const auto& b) -> double {
+    const double peak = a.cwiseAbs().maxCoeff();
+    return (a - b).cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
+  };
+  // Max magnitude of an array that must vanish, normalized by its symmetric
+  // companion's peak.
+  auto rel_zero = [](const auto& a, const auto& companion) -> double {
+    const double peak = companion.cwiseAbs().maxCoeff();
+    return a.cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
+  };
+
+  // Symmetric geometry and the derived Nyquist-grid spectra (field magnitude,
+  // Jacobian, covariant/contravariant field, and B_s) reproduce the symmetric
+  // run to machine precision. These are the arrays a lasym output-normalization
+  // error would have doubled.
+  EXPECT_LT(rel_max(sym.rmnc, asym.rmnc), kTol) << "rmnc";
+  EXPECT_LT(rel_max(sym.zmns, asym.zmns), kTol) << "zmns";
+  EXPECT_LT(rel_max(sym.lmns_full, asym.lmns_full), kTol) << "lmns_full";
+  EXPECT_LT(rel_max(sym.bmnc, asym.bmnc), kTol) << "bmnc";
+  EXPECT_LT(rel_max(sym.gmnc, asym.gmnc), kTol) << "gmnc";
+  EXPECT_LT(rel_max(sym.bsubumnc, asym.bsubumnc), kTol) << "bsubumnc";
+  EXPECT_LT(rel_max(sym.bsubvmnc, asym.bsubvmnc), kTol) << "bsubvmnc";
+  EXPECT_LT(rel_max(sym.bsupumnc, asym.bsupumnc), kTol) << "bsupumnc";
+  EXPECT_LT(rel_max(sym.bsupvmnc, asym.bsupvmnc), kTol) << "bsupvmnc";
+  EXPECT_LT(rel_max(sym.bsubsmns, asym.bsubsmns), kTol) << "bsubsmns";
+
+  // currumnc/currvmnc are radial finite differences of bsubu/vmnc and so carry
+  // more cancellation noise; a looser but still tight bound.
+  EXPECT_LT(rel_max(sym.currumnc, asym.currumnc), 1.0e-8) << "currumnc";
+  EXPECT_LT(rel_max(sym.currvmnc, asym.currvmnc), 1.0e-8) << "currvmnc";
+
+  // The lasym run carries no asymmetry, so every antisymmetric coefficient set
+  // vanishes to machine precision.
+  EXPECT_LT(rel_zero(asym.rmns, sym.rmnc), kTol) << "rmns";
+  EXPECT_LT(rel_zero(asym.zmnc, sym.zmns), kTol) << "zmnc";
+  EXPECT_LT(rel_zero(asym.bmns, sym.bmnc), kTol) << "bmns";
+  EXPECT_LT(rel_zero(asym.gmns, sym.gmnc), kTol) << "gmns";
+  EXPECT_LT(rel_zero(asym.bsubumns, sym.bsubumnc), kTol) << "bsubumns";
+  EXPECT_LT(rel_zero(asym.bsubvmns, sym.bsubvmnc), kTol) << "bsubvmns";
+  EXPECT_LT(rel_zero(asym.bsupumns, sym.bsupumnc), kTol) << "bsupumns";
+  EXPECT_LT(rel_zero(asym.bsupvmns, sym.bsupvmnc), kTol) << "bsupvmns";
+  EXPECT_LT(rel_zero(asym.bsubsmnc, sym.bsubsmns), kTol) << "bsubsmnc";
 }  // LasymAxisymmetricDegeneratesToSymmetric
 
 // A genuinely up-down-asymmetric tokamak (lasym=true with nonzero rbs): the

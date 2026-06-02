@@ -4699,19 +4699,15 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     }  // kl
   }  // jH
 
-  double tmult = 0.5;
-  if (s.lasym) {
-    // Changed integration norm in fixaray, SPH012314
-    // TODO(jons): figure out how this works with running a symmetric case in
-    // lasym=true mode
-    // -> should agree, but I suspect that
-    // https://github.com/ORNL-Fusion/PARVMEC/issues/21
-    //    has not been fixed yet for educational_VMEC.
-    tmult *= 2.0;
-
-    // Symoutput functionality is implemented inline in the Fourier transform
-    // loop below
-  }
+  // The Nyquist-grid forward transform below sums over the reduced poloidal
+  // range [0, nThetaReduced) for both parities; the symmetric and antisymmetric
+  // parts are split inline in the loop (symoutput). The 0.5 integration norm is
+  // therefore the same with or without lasym. educational_VMEC doubles it for
+  // lasym because it integrates over the full poloidal range; applying that
+  // doubling here, where the sum is over the reduced range, double-counts and
+  // made a symmetric case run in lasym=true mode report these coefficients at
+  // twice their value.
+  const double tmult = 0.5;
 
   // -------------------
   // Fourier-transform derived quantities for each surface individually
