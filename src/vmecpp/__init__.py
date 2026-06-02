@@ -24,6 +24,7 @@ from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
     MakegridParameters,
 )
+from vmecpp._iteration import IterationResult, iterate, solve_equilibrium
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
@@ -2052,4 +2053,7 @@ __all__ = [  # noqa: RUF022
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
     "set_profile",
+    "iterate",
+    "solve_equilibrium",
+    "IterationResult",
 ]
