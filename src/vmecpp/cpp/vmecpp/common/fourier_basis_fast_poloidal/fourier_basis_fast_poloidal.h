@@ -126,6 +126,24 @@ class FourierBasisFastPoloidal {
   Eigen::VectorXd sinnvn;
 
   // ============================================================================
+  // COMPACTED ("active") TOROIDAL BASIS FUNCTIONS
+  // ============================================================================
+  //
+  // These are the same toroidal basis values as cosnv/sinnv/cosnvn/sinnvn, but
+  // gathered to only the active toroidal columns (Sizes::active_n) and laid out
+  // contiguously per zeta point. They let the geometry transform iterate only
+  // over the non-zero toroidal modes of the internal product-basis coefficients
+  // via a single contiguous dot product. In the dense default case
+  // (n_active == ntor + 1) these are exactly the first ntor+1 columns of each
+  // row, so the geometry transform is numerically identical to before.
+  //
+  // Layout: cosnv_active[k*n_active + c] = cosnv[k*(nnyq2+1) + active_n[c]]
+  Eigen::VectorXd cosnv_active;
+  Eigen::VectorXd sinnv_active;
+  Eigen::VectorXd cosnvn_active;
+  Eigen::VectorXd sinnvn_active;
+
+  // ============================================================================
   // FOURIER BASIS CONVERSION FUNCTIONS
   // ============================================================================
   //

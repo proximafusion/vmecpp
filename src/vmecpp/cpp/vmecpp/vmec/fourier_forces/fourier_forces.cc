@@ -89,9 +89,9 @@ FourierForces& FourierForces::operator=(FourierForces&& other) noexcept {
 
 void FourierForces::zeroZForceForM1() {
   for (int jF = nsMin_; jF < nsMax_; ++jF) {
-    for (int n = 0; n < s_.ntor + 1; ++n) {
+    for (int c = 0; c < s_.n_active; ++c) {
       int m = 1;
-      int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      int idx_fc = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
       if (s_.lthreed) {
         fzcs[idx_fc] = 0.0;
       }
@@ -120,8 +120,8 @@ void FourierForces::residuals(Eigen::VectorXd& fRes,
   double local_fResL = 0.0;
   for (int jF = nsMin_; jF < jMaxIncludeBoundary; ++jF) {
     for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      for (int c = 0; c < s_.n_active; ++c) {
+        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
 
         if (jF < jMaxRZ) {
           local_fResR += frcc[idx_fc] * frcc[idx_fc];

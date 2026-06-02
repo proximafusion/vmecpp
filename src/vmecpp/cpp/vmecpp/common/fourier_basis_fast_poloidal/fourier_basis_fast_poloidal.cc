@@ -33,6 +33,25 @@ FourierBasisFastPoloidal::FourierBasisFastPoloidal(const Sizes* s) : s_(*s) {
 
   computeFourierBasisFastPoloidal(s_.nfp);
 
+  // Gather the active toroidal columns into the compacted basis arrays used by
+  // the geometry transform (see header). In the dense default case this copies
+  // the first ntor+1 columns of each zeta row verbatim.
+  cosnv_active.resize(s_.n_active * s_.nZeta);
+  sinnv_active.resize(s_.n_active * s_.nZeta);
+  cosnvn_active.resize(s_.n_active * s_.nZeta);
+  sinnvn_active.resize(s_.n_active * s_.nZeta);
+  for (int k = 0; k < s_.nZeta; ++k) {
+    for (int c = 0; c < s_.n_active; ++c) {
+      const int n = s_.active_n[c];
+      const int idx_dense = k * (s_.nnyq2 + 1) + n;
+      const int idx_active = k * s_.n_active + c;
+      cosnv_active[idx_active] = cosnv[idx_dense];
+      sinnv_active[idx_active] = sinnv[idx_dense];
+      cosnvn_active[idx_active] = cosnvn[idx_dense];
+      sinnvn_active[idx_active] = sinnvn[idx_dense];
+    }
+  }
+
   // -----------------
 
   xm.resize(s_.mnmax);

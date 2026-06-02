@@ -100,9 +100,12 @@ void FourierGeometry::interpFromBoundaryAndAxis(
     const RadialProfiles& p) {
   for (int jF = nsMin_; jF < nsMax_; ++jF) {
     for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
+      for (int c = 0; c < s_.n_active; ++c) {
+        // `n` is the physical toroidal mode number; the dense boundary/axis
+        // arrays are indexed by it, while the compact FC arrays use column c.
+        const int n = s_.active_n[c];
         int idx_bdy = m * (s_.ntor + 1) + n;
-        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
 
         double basis_norm = 1.0 / (t.mscale[m] * t.nscale[n]);
 
@@ -200,9 +203,11 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
                     s_.mpol);
 
     for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
+      // gather active toroidal columns from the dense conversion temporaries
+      for (int c = 0; c < s_.n_active; ++c) {
+        const int n = s_.active_n[c];
         const int idx_mn = m * (s_.ntor + 1) + n;
-        const int idx_jmn = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+        const int idx_jmn = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
         rmncc[idx_jmn] = rmncc_at_jF[idx_mn];
         zmnsc[idx_jmn] = zmnsc_at_jF[idx_mn];
         if (s_.lthreed) {
@@ -227,9 +232,10 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
                     s_.mpol);
 
     for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
+      for (int c = 0; c < s_.n_active; ++c) {
+        const int n = s_.active_n[c];
         const int idx_mn = m * (s_.ntor + 1) + n;
-        const int idx_jmn = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+        const int idx_jmn = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
 
         // undo lambda un-scaling that was done when writing the wout file
         // contents
@@ -247,35 +253,25 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
   // boundary from b, if present
   if (b != nullptr && r_.has_boundary()) {
     const int jF = ns - 1;
-    const int mnsize = s_.mpol * (s_.ntor + 1);
 
-    auto rmncc_begin = rmncc.begin() + (jF - nsMin_) * s_.mpol * (s_.ntor + 1);
-    std::copy(b->rbcc.begin(), b->rbcc.begin() + mnsize, rmncc_begin);
-    auto zmnsc_begin = zmnsc.begin() + (jF - nsMin_) * s_.mpol * (s_.ntor + 1);
-    std::copy(b->zbsc.begin(), b->zbsc.begin() + mnsize, zmnsc_begin);
-
-    if (s_.lthreed) {
-      auto rmnss_begin =
-          rmnss.begin() + (jF - nsMin_) * s_.mpol * (s_.ntor + 1);
-      std::copy(b->rbss.begin(), b->rbss.begin() + mnsize, rmnss_begin);
-
-      auto zmncs_begin =
-          zmncs.begin() + (jF - nsMin_) * s_.mpol * (s_.ntor + 1);
-      std::copy(b->zbcs.begin(), b->zbcs.begin() + mnsize, zmncs_begin);
-    }
-
+    // The Boundaries arrays are dense (mpol*(ntor+1)); gather the active
+    // toroidal columns into the compact FC arrays and apply the basis-norm
+    // scaling in the same pass. (A contiguous copy of mnsize elements would be
+    // wrong in the sparse case, since the strides differ.)
     for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      for (int c = 0; c < s_.n_active; ++c) {
+        const int n = s_.active_n[c];
+        const int idx_bdy = m * (s_.ntor + 1) + n;
+        const int idx_fc = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
 
-        double basis_norm = 1.0 / (fb.mscale[m] * fb.nscale[n]);
+        const double basis_norm = 1.0 / (fb.mscale[m] * fb.nscale[n]);
 
-        rmncc[idx_fc] *= basis_norm;
-        zmnsc[idx_fc] *= basis_norm;
+        rmncc[idx_fc] = b->rbcc[idx_bdy] * basis_norm;
+        zmnsc[idx_fc] = b->zbsc[idx_bdy] * basis_norm;
 
         if (s_.lthreed) {
-          rmnss[idx_fc] *= basis_norm;
-          zmncs[idx_fc] *= basis_norm;
+          rmnss[idx_fc] = b->rbss[idx_bdy] * basis_norm;
+          zmncs[idx_fc] = b->zbcs[idx_bdy] * basis_norm;
         }
       }
     }
@@ -295,8 +291,8 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
     // when writing wout)
     const int jF = 0;
     const int m = 0;
-    for (int n = 0; n < s_.ntor + 1; ++n) {
-      int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+    for (int c = 0; c < s_.n_active; ++c) {
+      int idx_fc = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
       lmnsc[idx_fc] = 0.0;
       if (s_.lthreed) {
         lmncs[idx_fc] = 0.0;
@@ -315,14 +311,14 @@ void FourierGeometry::extrapolateTowardsAxis() {
 
   int axis = 0;
   int firstSurface = 1;
-  for (int n = 0; n < s_.ntor + 1; ++n) {
+  for (int c = 0; c < s_.n_active; ++c) {
     int m0 = 0;
     int m1 = 1;
 
-    int axis0 = (axis * s_.mpol + m0) * (s_.ntor + 1) + n;
-    int axis1 = (axis * s_.mpol + m1) * (s_.ntor + 1) + n;
-    int firstSurface0 = (firstSurface * s_.mpol + m0) * (s_.ntor + 1) + n;
-    int firstSurface1 = (firstSurface * s_.mpol + m1) * (s_.ntor + 1) + n;
+    int axis0 = (axis * s_.mpol + m0) * s_.n_active + c;
+    int axis1 = (axis * s_.mpol + m1) * s_.n_active + c;
+    int firstSurface0 = (firstSurface * s_.mpol + m0) * s_.n_active + c;
+    int firstSurface1 = (firstSurface * s_.mpol + m1) * s_.n_active + c;
 
     rmncc[axis1] = rmncc[firstSurface1];
     zmnsc[axis1] = zmnsc[firstSurface1];
@@ -369,8 +365,9 @@ void FourierGeometry::ComputeSpectralWidth(
 
     // note that we exclude m = 0
     for (int m = 1; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        int fourier_index = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      for (int c = 0; c < s_.n_active; ++c) {
+        const int n = s_.active_n[c];
+        int fourier_index = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
 
         const double basis_norm =
             fourier_basis.mscale[m] * fourier_basis.nscale[n];

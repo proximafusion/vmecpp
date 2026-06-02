@@ -23,8 +23,11 @@ FourierCoeffs::FourierCoeffs(const Sizes* s, const RadialPartitioning* r,
     jMaxIncludingBoundary = ns;
   }
 
-  int num_fc_RZ = (jMaxIncludingBoundary - nsMin) * s_.mpol * (s_.ntor + 1);
-  int num_fc_L = (jMaxIncludingBoundary - nsMin) * s_.mpol * (s_.ntor + 1);
+  // Internal product-basis arrays store only the active toroidal columns per
+  // poloidal mode (s_.mnsize == s_.mpol * s_.n_active). In the dense default
+  // case this equals s_.mpol * (s_.ntor + 1).
+  int num_fc_RZ = (jMaxIncludingBoundary - nsMin) * s_.mnsize;
+  int num_fc_L = (jMaxIncludingBoundary - nsMin) * s_.mnsize;
 
   rcc.resize(num_fc_RZ);
   rcc.setZero();
@@ -133,8 +136,8 @@ void FourierCoeffs::decomposeInto(FourierCoeffs& m_x,
 
   for (int jF = nsMin_; jF < jMaxIncludingBoundary; ++jF) {
     for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      for (int c = 0; c < s_.n_active; ++c) {
+        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
 
         int m_parity = m % 2;
 
@@ -181,9 +184,9 @@ void FourierCoeffs::m1Constraint(double scalingFactor,
   }
 
   for (int jF = nsMin_; jF < nsMaxToUse; ++jF) {
-    for (int n = 0; n < s_.ntor + 1; ++n) {
+    for (int c = 0; c < s_.n_active; ++c) {
       int m = 1;
-      int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      int idx_fc = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
       if (s_.lthreed) {
         double old_rss = rss[idx_fc];
         rss[idx_fc] = (old_rss + zcs[idx_fc]) * scalingFactor;
@@ -205,8 +208,10 @@ double FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
 
   for (int jF = nsMinHere; jF < nsMaxHere; ++jF) {
     for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      for (int c = 0; c < s_.n_active; ++c) {
+        // physical toroidal mode number for this compact column
+        const int n = s_.active_n[c];
+        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
 
         if (n > 0 || m > 0 || include_offset) {
           local_norm2 += rcc[idx_fc] * rcc[idx_fc];
@@ -235,7 +240,13 @@ double FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
 
 double FourierCoeffs::GetXcElement(int rzl, int idx_basis, int jF, int n,
                                    int m) const {
-  int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+  // `n` is the physical toroidal mode number; map it to the compact column.
+  // Toroidal modes that are not active carry no storage and are zero.
+  const int c = s_.n_to_compact[n];
+  if (c < 0) {
+    return 0.0;
+  }
+  int idx_fc = ((jF - nsMin_) * s_.mpol + m) * s_.n_active + c;
 
   if (rzl == 0) {
     if (idx_basis == 0) {

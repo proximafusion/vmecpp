@@ -1597,22 +1597,28 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
   results.currH = VectorXd::Zero(results.num_half);
 
   // state vector
-  results.rmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  results.zmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  results.lmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
+  //
+  // These internal product-basis outputs use the dense per-surface block size
+  // mpol*(ntor+1) (n-major, m-fast layout), independent of the sparse-toroidal
+  // s.mnsize used by the solver. Inactive toroidal modes are zero-padded so all
+  // downstream consumers (and the HDF5 schema) stay unchanged.
+  const int dense_mnsize = s.mpol * (s.ntor + 1);
+  results.rmncc = RowMatrixXd::Zero(results.num_full, dense_mnsize);
+  results.zmnsc = RowMatrixXd::Zero(results.num_full, dense_mnsize);
+  results.lmnsc = RowMatrixXd::Zero(results.num_full, dense_mnsize);
   if (s.lthreed) {
-    results.rmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.zmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.lmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
+    results.rmnss = RowMatrixXd::Zero(results.num_full, dense_mnsize);
+    results.zmncs = RowMatrixXd::Zero(results.num_full, dense_mnsize);
+    results.lmncs = RowMatrixXd::Zero(results.num_full, dense_mnsize);
   }
   if (s.lasym) {
-    results.rmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.zmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.lmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
+    results.rmnsc = RowMatrixXd::Zero(results.num_full, dense_mnsize);
+    results.zmncc = RowMatrixXd::Zero(results.num_full, dense_mnsize);
+    results.lmncc = RowMatrixXd::Zero(results.num_full, dense_mnsize);
     if (s.lthreed) {
-      results.rmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-      results.zmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-      results.lmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
+      results.rmncs = RowMatrixXd::Zero(results.num_full, dense_mnsize);
+      results.zmnss = RowMatrixXd::Zero(results.num_full, dense_mnsize);
+      results.lmnss = RowMatrixXd::Zero(results.num_full, dense_mnsize);
     }
   }
 
@@ -1728,11 +1734,15 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
       results.spectral_width[jF] = p.spectral_width[jF - r.nsMinF1];
 
       // state vector
-      for (int n = 0; n < s.ntor + 1; ++n) {
+      //
+      // Scatter the compact (active-only) solver coefficients into the dense
+      // zero-padded output layout. Inactive toroidal modes remain zero.
+      for (int c = 0; c < s.n_active; ++c) {
+        const int n = s.active_n[c];
         for (int m = 0; m < s.mpol; ++m) {
           // FIXME(eguiraud) slow loop
           const int source_index =
-              ((jF - nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
+              ((jF - nsMinF1) * s.mpol + m) * s.n_active + c;
           const int target_index = (jF * (s.ntor + 1) + n) * s.mpol + m;
 
           results.rmncc(target_index) =

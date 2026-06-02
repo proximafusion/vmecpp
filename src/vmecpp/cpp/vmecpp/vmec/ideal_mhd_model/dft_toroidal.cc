@@ -105,24 +105,25 @@ void ForcesToFourier3DSymmFastPoloidal(
         double zmksc = tempZ_seg.dot(sinmui_seg) + bzmn_seg.dot(cosmumi_seg);
         double zmkcs = tempZ_seg.dot(cosmui_seg) + bzmn_seg.dot(sinmumi_seg);
 
-        // Vectorized toroidal scatter: segment ops replace scalar n-loop
-        const int ntorp1 = s.ntor + 1;
-        const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
-        const int idx_kn_base = k * (s.nnyq2 + 1);
+        // Vectorized toroidal scatter: segment ops replace scalar n-loop.
+        // Iterate only over the active toroidal modes (compacted basis).
+        const int nact = s.n_active;
+        const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * nact;
+        const int idx_kn_base = k * nact;
 
-        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
-        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
-        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
-        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
+        auto cosnv_seg = fb.cosnv_active.segment(idx_kn_base, nact);
+        auto sinnv_seg = fb.sinnv_active.segment(idx_kn_base, nact);
+        auto cosnvn_seg = fb.cosnvn_active.segment(idx_kn_base, nact);
+        auto sinnvn_seg = fb.sinnvn_active.segment(idx_kn_base, nact);
 
         Eigen::Map<Eigen::VectorXd> frcc_seg(
-            m_physical_forces.frcc.data() + idx_mn_base, ntorp1);
+            m_physical_forces.frcc.data() + idx_mn_base, nact);
         Eigen::Map<Eigen::VectorXd> frss_seg(
-            m_physical_forces.frss.data() + idx_mn_base, ntorp1);
+            m_physical_forces.frss.data() + idx_mn_base, nact);
         Eigen::Map<Eigen::VectorXd> fzsc_seg(
-            m_physical_forces.fzsc.data() + idx_mn_base, ntorp1);
+            m_physical_forces.fzsc.data() + idx_mn_base, nact);
         Eigen::Map<Eigen::VectorXd> fzcs_seg(
-            m_physical_forces.fzcs.data() + idx_mn_base, ntorp1);
+            m_physical_forces.fzcs.data() + idx_mn_base, nact);
 
         frcc_seg += rmkcc * cosnv_seg + rmkcc_n * sinnvn_seg;
         frss_seg += rmkss * sinnv_seg + rmkss_n * cosnvn_seg;
@@ -131,9 +132,9 @@ void ForcesToFourier3DSymmFastPoloidal(
 
         if (jMinL <= jF) {
           Eigen::Map<Eigen::VectorXd> flsc_seg(
-              m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
+              m_physical_forces.flsc.data() + idx_mn_base, nact);
           Eigen::Map<Eigen::VectorXd> flcs_seg(
-              m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
+              m_physical_forces.flcs.data() + idx_mn_base, nact);
           flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
           flcs_seg += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
         }
@@ -170,20 +171,20 @@ void ForcesToFourier3DSymmFastPoloidal(
         double lmkcs_n = -clmn_seg.dot(cosmui_seg);
         double lmksc_n = -clmn_seg.dot(sinmui_seg);
 
-        // Vectorized toroidal scatter for lambda-only section
-        const int ntorp1 = s.ntor + 1;
-        const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
-        const int idx_kn_base = k * (s.nnyq2 + 1);
+        // Vectorized toroidal scatter for lambda-only section (active modes)
+        const int nact = s.n_active;
+        const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * nact;
+        const int idx_kn_base = k * nact;
 
-        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
-        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
-        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
-        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
+        auto cosnv_seg = fb.cosnv_active.segment(idx_kn_base, nact);
+        auto sinnv_seg = fb.sinnv_active.segment(idx_kn_base, nact);
+        auto cosnvn_seg = fb.cosnvn_active.segment(idx_kn_base, nact);
+        auto sinnvn_seg = fb.sinnvn_active.segment(idx_kn_base, nact);
 
         Eigen::Map<Eigen::VectorXd> flsc_seg(
-            m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
+            m_physical_forces.flsc.data() + idx_mn_base, nact);
         Eigen::Map<Eigen::VectorXd> flcs_seg(
-            m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
+            m_physical_forces.flcs.data() + idx_mn_base, nact);
 
         flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
         flcs_seg += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
@@ -255,27 +256,28 @@ void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
 
       for (int k = 0; k < s.nZeta; ++k) {
         // INVERSE TRANSFORM IN N-ZETA, FOR FIXED M
-        // Vectorized toroidal accumulation loop
-        const int idx_kn_base = k * (s.nnyq2 + 1);
-        const int idx_mn_base = ((jF - nsMinF1) * s.mpol + m) * (s.ntor + 1);
+        // Vectorized toroidal accumulation loop over active modes only
+        const int nact = s.n_active;
+        const int idx_kn_base = k * nact;
+        const int idx_mn_base = ((jF - nsMinF1) * s.mpol + m) * nact;
 
-        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, s.ntor + 1);
-        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, s.ntor + 1);
-        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, s.ntor + 1);
-        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, s.ntor + 1);
+        auto cosnv_seg = fb.cosnv_active.segment(idx_kn_base, nact);
+        auto sinnv_seg = fb.sinnv_active.segment(idx_kn_base, nact);
+        auto sinnvn_seg = fb.sinnvn_active.segment(idx_kn_base, nact);
+        auto cosnvn_seg = fb.cosnvn_active.segment(idx_kn_base, nact);
 
         auto rmncc_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.rmncc.data() + idx_mn_base, s.ntor + 1);
+            physical_x.rmncc.data() + idx_mn_base, nact);
         auto rmnss_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.rmnss.data() + idx_mn_base, s.ntor + 1);
+            physical_x.rmnss.data() + idx_mn_base, nact);
         auto zmnsc_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.zmnsc.data() + idx_mn_base, s.ntor + 1);
+            physical_x.zmnsc.data() + idx_mn_base, nact);
         auto zmncs_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.zmncs.data() + idx_mn_base, s.ntor + 1);
+            physical_x.zmncs.data() + idx_mn_base, nact);
         auto lmnsc_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.lmnsc.data() + idx_mn_base, s.ntor + 1);
+            physical_x.lmnsc.data() + idx_mn_base, nact);
         auto lmncs_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.lmncs.data() + idx_mn_base, s.ntor + 1);
+            physical_x.lmncs.data() + idx_mn_base, nact);
 
         double rmkcc = rmncc_seg.dot(cosnv_seg);
         double rmkcc_n = rmncc_seg.dot(sinnvn_seg);
