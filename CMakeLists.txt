@@ -162,6 +162,13 @@ set(vmecpp_pybind11_sources
 )
 pybind11_add_module(_vmecpp ${vmecpp_pybind11_sources})
 target_link_libraries(_vmecpp PRIVATE vmecpp_core)
+# The VmecModel iteration bindings run the forward model inside a single-thread
+# OpenMP parallel region, so the module itself must be compiled with OpenMP
+# (matching the context Vmec::SolveEquilibrium provides for the omp single/barrier
+# directives inside IdealMhdModel::update).
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(_vmecpp PRIVATE OpenMP::OpenMP_CXX)
+endif()
 
 install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
 install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
