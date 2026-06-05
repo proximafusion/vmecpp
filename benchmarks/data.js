@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780470150896,
+  "lastUpdate": 1780646778607,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18850,6 +18850,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.025342119666981362",
             "extra": "mean: 9.349656511999987 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0ff3e7c9fb29385e6a91753ee320c983cff5e6e0",
+          "message": "Update fourier_basis_implementation.md (#559)",
+          "timestamp": "2026-06-05T10:02:40+02:00",
+          "tree_id": "4be8128819c0b9b38cd83ea5c1989c69e26f42ec",
+          "url": "https://github.com/proximafusion/vmecpp/commit/0ff3e7c9fb29385e6a91753ee320c983cff5e6e0"
+        },
+        "date": 1780646777001,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.551969189412317,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004971223943491059",
+            "extra": "mean: 281.53397359999417 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 3.4909944119296448,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004612217999729567",
+            "extra": "mean: 286.45133219999934 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.3303363360036385,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014579770863253868",
+            "extra": "mean: 3.0272176900000054 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.7253680330315129,
+            "unit": "iter/sec",
+            "range": "stddev: 0.03180003765396229",
+            "extra": "mean: 1.3786105183333273 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.7150125734257882,
+            "unit": "iter/sec",
+            "range": "stddev: 0.007598560469090162",
+            "extra": "mean: 1.398576804333345 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.5573674964923075,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011328010851877337",
+            "extra": "mean: 1.7941483963333364 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.1320189433744212,
+            "unit": "iter/sec",
+            "range": "stddev: 0.027799359612737263",
+            "extra": "mean: 7.574670531666679 sec\nrounds: 3"
           }
         ]
       }
