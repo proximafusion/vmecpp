@@ -242,7 +242,7 @@ def test_callback_records_iteration_state():
 
 
 def test_reinitialize_preserves_lambda_scaling():
-    """reinitialize() must leave the lambda scaling (lamscale) unchanged.
+    """Reinitialize() must leave the lambda scaling (lamscale) unchanged.
 
     InitializeRadial accumulates rmsPhiP across calls (Vmec::run resets the
     constants before each call); without the matching reset in reinitialize(),
@@ -289,9 +289,9 @@ def test_python_multigrid_matches_cpp_run():
     assert model.ns == vmec_input.ns_array[-1]
 
     py_r = np.concatenate([np.asarray(r.force_residual_r) for r in results])
-    py_rr = np.concatenate(
-        [np.asarray(r.restart_reasons) for r in results]
-    ).astype(np.int64)
+    py_rr = np.concatenate([np.asarray(r.restart_reasons) for r in results]).astype(
+        np.int64
+    )
 
     assert len(py_rr) == len(cpp_rr)
     np.testing.assert_array_equal(py_rr, cpp_rr)
