@@ -1064,31 +1064,31 @@ class VmecWOut(BaseModelWithNumpy):
     piota_type: ProfileType
     """Parametrization of iota profile (copied from input)."""
 
-    am: jt.Float[np.ndarray, "preset"]
+    am: jt.Float[np.ndarray, "_preset"]
     """Mass/pressure profile coefficients (copied from input)."""
 
-    ac: jt.Float[np.ndarray, "preset"]
+    ac: jt.Float[np.ndarray, "_preset"]
     """Enclosed toroidal current profile coefficients (copied from input)."""
 
-    ai: jt.Float[np.ndarray, "preset"]
+    ai: jt.Float[np.ndarray, "_preset"]
     """Iota profile coefficients (copied from input)."""
 
-    am_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    am_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline mass/pressure profile: knot locations in ``s`` (copied from input)."""
 
-    am_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    am_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline mass/pressure profile: values at knots (copied from input)."""
 
-    ac_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    ac_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline toroidal current profile: knot locations in ``s`` (copied from input)."""
 
-    ac_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    ac_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline toroidal current profile: values at knots (copied from input)."""
 
-    ai_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    ai_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline iota profile: knot locations in ``s`` (copied from input)."""
 
-    ai_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    ai_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline iota profile: values at knots (copied from input)."""
 
     gamma: float
