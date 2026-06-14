@@ -217,7 +217,8 @@ if(VMECPP_ENABLE_ENZYME)
   # Exact Hessian of the composed local force map (all six force-chain kernels):
   # forward/reverse Jacobian vs finite differences, and JVP cost vs FD-HVP.
   add_executable(local_force_hessian_test
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/local_force_hessian_test.cc)
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/local_force_hessian_test.cc
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc)
   target_compile_options(local_force_hessian_test PRIVATE
     -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
   add_test(NAME local_force_hessian COMMAND local_force_hessian_test)

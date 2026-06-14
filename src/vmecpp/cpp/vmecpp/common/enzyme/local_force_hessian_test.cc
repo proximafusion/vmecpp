@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "vmecpp/common/enzyme/enzyme.h"
+#include "vmecpp/vmec/ideal_mhd_model/exact_force_jvp.h"
 #include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
 
 // Problem dimensions and the constant (non-differentiated) context.
@@ -74,7 +75,7 @@ __attribute__((noinline)) void LocalForce(const double* geom, double* work,
   lc.dSHalfDsInterp = 0.25;
   lc.lamscale = c->lamscale;
   lc.lthreed = c->lthreed;
-  vmecpp::ComputeLocalForceDensity(geom, work, force, lc);
+  vmecpp::ComputeLocalForceDensity(geom, work, force, &lc);
 }
 
 // Scalar objective L = 0.5 ||force||^2; work and force are caller-owned scratch.
@@ -176,9 +177,46 @@ int main() {
   printf("  cost: exact forward JVP %.1f us/pass vs FD-HVP %.1f us (2 evals)\n",
          us_ad, us_fd);
 
+  // Validate the standalone plugin JVP wrapper (exact_force_jvp.cc, the same
+  // entry point the exact Hessian-vector product calls) against a finite
+  // difference of the composition's force-density output.
+  vmecpp::LocalForceComposition lc;
+  lc.nZnT = c.nZnT;
+  lc.geom_stride = c.nFull;
+  lc.force_stride = c.nHalf;
+  lc.nsMinF = 0;
+  lc.nsMinF1 = 0;
+  lc.nsMinH = 0;
+  lc.nsMaxH = c.nsH;
+  lc.jMaxRZ = c.nsH;
+  lc.nsMaxFIncludingLcfs = c.nsH;
+  lc.sqrtSF = c.sqrtSF;
+  lc.sqrtSH = c.sqrtSH;
+  lc.chipH = c.chipH;
+  lc.presH = c.presH;
+  lc.radialBlending = c.radialBlending;
+  lc.deltaS = c.deltaS;
+  lc.dSHalfDsInterp = 0.25;
+  lc.lamscale = c.lamscale;
+  lc.lthreed = c.lthreed;
+  std::vector<double> jf(nFc, 0.0), jdf(nFc, 0.0), jw(nW, 0.0), jdw(nW, 0.0);
+  vmecpp::ExactForceDensityJvp(geom.data(), v.data(), jw.data(), jdw.data(),
+                               jf.data(), jdf.data(), &lc);
+  std::vector<double> fpf(nFc, 0.0), fmf(nFc, 0.0), fw(nW, 0.0);
+  vmecpp::ComputeLocalForceDensity(gp.data(), fw.data(), fpf.data(), &lc);
+  vmecpp::ComputeLocalForceDensity(gm.data(), fw.data(), fmf.data(), &lc);
+  double jvp_err = 0.0, jvp_scale = 1e-300;
+  for (int i = 0; i < nFc; ++i) {
+    const double fd = (fpf[i] - fmf[i]) / (2 * h);
+    jvp_err = std::max(jvp_err, std::fabs(jdf[i] - fd));
+    jvp_scale = std::max(jvp_scale, std::fabs(fd));
+  }
+  printf("  plugin JVP wrapper vs finite-diff : %.2e\n", jvp_err / jvp_scale);
+
   const bool ok = std::fabs(drev - dfd) < 1e-5 * scale &&
                   std::fabs(dfwd - dfd) < 1e-5 * scale &&
-                  std::fabs(dfwd - drev) < 1e-9 * (std::fabs(drev) + 1e-300);
+                  std::fabs(dfwd - drev) < 1e-9 * (std::fabs(drev) + 1e-300) &&
+                  jvp_err < 1e-5 * jvp_scale;
   printf("%s\n", ok ? "PASS" : "FAIL");
   return ok ? 0 : 1;
 }
