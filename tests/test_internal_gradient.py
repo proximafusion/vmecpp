@@ -4,15 +4,14 @@
 # SPDX-License-Identifier: MIT
 """Tests for the unpreconditioned internal-basis gradient.
 
-VmecModel.evaluate(precondition=False) returns at the INVARIANT_RESIDUALS
-checkpoint, so get_forces() yields the raw, unpreconditioned force: the gradient
-of VMEC's augmented functional (MHD energy plus the spectral-condensation and
-lambda constraints) with respect to the decomposed (internal-basis) state. This
-is the gradient an external optimizer working in the internal basis needs.
+VmecModel.evaluate(precondition=False) returns at the INVARIANT_RESIDUALS checkpoint, so
+get_forces() yields the raw, unpreconditioned force: the gradient of VMEC's augmented
+functional (MHD energy plus the spectral-condensation and lambda constraints) with
+respect to the decomposed (internal-basis) state. This is the gradient an external
+optimizer working in the internal basis needs.
 
-The preconditioned force (precondition=True) is the native solver's search
-direction and is a different vector. The raw gradient must vanish at the
-converged equilibrium.
+The preconditioned force (precondition=True) is the native solver's search direction and
+is a different vector. The raw gradient must vanish at the converged equilibrium.
 """
 
 from pathlib import Path
