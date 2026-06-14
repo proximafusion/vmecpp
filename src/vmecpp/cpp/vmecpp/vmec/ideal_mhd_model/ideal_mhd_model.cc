@@ -1607,8 +1607,8 @@ void IdealMhdModel::hybridLambdaForce() {
 #pragma omp barrier
 #endif  // _OPENMP
 
-  // Lambda force on the full grid via the shared kernel (lambda_force_kernel.h),
-  // also used by the Enzyme autodiff path.
+  // Lambda force on the full grid via the shared kernel
+  // (lambda_force_kernel.h), also used by the Enzyme autodiff path.
   ComputeHybridLambdaForce(
       bsubu.data(), bsubv.data(), gvv.data(), gsqrt.data(), guv.data(),
       bsupu.data(), lu_e.data(), lu_o.data(), m_p_.sqrtSH.data(),
