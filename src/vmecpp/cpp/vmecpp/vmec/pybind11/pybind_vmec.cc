@@ -426,42 +426,20 @@ class VmecModel {
   // omitted here. The model state is restored to x on return.
   Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
-    const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     const int gS = static_cast<int>(model.r1_e.size());
     Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
-    auto pack = [&](Eigen::VectorXd &dst) {
-      auto blk = [&](int b, const Eigen::VectorXd &src) {
-        for (int i = 0; i < static_cast<int>(src.size()); ++i)
-          dst[b * gS + i] = src[i];
-      };
-      blk(0, model.r1_e); blk(1, model.r1_o); blk(2, model.z1_e);
-      blk(3, model.z1_o); blk(4, model.ru_e); blk(5, model.ru_o);
-      blk(6, model.zu_e); blk(7, model.zu_o); blk(8, model.rv_e);
-      blk(9, model.rv_o); blk(10, model.zv_e); blk(11, model.zv_o);
-      blk(12, model.lu_e); blk(13, model.lu_o); blk(14, model.lv_e);
-      blk(15, model.lv_o);
-      // constraint coordinates and full-grid derivatives
-      blk(16, model.rCon); blk(17, model.zCon); blk(18, model.ruFull);
-      blk(19, model.zuFull);
-    };
-    // The geometry response geom(x) is dominantly but not exactly linear in the
-    // decomposed coefficients, so a unit-step difference contaminates the
-    // tangent with higher-order terms. Use a small central difference for the
-    // (cheap, near-linear) geometry transform; the nonlinear force kernels are
-    // still differentiated exactly by the single Enzyme pass below.
-    const double eps = 1e-6 * (1.0 + x.norm()) / (v.norm() + 1e-300);
-    Eigen::VectorXd geomPlus = Eigen::VectorXd::Zero(20 * gS);
-    Eigen::VectorXd geomMinus = Eigen::VectorXd::Zero(20 * gS);
-    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + eps * v);
-    Evaluate(2, 2, false);
-    pack(geomPlus);
-    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x - eps * v);
-    Evaluate(2, 2, false);
-    pack(geomMinus);
-    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
-    Evaluate(2, 2, false);
-    pack(geomP);
-    const Eigen::VectorXd dgeom = (geomPlus - geomMinus) / (2.0 * eps);
+    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
+    // Primal geometry from the current state (decomposed_x_ holds x). The
+    // geometry tangent is the same linear pre-chain applied to v directly, so it
+    // is exact with no finite-difference step and only a cheap geometry
+    // transform (no full update). The single nonlinear pass is the Enzyme JVP
+    // inside applyExactForceJacobian.
+    model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                       geomP.data(), gS, /*primal=*/true);
+    vmec_->physical_x_backup_[0]->setZero();
+    UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, v);
+    model.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
+                       dgeom.data(), gS, /*primal=*/false);
     model.applyExactForceJacobian(geomP.data(), dgeom.data(), gS,
                                   *vmec_->physical_f_[0],
                                   *vmec_->decomposed_f_[0]);

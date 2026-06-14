@@ -167,9 +167,25 @@ class IdealMhdModel {
                                int geom_stride, FourierForces& m_physical_f,
                                FourierForces& m_decomposed_hv);
 
+  // Linear pre-chain decomposed -> real-space geometry (decomposeInto,
+  // m1Constraint, extrapolate, geometryFromFourier) packed into the 20-block
+  // layout of local_force_composition.h, with the computeBContra lambda
+  // normalization. Applied to a state (primal=true, adds phipF on lu_e) it gives
+  // the geometry; applied to a tangent (primal=false) it gives the exact
+  // geometry tangent, no finite difference. Uses m_physical_scratch as scratch.
+  void packGeometry(FourierGeometry& m_decomposed,
+                    FourierGeometry& m_physical_scratch, double* out, int gS,
+                    bool primal);
+
   // Diagnostic: max |composed force density - production force density| at the
   // current state, to isolate composition bugs from the transform/tangent path.
   double composedForceResidual(const double* geomP, int geom_stride);
+
+  // Raw force-density tangent (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT)
+  // from one Enzyme forward pass, no transform. For isolating the JVP from the
+  // spectral-transform wrapping.
+  void exactForceDensityTangent(const double* geomP, const double* dgeom,
+                                int geom_stride, double* dforce_out);
 
   // Computes the forward-DFT of forces for the 3D (Stellarator) case.
   // Dispatching dft_ForcesToFourier_3d_symm

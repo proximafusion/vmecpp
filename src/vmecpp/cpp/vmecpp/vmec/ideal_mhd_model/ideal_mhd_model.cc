@@ -2033,6 +2033,59 @@ void IdealMhdModel::assembleTotalForces() {
 }
 
 #ifdef VMECPP_ENABLE_ENZYME
+void IdealMhdModel::packGeometry(FourierGeometry& m_decomposed,
+                                 FourierGeometry& m_physical_scratch, double* out,
+                                 int gS, bool primal) {
+  // Linear pre-chain decomposed -> real-space geometry, identical to the head of
+  // update(). Applied to a state it yields the geometry; applied to a tangent it
+  // yields the exact geometry tangent (the chain is linear), so no finite
+  // difference is needed.
+  m_decomposed.decomposeInto(m_physical_scratch, m_p_.scalxc);
+  m_physical_scratch.m1Constraint(1.0);
+  m_physical_scratch.extrapolateTowardsAxis();
+  geometryFromFourier(m_physical_scratch);
+
+  auto blk = [&](int b, const Eigen::VectorXd& src) {
+    const int n = static_cast<int>(src.size());
+    for (int i = 0; i < n; ++i) out[b * gS + i] = src[i];
+  };
+  blk(0, r1_e);
+  blk(1, r1_o);
+  blk(2, z1_e);
+  blk(3, z1_o);
+  blk(4, ru_e);
+  blk(5, ru_o);
+  blk(6, zu_e);
+  blk(7, zu_o);
+  blk(8, rv_e);
+  blk(9, rv_o);
+  blk(10, zv_e);
+  blk(11, zv_o);
+  // lambda carries the computeBContra normalization: *lamscale, and for the
+  // primal also + phipF on lu_e (a constant, so it drops from the tangent).
+  auto blk_lam = [&](int b, const Eigen::VectorXd& src) {
+    const int n = static_cast<int>(src.size());
+    for (int i = 0; i < n; ++i) out[b * gS + i] = constants_.lamscale * src[i];
+  };
+  blk_lam(12, lu_e);
+  blk_lam(13, lu_o);
+  blk_lam(14, lv_e);
+  blk_lam(15, lv_o);
+  if (primal) {
+    const int nFullSurf = static_cast<int>(lu_e.size()) / s_.nZnT;
+    for (int jF = 0; jF < nFullSurf; ++jF) {
+      const double phip = m_p_.phipF[jF];
+      for (int kl = 0; kl < s_.nZnT; ++kl) {
+        out[12 * gS + jF * s_.nZnT + kl] += phip;
+      }
+    }
+  }
+  blk(16, rCon);
+  blk(17, zCon);
+  blk(18, ruFull);
+  blk(19, zuFull);
+}
+
 void IdealMhdModel::applyExactForceJacobian(const double* geomP,
                                             const double* dgeom, int geom_stride,
                                             FourierForces& m_physical_f,
