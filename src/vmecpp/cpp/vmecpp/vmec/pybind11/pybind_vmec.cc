@@ -20,6 +20,7 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/vmec/ideal_mhd_model/qs_harmonics_kernel.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
@@ -631,6 +632,58 @@ class VmecModel {
   double fsqz1() const { return vmec_->fc_.fsqz1; }
   double fsql1() const { return vmec_->fc_.fsql1; }
   double mhd_energy() const { return vmec_->h_.mhdEnergy; }
+
+  // Half-grid field harmonics SIMSOPT's QuasisymmetryRatioResidual consumes
+  // (gmnc, bmnc, bsub{u,v}mnc, bsup{u,v}mnc), computed from the current state by
+  // the flat-buffer ComputeQsHarmonics kernel (no Eigen heap temporaries). Call
+  // evaluate() first. Each array has shape (mnmax_nyq, nsH).
+  py::dict qs_harmonics() const {
+    vmecpp::IdealMhdModel &m = *vmec_->m_[0];
+    const vmecpp::Sizes &s = vmec_->s_;
+    const vmecpp::FourierBasisFastPoloidal &t = vmec_->t_;
+    const vmecpp::RadialProfiles &rp = *vmec_->p_[0];
+    const int nZnT = s.nZnT;
+    const int nsH = static_cast<int>(m.gsqrt.size()) / nZnT;
+    const int nh = s.mnmax_nyq * nsH;
+    std::vector<double> gmnc(nh), bmnc(nh), bsubumnc(nh), bsubvmnc(nh),
+        bsupumnc(nh), bsupvmnc(nh);
+    vmecpp::QsHarmonicsConfig c{};
+    c.nsH = nsH;
+    c.nZeta = s.nZeta;
+    c.nThetaReduced = s.nThetaReduced;
+    c.nThetaEff = s.nThetaEff;
+    c.nnyq2 = s.nnyq2;
+    c.mnyq = s.mnyq;
+    c.nnyq = s.nnyq;
+    c.mnmax_nyq = s.mnmax_nyq;
+    c.tmult = 0.5;
+    c.xm_nyq = t.xm_nyq.data();
+    c.xn_nyq = t.xn_nyq.data();
+    c.nfp = s.nfp;
+    c.mscale = t.mscale.data();
+    c.nscale = t.nscale.data();
+    c.cosmui = t.cosmui.data();
+    c.sinmui = t.sinmui.data();
+    c.cosnv = t.cosnv.data();
+    c.sinnv = t.sinnv.data();
+    vmecpp::ComputeQsHarmonics(m.gsqrt.data(), m.totalPressure.data(),
+                              rp.presH.data(), m.bsupu.data(), m.bsupv.data(),
+                              m.bsubu.data(), m.bsubv.data(), gmnc.data(),
+                              bmnc.data(), bsubumnc.data(), bsubvmnc.data(),
+                              bsupumnc.data(), bsupvmnc.data(), &c);
+    auto arr = [&](const std::vector<double> &v) {
+      return py::array_t<double>(
+          std::vector<py::ssize_t>{s.mnmax_nyq, nsH}, v.data());
+    };
+    py::dict out;
+    out["gmnc"] = arr(gmnc);
+    out["bmnc"] = arr(bmnc);
+    out["bsubumnc"] = arr(bsubumnc);
+    out["bsubvmnc"] = arr(bsubvmnc);
+    out["bsupumnc"] = arr(bsupumnc);
+    out["bsupvmnc"] = arr(bsupvmnc);
+    return out;
+  }
 
   int restart_reason() const {
     return static_cast<int>(vmec_->fc_.restart_reason);
@@ -1471,6 +1524,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("fsqz1", &VmecModel::fsqz1)
       .def_property_readonly("fsql1", &VmecModel::fsql1)
       .def_property_readonly("mhd_energy", &VmecModel::mhd_energy)
+      .def("qs_harmonics", &VmecModel::qs_harmonics)
       .def_property("restart_reason", &VmecModel::restart_reason,
                     &VmecModel::set_restart_reason)
       .def_property_readonly("status", &VmecModel::status)
