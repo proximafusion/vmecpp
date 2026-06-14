@@ -4,10 +4,10 @@
 # SPDX-License-Identifier: MIT
 """External optimizers reach the same equilibrium as the native solver.
 
-The raw internal-basis force (gradient of VMEC's augmented functional) is the
-residual F(x); F(x) = 0 at equilibrium. Both a native-style preconditioned
-descent and a Jacobian-free Newton-Krylov solver drive it to zero and recover
-the native solver's converged state and energy.
+The raw internal-basis force (gradient of VMEC's augmented functional) is the residual
+F(x); F(x) = 0 at equilibrium. Both a native-style preconditioned descent and a
+Jacobian-free Newton-Krylov solver drive it to zero and recover the native solver's
+converged state and energy.
 """
 
 import sys
