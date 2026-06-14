@@ -214,4 +214,11 @@ if(VMECPP_ENABLE_ENZYME)
   target_compile_options(jacobian_kernel_autodiff_test PRIVATE
     -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
   add_test(NAME jacobian_kernel_autodiff COMMAND jacobian_kernel_autodiff_test)
+  # Exact Hessian of the composed local force map (all six force-chain kernels):
+  # forward/reverse Jacobian vs finite differences, and JVP cost vs FD-HVP.
+  add_executable(local_force_hessian_test
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/local_force_hessian_test.cc)
+  target_compile_options(local_force_hessian_test PRIVATE
+    -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+  add_test(NAME local_force_hessian COMMAND local_force_hessian_test)
 endif()
