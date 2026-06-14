@@ -30,6 +30,8 @@ struct QsHarmonicsConfig {
   int nThetaReduced;  // poloidal grid points on the reduced [0, pi] interval
   int nThetaEff;      // effective poloidal stride of the real-space buffers
   int nnyq2;          // toroidal Nyquist bound (cosnv stride is nnyq2 + 1)
+  int mnyq;           // poloidal Nyquist mode (cos basis halved there)
+  int nnyq;           // toroidal Nyquist mode (cos basis halved there)
   int mnmax_nyq;      // number of (m, n) Nyquist modes
   double tmult;       // overall transform normalization
 
@@ -49,7 +51,13 @@ struct QsHarmonicsConfig {
 // block of nsH*nZeta*nThetaEff doubles in the order described above. The six
 // field pointers and six harmonic pointers are passed explicitly so the Enzyme
 // JVP can mark exactly the active buffers.
-inline void ComputeQsHarmonics(const double* gsqrt, const double* bsupu,
+// modB is formed from the total pressure exactly as output_quantities does:
+//   |B| = sqrt(2 * |total_pressure - presH[jH]|),
+// where total_pressure (per point) and presH (per half surface) are force-chain
+// outputs. total_pressure[idx] uses the same half-grid index as the fields;
+// presH[jH] is the kinetic pressure on half surface jH.
+inline void ComputeQsHarmonics(const double* gsqrt, const double* total_pressure,
+                               const double* presH, const double* bsupu,
                                const double* bsupv, const double* bsubu,
                                const double* bsubv, double* gmnc, double* bmnc,
                                double* bsubumnc, double* bsubvmnc,
@@ -73,23 +81,28 @@ inline void ComputeQsHarmonics(const double* gsqrt, const double* bsupu,
         dmult *= 2.0;
       }
 
+      // Nyquist modes carry half the cos-basis weight (output_quantities halves
+      // cosmui at m==mnyq and cosnv at n==nnyq); the sin basis is unscaled.
+      const double mhalf = (c->mnyq != 0 && m == c->mnyq) ? 0.5 : 1.0;
+      const double nhalf = (c->nnyq != 0 && abs_n == c->nnyq) ? 0.5 : 1.0;
+
       double acc_g = 0.0, acc_b = 0.0, acc_su = 0.0, acc_sv = 0.0;
       double acc_pu = 0.0, acc_pv = 0.0;
       for (int l = 0; l < nThetaR; ++l) {
         const int ml = m * nThetaR + l;
-        const double cmu = c->cosmui[ml];
+        const double cmu = c->cosmui[ml] * mhalf;
         const double smu = c->sinmui[ml];
         for (int k = 0; k < nZeta; ++k) {
           const int kn = k * nnv + abs_n;
           const double tcosi =
-              dmult * (cmu * c->cosnv[kn] + sign_n * smu * c->sinnv[kn]);
+              dmult * (cmu * c->cosnv[kn] * nhalf + sign_n * smu * c->sinnv[kn]);
 
           const int idx = (jH * nZeta + k) * nThetaEff + l;
           const double bu = bsubu[idx];
           const double bv = bsubv[idx];
           const double su = bsupu[idx];
           const double sv = bsupv[idx];
-          const double modB = std::sqrt(su * bu + sv * bv);
+          const double modB = std::sqrt(2.0 * std::fabs(total_pressure[idx] - presH[jH]));
 
           acc_g += tcosi * gsqrt[idx];
           acc_b += tcosi * modB;

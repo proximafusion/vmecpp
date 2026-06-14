@@ -115,3 +115,21 @@ cc_library(
         "@abseil-cpp//absl/status",
     ],
 )
+
+cc_test(
+    name = "qs_harmonics_kernel_test",
+    srcs = ["qs_harmonics_kernel_test.cc"],
+    data = ["//vmecpp/test_data:solovev"],
+    deps = [
+        ":ideal_mhd_model",
+        "//util/file_io:file_io",
+        "//vmecpp/common/fourier_basis_fast_poloidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/output_quantities:output_quantities",
+        "//vmecpp/vmec/vmec:vmec",
+        "@abseil-cpp//absl/status:statusor",
+        "@eigen",
+        "@googletest//:gtest_main",
+    ],
+)
