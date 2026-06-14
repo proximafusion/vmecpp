@@ -682,6 +682,14 @@ class VmecModel {
     out["bsubvmnc"] = arr(bsubvmnc);
     out["bsupumnc"] = arr(bsupumnc);
     out["bsupvmnc"] = arr(bsupvmnc);
+    // Half-grid profiles SIMSOPT QS also reads (iotas, bvco, buco): plain
+    // radial-profile reads, no transform. Each has length nsH.
+    out["iotas"] = py::array_t<double>(static_cast<py::ssize_t>(nsH),
+                                       rp.iotaH.data());
+    out["bvco"] = py::array_t<double>(static_cast<py::ssize_t>(nsH),
+                                      rp.bvcoH.data());
+    out["buco"] = py::array_t<double>(static_cast<py::ssize_t>(nsH),
+                                      rp.bucoH.data());
     return out;
   }
 
