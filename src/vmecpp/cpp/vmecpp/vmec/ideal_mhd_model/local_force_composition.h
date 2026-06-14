@@ -1,0 +1,164 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#ifndef VMECPP_VMEC_IDEAL_MHD_MODEL_LOCAL_FORCE_COMPOSITION_H_
+#define VMECPP_VMEC_IDEAL_MHD_MODEL_LOCAL_FORCE_COMPOSITION_H_
+
+#include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/lambda_force_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
+
+namespace vmecpp {
+
+// Composition of the local force-density chain (MHD force + hybrid lambda force)
+// as a single allocation-free map g: real-space geometry -> real-space force
+// density. This is the nonlinear core of VMEC's force; the spectral transforms
+// around it are linear and applied separately. Shared between the Enzyme
+// autodiff validation and the exact Hessian-vector product. The spectral-
+// condensation constraint force is handled by the caller (it carries a linear
+// Fourier bandpass), so g here is the MHD-plus-lambda part of the force.
+//
+// Geometry layout (each block GeomStride doubles, index (jF-nsMinF1)*nZnT):
+//   r1_e r1_o z1_e z1_o ru_e ru_o zu_e zu_o rv_e rv_o zv_e zv_o lu_e lu_o lv_e lv_o
+// Force layout (each block ForceStride doubles): the 12 MHD densities then
+//   blmn_e blmn_o clmn_e clmn_o.
+struct LocalForceComposition {
+  int nZnT;
+  int geom_stride;   // doubles per geometry block (>= (nsMaxF1-nsMinF1)*nZnT)
+  int force_stride;  // doubles per force block (>= (nsMaxFIncludingLcfs-nsMinF)*nZnT)
+  int nsMinF, nsMinF1, nsMinH, nsMaxH;
+  int jMaxRZ;                 // MHD force surfaces: [nsMinF, jMaxRZ)
+  int nsMaxFIncludingLcfs;    // lambda force surfaces: [nsMinF, nsMaxFIncludingLcfs)
+  const double* sqrtSF;       // index jF-nsMinF1
+  const double* sqrtSH;       // index jH-nsMinH
+  const double* chipH;        // index jH-nsMinH (frozen for ncurr==0)
+  const double* presH;        // index jH-nsMinH
+  const double* radialBlending;  // index jF-nsMinF1
+  double deltaS;
+  double dSHalfDsInterp;
+  double lamscale;
+  bool lthreed;
+};
+
+// work must hold 15*nHalf + 30*nZnT doubles, where nHalf=(nsMaxH-nsMinH)*nZnT.
+inline void ComputeLocalForceDensity(const double* geom, double* work,
+                                     double* force,
+                                     const LocalForceComposition& c) {
+  const int nZnT = c.nZnT;
+  const int gS = c.geom_stride;
+  const int fS = c.force_stride;
+  const int nH = (c.nsMaxH - c.nsMinH) * nZnT;
+  const double* r1e = geom + 0 * gS;
+  const double* r1o = geom + 1 * gS;
+  const double* z1e = geom + 2 * gS;
+  const double* z1o = geom + 3 * gS;
+  const double* rue = geom + 4 * gS;
+  const double* ruo = geom + 5 * gS;
+  const double* zue = geom + 6 * gS;
+  const double* zuo = geom + 7 * gS;
+  const double* rve = geom + 8 * gS;
+  const double* rvo = geom + 9 * gS;
+  const double* zve = geom + 10 * gS;
+  const double* zvo = geom + 11 * gS;
+  const double* lue = geom + 12 * gS;
+  const double* luo = geom + 13 * gS;
+  const double* lve = geom + 14 * gS;
+  const double* lvo = geom + 15 * gS;
+
+  double* p = work;
+  double* r12 = p; p += nH;
+  double* ru12 = p; p += nH;
+  double* zu12 = p; p += nH;
+  double* rs = p; p += nH;
+  double* zs = p; p += nH;
+  double* tau = p; p += nH;
+  double* gsqrt = p; p += nH;
+  double* guu = p; p += nH;
+  double* guv = p; p += nH;
+  double* gvv = p; p += nH;
+  double* bsupu = p; p += nH;
+  double* bsupv = p; p += nH;
+  double* bsubu = p; p += nH;
+  double* bsubv = p; p += nH;
+  double* tp = p; p += nH;
+  double* s = p;  // 30 * nZnT
+
+  ComputeHalfGridJacobian(r1e, r1o, z1e, z1o, rue, ruo, zue, zuo, c.sqrtSH,
+                          c.deltaS, c.dSHalfDsInterp, nZnT, c.nsMinF1, c.nsMinH,
+                          c.nsMaxH, r12, ru12, zu12, rs, zs, tau);
+  ComputeMetricElements(r1e, r1o, rue, ruo, zue, zuo, rve, rvo, zve, zvo, tau,
+                        r12, c.sqrtSF, c.sqrtSH, c.lthreed, nZnT, c.nsMinF1,
+                        c.nsMinH, c.nsMaxH, gsqrt, guu, guv, gvv);
+  ComputeBsupContra(lue, luo, lve, lvo, gsqrt, c.sqrtSH, c.lthreed, nZnT,
+                    c.nsMinF1, c.nsMinH, c.nsMaxH, bsupu, bsupv);
+  for (int jH = c.nsMinH; jH < c.nsMaxH; ++jH) {
+    for (int kl = 0; kl < nZnT; ++kl) {
+      const int ih = (jH - c.nsMinH) * nZnT + kl;
+      bsupu[ih] += c.chipH[jH - c.nsMinH] / gsqrt[ih];
+    }
+  }
+  ComputeBCo(guu, guv, gvv, bsupu, bsupv, c.lthreed, nH, bsubu, bsubv);
+  ComputeMagneticPressure(bsupu, bsubu, bsupv, bsubv, nH, tp);
+  for (int jH = c.nsMinH; jH < c.nsMaxH; ++jH) {
+    for (int kl = 0; kl < nZnT; ++kl)
+      tp[(jH - c.nsMinH) * nZnT + kl] += c.presH[jH - c.nsMinH];
+  }
+
+  double* P_i = s; s += nZnT; double* rup_i = s; s += nZnT;
+  double* zup_i = s; s += nZnT; double* rsp_i = s; s += nZnT;
+  double* zsp_i = s; s += nZnT; double* taup_i = s; s += nZnT;
+  double* gbubu_i = s; s += nZnT; double* gbubv_i = s; s += nZnT;
+  double* gbvbv_i = s; s += nZnT; double* P_o = s; s += nZnT;
+  double* rup_o = s; s += nZnT; double* zup_o = s; s += nZnT;
+  double* rsp_o = s; s += nZnT; double* zsp_o = s; s += nZnT;
+  double* taup_o = s; s += nZnT; double* gbubu_o = s; s += nZnT;
+  double* gbubv_o = s; s += nZnT; double* gbvbv_o = s; s += nZnT;
+  double* P_avg = s; s += nZnT; double* P_wavg = s; s += nZnT;
+  double* gbubu_avg = s; s += nZnT; double* gbubu_wavg = s; s += nZnT;
+  double* gbvbv_avg = s; s += nZnT; double* gbvbv_wavg = s; s += nZnT;
+  double* gbubv_avg = s; s += nZnT; double* gbubv_wavg = s; s += nZnT;
+  double* bsubu_i = s; s += nZnT; double* bsubv_i = s; s += nZnT;
+  double* gvv_gsqrt_i = s; s += nZnT; double* guv_bsupu_i = s; s += nZnT;
+
+  double* armn_e = force + 0 * fS;
+  double* armn_o = force + 1 * fS;
+  double* azmn_e = force + 2 * fS;
+  double* azmn_o = force + 3 * fS;
+  double* brmn_e = force + 4 * fS;
+  double* brmn_o = force + 5 * fS;
+  double* bzmn_e = force + 6 * fS;
+  double* bzmn_o = force + 7 * fS;
+  double* crmn_e = force + 8 * fS;
+  double* crmn_o = force + 9 * fS;
+  double* czmn_e = force + 10 * fS;
+  double* czmn_o = force + 11 * fS;
+  ComputeMHDForceDensity(
+      r1e, r1o, rue, ruo, zue, zuo, z1o, rve, rvo, zve, zvo, r12, ru12, zu12, rs,
+      zs, tau, tp, gsqrt, bsupu, bsupv, c.sqrtSF, c.sqrtSH, P_i, rup_i, zup_i,
+      rsp_i, zsp_i, taup_i, gbubu_i, gbubv_i, gbvbv_i, P_o, rup_o, zup_o, rsp_o,
+      zsp_o, taup_o, gbubu_o, gbubv_o, gbvbv_o, P_avg, P_wavg, gbubu_avg,
+      gbubu_wavg, gbvbv_avg, gbvbv_wavg, gbubv_avg, gbubv_wavg, c.deltaS, nZnT,
+      c.nsMinF, c.nsMinF1, c.nsMinH, c.nsMaxH, c.jMaxRZ, c.lthreed, armn_e,
+      armn_o, azmn_e, azmn_o, brmn_e, brmn_o, bzmn_e, bzmn_o, crmn_e, crmn_o,
+      czmn_e, czmn_o);
+
+  double* blmn_e = force + 12 * fS;
+  double* blmn_o = force + 13 * fS;
+  double* clmn_e = force + 14 * fS;
+  double* clmn_o = force + 15 * fS;
+  ComputeHybridLambdaForce(bsubu, bsubv, gvv, gsqrt, guv, bsupu, lue, luo,
+                           c.sqrtSH, c.sqrtSF, c.radialBlending, c.lamscale,
+                           c.lthreed, nZnT, c.nsMinF, c.nsMinF1, c.nsMinH,
+                           c.nsMaxH, c.nsMaxFIncludingLcfs, bsubu_i, bsubv_i,
+                           gvv_gsqrt_i, guv_bsupu_i, blmn_e, blmn_o, clmn_e,
+                           clmn_o);
+}
+
+}  // namespace vmecpp
+
+#endif  // VMECPP_VMEC_IDEAL_MHD_MODEL_LOCAL_FORCE_COMPOSITION_H_

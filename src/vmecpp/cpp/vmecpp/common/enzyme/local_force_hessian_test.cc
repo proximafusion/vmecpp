@@ -31,13 +31,7 @@
 #include <vector>
 
 #include "vmecpp/common/enzyme/enzyme.h"
-#include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
-#include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
-#include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
-#include "vmecpp/vmec/ideal_mhd_model/lambda_force_kernel.h"
-#include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
-#include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
-#include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
 
 // Problem dimensions and the constant (non-differentiated) context.
 struct Ctx {
@@ -61,113 +55,26 @@ enum { kGeomBlocks = 16, kForceBlocks = 16 };
 // g: geometry -> force density, composing the MHD and lambda-force kernels.
 __attribute__((noinline)) void LocalForce(const double* geom, double* work,
                                            double* force, const Ctx* c) {
-  const int nF = c->nFull;
-  const int nH = c->nHalf;
-  const int nZnT = c->nZnT, nsH = c->nsH;
-  // geometry blocks
-  const double* r1e = geom + 0 * nF;
-  const double* r1o = geom + 1 * nF;
-  const double* z1e = geom + 2 * nF;
-  const double* z1o = geom + 3 * nF;
-  const double* rue = geom + 4 * nF;
-  const double* ruo = geom + 5 * nF;
-  const double* zue = geom + 6 * nF;
-  const double* zuo = geom + 7 * nF;
-  const double* rve = geom + 8 * nF;
-  const double* rvo = geom + 9 * nF;
-  const double* zve = geom + 10 * nF;
-  const double* zvo = geom + 11 * nF;
-  const double* lue = geom + 12 * nF;
-  const double* luo = geom + 13 * nF;
-  const double* lve = geom + 14 * nF;
-  const double* lvo = geom + 15 * nF;
-  // half-grid intermediates from work
-  double* p = work;
-  double* r12 = p; p += nH;
-  double* ru12 = p; p += nH;
-  double* zu12 = p; p += nH;
-  double* rs = p; p += nH;
-  double* zs = p; p += nH;
-  double* tau = p; p += nH;
-  double* gsqrt = p; p += nH;
-  double* guu = p; p += nH;
-  double* guv = p; p += nH;
-  double* gvv = p; p += nH;
-  double* bsupu = p; p += nH;
-  double* bsupv = p; p += nH;
-  double* bsubu = p; p += nH;
-  double* bsubv = p; p += nH;
-  double* tp = p; p += nH;
-  // per-nZnT scratch for the force kernel (26 blocks)
-  double* sc = p;  // 26 * nZnT
-
-  vmecpp::ComputeHalfGridJacobian(r1e, r1o, z1e, z1o, rue, ruo, zue, zuo, c->sqrtSH,
-                          c->deltaS, /*dSHalfDsInterp=*/0.25, nZnT, 0, 0, nsH,
-                          r12, ru12, zu12, rs, zs, tau);
-  vmecpp::ComputeMetricElements(r1e, r1o, rue, ruo, zue, zuo, rve, rvo, zve, zvo,
-                                tau, r12, c->sqrtSF, c->sqrtSH, c->lthreed, nZnT,
-                                0, 0, nsH, gsqrt, guu, guv, gvv);
-  vmecpp::ComputeBsupContra(lue, luo, lve, lvo, gsqrt, c->sqrtSH, c->lthreed,
-                            nZnT, 0, 0, nsH, bsupu, bsupv);
-  for (int jH = 0; jH < nsH; ++jH) {
-    for (int kl = 0; kl < nZnT; ++kl) {
-      const int ih = jH * nZnT + kl;
-      bsupu[ih] += c->chipH[jH] / gsqrt[ih];
-    }
-  }
-  vmecpp::ComputeBCo(guu, guv, gvv, bsupu, bsupv, c->lthreed, nH, bsubu, bsubv);
-  vmecpp::ComputeMagneticPressure(bsupu, bsubu, bsupv, bsubv, nH, tp);
-  for (int jH = 0; jH < nsH; ++jH) {
-    for (int kl = 0; kl < nZnT; ++kl) tp[jH * nZnT + kl] += c->presH[jH];
-  }
-  double* s = sc;
-  double* P_i = s; s += nZnT; double* rup_i = s; s += nZnT;
-  double* zup_i = s; s += nZnT; double* rsp_i = s; s += nZnT;
-  double* zsp_i = s; s += nZnT; double* taup_i = s; s += nZnT;
-  double* gbubu_i = s; s += nZnT; double* gbubv_i = s; s += nZnT;
-  double* gbvbv_i = s; s += nZnT; double* P_o = s; s += nZnT;
-  double* rup_o = s; s += nZnT; double* zup_o = s; s += nZnT;
-  double* rsp_o = s; s += nZnT; double* zsp_o = s; s += nZnT;
-  double* taup_o = s; s += nZnT; double* gbubu_o = s; s += nZnT;
-  double* gbubv_o = s; s += nZnT; double* gbvbv_o = s; s += nZnT;
-  double* P_avg = s; s += nZnT; double* P_wavg = s; s += nZnT;
-  double* gbubu_avg = s; s += nZnT; double* gbubu_wavg = s; s += nZnT;
-  double* gbvbv_avg = s; s += nZnT; double* gbvbv_wavg = s; s += nZnT;
-  double* gbubv_avg = s; s += nZnT; double* gbubv_wavg = s; s += nZnT;
-  // lambda-force radial-sweep scratch (carried inside half-grid point)
-  double* bsubu_i = s; s += nZnT; double* bsubv_i = s; s += nZnT;
-  double* gvv_gsqrt_i = s; s += nZnT; double* guv_bsupu_i = s; s += nZnT;
-  double* armn_e = force + 0 * nH;
-  double* armn_o = force + 1 * nH;
-  double* azmn_e = force + 2 * nH;
-  double* azmn_o = force + 3 * nH;
-  double* brmn_e = force + 4 * nH;
-  double* brmn_o = force + 5 * nH;
-  double* bzmn_e = force + 6 * nH;
-  double* bzmn_o = force + 7 * nH;
-  double* crmn_e = force + 8 * nH;
-  double* crmn_o = force + 9 * nH;
-  double* czmn_e = force + 10 * nH;
-  double* czmn_o = force + 11 * nH;
-  vmecpp::ComputeMHDForceDensity(
-      r1e, r1o, rue, ruo, zue, zuo, z1o, rve, rvo, zve, zvo, r12, ru12, zu12, rs,
-      zs, tau, tp, gsqrt, bsupu, bsupv, c->sqrtSF, c->sqrtSH, P_i, rup_i, zup_i,
-      rsp_i, zsp_i, taup_i, gbubu_i, gbubv_i, gbvbv_i, P_o, rup_o, zup_o, rsp_o,
-      zsp_o, taup_o, gbubu_o, gbubv_o, gbvbv_o, P_avg, P_wavg, gbubu_avg,
-      gbubu_wavg, gbvbv_avg, gbvbv_wavg, gbubv_avg, gbubv_wavg, c->deltaS, nZnT,
-      /*nsMinF=*/0, 0, 0, nsH, /*jMaxRZ=*/nsH, c->lthreed, armn_e, armn_o,
-      azmn_e, azmn_o, brmn_e, brmn_o, bzmn_e, bzmn_o, crmn_e, crmn_o, czmn_e,
-      czmn_o);
-  // lambda force (blmn_e/o, clmn_e/o) from the shared kernel
-  double* blmn_e = force + 12 * nH;
-  double* blmn_o = force + 13 * nH;
-  double* clmn_e = force + 14 * nH;
-  double* clmn_o = force + 15 * nH;
-  vmecpp::ComputeHybridLambdaForce(
-      bsubu, bsubv, gvv, gsqrt, guv, bsupu, lue, luo, c->sqrtSH, c->sqrtSF,
-      c->radialBlending, c->lamscale, c->lthreed, nZnT, /*nsMinF=*/0,
-      /*nsMinF1=*/0, /*nsMinH=*/0, nsH, /*nsMaxFIncludingLcfs=*/nsH, bsubu_i,
-      bsubv_i, gvv_gsqrt_i, guv_bsupu_i, blmn_e, blmn_o, clmn_e, clmn_o);
+  vmecpp::LocalForceComposition lc;
+  lc.nZnT = c->nZnT;
+  lc.geom_stride = c->nFull;
+  lc.force_stride = c->nHalf;
+  lc.nsMinF = 0;
+  lc.nsMinF1 = 0;
+  lc.nsMinH = 0;
+  lc.nsMaxH = c->nsH;
+  lc.jMaxRZ = c->nsH;
+  lc.nsMaxFIncludingLcfs = c->nsH;
+  lc.sqrtSF = c->sqrtSF;
+  lc.sqrtSH = c->sqrtSH;
+  lc.chipH = c->chipH;
+  lc.presH = c->presH;
+  lc.radialBlending = c->radialBlending;
+  lc.deltaS = c->deltaS;
+  lc.dSHalfDsInterp = 0.25;
+  lc.lamscale = c->lamscale;
+  lc.lthreed = c->lthreed;
+  vmecpp::ComputeLocalForceDensity(geom, work, force, lc);
 }
 
 // Scalar objective L = 0.5 ||force||^2; work and force are caller-owned scratch.
