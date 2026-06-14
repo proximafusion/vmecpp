@@ -62,20 +62,20 @@ def _raw_force(model, x):
     return np.asarray(model.get_forces(), float)
 
 
-def _interior_operators(model, x, interior):
+def _interior_operators(model, x, interior, exact=False):
     # The caller must set the base state to x and assemble the preconditioner
-    # (evaluate(2, 2, True)) before using these. hessian_vector_product uses the
-    # current state as its base point and restores it, so no per-matvec state
-    # update is needed: that keeps each Hessian matvec at two force evaluations.
+    # (evaluate(2, 2, True)) before using these. With exact=True the analytic
+    # autodiff HVP (no force evaluation per matvec) is used; otherwise the
+    # finite-difference HVP (two force evaluations per matvec).
     n = x.size
     ni = interior.size
+    hvp = (model.exact_hessian_vector_product if exact
+           else model.hessian_vector_product)
 
     def hii(vi):
         v = np.zeros(n)
         v[interior] = vi
-        return np.asarray(model.hessian_vector_product(np.ascontiguousarray(v)), float)[
-            interior
-        ]
+        return np.asarray(hvp(np.ascontiguousarray(v)), float)[interior]
 
     def mii(bi):
         v = np.zeros(n)
@@ -140,21 +140,26 @@ def objective_state_gradient(model, x, objective, h=1e-6):
     return g
 
 
-def boundary_gradient(model, x_star, interior, boundary, objective, h=1e-6):
-    """Adjoint gradient dJ/dx_B at the converged equilibrium x_star."""
+def boundary_gradient(model, x_star, interior, boundary, objective, h=1e-6,
+                      exact=False):
+    """Adjoint gradient dJ/dx_B at the converged equilibrium x_star.
+
+    With exact=True the analytic autodiff Hessian-vector product is used (no
+    force evaluation per matvec); otherwise the finite-difference HVP.
+    """
     n = x_star.size
     dj = objective_state_gradient(model, x_star, objective, h)
     model.set_state(np.ascontiguousarray(x_star))
     model.evaluate(2, 2, True)  # assemble preconditioner + set base state to x_star
-    h_op, m_op = _interior_operators(model, x_star, interior)
+    h_op, m_op = _interior_operators(model, x_star, interior, exact)
     lam, _ = gmres(h_op, dj[interior], M=m_op, rtol=1e-6, restart=100, maxiter=30)
     embedded = np.zeros(n)
     embedded[interior] = lam
+    hvp = (model.exact_hessian_vector_product if exact
+           else model.hessian_vector_product)
     model.set_state(np.ascontiguousarray(x_star))
     model.evaluate(2, 2, False)
-    coupling = np.asarray(
-        model.hessian_vector_product(np.ascontiguousarray(embedded)), float
-    )[boundary]
+    coupling = np.asarray(hvp(np.ascontiguousarray(embedded)), float)[boundary]
     return dj[boundary] - coupling
 
 
