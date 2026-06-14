@@ -4,12 +4,12 @@
 # SPDX-License-Identifier: MIT
 """VmecModel.apply_preconditioner exposes VMEC's preconditioner as an operator.
 
-The preconditioner M^-1 is VMEC's hand-built approximate inverse Hessian. The
-native solver applies it to the raw force to get its search direction, so
+The preconditioner M^-1 is VMEC's hand-built approximate inverse Hessian. The native
+solver applies it to the raw force to get its search direction, so
 apply_preconditioner(raw force) must equal the preconditioned force exactly. The
-operator is linear and, once assembled (via evaluate(precondition=True)), does
-not depend on the current state, so it can be reused as a frozen preconditioner
-for Krylov/quasi-Newton solvers.
+operator is linear and, once assembled (via evaluate(precondition=True)), does not
+depend on the current state, so it can be reused as a frozen preconditioner for
+Krylov/quasi-Newton solvers.
 """
 
 from pathlib import Path

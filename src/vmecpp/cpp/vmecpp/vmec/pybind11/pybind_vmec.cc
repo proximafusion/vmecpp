@@ -400,7 +400,8 @@ class VmecModel {
   // the directional step is finite-differenced. The current state is restored.
   Eigen::VectorXd HessianVectorProduct(const Eigen::VectorXd &v,
                                        double eps_rel = 1e-7) {
-    const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const Eigen::VectorXd x =
+        FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     const double vnorm = v.norm();
     if (vnorm == 0.0) {
       return Eigen::VectorXd::Zero(x.size());
@@ -408,18 +409,20 @@ class VmecModel {
     const double eps = eps_rel * (1.0 + x.norm()) / vnorm;
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + eps * v);
     Evaluate(2, 2, /*precondition=*/false);
-    const Eigen::VectorXd fp = FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+    const Eigen::VectorXd fp =
+        FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x - eps * v);
     Evaluate(2, 2, /*precondition=*/false);
-    const Eigen::VectorXd fm = FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+    const Eigen::VectorXd fm =
+        FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
     return (fp - fm) / (2.0 * eps);
   }
 
   // Apply VMEC's preconditioner M^-1 to a vector in the decomposed internal
   // basis, mirroring the native apply sequence (m=1, radial, lambda). This is
-  // VMEC's hand-built approximate inverse Hessian; gradient-based solvers use it
-  // as the metric (preconditioned Krylov / quasi-Newton, and as the
+  // VMEC's hand-built approximate inverse Hessian; gradient-based solvers use
+  // it as the metric (preconditioned Krylov / quasi-Newton, and as the
   // preconditioner for the Hessian solve in adjoint sensitivities).
   //
   // Requires a prior evaluate(precondition=true) at the current state: the

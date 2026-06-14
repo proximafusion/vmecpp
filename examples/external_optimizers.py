@@ -153,11 +153,10 @@ def solve_newton_hvp(
 ):
     """Globalized Newton-Krylov using VMEC++'s own Hessian-vector product.
 
-    Each Newton step solves H dx = -F with GMRES, where H v is
-    hessian_vector_product (the analytic force's directional derivative computed
-    inside VMEC++) and the inner solve is preconditioned by M^-1. A backtracking
-    line search on ||F|| globalizes the step, which is required on stiff 3D cases
-    where the full Newton step overshoots.
+    Each Newton step solves H dx = -F with GMRES, where H v is hessian_vector_product
+    (the analytic force's directional derivative computed inside VMEC++) and the inner
+    solve is preconditioned by M^-1. A backtracking line search on ||F|| globalizes the
+    step, which is required on stiff 3D cases where the full Newton step overshoots.
     """
     model = make_model(input_path, ns)
     F = residual(model)
