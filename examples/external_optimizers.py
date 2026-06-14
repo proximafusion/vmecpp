@@ -32,6 +32,7 @@ from pathlib import Path
 
 import numpy as np
 from scipy.optimize import newton_krylov
+from scipy.sparse.linalg import LinearOperator
 
 try:
     from vmecpp.cpp import _vmecpp
@@ -104,7 +105,9 @@ def solve_preconditioned_descent(
     )
 
 
-def solve_newton_krylov(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_iter=200):
+def solve_newton_krylov(
+    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_iter=300, preconditioned=False
+):
     model = make_model(input_path, ns)
     F = residual(model)
     n = [0]
@@ -114,12 +117,30 @@ def solve_newton_krylov(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_iter=200)
         return F(x)
 
     x0 = np.asarray(model.get_state(), float)
+    inner_m = None
+    if preconditioned:
+        # Assemble VMEC's preconditioner at x0 and use it, frozen, as the inner
+        # Krylov preconditioner. M^-1 approximates the inverse Hessian and is
+        # state-invariant once assembled.
+        model.evaluate(2, 2, True)
+        n_dof = x0.size
+        inner_m = LinearOperator(
+            (n_dof, n_dof),
+            matvec=lambda b: np.asarray(
+                model.apply_preconditioner(np.ascontiguousarray(b)), float
+            ),
+        )
     t0 = time.perf_counter()
-    x = newton_krylov(counted, x0, f_tol=tol, maxiter=max_iter, method="lgmres")
+    x = newton_krylov(
+        counted, x0, f_tol=tol, maxiter=max_iter, method="lgmres", inner_M=inner_m
+    )
     model.set_state(np.ascontiguousarray(x))
     model.evaluate(2, 2, False)
+    name = (
+        "Newton-Krylov (preconditioned)" if preconditioned else "Newton-Krylov (JFNK)"
+    )
     return x, Result(
-        "Newton-Krylov (JFNK)",
+        name,
         n[0],
         time.perf_counter() - t0,
         np.linalg.norm(np.asarray(model.get_forces(), float)),
@@ -127,17 +148,25 @@ def solve_newton_krylov(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_iter=200)
     )
 
 
+def solve_newton_krylov_preconditioned(input_path=DEFAULT_INPUT, ns=11, tol=1e-9):
+    return solve_newton_krylov(input_path, ns, tol, preconditioned=True)
+
+
 def main():
     _, w_star = reference_equilibrium()
     print(f"reference equilibrium (native solve): W = {w_star:.8e}\n")
-    rows = [solve_preconditioned_descent()[1], solve_newton_krylov()[1]]
+    rows = [
+        solve_preconditioned_descent()[1],
+        solve_newton_krylov()[1],
+        solve_newton_krylov_preconditioned()[1],
+    ]
     print(
-        f"{'optimizer':28s} {'F-evals':>8s} {'time[s]':>8s} "
+        f"{'optimizer':32s} {'F-evals':>8s} {'time[s]':>8s} "
         f"{'||F||':>10s} {'dW vs ref':>10s}"
     )
     for r in rows:
         print(
-            f"{r.name:28s} {r.force_evals:8d} {r.seconds:8.2f} "
+            f"{r.name:32s} {r.force_evals:8d} {r.seconds:8.2f} "
             f"{r.residual_norm:10.1e} {abs(r.energy - w_star):10.1e}"
         )
 

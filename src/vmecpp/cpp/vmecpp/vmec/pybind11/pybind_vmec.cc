@@ -385,6 +385,28 @@ class VmecModel {
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
 
+  // Apply VMEC's preconditioner M^-1 to a vector in the decomposed internal
+  // basis, mirroring the native apply sequence (m=1, radial, lambda). This is
+  // VMEC's hand-built approximate inverse Hessian; gradient-based solvers use it
+  // as the metric (preconditioned Krylov / quasi-Newton, and as the
+  // preconditioner for the Hessian solve in adjoint sensitivities).
+  //
+  // Requires a prior evaluate(precondition=true) at the current state: the
+  // radial preconditioner is assembled inside that forward-model call.
+  Eigen::VectorXd ApplyPreconditioner(const Eigen::VectorXd &v) const {
+    vmecpp::FourierForces tmp(&vmec_->s_, vmec_->r_[0].get(), vmec_->fc_.ns);
+    tmp.setZero();
+    UnflattenActive(tmp, vmec_->s_, v);
+    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    model.applyM1Preconditioner(tmp);
+    const absl::Status status = model.applyRZPreconditioner(tmp);
+    if (!status.ok()) {
+      throw std::runtime_error(std::string(status.message()));
+    }
+    model.applyLambdaPreconditioner(tmp);
+    return FlattenActive(tmp, vmec_->s_);
+  }
+
   // Residuals (set by Evaluate()): invariant {fsqr,fsqz,fsql} and
   // preconditioned {fsqr1,fsqz1,fsql1}.
   double fsqr() const { return vmec_->fc_.fsqr; }
@@ -1207,6 +1229,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
       .def("get_forces", &VmecModel::GetForces)
+      .def("apply_preconditioner", &VmecModel::ApplyPreconditioner,
+           py::arg("v"))
       .def_property_readonly("fsqr", &VmecModel::fsqr)
       .def_property_readonly("fsqz", &VmecModel::fsqz)
       .def_property_readonly("fsql", &VmecModel::fsql)

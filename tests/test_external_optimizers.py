@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 from external_optimizers import (
     reference_equilibrium,
     solve_newton_krylov,
+    solve_newton_krylov_preconditioned,
     solve_preconditioned_descent,
 )
 
@@ -29,7 +30,14 @@ def reference():
     return reference_equilibrium()
 
 
-@pytest.mark.parametrize("solver", [solve_preconditioned_descent, solve_newton_krylov])
+@pytest.mark.parametrize(
+    "solver",
+    [
+        solve_preconditioned_descent,
+        solve_newton_krylov,
+        solve_newton_krylov_preconditioned,
+    ],
+)
 def test_optimizer_reaches_equilibrium(solver, reference):
     x_star, w_star = reference
     x, result = solver()
@@ -38,6 +46,14 @@ def test_optimizer_reaches_equilibrium(solver, reference):
     # Same equilibrium as the native solver.
     assert abs(result.energy - w_star) < 1e-8
     assert np.linalg.norm(x - x_star) < 1e-5
+
+
+def test_preconditioner_accelerates_newton_krylov():
+    # VMEC's preconditioner is the inverse-Hessian approximation: using it as the
+    # inner Krylov preconditioner cuts the force evaluations substantially.
+    _, plain = solve_newton_krylov()
+    _, precond = solve_newton_krylov_preconditioned()
+    assert precond.force_evals < plain.force_evals
 
 
 if __name__ == "__main__":
