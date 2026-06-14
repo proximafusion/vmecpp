@@ -34,7 +34,7 @@ from pathlib import Path
 
 import numpy as np
 from scipy.optimize import newton_krylov
-from scipy.sparse.linalg import LinearOperator, gmres
+from scipy.sparse.linalg import LinearOperator, gmres, lgmres
 
 try:
     from vmecpp.cpp import _vmecpp
@@ -148,16 +148,16 @@ def solve_newton_krylov_preconditioned(input_path=DEFAULT_INPUT, ns=11, tol=1e-9
     return solve_newton_krylov(input_path, ns, tol, preconditioned=True)
 
 
-def solve_newton_hvp(
-    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80, inner_tol=1e-3
-):
-    """Globalized Newton-Krylov using VMEC++'s own Hessian-vector product.
+def solve_newton_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80):
+    """Globalized Newton-Krylov using VMEC++'s finite-difference Hessian-vector
+    product.
 
-    Each Newton step solves H dx = -F with GMRES, where H v is
-    hessian_vector_product (the analytic force's directional derivative computed
-    inside VMEC++) and the inner solve is preconditioned by M^-1. A backtracking
-    line search on ||F|| globalizes the step, which is required on stiff 3D cases
-    where the full Newton step overshoots.
+    Each Newton step solves H dx = -F with GMRES preconditioned by M^-1 (VMEC's
+    approximate inverse Hessian), with Eisenstat-Walker adaptive inner forcing
+    and a backtracking line search. H v is hessian_vector_product (a central
+    difference of the analytic force; two force evaluations per matvec). Same
+    solver as solve_newton_exact_hvp but with the FD HVP, for a like-for-like
+    comparison of the HVP backends.
     """
     model = make_model(input_path, ns)
     F = residual(model)
@@ -166,12 +166,17 @@ def solve_newton_hvp(
     model.reset_force_eval_count()
     t0 = time.perf_counter()
     it = 0
+    prev_norm = None
+    eta = 0.5
     for _ in range(max_newton):
         fk = F(x)
         norm0 = np.linalg.norm(fk)
         if norm0 < tol:
             break
         it += 1
+        if prev_norm is not None:
+            eta = min(0.5, max(1e-4, 0.9 * (norm0 / prev_norm) ** 2))
+        prev_norm = norm0
         model.set_state(np.ascontiguousarray(x))
         model.evaluate(2, 2, True)  # assemble M at the current iterate
         h_op = LinearOperator(
@@ -186,7 +191,7 @@ def solve_newton_hvp(
                 model.apply_preconditioner(np.ascontiguousarray(b)), float
             ),
         )
-        dx, _ = gmres(h_op, -fk, M=m_op, rtol=inner_tol, maxiter=100)
+        dx, _ = lgmres(h_op, -fk, M=m_op, rtol=eta, maxiter=200)
         # Backtracking line search: accept the largest step that reduces ||F||.
         alpha = 1.0
         for _ in range(30):
@@ -200,13 +205,18 @@ def solve_newton_hvp(
 
 
 def solve_newton_exact_hvp(
-    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80, inner_tol=1e-3
+    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80
 ):
     """Globalized Newton-Krylov using VMEC++'s exact autodiff Hessian-vector
     product (``exact_hessian_vector_product``, one Enzyme forward pass) instead
     of the finite-difference HVP. Requires an Enzyme-enabled build; raises
-    AttributeError otherwise. Same preconditioned GMRES + backtracking line
-    search as ``solve_newton_hvp``.
+    AttributeError otherwise.
+
+    The inner GMRES tolerance is set adaptively (Eisenstat-Walker forcing): the
+    augmented-Lagrangian Hessian is indefinite, so solving it tightly every step
+    wastes hundreds of matvecs early on. Loose-early/tight-late forcing cuts the
+    total matvec count several-fold while preserving the asymptotic convergence,
+    which is what dominates wall-clock (each matvec is cheap but there are many).
     """
     model = make_model(input_path, ns)
     F = residual(model)
@@ -215,12 +225,18 @@ def solve_newton_exact_hvp(
     model.reset_force_eval_count()
     t0 = time.perf_counter()
     it = 0
+    prev_norm = None
+    eta = 0.5
     for _ in range(max_newton):
         fk = F(x)
         norm0 = np.linalg.norm(fk)
         if norm0 < tol:
             break
         it += 1
+        # Eisenstat-Walker choice 2 for the inner forcing term.
+        if prev_norm is not None:
+            eta = min(0.5, max(1e-4, 0.9 * (norm0 / prev_norm) ** 2))
+        prev_norm = norm0
         model.set_state(np.ascontiguousarray(x))
         model.evaluate(2, 2, True)
         h_op = LinearOperator(
@@ -236,7 +252,7 @@ def solve_newton_exact_hvp(
                 model.apply_preconditioner(np.ascontiguousarray(b)), float
             ),
         )
-        dx, _ = gmres(h_op, -fk, M=m_op, rtol=inner_tol, maxiter=100)
+        dx, _ = lgmres(h_op, -fk, M=m_op, rtol=eta, maxiter=200)
         alpha = 1.0
         for _ in range(30):
             if np.linalg.norm(F(x + alpha * dx)) < norm0:
