@@ -155,6 +155,18 @@ class IdealMhdModel {
   // Fourier space.
   void forcesToFourier(FourierForces& m_physical_f);
 
+  // Exact Hessian-vector product of the local force chain. Given the packed
+  // real-space geometry primal geomP and a geometry tangent dgeom (each
+  // geom_stride doubles per block, see local_force_composition.h), differentiate
+  // the MHD-plus-lambda force density by one Enzyme forward pass, then apply the
+  // linear forward transform and preconditioner decomposition to obtain the
+  // decomposed force tangent in m_decomposed_hv. The constraint force is omitted
+  // here (it carries a linear bandpass handled separately). Used by the exact
+  // internal Newton-Krylov Hessian-vector product.
+  void applyExactForceJacobian(const double* geomP, const double* dgeom,
+                               int geom_stride, FourierForces& m_physical_f,
+                               FourierForces& m_decomposed_hv);
+
   // Computes the forward-DFT of forces for the 3D (Stellarator) case.
   // Dispatching dft_ForcesToFourier_3d_symm
   void dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f);

@@ -23,7 +23,9 @@
 #include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/constraint_force_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/exact_force_jvp.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
 #include "vmecpp/vmec/ideal_mhd_model/lambda_force_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
@@ -2089,6 +2091,80 @@ void IdealMhdModel::assembleTotalForces() {
                       r_.nsMaxF, brmn_e.data(), brmn_o.data(), bzmn_e.data(),
                       bzmn_o.data(), frcon_e.data(), frcon_o.data(),
                       fzcon_e.data(), fzcon_o.data());
+}
+
+void IdealMhdModel::applyExactForceJacobian(const double* geomP,
+                                            const double* dgeom, int geom_stride,
+                                            FourierForces& m_physical_f,
+                                            FourierForces& m_decomposed_hv) {
+  LocalForceComposition comp;
+  comp.nZnT = s_.nZnT;
+  comp.geom_stride = geom_stride;
+  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
+  comp.force_stride = nForce;
+  comp.nsMinF = r_.nsMinF;
+  comp.nsMinF1 = r_.nsMinF1;
+  comp.nsMinH = r_.nsMinH;
+  comp.nsMaxH = r_.nsMaxH;
+  comp.jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  comp.nsMaxFIncludingLcfs = r_.nsMaxFIncludingLcfs;
+  comp.sqrtSF = m_p_.sqrtSF.data();
+  comp.sqrtSH = m_p_.sqrtSH.data();
+  comp.chipH = m_p_.chipH.data();
+  comp.presH = m_p_.presH.data();
+  comp.radialBlending = m_p_.radialBlending.data();
+  comp.deltaS = m_fc_.deltaS;
+  comp.dSHalfDsInterp = dSHalfDsInterp;
+  comp.lamscale = constants_.lamscale;
+  comp.lthreed = s_.lthreed;
+
+  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
+  std::vector<double> work(15 * nH + 30 * s_.nZnT, 0.0);
+  std::vector<double> dwork(work.size(), 0.0);
+  std::vector<double> force(16 * nForce, 0.0);
+  std::vector<double> dforce(16 * nForce, 0.0);
+
+  // single nonlinear forward pass: J_g . (T v)
+  ExactForceDensityJvp(geomP, dgeom, work.data(), dwork.data(), force.data(),
+                       dforce.data(), &comp);
+
+  // scatter the force-density tangent into the real-space force members
+  auto put = [&](int block, Eigen::VectorXd& dst) {
+    const int n = static_cast<int>(dst.size());
+    for (int i = 0; i < n; ++i) {
+      dst[i] = dforce[block * nForce + i];
+    }
+  };
+  put(0, armn_e);
+  put(1, armn_o);
+  put(2, azmn_e);
+  put(3, azmn_o);
+  put(4, brmn_e);
+  put(5, brmn_o);
+  put(6, bzmn_e);
+  put(7, bzmn_o);
+  put(12, blmn_e);
+  put(13, blmn_o);
+  if (s_.lthreed) {
+    put(8, crmn_e);
+    put(9, crmn_o);
+    put(10, czmn_e);
+    put(11, czmn_o);
+    put(14, clmn_e);
+    put(15, clmn_o);
+  }
+  // constraint and free-boundary force tangents are not part of this pass
+  frcon_e.setZero();
+  frcon_o.setZero();
+  fzcon_e.setZero();
+  fzcon_o.setZero();
+
+  // linear forward transform and preconditioner decomposition, mirroring the
+  // tail of update()
+  forcesToFourier(m_physical_f);
+  m_physical_f.decomposeInto(m_decomposed_hv, m_p_.scalxc);
+  m_decomposed_hv.m1Constraint(1.0 / std::numbers::sqrt2);
+  m_decomposed_hv.zeroZForceForM1();
 }
 
 void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
