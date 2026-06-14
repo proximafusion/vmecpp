@@ -199,6 +199,55 @@ def solve_newton_hvp(
     return _finish(model, "Newton (VMEC++ HVP + M^-1)", x, it, t0)
 
 
+def solve_newton_exact_hvp(
+    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80, inner_tol=1e-3
+):
+    """Globalized Newton-Krylov using VMEC++'s exact autodiff Hessian-vector
+    product (``exact_hessian_vector_product``, one Enzyme forward pass) instead
+    of the finite-difference HVP. Requires an Enzyme-enabled build; raises
+    AttributeError otherwise. Same preconditioned GMRES + backtracking line
+    search as ``solve_newton_hvp``.
+    """
+    model = make_model(input_path, ns)
+    F = residual(model)
+    x = np.asarray(model.get_state(), float).copy()
+    n_dof = x.size
+    model.reset_force_eval_count()
+    t0 = time.perf_counter()
+    it = 0
+    for _ in range(max_newton):
+        fk = F(x)
+        norm0 = np.linalg.norm(fk)
+        if norm0 < tol:
+            break
+        it += 1
+        model.set_state(np.ascontiguousarray(x))
+        model.evaluate(2, 2, True)
+        h_op = LinearOperator(
+            (n_dof, n_dof),
+            matvec=lambda v: np.asarray(
+                model.exact_hessian_vector_product(np.ascontiguousarray(v)),
+                float,
+            ),
+        )
+        m_op = LinearOperator(
+            (n_dof, n_dof),
+            matvec=lambda b: np.asarray(
+                model.apply_preconditioner(np.ascontiguousarray(b)), float
+            ),
+        )
+        dx, _ = gmres(h_op, -fk, M=m_op, rtol=inner_tol, maxiter=100)
+        alpha = 1.0
+        for _ in range(30):
+            if np.linalg.norm(F(x + alpha * dx)) < norm0:
+                break
+            alpha *= 0.5
+        else:
+            break
+        x = x + alpha * dx
+    return _finish(model, "Newton (exact autodiff HVP + M^-1)", x, it, t0)
+
+
 ALL_SOLVERS = (
     solve_preconditioned_descent,
     solve_newton_krylov,
