@@ -29,50 +29,13 @@
 #include <vector>
 
 #include "vmecpp/common/enzyme/enzyme.h"
+#include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
 
 // Types used as Enzyme intrinsic arguments need external linkage (an anonymous
 // namespace type cannot instantiate the __enzyme_* templates).
 
-// Half-grid Jacobian kernel. Geometry inputs are (nsH+1) full-grid surfaces of
-// nZnT angular points each; outputs are nsH half-grid surfaces. Transcribed
-// from IdealMhdModel::computeJacobian (direct full-grid reads instead of the
-// in/out handover; identical arithmetic).
-__attribute__((noinline)) void JacobianKernel(
-    const double* r1e, const double* r1o, const double* z1e, const double* z1o,
-    const double* rue, const double* ruo, const double* zue, const double* zuo,
-    const double* sqrtSH, double deltaS, double dSHalfDsInterp, int nZnT,
-    int nsH, double* r12, double* ru12, double* zu12, double* rs, double* zs,
-    double* tau) {
-  for (int jH = 0; jH < nsH; ++jH) {
-    const double sH = sqrtSH[jH];
-    for (int kl = 0; kl < nZnT; ++kl) {
-      const int i_in = jH * nZnT + kl;
-      const int i_out = (jH + 1) * nZnT + kl;
-      const int ih = jH * nZnT + kl;
-
-      const double r1e_i = r1e[i_in], r1e_o = r1e[i_out];
-      const double r1o_i = r1o[i_in], r1o_o = r1o[i_out];
-      const double z1e_i = z1e[i_in], z1e_o = z1e[i_out];
-      const double z1o_i = z1o[i_in], z1o_o = z1o[i_out];
-      const double rue_i = rue[i_in], rue_o = rue[i_out];
-      const double ruo_i = ruo[i_in], ruo_o = ruo[i_out];
-      const double zue_i = zue[i_in], zue_o = zue[i_out];
-      const double zuo_i = zuo[i_in], zuo_o = zuo[i_out];
-
-      r12[ih] = 0.5 * ((r1e_i + r1e_o) + sH * (r1o_i + r1o_o));
-      ru12[ih] = 0.5 * ((rue_i + rue_o) + sH * (ruo_i + ruo_o));
-      zu12[ih] = 0.5 * ((zue_i + zue_o) + sH * (zuo_i + zuo_o));
-      rs[ih] = ((r1e_o - r1e_i) + sH * (r1o_o - r1o_i)) / deltaS;
-      zs[ih] = ((z1e_o - z1e_i) + sH * (z1o_o - z1o_i)) / deltaS;
-
-      const double tau1 = ru12[ih] * zs[ih] - rs[ih] * zu12[ih];
-      const double tau2 =
-          ruo_o * z1o_o + ruo_i * z1o_i - zuo_o * r1o_o - zuo_i * r1o_i +
-          (rue_o * z1o_o + rue_i * z1o_i - zue_o * r1o_o - zue_i * r1o_i) / sH;
-      tau[ih] = tau1 + dSHalfDsInterp * tau2;
-    }
-  }
-}
+// JacobianKernel is the shared production kernel ComputeHalfGridJacobian
+// (jacobian_kernel.h); differentiated here exactly as the solver uses it.
 
 constexpr int kNgeom = 8;  // r1e r1o z1e z1o rue ruo zue zuo
 constexpr int kNout = 6;   // r12 ru12 zu12 rs zs tau
@@ -103,10 +66,12 @@ __attribute__((noinline)) void Eval(const double* geom, const Problem& p,
                                     double* out) {
   const int s = (p.nsH + 1) * p.nZnT;
   const int o = p.nsH * p.nZnT;
-  JacobianKernel(geom, geom + s, geom + 2 * s, geom + 3 * s, geom + 4 * s,
-                 geom + 5 * s, geom + 6 * s, geom + 7 * s, p.sqrtSH.data(),
-                 p.deltaS, p.dSHalfDsInterp, p.nZnT, p.nsH, out, out + o,
-                 out + 2 * o, out + 3 * o, out + 4 * o, out + 5 * o);
+  vmecpp::ComputeHalfGridJacobian(
+      geom, geom + s, geom + 2 * s, geom + 3 * s, geom + 4 * s, geom + 5 * s,
+      geom + 6 * s, geom + 7 * s, p.sqrtSH.data(), p.deltaS, p.dSHalfDsInterp,
+      p.nZnT, /*nsMinF1=*/0, /*nsMinH=*/0,
+      /*nsMaxH=*/p.nsH, out, out + o, out + 2 * o, out + 3 * o, out + 4 * o,
+      out + 5 * o);
 }
 
 double MaxAbs(const std::vector<double>& a, const std::vector<double>& b) {
