@@ -93,9 +93,9 @@ def _interior_operators(model, x, interior):
 def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=80):
     """Converge the interior to force balance with the boundary held fixed.
 
-    Preconditioned Newton-Krylov on the interior residual with a backtracking
-    line search; the line search is required for stiff 3D equilibria, where the
-    full Newton step overshoots.
+    Preconditioned Newton-Krylov on the interior residual with a backtracking line
+    search; the line search is required for stiff 3D equilibria, where the full Newton
+    step overshoots.
     """
     x = np.asarray(x0, float).copy()
     x[boundary] = x_boundary

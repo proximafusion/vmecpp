@@ -105,9 +105,9 @@ class GradResult:
 def gradient_cost(input_path: Path = DEFAULT_INPUT, ns: int = 11, analytic=True):
     """Cost of one full boundary gradient at the converged equilibrium.
 
-    This is what an external optimizer pays per iteration. The analytic adjoint
-    needs one Hessian solve regardless of the number of boundary DOFs; finite
-    differences re-converge the equilibrium twice per boundary DOF.
+    This is what an external optimizer pays per iteration. The analytic adjoint needs
+    one Hessian solve regardless of the number of boundary DOFs; finite differences re-
+    converge the equilibrium twice per boundary DOF.
     """
     problem = VmecBoundaryProblem(input_path, ns)
     x_star = problem._x_full.copy()
