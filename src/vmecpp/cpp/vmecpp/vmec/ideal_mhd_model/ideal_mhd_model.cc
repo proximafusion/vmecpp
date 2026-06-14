@@ -20,6 +20,7 @@
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
+#include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
@@ -1453,16 +1454,11 @@ void IdealMhdModel::computeBContra() {
 
 // Compute covariant magnetic field components.
 void IdealMhdModel::computeBCo() {
-  // bsubu = g * B^contra: index lowering via metric tensor
-  if (s_.lthreed) {
-    // 3D case: need all of guu, guv, gvv
-    bsubu = guu.cwiseProduct(bsupu) + guv.cwiseProduct(bsupv);
-    bsubv = guv.cwiseProduct(bsupu) + gvv.cwiseProduct(bsupv);
-  } else {
-    // 2D case: can ignore guv (not even allocated)
-    bsubu = guu.cwiseProduct(bsupu);
-    bsubv = gvv.cwiseProduct(bsupv);
-  }
+  // bsubu = g * B^contra (index lowering via the metric tensor). Shared,
+  // allocation-free kernel (bco_kernel.h) used by solver and autodiff.
+  ComputeBCo(guu.data(), guv.data(), gvv.data(), bsupu.data(), bsupv.data(),
+             s_.lthreed, static_cast<int>(bsupu.size()), bsubu.data(),
+             bsubv.data());
 }
 
 void IdealMhdModel::pressureAndEnergies() {
