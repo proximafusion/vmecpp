@@ -167,6 +167,10 @@ class IdealMhdModel {
                                int geom_stride, FourierForces& m_physical_f,
                                FourierForces& m_decomposed_hv);
 
+  // Diagnostic: max |composed force density - production force density| at the
+  // current state, to isolate composition bugs from the transform/tangent path.
+  double composedForceResidual(const double* geomP, int geom_stride);
+
   // Computes the forward-DFT of forces for the 3D (Stellarator) case.
   // Dispatching dft_ForcesToFourier_3d_symm
   void dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f);

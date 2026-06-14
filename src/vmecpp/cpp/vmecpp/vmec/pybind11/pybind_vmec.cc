@@ -459,6 +459,30 @@ class VmecModel {
                                   *vmec_->decomposed_f_[0]);
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
+
+  // Diagnostic: max |composed force density - production force density| at the
+  // current state. Zero confirms the flat-buffer composition reproduces the
+  // production force density; a nonzero value localizes a composition bug.
+  double ComposedForceResidual() {
+    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const int gS = static_cast<int>(model.r1_e.size());
+    Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
+    auto blk = [&](int b, const Eigen::VectorXd &src) {
+      for (int i = 0; i < static_cast<int>(src.size()); ++i)
+        geomP[b * gS + i] = src[i];
+    };
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
+    Evaluate(2, 2, false);
+    blk(0, model.r1_e); blk(1, model.r1_o); blk(2, model.z1_e);
+    blk(3, model.z1_o); blk(4, model.ru_e); blk(5, model.ru_o);
+    blk(6, model.zu_e); blk(7, model.zu_o); blk(8, model.rv_e);
+    blk(9, model.rv_o); blk(10, model.zv_e); blk(11, model.zv_o);
+    blk(12, model.lu_e); blk(13, model.lu_o); blk(14, model.lv_e);
+    blk(15, model.lv_o); blk(16, model.rCon); blk(17, model.zCon);
+    blk(18, model.ruFull); blk(19, model.zuFull);
+    return model.composedForceResidual(geomP.data(), gS);
+  }
 #endif  // VMECPP_ENABLE_ENZYME
 
   // Apply VMEC's preconditioner M^-1 to a vector in the decomposed internal
@@ -1313,6 +1337,7 @@ PYBIND11_MODULE(_vmecpp, m) {
 #ifdef VMECPP_ENABLE_ENZYME
       .def("exact_hessian_vector_product",
            &VmecModel::ExactHessianVectorProduct, py::arg("v"))
+      .def("composed_force_residual", &VmecModel::ComposedForceResidual)
 #endif  // VMECPP_ENABLE_ENZYME
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)

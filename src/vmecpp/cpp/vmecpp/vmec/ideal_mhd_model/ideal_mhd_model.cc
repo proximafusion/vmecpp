@@ -2124,7 +2124,78 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   forcesToFourier(m_physical_f);
   m_physical_f.decomposeInto(m_decomposed_hv, m_p_.scalxc);
   m_decomposed_hv.m1Constraint(1.0 / std::numbers::sqrt2);
-  m_decomposed_hv.zeroZForceForM1();
+  // Match update(): zeroZForceForM1 is gated on the converged-state condition.
+  if (m_fc_.fsqz < 1.0e-6) {
+    m_decomposed_hv.zeroZForceForM1();
+  }
+}
+
+// Diagnostic: max |composed force density - production force density| at the
+// current state, to isolate composition bugs from the transform/tangent path.
+double IdealMhdModel::composedForceResidual(const double* geomP,
+                                            int geom_stride) {
+  LocalForceComposition comp;
+  comp.nZnT = s_.nZnT;
+  comp.geom_stride = geom_stride;
+  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
+  comp.force_stride = nForce;
+  comp.nsMinF = r_.nsMinF;
+  comp.nsMinF1 = r_.nsMinF1;
+  comp.nsMinH = r_.nsMinH;
+  comp.nsMaxH = r_.nsMaxH;
+  comp.jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  comp.nsMaxFIncludingLcfs = r_.nsMaxFIncludingLcfs;
+  comp.sqrtSF = m_p_.sqrtSF.data();
+  comp.sqrtSH = m_p_.sqrtSH.data();
+  comp.chipH = m_p_.chipH.data();
+  comp.presH = m_p_.presH.data();
+  comp.radialBlending = m_p_.radialBlending.data();
+  comp.deltaS = m_fc_.deltaS;
+  comp.dSHalfDsInterp = dSHalfDsInterp;
+  comp.lamscale = constants_.lamscale;
+  comp.lthreed = s_.lthreed;
+  comp.with_constraint = true;
+  comp.nsMaxF = r_.nsMaxF;
+  comp.nZeta = s_.nZeta;
+  comp.nThetaEff = s_.nThetaEff;
+  comp.nThetaReduced = s_.nThetaReduced;
+  comp.mpol = s_.mpol;
+  comp.ntor = s_.ntor;
+  comp.nnyq2 = s_.nnyq2;
+  comp.rCon0 = rCon0.data();
+  comp.zCon0 = zCon0.data();
+  comp.faccon = faccon.data();
+  comp.tcon = tcon.data();
+  comp.sinmui = t_.sinmui.data();
+  comp.cosmui = t_.cosmui.data();
+  comp.cosnv = t_.cosnv.data();
+  comp.sinnv = t_.sinnv.data();
+  comp.sinmu = t_.sinmu.data();
+  comp.cosmu = t_.cosmu.data();
+
+  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
+  const int nWork = 15 * nH + 30 * s_.nZnT + 2 * nForce + 2 * (s_.ntor + 1);
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> force(20 * nForce, 0.0);
+  ComputeLocalForceDensity(geomP, work.data(), force.data(), &comp);
+
+  double maxd = 0.0;
+  auto cmp = [&](int block, const Eigen::VectorXd& prod) {
+    for (int i = 0; i < static_cast<int>(prod.size()); ++i) {
+      maxd = std::max(maxd, std::fabs(force[block * nForce + i] - prod[i]));
+    }
+  };
+  cmp(0, armn_e);
+  cmp(1, armn_o);
+  cmp(2, azmn_e);
+  cmp(3, azmn_o);
+  cmp(4, brmn_e);
+  cmp(5, brmn_o);
+  cmp(6, bzmn_e);
+  cmp(7, bzmn_o);
+  cmp(12, blmn_e);
+  cmp(13, blmn_o);
+  return maxd;
 }
 #endif  // VMECPP_ENABLE_ENZYME
 
