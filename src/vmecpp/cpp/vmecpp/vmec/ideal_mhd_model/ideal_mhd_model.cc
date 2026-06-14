@@ -20,6 +20,7 @@
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
+#include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
@@ -1336,88 +1337,42 @@ void IdealMhdModel::updateVolume() {
  * and apply toroidal current constraint, if enabled.
  */
 void IdealMhdModel::computeBContra() {
-  // bsupu, bsupv
-  // chipH (, iotaH)
-  // chipF, iotaF
-
-  int j0 = r_.nsMinH;
-  for (int kl = 0; kl < s_.nZnT; ++kl) {
-    // undo lambda normalization for first radial location
-    lu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-    lu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-    if (s_.lthreed) {
-      lv_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-      lv_o[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-    }
-
-    // add phi' to d(lambda)/d(theta) for preparing B^v
-    lu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] += m_p_.phipF[j0 - r_.nsMinF1];
-
-    // contributions from full-grid surface _i_nside j-th half-grid surface
-    // starting values: jRel=0
-    m_ls_.lue_i[kl] = lu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.luo_i[kl] = lu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    if (s_.lthreed) {
-      m_ls_.lve_i[kl] = lv_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-      m_ls_.lvo_i[kl] = lv_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    }
-  }  // kl
-
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
-
+  // bsupu, bsupv; chipH (, iotaH); chipF, iotaF.
+  //
+  // First undo the lambda normalization and add phi' to dLambda/dTheta, exactly
+  // as before. The lambda arrays are consumed downstream in this normalized
+  // form, so this mutation stays in the solver; only the bsupu/bsupv arithmetic
+  // is factored into the shared kernel (bcontra_kernel.h).
+  {
+    const int j0 = r_.nsMinH;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-
-      // undo lambda normalization for next full-grid radial location
-      lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-      lu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+      lu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+      lu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
       if (s_.lthreed) {
-        lv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-        lv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        lv_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        lv_o[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
       }
+      lu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] += m_p_.phipF[j0 - r_.nsMinF1];
+    }
+    for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+      for (int kl = 0; kl < s_.nZnT; ++kl) {
+        lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        lu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        if (s_.lthreed) {
+          lv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+          lv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        }
+        lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] +=
+            m_p_.phipF[jH + 1 - r_.nsMinH];
+      }  // kl
+    }  // jH
+  }
 
-      // add phi' to d(lambda)/d(theta) for preparing B^v
-      lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] +=
-          m_p_.phipF[jH + 1 - r_.nsMinH];
-
-      // contributions from full-grid surface _o_utside j-th half-grid surface
-      double lue_o = lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double luo_o = lu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double lve_o = 0.0;
-      double lvo_o = 0.0;
-      if (s_.lthreed) {
-        lve_o = lv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        lvo_o = lv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-
-        // first part for B^\theta
-        bsupu[iHalf] =
-            0.5 *
-            ((m_ls_.lve_i[kl] + lve_o) + sqrtSH * (m_ls_.lvo_i[kl] + lvo_o)) /
-            gsqrt[iHalf];
-      } else {
-        // will get a contribution from chip'/sqrt(g) below
-        bsupu[iHalf] = 0.0;
-      }
-
-      // first part for B^\zeta
-      bsupv[iHalf] =
-          0.5 *
-          ((m_ls_.lue_i[kl] + lue_o) + sqrtSH * (m_ls_.luo_i[kl] + luo_o)) /
-          gsqrt[iHalf];
-
-      // hand over to next iteration of radial loop
-      // --> what was outside in this loop iteration will be inside for next
-      // half-grid location
-      m_ls_.lue_i[kl] = lue_o;
-      m_ls_.luo_i[kl] = luo_o;
-      if (s_.lthreed) {
-        m_ls_.lve_i[kl] = lve_o;
-        m_ls_.lvo_i[kl] = lvo_o;
-      }
-    }  // kl
-  }  // jH
+  // bsupu (3D part) and bsupv from the normalized lambda and gsqrt.
+  ComputeBsupContra(lu_e.data(), lu_o.data(), lv_e.data(), lv_o.data(),
+                    gsqrt.data(), m_p_.sqrtSH.data(), s_.lthreed, s_.nZnT,
+                    r_.nsMinF1, r_.nsMinH, r_.nsMaxH, bsupu.data(),
+                    bsupv.data());
 
   if (ncurr == 1) {
     // constrained toroidal current profile
