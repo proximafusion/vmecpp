@@ -387,8 +387,8 @@ class VmecModel {
 
   // Apply VMEC's preconditioner M^-1 to a vector in the decomposed internal
   // basis, mirroring the native apply sequence (m=1, radial, lambda). This is
-  // VMEC's hand-built approximate inverse Hessian; gradient-based solvers use it
-  // as the metric (preconditioned Krylov / quasi-Newton, and as the
+  // VMEC's hand-built approximate inverse Hessian; gradient-based solvers use
+  // it as the metric (preconditioned Krylov / quasi-Newton, and as the
   // preconditioner for the Hessian solve in adjoint sensitivities).
   //
   // Requires a prior evaluate(precondition=true) at the current state: the
