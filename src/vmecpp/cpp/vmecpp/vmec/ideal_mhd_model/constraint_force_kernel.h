@@ -37,14 +37,12 @@ inline void ComputeEffectiveConstraintForce(
 
 // Add the bandpass-filtered constraint force gCon back into the MHD R/Z forces
 // (brmn, bzmn) and write the constraint-force outputs (frcon, fzcon).
-inline void AddConstraintForces(const double* rCon, const double* rCon0,
-                                const double* zCon, const double* zCon0,
-                                const double* ruFull, const double* zuFull,
-                                const double* gCon, const double* sqrtSF,
-                                int nZnT, int nsMinF, int nsMinF1, int nsMaxF,
-                                double* brmn_e, double* brmn_o, double* bzmn_e,
-                                double* bzmn_o, double* frcon_e, double* frcon_o,
-                                double* fzcon_e, double* fzcon_o) {
+inline void AddConstraintForces(
+    const double* rCon, const double* rCon0, const double* zCon,
+    const double* zCon0, const double* ruFull, const double* zuFull,
+    const double* gCon, const double* sqrtSF, int nZnT, int nsMinF, int nsMinF1,
+    int nsMaxF, double* brmn_e, double* brmn_o, double* bzmn_e, double* bzmn_o,
+    double* frcon_e, double* frcon_o, double* fzcon_e, double* fzcon_o) {
   for (int jF = nsMinF; jF < nsMaxF; ++jF) {
     for (int kl = 0; kl < nZnT; ++kl) {
       int idx_kl = (jF - nsMinF) * nZnT + kl;
