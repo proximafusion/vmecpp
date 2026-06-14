@@ -65,6 +65,62 @@ inline void AddConstraintForces(const double* rCon, const double* rCon0,
   }  // jF
 }
 
+// Fourier-space bandpass of the constraint force: forward transform gConEff to
+// the (m, n) coefficients gsc/gcs scaled by tcon, then inverse transform back to
+// real space scaled by faccon[m]. Bandpass keeps m in [1, mpol-1). The axis
+// surface has no poloidal angle and is skipped. Allocation-free over flat
+// buffers with explicit reductions (no Eigen temporaries), so it differentiates
+// under Enzyme; the free function vmecpp::deAliasConstraintForce wraps this with
+// the partition/basis structs. Basis layout: sinmui/cosmui/sinmu/cosmu indexed
+// m*nThetaReduced + l; cosnv/sinnv indexed k*(nnyq2+1) + n; gConEff/gCon indexed
+// ((jF-nsMinF)*nZeta + k)*nThetaEff + l; gsc/gcs scratch of length ntor+1.
+inline void ComputeDeAliasConstraintForce(
+    const double* gConEff, const double* faccon, const double* tcon,
+    const double* sinmui, const double* cosmui, const double* cosnv,
+    const double* sinnv, const double* sinmu, const double* cosmu, int nsMinF,
+    int nsMaxF, int nZeta, int nThetaEff, int nThetaReduced, int mpol, int ntor,
+    int nnyq2, double* gsc, double* gcs, double* gCon) {
+  for (int i = 0; i < (nsMaxF - nsMinF) * nZeta * nThetaEff; ++i) gCon[i] = 0.0;
+  const int jMin = (nsMinF == 0) ? 1 : 0;
+  for (int jF = (jMin > nsMinF ? jMin : nsMinF); jF < nsMaxF; ++jF) {
+    for (int m = 1; m < mpol - 1; ++m) {
+      for (int n = 0; n < ntor + 1; ++n) {
+        gsc[n] = 0.0;
+        gcs[n] = 0.0;
+      }
+      for (int k = 0; k < nZeta; ++k) {
+        const int kl_base = ((jF - nsMinF) * nZeta + k) * nThetaEff;
+        const int ml_base = m * nThetaReduced;
+        double w0 = 0.0;
+        double w1 = 0.0;
+        for (int l = 0; l < nThetaReduced; ++l) {
+          w0 += gConEff[kl_base + l] * sinmui[ml_base + l];
+          w1 += gConEff[kl_base + l] * cosmui[ml_base + l];
+        }
+        for (int n = 0; n < ntor + 1; ++n) {
+          const int idx_kn = k * (nnyq2 + 1) + n;
+          gsc[n] += cosnv[idx_kn] * w0 * tcon[jF - nsMinF];
+          gcs[n] += sinnv[idx_kn] * w1 * tcon[jF - nsMinF];
+        }
+      }
+      for (int k = 0; k < nZeta; ++k) {
+        const int kn_base = k * (nnyq2 + 1);
+        double w0 = 0.0;
+        double w1 = 0.0;
+        for (int n = 0; n < ntor + 1; ++n) {
+          w0 += gsc[n] * cosnv[kn_base + n];
+          w1 += gcs[n] * sinnv[kn_base + n];
+        }
+        for (int l = 0; l < nThetaReduced; ++l) {
+          const int idx_kl = ((jF - nsMinF) * nZeta + k) * nThetaEff + l;
+          const int idx_ml = m * nThetaReduced + l;
+          gCon[idx_kl] += faccon[m] * (w0 * sinmu[idx_ml] + w1 * cosmu[idx_ml]);
+        }
+      }
+    }  // m
+  }  // jF
+}
+
 }  // namespace vmecpp
 
 #endif  // VMECPP_VMEC_IDEAL_MHD_MODEL_CONSTRAINT_FORCE_KERNEL_H_

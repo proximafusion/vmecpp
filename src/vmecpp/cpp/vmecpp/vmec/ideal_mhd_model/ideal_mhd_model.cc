@@ -94,76 +94,15 @@ void vmecpp::deAliasConstraintForce(
     const Eigen::VectorXd& faccon, const Eigen::VectorXd& tcon,
     const Eigen::VectorXd& gConEff, Eigen::VectorXd& m_gsc,
     Eigen::VectorXd& m_gcs, Eigen::VectorXd& m_gCon) {
-  absl::c_fill_n(m_gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
-
-  // no constraint on axis --> has no poloidal angle
-  int jMin = 0;
-  if (rp.nsMinF == 0) {
-    jMin = 1;
-  }
-
-  for (int jF = std::max(jMin, rp.nsMinF); jF < rp.nsMaxF; ++jF) {
-    for (int m = 1; m < s_.mpol - 1; ++m) {
-      absl::c_fill_n(m_gsc, s_.ntor + 1, 0);
-      absl::c_fill_n(m_gcs, s_.ntor + 1, 0);
-
-      for (int k = 0; k < s_.nZeta; ++k) {
-        // fwd transform in poloidal direction
-        // integrate poloidally to get m-th poloidal Fourier coefficient
-        const int kl_base = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
-        const int ml_base = m * s_.nThetaReduced;
-
-        auto gConEff_seg = Eigen::Map<const Eigen::VectorXd>(
-            gConEff.data() + kl_base, s_.nThetaReduced);
-        auto sinmui_seg = fb.sinmui.segment(ml_base, s_.nThetaReduced);
-        auto cosmui_seg = fb.cosmui.segment(ml_base, s_.nThetaReduced);
-
-        double w0 = gConEff_seg.dot(sinmui_seg);
-        double w1 = gConEff_seg.dot(cosmui_seg);
-
-        // forward Fourier transform in toroidal direction for full set of mode
-        // numbers (n = 0, 1, ..., ntor)
-        for (int n = 0; n < s_.ntor + 1; ++n) {
-          int idx_kn = k * (s_.nnyq2 + 1) + n;
-
-          // NOTE: `tcon` comes into play here
-          m_gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
-          m_gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
-        }
-      }  // k
-
-      // ------------------------------------------
-      // need to "wait" (= finish k loop) here
-      // to get Fourier coefficients fully defined!
-      // ------------------------------------------
-
-      // inverse Fourier-transform from reduced set of mode numbers
-      for (int k = 0; k < s_.nZeta; ++k) {
-        // collect contribution to current grid point from n-th toroidal mode
-        const int kn_base = k * (s_.nnyq2 + 1);
-        auto cosnv_seg = fb.cosnv.segment(kn_base, s_.ntor + 1);
-        auto sinnv_seg = fb.sinnv.segment(kn_base, s_.ntor + 1);
-
-        auto m_gsc_seg =
-            Eigen::Map<const Eigen::VectorXd>(m_gsc.data(), s_.ntor + 1);
-        auto m_gcs_seg =
-            Eigen::Map<const Eigen::VectorXd>(m_gcs.data(), s_.ntor + 1);
-
-        double w0 = m_gsc_seg.dot(cosnv_seg);
-        double w1 = m_gcs_seg.dot(sinnv_seg);
-
-        // inv transform in poloidal direction
-        for (int l = 0; l < s_.nThetaReduced; ++l) {
-          int idx_kl = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
-          const int idx_ml = m * s_.nThetaReduced + l;
-
-          // NOTE: `faccon` comes into play here
-          m_gCon[idx_kl] +=
-              faccon[m] * (w0 * fb.sinmu[idx_ml] + w1 * fb.cosmu[idx_ml]);
-        }  // l
-      }  // k
-    }  // m
-  }
+  // Arithmetic lives in the shared, allocation-free kernel
+  // (constraint_force_kernel.h) so the solver and the Enzyme autodiff path use
+  // one implementation.
+  ComputeDeAliasConstraintForce(
+      gConEff.data(), faccon.data(), tcon.data(), fb.sinmui.data(),
+      fb.cosmui.data(), fb.cosnv.data(), fb.sinnv.data(), fb.sinmu.data(),
+      fb.cosmu.data(), rp.nsMinF, rp.nsMaxF, s_.nZeta, s_.nThetaEff,
+      s_.nThetaReduced, s_.mpol, s_.ntor, s_.nnyq2, m_gsc.data(), m_gcs.data(),
+      m_gCon.data());
 }
 
 namespace vmecpp {
@@ -2118,12 +2057,33 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   comp.dSHalfDsInterp = dSHalfDsInterp;
   comp.lamscale = constants_.lamscale;
   comp.lthreed = s_.lthreed;
+  comp.with_constraint = true;
+  comp.nsMaxF = r_.nsMaxF;
+  comp.nZeta = s_.nZeta;
+  comp.nThetaEff = s_.nThetaEff;
+  comp.nThetaReduced = s_.nThetaReduced;
+  comp.mpol = s_.mpol;
+  comp.ntor = s_.ntor;
+  comp.nnyq2 = s_.nnyq2;
+  comp.rCon0 = rCon0.data();
+  comp.zCon0 = zCon0.data();
+  comp.faccon = faccon.data();
+  comp.tcon = tcon.data();
+  comp.sinmui = t_.sinmui.data();
+  comp.cosmui = t_.cosmui.data();
+  comp.cosnv = t_.cosnv.data();
+  comp.sinnv = t_.sinnv.data();
+  comp.sinmu = t_.sinmu.data();
+  comp.cosmu = t_.cosmu.data();
 
   const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
-  std::vector<double> work(15 * nH + 30 * s_.nZnT, 0.0);
-  std::vector<double> dwork(work.size(), 0.0);
-  std::vector<double> force(16 * nForce, 0.0);
-  std::vector<double> dforce(16 * nForce, 0.0);
+  // work holds the half-grid and per-point scratch plus the constraint scratch
+  // (gConEff, gCon, gsc, gcs).
+  const int nWork = 15 * nH + 30 * s_.nZnT + 2 * nForce + 2 * (s_.ntor + 1);
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> dwork(nWork, 0.0);
+  std::vector<double> force(20 * nForce, 0.0);
+  std::vector<double> dforce(20 * nForce, 0.0);
 
   // single nonlinear forward pass: J_g . (T v)
   ExactForceDensityJvp(geomP, dgeom, work.data(), dwork.data(), force.data(),
@@ -2154,11 +2114,10 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
     put(14, clmn_e);
     put(15, clmn_o);
   }
-  // constraint and free-boundary force tangents are not part of this pass
-  frcon_e.setZero();
-  frcon_o.setZero();
-  fzcon_e.setZero();
-  fzcon_o.setZero();
+  put(16, frcon_e);
+  put(17, frcon_o);
+  put(18, fzcon_e);
+  put(19, fzcon_o);
 
   // linear forward transform and preconditioner decomposition, mirroring the
   // tail of update()

@@ -7,6 +7,7 @@
 
 #include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/constraint_force_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/lambda_force_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
@@ -43,16 +44,34 @@ struct LocalForceComposition {
   double dSHalfDsInterp;
   double lamscale;
   bool lthreed;
+
+  // Spectral-condensation constraint force. Enabled only when with_constraint is
+  // set; then geometry blocks 16-19 hold rCon, zCon, ruFull, zuFull and force
+  // blocks 16-19 receive frcon_e/o, fzcon_e/o. The bandpass uses the Fourier
+  // basis arrays and the tcon/faccon profiles; rCon0/zCon0 are frozen.
+  bool with_constraint = false;
+  int nsMaxF = 0;       // constraint RZ range upper bound
+  int nZeta = 0, nThetaEff = 0, nThetaReduced = 0, mpol = 0, ntor = 0, nnyq2 = 0;
+  const double* rCon0 = nullptr;
+  const double* zCon0 = nullptr;
+  const double* faccon = nullptr;
+  const double* tcon = nullptr;
+  const double* sinmui = nullptr;
+  const double* cosmui = nullptr;
+  const double* cosnv = nullptr;
+  const double* sinnv = nullptr;
+  const double* sinmu = nullptr;
+  const double* cosmu = nullptr;
 };
 
 // work must hold 15*nHalf + 30*nZnT doubles, where nHalf=(nsMaxH-nsMinH)*nZnT.
 inline void ComputeLocalForceDensity(const double* geom, double* work,
                                      double* force,
-                                     const LocalForceComposition& c) {
-  const int nZnT = c.nZnT;
-  const int gS = c.geom_stride;
-  const int fS = c.force_stride;
-  const int nH = (c.nsMaxH - c.nsMinH) * nZnT;
+                                     const LocalForceComposition* c) {
+  const int nZnT = c->nZnT;
+  const int gS = c->geom_stride;
+  const int fS = c->force_stride;
+  const int nH = (c->nsMaxH - c->nsMinH) * nZnT;
   const double* r1e = geom + 0 * gS;
   const double* r1o = geom + 1 * gS;
   const double* z1e = geom + 2 * gS;
@@ -88,25 +107,25 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
   double* tp = p; p += nH;
   double* s = p;  // 30 * nZnT
 
-  ComputeHalfGridJacobian(r1e, r1o, z1e, z1o, rue, ruo, zue, zuo, c.sqrtSH,
-                          c.deltaS, c.dSHalfDsInterp, nZnT, c.nsMinF1, c.nsMinH,
-                          c.nsMaxH, r12, ru12, zu12, rs, zs, tau);
+  ComputeHalfGridJacobian(r1e, r1o, z1e, z1o, rue, ruo, zue, zuo, c->sqrtSH,
+                          c->deltaS, c->dSHalfDsInterp, nZnT, c->nsMinF1, c->nsMinH,
+                          c->nsMaxH, r12, ru12, zu12, rs, zs, tau);
   ComputeMetricElements(r1e, r1o, rue, ruo, zue, zuo, rve, rvo, zve, zvo, tau,
-                        r12, c.sqrtSF, c.sqrtSH, c.lthreed, nZnT, c.nsMinF1,
-                        c.nsMinH, c.nsMaxH, gsqrt, guu, guv, gvv);
-  ComputeBsupContra(lue, luo, lve, lvo, gsqrt, c.sqrtSH, c.lthreed, nZnT,
-                    c.nsMinF1, c.nsMinH, c.nsMaxH, bsupu, bsupv);
-  for (int jH = c.nsMinH; jH < c.nsMaxH; ++jH) {
+                        r12, c->sqrtSF, c->sqrtSH, c->lthreed, nZnT, c->nsMinF1,
+                        c->nsMinH, c->nsMaxH, gsqrt, guu, guv, gvv);
+  ComputeBsupContra(lue, luo, lve, lvo, gsqrt, c->sqrtSH, c->lthreed, nZnT,
+                    c->nsMinF1, c->nsMinH, c->nsMaxH, bsupu, bsupv);
+  for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
     for (int kl = 0; kl < nZnT; ++kl) {
-      const int ih = (jH - c.nsMinH) * nZnT + kl;
-      bsupu[ih] += c.chipH[jH - c.nsMinH] / gsqrt[ih];
+      const int ih = (jH - c->nsMinH) * nZnT + kl;
+      bsupu[ih] += c->chipH[jH - c->nsMinH] / gsqrt[ih];
     }
   }
-  ComputeBCo(guu, guv, gvv, bsupu, bsupv, c.lthreed, nH, bsubu, bsubv);
+  ComputeBCo(guu, guv, gvv, bsupu, bsupv, c->lthreed, nH, bsubu, bsubv);
   ComputeMagneticPressure(bsupu, bsubu, bsupv, bsubv, nH, tp);
-  for (int jH = c.nsMinH; jH < c.nsMaxH; ++jH) {
+  for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
     for (int kl = 0; kl < nZnT; ++kl)
-      tp[(jH - c.nsMinH) * nZnT + kl] += c.presH[jH - c.nsMinH];
+      tp[(jH - c->nsMinH) * nZnT + kl] += c->presH[jH - c->nsMinH];
   }
 
   double* P_i = s; s += nZnT; double* rup_i = s; s += nZnT;
@@ -139,11 +158,11 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
   double* czmn_o = force + 11 * fS;
   ComputeMHDForceDensity(
       r1e, r1o, rue, ruo, zue, zuo, z1o, rve, rvo, zve, zvo, r12, ru12, zu12, rs,
-      zs, tau, tp, gsqrt, bsupu, bsupv, c.sqrtSF, c.sqrtSH, P_i, rup_i, zup_i,
+      zs, tau, tp, gsqrt, bsupu, bsupv, c->sqrtSF, c->sqrtSH, P_i, rup_i, zup_i,
       rsp_i, zsp_i, taup_i, gbubu_i, gbubv_i, gbvbv_i, P_o, rup_o, zup_o, rsp_o,
       zsp_o, taup_o, gbubu_o, gbubv_o, gbvbv_o, P_avg, P_wavg, gbubu_avg,
-      gbubu_wavg, gbvbv_avg, gbvbv_wavg, gbubv_avg, gbubv_wavg, c.deltaS, nZnT,
-      c.nsMinF, c.nsMinF1, c.nsMinH, c.nsMaxH, c.jMaxRZ, c.lthreed, armn_e,
+      gbubu_wavg, gbvbv_avg, gbvbv_wavg, gbubv_avg, gbubv_wavg, c->deltaS, nZnT,
+      c->nsMinF, c->nsMinF1, c->nsMinH, c->nsMaxH, c->jMaxRZ, c->lthreed, armn_e,
       armn_o, azmn_e, azmn_o, brmn_e, brmn_o, bzmn_e, bzmn_o, crmn_e, crmn_o,
       czmn_e, czmn_o);
 
@@ -152,11 +171,44 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
   double* clmn_e = force + 14 * fS;
   double* clmn_o = force + 15 * fS;
   ComputeHybridLambdaForce(bsubu, bsubv, gvv, gsqrt, guv, bsupu, lue, luo,
-                           c.sqrtSH, c.sqrtSF, c.radialBlending, c.lamscale,
-                           c.lthreed, nZnT, c.nsMinF, c.nsMinF1, c.nsMinH,
-                           c.nsMaxH, c.nsMaxFIncludingLcfs, bsubu_i, bsubv_i,
+                           c->sqrtSH, c->sqrtSF, c->radialBlending, c->lamscale,
+                           c->lthreed, nZnT, c->nsMinF, c->nsMinF1, c->nsMinH,
+                           c->nsMaxH, c->nsMaxFIncludingLcfs, bsubu_i, bsubv_i,
                            gvv_gsqrt_i, guv_bsupu_i, blmn_e, blmn_o, clmn_e,
                            clmn_o);
+
+  if (c->with_constraint) {
+    // geometry blocks 16-19 carry the constraint coordinates and full-grid
+    // derivatives; force blocks 16-19 receive the constraint outputs.
+    const double* rCon = geom + 16 * gS;
+    const double* zCon = geom + 17 * gS;
+    const double* ruFull = geom + 18 * gS;
+    const double* zuFull = geom + 19 * gS;
+    double* gConEff = s;
+    s += (c->nsMaxFIncludingLcfs - c->nsMinF) * nZnT;
+    double* gCon = s;
+    s += (c->nsMaxF - c->nsMinF) * nZnT;
+    double* gsc = s;
+    s += c->ntor + 1;
+    double* gcs = s;
+    s += c->ntor + 1;
+    ComputeEffectiveConstraintForce(rCon, c->rCon0, zCon, c->zCon0, ruFull,
+                                    zuFull, nZnT, c->nsMinF,
+                                    c->nsMaxFIncludingLcfs, gConEff);
+    ComputeDeAliasConstraintForce(gConEff, c->faccon, c->tcon, c->sinmui,
+                                  c->cosmui, c->cosnv, c->sinnv, c->sinmu,
+                                  c->cosmu, c->nsMinF, c->nsMaxF, c->nZeta,
+                                  c->nThetaEff, c->nThetaReduced, c->mpol,
+                                  c->ntor, c->nnyq2, gsc, gcs, gCon);
+    double* frcon_e = force + 16 * fS;
+    double* frcon_o = force + 17 * fS;
+    double* fzcon_e = force + 18 * fS;
+    double* fzcon_o = force + 19 * fS;
+    AddConstraintForces(rCon, c->rCon0, zCon, c->zCon0, ruFull, zuFull, gCon,
+                        c->sqrtSF, nZnT, c->nsMinF, c->nsMinF1, c->nsMaxF,
+                        brmn_e, brmn_o, bzmn_e, bzmn_o, frcon_e, frcon_o,
+                        fzcon_e, fzcon_o);
+  }
 }
 
 }  // namespace vmecpp

@@ -428,8 +428,8 @@ class VmecModel {
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     const int gS = static_cast<int>(model.r1_e.size());
-    Eigen::VectorXd geomP = Eigen::VectorXd::Zero(16 * gS);
-    Eigen::VectorXd geomPv = Eigen::VectorXd::Zero(16 * gS);
+    Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
+    Eigen::VectorXd geomPv = Eigen::VectorXd::Zero(20 * gS);
     auto pack = [&](Eigen::VectorXd &dst) {
       auto blk = [&](int b, const Eigen::VectorXd &src) {
         for (int i = 0; i < static_cast<int>(src.size()); ++i)
@@ -441,6 +441,9 @@ class VmecModel {
       blk(9, model.rv_o); blk(10, model.zv_e); blk(11, model.zv_o);
       blk(12, model.lu_e); blk(13, model.lu_o); blk(14, model.lv_e);
       blk(15, model.lv_o);
+      // constraint coordinates and full-grid derivatives
+      blk(16, model.rCon); blk(17, model.zCon); blk(18, model.ruFull);
+      blk(19, model.zuFull);
     };
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
     Evaluate(2, 2, false);
