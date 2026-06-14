@@ -416,6 +416,48 @@ class VmecModel {
     return (fp - fm) / (2.0 * eps);
   }
 
+#ifdef VMECPP_ENABLE_ENZYME
+  // Exact Hessian-vector product H v = T^T J_g T v of the augmented functional's
+  // MHD-plus-lambda part, computed with one Enzyme forward pass through the local
+  // force-density composition (J_g) wrapped by the linear spectral transforms.
+  // The geometry tangent T v is obtained exactly from the linearity of
+  // geometryFromFourier: T v = geom(x+v) - geom(x), so no finite-difference step
+  // enters. The constraint force (a linear bandpass over a nonlinear product) is
+  // omitted here. The model state is restored to x on return.
+  Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
+    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const int gS = static_cast<int>(model.r1_e.size());
+    Eigen::VectorXd geomP = Eigen::VectorXd::Zero(16 * gS);
+    Eigen::VectorXd geomPv = Eigen::VectorXd::Zero(16 * gS);
+    auto pack = [&](Eigen::VectorXd &dst) {
+      auto blk = [&](int b, const Eigen::VectorXd &src) {
+        for (int i = 0; i < static_cast<int>(src.size()); ++i)
+          dst[b * gS + i] = src[i];
+      };
+      blk(0, model.r1_e); blk(1, model.r1_o); blk(2, model.z1_e);
+      blk(3, model.z1_o); blk(4, model.ru_e); blk(5, model.ru_o);
+      blk(6, model.zu_e); blk(7, model.zu_o); blk(8, model.rv_e);
+      blk(9, model.rv_o); blk(10, model.zv_e); blk(11, model.zv_o);
+      blk(12, model.lu_e); blk(13, model.lu_o); blk(14, model.lv_e);
+      blk(15, model.lv_o);
+    };
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
+    Evaluate(2, 2, false);
+    pack(geomP);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + v);
+    Evaluate(2, 2, false);
+    pack(geomPv);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
+    Evaluate(2, 2, false);
+    const Eigen::VectorXd dgeom = geomPv - geomP;
+    model.applyExactForceJacobian(geomP.data(), dgeom.data(), gS,
+                                  *vmec_->physical_f_[0],
+                                  *vmec_->decomposed_f_[0]);
+    return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+  }
+#endif  // VMECPP_ENABLE_ENZYME
+
   // Apply VMEC's preconditioner M^-1 to a vector in the decomposed internal
   // basis, mirroring the native apply sequence (m=1, radial, lambda). This is
   // VMEC's hand-built approximate inverse Hessian; gradient-based solvers use it
@@ -1265,6 +1307,10 @@ PYBIND11_MODULE(_vmecpp, m) {
            py::arg("v"))
       .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
            py::arg("v"), py::arg("eps_rel") = 1e-7)
+#ifdef VMECPP_ENABLE_ENZYME
+      .def("exact_hessian_vector_product",
+           &VmecModel::ExactHessianVectorProduct, py::arg("v"))
+#endif  // VMECPP_ENABLE_ENZYME
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
       .def_property_readonly("fsqr", &VmecModel::fsqr)

@@ -2093,6 +2093,7 @@ void IdealMhdModel::assembleTotalForces() {
                       fzcon_e.data(), fzcon_o.data());
 }
 
+#ifdef VMECPP_ENABLE_ENZYME
 void IdealMhdModel::applyExactForceJacobian(const double* geomP,
                                             const double* dgeom, int geom_stride,
                                             FourierForces& m_physical_f,
@@ -2166,6 +2167,7 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   m_decomposed_hv.m1Constraint(1.0 / std::numbers::sqrt2);
   m_decomposed_hv.zeroZForceForM1();
 }
+#endif  // VMECPP_ENABLE_ENZYME
 
 void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
   // symmetric contribution is always needed

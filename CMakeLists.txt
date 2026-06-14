@@ -222,4 +222,16 @@ if(VMECPP_ENABLE_ENZYME)
   target_compile_options(local_force_hessian_test PRIVATE
     -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
   add_test(NAME local_force_hessian COMMAND local_force_hessian_test)
+
+  # Wire the exact force Hessian-vector product into the core library and the
+  # Python extension: the single Enzyme forward pass lives in exact_force_jvp.cc
+  # (compiled with the plugin), the rest of the core stays normally compiled.
+  # VMECPP_ENABLE_ENZYME guards the callers so the default (plugin-free) build is
+  # unaffected.
+  target_sources(vmecpp_core PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc)
+  set_source_files_properties(
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
+    PROPERTIES COMPILE_OPTIONS "-O2;-fplugin=${VMECPP_ENZYME_PLUGIN}")
+  target_compile_definitions(vmecpp_core PUBLIC VMECPP_ENABLE_ENZYME)
 endif()
