@@ -45,13 +45,21 @@ struct LocalForceComposition {
   double lamscale;
   bool lthreed;
 
+  // Constrained-current profile (ncurr==1): chi' is a function of geometry,
+  // recomputed each step, so it is differentiated in place. ncurr==0 uses the
+  // frozen chipH above.
+  int ncurr = 0;
+  int nThetaEff = 0;
+  const double* currH = nullptr;  // index jH-nsMinH
+  const double* wInt = nullptr;   // index kl % nThetaEff
+
   // Spectral-condensation constraint force. Enabled only when with_constraint is
   // set; then geometry blocks 16-19 hold rCon, zCon, ruFull, zuFull and force
   // blocks 16-19 receive frcon_e/o, fzcon_e/o. The bandpass uses the Fourier
   // basis arrays and the tcon/faccon profiles; rCon0/zCon0 are frozen.
   bool with_constraint = false;
   int nsMaxF = 0;       // constraint RZ range upper bound
-  int nZeta = 0, nThetaEff = 0, nThetaReduced = 0, mpol = 0, ntor = 0, nnyq2 = 0;
+  int nZeta = 0, nThetaReduced = 0, mpol = 0, ntor = 0, nnyq2 = 0;
   const double* rCon0 = nullptr;
   const double* zCon0 = nullptr;
   const double* faccon = nullptr;
@@ -116,9 +124,31 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
   ComputeBsupContra(lue, luo, lve, lvo, gsqrt, c->sqrtSH, c->lthreed, nZnT,
                     c->nsMinF1, c->nsMinH, c->nsMaxH, bsupu, bsupv);
   for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
+    // For a prescribed-current profile (ncurr==1), chi' is recomputed from the
+    // geometry each step (constrained toroidal current), so differentiate it
+    // here rather than freezing it. For ncurr==0 chi' = iota*phi' is a fixed
+    // profile, so use the frozen c->chipH.
+    double chip = c->chipH[jH - c->nsMinH];
+    if (c->ncurr == 1) {
+      double jvPlasma = 0.0;
+      double avg_guu_gsqrt = 0.0;
+      for (int kl = 0; kl < nZnT; ++kl) {
+        const int ih = (jH - c->nsMinH) * nZnT + kl;
+        const int l = kl % c->nThetaEff;
+        if (c->lthreed) {
+          jvPlasma += (guu[ih] * bsupu[ih] + guv[ih] * bsupv[ih]) * c->wInt[l];
+        } else {
+          jvPlasma += guu[ih] * bsupu[ih] * c->wInt[l];
+        }
+        avg_guu_gsqrt += guu[ih] / gsqrt[ih] * c->wInt[l];
+      }
+      if (avg_guu_gsqrt != 0.0) {
+        chip = (c->currH[jH - c->nsMinH] - jvPlasma) / avg_guu_gsqrt;
+      }
+    }
     for (int kl = 0; kl < nZnT; ++kl) {
       const int ih = (jH - c->nsMinH) * nZnT + kl;
-      bsupu[ih] += c->chipH[jH - c->nsMinH] / gsqrt[ih];
+      bsupu[ih] += chip / gsqrt[ih];
     }
   }
   ComputeBCo(guu, guv, gvv, bsupu, bsupv, c->lthreed, nH, bsubu, bsubv);

@@ -2114,6 +2114,9 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   comp.nsMaxF = r_.nsMaxF;
   comp.nZeta = s_.nZeta;
   comp.nThetaEff = s_.nThetaEff;
+  comp.ncurr = ncurr;
+  comp.currH = m_p_.currH.data();
+  comp.wInt = s_.wInt.data();
   comp.nThetaReduced = s_.nThetaReduced;
   comp.mpol = s_.mpol;
   comp.ntor = s_.ntor;
@@ -2213,6 +2216,9 @@ void IdealMhdModel::exactForceDensityTangent(const double* geomP,
   comp.nsMaxF = r_.nsMaxF;
   comp.nZeta = s_.nZeta;
   comp.nThetaEff = s_.nThetaEff;
+  comp.ncurr = ncurr;
+  comp.currH = m_p_.currH.data();
+  comp.wInt = s_.wInt.data();
   comp.nThetaReduced = s_.nThetaReduced;
   comp.mpol = s_.mpol;
   comp.ntor = s_.ntor;
@@ -2264,6 +2270,9 @@ double IdealMhdModel::composedForceResidual(const double* geomP,
   comp.nsMaxF = r_.nsMaxF;
   comp.nZeta = s_.nZeta;
   comp.nThetaEff = s_.nThetaEff;
+  comp.ncurr = ncurr;
+  comp.currH = m_p_.currH.data();
+  comp.wInt = s_.wInt.data();
   comp.nThetaReduced = s_.nThetaReduced;
   comp.mpol = s_.mpol;
   comp.ntor = s_.ntor;
