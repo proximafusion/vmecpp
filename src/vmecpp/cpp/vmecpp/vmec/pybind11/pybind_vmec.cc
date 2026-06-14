@@ -429,7 +429,6 @@ class VmecModel {
     const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     const int gS = static_cast<int>(model.r1_e.size());
     Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
-    Eigen::VectorXd geomPv = Eigen::VectorXd::Zero(20 * gS);
     auto pack = [&](Eigen::VectorXd &dst) {
       auto blk = [&](int b, const Eigen::VectorXd &src) {
         for (int i = 0; i < static_cast<int>(src.size()); ++i)
@@ -445,15 +444,24 @@ class VmecModel {
       blk(16, model.rCon); blk(17, model.zCon); blk(18, model.ruFull);
       blk(19, model.zuFull);
     };
+    // The geometry response geom(x) is dominantly but not exactly linear in the
+    // decomposed coefficients, so a unit-step difference contaminates the
+    // tangent with higher-order terms. Use a small central difference for the
+    // (cheap, near-linear) geometry transform; the nonlinear force kernels are
+    // still differentiated exactly by the single Enzyme pass below.
+    const double eps = 1e-6 * (1.0 + x.norm()) / (v.norm() + 1e-300);
+    Eigen::VectorXd geomPlus = Eigen::VectorXd::Zero(20 * gS);
+    Eigen::VectorXd geomMinus = Eigen::VectorXd::Zero(20 * gS);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + eps * v);
+    Evaluate(2, 2, false);
+    pack(geomPlus);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x - eps * v);
+    Evaluate(2, 2, false);
+    pack(geomMinus);
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
     Evaluate(2, 2, false);
     pack(geomP);
-    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + v);
-    Evaluate(2, 2, false);
-    pack(geomPv);
-    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
-    Evaluate(2, 2, false);
-    const Eigen::VectorXd dgeom = geomPv - geomP;
+    const Eigen::VectorXd dgeom = (geomPlus - geomMinus) / (2.0 * eps);
     model.applyExactForceJacobian(geomP.data(), dgeom.data(), gS,
                                   *vmec_->physical_f_[0],
                                   *vmec_->decomposed_f_[0]);
@@ -482,6 +490,82 @@ class VmecModel {
     blk(15, model.lv_o); blk(16, model.rCon); blk(17, model.zCon);
     blk(18, model.ruFull); blk(19, model.zuFull);
     return model.composedForceResidual(geomP.data(), gS);
+  }
+
+  // Diagnostic: relative difference between the Enzyme force-density tangent and
+  // a finite-difference force-density tangent (both in real space, before the
+  // spectral transform). Isolates the JVP + geometry tangent from the transform
+  // wrapping. Returns (per-block max-rel, overall-rel) so a nonzero block
+  // localizes the discrepancy.
+  std::pair<std::vector<double>, double> ForceDensityJvpResidual(
+      const Eigen::VectorXd &v) {
+    vmecpp::IdealMhdModel &M = *vmec_->m_[0];
+    const int nForce = static_cast<int>(M.blmn_e.size());
+    const int gS = static_cast<int>(M.r1_e.size());
+    const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    auto packGeom = [&](Eigen::VectorXd &dst) {
+      auto blk = [&](int b, const Eigen::VectorXd &s) {
+        for (int i = 0; i < static_cast<int>(s.size()); ++i)
+          dst[b * gS + i] = s[i];
+      };
+      blk(0, M.r1_e); blk(1, M.r1_o); blk(2, M.z1_e); blk(3, M.z1_o);
+      blk(4, M.ru_e); blk(5, M.ru_o); blk(6, M.zu_e); blk(7, M.zu_o);
+      blk(8, M.rv_e); blk(9, M.rv_o); blk(10, M.zv_e); blk(11, M.zv_o);
+      blk(12, M.lu_e); blk(13, M.lu_o); blk(14, M.lv_e); blk(15, M.lv_o);
+      blk(16, M.rCon); blk(17, M.zCon); blk(18, M.ruFull); blk(19, M.zuFull);
+    };
+    auto packForce = [&](Eigen::VectorXd &dst) {
+      auto blk = [&](int b, const Eigen::VectorXd &s) {
+        for (int i = 0; i < static_cast<int>(s.size()); ++i)
+          dst[b * nForce + i] = s[i];
+      };
+      blk(0, M.armn_e); blk(1, M.armn_o); blk(2, M.azmn_e); blk(3, M.azmn_o);
+      blk(4, M.brmn_e); blk(5, M.brmn_o); blk(6, M.bzmn_e); blk(7, M.bzmn_o);
+      blk(8, M.crmn_e); blk(9, M.crmn_o); blk(10, M.czmn_e); blk(11, M.czmn_o);
+      blk(12, M.blmn_e); blk(13, M.blmn_o); blk(14, M.clmn_e); blk(15, M.clmn_o);
+      blk(16, M.frcon_e); blk(17, M.frcon_o); blk(18, M.fzcon_e);
+      blk(19, M.fzcon_o);
+    };
+    const double eps = 1e-6 * (1.0 + x.norm()) / v.norm();
+    Eigen::VectorXd fp = Eigen::VectorXd::Zero(20 * nForce);
+    Eigen::VectorXd fm = Eigen::VectorXd::Zero(20 * nForce);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + eps * v);
+    Evaluate(2, 2, false);
+    packForce(fp);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x - eps * v);
+    Evaluate(2, 2, false);
+    packForce(fm);
+    const Eigen::VectorXd fd = (fp - fm) / (2.0 * eps);
+
+    Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
+    Eigen::VectorXd geomPlus = Eigen::VectorXd::Zero(20 * gS);
+    Eigen::VectorXd geomMinus = Eigen::VectorXd::Zero(20 * gS);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + eps * v);
+    Evaluate(2, 2, false);
+    packGeom(geomPlus);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x - eps * v);
+    Evaluate(2, 2, false);
+    packGeom(geomMinus);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
+    Evaluate(2, 2, false);
+    packGeom(geomP);
+    const Eigen::VectorXd dgeom = (geomPlus - geomMinus) / (2.0 * eps);
+    Eigen::VectorXd jvp = Eigen::VectorXd::Zero(20 * nForce);
+    M.exactForceDensityTangent(geomP.data(), dgeom.data(), gS, jvp.data());
+
+    std::vector<double> per_block(20, 0.0);
+    for (int b = 0; b < 20; ++b) {
+      double num = 0.0, den = 1e-300;
+      for (int i = 0; i < nForce; ++i) {
+        const double a = jvp[b * nForce + i];
+        const double f = fd[b * nForce + i];
+        num = std::max(num, std::fabs(a - f));
+        den = std::max(den, std::fabs(f));
+      }
+      per_block[b] = num / den;
+    }
+    const double overall = (jvp - fd).norm() / (fd.norm() + 1e-300);
+    return {per_block, overall};
   }
 #endif  // VMECPP_ENABLE_ENZYME
 
@@ -1338,6 +1422,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("exact_hessian_vector_product",
            &VmecModel::ExactHessianVectorProduct, py::arg("v"))
       .def("composed_force_residual", &VmecModel::ComposedForceResidual)
+      .def("force_density_jvp_residual", &VmecModel::ForceDensityJvpResidual,
+           py::arg("v"))
 #endif  // VMECPP_ENABLE_ENZYME
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)

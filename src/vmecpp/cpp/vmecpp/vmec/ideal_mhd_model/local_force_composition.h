@@ -192,9 +192,27 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
     s += c->ntor + 1;
     double* gcs = s;
     s += c->ntor + 1;
-    ComputeEffectiveConstraintForce(rCon, c->rCon0, zCon, c->zCon0, ruFull,
-                                    zuFull, nZnT, c->nsMinF,
-                                    c->nsMaxFIncludingLcfs, gConEff);
+    // Constraint reference rCon0/zCon0 extrapolated from the LCFS into the
+    // volume (rzConIntoVolume): rCon0[jF] = rCon[LCFS] * s_full. This is linear
+    // in the geometry, so computing it here (rather than freezing it) keeps the
+    // exact HVP consistent with re-evaluating rzConIntoVolume each step.
+    double* rCon0 = s;
+    s += (c->nsMaxFIncludingLcfs - c->nsMinF) * nZnT;
+    double* zCon0 = s;
+    s += (c->nsMaxFIncludingLcfs - c->nsMinF) * nZnT;
+    const int lcfs = (c->nsMaxFIncludingLcfs - 1 - c->nsMinF) * nZnT;
+    for (int jF = (c->nsMinF > 1 ? c->nsMinF : 1); jF < c->nsMaxFIncludingLcfs;
+         ++jF) {
+      const double sf = c->sqrtSF[jF - c->nsMinF1] * c->sqrtSF[jF - c->nsMinF1];
+      for (int kl = 0; kl < nZnT; ++kl) {
+        const int idx = (jF - c->nsMinF) * nZnT + kl;
+        rCon0[idx] = rCon[lcfs + kl] * sf;
+        zCon0[idx] = zCon[lcfs + kl] * sf;
+      }
+    }
+    ComputeEffectiveConstraintForce(rCon, rCon0, zCon, zCon0, ruFull, zuFull,
+                                    nZnT, c->nsMinF, c->nsMaxFIncludingLcfs,
+                                    gConEff);
     ComputeDeAliasConstraintForce(gConEff, c->faccon, c->tcon, c->sinmui,
                                   c->cosmui, c->cosnv, c->sinnv, c->sinmu,
                                   c->cosmu, c->nsMinF, c->nsMaxF, c->nZeta,
@@ -204,7 +222,7 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
     double* frcon_o = force + 17 * fS;
     double* fzcon_e = force + 18 * fS;
     double* fzcon_o = force + 19 * fS;
-    AddConstraintForces(rCon, c->rCon0, zCon, c->zCon0, ruFull, zuFull, gCon,
+    AddConstraintForces(rCon, rCon0, zCon, zCon0, ruFull, zuFull, gCon,
                         c->sqrtSF, nZnT, c->nsMinF, c->nsMinF1, c->nsMaxF,
                         brmn_e, brmn_o, bzmn_e, bzmn_o, frcon_e, frcon_o,
                         fzcon_e, fzcon_o);
