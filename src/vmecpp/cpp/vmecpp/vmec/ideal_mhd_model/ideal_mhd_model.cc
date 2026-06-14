@@ -22,6 +22,7 @@
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/constraint_force_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/lambda_force_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
@@ -2043,21 +2044,12 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
 }
 
 void IdealMhdModel::effectiveConstraintForce() {
-  // gConEff
-
-  // no constraint on axis --> has no poloidal angle
-  int jMin = 0;
-  if (r_.nsMinF == 0) {
-    jMin = 1;
-  }
-
-  for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
-      gConEff[idx_kl] = (rCon[idx_kl] - rCon0[idx_kl]) * ruFull[idx_kl] +
-                        (zCon[idx_kl] - zCon0[idx_kl]) * zuFull[idx_kl];
-    }  // kl
-  }  // jF
+  // gConEff via the shared kernel (constraint_force_kernel.h), also used by the
+  // Enzyme autodiff path.
+  ComputeEffectiveConstraintForce(rCon.data(), rCon0.data(), zCon.data(),
+                                  zCon0.data(), ruFull.data(), zuFull.data(),
+                                  s_.nZnT, r_.nsMinF, r_.nsMaxFIncludingLcfs,
+                                  gConEff.data());
 }
 
 // perform Fourier-space bandpass filtering of constraint force
@@ -2088,24 +2080,15 @@ void IdealMhdModel::assembleTotalForces() {
     }
   }
 
-  for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
-
-      double brcon = (rCon[idx_kl] - rCon0[idx_kl]) * gCon[idx_kl];
-      double bzcon = (zCon[idx_kl] - zCon0[idx_kl]) * gCon[idx_kl];
-
-      brmn_e[idx_kl] += brcon;
-      bzmn_e[idx_kl] += bzcon;
-      brmn_o[idx_kl] += brcon * m_p_.sqrtSF[jF - r_.nsMinF1];
-      bzmn_o[idx_kl] += bzcon * m_p_.sqrtSF[jF - r_.nsMinF1];
-
-      frcon_e[idx_kl] = ruFull[idx_kl] * gCon[idx_kl];
-      fzcon_e[idx_kl] = zuFull[idx_kl] * gCon[idx_kl];
-      frcon_o[idx_kl] = frcon_e[idx_kl] * m_p_.sqrtSF[jF - r_.nsMinF1];
-      fzcon_o[idx_kl] = fzcon_e[idx_kl] * m_p_.sqrtSF[jF - r_.nsMinF1];
-    }
-  }
+  // add the bandpass-filtered constraint force to the MHD R/Z forces and write
+  // the constraint outputs via the shared kernel (constraint_force_kernel.h),
+  // also used by the Enzyme autodiff path.
+  AddConstraintForces(rCon.data(), rCon0.data(), zCon.data(), zCon0.data(),
+                      ruFull.data(), zuFull.data(), gCon.data(),
+                      m_p_.sqrtSF.data(), s_.nZnT, r_.nsMinF, r_.nsMinF1,
+                      r_.nsMaxF, brmn_e.data(), brmn_o.data(), bzmn_e.data(),
+                      bzmn_o.data(), frcon_e.data(), frcon_o.data(),
+                      fzcon_e.data(), fzcon_o.data());
 }
 
 void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
