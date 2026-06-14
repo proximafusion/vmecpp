@@ -205,4 +205,13 @@ if(VMECPP_ENABLE_ENZYME)
   target_compile_options(enzyme_smoke_test PRIVATE
     -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
   add_test(NAME enzyme_smoke COMMAND enzyme_smoke_test)
+
+  # Exact autodiff (forward and reverse) of a real VMEC nonlinear kernel: the
+  # half-grid Jacobian. Self-contained over flat buffers; checks Jv and J^T u
+  # against finite differences and against each other (adjoint identity).
+  add_executable(jacobian_kernel_autodiff_test
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/jacobian_kernel_autodiff_test.cc)
+  target_compile_options(jacobian_kernel_autodiff_test PRIVATE
+    -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+  add_test(NAME jacobian_kernel_autodiff COMMAND jacobian_kernel_autodiff_test)
 endif()
