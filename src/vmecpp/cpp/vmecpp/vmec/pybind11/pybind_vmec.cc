@@ -386,6 +386,7 @@ class VmecModel {
   }
   void SetState(const Eigen::VectorXd &flat) const {
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
+    exact_primal_valid_ = false;  // primal geometry cache is stale
   }
   // Flat force vector (decomposed/preconditioned), valid after Evaluate().
   Eigen::VectorXd GetForces() const {
@@ -427,20 +428,24 @@ class VmecModel {
   Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
-    Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
     Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
-    // Primal geometry from the current state (decomposed_x_ holds x). The
-    // geometry tangent is the same linear pre-chain applied to v directly, so it
-    // is exact with no finite-difference step and only a cheap geometry
-    // transform (no full update). The single nonlinear pass is the Enzyme JVP
-    // inside applyExactForceJacobian.
-    model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
-                       geomP.data(), gS, /*primal=*/true);
+    // The primal geometry depends only on the current state, not on v, so cache
+    // it: a Krylov solve calls this many times at the same state. SetState
+    // invalidates the cache. The geometry tangent is the same linear pre-chain
+    // applied to v directly (exact, no finite difference, no full update); the
+    // single nonlinear step is the Enzyme JVP inside applyExactForceJacobian.
+    if (!exact_primal_valid_ ||
+        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
+      exact_primal_.setZero(20 * gS);
+      model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                         exact_primal_.data(), gS, /*primal=*/true);
+      exact_primal_valid_ = true;
+    }
     vmec_->physical_x_backup_[0]->setZero();
     UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, v);
     model.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
                        dgeom.data(), gS, /*primal=*/false);
-    model.applyExactForceJacobian(geomP.data(), dgeom.data(), gS,
+    model.applyExactForceJacobian(exact_primal_.data(), dgeom.data(), gS,
                                   *vmec_->physical_f_[0],
                                   *vmec_->decomposed_f_[0]);
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
@@ -634,6 +639,12 @@ class VmecModel {
   }
 
   std::unique_ptr<vmecpp::Vmec> vmec_;
+
+  // Cached primal geometry for the exact Hessian-vector product: it depends only
+  // on the state, so it is reused across Krylov matvecs and invalidated by
+  // SetState. Mutable so SetState (const) can clear it.
+  mutable Eigen::VectorXd exact_primal_;
+  mutable bool exact_primal_valid_ = false;
 
   // Preconditioner / Nestor update bookkeeping, mirroring the like-named Vmec
   // members; the Python loop drives the iteration counters via Evaluate, so the
