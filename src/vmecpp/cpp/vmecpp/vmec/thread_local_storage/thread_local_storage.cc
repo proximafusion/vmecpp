@@ -39,5 +39,22 @@ ThreadLocalStorage::ThreadLocalStorage(const Sizes* s) : s_(*s) {
   gbubu_i.setZero(nZnT);
   gbubv_i.setZero(nZnT);
   gbvbv_i.setZero(nZnT);
+  P_o.setZero(nZnT);
+  rup_o.setZero(nZnT);
+  zup_o.setZero(nZnT);
+  rsp_o.setZero(nZnT);
+  zsp_o.setZero(nZnT);
+  taup_o.setZero(nZnT);
+  gbubu_o.setZero(nZnT);
+  gbubv_o.setZero(nZnT);
+  gbvbv_o.setZero(nZnT);
+  P_avg.setZero(nZnT);
+  P_wavg.setZero(nZnT);
+  gbubu_avg.setZero(nZnT);
+  gbubu_wavg.setZero(nZnT);
+  gbvbv_avg.setZero(nZnT);
+  gbvbv_wavg.setZero(nZnT);
+  gbubv_avg.setZero(nZnT);
+  gbubv_wavg.setZero(nZnT);
 }
 }  // namespace vmecpp

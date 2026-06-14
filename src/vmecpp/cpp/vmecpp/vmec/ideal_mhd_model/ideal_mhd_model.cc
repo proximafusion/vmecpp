@@ -1840,19 +1840,39 @@ void IdealMhdModel::computeMHDForces() {
     m_ls_.gbvbv_i.setZero();
   }
 
-  Eigen::VectorXd P_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  //  r12 * totalPressure = P
-  Eigen::VectorXd rup_o = Eigen::VectorXd::Zero(s_.nZnT);   // ru12 * P
-  Eigen::VectorXd zup_o = Eigen::VectorXd::Zero(s_.nZnT);   // zu12 * P
-  Eigen::VectorXd rsp_o = Eigen::VectorXd::Zero(s_.nZnT);   //   rs * P
-  Eigen::VectorXd zsp_o = Eigen::VectorXd::Zero(s_.nZnT);   //   zs * P
-  Eigen::VectorXd taup_o = Eigen::VectorXd::Zero(s_.nZnT);  //  tau * P
-  Eigen::VectorXd gbubu_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupu * bsupu
-  Eigen::VectorXd gbubv_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupu * bsupv
-  Eigen::VectorXd gbvbv_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupv * bsupv
+  // Persistent per-surface scratch (preallocated in ThreadLocalStorage):
+  // aliased here so every write below lands in existing storage. This keeps the
+  // force kernel allocation-free, which both avoids per-surface heap churn and
+  // lets Enzyme differentiate it (Enzyme cannot trace dynamic Eigen
+  // temporaries).
+  Eigen::VectorXd& P_o = m_ls_.P_o;          //  r12 * totalPressure = P
+  Eigen::VectorXd& rup_o = m_ls_.rup_o;      // ru12 * P
+  Eigen::VectorXd& zup_o = m_ls_.zup_o;      // zu12 * P
+  Eigen::VectorXd& rsp_o = m_ls_.rsp_o;      //   rs * P
+  Eigen::VectorXd& zsp_o = m_ls_.zsp_o;      //   zs * P
+  Eigen::VectorXd& taup_o = m_ls_.taup_o;    //  tau * P
+  Eigen::VectorXd& gbubu_o = m_ls_.gbubu_o;  // gsqrt * bsupu * bsupu
+  Eigen::VectorXd& gbubv_o = m_ls_.gbubv_o;  // gsqrt * bsupu * bsupv
+  Eigen::VectorXd& gbvbv_o = m_ls_.gbvbv_o;  // gsqrt * bsupv * bsupv
+  P_o.setZero();
+  rup_o.setZero();
+  zup_o.setZero();
+  rsp_o.setZero();
+  zsp_o.setZero();
+  taup_o.setZero();
+  gbubu_o.setZero();
+  gbubv_o.setZero();
+  gbvbv_o.setZero();
+
+  // Surface-average scratch, likewise aliased to preallocated storage.
+  Eigen::VectorXd& P_avg = m_ls_.P_avg;
+  Eigen::VectorXd& P_wavg = m_ls_.P_wavg;
+  Eigen::VectorXd& gbubu_avg = m_ls_.gbubu_avg;
+  Eigen::VectorXd& gbubu_wavg = m_ls_.gbubu_wavg;
+  Eigen::VectorXd& gbvbv_avg = m_ls_.gbvbv_avg;
+  Eigen::VectorXd& gbvbv_wavg = m_ls_.gbvbv_wavg;
+  Eigen::VectorXd& gbubv_avg = m_ls_.gbubv_avg;
+  Eigen::VectorXd& gbubv_wavg = m_ls_.gbubv_wavg;
 
   for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
     const double sFull =
@@ -1913,15 +1933,13 @@ void IdealMhdModel::computeMHDForces() {
     const double invDS = 1.0 / m_fc_.deltaS;
     const double invSHo = 1.0 / sqrtSHo;
     const double invSHi = 1.0 / sqrtSHi;
-    const Eigen::VectorXd P_avg = 0.5 * (P_o + m_ls_.P_i);
-    const Eigen::VectorXd P_wavg = 0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
+    P_avg = 0.5 * (P_o + m_ls_.P_i);
+    P_wavg = 0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
 
-    const Eigen::VectorXd gbubu_avg = 0.5 * (gbubu_o + m_ls_.gbubu_i);
-    const Eigen::VectorXd gbubu_wavg =
-        0.5 * (gbubu_o * sqrtSHo + m_ls_.gbubu_i * sqrtSHi);
-    const Eigen::VectorXd gbvbv_avg = 0.5 * (gbvbv_o + m_ls_.gbvbv_i);
-    const Eigen::VectorXd gbvbv_wavg =
-        0.5 * (gbvbv_o * sqrtSHo + m_ls_.gbvbv_i * sqrtSHi);
+    gbubu_avg = 0.5 * (gbubu_o + m_ls_.gbubu_i);
+    gbubu_wavg = 0.5 * (gbubu_o * sqrtSHo + m_ls_.gbubu_i * sqrtSHi);
+    gbvbv_avg = 0.5 * (gbvbv_o + m_ls_.gbvbv_i);
+    gbvbv_wavg = 0.5 * (gbvbv_o * sqrtSHo + m_ls_.gbvbv_i * sqrtSHi);
 
     // A_R force
     armn_e.segment(f_off, nZnT) =
@@ -1958,9 +1976,8 @@ void IdealMhdModel::computeMHDForces() {
         gbubu_avg.cwiseProduct(zuo) * sFull;
 
     if (s_.lthreed) {
-      const Eigen::VectorXd gbubv_avg = 0.5 * (gbubv_o + m_ls_.gbubv_i);
-      const Eigen::VectorXd gbubv_wavg =
-          0.5 * (gbubv_o * sqrtSHo + m_ls_.gbubv_i * sqrtSHi);
+      gbubv_avg = 0.5 * (gbubv_o + m_ls_.gbubv_i);
+      gbubv_wavg = 0.5 * (gbubv_o * sqrtSHo + m_ls_.gbubv_i * sqrtSHi);
       const auto rve = rv_e.segment(g_off, nZnT);
       const auto rvo = rv_o.segment(g_off, nZnT);
       const auto zve = zv_e.segment(g_off, nZnT);

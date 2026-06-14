@@ -93,12 +93,12 @@ void ForcesToFourier3DSymmFastPoloidal(
         double zmksc_n = -czmn_seg.dot(sinmui_seg);
 
         // Assemble effective R and Z forces from MHD and spectral condensation
-        // contributions. Materialize to avoid re-evaluation in each dot
-        // product.
-        const Eigen::VectorXd tempR_seg =
-            (armn_seg + xmpq[m] * frcon_seg).eval();
-        const Eigen::VectorXd tempZ_seg =
-            (azmn_seg + xmpq[m] * fzcon_seg).eval();
+        // contributions. Materialize to avoid re-evaluation in each dot product,
+        // reusing per-thread scratch so the inner loop allocates nothing (and
+        // stays Enzyme-differentiable). Same arithmetic as a fresh .eval().
+        thread_local Eigen::VectorXd tempR_seg, tempZ_seg;
+        tempR_seg.noalias() = armn_seg + xmpq[m] * frcon_seg;
+        tempZ_seg.noalias() = azmn_seg + xmpq[m] * fzcon_seg;
 
         double rmkcc = tempR_seg.dot(cosmui_seg) + brmn_seg.dot(sinmumi_seg);
         double rmkss = tempR_seg.dot(sinmui_seg) + brmn_seg.dot(cosmumi_seg);
