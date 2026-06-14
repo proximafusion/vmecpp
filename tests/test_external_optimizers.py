@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 from external_optimizers import (
     reference_equilibrium,
+    solve_newton_hvp,
     solve_newton_krylov,
     solve_newton_krylov_preconditioned,
     solve_preconditioned_descent,
@@ -36,6 +37,7 @@ def reference():
         solve_preconditioned_descent,
         solve_newton_krylov,
         solve_newton_krylov_preconditioned,
+        solve_newton_hvp,
     ],
 )
 def test_optimizer_reaches_equilibrium(solver, reference):
@@ -54,6 +56,15 @@ def test_preconditioner_accelerates_newton_krylov():
     _, plain = solve_newton_krylov()
     _, precond = solve_newton_krylov_preconditioned()
     assert precond.force_evals < plain.force_evals
+
+
+def test_newton_hvp_converges_in_few_iterations():
+    # True Newton with VMEC++'s own Hessian-vector product converges in a handful
+    # of outer iterations (second-order), far fewer than first-order descent.
+    _, newton = solve_newton_hvp()
+    _, descent = solve_preconditioned_descent()
+    assert newton.outer_iters < 20
+    assert newton.outer_iters < descent.outer_iters
 
 
 if __name__ == "__main__":
