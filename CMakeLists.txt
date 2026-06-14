@@ -175,3 +175,34 @@ endif()
 
 install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
 install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
+
+# Optional Enzyme automatic-differentiation targets.
+# Enzyme (https://enzyme.mit.edu) differentiates LLVM IR via a Clang plugin, so
+# these targets need a Clang frontend and the matching ClangEnzyme plugin. OFF
+# by default; the production build and all existing targets are unaffected.
+# Enable with:
+#   -DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so
+option(VMECPP_ENABLE_ENZYME "Build Enzyme autodiff targets" OFF)
+if(VMECPP_ENABLE_ENZYME)
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR
+      "VMECPP_ENABLE_ENZYME requires a Clang compiler (got "
+      "${CMAKE_CXX_COMPILER_ID}); Enzyme attaches as a Clang plugin.")
+  endif()
+  set(VMECPP_ENZYME_PLUGIN "" CACHE FILEPATH "Path to ClangEnzyme-NN.so")
+  if(NOT VMECPP_ENZYME_PLUGIN OR NOT EXISTS "${VMECPP_ENZYME_PLUGIN}")
+    message(FATAL_ERROR
+      "VMECPP_ENABLE_ENZYME=ON requires "
+      "-DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so")
+  endif()
+  message(STATUS "Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
+  enable_testing()
+  add_executable(enzyme_smoke_test
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/enzyme_smoke_test.cc)
+  # Enzyme runs as an optimization-time pass; it needs optimizations enabled and
+  # the plugin attached. -O2 guards against a Debug (-O0) configuration where the
+  # AD pass would otherwise not run.
+  target_compile_options(enzyme_smoke_test PRIVATE
+    -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+  add_test(NAME enzyme_smoke COMMAND enzyme_smoke_test)
+endif()
