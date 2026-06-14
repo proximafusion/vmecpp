@@ -26,7 +26,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from scipy.sparse.linalg import LinearOperator, cg
+from scipy.sparse.linalg import LinearOperator, gmres
 
 try:
     from vmecpp.cpp import _vmecpp
@@ -90,19 +90,34 @@ def _interior_operators(model, x, interior):
     )
 
 
-def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=40):
-    """Converge the interior to force balance with the boundary held fixed."""
+def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=80):
+    """Converge the interior to force balance with the boundary held fixed.
+
+    Preconditioned Newton-Krylov on the interior residual with a backtracking
+    line search; the line search is required for stiff 3D equilibria, where the
+    full Newton step overshoots.
+    """
     x = np.asarray(x0, float).copy()
     x[boundary] = x_boundary
     for _ in range(max_newton):
         f = _raw_force(model, x)
-        if np.linalg.norm(f[interior]) < tol:
+        norm0 = np.linalg.norm(f[interior])
+        if norm0 < tol:
             break
         model.set_state(np.ascontiguousarray(x))
         model.evaluate(2, 2, True)  # assemble preconditioner + set base state
         h_op, m_op = _interior_operators(model, x, interior)
-        dxi, _ = cg(h_op, -f[interior], M=m_op, rtol=1e-4, maxiter=200)
-        x[interior] += dxi
+        dxi, _ = gmres(h_op, -f[interior], M=m_op, rtol=1e-4, maxiter=300)
+        alpha = 1.0
+        for _ in range(30):
+            xt = x.copy()
+            xt[interior] += alpha * dxi
+            if np.linalg.norm(_raw_force(model, xt)[interior]) < norm0:
+                break
+            alpha *= 0.5
+        else:
+            break  # no decrease found; stop
+        x[interior] += alpha * dxi
     return x
 
 
@@ -132,7 +147,7 @@ def boundary_gradient(model, x_star, interior, boundary, objective, h=1e-6):
     model.set_state(np.ascontiguousarray(x_star))
     model.evaluate(2, 2, True)  # assemble preconditioner + set base state to x_star
     h_op, m_op = _interior_operators(model, x_star, interior)
-    lam, _ = cg(h_op, dj[interior], M=m_op, rtol=1e-7, maxiter=400)
+    lam, _ = gmres(h_op, dj[interior], M=m_op, rtol=1e-6, restart=100, maxiter=30)
     embedded = np.zeros(n)
     embedded[interior] = lam
     model.set_state(np.ascontiguousarray(x_star))
