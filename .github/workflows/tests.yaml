@@ -50,28 +50,38 @@ jobs:
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
           sudo apt-get update && sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev
+      - name: Cache the VMEC2000 wheel
+        if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.10' }}
+        uses: actions/cache@v4
+        with:
+          path: /tmp/vmec2000-wheel
+          # Keyed on the pinned VMEC2000 source commit: rebuild only when it changes.
+          key: vmec2000-728af8bd6c79-cp310-ubuntu22.04
       - name: Also install VMEC2000 (only on Ubuntu 22.04)
         if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.10' }}
         run: |
-          # Build VMEC2000 from source instead of the old prebuilt wheel. The
-          # pinned vmec-0.0.6 cp310 wheel was f90wrapped against numpy 1.x and
-          # fails to import under numpy 2 (f90wrap array-interface break), so the
-          # compatibility test could never run. Building from source with current
-          # f90wrap produces numpy-2-compatible bindings. Recipe mirrors SIMSOPT's
-          # own CI (hiddenSymmetries/VMEC2000 cmake/machines/ubuntu.json).
+          # The prebuilt vmec-0.0.6 wheel (anaconda eguiraud-pf, 2025-01-23) was
+          # built from VMEC2000 commit 728af8b ("works with numpy 2.0") but
+          # f90wrapped against that build's numpy; it no longer imports under the
+          # numpy 2.2 this CI resolves (the f90wrap array interface breaks). Build
+          # a wheel from the SAME pinned commit against the current numpy and
+          # cache it, so only the first run pays the build cost. Pinned and
+          # known-good like the old wheel, just numpy-2-correct.
           sudo apt-get install -y libopenmpi-dev libnetcdff-dev libscalapack-mpi-dev \
             libhdf5-dev libhdf5-serial-dev libfftw3-dev libopenblas-dev ninja-build
-          # Build VMEC2000 with the SYSTEM cmake + ninja. Do not pip-install the
-          # cmake/ninja wheels: they would shadow the system cmake that
-          # scikit-build-core's editable vmecpp rebuild records, breaking its
-          # verify_globs step in the editable matrix job.
-          python -m pip install mpi4py numpy scikit-build f90wrap setuptools wheel
-          git clone --depth 1 https://github.com/hiddenSymmetries/VMEC2000.git /tmp/VMEC2000
-          cd /tmp/VMEC2000
-          cp cmake/machines/ubuntu.json cmake_config_file.json
-          LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu \
-            python -m pip install -v --no-build-isolation .
-          cd -
+          python -m pip install mpi4py
+          if ! ls /tmp/vmec2000-wheel/vmec-*.whl >/dev/null 2>&1; then
+            # Build with the SYSTEM cmake + ninja; do NOT pip-install the
+            # cmake/ninja wheels (they shadow the system cmake that
+            # scikit-build-core's editable vmecpp rebuild records).
+            python -m pip install numpy scikit-build f90wrap setuptools wheel
+            git clone https://github.com/hiddenSymmetries/VMEC2000.git /tmp/VMEC2000
+            git -C /tmp/VMEC2000 checkout 728af8bd6c796b36a0aa85fe298e507791e57c6e
+            cp /tmp/VMEC2000/cmake/machines/ubuntu.json /tmp/VMEC2000/cmake_config_file.json
+            LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu \
+              python -m pip wheel /tmp/VMEC2000 --no-build-isolation -w /tmp/vmec2000-wheel
+          fi
+          python -m pip install /tmp/vmec2000-wheel/vmec-*.whl
           # fail loudly here if the binding is still broken, not in the test step
           python -c "import vmec; print('VMEC2000 import OK')"
       - name: Install package
