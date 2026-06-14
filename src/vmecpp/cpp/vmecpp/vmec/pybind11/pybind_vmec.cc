@@ -217,9 +217,23 @@ class VmecModel {
   // decision vector. This is the body of Vmec::UpdateForwardModel with
   // caller-supplied counters; for free-boundary runs the caller should react to
   // `need_restart` (a vacuum-activation restart).
-  void Evaluate(int iter1, int iter2) {
+  // When precondition is true (default) this runs the full forward model and
+  // leaves decomposed_f holding the preconditioned search direction, exactly as
+  // the native solver uses it. When false, the forward model returns at the
+  // INVARIANT_RESIDUALS checkpoint (vmec.cc line ~836), so decomposed_f holds
+  // the raw, unpreconditioned force: the gradient of VMEC's augmented
+  // Lagrangian with respect to the (decomposed) state, including the
+  // lambda-constraint components. That raw gradient is what gradient-based
+  // optimizers minimizing the MHD energy functional need; mhd_energy is already
+  // set earlier in update(), so it is valid at the checkpoint too.
+  void Evaluate(int iter1, int iter2, bool precondition = true) {
+    ++force_eval_count_;
     bool need_restart = false;
     std::string error_message;
+    const vmecpp::VmecCheckpoint checkpoint =
+        precondition ? vmecpp::VmecCheckpoint::NONE
+                     : vmecpp::VmecCheckpoint::INVARIANT_RESIDUALS;
+    const int checkpoint_after = precondition ? INT_MAX : 0;
     // Clear the restart reason before evaluating the forward model, exactly as
     // Vmec::Evolve does at its start (vmec.cc): the forward model only *sets* a
     // reason (BAD_JACOBIAN when the Jacobian flips, HUGE_INITIAL_FORCES at
@@ -240,7 +254,7 @@ class VmecModel {
           *vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
           *vmec_->decomposed_f_[0], *vmec_->physical_f_[0], need_restart,
           last_preconditioner_update_, last_full_update_nestor_, vmec_->fc_,
-          iter1, iter2, vmecpp::VmecCheckpoint::NONE, INT_MAX,
+          iter1, iter2, checkpoint, checkpoint_after,
           /*verbose=*/false);
       if (!s.ok()) {
         error_message = std::string(s.status().message());
@@ -252,6 +266,12 @@ class VmecModel {
     last_need_restart_ = need_restart;
   }
   bool need_restart() const { return last_need_restart_; }
+
+  // Total forward-model (force) evaluations since construction or the last
+  // reset. Counts every Evaluate, including those inside hessian_vector_product
+  // and preconditioner assembly, for a fair cross-optimizer cost comparison.
+  long force_eval_count() const { return force_eval_count_; }
+  void reset_force_eval_count() { force_eval_count_ = 0; }
 
   // The Garabedian-style time step (PerformTimeStep): for each Fourier
   // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
@@ -372,6 +392,52 @@ class VmecModel {
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
 
+  // Hessian-vector product of VMEC's augmented functional, computed inside
+  // VMEC++ by a central directional derivative of the analytic force (which is
+  // the gradient): H v = (F(x + eps v) - F(x - eps v)) / (2 eps), in the
+  // decomposed internal basis. This is the matrix-free Hessian information an
+  // internal or external Newton-Krylov solver needs; F itself is exact, so only
+  // the directional step is finite-differenced. The current state is restored.
+  Eigen::VectorXd HessianVectorProduct(const Eigen::VectorXd &v,
+                                       double eps_rel = 1e-7) {
+    const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const double vnorm = v.norm();
+    if (vnorm == 0.0) {
+      return Eigen::VectorXd::Zero(x.size());
+    }
+    const double eps = eps_rel * (1.0 + x.norm()) / vnorm;
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + eps * v);
+    Evaluate(2, 2, /*precondition=*/false);
+    const Eigen::VectorXd fp = FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x - eps * v);
+    Evaluate(2, 2, /*precondition=*/false);
+    const Eigen::VectorXd fm = FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
+    return (fp - fm) / (2.0 * eps);
+  }
+
+  // Apply VMEC's preconditioner M^-1 to a vector in the decomposed internal
+  // basis, mirroring the native apply sequence (m=1, radial, lambda). This is
+  // VMEC's hand-built approximate inverse Hessian; gradient-based solvers use it
+  // as the metric (preconditioned Krylov / quasi-Newton, and as the
+  // preconditioner for the Hessian solve in adjoint sensitivities).
+  //
+  // Requires a prior evaluate(precondition=true) at the current state: the
+  // radial preconditioner is assembled inside that forward-model call.
+  Eigen::VectorXd ApplyPreconditioner(const Eigen::VectorXd &v) const {
+    vmecpp::FourierForces tmp(&vmec_->s_, vmec_->r_[0].get(), vmec_->fc_.ns);
+    tmp.setZero();
+    UnflattenActive(tmp, vmec_->s_, v);
+    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    model.applyM1Preconditioner(tmp);
+    const absl::Status status = model.applyRZPreconditioner(tmp);
+    if (!status.ok()) {
+      throw std::runtime_error(std::string(status.message()));
+    }
+    model.applyLambdaPreconditioner(tmp);
+    return FlattenActive(tmp, vmec_->s_);
+  }
+
   // Residuals (set by Evaluate()): invariant {fsqr,fsqz,fsql} and
   // preconditioned {fsqr1,fsqz1,fsql1}.
   double fsqr() const { return vmec_->fc_.fsqr; }
@@ -444,6 +510,7 @@ class VmecModel {
   int last_preconditioner_update_ = 0;
   int last_full_update_nestor_ = 0;
   bool last_need_restart_ = false;
+  long force_eval_count_ = 0;
 };
 
 }  // anonymous namespace
@@ -1177,7 +1244,8 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
                   py::arg("ns"), py::arg("initial_state") = std::nullopt)
-      .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"))
+      .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
+           py::arg("precondition") = true)
       .def_property_readonly("need_restart", &VmecModel::need_restart)
       .def("perform_time_step", &VmecModel::PerformTimeStep,
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
@@ -1193,6 +1261,12 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
       .def("get_forces", &VmecModel::GetForces)
+      .def("apply_preconditioner", &VmecModel::ApplyPreconditioner,
+           py::arg("v"))
+      .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
+           py::arg("v"), py::arg("eps_rel") = 1e-7)
+      .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
+      .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
       .def_property_readonly("fsqr", &VmecModel::fsqr)
       .def_property_readonly("fsqz", &VmecModel::fsqz)
       .def_property_readonly("fsql", &VmecModel::fsql)
