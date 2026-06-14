@@ -16,10 +16,8 @@ Run: python examples/simsopt_optimization_loop.py
 
 import time
 
-import numpy as np
 from simsopt.objectives import LeastSquaresProblem
 from simsopt.solve import least_squares_serial_solve
-
 from simsopt_vmec_gradient import VmecBoundaryProblem, make_simsopt_optimizable
 
 problem = VmecBoundaryProblem(ns=11)

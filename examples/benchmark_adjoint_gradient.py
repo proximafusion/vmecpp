@@ -17,13 +17,14 @@ import time
 from pathlib import Path
 
 import numpy as np
+import vmecpp_adjoint as va
 from scipy.sparse.linalg import LinearOperator, gmres
 
-import vmecpp_adjoint as va
-
 DATA = Path(__file__).resolve().parent / "data"
-CASES = [("solovev", DATA / "solovev.json", 11),
-         ("cth_like", DATA / "cth_like_fixed_bdy.json", 11)]
+CASES = [
+    ("solovev", DATA / "solovev.json", 11),
+    ("cth_like", DATA / "cth_like_fixed_bdy.json", 11),
+]
 OBJ = va.mhd_energy
 
 
@@ -31,8 +32,7 @@ def adjoint_grad(model, x_star, interior, boundary, exact):
     """va.boundary_gradient with a selectable HVP backend."""
     n = x_star.size
     dj = va.objective_state_gradient(model, x_star, OBJ)
-    hvp = (model.exact_hessian_vector_product if exact
-           else model.hessian_vector_product)
+    hvp = model.exact_hessian_vector_product if exact else model.hessian_vector_product
     model.set_state(np.ascontiguousarray(x_star))
     model.evaluate(2, 2, True)
     ni = interior.size
@@ -45,12 +45,18 @@ def adjoint_grad(model, x_star, interior, boundary, exact):
     def mii(bi):
         v = np.zeros(n)
         v[interior] = bi
-        return np.asarray(model.apply_preconditioner(np.ascontiguousarray(v)),
-                          float)[interior]
+        return np.asarray(model.apply_preconditioner(np.ascontiguousarray(v)), float)[
+            interior
+        ]
 
-    lam, _ = gmres(LinearOperator((ni, ni), matvec=hii), dj[interior],
-                   M=LinearOperator((ni, ni), matvec=mii), rtol=1e-6,
-                   restart=100, maxiter=30)
+    lam, _ = gmres(
+        LinearOperator((ni, ni), matvec=hii),
+        dj[interior],
+        M=LinearOperator((ni, ni), matvec=mii),
+        rtol=1e-6,
+        restart=100,
+        maxiter=30,
+    )
     emb = np.zeros(n)
     emb[interior] = lam
     model.set_state(np.ascontiguousarray(x_star))
@@ -70,15 +76,18 @@ for case, path, ns in CASES:
     model.reset_force_eval_count()
     t0 = time.perf_counter()
     g_fd = va.finite_difference_boundary_gradient(
-        model, x_star, interior, boundary, OBJ, dofs)
+        model, x_star, interior, boundary, OBJ, dofs
+    )
     fd_evals, fd_t = model.force_eval_count, time.perf_counter() - t0
     gfd = np.array([g_fd[j] for j in dofs])
     full = fd_evals * ndof / len(dofs)
 
     print(f"  boundary DOFs = {ndof} (FD reference on {len(dofs)})")
     print(f"  {'method':28s} {'F-evals':>10s} {'time[s]':>8s} {'rel vs FD':>10s}")
-    print(f"  {'FD over boundary (all, est)':28s} {int(full):10d} "
-          f"{fd_t * ndof / len(dofs):8.2f} {'(ref)':>10s}")
+    print(
+        f"  {'FD over boundary (all, est)':28s} {int(full):10d} "
+        f"{fd_t * ndof / len(dofs):8.2f} {'(ref)':>10s}"
+    )
     for label, exact in [("adjoint, FD HVP", False), ("adjoint, exact HVP", True)]:
         try:
             model.reset_force_eval_count()

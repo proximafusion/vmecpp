@@ -36,12 +36,12 @@
 
 // Problem dimensions and the constant (non-differentiated) context.
 struct Ctx {
-  int nZnT, nsH;       // half-grid surfaces; full-grid has nsH + 1
-  int nFull, nHalf;    // (nsH+1)*nZnT, nsH*nZnT
-  const double* sqrtSF;  // [nsH+1]
-  const double* sqrtSH;  // [nsH]
-  const double* chipH;   // [nsH]
-  const double* presH;   // [nsH]
+  int nZnT, nsH;                 // half-grid surfaces; full-grid has nsH + 1
+  int nFull, nHalf;              // (nsH+1)*nZnT, nsH*nZnT
+  const double* sqrtSF;          // [nsH+1]
+  const double* sqrtSH;          // [nsH]
+  const double* chipH;           // [nsH]
+  const double* presH;           // [nsH]
   const double* radialBlending;  // [nsH+1]
   double deltaS;
   double lamscale;
@@ -55,7 +55,7 @@ enum { kGeomBlocks = 16, kForceBlocks = 16 };
 
 // g: geometry -> force density, composing the MHD and lambda-force kernels.
 __attribute__((noinline)) void LocalForce(const double* geom, double* work,
-                                           double* force, const Ctx* c) {
+                                          double* force, const Ctx* c) {
   vmecpp::LocalForceComposition lc;
   lc.nZnT = c->nZnT;
   lc.geom_stride = c->nFull;
@@ -78,7 +78,8 @@ __attribute__((noinline)) void LocalForce(const double* geom, double* work,
   vmecpp::ComputeLocalForceDensity(geom, work, force, &lc);
 }
 
-// Scalar objective L = 0.5 ||force||^2; work and force are caller-owned scratch.
+// Scalar objective L = 0.5 ||force||^2; work and force are caller-owned
+// scratch.
 __attribute__((noinline)) double Loss(const double* geom, double* work,
                                       double* force, const Ctx* c) {
   LocalForce(geom, work, force, c);
@@ -141,17 +142,19 @@ int main() {
     gp[i] = geom[i] + h * v[i];
     gm[i] = geom[i] - h * v[i];
   }
-  const double dfd =
-      (Loss(gp.data(), w2.data(), f2.data(), &c) -
-       Loss(gm.data(), w2.data(), f2.data(), &c)) /
-      (2 * h);
-  const double drev = std::inner_product(grev.begin(), grev.end(), v.begin(), 0.0);
+  const double dfd = (Loss(gp.data(), w2.data(), f2.data(), &c) -
+                      Loss(gm.data(), w2.data(), f2.data(), &c)) /
+                     (2 * h);
+  const double drev =
+      std::inner_product(grev.begin(), grev.end(), v.begin(), 0.0);
   const double scale = std::fabs(dfd) + 1e-300;
 
   printf("exact Hessian of VMEC local force map (MHD + lambda kernels)\n");
   printf("  geom dofs=%d  force outputs=%d\n", nG, nFc);
-  printf("  reverse dL.v vs finite-diff : %.2e\n", std::fabs(drev - dfd) / scale);
-  printf("  forward dL.v vs finite-diff : %.2e\n", std::fabs(dfwd - dfd) / scale);
+  printf("  reverse dL.v vs finite-diff : %.2e\n",
+         std::fabs(drev - dfd) / scale);
+  printf("  forward dL.v vs finite-diff : %.2e\n",
+         std::fabs(dfwd - dfd) / scale);
   printf("  forward / reverse agreement : %.2e\n",
          std::fabs(dfwd - drev) / (std::fabs(drev) + 1e-300));
 
@@ -160,7 +163,8 @@ int main() {
   for (int r = 0; r < reps; ++r) {
     volatile double q = __enzyme_fwddiff<double>(
         (void*)Loss, enzyme_dup, geom.data(), v.data(), enzyme_dup, work.data(),
-        dwork.data(), enzyme_dup, force.data(), dforce.data(), enzyme_const, &c);
+        dwork.data(), enzyme_dup, force.data(), dforce.data(), enzyme_const,
+        &c);
     (void)q;
   }
   auto t1 = std::chrono::steady_clock::now();

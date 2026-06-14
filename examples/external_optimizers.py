@@ -34,7 +34,7 @@ from pathlib import Path
 
 import numpy as np
 from scipy.optimize import newton_krylov
-from scipy.sparse.linalg import LinearOperator, gmres, lgmres
+from scipy.sparse.linalg import LinearOperator, lgmres
 
 try:
     from vmecpp.cpp import _vmecpp
@@ -149,15 +149,14 @@ def solve_newton_krylov_preconditioned(input_path=DEFAULT_INPUT, ns=11, tol=1e-9
 
 
 def solve_newton_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80):
-    """Globalized Newton-Krylov using VMEC++'s finite-difference Hessian-vector
-    product.
+    """Globalized Newton-Krylov using VMEC++'s finite-difference Hessian-vector product.
 
     Each Newton step solves H dx = -F with GMRES preconditioned by M^-1 (VMEC's
-    approximate inverse Hessian), with Eisenstat-Walker adaptive inner forcing
-    and a backtracking line search. H v is hessian_vector_product (a central
-    difference of the analytic force; two force evaluations per matvec). Same
-    solver as solve_newton_exact_hvp but with the FD HVP, for a like-for-like
-    comparison of the HVP backends.
+    approximate inverse Hessian), with Eisenstat-Walker adaptive inner forcing and a
+    backtracking line search. H v is hessian_vector_product (a central difference of the
+    analytic force; two force evaluations per matvec). Same solver as
+    solve_newton_exact_hvp but with the FD HVP, for a like-for-like comparison of the
+    HVP backends.
     """
     model = make_model(input_path, ns)
     F = residual(model)
@@ -204,19 +203,16 @@ def solve_newton_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80):
     return _finish(model, "Newton (VMEC++ HVP + M^-1)", x, it, t0)
 
 
-def solve_newton_exact_hvp(
-    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80
-):
-    """Globalized Newton-Krylov using VMEC++'s exact autodiff Hessian-vector
-    product (``exact_hessian_vector_product``, one Enzyme forward pass) instead
-    of the finite-difference HVP. Requires an Enzyme-enabled build; raises
-    AttributeError otherwise.
+def solve_newton_exact_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80):
+    """Globalized Newton-Krylov using VMEC++'s exact autodiff Hessian-vector product
+    (``exact_hessian_vector_product``, one Enzyme forward pass) instead of the finite-
+    difference HVP. Requires an Enzyme-enabled build; raises AttributeError otherwise.
 
     The inner GMRES tolerance is set adaptively (Eisenstat-Walker forcing): the
-    augmented-Lagrangian Hessian is indefinite, so solving it tightly every step
-    wastes hundreds of matvecs early on. Loose-early/tight-late forcing cuts the
-    total matvec count several-fold while preserving the asymptotic convergence,
-    which is what dominates wall-clock (each matvec is cheap but there are many).
+    augmented-Lagrangian Hessian is indefinite, so solving it tightly every step wastes
+    hundreds of matvecs early on. Loose-early/tight-late forcing cuts the total matvec
+    count several-fold while preserving the asymptotic convergence, which is what
+    dominates wall-clock (each matvec is cheap but there are many).
     """
     model = make_model(input_path, ns)
     F = residual(model)

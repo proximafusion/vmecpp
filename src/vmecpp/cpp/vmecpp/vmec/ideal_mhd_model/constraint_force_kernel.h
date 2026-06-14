@@ -37,14 +37,12 @@ inline void ComputeEffectiveConstraintForce(
 
 // Add the bandpass-filtered constraint force gCon back into the MHD R/Z forces
 // (brmn, bzmn) and write the constraint-force outputs (frcon, fzcon).
-inline void AddConstraintForces(const double* rCon, const double* rCon0,
-                                const double* zCon, const double* zCon0,
-                                const double* ruFull, const double* zuFull,
-                                const double* gCon, const double* sqrtSF,
-                                int nZnT, int nsMinF, int nsMinF1, int nsMaxF,
-                                double* brmn_e, double* brmn_o, double* bzmn_e,
-                                double* bzmn_o, double* frcon_e, double* frcon_o,
-                                double* fzcon_e, double* fzcon_o) {
+inline void AddConstraintForces(
+    const double* rCon, const double* rCon0, const double* zCon,
+    const double* zCon0, const double* ruFull, const double* zuFull,
+    const double* gCon, const double* sqrtSF, int nZnT, int nsMinF, int nsMinF1,
+    int nsMaxF, double* brmn_e, double* brmn_o, double* bzmn_e, double* bzmn_o,
+    double* frcon_e, double* frcon_o, double* fzcon_e, double* fzcon_o) {
   for (int jF = nsMinF; jF < nsMaxF; ++jF) {
     for (int kl = 0; kl < nZnT; ++kl) {
       int idx_kl = (jF - nsMinF) * nZnT + kl;
@@ -66,13 +64,14 @@ inline void AddConstraintForces(const double* rCon, const double* rCon0,
 }
 
 // Fourier-space bandpass of the constraint force: forward transform gConEff to
-// the (m, n) coefficients gsc/gcs scaled by tcon, then inverse transform back to
-// real space scaled by faccon[m]. Bandpass keeps m in [1, mpol-1). The axis
+// the (m, n) coefficients gsc/gcs scaled by tcon, then inverse transform back
+// to real space scaled by faccon[m]. Bandpass keeps m in [1, mpol-1). The axis
 // surface has no poloidal angle and is skipped. Allocation-free over flat
 // buffers with explicit reductions (no Eigen temporaries), so it differentiates
-// under Enzyme; the free function vmecpp::deAliasConstraintForce wraps this with
-// the partition/basis structs. Basis layout: sinmui/cosmui/sinmu/cosmu indexed
-// m*nThetaReduced + l; cosnv/sinnv indexed k*(nnyq2+1) + n; gConEff/gCon indexed
+// under Enzyme; the free function vmecpp::deAliasConstraintForce wraps this
+// with the partition/basis structs. Basis layout: sinmui/cosmui/sinmu/cosmu
+// indexed m*nThetaReduced + l; cosnv/sinnv indexed k*(nnyq2+1) + n;
+// gConEff/gCon indexed
 // ((jF-nsMinF)*nZeta + k)*nThetaEff + l; gsc/gcs scratch of length ntor+1.
 inline void ComputeDeAliasConstraintForce(
     const double* gConEff, const double* faccon, const double* tcon,

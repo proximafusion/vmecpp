@@ -5,9 +5,8 @@
 """The adjoint boundary gradient matches brute-force finite differences.
 
 dJ/d(boundary) from one Hessian solve (implicit-function adjoint) agrees with the
-reference gradient obtained by re-converging the interior equilibrium for each
-perturbed boundary degree of freedom. J here is the MHD energy of the converged
-equilibrium.
+reference gradient obtained by re-converging the interior equilibrium for each perturbed
+boundary degree of freedom. J here is the MHD energy of the converged equilibrium.
 """
 
 import sys

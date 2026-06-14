@@ -9,11 +9,11 @@ namespace vmecpp {
 
 // Hybrid lambda force on the full grid: blmn (and clmn in 3D). The covariant
 // field bsubv is interpolated from the half grid two ways (a plain average and
-// an alternative from gvv/gsqrt times lambda plus, in 3D, guv*bsupu) and blended
-// with the radialBlending profile. The radial sweep carries the inside half-grid
-// point in scratch (bsubu_i, bsubv_i, gvv_gsqrt_i, guv_bsupu_i, each nZnT) and
-// shifts it outward each surface. Allocation-free over flat buffers, shared
-// between IdealMhdModel::hybridLambdaForce and the Enzyme autodiff path.
+// an alternative from gvv/gsqrt times lambda plus, in 3D, guv*bsupu) and
+// blended with the radialBlending profile. The radial sweep carries the inside
+// half-grid point in scratch (bsubu_i, bsubv_i, gvv_gsqrt_i, guv_bsupu_i, each
+// nZnT) and shifts it outward each surface. Allocation-free over flat buffers,
+// shared between IdealMhdModel::hybridLambdaForce and the Enzyme autodiff path.
 //
 // Half-grid inputs (index (jH-nsMinH)*nZnT): bsubu, bsubv, gvv, gsqrt, guv,
 // bsupu. Full-grid lambda (index (jF-nsMinF1)*nZnT): lu_e, lu_o. Profiles:
@@ -72,8 +72,8 @@ inline void ComputeHybridLambdaForce(
         }
       }
 
-      double gvv_gsqrt_lu_e =
-          0.5 * (gvv_gsqrt_i[kl] + gvv_gsqrt_o) * lu_e[(jF - nsMinF1) * nZnT + kl];
+      double gvv_gsqrt_lu_e = 0.5 * (gvv_gsqrt_i[kl] + gvv_gsqrt_o) *
+                              lu_e[(jF - nsMinF1) * nZnT + kl];
       double gvv_gsqrt_lu_o =
           0.5 * (gvv_gsqrt_i[kl] * sqrtSHi + gvv_gsqrt_o * sqrtSHo) *
           lu_o[(jF - nsMinF1) * nZnT + kl];

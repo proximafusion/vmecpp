@@ -157,12 +157,12 @@ class IdealMhdModel {
 
   // Exact Hessian-vector product of the local force chain. Given the packed
   // real-space geometry primal geomP and a geometry tangent dgeom (each
-  // geom_stride doubles per block, see local_force_composition.h), differentiate
-  // the MHD-plus-lambda force density by one Enzyme forward pass, then apply the
-  // linear forward transform and preconditioner decomposition to obtain the
-  // decomposed force tangent in m_decomposed_hv. The constraint force is omitted
-  // here (it carries a linear bandpass handled separately). Used by the exact
-  // internal Newton-Krylov Hessian-vector product.
+  // geom_stride doubles per block, see local_force_composition.h),
+  // differentiate the MHD-plus-lambda force density by one Enzyme forward pass,
+  // then apply the linear forward transform and preconditioner decomposition to
+  // obtain the decomposed force tangent in m_decomposed_hv. The constraint
+  // force is omitted here (it carries a linear bandpass handled separately).
+  // Used by the exact internal Newton-Krylov Hessian-vector product.
   void applyExactForceJacobian(const double* geomP, const double* dgeom,
                                int geom_stride, FourierForces& m_physical_f,
                                FourierForces& m_decomposed_hv);
@@ -170,8 +170,8 @@ class IdealMhdModel {
   // Linear pre-chain decomposed -> real-space geometry (decomposeInto,
   // m1Constraint, extrapolate, geometryFromFourier) packed into the 20-block
   // layout of local_force_composition.h, with the computeBContra lambda
-  // normalization. Applied to a state (primal=true, adds phipF on lu_e) it gives
-  // the geometry; applied to a tangent (primal=false) it gives the exact
+  // normalization. Applied to a state (primal=true, adds phipF on lu_e) it
+  // gives the geometry; applied to a tangent (primal=false) it gives the exact
   // geometry tangent, no finite difference. Uses m_physical_scratch as scratch.
   void packGeometry(FourierGeometry& m_decomposed,
                     FourierGeometry& m_physical_scratch, double* out, int gS,

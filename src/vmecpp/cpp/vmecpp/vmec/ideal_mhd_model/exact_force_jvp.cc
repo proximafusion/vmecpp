@@ -10,8 +10,9 @@
 // for the single nonlinear pass and wraps it with the linear spectral
 // transforms.
 
-#include "vmecpp/common/enzyme/enzyme.h"
 #include "vmecpp/vmec/ideal_mhd_model/exact_force_jvp.h"
+
+#include "vmecpp/common/enzyme/enzyme.h"
 #include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
 
 namespace vmecpp {

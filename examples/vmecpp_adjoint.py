@@ -69,8 +69,7 @@ def _interior_operators(model, x, interior, exact=False):
     # finite-difference HVP (two force evaluations per matvec).
     n = x.size
     ni = interior.size
-    hvp = (model.exact_hessian_vector_product if exact
-           else model.hessian_vector_product)
+    hvp = model.exact_hessian_vector_product if exact else model.hessian_vector_product
 
     def hii(vi):
         v = np.zeros(n)
@@ -93,9 +92,9 @@ def _interior_operators(model, x, interior, exact=False):
 def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=80):
     """Converge the interior to force balance with the boundary held fixed.
 
-    Preconditioned Newton-Krylov on the interior residual with a backtracking
-    line search; the line search is required for stiff 3D equilibria, where the
-    full Newton step overshoots.
+    Preconditioned Newton-Krylov on the interior residual with a backtracking line
+    search; the line search is required for stiff 3D equilibria, where the full Newton
+    step overshoots.
     """
     x = np.asarray(x0, float).copy()
     x[boundary] = x_boundary
@@ -140,12 +139,13 @@ def objective_state_gradient(model, x, objective, h=1e-6):
     return g
 
 
-def boundary_gradient(model, x_star, interior, boundary, objective, h=1e-6,
-                      exact=False):
+def boundary_gradient(
+    model, x_star, interior, boundary, objective, h=1e-6, exact=False
+):
     """Adjoint gradient dJ/dx_B at the converged equilibrium x_star.
 
-    With exact=True the analytic autodiff Hessian-vector product is used (no
-    force evaluation per matvec); otherwise the finite-difference HVP.
+    With exact=True the analytic autodiff Hessian-vector product is used (no force
+    evaluation per matvec); otherwise the finite-difference HVP.
     """
     n = x_star.size
     dj = objective_state_gradient(model, x_star, objective, h)
@@ -155,8 +155,7 @@ def boundary_gradient(model, x_star, interior, boundary, objective, h=1e-6,
     lam, _ = gmres(h_op, dj[interior], M=m_op, rtol=1e-6, restart=100, maxiter=30)
     embedded = np.zeros(n)
     embedded[interior] = lam
-    hvp = (model.exact_hessian_vector_product if exact
-           else model.hessian_vector_product)
+    hvp = model.exact_hessian_vector_product if exact else model.hessian_vector_product
     model.set_state(np.ascontiguousarray(x_star))
     model.evaluate(2, 2, False)
     coupling = np.asarray(hvp(np.ascontiguousarray(embedded)), float)[boundary]

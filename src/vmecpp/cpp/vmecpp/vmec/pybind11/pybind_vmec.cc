@@ -401,7 +401,8 @@ class VmecModel {
   // the directional step is finite-differenced. The current state is restored.
   Eigen::VectorXd HessianVectorProduct(const Eigen::VectorXd &v,
                                        double eps_rel = 1e-7) {
-    const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const Eigen::VectorXd x =
+        FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     const double vnorm = v.norm();
     if (vnorm == 0.0) {
       return Eigen::VectorXd::Zero(x.size());
@@ -409,22 +410,25 @@ class VmecModel {
     const double eps = eps_rel * (1.0 + x.norm()) / vnorm;
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + eps * v);
     Evaluate(2, 2, /*precondition=*/false);
-    const Eigen::VectorXd fp = FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+    const Eigen::VectorXd fp =
+        FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x - eps * v);
     Evaluate(2, 2, /*precondition=*/false);
-    const Eigen::VectorXd fm = FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+    const Eigen::VectorXd fm =
+        FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
     return (fp - fm) / (2.0 * eps);
   }
 
 #ifdef VMECPP_ENABLE_ENZYME
-  // Exact Hessian-vector product H v = T^T J_g T v of the augmented functional's
-  // MHD-plus-lambda part, computed with one Enzyme forward pass through the local
-  // force-density composition (J_g) wrapped by the linear spectral transforms.
-  // The geometry tangent T v is obtained exactly from the linearity of
-  // geometryFromFourier: T v = geom(x+v) - geom(x), so no finite-difference step
-  // enters. The constraint force (a linear bandpass over a nonlinear product) is
-  // omitted here. The model state is restored to x on return.
+  // Exact Hessian-vector product H v = T^T J_g T v of the augmented
+  // functional's MHD-plus-lambda part, computed with one Enzyme forward pass
+  // through the local force-density composition (J_g) wrapped by the linear
+  // spectral transforms. The geometry tangent T v is obtained exactly from the
+  // linearity of geometryFromFourier: T v = geom(x+v) - geom(x), so no
+  // finite-difference step enters. The constraint force (a linear bandpass over
+  // a nonlinear product) is omitted here. The model state is restored to x on
+  // return.
   Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
@@ -456,7 +460,8 @@ class VmecModel {
   // production force density; a nonzero value localizes a composition bug.
   double ComposedForceResidual() {
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
-    const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const Eigen::VectorXd x =
+        FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     const int gS = static_cast<int>(model.r1_e.size());
     Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
     auto blk = [&](int b, const Eigen::VectorXd &src) {
@@ -465,48 +470,91 @@ class VmecModel {
     };
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
     Evaluate(2, 2, false);
-    blk(0, model.r1_e); blk(1, model.r1_o); blk(2, model.z1_e);
-    blk(3, model.z1_o); blk(4, model.ru_e); blk(5, model.ru_o);
-    blk(6, model.zu_e); blk(7, model.zu_o); blk(8, model.rv_e);
-    blk(9, model.rv_o); blk(10, model.zv_e); blk(11, model.zv_o);
-    blk(12, model.lu_e); blk(13, model.lu_o); blk(14, model.lv_e);
-    blk(15, model.lv_o); blk(16, model.rCon); blk(17, model.zCon);
-    blk(18, model.ruFull); blk(19, model.zuFull);
+    blk(0, model.r1_e);
+    blk(1, model.r1_o);
+    blk(2, model.z1_e);
+    blk(3, model.z1_o);
+    blk(4, model.ru_e);
+    blk(5, model.ru_o);
+    blk(6, model.zu_e);
+    blk(7, model.zu_o);
+    blk(8, model.rv_e);
+    blk(9, model.rv_o);
+    blk(10, model.zv_e);
+    blk(11, model.zv_o);
+    blk(12, model.lu_e);
+    blk(13, model.lu_o);
+    blk(14, model.lv_e);
+    blk(15, model.lv_o);
+    blk(16, model.rCon);
+    blk(17, model.zCon);
+    blk(18, model.ruFull);
+    blk(19, model.zuFull);
     return model.composedForceResidual(geomP.data(), gS);
   }
 
-  // Diagnostic: relative difference between the Enzyme force-density tangent and
-  // a finite-difference force-density tangent (both in real space, before the
-  // spectral transform). Isolates the JVP + geometry tangent from the transform
-  // wrapping. Returns (per-block max-rel, overall-rel) so a nonzero block
-  // localizes the discrepancy.
+  // Diagnostic: relative difference between the Enzyme force-density tangent
+  // and a finite-difference force-density tangent (both in real space, before
+  // the spectral transform). Isolates the JVP + geometry tangent from the
+  // transform wrapping. Returns (per-block max-rel, overall-rel) so a nonzero
+  // block localizes the discrepancy.
   std::pair<std::vector<double>, double> ForceDensityJvpResidual(
       const Eigen::VectorXd &v) {
     vmecpp::IdealMhdModel &M = *vmec_->m_[0];
     const int nForce = static_cast<int>(M.blmn_e.size());
     const int gS = static_cast<int>(M.r1_e.size());
-    const Eigen::VectorXd x = FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const Eigen::VectorXd x =
+        FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     auto packGeom = [&](Eigen::VectorXd &dst) {
       auto blk = [&](int b, const Eigen::VectorXd &s) {
         for (int i = 0; i < static_cast<int>(s.size()); ++i)
           dst[b * gS + i] = s[i];
       };
-      blk(0, M.r1_e); blk(1, M.r1_o); blk(2, M.z1_e); blk(3, M.z1_o);
-      blk(4, M.ru_e); blk(5, M.ru_o); blk(6, M.zu_e); blk(7, M.zu_o);
-      blk(8, M.rv_e); blk(9, M.rv_o); blk(10, M.zv_e); blk(11, M.zv_o);
-      blk(12, M.lu_e); blk(13, M.lu_o); blk(14, M.lv_e); blk(15, M.lv_o);
-      blk(16, M.rCon); blk(17, M.zCon); blk(18, M.ruFull); blk(19, M.zuFull);
+      blk(0, M.r1_e);
+      blk(1, M.r1_o);
+      blk(2, M.z1_e);
+      blk(3, M.z1_o);
+      blk(4, M.ru_e);
+      blk(5, M.ru_o);
+      blk(6, M.zu_e);
+      blk(7, M.zu_o);
+      blk(8, M.rv_e);
+      blk(9, M.rv_o);
+      blk(10, M.zv_e);
+      blk(11, M.zv_o);
+      blk(12, M.lu_e);
+      blk(13, M.lu_o);
+      blk(14, M.lv_e);
+      blk(15, M.lv_o);
+      blk(16, M.rCon);
+      blk(17, M.zCon);
+      blk(18, M.ruFull);
+      blk(19, M.zuFull);
     };
     auto packForce = [&](Eigen::VectorXd &dst) {
       auto blk = [&](int b, const Eigen::VectorXd &s) {
         for (int i = 0; i < static_cast<int>(s.size()); ++i)
           dst[b * nForce + i] = s[i];
       };
-      blk(0, M.armn_e); blk(1, M.armn_o); blk(2, M.azmn_e); blk(3, M.azmn_o);
-      blk(4, M.brmn_e); blk(5, M.brmn_o); blk(6, M.bzmn_e); blk(7, M.bzmn_o);
-      blk(8, M.crmn_e); blk(9, M.crmn_o); blk(10, M.czmn_e); blk(11, M.czmn_o);
-      blk(12, M.blmn_e); blk(13, M.blmn_o); blk(14, M.clmn_e); blk(15, M.clmn_o);
-      blk(16, M.frcon_e); blk(17, M.frcon_o); blk(18, M.fzcon_e);
+      blk(0, M.armn_e);
+      blk(1, M.armn_o);
+      blk(2, M.azmn_e);
+      blk(3, M.azmn_o);
+      blk(4, M.brmn_e);
+      blk(5, M.brmn_o);
+      blk(6, M.bzmn_e);
+      blk(7, M.bzmn_o);
+      blk(8, M.crmn_e);
+      blk(9, M.crmn_o);
+      blk(10, M.czmn_e);
+      blk(11, M.czmn_o);
+      blk(12, M.blmn_e);
+      blk(13, M.blmn_o);
+      blk(14, M.clmn_e);
+      blk(15, M.clmn_o);
+      blk(16, M.frcon_e);
+      blk(17, M.frcon_o);
+      blk(18, M.fzcon_e);
       blk(19, M.fzcon_o);
     };
     const double eps = 1e-6 * (1.0 + x.norm()) / v.norm();
@@ -554,8 +602,8 @@ class VmecModel {
 
   // Apply VMEC's preconditioner M^-1 to a vector in the decomposed internal
   // basis, mirroring the native apply sequence (m=1, radial, lambda). This is
-  // VMEC's hand-built approximate inverse Hessian; gradient-based solvers use it
-  // as the metric (preconditioned Krylov / quasi-Newton, and as the
+  // VMEC's hand-built approximate inverse Hessian; gradient-based solvers use
+  // it as the metric (preconditioned Krylov / quasi-Newton, and as the
   // preconditioner for the Hessian solve in adjoint sensitivities).
   //
   // Requires a prior evaluate(precondition=true) at the current state: the
@@ -640,8 +688,8 @@ class VmecModel {
 
   std::unique_ptr<vmecpp::Vmec> vmec_;
 
-  // Cached primal geometry for the exact Hessian-vector product: it depends only
-  // on the state, so it is reused across Krylov matvecs and invalidated by
+  // Cached primal geometry for the exact Hessian-vector product: it depends
+  // only on the state, so it is reused across Krylov matvecs and invalidated by
   // SetState. Mutable so SetState (const) can clear it.
   mutable Eigen::VectorXd exact_primal_;
   mutable bool exact_primal_valid_ = false;

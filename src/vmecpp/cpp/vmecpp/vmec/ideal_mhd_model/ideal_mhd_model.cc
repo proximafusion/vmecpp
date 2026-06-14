@@ -25,8 +25,8 @@
 #include "vmecpp/vmec/ideal_mhd_model/constraint_force_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/exact_force_jvp.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
-#include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
 #include "vmecpp/vmec/ideal_mhd_model/lambda_force_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
@@ -1549,8 +1549,8 @@ void IdealMhdModel::hybridLambdaForce() {
 #pragma omp barrier
 #endif  // _OPENMP
 
-  // Lambda force on the full grid via the shared kernel (lambda_force_kernel.h),
-  // also used by the Enzyme autodiff path.
+  // Lambda force on the full grid via the shared kernel
+  // (lambda_force_kernel.h), also used by the Enzyme autodiff path.
   ComputeHybridLambdaForce(
       bsubu.data(), bsubv.data(), gvv.data(), gsqrt.data(), guv.data(),
       bsupu.data(), lu_e.data(), lu_o.data(), m_p_.sqrtSH.data(),
@@ -2034,12 +2034,12 @@ void IdealMhdModel::assembleTotalForces() {
 
 #ifdef VMECPP_ENABLE_ENZYME
 void IdealMhdModel::packGeometry(FourierGeometry& m_decomposed,
-                                 FourierGeometry& m_physical_scratch, double* out,
-                                 int gS, bool primal) {
-  // Linear pre-chain decomposed -> real-space geometry, identical to the head of
-  // update(). Applied to a state it yields the geometry; applied to a tangent it
-  // yields the exact geometry tangent (the chain is linear), so no finite
-  // difference is needed.
+                                 FourierGeometry& m_physical_scratch,
+                                 double* out, int gS, bool primal) {
+  // Linear pre-chain decomposed -> real-space geometry, identical to the head
+  // of update(). Applied to a state it yields the geometry; applied to a
+  // tangent it yields the exact geometry tangent (the chain is linear), so no
+  // finite difference is needed.
   m_decomposed.decomposeInto(m_physical_scratch, m_p_.scalxc);
   m_physical_scratch.m1Constraint(1.0);
   m_physical_scratch.extrapolateTowardsAxis();
@@ -2087,7 +2087,8 @@ void IdealMhdModel::packGeometry(FourierGeometry& m_decomposed,
 }
 
 void IdealMhdModel::applyExactForceJacobian(const double* geomP,
-                                            const double* dgeom, int geom_stride,
+                                            const double* dgeom,
+                                            int geom_stride,
                                             FourierForces& m_physical_f,
                                             FourierForces& m_decomposed_hv) {
   LocalForceComposition comp;
@@ -2186,11 +2187,12 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   }
 }
 
-// Raw force-density tangent (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT) from
-// one Enzyme forward pass, with no transform applied. For isolating the JVP from
-// the spectral-transform wrapping.
+// Raw force-density tangent (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT)
+// from one Enzyme forward pass, with no transform applied. For isolating the
+// JVP from the spectral-transform wrapping.
 void IdealMhdModel::exactForceDensityTangent(const double* geomP,
-                                             const double* dgeom, int geom_stride,
+                                             const double* dgeom,
+                                             int geom_stride,
                                              double* dforce_out) {
   LocalForceComposition comp;
   comp.nZnT = s_.nZnT;
