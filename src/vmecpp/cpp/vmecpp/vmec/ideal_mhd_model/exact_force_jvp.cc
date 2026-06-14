@@ -20,9 +20,9 @@ namespace vmecpp {
 void ExactForceDensityJvp(const double* geom, const double* dgeom, double* work,
                           double* dwork, double* force, double* dforce,
                           const LocalForceComposition* c) {
-  __enzyme_fwddiff<void>((void*)ComputeLocalForceDensity, enzyme_dup, geom,
-                         dgeom, enzyme_dup, work, dwork, enzyme_dup, force,
-                         dforce, enzyme_const, c);
+  __enzyme_fwddiff<void>(reinterpret_cast<void*>(ComputeLocalForceDensity),
+                         enzyme_dup, geom, dgeom, enzyme_dup, work, dwork,
+                         enzyme_dup, force, dforce, enzyme_const, c);
 }
 
 }  // namespace vmecpp

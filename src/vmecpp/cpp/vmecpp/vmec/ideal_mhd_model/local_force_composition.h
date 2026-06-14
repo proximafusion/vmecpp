@@ -291,8 +291,7 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
     // exact HVP consistent with re-evaluating rzConIntoVolume each step.
     double* rCon0 = s;
     s += (c->nsMaxFIncludingLcfs - c->nsMinF) * nZnT;
-    double* zCon0 = s;
-    s += (c->nsMaxFIncludingLcfs - c->nsMinF) * nZnT;
+    double* zCon0 = s;  // last slice of the work buffer
     const int lcfs = (c->nsMaxFIncludingLcfs - 1 - c->nsMinF) * nZnT;
     for (int jF = (c->nsMinF > 1 ? c->nsMinF : 1); jF < c->nsMaxFIncludingLcfs;
          ++jF) {
