@@ -60,13 +60,6 @@ jobs:
       - name: Also install VMEC2000 (only on Ubuntu 22.04)
         if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.10' }}
         run: |
-          # The prebuilt vmec-0.0.6 wheel (anaconda eguiraud-pf, 2025-01-23) was
-          # built from VMEC2000 commit 728af8b ("works with numpy 2.0") but
-          # f90wrapped against that build's numpy; it no longer imports under the
-          # numpy 2.2 this CI resolves (the f90wrap array interface breaks). Build
-          # a wheel from the SAME pinned commit against the current numpy and
-          # cache it, so only the first run pays the build cost. Pinned and
-          # known-good like the old wheel, just numpy-2-correct.
           sudo apt-get install -y libopenmpi-dev libnetcdff-dev libscalapack-mpi-dev \
             libhdf5-dev libhdf5-serial-dev libfftw3-dev libopenblas-dev ninja-build
           python -m pip install mpi4py
