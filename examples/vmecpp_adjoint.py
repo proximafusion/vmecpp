@@ -225,29 +225,30 @@ def forward_boundary_gradient(
     return grad, failures
 
 
-def structural_nullfree_interior(model, interior, tol=1e-9):
+def structural_nullfree_interior(model, interior, n_probe=6, tol=1e-9, seed=0):
     """Interior DOFs that actually enter the force, i.e. not in the augmented
     Hessian's structural null space (state-independent gauge/parity modes). A DOF
-    is kept when both its Hessian column and row are nonzero. The set is
-    state-independent, so detect it once and reuse it across adjoint solves."""
+    is kept when both its Hessian column and row are nonzero.
+
+    Detected with a few random probes rather than one per column: a column i is
+    zero iff (H^T v)[i] = H[:,i].v = 0 for random v, and a row i is zero iff
+    (H v)[i] = 0, so O(n_probe) Hessian-vector products find every structural
+    zero (a null column/row gives exactly zero for every probe). The set is
+    state-independent; detect it once and reuse it across adjoint solves."""
     n = int(np.asarray(model.get_state()).size)
+    rng = np.random.default_rng(seed)
     col = np.zeros(n)
     row = np.zeros(n)
-    for i in interior:
-        e = np.zeros(n)
-        e[i] = 1.0
-        col[i] = np.linalg.norm(
-            np.asarray(
-                model.exact_hessian_vector_product(np.ascontiguousarray(e)), float
-            )
+    for _ in range(n_probe):
+        v = np.ascontiguousarray(rng.standard_normal(n))
+        col = np.maximum(
+            col,
+            np.abs(np.asarray(model.exact_hessian_vector_product_transpose(v), float)),
         )
-        row[i] = np.linalg.norm(
-            np.asarray(
-                model.exact_hessian_vector_product_transpose(np.ascontiguousarray(e)),
-                float,
-            )
+        row = np.maximum(
+            row, np.abs(np.asarray(model.exact_hessian_vector_product(v), float))
         )
-    thr = tol * max(col.max(), 1.0)
+    thr = tol * max(col.max(), row.max(), 1.0)
     return np.array([i for i in interior if col[i] > thr and row[i] > thr])
 
 
