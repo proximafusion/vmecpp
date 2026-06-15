@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781536590097,
+  "lastUpdate": 1781541387453,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -19069,6 +19069,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.019653960142293692",
             "extra": "mean: 9.593975408000006 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "198982749+Copilot@users.noreply.github.com",
+            "name": "Copilot",
+            "username": "Copilot"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b0876027f1c16d0910a80564118dae42161d0cad",
+          "message": "Update abseil-cpp Bazel dependency to 20260107.1 LTS (#586)\n\nOlder abseil fails to compile under Clang >= 21 (used in the Enzyme build) due to `absl::Nonnull` SFINAE issues in `absl/strings/ascii.cc` (upstream fix: `255c84dadd029fd8ad25c5efb5933e47beaa00c7`).\n\n## Changes\n\n- **`src/vmecpp/cpp/MODULE.bazel`**: bump `abseil-cpp` from `20230802.0.bcr.1` to `20260107.1` (LTS)",
+          "timestamp": "2026-06-15T16:31:54Z",
+          "tree_id": "3b32e93144a6947920897c3c354a59cf41e9dcc5",
+          "url": "https://github.com/proximafusion/vmecpp/commit/b0876027f1c16d0910a80564118dae42161d0cad"
+        },
+        "date": 1781541386380,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.804933112832652,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002176148250074874",
+            "extra": "mean: 356.51474020003207 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.7865194717330377,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004504390348502166",
+            "extra": "mean: 358.8706305999949 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.27196224693191856,
+            "unit": "iter/sec",
+            "range": "stddev: 0.04762724021799257",
+            "extra": "mean: 3.676980945999958 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5816441297545771,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005901428913380337",
+            "extra": "mean: 1.7192643213332985 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5611675936530091,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014321498341285727",
+            "extra": "mean: 1.7819988383333794 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.4317205428994062,
+            "unit": "iter/sec",
+            "range": "stddev: 0.010197362825896837",
+            "extra": "mean: 2.316313217999929 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10424697198587189,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0016732720251444832",
+            "extra": "mean: 9.592604762999978 sec\nrounds: 3"
           }
         ]
       }
