@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780646778607,
+  "lastUpdate": 1781506909614,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18923,6 +18923,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.027799359612737263",
             "extra": "mean: 7.574670531666679 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a248cd9869c53281ca99b2485c75de3dd5851153",
+          "message": "build+ci: abseil commit pin for Clang>=21, VMEC2000-from-source, benchmark fork guard (#564)\n\n* build: bump CMake abseil pin to 20260107.1 for Clang >= 21\n\nThe CMake FetchContent abseil pin (2024-08) fails to compile under\nClang >= 21: absl::Nonnull SFINAE in absl/strings/ascii.cc and the\nnumbers.cc nullability annotations are rejected by the newer frontend.\nBump to the 20260107.1 LTS, which compiles cleanly under Clang 21.1.8\nand GCC. Clang is the compiler required for the Enzyme autodiff build.\n\nThe Bazel build keeps its own (BCR) abseil pin and is unaffected.\n\n* ci: skip benchmark result upload on fork PRs (token is read-only)\n\nThe 'Compare benchmark result' step uses github-action-benchmark with\ncomment-on-alert and the GITHUB_TOKEN, which is read-only for pull requests from\nforks -> 'Resource not accessible by integration'. Gate that step on the PR\ncoming from the same repo so fork PRs still run the benchmarks but skip the\nwrite-back instead of failing.\n\n* ci: build VMEC2000 from source so the compat test runs on numpy 2\n\nThe pinned vmec-0.0.6 cp310 wheel was f90wrapped against numpy 1.x. Under\nthe numpy 2.x that the test env now resolves, importing it dies in the\nf90wrap array interface (f90wrap_vmec_input__array__rbc: 0-th dimension\nmust be fixed to 2 but got 4), so test_ensure_vmec2000_input_from_vmecpp_input\ncould never actually run on CI (and is currently red on main too, where the\nwheel's runtime libs are not even installed).\n\nBuild VMEC2000 from upstream source with current f90wrap, which produces\nnumpy-2-compatible bindings. The recipe mirrors SIMSOPT's own CI\n(hiddenSymmetries/VMEC2000, cmake/machines/ubuntu.json). An explicit\n'import vmec' check in the install step surfaces any remaining problem here\nrather than as a confusing test failure.\n\n* test: skip vmecpp-only indata fields in the VMEC2000 compat subset\n\nWith VMEC2000 built from current upstream source, the compatibility test\nruns for the first time and hits vmecpp indata fields that have no\ncounterpart in the legacy VMEC2000 INDATA namelist (e.g.\nfree_boundary_method), which raised AttributeError. The test explicitly\nchecks only the common subset, so guard the lookup with hasattr and skip\nfields VMEC2000 does not have, instead of enumerating them one by one.\n\n* build: pin abseil to the 20260107.1 commit hash\n\nPin the FetchContent abseil dependency to commit 255c84d (the exact\ncommit behind the 20260107.1 LTS tag) instead of the tag itself, so a\nmoved tag cannot change the dependency under us.\n\n* ci: cache and pin the VMEC2000-from-source build\n\nUse the canonical recipe (cache the built wheel keyed on the pinned\nsource commit 728af8b, drop the unused FFTW/HDF5 dev packages) instead\nof rebuilding VMEC2000 unpinned on every run.",
+          "timestamp": "2026-06-15T08:57:27+02:00",
+          "tree_id": "13ea6b4473301c940018476545b224d738c209bd",
+          "url": "https://github.com/proximafusion/vmecpp/commit/a248cd9869c53281ca99b2485c75de3dd5851153"
+        },
+        "date": 1781506908625,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.882446914812306,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006050379989835534",
+            "extra": "mean: 346.9274646000258 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.8733698141806117,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0010429860728115204",
+            "extra": "mean: 348.02342359998875 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.275580436908915,
+            "unit": "iter/sec",
+            "range": "stddev: 0.04595886709428955",
+            "extra": "mean: 3.628704603333366 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5789379924491567,
+            "unit": "iter/sec",
+            "range": "stddev: 0.012040188831724512",
+            "extra": "mean: 1.7273007006666983 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5627179958965178,
+            "unit": "iter/sec",
+            "range": "stddev: 0.013345667175169279",
+            "extra": "mean: 1.7770890699999882 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.4342595146630988,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005164113340461937",
+            "extra": "mean: 2.302770500666649 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10476346628830924,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011515362737308564",
+            "extra": "mean: 9.545312267999975 sec\nrounds: 3"
           }
         ]
       }
