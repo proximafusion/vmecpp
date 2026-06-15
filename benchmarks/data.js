@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781506909614,
+  "lastUpdate": 1781536590097,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18996,6 +18996,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.011515362737308564",
             "extra": "mean: 9.545312267999975 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c3ec179b9fa09fc043444ed60a46fafa726d620b",
+          "message": "Handle jaxtyping anonymous-dimension API drift in wout serialization (#562)\n\n`VmecWOut` NetCDF serialization assumed `jaxtyping._array_types._AnonymousDim` exists. With newer jaxtyping releases, that symbol may be absent (replaced by `_anonymous_dim`), causing runtime `AttributeError` in `test_init` wout IO/reference paths.\n\n- **Compatibility fix: dim marker resolution**\n  - Resolve jaxtyping dimension marker types via guarded lookup on `jt._array_types`:\n    - named: `_NamedDim`\n    - anonymous: `_AnonymousDim` **or** fallback to `type(_anonymous_dim)` when only the instance-style API is present.\n- **Runtime behavior: robust dimension-name inference**\n  - Keep existing inference behavior, but branch on resolved types instead of hard-coding a single private symbol.\n  - If a marker type is unavailable, logic degrades safely to existing default dimension naming.\n- **Code organization**\n  - Compute marker-type resolution once before field iteration, then reuse in per-field shape inference.\n\n```python\narray_types = getattr(jt, \"_array_types\", None)\nnamed_dim_type = getattr(array_types, \"_NamedDim\", None) if array_types is not None else None\nanonymous_dim_type = getattr(array_types, \"_AnonymousDim\", None) if array_types is not None else None\nif anonymous_dim_type is None and array_types is not None:\n    anonymous_dim_instance = getattr(array_types, \"_anonymous_dim\", None)\n    if anonymous_dim_instance is not None:\n        anonymous_dim_type = type(anonymous_dim_instance)\n```",
+          "timestamp": "2026-06-15T15:12:05Z",
+          "tree_id": "5c962a9aab90d2912a1034d8f8fc1c75980d8db6",
+          "url": "https://github.com/proximafusion/vmecpp/commit/c3ec179b9fa09fc043444ed60a46fafa726d620b"
+        },
+        "date": 1781536588812,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.78552555151531,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002567182425049307",
+            "extra": "mean: 358.99868139999853 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.803344763259572,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004634834086531234",
+            "extra": "mean: 356.71673819999796 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.27590872209859885,
+            "unit": "iter/sec",
+            "range": "stddev: 0.03597748379323721",
+            "extra": "mean: 3.624387052333342 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5724525754678782,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00436674032525198",
+            "extra": "mean: 1.7468695973333297 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5575980881558465,
+            "unit": "iter/sec",
+            "range": "stddev: 0.026401982134604145",
+            "extra": "mean: 1.7934064360000168 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.4306019548499126,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0113057077574251",
+            "extra": "mean: 2.3223303766666654 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10423207872371058,
+            "unit": "iter/sec",
+            "range": "stddev: 0.019653960142293692",
+            "extra": "mean: 9.593975408000006 sec\nrounds: 3"
           }
         ]
       }
