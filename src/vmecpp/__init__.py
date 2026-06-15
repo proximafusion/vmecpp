@@ -1363,9 +1363,10 @@ class VmecWOut(BaseModelWithNumpy):
                             dim_name: str | None = None
                             if isinstance(dim, jt._array_types._NamedDim):
                                 dim_name = str(dim.name).lstrip("_")
-                            elif isinstance(dim, jt._array_types._AnonymousDim):
-                                if annotation_dim_name.startswith("_"):
-                                    dim_name = annotation_dim_name.lstrip("_")
+                            elif isinstance(
+                                dim, jt._array_types._AnonymousDim
+                            ) and annotation_dim_name.startswith("_"):
+                                dim_name = annotation_dim_name.lstrip("_")
                             inferred_shape.append(
                                 map_dimension_names.get(dim_name, dim_name)
                                 if dim_name is not None
