@@ -61,7 +61,7 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.10' }}
         run: |
           sudo apt-get install -y libopenmpi-dev libnetcdff-dev libscalapack-mpi-dev \
-            libhdf5-dev libhdf5-serial-dev libfftw3-dev libopenblas-dev ninja-build
+            libopenblas-dev ninja-build
           python -m pip install mpi4py
           if ! ls /tmp/vmec2000-wheel/vmec-*.whl >/dev/null 2>&1; then
             # Build with the SYSTEM cmake + ninja; do NOT pip-install the
