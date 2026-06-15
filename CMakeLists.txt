@@ -66,10 +66,9 @@ find_package(LAPACK REQUIRED)
 FetchContent_Declare(
   abseil-cpp
   GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
-  # 20260107.1 LTS: required for Clang >= 21, where the 2024 pin fails to
-  # compile (absl::Nonnull SFINAE in absl/strings/ascii.cc). Clang is the
-  # compiler used for the Enzyme autodiff build.
-  GIT_TAG 20260107.1
+  # 20260107.1 LTS: older abseil fails to compile under Clang >= 21 (the
+  # Enzyme build) on absl::Nonnull SFINAE in absl/strings/ascii.cc.
+  GIT_TAG 255c84dadd029fd8ad25c5efb5933e47beaa00c7
   GIT_SHALLOW TRUE
 )
 FetchContent_Declare(
