@@ -1,4 +1,5 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 
@@ -112,12 +113,18 @@ TEST(QsHarmonicsKernel, MatchesOutputQuantities) {
   for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
     for (int jH = 0; jH < nsH; ++jH) {
       const int o = mn * nsH + jH;
-      EXPECT_NEAR(gmnc[o], wout.gmnc(mn, jH + 1), tol_g) << "gmnc " << mn << " " << jH;
-      EXPECT_NEAR(bmnc[o], wout.bmnc(mn, jH + 1), tol_b) << "bmnc " << mn << " " << jH;
-      EXPECT_NEAR(bsubumnc[o], wout.bsubumnc(mn, jH + 1), tol_su) << "bsubu " << mn << " " << jH;
-      EXPECT_NEAR(bsubvmnc[o], wout.bsubvmnc(mn, jH + 1), tol_sv) << "bsubv " << mn << " " << jH;
-      EXPECT_NEAR(bsupumnc[o], wout.bsupumnc(mn, jH + 1), tol_pu) << "bsupu " << mn << " " << jH;
-      EXPECT_NEAR(bsupvmnc[o], wout.bsupvmnc(mn, jH + 1), tol_pv) << "bsupv " << mn << " " << jH;
+      EXPECT_NEAR(gmnc[o], wout.gmnc(mn, jH + 1), tol_g)
+          << "gmnc " << mn << " " << jH;
+      EXPECT_NEAR(bmnc[o], wout.bmnc(mn, jH + 1), tol_b)
+          << "bmnc " << mn << " " << jH;
+      EXPECT_NEAR(bsubumnc[o], wout.bsubumnc(mn, jH + 1), tol_su)
+          << "bsubu " << mn << " " << jH;
+      EXPECT_NEAR(bsubvmnc[o], wout.bsubvmnc(mn, jH + 1), tol_sv)
+          << "bsubv " << mn << " " << jH;
+      EXPECT_NEAR(bsupumnc[o], wout.bsupumnc(mn, jH + 1), tol_pu)
+          << "bsupu " << mn << " " << jH;
+      EXPECT_NEAR(bsupvmnc[o], wout.bsupvmnc(mn, jH + 1), tol_pv)
+          << "bsupv " << mn << " " << jH;
     }
   }
 }

@@ -1,19 +1,21 @@
-// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
 
 // Flat-buffer, allocation-free forward transform of the half-grid field
 // quantities SIMSOPT's QuasisymmetryRatioResidual needs: gmnc (Jacobian),
-// bmnc (|B|), bsubumnc, bsubvmnc, bsupumnc, bsupvmnc. It mirrors the per-surface
-// Fourier integral in output_quantities.cc bit for bit, but over plain double*
-// buffers with explicit reductions, so Enzyme can differentiate it (the Eigen
-// RowMatrixXd path in output_quantities allocates heap temporaries Enzyme
-// cannot handle). Symmetric (lasym=false) case.
+// bmnc (|B|), bsubumnc, bsubvmnc, bsupumnc, bsupvmnc. It mirrors the
+// per-surface Fourier integral in output_quantities.cc bit for bit, but over
+// plain double* buffers with explicit reductions, so Enzyme can differentiate
+// it (the Eigen RowMatrixXd path in output_quantities allocates heap
+// temporaries Enzyme cannot handle). Symmetric (lasym=false) case.
 //
 // Real-space inputs are the half-grid fields the force chain already produces
-// (gsqrt, bsupu, bsupv, bsubu, bsubv); |B| is formed here as
-//   modB = sqrt(bsupu*bsubu + bsupv*bsubv).
-// All real-space fields use the half-grid index idx = (jH*nZeta + k)*nThetaEff + l.
+// (gsqrt, bsupu, bsupv, bsubu, bsubv); |B| is formed here from the total
+// pressure as modB = sqrt(2 * |total_pressure - presH[jH]|), matching
+// output_quantities. All real-space fields use the half-grid index
+// idx = (jH*nZeta + k)*nThetaEff + l.
 
 #ifndef VMECPP_VMEC_IDEAL_MHD_MODEL_QS_HARMONICS_KERNEL_H_
 #define VMECPP_VMEC_IDEAL_MHD_MODEL_QS_HARMONICS_KERNEL_H_
@@ -56,7 +58,8 @@ struct QsHarmonicsConfig {
 // where total_pressure (per point) and presH (per half surface) are force-chain
 // outputs. total_pressure[idx] uses the same half-grid index as the fields;
 // presH[jH] is the kinetic pressure on half surface jH.
-inline void ComputeQsHarmonics(const double* gsqrt, const double* total_pressure,
+inline void ComputeQsHarmonics(const double* gsqrt,
+                               const double* total_pressure,
                                const double* presH, const double* bsupu,
                                const double* bsupv, const double* bsubu,
                                const double* bsubv, double* gmnc, double* bmnc,
@@ -94,15 +97,16 @@ inline void ComputeQsHarmonics(const double* gsqrt, const double* total_pressure
         const double smu = c->sinmui[ml];
         for (int k = 0; k < nZeta; ++k) {
           const int kn = k * nnv + abs_n;
-          const double tcosi =
-              dmult * (cmu * c->cosnv[kn] * nhalf + sign_n * smu * c->sinnv[kn]);
+          const double tcosi = dmult * (cmu * c->cosnv[kn] * nhalf +
+                                        sign_n * smu * c->sinnv[kn]);
 
           const int idx = (jH * nZeta + k) * nThetaEff + l;
           const double bu = bsubu[idx];
           const double bv = bsubv[idx];
           const double su = bsupu[idx];
           const double sv = bsupv[idx];
-          const double modB = std::sqrt(2.0 * std::fabs(total_pressure[idx] - presH[jH]));
+          const double modB =
+              std::sqrt(2.0 * std::fabs(total_pressure[idx] - presH[jH]));
 
           acc_g += tcosi * gsqrt[idx];
           acc_b += tcosi * modB;
