@@ -1296,6 +1296,24 @@ class VmecWOut(BaseModelWithNumpy):
                 ): field_info
                 for field, field_info in VmecWOut.model_fields.items()
             }
+            # jaxtyping does not expose a stable public API for dimension marker
+            # types. Older versions expose `_AnonymousDim`, while newer versions
+            # expose `_anonymous_dim` (instance). Resolve both for compatibility.
+            array_types = getattr(jt, "_array_types", None)
+            named_dim_type = (
+                getattr(array_types, "_NamedDim", None)
+                if array_types is not None
+                else None
+            )
+            anonymous_dim_type = (
+                getattr(array_types, "_AnonymousDim", None)
+                if array_types is not None
+                else None
+            )
+            if anonymous_dim_type is None and array_types is not None:
+                anonymous_dim_instance = getattr(array_types, "_anonymous_dim", None)
+                if anonymous_dim_instance is not None:
+                    anonymous_dim_type = type(anonymous_dim_instance)
 
             # Operates under the assumption that the order of the fields in
             # model_fields and model_dump are the same.
@@ -1361,11 +1379,15 @@ class VmecWOut(BaseModelWithNumpy):
                             strict=True,
                         ):
                             dim_name: str | None = None
-                            if isinstance(dim, jt._array_types._NamedDim):
+                            if named_dim_type is not None and isinstance(
+                                dim, named_dim_type
+                            ):
                                 dim_name = str(dim.name).lstrip("_")
-                            elif isinstance(
-                                dim, jt._array_types._AnonymousDim
-                            ) and annotation_dim_name.startswith("_"):
+                            elif (
+                                anonymous_dim_type is not None
+                                and isinstance(dim, anonymous_dim_type)
+                                and annotation_dim_name.startswith("_")
+                            ):
                                 dim_name = annotation_dim_name.lstrip("_")
                             inferred_shape.append(
                                 map_dimension_names.get(dim_name, dim_name)
