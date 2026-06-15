@@ -117,6 +117,15 @@ cc_library(
 )
 
 cc_test(
+    name = "qs_harmonics_vjp_test",
+    srcs = ["qs_harmonics_vjp_test.cc"],
+    deps = [
+        ":ideal_mhd_model",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "qs_harmonics_kernel_test",
     srcs = ["qs_harmonics_kernel_test.cc"],
     data = ["//vmecpp/test_data:solovev"],

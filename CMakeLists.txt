@@ -213,15 +213,6 @@ if(VMECPP_ENABLE_ENZYME)
   target_compile_options(jacobian_kernel_autodiff_test PRIVATE
     -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
   add_test(NAME jacobian_kernel_autodiff COMMAND jacobian_kernel_autodiff_test)
-  # Exact autodiff (forward and reverse) of the QS field-harmonics kernel: the
-  # gradient of a scalar quasisymmetry objective w.r.t. all field inputs in one
-  # reverse pass, checked against finite differences, with the reverse-vs-FD
-  # full-gradient speedup timed (this is what removes the FD objective gradient).
-  add_executable(qs_harmonics_autodiff_test
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/qs_harmonics_autodiff_test.cc)
-  target_compile_options(qs_harmonics_autodiff_test PRIVATE
-    -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
-  add_test(NAME qs_harmonics_autodiff COMMAND qs_harmonics_autodiff_test)
   # Exact Hessian of the composed local force map (all six force-chain kernels):
   # forward/reverse Jacobian vs finite differences, and JVP cost vs FD-HVP.
   add_executable(local_force_hessian_test
