@@ -1352,18 +1352,26 @@ class VmecWOut(BaseModelWithNumpy):
                         )
                     ):
                         # Extract the dimension names used for NetCDF wout when available
-                        shape_string = tuple(
-                            [
-                                map_dimension_names.get(dim.name, str(dim.name))
-                                if isinstance(dim, jt._array_types._NamedDim)
+                        annotation_dim_names = field_info.annotation.dim_str.split()
+                        inferred_shape: list[str] = []
+                        for dim, dim_default_name, annotation_dim_name in zip(
+                            field_info.annotation.dims,
+                            shape_string,
+                            annotation_dim_names,
+                            strict=True,
+                        ):
+                            dim_name: str | None = None
+                            if isinstance(dim, jt._array_types._NamedDim):
+                                dim_name = str(dim.name).lstrip("_")
+                            elif isinstance(dim, jt._array_types._AnonymousDim):
+                                if annotation_dim_name.startswith("_"):
+                                    dim_name = annotation_dim_name.lstrip("_")
+                            inferred_shape.append(
+                                map_dimension_names.get(dim_name, dim_name)
+                                if dim_name is not None
                                 else dim_default_name
-                                for dim, dim_default_name in zip(
-                                    field_info.annotation.dims,
-                                    shape_string,
-                                    strict=True,
-                                )
-                            ]
-                        )
+                            )
+                        shape_string = tuple(inferred_shape)
 
                     for dim_name, dim_size in zip(
                         shape_string, value_array.shape, strict=True
