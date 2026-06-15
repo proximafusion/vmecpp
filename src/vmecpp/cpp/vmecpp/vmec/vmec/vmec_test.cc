@@ -292,21 +292,22 @@ TEST(TestVmec, LasymAxisymmetricTokamakMatchesEducationalVmec) {
   ASSERT_TRUE(indata.ok());
   ASSERT_TRUE(indata->lasym);
 
-  // VMEC++ finds the correct asymmetric equilibrium (its MHD energy and axis
-  // match VMEC 8.52), but the asymmetric force residual limit-cycles near
-  // ~1e-9 rather than reaching the 1e-11 tolerance. That is a convergence
-  // robustness difference from VMEC 8.52 (the time-step adaptation does not
-  // damp the oscillation), not a physics error: it does not move the converged
-  // equilibrium. Accept the outputs at that ~1e-9 equilibrium and validate the
-  // physics against the reference scalars.
-  indata->return_outputs_even_if_not_converged = true;
-
+  // This genuinely up-down-asymmetric equilibrium converges to the 1e-11 force
+  // tolerance with no accept-unconverged escape hatch, and the converged result
+  // is identical across 1..N OpenMP threads. Validate it against the VMEC 8.52
+  // (educational_VMEC) reference on three fronts: the integrated scalars, the
+  // antisymmetric Fourier content that only an up-down-asymmetric equilibrium
+  // produces, and the magnetic axis pushed off the midplane by that asymmetry.
   const auto output = vmecpp::run(*indata);
   ASSERT_TRUE(output.ok());
   const auto& w = output->wout;
+  ASSERT_TRUE(w.lasym);
 
-  // educational_VMEC (VMEC 8.52) golden scalars
-  const double tol = 1.0e-4;
+  // educational_VMEC (VMEC 8.52) golden scalars. The reference run converges to
+  // the same 1e-11 tolerance; VMEC++ reproduces these to <= 1e-5 (an order
+  // tighter than the previous 1e-4 bound), the largest residual being rbtor at
+  // ~5e-6.
+  const double tol = 1.0e-5;
   EXPECT_TRUE(IsCloseRelAbs(10.100000, w.aspect, tol)) << "aspect=" << w.aspect;
   EXPECT_TRUE(IsCloseRelAbs(43.063058, w.volume, tol)) << "volume=" << w.volume;
   EXPECT_TRUE(IsCloseRelAbs(6.060000, w.Rmajor_p, tol))
@@ -317,6 +318,28 @@ TEST(TestVmec, LasymAxisymmetricTokamakMatchesEducationalVmec) {
   EXPECT_TRUE(IsCloseRelAbs(32.071235, w.rbtor0, tol)) << "rbtor0=" << w.rbtor0;
   EXPECT_TRUE(IsCloseRelAbs(5.296540, w.volavgB, tol))
       << "volavgB=" << w.volavgB;
+
+  // The field on axis must be the physical on-axis value F/R = rbtor0 / Raxis,
+  // not the doubled lasym Nyquist normalization. This guards the tmult = 0.5
+  // output normalization: a regression to the doubled value would put b0 at ~2x
+  // and fail here.
+  ASSERT_GT(w.raxis_cc.size(), 0);
+  EXPECT_TRUE(IsCloseRelAbs(w.rbtor0 / w.raxis_cc[0], w.b0, 1.0e-3))
+      << "b0=" << w.b0 << " rbtor0/Raxis=" << (w.rbtor0 / w.raxis_cc[0]);
+
+  // Genuine asymmetry: the antisymmetric Fourier geometry is clearly non-zero
+  // (a stellarator-symmetric run produces exactly zero here).
+  EXPECT_GT(w.rmns.cwiseAbs().maxCoeff(), 1.0e-3) << "rmns must be non-zero";
+  EXPECT_GT(w.zmnc.cwiseAbs().maxCoeff(), 1.0e-3) << "zmnc must be non-zero";
+
+  // The asymmetry pushes the magnetic axis off the midplane: zaxis_cc is the
+  // cos(n*zeta) (here n=0) antisymmetric axis amplitude, exactly zero for a
+  // symmetric equilibrium. educational_VMEC places it at Z = 0.078295; VMEC++
+  // agrees to better than 1%.
+  ASSERT_GT(w.zaxis_cc.size(), 0);
+  EXPECT_GT(w.zaxis_cc[0], 0.05) << "axis must be off-midplane";
+  EXPECT_TRUE(IsCloseRelAbs(0.0782953, w.zaxis_cc[0], 5.0e-2))
+      << "zaxis_cc[0]=" << w.zaxis_cc[0];
 }  // LasymAxisymmetricTokamakMatchesEducationalVmec
 
 // A stellarator-symmetric 3D equilibrium (cth_like_fixed_bdy) run through the
