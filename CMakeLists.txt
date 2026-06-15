@@ -184,16 +184,35 @@ install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
 #   -DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so
 option(VMECPP_ENABLE_ENZYME "Build Enzyme autodiff targets" OFF)
 if(VMECPP_ENABLE_ENZYME)
-  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
     message(FATAL_ERROR
-      "VMECPP_ENABLE_ENZYME requires a Clang compiler (got "
-      "${CMAKE_CXX_COMPILER_ID}); Enzyme attaches as a Clang plugin.")
+      "VMECPP_ENABLE_ENZYME requires a Clang-based compiler (got "
+      "${CMAKE_CXX_COMPILER_ID}); Enzyme attaches as a Clang plugin. "
+      "Intel oneAPI icx/icpx (IntelLLVM) is Clang-based and supported.")
   endif()
   set(VMECPP_ENZYME_PLUGIN "" CACHE FILEPATH "Path to ClangEnzyme-NN.so")
+  # The Enzyme pass is an LLVM-version-specific plugin. icx/icpx (IntelLLVM)
+  # cannot load a plugin built against a different upstream LLVM. Enzyme's output
+  # is an ordinary object file, though, so for such compilers the single Enzyme
+  # TU (exact_force_jvp.cc) can be precompiled with a matching ClangEnzyme and
+  # linked in via VMECPP_ENZYME_OBJECT, while the rest is built with icx.
+  set(VMECPP_ENZYME_OBJECT "" CACHE FILEPATH
+    "Prebuilt exact_force_jvp object (compiled elsewhere with a matching ClangEnzyme)")
+  if(VMECPP_ENZYME_OBJECT)
+    if(NOT EXISTS "${VMECPP_ENZYME_OBJECT}")
+      message(FATAL_ERROR "VMECPP_ENZYME_OBJECT not found: ${VMECPP_ENZYME_OBJECT}")
+    endif()
+    message(STATUS "Enzyme: linking prebuilt object ${VMECPP_ENZYME_OBJECT}")
+    set_source_files_properties("${VMECPP_ENZYME_OBJECT}" PROPERTIES
+      EXTERNAL_OBJECT TRUE GENERATED TRUE)
+    target_sources(vmecpp_core PRIVATE "${VMECPP_ENZYME_OBJECT}")
+    target_compile_definitions(vmecpp_core PUBLIC VMECPP_ENABLE_ENZYME)
+  else()
   if(NOT VMECPP_ENZYME_PLUGIN OR NOT EXISTS "${VMECPP_ENZYME_PLUGIN}")
     message(FATAL_ERROR
       "VMECPP_ENABLE_ENZYME=ON requires "
-      "-DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so")
+      "-DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so "
+      "(or -DVMECPP_ENZYME_OBJECT=/path/to/exact_force_jvp.o for icx)")
   endif()
   message(STATUS "Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
   enable_testing()
@@ -229,9 +248,12 @@ if(VMECPP_ENABLE_ENZYME)
   # VMECPP_ENABLE_ENZYME guards the callers so the default (plugin-free) build is
   # unaffected.
   target_sources(vmecpp_core PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc)
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_vjp.cc)
   set_source_files_properties(
     ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
+    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_vjp.cc
     PROPERTIES COMPILE_OPTIONS "-O2;-fplugin=${VMECPP_ENZYME_PLUGIN}")
   target_compile_definitions(vmecpp_core PUBLIC VMECPP_ENABLE_ENZYME)
+  endif()
 endif()

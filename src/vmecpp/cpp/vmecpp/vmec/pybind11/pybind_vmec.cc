@@ -41,24 +41,24 @@ namespace {
 //
 // Use as: def_eigen_property(pywrapperclass, "rmnc", &WOutFileContents::rmnc);
 template <typename PywrapperClass, typename EigenMatrix, typename Class>
-void DefEigenProperty(PywrapperClass &pywrapper, const std::string &name,
-                      EigenMatrix Class::*member_ptr) {
+void DefEigenProperty(PywrapperClass& pywrapper, const std::string& name,
+                      EigenMatrix Class::* member_ptr) {
   static_assert(std::is_same_v<EigenMatrix, vmecpp::RowMatrixXd> ||
                 std::is_same_v<EigenMatrix, Eigen::VectorXd> ||
                 std::is_same_v<EigenMatrix, Eigen::VectorXi>);
   // similar to what pybind11's def_readwrite does, but returning a non-const
   // value from the getter
-  auto getter = [member_ptr](Class &obj) -> EigenMatrix & {
+  auto getter = [member_ptr](Class& obj) -> EigenMatrix& {
     return obj.*member_ptr;
   };
-  auto setter = [member_ptr](Class &obj, const EigenMatrix &val) {
+  auto setter = [member_ptr](Class& obj, const EigenMatrix& val) {
     obj.*member_ptr = val;
   };
   pywrapper.def_property(name.c_str(), getter, setter);
 }
 
 template <typename T>
-T &GetValueOrThrow(absl::StatusOr<T> &s) {
+T& GetValueOrThrow(absl::StatusOr<T>& s) {
   if (!s.ok()) {
     // Could handle more exceptions, but only some are translated to meaningful
     // python exception types.
@@ -73,7 +73,7 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
 }
 
 vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
-                                            const vmecpp::VmecINDATA &indata) {
+                                            const vmecpp::VmecINDATA& indata) {
   return vmecpp::HotRestartState(std::move(wout), indata);
 }
 
@@ -81,8 +81,8 @@ vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
 // fixed canonical order set by (lthreed, lasym). Used to (un)flatten the VMEC++
 // decision vector for Python. FourierForces shares the same underlying
 // FourierCoeffs storage layout, so the same ordering applies.
-std::vector<std::span<double>> ActiveSpans(vmecpp::FourierGeometry &x,
-                                           const vmecpp::Sizes &s) {
+std::vector<std::span<double>> ActiveSpans(vmecpp::FourierGeometry& x,
+                                           const vmecpp::Sizes& s) {
   std::vector<std::span<double>> out = {x.rmncc};
   if (s.lthreed) out.push_back(x.rmnss);
   if (s.lasym) out.push_back(x.rmnsc);
@@ -98,8 +98,8 @@ std::vector<std::span<double>> ActiveSpans(vmecpp::FourierGeometry &x,
   return out;
 }
 
-std::vector<std::span<double>> ActiveSpans(vmecpp::FourierForces &x,
-                                           const vmecpp::Sizes &s) {
+std::vector<std::span<double>> ActiveSpans(vmecpp::FourierForces& x,
+                                           const vmecpp::Sizes& s) {
   std::vector<std::span<double>> out = {x.frcc};
   if (s.lthreed) out.push_back(x.frss);
   if (s.lasym) out.push_back(x.frsc);
@@ -116,13 +116,13 @@ std::vector<std::span<double>> ActiveSpans(vmecpp::FourierForces &x,
 }
 
 template <typename FourierObject>
-Eigen::VectorXd FlattenActive(FourierObject &x, const vmecpp::Sizes &s) {
+Eigen::VectorXd FlattenActive(FourierObject& x, const vmecpp::Sizes& s) {
   const std::vector<std::span<double>> spans = ActiveSpans(x, s);
   Eigen::Index total = 0;
-  for (const auto &sp : spans) total += static_cast<Eigen::Index>(sp.size());
+  for (const auto& sp : spans) total += static_cast<Eigen::Index>(sp.size());
   Eigen::VectorXd out(total);
   Eigen::Index offset = 0;
-  for (const auto &sp : spans) {
+  for (const auto& sp : spans) {
     const Eigen::Index n = static_cast<Eigen::Index>(sp.size());
     out.segment(offset, n) = Eigen::Map<const Eigen::VectorXd>(sp.data(), n);
     offset += n;
@@ -131,11 +131,11 @@ Eigen::VectorXd FlattenActive(FourierObject &x, const vmecpp::Sizes &s) {
 }
 
 template <typename FourierObject>
-void UnflattenActive(FourierObject &m_x, const vmecpp::Sizes &s,
-                     const Eigen::VectorXd &flat) {
+void UnflattenActive(FourierObject& m_x, const vmecpp::Sizes& s,
+                     const Eigen::VectorXd& flat) {
   const std::vector<std::span<double>> spans = ActiveSpans(m_x, s);
   Eigen::Index total = 0;
-  for (const auto &sp : spans) total += static_cast<Eigen::Index>(sp.size());
+  for (const auto& sp : spans) total += static_cast<Eigen::Index>(sp.size());
   if (flat.size() != total) {
     throw std::runtime_error(
         "VmecModel.set_state: state vector has wrong length (got " +
@@ -143,7 +143,7 @@ void UnflattenActive(FourierObject &m_x, const vmecpp::Sizes &s,
         ")");
   }
   Eigen::Index offset = 0;
-  for (auto &sp : spans) {
+  for (auto& sp : spans) {
     const Eigen::Index n = static_cast<Eigen::Index>(sp.size());
     Eigen::Map<Eigen::VectorXd>(sp.data(), n) = flat.segment(offset, n);
     offset += n;
@@ -167,8 +167,8 @@ class VmecModel {
   // (the inner solve VMEC++ performs at one multi-grid step). The Python loop
   // owns the multi-grid sequencing.
   static std::unique_ptr<VmecModel> Create(
-      const VmecINDATA &indata, int ns,
-      const std::optional<vmecpp::HotRestartState> &initial_state) {
+      const VmecINDATA& indata, int ns,
+      const std::optional<vmecpp::HotRestartState>& initial_state) {
     auto vmec_or = vmecpp::Vmec::FromIndata(
         indata, /*magnetic_response_table=*/nullptr, /*max_threads=*/1,
         vmecpp::OutputMode::kSilent);
@@ -176,7 +176,7 @@ class VmecModel {
       throw std::runtime_error(std::string(vmec_or.status().message()));
     }
     auto model = std::make_unique<VmecModel>(std::move(vmec_or.value()));
-    vmecpp::Vmec &v = *model->vmec_;
+    vmecpp::Vmec& v = *model->vmec_;
 
     // Mirror the per-multi-grid-step setup that Vmec::run performs before
     // SolveEquilibrium (vmec.cc), for a single ns value.
@@ -187,7 +187,7 @@ class VmecModel {
 
     // ftol/niter for this resolution: use the ns_array entry matching ns, else
     // the last entry of the arrays.
-    const Eigen::VectorXi &ns_array = v.indata_.ns_array;
+    const Eigen::VectorXi& ns_array = v.indata_.ns_array;
     int idx = static_cast<int>(ns_array.size()) - 1;
     for (int i = 0; i < ns_array.size(); ++i) {
       if (ns_array[i] == ns) {
@@ -333,7 +333,7 @@ class VmecModel {
   // the coarse->fine ramp from Python. `new_ns` must be finer than the current
   // ns (multi-grid only refines).
   void RefineTo(int new_ns) {
-    vmecpp::Vmec &v = *vmec_;
+    vmecpp::Vmec& v = *vmec_;
     if (new_ns <= v.fc_.ns) {
       throw std::runtime_error("VmecModel.refine_to: new_ns (" +
                                std::to_string(new_ns) +
@@ -349,7 +349,7 @@ class VmecModel {
 
     // ftol/niter for the new resolution: the ns_array entry matching new_ns,
     // else the last entry (mirrors Create()).
-    const Eigen::VectorXi &ns_array = v.indata_.ns_array;
+    const Eigen::VectorXi& ns_array = v.indata_.ns_array;
     int idx = static_cast<int>(ns_array.size()) - 1;
     for (int i = 0; i < ns_array.size(); ++i) {
       if (ns_array[i] == new_ns) {
@@ -384,7 +384,7 @@ class VmecModel {
   Eigen::VectorXd GetState() const {
     return FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
   }
-  void SetState(const Eigen::VectorXd &flat) const {
+  void SetState(const Eigen::VectorXd& flat) const {
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
     exact_primal_valid_ = false;  // primal geometry cache is stale
   }
@@ -399,7 +399,7 @@ class VmecModel {
   // decomposed internal basis. This is the matrix-free Hessian information an
   // internal or external Newton-Krylov solver needs; F itself is exact, so only
   // the directional step is finite-differenced. The current state is restored.
-  Eigen::VectorXd HessianVectorProduct(const Eigen::VectorXd &v,
+  Eigen::VectorXd HessianVectorProduct(const Eigen::VectorXd& v,
                                        double eps_rel = 1e-7) {
     const Eigen::VectorXd x =
         FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
@@ -429,8 +429,8 @@ class VmecModel {
   // finite-difference step enters. The constraint force (a linear bandpass over
   // a nonlinear product) is omitted here. The model state is restored to x on
   // return.
-  Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
-    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+  Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd& v) {
+    vmecpp::IdealMhdModel& model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
     Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
     // The primal geometry depends only on the current state, not on v, so cache
@@ -455,16 +455,40 @@ class VmecModel {
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
 
+  // Transpose of the exact Hessian-vector product: H^T w, in the decomposed
+  // internal basis. The force Jacobian is non-symmetric (VMEC's force is a
+  // scaled gradient), so the adjoint boundary gradient needs H^T, not H. Uses
+  // the same cached primal geometry as ExactHessianVectorProduct.
+  Eigen::VectorXd ExactHessianVectorProductTranspose(const Eigen::VectorXd& w) {
+    vmecpp::IdealMhdModel& model = *vmec_->m_[0];
+    const int gS = static_cast<int>(model.r1_e.size());
+    if (!exact_primal_valid_ ||
+        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
+      exact_primal_.setZero(20 * gS);
+      model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                         exact_primal_.data(), gS, /*primal=*/true);
+      exact_primal_valid_ = true;
+    }
+    vmec_->decomposed_f_[0]->setZero();
+    UnflattenActive(*vmec_->decomposed_f_[0], vmec_->s_, w);
+    vmec_->physical_x_backup_[0]->setZero();
+    model.applyExactForceJacobianTranspose(
+        exact_primal_.data(), gS, *vmec_->decomposed_f_[0],
+        *vmec_->physical_f_[0], *vmec_->physical_x_[0],
+        *vmec_->physical_x_backup_[0]);
+    return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
+  }
+
   // Diagnostic: max |composed force density - production force density| at the
   // current state. Zero confirms the flat-buffer composition reproduces the
   // production force density; a nonzero value localizes a composition bug.
   double ComposedForceResidual() {
-    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    vmecpp::IdealMhdModel& model = *vmec_->m_[0];
     const Eigen::VectorXd x =
         FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     const int gS = static_cast<int>(model.r1_e.size());
     Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
-    auto blk = [&](int b, const Eigen::VectorXd &src) {
+    auto blk = [&](int b, const Eigen::VectorXd& src) {
       for (int i = 0; i < static_cast<int>(src.size()); ++i)
         geomP[b * gS + i] = src[i];
     };
@@ -499,14 +523,14 @@ class VmecModel {
   // transform wrapping. Returns (per-block max-rel, overall-rel) so a nonzero
   // block localizes the discrepancy.
   std::pair<std::vector<double>, double> ForceDensityJvpResidual(
-      const Eigen::VectorXd &v) {
-    vmecpp::IdealMhdModel &M = *vmec_->m_[0];
+      const Eigen::VectorXd& v) {
+    vmecpp::IdealMhdModel& M = *vmec_->m_[0];
     const int nForce = static_cast<int>(M.blmn_e.size());
     const int gS = static_cast<int>(M.r1_e.size());
     const Eigen::VectorXd x =
         FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
-    auto packGeom = [&](Eigen::VectorXd &dst) {
-      auto blk = [&](int b, const Eigen::VectorXd &s) {
+    auto packGeom = [&](Eigen::VectorXd& dst) {
+      auto blk = [&](int b, const Eigen::VectorXd& s) {
         for (int i = 0; i < static_cast<int>(s.size()); ++i)
           dst[b * gS + i] = s[i];
       };
@@ -531,8 +555,8 @@ class VmecModel {
       blk(18, M.ruFull);
       blk(19, M.zuFull);
     };
-    auto packForce = [&](Eigen::VectorXd &dst) {
-      auto blk = [&](int b, const Eigen::VectorXd &s) {
+    auto packForce = [&](Eigen::VectorXd& dst) {
+      auto blk = [&](int b, const Eigen::VectorXd& s) {
         for (int i = 0; i < static_cast<int>(s.size()); ++i)
           dst[b * nForce + i] = s[i];
       };
@@ -598,6 +622,42 @@ class VmecModel {
     const double overall = (jvp - fd).norm() / (fd.norm() + 1e-300);
     return {per_block, overall};
   }
+
+  // Primal geometry (20 blocks of gS) at the current state, the linearization
+  // point for the exact force-density kernel.
+  Eigen::VectorXd packExactGeometryPrimal(int gS) {
+    Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
+    vmec_->m_[0]->packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                               geomP.data(), gS, /*primal=*/true);
+    return geomP;
+  }
+
+  // Force-density kernel J_g (20 geometry-block tangent -> 20 force-block
+  // tangent) and its transpose J_g^T, at the current state. For validating the
+  // Enzyme reverse pass via the bilinear identity <J_g x, y> == <x, J_g^T y>.
+  Eigen::VectorXd KernelJvp(const Eigen::VectorXd& dgeom) {
+    vmecpp::IdealMhdModel& M = *vmec_->m_[0];
+    const int nForce = static_cast<int>(M.blmn_e.size());
+    const int gS = static_cast<int>(M.r1_e.size());
+    Eigen::VectorXd geomP = packExactGeometryPrimal(gS);
+    Eigen::VectorXd jvp = Eigen::VectorXd::Zero(20 * nForce);
+    M.exactForceDensityTangent(geomP.data(), dgeom.data(), gS, jvp.data());
+    return jvp;
+  }
+  Eigen::VectorXd KernelVjp(const Eigen::VectorXd& force_bar) {
+    vmecpp::IdealMhdModel& M = *vmec_->m_[0];
+    const int gS = static_cast<int>(M.r1_e.size());
+    Eigen::VectorXd geomP = packExactGeometryPrimal(gS);
+    Eigen::VectorXd vjp = Eigen::VectorXd::Zero(20 * gS);
+    M.exactForceDensityCotangent(geomP.data(), force_bar.data(), gS,
+                                 vjp.data());
+    return vjp;
+  }
+  // (geom-block size gS, force-block size nForce) for the kernel diagnostics.
+  std::pair<int, int> KernelDims() {
+    vmecpp::IdealMhdModel& M = *vmec_->m_[0];
+    return {static_cast<int>(M.r1_e.size()), static_cast<int>(M.blmn_e.size())};
+  }
 #endif  // VMECPP_ENABLE_ENZYME
 
   // Apply VMEC's preconditioner M^-1 to a vector in the decomposed internal
@@ -608,11 +668,11 @@ class VmecModel {
   //
   // Requires a prior evaluate(precondition=true) at the current state: the
   // radial preconditioner is assembled inside that forward-model call.
-  Eigen::VectorXd ApplyPreconditioner(const Eigen::VectorXd &v) const {
+  Eigen::VectorXd ApplyPreconditioner(const Eigen::VectorXd& v) const {
     vmecpp::FourierForces tmp(&vmec_->s_, vmec_->r_[0].get(), vmec_->fc_.ns);
     tmp.setZero();
     UnflattenActive(tmp, vmec_->s_, v);
-    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    vmecpp::IdealMhdModel& model = *vmec_->m_[0];
     model.applyM1Preconditioner(tmp);
     const absl::Status status = model.applyRZPreconditioner(tmp);
     if (!status.ok()) {
@@ -670,7 +730,7 @@ class VmecModel {
   std::vector<int> restart_reasons() const {
     std::vector<int> out;
     out.reserve(vmec_->fc_.restart_reasons.size());
-    for (const auto &r : vmec_->fc_.restart_reasons) {
+    for (const auto& r : vmec_->fc_.restart_reasons) {
       out.push_back(static_cast<int>(r));
     }
     return out;
@@ -794,30 +854,30 @@ PYBIND11_MODULE(_vmecpp, m) {
       // disallow re-assignment of the whole vector (to preserve sizes
       // consistent with mpol/ntor) but allow changing the individual elements
       .def_property_readonly(
-          "raxis_c", [](VmecINDATA &w) -> VectorXd & { return w.raxis_c; })
+          "raxis_c", [](VmecINDATA& w) -> VectorXd& { return w.raxis_c; })
       .def_property_readonly(
-          "zaxis_s", [](VmecINDATA &w) -> VectorXd & { return w.zaxis_s; })
+          "zaxis_s", [](VmecINDATA& w) -> VectorXd& { return w.zaxis_s; })
       .def_property_readonly(
           "raxis_s",
-          [](VmecINDATA &w) -> std::optional<VectorXd> & { return w.raxis_s; })
+          [](VmecINDATA& w) -> std::optional<VectorXd>& { return w.raxis_s; })
       .def_property_readonly(
           "zaxis_c",
-          [](VmecINDATA &w) -> std::optional<VectorXd> & { return w.zaxis_c; })
+          [](VmecINDATA& w) -> std::optional<VectorXd>& { return w.zaxis_c; })
 
       // (initial guess for) boundary shape
       // disallow re-assignment of the whole matrix (to preserve shapes
       // consistent with mpol/ntor) but allow changing the individual elements
       .def_property_readonly(
-          "rbc", [](VmecINDATA &w) -> vmecpp::RowMatrixXd & { return w.rbc; })
+          "rbc", [](VmecINDATA& w) -> vmecpp::RowMatrixXd& { return w.rbc; })
       .def_property_readonly(
-          "zbs", [](VmecINDATA &w) -> vmecpp::RowMatrixXd & { return w.zbs; })
+          "zbs", [](VmecINDATA& w) -> vmecpp::RowMatrixXd& { return w.zbs; })
       .def_property_readonly(
           "rbs",
-          [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
+          [](VmecINDATA& w) -> std::optional<vmecpp::RowMatrixXd>& {
             return w.rbs;
           })
       .def_property_readonly(
-          "zbc", [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
+          "zbc", [](VmecINDATA& w) -> std::optional<vmecpp::RowMatrixXd>& {
             return w.zbc;
           });
 
@@ -1070,7 +1130,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("delta3", &vmecpp::Threed1ShafranovIntegrals::delta3);
 
   py::class_<vmecpp::WOutFileContents>(m, "WOutFileContents")
-      .def(py::init<const vmecpp::WOutFileContents &>(), py::arg("wout"))
+      .def(py::init<const vmecpp::WOutFileContents&>(), py::arg("wout"))
       .def(py::init())
       .def_readwrite("version_", &vmecpp::WOutFileContents::version_)
       .def_readwrite("input_extension",
@@ -1260,8 +1320,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("indata", &vmecpp::OutputQuantities::indata)
       .def(
           "save",
-          [](const vmecpp::OutputQuantities &oq,
-             const std::filesystem::path &path) {
+          [](const vmecpp::OutputQuantities& oq,
+             const std::filesystem::path& path) {
             absl::Status s = oq.Save(path);
 
             if (!s.ok()) {
@@ -1272,7 +1332,7 @@ PYBIND11_MODULE(_vmecpp, m) {
             }
           },
           py::arg("path"))
-      .def_static("load", [](const std::filesystem::path &path) {
+      .def_static("load", [](const std::filesystem::path& path) {
         auto maybe_oq = vmecpp::OutputQuantities::Load(path);
         if (!maybe_oq.ok()) {
           const std::string msg =
@@ -1291,7 +1351,7 @@ PYBIND11_MODULE(_vmecpp, m) {
 
   m.def(
       "run",
-      [](const VmecINDATA &indata,
+      [](const VmecINDATA& indata,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads,
          vmecpp::OutputMode verbose) -> vmecpp::OutputQuantities {
@@ -1331,7 +1391,7 @@ PYBIND11_MODULE(_vmecpp, m) {
            "number_of_z_grid_points"_a, "number_of_phi_grid_points"_a)
       .def_static(
           "from_file",
-          [](const std::filesystem::path &file) {
+          [](const std::filesystem::path& file) {
             auto maybe_params =
                 makegrid::ImportMakegridParametersFromFile(file);
             return GetValueOrThrow(maybe_params);
@@ -1361,7 +1421,7 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::class_<magnetics::MagneticConfiguration>(m, "MagneticConfiguration")
       .def_static(
           "from_file",
-          [](const std::filesystem::path &file) {
+          [](const std::filesystem::path& file) {
             auto maybe_config =
                 magnetics::ImportMagneticConfigurationFromCoilsFile(file);
             return GetValueOrThrow(maybe_config);
@@ -1370,10 +1430,10 @@ PYBIND11_MODULE(_vmecpp, m) {
   auto response_table =
       py::class_<makegrid::MagneticFieldResponseTable>(
           m, "MagneticFieldResponseTable")
-          .def(py::init<const makegrid::MakegridParameters &,
-                        const makegrid::RowMatrixXd &,
-                        const makegrid::RowMatrixXd &,
-                        const makegrid::RowMatrixXd &>(),
+          .def(py::init<const makegrid::MakegridParameters&,
+                        const makegrid::RowMatrixXd&,
+                        const makegrid::RowMatrixXd&,
+                        const makegrid::RowMatrixXd&>(),
                py::arg("parameters"), py::arg("b_r"), py::arg("b_p"),
                py::arg("b_z"))
           .def_readonly("parameters",
@@ -1387,8 +1447,8 @@ PYBIND11_MODULE(_vmecpp, m) {
 
   m.def(
       "compute_magnetic_field_response_table",
-      [](const makegrid::MakegridParameters &mgrid_params,
-         const magnetics::MagneticConfiguration &magnetic_configuration) {
+      [](const makegrid::MakegridParameters& mgrid_params,
+         const magnetics::MagneticConfiguration& magnetic_configuration) {
         auto ret = makegrid::ComputeMagneticFieldResponseTable(
             mgrid_params, magnetic_configuration);
         return GetValueOrThrow(ret);
@@ -1397,8 +1457,8 @@ PYBIND11_MODULE(_vmecpp, m) {
 
   m.def(
       "run",
-      [](const VmecINDATA &indata,
-         const makegrid::MagneticFieldResponseTable &magnetic_response_table,
+      [](const VmecINDATA& indata,
+         const makegrid::MagneticFieldResponseTable& magnetic_response_table,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads, vmecpp::OutputMode verbose) {
         bool was_interrupted = false;
@@ -1458,9 +1518,14 @@ PYBIND11_MODULE(_vmecpp, m) {
 #ifdef VMECPP_ENABLE_ENZYME
       .def("exact_hessian_vector_product",
            &VmecModel::ExactHessianVectorProduct, py::arg("v"))
+      .def("exact_hessian_vector_product_transpose",
+           &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"))
       .def("composed_force_residual", &VmecModel::ComposedForceResidual)
       .def("force_density_jvp_residual", &VmecModel::ForceDensityJvpResidual,
            py::arg("v"))
+      .def("_kernel_jvp", &VmecModel::KernelJvp, py::arg("dgeom"))
+      .def("_kernel_vjp", &VmecModel::KernelVjp, py::arg("force_bar"))
+      .def("_kernel_dims", &VmecModel::KernelDims)
 #endif  // VMECPP_ENABLE_ENZYME
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
