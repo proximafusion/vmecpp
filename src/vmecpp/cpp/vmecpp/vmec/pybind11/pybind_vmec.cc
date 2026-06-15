@@ -634,9 +634,9 @@ class VmecModel {
   double mhd_energy() const { return vmec_->h_.mhdEnergy; }
 
   // Half-grid field harmonics SIMSOPT's QuasisymmetryRatioResidual consumes
-  // (gmnc, bmnc, bsub{u,v}mnc, bsup{u,v}mnc), computed from the current state by
-  // the flat-buffer ComputeQsHarmonics kernel (no Eigen heap temporaries). Call
-  // evaluate() first. Each array has shape (mnmax_nyq, nsH).
+  // (gmnc, bmnc, bsub{u,v}mnc, bsup{u,v}mnc), computed from the current state
+  // by the flat-buffer ComputeQsHarmonics kernel (no Eigen heap temporaries).
+  // Call evaluate() first. Each array has shape (mnmax_nyq, nsH).
   py::dict qs_harmonics() const {
     vmecpp::IdealMhdModel &m = *vmec_->m_[0];
     const vmecpp::Sizes &s = vmec_->s_;
@@ -667,13 +667,13 @@ class VmecModel {
     c.cosnv = t.cosnv.data();
     c.sinnv = t.sinnv.data();
     vmecpp::ComputeQsHarmonics(m.gsqrt.data(), m.totalPressure.data(),
-                              rp.presH.data(), m.bsupu.data(), m.bsupv.data(),
-                              m.bsubu.data(), m.bsubv.data(), gmnc.data(),
-                              bmnc.data(), bsubumnc.data(), bsubvmnc.data(),
-                              bsupumnc.data(), bsupvmnc.data(), &c);
+                               rp.presH.data(), m.bsupu.data(), m.bsupv.data(),
+                               m.bsubu.data(), m.bsubv.data(), gmnc.data(),
+                               bmnc.data(), bsubumnc.data(), bsubvmnc.data(),
+                               bsupumnc.data(), bsupvmnc.data(), &c);
     auto arr = [&](const std::vector<double> &v) {
-      return py::array_t<double>(
-          std::vector<py::ssize_t>{s.mnmax_nyq, nsH}, v.data());
+      return py::array_t<double>(std::vector<py::ssize_t>{s.mnmax_nyq, nsH},
+                                 v.data());
     };
     py::dict out;
     out["gmnc"] = arr(gmnc);
@@ -684,12 +684,12 @@ class VmecModel {
     out["bsupvmnc"] = arr(bsupvmnc);
     // Half-grid profiles SIMSOPT QS also reads (iotas, bvco, buco): plain
     // radial-profile reads, no transform. Each has length nsH.
-    out["iotas"] = py::array_t<double>(static_cast<py::ssize_t>(nsH),
-                                       rp.iotaH.data());
-    out["bvco"] = py::array_t<double>(static_cast<py::ssize_t>(nsH),
-                                      rp.bvcoH.data());
-    out["buco"] = py::array_t<double>(static_cast<py::ssize_t>(nsH),
-                                      rp.bucoH.data());
+    out["iotas"] =
+        py::array_t<double>(static_cast<py::ssize_t>(nsH), rp.iotaH.data());
+    out["bvco"] =
+        py::array_t<double>(static_cast<py::ssize_t>(nsH), rp.bvcoH.data());
+    out["buco"] =
+        py::array_t<double>(static_cast<py::ssize_t>(nsH), rp.bucoH.data());
     return out;
   }
 

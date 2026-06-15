@@ -36,7 +36,11 @@ jobs:
           pytest benchmarks/test_benchmarks.py --benchmark-json=benchmark_results.json
 
       - name: Compare benchmark result
-        if: github.event_name == 'pull_request'
+        # Skip the result upload/compare for fork PRs: their GITHUB_TOKEN is
+        # read-only, so comment-on-alert/auto-push hit 'Resource not accessible
+        # by integration'. The benchmarks still run above; only the write-back
+        # is skipped for forks.
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: benchmark-action/github-action-benchmark@v1.21.0
         with:
           tool: "pytest"
