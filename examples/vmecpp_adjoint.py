@@ -2,23 +2,32 @@
 # <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Adjoint sensitivity of a converged VMEC++ equilibrium to its boundary.
+"""Sensitivity of a converged VMEC++ equilibrium to its boundary.
 
 A fixed-boundary equilibrium satisfies the interior force balance F_I(x) = 0,
-where x is the decomposed internal-basis state and F is the gradient of VMEC's
-augmented functional. The outermost flux surface (the boundary) is the last
-radial block of the state and is held fixed during the solve. For a scalar
-objective J(x), the sensitivity to the boundary degrees of freedom follows from
-the implicit function theorem:
+where x is the decomposed internal-basis state and F is VMEC's internal force.
+The outermost flux surface (the boundary) is the last radial block of the state
+and is held fixed during the solve. For a scalar objective J(x), the implicit
+function theorem gives the boundary sensitivity from the equilibrium response
+dx_I/dx_B = -H_II^{-1} H_IB, H = dF/dx:
 
-    dJ/dx_B = dJ/dx_B|_x - (dF_I/dx_B)^T lambda,   H_II lambda = dJ/dx_I,
+    dJ/dx_Bj = dJ/dx_Bj|_x + dJ/dx_I . dx_I,   H_II dx_I = -H_IB e_j.
 
-with H = dF/dx the (symmetric) Hessian of the augmented functional. Every
-operator is matrix-free and already exposed by VmecModel: the Hessian-vector
-product (``hessian_vector_product``) and the preconditioner
-(``apply_preconditioner``), used to solve the adjoint system. Only one Hessian
-solve is needed for the full boundary gradient, versus one equilibrium re-solve
-per boundary degree of freedom for finite differences.
+Two finite-difference-free forms are provided, both driven by the exact autodiff
+Hessian-vector product and preconditioned by VMEC's approximate inverse Hessian
+(``apply_preconditioner``):
+
+* ``forward_boundary_gradient``: one Hessian solve per boundary DOF
+  (``H_II dx_I = -H_IB e_j``). Works on any Enzyme build.
+* ``adjoint_boundary_gradient``: one Hessian solve total, independent of the
+  boundary DOF count. VMEC's force is a *scaled* gradient, so H = dF/dx is
+  non-symmetric and the adjoint needs the transpose H^T, exposed by
+  ``exact_hessian_vector_product_transpose``; the structural null space is
+  deflated once (state-independent) and the symmetric preconditioner serves H^T
+  as well as H.
+
+Both are far cheaper than the finite-difference reference, which re-solves the
+equilibrium once per boundary DOF.
 """
 
 from __future__ import annotations
@@ -142,24 +151,17 @@ def objective_state_gradient(model, x, objective, h=1e-6):
 def boundary_gradient(
     model, x_star, interior, boundary, objective, h=1e-6, exact=False
 ):
-    """Adjoint gradient dJ/dx_B at the converged equilibrium x_star.
+    """dJ/dx_B at the converged equilibrium for a scalar objective.
 
-    With exact=True the analytic autodiff Hessian-vector product is used (no force
-    evaluation per matvec); otherwise the finite-difference HVP.
+    The equilibrium response is captured by forward sensitivities driven by the
+    exact autodiff Hessian-vector product (no nonlinear re-solves). The state
+    cotangent dJ/dx is taken by finite differences over the state here; pass an
+    analytic one to ``forward_boundary_gradient`` to remove that step too (the QS
+    objective does, via ``qs_boundary_gradient``).
     """
-    n = x_star.size
     dj = objective_state_gradient(model, x_star, objective, h)
-    model.set_state(np.ascontiguousarray(x_star))
-    model.evaluate(2, 2, True)  # assemble preconditioner + set base state to x_star
-    h_op, m_op = _interior_operators(model, x_star, interior, exact)
-    lam, _ = gmres(h_op, dj[interior], M=m_op, rtol=1e-6, restart=100, maxiter=30)
-    embedded = np.zeros(n)
-    embedded[interior] = lam
-    hvp = model.exact_hessian_vector_product if exact else model.hessian_vector_product
-    model.set_state(np.ascontiguousarray(x_star))
-    model.evaluate(2, 2, False)
-    coupling = np.asarray(hvp(np.ascontiguousarray(embedded)), float)[boundary]
-    return dj[boundary] - coupling
+    grad, _ = forward_boundary_gradient(model, x_star, interior, boundary, dj, exact)
+    return grad
 
 
 def finite_difference_boundary_gradient(
@@ -186,3 +188,150 @@ def finite_difference_boundary_gradient(
 
 def mhd_energy(model):
     return model.mhd_energy
+
+
+def forward_boundary_gradient(
+    model, x_star, interior, boundary, dj, exact=True, rtol=1e-8, maxiter=60
+):
+    """dJ/dx_B from forward equilibrium sensitivities, finite-difference-free.
+
+    For each boundary DOF j the interior responds along the equilibrium manifold
+    by dx_I = -H_II^{-1} H_IB e_j (implicit function theorem, F_I = 0), and
+    dJ/dx_Bj = dJ/dx_Bj|_x + dJ/dx_I . dx_I. Every operator is the exact autodiff
+    Hessian-vector product.
+
+    The reverse (adjoint) form would need one solve total instead of one per
+    boundary DOF, but it requires the transpose H^T: VMEC's force is a *scaled*
+    gradient, so H = dF/dx is genuinely non-symmetric (H_BI != H_IB^T) and the
+    naive reverse solve is wrong. The scaling cancels in the forward sensitivity
+    (H_II dx = -H_IB e_j has the same solution as the symmetric system), so this
+    form is exact. An exact O(1) adjoint needs a reverse-mode force VJP.
+    """
+    hvp = model.exact_hessian_vector_product if exact else model.hessian_vector_product
+    n = x_star.size
+    model.set_state(np.ascontiguousarray(x_star))
+    model.evaluate(2, 2, True)  # assemble preconditioner at x_star
+    h_op, m_op = _interior_operators(model, x_star, interior, exact)
+    dj_i = dj[interior]
+    grad = np.empty(boundary.size)
+    failures = 0
+    for col, j in enumerate(boundary):
+        ej = np.zeros(n)
+        ej[j] = 1.0
+        hib = np.asarray(hvp(np.ascontiguousarray(ej)), float)[interior]
+        dxi, info = gmres(h_op, -hib, M=m_op, rtol=rtol, restart=100, maxiter=maxiter)
+        failures += int(info != 0)
+        grad[col] = dj[j] + dj_i @ dxi
+    return grad, failures
+
+
+def structural_nullfree_interior(model, interior, tol=1e-9):
+    """Interior DOFs that actually enter the force, i.e. not in the augmented
+    Hessian's structural null space (state-independent gauge/parity modes). A DOF
+    is kept when both its Hessian column and row are nonzero. The set is
+    state-independent, so detect it once and reuse it across adjoint solves."""
+    n = int(np.asarray(model.get_state()).size)
+    col = np.zeros(n)
+    row = np.zeros(n)
+    for i in interior:
+        e = np.zeros(n)
+        e[i] = 1.0
+        col[i] = np.linalg.norm(
+            np.asarray(
+                model.exact_hessian_vector_product(np.ascontiguousarray(e)), float
+            )
+        )
+        row[i] = np.linalg.norm(
+            np.asarray(
+                model.exact_hessian_vector_product_transpose(np.ascontiguousarray(e)),
+                float,
+            )
+        )
+    thr = tol * max(col.max(), 1.0)
+    return np.array([i for i in interior if col[i] > thr and row[i] > thr])
+
+
+def adjoint_boundary_gradient(
+    model, x_star, interior, boundary, dj, keep=None, rtol=1e-9, maxiter=400
+):
+    """dJ/dx_B from the reverse adjoint: one Hessian solve, O(1) in boundary DOF.
+
+    Solves the transposed interior system H_II^T lambda = dJ/dx_I and forms
+    dJ/dx_B = dJ/dx_B|_x - H_IB^T lambda. VMEC's force is a scaled gradient, so
+    H = dF/dx is non-symmetric and the transpose H^T is required; it is provided
+    exactly by ``exact_hessian_vector_product_transpose``. The augmented Hessian
+    has a structural null space, deflated via ``keep`` (pass a cached set to keep
+    the solve O(1); if None it is detected here at O(n_interior) cost). The
+    transposed system is preconditioned by VMEC's approximate inverse Hessian,
+    which is symmetric, so it preconditions H^T as well as H.
+    """
+    n = x_star.size
+    model.set_state(np.ascontiguousarray(x_star))
+    model.evaluate(2, 2, True)
+    if keep is None:
+        keep = structural_nullfree_interior(model, interior)
+    nk = keep.size
+
+    def ht(e):
+        return np.asarray(
+            model.exact_hessian_vector_product_transpose(np.ascontiguousarray(e)), float
+        )
+
+    def hii_t(v):
+        e = np.zeros(n)
+        e[keep] = v
+        return ht(e)[keep]
+
+    def mii(b):
+        e = np.zeros(n)
+        e[keep] = b
+        return np.asarray(model.apply_preconditioner(np.ascontiguousarray(e)), float)[
+            keep
+        ]
+
+    h_op = LinearOperator((nk, nk), matvec=hii_t)
+    m_op = LinearOperator((nk, nk), matvec=mii)
+    lam, info = gmres(h_op, dj[keep], M=m_op, rtol=rtol, restart=200, maxiter=maxiter)
+    embedded = np.zeros(n)
+    embedded[keep] = lam
+    coupling = ht(embedded)[boundary]
+    return dj[boundary] - coupling, info
+
+
+# Quasi-axisymmetry quality measure J = 0.5 sum_mn bmnc^2 (asymmetry of |B| in
+# the |B| spectrum). Its boundary gradient is the quantity a QS optimization
+# needs, and the whole chain below is finite-difference-free.
+_QS_KEYS = ("gmnc", "bmnc", "bsubumnc", "bsubvmnc", "bsupumnc", "bsupvmnc")
+
+
+def qs_quality(model):
+    b = np.asarray(model.qs_harmonics()["bmnc"], float)
+    return 0.5 * float(np.sum(b**2))
+
+
+def qs_state_cotangent(model):
+    """Exact dJ_QS/dx over the full state, by autodiff (no finite differences).
+
+    dJ/dbmnc = bmnc is the only nonzero harmonic cotangent; the analytic
+    harmonics VJP propagates it to the state through the same field tangents the
+    force Jacobian uses.
+    """
+    h = model.qs_harmonics()
+    harm_bar = {k: np.zeros_like(np.asarray(h[k], float)) for k in _QS_KEYS}
+    harm_bar["bmnc"] = np.ascontiguousarray(np.asarray(h["bmnc"], float))
+    return np.asarray(model.exact_qs_objective_state_gradient(harm_bar), float)
+
+
+def qs_boundary_gradient(model, x_star, interior, boundary, exact=True, **kw):
+    """Exact finite-difference-free dJ_QS/dx_B at the converged equilibrium.
+
+    The state cotangent dJ/dx is the exact autodiff QS gradient
+    (qs_state_cotangent). When the build exposes the transposed Hessian-vector
+    product, the equilibrium response uses the O(1) reverse adjoint; otherwise it
+    falls back to the forward sensitivities (one solve per boundary DOF). Both
+    are finite-difference-free and use the exact autodiff Hessian-vector product.
+    """
+    dj = qs_state_cotangent(model)
+    if hasattr(model, "exact_hessian_vector_product_transpose"):
+        return adjoint_boundary_gradient(model, x_star, interior, boundary, dj, **kw)
+    return forward_boundary_gradient(model, x_star, interior, boundary, dj, exact, **kw)
