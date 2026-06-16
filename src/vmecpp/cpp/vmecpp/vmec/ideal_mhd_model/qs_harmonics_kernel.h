@@ -206,6 +206,73 @@ inline void ComputeQsHarmonicsVjp(
   }
 }
 
+// Forward tangent (Jacobian-vector product) of ComputeQsHarmonics. Given the
+// real-space field tangents (the linear fields directly; |B| through the total
+// pressure), projects them to the harmonic tangents with the same weighted
+// basis the forward transform uses. The transform is linear in every field but
+// |B|; for |B| the chain rule gives d|B| = d(total_pressure)/|B| (sign of
+// total_pressure - presH), exactly the slope ComputeQsHarmonicsVjp transposes.
+// presH is a fixed profile and contributes no tangent.
+inline void ComputeQsHarmonicsTangent(
+    const double* gsqrt_t, const double* total_pressure_t, const double* bsupu_t,
+    const double* bsupv_t, const double* bsubu_t, const double* bsubv_t,
+    const double* total_pressure, const double* presH, double* gmnc_t,
+    double* bmnc_t, double* bsubumnc_t, double* bsubvmnc_t, double* bsupumnc_t,
+    double* bsupvmnc_t, const QsHarmonicsConfig* c) {
+  const int nsH = c->nsH;
+  const int nZeta = c->nZeta;
+  const int nThetaR = c->nThetaReduced;
+  const int nThetaEff = c->nThetaEff;
+  const int nnv = c->nnyq2 + 1;
+
+  for (int jH = 0; jH < nsH; ++jH) {
+    for (int mn = 0; mn < c->mnmax_nyq; ++mn) {
+      const int m = c->xm_nyq[mn];
+      const int n = c->xn_nyq[mn] / c->nfp;
+      const int abs_n = n < 0 ? -n : n;
+      const int sign_n = n < 0 ? -1 : 1;
+
+      double dmult = c->mscale[m] * c->nscale[abs_n] * c->tmult;
+      if (m == 0 || n == 0) {
+        dmult *= 2.0;
+      }
+      const double mhalf = (c->mnyq != 0 && m == c->mnyq) ? 0.5 : 1.0;
+      const double nhalf = (c->nnyq != 0 && abs_n == c->nnyq) ? 0.5 : 1.0;
+
+      double acc_g = 0.0, acc_b = 0.0, acc_su = 0.0, acc_sv = 0.0;
+      double acc_pu = 0.0, acc_pv = 0.0;
+      for (int l = 0; l < nThetaR; ++l) {
+        const int ml = m * nThetaR + l;
+        const double cmu = c->cosmui[ml] * mhalf;
+        const double smu = c->sinmui[ml];
+        for (int k = 0; k < nZeta; ++k) {
+          const int kn = k * nnv + abs_n;
+          const double tcosi = dmult * (cmu * c->cosnv[kn] * nhalf +
+                                        sign_n * smu * c->sinnv[kn]);
+          const int idx = (jH * nZeta + k) * nThetaEff + l;
+          const double diff = total_pressure[idx] - presH[jH];
+          const double modB = std::sqrt(2.0 * std::fabs(diff));
+          const double dmodB =
+              modB > 0.0 ? (diff < 0.0 ? -1.0 : 1.0) / modB : 0.0;
+          acc_g += tcosi * gsqrt_t[idx];
+          acc_b += tcosi * dmodB * total_pressure_t[idx];
+          acc_su += tcosi * bsubu_t[idx];
+          acc_sv += tcosi * bsubv_t[idx];
+          acc_pu += tcosi * bsupu_t[idx];
+          acc_pv += tcosi * bsupv_t[idx];
+        }
+      }
+      const int o = mn * nsH + jH;
+      gmnc_t[o] = acc_g;
+      bmnc_t[o] = acc_b;
+      bsubumnc_t[o] = acc_su;
+      bsubvmnc_t[o] = acc_sv;
+      bsupumnc_t[o] = acc_pu;
+      bsupvmnc_t[o] = acc_pv;
+    }
+  }
+}
+
 }  // namespace vmecpp
 
 #endif  // VMECPP_VMEC_IDEAL_MHD_MODEL_QS_HARMONICS_KERNEL_H_
