@@ -91,6 +91,7 @@ cc_library(
         "*_kernel.h",
         "local_force_composition.h",
         "exact_force_jvp.h",
+        "exact_force_vjp.h",
     ]),
     visibility = ["//visibility:public"],
     deps = [
