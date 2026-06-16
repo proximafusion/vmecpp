@@ -214,11 +214,11 @@ inline void ComputeQsHarmonicsVjp(
 // total_pressure - presH), exactly the slope ComputeQsHarmonicsVjp transposes.
 // presH is a fixed profile and contributes no tangent.
 inline void ComputeQsHarmonicsTangent(
-    const double* gsqrt_t, const double* total_pressure_t, const double* bsupu_t,
-    const double* bsupv_t, const double* bsubu_t, const double* bsubv_t,
-    const double* total_pressure, const double* presH, double* gmnc_t,
-    double* bmnc_t, double* bsubumnc_t, double* bsubvmnc_t, double* bsupumnc_t,
-    double* bsupvmnc_t, const QsHarmonicsConfig* c) {
+    const double* gsqrt_t, const double* total_pressure_t,
+    const double* bsupu_t, const double* bsupv_t, const double* bsubu_t,
+    const double* bsubv_t, const double* total_pressure, const double* presH,
+    double* gmnc_t, double* bmnc_t, double* bsubumnc_t, double* bsubvmnc_t,
+    double* bsupumnc_t, double* bsupvmnc_t, const QsHarmonicsConfig* c) {
   const int nsH = c->nsH;
   const int nZeta = c->nZeta;
   const int nThetaR = c->nThetaReduced;

@@ -870,8 +870,9 @@ class VmecModel {
     std::vector<double> gmnc_t(nh), bmnc_t(nh), bsubu_t(nh), bsubv_t(nh),
         bsupu_t(nh), bsupv_t(nh);
     vmecpp::ComputeQsHarmonicsTangent(
-        dfields.data() + 0 * nH, dfields.data() + 5 * nH, dfields.data() + 1 * nH,
-        dfields.data() + 2 * nH, dfields.data() + 3 * nH, dfields.data() + 4 * nH,
+        dfields.data() + 0 * nH, dfields.data() + 5 * nH,
+        dfields.data() + 1 * nH, dfields.data() + 2 * nH,
+        dfields.data() + 3 * nH, dfields.data() + 4 * nH,
         m.totalPressure.data(), rp.presH.data(), gmnc_t.data(), bmnc_t.data(),
         bsubu_t.data(), bsubv_t.data(), bsupu_t.data(), bsupv_t.data(), &c);
 

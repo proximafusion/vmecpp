@@ -82,8 +82,12 @@ def test_reverse_adjoint_matches_forward_sensitivities():
 
     rng = np.random.default_rng(1)
     dj = rng.standard_normal(x.size)
-    g_reverse, info = adjoint_boundary_gradient(model, x, interior, boundary, dj, keep=keep)
-    g_forward, _ = forward_boundary_gradient(model, x, interior, boundary, dj, exact=True)
+    g_reverse, info = adjoint_boundary_gradient(
+        model, x, interior, boundary, dj, keep=keep
+    )
+    g_forward, _ = forward_boundary_gradient(
+        model, x, interior, boundary, dj, exact=True
+    )
     assert info == 0
     rel = np.linalg.norm(g_reverse - g_forward) / np.linalg.norm(g_forward)
     assert rel < 1e-5
