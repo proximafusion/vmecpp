@@ -52,13 +52,24 @@ def make_model(input_path: Path = DEFAULT_INPUT, ns: int = 11):
 
 
 def partition(model, ns: int):
-    """Indices of the interior (free) and boundary (LCFS) state components."""
+    """Indices of the interior (free) and boundary (LCFS) state components.
+
+    The flat state lays the spans out as R-group, Z-group, lambda-group (see
+    pybind ActiveSpans), each group holding 1 + lthreed + lasym (+ both) spans,
+    each span surface-major (the LCFS surface is the last k entries). The fixed
+    boundary is the LCFS of the R and Z geometry only: lambda at the boundary is
+    a free, solved DOF, not pinned. Including the lambda-LCFS blocks (as a naive
+    last-block-of-every-span partition does) wrongly fixes free DOFs; the MHD
+    energy hides it (dW/d(lambda_LCFS) ~ 0 at equilibrium) but a quasisymmetry
+    objective does not.
+    """
     k = model.mpol * (model.ntor + 1)
     n = np.asarray(model.get_state()).size
     per_span = ns * k
     n_span = n // per_span
+    rz_spans = 2 * (n_span // 3)  # R and Z spans; trailing lambda spans stay interior
     boundary = []
-    for s in range(n_span):
+    for s in range(rz_spans):
         boundary.extend(range(s * per_span + (ns - 1) * k, s * per_span + ns * k))
     boundary = np.array(sorted(boundary))
     interior = np.setdiff1d(np.arange(n), boundary)
