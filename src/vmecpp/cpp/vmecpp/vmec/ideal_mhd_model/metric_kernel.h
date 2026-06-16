@@ -14,12 +14,16 @@ namespace vmecpp {
 // IdealMhdModel::computeMetricElements and the Enzyme autodiff path. Same
 // indexing conventions as jacobian_kernel.h. sqrtSF is indexed jF - nsMinF1.
 inline void ComputeMetricElements(
-    const double* r1e, const double* r1o, const double* rue, const double* ruo,
-    const double* zue, const double* zuo, const double* rve, const double* rvo,
-    const double* zve, const double* zvo, const double* tau, const double* r12,
-    const double* sqrtSF, const double* sqrtSH, bool lthreed, int nZnT,
-    int nsMinF1, int nsMinH, int nsMaxH, double* gsqrt, double* guu,
-    double* guv, double* gvv) {
+    const double* __restrict r1e, const double* __restrict r1o,
+    const double* __restrict rue, const double* __restrict ruo,
+    const double* __restrict zue, const double* __restrict zuo,
+    const double* __restrict rve, const double* __restrict rvo,
+    const double* __restrict zve, const double* __restrict zvo,
+    const double* __restrict tau, const double* __restrict r12,
+    const double* __restrict sqrtSF, const double* __restrict sqrtSH,
+    bool lthreed, int nZnT, int nsMinF1, int nsMinH, int nsMaxH,
+    double* __restrict gsqrt, double* __restrict guu, double* __restrict guv,
+    double* __restrict gvv) {
   for (int jH = nsMinH; jH < nsMaxH; ++jH) {
     const double sF_i = sqrtSF[jH - nsMinF1] * sqrtSF[jH - nsMinF1];
     const double sF_o = sqrtSF[jH + 1 - nsMinF1] * sqrtSF[jH + 1 - nsMinF1];
