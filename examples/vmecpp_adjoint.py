@@ -206,17 +206,17 @@ def forward_boundary_gradient(
 ):
     """dJ/dx_B from forward equilibrium sensitivities, finite-difference-free.
 
-    For each boundary DOF j the interior responds along the equilibrium manifold
-    by dx_I = -H_II^{-1} H_IB e_j (implicit function theorem, F_I = 0), and
-    dJ/dx_Bj = dJ/dx_Bj|_x + dJ/dx_I . dx_I. Every operator is the exact autodiff
-    Hessian-vector product.
+    For each boundary DOF j the interior responds along the equilibrium manifold by dx_I
+    = -H_II^{-1} H_IB e_j (implicit function theorem, F_I = 0), and dJ/dx_Bj =
+    dJ/dx_Bj|_x + dJ/dx_I . dx_I. Every operator is the exact autodiff Hessian-vector
+    product.
 
-    The reverse (adjoint) form would need one solve total instead of one per
-    boundary DOF, but it requires the transpose H^T: VMEC's force is a *scaled*
-    gradient, so H = dF/dx is genuinely non-symmetric (H_BI != H_IB^T) and the
-    naive reverse solve is wrong. The scaling cancels in the forward sensitivity
-    (H_II dx = -H_IB e_j has the same solution as the symmetric system), so this
-    form is exact. An exact O(1) adjoint needs a reverse-mode force VJP.
+    The reverse (adjoint) form would need one solve total instead of one per boundary
+    DOF, but it requires the transpose H^T: VMEC's force is a *scaled* gradient, so H =
+    dF/dx is genuinely non-symmetric (H_BI != H_IB^T) and the naive reverse solve is
+    wrong. The scaling cancels in the forward sensitivity (H_II dx = -H_IB e_j has the
+    same solution as the symmetric system), so this form is exact. An exact O(1) adjoint
+    needs a reverse-mode force VJP.
     """
     hvp = model.exact_hessian_vector_product if exact else model.hessian_vector_product
     n = x_star.size
@@ -237,15 +237,16 @@ def forward_boundary_gradient(
 
 
 def structural_nullfree_interior(model, interior, n_probe=6, tol=1e-9, seed=0):
-    """Interior DOFs that actually enter the force, i.e. not in the augmented
-    Hessian's structural null space (state-independent gauge/parity modes). A DOF
-    is kept when both its Hessian column and row are nonzero.
+    """Interior DOFs that actually enter the force, i.e. not in the augmented Hessian's
+    structural null space (state-independent gauge/parity modes). A DOF is kept when
+    both its Hessian column and row are nonzero.
 
     Detected with a few random probes rather than one per column: a column i is
     zero iff (H^T v)[i] = H[:,i].v = 0 for random v, and a row i is zero iff
     (H v)[i] = 0, so O(n_probe) Hessian-vector products find every structural
     zero (a null column/row gives exactly zero for every probe). The set is
-    state-independent; detect it once and reuse it across adjoint solves."""
+    state-independent; detect it once and reuse it across adjoint solves.
+    """
     n = int(np.asarray(model.get_state()).size)
     rng = np.random.default_rng(seed)
     col = np.zeros(n)
@@ -324,9 +325,8 @@ def qs_quality(model):
 def qs_state_cotangent(model):
     """Exact dJ_QS/dx over the full state, by autodiff (no finite differences).
 
-    dJ/dbmnc = bmnc is the only nonzero harmonic cotangent; the analytic
-    harmonics VJP propagates it to the state through the same field tangents the
-    force Jacobian uses.
+    dJ/dbmnc = bmnc is the only nonzero harmonic cotangent; the analytic harmonics VJP
+    propagates it to the state through the same field tangents the force Jacobian uses.
     """
     h = model.qs_harmonics()
     harm_bar = {k: np.zeros_like(np.asarray(h[k], float)) for k in _QS_KEYS}
@@ -337,11 +337,11 @@ def qs_state_cotangent(model):
 def qs_boundary_gradient(model, x_star, interior, boundary, exact=True, **kw):
     """Exact finite-difference-free dJ_QS/dx_B at the converged equilibrium.
 
-    The state cotangent dJ/dx is the exact autodiff QS gradient
-    (qs_state_cotangent). When the build exposes the transposed Hessian-vector
-    product, the equilibrium response uses the O(1) reverse adjoint; otherwise it
-    falls back to the forward sensitivities (one solve per boundary DOF). Both
-    are finite-difference-free and use the exact autodiff Hessian-vector product.
+    The state cotangent dJ/dx is the exact autodiff QS gradient (qs_state_cotangent).
+    When the build exposes the transposed Hessian-vector product, the equilibrium
+    response uses the O(1) reverse adjoint; otherwise it falls back to the forward
+    sensitivities (one solve per boundary DOF). Both are finite-difference-free and use
+    the exact autodiff Hessian-vector product.
     """
     dj = qs_state_cotangent(model)
     if hasattr(model, "exact_hessian_vector_product_transpose"):
