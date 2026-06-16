@@ -23,11 +23,14 @@ namespace vmecpp {
 // half-grid; sqrtSH is indexed jH - nsMinH. The half-grid point jH sits between
 // full-grid surfaces jH (inside) and jH + 1 (outside).
 inline void ComputeHalfGridJacobian(
-    const double* r1e, const double* r1o, const double* z1e, const double* z1o,
-    const double* rue, const double* ruo, const double* zue, const double* zuo,
-    const double* sqrtSH, double deltaS, double dSHalfDsInterp, int nZnT,
-    int nsMinF1, int nsMinH, int nsMaxH, double* r12, double* ru12,
-    double* zu12, double* rs, double* zs, double* tau) {
+    const double* __restrict r1e, const double* __restrict r1o,
+    const double* __restrict z1e, const double* __restrict z1o,
+    const double* __restrict rue, const double* __restrict ruo,
+    const double* __restrict zue, const double* __restrict zuo,
+    const double* __restrict sqrtSH, double deltaS, double dSHalfDsInterp,
+    int nZnT, int nsMinF1, int nsMinH, int nsMaxH, double* __restrict r12,
+    double* __restrict ru12, double* __restrict zu12, double* __restrict rs,
+    double* __restrict zs, double* __restrict tau) {
   for (int jH = nsMinH; jH < nsMaxH; ++jH) {
     const double sH = sqrtSH[jH - nsMinH];
     for (int kl = 0; kl < nZnT; ++kl) {
