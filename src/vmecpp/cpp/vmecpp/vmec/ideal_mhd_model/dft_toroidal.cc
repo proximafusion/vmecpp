@@ -34,6 +34,11 @@ void ForcesToFourier3DSymmFastPoloidal(
   // axis lambda stays zero (no contribution from any m)
   const int jMinL = 1;
 
+  // Reused scratch for the assembled R/Z forces: sized on first use, so the
+  // inner loop allocates nothing. Per-thread safe via the stack frame, since
+  // each OpenMP thread runs this on its own radial slice.
+  Eigen::VectorXd tempR_seg, tempZ_seg;
+
   for (int jF = rp.nsMinF; jF < jMaxRZ; ++jF) {
     const int mmax = jF == 0 ? 1 : s.mpol;
     for (int m = 0; m < mmax; ++m) {
@@ -94,10 +99,8 @@ void ForcesToFourier3DSymmFastPoloidal(
 
         // Assemble effective R and Z forces from MHD and spectral condensation
         // contributions. Materialize to avoid re-evaluation in each dot
-        // product, reusing per-thread scratch so the inner loop allocates
-        // nothing (and stays Enzyme-differentiable). Same arithmetic as a fresh
-        // .eval().
-        thread_local Eigen::VectorXd tempR_seg, tempZ_seg;
+        // product, reusing the function-scope scratch so the inner loop
+        // allocates nothing. Same arithmetic as a fresh .eval().
         tempR_seg.noalias() = armn_seg + xmpq[m] * frcon_seg;
         tempZ_seg.noalias() = azmn_seg + xmpq[m] * fzcon_seg;
 
