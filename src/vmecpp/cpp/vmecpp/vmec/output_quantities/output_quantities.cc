@@ -5168,7 +5168,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
 void vmecpp::CompareWOut(const WOutFileContents& test_wout,
                          const WOutFileContents& expected_wout,
-                         double tolerance, bool check_equal_niter) {
+                         double tolerance, bool check_equal_niter,
+                         double current_density_tolerance) {
+  // jcuru, jcurv compare looser only if the caller opts in; otherwise
+  // tolerance.
+  const double current_tolerance =
+      current_density_tolerance > 0.0 ? current_density_tolerance : tolerance;
   CHECK_EQ(test_wout.signgs, expected_wout.signgs);
   CHECK_EQ(test_wout.gamma, expected_wout.gamma);
   CHECK_EQ(test_wout.pcurr_type, expected_wout.pcurr_type);
@@ -5250,11 +5255,11 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
         IsCloseRelAbs(expected_wout.phipf[jF], test_wout.phipf[jF], tolerance));
     CHECK(
         IsCloseRelAbs(expected_wout.chipf[jF], test_wout.chipf[jF], tolerance));
-    CHECK(
-        IsCloseRelAbs(expected_wout.jcuru[jF], test_wout.jcuru[jF], tolerance))
+    CHECK(IsCloseRelAbs(expected_wout.jcuru[jF], test_wout.jcuru[jF],
+                        current_tolerance))
         << "jF = " << jF;
-    CHECK(
-        IsCloseRelAbs(expected_wout.jcurv[jF], test_wout.jcurv[jF], tolerance))
+    CHECK(IsCloseRelAbs(expected_wout.jcurv[jF], test_wout.jcurv[jF],
+                        current_tolerance))
         << "jF = " << jF;
     CHECK(
         IsCloseRelAbs(expected_wout.specw[jF], test_wout.specw[jF], tolerance));
