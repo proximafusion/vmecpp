@@ -336,7 +336,7 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
   this->tcon0 = tcon0;
 }
 
-void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
+void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -375,7 +375,7 @@ void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
   }
 }
 
-void IdealMhdModel::evalFResPrecd(const Eigen::VectorXd& localFResPrecd) {
+void IdealMhdModel::evalFResPrecd(const Eigen::Vector3d& localFResPrecd) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -832,7 +832,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
                                         VacuumPressureState::kInitialized);
   bool includeEdgeRZForces =
       ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
-  Eigen::VectorXd& localFResInvar = m_ls_.fResInvar;
+  Eigen::Vector3d localFResInvar;
   localFResInvar.setZero();
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 
@@ -868,7 +868,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  Eigen::VectorXd& localFResPrecd = m_ls_.fResPrecd;
+  Eigen::Vector3d localFResPrecd;
   localFResPrecd.setZero();
   m_decomposed_f.residuals(localFResPrecd, true);
 

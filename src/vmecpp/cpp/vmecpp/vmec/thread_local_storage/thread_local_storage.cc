@@ -56,7 +56,5 @@ ThreadLocalStorage::ThreadLocalStorage(const Sizes* s) : s_(*s) {
   gbvbv_wavg.setZero(nZnT);
   gbubv_avg.setZero(nZnT);
   gbubv_wavg.setZero(nZnT);
-  fResInvar.setZero(3);
-  fResPrecd.setZero(3);
 }
 }  // namespace vmecpp

@@ -72,11 +72,6 @@ class ThreadLocalStorage {
   Eigen::VectorXd gbvbv_wavg;  // 0.5 (gbvbv_o sqrtSHo + gbvbv_i sqrtSHi)
   Eigen::VectorXd gbubv_avg;   // 0.5 (gbubv_o + gbubv_i)   [3D only]
   Eigen::VectorXd gbubv_wavg;  // 0.5 (gbubv_o sqrtSHo + gbubv_i sqrtSHi) [3D]
-
-  // Size-3 (R, Z, lambda) force-residual accumulators, reused in
-  // IdealMhdModel::update (formerly per-call heap temporaries).
-  Eigen::VectorXd fResInvar;
-  Eigen::VectorXd fResPrecd;
 };
 
 }  // namespace vmecpp
