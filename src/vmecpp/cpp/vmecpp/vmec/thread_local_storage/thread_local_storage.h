@@ -55,7 +55,7 @@ class ThreadLocalStorage {
 
   // Outboard ("_o") counterparts of the half-grid quantities above, plus the
   // surface averages used in computeMHDForces.
-  Eigen::VectorXd P_o
+  Eigen::VectorXd P_o;
   Eigen::VectorXd rup_o;
   Eigen::VectorXd zup_o;
   Eigen::VectorXd rsp_o;
