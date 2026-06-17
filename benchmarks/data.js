@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781541387453,
+  "lastUpdate": 1781682940921,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -19142,6 +19142,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0016732720251444832",
             "extra": "mean: 9.592604762999978 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "559e230b6dde38c018c3fb62994750e2bbef007c",
+          "message": "ideal_mhd_model: make computeMHDForces allocation-free (#566)\n\n* ideal_mhd_model: make computeMHDForces allocation-free\n\nThe force kernel allocated 17 dynamic Eigen vectors per radial surface (the\n_o half-grid quantities and the avg/wavg surface averages). Move them to\npreallocated per-thread ThreadLocalStorage scratch and assign in place, so\nthe radial loop allocates nothing.\n\nTwo benefits: it removes per-surface heap churn from the hot force loop, and\nit makes the kernel differentiable by Enzyme, which cannot trace dynamic\nEigen temporaries (forward and reverse mode both abort on them). This is the\nallocation-free prerequisite for an exact autodiff Hessian.\n\nPure refactor, identical arithmetic. Verified bit-for-bit: vmec_standalone\nMHD energy unchanged on solovev (2.548352e+00) and cth_like_fixed_bdy\n(5.057191e-02).\n\n* dft_toroidal: make ForcesToFourier allocation-free\n\nThe forces transform materialized two per-(surface,m,zeta) Eigen temporaries\n(tempR_seg, tempZ_seg) inside the inner loop. Reuse per-thread scratch\ninstead, so the whole FFTX-off force path (geometryFromFourier,\ncomputeJacobian/Metric/BContra/BCo, pressureAndEnergies, computeMHDForces,\nforcesToFourier) is now allocation-free end to end.\n\nSame arithmetic as the previous .eval(); verified bit-for-bit: solovev\n2.548352e+00, cth_like_fixed_bdy 5.057191e-02.\n\n* apply pre-commit formatting (ruff, docformatter, clang-format)\n\n* ci: skip benchmark result upload on fork PRs (token is read-only)\n\nThe 'Compare benchmark result' step uses github-action-benchmark with\ncomment-on-alert and the GITHUB_TOKEN, which is read-only for pull requests from\nforks -> 'Resource not accessible by integration'. Gate that step on the PR\ncoming from the same repo so fork PRs still run the benchmarks but skip the\nwrite-back instead of failing.\n\n* ci: build VMEC2000 from source so the compat test runs on numpy 2\n\nThe pinned vmec-0.0.6 cp310 wheel was f90wrapped against numpy 1.x. Under\nthe numpy 2.x that the test env now resolves, importing it dies in the\nf90wrap array interface (f90wrap_vmec_input__array__rbc: 0-th dimension\nmust be fixed to 2 but got 4), so test_ensure_vmec2000_input_from_vmecpp_input\ncould never actually run on CI (and is currently red on main too, where the\nwheel's runtime libs are not even installed).\n\nBuild VMEC2000 from upstream source with current f90wrap, which produces\nnumpy-2-compatible bindings. The recipe mirrors SIMSOPT's own CI\n(hiddenSymmetries/VMEC2000, cmake/machines/ubuntu.json). An explicit\n'import vmec' check in the install step surfaces any remaining problem here\nrather than as a confusing test failure.\n\n* test: skip vmecpp-only indata fields in the VMEC2000 compat subset\n\nWith VMEC2000 built from current upstream source, the compatibility test\nruns for the first time and hits vmecpp indata fields that have no\ncounterpart in the legacy VMEC2000 INDATA namelist (e.g.\nfree_boundary_method), which raised AttributeError. The test explicitly\nchecks only the common subset, so guard the lookup with hasattr and skip\nfields VMEC2000 does not have, instead of enumerating them one by one.\n\n* ci: sync VMEC2000-from-source build, benchmark fork guard, abseil commit pin\n\nBring this stack branch up to the corrected CI baseline (from #583/#564):\n- tests.yaml: build VMEC2000 from the pinned source commit and cache the\n  wheel; drop the unused FFTW/HDF5 dev packages.\n- benchmarks.yaml: skip the result upload on fork PRs (read-only token).\n- test_simsopt_compat.py: skip vmecpp-only INDATA fields.\n- CMakeLists: pin abseil to the 20260107.1 commit hash for Clang >= 21.\n\n* ideal_mhd_model: hoist ForcesToFourier scratch out of the inner loop\n\nThe allocation-free rewrite placed tempR_seg/tempZ_seg in a block-scope\nthread_local inside the (jF, m, zeta) inner loop, which emits a\n__tls_get_addr call and an init-guard branch every iteration. Declare\nthe two scratch vectors once at function scope instead: still\nallocation-free in the hot loop and per-thread safe via the stack frame,\nwithout the per-iteration TLS overhead. Same arithmetic; cma and w7x\nwout are bit-for-bit unchanged.\n\n* Update thread_local_storage.h\n\n* Update thread_local_storage.h\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-06-17T09:52:05+02:00",
+          "tree_id": "33bc7ad8a8a303b6a6c44a48d490975675a44ddd",
+          "url": "https://github.com/proximafusion/vmecpp/commit/559e230b6dde38c018c3fb62994750e2bbef007c"
+        },
+        "date": 1781682939931,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 3.582841993548839,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000842238840514563",
+            "extra": "mean: 279.10803820000183 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 3.551510952191241,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0020201069717447583",
+            "extra": "mean: 281.5702988000112 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.3421957988699577,
+            "unit": "iter/sec",
+            "range": "stddev: 0.006862768899442165",
+            "extra": "mean: 2.9223035563333233 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.7858646539365796,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002656653771556242",
+            "extra": "mean: 1.2724837476666835 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.724360997129325,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00793583920151029",
+            "extra": "mean: 1.3805271183333236 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.5565342217058581,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014050904597314801",
+            "extra": "mean: 1.796834697666668 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.13377349336572913,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011363278663105802",
+            "extra": "mean: 7.475322463666676 sec\nrounds: 3"
           }
         ]
       }
