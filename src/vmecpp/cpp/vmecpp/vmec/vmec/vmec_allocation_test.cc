@@ -13,7 +13,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -153,6 +155,50 @@ TEST(VmecHotLoop, IsAllocationFree) {
       << "hot loop allocated "
       << (static_cast<long long>(allocs_more) - allocs_fewer)
       << " time(s) over " << (kMoreIters - kFewerIters) << " iterations";
+#endif  // VMECPP_ALLOC_TEST_SANITIZED
+}
+
+// Positive control for the harness above: the interposed counter must observe a
+// known number of heap allocations while enabled, and none while disabled.
+// Without this, IsAllocationFree could pass trivially on a counter that never
+// fires.
+TEST(VmecHotLoop, AllocationCounterWorks) {
+#ifdef VMECPP_ALLOC_TEST_SANITIZED
+  GTEST_SKIP() << "allocation counting is incompatible with the sanitizer "
+                  "allocator (asan/tsan/msan)";
+#else
+  constexpr int kAllocations = 64;
+
+  // Reserve before enabling so only the make_unique allocations are counted.
+  std::vector<std::unique_ptr<double>> kept;
+  kept.reserve(kAllocations);
+
+  g_alloc_count.store(0);
+  g_count_enabled.store(true);
+  for (int i = 0; i < kAllocations; ++i) {
+    kept.push_back(std::make_unique<double>(static_cast<double>(i)));
+  }
+  g_count_enabled.store(false);
+  const uint64_t counted_while_enabled = g_alloc_count.load();
+
+  // Touch the data so the allocations cannot be optimized away.
+  double sink = 0.0;
+  for (const std::unique_ptr<double>& p : kept) {
+    sink += *p;
+  }
+  ASSERT_EQ(sink, static_cast<double>(kAllocations * (kAllocations - 1) / 2));
+
+  EXPECT_GE(counted_while_enabled, static_cast<uint64_t>(kAllocations))
+      << "counter under-reported a known set of allocations";
+
+  // With counting disabled, the same allocations are not observed.
+  std::vector<std::unique_ptr<double>> kept2;
+  kept2.reserve(kAllocations);
+  g_alloc_count.store(0);
+  for (int i = 0; i < kAllocations; ++i) {
+    kept2.push_back(std::make_unique<double>(static_cast<double>(i)));
+  }
+  EXPECT_EQ(g_alloc_count.load(), 0u) << "counter incremented while disabled";
 #endif  // VMECPP_ALLOC_TEST_SANITIZED
 }
 
