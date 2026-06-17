@@ -52,6 +52,35 @@ class ThreadLocalStorage {
   Eigen::VectorXd gbubu_i;  // gsqrt * bsupu * bsupu
   Eigen::VectorXd gbubv_i;  // gsqrt * bsupu * bsupv
   Eigen::VectorXd gbvbv_i;  // gsqrt * bsupv * bsupv
+
+  // Outside (half-grid) point values, scratch reused across surfaces and calls
+  // in IdealMhdModel::computeMHDForces (formerly per-call heap temporaries).
+  Eigen::VectorXd P_o;
+  Eigen::VectorXd rup_o;
+  Eigen::VectorXd zup_o;
+  Eigen::VectorXd rsp_o;
+  Eigen::VectorXd zsp_o;
+  Eigen::VectorXd taup_o;
+  Eigen::VectorXd gbubu_o;
+  Eigen::VectorXd gbubv_o;
+  Eigen::VectorXd gbvbv_o;
+
+  // Averages / weighted averages of inside and outside half-grid points,
+  // scratch reused across surfaces in IdealMhdModel::computeMHDForces
+  // (formerly per-surface heap temporaries).
+  Eigen::VectorXd P_avg;
+  Eigen::VectorXd P_wavg;
+  Eigen::VectorXd gbubu_avg;
+  Eigen::VectorXd gbubu_wavg;
+  Eigen::VectorXd gbvbv_avg;
+  Eigen::VectorXd gbvbv_wavg;
+  Eigen::VectorXd gbubv_avg;
+  Eigen::VectorXd gbubv_wavg;
+
+  // Size-3 (R, Z, lambda) force-residual accumulators, reused in
+  // IdealMhdModel::update (formerly per-call heap temporaries).
+  Eigen::VectorXd fResInvar;
+  Eigen::VectorXd fResPrecd;
 };
 
 }  // namespace vmecpp
