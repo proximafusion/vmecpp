@@ -54,13 +54,8 @@ class ThreadLocalStorage {
   Eigen::VectorXd gbvbv_i;  // gsqrt * bsupv * bsupv
 
   // Outboard ("_o") counterparts of the half-grid quantities above, plus the
-  // surface averages used in computeMHDForces. These are persistent scratch
-  // (one surface wide) so the force kernel allocates nothing per surface: every
-  // assignment writes into this preallocated storage. That keeps the hot loop
-  // allocation-free (a small speedup) and, importantly, lets Enzyme
-  // differentiate the kernel, which it cannot do through dynamic Eigen
-  // temporaries.
-  Eigen::VectorXd P_o;
+  // surface averages used in computeMHDForces.
+  Eigen::VectorXd P_o
   Eigen::VectorXd rup_o;
   Eigen::VectorXd zup_o;
   Eigen::VectorXd rsp_o;
