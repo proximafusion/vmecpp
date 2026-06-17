@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781682940921,
+  "lastUpdate": 1781732802302,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -19215,6 +19215,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.011363278663105802",
             "extra": "mean: 7.475322463666676 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "73f541fb66f34267d3dffcd45c8682b01aa9813c",
+          "message": "Make the iteration hot loop allocation-free (#595)\n\n* ideal_mhd_model: make the iteration hot loop allocation-free (#594)\n\nThe per-iteration force evaluation allocated heap temporaries that scaled\nwith problem size (~8.5k allocations per iteration on a 3D fixed-boundary\ncase). Reuse pre-sized ThreadLocalStorage scratch in computeMHDForces, the\nupdate() residual accumulators, and the 3D force DFT\n(ForcesToFourier3DSymmFastPoloidal, which was the bulk); use stack arrays in\napplyRZPreconditioner; shift the 1/tau averaging history in place; and\nreserve the convergence-history vectors once per multigrid stage. The\nsteady-state loop now performs zero heap allocations.\n\nThis is storage reuse only: the converged wout is bit-identical before and\nafter on 2D and 3D fixed-boundary cases, verified single-threaded (VMEC++ is\nonly run-to-run deterministic single-threaded).\n\nAdd VmecHotLoop.IsAllocationFree, which interposes the malloc family and\nasserts zero allocations across steady-state iterations (skipped under the\nsanitizers, whose allocators conflict with the interposition).\n\n* vmec_allocation_test: add a positive control for the allocation counter\n\nAllocationCounterWorks asserts the interposed malloc counter observes a\nknown set of heap allocations while counting is enabled and stays at zero\nwhile disabled, so IsAllocationFree cannot pass on a counter that never\nfires.\n\n* ideal_mhd_model: stack-allocate the fixed-size force-residual vectors\n\nPer review: the size-3 (R, Z, lambda) force-residual accumulators were\ndynamic Eigen::VectorXd kept in ThreadLocalStorage. They are fixed size,\nso use stack Eigen::Vector3d locals scoped to where they are used and drop\nthe thread-local members. residuals(), evalFResInvar() and evalFResPrecd()\nnow take Eigen::Vector3d, so no temporary VectorXd is materialized and the\nhot loop stays allocation-free. No functional change: cma and solovev\nconverge to the same values.\n\n* Re-trigger CI\n\n* Re-trigger CI",
+          "timestamp": "2026-06-17T23:42:06+02:00",
+          "tree_id": "cda00ec27b0a41c3214f6c10e4a9bf8d0f0e73d2",
+          "url": "https://github.com/proximafusion/vmecpp/commit/73f541fb66f34267d3dffcd45c8682b01aa9813c"
+        },
+        "date": 1781732801262,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.743182064025812,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0060032121644694805",
+            "extra": "mean: 364.5401495999977 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.7208103056307804,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004907347040893099",
+            "extra": "mean: 367.53756699997666 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.27049763637618834,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01842823732751413",
+            "extra": "mean: 3.6968899743333545 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5806975432808082,
+            "unit": "iter/sec",
+            "range": "stddev: 0.02225449214271841",
+            "extra": "mean: 1.7220668686666538 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5630891982013997,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014469063419981167",
+            "extra": "mean: 1.7759175690000195 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.4312626909262368,
+            "unit": "iter/sec",
+            "range": "stddev: 0.012428108639836826",
+            "extra": "mean: 2.318772342333318 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10384322610900883,
+            "unit": "iter/sec",
+            "range": "stddev: 0.013631351973747267",
+            "extra": "mean: 9.629901125666644 sec\nrounds: 3"
           }
         ]
       }
