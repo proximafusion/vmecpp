@@ -2067,8 +2067,11 @@ void IdealMhdModel::computeMHDForces() {
     m_ls_.gbvbv_i.setZero();
   }
 
-  // Reuse per-thread scratch instead of allocating these every call; every
-  // element is overwritten below (kl loops or setZero) before it is read.
+  // Persistent per-surface scratch (preallocated in ThreadLocalStorage):
+  // aliased here so every write below lands in existing storage. This keeps the
+  // force kernel allocation-free, which both avoids per-surface heap churn and
+  // lets Enzyme differentiate it (Enzyme cannot trace dynamic Eigen
+  // temporaries).
   Eigen::VectorXd& P_o = m_ls_.P_o;          //  r12 * totalPressure = P
   Eigen::VectorXd& rup_o = m_ls_.rup_o;      // ru12 * P
   Eigen::VectorXd& zup_o = m_ls_.zup_o;      // zu12 * P
@@ -2078,6 +2081,25 @@ void IdealMhdModel::computeMHDForces() {
   Eigen::VectorXd& gbubu_o = m_ls_.gbubu_o;  // gsqrt * bsupu * bsupu
   Eigen::VectorXd& gbubv_o = m_ls_.gbubv_o;  // gsqrt * bsupu * bsupv
   Eigen::VectorXd& gbvbv_o = m_ls_.gbvbv_o;  // gsqrt * bsupv * bsupv
+  P_o.setZero();
+  rup_o.setZero();
+  zup_o.setZero();
+  rsp_o.setZero();
+  zsp_o.setZero();
+  taup_o.setZero();
+  gbubu_o.setZero();
+  gbubv_o.setZero();
+  gbvbv_o.setZero();
+
+  // Surface-average scratch, likewise aliased to preallocated storage.
+  Eigen::VectorXd& P_avg = m_ls_.P_avg;
+  Eigen::VectorXd& P_wavg = m_ls_.P_wavg;
+  Eigen::VectorXd& gbubu_avg = m_ls_.gbubu_avg;
+  Eigen::VectorXd& gbubu_wavg = m_ls_.gbubu_wavg;
+  Eigen::VectorXd& gbvbv_avg = m_ls_.gbvbv_avg;
+  Eigen::VectorXd& gbvbv_wavg = m_ls_.gbvbv_wavg;
+  Eigen::VectorXd& gbubv_avg = m_ls_.gbubv_avg;
+  Eigen::VectorXd& gbubv_wavg = m_ls_.gbubv_wavg;
 
   for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
     const double sFull =
@@ -2138,18 +2160,12 @@ void IdealMhdModel::computeMHDForces() {
     const double invDS = 1.0 / m_fc_.deltaS;
     const double invSHo = 1.0 / sqrtSHo;
     const double invSHi = 1.0 / sqrtSHi;
-    Eigen::VectorXd& P_avg = m_ls_.P_avg;
     P_avg = 0.5 * (P_o + m_ls_.P_i);
-    Eigen::VectorXd& P_wavg = m_ls_.P_wavg;
     P_wavg = 0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
 
-    Eigen::VectorXd& gbubu_avg = m_ls_.gbubu_avg;
     gbubu_avg = 0.5 * (gbubu_o + m_ls_.gbubu_i);
-    Eigen::VectorXd& gbubu_wavg = m_ls_.gbubu_wavg;
     gbubu_wavg = 0.5 * (gbubu_o * sqrtSHo + m_ls_.gbubu_i * sqrtSHi);
-    Eigen::VectorXd& gbvbv_avg = m_ls_.gbvbv_avg;
     gbvbv_avg = 0.5 * (gbvbv_o + m_ls_.gbvbv_i);
-    Eigen::VectorXd& gbvbv_wavg = m_ls_.gbvbv_wavg;
     gbvbv_wavg = 0.5 * (gbvbv_o * sqrtSHo + m_ls_.gbvbv_i * sqrtSHi);
 
     // A_R force
@@ -2187,9 +2203,7 @@ void IdealMhdModel::computeMHDForces() {
         gbubu_avg.cwiseProduct(zuo) * sFull;
 
     if (s_.lthreed) {
-      Eigen::VectorXd& gbubv_avg = m_ls_.gbubv_avg;
       gbubv_avg = 0.5 * (gbubv_o + m_ls_.gbubv_i);
-      Eigen::VectorXd& gbubv_wavg = m_ls_.gbubv_wavg;
       gbubv_wavg = 0.5 * (gbubv_o * sqrtSHo + m_ls_.gbubv_i * sqrtSHi);
       const auto rve = rv_e.segment(g_off, nZnT);
       const auto rvo = rv_o.segment(g_off, nZnT);
@@ -2958,8 +2972,8 @@ void IdealMhdModel::assembleRZPreconditioner() {
 // serial variant
 absl::Status IdealMhdModel::applyRZPreconditioner(
     FourierForces& m_decomposed_f) {
-  // num_basis is at most 4 (cc, ss, sc, cs); stack arrays avoid a per-call heap
-  // allocation. Only the first s_.num_basis entries are used.
+  // num_basis is at most 4 (cc, ss, sc, cs); a fixed-size array keeps this
+  // serial preconditioner path allocation-free.
   std::array<std::span<double>, 4> cR{};
   std::array<std::span<double>, 4> cZ{};
   {

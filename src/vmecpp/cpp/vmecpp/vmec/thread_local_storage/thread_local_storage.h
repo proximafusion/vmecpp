@@ -53,8 +53,8 @@ class ThreadLocalStorage {
   Eigen::VectorXd gbubv_i;  // gsqrt * bsupu * bsupv
   Eigen::VectorXd gbvbv_i;  // gsqrt * bsupv * bsupv
 
-  // Outside (half-grid) point values, scratch reused across surfaces and calls
-  // in IdealMhdModel::computeMHDForces (formerly per-call heap temporaries).
+  // Outboard ("_o") counterparts of the half-grid quantities above, plus the
+  // surface averages used in computeMHDForces.
   Eigen::VectorXd P_o;
   Eigen::VectorXd rup_o;
   Eigen::VectorXd zup_o;
@@ -64,18 +64,14 @@ class ThreadLocalStorage {
   Eigen::VectorXd gbubu_o;
   Eigen::VectorXd gbubv_o;
   Eigen::VectorXd gbvbv_o;
-
-  // Averages / weighted averages of inside and outside half-grid points,
-  // scratch reused across surfaces in IdealMhdModel::computeMHDForces
-  // (formerly per-surface heap temporaries).
-  Eigen::VectorXd P_avg;
-  Eigen::VectorXd P_wavg;
-  Eigen::VectorXd gbubu_avg;
-  Eigen::VectorXd gbubu_wavg;
-  Eigen::VectorXd gbvbv_avg;
-  Eigen::VectorXd gbvbv_wavg;
-  Eigen::VectorXd gbubv_avg;
-  Eigen::VectorXd gbubv_wavg;
+  Eigen::VectorXd P_avg;       // 0.5 (P_o + P_i)
+  Eigen::VectorXd P_wavg;      // 0.5 (P_o/sqrtSHo + P_i/sqrtSHi)
+  Eigen::VectorXd gbubu_avg;   // 0.5 (gbubu_o + gbubu_i)
+  Eigen::VectorXd gbubu_wavg;  // 0.5 (gbubu_o sqrtSHo + gbubu_i sqrtSHi)
+  Eigen::VectorXd gbvbv_avg;   // 0.5 (gbvbv_o + gbvbv_i)
+  Eigen::VectorXd gbvbv_wavg;  // 0.5 (gbvbv_o sqrtSHo + gbvbv_i sqrtSHi)
+  Eigen::VectorXd gbubv_avg;   // 0.5 (gbubv_o + gbubv_i)   [3D only]
+  Eigen::VectorXd gbubv_wavg;  // 0.5 (gbubv_o sqrtSHo + gbubv_i sqrtSHi) [3D]
 
   // Size-3 (R, Z, lambda) force-residual accumulators, reused in
   // IdealMhdModel::update (formerly per-call heap temporaries).
