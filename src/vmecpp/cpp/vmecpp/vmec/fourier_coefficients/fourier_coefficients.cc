@@ -11,6 +11,7 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "vmecpp/common/util/os_compat.h"  // VMECPP_UNREACHABLE
 
 namespace vmecpp {
 
@@ -305,7 +306,7 @@ double FourierCoeffs::GetXcElement(int rzl, int idx_basis, int jF, int n,
   error_message << " m=" << m;
   LOG(FATAL) << error_message.str();
 
-  __builtin_unreachable();
+  VMECPP_UNREACHABLE();
   return 0.0;
 }
 

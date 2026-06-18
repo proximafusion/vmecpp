@@ -2159,6 +2159,49 @@ def _print_progress_tip_once() -> None:
         )
 
 
+def _vmec_output_from_cpp(input: VmecInput, cpp_output_quantities) -> VmecOutput:
+    """Assemble a VmecOutput from a configuration's VmecInput and the C++
+    OutputQuantities produced for it.
+
+    Shared by run() and run_batch().
+    """
+    wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
+    jxbout = JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout)
+    mercier = Mercier._from_cpp_mercier(cpp_output_quantities.mercier)
+    threed1_volumetrics = Threed1Volumetrics._from_cpp_threed1volumetrics(
+        cpp_output_quantities.threed1_volumetrics
+    )
+    threed1_first_table = Threed1FirstTable._from_cpp_threed1_first_table(
+        cpp_output_quantities.threed1_first_table
+    )
+    threed1_geometric_magnetic = Threed1GeometricAndMagneticQuantities._from_cpp_threed1_geometric_and_magnetic_quantities(
+        cpp_output_quantities.threed1_geometric_magnetic
+    )
+    threed1_axis = Threed1AxisGeometry._from_cpp_threed1_axis_geometry(
+        cpp_output_quantities.threed1_axis
+    )
+    threed1_betas = Threed1Betas._from_cpp_threed1_betas(
+        cpp_output_quantities.threed1_betas
+    )
+    threed1_shafranov_integrals = (
+        Threed1ShafranovIntegrals._from_cpp_threed1_shafranov_integrals(
+            cpp_output_quantities.threed1_shafranov_integrals
+        )
+    )
+    return VmecOutput(
+        input=input,
+        wout=wout,
+        jxbout=jxbout,
+        mercier=mercier,
+        threed1_volumetrics=threed1_volumetrics,
+        threed1_first_table=threed1_first_table,
+        threed1_geometric_magnetic=threed1_geometric_magnetic,
+        threed1_axis=threed1_axis,
+        threed1_betas=threed1_betas,
+        threed1_shafranov_integrals=threed1_shafranov_integrals,
+    )
+
+
 def run(
     input: VmecInput,
     magnetic_field: MagneticFieldResponseTable | None = None,
@@ -2242,42 +2285,60 @@ def run(
             verbose=_verbose.value,
         )
 
-    cpp_wout = cpp_output_quantities.wout
-    wout = VmecWOut._from_cpp_wout(cpp_wout)
-    jxbout = JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout)
-    mercier = Mercier._from_cpp_mercier(cpp_output_quantities.mercier)
-    threed1_volumetrics = Threed1Volumetrics._from_cpp_threed1volumetrics(
-        cpp_output_quantities.threed1_volumetrics
-    )
-    threed1_first_table = Threed1FirstTable._from_cpp_threed1_first_table(
-        cpp_output_quantities.threed1_first_table
-    )
-    threed1_geometric_magnetic = Threed1GeometricAndMagneticQuantities._from_cpp_threed1_geometric_and_magnetic_quantities(
-        cpp_output_quantities.threed1_geometric_magnetic
-    )
-    threed1_axis = Threed1AxisGeometry._from_cpp_threed1_axis_geometry(
-        cpp_output_quantities.threed1_axis
-    )
-    threed1_betas = Threed1Betas._from_cpp_threed1_betas(
-        cpp_output_quantities.threed1_betas
-    )
-    threed1_shafranov_integrals = (
-        Threed1ShafranovIntegrals._from_cpp_threed1_shafranov_integrals(
-            cpp_output_quantities.threed1_shafranov_integrals
+    return _vmec_output_from_cpp(input, cpp_output_quantities)
+
+
+def run_batch(
+    inputs: list[VmecInput],
+    *,
+    distinct: bool = True,
+    max_threads: int | None = None,
+    verbose: bool | int | OutputMode = OutputMode.SILENT,
+) -> list[VmecOutput]:
+    """Solve several fixed-boundary equilibria in one CUDA-resident batched run.
+
+    Requires a CUDA-enabled build (-DVMECPP_USE_CUDA=ON) and an NVIDIA GPU. All
+    inputs must share mpol, ntor, nfp, lasym, and ns_array[0]. The
+    per-configuration boundary, magnetic axis, and plasma profiles are honored;
+    the convergence controls (ns_array, ftol_array, niter_array) are taken from
+    the first input.
+
+    Args:
+        inputs: the VmecInput instances to solve.
+        distinct: when True (the default) every input is solved as its own
+            equilibrium and one VmecOutput is returned per input. When False the
+            first input is broadcast across the batch and a single-element list
+            is returned (a measurement mode; passing more than one input with
+            distinct=False is rejected by the solver).
+        max_threads: maximum number of threads VMEC++ may spawn, as in run().
+        verbose: output mode, defaulting to silent for batched runs.
+
+    Returns:
+        A list of VmecOutput, one per solved configuration.
+    """
+    validated = [VmecInput.model_validate(i) for i in inputs]
+    if not validated:
+        msg = "run_batch requires at least one input"
+        raise ValueError(msg)
+    if max_threads is not None and max_threads <= 0:
+        msg = (
+            "The number of threads must be >=1. To automatically use all "
+            "available threads, pass max_threads=None"
         )
+        raise RuntimeError(msg)
+
+    _verbose = OutputMode(verbose)
+    cpp_indatas = [i._to_cpp_vmecindata() for i in validated]
+    cpp_outputs = _vmecpp.run_batched_gpu(
+        cpp_indatas,
+        max_threads=max_threads,
+        verbose=_verbose.value,
+        distinct=distinct,
     )
-    return VmecOutput(
-        input=input,
-        wout=wout,
-        jxbout=jxbout,
-        mercier=mercier,
-        threed1_volumetrics=threed1_volumetrics,
-        threed1_first_table=threed1_first_table,
-        threed1_geometric_magnetic=threed1_geometric_magnetic,
-        threed1_axis=threed1_axis,
-        threed1_betas=threed1_betas,
-        threed1_shafranov_integrals=threed1_shafranov_integrals,
-    )
+    return [
+        _vmec_output_from_cpp(inp, oq)
+        for inp, oq in zip(validated, cpp_outputs, strict=False)
+    ]
 
 
 def is_vmec2000_input(input_file: Path) -> bool:
@@ -2441,6 +2502,7 @@ populate_raw_profile = set_profile
 # items in the generated documentation.
 __all__ = [  # noqa: RUF022
     "run",
+    "run_batch",
     "VmecInput",
     "VmecOutput",
     "VmecWOut",

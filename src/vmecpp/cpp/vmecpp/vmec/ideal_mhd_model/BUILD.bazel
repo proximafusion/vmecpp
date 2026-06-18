@@ -82,7 +82,7 @@ cc_test(
 cc_library(
     name = "ideal_mhd_model",
     srcs = ["ideal_mhd_model.cc"],
-    hdrs = ["ideal_mhd_model.h", "dft_data.h"],
+    hdrs = ["ideal_mhd_model.h", "dft_data.h", "phase_timer.h", "nestor_async.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":dft_toroidal",
