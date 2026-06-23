@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781732802302,
+  "lastUpdate": 1782257267297,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -19288,6 +19288,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.013631351973747267",
             "extra": "mean: 9.629901125666644 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7d186f2c1ac2f889f9778d292a58f4158b10b0e3",
+          "message": "iteration: fix post-reguess lambda scaling divergence, add Python multigrid driver (#560)\n\n* iteration: reset accumulated constants on reinitialize/refine_to, add Python multigrid driver\n\n* tests: satisfy docformatter and ruff-format hooks\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-06-24T01:23:01+02:00",
+          "tree_id": "93262fcd05de06ef9ce49df381d121b66eccd959",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7d186f2c1ac2f889f9778d292a58f4158b10b0e3"
+        },
+        "date": 1782257265551,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.646891151382695,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0026071835163262824",
+            "extra": "mean: 377.80170880000696 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.6304205849020637,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003351540450171488",
+            "extra": "mean: 380.16734120001274 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.269391825465182,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01884107679267665",
+            "extra": "mean: 3.7120651240000107 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5889210919208621,
+            "unit": "iter/sec",
+            "range": "stddev: 0.007104844793167685",
+            "extra": "mean: 1.6980203523333444 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.568118778732231,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009320735902836321",
+            "extra": "mean: 1.7601952926666513 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.4848759205582071,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00899563110935072",
+            "extra": "mean: 2.0623832976666754 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10740687369138098,
+            "unit": "iter/sec",
+            "range": "stddev: 0.02508929854161173",
+            "extra": "mean: 9.310391091666665 sec\nrounds: 3"
           }
         ]
       }
