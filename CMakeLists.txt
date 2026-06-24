@@ -175,11 +175,13 @@ endif()
 install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
 install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
 
-# Optional Enzyme automatic-differentiation targets.
-# Enzyme (https://enzyme.mit.edu) differentiates LLVM IR via a Clang plugin, so
-# these targets need a Clang frontend and the matching ClangEnzyme plugin. OFF
-# by default; the production build and all existing targets are unaffected.
-# Enable with:
+# Optional Enzyme automatic-differentiation target: exact autodiff (forward and
+# reverse) of a real VMEC nonlinear kernel, the half-grid Jacobian. Enzyme
+# (https://enzyme.mit.edu) differentiates LLVM IR via a Clang plugin, so it needs
+# a Clang frontend and the matching ClangEnzyme plugin. OFF by default; the
+# production build and all existing targets are unaffected. The AD-toolchain
+# smoke test lives in bazel (//vmecpp/common/enzyme:enzyme_smoke_test, built with
+# --config=enzyme). Enable this target with:
 #   -DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so
 option(VMECPP_ENABLE_ENZYME "Build Enzyme autodiff targets" OFF)
 if(VMECPP_ENABLE_ENZYME)
@@ -196,18 +198,10 @@ if(VMECPP_ENABLE_ENZYME)
   endif()
   message(STATUS "Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
   enable_testing()
-  add_executable(enzyme_smoke_test
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/enzyme_smoke_test.cc)
-  # Enzyme runs as an optimization-time pass; it needs optimizations enabled and
-  # the plugin attached. -O2 guards against a Debug (-O0) configuration where the
-  # AD pass would otherwise not run.
-  target_compile_options(enzyme_smoke_test PRIVATE
-    -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
-  add_test(NAME enzyme_smoke COMMAND enzyme_smoke_test)
-
-  # Exact autodiff (forward and reverse) of a real VMEC nonlinear kernel: the
-  # half-grid Jacobian. Self-contained over flat buffers; checks Jv and J^T u
-  # against finite differences and against each other (adjoint identity).
+  # Self-contained over flat buffers; checks Jv and J^T u against finite
+  # differences and against each other (adjoint identity). Enzyme runs as an
+  # optimization-time pass, so it needs -O2 and the plugin attached. -O2 also
+  # guards against a Debug (-O0) configuration where the AD pass would not run.
   add_executable(jacobian_kernel_autodiff_test
     ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/jacobian_kernel_autodiff_test.cc)
   target_compile_options(jacobian_kernel_autodiff_test PRIVATE
