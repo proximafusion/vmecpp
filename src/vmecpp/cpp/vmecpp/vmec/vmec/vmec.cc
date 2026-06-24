@@ -332,6 +332,19 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         fc_.niterv = indata_.niter_array[igrid];
       }
 
+      // Reserve the per-iteration convergence-history vectors for this stage so
+      // the push_backs in Evolve do not reallocate inside the hot loop.
+      {
+        const size_t cap =
+            fc_.force_residual_r.size() + static_cast<size_t>(fc_.niterv) + 1;
+        fc_.force_residual_r.reserve(cap);
+        fc_.force_residual_z.reserve(cap);
+        fc_.force_residual_lambda.reserve(cap);
+        fc_.mhd_energy.reserve(cap);
+        fc_.delbsq.reserve(cap);
+        fc_.restart_reasons.reserve(cap);
+      }
+
       // notify logger of the next multigrid stage
       logger_.BeginStage(igrid, max_grids + jacob_off_, fc_.nsval, s_.mnmax,
                          fc_.ftolv, fc_.niterv, fc_.lfreeb);
@@ -1226,8 +1239,11 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     // shift elements for averaging to the left to make space at end for new
     // entry (oldest entry ends up at the end and will be overwritten later)
     {
-      Eigen::VectorXd tmp = invTau_.tail(invTau_.size() - 1);
-      invTau_.head(invTau_.size() - 1) = tmp;
+      // Left-shift the averaging history in place (drop the oldest entry). A
+      // forward copy is alias-safe since the destination precedes the source,
+      // which avoids a per-iteration heap temporary.
+      std::copy(invTau_.data() + 1, invTau_.data() + invTau_.size(),
+                invTau_.data());
     }
 
     if (iter2_ > iter1_) {
