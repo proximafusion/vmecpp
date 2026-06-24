@@ -30,6 +30,7 @@ from vmecpp._iteration import (
     RestartReason,
     iterate,
     solve_equilibrium,
+    solve_multigrid,
 )
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
@@ -2453,6 +2454,7 @@ __all__ = [  # noqa: RUF022
     "set_profile",
     "iterate",
     "solve_equilibrium",
+    "solve_multigrid",
     "IterationResult",
     "IterationState",
 ]
