@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
-from external_optimizers import (
+from external_optimizers import (  # type: ignore
     reference_equilibrium,
     solve_newton_krylov,
     solve_preconditioned_descent,
@@ -38,7 +38,3 @@ def test_optimizer_reaches_equilibrium(solver, reference):
     # Same equilibrium as the native solver.
     assert abs(result.energy - w_star) < 1e-8
     assert np.linalg.norm(x - x_star) < 1e-5
-
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-v"]))
