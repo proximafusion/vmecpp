@@ -14,10 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-try:
-    from vmecpp.cpp import _vmecpp
-except ImportError:
-    import _vmecpp
+from vmecpp.cpp import _vmecpp  # type: ignore
 
 SOLOVEV = Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
 

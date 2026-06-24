@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
-from external_optimizers import (
+from external_optimizers import (  # type: ignore
     reference_equilibrium,
     solve_newton_hvp,
     solve_newton_krylov,
@@ -65,7 +65,3 @@ def test_newton_hvp_converges_in_few_iterations():
     _, descent = solve_preconditioned_descent()
     assert newton.outer_iters < 20
     assert newton.outer_iters < descent.outer_iters
-
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-v"]))
