@@ -24,6 +24,7 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_toroidal.h"
+#include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
 #ifdef VMECPP_USE_FFTX
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
 #endif
@@ -56,11 +57,11 @@ class IdealMhdModel {
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
-  void evalFResInvar(const Eigen::VectorXd& localFResInvar);
+  void evalFResInvar(const Eigen::Vector3d& localFResInvar);
 
   // Compute the preconditioned force residuals.
   // Will put them into the provided array as { fsqr1, fsqz1, fsql1 }.
-  void evalFResPrecd(const Eigen::VectorXd& localFResPrecd);
+  void evalFResPrecd(const Eigen::Vector3d& localFResPrecd);
 
   // Return true/false depending on whether the VmecCheckpoint was reached,
   // or an error status if something went wrong.
@@ -186,6 +187,41 @@ class IdealMhdModel {
   // spectral-transform wrapping.
   void exactForceDensityTangent(const double* geomP, const double* dgeom,
                                 int geom_stride, double* dforce_out);
+
+  // Reverse-mode force-density cotangent: J_g^T applied to the force-density
+  // cotangent force_bar (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT),
+  // accumulated into geom_bar_out (20 blocks of geom_stride, zeroed by caller),
+  // by one Enzyme reverse pass. The transpose of exactForceDensityTangent.
+  void exactForceDensityCotangent(const double* geomP, const double* force_bar,
+                                  int geom_stride, double* geom_bar_out);
+
+  // Fill the local force-density composition descriptor shared by the exact
+  // forward/reverse force-density passes (geom_stride sized blocks).
+  LocalForceComposition makeLocalForceComposition(int geom_stride);
+
+  // Transpose of applyExactForceJacobian: H^T w. Given a decomposed-force
+  // cotangent (the space applyExactForceJacobian writes), apply C^T (transpose
+  // of the output transform), the reverse-mode force-density kernel J_g^T, and
+  // B^T (transpose of packGeometry's pre-chain), yielding the state cotangent
+  // in m_decomposed_out. The two spectral transforms are reused as each other's
+  // adjoint with the poloidal integration weight; the rest of the linear chain
+  // (decomposeInto, m1Constraint, zeroZForceForM1, extrapolateTowardsAxis,
+  // ruFull/zuFull, lamscale) is transposed analytically.
+  void applyExactForceJacobianTranspose(const double* geomP, int geom_stride,
+                                        FourierForces& m_decomposed_in,
+                                        FourierForces& m_physical_f,
+                                        FourierGeometry& m_physical_scratch,
+                                        FourierGeometry& m_decomposed_out);
+
+  // Transposes of the spectral transforms, for the transposed exact Hessian.
+  // dft_ForcesToFourierTranspose: (forcesToFourier)^T, decomposed-force coeff
+  // cotangent -> real-space force-density member cotangents (armn_e ..
+  // fzcon_o). dft_FourierToRealTranspose: (geometryFromFourier)^T, real-space
+  // geometry member cotangents (r1_e .. zCon) -> Fourier coeff cotangent.
+  void dft_ForcesToFourierTranspose_2d_symm(const FourierForces& m_coeff_bar);
+  void dft_FourierToRealTranspose_2d_symm(FourierGeometry& m_coeff_bar_out);
+  void dft_ForcesToFourierTranspose_3d_symm(const FourierForces& m_coeff_bar);
+  void dft_FourierToRealTranspose_3d_symm(FourierGeometry& m_coeff_bar_out);
 
   // Computes the forward-DFT of forces for the 3D (Stellarator) case.
   // Dispatching dft_ForcesToFourier_3d_symm
