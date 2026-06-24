@@ -357,8 +357,8 @@ absl::Status vmecpp::MercierStabilityIntermediateQuantities::WriteTo(
   WRITEMEMBER(s);
   WRITEMEMBER(shear);
   WRITEMEMBER(vpp);
-  WRITEMEMBER(d_pressure_d_s);
-  WRITEMEMBER(d_toroidal_current_d_s);
+  WRITEMEMBER(d_pressure_d_phi);
+  WRITEMEMBER(d_toroidal_current_d_phi);
   WRITEMEMBER(phip_realH);
   WRITEMEMBER(phip_realF);
   WRITEMEMBER(vp_real);
@@ -379,8 +379,8 @@ absl::Status vmecpp::MercierStabilityIntermediateQuantities::LoadInto(
   READMEMBER(s);
   READMEMBER(shear);
   READMEMBER(vpp);
-  READMEMBER(d_pressure_d_s);
-  READMEMBER(d_toroidal_current_d_s);
+  READMEMBER(d_pressure_d_phi);
+  READMEMBER(d_toroidal_current_d_phi);
   READMEMBER(phip_realH);
   READMEMBER(phip_realF);
   READMEMBER(vp_real);
@@ -402,12 +402,12 @@ absl::Status vmecpp::MercierFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(toroidal_flux);
   WRITEMEMBER(iota);
   WRITEMEMBER(shear);
-  WRITEMEMBER(d_volume_d_s);
+  WRITEMEMBER(d_volume_d_phi);
   WRITEMEMBER(well);
   WRITEMEMBER(toroidal_current);
-  WRITEMEMBER(d_toroidal_current_d_s);
+  WRITEMEMBER(d_toroidal_current_d_volume);
   WRITEMEMBER(pressure);
-  WRITEMEMBER(d_pressure_d_s);
+  WRITEMEMBER(d_pressure_d_volume);
   WRITEMEMBER(DMerc);
   WRITEMEMBER(Dshear);
   WRITEMEMBER(Dwell);
@@ -422,12 +422,12 @@ absl::Status vmecpp::MercierFileContents::LoadInto(MercierFileContents& m_obj,
   READMEMBER(toroidal_flux);
   READMEMBER(iota);
   READMEMBER(shear);
-  READMEMBER(d_volume_d_s);
+  READMEMBER(d_volume_d_phi);
   READMEMBER(well);
   READMEMBER(toroidal_current);
-  READMEMBER(d_toroidal_current_d_s);
+  READMEMBER(d_toroidal_current_d_volume);
   READMEMBER(pressure);
-  READMEMBER(d_pressure_d_s);
+  READMEMBER(d_pressure_d_volume);
   READMEMBER(DMerc);
   READMEMBER(Dshear);
   READMEMBER(Dwell);
@@ -2534,6 +2534,7 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
 
   std::vector<double> pprim(fc.ns, 0.0);
 
+  // sqrt(g) * ((B^2/2 + mu_0 p) - mu_0 p) = sqrt(g) * B^2/2 on full grid
   std::vector<double> sqgb2(s.nZnT, 0.0);
 
   std::vector<double> kperpu(s.nZnT, 0.0);
@@ -2546,11 +2547,15 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
   std::vector<double> bsupu1(s.nZnT, 0.0);
   std::vector<double> bsupv1(s.nZnT, 0.0);
 
+  // B_theta on full-grid
   std::vector<double> bsubu1(s.nZnT, 0.0);
+  
+  // B_phi on full-grid
   std::vector<double> bsubv1(s.nZnT, 0.0);
 
   std::vector<double> jxb(s.nZnT, 0.0);
 
+  // (2 pi)^2
   static constexpr double dnorm1 = 4.0 * M_PI * M_PI;
 
   for (int jF = 1; jF < fc.ns - 1; ++jF) {
@@ -2559,21 +2564,26 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
 
     // "over-vp"
     // 1/V' on full grid
-    // and 4 pi^2 divided out
+    // and 4 pi^2 divided out (dVdsH did contain a factor of (2 pi)^2)
     const double ovp =
         2.0 /
         (vmec_internal_results.dVdsH[jHo] + vmec_internal_results.dVdsH[jHi]) /
         dnorm1;
 
+    // signgs / V'
     const double tjnorm = ovp * vmec_internal_results.sign_of_jacobian;
 
-    // dp/ds here
+    // presH contains mu_0 * p
+    // --> pprime = dp/ds here
     double pprime =
         1.0 / MU_0 *
         (vmec_internal_results.presH[jHo] - vmec_internal_results.presH[jHi]) /
         fc.deltaS;
 
+    // dp/ds * 1/V' = dp/dV
     const double pprime_ovp = pprime * ovp;
+
+    // 1 / (|dp/dV| + 2.2e-16)
     const double pnorm = 1.0 / (std::abs(pprime_ovp) + DBL_EPSILON);
 
     double force_residual_max = -DBL_MAX;
@@ -2875,8 +2885,8 @@ vmecpp::ComputeIntermediateMercierQuantities(
   mercier_intermediate.s = VectorXd::Zero(fc.ns);
   mercier_intermediate.shear = VectorXd::Zero(fc.ns);
   mercier_intermediate.vpp = VectorXd::Zero(fc.ns);
-  mercier_intermediate.d_pressure_d_s = VectorXd::Zero(fc.ns);
-  mercier_intermediate.d_toroidal_current_d_s = VectorXd::Zero(fc.ns);
+  mercier_intermediate.d_pressure_d_phi = VectorXd::Zero(fc.ns);
+  mercier_intermediate.d_toroidal_current_d_phi = VectorXd::Zero(fc.ns);
   mercier_intermediate.phip_realH = VectorXd::Zero(fc.ns - 1);
   mercier_intermediate.phip_realF = VectorXd::Zero(fc.ns);
   mercier_intermediate.vp_real = VectorXd::Zero(fc.ns - 1);
@@ -2900,12 +2910,13 @@ vmecpp::ComputeIntermediateMercierQuantities(
         2.0 * M_PI * vmec_internal_results.phipH[jH] *
         vmec_internal_results.sign_of_jacobian;
 
-    // dV/d(PHI) on half mesh
+    // dV/ds / dPhi/ds = dV/d(PHI) on half mesh
     mercier_intermediate.vp_real[jH] =
         vmec_internal_results.sign_of_jacobian * (4.0 * M_PI * M_PI) *
         vmec_internal_results.dVdsH[jH] / mercier_intermediate.phip_realH[jH];
 
     // COMPUTE INTEGRATED TOROIDAL CURRENT
+    // I_tor = 2 pi * < B_theta >
     for (int kl = 0; kl < s.nZnT; ++kl) {
       const int idx_kl = jH * s.nZnT + kl;
       const int l = kl % s.nThetaEff;
@@ -2921,10 +2932,13 @@ vmecpp::ComputeIntermediateMercierQuantities(
     const int jHi = jF - 1;
     const int jHo = jF;
 
+    // real dPhi/ds on full-grid
     mercier_intermediate.phip_realF[jF] =
         (mercier_intermediate.phip_realH[jHo] +
          mercier_intermediate.phip_realH[jHi]) /
         2.0;
+
+    // dPhi/ds * ds = dPhi
     const double denom = mercier_intermediate.phip_realF[jF] * fc.deltaS;
 
     // d(iota)/d(PHI)
@@ -2932,18 +2946,18 @@ vmecpp::ComputeIntermediateMercierQuantities(
         (vmec_internal_results.iotaH[jHo] - vmec_internal_results.iotaH[jHi]) /
         denom;
 
-    // d(VP)/d(PHI)
+    // d(VP)/d(PHI) = d^2(V)/d(Phi)^2
     mercier_intermediate.vpp[jF] = (mercier_intermediate.vp_real[jHo] -
                                     mercier_intermediate.vp_real[jHi]) /
                                    denom;
 
     // d(p)/d(PHI)
-    mercier_intermediate.d_pressure_d_s[jF] =
+    mercier_intermediate.d_pressure_d_phi[jF] =
         (vmec_internal_results.presH[jHo] - vmec_internal_results.presH[jHi]) /
         denom;
 
     // d(Itor)/d(PHI)
-    mercier_intermediate.d_toroidal_current_d_s[jF] =
+    mercier_intermediate.d_toroidal_current_d_phi[jF] =
         (mercier_intermediate.torcur[jHo] - mercier_intermediate.torcur[jHi]) /
         denom;
 
@@ -2969,6 +2983,7 @@ vmecpp::ComputeIntermediateMercierQuantities(
           jxbout.bdotk(index_full) * MU_0 /
           mercier_intermediate.gsqrt_full(index_full);
 
+      // make sqrt(g) into flux-based jacobian (s --> phi)
       mercier_intermediate.gsqrt_full(index_full) /=
           mercier_intermediate.phip_realF[jF];
     }  // kl
@@ -3002,14 +3017,21 @@ vmecpp::ComputeIntermediateMercierQuantities(
       // g_uu
       const double gtt = rtf * rtf + ztf * ztf;
 
+      // |grad s|^2 = [(R_theta R)^2 + (Z_theta R)^2 + (Z_theta R_phi - R_theta Z_phi)^2] / (sqrt(g))^2
+      // --> 1/|grad s|^2 = (sqrt(g))^2 / [(R_theta R)^2 + (Z_theta R)^2 + (Z_theta R_phi - R_theta Z_phi)^2]
+      
+      // flux-based (sqrt(g))^2
       const double gpp_numerator = mercier_intermediate.gsqrt_full(index_full) *
                                    mercier_intermediate.gsqrt_full(index_full);
 
-      // TODO(jons): figure out what this really is
-      const double gpp_denominator_ingredient = rtf * zzf - rzf * ztf;
-      const double gpp_denominator =
-          gtt * r1f * r1f +
-          gpp_denominator_ingredient * gpp_denominator_ingredient;
+      // negative toroidal component of grad s:
+      // -(Z_theta R_phi - R_theta Z_phi)
+      const double grad_s_phi = rtf * zzf - rzf * ztf;
+      
+      // (R_theta R)^2 + (Z_theta R)^2 = (R_theta^2 + Z_theta^2) * R^2 == g_uu * R^2
+      const double gpp_denominator = gtt * r1f * r1f + grad_s_phi * grad_s_phi;
+
+      // 1/|grad Phi|^2 = (sqrt(g))^2 / [(R_theta R)^2 + (Z_theta R)^2 + (Z_theta R_phi - R_theta Z_phi)^2]
       mercier_intermediate.gpp(index_full) = gpp_numerator / gpp_denominator;
     }  // kl
   }  // jF
@@ -3040,27 +3062,28 @@ vmecpp::ComputeIntermediateMercierQuantities(
       const int index_half_o = jHo * s.nZnT + kl;
       const int index_half_i = jHi * s.nZnT + kl;
 
+      // |B|^2 on full-grid
       const double b2i = (mercier_intermediate.b2(index_half_o) +
                           mercier_intermediate.b2(index_half_i)) /
                          2.0;
 
-      // <1/B**2>
+      // <1/B^2>
       const double ob2 = mercier_intermediate.gsqrt_full(index_full) / b2i;
       mercier_intermediate.tpp[jF] += ob2 * s.wInt[l];
 
-      // <b*b/|grad-phi|**3>
+      // <B.B/|grad-phi|^2> = <B^2/|grad-phi|^2>
       const double ob2_reused = b2i *
                                 mercier_intermediate.gsqrt_full(index_full) *
                                 mercier_intermediate.gpp(index_full);
       mercier_intermediate.tbb[jF] += ob2_reused * s.wInt[l];
 
-      // <j*b/|grad-phi|**3>
+      // <j.B/|grad-phi|^2>
       const double jdotb = mercier_intermediate.bdotj(index_full) *
                            mercier_intermediate.gpp(index_full) *
                            mercier_intermediate.gsqrt_full(index_full);
       mercier_intermediate.tjb[jF] += jdotb * s.wInt[l];
 
-      // <(j*b)2/b**2*|grad-phi|**3>
+      // <(j.B)^2/(B^2 * |grad-phi|^2)>
       const double jdotb_reused =
           jdotb * mercier_intermediate.bdotj(index_full) / b2i;
       mercier_intermediate.tjj[jF] += jdotb_reused * s.wInt[l];
@@ -3084,12 +3107,12 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
   mercier.toroidal_flux = VectorXd::Zero(fc.ns);
   mercier.iota = VectorXd::Zero(fc.ns);
   mercier.shear = VectorXd::Zero(fc.ns);
-  mercier.d_volume_d_s = VectorXd::Zero(fc.ns);
+  mercier.d_volume_d_phi = VectorXd::Zero(fc.ns);
   mercier.well = VectorXd::Zero(fc.ns);
   mercier.toroidal_current = VectorXd::Zero(fc.ns);
-  mercier.d_toroidal_current_d_s = VectorXd::Zero(fc.ns);
+  mercier.d_toroidal_current_d_volume = VectorXd::Zero(fc.ns);
   mercier.pressure = VectorXd::Zero(fc.ns);
-  mercier.d_pressure_d_s = VectorXd::Zero(fc.ns);
+  mercier.d_pressure_d_volume = VectorXd::Zero(fc.ns);
 
   // -------------------
 
@@ -3107,6 +3130,7 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
     // S
     mercier.s[jF] = mercier_intermediate.s[jF];
 
+    // V' = dV/dPhi on full-grid
     const double vp_full = (mercier_intermediate.vp_real[jHo] +
                             mercier_intermediate.vp_real[jHi]) /
                            2.0;
@@ -3127,13 +3151,13 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
         (vmec_internal_results.iotaH[jHo] + vmec_internal_results.iotaH[jHi]) /
         2.0;
 
-    // SHEAR
+    // SHEAR = d(iota)/dPhi / dV/dPhi = d(iota)/dV
     mercier.shear[jF] = mercier_intermediate.shear[jF] / vp_full;
 
-    // VP
-    mercier.d_volume_d_s[jF] = vp_full;
+    // VP = dV/dPhi
+    mercier.d_volume_d_phi[jF] = vp_full;
 
-    // WELL
+    // WELL = -signgs * d^2(V)/d(Phi)^2
     mercier.well[jF] =
         -mercier_intermediate.vpp[jF] * vmec_internal_results.sign_of_jacobian;
 
@@ -3142,18 +3166,18 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
         (mercier_intermediate.torcur[jHo] + mercier_intermediate.torcur[jHi]) /
         2.0;
 
-    // ITOR'
-    mercier.d_toroidal_current_d_s[jF] =
-        mercier_intermediate.d_toroidal_current_d_s[jF] / vp_full;
+    // ITOR' = d(I_tor)/ds / dV/dPhi = d(I_tor)/dV
+    mercier.d_toroidal_current_d_volume[jF] =
+        mercier_intermediate.d_toroidal_current_d_phi[jF] / vp_full;
 
     // PRES
     mercier.pressure[jF] =
         (vmec_internal_results.presH[jHo] + vmec_internal_results.presH[jHi]) /
         2.0;
 
-    // PRES'
-    mercier.d_pressure_d_s[jF] =
-        mercier_intermediate.d_pressure_d_s[jF] / vp_full;
+    // PRES' = dp/dPhi / dV/dPhi = dp/dV
+    mercier.d_pressure_d_volume[jF] =
+        mercier_intermediate.d_pressure_d_phi[jF] / vp_full;
   }  // jF
 
   // second table in Mercier output file
@@ -3164,18 +3188,22 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
     const double tbb = mercier_intermediate.tbb[jF];
     const double tjj = mercier_intermediate.tjj[jF];
 
+    // (iota')^2 / 4
     mercier.Dshear[jF] =
         mercier_intermediate.shear[jF] * mercier_intermediate.shear[jF] / 4.0;
 
+    // -iota' * [<j.B/|grad-phi|^2> - I' * <B^2/|grad-phi|^2>]
     mercier.Dcurr[jF] =
         -mercier_intermediate.shear[jF] *
-        (tjb - mercier_intermediate.d_toroidal_current_d_s[jF] * tbb);
+        (tjb - mercier_intermediate.d_toroidal_current_d_phi[jF] * tbb);
 
-    mercier.Dwell[jF] = mercier_intermediate.d_pressure_d_s[jF] *
+    // p' * [V'' - p' * <1/B^2>] * <B^2/|grad-phi|^2>
+    mercier.Dwell[jF] = mercier_intermediate.d_pressure_d_phi[jF] *
                         (mercier_intermediate.vpp[jF] -
-                         mercier_intermediate.d_pressure_d_s[jF] * tpp) *
+                         mercier_intermediate.d_pressure_d_phi[jF] * tpp) *
                         tbb;
 
+    // ( <j.B/|grad-phi|^2> )^2 - <B^2/|grad-phi|^2> * <(j.B)^2/(B^2 * |grad-phi|^2)>
     mercier.Dgeod[jF] = tjb * tjb - tbb * tjj;
 
     mercier.DMerc[jF] = mercier.Dshear[jF] + mercier.Dcurr[jF] +
