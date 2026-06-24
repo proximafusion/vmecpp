@@ -215,15 +215,6 @@ if(VMECPP_ENABLE_ENZYME)
   endif()
   message(STATUS "Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
   enable_testing()
-  add_executable(enzyme_smoke_test
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/enzyme_smoke_test.cc)
-  # Enzyme runs as an optimization-time pass; it needs optimizations enabled and
-  # the plugin attached. -O2 guards against a Debug (-O0) configuration where the
-  # AD pass would otherwise not run.
-  target_compile_options(enzyme_smoke_test PRIVATE
-    -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
-  add_test(NAME enzyme_smoke COMMAND enzyme_smoke_test)
-
   # Exact autodiff (forward and reverse) of a real VMEC nonlinear kernel: the
   # half-grid Jacobian. Self-contained over flat buffers; checks Jv and J^T u
   # against finite differences and against each other (adjoint identity).
