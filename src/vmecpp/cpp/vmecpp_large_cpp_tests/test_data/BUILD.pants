@@ -1,0 +1,63 @@
+files(
+    name="solovev",
+    sources=[
+        "solovev.json",
+        "input.solovev",
+        "jxbout_solovev.nc",
+        "mercier.solovev",
+        "threed1.solovev",
+        "wout_solovev.nc",
+        "solovev/**/*.json",
+    ],
+)
+
+files(
+    name="solovev_no_axis",
+    sources=[
+        "solovev_no_axis.json",
+        "input.solovev_no_axis",
+        "jxbout_solovev_no_axis.nc",
+        "mercier.solovev_no_axis",
+        "threed1.solovev_no_axis",
+        "wout_solovev_no_axis.nc",
+        "solovev_no_axis/**/*.json",
+    ],
+)
+
+files(
+    name="cma",
+    sources=[
+        "cma.json",
+        "input.cma",
+        "mercier.cma",
+        "threed1.cma",
+        "wout_cma.nc",
+        "cma/**/*.json",
+    ],
+)
+
+files(
+    name="cth_like_fixed_bdy",
+    sources=[
+        "cth_like_fixed_bdy.json",
+        "input.cth_like_fixed_bdy",
+        "jxbout_cth_like_fixed_bdy.nc",
+        "mercier.cth_like_fixed_bdy",
+        "threed1.cth_like_fixed_bdy",
+        "wout_cth_like_fixed_bdy.nc",
+        "cth_like_fixed_bdy/**/*.json",
+    ],
+)
+
+files(
+    name="cth_like_free_bdy",
+    sources=[
+        "cth_like_free_bdy.json",
+        "input.cth_like_free_bdy",
+        "jxbout_cth_like_free_bdy.nc",
+        "mercier.cth_like_free_bdy",
+        "threed1.cth_like_free_bdy",
+        "wout_cth_like_free_bdy.nc",
+        "cth_like_free_bdy/**/*.json",
+    ],
+)
