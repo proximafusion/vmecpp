@@ -36,10 +36,7 @@ import numpy as np
 from scipy.optimize import newton_krylov
 from scipy.sparse.linalg import LinearOperator, gmres
 
-try:
-    from vmecpp.cpp import _vmecpp
-except ImportError:  # directly-built extension on PYTHONPATH
-    import _vmecpp
+from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
 DEFAULT_INPUT = (
     Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
@@ -87,7 +84,7 @@ def _finish(model, name, x, outer_iters, t0):
         model.force_eval_count,
         outer_iters,
         time.perf_counter() - t0,
-        np.linalg.norm(np.asarray(model.get_forces(), float)),
+        float(np.linalg.norm(np.asarray(model.get_forces(), float))),
         model.mhd_energy,
     )
 
@@ -128,9 +125,9 @@ def solve_newton_krylov(
         # state-invariant once assembled.
         model.evaluate(2, 2, True)
         n_dof = x0.size
-        inner_m = LinearOperator(
+        inner_m = LinearOperator(  # type: ignore[call-overload]
             (n_dof, n_dof),
-            matvec=lambda b: np.asarray(
+            matvec=lambda b: np.asarray(  # type: ignore[call-overload]
                 model.apply_preconditioner(np.ascontiguousarray(b)), float
             ),
         )
@@ -173,15 +170,15 @@ def solve_newton_hvp(
         it += 1
         model.set_state(np.ascontiguousarray(x))
         model.evaluate(2, 2, True)  # assemble M at the current iterate
-        h_op = LinearOperator(
+        h_op = LinearOperator(  # type: ignore[call-overload]
             (n_dof, n_dof),
-            matvec=lambda v: np.asarray(
+            matvec=lambda v: np.asarray(  # type: ignore[call-overload]
                 model.hessian_vector_product(np.ascontiguousarray(v)), float
             ),
         )
-        m_op = LinearOperator(
+        m_op = LinearOperator(  # type: ignore[call-overload]
             (n_dof, n_dof),
-            matvec=lambda b: np.asarray(
+            matvec=lambda b: np.asarray(  # type: ignore[call-overload]
                 model.apply_preconditioner(np.ascontiguousarray(b)), float
             ),
         )

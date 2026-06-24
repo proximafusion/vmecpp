@@ -11,18 +11,14 @@ respect to the decomposed (internal-basis) state. This is the gradient an extern
 optimizer working in the internal basis needs.
 
 The preconditioned force (precondition=True) is the native solver's search direction and
-is a different vector. The raw gradient must vanish at the converged equilibrium.
+points in a different direction; both vanish at the converged equilibrium.
 """
 
 from pathlib import Path
 
 import numpy as np
-import pytest
 
-try:
-    from vmecpp.cpp import _vmecpp
-except ImportError:  # allow running against a directly-built extension
-    import _vmecpp
+from vmecpp.cpp import _vmecpp  # type: ignore
 
 SOLOVEV = Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
 
@@ -67,7 +63,3 @@ def test_cold_start_is_excluded():
     m = _model()
     m.evaluate(2, 2, False)
     assert np.all(np.isfinite(np.asarray(m.get_forces(), float)))
-
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-v"]))

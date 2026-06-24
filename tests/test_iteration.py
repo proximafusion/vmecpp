@@ -132,6 +132,10 @@ def test_styles_agree_when_no_restart():
         ("cma", 72, 200, {RestartReason.HUGE_INITIAL_FORCES}),
         # W7-X drives a descent with mid-run bad-Jacobian time-step reverts
         ("w7x", 15, 300, {RestartReason.BAD_JACOBIAN}),
+        # li383's cold guess also needs the axis reguess; the descent itself is
+        # clean, which makes it a sharp probe of the post-reguess state (the
+        # lambda scaling after reinitialize).
+        ("li383_low_res", 31, 250, set()),
     ],
 )
 def test_python_iteration_matches_cpp_restart_path(
@@ -170,13 +174,13 @@ def test_python_iteration_matches_cpp_restart_path(
     # restart reason or a dropped reguess would change which reasons appear).
     assert reasons.issubset(set(py_rr.tolist()))
 
-    # The residual traces track to a tight tolerance until floating-point noise in
-    # the damping average compounds; assert the early steps match bit-for-bit and
-    # the whole trace stays close.
+    # The residual traces track tightly; the only non-bit-exact operation left
+    # is the order of additions in the damping average, whose last-bit noise
+    # can grow through long chaotic transients.
     cpp_r = np.asarray(reference.force_residual_r)
     py_r = np.asarray(result.force_residual_r)
-    np.testing.assert_allclose(py_r[:5], cpp_r[:5], rtol=1.0e-9, atol=1e-15)
-    np.testing.assert_allclose(py_r, cpp_r, rtol=0.5, atol=1e-15)
+    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
+    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
 
 
 def test_alternative_styles_converge_cma():
@@ -235,6 +239,64 @@ def test_callback_records_iteration_state():
     # cma's cold guess has a bad Jacobian, so the axis reguess fires (ijacob >= 1).
     assert states[-1].ijacob >= 1
     assert result.axis_reguesses >= 1
+
+
+def test_reinitialize_preserves_lambda_scaling():
+    """Reinitialize() must leave the lambda scaling (lamscale) unchanged.
+
+    InitializeRadial accumulates rmsPhiP across calls (Vmec::run resets the
+    constants before each call); without the matching reset in reinitialize(),
+    a second initialization doubles rmsPhiP, rescales lamscale by sqrt(2), and
+    the whole lambda sector (preconditioned residual fsql1 above all) silently
+    diverges from the C++ on every post-reguess trajectory.
+    """
+    cpp_indata = _single_resolution_indata("solovev", 15, 1.0e-12, 3000)
+
+    once = _vmecpp.VmecModel.create(cpp_indata, 15)
+    once.reinitialize()
+    once.evaluate(1, 1)
+
+    twice = _vmecpp.VmecModel.create(cpp_indata, 15)
+    twice.reinitialize()
+    twice.reinitialize()
+    twice.evaluate(1, 1)
+
+    assert once.fsqr == twice.fsqr
+    assert once.fsql == pytest.approx(twice.fsql, rel=1e-14)
+    # fsql1 has no normalization that cancels a lamscale change; before the
+    # constants reset the second reinitialize shifted it by a factor 1.5.
+    assert once.fsql1 == pytest.approx(twice.fsql1, rel=1e-14)
+
+
+def test_python_multigrid_matches_cpp_run():
+    """solve_multigrid reproduces the C++ Vmec::run multi-grid ramp.
+
+    cma's own input is a two-stage ramp (ns_array [25, 51]) whose coarse stage
+    needs the cold-start axis reguess. The C++ reference is the full
+    vmecpp.run; its wout records the force-residual and restart-reason traces
+    concatenated across stages, which must match the concatenation of the
+    Python per-stage traces step for step.
+    """
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA / "cma.json")
+
+    reference = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_r = np.asarray(reference.wout.force_residual_r)
+    cpp_rr = np.asarray(reference.wout.restart_reason_timetrace)
+
+    model, results = vmecpp.solve_multigrid(vmec_input)
+    assert len(results) == 2
+    assert all(r.converged for r in results)
+    assert model.ns == vmec_input.ns_array[-1]
+
+    py_r = np.concatenate([np.asarray(r.force_residual_r) for r in results])
+    py_rr = np.concatenate([np.asarray(r.restart_reasons) for r in results]).astype(
+        np.int64
+    )
+
+    assert len(py_rr) == len(cpp_rr)
+    np.testing.assert_array_equal(py_rr, cpp_rr)
+    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
+    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
 
 
 def test_refine_to_multigrid_ramp_converges():
