@@ -52,6 +52,20 @@ cc_test(
 )
 
 cc_test(
+    name = "vmec_allocation_test",
+    srcs = ["vmec_allocation_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+    ],
+    deps = [
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
     name = "vmec_in_memory_mgrid_test",
     srcs = ["vmec_in_memory_mgrid_test.cc"],
     data = [

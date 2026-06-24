@@ -50,15 +50,33 @@ jobs:
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
           sudo apt-get update && sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev
+      - name: Cache the VMEC2000 wheel
+        if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.10' }}
+        uses: actions/cache@v4
+        with:
+          path: /tmp/vmec2000-wheel
+          # Keyed on the pinned VMEC2000 source commit: rebuild only when it changes.
+          key: vmec2000-728af8bd6c79-cp310-ubuntu22.04
       - name: Also install VMEC2000 (only on Ubuntu 22.04)
         if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.10' }}
         run: |
-          # mpi4py is needed for VMEC2000
-          sudo apt-get install -y libopenmpi-dev
+          sudo apt-get install -y libopenmpi-dev libnetcdff-dev libscalapack-mpi-dev \
+            libopenblas-dev ninja-build
           python -m pip install mpi4py
-          # custom wheel for VMEC2000, needed for some VMEC++/VMEC2000 compatibility tests
-          # NOTE: this wheel is only guaranteed to work on Ubuntu 22.04
-          python -m pip install vmec@https://anaconda.org/eguiraud-pf/vmec/0.0.6/download/vmec-0.0.6-cp310-cp310-linux_x86_64.whl
+          if ! ls /tmp/vmec2000-wheel/vmec-*.whl >/dev/null 2>&1; then
+            # Build with the SYSTEM cmake + ninja; do NOT pip-install the
+            # cmake/ninja wheels (they shadow the system cmake that
+            # scikit-build-core's editable vmecpp rebuild records).
+            python -m pip install numpy scikit-build f90wrap setuptools wheel
+            git clone https://github.com/hiddenSymmetries/VMEC2000.git /tmp/VMEC2000
+            git -C /tmp/VMEC2000 checkout 728af8bd6c796b36a0aa85fe298e507791e57c6e
+            cp /tmp/VMEC2000/cmake/machines/ubuntu.json /tmp/VMEC2000/cmake_config_file.json
+            LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu \
+              python -m pip wheel /tmp/VMEC2000 --no-build-isolation -w /tmp/vmec2000-wheel
+          fi
+          python -m pip install /tmp/vmec2000-wheel/vmec-*.whl
+          # fail loudly here if the binding is still broken, not in the test step
+          python -c "import vmec; print('VMEC2000 import OK')"
       - name: Install package
         run: |
           # on Ubuntu we would not need this, but on MacOS we need to point CMake to gfortran-14 and gcc-14
