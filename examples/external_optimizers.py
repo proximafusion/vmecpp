@@ -34,10 +34,7 @@ import numpy as np
 from scipy.optimize import newton_krylov
 from scipy.sparse.linalg import LinearOperator
 
-try:
-    from vmecpp.cpp import _vmecpp
-except ImportError:  # directly-built extension on PYTHONPATH
-    import _vmecpp
+from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
 DEFAULT_INPUT = (
     Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
@@ -100,7 +97,7 @@ def solve_preconditioned_descent(
         "preconditioned descent",
         evals,
         time.perf_counter() - t0,
-        np.linalg.norm(np.asarray(model.get_forces(), float)),
+        float(np.linalg.norm(np.asarray(model.get_forces(), float))),
         model.mhd_energy,
     )
 
@@ -124,12 +121,13 @@ def solve_newton_krylov(
         # state-invariant once assembled.
         model.evaluate(2, 2, True)
         n_dof = x0.size
-        inner_m = LinearOperator(
-            (n_dof, n_dof),
-            matvec=lambda b: np.asarray(
+
+        def precond_matvec(b):
+            return np.asarray(
                 model.apply_preconditioner(np.ascontiguousarray(b)), float
-            ),
-        )
+            )
+
+        inner_m = LinearOperator((n_dof, n_dof), matvec=precond_matvec)  # type: ignore
     t0 = time.perf_counter()
     x = newton_krylov(
         counted, x0, f_tol=tol, maxiter=max_iter, method="lgmres", inner_M=inner_m
@@ -143,7 +141,7 @@ def solve_newton_krylov(
         name,
         n[0],
         time.perf_counter() - t0,
-        np.linalg.norm(np.asarray(model.get_forces(), float)),
+        float(np.linalg.norm(np.asarray(model.get_forces(), float))),
         model.mhd_energy,
     )
 

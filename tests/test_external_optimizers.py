@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
-from external_optimizers import (
+from external_optimizers import (  # type: ignore
     reference_equilibrium,
     solve_newton_krylov,
     solve_newton_krylov_preconditioned,
@@ -54,7 +54,3 @@ def test_preconditioner_accelerates_newton_krylov():
     _, plain = solve_newton_krylov()
     _, precond = solve_newton_krylov_preconditioned()
     assert precond.force_evals < plain.force_evals
-
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-v"]))
