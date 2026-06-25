@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_test(
+    name = "linking_current_test",
+    srcs = ["linking_current_test.cc"],
+    data = [
+      "//vmecpp_large_cpp_tests/test_data:w7x",
+    ],
+    deps = [
+        "@googletest//:gtest_main",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/log:check",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/common/magnetic_field_provider:magnetic_field_provider_lib",
+    ],
+)
