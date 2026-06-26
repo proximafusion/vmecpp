@@ -175,6 +175,20 @@ class VmecInput(BaseModelWithNumpy):
     """Number of toroidal Fourier harmonics; n = -ntor, -ntor+1, ..., -1, 0, 1, ...,
     ntor-1, ntor."""
 
+    mpol_geometry: int = -1
+    """Optional reduced poloidal resolution for the geometry (R, Z).
+
+    If in [1, mpol), R/Z modes with m >= mpol_geometry are held fixed while lambda keeps
+    the full mpol. < 0 (default) means geometry uses mpol.
+    """
+
+    ntor_geometry: int = -1
+    """Optional reduced toroidal resolution for the geometry (R, Z).
+
+    If in [0, ntor), R/Z modes with n > ntor_geometry are held fixed while lambda keeps
+    the full ntor. < 0 (default) means geometry uses ntor.
+    """
+
     ntheta: int = 0
     """Number of poloidal grid points (ntheta >= 0).
 
