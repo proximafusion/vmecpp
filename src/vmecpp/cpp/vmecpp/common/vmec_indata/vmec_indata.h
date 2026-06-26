@@ -293,6 +293,19 @@ class VmecINDATA {
 absl::Status IsConsistent(const VmecINDATA& vmec_indata,
                           bool enable_info_messages);
 
+// Spectral width <M> of the input boundary, defined as in
+// FourierGeometry::ComputeSpectralWidth: an energy-weighted average poloidal
+// mode number with p=4, q=1 and the m=0 component excluded. Larger values mean
+// more high-m content. Used to flag spectrally dense boundaries, which tend to
+// converge poorly in fixed-boundary runs.
+double BoundarySpectralWidth(const VmecINDATA& vmec_indata);
+
+// Boundary spectral width above which IsConsistent warns that a fixed-boundary
+// run may converge poorly. Calibrated against ripple sweeps in which
+// fixed-boundary runs converge for <M> below ~6 and fail to initialize above
+// it, while all bundled test cases stay below 2.
+inline constexpr double kSpectrallyDenseBoundaryThreshold = 6.0;
+
 }  // namespace vmecpp
 
 #endif  // VMECPP_COMMON_VMEC_INDATA_VMEC_INDATA_H_
