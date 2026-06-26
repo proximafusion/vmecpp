@@ -188,6 +188,17 @@ VmecINDATA::VmecINDATA() {
 void VmecINDATA::SetMpolNtor(int new_mpol, int new_ntor) {
   using Eigen::VectorXd;
 
+  // When lasym is set but the asymmetric arrays have not been allocated yet
+  // (e.g. an object assembled field-by-field via the Python bindings), give
+  // them their zero defaults at the current resolution, so both the resize
+  // below and callers that index them afterwards are well-defined.
+  if (lasym) {
+    if (!raxis_s.has_value()) raxis_s.emplace().setZero(ntor + 1);
+    if (!zaxis_c.has_value()) zaxis_c.emplace().setZero(ntor + 1);
+    if (!rbs.has_value()) rbs.emplace().setZero(mpol, 2 * ntor + 1);
+    if (!zbc.has_value()) zbc.emplace().setZero(mpol, 2 * ntor + 1);
+  }
+
   const bool both_same_as_before = (new_mpol == mpol && new_ntor == ntor);
   if (both_same_as_before) {
     return;  // nothing to do

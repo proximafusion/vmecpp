@@ -12,6 +12,14 @@ filegroup(
 )
 
 filegroup(
+    name = "up_down_asym",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "up_down_asym.json",
+    ],
+)
+
+filegroup(
     name = "solovev_analytical",
     visibility = ["//visibility:public"],
     srcs = [
@@ -73,6 +81,15 @@ filegroup(
         "cth_like_free_bdy.json",
         "input.cth_like_free_bdy",
         "wout_cth_like_free_bdy.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_free_bdy_asym",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "cth_like_free_bdy_asym.json",
+        "mgrid_cth_like_asym.nc",
     ],
 )
 
