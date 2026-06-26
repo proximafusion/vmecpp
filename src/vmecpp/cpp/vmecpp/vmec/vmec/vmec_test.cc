@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/vmec/vmec.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -191,3 +192,97 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   const auto output = vmecpp::run(*indata);
   ASSERT_TRUE(output.ok());
 }  // MultiGridFreeBoundary
+
+// nThetaReduced > 32 (here 44, from ntheta = 86) exercises the multi-warp
+// poloidal scatter in the CUDA build: one x-block per 32 poloidal points. A
+// regression there re-surfaces as a first-iteration divergence, because
+// poloidal points past index 31 would be left stale. Runs on the host poloidal
+// path in non-CUDA builds.
+TEST(TestVmec, PoloidalResolutionAbove32) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  indata->ntheta = 86;  // nThetaReduced = 44 > 32
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok());
+}  // PoloidalResolutionAbove32
+
+#ifdef VMECPP_USE_CUDA
+// ns > 1024 (here 1100) uses the block-Thomas radial solver, which holds the
+// elimination ratios in dynamic shared memory; the PCR preconditioner cannot
+// exceed 1024 threads per block. CUDA-only: the host build has no such cap.
+TEST(TestVmec, CudaRadialResolutionAbove1024) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  indata->ns_array.resize(3);
+  indata->ns_array << 25, 99, 1100;
+  indata->ftol_array.resize(3);
+  indata->ftol_array << 1.0e-6, 1.0e-6, 1.0e-6;
+  indata->niter_array.resize(3);
+  indata->niter_array << 2000, 2000, 3000;
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok());
+}  // CudaRadialResolutionAbove1024
+
+// A radial resolution beyond the device's shared-memory capacity is rejected
+// up front with a clear error rather than producing truncated results.
+TEST(TestVmec, CudaRadialResolutionRejectedBeyondDeviceLimit) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  indata->ns_array.resize(2);
+  indata->ns_array << 25, 50000;  // beyond any current device's capacity
+  indata->ftol_array.resize(2);
+  indata->ftol_array << 1.0e-6, 1.0e-6;
+  indata->niter_array.resize(2);
+  indata->niter_array << 100, 100;
+
+  const auto output = vmecpp::run(*indata);
+  EXPECT_FALSE(output.ok());
+  if (!output.ok()) {
+    EXPECT_THAT(std::string(output.status().message()),
+                ::testing::HasSubstr("radial resolutions up to"));
+  }
+}  // CudaRadialResolutionRejectedBeyondDeviceLimit
+
+// The asynchronous NESTOR worker (VMECPP_FB_ASYNC_NESTOR) solves the vacuum
+// field on a background thread that writes into buffers owned by Vmec. A solve
+// is in flight when the run ends, so Vmec teardown must join the worker before
+// those buffers are freed (Vmec::~Vmec); otherwise the worker's final write
+// lands in freed memory. Running the free-boundary case with the worker enabled
+// exercises that teardown path. return_outputs_even_if_not_converged keeps the
+// check on teardown rather than the worker's slower convergence.
+TEST(TestVmec, CudaAsyncNestorTeardown) {
+  const std::string filename = "vmecpp/test_data/cth_like_free_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  // Enough iterations to engage the worker; we test teardown, not convergence.
+  indata->niter_array[0] = 200;
+  indata->return_outputs_even_if_not_converged = true;
+
+  setenv("VMECPP_FB_ASYNC_NESTOR", "1", /*overwrite=*/1);
+  const auto output = vmecpp::run(*indata);
+  unsetenv("VMECPP_FB_ASYNC_NESTOR");
+
+  ASSERT_TRUE(output.ok());
+}  // CudaAsyncNestorTeardown
+#endif  // VMECPP_USE_CUDA
