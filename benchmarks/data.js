@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782397913187,
+  "lastUpdate": 1782504379605,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -19507,6 +19507,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.03357487042217048",
             "extra": "mean: 9.177247738333335 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b25cfdde81133d5420f7e87744f0b392952d5861",
+          "message": "Make the lambda Fourier resolution independent of the geometry (#598)\n\n* Make the lambda Fourier resolution independent of the geometry\n\nAdd optional mpol_geometry / ntor_geometry inputs that cap the geometry\n(R, Z) resolution below the working mpol / ntor while lambda keeps the\nfull resolution. Unset (the default), or equal to mpol / ntor, they are\na no-op.\n\nThe working resolution stays mpol / ntor, so the arrays, transforms, and\nthe lambda spectrum are unchanged. The geometry is held below the cap by\nzeroing its spectral force above the cap each iteration, before the\ninvariant residual and the preconditioner, and by re-masking the geometry\nstate at the top of the iteration so a bad-Jacobian axis re-guess cannot\nreintroduce high modes. The boundary is zero-padded to mpol / ntor on\ninput, so the capped modes start at zero and stay there.\n\n* Re-run CI",
+          "timestamp": "2026-06-26T22:01:27+02:00",
+          "tree_id": "797b573c496ca778c519d25d96e62b0c37626d56",
+          "url": "https://github.com/proximafusion/vmecpp/commit/b25cfdde81133d5420f7e87744f0b392952d5861"
+        },
+        "date": 1782504377852,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.6231971408078913,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003002333213148045",
+            "extra": "mean: 381.2142001999973 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.601215698550468,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0072509287503043215",
+            "extra": "mean: 384.43563159996756 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2683390609070025,
+            "unit": "iter/sec",
+            "range": "stddev: 0.017788797424485064",
+            "extra": "mean: 3.726628529666679 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.589879175650127,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003664069936210464",
+            "extra": "mean: 1.6952624220000037 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.5659363481387231,
+            "unit": "iter/sec",
+            "range": "stddev: 0.007434967535933191",
+            "extra": "mean: 1.7669831656666777 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.4812893479038888,
+            "unit": "iter/sec",
+            "range": "stddev: 0.028291826701359737",
+            "extra": "mean: 2.0777521969999952 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10787338687985064,
+            "unit": "iter/sec",
+            "range": "stddev: 0.018571842823528115",
+            "extra": "mean: 9.270127034333314 sec\nrounds: 3"
           }
         ]
       }
