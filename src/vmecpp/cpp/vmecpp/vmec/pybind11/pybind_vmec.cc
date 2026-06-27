@@ -275,7 +275,7 @@ class VmecModel {
 
   // Freeze/unfreeze the constraint-force multiplier tcon. Freezing makes the
   // raw force a function of the state alone, consistent with the exact HVP.
-  void SetFreezeConstraintMultiplier(bool freeze) {
+  void SetFreezeConstraintMultiplier(bool freeze) const {
     vmec_->m_[0]->setFreezeConstraintMultiplier(freeze);
   }
 

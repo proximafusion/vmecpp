@@ -164,7 +164,7 @@ class IdealMhdModel {
   // linear forward transform and preconditioner decomposition to obtain the
   // decomposed force tangent in m_decomposed_hv. The constraint multiplier tcon
   // is held frozen; freeze it in the raw force too
-  // (freeze_constraint_multiplier) for an exactly consistent Jacobian. Used by
+  // (freeze_constraint_multiplier_) for an exactly consistent Jacobian. Used by
   // the exact internal Newton-Krylov Hessian-vector product.
   void applyExactForceJacobian(const double* geomP, const double* dgeom,
                                int geom_stride, FourierForces& m_physical_f,
@@ -192,7 +192,7 @@ class IdealMhdModel {
 
   // Freeze/unfreeze the constraint-force multiplier tcon (see the member).
   void setFreezeConstraintMultiplier(bool freeze) {
-    freeze_constraint_multiplier = freeze;
+    freeze_constraint_multiplier_ = freeze;
   }
 
   // Reverse-mode force-density cotangent: J_g^T applied to the force-density
@@ -517,7 +517,7 @@ class IdealMhdModel {
   // freezing it in the raw force too keeps the force and its exact HVP a
   // consistent function of the state -- the residual a Newton solver drives and
   // the Jacobian it linearizes with then match.
-  bool freeze_constraint_multiplier = false;
+  bool freeze_constraint_multiplier_ = false;
 
   // [mnsize] minimum flux surface index for which to apply radial
   // preconditioner for R and Z
