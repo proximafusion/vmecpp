@@ -82,7 +82,17 @@ cc_test(
 cc_library(
     name = "ideal_mhd_model",
     srcs = ["ideal_mhd_model.cc"],
-    hdrs = ["ideal_mhd_model.h", "dft_data.h"],
+    # The shared force-chain kernels and the autodiff composition/JVP header are
+    # header-only and included by ideal_mhd_model.cc; declare whatever exists on
+    # this branch so the bazel sandbox can see them. The Enzyme JVP entry point
+    # (exact_force_jvp.cc) is built only by the CMake VMECPP_ENABLE_ENZYME path,
+    # not by bazel; its use in ideal_mhd_model.cc is guarded by that define.
+    hdrs = ["ideal_mhd_model.h", "dft_data.h"] + glob([
+        "*_kernel.h",
+        "local_force_composition.h",
+        "exact_force_jvp.h",
+        "exact_force_vjp.h",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":dft_toroidal",
