@@ -2016,6 +2016,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 #else
         if (fc_.fsqr <= fc_.ftolv && fc_.fsqz <= fc_.ftolv &&
             fc_.fsql <= fc_.ftolv) {
+          // converged to desired tolerance
           m_liter_flag = false;
           status_ = VmecStatus::SUCCESSFUL_TERMINATION;
         }

@@ -39,28 +39,23 @@ RestartReason RestartReasonFromInt(int restart_reason) {
   }
 }
 
-// Resolves the effective thread count for the iteration's parallel regions.
-// When the caller passes std::nullopt, the routine returns the OpenMP
-// runtime's reported maximum, or one when the binary was built without
-// OpenMP support. When the caller passes an explicit count, the routine
-// validates that the value is at least one, invokes omp_set_num_threads
-// to size the OpenMP thread pool immediately, and returns the supplied
-// value. The eager call to omp_set_num_threads prevents the OpenMP
-// runtime from spawning a hardware-count number of spin-waiting workers
-// at the program's first parallel region; without it, the runtime
-// over-provisions the pool relative to the count that will ultimately be
-// used after the first multigrid stage narrows it.
 int get_max_threads(std::optional<int> max_threads) {
   if (max_threads == std::nullopt) {
 #ifdef _OPENMP
     return omp_get_max_threads();
 #endif  // _OPENMP
+    // Default to 1 thread if OpenMP is not available
     return 1;
   }
   CHECK_GT(max_threads.value(), 0)
       << "The number of threads must be >=1. "
          "To automatically use all available threads, pass std::nullopt";
 #ifdef _OPENMP
+  // Size the thread pool immediately so spin-waiting threads are not created
+  // for cores that will never be used. Without this, omp_get_max_threads()
+  // returns the hardware count and the runtime may spawn that many threads
+  // before vmec_adjust_num_threads narrows the count at the first multigrid
+  // step.
   omp_set_num_threads(max_threads.value());
 #endif  // _OPENMP
   return max_threads.value();
@@ -86,6 +81,7 @@ int get_max_threads(std::optional<int> max_threads) {
 FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
                          std::optional<int> max_threads)
     : lfreeb(lfreeb), max_threads_(get_max_threads(max_threads)) {
+  // INITIALIZE PARAMETERS
   fsq = 1.0;
   fsqr = 1.0;
   fsqz = 1.0;
