@@ -18,12 +18,16 @@ This module wires that residual to several solvers and is shared by the
 benchmark ``main`` below and by the tests:
 
 * preconditioned descent (VMEC's own update direction),
-* Jacobian-free Newton-Krylov, plain and preconditioned, and
-* a true Newton-Krylov driven by VMEC++'s own Hessian-vector product.
+* Jacobian-free Newton-Krylov, plain and preconditioned,
+* a true Newton-Krylov driven by VMEC++'s own Hessian-vector product (finite-
+  difference or exact autodiff), and
+* pseudo-transient continuation (``solve_newton_ptc``) with the exact HVP, which
+  is the robust choice on stiff 3D stellarators where stock Newton-Krylov stalls.
 
-All converge to the same equilibrium as the native solver. Force evaluations are
-counted inside VMEC++ (``force_eval_count``) so the comparison is fair across
-methods, including the evaluations hidden in Hessian-vector products.
+On benign cases all converge to the native solver's equilibrium; on stiff cases
+(e.g. cma) only the pseudo-transient solver does. Force evaluations are counted
+inside VMEC++ (``force_eval_count``) so the comparison is fair across methods,
+including the evaluations hidden in Hessian-vector products.
 """
 
 from __future__ import annotations
@@ -284,6 +288,62 @@ def solve_newton_exact_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton
             break
         x = x + alpha * dx
     return _finish(model, "Newton (exact autodiff HVP + M^-1)", x, it, t0)
+
+
+def solve_newton_ptc(
+    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, dt0=1.0, max_it=120, inner=1e-2
+):
+    """Pseudo-transient continuation (Psi-tc) with the exact autodiff HVP.
+
+    Each step solves (H + I/dt) dx = -F with GMRES preconditioned by M^-1, then
+    grows the pseudo-time step by switched evolution relaxation, dt = dt0 *
+    ||F0||/||F||. The I/dt shift is implicit-Euler damping at large residual --
+    the same physics as VMEC's damped descent -- and also regularizes the
+    indefinite, ill-conditioned augmented-Lagrangian Hessian that defeats a plain
+    Newton-Krylov, so this is the robust choice on stiff stellarators (e.g. cma)
+    where stock scipy root-finders stall or diverge. As ||F|| -> 0 the shift
+    vanishes and it becomes the exact Newton step. Needs an Enzyme-enabled build.
+    """
+    model = make_model(input_path, ns)
+    model.evaluate(2, 2, True)
+    model.set_freeze_constraint_multiplier(True)
+    F = residual(model)
+    x = np.asarray(model.get_state(), float).copy()
+    n_dof = x.size
+    model.reset_force_eval_count()
+    t0 = time.perf_counter()
+    f = F(x)
+    norm0 = np.linalg.norm(f)
+    dt = dt0
+    it = 0
+    for _ in range(max_it):
+        nf = np.linalg.norm(f)
+        if nf < tol:
+            break
+        it += 1
+        model.set_state(np.ascontiguousarray(x))
+        model.evaluate(2, 2, True)
+        shift = 1.0 / dt
+        a_op = LinearOperator(  # type: ignore[call-overload]
+            (n_dof, n_dof),
+            matvec=lambda v, s=shift: (
+                np.asarray(  # type: ignore[call-overload]
+                    model.exact_hessian_vector_product(np.ascontiguousarray(v)), float
+                )
+                + s * v
+            ),
+        )
+        m_op = LinearOperator(  # type: ignore[call-overload]
+            (n_dof, n_dof),
+            matvec=lambda b: np.asarray(  # type: ignore[call-overload]
+                model.apply_preconditioner(np.ascontiguousarray(b)), float
+            ),
+        )
+        dx, _ = lgmres(a_op, -f, M=m_op, rtol=inner, maxiter=60)
+        x = x + dx
+        f = F(x)
+        dt = min(dt0 * norm0 / max(np.linalg.norm(f), 1e-300), 1e6)
+    return _finish(model, "PTC (exact HVP, I/dt + M^-1)", x, it, t0)
 
 
 ALL_SOLVERS = (

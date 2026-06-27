@@ -24,6 +24,7 @@ from external_optimizers import (  # type: ignore
     solve_newton_hvp,
     solve_newton_krylov,
     solve_newton_krylov_preconditioned,
+    solve_newton_ptc,
     solve_preconditioned_descent,
 )
 
@@ -96,3 +97,17 @@ def test_cma_cold_start_exercises_non_axisymmetric_paths():
     hv = np.asarray(model.hessian_vector_product(np.ascontiguousarray(v)), float)
     assert np.all(np.isfinite(hv))
     assert np.linalg.norm(hv) > 0.0
+
+
+def test_ptc_exact_hvp_converges_stiff_3d_case():
+    # cma is a stiff 3D stellarator (no shipped axis, ill-conditioned augmented
+    # Hessian) where stock Newton-Krylov stalls or fails. Pseudo-transient
+    # continuation with the exact autodiff HVP (consistent once tcon is frozen)
+    # drives the residual to zero and recovers the native solver's energy.
+    model = make_model(CMA, ns=25)
+    if not hasattr(model, "exact_hessian_vector_product"):
+        pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
+    _, w_star = reference_equilibrium(CMA, ns=25)
+    _, result = solve_newton_ptc(CMA, ns=25)
+    assert result.residual_norm < 1e-7
+    assert abs(result.energy - w_star) < 1e-6
