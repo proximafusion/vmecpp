@@ -16,14 +16,14 @@
 
 namespace vmecpp {
 
-// Composition of the local force-density chain (MHD force + hybrid lambda
-// force) as a single allocation-free map g: real-space geometry -> real-space
-// force density. This is the nonlinear core of VMEC's force; the spectral
-// transforms around it are linear and applied separately. Shared between the
-// Enzyme autodiff validation and the exact Hessian-vector product. The
-// spectral- condensation constraint force is handled by the caller (it carries
-// a linear Fourier bandpass), so g here is the MHD-plus-lambda part of the
-// force.
+// Composition of the local force-density chain as a single allocation-free map
+// g: real-space geometry -> real-space force density. This is the nonlinear
+// core of VMEC's force; the spectral transforms around it are linear and
+// applied separately. Shared between the Enzyme autodiff validation and the
+// exact Hessian-vector product. Covers the MHD force and the hybrid lambda
+// force; when with_constraint is set it also computes the spectral-condensation
+// constraint force (effective force, Fourier bandpass, assembly into the R/Z
+// force), holding the multiplier tcon frozen.
 //
 // Geometry layout (each block GeomStride doubles, index (jF-nsMinF1)*nZnT):
 //   r1_e r1_o z1_e z1_o ru_e ru_o zu_e zu_o rv_e rv_o zv_e zv_o lu_e lu_o lv_e
@@ -60,7 +60,9 @@ struct LocalForceComposition {
   // Spectral-condensation constraint force. Enabled only when with_constraint
   // is set; then geometry blocks 16-19 hold rCon, zCon, ruFull, zuFull and
   // force blocks 16-19 receive frcon_e/o, fzcon_e/o. The bandpass uses the
-  // Fourier basis arrays and the tcon/faccon profiles; rCon0/zCon0 are frozen.
+  // Fourier basis arrays and the tcon/faccon profiles. rCon0/zCon0 are
+  // recomputed in place from the live geometry (so they are differentiated);
+  // tcon is held frozen (see freeze_constraint_multiplier).
   bool with_constraint = false;
   int nsMaxF = 0;  // constraint RZ range upper bound
   int nZeta = 0, nThetaReduced = 0, mpol = 0, ntor = 0, nnyq2 = 0;

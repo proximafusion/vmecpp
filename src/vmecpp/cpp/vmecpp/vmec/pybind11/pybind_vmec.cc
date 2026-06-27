@@ -274,6 +274,12 @@ class VmecModel {
   long force_eval_count() const { return force_eval_count_; }
   void reset_force_eval_count() { force_eval_count_ = 0; }
 
+  // Freeze/unfreeze the constraint-force multiplier tcon. Freezing makes the
+  // raw force a function of the state alone, consistent with the exact HVP.
+  void SetFreezeConstraintMultiplier(bool freeze) {
+    vmec_->m_[0]->setFreezeConstraintMultiplier(freeze);
+  }
+
   // The Garabedian-style time step (PerformTimeStep): for each Fourier
   // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
   void PerformTimeStep(double velocity_scale, double conjugation_parameter,
@@ -432,12 +438,16 @@ class VmecModel {
 
 #ifdef VMECPP_ENABLE_ENZYME
   // Exact Hessian-vector product H v = T^T J_g T v of the augmented
-  // functional's MHD-plus-lambda part, computed with one Enzyme forward pass
-  // through the local force-density composition (J_g) wrapped by the linear
-  // spectral transforms. The geometry tangent T v is obtained exactly from the
-  // linearity of geometryFromFourier: T v = geom(x+v) - geom(x), so no
-  // finite-difference step enters. The constraint force (a linear bandpass over
-  // a nonlinear product) is omitted here. The model state is restored to x on
+  // functional, computed with one Enzyme forward pass through the local
+  // force-density composition (J_g) wrapped by the linear spectral transforms.
+  // J_g covers the MHD force, the hybrid lambda force, and the spectral-
+  // condensation constraint force (effective force, Fourier bandpass and
+  // assembly). The geometry tangent T v is obtained exactly from the linearity
+  // of geometryFromFourier: T v = geom(x+v) - geom(x), so no finite-difference
+  // step enters. The constraint multiplier tcon is held frozen (it depends on
+  // the preconditioner diagonal, not just the geometry); for an exactly
+  // consistent Jacobian, freeze it in the raw force too via
+  // set_freeze_constraint_multiplier(True). The model state is restored to x on
   // return.
   Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd& v) {
     vmecpp::IdealMhdModel& model = *vmec_->m_[0];
@@ -1740,6 +1750,8 @@ PYBIND11_MODULE(_vmecpp, m) {
 #endif  // VMECPP_ENABLE_ENZYME
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
+      .def("set_freeze_constraint_multiplier",
+           &VmecModel::SetFreezeConstraintMultiplier, py::arg("freeze"))
       .def_property_readonly("fsqr", &VmecModel::fsqr)
       .def_property_readonly("fsqz", &VmecModel::fsqz)
       .def_property_readonly("fsql", &VmecModel::fsql)

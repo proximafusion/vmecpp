@@ -1930,6 +1930,12 @@ void IdealMhdModel::computePreconditioningMatrix(
  * Note that this needs to have the radial preconditioner updated.
  */
 absl::Status IdealMhdModel::constraintForceMultiplier() {
+  // Freeze: reuse the existing tcon so the raw force is a function of the state
+  // alone, matching the exact HVP (which freezes tcon). Requires a prior
+  // unfrozen evaluation to have populated tcon.
+  if (freeze_constraint_multiplier) {
+    return absl::OkStatus();
+  }
   // tcon
 
   // TODO(jons): some parabola in ns,
