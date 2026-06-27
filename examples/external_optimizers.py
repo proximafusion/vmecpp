@@ -234,6 +234,13 @@ def solve_newton_exact_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton
     dominates wall-clock (each matvec is cheap but there are many).
     """
     model = make_model(input_path, ns)
+    # The exact HVP freezes the constraint multiplier tcon (it depends on the
+    # preconditioner, not just the geometry). Freeze it in the raw force too so
+    # the residual and its exact Jacobian are one consistent map; otherwise the
+    # HVP drifts from the force on stellarators where the constraint force is
+    # significant. The unfrozen evaluation here populates tcon before freezing.
+    model.evaluate(2, 2, True)
+    model.set_freeze_constraint_multiplier(True)
     F = residual(model)
     x = np.asarray(model.get_state(), float).copy()
     n_dof = x.size
