@@ -20,6 +20,7 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/vmec/ideal_mhd_model/qs_harmonics_kernel.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
@@ -41,24 +42,24 @@ namespace {
 //
 // Use as: def_eigen_property(pywrapperclass, "rmnc", &WOutFileContents::rmnc);
 template <typename PywrapperClass, typename EigenMatrix, typename Class>
-void DefEigenProperty(PywrapperClass &pywrapper, const std::string &name,
-                      EigenMatrix Class::*member_ptr) {
+void DefEigenProperty(PywrapperClass& pywrapper, const std::string& name,
+                      EigenMatrix Class::* member_ptr) {
   static_assert(std::is_same_v<EigenMatrix, vmecpp::RowMatrixXd> ||
                 std::is_same_v<EigenMatrix, Eigen::VectorXd> ||
                 std::is_same_v<EigenMatrix, Eigen::VectorXi>);
   // similar to what pybind11's def_readwrite does, but returning a non-const
   // value from the getter
-  auto getter = [member_ptr](Class &obj) -> EigenMatrix & {
+  auto getter = [member_ptr](Class& obj) -> EigenMatrix& {
     return obj.*member_ptr;
   };
-  auto setter = [member_ptr](Class &obj, const EigenMatrix &val) {
+  auto setter = [member_ptr](Class& obj, const EigenMatrix& val) {
     obj.*member_ptr = val;
   };
   pywrapper.def_property(name.c_str(), getter, setter);
 }
 
 template <typename T>
-T &GetValueOrThrow(absl::StatusOr<T> &s) {
+T& GetValueOrThrow(absl::StatusOr<T>& s) {
   if (!s.ok()) {
     // Could handle more exceptions, but only some are translated to meaningful
     // python exception types.
@@ -73,7 +74,7 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
 }
 
 vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
-                                            const vmecpp::VmecINDATA &indata) {
+                                            const vmecpp::VmecINDATA& indata) {
   return vmecpp::HotRestartState(std::move(wout), indata);
 }
 
@@ -81,8 +82,8 @@ vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
 // fixed canonical order set by (lthreed, lasym). Used to (un)flatten the VMEC++
 // decision vector for Python. FourierForces shares the same underlying
 // FourierCoeffs storage layout, so the same ordering applies.
-std::vector<std::span<double>> ActiveSpans(vmecpp::FourierGeometry &x,
-                                           const vmecpp::Sizes &s) {
+std::vector<std::span<double>> ActiveSpans(vmecpp::FourierGeometry& x,
+                                           const vmecpp::Sizes& s) {
   std::vector<std::span<double>> out = {x.rmncc};
   if (s.lthreed) out.push_back(x.rmnss);
   if (s.lasym) out.push_back(x.rmnsc);
@@ -98,8 +99,8 @@ std::vector<std::span<double>> ActiveSpans(vmecpp::FourierGeometry &x,
   return out;
 }
 
-std::vector<std::span<double>> ActiveSpans(vmecpp::FourierForces &x,
-                                           const vmecpp::Sizes &s) {
+std::vector<std::span<double>> ActiveSpans(vmecpp::FourierForces& x,
+                                           const vmecpp::Sizes& s) {
   std::vector<std::span<double>> out = {x.frcc};
   if (s.lthreed) out.push_back(x.frss);
   if (s.lasym) out.push_back(x.frsc);
@@ -116,13 +117,13 @@ std::vector<std::span<double>> ActiveSpans(vmecpp::FourierForces &x,
 }
 
 template <typename FourierObject>
-Eigen::VectorXd FlattenActive(FourierObject &x, const vmecpp::Sizes &s) {
+Eigen::VectorXd FlattenActive(FourierObject& x, const vmecpp::Sizes& s) {
   const std::vector<std::span<double>> spans = ActiveSpans(x, s);
   Eigen::Index total = 0;
-  for (const auto &sp : spans) total += static_cast<Eigen::Index>(sp.size());
+  for (const auto& sp : spans) total += static_cast<Eigen::Index>(sp.size());
   Eigen::VectorXd out(total);
   Eigen::Index offset = 0;
-  for (const auto &sp : spans) {
+  for (const auto& sp : spans) {
     const Eigen::Index n = static_cast<Eigen::Index>(sp.size());
     out.segment(offset, n) = Eigen::Map<const Eigen::VectorXd>(sp.data(), n);
     offset += n;
@@ -131,11 +132,11 @@ Eigen::VectorXd FlattenActive(FourierObject &x, const vmecpp::Sizes &s) {
 }
 
 template <typename FourierObject>
-void UnflattenActive(FourierObject &m_x, const vmecpp::Sizes &s,
-                     const Eigen::VectorXd &flat) {
+void UnflattenActive(FourierObject& m_x, const vmecpp::Sizes& s,
+                     const Eigen::VectorXd& flat) {
   const std::vector<std::span<double>> spans = ActiveSpans(m_x, s);
   Eigen::Index total = 0;
-  for (const auto &sp : spans) total += static_cast<Eigen::Index>(sp.size());
+  for (const auto& sp : spans) total += static_cast<Eigen::Index>(sp.size());
   if (flat.size() != total) {
     throw std::runtime_error(
         "VmecModel.set_state: state vector has wrong length (got " +
@@ -143,7 +144,7 @@ void UnflattenActive(FourierObject &m_x, const vmecpp::Sizes &s,
         ")");
   }
   Eigen::Index offset = 0;
-  for (auto &sp : spans) {
+  for (auto& sp : spans) {
     const Eigen::Index n = static_cast<Eigen::Index>(sp.size());
     Eigen::Map<Eigen::VectorXd>(sp.data(), n) = flat.segment(offset, n);
     offset += n;
@@ -167,8 +168,8 @@ class VmecModel {
   // (the inner solve VMEC++ performs at one multi-grid step). The Python loop
   // owns the multi-grid sequencing.
   static std::unique_ptr<VmecModel> Create(
-      const VmecINDATA &indata, int ns,
-      const std::optional<vmecpp::HotRestartState> &initial_state) {
+      const VmecINDATA& indata, int ns,
+      const std::optional<vmecpp::HotRestartState>& initial_state) {
     auto vmec_or = vmecpp::Vmec::FromIndata(
         indata, /*magnetic_response_table=*/nullptr, /*max_threads=*/1,
         vmecpp::OutputMode::kSilent);
@@ -176,7 +177,7 @@ class VmecModel {
       throw std::runtime_error(std::string(vmec_or.status().message()));
     }
     auto model = std::make_unique<VmecModel>(std::move(vmec_or.value()));
-    vmecpp::Vmec &v = *model->vmec_;
+    vmecpp::Vmec& v = *model->vmec_;
 
     // Mirror the per-multi-grid-step setup that Vmec::run performs before
     // SolveEquilibrium (vmec.cc), for a single ns value.
@@ -187,7 +188,7 @@ class VmecModel {
 
     // ftol/niter for this resolution: use the ns_array entry matching ns, else
     // the last entry of the arrays.
-    const Eigen::VectorXi &ns_array = v.indata_.ns_array;
+    const Eigen::VectorXi& ns_array = v.indata_.ns_array;
     int idx = static_cast<int>(ns_array.size()) - 1;
     for (int i = 0; i < ns_array.size(); ++i) {
       if (ns_array[i] == ns) {
@@ -217,9 +218,23 @@ class VmecModel {
   // decision vector. This is the body of Vmec::UpdateForwardModel with
   // caller-supplied counters; for free-boundary runs the caller should react to
   // `need_restart` (a vacuum-activation restart).
-  void Evaluate(int iter1, int iter2) {
+  // When precondition is true (default) this runs the full forward model and
+  // leaves decomposed_f holding the preconditioned search direction, exactly as
+  // the native solver uses it. When false, the forward model returns at the
+  // INVARIANT_RESIDUALS checkpoint (vmec.cc line ~836), so decomposed_f holds
+  // the raw, unpreconditioned force: the gradient of VMEC's augmented
+  // Lagrangian with respect to the (decomposed) state, including the
+  // lambda-constraint components. That raw gradient is what gradient-based
+  // optimizers minimizing the MHD energy functional need; mhd_energy is already
+  // set earlier in update(), so it is valid at the checkpoint too.
+  void Evaluate(int iter1, int iter2, bool precondition = true) {
+    ++force_eval_count_;
     bool need_restart = false;
     std::string error_message;
+    const vmecpp::VmecCheckpoint checkpoint =
+        precondition ? vmecpp::VmecCheckpoint::NONE
+                     : vmecpp::VmecCheckpoint::INVARIANT_RESIDUALS;
+    const int checkpoint_after = precondition ? INT_MAX : 0;
     // Clear the restart reason before evaluating the forward model, exactly as
     // Vmec::Evolve does at its start (vmec.cc): the forward model only *sets* a
     // reason (BAD_JACOBIAN when the Jacobian flips, HUGE_INITIAL_FORCES at
@@ -240,7 +255,7 @@ class VmecModel {
           *vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
           *vmec_->decomposed_f_[0], *vmec_->physical_f_[0], need_restart,
           last_preconditioner_update_, last_full_update_nestor_, vmec_->fc_,
-          iter1, iter2, vmecpp::VmecCheckpoint::NONE, INT_MAX,
+          iter1, iter2, checkpoint, checkpoint_after,
           /*verbose=*/false);
       if (!s.ok()) {
         error_message = std::string(s.status().message());
@@ -252,6 +267,18 @@ class VmecModel {
     last_need_restart_ = need_restart;
   }
   bool need_restart() const { return last_need_restart_; }
+
+  // Total forward-model (force) evaluations since construction or the last
+  // reset. Counts every Evaluate, including those inside hessian_vector_product
+  // and preconditioner assembly, for a fair cross-optimizer cost comparison.
+  long force_eval_count() const { return force_eval_count_; }
+  void reset_force_eval_count() { force_eval_count_ = 0; }
+
+  // Freeze/unfreeze the constraint-force multiplier tcon. Freezing makes the
+  // raw force a function of the state alone, consistent with the exact HVP.
+  void SetFreezeConstraintMultiplier(bool freeze) const {
+    vmec_->m_[0]->setFreezeConstraintMultiplier(freeze);
+  }
 
   // The Garabedian-style time step (PerformTimeStep): for each Fourier
   // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
@@ -319,7 +346,7 @@ class VmecModel {
   // the coarse->fine ramp from Python. `new_ns` must be finer than the current
   // ns (multi-grid only refines).
   void RefineTo(int new_ns) {
-    vmecpp::Vmec &v = *vmec_;
+    vmecpp::Vmec& v = *vmec_;
     if (new_ns <= v.fc_.ns) {
       throw std::runtime_error("VmecModel.refine_to: new_ns (" +
                                std::to_string(new_ns) +
@@ -335,7 +362,7 @@ class VmecModel {
 
     // ftol/niter for the new resolution: the ns_array entry matching new_ns,
     // else the last entry (mirrors Create()).
-    const Eigen::VectorXi &ns_array = v.indata_.ns_array;
+    const Eigen::VectorXi& ns_array = v.indata_.ns_array;
     int idx = static_cast<int>(ns_array.size()) - 1;
     for (int i = 0; i < ns_array.size(); ++i) {
       if (ns_array[i] == new_ns) {
@@ -373,12 +400,306 @@ class VmecModel {
   Eigen::VectorXd GetState() const {
     return FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
   }
-  void SetState(const Eigen::VectorXd &flat) const {
+  void SetState(const Eigen::VectorXd& flat) const {
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
+    exact_primal_valid_ = false;  // primal geometry cache is stale
   }
   // Flat force vector (decomposed/preconditioned), valid after Evaluate().
   Eigen::VectorXd GetForces() const {
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+  }
+
+  // Hessian-vector product of VMEC's augmented functional, computed inside
+  // VMEC++ by a central directional derivative of the analytic force (which is
+  // the gradient): H v = (F(x + eps v) - F(x - eps v)) / (2 eps), in the
+  // decomposed internal basis. This is the matrix-free Hessian information an
+  // internal or external Newton-Krylov solver needs; F itself is exact, so only
+  // the directional step is finite-differenced. The current state is restored.
+  Eigen::VectorXd HessianVectorProduct(const Eigen::VectorXd& v,
+                                       double eps_rel = 1e-7) {
+    const Eigen::VectorXd x =
+        FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const double vnorm = v.norm();
+    if (vnorm == 0.0) {
+      return Eigen::VectorXd::Zero(x.size());
+    }
+    const double eps = eps_rel * (1.0 + x.norm()) / vnorm;
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + eps * v);
+    Evaluate(2, 2, /*precondition=*/false);
+    const Eigen::VectorXd fp =
+        FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x - eps * v);
+    Evaluate(2, 2, /*precondition=*/false);
+    const Eigen::VectorXd fm =
+        FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
+    return (fp - fm) / (2.0 * eps);
+  }
+
+#ifdef VMECPP_ENABLE_ENZYME
+  // Exact Hessian-vector product H v = T^T J_g T v of the augmented
+  // functional, computed with one Enzyme forward pass through the local
+  // force-density composition (J_g) wrapped by the linear spectral transforms.
+  // J_g covers the MHD force, the hybrid lambda force, and the spectral-
+  // condensation constraint force (effective force, Fourier bandpass and
+  // assembly). The geometry tangent T v is obtained exactly from the linearity
+  // of geometryFromFourier: T v = geom(x+v) - geom(x), so no finite-difference
+  // step enters. The constraint multiplier tcon is held frozen (it depends on
+  // the preconditioner diagonal, not just the geometry); for an exactly
+  // consistent Jacobian, freeze it in the raw force too via
+  // set_freeze_constraint_multiplier(True). The model state is restored to x on
+  // return.
+  Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd& v) {
+    vmecpp::IdealMhdModel& model = *vmec_->m_[0];
+    const int gS = static_cast<int>(model.r1_e.size());
+    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
+    // The primal geometry depends only on the current state, not on v, so cache
+    // it: a Krylov solve calls this many times at the same state. SetState
+    // invalidates the cache. The geometry tangent is the same linear pre-chain
+    // applied to v directly (exact, no finite difference, no full update); the
+    // single nonlinear step is the Enzyme JVP inside applyExactForceJacobian.
+    if (!exact_primal_valid_ ||
+        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
+      exact_primal_.setZero(20 * gS);
+      model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                         exact_primal_.data(), gS, /*primal=*/true);
+      exact_primal_valid_ = true;
+    }
+    vmec_->physical_x_backup_[0]->setZero();
+    UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, v);
+    model.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
+                       dgeom.data(), gS, /*primal=*/false);
+    model.applyExactForceJacobian(exact_primal_.data(), dgeom.data(), gS,
+                                  *vmec_->physical_f_[0],
+                                  *vmec_->decomposed_f_[0]);
+    return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+  }
+
+  // Transpose of the exact Hessian-vector product: H^T w, in the decomposed
+  // internal basis. The force Jacobian is non-symmetric (VMEC's force is a
+  // scaled gradient), so the adjoint boundary gradient needs H^T, not H. Uses
+  // the same cached primal geometry as ExactHessianVectorProduct.
+  Eigen::VectorXd ExactHessianVectorProductTranspose(const Eigen::VectorXd& w) {
+    vmecpp::IdealMhdModel& model = *vmec_->m_[0];
+    const int gS = static_cast<int>(model.r1_e.size());
+    if (!exact_primal_valid_ ||
+        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
+      exact_primal_.setZero(20 * gS);
+      model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                         exact_primal_.data(), gS, /*primal=*/true);
+      exact_primal_valid_ = true;
+    }
+    vmec_->decomposed_f_[0]->setZero();
+    UnflattenActive(*vmec_->decomposed_f_[0], vmec_->s_, w);
+    vmec_->physical_x_backup_[0]->setZero();
+    model.applyExactForceJacobianTranspose(
+        exact_primal_.data(), gS, *vmec_->decomposed_f_[0],
+        *vmec_->physical_f_[0], *vmec_->physical_x_[0],
+        *vmec_->physical_x_backup_[0]);
+    return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
+  }
+
+  // Diagnostic: max |composed force density - production force density| at the
+  // current state. Zero confirms the flat-buffer composition reproduces the
+  // production force density; a nonzero value localizes a composition bug.
+  double ComposedForceResidual() {
+    vmecpp::IdealMhdModel& model = *vmec_->m_[0];
+    const Eigen::VectorXd x =
+        FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const int gS = static_cast<int>(model.r1_e.size());
+    Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
+    auto blk = [&](int b, const Eigen::VectorXd& src) {
+      for (int i = 0; i < static_cast<int>(src.size()); ++i)
+        geomP[b * gS + i] = src[i];
+    };
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
+    Evaluate(2, 2, false);
+    blk(0, model.r1_e);
+    blk(1, model.r1_o);
+    blk(2, model.z1_e);
+    blk(3, model.z1_o);
+    blk(4, model.ru_e);
+    blk(5, model.ru_o);
+    blk(6, model.zu_e);
+    blk(7, model.zu_o);
+    blk(8, model.rv_e);
+    blk(9, model.rv_o);
+    blk(10, model.zv_e);
+    blk(11, model.zv_o);
+    blk(12, model.lu_e);
+    blk(13, model.lu_o);
+    blk(14, model.lv_e);
+    blk(15, model.lv_o);
+    blk(16, model.rCon);
+    blk(17, model.zCon);
+    blk(18, model.ruFull);
+    blk(19, model.zuFull);
+    return model.composedForceResidual(geomP.data(), gS);
+  }
+
+  // Diagnostic: relative difference between the Enzyme force-density tangent
+  // and a finite-difference force-density tangent (both in real space, before
+  // the spectral transform). Isolates the JVP + geometry tangent from the
+  // transform wrapping. Returns (per-block max-rel, overall-rel) so a nonzero
+  // block localizes the discrepancy.
+  std::pair<std::vector<double>, double> ForceDensityJvpResidual(
+      const Eigen::VectorXd& v) {
+    vmecpp::IdealMhdModel& M = *vmec_->m_[0];
+    const int nForce = static_cast<int>(M.blmn_e.size());
+    const int gS = static_cast<int>(M.r1_e.size());
+    const Eigen::VectorXd x =
+        FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    auto packGeom = [&](Eigen::VectorXd& dst) {
+      auto blk = [&](int b, const Eigen::VectorXd& s) {
+        for (int i = 0; i < static_cast<int>(s.size()); ++i)
+          dst[b * gS + i] = s[i];
+      };
+      blk(0, M.r1_e);
+      blk(1, M.r1_o);
+      blk(2, M.z1_e);
+      blk(3, M.z1_o);
+      blk(4, M.ru_e);
+      blk(5, M.ru_o);
+      blk(6, M.zu_e);
+      blk(7, M.zu_o);
+      blk(8, M.rv_e);
+      blk(9, M.rv_o);
+      blk(10, M.zv_e);
+      blk(11, M.zv_o);
+      blk(12, M.lu_e);
+      blk(13, M.lu_o);
+      blk(14, M.lv_e);
+      blk(15, M.lv_o);
+      blk(16, M.rCon);
+      blk(17, M.zCon);
+      blk(18, M.ruFull);
+      blk(19, M.zuFull);
+    };
+    auto packForce = [&](Eigen::VectorXd& dst) {
+      auto blk = [&](int b, const Eigen::VectorXd& s) {
+        for (int i = 0; i < static_cast<int>(s.size()); ++i)
+          dst[b * nForce + i] = s[i];
+      };
+      blk(0, M.armn_e);
+      blk(1, M.armn_o);
+      blk(2, M.azmn_e);
+      blk(3, M.azmn_o);
+      blk(4, M.brmn_e);
+      blk(5, M.brmn_o);
+      blk(6, M.bzmn_e);
+      blk(7, M.bzmn_o);
+      blk(8, M.crmn_e);
+      blk(9, M.crmn_o);
+      blk(10, M.czmn_e);
+      blk(11, M.czmn_o);
+      blk(12, M.blmn_e);
+      blk(13, M.blmn_o);
+      blk(14, M.clmn_e);
+      blk(15, M.clmn_o);
+      blk(16, M.frcon_e);
+      blk(17, M.frcon_o);
+      blk(18, M.fzcon_e);
+      blk(19, M.fzcon_o);
+    };
+    const double eps = 1e-6 * (1.0 + x.norm()) / v.norm();
+    Eigen::VectorXd fp = Eigen::VectorXd::Zero(20 * nForce);
+    Eigen::VectorXd fm = Eigen::VectorXd::Zero(20 * nForce);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + eps * v);
+    Evaluate(2, 2, false);
+    packForce(fp);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x - eps * v);
+    Evaluate(2, 2, false);
+    packForce(fm);
+    const Eigen::VectorXd fd = (fp - fm) / (2.0 * eps);
+
+    Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
+    Eigen::VectorXd geomPlus = Eigen::VectorXd::Zero(20 * gS);
+    Eigen::VectorXd geomMinus = Eigen::VectorXd::Zero(20 * gS);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x + eps * v);
+    Evaluate(2, 2, false);
+    packGeom(geomPlus);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x - eps * v);
+    Evaluate(2, 2, false);
+    packGeom(geomMinus);
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
+    Evaluate(2, 2, false);
+    packGeom(geomP);
+    const Eigen::VectorXd dgeom = (geomPlus - geomMinus) / (2.0 * eps);
+    Eigen::VectorXd jvp = Eigen::VectorXd::Zero(20 * nForce);
+    M.exactForceDensityTangent(geomP.data(), dgeom.data(), gS, jvp.data());
+
+    std::vector<double> per_block(20, 0.0);
+    for (int b = 0; b < 20; ++b) {
+      double num = 0.0, den = 1e-300;
+      for (int i = 0; i < nForce; ++i) {
+        const double a = jvp[b * nForce + i];
+        const double f = fd[b * nForce + i];
+        num = std::max(num, std::fabs(a - f));
+        den = std::max(den, std::fabs(f));
+      }
+      per_block[b] = num / den;
+    }
+    const double overall = (jvp - fd).norm() / (fd.norm() + 1e-300);
+    return {per_block, overall};
+  }
+
+  // Primal geometry (20 blocks of gS) at the current state, the linearization
+  // point for the exact force-density kernel.
+  Eigen::VectorXd packExactGeometryPrimal(int gS) {
+    Eigen::VectorXd geomP = Eigen::VectorXd::Zero(20 * gS);
+    vmec_->m_[0]->packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                               geomP.data(), gS, /*primal=*/true);
+    return geomP;
+  }
+
+  // Force-density kernel J_g (20 geometry-block tangent -> 20 force-block
+  // tangent) and its transpose J_g^T, at the current state. For validating the
+  // Enzyme reverse pass via the bilinear identity <J_g x, y> == <x, J_g^T y>.
+  Eigen::VectorXd KernelJvp(const Eigen::VectorXd& dgeom) {
+    vmecpp::IdealMhdModel& M = *vmec_->m_[0];
+    const int nForce = static_cast<int>(M.blmn_e.size());
+    const int gS = static_cast<int>(M.r1_e.size());
+    Eigen::VectorXd geomP = packExactGeometryPrimal(gS);
+    Eigen::VectorXd jvp = Eigen::VectorXd::Zero(20 * nForce);
+    M.exactForceDensityTangent(geomP.data(), dgeom.data(), gS, jvp.data());
+    return jvp;
+  }
+  Eigen::VectorXd KernelVjp(const Eigen::VectorXd& force_bar) {
+    vmecpp::IdealMhdModel& M = *vmec_->m_[0];
+    const int gS = static_cast<int>(M.r1_e.size());
+    Eigen::VectorXd geomP = packExactGeometryPrimal(gS);
+    Eigen::VectorXd vjp = Eigen::VectorXd::Zero(20 * gS);
+    M.exactForceDensityCotangent(geomP.data(), force_bar.data(), gS,
+                                 vjp.data());
+    return vjp;
+  }
+  // (geom-block size gS, force-block size nForce) for the kernel diagnostics.
+  std::pair<int, int> KernelDims() {
+    vmecpp::IdealMhdModel& M = *vmec_->m_[0];
+    return {static_cast<int>(M.r1_e.size()), static_cast<int>(M.blmn_e.size())};
+  }
+#endif  // VMECPP_ENABLE_ENZYME
+
+  // Apply VMEC's preconditioner M^-1 to a vector in the decomposed internal
+  // basis, mirroring the native apply sequence (m=1, radial, lambda). This is
+  // VMEC's hand-built approximate inverse Hessian; gradient-based solvers use
+  // it as the metric (preconditioned Krylov / quasi-Newton, and as the
+  // preconditioner for the Hessian solve in adjoint sensitivities).
+  //
+  // Requires a prior evaluate(precondition=true) at the current state: the
+  // radial preconditioner is assembled inside that forward-model call.
+  Eigen::VectorXd ApplyPreconditioner(const Eigen::VectorXd& v) const {
+    vmecpp::FourierForces tmp(&vmec_->s_, vmec_->r_[0].get(), vmec_->fc_.ns);
+    tmp.setZero();
+    UnflattenActive(tmp, vmec_->s_, v);
+    vmecpp::IdealMhdModel& model = *vmec_->m_[0];
+    model.applyM1Preconditioner(tmp);
+    const absl::Status status = model.applyRZPreconditioner(tmp);
+    if (!status.ok()) {
+      throw std::runtime_error(std::string(status.message()));
+    }
+    model.applyLambdaPreconditioner(tmp);
+    return FlattenActive(tmp, vmec_->s_);
   }
 
   // Residuals (set by Evaluate()): invariant {fsqr,fsqz,fsql} and
@@ -390,6 +711,203 @@ class VmecModel {
   double fsqz1() const { return vmec_->fc_.fsqz1; }
   double fsql1() const { return vmec_->fc_.fsql1; }
   double mhd_energy() const { return vmec_->h_.mhdEnergy; }
+
+  // Half-grid field harmonics SIMSOPT's QuasisymmetryRatioResidual consumes
+  // (gmnc, bmnc, bsub{u,v}mnc, bsup{u,v}mnc), computed from the current state
+  // by the flat-buffer ComputeQsHarmonics kernel (no Eigen heap temporaries).
+  // Call evaluate() first. Each array has shape (mnmax_nyq, nsH).
+  // Fills a QsHarmonicsConfig from the current model/basis (pointers reference
+  // model-owned arrays, valid while the model is). Returns nsH via out-param.
+  vmecpp::QsHarmonicsConfig makeQsConfig(int& nsH) const {
+    vmecpp::IdealMhdModel& m = *vmec_->m_[0];
+    const vmecpp::Sizes& s = vmec_->s_;
+    const vmecpp::FourierBasisFastPoloidal& t = vmec_->t_;
+    nsH = static_cast<int>(m.gsqrt.size()) / s.nZnT;
+    vmecpp::QsHarmonicsConfig c{};
+    c.nsH = nsH;
+    c.nZeta = s.nZeta;
+    c.nThetaReduced = s.nThetaReduced;
+    c.nThetaEff = s.nThetaEff;
+    c.nnyq2 = s.nnyq2;
+    c.mnyq = s.mnyq;
+    c.nnyq = s.nnyq;
+    c.mnmax_nyq = s.mnmax_nyq;
+    c.tmult = 0.5;
+    c.xm_nyq = t.xm_nyq.data();
+    c.xn_nyq = t.xn_nyq.data();
+    c.nfp = s.nfp;
+    c.mscale = t.mscale.data();
+    c.nscale = t.nscale.data();
+    c.cosmui = t.cosmui.data();
+    c.sinmui = t.sinmui.data();
+    c.cosnv = t.cosnv.data();
+    c.sinnv = t.sinnv.data();
+    return c;
+  }
+
+  py::dict qs_harmonics() const {
+    vmecpp::IdealMhdModel& m = *vmec_->m_[0];
+    const vmecpp::Sizes& s = vmec_->s_;
+    const vmecpp::RadialProfiles& rp = *vmec_->p_[0];
+    int nsH;
+    vmecpp::QsHarmonicsConfig c = makeQsConfig(nsH);
+    const int nh = s.mnmax_nyq * nsH;
+    std::vector<double> gmnc(nh), bmnc(nh), bsubumnc(nh), bsubvmnc(nh),
+        bsupumnc(nh), bsupvmnc(nh);
+    vmecpp::ComputeQsHarmonics(m.gsqrt.data(), m.totalPressure.data(),
+                               rp.presH.data(), m.bsupu.data(), m.bsupv.data(),
+                               m.bsubu.data(), m.bsubv.data(), gmnc.data(),
+                               bmnc.data(), bsubumnc.data(), bsubvmnc.data(),
+                               bsupumnc.data(), bsupvmnc.data(), &c);
+    auto arr = [&](const std::vector<double>& v) {
+      return py::array_t<double>(std::vector<py::ssize_t>{s.mnmax_nyq, nsH},
+                                 v.data());
+    };
+    py::dict out;
+    out["gmnc"] = arr(gmnc);
+    out["bmnc"] = arr(bmnc);
+    out["bsubumnc"] = arr(bsubumnc);
+    out["bsubvmnc"] = arr(bsubvmnc);
+    out["bsupumnc"] = arr(bsupumnc);
+    out["bsupvmnc"] = arr(bsupvmnc);
+    // Half-grid profiles SIMSOPT QS also reads (iotas, bvco, buco): plain
+    // radial-profile reads, no transform. Each has length nsH.
+    out["iotas"] =
+        py::array_t<double>(static_cast<py::ssize_t>(nsH), rp.iotaH.data());
+    out["bvco"] =
+        py::array_t<double>(static_cast<py::ssize_t>(nsH), rp.bvcoH.data());
+    out["buco"] =
+        py::array_t<double>(static_cast<py::ssize_t>(nsH), rp.bucoH.data());
+    return out;
+  }
+
+#ifdef VMECPP_ENABLE_ENZYME
+  // Exact dQS/dx (objective-state gradient) for a quasisymmetry objective whose
+  // derivative w.r.t. the QS harmonics is supplied in harm_bar (six
+  // (mnmax_nyq, nsH) blocks: gmnc, bmnc, bsubumnc, bsubvmnc, bsupumnc,
+  // bsupvmnc). Every link is analytic except geometry->fields: the analytic
+  // harmonics adjoint gives the field cotangent, and one Enzyme forward pass
+  // per state DOF gives the field tangent (exactQsFieldTangent); their
+  // contraction is the gradient component. No finite differences. State
+  // restored on return.
+  Eigen::VectorXd ExactQsObjectiveStateGradient(const py::dict& harm_bar) {
+    vmecpp::IdealMhdModel& m = *vmec_->m_[0];
+    const vmecpp::RadialProfiles& rp = *vmec_->p_[0];
+    int nsH;
+    vmecpp::QsHarmonicsConfig c = makeQsConfig(nsH);
+    const int nH = nsH * vmec_->s_.nZnT;
+    const int nh = vmec_->s_.mnmax_nyq * nsH;
+
+    auto block = [&](const char* k) {
+      auto a = harm_bar[k]
+                   .cast<py::array_t<double, py::array::c_style |
+                                                 py::array::forcecast>>();
+      if (static_cast<int>(a.size()) != nh)
+        throw std::runtime_error("qs harm_bar block has wrong size");
+      std::vector<double> v(nh);
+      std::copy(a.data(), a.data() + nh, v.begin());
+      return v;
+    };
+    const std::vector<double> gmnc_b = block("gmnc"), bmnc_b = block("bmnc"),
+                              bsubu_b = block("bsubumnc"),
+                              bsubv_b = block("bsubvmnc"),
+                              bsupu_b = block("bsupumnc"),
+                              bsupv_b = block("bsupvmnc");
+
+    // Analytic harmonics adjoint -> field cotangents (each nH).
+    std::vector<double> gsqrt_bar(nH), tp_bar(nH), bsupu_bar(nH), bsupv_bar(nH),
+        bsubu_bar(nH), bsubv_bar(nH);
+    vmecpp::ComputeQsHarmonicsVjp(
+        gmnc_b.data(), bmnc_b.data(), bsubu_b.data(), bsubv_b.data(),
+        bsupu_b.data(), bsupv_b.data(), m.totalPressure.data(), rp.presH.data(),
+        gsqrt_bar.data(), tp_bar.data(), bsupu_bar.data(), bsupv_bar.data(),
+        bsubu_bar.data(), bsubv_bar.data(), &c);
+
+    const int gS = static_cast<int>(m.r1_e.size());
+    Eigen::VectorXd primal = Eigen::VectorXd::Zero(20 * gS);
+    m.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                   primal.data(), gS, /*primal=*/true);
+
+    const Eigen::VectorXd x =
+        FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const int n = static_cast<int>(x.size());
+    Eigen::VectorXd dj(n);
+    Eigen::VectorXd ei = Eigen::VectorXd::Zero(n);
+    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
+    std::vector<double> dfields(6 * nH);
+    // exactQsFieldTangent block order: gsqrt, bsupu, bsupv, bsubu, bsubv, tp;
+    // pair each with the matching field cotangent.
+    const double* fb[6] = {gsqrt_bar.data(), bsupu_bar.data(), bsupv_bar.data(),
+                           bsubu_bar.data(), bsubv_bar.data(), tp_bar.data()};
+    for (int i = 0; i < n; ++i) {
+      ei[i] = 1.0;
+      vmec_->physical_x_backup_[0]->setZero();
+      UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, ei);
+      m.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
+                     dgeom.data(), gS, /*primal=*/false);
+      m.exactQsFieldTangent(primal.data(), dgeom.data(), gS, dfields.data());
+      double g = 0.0;
+      for (int b = 0; b < 6; ++b) {
+        const double* df = dfields.data() + b * nH;
+        for (int j = 0; j < nH; ++j) g += fb[b][j] * df[j];
+      }
+      dj[i] = g;
+      ei[i] = 0.0;
+    }
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
+    return dj;
+  }
+
+  // Forward tangent of the QS harmonics w.r.t. a state perturbation: the six
+  // (mnmax_nyq, nsH) harmonic-block tangents for a decomposed-state direction.
+  // One Enzyme forward pass gives the field tangents (exactQsFieldTangent); the
+  // analytic harmonics tangent projects them (|B| through total pressure). This
+  // is the forward counterpart of ExactQsObjectiveStateGradient and feeds an
+  // exact Gauss-Newton residual Jacobian (one tangent per boundary DOF). No
+  // finite differences. State restored on return.
+  py::dict ExactQsHarmonicsTangent(const Eigen::VectorXd& v) {
+    vmecpp::IdealMhdModel& m = *vmec_->m_[0];
+    const vmecpp::RadialProfiles& rp = *vmec_->p_[0];
+    int nsH;
+    vmecpp::QsHarmonicsConfig c = makeQsConfig(nsH);
+    const int nH = nsH * vmec_->s_.nZnT;
+    const int nh = vmec_->s_.mnmax_nyq * nsH;
+    const int gS = static_cast<int>(m.r1_e.size());
+
+    Eigen::VectorXd primal = Eigen::VectorXd::Zero(20 * gS);
+    m.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                   primal.data(), gS, /*primal=*/true);
+    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
+    vmec_->physical_x_backup_[0]->setZero();
+    UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, v);
+    m.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
+                   dgeom.data(), gS, /*primal=*/false);
+    std::vector<double> dfields(6 * nH);
+    // block order: gsqrt, bsupu, bsupv, bsubu, bsubv, tp.
+    m.exactQsFieldTangent(primal.data(), dgeom.data(), gS, dfields.data());
+
+    std::vector<double> gmnc_t(nh), bmnc_t(nh), bsubu_t(nh), bsubv_t(nh),
+        bsupu_t(nh), bsupv_t(nh);
+    vmecpp::ComputeQsHarmonicsTangent(
+        dfields.data() + 0 * nH, dfields.data() + 5 * nH,
+        dfields.data() + 1 * nH, dfields.data() + 2 * nH,
+        dfields.data() + 3 * nH, dfields.data() + 4 * nH,
+        m.totalPressure.data(), rp.presH.data(), gmnc_t.data(), bmnc_t.data(),
+        bsubu_t.data(), bsubv_t.data(), bsupu_t.data(), bsupv_t.data(), &c);
+
+    auto out = py::dict();
+    auto pack = [&](const char* k, std::vector<double>& a) {
+      out[k] = py::array_t<double>(static_cast<py::ssize_t>(nh), a.data());
+    };
+    pack("gmnc", gmnc_t);
+    pack("bmnc", bmnc_t);
+    pack("bsubumnc", bsubu_t);
+    pack("bsubvmnc", bsubv_t);
+    pack("bsupumnc", bsupu_t);
+    pack("bsupvmnc", bsupv_t);
+    return out;
+  }
+#endif  // VMECPP_ENABLE_ENZYME
 
   int restart_reason() const {
     return static_cast<int>(vmec_->fc_.restart_reason);
@@ -429,7 +947,7 @@ class VmecModel {
   std::vector<int> restart_reasons() const {
     std::vector<int> out;
     out.reserve(vmec_->fc_.restart_reasons.size());
-    for (const auto &r : vmec_->fc_.restart_reasons) {
+    for (const auto& r : vmec_->fc_.restart_reasons) {
       out.push_back(static_cast<int>(r));
     }
     return out;
@@ -447,12 +965,19 @@ class VmecModel {
 
   std::unique_ptr<vmecpp::Vmec> vmec_;
 
+  // Cached primal geometry for the exact Hessian-vector product: it depends
+  // only on the state, so it is reused across Krylov matvecs and invalidated by
+  // SetState. Mutable so SetState (const) can clear it.
+  mutable Eigen::VectorXd exact_primal_;
+  mutable bool exact_primal_valid_ = false;
+
   // Preconditioner / Nestor update bookkeeping, mirroring the like-named Vmec
   // members; the Python loop drives the iteration counters via Evaluate, so the
   // wrapper keeps these running values across calls.
   int last_preconditioner_update_ = 0;
   int last_full_update_nestor_ = 0;
   bool last_need_restart_ = false;
+  long force_eval_count_ = 0;
 };
 
 }  // anonymous namespace
@@ -549,30 +1074,30 @@ PYBIND11_MODULE(_vmecpp, m) {
       // disallow re-assignment of the whole vector (to preserve sizes
       // consistent with mpol/ntor) but allow changing the individual elements
       .def_property_readonly(
-          "raxis_c", [](VmecINDATA &w) -> VectorXd & { return w.raxis_c; })
+          "raxis_c", [](VmecINDATA& w) -> VectorXd& { return w.raxis_c; })
       .def_property_readonly(
-          "zaxis_s", [](VmecINDATA &w) -> VectorXd & { return w.zaxis_s; })
+          "zaxis_s", [](VmecINDATA& w) -> VectorXd& { return w.zaxis_s; })
       .def_property_readonly(
           "raxis_s",
-          [](VmecINDATA &w) -> std::optional<VectorXd> & { return w.raxis_s; })
+          [](VmecINDATA& w) -> std::optional<VectorXd>& { return w.raxis_s; })
       .def_property_readonly(
           "zaxis_c",
-          [](VmecINDATA &w) -> std::optional<VectorXd> & { return w.zaxis_c; })
+          [](VmecINDATA& w) -> std::optional<VectorXd>& { return w.zaxis_c; })
 
       // (initial guess for) boundary shape
       // disallow re-assignment of the whole matrix (to preserve shapes
       // consistent with mpol/ntor) but allow changing the individual elements
       .def_property_readonly(
-          "rbc", [](VmecINDATA &w) -> vmecpp::RowMatrixXd & { return w.rbc; })
+          "rbc", [](VmecINDATA& w) -> vmecpp::RowMatrixXd& { return w.rbc; })
       .def_property_readonly(
-          "zbs", [](VmecINDATA &w) -> vmecpp::RowMatrixXd & { return w.zbs; })
+          "zbs", [](VmecINDATA& w) -> vmecpp::RowMatrixXd& { return w.zbs; })
       .def_property_readonly(
           "rbs",
-          [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
+          [](VmecINDATA& w) -> std::optional<vmecpp::RowMatrixXd>& {
             return w.rbs;
           })
       .def_property_readonly(
-          "zbc", [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
+          "zbc", [](VmecINDATA& w) -> std::optional<vmecpp::RowMatrixXd>& {
             return w.zbc;
           });
 
@@ -825,7 +1350,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("delta3", &vmecpp::Threed1ShafranovIntegrals::delta3);
 
   py::class_<vmecpp::WOutFileContents>(m, "WOutFileContents")
-      .def(py::init<const vmecpp::WOutFileContents &>(), py::arg("wout"))
+      .def(py::init<const vmecpp::WOutFileContents&>(), py::arg("wout"))
       .def(py::init())
       .def_readwrite("version_", &vmecpp::WOutFileContents::version_)
       .def_readwrite("input_extension",
@@ -1015,8 +1540,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("indata", &vmecpp::OutputQuantities::indata)
       .def(
           "save",
-          [](const vmecpp::OutputQuantities &oq,
-             const std::filesystem::path &path) {
+          [](const vmecpp::OutputQuantities& oq,
+             const std::filesystem::path& path) {
             absl::Status s = oq.Save(path);
 
             if (!s.ok()) {
@@ -1027,7 +1552,7 @@ PYBIND11_MODULE(_vmecpp, m) {
             }
           },
           py::arg("path"))
-      .def_static("load", [](const std::filesystem::path &path) {
+      .def_static("load", [](const std::filesystem::path& path) {
         auto maybe_oq = vmecpp::OutputQuantities::Load(path);
         if (!maybe_oq.ok()) {
           const std::string msg =
@@ -1046,7 +1571,7 @@ PYBIND11_MODULE(_vmecpp, m) {
 
   m.def(
       "run",
-      [](const VmecINDATA &indata,
+      [](const VmecINDATA& indata,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads,
          vmecpp::OutputMode verbose) -> vmecpp::OutputQuantities {
@@ -1086,7 +1611,7 @@ PYBIND11_MODULE(_vmecpp, m) {
            "number_of_z_grid_points"_a, "number_of_phi_grid_points"_a)
       .def_static(
           "from_file",
-          [](const std::filesystem::path &file) {
+          [](const std::filesystem::path& file) {
             auto maybe_params =
                 makegrid::ImportMakegridParametersFromFile(file);
             return GetValueOrThrow(maybe_params);
@@ -1116,7 +1641,7 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::class_<magnetics::MagneticConfiguration>(m, "MagneticConfiguration")
       .def_static(
           "from_file",
-          [](const std::filesystem::path &file) {
+          [](const std::filesystem::path& file) {
             auto maybe_config =
                 magnetics::ImportMagneticConfigurationFromCoilsFile(file);
             return GetValueOrThrow(maybe_config);
@@ -1125,10 +1650,10 @@ PYBIND11_MODULE(_vmecpp, m) {
   auto response_table =
       py::class_<makegrid::MagneticFieldResponseTable>(
           m, "MagneticFieldResponseTable")
-          .def(py::init<const makegrid::MakegridParameters &,
-                        const makegrid::RowMatrixXd &,
-                        const makegrid::RowMatrixXd &,
-                        const makegrid::RowMatrixXd &>(),
+          .def(py::init<const makegrid::MakegridParameters&,
+                        const makegrid::RowMatrixXd&,
+                        const makegrid::RowMatrixXd&,
+                        const makegrid::RowMatrixXd&>(),
                py::arg("parameters"), py::arg("b_r"), py::arg("b_p"),
                py::arg("b_z"))
           .def_readonly("parameters",
@@ -1142,8 +1667,8 @@ PYBIND11_MODULE(_vmecpp, m) {
 
   m.def(
       "compute_magnetic_field_response_table",
-      [](const makegrid::MakegridParameters &mgrid_params,
-         const magnetics::MagneticConfiguration &magnetic_configuration) {
+      [](const makegrid::MakegridParameters& mgrid_params,
+         const magnetics::MagneticConfiguration& magnetic_configuration) {
         auto ret = makegrid::ComputeMagneticFieldResponseTable(
             mgrid_params, magnetic_configuration);
         return GetValueOrThrow(ret);
@@ -1152,8 +1677,8 @@ PYBIND11_MODULE(_vmecpp, m) {
 
   m.def(
       "run",
-      [](const VmecINDATA &indata,
-         const makegrid::MagneticFieldResponseTable &magnetic_response_table,
+      [](const VmecINDATA& indata,
+         const makegrid::MagneticFieldResponseTable& magnetic_response_table,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads, vmecpp::OutputMode verbose) {
         bool was_interrupted = false;
@@ -1189,7 +1714,8 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
                   py::arg("ns"), py::arg("initial_state") = std::nullopt)
-      .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"))
+      .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
+           py::arg("precondition") = true)
       .def_property_readonly("need_restart", &VmecModel::need_restart)
       .def("perform_time_step", &VmecModel::PerformTimeStep,
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
@@ -1205,6 +1731,30 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
       .def("get_forces", &VmecModel::GetForces)
+      .def("apply_preconditioner", &VmecModel::ApplyPreconditioner,
+           py::arg("v"))
+      .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
+           py::arg("v"), py::arg("eps_rel") = 1e-7)
+#ifdef VMECPP_ENABLE_ENZYME
+      .def("exact_hessian_vector_product",
+           &VmecModel::ExactHessianVectorProduct, py::arg("v"))
+      .def("exact_hessian_vector_product_transpose",
+           &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"))
+      .def("composed_force_residual", &VmecModel::ComposedForceResidual)
+      .def("force_density_jvp_residual", &VmecModel::ForceDensityJvpResidual,
+           py::arg("v"))
+      .def("exact_qs_objective_state_gradient",
+           &VmecModel::ExactQsObjectiveStateGradient, py::arg("harm_bar"))
+      .def("exact_qs_harmonics_tangent", &VmecModel::ExactQsHarmonicsTangent,
+           py::arg("v"))
+      .def("_kernel_jvp", &VmecModel::KernelJvp, py::arg("dgeom"))
+      .def("_kernel_vjp", &VmecModel::KernelVjp, py::arg("force_bar"))
+      .def("_kernel_dims", &VmecModel::KernelDims)
+#endif  // VMECPP_ENABLE_ENZYME
+      .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
+      .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
+      .def("set_freeze_constraint_multiplier",
+           &VmecModel::SetFreezeConstraintMultiplier, py::arg("freeze"))
       .def_property_readonly("fsqr", &VmecModel::fsqr)
       .def_property_readonly("fsqz", &VmecModel::fsqz)
       .def_property_readonly("fsql", &VmecModel::fsql)
@@ -1212,6 +1762,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("fsqz1", &VmecModel::fsqz1)
       .def_property_readonly("fsql1", &VmecModel::fsql1)
       .def_property_readonly("mhd_energy", &VmecModel::mhd_energy)
+      .def("qs_harmonics", &VmecModel::qs_harmonics)
       .def_property("restart_reason", &VmecModel::restart_reason,
                     &VmecModel::set_restart_reason)
       .def_property_readonly("status", &VmecModel::status)
