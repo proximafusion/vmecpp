@@ -62,7 +62,7 @@ struct LocalForceComposition {
   // force blocks 16-19 receive frcon_e/o, fzcon_e/o. The bandpass uses the
   // Fourier basis arrays and the tcon/faccon profiles. rCon0/zCon0 are
   // recomputed in place from the live geometry (so they are differentiated);
-  // tcon is held frozen (see freeze_constraint_multiplier).
+  // tcon is held frozen (see freeze_constraint_multiplier_).
   bool with_constraint = false;
   int nsMaxF = 0;  // constraint RZ range upper bound
   int nZeta = 0, nThetaReduced = 0, mpol = 0, ntor = 0, nnyq2 = 0;

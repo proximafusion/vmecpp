@@ -1933,7 +1933,7 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
   // Freeze: reuse the existing tcon so the raw force is a function of the state
   // alone, matching the exact HVP (which freezes tcon). Requires a prior
   // unfrozen evaluation to have populated tcon.
-  if (freeze_constraint_multiplier) {
+  if (freeze_constraint_multiplier_) {
     return absl::OkStatus();
   }
   // tcon
