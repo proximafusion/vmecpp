@@ -14,12 +14,9 @@
 //
 // This test composes the six production kernels over flat buffers and takes the
 // Jacobian of g by forward and reverse mode, checks both against central finite
-// differences and against each other, and times one forward Jacobian-vector
-// pass against the two force evaluations a finite-difference Hessian-vector
-// product costs.
+// differences and against each other.
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <numeric>
@@ -276,29 +273,6 @@ int main() {
          std::fabs(dfwd - dfd) / scale);
   printf("  forward / reverse agreement : %.2e\n",
          std::fabs(dfwd - drev) / (std::fabs(drev) + 1e-300));
-
-  const int reps = 200;
-  auto t0 = std::chrono::steady_clock::now();
-  for (int r = 0; r < reps; ++r) {
-    volatile double q = __enzyme_fwddiff<double>(
-        (void*)Loss, enzyme_dup, geom.data(), v.data(), enzyme_dup, work.data(),
-        dwork.data(), enzyme_dup, force.data(), dforce.data(), enzyme_const,
-        &c);
-    (void)q;
-  }
-  auto t1 = std::chrono::steady_clock::now();
-  for (int r = 0; r < reps; ++r) {
-    volatile double q = (Loss(gp.data(), w2.data(), f2.data(), &c) -
-                         Loss(gm.data(), w2.data(), f2.data(), &c));
-    (void)q;
-  }
-  auto t2 = std::chrono::steady_clock::now();
-  const double us_ad =
-      std::chrono::duration<double, std::micro>(t1 - t0).count() / reps;
-  const double us_fd =
-      std::chrono::duration<double, std::micro>(t2 - t1).count() / reps;
-  printf("  cost: exact forward JVP %.1f us/pass vs FD-HVP %.1f us (2 evals)\n",
-         us_ad, us_fd);
 
   const bool ok = std::fabs(drev - dfd) < 1e-5 * scale &&
                   std::fabs(dfwd - dfd) < 1e-5 * scale &&
