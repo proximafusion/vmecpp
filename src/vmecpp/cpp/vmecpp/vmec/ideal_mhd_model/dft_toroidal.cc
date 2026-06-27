@@ -34,11 +34,6 @@ void ForcesToFourier3DSymmFastPoloidal(
   // axis lambda stays zero (no contribution from any m)
   const int jMinL = 1;
 
-  // Reused scratch for the assembled R/Z forces: sized on first use, so the
-  // inner loop allocates nothing. Per-thread safe via the stack frame, since
-  // each OpenMP thread runs this on its own radial slice.
-  Eigen::VectorXd tempR_seg, tempZ_seg;
-
   for (int jF = rp.nsMinF; jF < jMaxRZ; ++jF) {
     const int mmax = jF == 0 ? 1 : s.mpol;
     for (int m = 0; m < mmax; ++m) {
