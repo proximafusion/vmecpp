@@ -1,0 +1,38 @@
+[
+  {
+    "method": "default",
+    "status": "ok",
+    "fsqt0": 1.611113098953928,
+    "fsqt_final": 1.9736357123009335e-09,
+    "niter": 370,
+    "ftolv": 1e-09,
+    "converged": true,
+    "hit_cap": false,
+    "volume": 27.78254169023485,
+    "config": "w7x"
+  },
+  {
+    "method": "zeno",
+    "status": "ok",
+    "fsqt0": 1.1307123658153682,
+    "fsqt_final": 1.6451781773862652e-09,
+    "niter": 462,
+    "ftolv": 1e-09,
+    "converged": true,
+    "hit_cap": false,
+    "volume": 27.78254169023485,
+    "config": "w7x"
+  },
+  {
+    "method": "map2disc",
+    "status": "ok",
+    "fsqt0": 0.9001797047949784,
+    "fsqt_final": 1.6088252993545943e-09,
+    "niter": 422,
+    "ftolv": 1e-09,
+    "converged": true,
+    "hit_cap": false,
+    "volume": 27.78254169023485,
+    "config": "w7x"
+  }
+]
