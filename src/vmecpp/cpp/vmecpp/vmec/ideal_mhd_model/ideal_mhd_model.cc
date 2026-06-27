@@ -20,6 +20,17 @@
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
+#include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/constraint_force_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/exact_force_jvp.h"
+#include "vmecpp/vmec/ideal_mhd_model/exact_force_vjp.h"
+#include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/lambda_force_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
+#include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
@@ -84,76 +95,15 @@ void vmecpp::deAliasConstraintForce(
     const Eigen::VectorXd& faccon, const Eigen::VectorXd& tcon,
     const Eigen::VectorXd& gConEff, Eigen::VectorXd& m_gsc,
     Eigen::VectorXd& m_gcs, Eigen::VectorXd& m_gCon) {
-  absl::c_fill_n(m_gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
-
-  // no constraint on axis --> has no poloidal angle
-  int jMin = 0;
-  if (rp.nsMinF == 0) {
-    jMin = 1;
-  }
-
-  for (int jF = std::max(jMin, rp.nsMinF); jF < rp.nsMaxF; ++jF) {
-    for (int m = 1; m < s_.mpol - 1; ++m) {
-      absl::c_fill_n(m_gsc, s_.ntor + 1, 0);
-      absl::c_fill_n(m_gcs, s_.ntor + 1, 0);
-
-      for (int k = 0; k < s_.nZeta; ++k) {
-        // fwd transform in poloidal direction
-        // integrate poloidally to get m-th poloidal Fourier coefficient
-        const int kl_base = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
-        const int ml_base = m * s_.nThetaReduced;
-
-        auto gConEff_seg = Eigen::Map<const Eigen::VectorXd>(
-            gConEff.data() + kl_base, s_.nThetaReduced);
-        auto sinmui_seg = fb.sinmui.segment(ml_base, s_.nThetaReduced);
-        auto cosmui_seg = fb.cosmui.segment(ml_base, s_.nThetaReduced);
-
-        double w0 = gConEff_seg.dot(sinmui_seg);
-        double w1 = gConEff_seg.dot(cosmui_seg);
-
-        // forward Fourier transform in toroidal direction for full set of mode
-        // numbers (n = 0, 1, ..., ntor)
-        for (int n = 0; n < s_.ntor + 1; ++n) {
-          int idx_kn = k * (s_.nnyq2 + 1) + n;
-
-          // NOTE: `tcon` comes into play here
-          m_gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
-          m_gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
-        }
-      }  // k
-
-      // ------------------------------------------
-      // need to "wait" (= finish k loop) here
-      // to get Fourier coefficients fully defined!
-      // ------------------------------------------
-
-      // inverse Fourier-transform from reduced set of mode numbers
-      for (int k = 0; k < s_.nZeta; ++k) {
-        // collect contribution to current grid point from n-th toroidal mode
-        const int kn_base = k * (s_.nnyq2 + 1);
-        auto cosnv_seg = fb.cosnv.segment(kn_base, s_.ntor + 1);
-        auto sinnv_seg = fb.sinnv.segment(kn_base, s_.ntor + 1);
-
-        auto m_gsc_seg =
-            Eigen::Map<const Eigen::VectorXd>(m_gsc.data(), s_.ntor + 1);
-        auto m_gcs_seg =
-            Eigen::Map<const Eigen::VectorXd>(m_gcs.data(), s_.ntor + 1);
-
-        double w0 = m_gsc_seg.dot(cosnv_seg);
-        double w1 = m_gcs_seg.dot(sinnv_seg);
-
-        // inv transform in poloidal direction
-        for (int l = 0; l < s_.nThetaReduced; ++l) {
-          int idx_kl = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
-          const int idx_ml = m * s_.nThetaReduced + l;
-
-          // NOTE: `faccon` comes into play here
-          m_gCon[idx_kl] +=
-              faccon[m] * (w0 * fb.sinmu[idx_ml] + w1 * fb.cosmu[idx_ml]);
-        }  // l
-      }  // k
-    }  // m
-  }
+  // Arithmetic lives in the shared, allocation-free kernel
+  // (constraint_force_kernel.h) so the solver and the Enzyme autodiff path use
+  // one implementation.
+  ComputeDeAliasConstraintForce(
+      gConEff.data(), faccon.data(), tcon.data(), fb.sinmui.data(),
+      fb.cosmui.data(), fb.cosnv.data(), fb.sinnv.data(), fb.sinmu.data(),
+      fb.cosmu.data(), rp.nsMinF, rp.nsMaxF, s_.nZeta, s_.nThetaEff,
+      s_.nThetaReduced, s_.mpol, s_.ntor, s_.nnyq2, m_gsc.data(), m_gcs.data(),
+      m_gCon.data());
 }
 
 namespace vmecpp {
@@ -1216,94 +1166,29 @@ void IdealMhdModel::rzConIntoVolume() {
 }
 
 void IdealMhdModel::computeJacobian() {
-  // r12, ru12, zu12, rs, zs, tau
+  // Half-grid r12, ru12, zu12, rs, zs and the Jacobian tau. The arithmetic
+  // lives in the shared, allocation-free kernel (jacobian_kernel.h) so the
+  // solver and the Enzyme autodiff test use one implementation.
+  ComputeHalfGridJacobian(
+      r1_e.data(), r1_o.data(), z1_e.data(), z1_o.data(), ru_e.data(),
+      ru_o.data(), zu_e.data(), zu_o.data(), m_p_.sqrtSH.data(), m_fc_.deltaS,
+      dSHalfDsInterp, s_.nZnT, r_.nsMinF1, r_.nsMinH, r_.nsMaxH, r12.data(),
+      ru12.data(), zu12.data(), rs.data(), zs.data(), tau.data());
 
+  // Jacobian sign check: same running min/max over tau as before, now scanned
+  // after the kernel (identical values, hence identical verdict).
   double minTau = 0.0;
   double maxTau = 0.0;
-
-  // contributions from full-grid surface _i_nside j-th half-grid surface
-  int j0 = r_.nsMinF1;
-  for (int kl = 0; kl < s_.nZnT; ++kl) {
-    m_ls_.r1e_i[kl] = r1_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.r1o_i[kl] = r1_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.z1e_i[kl] = z1_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.z1o_i[kl] = z1_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.rue_i[kl] = ru_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.ruo_i[kl] = ru_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.zue_i[kl] = zu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.zuo_i[kl] = zu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
+  const int nTau = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
+  for (int i = 0; i < nTau; ++i) {
+    const double t = tau[i];
+    if (t < minTau || minTau == 0.0) {
+      minTau = t;
+    }
+    if (t > maxTau || maxTau == 0.0) {
+      maxTau = t;
+    }
   }
-
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
-
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // contributions from full-grid surface _o_utside j-th half-grid surface
-      double r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double z1e_o = z1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double z1o_o = z1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double rue_o = ru_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double ruo_o = ru_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zue_o = zu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zuo_o = zu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-
-      // R on half-grid
-      r12[iHalf] = 0.5 * ((m_ls_.r1e_i[kl] + r1e_o) +
-                          sqrtSH * (m_ls_.r1o_i[kl] + r1o_o));
-
-      // dRdTheta on half-grid
-      ru12[iHalf] = 0.5 * ((m_ls_.rue_i[kl] + rue_o) +
-                           sqrtSH * (m_ls_.ruo_i[kl] + ruo_o));
-
-      // dZdTheta on half-grid
-      zu12[iHalf] = 0.5 * ((m_ls_.zue_i[kl] + zue_o) +
-                           sqrtSH * (m_ls_.zuo_i[kl] + zuo_o));
-
-      // \tilde{dRds} on half-grid
-      rs[iHalf] =
-          ((r1e_o - m_ls_.r1e_i[kl]) + sqrtSH * (r1o_o - m_ls_.r1o_i[kl])) /
-          m_fc_.deltaS;
-
-      // \tilde{dZds} on half-grid
-      zs[iHalf] =
-          ((z1e_o - m_ls_.z1e_i[kl]) + sqrtSH * (z1o_o - m_ls_.z1o_i[kl])) /
-          m_fc_.deltaS;
-
-      // sqrt(g)/R on half-grid: assemble as governed by product rule
-      double tau1 = ru12[iHalf] * zs[iHalf] - rs[iHalf] * zu12[iHalf];
-      double tau2 = ruo_o * z1o_o + m_ls_.ruo_i[kl] * m_ls_.z1o_i[kl] -
-                    zuo_o * r1o_o - m_ls_.zuo_i[kl] * m_ls_.r1o_i[kl] +
-                    (rue_o * z1o_o + m_ls_.rue_i[kl] * m_ls_.z1o_i[kl] -
-                     zue_o * r1o_o - m_ls_.zue_i[kl] * m_ls_.r1o_i[kl]) /
-                        sqrtSH;
-      double tau_val = tau1 + dSHalfDsInterp * tau2;
-
-      if (tau_val < minTau || minTau == 0.0) {
-        minTau = tau_val;
-      }
-      if (tau_val > maxTau || maxTau == 0.0) {
-        maxTau = tau_val;
-      }
-
-      tau[iHalf] = tau_val;
-
-      // hand over to next iteration of radial loop
-      // --> what was outside in this loop iteration will be inside for next
-      // half-grid location
-      m_ls_.r1e_i[kl] = r1e_o;
-      m_ls_.r1o_i[kl] = r1o_o;
-      m_ls_.z1e_i[kl] = z1e_o;
-      m_ls_.z1o_i[kl] = z1o_o;
-      m_ls_.rue_i[kl] = rue_o;
-      m_ls_.ruo_i[kl] = ruo_o;
-      m_ls_.zue_i[kl] = zue_o;
-      m_ls_.zuo_i[kl] = zuo_o;
-    }  // kl
-  }  // j
 
   bool localBadJacobian =
       (minTau * maxTau < 0.0) || !std::isfinite(minTau * maxTau);
@@ -1322,131 +1207,15 @@ void IdealMhdModel::computeJacobian() {
 }
 
 void IdealMhdModel::computeMetricElements() {
-  // gsqrt
-  // guu, guv, gvv
-
-  // contributions from full-grid surface _i_nside j-th half-grid surface
-  int j0 = r_.nsMinF1;
-  for (int kl = 0; kl < s_.nZnT; ++kl) {
-    m_ls_.r1e_i[kl] = r1_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.r1o_i[kl] = r1_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.z1e_i[kl] = z1_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.z1o_i[kl] = z1_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.rue_i[kl] = ru_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.ruo_i[kl] = ru_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.zue_i[kl] = zu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.zuo_i[kl] = zu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    if (s_.lthreed) {
-      m_ls_.rve_i[kl] = rv_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-      m_ls_.rvo_i[kl] = rv_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-      m_ls_.zve_i[kl] = zv_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-      m_ls_.zvo_i[kl] = zv_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    }
-  }
-
-  // s on inner full-grid pos
-  double sF_i =
-      m_p_.sqrtSF[r_.nsMinH - r_.nsMinF1] * m_p_.sqrtSF[r_.nsMinH - r_.nsMinF1];
-
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    // s on outside full-grid pos
-    double sF_o =
-        m_p_.sqrtSF[jH + 1 - r_.nsMinF1] * m_p_.sqrtSF[jH + 1 - r_.nsMinF1];
-
-    // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
-
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-
-      // Re-use this loop to compute Jacobian gsqrt=tau*R
-      // only tau needed to be checked for a sign change,
-      // so skip the last part where gsqrt is computed
-      // if a sign changed happened by computing it only here
-      // (which will only be reached when tau did not change sign).
-      gsqrt[iHalf] = tau[iHalf] * r12[iHalf];
-
-      // contributions from full-grid surface _o_utside j-th half-grid surface
-      double r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double rue_o = ru_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double ruo_o = ru_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zue_o = zu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zuo_o = zu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-
-      // g_{\theta,\theta} is needed for both 2D and 3D cases
-      guu[iHalf] = 0.5 * ((m_ls_.rue_i[kl] * m_ls_.rue_i[kl] +
-                           m_ls_.zue_i[kl] * m_ls_.zue_i[kl]) +
-                          (rue_o * rue_o + zue_o * zue_o) +
-                          sF_i * (m_ls_.ruo_i[kl] * m_ls_.ruo_i[kl] +
-                                  m_ls_.zuo_i[kl] * m_ls_.zuo_i[kl]) +
-                          sF_o * (ruo_o * ruo_o + zuo_o * zuo_o)) +
-                   sqrtSH * ((m_ls_.rue_i[kl] * m_ls_.ruo_i[kl] +
-                              m_ls_.zue_i[kl] * m_ls_.zuo_i[kl]) +
-                             (rue_o * ruo_o + zue_o * zuo_o));
-
-      // g_{\zeta,\zeta} reduces to R^2 in the 2D case, so compute this always
-      gvv[iHalf] = 0.5 * (m_ls_.r1e_i[kl] * m_ls_.r1e_i[kl] + r1e_o * r1e_o +
-                          sF_i * m_ls_.r1o_i[kl] * m_ls_.r1o_i[kl] +
-                          sF_o * r1o_o * r1o_o) +
-                   sqrtSH * (m_ls_.r1e_i[kl] * m_ls_.r1o_i[kl] + r1e_o * r1o_o);
-
-      if (s_.lthreed) {
-        double rve_o = rv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double rvo_o = rv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double zve_o = zv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double zvo_o = zv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-
-        // g_{\theta,\zeta} is only needed for the 3D case
-        guv[iHalf] = 0.5 * ((m_ls_.rue_i[kl] * m_ls_.rve_i[kl] +
-                             m_ls_.zue_i[kl] * m_ls_.zve_i[kl]) +
-                            (rue_o * rve_o + zue_o * zve_o) +
-                            sF_i * (m_ls_.ruo_i[kl] * m_ls_.rvo_i[kl] +
-                                    m_ls_.zuo_i[kl] * m_ls_.zvo_i[kl]) +
-                            sF_o * (ruo_o * rvo_o + zuo_o * zvo_o) +
-                            sqrtSH * ((m_ls_.rue_i[kl] * m_ls_.rvo_i[kl] +
-                                       m_ls_.zue_i[kl] * m_ls_.zvo_i[kl]) +
-                                      (rue_o * rvo_o + zue_o * zvo_o) +
-                                      (m_ls_.rve_i[kl] * m_ls_.ruo_i[kl] +
-                                       m_ls_.zve_i[kl] * m_ls_.zuo_i[kl]) +
-                                      (rve_o * ruo_o + zve_o * zuo_o)));
-
-        // compute remaining contribution for 3D to g_{\zeta,\zeta}
-        gvv[iHalf] += 0.5 * ((m_ls_.rve_i[kl] * m_ls_.rve_i[kl] +
-                              m_ls_.zve_i[kl] * m_ls_.zve_i[kl]) +
-                             (rve_o * rve_o + zve_o * zve_o) +
-                             sF_i * (m_ls_.rvo_i[kl] * m_ls_.rvo_i[kl] +
-                                     m_ls_.zvo_i[kl] * m_ls_.zvo_i[kl]) +
-                             sF_o * (rvo_o * rvo_o + zvo_o * zvo_o)) +
-                      sqrtSH * ((m_ls_.rve_i[kl] * m_ls_.rvo_i[kl] +
-                                 m_ls_.zve_i[kl] * m_ls_.zvo_i[kl]) +
-                                (rve_o * rvo_o + zve_o * zvo_o));
-
-        // hand over to next iteration of radial loop
-        // --> what was outside in this loop iteration will be inside for next
-        // half-grid location
-        m_ls_.rve_i[kl] = rve_o;
-        m_ls_.rvo_i[kl] = rvo_o;
-        m_ls_.zve_i[kl] = zve_o;
-        m_ls_.zvo_i[kl] = zvo_o;
-      }
-
-      // hand over to next iteration of radial loop
-      // --> what was outside in this loop iteration will be inside for next
-      // half-grid location
-      m_ls_.r1e_i[kl] = r1e_o;
-      m_ls_.r1o_i[kl] = r1o_o;
-      m_ls_.rue_i[kl] = rue_o;
-      m_ls_.ruo_i[kl] = ruo_o;
-      m_ls_.zue_i[kl] = zue_o;
-      m_ls_.zuo_i[kl] = zuo_o;
-    }  // kl
-
-    // hand over to next iteration of radial loop
-    // --> what was outside in this loop iteration will be inside for next
-    // half-grid location
-    sF_i = sF_o;
-  }  // jH
+  // gsqrt = tau * r12, and the metric elements guu, guv, gvv. Arithmetic in the
+  // shared, allocation-free kernel (metric_kernel.h), used by both the solver
+  // and the Enzyme autodiff path.
+  ComputeMetricElements(r1_e.data(), r1_o.data(), ru_e.data(), ru_o.data(),
+                        zu_e.data(), zu_o.data(), rv_e.data(), rv_o.data(),
+                        zv_e.data(), zv_o.data(), tau.data(), r12.data(),
+                        m_p_.sqrtSF.data(), m_p_.sqrtSH.data(), s_.lthreed,
+                        s_.nZnT, r_.nsMinF1, r_.nsMinH, r_.nsMaxH, gsqrt.data(),
+                        guu.data(), guv.data(), gvv.data());
 }
 
 /**
@@ -1537,88 +1306,42 @@ void IdealMhdModel::updateVolume() {
  * and apply toroidal current constraint, if enabled.
  */
 void IdealMhdModel::computeBContra() {
-  // bsupu, bsupv
-  // chipH (, iotaH)
-  // chipF, iotaF
-
-  int j0 = r_.nsMinH;
-  for (int kl = 0; kl < s_.nZnT; ++kl) {
-    // undo lambda normalization for first radial location
-    lu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-    lu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-    if (s_.lthreed) {
-      lv_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-      lv_o[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-    }
-
-    // add phi' to d(lambda)/d(theta) for preparing B^v
-    lu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] += m_p_.phipF[j0 - r_.nsMinF1];
-
-    // contributions from full-grid surface _i_nside j-th half-grid surface
-    // starting values: jRel=0
-    m_ls_.lue_i[kl] = lu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.luo_i[kl] = lu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    if (s_.lthreed) {
-      m_ls_.lve_i[kl] = lv_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-      m_ls_.lvo_i[kl] = lv_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    }
-  }  // kl
-
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
-
+  // bsupu, bsupv; chipH (, iotaH); chipF, iotaF.
+  //
+  // First undo the lambda normalization and add phi' to dLambda/dTheta, exactly
+  // as before. The lambda arrays are consumed downstream in this normalized
+  // form, so this mutation stays in the solver; only the bsupu/bsupv arithmetic
+  // is factored into the shared kernel (bcontra_kernel.h).
+  {
+    const int j0 = r_.nsMinH;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-
-      // undo lambda normalization for next full-grid radial location
-      lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-      lu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+      lu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+      lu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
       if (s_.lthreed) {
-        lv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
-        lv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        lv_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        lv_o[(j0 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
       }
+      lu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl] += m_p_.phipF[j0 - r_.nsMinF1];
+    }
+    for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+      for (int kl = 0; kl < s_.nZnT; ++kl) {
+        lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        lu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        if (s_.lthreed) {
+          lv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+          lv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] *= constants_.lamscale;
+        }
+        lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] +=
+            m_p_.phipF[jH + 1 - r_.nsMinH];
+      }  // kl
+    }  // jH
+  }
 
-      // add phi' to d(lambda)/d(theta) for preparing B^v
-      lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl] +=
-          m_p_.phipF[jH + 1 - r_.nsMinH];
-
-      // contributions from full-grid surface _o_utside j-th half-grid surface
-      double lue_o = lu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double luo_o = lu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double lve_o = 0.0;
-      double lvo_o = 0.0;
-      if (s_.lthreed) {
-        lve_o = lv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        lvo_o = lv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-
-        // first part for B^\theta
-        bsupu[iHalf] =
-            0.5 *
-            ((m_ls_.lve_i[kl] + lve_o) + sqrtSH * (m_ls_.lvo_i[kl] + lvo_o)) /
-            gsqrt[iHalf];
-      } else {
-        // will get a contribution from chip'/sqrt(g) below
-        bsupu[iHalf] = 0.0;
-      }
-
-      // first part for B^\zeta
-      bsupv[iHalf] =
-          0.5 *
-          ((m_ls_.lue_i[kl] + lue_o) + sqrtSH * (m_ls_.luo_i[kl] + luo_o)) /
-          gsqrt[iHalf];
-
-      // hand over to next iteration of radial loop
-      // --> what was outside in this loop iteration will be inside for next
-      // half-grid location
-      m_ls_.lue_i[kl] = lue_o;
-      m_ls_.luo_i[kl] = luo_o;
-      if (s_.lthreed) {
-        m_ls_.lve_i[kl] = lve_o;
-        m_ls_.lvo_i[kl] = lvo_o;
-      }
-    }  // kl
-  }  // jH
+  // bsupu (3D part) and bsupv from the normalized lambda and gsqrt.
+  ComputeBsupContra(lu_e.data(), lu_o.data(), lv_e.data(), lv_o.data(),
+                    gsqrt.data(), m_p_.sqrtSH.data(), s_.lthreed, s_.nZnT,
+                    r_.nsMinF1, r_.nsMinH, r_.nsMaxH, bsupu.data(),
+                    bsupv.data());
 
   if (ncurr == 1) {
     // constrained toroidal current profile
@@ -1699,16 +1422,11 @@ void IdealMhdModel::computeBContra() {
 
 // Compute covariant magnetic field components.
 void IdealMhdModel::computeBCo() {
-  // bsubu = g * B^contra: index lowering via metric tensor
-  if (s_.lthreed) {
-    // 3D case: need all of guu, guv, gvv
-    bsubu = guu.cwiseProduct(bsupu) + guv.cwiseProduct(bsupv);
-    bsubv = guv.cwiseProduct(bsupu) + gvv.cwiseProduct(bsupv);
-  } else {
-    // 2D case: can ignore guv (not even allocated)
-    bsubu = guu.cwiseProduct(bsupu);
-    bsubv = gvv.cwiseProduct(bsupv);
-  }
+  // bsubu = g * B^contra (index lowering via the metric tensor). Shared,
+  // allocation-free kernel (bco_kernel.h) used by solver and autodiff.
+  ComputeBCo(guu.data(), guv.data(), gvv.data(), bsupu.data(), bsupv.data(),
+             s_.lthreed, static_cast<int>(bsupu.size()), bsubu.data(),
+             bsubv.data());
 }
 
 void IdealMhdModel::pressureAndEnergies() {
@@ -1740,7 +1458,9 @@ void IdealMhdModel::pressureAndEnergies() {
   // Compute as a vectorized operation over all half-grid points
   // temporarily re-use `totalPressure` to store only magnetic pressure; kinetic
   // pressure presH will be added below
-  totalPressure = 0.5 * (bsupu.cwiseProduct(bsubu) + bsupv.cwiseProduct(bsubv));
+  ComputeMagneticPressure(bsupu.data(), bsubu.data(), bsupv.data(),
+                          bsubv.data(), static_cast<int>(bsupu.size()),
+                          totalPressure.data());
 
   // Accumulate magnetic energy and add kinetic pressure per surface
   double localMagneticEnergy = 0.0;
@@ -1852,121 +1572,16 @@ void IdealMhdModel::hybridLambdaForce() {
 #pragma omp barrier
 #endif  // _OPENMP
 
-  // obtain first inside point
-  int j0 = r_.nsMinF;
-  double sqrtSHi = 0.0;
-  if (j0 > 0) {
-    sqrtSHi = m_p_.sqrtSH[j0 - 1 - r_.nsMinH];
-  }
-  for (int kl = 0; kl < s_.nZnT; ++kl) {
-    if (j0 == 0) {
-      // defaults to 0: no contribution from half-grid point inside the axis
-      m_ls_.bsubu_i[kl] = 0.0;
-      m_ls_.bsubv_i[kl] = 0.0;
-      m_ls_.gvv_gsqrt_i[kl] = 0.0;  // gvv / gsqrt
-      m_ls_.guv_bsupu_i[kl] = 0.0;  // guv * bsupu
-    } else {
-      // for the j-th forces full-grid point, the (j-1)-th half-grid point is
-      // inside
-      int iHalf = (j0 - 1 - r_.nsMinH) * s_.nZnT + kl;
-      m_ls_.bsubu_i[kl] = bsubu[iHalf];
-      m_ls_.bsubv_i[kl] = bsubv[iHalf];
-      m_ls_.gvv_gsqrt_i[kl] = gvv[iHalf] / gsqrt[iHalf];
-      if (s_.lthreed) {
-        m_ls_.guv_bsupu_i[kl] = guv[iHalf] * bsupu[iHalf];
-      }
-    }
-  }  // kl
-
-  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    double sqrtSHo = 0.0;
-    if (jF < r_.nsMaxH) {
-      sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
-    }
-
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // obtain next outside point
-      // defaults to 0: no contribution from half-grid point outside LCFS
-      double bsubv_o = 0.0;
-      // gvv / gsqrt
-      double gvv_gsqrt_o = 0.0;
-      // guv * bsupu
-      double guv_bsupu_o = 0.0;
-      if (jF < r_.nsMaxH) {
-        // for the j-th forces full-grid point, the j-th half-grid point is
-        // outside
-        int iHalf = (jF - r_.nsMinH) * s_.nZnT + kl;
-        bsubv_o = bsubv[iHalf];
-        gvv_gsqrt_o = gvv[iHalf] / gsqrt[iHalf];
-        if (s_.lthreed) {
-          guv_bsupu_o = guv[iHalf] * bsupu[iHalf];
-        }
-      }
-
-      // alternative way to interpolate bsubv onto the full-grid
-      double gvv_gsqrt_lu_e = 0.5 * (m_ls_.gvv_gsqrt_i[kl] + gvv_gsqrt_o) *
-                              lu_e[(jF - r_.nsMinF1) * s_.nZnT + kl];
-      double gvv_gsqrt_lu_o =
-          0.5 * (m_ls_.gvv_gsqrt_i[kl] * sqrtSHi + gvv_gsqrt_o * sqrtSHo) *
-          lu_o[(jF - r_.nsMinF1) * s_.nZnT + kl];
-
-      double gvv_gsqrt_lu = gvv_gsqrt_lu_e + gvv_gsqrt_lu_o;
-      double bsubv_alternative = gvv_gsqrt_lu;
-      if (s_.lthreed) {
-        double guv_bsupu = 0.5 * (m_ls_.guv_bsupu_i[kl] + guv_bsupu_o);
-        bsubv_alternative += guv_bsupu;
-      }
-
-      const double bsubv_average = 0.5 * (bsubv_o + m_ls_.bsubv_i[kl]);
-
-      // blend together two ways of interpolating bsubv
-      double _blmn =
-          bsubv_average * (1.0 - m_p_.radialBlending[jF - r_.nsMinF1]) +
-          bsubv_alternative * m_p_.radialBlending[jF - r_.nsMinF1];
-
-      if (jF > 0) {
-        // TODO(jons): no lamscale and (-1) factor for axis lambda force?
-        // MINUS SIGN => HESSIAN DIAGONALS ARE POSITIVE
-        _blmn *= -constants_.lamscale;
-      }
-
-      blmn_e[(jF - r_.nsMinF) * s_.nZnT + kl] = _blmn;
-      blmn_o[(jF - r_.nsMinF) * s_.nZnT + kl] =
-          _blmn * m_p_.sqrtSF[jF - r_.nsMinF1];
-
-      if (s_.lthreed) {
-        // obtain next outside point
-        // defaults to 0 for half-grid point outside LCFS
-        double bsubu_o = 0.0;
-        if (jF < r_.nsMaxH) {
-          bsubu_o = bsubu[(jF - r_.nsMinH) * s_.nZnT + kl];
-        }
-
-        double _clmn = 0.5 * (bsubu_o + m_ls_.bsubu_i[kl]);
-
-        if (jF > 0) {
-          // TODO(jons): no lamscale and (-1) factor for axis lambda force?
-          // MINUS SIGN => HESSIAN DIAGONALS ARE POSITIVE
-          _clmn *= -constants_.lamscale;
-        }
-
-        clmn_e[(jF - r_.nsMinF) * s_.nZnT + kl] = _clmn;
-        clmn_o[(jF - r_.nsMinF) * s_.nZnT + kl] =
-            _clmn * m_p_.sqrtSF[jF - r_.nsMinF1];
-
-        // shift to next point
-        m_ls_.bsubu_i[kl] = bsubu_o;
-      }  // lthreed
-
-      // shift to next point
-      m_ls_.bsubv_i[kl] = bsubv_o;
-      m_ls_.gvv_gsqrt_i[kl] = gvv_gsqrt_o;
-      if (s_.lthreed) {
-        m_ls_.guv_bsupu_i[kl] = guv_bsupu_o;
-      }
-    }  // kl
-    sqrtSHi = sqrtSHo;
-  }  // jF
+  // Lambda force on the full grid via the shared kernel
+  // (lambda_force_kernel.h), also used by the Enzyme autodiff path.
+  ComputeHybridLambdaForce(
+      bsubu.data(), bsubv.data(), gvv.data(), gsqrt.data(), guv.data(),
+      bsupu.data(), lu_e.data(), lu_o.data(), m_p_.sqrtSH.data(),
+      m_p_.sqrtSF.data(), m_p_.radialBlending.data(), constants_.lamscale,
+      s_.lthreed, s_.nZnT, r_.nsMinF, r_.nsMinF1, r_.nsMinH, r_.nsMaxH,
+      r_.nsMaxFIncludingLcfs, m_ls_.bsubu_i.data(), m_ls_.bsubv_i.data(),
+      m_ls_.gvv_gsqrt_i.data(), m_ls_.guv_bsupu_i.data(), blmn_e.data(),
+      blmn_o.data(), clmn_e.data(), clmn_o.data());
 
 // }
 #ifdef _OPENMP
@@ -2053,223 +1668,27 @@ void IdealMhdModel::computeMHDForces() {
   if (m_fc_.lfreeb) {
     jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
   }
-
-  // obtain first inside point
-  // stuff gets divided by sqrtSHi, so cannot be 0
-  double sqrtSHi = 1.0;
-  if (r_.nsMinF > 0) {
-    // for the rel-0-th forces full-grid point, the rel-0-th half-grid point is
-    // inside
-    int j0 = r_.nsMinH;
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (j0 - r_.nsMinH) * s_.nZnT + kl;
-      m_ls_.P_i[kl] = r12[iHalf] * totalPressure[iHalf];
-      m_ls_.rup_i[kl] = ru12[iHalf] * m_ls_.P_i[kl];
-      m_ls_.zup_i[kl] = zu12[iHalf] * m_ls_.P_i[kl];
-      m_ls_.rsp_i[kl] = rs[iHalf] * m_ls_.P_i[kl];
-      m_ls_.zsp_i[kl] = zs[iHalf] * m_ls_.P_i[kl];
-      m_ls_.taup_i[kl] = tau[iHalf] * totalPressure[iHalf];
-      m_ls_.gbubu_i[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupu[iHalf];
-      m_ls_.gbubv_i[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupv[iHalf];
-      m_ls_.gbvbv_i[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
-    }  // kl
-    sqrtSHi = m_p_.sqrtSH[j0 - r_.nsMinH];
-  } else {
-    // defaults to 0: no contribution from half-grid point inside the axis
-    m_ls_.P_i.setZero();
-    m_ls_.rup_i.setZero();
-    m_ls_.zup_i.setZero();
-    m_ls_.rsp_i.setZero();
-    m_ls_.zsp_i.setZero();
-    m_ls_.taup_i.setZero();
-    m_ls_.gbubu_i.setZero();
-    m_ls_.gbubv_i.setZero();
-    m_ls_.gbvbv_i.setZero();
-  }
-
-  // Persistent per-surface scratch (preallocated in ThreadLocalStorage):
-  // aliased here so every write below lands in existing storage. This keeps the
-  // force kernel allocation-free, which both avoids per-surface heap churn and
-  // lets Enzyme differentiate it (Enzyme cannot trace dynamic Eigen
-  // temporaries).
-  Eigen::VectorXd& P_o = m_ls_.P_o;          //  r12 * totalPressure = P
-  Eigen::VectorXd& rup_o = m_ls_.rup_o;      // ru12 * P
-  Eigen::VectorXd& zup_o = m_ls_.zup_o;      // zu12 * P
-  Eigen::VectorXd& rsp_o = m_ls_.rsp_o;      //   rs * P
-  Eigen::VectorXd& zsp_o = m_ls_.zsp_o;      //   zs * P
-  Eigen::VectorXd& taup_o = m_ls_.taup_o;    //  tau * P
-  Eigen::VectorXd& gbubu_o = m_ls_.gbubu_o;  // gsqrt * bsupu * bsupu
-  Eigen::VectorXd& gbubv_o = m_ls_.gbubv_o;  // gsqrt * bsupu * bsupv
-  Eigen::VectorXd& gbvbv_o = m_ls_.gbvbv_o;  // gsqrt * bsupv * bsupv
-  P_o.setZero();
-  rup_o.setZero();
-  zup_o.setZero();
-  rsp_o.setZero();
-  zsp_o.setZero();
-  taup_o.setZero();
-  gbubu_o.setZero();
-  gbubv_o.setZero();
-  gbvbv_o.setZero();
-
-  // Surface-average scratch, likewise aliased to preallocated storage.
-  Eigen::VectorXd& P_avg = m_ls_.P_avg;
-  Eigen::VectorXd& P_wavg = m_ls_.P_wavg;
-  Eigen::VectorXd& gbubu_avg = m_ls_.gbubu_avg;
-  Eigen::VectorXd& gbubu_wavg = m_ls_.gbubu_wavg;
-  Eigen::VectorXd& gbvbv_avg = m_ls_.gbvbv_avg;
-  Eigen::VectorXd& gbvbv_wavg = m_ls_.gbvbv_wavg;
-  Eigen::VectorXd& gbubv_avg = m_ls_.gbubv_avg;
-  Eigen::VectorXd& gbubv_wavg = m_ls_.gbubv_wavg;
-
-  for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
-    const double sFull =
-        m_p_.sqrtSF[jF - r_.nsMinF1] * m_p_.sqrtSF[jF - r_.nsMinF1];
-    // stuff gets divided by sqrtSHo, so cannot be 0
-    double sqrtSHo = 1.0;
-    if (jF < r_.nsMaxH) {
-      sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
-    }
-
-    if (jF < r_.nsMaxH) {
-      const int iHalf_base = (jF - r_.nsMinH) * s_.nZnT;
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // obtain next outside point
-        // defaults to 0: no contribution from half-grid point outside LCFS
-        int iHalf = iHalf_base + kl;
-        P_o[kl] = r12[iHalf] * totalPressure[iHalf];
-        rup_o[kl] = ru12[iHalf] * P_o[kl];
-        zup_o[kl] = zu12[iHalf] * P_o[kl];
-        rsp_o[kl] = rs[iHalf] * P_o[kl];
-        zsp_o[kl] = zs[iHalf] * P_o[kl];
-        taup_o[kl] = tau[iHalf] * totalPressure[iHalf];
-      }  // kl
-
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // obtain next outside point
-        // defaults to 0: no contribution from half-grid point outside LCFS
-        int iHalf = iHalf_base + kl;
-        gbubu_o[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupu[iHalf];
-        gbubv_o[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupv[iHalf];
-        gbvbv_o[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
-      }  // kl
-    } else {
-      P_o.setZero();
-      rup_o.setZero();
-      zup_o.setZero();
-      rsp_o.setZero();
-      zsp_o.setZero();
-      taup_o.setZero();
-      gbubu_o.setZero();
-      gbubv_o.setZero();
-      gbvbv_o.setZero();
-    }
-
-    // Segment views into geometry and force arrays for this surface
-    const int nZnT = s_.nZnT;
-    const int g_off = (jF - r_.nsMinF1) * nZnT;
-    const int f_off = (jF - r_.nsMinF) * nZnT;
-    const auto r1e = r1_e.segment(g_off, nZnT);
-    const auto r1o = r1_o.segment(g_off, nZnT);
-    const auto rue = ru_e.segment(g_off, nZnT);
-    const auto ruo = ru_o.segment(g_off, nZnT);
-    const auto zue = zu_e.segment(g_off, nZnT);
-    const auto zuo = zu_o.segment(g_off, nZnT);
-    const auto z1o = z1_o.segment(g_off, nZnT);
-
-    // Pre-compute common sub-expressions (averages and weighted averages)
-    const double invDS = 1.0 / m_fc_.deltaS;
-    const double invSHo = 1.0 / sqrtSHo;
-    const double invSHi = 1.0 / sqrtSHi;
-    P_avg = 0.5 * (P_o + m_ls_.P_i);
-    P_wavg = 0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
-
-    gbubu_avg = 0.5 * (gbubu_o + m_ls_.gbubu_i);
-    gbubu_wavg = 0.5 * (gbubu_o * sqrtSHo + m_ls_.gbubu_i * sqrtSHi);
-    gbvbv_avg = 0.5 * (gbvbv_o + m_ls_.gbvbv_i);
-    gbvbv_wavg = 0.5 * (gbvbv_o * sqrtSHo + m_ls_.gbvbv_i * sqrtSHi);
-
-    // A_R force
-    armn_e.segment(f_off, nZnT) =
-        (zup_o - m_ls_.zup_i) * invDS + 0.5 * (taup_o + m_ls_.taup_i) -
-        gbvbv_avg.cwiseProduct(r1e) - gbvbv_wavg.cwiseProduct(r1o);
-    armn_o.segment(f_off, nZnT) =
-        (zup_o * sqrtSHo - m_ls_.zup_i * sqrtSHi) * invDS -
-        0.5 * P_wavg.cwiseProduct(zue) - 0.5 * P_avg.cwiseProduct(zuo) +
-        0.5 * (taup_o * sqrtSHo + m_ls_.taup_i * sqrtSHi) -
-        gbvbv_wavg.cwiseProduct(r1e) - gbvbv_avg.cwiseProduct(r1o) * sFull;
-
-    // A_Z force
-    azmn_e.segment(f_off, nZnT) = -(rup_o - m_ls_.rup_i) * invDS;
-    azmn_o.segment(f_off, nZnT) =
-        -(rup_o * sqrtSHo - m_ls_.rup_i * sqrtSHi) * invDS +
-        0.5 * P_wavg.cwiseProduct(rue) + 0.5 * P_avg.cwiseProduct(ruo);
-
-    // B_R force
-    brmn_e.segment(f_off, nZnT) =
-        0.5 * (zsp_o + m_ls_.zsp_i) + 0.5 * P_wavg.cwiseProduct(z1o) -
-        gbubu_avg.cwiseProduct(rue) - gbubu_wavg.cwiseProduct(ruo);
-    brmn_o.segment(f_off, nZnT) =
-        0.5 * (zsp_o * sqrtSHo + m_ls_.zsp_i * sqrtSHi) +
-        0.5 * P_avg.cwiseProduct(z1o) - gbubu_wavg.cwiseProduct(rue) -
-        gbubu_avg.cwiseProduct(ruo) * sFull;
-
-    // B_Z force
-    bzmn_e.segment(f_off, nZnT) =
-        -0.5 * (rsp_o + m_ls_.rsp_i) - 0.5 * P_wavg.cwiseProduct(r1o) -
-        gbubu_avg.cwiseProduct(zue) - gbubu_wavg.cwiseProduct(zuo);
-    bzmn_o.segment(f_off, nZnT) =
-        -0.5 * (rsp_o * sqrtSHo + m_ls_.rsp_i * sqrtSHi) -
-        0.5 * P_avg.cwiseProduct(r1o) - gbubu_wavg.cwiseProduct(zue) -
-        gbubu_avg.cwiseProduct(zuo) * sFull;
-
-    if (s_.lthreed) {
-      gbubv_avg = 0.5 * (gbubv_o + m_ls_.gbubv_i);
-      gbubv_wavg = 0.5 * (gbubv_o * sqrtSHo + m_ls_.gbubv_i * sqrtSHi);
-      const auto rve = rv_e.segment(g_off, nZnT);
-      const auto rvo = rv_o.segment(g_off, nZnT);
-      const auto zve = zv_e.segment(g_off, nZnT);
-      const auto zvo = zv_o.segment(g_off, nZnT);
-
-      // 3D contributions to B_R and B_Z
-      brmn_e.segment(f_off, nZnT) -=
-          gbubv_avg.cwiseProduct(rve) + gbubv_wavg.cwiseProduct(rvo);
-      brmn_o.segment(f_off, nZnT) -=
-          gbubv_wavg.cwiseProduct(rve) + gbubv_avg.cwiseProduct(rvo) * sFull;
-      bzmn_e.segment(f_off, nZnT) -=
-          gbubv_avg.cwiseProduct(zve) + gbubv_wavg.cwiseProduct(zvo);
-      bzmn_o.segment(f_off, nZnT) -=
-          gbubv_wavg.cwiseProduct(zve) + gbubv_avg.cwiseProduct(zvo) * sFull;
-
-      // C_R force
-      crmn_e.segment(f_off, nZnT) =
-          gbubv_avg.cwiseProduct(rue) + gbubv_wavg.cwiseProduct(ruo) +
-          gbvbv_avg.cwiseProduct(rve) + gbvbv_wavg.cwiseProduct(rvo);
-      crmn_o.segment(f_off, nZnT) =
-          gbubv_wavg.cwiseProduct(rue) + gbubv_avg.cwiseProduct(ruo) * sFull +
-          gbvbv_wavg.cwiseProduct(rve) + gbvbv_avg.cwiseProduct(rvo) * sFull;
-
-      // C_Z force
-      czmn_e.segment(f_off, nZnT) =
-          gbubv_avg.cwiseProduct(zue) + gbubv_wavg.cwiseProduct(zuo) +
-          gbvbv_avg.cwiseProduct(zve) + gbvbv_wavg.cwiseProduct(zvo);
-      czmn_o.segment(f_off, nZnT) =
-          gbubv_wavg.cwiseProduct(zue) + gbubv_avg.cwiseProduct(zuo) * sFull +
-          gbvbv_wavg.cwiseProduct(zve) + gbvbv_avg.cwiseProduct(zvo) * sFull;
-    }  // lthreed
-
-    // shift to next point
-    m_ls_.P_i = P_o;
-    m_ls_.rup_i = rup_o;
-    m_ls_.zup_i = zup_o;
-    m_ls_.rsp_i = rsp_o;
-    m_ls_.zsp_i = zsp_o;
-    m_ls_.taup_i = taup_o;
-    m_ls_.gbubu_i = gbubu_o;
-    m_ls_.gbubv_i = gbubv_o;
-    m_ls_.gbvbv_i = gbvbv_o;
-
-    sqrtSHi = sqrtSHo;
-  }  // jF
+  // Real-space MHD force-density assembly in the shared, allocation-free kernel
+  // (mhdforce_kernel.h), used by both the solver and the Enzyme autodiff path.
+  ComputeMHDForceDensity(
+      r1_e.data(), r1_o.data(), ru_e.data(), ru_o.data(), zu_e.data(),
+      zu_o.data(), z1_o.data(), rv_e.data(), rv_o.data(), zv_e.data(),
+      zv_o.data(), r12.data(), ru12.data(), zu12.data(), rs.data(), zs.data(),
+      tau.data(), totalPressure.data(), gsqrt.data(), bsupu.data(),
+      bsupv.data(), m_p_.sqrtSF.data(), m_p_.sqrtSH.data(), m_ls_.P_i.data(),
+      m_ls_.rup_i.data(), m_ls_.zup_i.data(), m_ls_.rsp_i.data(),
+      m_ls_.zsp_i.data(), m_ls_.taup_i.data(), m_ls_.gbubu_i.data(),
+      m_ls_.gbubv_i.data(), m_ls_.gbvbv_i.data(), m_ls_.P_o.data(),
+      m_ls_.rup_o.data(), m_ls_.zup_o.data(), m_ls_.rsp_o.data(),
+      m_ls_.zsp_o.data(), m_ls_.taup_o.data(), m_ls_.gbubu_o.data(),
+      m_ls_.gbubv_o.data(), m_ls_.gbvbv_o.data(), m_ls_.P_avg.data(),
+      m_ls_.P_wavg.data(), m_ls_.gbubu_avg.data(), m_ls_.gbubu_wavg.data(),
+      m_ls_.gbvbv_avg.data(), m_ls_.gbvbv_wavg.data(), m_ls_.gbubv_avg.data(),
+      m_ls_.gbubv_wavg.data(), m_fc_.deltaS, s_.nZnT, r_.nsMinF, r_.nsMinF1,
+      r_.nsMinH, r_.nsMaxH, jMaxRZ, s_.lthreed, armn_e.data(), armn_o.data(),
+      azmn_e.data(), azmn_o.data(), brmn_e.data(), brmn_o.data(), bzmn_e.data(),
+      bzmn_o.data(), crmn_e.data(), crmn_o.data(), czmn_e.data(),
+      czmn_o.data());
 }
 
 bool IdealMhdModel::shouldUpdateRadialPreconditioner(int iter1,
@@ -2531,6 +1950,12 @@ void IdealMhdModel::computePreconditioningMatrix(
  * Note that this needs to have the radial preconditioner updated.
  */
 absl::Status IdealMhdModel::constraintForceMultiplier() {
+  // Freeze: reuse the existing tcon so the raw force is a function of the state
+  // alone, matching the exact HVP (which freezes tcon). Requires a prior
+  // unfrozen evaluation to have populated tcon.
+  if (freeze_constraint_multiplier_) {
+    return absl::OkStatus();
+  }
   // tcon
 
   // TODO(jons): some parabola in ns,
@@ -2589,21 +2014,12 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
 }
 
 void IdealMhdModel::effectiveConstraintForce() {
-  // gConEff
-
-  // no constraint on axis --> has no poloidal angle
-  int jMin = 0;
-  if (r_.nsMinF == 0) {
-    jMin = 1;
-  }
-
-  for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
-      gConEff[idx_kl] = (rCon[idx_kl] - rCon0[idx_kl]) * ruFull[idx_kl] +
-                        (zCon[idx_kl] - zCon0[idx_kl]) * zuFull[idx_kl];
-    }  // kl
-  }  // jF
+  // gConEff via the shared kernel (constraint_force_kernel.h), also used by the
+  // Enzyme autodiff path.
+  ComputeEffectiveConstraintForce(rCon.data(), rCon0.data(), zCon.data(),
+                                  zCon0.data(), ruFull.data(), zuFull.data(),
+                                  s_.nZnT, r_.nsMinF, r_.nsMaxFIncludingLcfs,
+                                  gConEff.data());
 }
 
 // perform Fourier-space bandpass filtering of constraint force
@@ -2634,25 +2050,698 @@ void IdealMhdModel::assembleTotalForces() {
     }
   }
 
-  for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
+  // add the bandpass-filtered constraint force to the MHD R/Z forces and write
+  // the constraint outputs via the shared kernel (constraint_force_kernel.h),
+  // also used by the Enzyme autodiff path.
+  AddConstraintForces(rCon.data(), rCon0.data(), zCon.data(), zCon0.data(),
+                      ruFull.data(), zuFull.data(), gCon.data(),
+                      m_p_.sqrtSF.data(), s_.nZnT, r_.nsMinF, r_.nsMinF1,
+                      r_.nsMaxF, brmn_e.data(), brmn_o.data(), bzmn_e.data(),
+                      bzmn_o.data(), frcon_e.data(), frcon_o.data(),
+                      fzcon_e.data(), fzcon_o.data());
+}
 
-      double brcon = (rCon[idx_kl] - rCon0[idx_kl]) * gCon[idx_kl];
-      double bzcon = (zCon[idx_kl] - zCon0[idx_kl]) * gCon[idx_kl];
+#ifdef VMECPP_ENABLE_ENZYME
+void IdealMhdModel::packGeometry(FourierGeometry& m_decomposed,
+                                 FourierGeometry& m_physical_scratch,
+                                 double* out, int gS, bool primal) {
+  // Linear pre-chain decomposed -> real-space geometry, identical to the head
+  // of update(). Applied to a state it yields the geometry; applied to a
+  // tangent it yields the exact geometry tangent (the chain is linear), so no
+  // finite difference is needed.
+  m_decomposed.decomposeInto(m_physical_scratch, m_p_.scalxc);
+  m_physical_scratch.m1Constraint(1.0);
+  m_physical_scratch.extrapolateTowardsAxis();
+  geometryFromFourier(m_physical_scratch);
 
-      brmn_e[idx_kl] += brcon;
-      bzmn_e[idx_kl] += bzcon;
-      brmn_o[idx_kl] += brcon * m_p_.sqrtSF[jF - r_.nsMinF1];
-      bzmn_o[idx_kl] += bzcon * m_p_.sqrtSF[jF - r_.nsMinF1];
-
-      frcon_e[idx_kl] = ruFull[idx_kl] * gCon[idx_kl];
-      fzcon_e[idx_kl] = zuFull[idx_kl] * gCon[idx_kl];
-      frcon_o[idx_kl] = frcon_e[idx_kl] * m_p_.sqrtSF[jF - r_.nsMinF1];
-      fzcon_o[idx_kl] = fzcon_e[idx_kl] * m_p_.sqrtSF[jF - r_.nsMinF1];
+  auto blk = [&](int b, const Eigen::VectorXd& src) {
+    const int n = static_cast<int>(src.size());
+    for (int i = 0; i < n; ++i) out[b * gS + i] = src[i];
+  };
+  blk(0, r1_e);
+  blk(1, r1_o);
+  blk(2, z1_e);
+  blk(3, z1_o);
+  blk(4, ru_e);
+  blk(5, ru_o);
+  blk(6, zu_e);
+  blk(7, zu_o);
+  blk(8, rv_e);
+  blk(9, rv_o);
+  blk(10, zv_e);
+  blk(11, zv_o);
+  // lambda carries the computeBContra normalization: *lamscale, and for the
+  // primal also + phipF on lu_e (a constant, so it drops from the tangent).
+  auto blk_lam = [&](int b, const Eigen::VectorXd& src) {
+    const int n = static_cast<int>(src.size());
+    for (int i = 0; i < n; ++i) out[b * gS + i] = constants_.lamscale * src[i];
+  };
+  blk_lam(12, lu_e);
+  blk_lam(13, lu_o);
+  blk_lam(14, lv_e);
+  blk_lam(15, lv_o);
+  if (primal) {
+    const int nFullSurf = static_cast<int>(lu_e.size()) / s_.nZnT;
+    for (int jF = 0; jF < nFullSurf; ++jF) {
+      const double phip = m_p_.phipF[jF];
+      for (int kl = 0; kl < s_.nZnT; ++kl) {
+        out[12 * gS + jF * s_.nZnT + kl] += phip;
+      }
     }
   }
+  blk(16, rCon);
+  blk(17, zCon);
+  blk(18, ruFull);
+  blk(19, zuFull);
 }
+
+LocalForceComposition IdealMhdModel::makeLocalForceComposition(
+    int geom_stride) {
+  LocalForceComposition comp;
+  comp.nZnT = s_.nZnT;
+  comp.geom_stride = geom_stride;
+  comp.force_stride = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
+  comp.nsMinF = r_.nsMinF;
+  comp.nsMinF1 = r_.nsMinF1;
+  comp.nsMinH = r_.nsMinH;
+  comp.nsMaxH = r_.nsMaxH;
+  comp.jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  comp.nsMaxFIncludingLcfs = r_.nsMaxFIncludingLcfs;
+  comp.sqrtSF = m_p_.sqrtSF.data();
+  comp.sqrtSH = m_p_.sqrtSH.data();
+  comp.chipH = m_p_.chipH.data();
+  comp.presH = m_p_.presH.data();
+  comp.radialBlending = m_p_.radialBlending.data();
+  comp.deltaS = m_fc_.deltaS;
+  comp.dSHalfDsInterp = dSHalfDsInterp;
+  comp.lamscale = constants_.lamscale;
+  comp.lthreed = s_.lthreed;
+  comp.with_constraint = true;
+  comp.nsMaxF = r_.nsMaxF;
+  comp.nZeta = s_.nZeta;
+  comp.nThetaEff = s_.nThetaEff;
+  comp.ncurr = ncurr;
+  comp.currH = m_p_.currH.data();
+  comp.wInt = s_.wInt.data();
+  comp.nThetaReduced = s_.nThetaReduced;
+  comp.mpol = s_.mpol;
+  comp.ntor = s_.ntor;
+  comp.nnyq2 = s_.nnyq2;
+  comp.rCon0 = rCon0.data();
+  comp.zCon0 = zCon0.data();
+  comp.faccon = faccon.data();
+  comp.tcon = tcon.data();
+  comp.sinmui = t_.sinmui.data();
+  comp.cosmui = t_.cosmui.data();
+  comp.cosnv = t_.cosnv.data();
+  comp.sinnv = t_.sinnv.data();
+  comp.sinmu = t_.sinmu.data();
+  comp.cosmu = t_.cosmu.data();
+  return comp;
+}
+
+void IdealMhdModel::applyExactForceJacobian(const double* geomP,
+                                            const double* dgeom,
+                                            int geom_stride,
+                                            FourierForces& m_physical_f,
+                                            FourierForces& m_decomposed_hv) {
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nForce = comp.force_stride;
+
+  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
+  // work holds the half-grid and per-point scratch plus the constraint scratch
+  // (gConEff, gCon, gsc, gcs).
+  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 2 * (s_.ntor + 1);
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> dwork(nWork, 0.0);
+  std::vector<double> force(20 * nForce, 0.0);
+  std::vector<double> dforce(20 * nForce, 0.0);
+
+  // single nonlinear forward pass: J_g . (T v)
+  ExactForceDensityJvp(geomP, dgeom, work.data(), dwork.data(), force.data(),
+                       dforce.data(), &comp);
+
+  // scatter the force-density tangent into the real-space force members
+  auto put = [&](int block, Eigen::VectorXd& dst) {
+    const int n = static_cast<int>(dst.size());
+    for (int i = 0; i < n; ++i) {
+      dst[i] = dforce[block * nForce + i];
+    }
+  };
+  put(0, armn_e);
+  put(1, armn_o);
+  put(2, azmn_e);
+  put(3, azmn_o);
+  put(4, brmn_e);
+  put(5, brmn_o);
+  put(6, bzmn_e);
+  put(7, bzmn_o);
+  put(12, blmn_e);
+  put(13, blmn_o);
+  if (s_.lthreed) {
+    put(8, crmn_e);
+    put(9, crmn_o);
+    put(10, czmn_e);
+    put(11, czmn_o);
+    put(14, clmn_e);
+    put(15, clmn_o);
+  }
+  put(16, frcon_e);
+  put(17, frcon_o);
+  put(18, fzcon_e);
+  put(19, fzcon_o);
+
+  // linear forward transform and preconditioner decomposition, mirroring the
+  // tail of update()
+  forcesToFourier(m_physical_f);
+  m_physical_f.decomposeInto(m_decomposed_hv, m_p_.scalxc);
+  m_decomposed_hv.m1Constraint(1.0 / std::numbers::sqrt2);
+  // Match update(): zeroZForceForM1 is gated on the converged-state condition.
+  if (m_fc_.fsqz < 1.0e-6) {
+    m_decomposed_hv.zeroZForceForM1();
+  }
+}
+
+// Raw force-density tangent (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT)
+// from one Enzyme forward pass, with no transform applied. For isolating the
+// JVP from the spectral-transform wrapping.
+void IdealMhdModel::exactForceDensityTangent(const double* geomP,
+                                             const double* dgeom,
+                                             int geom_stride,
+                                             double* dforce_out) {
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nForce = comp.force_stride;
+  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
+  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 2 * (s_.ntor + 1);
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> dwork(nWork, 0.0);
+  std::vector<double> force(20 * nForce, 0.0);
+  ExactForceDensityJvp(geomP, dgeom, work.data(), dwork.data(), force.data(),
+                       dforce_out, &comp);
+}
+
+void IdealMhdModel::exactForceDensityCotangent(const double* geomP,
+                                               const double* force_bar,
+                                               int geom_stride,
+                                               double* geom_bar_out) {
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nForce = comp.force_stride;
+  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
+  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 2 * (s_.ntor + 1);
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> work_bar(nWork, 0.0);
+  std::vector<double> force(20 * nForce, 0.0);
+  // force_bar is the output cotangent seed; Enzyme consumes (and may clobber)
+  // the shadow, so pass a private copy. geom_bar_out is zeroed by the caller.
+  std::vector<double> fbar(force_bar, force_bar + 20 * nForce);
+  ExactForceDensityVjp(geomP, geom_bar_out, work.data(), work_bar.data(),
+                       force.data(), fbar.data(), &comp);
+}
+
+// (forcesToFourier)^T for the 2D case: scatter a decomposed-force Fourier
+// cotangent (frcc, fzsc, flsc) back to the real-space force-density members
+// through the same weighted basis the forward projection uses. Transpose of
+// dft_ForcesToFourier_2d_symm.
+void IdealMhdModel::dft_ForcesToFourierTranspose_2d_symm(
+    const FourierForces& m_coeff_bar) {
+  for (auto* v :
+       {&armn_e, &armn_o, &brmn_e, &brmn_o, &azmn_e, &azmn_o, &bzmn_e, &bzmn_o,
+        &frcon_e, &frcon_o, &fzcon_e, &fzcon_o, &blmn_e, &blmn_o}) {
+    v->setZero();
+  }
+  int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  if (m_fc_.lfreeb &&
+      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
+       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+    jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
+  }
+  for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
+    const int num_m = (jF == 0) ? 1 : s_.mpol;
+    for (int m = 0; m < num_m; ++m) {
+      const bool m_even = m % 2 == 0;
+      auto& armn = m_even ? armn_e : armn_o;
+      auto& brmn = m_even ? brmn_e : brmn_o;
+      auto& azmn = m_even ? azmn_e : azmn_o;
+      auto& bzmn = m_even ? bzmn_e : bzmn_o;
+      auto& frcon = m_even ? frcon_e : frcon_o;
+      auto& fzcon = m_even ? fzcon_e : fzcon_o;
+      const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
+      const double fr = m_coeff_bar.frcc[idx_jm];
+      const double fz = m_coeff_bar.fzsc[idx_jm];
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const double cosmui = t_.cosmui[idx_ml];
+        const double sinmumi = t_.sinmumi[idx_ml];
+        const double sinmui = t_.sinmui[idx_ml];
+        const double cosmumi = t_.cosmumi[idx_ml];
+        armn[idx_jl] += fr * cosmui;
+        brmn[idx_jl] += fr * sinmumi;
+        frcon[idx_jl] += fr * xmpq[m] * cosmui;
+        azmn[idx_jl] += fz * sinmui;
+        bzmn[idx_jl] += fz * cosmumi;
+        fzcon[idx_jl] += fz * xmpq[m] * sinmui;
+      }  // l
+    }  // m
+  }  // jF
+  for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    for (int m = 0; m < s_.mpol; ++m) {
+      const bool m_even = m % 2 == 0;
+      auto& blmn = m_even ? blmn_e : blmn_o;
+      const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
+      const double fl = m_coeff_bar.flsc[idx_jm];
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        const double cosmumi = t_.cosmumi[m * s_.nThetaReduced + l];
+        blmn[idx_jl] += fl * cosmumi;
+      }  // l
+    }  // m
+  }  // jF
+}
+
+// (geometryFromFourier)^T for the 2D case: project the real-space geometry
+// member cotangents (r1_e .. zCon) back to Fourier coefficient cotangents
+// through the unweighted basis. Transpose of dft_FourierToReal_2d_symm.
+void IdealMhdModel::dft_FourierToRealTranspose_2d_symm(
+    FourierGeometry& m_coeff_bar_out) {
+  m_coeff_bar_out.setZero();
+  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+    double* dst_rcc = &(m_coeff_bar_out.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* dst_zsc = &(m_coeff_bar_out.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* dst_lsc = &(m_coeff_bar_out.lmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    for (int l = 0; l < s_.nThetaReduced; ++l) {
+      const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
+      const double r1eb = r1_e[idx_jl], rueb = ru_e[idx_jl],
+                   z1eb = z1_e[idx_jl], zueb = zu_e[idx_jl],
+                   lueb = lu_e[idx_jl];
+      const double r1ob = r1_o[idx_jl], ruob = ru_o[idx_jl],
+                   z1ob = z1_o[idx_jl], zuob = zu_o[idx_jl],
+                   luob = lu_o[idx_jl];
+      const int num_m = (jF == 0) ? 2 : s_.mpol;
+      for (int m = 0; m < num_m; ++m) {
+        const int p = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const double cosmu = t_.cosmu[idx_ml];
+        const double sinmum = t_.sinmum[idx_ml];
+        const double sinmu = t_.sinmu[idx_ml];
+        const double cosmum = t_.cosmum[idx_ml];
+        dst_rcc[m] += (p ? r1ob : r1eb) * cosmu + (p ? ruob : rueb) * sinmum;
+        dst_zsc[m] += (p ? z1ob : z1eb) * sinmu + (p ? zuob : zueb) * cosmum;
+        dst_lsc[m] += (p ? luob : lueb) * cosmum;
+      }  // m
+    }  // l
+  }  // jF
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    double* dst_rcc = &(m_coeff_bar_out.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* dst_zsc = &(m_coeff_bar_out.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    const int num_m = (jF == 0) ? 2 : s_.mpol;
+    for (int m = 0; m < num_m; ++m) {
+      const int p = m % 2;
+      const double scale = xmpq[m] * (1 - p + p * m_p_.sqrtSF[jF - r_.nsMinF1]);
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        dst_rcc[m] += rCon[idx_con] * t_.cosmu[idx_ml] * scale;
+        dst_zsc[m] += zCon[idx_con] * t_.sinmu[idx_ml] * scale;
+      }  // l
+    }  // m
+  }  // jF
+}
+
+// (forcesToFourier)^T for the 3D case. Transpose of
+// ForcesToFourier3DSymmFastPoloidal: undo the toroidal scatter, then the
+// poloidal projection, back onto the real-space force-density members.
+void IdealMhdModel::dft_ForcesToFourierTranspose_3d_symm(
+    const FourierForces& m_coeff_bar) {
+  for (auto* v :
+       {&armn_e, &armn_o, &azmn_e,  &azmn_o,  &blmn_e,  &blmn_o, &brmn_e,
+        &brmn_o, &bzmn_e, &bzmn_o,  &clmn_e,  &clmn_o,  &crmn_e, &crmn_o,
+        &czmn_e, &czmn_o, &frcon_e, &frcon_o, &fzcon_e, &fzcon_o}) {
+    v->setZero();
+  }
+  const int nThR = s_.nThetaReduced;
+  const int ntorp1 = s_.ntor + 1;
+  int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  if (m_fc_.lfreeb &&
+      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
+       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+    jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
+  }
+  const int jMinL = 1;
+  for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
+    const int mmax = (jF == 0) ? 1 : s_.mpol;
+    for (int m = 0; m < mmax; ++m) {
+      const bool m_even = m % 2 == 0;
+      auto& armn = m_even ? armn_e : armn_o;
+      auto& azmn = m_even ? azmn_e : azmn_o;
+      auto& blmn = m_even ? blmn_e : blmn_o;
+      auto& brmn = m_even ? brmn_e : brmn_o;
+      auto& bzmn = m_even ? bzmn_e : bzmn_o;
+      auto& clmn = m_even ? clmn_e : clmn_o;
+      auto& crmn = m_even ? crmn_e : crmn_o;
+      auto& czmn = m_even ? czmn_e : czmn_o;
+      auto& frcon = m_even ? frcon_e : frcon_o;
+      auto& fzcon = m_even ? fzcon_e : fzcon_o;
+      const int idx_ml_base = m * nThR;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int idx_kl_base =
+            ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
+        const int idx_kn_base = k * (s_.nnyq2 + 1);
+        const int idx_mn_base = ((jF - r_.nsMinF) * s_.mpol + m) * ntorp1;
+        double rmkcc = 0, rmkss = 0, zmksc = 0, zmkcs = 0, rmkcc_n = 0,
+               zmkcs_n = 0, rmkss_n = 0, zmksc_n = 0, lmksc = 0, lmkcs = 0,
+               lmkcs_n = 0, lmksc_n = 0;
+        for (int nn = 0; nn < ntorp1; ++nn) {
+          const int kn = idx_kn_base + nn;
+          const int mn = idx_mn_base + nn;
+          const double cosnv = t_.cosnv[kn], sinnv = t_.sinnv[kn],
+                       cosnvn = t_.cosnvn[kn], sinnvn = t_.sinnvn[kn];
+          const double frcc = m_coeff_bar.frcc[mn], frss = m_coeff_bar.frss[mn],
+                       fzsc = m_coeff_bar.fzsc[mn], fzcs = m_coeff_bar.fzcs[mn];
+          rmkcc += frcc * cosnv;
+          rmkcc_n += frcc * sinnvn;
+          rmkss += frss * sinnv;
+          rmkss_n += frss * cosnvn;
+          zmksc += fzsc * cosnv;
+          zmksc_n += fzsc * sinnvn;
+          zmkcs += fzcs * sinnv;
+          zmkcs_n += fzcs * cosnvn;
+          if (jMinL <= jF) {
+            const double flsc = m_coeff_bar.flsc[mn],
+                         flcs = m_coeff_bar.flcs[mn];
+            lmksc += flsc * cosnv;
+            lmksc_n += flsc * sinnvn;
+            lmkcs += flcs * sinnv;
+            lmkcs_n += flcs * cosnvn;
+          }
+        }
+        for (int l = 0; l < nThR; ++l) {
+          const int im = idx_ml_base + l;
+          const int kl = idx_kl_base + l;
+          const double cosmui = t_.cosmui[im], sinmui = t_.sinmui[im],
+                       cosmumi = t_.cosmumi[im], sinmumi = t_.sinmumi[im];
+          const double tR = rmkcc * cosmui + rmkss * sinmui;
+          armn[kl] += tR;
+          frcon[kl] += xmpq[m] * tR;
+          brmn[kl] += rmkcc * sinmumi + rmkss * cosmumi;
+          const double tZ = zmksc * sinmui + zmkcs * cosmui;
+          azmn[kl] += tZ;
+          fzcon[kl] += xmpq[m] * tZ;
+          bzmn[kl] += zmksc * cosmumi + zmkcs * sinmumi;
+          crmn[kl] += -(rmkcc_n * cosmui + rmkss_n * sinmui);
+          czmn[kl] += -(zmkcs_n * cosmui + zmksc_n * sinmui);
+          blmn[kl] += lmksc * cosmumi + lmkcs * sinmumi;
+          clmn[kl] += -(lmkcs_n * cosmui + lmksc_n * sinmui);
+        }  // l
+      }  // k
+    }  // m
+  }  // jF
+  for (int jF = jMaxRZ; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    for (int m = 0; m < s_.mpol; ++m) {
+      const bool m_even = m % 2 == 0;
+      auto& blmn = m_even ? blmn_e : blmn_o;
+      auto& clmn = m_even ? clmn_e : clmn_o;
+      const int idx_ml_base = m * nThR;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int idx_kl_base =
+            ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
+        const int idx_kn_base = k * (s_.nnyq2 + 1);
+        const int idx_mn_base = ((jF - r_.nsMinF) * s_.mpol + m) * ntorp1;
+        double lmksc = 0, lmkcs = 0, lmkcs_n = 0, lmksc_n = 0;
+        for (int nn = 0; nn < ntorp1; ++nn) {
+          const int kn = idx_kn_base + nn;
+          const int mn = idx_mn_base + nn;
+          lmksc += m_coeff_bar.flsc[mn] * t_.cosnv[kn];
+          lmksc_n += m_coeff_bar.flsc[mn] * t_.sinnvn[kn];
+          lmkcs += m_coeff_bar.flcs[mn] * t_.sinnv[kn];
+          lmkcs_n += m_coeff_bar.flcs[mn] * t_.cosnvn[kn];
+        }
+        for (int l = 0; l < nThR; ++l) {
+          const int im = idx_ml_base + l;
+          const int kl = idx_kl_base + l;
+          blmn[kl] += lmksc * t_.cosmumi[im] + lmkcs * t_.sinmumi[im];
+          clmn[kl] += -(lmkcs_n * t_.cosmui[im] + lmksc_n * t_.sinmui[im]);
+        }  // l
+      }  // k
+    }  // m
+  }  // jF
+}
+
+// (geometryFromFourier)^T for the 3D case. Transpose of
+// FourierToReal3DSymmFastPoloidal: undo the poloidal evaluation, then the
+// toroidal evaluation, back onto the Fourier coefficient cotangents.
+void IdealMhdModel::dft_FourierToRealTranspose_3d_symm(
+    FourierGeometry& m_coeff_bar_out) {
+  m_coeff_bar_out.setZero();
+  const int nThR = s_.nThetaReduced;
+  const int ntorp1 = s_.ntor + 1;
+  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+    for (int m = 0; m < s_.mpol; ++m) {
+      const bool m_even = m % 2 == 0;
+      const double con_factor =
+          m_even ? xmpq[m] : xmpq[m] * m_p_.sqrtSF[jF - r_.nsMinF1];
+      auto& r1 = m_even ? r1_e : r1_o;
+      auto& ru = m_even ? ru_e : ru_o;
+      auto& rv = m_even ? rv_e : rv_o;
+      auto& z1 = m_even ? z1_e : z1_o;
+      auto& zu = m_even ? zu_e : zu_o;
+      auto& zv = m_even ? zv_e : zv_o;
+      auto& lu = m_even ? lu_e : lu_o;
+      auto& lv = m_even ? lv_e : lv_o;
+      const int jMin = (m == 0 || m == 1) ? 0 : 1;
+      if (jF < jMin) {
+        continue;
+      }
+      const int idx_ml_base = m * nThR;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int idx_kl_base =
+            ((jF - r_.nsMinF1) * s_.nZeta + k) * s_.nThetaEff;
+        const bool con_in_range =
+            (r_.nsMinF <= jF && jF < r_.nsMaxFIncludingLcfs);
+        const int idx_con_base =
+            ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
+        double rmkcc = 0, rmkss = 0, rmkcc_n = 0, rmkss_n = 0, zmksc = 0,
+               zmkcs = 0, zmksc_n = 0, zmkcs_n = 0, lmksc = 0, lmkcs = 0,
+               lmksc_n = 0, lmkcs_n = 0;
+        for (int l = 0; l < nThR; ++l) {
+          const int im = idx_ml_base + l;
+          const int kl = idx_kl_base + l;
+          const double cosmu = t_.cosmu[im], sinmu = t_.sinmu[im],
+                       sinmum = t_.sinmum[im], cosmum = t_.cosmum[im];
+          const double r1b = r1[kl], rub = ru[kl], rvb = rv[kl], z1b = z1[kl],
+                       zub = zu[kl], zvb = zv[kl], lub = lu[kl], lvb = lv[kl];
+          double rConb = 0, zConb = 0;
+          if (con_in_range) {
+            rConb = rCon[idx_con_base + l];
+            zConb = zCon[idx_con_base + l];
+          }
+          rmkcc += r1b * cosmu + rub * sinmum + rConb * cosmu * con_factor;
+          rmkss += r1b * sinmu + rub * cosmum + rConb * sinmu * con_factor;
+          rmkcc_n += rvb * cosmu;
+          rmkss_n += rvb * sinmu;
+          zmksc += z1b * sinmu + zub * cosmum + zConb * sinmu * con_factor;
+          zmkcs += z1b * cosmu + zub * sinmum + zConb * cosmu * con_factor;
+          zmksc_n += zvb * sinmu;
+          zmkcs_n += zvb * cosmu;
+          lmksc += lub * cosmum;
+          lmkcs += lub * sinmum;
+          lmksc_n += -lvb * sinmu;
+          lmkcs_n += -lvb * cosmu;
+        }  // l
+        const int idx_kn_base = k * (s_.nnyq2 + 1);
+        const int idx_mn_base = ((jF - r_.nsMinF1) * s_.mpol + m) * ntorp1;
+        for (int nn = 0; nn < ntorp1; ++nn) {
+          const int kn = idx_kn_base + nn;
+          const int mn = idx_mn_base + nn;
+          const double cosnv = t_.cosnv[kn], sinnv = t_.sinnv[kn],
+                       cosnvn = t_.cosnvn[kn], sinnvn = t_.sinnvn[kn];
+          m_coeff_bar_out.rmncc[mn] += rmkcc * cosnv + rmkcc_n * sinnvn;
+          m_coeff_bar_out.rmnss[mn] += rmkss * sinnv + rmkss_n * cosnvn;
+          m_coeff_bar_out.zmnsc[mn] += zmksc * cosnv + zmksc_n * sinnvn;
+          m_coeff_bar_out.zmncs[mn] += zmkcs * sinnv + zmkcs_n * cosnvn;
+          m_coeff_bar_out.lmnsc[mn] += lmksc * cosnv + lmksc_n * sinnvn;
+          m_coeff_bar_out.lmncs[mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
+        }  // nn
+      }  // k
+    }  // m
+  }  // jF
+}
+
+void IdealMhdModel::applyExactForceJacobianTranspose(
+    const double* geomP, int geom_stride, FourierForces& m_decomposed_in,
+    FourierForces& m_physical_f, FourierGeometry& m_physical_scratch,
+    FourierGeometry& m_decomposed_out) {
+  const int gS = geom_stride;
+  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
+
+  // C^T: transpose of [scatter -> forcesToFourier -> decompose -> m1 -> zeroZ].
+  if (m_fc_.fsqz < 1.0e-6) {
+    m_decomposed_in.zeroZForceForM1();
+  }
+  m_decomposed_in.m1Constraint(1.0 / std::numbers::sqrt2);
+  m_decomposed_in.decomposeInto(m_physical_f, m_p_.scalxc);
+  if (s_.lthreed) {
+    dft_ForcesToFourierTranspose_3d_symm(m_physical_f);
+  } else {
+    dft_ForcesToFourierTranspose_2d_symm(m_physical_f);
+  }
+
+  // Gather the force-density member cotangents into the 20-block flat layout.
+  std::vector<double> force_bar(20 * nForce, 0.0);
+  auto gather = [&](int b, const Eigen::VectorXd& src) {
+    for (int i = 0; i < nForce; ++i) force_bar[b * nForce + i] = src[i];
+  };
+  gather(0, armn_e);
+  gather(1, armn_o);
+  gather(2, azmn_e);
+  gather(3, azmn_o);
+  gather(4, brmn_e);
+  gather(5, brmn_o);
+  gather(6, bzmn_e);
+  gather(7, bzmn_o);
+  gather(12, blmn_e);
+  gather(13, blmn_o);
+  gather(16, frcon_e);
+  gather(17, frcon_o);
+  gather(18, fzcon_e);
+  gather(19, fzcon_o);
+  if (s_.lthreed) {
+    gather(8, crmn_e);
+    gather(9, crmn_o);
+    gather(10, czmn_e);
+    gather(11, czmn_o);
+    gather(14, clmn_e);
+    gather(15, clmn_o);
+  }
+
+  // J_g^T: reverse-mode force-density kernel.
+  std::vector<double> geom_bar(20 * gS, 0.0);
+  exactForceDensityCotangent(geomP, force_bar.data(), gS, geom_bar.data());
+
+  // B^T: transpose of packGeometry [decompose -> m1 -> extrapolate ->
+  // geometryFromFourier -> block pack with lamscale + ruFull/zuFull].
+  auto scat = [&](int b, Eigen::VectorXd& dst) {
+    const int sz = std::min(gS, static_cast<int>(dst.size()));
+    for (int i = 0; i < sz; ++i) dst[i] = geom_bar[b * gS + i];
+  };
+  scat(0, r1_e);
+  scat(1, r1_o);
+  scat(2, z1_e);
+  scat(3, z1_o);
+  scat(4, ru_e);
+  scat(5, ru_o);
+  scat(6, zu_e);
+  scat(7, zu_o);
+  for (int i = 0; i < gS; ++i) {
+    lu_e[i] = constants_.lamscale * geom_bar[12 * gS + i];
+    lu_o[i] = constants_.lamscale * geom_bar[13 * gS + i];
+  }
+  if (s_.lthreed) {
+    scat(8, rv_e);
+    scat(9, rv_o);
+    scat(10, zv_e);
+    scat(11, zv_o);
+    for (int i = 0; i < gS; ++i) {
+      lv_e[i] = constants_.lamscale * geom_bar[14 * gS + i];
+      lv_o[i] = constants_.lamscale * geom_bar[15 * gS + i];
+    }
+  }
+  scat(16, rCon);
+  scat(17, zCon);
+  // ruFull/zuFull (blocks 18,19): forward ruFull = ru_e + sqrtSF*ru_o, so the
+  // adjoint folds the full-grid cotangent back into the even/odd ru, zu.
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    const double sf = m_p_.sqrtSF[jF - r_.nsMinF1];
+    for (int kl = 0; kl < s_.nZnT; ++kl) {
+      const int idx_kl1 = (jF - r_.nsMinF1) * s_.nZnT + kl;
+      const int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
+      ru_e[idx_kl1] += geom_bar[18 * gS + idx_kl];
+      ru_o[idx_kl1] += sf * geom_bar[18 * gS + idx_kl];
+      zu_e[idx_kl1] += geom_bar[19 * gS + idx_kl];
+      zu_o[idx_kl1] += sf * geom_bar[19 * gS + idx_kl];
+    }
+  }
+  if (s_.lthreed) {
+    dft_FourierToRealTranspose_3d_symm(m_physical_scratch);
+  } else {
+    dft_FourierToRealTranspose_2d_symm(m_physical_scratch);
+  }
+  m_physical_scratch.extrapolateTowardsAxisTranspose();
+  m_physical_scratch.m1Constraint(1.0);
+  m_physical_scratch.decomposeInto(m_decomposed_out, m_p_.scalxc);
+}
+
+// Diagnostic: max |composed force density - production force density| at the
+// current state, to isolate composition bugs from the transform/tangent path.
+double IdealMhdModel::composedForceResidual(const double* geomP,
+                                            int geom_stride) {
+  LocalForceComposition comp;
+  comp.nZnT = s_.nZnT;
+  comp.geom_stride = geom_stride;
+  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
+  comp.force_stride = nForce;
+  comp.nsMinF = r_.nsMinF;
+  comp.nsMinF1 = r_.nsMinF1;
+  comp.nsMinH = r_.nsMinH;
+  comp.nsMaxH = r_.nsMaxH;
+  comp.jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  comp.nsMaxFIncludingLcfs = r_.nsMaxFIncludingLcfs;
+  comp.sqrtSF = m_p_.sqrtSF.data();
+  comp.sqrtSH = m_p_.sqrtSH.data();
+  comp.chipH = m_p_.chipH.data();
+  comp.presH = m_p_.presH.data();
+  comp.radialBlending = m_p_.radialBlending.data();
+  comp.deltaS = m_fc_.deltaS;
+  comp.dSHalfDsInterp = dSHalfDsInterp;
+  comp.lamscale = constants_.lamscale;
+  comp.lthreed = s_.lthreed;
+  comp.with_constraint = true;
+  comp.nsMaxF = r_.nsMaxF;
+  comp.nZeta = s_.nZeta;
+  comp.nThetaEff = s_.nThetaEff;
+  comp.ncurr = ncurr;
+  comp.currH = m_p_.currH.data();
+  comp.wInt = s_.wInt.data();
+  comp.nThetaReduced = s_.nThetaReduced;
+  comp.mpol = s_.mpol;
+  comp.ntor = s_.ntor;
+  comp.nnyq2 = s_.nnyq2;
+  comp.rCon0 = rCon0.data();
+  comp.zCon0 = zCon0.data();
+  comp.faccon = faccon.data();
+  comp.tcon = tcon.data();
+  comp.sinmui = t_.sinmui.data();
+  comp.cosmui = t_.cosmui.data();
+  comp.cosnv = t_.cosnv.data();
+  comp.sinnv = t_.sinnv.data();
+  comp.sinmu = t_.sinmu.data();
+  comp.cosmu = t_.cosmu.data();
+
+  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
+  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 2 * (s_.ntor + 1);
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> force(20 * nForce, 0.0);
+  ComputeLocalForceDensity(geomP, work.data(), force.data(), &comp);
+
+  double maxd = 0.0;
+  auto cmp = [&](int block, const Eigen::VectorXd& prod) {
+    for (int i = 0; i < static_cast<int>(prod.size()); ++i) {
+      maxd = std::max(maxd, std::fabs(force[block * nForce + i] - prod[i]));
+    }
+  };
+  cmp(0, armn_e);
+  cmp(1, armn_o);
+  cmp(2, azmn_e);
+  cmp(3, azmn_o);
+  cmp(4, brmn_e);
+  cmp(5, brmn_o);
+  cmp(6, bzmn_e);
+  cmp(7, bzmn_o);
+  cmp(12, blmn_e);
+  cmp(13, blmn_o);
+  return maxd;
+}
+#endif  // VMECPP_ENABLE_ENZYME
 
 void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
   // symmetric contribution is always needed
