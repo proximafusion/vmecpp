@@ -6,6 +6,7 @@
 #define VMECPP_COMMON_SIZES_SIZES_H_
 
 #include <Eigen/Dense>
+#include <vector>
 
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
@@ -41,6 +42,63 @@ class Sizes {
   // Equal to mpol/ntor unless a reduced geometry resolution was requested.
   int mpolGeometry;
   int ntorGeometry;
+
+  // Per-(m, n) flag (size mpol*(ntor+1), indexed m*(ntor+1)+n) marking extra
+  // geometry modes that are kept free above the mpolGeometry/ntorGeometry cap.
+  // Empty when no extra modes were requested.
+  std::vector<char> extraGeometryActive;
+
+  // True if (m, n) is one of the explicitly-kept extra geometry modes.
+  bool isExtraGeometryMode(int m, int n) const {
+    if (extraGeometryActive.empty()) {
+      return false;
+    }
+    return extraGeometryActive[m * (ntor + 1) + n] != 0;
+  }
+
+  // When true, lambda is also restricted to the active geometry modes and the
+  // transforms / preconditioner skip the frozen modes (sparse computation).
+  // Only meaningful together with a geometry cap and/or extra modes.
+  bool sparseLambda = false;
+
+  // True if geometry mode (m, n) is free: inside the mpolGeometry/ntorGeometry
+  // cap, or one of the explicitly-kept extra modes.
+  bool isActiveGeometryMode(int m, int n) const {
+    return (m < mpolGeometry && n <= ntorGeometry) || isExtraGeometryMode(m, n);
+  }
+
+  // True if any geometry mode at poloidal m is free; used to skip whole
+  // poloidal rows in the sparse transforms.
+  bool anyActiveGeometryAtM(int m) const {
+    if (m < mpolGeometry) {
+      return true;
+    }
+    if (extraGeometryActive.empty()) {
+      return false;
+    }
+    for (int n = 0; n <= ntor; ++n) {
+      if (extraGeometryActive[m * (ntor + 1) + n] != 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Highest free toroidal mode at poloidal m, or -1 if none. The sparse
+  // transforms only sum n in [0, maxActiveGeometryNAtM]; the frozen modes
+  // below it are zero and contribute nothing, so the result is unchanged.
+  int maxActiveGeometryNAtM(int m) const {
+    int max_n = (m < mpolGeometry) ? ntorGeometry : -1;
+    if (!extraGeometryActive.empty()) {
+      for (int n = ntor; n > max_n; --n) {
+        if (extraGeometryActive[m * (ntor + 1) + n] != 0) {
+          max_n = n;
+          break;
+        }
+      }
+    }
+    return max_n;
+  }
 
   // number of poloidal grid points
   int ntheta;

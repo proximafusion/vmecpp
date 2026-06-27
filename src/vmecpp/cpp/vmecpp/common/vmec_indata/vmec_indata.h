@@ -86,6 +86,22 @@ class VmecINDATA {
   int mpol_geometry;
   int ntor_geometry;
 
+  // Extra geometry (R, Z) Fourier modes to keep free above the
+  // mpol_geometry/ntor_geometry cap, given as parallel (m, n) lists with
+  // m in [0, mpol) and n in [0, ntor] (n is the storage index, i.e. toroidal
+  // mode n*nfp). Lets a reduced-resolution base equilibrium carry a few
+  // explicit high-frequency modes without raising the whole geometry
+  // resolution. Empty (the default) changes nothing.
+  Eigen::VectorXi extra_geometry_m;
+  Eigen::VectorXi extra_geometry_n;
+
+  // When true, lambda is restricted to the same active modes as the geometry
+  // (the mpol_geometry/ntor_geometry cap plus the extra modes) and the frozen
+  // modes are skipped in the Fourier transforms and the preconditioner, so a
+  // sparse mode set is computed cheaply. Only meaningful with a geometry cap
+  // and/or extra modes. Default false reproduces the dense computation.
+  bool sparse_lambda;
+
   // number of poloidal grid points; if odd: is rounded to next smaller even
   // number
   int ntheta;

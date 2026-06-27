@@ -37,6 +37,12 @@ void ForcesToFourier3DSymmFastPoloidal(
   for (int jF = rp.nsMinF; jF < jMaxRZ; ++jF) {
     const int mmax = jF == 0 ? 1 : s.mpol;
     for (int m = 0; m < mmax; ++m) {
+      // Sparse mode: skip poloidal rows with no free mode. Their force
+      // coefficients stay zero from setZero() above, identical to the dense
+      // transform followed by the geometry mask.
+      if (s.sparseLambda && !s.anyActiveGeometryAtM(m)) {
+        continue;
+      }
       const bool m_even = m % 2 == 0;
 
       const auto& armn = m_even ? d.armn_e : d.armn_o;
@@ -110,22 +116,27 @@ void ForcesToFourier3DSymmFastPoloidal(
 
         // Vectorized toroidal scatter: segment ops replace scalar n-loop
         const int ntorp1 = s.ntor + 1;
+        // Sparse mode: only project onto toroidal modes up to the highest free
+        // n at this m; the rest stay zero from setZero() above (and would be
+        // masked to zero anyway).
+        const int ntor_active =
+            s.sparseLambda ? s.maxActiveGeometryNAtM(m) + 1 : ntorp1;
         const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
         const int idx_kn_base = k * (s.nnyq2 + 1);
 
-        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
-        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
-        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
-        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
+        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntor_active);
+        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntor_active);
+        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntor_active);
+        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntor_active);
 
         Eigen::Map<Eigen::VectorXd> frcc_seg(
-            m_physical_forces.frcc.data() + idx_mn_base, ntorp1);
+            m_physical_forces.frcc.data() + idx_mn_base, ntor_active);
         Eigen::Map<Eigen::VectorXd> frss_seg(
-            m_physical_forces.frss.data() + idx_mn_base, ntorp1);
+            m_physical_forces.frss.data() + idx_mn_base, ntor_active);
         Eigen::Map<Eigen::VectorXd> fzsc_seg(
-            m_physical_forces.fzsc.data() + idx_mn_base, ntorp1);
+            m_physical_forces.fzsc.data() + idx_mn_base, ntor_active);
         Eigen::Map<Eigen::VectorXd> fzcs_seg(
-            m_physical_forces.fzcs.data() + idx_mn_base, ntorp1);
+            m_physical_forces.fzcs.data() + idx_mn_base, ntor_active);
 
         frcc_seg += rmkcc * cosnv_seg + rmkcc_n * sinnvn_seg;
         frss_seg += rmkss * sinnv_seg + rmkss_n * cosnvn_seg;
@@ -134,9 +145,9 @@ void ForcesToFourier3DSymmFastPoloidal(
 
         if (jMinL <= jF) {
           Eigen::Map<Eigen::VectorXd> flsc_seg(
-              m_physical_forces.flsc.data() + idx_mn_base, ntorp1);
+              m_physical_forces.flsc.data() + idx_mn_base, ntor_active);
           Eigen::Map<Eigen::VectorXd> flcs_seg(
-              m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
+              m_physical_forces.flcs.data() + idx_mn_base, ntor_active);
           flsc_seg += lmksc * cosnv_seg + lmksc_n * sinnvn_seg;
           flcs_seg += lmkcs * sinnv_seg + lmkcs_n * cosnvn_seg;
         }
@@ -228,6 +239,12 @@ void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
   const int nsMinF = r.nsMinF;
   for (int jF = nsMinF1; jF < r.nsMaxF1; ++jF) {
     for (int m = 0; m < s.mpol; ++m) {
+      // Sparse mode: skip poloidal rows with no free mode. Their R, Z and
+      // lambda coefficients are all frozen at zero, so the row contributes
+      // nothing and the result is identical to the dense transform.
+      if (s.sparseLambda && !s.anyActiveGeometryAtM(m)) {
+        continue;
+      }
       const bool m_even = m % 2 == 0;
       const int idx_ml_base = m * s.nThetaReduced;
 
@@ -256,29 +273,35 @@ void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
         continue;
       }
 
+      // Sparse mode: only sum toroidal modes up to the highest free n at this
+      // m; the frozen modes above it are zero and contribute nothing, so the
+      // shortened dot products are identical to the dense ones.
+      const int ntor_active =
+          s.sparseLambda ? s.maxActiveGeometryNAtM(m) + 1 : s.ntor + 1;
+
       for (int k = 0; k < s.nZeta; ++k) {
         // INVERSE TRANSFORM IN N-ZETA, FOR FIXED M
         // Vectorized toroidal accumulation loop
         const int idx_kn_base = k * (s.nnyq2 + 1);
         const int idx_mn_base = ((jF - nsMinF1) * s.mpol + m) * (s.ntor + 1);
 
-        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, s.ntor + 1);
-        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, s.ntor + 1);
-        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, s.ntor + 1);
-        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, s.ntor + 1);
+        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntor_active);
+        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntor_active);
+        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntor_active);
+        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntor_active);
 
         auto rmncc_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.rmncc.data() + idx_mn_base, s.ntor + 1);
+            physical_x.rmncc.data() + idx_mn_base, ntor_active);
         auto rmnss_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.rmnss.data() + idx_mn_base, s.ntor + 1);
+            physical_x.rmnss.data() + idx_mn_base, ntor_active);
         auto zmnsc_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.zmnsc.data() + idx_mn_base, s.ntor + 1);
+            physical_x.zmnsc.data() + idx_mn_base, ntor_active);
         auto zmncs_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.zmncs.data() + idx_mn_base, s.ntor + 1);
+            physical_x.zmncs.data() + idx_mn_base, ntor_active);
         auto lmnsc_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.lmnsc.data() + idx_mn_base, s.ntor + 1);
+            physical_x.lmnsc.data() + idx_mn_base, ntor_active);
         auto lmncs_seg = Eigen::Map<const Eigen::VectorXd>(
-            physical_x.lmncs.data() + idx_mn_base, s.ntor + 1);
+            physical_x.lmncs.data() + idx_mn_base, ntor_active);
 
         double rmkcc = rmncc_seg.dot(cosnv_seg);
         double rmkcc_n = rmncc_seg.dot(sinnvn_seg);
