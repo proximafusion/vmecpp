@@ -18,10 +18,22 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 from external_optimizers import (  # type: ignore
+    make_model,
     reference_equilibrium,
+    residual,
     solve_newton_krylov,
     solve_newton_krylov_preconditioned,
     solve_preconditioned_descent,
+)
+
+CMA = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "vmecpp"
+    / "cpp"
+    / "vmecpp"
+    / "test_data"
+    / "cma.json"
 )
 
 
@@ -54,3 +66,15 @@ def test_preconditioner_accelerates_newton_krylov():
     _, plain = solve_newton_krylov()
     _, precond = solve_newton_krylov_preconditioned()
     assert precond.force_evals < plain.force_evals
+
+
+def test_cma_cold_start_exercises_non_axisymmetric_paths():
+    # cma.json is a 3D stellarator (nfp=2, ntor=6) that ships no magnetic axis
+    # (raxis/zaxis all zero), so the initial geometry has a singular Jacobian.
+    # make_model reguesses the axis like the native solver, after which the raw
+    # internal-basis force is well defined on the non-axisymmetric force chain.
+    model = make_model(CMA, ns=25)
+    x0 = np.asarray(model.get_state(), float)
+    f0 = residual(model)(x0)
+    assert np.all(np.isfinite(f0))
+    assert np.linalg.norm(f0) > 0.0
