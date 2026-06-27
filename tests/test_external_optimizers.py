@@ -18,11 +18,23 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 from external_optimizers import (  # type: ignore
+    make_model,
     reference_equilibrium,
+    residual,
     solve_newton_hvp,
     solve_newton_krylov,
     solve_newton_krylov_preconditioned,
     solve_preconditioned_descent,
+)
+
+CMA = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "vmecpp"
+    / "cpp"
+    / "vmecpp"
+    / "test_data"
+    / "cma.json"
 )
 
 
@@ -65,3 +77,22 @@ def test_newton_hvp_converges_in_few_iterations():
     _, descent = solve_preconditioned_descent()
     assert newton.outer_iters < 20
     assert newton.outer_iters < descent.outer_iters
+
+
+def test_cma_cold_start_exercises_non_axisymmetric_paths():
+    # cma.json is a 3D stellarator (nfp=2, ntor=6) that ships no magnetic axis
+    # (raxis/zaxis all zero), so the initial geometry has a singular Jacobian.
+    # make_model reguesses the axis like the native solver, after which the raw
+    # internal-basis force and the Hessian-vector product are well defined on the
+    # non-axisymmetric force chain.
+    model = make_model(CMA, ns=25)
+    x0 = np.asarray(model.get_state(), float)
+    f0 = residual(model)(x0)
+    assert np.all(np.isfinite(f0))
+    assert np.linalg.norm(f0) > 0.0
+
+    rng = np.random.default_rng(0)
+    v = rng.standard_normal(x0.size)
+    hv = np.asarray(model.hessian_vector_product(np.ascontiguousarray(v)), float)
+    assert np.all(np.isfinite(hv))
+    assert np.linalg.norm(hv) > 0.0
