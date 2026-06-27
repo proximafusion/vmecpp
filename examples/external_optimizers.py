@@ -49,11 +49,11 @@ _BAD_JACOBIAN = 2  # RestartReason::BAD_JACOBIAN (flow_control.h)
 def _ensure_valid_initial_jacobian(model, max_reguess: int = 2) -> None:
     """Reguess the magnetic axis until the initial Jacobian is non-singular.
 
-    Inputs that ship no axis (e.g. cma.json, with raxis/zaxis all zero) start
-    from a degenerate geometry, so the bare forward model returns at the
-    BAD_JACOBIAN checkpoint with zero force. The native solver reguesses the axis
-    on the first iterate (vmec.cc SolveEquilibriumLoop); mirror that here via
-    reinitialize() so a cold start from any valid INDATA has a defined gradient.
+    Inputs that ship no axis (e.g. cma.json, with raxis/zaxis all zero) start from a
+    degenerate geometry, so the bare forward model returns at the BAD_JACOBIAN
+    checkpoint with zero force. The native solver reguesses the axis on the first
+    iterate (vmec.cc SolveEquilibriumLoop); mirror that here via reinitialize() so a
+    cold start from any valid INDATA has a defined gradient.
     """
     for _ in range(max_reguess):
         model.evaluate(2, 2, False)
