@@ -1063,6 +1063,10 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
       // I left it as-is for now.
 
       for (int m = 0; m < num_m; ++m) {
+        // Sparse mode: skip frozen poloidal rows (coefficients are all zero).
+        if (s_.sparseLambda && !s_.anyActiveGeometryAtM(m)) {
+          continue;
+        }
         const int m_parity = m % 2;
         const int idx_ml = m * s_.nThetaReduced + l;
         const double cosmu = t_.cosmu[idx_ml];
@@ -2745,6 +2749,11 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
     }
 
     for (int m = 0; m < num_m; ++m) {
+      // Sparse mode: skip frozen poloidal rows; their force stays zero from
+      // setZero() above, identical to the dense transform plus geometry mask.
+      if (s_.sparseLambda && !s_.anyActiveGeometryAtM(m)) {
+        continue;
+      }
       const bool m_even = m % 2 == 0;
       const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
 

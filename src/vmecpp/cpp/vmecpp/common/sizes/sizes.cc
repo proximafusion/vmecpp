@@ -15,7 +15,24 @@ namespace vmecpp {
 
 Sizes::Sizes(const VmecINDATA& id)
     : Sizes(id.lasym, id.nfp, id.mpol, id.ntor, id.ntheta, id.nzeta,
-            id.mpol_geometry, id.ntor_geometry) {}
+            id.mpol_geometry, id.ntor_geometry) {
+  // Mark the explicitly-requested extra geometry modes active. Out-of-range
+  // (m, n) entries are ignored here; mpol/ntor/nfp are already set by the
+  // delegated constructor above.
+  const int n_extra = static_cast<int>(
+      std::min(id.extra_geometry_m.size(), id.extra_geometry_n.size()));
+  if (n_extra > 0) {
+    extraGeometryActive.assign(static_cast<size_t>(mpol) * (ntor + 1), 0);
+    for (int i = 0; i < n_extra; ++i) {
+      const int m = id.extra_geometry_m[i];
+      const int n = id.extra_geometry_n[i];
+      if (m >= 0 && m < mpol && n >= 0 && n <= ntor) {
+        extraGeometryActive[m * (ntor + 1) + n] = 1;
+      }
+    }
+  }
+  sparseLambda = id.sparse_lambda;
+}
 
 Sizes::Sizes(bool lasym, int nfp, int mpol, int ntor, int ntheta, int nzeta,
              int mpol_geometry, int ntor_geometry)
