@@ -295,14 +295,14 @@ def solve_newton_ptc(
 ):
     """Pseudo-transient continuation (Psi-tc) with the exact autodiff HVP.
 
-    Each step solves (H + I/dt) dx = -F with GMRES preconditioned by M^-1, then
-    grows the pseudo-time step by switched evolution relaxation, dt = dt0 *
-    ||F0||/||F||. The I/dt shift is implicit-Euler damping at large residual --
-    the same physics as VMEC's damped descent -- and also regularizes the
-    indefinite, ill-conditioned augmented-Lagrangian Hessian that defeats a plain
-    Newton-Krylov, so this is the robust choice on stiff stellarators (e.g. cma)
-    where stock scipy root-finders stall or diverge. As ||F|| -> 0 the shift
-    vanishes and it becomes the exact Newton step. Needs an Enzyme-enabled build.
+    Each step solves (H + I/dt) dx = -F with GMRES preconditioned by M^-1, then grows
+    the pseudo-time step by switched evolution relaxation, dt = dt0 * ||F0||/||F||. The
+    I/dt shift is implicit-Euler damping at large residual -- the same physics as VMEC's
+    damped descent -- and also regularizes the indefinite, ill-conditioned augmented-
+    Lagrangian Hessian that defeats a plain Newton-Krylov, so this is the robust choice
+    on stiff stellarators (e.g. cma) where stock scipy root-finders stall or diverge. As
+    ||F|| -> 0 the shift vanishes and it becomes the exact Newton step. Needs an Enzyme-
+    enabled build.
     """
     model = make_model(input_path, ns)
     model.evaluate(2, 2, True)
