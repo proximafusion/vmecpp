@@ -541,6 +541,7 @@ PYBIND11_MODULE(_vmecpp, m) {
   pyindata.def_readwrite("delt", &VmecINDATA::delt)
       .def_readwrite("tcon0", &VmecINDATA::tcon0)
       .def_readwrite("lforbal", &VmecINDATA::lforbal)
+      .def_readwrite("lbsubs", &VmecINDATA::lbsubs)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)

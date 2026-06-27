@@ -59,3 +59,22 @@ cc_test(
     ],
     size = "large",
 )
+
+cc_test(
+    name = "lbsubs_test",
+    srcs = ["lbsubs_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:up_down_asym",
+    ],
+    deps = [
+        "//vmecpp/vmec/output_quantities",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//vmecpp/common/flow_control:flow_control",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)
