@@ -7,6 +7,7 @@
 
 #include <Eigen/Dense>
 #include <climits>
+#include <memory>
 #include <span>
 
 #ifdef _OPENMP
@@ -24,6 +25,7 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_toroidal.h"
+#include "vmecpp/vmec/ideal_mhd_model/nestor_async.h"
 #ifdef VMECPP_USE_FFTX
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
 #endif
@@ -53,6 +55,29 @@ class IdealMhdModel {
                 VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
+
+#ifdef VMECPP_USE_CUDA
+  // Batched free-boundary: one vacuum solver per configuration slot
+  // (entry 0 is the solver also held by m_fb_). The vacuum block in
+  // update() loops the geometry handover, vacuum solve, and edge
+  // pressure over the configurations when this is populated.
+  void SetPerCfgFreeBoundary(std::vector<FreeBoundaryBase*> fbs) {
+    fb_per_cfg_ = std::move(fbs);
+  }
+
+  // Asynchronous NESTOR (VMECPP_FB_ASYNC_NESTOR): a thread-private vacuum
+  // solver plus its private vacuum_magnetic_pressure output. When present and
+  // the vacuum contribution is fully active, the single-configuration vacuum
+  // block runs the solve on a background thread and applies the previous
+  // iteration's edge force (see nestor_async.h). fb_async is owned by Vmec.
+  void SetAsyncFreeBoundary(FreeBoundaryBase* fb_async,
+                            std::span<const double> bsqvac);
+  // Fills the async worker's input buffer from the current handover and
+  // profile state (LCFS spectrum, axis, toroidal current, edge pressure, LCFS
+  // radius) and submits the next solve. Used by the steady-state async branch
+  // and to prime the worker at the first fully-active iteration.
+  void SnapshotAndSubmitAsyncNestor();
+#endif
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -203,6 +228,15 @@ class IdealMhdModel {
   // `ivacskip` is the current counter that controls whether a full update or a
   // partial update of the Nestor free boundary force contribution is computed.
   int get_ivacskip() const;
+
+  // Device-to-host flush of all device-resident fields consumed by the
+  // post-iteration output-derivation path (GatherDataFromThreads and the
+  // routines invoked from ComputeOutputQuantities). Invoked exactly once
+  // from Vmec::run after the iteration loop terminates, in place of the
+  // per-iteration partial flushes that the host triplet would otherwise
+  // require. On builds without VMECPP_USE_CUDA the implementation is a
+  // no-op, allowing call sites to remain unconditional.
+  void FlushForOutputCuda();
 
   /**********************************************/
 
@@ -408,6 +442,14 @@ class IdealMhdModel {
   const RadialPartitioning& r_;
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
+#ifdef VMECPP_USE_CUDA
+  std::vector<FreeBoundaryBase*> fb_per_cfg_;
+  // Asynchronous NESTOR worker (VMECPP_FB_ASYNC_NESTOR); null unless the env
+  // gate, single-configuration, and NESTOR free boundary all hold. Primed the
+  // first fully-active vacuum iteration, then drives the steady state.
+  std::unique_ptr<NestorAsyncWorker> nestor_async_worker_;
+  bool nestor_async_primed_ = false;
+#endif
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.

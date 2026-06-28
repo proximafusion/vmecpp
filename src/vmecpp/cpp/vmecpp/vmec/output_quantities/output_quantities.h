@@ -1378,6 +1378,20 @@ OutputQuantities ComputeOutputQuantities(
     const VmecCheckpoint& checkpoint, VacuumPressureState vacuum_pressure_state,
     VmecStatus vmec_status, int iter2);
 
+// The physics chain of ComputeOutputQuantities: consumes an
+// OutputQuantities whose vmec_internal_results is already populated and
+// derives every downstream output (bcovar, jxbforce, Mercier, threed1
+// tables, wout). ComputeOutputQuantities is GatherDataFromThreads followed
+// by this function; callers that assemble VmecInternalResults from another
+// source (the per-configuration batched flush) call it directly.
+OutputQuantities DeriveOutputQuantities(
+    OutputQuantities&& output_quantities_in, const VmecINDATA& indata,
+    const Sizes& s, const FlowControl& fc, const VmecConstants& constants,
+    const FourierBasisFastPoloidal& t, const HandoverStorage& h,
+    const std::string& mgrid_mode, const VmecCheckpoint& checkpoint,
+    VacuumPressureState vacuum_pressure_state, VmecStatus vmec_status,
+    int iter2);
+
 // gather data from all threads into the main thread
 VmecInternalResults GatherDataFromThreads(
     int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
