@@ -42,15 +42,23 @@ void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
       const int idx_mn = m * ntorp1 + n;
       const int idx_nm = n * sizes.mpol + m;
       m_h.rCC_LCFS[idx_nm] = physical_x.rmncc[offset + idx_mn];
-      m_h.rSS_LCFS[idx_nm] = physical_x.rmnss[offset + idx_mn];
       m_h.zSC_LCFS[idx_nm] = physical_x.zmnsc[offset + idx_mn];
-      m_h.zCS_LCFS[idx_nm] = physical_x.zmncs[offset + idx_mn];
+
+      // The sin(n v) Fourier components vanish for an axisymmetric (ntor = 0)
+      // run, and their FourierGeometry storage is only allocated when lthreed.
+      // Skip them there; the corresponding *_LCFS targets stay zero.
+      if (sizes.lthreed) {
+        m_h.rSS_LCFS[idx_nm] = physical_x.rmnss[offset + idx_mn];
+        m_h.zCS_LCFS[idx_nm] = physical_x.zmncs[offset + idx_mn];
+      }
 
       if (sizes.lasym) {
         m_h.rSC_LCFS[idx_nm] = physical_x.rmnsc[offset + idx_mn];
-        m_h.rCS_LCFS[idx_nm] = physical_x.rmncs[offset + idx_mn];
         m_h.zCC_LCFS[idx_nm] = physical_x.zmncc[offset + idx_mn];
-        m_h.zSS_LCFS[idx_nm] = physical_x.zmnss[offset + idx_mn];
+        if (sizes.lthreed) {
+          m_h.rCS_LCFS[idx_nm] = physical_x.rmncs[offset + idx_mn];
+          m_h.zSS_LCFS[idx_nm] = physical_x.zmnss[offset + idx_mn];
+        }
       }
     }
   }
@@ -328,7 +336,7 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
   this->tcon0 = tcon0;
 }
 
-void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
+void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -367,7 +375,7 @@ void IdealMhdModel::evalFResInvar(const Eigen::VectorXd& localFResInvar) {
   }
 }
 
-void IdealMhdModel::evalFResPrecd(const Eigen::VectorXd& localFResPrecd) {
+void IdealMhdModel::evalFResPrecd(const Eigen::Vector3d& localFResPrecd) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -406,6 +414,12 @@ absl::StatusOr<bool> IdealMhdModel::update(
     int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
     const int iter2, const VmecCheckpoint& checkpoint,
     const int iterations_before_checkpointing, bool verbose) {
+  // An axis re-guess after a bad Jacobian can repopulate high geometry modes
+  // directly, bypassing the force mask; clear them on the state each iteration.
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_x.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+  }
+
   // preprocess Fourier coefficients of geometry
   m_decomposed_x.decomposeInto(m_physical_x, m_p_.scalxc);
   if (checkpoint == VmecCheckpoint::FOURIER_GEOMETRY_TO_START_WITH &&
@@ -629,9 +643,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
       if (r_.nsMaxF1 == m_fc_.ns) {
         // can only get this from thread that has the LCFS !!!
-
-        // TODO(jons): respect lthreed in case of a free-boundary axisymmetric
-        // run
         HandOverBoundaryGeometry(
             m_h_, m_physical_x, s_,
             /*offset=*/(r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.mnsize);
@@ -802,6 +813,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
     m_decomposed_f.zeroZForceForM1();
   }
 
+  // Freeze geometry above the reduced resolution before the invariant
+  // residuals (so frozen modes stay out of the convergence test) and before
+  // preconditioning (so they get no update).
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_f.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+  }
+
   if (checkpoint == VmecCheckpoint::PHYSICAL_FORCES &&
       iter2 >= iterations_before_checkpointing) {
     return true;
@@ -827,7 +845,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
                                         VacuumPressureState::kInitialized);
   bool includeEdgeRZForces =
       ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
-  Eigen::VectorXd localFResInvar = Eigen::VectorXd::Zero(3);
+  Eigen::Vector3d localFResInvar;
+  localFResInvar.setZero();
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 
   evalFResInvar(localFResInvar);
@@ -862,7 +881,15 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  Eigen::VectorXd localFResPrecd = Eigen::VectorXd::Zero(3);
+  // Re-freeze after preconditioning. The radial preconditioner is per-mode so
+  // it cannot reintroduce frozen modes; this keeps the preconditioned residual
+  // and the state update clean.
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_f.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+  }
+
+  Eigen::Vector3d localFResPrecd;
+  localFResPrecd.setZero();
   m_decomposed_f.residuals(localFResPrecd, true);
 
   evalFResPrecd(localFResPrecd);
@@ -2060,19 +2087,39 @@ void IdealMhdModel::computeMHDForces() {
     m_ls_.gbvbv_i.setZero();
   }
 
-  Eigen::VectorXd P_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  //  r12 * totalPressure = P
-  Eigen::VectorXd rup_o = Eigen::VectorXd::Zero(s_.nZnT);   // ru12 * P
-  Eigen::VectorXd zup_o = Eigen::VectorXd::Zero(s_.nZnT);   // zu12 * P
-  Eigen::VectorXd rsp_o = Eigen::VectorXd::Zero(s_.nZnT);   //   rs * P
-  Eigen::VectorXd zsp_o = Eigen::VectorXd::Zero(s_.nZnT);   //   zs * P
-  Eigen::VectorXd taup_o = Eigen::VectorXd::Zero(s_.nZnT);  //  tau * P
-  Eigen::VectorXd gbubu_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupu * bsupu
-  Eigen::VectorXd gbubv_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupu * bsupv
-  Eigen::VectorXd gbvbv_o =
-      Eigen::VectorXd::Zero(s_.nZnT);  // gsqrt * bsupv * bsupv
+  // Persistent per-surface scratch (preallocated in ThreadLocalStorage):
+  // aliased here so every write below lands in existing storage. This keeps the
+  // force kernel allocation-free, which both avoids per-surface heap churn and
+  // lets Enzyme differentiate it (Enzyme cannot trace dynamic Eigen
+  // temporaries).
+  Eigen::VectorXd& P_o = m_ls_.P_o;          //  r12 * totalPressure = P
+  Eigen::VectorXd& rup_o = m_ls_.rup_o;      // ru12 * P
+  Eigen::VectorXd& zup_o = m_ls_.zup_o;      // zu12 * P
+  Eigen::VectorXd& rsp_o = m_ls_.rsp_o;      //   rs * P
+  Eigen::VectorXd& zsp_o = m_ls_.zsp_o;      //   zs * P
+  Eigen::VectorXd& taup_o = m_ls_.taup_o;    //  tau * P
+  Eigen::VectorXd& gbubu_o = m_ls_.gbubu_o;  // gsqrt * bsupu * bsupu
+  Eigen::VectorXd& gbubv_o = m_ls_.gbubv_o;  // gsqrt * bsupu * bsupv
+  Eigen::VectorXd& gbvbv_o = m_ls_.gbvbv_o;  // gsqrt * bsupv * bsupv
+  P_o.setZero();
+  rup_o.setZero();
+  zup_o.setZero();
+  rsp_o.setZero();
+  zsp_o.setZero();
+  taup_o.setZero();
+  gbubu_o.setZero();
+  gbubv_o.setZero();
+  gbvbv_o.setZero();
+
+  // Surface-average scratch, likewise aliased to preallocated storage.
+  Eigen::VectorXd& P_avg = m_ls_.P_avg;
+  Eigen::VectorXd& P_wavg = m_ls_.P_wavg;
+  Eigen::VectorXd& gbubu_avg = m_ls_.gbubu_avg;
+  Eigen::VectorXd& gbubu_wavg = m_ls_.gbubu_wavg;
+  Eigen::VectorXd& gbvbv_avg = m_ls_.gbvbv_avg;
+  Eigen::VectorXd& gbvbv_wavg = m_ls_.gbvbv_wavg;
+  Eigen::VectorXd& gbubv_avg = m_ls_.gbubv_avg;
+  Eigen::VectorXd& gbubv_wavg = m_ls_.gbubv_wavg;
 
   for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
     const double sFull =
@@ -2133,15 +2180,13 @@ void IdealMhdModel::computeMHDForces() {
     const double invDS = 1.0 / m_fc_.deltaS;
     const double invSHo = 1.0 / sqrtSHo;
     const double invSHi = 1.0 / sqrtSHi;
-    const Eigen::VectorXd P_avg = 0.5 * (P_o + m_ls_.P_i);
-    const Eigen::VectorXd P_wavg = 0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
+    P_avg = 0.5 * (P_o + m_ls_.P_i);
+    P_wavg = 0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
 
-    const Eigen::VectorXd gbubu_avg = 0.5 * (gbubu_o + m_ls_.gbubu_i);
-    const Eigen::VectorXd gbubu_wavg =
-        0.5 * (gbubu_o * sqrtSHo + m_ls_.gbubu_i * sqrtSHi);
-    const Eigen::VectorXd gbvbv_avg = 0.5 * (gbvbv_o + m_ls_.gbvbv_i);
-    const Eigen::VectorXd gbvbv_wavg =
-        0.5 * (gbvbv_o * sqrtSHo + m_ls_.gbvbv_i * sqrtSHi);
+    gbubu_avg = 0.5 * (gbubu_o + m_ls_.gbubu_i);
+    gbubu_wavg = 0.5 * (gbubu_o * sqrtSHo + m_ls_.gbubu_i * sqrtSHi);
+    gbvbv_avg = 0.5 * (gbvbv_o + m_ls_.gbvbv_i);
+    gbvbv_wavg = 0.5 * (gbvbv_o * sqrtSHo + m_ls_.gbvbv_i * sqrtSHi);
 
     // A_R force
     armn_e.segment(f_off, nZnT) =
@@ -2178,9 +2223,8 @@ void IdealMhdModel::computeMHDForces() {
         gbubu_avg.cwiseProduct(zuo) * sFull;
 
     if (s_.lthreed) {
-      const Eigen::VectorXd gbubv_avg = 0.5 * (gbubv_o + m_ls_.gbubv_i);
-      const Eigen::VectorXd gbubv_wavg =
-          0.5 * (gbubv_o * sqrtSHo + m_ls_.gbubv_i * sqrtSHi);
+      gbubv_avg = 0.5 * (gbubv_o + m_ls_.gbubv_i);
+      gbubv_wavg = 0.5 * (gbubv_o * sqrtSHo + m_ls_.gbubv_i * sqrtSHi);
       const auto rve = rv_e.segment(g_off, nZnT);
       const auto rvo = rv_o.segment(g_off, nZnT);
       const auto zve = zv_e.segment(g_off, nZnT);
@@ -2948,8 +2992,10 @@ void IdealMhdModel::assembleRZPreconditioner() {
 // serial variant
 absl::Status IdealMhdModel::applyRZPreconditioner(
     FourierForces& m_decomposed_f) {
-  std::vector<std::span<double>> cR(s_.num_basis);
-  std::vector<std::span<double>> cZ(s_.num_basis);
+  // num_basis is at most 4 (cc, ss, sc, cs); a fixed-size array keeps this
+  // serial preconditioner path allocation-free.
+  std::array<std::span<double>, 4> cR{};
+  std::array<std::span<double>, 4> cZ{};
   {
     int idx_basis = 0;
 

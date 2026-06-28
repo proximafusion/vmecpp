@@ -440,6 +440,110 @@ def test_threed1volumetrics_bindings(cma_output: vmecpp.VmecOutput):
         assert isinstance(getattr(cma_output.threed1_volumetrics, varname), float)
 
 
+def test_threed1_first_table_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in [
+        "s",
+        "radial_force",
+        "toroidal_flux",
+        "iota",
+        "avg_jsupu",
+        "avg_jsupv",
+        "d_volume_d_phi",
+        "d_pressure_d_phi",
+        "spectral_width",
+        "pressure",
+        "buco_full",
+        "bvco_full",
+        "j_dot_b",
+        "b_dot_b",
+    ]:
+        assert len(getattr(cma_output.threed1_first_table, varname).shape) == 1
+
+
+def test_threed1_geometric_magnetic_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in [
+        "toroidal_flux",
+        "circum_p",
+        "surf_area_p",
+        "cross_area_p",
+        "volume_p",
+        "Rmajor_p",
+        "Aminor_p",
+        "aspect",
+        "kappa_p",
+        "rcen",
+        "aminr1",
+        "pavg",
+        "factor",
+        "b0",
+        "rmax_surf",
+        "rmin_surf",
+        "zmax_surf",
+        "betapol",
+        "betatot",
+        "betator",
+        "VolAvgB",
+        "IonLarmor",
+        "jpar_perp",
+        "jparPS_perp",
+        "toroidal_current",
+        "rbtor",
+        "rbtor0",
+    ]:
+        assert isinstance(
+            getattr(cma_output.threed1_geometric_magnetic, varname), float
+        )
+    for varname in [
+        "bmin",
+        "bmax",
+        "waist",
+        "height",
+        "psi",
+        "ygeo",
+        "yinden",
+        "yellip",
+        "ytrian",
+        "yshift",
+        "loc_jpar_perp",
+        "loc_jparPS_perp",
+    ]:
+        assert len(getattr(cma_output.threed1_geometric_magnetic, varname).shape) >= 1
+
+
+def test_threed1_axis_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in ["raxis_symm", "zaxis_symm", "raxis_asym", "zaxis_asym"]:
+        assert len(getattr(cma_output.threed1_axis, varname).shape) == 1
+
+
+def test_threed1_betas_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in ["betatot", "betapol", "betator", "rbtor", "betaxis", "betstr"]:
+        assert isinstance(getattr(cma_output.threed1_betas, varname), float)
+
+
+def test_threed1_shafranov_integrals_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in [
+        "scaling_ratio",
+        "r_lao",
+        "f_lao",
+        "f_geo",
+        "smaleli",
+        "betai",
+        "musubi",
+        "lambda_",
+        "s11",
+        "s12",
+        "s13",
+        "s2",
+        "s3",
+        "delta1",
+        "delta2",
+        "delta3",
+    ]:
+        assert isinstance(
+            getattr(cma_output.threed1_shafranov_integrals, varname), float
+        )
+
+
 def test_is_vmec2000_input():
     vmec2000_input_file = TEST_DATA_DIR / "input.cma"
     vmecpp_input_file = TEST_DATA_DIR / "cma.json"

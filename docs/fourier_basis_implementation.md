@@ -38,7 +38,7 @@ std::vector<double> sinnv;    // Pre-computed sin(n*\zeta) with scaling
 1. **Physics-driven grids**: VMEC uses specific angular discretizations
    - Poloidal: Reduced range [0,\pi] with nThetaReduced points
    - Toroidal: Full period [0,2\pi/nfp] with nZeta points
-   - These grids are NOT power-of-2 sized
+   - These grids are NOT power-of-2 sized! The overhead of padding to power of two makes most FFT libraries non-applicable.
 
 2. **Integration weight incorporation**: Surface integrals require specific quadrature weights pre-applied to basis functions
 
@@ -46,7 +46,7 @@ std::vector<double> sinnv;    // Pre-computed sin(n*\zeta) with scaling
 
 4. **Derivative computation**: Pre-computed derivative arrays avoid repeated calculations
 
-FFTs would require post-processing for all these physics-specific requirements, making DFTs more efficient.
+FFTs would require post-processing for all these physics-specific requirements. Nonetheless, specialized FFT kernels can be compiled for a specific resolution (e.g. [generated using FFTX](https://github.com/spiral-software/fftx)) for a 10-20% speedup relative to the DFT counterparts. Navigate to `src/vmecpp/cpp/third_party/fftx_codelets` for the precise, generated code.
 
 ## Two Fourier Basis Representations
 

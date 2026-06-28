@@ -25,6 +25,14 @@ from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
     MakegridParameters,
 )
+from vmecpp._iteration import (
+    IterationResult,
+    IterationState,
+    RestartReason,
+    iterate,
+    solve_equilibrium,
+    solve_multigrid,
+)
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
@@ -84,18 +92,6 @@ MgridModeType: typing.TypeAlias = typing.Annotated[
 """[Scaled, Raw, Unset]"""
 
 ProfileType = typing.Annotated[str, pydantic.Field(max_length=20)]
-
-
-class RestartReason(enum.Enum):
-    BAD_JACOBIAN = 2
-    """Irst == 2, bad Jacobian, flux surfaces are overlapping."""
-
-    BAD_PROGRESS = 3
-    """Irst == 3, bad progress, residuals not decaying as expected."""
-
-    HUGE_INITIAL_FORCES = 4
-    """Irst == 4, huge initial forces, flux surfaces are too close to each other (but
-    not overlapping yet)"""
 
 
 class FreeBoundaryMethod(str, enum.Enum):
@@ -179,6 +175,20 @@ class VmecInput(BaseModelWithNumpy):
     ntor: int = 0
     """Number of toroidal Fourier harmonics; n = -ntor, -ntor+1, ..., -1, 0, 1, ...,
     ntor-1, ntor."""
+
+    mpol_geometry: int = -1
+    """Optional reduced poloidal resolution for the geometry (R, Z).
+
+    If in [1, mpol), R/Z modes with m >= mpol_geometry are held fixed while lambda keeps
+    the full mpol. < 0 (default) means geometry uses mpol.
+    """
+
+    ntor_geometry: int = -1
+    """Optional reduced toroidal resolution for the geometry (R, Z).
+
+    If in [0, ntor), R/Z modes with n > ntor_geometry are held fixed while lambda keeps
+    the full ntor. < 0 (default) means geometry uses ntor.
+    """
 
     ntheta: int = 0
     """Number of poloidal grid points (ntheta >= 0).
@@ -1070,31 +1080,31 @@ class VmecWOut(BaseModelWithNumpy):
     piota_type: ProfileType
     """Parametrization of iota profile (copied from input)."""
 
-    am: jt.Float[np.ndarray, "preset"]
+    am: jt.Float[np.ndarray, "_preset"]
     """Mass/pressure profile coefficients (copied from input)."""
 
-    ac: jt.Float[np.ndarray, "preset"]
+    ac: jt.Float[np.ndarray, "_preset"]
     """Enclosed toroidal current profile coefficients (copied from input)."""
 
-    ai: jt.Float[np.ndarray, "preset"]
+    ai: jt.Float[np.ndarray, "_preset"]
     """Iota profile coefficients (copied from input)."""
 
-    am_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    am_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline mass/pressure profile: knot locations in ``s`` (copied from input)."""
 
-    am_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    am_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline mass/pressure profile: values at knots (copied from input)."""
 
-    ac_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    ac_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline toroidal current profile: knot locations in ``s`` (copied from input)."""
 
-    ac_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    ac_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline toroidal current profile: values at knots (copied from input)."""
 
-    ai_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    ai_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline iota profile: knot locations in ``s`` (copied from input)."""
 
-    ai_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    ai_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline iota profile: values at knots (copied from input)."""
 
     gamma: float
@@ -1302,6 +1312,24 @@ class VmecWOut(BaseModelWithNumpy):
                 ): field_info
                 for field, field_info in VmecWOut.model_fields.items()
             }
+            # jaxtyping does not expose a stable public API for dimension marker
+            # types. Older versions expose `_AnonymousDim`, while newer versions
+            # expose `_anonymous_dim` (instance). Resolve both for compatibility.
+            array_types = getattr(jt, "_array_types", None)
+            named_dim_type = (
+                getattr(array_types, "_NamedDim", None)
+                if array_types is not None
+                else None
+            )
+            anonymous_dim_type = (
+                getattr(array_types, "_AnonymousDim", None)
+                if array_types is not None
+                else None
+            )
+            if anonymous_dim_type is None and array_types is not None:
+                anonymous_dim_instance = getattr(array_types, "_anonymous_dim", None)
+                if anonymous_dim_instance is not None:
+                    anonymous_dim_type = type(anonymous_dim_instance)
 
             # Operates under the assumption that the order of the fields in
             # model_fields and model_dump are the same.
@@ -1358,18 +1386,31 @@ class VmecWOut(BaseModelWithNumpy):
                         )
                     ):
                         # Extract the dimension names used for NetCDF wout when available
-                        shape_string = tuple(
-                            [
-                                map_dimension_names.get(dim.name, str(dim.name))
-                                if isinstance(dim, jt._array_types._NamedDim)
+                        annotation_dim_names = field_info.annotation.dim_str.split()
+                        inferred_shape: list[str] = []
+                        for dim, dim_default_name, annotation_dim_name in zip(
+                            field_info.annotation.dims,
+                            shape_string,
+                            annotation_dim_names,
+                            strict=True,
+                        ):
+                            dim_name: str | None = None
+                            if named_dim_type is not None and isinstance(
+                                dim, named_dim_type
+                            ):
+                                dim_name = str(dim.name).lstrip("_")
+                            elif (
+                                anonymous_dim_type is not None
+                                and isinstance(dim, anonymous_dim_type)
+                                and annotation_dim_name.startswith("_")
+                            ):
+                                dim_name = annotation_dim_name.lstrip("_")
+                            inferred_shape.append(
+                                map_dimension_names.get(dim_name, dim_name)
+                                if dim_name is not None
                                 else dim_default_name
-                                for dim, dim_default_name in zip(
-                                    field_info.annotation.dims,
-                                    shape_string,
-                                    strict=True,
-                                )
-                            ]
-                        )
+                            )
+                        shape_string = tuple(inferred_shape)
 
                     for dim_name, dim_size in zip(
                         shape_string, value_array.shape, strict=True
@@ -1581,6 +1622,344 @@ class Threed1Volumetrics(BaseModelWithNumpy):
         return threed1volumetrics
 
 
+class Threed1FirstTable(BaseModelWithNumpy):
+    """Python equivalent of the first table in VMEC's "threed1" file.
+
+    Radial profiles on the full grid: flux-surface label, radial force balance,
+    currents, pressure, and parallel-current diagnostics.
+    """
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    s: jt.Float[np.ndarray, "num_full"]
+    """Normalized toroidal flux `s` on the full grid."""
+
+    radial_force: jt.Float[np.ndarray, "num_full"]
+    """Radial force-balance residual on the full grid."""
+
+    toroidal_flux: jt.Float[np.ndarray, "num_full"]
+    """Toroidal flux profile on the full grid."""
+
+    iota: jt.Float[np.ndarray, "num_full"]
+    """Rotational transform profile on the full grid."""
+
+    avg_jsupu: jt.Float[np.ndarray, "num_full"]
+    """Surface-averaged poloidal current density `<JSUPU>` on the full grid."""
+
+    avg_jsupv: jt.Float[np.ndarray, "num_full"]
+    """Surface-averaged toroidal current density `<JSUPV>` on the full grid."""
+
+    d_volume_d_phi: jt.Float[np.ndarray, "num_full"]
+    """Differential volume `d(VOL)/d(PHI)` on the full grid."""
+
+    d_pressure_d_phi: jt.Float[np.ndarray, "num_full"]
+    """Radial derivative of pressure `d(PRES)/d(PHI)` on the full grid."""
+
+    spectral_width: jt.Float[np.ndarray, "num_full"]
+    """Surface-averaged spectral width `<M>` on the full grid."""
+
+    pressure: jt.Float[np.ndarray, "num_full"]
+    """Pressure `PRESF` on the full grid in Pa (without mu_0)."""
+
+    buco_full: jt.Float[np.ndarray, "num_full"]
+    """Enclosed toroidal current `<BSUBU>` on the full grid."""
+
+    bvco_full: jt.Float[np.ndarray, "num_full"]
+    """Enclosed poloidal current `<BSUBV>` on the full grid."""
+
+    j_dot_b: jt.Float[np.ndarray, "num_full"]
+    """Parallel current density `<J.B>` on the full grid."""
+
+    b_dot_b: jt.Float[np.ndarray, "num_full"]
+    """`<|B|^2>` on the full grid."""
+
+    @staticmethod
+    def _from_cpp_threed1_first_table(
+        cpp_threed1_first_table: _vmecpp.Threed1FirstTable,
+    ) -> Threed1FirstTable:
+        return Threed1FirstTable(
+            **{
+                attr: getattr(cpp_threed1_first_table, attr)
+                for attr in Threed1FirstTable.model_fields
+            }
+        )
+
+
+class Threed1GeometricAndMagneticQuantities(BaseModelWithNumpy):
+    """Python equivalent of the geometric and magnetic quantities in VMEC's "threed1"
+    file.
+
+    Global geometry, magnetic-field limits, aspect ratio, beta values, currents, and
+    radial geometric profiles.
+    """
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    toroidal_flux: float
+    """Total enclosed toroidal flux."""
+
+    circum_p: float
+    """Poloidal circumference of the boundary cross-section."""
+
+    surf_area_p: float
+    """Plasma surface area."""
+
+    cross_area_p: float
+    """Plasma cross-sectional area."""
+
+    volume_p: float
+    """Plasma volume."""
+
+    Rmajor_p: float
+    """Major radius."""
+
+    Aminor_p: float
+    """Minor radius."""
+
+    aspect: float
+    """Aspect ratio."""
+
+    kappa_p: float
+    """Elongation."""
+
+    rcen: float
+    """Geometric center major radius."""
+
+    aminr1: float
+    """Volume-averaged minor radius."""
+
+    pavg: float
+    """Volume-averaged pressure."""
+
+    factor: float
+    """Normalization factor used in the threed1 computation."""
+
+    b0: float
+    """Magnetic field magnitude on the magnetic axis."""
+
+    rmax_surf: float
+    """Maximum major radius on the boundary."""
+
+    rmin_surf: float
+    """Minimum major radius on the boundary."""
+
+    zmax_surf: float
+    """Maximum height on the boundary."""
+
+    bmin: jt.Float[np.ndarray, "num_half nThetaReduced"]
+    """Minimum `|B|` per half-grid surface and poloidal angle."""
+
+    bmax: jt.Float[np.ndarray, "num_half nThetaReduced"]
+    """Maximum `|B|` per half-grid surface and poloidal angle."""
+
+    waist: jt.Float[np.ndarray, "n_symmetry_planes"]
+    """Plasma waist thickness in the phi = 0, pi symmetry planes."""
+
+    height: jt.Float[np.ndarray, "n_symmetry_planes"]
+    """Plasma height in the phi = 0, pi symmetry planes."""
+
+    betapol: float
+    """Poloidal beta."""
+
+    betatot: float
+    """Total beta."""
+
+    betator: float
+    """Toroidal beta."""
+
+    VolAvgB: float
+    """Volume-averaged magnetic field magnitude."""
+
+    IonLarmor: float
+    """Ion Larmor radius estimate."""
+
+    jpar_perp: float
+    """Volume-integrated ratio of parallel to perpendicular current."""
+
+    jparPS_perp: float
+    """Volume-integrated Pfirsch-Schlueter parallel/perpendicular current ratio."""
+
+    toroidal_current: float
+    """Net toroidal current in A."""
+
+    rbtor: float
+    """`R * Btor` at the boundary."""
+
+    rbtor0: float
+    """`R * Btor` on the magnetic axis."""
+
+    psi: jt.Float[np.ndarray, "num_full"]
+    """Poloidal magnetic flux on the full grid."""
+
+    ygeo: jt.Float[np.ndarray, "num_full"]
+    """Geometric minor radius profile."""
+
+    yinden: jt.Float[np.ndarray, "num_full"]
+    """Geometric indentation profile."""
+
+    yellip: jt.Float[np.ndarray, "num_full"]
+    """Geometric ellipticity profile."""
+
+    ytrian: jt.Float[np.ndarray, "num_full"]
+    """Geometric triangularity profile."""
+
+    yshift: jt.Float[np.ndarray, "num_full"]
+    """Geometric shift measured from the magnetic axis."""
+
+    loc_jpar_perp: jt.Float[np.ndarray, "num_full"]
+    """Local parallel/perpendicular current ratio profile."""
+
+    loc_jparPS_perp: jt.Float[np.ndarray, "num_full"]
+    """Local Pfirsch-Schlueter parallel/perpendicular current ratio profile."""
+
+    @staticmethod
+    def _from_cpp_threed1_geometric_and_magnetic_quantities(
+        cpp_threed1_geometric_and_magnetic: _vmecpp.Threed1GeometricAndMagneticQuantities,
+    ) -> Threed1GeometricAndMagneticQuantities:
+        return Threed1GeometricAndMagneticQuantities(
+            **{
+                attr: getattr(cpp_threed1_geometric_and_magnetic, attr)
+                for attr in Threed1GeometricAndMagneticQuantities.model_fields
+            }
+        )
+
+
+class Threed1AxisGeometry(BaseModelWithNumpy):
+    """Python equivalent of the magnetic-axis geometry in VMEC's "threed1" file:
+    Fourier coefficients of the converged magnetic axis.
+    """
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    raxis_symm: jt.Float[np.ndarray, "ntor_plus_1"]
+    """Stellarator-symmetric axis coefficients `R * cos(n * zeta)`."""
+
+    zaxis_symm: jt.Float[np.ndarray, "ntor_plus_1"]
+    """Stellarator-symmetric axis coefficients `Z * sin(n * zeta)`."""
+
+    raxis_asym: jt.Float[np.ndarray, "ntor_plus_1"]
+    """Non-stellarator-symmetric axis coefficients `R * sin(n * zeta)`."""
+
+    zaxis_asym: jt.Float[np.ndarray, "ntor_plus_1"]
+    """Non-stellarator-symmetric axis coefficients `Z * cos(n * zeta)`."""
+
+    @staticmethod
+    def _from_cpp_threed1_axis_geometry(
+        cpp_threed1_axis: _vmecpp.Threed1AxisGeometry,
+    ) -> Threed1AxisGeometry:
+        return Threed1AxisGeometry(
+            **{
+                attr: getattr(cpp_threed1_axis, attr)
+                for attr in Threed1AxisGeometry.model_fields
+            }
+        )
+
+
+class Threed1Betas(BaseModelWithNumpy):
+    """Python equivalent of the beta values in VMEC's "threed1" file."""
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    betatot: float
+    """Total beta."""
+
+    betapol: float
+    """Poloidal beta."""
+
+    betator: float
+    """Toroidal beta."""
+
+    rbtor: float
+    """`R * Btor` (vacuum)."""
+
+    betaxis: float
+    """Peak beta on the magnetic axis."""
+
+    betstr: float
+    """Beta-star."""
+
+    @staticmethod
+    def _from_cpp_threed1_betas(
+        cpp_threed1_betas: _vmecpp.Threed1Betas,
+    ) -> Threed1Betas:
+        return Threed1Betas(
+            **{
+                attr: getattr(cpp_threed1_betas, attr)
+                for attr in Threed1Betas.model_fields
+            }
+        )
+
+
+class Threed1ShafranovIntegrals(BaseModelWithNumpy):
+    """Python equivalent of the Shafranov surface integrals in VMEC's "threed1" file.
+
+    Ref: S. P. Hirshman, Phys. Fluids B, 5, (1993) 3119.
+    """
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    scaling_ratio: float
+    """Scaling ratio applied to the surface integrals."""
+
+    r_lao: float
+    """Lao major radius."""
+
+    f_lao: float
+    """Lao form factor."""
+
+    f_geo: float
+    """Geometric form factor."""
+
+    smaleli: float
+    """Normalized internal inductance `li`."""
+
+    betai: float
+    """Internal beta."""
+
+    musubi: float
+    """Ratio of volume poloidal-field energy to the surface-integral estimate."""
+
+    # `lambda` is a Python keyword, so the field is named `lambda_`; it maps to
+    # the C++ `lambda` member in `_from_cpp_threed1_shafranov_integrals`.
+    lambda_: float
+    """Shafranov lambda parameter."""
+
+    s11: float
+    """Shafranov surface integral S1/2 (Hirshman definition)."""
+
+    s12: float
+    """Shafranov surface integral S2/2 (Hirshman definition)."""
+
+    s13: float
+    """Shafranov surface integral S3/2 (Lao definition)."""
+
+    s2: float
+    """Shafranov integral s2."""
+
+    s3: float
+    """Shafranov integral s3."""
+
+    delta1: float
+    """Shafranov shift parameter delta1."""
+
+    delta2: float
+    """Shafranov shift parameter delta2."""
+
+    delta3: float
+    """Shafranov shift parameter delta3."""
+
+    @staticmethod
+    def _from_cpp_threed1_shafranov_integrals(
+        cpp_threed1_shafranov_integrals: _vmecpp.Threed1ShafranovIntegrals,
+    ) -> Threed1ShafranovIntegrals:
+        # `lambda_` maps to the C++ member `lambda` (a Python keyword).
+        values = {}
+        for field_name in Threed1ShafranovIntegrals.model_fields:
+            cpp_name = "lambda" if field_name == "lambda_" else field_name
+            values[field_name] = getattr(cpp_threed1_shafranov_integrals, cpp_name)
+        return Threed1ShafranovIntegrals(**values)
+
+
 class Mercier(BaseModelWithNumpy):
     model_config = pydantic.ConfigDict(extra="forbid")
 
@@ -1763,6 +2142,23 @@ class VmecOutput(BaseModelWithNumpy):
     integrals. Useful for postprocessing and global equilibrium characterization.
     """
 
+    threed1_first_table: Threed1FirstTable
+    """Python equivalent of the first table in VMEC's "threed1" file: radial
+    profiles of s, iota, currents, pressure, and force balance."""
+
+    threed1_geometric_magnetic: Threed1GeometricAndMagneticQuantities
+    """Python equivalent of the geometric and magnetic quantities in VMEC's
+    "threed1" file: global geometry, beta values, currents, and geometric profiles."""
+
+    threed1_axis: Threed1AxisGeometry
+    """Python equivalent of the magnetic-axis geometry in VMEC's "threed1" file."""
+
+    threed1_betas: Threed1Betas
+    """Python equivalent of the beta values in VMEC's "threed1" file."""
+
+    threed1_shafranov_integrals: Threed1ShafranovIntegrals
+    """Python equivalent of the Shafranov surface integrals in VMEC's "threed1" file."""
+
     wout: VmecWOut
     """Python equivalent of VMEC's "wout" file."""
 
@@ -1869,12 +2265,34 @@ def run(
     threed1_volumetrics = Threed1Volumetrics._from_cpp_threed1volumetrics(
         cpp_output_quantities.threed1_volumetrics
     )
+    threed1_first_table = Threed1FirstTable._from_cpp_threed1_first_table(
+        cpp_output_quantities.threed1_first_table
+    )
+    threed1_geometric_magnetic = Threed1GeometricAndMagneticQuantities._from_cpp_threed1_geometric_and_magnetic_quantities(
+        cpp_output_quantities.threed1_geometric_magnetic
+    )
+    threed1_axis = Threed1AxisGeometry._from_cpp_threed1_axis_geometry(
+        cpp_output_quantities.threed1_axis
+    )
+    threed1_betas = Threed1Betas._from_cpp_threed1_betas(
+        cpp_output_quantities.threed1_betas
+    )
+    threed1_shafranov_integrals = (
+        Threed1ShafranovIntegrals._from_cpp_threed1_shafranov_integrals(
+            cpp_output_quantities.threed1_shafranov_integrals
+        )
+    )
     return VmecOutput(
         input=input,
         wout=wout,
         jxbout=jxbout,
         mercier=mercier,
         threed1_volumetrics=threed1_volumetrics,
+        threed1_first_table=threed1_first_table,
+        threed1_geometric_magnetic=threed1_geometric_magnetic,
+        threed1_axis=threed1_axis,
+        threed1_betas=threed1_betas,
+        threed1_shafranov_integrals=threed1_shafranov_integrals,
     )
 
 
@@ -2051,4 +2469,9 @@ __all__ = [  # noqa: RUF022
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
     "set_profile",
+    "iterate",
+    "solve_equilibrium",
+    "solve_multigrid",
+    "IterationResult",
+    "IterationState",
 ]
