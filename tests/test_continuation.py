@@ -228,11 +228,8 @@ def test_fourier_continuation_converges(
     assert int(continued.wout.mpol) == mpol_final
     assert _final_force_residual(continued) < 1e-5
     assert continued.wout.volume == pytest.approx(cma_direct.wout.volume, rel=1e-4)
-    # Continuation and the direct multi-grid reach the same equilibrium along
-    # different paths, so the Fourier geometry agrees at the convergence level,
-    # not to machine precision: the small high-frequency modes differ by up to a
-    # few 1e-3 (a few percent relative) at this ftol, and the agreement tightens
-    # with ftol (see test_continuation_agreement_tightens_with_ftol).
+    # Geometry agrees at the convergence level (see
+    # test_continuation_agreement_tightens_with_ftol).
     np.testing.assert_allclose(
         np.asarray(continued.wout.rmnc),
         np.asarray(cma_direct.wout.rmnc),
