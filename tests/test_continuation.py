@@ -231,6 +231,6 @@ def test_fourier_continuation_converges(
     np.testing.assert_allclose(
         np.asarray(continued.wout.rmnc),
         np.asarray(cma_direct.wout.rmnc),
-        atol=4e-3,
-        rtol=1e-2,
+        atol=1e-3,
+        rtol=1e-3,
     )

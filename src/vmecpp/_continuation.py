@@ -165,11 +165,12 @@ def _remap_modes(
 
 def _remap_axis(values: np.ndarray, ntor_new: int) -> np.ndarray:
     """Truncate or zero-pad an axis Fourier array ``[ntor + 1]`` to ``ntor_new``."""
+    from vmecpp import _util  # noqa: PLC0415  (lazy import avoids a circular import)
+
+    # Slice handles the truncation (dropping modes above ntor_new); right_pad
+    # handles the zero-extension. right_pad alone cannot shrink the array.
     values = np.asarray(values, dtype=float)
-    out = np.zeros(ntor_new + 1, dtype=float)
-    keep = min(values.shape[0], ntor_new + 1)
-    out[:keep] = values[:keep]
-    return out
+    return _util.right_pad(values[: ntor_new + 1], ntor_new + 1)
 
 
 def interpolate_solution(source: VmecOutput, target_input: VmecInput) -> VmecOutput:
