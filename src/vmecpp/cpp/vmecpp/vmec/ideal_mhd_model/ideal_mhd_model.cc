@@ -606,6 +606,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // during the run.
   vmecpp::StagePhaseDActiveCuda(m_fc.active_per_cfg);
 #endif
+  // An axis re-guess after a bad Jacobian can repopulate high geometry modes
+  // directly, bypassing the force mask; clear them on the state each iteration.
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_x.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+  }
   // preprocess Fourier coefficients of geometry
 #ifdef VMECPP_USE_CUDA
   // From the second iteration onward the device-resident d_pts_x buffer
@@ -1442,6 +1447,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #endif
   }  // end of forcesToFourier + DecomposeAndConstrainCuda block (cuFFT zone)
 
+  // Freeze geometry above the reduced resolution before the invariant
+  // residuals (so frozen modes stay out of the convergence test) and before
+  // preconditioning (so they get no update).
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_f.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+  }
+
   if (checkpoint == VmecCheckpoint::PHYSICAL_FORCES &&
       iter2 >= iterations_before_checkpointing) {
     return true;
@@ -1567,6 +1579,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 #endif
+
+  // Re-freeze after preconditioning. The radial preconditioner is per-mode so
+  // it cannot reintroduce frozen modes; this keeps the preconditioned residual
+  // and the state update clean.
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_f.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+  }
 
   Eigen::Vector3d localFResPrecd;
   localFResPrecd.setZero();

@@ -199,6 +199,42 @@ void FourierCoeffs::m1Constraint(double scalingFactor,
   }  // j
 }
 
+void FourierCoeffs::maskGeometryAbove(int mpolGeom, int ntorGeom) {
+  // Same surface range as decomposeInto (owned slab plus boundary).
+  int jMaxIncludingBoundary = nsMax_;
+  if (r_.nsMaxF1 == ns) {
+    jMaxIncludingBoundary = ns;
+  }
+
+  for (int jF = nsMin_; jF < jMaxIncludingBoundary; ++jF) {
+    for (int m = 0; m < s_.mpol; ++m) {
+      for (int n = 0; n < s_.ntor + 1; ++n) {
+        if (m < mpolGeom && n <= ntorGeom) {
+          continue;
+        }
+
+        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+
+        rcc[idx_fc] = 0.0;
+        zsc[idx_fc] = 0.0;
+        if (s_.lthreed) {
+          rss[idx_fc] = 0.0;
+          zcs[idx_fc] = 0.0;
+        }
+        if (s_.lasym) {
+          rsc[idx_fc] = 0.0;
+          zcc[idx_fc] = 0.0;
+          if (s_.lthreed) {
+            rcs[idx_fc] = 0.0;
+            zss[idx_fc] = 0.0;
+          }
+        }
+        // lambda left untouched
+      }  // n
+    }  // m
+  }  // j
+}
+
 double FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
                              int nsMaxHere) const {
   // accumulator for local thread
