@@ -240,6 +240,11 @@ def interpolate_solution(source: VmecOutput, target_input: VmecInput) -> VmecOut
         jxbout=source.jxbout,
         mercier=source.mercier,
         threed1_volumetrics=source.threed1_volumetrics,
+        threed1_first_table=source.threed1_first_table,
+        threed1_geometric_magnetic=source.threed1_geometric_magnetic,
+        threed1_axis=source.threed1_axis,
+        threed1_betas=source.threed1_betas,
+        threed1_shafranov_integrals=source.threed1_shafranov_integrals,
     )
 
 
