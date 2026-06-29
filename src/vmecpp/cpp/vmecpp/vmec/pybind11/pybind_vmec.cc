@@ -636,15 +636,15 @@ PYBIND11_MODULE(_vmecpp, m) {
                     &vmecpp::MercierFileContents::toroidal_flux)
       .def_readonly("iota", &vmecpp::MercierFileContents::iota)
       .def_readonly("shear", &vmecpp::MercierFileContents::shear)
-      .def_readonly("d_volume_d_s", &vmecpp::MercierFileContents::d_volume_d_s)
+      .def_readonly("d_volume_d_phi", &vmecpp::MercierFileContents::d_volume_d_phi)
       .def_readonly("well", &vmecpp::MercierFileContents::well)
       .def_readonly("toroidal_current",
                     &vmecpp::MercierFileContents::toroidal_current)
-      .def_readonly("d_toroidal_current_d_s",
-                    &vmecpp::MercierFileContents::d_toroidal_current_d_s)
+      .def_readonly("d_toroidal_current_d_volume",
+                    &vmecpp::MercierFileContents::d_toroidal_current_d_volume)
       .def_readonly("pressure", &vmecpp::MercierFileContents::pressure)
-      .def_readonly("d_pressure_d_s",
-                    &vmecpp::MercierFileContents::d_pressure_d_s)
+      .def_readonly("d_pressure_d_volume",
+                    &vmecpp::MercierFileContents::d_pressure_d_volume)
       //
       .def_readonly("DMerc", &vmecpp::MercierFileContents::DMerc)
       .def_readonly("Dshear", &vmecpp::MercierFileContents::Dshear)
