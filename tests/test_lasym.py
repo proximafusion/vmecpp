@@ -45,8 +45,7 @@ def _assert_same_physics(ref, test, vol_rtol, beta_atol, iota_atol):
 
 
 def _assert_same_geometry(ref, test, atol):
-    """The full symmetric Fourier geometry (rmnc, zmns) is reproduced
-    coefficient-for-coefficient, not just the invariant scalars."""
+    """Assert rmnc and zmns match coefficient-for-coefficient, not just scalars."""
     np.testing.assert_allclose(np.asarray(test.rmnc), np.asarray(ref.rmnc), atol=atol)
     np.testing.assert_allclose(np.asarray(test.zmns), np.asarray(ref.zmns), atol=atol)
 
