@@ -44,12 +44,20 @@ def _assert_same_physics(ref, test, vol_rtol, beta_atol, iota_atol):
     assert np.max(np.abs(np.asarray(test.iotaf) - np.asarray(ref.iotaf))) <= iota_atol
 
 
+def _assert_same_geometry(ref, test, atol):
+    """The full symmetric Fourier geometry (rmnc, zmns) is reproduced
+    coefficient-for-coefficient, not just the invariant scalars."""
+    np.testing.assert_allclose(np.asarray(test.rmnc), np.asarray(ref.rmnc), atol=atol)
+    np.testing.assert_allclose(np.asarray(test.zmns), np.asarray(ref.zmns), atol=atol)
+
+
 def test_lasym_reduces_to_symmetric_2d():
     """2D: lasym=True with zero asymmetric content reproduces the symmetric run."""
     base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
     sym = _run(base)
     asym = _run(_enable_lasym(base))
     assert np.max(np.abs(np.asarray(asym.rmns))) < 1e-12
+    _assert_same_geometry(sym, asym, atol=1e-12)
     _assert_same_physics(sym, asym, vol_rtol=1e-9, beta_atol=1e-9, iota_atol=1e-8)
 
 
@@ -59,6 +67,7 @@ def test_lasym_reduces_to_symmetric_3d():
     sym = _run(base)
     asym = _run(_enable_lasym(base))
     assert np.max(np.abs(np.asarray(asym.rmns))) < 1e-12
+    _assert_same_geometry(sym, asym, atol=1e-12)
     _assert_same_physics(sym, asym, vol_rtol=1e-9, beta_atol=1e-9, iota_atol=1e-8)
 
 
