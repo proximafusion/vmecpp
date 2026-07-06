@@ -1,11 +1,12 @@
 name: Run VMEC++ benchmarks
 description: >
-  Install VMEC++ and run the pytest benchmark suite in a fixed environment,
-  then store or compare the results. This is the single source of truth for the
-  benchmark environment so the pull-request and main/docs runs cannot drift
-  apart; the only intended difference between callers is whether results are
-  written back to the benchmark-runs branch (auto-push) and whether a regression
-  is commented on the PR (comment-on-alert).
+  Install VMEC++ and run the benchmark suites in a fixed environment, then store
+  or compare the results. Two suites run here: the Python pytest end-to-end
+  benchmarks and the C++ Google Benchmark function-level microbenchmarks. This is
+  the single source of truth for the benchmark environment so the pull-request
+  and main/docs runs cannot drift apart; the only intended difference between
+  callers is whether results are written back to the benchmark-runs branch
+  (auto-push) and whether a regression is commented on the PR (comment-on-alert).
 
 inputs:
   auto-push:
@@ -32,19 +33,27 @@ runs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
 
+    - name: Mount bazel cache
+      uses: actions/cache@v4
+      with:
+        path: "~/.cache/bazel"
+        key: bazel-bench
+
     - name: Install vmecpp with benchmark dependencies
       shell: bash
       run: |
         pip install uv
         uv pip install --system -v .[benchmark]
 
-    - name: Run benchmarks
+    # --- Python end-to-end benchmarks (pytest-benchmark) ---
+
+    - name: Run Python benchmarks
       shell: bash
       run: |
         export OMP_WAIT_POLICY=passive
         pytest benchmarks/test_benchmarks.py --benchmark-json=benchmark_results.json
 
-    - name: Store / compare benchmark result
+    - name: Store / compare Python benchmark result
       # Skip the result upload/compare for fork PRs: their GITHUB_TOKEN is
       # read-only, so comment-on-alert/auto-push hit 'Resource not accessible
       # by integration'. The benchmarks still run above; only the write-back is
@@ -54,6 +63,37 @@ runs:
       with:
         tool: "pytest"
         output-file-path: benchmark_results.json
+        gh-pages-branch: benchmark-runs
+        benchmark-data-dir-path: benchmarks
+        alert-threshold: "150%"
+        fail-on-alert: false
+        auto-push: ${{ inputs.auto-push }}
+        comment-on-alert: ${{ inputs.comment-on-alert }}
+        github-token: ${{ inputs.github-token }}
+
+    # --- C++ function-level microbenchmarks (Google Benchmark) ---
+    #
+    # Builds the four benchmark cc_binary targets, runs them, and merges their
+    # JSON into cpp_benchmark_results.json.
+
+    - name: Run C++ microbenchmarks
+      shell: bash
+      run: ./benchmarks/run_cpp_benchmarks.sh
+
+    - name: Store / compare C++ benchmark result
+      # Same fork-PR skip rationale as the Python store step above.
+      #
+      # Runs sequentially after the Python store step (composite-action steps
+      # are serial), so the two auto-push writes to benchmark-runs never race.
+      # A distinct suite name keeps the C++ results under their own key in
+      # data.js (window.BENCHMARK_DATA.entries) so they never overwrite the
+      # Python "Benchmark" suite, even though both share benchmark-data-dir-path.
+      if: ${{ inputs.auto-push == 'true' || github.event.pull_request.head.repo.full_name == github.repository }}
+      uses: benchmark-action/github-action-benchmark@v1.21.0
+      with:
+        name: "C++ Microbenchmarks"
+        tool: "googlecpp"
+        output-file-path: cpp_benchmark_results.json
         gh-pages-branch: benchmark-runs
         benchmark-data-dir-path: benchmarks
         alert-threshold: "150%"
