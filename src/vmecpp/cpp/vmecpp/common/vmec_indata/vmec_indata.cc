@@ -111,6 +111,8 @@ VmecINDATA::VmecINDATA() {
   nfp = 1;
   mpol = 6;
   ntor = 0;
+  mpol_geometry = -1;
+  ntor_geometry = -1;
   ntheta = 0;
   nzeta = 0;
 
@@ -261,6 +263,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(nfp, "/indata/nfp", file);
   WriteH5Dataset(mpol, "/indata/mpol", file);
   WriteH5Dataset(ntor, "/indata/ntor", file);
+  WriteH5Dataset(mpol_geometry, "/indata/mpol_geometry", file);
+  WriteH5Dataset(ntor_geometry, "/indata/ntor_geometry", file);
   WriteH5Dataset(ntheta, "/indata/ntheta", file);
   WriteH5Dataset(nzeta, "/indata/nzeta", file);
   WriteH5Dataset(phiedge, "/indata/phiedge", file);
@@ -334,6 +338,14 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.nfp, "/indata/nfp", from_file);
   ReadH5Dataset(m_indata.mpol, "/indata/mpol", from_file);
   ReadH5Dataset(m_indata.ntor, "/indata/ntor", from_file);
+  // Added after the initial wout schema; read only when present so that files
+  // written before this field load with the defaults from the constructor.
+  if (from_file.nameExists("/indata/mpol_geometry")) {
+    ReadH5Dataset(m_indata.mpol_geometry, "/indata/mpol_geometry", from_file);
+  }
+  if (from_file.nameExists("/indata/ntor_geometry")) {
+    ReadH5Dataset(m_indata.ntor_geometry, "/indata/ntor_geometry", from_file);
+  }
   ReadH5Dataset(m_indata.ntheta, "/indata/ntheta", from_file);
   ReadH5Dataset(m_indata.nzeta, "/indata/nzeta", from_file);
   ReadH5Dataset(m_indata.phiedge, "/indata/phiedge", from_file);
@@ -516,6 +528,22 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
   if (maybe_ntor->has_value()) {
     vmec_indata.ntor = maybe_ntor->value();
+  }
+
+  auto maybe_mpol_geometry = JsonReadInt(j, "mpol_geometry");
+  if (!maybe_mpol_geometry.ok()) {
+    return maybe_mpol_geometry.status();
+  }
+  if (maybe_mpol_geometry->has_value()) {
+    vmec_indata.mpol_geometry = maybe_mpol_geometry->value();
+  }
+
+  auto maybe_ntor_geometry = JsonReadInt(j, "ntor_geometry");
+  if (!maybe_ntor_geometry.ok()) {
+    return maybe_ntor_geometry.status();
+  }
+  if (maybe_ntor_geometry->has_value()) {
+    vmec_indata.ntor_geometry = maybe_ntor_geometry->value();
   }
 
   auto maybe_ntheta = JsonReadInt(j, "ntheta");
@@ -1094,6 +1122,8 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["nfp"] = nfp;
   output["mpol"] = mpol;
   output["ntor"] = ntor;
+  output["mpol_geometry"] = mpol_geometry;
+  output["ntor_geometry"] = ntor_geometry;
   output["ntheta"] = ntheta;
   output["nzeta"] = nzeta;
 

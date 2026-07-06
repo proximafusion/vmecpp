@@ -31,6 +31,11 @@ class FourierCoeffs {
   void m1Constraint(double scalingFactor,
                     std::optional<int> jMax = std::nullopt);
 
+  // Zero R and Z coefficients with m >= mpolGeom or n > ntorGeom; lambda is
+  // left untouched. On the force, this holds geometry at mpolGeom/ntorGeom
+  // while lambda keeps the full mpol/ntor resolution.
+  void maskGeometryAbove(int mpolGeom, int ntorGeom);
+
   // Get the sum of squared coefficients for R and Z.
   // If includeOffset is false, the (0,0)-coefficients for cos(mu)*cos(nv) are
   // left out. The range of flux surface to count in is specified as [nsMinHere,

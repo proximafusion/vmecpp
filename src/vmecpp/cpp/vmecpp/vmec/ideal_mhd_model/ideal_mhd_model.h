@@ -56,11 +56,11 @@ class IdealMhdModel {
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
-  void evalFResInvar(const Eigen::VectorXd& localFResInvar);
+  void evalFResInvar(const Eigen::Vector3d& localFResInvar);
 
   // Compute the preconditioned force residuals.
   // Will put them into the provided array as { fsqr1, fsqz1, fsql1 }.
-  void evalFResPrecd(const Eigen::VectorXd& localFResPrecd);
+  void evalFResPrecd(const Eigen::Vector3d& localFResPrecd);
 
   // Return true/false depending on whether the VmecCheckpoint was reached,
   // or an error status if something went wrong.
