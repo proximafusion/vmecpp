@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "enzyme",
+    hdrs = ["enzyme.h"],
+    visibility = ["//visibility:public"],
+)
+
+# Enzyme autodiff toolchain smoke test. Opt-in: it only builds with a Clang
+# toolchain and the matching ClangEnzyme plugin attached, so it is tagged
+# "manual" to stay out of the default GCC `bazel test //...` and is selected
+# explicitly through `--config=enzyme` (see .bazelrc).
+cc_test(
+    name = "enzyme_smoke_test",
+    srcs = ["enzyme_smoke_test.cc"],
+    # Enzyme runs as an optimization-time pass, so it needs -O2 (set via
+    # --config=enzyme) and -fplugin=<ClangEnzyme-NN.so> (passed on the command
+    # line, the bazel analogue of CMake's -DVMECPP_ENZYME_PLUGIN).
+    tags = [
+        "enzyme",
+        "manual",
+    ],
+    deps = [
+        ":enzyme",
+        "@eigen",
+    ],
+    size = "small",
+)

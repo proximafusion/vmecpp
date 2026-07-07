@@ -16,6 +16,4 @@ src/vmecpp/__about__.py
 bazel-*
 src/vmecpp/cpp/_vmecpp.so
 
-# developers will clone this in order to have the full test suite available
-src/vmecpp/cpp/vmecpp_large_cpp_tests/
 wout_solovev.nc

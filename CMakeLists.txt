@@ -66,7 +66,9 @@ find_package(LAPACK REQUIRED)
 FetchContent_Declare(
   abseil-cpp
   GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
-  GIT_TAG 4447c7562e3bc702ade25105912dce503f0c4010
+  # 20260107.1 LTS: older abseil fails to compile under Clang >= 21 (the
+  # Enzyme build) on absl::Nonnull SFINAE in absl/strings/ascii.cc.
+  GIT_TAG 255c84dadd029fd8ad25c5efb5933e47beaa00c7
   GIT_SHALLOW TRUE
 )
 FetchContent_Declare(
