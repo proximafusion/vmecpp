@@ -301,8 +301,15 @@ hot_restarted_output = vmecpp.run(input, restart_from=output)
 ## Full tests and validation against the reference Fortran VMEC v8.52
 
 When developing the C++ core, it's advisable to locally run the full C++ tests for debugging or to validate changes before submitting them.
-The full tests are not stored in the sources of this repo, but in a separate repo: https://github.com/proximafusion/vmecpp_large_cpp_tests .
-See the instructions there for how to run those tests locally. The CI of this repo includes those tests too.
+The full C++ tests live in [`src/vmecpp/cpp/vmecpp_large_cpp_tests`](https://github.com/proximafusion/vmecpp/blob/main/src/vmecpp/cpp/vmecpp_large_cpp_tests) and use [Git LFS](https://git-lfs.com/) for large test data files.
+To run them locally (after cloning with `git lfs pull` to fetch the LFS objects):
+
+```shell
+cd src/vmecpp/cpp
+bazel test --config=opt //vmecpp/... //vmecpp_large_cpp_tests/...
+```
+
+The CI of this repo runs these tests automatically.
 
 The single-thread runtimes as well as the contents of the "wout" file produced by VMEC++ can be compared with those of Fortran VMEC v8.52.
 The full validation test can be found at https://github.com/proximafusion/vmecpp-validation, including a set of sensible input configurations,
@@ -368,7 +375,6 @@ Some items we do not plan to work on, but where community ownership is welcome:
 ## Related repositories
 
 * [`proximafusion/vmecpp-validation`](https://github.com/proximafusion/vmecpp-validation) - Validation tests for VMEC++
-* [`proximafusion/vmecpp_large_cpp_tests`](https://github.com/proximafusion/vmecpp_large_cpp_tests) - Large C++ tests for VMEC++
 * [`proximafusion/the_numerics_of_vmecpp`](https://github.com/proximafusion/the_numerics_of_vmecpp) - Documentation of the numerical details of VMEC++
 * [`proximafusion/vmecpp-benchmarks`](https://github.com/proximafusion/vmecpp-benchmarks) - Performance benchmarks comparing VMEC++ and VMEC2000
 
