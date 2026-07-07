@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783464475264,
+  "lastUpdate": 1783465563815,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -19799,6 +19799,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.005679347010088942",
             "extra": "mean: 9.17089707599998 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6d4a597cb2654a8f8ca5689cb2a238c567624d3c",
+          "message": "Python-side resolution continuation (#544)\n\n* Add Python-side resolution continuation\n\nAdd vmecpp.run_continuation and vmecpp.interpolate_solution. A converged\nVmecOutput is interpolated onto a new (ns, mpol, ntor) resolution: radial\ninterpolation in sqrt(s) with the odd-m axis handling VMEC++ uses internally,\nand Fourier zero-padding or truncation. The interpolated solution becomes the\nhot-restart guess for the next step. This drives the classic ns_array radial\nmulti-grid and adds mpol/ntor Fourier continuation, entirely from Python on\ntop of vmecpp.run.\n\nexamples/fourier_resolution_increase.py is rewritten on the new API, and a\n\"Resolution continuation\" section is added to the examples documentation.\n\ntests/test_continuation.py validates the generated state mode table, the\ninterpolation identities (identity, radial up-sampling, Fourier pad and\ntruncate), single-resolution bit-identity with a direct run, and that a\nmulti-grid and an mpol Fourier continuation reach the same equilibrium as the\nC++ multi-grid.\n\n* Update docs/examples_overview.md\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>\n\n* _continuation: forward all threed1 tables when building the interpolated output\n\n* _continuation: reuse _util.right_pad in _remap_axis; tighten fourier-continuation rmnc tolerance\n\n* test: keep the CI-measured convergence-level rmnc tolerance and document why continuation agrees only to ~ftol\n\n* test: neutralize the tolerance comment in test_fourier_continuation_converges\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-07-07T23:01:18Z",
+          "tree_id": "aaccd48ea2a365ca0f8e62d108f9b107ddcfca5c",
+          "url": "https://github.com/proximafusion/vmecpp/commit/6d4a597cb2654a8f8ca5689cb2a238c567624d3c"
+        },
+        "date": 1783465562769,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.6056392559061132,
+            "unit": "iter/sec",
+            "range": "stddev: 0.006451883854135555",
+            "extra": "mean: 383.7829805999945 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.6025170747735538,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008546569211865068",
+            "extra": "mean: 384.24339640000653 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2573145607231194,
+            "unit": "iter/sec",
+            "range": "stddev: 0.022380987870056594",
+            "extra": "mean: 3.8862938699999936 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5906437656753172,
+            "unit": "iter/sec",
+            "range": "stddev: 0.004092803090248276",
+            "extra": "mean: 1.693067899999998 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.4092632906959347,
+            "unit": "iter/sec",
+            "range": "stddev: 0.02132163972074111",
+            "extra": "mean: 2.4434148450000066 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.4826112556090285,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0112819734426879",
+            "extra": "mean: 2.0720610809999775 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10671577597289975,
+            "unit": "iter/sec",
+            "range": "stddev: 0.010027609792916045",
+            "extra": "mean: 9.37068573866668 sec\nrounds: 3"
           }
         ]
       }
