@@ -79,6 +79,13 @@ class VmecINDATA {
   // ..., ntor-1, ntor
   int ntor;
 
+  // Optional reduced resolution for the geometry (R, Z). When in [1, mpol) /
+  // [0, ntor), R and Z modes above it are held fixed while lambda keeps the
+  // full mpol/ntor resolution. < 0 (or >= mpol/ntor) means "use mpol/ntor",
+  // i.e. geometry and lambda share resolution as before.
+  int mpol_geometry;
+  int ntor_geometry;
+
   // number of poloidal grid points; if odd: is rounded to next smaller even
   // number
   int ntheta;
