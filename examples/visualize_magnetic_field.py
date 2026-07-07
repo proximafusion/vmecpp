@@ -63,6 +63,7 @@ def calculate_magnetic_field(
     cosk = np.cos(kernel)
     sink = np.sin(kernel)
     cosk_nyq = np.cos(kernel_nyq)
+    sink_nyq = np.sin(kernel_nyq)
 
     # Position in cylindrical coordinates (Sec. 9.1)
     r = np.dot(rmnc[:, j], cosk)
@@ -87,12 +88,33 @@ def calculate_magnetic_field(
     bphi = bsupv * r
     bz = bsupu * dzdtheta + bsupv * dzdphi
 
-    # Repeat the same process for the current density field
+    # Repeat the same process for the current density field. VMEC++ stores
+    # sqrt(g) J^theta and sqrt(g) J^zeta in currumnc/currvmnc, so divide by
+    # the Jacobian before transforming contravariant components to Cartesian
+    # coordinates.
+    gmnc = vmec_output.wout.gmnc
+    gmns = getattr(vmec_output.wout, "gmns", None)
     currumnc = vmec_output.wout.currumnc
     currvmnc = vmec_output.wout.currvmnc
+    currumns = getattr(vmec_output.wout, "currumns", None)
+    currvmns = getattr(vmec_output.wout, "currvmns", None)
 
-    curru = np.dot(currumnc[:, j], cosk_nyq)
-    currv = np.dot(currvmnc[:, j], cosk_nyq)
+    sqrtg = np.dot(gmnc[:, j], cosk_nyq)
+    curru_sqrtg = np.dot(currumnc[:, j], cosk_nyq)
+    currv_sqrtg = np.dot(currvmnc[:, j], cosk_nyq)
+    if gmns is not None and gmns.size:
+        sqrtg += np.dot(gmns[:, j], sink_nyq)
+    if currumns is not None and currumns.size:
+        curru_sqrtg += np.dot(currumns[:, j], sink_nyq)
+    if currvmns is not None and currvmns.size:
+        currv_sqrtg += np.dot(currvmns[:, j], sink_nyq)
+
+    if np.isclose(sqrtg, 0.0):
+        msg = "Cannot reconstruct current density where the VMEC Jacobian is zero."
+        raise ZeroDivisionError(msg)
+
+    curru = curru_sqrtg / sqrtg
+    currv = currv_sqrtg / sqrtg
 
     currr = curru * drdtheta + currv * drdphi
     currphi = currv * r
