@@ -208,6 +208,60 @@ def test_alternative_styles_converge_cma():
     assert results["parvmec"].restarts == 0
 
 
+def test_native_parvmec_matches_python_parvmec():
+    """The native C++ PARVMEC control reproduces the ported Python PARVMEC control.
+
+    Vmec::SolveEquilibriumLoop runs the PARVMEC time-step control when
+    indata.iteration_style == PARVMEC; it must match the Python parvmec loop on the
+    same forward model step for step, the analog of
+    test_python_iteration_matches_cpp_restart_path for the default style.
+    """
+    cpp_indata = _single_resolution_indata("cma", 72, ftol=1.0e-16, niter=200)
+    cpp_indata.iteration_style = _vmecpp.IterationStyle.PARVMEC
+
+    reference = _vmecpp.VmecModel.create(cpp_indata, 72)
+    reference.solve()
+
+    model = _vmecpp.VmecModel.create(cpp_indata, 72)
+    result = vmecpp.solve_equilibrium(model, style="parvmec")
+
+    assert not result.failed
+    np.testing.assert_array_equal(
+        np.asarray(result.restart_reasons), np.asarray(reference.restart_reasons)
+    )
+    cpp_r = np.asarray(reference.force_residual_r)
+    py_r = np.asarray(result.force_residual_r)
+    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
+    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+
+
+def test_run_honors_iteration_style_flag():
+    """vmecpp.run() honors the iteration_style input flag through the native solver.
+
+    The two styles take different iteration paths to the same equilibrium, so the flag
+    must survive the VmecInput -> C++ round-trip and reach Vmec::SolveEquilibriumLoop.
+    """
+    base = vmecpp.VmecInput.from_file(TEST_DATA / "cma.json").model_copy(
+        update={
+            "ns_array": np.array([51], dtype=np.int64),
+            "ftol_array": np.array([1.0e-12]),
+            "niter_array": np.array([3000], dtype=np.int64),
+        }
+    )
+    outputs = {}
+    for style in ("vmec_8_52", "parvmec"):
+        inp = base.model_copy(update={"iteration_style": style})
+        assert inp.iteration_style == style
+        assert inp._to_cpp_vmecindata().iteration_style == getattr(
+            _vmecpp.IterationStyle, style.upper()
+        )
+        outputs[style] = vmecpp.run(inp, max_threads=1, verbose=False)
+    # Same physics regardless of the iteration scheme.
+    assert outputs["parvmec"].wout.volume_p == pytest.approx(
+        outputs["vmec_8_52"].wout.volume_p, rel=1.0e-9
+    )
+
+
 def test_callback_records_iteration_state():
     """The per-iteration callback fires once per recorded iteration with a consistent
     IterationState snapshot of the convergence / flow-control state.

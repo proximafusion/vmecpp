@@ -429,6 +429,7 @@ bool Vmec::InitializeRadial(
   fc_.ijacob = 0;
   fc_.restart_reason = RestartReason::NO_RESTART;
   fc_.res0 = -1;
+  fc_.res1 = -1;
   m_delt0 = indata_.delt;
 
   // INITIALIZE MESH-DEPENDENT SCALARS
@@ -949,6 +950,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
+    const bool parvmec_iteration =
+        indata_.iteration_style == IterationStyle::PARVMEC;
+    const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
+
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -959,13 +964,28 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // if res0 has never been assigned (-1), give it the current value of
         // fsq
         fc_.res0 = fc_.fsq;
+        fc_.res1 = fsq_invariant;
       }
 
-      // res0 is the best force residual we got so far
+      // res0 / res1 are the best force residuals we got so far
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
+      fc_.res1 = std::min(fc_.res1, fsq_invariant);
     }
 
-    if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
+    if (parvmec_iteration) {
+      // PARVMEC control: store when both residual minima improve; revert via
+      // BAD_PROGRESS (delt0r /= 1.03, no ijacob) when either exceeds 1e4 * its
+      // minimum after 10 steps.
+      if (fc_.fsq <= fc_.res0 && fsq_invariant <= fc_.res1) {
+        RestartIteration(fc_.delt0r, thread_id);
+      } else if ((iter2 - iter1_) > 10 && (fc_.fsq > 1.0e4 * fc_.res0 ||
+                                           fsq_invariant > 1.0e4 * fc_.res1)) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        fc_.restart_reason = RestartReason::BAD_PROGRESS;
+      }
+    } else if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
       // Store current state (restart_reason=NO_RESTART)
       // --> was able to reduce force consistenly over at least 10 iterations
       RestartIteration(fc_.delt0r, thread_id);
