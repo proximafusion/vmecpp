@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783496200074,
+  "lastUpdate": 1783497222810,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20310,6 +20310,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.12468228567452952",
             "extra": "mean: 8.513978514333322 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "wenyin.wei.ww@gmail.com",
+            "name": "Wenyin Wei",
+            "username": "WenyinWei"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "99d2e45ea900bcf817edfe841abdac53f92de5fb",
+          "message": "Fix current density in magnetic field visualization example (#607)\n\n* Fix current density in magnetic field example\n\n* examples: apply ruff-format to visualize_magnetic_field fix\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n\n* Apply suggestions from code review\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>\n\n* Delete tests/test_visualize_magnetic_field_example.py\n\n---------\n\nCo-authored-by: Philipp Jurasic <jurasic@proximafusion.com>\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-07-08T09:48:59+02:00",
+          "tree_id": "5e3ee6c5b68a715dfc9b315615daaffaafe9e473",
+          "url": "https://github.com/proximafusion/vmecpp/commit/99d2e45ea900bcf817edfe841abdac53f92de5fb"
+        },
+        "date": 1783497221664,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.745364107200916,
+            "unit": "iter/sec",
+            "range": "stddev: 0.007254795788982727",
+            "extra": "mean: 364.2504094000003 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.7180674723795106,
+            "unit": "iter/sec",
+            "range": "stddev: 0.013902224840776939",
+            "extra": "mean: 367.9084534000026 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2549876604420707,
+            "unit": "iter/sec",
+            "range": "stddev: 0.010895165975274129",
+            "extra": "mean: 3.9217584029999935 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5938437795003675,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009902860319866993",
+            "extra": "mean: 1.6839445566666598 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.42936984541795725,
+            "unit": "iter/sec",
+            "range": "stddev: 0.028728127284355604",
+            "extra": "mean: 2.3289944803333356 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.42945939827167234,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009311378113566682",
+            "extra": "mean: 2.3285088276666577 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10383603968991859,
+            "unit": "iter/sec",
+            "range": "stddev: 0.017311683033767466",
+            "extra": "mean: 9.630567604333331 sec\nrounds: 3"
           }
         ]
       }
