@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783493555242,
+  "lastUpdate": 1783493894052,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20091,6 +20091,242 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.02331740134248448",
             "extra": "mean: 9.294243140666651 sec\nrounds: 3"
+          }
+        ]
+      }
+    ],
+    "C++ Microbenchmarks": [
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d1c2328aee3ee8e7613ebcba1b023bcbcf041454",
+          "message": "Add C++ Google Benchmark microbenchmarks for critical hot functions (#606)\n\n* Benchmark CI action remove code duplication\n\n* Add C++ Google Benchmark microbenchmarks for critical hot functions\n\nAdds four Google Benchmark cc_binary targets covering the critical C++ hot\nfunctions, complementing the existing Python end-to-end benchmark suite:\n\n- fft_toroidal_bench: DFT and FFT (FFTX) inverse/forward transforms across\n  resolutions, including the parallel OpenMP call pattern. Restores the\n  previously-dropped BUILD target and guards the FFT path on\n  kernels_available() to avoid a null-function-pointer crash where no FFTX\n  codelet exists.\n- dealias_constraint_force_bench: deAliasConstraintForce de-aliasing kernel.\n- laplace_solver_bench: free-boundary (NESTOR) dense Laplace solve\n  (assemble + LU factorize + back-substitute) and the Green's-function\n  derivative transform.\n- output_quantities_bench: post-solve ComputeOutputQuantities cost.\n\nCI: the shared run-benchmarks composite action now also builds, runs, and\nstores the C++ suite (benchmarks/run_cpp_benchmarks.sh merges the per-target\nJSON). Results are recorded under a distinct 'C++ Microbenchmarks' suite name\nin the same benchmark-runs data dir, so they render as a separate chart group\nwithout overwriting the Python 'Benchmark' history.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n\n* CI: fix benchmark store fetch conflict and clang-tidy on bench files\n\n- run-benchmarks action: the C++ benchmark store step re-fetched the\n  benchmark-runs branch that the Python store step had already fetched and\n  advanced locally, causing a non-fast-forward 'git fetch' rejection. Set\n  skip-fetch-gh-pages on the second store step so it reuses the local ref.\n- clang-tidy: *_bench.cc files include <benchmark/benchmark.h>, a Bazel-only\n  dependency absent from the CMake compile_commands db, so clang-tidy errors\n  with 'file not found'. Exclude *_bench.cc from review, same as *_test.cc.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n\n* Inline C++ benchmark runner into the action; group dashboard by suite\n\n- Move run_cpp_benchmarks.sh's build+run+merge logic directly into the\n  'Run C++ microbenchmarks' step of the run-benchmarks composite action,\n  removing the standalone script (github-action-benchmark has no native\n  multi-tool merge; per its own docs, one step per tool with a distinct\n  name is the intended pattern, so this keeps that logic colocated with\n  the step that uses it instead of split across a file and a caller).\n- benchmarks.js: group the dashboard charts by suite name (the github-\n  action-benchmark 'name' input is a storage key only, with no UI meaning\n  on its own) so the Python and C++ Microbenchmarks suites render under\n  distinct section headings instead of interleaving as one flat list of\n  ~41 charts.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-08T08:48:02+02:00",
+          "tree_id": "ffb12cfbe7d56b38c4799b2acec380d6a211006f",
+          "url": "https://github.com/proximafusion/vmecpp/commit/d1c2328aee3ee8e7613ebcba1b023bcbcf041454"
+        },
+        "date": 1783493893738,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 32768.25081206551,
+            "unit": "ns/iter",
+            "extra": "iterations: 7334\ncpu: 32768.31878920099 ns\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 41519.944288385166,
+            "unit": "ns/iter",
+            "extra": "iterations: 6736\ncpu: 41520.02954275534 ns\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 585674.2378042525,
+            "unit": "ns/iter",
+            "extra": "iterations: 476\ncpu: 585603.0882352941 ns\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 1488548.644045566,
+            "unit": "ns/iter",
+            "extra": "iterations: 188\ncpu: 1488553.324468086 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/4x4",
+            "value": 338612.6453853497,
+            "unit": "ns/iter",
+            "extra": "iterations: 622\ncpu: 338570.8922829582 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/7x1",
+            "value": 208869.72199518103,
+            "unit": "ns/iter",
+            "extra": "iterations: 1331\ncpu: 208868.0781367393 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/12x12",
+            "value": 2678547.9142115666,
+            "unit": "ns/iter",
+            "extra": "iterations: 104\ncpu: 2678531.000000001 ns\nthreads: 1"
+          },
+          {
+            "name": "FftFourierToReal/12x12",
+            "value": 1754490.834362102,
+            "unit": "ns/iter",
+            "extra": "iterations: 159\ncpu: 1754400.308176101 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/16x18",
+            "value": 5913506.383481233,
+            "unit": "ns/iter",
+            "extra": "iterations: 46\ncpu: 5912897.239130432 ns\nthreads: 1"
+          },
+          {
+            "name": "FftFourierToReal/16x18",
+            "value": 3749475.4791259766,
+            "unit": "ns/iter",
+            "extra": "iterations: 75\ncpu: 3748798.7199999983 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-28",
+            "value": 2683200.0882017845,
+            "unit": "ns/iter",
+            "extra": "iterations: 102\ncpu: 2683216.7352941167 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_nzeta-28",
+            "value": 1744160.741012289,
+            "unit": "ns/iter",
+            "extra": "iterations: 161\ncpu: 1744164.8571428556 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-56",
+            "value": 5503668.504602768,
+            "unit": "ns/iter",
+            "extra": "iterations: 51\ncpu: 5503689.4705882305 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-84",
+            "value": 8164693.327511058,
+            "unit": "ns/iter",
+            "extra": "iterations: 34\ncpu: 8164130.647058827 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-112",
+            "value": 11068811.416625977,
+            "unit": "ns/iter",
+            "extra": "iterations: 25\ncpu: 11068023.59999998 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-30",
+            "value": 2681282.850412222,
+            "unit": "ns/iter",
+            "extra": "iterations: 104\ncpu: 2681195.0192307658 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-30",
+            "value": 1750981.8077087402,
+            "unit": "ns/iter",
+            "extra": "iterations: 160\ncpu: 1750707.868750001 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-60",
+            "value": 3826301.391810587,
+            "unit": "ns/iter",
+            "extra": "iterations: 73\ncpu: 3826322.3561643837 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-60",
+            "value": 2825869.454277886,
+            "unit": "ns/iter",
+            "extra": "iterations: 99\ncpu: 2825876.505050503 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-90",
+            "value": 4880473.531525711,
+            "unit": "ns/iter",
+            "extra": "iterations: 58\ncpu: 4879270.068965514 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-90",
+            "value": 3639237.08597819,
+            "unit": "ns/iter",
+            "extra": "iterations: 75\ncpu: 3639243.1600000085 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-120",
+            "value": 5920755.102279338,
+            "unit": "ns/iter",
+            "extra": "iterations: 47\ncpu: 5920774.510638306 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-120",
+            "value": 4833781.928346869,
+            "unit": "ns/iter",
+            "extra": "iterations: 57\ncpu: 4833380.245614038 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_FourierToReal_Parallel_W7x_4t",
+            "value": 1098435.7797874594,
+            "unit": "ns/iter",
+            "extra": "iterations: 530\ncpu: 516668.5566037738 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_DftFourierToReal_Parallel_W7x_4t",
+            "value": 1682263.9335653938,
+            "unit": "ns/iter",
+            "extra": "iterations: 353\ncpu: 763932.4277620395 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 65254.065290109225,
+            "unit": "ns/iter",
+            "extra": "iterations: 3772\ncpu: 65275.63494167576 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 494896.41946459573,
+            "unit": "ns/iter",
+            "extra": "iterations: 567\ncpu: 494859.36155202903 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 3013002.1115566823,
+            "unit": "ns/iter",
+            "extra": "iterations: 94\ncpu: 3012541.5851063863 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 64140.762835400055,
+            "unit": "ns/iter",
+            "extra": "iterations: 4370\ncpu: 64154.27070938223 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 477569.4728506891,
+            "unit": "ns/iter",
+            "extra": "iterations: 587\ncpu: 477508.5724020497 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 2937711.775302887,
+            "unit": "ns/iter",
+            "extra": "iterations: 96\ncpu: 2937231.8229166963 ns\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 290893.5819910592,
+            "unit": "ns/iter",
+            "extra": "iterations: 978\ncpu: 290878.73108384444 ns\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 1184143.5975666288,
+            "unit": "ns/iter",
+            "extra": "iterations: 237\ncpu: 1183995.025316456 ns\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 5228442.965813403,
+            "unit": "ns/iter",
+            "extra": "iterations: 53\ncpu: 5227589.339622638 ns\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 10654898.790212778,
+            "unit": "ns/iter",
+            "extra": "iterations: 26\ncpu: 10647149.769230764 ns\nthreads: 1"
           }
         ]
       }
