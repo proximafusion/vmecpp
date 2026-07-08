@@ -231,8 +231,12 @@ def test_native_parvmec_matches_python_parvmec():
     )
     cpp_r = np.asarray(reference.force_residual_r)
     py_r = np.asarray(result.force_residual_r)
+    # The two loops make identical control decisions (restart_reasons match
+    # exactly above), so the force-residual traces agree up to floating-point
+    # accumulation of the control arithmetic: ~1e-9 relative early, growing to
+    # only a few 1e-9 by the deep-convergence tail (max abs ~6e-13).
     np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
-    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-8, atol=1e-12)
 
 
 def test_run_honors_iteration_style_flag():
