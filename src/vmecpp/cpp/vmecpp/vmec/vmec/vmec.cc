@@ -952,7 +952,6 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
     const bool parvmec_iteration =
         indata_.iteration_style == IterationStyle::PARVMEC;
-    const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
 
 #ifdef _OPENMP
 #pragma omp single
@@ -964,18 +963,28 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // if res0 has never been assigned (-1), give it the current value of
         // fsq
         fc_.res0 = fc_.fsq;
-        fc_.res1 = fsq_invariant;
       }
 
-      // res0 / res1 are the best force residuals we got so far
+      // res0 is the best force residual we got so far
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
-      fc_.res1 = std::min(fc_.res1, fsq_invariant);
+
+      // PARVMEC additionally tracks the invariant residual minimum res1. Keep
+      // it (and its inputs) off the vmec_8_52 path so the default control stays
+      // byte-for-byte unchanged.
+      if (parvmec_iteration) {
+        const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
+        if (iter2 == iter1_ || fc_.res1 == -1) {
+          fc_.res1 = fsq_invariant;
+        }
+        fc_.res1 = std::min(fc_.res1, fsq_invariant);
+      }
     }
 
     if (parvmec_iteration) {
       // PARVMEC control: store when both residual minima improve; revert via
       // BAD_PROGRESS (delt0r /= 1.03, no ijacob) when either exceeds 1e4 * its
       // minimum after 10 steps.
+      const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
       if (fc_.fsq <= fc_.res0 && fsq_invariant <= fc_.res1) {
         RestartIteration(fc_.delt0r, thread_id);
       } else if ((iter2 - iter1_) > 10 && (fc_.fsq > 1.0e4 * fc_.res0 ||
