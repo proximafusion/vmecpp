@@ -6,8 +6,12 @@ import numpy as np
 
 
 def load_visualize_example():
-    example_path = Path(__file__).parents[1] / "examples" / "visualize_magnetic_field.py"
-    spec = importlib.util.spec_from_file_location("visualize_magnetic_field", example_path)
+    example_path = (
+        Path(__file__).parents[1] / "examples" / "visualize_magnetic_field.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "visualize_magnetic_field", example_path
+    )
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
