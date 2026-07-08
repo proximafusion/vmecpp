@@ -96,8 +96,10 @@ def calculate_magnetic_field(
     gmns = getattr(vmec_output.wout, "gmns", None)
     currumnc = vmec_output.wout.currumnc
     currvmnc = vmec_output.wout.currvmnc
-    currumns = getattr(vmec_output.wout, "currumns", None)
-    currvmns = getattr(vmec_output.wout, "currvmns", None)
+    currumns = vmec_output.wout.currumns
+    assert currumns is not None
+    currvmns = vmec_output.wout.currvmns
+    assert currvmns is not None
 
     sqrtg = np.dot(gmnc[:, j], cosk_nyq)
     curru_sqrtg = np.dot(currumnc[:, j], cosk_nyq)
@@ -108,10 +110,6 @@ def calculate_magnetic_field(
         curru_sqrtg += np.dot(currumns[:, j], sink_nyq)
     if currvmns is not None and currvmns.size:
         currv_sqrtg += np.dot(currvmns[:, j], sink_nyq)
-
-    if np.isclose(sqrtg, 0.0):
-        msg = "Cannot reconstruct current density where the VMEC Jacobian is zero."
-        raise ZeroDivisionError(msg)
 
     curru = curru_sqrtg / sqrtg
     currv = currv_sqrtg / sqrtg
