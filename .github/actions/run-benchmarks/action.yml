@@ -53,6 +53,14 @@ runs:
         export OMP_WAIT_POLICY=passive
         pytest benchmarks/test_benchmarks.py --benchmark-json=benchmark_results.json
 
+    # github-action-benchmark's "pytest" tool always plots pytest-benchmark's
+    # `ops` field as iter/sec, but the C++ suite emits seconds.
+    # We convert both to the same format, so plotting is the same.
+    - name: Convert Python benchmark result to seconds
+      shell: bash
+      run: |
+        python3 benchmarks/to_seconds_json.py pytest benchmark_results.json benchmark_results_seconds.json
+
     - name: Store / compare Python benchmark result
       # Skip the result upload/compare for fork PRs: their GITHUB_TOKEN is
       # read-only, so comment-on-alert/auto-push hit 'Resource not accessible
@@ -61,8 +69,8 @@ runs:
       if: ${{ inputs.auto-push == 'true' || github.event.pull_request.head.repo.full_name == github.repository }}
       uses: benchmark-action/github-action-benchmark@v1.21.0
       with:
-        tool: "pytest"
-        output-file-path: benchmark_results.json
+        tool: "customSmallerIsBetter"
+        output-file-path: benchmark_results_seconds.json
         gh-pages-branch: benchmark-runs
         benchmark-data-dir-path: benchmarks
         alert-threshold: "150%"
@@ -76,7 +84,7 @@ runs:
     # Builds the four benchmark cc_binary targets, runs each with
     # --benchmark_format=json, and merges their output into a single
     # cpp_benchmark_results.json (schema: {"context": ..., "benchmarks": [...]})
-    # for the store step below. Entries with "error_occurred" (e.g. an
+    # for the conversion step below. Entries with "error_occurred" (e.g. an
     # FFT-path benchmark skipped because no FFTX codelet exists for that
     # resolution) are dropped: they carry no valid timing to track.
 
@@ -142,6 +150,14 @@ runs:
               f"({skipped} skipped/errored).")
         PY
 
+    # github-action-benchmark's "pytest" tool always plots pytest-benchmark's
+    # `ops` field as iter/sec, but the C++ suite emits seconds.
+    # We convert both to the same format, so plotting is the same.
+    - name: Convert C++ benchmark result to seconds
+      shell: bash
+      run: |
+        python3 benchmarks/to_seconds_json.py googlecpp cpp_benchmark_results.json cpp_benchmark_results_seconds.json
+
     - name: Store / compare C++ benchmark result
       # Same fork-PR skip rationale as the Python store step above.
       #
@@ -160,8 +176,8 @@ runs:
       uses: benchmark-action/github-action-benchmark@v1.21.0
       with:
         name: "C++ Microbenchmarks"
-        tool: "googlecpp"
-        output-file-path: cpp_benchmark_results.json
+        tool: "customSmallerIsBetter"
+        output-file-path: cpp_benchmark_results_seconds.json
         gh-pages-branch: benchmark-runs
         benchmark-data-dir-path: benchmarks
         skip-fetch-gh-pages: true
