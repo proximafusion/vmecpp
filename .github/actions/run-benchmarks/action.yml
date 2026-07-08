@@ -88,6 +88,12 @@ runs:
       # A distinct suite name keeps the C++ results under their own key in
       # data.js (window.BENCHMARK_DATA.entries) so they never overwrite the
       # Python "Benchmark" suite, even though both share benchmark-data-dir-path.
+      #
+      # skip-fetch-gh-pages: the Python store step above already fetched the
+      # benchmark-runs branch into a local ref and (in compare mode) advanced
+      # it, so a second `git fetch benchmark-runs:benchmark-runs` here is
+      # rejected as non-fast-forward. Reuse the already-fetched local ref
+      # instead of re-fetching.
       if: ${{ inputs.auto-push == 'true' || github.event.pull_request.head.repo.full_name == github.repository }}
       uses: benchmark-action/github-action-benchmark@v1.21.0
       with:
@@ -96,6 +102,7 @@ runs:
         output-file-path: cpp_benchmark_results.json
         gh-pages-branch: benchmark-runs
         benchmark-data-dir-path: benchmarks
+        skip-fetch-gh-pages: true
         alert-threshold: "150%"
         fail-on-alert: false
         auto-push: ${{ inputs.auto-push }}
