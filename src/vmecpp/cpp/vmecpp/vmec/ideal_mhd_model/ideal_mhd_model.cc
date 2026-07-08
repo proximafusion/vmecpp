@@ -24,6 +24,7 @@
 #include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
@@ -1512,7 +1513,9 @@ void IdealMhdModel::pressureAndEnergies() {
   // Compute as a vectorized operation over all half-grid points
   // temporarily re-use `totalPressure` to store only magnetic pressure; kinetic
   // pressure presH will be added below
-  totalPressure = 0.5 * (bsupu.cwiseProduct(bsubu) + bsupv.cwiseProduct(bsubv));
+  ComputeMagneticPressure(bsupu.data(), bsubu.data(), bsupv.data(),
+                          bsubv.data(), static_cast<int>(bsupu.size()),
+                          totalPressure.data());
 
   // Accumulate magnetic energy and add kinetic pressure per surface
   double localMagneticEnergy = 0.0;
