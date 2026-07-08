@@ -5,14 +5,18 @@
 
 // Exact Hessian of VMEC's local force map via composed autodiff.
 //
-// The six shared force-chain kernels (Jacobian, metric, B^contra, B_cov,
-// magnetic pressure, MHD force density) compose into the local map
+// The shared force-chain kernels (Jacobian, metric, B^contra, B_cov, magnetic
+// pressure, MHD force density, and the hybrid lambda force) compose into the
+// local map
 //   g : real-space geometry -> real-space force density,
-// the nonlinear core of VMEC's force. The full MHD force is Tᵀ . g . T with the
+// the nonlinear core of VMEC's force. The full force is Tᵀ . g . T with the
 // linear spectral transforms T, Tᵀ; the exact force Hessian-vector product is
-// therefore Tᵀ . J_g . T . v, and J_g is what Enzyme provides here.
+// therefore Tᵀ . J_g . T . v, and J_g is what Enzyme provides here. The
+// remaining augmented term, the spectral-condensation constraint force, also
+// carries a linear Fourier bandpass and is validated end-to-end against the
+// finite-difference HVP in the pybind exact-HVP path.
 //
-// This test composes the six production kernels over flat buffers and takes the
+// This test composes the production kernels over flat buffers and takes the
 // Jacobian of g by forward and reverse mode, checks both against central finite
 // differences and against each other.
 
@@ -27,27 +31,31 @@
 #include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/lambda_force_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
 
 // Problem dimensions and the constant (non-differentiated) context.
 struct Ctx {
-  int nZnT, nsH;         // half-grid surfaces; full-grid has nsH + 1
-  int nFull, nHalf;      // (nsH+1)*nZnT, nsH*nZnT
-  const double* sqrtSF;  // [nsH+1]
-  const double* sqrtSH;  // [nsH]
-  const double* chipH;   // [nsH]
-  const double* presH;   // [nsH]
+  int nZnT, nsH;                 // half-grid surfaces; full-grid has nsH + 1
+  int nFull, nHalf;              // (nsH+1)*nZnT, nsH*nZnT
+  const double* sqrtSF;          // [nsH+1]
+  const double* sqrtSH;          // [nsH]
+  const double* chipH;           // [nsH]
+  const double* presH;           // [nsH]
+  const double* radialBlending;  // [nsH+1]
   double deltaS;
+  double lamscale;
   bool lthreed;
 };
 
-// 16 geometry blocks (each nFull) packed into geom; 12 force blocks (each
-// nHalf) in force; everything else is intermediate work sliced from work.
-enum { kGeomBlocks = 16, kForceBlocks = 12 };
+// 16 geometry blocks (each nFull) packed into geom; force blocks (each nHalf):
+// 12 MHD force-density blocks + 4 lambda-force blocks (blmn_e/o, clmn_e/o).
+// Everything else is intermediate work sliced from work.
+enum { kGeomBlocks = 16, kForceBlocks = 16 };
 
-// g: geometry -> force density, composing the six shared kernels.
+// g: geometry -> force density, composing the MHD and lambda-force kernels.
 __attribute__((noinline)) void LocalForce(const double* geom, double* work,
                                           double* force, const Ctx* c) {
   const int nF = c->nFull;
@@ -177,6 +185,15 @@ __attribute__((noinline)) void LocalForce(const double* geom, double* work,
   s += nZnT;
   double* gbubv_wavg = s;
   s += nZnT;
+  // lambda-force radial-sweep scratch (carried inside half-grid point)
+  double* bsubu_i = s;
+  s += nZnT;
+  double* bsubv_i = s;
+  s += nZnT;
+  double* gvv_gsqrt_i = s;
+  s += nZnT;
+  double* guv_bsupu_i = s;
+  s += nZnT;
   double* armn_e = force + 0 * nH;
   double* armn_o = force + 1 * nH;
   double* azmn_e = force + 2 * nH;
@@ -198,6 +215,16 @@ __attribute__((noinline)) void LocalForce(const double* geom, double* work,
       /*nsMinF=*/0, 0, 0, nsH, /*jMaxRZ=*/nsH, c->lthreed, armn_e, armn_o,
       azmn_e, azmn_o, brmn_e, brmn_o, bzmn_e, bzmn_o, crmn_e, crmn_o, czmn_e,
       czmn_o);
+  // lambda force (blmn_e/o, clmn_e/o) from the shared kernel
+  double* blmn_e = force + 12 * nH;
+  double* blmn_o = force + 13 * nH;
+  double* clmn_e = force + 14 * nH;
+  double* clmn_o = force + 15 * nH;
+  vmecpp::ComputeHybridLambdaForce(
+      bsubu, bsubv, gvv, gsqrt, guv, bsupu, lue, luo, c->sqrtSH, c->sqrtSF,
+      c->radialBlending, c->lamscale, c->lthreed, nZnT, /*nsMinF=*/0,
+      /*nsMinF1=*/0, /*nsMinH=*/0, nsH, /*nsMaxFIncludingLcfs=*/nsH, bsubu_i,
+      bsubv_i, gvv_gsqrt_i, guv_bsupu_i, blmn_e, blmn_o, clmn_e, clmn_o);
 }
 
 // Scalar objective L = 0.5 ||force||^2; work and force are caller-owned
@@ -219,11 +246,16 @@ int main() {
   c.nFull = (nsH + 1) * nZnT;
   c.nHalf = nsH * nZnT;
   c.deltaS = 0.1;
+  c.lamscale = 0.7;
   c.lthreed = true;
   std::mt19937 rng(3);
   std::uniform_real_distribution<double> d(0.5, 1.5), s(-1.0, 1.0);
-  std::vector<double> sqrtSF(nsH + 1), sqrtSH(nsH), chipH(nsH), presH(nsH);
-  for (int j = 0; j <= nsH; ++j) sqrtSF[j] = std::sqrt(0.05 + 0.9 * j / nsH);
+  std::vector<double> sqrtSF(nsH + 1), sqrtSH(nsH), chipH(nsH), presH(nsH),
+      radialBlending(nsH + 1);
+  for (int j = 0; j <= nsH; ++j) {
+    sqrtSF[j] = std::sqrt(0.05 + 0.9 * j / nsH);
+    radialBlending[j] = 0.3 + 0.4 * j / nsH;
+  }
   for (int j = 0; j < nsH; ++j) {
     sqrtSH[j] = std::sqrt(0.05 + 0.9 * (j + 0.5) / nsH);
     chipH[j] = 0.3 + 0.1 * j;
@@ -233,9 +265,10 @@ int main() {
   c.sqrtSH = sqrtSH.data();
   c.chipH = chipH.data();
   c.presH = presH.data();
+  c.radialBlending = radialBlending.data();
 
   const int nG = kGeomBlocks * c.nFull;
-  const int nW = 15 * c.nHalf + 26 * nZnT;
+  const int nW = 15 * c.nHalf + 30 * nZnT;
   const int nFc = kForceBlocks * c.nHalf;
   std::vector<double> geom(nG), v(nG);
   for (double& x : geom) x = d(rng);
@@ -265,7 +298,7 @@ int main() {
       std::inner_product(grev.begin(), grev.end(), v.begin(), 0.0);
   const double scale = std::fabs(dfd) + 1e-300;
 
-  printf("exact Hessian of VMEC local force map (composed 6 kernels)\n");
+  printf("exact Hessian of VMEC local force map (MHD + lambda kernels)\n");
   printf("  geom dofs=%d  force outputs=%d\n", nG, nFc);
   printf("  reverse dL.v vs finite-diff : %.2e\n",
          std::fabs(drev - dfd) / scale);
