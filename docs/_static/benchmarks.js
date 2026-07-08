@@ -56,17 +56,22 @@
     if (!container) return;
     container.innerHTML = "";
 
-    // Collect benchmarks per test case
+    // Collect benchmarks per test case, grouped by suite (the `name` given to
+    // each github-action-benchmark step, e.g. "Benchmark" vs
+    // "C++ Microbenchmarks") so suites render as separate sections instead of
+    // interleaving in one flat list.
     var entries = data.entries;
-    var allBenches = new Map();
+    var colorIdx = 0;
+    var theme = getThemeColors();
 
-    Object.keys(entries).forEach(function (name) {
-      entries[name].forEach(function (entry) {
+    Object.keys(entries).forEach(function (suiteName) {
+      var suiteBenches = new Map();
+      entries[suiteName].forEach(function (entry) {
         entry.benches.forEach(function (bench) {
-          var arr = allBenches.get(bench.name);
+          var arr = suiteBenches.get(bench.name);
           if (!arr) {
             arr = [];
-            allBenches.set(bench.name, arr);
+            suiteBenches.set(bench.name, arr);
           }
           arr.push({
             commit: entry.commit,
@@ -75,10 +80,29 @@
           });
         });
       });
+      if (suiteBenches.size === 0) return;
+
+      var heading = document.createElement("h3");
+      heading.textContent = suiteName;
+      container.appendChild(heading);
+
+      suiteBenches.forEach(function (dataset, benchName) {
+        renderChart(container, benchName, dataset, theme, colorIdx);
+        colorIdx++;
+      });
     });
 
-    var colorIdx = 0;
-    allBenches.forEach(function (dataset, benchName) {
+    // Last update info
+    var info = document.createElement("p");
+    info.className = "small";
+    info.style.textAlign = "center";
+    info.style.opacity = "0.7";
+    info.textContent = "Last updated: " + new Date(data.lastUpdate).toLocaleString();
+    container.appendChild(info);
+  }
+
+  function renderChart(container, benchName, dataset, theme, colorIdx) {
+    {
       var wrapper = document.createElement("div");
       wrapper.style.marginBottom = "1rem";
       container.appendChild(wrapper);
@@ -95,9 +119,6 @@
       wrapper.appendChild(canvas);
 
       var color = COLORS[colorIdx % COLORS.length];
-      colorIdx++;
-
-      var theme = getThemeColors();
 
       new Chart(canvas, {
         type: "line",
@@ -182,15 +203,7 @@
           },
         },
       });
-    });
-
-    // Last update info
-    var info = document.createElement("p");
-    info.className = "small";
-    info.style.textAlign = "center";
-    info.style.opacity = "0.7";
-    info.textContent = "Last updated: " + new Date(data.lastUpdate).toLocaleString();
-    container.appendChild(info);
+    }
   }
 
   // Re-render on Furo theme toggle

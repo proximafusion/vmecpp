@@ -211,6 +211,14 @@ template <int kIdx>
 void BM_FourierToReal(benchmark::State& state) {
   static BenchFixture fx(kResolutions[kIdx].nfp, kResolutions[kIdx].mpol,
                          kResolutions[kIdx].ntor);
+  // The FFT path is only valid when vendored FFTX codelets exist for this
+  // (nZeta, 12*mpol) shape; otherwise fftx_full_c2r_run is null and calling it
+  // would dereference a null function pointer.  Skip cleanly in that case (the
+  // real solver falls back to the DFT path via kernels_available()).
+  if (!fx.plans.kernels_available()) {
+    state.SkipWithError("no FFTX codelet for this resolution");
+    return;
+  }
   for (auto _ : state) {
     FourierToReal3DSymmFastPoloidalFft(*fx.phys_x, fx.xmpq, fx.rp, fx.s,
                                        *fx.rprof, fx.fb, fx.plans, fx.geom);
@@ -223,6 +231,10 @@ template <int kIdx>
 void BM_ForcesToFourier(benchmark::State& state) {
   static BenchFixture fx(kResolutions[kIdx].nfp, kResolutions[kIdx].mpol,
                          kResolutions[kIdx].ntor);
+  if (!fx.plans.kernels_available()) {
+    state.SkipWithError("no FFTX codelet for this resolution");
+    return;
+  }
   for (auto _ : state) {
     ForcesToFourier3DSymmFastPoloidalFft(fx.forces, fx.xmpq, fx.rp, *fx.fc,
                                          fx.s, fx.fb, fx.plans,
@@ -289,6 +301,10 @@ void BM_FftFourierToReal_RealSpace(benchmark::State& state) {
                          kRealSpaceSweep[kIdx].ntor,
                          kRealSpaceSweep[kIdx].ntheta,
                          kRealSpaceSweep[kIdx].nzeta);
+  if (!fx.plans.kernels_available()) {
+    state.SkipWithError("no FFTX codelet for this resolution");
+    return;
+  }
   for (auto _ : state) {
     FourierToReal3DSymmFastPoloidalFft(*fx.phys_x, fx.xmpq, fx.rp, fx.s,
                                        *fx.rprof, fx.fb, fx.plans, fx.geom);
@@ -445,6 +461,10 @@ void BM_FourierToReal_Parallel_W7x_4t(benchmark::State& state) {
   constexpr int kNumThreads = 6;
   static ParallelBenchFixture fx(/*nfp=*/5, /*mpol=*/12, /*ntor=*/12,
                                  kNumThreads);
+  if (!fx.plans.kernels_available()) {
+    state.SkipWithError("no FFTX codelet for this resolution");
+    return;
+  }
 
   std::atomic<bool> keep_going{true};
 
