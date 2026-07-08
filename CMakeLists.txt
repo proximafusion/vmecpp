@@ -175,11 +175,13 @@ endif()
 install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
 install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
 
-# Optional Enzyme automatic-differentiation targets.
-# Enzyme (https://enzyme.mit.edu) differentiates LLVM IR via a Clang plugin, so
-# these targets need a Clang frontend and the matching ClangEnzyme plugin. OFF
-# by default; the production build and all existing targets are unaffected.
-# Enable with:
+# Optional Enzyme automatic-differentiation target: exact autodiff (forward and
+# reverse) of a real VMEC nonlinear kernel, the half-grid Jacobian. Enzyme
+# (https://enzyme.mit.edu) differentiates LLVM IR via a Clang plugin, so it needs
+# a Clang frontend and the matching ClangEnzyme plugin. OFF by default; the
+# production build and all existing targets are unaffected. The AD-toolchain
+# smoke test lives in bazel (//vmecpp/common/enzyme:enzyme_smoke_test, built with
+# --config=enzyme). Enable this target with:
 #   -DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so
 option(VMECPP_ENABLE_ENZYME "Build Enzyme autodiff targets" OFF)
 if(VMECPP_ENABLE_ENZYME)
@@ -207,43 +209,41 @@ if(VMECPP_ENABLE_ENZYME)
     target_sources(vmecpp_core PRIVATE "${VMECPP_ENZYME_OBJECT}")
     target_compile_definitions(vmecpp_core PUBLIC VMECPP_ENABLE_ENZYME)
   else()
-  if(NOT VMECPP_ENZYME_PLUGIN OR NOT EXISTS "${VMECPP_ENZYME_PLUGIN}")
-    message(FATAL_ERROR
-      "VMECPP_ENABLE_ENZYME=ON requires "
-      "-DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so "
-      "(or -DVMECPP_ENZYME_OBJECT=/path/to/exact_force_jvp.o for icx)")
-  endif()
-  message(STATUS "Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
-  enable_testing()
-  # Exact autodiff (forward and reverse) of a real VMEC nonlinear kernel: the
-  # half-grid Jacobian. Self-contained over flat buffers; checks Jv and J^T u
-  # against finite differences and against each other (adjoint identity).
-  add_executable(jacobian_kernel_autodiff_test
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/jacobian_kernel_autodiff_test.cc)
-  target_compile_options(jacobian_kernel_autodiff_test PRIVATE
-    -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
-  add_test(NAME jacobian_kernel_autodiff COMMAND jacobian_kernel_autodiff_test)
-  # Exact Hessian of the composed local force map (all six force-chain kernels):
-  # forward/reverse Jacobian vs finite differences, and JVP cost vs FD-HVP.
-  add_executable(local_force_hessian_test
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/local_force_hessian_test.cc
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc)
-  target_compile_options(local_force_hessian_test PRIVATE
-    -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
-  add_test(NAME local_force_hessian COMMAND local_force_hessian_test)
+    if(NOT VMECPP_ENZYME_PLUGIN OR NOT EXISTS "${VMECPP_ENZYME_PLUGIN}")
+      message(FATAL_ERROR
+        "VMECPP_ENABLE_ENZYME=ON requires "
+        "-DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so "
+        "(or -DVMECPP_ENZYME_OBJECT=/path/to/exact_force_jvp.o for icx)")
+    endif()
+    message(STATUS "Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
+    enable_testing()
+    # Exact autodiff (forward and reverse) of a real VMEC nonlinear kernel: the
+    # half-grid Jacobian. Enzyme runs as an optimization-time pass, so it needs
+    # -O2 and the plugin attached.
+    add_executable(jacobian_kernel_autodiff_test
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/jacobian_kernel_autodiff_test.cc)
+    target_compile_options(jacobian_kernel_autodiff_test PRIVATE
+      -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+    add_test(NAME jacobian_kernel_autodiff COMMAND jacobian_kernel_autodiff_test)
+    # Exact Hessian of the composed local force map (all six force-chain kernels):
+    # forward/reverse Jacobian vs finite differences, and JVP cost vs FD-HVP.
+    add_executable(local_force_hessian_test
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/local_force_hessian_test.cc
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc)
+    target_compile_options(local_force_hessian_test PRIVATE
+      -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+    add_test(NAME local_force_hessian COMMAND local_force_hessian_test)
 
-  # Wire the exact force Hessian-vector product into the core library and the
-  # Python extension: the single Enzyme forward pass lives in exact_force_jvp.cc
-  # (compiled with the plugin), the rest of the core stays normally compiled.
-  # VMECPP_ENABLE_ENZYME guards the callers so the default (plugin-free) build is
-  # unaffected.
-  target_sources(vmecpp_core PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_vjp.cc)
-  set_source_files_properties(
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_vjp.cc
-    PROPERTIES COMPILE_OPTIONS "-O2;-fplugin=${VMECPP_ENZYME_PLUGIN}")
-  target_compile_definitions(vmecpp_core PUBLIC VMECPP_ENABLE_ENZYME)
+    # Wire the exact force Hessian-vector product into the core library and the
+    # Python extension. The Enzyme translation units are compiled with the plugin;
+    # the rest of the core stays normally compiled.
+    target_sources(vmecpp_core PRIVATE
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_vjp.cc)
+    set_source_files_properties(
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_vjp.cc
+      PROPERTIES COMPILE_OPTIONS "-O2;-fplugin=${VMECPP_ENZYME_PLUGIN}")
+    target_compile_definitions(vmecpp_core PUBLIC VMECPP_ENABLE_ENZYME)
   endif()
 endif()
