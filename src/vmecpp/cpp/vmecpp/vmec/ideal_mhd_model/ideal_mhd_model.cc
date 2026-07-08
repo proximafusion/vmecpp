@@ -421,6 +421,12 @@ absl::StatusOr<bool> IdealMhdModel::update(
     int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
     const int iter2, const VmecCheckpoint& checkpoint,
     const int iterations_before_checkpointing, bool verbose) {
+  // An axis re-guess after a bad Jacobian can repopulate high geometry modes
+  // directly, bypassing the force mask; clear them on the state each iteration.
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_x.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+  }
+
   // preprocess Fourier coefficients of geometry
   m_decomposed_x.decomposeInto(m_physical_x, m_p_.scalxc);
   if (checkpoint == VmecCheckpoint::FOURIER_GEOMETRY_TO_START_WITH &&
@@ -814,6 +820,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
     m_decomposed_f.zeroZForceForM1();
   }
 
+  // Freeze geometry above the reduced resolution before the invariant
+  // residuals (so frozen modes stay out of the convergence test) and before
+  // preconditioning (so they get no update).
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_f.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+  }
+
   if (checkpoint == VmecCheckpoint::PHYSICAL_FORCES &&
       iter2 >= iterations_before_checkpointing) {
     return true;
@@ -873,6 +886,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
   if (checkpoint == VmecCheckpoint::APPLY_RADIAL_PRECONDITIONER &&
       iter2 >= iterations_before_checkpointing) {
     return true;
+  }
+
+  // Re-freeze after preconditioning. The radial preconditioner is per-mode so
+  // it cannot reintroduce frozen modes; this keeps the preconditioned residual
+  // and the state update clean.
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_f.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
   }
 
   Eigen::Vector3d localFResPrecd;
