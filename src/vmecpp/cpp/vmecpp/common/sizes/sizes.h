@@ -19,7 +19,8 @@ class Sizes {
   // object.
   explicit Sizes(const VmecINDATA& id);
 
-  Sizes(bool lasym, int nfp, int mpol, int ntor, int ntheta, int nzeta);
+  Sizes(bool lasym, int nfp, int mpol, int ntor, int ntheta, int nzeta,
+        int mpol_geometry = -1, int ntor_geometry = -1);
 
   // inputs from INDATA
 
@@ -34,6 +35,12 @@ class Sizes {
 
   // number of toroidal Fourier harmoncis
   int ntor;
+
+  // geometry-only resolution: R and Z modes with m >= mpolGeometry or
+  // n > ntorGeometry are frozen, while lambda keeps the full mpol/ntor.
+  // Equal to mpol/ntor unless a reduced geometry resolution was requested.
+  int mpolGeometry;
+  int ntorGeometry;
 
   // number of poloidal grid points
   int ntheta;
