@@ -621,6 +621,48 @@ INSTANTIATE_TEST_SUITE_P(
            DataSource{.identifier = "cth_like_fixed_bdy",
                       .tolerance = 1.0e-4}));
 
+TEST(HotRestartIntegration, MultigridContinuation) {
+  // Test that a hot restart seeded at the first (coarse) grid and then
+  // continued through all remaining multigrid steps produces the same
+  // converged result as a cold full-grid run.
+  //
+  // We use cma (ns=[25, 51]) because its first grid at ns=25 is coarse enough
+  // to be a useful seed but large enough to converge when run standalone.
+  // solovev's first grid at ns=5 requires the internal 3-point bootstrap to
+  // obtain a valid initial Jacobian and cannot converge standalone.
+  const std::string filename = "vmecpp/test_data/cma.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const VmecINDATA& indata = maybe_indata.value();
+
+  // Run only the first (coarsest) grid to produce the restart seed.
+  // Use conservativeResize to keep the first element when shrinking.
+  VmecINDATA coarse_indata = indata;
+  coarse_indata.ns_array.conservativeResize(1);
+  coarse_indata.ftol_array.conservativeResize(1);
+  coarse_indata.niter_array.conservativeResize(1);
+  const auto coarse_output = vmecpp::run(coarse_indata);
+  ASSERT_TRUE(coarse_output.ok());
+
+  // Hot-restart at the coarse grid and continue through all multigrid steps.
+  const auto multigrid_output =
+      vmecpp::run(indata, vmecpp::HotRestartState(*coarse_output));
+  ASSERT_TRUE(multigrid_output.ok());
+
+  // Cold full-grid run for reference.
+  const auto cold_output = vmecpp::run(indata);
+  ASSERT_TRUE(cold_output.ok());
+
+  // Results at the finest grid should agree to high tolerance.
+  const double tolerance = 1.0e-4;
+  const bool check_equal_maximum_iterations = false;
+  vmecpp::CompareWOut(multigrid_output->wout, cold_output->wout, tolerance,
+                      check_equal_maximum_iterations);
+}
+
 TEST(HotRestartIntegration, FreeBoundary) {
   // LOAD INDATA FILE
   const std::string filename = "vmecpp/test_data/cth_like_free_bdy.json";

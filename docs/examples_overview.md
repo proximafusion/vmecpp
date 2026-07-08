@@ -14,3 +14,4 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`simsopt_qh_fixed_resolution.py`](../examples/simsopt_qh_fixed_resolution.py): reproduce SIMSOPT's QH fixed resolution example.
 - [`sample_hot_restarts_with_random_perturbations.py`](../examples/sample_hot_restarts_with_random_perturbations.py): explore restart sensitivity to small boundary perturbations.
 - [`force_residual_convergence.py`](../examples/force_residual_convergence.py): plot convergence of force residuals during VMEC++ runs.
+- [`fourier_resolution_increase.py`](../examples/fourier_resolution_increase.py): reach a high Fourier resolution by continuation, in fewer iterations than a fixed-resolution solve.
