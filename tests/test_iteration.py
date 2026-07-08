@@ -274,6 +274,32 @@ def test_run_honors_iteration_style_flag():
     assert par.wb == pytest.approx(ref.wb, rel=1.0e-5)  # magnetic energy
 
 
+@pytest.mark.parametrize("case", ["cth_like_fixed_bdy", "solovev"])
+def test_parvmec_matches_parvmec_reference(case):
+    """The PARVMEC iteration style reproduces the ORNL-Fusion/PARVMEC wout.
+
+    The committed reference wouts match fresh output from the Fortran ORNL-
+    Fusion/PARVMEC to machine precision (volume/aspect ~1e-15, geometry and iota ~1e-7
+    for cth_like, ~0 for solovev), so this pins the new iteration style to the
+    independent parallel implementation, not only to the vmec_8_52 control.
+    """
+    reference = vmecpp.VmecWOut.from_wout_file(TEST_DATA / f"wout_{case}.nc")
+    base = vmecpp.VmecInput.from_file(TEST_DATA / f"{case}.json")
+    result = vmecpp.run(
+        base.model_copy(update={"iteration_style": "parvmec"}),
+        max_threads=1,
+        verbose=False,
+    )
+    w = result.wout
+
+    assert w.volume_p == pytest.approx(reference.volume_p, rel=1.0e-9)
+    assert w.aspect == pytest.approx(reference.aspect, rel=1.0e-9)
+    np.testing.assert_allclose(w.iotaf, reference.iotaf, rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(w.rmnc, reference.rmnc, rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(w.zmns, reference.zmns, rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(w.bmnc, reference.bmnc, rtol=1.0e-5, atol=1.0e-6)
+
+
 def test_callback_records_iteration_state():
     """The per-iteration callback fires once per recorded iteration with a consistent
     IterationState snapshot of the convergence / flow-control state.
