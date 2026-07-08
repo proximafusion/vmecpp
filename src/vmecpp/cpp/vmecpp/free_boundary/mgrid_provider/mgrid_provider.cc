@@ -26,6 +26,40 @@ using netcdf_io::NetcdfReadDouble;
 using netcdf_io::NetcdfReadInt;
 using netcdf_io::NetcdfReadString;
 
+namespace {
+
+absl::Status ValidateFieldContributionShape(
+    const std::vector<std::vector<std::vector<double> > >& field_contribution,
+    const std::string& variable_name, int num_phi, int num_z, int num_r) {
+  if (field_contribution.size() != static_cast<size_t>(num_phi)) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Variable '%s' has %d phi slices, expected %d.",
+                        variable_name, field_contribution.size(), num_phi));
+  }
+
+  for (int index_phi = 0; index_phi < num_phi; ++index_phi) {
+    if (field_contribution[index_phi].size() != static_cast<size_t>(num_z)) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Variable '%s' has %d z slices at phi index %d, expected %d.",
+          variable_name, field_contribution[index_phi].size(), index_phi,
+          num_z));
+    }
+    for (int index_z = 0; index_z < num_z; ++index_z) {
+      if (field_contribution[index_phi][index_z].size() !=
+          static_cast<size_t>(num_r)) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Variable '%s' has %d r points at phi index %d and z index %d, "
+            "expected %d.",
+            variable_name, field_contribution[index_phi][index_z].size(),
+            index_phi, index_z, num_r));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 MGridProvider::MGridProvider() {
   nfp = -1;
 
@@ -178,6 +212,18 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
         *std::move(b_p_contribution_or);
     std::vector<std::vector<std::vector<double> > > b_z_contribution =
         *std::move(b_z_contribution_or);
+
+    absl::Status shape_status;
+    shape_status.Update(ValidateFieldContributionShape(
+        b_r_contribution, br_variable, numPhi, numZ, numR));
+    shape_status.Update(ValidateFieldContributionShape(
+        b_p_contribution, bp_variable, numPhi, numZ, numR));
+    shape_status.Update(ValidateFieldContributionShape(
+        b_z_contribution, bz_variable, numPhi, numZ, numR));
+    if (!shape_status.ok()) {
+      nc_close(ncid);
+      return with_context(shape_status);
+    }
 
     for (int index_phi = 0; index_phi < numPhi; ++index_phi) {
       for (int index_z = 0; index_z < numZ; ++index_z) {
