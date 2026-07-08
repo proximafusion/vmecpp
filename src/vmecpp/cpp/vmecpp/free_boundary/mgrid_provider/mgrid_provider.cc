@@ -73,30 +73,71 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
                         filename.string()));
   }
 
-  // TODO(jurasic) All of these should be handled with abseil status, but
-  // terminate on error with absl::CHECK instead.
-  nfp = NetcdfReadInt(ncid, "nfp");
+  // Reads below return absl::Status on failure (e.g. a missing variable),
+  // which we propagate to the caller instead of aborting the process.
+  auto with_context = [&filename](const absl::Status& s) {
+    return absl::Status(s.code(),
+                        absl::StrFormat("While reading mgrid file '%s': %s",
+                                        filename.string(), s.message()));
+  };
 
-  numR = NetcdfReadInt(ncid, "ir");
-  minR = NetcdfReadDouble(ncid, "rmin");
-  maxR = NetcdfReadDouble(ncid, "rmax");
+  absl::StatusOr<int> nfp_or = NetcdfReadInt(ncid, "nfp");
+
+  absl::StatusOr<int> num_r_or = NetcdfReadInt(ncid, "ir");
+  absl::StatusOr<double> min_r_or = NetcdfReadDouble(ncid, "rmin");
+  absl::StatusOr<double> max_r_or = NetcdfReadDouble(ncid, "rmax");
+
+  absl::StatusOr<int> num_z_or = NetcdfReadInt(ncid, "jz");
+  absl::StatusOr<double> min_z_or = NetcdfReadDouble(ncid, "zmin");
+  absl::StatusOr<double> max_z_or = NetcdfReadDouble(ncid, "zmax");
+
+  absl::StatusOr<int> num_phi_or = NetcdfReadInt(ncid, "kp");
+
+  absl::StatusOr<int> nextcur_or = NetcdfReadInt(ncid, "nextcur");
+
+  absl::StatusOr<std::string> mgrid_mode_or =
+      NetcdfReadString(ncid, "mgrid_mode");
+
+  absl::Status read_status;
+  read_status.Update(nfp_or.status());
+  read_status.Update(num_r_or.status());
+  read_status.Update(min_r_or.status());
+  read_status.Update(max_r_or.status());
+  read_status.Update(num_z_or.status());
+  read_status.Update(min_z_or.status());
+  read_status.Update(max_z_or.status());
+  read_status.Update(num_phi_or.status());
+  read_status.Update(nextcur_or.status());
+  read_status.Update(mgrid_mode_or.status());
+  if (!read_status.ok()) {
+    nc_close(ncid);
+    return with_context(read_status);
+  }
+
+  nfp = *nfp_or;
+
+  numR = *num_r_or;
+  minR = *min_r_or;
+  maxR = *max_r_or;
   deltaR = (maxR - minR) / (numR - 1.0);
 
-  numZ = NetcdfReadInt(ncid, "jz");
-  minZ = NetcdfReadDouble(ncid, "zmin");
-  maxZ = NetcdfReadDouble(ncid, "zmax");
+  numZ = *num_z_or;
+  minZ = *min_z_or;
+  maxZ = *max_z_or;
   deltaZ = (maxZ - minZ) / (numZ - 1.0);
 
-  numPhi = NetcdfReadInt(ncid, "kp");
+  numPhi = *num_phi_or;
 
-  nextcur = NetcdfReadInt(ncid, "nextcur");
+  nextcur = *nextcur_or;
   if (coil_currents.size() != nextcur) {
+    nc_close(ncid);
     return absl::InvalidArgumentError(
         absl::StrFormat("Number of currents %d does not match number of mgrid "
                         "coil fields nextcur=%d.",
                         coil_currents.size(), nextcur));
   }
-  mgrid_mode = NetcdfReadString(ncid, "mgrid_mode");
+
+  mgrid_mode = *mgrid_mode_or;
 
   // Resize and make sure that the accumulation arrays are reset to zeros
   // if they contained previous contents from an earlier call to this routine.
@@ -111,16 +152,32 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
     // from i=1, 2, ..., nextcur
 
     std::string br_variable = absl::StrFormat("br_%03d", i + 1);
-    std::vector<std::vector<std::vector<double> > > b_r_contribution =
-        NetcdfReadArray3D(ncid, br_variable);
+    absl::StatusOr<std::vector<std::vector<std::vector<double> > > >
+        b_r_contribution_or = NetcdfReadArray3D(ncid, br_variable);
 
     std::string bp_variable = absl::StrFormat("bp_%03d", i + 1);
-    std::vector<std::vector<std::vector<double> > > b_p_contribution =
-        NetcdfReadArray3D(ncid, bp_variable);
+    absl::StatusOr<std::vector<std::vector<std::vector<double> > > >
+        b_p_contribution_or = NetcdfReadArray3D(ncid, bp_variable);
 
     std::string bz_variable = absl::StrFormat("bz_%03d", i + 1);
+    absl::StatusOr<std::vector<std::vector<std::vector<double> > > >
+        b_z_contribution_or = NetcdfReadArray3D(ncid, bz_variable);
+
+    absl::Status contribution_status;
+    contribution_status.Update(b_r_contribution_or.status());
+    contribution_status.Update(b_p_contribution_or.status());
+    contribution_status.Update(b_z_contribution_or.status());
+    if (!contribution_status.ok()) {
+      nc_close(ncid);
+      return with_context(contribution_status);
+    }
+
+    std::vector<std::vector<std::vector<double> > > b_r_contribution =
+        *std::move(b_r_contribution_or);
+    std::vector<std::vector<std::vector<double> > > b_p_contribution =
+        *std::move(b_p_contribution_or);
     std::vector<std::vector<std::vector<double> > > b_z_contribution =
-        NetcdfReadArray3D(ncid, bz_variable);
+        *std::move(b_z_contribution_or);
 
     for (int index_phi = 0; index_phi < numPhi; ++index_phi) {
       for (int index_z = 0; index_z < numZ; ++index_z) {

@@ -51,8 +51,7 @@ def test_run(max_threads, input_file, verbose):
     [
         ("cma.json", RuntimeError),  # Invalid netcdf
         ("does_not_exist", RuntimeError),
-        # TODO(jurasic) Enable test after switching netcdf_io to absl::Status
-        # ("wout_cma.nc", RuntimeError),  # Valid netcdf, but invalid mgrid
+        ("wout_cma.nc", RuntimeError),  # Valid netcdf, but invalid mgrid
     ],
 )
 def test_raise_invalid_mgrid(mgrid_path: str, expected_exception):
