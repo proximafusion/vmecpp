@@ -5,10 +5,9 @@
 #ifndef VMECPP_COMMON_BLOCK_TRIDIAGONAL_BLOCK_TRIDIAGONAL_H_
 #define VMECPP_COMMON_BLOCK_TRIDIAGONAL_BLOCK_TRIDIAGONAL_H_
 
+#include <Eigen/Dense>
 #include <functional>
 #include <vector>
-
-#include <Eigen/Dense>
 
 namespace vmecpp {
 
@@ -22,15 +21,15 @@ struct BlockTridiagonalBlocks {
 };
 
 // Assemble the block-tridiagonal Jacobian dF/dx of a force field F that has
-// nearest-neighbour radial coupling (F_j depends only on x_{j-1}, x_j, x_{j+1}),
-// by central finite differences about x0. There are n radial surfaces with k
-// degrees of freedom each; x0 and the force are flattened surface-major, i.e.
-// entry (surface, dof) lives at surface * k + dof.
+// nearest-neighbour radial coupling (F_j depends only on x_{j-1}, x_j,
+// x_{j+1}), by central finite differences about x0. There are n radial surfaces
+// with k degrees of freedom each; x0 and the force are flattened surface-major,
+// i.e. entry (surface, dof) lives at surface * k + dof.
 //
-// The coupling is exploited: perturbing surface j only changes F at j-1, j, j+1,
-// so surfaces 3 apart are independent and are perturbed together. The assembly
-// therefore costs 6 * k force evaluations (2 central-difference directions times
-// k dofs times 3 stride offsets), independent of n.
+// The coupling is exploited: perturbing surface j only changes F at j-1, j,
+// j+1, so surfaces 3 apart are independent and are perturbed together. The
+// assembly therefore costs 6 * k force evaluations (2 central-difference
+// directions times k dofs times 3 stride offsets), independent of n.
 //
 // Convention matches BlockTridiagonalFactorization: dF_j/dx_j -> diag[j],
 // dF_j/dx_{j-1} -> lower[j], dF_j/dx_{j+1} -> upper[j].

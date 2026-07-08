@@ -2601,8 +2601,8 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   // call serial Thomas solver for every mode number individually
   // Uses span accessors to pass contiguous radial slices to the solver
   const int ns = m_h_.all_ar.cols();
-  static const bool prec2d = std::getenv("VMECPP_PREC2D") != nullptr;
-  if (prec2d) {
+  static const bool kPrec2d = std::getenv("VMECPP_PREC2D") != nullptr;
+  if (kPrec2d) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP

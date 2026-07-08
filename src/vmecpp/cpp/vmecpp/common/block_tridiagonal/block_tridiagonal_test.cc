@@ -4,19 +4,19 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/block_tridiagonal/block_tridiagonal.h"
 
+#include <Eigen/Dense>
 #include <random>
 #include <vector>
-
-#include <Eigen/Dense>
 
 #include "gtest/gtest.h"
 
 namespace vmecpp {
 namespace {
 
-// The block-tridiagonal factorization solves L_j x_{j-1} + D_j x_j + U_j x_{j+1}
-// = b_j exactly (up to round-off). Check it against a known solution and against
-// the dense (n*k) x (n*k) solve, over a range of block counts and block sizes.
+// The block-tridiagonal factorization solves L_j x_{j-1} + D_j x_j + U_j
+// x_{j+1} = b_j exactly (up to round-off). Check it against a known solution
+// and against the dense (n*k) x (n*k) solve, over a range of block counts and
+// block sizes.
 TEST(BlockTridiagonalTest, MatchesKnownSolutionAndDenseSolve) {
   std::mt19937 rng(12345);
   std::uniform_real_distribution<double> dist(-1.0, 1.0);

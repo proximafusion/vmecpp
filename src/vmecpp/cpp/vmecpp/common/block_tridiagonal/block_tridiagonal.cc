@@ -76,10 +76,10 @@ BlockTridiagonalBlocks AssembleFdBlockTridiagonal(
 
   const auto at = [k](int surface, int dof) { return surface * k + dof; };
 
-  // For each degree of freedom, perturb it on every third surface at once (those
-  // surfaces do not share any affected force row), central-difference the force,
-  // and read the resulting column into the diagonal / off-diagonal blocks of the
-  // affected rows.
+  // For each degree of freedom, perturb it on every third surface at once
+  // (those surfaces do not share any affected force row), central-difference
+  // the force, and read the resulting column into the diagonal / off-diagonal
+  // blocks of the affected rows.
   for (int dof = 0; dof < k; ++dof) {
     for (int offset = 0; offset < 3 && offset < n; ++offset) {
       Eigen::VectorXd x_plus = x0;
@@ -88,8 +88,7 @@ BlockTridiagonalBlocks AssembleFdBlockTridiagonal(
         x_plus[at(j, dof)] += eps;
         x_minus[at(j, dof)] -= eps;
       }
-      const Eigen::VectorXd df =
-          (force(x_plus) - force(x_minus)) / (2.0 * eps);
+      const Eigen::VectorXd df = (force(x_plus) - force(x_minus)) / (2.0 * eps);
       for (int j = offset; j < n; j += 3) {
         h.diag[j].col(dof) = df.segment(at(j, 0), k);
         if (j > 0) {
