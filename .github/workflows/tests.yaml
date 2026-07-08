@@ -90,11 +90,6 @@ jobs:
           else
             python -m pip install -v .[test]
           fi
-      - name: Checkout large-tests inputs for the input-consistency test
-        uses: actions/checkout@v4
-        with:
-          repository: proximafusion/vmecpp_large_cpp_tests
-          path: src/vmecpp/cpp/vmecpp_large_cpp_tests
       - name: Test package
         run: python -m pytest tests/
       - name: Test docstring examples

@@ -14,13 +14,19 @@
 namespace vmecpp {
 
 Sizes::Sizes(const VmecINDATA& id)
-    : Sizes(id.lasym, id.nfp, id.mpol, id.ntor, id.ntheta, id.nzeta) {}
+    : Sizes(id.lasym, id.nfp, id.mpol, id.ntor, id.ntheta, id.nzeta,
+            id.mpol_geometry, id.ntor_geometry) {}
 
-Sizes::Sizes(bool lasym, int nfp, int mpol, int ntor, int ntheta, int nzeta)
+Sizes::Sizes(bool lasym, int nfp, int mpol, int ntor, int ntheta, int nzeta,
+             int mpol_geometry, int ntor_geometry)
     : lasym(lasym),
       nfp(nfp),
       mpol(mpol),
       ntor(ntor),
+      mpolGeometry((mpol_geometry < 1 || mpol_geometry > mpol) ? mpol
+                                                               : mpol_geometry),
+      ntorGeometry((ntor_geometry < 0 || ntor_geometry > ntor) ? ntor
+                                                               : ntor_geometry),
       ntheta(ntheta),
       nZeta(nzeta) {
   computeDerivedSizes();
