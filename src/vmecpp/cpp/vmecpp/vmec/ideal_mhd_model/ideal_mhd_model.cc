@@ -20,6 +20,8 @@
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
+#include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
@@ -414,6 +416,12 @@ absl::StatusOr<bool> IdealMhdModel::update(
     int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
     const int iter2, const VmecCheckpoint& checkpoint,
     const int iterations_before_checkpointing, bool verbose) {
+  // An axis re-guess after a bad Jacobian can repopulate high geometry modes
+  // directly, bypassing the force mask; clear them on the state each iteration.
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_x.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+  }
+
   // preprocess Fourier coefficients of geometry
   m_decomposed_x.decomposeInto(m_physical_x, m_p_.scalxc);
   if (checkpoint == VmecCheckpoint::FOURIER_GEOMETRY_TO_START_WITH &&
@@ -807,6 +815,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
     m_decomposed_f.zeroZForceForM1();
   }
 
+  // Freeze geometry above the reduced resolution before the invariant
+  // residuals (so frozen modes stay out of the convergence test) and before
+  // preconditioning (so they get no update).
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_f.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+  }
+
   if (checkpoint == VmecCheckpoint::PHYSICAL_FORCES &&
       iter2 >= iterations_before_checkpointing) {
     return true;
@@ -866,6 +881,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
   if (checkpoint == VmecCheckpoint::APPLY_RADIAL_PRECONDITIONER &&
       iter2 >= iterations_before_checkpointing) {
     return true;
+  }
+
+  // Re-freeze after preconditioning. The radial preconditioner is per-mode so
+  // it cannot reintroduce frozen modes; this keeps the preconditioned residual
+  // and the state update clean.
+  if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
+    m_decomposed_f.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
   }
 
   Eigen::Vector3d localFResPrecd;
@@ -1196,94 +1218,29 @@ void IdealMhdModel::rzConIntoVolume() {
 }
 
 void IdealMhdModel::computeJacobian() {
-  // r12, ru12, zu12, rs, zs, tau
+  // Half-grid r12, ru12, zu12, rs, zs and the Jacobian tau. The arithmetic
+  // lives in the shared, allocation-free kernel (jacobian_kernel.h) so the
+  // solver and the Enzyme autodiff test use one implementation.
+  ComputeHalfGridJacobian(
+      r1_e.data(), r1_o.data(), z1_e.data(), z1_o.data(), ru_e.data(),
+      ru_o.data(), zu_e.data(), zu_o.data(), m_p_.sqrtSH.data(), m_fc_.deltaS,
+      dSHalfDsInterp, s_.nZnT, r_.nsMinF1, r_.nsMinH, r_.nsMaxH, r12.data(),
+      ru12.data(), zu12.data(), rs.data(), zs.data(), tau.data());
 
+  // Jacobian sign check: same running min/max over tau as before, now scanned
+  // after the kernel (identical values, hence identical verdict).
   double minTau = 0.0;
   double maxTau = 0.0;
-
-  // contributions from full-grid surface _i_nside j-th half-grid surface
-  int j0 = r_.nsMinF1;
-  for (int kl = 0; kl < s_.nZnT; ++kl) {
-    m_ls_.r1e_i[kl] = r1_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.r1o_i[kl] = r1_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.z1e_i[kl] = z1_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.z1o_i[kl] = z1_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.rue_i[kl] = ru_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.ruo_i[kl] = ru_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.zue_i[kl] = zu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.zuo_i[kl] = zu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
+  const int nTau = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
+  for (int i = 0; i < nTau; ++i) {
+    const double t = tau[i];
+    if (t < minTau || minTau == 0.0) {
+      minTau = t;
+    }
+    if (t > maxTau || maxTau == 0.0) {
+      maxTau = t;
+    }
   }
-
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
-
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // contributions from full-grid surface _o_utside j-th half-grid surface
-      double r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double z1e_o = z1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double z1o_o = z1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double rue_o = ru_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double ruo_o = ru_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zue_o = zu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zuo_o = zu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-
-      // R on half-grid
-      r12[iHalf] = 0.5 * ((m_ls_.r1e_i[kl] + r1e_o) +
-                          sqrtSH * (m_ls_.r1o_i[kl] + r1o_o));
-
-      // dRdTheta on half-grid
-      ru12[iHalf] = 0.5 * ((m_ls_.rue_i[kl] + rue_o) +
-                           sqrtSH * (m_ls_.ruo_i[kl] + ruo_o));
-
-      // dZdTheta on half-grid
-      zu12[iHalf] = 0.5 * ((m_ls_.zue_i[kl] + zue_o) +
-                           sqrtSH * (m_ls_.zuo_i[kl] + zuo_o));
-
-      // \tilde{dRds} on half-grid
-      rs[iHalf] =
-          ((r1e_o - m_ls_.r1e_i[kl]) + sqrtSH * (r1o_o - m_ls_.r1o_i[kl])) /
-          m_fc_.deltaS;
-
-      // \tilde{dZds} on half-grid
-      zs[iHalf] =
-          ((z1e_o - m_ls_.z1e_i[kl]) + sqrtSH * (z1o_o - m_ls_.z1o_i[kl])) /
-          m_fc_.deltaS;
-
-      // sqrt(g)/R on half-grid: assemble as governed by product rule
-      double tau1 = ru12[iHalf] * zs[iHalf] - rs[iHalf] * zu12[iHalf];
-      double tau2 = ruo_o * z1o_o + m_ls_.ruo_i[kl] * m_ls_.z1o_i[kl] -
-                    zuo_o * r1o_o - m_ls_.zuo_i[kl] * m_ls_.r1o_i[kl] +
-                    (rue_o * z1o_o + m_ls_.rue_i[kl] * m_ls_.z1o_i[kl] -
-                     zue_o * r1o_o - m_ls_.zue_i[kl] * m_ls_.r1o_i[kl]) /
-                        sqrtSH;
-      double tau_val = tau1 + dSHalfDsInterp * tau2;
-
-      if (tau_val < minTau || minTau == 0.0) {
-        minTau = tau_val;
-      }
-      if (tau_val > maxTau || maxTau == 0.0) {
-        maxTau = tau_val;
-      }
-
-      tau[iHalf] = tau_val;
-
-      // hand over to next iteration of radial loop
-      // --> what was outside in this loop iteration will be inside for next
-      // half-grid location
-      m_ls_.r1e_i[kl] = r1e_o;
-      m_ls_.r1o_i[kl] = r1o_o;
-      m_ls_.z1e_i[kl] = z1e_o;
-      m_ls_.z1o_i[kl] = z1o_o;
-      m_ls_.rue_i[kl] = rue_o;
-      m_ls_.ruo_i[kl] = ruo_o;
-      m_ls_.zue_i[kl] = zue_o;
-      m_ls_.zuo_i[kl] = zuo_o;
-    }  // kl
-  }  // j
 
   bool localBadJacobian =
       (minTau * maxTau < 0.0) || !std::isfinite(minTau * maxTau);
@@ -1302,131 +1259,15 @@ void IdealMhdModel::computeJacobian() {
 }
 
 void IdealMhdModel::computeMetricElements() {
-  // gsqrt
-  // guu, guv, gvv
-
-  // contributions from full-grid surface _i_nside j-th half-grid surface
-  int j0 = r_.nsMinF1;
-  for (int kl = 0; kl < s_.nZnT; ++kl) {
-    m_ls_.r1e_i[kl] = r1_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.r1o_i[kl] = r1_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.z1e_i[kl] = z1_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.z1o_i[kl] = z1_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.rue_i[kl] = ru_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.ruo_i[kl] = ru_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.zue_i[kl] = zu_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    m_ls_.zuo_i[kl] = zu_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    if (s_.lthreed) {
-      m_ls_.rve_i[kl] = rv_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-      m_ls_.rvo_i[kl] = rv_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-      m_ls_.zve_i[kl] = zv_e[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-      m_ls_.zvo_i[kl] = zv_o[(j0 - r_.nsMinF1) * s_.nZnT + kl];
-    }
-  }
-
-  // s on inner full-grid pos
-  double sF_i =
-      m_p_.sqrtSF[r_.nsMinH - r_.nsMinF1] * m_p_.sqrtSF[r_.nsMinH - r_.nsMinF1];
-
-  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    // s on outside full-grid pos
-    double sF_o =
-        m_p_.sqrtSF[jH + 1 - r_.nsMinF1] * m_p_.sqrtSF[jH + 1 - r_.nsMinF1];
-
-    // sqrt(s) on j-th half-grid pos
-    double sqrtSH = m_p_.sqrtSH[jH - r_.nsMinH];
-
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-
-      // Re-use this loop to compute Jacobian gsqrt=tau*R
-      // only tau needed to be checked for a sign change,
-      // so skip the last part where gsqrt is computed
-      // if a sign changed happened by computing it only here
-      // (which will only be reached when tau did not change sign).
-      gsqrt[iHalf] = tau[iHalf] * r12[iHalf];
-
-      // contributions from full-grid surface _o_utside j-th half-grid surface
-      double r1e_o = r1_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double r1o_o = r1_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double rue_o = ru_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double ruo_o = ru_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zue_o = zu_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-      double zuo_o = zu_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-
-      // g_{\theta,\theta} is needed for both 2D and 3D cases
-      guu[iHalf] = 0.5 * ((m_ls_.rue_i[kl] * m_ls_.rue_i[kl] +
-                           m_ls_.zue_i[kl] * m_ls_.zue_i[kl]) +
-                          (rue_o * rue_o + zue_o * zue_o) +
-                          sF_i * (m_ls_.ruo_i[kl] * m_ls_.ruo_i[kl] +
-                                  m_ls_.zuo_i[kl] * m_ls_.zuo_i[kl]) +
-                          sF_o * (ruo_o * ruo_o + zuo_o * zuo_o)) +
-                   sqrtSH * ((m_ls_.rue_i[kl] * m_ls_.ruo_i[kl] +
-                              m_ls_.zue_i[kl] * m_ls_.zuo_i[kl]) +
-                             (rue_o * ruo_o + zue_o * zuo_o));
-
-      // g_{\zeta,\zeta} reduces to R^2 in the 2D case, so compute this always
-      gvv[iHalf] = 0.5 * (m_ls_.r1e_i[kl] * m_ls_.r1e_i[kl] + r1e_o * r1e_o +
-                          sF_i * m_ls_.r1o_i[kl] * m_ls_.r1o_i[kl] +
-                          sF_o * r1o_o * r1o_o) +
-                   sqrtSH * (m_ls_.r1e_i[kl] * m_ls_.r1o_i[kl] + r1e_o * r1o_o);
-
-      if (s_.lthreed) {
-        double rve_o = rv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double rvo_o = rv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double zve_o = zv_e[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-        double zvo_o = zv_o[(jH + 1 - r_.nsMinF1) * s_.nZnT + kl];
-
-        // g_{\theta,\zeta} is only needed for the 3D case
-        guv[iHalf] = 0.5 * ((m_ls_.rue_i[kl] * m_ls_.rve_i[kl] +
-                             m_ls_.zue_i[kl] * m_ls_.zve_i[kl]) +
-                            (rue_o * rve_o + zue_o * zve_o) +
-                            sF_i * (m_ls_.ruo_i[kl] * m_ls_.rvo_i[kl] +
-                                    m_ls_.zuo_i[kl] * m_ls_.zvo_i[kl]) +
-                            sF_o * (ruo_o * rvo_o + zuo_o * zvo_o) +
-                            sqrtSH * ((m_ls_.rue_i[kl] * m_ls_.rvo_i[kl] +
-                                       m_ls_.zue_i[kl] * m_ls_.zvo_i[kl]) +
-                                      (rue_o * rvo_o + zue_o * zvo_o) +
-                                      (m_ls_.rve_i[kl] * m_ls_.ruo_i[kl] +
-                                       m_ls_.zve_i[kl] * m_ls_.zuo_i[kl]) +
-                                      (rve_o * ruo_o + zve_o * zuo_o)));
-
-        // compute remaining contribution for 3D to g_{\zeta,\zeta}
-        gvv[iHalf] += 0.5 * ((m_ls_.rve_i[kl] * m_ls_.rve_i[kl] +
-                              m_ls_.zve_i[kl] * m_ls_.zve_i[kl]) +
-                             (rve_o * rve_o + zve_o * zve_o) +
-                             sF_i * (m_ls_.rvo_i[kl] * m_ls_.rvo_i[kl] +
-                                     m_ls_.zvo_i[kl] * m_ls_.zvo_i[kl]) +
-                             sF_o * (rvo_o * rvo_o + zvo_o * zvo_o)) +
-                      sqrtSH * ((m_ls_.rve_i[kl] * m_ls_.rvo_i[kl] +
-                                 m_ls_.zve_i[kl] * m_ls_.zvo_i[kl]) +
-                                (rve_o * rvo_o + zve_o * zvo_o));
-
-        // hand over to next iteration of radial loop
-        // --> what was outside in this loop iteration will be inside for next
-        // half-grid location
-        m_ls_.rve_i[kl] = rve_o;
-        m_ls_.rvo_i[kl] = rvo_o;
-        m_ls_.zve_i[kl] = zve_o;
-        m_ls_.zvo_i[kl] = zvo_o;
-      }
-
-      // hand over to next iteration of radial loop
-      // --> what was outside in this loop iteration will be inside for next
-      // half-grid location
-      m_ls_.r1e_i[kl] = r1e_o;
-      m_ls_.r1o_i[kl] = r1o_o;
-      m_ls_.rue_i[kl] = rue_o;
-      m_ls_.ruo_i[kl] = ruo_o;
-      m_ls_.zue_i[kl] = zue_o;
-      m_ls_.zuo_i[kl] = zuo_o;
-    }  // kl
-
-    // hand over to next iteration of radial loop
-    // --> what was outside in this loop iteration will be inside for next
-    // half-grid location
-    sF_i = sF_o;
-  }  // jH
+  // gsqrt = tau * r12, and the metric elements guu, guv, gvv. Arithmetic in the
+  // shared, allocation-free kernel (metric_kernel.h), used by both the solver
+  // and the Enzyme autodiff path.
+  ComputeMetricElements(r1_e.data(), r1_o.data(), ru_e.data(), ru_o.data(),
+                        zu_e.data(), zu_o.data(), rv_e.data(), rv_o.data(),
+                        zv_e.data(), zv_o.data(), tau.data(), r12.data(),
+                        m_p_.sqrtSF.data(), m_p_.sqrtSH.data(), s_.lthreed,
+                        s_.nZnT, r_.nsMinF1, r_.nsMinH, r_.nsMaxH, gsqrt.data(),
+                        guu.data(), guv.data(), gvv.data());
 }
 
 /**

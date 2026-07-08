@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_test(
+    name = "laplace_solver_test",
+    srcs = ["laplace_solver_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp_large_cpp_tests/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        "//vmecpp/free_boundary/laplace_solver",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+)

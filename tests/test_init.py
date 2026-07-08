@@ -93,8 +93,7 @@ def test_run_with_hot_restart():
     # base run
     vmec_output = vmecpp.run(vmec_input, verbose=False)
 
-    # now with hot restart
-    # (only a single multigrid step is supported)
+    # now with hot restart at a single multigrid step
     vmec_input.ns_array = vmec_input.ns_array[-1:]
     vmec_input.ftol_array = vmec_input.ftol_array[-1:]
     vmec_input.niter_array = vmec_input.niter_array[-1:]
