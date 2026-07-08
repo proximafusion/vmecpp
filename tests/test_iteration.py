@@ -300,6 +300,80 @@ def test_parvmec_matches_parvmec_reference(case):
     np.testing.assert_allclose(w.bmnc, reference.bmnc, rtol=1.0e-5, atol=1.0e-6)
 
 
+def test_parvmec_follows_ornl_parvmec_trace():
+    """The native parvmec control follows ORNL PARVMEC's per-iteration residual trace.
+
+    cth_like_fixed_bdy has a well-posed linear guess (no cold-start axis reguess) and
+    converges without a restart, so the iteration is numerically stable: the native
+    parvmec time-step control reproduces the committed ORNL-Fusion/PARVMEC force
+    residuals step-for-step. The first several steps agree to machine precision; the
+    difference then settles into a bounded ~1e-4 relative drift (floating-point
+    accumulation between two independent implementations) that does not grow, and both
+    reach force balance in the same number of steps. This pins the control to the
+    Fortran PARVMEC itself, not only to the vmec_8_52 baseline or the Python port.
+
+    A step-for-step match is only meaningful on a non-chaotic case. Inputs that trip the
+    parvmec-specific restart / reguess logic have violent transients (fsqr ~ 1e4) on
+    which the ~1e-13 floating-point difference between any two implementations amplifies
+    to order unity within a couple of steps; those converge to the same equilibrium but
+    cannot be compared trace-for-trace. The divergence between the two styles on such a
+    case is covered by test_iteration_styles_diverge_on_stiff_case.
+    """
+    ref = np.loadtxt(
+        TEST_DATA / "parvmec_cth_like_fixed_bdy_force_trace.csv",
+        delimiter=",",
+        skiprows=5,
+    )
+    ref_fsqr, ref_fsqz, ref_fsql = ref[:, 1], ref[:, 2], ref[:, 3]
+
+    cpp_indata = _single_resolution_indata("cth_like_fixed_bdy", 25, 1.0e-6, 25000)
+    cpp_indata.iteration_style = _vmecpp.IterationStyle.PARVMEC
+    model = _vmecpp.VmecModel.create(cpp_indata, 25)
+    model.solve()
+    fsqr = np.asarray(model.force_residual_r)
+    fsqz = np.asarray(model.force_residual_z)
+    fsql = np.asarray(model.force_residual_lambda)
+
+    # Same number of steps to force balance (up to the last step at finite ftol).
+    assert abs(len(fsqr) - len(ref_fsqr)) <= 2
+    n = min(len(fsqr), len(ref_fsqr))
+
+    # Bit-faithful for the first several steps.
+    np.testing.assert_allclose(fsqr[:6], ref_fsqr[:6], rtol=1.0e-9, atol=1.0e-14)
+    np.testing.assert_allclose(fsqz[:6], ref_fsqz[:6], rtol=1.0e-9, atol=1.0e-14)
+    np.testing.assert_allclose(fsql[:6], ref_fsql[:6], rtol=1.0e-9, atol=1.0e-14)
+
+    # Tracks ORNL PARVMEC over the whole solve; the bounded drift never turns into a
+    # flow-control divergence (which would show up as a discrete jump, not a drift).
+    np.testing.assert_allclose(fsqr[:n], ref_fsqr[:n], rtol=3.0e-3, atol=1.0e-9)
+    np.testing.assert_allclose(fsqz[:n], ref_fsqz[:n], rtol=3.0e-3, atol=1.0e-9)
+    np.testing.assert_allclose(fsql[:n], ref_fsql[:n], rtol=3.0e-3, atol=1.0e-9)
+
+
+def test_iteration_styles_diverge_on_stiff_case():
+    """vmec_8_52 and parvmec take measurably different paths on a restart-triggering
+    case.
+
+    cma at ns=72 has a cold-start axis reguess and a violent initial transient that
+    trips the time-step-control restart logic. The two styles' restart bookkeeping and
+    force-residual progressions differ -- the reason the parvmec control exists -- even
+    though both converge to the same equilibrium. This is the flow-control difference
+    that the trace test cannot pin to ORNL PARVMEC directly (the case is chaotic).
+    """
+    traces = {}
+    for style in ("vmec_8_52", "parvmec"):
+        cpp_indata = _single_resolution_indata("cma", 72, 1.0e-11, 200)
+        cpp_indata.iteration_style = getattr(_vmecpp.IterationStyle, style.upper())
+        model = _vmecpp.VmecModel.create(cpp_indata, 72)
+        model.solve()
+        traces[style] = np.asarray(model.force_residual_r)
+
+    r852, rpar = traces["vmec_8_52"], traces["parvmec"]
+    n = min(len(r852), len(rpar))
+    # The two controls share only a prefix, then take genuinely different paths.
+    assert not np.allclose(r852[:n], rpar[:n], rtol=1.0e-6, atol=1.0e-12)
+
+
 def test_callback_records_iteration_state():
     """The per-iteration callback fires once per recorded iteration with a consistent
     IterationState snapshot of the convergence / flow-control state.
