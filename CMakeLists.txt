@@ -164,6 +164,11 @@ if(VMECPP_USE_CUDA)
     set(CMAKE_CUDA_COMPILER_LAUNCHER
         "${VMECPP_LAUNCHER_PYTHON}"
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nvcc_utf8_launcher.py")
+  elseif(CMAKE_CUDA_COMPILER_ID MATCHES "Clang")
+    # Clang CUDA takes host flags directly; -Xcompiler is nvcc-only syntax. This
+    # keeps the clang CUDA path (used by VMECPP_ENABLE_CUDA_ENZYME) building and
+    # leaves the default nvcc flags untouched.
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -fPIC")
   else()
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=-fPIC")
   endif()
@@ -172,6 +177,37 @@ if(VMECPP_USE_CUDA)
     set(CMAKE_CUDA_ARCHITECTURES "70;80;89")
   endif()
   message(STATUS "VMECPP_USE_CUDA: enabled, CUDA arches=${CMAKE_CUDA_ARCHITECTURES}")
+endif()
+
+# Optional CUDA-Enzyme target: the first proof that a VMEC++ CUDA device kernel
+# (the half-grid Jacobian) can be differentiated by Enzyme on the GPU. OFF by
+# default; the default CPU, CPU-Enzyme, and CUDA builds are unaffected. Requires
+# the CUDA path, a Clang CUDA compiler (Enzyme differentiates Clang's device IR,
+# not nvcc's), and the same ClangEnzyme plugin as the CPU Enzyme path. The test
+# target itself lives in the ideal_mhd_model subdirectory. Enable with:
+#   -DVMECPP_USE_CUDA=ON -DVMECPP_ENABLE_CUDA_ENZYME=ON \
+#   -DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so \
+#   -DCMAKE_CUDA_COMPILER=clang++-NN -DCMAKE_CXX_COMPILER=clang++-NN
+option(VMECPP_ENABLE_CUDA_ENZYME "Build the CUDA-Enzyme Jacobian JVP target" OFF)
+if(VMECPP_ENABLE_CUDA_ENZYME)
+  if(NOT VMECPP_USE_CUDA)
+    message(FATAL_ERROR
+      "VMECPP_ENABLE_CUDA_ENZYME=ON requires VMECPP_USE_CUDA=ON.")
+  endif()
+  if(NOT CMAKE_CUDA_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR
+      "VMECPP_ENABLE_CUDA_ENZYME requires a Clang CUDA compiler (got "
+      "'${CMAKE_CUDA_COMPILER_ID}'); Enzyme differentiates Clang's device IR. "
+      "Configure with -DCMAKE_CUDA_COMPILER=clang++-NN.")
+  endif()
+  set(VMECPP_ENZYME_PLUGIN "" CACHE FILEPATH "Path to ClangEnzyme-NN.so")
+  if(NOT VMECPP_ENZYME_PLUGIN OR NOT EXISTS "${VMECPP_ENZYME_PLUGIN}")
+    message(FATAL_ERROR
+      "VMECPP_ENABLE_CUDA_ENZYME=ON requires "
+      "-DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so")
+  endif()
+  message(STATUS "CUDA-Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
+  enable_testing()
 endif()
 
 # Assemble the VMEC++ source tree.
