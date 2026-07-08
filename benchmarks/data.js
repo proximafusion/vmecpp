@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783517115641,
+  "lastUpdate": 1783517204322,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -22549,6 +22549,240 @@ window.BENCHMARK_DATA = {
             "value": 10652973.101689266,
             "unit": "ns/iter",
             "extra": "iterations: 26\ncpu: 10652411.11538462 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9de6072722f45ab6ad10b1d315baa05115137e9a",
+          "message": "Merge fast_poloidal and fast_toroidal Fourier bases into one template (#611)\n\nThe two FourierBasis classes were identical except for the flat memory layout.\nFactor the shared arithmetic into a single FourierBasis<Layout> template and\nsupply the two layouts as policy structs; the existing class names become type\naliases, so every call site and both data layouts stay unchanged.",
+          "timestamp": "2026-07-08T15:20:31+02:00",
+          "tree_id": "a2d28fa6321018bda16919a4bf4a1aea2adffc3e",
+          "url": "https://github.com/proximafusion/vmecpp/commit/9de6072722f45ab6ad10b1d315baa05115137e9a"
+        },
+        "date": 1783517204026,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 46394.5298561843,
+            "unit": "ns/iter",
+            "extra": "iterations: 4587\ncpu: 46347.997165903646 ns\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 41711.45157217716,
+            "unit": "ns/iter",
+            "extra": "iterations: 6789\ncpu: 41710.388717042275 ns\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 578344.3608559853,
+            "unit": "ns/iter",
+            "extra": "iterations: 484\ncpu: 578342.8822314051 ns\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 1404963.5460628336,
+            "unit": "ns/iter",
+            "extra": "iterations: 199\ncpu: 1404921.984924622 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/4x4",
+            "value": 469454.2233497658,
+            "unit": "ns/iter",
+            "extra": "iterations: 593\ncpu: 469431.40134907264 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/7x1",
+            "value": 219643.67479085922,
+            "unit": "ns/iter",
+            "extra": "iterations: 1280\ncpu: 219633.43671875005 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/12x12",
+            "value": 2647930.721067033,
+            "unit": "ns/iter",
+            "extra": "iterations: 106\ncpu: 2647602.113207548 ns\nthreads: 1"
+          },
+          {
+            "name": "FftFourierToReal/12x12",
+            "value": 1742281.9748902933,
+            "unit": "ns/iter",
+            "extra": "iterations: 156\ncpu: 1742278.3012820524 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/16x18",
+            "value": 6024910.056072732,
+            "unit": "ns/iter",
+            "extra": "iterations: 46\ncpu: 6024438.260869566 ns\nthreads: 1"
+          },
+          {
+            "name": "FftFourierToReal/16x18",
+            "value": 3711846.669514974,
+            "unit": "ns/iter",
+            "extra": "iterations: 75\ncpu: 3711842.533333331 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-28",
+            "value": 2650574.275425502,
+            "unit": "ns/iter",
+            "extra": "iterations: 105\ncpu: 2650439.495238098 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_nzeta-28",
+            "value": 1748864.3527030945,
+            "unit": "ns/iter",
+            "extra": "iterations: 160\ncpu: 1748687.4250000007 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-56",
+            "value": 5356261.363396278,
+            "unit": "ns/iter",
+            "extra": "iterations: 52\ncpu: 5356254.346153841 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-84",
+            "value": 8058977.127075195,
+            "unit": "ns/iter",
+            "extra": "iterations: 35\ncpu: 8058963.428571428 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-112",
+            "value": 10797170.49231896,
+            "unit": "ns/iter",
+            "extra": "iterations: 26\ncpu: 10797150.499999998 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-30",
+            "value": 2668530.6004115515,
+            "unit": "ns/iter",
+            "extra": "iterations: 105\ncpu: 2668388.7142857104 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-30",
+            "value": 1735496.224823946,
+            "unit": "ns/iter",
+            "extra": "iterations: 161\ncpu: 1735306.217391301 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-60",
+            "value": 3740409.2152913413,
+            "unit": "ns/iter",
+            "extra": "iterations: 75\ncpu: 3740208.0133333374 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-60",
+            "value": 2808091.640472412,
+            "unit": "ns/iter",
+            "extra": "iterations: 100\ncpu: 2808088.8800000013 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-90",
+            "value": 4537613.665471312,
+            "unit": "ns/iter",
+            "extra": "iterations: 61\ncpu: 4537366.016393441 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-90",
+            "value": 3555282.7617790126,
+            "unit": "ns/iter",
+            "extra": "iterations: 79\ncpu: 3555171.151898733 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-120",
+            "value": 5786409.183424346,
+            "unit": "ns/iter",
+            "extra": "iterations: 49\ncpu: 5785943.326530623 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-120",
+            "value": 4785200.645183695,
+            "unit": "ns/iter",
+            "extra": "iterations: 58\ncpu: 4784982.689655173 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_FourierToReal_Parallel_W7x_4t",
+            "value": 1071561.7347009403,
+            "unit": "ns/iter",
+            "extra": "iterations: 485\ncpu: 516787.3546391746 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_DftFourierToReal_Parallel_W7x_4t",
+            "value": 1729179.1063254501,
+            "unit": "ns/iter",
+            "extra": "iterations: 387\ncpu: 796249.9431524524 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 64224.887118581406,
+            "unit": "ns/iter",
+            "extra": "iterations: 4357\ncpu: 64239.94835896242 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 493341.442558921,
+            "unit": "ns/iter",
+            "extra": "iterations: 567\ncpu: 493297.50617284287 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 2984153.463485393,
+            "unit": "ns/iter",
+            "extra": "iterations: 94\ncpu: 2984026.138297856 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 60950.66520011935,
+            "unit": "ns/iter",
+            "extra": "iterations: 4371\ncpu: 60955.263097687566 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 486180.9732154443,
+            "unit": "ns/iter",
+            "extra": "iterations: 587\ncpu: 486157.2027257277 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 3055278.2910935422,
+            "unit": "ns/iter",
+            "extra": "iterations: 94\ncpu: 3055087.4999999916 ns\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 286956.5062727665,
+            "unit": "ns/iter",
+            "extra": "iterations: 978\ncpu: 286947.76482617605 ns\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 1172027.8273067714,
+            "unit": "ns/iter",
+            "extra": "iterations: 239\ncpu: 1171996.853556486 ns\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 5259108.993242372,
+            "unit": "ns/iter",
+            "extra": "iterations: 53\ncpu: 5258510.660377357 ns\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 11510638.090280386,
+            "unit": "ns/iter",
+            "extra": "iterations: 26\ncpu: 11509300.538461536 ns\nthreads: 1"
           }
         ]
       }
