@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783494451674,
+  "lastUpdate": 1783494533935,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20400,6 +20400,240 @@ window.BENCHMARK_DATA = {
             "value": 10654898.790212778,
             "unit": "ns/iter",
             "extra": "iterations: 26\ncpu: 10647149.769230764 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c55210cb72406cfe184665b7bdf8832936426543",
+          "message": "ideal_mhd_model: share the covariant-field kernel (bsubu, bsubv) (#570)\n\n* build: bump CMake abseil pin to 20260107.1 for Clang >= 21\n\nThe CMake FetchContent abseil pin (2024-08) fails to compile under\nClang >= 21: absl::Nonnull SFINAE in absl/strings/ascii.cc and the\nnumbers.cc nullability annotations are rejected by the newer frontend.\nBump to the 20260107.1 LTS, which compiles cleanly under Clang 21.1.8\nand GCC. Clang is the compiler required for the Enzyme autodiff build.\n\nThe Bazel build keeps its own (BCR) abseil pin and is unaffected.\n\n* enzyme: opt-in Clang/Enzyme build option and AD smoke test\n\nAdd VMECPP_ENABLE_ENZYME (OFF by default), which requires a Clang\ncompiler and a ClangEnzyme plugin path and builds a self-contained\nautodiff smoke test. The test differentiates a scalar objective written\nover Eigen::Map'd caller buffers and checks reverse- and forward-mode\nEnzyme gradients against the closed form and central finite differences.\n\nenzyme.h documents the intrinsic ABI and the allocation constraint that\nshapes the differentiable kernels: Enzyme cannot track Eigen's aligned\nallocator, so differentiable paths use Eigen::Map over caller-owned\nbuffers and avoid heap expression temporaries.\n\nWith the option off the build is unchanged.\n\n* enzyme: exact autodiff of the VMEC Jacobian kernel (forward vs reverse)\n\nDemonstrate exact automatic differentiation of a real VMEC nonlinear\nkernel. JacobianKernel reproduces IdealMhdModel::computeJacobian (half-grid\nr12/ru12/zu12/rs/zs and the Jacobian tau), written allocation-free over flat\nbuffers, which is the form Enzyme differentiates.\n\nFor L = 0.5||outputs||^2 the test computes dL/dgeom by reverse mode and the\ndirectional derivative dL.v by forward mode, checks both against central\nfinite differences, and against each other:\n\n  reverse dL.v vs FD : 1.9e-9\n  forward dL.v vs FD : 1.9e-9\n  forward vs reverse : 2.9e-15\n  performance: reverse ~16 us/pass (full gradient), forward ~16 us/pass\n               (one direction)\n\nReverse returns the whole gradient per pass and wins for a scalar gradient;\nforward is the cheaper primitive for a single Jacobian/Hessian-vector\nproduct. tau is nonlinear in the geometry, so this kernel's Jacobian is a\ngenuine building block of the exact MHD force Hessian; the remaining force\nchain follows the same allocation-free pattern.\n\n* ideal_mhd_model: share the Jacobian kernel between solver and autodiff\n\nMove the half-grid Jacobian arithmetic into jacobian_kernel.h\n(ComputeHalfGridJacobian), allocation-free over flat buffers. Production\ncomputeJacobian now calls it (followed by the unchanged Jacobian-sign\ncheck), and the Enzyme forward/reverse test differentiates the same\nkernel: one implementation, no duplication.\n\nBit-exact: vmec_standalone MHD energy unchanged on solovev\n(2.548352e+00) and cth_like_fixed_bdy (5.057191e-02). Autodiff test still\nmatches finite differences and agrees forward vs reverse to 3e-15.\n\n* ideal_mhd_model: share the metric kernel (gsqrt, guu, guv, gvv)\n\nExtract computeMetricElements into the shared, allocation-free kernel\nComputeMetricElements (metric_kernel.h), over flat buffers, and call it\nfrom the solver. guv and the 3D part of gvv are computed only when\nlthreed, matching the original. This is the second force-chain kernel made\nEnzyme-differentiable (composed into the exact Hessian-vector product\nlater), following the Jacobian kernel pattern.\n\nBit-exact: vmec_standalone MHD energy unchanged on solovev (2.548352e+00,\n2D) and cth_like_fixed_bdy (5.057191e-02, 3D path with guv/gvv).\n\n* ideal_mhd_model: share the contravariant-field kernel (bsupu, bsupv)\n\nFactor the bsupu/bsupv arithmetic out of computeBContra into the shared,\nallocation-free kernel ComputeBsupContra (bcontra_kernel.h). The lambda\nnormalization (lamscale, + phi') and the chi'/iota profile and\ntoroidal-current-constraint logic stay in the solver verbatim, since they\nmutate state and update profiles; only the differentiable field arithmetic\nmoves to the shared kernel.\n\nBit-exact across 1 and 4 threads (so the ghost-cell radial partitioning is\nexercised) on solovev (2.548352e+00, 2D) and cth_like_fixed_bdy\n(5.057191e-02, 3D).\n\n* ideal_mhd_model: share the covariant-field kernel (bsubu, bsubv)\n\nExtract the metric index-lowering (bsubu = guu B^u + guv B^v, bsubv = guv\nB^u + gvv B^v; guv absent in 2D) from computeBCo into the shared,\nallocation-free kernel ComputeBCo (bco_kernel.h).\n\nBit-exact across 1 and 4 threads on solovev (2.548352e+00) and\ncth_like_fixed_bdy (5.057191e-02).\n\n* bazel: declare force-chain kernel headers in ideal_mhd_model (sandbox fix)\n\n* bazel: declare force-chain kernel headers in ideal_mhd_model (sandbox fix)\n\n* bazel: declare force-chain kernel headers in ideal_mhd_model (sandbox fix)\n\n* bazel: declare force-chain kernel headers in ideal_mhd_model (sandbox fix)\n\n* ci: re-trigger (transient apt-403 on packages.microsoft.com)\n\n* ci: skip benchmark result upload on fork PRs (token is read-only)\n\nThe 'Compare benchmark result' step uses github-action-benchmark with\ncomment-on-alert and the GITHUB_TOKEN, which is read-only for pull requests from\nforks -> 'Resource not accessible by integration'. Gate that step on the PR\ncoming from the same repo so fork PRs still run the benchmarks but skip the\nwrite-back instead of failing.\n\n* ci: build VMEC2000 from source so the compat test runs on numpy 2\n\nThe pinned vmec-0.0.6 cp310 wheel was f90wrapped against numpy 1.x. Under\nthe numpy 2.x that the test env now resolves, importing it dies in the\nf90wrap array interface (f90wrap_vmec_input__array__rbc: 0-th dimension\nmust be fixed to 2 but got 4), so test_ensure_vmec2000_input_from_vmecpp_input\ncould never actually run on CI (and is currently red on main too, where the\nwheel's runtime libs are not even installed).\n\nBuild VMEC2000 from upstream source with current f90wrap, which produces\nnumpy-2-compatible bindings. The recipe mirrors SIMSOPT's own CI\n(hiddenSymmetries/VMEC2000, cmake/machines/ubuntu.json). An explicit\n'import vmec' check in the install step surfaces any remaining problem here\nrather than as a confusing test failure.\n\n* test: skip vmecpp-only indata fields in the VMEC2000 compat subset\n\nWith VMEC2000 built from current upstream source, the compatibility test\nruns for the first time and hits vmecpp indata fields that have no\ncounterpart in the legacy VMEC2000 INDATA namelist (e.g.\nfree_boundary_method), which raised AttributeError. The test explicitly\nchecks only the common subset, so guard the lookup with hasattr and skip\nfields VMEC2000 does not have, instead of enumerating them one by one.\n\n* ci: skip benchmark result upload on fork PRs (token is read-only)\n\nThe 'Compare benchmark result' step uses github-action-benchmark with\ncomment-on-alert and the GITHUB_TOKEN, which is read-only for pull requests from\nforks -> 'Resource not accessible by integration'. Gate that step on the PR\ncoming from the same repo so fork PRs still run the benchmarks but skip the\nwrite-back instead of failing.\n\n* ci: build VMEC2000 from source so the compat test runs on numpy 2\n\nThe pinned vmec-0.0.6 cp310 wheel was f90wrapped against numpy 1.x. Under\nthe numpy 2.x that the test env now resolves, importing it dies in the\nf90wrap array interface (f90wrap_vmec_input__array__rbc: 0-th dimension\nmust be fixed to 2 but got 4), so test_ensure_vmec2000_input_from_vmecpp_input\ncould never actually run on CI (and is currently red on main too, where the\nwheel's runtime libs are not even installed).\n\nBuild VMEC2000 from upstream source with current f90wrap, which produces\nnumpy-2-compatible bindings. The recipe mirrors SIMSOPT's own CI\n(hiddenSymmetries/VMEC2000, cmake/machines/ubuntu.json). An explicit\n'import vmec' check in the install step surfaces any remaining problem here\nrather than as a confusing test failure.\n\n* test: skip vmecpp-only indata fields in the VMEC2000 compat subset\n\nWith VMEC2000 built from current upstream source, the compatibility test\nruns for the first time and hits vmecpp indata fields that have no\ncounterpart in the legacy VMEC2000 INDATA namelist (e.g.\nfree_boundary_method), which raised AttributeError. The test explicitly\nchecks only the common subset, so guard the lookup with hasattr and skip\nfields VMEC2000 does not have, instead of enumerating them one by one.\n\n* ci: skip benchmark result upload on fork PRs (token is read-only)\n\nThe 'Compare benchmark result' step uses github-action-benchmark with\ncomment-on-alert and the GITHUB_TOKEN, which is read-only for pull requests from\nforks -> 'Resource not accessible by integration'. Gate that step on the PR\ncoming from the same repo so fork PRs still run the benchmarks but skip the\nwrite-back instead of failing.\n\n* ci: build VMEC2000 from source so the compat test runs on numpy 2\n\nThe pinned vmec-0.0.6 cp310 wheel was f90wrapped against numpy 1.x. Under\nthe numpy 2.x that the test env now resolves, importing it dies in the\nf90wrap array interface (f90wrap_vmec_input__array__rbc: 0-th dimension\nmust be fixed to 2 but got 4), so test_ensure_vmec2000_input_from_vmecpp_input\ncould never actually run on CI (and is currently red on main too, where the\nwheel's runtime libs are not even installed).\n\nBuild VMEC2000 from upstream source with current f90wrap, which produces\nnumpy-2-compatible bindings. The recipe mirrors SIMSOPT's own CI\n(hiddenSymmetries/VMEC2000, cmake/machines/ubuntu.json). An explicit\n'import vmec' check in the install step surfaces any remaining problem here\nrather than as a confusing test failure.\n\n* test: skip vmecpp-only indata fields in the VMEC2000 compat subset\n\nWith VMEC2000 built from current upstream source, the compatibility test\nruns for the first time and hits vmecpp indata fields that have no\ncounterpart in the legacy VMEC2000 INDATA namelist (e.g.\nfree_boundary_method), which raised AttributeError. The test explicitly\nchecks only the common subset, so guard the lookup with hasattr and skip\nfields VMEC2000 does not have, instead of enumerating them one by one.\n\n* ci: skip benchmark result upload on fork PRs (token is read-only)\n\nThe 'Compare benchmark result' step uses github-action-benchmark with\ncomment-on-alert and the GITHUB_TOKEN, which is read-only for pull requests from\nforks -> 'Resource not accessible by integration'. Gate that step on the PR\ncoming from the same repo so fork PRs still run the benchmarks but skip the\nwrite-back instead of failing.\n\n* ci: build VMEC2000 from source so the compat test runs on numpy 2\n\nThe pinned vmec-0.0.6 cp310 wheel was f90wrapped against numpy 1.x. Under\nthe numpy 2.x that the test env now resolves, importing it dies in the\nf90wrap array interface (f90wrap_vmec_input__array__rbc: 0-th dimension\nmust be fixed to 2 but got 4), so test_ensure_vmec2000_input_from_vmecpp_input\ncould never actually run on CI (and is currently red on main too, where the\nwheel's runtime libs are not even installed).\n\nBuild VMEC2000 from upstream source with current f90wrap, which produces\nnumpy-2-compatible bindings. The recipe mirrors SIMSOPT's own CI\n(hiddenSymmetries/VMEC2000, cmake/machines/ubuntu.json). An explicit\n'import vmec' check in the install step surfaces any remaining problem here\nrather than as a confusing test failure.\n\n* test: skip vmecpp-only indata fields in the VMEC2000 compat subset\n\nWith VMEC2000 built from current upstream source, the compatibility test\nruns for the first time and hits vmecpp indata fields that have no\ncounterpart in the legacy VMEC2000 INDATA namelist (e.g.\nfree_boundary_method), which raised AttributeError. The test explicitly\nchecks only the common subset, so guard the lookup with hasattr and skip\nfields VMEC2000 does not have, instead of enumerating them one by one.\n\n* ci: skip benchmark result upload on fork PRs (token is read-only)\n\nThe 'Compare benchmark result' step uses github-action-benchmark with\ncomment-on-alert and the GITHUB_TOKEN, which is read-only for pull requests from\nforks -> 'Resource not accessible by integration'. Gate that step on the PR\ncoming from the same repo so fork PRs still run the benchmarks but skip the\nwrite-back instead of failing.\n\n* ci: build VMEC2000 from source so the compat test runs on numpy 2\n\nThe pinned vmec-0.0.6 cp310 wheel was f90wrapped against numpy 1.x. Under\nthe numpy 2.x that the test env now resolves, importing it dies in the\nf90wrap array interface (f90wrap_vmec_input__array__rbc: 0-th dimension\nmust be fixed to 2 but got 4), so test_ensure_vmec2000_input_from_vmecpp_input\ncould never actually run on CI (and is currently red on main too, where the\nwheel's runtime libs are not even installed).\n\nBuild VMEC2000 from upstream source with current f90wrap, which produces\nnumpy-2-compatible bindings. The recipe mirrors SIMSOPT's own CI\n(hiddenSymmetries/VMEC2000, cmake/machines/ubuntu.json). An explicit\n'import vmec' check in the install step surfaces any remaining problem here\nrather than as a confusing test failure.\n\n* test: skip vmecpp-only indata fields in the VMEC2000 compat subset\n\nWith VMEC2000 built from current upstream source, the compatibility test\nruns for the first time and hits vmecpp indata fields that have no\ncounterpart in the legacy VMEC2000 INDATA namelist (e.g.\nfree_boundary_method), which raised AttributeError. The test explicitly\nchecks only the common subset, so guard the lookup with hasattr and skip\nfields VMEC2000 does not have, instead of enumerating them one by one.\n\n* ci: skip benchmark result upload on fork PRs (token is read-only)\n\nThe 'Compare benchmark result' step uses github-action-benchmark with\ncomment-on-alert and the GITHUB_TOKEN, which is read-only for pull requests from\nforks -> 'Resource not accessible by integration'. Gate that step on the PR\ncoming from the same repo so fork PRs still run the benchmarks but skip the\nwrite-back instead of failing.\n\n* ci: build VMEC2000 from source so the compat test runs on numpy 2\n\nThe pinned vmec-0.0.6 cp310 wheel was f90wrapped against numpy 1.x. Under\nthe numpy 2.x that the test env now resolves, importing it dies in the\nf90wrap array interface (f90wrap_vmec_input__array__rbc: 0-th dimension\nmust be fixed to 2 but got 4), so test_ensure_vmec2000_input_from_vmecpp_input\ncould never actually run on CI (and is currently red on main too, where the\nwheel's runtime libs are not even installed).\n\nBuild VMEC2000 from upstream source with current f90wrap, which produces\nnumpy-2-compatible bindings. The recipe mirrors SIMSOPT's own CI\n(hiddenSymmetries/VMEC2000, cmake/machines/ubuntu.json). An explicit\n'import vmec' check in the install step surfaces any remaining problem here\nrather than as a confusing test failure.\n\n* test: skip vmecpp-only indata fields in the VMEC2000 compat subset\n\nWith VMEC2000 built from current upstream source, the compatibility test\nruns for the first time and hits vmecpp indata fields that have no\ncounterpart in the legacy VMEC2000 INDATA namelist (e.g.\nfree_boundary_method), which raised AttributeError. The test explicitly\nchecks only the common subset, so guard the lookup with hasattr and skip\nfields VMEC2000 does not have, instead of enumerating them one by one.\n\n* build: pin abseil to the 20260107.1 commit hash\n\nPin the FetchContent abseil dependency to commit 255c84d (the exact\ncommit behind the 20260107.1 LTS tag) instead of the tag itself, so a\nmoved tag cannot change the dependency under us.\n\n* ci: sync VMEC2000-from-source build, benchmark fork guard, abseil commit pin\n\nBring this stack branch up to the corrected CI baseline (from #583/#564):\n- tests.yaml: build VMEC2000 from the pinned source commit and cache the\n  wheel; drop the unused FFTW/HDF5 dev packages.\n- benchmarks.yaml: skip the result upload on fork PRs (read-only token).\n- test_simsopt_compat.py: skip vmecpp-only INDATA fields.\n- CMakeLists: pin abseil to the 20260107.1 commit hash, not the tag.\n\n* ci: sync VMEC2000-from-source build, benchmark fork guard, abseil commit pin\n\nBring this stack branch up to the corrected CI baseline (from #583/#564):\n- tests.yaml: build VMEC2000 from the pinned source commit and cache the\n  wheel; drop the unused FFTW/HDF5 dev packages.\n- benchmarks.yaml: skip the result upload on fork PRs (read-only token).\n- test_simsopt_compat.py: skip vmecpp-only INDATA fields.\n- CMakeLists: pin abseil to the 20260107.1 commit hash, not the tag.\n\n* ci: sync VMEC2000-from-source build, benchmark fork guard, abseil commit pin\n\nBring this stack branch up to the corrected CI baseline (from #583/#564):\n- tests.yaml: build VMEC2000 from the pinned source commit and cache the\n  wheel; drop the unused FFTW/HDF5 dev packages.\n- benchmarks.yaml: skip the result upload on fork PRs (read-only token).\n- test_simsopt_compat.py: skip vmecpp-only INDATA fields.\n- CMakeLists: pin abseil to the 20260107.1 commit hash, not the tag.\n\n* ci: sync VMEC2000-from-source build, benchmark fork guard, abseil commit pin\n\nBring this stack branch up to the corrected CI baseline (from #583/#564):\n- tests.yaml: build VMEC2000 from the pinned source commit and cache the\n  wheel; drop the unused FFTW/HDF5 dev packages.\n- benchmarks.yaml: skip the result upload on fork PRs (read-only token).\n- test_simsopt_compat.py: skip vmecpp-only INDATA fields.\n- CMakeLists: pin abseil to the 20260107.1 commit hash, not the tag.\n\n* ci: sync VMEC2000-from-source build, benchmark fork guard, abseil commit pin\n\nBring this stack branch up to the corrected CI baseline (from #583/#564):\n- tests.yaml: build VMEC2000 from the pinned source commit and cache the\n  wheel; drop the unused FFTW/HDF5 dev packages.\n- benchmarks.yaml: skip the result upload on fork PRs (read-only token).\n- test_simsopt_compat.py: skip vmecpp-only INDATA fields.\n- CMakeLists: pin abseil to the 20260107.1 commit hash, not the tag.\n\n* ci: cache and pin the VMEC2000-from-source build\n\nUse the canonical recipe (cache the built wheel keyed on the pinned\nsource commit 728af8b, drop the unused FFTW/HDF5 dev packages) instead\nof rebuilding VMEC2000 unpinned on every run.\n\n* ideal_mhd_model: mark Jacobian kernel buffers __restrict\n\nRaw double* kernel params over the same flat layout prevent the compiler\nfrom vectorizing the pointwise loop (assumed aliasing), so on w7x these\nkernels ran ~2x slower than the Eigen-expression code they replaced.\nThe buffers never overlap; mark them __restrict to restore SIMD. Enzyme\nderivatives are unchanged (jacobian_kernel_autodiff + QS GN benchmark).\n\n* ideal_mhd_model: mark Jacobian  metric kernel buffers __restrict\n\nRaw double* kernel params over the same flat layout prevent the compiler\nfrom vectorizing the pointwise loop (assumed aliasing), so on w7x these\nkernels ran ~2x slower than the Eigen-expression code they replaced.\nThe buffers never overlap; mark them __restrict to restore SIMD. Enzyme\nderivatives are unchanged (jacobian_kernel_autodiff + QS GN benchmark).\n\n* ideal_mhd_model: mark Jacobian  metric kernel buffers __restrict\n\nRaw double* kernel params over the same flat layout prevent the compiler\nfrom vectorizing the pointwise loop (assumed aliasing), so on w7x these\nkernels ran ~2x slower than the Eigen-expression code they replaced.\nThe buffers never overlap; mark them __restrict to restore SIMD. Enzyme\nderivatives are unchanged (jacobian_kernel_autodiff + QS GN benchmark).\n\n* ideal_mhd_model: mark Jacobian  metric kernel buffers __restrict\n\nRaw double* kernel params over the same flat layout prevent the compiler\nfrom vectorizing the pointwise loop (assumed aliasing), so on w7x these\nkernels ran ~2x slower than the Eigen-expression code they replaced.\nThe buffers never overlap; mark them __restrict to restore SIMD. Enzyme\nderivatives are unchanged (jacobian_kernel_autodiff + QS GN benchmark).\n\n* output_quantities: compare jcuru/jcurv at a looser opt-in tolerance\n\nThe free-boundary in-memory-vs-disk mgrid golden compares two independent\nsolves. jcuru/jcurv are curl(B) current densities that amplify the rounding\nof the converged state, so under vectorized/optimized builds the two paths\ndiverge by ~1.03e-7 (measured on the CI asan/ubsan runners) while every other\nwout quantity still agrees to 1e-7. The math is unchanged: with vs without the\nkernel __restrict the cth_like wout is bit-for-bit identical on gcc Release, so\nthis is an FP-ordering reproducibility floor, not an accuracy regression.\n\nAdd an opt-in current_density_tolerance to CompareWOut (default 0 = use the\nmain tolerance, so every other caller is unchanged) and have the two\nvmec_in_memory_mgrid_test comparisons pass 2e-7 for jcuru/jcurv only, keeping\n1e-7 for all profiles and geometry.\n\n* output_quantities: compare jcuru/jcurv at a looser opt-in tolerance\n\nThe free-boundary in-memory-vs-disk mgrid golden compares two independent\nsolves. jcuru/jcurv are curl(B) current densities that amplify the rounding\nof the converged state, so under vectorized/optimized builds the two paths\ndiverge by ~1.03e-7 (measured on the CI asan/ubsan runners) while every other\nwout quantity still agrees to 1e-7. The math is unchanged: with vs without the\nkernel __restrict the cth_like wout is bit-for-bit identical on gcc Release, so\nthis is an FP-ordering reproducibility floor, not an accuracy regression.\n\nAdd an opt-in current_density_tolerance to CompareWOut (default 0 = use the\nmain tolerance, so every other caller is unchanged) and have the two\nvmec_in_memory_mgrid_test comparisons pass 2e-7 for jcuru/jcurv only, keeping\n1e-7 for all profiles and geometry.\n\n(cherry picked from commit 27d36d21e1dd8ea6f73127b95bdc81d529f81672)\n\n* output_quantities: compare jcuru/jcurv at a looser opt-in tolerance\n\nThe free-boundary in-memory-vs-disk mgrid golden compares two independent\nsolves. jcuru/jcurv are curl(B) current densities that amplify the rounding\nof the converged state, so under vectorized/optimized builds the two paths\ndiverge by ~1.03e-7 (measured on the CI asan/ubsan runners) while every other\nwout quantity still agrees to 1e-7. The math is unchanged: with vs without the\nkernel __restrict the cth_like wout is bit-for-bit identical on gcc Release, so\nthis is an FP-ordering reproducibility floor, not an accuracy regression.\n\nAdd an opt-in current_density_tolerance to CompareWOut (default 0 = use the\nmain tolerance, so every other caller is unchanged) and have the two\nvmec_in_memory_mgrid_test comparisons pass 2e-7 for jcuru/jcurv only, keeping\n1e-7 for all profiles and geometry.\n\n(cherry picked from commit 27d36d21e1dd8ea6f73127b95bdc81d529f81672)\n\n* output_quantities: compare jcuru/jcurv at a looser opt-in tolerance\n\nThe free-boundary in-memory-vs-disk mgrid golden compares two independent\nsolves. jcuru/jcurv are curl(B) current densities that amplify the rounding\nof the converged state, so under vectorized/optimized builds the two paths\ndiverge by ~1.03e-7 (measured on the CI asan/ubsan runners) while every other\nwout quantity still agrees to 1e-7. The math is unchanged: with vs without the\nkernel __restrict the cth_like wout is bit-for-bit identical on gcc Release, so\nthis is an FP-ordering reproducibility floor, not an accuracy regression.\n\nAdd an opt-in current_density_tolerance to CompareWOut (default 0 = use the\nmain tolerance, so every other caller is unchanged) and have the two\nvmec_in_memory_mgrid_test comparisons pass 2e-7 for jcuru/jcurv only, keeping\n1e-7 for all profiles and geometry.\n\n(cherry picked from commit 27d36d21e1dd8ea6f73127b95bdc81d529f81672)\n\n* enzyme: run the AD smoke test through bazel instead of ctest\n\nMove the Enzyme autodiff smoke test into the bazel test framework, which\nowns every other C++ test in this repository, and drop the separate CMake\nctest path that nothing in CI exercised.\n\n- vmecpp/common/enzyme/BUILD.bazel: an `enzyme` header library plus an\n  `enzyme_smoke_test` cc_test. The test is tagged `manual` so the default\n  GCC `bazel test //...` skips it (the Enzyme intrinsics only resolve under\n  Clang with the plugin attached) and never tries to compile it with GCC.\n- .bazelrc: a `--config=enzyme` that sets -O2 so the Enzyme optimization\n  pass fires. Select Clang with CC/CXX and pass the plugin path the way\n  -DVMECPP_ENZYME_PLUGIN did under CMake:\n    CC=clang CXX=clang++ bazel test --config=enzyme \\\n      --copt=-fplugin=/path/to/ClangEnzyme-NN.so \\\n      //vmecpp/common/enzyme:enzyme_smoke_test\n- CMakeLists.txt: remove the VMECPP_ENABLE_ENZYME option and the ctest\n  registration it only existed to drive.\n\n* ci: build ClangEnzyme and run the enzyme smoke test in CI\n\nAdd a GitHub Actions job that gives the Enzyme autodiff smoke test actual CI\ncoverage. It mirrors the EnzymeAD upstream recipe: install Clang/LLVM 21 from\napt.llvm.org, build a pinned ClangEnzyme-21 plugin (v0.0.264, the version this\nstack is developed against) against the installed LLVM and Clang, then run the\nbazel target under --config=enzyme with the plugin attached. The plugin build\nis cached on the pinned ref so only the first run pays for it.\n\nThis is what the enzyme test needed beyond the bazel move: the default GCC\ntest_bazel job skips the manual-tagged target, so without a Clang/Enzyme job\nnothing exercised it.\n\n* output_quantities: compare jcuru/jcurv at the standard tolerance\n\nThe Jacobian-kernel refactor is structure-only, so drop the opt-in\ncurrent_density_tolerance loosening and compare current densities at the\nsame relabs tolerance as every other wout quantity.\n\n* ideal_mhd_model: include contravariant kernel header\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-07-08T08:50:13+02:00",
+          "tree_id": "e8171646866b31b130b72d4100fe89b85bfd7838",
+          "url": "https://github.com/proximafusion/vmecpp/commit/c55210cb72406cfe184665b7bdf8832936426543"
+        },
+        "date": 1783494533651,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 32700.22839030178,
+            "unit": "ns/iter",
+            "extra": "iterations: 8481\ncpu: 32700.520103761348 ns\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 41544.91181093609,
+            "unit": "ns/iter",
+            "extra": "iterations: 6659\ncpu: 41545.321669920406 ns\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 586472.7172211781,
+            "unit": "ns/iter",
+            "extra": "iterations: 477\ncpu: 586282.8238993711 ns\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 1441289.4691388633,
+            "unit": "ns/iter",
+            "extra": "iterations: 194\ncpu: 1441302.6494845361 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/4x4",
+            "value": 231099.7794934597,
+            "unit": "ns/iter",
+            "extra": "iterations: 1209\ncpu: 231019.6732837056 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/7x1",
+            "value": 209116.6873772939,
+            "unit": "ns/iter",
+            "extra": "iterations: 1344\ncpu: 209111.53720238092 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/12x12",
+            "value": 2686427.189753606,
+            "unit": "ns/iter",
+            "extra": "iterations: 104\ncpu: 2686462.903846153 ns\nthreads: 1"
+          },
+          {
+            "name": "FftFourierToReal/12x12",
+            "value": 1771738.2575892196,
+            "unit": "ns/iter",
+            "extra": "iterations: 158\ncpu: 1771699.0632911397 ns\nthreads: 1"
+          },
+          {
+            "name": "DftFourierToReal/16x18",
+            "value": 5965344.449307056,
+            "unit": "ns/iter",
+            "extra": "iterations: 47\ncpu: 5965416.255319153 ns\nthreads: 1"
+          },
+          {
+            "name": "FftFourierToReal/16x18",
+            "value": 3708505.630493164,
+            "unit": "ns/iter",
+            "extra": "iterations: 75\ncpu: 3707951.3199999984 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-28",
+            "value": 2755043.5533710555,
+            "unit": "ns/iter",
+            "extra": "iterations: 102\ncpu: 2754978.088235294 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_nzeta-28",
+            "value": 1745265.7222747803,
+            "unit": "ns/iter",
+            "extra": "iterations: 160\ncpu: 1745283.925000002 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-56",
+            "value": 5436736.803788405,
+            "unit": "ns/iter",
+            "extra": "iterations: 52\ncpu: 5436237.153846156 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-84",
+            "value": 8644335.410174202,
+            "unit": "ns/iter",
+            "extra": "iterations: 34\ncpu: 8643797.55882353 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_nzeta-112",
+            "value": 11831550.598144531,
+            "unit": "ns/iter",
+            "extra": "iterations: 25\ncpu: 11829999.319999995 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-30",
+            "value": 2799397.533379712,
+            "unit": "ns/iter",
+            "extra": "iterations: 103\ncpu: 2799414.3883495163 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-30",
+            "value": 1747676.304408482,
+            "unit": "ns/iter",
+            "extra": "iterations: 161\ncpu: 1747369.006211181 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-60",
+            "value": 3835158.8053246066,
+            "unit": "ns/iter",
+            "extra": "iterations: 73\ncpu: 3835188.465753423 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-60",
+            "value": 2812657.356262207,
+            "unit": "ns/iter",
+            "extra": "iterations: 100\ncpu: 2812679.1099999957 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-90",
+            "value": 4672841.231028239,
+            "unit": "ns/iter",
+            "extra": "iterations: 60\ncpu: 4671892.166666666 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-90",
+            "value": 3548027.593878251,
+            "unit": "ns/iter",
+            "extra": "iterations: 79\ncpu: 3548052.3797468324 ns\nthreads: 1"
+          },
+          {
+            "name": "Dft/12x12_ntheta-120",
+            "value": 5839993.556340535,
+            "unit": "ns/iter",
+            "extra": "iterations: 48\ncpu: 5840035.333333327 ns\nthreads: 1"
+          },
+          {
+            "name": "Fft/12x12_ntheta-120",
+            "value": 4757214.40072787,
+            "unit": "ns/iter",
+            "extra": "iterations: 59\ncpu: 4756324.372881344 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_FourierToReal_Parallel_W7x_4t",
+            "value": 1117755.9119428513,
+            "unit": "ns/iter",
+            "extra": "iterations: 519\ncpu: 523748.4373795754 ns\nthreads: 1"
+          },
+          {
+            "name": "BM_DftFourierToReal_Parallel_W7x_4t",
+            "value": 1656918.3631376787,
+            "unit": "ns/iter",
+            "extra": "iterations: 352\ncpu: 775398.7130681832 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 66007.3154009222,
+            "unit": "ns/iter",
+            "extra": "iterations: 3518\ncpu: 66020.0938032976 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 495641.3668098179,
+            "unit": "ns/iter",
+            "extra": "iterations: 564\ncpu: 495668.68617021415 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 3001633.510794691,
+            "unit": "ns/iter",
+            "extra": "iterations: 93\ncpu: 3001377.1182795684 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 60259.9209959402,
+            "unit": "ns/iter",
+            "extra": "iterations: 4611\ncpu: 60277.64649750695 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 478411.4519213493,
+            "unit": "ns/iter",
+            "extra": "iterations: 587\ncpu: 478406.06303237536 ns\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 2929776.906967163,
+            "unit": "ns/iter",
+            "extra": "iterations: 96\ncpu: 2929437.3333333284 ns\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 286940.17988736514,
+            "unit": "ns/iter",
+            "extra": "iterations: 976\ncpu: 286934.3391393442 ns\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 1181389.209087388,
+            "unit": "ns/iter",
+            "extra": "iterations: 237\ncpu: 1181397.3797468336 ns\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 5208686.546043114,
+            "unit": "ns/iter",
+            "extra": "iterations: 54\ncpu: 5208120.925925926 ns\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 10719693.624056302,
+            "unit": "ns/iter",
+            "extra": "iterations: 26\ncpu: 10717527.423076957 ns\nthreads: 1"
           }
         ]
       }
