@@ -194,6 +194,11 @@ class IdealMhdModel {
   // of equations).
   absl::Status applyRZPreconditioner(FourierForces& m_decomposed_f);
 
+  // 2D preconditioner solve: per toroidal mode number, a block-tridiagonal
+  // system whose blocks couple the poloidal modes. Reduces to applyRZ's
+  // per-mode solve when only the block diagonals are filled.
+  void solveBlockRZPreconditioner(int jMax);
+
   // Applies the radial preconditioner for lambda.
   void applyLambdaPreconditioner(FourierForces& m_decomposed_f);
 

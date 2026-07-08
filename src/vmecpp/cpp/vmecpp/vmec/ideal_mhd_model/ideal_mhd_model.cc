@@ -15,6 +15,7 @@
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "vmecpp/common/block_tridiagonal/block_tridiagonal.h"
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
@@ -2448,6 +2449,75 @@ void IdealMhdModel::assembleRZPreconditioner() {
 #endif  // _OPENMP
 }
 
+// 2D preconditioner solve: instead of an independent radial tridiagonal per
+// Fourier mode (the 1D preconditioner), solve a block-tridiagonal system per
+// toroidal mode number n whose blocks couple the poloidal modes m at each
+// surface. Operates in-place on the handover force arrays all_cr / all_cz.
+//
+// With only the (m == m') diagonal filled this is identical to the per-mode
+// solve; the off-diagonal (m != m') block entries are where the poloidal
+// coupling enters. Blocks are k = mpol wide, one block-tridiagonal system per
+// (component R/Z, toroidal n, basis).
+void IdealMhdModel::solveBlockRZPreconditioner(int jMax) {
+  const int mpol = s_.mpol;
+  const int ntor1 = s_.ntor + 1;
+  const int nBlocks = jMax;
+
+  for (int comp = 0; comp < 2; ++comp) {
+    const RowMatrixXd& allA = (comp == 0) ? m_h_.all_ar : m_h_.all_az;
+    const RowMatrixXd& allD = (comp == 0) ? m_h_.all_dr : m_h_.all_dz;
+    const RowMatrixXd& allB = (comp == 0) ? m_h_.all_br : m_h_.all_bz;
+    std::vector<RowMatrixXd>& allC = (comp == 0) ? m_h_.all_cr : m_h_.all_cz;
+
+    for (int n = 0; n < ntor1; ++n) {
+      std::vector<Eigen::MatrixXd> lower(nBlocks,
+                                         Eigen::MatrixXd::Zero(mpol, mpol));
+      std::vector<Eigen::MatrixXd> diag(nBlocks,
+                                        Eigen::MatrixXd::Zero(mpol, mpol));
+      std::vector<Eigen::MatrixXd> upper(nBlocks,
+                                         Eigen::MatrixXd::Zero(mpol, mpol));
+      for (int jF = 0; jF < nBlocks; ++jF) {
+        for (int m = 0; m < mpol; ++m) {
+          const int mn = m * ntor1 + n;
+          if (jF >= jMin[mn]) {
+            diag[jF](m, m) = allD(mn, jF);
+            if (jF < nBlocks - 1) {
+              upper[jF](m, m) = allA(mn, jF);
+            }
+            if (jF > 0) {
+              lower[jF](m, m) = allB(mn, jF);
+            }
+          } else {
+            // identity fill for surfaces inside a mode's jMin, matching the
+            // 1D solver's upper-left-corner treatment (solution forced to 0)
+            diag[jF](m, m) = 1.0;
+          }
+        }  // m
+      }  // jF
+
+      const BlockTridiagonalFactorization fac(lower, diag, upper);
+
+      for (int basis = 0; basis < s_.num_basis; ++basis) {
+        std::vector<Eigen::VectorXd> rhs(nBlocks, Eigen::VectorXd::Zero(mpol));
+        for (int jF = 0; jF < nBlocks; ++jF) {
+          for (int m = 0; m < mpol; ++m) {
+            const int mn = m * ntor1 + n;
+            if (jF >= jMin[mn]) {
+              rhs[jF](m) = allC[mn](basis, jF);
+            }
+          }  // m
+        }  // jF
+        const std::vector<Eigen::VectorXd> sol = fac.Solve(rhs);
+        for (int jF = 0; jF < nBlocks; ++jF) {
+          for (int m = 0; m < mpol; ++m) {
+            allC[m * ntor1 + n](basis, jF) = sol[jF](m);
+          }  // m
+        }  // jF
+      }  // basis
+    }  // n
+  }  // comp
+}
+
 // serial variant
 absl::Status IdealMhdModel::applyRZPreconditioner(
     FourierForces& m_decomposed_f) {
@@ -2531,18 +2601,26 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   // call serial Thomas solver for every mode number individually
   // Uses span accessors to pass contiguous radial slices to the solver
   const int ns = m_h_.all_ar.cols();
-  for (int mn = mnmin; mn < mnmax; ++mn) {
-    TridiagonalSolveSerial(std::span<double>(m_h_.all_ar.row(mn).data(), ns),
-                           std::span<double>(m_h_.all_dr.row(mn).data(), ns),
-                           std::span<double>(m_h_.all_br.row(mn).data(), ns),
-                           m_h_.all_cr[mn].data(), ns, jMin[mn], jMax,
-                           s_.num_basis);
-    TridiagonalSolveSerial(std::span<double>(m_h_.all_az.row(mn).data(), ns),
-                           std::span<double>(m_h_.all_dz.row(mn).data(), ns),
-                           std::span<double>(m_h_.all_bz.row(mn).data(), ns),
-                           m_h_.all_cz[mn].data(), ns, jMin[mn], jMax,
-                           s_.num_basis);
-  }  // mn
+  static const bool prec2d = std::getenv("VMECPP_PREC2D") != nullptr;
+  if (prec2d) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    solveBlockRZPreconditioner(jMax);
+  } else {
+    for (int mn = mnmin; mn < mnmax; ++mn) {
+      TridiagonalSolveSerial(std::span<double>(m_h_.all_ar.row(mn).data(), ns),
+                             std::span<double>(m_h_.all_dr.row(mn).data(), ns),
+                             std::span<double>(m_h_.all_br.row(mn).data(), ns),
+                             m_h_.all_cr[mn].data(), ns, jMin[mn], jMax,
+                             s_.num_basis);
+      TridiagonalSolveSerial(std::span<double>(m_h_.all_az.row(mn).data(), ns),
+                             std::span<double>(m_h_.all_dz.row(mn).data(), ns),
+                             std::span<double>(m_h_.all_bz.row(mn).data(), ns),
+                             m_h_.all_cz[mn].data(), ns, jMin[mn], jMax,
+                             s_.num_basis);
+    }  // mn
+  }
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
