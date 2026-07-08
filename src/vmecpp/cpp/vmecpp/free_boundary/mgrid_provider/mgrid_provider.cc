@@ -207,11 +207,11 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
     }
 
     std::vector<std::vector<std::vector<double> > > b_r_contribution =
-        *std::move(b_r_contribution_or);
+        std::move(*b_r_contribution_or);
     std::vector<std::vector<std::vector<double> > > b_p_contribution =
-        *std::move(b_p_contribution_or);
+        std::move(*b_p_contribution_or);
     std::vector<std::vector<std::vector<double> > > b_z_contribution =
-        *std::move(b_z_contribution_or);
+        std::move(*b_z_contribution_or);
 
     absl::Status shape_status;
     shape_status.Update(ValidateFieldContributionShape(
