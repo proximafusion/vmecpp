@@ -20,6 +20,7 @@ import numpy as np
 import pydantic
 
 from vmecpp import _util
+from vmecpp._continuation import interpolate_solution, run_continuation
 from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
     MakegridParameters,
@@ -2518,6 +2519,8 @@ populate_raw_profile = set_profile
 __all__ = [  # noqa: RUF022
     "run",
     "run_batch",
+    "run_continuation",
+    "interpolate_solution",
     "VmecInput",
     "VmecOutput",
     "VmecWOut",
