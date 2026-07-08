@@ -950,9 +950,6 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
-    const bool parvmec_iteration =
-        indata_.iteration_style == IterationStyle::PARVMEC;
-
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -971,7 +968,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // PARVMEC additionally tracks the invariant residual minimum res1. Keep
       // it (and its inputs) off the vmec_8_52 path so the default control stays
       // byte-for-byte unchanged.
-      if (parvmec_iteration) {
+      if (indata_.iteration_style == IterationStyle::PARVMEC) {
         const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
         if (iter2 == iter1_ || fc_.res1 == -1) {
           fc_.res1 = fsq_invariant;
@@ -980,7 +977,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
-    if (parvmec_iteration) {
+    if (indata_.iteration_style == IterationStyle::PARVMEC) {
       // PARVMEC control: store when both residual minima improve; revert via
       // BAD_PROGRESS (delt0r /= 1.03, no ijacob) when either exceeds 1e4 * its
       // minimum after 10 steps.
