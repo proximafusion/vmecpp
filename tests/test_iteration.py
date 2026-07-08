@@ -256,10 +256,18 @@ def test_run_honors_iteration_style_flag():
             _vmecpp.IterationStyle, style.upper()
         )
         outputs[style] = vmecpp.run(inp, max_threads=1, verbose=False)
-    # Same physics regardless of the iteration scheme.
-    assert outputs["parvmec"].wout.volume_p == pytest.approx(
-        outputs["vmec_8_52"].wout.volume_p, rel=1.0e-9
-    )
+    # Same physics regardless of the iteration scheme: the two styles take
+    # different paths to the same equilibrium, so global geometry, pressure, and
+    # magnetic-field quantities must agree, not just the volume. (Local profiles
+    # such as the iota profile are path-sensitive at finite ftol, so they are not
+    # asserted here; the exact-reference check against PARVMEC covers those.)
+    ref = outputs["vmec_8_52"].wout
+    par = outputs["parvmec"].wout
+    assert par.volume_p == pytest.approx(ref.volume_p, rel=1.0e-9)  # geometry
+    assert par.aspect == pytest.approx(ref.aspect, rel=1.0e-9)  # geometry
+    assert par.betatotal == pytest.approx(ref.betatotal, rel=1.0e-9)  # beta
+    assert par.wp == pytest.approx(ref.wp, rel=1.0e-9)  # pressure energy
+    assert par.wb == pytest.approx(ref.wb, rel=1.0e-5)  # magnetic energy
 
 
 def test_callback_records_iteration_state():
