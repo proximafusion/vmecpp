@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783502802596,
+  "lastUpdate": 1783517115641,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20602,6 +20602,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.009671194685115504",
             "extra": "mean: 9.151691024666661 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9de6072722f45ab6ad10b1d315baa05115137e9a",
+          "message": "Merge fast_poloidal and fast_toroidal Fourier bases into one template (#611)\n\nThe two FourierBasis classes were identical except for the flat memory layout.\nFactor the shared arithmetic into a single FourierBasis<Layout> template and\nsupply the two layouts as policy structs; the existing class names become type\naliases, so every call site and both data layouts stay unchanged.",
+          "timestamp": "2026-07-08T15:20:31+02:00",
+          "tree_id": "a2d28fa6321018bda16919a4bf4a1aea2adffc3e",
+          "url": "https://github.com/proximafusion/vmecpp/commit/9de6072722f45ab6ad10b1d315baa05115137e9a"
+        },
+        "date": 1783517114556,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.7773808545648544,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0028341662371141225",
+            "extra": "mean: 360.05144860000655 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.7724986922830808,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0014316035230368558",
+            "extra": "mean: 360.685472199998 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.26507194174608745,
+            "unit": "iter/sec",
+            "range": "stddev: 0.02185215051896298",
+            "extra": "mean: 3.772560737333341 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.6115052593853119,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0045494496592679914",
+            "extra": "mean: 1.6353089113333301 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.42205679122913575,
+            "unit": "iter/sec",
+            "range": "stddev: 0.023297065104954773",
+            "extra": "mean: 2.3693493880000083 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.48606854312962106,
+            "unit": "iter/sec",
+            "range": "stddev: 0.013154780729783423",
+            "extra": "mean: 2.0573230136666703 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.109341049994643,
+            "unit": "iter/sec",
+            "range": "stddev: 0.012296806379551854",
+            "extra": "mean: 9.145695967333344 sec\nrounds: 3"
           }
         ]
       }
