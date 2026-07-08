@@ -30,3 +30,16 @@ cc_test(
     ],
     size = "small",
 )
+
+cc_binary(
+    name = "laplace_solver_bench",
+    srcs = ["laplace_solver_bench.cc"],
+    deps = [
+        ":laplace_solver",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+        "@google_benchmark//:benchmark_main",
+    ],
+    linkopts = ["-llapack"],
+)
