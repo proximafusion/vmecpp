@@ -24,6 +24,7 @@
 #include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
@@ -1828,223 +1829,27 @@ void IdealMhdModel::computeMHDForces() {
   if (m_fc_.lfreeb) {
     jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
   }
-
-  // obtain first inside point
-  // stuff gets divided by sqrtSHi, so cannot be 0
-  double sqrtSHi = 1.0;
-  if (r_.nsMinF > 0) {
-    // for the rel-0-th forces full-grid point, the rel-0-th half-grid point is
-    // inside
-    int j0 = r_.nsMinH;
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (j0 - r_.nsMinH) * s_.nZnT + kl;
-      m_ls_.P_i[kl] = r12[iHalf] * totalPressure[iHalf];
-      m_ls_.rup_i[kl] = ru12[iHalf] * m_ls_.P_i[kl];
-      m_ls_.zup_i[kl] = zu12[iHalf] * m_ls_.P_i[kl];
-      m_ls_.rsp_i[kl] = rs[iHalf] * m_ls_.P_i[kl];
-      m_ls_.zsp_i[kl] = zs[iHalf] * m_ls_.P_i[kl];
-      m_ls_.taup_i[kl] = tau[iHalf] * totalPressure[iHalf];
-      m_ls_.gbubu_i[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupu[iHalf];
-      m_ls_.gbubv_i[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupv[iHalf];
-      m_ls_.gbvbv_i[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
-    }  // kl
-    sqrtSHi = m_p_.sqrtSH[j0 - r_.nsMinH];
-  } else {
-    // defaults to 0: no contribution from half-grid point inside the axis
-    m_ls_.P_i.setZero();
-    m_ls_.rup_i.setZero();
-    m_ls_.zup_i.setZero();
-    m_ls_.rsp_i.setZero();
-    m_ls_.zsp_i.setZero();
-    m_ls_.taup_i.setZero();
-    m_ls_.gbubu_i.setZero();
-    m_ls_.gbubv_i.setZero();
-    m_ls_.gbvbv_i.setZero();
-  }
-
-  // Persistent per-surface scratch (preallocated in ThreadLocalStorage):
-  // aliased here so every write below lands in existing storage. This keeps the
-  // force kernel allocation-free, which both avoids per-surface heap churn and
-  // lets Enzyme differentiate it (Enzyme cannot trace dynamic Eigen
-  // temporaries).
-  Eigen::VectorXd& P_o = m_ls_.P_o;          //  r12 * totalPressure = P
-  Eigen::VectorXd& rup_o = m_ls_.rup_o;      // ru12 * P
-  Eigen::VectorXd& zup_o = m_ls_.zup_o;      // zu12 * P
-  Eigen::VectorXd& rsp_o = m_ls_.rsp_o;      //   rs * P
-  Eigen::VectorXd& zsp_o = m_ls_.zsp_o;      //   zs * P
-  Eigen::VectorXd& taup_o = m_ls_.taup_o;    //  tau * P
-  Eigen::VectorXd& gbubu_o = m_ls_.gbubu_o;  // gsqrt * bsupu * bsupu
-  Eigen::VectorXd& gbubv_o = m_ls_.gbubv_o;  // gsqrt * bsupu * bsupv
-  Eigen::VectorXd& gbvbv_o = m_ls_.gbvbv_o;  // gsqrt * bsupv * bsupv
-  P_o.setZero();
-  rup_o.setZero();
-  zup_o.setZero();
-  rsp_o.setZero();
-  zsp_o.setZero();
-  taup_o.setZero();
-  gbubu_o.setZero();
-  gbubv_o.setZero();
-  gbvbv_o.setZero();
-
-  // Surface-average scratch, likewise aliased to preallocated storage.
-  Eigen::VectorXd& P_avg = m_ls_.P_avg;
-  Eigen::VectorXd& P_wavg = m_ls_.P_wavg;
-  Eigen::VectorXd& gbubu_avg = m_ls_.gbubu_avg;
-  Eigen::VectorXd& gbubu_wavg = m_ls_.gbubu_wavg;
-  Eigen::VectorXd& gbvbv_avg = m_ls_.gbvbv_avg;
-  Eigen::VectorXd& gbvbv_wavg = m_ls_.gbvbv_wavg;
-  Eigen::VectorXd& gbubv_avg = m_ls_.gbubv_avg;
-  Eigen::VectorXd& gbubv_wavg = m_ls_.gbubv_wavg;
-
-  for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
-    const double sFull =
-        m_p_.sqrtSF[jF - r_.nsMinF1] * m_p_.sqrtSF[jF - r_.nsMinF1];
-    // stuff gets divided by sqrtSHo, so cannot be 0
-    double sqrtSHo = 1.0;
-    if (jF < r_.nsMaxH) {
-      sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
-    }
-
-    if (jF < r_.nsMaxH) {
-      const int iHalf_base = (jF - r_.nsMinH) * s_.nZnT;
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // obtain next outside point
-        // defaults to 0: no contribution from half-grid point outside LCFS
-        int iHalf = iHalf_base + kl;
-        P_o[kl] = r12[iHalf] * totalPressure[iHalf];
-        rup_o[kl] = ru12[iHalf] * P_o[kl];
-        zup_o[kl] = zu12[iHalf] * P_o[kl];
-        rsp_o[kl] = rs[iHalf] * P_o[kl];
-        zsp_o[kl] = zs[iHalf] * P_o[kl];
-        taup_o[kl] = tau[iHalf] * totalPressure[iHalf];
-      }  // kl
-
-      for (int kl = 0; kl < s_.nZnT; ++kl) {
-        // obtain next outside point
-        // defaults to 0: no contribution from half-grid point outside LCFS
-        int iHalf = iHalf_base + kl;
-        gbubu_o[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupu[iHalf];
-        gbubv_o[kl] = gsqrt[iHalf] * bsupu[iHalf] * bsupv[iHalf];
-        gbvbv_o[kl] = gsqrt[iHalf] * bsupv[iHalf] * bsupv[iHalf];
-      }  // kl
-    } else {
-      P_o.setZero();
-      rup_o.setZero();
-      zup_o.setZero();
-      rsp_o.setZero();
-      zsp_o.setZero();
-      taup_o.setZero();
-      gbubu_o.setZero();
-      gbubv_o.setZero();
-      gbvbv_o.setZero();
-    }
-
-    // Segment views into geometry and force arrays for this surface
-    const int nZnT = s_.nZnT;
-    const int g_off = (jF - r_.nsMinF1) * nZnT;
-    const int f_off = (jF - r_.nsMinF) * nZnT;
-    const auto r1e = r1_e.segment(g_off, nZnT);
-    const auto r1o = r1_o.segment(g_off, nZnT);
-    const auto rue = ru_e.segment(g_off, nZnT);
-    const auto ruo = ru_o.segment(g_off, nZnT);
-    const auto zue = zu_e.segment(g_off, nZnT);
-    const auto zuo = zu_o.segment(g_off, nZnT);
-    const auto z1o = z1_o.segment(g_off, nZnT);
-
-    // Pre-compute common sub-expressions (averages and weighted averages)
-    const double invDS = 1.0 / m_fc_.deltaS;
-    const double invSHo = 1.0 / sqrtSHo;
-    const double invSHi = 1.0 / sqrtSHi;
-    P_avg = 0.5 * (P_o + m_ls_.P_i);
-    P_wavg = 0.5 * (P_o * invSHo + m_ls_.P_i * invSHi);
-
-    gbubu_avg = 0.5 * (gbubu_o + m_ls_.gbubu_i);
-    gbubu_wavg = 0.5 * (gbubu_o * sqrtSHo + m_ls_.gbubu_i * sqrtSHi);
-    gbvbv_avg = 0.5 * (gbvbv_o + m_ls_.gbvbv_i);
-    gbvbv_wavg = 0.5 * (gbvbv_o * sqrtSHo + m_ls_.gbvbv_i * sqrtSHi);
-
-    // A_R force
-    armn_e.segment(f_off, nZnT) =
-        (zup_o - m_ls_.zup_i) * invDS + 0.5 * (taup_o + m_ls_.taup_i) -
-        gbvbv_avg.cwiseProduct(r1e) - gbvbv_wavg.cwiseProduct(r1o);
-    armn_o.segment(f_off, nZnT) =
-        (zup_o * sqrtSHo - m_ls_.zup_i * sqrtSHi) * invDS -
-        0.5 * P_wavg.cwiseProduct(zue) - 0.5 * P_avg.cwiseProduct(zuo) +
-        0.5 * (taup_o * sqrtSHo + m_ls_.taup_i * sqrtSHi) -
-        gbvbv_wavg.cwiseProduct(r1e) - gbvbv_avg.cwiseProduct(r1o) * sFull;
-
-    // A_Z force
-    azmn_e.segment(f_off, nZnT) = -(rup_o - m_ls_.rup_i) * invDS;
-    azmn_o.segment(f_off, nZnT) =
-        -(rup_o * sqrtSHo - m_ls_.rup_i * sqrtSHi) * invDS +
-        0.5 * P_wavg.cwiseProduct(rue) + 0.5 * P_avg.cwiseProduct(ruo);
-
-    // B_R force
-    brmn_e.segment(f_off, nZnT) =
-        0.5 * (zsp_o + m_ls_.zsp_i) + 0.5 * P_wavg.cwiseProduct(z1o) -
-        gbubu_avg.cwiseProduct(rue) - gbubu_wavg.cwiseProduct(ruo);
-    brmn_o.segment(f_off, nZnT) =
-        0.5 * (zsp_o * sqrtSHo + m_ls_.zsp_i * sqrtSHi) +
-        0.5 * P_avg.cwiseProduct(z1o) - gbubu_wavg.cwiseProduct(rue) -
-        gbubu_avg.cwiseProduct(ruo) * sFull;
-
-    // B_Z force
-    bzmn_e.segment(f_off, nZnT) =
-        -0.5 * (rsp_o + m_ls_.rsp_i) - 0.5 * P_wavg.cwiseProduct(r1o) -
-        gbubu_avg.cwiseProduct(zue) - gbubu_wavg.cwiseProduct(zuo);
-    bzmn_o.segment(f_off, nZnT) =
-        -0.5 * (rsp_o * sqrtSHo + m_ls_.rsp_i * sqrtSHi) -
-        0.5 * P_avg.cwiseProduct(r1o) - gbubu_wavg.cwiseProduct(zue) -
-        gbubu_avg.cwiseProduct(zuo) * sFull;
-
-    if (s_.lthreed) {
-      gbubv_avg = 0.5 * (gbubv_o + m_ls_.gbubv_i);
-      gbubv_wavg = 0.5 * (gbubv_o * sqrtSHo + m_ls_.gbubv_i * sqrtSHi);
-      const auto rve = rv_e.segment(g_off, nZnT);
-      const auto rvo = rv_o.segment(g_off, nZnT);
-      const auto zve = zv_e.segment(g_off, nZnT);
-      const auto zvo = zv_o.segment(g_off, nZnT);
-
-      // 3D contributions to B_R and B_Z
-      brmn_e.segment(f_off, nZnT) -=
-          gbubv_avg.cwiseProduct(rve) + gbubv_wavg.cwiseProduct(rvo);
-      brmn_o.segment(f_off, nZnT) -=
-          gbubv_wavg.cwiseProduct(rve) + gbubv_avg.cwiseProduct(rvo) * sFull;
-      bzmn_e.segment(f_off, nZnT) -=
-          gbubv_avg.cwiseProduct(zve) + gbubv_wavg.cwiseProduct(zvo);
-      bzmn_o.segment(f_off, nZnT) -=
-          gbubv_wavg.cwiseProduct(zve) + gbubv_avg.cwiseProduct(zvo) * sFull;
-
-      // C_R force
-      crmn_e.segment(f_off, nZnT) =
-          gbubv_avg.cwiseProduct(rue) + gbubv_wavg.cwiseProduct(ruo) +
-          gbvbv_avg.cwiseProduct(rve) + gbvbv_wavg.cwiseProduct(rvo);
-      crmn_o.segment(f_off, nZnT) =
-          gbubv_wavg.cwiseProduct(rue) + gbubv_avg.cwiseProduct(ruo) * sFull +
-          gbvbv_wavg.cwiseProduct(rve) + gbvbv_avg.cwiseProduct(rvo) * sFull;
-
-      // C_Z force
-      czmn_e.segment(f_off, nZnT) =
-          gbubv_avg.cwiseProduct(zue) + gbubv_wavg.cwiseProduct(zuo) +
-          gbvbv_avg.cwiseProduct(zve) + gbvbv_wavg.cwiseProduct(zvo);
-      czmn_o.segment(f_off, nZnT) =
-          gbubv_wavg.cwiseProduct(zue) + gbubv_avg.cwiseProduct(zuo) * sFull +
-          gbvbv_wavg.cwiseProduct(zve) + gbvbv_avg.cwiseProduct(zvo) * sFull;
-    }  // lthreed
-
-    // shift to next point
-    m_ls_.P_i = P_o;
-    m_ls_.rup_i = rup_o;
-    m_ls_.zup_i = zup_o;
-    m_ls_.rsp_i = rsp_o;
-    m_ls_.zsp_i = zsp_o;
-    m_ls_.taup_i = taup_o;
-    m_ls_.gbubu_i = gbubu_o;
-    m_ls_.gbubv_i = gbubv_o;
-    m_ls_.gbvbv_i = gbvbv_o;
-
-    sqrtSHi = sqrtSHo;
-  }  // jF
+  // Real-space MHD force-density assembly in the shared, allocation-free kernel
+  // (mhdforce_kernel.h), used by both the solver and the Enzyme autodiff path.
+  ComputeMHDForceDensity(
+      r1_e.data(), r1_o.data(), ru_e.data(), ru_o.data(), zu_e.data(),
+      zu_o.data(), z1_o.data(), rv_e.data(), rv_o.data(), zv_e.data(),
+      zv_o.data(), r12.data(), ru12.data(), zu12.data(), rs.data(), zs.data(),
+      tau.data(), totalPressure.data(), gsqrt.data(), bsupu.data(),
+      bsupv.data(), m_p_.sqrtSF.data(), m_p_.sqrtSH.data(), m_ls_.P_i.data(),
+      m_ls_.rup_i.data(), m_ls_.zup_i.data(), m_ls_.rsp_i.data(),
+      m_ls_.zsp_i.data(), m_ls_.taup_i.data(), m_ls_.gbubu_i.data(),
+      m_ls_.gbubv_i.data(), m_ls_.gbvbv_i.data(), m_ls_.P_o.data(),
+      m_ls_.rup_o.data(), m_ls_.zup_o.data(), m_ls_.rsp_o.data(),
+      m_ls_.zsp_o.data(), m_ls_.taup_o.data(), m_ls_.gbubu_o.data(),
+      m_ls_.gbubv_o.data(), m_ls_.gbvbv_o.data(), m_ls_.P_avg.data(),
+      m_ls_.P_wavg.data(), m_ls_.gbubu_avg.data(), m_ls_.gbubu_wavg.data(),
+      m_ls_.gbvbv_avg.data(), m_ls_.gbvbv_wavg.data(), m_ls_.gbubv_avg.data(),
+      m_ls_.gbubv_wavg.data(), m_fc_.deltaS, s_.nZnT, r_.nsMinF, r_.nsMinF1,
+      r_.nsMinH, r_.nsMaxH, jMaxRZ, s_.lthreed, armn_e.data(), armn_o.data(),
+      azmn_e.data(), azmn_o.data(), brmn_e.data(), brmn_o.data(), bzmn_e.data(),
+      bzmn_o.data(), crmn_e.data(), crmn_o.data(), czmn_e.data(),
+      czmn_o.data());
 }
 
 bool IdealMhdModel::shouldUpdateRadialPreconditioner(int iter1,
