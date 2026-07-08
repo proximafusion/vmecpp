@@ -20,6 +20,7 @@
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
+#include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
