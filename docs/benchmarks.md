@@ -56,16 +56,15 @@ To produce a JSON report:
 pytest benchmarks/test_benchmarks.py --benchmark-json=benchmark_results.json
 ```
 
-C++ microbenchmarks (built and run via Bazel; the helper script builds all four
-targets, runs them, and merges the JSON into `cpp_benchmark_results.json`):
-
-```bash
-./benchmarks/run_cpp_benchmarks.sh
-```
-
-Or run a single benchmark directly, e.g.:
+C++ microbenchmarks are built and run via Bazel, e.g.:
 
 ```bash
 cd src/vmecpp/cpp
 bazel run --config=perf -- //vmecpp/vmec/ideal_mhd_model:fft_toroidal_bench
 ```
+
+The other three targets are `//vmecpp/vmec/ideal_mhd_model:dealias_constraint_force_bench`,
+`//vmecpp/free_boundary/laplace_solver:laplace_solver_bench`, and
+`//vmecpp/vmec/output_quantities:output_quantities_bench`. CI builds, runs, and merges
+all four into a single JSON report for the regression tracker (see
+`.github/actions/run-benchmarks/action.yml`).
