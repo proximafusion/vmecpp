@@ -217,9 +217,22 @@ class VmecModel {
   // decision vector. This is the body of Vmec::UpdateForwardModel with
   // caller-supplied counters; for free-boundary runs the caller should react to
   // `need_restart` (a vacuum-activation restart).
-  void Evaluate(int iter1, int iter2) {
+  // When precondition is true (default) this runs the full forward model and
+  // leaves decomposed_f holding the preconditioned search direction, exactly as
+  // the native solver uses it. When false, the forward model returns at the
+  // INVARIANT_RESIDUALS checkpoint (vmec.cc line ~836), so decomposed_f holds
+  // the raw, unpreconditioned force: the gradient of VMEC's augmented
+  // Lagrangian with respect to the (decomposed) state, including the
+  // lambda-constraint components. That raw gradient is what gradient-based
+  // optimizers minimizing the MHD energy functional need; mhd_energy is already
+  // set earlier in update(), so it is valid at the checkpoint too.
+  void Evaluate(int iter1, int iter2, bool precondition = true) {
     bool need_restart = false;
     std::string error_message;
+    const vmecpp::VmecCheckpoint checkpoint =
+        precondition ? vmecpp::VmecCheckpoint::NONE
+                     : vmecpp::VmecCheckpoint::INVARIANT_RESIDUALS;
+    const int checkpoint_after = precondition ? INT_MAX : 0;
     // Clear the restart reason before evaluating the forward model, exactly as
     // Vmec::Evolve does at its start (vmec.cc): the forward model only *sets* a
     // reason (BAD_JACOBIAN when the Jacobian flips, HUGE_INITIAL_FORCES at
@@ -240,7 +253,7 @@ class VmecModel {
           *vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
           *vmec_->decomposed_f_[0], *vmec_->physical_f_[0], need_restart,
           last_preconditioner_update_, last_full_update_nestor_, vmec_->fc_,
-          iter1, iter2, vmecpp::VmecCheckpoint::NONE, INT_MAX,
+          iter1, iter2, checkpoint, checkpoint_after,
           /*verbose=*/false);
       if (!s.ok()) {
         error_message = std::string(s.status().message());
@@ -1189,7 +1202,8 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
                   py::arg("ns"), py::arg("initial_state") = std::nullopt)
-      .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"))
+      .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
+           py::arg("precondition") = true)
       .def_property_readonly("need_restart", &VmecModel::need_restart)
       .def("perform_time_step", &VmecModel::PerformTimeStep,
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
