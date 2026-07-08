@@ -23,6 +23,7 @@
 #include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/lambda_force_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
@@ -1628,121 +1629,16 @@ void IdealMhdModel::hybridLambdaForce() {
 #pragma omp barrier
 #endif  // _OPENMP
 
-  // obtain first inside point
-  int j0 = r_.nsMinF;
-  double sqrtSHi = 0.0;
-  if (j0 > 0) {
-    sqrtSHi = m_p_.sqrtSH[j0 - 1 - r_.nsMinH];
-  }
-  for (int kl = 0; kl < s_.nZnT; ++kl) {
-    if (j0 == 0) {
-      // defaults to 0: no contribution from half-grid point inside the axis
-      m_ls_.bsubu_i[kl] = 0.0;
-      m_ls_.bsubv_i[kl] = 0.0;
-      m_ls_.gvv_gsqrt_i[kl] = 0.0;  // gvv / gsqrt
-      m_ls_.guv_bsupu_i[kl] = 0.0;  // guv * bsupu
-    } else {
-      // for the j-th forces full-grid point, the (j-1)-th half-grid point is
-      // inside
-      int iHalf = (j0 - 1 - r_.nsMinH) * s_.nZnT + kl;
-      m_ls_.bsubu_i[kl] = bsubu[iHalf];
-      m_ls_.bsubv_i[kl] = bsubv[iHalf];
-      m_ls_.gvv_gsqrt_i[kl] = gvv[iHalf] / gsqrt[iHalf];
-      if (s_.lthreed) {
-        m_ls_.guv_bsupu_i[kl] = guv[iHalf] * bsupu[iHalf];
-      }
-    }
-  }  // kl
-
-  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
-    double sqrtSHo = 0.0;
-    if (jF < r_.nsMaxH) {
-      sqrtSHo = m_p_.sqrtSH[jF - r_.nsMinH];
-    }
-
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      // obtain next outside point
-      // defaults to 0: no contribution from half-grid point outside LCFS
-      double bsubv_o = 0.0;
-      // gvv / gsqrt
-      double gvv_gsqrt_o = 0.0;
-      // guv * bsupu
-      double guv_bsupu_o = 0.0;
-      if (jF < r_.nsMaxH) {
-        // for the j-th forces full-grid point, the j-th half-grid point is
-        // outside
-        int iHalf = (jF - r_.nsMinH) * s_.nZnT + kl;
-        bsubv_o = bsubv[iHalf];
-        gvv_gsqrt_o = gvv[iHalf] / gsqrt[iHalf];
-        if (s_.lthreed) {
-          guv_bsupu_o = guv[iHalf] * bsupu[iHalf];
-        }
-      }
-
-      // alternative way to interpolate bsubv onto the full-grid
-      double gvv_gsqrt_lu_e = 0.5 * (m_ls_.gvv_gsqrt_i[kl] + gvv_gsqrt_o) *
-                              lu_e[(jF - r_.nsMinF1) * s_.nZnT + kl];
-      double gvv_gsqrt_lu_o =
-          0.5 * (m_ls_.gvv_gsqrt_i[kl] * sqrtSHi + gvv_gsqrt_o * sqrtSHo) *
-          lu_o[(jF - r_.nsMinF1) * s_.nZnT + kl];
-
-      double gvv_gsqrt_lu = gvv_gsqrt_lu_e + gvv_gsqrt_lu_o;
-      double bsubv_alternative = gvv_gsqrt_lu;
-      if (s_.lthreed) {
-        double guv_bsupu = 0.5 * (m_ls_.guv_bsupu_i[kl] + guv_bsupu_o);
-        bsubv_alternative += guv_bsupu;
-      }
-
-      const double bsubv_average = 0.5 * (bsubv_o + m_ls_.bsubv_i[kl]);
-
-      // blend together two ways of interpolating bsubv
-      double _blmn =
-          bsubv_average * (1.0 - m_p_.radialBlending[jF - r_.nsMinF1]) +
-          bsubv_alternative * m_p_.radialBlending[jF - r_.nsMinF1];
-
-      if (jF > 0) {
-        // TODO(jons): no lamscale and (-1) factor for axis lambda force?
-        // MINUS SIGN => HESSIAN DIAGONALS ARE POSITIVE
-        _blmn *= -constants_.lamscale;
-      }
-
-      blmn_e[(jF - r_.nsMinF) * s_.nZnT + kl] = _blmn;
-      blmn_o[(jF - r_.nsMinF) * s_.nZnT + kl] =
-          _blmn * m_p_.sqrtSF[jF - r_.nsMinF1];
-
-      if (s_.lthreed) {
-        // obtain next outside point
-        // defaults to 0 for half-grid point outside LCFS
-        double bsubu_o = 0.0;
-        if (jF < r_.nsMaxH) {
-          bsubu_o = bsubu[(jF - r_.nsMinH) * s_.nZnT + kl];
-        }
-
-        double _clmn = 0.5 * (bsubu_o + m_ls_.bsubu_i[kl]);
-
-        if (jF > 0) {
-          // TODO(jons): no lamscale and (-1) factor for axis lambda force?
-          // MINUS SIGN => HESSIAN DIAGONALS ARE POSITIVE
-          _clmn *= -constants_.lamscale;
-        }
-
-        clmn_e[(jF - r_.nsMinF) * s_.nZnT + kl] = _clmn;
-        clmn_o[(jF - r_.nsMinF) * s_.nZnT + kl] =
-            _clmn * m_p_.sqrtSF[jF - r_.nsMinF1];
-
-        // shift to next point
-        m_ls_.bsubu_i[kl] = bsubu_o;
-      }  // lthreed
-
-      // shift to next point
-      m_ls_.bsubv_i[kl] = bsubv_o;
-      m_ls_.gvv_gsqrt_i[kl] = gvv_gsqrt_o;
-      if (s_.lthreed) {
-        m_ls_.guv_bsupu_i[kl] = guv_bsupu_o;
-      }
-    }  // kl
-    sqrtSHi = sqrtSHo;
-  }  // jF
+  // Lambda force on the full grid via the shared kernel
+  // (lambda_force_kernel.h), also used by the Enzyme autodiff path.
+  ComputeHybridLambdaForce(
+      bsubu.data(), bsubv.data(), gvv.data(), gsqrt.data(), guv.data(),
+      bsupu.data(), lu_e.data(), lu_o.data(), m_p_.sqrtSH.data(),
+      m_p_.sqrtSF.data(), m_p_.radialBlending.data(), constants_.lamscale,
+      s_.lthreed, s_.nZnT, r_.nsMinF, r_.nsMinF1, r_.nsMinH, r_.nsMaxH,
+      r_.nsMaxFIncludingLcfs, m_ls_.bsubu_i.data(), m_ls_.bsubv_i.data(),
+      m_ls_.gvv_gsqrt_i.data(), m_ls_.guv_bsupu_i.data(), blmn_e.data(),
+      blmn_o.data(), clmn_e.data(), clmn_o.data());
 
 // }
 #ifdef _OPENMP
