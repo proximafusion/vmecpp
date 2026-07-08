@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783491989697,
+  "lastUpdate": 1783493555242,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20018,6 +20018,79 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.03631326672732967",
             "extra": "mean: 9.520885252333338 sec\nrounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d1c2328aee3ee8e7613ebcba1b023bcbcf041454",
+          "message": "Add C++ Google Benchmark microbenchmarks for critical hot functions (#606)\n\n* Benchmark CI action remove code duplication\n\n* Add C++ Google Benchmark microbenchmarks for critical hot functions\n\nAdds four Google Benchmark cc_binary targets covering the critical C++ hot\nfunctions, complementing the existing Python end-to-end benchmark suite:\n\n- fft_toroidal_bench: DFT and FFT (FFTX) inverse/forward transforms across\n  resolutions, including the parallel OpenMP call pattern. Restores the\n  previously-dropped BUILD target and guards the FFT path on\n  kernels_available() to avoid a null-function-pointer crash where no FFTX\n  codelet exists.\n- dealias_constraint_force_bench: deAliasConstraintForce de-aliasing kernel.\n- laplace_solver_bench: free-boundary (NESTOR) dense Laplace solve\n  (assemble + LU factorize + back-substitute) and the Green's-function\n  derivative transform.\n- output_quantities_bench: post-solve ComputeOutputQuantities cost.\n\nCI: the shared run-benchmarks composite action now also builds, runs, and\nstores the C++ suite (benchmarks/run_cpp_benchmarks.sh merges the per-target\nJSON). Results are recorded under a distinct 'C++ Microbenchmarks' suite name\nin the same benchmark-runs data dir, so they render as a separate chart group\nwithout overwriting the Python 'Benchmark' history.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n\n* CI: fix benchmark store fetch conflict and clang-tidy on bench files\n\n- run-benchmarks action: the C++ benchmark store step re-fetched the\n  benchmark-runs branch that the Python store step had already fetched and\n  advanced locally, causing a non-fast-forward 'git fetch' rejection. Set\n  skip-fetch-gh-pages on the second store step so it reuses the local ref.\n- clang-tidy: *_bench.cc files include <benchmark/benchmark.h>, a Bazel-only\n  dependency absent from the CMake compile_commands db, so clang-tidy errors\n  with 'file not found'. Exclude *_bench.cc from review, same as *_test.cc.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n\n* Inline C++ benchmark runner into the action; group dashboard by suite\n\n- Move run_cpp_benchmarks.sh's build+run+merge logic directly into the\n  'Run C++ microbenchmarks' step of the run-benchmarks composite action,\n  removing the standalone script (github-action-benchmark has no native\n  multi-tool merge; per its own docs, one step per tool with a distinct\n  name is the intended pattern, so this keeps that logic colocated with\n  the step that uses it instead of split across a file and a caller).\n- benchmarks.js: group the dashboard charts by suite name (the github-\n  action-benchmark 'name' input is a storage key only, with no UI meaning\n  on its own) so the Python and C++ Microbenchmarks suites render under\n  distinct section headings instead of interleaving as one flat list of\n  ~41 charts.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-08T08:48:02+02:00",
+          "tree_id": "ffb12cfbe7d56b38c4799b2acec380d6a211006f",
+          "url": "https://github.com/proximafusion/vmecpp/commit/d1c2328aee3ee8e7613ebcba1b023bcbcf041454"
+        },
+        "date": 1783493554216,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 2.6579797565773977,
+            "unit": "iter/sec",
+            "range": "stddev: 0.012132450344610636",
+            "extra": "mean: 376.22558919999847 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 2.6307221889964962,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00650484304296227",
+            "extra": "mean: 380.12375619998693 msec\nrounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 0.2614742368043437,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01381536130267952",
+            "extra": "mean: 3.8244685679999955 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.5974112338380144,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0025383539004680215",
+            "extra": "mean: 1.6738888446666635 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.417127193047433,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009569933887306443",
+            "extra": "mean: 2.397350296666673 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.4854779186018054,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0022403854733968644",
+            "extra": "mean: 2.0598259193333397 sec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 0.10759348393034106,
+            "unit": "iter/sec",
+            "range": "stddev: 0.02331740134248448",
+            "extra": "mean: 9.294243140666651 sec\nrounds: 3"
           }
         ]
       }
