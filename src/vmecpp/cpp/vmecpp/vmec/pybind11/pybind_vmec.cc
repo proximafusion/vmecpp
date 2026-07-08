@@ -863,22 +863,25 @@ PYBIND11_MODULE(_vmecpp, m) {
   // play well with OpenMP: only use it with max_thread=1 or OMP_NUM_THREADS=1!
   py::add_ostream_redirect(m, "ostream_redirect");
 
-  auto pyindata = py::class_<VmecINDATA>(m, "VmecINDATA")
-                      .def(py::init<>())
-                      .def("_set_mpol_ntor", &VmecINDATA::SetMpolNtor,
-                           py::arg("new_mpol"), py::arg("new_ntor"))
-                      .def("from_file", &VmecINDATA::FromFile)
-                      .def("from_json", &VmecINDATA::FromJson)
-                      .def("to_json", &VmecINDATA::ToJsonOrException)
-                      .def("copy", &VmecINDATA::Copy)
+  auto pyindata =
+      py::class_<VmecINDATA>(m, "VmecINDATA")
+          .def(py::init<>())
+          .def("_set_mpol_ntor", &VmecINDATA::SetMpolNtor, py::arg("new_mpol"),
+               py::arg("new_ntor"))
+          .def("from_file", &VmecINDATA::FromFile)
+          .def("from_json", &VmecINDATA::FromJson)
+          .def("to_json", &VmecINDATA::ToJsonOrException)
+          .def("copy", &VmecINDATA::Copy)
 
-                      // numerical resolution, symmetry assumption
-                      .def_readwrite("lasym", &VmecINDATA::lasym)
-                      .def_readwrite("nfp", &VmecINDATA::nfp)
-                      .def_readonly("mpol", &VmecINDATA::mpol)  // readonly!
-                      .def_readonly("ntor", &VmecINDATA::ntor)  // readonly!
-                      .def_readwrite("ntheta", &VmecINDATA::ntheta)
-                      .def_readwrite("nzeta", &VmecINDATA::nzeta);
+          // numerical resolution, symmetry assumption
+          .def_readwrite("lasym", &VmecINDATA::lasym)
+          .def_readwrite("nfp", &VmecINDATA::nfp)
+          .def_readonly("mpol", &VmecINDATA::mpol)  // readonly!
+          .def_readonly("ntor", &VmecINDATA::ntor)  // readonly!
+          .def_readwrite("ntheta", &VmecINDATA::ntheta)
+          .def_readwrite("nzeta", &VmecINDATA::nzeta)
+          .def_readwrite("mpol_geometry", &VmecINDATA::mpol_geometry)
+          .def_readwrite("ntor_geometry", &VmecINDATA::ntor_geometry);
 
   // multi-grid steps
   DefEigenProperty(pyindata, "ns_array", &VmecINDATA::ns_array);
