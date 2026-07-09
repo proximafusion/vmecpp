@@ -50,9 +50,9 @@ def adjoint_grad(model, x_star, interior, boundary, exact):
         ]
 
     lam, _ = gmres(
-        LinearOperator((ni, ni), matvec=hii),
+        LinearOperator((ni, ni), matvec=hii),  # type: ignore[call-overload]
         dj[interior],
-        M=LinearOperator((ni, ni), matvec=mii),
+        M=LinearOperator((ni, ni), matvec=mii),  # type: ignore[call-overload]
         rtol=1e-6,
         restart=100,
         maxiter=30,

@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
-from vmecpp_adjoint import (
+from vmecpp_adjoint import (  # type: ignore
     adjoint_boundary_gradient,
     forward_boundary_gradient,
     make_model,
@@ -26,10 +26,7 @@ from vmecpp_adjoint import (
     structural_nullfree_interior,
 )
 
-try:
-    from vmecpp.cpp import _vmecpp
-except ImportError:  # pragma: no cover
-    import _vmecpp
+from vmecpp.cpp import _vmecpp  # type: ignore
 
 _HAS_TRANSPOSE = hasattr(_vmecpp.VmecModel, "exact_hessian_vector_product_transpose")
 needs_transpose = pytest.mark.skipif(
