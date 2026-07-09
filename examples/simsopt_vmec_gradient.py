@@ -13,7 +13,7 @@ extra Hessian solve, independent of the number of boundary DOFs.
 ``VmecEnergy`` wraps that as a SIMSOPT ``Optimizable`` whose objective is the MHD
 energy of the converged equilibrium and whose ``dJ`` is the adjoint gradient.
 ``optimize_to_target`` runs a gradient-based optimization of the boundary toward
-a target energy, with the analytic gradient or with finite differences, and
+a target energy, with analytic gradient or with finite differences, and
 reports the cost (forward-model evaluations counted inside VMEC++, outer
 iterations, wall time) so the two can be compared.
 """
