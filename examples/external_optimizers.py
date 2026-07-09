@@ -124,17 +124,19 @@ def _finish(model, name, x, outer_iters, t0, force_evals=None):
 def solve_vmecpp(input_path=DEFAULT_INPUT, ns=11):
     """Native VMEC++ solve reported with the benchmark's force and energy metrics."""
     model = make_model(input_path, ns)
+    model.reset_force_eval_count()
     t0 = time.perf_counter()
     model.solve()
     x = np.asarray(model.get_state(), float).copy()
     iterations = len(model.force_residual_r)
+    force_evals = model.force_eval_count
     return _finish(
         model,
         "VMEC++ (native)",
         x,
         iterations,
         t0,
-        force_evals=iterations,
+        force_evals=force_evals,
     )
 
 

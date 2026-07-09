@@ -227,7 +227,6 @@ class VmecModel {
   // optimizers minimizing the MHD energy functional need; mhd_energy is already
   // set earlier in update(), so it is valid at the checkpoint too.
   void Evaluate(int iter1, int iter2, bool precondition = true) {
-    ++force_eval_count_;
     bool need_restart = false;
     std::string error_message;
     const vmecpp::VmecCheckpoint checkpoint =
@@ -270,8 +269,10 @@ class VmecModel {
   // Total forward-model (force) evaluations since construction or the last
   // reset. Counts every Evaluate, including those inside hessian_vector_product
   // and preconditioner assembly, for a fair cross-optimizer cost comparison.
-  long force_eval_count() const { return force_eval_count_; }
-  void reset_force_eval_count() { force_eval_count_ = 0; }
+  std::int64_t force_eval_count() const {
+    return vmec_->m_[0]->forceEvaluationCount();
+  }
+  void reset_force_eval_count() { vmec_->m_[0]->resetForceEvaluationCount(); }
 
   // The Garabedian-style time step (PerformTimeStep): for each Fourier
   // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
@@ -522,7 +523,6 @@ class VmecModel {
   int last_preconditioner_update_ = 0;
   int last_full_update_nestor_ = 0;
   bool last_need_restart_ = false;
-  long force_eval_count_ = 0;
 };
 
 }  // anonymous namespace

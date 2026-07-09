@@ -422,6 +422,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
     int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
     const int iter2, const VmecCheckpoint& checkpoint,
     const int iterations_before_checkpointing, bool verbose) {
+  ++force_evaluation_count_;
+
   // An axis re-guess after a bad Jacobian can repopulate high geometry modes
   // directly, bypassing the force mask; clear them on the state each iteration.
   if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
