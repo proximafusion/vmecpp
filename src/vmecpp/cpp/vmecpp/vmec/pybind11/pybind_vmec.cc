@@ -272,7 +272,9 @@ class VmecModel {
   std::int64_t force_eval_count() const {
     return vmec_->m_[0]->forceEvaluationCount();
   }
-  void reset_force_eval_count() { vmec_->m_[0]->resetForceEvaluationCount(); }
+  void reset_force_eval_count() const {
+    vmec_->m_[0]->resetForceEvaluationCount();
+  }
 
   // The Garabedian-style time step (PerformTimeStep): for each Fourier
   // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
