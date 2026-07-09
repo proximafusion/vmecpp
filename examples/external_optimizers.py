@@ -326,7 +326,7 @@ def solve_newton_ptc(
         shift = 1.0 / dt
         a_op = LinearOperator(  # type: ignore[call-overload]
             (n_dof, n_dof),
-            matvec=lambda v, s=shift: (
+            matvec=lambda v, s=shift: (  # type: ignore[call-arg]
                 np.asarray(  # type: ignore[call-overload]
                     model.exact_hessian_vector_product(np.ascontiguousarray(v)), float
                 )

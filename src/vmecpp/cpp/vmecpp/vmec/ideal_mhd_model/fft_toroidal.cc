@@ -459,10 +459,6 @@ void ForcesToFourier3DSymmFastPoloidalFft(
       const auto& fzcon = m_even ? d.fzcon_e : d.fzcon_o;
 
       const int idx_ml_base = m * s.nThetaReduced;
-      auto cosmui_seg = fb.cosmui.segment(idx_ml_base, s.nThetaReduced);
-      auto sinmui_seg = fb.sinmui.segment(idx_ml_base, s.nThetaReduced);
-      auto cosmumi_seg = fb.cosmumi.segment(idx_ml_base, s.nThetaReduced);
-      auto sinmumi_seg = fb.sinmumi.segment(idx_ml_base, s.nThetaReduced);
 
       double* rmkcc_buf = in_slot(m, kRmkcc);
       double* rmkss_buf = in_slot(m, kRmkss);
@@ -477,47 +473,65 @@ void ForcesToFourier3DSymmFastPoloidalFft(
       double* lmksc_n_buf = in_slot(m, kLmkscN);
       double* lmkcs_n_buf = in_slot(m, kLmkcsN);
 
+      const double xmpq_m = xmpq[m];
       for (int k = 0; k < s.nZeta; ++k) {
         const int idx_kl_base = ((jF - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
 
-        auto blmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            blmn.data() + idx_kl_base, s.nThetaReduced);
-        auto clmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            clmn.data() + idx_kl_base, s.nThetaReduced);
-        auto crmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            crmn.data() + idx_kl_base, s.nThetaReduced);
-        auto czmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            czmn.data() + idx_kl_base, s.nThetaReduced);
-        auto armn_seg = Eigen::Map<const Eigen::VectorXd>(
-            armn.data() + idx_kl_base, s.nThetaReduced);
-        auto azmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            azmn.data() + idx_kl_base, s.nThetaReduced);
-        auto brmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            brmn.data() + idx_kl_base, s.nThetaReduced);
-        auto bzmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            bzmn.data() + idx_kl_base, s.nThetaReduced);
-        auto frcon_seg = Eigen::Map<const Eigen::VectorXd>(
-            frcon.data() + idx_kl_base, s.nThetaReduced);
-        auto fzcon_seg = Eigen::Map<const Eigen::VectorXd>(
-            fzcon.data() + idx_kl_base, s.nThetaReduced);
+        double rmkcc = 0.0;
+        double rmkcc_n = 0.0;
+        double rmkss = 0.0;
+        double rmkss_n = 0.0;
+        double zmksc = 0.0;
+        double zmksc_n = 0.0;
+        double zmkcs = 0.0;
+        double zmkcs_n = 0.0;
+        double lmksc = 0.0;
+        double lmksc_n = 0.0;
+        double lmkcs = 0.0;
+        double lmkcs_n = 0.0;
 
-        lmksc_buf[k] = blmn_seg.dot(cosmumi_seg);
-        lmkcs_buf[k] = blmn_seg.dot(sinmumi_seg);
-        lmkcs_n_buf[k] = -clmn_seg.dot(cosmui_seg);
-        lmksc_n_buf[k] = -clmn_seg.dot(sinmui_seg);
+        // Fused poloidal reduction, matching ForcesToFourier3DSymmFastPoloidal:
+        // one pass over the short theta axis, no per-iteration heap temporary.
+        for (int l = 0; l < s.nThetaReduced; ++l) {
+          const int idx_kl = idx_kl_base + l;
+          const int idx_ml = idx_ml_base + l;
 
-        rmkcc_n_buf[k] = -crmn_seg.dot(cosmui_seg);
-        zmkcs_n_buf[k] = -czmn_seg.dot(cosmui_seg);
-        rmkss_n_buf[k] = -crmn_seg.dot(sinmui_seg);
-        zmksc_n_buf[k] = -czmn_seg.dot(sinmui_seg);
+          const double cosmui = fb.cosmui[idx_ml];
+          const double sinmui = fb.sinmui[idx_ml];
+          const double cosmumi = fb.cosmumi[idx_ml];
+          const double sinmumi = fb.sinmumi[idx_ml];
 
-        const Eigen::VectorXd tempR = (armn_seg + xmpq[m] * frcon_seg).eval();
-        const Eigen::VectorXd tempZ = (azmn_seg + xmpq[m] * fzcon_seg).eval();
+          lmksc += blmn[idx_kl] * cosmumi;
+          lmkcs += blmn[idx_kl] * sinmumi;
+          lmkcs_n -= clmn[idx_kl] * cosmui;
+          lmksc_n -= clmn[idx_kl] * sinmui;
 
-        rmkcc_buf[k] = tempR.dot(cosmui_seg) + brmn_seg.dot(sinmumi_seg);
-        rmkss_buf[k] = tempR.dot(sinmui_seg) + brmn_seg.dot(cosmumi_seg);
-        zmksc_buf[k] = tempZ.dot(sinmui_seg) + bzmn_seg.dot(cosmumi_seg);
-        zmkcs_buf[k] = tempZ.dot(cosmui_seg) + bzmn_seg.dot(sinmumi_seg);
+          rmkcc_n -= crmn[idx_kl] * cosmui;
+          zmkcs_n -= czmn[idx_kl] * cosmui;
+          rmkss_n -= crmn[idx_kl] * sinmui;
+          zmksc_n -= czmn[idx_kl] * sinmui;
+
+          const double tempR = armn[idx_kl] + xmpq_m * frcon[idx_kl];
+          const double tempZ = azmn[idx_kl] + xmpq_m * fzcon[idx_kl];
+
+          rmkcc += tempR * cosmui + brmn[idx_kl] * sinmumi;
+          rmkss += tempR * sinmui + brmn[idx_kl] * cosmumi;
+          zmksc += tempZ * sinmui + bzmn[idx_kl] * cosmumi;
+          zmkcs += tempZ * cosmui + bzmn[idx_kl] * sinmumi;
+        }  // l
+
+        rmkcc_buf[k] = rmkcc;
+        rmkss_buf[k] = rmkss;
+        rmkcc_n_buf[k] = rmkcc_n;
+        rmkss_n_buf[k] = rmkss_n;
+        zmksc_buf[k] = zmksc;
+        zmkcs_buf[k] = zmkcs;
+        zmksc_n_buf[k] = zmksc_n;
+        zmkcs_n_buf[k] = zmkcs_n;
+        lmksc_buf[k] = lmksc;
+        lmkcs_buf[k] = lmkcs;
+        lmksc_n_buf[k] = lmksc_n;
+        lmkcs_n_buf[k] = lmkcs_n;
       }  // k
     }  // m (fill)
 
@@ -590,10 +604,6 @@ void ForcesToFourier3DSymmFastPoloidalFft(
       const auto& clmn = m_even ? d.clmn_e : d.clmn_o;
 
       const int idx_ml_base = m * s.nThetaReduced;
-      auto cosmui_seg = fb.cosmui.segment(idx_ml_base, s.nThetaReduced);
-      auto sinmui_seg = fb.sinmui.segment(idx_ml_base, s.nThetaReduced);
-      auto cosmumi_seg = fb.cosmumi.segment(idx_ml_base, s.nThetaReduced);
-      auto sinmumi_seg = fb.sinmumi.segment(idx_ml_base, s.nThetaReduced);
 
       double* lmksc_buf = in_slot(m, kLmksc);
       double* lmkcs_buf = in_slot(m, kLmkcs);
@@ -602,15 +612,32 @@ void ForcesToFourier3DSymmFastPoloidalFft(
 
       for (int k = 0; k < s.nZeta; ++k) {
         const int idx_kl_base = ((jF - rp.nsMinF) * s.nZeta + k) * s.nThetaEff;
-        auto blmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            blmn.data() + idx_kl_base, s.nThetaReduced);
-        auto clmn_seg = Eigen::Map<const Eigen::VectorXd>(
-            clmn.data() + idx_kl_base, s.nThetaReduced);
 
-        lmksc_buf[k] = blmn_seg.dot(cosmumi_seg);
-        lmkcs_buf[k] = blmn_seg.dot(sinmumi_seg);
-        lmkcs_n_buf[k] = -clmn_seg.dot(cosmui_seg);
-        lmksc_n_buf[k] = -clmn_seg.dot(sinmui_seg);
+        double lmksc = 0.0;
+        double lmksc_n = 0.0;
+        double lmkcs = 0.0;
+        double lmkcs_n = 0.0;
+
+        // Fused poloidal reduction (see main-loop note).
+        for (int l = 0; l < s.nThetaReduced; ++l) {
+          const int idx_kl = idx_kl_base + l;
+          const int idx_ml = idx_ml_base + l;
+
+          const double cosmui = fb.cosmui[idx_ml];
+          const double sinmui = fb.sinmui[idx_ml];
+          const double cosmumi = fb.cosmumi[idx_ml];
+          const double sinmumi = fb.sinmumi[idx_ml];
+
+          lmksc += blmn[idx_kl] * cosmumi;
+          lmkcs += blmn[idx_kl] * sinmumi;
+          lmkcs_n -= clmn[idx_kl] * cosmui;
+          lmksc_n -= clmn[idx_kl] * sinmui;
+        }  // l
+
+        lmksc_buf[k] = lmksc;
+        lmkcs_buf[k] = lmkcs;
+        lmksc_n_buf[k] = lmksc_n;
+        lmkcs_n_buf[k] = lmkcs_n;
       }  // k
     }  // m (fill)
 

@@ -76,16 +76,10 @@ def test_hvp_restores_state():
 
 
 def test_exact_hvp_matches_force_jacobian_when_tcon_frozen():
-    # cma is a 3D stellarator where the spectral-condensation constraint force is
-    # significant. The exact (Enzyme) HVP freezes the constraint multiplier tcon,
-    # so the raw force must freeze it too for the HVP to be the force's exact
-    # Jacobian. With tcon frozen the exact HVP matches a finite difference of the
-    # force to FD accuracy; without freezing it drifts by several percent.
     m = _vmecpp.VmecModel.create(_vmecpp.VmecINDATA.from_file(str(CMA)), 25)
     if not hasattr(m, "exact_hessian_vector_product"):
         pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
 
-    # cma ships no magnetic axis; reguess once so the initial Jacobian is valid.
     m.evaluate(2, 2, True)
     if m.restart_reason == _BAD_JACOBIAN:
         m.reinitialize()
