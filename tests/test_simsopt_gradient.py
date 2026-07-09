@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 
 pytest.importorskip("simsopt")
 
-from simsopt_vmec_gradient import (
+from simsopt_vmec_gradient import (  # type: ignore
     VmecBoundaryProblem,
     gradient_cost,
     make_simsopt_optimizable,

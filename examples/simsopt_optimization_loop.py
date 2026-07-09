@@ -15,6 +15,8 @@ Run: python examples/simsopt_optimization_loop.py
 """
 
 import time
+from numbers import Real
+from typing import cast
 
 from simsopt.objectives import LeastSquaresProblem
 from simsopt.solve import least_squares_serial_solve
@@ -27,7 +29,9 @@ j0 = energy.J()
 target = 1.03 * j0
 print(f"initial MHD energy = {j0:.6e}, target = {target:.6e}")
 
-least_squares = LeastSquaresProblem.from_tuples([(energy.J, target, 1.0)])
+least_squares = LeastSquaresProblem.from_tuples(
+    [(energy.J, cast(Real, target), cast(Real, 1.0))]
+)
 
 problem.model.reset_force_eval_count()
 t0 = time.perf_counter()

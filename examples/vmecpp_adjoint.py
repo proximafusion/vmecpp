@@ -37,10 +37,7 @@ from pathlib import Path
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
 
-try:
-    from vmecpp.cpp import _vmecpp
-except ImportError:
-    import _vmecpp
+from vmecpp.cpp import _vmecpp  # type: ignore
 
 DEFAULT_INPUT = (
     Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
@@ -93,8 +90,8 @@ def _interior_operators(model, x, interior, exact=False):
         ]
 
     return (
-        LinearOperator((ni, ni), matvec=hii),
-        LinearOperator((ni, ni), matvec=mii),
+        LinearOperator((ni, ni), matvec=hii),  # type: ignore[call-overload]
+        LinearOperator((ni, ni), matvec=mii),  # type: ignore[call-overload]
     )
 
 
@@ -291,8 +288,8 @@ def adjoint_boundary_gradient(
             keep
         ]
 
-    h_op = LinearOperator((nk, nk), matvec=hii_t)
-    m_op = LinearOperator((nk, nk), matvec=mii)
+    h_op = LinearOperator((nk, nk), matvec=hii_t)  # type: ignore[call-overload]
+    m_op = LinearOperator((nk, nk), matvec=mii)  # type: ignore[call-overload]
     lam, info = gmres(h_op, dj[keep], M=m_op, rtol=rtol, restart=200, maxiter=maxiter)
     embedded = np.zeros(n)
     embedded[keep] = lam

@@ -87,7 +87,11 @@ def make_simsopt_optimizable(problem: VmecBoundaryProblem):
     # Imported lazily so the rest of the module (and the gradient benchmark) work
     # without SIMSOPT installed.
     from simsopt._core import Optimizable  # noqa: PLC0415
-    from simsopt._core.derivative import Derivative, derivative_dec  # noqa: PLC0415
+    from simsopt._core.derivative import (  # noqa: PLC0415
+        Derivative,
+        OptimizableDefaultDict,
+        derivative_dec,
+    )
 
     class VmecEnergy(Optimizable):
         def __init__(self):
@@ -99,7 +103,8 @@ def make_simsopt_optimizable(problem: VmecBoundaryProblem):
 
         @derivative_dec
         def dJ(self):
-            return Derivative({self: problem.gradient(self.local_full_x)})
+            data = OptimizableDefaultDict({self: problem.gradient(self.local_full_x)})
+            return Derivative(data)
 
     return VmecEnergy()
 

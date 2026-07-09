@@ -107,7 +107,11 @@ class FlowControl {
   // occurred)
   std::vector<RestartReason> restart_reasons;
 
+  // Running minimum of the preconditioned residual sum (fsq).
   double res0;
+  // Running minimum of the invariant residual sum (fsqr + fsqz + fsql); used
+  // only by the PARVMEC time-step control.
+  double res1;
 
   Eigen::Vector3d fResInvar;
   Eigen::Vector3d fResPrecd;

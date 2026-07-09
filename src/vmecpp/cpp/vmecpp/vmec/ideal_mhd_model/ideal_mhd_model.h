@@ -7,6 +7,7 @@
 
 #include <Eigen/Dense>
 #include <climits>
+#include <cstdint>
 #include <span>
 
 #ifdef _OPENMP
@@ -34,6 +35,8 @@
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
 namespace vmecpp {
+
+enum class M1ConstraintMode : std::uint8_t { kLegacy, kEnforce };
 
 // Implemented as a free function for easier testing and benchmarking.
 void deAliasConstraintForce(const RadialPartitioning& rp,
@@ -71,7 +74,11 @@ class IdealMhdModel {
       bool& m_need_restart, int& m_last_preconditioner_update,
       int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
       const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
-      const int iterations_before_checkpointing = INT_MAX, bool verbose = true);
+      const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
+      M1ConstraintMode m1_constraint_mode = M1ConstraintMode::kLegacy);
+
+  std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
+  void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
@@ -168,7 +175,8 @@ class IdealMhdModel {
   // the exact internal Newton-Krylov Hessian-vector product.
   void applyExactForceJacobian(const double* geomP, const double* dgeom,
                                int geom_stride, FourierForces& m_physical_f,
-                               FourierForces& m_decomposed_hv);
+                               FourierForces& m_decomposed_hv,
+                               M1ConstraintMode m1_constraint_mode);
 
   // Linear pre-chain decomposed -> real-space geometry (decomposeInto,
   // m1Constraint, extrapolate, geometryFromFourier) packed into the 20-block
@@ -218,7 +226,8 @@ class IdealMhdModel {
                                         FourierForces& m_decomposed_in,
                                         FourierForces& m_physical_f,
                                         FourierGeometry& m_physical_scratch,
-                                        FourierGeometry& m_decomposed_out);
+                                        FourierGeometry& m_decomposed_out,
+                                        M1ConstraintMode m1_constraint_mode);
 
   // Transposes of the spectral transforms, for the transposed exact Hessian.
   // dft_ForcesToFourierTranspose: (forcesToFourier)^T, decomposed-force coeff
@@ -483,6 +492,7 @@ class IdealMhdModel {
   const RadialPartitioning& r_;
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
+  std::int64_t force_evaluation_count_ = 0;
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.

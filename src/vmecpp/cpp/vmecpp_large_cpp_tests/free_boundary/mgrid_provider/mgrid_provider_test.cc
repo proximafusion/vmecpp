@@ -104,21 +104,21 @@ TEST_P(LoadMGridTest, CheckLoadMGrid) {
   ASSERT_EQ(nc_open(vmec_indata->mgrid_file.c_str(), NC_NOWRITE, &ncid),
             NC_NOERR);
 
-  const int number_of_field_periods = NetcdfReadInt(ncid, "nfp");
+  const int number_of_field_periods = NetcdfReadInt(ncid, "nfp").value();
 
-  const int number_of_r_grid_points = NetcdfReadInt(ncid, "ir");
-  const double r_grid_minimum = NetcdfReadDouble(ncid, "rmin");
-  const double r_grid_maximum = NetcdfReadDouble(ncid, "rmax");
+  const int number_of_r_grid_points = NetcdfReadInt(ncid, "ir").value();
+  const double r_grid_minimum = NetcdfReadDouble(ncid, "rmin").value();
+  const double r_grid_maximum = NetcdfReadDouble(ncid, "rmax").value();
   const double r_grid_increment =
       (r_grid_maximum - r_grid_minimum) / (number_of_r_grid_points - 1.0);
 
-  const int number_of_z_grid_points = NetcdfReadInt(ncid, "jz");
-  const double z_grid_minimum = NetcdfReadDouble(ncid, "zmin");
-  const double z_grid_maximum = NetcdfReadDouble(ncid, "zmax");
+  const int number_of_z_grid_points = NetcdfReadInt(ncid, "jz").value();
+  const double z_grid_minimum = NetcdfReadDouble(ncid, "zmin").value();
+  const double z_grid_maximum = NetcdfReadDouble(ncid, "zmax").value();
   const double z_grid_increment =
       (z_grid_maximum - z_grid_minimum) / (number_of_z_grid_points - 1.0);
 
-  const int number_of_phi_grid_points = NetcdfReadInt(ncid, "kp");
+  const int number_of_phi_grid_points = NetcdfReadInt(ncid, "kp").value();
   const double phi_grid_increment =
       2.0 * M_PI / (number_of_phi_grid_points * number_of_field_periods);
 

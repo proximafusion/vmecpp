@@ -1358,9 +1358,9 @@ TEST_P(CurrentDensityTest, CheckCurrentDensityFourierCoefficients) {
 
   // Read 2D arrays: Fortran stores as (ns, mnmax_nyq), C++ as (mnmax_nyq, ns)
   const std::vector<std::vector<double>> ref_currumnc =
-      NetcdfReadArray2D(ncid, "currumnc");
+      NetcdfReadArray2D(ncid, "currumnc").value();
   const std::vector<std::vector<double>> ref_currvmnc =
-      NetcdfReadArray2D(ncid, "currvmnc");
+      NetcdfReadArray2D(ncid, "currvmnc").value();
   nc_close(ncid);
 
   const int ns = static_cast<int>(ref_currumnc.size());
