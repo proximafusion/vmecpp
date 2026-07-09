@@ -60,6 +60,7 @@ FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
   ijacob = 0;
   restart_reason = RestartReason::NO_RESTART;
   res0 = -1;
+  res1 = -1;
   delt0r = delt;
   multi_ns_grid = num_grids;
   neqs_old = 0;
