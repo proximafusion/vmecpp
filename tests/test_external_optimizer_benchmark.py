@@ -28,7 +28,7 @@ def test_native_metrics_match_external_metric_definitions():
     assert result.energy == w_star
     np.testing.assert_array_equal(x, x_star)
     assert result.residual_norm < 1e-8
-    assert result.force_evals == result.outer_iters
+    assert result.force_evals == result.outer_iters + 1
     assert result.outer_iters > 0
 
 

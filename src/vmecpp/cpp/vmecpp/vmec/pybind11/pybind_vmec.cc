@@ -231,7 +231,6 @@ class VmecModel {
   // depend on the previously evaluated state.
   void Evaluate(int iter1, int iter2, bool precondition = true,
                 bool legacy_m1_constraint = false) {
-    ++force_eval_count_;
     bool need_restart = false;
     std::string error_message;
     const vmecpp::VmecCheckpoint checkpoint =
@@ -276,8 +275,12 @@ class VmecModel {
   // Total forward-model (force) evaluations since construction or the last
   // reset. Counts every Evaluate, including those inside hessian_vector_product
   // and preconditioner assembly, for a fair cross-optimizer cost comparison.
-  long force_eval_count() const { return force_eval_count_; }
-  void reset_force_eval_count() { force_eval_count_ = 0; }
+  std::int64_t force_eval_count() const {
+    return vmec_->m_[0]->forceEvaluationCount();
+  }
+  void reset_force_eval_count() const {
+    vmec_->m_[0]->resetForceEvaluationCount();
+  }
 
   // Freeze/unfreeze the constraint-force multiplier tcon. Freezing makes the
   // raw force a function of the state alone, consistent with the exact HVP.
@@ -785,7 +788,6 @@ class VmecModel {
   int last_preconditioner_update_ = 0;
   int last_full_update_nestor_ = 0;
   bool last_need_restart_ = false;
-  long force_eval_count_ = 0;
 };
 
 }  // anonymous namespace

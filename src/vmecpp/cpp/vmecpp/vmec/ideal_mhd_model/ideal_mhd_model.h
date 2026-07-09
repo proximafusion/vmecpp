@@ -77,6 +77,9 @@ class IdealMhdModel {
       const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
       M1ConstraintMode m1_constraint_mode = M1ConstraintMode::kLegacy);
 
+  std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
+  void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
+
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
   // coefficients. Also computes the net dR/dTheta and dZ/dTheta, without the
@@ -489,6 +492,7 @@ class IdealMhdModel {
   const RadialPartitioning& r_;
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
+  std::int64_t force_evaluation_count_ = 0;
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
