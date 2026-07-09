@@ -2,12 +2,13 @@
 # <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""External optimizers reach the same equilibrium as the native solver.
+"""External optimizers reach force balance on axisymmetric and 3D cases.
 
-The raw internal-basis force (gradient of VMEC's augmented functional) is the residual
-F(x); F(x) = 0 at equilibrium. Both a native-style preconditioned descent and a
-Jacobian-free Newton-Krylov solver drive it to zero and recover the native solver's
-converged state and energy.
+The Solov'ev equilibrium has a reproducible internal state, so the 2D test compares the
+full state vector with the native solver. In 3D, the poloidal parameterization is not
+unique and spectral condensation only regularizes that coordinate freedom. The 3D test
+therefore compares the residual and energy instead of coordinate-dependent Fourier
+coefficients.
 """
 
 import sys
@@ -28,64 +29,72 @@ from external_optimizers import (  # type: ignore
     solve_preconditioned_descent,
 )
 
-CMA = (
-    Path(__file__).resolve().parents[1]
-    / "src"
-    / "vmecpp"
-    / "cpp"
-    / "vmecpp"
-    / "test_data"
-    / "cma.json"
+ROOT = Path(__file__).resolve().parents[1]
+SOLOVEV = ROOT / "examples" / "data" / "solovev.json"
+CTH_LIKE = ROOT / "examples" / "data" / "cth_like_fixed_bdy.json"
+CMA = ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data" / "cma.json"
+
+SOLVERS = (
+    solve_preconditioned_descent,
+    solve_newton_krylov,
+    solve_newton_krylov_preconditioned,
+    solve_newton_hvp,
 )
+
+
+def _solve_all(input_path):
+    return {solver.__name__: solver(input_path, ns=11) for solver in SOLVERS}
 
 
 @pytest.fixture(scope="module")
-def reference():
-    return reference_equilibrium()
+def reference_2d():
+    return reference_equilibrium(SOLOVEV, ns=11)
 
 
-@pytest.mark.parametrize(
-    "solver",
-    [
-        solve_preconditioned_descent,
-        solve_newton_krylov,
-        solve_newton_krylov_preconditioned,
-        solve_newton_hvp,
-    ],
-)
-def test_optimizer_reaches_equilibrium(solver, reference):
-    x_star, w_star = reference
-    x, result = solver()
-    # Force balance achieved.
-    assert result.residual_norm < 1e-7
-    # Same equilibrium as the native solver.
-    assert abs(result.energy - w_star) < 1e-8
-    assert np.linalg.norm(x - x_star) < 1e-5
+@pytest.fixture(scope="module")
+def reference_3d():
+    return reference_equilibrium(CTH_LIKE, ns=11)
 
 
-def test_preconditioner_accelerates_newton_krylov():
-    # VMEC's preconditioner is the inverse-Hessian approximation: using it as the
-    # inner Krylov preconditioner cuts the force evaluations substantially.
-    _, plain = solve_newton_krylov()
-    _, precond = solve_newton_krylov_preconditioned()
-    assert precond.force_evals < plain.force_evals
+@pytest.fixture(scope="module")
+def solutions_2d():
+    return _solve_all(SOLOVEV)
 
 
-def test_newton_hvp_converges_in_few_iterations():
-    # True Newton with VMEC++'s own Hessian-vector product converges in a handful
-    # of outer iterations (second-order), far fewer than first-order descent.
-    _, newton = solve_newton_hvp()
-    _, descent = solve_preconditioned_descent()
+@pytest.fixture(scope="module")
+def solutions_3d():
+    return _solve_all(CTH_LIKE)
+
+
+def test_optimizers_reach_2d_equilibrium(reference_2d, solutions_2d):
+    x_star, w_star = reference_2d
+    for name, (x, result) in solutions_2d.items():
+        assert result.residual_norm < 1e-7, name
+        assert abs(result.energy - w_star) < 1e-8, name
+        assert np.linalg.norm(x - x_star) < 1e-5, name
+
+
+def test_optimizers_reach_3d_force_balance(reference_3d, solutions_3d):
+    _, w_star = reference_3d
+    for name, (_, result) in solutions_3d.items():
+        assert result.residual_norm < 1e-7, name
+        assert np.isclose(result.energy, w_star, rtol=1e-4, atol=0.0), name
+
+
+def test_preconditioner_reduces_newton_krylov_force_evaluations(solutions_3d):
+    plain = solutions_3d[solve_newton_krylov.__name__][1]
+    preconditioned = solutions_3d[solve_newton_krylov_preconditioned.__name__][1]
+    assert preconditioned.force_evals < plain.force_evals
+
+
+def test_hvp_newton_uses_fewer_outer_iterations_than_descent(solutions_3d):
+    newton = solutions_3d[solve_newton_hvp.__name__][1]
+    descent = solutions_3d[solve_preconditioned_descent.__name__][1]
     assert newton.outer_iters < 20
     assert newton.outer_iters < descent.outer_iters
 
 
 def test_cma_cold_start_exercises_non_axisymmetric_paths():
-    # cma.json is a 3D stellarator (nfp=2, ntor=6) that ships no magnetic axis
-    # (raxis/zaxis all zero), so the initial geometry has a singular Jacobian.
-    # make_model reguesses the axis like the native solver, after which the raw
-    # internal-basis force and the Hessian-vector product are well defined on the
-    # non-axisymmetric force chain.
     model = make_model(CMA, ns=25)
     x0 = np.asarray(model.get_state(), float)
     f0 = residual(model)(x0)
@@ -100,10 +109,6 @@ def test_cma_cold_start_exercises_non_axisymmetric_paths():
 
 
 def test_ptc_exact_hvp_converges_stiff_3d_case():
-    # cma is a stiff 3D stellarator (no shipped axis, ill-conditioned augmented
-    # Hessian) where stock Newton-Krylov stalls or fails. Pseudo-transient
-    # continuation with the exact autodiff HVP (consistent once tcon is frozen)
-    # drives the residual to zero and recovers the native solver's energy.
     model = make_model(CMA, ns=25)
     if not hasattr(model, "exact_hessian_vector_product"):
         pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")

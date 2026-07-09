@@ -75,3 +75,19 @@ jobs:
             --copt="-fplugin=${ENZYME_PLUGIN}" \
             --test_output=all \
             //vmecpp/common/enzyme:enzyme_smoke_test
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Run Enzyme force-derivative integration tests
+        env:
+          CC: clang-${{ env.LLVM_VERSION }}
+          CXX: clang++-${{ env.LLVM_VERSION }}
+          CMAKE_ARGS: >-
+            -DVMECPP_ENABLE_ENZYME=ON
+            -DVMECPP_ENZYME_PLUGIN=${{ env.ENZYME_PLUGIN }}
+        run: |
+          uv sync --reinstall-package vmecpp
+          uv run --with pytest pytest -q \
+            tests/test_hessian.py \
+            tests/test_hessian_transpose.py \
+            tests/test_external_optimizers.py

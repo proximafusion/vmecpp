@@ -37,20 +37,6 @@
     "#1f6feb",
   ];
 
-  // Parse mean duration from the extra field (e.g. "mean: 339.88 msec\nrounds: 5")
-  function parseMeanSeconds(bench) {
-    if (!bench.extra) return null;
-    var match = bench.extra.match(/mean:\s*([\d.]+)\s*([\w]+)/);
-    if (!match) return null;
-    var value = parseFloat(match[1]);
-    var unit = match[2];
-    if (unit === "msec") return value / 1000;
-    if (unit === "usec") return value / 1000000;
-    if (unit === "nsec") return value / 1000000000;
-    if (unit === "sec") return value;
-    return null;
-  }
-
   function renderCharts(data) {
     var container = document.getElementById("benchmark-charts");
     if (!container) return;
@@ -130,8 +116,7 @@
             {
               label: benchName,
               data: dataset.map(function (d) {
-                var secs = parseMeanSeconds(d.bench);
-                return secs !== null ? secs : 1.0 / d.bench.value;
+                return d.bench.value;
               }),
               borderColor: color,
               backgroundColor: color + "30",

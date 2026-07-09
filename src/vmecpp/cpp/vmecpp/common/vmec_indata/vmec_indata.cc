@@ -1460,13 +1460,14 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // nothing to check here: lforbal can be true or false and both are valid...
 
   // iteration_style
-  // For the current state of the code, we only accept VMEC_8_52,
-  // but in the future [TODO(jons)] also all other (implemented) enum values
-  // are valid.
-  if (vmec_indata.iteration_style != IterationStyle::VMEC_8_52) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'iteration_style' must be 'vmec_8_52', but is %s\n",
-        ToString(vmec_indata.iteration_style)));
+  // VMEC_8_52 and PARVMEC are both implemented in Vmec::SolveEquilibriumLoop.
+  if (vmec_indata.iteration_style != IterationStyle::VMEC_8_52 &&
+      vmec_indata.iteration_style != IterationStyle::PARVMEC) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("input variable 'iteration_style' must be 'vmec_8_52' "
+                        "or 'parvmec', but "
+                        "is %s\n",
+                        ToString(vmec_indata.iteration_style)));
   }
 
   // return_outputs_even_if_not_converged

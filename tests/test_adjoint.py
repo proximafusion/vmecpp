@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
-from vmecpp_adjoint import (
+from vmecpp_adjoint import (  # type: ignore
     boundary_gradient,
     finite_difference_boundary_gradient,
     make_model,
