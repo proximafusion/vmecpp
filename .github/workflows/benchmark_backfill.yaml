@@ -1,0 +1,826 @@
+name: Benchmark Backfill
+
+on:
+  push:
+    branches:
+      - backfill-benchmark-data
+  workflow_dispatch:
+    inputs:
+      start_sha:
+        description: "Start from this commit (inclusive, oldest). Default: first commit with the benchmark suite."
+        required: false
+        default: "c798c708"
+      num_jobs:
+        description: "Number of parallel jobs"
+        required: false
+        default: "20"
+
+permissions:
+  contents: write
+
+# Serialize with the docs workflow to avoid concurrent pushes to benchmark-runs.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Generate the commit matrix
+  # ---------------------------------------------------------------------------
+  generate-matrix:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Generate batch matrix
+        id: matrix
+        run: |
+          # c798c708 ("Add continuous benchmarking") is the first commit that
+          # has benchmarks/test_benchmarks.py; starting here captures the early
+          # era when importing vmecpp also initialized SIMSOPT, whose large
+          # import cost shows up in test_bench_cli_startup/invalid_input.
+          START_SHA="${{ inputs.start_sha || 'c798c708' }}"
+
+          # Get all first-parent commits on main, oldest first
+          git log --format="%H" --first-parent main --reverse > all_commits.txt
+
+          # Trim to commits from START_SHA onward
+          if [ -n "$START_SHA" ]; then
+            # Resolve short sha to full
+            full_sha=$(git rev-parse "$START_SHA")
+            line=$(grep -n "$full_sha" all_commits.txt | head -1 | cut -d: -f1)
+            if [ -z "$line" ]; then
+              echo "ERROR: $START_SHA not found in first-parent history of main"
+              exit 1
+            fi
+            sed -i "1,$((line - 1))d" all_commits.txt
+          fi
+
+          total=$(wc -l < all_commits.txt)
+          num_jobs=${{ inputs.num_jobs || '20' }}
+          batch_size=$(( (total + num_jobs - 1) / num_jobs ))
+          echo "Total commits: $total, jobs: $num_jobs, batch size: $batch_size"
+
+          # Split into batches and build JSON matrix
+          matrix='{"include":['
+          batch=0
+          while true; do
+            start=$(( batch * batch_size + 1 ))
+            commits=$(sed -n "${start},$(( start + batch_size - 1 ))p" all_commits.txt | tr '\n' ',' | sed 's/,$//')
+            if [ -z "$commits" ]; then
+              break
+            fi
+            if [ $batch -gt 0 ]; then
+              matrix="${matrix},"
+            fi
+            matrix="${matrix}{\"batch\":${batch},\"commits\":\"${commits}\"}"
+            batch=$(( batch + 1 ))
+          done
+          matrix="${matrix}]}"
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Generated $batch batches"
+
+  # ---------------------------------------------------------------------------
+  # Run benchmarks for each batch of commits
+  # ---------------------------------------------------------------------------
+  bench-batch:
+    needs: generate-matrix
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+
+      - name: Save benchmark assets from main
+        run: |
+          # Save the current benchmark script and test data so we can overlay
+          # them onto older checkouts where they may not exist yet.
+          cp benchmarks/test_benchmarks.py /tmp/test_benchmarks.py
+          cp -r src/vmecpp/cpp/vmecpp/test_data /tmp/test_data_backup || true
+          cp -r examples/data /tmp/examples_data_backup || true
+
+      - name: Run benchmarks on each commit
+        run: |
+          mkdir -p results
+          IFS=',' read -ra COMMITS <<< "${{ matrix.commits }}"
+
+          for sha in "${COMMITS[@]}"; do
+            echo "========================================"
+            echo "Benchmarking commit: ${sha:0:8}"
+            echo "========================================"
+
+            # Clean checkout of the commit
+            git checkout --force "$sha"
+            git clean -fdx -e results
+
+            # Overlay the current benchmark script
+            mkdir -p benchmarks
+            cp /tmp/test_benchmarks.py benchmarks/test_benchmarks.py
+
+            # Restore test data and examples if missing at this commit
+            if [ -d /tmp/test_data_backup ]; then
+              mkdir -p src/vmecpp/cpp/vmecpp/test_data
+              cp -rn /tmp/test_data_backup/* src/vmecpp/cpp/vmecpp/test_data/ 2>/dev/null || true
+            fi
+            if [ -d /tmp/examples_data_backup ]; then
+              mkdir -p examples/data
+              cp -rn /tmp/examples_data_backup/* examples/data/ 2>/dev/null || true
+            fi
+
+            # Fix broken FetchContent pins: the old indata2json hash was force-pushed
+            # away from its repo, replace with the current working hash.
+            if [ -f CMakeLists.txt ]; then
+              sed -i 's/d0247ac15b0a0032e3129906ac022326a8181e30/f59e3ddd66486b63536f141a786d39c23d654c77/g' CMakeLists.txt
+            fi
+
+            # Create a fresh venv for this commit so each build is isolated.
+            rm -rf /tmp/bench-venv
+            uv venv --python 3.10 /tmp/bench-venv
+
+            # Try to install vmecpp; skip on failure.
+            # Old commits may not have the [benchmark] extra, so install
+            # pytest-benchmark separately to guarantee it's always available.
+            uv pip install --python /tmp/bench-venv pytest pytest-benchmark 2>/dev/null
+            if ! uv pip install --python /tmp/bench-venv . 2>&1; then
+              echo "INSTALL FAILED: ${sha:0:8} (skipping)"
+              rm -rf /tmp/bench-venv
+              continue
+            fi
+
+            # Verify vmecpp actually imported
+            if ! /tmp/bench-venv/bin/python -c "import vmecpp" 2>/dev/null; then
+              echo "IMPORT FAILED: ${sha:0:8} (skipping)"
+              rm -rf /tmp/bench-venv
+              continue
+            fi
+
+            # Run each benchmark test individually so partial results are captured
+            # even when some tests fail (e.g., free-boundary on old commits).
+            #
+            # OMP_WAIT_POLICY=passive matches the live CI benchmark job
+            # (.github/actions/run-benchmarks/action.yml, added in #515): OpenMP's
+            # default is active spin-waiting, which reads as faster wall-clock
+            # time on an idle machine but is misleading on a shared/throttled CI
+            # runner. Every backfilled commit must use the same policy as live
+            # CI, or the two histories aren't comparable regardless of units.
+            export OMP_WAIT_POLICY=passive
+
+            # Discover the benchmark tests from the (overlaid, current)
+            # test_benchmarks.py rather than hardcoding a list -- otherwise a
+            # newly added benchmark (e.g. test_bench_fixed_boundary_cma_6x8)
+            # silently never gets backfilled. --collect-only -q prints one
+            # "path::testname" node id per line; strip to the bare test name.
+            tests=$(/tmp/bench-venv/bin/python -m pytest benchmarks/test_benchmarks.py \
+                      --collect-only -q 2>/dev/null \
+                    | sed -n 's/.*::\(test_bench_[A-Za-z0-9_]*\).*/\1/p' | sort -u)
+            if [ -z "$tests" ]; then
+              echo "NO TESTS COLLECTED: ${sha:0:8} (skipping)"
+              rm -rf /tmp/bench-venv
+              continue
+            fi
+
+            any_passed=false
+            for test in $tests
+            do
+              rm -f "/tmp/bench_${test}.json"
+              if /tmp/bench-venv/bin/python -m pytest "benchmarks/test_benchmarks.py::${test}" \
+                   --benchmark-json="/tmp/bench_${test}.json"; then
+                any_passed=true
+              else
+                rm -f "/tmp/bench_${test}.json"
+              fi
+            done
+
+            # Merge individual test results into one JSON per commit
+            if [ "$any_passed" = true ]; then
+              /tmp/bench-venv/bin/python - "$sha" <<'MERGE'
+          import json, sys, glob
+          sha = sys.argv[1]
+          merged_benchmarks = []
+          for f in sorted(glob.glob("/tmp/bench_test_bench_*.json")):
+              with open(f) as fh:
+                  data = json.load(fh)
+              merged_benchmarks.extend(data.get("benchmarks", []))
+          if merged_benchmarks:
+              # Use the first file as a template for the top-level structure
+              with open(f) as fh:
+                  out = json.load(fh)
+              out["benchmarks"] = merged_benchmarks
+              with open(f"results/{sha}.json", "w") as fh:
+                  json.dump(out, fh)
+              print(f"  Collected {len(merged_benchmarks)} benchmark(s)")
+          MERGE
+            fi
+
+            rm -f /tmp/bench_test_bench_*.json
+            rm -rf /tmp/bench-venv
+            echo ""
+          done
+
+          echo "Completed batch ${{ matrix.batch }}. Results:"
+          ls results/ | wc -l
+          echo "commits benchmarked"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ matrix.batch }}
+          path: results/
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Run C++ Google Benchmark microbenchmarks for each historical commit back
+  # to 3ac242a3 ("Batched FFT, 15% expected gain for w7x", the commit that
+  # introduced fft_toroidal_bench.cc, albeit not yet wired into CI). Today's
+  # bench source + BUILD rule are overlaid onto every checkout, same pattern
+  # as the Python job overlaying test_benchmarks.py -- this is what lets one
+  # benchmark measure through the DFT/FFT transition, since
+  # dft_FourierToReal_3d_symm's signature has been stable since 2024, even
+  # though ~50 unrelated internal refactors landed in this range (allocation-
+  # free rewrites, an Eigen3 port, a Bazel-module migration at 8d14954a) that
+  # may still break the overlay's build for some commits. Skip those and move
+  # on, same as the Python job skips install/import failures.
+  # ---------------------------------------------------------------------------
+  bench-cpp:
+    runs-on: ubuntu-22.04
+    # 360 = GitHub-hosted per-job max. This job now runs four backfill passes
+    # (fft_toroidal ~194 commits + dealias ~102 + laplace ~62 +
+    # output_quantities ~194), each a build+run per commit against a warm bazel
+    # cache. If the job ever hits this cap, raise the per-bench floor SHAs to
+    # trim the oldest (most build-fragile) commits rather than the timeout.
+    timeout-minutes: 360
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
+
+      - name: Mount bazel cache
+        uses: actions/cache@v4
+        with:
+          path: "~/.cache/bazel"
+          key: bazel-bench
+
+      - name: Save current bench source to overlay onto old checkouts
+        run: |
+          # Only the bench SOURCE is overlaid, never today's BUILD.bazel: the
+          # current ideal_mhd_model BUILD rule depends on
+          # //third_party/fftx_codelets, which does not exist before the FFT
+          # commit 3ac242a3, so overlaying it would fail every pre-FFT build.
+          # Instead we append a self-contained bench target to whatever
+          # BUILD.bazel exists at each commit (see below).
+          mkdir -p /tmp/bench_overlay
+          cp src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/fft_toroidal_bench.cc \
+             /tmp/bench_overlay/fft_toroidal_bench.cc
+          # Same overlay trick for the other three benches: their measured
+          # functions predate the commit that ADDED the bench .cc files
+          # (d1c2328a), so overlaying today's source + appending a *_backfill
+          # target lets each series reach back to its own API floor.
+          cp src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/dealias_constraint_force_bench.cc \
+             /tmp/bench_overlay/dealias_constraint_force_bench.cc
+          cp src/vmecpp/cpp/vmecpp/free_boundary/laplace_solver/laplace_solver_bench.cc \
+             /tmp/bench_overlay/laplace_solver_bench.cc
+          cp src/vmecpp/cpp/vmecpp/vmec/output_quantities/output_quantities_bench.cc \
+             /tmp/bench_overlay/output_quantities_bench.cc
+
+      - name: Run C++ microbenchmarks on each commit
+        run: |
+          set -uo pipefail
+
+          # First-parent commits from 365c07ea onward, oldest first. 365c07ea
+          # ("Converted ivac counter to an enum") is the oldest commit whose
+          # IdealMhdModel constructor matches today's 12-arg signature (ending
+          # in VacuumPressureState*), which the overlaid bench calls -- earlier
+          # commits take a different ctor (const Boundaries*, and/or int*
+          # m_ivac) and won't compile. This range starts ~1 year BEFORE the FFT
+          # commit 3ac242a3, so the covered resolutions (6x8, w7x_12x12) record
+          # DFT timings here and visibly step down when FFTX support lands at
+          # 3ac242a3. Commits that fail to build for unrelated reasons (e.g. old
+          # vendored HDF5 vs the runner toolchain) are skipped.
+          git log --format="%H" --first-parent main --reverse \
+            | sed -n '/^365c07eaab0152eb00387f41e821e4686ae3fe6e$/,$p' > cpp_commits.txt
+          echo "Attempting $(wc -l < cpp_commits.txt) commits."
+
+          mkdir -p cpp_results
+
+          # Starlark for the bench cc_binary appended to each commit's
+          # ideal_mhd_model BUILD.bazel. Named *_backfill to avoid colliding
+          # with the fft_toroidal_bench target that already exists from
+          # 3ac242a3 on. The heredoc body is indented 10 spaces to stay inside
+          # this YAML block scalar; `sed` strips that prefix so the emitted
+          # Starlark is flush-left (an indented top-level cc_binary() is a
+          # Starlark syntax error). It is later `cat`-appended to each commit's
+          # own, unmodified BUILD rules.
+          sed 's/^          //' > /tmp/bench_overlay/bench_target.bazel <<'BAZEL'
+
+          cc_binary(
+              name = "fft_toroidal_bench_backfill",
+              srcs = ["fft_toroidal_bench.cc"],
+              deps = [
+                  ":ideal_mhd_model",
+                  "//vmecpp/common/flow_control:flow_control",
+                  "//vmecpp/common/fourier_basis_fast_poloidal",
+                  "//vmecpp/common/sizes:sizes",
+                  "//vmecpp/common/util:util",
+                  "//vmecpp/common/vmec_indata:vmec_indata",
+                  "//vmecpp/vmec/fourier_forces:fourier_forces",
+                  "//vmecpp/vmec/fourier_geometry:fourier_geometry",
+                  "//vmecpp/vmec/handover_storage:handover_storage",
+                  "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+                  "//vmecpp/vmec/radial_profiles:radial_profiles",
+                  "//vmecpp/vmec/thread_local_storage:thread_local_storage",
+                  "//vmecpp/vmec/vmec_constants:vmec_constants",
+                  "@eigen",
+                  "@google_benchmark//:benchmark_main",
+              ],
+          )
+          BAZEL
+
+          while read -r sha; do
+            echo "========================================"
+            echo "Benchmarking commit: ${sha:0:8}"
+            echo "========================================"
+
+            git checkout --force "$sha"
+            git clean -fdx -e cpp_results -e cpp_commits.txt
+
+            IMM_DIR="src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model"
+            if [ ! -f "${IMM_DIR}/BUILD.bazel" ]; then
+              echo "NO ideal_mhd_model PACKAGE: ${sha:0:8} (skipping)"
+              continue
+            fi
+            # Overlay only the bench source, then append the bench target to
+            # the commit's own (unmodified) BUILD rules.
+            cp /tmp/bench_overlay/fft_toroidal_bench.cc "${IMM_DIR}/fft_toroidal_bench.cc"
+            cat /tmp/bench_overlay/bench_target.bazel >> "${IMM_DIR}/BUILD.bazel"
+
+            TMP_DIR="$(mktemp -d)"
+            cd src/vmecpp/cpp
+
+            if ! timeout 600 bazel build --config=perf -- //vmecpp/vmec/ideal_mhd_model:fft_toroidal_bench_backfill; then
+              echo "BUILD FAILED: ${sha:0:8} (skipping, likely internal API/toolchain drift)"
+              cd "${GITHUB_WORKSPACE}"
+              rm -rf "${TMP_DIR}"
+              continue
+            fi
+
+            bazel run --config=perf -- //vmecpp/vmec/ideal_mhd_model:fft_toroidal_bench_backfill \
+              --benchmark_min_time=0.2s \
+              --benchmark_format=json \
+              --benchmark_out="${TMP_DIR}/fft_toroidal_bench.json" || true
+            cd "${GITHUB_WORKSPACE}"
+
+            python3 - "${TMP_DIR}" "cpp_results/${sha}.json" <<'PY'
+          import glob
+          import json
+          import os
+          import sys
+
+          tmp_dir, out_file = sys.argv[1], sys.argv[2]
+          merged = {"context": None, "benchmarks": []}
+          for path in sorted(glob.glob(os.path.join(tmp_dir, "*.json"))):
+              with open(path) as f:
+                  data = json.load(f)
+              if merged["context"] is None:
+                  merged["context"] = data.get("context")
+              for bench in data.get("benchmarks", []):
+                  if bench.get("error_occurred"):
+                      continue
+                  merged["benchmarks"].append(bench)
+
+          if merged["benchmarks"]:
+              with open(out_file, "w") as f:
+                  json.dump(merged, f)
+              print(f"  Collected {len(merged['benchmarks'])} benchmark(s)")
+          PY
+
+            rm -rf "${TMP_DIR}"
+            echo ""
+          done < cpp_commits.txt
+
+          echo "Completed fft_toroidal_bench. Results:"
+          ls cpp_results/ | wc -l
+          echo "commits benchmarked"
+
+      # The other three C++ microbenchmarks measure physics kernels far older
+      # than the commit that ADDED their .cc files (d1c2328a). Rather than pin
+      # to d1c2328a (~16 commits -> ~16 datapoints), each is backfilled with
+      # the SAME overlay trick as fft_toroidal_bench above: overlay today's
+      # bench .cc, append a self-contained *_backfill cc_binary to the commit's
+      # own BUILD.bazel, build+run, merge into the per-commit JSON. Each starts
+      # at its own API floor (below), oldest-first, skipping build failures.
+      #
+      #   dealias_constraint_force_bench -> 1ba36202 (eigen3 migration, #452):
+      #       deAliasConstraintForce()'s Eigen-based free-function signature has
+      #       been today's shape since here.
+      #   laplace_solver_bench           -> 12b7f60d (Laplace asym, #502):
+      #       LaplaceSolver's Decompose/Solve/TransformGreensFunctionDerivative
+      #       API last changed here.
+      #   output_quantities_bench        -> 365c07ea (same floor as the toroidal
+      #       pass): it builds a Vmec and runs the full pipeline, so it needs the
+      #       12-arg-ctor era; skip-on-failure covers any earlier tail.
+      #
+      # The appended target is named *_backfill so it never collides with the
+      # native target that exists from d1c2328a on; the SERIES names come from
+      # ->Name() inside each .cc, so the data.js keys are unchanged and there is
+      # no seam at d1c2328a (one uniform overlaid path across the whole range).
+      - name: Backfill dealias/laplace/output_quantities benches (overlay)
+        run: |
+          set -uo pipefail
+
+          # Per-bench: floor SHA | bench package dir | target/src basename.
+          # Emitted as parallel arrays consumed by the loop below.
+          BENCH_FLOOR=(
+            "1ba36202"
+            "12b7f60d"
+            "365c07eaab0152eb00387f41e821e4686ae3fe6e"
+          )
+          BENCH_DIR=(
+            "src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model"
+            "src/vmecpp/cpp/vmecpp/free_boundary/laplace_solver"
+            "src/vmecpp/cpp/vmecpp/vmec/output_quantities"
+          )
+          BENCH_SRC=(
+            "dealias_constraint_force_bench.cc"
+            "laplace_solver_bench.cc"
+            "output_quantities_bench.cc"
+          )
+
+          # Self-contained cc_binary Starlark appended to each commit's own
+          # BUILD.bazel (deps/linkopts/data copied from today's targets). The
+          # heredocs are indented 10 spaces to stay inside this YAML block
+          # scalar; `sed` strips that so the emitted Starlark is flush-left.
+          sed 's/^          //' > /tmp/bench_overlay/dealias_constraint_force_bench.bazel <<'BAZEL'
+
+          cc_binary(
+              name = "dealias_constraint_force_bench_backfill",
+              srcs = ["dealias_constraint_force_bench.cc"],
+              deps = [
+                  ":ideal_mhd_model",
+                  "//vmecpp/common/flow_control:flow_control",
+                  "//vmecpp/common/fourier_basis_fast_poloidal",
+                  "//vmecpp/common/sizes:sizes",
+                  "//vmecpp/common/vmec_indata:vmec_indata",
+                  "//vmecpp/vmec/handover_storage:handover_storage",
+                  "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+                  "//vmecpp/vmec/radial_profiles:radial_profiles",
+                  "@eigen",
+                  "@google_benchmark//:benchmark_main",
+              ],
+          )
+          BAZEL
+
+          sed 's/^          //' > /tmp/bench_overlay/laplace_solver_bench.bazel <<'BAZEL'
+
+          cc_binary(
+              name = "laplace_solver_bench_backfill",
+              srcs = ["laplace_solver_bench.cc"],
+              deps = [
+                  ":laplace_solver",
+                  "//vmecpp/common/fourier_basis_fast_toroidal",
+                  "//vmecpp/common/sizes:sizes",
+                  "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+                  "@google_benchmark//:benchmark_main",
+              ],
+              linkopts = ["-llapack"],
+          )
+          BAZEL
+
+          sed 's/^          //' > /tmp/bench_overlay/output_quantities_bench.bazel <<'BAZEL'
+
+          cc_binary(
+              name = "output_quantities_bench_backfill",
+              srcs = ["output_quantities_bench.cc"],
+              data = [
+                  "//vmecpp/test_data:cma",
+              ],
+              deps = [
+                  ":output_quantities",
+                  "@abseil-cpp//absl/status:statusor",
+                  "@abseil-cpp//absl/strings:str_format",
+                  "@google_benchmark//:benchmark_main",
+                  "//util/file_io:file_io",
+                  "//vmecpp/common/util:util",
+                  "//vmecpp/common/vmec_indata:vmec_indata",
+                  "//vmecpp/vmec/vmec:vmec",
+              ],
+          )
+          BAZEL
+
+          mkdir -p cpp_results
+
+          for i in "${!BENCH_FLOOR[@]}"; do
+            floor="${BENCH_FLOOR[$i]}"
+            pkg_dir="${BENCH_DIR[$i]}"
+            src="${BENCH_SRC[$i]}"
+            target_name="${src%.cc}_backfill"
+            bazel_pkg="//${pkg_dir#src/vmecpp/cpp/}"
+
+            echo "########################################"
+            echo "# Backfilling ${src} from ${floor:0:8}"
+            echo "########################################"
+
+            git log --format="%H" --first-parent main --reverse \
+              | sed -n "/^$(git rev-parse "$floor")$/,\$p" > cpp_commits_bench.txt
+            echo "Attempting $(wc -l < cpp_commits_bench.txt) commits."
+
+            while read -r sha; do
+              echo "---- ${src%.cc} @ ${sha:0:8} ----"
+
+              git checkout --force "$sha"
+              git clean -fdx -e cpp_results -e cpp_commits.txt -e cpp_commits_bench.txt
+
+              if [ ! -f "${pkg_dir}/BUILD.bazel" ]; then
+                echo "NO PACKAGE ${pkg_dir}: ${sha:0:8} (skipping)"
+                continue
+              fi
+              # Overlay only the bench source, then append the *_backfill target
+              # to the commit's own (unmodified) BUILD rules.
+              cp "/tmp/bench_overlay/${src}" "${pkg_dir}/${src}"
+              cat "/tmp/bench_overlay/${src%.cc}.bazel" >> "${pkg_dir}/BUILD.bazel"
+
+              TMP_DIR="$(mktemp -d)"
+              cd src/vmecpp/cpp
+
+              if ! timeout 600 bazel build --config=perf -- "${bazel_pkg}:${target_name}"; then
+                echo "BUILD FAILED: ${sha:0:8} (skipping, likely API/toolchain drift)"
+                cd "${GITHUB_WORKSPACE}"
+                rm -rf "${TMP_DIR}"
+                continue
+              fi
+
+              bazel run --config=perf -- "${bazel_pkg}:${target_name}" \
+                --benchmark_min_time=0.2s \
+                --benchmark_format=json \
+                --benchmark_out="${TMP_DIR}/${src%.cc}.json" || true
+              cd "${GITHUB_WORKSPACE}"
+
+              # Merge into (not overwrite) any result already collected for this
+              # commit (fft_toroidal_bench above, and the other benches in
+              # earlier iterations of this same loop).
+              python3 - "${TMP_DIR}" "cpp_results/${sha}.json" <<'PY'
+          import glob
+          import json
+          import os
+          import sys
+
+          tmp_dir, out_file = sys.argv[1], sys.argv[2]
+          merged = {"context": None, "benchmarks": []}
+          if os.path.exists(out_file):
+              with open(out_file) as f:
+                  merged = json.load(f)
+          for path in sorted(glob.glob(os.path.join(tmp_dir, "*.json"))):
+              with open(path) as f:
+                  data = json.load(f)
+              if merged["context"] is None:
+                  merged["context"] = data.get("context")
+              for bench in data.get("benchmarks", []):
+                  if bench.get("error_occurred"):
+                      continue
+                  merged["benchmarks"].append(bench)
+
+          if merged["benchmarks"]:
+              with open(out_file, "w") as f:
+                  json.dump(merged, f)
+              print(f"  Collected {len(merged['benchmarks'])} benchmark(s)")
+          PY
+
+              rm -rf "${TMP_DIR}"
+            done < cpp_commits_bench.txt
+            echo ""
+          done
+
+          echo "Completed dealias/laplace/output_quantities backfill. Results:"
+          ls cpp_results/ | wc -l
+          echo "commits with results"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-cpp
+          path: cpp_results/
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Merge all results into benchmark-runs branch
+  # ---------------------------------------------------------------------------
+  merge-results:
+    needs: [bench-batch, bench-cpp]
+    runs-on: ubuntu-22.04
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download Python benchmark artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results
+          pattern: bench-results-[0-9]*
+          merge-multiple: true
+
+      - name: Download C++ benchmark artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-results-cpp
+          path: cpp-results
+        continue-on-error: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # This backfill always REPLACES the full history for both suites, it
+      # never merges with whatever is currently on benchmark-runs. History up
+      # to now mixed two things that make old and new points incomparable
+      # regardless of any single fix: (1) pytest-benchmark's iter/sec vs. the
+      # customSmallerIsBetter seconds schema (docs/_static/benchmarks.js used
+      # to guess the unit from a regex on free text), and (2) OpenMP's default
+      # active-spin wait policy vs. OMP_WAIT_POLICY=passive (added in #515) --
+      # both produced a false "regression" on the first post-change commit.
+      # Rebuilding from scratch with one fixed methodology for every commit
+      # is simpler and more trustworthy than trying to patch old entries.
+      - name: Build data.js from scratch
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import subprocess
+          import time
+          from pathlib import Path
+
+          REPO_URL = "https://github.com/proximafusion/vmecpp"
+
+          # Get ordered commit list (oldest first) to insert results in order
+          commit_order = subprocess.check_output(
+              ["git", "log", "--format=%H", "--first-parent", "main", "--reverse"],
+              text=True,
+          ).strip().split("\n")
+          commit_index = {sha: i for i, sha in enumerate(commit_order)}
+
+
+          def commit_entry(sha):
+              fmt = "%an%n%ae%n%cn%n%ce%n%s%n%aI%n%T"
+              info = subprocess.check_output(
+                  ["git", "log", "-1", "--format=" + fmt, sha], text=True
+              ).strip().split("\n")
+              author_name, author_email, committer_name, committer_email, message, timestamp, tree_id = info
+              return {
+                  "author": {"name": author_name, "email": author_email, "username": ""},
+                  "committer": {"name": committer_name, "email": committer_email, "username": ""},
+                  "distinct": True,
+                  "id": sha,
+                  "message": message,
+                  "timestamp": timestamp,
+                  "tree_id": tree_id,
+                  "url": f"{REPO_URL}/commit/{sha}",
+              }
+
+
+          def build_suite(results_dir, name_prefix, to_bench):
+              """Build one suite's ordered entry list from per-commit result files.
+
+              to_bench(raw_bench) -> customSmallerIsBetter dict, or None to skip.
+              """
+              entries = []
+              for result_file in sorted(Path(results_dir).glob("*.json")):
+                  sha = result_file.stem
+                  with open(result_file) as f:
+                      raw = json.load(f)
+
+                  benches = []
+                  for bench in raw.get("benchmarks", []):
+                      converted = to_bench(bench)
+                      if converted is not None:
+                          benches.append(converted)
+                  if not benches:
+                      continue
+
+                  entries.append((
+                      commit_index.get(sha, float("inf")),
+                      {
+                          "commit": commit_entry(sha),
+                          "date": int(time.time() * 1000),
+                          "tool": "customSmallerIsBetter",
+                          "benches": benches,
+                      },
+                  ))
+                  print(f"[{name_prefix}] {sha[:8]}: {len(benches)} benchmark(s)")
+
+              entries.sort(key=lambda x: x[0])
+              return [e for _, e in entries]
+
+
+          def pytest_bench(bench):
+              name = f"benchmarks/test_benchmarks.py::{bench['name']}"
+              stats = bench["stats"]
+              return {
+                  "name": name,
+                  "unit": "seconds",
+                  "value": stats["mean"],
+                  "range": f"stddev: {stats['stddev']}",
+                  "extra": f"rounds: {stats['rounds']}",
+              }
+
+
+          _GOOGLECPP_TIME_UNIT_TO_SECONDS = {"s": 1.0, "ms": 1e-3, "us": 1e-6, "ns": 1e-9}
+
+
+          def googlecpp_bench(bench):
+              if bench.get("error_occurred"):
+                  return None
+              factor = _GOOGLECPP_TIME_UNIT_TO_SECONDS[bench["time_unit"]]
+              return {
+                  "name": bench["name"],
+                  "unit": "seconds",
+                  "value": bench["real_time"] * factor,
+                  "extra": (
+                      f"iterations: {bench['iterations']}\n"
+                      f"cpu: {bench['cpu_time'] * factor} seconds\n"
+                      f"threads: {bench.get('threads', 1)}"
+                  ),
+              }
+
+
+          python_entries = build_suite("all-results", "Benchmark", pytest_bench)
+          cpp_entries = build_suite("cpp-results", "C++ Microbenchmarks", googlecpp_bench)
+
+          data = {
+              "lastUpdate": int(time.time() * 1000),
+              "repoUrl": REPO_URL,
+              "entries": {
+                  "Benchmark": python_entries,
+                  "C++ Microbenchmarks": cpp_entries,
+              },
+          }
+
+          with open("data.js", "w") as f:
+              f.write("window.BENCHMARK_DATA = ")
+              json.dump(data, f, indent=0)
+
+          print(f"\nTotal: {len(python_entries)} Python entries, {len(cpp_entries)} C++ entries")
+          PYEOF
+
+      - name: Push to benchmark-runs branch
+        run: |
+          if [ ! -f data.js ]; then
+            echo "No data to push."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Move data.js out of the main worktree before switching branches --
+          # benchmark-runs is an orphan branch, so checking it out would
+          # otherwise delete the untracked file we just built.
+          mv data.js /tmp/data.js
+
+          # Checkout the benchmark-runs branch
+          git fetch origin benchmark-runs || true
+          git checkout benchmark-runs 2>/dev/null || git checkout --orphan benchmark-runs
+
+          # Replace data.js wholesale -- this backfill always rebuilds full
+          # history from scratch (see "Build data.js from scratch" above), it
+          # never merges with what's already on this branch.
+          mkdir -p benchmarks
+          cp /tmp/data.js benchmarks/data.js
+
+          git add benchmarks/data.js
+          git commit -m "Rebuild benchmark history from scratch (seconds schema, OMP_WAIT_POLICY=passive)" || echo "Nothing to commit"
+          git push origin benchmark-runs

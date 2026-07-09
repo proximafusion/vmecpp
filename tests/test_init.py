@@ -51,8 +51,7 @@ def test_run(max_threads, input_file, verbose):
     [
         ("cma.json", RuntimeError),  # Invalid netcdf
         ("does_not_exist", RuntimeError),
-        # TODO(jurasic) Enable test after switching netcdf_io to absl::Status
-        # ("wout_cma.nc", RuntimeError),  # Valid netcdf, but invalid mgrid
+        ("wout_cma.nc", RuntimeError),  # Valid netcdf, but invalid mgrid
     ],
 )
 def test_raise_invalid_mgrid(mgrid_path: str, expected_exception):
@@ -615,8 +614,6 @@ def test_vmec_input_validation():
     # The test_file json may exclude fields that have default values,
     # while the parsed versions should have all fields populated.
     indata_dict_from_json = json.loads(vmec_input._to_cpp_vmecindata().to_json())
-    # TODO(jurasic): iteration_style is not yet present in VmecInput, since there's only one option atm.
-    del indata_dict_from_json["iteration_style"]
     vmec_input_dict_from_json = json.loads(vmec_input.model_dump_json())
 
     if not vmec_input.lasym:
