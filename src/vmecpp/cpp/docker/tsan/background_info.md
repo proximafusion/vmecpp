@@ -28,7 +28,7 @@ found here:
 - https://www.vi-hps.org/cms/upload/material/tw30/Archer.pdf (slide 8 and onwards)
 
 Turns out, this is **deprecated** as well and Archer was integrated into the
-LLVM project in the mean time.
+LLVM project in the meantime.
 
 This seems to be the **state of things as of Oct 2023**. Indeed, Archer can be
 found in the `llvm` source tree:
@@ -46,7 +46,7 @@ https://packages.ubuntu.com/jammy/clang
 ## Setting up a first test case
 
 TL;DR: This is an example commonly presented as a case for data races. As will
-be seen when running this example, the errornous output due to a data race is
+be seen when running this example, the erroneous output due to a data race is
 not reliably reproduced. Thus, skip this section if you are looking for an
 example that breaks reliably.
 
@@ -223,7 +223,7 @@ int main(int argc, char** argv) {
 }
 ```
 
-Compile it (for now without TSan to not clobber the console when things to
+Compile it (for now without TSan to not clobber the console when things go
 sideways):
 
 ```bash
@@ -313,7 +313,7 @@ Now run it (two threads should be enough to trigger the data race checks):
 OMP_NUM_THREADS=2 ./pi_example
 ```
 
-However, contrary to the expection, TSan report data races, even though the
+However, contrary to the expectation, TSan reports data races, even though the
 result is always computed correctly:
 
 ```
@@ -427,7 +427,7 @@ Now, adjust the command line as requested:
 OMP_NUM_THREADS=1 ARCHER_OPTIONS='verbose=1' TSAN_OPTIONS='ignore_noninstrumented_modules=1' ./pi_example
 ```
 
-and we gete:
+and we get:
 
 ```
 Archer detected OpenMP application with TSan, supplying OpenMP synchronization semantics
@@ -505,7 +505,7 @@ This is what we work on next.
 
 ## Build the stage1 demo using a custom toolchain
 
-from: https://bazel.build/tutorials/ccp-toolchain-config
+from: https://bazel.build/tutorials/cpp-toolchain-config
 
 This uses a system-provided `clang` installation (instead of the default
 compiler Bazel uses).
@@ -529,7 +529,7 @@ bazel build --config=clang_config //abseil-hello:hello_main
 bazel-bin/abseil-hello/hello_main "from Abseil"
 ```
 
-Fixed by added `-lm` to standard linker flags. This was inspired by:
+Fixed by adding `-lm` to standard linker flags. This was inspired by:
 https://github.com/bazelbuild/bazel/issues/934#issuecomment-193474914
 
 Even the unit test works if a recent version of `googletest` is used:
@@ -633,7 +633,7 @@ Delete the Bazel cache:
 bazel clean --expunge
 ```
 
-The PDF files of the slides mentioned in this articles are mirrored locally
+The PDF files of the slides mentioned in this article are mirrored locally
 here:
 
 https://drive.google.com/drive/folders/1NBNTr4jDQy951CoG-AYqpDfKKpNKNSzh?usp=sharing
