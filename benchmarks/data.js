@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783617163577,
+  "lastUpdate": 1783623626883,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -8904,6 +8904,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 9.574672651999967,
             "range": "stddev: 0.02960169410758446",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "271f3bf3e621c39c26235980a5df89062cf120fe",
+          "message": "Fix transform hot-loop regression from Eigen3 migration (#621)\n\nThe Eigen3 migration (#410) and hot-loop rework (#454) replaced the fused\nscalar poloidal accumulation in the toroidal transforms with per-quantity\nEigen .dot() calls, and the FFT path additionally allocates two Eigen vectors\nper innermost (m,k) iteration via .eval(). On the short theta axis\n(nThetaReduced ~9-16) and small ntor+1 this is a pessimization: benchmark-runs\nhistory shows ToroidalForcesToFourier regressed ~2x from the pre-#410 baseline\nand never recovered, including at the flagship 12x12 FFT size.\n\nTwo changes:\n\n- dft_toroidal.cc: restore the pre-#410 fused-scalar-loop DFT code verbatim\n  (single pass over theta reading each basis value once; the original\n  \"auto-vectorize was a pessimization\" note is retained). Fixes the DFT-fallback\n  resolutions and the fftx-disabled build.\n\n- fft_toroidal.cc: the FFT path only replaces the toroidal direction; its\n  poloidal fill kept the .dot()+.eval() pattern. Fuse it into one allocation-free\n  scalar pass. Measured (same-machine A/B, --config=opt, OMP=1): 12x12 FFT forces\n  1.57x faster (1.00e-3 -> 6.35e-4), 6x8 neutral. The c2r FourierToReal output\n  scatter already uses plain segment += and is left unchanged.\n\nfft_toroidal_test and vmec_test pass. CI benchmarks will confirm the recovery\nand inform whether any FFT shapes should still fall back to DFT.\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-09T20:55:55+02:00",
+          "tree_id": "c30628f57a5860adb605e3b735e9e1cbe9909df0",
+          "url": "https://github.com/proximafusion/vmecpp/commit/271f3bf3e621c39c26235980a5df89062cf120fe"
+        },
+        "date": 1783623624854,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3399173277999978,
+            "range": "stddev: 0.0021652167890319723",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3396122498000068,
+            "range": "stddev: 0.0014524190718821154",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.852327034000003,
+            "range": "stddev: 0.03036229829507118",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2672807550000111,
+            "range": "stddev: 0.0006893421724100057",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.9985949373333465,
+            "range": "stddev: 0.015055530598581049",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.8919726343333234,
+            "range": "stddev: 0.02087681665860135",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.051033105666647,
+            "range": "stddev: 0.0164239783859447",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
