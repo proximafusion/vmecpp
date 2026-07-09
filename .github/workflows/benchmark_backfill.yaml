@@ -269,7 +269,12 @@ jobs:
   # ---------------------------------------------------------------------------
   bench-cpp:
     runs-on: ubuntu-22.04
-    timeout-minutes: 300
+    # 360 = GitHub-hosted per-job max. This job now runs four backfill passes
+    # (fft_toroidal ~194 commits + dealias ~102 + laplace ~62 +
+    # output_quantities ~194), each a build+run per commit against a warm bazel
+    # cache. If the job ever hits this cap, raise the per-bench floor SHAs to
+    # trim the oldest (most build-fragile) commits rather than the timeout.
+    timeout-minutes: 360
     steps:
       - name: Checkout (full history)
         uses: actions/checkout@v4
@@ -299,6 +304,16 @@ jobs:
           mkdir -p /tmp/bench_overlay
           cp src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/fft_toroidal_bench.cc \
              /tmp/bench_overlay/fft_toroidal_bench.cc
+          # Same overlay trick for the other three benches: their measured
+          # functions predate the commit that ADDED the bench .cc files
+          # (d1c2328a), so overlaying today's source + appending a *_backfill
+          # target lets each series reach back to its own API floor.
+          cp src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/dealias_constraint_force_bench.cc \
+             /tmp/bench_overlay/dealias_constraint_force_bench.cc
+          cp src/vmecpp/cpp/vmecpp/free_boundary/laplace_solver/laplace_solver_bench.cc \
+             /tmp/bench_overlay/laplace_solver_bench.cc
+          cp src/vmecpp/cpp/vmecpp/vmec/output_quantities/output_quantities_bench.cc \
+             /tmp/bench_overlay/output_quantities_bench.cc
 
       - name: Run C++ microbenchmarks on each commit
         run: |
@@ -419,55 +434,163 @@ jobs:
           ls cpp_results/ | wc -l
           echo "commits benchmarked"
 
-      # The other three C++ microbenchmarks (unrelated physics kernels, not
-      # part of the DFT/FFT story) only exist from d1c2328a onward -- a short,
-      # fixed range where they're known to build unchanged (validated
-      # earlier). Their results merge into the same per-commit JSON files
-      # produced above.
-      - name: Run remaining C++ microbenchmarks on each commit since d1c2328a
+      # The other three C++ microbenchmarks measure physics kernels far older
+      # than the commit that ADDED their .cc files (d1c2328a). Rather than pin
+      # to d1c2328a (~16 commits -> ~16 datapoints), each is backfilled with
+      # the SAME overlay trick as fft_toroidal_bench above: overlay today's
+      # bench .cc, append a self-contained *_backfill cc_binary to the commit's
+      # own BUILD.bazel, build+run, merge into the per-commit JSON. Each starts
+      # at its own API floor (below), oldest-first, skipping build failures.
+      #
+      #   dealias_constraint_force_bench -> 1ba36202 (eigen3 migration, #452):
+      #       deAliasConstraintForce()'s Eigen-based free-function signature has
+      #       been today's shape since here.
+      #   laplace_solver_bench           -> 12b7f60d (Laplace asym, #502):
+      #       LaplaceSolver's Decompose/Solve/TransformGreensFunctionDerivative
+      #       API last changed here.
+      #   output_quantities_bench        -> 365c07ea (same floor as the toroidal
+      #       pass): it builds a Vmec and runs the full pipeline, so it needs the
+      #       12-arg-ctor era; skip-on-failure covers any earlier tail.
+      #
+      # The appended target is named *_backfill so it never collides with the
+      # native target that exists from d1c2328a on; the SERIES names come from
+      # ->Name() inside each .cc, so the data.js keys are unchanged and there is
+      # no seam at d1c2328a (one uniform overlaid path across the whole range).
+      - name: Backfill dealias/laplace/output_quantities benches (overlay)
         run: |
           set -uo pipefail
 
-          git log --format="%H" --first-parent main --reverse \
-            | sed -n '/^d1c2328aee3ee8e7613ebcba1b023bcbcf041454$/,$p' > cpp_commits_recent.txt
-          echo "Attempting $(wc -l < cpp_commits_recent.txt) commits."
-
-          TARGETS=(
-            "//vmecpp/vmec/ideal_mhd_model:dealias_constraint_force_bench"
-            "//vmecpp/free_boundary/laplace_solver:laplace_solver_bench"
-            "//vmecpp/vmec/output_quantities:output_quantities_bench"
+          # Per-bench: floor SHA | bench package dir | target/src basename.
+          # Emitted as parallel arrays consumed by the loop below.
+          BENCH_FLOOR=(
+            "1ba36202"
+            "12b7f60d"
+            "365c07eaab0152eb00387f41e821e4686ae3fe6e"
+          )
+          BENCH_DIR=(
+            "src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model"
+            "src/vmecpp/cpp/vmecpp/free_boundary/laplace_solver"
+            "src/vmecpp/cpp/vmecpp/vmec/output_quantities"
+          )
+          BENCH_SRC=(
+            "dealias_constraint_force_bench.cc"
+            "laplace_solver_bench.cc"
+            "output_quantities_bench.cc"
           )
 
-          while read -r sha; do
-            echo "========================================"
-            echo "Benchmarking commit: ${sha:0:8}"
-            echo "========================================"
+          # Self-contained cc_binary Starlark appended to each commit's own
+          # BUILD.bazel (deps/linkopts/data copied from today's targets). The
+          # heredocs are indented 10 spaces to stay inside this YAML block
+          # scalar; `sed` strips that so the emitted Starlark is flush-left.
+          sed 's/^          //' > /tmp/bench_overlay/dealias_constraint_force_bench.bazel <<'BAZEL'
 
-            git checkout --force "$sha"
-            git clean -fdx -e cpp_results -e cpp_commits.txt -e cpp_commits_recent.txt
+          cc_binary(
+              name = "dealias_constraint_force_bench_backfill",
+              srcs = ["dealias_constraint_force_bench.cc"],
+              deps = [
+                  ":ideal_mhd_model",
+                  "//vmecpp/common/flow_control:flow_control",
+                  "//vmecpp/common/fourier_basis_fast_poloidal",
+                  "//vmecpp/common/sizes:sizes",
+                  "//vmecpp/common/vmec_indata:vmec_indata",
+                  "//vmecpp/vmec/handover_storage:handover_storage",
+                  "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+                  "//vmecpp/vmec/radial_profiles:radial_profiles",
+                  "@eigen",
+                  "@google_benchmark//:benchmark_main",
+              ],
+          )
+          BAZEL
 
-            TMP_DIR="$(mktemp -d)"
-            cd src/vmecpp/cpp
+          sed 's/^          //' > /tmp/bench_overlay/laplace_solver_bench.bazel <<'BAZEL'
 
-            if ! timeout 600 bazel build --config=perf -- "${TARGETS[@]}"; then
-              echo "BUILD FAILED: ${sha:0:8} (skipping)"
-              cd "${GITHUB_WORKSPACE}"
-              rm -rf "${TMP_DIR}"
-              continue
-            fi
+          cc_binary(
+              name = "laplace_solver_bench_backfill",
+              srcs = ["laplace_solver_bench.cc"],
+              deps = [
+                  ":laplace_solver",
+                  "//vmecpp/common/fourier_basis_fast_toroidal",
+                  "//vmecpp/common/sizes:sizes",
+                  "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+                  "@google_benchmark//:benchmark_main",
+              ],
+              linkopts = ["-llapack"],
+          )
+          BAZEL
 
-            for target in "${TARGETS[@]}"; do
-              name="${target##*:}"
-              bazel run --config=perf -- "${target}" \
+          sed 's/^          //' > /tmp/bench_overlay/output_quantities_bench.bazel <<'BAZEL'
+
+          cc_binary(
+              name = "output_quantities_bench_backfill",
+              srcs = ["output_quantities_bench.cc"],
+              data = [
+                  "//vmecpp/test_data:cma",
+              ],
+              deps = [
+                  ":output_quantities",
+                  "@abseil-cpp//absl/status:statusor",
+                  "@abseil-cpp//absl/strings:str_format",
+                  "@google_benchmark//:benchmark_main",
+                  "//util/file_io:file_io",
+                  "//vmecpp/common/util:util",
+                  "//vmecpp/common/vmec_indata:vmec_indata",
+                  "//vmecpp/vmec/vmec:vmec",
+              ],
+          )
+          BAZEL
+
+          mkdir -p cpp_results
+
+          for i in "${!BENCH_FLOOR[@]}"; do
+            floor="${BENCH_FLOOR[$i]}"
+            pkg_dir="${BENCH_DIR[$i]}"
+            src="${BENCH_SRC[$i]}"
+            target_name="${src%.cc}_backfill"
+            bazel_pkg="//${pkg_dir#src/vmecpp/cpp/}"
+
+            echo "########################################"
+            echo "# Backfilling ${src} from ${floor:0:8}"
+            echo "########################################"
+
+            git log --format="%H" --first-parent main --reverse \
+              | sed -n "/^$(git rev-parse "$floor")$/,\$p" > cpp_commits_bench.txt
+            echo "Attempting $(wc -l < cpp_commits_bench.txt) commits."
+
+            while read -r sha; do
+              echo "---- ${src%.cc} @ ${sha:0:8} ----"
+
+              git checkout --force "$sha"
+              git clean -fdx -e cpp_results -e cpp_commits.txt -e cpp_commits_bench.txt
+
+              if [ ! -f "${pkg_dir}/BUILD.bazel" ]; then
+                echo "NO PACKAGE ${pkg_dir}: ${sha:0:8} (skipping)"
+                continue
+              fi
+              # Overlay only the bench source, then append the *_backfill target
+              # to the commit's own (unmodified) BUILD rules.
+              cp "/tmp/bench_overlay/${src}" "${pkg_dir}/${src}"
+              cat "/tmp/bench_overlay/${src%.cc}.bazel" >> "${pkg_dir}/BUILD.bazel"
+
+              TMP_DIR="$(mktemp -d)"
+              cd src/vmecpp/cpp
+
+              if ! timeout 600 bazel build --config=perf -- "${bazel_pkg}:${target_name}"; then
+                echo "BUILD FAILED: ${sha:0:8} (skipping, likely API/toolchain drift)"
+                cd "${GITHUB_WORKSPACE}"
+                rm -rf "${TMP_DIR}"
+                continue
+              fi
+
+              bazel run --config=perf -- "${bazel_pkg}:${target_name}" \
                 --benchmark_min_time=0.2s \
                 --benchmark_format=json \
-                --benchmark_out="${TMP_DIR}/${name}.json" || true
-            done
-            cd "${GITHUB_WORKSPACE}"
+                --benchmark_out="${TMP_DIR}/${src%.cc}.json" || true
+              cd "${GITHUB_WORKSPACE}"
 
-            # Merge into (not overwrite) any fft_toroidal_bench result already
-            # collected for this commit above.
-            python3 - "${TMP_DIR}" "cpp_results/${sha}.json" <<'PY'
+              # Merge into (not overwrite) any result already collected for this
+              # commit (fft_toroidal_bench above, and the other benches in
+              # earlier iterations of this same loop).
+              python3 - "${TMP_DIR}" "cpp_results/${sha}.json" <<'PY'
           import glob
           import json
           import os
@@ -494,13 +617,14 @@ jobs:
               print(f"  Collected {len(merged['benchmarks'])} benchmark(s)")
           PY
 
-            rm -rf "${TMP_DIR}"
+              rm -rf "${TMP_DIR}"
+            done < cpp_commits_bench.txt
             echo ""
-          done < cpp_commits_recent.txt
+          done
 
-          echo "Completed. Results:"
+          echo "Completed dealias/laplace/output_quantities backfill. Results:"
           ls cpp_results/ | wc -l
-          echo "commits benchmarked"
+          echo "commits with results"
 
       - name: Upload results
         uses: actions/upload-artifact@v4
