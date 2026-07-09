@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783598500372,
+  "lastUpdate": 1783599702897,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18745,6 +18745,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 9.141440448666648,
             "range": "stddev: 0.026668387967143742",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "686bd269a67c9e0ab0bf5e8b30c23ed97a38486d",
+          "message": "Honor iteration_style=parvmec in the native solver (#612)\n\n* Honor iteration_style=parvmec in the native solver\n\nThe PARVMEC time-step control (dual preconditioned/invariant residual minima,\na permissive 1e4 revert leash, gentle non-escalating revert) was only reachable\nthrough the Python iteration driver. Implement it natively in\nVmec::SolveEquilibriumLoop gated on indata.iteration_style, plumb iteration_style\nthrough the VmecInput model, and lift the run() guard, so vmecpp.run() honors the\ninput-file flag. The default vmec_8_52 path is unchanged.\n\n* Drop the obsolete iteration_style skip in test_vmec_input_validation\n\nVmecInput now carries iteration_style, so the field is present on both sides of\nthe INDATA/VmecInput serialization round-trip and no longer needs to be deleted\nbefore the comparison.\n\n* Restrict PARVMEC residual tracking to the PARVMEC branch\n\nCompute the invariant residual minimum res1 and its inputs only when the PARVMEC\ncontrol is active, so the default vmec_8_52 time-step control adds no work to its\npath and stays byte-for-byte unchanged, including under multithreading.\n\n* Inline the PARVMEC iteration-style check at its use sites\n\n* Strengthen the iteration-style physics check beyond volume\n\nCompare geometry (volume, aspect), beta, pressure energy, and magnetic energy\nbetween the vmec_8_52 and parvmec convergence controls, which all match to\nmachine precision; local profiles like iota are path-sensitive at finite ftol.\n\n* Tighten the native/Python PARVMEC trace tolerance from 1e-3 to 1e-8\n\nThe two loops make identical control decisions, so the force-residual traces\nagree to ~4e-9 (floating-point accumulation of the control arithmetic); the old\n1e-3 relative tolerance was loose enough to mask real divergence.\n\n* Add a PARVMEC-reference match test for the parvmec iteration style\n\nAssert vmecpp's parvmec style reproduces the committed reference wouts, which\nwere verified against fresh ORNL-Fusion/PARVMEC output (bulk quantities to ~1e-15,\ngeometry and iota to ~1e-7 for cth_like, machine precision for solovev).\n\n* Pin the parvmec iteration style to ORNL PARVMEC's force-residual trace\n\nAdds a per-iteration force-residual reference from ORNL-Fusion/PARVMEC for\ncth_like_fixed_bdy and a test that the native parvmec control reproduces it\nstep-for-step: machine precision for the first steps, a bounded ~1e-4 relative\ndrift over the full solve, and the same step count. A companion test asserts the\nvmec_8_52 and parvmec controls take measurably different paths on the\nrestart-triggering cma ns=72 case, which is chaotic and so cannot be matched to\nPARVMEC trace-for-trace.\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-07-09T12:15:48Z",
+          "tree_id": "cabfc258e275f96602f96983d37d7c8f9b16915d",
+          "url": "https://github.com/proximafusion/vmecpp/commit/686bd269a67c9e0ab0bf5e8b30c23ed97a38486d"
+        },
+        "date": 1783599701060,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3730746662000001,
+            "range": "stddev: 0.0020305575171358716",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3716306472000269,
+            "range": "stddev: 0.0015159602197526419",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.805846100333383,
+            "range": "stddev: 0.023004520640137895",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.656465364999993,
+            "range": "stddev: 0.004453631875068892",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.4105133303333637,
+            "range": "stddev: 0.04816447442214396",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.0706076636666544,
+            "range": "stddev: 0.016135164549902558",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 9.238490724666727,
+            "range": "stddev: 0.017225638326528615",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
