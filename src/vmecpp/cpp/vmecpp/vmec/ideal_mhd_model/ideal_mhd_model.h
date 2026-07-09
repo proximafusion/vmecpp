@@ -172,7 +172,8 @@ class IdealMhdModel {
   // the exact internal Newton-Krylov Hessian-vector product.
   void applyExactForceJacobian(const double* geomP, const double* dgeom,
                                int geom_stride, FourierForces& m_physical_f,
-                               FourierForces& m_decomposed_hv);
+                               FourierForces& m_decomposed_hv,
+                               M1ConstraintMode m1_constraint_mode);
 
   // Linear pre-chain decomposed -> real-space geometry (decomposeInto,
   // m1Constraint, extrapolate, geometryFromFourier) packed into the 20-block
@@ -222,7 +223,8 @@ class IdealMhdModel {
                                         FourierForces& m_decomposed_in,
                                         FourierForces& m_physical_f,
                                         FourierGeometry& m_physical_scratch,
-                                        FourierGeometry& m_decomposed_out);
+                                        FourierGeometry& m_decomposed_out,
+                                        M1ConstraintMode m1_constraint_mode);
 
   // Transposes of the spectral transforms, for the transposed exact Hessian.
   // dft_ForcesToFourierTranspose: (forcesToFourier)^T, decomposed-force coeff

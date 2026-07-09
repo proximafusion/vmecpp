@@ -474,9 +474,9 @@ class VmecModel {
     UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, v);
     model.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
                        dgeom.data(), gS, /*primal=*/false);
-    model.applyExactForceJacobian(exact_primal_.data(), dgeom.data(), gS,
-                                  *vmec_->physical_f_[0],
-                                  *vmec_->decomposed_f_[0]);
+    model.applyExactForceJacobian(
+        exact_primal_.data(), dgeom.data(), gS, *vmec_->physical_f_[0],
+        *vmec_->decomposed_f_[0], vmecpp::M1ConstraintMode::kEnforce);
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
 
@@ -500,7 +500,7 @@ class VmecModel {
     model.applyExactForceJacobianTranspose(
         exact_primal_.data(), gS, *vmec_->decomposed_f_[0],
         *vmec_->physical_f_[0], *vmec_->physical_x_[0],
-        *vmec_->physical_x_backup_[0]);
+        *vmec_->physical_x_backup_[0], vmecpp::M1ConstraintMode::kEnforce);
     return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
   }
 

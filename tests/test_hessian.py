@@ -75,15 +75,40 @@ def test_hvp_restores_state():
     assert np.allclose(np.asarray(m.get_state(), float), x0)
 
 
-def test_exact_hvp_matches_force_jacobian_when_tcon_frozen():
+@pytest.fixture(scope="module")
+def cma_states():
+    if not hasattr(_vmecpp.VmecModel, "exact_hessian_vector_product"):
+        pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
+
+    indata = _vmecpp.VmecINDATA.from_file(str(CMA))
+    initial_model = _vmecpp.VmecModel.create(indata, 25)
+    initial_state = np.asarray(initial_model.get_state(), float).copy()
+    converged_model = _vmecpp.VmecModel.create(indata, 25)
+    converged_model.solve()
+    converged_state = np.asarray(converged_model.get_state(), float).copy()
+    return initial_state, converged_state
+
+
+@pytest.mark.parametrize(
+    ("state_index", "high_residual"),
+    [pytest.param(0, True, id="initial"), pytest.param(1, False, id="converged")],
+)
+def test_exact_hvp_matches_force_jacobian_when_tcon_frozen(
+    cma_states, state_index, high_residual
+):
     m = _vmecpp.VmecModel.create(_vmecpp.VmecINDATA.from_file(str(CMA)), 25)
     if not hasattr(m, "exact_hessian_vector_product"):
         pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
 
+    m.set_state(np.ascontiguousarray(cma_states[state_index]))
     m.evaluate(2, 2, True)
     if m.restart_reason == _BAD_JACOBIAN:
         m.reinitialize()
         m.evaluate(2, 2, True)
+    if high_residual:
+        assert m.fsqz >= 1.0e-6
+    else:
+        assert m.fsqz < 1.0e-6
     m.set_freeze_constraint_multiplier(True)
 
     x = np.asarray(m.get_state(), float)

@@ -41,6 +41,13 @@ using vmecpp::vmec_algorithm_constants::kOddParity;
 
 namespace {
 
+constexpr double kM1ConstraintResidualThreshold = 1.0e-6;
+
+bool ShouldProjectM1Force(vmecpp::M1ConstraintMode mode, double fsqz) {
+  return mode == vmecpp::M1ConstraintMode::kEnforce ||
+         fsqz < kM1ConstraintResidualThreshold;
+}
+
 // Set m_h.rCC_LCFS etc. to the corresponding values in the FourierGeometry
 // of the last surface, also transposing m and n dimensions to make the
 // data layout what Nestor expects.
@@ -756,8 +763,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
   m_decomposed_f.m1Constraint(1.0 / std::numbers::sqrt2);
 
   // v8.50: ADD iter2<2 so reset=<WOUT_FILE> works
-  if (m1_constraint_mode == M1ConstraintMode::kEnforce || m_fc.fsqz < 1.0e-6 ||
-      iter2 < 2) {
+  if (ShouldProjectM1Force(m1_constraint_mode, m_fc.fsqz) || iter2 < 2) {
     // ensure that the m=1 constraint is satisfied exactly
     // --> the corresponding m=1 coeffs of R,Z are constrained to be zero
     //     and thus must not be "forced" (by the time evol using gc) away from
@@ -2162,11 +2168,10 @@ LocalForceComposition IdealMhdModel::makeLocalForceComposition(
   return comp;
 }
 
-void IdealMhdModel::applyExactForceJacobian(const double* geomP,
-                                            const double* dgeom,
-                                            int geom_stride,
-                                            FourierForces& m_physical_f,
-                                            FourierForces& m_decomposed_hv) {
+void IdealMhdModel::applyExactForceJacobian(
+    const double* geomP, const double* dgeom, int geom_stride,
+    FourierForces& m_physical_f, FourierForces& m_decomposed_hv,
+    M1ConstraintMode m1_constraint_mode) {
   LocalForceComposition comp = makeLocalForceComposition(geom_stride);
   const int nForce = comp.force_stride;
 
@@ -2218,8 +2223,7 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   forcesToFourier(m_physical_f);
   m_physical_f.decomposeInto(m_decomposed_hv, m_p_.scalxc);
   m_decomposed_hv.m1Constraint(1.0 / std::numbers::sqrt2);
-  // Match update(): zeroZForceForM1 is gated on the converged-state condition.
-  if (m_fc_.fsqz < 1.0e-6) {
+  if (ShouldProjectM1Force(m1_constraint_mode, m_fc_.fsqz)) {
     m_decomposed_hv.zeroZForceForM1();
   }
 }
@@ -2572,12 +2576,12 @@ void IdealMhdModel::dft_FourierToRealTranspose_3d_symm(
 void IdealMhdModel::applyExactForceJacobianTranspose(
     const double* geomP, int geom_stride, FourierForces& m_decomposed_in,
     FourierForces& m_physical_f, FourierGeometry& m_physical_scratch,
-    FourierGeometry& m_decomposed_out) {
+    FourierGeometry& m_decomposed_out, M1ConstraintMode m1_constraint_mode) {
   const int gS = geom_stride;
   const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
 
   // C^T: transpose of [scatter -> forcesToFourier -> decompose -> m1 -> zeroZ].
-  if (m_fc_.fsqz < 1.0e-6) {
+  if (ShouldProjectM1Force(m1_constraint_mode, m_fc_.fsqz)) {
     m_decomposed_in.zeroZForceForM1();
   }
   m_decomposed_in.m1Constraint(1.0 / std::numbers::sqrt2);
