@@ -28,10 +28,7 @@ from pathlib import Path
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
 
-try:
-    from vmecpp.cpp import _vmecpp
-except ImportError:
-    import _vmecpp
+from vmecpp.cpp import _vmecpp  # type: ignore
 
 DEFAULT_INPUT = (
     Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
@@ -85,17 +82,17 @@ def _interior_operators(model, x, interior):
         ]
 
     return (
-        LinearOperator((ni, ni), matvec=hii),
-        LinearOperator((ni, ni), matvec=mii),
+        LinearOperator((ni, ni), matvec=hii),  # type: ignore[call-overload]
+        LinearOperator((ni, ni), matvec=mii),  # type: ignore[call-overload]
     )
 
 
 def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=80):
     """Converge the interior to force balance with the boundary held fixed.
 
-    Preconditioned Newton-Krylov on the interior residual with a backtracking
-    line search; the line search is required for stiff 3D equilibria, where the
-    full Newton step overshoots.
+    Preconditioned Newton-Krylov on the interior residual with a backtracking line
+    search; the line search is required for stiff 3D equilibria, where the full Newton
+    step overshoots.
     """
     x = np.asarray(x0, float).copy()
     x[boundary] = x_boundary

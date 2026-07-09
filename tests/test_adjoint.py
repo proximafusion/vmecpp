@@ -5,9 +5,8 @@
 """The adjoint boundary gradient matches brute-force finite differences.
 
 dJ/d(boundary) from one Hessian solve (implicit-function adjoint) agrees with the
-reference gradient obtained by re-converging the interior equilibrium for each
-perturbed boundary degree of freedom. J here is the MHD energy of the converged
-equilibrium.
+reference gradient obtained by re-converging the interior equilibrium for each perturbed
+boundary degree of freedom. J here is the MHD energy of the converged equilibrium.
 """
 
 import sys
@@ -16,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
-from vmecpp_adjoint import (
+from vmecpp_adjoint import (  # type: ignore
     boundary_gradient,
     finite_difference_boundary_gradient,
     make_model,

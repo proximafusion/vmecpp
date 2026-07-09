@@ -77,7 +77,11 @@ def make_simsopt_optimizable(problem: VmecBoundaryProblem):
     # Imported lazily so the rest of the module (and the gradient benchmark) work
     # without SIMSOPT installed.
     from simsopt._core import Optimizable  # noqa: PLC0415
-    from simsopt._core.derivative import Derivative, derivative_dec  # noqa: PLC0415
+    from simsopt._core.derivative import (  # noqa: PLC0415
+        Derivative,
+        OptimizableDefaultDict,
+        derivative_dec,
+    )
 
     class VmecEnergy(Optimizable):
         def __init__(self):
@@ -89,7 +93,8 @@ def make_simsopt_optimizable(problem: VmecBoundaryProblem):
 
         @derivative_dec
         def dJ(self):
-            return Derivative({self: problem.gradient(self.local_full_x)})
+            data = OptimizableDefaultDict({self: problem.gradient(self.local_full_x)})
+            return Derivative(data)
 
     return VmecEnergy()
 
@@ -105,9 +110,9 @@ class GradResult:
 def gradient_cost(input_path: Path = DEFAULT_INPUT, ns: int = 11, analytic=True):
     """Cost of one full boundary gradient at the converged equilibrium.
 
-    This is what an external optimizer pays per iteration. The analytic adjoint
-    needs one Hessian solve regardless of the number of boundary DOFs; finite
-    differences re-converge the equilibrium twice per boundary DOF.
+    This is what an external optimizer pays per iteration. The analytic adjoint needs
+    one Hessian solve regardless of the number of boundary DOFs; finite differences re-
+    converge the equilibrium twice per boundary DOF.
     """
     problem = VmecBoundaryProblem(input_path, ns)
     x_star = problem._x_full.copy()

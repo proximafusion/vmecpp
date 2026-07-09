@@ -4,10 +4,10 @@
 # SPDX-License-Identifier: MIT
 """VMEC++ exposes an analytic boundary gradient to SIMSOPT.
 
-The VmecEnergy Optimizable's analytic dJ (the implicit-function adjoint) matches
-finite differences of its objective, and computing it is much cheaper than the
-conventional finite-difference boundary gradient (which re-solves the
-equilibrium per boundary degree of freedom).
+The VmecEnergy Optimizable's analytic dJ (the implicit-function adjoint) matches finite
+differences of its objective, and computing it is much cheaper than the conventional
+finite-difference boundary gradient (which re-solves the equilibrium per boundary degree
+of freedom).
 """
 
 import sys
@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 
 pytest.importorskip("simsopt")
 
-from simsopt_vmec_gradient import (
+from simsopt_vmec_gradient import (  # type: ignore
     VmecBoundaryProblem,
     gradient_cost,
     make_simsopt_optimizable,
