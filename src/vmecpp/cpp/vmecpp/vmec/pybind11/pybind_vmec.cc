@@ -226,7 +226,11 @@ class VmecModel {
   // lambda-constraint components. That raw gradient is what gradient-based
   // optimizers minimizing the MHD energy functional need; mhd_energy is already
   // set earlier in update(), so it is valid at the checkpoint too.
-  void Evaluate(int iter1, int iter2, bool precondition = true) {
+  // The native iteration delays the exact m=1 projection based on the previous
+  // Z residual. External evaluations enforce it immediately so F(x) does not
+  // depend on the previously evaluated state.
+  void Evaluate(int iter1, int iter2, bool precondition = true,
+                bool legacy_m1_constraint = false) {
     ++force_eval_count_;
     bool need_restart = false;
     std::string error_message;
@@ -255,7 +259,9 @@ class VmecModel {
           *vmec_->decomposed_f_[0], *vmec_->physical_f_[0], need_restart,
           last_preconditioner_update_, last_full_update_nestor_, vmec_->fc_,
           iter1, iter2, checkpoint, checkpoint_after,
-          /*verbose=*/false);
+          /*verbose=*/false,
+          legacy_m1_constraint ? vmecpp::M1ConstraintMode::kLegacy
+                               : vmecpp::M1ConstraintMode::kEnforce);
       if (!s.ok()) {
         error_message = std::string(s.status().message());
       }
@@ -1260,7 +1266,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_static("create", &VmecModel::Create, py::arg("indata"),
                   py::arg("ns"), py::arg("initial_state") = std::nullopt)
       .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
-           py::arg("precondition") = true)
+           py::arg("precondition") = true,
+           py::arg("legacy_m1_constraint") = false)
       .def_property_readonly("need_restart", &VmecModel::need_restart)
       .def("perform_time_step", &VmecModel::PerformTimeStep,
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
