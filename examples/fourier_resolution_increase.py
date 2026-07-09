@@ -10,14 +10,13 @@ hot-restarts from the previous step, whose solution is interpolated to the new
 resolution by :func:`vmecpp.interpolate_solution` (radial interpolation in
 ``sqrt(s)`` plus Fourier zero-padding).
 
-``vmecpp.run_continuation`` performs the whole schedule in one call:
+Setting ``VmecInput.mpol``/``.ntor`` to a sequence (instead of a plain int) makes
+``vmecpp.run`` perform the whole schedule in one call:
 
-    output = vmecpp.run_continuation(
-        vmec_input,
-        ns_array=[15, 31, 31],
-        mpol_array=[5, 9, 13],
-        ntor_array=[4, 4, 4],
-    )
+    vmec_input.ns_array = np.array([15, 31, 31])
+    vmec_input.mpol = [5, 9, 13]
+    vmec_input.ntor = [4, 4, 4]
+    output = vmecpp.run(vmec_input)
 
 This example runs the schedule step by step instead, so it can report the
 per-step iteration counts and compare the total against solving at the target
@@ -64,8 +63,8 @@ def step_input(ns: int, mpol: int, ntor: int) -> vmecpp.VmecInput:
 
 
 # --- Fourier continuation ---------------------------------------------------
-# vmecpp.run_continuation(vmec_input, ns_array=ns_array, mpol_array=mpol_array,
-# ntor_array=ntor_array) runs exactly this schedule in a single call; it is
+# Setting vmec_input.ns_array/.mpol/.ntor to these schedules and calling
+# vmecpp.run(vmec_input) runs exactly this schedule in a single call; it is
 # unrolled here to report the per-step iteration counts.
 print("Fourier continuation:")
 schedule = list(zip(ns_array, mpol_array, ntor_array, strict=True))

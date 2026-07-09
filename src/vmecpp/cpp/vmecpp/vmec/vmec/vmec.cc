@@ -560,6 +560,7 @@ bool Vmec::InitializeRadial(
   fc_.ijacob = 0;
   fc_.restart_reason = RestartReason::NO_RESTART;
   fc_.res0 = -1;
+  fc_.res1 = -1;
   m_delt0 = indata_.delt;
 
   // INITIALIZE MESH-DEPENDENT SCALARS
@@ -1280,16 +1281,40 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
       // res0 is the best force residual we got so far
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
+
+      // PARVMEC additionally tracks the invariant residual minimum res1. Keep
+      // it (and its inputs) off the vmec_8_52 path so the default control stays
+      // byte-for-byte unchanged.
+      if (indata_.iteration_style == IterationStyle::PARVMEC) {
+        const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
+        if (iter2 == iter1_ || fc_.res1 == -1) {
+          fc_.res1 = fsq_invariant;
+        }
+        fc_.res1 = std::min(fc_.res1, fsq_invariant);
+      }
     }
 
+    if (indata_.iteration_style == IterationStyle::PARVMEC) {
+      // PARVMEC control: store when both residual minima improve; revert via
+      // BAD_PROGRESS (delt0r /= 1.03, no ijacob) when either exceeds 1e4 * its
+      // minimum after 10 steps.
+      const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
+      if (fc_.fsq <= fc_.res0 && fsq_invariant <= fc_.res1) {
+        RestartIteration(fc_.delt0r, thread_id);
+      } else if ((iter2 - iter1_) > 10 && (fc_.fsq > 1.0e4 * fc_.res0 ||
+                                           fsq_invariant > 1.0e4 * fc_.res1)) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        fc_.restart_reason = RestartReason::BAD_PROGRESS;
+      }
 #ifdef VMECPP_USE_CUDA
-    if (sync_elided_iter_) {
+    } else if (sync_elided_iter_) {
       // Sync-elided iteration: fsq/res0 are stale; the store/restart
       // bookkeeping runs on boundary iterations only, which also sets the
       // device-state backup cadence to once per K-window.
-    } else
 #endif
-        if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
+    } else if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
       // Store current state (restart_reason=NO_RESTART)
       // --> was able to reduce force consistenly over at least 10 iterations
       RestartIteration(fc_.delt0r, thread_id);
