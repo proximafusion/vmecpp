@@ -19,6 +19,7 @@
 
 [![CI](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml)
 [![C++ core tests](https://github.com/proximafusion/vmecpp/actions/workflows/test_bazel.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/test_bazel.yaml)
+[![Full V&V against reference VMEC](https://github.com/proximafusion/vmecpp/actions/workflows/full_validation.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/full_validation.yaml)
 [![Publish wheels to PyPI](https://github.com/proximafusion/vmecpp/actions/workflows/pypi_publish.yml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/pypi_publish.yml)
 
 VMEC++ is a Python-friendly, from-scratch reimplementation in C++ of the Variational Moments Equilibrium Code (VMEC),
@@ -314,6 +315,10 @@ The CI of this repo runs these tests automatically.
 The single-thread runtimes as well as the contents of the "wout" file produced by VMEC++ can be compared with those of Fortran VMEC v8.52.
 The full validation test can be found at https://github.com/proximafusion/vmecpp-validation, including a set of sensible input configurations,
 parameter scan values and tolerances that make the comparison pass. See that repo for more information.
+
+This full validation (~219 input configurations) is run against every commit to `main` and can also be triggered
+on demand from the [Full V&V against reference VMEC](https://github.com/proximafusion/vmecpp/actions/workflows/full_validation.yaml) workflow
+(click "Run workflow"). It builds `vmecpp` from the corresponding commit rather than using the version pinned by `vmecpp-validation`.
 
 ## Differences with respect to PARVMEC/VMEC2000
 
