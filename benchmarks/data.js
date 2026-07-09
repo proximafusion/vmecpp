@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783623626883,
+  "lastUpdate": 1783623735619,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -28415,6 +28415,162 @@ window.BENCHMARK_DATA = {
             "value": 0.011267582575480143,
             "unit": "seconds",
             "extra": "iterations: 24\ncpu: 0.011266283208333339 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "271f3bf3e621c39c26235980a5df89062cf120fe",
+          "message": "Fix transform hot-loop regression from Eigen3 migration (#621)\n\nThe Eigen3 migration (#410) and hot-loop rework (#454) replaced the fused\nscalar poloidal accumulation in the toroidal transforms with per-quantity\nEigen .dot() calls, and the FFT path additionally allocates two Eigen vectors\nper innermost (m,k) iteration via .eval(). On the short theta axis\n(nThetaReduced ~9-16) and small ntor+1 this is a pessimization: benchmark-runs\nhistory shows ToroidalForcesToFourier regressed ~2x from the pre-#410 baseline\nand never recovered, including at the flagship 12x12 FFT size.\n\nTwo changes:\n\n- dft_toroidal.cc: restore the pre-#410 fused-scalar-loop DFT code verbatim\n  (single pass over theta reading each basis value once; the original\n  \"auto-vectorize was a pessimization\" note is retained). Fixes the DFT-fallback\n  resolutions and the fftx-disabled build.\n\n- fft_toroidal.cc: the FFT path only replaces the toroidal direction; its\n  poloidal fill kept the .dot()+.eval() pattern. Fuse it into one allocation-free\n  scalar pass. Measured (same-machine A/B, --config=opt, OMP=1): 12x12 FFT forces\n  1.57x faster (1.00e-3 -> 6.35e-4), 6x8 neutral. The c2r FourierToReal output\n  scatter already uses plain segment += and is left unchanged.\n\nfft_toroidal_test and vmec_test pass. CI benchmarks will confirm the recovery\nand inform whether any FFT shapes should still fall back to DFT.\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-09T20:55:55+02:00",
+          "tree_id": "c30628f57a5860adb605e3b735e9e1cbe9909df0",
+          "url": "https://github.com/proximafusion/vmecpp/commit/271f3bf3e621c39c26235980a5df89062cf120fe"
+        },
+        "date": 1783623735438,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000031678225505649524,
+            "unit": "seconds",
+            "extra": "iterations: 6892\ncpu: 3.16783549042368e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.0000408654040936503,
+            "unit": "seconds",
+            "extra": "iterations: 6847\ncpu: 4.086571564188696e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0006005789534182825,
+            "unit": "seconds",
+            "extra": "iterations: 467\ncpu: 0.0006003776766595289 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.001430509029290615,
+            "unit": "seconds",
+            "extra": "iterations: 195\ncpu: 0.0014304704358974363 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00016217137982626058,
+            "unit": "seconds",
+            "extra": "iterations: 1729\ncpu: 0.00016216249277038752 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.0001386222773226492,
+            "unit": "seconds",
+            "extra": "iterations: 2019\ncpu: 0.00013861442100049525 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003186751963982545,
+            "unit": "seconds",
+            "extra": "iterations: 891\ncpu: 0.0003186632514029182 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002764392886641463,
+            "unit": "seconds",
+            "extra": "iterations: 1014\ncpu: 0.000276429939842209 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005283454679093271,
+            "unit": "seconds",
+            "extra": "iterations: 530\ncpu: 0.0005283293679245285 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.000428560864505505,
+            "unit": "seconds",
+            "extra": "iterations: 653\ncpu: 0.0004285376493108732 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.001869786580403646,
+            "unit": "seconds",
+            "extra": "iterations: 150\ncpu: 0.0018695802733333326 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0015606680395882889,
+            "unit": "seconds",
+            "extra": "iterations: 179\ncpu: 0.0015605827206703919 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00006129017930243793,
+            "unit": "seconds",
+            "extra": "iterations: 3963\ncpu: 6.129806333585538e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0004668199224000895,
+            "unit": "seconds",
+            "extra": "iterations: 587\ncpu: 0.00046682666098807427 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0027874851226806644,
+            "unit": "seconds",
+            "extra": "iterations: 100\ncpu: 0.0027873295999999996 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000056374268058910924,
+            "unit": "seconds",
+            "extra": "iterations: 4951\ncpu: 5.6365203595233723e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00044459686279296875,
+            "unit": "seconds",
+            "extra": "iterations: 625\ncpu: 0.00044462708799998974 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0027100276021124092,
+            "unit": "seconds",
+            "extra": "iterations: 103\ncpu: 0.0027100133980582624 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.0002815682312537884,
+            "unit": "seconds",
+            "extra": "iterations: 986\ncpu: 0.0002815702322515215 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0012121551480644194,
+            "unit": "seconds",
+            "extra": "iterations: 231\ncpu: 0.0012120242207792212 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.0054813132566564225,
+            "unit": "seconds",
+            "extra": "iterations: 51\ncpu: 0.005480683372549014 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.011404107014338175,
+            "unit": "seconds",
+            "extra": "iterations: 24\ncpu: 0.011401013833333327 seconds\nthreads: 1"
           }
         ]
       }
