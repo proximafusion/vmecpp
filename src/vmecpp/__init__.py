@@ -20,11 +20,19 @@ import numpy as np
 import pydantic
 
 from vmecpp import _util
+from vmecpp._continuation import interpolate_solution, run_continuation
 from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
     MakegridParameters,
 )
-from vmecpp._iteration import IterationResult, iterate, solve_equilibrium
+from vmecpp._iteration import (
+    IterationResult,
+    IterationState,
+    RestartReason,
+    iterate,
+    solve_equilibrium,
+    solve_multigrid,
+)
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
@@ -86,18 +94,6 @@ MgridModeType: typing.TypeAlias = typing.Annotated[
 ProfileType = typing.Annotated[str, pydantic.Field(max_length=20)]
 
 
-class RestartReason(enum.Enum):
-    BAD_JACOBIAN = 2
-    """Irst == 2, bad Jacobian, flux surfaces are overlapping."""
-
-    BAD_PROGRESS = 3
-    """Irst == 3, bad progress, residuals not decaying as expected."""
-
-    HUGE_INITIAL_FORCES = 4
-    """Irst == 4, huge initial forces, flux surfaces are too close to each other (but
-    not overlapping yet)"""
-
-
 class FreeBoundaryMethod(str, enum.Enum):
     """Method for handling free-boundary conditions."""
 
@@ -115,6 +111,16 @@ class FreeBoundaryMethod(str, enum.Enum):
 
     BIEST = "biest"
     """Boundary Integral Equation Solver for Toroidal systems."""
+
+
+class IterationStyle(str, enum.Enum):
+    """Time-step / restart control scheme for the equilibrium iteration."""
+
+    VMEC_8_52 = "vmec_8_52"
+    """The Fortran VMEC 8.52 control (the default)."""
+
+    PARVMEC = "parvmec"
+    """The PARVMEC / VMEC2000 9.0 control."""
 
 
 class OutputMode(enum.Enum):
@@ -140,6 +146,15 @@ def _validate_free_boundary_method(
     if isinstance(value, _vmecpp.FreeBoundaryMethod):
         return FreeBoundaryMethod(value.name.lower())  # pyright: ignore[reportAttributeAccessIssue]
     return FreeBoundaryMethod(str(value))
+
+
+def _validate_iteration_style(
+    value: _vmecpp.IterationStyle | str | IterationStyle,
+) -> IterationStyle:
+    """Convert various representations to IterationStyle."""
+    if isinstance(value, _vmecpp.IterationStyle):
+        return IterationStyle(value.name.lower())  # pyright: ignore[reportAttributeAccessIssue]
+    return IterationStyle(str(value))
 
 
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
@@ -179,6 +194,20 @@ class VmecInput(BaseModelWithNumpy):
     ntor: int = 0
     """Number of toroidal Fourier harmonics; n = -ntor, -ntor+1, ..., -1, 0, 1, ...,
     ntor-1, ntor."""
+
+    mpol_geometry: int = -1
+    """Optional reduced poloidal resolution for the geometry (R, Z).
+
+    If in [1, mpol), R/Z modes with m >= mpol_geometry are held fixed while lambda keeps
+    the full mpol. < 0 (default) means geometry uses mpol.
+    """
+
+    ntor_geometry: int = -1
+    """Optional reduced toroidal resolution for the geometry (R, Z).
+
+    If in [0, ntor), R/Z modes with n > ntor_geometry are held fixed while lambda keeps
+    the full ntor. < 0 (default) means geometry uses ntor.
+    """
 
     ntheta: int = 0
     """Number of poloidal grid points (ntheta >= 0).
@@ -336,6 +365,14 @@ class VmecInput(BaseModelWithNumpy):
         pydantic.Field(),
     ] = FreeBoundaryMethod.NESTOR
     """Method for handling free-boundary conditions."""
+
+    iteration_style: typing.Annotated[
+        IterationStyle,
+        pydantic.BeforeValidator(_validate_iteration_style),
+        pydantic.Field(),
+    ] = IterationStyle.VMEC_8_52
+    """Time-step / restart control scheme for the equilibrium iteration (``"vmec_8_52"``
+    or ``"parvmec"``)."""
 
     nstep: int = 10
     """Printout interval at which convergence progress is logged."""
@@ -585,13 +622,19 @@ class VmecInput(BaseModelWithNumpy):
         }
 
         for attr in VmecInput.model_fields:
-            if attr in readonly_attrs or attr == "free_boundary_method":
+            if attr in readonly_attrs or attr in (
+                "free_boundary_method",
+                "iteration_style",
+            ):
                 continue  # these must be set separately
             setattr(cpp_indata, attr, getattr(self, attr))
 
         # Convert Python enum to C++ enum
         cpp_indata.free_boundary_method = getattr(
             _vmecpp.FreeBoundaryMethod, self.free_boundary_method.upper()
+        )
+        cpp_indata.iteration_style = getattr(
+            _vmecpp.IterationStyle, self.iteration_style.upper()
         )
 
         # this also resizes the readonly_attrs
@@ -1074,31 +1117,31 @@ class VmecWOut(BaseModelWithNumpy):
     piota_type: ProfileType
     """Parametrization of iota profile (copied from input)."""
 
-    am: jt.Float[np.ndarray, "preset"]
+    am: jt.Float[np.ndarray, "_preset"]
     """Mass/pressure profile coefficients (copied from input)."""
 
-    ac: jt.Float[np.ndarray, "preset"]
+    ac: jt.Float[np.ndarray, "_preset"]
     """Enclosed toroidal current profile coefficients (copied from input)."""
 
-    ai: jt.Float[np.ndarray, "preset"]
+    ai: jt.Float[np.ndarray, "_preset"]
     """Iota profile coefficients (copied from input)."""
 
-    am_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    am_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline mass/pressure profile: knot locations in ``s`` (copied from input)."""
 
-    am_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    am_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline mass/pressure profile: values at knots (copied from input)."""
 
-    ac_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    ac_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline toroidal current profile: knot locations in ``s`` (copied from input)."""
 
-    ac_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    ac_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline toroidal current profile: values at knots (copied from input)."""
 
-    ai_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    ai_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline iota profile: knot locations in ``s`` (copied from input)."""
 
-    ai_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    ai_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline iota profile: values at knots (copied from input)."""
 
     gamma: float
@@ -1306,6 +1349,24 @@ class VmecWOut(BaseModelWithNumpy):
                 ): field_info
                 for field, field_info in VmecWOut.model_fields.items()
             }
+            # jaxtyping does not expose a stable public API for dimension marker
+            # types. Older versions expose `_AnonymousDim`, while newer versions
+            # expose `_anonymous_dim` (instance). Resolve both for compatibility.
+            array_types = getattr(jt, "_array_types", None)
+            named_dim_type = (
+                getattr(array_types, "_NamedDim", None)
+                if array_types is not None
+                else None
+            )
+            anonymous_dim_type = (
+                getattr(array_types, "_AnonymousDim", None)
+                if array_types is not None
+                else None
+            )
+            if anonymous_dim_type is None and array_types is not None:
+                anonymous_dim_instance = getattr(array_types, "_anonymous_dim", None)
+                if anonymous_dim_instance is not None:
+                    anonymous_dim_type = type(anonymous_dim_instance)
 
             # Operates under the assumption that the order of the fields in
             # model_fields and model_dump are the same.
@@ -1362,18 +1423,31 @@ class VmecWOut(BaseModelWithNumpy):
                         )
                     ):
                         # Extract the dimension names used for NetCDF wout when available
-                        shape_string = tuple(
-                            [
-                                map_dimension_names.get(dim.name, str(dim.name))
-                                if isinstance(dim, jt._array_types._NamedDim)
+                        annotation_dim_names = field_info.annotation.dim_str.split()
+                        inferred_shape: list[str] = []
+                        for dim, dim_default_name, annotation_dim_name in zip(
+                            field_info.annotation.dims,
+                            shape_string,
+                            annotation_dim_names,
+                            strict=True,
+                        ):
+                            dim_name: str | None = None
+                            if named_dim_type is not None and isinstance(
+                                dim, named_dim_type
+                            ):
+                                dim_name = str(dim.name).lstrip("_")
+                            elif (
+                                anonymous_dim_type is not None
+                                and isinstance(dim, anonymous_dim_type)
+                                and annotation_dim_name.startswith("_")
+                            ):
+                                dim_name = annotation_dim_name.lstrip("_")
+                            inferred_shape.append(
+                                map_dimension_names.get(dim_name, dim_name)
+                                if dim_name is not None
                                 else dim_default_name
-                                for dim, dim_default_name in zip(
-                                    field_info.annotation.dims,
-                                    shape_string,
-                                    strict=True,
-                                )
-                            ]
-                        )
+                            )
+                        shape_string = tuple(inferred_shape)
 
                     for dim_name, dim_size in zip(
                         shape_string, value_array.shape, strict=True
@@ -2420,6 +2494,8 @@ populate_raw_profile = set_profile
 # items in the generated documentation.
 __all__ = [  # noqa: RUF022
     "run",
+    "run_continuation",
+    "interpolate_solution",
     "VmecInput",
     "VmecOutput",
     "VmecWOut",
@@ -2429,8 +2505,11 @@ __all__ = [  # noqa: RUF022
     "MakegridParameters",
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
+    "IterationStyle",
     "set_profile",
     "iterate",
     "solve_equilibrium",
+    "solve_multigrid",
     "IterationResult",
+    "IterationState",
 ]

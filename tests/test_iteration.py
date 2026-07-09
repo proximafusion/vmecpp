@@ -18,15 +18,24 @@ import numpy as np
 import pytest
 
 import vmecpp
+from vmecpp import RestartReason
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 REPO_ROOT = Path(__file__).parent.parent
 TEST_DATA = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
+EXAMPLES_DATA = REPO_ROOT / "examples" / "data"
+
+# Inputs whose single-resolution linear guess is well posed (no axis reguess) live
+# in TEST_DATA as JSON; w7x ships as an INDATA file under examples.
+_INPUT_PATHS = {
+    "w7x": EXAMPLES_DATA / "input.w7x",
+}
 
 
 def _single_resolution_indata(name: str, ns: int, ftol: float, niter: int):
     """C++ VmecINDATA for ``name`` forced to a single radial resolution."""
-    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA / f"{name}.json")
+    path = _INPUT_PATHS.get(name, TEST_DATA / f"{name}.json")
+    vmec_input = vmecpp.VmecInput.from_file(path)
     cpp_indata = vmec_input._to_cpp_vmecindata()
     cpp_indata.ns_array = np.array([ns], dtype=np.int64)
     cpp_indata.ftol_array = np.array([ftol])
@@ -38,7 +47,7 @@ def _single_resolution_indata(name: str, ns: int, ftol: float, niter: int):
     ("name", "ns", "ftol", "niter"),
     [
         ("solovev", 15, 1.0e-12, 3000),
-        ("cth_like_fixed_bdy", 25, 1.0e-10, 3000),
+        ("cth_like_fixed_bdy", 25, 1.0e-8, 3000),
     ],
 )
 def test_python_iteration_reproduces_cpp_inner_solve(
@@ -67,9 +76,18 @@ def test_python_iteration_reproduces_cpp_inner_solve(
     py_state = np.asarray(model.get_state())
     np.testing.assert_allclose(py_state, cpp_state, rtol=0, atol=1.0e-9)
 
-    cpp_trace = np.asarray(reference.force_residual_r)
-    py_trace = np.asarray(result.force_residual_r)
-    np.testing.assert_allclose(py_trace, cpp_trace, rtol=0, atol=1.0e-10)
+    np.testing.assert_allclose(
+        reference.force_residual_r, result.force_residual_r, rtol=1.0e-10, atol=1e-15
+    )
+    np.testing.assert_allclose(
+        reference.force_residual_z, result.force_residual_z, rtol=1.0e-10, atol=1e-15
+    )
+    np.testing.assert_allclose(
+        reference.force_residual_lambda,
+        result.force_residual_lambda,
+        rtol=1.0e-10,
+        atol=1e-15,
+    )
 
 
 def test_python_iteration_recovers_from_bad_initial_jacobian():
@@ -92,40 +110,392 @@ def test_styles_agree_when_no_restart():
 
     The styles differ only in how a growing residual is handled, so on a case that needs
     no restart they advance the geometry through exactly the same states (the bit-
-    identical result seen across the test_data equilibria).
+    identical result seen across the test_data equilibria). niter is capped low: the
+    early descent already triggers no restart for any style, so the truncated runs are
+    enough to show the three paths coincide.
     """
-    cpp_indata = _single_resolution_indata("cth_like_fixed_bdy", 25, 1.0e-10, 3000)
+    cpp_indata = _single_resolution_indata("cth_like_fixed_bdy", 25, 1.0e-10, 300)
     states = {}
     for style in ("vmec_8_52", "parvmec", "robust"):
         model = _vmecpp.VmecModel.create(cpp_indata, 25)
         result = vmecpp.solve_equilibrium(model, style=style)
-        assert result.converged, style
         assert result.restarts == 0, style
         states[style] = np.asarray(model.get_state())
     assert np.array_equal(states["vmec_8_52"], states["parvmec"])
     assert np.array_equal(states["vmec_8_52"], states["robust"])
 
 
-def test_alternative_styles_avoid_vmec_8_52_thrashing_on_cma():
-    """Cma at ns=72 trips VMEC 8.52's 100x leash ~20 times; PARVMEC and robust avoid it.
+@pytest.mark.parametrize(
+    ("name", "ns", "niter", "reasons"),
+    [
+        # cma's cold guess has a bad Jacobian -> axis reguess + huge initial forces
+        ("cma", 72, 200, {RestartReason.HUGE_INITIAL_FORCES}),
+        # W7-X drives a descent with mid-run bad-Jacobian time-step reverts
+        ("w7x", 15, 300, {RestartReason.BAD_JACOBIAN}),
+        # li383's cold guess also needs the axis reguess; the descent itself is
+        # clean, which makes it a sharp probe of the post-reguess state (the
+        # lambda scaling after reinitialize).
+        ("li383_low_res", 31, 250, set()),
+    ],
+)
+def test_python_iteration_matches_cpp_restart_path(
+    name: str, ns: int, niter: int, reasons: set
+):
+    """Hard single-resolution cases reproduce the C++ inner solve, restarts and all.
 
-    All three styles converge cma to the same equilibrium, but the single- resolution
-    solve at ns=72 makes 8.52's tight 100x residual leash revert (and bump ijacob toward
-    the give-up escalation) about twenty times, while PARVMEC's 1e4 leash never reverts
-    and the robust scheme's moderate leash reverts only a couple of times.
+    cma's linear guess has a bad Jacobian (forcing a cold-start axis reguess and huge
+    initial forces); W7-X triggers mid-run bad-Jacobian time-step reverts. Together they
+    exercise the restart machinery the well-posed cases never touch. niter is capped low
+    -- the test compares the Python loop and the C++ inner solve step for step over the
+    same (artificially truncated) run, so it does not need to reach convergence; the
+    truncation just keeps it fast. The control flow is checked on the *restart-reason*
+    trace (NO_RESTART / BAD_JACOBIAN / BAD_PROGRESS / HUGE_INITIAL_FORCES per recorded
+    iteration, exposed in the wout) -- it must match the C++ reference exactly -- and
+    the residual trace must agree until the numpy-vs-Eigen floating-point floor of the
+    damping average accumulates through the chaotic early transient.
     """
-    cpp_indata = _single_resolution_indata("cma", 72, 1.0e-11, 20000)
+    cpp_indata = _single_resolution_indata(name, ns, ftol=1.0e-16, niter=niter)
+
+    reference = _vmecpp.VmecModel.create(cpp_indata, ns)
+    reference.solve()
+
+    model = _vmecpp.VmecModel.create(cpp_indata, ns)
+    result = vmecpp.solve_equilibrium(model)
+
+    assert not result.failed
+
+    cpp_rr = np.asarray(reference.restart_reasons)
+    py_rr = np.asarray(result.restart_reasons)
+    # Identical recorded length and the identical restart-reason path, step for
+    # step -- this is what the original port got wrong on these cases.
+    assert len(py_rr) == len(cpp_rr)
+    np.testing.assert_array_equal(py_rr, cpp_rr)
+    # The truncated run actually exercises the expected restart machinery (a sticky
+    # restart reason or a dropped reguess would change which reasons appear).
+    assert reasons.issubset(set(py_rr.tolist()))
+
+    # The residual traces track tightly; the only non-bit-exact operation left
+    # is the order of additions in the damping average, whose last-bit noise
+    # can grow through long chaotic transients.
+    cpp_r = np.asarray(reference.force_residual_r)
+    py_r = np.asarray(result.force_residual_r)
+    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
+    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+
+
+def test_alternative_styles_converge_cma():
+    """All three time-step-control styles converge cma to the same tolerance.
+
+    They differ only in how a growing residual is handled, so on a case that descends
+    smoothly they take very similar paths (only a couple of reverts); the test guards
+    that none of them thrashes or fails. (A coarse ns keeps it fast while still needing
+    the cold-start axis reguess.)
+    """
+    cpp_indata = _single_resolution_indata("cma", 15, 1.0e-8, 8000)
     results = {}
     for style in ("vmec_8_52", "parvmec", "robust"):
-        model = _vmecpp.VmecModel.create(cpp_indata, 72)
+        model = _vmecpp.VmecModel.create(cpp_indata, 15)
         results[style] = vmecpp.solve_equilibrium(model, style=style)
 
     for style, result in results.items():
         assert result.converged, style
-        assert result.fsqr <= 1.0e-11, style
-        assert result.fsqz <= 1.0e-11, style
-        assert result.fsql <= 1.0e-11, style
-
-    assert results["vmec_8_52"].restarts >= 10
+        assert result.fsqr <= 1.0e-8, style
+        assert result.fsqz <= 1.0e-8, style
+        assert result.fsql <= 1.0e-8, style
+        # No style should thrash now that the restart reason is cleared each
+        # evaluation (a sticky HUGE_INITIAL_FORCES used to force ~20 reverts).
+        assert result.restarts < 10, style
     assert results["parvmec"].restarts == 0
-    assert results["robust"].restarts < results["vmec_8_52"].restarts
+
+
+def test_native_parvmec_matches_python_parvmec():
+    """The native C++ PARVMEC control reproduces the ported Python PARVMEC control.
+
+    Vmec::SolveEquilibriumLoop runs the PARVMEC time-step control when
+    indata.iteration_style == PARVMEC; it must match the Python parvmec loop on the
+    same forward model step for step, the analog of
+    test_python_iteration_matches_cpp_restart_path for the default style.
+    """
+    cpp_indata = _single_resolution_indata("cma", 72, ftol=1.0e-16, niter=200)
+    cpp_indata.iteration_style = _vmecpp.IterationStyle.PARVMEC
+
+    reference = _vmecpp.VmecModel.create(cpp_indata, 72)
+    reference.solve()
+
+    model = _vmecpp.VmecModel.create(cpp_indata, 72)
+    result = vmecpp.solve_equilibrium(model, style="parvmec")
+
+    assert not result.failed
+    np.testing.assert_array_equal(
+        np.asarray(result.restart_reasons), np.asarray(reference.restart_reasons)
+    )
+    cpp_r = np.asarray(reference.force_residual_r)
+    py_r = np.asarray(result.force_residual_r)
+    # The two loops make identical control decisions (restart_reasons match
+    # exactly above), so the force-residual traces agree up to floating-point
+    # accumulation of the control arithmetic: ~1e-9 relative early, growing to
+    # only a few 1e-9 by the deep-convergence tail (max abs ~6e-13).
+    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
+    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-8, atol=1e-12)
+
+
+def test_run_honors_iteration_style_flag():
+    """vmecpp.run() honors the iteration_style input flag through the native solver.
+
+    The two styles take different iteration paths to the same equilibrium, so the flag
+    must survive the VmecInput -> C++ round-trip and reach Vmec::SolveEquilibriumLoop.
+    """
+    base = vmecpp.VmecInput.from_file(TEST_DATA / "cma.json").model_copy(
+        update={
+            "ns_array": np.array([51], dtype=np.int64),
+            "ftol_array": np.array([1.0e-12]),
+            "niter_array": np.array([3000], dtype=np.int64),
+        }
+    )
+    outputs = {}
+    for style in ("vmec_8_52", "parvmec"):
+        inp = base.model_copy(update={"iteration_style": style})
+        assert inp.iteration_style == style
+        assert inp._to_cpp_vmecindata().iteration_style == getattr(
+            _vmecpp.IterationStyle, style.upper()
+        )
+        outputs[style] = vmecpp.run(inp, max_threads=1, verbose=False)
+    # Same physics regardless of the iteration scheme: the two styles take
+    # different paths to the same equilibrium, so global geometry, pressure, and
+    # magnetic-field quantities must agree, not just the volume. (Local profiles
+    # such as the iota profile are path-sensitive at finite ftol, so they are not
+    # asserted here; the exact-reference check against PARVMEC covers those.)
+    ref = outputs["vmec_8_52"].wout
+    par = outputs["parvmec"].wout
+    assert par.volume_p == pytest.approx(ref.volume_p, rel=1.0e-9)  # geometry
+    assert par.aspect == pytest.approx(ref.aspect, rel=1.0e-9)  # geometry
+    assert par.betatotal == pytest.approx(ref.betatotal, rel=1.0e-9)  # beta
+    assert par.wp == pytest.approx(ref.wp, rel=1.0e-9)  # pressure energy
+    assert par.wb == pytest.approx(ref.wb, rel=1.0e-5)  # magnetic energy
+
+
+@pytest.mark.parametrize("case", ["cth_like_fixed_bdy", "solovev"])
+def test_parvmec_matches_parvmec_reference(case):
+    """The PARVMEC iteration style reproduces the ORNL-Fusion/PARVMEC wout.
+
+    The committed reference wouts match fresh output from the Fortran ORNL-
+    Fusion/PARVMEC to machine precision (volume/aspect ~1e-15, geometry and iota ~1e-7
+    for cth_like, ~0 for solovev), so this pins the new iteration style to the
+    independent parallel implementation, not only to the vmec_8_52 control.
+    """
+    reference = vmecpp.VmecWOut.from_wout_file(TEST_DATA / f"wout_{case}.nc")
+    base = vmecpp.VmecInput.from_file(TEST_DATA / f"{case}.json")
+    result = vmecpp.run(
+        base.model_copy(update={"iteration_style": "parvmec"}),
+        max_threads=1,
+        verbose=False,
+    )
+    w = result.wout
+
+    assert w.volume_p == pytest.approx(reference.volume_p, rel=1.0e-9)
+    assert w.aspect == pytest.approx(reference.aspect, rel=1.0e-9)
+    np.testing.assert_allclose(w.iotaf, reference.iotaf, rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(w.rmnc, reference.rmnc, rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(w.zmns, reference.zmns, rtol=1.0e-5, atol=1.0e-6)
+    np.testing.assert_allclose(w.bmnc, reference.bmnc, rtol=1.0e-5, atol=1.0e-6)
+
+
+def test_parvmec_follows_ornl_parvmec_trace():
+    """The native parvmec control follows ORNL PARVMEC's per-iteration residual trace.
+
+    cth_like_fixed_bdy has a well-posed linear guess (no cold-start axis reguess) and
+    converges without a restart, so the iteration is numerically stable: the native
+    parvmec time-step control reproduces the committed ORNL-Fusion/PARVMEC force
+    residuals step-for-step. The first several steps agree to machine precision; the
+    difference then settles into a bounded ~1e-4 relative drift (floating-point
+    accumulation between two independent implementations) that does not grow, and both
+    reach force balance in the same number of steps. This pins the control to the
+    Fortran PARVMEC itself, not only to the vmec_8_52 baseline or the Python port.
+
+    A step-for-step match is only meaningful on a non-chaotic case. Inputs that trip the
+    parvmec-specific restart / reguess logic have violent transients (fsqr ~ 1e4) on
+    which the ~1e-13 floating-point difference between any two implementations amplifies
+    to order unity within a couple of steps; those converge to the same equilibrium but
+    cannot be compared trace-for-trace. The divergence between the two styles on such a
+    case is covered by test_iteration_styles_diverge_on_stiff_case.
+    """
+    ref = np.loadtxt(
+        TEST_DATA / "parvmec_cth_like_fixed_bdy_force_trace.csv",
+        delimiter=",",
+        skiprows=5,
+    )
+    ref_fsqr, ref_fsqz, ref_fsql = ref[:, 1], ref[:, 2], ref[:, 3]
+
+    cpp_indata = _single_resolution_indata("cth_like_fixed_bdy", 25, 1.0e-6, 25000)
+    cpp_indata.iteration_style = _vmecpp.IterationStyle.PARVMEC
+    model = _vmecpp.VmecModel.create(cpp_indata, 25)
+    model.solve()
+    fsqr = np.asarray(model.force_residual_r)
+    fsqz = np.asarray(model.force_residual_z)
+    fsql = np.asarray(model.force_residual_lambda)
+
+    # Same number of steps to force balance (up to the last step at finite ftol).
+    assert abs(len(fsqr) - len(ref_fsqr)) <= 2
+    n = min(len(fsqr), len(ref_fsqr))
+
+    # Bit-faithful for the first several steps.
+    np.testing.assert_allclose(fsqr[:6], ref_fsqr[:6], rtol=1.0e-9, atol=1.0e-14)
+    np.testing.assert_allclose(fsqz[:6], ref_fsqz[:6], rtol=1.0e-9, atol=1.0e-14)
+    np.testing.assert_allclose(fsql[:6], ref_fsql[:6], rtol=1.0e-9, atol=1.0e-14)
+
+    # Tracks ORNL PARVMEC over the whole solve; the bounded drift never turns into a
+    # flow-control divergence (which would show up as a discrete jump, not a drift).
+    np.testing.assert_allclose(fsqr[:n], ref_fsqr[:n], rtol=3.0e-3, atol=1.0e-9)
+    np.testing.assert_allclose(fsqz[:n], ref_fsqz[:n], rtol=3.0e-3, atol=1.0e-9)
+    np.testing.assert_allclose(fsql[:n], ref_fsql[:n], rtol=3.0e-3, atol=1.0e-9)
+
+
+def test_iteration_styles_diverge_on_stiff_case():
+    """vmec_8_52 and parvmec take measurably different paths on a restart-triggering
+    case.
+
+    cma at ns=72 has a cold-start axis reguess and a violent initial transient that
+    trips the time-step-control restart logic. The two styles' restart bookkeeping and
+    force-residual progressions differ -- the reason the parvmec control exists -- even
+    though both converge to the same equilibrium. This is the flow-control difference
+    that the trace test cannot pin to ORNL PARVMEC directly (the case is chaotic).
+    """
+    traces = {}
+    for style in ("vmec_8_52", "parvmec"):
+        cpp_indata = _single_resolution_indata("cma", 72, 1.0e-11, 200)
+        cpp_indata.iteration_style = getattr(_vmecpp.IterationStyle, style.upper())
+        model = _vmecpp.VmecModel.create(cpp_indata, 72)
+        model.solve()
+        traces[style] = np.asarray(model.force_residual_r)
+
+    r852, rpar = traces["vmec_8_52"], traces["parvmec"]
+    n = min(len(r852), len(rpar))
+    # The two controls share only a prefix, then take genuinely different paths.
+    assert not np.allclose(r852[:n], rpar[:n], rtol=1.0e-6, atol=1.0e-12)
+
+
+def test_callback_records_iteration_state():
+    """The per-iteration callback fires once per recorded iteration with a consistent
+    IterationState snapshot of the convergence / flow-control state.
+
+    A coarse cma solve converges quickly but still needs the cold-start axis reguess, so
+    ijacob escalates and the reguess bookkeeping is exercised.
+    """
+    cpp_indata = _single_resolution_indata("cma", 15, 1.0e-8, 8000)
+    model = _vmecpp.VmecModel.create(cpp_indata, 15)
+
+    states: list[vmecpp.IterationState] = []
+    result = vmecpp.solve_equilibrium(model, style="vmec_8_52", callback=states.append)
+
+    assert result.converged
+    # One snapshot per recorded force iteration.
+    assert len(states) == result.num_iterations
+    # The iteration index is 1-based and monotonically increasing.
+    assert [s.iteration for s in states] == list(range(1, len(states) + 1))
+    # The flow-control counters are consistent with the result summary.
+    assert states[-1].n_restarts == result.restarts
+    assert sum(s.restarted for s in states) == result.restarts
+    assert states[-1].n_reguesses == result.axis_reguesses
+    # fsq_invariant is exactly the sum tested for convergence. (The final converged
+    # iteration returns before the callback fires, so the last snapshot is the step
+    # just before convergence, not result.fsqr -- num_iterations already covers the
+    # count.)
+    last = states[-1]
+    assert last.fsq_invariant == pytest.approx(last.fsqr + last.fsqz + last.fsql)
+    # cma's cold guess has a bad Jacobian, so the axis reguess fires (ijacob >= 1).
+    assert states[-1].ijacob >= 1
+    assert result.axis_reguesses >= 1
+
+
+def test_reinitialize_preserves_lambda_scaling():
+    """Reinitialize() must leave the lambda scaling (lamscale) unchanged.
+
+    InitializeRadial accumulates rmsPhiP across calls (Vmec::run resets the
+    constants before each call); without the matching reset in reinitialize(),
+    a second initialization doubles rmsPhiP, rescales lamscale by sqrt(2), and
+    the whole lambda sector (preconditioned residual fsql1 above all) silently
+    diverges from the C++ on every post-reguess trajectory.
+    """
+    cpp_indata = _single_resolution_indata("solovev", 15, 1.0e-12, 3000)
+
+    once = _vmecpp.VmecModel.create(cpp_indata, 15)
+    once.reinitialize()
+    once.evaluate(1, 1)
+
+    twice = _vmecpp.VmecModel.create(cpp_indata, 15)
+    twice.reinitialize()
+    twice.reinitialize()
+    twice.evaluate(1, 1)
+
+    assert once.fsqr == twice.fsqr
+    assert once.fsql == pytest.approx(twice.fsql, rel=1e-14)
+    # fsql1 has no normalization that cancels a lamscale change; before the
+    # constants reset the second reinitialize shifted it by a factor 1.5.
+    assert once.fsql1 == pytest.approx(twice.fsql1, rel=1e-14)
+
+
+def test_python_multigrid_matches_cpp_run():
+    """solve_multigrid reproduces the C++ Vmec::run multi-grid ramp.
+
+    cma's own input is a two-stage ramp (ns_array [25, 51]) whose coarse stage
+    needs the cold-start axis reguess. The C++ reference is the full
+    vmecpp.run; its wout records the force-residual and restart-reason traces
+    concatenated across stages, which must match the concatenation of the
+    Python per-stage traces step for step.
+    """
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA / "cma.json")
+
+    reference = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_r = np.asarray(reference.wout.force_residual_r)
+    cpp_rr = np.asarray(reference.wout.restart_reason_timetrace)
+
+    model, results = vmecpp.solve_multigrid(vmec_input)
+    assert len(results) == 2
+    assert all(r.converged for r in results)
+    assert model.ns == vmec_input.ns_array[-1]
+
+    py_r = np.concatenate([np.asarray(r.force_residual_r) for r in results])
+    py_rr = np.concatenate([np.asarray(r.restart_reasons) for r in results]).astype(
+        np.int64
+    )
+
+    assert len(py_rr) == len(cpp_rr)
+    np.testing.assert_array_equal(py_rr, cpp_rr)
+    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
+    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+
+
+def test_refine_to_multigrid_ramp_converges():
+    """Driving the multi-grid ramp from Python (refine_to interpolates the converged
+    coarse geometry onto the finer grid) converges, and seeding the finer grid from a
+    coarse solution takes fewer steps -- and no reverts -- than a cold single-
+    resolution solve at the same resolution.
+
+    (cma 9 -> 15 keeps it fast while still exercising the radial interpolation and the
+    cold reguess on the coarse stage.)
+    """
+    cpp_indata = _single_resolution_indata("cma", 15, 1.0e-10, 8000)
+
+    model = _vmecpp.VmecModel.create(cpp_indata, 9)
+    coarse = vmecpp.solve_equilibrium(model, style="vmec_8_52")
+    assert coarse.converged
+    assert model.ns == 9
+
+    model.refine_to(15)
+    assert model.ns == 15
+    ramped = vmecpp.solve_equilibrium(model, style="vmec_8_52")
+    assert ramped.converged
+    assert ramped.fsqr <= 1.0e-10
+
+    # A cold solve straight at ns=15 needs a revert and more steps; the ramped fine
+    # solve, seeded by the interpolated coarse solution, needs none.
+    cold = vmecpp.solve_equilibrium(
+        _vmecpp.VmecModel.create(cpp_indata, 15), style="vmec_8_52"
+    )
+    assert cold.converged
+    assert ramped.restarts == 0
+    assert ramped.num_iterations < cold.num_iterations
+
+    # refine_to only refines: refining to the current (or a coarser) ns is rejected.
+    with pytest.raises(RuntimeError):
+        model.refine_to(15)

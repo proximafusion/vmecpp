@@ -54,8 +54,9 @@ misbehaves, the velocity `decomposed_v_` is zeroed and the state is rolled back 
 - `NO_RESTART` (good path): back up the current state into `physical_x_backup_`.
 
 Separately, **hot restart** seeds `run()` from a previously converged `HotRestartState`
-(`wout` + `indata`) via `FourierGeometry::InitFromState()`, used for parameter scans
-(single multigrid step only).
+(`wout` + `indata`) via `FourierGeometry::InitFromState()`, used for parameter scans.
+The first element of `ns_array` must match the last `ns` of the restart state; subsequent
+multigrid steps proceed normally via `InterpolateToNextMultigridStep()`.
 
 ## State variables (`Vmec`)
 

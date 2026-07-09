@@ -217,9 +217,29 @@ class VmecModel {
   // decision vector. This is the body of Vmec::UpdateForwardModel with
   // caller-supplied counters; for free-boundary runs the caller should react to
   // `need_restart` (a vacuum-activation restart).
-  void Evaluate(int iter1, int iter2) {
+  // When precondition is true (default) this runs the full forward model and
+  // leaves decomposed_f holding the preconditioned search direction, exactly as
+  // the native solver uses it. When false, the forward model returns at the
+  // INVARIANT_RESIDUALS checkpoint (vmec.cc line ~836), so decomposed_f holds
+  // the raw, unpreconditioned force: the gradient of VMEC's augmented
+  // Lagrangian with respect to the (decomposed) state, including the
+  // lambda-constraint components. That raw gradient is what gradient-based
+  // optimizers minimizing the MHD energy functional need; mhd_energy is already
+  // set earlier in update(), so it is valid at the checkpoint too.
+  void Evaluate(int iter1, int iter2, bool precondition = true) {
     bool need_restart = false;
     std::string error_message;
+    const vmecpp::VmecCheckpoint checkpoint =
+        precondition ? vmecpp::VmecCheckpoint::NONE
+                     : vmecpp::VmecCheckpoint::INVARIANT_RESIDUALS;
+    const int checkpoint_after = precondition ? INT_MAX : 0;
+    // Clear the restart reason before evaluating the forward model, exactly as
+    // Vmec::Evolve does at its start (vmec.cc): the forward model only *sets* a
+    // reason (BAD_JACOBIAN when the Jacobian flips, HUGE_INITIAL_FORCES at
+    // iter2 == 1), it never clears one, so without this reset a single bad
+    // iteration's reason would stick to every later evaluation and poison the
+    // caller's time-step / restart control.
+    vmec_->fc_.restart_reason = vmecpp::RestartReason::NO_RESTART;
     // Run inside a single-thread OpenMP parallel region so the omp single /
     // barrier directives inside IdealMhdModel::update have the team context
     // they get in Vmec::SolveEquilibrium. Orphaned directives (outside any
@@ -233,7 +253,7 @@ class VmecModel {
           *vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
           *vmec_->decomposed_f_[0], *vmec_->physical_f_[0], need_restart,
           last_preconditioner_update_, last_full_update_nestor_, vmec_->fc_,
-          iter1, iter2, vmecpp::VmecCheckpoint::NONE, INT_MAX,
+          iter1, iter2, checkpoint, checkpoint_after,
           /*verbose=*/false);
       if (!s.ok()) {
         error_message = std::string(s.status().message());
@@ -286,9 +306,70 @@ class VmecModel {
     vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(
         vmec_->fc_.nsval, vmecpp::Vmec::kSignOfJacobian);
     double delt0 = vmec_->indata_.delt;
+    // Vmec::run resets the accumulated constants before every
+    // InitializeRadial (the rmsPhiP -> lamscale accumulation in
+    // evalRadialProfiles is additive); without this reset a second
+    // InitializeRadial doubles rmsPhiP and rescales the entire lambda
+    // sector by sqrt(2).
+    vmec_->constants_.reset();
     vmec_->InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX,
                             vmec_->fc_.nsval, /*ns_old=*/0, delt0,
                             std::nullopt);
+    last_preconditioner_update_ = 0;
+    last_full_update_nestor_ = 0;
+  }
+
+  // Advance to the next (finer) multi-grid resolution, interpolating the
+  // currently-converged geometry onto the new ns grid as the initial guess.
+  //
+  // This is the per-multi-grid-step setup Vmec::run performs between inner
+  // solves (vmec.cc lines 680-681 then InitializeRadial with ns_old != 0):
+  // record the current ns as ns_old so InitializeRadial's `linterp` path runs
+  // the C++ radial interpolation (InterpolateToNextMultigridStep -- linear in
+  // s, odd-m extrapolated to the axis) on the converged decomposed_x_, and pick
+  // up the ftol/niter for the new resolution. The Python loop owns the
+  // multi-grid sequencing; call this between solve_equilibrium calls to drive
+  // the coarse->fine ramp from Python. `new_ns` must be finer than the current
+  // ns (multi-grid only refines).
+  void RefineTo(int new_ns) {
+    vmecpp::Vmec &v = *vmec_;
+    if (new_ns <= v.fc_.ns) {
+      throw std::runtime_error("VmecModel.refine_to: new_ns (" +
+                               std::to_string(new_ns) +
+                               ") must be finer than the current ns (" +
+                               std::to_string(v.fc_.ns) + ")");
+    }
+
+    // Mark the current (converged) resolution as the coarse grid to interpolate
+    // from -- this is what run() does at the bottom of each multi-grid step.
+    const int ns_old = v.fc_.ns;
+    v.fc_.ns_old = ns_old;
+    v.fc_.neqs_old = v.fc_.neqs;
+
+    // ftol/niter for the new resolution: the ns_array entry matching new_ns,
+    // else the last entry (mirrors Create()).
+    const Eigen::VectorXi &ns_array = v.indata_.ns_array;
+    int idx = static_cast<int>(ns_array.size()) - 1;
+    for (int i = 0; i < ns_array.size(); ++i) {
+      if (ns_array[i] == new_ns) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx >= 0 && idx < v.indata_.ftol_array.size()) {
+      v.fc_.ftolv = v.indata_.ftol_array[idx];
+    }
+    if (idx >= 0 && idx < v.indata_.niter_array.size()) {
+      v.fc_.niterv = v.indata_.niter_array[idx];
+    }
+    v.fc_.nsval = new_ns;
+
+    double delt0 = v.indata_.delt;
+    // Same per-multi-grid-step constants reset Vmec::run performs before
+    // InitializeRadial (rmsPhiP accumulates in evalRadialProfiles).
+    v.constants_.reset();
+    v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, new_ns, ns_old,
+                       delt0, std::nullopt);
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
   }
@@ -355,6 +436,17 @@ class VmecModel {
   std::vector<double> force_residual_lambda() const {
     return vmec_->fc_.force_residual_lambda;
   }
+  // Per-iteration restart-reason trace recorded alongside the residual traces
+  // (one entry per recorded force iteration); NO_RESTART=1, BAD_JACOBIAN=2,
+  // BAD_PROGRESS=3, HUGE_INITIAL_FORCES=4.
+  std::vector<int> restart_reasons() const {
+    std::vector<int> out;
+    out.reserve(vmec_->fc_.restart_reasons.size());
+    for (const auto &r : vmec_->fc_.restart_reasons) {
+      out.push_back(static_cast<int>(r));
+    }
+    return out;
+  }
 
   int ijacob() const { return vmec_->fc_.ijacob; }
   Eigen::VectorXd raxis_c() const { return vmec_->b_.raxis_c; }
@@ -396,22 +488,25 @@ PYBIND11_MODULE(_vmecpp, m) {
   // play well with OpenMP: only use it with max_thread=1 or OMP_NUM_THREADS=1!
   py::add_ostream_redirect(m, "ostream_redirect");
 
-  auto pyindata = py::class_<VmecINDATA>(m, "VmecINDATA")
-                      .def(py::init<>())
-                      .def("_set_mpol_ntor", &VmecINDATA::SetMpolNtor,
-                           py::arg("new_mpol"), py::arg("new_ntor"))
-                      .def("from_file", &VmecINDATA::FromFile)
-                      .def("from_json", &VmecINDATA::FromJson)
-                      .def("to_json", &VmecINDATA::ToJsonOrException)
-                      .def("copy", &VmecINDATA::Copy)
+  auto pyindata =
+      py::class_<VmecINDATA>(m, "VmecINDATA")
+          .def(py::init<>())
+          .def("_set_mpol_ntor", &VmecINDATA::SetMpolNtor, py::arg("new_mpol"),
+               py::arg("new_ntor"))
+          .def("from_file", &VmecINDATA::FromFile)
+          .def("from_json", &VmecINDATA::FromJson)
+          .def("to_json", &VmecINDATA::ToJsonOrException)
+          .def("copy", &VmecINDATA::Copy)
 
-                      // numerical resolution, symmetry assumption
-                      .def_readwrite("lasym", &VmecINDATA::lasym)
-                      .def_readwrite("nfp", &VmecINDATA::nfp)
-                      .def_readonly("mpol", &VmecINDATA::mpol)  // readonly!
-                      .def_readonly("ntor", &VmecINDATA::ntor)  // readonly!
-                      .def_readwrite("ntheta", &VmecINDATA::ntheta)
-                      .def_readwrite("nzeta", &VmecINDATA::nzeta);
+          // numerical resolution, symmetry assumption
+          .def_readwrite("lasym", &VmecINDATA::lasym)
+          .def_readwrite("nfp", &VmecINDATA::nfp)
+          .def_readonly("mpol", &VmecINDATA::mpol)  // readonly!
+          .def_readonly("ntor", &VmecINDATA::ntor)  // readonly!
+          .def_readwrite("ntheta", &VmecINDATA::ntheta)
+          .def_readwrite("nzeta", &VmecINDATA::nzeta)
+          .def_readwrite("mpol_geometry", &VmecINDATA::mpol_geometry)
+          .def_readwrite("ntor_geometry", &VmecINDATA::ntor_geometry);
 
   // multi-grid steps
   DefEigenProperty(pyindata, "ns_array", &VmecINDATA::ns_array);
@@ -1108,7 +1203,8 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
                   py::arg("ns"), py::arg("initial_state") = std::nullopt)
-      .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"))
+      .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
+           py::arg("precondition") = true)
       .def_property_readonly("need_restart", &VmecModel::need_restart)
       .def("perform_time_step", &VmecModel::PerformTimeStep,
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
@@ -1119,6 +1215,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("reset_to_initial_guess", &VmecModel::ResetToInitialGuess)
       .def("recompute_axis", &VmecModel::RecomputeAxis)
       .def("reinitialize", &VmecModel::Reinitialize)
+      .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"))
       .def("solve", &VmecModel::Solve)
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
@@ -1146,6 +1243,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("force_residual_z", &VmecModel::force_residual_z)
       .def_property_readonly("force_residual_lambda",
                              &VmecModel::force_residual_lambda)
+      .def_property_readonly("restart_reasons", &VmecModel::restart_reasons)
       .def_property_readonly("ijacob", &VmecModel::ijacob)
       .def_property_readonly("raxis_c", &VmecModel::raxis_c)
       .def_static("openmp_enabled", &VmecModel::openmp_enabled);
