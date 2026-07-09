@@ -7,6 +7,7 @@
 
 #include <Eigen/Dense>
 #include <climits>
+#include <cstdint>
 #include <span>
 
 #ifdef _OPENMP
@@ -34,7 +35,7 @@
 
 namespace vmecpp {
 
-enum class M1ConstraintMode { kLegacy, kEnforce };
+enum class M1ConstraintMode : std::uint8_t { kLegacy, kEnforce };
 
 // Implemented as a free function for easier testing and benchmarking.
 void deAliasConstraintForce(const RadialPartitioning& rp,
