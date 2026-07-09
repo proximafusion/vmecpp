@@ -209,6 +209,38 @@ class VmecInput(BaseModelWithNumpy):
     the full ntor. < 0 (default) means geometry uses ntor.
     """
 
+    extra_geometry_m: typing.Annotated[
+        jt.Int[np.ndarray, " num_extra_geometry"],
+        pydantic.BeforeValidator(lambda x: np.asarray(x).astype(np.int64)),
+    ] = pydantic.Field(default_factory=lambda: np.array([], dtype=np.int64))
+    """Poloidal mode numbers m of extra geometry (R, Z) modes kept free above the
+    mpol_geometry/ntor_geometry cap.
+
+    Parallel to extra_geometry_n.
+    """
+
+    extra_geometry_n: typing.Annotated[
+        jt.Int[np.ndarray, " num_extra_geometry"],
+        pydantic.BeforeValidator(lambda x: np.asarray(x).astype(np.int64)),
+    ] = pydantic.Field(default_factory=lambda: np.array([], dtype=np.int64))
+    """Toroidal storage indices n (i.e. toroidal mode n*nfp) of the extra geometry
+    modes; m in [0, mpol), n in [0, ntor].
+
+    Lets a reduced-resolution base equilibrium carry a few explicit high-frequency
+    modes. Empty (default) changes nothing.
+    """
+
+    sparse_lambda: bool = False
+    """Restrict lambda to the active geometry modes and skip the frozen modes.
+
+    When True, lambda is restricted to the same active modes as the geometry (the
+    mpol_geometry/ntor_geometry cap plus the extra modes) and the frozen modes are
+    skipped in the Fourier transforms, so a sparse mode set is computed cheaply.
+    Combined with nfp=1 this also lets global perturbations whose toroidal mode numbers
+    are not multiples of the field period be explored cheaply. Only meaningful with a
+    geometry cap and/or extra modes; default False reproduces the dense computation.
+    """
+
     ntheta: int = 0
     """Number of poloidal grid points (ntheta >= 0).
 

@@ -208,7 +208,9 @@ void FourierCoeffs::maskGeometryAbove(int mpolGeom, int ntorGeom) {
   for (int jF = nsMin_; jF < jMaxIncludingBoundary; ++jF) {
     for (int m = 0; m < s_.mpol; ++m) {
       for (int n = 0; n < s_.ntor + 1; ++n) {
-        if (m < mpolGeom && n <= ntorGeom) {
+        // Keep modes inside the geometry-resolution cap, plus any explicitly
+        // requested extra high-frequency modes.
+        if ((m < mpolGeom && n <= ntorGeom) || s_.isExtraGeometryMode(m, n)) {
           continue;
         }
 
@@ -228,7 +230,22 @@ void FourierCoeffs::maskGeometryAbove(int mpolGeom, int ntorGeom) {
             zss[idx_fc] = 0.0;
           }
         }
-        // lambda left untouched
+        // lambda is left untouched by default (so a geometry cap keeps the
+        // full lambda resolution); with sparse_lambda it is restricted to the
+        // same active modes, which lets the transforms and preconditioner skip
+        // the frozen modes entirely.
+        if (s_.sparseLambda) {
+          lsc[idx_fc] = 0.0;
+          if (s_.lthreed) {
+            lcs[idx_fc] = 0.0;
+          }
+          if (s_.lasym) {
+            lcc[idx_fc] = 0.0;
+            if (s_.lthreed) {
+              lss[idx_fc] = 0.0;
+            }
+          }
+        }
       }  // n
     }  // m
   }  // j

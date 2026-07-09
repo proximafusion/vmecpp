@@ -113,6 +113,7 @@ VmecINDATA::VmecINDATA() {
   ntor = 0;
   mpol_geometry = -1;
   ntor_geometry = -1;
+  sparse_lambda = false;
   ntheta = 0;
   nzeta = 0;
 
@@ -254,6 +255,13 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(ntor, "/indata/ntor", file);
   WriteH5Dataset(mpol_geometry, "/indata/mpol_geometry", file);
   WriteH5Dataset(ntor_geometry, "/indata/ntor_geometry", file);
+  if (extra_geometry_m.size() > 0) {
+    WriteH5Dataset(extra_geometry_m, "/indata/extra_geometry_m", file);
+  }
+  if (extra_geometry_n.size() > 0) {
+    WriteH5Dataset(extra_geometry_n, "/indata/extra_geometry_n", file);
+  }
+  WriteH5Dataset(sparse_lambda, "/indata/sparse_lambda", file);
   WriteH5Dataset(ntheta, "/indata/ntheta", file);
   WriteH5Dataset(nzeta, "/indata/nzeta", file);
   WriteH5Dataset(phiedge, "/indata/phiedge", file);
@@ -334,6 +342,17 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   }
   if (from_file.nameExists("/indata/ntor_geometry")) {
     ReadH5Dataset(m_indata.ntor_geometry, "/indata/ntor_geometry", from_file);
+  }
+  if (from_file.nameExists("/indata/extra_geometry_m")) {
+    ReadH5Dataset(m_indata.extra_geometry_m, "/indata/extra_geometry_m",
+                  from_file);
+  }
+  if (from_file.nameExists("/indata/extra_geometry_n")) {
+    ReadH5Dataset(m_indata.extra_geometry_n, "/indata/extra_geometry_n",
+                  from_file);
+  }
+  if (from_file.nameExists("/indata/sparse_lambda")) {
+    ReadH5Dataset(m_indata.sparse_lambda, "/indata/sparse_lambda", from_file);
   }
   ReadH5Dataset(m_indata.ntheta, "/indata/ntheta", from_file);
   ReadH5Dataset(m_indata.nzeta, "/indata/nzeta", from_file);
@@ -533,6 +552,30 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
   if (maybe_ntor_geometry->has_value()) {
     vmec_indata.ntor_geometry = maybe_ntor_geometry->value();
+  }
+
+  auto maybe_extra_geometry_m = JsonReadVectorInt(j, "extra_geometry_m");
+  if (!maybe_extra_geometry_m.ok()) {
+    return maybe_extra_geometry_m.status();
+  }
+  if (maybe_extra_geometry_m->has_value()) {
+    vmec_indata.extra_geometry_m = maybe_extra_geometry_m->value();
+  }
+
+  auto maybe_extra_geometry_n = JsonReadVectorInt(j, "extra_geometry_n");
+  if (!maybe_extra_geometry_n.ok()) {
+    return maybe_extra_geometry_n.status();
+  }
+  if (maybe_extra_geometry_n->has_value()) {
+    vmec_indata.extra_geometry_n = maybe_extra_geometry_n->value();
+  }
+
+  auto maybe_sparse_lambda = JsonReadBool(j, "sparse_lambda");
+  if (!maybe_sparse_lambda.ok()) {
+    return maybe_sparse_lambda.status();
+  }
+  if (maybe_sparse_lambda->has_value()) {
+    vmec_indata.sparse_lambda = maybe_sparse_lambda->value();
   }
 
   auto maybe_ntheta = JsonReadInt(j, "ntheta");
@@ -1113,6 +1156,9 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["ntor"] = ntor;
   output["mpol_geometry"] = mpol_geometry;
   output["ntor_geometry"] = ntor_geometry;
+  output["extra_geometry_m"] = extra_geometry_m;
+  output["extra_geometry_n"] = extra_geometry_n;
+  output["sparse_lambda"] = sparse_lambda;
   output["ntheta"] = ntheta;
   output["nzeta"] = nzeta;
 
@@ -1235,6 +1281,15 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     return absl::InvalidArgumentError(
         absl::StrFormat("input variable 'ntor' needs to be >= 0, but is %d\n",
                         vmec_indata.ntor));
+  }
+
+  if (vmec_indata.extra_geometry_m.size() !=
+      vmec_indata.extra_geometry_n.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variables 'extra_geometry_m' and 'extra_geometry_n' must have "
+        "the same length, but have %ld and %ld\n",
+        vmec_indata.extra_geometry_m.size(),
+        vmec_indata.extra_geometry_n.size()));
   }
 
   if (vmec_indata.ntheta < 0) {

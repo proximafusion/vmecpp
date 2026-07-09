@@ -563,12 +563,17 @@ PYBIND11_MODULE(_vmecpp, m) {
           .def_readwrite("ntheta", &VmecINDATA::ntheta)
           .def_readwrite("nzeta", &VmecINDATA::nzeta)
           .def_readwrite("mpol_geometry", &VmecINDATA::mpol_geometry)
-          .def_readwrite("ntor_geometry", &VmecINDATA::ntor_geometry);
+          .def_readwrite("ntor_geometry", &VmecINDATA::ntor_geometry)
+          .def_readwrite("sparse_lambda", &VmecINDATA::sparse_lambda);
 
   // multi-grid steps
   DefEigenProperty(pyindata, "ns_array", &VmecINDATA::ns_array);
   DefEigenProperty(pyindata, "ftol_array", &VmecINDATA::ftol_array);
   DefEigenProperty(pyindata, "niter_array", &VmecINDATA::niter_array);
+
+  // extra geometry modes kept free above the geometry-resolution cap
+  DefEigenProperty(pyindata, "extra_geometry_m", &VmecINDATA::extra_geometry_m);
+  DefEigenProperty(pyindata, "extra_geometry_n", &VmecINDATA::extra_geometry_n);
 
   // global physics parameters
   pyindata.def_readwrite("phiedge", &VmecINDATA::phiedge)
