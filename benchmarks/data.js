@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783599702897,
+  "lastUpdate": 1783599812729,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -23800,6 +23800,162 @@ window.BENCHMARK_DATA = {
             "value": 0.010622969040503869,
             "unit": "seconds",
             "extra": "iterations: 26\ncpu: 0.010622204038461541 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "686bd269a67c9e0ab0bf5e8b30c23ed97a38486d",
+          "message": "Honor iteration_style=parvmec in the native solver (#612)\n\n* Honor iteration_style=parvmec in the native solver\n\nThe PARVMEC time-step control (dual preconditioned/invariant residual minima,\na permissive 1e4 revert leash, gentle non-escalating revert) was only reachable\nthrough the Python iteration driver. Implement it natively in\nVmec::SolveEquilibriumLoop gated on indata.iteration_style, plumb iteration_style\nthrough the VmecInput model, and lift the run() guard, so vmecpp.run() honors the\ninput-file flag. The default vmec_8_52 path is unchanged.\n\n* Drop the obsolete iteration_style skip in test_vmec_input_validation\n\nVmecInput now carries iteration_style, so the field is present on both sides of\nthe INDATA/VmecInput serialization round-trip and no longer needs to be deleted\nbefore the comparison.\n\n* Restrict PARVMEC residual tracking to the PARVMEC branch\n\nCompute the invariant residual minimum res1 and its inputs only when the PARVMEC\ncontrol is active, so the default vmec_8_52 time-step control adds no work to its\npath and stays byte-for-byte unchanged, including under multithreading.\n\n* Inline the PARVMEC iteration-style check at its use sites\n\n* Strengthen the iteration-style physics check beyond volume\n\nCompare geometry (volume, aspect), beta, pressure energy, and magnetic energy\nbetween the vmec_8_52 and parvmec convergence controls, which all match to\nmachine precision; local profiles like iota are path-sensitive at finite ftol.\n\n* Tighten the native/Python PARVMEC trace tolerance from 1e-3 to 1e-8\n\nThe two loops make identical control decisions, so the force-residual traces\nagree to ~4e-9 (floating-point accumulation of the control arithmetic); the old\n1e-3 relative tolerance was loose enough to mask real divergence.\n\n* Add a PARVMEC-reference match test for the parvmec iteration style\n\nAssert vmecpp's parvmec style reproduces the committed reference wouts, which\nwere verified against fresh ORNL-Fusion/PARVMEC output (bulk quantities to ~1e-15,\ngeometry and iota to ~1e-7 for cth_like, machine precision for solovev).\n\n* Pin the parvmec iteration style to ORNL PARVMEC's force-residual trace\n\nAdds a per-iteration force-residual reference from ORNL-Fusion/PARVMEC for\ncth_like_fixed_bdy and a test that the native parvmec control reproduces it\nstep-for-step: machine precision for the first steps, a bounded ~1e-4 relative\ndrift over the full solve, and the same step count. A companion test asserts the\nvmec_8_52 and parvmec controls take measurably different paths on the\nrestart-triggering cma ns=72 case, which is chaotic and so cannot be matched to\nPARVMEC trace-for-trace.\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-07-09T12:15:48Z",
+          "tree_id": "cabfc258e275f96602f96983d37d7c8f9b16915d",
+          "url": "https://github.com/proximafusion/vmecpp/commit/686bd269a67c9e0ab0bf5e8b30c23ed97a38486d"
+        },
+        "date": 1783599812443,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00003302764369941494,
+            "unit": "seconds",
+            "extra": "iterations: 6934\ncpu: 3.302621459475051e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00004159886828500791,
+            "unit": "seconds",
+            "extra": "iterations: 6728\ncpu: 4.159660255648039e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0005822679443996485,
+            "unit": "seconds",
+            "extra": "iterations: 479\ncpu: 0.0005822673402922752 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014025843143463136,
+            "unit": "seconds",
+            "extra": "iterations: 200\ncpu: 0.0014025204449999995 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00035839905953050257,
+            "unit": "seconds",
+            "extra": "iterations: 601\ncpu: 0.00035800798169717145 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00028147145421681053,
+            "unit": "seconds",
+            "extra": "iterations: 1002\ncpu: 0.00028146325349301393 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00046835303306579594,
+            "unit": "seconds",
+            "extra": "iterations: 600\ncpu: 0.00046833836666666665 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0005397147653645991,
+            "unit": "seconds",
+            "extra": "iterations: 518\ncpu: 0.0005397137239382241 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005305154616061641,
+            "unit": "seconds",
+            "extra": "iterations: 538\ncpu: 0.000530498369888476 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0009411797427491054,
+            "unit": "seconds",
+            "extra": "iterations: 298\ncpu: 0.0009409113557046973 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017800979976412617,
+            "unit": "seconds",
+            "extra": "iterations: 158\ncpu: 0.0017800933607594943 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.002703907398077158,
+            "unit": "seconds",
+            "extra": "iterations: 104\ncpu: 0.0027039036538461557 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00006508711123449909,
+            "unit": "seconds",
+            "extra": "iterations: 4313\ncpu: 6.510100301414362e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0004988325493676323,
+            "unit": "seconds",
+            "extra": "iterations: 560\ncpu: 0.0004987975946428594 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.003017264027749339,
+            "unit": "seconds",
+            "extra": "iterations: 93\ncpu: 0.003017188376344085 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.0000606193925929286,
+            "unit": "seconds",
+            "extra": "iterations: 4626\ncpu: 6.063532684824886e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00048025106561595,
+            "unit": "seconds",
+            "extra": "iterations: 580\ncpu: 0.0004801276896551701 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.002955637480083265,
+            "unit": "seconds",
+            "extra": "iterations: 95\ncpu: 0.002955465989473702 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.0002895453761052244,
+            "unit": "seconds",
+            "extra": "iterations: 963\ncpu: 0.00028954468016614745 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.00117776173503459,
+            "unit": "seconds",
+            "extra": "iterations: 238\ncpu: 0.0011777252773109248 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.0053915794079120345,
+            "unit": "seconds",
+            "extra": "iterations: 52\ncpu: 0.0053915696923076874 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.010648305599506084,
+            "unit": "seconds",
+            "extra": "iterations: 26\ncpu: 0.010646264653846157 seconds\nthreads: 1"
           }
         ]
       }
