@@ -25,7 +25,9 @@ from external_optimizers import (  # type: ignore
     solve_newton_hvp,
     solve_newton_krylov,
     solve_newton_krylov_preconditioned,
+    solve_newton_ptc,
     solve_preconditioned_descent,
+    solve_vmecpp,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +95,22 @@ def test_hvp_newton_uses_fewer_outer_iterations_than_descent(solutions_3d):
     assert newton.outer_iters < descent.outer_iters
 
 
+def test_native_metrics_match_external_metric_definitions(reference_3d):
+    x_star, w_star = reference_3d
+    x, result = solve_vmecpp(CTH_LIKE, ns=11)
+
+    assert result.energy == w_star
+    np.testing.assert_array_equal(x, x_star)
+    assert result.residual_norm < 1e-8
+    assert result.force_evals == result.outer_iters + 1
+    assert result.outer_iters > 0
+
+
+def test_newton_krylov_reports_outer_iterations(solutions_2d):
+    result = solutions_2d[solve_newton_krylov.__name__][1]
+    assert result.outer_iters > 0
+
+
 def test_cma_cold_start_exercises_non_axisymmetric_paths():
     model = make_model(CMA, ns=25)
     x0 = np.asarray(model.get_state(), float)
@@ -105,3 +123,13 @@ def test_cma_cold_start_exercises_non_axisymmetric_paths():
     hv = np.asarray(model.hessian_vector_product(np.ascontiguousarray(v)), float)
     assert np.all(np.isfinite(hv))
     assert np.linalg.norm(hv) > 0.0
+
+
+def test_ptc_exact_hvp_converges_stiff_3d_case():
+    model = make_model(CMA, ns=25)
+    if not hasattr(model, "exact_hessian_vector_product"):
+        pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
+    _, w_star = reference_equilibrium(CMA, ns=25)
+    _, result = solve_newton_ptc(CMA, ns=25)
+    assert result.residual_norm < 1e-7
+    assert abs(result.energy - w_star) < 1e-6

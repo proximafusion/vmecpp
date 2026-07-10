@@ -24,6 +24,7 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_toroidal.h"
+#include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
 #ifdef VMECPP_USE_FFTX
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
 #endif
@@ -42,6 +43,8 @@ void deAliasConstraintForce(const RadialPartitioning& rp,
                             const Eigen::VectorXd& gConEff,
                             Eigen::VectorXd& m_gsc, Eigen::VectorXd& m_gcs,
                             Eigen::VectorXd& m_gCon);
+
+struct LocalForceComposition;
 
 class IdealMhdModel {
  public:
@@ -72,6 +75,9 @@ class IdealMhdModel {
       const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
       bool always_fix_m1_gauge = false);
+
+  std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
+  void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
@@ -155,6 +161,89 @@ class IdealMhdModel {
   // Coordinates the forward-DFT to transform the total force in realspace into
   // Fourier space.
   void forcesToFourier(FourierForces& m_physical_f);
+
+  // Exact Hessian-vector product of the local force chain. Given the packed
+  // real-space geometry primal geomP and a geometry tangent dgeom (each
+  // geom_stride doubles per block, see local_force_composition.h),
+  // differentiate the force density (MHD, hybrid lambda, and spectral-
+  // condensation constraint force) by one Enzyme forward pass, then apply the
+  // linear forward transform and preconditioner decomposition to obtain the
+  // decomposed force tangent in m_decomposed_hv. The constraint multiplier tcon
+  // is held frozen; freeze it in the raw force too
+  // (freeze_constraint_multiplier_) for an exactly consistent Jacobian. Used by
+  // the exact internal Newton-Krylov Hessian-vector product.
+  void applyExactForceJacobian(const double* geomP, const double* dgeom,
+                               int geom_stride, FourierForces& m_physical_f,
+                               FourierForces& m_decomposed_hv,
+                               bool fix_m1_gauge);
+
+  // Linear pre-chain decomposed -> real-space geometry (decomposeInto,
+  // m1Constraint, extrapolate, geometryFromFourier) packed into the 20-block
+  // layout of local_force_composition.h, with the computeBContra lambda
+  // normalization. Applied to a state (primal=true, adds phipF on lu_e) it
+  // gives the geometry; applied to a tangent (primal=false) it gives the exact
+  // geometry tangent, no finite difference. Uses m_physical_scratch as scratch.
+  void packGeometry(FourierGeometry& m_decomposed,
+                    FourierGeometry& m_physical_scratch, double* out, int gS,
+                    bool primal);
+
+  // Diagnostic: max |composed force density - production force density| at the
+  // current state, to isolate composition bugs from the transform/tangent path.
+  double composedForceResidual(const double* geomP, int geom_stride);
+
+  // Raw force-density tangent (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT)
+  // from one Enzyme forward pass, no transform. For isolating the JVP from the
+  // spectral-transform wrapping.
+  void exactForceDensityTangent(const double* geomP, const double* dgeom,
+                                int geom_stride, double* dforce_out);
+
+  // Tangent of the six half-grid fields SIMSOPT's QS residual consumes (gsqrt,
+  // total_pressure, bsupu, bsupv, bsubu, bsubv) from one Enzyme forward pass.
+  // These fields are intermediates of the force-density composition, so their
+  // tangent falls out of the same forward JVP that applyExactForceJacobian uses
+  // (read from the work-buffer shadow); no extra autodiff and no finite
+  // difference. dfields_out holds 6 blocks of (nsMaxH-nsMinH)*nZnT, in the
+  // order above. Composed with the analytic QS-harmonics adjoint and the linear
+  // geometry tangent T v, this gives an exact dQS/dx with no FD.
+  void exactQsFieldTangent(const double* geomP, const double* dgeom,
+                           int geom_stride, double* dfields_out);
+
+  // Freeze/unfreeze the constraint-force multiplier tcon (see the member).
+  void setFreezeConstraintMultiplier(bool freeze) {
+    freeze_constraint_multiplier_ = freeze;
+  }
+
+  // Reverse-mode force-density cotangent: J_g^T applied to the force-density
+  // cotangent force_bar (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT),
+  // accumulated into geom_bar_out (20 blocks of geom_stride, zeroed by caller),
+  // by one Enzyme reverse pass. The transpose of exactForceDensityTangent.
+  void exactForceDensityCotangent(const double* geomP, const double* force_bar,
+                                  int geom_stride, double* geom_bar_out);
+
+  // Transpose of applyExactForceJacobian: H^T w. Given a decomposed-force
+  // cotangent (the space applyExactForceJacobian writes), apply C^T (transpose
+  // of the output transform), the reverse-mode force-density kernel J_g^T, and
+  // B^T (transpose of packGeometry's pre-chain), yielding the state cotangent
+  // in m_decomposed_out. The two spectral transforms are reused as each other's
+  // adjoint with the poloidal integration weight; the rest of the linear chain
+  // (decomposeInto, m1Constraint, zeroZForceForM1, extrapolateTowardsAxis,
+  // ruFull/zuFull, lamscale) is transposed analytically.
+  void applyExactForceJacobianTranspose(const double* geomP, int geom_stride,
+                                        FourierForces& m_decomposed_in,
+                                        FourierForces& m_physical_f,
+                                        FourierGeometry& m_physical_scratch,
+                                        FourierGeometry& m_decomposed_out,
+                                        bool fix_m1_gauge);
+
+  // Transposes of the spectral transforms, for the transposed exact Hessian.
+  // dft_ForcesToFourierTranspose: (forcesToFourier)^T, decomposed-force coeff
+  // cotangent -> real-space force-density member cotangents (armn_e ..
+  // fzcon_o). dft_FourierToRealTranspose: (geometryFromFourier)^T, real-space
+  // geometry member cotangents (r1_e .. zCon) -> Fourier coeff cotangent.
+  void dft_ForcesToFourierTranspose_2d_symm(const FourierForces& m_coeff_bar);
+  void dft_FourierToRealTranspose_2d_symm(FourierGeometry& m_coeff_bar_out);
+  void dft_ForcesToFourierTranspose_3d_symm(const FourierForces& m_coeff_bar);
+  void dft_FourierToRealTranspose_3d_symm(FourierGeometry& m_coeff_bar_out);
 
   // Computes the forward-DFT of forces for the 3D (Stellarator) case.
   // Dispatching dft_ForcesToFourier_3d_symm
@@ -399,6 +488,11 @@ class IdealMhdModel {
   Eigen::VectorXd fzcon_o;
 
  private:
+  // Shared setup for the Enzyme force-density composition (geom -> force), used
+  // by applyExactForceJacobian, exactForceDensityTangent, exactQsFieldTangent
+  // and composedForceResidual so the context is built in exactly one place.
+  LocalForceComposition makeLocalForceComposition(int geom_stride) const;
+
   FlowControl& m_fc_;
   const Sizes& s_;
   const FourierBasisFastPoloidal& t_;
@@ -409,6 +503,7 @@ class IdealMhdModel {
   const RadialPartitioning& r_;
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
+  std::int64_t force_evaluation_count_ = 0;
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
@@ -436,6 +531,14 @@ class IdealMhdModel {
   // 0 -- no spectral condensation constraint force
   // 1 (default) -- full spectral condensation constraint force
   double tcon0;
+
+  // When true, constraintForceMultiplier reuses the existing tcon instead of
+  // recomputing it from the geometry. The exact Hessian-vector product freezes
+  // tcon (it depends on the preconditioner diagonal, not just the geometry), so
+  // freezing it in the raw force too keeps the force and its exact HVP a
+  // consistent function of the state -- the residual a Newton solver drives and
+  // the Jacobian it linearizes with then match.
+  bool freeze_constraint_multiplier_ = false;
 
   // [mnsize] minimum flux surface index for which to apply radial
   // preconditioner for R and Z

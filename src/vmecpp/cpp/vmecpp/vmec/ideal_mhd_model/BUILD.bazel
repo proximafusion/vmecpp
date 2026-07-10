@@ -82,7 +82,7 @@ cc_test(
 cc_library(
     name = "ideal_mhd_model",
     srcs = ["ideal_mhd_model.cc"],
-# The shared force-chain kernels and the autodiff composition/JVP header are
+    # The shared force-chain kernels and the autodiff composition/JVP header are
     # header-only and included by ideal_mhd_model.cc; declare whatever exists on
     # this branch so the bazel sandbox can see them. The Enzyme JVP entry point
     # (exact_force_jvp.cc) is built only by the CMake VMECPP_ENABLE_ENZYME path,
@@ -91,6 +91,7 @@ cc_library(
         "*_kernel.h",
         "local_force_composition.h",
         "exact_force_jvp.h",
+        "exact_force_vjp.h",
     ]),
     visibility = ["//visibility:public"],
     deps = [
@@ -113,6 +114,33 @@ cc_library(
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/log:log",
         "@abseil-cpp//absl/status",
+    ],
+)
+
+cc_test(
+    name = "qs_harmonics_vjp_test",
+    srcs = ["qs_harmonics_vjp_test.cc"],
+    deps = [
+        ":ideal_mhd_model",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "qs_harmonics_kernel_test",
+    srcs = ["qs_harmonics_kernel_test.cc"],
+    data = ["//vmecpp/test_data:solovev"],
+    deps = [
+        ":ideal_mhd_model",
+        "//util/file_io:file_io",
+        "//vmecpp/common/fourier_basis_fast_poloidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/output_quantities:output_quantities",
+        "//vmecpp/vmec/vmec:vmec",
+        "@abseil-cpp//absl/status:statusor",
+        "@eigen",
+        "@googletest//:gtest_main",
     ],
 )
 
