@@ -129,9 +129,9 @@ class AxisCurrent:
         flat = np.ascontiguousarray(X).reshape(-1, 3)
         out = np.empty_like(flat)
         for i in range(0, len(flat), 2048):
-            d = flat[i:i + 2048, None, :] - self.mid[None]
+            d = flat[i : i + 2048, None, :] - self.mid[None]
             inv = 1.0 / np.linalg.norm(d, axis=-1) ** 3
-            out[i:i + 2048] = self.pref * np.sum(
+            out[i : i + 2048] = self.pref * np.sum(
                 np.cross(self.seg[None], d) * inv[..., None], axis=1
             )
         return out.reshape(*shape, 3)
