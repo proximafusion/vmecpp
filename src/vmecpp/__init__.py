@@ -20,6 +20,7 @@ import numpy as np
 import pydantic
 
 from vmecpp import _util
+from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
 from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
     MakegridParameters,
@@ -76,6 +77,32 @@ SerializeIntAsFloat: typing.TypeAlias = typing.Annotated[
     pydantic.BeforeValidator(lambda x: np.array(x).astype(np.int64)),
 ]
 
+
+def _coerce_mpol_ntor(value: typing.Any) -> int | np.ndarray:
+    """Normalizes an ``mpol``/``ntor`` field value.
+
+    A length-1 sequence is equivalent to a scalar and is collapsed to one; anything
+    longer is kept as an int array representing a per-``ns_array``-step Fourier
+    resolution continuation schedule.
+    """
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    array = np.atleast_1d(np.asarray(value, dtype=np.int64))
+    return int(array[0]) if array.size == 1 else array
+
+
+MpolNtorField: typing.TypeAlias = typing.Annotated[
+    int | jt.Int[np.ndarray, "num_fourier_steps"],
+    pydantic.BeforeValidator(_coerce_mpol_ntor),
+]
+
+
+def _final_resolution(value: int | np.ndarray) -> int:
+    """The target Fourier resolution: itself if scalar, else the schedule's last
+    (finest) entry."""
+    return value if isinstance(value, int) else int(value[-1])
+
+
 AuxFType = typing.Annotated[
     _ArrayType,
     pydantic.BeforeValidator(lambda x: _util.right_pad(x, ndfmax, 0.0)),
@@ -112,6 +139,16 @@ class FreeBoundaryMethod(str, enum.Enum):
     """Boundary Integral Equation Solver for Toroidal systems."""
 
 
+class IterationStyle(str, enum.Enum):
+    """Time-step / restart control scheme for the equilibrium iteration."""
+
+    VMEC_8_52 = "vmec_8_52"
+    """The Fortran VMEC 8.52 control (the default)."""
+
+    PARVMEC = "parvmec"
+    """The PARVMEC / VMEC2000 9.0 control."""
+
+
 class OutputMode(enum.Enum):
     """Controls the output format of iteration logging.."""
 
@@ -135,6 +172,15 @@ def _validate_free_boundary_method(
     if isinstance(value, _vmecpp.FreeBoundaryMethod):
         return FreeBoundaryMethod(value.name.lower())  # pyright: ignore[reportAttributeAccessIssue]
     return FreeBoundaryMethod(str(value))
+
+
+def _validate_iteration_style(
+    value: _vmecpp.IterationStyle | str | IterationStyle,
+) -> IterationStyle:
+    """Convert various representations to IterationStyle."""
+    if isinstance(value, _vmecpp.IterationStyle):
+        return IterationStyle(value.name.lower())  # pyright: ignore[reportAttributeAccessIssue]
+    return IterationStyle(str(value))
 
 
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
@@ -168,12 +214,23 @@ class VmecInput(BaseModelWithNumpy):
     nfp: int = 1
     """Number of toroidal field periods (=1 for Tokamak)"""
 
-    mpol: int = 6
-    """Number of poloidal Fourier harmonics; m = 0, 1, ..., (mpol-1)"""
+    mpol: MpolNtorField = 6
+    """Number of poloidal Fourier harmonics; m = 0, 1, ..., (mpol-1).
 
-    ntor: int = 0
+    May also be a sequence of ints, with one entry per ``ns_array`` step (a scalar
+    broadcasts to every step), to request continuation in Fourier resolution:
+    ``vmecpp.run()`` then solves each step in turn, hot-restarting from the
+    previous step's solution interpolated to the new resolution (see
+    :func:`interpolate_solution`). The boundary coefficients (``rbc``, ``zbs``, ...)
+    are always defined at the final (largest-index) entry's resolution.
+    """
+
+    ntor: MpolNtorField = 0
     """Number of toroidal Fourier harmonics; n = -ntor, -ntor+1, ..., -1, 0, 1, ...,
-    ntor-1, ntor."""
+    ntor-1, ntor.
+
+    May be a sequence of ints, analogous to :attr:`mpol`; see its docstring.
+    """
 
     mpol_geometry: int = -1
     """Optional reduced poloidal resolution for the geometry (R, Z).
@@ -346,6 +403,14 @@ class VmecInput(BaseModelWithNumpy):
     ] = FreeBoundaryMethod.NESTOR
     """Method for handling free-boundary conditions."""
 
+    iteration_style: typing.Annotated[
+        IterationStyle,
+        pydantic.BeforeValidator(_validate_iteration_style),
+        pydantic.Field(),
+    ] = IterationStyle.VMEC_8_52
+    """Time-step / restart control scheme for the equilibrium iteration (``"vmec_8_52"``
+    or ``"parvmec"``)."""
+
     nstep: int = 10
     """Printout interval at which convergence progress is logged."""
 
@@ -437,7 +502,9 @@ class VmecInput(BaseModelWithNumpy):
         if self.lasym:
             mpol_two_ntor_plus_one_fields.extend(["rbs", "zbc"])
 
-        expected_shape = (self.mpol, 2 * self.ntor + 1)
+        mpol_final = _final_resolution(self.mpol)
+        ntor_final = _final_resolution(self.ntor)
+        expected_shape = (mpol_final, 2 * ntor_final + 1)
         for field in mpol_two_ntor_plus_one_fields:
             current_value = getattr(self, field)
 
@@ -452,8 +519,8 @@ class VmecInput(BaseModelWithNumpy):
                     field,
                     VmecInput.resize_2d_coeff(
                         current_value,
-                        mpol_new=self.mpol,
-                        ntor_new=self.ntor,
+                        mpol_new=mpol_final,
+                        ntor_new=ntor_final,
                     ),
                 )
         return self
@@ -590,7 +657,10 @@ class VmecInput(BaseModelWithNumpy):
         }
 
         for attr in VmecInput.model_fields:
-            if attr in readonly_attrs or attr == "free_boundary_method":
+            if attr in readonly_attrs or attr in (
+                "free_boundary_method",
+                "iteration_style",
+            ):
                 continue  # these must be set separately
             setattr(cpp_indata, attr, getattr(self, attr))
 
@@ -598,9 +668,14 @@ class VmecInput(BaseModelWithNumpy):
         cpp_indata.free_boundary_method = getattr(
             _vmecpp.FreeBoundaryMethod, self.free_boundary_method.upper()
         )
+        cpp_indata.iteration_style = getattr(
+            _vmecpp.IterationStyle, self.iteration_style.upper()
+        )
 
         # this also resizes the readonly_attrs
-        cpp_indata._set_mpol_ntor(self.mpol, self.ntor)
+        cpp_indata._set_mpol_ntor(
+            _final_resolution(self.mpol), _final_resolution(self.ntor)
+        )
         for attr in readonly_attrs - {"mpol", "ntor"}:
             # now we can set the elements of the readonly_attrs
             value = getattr(self, attr)
@@ -2200,6 +2275,14 @@ def run(
         restart_from: if present, VMEC++ is initialized using the converged equilibrium from the
             provided VmecOutput. This can dramatically decrease the number of iterations to
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
+            If `input.mpol`/`input.ntor` is a sequence (see below), this is used to hot-restart
+            only the first continuation step; later steps always hot-restart from the previous one.
+
+    If `input.mpol` and/or `input.ntor` is a sequence rather than a plain int, `run` performs
+    continuation in Fourier resolution: each entry pairs with the corresponding `input.ns_array`
+    entry (a scalar mpol/ntor broadcasts to every step), and each step is solved in turn,
+    hot-restarting from the previous step's solution interpolated to the new resolution (see
+    `interpolate_solution`).
 
     Example:
         >>> import vmecpp
@@ -2210,6 +2293,16 @@ def run(
         0.2033313711
     """
     input = VmecInput.model_validate(input)
+
+    if not isinstance(input.mpol, int) or not isinstance(input.ntor, int):
+        return _run_fourier_continuation(
+            input,
+            magnetic_field,
+            max_threads=max_threads,
+            verbose=verbose,
+            restart_from=restart_from,
+        )
+
     cpp_indata = input._to_cpp_vmecindata()
 
     if restart_from is None:
@@ -2456,6 +2549,7 @@ populate_raw_profile = set_profile
 # items in the generated documentation.
 __all__ = [  # noqa: RUF022
     "run",
+    "interpolate_solution",
     "VmecInput",
     "VmecOutput",
     "VmecWOut",
@@ -2465,6 +2559,7 @@ __all__ = [  # noqa: RUF022
     "MakegridParameters",
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
+    "IterationStyle",
     "set_profile",
     "iterate",
     "solve_equilibrium",

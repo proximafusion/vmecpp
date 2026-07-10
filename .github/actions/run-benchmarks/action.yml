@@ -1,11 +1,12 @@
 name: Run VMEC++ benchmarks
 description: >
-  Install VMEC++ and run the pytest benchmark suite in a fixed environment,
-  then store or compare the results. This is the single source of truth for the
-  benchmark environment so the pull-request and main/docs runs cannot drift
-  apart; the only intended difference between callers is whether results are
-  written back to the benchmark-runs branch (auto-push) and whether a regression
-  is commented on the PR (comment-on-alert).
+  Install VMEC++ and run the benchmark suites in a fixed environment, then store
+  or compare the results. Two suites run here: the Python pytest end-to-end
+  benchmarks and the C++ Google Benchmark function-level microbenchmarks. This is
+  the single source of truth for the benchmark environment so the pull-request
+  and main/docs runs cannot drift apart; the only intended difference between
+  callers is whether results are written back to the benchmark-runs branch
+  (auto-push) and whether a regression is commented on the PR (comment-on-alert).
 
 inputs:
   auto-push:
@@ -32,19 +33,35 @@ runs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev
 
+    - name: Mount bazel cache
+      uses: actions/cache@v4
+      with:
+        path: "~/.cache/bazel"
+        key: bazel-bench
+
     - name: Install vmecpp with benchmark dependencies
       shell: bash
       run: |
         pip install uv
         uv pip install --system -v .[benchmark]
 
-    - name: Run benchmarks
+    # --- Python end-to-end benchmarks (pytest-benchmark) ---
+
+    - name: Run Python benchmarks
       shell: bash
       run: |
         export OMP_WAIT_POLICY=passive
         pytest benchmarks/test_benchmarks.py --benchmark-json=benchmark_results.json
 
-    - name: Store / compare benchmark result
+    # github-action-benchmark's "pytest" tool always plots pytest-benchmark's
+    # `ops` field as iter/sec, but the C++ suite emits seconds.
+    # We convert both to the same format, so plotting is the same.
+    - name: Convert Python benchmark result to seconds
+      shell: bash
+      run: |
+        python3 benchmarks/to_seconds_json.py pytest benchmark_results.json benchmark_results_seconds.json
+
+    - name: Store / compare Python benchmark result
       # Skip the result upload/compare for fork PRs: their GITHUB_TOKEN is
       # read-only, so comment-on-alert/auto-push hit 'Resource not accessible
       # by integration'. The benchmarks still run above; only the write-back is
@@ -52,10 +69,118 @@ runs:
       if: ${{ inputs.auto-push == 'true' || github.event.pull_request.head.repo.full_name == github.repository }}
       uses: benchmark-action/github-action-benchmark@v1.21.0
       with:
-        tool: "pytest"
-        output-file-path: benchmark_results.json
+        tool: "customSmallerIsBetter"
+        output-file-path: benchmark_results_seconds.json
         gh-pages-branch: benchmark-runs
         benchmark-data-dir-path: benchmarks
+        alert-threshold: "150%"
+        fail-on-alert: false
+        auto-push: ${{ inputs.auto-push }}
+        comment-on-alert: ${{ inputs.comment-on-alert }}
+        github-token: ${{ inputs.github-token }}
+
+    # --- C++ function-level microbenchmarks (Google Benchmark) ---
+    #
+    # Builds the four benchmark cc_binary targets, runs each with
+    # --benchmark_format=json, and merges their output into a single
+    # cpp_benchmark_results.json (schema: {"context": ..., "benchmarks": [...]})
+    # for the conversion step below. Entries with "error_occurred" (e.g. an
+    # FFT-path benchmark skipped because no FFTX codelet exists for that
+    # resolution) are dropped: they carry no valid timing to track.
+
+    - name: Run C++ microbenchmarks
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        TARGETS=(
+          "//vmecpp/vmec/ideal_mhd_model:fft_toroidal_bench"
+          "//vmecpp/vmec/ideal_mhd_model:dealias_constraint_force_bench"
+          "//vmecpp/free_boundary/laplace_solver:laplace_solver_bench"
+          "//vmecpp/vmec/output_quantities:output_quantities_bench"
+        )
+
+        OUT_FILE="${GITHUB_WORKSPACE}/cpp_benchmark_results.json"
+        TMP_DIR="$(mktemp -d)"
+        trap 'rm -rf "${TMP_DIR}"' EXIT
+
+        cd src/vmecpp/cpp
+
+        # --config=perf: optimized build with frame pointers and symbols
+        # retained, matching the existing .bazelrc convention for
+        # performance work.
+        bazel build --config=perf -- "${TARGETS[@]}"
+
+        # Run each target. `bazel run` so runfiles (e.g. test_data for the
+        # output-quantities benchmark) are available in the working
+        # directory. --benchmark_min_time keeps CI runtime bounded while
+        # still averaging enough iterations for a stable measurement.
+        for target in "${TARGETS[@]}"; do
+          name="${target##*:}"
+          bazel run --config=perf -- "${target}" \
+            --benchmark_min_time=0.2s \
+            --benchmark_format=json \
+            --benchmark_out="${TMP_DIR}/${name}.json"
+        done
+
+        python3 - "${TMP_DIR}" "${OUT_FILE}" <<'PY'
+        import glob
+        import json
+        import os
+        import sys
+
+        tmp_dir, out_file = sys.argv[1], sys.argv[2]
+        merged = {"context": None, "benchmarks": []}
+        skipped = 0
+        for path in sorted(glob.glob(os.path.join(tmp_dir, "*.json"))):
+            with open(path) as f:
+                data = json.load(f)
+            if merged["context"] is None:
+                merged["context"] = data.get("context")
+            for bench in data.get("benchmarks", []):
+                if bench.get("error_occurred"):
+                    skipped += 1
+                    continue
+                merged["benchmarks"].append(bench)
+
+        with open(out_file, "w") as f:
+            json.dump(merged, f, indent=2)
+
+        print(f"Merged {len(merged['benchmarks'])} benchmark entries "
+              f"({skipped} skipped/errored).")
+        PY
+
+    # github-action-benchmark's "pytest" tool always plots pytest-benchmark's
+    # `ops` field as iter/sec, but the C++ suite emits seconds.
+    # We convert both to the same format, so plotting is the same.
+    - name: Convert C++ benchmark result to seconds
+      shell: bash
+      run: |
+        python3 benchmarks/to_seconds_json.py googlecpp cpp_benchmark_results.json cpp_benchmark_results_seconds.json
+
+    - name: Store / compare C++ benchmark result
+      # Same fork-PR skip rationale as the Python store step above.
+      #
+      # Runs sequentially after the Python store step (composite-action steps
+      # are serial), so the two auto-push writes to benchmark-runs never race.
+      # A distinct suite name keeps the C++ results under their own key in
+      # data.js (window.BENCHMARK_DATA.entries) so they never overwrite the
+      # Python "Benchmark" suite, even though both share benchmark-data-dir-path.
+      #
+      # skip-fetch-gh-pages: the Python store step above already fetched the
+      # benchmark-runs branch into a local ref and (in compare mode) advanced
+      # it, so a second `git fetch benchmark-runs:benchmark-runs` here is
+      # rejected as non-fast-forward. Reuse the already-fetched local ref
+      # instead of re-fetching.
+      if: ${{ inputs.auto-push == 'true' || github.event.pull_request.head.repo.full_name == github.repository }}
+      uses: benchmark-action/github-action-benchmark@v1.21.0
+      with:
+        name: "C++ Microbenchmarks"
+        tool: "customSmallerIsBetter"
+        output-file-path: cpp_benchmark_results_seconds.json
+        gh-pages-branch: benchmark-runs
+        benchmark-data-dir-path: benchmarks
+        skip-fetch-gh-pages: true
         alert-threshold: "150%"
         fail-on-alert: false
         auto-push: ${{ inputs.auto-push }}
