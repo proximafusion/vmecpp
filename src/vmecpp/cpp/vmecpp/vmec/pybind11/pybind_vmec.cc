@@ -231,6 +231,7 @@ class VmecModel {
   // F(x) does not depend on the previously evaluated state.
   void Evaluate(int iter1, int iter2, bool precondition = true,
                 bool always_fix_m1_gauge = true) {
+    ++force_eval_count_;
     bool need_restart = false;
     std::string error_message;
     const vmecpp::VmecCheckpoint checkpoint =
