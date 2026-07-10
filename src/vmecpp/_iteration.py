@@ -259,7 +259,7 @@ def solve_equilibrium(
             iter2 = force_iteration - bad_resets
 
             # Evolve: forward model, then convergence / damping / time step.
-            model.evaluate(iter1, iter2, precondition=True, legacy_m1_constraint=True)
+            model.evaluate(iter1, iter2, precondition=True, always_fix_m1_gauge=False)
             fsqr, fsqz, fsql = model.fsqr, model.fsqz, model.fsql
             rr = model.restart_reason
             finite = math.isfinite(fsqr) and math.isfinite(fsqz) and math.isfinite(fsql)
