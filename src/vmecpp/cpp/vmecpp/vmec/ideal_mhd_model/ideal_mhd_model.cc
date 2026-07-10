@@ -2343,12 +2343,16 @@ void IdealMhdModel::computeAegisVacuumPressure() {
     const double cph = sg.cos_phi[k];
     const double sph = sg.sin_phi[k];
     pos[kl] = Eigen::Vector3d(sg.rcosuv[kl], sg.rsinuv[kl], sg.z1b[kl]);
-    // outward normal (N^R, N^phi, N^Z) * signOfJacobian -> Cartesian
+    // SurfaceGeometry's (snr, snv, snz) already carries signOfJacobian = -1,
+    // which makes it the INWARD normal (e_theta x e_zeta). The virtual casing
+    // needs the OUTWARD normal (it drives K = n x B, sigma = n.B, and the QBX
+    // expansion side), so negate it; the magnitude, used for the area element,
+    // is unchanged.
     const Eigen::Vector3d normal_cart(sg.snr[kl] * cph - sg.snv[kl] * sph,
                                       sg.snr[kl] * sph + sg.snv[kl] * cph,
                                       sg.snz[kl]);
     const double normal_mag = normal_cart.norm();
-    nrm[kl] = normal_cart / normal_mag;
+    nrm[kl] = -normal_cart / normal_mag;
     area[kl] = normal_mag * s_.wInt[l] * (2.0 * M_PI / s_.nZeta);
     mean_area += area[kl];
     // coil + axis-current field, cylindrical -> Cartesian
@@ -2400,10 +2404,24 @@ void IdealMhdModel::computeAegisVacuumPressure() {
   // cth_like this agrees with NESTOR to under 4% per point in the live
   // iteration, confirming the geometry, coil field, interior-field
   // extrapolation, and field-period replication.
+  double diag_l1_num = 0.0;
+  double diag_l1_den = 0.0;
+  double diag_max = 0.0;
   for (int kl = 0; kl < nznt; ++kl) {
+    const double nestor = m_h_.vacuum_magnetic_pressure[kl];
     const Eigen::Vector3d b_ext =
         vc.OnSurface(pos[kl], nrm[kl], h) + b_coil[kl];
-    m_h_.vacuum_magnetic_pressure[kl] = 0.5 * b_ext.squaredNorm();
+    const double aegis = 0.5 * b_ext.squaredNorm();
+    m_h_.vacuum_magnetic_pressure[kl] = aegis;
+    diag_l1_num += std::abs(aegis - nestor);
+    diag_l1_den += std::abs(nestor);
+    diag_max = std::max(diag_max,
+                        std::abs(aegis - nestor) / (std::abs(nestor) + 1e-30));
+  }
+  if (std::getenv("VMECPP_AEGIS_DIAG") != nullptr) {
+    std::fprintf(stderr,
+                 "[AEGIS] vacuum |B|^2/2 vs NESTOR: L1 rel=%.4f  max rel=%.4f\n",
+                 diag_l1_num / (diag_l1_den + 1e-30), diag_max);
   }
 }
 
