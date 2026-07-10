@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783700082717,
+  "lastUpdate": 1783701325994,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -9269,6 +9269,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 9.13845003233329,
             "range": "stddev: 0.017298843501487363",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "ishita03012005@gmail.com",
+            "name": "Ishita Tyagi",
+            "username": "ishita-0301"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c78d89349cb3e38200c6b27b0d1feec1e34dfbe8",
+          "message": "docs: fix 'As a Python package' example to reference `vmec_output` (#631)\n\ndocs: fix README 'As a Python package' example to reference vmec_output\n\nThe prose after the snippet referred to an `output` object, but the\nsnippet defines the run result as `vmec_output`. Following the prose\nverbatim (`output.threed1_volumetrics`) raises a NameError. Rename the\nreference to match the variable defined in the same snippet.\n\nFixes #630",
+          "timestamp": "2026-07-10T18:29:34+02:00",
+          "tree_id": "2c8cdadb74c509d5c8dc4206296e43e1dbd064f0",
+          "url": "https://github.com/proximafusion/vmecpp/commit/c78d89349cb3e38200c6b27b0d1feec1e34dfbe8"
+        },
+        "date": 1783701323736,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.38548467919999896,
+            "range": "stddev: 0.004793865102368667",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3889894816000151,
+            "range": "stddev: 0.009219581119372607",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.3275141859999926,
+            "range": "stddev: 0.03862801609502994",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2599567833333367,
+            "range": "stddev: 0.009542488298849624",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.032411725000012,
+            "range": "stddev: 0.0054432823347227086",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.0532187620000286,
+            "range": "stddev: 0.026555372578498174",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.568676976000043,
+            "range": "stddev: 0.08853601894743775",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
