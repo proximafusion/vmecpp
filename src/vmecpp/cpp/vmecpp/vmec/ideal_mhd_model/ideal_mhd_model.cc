@@ -2420,14 +2420,20 @@ void IdealMhdModel::computeAegisVacuumPressure() {
       axisym ? std::sqrt(mean_area / (static_cast<double>(nznt) * n_rep))
              : std::sqrt(mean_area / nznt);
   // Per-point exterior vacuum pressure |B_ext|^2 / 2, overwriting NESTOR's. The
-  // VMECPP_AEGIS_DIAG env var reports the per-point agreement with NESTOR.
+  // on-surface field uses singularity subtraction by default (lower bias than
+  // QBX extrapolation, and cheaper); VMECPP_AEGIS_QBX selects the QBX evaluator
+  // instead. VMECPP_AEGIS_DIAG reports the per-point agreement with NESTOR.
+  static const bool kUseQbx = std::getenv("VMECPP_AEGIS_QBX") != nullptr;
   double diag_l1_num = 0.0;
   double diag_l1_den = 0.0;
   double diag_max = 0.0;
   for (int kl = 0; kl < nznt; ++kl) {
     const double nestor = m_h_.vacuum_magnetic_pressure[kl];
     const Eigen::Vector3d b_ext =
-        vc.OnSurface(pos[kl], nrm[kl], h) + b_coil[kl];
+        (kUseQbx
+             ? vc.OnSurface(pos[kl], nrm[kl], h)
+             : vc.OnSurfaceSingSub(pos[kl], nrm[kl], current[kl], sigma[kl])) +
+        b_coil[kl];
     const double aegis = 0.5 * b_ext.squaredNorm();
     m_h_.vacuum_magnetic_pressure[kl] = aegis;
     diag_l1_num += std::abs(aegis - nestor);
@@ -2531,13 +2537,12 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // produces, so the coupled edge modes are weakly restored and the
     // equilibrium creeps (force residual plateaus, delbsq degrades) instead of
     // reaching ftol at high mpol. The damping arrests that drift, so it defaults
-    // on when AEGIS is active: A=20 for a non-axisymmetric plasma, where pure
-    // AEGIS then converges at all mpol and its converged delbsq falls below
-    // NESTOR's at high resolution (mpol >= 9), the margin growing as NESTOR's
-    // Fourier-truncated vacuum field degrades. The axisymmetric (ntor=0) coupling
-    // drifts harder and defaults to A=100; it converges and reproduces the
-    // Shafranov shift, but NESTOR's near-exact axisymmetric solve keeps a lower
-    // delbsq there (the residual is a QBX on-surface bias, not resolution).
+    // on when AEGIS is active: A=20 for a non-axisymmetric plasma, where AEGIS
+    // converges at all mpol and its converged delbsq falls below NESTOR's at
+    // every resolution, the margin growing as NESTOR's Fourier-truncated vacuum
+    // field degrades. The axisymmetric (ntor=0) coupling drifts harder and
+    // defaults to A=100; it converges and reproduces the Shafranov shift, but
+    // NESTOR's near-exact axisymmetric solve keeps a lower delbsq there.
     // VMECPP_EDGE_A overrides. For NESTOR (default) it stays off (A=0,
     // byte-identical to the flat pedestal): NESTOR's tight-tolerance limit is the
     // coupled operator's near-null continuum (issue #628), which a mode-diagonal

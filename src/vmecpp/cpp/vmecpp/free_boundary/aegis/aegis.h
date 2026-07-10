@@ -53,6 +53,15 @@ class VirtualCasing {
                             const Eigen::Vector3d& outward_normal,
                             double expansion_scale) const;
 
+  // Exterior on-surface limit at r0 via singularity subtraction: the
+  // principal-value Biot-Savart sum (self-point excluded) plus the analytic
+  // exterior jump J/2 = (sigma0 * n + k0 x n) / 2, where k0 = K(r0),
+  // sigma0 = sigma(r0). No off-surface extrapolation, so no QBX bias.
+  Eigen::Vector3d OnSurfaceSingSub(const Eigen::Vector3d& r0,
+                                   const Eigen::Vector3d& outward_normal,
+                                   const Eigen::Vector3d& k0,
+                                   double sigma0) const;
+
   int num_points() const { return static_cast<int>(x_.size()); }
 
  private:

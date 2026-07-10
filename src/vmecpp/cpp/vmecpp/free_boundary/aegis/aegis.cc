@@ -66,6 +66,28 @@ Eigen::Vector3d VirtualCasing::OnSurface(const Eigen::Vector3d& r0,
   return on_surface;
 }
 
+Eigen::Vector3d VirtualCasing::OnSurfaceSingSub(
+    const Eigen::Vector3d& r0, const Eigen::Vector3d& outward_normal,
+    const Eigen::Vector3d& k0, double sigma0) const {
+  // Principal-value Biot-Savart sum, self-point excluded. The integrand is
+  // singular as x_[i] -> r0, but the principal value converges; the discrete
+  // sum resolves it when the source grid is fine.
+  Eigen::Vector3d pv = Eigen::Vector3d::Zero();
+  for (std::size_t i = 0; i < x_.size(); ++i) {
+    const Eigen::Vector3d d = r0 - x_[i];
+    const double d2 = d.squaredNorm();
+    if (d2 < 1e-24) {
+      continue;  // the self-point
+    }
+    const double inv = 1.0 / (std::sqrt(d2) * d2);
+    pv += (k_[i].cross(d) + sigma_[i] * d) * (inv * dA_[i]);
+  }
+  pv /= 4.0 * std::numbers::pi;
+  // Add the analytic exterior jump J/2 = (sigma0 n + k0 x n) / 2 so that
+  // n x (result - interior_limit) = k0 recovers the surface-current jump.
+  return pv + 0.5 * (sigma0 * outward_normal + k0.cross(outward_normal));
+}
+
 std::vector<double> VacuumPressure(
     const std::vector<Eigen::Vector3d>& surface_points,
     const std::vector<Eigen::Vector3d>& outward_normals,
