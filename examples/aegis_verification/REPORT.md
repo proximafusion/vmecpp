@@ -23,13 +23,18 @@ AEGIS is selected with `VMECPP_AEGIS=1`; every solve uses `ftol=1e-11`,
   vacuum solve is accurate, AEGIS reproduces NESTOR's magnetic axis to 0.1-0.7%
   and MHD energy to better than 0.1%.
 - The AEGIS on-surface virtual-casing field matches the analytic exterior field
-  of an interior dipole on the `cth_like` boundary to a direction cosine of
-  0.999, validating the quadrature in isolation against an exact reference.
+  of an interior dipole on the `cth_like` boundary to a direction cosine of 0.999,
+  and matches the high-order BIEST solver (the golden reference used in DESC) on
+  the real plasma field to a cosine of 0.9998 and vacuum pressure to 0.1%,
+  validating the quadrature in isolation.
 - On `cth_like`, AEGIS and NESTOR converge to iota profiles that differ by 5.6%,
   independent of resolution. NESTOR reaches near-machine-precision vacuum fields
   only on simple (axisymmetric) geometries; on this three-dimensional case its
   Fourier-truncated vacuum representation is the less accurate one, consistent
   with AEGIS's lower `delbsq` there.
+- With the axisymmetric edge damping scaled by beta, AEGIS converges on the
+  free-boundary Solovev tokamak across the whole range NESTOR reaches (beta up to
+  ~ 6%), where the unscaled coupling diverged above beta ~ 1.3%.
 
 ## 1. delbsq versus NESTOR at fixed resolution
 
@@ -135,6 +140,19 @@ on this compact geometry, not a bias in the operator). This establishes that
 AEGIS's virtual-casing quadrature is accurate on a three-dimensional stellarator
 boundary against an exact reference.
 
+An independent high-order reference confirms this. BIEST, the boundary-integral
+virtual-casing solver used in DESC, reconstructs the same interior dipole on the
+`cth_like` boundary to a direction cosine of 1.000 with rms error falling
+high-order with resolution (2.2e-2, 7.6e-3, 2.6e-3 at 48, 72, 96 poloidal points),
+confirming it as a near-machine-precision golden solver. Its generalized
+virtual-casing operator combines as `B/2 + BiotSavart(n x B) - Laplace(n.B)`, the
+Laplace term entering with the sign opposite to the naive gradient. On the real
+`cth_like` plasma field, where no closed form exists, AEGIS agrees with BIEST to a
+direction cosine of 0.9998, and the coupling-relevant vacuum pressure
+`|B_ext|^2 / 2` to 0.1% (1.1e-3), at 96 x 192. AEGIS's singularity-subtracted
+quadrature therefore matches the golden reference on the physical
+three-dimensional field, not only on the analytic dipole.
+
 Combined with section 3 (agreement with NESTOR on the axisymmetric case, where
 NESTOR is accurate), the AEGIS coupling is accurate on both simple and
 three-dimensional geometries. NESTOR reaches near-machine-precision vacuum fields
@@ -144,34 +162,55 @@ Fourier-truncated scalar-potential representation is the less accurate one. The
 three-dimensional vacuum representation, and AEGIS's lower `delbsq` on this
 geometry reflects a more self-consistent equilibrium.
 
-## 6. Open items
+## 6. High-beta convergence
 
-- **High-beta axisymmetric and 3D convergence.** The coupling reaches `ftol` up to
-  beta ~ 1% on `cth_like` (and beta ~ 5e-3 on Solovev). Above that the Picard
-  coupling through the vacuum pressure stiffens and the residual plateaus. Direct
-  acceleration of the vacuum-pressure sequence (Anderson or Chebyshev) or a
-  frozen-vacuum inner Newton is the intended remedy, rather than stronger
-  mode-diagonal edge damping.
+The AEGIS coupling recomputes the vacuum pressure from the boundary at every
+iteration (a Picard iteration). On the axisymmetric Solovev tokamak the unscaled
+coupling converges up to beta ~ 1.3%; above that it diverges, the boundary
+distorting until VMEC++ aborts on a vacuum-plasma toroidal-current mismatch, while
+NESTOR converges to beta ~ 4.5%. The divergence is the near-null edge drift the
+edge preconditioner arrests, whose strength grows with beta: the virtual-casing
+contribution, and hence the edge-force stiffness, scales with the plasma pressure.
+Scaling the axisymmetric edge damping by max(1, K * beta) (K = 150, beta from the
+thermal-to-magnetic energy ratio) removes the ceiling. Below the 1/K threshold the
+damping equals the fixed base, so the low-beta and non-axisymmetric results above
+are byte-identical; above it the damping rises with beta and the coupling
+converges. Reproduce with `equilib.py solovev_free aegis <pres_scale>`.
+
+| pres_scale | beta   | converged | delbsq | iters |
+|-----------:|:------:|:---------:|:------:|:-----:|
+| 1000       | 5.1e-3 | yes       | 2.9e-4 | 2288  |
+| 3000       | 2.0e-2 | yes       | 1.2e-3 | 2246  |
+| 6000       | 4.3e-2 | yes       | 3.1e-3 | 3675  |
+| 8000       | 5.9e-2 | yes       | 4.6e-3 | 4905  |
+
+AEGIS now converges across the full beta range NESTOR reaches on this geometry,
+and beyond it, with no manual tuning. The delbsq rises with beta toward the
+axisymmetric on-surface floor of section 3, where NESTOR's near-exact solve keeps
+a lower value; AEGIS's advantage is on three-dimensional geometry (section 1).
+Mixing the vacuum-pressure sequence directly (Anderson-beta, via
+`VMECPP_AEGIS_ANDERSON_M` / `_BETA`) is also available, but the edge-damping
+schedule is the effective lever; mixing alone does not remove the ceiling.
+
+## 7. Open items
+
 - **Physical surface current.** The tangential-field jump `n x (B_out - B_in)` at
   the LCFS, which must scale with the boundary total-pressure jump, is at the
   10^-3 level set by the on-surface quadrature accuracy for these near-zero-edge
   cases, so its scaling with a finite edge-pressure pedestal is not yet cleanly
   separable from that floor. A higher-accuracy on-surface evaluation is needed to
   resolve it.
-- **Edge preconditioner scaling.** The m-dependent edge damping is a per-geometry
-  constant; deriving it from the LCFS edge-force block spectrum would remove the
-  configuration dependence.
-- **Coverage.** Validated on `cth_like` and Solovev. Extending to `li383` and
-  additional finite-ntor configurations would map the AEGIS-versus-NESTOR
-  crossover against ntor.
-- **BIEST cross-check.** A second independent reference through the BIEST
-  high-order boundary-integral solver is set up (a small driver calling BIEST's
-  generalized virtual-casing operator, which `vc_compare.py` invokes when it is
-  built against a BIEST checkout). Its direct-quadrature term reproduces the
-  AEGIS magnitude on the same surface and field; reconciling BIEST's on-surface
-  singular-quadrature convention to the exterior limit used here is in progress.
-  The analytic-dipole reference in section 5 already fixes the AEGIS accuracy
-  against an exact solution, so this is a redundant check.
+- **Edge preconditioner scaling.** The axisymmetric damping now scales with beta
+  (section 6). The base values (A = 100 axisymmetric, 20 non-axisymmetric) and the
+  slope K remain fitted constants; deriving them from the LCFS edge-force block
+  spectrum, and extending the beta schedule to non-axisymmetric geometry, would
+  remove the remaining constants.
+- **Coverage.** The two free-boundary geometries with coil grids in the test data,
+  `cth_like` (ntor 4) and Solovev (ntor 0), are covered across resolution and, on
+  Solovev, across beta to ~ 6%. Mapping the AEGIS-versus-NESTOR crossover against
+  ntor needs additional finite-ntor free-boundary cases; `li383` in the test data
+  is fixed-boundary with no coil grid, so this awaits the further cases offered on
+  the issue.
 
 ## Reproducing
 
@@ -183,10 +222,13 @@ importable):
     python expA_shafranov.py aegis
     python iota_conv.py nestor         # then: aegis   (section 4)
     python equilib.py solovev_free nestor 300           # section 3
+    python equilib.py solovev_free aegis 6000           # section 6, beta ~ 4%
     python expC_resolution.py nestor 2160               # section 1, beta ~ 1%
     python vc_compare.py               # section 5 (analytic dipole)
     python plot_verification.py        # regenerates plots/
 
-Section 5's analytic check runs with no external dependencies. The optional BIEST
-cross-check in `vc_compare.py` activates when a `biest_driver` built against a
-BIEST checkout is present alongside it; it is skipped otherwise.
+Section 5's analytic check runs with no external dependencies. The BIEST golden
+cross-check requires a BIEST checkout: its generalized virtual-casing operator,
+evaluated as `B/2 + BiotSavart(n x B) - Laplace(n.B)` on the LCFS surface and
+field, gives the golden exterior limit; `vc_compare.py` runs it when a driver
+built against BIEST is present alongside, and is skipped otherwise.

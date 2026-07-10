@@ -104,7 +104,8 @@ def run_biest(X, Bp, Nt, Np, tag):
     if not DRIVER.exists():
         return None  # BIEST driver not built; the analytic check in [1] stands alone
     infile = WORK / f"grid_{tag}.txt"
-    outfile = WORK / f"bext_{tag}.txt"
+    out_general = WORK / f"bext_general_{tag}.txt"
+    out_golden = WORK / f"bext_golden_{tag}.txt"
     with open(infile, "w") as fh:
         fh.write(f"{Nt} {Np}\n")
         fh.writelines(
@@ -113,7 +114,7 @@ def run_biest(X, Bp, Nt, Np, tag):
             for k in range(len(X))
         )
     r = subprocess.run(
-        [str(DRIVER), str(infile), str(outfile)],
+        [str(DRIVER), str(infile), str(out_general), str(out_golden)],
         capture_output=True,
         text=True,
         check=False,
@@ -121,7 +122,9 @@ def run_biest(X, Bp, Nt, Np, tag):
     if r.returncode != 0:
         print("BIEST driver failed:", r.stderr[-400:], flush=True)
         return None
-    return np.loadtxt(outfile)
+    # The golden exterior limit is B/2 + BiotSavart(nxB) - Laplace(n.B); BIEST's
+    # Laplace3D::FxdU carries the sign opposite to the naive gradient.
+    return np.loadtxt(out_golden)
 
 
 def flat_tmajor(a):
