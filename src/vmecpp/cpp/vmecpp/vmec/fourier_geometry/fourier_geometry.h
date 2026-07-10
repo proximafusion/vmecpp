@@ -17,14 +17,14 @@ namespace vmecpp {
 
 class FourierGeometry : public FourierCoeffs {
  public:
-  FourierGeometry(const Sizes *s, const RadialPartitioning *r, int ns);
-  FourierGeometry(const FourierGeometry &other);
-  FourierGeometry &operator=(const FourierGeometry &other);
-  FourierGeometry(FourierGeometry &&other) noexcept;
-  FourierGeometry &operator=(FourierGeometry &&other) noexcept;
+  FourierGeometry(const Sizes* s, const RadialPartitioning* r, int ns);
+  FourierGeometry(const FourierGeometry& other);
+  FourierGeometry& operator=(const FourierGeometry& other);
+  FourierGeometry(FourierGeometry&& other) noexcept;
+  FourierGeometry& operator=(FourierGeometry&& other) noexcept;
 
-  void interpFromBoundaryAndAxis(const FourierBasisFastPoloidal &t,
-                                 const Boundaries &b, const RadialProfiles &p);
+  void interpFromBoundaryAndAxis(const FourierBasisFastPoloidal& t,
+                                 const Boundaries& b, const RadialProfiles& p);
 
   // Initialize the state of this FourierGeometry with the given Fourier
   // coefficients. If a Boundaries object is specified (defaults to nullptr; in
@@ -33,18 +33,23 @@ class FourierGeometry : public FourierCoeffs {
   // instead of from the Fourier coefficient matrices.
   // This latter use case applies to fixed-boundary hot-restart operation of
   // VMEC++.
-  void InitFromState(const FourierBasisFastPoloidal &fb,
-                     const RowMatrixXd &rmnc, const RowMatrixXd &zmns,
-                     const RowMatrixXd &lmns_full, const RadialProfiles &p,
-                     const VmecConstants &constants,
-                     const Boundaries *b = nullptr);
+  void InitFromState(const FourierBasisFastPoloidal& fb,
+                     const RowMatrixXd& rmnc, const RowMatrixXd& zmns,
+                     const RowMatrixXd& lmns_full, const RadialProfiles& p,
+                     const VmecConstants& constants,
+                     const Boundaries* b = nullptr);
 
   void extrapolateTowardsAxis();
 
+  // Transpose of extrapolateTowardsAxis: the forward copies surface-1 m=1 (and
+  // m=0 lambda) coefficients onto the axis, so the adjoint folds the axis
+  // cotangent back into surface 1 and zeroes the axis.
+  void extrapolateTowardsAxisTranspose();
+
   // Compute the spectral width of the R and Z Fourier coefficients
   // and write it into the spectral_width vector in the given RadialProfiles.
-  void ComputeSpectralWidth(const FourierBasisFastPoloidal &fourier_basis,
-                            RadialProfiles &m_radial_profiles, int p = 4,
+  void ComputeSpectralWidth(const FourierBasisFastPoloidal& fourier_basis,
+                            RadialProfiles& m_radial_profiles, int p = 4,
                             int q = 1) const;
 
   // N.B. all raw pointers below are non-owning pointers to data in
