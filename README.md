@@ -99,7 +99,7 @@ print(vmec_output.mercier.iota)
 vmec_output.wout.save("wout_w7x.nc")
 ```
 
-All other output files are accessible via members of the `output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
+All other output files are accessible via members of the `vmec_output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
 
 ### With SIMSOPT
 
