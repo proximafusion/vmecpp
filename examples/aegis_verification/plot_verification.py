@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
 """Generate the figures for the AEGIS free-boundary verification report from the
 tabulated sweep results (produced by expA_shafranov.py, expC_resolution.py,
 iota_conv.py, and vc_compare.py in this directory).

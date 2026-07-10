@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
 """Validate the AEGIS on-surface virtual-casing quadrature against BIEST (the golden,
 near-machine-precision reference) in isolation, on the 3D cth_like LCFS.
 

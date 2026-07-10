@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
 """Generic single-case equilibrium invariant reporter for the AEGIS verification. Runs
 one free- or fixed-boundary VMEC++ case and prints beta, magnetic-axis major radius,
 iota at axis and edge, MHD energy wb, and delbsq. Used to compare AEGIS against NESTOR

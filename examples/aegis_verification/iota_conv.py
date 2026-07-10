@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
 """Resolution convergence of the AEGIS-vs-NESTOR equilibrium difference (iota, magnetic
 axis): does it close as mpol increases (two independent vacuum methods converging to a
 common equilibrium) or persist (a fixed method difference)? A lower delbsq alone does

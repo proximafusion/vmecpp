@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
 """Exp C: delbsq vs resolution at HIGH beta on cth_like (3D), AEGIS vs NESTOR.
 
 Confirms the AEGIS-beats-NESTOR-at-high-resolution result (issue #628 metric)

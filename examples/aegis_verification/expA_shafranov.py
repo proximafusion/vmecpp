@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
 """Exp A: 3D high-beta Shafranov sweep on cth_like (nfp=5, ntor=4), AEGIS vs NESTOR.
 
 Raises pres_scale to grow beta and the Shafranov shift (the hard case named in

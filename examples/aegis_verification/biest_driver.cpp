@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+//
 // Minimal BIEST virtual-casing driver for validating the AEGIS on-surface
 // quadrature against BIEST's high-order singular quadrature (the golden
 // reference). Reads a surface grid + a field B on it, evaluates the generalized
