@@ -2387,12 +2387,12 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // EIGENVALUE DUE TO NEUMANN (GRADIENT) CONDITION AT EDGE
     const double edge_pedestal = 0.05;
     // The flat pedestal (0.05 for m<2, 0.10 for m>=2) accounts for the Neumann
-    // edge condition. In free boundary the vacuum-pressure coupling adds an edge
-    // stiffness that grows with poloidal mode number m, which the plasma-only
-    // preconditioner otherwise misses; without it the free-boundary iteration
-    // count runs away with resolution (cth_like: 490 iters at mpol 5, 2579 at
-    // mpol 20, non-convergence past mpol 17). An m-dependent term damps the
-    // high-m boundary modes in proportion to that coupling and makes the
+    // edge condition. In free boundary the vacuum-pressure coupling adds an
+    // edge stiffness that grows with poloidal mode number m, which the
+    // plasma-only preconditioner otherwise misses; without it the free-boundary
+    // iteration count runs away with resolution (cth_like: 490 iters at mpol 5,
+    // 2579 at mpol 20, non-convergence past mpol 17). An m-dependent term damps
+    // the high-m boundary modes in proportion to that coupling and makes the
     // free-boundary iteration count resolution-robust (see issue #628). The
     // exponent VMECPP_EDGE_P defaults to the m^2 form that matches the vacuum
     // edge stiffness; the scale VMECPP_EDGE_A defaults to 0 (identical to the
