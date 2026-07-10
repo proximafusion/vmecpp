@@ -39,10 +39,14 @@ import itertools
 from pathlib import Path
 
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator
-from scipy.io import netcdf_file
 
 import vmecpp
+
+try:
+    from scipy.interpolate import RegularGridInterpolator
+    from scipy.io import netcdf_file
+except ImportError:  # scipy is an optional dependency, used only by this example
+    RegularGridInterpolator = netcdf_file = None
 
 MU0 = 4e-7 * np.pi
 _TEST_DATA = Path(__file__).resolve().parents[1] / "src/vmecpp/cpp/vmecpp/test_data"
@@ -166,6 +170,10 @@ def build(wout, mgrid_path, extcur, nu=256, nv=256):
 
 
 def _validate():
+    if netcdf_file is None:
+        print("AEGIS validation skipped: requires scipy (pip install scipy).")
+        return
+
     mgrid = str(_TEST_DATA / "mgrid_cth_like.nc")
     inp = vmecpp.VmecInput.from_file(str(_TEST_DATA / "cth_like_free_bdy.json"))
     inp.mgrid_file = mgrid
