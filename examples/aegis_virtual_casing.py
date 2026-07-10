@@ -70,10 +70,11 @@ class CoilField:
         ppe = np.concatenate([pp, [2 * np.pi / self.nfp]])
 
         def interp(name):
-            tot = sum(
+            groups = [
                 extcur[g] * np.asarray(f.variables[f"{name}_{g + 1:03d}"].data)
                 for g in range(len(extcur))
-            )
+            ]
+            tot = np.sum(groups, axis=0)
             tot = np.concatenate([tot, tot[:1]], 0)  # wrap phi periodically
             return RegularGridInterpolator(
                 (ppe, zz, rr), tot, bounds_error=False, fill_value=None
@@ -92,8 +93,8 @@ class CoilField:
 
 
 class Lcfs:
-    """LCFS surface, outward normal, and equilibrium field, reconstructed from a
-    VMEC wout on a nu x nv angular grid over the full torus."""
+    """LCFS surface, outward normal, and equilibrium field, reconstructed from a VMEC
+    wout on a nu x nv angular grid over the full torus."""
 
     def __init__(self, wout, nu: int = 256, nv: int = 256):
         xm, xn = np.asarray(wout.xm), np.asarray(wout.xn)
@@ -129,8 +130,8 @@ class Lcfs:
 
 
 class VirtualCasing:
-    """Exterior field of a surface current (K, sigma) = (n x B_p, n.B_p), with
-    QBX for the near-singular on-surface evaluation."""
+    """Exterior field of a surface current (K, sigma) = (n x B_p, n.B_p), with QBX for
+    the near-singular on-surface evaluation."""
 
     def __init__(self, X, K, sigma, dA):
         self.X, self.K, self.sigma, self.dA = X, K, sigma, dA
