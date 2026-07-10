@@ -103,9 +103,12 @@ class CoilField:
 
 
 class AxisCurrent:
-    """Field of the net enclosed toroidal current. Virtual casing cannot represent
-    the net current from the surface layers alone, so it is added as a Biot-Savart
-    line filament along the magnetic axis (as NESTOR does; the curtor term)."""
+    """Field of the net enclosed toroidal current.
+
+    Virtual casing cannot represent the net current from the surface layers alone, so it
+    is added as a Biot-Savart line filament along the magnetic axis (as NESTOR does; the
+    curtor term).
+    """
 
     def __init__(self, wout, nphi: int = 1024):
         ctor = float(wout.ctor)
@@ -197,10 +200,13 @@ class VirtualCasing:
 
 
 def build(wout, mgrid_path, extcur, nu=256, nv=256):
-    """Assemble the LCFS, the external field (coils + net-current axis filament),
-    and the plasma virtual-casing operator. The plasma field for casing is the
-    total field minus the *entire* externally-represented field (coils plus the
-    net-current filament); the filament is added back on evaluation."""
+    """Assemble the LCFS, the external field (coils + net-current axis filament), and
+    the plasma virtual-casing operator.
+
+    The plasma field for casing is the total field minus the *entire* externally-
+    represented field (coils plus the net-current filament); the filament is added back
+    on evaluation.
+    """
     lcfs = Lcfs(wout, nu, nv)
     coil = CoilField(mgrid_path, np.asarray(extcur, float))
     axis = AxisCurrent(wout)
