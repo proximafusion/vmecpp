@@ -227,11 +227,11 @@ class VmecModel {
   // lambda-constraint components. That raw gradient is what gradient-based
   // optimizers minimizing the MHD energy functional need; mhd_energy is already
   // set earlier in update(), so it is valid at the checkpoint too.
-  // The native iteration delays the exact m=1 projection based on the previous
-  // Z residual. External evaluations enforce it immediately so F(x) does not
-  // depend on the previously evaluated state.
+  // The native iteration leaves the m=1 gauge free until the previous Z
+  // residual crosses its threshold. External evaluations fix it immediately so
+  // F(x) does not depend on the previously evaluated state.
   void Evaluate(int iter1, int iter2, bool precondition = true,
-                bool legacy_m1_constraint = false) {
+                bool always_fix_m1_gauge = true) {
     bool need_restart = false;
     std::string error_message;
     const vmecpp::VmecCheckpoint checkpoint =
@@ -259,9 +259,7 @@ class VmecModel {
           *vmec_->decomposed_f_[0], *vmec_->physical_f_[0], need_restart,
           last_preconditioner_update_, last_full_update_nestor_, vmec_->fc_,
           iter1, iter2, checkpoint, checkpoint_after,
-          /*verbose=*/false,
-          legacy_m1_constraint ? vmecpp::M1ConstraintMode::kLegacy
-                               : vmecpp::M1ConstraintMode::kEnforce);
+          /*verbose=*/false, always_fix_m1_gauge);
       if (!s.ok()) {
         error_message = std::string(s.status().message());
       }
@@ -480,7 +478,7 @@ class VmecModel {
                        dgeom.data(), gS, /*primal=*/false);
     model.applyExactForceJacobian(
         exact_primal_.data(), dgeom.data(), gS, *vmec_->physical_f_[0],
-        *vmec_->decomposed_f_[0], vmecpp::M1ConstraintMode::kEnforce);
+        *vmec_->decomposed_f_[0], /*fix_m1_gauge=*/true);
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
 
@@ -504,7 +502,7 @@ class VmecModel {
     model.applyExactForceJacobianTranspose(
         exact_primal_.data(), gS, *vmec_->decomposed_f_[0],
         *vmec_->physical_f_[0], *vmec_->physical_x_[0],
-        *vmec_->physical_x_backup_[0], vmecpp::M1ConstraintMode::kEnforce);
+        *vmec_->physical_x_backup_[0], /*fix_m1_gauge=*/true);
     return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
   }
 
@@ -1724,7 +1722,7 @@ PYBIND11_MODULE(_vmecpp, m) {
                   py::arg("ns"), py::arg("initial_state") = std::nullopt)
       .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
            py::arg("precondition") = true,
-           py::arg("legacy_m1_constraint") = false)
+           py::arg("always_fix_m1_gauge") = true)
       .def_property_readonly("need_restart", &VmecModel::need_restart)
       .def("perform_time_step", &VmecModel::PerformTimeStep,
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),

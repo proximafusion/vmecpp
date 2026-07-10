@@ -92,3 +92,13 @@ jobs:
             tests/test_hessian.py \
             tests/test_hessian_transpose.py \
             tests/test_external_optimizers.py
+
+      - name: Run exact-HVP benchmark
+        run: |
+          uv run python benchmarks/benchmark_exact_hvp.py | tee exact_hvp_benchmark.txt
+          {
+            echo "### Exact-HVP benchmark"
+            echo '```text'
+            cat exact_hvp_benchmark.txt
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
