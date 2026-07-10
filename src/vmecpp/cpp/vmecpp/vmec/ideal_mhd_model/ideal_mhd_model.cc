@@ -2336,6 +2336,7 @@ void IdealMhdModel::computeAegisVacuumPressure() {
   std::vector<Eigen::Vector3d> nrm(nznt);
   std::vector<Eigen::Vector3d> b_coil(nznt);
   std::vector<Eigen::Vector3d> current(nznt);
+  std::vector<Eigen::Vector3d> b_interior(nznt);
   std::vector<double> sigma(nznt);
   std::vector<double> area(nznt);
   double mean_area = 0.0;
@@ -2372,6 +2373,7 @@ void IdealMhdModel::computeAegisVacuumPressure() {
     const Eigen::Vector3d e_v(sg.rvb[kl] * cph - sg.r1b[kl] * sph,
                               sg.rvb[kl] * sph + sg.r1b[kl] * cph, sg.zvb[kl]);
     const Eigen::Vector3d b_plasma = su * e_u + sv * e_v - b_coil[kl];
+    b_interior[kl] = b_plasma + b_coil[kl];
     current[kl] = nrm[kl].cross(b_plasma);
     // sigma = n.B_plasma, the flux-surface normal-field (monopole) source.
     sigma[kl] = nrm[kl].dot(b_plasma);
@@ -2427,6 +2429,12 @@ void IdealMhdModel::computeAegisVacuumPressure() {
   double diag_l1_num = 0.0;
   double diag_l1_den = 0.0;
   double diag_max = 0.0;
+  // Physical surface current n x (B_out - B_in): the actual tangential-field
+  // jump, distinct from the virtual-casing K. It must vanish where the
+  // total-pressure jump does (P(edge) = 0 for these cases), so its magnitude
+  // relative to |B_out| is a convergence-consistency check.
+  double diag_kphys = 0.0;
+  double diag_bnorm = 0.0;
   for (int kl = 0; kl < nznt; ++kl) {
     const double nestor = m_h_.vacuum_magnetic_pressure[kl];
     const Eigen::Vector3d b_ext =
@@ -2440,11 +2448,15 @@ void IdealMhdModel::computeAegisVacuumPressure() {
     diag_l1_den += std::abs(nestor);
     diag_max = std::max(diag_max,
                         std::abs(aegis - nestor) / (std::abs(nestor) + 1e-30));
+    diag_kphys += nrm[kl].cross(b_ext - b_interior[kl]).norm();
+    diag_bnorm += b_ext.norm();
   }
   if (std::getenv("VMECPP_AEGIS_DIAG") != nullptr) {
-    std::fprintf(
-        stderr, "[AEGIS] vacuum |B|^2/2 vs NESTOR: L1 rel=%.4f  max rel=%.4f\n",
-        diag_l1_num / (diag_l1_den + 1e-30), diag_max);
+    std::fprintf(stderr,
+                 "[AEGIS] vacuum |B|^2/2 vs NESTOR: L1 rel=%.4f  max rel=%.4f  "
+                 "phys surf current |n x (Bout-Bin)|/|B|=%.4e\n",
+                 diag_l1_num / (diag_l1_den + 1e-30), diag_max,
+                 diag_kphys / (diag_bnorm + 1e-30));
   }
 }
 
