@@ -7,7 +7,6 @@
 
 #include <Eigen/Dense>
 #include <climits>
-#include <cstdint>
 #include <span>
 
 #ifdef _OPENMP
@@ -34,8 +33,6 @@
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
 namespace vmecpp {
-
-enum class M1ConstraintMode : std::uint8_t { kLegacy, kEnforce };
 
 // Implemented as a free function for easier testing and benchmarking.
 void deAliasConstraintForce(const RadialPartitioning& rp,
@@ -74,7 +71,7 @@ class IdealMhdModel {
       int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
       const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
-      M1ConstraintMode m1_constraint_mode = M1ConstraintMode::kLegacy);
+      bool always_fix_m1_gauge = false);
 
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
