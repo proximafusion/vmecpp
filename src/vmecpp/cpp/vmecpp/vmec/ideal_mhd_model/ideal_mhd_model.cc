@@ -2373,6 +2373,7 @@ void IdealMhdModel::computeAegisVacuumPressure() {
                               sg.rvb[kl] * sph + sg.r1b[kl] * cph, sg.zvb[kl]);
     const Eigen::Vector3d b_plasma = su * e_u + sv * e_v - b_coil[kl];
     current[kl] = nrm[kl].cross(b_plasma);
+    // sigma = n.B_plasma, the flux-surface normal-field (monopole) source.
     sigma[kl] = nrm[kl].dot(b_plasma);
   }
 
@@ -2402,10 +2403,8 @@ void IdealMhdModel::computeAegisVacuumPressure() {
   const VirtualCasing vc(std::move(src_pos), std::move(src_cur),
                          std::move(src_sigma), std::move(src_area));
   const double h = std::sqrt(mean_area / nznt);
-  // Overwrite NESTOR's per-point vacuum pressure with the AEGIS value. On
-  // cth_like this agrees with NESTOR to under 4% per point in the live
-  // iteration, confirming the geometry, coil field, interior-field
-  // extrapolation, and field-period replication.
+  // Per-point exterior vacuum pressure |B_ext|^2 / 2, overwriting NESTOR's. The
+  // VMECPP_AEGIS_DIAG env var reports the per-point agreement with NESTOR.
   double diag_l1_num = 0.0;
   double diag_l1_den = 0.0;
   double diag_max = 0.0;
@@ -2417,8 +2416,8 @@ void IdealMhdModel::computeAegisVacuumPressure() {
     m_h_.vacuum_magnetic_pressure[kl] = aegis;
     diag_l1_num += std::abs(aegis - nestor);
     diag_l1_den += std::abs(nestor);
-    diag_max = std::max(diag_max,
-                        std::abs(aegis - nestor) / (std::abs(nestor) + 1e-30));
+    diag_max = std::max(
+        diag_max, std::abs(aegis - nestor) / (std::abs(nestor) + 1e-30));
   }
   if (std::getenv("VMECPP_AEGIS_DIAG") != nullptr) {
     std::fprintf(stderr,
@@ -2508,22 +2507,26 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // EIGENVALUE DUE TO NEUMANN (GRADIENT) CONDITION AT EDGE
     const double edge_pedestal = 0.05;
     // The flat pedestal (0.05 for m<2, 0.10 for m>=2) accounts for the Neumann
-    // edge condition. The free-boundary iteration slows down with poloidal
-    // resolution because the NESTOR vacuum coupling makes the LCFS force block
-    // near-singular: it has an exact null space in the vertical Z(m=0,*) modes
-    // plus a continuum of weakly-restored high-m edge modes (see issue #628).
-    // An opt-in m-dependent edge damping (VMECPP_EDGE_A>0, exponent
-    // VMECPP_EDGE_P, default m^2) accelerates this in the loose-to-moderate
-    // tolerance regime (cth_like mpol 16: ~2100 -> ~580 iters at ftol 1e-10)
-    // but does NOT resolve it at tight tolerance, where the near-singular edge
-    // modes stall the final residual reduction; a mode-diagonal preconditioner
-    // cannot fix the near-singular edge block. Kept default-off
-    // (VMECPP_EDGE_A=0, byte-identical to the flat pedestal) as a
-    // loose-tolerance accelerator while the proper edge preconditioning is
-    // developed.
+    // edge condition. On top of it, an m-dependent edge damping (VMECPP_EDGE_A,
+    // exponent VMECPP_EDGE_P, default m^2) strengthens the LCFS force-block
+    // diagonal at high m. The AEGIS virtual-casing pressure converges only
+    // through a near-null edge drift: its exterior field, while accurate, is not
+    // the self-consistent boundary-value solution NESTOR's elliptic solve
+    // produces, so the coupled edge modes are weakly restored and the
+    // equilibrium creeps (force residual plateaus, delbsq degrades) instead of
+    // reaching ftol at high mpol. The damping arrests that drift, so it defaults
+    // on (A=20) when AEGIS is active; pure AEGIS then converges at all mpol and
+    // its converged delbsq falls below NESTOR's at high resolution (mpol >= 9),
+    // the margin growing as NESTOR's Fourier-truncated vacuum field degrades.
+    // For NESTOR (default) it stays off (A=0, byte-identical to the flat
+    // pedestal): NESTOR's tight-tolerance limit is the coupled operator's
+    // near-null continuum (issue #628), which a mode-diagonal term cannot fix.
     static const double kEdgeA = [] {
       const char* e = std::getenv("VMECPP_EDGE_A");
-      return e != nullptr ? std::atof(e) : 0.0;
+      if (e != nullptr) {
+        return std::atof(e);
+      }
+      return std::getenv("VMECPP_AEGIS") != nullptr ? 20.0 : 0.0;
     }();
     static const double kEdgeP = [] {
       const char* e = std::getenv("VMECPP_EDGE_P");
