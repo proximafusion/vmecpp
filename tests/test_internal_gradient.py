@@ -17,10 +17,17 @@ points in a different direction; both vanish at the converged equilibrium.
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 SOLOVEV = Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
+CTH_LIKE = (
+    Path(__file__).resolve().parents[1]
+    / "examples"
+    / "data"
+    / "cth_like_fixed_bdy.json"
+)
 
 
 def _model(ns: int = 11):
@@ -63,3 +70,38 @@ def test_cold_start_is_excluded():
     m = _model()
     m.evaluate(2, 2, False)
     assert np.all(np.isfinite(np.asarray(m.get_forces(), float)))
+
+
+@pytest.fixture(scope="module")
+def force_histories():
+    indata = _vmecpp.VmecINDATA.from_file(str(CTH_LIKE))
+    reference = _vmecpp.VmecModel.create(indata, 11)
+    reference.solve()
+    low_residual_state = np.asarray(reference.get_state(), float).copy()
+
+    model = _vmecpp.VmecModel.create(indata, 11)
+    high_residual_state = np.asarray(model.get_state(), float).copy()
+    model.evaluate(2, 2, False)
+    high_after_high = np.asarray(model.get_forces(), float).copy()
+
+    model.set_state(np.ascontiguousarray(low_residual_state))
+    model.evaluate(2, 2, False)
+    low_after_high = np.asarray(model.get_forces(), float).copy()
+    model.evaluate(2, 2, False)
+    low_after_low = np.asarray(model.get_forces(), float).copy()
+
+    model.set_state(np.ascontiguousarray(high_residual_state))
+    model.evaluate(2, 2, False)
+    high_after_low = np.asarray(model.get_forces(), float).copy()
+
+    return high_after_high, high_after_low, low_after_high, low_after_low
+
+
+def test_raw_force_is_independent_of_high_residual_history(force_histories):
+    _, _, low_after_high, low_after_low = force_histories
+    np.testing.assert_array_equal(low_after_high, low_after_low)
+
+
+def test_raw_force_is_independent_of_low_residual_history(force_histories):
+    high_after_high, high_after_low, _, _ = force_histories
+    np.testing.assert_array_equal(high_after_high, high_after_low)
