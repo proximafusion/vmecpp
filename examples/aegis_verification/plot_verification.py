@@ -90,4 +90,28 @@ fig.tight_layout()
 fig.savefig(OUT / "vc_isolation_accuracy.png", dpi=130)
 plt.close(fig)
 
+# Section 6: high-beta convergence on Solovev (beta-scaled edge damping).
+hb_beta = [0.51, 2.0, 4.3, 5.9]  # percent
+hb_delbsq = [2.9e-4, 1.2e-3, 3.1e-3, 4.6e-3]
+hb_iters = [2288, 2246, 3675, 4905]
+unscaled_ceiling = 1.3  # percent; unscaled AEGIS diverges above this
+
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(9.6, 4.0))
+a1.semilogy(hb_beta, hb_delbsq, "o-", color="C0", label="AEGIS (beta-scaled A)")
+a1.axvline(unscaled_ceiling, color="C3", ls="--", lw=1, label="unscaled AEGIS ceiling")
+a1.set_xlabel("total beta (%)")
+a1.set_ylabel("converged delbsq")
+a1.set_title("Solovev high-beta: convergence")
+a1.legend(fontsize=8)
+a1.grid(True, which="both", alpha=0.3)
+a2.plot(hb_beta, hb_iters, "o-", color="C0")
+a2.axvline(unscaled_ceiling, color="C3", ls="--", lw=1)
+a2.set_xlabel("total beta (%)")
+a2.set_ylabel("iterations to ftol 1e-11")
+a2.set_title("iterations vs beta")
+a2.grid(True, alpha=0.3)
+fig.tight_layout()
+fig.savefig(OUT / "highbeta_convergence.png", dpi=130)
+plt.close(fig)
+
 print("wrote:", *[p.name for p in sorted(OUT.glob("*.png"))])
