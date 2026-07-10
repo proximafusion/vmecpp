@@ -96,6 +96,7 @@ cc_library(
     deps = [
         ":dft_toroidal",
         ":fft_toroidal",
+        "//vmecpp/free_boundary/aegis:aegis",
         "//vmecpp/common/flow_control:flow_control",
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",

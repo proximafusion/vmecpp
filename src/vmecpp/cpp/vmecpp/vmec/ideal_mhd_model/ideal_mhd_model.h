@@ -190,6 +190,10 @@ class IdealMhdModel {
   // preconditioner matrix.
   void assembleRZPreconditioner();
 
+  // AEGIS virtual-casing vacuum pressure, computed in place of NESTOR's into
+  // m_h_.vacuum_magnetic_pressure when VMECPP_AEGIS is set (opt-in). See #628.
+  void computeAegisVacuumPressure();
+
   // Applies the radial preconditioner for R and Z (solves a tri-diagonal system
   // of equations).
   absl::Status applyRZPreconditioner(FourierForces& m_decomposed_f);

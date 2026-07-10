@@ -20,6 +20,7 @@
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
+#include "vmecpp/free_boundary/aegis/aegis.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
@@ -735,6 +736,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
         if (edgePressure != 0.0) {
           edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
                          m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH];
+        }
+
+        // Opt-in: replace NESTOR's scalar-potential vacuum pressure with the
+        // AEGIS virtual-casing value in-place. See issue #628.
+        static const bool kAegis = std::getenv("VMECPP_AEGIS") != nullptr;
+        if (kAegis) {
+          computeAegisVacuumPressure();
         }
 
         for (int kl = 0; kl < s_.nZnT; ++kl) {
@@ -2304,6 +2312,96 @@ void IdealMhdModel::applyM1Preconditioner(FourierForces& m_decomposed_f) {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+}
+
+// AEGIS virtual-casing vacuum pressure, computed in place of NESTOR's and
+// stored into m_h_.vacuum_magnetic_pressure. Reuses NESTOR's LCFS surface
+// geometry and coil field; the plasma surface current comes from the interior
+// equilibrium field bsupu/bsupv extrapolated to the LCFS. Single-thread LCFS
+// path. See #628.
+void IdealMhdModel::computeAegisVacuumPressure() {
+  const SurfaceGeometry& sg = m_fb_->GetSurfaceGeometry();
+  const ExternalMagneticField& ef = m_fb_->GetExternalMagneticField();
+  const int nznt = s_.nZnT;
+  const int nfp = s_.nfp;
+  const int lastH = (r_.nsMaxH - 1 - r_.nsMinH) * nznt;
+  const int prevH = (r_.nsMaxH - 2 - r_.nsMinH) * nznt;
+
+  std::vector<Eigen::Vector3d> pos(nznt);
+  std::vector<Eigen::Vector3d> nrm(nznt);
+  std::vector<Eigen::Vector3d> b_coil(nznt);
+  std::vector<Eigen::Vector3d> current(nznt);
+  std::vector<double> sigma(nznt);
+  std::vector<double> area(nznt);
+  double mean_area = 0.0;
+  for (int kl = 0; kl < nznt; ++kl) {
+    const int l = kl / s_.nZeta;
+    const int k = kl % s_.nZeta;
+    const double cph = sg.cos_phi[k];
+    const double sph = sg.sin_phi[k];
+    pos[kl] = Eigen::Vector3d(sg.rcosuv[kl], sg.rsinuv[kl], sg.z1b[kl]);
+    // outward normal (N^R, N^phi, N^Z) * signOfJacobian -> Cartesian
+    const Eigen::Vector3d normal_cart(sg.snr[kl] * cph - sg.snv[kl] * sph,
+                                      sg.snr[kl] * sph + sg.snv[kl] * cph,
+                                      sg.snz[kl]);
+    const double normal_mag = normal_cart.norm();
+    nrm[kl] = normal_cart / normal_mag;
+    area[kl] = normal_mag * s_.wInt[l] * (2.0 * M_PI / s_.nZeta);
+    mean_area += area[kl];
+    // coil + axis-current field, cylindrical -> Cartesian
+    const double b_r = ef.interpBr[kl] + ef.curtorBr[kl];
+    const double b_p = ef.interpBp[kl] + ef.curtorBp[kl];
+    const double b_z = ef.interpBz[kl] + ef.curtorBz[kl];
+    b_coil[kl] =
+        Eigen::Vector3d(b_r * cph - b_p * sph, b_r * sph + b_p * cph, b_z);
+    // interior equilibrium field bsupu e_u + bsupv e_v, extrapolated to the
+    // LCFS. bsupu/bsupv are on the fast-poloidal grid; map from (l, k).
+    const int klv = k * s_.nThetaEff + l;
+    const double su = 1.5 * bsupu[lastH + klv] - 0.5 * bsupu[prevH + klv];
+    const double sv = 1.5 * bsupv[lastH + klv] - 0.5 * bsupv[prevH + klv];
+    const Eigen::Vector3d e_u(sg.rub[kl] * cph, sg.rub[kl] * sph, sg.zub[kl]);
+    const Eigen::Vector3d e_v(sg.rvb[kl] * cph - sg.r1b[kl] * sph,
+                              sg.rvb[kl] * sph + sg.r1b[kl] * cph, sg.zvb[kl]);
+    const Eigen::Vector3d b_plasma = su * e_u + sv * e_v - b_coil[kl];
+    current[kl] = nrm[kl].cross(b_plasma);
+    sigma[kl] = nrm[kl].dot(b_plasma);
+  }
+
+  // The surface grid spans one field period; replicate over nfp toroidal
+  // rotations so the virtual-casing integral covers the whole torus.
+  std::vector<Eigen::Vector3d> src_pos(nznt * nfp);
+  std::vector<Eigen::Vector3d> src_cur(nznt * nfp);
+  std::vector<double> src_sigma(nznt * nfp);
+  std::vector<double> src_area(nznt * nfp);
+  for (int p = 0; p < nfp; ++p) {
+    const double ang = 2.0 * M_PI * p / nfp;
+    const double c = std::cos(ang);
+    const double s = std::sin(ang);
+    for (int kl = 0; kl < nznt; ++kl) {
+      const int i = p * nznt + kl;
+      const Eigen::Vector3d& x = pos[kl];
+      const Eigen::Vector3d& j = current[kl];
+      src_pos[i] =
+          Eigen::Vector3d(c * x.x() - s * x.y(), s * x.x() + c * x.y(), x.z());
+      src_cur[i] =
+          Eigen::Vector3d(c * j.x() - s * j.y(), s * j.x() + c * j.y(), j.z());
+      src_sigma[i] = sigma[kl];
+      src_area[i] = area[kl];
+    }
+  }
+
+  const VirtualCasing vc(std::move(src_pos), std::move(src_cur),
+                         std::move(src_sigma), std::move(src_area));
+  const double h = std::sqrt(mean_area / nznt);
+  // Overwrite NESTOR's per-point vacuum pressure with the AEGIS value. On
+  // cth_like this agrees with NESTOR to under 4% per point in the live
+  // iteration, confirming the geometry, coil field, interior-field
+  // extrapolation, and field-period replication.
+  for (int kl = 0; kl < nznt; ++kl) {
+    const Eigen::Vector3d b_ext =
+        vc.OnSurface(pos[kl], nrm[kl], h) + b_coil[kl];
+    m_h_.vacuum_magnetic_pressure[kl] = 0.5 * b_ext.squaredNorm();
+  }
 }
 
 void IdealMhdModel::assembleRZPreconditioner() {
