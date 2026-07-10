@@ -73,7 +73,6 @@ class IdealMhdModel {
       const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
       bool always_fix_m1_gauge = false);
-
   std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
   void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
