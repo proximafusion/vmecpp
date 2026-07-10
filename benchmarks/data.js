@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783725898113,
+  "lastUpdate": 1783726006770,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -29789,6 +29789,162 @@ window.BENCHMARK_DATA = {
             "value": 0.010337261053232046,
             "unit": "seconds",
             "extra": "iterations: 26\ncpu: 0.010337045076923082 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "198982749+Copilot@users.noreply.github.com",
+            "name": "Copilot",
+            "username": "Copilot"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d5dd34dbdb09ddeadf9c76890422cfb11f050fc9",
+          "message": "fix(docs): prevent duplicate github-pages artifacts on reruns; drop wrong `myst` dep (#632)\n\n* Initial plan\n\n* Initial plan\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n* fix: prevent duplicate github-pages artifacts on job reruns and remove incorrect myst dependency\n\n- docs.yaml: use `github-pages-${{ github.run_attempt }}` as the artifact\n  name in both upload-pages-artifact and deploy-pages steps. When the\n  build-docs job is re-run after a transient failure, the previous\n  attempt's artifact is still present in the same workflow run. The\n  deploy-pages action uses `listArtifacts()` which returns all attempts'\n  artifacts, causing it to find 2 artifacts named \"github-pages\" and\n  throw \"Multiple artifacts named 'github-pages' were unexpectedly\n  found\". Using a per-attempt unique name avoids this conflict.\n\n- pyproject.toml: remove the `myst` package from the docs optional\n  dependencies. The `myst` package (v1.0.4) is a Google authentication\n  library unrelated to Sphinx/MyST markdown. The correct package\n  `myst_parser` is already listed. Having `myst` installed pulls in\n  google-auth, google-auth-oauthlib, and downgrades urllib3 to <2.0,\n  introducing unnecessary dependency conflicts.\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n---------\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-07-11T01:19:52+02:00",
+          "tree_id": "93ef39e48174d414656a853786b23c60202b72d9",
+          "url": "https://github.com/proximafusion/vmecpp/commit/d5dd34dbdb09ddeadf9c76890422cfb11f050fc9"
+        },
+        "date": 1783726006474,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00003308759403474583,
+            "unit": "seconds",
+            "extra": "iterations: 8147\ncpu: 3.305218129372776e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00004135569230140224,
+            "unit": "seconds",
+            "extra": "iterations: 6770\ncpu: 4.135484889217134e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0005849154358865821,
+            "unit": "seconds",
+            "extra": "iterations: 479\ncpu: 0.000584916058455115 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014100410231393785,
+            "unit": "seconds",
+            "extra": "iterations: 199\ncpu: 0.001409984582914572 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.0001655765744142754,
+            "unit": "seconds",
+            "extra": "iterations: 1720\ncpu: 0.00016557689651162792 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00014114151558568402,
+            "unit": "seconds",
+            "extra": "iterations: 1984\ncpu: 0.00014098193649193547 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003215045396052084,
+            "unit": "seconds",
+            "extra": "iterations: 859\ncpu: 0.00032149060419091975 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002876158730956781,
+            "unit": "seconds",
+            "extra": "iterations: 973\ncpu: 0.0002876161233299074 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005165885995935511,
+            "unit": "seconds",
+            "extra": "iterations: 540\ncpu: 0.0005165691203703705 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00043745569059517757,
+            "unit": "seconds",
+            "extra": "iterations: 641\ncpu: 0.00043745666302652086 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017638583726520781,
+            "unit": "seconds",
+            "extra": "iterations: 158\ncpu: 0.0017638652278481035 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0019471363888846505,
+            "unit": "seconds",
+            "extra": "iterations: 144\ncpu: 0.0019470695972222244 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00006450956367168812,
+            "unit": "seconds",
+            "extra": "iterations: 4311\ncpu: 6.451314033866826e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0004953941412731609,
+            "unit": "seconds",
+            "extra": "iterations: 565\ncpu: 0.0004953921769911493 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0030132955120455835,
+            "unit": "seconds",
+            "extra": "iterations: 93\ncpu: 0.0030132694301075323 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00006115837302351148,
+            "unit": "seconds",
+            "extra": "iterations: 4462\ncpu: 6.115941192290441e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0004955464395983466,
+            "unit": "seconds",
+            "extra": "iterations: 580\ncpu: 0.0004955635344827562 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.00292856494585673,
+            "unit": "seconds",
+            "extra": "iterations: 96\ncpu: 0.0029285203645833305 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.000288022191900956,
+            "unit": "seconds",
+            "extra": "iterations: 969\ncpu: 0.00028796131785345714 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.00122765132359096,
+            "unit": "seconds",
+            "extra": "iterations: 238\ncpu: 0.001227585008403361 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005464828931368315,
+            "unit": "seconds",
+            "extra": "iterations: 52\ncpu: 0.0054645574615384595 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.010868415832519532,
+            "unit": "seconds",
+            "extra": "iterations: 25\ncpu: 0.0108676414 seconds\nthreads: 1"
           }
         ]
       }
