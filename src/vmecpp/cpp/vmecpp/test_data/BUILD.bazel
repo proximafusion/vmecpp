@@ -90,6 +90,16 @@ filegroup(
 )
 
 filegroup(
+    name = "solovev_free_bdy_lforbal",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "solovev_free_bdy_lforbal.json",
+        "mgrid_solovev.nc",
+        "wout_solovev_free_bdy_T.nc",
+    ],
+)
+
+filegroup(
     name = "cth_like_free_bdy_multigrid",
     visibility = ["//visibility:public"],
     srcs = [

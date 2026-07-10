@@ -52,7 +52,8 @@ class IdealMhdModel {
                 FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
                 VacuumPressureState* m_vacuum_pressure_state);
 
-  void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
+  void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
+                     bool lforbal);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -181,7 +182,8 @@ class IdealMhdModel {
       const Eigen::VectorXd& xu_e, const Eigen::VectorXd& xu_o,
       const Eigen::VectorXd& x1_o, Eigen::VectorXd& m_axm,
       Eigen::VectorXd& m_axd, Eigen::VectorXd& m_bxm, Eigen::VectorXd& m_bxd,
-      Eigen::VectorXd& m_cxd);
+      Eigen::VectorXd& m_cxd, const Eigen::VectorXd& trigmult,
+      Eigen::VectorXd& m_eqfactor);
 
   // Applies the radial preconditioner for the m=1 Fourier coefficients of R and
   // Z.
@@ -364,6 +366,18 @@ class IdealMhdModel {
   Eigen::VectorXd bzd;
   // crd == czd --> cxd
   Eigen::VectorXd cxd;
+
+  // lforbal: when set, the flux-averaged radial force balance evolves the
+  // m=1,n=0 R,Z components (non-variational). cos01/sin01 are the m=1 trig
+  // weights; rzu_fac/rru_fac/frcc_fac/fzsc_fac are the force-balance factors
+  // derived from the R,Z preconditioner diagonals. All unused when lforbal off.
+  bool lforbal = false;
+  Eigen::VectorXd cos01;
+  Eigen::VectorXd sin01;
+  Eigen::VectorXd rzu_fac;
+  Eigen::VectorXd rru_fac;
+  Eigen::VectorXd frcc_fac;
+  Eigen::VectorXd fzsc_fac;
 
   Eigen::VectorXd ar;
   Eigen::VectorXd dr;
