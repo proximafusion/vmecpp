@@ -2377,14 +2377,28 @@ void IdealMhdModel::computeAegisVacuumPressure() {
     sigma[kl] = nrm[kl].dot(b_plasma);
   }
 
-  // The surface grid spans one field period; replicate over nfp toroidal
-  // rotations so the virtual-casing integral covers the whole torus.
-  std::vector<Eigen::Vector3d> src_pos(nznt * nfp);
-  std::vector<Eigen::Vector3d> src_cur(nznt * nfp);
-  std::vector<double> src_sigma(nznt * nfp);
-  std::vector<double> src_area(nznt * nfp);
-  for (int p = 0; p < nfp; ++p) {
-    const double ang = 2.0 * M_PI * p / nfp;
+  // The virtual-casing integral runs over the whole torus. A non-axisymmetric
+  // plasma resolves the toroidal direction on the equilibrium grid (nZeta points
+  // per field period, replicated over nfp). An axisymmetric plasma has nZeta = 1,
+  // so the source is a single toroidal slice: the Biot-Savart toroidal integral
+  // is then a one-point quadrature and the QBX offset h = sqrt(area/count) lumps
+  // the whole 2*pi into that one cell, pushing the expansion centers far off the
+  // surface. The source is toroidally invariant there, so rotate it to n_rep
+  // angles (exact) and rescale the area and h to the refined grid.
+  // VMECPP_AEGIS_NTOR overrides the toroidal sample count.
+  static const int kTorSamples = [] {
+    const char* e = std::getenv("VMECPP_AEGIS_NTOR");
+    return e != nullptr ? std::atoi(e) : 256;
+  }();
+  const bool axisym = s_.ntor == 0;
+  const int n_rep = axisym ? kTorSamples : nfp;
+  const double area_scale = axisym ? 1.0 / n_rep : 1.0;
+  std::vector<Eigen::Vector3d> src_pos(nznt * n_rep);
+  std::vector<Eigen::Vector3d> src_cur(nznt * n_rep);
+  std::vector<double> src_sigma(nznt * n_rep);
+  std::vector<double> src_area(nznt * n_rep);
+  for (int p = 0; p < n_rep; ++p) {
+    const double ang = 2.0 * M_PI * p / n_rep;
     const double c = std::cos(ang);
     const double s = std::sin(ang);
     for (int kl = 0; kl < nznt; ++kl) {
@@ -2396,13 +2410,15 @@ void IdealMhdModel::computeAegisVacuumPressure() {
       src_cur[i] =
           Eigen::Vector3d(c * j.x() - s * j.y(), s * j.x() + c * j.y(), j.z());
       src_sigma[i] = sigma[kl];
-      src_area[i] = area[kl];
+      src_area[i] = area[kl] * area_scale;
     }
   }
 
   const VirtualCasing vc(std::move(src_pos), std::move(src_cur),
                          std::move(src_sigma), std::move(src_area));
-  const double h = std::sqrt(mean_area / nznt);
+  const double h =
+      axisym ? std::sqrt(mean_area / (static_cast<double>(nznt) * n_rep))
+             : std::sqrt(mean_area / nznt);
   // Per-point exterior vacuum pressure |B_ext|^2 / 2, overwriting NESTOR's. The
   // VMECPP_AEGIS_DIAG env var reports the per-point agreement with NESTOR.
   double diag_l1_num = 0.0;
@@ -2515,19 +2531,23 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // produces, so the coupled edge modes are weakly restored and the
     // equilibrium creeps (force residual plateaus, delbsq degrades) instead of
     // reaching ftol at high mpol. The damping arrests that drift, so it defaults
-    // on (A=20) when AEGIS is active; pure AEGIS then converges at all mpol and
-    // its converged delbsq falls below NESTOR's at high resolution (mpol >= 9),
-    // the margin growing as NESTOR's Fourier-truncated vacuum field degrades.
-    // For NESTOR (default) it stays off (A=0, byte-identical to the flat
-    // pedestal): NESTOR's tight-tolerance limit is the coupled operator's
-    // near-null continuum (issue #628), which a mode-diagonal term cannot fix.
-    static const double kEdgeA = [] {
-      const char* e = std::getenv("VMECPP_EDGE_A");
-      if (e != nullptr) {
-        return std::atof(e);
-      }
-      return std::getenv("VMECPP_AEGIS") != nullptr ? 20.0 : 0.0;
-    }();
+    // on when AEGIS is active: A=20 for a non-axisymmetric plasma, where pure
+    // AEGIS then converges at all mpol and its converged delbsq falls below
+    // NESTOR's at high resolution (mpol >= 9), the margin growing as NESTOR's
+    // Fourier-truncated vacuum field degrades. The axisymmetric (ntor=0) coupling
+    // drifts harder and defaults to A=100; it converges and reproduces the
+    // Shafranov shift, but NESTOR's near-exact axisymmetric solve keeps a lower
+    // delbsq there (the residual is a QBX on-surface bias, not resolution).
+    // VMECPP_EDGE_A overrides. For NESTOR (default) it stays off (A=0,
+    // byte-identical to the flat pedestal): NESTOR's tight-tolerance limit is the
+    // coupled operator's near-null continuum (issue #628), which a mode-diagonal
+    // term cannot fix.
+    static const char* const kEdgeAEnv = std::getenv("VMECPP_EDGE_A");
+    static const bool kAegisActive = std::getenv("VMECPP_AEGIS") != nullptr;
+    const double kEdgeA =
+        (kEdgeAEnv != nullptr)
+            ? std::atof(kEdgeAEnv)
+            : (kAegisActive ? (s_.ntor == 0 ? 100.0 : 20.0) : 0.0);
     static const double kEdgeP = [] {
       const char* e = std::getenv("VMECPP_EDGE_P");
       return e != nullptr ? std::atof(e) : 2.0;
