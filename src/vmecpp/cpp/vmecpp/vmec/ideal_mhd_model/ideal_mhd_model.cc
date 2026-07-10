@@ -2387,18 +2387,19 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // EIGENVALUE DUE TO NEUMANN (GRADIENT) CONDITION AT EDGE
     const double edge_pedestal = 0.05;
     // The flat pedestal (0.05 for m<2, 0.10 for m>=2) accounts for the Neumann
-    // edge condition. In free boundary the vacuum-pressure coupling adds an
-    // edge stiffness that grows with poloidal mode number m, which the
-    // plasma-only preconditioner otherwise misses; without it the free-boundary
-    // iteration count runs away with resolution (cth_like: 490 iters at mpol 5,
-    // 2579 at mpol 20, non-convergence past mpol 17). An m-dependent term damps
-    // the high-m boundary modes in proportion to that coupling and makes the
-    // free-boundary iteration count resolution-robust (see issue #628). The
-    // exponent VMECPP_EDGE_P defaults to the m^2 form that matches the vacuum
-    // edge stiffness; the scale VMECPP_EDGE_A defaults to 0 (identical to the
-    // previous flat pedestal) until a self-scaling coefficient replaces the
-    // tuning constant so this can default on without regressing weakly-coupled
-    // (e.g. axisymmetric) cases.
+    // edge condition. The free-boundary iteration slows down with poloidal
+    // resolution because the NESTOR vacuum coupling makes the LCFS force block
+    // near-singular: it has an exact null space in the vertical Z(m=0,*) modes
+    // plus a continuum of weakly-restored high-m edge modes (see issue #628).
+    // An opt-in m-dependent edge damping (VMECPP_EDGE_A>0, exponent
+    // VMECPP_EDGE_P, default m^2) accelerates this in the loose-to-moderate
+    // tolerance regime (cth_like mpol 16: ~2100 -> ~580 iters at ftol 1e-10)
+    // but does NOT resolve it at tight tolerance, where the near-singular edge
+    // modes stall the final residual reduction; a mode-diagonal preconditioner
+    // cannot fix the near-singular edge block. Kept default-off
+    // (VMECPP_EDGE_A=0, byte-identical to the flat pedestal) as a
+    // loose-tolerance accelerator while the proper edge preconditioning is
+    // developed.
     static const double kEdgeA = [] {
       const char* e = std::getenv("VMECPP_EDGE_A");
       return e != nullptr ? std::atof(e) : 0.0;
