@@ -8,6 +8,7 @@
 #include <Eigen/Dense>
 #include <climits>
 #include <span>
+#include <vector>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -197,6 +198,12 @@ class IdealMhdModel {
   // AEGIS virtual-casing vacuum pressure, computed in place of NESTOR's into
   // m_h_.vacuum_magnetic_pressure when VMECPP_AEGIS is set (opt-in). See #628.
   void computeAegisVacuumPressure();
+
+  // Anderson-beta mixing of the AEGIS vacuum-pressure sequence in place into
+  // m_h_.vacuum_magnetic_pressure (opt-in via VMECPP_AEGIS_ANDERSON_M / _BETA),
+  // stabilizing the high-beta coupling. m=0, beta=1 is plain Picard. See #628.
+  void applyAegisMixing(const std::vector<double>& raw_pressure, int m,
+                        double beta);
 
   // Applies the radial preconditioner for R and Z (solves a tri-diagonal system
   // of equations).
@@ -417,6 +424,12 @@ class IdealMhdModel {
   FreeBoundaryBase* m_fb_;
   VacuumPressureState& m_vacuum_pressure_state_;
   std::int64_t force_evaluation_count_ = 0;
+
+  // History of the AEGIS vacuum-pressure iterates (last used pressure) and
+  // residuals for applyAegisMixing; empty unless Anderson mixing is enabled.
+  std::vector<double> aegis_x_prev_;
+  std::vector<std::vector<double> > aegis_x_hist_;
+  std::vector<std::vector<double> > aegis_f_hist_;
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.

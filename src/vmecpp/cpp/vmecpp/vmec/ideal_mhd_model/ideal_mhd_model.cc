@@ -2426,6 +2426,23 @@ void IdealMhdModel::computeAegisVacuumPressure() {
   // QBX extrapolation, and cheaper); VMECPP_AEGIS_QBX selects the QBX evaluator
   // instead. VMECPP_AEGIS_DIAG reports the per-point agreement with NESTOR.
   static const bool kUseQbx = std::getenv("VMECPP_AEGIS_QBX") != nullptr;
+  // Anderson-beta acceleration of the vacuum-pressure fixed point. AEGIS's
+  // Picard coupling (recompute the vacuum pressure from the boundary each
+  // iteration) is stable at low beta but diverges at high beta, where the
+  // virtual-casing contribution is large and the boundary response is stiff.
+  // Mixing the history of the vacuum-pressure sequence stabilizes it. Depth
+  // m=0 with beta=1 (the default) is plain Picard, byte-identical to the
+  // unmixed coupling; VMECPP_AEGIS_ANDERSON_M sets the history depth and
+  // VMECPP_AEGIS_ANDERSON_BETA the mixing (m=0 with beta<1 is
+  // under-relaxation).
+  static const int kAndersonM = [] {
+    const char* e = std::getenv("VMECPP_AEGIS_ANDERSON_M");
+    return e != nullptr ? std::atoi(e) : 0;
+  }();
+  static const double kAndersonBeta = [] {
+    const char* e = std::getenv("VMECPP_AEGIS_ANDERSON_BETA");
+    return e != nullptr ? std::atof(e) : 1.0;
+  }();
   double diag_l1_num = 0.0;
   double diag_l1_den = 0.0;
   double diag_max = 0.0;
@@ -2435,6 +2452,7 @@ void IdealMhdModel::computeAegisVacuumPressure() {
   // relative to |B_out| is a convergence-consistency check.
   double diag_kphys = 0.0;
   double diag_bnorm = 0.0;
+  std::vector<double> aegis_pressure(nznt);
   for (int kl = 0; kl < nznt; ++kl) {
     const double nestor = m_h_.vacuum_magnetic_pressure[kl];
     const Eigen::Vector3d b_ext =
@@ -2442,12 +2460,11 @@ void IdealMhdModel::computeAegisVacuumPressure() {
              ? vc.OnSurface(pos[kl], nrm[kl], h)
              : vc.OnSurfaceSingSub(pos[kl], nrm[kl], current[kl], sigma[kl])) +
         b_coil[kl];
-    const double aegis = 0.5 * b_ext.squaredNorm();
-    m_h_.vacuum_magnetic_pressure[kl] = aegis;
-    diag_l1_num += std::abs(aegis - nestor);
+    aegis_pressure[kl] = 0.5 * b_ext.squaredNorm();
+    diag_l1_num += std::abs(aegis_pressure[kl] - nestor);
     diag_l1_den += std::abs(nestor);
-    diag_max = std::max(diag_max,
-                        std::abs(aegis - nestor) / (std::abs(nestor) + 1e-30));
+    diag_max = std::max(diag_max, std::abs(aegis_pressure[kl] - nestor) /
+                                      (std::abs(nestor) + 1e-30));
     diag_kphys += nrm[kl].cross(b_ext - b_interior[kl]).norm();
     diag_bnorm += b_ext.norm();
   }
@@ -2458,6 +2475,76 @@ void IdealMhdModel::computeAegisVacuumPressure() {
                  diag_l1_num / (diag_l1_den + 1e-30), diag_max,
                  diag_kphys / (diag_bnorm + 1e-30));
   }
+  applyAegisMixing(aegis_pressure, kAndersonM, kAndersonBeta);
+}
+
+// Anderson-beta mixing of the AEGIS vacuum-pressure sequence, in place into
+// m_h_.vacuum_magnetic_pressure. raw_pressure is the freshly evaluated AEGIS
+// pressure g(x_k) produced by the boundary that the previously used pressure
+// x_k drove. With depth m and mixing beta the next iterate is
+//   x_{k+1} = x_k + beta * f_k - (dX + beta dF) gamma,  f_k = g(x_k) - x_k,
+// where gamma minimizes ||f_k - dF gamma|| over the last m residual
+// differences. m=0, beta=1 is plain Picard.
+void IdealMhdModel::applyAegisMixing(const std::vector<double>& raw_pressure,
+                                     int m, double beta) {
+  const int n = static_cast<int>(raw_pressure.size());
+  if (m == 0 && beta == 1.0) {
+    for (int i = 0; i < n; ++i) {
+      m_h_.vacuum_magnetic_pressure[i] = raw_pressure[i];
+    }
+    return;
+  }
+  if (static_cast<int>(aegis_x_prev_.size()) != n) {
+    // First mixed call: seed the iterate with the raw pressure.
+    aegis_x_prev_ = raw_pressure;
+    aegis_x_hist_.clear();
+    aegis_f_hist_.clear();
+    for (int i = 0; i < n; ++i) {
+      m_h_.vacuum_magnetic_pressure[i] = raw_pressure[i];
+    }
+    return;
+  }
+  const std::vector<double>& x_k = aegis_x_prev_;
+  std::vector<double> f_k(n);
+  for (int i = 0; i < n; ++i) {
+    f_k[i] = raw_pressure[i] - x_k[i];
+  }
+  std::vector<double> x_next(n);
+  const int mk = std::min(static_cast<int>(aegis_x_hist_.size()), m);
+  if (mk == 0) {
+    for (int i = 0; i < n; ++i) {
+      x_next[i] = x_k[i] + beta * f_k[i];
+    }
+  } else {
+    Eigen::MatrixXd dF(n, mk);
+    Eigen::MatrixXd dX(n, mk);
+    for (int i = 0; i < n; ++i) {
+      dF(i, 0) = f_k[i] - aegis_f_hist_[0][i];
+      dX(i, 0) = x_k[i] - aegis_x_hist_[0][i];
+    }
+    for (int j = 1; j < mk; ++j) {
+      for (int i = 0; i < n; ++i) {
+        dF(i, j) = aegis_f_hist_[j - 1][i] - aegis_f_hist_[j][i];
+        dX(i, j) = aegis_x_hist_[j - 1][i] - aegis_x_hist_[j][i];
+      }
+    }
+    const Eigen::Map<const Eigen::VectorXd> fk(f_k.data(), n);
+    const Eigen::VectorXd gamma = dF.colPivHouseholderQr().solve(fk);
+    const Eigen::VectorXd corr = (dX + beta * dF) * gamma;
+    for (int i = 0; i < n; ++i) {
+      x_next[i] = x_k[i] + beta * f_k[i] - corr(i);
+    }
+  }
+  for (int i = 0; i < n; ++i) {
+    m_h_.vacuum_magnetic_pressure[i] = x_next[i];
+  }
+  aegis_x_hist_.insert(aegis_x_hist_.begin(), x_k);
+  aegis_f_hist_.insert(aegis_f_hist_.begin(), f_k);
+  if (static_cast<int>(aegis_x_hist_.size()) > m) {
+    aegis_x_hist_.resize(m);
+    aegis_f_hist_.resize(m);
+  }
+  aegis_x_prev_ = x_next;
 }
 
 void IdealMhdModel::assembleRZPreconditioner() {
@@ -2561,10 +2648,41 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // (issue #628), which a mode-diagonal term cannot fix.
     static const char* const kEdgeAEnv = std::getenv("VMECPP_EDGE_A");
     static const bool kAegisActive = std::getenv("VMECPP_AEGIS") != nullptr;
-    const double kEdgeA =
-        (kEdgeAEnv != nullptr)
-            ? std::atof(kEdgeAEnv)
-            : (kAegisActive ? (s_.ntor == 0 ? 100.0 : 20.0) : 0.0);
+    // The near-null edge drift the damping arrests grows with the plasma beta:
+    // the virtual-casing contribution, and hence the edge-force stiffness,
+    // scales with it, so above beta ~ 1% a fixed base damping no longer
+    // converges. The base A is therefore multiplied by max(1, K * beta). Below
+    // the 1/K threshold this is exactly the base A, so low-beta cases stay
+    // byte-identical; above it the damping rises with beta so the high-beta
+    // coupling converges (verified on the free-boundary Solovev tokamak up to
+    // beta ~ 6%, matching NESTOR's range). beta is estimated from the
+    // thermal-to-magnetic energy ratio. VMECPP_EDGE_A overrides the schedule;
+    // VMECPP_EDGE_K sets the slope; VMECPP_EDGE_DIAG reports the estimate.
+    static const double kEdgeK = [] {
+      const char* e = std::getenv("VMECPP_EDGE_K");
+      return e != nullptr ? std::atof(e) : 150.0;
+    }();
+    double beta_estimate = 0.0;
+    if (kAegisActive) {
+      const double mag = std::abs(m_h_.magneticEnergy);
+      beta_estimate = mag > 1e-30 ? std::abs(m_h_.thermalEnergy) / mag : 0.0;
+    }
+    const double base_edge_a =
+        kAegisActive ? (s_.ntor == 0 ? 100.0 : 20.0) : 0.0;
+    // The beta ramp targets the axisymmetric coupling, where the high-beta
+    // divergence is demonstrated: on the free-boundary Solovev tokamak NESTOR
+    // converges to beta ~ 4.5% while the unscaled AEGIS coupling diverges above
+    // beta ~ 1.3%. The ramp makes AEGIS converge across that whole range. The
+    // non-axisymmetric base is left fixed; cth_like is bounded by its coil beta
+    // limit (~ 1.5%, where NESTOR also fails), below where the ramp would help.
+    const double beta_scale =
+        (s_.ntor == 0) ? std::max(1.0, kEdgeK * beta_estimate) : 1.0;
+    const double kEdgeA = (kEdgeAEnv != nullptr) ? std::atof(kEdgeAEnv)
+                                                 : base_edge_a * beta_scale;
+    if (kAegisActive && std::getenv("VMECPP_EDGE_DIAG") != nullptr) {
+      std::fprintf(stderr, "[AEGIS] edge damping: beta~%.4e A=%.1f\n",
+                   beta_estimate, kEdgeA);
+    }
     static const double kEdgeP = [] {
       const char* e = std::getenv("VMECPP_EDGE_P");
       return e != nullptr ? std::atof(e) : 2.0;
