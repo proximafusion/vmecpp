@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783671806675,
+  "lastUpdate": 1783699988450,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -9196,6 +9196,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 9.124254349666671,
             "range": "stddev: 0.022095201457164485",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d7da6f7ebfd7b29563af30f37ac884a8980f28f4",
+          "message": "Report comparable external optimizer metrics (#625)\n\n* Make raw VMEC forces history independent\n\nSeparate the legacy previous-residual m=1 projection used by native iteration from the exact constrained projection used by external force evaluations. Cover both directions across the residual threshold.\n\n* Use compact storage for constraint policy\n\n* Report comparable external optimizer metrics\n\nUse the low-level VMEC model for the native benchmark row so every solver reports the same force norm and MHD functional. Count SciPy Newton-Krylov outer iterations through its callback and correct the preconditioner description.\n\n* Count native force evaluations directly\n\n* Satisfy const wrapper contract\n\n* Name the m=1 gauge policy explicitly\n\n* Keep optimizer metric checks with their example tests\n\n* pybind: count force evaluations at model boundary\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-07-10T18:08:26+02:00",
+          "tree_id": "aa2c30fade6e602367b736f2e52ad399c2cf9564",
+          "url": "https://github.com/proximafusion/vmecpp/commit/d7da6f7ebfd7b29563af30f37ac884a8980f28f4"
+        },
+        "date": 1783699986899,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3602378807999912,
+            "range": "stddev: 0.003354475015384404",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3564612549999765,
+            "range": "stddev: 0.003115844575226895",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.413921734666625,
+            "range": "stddev: 0.034372135560984736",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.318877149666643,
+            "range": "stddev: 0.0015407714308937543",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.033523389333292,
+            "range": "stddev: 0.015805076687949428",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.31023192733331,
+            "range": "stddev: 0.014878693811465109",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 9.13845003233329,
+            "range": "stddev: 0.017298843501487363",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
