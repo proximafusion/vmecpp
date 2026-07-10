@@ -33,9 +33,9 @@ cth_like free-boundary case (requires the mgrid test data via git-lfs):
   [2] LCFS geometry/field reconstruction (B.n on flux surface): 1e-16
   [3] jump condition  n x (B_out - B_in) = K  via QBX         : ~1.4% mean
   [4] free-boundary physics at a converged equilibrium:
-      |B_exterior|/|B_interior| = 0.999 (with the net-current filament);
-      field direction agrees to ~4% -- the residual is the QBX extrapolation
-      bias (resolution-independent), which singularity subtraction removes.
+      |B_exterior|/|B_interior| = 0.9997, field direction to 0.4%; the VC
+      operator reconstructs an analytic interior dipole to <1% (both require
+      the outward normal and the net-current filament).
   [5] vacuum pressure |B|^2/2 vs NESTOR                        : ~7%
 """
 
@@ -167,7 +167,11 @@ class Lcfs:
         e_v = np.stack([Rv * c - R * s, Rv * s + R * c, Zv], -1)
         self.X = np.stack([R * c, R * s, Z], -1)
         self.B = Bu[..., None] * e_u + Bv[..., None] * e_v  # total interior field
-        nun = np.cross(e_u, e_v)
+        # Outward normal. e_u x e_v points INWARD for VMEC's (theta, zeta)
+        # orientation; using it flips the sign of K and sigma and the QBX
+        # evaluation side, which zeroes out the virtual-casing reconstruction. The
+        # outward normal is e_v x e_u (|jac| is unchanged, only the direction).
+        nun = np.cross(e_v, e_u)
         jac = np.linalg.norm(nun, axis=-1)
         self.nhat = nun / jac[..., None]
         self.dA = jac * (2 * np.pi / nu) * (2 * np.pi / nv)
