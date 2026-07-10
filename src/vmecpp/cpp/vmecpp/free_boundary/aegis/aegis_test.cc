@@ -66,5 +66,48 @@ TEST(AegisVirtualCasingTest, MagnetizedSphereJumpCondition) {
   }
 }
 
+// VacuumPressure forms the surface current from interior_field - coil_field,
+// evaluates the exterior field, and returns |B_exterior|^2 / 2. Smoke test on a
+// sphere: finite, positive, and of order |coil|^2/2 when the plasma current is
+// weak.
+TEST(AegisVirtualCasingTest, VacuumPressureIsFinitePositive) {
+  constexpr int kN = 48;
+  const Vector3d coil_field_value(0.1, 0.0, 0.2);
+  std::vector<Vector3d> points;
+  std::vector<Vector3d> normals;
+  std::vector<Vector3d> interior;
+  std::vector<Vector3d> coil;
+  std::vector<double> area;
+  double total_area = 0.0;
+  for (int i = 0; i < kN; ++i) {
+    const double theta = (i + 0.5) * std::numbers::pi / kN;
+    for (int j = 0; j < kN; ++j) {
+      const double phi = (j + 0.5) * 2.0 * std::numbers::pi / kN;
+      const Vector3d n(std::sin(theta) * std::cos(phi),
+                       std::sin(theta) * std::sin(phi), std::cos(theta));
+      points.push_back(n);
+      normals.push_back(n);
+      coil.push_back(coil_field_value);
+      // interior = coil field + a weak tangential plasma field.
+      interior.push_back(coil_field_value + n.cross(Vector3d(0, 0, 0.05)));
+      const double dA = std::sin(theta) * (std::numbers::pi / kN) *
+                        (2.0 * std::numbers::pi / kN);
+      area.push_back(dA);
+      total_area += dA;
+    }
+  }
+  const double h = std::sqrt(total_area / (kN * kN));
+  const std::vector<double> pressure =
+      VacuumPressure(points, normals, area, interior, coil, h);
+
+  ASSERT_EQ(static_cast<int>(pressure.size()), kN * kN);
+  const double coil_pressure = 0.5 * coil_field_value.squaredNorm();
+  for (double p : pressure) {
+    EXPECT_TRUE(std::isfinite(p));
+    EXPECT_GT(p, 0.0);
+    EXPECT_LT(p, 10.0 * coil_pressure);  // weak plasma -> near coil pressure
+  }
+}
+
 }  // namespace
 }  // namespace vmecpp

@@ -62,6 +62,21 @@ class VirtualCasing {
   std::vector<double> dA_;          // area weights
 };
 
+// Free-boundary vacuum pressure |B_exterior|^2 / 2 at each LCFS point, from the
+// surface geometry, the interior equilibrium field, and the coil field. Forms
+// the plasma surface current from B_plasma = interior_field - coil_field,
+// evaluates the exterior plasma field on the surface via QBX, adds the coil
+// field, and returns |B_exterior|^2 / 2. This is the AEGIS replacement for
+// NESTOR's vacuum_magnetic_pressure in the free-boundary edge force. All input
+// vectors have one entry per LCFS point; expansion_scale is a length of order
+// the surface-point spacing.
+std::vector<double> VacuumPressure(
+    const std::vector<Eigen::Vector3d>& surface_points,
+    const std::vector<Eigen::Vector3d>& outward_normals,
+    const std::vector<double>& area,
+    const std::vector<Eigen::Vector3d>& interior_field,
+    const std::vector<Eigen::Vector3d>& coil_field, double expansion_scale);
+
 }  // namespace vmecpp
 
 #endif  // VMECPP_FREE_BOUNDARY_AEGIS_AEGIS_H_

@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/aegis/aegis.h"
 
+#include <array>
 #include <cmath>
 #include <numbers>
 #include <utility>
@@ -38,7 +39,7 @@ Eigen::Vector3d VirtualCasing::OnSurface(const Eigen::Vector3d& r0,
   // close enough that the local expansion converges.
   constexpr int kNumCenters = 6;
   constexpr int kDegree = 3;
-  static const double kOrders[kNumCenters] = {3, 4, 5, 6, 7, 8};
+  static constexpr std::array<double, kNumCenters> kOrders = {3, 4, 5, 6, 7, 8};
 
   Eigen::VectorXd offsets(kNumCenters);
   Eigen::MatrixXd samples(kNumCenters, 3);
@@ -63,6 +64,34 @@ Eigen::Vector3d VirtualCasing::OnSurface(const Eigen::Vector3d& r0,
     on_surface(c) = qr.solve(samples.col(c))(0);
   }
   return on_surface;
+}
+
+std::vector<double> VacuumPressure(
+    const std::vector<Eigen::Vector3d>& surface_points,
+    const std::vector<Eigen::Vector3d>& outward_normals,
+    const std::vector<double>& area,
+    const std::vector<Eigen::Vector3d>& interior_field,
+    const std::vector<Eigen::Vector3d>& coil_field, double expansion_scale) {
+  const std::size_t n = surface_points.size();
+  std::vector<Eigen::Vector3d> current(n);
+  std::vector<double> normal_field(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    const Eigen::Vector3d b_plasma = interior_field[i] - coil_field[i];
+    current[i] = outward_normals[i].cross(b_plasma);
+    normal_field[i] = outward_normals[i].dot(b_plasma);
+  }
+  // The constructor copies surface_points and area (passed by value); the
+  // caller's vectors remain valid for the on-surface evaluations below.
+  const VirtualCasing vc(surface_points, std::move(current),
+                         std::move(normal_field), area);
+  std::vector<double> pressure(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    const Eigen::Vector3d b_exterior =
+        vc.OnSurface(surface_points[i], outward_normals[i], expansion_scale) +
+        coil_field[i];
+    pressure[i] = 0.5 * b_exterior.squaredNorm();
+  }
+  return pressure;
 }
 
 }  // namespace vmecpp
