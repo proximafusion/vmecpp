@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "aegis",
+    srcs = ["aegis.cc"],
+    hdrs = ["aegis.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@eigen",
+    ],
+)
+
+cc_test(
+    name = "aegis_test",
+    srcs = ["aegis_test.cc"],
+    deps = [
+        ":aegis",
+        "@eigen",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
