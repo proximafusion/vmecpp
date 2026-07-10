@@ -6,7 +6,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <numbers>
 #include <span>
@@ -2384,26 +2386,35 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // IN PARTICULAR, NEEDED TO ACCOUNT FOR POTENTIAL ZERO
     // EIGENVALUE DUE TO NEUMANN (GRADIENT) CONDITION AT EDGE
     const double edge_pedestal = 0.05;
+    // The flat pedestal (0.05 for m<2, 0.10 for m>=2) accounts for the Neumann
+    // edge condition. In free boundary the vacuum-pressure coupling adds an edge
+    // stiffness that grows with poloidal mode number m, which the plasma-only
+    // preconditioner otherwise misses; without it the free-boundary iteration
+    // count runs away with resolution (cth_like: 490 iters at mpol 5, 2579 at
+    // mpol 20, non-convergence past mpol 17). An m-dependent term damps the
+    // high-m boundary modes in proportion to that coupling and makes the
+    // free-boundary iteration count resolution-robust (see issue #628). The
+    // exponent VMECPP_EDGE_P defaults to the m^2 form that matches the vacuum
+    // edge stiffness; the scale VMECPP_EDGE_A defaults to 0 (identical to the
+    // previous flat pedestal) until a self-scaling coefficient replaces the
+    // tuning constant so this can default on without regressing weakly-coupled
+    // (e.g. axisymmetric) cases.
+    static const double kEdgeA = [] {
+      const char* e = std::getenv("VMECPP_EDGE_A");
+      return e != nullptr ? std::atof(e) : 0.0;
+    }();
+    static const double kEdgeP = [] {
+      const char* e = std::getenv("VMECPP_EDGE_P");
+      return e != nullptr ? std::atof(e) : 2.0;
+    }();
     for (int n = 0; n < s_.ntor + 1; ++n) {
-      {
-        int m = 0;
+      for (int m = 0; m < s_.mpol; ++m) {
         int idx_mn =
             ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
-        dr[idx_mn] *= 1.0 + edge_pedestal;
-        dz[idx_mn] *= 1.0 + edge_pedestal;
-      }
-      {
-        int m = 1;
-        int idx_mn =
-            ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
-        dr[idx_mn] *= 1.0 + edge_pedestal;
-        dz[idx_mn] *= 1.0 + edge_pedestal;
-      }
-      for (int m = 2; m < s_.mpol; ++m) {
-        int idx_mn =
-            ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
-        dr[idx_mn] *= 1.0 + 2.0 * edge_pedestal;
-        dz[idx_mn] *= 1.0 + 2.0 * edge_pedestal;
+        double ped = (m >= 2) ? 2.0 * edge_pedestal : edge_pedestal;
+        ped += kEdgeA * edge_pedestal * pow(static_cast<double>(m), kEdgeP);
+        dr[idx_mn] *= 1.0 + ped;
+        dz[idx_mn] *= 1.0 + ped;
       }
     }
 
