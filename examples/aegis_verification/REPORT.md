@@ -165,12 +165,13 @@ geometry reflects a more self-consistent equilibrium.
   additional finite-ntor configurations would map the AEGIS-versus-NESTOR
   crossover against ntor.
 - **BIEST cross-check.** A second independent reference through the BIEST
-  high-order boundary-integral solver is set up (`biest_driver.cpp`, calling
-  BIEST's generalized virtual-casing operator). Its direct-quadrature term
-  reproduces the AEGIS magnitude on the same surface and field; reconciling
-  BIEST's on-surface singular-quadrature convention to the exterior limit used
-  here is in progress. The analytic-dipole reference in section 5 already fixes
-  the AEGIS accuracy against an exact solution, so this is a redundant check.
+  high-order boundary-integral solver is set up (a small driver calling BIEST's
+  generalized virtual-casing operator, which `vc_compare.py` invokes when it is
+  built against a BIEST checkout). Its direct-quadrature term reproduces the
+  AEGIS magnitude on the same surface and field; reconciling BIEST's on-surface
+  singular-quadrature convention to the exterior limit used here is in progress.
+  The analytic-dipole reference in section 5 already fixes the AEGIS accuracy
+  against an exact solution, so this is a redundant check.
 
 ## Reproducing
 
@@ -186,8 +187,6 @@ importable):
     python vc_compare.py               # section 5 (analytic dipole)
     python plot_verification.py        # regenerates plots/
 
-The BIEST cross-check driver builds against a BIEST checkout:
-
-    g++ -std=c++17 -fopenmp -O3 -march=native -DNDEBUG -DSCTL_HAVE_BLAS \
-        -DSCTL_HAVE_LAPACK -I <BIEST>/include -I <BIEST>/extern/SCTL/include \
-        biest_driver.cpp -o biest_driver -lblas -llapack
+Section 5's analytic check runs with no external dependencies. The optional BIEST
+cross-check in `vc_compare.py` activates when a `biest_driver` built against a
+BIEST checkout is present alongside it; it is skipped otherwise.

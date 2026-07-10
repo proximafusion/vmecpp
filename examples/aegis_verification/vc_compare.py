@@ -101,6 +101,8 @@ def run_biest(X, Bp, Nt, Np, tag):
 
     X,Bp indexed flat in t-major (iv), p-minor (iu) order = the driver's read order.
     """
+    if not DRIVER.exists():
+        return None  # BIEST driver not built; the analytic check in [1] stands alone
     infile = WORK / f"grid_{tag}.txt"
     outfile = WORK / f"bext_{tag}.txt"
     with open(infile, "w") as fh:
