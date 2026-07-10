@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783629343583,
+  "lastUpdate": 1783671707023,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -9123,6 +9123,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.720969293999985,
             "range": "stddev: 0.020936697280617773",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f0cb35a25d825fafe795dc8db03d59500e6fe134",
+          "message": "Make raw VMEC forces history independent (#626)\n\n* Make raw VMEC forces history independent\n\nSeparate the legacy previous-residual m=1 projection used by native iteration from the exact constrained projection used by external force evaluations. Cover both directions across the residual threshold.\n\n* Use compact storage for constraint policy\n\n* Name the m=1 gauge policy explicitly",
+          "timestamp": "2026-07-10T10:16:57+02:00",
+          "tree_id": "8ac9f5f298695b04b3409eb9ffce1b657e1a565b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/f0cb35a25d825fafe795dc8db03d59500e6fe134"
+        },
+        "date": 1783671705197,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.36152249900000016,
+            "range": "stddev: 0.004345644901634672",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.36730023140000867,
+            "range": "stddev: 0.005117938678102473",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.487031740333331,
+            "range": "stddev: 0.041423228897246984",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.312536992333321,
+            "range": "stddev: 0.000458829367629721",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.0559987423333346,
+            "range": "stddev: 0.007652401056805949",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.3020368143333485,
+            "range": "stddev: 0.002415386952246975",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 9.124254349666671,
+            "range": "stddev: 0.022095201457164485",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
