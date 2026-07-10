@@ -12,9 +12,13 @@ exterior field is the Biot-Savart field of the equivalent surface current
 K = n x B_plasma (plus the n.B_plasma monopole term) integrated over the LCFS,
 with the near-singular self-interaction resolved by Quadrature By Expansion (QBX).
 
-    B_exterior(r) = B_coil(r) + (1/4pi) integral_LCFS
+    B_exterior(r) = B_coil(r) + B_axis(r) + (1/4pi) integral_LCFS
                         [ K x (r-r') + (n'.B_plasma)(r-r') ] / |r-r'|^3 dA'
-    K = n x B_plasma,   B_plasma = B_total - B_coil
+    K = n x B_plasma,   B_plasma = B_total - B_coil - B_axis
+
+B_axis is the net-toroidal-current field, added as a Biot-Savart line filament
+along the magnetic axis: virtual casing cannot represent the net enclosed current
+from the surface layers alone, so it is carried separately (as NESTOR does).
 
 Unlike NESTOR, which solves a dense boundary-integral system for a scalar
 potential every ivacskip iterations, AEGIS evaluates the Green's integral
@@ -27,9 +31,11 @@ Run `python examples/aegis_virtual_casing.py` to reproduce the validation on the
 cth_like free-boundary case (requires the mgrid test data via git-lfs):
   [1] Biot-Savart integrator vs an analytic current loop      : rel err 1e-14
   [2] LCFS geometry/field reconstruction (B.n on flux surface): 1e-16
-  [3] jump condition  n x (B_out - B_in) = K  via QBX         : ~1% mean
-  [4] free-boundary physics: |B_exterior| = |B_interior| and
-      B_exterior tangent to the LCFS at a converged equilibrium: ~2%
+  [3] jump condition  n x (B_out - B_in) = K  via QBX         : ~1.4% mean
+  [4] free-boundary physics at a converged equilibrium:
+      |B_exterior|/|B_interior| = 0.999 (with the net-current filament);
+      field direction agrees to ~4% -- the residual is the QBX extrapolation
+      bias (resolution-independent), which singularity subtraction removes.
   [5] vacuum pressure |B|^2/2 vs NESTOR                        : ~7%
 """
 
@@ -96,6 +102,38 @@ class CoilField:
         return np.stack([br * c - bp * s, br * s + bp * c, bz], -1)
 
 
+class AxisCurrent:
+    """Field of the net enclosed toroidal current. Virtual casing cannot represent
+    the net current from the surface layers alone, so it is added as a Biot-Savart
+    line filament along the magnetic axis (as NESTOR does; the curtor term)."""
+
+    def __init__(self, wout, nphi: int = 1024):
+        ctor = float(wout.ctor)
+        nfp = int(wout.nfp)
+        rax, zax = np.asarray(wout.raxis_cc), np.asarray(wout.zaxis_cs)
+        phi = np.arange(nphi) * 2 * np.pi / nphi
+        n = np.arange(len(rax))
+        r_axis = (rax[None, :] * np.cos(n[None, :] * nfp * phi[:, None])).sum(1)
+        z_axis = (zax[None, :] * np.sin(n[None, :] * nfp * phi[:, None])).sum(1)
+        axis = np.stack([r_axis * np.cos(phi), r_axis * np.sin(phi), z_axis], 1)
+        self.seg = np.roll(axis, -1, 0) - axis
+        self.mid = 0.5 * (axis + np.roll(axis, -1, 0))
+        self.pref = MU0 * ctor / (4 * np.pi)
+
+    def __call__(self, X: np.ndarray) -> np.ndarray:
+        """B (Cartesian) at Cartesian points X[..., 3], chunked to bound memory."""
+        shape = X.shape[:-1]
+        flat = np.ascontiguousarray(X).reshape(-1, 3)
+        out = np.empty_like(flat)
+        for i in range(0, len(flat), 2048):
+            d = flat[i:i + 2048, None, :] - self.mid[None]
+            inv = 1.0 / np.linalg.norm(d, axis=-1) ** 3
+            out[i:i + 2048] = self.pref * np.sum(
+                np.cross(self.seg[None], d) * inv[..., None], axis=1
+            )
+        return out.reshape(*shape, 3)
+
+
 class Lcfs:
     """LCFS surface, outward normal, and equilibrium field, reconstructed from a VMEC
     wout on a nu x nv angular grid over the full torus."""
@@ -159,14 +197,22 @@ class VirtualCasing:
 
 
 def build(wout, mgrid_path, extcur, nu=256, nv=256):
-    """Assemble the LCFS, coil field, and the plasma virtual-casing operator."""
+    """Assemble the LCFS, the external field (coils + net-current axis filament),
+    and the plasma virtual-casing operator. The plasma field for casing is the
+    total field minus the *entire* externally-represented field (coils plus the
+    net-current filament); the filament is added back on evaluation."""
     lcfs = Lcfs(wout, nu, nv)
     coil = CoilField(mgrid_path, np.asarray(extcur, float))
-    b_plasma = lcfs.B - coil(lcfs.X)
+    axis = AxisCurrent(wout)
+
+    def external(X):
+        return coil(X) + axis(X)
+
+    b_plasma = lcfs.B - external(lcfs.X)
     vc = VirtualCasing(
         lcfs.X, np.cross(lcfs.nhat, b_plasma), np.sum(b_plasma * lcfs.nhat, -1), lcfs.dA
     )
-    return lcfs, coil, vc
+    return lcfs, external, vc
 
 
 def _validate():
