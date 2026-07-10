@@ -18,21 +18,20 @@ This module wires that residual to several solvers and is shared by the
 benchmark ``main`` below and by the tests:
 
 * preconditioned descent (VMEC's own update direction),
-* Jacobian-free Newton-Krylov, plain and preconditioned, and
-* a true Newton-Krylov driven by VMEC++'s own Hessian-vector product.
+* Jacobian-free Newton-Krylov, plain and preconditioned,
+* Newton-Krylov driven by VMEC++'s own Hessian-vector product (finite-
+  difference or exact autodiff), and
+* pseudo-transient continuation (``solve_newton_ptc``) with the exact HVP, which
+  targets stiff 3D stellarators where unshifted Newton-Krylov can stall.
 
-All converge to the same equilibrium as the native solver. Force evaluations are
-counted inside VMEC++ (``force_eval_count``) so the comparison is fair across
-methods, including the evaluations hidden in Hessian-vector products.
+All methods report the same raw internal-basis force norm and MHD energy. Force
+evaluations are counted inside VMEC++ (``force_eval_count``), including the
+evaluations hidden in Hessian-vector products.
 
-Interpretation: what separates the methods is how they couple DOFs of
-neighbouring flux surfaces. Plain JFNK does not -- it treats every degree of
-freedom as independent, so it cannot damp the radial stiffness that lets a
-surface cross its neighbour between iterations (BAD_JACOBIAN restarts in the
-native solver). It still converges, but slowly. VMEC's couples each surface to
-its jF +/- 1 neighbours; applying it -- as the inner Krylov preconditioner, or
-refreshed every step in the HVP Newton -- is what rescues conditioning and cuts
-the cost by an order of magnitude.
+Both Newton-Krylov variants obtain radial coupling from the full residual's
+Jacobian-vector product. VMEC's preconditioner approximates the inverse Hessian
+with a radial tridiagonal solve per Fourier mode. Applying it to the inner Krylov
+solve reduces the radial stiffness seen by the linear solver.
 """
 
 from __future__ import annotations
@@ -43,9 +42,8 @@ from pathlib import Path
 
 import numpy as np
 from scipy.optimize import newton_krylov
-from scipy.sparse.linalg import LinearOperator, gmres
+from scipy.sparse.linalg import LinearOperator, lgmres
 
-import vmecpp
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
 DEFAULT_INPUT = (
@@ -111,12 +109,14 @@ def reference_equilibrium(input_path: Path = DEFAULT_INPUT, ns: int = 11):
     return np.asarray(model.get_state(), float), model.mhd_energy
 
 
-def _finish(model, name, x, outer_iters, t0):
+def _finish(model, name, x, outer_iters, t0, force_evals=None):
     model.set_state(np.ascontiguousarray(x))
     model.evaluate(2, 2, False)
+    if force_evals is None:
+        force_evals = model.force_eval_count
     return x, Result(
         name,
-        model.force_eval_count,
+        force_evals,
         outer_iters,
         time.perf_counter() - t0,
         float(np.linalg.norm(np.asarray(model.get_forces(), float))),
@@ -125,25 +125,21 @@ def _finish(model, name, x, outer_iters, t0):
 
 
 def solve_vmecpp(input_path=DEFAULT_INPUT, ns=11):
-    """Native VMEC++ solve through the public API; reports the iteration count.
-
-    Unlike the other variants this drives the ordinary ``vmecpp.run`` path rather
-    than the low-level ``VmecModel`` primitives, so the reported residual/energy
-    are the public wout diagnostics (invariant force residuals and total MHD
-    energy) rather than the raw internal-basis force this module counts elsewhere.
-    """
-    vmec_input = vmecpp.VmecInput.from_file(input_path)
-    vmec_input.ns_array = np.asarray([ns], dtype=vmec_input.ns_array.dtype)
+    """Native VMEC++ solve reported with the benchmark's force and energy metrics."""
+    model = make_model(input_path, ns)
+    model.reset_force_eval_count()
     t0 = time.perf_counter()
-    output = vmecpp.run(vmec_input, verbose=False)
-    wout = output.wout
-    return output, Result(
-        name="VMEC++ (native, vmecpp.run)",
-        force_evals=wout.niter,
-        outer_iters=wout.niter,
-        seconds=time.perf_counter() - t0,
-        residual_norm=float(np.sqrt(wout.fsqt[-1])),
-        energy=wout.wb + wout.wp,
+    model.solve()
+    x = np.asarray(model.get_state(), float).copy()
+    iterations = len(model.force_residual_r)
+    force_evals = model.force_eval_count
+    return _finish(
+        model,
+        "VMEC++ (native)",
+        x,
+        iterations,
+        t0,
+        force_evals=force_evals,
     )
 
 
@@ -179,10 +175,8 @@ def solve_newton_krylov(
     model.reset_force_eval_count()
     if preconditioned:
         # Assemble VMEC's preconditioner at x0 and use it, frozen, as the inner
-        # Krylov preconditioner. M^-1 approximates the inverse Hessian; it is a
-        # radial tridiagonal (Thomas) solve per Fourier mode, so it couples each
-        # flux surface to its jF +/- 1 neighbours -- the coupling the plain
-        # branch lacks.
+        # Krylov preconditioner. M^-1 approximates the inverse Hessian with a
+        # radial tridiagonal solve per Fourier mode.
         model.evaluate(2, 2, True)
         n_dof = x0.size
         inner_m = LinearOperator(  # type: ignore[call-overload]
@@ -192,28 +186,40 @@ def solve_newton_krylov(
             ),
         )
     t0 = time.perf_counter()
+    outer_iters = 0
+
+    def count_outer_iteration(_x, _f):
+        nonlocal outer_iters
+        outer_iters += 1
+
     x = newton_krylov(
-        F, x0, f_tol=tol, maxiter=max_iter, method="lgmres", inner_M=inner_m
+        F,
+        x0,
+        f_tol=tol,
+        maxiter=max_iter,
+        method="lgmres",
+        inner_M=inner_m,
+        callback=count_outer_iteration,
     )
     name = (
         "Newton-Krylov (preconditioned)" if preconditioned else "Newton-Krylov (JFNK)"
     )
-    return _finish(model, name, x, 0, t0)
+    return _finish(model, name, x, outer_iters, t0)
 
 
 def solve_newton_krylov_preconditioned(input_path=DEFAULT_INPUT, ns=11, tol=1e-9):
     return solve_newton_krylov(input_path, ns, tol, preconditioned=True)
 
 
-def solve_newton_hvp(
-    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80, inner_tol=1e-3
-):
-    """Globalized Newton-Krylov using VMEC++'s own Hessian-vector product.
+def solve_newton_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80):
+    """Globalized Newton-Krylov using VMEC++'s finite-difference Hessian-vector product.
 
-    Each Newton step solves H dx = -F with GMRES, where H v is hessian_vector_product
-    (the analytic force's directional derivative computed inside VMEC++) and the inner
-    solve is preconditioned by M^-1. A backtracking line search on ||F|| globalizes the
-    step, which is required on stiff 3D cases where the full Newton step overshoots.
+    Each Newton step solves H dx = -F with GMRES preconditioned by M^-1 (VMEC's
+    approximate inverse Hessian), with Eisenstat-Walker adaptive inner forcing and a
+    backtracking line search. H v is hessian_vector_product (a central difference of the
+    analytic force; two force evaluations per matvec). Same solver as
+    solve_newton_exact_hvp but with the FD HVP, for a like-for-like comparison of the
+    HVP backends.
     """
     model = make_model(input_path, ns)
     F = residual(model)
@@ -222,12 +228,17 @@ def solve_newton_hvp(
     model.reset_force_eval_count()
     t0 = time.perf_counter()
     it = 0
+    prev_norm = None
+    eta = 0.5
     for _ in range(max_newton):
         fk = F(x)
         norm0 = np.linalg.norm(fk)
         if norm0 < tol:
             break
         it += 1
+        if prev_norm is not None:
+            eta = min(0.5, max(1e-4, 0.9 * (norm0 / prev_norm) ** 2))
+        prev_norm = norm0
         model.set_state(np.ascontiguousarray(x))
         model.evaluate(2, 2, True)  # assemble M at the current iterate
         h_op = LinearOperator(  # type: ignore[call-overload]
@@ -242,7 +253,7 @@ def solve_newton_hvp(
                 model.apply_preconditioner(np.ascontiguousarray(b)), float
             ),
         )
-        dx, _ = gmres(h_op, -fk, M=m_op, rtol=inner_tol, maxiter=100)
+        dx, _ = lgmres(h_op, -fk, M=m_op, rtol=eta, maxiter=200)
         # Backtracking line search: accept the largest step that reduces ||F||.
         alpha = 1.0
         for _ in range(30):
@@ -255,24 +266,144 @@ def solve_newton_hvp(
     return _finish(model, "Newton (VMEC++ HVP + M^-1)", x, it, t0)
 
 
-ALL_SOLVERS = (
-    solve_vmecpp,
+def solve_newton_exact_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80):
+    """Globalized Newton-Krylov using VMEC++'s exact autodiff Hessian-vector product
+    (``exact_hessian_vector_product``, one Enzyme forward pass) instead of the finite-
+    difference HVP. Requires an Enzyme-enabled build; raises AttributeError otherwise.
+
+    The inner GMRES tolerance is set adaptively (Eisenstat-Walker forcing): the
+    augmented-Lagrangian Hessian is indefinite, so solving it tightly every step wastes
+    hundreds of matvecs early on. Loose-early/tight-late forcing cuts the total matvec
+    count several-fold while preserving the asymptotic convergence, which is what
+    dominates wall-clock (each matvec is cheap but there are many).
+    """
+    model = make_model(input_path, ns)
+    # The exact HVP freezes the constraint multiplier tcon (it depends on the
+    # preconditioner, not just the geometry). Freeze it in the raw force too so
+    # the residual and its exact Jacobian are one consistent map; otherwise the
+    # HVP drifts from the force on stellarators where the constraint force is
+    # significant. The unfrozen evaluation here populates tcon before freezing.
+    model.evaluate(2, 2, True)
+    model.set_freeze_constraint_multiplier(True)
+    F = residual(model)
+    x = np.asarray(model.get_state(), float).copy()
+    n_dof = x.size
+    model.reset_force_eval_count()
+    t0 = time.perf_counter()
+    it = 0
+    prev_norm = None
+    eta = 0.5
+    for _ in range(max_newton):
+        fk = F(x)
+        norm0 = np.linalg.norm(fk)
+        if norm0 < tol:
+            break
+        it += 1
+        # Eisenstat-Walker choice 2 for the inner forcing term.
+        if prev_norm is not None:
+            eta = min(0.5, max(1e-4, 0.9 * (norm0 / prev_norm) ** 2))
+        prev_norm = norm0
+        model.set_state(np.ascontiguousarray(x))
+        model.evaluate(2, 2, True)
+        h_op = LinearOperator(  # type: ignore[call-overload]
+            (n_dof, n_dof),
+            matvec=lambda v: np.asarray(  # type: ignore[call-overload]
+                model.exact_hessian_vector_product(np.ascontiguousarray(v)),
+                float,
+            ),
+        )
+        m_op = LinearOperator(  # type: ignore[call-overload]
+            (n_dof, n_dof),
+            matvec=lambda b: np.asarray(  # type: ignore[call-overload]
+                model.apply_preconditioner(np.ascontiguousarray(b)), float
+            ),
+        )
+        dx, _ = lgmres(h_op, -fk, M=m_op, rtol=eta, maxiter=200)
+        alpha = 1.0
+        for _ in range(30):
+            if np.linalg.norm(F(x + alpha * dx)) < norm0:
+                break
+            alpha *= 0.5
+        else:
+            break
+        x = x + alpha * dx
+    return _finish(model, "Newton (exact autodiff HVP + M^-1)", x, it, t0)
+
+
+def solve_newton_ptc(
+    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, dt0=1.0, max_it=120, inner=1e-2
+):
+    """Pseudo-transient continuation (Psi-tc) with the exact autodiff HVP.
+
+    Each step solves (H + I/dt) dx = -F with GMRES preconditioned by M^-1, then grows
+    the pseudo-time step by switched evolution relaxation, dt = dt0 * ||F0||/||F||. The
+    I/dt shift is implicit-Euler damping at large residual -- the same physics as VMEC's
+    damped descent -- and also regularizes the indefinite, ill-conditioned augmented-
+    Lagrangian Hessian. The cma regression exercises this shifted solver. As ||F|| -> 0
+    the shift vanishes and it becomes the exact Newton step. Needs an Enzyme-enabled
+    build.
+    """
+    model = make_model(input_path, ns)
+    model.evaluate(2, 2, True)
+    model.set_freeze_constraint_multiplier(True)
+    F = residual(model)
+    x = np.asarray(model.get_state(), float).copy()
+    n_dof = x.size
+    model.reset_force_eval_count()
+    t0 = time.perf_counter()
+    f = F(x)
+    norm0 = np.linalg.norm(f)
+    dt = dt0
+    it = 0
+    for _ in range(max_it):
+        nf = np.linalg.norm(f)
+        if nf < tol:
+            break
+        it += 1
+        model.set_state(np.ascontiguousarray(x))
+        model.evaluate(2, 2, True)
+        shift = 1.0 / dt
+        a_op = LinearOperator(  # type: ignore[call-overload]
+            (n_dof, n_dof),
+            matvec=lambda v, s=shift: (  # type: ignore[call-arg]
+                np.asarray(  # type: ignore[call-overload]
+                    model.exact_hessian_vector_product(np.ascontiguousarray(v)), float
+                )
+                + s * v
+            ),
+        )
+        m_op = LinearOperator(  # type: ignore[call-overload]
+            (n_dof, n_dof),
+            matvec=lambda b: np.asarray(  # type: ignore[call-overload]
+                model.apply_preconditioner(np.ascontiguousarray(b)), float
+            ),
+        )
+        dx, _ = lgmres(a_op, -f, M=m_op, rtol=inner, maxiter=60)
+        x = x + dx
+        f = F(x)
+        dt = min(dt0 * norm0 / max(np.linalg.norm(f), 1e-300), 1e6)
+    return _finish(model, "PTC (exact HVP, I/dt + M^-1)", x, it, t0)
+
+
+EXTERNAL_SOLVERS = (
     solve_preconditioned_descent,
-    solve_newton_krylov_preconditioned,
     solve_newton_krylov,
+    solve_newton_krylov_preconditioned,
     solve_newton_hvp,
 )
 
 
 def main():
-    _, w_star = reference_equilibrium()
+    _, native = solve_vmecpp()
+    w_star = native.energy
     print(f"reference equilibrium (native solve): W = {w_star:.8e}\n")
     print(
         f"{'optimizer':32s} {'F-evals':>8s} {'iters':>6s} {'time[s]':>8s} "
         f"{'||F||':>10s} {'dW vs ref':>10s}"
     )
-    for solver in ALL_SOLVERS:
-        r = solver()[1]
+    results = [native]
+    results.extend(solver()[1] for solver in EXTERNAL_SOLVERS)
+    for r in results:
         print(
             f"{r.name:32s} {r.force_evals:8d} {r.outer_iters:6d} {r.seconds:8.2f} "
             f"{r.residual_norm:10.1e} {abs(r.energy - w_star):10.1e}"
