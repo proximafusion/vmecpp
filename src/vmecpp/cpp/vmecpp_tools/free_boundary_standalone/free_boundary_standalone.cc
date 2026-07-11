@@ -33,6 +33,7 @@
 #include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 #include "vmecpp/free_boundary/nestor/nestor.h"
 #include "vmecpp/free_boundary/tangential_partitioning/tangential_partitioning.h"
+#include "vmecpp/free_boundary/vac2/vac2.h"
 
 using file_io::ReadFile;
 using nlohmann::json;
@@ -147,7 +148,12 @@ int main(int argc, char** argv) {
   std::vector<int> iPiv(mnpd);
   std::vector<double> bvecShare(mnpd);
 
-  // shared scratch for BIEST
+  // shared scratch for BIEST and Vac2
+  std::vector<double> vac2RubShare(s.nZnT), vac2RvbShare(s.nZnT);
+  std::vector<double> vac2ZubShare(s.nZnT), vac2ZvbShare(s.nZnT);
+  std::vector<double> vac2BsqOut(s.nThetaEven * s.nZeta);
+  std::vector<double> vac2PotU(s.nThetaEven * s.nZeta);
+  std::vector<double> vac2PotV(s.nThetaEven * s.nZeta);
   std::vector<double> coilBrShare(s.nZnT);
   std::vector<double> coilBpShare(s.nZnT);
   std::vector<double> coilBzShare(s.nZnT);
@@ -194,6 +200,12 @@ int main(int argc, char** argv) {
           &s, &tp, &mgrid, vmec_indata.biest_accuracy_digits, coilBrShare,
           coilBpShare, coilBzShare, bPlasmaShare, bSqVacShare, vacuum_b_r,
           vacuum_b_phi, vacuum_b_z);
+    } else if (vmec_indata.free_boundary_method ==
+               vmecpp::FreeBoundaryMethod::VAC2) {
+      solver = std::make_unique<vmecpp::Vac2>(
+          &s, &tp, &mgrid, coilBrShare, coilBpShare, coilBzShare, vac2RubShare,
+          vac2RvbShare, vac2ZubShare, vac2ZvbShare, vac2BsqOut, vac2PotU,
+          vac2PotV, bSqVacShare, vacuum_b_r, vacuum_b_phi, vacuum_b_z);
     } else {
       LOG(FATAL) << "free-boundary method not supported by this tool: "
                  << vmecpp::ToString(vmec_indata.free_boundary_method);

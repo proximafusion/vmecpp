@@ -153,6 +153,7 @@ add_compile_definitions(
   SCTL_QUAD_T=__float128
   SCTL_HAVE_LAPACK
   SCTL_HAVE_FFTW
+  VMECPP_VAC2_HAVE_FFTW3=1
 )
 
 # Assemble the VMEC++ source tree.
@@ -166,7 +167,7 @@ target_link_libraries(vmecpp_core PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES
 target_link_libraries(vmecpp_core PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
-# for the BIEST free-boundary solver (SCTL)
+# for the BIEST/Vac2 free-boundary solvers (SCTL, Vac2 FFT path)
 target_link_libraries(vmecpp_core PRIVATE lapacke ${MKL_RT_LIBRARY})
 
 # FFTX (SPIRAL-generated batched IPRDFT/PRDFT) for the toroidal FFT hot path.

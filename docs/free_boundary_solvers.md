@@ -1,12 +1,12 @@
-# Free-boundary solvers: NESTOR and BIEST
+# Free-boundary solvers: NESTOR, BIEST, and Vac2
 
-VMEC++ supports two user-selectable solvers for the vacuum-field
+VMEC++ supports three user-selectable solvers for the vacuum-field
 contribution to the free-boundary force (plus `only_coils` for
 verification):
 
 ```json
 {
-  "free_boundary_method": "nestor",  // or "biest"
+  "free_boundary_method": "nestor",  // or "biest" or "vac2"
   "biest_accuracy_digits": 8         // only used by biest, in [1, 14]
 }
 ```
@@ -44,7 +44,8 @@ tolerance.
 
 Compared to NESTOR at typical resolutions, the BIEST vacuum pressure is the
 more accurate one: NESTOR-vs-BIEST differences equal NESTOR's discretization
-error. In-loop, BIEST reaches a lower converged
+error (consistent with independent comparisons against the Strumberger
+vac2 implementation). In-loop, BIEST reaches a lower converged
 DELBSQ (vacuum/plasma pressure mismatch at the LCFS) than NESTOR.
 
 Requirements and limitations:
@@ -78,6 +79,39 @@ thresholds. For experiments they can be enabled by setting
 `VMECPP_BIEST_PARTIAL_DRIFT_TOL` (maximum boundary-coefficient drift since
 the last full solve, relative to the major radius, below which a partial
 update is used; e.g. `1e-5`).
+
+## Vac2
+
+The Strumberger/Tichmann reformulation of the Neumann solver, a C++ port
+of the Fortran vac2 reference. It solves the same
+problem as NESTOR but avoids the factorial growth of NESTOR's analytic
+kernel coefficients: its accuracy improves monotonically with resolution
+(O(h^3) observed against BIEST) where NESTOR saturates at its formulation
+floor.
+
+On the CTH-like test case at production resolution, Vac2 agrees with BIEST
+to 2e-3 relative RMS in the vacuum pressure (NESTOR: 8e-3) at a cost
+comparable to NESTOR (~0.1 s per solve), and in-loop converges in the same
+number of iterations as BIEST with the same lower DELBSQ floor. This makes
+it a strong default candidate for accurate free-boundary runs.
+
+Performance: the kernel assembly exploits stellarator symmetry (mirrored
+columns are exact sign-flipped copies, verified to 5e-16 against the
+unfolded path; disable with `VAC2_NO_SYMM_FOLD=1`), and the solve uses a
+bounded nested OpenMP team inside VMEC's parallel region
+(`VMECPP_VAC2_SOLVE_THREADS` to override). On the CTH-like case the full
+free-boundary run costs ~2.4 s vs 0.33 s for NESTOR (which amortizes via
+frozen-matrix partial updates) and 0.58 s for NESTOR with full updates
+every iteration.
+
+NESTOR-style partial updates (frozen kernel matrices + Cholesky factor,
+fresh right-hand side) are implemented but opt-in
+(`VMECPP_VAC2_PARTIAL_UPDATES=1`): they preserve the converged answer and
+cut wall time, but slow the descent (~2.6x iterations on CTH-like), the
+same frozen-operator pathology observed with BIEST partial updates.
+
+Current limitations: `lasym = true` is not supported yet by the wrapper;
+axisymmetric (`nzeta == 1`) configurations are unverified (use NESTOR).
 
 ## Dual-run diagnostics
 

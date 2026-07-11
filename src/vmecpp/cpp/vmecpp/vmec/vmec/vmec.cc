@@ -34,6 +34,7 @@
 #include "vmecpp/free_boundary/dual_solver/dual_solver.h"
 #include "vmecpp/free_boundary/nestor/nestor.h"
 #include "vmecpp/free_boundary/only_coils/only_coils.h"
+#include "vmecpp/free_boundary/vac2/vac2.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 
@@ -233,6 +234,19 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       biestBPlasmaShare.setZero(3 * s_.nZeta * s_.nThetaEven);
     }
 
+    if (indata_.free_boundary_method == FreeBoundaryMethod::VAC2 ||
+        fb_shadow_method_ == FreeBoundaryMethod::VAC2) {
+      vac2CoilBrShare.setZero(s_.nZnT);
+      vac2CoilBpShare.setZero(s_.nZnT);
+      vac2CoilBzShare.setZero(s_.nZnT);
+      vac2RubShare.setZero(s_.nZnT);
+      vac2RvbShare.setZero(s_.nZnT);
+      vac2ZubShare.setZero(s_.nZnT);
+      vac2ZvbShare.setZero(s_.nZnT);
+      vac2BsqOutShare.setZero(s_.nThetaEven * s_.nZeta);
+      vac2PotUShare.setZero(s_.nThetaEven * s_.nZeta);
+      vac2PotVShare.setZero(s_.nThetaEven * s_.nZeta);
+    }
 
     h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
     h_.vacuum_b_r.setZero(s_.nZnT);
@@ -616,6 +630,25 @@ bool Vmec::InitializeRadial(
                                     biestCoilBzShare.size()),
                   std::span<double>(biestBPlasmaShare.data(),
                                     biestBPlasmaShare.size()),
+                  b_sq_vac, vac_b_r, vac_b_phi, vac_b_z);
+            }
+            if (method == FreeBoundaryMethod::VAC2) {
+              return std::make_unique<Vac2>(
+                  &s_, tp_[thread_id].get(), &mgrid_,
+                  std::span<double>(vac2CoilBrShare.data(),
+                                    vac2CoilBrShare.size()),
+                  std::span<double>(vac2CoilBpShare.data(),
+                                    vac2CoilBpShare.size()),
+                  std::span<double>(vac2CoilBzShare.data(),
+                                    vac2CoilBzShare.size()),
+                  std::span<double>(vac2RubShare.data(), vac2RubShare.size()),
+                  std::span<double>(vac2RvbShare.data(), vac2RvbShare.size()),
+                  std::span<double>(vac2ZubShare.data(), vac2ZubShare.size()),
+                  std::span<double>(vac2ZvbShare.data(), vac2ZvbShare.size()),
+                  std::span<double>(vac2BsqOutShare.data(),
+                                    vac2BsqOutShare.size()),
+                  std::span<double>(vac2PotUShare.data(), vac2PotUShare.size()),
+                  std::span<double>(vac2PotVShare.data(), vac2PotVShare.size()),
                   b_sq_vac, vac_b_r, vac_b_phi, vac_b_z);
             }
             LOG(FATAL) << absl::StrCat("free boundary method '",
