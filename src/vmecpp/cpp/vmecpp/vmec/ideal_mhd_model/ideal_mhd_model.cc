@@ -774,6 +774,30 @@ absl::StatusOr<bool> IdealMhdModel::update(
           delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
         }
 
+        // Edge-jump check (opt-in): a physical sheet current would lift the
+        // vacuum field magnitude above the interior by the edge pressure,
+        // |B_out|^2/2 - extrap(|B_in|^2/2) = p(edge). Reports that ratio.
+        if (std::getenv("VMECPP_FB_DIAG") != nullptr) {
+          const double extrap_p = 1.5 * m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH] -
+                                  0.5 * m_p_.presH[r_.nsMaxH - 2 - r_.nsMinH];
+          double sum_jump = 0.0;
+          double sum_vac = 0.0;
+          for (int kl = 0; kl < s_.nZnT; ++kl) {
+            const int k = kl / s_.nThetaEff;
+            const int l = kl % s_.nThetaEff;
+            const int idx_lk = l * s_.nZeta + k;
+            const double extrap_b2 = insideTotalPressure[kl] - extrap_p;
+            sum_jump += m_h_.vacuum_magnetic_pressure[idx_lk] - extrap_b2;
+            sum_vac += m_h_.vacuum_magnetic_pressure[idx_lk];
+          }
+          std::fprintf(stderr,
+                       "[FB D3] <vacP-extrapB2>=%.4e p(edge)=%.4e ratio=%.3f "
+                       "<vacP>=%.4e\n",
+                       sum_jump / s_.nZnT, edgePressure,
+                       (sum_jump / s_.nZnT) / (edgePressure + 1e-30),
+                       sum_vac / s_.nZnT);
+        }
+
         if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
           // TODO(jons): implement this !!!
 
