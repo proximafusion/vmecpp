@@ -3,16 +3,15 @@
 # SPDX-License-Identifier: MIT
 """Coupling on-surface floor versus the axisymmetric toroidal sample count.
 
-The isotropic-grid study (onsurface_accuracy.py) showed AEGIS's punctured-
-trapezoidal principal-value quadrature converges to the equilibrium normal-field
-floor on a balanced grid, but degrades on an anisotropic one. The axisymmetric
-coupling upsamples the toroidal direction to VMECPP_AEGIS_NTOR (default 256)
-while leaving the poloidal grid at nThetaEff (~16 at mpol 12), a ~16x aspect
-ratio. This sweeps VMECPP_AEGIS_NTOR on the free-boundary Solovev tokamak and
-reads the converged physical surface current (VMECPP_AEGIS_DIAG) and delbsq. If
-the floor is minimized near an isotropic toroidal count rather than at 256, the
-coupling's on-surface floor is an aspect-ratio effect that balancing the grid
-removes. One toroidal count per process (static getenv).
+The isotropic-grid study (onsurface_accuracy.py) showed AEGIS's punctured- trapezoidal
+principal-value quadrature converges to the equilibrium normal-field floor on a balanced
+grid, but degrades on an anisotropic one. The axisymmetric coupling upsamples the
+toroidal direction to VMECPP_AEGIS_NTOR (default 256) while leaving the poloidal grid at
+nThetaEff (~16 at mpol 12), a ~16x aspect ratio. This sweeps VMECPP_AEGIS_NTOR on the
+free-boundary Solovev tokamak and reads the converged physical surface current
+(VMECPP_AEGIS_DIAG) and delbsq. If the floor is minimized near an isotropic toroidal
+count rather than at 256, the coupling's on-surface floor is an aspect-ratio effect that
+balancing the grid removes. One toroidal count per process (static getenv).
 """
 
 from __future__ import annotations

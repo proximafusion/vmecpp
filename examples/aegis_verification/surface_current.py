@@ -72,8 +72,8 @@ DIAG_RE = re.compile(r"phys surf current \|n x \(Bout-Bin\)\|/\|B\|=([0-9.eE+-]+
 
 
 def edge_b2(w):
-    """Surface-averaged |B|^2 on the LCFS from bmnc at s=1 (Parseval over the
-    cosine series; ntor=0, so the modes are cos(m*theta))."""
+    """Surface-averaged |B|^2 on the LCFS from bmnc at s=1 (Parseval over the cosine
+    series; ntor=0, so the modes are cos(m*theta))."""
     bmnc = np.asarray(w.bmnc)[:, -1]
     xm = np.asarray(w.xm_nyq)
     weight = np.where(xm == 0, 1.0, 0.5)
