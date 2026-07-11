@@ -788,6 +788,300 @@ class VmecModel {
     return out;
   }
 
+  // ---- state -> external (wout) geometry recompose and its transpose ------
+  //
+  // The converged decomposed internal state (decomposed_x_[0], product basis
+  // ~cos(m*theta)cos(n*zeta) etc.) maps LINEARLY to the external wout geometry
+  // harmonics rmnc, zmns and lmns_full (all on the FULL radial grid, combined
+  // basis ~cos(m*theta - n*zeta)). This reproduces exactly the recompose that
+  // output_quantities.cc performs (GatherDataFromThreads reindex +
+  // ComputeWOutFileContents scaling):
+  //   * reindex source_index = ((jF - nsMinF1)*mpol + m)*(ntor+1) + n into the
+  //     wout mode order (nsMinF1 == 0 for the single-thread VmecModel),
+  //   * a per-(m,n) diagonal scaling by mscale[m]*nscale[|n|],
+  //   * the m>0 half factors and the nscale-sign combined-basis fold of the
+  //     cc/ss (stellarator-symmetric) coefficients,
+  //   * the lthreed m=1 internal->physical gauge conversion (a *symmetric* 2x2
+  //     mixing of rmnss and zmncs, hence self-adjoint), and the lthreed m=0
+  //     lambda axis extrapolation at jF==0,
+  //   * lambda's 1/phipF(jF) * lamscale FULL-grid factor.
+  // Only the stellarator-symmetric coefficients (rmncc, rmnss, zmnsc, zmncs,
+  // lmnsc, lmncs) enter rmnc/zmns/lmns_full; the lasym-only spans (rmnsc,
+  // rmncs, zmncc, zmnss, lmncc, lmnss) feed the *asymmetric* external harmonics
+  // (rmns/zmnc/lmnc), so the transpose leaves their cotangent zero.
+  //
+  // Both outputs are shaped (mnmax, ns) in the wout mode-major layout, matching
+  // WOutFileContents::rmnc / ::zmns / ::lmns_full (and wout.xm / wout.xn).
+  py::dict ExternalGeometry() const {
+    const vmecpp::Sizes& s = vmec_->s_;
+    const vmecpp::FourierBasisFastPoloidal& t = vmec_->t_;
+    const vmecpp::RadialProfiles& p = *vmec_->p_[0];
+    const vmecpp::FourierGeometry& x = *vmec_->decomposed_x_[0];
+    const int nsMinF1 = vmec_->r_[0]->nsMinF1;
+    const int ns = vmec_->fc_.ns;
+    const int mpol = s.mpol;
+    const int ntor = s.ntor;
+    const int mnmax = s.mnmax;
+    const double lamscale = vmec_->constants_.lamscale;
+    auto src = [&](int jF, int m, int n) {
+      return ((jF - nsMinF1) * mpol + m) * (ntor + 1) + n;
+    };
+
+    // Working copies so the lthreed m=1 gauge conversion (which mutates rmnss
+    // and zmncs at m=1) never touches the live state.
+    std::vector<double> rmncc(x.rmncc.begin(), x.rmncc.end());
+    std::vector<double> zmnsc(x.zmnsc.begin(), x.zmnsc.end());
+    std::vector<double> lmnsc(x.lmnsc.begin(), x.lmnsc.end());
+    std::vector<double> rmnss, zmncs, lmncs;
+    if (s.lthreed) {
+      rmnss.assign(x.rmnss.begin(), x.rmnss.end());
+      zmncs.assign(x.zmncs.begin(), x.zmncs.end());
+      lmncs.assign(x.lmncs.begin(), x.lmncs.end());
+      for (int jF = 0; jF < ns; ++jF) {
+        for (int n = 0; n <= ntor; ++n) {
+          const int idx = src(jF, 1, n);
+          const double old_rss = rmnss[idx];
+          rmnss[idx] = old_rss + zmncs[idx];
+          zmncs[idx] = old_rss - zmncs[idx];
+        }
+      }
+    }
+
+    std::vector<double> rmnc(static_cast<size_t>(mnmax) * ns, 0.0);
+    std::vector<double> zmns(static_cast<size_t>(mnmax) * ns, 0.0);
+    std::vector<double> lmns_full(static_cast<size_t>(mnmax) * ns, 0.0);
+
+    for (int jF = 0; jF < ns; ++jF) {
+      std::vector<double> rmnc1(mnmax, 0.0), zmns1(mnmax, 0.0),
+          lmns1(mnmax, 0.0);
+      int mn = -1;
+      const int m_0 = 0;
+      for (int n = 0; n <= ntor; ++n) {
+        mn++;
+        const int idx = src(jF, m_0, n);
+        const double t1 = t.mscale[m_0] * t.nscale[n];
+        rmnc1[mn] = t1 * rmncc[idx];
+        if (s.lthreed) {
+          zmns1[mn] = -t1 * zmncs[idx];
+          lmns1[mn] = -t1 * lmncs[idx];
+        }
+      }
+      if (s.lthreed && jF == 0) {
+        int mn2 = -1;
+        for (int n = 0; n <= ntor; ++n) {
+          mn2++;
+          const int idx1 = src(1, m_0, n);
+          const int idx2 = src(2, m_0, n);
+          const double t1 = t.mscale[m_0] * t.nscale[n];
+          lmns1[mn2] = -t1 * (2.0 * lmncs[idx1] - lmncs[idx2]);
+        }
+      }
+      for (int m = 1; m < mpol; ++m) {
+        for (int n = -ntor; n <= ntor; ++n) {
+          mn++;
+          const int abs_n = std::abs(n);
+          const int idx = src(jF, m, abs_n);
+          const double t1 = t.mscale[m] * t.nscale[abs_n];
+          if (n == 0) {
+            rmnc1[mn] = t1 * rmncc[idx];
+            zmns1[mn] = t1 * zmnsc[idx];
+            lmns1[mn] = t1 * lmnsc[idx];
+          } else if (jF > 0) {
+            rmnc1[mn] = t1 * rmncc[idx] / 2.0;
+            zmns1[mn] = t1 * zmnsc[idx] / 2.0;
+            lmns1[mn] = t1 * lmnsc[idx] / 2.0;
+            if (s.lthreed) {
+              const int sign_n = vmecpp::signum(n);
+              rmnc1[mn] += t1 * sign_n * rmnss[idx] / 2.0;
+              zmns1[mn] -= t1 * sign_n * zmncs[idx] / 2.0;
+              lmns1[mn] -= t1 * sign_n * lmncs[idx] / 2.0;
+            }
+          }
+        }
+      }
+      const double lam_factor = lamscale / p.phipF[jF - nsMinF1];
+      for (int k = 0; k < mnmax; ++k) {
+        rmnc[static_cast<size_t>(k) * ns + jF] = rmnc1[k];
+        zmns[static_cast<size_t>(k) * ns + jF] = zmns1[k];
+        lmns_full[static_cast<size_t>(k) * ns + jF] = lmns1[k] * lam_factor;
+      }
+    }
+
+    py::dict out;
+    out["rmnc"] =
+        py::array_t<double>(std::vector<py::ssize_t>{mnmax, ns}, rmnc.data());
+    out["zmns"] =
+        py::array_t<double>(std::vector<py::ssize_t>{mnmax, ns}, zmns.data());
+    out["lmns_full"] = py::array_t<double>(std::vector<py::ssize_t>{mnmax, ns},
+                                           lmns_full.data());
+    return out;
+  }
+
+  // Transpose (vector-Jacobian product) of ExternalGeometry: given cotangents
+  // geom_bar = {"rmnc","zmns","lmns_full"} (each (mnmax, ns), missing keys
+  // treated as zero) it returns the state cotangent dj (size get_state().size,
+  // FlattenActive layout) = C^T geom_bar, where C is the linear map computed by
+  // ExternalGeometry. Because C = Scaling . Convert (Convert is the lthreed m=1
+  // gauge mixing, self-adjoint), the transpose is Convert . Scaling^T.
+  Eigen::VectorXd ExternalGeometryVjp(const py::dict& geom_bar) {
+    const vmecpp::Sizes& s = vmec_->s_;
+    const vmecpp::FourierBasisFastPoloidal& t = vmec_->t_;
+    const vmecpp::RadialProfiles& p = *vmec_->p_[0];
+    const vmecpp::FourierGeometry& x = *vmec_->decomposed_x_[0];
+    const int nsMinF1 = vmec_->r_[0]->nsMinF1;
+    const int ns = vmec_->fc_.ns;
+    const int mpol = s.mpol;
+    const int ntor = s.ntor;
+    const int mnmax = s.mnmax;
+    const double lamscale = vmec_->constants_.lamscale;
+    auto src = [&](int jF, int m, int n) {
+      return ((jF - nsMinF1) * mpol + m) * (ntor + 1) + n;
+    };
+
+    const py::ssize_t geom_size = static_cast<py::ssize_t>(mnmax) * ns;
+    auto get_bar = [&](const char* key) -> std::vector<double> {
+      std::vector<double> buf(static_cast<size_t>(mnmax) * ns, 0.0);
+      if (geom_bar.contains(key)) {
+        auto arr = geom_bar[key]
+                       .cast<py::array_t<double, py::array::c_style |
+                                                     py::array::forcecast>>();
+        if (arr.size() != geom_size) {
+          throw std::runtime_error(
+              std::string("external_geometry_vjp: '") + key +
+              "' has wrong size (got " + std::to_string(arr.size()) +
+              ", expected " + std::to_string(geom_size) + ")");
+        }
+        std::copy(arr.data(), arr.data() + arr.size(), buf.begin());
+      }
+      return buf;
+    };
+    const std::vector<double> rmnc_bar = get_bar("rmnc");
+    const std::vector<double> zmns_bar = get_bar("zmns");
+    const std::vector<double> lmns_full_bar = get_bar("lmns_full");
+
+    // Cotangents on the (post-gauge-conversion) symmetric coefficients.
+    const int span_len = static_cast<int>(x.rmncc.size());
+    std::vector<double> rmncc_bar(span_len, 0.0), zmnsc_bar(span_len, 0.0),
+        lmnsc_bar(span_len, 0.0);
+    std::vector<double> rmnss_bar, zmncs_bar, lmncs_bar;
+    if (s.lthreed) {
+      rmnss_bar.assign(span_len, 0.0);
+      zmncs_bar.assign(span_len, 0.0);
+      lmncs_bar.assign(span_len, 0.0);
+    }
+
+    for (int jF = 0; jF < ns; ++jF) {
+      const double lam_factor = lamscale / p.phipF[jF - nsMinF1];
+      std::vector<double> rmnc1_bar(mnmax), zmns1_bar(mnmax), lmns1_bar(mnmax);
+      for (int k = 0; k < mnmax; ++k) {
+        rmnc1_bar[k] = rmnc_bar[static_cast<size_t>(k) * ns + jF];
+        zmns1_bar[k] = zmns_bar[static_cast<size_t>(k) * ns + jF];
+        lmns1_bar[k] =
+            lmns_full_bar[static_cast<size_t>(k) * ns + jF] * lam_factor;
+      }
+      int mn = -1;
+      const int m_0 = 0;
+      for (int n = 0; n <= ntor; ++n) {
+        mn++;
+        const int idx = src(jF, m_0, n);
+        const double t1 = t.mscale[m_0] * t.nscale[n];
+        rmncc_bar[idx] += t1 * rmnc1_bar[mn];
+        if (s.lthreed) {
+          zmncs_bar[idx] += -t1 * zmns1_bar[mn];
+          // At jF==0 the m=0 lambda is *overwritten* by the axis extrapolation
+          // below, so the direct term does not survive the forward map.
+          if (jF != 0) {
+            lmncs_bar[idx] += -t1 * lmns1_bar[mn];
+          }
+        }
+      }
+      if (s.lthreed && jF == 0) {
+        int mn2 = -1;
+        for (int n = 0; n <= ntor; ++n) {
+          mn2++;
+          const int idx1 = src(1, m_0, n);
+          const int idx2 = src(2, m_0, n);
+          const double t1 = t.mscale[m_0] * t.nscale[n];
+          lmncs_bar[idx1] += -t1 * 2.0 * lmns1_bar[mn2];
+          lmncs_bar[idx2] += t1 * lmns1_bar[mn2];
+        }
+      }
+      for (int m = 1; m < mpol; ++m) {
+        for (int n = -ntor; n <= ntor; ++n) {
+          mn++;
+          const int abs_n = std::abs(n);
+          const int idx = src(jF, m, abs_n);
+          const double t1 = t.mscale[m] * t.nscale[abs_n];
+          if (n == 0) {
+            rmncc_bar[idx] += t1 * rmnc1_bar[mn];
+            zmnsc_bar[idx] += t1 * zmns1_bar[mn];
+            lmnsc_bar[idx] += t1 * lmns1_bar[mn];
+          } else if (jF > 0) {
+            rmncc_bar[idx] += t1 * rmnc1_bar[mn] / 2.0;
+            zmnsc_bar[idx] += t1 * zmns1_bar[mn] / 2.0;
+            lmnsc_bar[idx] += t1 * lmns1_bar[mn] / 2.0;
+            if (s.lthreed) {
+              const int sign_n = vmecpp::signum(n);
+              rmnss_bar[idx] += t1 * sign_n * rmnc1_bar[mn] / 2.0;
+              zmncs_bar[idx] += -t1 * sign_n * zmns1_bar[mn] / 2.0;
+              lmncs_bar[idx] += -t1 * sign_n * lmns1_bar[mn] / 2.0;
+            }
+          }
+        }
+      }
+    }
+
+    // Transpose of the lthreed m=1 internal->physical gauge conversion. The
+    // forward map is state -> u with M = [[1,1],[1,-1]] acting on
+    // (rmnss, zmncs); M is symmetric so state_bar = M^T u_bar = M u_bar.
+    if (s.lthreed) {
+      for (int jF = 0; jF < ns; ++jF) {
+        for (int n = 0; n <= ntor; ++n) {
+          const int idx = src(jF, 1, n);
+          const double a = rmnss_bar[idx];
+          const double b = zmncs_bar[idx];
+          rmnss_bar[idx] = a + b;
+          zmncs_bar[idx] = a - b;
+        }
+      }
+    }
+
+    // Assemble dj in the exact FlattenActive span order via a zeroed scratch
+    // FourierGeometry (lasym-only spans stay zero).
+    vmecpp::FourierGeometry& scratch = *vmec_->physical_x_backup_[0];
+    scratch.setZero();
+    std::copy(rmncc_bar.begin(), rmncc_bar.end(), scratch.rmncc.begin());
+    std::copy(zmnsc_bar.begin(), zmnsc_bar.end(), scratch.zmnsc.begin());
+    std::copy(lmnsc_bar.begin(), lmnsc_bar.end(), scratch.lmnsc.begin());
+    if (s.lthreed) {
+      std::copy(rmnss_bar.begin(), rmnss_bar.end(), scratch.rmnss.begin());
+      std::copy(zmncs_bar.begin(), zmncs_bar.end(), scratch.zmncs.begin());
+      std::copy(lmncs_bar.begin(), lmncs_bar.end(), scratch.lmncs.begin());
+    }
+    return FlattenActive(scratch, s);
+  }
+
+  // Validation reference: the SAME external geometry, but produced by VMEC++'s
+  // real output pipeline (ComputeOutputQuantities) on the current live state,
+  // so ExternalGeometry can be checked bit-exactly against the production code
+  // path. Mirrors the ComputeOutputQuantities call Vmec::run performs after the
+  // equilibrium solve. Call after solve()/evaluate().
+  py::dict ExternalGeometryReference() {
+    const vmecpp::OutputQuantities oq = vmecpp::ComputeOutputQuantities(
+        vmecpp::Vmec::kSignOfJacobian, vmec_->indata_, vmec_->s_, vmec_->fc_,
+        vmec_->constants_, vmec_->t_, vmec_->h_, vmec_->mgrid_.mgrid_mode,
+        vmec_->r_, vmec_->decomposed_x_, vmec_->m_, vmec_->p_,
+        vmecpp::VmecCheckpoint::NONE,
+        static_cast<vmecpp::VacuumPressureState>(vmec_->get_ivac()),
+        vmec_->get_status(), vmec_->get_iter2());
+    const vmecpp::WOutFileContents& w = oq.wout;
+    py::dict out;
+    out["rmnc"] = w.rmnc;
+    out["zmns"] = w.zmns;
+    out["lmns_full"] = w.lmns_full;
+    return out;
+  }
+
 #ifdef VMECPP_ENABLE_ENZYME
   // Exact dQS/dx (objective-state gradient) for a quasisymmetry objective whose
   // derivative w.r.t. the QS harmonics is supplied in harm_bar (six
@@ -1770,6 +2064,11 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("fsql1", &VmecModel::fsql1)
       .def_property_readonly("mhd_energy", &VmecModel::mhd_energy)
       .def("qs_harmonics", &VmecModel::qs_harmonics)
+      .def("external_geometry", &VmecModel::ExternalGeometry)
+      .def("external_geometry_vjp", &VmecModel::ExternalGeometryVjp,
+           py::arg("geom_bar"))
+      .def("external_geometry_reference",
+           &VmecModel::ExternalGeometryReference)
       .def_property("restart_reason", &VmecModel::restart_reason,
                     &VmecModel::set_restart_reason)
       .def_property_readonly("status", &VmecModel::status)
