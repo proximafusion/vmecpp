@@ -527,6 +527,10 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   ASSERT_TRUE(indata.ok());
   ASSERT_EQ(indata->ns_array.size(), 2u);
 
-  const auto output = vmecpp::run(*indata);
+  const auto output = vmecpp::run(*indata, std::nullopt, 1);
   ASSERT_TRUE(output.ok());
+
+  // Regression guard for issue #330/#640 and other changes to the multigrid
+  // convergence path
+  EXPECT_EQ(output->wout.niter, 344);
 }  // MultiGridFreeBoundary
