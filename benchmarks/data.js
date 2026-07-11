@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783798623486,
+  "lastUpdate": 1783799669524,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -9634,6 +9634,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.812895336000016,
             "range": "stddev: 0.02528887795783881",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e9c70d7b76feb1edec71491376e1a4996faa075e",
+          "message": "Add iteration-count regression guard to multigrid free-boundary test (#641)\n\nThe existing MultiGridFreeBoundary test only checked that the run\nconverged, so it didn't catch the #330/#640 vacuum_pressure_state_\ncarryover regression: the run still converged, just via a different\n(longer) path once the vacuum term switched on a stage too early.",
+          "timestamp": "2026-07-11T21:49:48+02:00",
+          "tree_id": "81d6f33813e003dd370cd7428848bed14cf496d5",
+          "url": "https://github.com/proximafusion/vmecpp/commit/e9c70d7b76feb1edec71491376e1a4996faa075e"
+        },
+        "date": 1783799668124,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.37004509660000623,
+            "range": "stddev: 0.002355719090347387",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3688521546000061,
+            "range": "stddev: 0.0008029325434149772",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.313657147333307,
+            "range": "stddev: 0.019694258313751628",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2676211073333359,
+            "range": "stddev: 0.0029264102344275966",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.0924386249999998,
+            "range": "stddev: 0.018438704539632977",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.060111507666685,
+            "range": "stddev: 0.013559993831155005",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.709080882666646,
+            "range": "stddev: 0.010990439550726979",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
