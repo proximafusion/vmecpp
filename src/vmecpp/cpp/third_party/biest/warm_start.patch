@@ -1,0 +1,28 @@
+diff -ur a/include/biest/vacuum-field.hpp b/include/biest/vacuum-field.hpp
+--- a/include/biest/vacuum-field.hpp	2023-03-02 08:22:14.000000000 +0000
++++ b/include/biest/vacuum-field.hpp	2026-07-11 17:16:24.764752763 +0000
+@@ -88,6 +88,10 @@
+     mutable sctl::Vector<Real> XX, normal_, dX_, Xt_, Xp_, J0_; // NFP_ * Nt_ * Np_
+     mutable sctl::Vector<Real> normal; // Nt_ * Np_
+     mutable bool dosetup;
++
++    // previous sigma solution, used to warm-start the iterative solve in
++    // ComputeBplasma (local modification relative to upstream BIEST)
++    mutable sctl::Vector<Real> sigma_prev_;
+   };
+ 
+   /**
+diff -ur a/include/biest/vacuum-field.txx b/include/biest/vacuum-field.txx
+--- a/include/biest/vacuum-field.txx	2023-03-02 08:22:14.000000000 +0000
++++ b/include/biest/vacuum-field.txx	2026-07-11 17:16:24.790752717 +0000
+@@ -137,8 +137,10 @@
+ 
+     sctl::Vector<Real> sigma, grad_phi;
+     { // Solve for sigma
++      if (sigma_prev_.Dim() == Nt_*Np_) sigma = sigma_prev_; // warm start from the previous solution
+       sctl::ParallelSolver<Real> solver(sctl::Comm::Self(), verbose_);
+       solver(&sigma, LinOp, sctl::Vector<Real>(Bcoil_dot_N) + Bplasma_dot_N, sctl::pow<Real>(0.1,digits_), max_iter);
++      sigma_prev_ = sigma;
+     }
+     { // Compute Bplasma <-- Bplasma - (LaplaceFxdU[sigma] - 0.5*sigma*normal)
+       sctl::Vector<Real> sigma_, sigma__;
