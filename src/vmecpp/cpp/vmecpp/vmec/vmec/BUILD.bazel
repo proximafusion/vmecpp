@@ -29,6 +29,7 @@ cc_library(
         "//vmecpp/free_boundary/free_boundary_base",
         "//vmecpp/free_boundary/nestor",
         "//vmecpp/free_boundary/only_coils",
+        "//vmecpp/free_boundary/vac2",
     ],
 )
 

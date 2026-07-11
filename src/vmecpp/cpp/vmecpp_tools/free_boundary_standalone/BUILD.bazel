@@ -15,6 +15,7 @@ cc_binary(
         "//vmecpp/free_boundary/biest",
         "//vmecpp/free_boundary/mgrid_provider",
         "//vmecpp/free_boundary/nestor",
+        "//vmecpp/free_boundary/vac2",
         "//vmecpp/free_boundary/tangential_partitioning",
     ],
 )

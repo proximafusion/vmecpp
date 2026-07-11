@@ -141,6 +141,9 @@ class FreeBoundaryMethod(str, enum.Enum):
     BIEST = "biest"
     """Boundary Integral Equation Solver for Toroidal systems."""
 
+    VAC2 = "vac2"
+    """Vac2 (Strumberger) reformulation of the Neumann solver."""
+
 
 class IterationStyle(str, enum.Enum):
     """Time-step / restart control scheme for the equilibrium iteration."""

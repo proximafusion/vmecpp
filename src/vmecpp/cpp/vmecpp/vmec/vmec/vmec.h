@@ -215,6 +215,17 @@ class Vmec {
   Eigen::VectorXd biestCoilBzShare;
   Eigen::VectorXd biestBPlasmaShare;
 
+  // shared scratch for the Vac2 free-boundary solver; see Vac2 class docs
+  Eigen::VectorXd vac2CoilBrShare;
+  Eigen::VectorXd vac2CoilBpShare;
+  Eigen::VectorXd vac2CoilBzShare;
+  Eigen::VectorXd vac2RubShare;
+  Eigen::VectorXd vac2RvbShare;
+  Eigen::VectorXd vac2ZubShare;
+  Eigen::VectorXd vac2ZvbShare;
+  Eigen::VectorXd vac2BsqOutShare;
+  Eigen::VectorXd vac2PotUShare;
+  Eigen::VectorXd vac2PotVShare;
 
   // diagnostic dual-run mode (see DualSolver): shadow solver method from
   // VMECPP_FB_SHADOW, dump path from VMECPP_FB_DUAL_DUMP, and the shadow

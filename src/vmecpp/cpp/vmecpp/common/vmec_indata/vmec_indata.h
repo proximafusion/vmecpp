@@ -36,7 +36,11 @@ enum class FreeBoundaryMethod : std::uint8_t {
 
   // use the Boundary Integral Equation Solver for Toroidal systems
   // for the free-boundary force contribution
-  BIEST
+  BIEST,
+
+  // use the Vac2 (Strumberger) reformulation of the Neumann solver
+  // for the free-boundary force contribution
+  VAC2
 };
 
 int FreeBoundaryMethodCode(FreeBoundaryMethod free_boundary_method);

@@ -55,6 +55,8 @@ absl::StatusOr<FreeBoundaryMethod> FreeBoundaryMethodFromString(
     return FreeBoundaryMethod::ONLY_COILS;
   } else if (free_boundary_method_string == "biest") {
     return FreeBoundaryMethod::BIEST;
+  } else if (free_boundary_method_string == "vac2") {
+    return FreeBoundaryMethod::VAC2;
   }
   return absl::NotFoundError(absl::StrCat("free boundary method named '",
                                           free_boundary_method_string,
@@ -69,6 +71,8 @@ std::string ToString(FreeBoundaryMethod free_boundary_method) {
       return "only_coils";
     case FreeBoundaryMethod::BIEST:
       return "biest";
+    case FreeBoundaryMethod::VAC2:
+      return "vac2";
     default:
       LOG(FATAL)
           << "no string conversion implemented yet for FreeBoundaryMethod code "

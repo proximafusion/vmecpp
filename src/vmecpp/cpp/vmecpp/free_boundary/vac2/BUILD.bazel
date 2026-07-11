@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+#
+# Vac2 (Strumberger/Tichmann) vacuum solver, a C++ port of the Fortran
+# reference vac2/{matrix,fourier,foumat,bexmat,solver}.f90.
+cc_library(
+    name = "vac2_solver",
+    srcs = [
+        "basis_integrals.cc",
+        "vac2_mode_assembly.cc",
+        "vac2_solver.cc",
+    ],
+    hdrs = [
+        "basis_integrals.h",
+        "vac2_mode_assembly.h",
+        "vac2_solver.h",
+    ],
+    defines = ["VMECPP_VAC2_HAVE_FFTW3=1"],
+    linkopts = [
+        "-llapack",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status:status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@mkl_fftw//:mkl_fftw",
+    ],
+)
+
+cc_library(
+    name = "vac2",
+    srcs = ["vac2.cc"],
+    hdrs = ["vac2.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":vac2_solver",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/log:log",
+        "//vmecpp/free_boundary/free_boundary_base:free_boundary_base",
+    ],
+)
