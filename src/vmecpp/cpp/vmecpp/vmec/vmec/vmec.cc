@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -28,6 +30,8 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/free_boundary/biest/biest.h"
+#include "vmecpp/free_boundary/dual_solver/dual_solver.h"
 #include "vmecpp/free_boundary/nestor/nestor.h"
 #include "vmecpp/free_boundary/only_coils/only_coils.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
@@ -197,6 +201,38 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     matrixShare.setZero(mnpd * mnpd);
     iPiv.setZero(mnpd);
     bvecShare.setZero(mnpd);
+
+    // Diagnostic dual-run mode: run a second (shadow) free-boundary solver
+    // alongside the configured one and dump both |B|^2/2 fields per vacuum
+    // update; see DualSolver. Enabled by VMECPP_FB_SHADOW=(nestor|biest),
+    // dump path override via VMECPP_FB_DUAL_DUMP.
+    if (const char* shadow_env = std::getenv("VMECPP_FB_SHADOW");
+        shadow_env != nullptr) {
+      auto maybe_shadow_method = FreeBoundaryMethodFromString(shadow_env);
+      CHECK(maybe_shadow_method.ok())
+          << "invalid VMECPP_FB_SHADOW value '" << shadow_env << "'";
+      fb_shadow_method_ = maybe_shadow_method.value();
+
+      const char* dump_env = std::getenv("VMECPP_FB_DUAL_DUMP");
+      fb_dual_dump_path_ =
+          dump_env != nullptr ? dump_env : "vmecpp_fb_dual_dump.jsonl";
+      // start with a fresh dump file
+      std::ofstream(fb_dual_dump_path_, std::ios::trunc);
+
+      shadowBsqVac_.setZero(s_.nZnT);
+      shadowVacuumBR_.setZero(s_.nZnT);
+      shadowVacuumBPhi_.setZero(s_.nZnT);
+      shadowVacuumBZ_.setZero(s_.nZnT);
+    }
+
+    if (indata_.free_boundary_method == FreeBoundaryMethod::BIEST ||
+        fb_shadow_method_ == FreeBoundaryMethod::BIEST) {
+      biestCoilBrShare.setZero(s_.nZnT);
+      biestCoilBpShare.setZero(s_.nZnT);
+      biestCoilBzShare.setZero(s_.nZnT);
+      biestBPlasmaShare.setZero(3 * s_.nZeta * s_.nThetaEven);
+    }
+
 
     h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
     h_.vacuum_b_r.setZero(s_.nZnT);
@@ -527,22 +563,77 @@ bool Vmec::InitializeRadial(
           tp_[thread_id] = std::make_unique<TangentialPartitioning>(
               s_.nZnT, num_threads_, thread_id);
 
-          if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
-            fb_[thread_id] = std::make_unique<Nestor>(
+          // Builds one free-boundary solver of the given method, wired either
+          // to the real output buffers consumed by IdealMhdModel or (for the
+          // diagnostic shadow solver) to the shadow buffers.
+          auto make_solver =
+              [&](FreeBoundaryMethod method,
+                  bool as_shadow) -> std::unique_ptr<FreeBoundaryBase> {
+            std::span<double> b_sq_vac =
+                as_shadow
+                    ? std::span<double>(shadowBsqVac_.data(),
+                                        shadowBsqVac_.size())
+                    : std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                                        h_.vacuum_magnetic_pressure.size());
+            std::span<double> vac_b_r =
+                as_shadow ? std::span<double>(shadowVacuumBR_.data(),
+                                              shadowVacuumBR_.size())
+                          : std::span<double>(h_.vacuum_b_r.data(),
+                                              h_.vacuum_b_r.size());
+            std::span<double> vac_b_phi =
+                as_shadow ? std::span<double>(shadowVacuumBPhi_.data(),
+                                              shadowVacuumBPhi_.size())
+                          : std::span<double>(h_.vacuum_b_phi.data(),
+                                              h_.vacuum_b_phi.size());
+            std::span<double> vac_b_z =
+                as_shadow ? std::span<double>(shadowVacuumBZ_.data(),
+                                              shadowVacuumBZ_.size())
+                          : std::span<double>(h_.vacuum_b_z.data(),
+                                              h_.vacuum_b_z.size());
+
+            if (method == FreeBoundaryMethod::NESTOR) {
+              return std::make_unique<Nestor>(
+                  &s_, tp_[thread_id].get(), &mgrid_,
+                  std::span<double>(matrixShare.data(), matrixShare.size()),
+                  std::span<double>(bvecShare.data(), bvecShare.size()),
+                  b_sq_vac, std::span<int>(iPiv.data(), iPiv.size()), vac_b_r,
+                  vac_b_phi, vac_b_z);
+            }
+            if (method == FreeBoundaryMethod::ONLY_COILS) {
+              return std::make_unique<OnlyCoils>(&s_, tp_[thread_id].get(),
+                                                 &mgrid_, b_sq_vac, vac_b_r,
+                                                 vac_b_phi, vac_b_z);
+            }
+            if (method == FreeBoundaryMethod::BIEST) {
+              return std::make_unique<Biest>(
+                  &s_, tp_[thread_id].get(), &mgrid_,
+                  indata_.biest_accuracy_digits,
+                  std::span<double>(biestCoilBrShare.data(),
+                                    biestCoilBrShare.size()),
+                  std::span<double>(biestCoilBpShare.data(),
+                                    biestCoilBpShare.size()),
+                  std::span<double>(biestCoilBzShare.data(),
+                                    biestCoilBzShare.size()),
+                  std::span<double>(biestBPlasmaShare.data(),
+                                    biestBPlasmaShare.size()),
+                  b_sq_vac, vac_b_r, vac_b_phi, vac_b_z);
+            }
+            LOG(FATAL) << absl::StrCat("free boundary method '",
+                                       ToString(method),
+                                       "' not implemented yet");
+          };
+
+          if (fb_shadow_method_.has_value()) {
+            // diagnostic dual-run mode; see DualSolver
+            fb_[thread_id] = std::make_unique<DualSolver>(
                 &s_, tp_[thread_id].get(), &mgrid_,
-                std::span<double>(matrixShare.data(), matrixShare.size()),
-                std::span<double>(bvecShare.data(), bvecShare.size()),
-                std::span<double>(h_.vacuum_magnetic_pressure.data(),
-                                  h_.vacuum_magnetic_pressure.size()),
-                std::span<int>(iPiv.data(), iPiv.size()),
-                std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-                std::span<double>(h_.vacuum_b_phi.data(),
-                                  h_.vacuum_b_phi.size()),
-                std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
-          } else if (indata_.free_boundary_method ==
-                     FreeBoundaryMethod::ONLY_COILS) {
-            fb_[thread_id] = std::make_unique<OnlyCoils>(
-                &s_, tp_[thread_id].get(), &mgrid_,
+                make_solver(indata_.free_boundary_method, /*as_shadow=*/false),
+                make_solver(fb_shadow_method_.value(), /*as_shadow=*/true),
+                std::span<const double>(h_.vacuum_magnetic_pressure.data(),
+                                        h_.vacuum_magnetic_pressure.size()),
+                std::span<const double>(shadowBsqVac_.data(),
+                                        shadowBsqVac_.size()),
+                &shadowBSubUVac_, &shadowBSubVVac_, fb_dual_dump_path_,
                 std::span<double>(h_.vacuum_magnetic_pressure.data(),
                                   h_.vacuum_magnetic_pressure.size()),
                 std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
@@ -550,10 +641,9 @@ bool Vmec::InitializeRadial(
                                   h_.vacuum_b_phi.size()),
                 std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
           } else {
-            LOG(FATAL) << absl::StrCat("free boundary method '",
-                                       ToString(indata_.free_boundary_method),
-                                       "' not implemented yet");
-          }  // indata_.free_boundary_method
+            fb_[thread_id] =
+                make_solver(indata_.free_boundary_method, /*as_shadow=*/false);
+          }
         }  // !reuse_solver
       }  // lfreeb
 

@@ -24,6 +24,8 @@ cc_library(
         "//vmecpp/vmec/handover_storage",
         "//vmecpp/vmec/radial_partitioning",
         "//vmecpp/vmec/output_quantities",
+        "//vmecpp/free_boundary/biest",
+        "//vmecpp/free_boundary/dual_solver",
         "//vmecpp/free_boundary/free_boundary_base",
         "//vmecpp/free_boundary/nestor",
         "//vmecpp/free_boundary/only_coils",

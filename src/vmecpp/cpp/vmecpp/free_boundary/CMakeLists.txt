@@ -1,3 +1,5 @@
+add_subdirectory(biest)
+add_subdirectory(dual_solver)
 add_subdirectory(external_magnetic_field)
 add_subdirectory(free_boundary_base)
 add_subdirectory(laplace_solver)

@@ -195,6 +195,10 @@ class VmecINDATA {
   // for the free-boundary force contribution
   FreeBoundaryMethod free_boundary_method;
 
+  // requested number of decimal digits of accuracy of the BIEST singular
+  // quadrature and GMRES solve; only used for free_boundary_method = BIEST
+  int biest_accuracy_digits;
+
   // ---------------------------------
   // tweaking parameters
 

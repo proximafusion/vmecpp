@@ -610,6 +610,8 @@ PYBIND11_MODULE(_vmecpp, m) {
   DefEigenProperty(pyindata, "extcur", &VmecINDATA::extcur);
   pyindata.def_readwrite("nvacskip", &VmecINDATA::nvacskip)
       .def_readwrite("free_boundary_method", &VmecINDATA::free_boundary_method)
+      .def_readwrite("biest_accuracy_digits",
+                     &VmecINDATA::biest_accuracy_digits)
 
       // tweaking parameters
       .def_readwrite("nstep", &VmecINDATA::nstep);
