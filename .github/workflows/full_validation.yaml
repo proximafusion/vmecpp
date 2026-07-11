@@ -1,12 +1,17 @@
-name: Full V&V against reference VMEC
+name: V&V against reference VMEC
 
-# Runs the full Verification & Validation suite from proximafusion/vmecpp-validation
-# (all ~219 input configurations against reference Fortran VMEC2000), using the
-# vmecpp version built from this commit rather than the version pinned on PyPI/GitHub.
-# This is a lot more exhaustive (and slower) than the "short" validation that
-# vmecpp-validation itself runs on its own PRs, so it is not run on every push here.
+# Runs the Verification & Validation suite from proximafusion/vmecpp-validation
+# against reference Fortran VMEC2000, using the vmecpp version built from this
+# commit rather than the version pinned on PyPI/GitHub.
+#
+# - On every push to main: a short run (a handful of configs, a few minutes)
+#   so regressions are caught immediately.
+# - On release and on manual request: the full run (all ~219 configurations,
+#   ~8h) -- too expensive to run on every push.
 on:
   workflow_dispatch:
+  release:
+    types: [published]
   push:
     branches:
       - main
@@ -16,11 +21,12 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
-  full-validation:
-    name: Run full VMEC++ validation
+  validation:
+    name: Run VMEC++ validation
     runs-on: ubuntu-22.04
     # The full parameter scan runs ~219 configurations, each computing a reference
     # wout with Fortran VMEC2000 in Docker plus one with VMEC++: budget generously.
+    # The short run finishes in minutes and won't come close to this limit.
     timeout-minutes: 360
     steps:
       - name: Check out VMEC++
@@ -57,7 +63,13 @@ jobs:
       - name: Install VMEC++ from this commit
         run: python -m pip install ./vmecpp
 
+      - name: Run short validation
+        if: github.event_name == 'push'
+        working-directory: vmecpp-validation
+        run: python validate_vmec.py --short
+
       - name: Run full validation
+        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
         working-directory: vmecpp-validation
         run: python validate_vmec.py
 
