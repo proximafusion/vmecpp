@@ -19,6 +19,9 @@ import netCDF4
 import numpy as np
 import pydantic
 
+# _mkl_preload runs at import time and must be imported before the C++
+# extension (loaded below and by the vmecpp._* submodules)
+from vmecpp import _mkl_preload  # noqa: F401  # isort: skip
 from vmecpp import _util
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
 from vmecpp._free_boundary import (
@@ -402,6 +405,10 @@ class VmecInput(BaseModelWithNumpy):
         pydantic.Field(),
     ] = FreeBoundaryMethod.NESTOR
     """Method for handling free-boundary conditions."""
+
+    biest_accuracy_digits: int = pydantic.Field(default=8, ge=1, le=14)
+    """Requested number of decimal digits of accuracy of the BIEST singular quadrature
+    and GMRES solve; only used for free_boundary_method BIEST."""
 
     iteration_style: typing.Annotated[
         IterationStyle,

@@ -166,6 +166,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["T20"]
+"benchmarks/**" = ["T201"]
+"tools/**" = ["T201"]
 "**/*_test.py" = ["T20"]
 "examples/**" = ["T201"]
 

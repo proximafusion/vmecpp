@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "dual_solver",
+    srcs = ["dual_solver.cc"],
+    hdrs = ["dual_solver.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "@nlohmann_json//:json",
+        "//vmecpp/free_boundary/free_boundary_base:free_boundary_base",
+    ],
+)

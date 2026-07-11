@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_binary(
+    name = "free_boundary_standalone",
+    srcs = ["free_boundary_standalone.cc"],
+    deps = [
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings",
+        "@nlohmann_json//:json",
+        "//util/file_io",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/common/vmec_indata",
+        "//vmecpp/free_boundary/biest",
+        "//vmecpp/free_boundary/mgrid_provider",
+        "//vmecpp/free_boundary/nestor",
+        "//vmecpp/free_boundary/tangential_partitioning",
+    ],
+)
