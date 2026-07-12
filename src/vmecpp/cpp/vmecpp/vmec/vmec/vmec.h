@@ -190,18 +190,12 @@ class Vmec {
   OutputQuantities output_quantities_;
 
   int num_threads_;
-  // Thread count for the free-boundary (NESTOR) vacuum solve. Decoupled from
-  // num_threads_ (which is capped at ns/2) so the vacuum solve, which is
-  // parallelized over the tangential grid, can use the full thread budget even
-  // at coarse multigrid steps. Computed once (ns-independent).
+  // Thread count for the free-boundary solve is decoupled from
+  // num_threads_ (which is capped at ns/2), since it's ns-independent.
   int vac_num_threads_ = 0;
   std::vector<std::unique_ptr<RadialPartitioning>> r_;
   std::vector<std::unique_ptr<ThreadLocalStorage>> ls_;
   std::vector<std::unique_ptr<RadialProfiles>> p_;
-  // Free-boundary vacuum solvers and their tangential partitioning. Sized to
-  // vac_num_threads_ and built exactly once (the vacuum solve is
-  // ns-independent). Driven from a nested parallel region; see
-  // IdealMhdModel::update.
   std::vector<std::unique_ptr<FreeBoundaryBase>> fb_vac_;
   std::vector<std::unique_ptr<TangentialPartitioning>> tp_vac_;
   std::vector<std::unique_ptr<IdealMhdModel>> m_;
