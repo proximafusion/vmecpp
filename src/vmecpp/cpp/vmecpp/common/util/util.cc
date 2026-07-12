@@ -327,4 +327,15 @@ int vmec_adjust_num_threads(const int max_threads,
   return num_threads;
 }
 
+int vmec_adjust_vacuum_num_threads(const int max_threads, const int n_znt) {
+  // The vacuum solve distributes nZnT tangential grid points among the threads
+  // (see TangentialPartitioning). There is no minimum-points-per-thread
+  // constraint like the radial solve's shared half-grid point, so we can use up
+  // to nZnT threads. In practice nZnT >> max_threads, so this returns
+  // max_threads. Deliberately does NOT call omp_set_num_threads: the vacuum
+  // solve runs in a nested parallel region with an explicit num_threads()
+  // clause.
+  return std::min(max_threads, n_znt);
+}
+
 }  // namespace vmecpp

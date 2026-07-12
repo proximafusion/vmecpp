@@ -117,6 +117,12 @@ class Vmec {
 
   // -------------------
 
+  // Build the free-boundary vacuum solvers (fb_vac_/tp_vac_) and compute
+  // vac_num_threads_. Call once, only when lfreeb is set and after the mgrid
+  // has been loaded. The solvers are ns-independent and persist across
+  // multigrid steps.
+  void SetupVacuumSolvers();
+
   bool InitializeRadial(
       VmecCheckpoint checkpoint, int maximum_iterations, int nsval, int ns_old,
       double& m_delt0,
@@ -184,11 +190,14 @@ class Vmec {
   OutputQuantities output_quantities_;
 
   int num_threads_;
+  // Thread count for the free-boundary solve is decoupled from
+  // num_threads_ (which is capped at ns/2), since it's ns-independent.
+  int vac_num_threads_ = 0;
   std::vector<std::unique_ptr<RadialPartitioning>> r_;
   std::vector<std::unique_ptr<ThreadLocalStorage>> ls_;
   std::vector<std::unique_ptr<RadialProfiles>> p_;
-  std::vector<std::unique_ptr<FreeBoundaryBase>> fb_;
-  std::vector<std::unique_ptr<TangentialPartitioning>> tp_;
+  std::vector<std::unique_ptr<FreeBoundaryBase>> fb_vac_;
+  std::vector<std::unique_ptr<TangentialPartitioning>> tp_vac_;
   std::vector<std::unique_ptr<IdealMhdModel>> m_;
   std::vector<std::unique_ptr<FourierGeometry>> decomposed_x_;
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_backup_;
