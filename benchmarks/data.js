@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783890079430,
+  "lastUpdate": 1783893077848,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -9853,6 +9853,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.77514428033328,
             "range": "stddev: 0.01181547702586429",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cd538710e74c9aeb7e2c675b3cd027f89cb84712",
+          "message": "Tolerate corrupted string variables in from_wout_file (#646)\n\n* Tolerate corrupted string variables in from_wout_file\n\nSome Fortran VMEC codes (e.g. PARVMEC) can leave cosmetic string fields\nsuch as curlabel filled with uninitialized memory instead of valid text,\nwhen they fail to read a corresponding mgrid attribute (observed with a\nsingle-coil-group mgrid file). from_wout_file previously ASCII-decoded\nevery string/char netCDF variable unconditionally, so one such garbage\nfield aborted loading an otherwise perfectly valid wout file.\n\nCatch UnicodeDecodeError per variable and fall back to an empty string\nwith a logged warning instead, since these fields are never used in the\nphysics.\n\n* Update __init__.py\n\n* Update test_init.py\n\n---------\n\nCo-authored-by: Philipp Jurašić <jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-07-12T23:46:32+02:00",
+          "tree_id": "e1c98375ba5cdf15924af4b9bb8a63e9fa779fa7",
+          "url": "https://github.com/proximafusion/vmecpp/commit/cd538710e74c9aeb7e2c675b3cd027f89cb84712"
+        },
+        "date": 1783893076631,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.39988818980001495,
+            "range": "stddev: 0.004653558387470508",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3972336651999967,
+            "range": "stddev: 0.004518199076954199",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.4163945503333366,
+            "range": "stddev: 0.06469888815936511",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2711494193333313,
+            "range": "stddev: 0.0026603873421112783",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.099459109666668,
+            "range": "stddev: 0.05282522456756995",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.066025611999995,
+            "range": "stddev: 0.003955685648334578",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.895449228999988,
+            "range": "stddev: 0.01605361685586392",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
