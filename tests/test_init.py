@@ -8,7 +8,9 @@ Physics correctness is checked at the level of the C++ core.
 """
 
 import json
+import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -115,6 +117,31 @@ def test_vmecwout_load_from_fortran():
     wout_filename = REPO_ROOT / "examples" / "data" / "wout_cth_like_fixed_bdy.nc"
     loaded_wout = vmecpp.VmecWOut.from_wout_file(wout_filename)
     assert loaded_wout is not None
+
+
+def test_vmecwout_load_tolerates_corrupted_string_variable(tmp_path, caplog):
+    """A Fortran VMEC wout can have cosmetic string fields (e.g. `curlabel`) filled with
+    uninitialized/non-ASCII bytes when the code that produced it failed to read some
+    upstream attribute (this happens with PARVMEC and a single-coil-group mgrid file,
+    for instance).
+
+    Such garbage should not prevent loading the rest of an otherwise-valid wout file.
+    """
+    wout_filename = REPO_ROOT / "examples" / "data" / "wout_cth_like_fixed_bdy.nc"
+    corrupted_wout_filename = tmp_path / "wout_corrupted_string.nc"
+    shutil.copyfile(wout_filename, corrupted_wout_filename)
+
+    with netCDF4.Dataset(corrupted_wout_filename, "r+") as fnc:
+        raw = bytearray(fnc.variables["mgrid_file"][:].tobytes())
+        raw[3] = 0xDD  # not valid ASCII/UTF-8
+        fnc.variables["mgrid_file"][:] = np.frombuffer(bytes(raw), dtype="S1")
+
+    with caplog.at_level(logging.WARNING):
+        loaded_wout = vmecpp.VmecWOut.from_wout_file(corrupted_wout_filename)
+
+    assert loaded_wout is not None
+    assert loaded_wout.mgrid_file == ""
+    assert "mgrid_file" in caplog.text
 
 
 def test_vmecinput_io():
