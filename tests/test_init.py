@@ -120,10 +120,7 @@ def test_vmecwout_load_from_fortran():
 
 
 def test_vmecwout_load_tolerates_corrupted_string_variable(tmp_path, caplog):
-    """A Fortran VMEC wout can have cosmetic string fields (e.g. `curlabel`) filled with
-    uninitialized/non-ASCII bytes when the code that produced it failed to read some
-    upstream attribute (this happens with PARVMEC and a single-coil-group mgrid file,
-    for instance).
+    """Robust against uninitialized/non-ASCII bytes.
 
     Such garbage should not prevent loading the rest of an otherwise-valid wout file.
     """
