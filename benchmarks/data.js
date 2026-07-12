@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783889959393,
+  "lastUpdate": 1783890079430,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -31163,6 +31163,162 @@ window.BENCHMARK_DATA = {
             "value": 0.010655641555786133,
             "unit": "seconds",
             "extra": "iterations: 26\ncpu: 0.010653445230769235 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "810e5c0b94000ab551c2a981bcb2f66635caf138",
+          "message": "Decouple NESTOR vacuum solve thread count from the radial solver (#645)\n\n* Decouple NESTOR vacuum solve thread count from the radial solver\n\nThe whole equilibrium solve runs inside one persistent OpenMP parallel\nregion whose team size is capped at ns/2 (>=2 flux surfaces per thread).\nThe free-boundary NESTOR vacuum solve ran inside that region and so\ninherited the radial thread count: at the first multigrid step (ns=5)\nonly 2 threads, even with -t 16. But NESTOR is parallelized over the\ntangential boundary grid (nZnT ~ thousands of points) and could use the\nfull thread budget. At coarse grids the vacuum solve was ~8x\nthread-starved (Fortran PARVMEC avoids this with a separate vacuum\ncommunicator, VNRANKS).\n\nGive the vacuum solve its own thread count, decoupled from the radial\none:\n\n- vmec_adjust_vacuum_num_threads(max_threads, nZnT) = min(max_threads,\n  nZnT); computed once, ns-independent.\n- Build the vacuum solvers (fb_vac_/tp_vac_) exactly once in\n  Vmec::SetupVacuumSolvers(), sized to vac_num_threads_, independent of\n  the per-radial-thread setup loop.\n- IdealMhdModel::update drives the solve from a nested parallel region:\n  a single radial thread spawns a team of vac_num_threads_ threads, each\n  running NESTOR on its tangential slice. omp_set_max_active_levels(2)\n  enables nesting; a CHECK_EQ guards against an under-provisioned team\n  (which would silently under-cover the tangential grid).\n- The checkpoint early-exit result is broadcast to the radial team via\n  a shared HandoverStorage::vacuum_reached_checkpoint flag published by\n  the omp single barrier.\n- Retarget the free-boundary component tests from fb_/tp_/num_threads_\n  to fb_vac_/tp_vac_/vac_num_threads_.\n\nNumerics change at ULP level due to the changed tangential reduction\norder; the free-boundary multigrid regression (cth_like_free_bdy) still\npasses without re-baselining. Verified directly: at ns=5 with -t 16 the\nradial team is 2 threads while the vacuum team is 16.\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\n\n* Update vmec.h\n\n---------\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-12T22:54:28+02:00",
+          "tree_id": "76a76c07bff6ee0eebc8f107ab805be3503fe955",
+          "url": "https://github.com/proximafusion/vmecpp/commit/810e5c0b94000ab551c2a981bcb2f66635caf138"
+        },
+        "date": 1783890079148,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000032829792178862276,
+            "unit": "seconds",
+            "extra": "iterations: 8550\ncpu: 3.2820436608187146e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000041271035965366487,
+            "unit": "seconds",
+            "extra": "iterations: 6817\ncpu: 4.127098767786417e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0005947980474918447,
+            "unit": "seconds",
+            "extra": "iterations: 470\ncpu: 0.0005947982297872337 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.001443438923236021,
+            "unit": "seconds",
+            "extra": "iterations: 194\ncpu: 0.0014434357577319582 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.0002661029421804512,
+            "unit": "seconds",
+            "extra": "iterations: 1046\ncpu: 0.0002657078068833652 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00013902339025235794,
+            "unit": "seconds",
+            "extra": "iterations: 2012\ncpu: 0.00013901417544731615 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00032165632819250434,
+            "unit": "seconds",
+            "extra": "iterations: 868\ncpu: 0.00032161138133640556 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002843164319369062,
+            "unit": "seconds",
+            "extra": "iterations: 995\ncpu: 0.00028431589246231167 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005164848945856534,
+            "unit": "seconds",
+            "extra": "iterations: 543\ncpu: 0.0005164651896869245 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00044092418640617314,
+            "unit": "seconds",
+            "extra": "iterations: 635\ncpu: 0.00044086665354330703 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0018616120020548505,
+            "unit": "seconds",
+            "extra": "iterations: 150\ncpu: 0.0018614896600000022 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.001930634180704753,
+            "unit": "seconds",
+            "extra": "iterations: 144\ncpu: 0.0019303864097222191 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00006554974604022597,
+            "unit": "seconds",
+            "extra": "iterations: 4128\ncpu: 6.556651017441796e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0004944632538651998,
+            "unit": "seconds",
+            "extra": "iterations: 565\ncpu: 0.000494505205309733 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0030011874373241138,
+            "unit": "seconds",
+            "extra": "iterations: 93\ncpu: 0.0030011024408602037 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000060241186673143877,
+            "unit": "seconds",
+            "extra": "iterations: 4607\ncpu: 6.024142174951186e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0004780788031712911,
+            "unit": "seconds",
+            "extra": "iterations: 587\ncpu: 0.0004780361413969345 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.002926128606001536,
+            "unit": "seconds",
+            "extra": "iterations: 96\ncpu: 0.002925989750000015 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00028648634609576996,
+            "unit": "seconds",
+            "extra": "iterations: 979\ncpu: 0.0002864638733401431 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0011798711768685516,
+            "unit": "seconds",
+            "extra": "iterations: 237\ncpu: 0.0011798687130801675 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005256630339712467,
+            "unit": "seconds",
+            "extra": "iterations: 53\ncpu: 0.005256162471698115 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.010664912370535044,
+            "unit": "seconds",
+            "extra": "iterations: 26\ncpu: 0.01066396207692308 seconds\nthreads: 1"
           }
         ]
       }
