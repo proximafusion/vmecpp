@@ -1608,13 +1608,6 @@ class VmecWOut(BaseModelWithNumpy):
                             raw_bytes.decode("ascii").strip("\x00").strip()
                         )
                     except UnicodeDecodeError:
-                        # Some Fortran VMEC codes (e.g. PARVMEC) can leave
-                        # cosmetic string fields such as `curlabel` filled with
-                        # uninitialized memory instead of valid text when they
-                        # fail to read the corresponding mgrid attribute. These
-                        # fields are never used in the physics, so don't let a
-                        # single corrupted string abort loading an otherwise
-                        # valid wout file.
                         logger.warning(
                             "Could not decode variable '%s' as ascii text; "
                             "replacing it with an empty string.",
