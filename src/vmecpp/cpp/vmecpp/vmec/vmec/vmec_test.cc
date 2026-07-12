@@ -172,12 +172,15 @@ TEST(TestVmec, CheckInMemoryMgrid) {
 }  // CheckInMemoryMgrid
 
 // A multi-grid free-boundary equilibrium (cth_like_free_bdy with an added grid
-// step) must converge. The free-boundary (Nestor) solver, together with its
-// accumulated vacuum response matrix and right-hand side, is kept in memory
-// across the multi-grid steps (reproducing Fortran VMEC's persistent vacuum
-// state), so this also exercises that the reused solver state stays valid
-// across a grid-size change. The step-by-step agreement against the Fortran
-// reference is exercised in vmecpp_large_cpp_tests.
+// step) must converge. The free-boundary (Nestor) solver object, together
+// with its accumulated vacuum response matrix and right-hand side, is kept
+// in memory across the multi-grid steps, so this also exercises that the
+// reused solver state stays valid across a grid-size change. The vacuum
+// pressure *activation* state is intentionally not carried over between
+// stages (see the re-ramp in Vmec::InitializeRadial) -- this deliberately
+// deviates from Fortran VMEC/PARVMEC, which never resets it either, in
+// exchange for robustness against a poorly-interpolated interior on large
+// radial-resolution jumps.
 TEST(TestVmec, MultiGridFreeBoundary) {
   const std::string filename =
       "vmecpp/test_data/cth_like_free_bdy_multigrid.json";
@@ -191,7 +194,10 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   const auto output = vmecpp::run(*indata, std::nullopt, 1);
   ASSERT_TRUE(output.ok());
 
-  // Regression guard for issue #330/#640 and other changes to the multigrid
-  // convergence path
-  EXPECT_EQ(output->wout.niter, 344);
+  // Regression guard for the multigrid convergence path: on every stage
+  // transition, the vacuum pressure contribution is now re-ramped from
+  // scratch (instead of carrying over as fully active from the previous
+  // stage), so the last stage goes through the full turn-on sequence again.
+  // Pinned exactly since max_threads=1 above makes this deterministic.
+  EXPECT_EQ(output->wout.niter, 544);
 }  // MultiGridFreeBoundary

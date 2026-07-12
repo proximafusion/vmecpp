@@ -664,6 +664,15 @@ bool Vmec::InitializeRadial(
 
     // INTERPOLATE FROM COARSE (ns_old) TO NEXT FINER (ns) RADIAL GRID
     if (linterp) {
+      if (fc_.lfreeb) {
+        // Re-arm the vacuum pressure ramp for the new grid: the interpolated
+        // interior is only an approximate force-balance guess on the finer
+        // mesh, so ease the vacuum contribution back in (and re-trigger the
+        // one-time delt0 soft-start restart once it reaches kInitialized)
+        // instead of carrying over the previous stage's fully active state.
+        vacuum_pressure_state_ = VacuumPressureState::kOff;
+      }
+
       InterpolateToNextMultigridStep(fc_.ns, fc_.ns_old, p_, r_, old_r_,
                                      decomposed_x_, old_xc_scaled_);
 
