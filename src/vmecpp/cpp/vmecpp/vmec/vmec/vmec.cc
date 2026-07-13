@@ -423,6 +423,8 @@ void Vmec::SetupVacuumSolvers() {
   // radial parallel region (see IdealMhdModel::update). Allow at least two
   // active parallel levels so the nested team is actually granted its threads
   // rather than being serialized to one.
+  // omp_set_nested is deprecated but still needed by older libgomp runtimes.
+  omp_set_nested(1);
   omp_set_max_active_levels(2);
 #endif  // _OPENMP
 
