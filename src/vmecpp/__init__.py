@@ -1601,14 +1601,19 @@ class VmecWOut(BaseModelWithNumpy):
             attrs = {}
             for var_name, variable in fnc.variables.items():
                 if variable.dtype is str or variable.dtype == "S1":
-                    # Remove both zero-padding and whitespaces.
-                    attrs[var_name] = (
-                        fnc[var_name][()]
-                        .tobytes()
-                        .decode("ascii")
-                        .strip("\x00")
-                        .strip()
-                    )
+                    raw_bytes = fnc[var_name][()].tobytes()
+                    try:
+                        # Remove both zero-padding and whitespaces.
+                        attrs[var_name] = (
+                            raw_bytes.decode("ascii").strip("\x00").strip()
+                        )
+                    except UnicodeDecodeError:
+                        logger.warning(
+                            "Could not decode variable '%s' as ascii text; "
+                            "replacing it with an empty string.",
+                            var_name,
+                        )
+                        attrs[var_name] = ""
                 elif variable.ndim == 2:
                     # We transpose the 2D arrays to map from
                     # Column-major convention (Fortran) to Row-major (Python, C++)
