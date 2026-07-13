@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783893182395,
+  "lastUpdate": 1783936966240,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -9926,6 +9926,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.895449228999988,
             "range": "stddev: 0.01605361685586392",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fa9a4e5c14a7812bac53aae5823e493e8f3579d0",
+          "message": "Fixed OMP nested behavior on older glibc versions  (#647)\n\n* Decouple NESTOR vacuum solve thread count from the radial solver\n\nThe whole equilibrium solve runs inside one persistent OpenMP parallel\nregion whose team size is capped at ns/2 (>=2 flux surfaces per thread).\nThe free-boundary NESTOR vacuum solve ran inside that region and so\ninherited the radial thread count: at the first multigrid step (ns=5)\nonly 2 threads, even with -t 16. But NESTOR is parallelized over the\ntangential boundary grid (nZnT ~ thousands of points) and could use the\nfull thread budget. At coarse grids the vacuum solve was ~8x\nthread-starved (Fortran PARVMEC avoids this with a separate vacuum\ncommunicator, VNRANKS).\n\nGive the vacuum solve its own thread count, decoupled from the radial\none:\n\n- vmec_adjust_vacuum_num_threads(max_threads, nZnT) = min(max_threads,\n  nZnT); computed once, ns-independent.\n- Build the vacuum solvers (fb_vac_/tp_vac_) exactly once in\n  Vmec::SetupVacuumSolvers(), sized to vac_num_threads_, independent of\n  the per-radial-thread setup loop.\n- IdealMhdModel::update drives the solve from a nested parallel region:\n  a single radial thread spawns a team of vac_num_threads_ threads, each\n  running NESTOR on its tangential slice. omp_set_max_active_levels(2)\n  enables nesting; a CHECK_EQ guards against an under-provisioned team\n  (which would silently under-cover the tangential grid).\n- The checkpoint early-exit result is broadcast to the radial team via\n  a shared HandoverStorage::vacuum_reached_checkpoint flag published by\n  the omp single barrier.\n- Retarget the free-boundary component tests from fb_/tp_/num_threads_\n  to fb_vac_/tp_vac_/vac_num_threads_.\n\nNumerics change at ULP level due to the changed tangential reduction\norder; the free-boundary multigrid regression (cth_like_free_bdy) still\npasses without re-baselining. Verified directly: at ns=5 with -t 16 the\nradial team is 2 threads while the vacuum team is 16.\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\n\n* Update vmec.h\n\n* Fixed OMP nested behavior on older glibc versions\n\n---------\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-13T11:57:50+02:00",
+          "tree_id": "c7f9fc046e535b6f1b6cde4d4eefdf659c2d3da0",
+          "url": "https://github.com/proximafusion/vmecpp/commit/fa9a4e5c14a7812bac53aae5823e493e8f3579d0"
+        },
+        "date": 1783936964304,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.39169817519999695,
+            "range": "stddev: 0.008642915970956273",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.390979883,
+            "range": "stddev: 0.005190005229494393",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.340933333666669,
+            "range": "stddev: 0.04330305362506297",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2682434466666639,
+            "range": "stddev: 0.0016013686851106936",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.1110766346666687,
+            "range": "stddev: 0.015569934792087353",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.074629525999986,
+            "range": "stddev: 0.012406006048355027",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.731474773666662,
+            "range": "stddev: 0.02629190819552217",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
