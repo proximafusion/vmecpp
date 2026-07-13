@@ -413,6 +413,56 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   return false;
 }  // run
 
+void Vmec::SetupVacuumSolvers() {
+  // Compute the vacuum thread count once; it is ns-independent (depends only on
+  // the tangential grid size nZnT and the thread budget).
+  vac_num_threads_ = vmec_adjust_vacuum_num_threads(fc_.max_threads(), s_.nZnT);
+
+#ifdef _OPENMP
+  // The vacuum solve runs in a parallel region nested inside the persistent
+  // radial parallel region (see IdealMhdModel::update). Allow at least two
+  // active parallel levels so the nested team is actually granted its threads
+  // rather than being serialized to one.
+  // omp_set_nested is deprecated but still needed by older libgomp runtimes.
+  omp_set_nested(1);
+  omp_set_max_active_levels(2);
+#endif  // _OPENMP
+
+  fb_vac_.resize(vac_num_threads_);
+  tp_vac_.resize(vac_num_threads_);
+
+  for (int vac_thread_id = 0; vac_thread_id < vac_num_threads_;
+       ++vac_thread_id) {
+    tp_vac_[vac_thread_id] = std::make_unique<TangentialPartitioning>(
+        s_.nZnT, vac_num_threads_, vac_thread_id);
+
+    if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
+      fb_vac_[vac_thread_id] = std::make_unique<Nestor>(
+          &s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          std::span<double>(matrixShare.data(), matrixShare.size()),
+          std::span<double>(bvecShare.data(), bvecShare.size()),
+          std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                            h_.vacuum_magnetic_pressure.size()),
+          std::span<int>(iPiv.data(), iPiv.size()),
+          std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+          std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+    } else if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS) {
+      fb_vac_[vac_thread_id] = std::make_unique<OnlyCoils>(
+          &s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                            h_.vacuum_magnetic_pressure.size()),
+          std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+          std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+    } else {
+      LOG(FATAL) << absl::StrCat("free boundary method '",
+                                 ToString(indata_.free_boundary_method),
+                                 "' not implemented yet");
+    }  // indata_.free_boundary_method
+  }  // vac_thread_id
+}  // SetupVacuumSolvers
+
 // initialize_radial quantities, return true if a checkpoint was reached
 bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
@@ -480,11 +530,21 @@ bool Vmec::InitializeRadial(
     num_threads_ = vmec_adjust_num_threads(fc_.max_threads(),
                                            fc_.num_surfaces_to_distribute);
 
+    // Set up the free-boundary vacuum solvers exactly once. Their thread count
+    // (vac_num_threads_) is decoupled from the radial num_threads_ and is
+    // ns-independent: the vacuum solve is parallelized over the tangential grid
+    // (nZnT), so it can use the full thread budget even at coarse multigrid
+    // steps where num_threads_ is capped at ns/2. The solvers (and their
+    // accumulated vacuum response matrix/RHS, which live in ns-independent
+    // Fourier space) persist across multigrid steps, reproducing Fortran VMEC's
+    // persistent vacuum state.
+    if (fc_.lfreeb && fb_vac_.empty()) {
+      SetupVacuumSolvers();
+    }
+
     r_.resize(num_threads_);
     ls_.resize(num_threads_);
     p_.resize(num_threads_);
-    fb_.resize(num_threads_);
-    tp_.resize(num_threads_);
     m_.resize(num_threads_);
     decomposed_x_.resize(num_threads_);
     physical_x_backup_.resize(num_threads_);
@@ -515,53 +575,14 @@ bool Vmec::InitializeRadial(
       // update profile parameterizations based on p****_type strings
       p_[thread_id]->setupInputProfiles();
 
-      // setup free-boundary solver
-      if (fc_.lfreeb) {
-        // Keep the existing free-boundary solver (and its accumulated vacuum
-        // response matrix and RHS, which live in ns-independent Fourier space)
-        // across multi-grid steps, reproducing Fortran VMEC's persistent vacuum
-        // state. On the first grid step there is no solver yet and it is built;
-        // later steps reuse it.
-        const bool reuse_solver = fb_[thread_id] != nullptr;
-        if (!reuse_solver) {
-          tp_[thread_id] = std::make_unique<TangentialPartitioning>(
-              s_.nZnT, num_threads_, thread_id);
-
-          if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
-            fb_[thread_id] = std::make_unique<Nestor>(
-                &s_, tp_[thread_id].get(), &mgrid_,
-                std::span<double>(matrixShare.data(), matrixShare.size()),
-                std::span<double>(bvecShare.data(), bvecShare.size()),
-                std::span<double>(h_.vacuum_magnetic_pressure.data(),
-                                  h_.vacuum_magnetic_pressure.size()),
-                std::span<int>(iPiv.data(), iPiv.size()),
-                std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-                std::span<double>(h_.vacuum_b_phi.data(),
-                                  h_.vacuum_b_phi.size()),
-                std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
-          } else if (indata_.free_boundary_method ==
-                     FreeBoundaryMethod::ONLY_COILS) {
-            fb_[thread_id] = std::make_unique<OnlyCoils>(
-                &s_, tp_[thread_id].get(), &mgrid_,
-                std::span<double>(h_.vacuum_magnetic_pressure.data(),
-                                  h_.vacuum_magnetic_pressure.size()),
-                std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-                std::span<double>(h_.vacuum_b_phi.data(),
-                                  h_.vacuum_b_phi.size()),
-                std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
-          } else {
-            LOG(FATAL) << absl::StrCat("free boundary method '",
-                                       ToString(indata_.free_boundary_method),
-                                       "' not implemented yet");
-          }  // indata_.free_boundary_method
-        }  // !reuse_solver
-      }  // lfreeb
-
-      // setup MHD model
+      // setup MHD model. The free-boundary vacuum solvers (fb_vac_) are shared
+      // across all radial threads and driven from a nested parallel region, so
+      // the whole vector - not a per-thread solver - is handed to the model.
       m_[thread_id] = std::make_unique<IdealMhdModel>(
           &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
-          ls_[thread_id].get(), &h_, r_[thread_id].get(), fb_[thread_id].get(),
-          kSignOfJacobian, indata_.nvacskip, &vacuum_pressure_state_);
+          ls_[thread_id].get(), &h_, r_[thread_id].get(), &fb_vac_,
+          vac_num_threads_, kSignOfJacobian, indata_.nvacskip,
+          &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0);
     }  // thread_id
 

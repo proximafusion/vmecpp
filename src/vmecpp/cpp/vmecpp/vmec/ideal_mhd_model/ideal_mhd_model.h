@@ -7,7 +7,9 @@
 
 #include <Eigen/Dense>
 #include <climits>
+#include <memory>
 #include <span>
+#include <vector>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -49,7 +51,8 @@ class IdealMhdModel {
                 const FourierBasisFastPoloidal* t, RadialProfiles* m_p,
                 const VmecConstants* constants, ThreadLocalStorage* m_ls,
                 HandoverStorage* m_h, const RadialPartitioning* r,
-                FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
+                const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
+                int vac_num_threads, int signOfJacobian, int nvacskip,
                 VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
@@ -70,7 +73,11 @@ class IdealMhdModel {
       bool& m_need_restart, int& m_last_preconditioner_update,
       int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
       const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
-      const int iterations_before_checkpointing = INT_MAX, bool verbose = true);
+      const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
+      bool always_fix_m1_gauge = false);
+
+  std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
+  void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
@@ -411,8 +418,16 @@ class IdealMhdModel {
   ThreadLocalStorage& m_ls_;
   HandoverStorage& m_h_;
   const RadialPartitioning& r_;
-  FreeBoundaryBase* m_fb_;
+  // Free-boundary vacuum solvers, shared across all radial threads and sized to
+  // m_vac_num_threads_ (decoupled from the radial thread count). The vacuum
+  // solve is driven from a nested parallel region in update(): a single radial
+  // thread spawns a team of m_vac_num_threads_ threads, each invoking
+  // (*m_fb_vac_)[vac_thread_id]->update() on its tangential slice. Owned by
+  // Vmec; may be nullptr / empty for fixed-boundary runs.
+  const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac_;
+  int m_vac_num_threads_;
   VacuumPressureState& m_vacuum_pressure_state_;
+  std::int64_t force_evaluation_count_ = 0;
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
