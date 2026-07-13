@@ -100,7 +100,7 @@ skip = ["*-musllinux*"]
 build-frontend = "build[uv]" # More modern package manager than pip, with faster builds
 test-skip = ["cp314-*", "cp314t-*"] # Skip tests on Python 3.14 until all our dependencies start supporting it. The wheels are still valid, and become installable the moment simsopt releases 3.14 support.
 test-requires = "pytest"
-test-command = "pytest {package}/tests/test_simsopt_compat.py"
+test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/test_free_boundary.py"
 
 [tool.cibuildwheel.linux]
 before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel"
