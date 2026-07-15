@@ -65,10 +65,10 @@ def main() -> None:
         vmecpp._progress_tip_shown = True
 
     if args.convert:
-        input = vmecpp.VmecInput.from_file(args.input_file)
+        vmec_input = vmecpp.VmecInput.from_file(args.input_file)
         json_name = args.input_file.name.replace("input.", "")
         json_file = Path(f"{args.input_file.parent}/{json_name}.json")
-        input.save(json_file, indent=4)
+        vmec_input.save(json_file, indent=4)
         print(f"Converted {args.input_file} to {json_file}")  # noqa: T201
         return
 
