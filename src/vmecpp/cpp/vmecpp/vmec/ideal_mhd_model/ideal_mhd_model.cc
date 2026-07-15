@@ -270,7 +270,9 @@ IdealMhdModel::IdealMhdModel(
   bsubv.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
 
   totalPressure.setZero((r_.nsMaxH - r_.nsMinH) * s_.nZnT);
-  rBSq.setZero(s_.nZnT);
+  // NOTE: the free-boundary edge force term rBSq lives in HandoverStorage
+  // (m_h_.rBSq_LCFS) and is deliberately NOT reset here: it must persist
+  // across multigrid steps like the rbsq module array in Fortran VMEC.
 
   insideTotalPressure.setZero(s_.nZnT);
   delBSq.setZero(s_.nZnT);
@@ -800,8 +802,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
           // term to enter MHD forces
           int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
-          rBSq[kl] = outsideEdgePressure * (r1_e[idx_kl] + r1_o[idx_kl]) /
-                     m_fc_.deltaS;
+          m_h_.rBSq_LCFS[kl] = outsideEdgePressure *
+                               (r1_e[idx_kl] + r1_o[idx_kl]) / m_fc_.deltaS;
 
           // for printout: global mismatch between inside and outside pressure
           delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
@@ -2143,10 +2145,10 @@ void IdealMhdModel::assembleTotalForces() {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int idx_kl = (r_.nsMaxF - 1 - r_.nsMinF) * s_.nZnT + kl;
 
-      armn_e[idx_kl] += zuFull[idx_kl] * rBSq[kl];
-      armn_o[idx_kl] += zuFull[idx_kl] * rBSq[kl];
-      azmn_e[idx_kl] -= ruFull[idx_kl] * rBSq[kl];
-      azmn_o[idx_kl] -= ruFull[idx_kl] * rBSq[kl];
+      armn_e[idx_kl] += zuFull[idx_kl] * m_h_.rBSq_LCFS[kl];
+      armn_o[idx_kl] += zuFull[idx_kl] * m_h_.rBSq_LCFS[kl];
+      azmn_e[idx_kl] -= ruFull[idx_kl] * m_h_.rBSq_LCFS[kl];
+      azmn_o[idx_kl] -= ruFull[idx_kl] * m_h_.rBSq_LCFS[kl];
     }
   }
 

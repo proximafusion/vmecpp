@@ -29,6 +29,9 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
   rCon_LCFS.setZero(s_.nZnT);
   zCon_LCFS.setZero(s_.nZnT);
 
+  // persists across multigrid steps; see comment in handover_storage.h
+  rBSq_LCFS.setZero(s_.nZnT);
+
   num_threads_ = 1;
   num_basis_ = 0;
 

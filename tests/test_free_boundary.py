@@ -68,6 +68,36 @@ def test_run_free_boundary_from_response_table():
     )
 
 
+def test_multigrid_carries_vacuum_edge_force():
+    """The vacuum edge force term (rbsq in Fortran VMEC) persists across multigrid
+    steps.
+
+    The first force evaluation of a new multigrid step runs before the vacuum solve,
+    so it must use the previous step's edge term, exactly like the persistent rbsq
+    module array in Fortran VMEC (PARVMEC even broadcasts it explicitly in
+    initialize_radial). When VMEC++ zeroed it at the transition instead, the edge
+    force was unbalanced by the full vacuum pressure term: the first force residual
+    of the ns=25 step below was 9.2 instead of 1.6, and -- because the missing term
+    scales with ns via 1/deltaS -- production-size multigrid sequences tripped the
+    huge-initial-forces heuristic (fsqr + fsqz + fsql > 100) at their first
+    large-ns step, where the axis reguess destroys the interpolated coarse-grid
+    solution and the run dies with 'INITIAL JACOBIAN CHANGED SIGN'.
+    """
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "cth_like_free_bdy_multigrid.json"
+    )
+    vmec_input.mgrid_file = str(
+        REPO_ROOT / "src" / "vmecpp" / "cpp" / vmec_input.mgrid_file
+    )
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
+    trace = np.asarray(vmec_output.wout.force_residual_r)
+    # After the very first iteration, the largest recorded residual is the spike
+    # at the ns=15 -> ns=25 transition: ~1.6 with the carried edge term, ~9.2
+    # when it was zeroed.
+    assert trace[1:].max() < 3.0
+    assert vmec_output.wout.volume_p == pytest.approx(0.30772, rel=1e-3)
+
+
 def test_raise_invalid_nzeta():
     makegrid_params = vmecpp.MakegridParameters.from_file(
         TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
