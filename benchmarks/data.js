@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783937081211,
+  "lastUpdate": 1784150667531,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -9999,6 +9999,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.731474773666662,
             "range": "stddev: 0.02629190819552217",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ce0b6db6e0ada14eda7ef0b1c5b01b75ff7d931e",
+          "message": "convert CLI option to convert input files to json (#648)",
+          "timestamp": "2026-07-15T21:19:18Z",
+          "tree_id": "19a2088c05fa89ab7909e20641b80b08ed229084",
+          "url": "https://github.com/proximafusion/vmecpp/commit/ce0b6db6e0ada14eda7ef0b1c5b01b75ff7d931e"
+        },
+        "date": 1784150665666,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.41067589379999847,
+            "range": "stddev: 0.01084463618195036",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.4038521593999803,
+            "range": "stddev: 0.005961195610510133",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.450566042666651,
+            "range": "stddev: 0.04826553560640979",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2839009896666578,
+            "range": "stddev: 0.007058843046362439",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.143946356000015,
+            "range": "stddev: 0.07195168438315465",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.0632062016666928,
+            "range": "stddev: 0.003900516398687745",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.87045938666669,
+            "range": "stddev: 0.04036894800139289",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
