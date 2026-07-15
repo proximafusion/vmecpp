@@ -41,6 +41,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Show the legacy table output instead of animated progress bars.",
         action="store_true",
     )
+    p.add_argument(
+        "-c",
+        "--convert",
+        help="Convert an input file to VMEC++'s JSON format.",
+        action="store_true",
+    )
     return p.parse_args()
 
 
@@ -57,6 +63,14 @@ def main() -> None:
             "Tip: Use the --legacy flag for classic table output."
         )
         vmecpp._progress_tip_shown = True
+
+    if args.convert:
+        input = vmecpp.VmecInput.from_file(args.input_file)
+        json_name = args.input_file.name.replace("input.", "")
+        json_file = Path(f"{args.input_file.parent}/{json_name}.json")
+        input.save(json_file, indent=4)
+        print(f"Converted {args.input_file} to {json_file}")  # noqa: T201
+        return
 
     input = vmecpp.VmecInput.from_file(args.input_file)
     output = vmecpp.run(input, max_threads=args.max_threads, verbose=verbose)
