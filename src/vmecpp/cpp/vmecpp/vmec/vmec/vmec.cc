@@ -378,7 +378,17 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 
   if (status_ != VmecStatus::SUCCESSFUL_TERMINATION &&
       !indata_.return_outputs_even_if_not_converged) {
-    const auto msg = "VMEC++ did not converge";
+    // By the time we get here, a bad-Jacobian-type status has already been
+    // reported (with more specific diagnostics) from inside the multigrid
+    // loop above, so status_ is always NORMAL_TERMINATION: the last
+    // multigrid stage exhausted its iteration budget without reaching
+    // ftol. Diagnostics help distinguish 'almost-converged' runs from 'failing'
+    const auto msg = absl::StrFormat(
+        "VMEC++ did not converge: %s. Completed %d/%d iterations at ns = "
+        "%d without meeting ftol = %.3e; final force residuals were "
+        "fsqr = %.3e, fsqz = %.3e, fsql = %.3e.",
+        VmecStatusAsString(status_), iter2_ - 1, fc_.niterv, fc_.nsval,
+        fc_.ftolv, fc_.fsqr, fc_.fsqz, fc_.fsql);
     return absl::InternalError(msg);
   }
 
