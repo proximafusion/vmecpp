@@ -51,7 +51,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     convert_parser = subparsers.add_parser(
-        "convert", help="Convert a Fortran indata file to VMEC++'s JSON format."
+        "convert", help="Convert an input file to VMEC++'s JSON format."
     )
     convert_parser.add_argument(
         "input_file",
