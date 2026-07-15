@@ -47,6 +47,9 @@ from vmecpp.cpp import _vmecpp  # type: ignore
 
 
 class RestartReason(enum.IntEnum):
+    NO_RESTART = 1
+    """Irst == 1, no restart pending; the current state can be stored."""
+
     BAD_JACOBIAN = 2
     """Irst == 2, bad Jacobian, flux surfaces are overlapping."""
 
@@ -278,6 +281,77 @@ def solve_equilibrium(
                 converged = True
                 break
 
+            saved_backup = False
+            restarted = False
+
+            # --- PARVMEC time-step control (TimeStepControl in PARVMEC's
+            # evolve.f): runs BEFORE the descent step, on the residuals of the
+            # current, just-evaluated state -- fsq_prev still holds the
+            # *previous* iteration's preconditioned residual sum, exactly like
+            # the Fortran fsq at this point. A revert restores the last good
+            # state and immediately re-evaluates the forces there, so the
+            # descent step below starts from a consistent state/force pair.
+            # iter2 keeps advancing on every pass (PARVMEC's eqsolve never
+            # freezes it), so res0/res1 are true running minima of the segment.
+            if parvmec and not status_bad_jacobian:
+                fsq0 = fsqr + fsqz + fsql
+                segment_start = iter2 == iter1 or res0 == -1.0
+                if segment_start:
+                    res0 = fsq_prev
+                    res1 = fsq0
+                res0 = min(res0, fsq_prev)
+                res1 = min(res1, fsq0)
+                if segment_start:
+                    # restart_iter at segment start: store the segment's
+                    # initial state, or revert a freshly flagged bad Jacobian.
+                    if rr == RestartReason.BAD_JACOBIAN:
+                        model.restore_backup()
+                        delt0r *= 0.9
+                        ijacob += 1
+                        iter1 = iter2
+                        n_restarts += 1
+                        restarted = True
+                        rr = RestartReason.NO_RESTART
+                    else:
+                        model.save_backup()
+                        saved_backup = True
+                if fsq_prev <= res0 and fsq0 <= res1 and rr == RestartReason.NO_RESTART:
+                    # both residual minima improved: store the pre-step state
+                    model.save_backup()
+                    saved_backup = True
+                elif (iter2 - iter1) > 10 and (
+                    fsq_prev > _PARVMEC_BLOWUP * res0 or fsq0 > _PARVMEC_BLOWUP * res1
+                ):
+                    # residuals are growing: revert gently (no ijacob). As in
+                    # the Fortran, this may downgrade a pending BAD_JACOBIAN
+                    # revert to the gentle BAD_PROGRESS one.
+                    rr = RestartReason.BAD_PROGRESS
+                if rr != RestartReason.NO_RESTART:
+                    if rr == RestartReason.HUGE_INITIAL_FORCES:
+                        # restart_iter's default branch stores for irst=4
+                        model.save_backup()
+                        saved_backup = True
+                    else:
+                        model.restore_backup()
+                        if rr == RestartReason.BAD_JACOBIAN:
+                            delt0r *= 0.9
+                            ijacob += 1
+                        else:
+                            delt0r /= 1.03
+                        n_restarts += 1
+                        restarted = True
+                    iter1 = iter2
+                    # re-evaluate the MHD forces at the restored state
+                    model.evaluate(
+                        iter1, iter2, precondition=True, always_fix_m1_gauge=False
+                    )
+                    fsqr, fsqz, fsql = model.fsqr, model.fsqz, model.fsql
+                    rr = model.restart_reason
+                    if rr == RestartReason.BAD_JACOBIAN:
+                        # PARVMEC: 'Logic error in TimeStepControl!'
+                        failed = True
+                        break
+
             # A bad initial Jacobian (status_bad_jacobian) makes Evolve return
             # *before* recording the trace or time-stepping; a finite huge-initial-
             # forces evaluation runs the full Evolve (trace + damping + time step)
@@ -312,9 +386,6 @@ def solve_equilibrium(
                 dtau = delt0r * otav / 2.0
                 model.perform_time_step(1.0 / (1.0 + dtau), 1.0 - dtau, delt0r)
 
-            saved_backup = False
-            restarted = False
-
             # bad initial Jacobian / huge initial forces: recompute the magnetic
             # axis once and restart the force iteration (vmec.cc lines 833-874).
             # Counters carry: the C++ does not reset iter1_/iter2_ here, so the
@@ -343,7 +414,13 @@ def solve_equilibrium(
                 model.restore_backup()
                 ijacob += 1
                 iter1 = iter2
-                delt0r = (0.98 if ijacob < 50 else 0.96) * delt_user
+                if parvmec:
+                    # PARVMEC commented the delt reset out ("!changed in
+                    # restart" in its eqsolve.f): only restart_iter's
+                    # delt0r * 0.9 applies there.
+                    delt0r *= 0.9
+                else:
+                    delt0r = (0.98 if ijacob < 50 else 0.96) * delt_user
                 n_restarts += 1
                 pending_bad_jacobian_reinit = True
                 must_retry = True
@@ -360,7 +437,10 @@ def solve_equilibrium(
             # (already time-stepped) state rather than reverting it -- and bumps
             # bad_resets / iter1 so the next evaluation keeps iter2 == 1. Reproduce
             # that here so the post-reguess trajectory matches C++ step for step.
-            if rr == RestartReason.HUGE_INITIAL_FORCES:
+            if parvmec:
+                # the PARVMEC control already ran, before the descent step
+                pass
+            elif rr == RestartReason.HUGE_INITIAL_FORCES:
                 if iter2 == iter1 or res0 == -1.0:
                     res0 = fsq1
                     res1 = fsqr + fsqz + fsql
@@ -371,30 +451,6 @@ def solve_equilibrium(
                 iter1 = iter2
                 bad_resets += 1
             # --- time-step / restart control (style-dependent) ---
-            elif parvmec:
-                # PARVMEC TimeStepControl: track the running minima of both the
-                # preconditioned (res0) and invariant (res1) residual sums; store
-                # whenever both improve; revert (gently, /1.03, without counting
-                # toward the give-up escalation) only when either grows past 1e4x
-                # its minimum after more than 10 steps since the last restart.
-                fsq0 = fsqr + fsqz + fsql
-                if iter2 == iter1 or res0 == -1.0:
-                    res0 = fsq1
-                    res1 = fsq0
-                res0 = min(res0, fsq1)
-                res1 = min(res1, fsq0)
-                if fsq1 <= res0 and fsq0 <= res1:
-                    model.save_backup()
-                    saved_backup = True
-                elif (iter2 - iter1) > 10 and (
-                    fsq1 > _PARVMEC_BLOWUP * res0 or fsq0 > _PARVMEC_BLOWUP * res1
-                ):
-                    model.restore_backup()
-                    delt0r /= 1.03
-                    iter1 = iter2
-                    bad_resets += 1
-                    n_restarts += 1
-                    restarted = True
             elif robust:
                 # Common-ground control: PARVMEC's dual-residual permissive leash
                 # (revert gently, without counting toward the give-up escalation)

@@ -131,8 +131,10 @@ class Vmec {
                                         int maximum_iterations);
   void RestartIteration(double& m_delt0r, int thread_id);
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
-                              double time_step, int thread_id,
-                              bool& m_liter_flag);
+                              int thread_id, bool& m_liter_flag);
+  absl::StatusOr<bool> ParvmecTimeStepControl(VmecCheckpoint checkpoint,
+                                              int maximum_iterations,
+                                              int thread_id);
   void Printout(double delt0r, int thread_id, int iter2);
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
@@ -262,6 +264,12 @@ class Vmec {
   // value of iter2_ at which the state vector was restored the last time.
   // represents how many steps we are into the current optimization "branch".
   int iter1_;
+
+  // Shared decision flag of ParvmecTimeStepControl: true when the current
+  // iteration is the first of a time-step segment (iter2 == iter1 or res0
+  // unset). Written in an `omp single` and read by all threads after its
+  // implicit barrier, so every thread takes the same branch.
+  bool parvmec_segment_start_ = false;
 
   // history size for averaging of 1/tau
   static constexpr int kNDamp = 10;

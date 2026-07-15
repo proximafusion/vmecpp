@@ -274,17 +274,32 @@ def test_run_honors_iteration_style_flag():
     assert par.wb == pytest.approx(ref.wb, rel=1.0e-5)  # magnetic energy
 
 
-@pytest.mark.parametrize("case", ["cth_like_fixed_bdy", "solovev"])
+@pytest.mark.parametrize(
+    "case", ["cth_like_fixed_bdy", "solovev", "cth_like_free_bdy"]
+)
 def test_parvmec_matches_parvmec_reference(case):
-    """The PARVMEC iteration style reproduces the ORNL-Fusion/PARVMEC wout.
+    """The PARVMEC iteration style reproduces the reference wout in both fixed- and
+    free-boundary mode.
 
-    The committed reference wouts match fresh output from the Fortran ORNL-
-    Fusion/PARVMEC to machine precision (volume/aspect ~1e-15, geometry and iota ~1e-7
-    for cth_like, ~0 for solovev), so this pins the new iteration style to the
-    independent parallel implementation, not only to the vmec_8_52 control.
+    The committed fixed-boundary reference wouts match fresh output from the Fortran
+    ORNL-Fusion/PARVMEC to machine precision (volume/aspect ~1e-15, geometry and iota
+    ~1e-7 for cth_like, ~0 for solovev), so those cases pin the iteration style to the
+    independent parallel implementation, not only to the vmec_8_52 control. The
+    free-boundary case exercises the parts of the PARVMEC control that fixed-boundary
+    cases cannot: the pre-step time-step control interleaves with the NESTOR vacuum
+    update cadence (ivacskip keys on iter2 - iter1), and a revert re-evaluates the
+    free-boundary forces at the restored state. Its committed reference wout is the
+    repository reference equilibrium; a fresh ORNL-Fusion/PARVMEC free-boundary run of
+    the same input agrees with it to ~4e-4 (max abs) in the boundary Fourier
+    coefficients and ~1e-3 (rel) in volume -- the discretization floor between the two
+    independent NESTOR implementations -- while VMEC++'s parvmec style reproduces it
+    to ~1e-13, comfortably inside the asserted tolerances.
     """
     reference = vmecpp.VmecWOut.from_wout_file(TEST_DATA / f"wout_{case}.nc")
     base = vmecpp.VmecInput.from_file(TEST_DATA / f"{case}.json")
+    if base.lfreeb:
+        # the mgrid path in the input file is relative to src/vmecpp/cpp
+        base.mgrid_file = str(REPO_ROOT / "src" / "vmecpp" / "cpp" / base.mgrid_file)
     result = vmecpp.run(
         base.model_copy(update={"iteration_style": "parvmec"}),
         max_threads=1,
