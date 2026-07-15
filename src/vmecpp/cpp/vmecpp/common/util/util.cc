@@ -21,7 +21,10 @@ std::string VmecStatusAsString(const VmecStatus vmec_status) {
     case VmecStatus::NORMAL_TERMINATION:
       return "NORMAL_TERMINATION";
     case VmecStatus::BAD_JACOBIAN:
-      return "BAD_JACOBIAN";
+      return "BAD_JACOBIAN: the Jacobian of the flux-surface geometry "
+             "changed sign, i.e. flux surfaces overlap. This can happen "
+             "with a poor initial guess for the magnetic axis or an "
+             "initial boundary shape that is too far from an equilibrium";
     case VmecStatus::JACOBIAN_75_TIMES_BAD:
       return "JACOBIAN_75_TIMES_BAD The jacobian factor of the geometry "
              "repeatedly "

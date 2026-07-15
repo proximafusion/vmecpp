@@ -20,6 +20,7 @@
 #include <omp.h>
 #endif  // _OPENMP
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -76,7 +77,8 @@ TEST(TestVmec, CheckErrorOnNonConvergence) {
   const absl::StatusOr<bool> status = vmec.run();
 
   CHECK(!status.ok());
-  CHECK_EQ(status.status().message(), "VMEC++ did not converge");
+  CHECK(
+      absl::StrContains(status.status().message(), "VMEC++ did not converge"));
 }  // CheckErrorOnNonConvergence
 
 TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
