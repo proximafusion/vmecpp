@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784152087854,
+  "lastUpdate": 1784156681445,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -10145,6 +10145,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 9.098939837666649,
             "range": "stddev: 0.023779845185201102",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2931975da25466e97fad993c339c7d9af3bfe23f",
+          "message": "Fix CLI: keep original signature, convert as its own subcommand (#650)\n\nFix vmecpp CLI: restore original signature, keep convert as its own subcommand\n\nbetter-errors and convert-cli (#648, #649) auto-merged mid-review with a\n--help-visible \"run\" subcommand that changed the documented default\ninvocation from `python -m vmecpp <input_file>` to requiring `python -m\nvmecpp run <input_file>`. That was never requested; the review only asked\nfor `convert` to become its own subcommand.\n\nThis dispatches on `sys.argv[0] == \"convert\"` instead of using argparse\nsubparsers for the default path, so the top-level parser and its --help\noutput are unchanged from before, while `python -m vmecpp convert\n<input_file>` gets its own dedicated argument parser.",
+          "timestamp": "2026-07-16T01:00:15+02:00",
+          "tree_id": "79b044d0faefbfc8cc562074cc0610a654aff9fa",
+          "url": "https://github.com/proximafusion/vmecpp/commit/2931975da25466e97fad993c339c7d9af3bfe23f"
+        },
+        "date": 1784156680154,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.34982501060000004,
+            "range": "stddev: 0.0007856767278862222",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3526200317999951,
+            "range": "stddev: 0.0007462031668978937",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.3809581723333224,
+            "range": "stddev: 0.03023781305965428",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.318234652000001,
+            "range": "stddev: 0.0025504046713990185",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.0212186046666716,
+            "range": "stddev: 0.013675373993891366",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.313403375000007,
+            "range": "stddev: 0.018033682499328334",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 9.095268747333344,
+            "range": "stddev: 0.01663220952244619",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
