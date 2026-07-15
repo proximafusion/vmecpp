@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784150792192,
+  "lastUpdate": 1784151977788,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -10072,6 +10072,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.87045938666669,
             "range": "stddev: 0.04036894800139289",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c0ad908df9eb8e1e96fd307ec5d026ee989102d5",
+          "message": "Improved error messages for failed runs (#649)",
+          "timestamp": "2026-07-15T21:41:47Z",
+          "tree_id": "4a6e338d99d48260353f51bab3300d8bebb619b0",
+          "url": "https://github.com/proximafusion/vmecpp/commit/c0ad908df9eb8e1e96fd307ec5d026ee989102d5"
+        },
+        "date": 1784151976500,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3602387629999953,
+            "range": "stddev: 0.013345142628690278",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.35778308180000523,
+            "range": "stddev: 0.0035268164313576205",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.4307912743333113,
+            "range": "stddev: 0.03159294761698112",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.3206758166666646,
+            "range": "stddev: 0.0013086818955503658",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.026776689333341,
+            "range": "stddev: 0.004888610906922249",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.329088210000009,
+            "range": "stddev: 0.015925639551388964",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 9.098939837666649,
+            "range": "stddev: 0.023779845185201102",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
