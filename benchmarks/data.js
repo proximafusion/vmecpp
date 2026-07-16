@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784240960590,
+  "lastUpdate": 1784241059933,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -32766,6 +32766,162 @@ window.BENCHMARK_DATA = {
             "value": 0.010556881244365986,
             "unit": "seconds",
             "extra": "iterations: 26\ncpu: 0.010557053615384617 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "afcc06ed2fda66e903f234000da86ede1e5b9241",
+          "message": "Raise allowed delt (#655)\n\nagonal solver package (squashed)\n\nStandalone block-tridiagonal factorization/solve and FD block-Jacobian\nassembly from https://github.com/proximafusion/vmecpp/pull/616, needed by the\nexperimental 2D preconditioner in this stack. Will rebase away once #616\nlands on main.\n\nConvergence improvements: multigrid transition handling and experimental 2D preconditioner\n\nAll env-gated; default behavior unchanged (verified: identical iteration\ncounts and physics on cth/w7x; full pytest suite passes).\n\n- VMECPP_MULTIGRID_INTERP=cubic|cubic_rho: 4-point Lagrange radial\n  interpolation of the scaled spectral coefficients at multigrid transitions\n  (in s or rho=sqrt(s)), replacing 2-point linear; reduces the re-injected\n  force imbalance ~50x.\n- VMECPP_DELT_START=<frac>: continuation stages enter the force iteration at\n  frac * delt, avoiding the stage-entry instability at full delt that\n  otherwise destroys the interpolated seed.\n- VMECPP_DELT_RECOVERY: delt grows back (2 percent per accepted step) after\n  restarts, bounded by a per-stage stability ceiling learned from failures\n  (downward-only ratchet), with a stagnation guard (rollback to best state\n  when no new residual minimum for 100 iterations) that catches weakly\n  unstable marginal delt within ~100 iterations.\n- VMECPP_PRESERVE_INTERP_SEED: the bad-Jacobian axis-recovery path restores\n  the interpolated backup at reduced delt instead of discarding an\n  interpolation-seeded stage after a clean first force evaluation.\n- VMECPP_PREC2D=coupled: poloidally coupled 2D preconditioner on top of the\n  #616 block-tridiagonal infrastructure (zeta-averaged angle-resolved\n  coupling kernels, cached factorizations). Verified correct; documented\n  negative performance result on strongly shaped 3D configurations -- see\n  docs/convergence_study.md Finding 5.\n\nTogether with the backup-ordering fix underneath, the bundle gives 1.6-4.3x\nend-to-end speedups on w7x (incl. mpol=16 and 3x-pressure variants to\nns=499), cth and cma (to ns=801) at identical converged physics; see\ndocs/convergence_study.md.\n\nConvergence study: mechanism analysis, validation matrix, and figures\n\nFindings 1-8: why the multigrid ladder saved nothing (state discard at the\nfirst restart + stage-entry delt instability + permanent delt loss), the fix\nbundle and its validation (1.6-4.3x, identical physics), the 2D\npreconditioner phase-1 negative result, Fortran lineage provenance, and the\ntruncation-error analysis of the transition residual floor with Richardson\nextrapolation as the follow-up.\n\nRemove the experimental coupled 2D preconditioner again\n\nThe zeta-averaged poloidally-coupled 2D preconditioner (Finding 5 of\ndocs/convergence_study.md) was evaluated and came out negative: correct\n(identical converged physics, bit-compatible in diagonal-block mode) but\nslower on strongly 3D-shaped configurations, because the zeta-averaged\nkernels discard exactly the toroidal mode structure that makes w7x-class\ncases stiff. All measured speedups of this branch come from the multigrid\ntransition bundle, none from the preconditioner.\n\nThis removes the implementation from ideal_mhd_model / handover_storage and\ndrops the imported block-tridiagonal package (squashed from PR #616) that\n\nFix InterpTest after the multigrid interpolation rewrite\n\nThe rewritten InterpolateToNextMultigridStep no longer stores the\ninterpolation scratch arrays (sj, js1, js2, s1, xint) on the Vmec object;\ndrop the checks of those internals and keep the behavioral checks of the\ninterpolated coefficients (xold/xnew) against the golden reference data,\nwhich still pass since the default linear interpolation is bit-compatible.\n\nPort the delt-recovery time-step control to the Python iteration loop\n\nAdds \"delt_recovery\" as a fourth iteration style in vmecpp._iteration: the\nVMEC 8.52 control plus the time-step recovery scheme prototyped in the C++\ncore on this branch (VMECPP_DELT_RECOVERY / VMECPP_DELT_START):\n\n- every revert ratchets a one-directional stability ceiling to 0.95x the\n  step that just proved unstable,\n- every store grows the step 2% back towards min(user delt, ceiling),\n- a stagnation guard reverts gently when no new residual minimum appears\n  for 100 iterations (weakly unstable step below the 100x leash),\n- solve_multigrid enters continuation stages at 0.5x delt (the ramp-in),\n  via a new delt_start_fraction parameter of solve_equilibrium.\n\nOn a run without reverts the step already sits at the user delt and the\nscheme is bit-identical to vmec_8_52 (asserted in\ntest_styles_agree_when_no_restart). IterationState gains a delt_ceiling\nfield so the ratchet can be traced.\n\nexamples/iteration_dynamics.py now overlays all four styles (plus the\nlearned ceiling in the time-step panel) on the cma ns=72 case.\n\ndelt recovery: no regression on cold starts; compare styles over the multigrid ladder\n\nGate the delt-recovery scheme (C++ VMECPP_DELT_RECOVERY and the Python\n\"delt_recovery\" style) to interpolation-seeded continuation stages: on a\ncold start there is no seed to protect and no ramp-in deficit to recover,\nand re-probing near the stability margin after genuine-marginality restarts\ncosts iterations. Cold stages now run the unmodified 8.52 control,\nbit-identical trajectories (asserted in the tests).\n\nMeasured, w7x ns=[51, 99] (Python loop):\n  vmec_8_52      stages (1551, 9 restarts), (1817, 6)  total 3368\n  delt_recovery  stages (1551, 9), (1108, 1)           total 2659 (-21%)\nStage 1 is now identical to the baseline (was +15% before the gate); the\ncontinuation stage keeps the full win (-39%). C++ core confirms: final\nstage 1813 -> 1109 iterations with the env bundle. On easy ladders (cma\n[51, 99]) the cost is +4 iterations on the continuation stage, zero on the\ncold stage.\n\nexamples/iteration_dynamics.py now compares the styles over a cma [51, 99]\nmultigrid ladder via solve_multigrid (per-stage counts, stage-boundary\nmarkers, global iteration axis), which is where the styles actually\ndiverge. solve_equilibrium is no longer exported as public API -- the\nsupported entry points are solve_multigrid and iterate; tests import the\ninner solve from vmecpp._iteration directly.\n\nExpose the multigrid interpolation scheme in the API\n\nPromote MultigridInterpolationScheme (kLinear / kCubic / kCubicRho) from an\nanonymous-namespace detail of vmec.cc to a public enum in vmec.h, thread it\nthrough InitializeRadial / InterpolateToNextMultigridStep as an optional\nparameter (default: the VMECPP_MULTIGRID_INTERP environment variable, i.e.\nlinear), and expose it via pybind (MultigridInterpolationScheme enum,\nVmecModel.refine_to(ns, interpolation=...)).\n\nvmecpp.solve_multigrid re-exposes it as a string literal:\ninterpolation='linear' | 'cubic' | 'cubic_rho'. The 4-point Lagrange\ninterpolants reduce the interpolation-added error of a continuation-stage\nseed down to the coarse grid's own discretization error (measured on cma\n[51, 99]: entry residual 2.7e-2 -> 2.2e-4, stage-2 iterations -11%);\nasserted in test_multigrid_interpolation_scheme_improves_seed.\n\nexamples/iteration_dynamics.py gains an INTERPOLATION knob (default cubic).\n\nPort the interp-seed preservation guard to the delt_recovery style\n\nThe C++ VMECPP_PRESERVE_INTERP_SEED guard: when a continuation stage seeded\nby multigrid interpolation goes unstable during its first iterations (at\nleast one clean force evaluation happened, so the seed is usable), restore\nthe backup -- the interpolated seed -- at a reduced time step instead of\ndiscarding it via the axis-recovery cold reset.\n\nIn the Python loop most of this guard's C++ role is already structural: a\nmid-run bad Jacobian on a seeded stage goes through the 8.52 leash branch,\nwhich restores the backup, and since the backup ordering fix the backup IS\nthe seed. The remaining gap was a non-finite/bad-Jacobian evaluation at\niter2 > 1 with ijacob == 0, which previously fell into the axis-recovery\ncold reset; it now restores the seed (armed together with the rest of the\ndelt_recovery scheme, i.e. only on seeded continuation stages).\n\nWith this, all four env-gated C++ levers have Python counterparts:\nVMECPP_MULTIGRID_INTERP (solve_multigrid interpolation=...),\nVMECPP_DELT_START + VMECPP_DELT_RECOVERY + VMECPP_PRESERVE_INTERP_SEED\n(the delt_recovery style).\n\nFinding 9: stage-entry stability limit is equilibrium-dominated, weakly jump-dependent\n\nNumerical scan (4 equilibria x 4 jump ratios x 2 source resolutions x 6\nentry fractions, identical-seed probes via the Python loop, script in\nexamples/delt_start_study.py): cth and cma enter stably at the full user\ndelt at any jump up to 4x; w7x and li383 are entry-unstable already at a\n1.5x jump, and quadrupling the jump lowers their stability limit by only\n~25%. Scheduling VMECPP_DELT_START on the jump ratio is therefore not the\nright lever; the fixed 0.5 entry is stable for every tested transition and\ndelt recovery erases its cost. Follow-up: seed the next stage's entry delt\nfrom the previous stage's learned stability ceiling.\n\nFinding 10: tail anatomy; raise delt input bound to ]0,10]\n\n- examples/delt_tail_study.py: snapshot probes of the tail stability\n  boundary (static across the tail; learned ceiling 20-40% stale; cth/cma\n  bounded by the user delt itself) and force-residual decomposition (the\n  preconditioned residual is 78-99% lambda through the 1e-6..1e-9 bulk;\n  the highest resolved m at mid/edge radius dominates at 1e-12).\n- Raise the delt input bound from ]0,1] to ]0,10]: no formula requires\n  delt <= 1 (the damping term is scale-invariant in delt) and the tail\n  boundary of cth/cma sits at 1.5-2x their conventional input value;\n  raising the user delt measured -14% (cth at 0.9) and -18% (cma at 0.7)\n  total iterations on [25,99] ladders.\n- Ceiling forgetting (letting the learned stability ceiling drift back up\n  in quiet stretches) is a confirmed negative result: structural\n  probe/fail limit cycle, every case regresses (w7x stage 2: 1646 -> 4354\n  iterations); documented in Finding 10 and at the recovery site.\n\nFinding 11: lambda preconditioner hyperparameters and boost study\n\n- Consolidate the lambda preconditioner's inherited magic scalings into\n  vmec_algorithm_constants.h as documented named constants\n  (kLambdaPreconditionerDampingFactor, kLambdaPreconditionerZeroGuard,\n  kLambdaHighMDampingReferenceM, kLambdaHighMDampingMaxPower), replacing\n  the vague kEigenvalueAvoidanceFactor / kModeDampingLarge / -Small and the\n  private dampingFactor; document that faclam is the diagonal second\n  variation of the magnetic energy with respect to lambda_mn.\n- Add experimental env knobs VMECPP_LAMBDA_PRECOND_SCALE and",
+          "timestamp": "2026-07-17T00:24:53+02:00",
+          "tree_id": "2af3baee75a58375ee95195c8b2274ef8e5bee73",
+          "url": "https://github.com/proximafusion/vmecpp/commit/afcc06ed2fda66e903f234000da86ede1e5b9241"
+        },
+        "date": 1784241059618,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000033014980305288394,
+            "unit": "seconds",
+            "extra": "iterations: 7718\ncpu: 3.3015222855662094e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000041520841705412294,
+            "unit": "seconds",
+            "extra": "iterations: 6780\ncpu: 4.151925530973452e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.000593840314986858,
+            "unit": "seconds",
+            "extra": "iterations: 470\ncpu: 0.0005938444851063826 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014323448752336962,
+            "unit": "seconds",
+            "extra": "iterations: 187\ncpu: 0.0014321817272727275 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.000290999461695091,
+            "unit": "seconds",
+            "extra": "iterations: 970\ncpu: 0.0002909966195876289 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00013801214492767757,
+            "unit": "seconds",
+            "extra": "iterations: 2028\ncpu: 0.00013801319082840238 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00032348032636400186,
+            "unit": "seconds",
+            "extra": "iterations: 866\ncpu: 0.00032346092840646653 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.00028178895538176723,
+            "unit": "seconds",
+            "extra": "iterations: 995\ncpu: 0.0002817831608040203 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.000515084932832157,
+            "unit": "seconds",
+            "extra": "iterations: 544\ncpu: 0.0005150895128676467 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0004373537768811778,
+            "unit": "seconds",
+            "extra": "iterations: 641\ncpu: 0.0004373473946957878 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017527169401540697,
+            "unit": "seconds",
+            "extra": "iterations: 159\ncpu: 0.0017527313018867927 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.001966368984168684,
+            "unit": "seconds",
+            "extra": "iterations: 142\ncpu: 0.001966335542253522 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00006598065445420383,
+            "unit": "seconds",
+            "extra": "iterations: 4345\ncpu: 6.600293210586815e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0004936573552150352,
+            "unit": "seconds",
+            "extra": "iterations: 561\ncpu: 0.0004936905240641739 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.002985228883459213,
+            "unit": "seconds",
+            "extra": "iterations: 94\ncpu: 0.00298524456382978 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000060192155889899224,
+            "unit": "seconds",
+            "extra": "iterations: 4595\ncpu: 6.020596953209846e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00047739928991262514,
+            "unit": "seconds",
+            "extra": "iterations: 587\ncpu: 0.0004774079727427457 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.002923006812731425,
+            "unit": "seconds",
+            "extra": "iterations: 96\ncpu: 0.002923024750000017 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00028586922859659,
+            "unit": "seconds",
+            "extra": "iterations: 980\ncpu: 0.0002858646336734696 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0012141946984940216,
+            "unit": "seconds",
+            "extra": "iterations: 238\ncpu: 0.0012141652310924365 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005271164876110149,
+            "unit": "seconds",
+            "extra": "iterations: 53\ncpu: 0.005271226566037738 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.010663747787475586,
+            "unit": "seconds",
+            "extra": "iterations: 26\ncpu: 0.010660677807692307 seconds\nthreads: 1"
           }
         ]
       }
