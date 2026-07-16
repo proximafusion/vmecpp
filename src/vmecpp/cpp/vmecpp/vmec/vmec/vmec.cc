@@ -34,6 +34,7 @@
 #include "vmecpp/free_boundary/only_coils/only_coils.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
+#include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
 
 namespace {
 
@@ -539,6 +540,30 @@ bool Vmec::InitializeRadial(
     vacuum_pressure_state_ = VacuumPressureState::kInitialized;
   }
 
+  // per-stage stability ceiling for the VMECPP-style delt recovery
+  delt_ceiling_ = indata_.delt;
+
+  // VMECPP style: multigrid continuation stages enter at a reduced time step
+  // to avoid the stage-entry instability at the full user delt, and the time
+  // step recovers afterwards. Recovery is active only on continuation stages
+  // (on a cold start there is no interpolated seed to protect and no ramp-in
+  // deficit to recover, and re-probing near the stability margin after
+  // genuine-marginality restarts costs iterations -- cold stages run the
+  // unmodified 8.52 control), except that a cold start with delt > 1 also
+  // enters at the reduced step (full delt > 1 fails the very first
+  // iterations) and recovers from there.
+  delt_recovery_active_ = false;
+  if (indata_.iteration_style == IterationStyle::VMECPP) {
+    if (ns_old != 0 && ns_old < nsval) {
+      m_delt0 = std::min(0.5 * indata_.delt,
+                         vmec_algorithm_constants::kVmecppStageEntryDelt);
+      delt_recovery_active_ = true;
+    } else if (ns_old == 0 && indata_.delt > 1.0) {
+      m_delt0 = vmec_algorithm_constants::kVmecppStageEntryDelt;
+      delt_recovery_active_ = true;
+    }
+  }
+
   // INITIALIZE MESH-DEPENDENT SCALARS
 
   // *THIS* actually sets the global ns value for the main physics algorithm
@@ -562,6 +587,7 @@ bool Vmec::InitializeRadial(
   // check that interpolating from coarse to fine mesh
   // and that old solution is available
   bool linterp = (ns_old < fc_.ns && ns_old != 0);
+  stage_seeded_by_interpolation_ = linterp;
 
   if (ns_old != fc_.ns) {
     // ALLOCATE NS-DEPENDENT ARRAYS
@@ -936,10 +962,30 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     }
 
     // check for bad jacobian and bad initial guess for axis
+    const bool preserve_interp_seed =
+        indata_.iteration_style == IterationStyle::VMECPP;
     if (fc_.ijacob == 0 &&
         (status_ == VmecStatus::BAD_JACOBIAN ||
          fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
-        fc_.ns >= 3) {
+        fc_.ns >= 3 && preserve_interp_seed && stage_seeded_by_interpolation_ &&
+        iter2_ > 1) {
+      // A continuation stage seeded by multigrid interpolation went unstable
+      // during its first iterations (at least one clean force evaluation
+      // happened, so the seed itself is usable). Do not discard the seed via
+      // the axis-recovery reset below; instead restore the backup (the
+      // interpolated state) at a reduced time step and keep iterating.
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+        status_ = VmecStatus::NORMAL_TERMINATION;
+      }
+      RestartIteration(fc_.delt0r, thread_id);
+    } else if (fc_.ijacob == 0 &&
+               (status_ == VmecStatus::BAD_JACOBIAN ||
+                fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
+               fc_.ns >= 3) {
 // protect reads of ijacob above from write below
 #ifdef _OPENMP
 #pragma omp barrier
@@ -962,6 +1008,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
         b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, kSignOfJacobian);
         fc_.ijacob = 1;
+
+        // the state vector will be re-initialized from boundary and axis, so
+        // any interpolated multigrid seed is gone from here on
+        stage_seeded_by_interpolation_ = false;
 
         // prepare parameters to functions that get called due to
         // m_lreset_internal and restart_reason == BAD_JACOBIAN
@@ -1078,9 +1128,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // if res0 has never been assigned (-1), give it the current value of
         // fsq
         fc_.res0 = fc_.fsq;
+        iter_res0_ = iter2;
       }
 
       // res0 is the best force residual we got so far
+      if (fc_.fsq < fc_.res0) {
+        iter_res0_ = iter2;
+      }
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
 
       // PARVMEC additionally tracks the invariant residual minimum res1. Keep
@@ -1113,6 +1167,21 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // Store current state (restart_reason=NO_RESTART)
       // --> was able to reduce force consistenly over at least 10 iterations
       RestartIteration(fc_.delt0r, thread_id);
+
+      if (delt_recovery_active_) {
+        // sustained progress: let the time step recover towards the user
+        // delt, bounded by the stability ceiling learned from restarts.
+        // (Letting the ceiling heal upwards was tried and creates a costly
+        // probe/fail limit cycle -- the ratchet must stay one-directional.)
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        {
+          fc_.delt0r = std::min(
+              {fc_.delt0r * vmec_algorithm_constants::kVmecppDeltRecoveryGrowth,
+               indata_.delt, delt_ceiling_});
+        }
+      }
     } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
       // Residuals are growing in time, reduce time step
 
@@ -1120,6 +1189,18 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp single
 #endif  // _OPENMP
       fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+    } else if (delt_recovery_active_ &&
+               (iter2 - std::max(iter1_, iter_res0_)) >
+                   vmec_algorithm_constants::kVmecppStagnationGuardIterations) {
+      // Stagnation guard: no new residual minimum for 100 iterations. This
+      // catches a weakly unstable delt (slow residual growth that stays below
+      // the 100 * res0 blow-up threshold for hundreds of iterations): roll
+      // back to the best state and reduce delt below the marginal value.
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      fc_.restart_reason = RestartReason::BAD_PROGRESS;
     } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
                iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
                fc_.fsqr + fc_.fsqz > 1.0e-2) {
@@ -1254,6 +1335,16 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 #pragma omp single
 #endif  // _OPENMP
     {
+      // the current time step just proved unstable; remember it as a ceiling
+      // for delt recovery. If the ceiling itself is still weakly unstable,
+      // the stagnation guard detects it within ~100 iterations and ratchets
+      // it down again.
+      if (delt_recovery_active_) {
+        delt_ceiling_ = std::min(
+            delt_ceiling_,
+            m_delt0r * vmec_algorithm_constants::kVmecppDeltCeilingSafety);
+      }
+
       // reduce time step
       m_delt0r = m_delt0r * 0.9;
 
@@ -1283,6 +1374,16 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 #pragma omp single
 #endif  // _OPENMP
     {
+      // the current time step just proved unstable; remember it as a ceiling
+      // for delt recovery. If the ceiling itself is still weakly unstable,
+      // the stagnation guard detects it within ~100 iterations and ratchets
+      // it down again.
+      if (delt_recovery_active_) {
+        delt_ceiling_ = std::min(
+            delt_ceiling_,
+            m_delt0r * vmec_algorithm_constants::kVmecppDeltCeilingSafety);
+      }
+
       // reduce time step
       m_delt0r = m_delt0r / 1.03;
 
@@ -1913,8 +2014,10 @@ void Vmec::InterpolateToNextMultigridStep(
     }
   }
 
-  const MultigridInterpolationScheme scheme =
-      interpolation_scheme.value_or(MultigridInterpolationScheme::kLinear);
+  const MultigridInterpolationScheme scheme = interpolation_scheme.value_or(
+      indata_.iteration_style == IterationStyle::VMECPP
+          ? MultigridInterpolationScheme::kCubic
+          : MultigridInterpolationScheme::kLinear);
 
   for (int thread_id = 0; thread_id < num_threads_new; ++thread_id) {
     for (int jNew = r_new[thread_id]->nsMinF1; jNew < r_new[thread_id]->nsMaxF1;

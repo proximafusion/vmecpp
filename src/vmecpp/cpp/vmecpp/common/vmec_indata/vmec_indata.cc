@@ -88,6 +88,8 @@ absl::StatusOr<IterationStyle> IterationStyleFromString(
     return IterationStyle::VMEC_8_52;
   } else if (iteration_style_string == "parvmec") {
     return IterationStyle::PARVMEC;
+  } else if (iteration_style_string == "vmecpp") {
+    return IterationStyle::VMECPP;
   }
   return absl::NotFoundError(absl::StrCat(
       "iteration style named '", iteration_style_string, "' not known"));
@@ -99,6 +101,8 @@ std::string ToString(IterationStyle iteration_style) {
       return "vmec_8_52";
     case IterationStyle::PARVMEC:
       return "parvmec";
+    case IterationStyle::VMECPP:
+      return "vmecpp";
     default:
       LOG(FATAL)
           << "no string conversion implemented yet for IterationStyle code "
@@ -1480,12 +1484,14 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // nothing to check here: lforbal can be true or false and both are valid...
 
   // iteration_style
-  // VMEC_8_52 and PARVMEC are both implemented in Vmec::SolveEquilibriumLoop.
+  // VMEC_8_52, PARVMEC and VMECPP are all implemented in
+  // Vmec::SolveEquilibriumLoop.
   if (vmec_indata.iteration_style != IterationStyle::VMEC_8_52 &&
-      vmec_indata.iteration_style != IterationStyle::PARVMEC) {
+      vmec_indata.iteration_style != IterationStyle::PARVMEC &&
+      vmec_indata.iteration_style != IterationStyle::VMECPP) {
     return absl::InvalidArgumentError(
-        absl::StrFormat("input variable 'iteration_style' must be 'vmec_8_52' "
-                        "or 'parvmec', but "
+        absl::StrFormat("input variable 'iteration_style' must be 'vmec_8_52', "
+                        "'parvmec' or 'vmecpp', but "
                         "is %s\n",
                         ToString(vmec_indata.iteration_style)));
   }

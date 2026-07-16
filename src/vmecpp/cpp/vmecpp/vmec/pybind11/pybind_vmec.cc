@@ -479,7 +479,8 @@ class VmecModel {
   double ftolv() const { return vmec_->fc_.ftolv; }
   int niterv() const { return vmec_->fc_.niterv; }
   double delt() const { return vmec_->indata_.delt; }
-  // Iteration style ("vmec_8_52" or "parvmec"); selects the time-step control
+  // Iteration style ("vmec_8_52", "parvmec" or "vmecpp"); selects the
+  // time-step control
   // variant in vmecpp._iteration.
   std::string iteration_style() const {
     return vmecpp::ToString(vmec_->indata_.iteration_style);
@@ -672,6 +673,7 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::native_enum<vmecpp::IterationStyle>(m, "IterationStyle", "enum.Enum")
       .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52)
       .value("PARVMEC", vmecpp::IterationStyle::PARVMEC)
+      .value("VMECPP", vmecpp::IterationStyle::VMECPP)
       .export_values()
       .finalize();
 

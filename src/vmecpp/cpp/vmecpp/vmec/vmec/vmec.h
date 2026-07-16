@@ -272,6 +272,30 @@ class Vmec {
   // represents how many steps we are into the current optimization "branch".
   int iter1_;
 
+  // largest time step believed stable in the current multigrid stage; updated
+  // when a restart chops delt, consumed by the delt recovery of the VMECPP
+  // iteration style. Reset to the user delt at every stage.
+  double delt_ceiling_ = 0.0;
+
+  // iteration at which the preconditioned residual minimum res0 last
+  // improved; used by the stagnation guard of the delt recovery.
+  int iter_res0_ = 0;
+
+  // whether the current multigrid stage was seeded by radial interpolation of
+  // the previous (coarser) stage's converged state; used by the VMECPP
+  // iteration style to protect that seed from being discarded by the
+  // bad-Jacobian recovery path.
+  bool stage_seeded_by_interpolation_ = false;
+
+  // whether delt recovery (VMECPP iteration style) is active for the current
+  // multigrid stage: only on interpolation-seeded continuation stages (and
+  // cold starts with delt > 1). On a cold start there is no seed to protect
+  // and no ramp-in deficit to recover, and re-probing near the stability
+  // margin after genuine-marginality restarts costs iterations -- cold stages
+  // run the unmodified 8.52 control. Unlike stage_seeded_by_interpolation_,
+  // this is not cleared by the axis-recovery path.
+  bool delt_recovery_active_ = false;
+
   // history size for averaging of 1/tau
   static constexpr int kNDamp = 10;
 
