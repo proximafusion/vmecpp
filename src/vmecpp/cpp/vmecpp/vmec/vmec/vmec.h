@@ -33,6 +33,19 @@
 
 namespace vmecpp {
 
+// Radial interpolation scheme used to transfer the converged coarse-grid
+// state onto the next, finer multigrid step
+// (Vmec::InterpolateToNextMultigridStep).
+enum class MultigridInterpolationScheme : std::uint8_t {
+  // 2-point linear interpolation in s (VMEC 8.52 behavior)
+  kLinear,
+  // 4-point Lagrange interpolation in s
+  kCubic,
+  // 4-point Lagrange interpolation in rho = sqrt(s), the natural radial
+  // variable near the magnetic axis
+  kCubicRho,
+};
+
 // The state we need to hot-restart a VMEC++ run.
 struct HotRestartState {
   WOutFileContents wout;
@@ -126,7 +139,9 @@ class Vmec {
   bool InitializeRadial(
       VmecCheckpoint checkpoint, int maximum_iterations, int nsval, int ns_old,
       double& m_delt0,
-      const std::optional<HotRestartState>& initial_state = std::nullopt);
+      const std::optional<HotRestartState>& initial_state = std::nullopt,
+      std::optional<MultigridInterpolationScheme> interpolation_scheme =
+          std::nullopt);
   absl::StatusOr<bool> SolveEquilibrium(VmecCheckpoint checkpoint,
                                         int maximum_iterations);
   void RestartIteration(double& m_delt0r, int thread_id);
@@ -144,7 +159,9 @@ class Vmec {
       const std::vector<std::unique_ptr<RadialPartitioning>>& r_new,
       const std::vector<std::unique_ptr<RadialPartitioning>>& r_old,
       std::vector<std::unique_ptr<FourierGeometry>>& m_x_new,
-      std::vector<std::unique_ptr<FourierGeometry>>& m_x_old);
+      std::vector<std::unique_ptr<FourierGeometry>>& m_x_old,
+      std::optional<MultigridInterpolationScheme> interpolation_scheme =
+          std::nullopt);
   // -------------------
 
   bool updateFwdModel(IdealMhdModel& m_m, FourierGeometry& m_decomposed_x,
@@ -206,11 +223,6 @@ class Vmec {
   std::vector<std::unique_ptr<FourierForces>> physical_f_;
   std::vector<std::unique_ptr<FourierVelocity>> decomposed_v_;
 
-  Eigen::VectorXd sj;
-  Eigen::VectorXi js1;
-  Eigen::VectorXi js2;
-  Eigen::VectorXd s1;
-  Eigen::VectorXd xint;
   std::vector<std::unique_ptr<FourierGeometry>> old_xc_scaled_;
   std::vector<std::unique_ptr<RadialPartitioning>> old_r_;
 
@@ -262,6 +274,30 @@ class Vmec {
   // value of iter2_ at which the state vector was restored the last time.
   // represents how many steps we are into the current optimization "branch".
   int iter1_;
+
+  // largest time step believed stable in the current multigrid stage; updated
+  // when a restart chops delt, consumed by the experimental delt recovery
+  // (VMECPP_DELT_RECOVERY). Reset to the user delt at every stage.
+  double delt_ceiling_ = 0.0;
+
+  // iteration at which the preconditioned residual minimum res0 last
+  // improved; used by the stagnation guard of the delt recovery.
+  int iter_res0_ = 0;
+
+  // whether the current multigrid stage was seeded by radial interpolation of
+  // the previous (coarser) stage's converged state; used to protect that seed
+  // from being discarded by the bad-Jacobian recovery path
+  // (VMECPP_PRESERVE_INTERP_SEED).
+  bool stage_seeded_by_interpolation_ = false;
+
+  // whether delt recovery (VMECPP_DELT_RECOVERY) is active for the current
+  // multigrid stage: only on interpolation-seeded continuation stages. On a
+  // cold start there is no seed to protect and no ramp-in deficit to recover,
+  // and re-probing near the stability margin after genuine-marginality
+  // restarts costs iterations -- cold stages run the unmodified 8.52 control.
+  // Unlike stage_seeded_by_interpolation_, this is not cleared by the
+  // axis-recovery path.
+  bool delt_recovery_active_ = false;
 
   // history size for averaging of 1/tau
   static constexpr int kNDamp = 10;

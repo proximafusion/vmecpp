@@ -28,9 +28,30 @@ residual is handled:
   permissive, non-escalating revert at a moderate 1e3 leash, plus VMEC 8.52's
   slow-progress safeguard so the permissiveness cannot stall short of force
   balance. Built to converge for the equilibria each of the other two handles.
+* ``"delt_recovery"`` -- VMEC 8.52 control plus time-step recovery (the scheme
+  developed on the improve-convergence branch, ``VMECPP_DELT_RECOVERY`` in the
+  C++ core): every revert remembers the failing step as a one-directional
+  stability ceiling (0.95x the step that just proved unstable), every store
+  grows the step 2% back towards the smaller of the user step and that
+  ceiling, and a stagnation guard reverts gently when no new residual minimum
+  appears for 100 iterations (a weakly unstable step that never trips the
+  100x leash). In 8.52, any step reduction is permanent and the whole tail
+  runs at the reduced rate; with recovery the step returns to the largest
+  stable value. It also preserves the interpolated seed (the C++
+  ``VMECPP_PRESERVE_INTERP_SEED`` guard): if the stage goes unstable during
+  its first iterations, the seed is restored at a reduced step instead of
+  being discarded by the axis-recovery cold reset. The scheme only arms on
+  multigrid continuation stages (entered at a reduced step, see
+  ``delt_start_fraction``): those are the stages whose restarts are entry
+  transients with a long tail to win back. On cold starts it is
+  bit-identical to ``"vmec_8_52"`` by construction.
 
-Owning this loop in Python is the foundation for developing further iteration
-schemes (like ``"robust"``) without touching the C++ core.
+``"delt_recovery"`` was prototyped in the C++ core (env-gated as
+``VMECPP_DELT_RECOVERY`` / ``VMECPP_DELT_START`` on the improve-convergence
+branch); this module carries a faithful port so it can be traced and compared
+step by step against the other styles. ``"robust"`` exists only here. Owning
+this loop in Python is the foundation for developing further iteration schemes
+without touching the C++ core.
 """
 
 from __future__ import annotations
@@ -38,6 +59,7 @@ from __future__ import annotations
 import enum
 import logging
 import math
+import typing
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -64,11 +86,15 @@ _NDAMP = 10
 _PRECOND_INTERVAL = 25
 
 # Iteration styles. "vmec_8_52" and "parvmec" are vmecpp::IterationStyle values
-# (exposed as VmecModel.iteration_style); "robust" is a Python-only common-ground
-# scheme (see solve_equilibrium) that runs on the same forward model.
+# (exposed as VmecModel.iteration_style); "robust" exists only in this module.
+# "delt_recovery" IS implemented in the C++ core (the env-gated
+# VMECPP_DELT_RECOVERY / VMECPP_DELT_START scheme prototyped there), but it is
+# not a vmecpp::IterationStyle enum value, so when driving the loop from Python
+# this module owns its logic (a faithful port of the C++ implementation).
 _VMEC_8_52 = "vmec_8_52"
 _PARVMEC = "parvmec"
 _ROBUST = "robust"
+_DELT_RECOVERY = "delt_recovery"
 
 # Residual-growth tolerance before reverting the geometry: VMEC 8.52 reverts at
 # 100x the running minimum (TimeStepControl in Vmec::SolveEquilibriumLoop),
@@ -77,6 +103,19 @@ _ROBUST = "robust"
 _VMEC_8_52_BLOWUP = 100.0
 _PARVMEC_BLOWUP = 1.0e4
 _ROBUST_BLOWUP = 1.0e3
+
+# Lambda-preconditioner boost (solve_multigrid(lambda_preconditioner_boost=True)):
+# scale the lambda preconditioner elements for the m <= 1 modes on the first
+# evolved (off-axis) surface, where the flux-surface-averaged stiffness
+# estimate (faclam) overestimates what the descent actually feels by ~5-10x.
+# Fine radial attribution on w7x [25,99] (docs/convergence_study.md, Finding
+# 12): boosting jF <= 1 alone recovers the full -23% of the whole-radius
+# boost (1979 -> 1520 iterations); jF = 0 has no lambda DOF (exact no-op) and
+# wider m- or j-windows add nothing. A preconditioner rescaling cannot move
+# the converged force balance.
+_LAMBDA_BOOST_SCALE = 5.0
+_LAMBDA_BOOST_MMAX = 1
+_LAMBDA_BOOST_JMAX = 1
 
 _logger = logging.getLogger(__name__)
 
@@ -124,6 +163,9 @@ class IterationState:
     # --- time-step / damping state ---
     delt: float
     """Current time step ``delt0r`` after this iteration's control decision."""
+    delt_ceiling: float
+    """Learned stability ceiling for the time step (``"delt_recovery"`` style only;
+    stays at the user delt for the other styles)."""
     otav: float
     """Mean inverse damping time 1/tau over the last ``_NDAMP`` steps."""
     dtau: float
@@ -171,6 +213,7 @@ def solve_equilibrium(
     model: _vmecpp.VmecModel,
     *,
     style: str | None = None,
+    delt_start_fraction: float = 1.0,
     verbose: bool = False,
     callback: Callable[[IterationState], None] | None = None,
 ):
@@ -182,9 +225,21 @@ def solve_equilibrium(
     invariant residuals, advances the geometry with the Garabedian time step
     (damping from the preconditioned-residual history), and applies the time-step
     / restart control of the selected ``style``. ``style`` is one of
-    ``"vmec_8_52"``, ``"parvmec"``, ``"robust"``; when ``None`` it defaults to
-    ``model.iteration_style``. ``model`` must already be initialized at a single
-    radial resolution via ``VmecModel.create``.
+    ``"vmec_8_52"``, ``"parvmec"``, ``"robust"``, ``"delt_recovery"``; when
+    ``None`` it defaults to ``model.iteration_style``. ``model`` must already be
+    initialized at a single radial resolution via ``VmecModel.create``.
+
+    ``delt_start_fraction`` scales the *initial* time step relative to the user
+    delt (the C++ ``VMECPP_DELT_START`` ramp-in): a continuation stage of a
+    multigrid ramp is linearly unstable at the full user step for its first
+    iterations, and entering below that limit keeps the first restart from
+    discarding the interpolated seed. Only useful together with
+    ``"delt_recovery"`` (which grows the step back); the other styles would be
+    stuck at the reduced step for the whole stage. It also *arms*
+    ``"delt_recovery"``: with the default 1.0 (a cold start) the recovery
+    machinery stays off and the trajectory is bit-identical to
+    ``"vmec_8_52"`` -- there is no seed to protect and re-probing the
+    stability margin after cold-start restarts only costs iterations.
 
     If ``callback`` is given, it is invoked once per force iteration with an
     :class:`IterationState` snapshot of every convergence and flow-control quantity
@@ -195,16 +250,29 @@ def solve_equilibrium(
     style = style if style is not None else model.iteration_style
     parvmec = style == _PARVMEC
     robust = style == _ROBUST
+    # delt recovery only acts on stages entered at a reduced step (multigrid
+    # continuation stages, delt_start_fraction < 1): on a cold start there is
+    # no interpolated seed to protect and no ramp-in deficit to recover, and
+    # re-probing near the stability margin after genuine-marginality restarts
+    # costs iterations. Cold stages therefore run the unmodified 8.52 control
+    # (bit-identical trajectories).
+    delt_recovery = style == _DELT_RECOVERY and delt_start_fraction < 1.0
 
     ftolv = model.ftolv
     niterv = model.niterv
     delt_user = model.delt  # indata.delt, the reference time step
 
-    delt0r = delt_user
+    delt0r = delt_user * delt_start_fraction
+    # one-directional stability ceiling for "delt_recovery": every revert
+    # ratchets it below the step that just proved unstable; recovery never
+    # grows the step past it. (Letting the ceiling heal upwards was tried in
+    # the C++ and creates a costly probe/fail limit cycle.)
+    delt_ceiling = delt_user
     inv_tau = np.zeros(_NDAMP)
     fsq_prev = 1.0  # fc_.fsq is initialized to 1.0 in InitializeRadial
     res0 = -1.0  # running minimum of the preconditioned residual sum
     res1 = -1.0  # running minimum of the invariant residual sum (parvmec/robust)
+    iter_res0 = 1  # iteration of the last res0 improvement (delt_recovery)
     iter1 = 1
     iter2 = 1
     ijacob = 0
@@ -319,11 +387,30 @@ def solve_equilibrium(
             # axis once and restart the force iteration (vmec.cc lines 833-874).
             # Counters carry: the C++ does not reset iter1_/iter2_ here, so the
             # reguessed retry continues the same iteration numbering.
-            if (
+            axis_recovery_due = (
                 ijacob == 0
                 and (status_bad_jacobian or rr == RestartReason.HUGE_INITIAL_FORCES)
                 and model.ns >= 3
-            ):
+            )
+            preserved_seed = False
+            if axis_recovery_due and delt_recovery and iter2 > 1:
+                # Seed preservation (the C++ VMECPP_PRESERVE_INTERP_SEED
+                # guard): a continuation stage seeded by multigrid
+                # interpolation went unstable during its first iterations (at
+                # least one clean force evaluation happened, so the seed
+                # itself is usable). Restore the backup -- the interpolated
+                # seed -- at a reduced time step instead of discarding it via
+                # the axis-recovery cold reset below.
+                model.restore_backup()
+                delt_ceiling = min(delt_ceiling, 0.95 * delt0r)
+                delt0r *= 0.9
+                ijacob += 1
+                iter1 = iter2
+                bad_resets += 1
+                n_restarts += 1
+                restarted = True
+                preserved_seed = True
+            elif axis_recovery_due:
                 # the axis is recomputed by reinitialize() at the next outer-loop
                 # entry (mirroring the C++ recompute + lreset re-init)
                 ijacob = 1
@@ -332,7 +419,7 @@ def solve_equilibrium(
                 lreset_internal = True
                 must_retry = True
                 break
-            if status_bad_jacobian:
+            elif status_bad_jacobian:
                 failed = True  # ijacob already used: cannot recover
                 break
 
@@ -360,7 +447,11 @@ def solve_equilibrium(
             # (already time-stepped) state rather than reverting it -- and bumps
             # bad_resets / iter1 so the next evaluation keeps iter2 == 1. Reproduce
             # that here so the post-reguess trajectory matches C++ step for step.
-            if rr == RestartReason.HUGE_INITIAL_FORCES:
+            if preserved_seed:
+                # the unstable evaluation was fully handled by the seed
+                # preservation above; do not feed it to the time-step control
+                pass
+            elif rr == RestartReason.HUGE_INITIAL_FORCES:
                 if iter2 == iter1 or res0 == -1.0:
                     res0 = fsq1
                     res1 = fsqr + fsqz + fsql
@@ -432,12 +523,27 @@ def solve_equilibrium(
                 # RestartIteration BAD_JACOBIAN branch as the 100x leash (delt0r
                 # *= 0.9, ijacob++). The slow-progress branch reverts gently
                 # (/1.03) without escalating ijacob.
+                #
+                # "delt_recovery" is this control plus the time-step recovery
+                # of the C++ VMECPP_DELT_RECOVERY scheme: reverts ratchet the
+                # stability ceiling below the step that just proved unstable,
+                # stores grow the step 2% back towards min(user delt, ceiling),
+                # and a stagnation guard reverts gently when no new residual
+                # minimum appears for 100 iterations. On a run without reverts
+                # the step already sits at the user delt, so recovery is a
+                # no-op and the path is bit-identical to "vmec_8_52".
                 if iter2 == iter1 or res0 == -1.0:
                     res0 = fsq1
+                    iter_res0 = iter2
+                if fsq1 < res0:
+                    iter_res0 = iter2
                 res0 = min(res0, fsq1)
                 blew_up = fsq1 > _VMEC_8_52_BLOWUP * res0 and iter2 > iter1
+                stagnated = delt_recovery and (iter2 - max(iter1, iter_res0)) > 100
                 if rr == RestartReason.BAD_JACOBIAN or blew_up:
                     model.restore_backup()
+                    if delt_recovery:
+                        delt_ceiling = min(delt_ceiling, 0.95 * delt0r)
                     delt0r *= 0.9
                     ijacob += 1
                     iter1 = iter2
@@ -447,12 +553,29 @@ def solve_equilibrium(
                 elif fsq1 <= res0 and (iter2 - iter1) > 10:
                     model.save_backup()
                     saved_backup = True
-                elif (
+                    if delt_recovery:
+                        # sustained progress: let the time step recover towards
+                        # the user delt, bounded by the learned ceiling. The
+                        # ceiling ratchet must stay one-directional: letting it
+                        # drift back up during quiet stretches ("ceiling
+                        # forgetting", tried both here and in the C++
+                        # prototype) grows the step until it fails by
+                        # construction, and the resulting ~200-iteration
+                        # probe/fail limit cycle costs far more than running
+                        # marginally hotter earns (w7x [25,99] stage 2: 1646 ->
+                        # 4354 iterations; every tested case regressed).
+                        delt0r = min(delt0r * 1.02, delt_user, delt_ceiling)
+                elif stagnated or (
                     (iter2 - iter1) > _PRECOND_INTERVAL // 2
                     and iter2 > 2 * _PRECOND_INTERVAL
                     and (fsqr + fsqz) > 1.0e-2
                 ):
+                    # slow progress, or (delt_recovery only) no new residual
+                    # minimum for 100 iterations: a weakly unstable step whose
+                    # slow residual growth never trips the 100x leash
                     model.restore_backup()
+                    if delt_recovery:
+                        delt_ceiling = min(delt_ceiling, 0.95 * delt0r)
                     delt0r /= 1.03
                     iter1 = iter2
                     bad_resets += 1
@@ -476,6 +599,7 @@ def solve_equilibrium(
                         res0=res0,
                         res1=res1,
                         delt=delt0r,
+                        delt_ceiling=delt_ceiling,
                         otav=otav,
                         dtau=dtau,
                         ijacob=ijacob,
@@ -521,6 +645,8 @@ def solve_multigrid(
     vmec_input,
     *,
     iteration_style: str | None = None,
+    interpolation: typing.Literal["linear", "cubic", "cubic_rho"] | None = None,
+    lambda_preconditioner_boost: bool = False,
     verbose: bool = False,
     callback: Callable[[IterationState], None] | None = None,
 ):
@@ -532,10 +658,28 @@ def solve_multigrid(
     is solved to its ``ftol_array`` / ``niter_array`` tolerance with
     :func:`solve_equilibrium`, and the converged geometry is interpolated onto
     the next stage's radial grid with ``VmecModel.refine_to`` (the C++
-    ``InterpolateToNextMultigridStep``). A stage that exhausts its iteration
+    ``InterpolateToNextMultigridStep``). ``interpolation`` selects the radial
+    interpolant for those transfers: ``"linear"`` (2-point, VMEC 8.52
+    behavior), ``"cubic"`` (4-point Lagrange in s) or ``"cubic_rho"`` (4-point
+    Lagrange in rho = sqrt(s)); the higher-order interpolants reduce the
+    interpolation-added error of the stage seed down to the coarse grid's own
+    discretization error (measured on cma [51, 99]: entry residual 2.7e-2 ->
+    2.2e-4). ``None`` (default) keeps the C++ default (linear, overridable via
+    the ``VMECPP_MULTIGRID_INTERP`` environment variable). A stage that
+    exhausts its iteration
     budget without converging proceeds to the next stage, exactly as the C++
     run does; a stage that hard-fails (unrecoverable bad Jacobian, the
     ijacob >= 75 give-up) stops the ramp.
+
+    ``lambda_preconditioner_boost`` corrects the lambda preconditioner at the
+    first evolved (off-axis) surface: the flux-surface-averaged lambda
+    stiffness there overestimates what the descent actually feels by ~5-10x,
+    under-relaxing the m <= 1 lambda modes that dominate the slow tail of
+    strongly shaped configurations (docs/convergence_study.md, Findings
+    10-12; measured -23% tail iterations on w7x, no effect where those modes
+    are not rate-limiting, e.g. cma/cth). A preconditioner rescaling cannot
+    move the force balance, so the converged physics is unchanged (verified
+    to 9 digits). Orthogonal to ``iteration_style``.
 
     ``ftol_array`` / ``niter_array`` entries are matched to ``ns_array``
     entries by ns value (``VmecModel.create`` / ``refine_to`` semantics);
@@ -550,6 +694,19 @@ def solve_multigrid(
         cpp_indata.iteration_style = getattr(
             _vmecpp.IterationStyle, iteration_style.upper()
         )
+
+    interpolation_scheme = None
+    if interpolation is not None:
+        try:
+            interpolation_scheme = getattr(
+                _vmecpp.MultigridInterpolationScheme, interpolation.upper()
+            )
+        except AttributeError:
+            msg = (
+                "solve_multigrid: unknown interpolation scheme "
+                f"'{interpolation}' (expected 'linear', 'cubic' or 'cubic_rho')"
+            )
+            raise ValueError(msg) from None
 
     ns_array = [int(ns) for ns in np.asarray(cpp_indata.ns_array)]
     if len(set(ns_array)) != len(ns_array):
@@ -569,10 +726,38 @@ def solve_multigrid(
         ns_min = ns
         if model is None:
             model = _vmecpp.VmecModel.create(cpp_indata, ns)
+            delt_start_fraction = 1.0
+            if iteration_style == _DELT_RECOVERY and cpp_indata.delt > 1.0:
+                # A cold start at delt > 1 sits above every stability boundary
+                # measured so far and dies in the initial transient under the
+                # plain 8.52 control. Enter at the universally stable absolute
+                # step 0.5 (Finding 9) and let the armed recovery grow toward
+                # the requested delt, bounded by the learned ceiling. Cold
+                # starts at delt <= 1 keep the machinery off (bit-identical to
+                # vmec_8_52).
+                delt_start_fraction = 0.5 / cpp_indata.delt
+            if lambda_preconditioner_boost:
+                model.set_lambda_preconditioner_boost(
+                    scale=_LAMBDA_BOOST_SCALE,
+                    mmax=_LAMBDA_BOOST_MMAX,
+                    jmax=_LAMBDA_BOOST_JMAX,
+                )
         else:
-            model.refine_to(ns)
+            model.refine_to(ns, interpolation=interpolation_scheme)
+            # delt_recovery: continuation stages enter below the stage-entry
+            # stability limit (the C++ VMECPP_DELT_START ramp-in) so the first
+            # restart cannot discard the interpolated seed; the recovery then
+            # grows the step back to full speed within ~35 iterations. For
+            # delt > 1 the entry step is 0.5 absolute, not 0.5 * delt.
+            delt_start_fraction = 1.0
+            if iteration_style == _DELT_RECOVERY:
+                delt_start_fraction = 0.5 / max(1.0, cpp_indata.delt)
         result = solve_equilibrium(
-            model, style=iteration_style, verbose=verbose, callback=callback
+            model,
+            style=iteration_style,
+            delt_start_fraction=delt_start_fraction,
+            verbose=verbose,
+            callback=callback,
         )
         results.append(result)
         if result.failed:
@@ -594,9 +779,9 @@ def iterate(
     """Create a single-resolution :class:`VmecModel` for ``vmec_input`` and run the
     Python force-balance iteration on it.
 
-    ``iteration_style`` is one of ``"vmec_8_52"``, ``"parvmec"``, ``"robust"`` and
-    overrides the input's own setting; when ``None`` the input's
-    ``iteration_style`` is used (default ``"vmec_8_52"``). Returns
+    ``iteration_style`` is one of ``"vmec_8_52"``, ``"parvmec"``, ``"robust"``,
+    ``"delt_recovery"`` and overrides the input's own setting; when ``None`` the
+    input's ``iteration_style`` is used (default ``"vmec_8_52"``). Returns
     ``(model, IterationResult)``; ``model`` holds the converged geometry (inspect
     it with ``get_state()`` / the residual properties). ``ns`` defaults to the
     last entry of the input's ``ns_array``.

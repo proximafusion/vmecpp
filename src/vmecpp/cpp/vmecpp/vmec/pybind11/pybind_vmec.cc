@@ -270,6 +270,27 @@ class VmecModel {
   }
   bool need_restart() const { return last_need_restart_; }
 
+  // Configure the lambda-preconditioner boost (see
+  // IdealMhdModel::SetLambdaPreconditionerBoost): multiply the lambda
+  // preconditioner elements by `scale` for m <= mmax, jF <= jmax (negative:
+  // unrestricted). Takes effect at the next preconditioner update; does not
+  // move the force balance. The setting is stored on this wrapper and
+  // re-applied whenever the underlying IdealMhdModel instances are recreated
+  // (InitializeRadial: refine_to, reinitialize), so it survives multigrid
+  // transitions and mid-stage axis reguesses.
+  void SetLambdaPreconditionerBoost(double scale, int mmax, int jmax) {
+    lambda_boost_scale_ = scale;
+    lambda_boost_mmax_ = mmax;
+    lambda_boost_jmax_ = jmax;
+    ApplyLambdaPreconditionerBoost();
+  }
+  void ApplyLambdaPreconditionerBoost() const {
+    for (auto &m : vmec_->m_) {
+      m->SetLambdaPreconditionerBoost(lambda_boost_scale_, lambda_boost_mmax_,
+                                      lambda_boost_jmax_);
+    }
+  }
+
   // Total forward-model (force) evaluations since construction or the last
   // reset. Counts every Evaluate, including those inside hessian_vector_product
   // and preconditioner assembly, for a fair cross-optimizer cost comparison.
@@ -331,6 +352,8 @@ class VmecModel {
                             std::nullopt);
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
+    // InitializeRadial recreates the IdealMhdModel instances
+    ApplyLambdaPreconditionerBoost();
   }
 
   // Advance to the next (finer) multi-grid resolution, interpolating the
@@ -345,7 +368,8 @@ class VmecModel {
   // multi-grid sequencing; call this between solve_equilibrium calls to drive
   // the coarse->fine ramp from Python. `new_ns` must be finer than the current
   // ns (multi-grid only refines).
-  void RefineTo(int new_ns) {
+  void RefineTo(int new_ns, std::optional<vmecpp::MultigridInterpolationScheme>
+                                interpolation = std::nullopt) {
     vmecpp::Vmec &v = *vmec_;
     if (new_ns <= v.fc_.ns) {
       throw std::runtime_error("VmecModel.refine_to: new_ns (" +
@@ -383,9 +407,11 @@ class VmecModel {
     // InitializeRadial (rmsPhiP accumulates in evalRadialProfiles).
     v.constants_.reset();
     v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, new_ns, ns_old,
-                       delt0, std::nullopt);
+                       delt0, std::nullopt, interpolation);
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
+    // InitializeRadial recreates the IdealMhdModel instances
+    ApplyLambdaPreconditionerBoost();
   }
 
   // Reference C++ inner iteration (the loop being ported), for verification.
@@ -529,6 +555,12 @@ class VmecModel {
   int last_preconditioner_update_ = 0;
   int last_full_update_nestor_ = 0;
   bool last_need_restart_ = false;
+
+  // lambda-preconditioner boost, re-applied after every InitializeRadial
+  // (defaults are a no-op)
+  double lambda_boost_scale_ = 1.0;
+  int lambda_boost_mmax_ = -1;
+  int lambda_boost_jmax_ = -1;
 };
 
 }  // anonymous namespace
@@ -671,6 +703,14 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::native_enum<vmecpp::IterationStyle>(m, "IterationStyle", "enum.Enum")
       .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52)
       .value("PARVMEC", vmecpp::IterationStyle::PARVMEC)
+      .export_values()
+      .finalize();
+
+  py::native_enum<vmecpp::MultigridInterpolationScheme>(
+      m, "MultigridInterpolationScheme", "enum.Enum")
+      .value("LINEAR", vmecpp::MultigridInterpolationScheme::kLinear)
+      .value("CUBIC", vmecpp::MultigridInterpolationScheme::kCubic)
+      .value("CUBIC_RHO", vmecpp::MultigridInterpolationScheme::kCubicRho)
       .export_values()
       .finalize();
 
@@ -1278,7 +1318,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("reset_to_initial_guess", &VmecModel::ResetToInitialGuess)
       .def("recompute_axis", &VmecModel::RecomputeAxis)
       .def("reinitialize", &VmecModel::Reinitialize)
-      .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"))
+      .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"),
+           py::arg("interpolation") = py::none())
       .def("solve", &VmecModel::Solve)
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
@@ -1287,6 +1328,9 @@ PYBIND11_MODULE(_vmecpp, m) {
            py::arg("v"))
       .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
            py::arg("v"), py::arg("eps_rel") = 1e-7)
+      .def("set_lambda_preconditioner_boost",
+           &VmecModel::SetLambdaPreconditionerBoost, py::arg("scale") = 1.0,
+           py::arg("mmax") = -1, py::arg("jmax") = -1)
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
       .def_property_readonly("fsqr", &VmecModel::fsqr)

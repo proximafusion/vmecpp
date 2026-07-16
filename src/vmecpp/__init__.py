@@ -30,7 +30,6 @@ from vmecpp._iteration import (
     IterationState,
     RestartReason,
     iterate,
-    solve_equilibrium,
     solve_multigrid,
 )
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
@@ -420,7 +419,12 @@ class VmecInput(BaseModelWithNumpy):
     """Radial flux zoning profile coefficients."""
 
     delt: float = 1.0
-    """Initial value for artificial time step in iterative solver."""
+    """Initial value for artificial time step in iterative solver.
+
+    Valid range is ]0, 10]. The preconditioner normalizes the stiffest mode to O(1), so
+    the stability boundary sits near 1 and useful values rarely exceed a few; an over-
+    large step is walked down automatically at runtime.
+    """
 
     tcon0: float = 1.0
     """Constraint force scaling factor for ns --> 0."""
@@ -2567,7 +2571,6 @@ __all__ = [  # noqa: RUF022
     "IterationStyle",
     "set_profile",
     "iterate",
-    "solve_equilibrium",
     "solve_multigrid",
     "IterationResult",
     "IterationState",

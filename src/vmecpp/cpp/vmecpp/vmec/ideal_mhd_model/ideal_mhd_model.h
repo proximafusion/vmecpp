@@ -79,6 +79,25 @@ class IdealMhdModel {
   std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
   void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
+  // Configure the lambda-preconditioner boost: multiply the lambda
+  // preconditioner elements by `scale` for modes with m <= mmax on full-grid
+  // surfaces jF <= jmax (negative mmax/jmax: no restriction). The
+  // tail-convergence study (docs/convergence_study.md, Findings 10-12) found
+  // the low-m lambda modes on the innermost evolved surfaces of strongly
+  // shaped configurations are under-relaxed by ~5-10x relative to their
+  // effective stiffness (their preconditioned residual dominates the tail,
+  // and boosting them 5-10x accelerates convergence without approaching the
+  // stability boundary); scale = 5, mmax = 1, jmax = 4 recovers -22% of the
+  // w7x tail iterations. Note lambda has no evolved DOF at the axis itself
+  // (the force loop starts at jF = 1), so jmax = 0 is a no-op. A
+  // preconditioner rescaling does not move the force balance, so converged
+  // physics is unaffected. Takes effect at the next preconditioner update.
+  void SetLambdaPreconditionerBoost(double scale, int mmax, int jmax) {
+    lambda_precond_boost_scale_ = scale > 0.0 ? scale : 1.0;
+    lambda_precond_boost_mmax_ = mmax < 0 ? INT_MAX : mmax;
+    lambda_precond_boost_jmax_ = jmax < 0 ? INT_MAX : jmax;
+  }
+
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
   // coefficients. Also computes the net dR/dTheta and dZ/dTheta, without the
@@ -424,6 +443,12 @@ class IdealMhdModel {
   VacuumPressureState& m_vacuum_pressure_state_;
   std::int64_t force_evaluation_count_ = 0;
 
+  // lambda-preconditioner boost (SetLambdaPreconditionerBoost); defaults are
+  // a no-op
+  double lambda_precond_boost_scale_ = 1.0;
+  int lambda_precond_boost_mmax_ = INT_MAX;
+  int lambda_precond_boost_jmax_ = INT_MAX;
+
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
   // Created once at construction and reused across iterations. Execution is
@@ -435,9 +460,6 @@ class IdealMhdModel {
 
   // 1/4: 1/2 from d(sHalf)/ds and 1/2 from interpolation
   static constexpr double dSHalfDsInterp = 0.25;
-
-  // TODO(jons): understand what this is (related to radial preconditioner)
-  static constexpr double dampingFactor = 2.0;
 
   // from INDATA: flag to select between constrained-iota and
   // constrained-toroidal-current

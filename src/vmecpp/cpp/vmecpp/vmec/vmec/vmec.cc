@@ -5,7 +5,10 @@
 #include "vmecpp/vmec/vmec/vmec.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -34,6 +37,49 @@
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 
 namespace {
+
+// Default radial interpolation scheme for multigrid transitions, from the
+// VMECPP_MULTIGRID_INTERP environment variable; used when no scheme is
+// passed explicitly (the C++ multigrid loop in Vmec::run).
+vmecpp::MultigridInterpolationScheme GetMultigridInterpolationScheme() {
+  const char* env = std::getenv("VMECPP_MULTIGRID_INTERP");
+  if (env == nullptr) {
+    return vmecpp::MultigridInterpolationScheme::kLinear;
+  }
+  const std::string value(env);
+  if (value == "cubic") {
+    return vmecpp::MultigridInterpolationScheme::kCubic;
+  }
+  if (value == "cubic_rho") {
+    return vmecpp::MultigridInterpolationScheme::kCubicRho;
+  }
+  return vmecpp::MultigridInterpolationScheme::kLinear;
+}
+
+// Experimental time-step control (see docs/convergence_study.md):
+// - VMECPP_DELT_START=<frac>: multigrid continuation stages enter the force
+//   iteration at frac * delt instead of the full user delt, to avoid the
+//   stage-entry blow-up that otherwise destroys the interpolated state.
+// - VMECPP_DELT_RECOVERY: allow delt to grow back (2 percent per accepted
+//   backup event) up to the user delt, bounded by a per-stage stability
+//   ceiling learned from restarts. Without this, any delt reduction is
+//   permanent for the remainder of the stage.
+double GetDeltStartFraction() {
+  const char* env = std::getenv("VMECPP_DELT_START");
+  if (env == nullptr) {
+    return 1.0;
+  }
+  const double value = std::atof(env);
+  if (value <= 0.0 || value > 1.0) {
+    return 1.0;
+  }
+  return value;
+}
+
+bool DeltRecoveryEnabled() {
+  return std::getenv("VMECPP_DELT_RECOVERY") != nullptr;
+}
+
 void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
                            const absl::Status& thread_status) {
   CHECK(!thread_status.ok()) << "UpdateStatusForThread expects an error status";
@@ -477,7 +523,8 @@ void Vmec::SetupVacuumSolvers() {
 bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
-    const std::optional<HotRestartState>& initial_state) {
+    const std::optional<HotRestartState>& initial_state,
+    std::optional<MultigridInterpolationScheme> interpolation_scheme) {
   // Stage info output is now handled by logger_.BeginStage() in run().
 
   // Set timestep control parameters
@@ -491,6 +538,21 @@ bool Vmec::InitializeRadial(
   fc_.res0 = -1;
   fc_.res1 = -1;
   m_delt0 = indata_.delt;
+
+  // per-stage stability ceiling for delt recovery (see DeltRecoveryEnabled)
+  delt_ceiling_ = indata_.delt;
+
+  // Multigrid continuation stages may enter at a reduced time step to avoid
+  // the stage-entry instability at the full user delt; delt recovery is
+  // likewise active only on continuation stages (on a cold start there is no
+  // interpolated seed to protect and no ramp-in deficit to recover, and
+  // re-probing near the stability margin after genuine-marginality restarts
+  // costs iterations -- cold stages run the unmodified 8.52 control).
+  delt_recovery_active_ = false;
+  if (ns_old != 0 && ns_old < nsval) {
+    m_delt0 = indata_.delt * GetDeltStartFraction();
+    delt_recovery_active_ = DeltRecoveryEnabled();
+  }
 
   // INITIALIZE MESH-DEPENDENT SCALARS
 
@@ -515,6 +577,7 @@ bool Vmec::InitializeRadial(
   // check that interpolating from coarse to fine mesh
   // and that old solution is available
   bool linterp = (ns_old < fc_.ns && ns_old != 0);
+  stage_seeded_by_interpolation_ = linterp;
 
   if (ns_old != fc_.ns) {
     // ALLOCATE NS-DEPENDENT ARRAYS
@@ -685,7 +748,8 @@ bool Vmec::InitializeRadial(
     // INTERPOLATE FROM COARSE (ns_old) TO NEXT FINER (ns) RADIAL GRID
     if (linterp) {
       InterpolateToNextMultigridStep(fc_.ns, fc_.ns_old, p_, r_, old_r_,
-                                     decomposed_x_, old_xc_scaled_);
+                                     decomposed_x_, old_xc_scaled_,
+                                     interpolation_scheme);
 
       // TODO(jons): check for max_multigrid_steps
       // TODO(jons): maybe need `&& iter2_ >= maximum_iterations) {` ?
@@ -861,10 +925,30 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     }
 
     // check for bad jacobian and bad initial guess for axis
+    static const bool kPreserveInterpSeed =
+        std::getenv("VMECPP_PRESERVE_INTERP_SEED") != nullptr;
     if (fc_.ijacob == 0 &&
         (status_ == VmecStatus::BAD_JACOBIAN ||
          fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
-        fc_.ns >= 3) {
+        fc_.ns >= 3 && kPreserveInterpSeed && stage_seeded_by_interpolation_ &&
+        iter2_ > 1) {
+      // A continuation stage seeded by multigrid interpolation went unstable
+      // during its first iterations (at least one clean force evaluation
+      // happened, so the seed itself is usable). Do not discard the seed via
+      // the axis-recovery reset below; instead restore the backup (the
+      // interpolated state) at a reduced time step and keep iterating.
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+        status_ = VmecStatus::NORMAL_TERMINATION;
+      }
+      RestartIteration(fc_.delt0r, thread_id);
+    } else if (fc_.ijacob == 0 &&
+               (status_ == VmecStatus::BAD_JACOBIAN ||
+                fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
+               fc_.ns >= 3) {
 // protect reads of ijacob above from write below
 #ifdef _OPENMP
 #pragma omp barrier
@@ -887,6 +971,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
         b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, kSignOfJacobian);
         fc_.ijacob = 1;
+
+        // the state vector will be re-initialized from boundary and axis, so
+        // any interpolated multigrid seed is gone from here on
+        stage_seeded_by_interpolation_ = false;
 
         // prepare parameters to functions that get called due to
         // m_lreset_internal and restart_reason == BAD_JACOBIAN
@@ -994,9 +1082,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // if res0 has never been assigned (-1), give it the current value of
         // fsq
         fc_.res0 = fc_.fsq;
+        iter_res0_ = iter2;
       }
 
       // res0 is the best force residual we got so far
+      if (fc_.fsq < fc_.res0) {
+        iter_res0_ = iter2;
+      }
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
 
       // PARVMEC additionally tracks the invariant residual minimum res1. Keep
@@ -1029,6 +1121,20 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // Store current state (restart_reason=NO_RESTART)
       // --> was able to reduce force consistenly over at least 10 iterations
       RestartIteration(fc_.delt0r, thread_id);
+
+      if (delt_recovery_active_) {
+        // sustained progress: let the time step recover towards the user
+        // delt, bounded by the stability ceiling learned from restarts.
+        // (Letting the ceiling heal upwards was tried and creates a costly
+        // probe/fail limit cycle -- the ratchet must stay one-directional.)
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        {
+          fc_.delt0r =
+              std::min({fc_.delt0r * 1.02, indata_.delt, delt_ceiling_});
+        }
+      }
     } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
       // Residuals are growing in time, reduce time step
 
@@ -1036,6 +1142,17 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp single
 #endif  // _OPENMP
       fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+    } else if (delt_recovery_active_ &&
+               (iter2 - std::max(iter1_, iter_res0_)) > 100) {
+      // Stagnation guard: no new residual minimum for 100 iterations. This
+      // catches a weakly unstable delt (slow residual growth that stays below
+      // the 100 * res0 blow-up threshold for hundreds of iterations): roll
+      // back to the best state and reduce delt below the marginal value.
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      fc_.restart_reason = RestartReason::BAD_PROGRESS;
     } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
                iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
                fc_.fsqr + fc_.fsqz > 1.0e-2) {
@@ -1170,6 +1287,14 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 #pragma omp single
 #endif  // _OPENMP
     {
+      // the current time step just proved unstable; remember it as a ceiling
+      // for delt recovery. If the ceiling itself is still weakly unstable,
+      // the stagnation guard detects it within ~100 iterations and ratchets
+      // it down again.
+      if (delt_recovery_active_) {
+        delt_ceiling_ = std::min(delt_ceiling_, m_delt0r * 0.95);
+      }
+
       // reduce time step
       m_delt0r = m_delt0r * 0.9;
 
@@ -1199,6 +1324,14 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 #pragma omp single
 #endif  // _OPENMP
     {
+      // the current time step just proved unstable; remember it as a ceiling
+      // for delt recovery. If the ceiling itself is still weakly unstable,
+      // the stagnation guard detects it within ~100 iterations and ratchets
+      // it down again.
+      if (delt_recovery_active_) {
+        delt_ceiling_ = std::min(delt_ceiling_, m_delt0r * 0.95);
+      }
+
       // reduce time step
       m_delt0r = m_delt0r / 1.03;
 
@@ -1714,7 +1847,8 @@ void Vmec::InterpolateToNextMultigridStep(
     const std::vector<std::unique_ptr<RadialPartitioning>>& r_new,
     const std::vector<std::unique_ptr<RadialPartitioning>>& r_old,
     std::vector<std::unique_ptr<FourierGeometry>>& m_x_new,
-    std::vector<std::unique_ptr<FourierGeometry>>& m_x_old) {
+    std::vector<std::unique_ptr<FourierGeometry>>& m_x_old,
+    std::optional<MultigridInterpolationScheme> interpolation_scheme) {
   // INTERPOLATE R,Z AND LAMBDA ON FULL GRID
   // (EXTRAPOLATE M=1 MODES,OVER SQRT(S), TO ORIGIN)
   // ON ENTRY, XOLD = X(COARSE MESH) * SCALXC(COARSE MESH)
@@ -1810,132 +1944,116 @@ void Vmec::InterpolateToNextMultigridStep(
   // radial interpolation from old, coarse state vector to new, finer state
   // vector
 
-  sj.resize(ns_new);
-  js1.resize(ns_new);
-  js2.resize(ns_new);
-  s1.resize(ns_new);
-  xint.resize(ns_new);
+  // The spectral coefficient arrays to interpolate; they all share the same
+  // (j, m, n) indexing.
+  std::vector<std::span<double> FourierGeometry::*> coefficient_members = {
+      &FourierGeometry::rmncc, &FourierGeometry::zmnsc,
+      &FourierGeometry::lmnsc};
+  if (s_.lthreed) {
+    coefficient_members.push_back(&FourierGeometry::rmnss);
+    coefficient_members.push_back(&FourierGeometry::zmncs);
+    coefficient_members.push_back(&FourierGeometry::lmncs);
+  }
+  if (s_.lasym) {
+    coefficient_members.push_back(&FourierGeometry::rmnsc);
+    coefficient_members.push_back(&FourierGeometry::zmncc);
+    coefficient_members.push_back(&FourierGeometry::lmncc);
+    if (s_.lthreed) {
+      coefficient_members.push_back(&FourierGeometry::rmncs);
+      coefficient_members.push_back(&FourierGeometry::zmnss);
+      coefficient_members.push_back(&FourierGeometry::lmnss);
+    }
+  }
+
+  const MultigridInterpolationScheme scheme =
+      interpolation_scheme.value_or(GetMultigridInterpolationScheme());
 
   for (int thread_id = 0; thread_id < num_threads_new; ++thread_id) {
     for (int jNew = r_new[thread_id]->nsMinF1; jNew < r_new[thread_id]->nsMaxF1;
          ++jNew) {
-      sj[jNew] = jNew / (ns_new - 1.0);
+      const double sj = jNew / (ns_new - 1.0);
 
-      // entries around radial position of jNew on old grid
-      js1[jNew] = (jNew * (ns_old - 1)) / (ns_new - 1);
-      js2[jNew] = std::min(js1[jNew] + 1, ns_old - 1);
+      // old-grid interval [js1, js2] around the new radial position
+      const int js1 = (jNew * (ns_old - 1)) / (ns_new - 1);
+      const int js2 = std::min(js1 + 1, ns_old - 1);
 
-      s1[jNew] = js1[jNew] * hs_old;
+      // interpolation stencil on the old radial grid and its weights
+      std::array<int, 4> stencil{};
+      std::array<double, 4> weight{};
+      int stencil_size = 0;
 
-      // interpolation weight
-      xint[jNew] = (sj[jNew] - s1[jNew]) / hs_old;
-      xint[jNew] = std::min(1.0, xint[jNew]);
-      xint[jNew] = std::max(0.0, xint[jNew]);
-
-      // now need to figure out source threads, which have js1 and js2
-      // and the target thread that has jNew
-      int thread_with_js1 = 0;
-      int thread_with_js2 = 0;
-      for (int old_thread_id = 0; old_thread_id < num_threads_old;
-           ++old_thread_id) {
-        const int nsMinF1 = r_old[old_thread_id]->nsMinF1;
-        const int nsMaxF1 = r_old[old_thread_id]->nsMaxF1;
-        if (nsMinF1 <= js1[jNew] && js1[jNew] < nsMaxF1) {
-          thread_with_js1 = old_thread_id;
+      if (scheme == MultigridInterpolationScheme::kLinear || ns_old < 4) {
+        double xint = (sj - js1 * hs_old) / hs_old;
+        xint = std::min(1.0, std::max(0.0, xint));
+        stencil = {js1, js2, 0, 0};
+        weight = {1.0 - xint, xint, 0.0, 0.0};
+        stencil_size = 2;
+      } else {
+        // 4-point Lagrange stencil around [js1, js2], shifted inward at the
+        // radial-domain ends; reproduces old-grid values exactly when the new
+        // position coincides with an old grid point (e.g. at the LCFS).
+        const int base = std::min(std::max(js1 - 1, 0), ns_old - 4);
+        std::array<double, 4> node{};
+        double target = sj;
+        for (int k = 0; k < 4; ++k) {
+          stencil[k] = base + k;
+          node[k] = stencil[k] * hs_old;
         }
-        if (nsMinF1 <= js2[jNew] && js2[jNew] < nsMaxF1) {
-          thread_with_js2 = old_thread_id;
+        if (scheme == MultigridInterpolationScheme::kCubicRho) {
+          target = std::sqrt(sj);
+          for (int k = 0; k < 4; ++k) {
+            node[k] = std::sqrt(node[k]);
+          }
         }
-      }  // old_thread_id
+        for (int k = 0; k < 4; ++k) {
+          double w = 1.0;
+          for (int l = 0; l < 4; ++l) {
+            if (l != k) {
+              w *= (target - node[l]) / (node[k] - node[l]);
+            }
+          }
+          weight[k] = w;
+        }
+        stencil_size = 4;
+      }
+
+      // owning old-partitioning thread for every stencil point
+      std::array<int, 4> source_thread{};
+      for (int k = 0; k < stencil_size; ++k) {
+        for (int old_thread_id = 0; old_thread_id < num_threads_old;
+             ++old_thread_id) {
+          if (r_old[old_thread_id]->nsMinF1 <= stencil[k] &&
+              stencil[k] < r_old[old_thread_id]->nsMaxF1) {
+            source_thread[k] = old_thread_id;
+          }
+        }  // old_thread_id
+      }  // k
 
       // now can actually perform interpolation
       for (int m = 0; m < s_.mpol; ++m) {
-        for (int n = 0; n < s_.ntor + 1; ++n) {
-          const int m_parity = m % 2;
+        const int m_parity = m % 2;
+        const double scalxc =
+            p[thread_id]
+                ->scalxc[(jNew - r_new[thread_id]->nsMinF1) * 2 + m_parity];
 
-          const int idx_fc_js1 =
-              ((js1[jNew] - m_x_old[thread_with_js1]->nsMin()) * s_.mpol + m) *
-                  (s_.ntor + 1) +
-              n;
-          const int idx_fc_js2 =
-              ((js2[jNew] - m_x_old[thread_with_js2]->nsMin()) * s_.mpol + m) *
-                  (s_.ntor + 1) +
-              n;
+        for (int n = 0; n < s_.ntor + 1; ++n) {
           const int idx_fc_jNew =
               ((jNew - m_x_new[thread_id]->nsMin()) * s_.mpol + m) *
                   (s_.ntor + 1) +
               n;
 
-          const double scalxc =
-              p[thread_id]
-                  ->scalxc[(jNew - r_new[thread_id]->nsMinF1) * 2 + m_parity];
-
-          m_x_new[thread_id]->rmncc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
-                   m_x_old[thread_with_js1]->rmncc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->rmncc[idx_fc_js2]) /
-              scalxc;
-          m_x_new[thread_id]->zmnsc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
-                   m_x_old[thread_with_js1]->zmnsc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->zmnsc[idx_fc_js2]) /
-              scalxc;
-          m_x_new[thread_id]->lmnsc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
-                   m_x_old[thread_with_js1]->lmnsc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->lmnsc[idx_fc_js2]) /
-              scalxc;
-          if (s_.lthreed) {
-            m_x_new[thread_id]->rmnss[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->rmnss[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->rmnss[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->zmncs[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->zmncs[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->zmncs[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->lmncs[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->lmncs[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->lmncs[idx_fc_js2]) /
-                scalxc;
-          }
-          if (s_.lasym) {
-            m_x_new[thread_id]->rmnsc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->rmnsc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->rmnsc[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->zmncc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->zmncc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->zmncc[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->lmncc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->lmncc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->lmncc[idx_fc_js2]) /
-                scalxc;
-            if (s_.lthreed) {
-              m_x_new[thread_id]->rmncs[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
-                       m_x_old[thread_with_js1]->rmncs[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->rmncs[idx_fc_js2]) /
-                  scalxc;
-              m_x_new[thread_id]->zmnss[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
-                       m_x_old[thread_with_js1]->zmnss[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->zmnss[idx_fc_js2]) /
-                  scalxc;
-              m_x_new[thread_id]->lmnss[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
-                       m_x_old[thread_with_js1]->lmnss[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->lmnss[idx_fc_js2]) /
-                  scalxc;
-            }
-          }
+          for (const auto member : coefficient_members) {
+            double value = 0.0;
+            for (int k = 0; k < stencil_size; ++k) {
+              const FourierGeometry& source = *m_x_old[source_thread[k]];
+              const int idx_fc_k =
+                  ((stencil[k] - source.nsMin()) * s_.mpol + m) *
+                      (s_.ntor + 1) +
+                  n;
+              value += weight[k] * (source.*member)[idx_fc_k];
+            }  // k
+            ((*m_x_new[thread_id]).*member)[idx_fc_jNew] = value / scalxc;
+          }  // member
         }  // n
       }  // m
     }  // jNew

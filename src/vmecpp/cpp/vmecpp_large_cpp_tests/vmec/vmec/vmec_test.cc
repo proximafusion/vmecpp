@@ -426,11 +426,10 @@ TEST_P(InterpTest, CheckInterp) {
       << "failed to open reference file: " << filename;
   json interp = json::parse(ifs_interp);
 
-  EXPECT_THAT(vmec.sj, ElementsAreArray(interp["sj"]));
-  EXPECT_THAT(vmec.js1, ElementsAreArray(interp["js1"]));
-  EXPECT_THAT(vmec.js2, ElementsAreArray(interp["js2"]));
-  EXPECT_THAT(vmec.s1, ElementsAreArray(interp["s1"]));
-  EXPECT_THAT(vmec.xint, ElementsAreArray(interp["xint"]));
+  // NOTE: the interpolation scratch arrays (sj, js1, js2, s1, xint) of the
+  // original implementation are no longer stored on the Vmec object; only
+  // the behavioral outputs (xold, xnew below) are checked against the
+  // reference data.
 
   // test previous xc
   std::size_t num_threads_old = vmec.old_xc_scaled_.size();

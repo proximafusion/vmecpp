@@ -7,7 +7,9 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <numbers>
 #include <span>
 #include <vector>
@@ -34,9 +36,31 @@
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
 using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingMaxPower;
+using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingReferenceM;
+using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerDampingFactor;
+using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerZeroGuard;
 using vmecpp::vmec_algorithm_constants::kOddParity;
 
 namespace {
+
+// Experimental (env-gated): override kLambdaHighMDampingReferenceM
+// (VMECPP_LAMBDA_HIGHM_REF_M). Larger values weaken the sqrt(s)^((m/ref)^2)
+// high-m lambda damping (very large: guard effectively off); smaller values
+// extend it to lower m. For probing what the guard protects against on
+// mpol > 16 configurations.
+double GetLambdaHighMDampingReferenceM() {
+  const char* env = std::getenv("VMECPP_LAMBDA_HIGHM_REF_M");
+  if (env == nullptr) {
+    return kLambdaHighMDampingReferenceM;
+  }
+  char* end = nullptr;
+  const double value = std::strtod(env, &end);
+  if (end == env || value <= 0.0) {
+    return kLambdaHighMDampingReferenceM;
+  }
+  return value;
+}
 
 // Set m_h.rCC_LCFS etc. to the corresponding values in the FourierGeometry
 // of the last surface, also transposing m and n dimensions to make the
@@ -1822,9 +1846,18 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // bLambda, dLambda, cLambda
   // lambdaPreconditioner
 
-  // TODO(jons): what is this ?
-  const double pFactor =
-      dampingFactor / (4.0 * constants_.lamscale * constants_.lamscale);
+  // 1/lamscale^2 converts the stiffness of the internally rescaled lambda
+  // coefficients; the remaining kLambdaPreconditionerDampingFactor / 4 = 0.5
+  // is an inherited, unexplained damping (see vmec_algorithm_constants.h).
+  const double pFactor = kLambdaPreconditionerDampingFactor /
+                         (4.0 * constants_.lamscale * constants_.lamscale);
+
+  // boost configured via SetLambdaPreconditionerBoost (default: no effect);
+  // the high-m damping reference stays env-overridable for studies only
+  const double lambda_precond_scale = lambda_precond_boost_scale_;
+  const int lambda_precond_scale_mmax = lambda_precond_boost_mmax_;
+  const int lambda_precond_scale_jmax = lambda_precond_boost_jmax_;
+  const double high_m_reference = GetLambdaHighMDampingReferenceM();
 
   // evaluate preconditioning matrix elements on half-grid
   // on every accessible half-grid point
@@ -1892,25 +1925,29 @@ void IdealMhdModel::updateLambdaPreconditioner() {
 
         int tmm = m * m;
 
-        // TODO(jons): what is this ? (see below)
-        double pwr = std::min(tmm / (16.0 * 16.0), 8.0);
+        // sqrt(s)^pwr high-m damping; ~1 for m << kLambdaHighMDampingReferenceM
+        double pwr = std::min(tmm / (high_m_reference * high_m_reference),
+                              kLambdaHighMDampingMaxPower);
         double tmn = 2.0 * m * n * s_.nfp;
 
+        // diagonal of the second variation of the magnetic energy with
+        // respect to lambda_mn, with flux-surface-averaged metric coefficients
         double faclam =
             tnn * bLambda[jF - r_.nsMinF] +
             tmn * copysign(dLambda[jF - r_.nsMinF], bLambda[jF - r_.nsMinF]) +
             tmm * cLambda[jF - r_.nsMinF];
 
-        // avoid zero eigenvalue (TODO(jons): what is this ?)
         if (faclam == 0.0) {
-          faclam = -1.0e-10;
+          faclam = kLambdaPreconditionerZeroGuard;
         }
 
-        // Damps m > 16 modes (TODO(jons): why ?)
         // NOTE: This also computes the inverse of each entry in
         // lambdaPreconditioner !
         lambdaPreconditioner[idx_mn] =
             pFactor / faclam * pow(m_p_.sqrtSF[jF - r_.nsMinF1], pwr);
+        if (m <= lambda_precond_scale_mmax && jF <= lambda_precond_scale_jmax) {
+          lambdaPreconditioner[idx_mn] *= lambda_precond_scale;
+        }
       }  // m
     }  // n
   }  // jF
