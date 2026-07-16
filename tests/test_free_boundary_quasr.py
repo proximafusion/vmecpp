@@ -71,10 +71,29 @@ MplPath = pytest.importorskip(
 
 VACUUM_PERMEABILITY = 4.0e-7 * np.pi  # mu0 [T m / A]
 
-# QUASR IDs used by default. serial0167381 is the example from the task; more can
-# be enabled through VMECPP_QUASR_IDS to broaden coverage. We default to a single
-# configuration to keep the (very long) runtime bounded.
-DEFAULT_QUASR_IDS = (167381,)
+# QUASR serial files are checked into the repository via Git LFS so the suite
+# runs without network access (robust CI). Any ID not found locally is fetched
+# from the QUASR database as a fallback.
+LOCAL_DATA_DIR = Path(__file__).parent / "data" / "quasr"
+
+# QUASR IDs exercised by default: the full set of checked-in configurations.
+# Override with VMECPP_QUASR_IDS (comma separated) to run a subset -- the whole
+# sweep is slow (one multigrid free-boundary solve per configuration x profile).
+DEFAULT_QUASR_IDS = (
+    954,
+    957,
+    9914,
+    19493,
+    19609,
+    19940,
+    29346,
+    50136,
+    65579,
+    112718,
+    165868,
+    167381,
+    336902,
+)
 
 
 def _int_env(name: str, default: int) -> int:
@@ -163,8 +182,20 @@ def _quasr_url(config_id: int) -> str:
     )
 
 
-def _download_quasr_config(config_id: int, cache_dir: Path) -> Path:
-    """Download (and cache) a QUASR serial file, skipping the test if offline."""
+def _resolve_config_file(config_id: int, cache_dir: Path) -> Path:
+    """Return a QUASR serial file, preferring the checked-in LFS copy.
+
+    The configurations are committed under ``tests/data/quasr`` via Git LFS, so
+    a normal checkout with LFS pulled needs no network access. If the file is
+    absent (ID not checked in, or LFS not pulled) it is downloaded to
+    ``cache_dir`` as a fallback; the test is skipped if that also fails.
+    """
+    local = LOCAL_DATA_DIR / f"serial{config_id:07d}.json"
+    # A non-pulled LFS file is a small pointer stub; treat only real payloads as
+    # present (the serial files are hundreds of kB).
+    if local.exists() and local.stat().st_size > 4096:
+        return local
+
     cache_dir.mkdir(parents=True, exist_ok=True)
     path = cache_dir / f"serial{config_id:07d}.json"
     if path.exists() and path.stat().st_size > 0:
@@ -285,7 +316,7 @@ def _build_response_table(
 
 
 def _load_config(config_id: int, cache_dir: Path) -> QuasrConfig:
-    path = _download_quasr_config(config_id, cache_dir)
+    path = _resolve_config_file(config_id, cache_dir)
     surfaces, coils = simsopt_load(str(path))
     boundary = surfaces[-1]
     nfp = int(boundary.nfp)
