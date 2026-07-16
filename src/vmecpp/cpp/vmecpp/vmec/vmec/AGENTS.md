@@ -53,6 +53,12 @@ misbehaves, the velocity `decomposed_v_` is zeroed and the state is rolled back 
 - `BAD_PROGRESS` (residuals not decaying): `delt0r /= 1.03`.
 - `NO_RESTART` (good path): back up the current state into `physical_x_backup_`.
 
+At a multigrid stage transition, the initial backup is taken **after**
+`InterpolateToNextMultigridStep()`, so the stage's first rollback target is the
+interpolated coarse-grid solution. This follows PARVMEC/VMEC2000 (change
+"SPH 012417" in `initialize_radial.f`), deliberately deviating from VMEC 8.52,
+which backed up the pre-interpolation cold initial guess.
+
 Separately, **hot restart** seeds `run()` from a previously converged `HotRestartState`
 (`wout` + `indata`) via `FourierGeometry::InitFromState()`, used for parameter scans.
 The first element of `ns_array` must match the last `ns` of the restart state; subsequent

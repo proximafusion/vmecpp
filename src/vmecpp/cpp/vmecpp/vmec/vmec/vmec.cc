@@ -682,17 +682,6 @@ bool Vmec::InitializeRadial(
       return true;
     }
 
-    // restart_reason == NO_RESTART at entry of restart_iter means to store xc
-    // in xstore
-    for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
-      fc_.restart_reason = RestartReason::NO_RESTART;
-
-      // TODO(jons): what exactly happens here?
-      // Why do we mask potential changes on `indata_.delt` by passing a copy?
-      double delt_for_restart_iter = indata_.delt;
-      RestartIteration(delt_for_restart_iter, thread_id);
-    }
-
     // INTERPOLATE FROM COARSE (ns_old) TO NEXT FINER (ns) RADIAL GRID
     if (linterp) {
       InterpolateToNextMultigridStep(fc_.ns, fc_.ns_old, p_, r_, old_r_,
@@ -703,6 +692,20 @@ bool Vmec::InitializeRadial(
       if (checkpoint == VmecCheckpoint::INTERP) {
         return true;
       }
+    }
+
+    // restart_reason == NO_RESTART at entry of restart_iter means to store xc
+    // in xstore. The backup is taken AFTER the multigrid interpolation, so
+    // that the first rollback target of a continuation stage is the
+    // interpolated coarse-grid solution, not the cold boundary+axis initial
+    // guess that the interpolation overwrites. Fortran VMEC 8.52 backed up
+    // before the interpolation; PARVMEC/VMEC2000 moved the backup after it
+    // ("SPH 012417" in initialize_radial.f), which is what VMEC++ follows.
+    for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+      fc_.restart_reason = RestartReason::NO_RESTART;
+
+      // RestartIteration does not modify the time step when NO_RESTART.
+      RestartIteration(indata_.delt, thread_id);
     }
 
     fc_.ns_old = fc_.ns;
