@@ -5,20 +5,36 @@
 
 The force-balance iteration is owned in Python (``vmecpp._iteration``), so we can
 observe *every* convergence and flow-control quantity at every step -- not just
-the three force residuals stored in the wout. ``vmecpp.solve_equilibrium`` (and
+the three force residuals stored in the wout. ``vmecpp.solve_multigrid`` (and
 ``vmecpp.iterate``) accept a ``callback`` invoked once per force iteration with an
 ``IterationState`` snapshot; here we collect those snapshots and plot them as a
 grid of subplots.
 
 This is a debugging aid for understanding *why* the convergence dynamics change
-qualitatively partway through a run. The three time-step-control styles
-(``vmec_8_52`` / ``parvmec`` / ``robust``) share one forward model and differ only
-in how they react to a growing residual, so running all three on the same hard
-single-resolution case (``cma`` at ns=72) and overlaying the traces makes the
-divergence concrete: VMEC 8.52's tight 100x residual leash reverts ~20 times once
-the residual plateaus (each revert cuts the time step and bumps ``ijacob`` toward
-the give-up escalation), while PARVMEC's permissive 1e4 leash rides straight
-through and the ``robust`` scheme reverts only a couple of times.
+qualitatively partway through a run. The time-step-control styles
+(``vmec_8_52`` / ``parvmec`` / ``robust`` / ``delt_recovery``) share one forward
+model and differ only in how they react to a growing residual, so running them
+on the same multigrid ladder (``cma`` over ns=[51, 99]) and overlaying the
+traces makes the divergence concrete: VMEC 8.52's tight 100x residual leash
+reverts on the stage-entry transient (each revert cuts the time step
+*permanently* and bumps ``ijacob`` toward the give-up escalation), while
+PARVMEC's permissive 1e4 leash rides straight through. ``delt_recovery`` (the
+scheme prototyped in C++ on the improve-convergence branch as
+``VMECPP_DELT_RECOVERY`` / ``VMECPP_DELT_START``) keeps 8.52's tight leash but
+enters continuation stages at half the user step and grows it back on
+progress, bounded by a learned stability ceiling (dotted in the time-step
+panel): reverts still happen, but the stage tail recovers to the largest
+stable step instead of crawling at the accumulated 0.9^n reduction. It only
+arms on interpolation-seeded continuation stages (here: the ns=99 stage) and
+is bit-identical to ``vmec_8_52`` on cold starts (here: the ns=51 stage, where
+the blue trace hides exactly under the red one), so it never regresses the
+easy cases.
+
+On top of the styles, two orthogonal improvements are compared as variants
+(see ``VARIANTS``): the lambda-preconditioner correction at the first evolved
+surface (``solve_multigrid(lambda_preconditioner_boost=True)``) and an
+initial time step above the historical delt <= 1 bound, which the recovery
+control walks down to the learned stability ceiling instead of diverging.
 """
 
 from collections.abc import Callable
@@ -28,10 +44,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import vmecpp
-from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
-# cma at ns=72 with a tight tolerance: all three styles converge, but with very
-# different flow-control dynamics -- the point of this example.
+# cma over a [51, 99] multigrid ladder: all styles converge, but with very
+# different flow-control dynamics at the stage transition -- the point of this
+# example.
 INPUT_FILE = (
     Path(__file__).parent.parent
     / "src"
@@ -41,36 +57,88 @@ INPUT_FILE = (
     / "test_data"
     / "cma.json"
 )
-NS = 72
-FTOL = 1.0e-11
-NITER = 20000
-STYLES = ("vmec_8_52", "parvmec", "robust")
+INPUT_FILE = Path(__file__).parent.parent / "examples" / "data" / "w7x.json"
 
+# Variants to compare: an iteration style plus the orthogonal improvements
+# validated on the improve-convergence branch (docs/convergence_study.md).
+# - "delt_recovery": flow control only (ramp-in + step recovery + learned
+#   stability ceiling + stagnation guard).
+# - "+ lambda_boost": additionally correct the lambda preconditioner at the
+#   first evolved surface (Findings 10-12: faclam overestimates the m<=1
+#   lambda stiffness there ~5-10x; -23% tail iterations on w7x, physics
+#   invariant). Orthogonal to the style.
+# - "+ delt=2": additionally start from an initial time step above 1 (the
+#   input bound is now ]0,10]); the recovery control walks an over-large
+#   step down to the stability ceiling instead of diverging, so delt > 1
+#   probes how much of the tail is step-size-limited.
+VARIANTS: dict[str, dict] = {
+    "vmec_8_52": {"style": "vmec_8_52"},
+    # "parvmec": {"style": "parvmec"},
+    # "robust": {"style": "robust"},
+    "delt_recovery": {"style": "delt_recovery"},
+    "delt_recovery + lambda_boost": {"style": "delt_recovery", "lambda_boost": True},
+    "delt_recovery + lambda_boost + delt=2": {
+        "style": "delt_recovery",
+        "lambda_boost": True,
+        "delt": 2.0,
+    },
+}
+STYLES = tuple(VARIANTS)
+# Radial interpolant for the stage transfers: "linear" (2-point, VMEC 8.52),
+# "cubic" or "cubic_rho" (4-point Lagrange). The higher-order interpolants
+# reduce the interpolation-added error of the stage seed down to the coarse
+# grid's own truncation error (~100x lower entry residual).
+INTERPOLATION = "cubic"
 vmec_input = vmecpp.VmecInput.from_file(INPUT_FILE)
-cpp_indata = vmec_input._to_cpp_vmecindata()
-cpp_indata.ns_array = np.array([NS], dtype=np.int64)
-cpp_indata.ftol_array = np.array([FTOL])
-cpp_indata.niter_array = np.array([NITER], dtype=np.int64)
+vmec_input.ns_array = np.array([51, 199])
+vmec_input.ftol_array = np.array([1.0e-9, 1e-11])
+vmec_input.niter_array = np.array([3000, 3000])
+vmec_input.save(Path("vmec_input.json"), indent=4)
+ftolv = float(vmec_input.ftol_array[-1])
 
-# Run each style on its own freshly-created (identical) model, collecting a full
-# IterationState snapshot every iteration via the callback.
+# Run each style through the full multigrid ramp, collecting an IterationState
+# snapshot every force iteration via the callback (across all stages).
+# solve_multigrid arms delt_recovery's ramp-in (0.5x entry step) on the
+# continuation stages automatically; the cold ns=51 stage runs plain 8.52.
 histories: dict[str, list[vmecpp.IterationState]] = {}
-ftolv = FTOL
-for style in STYLES:
+stage_results: dict[str, list[vmecpp.IterationResult]] = {}
+for label, cfg in VARIANTS.items():
+    variant_input = vmec_input.model_copy(deep=True)
+    if "delt" in cfg:
+        variant_input.delt = cfg["delt"]
     history: list[vmecpp.IterationState] = []
-    model = _vmecpp.VmecModel.create(cpp_indata, NS, None)
-    result = vmecpp.solve_equilibrium(model, style=style, callback=history.append)
-    histories[style] = history
-    ftolv = model.ftolv
+    _, results = vmecpp.solve_multigrid(
+        variant_input,
+        iteration_style=cfg["style"],
+        interpolation=INTERPOLATION,
+        lambda_preconditioner_boost=cfg.get("lambda_boost", False),
+        callback=history.append,
+    )
+    histories[label] = history
+    stage_results[label] = results
+    per_stage = [(r.num_iterations, r.restarts) for r in results]
     print(
-        f"{style:10s} converged={result.converged} "
-        f"iters={result.num_iterations:5d} restarts={result.restarts:3d} "
-        f"fsqr={result.fsqr:.2e}"
+        f"{label:38s} converged={all(r.converged for r in results)} "
+        f"iters={sum(r.num_iterations for r in results):5d} "
+        f"restarts={sum(r.restarts for r in results):3d} "
+        f"per-stage (iters, restarts)={per_stage} fsqr={results[-1].fsqr:.2e}"
     )
 
 
 def column(style: str, name: str) -> np.ndarray:
     return np.array([getattr(s, name) for s in histories[style]])
+
+
+def xs(style: str) -> np.ndarray:
+    """Global x-axis: force iterations counted across all multigrid stages (the
+    per-state ``iteration`` field restarts at each stage)."""
+    return np.arange(1, len(histories[style]) + 1)
+
+
+def stage_starts(style: str) -> list[int]:
+    """Global iteration indices at which a new multigrid stage begins."""
+    it = column(style, "iteration")
+    return [i + 1 for i in range(1, len(it)) if it[i] < it[i - 1]]
 
 
 # Skip the initial-condition transient when autoscaling the log panels, otherwise
@@ -79,7 +147,14 @@ def warmup(style: str) -> int:
     return min(50, len(histories[style]) // 100)
 
 
-COLORS = {"vmec_8_52": "tab:blue", "parvmec": "tab:orange", "robust": "tab:green"}
+COLORS = {
+    "vmec_8_52": "tab:blue",
+    # "parvmec": "tab:orange",
+    # "robust": "tab:green",
+    "delt_recovery": "tab:red",
+    "delt_recovery + lambda_boost": "tab:purple",
+    "delt_recovery + lambda_boost + delt=2": "tab:orange",
+}
 
 
 def _autoscale_log(ax, per_style_series: dict[str, np.ndarray]) -> None:
@@ -97,7 +172,9 @@ def _overlay(ax, name: str, *, log: bool = False, autoscale: bool = False):
     for style in STYLES:
         y = column(style, name)
         series[style] = y
-        ax.plot(column(style, "iteration"), y, color=COLORS[style], lw=0.9, label=style)
+        ax.plot(xs(style), y, color=COLORS[style], lw=0.9, label=style)
+        for boundary in stage_starts(style):
+            ax.axvline(boundary, color=COLORS[style], lw=0.5, ls="--", alpha=0.4)
     if log:
         ax.set_yscale("log")
     if autoscale:
@@ -121,7 +198,7 @@ def plot_leash(ax):
     # what each style's leash watches. VMEC 8.52 reverts at 100x, hence its
     # repeated spikes-and-cuts; PARVMEC tolerates 1e4x.
     for style in STYLES:
-        it = column(style, "iteration")
+        it = xs(style)
         ax.plot(it, column(style, "fsq_preconditioned"), color=COLORS[style], lw=0.7)
         ax.plot(it, column(style, "res0"), color=COLORS[style], lw=0.7, ls=":")
     ax.set_yscale("log")
@@ -133,6 +210,19 @@ def plot_leash(ax):
 
 def plot_timestep(ax):
     _overlay(ax, "delt", log=True)
+    # the learned stability ceiling of the delt_recovery control: reverts
+    # ratchet it down, the recovered step rides just below it
+    for label, cfg in VARIANTS.items():
+        if cfg["style"] != "delt_recovery":
+            continue
+        ax.plot(
+            xs(label),
+            column(label, "delt_ceiling"),
+            color=COLORS[label],
+            lw=0.8,
+            ls=":",
+        )
+    ax.plot([], [], "k:", lw=0.8, label="recovery ceiling")
     ax.legend(fontsize=7)
 
 
@@ -164,7 +254,7 @@ def plot_segment_age(ax):
     # a long monotone ramp means the style is riding through without reverting.
     for style in STYLES:
         ax.plot(
-            column(style, "iteration"),
+            xs(style),
             column(style, "iter2") - column(style, "iter1"),
             color=COLORS[style],
             lw=0.9,
@@ -182,7 +272,7 @@ def plot_events(ax):
     # When each style reverts (one row per style).
     offsets, rows, colors = [], [], []
     for i, style in enumerate(STYLES):
-        it = column(style, "iteration")
+        it = xs(style)
         rows.append(it[column(style, "restarted")])
         offsets.append(i)
         colors.append(COLORS[style])
@@ -223,11 +313,12 @@ for ax in axes[len(plots) - ncols : len(plots)]:
 
 summary = ", ".join(
     f"{style}: {len(histories[style])} it / "
-    f"{int(column(style, 'n_restarts')[-1])} reverts"
+    f"{sum(r.restarts for r in stage_results[style])} reverts"
     for style in STYLES
 )
+ns_list = [int(ns) for ns in vmec_input.ns_array]
 fig.suptitle(
-    f"VMEC++ iteration dynamics (cma, ns={NS}, ftol={FTOL:g})\n{summary}",
+    f"VMEC++ iteration dynamics ({INPUT_FILE.stem}, multigrid ns={ns_list})\n{summary}",
     fontsize=10,
 )
 fig.tight_layout(rect=(0, 0, 1, 0.96))
