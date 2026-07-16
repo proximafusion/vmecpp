@@ -27,8 +27,15 @@ For every configuration three physics regimes are exercised:
 * ``beta1``          -- ~1% volume-averaged beta, zero net current,
 * ``beta2_current``  -- ~2% volume-averaged beta with a net toroidal current.
 
-Convergence is *not* guaranteed: free-boundary VMEC++ frequently plateaus on
-these shaped equilibria, and a non-converging run raises and is reported as a
+When a run *does* converge, its physics is validated: the vacuum LCFS should
+reproduce the QUASR boundary (compared by enclosed volume, a
+parametrisation-invariant measure), finite pressure should shift the magnetic
+axis outboard (Shafranov shift), a prescribed net current should appear in the
+equilibrium, and the vacuum free-boundary solution should agree with an
+independent fixed-boundary equilibrium on the same boundary.
+
+Convergence itself is *not* guaranteed: free-boundary VMEC++ frequently plateaus
+on these shaped equilibria, and a non-converging run raises and is reported as a
 test failure on purpose. That is the intended signal -- the suite doubles as a
 convergence-diagnostic bed, so an algorithmic improvement that suddenly makes a
 previously-failing case converge shows up as a newly-passing test.
@@ -43,6 +50,7 @@ a cheaper smoke tier locally or in CI.
 from __future__ import annotations
 
 import os
+import typing
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -64,6 +72,9 @@ simsopt_load = pytest.importorskip(
 BiotSavart = pytest.importorskip(
     "simsopt.field", reason="SIMSOPT is required for the QUASR free-boundary tests"
 ).BiotSavart
+SurfaceRZFourier = pytest.importorskip(
+    "simsopt.geo", reason="SIMSOPT is required for the QUASR free-boundary tests"
+).SurfaceRZFourier
 MplPath = pytest.importorskip(
     "matplotlib.path",
     reason="matplotlib is required to integrate the enclosed toroidal flux",
@@ -161,7 +172,7 @@ class QuasrConfig:
     config_id: int
     nfp: int
     stellsym: bool
-    boundary: object  # simsopt SurfaceRZFourier at full torus resolution
+    boundary: typing.Any  # simsopt surface (SurfaceXYZTensorFourier) at full torus
     extcur: np.ndarray  # per-coil currents [A], one circuit per coil
     response: vmecpp.MagneticFieldResponseTable  # VMEC++ mgrid response table
     phiedge: float  # enclosed vacuum toroidal flux [Wb]
@@ -246,7 +257,7 @@ def _cross_section_rz(surface, phi_index: int = 0) -> tuple[np.ndarray, np.ndarr
     return np.hypot(xyz[:, 0], xyz[:, 1]), xyz[:, 2]
 
 
-def _enclosed_toroidal_flux(coils, surface, n_grid: int = 64) -> tuple[float, float]:
+def _enclosed_toroidal_flux(coils, surface, n_grid: int = 128) -> tuple[float, float]:
     """Vacuum toroidal flux through the boundary cross-section at phi = 0.
 
     Returns (phiedge, characteristic |B_phi|). The flux is the surface integral of B_phi
@@ -373,7 +384,15 @@ def _make_input(
     config: QuasrConfig,
     profile: Profile,
     ns_array: np.ndarray,
+    *,
+    free_boundary: bool = True,
 ) -> vmecpp.VmecInput:
+    """Assemble a VmecInput for a configuration/profile.
+
+    With ``free_boundary=False`` the same profiles and boundary are used to build
+    a fixed-boundary reference equilibrium (the QUASR boundary is imposed exactly
+    instead of being found from the coil field).
+    """
     rbc, zbs, r_axis_guess = _boundary_coefficients(config.boundary, MPOL, NTOR)
 
     vmec_input = vmecpp.VmecInput.default()
@@ -405,9 +424,13 @@ def _make_input(
     i_char = 2.0 * np.pi * config.r_char * config.b_char / VACUUM_PERMEABILITY
     vmec_input.curtor = profile.current_fraction * i_char
 
-    vmec_input.lfreeb = True
-    vmec_input.extcur = config.extcur
-    vmec_input.nvacskip = 6
+    if free_boundary:
+        vmec_input.lfreeb = True
+        vmec_input.extcur = config.extcur
+        vmec_input.nvacskip = 6
+    else:
+        vmec_input.lfreeb = False
+        vmec_input.extcur = np.array([])
 
     vmec_input.raxis_c = np.zeros(NTOR + 1)
     vmec_input.zaxis_s = np.zeros(NTOR + 1)
@@ -418,8 +441,37 @@ def _make_input(
 
 
 # ---------------------------------------------------------------------------
+# Physics validation helpers
+# ---------------------------------------------------------------------------
+
+
+def _magnetic_axis_major_radius(wout) -> float:
+    """Major radius of the magnetic axis at phi = 0.
+
+    R_axis(phi) = sum_n raxis_cc[n] cos(n * nfp * phi), so at phi = 0 the axis major
+    radius is simply the sum of the cosine coefficients.
+    """
+    return float(np.sum(wout.raxis_cc))
+
+
+def _enclosed_volume(surface_rz) -> float:
+    """Absolute plasma volume enclosed by a SIMSOPT SurfaceRZFourier.
+
+    The sign of ``Surface.volume()`` depends on the parametrisation orientation,
+    so we compare magnitudes. Volume is a parametrisation-invariant geometric
+    measure, unlike the raw Fourier coefficients (which differ because VMEC++ and
+    QUASR parametrise the same surface differently).
+    """
+    return abs(float(surface_rz.volume()))
+
+
+# ---------------------------------------------------------------------------
 # Fixtures and tests
 # ---------------------------------------------------------------------------
+
+
+VACUUM_PROFILE = PROFILES[0]
+assert VACUUM_PROFILE.target_beta == 0.0
 
 
 @pytest.fixture(scope="module")
@@ -434,19 +486,95 @@ def quasr_configs(quasr_cache_dir) -> dict[int, QuasrConfig]:
     }
 
 
+@pytest.fixture(scope="module")
+def solve_cache() -> dict:
+    """Memoises free-boundary solves so each (config, profile) runs at most once.
+
+    Values are the ``VmecOutput`` on success or the raised ``RuntimeError`` on
+    non-convergence, so tests that need another profile's result (e.g. the
+    Shafranov-shift comparison against the vacuum axis) reuse it instead of
+    re-solving.
+    """
+    return {}
+
+
+def _solve_free_boundary(
+    config: QuasrConfig, profile: Profile, ns_array: np.ndarray, cache: dict
+):
+    """Run (or fetch the cached) free-boundary solve; re-raise on non-convergence."""
+    key = (config.config_id, profile.name, tuple(int(n) for n in ns_array))
+    if key not in cache:
+        vmec_input = _make_input(config, profile, ns_array)
+        try:
+            cache[key] = vmecpp.run(
+                vmec_input, magnetic_field=config.response, verbose=False
+            )
+        except RuntimeError as exc:
+            cache[key] = exc
+    result = cache[key]
+    if isinstance(result, RuntimeError):
+        raise result
+    return result
+
+
+def _assert_boundary_matches_quasr(wout, config: QuasrConfig, tmp_path: Path) -> None:
+    """The vacuum free-boundary LCFS should reproduce the QUASR boundary.
+
+    The solver is given the QUASR boundary only as an initial guess; in vacuum the
+    converged LCFS is instead determined by the coil field and phiedge, and should
+    coincide with the QUASR surface (which is itself a flux surface of the coils). We
+    compare the enclosed volume, a parametrisation-invariant geometric measure. The
+    absolute shape agreement is limited by the mgrid resolution used to represent the
+    vacuum field, so volume (not a pointwise distance) is the robust quantity to assert
+    on here.
+    """
+    wout_path = tmp_path / f"wout_{config.config_id}_vacuum.nc"
+    wout.save(wout_path)
+    vmec_lcfs = SurfaceRZFourier.from_wout(str(wout_path))
+
+    # Compare against the QUASR boundary truncated to the run's Fourier
+    # resolution, so this measures solver accuracy rather than the truncation
+    # error of the boundary the solver was actually given.
+    quasr_lcfs = config.boundary.to_RZFourier()
+    truncated = quasr_lcfs.change_resolution(MPOL - 1, NTOR)
+    quasr_lcfs = quasr_lcfs if truncated is None else truncated
+
+    assert _enclosed_volume(vmec_lcfs) == pytest.approx(
+        _enclosed_volume(quasr_lcfs), rel=0.05
+    )
+
+
+def _assert_shafranov_shift(
+    config: QuasrConfig, wout, ns_array: np.ndarray, cache: dict
+) -> None:
+    """Finite pressure shifts the magnetic axis outboard (Shafranov shift)."""
+    try:
+        vacuum = _solve_free_boundary(config, VACUUM_PROFILE, ns_array, cache)
+    except RuntimeError:
+        pytest.skip("vacuum reference did not converge; cannot assess Shafranov shift")
+    r_axis_vacuum = _magnetic_axis_major_radius(vacuum.wout)
+    r_axis_pressure = _magnetic_axis_major_radius(wout)
+    assert r_axis_pressure > r_axis_vacuum, (
+        f"expected an outboard Shafranov shift, but the magnetic axis moved from "
+        f"R={r_axis_vacuum:.4f} m (vacuum) to R={r_axis_pressure:.4f} m"
+    )
+
+
 @pytest.mark.parametrize("config_id", _id_env())
 @pytest.mark.parametrize("profile", PROFILES, ids=lambda p: p.name)
 def test_free_boundary_quasr(
-    config_id: int, profile: Profile, quasr_configs: dict[int, QuasrConfig]
+    config_id: int,
+    profile: Profile,
+    quasr_configs: dict[int, QuasrConfig],
+    solve_cache: dict,
+    tmp_path: Path,
 ) -> None:
     config = quasr_configs[config_id]
     ns_array = _ns_array_env()
 
-    vmec_input = _make_input(config, profile, ns_array)
-
     # A non-converging run raises RuntimeError; that is a deliberate, informative
     # failure for this convergence-diagnostic suite (see the module docstring).
-    output = vmecpp.run(vmec_input, magnetic_field=config.response, verbose=False)
+    output = _solve_free_boundary(config, profile, ns_array, solve_cache)
     wout = output.wout
 
     # Lenient physical sanity checks so that convergence is what the test keys on.
@@ -457,13 +585,62 @@ def test_free_boundary_quasr(
     assert np.isfinite(wout.betatotal)
 
     if profile.target_beta == 0.0:
-        # Vacuum: beta and net toroidal current are both essentially zero.
+        # Vacuum: no pressure, no net current, and the LCFS reproduces the coils'
+        # target boundary (the QUASR surface).
         assert wout.betatotal == pytest.approx(0.0, abs=1e-4)
+        _assert_boundary_matches_quasr(wout, config, tmp_path)
     else:
         # The analytic pressure scale should land within a factor of ~2 of the
         # requested beta; the exact value is not the focus of the test.
         assert 0.4 * profile.target_beta < wout.betatotal < 2.5 * profile.target_beta
+        _assert_shafranov_shift(config, wout, ns_array, solve_cache)
 
     if profile.current_fraction != 0.0:
-        # The prescribed net toroidal current should be reflected in the output.
-        assert wout.ctor == pytest.approx(vmec_input.curtor, rel=0.1)
+        # The prescribed net toroidal current curtor should be reflected in the
+        # equilibrium's total toroidal current.
+        prescribed_curtor = (
+            profile.current_fraction
+            * 2.0
+            * np.pi
+            * config.r_char
+            * config.b_char
+            / VACUUM_PERMEABILITY
+        )
+        assert wout.ctor == pytest.approx(prescribed_curtor, rel=0.1)
+
+
+@pytest.mark.parametrize("config_id", _id_env())
+def test_free_boundary_matches_fixed_boundary(
+    config_id: int,
+    quasr_configs: dict[int, QuasrConfig],
+    solve_cache: dict,
+) -> None:
+    """Cross-check: the vacuum free-boundary equilibrium should agree with a
+    fixed-boundary equilibrium solved on the same QUASR boundary.
+
+    The fixed-boundary run imposes the QUASR boundary exactly and is used as an
+    independent reference. Both are skipped (not failed) if the reference itself
+    does not converge, so this only asserts agreement when both solutions exist.
+    """
+    config = quasr_configs[config_id]
+    ns_array = _ns_array_env()
+
+    try:
+        free = _solve_free_boundary(config, VACUUM_PROFILE, ns_array, solve_cache)
+    except RuntimeError:
+        pytest.skip("free-boundary vacuum solve did not converge")
+
+    fixed_input = _make_input(config, VACUUM_PROFILE, ns_array, free_boundary=False)
+    try:
+        fixed = vmecpp.run(fixed_input, verbose=False)
+    except RuntimeError:
+        pytest.skip("fixed-boundary reference did not converge")
+
+    # Same profiles and (nearly) the same boundary -> the interior equilibria
+    # should agree. The magnetic axis is well-determined and matches tightly; the
+    # volume can differ slightly because the free-boundary LCFS is set by the coil
+    # field rather than imposed exactly.
+    assert _magnetic_axis_major_radius(free.wout) == pytest.approx(
+        _magnetic_axis_major_radius(fixed.wout), rel=0.03
+    )
+    assert abs(free.wout.volume) == pytest.approx(abs(fixed.wout.volume), rel=0.05)
