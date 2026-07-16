@@ -8,12 +8,49 @@ from pathlib import Path
 
 import vmecpp
 
-_COMMANDS = ("run", "convert")
+
+def _parse_convert_arguments(argv: list[str]) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        prog="vmecpp convert",
+        description="Convert a Fortran indata file to VMEC++'s JSON format.",
+    )
+    p.add_argument(
+        "input_file",
+        help="A VMEC input file either in the classic Fortran 'indata' format or in VMEC++'s JSON format.",
+        type=Path,
+    )
+    args = p.parse_args(argv)
+    args.command = "convert"
+    return args
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if argv and argv[0] == "convert":
+        return _parse_convert_arguments(argv[1:])
+
     p = argparse.ArgumentParser(
-        description="VMEC++ is a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks."
+        description="VMEC++ is a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks.",
+        epilog="Run 'vmecpp convert <input_file>' to convert an input file to VMEC++'s JSON format.",
+    )
+    p.add_argument(
+        "input_file",
+        help="A VMEC input file either in the classic Fortran 'indata' format or in VMEC++'s JSON format.",
+        type=Path,
+    )
+    p.add_argument(
+        "-t",
+        "--max-threads",
+        help="Maximum number of threads that VMEC++ should spawn. The actual number might still be lower that this in case there are too few flux surfaces to keep these many threads busy.",
+        type=int,
+    )
+    p.add_argument(
+        "-q",
+        "--quiet",
+        help="If present, silences the printing of VMEC++ logs to standard output.",
+        action="store_true",
     )
     p.add_argument(
         "-v",
@@ -22,50 +59,14 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         action="version",
         version=f"vmecpp v{importlib.metadata.version('vmecpp')}",
     )
-    subparsers = p.add_subparsers(dest="command")
-
-    run_parser = subparsers.add_parser(
-        "run", help="Run VMEC++ on an input file. This is the default command."
-    )
-    run_parser.add_argument(
-        "input_file",
-        help="A VMEC input file either in the classic Fortran 'indata' format or in VMEC++'s JSON format.",
-        type=Path,
-    )
-    run_parser.add_argument(
-        "-t",
-        "--max-threads",
-        help="Maximum number of threads that VMEC++ should spawn. The actual number might still be lower that this in case there are too few flux surfaces to keep these many threads busy.",
-        type=int,
-    )
-    run_parser.add_argument(
-        "-q",
-        "--quiet",
-        help="If present, silences the printing of VMEC++ logs to standard output.",
-        action="store_true",
-    )
-    run_parser.add_argument(
+    p.add_argument(
         "--legacy",
         help="Show the legacy table output instead of animated progress bars.",
         action="store_true",
     )
-
-    convert_parser = subparsers.add_parser(
-        "convert", help="Convert an input file to VMEC++'s JSON format."
-    )
-    convert_parser.add_argument(
-        "input_file",
-        help="A VMEC input file either in the classic Fortran 'indata' format or in VMEC++'s JSON format.",
-        type=Path,
-    )
-
-    if argv is None:
-        argv = sys.argv[1:]
-    if argv and argv[0] not in (*_COMMANDS, "-h", "--help", "-v", "--version"):
-        # No subcommand given: default to "run" for backwards compatibility.
-        argv = ["run", *argv]
-
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    args.command = "run"
+    return args
 
 
 def main() -> None:
