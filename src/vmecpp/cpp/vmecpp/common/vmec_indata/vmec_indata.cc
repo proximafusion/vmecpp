@@ -1443,9 +1443,9 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // assume data is ok; will see when the physics starts to run...
 
   // delt
-  if (vmec_indata.delt <= 0.0 || vmec_indata.delt > 1.0) {
+  if (vmec_indata.delt <= 0.0 || vmec_indata.delt > 10.0) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'delt' has to be in the range ]0.0, 1.0], but is %g\n",
+        "input variable 'delt' has to be in the range ]0.0, 10.0], but is %g\n",
         vmec_indata.delt));
   }
 
