@@ -270,6 +270,34 @@ class VmecModel {
   }
   bool need_restart() const { return last_need_restart_; }
 
+  // Configure the lambda-preconditioner boost (see
+  // IdealMhdModel::SetLambdaPreconditionerBoost): multiply the lambda
+  // preconditioner elements by `scale` for m <= mmax, jF <= jmax (negative:
+  // unrestricted). Takes effect at the next preconditioner update; does not
+  // move the force balance. The setting is stored on this wrapper and
+  // re-applied whenever the underlying IdealMhdModel instances are recreated
+  // (InitializeRadial: refine_to, reinitialize), so it survives multigrid
+  // transitions and mid-stage axis reguesses.
+  void SetLambdaPreconditionerBoost(double scale, int mmax, int jmax) {
+    lambda_boost_scale_ = scale;
+    lambda_boost_mmax_ = mmax;
+    lambda_boost_jmax_ = jmax;
+    lambda_boost_configured_ = true;
+    ApplyLambdaPreconditionerBoost();
+  }
+  void ApplyLambdaPreconditionerBoost() const {
+    if (!lambda_boost_configured_) {
+      // not configured: leave the IdealMhdModel defaults (a no-op boost) in
+      // place; an explicit set_lambda_preconditioner_boost call (including
+      // scale=1.0) takes effect from then on
+      return;
+    }
+    for (auto &m : vmec_->m_) {
+      m->SetLambdaPreconditionerBoost(lambda_boost_scale_, lambda_boost_mmax_,
+                                      lambda_boost_jmax_);
+    }
+  }
+
   // Total forward-model (force) evaluations since construction or the last
   // reset. Counts every Evaluate, including those inside hessian_vector_product
   // and preconditioner assembly, for a fair cross-optimizer cost comparison.
@@ -331,6 +359,8 @@ class VmecModel {
                             std::nullopt);
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
+    // InitializeRadial recreates the IdealMhdModel instances
+    ApplyLambdaPreconditionerBoost();
   }
 
   // Advance to the next (finer) multi-grid resolution, interpolating the
@@ -387,6 +417,8 @@ class VmecModel {
                        delt0, std::nullopt, interpolation);
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
+    // InitializeRadial recreates the IdealMhdModel instances
+    ApplyLambdaPreconditionerBoost();
   }
 
   // Reference C++ inner iteration (the loop being ported), for verification.
@@ -530,6 +562,13 @@ class VmecModel {
   int last_preconditioner_update_ = 0;
   int last_full_update_nestor_ = 0;
   bool last_need_restart_ = false;
+
+  // lambda-preconditioner boost, re-applied after every InitializeRadial;
+  // inactive until set_lambda_preconditioner_boost is called
+  double lambda_boost_scale_ = 1.0;
+  int lambda_boost_mmax_ = -1;
+  int lambda_boost_jmax_ = -1;
+  bool lambda_boost_configured_ = false;
 };
 
 }  // anonymous namespace
@@ -1297,6 +1336,9 @@ PYBIND11_MODULE(_vmecpp, m) {
            py::arg("v"))
       .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
            py::arg("v"), py::arg("eps_rel") = 1e-7)
+      .def("set_lambda_preconditioner_boost",
+           &VmecModel::SetLambdaPreconditionerBoost, py::arg("scale") = 1.0,
+           py::arg("mmax") = -1, py::arg("jmax") = -1)
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
       .def_property_readonly("fsqr", &VmecModel::fsqr)

@@ -79,6 +79,19 @@ _VMEC_8_52_BLOWUP = 100.0
 _PARVMEC_BLOWUP = 1.0e4
 _ROBUST_BLOWUP = 1.0e3
 
+# Lambda-preconditioner boost (solve_multigrid(lambda_preconditioner_boost=True)):
+# scale the lambda preconditioner elements for the m <= 1 modes on the first
+# evolved (off-axis) surface, where the flux-surface-averaged stiffness
+# estimate (faclam) overestimates what the descent actually feels by ~5-10x.
+# Fine radial attribution on w7x [25,99] (docs/convergence_study.md, Finding
+# 12): boosting jF <= 1 alone recovers the full -23% of the whole-radius
+# boost (1979 -> 1520 iterations); jF = 0 has no lambda DOF (exact no-op) and
+# wider m- or j-windows add nothing. A preconditioner rescaling cannot move
+# the converged force balance.
+_LAMBDA_BOOST_SCALE = 5.0
+_LAMBDA_BOOST_MMAX = 1
+_LAMBDA_BOOST_JMAX = 1
+
 _logger = logging.getLogger(__name__)
 
 
@@ -523,6 +536,7 @@ def solve_multigrid(
     *,
     iteration_style: str | None = None,
     interpolation: typing.Literal["linear", "cubic", "cubic_rho"] | None = None,
+    lambda_preconditioner_boost: bool = False,
     verbose: bool = False,
     callback: Callable[[IterationState], None] | None = None,
 ):
@@ -543,6 +557,16 @@ def solve_multigrid(
     that exhausts its iteration budget without converging proceeds to the next
     stage, exactly as the C++ run does; a stage that hard-fails (unrecoverable
     bad Jacobian, the ijacob >= 75 give-up) stops the ramp.
+
+    ``lambda_preconditioner_boost`` corrects the lambda preconditioner at the
+    first evolved (off-axis) surface: the flux-surface-averaged lambda
+    stiffness there overestimates what the descent actually feels by ~5-10x,
+    under-relaxing the m <= 1 lambda modes that dominate the slow tail of
+    strongly shaped configurations (docs/convergence_study.md, Findings
+    10-12; measured -23% tail iterations on w7x, no effect where those modes
+    are not rate-limiting, e.g. cma/cth). A preconditioner rescaling cannot
+    move the force balance, so the converged physics is unchanged (verified
+    to 9 digits). Orthogonal to ``iteration_style``.
 
     ``ftol_array`` / ``niter_array`` entries are matched to ``ns_array``
     entries by ns value (``VmecModel.create`` / ``refine_to`` semantics);
@@ -589,6 +613,12 @@ def solve_multigrid(
         ns_min = ns
         if model is None:
             model = _vmecpp.VmecModel.create(cpp_indata, ns)
+            if lambda_preconditioner_boost:
+                model.set_lambda_preconditioner_boost(
+                    scale=_LAMBDA_BOOST_SCALE,
+                    mmax=_LAMBDA_BOOST_MMAX,
+                    jmax=_LAMBDA_BOOST_JMAX,
+                )
         else:
             model.refine_to(ns, interpolation=interpolation_scheme)
         result = solve_equilibrium(

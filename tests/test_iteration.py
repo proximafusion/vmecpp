@@ -235,6 +235,39 @@ def test_multigrid_interpolation_scheme_improves_seed():
         vmecpp.solve_multigrid(vmec_input, interpolation="quintic")  # type: ignore[arg-type]
 
 
+def test_lambda_preconditioner_boost_converges_to_same_physics():
+    """The lambda-preconditioner correction (first evolved surface, m <= 1) cannot move
+    the force balance: the boosted multigrid run must converge to the same equilibrium
+    (energy agreement well below the physical scale) while taking no more iterations.
+
+    The boost setting must also survive refine_to and mid-stage reinitialization (the
+    VmecModel wrapper re-applies it after every InitializeRadial, which recreates the
+    IdealMhdModel instances).
+    """
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA / "cth_like_fixed_bdy.json")
+    vmec_input.ns_array = np.array([13, 25])
+    vmec_input.ftol_array = np.array([1.0e-9, 1.0e-11])
+    vmec_input.niter_array = np.array([3000, 3000])
+
+    runs = {}
+    for boost in (False, True):
+        model, results = vmecpp.solve_multigrid(
+            vmec_input,
+            lambda_preconditioner_boost=boost,
+            interpolation="cubic",
+        )
+        assert all(r.converged for r in results), f"boost={boost}"
+        runs[boost] = (model.mhd_energy, sum(r.num_iterations for r in results))
+
+    energy_ref, iters_ref = runs[False]
+    energy_boost, iters_boost = runs[True]
+    # agreement is limited by the ftol=1e-11 convergence scatter of the two
+    # different descent paths, not by the preconditioner change
+    assert abs(energy_boost - energy_ref) < 1.0e-6 * abs(energy_ref)
+    # cth's tail is not lambda-limited, so the boost must at least do no harm
+    assert iters_boost <= iters_ref * 1.05
+
+
 def test_native_parvmec_matches_python_parvmec():
     """The native C++ PARVMEC control reproduces the ported Python PARVMEC control.
 

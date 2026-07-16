@@ -79,6 +79,23 @@ class IdealMhdModel {
   std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
   void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
+  // Configure the lambda-preconditioner boost: multiply the lambda
+  // preconditioner elements by `scale` for modes with m <= mmax on full-grid
+  // surfaces jF <= jmax (negative mmax/jmax: no restriction). The tail of
+  // strongly shaped configurations is rate-limited by an axis-localized
+  // cluster of low-m lambda modes whose effective stiffness is far below the
+  // flux-surface-averaged faclam estimate (docs/convergence_study.md,
+  // Findings 12 and 14); scale = 5, mmax = 1, jmax = 1 recovers -23% of the
+  // w7x tail iterations. Note lambda has no evolved DOF at the axis itself
+  // (the force loop starts at jF = 1), so jmax = 0 is a no-op. A
+  // preconditioner rescaling does not move the force balance, so converged
+  // physics is unaffected. Takes effect at the next preconditioner update.
+  void SetLambdaPreconditionerBoost(double scale, int mmax, int jmax) {
+    lambda_precond_boost_scale_ = scale > 0.0 ? scale : 1.0;
+    lambda_precond_boost_mmax_ = mmax < 0 ? INT_MAX : mmax;
+    lambda_precond_boost_jmax_ = jmax < 0 ? INT_MAX : jmax;
+  }
+
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
   // coefficients. Also computes the net dR/dTheta and dZ/dTheta, without the
@@ -423,6 +440,12 @@ class IdealMhdModel {
   int m_vac_num_threads_;
   VacuumPressureState& m_vacuum_pressure_state_;
   std::int64_t force_evaluation_count_ = 0;
+
+  // lambda-preconditioner boost (SetLambdaPreconditionerBoost); defaults are
+  // a no-op
+  double lambda_precond_boost_scale_ = 1.0;
+  int lambda_precond_boost_mmax_ = INT_MAX;
+  int lambda_precond_boost_jmax_ = INT_MAX;
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.

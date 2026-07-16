@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdio>
 #include <iostream>
+#include <limits>
 #include <numbers>
 #include <span>
 #include <vector>
@@ -1832,6 +1833,11 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   const double pFactor = kLambdaPreconditionerDampingFactor /
                          (4.0 * constants_.lamscale * constants_.lamscale);
 
+  // boost configured via SetLambdaPreconditionerBoost (default: no effect)
+  const double lambda_precond_scale = lambda_precond_boost_scale_;
+  const int lambda_precond_scale_mmax = lambda_precond_boost_mmax_;
+  const int lambda_precond_scale_jmax = lambda_precond_boost_jmax_;
+
   // evaluate preconditioning matrix elements on half-grid
   // on every accessible half-grid point
   // indices are shifted up by 1 to make room at 0 for first target point
@@ -1919,6 +1925,9 @@ void IdealMhdModel::updateLambdaPreconditioner() {
         // lambdaPreconditioner !
         lambdaPreconditioner[idx_mn] =
             pFactor / faclam * pow(m_p_.sqrtSF[jF - r_.nsMinF1], pwr);
+        if (m <= lambda_precond_scale_mmax && jF <= lambda_precond_scale_jmax) {
+          lambdaPreconditioner[idx_mn] *= lambda_precond_scale;
+        }
       }  // m
     }  // n
   }  // jF
