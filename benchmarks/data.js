@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784206615426,
+  "lastUpdate": 1784206716202,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -32537,6 +32537,162 @@ window.BENCHMARK_DATA = {
             "value": 0.011048173904418946,
             "unit": "seconds",
             "extra": "iterations: 25\ncpu: 0.011039610280000006 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b4dcdfa5c25f26a653f16640c368af42424e70f5",
+          "message": "Take the multigrid rollback backup after the radial interpolation (#654)\n\nFortran VMEC 8.52 stores the rollback backup (xstore <- xc) BEFORE interp()\noverwrites the state with the interpolated coarse-grid solution, so the first\nrestart of a continuation stage silently discards the interpolated seed and\nthe fine stage effectively re-solves from a cold start (measured: identical\niteration counts with and without the multigrid ladder on w7x/cth).\n\nPARVMEC/VMEC2000 fixed this on 2017-01-24 ('SPH 012417: move this AFTER\ninterpolation call' in initialize_radial.f). Adopt the same ordering as the\nVMEC++ default: the first rollback target of a continuation stage is now the\ninterpolated coarse-grid solution.\n\nThis is a deliberate deviation from VMEC 8.52 (documented in README.md and\nthe solver AGENTS.md). CHANGELOG.md catalogs all iteration flow-control\ndifferences between VMEC 8.52 and PARVMEC/VMEC2000 (~2017) and where VMEC++\nstands on each, so further adoptions can be made deliberately; notably the\nPARVMEC restart criteria (iteration_style='parvmec') must not become the\ndefault before their companion changes (pre-step store, rollback iteration\ncounting) are implemented -- see CHANGELOG.md items 2-4.",
+          "timestamp": "2026-07-16T14:52:01+02:00",
+          "tree_id": "25c2665e2c2976112951b2ecf8e3ecf99582e547",
+          "url": "https://github.com/proximafusion/vmecpp/commit/b4dcdfa5c25f26a653f16640c368af42424e70f5"
+        },
+        "date": 1784206715881,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00003298610627588126,
+            "unit": "seconds",
+            "extra": "iterations: 8503\ncpu: 3.298545572151006e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00004103946769716594,
+            "unit": "seconds",
+            "extra": "iterations: 6818\ncpu: 4.103562364329715e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0005892091048391242,
+            "unit": "seconds",
+            "extra": "iterations: 475\ncpu: 0.0005892187073684211 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014344496604723807,
+            "unit": "seconds",
+            "extra": "iterations: 195\ncpu: 0.0014341948871794874 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.0002539669293813755,
+            "unit": "seconds",
+            "extra": "iterations: 965\ncpu: 0.0002538755668393783 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.0001416191924833265,
+            "unit": "seconds",
+            "extra": "iterations: 1982\ncpu: 0.0001416171760847629 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003180936097826898,
+            "unit": "seconds",
+            "extra": "iterations: 877\ncpu: 0.0003180473090079817 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002823280157402955,
+            "unit": "seconds",
+            "extra": "iterations: 991\ncpu: 0.0002823317376387488 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005146529696403294,
+            "unit": "seconds",
+            "extra": "iterations: 545\ncpu: 0.0005146462807339452 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00043412049611409503,
+            "unit": "seconds",
+            "extra": "iterations: 642\ncpu: 0.0004340929797507785 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.001737790078109836,
+            "unit": "seconds",
+            "extra": "iterations: 161\ncpu: 0.0017378194968944093 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.001946686042679681,
+            "unit": "seconds",
+            "extra": "iterations: 144\ncpu: 0.0019465142291666651 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00006456586462639045,
+            "unit": "seconds",
+            "extra": "iterations: 4332\ncpu: 6.458518397968464e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0004942017678020282,
+            "unit": "seconds",
+            "extra": "iterations: 567\ncpu: 0.0004942538236331562 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.002989314972086156,
+            "unit": "seconds",
+            "extra": "iterations: 94\ncpu: 0.0029893762021276395 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00006169216555529368,
+            "unit": "seconds",
+            "extra": "iterations: 4564\ncpu: 6.170709684487265e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0004768533771540843,
+            "unit": "seconds",
+            "extra": "iterations: 588\ncpu: 0.00047683930442176813 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.002919815480709076,
+            "unit": "seconds",
+            "extra": "iterations: 96\ncpu: 0.0029198148020833465 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00028401728208900104,
+            "unit": "seconds",
+            "extra": "iterations: 985\ncpu: 0.0002839935502538071 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0011746632952650054,
+            "unit": "seconds",
+            "extra": "iterations: 238\ncpu: 0.0011746775042016807 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005285478987783756,
+            "unit": "seconds",
+            "extra": "iterations: 53\ncpu: 0.005285388415094341 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.010556881244365986,
+            "unit": "seconds",
+            "extra": "iterations: 26\ncpu: 0.010557053615384617 seconds\nthreads: 1"
           }
         ]
       }
