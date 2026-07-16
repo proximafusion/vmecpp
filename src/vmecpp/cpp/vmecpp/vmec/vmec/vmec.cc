@@ -5,6 +5,8 @@
 #include "vmecpp/vmec/vmec/vmec.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <memory>
@@ -34,6 +36,7 @@
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 
 namespace {
+
 void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
                            const absl::Status& thread_status) {
   CHECK(!thread_status.ok()) << "UpdateStatusForThread expects an error status";
@@ -477,7 +480,8 @@ void Vmec::SetupVacuumSolvers() {
 bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
-    const std::optional<HotRestartState>& initial_state) {
+    const std::optional<HotRestartState>& initial_state,
+    std::optional<MultigridInterpolationScheme> interpolation_scheme) {
   // Stage info output is now handled by logger_.BeginStage() in run().
 
   // Set timestep control parameters
@@ -685,7 +689,8 @@ bool Vmec::InitializeRadial(
     // INTERPOLATE FROM COARSE (ns_old) TO NEXT FINER (ns) RADIAL GRID
     if (linterp) {
       InterpolateToNextMultigridStep(fc_.ns, fc_.ns_old, p_, r_, old_r_,
-                                     decomposed_x_, old_xc_scaled_);
+                                     decomposed_x_, old_xc_scaled_,
+                                     interpolation_scheme);
 
       // TODO(jons): check for max_multigrid_steps
       // TODO(jons): maybe need `&& iter2_ >= maximum_iterations) {` ?
@@ -1714,7 +1719,8 @@ void Vmec::InterpolateToNextMultigridStep(
     const std::vector<std::unique_ptr<RadialPartitioning>>& r_new,
     const std::vector<std::unique_ptr<RadialPartitioning>>& r_old,
     std::vector<std::unique_ptr<FourierGeometry>>& m_x_new,
-    std::vector<std::unique_ptr<FourierGeometry>>& m_x_old) {
+    std::vector<std::unique_ptr<FourierGeometry>>& m_x_old,
+    std::optional<MultigridInterpolationScheme> interpolation_scheme) {
   // INTERPOLATE R,Z AND LAMBDA ON FULL GRID
   // (EXTRAPOLATE M=1 MODES,OVER SQRT(S), TO ORIGIN)
   // ON ENTRY, XOLD = X(COARSE MESH) * SCALXC(COARSE MESH)
@@ -1809,133 +1815,114 @@ void Vmec::InterpolateToNextMultigridStep(
   // ------------------------
   // radial interpolation from old, coarse state vector to new, finer state
   // vector
+  std::vector<std::span<double> FourierGeometry::*> coefficient_members = {
+      &FourierGeometry::rmncc, &FourierGeometry::zmnsc,
+      &FourierGeometry::lmnsc};
+  if (s_.lthreed) {
+    coefficient_members.push_back(&FourierGeometry::rmnss);
+    coefficient_members.push_back(&FourierGeometry::zmncs);
+    coefficient_members.push_back(&FourierGeometry::lmncs);
+  }
+  if (s_.lasym) {
+    coefficient_members.push_back(&FourierGeometry::rmnsc);
+    coefficient_members.push_back(&FourierGeometry::zmncc);
+    coefficient_members.push_back(&FourierGeometry::lmncc);
+    if (s_.lthreed) {
+      coefficient_members.push_back(&FourierGeometry::rmncs);
+      coefficient_members.push_back(&FourierGeometry::zmnss);
+      coefficient_members.push_back(&FourierGeometry::lmnss);
+    }
+  }
 
-  sj.resize(ns_new);
-  js1.resize(ns_new);
-  js2.resize(ns_new);
-  s1.resize(ns_new);
-  xint.resize(ns_new);
+  const MultigridInterpolationScheme scheme =
+      interpolation_scheme.value_or(MultigridInterpolationScheme::kLinear);
 
   for (int thread_id = 0; thread_id < num_threads_new; ++thread_id) {
     for (int jNew = r_new[thread_id]->nsMinF1; jNew < r_new[thread_id]->nsMaxF1;
          ++jNew) {
-      sj[jNew] = jNew / (ns_new - 1.0);
+      const double sj = jNew / (ns_new - 1.0);
 
-      // entries around radial position of jNew on old grid
-      js1[jNew] = (jNew * (ns_old - 1)) / (ns_new - 1);
-      js2[jNew] = std::min(js1[jNew] + 1, ns_old - 1);
+      // old-grid interval [js1, js2] around the new radial position
+      const int js1 = (jNew * (ns_old - 1)) / (ns_new - 1);
+      const int js2 = std::min(js1 + 1, ns_old - 1);
 
-      s1[jNew] = js1[jNew] * hs_old;
+      // interpolation stencil on the old radial grid and its weights
+      std::array<int, 4> stencil{};
+      std::array<double, 4> weight{};
+      int stencil_size = 0;
 
-      // interpolation weight
-      xint[jNew] = (sj[jNew] - s1[jNew]) / hs_old;
-      xint[jNew] = std::min(1.0, xint[jNew]);
-      xint[jNew] = std::max(0.0, xint[jNew]);
-
-      // now need to figure out source threads, which have js1 and js2
-      // and the target thread that has jNew
-      int thread_with_js1 = 0;
-      int thread_with_js2 = 0;
-      for (int old_thread_id = 0; old_thread_id < num_threads_old;
-           ++old_thread_id) {
-        const int nsMinF1 = r_old[old_thread_id]->nsMinF1;
-        const int nsMaxF1 = r_old[old_thread_id]->nsMaxF1;
-        if (nsMinF1 <= js1[jNew] && js1[jNew] < nsMaxF1) {
-          thread_with_js1 = old_thread_id;
+      if (scheme == MultigridInterpolationScheme::kLinear || ns_old < 4) {
+        double xint = (sj - js1 * hs_old) / hs_old;
+        xint = std::min(1.0, std::max(0.0, xint));
+        stencil = {js1, js2, 0, 0};
+        weight = {1.0 - xint, xint, 0.0, 0.0};
+        stencil_size = 2;
+      } else {
+        // 4-point Lagrange stencil around [js1, js2], shifted inward at the
+        // radial-domain ends; reproduces old-grid values exactly when the new
+        // position coincides with an old grid point (e.g. at the LCFS).
+        const int base = std::min(std::max(js1 - 1, 0), ns_old - 4);
+        std::array<double, 4> node{};
+        double target = sj;
+        for (int k = 0; k < 4; ++k) {
+          stencil[k] = base + k;
+          node[k] = stencil[k] * hs_old;
         }
-        if (nsMinF1 <= js2[jNew] && js2[jNew] < nsMaxF1) {
-          thread_with_js2 = old_thread_id;
+        if (scheme == MultigridInterpolationScheme::kCubicRho) {
+          target = std::sqrt(sj);
+          for (int k = 0; k < 4; ++k) {
+            node[k] = std::sqrt(node[k]);
+          }
         }
-      }  // old_thread_id
+        for (int k = 0; k < 4; ++k) {
+          double w = 1.0;
+          for (int l = 0; l < 4; ++l) {
+            if (l != k) {
+              w *= (target - node[l]) / (node[k] - node[l]);
+            }
+          }
+          weight[k] = w;
+        }
+        stencil_size = 4;
+      }
+
+      // owning old-partitioning thread for every stencil point
+      std::array<int, 4> source_thread{};
+      for (int k = 0; k < stencil_size; ++k) {
+        for (int old_thread_id = 0; old_thread_id < num_threads_old;
+             ++old_thread_id) {
+          if (r_old[old_thread_id]->nsMinF1 <= stencil[k] &&
+              stencil[k] < r_old[old_thread_id]->nsMaxF1) {
+            source_thread[k] = old_thread_id;
+          }
+        }  // old_thread_id
+      }  // k
 
       // now can actually perform interpolation
       for (int m = 0; m < s_.mpol; ++m) {
-        for (int n = 0; n < s_.ntor + 1; ++n) {
-          const int m_parity = m % 2;
+        const int m_parity = m % 2;
+        const double scalxc =
+            p[thread_id]
+                ->scalxc[(jNew - r_new[thread_id]->nsMinF1) * 2 + m_parity];
 
-          const int idx_fc_js1 =
-              ((js1[jNew] - m_x_old[thread_with_js1]->nsMin()) * s_.mpol + m) *
-                  (s_.ntor + 1) +
-              n;
-          const int idx_fc_js2 =
-              ((js2[jNew] - m_x_old[thread_with_js2]->nsMin()) * s_.mpol + m) *
-                  (s_.ntor + 1) +
-              n;
+        for (int n = 0; n < s_.ntor + 1; ++n) {
           const int idx_fc_jNew =
               ((jNew - m_x_new[thread_id]->nsMin()) * s_.mpol + m) *
                   (s_.ntor + 1) +
               n;
 
-          const double scalxc =
-              p[thread_id]
-                  ->scalxc[(jNew - r_new[thread_id]->nsMinF1) * 2 + m_parity];
-
-          m_x_new[thread_id]->rmncc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
-                   m_x_old[thread_with_js1]->rmncc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->rmncc[idx_fc_js2]) /
-              scalxc;
-          m_x_new[thread_id]->zmnsc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
-                   m_x_old[thread_with_js1]->zmnsc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->zmnsc[idx_fc_js2]) /
-              scalxc;
-          m_x_new[thread_id]->lmnsc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
-                   m_x_old[thread_with_js1]->lmnsc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->lmnsc[idx_fc_js2]) /
-              scalxc;
-          if (s_.lthreed) {
-            m_x_new[thread_id]->rmnss[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->rmnss[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->rmnss[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->zmncs[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->zmncs[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->zmncs[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->lmncs[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->lmncs[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->lmncs[idx_fc_js2]) /
-                scalxc;
-          }
-          if (s_.lasym) {
-            m_x_new[thread_id]->rmnsc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->rmnsc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->rmnsc[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->zmncc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->zmncc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->zmncc[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->lmncc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->lmncc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->lmncc[idx_fc_js2]) /
-                scalxc;
-            if (s_.lthreed) {
-              m_x_new[thread_id]->rmncs[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
-                       m_x_old[thread_with_js1]->rmncs[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->rmncs[idx_fc_js2]) /
-                  scalxc;
-              m_x_new[thread_id]->zmnss[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
-                       m_x_old[thread_with_js1]->zmnss[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->zmnss[idx_fc_js2]) /
-                  scalxc;
-              m_x_new[thread_id]->lmnss[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
-                       m_x_old[thread_with_js1]->lmnss[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->lmnss[idx_fc_js2]) /
-                  scalxc;
-            }
-          }
+          for (const auto member : coefficient_members) {
+            double value = 0.0;
+            for (int k = 0; k < stencil_size; ++k) {
+              const FourierGeometry& source = *m_x_old[source_thread[k]];
+              const int idx_fc_k =
+                  ((stencil[k] - source.nsMin()) * s_.mpol + m) *
+                      (s_.ntor + 1) +
+                  n;
+              value += weight[k] * (source.*member)[idx_fc_k];
+            }  // k
+            ((*m_x_new[thread_id]).*member)[idx_fc_jNew] = value / scalxc;
+          }  // member
         }  // n
       }  // m
     }  // jNew
