@@ -936,7 +936,7 @@ coarser stage is still exactly valid at stage entry -- a continuation stage
 IS a hot restart, and the hot-restart path already sets
 `vacuum_pressure_state = kInitialized` for precisely this purpose. Setting
 the state to `kInitialized` in `InitializeRadial` on a free-boundary
-continuation stage (IterationStyle::VMECPP only) makes iteration 1 run a
+continuation stage makes iteration 1 run a
 full NESTOR solve on the preserved boundary and apply a balanced edge
 force. Measured (cth free multigrid, stage-2 iteration 1): raw FSQR
 9.19 -> 2.6e-5 (six orders of magnitude), DELBSQ starts at the converged
@@ -994,13 +994,19 @@ Lagrange (cubic) radial interpolation at multigrid transitions, reduced-delt
 stage entry (min(0.5 delt, 0.5), also on cold starts with delt > 1) with
 time-step recovery towards the user delt under a learned one-directional
 stability ceiling plus a stagnation guard, preservation of the interpolated
-seed on early-stage instabilities, the first-evolved-surface lambda
-preconditioner correction (Findings 12/14), and the free-boundary vacuum
-seed at continuation stage entries (Finding 16). Hyperparameters are named
-constants in `vmec_algorithm_constants.h` (kVmecpp*). The default styles
-(`vmec_8_52`, `parvmec`) are byte-for-byte unchanged. On a cold start with
-delt <= 1, `vmecpp` differs from `vmec_8_52` only through the lambda
-correction.
+seed on early-stage instabilities, and the first-evolved-surface lambda
+preconditioner correction (Findings 12/14). Hyperparameters are named
+constants in `vmec_algorithm_constants.h` (kVmecpp*).
+
+The free-boundary vacuum seed at continuation stage entries (Finding 16) is
+a genuine bug fix rather than a scheme choice and is therefore DEFAULT-ON
+for all iteration styles (standalone commit/PR underneath this stack); with
+it, the vmec_8_52 free-boundary multigrid baselines improve as well
+(cth 583 -> 562, solovev 1243 -> 1047).
+
+Apart from that fix, the default styles (`vmec_8_52`, `parvmec`) are
+byte-for-byte unchanged. On a cold start with delt <= 1, `vmecpp` differs
+from `vmec_8_52` only through the lambda correction.
 
 The same components remain individually selectable for research through the
 Python API: `solve_multigrid(iteration_style=..., interpolation=...,
