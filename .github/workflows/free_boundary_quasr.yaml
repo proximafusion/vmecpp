@@ -1,0 +1,44 @@
+name: Free-boundary QUASR integration tests
+
+# Long-running free-boundary integration tests driven by QUASR configurations
+# (tests/test_free_boundary_quasr.py, marked `slow`). These are excluded from the
+# normal test workflow (pytest addopts `-m 'not slow'`) because a full multigrid
+# free-boundary solve per configuration is expensive. Non-converging runs are
+# xfail, so this job stays green and acts as a convergence-diagnostic bed: a
+# configuration that starts converging shows up as an xpass.
+#
+# Runs on every push to main and on manual request.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+jobs:
+  free-boundary-quasr:
+    name: Run QUASR free-boundary tests
+    runs-on: ubuntu-22.04
+    # A full multigrid free-boundary solve per configuration x profile; budget
+    # generously (many configurations, some iterating to the niter cap).
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true  # for the checked-in QUASR configurations
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+      - name: Install required packages for Ubuntu
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            build-essential cmake libnetcdf-dev liblapack-dev libomp-dev
+      - name: Install package
+        # SIMSOPT is a runtime dependency of vmecpp, so `.[test]` provides it.
+        run: python -m pip install -v .[test]
+      - name: Run slow QUASR free-boundary tests
+        run: python -m pytest -m slow tests/test_free_boundary_quasr.py -v -ra
