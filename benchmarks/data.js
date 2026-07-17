@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784280548107,
+  "lastUpdate": 1784281069649,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -10437,6 +10437,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.804344349333311,
             "range": "stddev: 0.012412434104136385",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7eb88cb4f2f6f10db9e2e1602b5f5b24b1fa0ecc",
+          "message": "4-point Lagrange multigrid transfer (cubic / cubic_rho) (#658)\n\nAdd an optional MultigridInterpolationScheme enum (linear, cubic, cubic_rho) for Vmec::InterpolateToNextMultigridStep and rewrite the transfer loop:\n\n- linear keeps the VMEC 8.52 2-point scheme (default, and forced when the coarse grid has fewer than 4 surfaces); cubic uses a 4-point Lagrange stencil in s; cubic_rho interpolates in rho = sqrt(s), the natural radial variable near the magnetic axis. The 4-point stencil is shifted inward at the radial-domain ends and reproduces old-grid values exactly on coinciding grid points.\n- The higher-order interpolants reduce the interpolated-seed force residual of a continuation stage down to the coarse solution's own truncation error",
+          "timestamp": "2026-07-17T11:32:46+02:00",
+          "tree_id": "2a9a843d4b6c1431cc11b719c7250dc8e58b61e9",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7eb88cb4f2f6f10db9e2e1602b5f5b24b1fa0ecc"
+        },
+        "date": 1784281067735,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3864609236000035,
+            "range": "stddev: 0.0024355093783970934",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3882004445999939,
+            "range": "stddev: 0.0049571236496897715",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.399407962999978,
+            "range": "stddev: 0.01791138594022735",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.281319013666689,
+            "range": "stddev: 0.005353666794880096",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.088677031666672,
+            "range": "stddev: 0.03258854194966969",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.075217914999996,
+            "range": "stddev: 0.017648434461615042",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.828526269333318,
+            "range": "stddev: 0.023728308805262853",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
