@@ -189,6 +189,23 @@ TEST(TestVmecINDATA, CheckDefaults) {
   }
 }  // CheckDefaults
 
+TEST(TestVmecINDATA, CheckDeltBounds) {
+  // delt may exceed 1 (the descent formulas are scale-invariant in delt and
+  // the runtime control walks an unstable step down); only delt <= 0 and the
+  // typo-guard upper bound are rejected.
+  VmecINDATA indata;
+  indata.delt = 2.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.delt = 10.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.delt = 10.5;
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.delt = 0.0;
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.delt = -0.5;
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
 TEST(TestVmecINDATA, ToJson) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
