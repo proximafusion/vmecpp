@@ -19,7 +19,8 @@ for the VMEC++ free-boundary solver:
   response table is computed by VMEC++ itself
   (``vmecpp.MagneticFieldResponseTable``); SIMSOPT is used only to load the
   configuration and to evaluate the vacuum field for ``phiedge``,
-* the enclosed vacuum toroidal flux provides ``phiedge``.
+* ``phiedge`` is the enclosed vacuum toroidal flux, computed exactly as the
+  line integral of the coil vector potential around the boundary.
 
 For every configuration three physics regimes are exercised:
 
@@ -40,16 +41,13 @@ test failure on purpose. That is the intended signal -- the suite doubles as a
 convergence-diagnostic bed, so an algorithmic improvement that suddenly makes a
 previously-failing case converge shows up as a newly-passing test.
 
-The runs are expensive (``ns = [8, 24, 71]``, ``mpol = ntor = 10``), so the
-whole module is marked ``slow`` and is skipped unless network access, SIMSOPT
-and matplotlib are available. Resolution and the set of configurations can be
-overridden through environment variables (see ``_int_env`` / ``_id_env``) to run
-a cheaper smoke tier locally or in CI.
+The runs are expensive (``ns = [8, 24, 71]``, ``mpol = ntor = 10``), so the whole
+module is marked ``slow`` and is deselected by default (see the ``pytest``
+configuration in ``pyproject.toml``); run it explicitly with ``-m slow``.
 """
 
 from __future__ import annotations
 
-import os
 import typing
 import urllib.error
 import urllib.request
@@ -58,27 +56,16 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from simsopt._core import load as simsopt_load
+from simsopt.field import BiotSavart
+from simsopt.geo import SurfaceRZFourier
 
 import vmecpp
 
+# The whole module is expensive; the ``slow`` marker (deselected by default, see
+# pyproject) keeps it out of normal runs. SIMSOPT is imported unconditionally --
+# a missing dependency should fail loudly rather than silently skip.
 pytestmark = pytest.mark.slow
-
-# Third-party imports needed only for these integration tests. Missing any of
-# them (or having no network access) simply skips the module rather than failing
-# the whole suite.
-simsopt_load = pytest.importorskip(
-    "simsopt._core", reason="SIMSOPT is required for the QUASR free-boundary tests"
-).load
-BiotSavart = pytest.importorskip(
-    "simsopt.field", reason="SIMSOPT is required for the QUASR free-boundary tests"
-).BiotSavart
-SurfaceRZFourier = pytest.importorskip(
-    "simsopt.geo", reason="SIMSOPT is required for the QUASR free-boundary tests"
-).SurfaceRZFourier
-MplPath = pytest.importorskip(
-    "matplotlib.path",
-    reason="matplotlib is required to integrate the enclosed toroidal flux",
-).Path
 
 VACUUM_PERMEABILITY = 4.0e-7 * np.pi  # mu0 [T m / A]
 
@@ -87,10 +74,8 @@ VACUUM_PERMEABILITY = 4.0e-7 * np.pi  # mu0 [T m / A]
 # from the QUASR database as a fallback.
 LOCAL_DATA_DIR = Path(__file__).parent / "data" / "quasr"
 
-# QUASR IDs exercised by default: the full set of checked-in configurations.
-# Override with VMECPP_QUASR_IDS (comma separated) to run a subset -- the whole
-# sweep is slow (one multigrid free-boundary solve per configuration x profile).
-DEFAULT_QUASR_IDS = (
+# QUASR configurations exercised: the full set of checked-in serials.
+QUASR_IDS = (
     954,
     957,
     9914,
@@ -106,35 +91,21 @@ DEFAULT_QUASR_IDS = (
     336902,
 )
 
-
-def _int_env(name: str, default: int) -> int:
-    value = os.environ.get(name)
-    return int(value) if value else default
-
-
-def _ns_array_env() -> np.ndarray:
-    """Multigrid ladder, overridable via VMECPP_QUASR_NS (comma separated)."""
-    raw = os.environ.get("VMECPP_QUASR_NS")
-    if raw:
-        return np.array([int(x) for x in raw.split(",")], dtype=np.int64)
-    return np.array([8, 24, 71], dtype=np.int64)
-
-
-def _id_env() -> tuple[int, ...]:
-    raw = os.environ.get("VMECPP_QUASR_IDS")
-    if raw:
-        return tuple(int(x) for x in raw.split(","))
-    return DEFAULT_QUASR_IDS
-
-
-# Resolution defaults follow the task specification; overridable for a fast tier.
-MPOL = _int_env("VMECPP_QUASR_MPOL", 10)
-NTOR = _int_env("VMECPP_QUASR_NTOR", 10)
+# Fourier and radial resolution (the task specification).
+MPOL = 10
+NTOR = 10
 # VMEC needs the number of toroidal grid points per field period to resolve n up
 # to NTOR (nzeta > 2*NTOR); the mgrid grid must use the same count.
-NZETA = _int_env("VMECPP_QUASR_NZETA", 36)
-FTOL_FINAL = float(os.environ.get("VMECPP_QUASR_FTOL", "1e-9"))
-NITER_CAP = _int_env("VMECPP_QUASR_NITER", 2000)
+NZETA = 36
+NS_ARRAY = np.array([8, 24, 71], dtype=np.int64)
+FTOL_FINAL = 1e-9
+NITER_CAP = 2000
+# mgrid grid: a high-resolution box around the boundary. The margin is a fraction
+# of the boundary extent added on each side -- large enough that finite-pressure /
+# current-carrying LCFS (which shift outboard) stay inside the grid, while still
+# resolving the vacuum field finely near the plasma edge.
+MGRID_POINTS = 200
+MGRID_MARGIN = 0.4
 
 
 @dataclass(frozen=True)
@@ -252,37 +223,47 @@ def _write_makegrid_coils_file(path: Path, coils: list, nfp: int = 1) -> None:
         wfile.write("end \n")
 
 
-def _cross_section_rz(surface, phi_index: int = 0) -> tuple[np.ndarray, np.ndarray]:
-    xyz = surface.gamma()[phi_index]  # (ntheta, 3) at a fixed toroidal angle
-    return np.hypot(xyz[:, 0], xyz[:, 1]), xyz[:, 2]
+def _boundary_extent(surface) -> tuple[float, float, float, float]:
+    """(R_min, R_max, Z_min, Z_max) of the boundary over the full torus."""
+    xyz = surface.gamma()  # (nphi, ntheta, 3)
+    r = np.hypot(xyz[..., 0], xyz[..., 1])
+    z = xyz[..., 2]
+    return float(r.min()), float(r.max()), float(z.min()), float(z.max())
 
 
-def _enclosed_toroidal_flux(coils, surface, n_grid: int = 128) -> tuple[float, float]:
-    """Vacuum toroidal flux through the boundary cross-section at phi = 0.
+def _enclosed_toroidal_flux(coils, surface, n_theta: int = 4000) -> tuple[float, float]:
+    """Enclosed vacuum toroidal flux (phiedge) and a characteristic |B|.
 
-    Returns (phiedge, characteristic |B_phi|). The flux is the surface integral of B_phi
-    over the enclosed (R, Z) area, evaluated with the coils' Biot-Savart field on a
-    masked Cartesian grid at phi = 0 (where phi_hat = +y).
+    Computed exactly via Stokes' theorem as the line integral of the coil vector
+    potential around the phi = 0 cross-section: ``Phi = oint A . dl``. A midpoint
+    grid integral of B_phi instead converges to a value biased low by a few
+    percent (the point-in-polygon mask drops partial boundary cells), which would
+    make phiedge -- and hence the free-boundary plasma -- systematically too
+    small. The sign is taken from B_phi on the interior so it is independent of
+    the loop's orientation.
     """
     biot_savart = BiotSavart(coils)
-    r_boundary, z_boundary = _cross_section_rz(surface)
-    polygon = MplPath(np.column_stack([r_boundary, z_boundary]))
-
-    r_grid = np.linspace(r_boundary.min(), r_boundary.max(), n_grid)
-    z_grid = np.linspace(z_boundary.min(), z_boundary.max(), n_grid)
-    rr, zz = np.meshgrid(r_grid, z_grid)
-    inside = polygon.contains_points(np.column_stack([rr.ravel(), zz.ravel()])).reshape(
-        rr.shape
+    rz = surface.to_RZFourier()
+    loop_surface = SurfaceRZFourier(
+        nfp=rz.nfp,
+        stellsym=rz.stellsym,
+        mpol=rz.mpol,
+        ntor=rz.ntor,
+        quadpoints_phi=[0.0],
+        quadpoints_theta=np.linspace(0.0, 1.0, n_theta, endpoint=False),
     )
+    loop_surface.x = rz.x
+    loop = loop_surface.gamma()[0]  # closed curve at phi = 0 (the y = 0 plane)
 
-    points = np.column_stack([rr.ravel(), np.zeros(rr.size), zz.ravel()])
-    biot_savart.set_points(points)
-    b_phi = biot_savart.B().reshape(n_grid, n_grid, 3)[:, :, 1]
+    biot_savart.set_points(loop)
+    a_field = biot_savart.A()
+    b_char = float(np.mean(np.linalg.norm(biot_savart.B(), axis=1)))
+    dl = np.roll(loop, -1, axis=0) - loop
+    flux = float(np.sum(0.5 * (a_field + np.roll(a_field, -1, axis=0)) * dl))
 
-    cell_area = (r_grid[1] - r_grid[0]) * (z_grid[1] - z_grid[0])
-    phiedge = float(np.sum(b_phi[inside]) * cell_area)
-    b_char = float(np.abs(b_phi[inside]).mean())
-    return phiedge, b_char
+    biot_savart.set_points(np.array([[rz.get_rc(0, 0), 0.0, 0.0]]))
+    sign = float(np.sign(biot_savart.B()[0, 1])) or 1.0
+    return abs(flux) * sign, b_char
 
 
 def _boundary_coefficients(
@@ -306,18 +287,21 @@ def _boundary_coefficients(
 def _build_response_table(
     boundary, coils_file: Path, nfp: int, nzeta: int
 ) -> vmecpp.MagneticFieldResponseTable:
-    r_boundary, z_boundary = _cross_section_rz(boundary)
-    # A generous margin around the plasma so the vacuum field is well resolved.
+    r_min, r_max, z_min, z_max = _boundary_extent(boundary)
+    # A tight, high-resolution grid hugging the boundary (extent + MGRID_MARGIN
+    # on each side) resolves the vacuum field accurately near the plasma edge.
+    dr = r_max - r_min
+    dz = z_max - z_min
     makegrid_parameters = vmecpp.MakegridParameters(
         normalize_by_currents=True,
         assume_stellarator_symmetry=False,
         number_of_field_periods=nfp,
-        r_grid_minimum=float(r_boundary.min() * 0.7),
-        r_grid_maximum=float(r_boundary.max() * 1.2),
-        number_of_r_grid_points=48,
-        z_grid_minimum=float(z_boundary.min() * 1.2),
-        z_grid_maximum=float(z_boundary.max() * 1.2),
-        number_of_z_grid_points=48,
+        r_grid_minimum=r_min - MGRID_MARGIN * dr,
+        r_grid_maximum=r_max + MGRID_MARGIN * dr,
+        number_of_r_grid_points=MGRID_POINTS,
+        z_grid_minimum=z_min - MGRID_MARGIN * dz,
+        z_grid_maximum=z_max + MGRID_MARGIN * dz,
+        number_of_z_grid_points=MGRID_POINTS,
         number_of_phi_grid_points=nzeta,
     )
     # VMEC++ computes the mgrid response table from the coils file.
@@ -482,7 +466,7 @@ def quasr_cache_dir(tmp_path_factory) -> Path:
 @pytest.fixture(scope="module")
 def quasr_configs(quasr_cache_dir) -> dict[int, QuasrConfig]:
     return {
-        config_id: _load_config(config_id, quasr_cache_dir) for config_id in _id_env()
+        config_id: _load_config(config_id, quasr_cache_dir) for config_id in QUASR_IDS
     }
 
 
@@ -522,11 +506,10 @@ def _assert_boundary_matches_quasr(wout, config: QuasrConfig, tmp_path: Path) ->
 
     The solver is given the QUASR boundary only as an initial guess; in vacuum the
     converged LCFS is instead determined by the coil field and phiedge, and should
-    coincide with the QUASR surface (which is itself a flux surface of the coils). We
-    compare the enclosed volume, a parametrisation-invariant geometric measure. The
-    absolute shape agreement is limited by the mgrid resolution used to represent the
-    vacuum field, so volume (not a pointwise distance) is the robust quantity to assert
-    on here.
+    coincide with the QUASR surface (which is itself an exact flux surface of the coils,
+    i.e. B.n = 0). We compare the enclosed volume, a parametrisation-invariant geometric
+    measure; with the exact phiedge and the tight mgrid this matches to well under a
+    percent.
     """
     wout_path = tmp_path / f"wout_{config.config_id}_vacuum.nc"
     wout.save(wout_path)
@@ -540,7 +523,7 @@ def _assert_boundary_matches_quasr(wout, config: QuasrConfig, tmp_path: Path) ->
     quasr_lcfs = quasr_lcfs if truncated is None else truncated
 
     assert _enclosed_volume(vmec_lcfs) == pytest.approx(
-        _enclosed_volume(quasr_lcfs), rel=0.05
+        _enclosed_volume(quasr_lcfs), rel=0.02
     )
 
 
@@ -560,7 +543,7 @@ def _assert_shafranov_shift(
     )
 
 
-@pytest.mark.parametrize("config_id", _id_env())
+@pytest.mark.parametrize("config_id", QUASR_IDS)
 @pytest.mark.parametrize("profile", PROFILES, ids=lambda p: p.name)
 def test_free_boundary_quasr(
     config_id: int,
@@ -570,7 +553,7 @@ def test_free_boundary_quasr(
     tmp_path: Path,
 ) -> None:
     config = quasr_configs[config_id]
-    ns_array = _ns_array_env()
+    ns_array = NS_ARRAY
 
     # A non-converging run raises RuntimeError; that is a deliberate, informative
     # failure for this convergence-diagnostic suite (see the module docstring).
@@ -609,7 +592,7 @@ def test_free_boundary_quasr(
         assert wout.ctor == pytest.approx(prescribed_curtor, rel=0.1)
 
 
-@pytest.mark.parametrize("config_id", _id_env())
+@pytest.mark.parametrize("config_id", QUASR_IDS)
 def test_free_boundary_matches_fixed_boundary(
     config_id: int,
     quasr_configs: dict[int, QuasrConfig],
@@ -623,7 +606,7 @@ def test_free_boundary_matches_fixed_boundary(
     does not converge, so this only asserts agreement when both solutions exist.
     """
     config = quasr_configs[config_id]
-    ns_array = _ns_array_env()
+    ns_array = NS_ARRAY
 
     try:
         free = _solve_free_boundary(config, VACUUM_PROFILE, ns_array, solve_cache)
