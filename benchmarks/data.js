@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784283005712,
+  "lastUpdate": 1784331239703,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -10583,6 +10583,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 5.645769079999998,
             "range": "stddev: 0.034167719151989455",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "50cabbb6b43a79394f581029ed3f516b311e9b71",
+          "message": "Seed the vacuum state across free-boundary multigrid transitions (#663)\n\nThe first iteration of a free-boundary continuation stage skips the whole\nvacuum block (the iter2 > 1 gate in IdealMhdModel::update, inherited from\nFortran VMEC funct3d) while assembleTotalForces still applies the edge\nterm with the freshly zeroed rBSq. The LCFS row therefore takes one step\nunder the raw, unbalanced plasma pressure: the stage-entry residual is\nFSQR ~ 9 regardless of the interpolation scheme, the MHD energy drops 12\npercent in a single step, the LCFS pressure mismatch DELBSQ blows up to\n~400x its converged value, and the following ~50-100 iterations are spent\non a NESTOR ring-down chasing the kicked boundary.\n\nThe vacuum solution of the converged coarser stage is still exactly valid\nat stage entry: the radial interpolation changes neither the angular grid\nnor the LCFS geometry. A continuation stage is a hot restart in this\nrespect, and the hot-restart path already sets\nvacuum_pressure_state_ = kInitialized for exactly this purpose. Doing the\nsame in InitializeRadial on free-boundary continuation stages makes\niteration 1 run a full NESTOR solve on the preserved boundary and apply a\nforce-balanced edge term: stage-entry FSQR drops from 9.19 to 2.6e-5 and\nthe transition ringing disappears (W_MHD and DELBSQ stay at their\nconverged values through the transition).\n\nMeasured (identical converged physics to all printed digits):\n- cth_like_free_bdy_multigrid [15,25]: second stage 343 -> 320 iterations\n  (niter regression guard updated 344 -> 321)\n- solovev_free_bdy [16,32]: second stage 828 -> 630 iterations (-24%)\n\nSingle-stage and fixed-boundary runs are unaffected (ns_old == 0 or\nlfreeb == false); the state transition only fires when the vacuum\ncontribution was already fully active on the previous stage.",
+          "timestamp": "2026-07-18T01:29:08+02:00",
+          "tree_id": "890310c3b8afd2ef5d1faeaeda78c7adb5cafa88",
+          "url": "https://github.com/proximafusion/vmecpp/commit/50cabbb6b43a79394f581029ed3f516b311e9b71"
+        },
+        "date": 1784331237745,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3952304255999934,
+            "range": "stddev: 0.007161549762958478",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3919038931999978,
+            "range": "stddev: 0.009938788061355824",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.3616236359999996,
+            "range": "stddev: 0.022172916170515047",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.275764477333335,
+            "range": "stddev: 0.0018198625385764202",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.10705358366666,
+            "range": "stddev: 0.061793735261679195",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.070750652333326,
+            "range": "stddev: 0.014085461958239596",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.86623846499998,
+            "range": "stddev: 0.04194574946267808",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
