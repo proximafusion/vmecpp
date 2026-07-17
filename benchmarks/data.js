@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784331239703,
+  "lastUpdate": 1784331358227,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -33682,6 +33682,162 @@ window.BENCHMARK_DATA = {
             "value": 0.0073540855098415065,
             "unit": "seconds",
             "extra": "iterations: 37\ncpu: 0.007351914702702702 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "50cabbb6b43a79394f581029ed3f516b311e9b71",
+          "message": "Seed the vacuum state across free-boundary multigrid transitions (#663)\n\nThe first iteration of a free-boundary continuation stage skips the whole\nvacuum block (the iter2 > 1 gate in IdealMhdModel::update, inherited from\nFortran VMEC funct3d) while assembleTotalForces still applies the edge\nterm with the freshly zeroed rBSq. The LCFS row therefore takes one step\nunder the raw, unbalanced plasma pressure: the stage-entry residual is\nFSQR ~ 9 regardless of the interpolation scheme, the MHD energy drops 12\npercent in a single step, the LCFS pressure mismatch DELBSQ blows up to\n~400x its converged value, and the following ~50-100 iterations are spent\non a NESTOR ring-down chasing the kicked boundary.\n\nThe vacuum solution of the converged coarser stage is still exactly valid\nat stage entry: the radial interpolation changes neither the angular grid\nnor the LCFS geometry. A continuation stage is a hot restart in this\nrespect, and the hot-restart path already sets\nvacuum_pressure_state_ = kInitialized for exactly this purpose. Doing the\nsame in InitializeRadial on free-boundary continuation stages makes\niteration 1 run a full NESTOR solve on the preserved boundary and apply a\nforce-balanced edge term: stage-entry FSQR drops from 9.19 to 2.6e-5 and\nthe transition ringing disappears (W_MHD and DELBSQ stay at their\nconverged values through the transition).\n\nMeasured (identical converged physics to all printed digits):\n- cth_like_free_bdy_multigrid [15,25]: second stage 343 -> 320 iterations\n  (niter regression guard updated 344 -> 321)\n- solovev_free_bdy [16,32]: second stage 828 -> 630 iterations (-24%)\n\nSingle-stage and fixed-boundary runs are unaffected (ns_old == 0 or\nlfreeb == false); the state transition only fires when the vacuum\ncontribution was already fully active on the previous stage.",
+          "timestamp": "2026-07-18T01:29:08+02:00",
+          "tree_id": "890310c3b8afd2ef5d1faeaeda78c7adb5cafa88",
+          "url": "https://github.com/proximafusion/vmecpp/commit/50cabbb6b43a79394f581029ed3f516b311e9b71"
+        },
+        "date": 1784331357927,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00003292505566723861,
+            "unit": "seconds",
+            "extra": "iterations: 8148\ncpu: 3.292533431516937e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000042657466629458965,
+            "unit": "seconds",
+            "extra": "iterations: 6555\ncpu: 4.265772265446227e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.000595034302919158,
+            "unit": "seconds",
+            "extra": "iterations: 473\ncpu: 0.0005949353890063425 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014456756336172832,
+            "unit": "seconds",
+            "extra": "iterations: 194\ncpu: 0.0014456389432989695 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.0001610295717106309,
+            "unit": "seconds",
+            "extra": "iterations: 1720\ncpu: 0.0001609861889534884 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00013938224315643313,
+            "unit": "seconds",
+            "extra": "iterations: 2000\ncpu: 0.00013937315950000002 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003223629152512357,
+            "unit": "seconds",
+            "extra": "iterations: 863\ncpu: 0.0003223650069524912 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002828779903839142,
+            "unit": "seconds",
+            "extra": "iterations: 991\ncpu: 0.0002828432230070636 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005187568593114503,
+            "unit": "seconds",
+            "extra": "iterations: 534\ncpu: 0.0005187434569288392 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00043717148161980803,
+            "unit": "seconds",
+            "extra": "iterations: 638\ncpu: 0.0004371473432601883 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017566201072069087,
+            "unit": "seconds",
+            "extra": "iterations: 159\ncpu: 0.00175663220125786 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.001947459247377184,
+            "unit": "seconds",
+            "extra": "iterations: 144\ncpu: 0.001947345708333335 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00006465109730033484,
+            "unit": "seconds",
+            "extra": "iterations: 4292\ncpu: 6.466424091332692e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0004954063300545334,
+            "unit": "seconds",
+            "extra": "iterations: 564\ncpu: 0.0004954438226950338 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.003002928650897482,
+            "unit": "seconds",
+            "extra": "iterations: 92\ncpu: 0.003001398728260875 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00006101247653547521,
+            "unit": "seconds",
+            "extra": "iterations: 4657\ncpu: 6.102301996993964e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0004790165797382796,
+            "unit": "seconds",
+            "extra": "iterations: 588\ncpu: 0.0004790185255102045 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0029390851656595864,
+            "unit": "seconds",
+            "extra": "iterations: 96\ncpu: 0.002937050093749998 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.0002882314510032779,
+            "unit": "seconds",
+            "extra": "iterations: 976\ncpu: 0.0002882235819672131 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0011827107203208796,
+            "unit": "seconds",
+            "extra": "iterations: 236\ncpu: 0.001182678779661017 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.0053021907806396484,
+            "unit": "seconds",
+            "extra": "iterations: 53\ncpu: 0.0052992005660377345 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.010767533228947567,
+            "unit": "seconds",
+            "extra": "iterations: 26\ncpu: 0.010764482692307693 seconds\nthreads: 1"
           }
         ]
       }
