@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784241059933,
+  "lastUpdate": 1784280441175,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -10364,6 +10364,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.70305894366671,
             "range": "stddev: 0.021726317138131394",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8482f42a9e3c40c27a1e10f6356bc2cb36667ed8",
+          "message": "Name the lambda preconditioner constants (#657)\n\n* Name the lambda preconditioner constants\n\nReplace the magic numbers in IdealMhdModel::updateLambdaPreconditioner\nwith named constants in vmec_algorithm_constants.h, documented as the\ntuning hyperparameters of the lambda preconditioner:\n\n- kLambdaPreconditionerDampingFactor (was the undocumented private\n  dampingFactor = 2.0 in ideal_mhd_model.h)\n- kLambdaPreconditionerZeroGuard (was a literal -1.0e-10; replaces the\n  misnamed kEigenvalueAvoidanceFactor, which was never referenced)\n- kLambdaHighMDampingReferenceM and kLambdaHighMDampingMaxPower (were\n  the literals 16.0 * 16.0 and 8.0; replace the unreferenced\n  kModeDampingLarge / kModeDampingSmall)\n\nAlso documents the faclam stiffness diagonal and the pFactor scaling,\nreplacing the TODO(jons) placeholders. No behavior change.\n\n* Apply suggestion from @jurasic-pf",
+          "timestamp": "2026-07-17T11:22:44+02:00",
+          "tree_id": "2117c12485f44c16ebfbef700db00ecd7cac8c8b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/8482f42a9e3c40c27a1e10f6356bc2cb36667ed8"
+        },
+        "date": 1784280439801,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.40040561399999886,
+            "range": "stddev: 0.007032530802342807",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.38865905240000986,
+            "range": "stddev: 0.0014932128772709534",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.370175808333348,
+            "range": "stddev: 0.011138216120248576",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2858861233333414,
+            "range": "stddev: 0.007463694699000033",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.0956191469999985,
+            "range": "stddev: 0.005224653657457353",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.080133099333333,
+            "range": "stddev: 0.020248211861666095",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.804344349333311,
+            "range": "stddev: 0.012412434104136385",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
