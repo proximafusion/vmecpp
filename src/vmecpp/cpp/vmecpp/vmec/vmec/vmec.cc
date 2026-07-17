@@ -496,6 +496,24 @@ bool Vmec::InitializeRadial(
   fc_.res1 = -1;
   m_delt0 = indata_.delt;
 
+  // On a free-boundary multigrid continuation stage, the vacuum solution of
+  // the converged coarser stage is still exactly valid, because the radial
+  // interpolation changes neither the angular grid nor the LCFS geometry.
+  // Re-marking the vacuum state as kInitialized here (mirroring the
+  // hot-restart path in run()) makes the first iteration of the new stage
+  // run the free-boundary block, so the LCFS force enters balanced by the
+  // vacuum magnetic pressure. Otherwise iteration 1 skips the vacuum update
+  // (the `iter2 > 1` gate in IdealMhdModel::update) and applies the edge
+  // force with rBSq = 0 -- the raw, unbalanced plasma pressure -- which
+  // kicks the boundary in a single step and costs a long NESTOR ring-down
+  // afterwards (stage-entry FSQR ~ 9 instead of the interpolation-error
+  // level, W_MHD -12 percent in one step, DELBSQ ~ 400x its converged
+  // value).
+  if (fc_.lfreeb && ns_old != 0 && ns_old < nsval &&
+      vacuum_pressure_state_ == VacuumPressureState::kActive) {
+    vacuum_pressure_state_ = VacuumPressureState::kInitialized;
+  }
+
   // INITIALIZE MESH-DEPENDENT SCALARS
 
   // *THIS* actually sets the global ns value for the main physics algorithm
