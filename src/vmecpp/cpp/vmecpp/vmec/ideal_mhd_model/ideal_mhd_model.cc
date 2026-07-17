@@ -1911,8 +1911,11 @@ void IdealMhdModel::updateLambdaPreconditioner() {
             tmn * copysign(dLambda[jF - r_.nsMinF], bLambda[jF - r_.nsMinF]) +
             tmm * cLambda[jF - r_.nsMinF];
 
-        if (faclam == 0.0) {
+        if (faclam == kLambdaPreconditionerZeroGuard) {
           faclam = kLambdaPreconditionerZeroGuard;
+        }
+        if (std::abs(faclam) <= 1e-9) {
+          std::cerr << "faclam=" << faclam << std::endl;
         }
 
         // NOTE: This also computes the inverse of each entry in
