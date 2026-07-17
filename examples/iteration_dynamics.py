@@ -82,6 +82,9 @@ VARIANTS: dict[str, dict] = {
         "lambda_boost": True,
         "delt": 2.0,
     },
+    # the native scheme: iteration_style="vmecpp" bundles delt recovery, seed
+    # preservation, cubic transfer and the lambda correction inside the model
+    "vmecpp": {"style": "vmecpp"},
 }
 STYLES = tuple(VARIANTS)
 # Radial interpolant for the stage transfers: "linear" (2-point, VMEC 8.52),
@@ -154,6 +157,7 @@ COLORS = {
     "delt_recovery": "tab:red",
     "delt_recovery + lambda_boost": "tab:purple",
     "delt_recovery + lambda_boost + delt=2": "tab:orange",
+    "vmecpp": "tab:green",
 }
 
 
@@ -213,7 +217,7 @@ def plot_timestep(ax):
     # the learned stability ceiling of the delt_recovery control: reverts
     # ratchet it down, the recovered step rides just below it
     for label, cfg in VARIANTS.items():
-        if cfg["style"] != "delt_recovery":
+        if cfg["style"] not in ("delt_recovery", "vmecpp"):
             continue
         ax.plot(
             xs(label),

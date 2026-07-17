@@ -846,6 +846,123 @@ iteration matrix B = M^{-1} H in the descent coordinates) settles it:
   preconditioner, then (if the cross-family part still binds) a small dense
   solve over the m<=1 lambda cluster on the first few surfaces.
 
+## Finding 15: solving lambda exactly -- one-shot solve gives -21%, jump
+solves fight the momentum, the right form is a block-tridiagonal lambda
+preconditioner
+
+Since the MHD energy is exactly quadratic in lambda at fixed R, Z, the inner
+lambda problem is one linear system. examples/lambda_exact_solve_study.py
+measures what solving it buys, at the w7x [25,99] tail snapshot:
+
+- One-shot exact solve (preconditioned CG on the lambda subspace, matvecs =
+  hessian_vector_product embedded/restricted, 400 matvecs): drives fsql from
+  3.8e-8 to 3.0e-17 and reveals that ~90% of the snapshot residual was
+  lambda (fsq 7.9e-7 -> 7.0e-8). The subsequent unmodified tail runs
+  1979 -> 1562 iterations (-21%) -- a single exact lambda solve reproduces
+  the entire benefit of the j<=1 boost, confirming lambda softness as the
+  binding constraint; the remaining tail is the slow subspace re-entering
+  through R/Z coupling.
+
+- Periodic jump solves are counterproductive in this harness: re-solving
+  every 50 iterations (40 CG matvecs each) never converges within 30000
+  outer iterations; every 200 (100 matvecs) converges at 9839
+  eval-equivalents, 5x worse than baseline. A discrete lambda jump
+  mid-descent fights the momentum iteration (the stale lambda velocity
+  kicks the state off the solved point) and, in this Python harness, each
+  segment also restarts the damping history. Exact lambda must enter
+  CONTINUOUSLY -- as a preconditioner modification -- not as interleaved
+  jumps.
+
+- Preconditioner simulation on measured per-surface blocks (the --blocks
+  mode: raw Hessian response blocks over all 287 active lambda coordinates
+  of a surface, plus the radial coupling blocks, at js = 1, 2, 3, 50, 97):
+  the lambda Hessian is block-tridiagonal in radius (measured asymmetry
+  <= 6e-4; intra-surface off-diagonal <= 0.16 of the diagonal scale in raw
+  units, radial nearest-neighbor coupling 0.45-0.52). On a 3-surface
+  window:
+    * native diagonal: |mu| condition 20-42 (and the full 99-surface chain
+      extends the soft end to the measured 1.5e-3, condition ~500);
+    * per-surface dense solve ("linear system per flux surface"): condition
+      improves only ~3x -- the radial chain dominates and a surface-local
+      solve does not touch it;
+    * exact block-tridiagonal solve: every eigenvalue collapses to one
+      value (ratio 1.0) -- the measured structure is exactly the shape of
+      the PR #616 block-tridiagonal solver.
+
+Design recommendation: implement the lambda preconditioner as a radial
+block-tridiagonal solve (per-surface dense lambda blocks assembled from the
+angle-resolved metric -- the same integrals faclam flux-surface-averages --
+plus the half-grid averaging couplings), factorized at every preconditioner
+update (99 x 287^3/3 ~ 8e8 flops per update, applied at 99 x 287^2 ~ 8e6
+per iteration; both negligible against the force evaluation). Open risks
+for the prototype: the exact chain inverse amplifies the near-null
+checkerboard components by the chain condition (~1e5; probably benign, the
+force has no checkerboard content, but needs an end-to-end run), and the
+lambda-R/Z cross coupling (the axis-position content of the slow cluster)
+remains outside the lambda block.
+
+## Finding 16: free-boundary multigrid transitions take one step with an
+unbalanced edge force -- seeding the vacuum state fixes it exactly
+
+Hypothesis (user): after a multigrid interpolation the external (vacuum)
+pressure should be turned on gradually, so the first steps behave like a
+fixed-boundary solve until the interior has stabilized. The diagnosis
+(per-iteration printout, `nstep=1`, cth_like free-boundary multigrid
+[15,25]) found something sharper: the first iteration of a continuation
+stage applies the LCFS force with NO vacuum contribution at all.
+
+Mechanism (all in `ideal_mhd_model.cc`): the free-boundary block is gated
+by `iter2 > 1 || vacuum_pressure_state == kInitialized`. At a stage entry
+`iter2` restarts at 1 and the state is `kActive` (not `kInitialized`), so
+iteration 1 skips the whole block -- no NESTOR call, and `rBSq` still holds
+its `setZero` value from model construction. `assembleTotalForces` however
+DOES apply the edge term whenever the state is >= `kInitialized`, so the
+LCFS row receives the raw inside pressure with nothing balancing it from
+outside. The result is one uncompensated step on the boundary:
+
+- raw FSQR at stage-2 iteration 1 is 9.2 (converged stage 1: 1e-8), and it
+  is IDENTICAL for linear and cubic interpolation -- this spike is not
+  interpolation error;
+- the MHD energy drops 12 percent in one step at delt 0.7 (3.3 percent at
+  the vmecpp-style entry delt 0.35), the LCFS pressure mismatch DELBSQ
+  blows up to 0.33-0.55 against a converged value of 1.3e-3 (~400x), and
+  the axis and energy ring for ~50-100 iterations while NESTOR chases the
+  kicked boundary. The same gate exists in Fortran VMEC (funct3d:
+  `iter2.gt.1 .or. ivac.eq.1`), so 8.52 shares the defect.
+
+The fix is exact, not a ramp: the radial interpolation changes neither the
+angular grid nor the LCFS geometry, so the vacuum solution of the converged
+coarser stage is still exactly valid at stage entry -- a continuation stage
+IS a hot restart, and the hot-restart path already sets
+`vacuum_pressure_state = kInitialized` for precisely this purpose. Setting
+the state to `kInitialized` in `InitializeRadial` on a free-boundary
+continuation stage (IterationStyle::VMECPP only) makes iteration 1 run a
+full NESTOR solve on the preserved boundary and apply a balanced edge
+force. Measured (cth free multigrid, stage-2 iteration 1): raw FSQR
+9.19 -> 2.6e-5 (six orders of magnitude), DELBSQ starts at the converged
+1.24e-3 with no ringing, W_MHD does not move at the transition.
+
+The reduced-delt stage entry is KEPT on free-boundary continuations: the
+interpolation-error spike it protects against is boundary-condition
+independent (the same radial interpolation happens either way), and the
+vacuum seed removes only the edge-force shock, which is a separate,
+additive mechanism. (Entering free-boundary continuations at the full user
+delt was measured slightly faster on these small cases -- cth 570, solovev
+1082 -- but gives up the seed protection that matters at large ns; rejected
+on robustness grounds.) Iteration counts (identical physics, wb rel. diff
+<= 1e-7):
+
+| case                        | vmec_8_52 | vmecpp before | vmecpp after |
+|-----------------------------|-----------|---------------|--------------|
+| cth free multigrid [15,25]  | 583       | 621 (+6.5%)   | 582 (-0.2%)  |
+| solovev free [16,32]        | 1243      | 1155 (-7.1%)  | 1093 (-12%)  |
+
+Attribution on cth stage 2: 343 iterations (8_52 baseline, rings), 372
+(vmecpp before: ring-down at reduced delt), 333 (vacuum seed, entry delt
+0.35). Single-stage free-boundary runs are unaffected (`ns_old == 0`).
+This resolves the free-boundary regression of the vmecpp style observed in
+the Finding 15-era validation (cth multigrid +6.5%).
+
 ## Experiment log
 
 - Interpolation scheme comparison on w7x transitions: cubic reduces the
@@ -877,8 +994,9 @@ Lagrange (cubic) radial interpolation at multigrid transitions, reduced-delt
 stage entry (min(0.5 delt, 0.5), also on cold starts with delt > 1) with
 time-step recovery towards the user delt under a learned one-directional
 stability ceiling plus a stagnation guard, preservation of the interpolated
-seed on early-stage instabilities, and the first-evolved-surface lambda
-preconditioner correction (Findings 12/14). Hyperparameters are named
+seed on early-stage instabilities, the first-evolved-surface lambda
+preconditioner correction (Findings 12/14), and the free-boundary vacuum
+seed at continuation stage entries (Finding 16). Hyperparameters are named
 constants in `vmec_algorithm_constants.h` (kVmecpp*). The default styles
 (`vmec_8_52`, `parvmec`) are byte-for-byte unchanged. On a cold start with
 delt <= 1, `vmecpp` differs from `vmec_8_52` only through the lambda
