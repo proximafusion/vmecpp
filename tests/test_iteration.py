@@ -208,6 +208,33 @@ def test_alternative_styles_converge_cma():
     assert results["parvmec"].restarts == 0
 
 
+def test_multigrid_interpolation_scheme_improves_seed():
+    """The cubic multigrid interpolant reduces the interpolated-seed force residual of a
+    continuation stage (down to the coarse solution's own truncation error)."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA / "cth_like_fixed_bdy.json")
+    vmec_input.ns_array = np.array([13, 25])
+    vmec_input.ftol_array = np.array([1.0e-9, 1.0e-16])
+    # stage 2 only needs its first force evaluation (the seed quality)
+    vmec_input.niter_array = np.array([3000, 1])
+
+    entry = {}
+    for interpolation in ("linear", "cubic", "cubic_rho"):
+        history: list[vmecpp.IterationState] = []
+        vmecpp.solve_multigrid(
+            vmec_input, interpolation=interpolation, callback=history.append
+        )
+        it = [s.iteration for s in history]
+        stage2_start = next(i for i in range(1, len(it)) if it[i] < it[i - 1])
+        entry[interpolation] = history[stage2_start].fsq_invariant
+
+    # the 4-point interpolants must clearly beat the 2-point one
+    assert entry["cubic"] < entry["linear"] / 3
+    assert entry["cubic_rho"] < entry["linear"] / 3
+
+    with pytest.raises(ValueError, match="unknown interpolation scheme"):
+        vmecpp.solve_multigrid(vmec_input, interpolation="quintic")  # type: ignore[arg-type]
+
+
 def test_native_parvmec_matches_python_parvmec():
     """The native C++ PARVMEC control reproduces the ported Python PARVMEC control.
 
