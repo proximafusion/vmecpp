@@ -436,9 +436,6 @@ class IdealMhdModel {
   // 1/4: 1/2 from d(sHalf)/ds and 1/2 from interpolation
   static constexpr double dSHalfDsInterp = 0.25;
 
-  // TODO(jons): understand what this is (related to radial preconditioner)
-  static constexpr double dampingFactor = 2.0;
-
   // from INDATA: flag to select between constrained-iota and
   // constrained-toroidal-current
   int ncurr;

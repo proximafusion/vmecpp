@@ -9,7 +9,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <utility>  // std::move
+#include <utility>
 #include <vector>
 
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -32,6 +32,16 @@
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
 namespace vmecpp {
+
+enum class MultigridInterpolationScheme : std::uint8_t {
+  // 2-point linear interpolation in s (VMEC 8.52 behavior)
+  kLinear,
+  // 4-point Lagrange interpolation in s
+  kCubic,
+  // 4-point Lagrange interpolation in rho = sqrt(s), the natural radial
+  // variable near the magnetic axis
+  kCubicRho,
+};
 
 // The state we need to hot-restart a VMEC++ run.
 struct HotRestartState {
@@ -126,7 +136,9 @@ class Vmec {
   bool InitializeRadial(
       VmecCheckpoint checkpoint, int maximum_iterations, int nsval, int ns_old,
       double& m_delt0,
-      const std::optional<HotRestartState>& initial_state = std::nullopt);
+      const std::optional<HotRestartState>& initial_state = std::nullopt,
+      std::optional<MultigridInterpolationScheme> interpolation_scheme =
+          std::nullopt);
   absl::StatusOr<bool> SolveEquilibrium(VmecCheckpoint checkpoint,
                                         int maximum_iterations);
   void RestartIteration(double& m_delt0r, int thread_id);
@@ -144,7 +156,9 @@ class Vmec {
       const std::vector<std::unique_ptr<RadialPartitioning>>& r_new,
       const std::vector<std::unique_ptr<RadialPartitioning>>& r_old,
       std::vector<std::unique_ptr<FourierGeometry>>& m_x_new,
-      std::vector<std::unique_ptr<FourierGeometry>>& m_x_old);
+      std::vector<std::unique_ptr<FourierGeometry>>& m_x_old,
+      std::optional<MultigridInterpolationScheme> interpolation_scheme =
+          std::nullopt);
   // -------------------
 
   bool updateFwdModel(IdealMhdModel& m_m, FourierGeometry& m_decomposed_x,
@@ -206,11 +220,6 @@ class Vmec {
   std::vector<std::unique_ptr<FourierForces>> physical_f_;
   std::vector<std::unique_ptr<FourierVelocity>> decomposed_v_;
 
-  Eigen::VectorXd sj;
-  Eigen::VectorXi js1;
-  Eigen::VectorXi js2;
-  Eigen::VectorXd s1;
-  Eigen::VectorXd xint;
   std::vector<std::unique_ptr<FourierGeometry>> old_xc_scaled_;
   std::vector<std::unique_ptr<RadialPartitioning>> old_r_;
 

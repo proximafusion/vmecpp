@@ -38,6 +38,7 @@ from __future__ import annotations
 import enum
 import logging
 import math
+import typing
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -521,6 +522,7 @@ def solve_multigrid(
     vmec_input,
     *,
     iteration_style: str | None = None,
+    interpolation: typing.Literal["linear", "cubic", "cubic_rho"] | None = None,
     verbose: bool = False,
     callback: Callable[[IterationState], None] | None = None,
 ):
@@ -532,10 +534,15 @@ def solve_multigrid(
     is solved to its ``ftol_array`` / ``niter_array`` tolerance with
     :func:`solve_equilibrium`, and the converged geometry is interpolated onto
     the next stage's radial grid with ``VmecModel.refine_to`` (the C++
-    ``InterpolateToNextMultigridStep``). A stage that exhausts its iteration
-    budget without converging proceeds to the next stage, exactly as the C++
-    run does; a stage that hard-fails (unrecoverable bad Jacobian, the
-    ijacob >= 75 give-up) stops the ramp.
+    ``InterpolateToNextMultigridStep``). ``interpolation`` selects the radial
+    interpolant for those transfers: ``"linear"`` (2-point, VMEC 8.52
+    behavior), ``"cubic"`` (4-point Lagrange in s) or ``"cubic_rho"`` (4-point
+    Lagrange in rho = sqrt(s)); the higher-order interpolants reduce the
+    interpolation-added error of the stage seed down to the coarse grid's own
+    discretization error. ``None`` (default) keeps the linear scheme. A stage
+    that exhausts its iteration budget without converging proceeds to the next
+    stage, exactly as the C++ run does; a stage that hard-fails (unrecoverable
+    bad Jacobian, the ijacob >= 75 give-up) stops the ramp.
 
     ``ftol_array`` / ``niter_array`` entries are matched to ``ns_array``
     entries by ns value (``VmecModel.create`` / ``refine_to`` semantics);
@@ -550,6 +557,19 @@ def solve_multigrid(
         cpp_indata.iteration_style = getattr(
             _vmecpp.IterationStyle, iteration_style.upper()
         )
+
+    interpolation_scheme = None
+    if interpolation is not None:
+        try:
+            interpolation_scheme = getattr(
+                _vmecpp.MultigridInterpolationScheme, interpolation.upper()
+            )
+        except AttributeError:
+            msg = (
+                "solve_multigrid: unknown interpolation scheme "
+                f"'{interpolation}' (expected 'linear', 'cubic' or 'cubic_rho')"
+            )
+            raise ValueError(msg) from None
 
     ns_array = [int(ns) for ns in np.asarray(cpp_indata.ns_array)]
     if len(set(ns_array)) != len(ns_array):
@@ -570,7 +590,7 @@ def solve_multigrid(
         if model is None:
             model = _vmecpp.VmecModel.create(cpp_indata, ns)
         else:
-            model.refine_to(ns)
+            model.refine_to(ns, interpolation=interpolation_scheme)
         result = solve_equilibrium(
             model, style=iteration_style, verbose=verbose, callback=callback
         )

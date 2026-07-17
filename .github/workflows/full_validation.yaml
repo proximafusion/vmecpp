@@ -80,3 +80,25 @@ jobs:
           name: vnvresults
           path: vmecpp-validation/vnvresults_*/
           retention-days: 30
+
+  free-boundary-quasr:
+    name: Run QUASR free-boundary tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+      - name: Install required packages for Ubuntu
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            build-essential cmake libnetcdf-dev liblapack-dev liblapacke-dev libopenmpi-dev \
+            libomp-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
+      - name: Install package
+        run: python -m pip install -v .[test]
+      - name: Run slow QUASR free-boundary tests
+        run: python -m pytest -m slow tests/test_free_boundary_quasr.py -v -ra
