@@ -1216,6 +1216,40 @@ std::string VmecINDATA::ToJsonOrException() const {
   return *json;
 }  // ToJsonOrException
 
+double BoundarySpectralWidth(const VmecINDATA& vmec_indata) {
+  // Mirrors FourierGeometry::ComputeSpectralWidth (p=4, q=1) evaluated on the
+  // input boundary coefficients. m=0 is excluded: it carries the major-radius
+  // and axis offset, not poloidal shape.
+  double numerator = 0.0;    // sum of energy * m^5
+  double denominator = 0.0;  // sum of energy * m^4
+  for (int m = 1; m < vmec_indata.mpol; ++m) {
+    const double m_double = static_cast<double>(m);
+    const double m4 = m_double * m_double * m_double * m_double;
+    const double m5 = m4 * m_double;
+    for (int n = -vmec_indata.ntor; n <= vmec_indata.ntor; ++n) {
+      const int column = n + vmec_indata.ntor;
+      double energy = vmec_indata.rbc(m, column) * vmec_indata.rbc(m, column) +
+                      vmec_indata.zbs(m, column) * vmec_indata.zbs(m, column);
+      if (vmec_indata.lasym && vmec_indata.rbs.has_value() &&
+          vmec_indata.zbc.has_value()) {
+        energy +=
+            (*vmec_indata.rbs)(m, column) * (*vmec_indata.rbs)(m, column) +
+            (*vmec_indata.zbc)(m, column) * (*vmec_indata.zbc)(m, column);
+      }
+      // nscale[|n|]^2 from the Fourier basis normalization: n=0 weighted 1,
+      // n!=0 weighted 2 (matches ComputeSpectralWidth).
+      const double n_weight = (n == 0) ? 1.0 : 2.0;
+      energy *= n_weight;
+      numerator += energy * m5;
+      denominator += energy * m4;
+    }
+  }
+  if (denominator <= 0.0) {
+    return 0.0;
+  }
+  return numerator / denominator;
+}
+
 absl::Status IsConsistent(const VmecINDATA& vmec_indata,
                           bool enable_info_messages) {
   // lasym can be true or false and both are valid
@@ -1623,6 +1657,23 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
       LOG(INFO) << absl::StrFormat(
           "ignoring irrelevant rbs entry for m=0, n=0: %g\n",
           (*vmec_indata.rbs)(0, vmec_indata.ntor));
+    }
+  }
+
+  // Warn when the input boundary is spectrally dense. Fixed-boundary runs with
+  // a lot of high-poloidal-mode content can fail to initialize or converge
+  // poorly; this is usually resolved by spectral condensation. Free-boundary
+  // runs relax the initial boundary, so the same content is less harmful and is
+  // not flagged here.
+  if (enable_info_messages && !vmec_indata.lfreeb) {
+    const double boundary_spectral_width = BoundarySpectralWidth(vmec_indata);
+    if (boundary_spectral_width > kSpectrallyDenseBoundaryThreshold) {
+      LOG(WARNING) << absl::StrFormat(
+          "Input boundary is spectrally dense (spectral width <M> = %.1f). "
+          "Fixed-boundary runs with high spectral content may converge poorly; "
+          "consider spectral condensation of the boundary or reducing its "
+          "high-m Fourier content.",
+          boundary_spectral_width);
     }
   }
 

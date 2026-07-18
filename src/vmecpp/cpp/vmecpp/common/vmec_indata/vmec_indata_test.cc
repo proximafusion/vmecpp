@@ -451,4 +451,33 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.zbc, indata.zbc);
 }  // CopyMethod
 
+TEST(TestVmecINDATA, BoundarySpectralWidthCleanBoundaryIsLow) {
+  const VmecINDATA indata =
+      VmecINDATA::FromFile("vmecpp/test_data/solovev.json");
+
+  // solovev has a smooth boundary (R at m=0,1,2; Z at m=1,2), so its spectral
+  // width is close to 1 and well below the spectrally-dense warning threshold.
+  const double spectral_width = BoundarySpectralWidth(indata);
+  EXPECT_GE(spectral_width, 1.0);
+  EXPECT_LT(spectral_width, kSpectrallyDenseBoundaryThreshold);
+}
+
+TEST(TestVmecINDATA, BoundarySpectralWidthDenseBoundaryExceedsThreshold) {
+  VmecINDATA indata = VmecINDATA::FromFile("vmecpp/test_data/solovev.json");
+
+  // Make room for high-m modes and inject a high-poloidal-mode ripple. This
+  // drives the boundary spectral width above the warning threshold, into the
+  // regime where fixed-boundary runs fail to initialize.
+  indata.SetMpolNtor(/*new_mpol=*/12, /*new_ntor=*/0);
+  for (int m = 8; m <= 10; ++m) {
+    indata.rbc(m, 0) = 0.05;
+    indata.zbs(m, 0) = 0.05;
+  }
+  EXPECT_GT(BoundarySpectralWidth(indata), kSpectrallyDenseBoundaryThreshold);
+
+  // A spectrally dense boundary is still a valid input: IsConsistent warns but
+  // does not reject it.
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
 }  // namespace vmecpp
