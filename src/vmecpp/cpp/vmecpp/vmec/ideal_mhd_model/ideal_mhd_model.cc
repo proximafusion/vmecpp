@@ -753,12 +753,16 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
       if (m_h_.rBtor * m_h_.bSubVVac < 0.0) {
-        return absl::InternalError(
+        // A physical inconsistency, not a code bug: kFailedPrecondition (as
+        // opposed to kInternal) marks this as a condition that
+        // indata.return_outputs_even_if_not_converged can recover from by
+        // returning best-effort output instead of hard-erroring.
+        return absl::FailedPreconditionError(
             "IdealMHDModel::update: rbtor and bsubvvac must have the same "
             "sign - maybe flip the sign of phiedge or the sign of the coil "
             "currents");
       } else if (fabs((m_h_.cTor - m_h_.bSubUVac) / m_h_.rBtor) > 0.01) {
-        return absl::InternalError(
+        return absl::FailedPreconditionError(
             "IdealMHDModel::update: VAC-VMEC I_TOR MISMATCH : BOUNDARY MAY "
             "ENCLOSE EXT. COIL");
       }
@@ -2093,10 +2097,15 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
     }
 
     if (arNorm == 0.0) {
-      return absl::InternalError("arNorm should never be 0.0.");
+      // A degenerate (e.g. self-intersecting) flux surface, not a code bug:
+      // kFailedPrecondition (as opposed to kInternal) marks this as a
+      // condition that indata.return_outputs_even_if_not_converged can
+      // recover from by returning best-effort output instead of
+      // hard-erroring.
+      return absl::FailedPreconditionError("arNorm should never be 0.0.");
     }
     if (azNorm == 0.0) {
-      return absl::InternalError("azNorm should never be 0.0.");
+      return absl::FailedPreconditionError("azNorm should never be 0.0.");
     }
 
     double tcon_base =

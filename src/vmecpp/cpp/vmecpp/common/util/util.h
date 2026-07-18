@@ -150,6 +150,10 @@ enum class VmecStatus : std::uint8_t {
   NORMAL_TERMINATION = 0,
   BAD_JACOBIAN = 1,
   JACOBIAN_75_TIMES_BAD = 4,
+  // A physical inconsistency was detected deep in the MHD model (e.g. a
+  // degenerate flux-surface geometry or a free-boundary current mismatch)
+  // that the solver has no retry strategy for.
+  UNRECOVERABLE_ERROR = 5,
   // everything went well, VMEC++ converged
   SUCCESSFUL_TERMINATION = 11
 };

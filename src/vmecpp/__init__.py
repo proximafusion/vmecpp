@@ -429,9 +429,15 @@ class VmecInput(BaseModelWithNumpy):
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
     return_outputs_even_if_not_converged: bool = False
-    """If true, return the outputs even if VMEC++ did not converge.
+    """If true, return a wout even if VMEC++ did not converge, instead of raising a
+    RuntimeError.
 
-    Otherwise a RuntimeError will be raised.
+    This is intended for debugging purposes (e.g. inspecting how far the geometry
+    got, or where the force residuals blew up) since the returned quantities are
+    computed from whatever internal state the solver was in when it gave up, and
+    can be arbitrarily unphysical. Always check `wout.ier_flag` / the accompanying
+    log warning to see why the run did not converge before interpreting any
+    physical quantity in the output.
     """
 
     raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = pydantic.Field(
