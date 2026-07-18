@@ -1,0 +1,12 @@
+diff -ur a/include/sctl/fft_wrapper.hpp SCTL-af59e54adaf0e3bd25643df2d32967bd05f370fb/include/sctl/fft_wrapper.hpp
+--- a/include/sctl/fft_wrapper.hpp	2023-12-04 15:03:51.000000000 +0000
++++ b/include/sctl/fft_wrapper.hpp	2026-07-11 17:21:56.071173456 +0000
+@@ -20,7 +20,7 @@
+ 
+ template <class ValueType> class Complex {
+   public:
+-    Complex<ValueType>(ValueType r=0, ValueType i=0) : real(r), imag(i) {}
++    Complex(ValueType r=0, ValueType i=0) : real(r), imag(i) {}
+ 
+     Complex<ValueType> operator-() const {
+       Complex<ValueType> z;

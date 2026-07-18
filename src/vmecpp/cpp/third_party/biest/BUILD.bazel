@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+#
+# BIEST itself is fetched as the @biest repository (see non_module_deps.bzl
+# and README.md); this package holds the build overlay, the local patch,
+# and our test.
+exports_files([
+    "biest.BUILD",
+    "warm_start.patch",
+])
+
+cc_test(
+    name = "test_biest",
+    size = "medium",
+    srcs = ["test_biest.cc"],
+    data = ["@biest//:geom"],
+    deps = [
+        "@biest",
+        "@googletest//:gtest_main",
+    ],
+)

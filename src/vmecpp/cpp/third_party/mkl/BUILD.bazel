@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+#
+# Build overlay for the system MKL FFTW3-interface headers (@mkl_fftw).
+exports_files(["mkl_fftw.BUILD"])
