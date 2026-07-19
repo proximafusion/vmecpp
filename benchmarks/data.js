@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784332852554,
+  "lastUpdate": 1784467183827,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -10729,6 +10729,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.697691163999991,
             "range": "stddev: 0.007298485818473601",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "08ac81f55a8b655d316b0a2ffa4bcb7cbbac2aa5",
+          "message": "Speed up output-stage post-processing: hoist redundant per-surface trig recompute (#666)\n\nSpeed up output quantities computation",
+          "timestamp": "2026-07-19T15:14:55+02:00",
+          "tree_id": "9cfdce4a5070dd6c60e75ae8331003553be6dd1d",
+          "url": "https://github.com/proximafusion/vmecpp/commit/08ac81f55a8b655d316b0a2ffa4bcb7cbbac2aa5"
+        },
+        "date": 1784467182522,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.37588309059999575,
+            "range": "stddev: 0.00255697018462043",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.375090694399978,
+            "range": "stddev: 0.003628077030135446",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.09908274899999,
+            "range": "stddev: 0.027804800943643487",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2733766046666612,
+            "range": "stddev: 0.007635292354766879",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.0448233219999943,
+            "range": "stddev: 0.02796882715003368",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.0695983019999553,
+            "range": "stddev: 0.018362030384473503",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.66881878933331,
+            "range": "stddev: 0.005680135779303068",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
