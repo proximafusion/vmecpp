@@ -316,9 +316,6 @@ class IdealMhdModel {
   // |B|^2/(2 mu_0) + p
   Eigen::VectorXd totalPressure;
 
-  // r * |B_vac|^2 at LCFS
-  Eigen::VectorXd rBSq;
-
   // (|B|^2/(2 mu_0) + p) on inside of LCFS
   Eigen::VectorXd insideTotalPressure;
 

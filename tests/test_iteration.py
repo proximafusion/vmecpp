@@ -301,17 +301,30 @@ def test_run_honors_iteration_style_flag():
     assert par.wb == pytest.approx(ref.wb, rel=1.0e-5)  # magnetic energy
 
 
-@pytest.mark.parametrize("case", ["cth_like_fixed_bdy", "solovev"])
+@pytest.mark.parametrize("case", ["cth_like_fixed_bdy", "solovev", "cth_like_free_bdy"])
 def test_parvmec_matches_parvmec_reference(case):
-    """The PARVMEC iteration style reproduces the ORNL-Fusion/PARVMEC wout.
+    """The PARVMEC iteration style reproduces the reference wout in both fixed- and
+    free-boundary mode.
 
-    The committed reference wouts match fresh output from the Fortran ORNL-
-    Fusion/PARVMEC to machine precision (volume/aspect ~1e-15, geometry and iota ~1e-7
-    for cth_like, ~0 for solovev), so this pins the new iteration style to the
-    independent parallel implementation, not only to the vmec_8_52 control.
+    The committed fixed-boundary reference wouts match fresh output from the Fortran
+    ORNL-Fusion/PARVMEC to machine precision (volume/aspect ~1e-15, geometry and iota
+    ~1e-7 for cth_like, ~0 for solovev), so those cases pin the iteration style to the
+    independent parallel implementation, not only to the vmec_8_52 control. The
+    free-boundary case exercises the parts of the PARVMEC control that fixed-boundary
+    cases cannot: the pre-step time-step control interleaves with the NESTOR vacuum
+    update cadence (ivacskip keys on iter2 - iter1), and a revert re-evaluates the
+    free-boundary forces at the restored state. Its committed reference wout is the
+    repository reference equilibrium; a fresh ORNL-Fusion/PARVMEC free-boundary run of
+    the same input agrees with it to ~4e-4 (max abs) in the boundary Fourier
+    coefficients and ~1e-3 (rel) in volume -- the discretization floor between the two
+    independent NESTOR implementations -- while VMEC++'s parvmec style reproduces it
+    to ~1e-13, comfortably inside the asserted tolerances.
     """
     reference = vmecpp.VmecWOut.from_wout_file(TEST_DATA / f"wout_{case}.nc")
     base = vmecpp.VmecInput.from_file(TEST_DATA / f"{case}.json")
+    if base.lfreeb:
+        # the mgrid path in the input file is relative to src/vmecpp/cpp
+        base.mgrid_file = str(REPO_ROOT / "src" / "vmecpp" / "cpp" / base.mgrid_file)
     result = vmecpp.run(
         base.model_copy(update={"iteration_style": "parvmec"}),
         max_threads=1,
@@ -375,6 +388,50 @@ def test_parvmec_follows_ornl_parvmec_trace():
     np.testing.assert_allclose(fsqr[:n], ref_fsqr[:n], rtol=3.0e-3, atol=1.0e-9)
     np.testing.assert_allclose(fsqz[:n], ref_fsqz[:n], rtol=3.0e-3, atol=1.0e-9)
     np.testing.assert_allclose(fsql[:n], ref_fsql[:n], rtol=3.0e-3, atol=1.0e-9)
+
+
+def test_iteration_styles_discriminate_on_w7x_high_beta():
+    """The two controls behave qualitatively differently on a challenging W7-X case, and
+    still reach the same equilibrium.
+
+    The committed W7-X boundary (the most shaped example in the repository) at twice the
+    example pressure (volume-averaged beta ~ 8%) over a 25 -> 51 -> 99 multigrid
+    sequence drives high-beta transients after each interpolation. The VMEC 8.52 control
+    rides them with its tight 100x leash and escalating bad-Jacobian reverts (measured:
+    8 reverts, 5307 iterations), while the PARVMEC control's dual-residual minima and
+    permissive 1e4 leash glide through without a single revert (measured: 0 reverts,
+    3453 iterations). This pins the flow-control contrast the parvmec style exists for
+    -- on production-scale free-boundary cases the same contrast decides between
+    convergence and an ijacob give-up -- in a fixed-boundary setup that runs in CI. Both
+    controls must still converge to the same equilibrium.
+
+    The measured revert/iteration counts are identical for any thread count, so the
+    asserted margins (>= 4 vs 0 reverts, < 0.8x the iterations) are wide.
+    """
+    base = vmecpp.VmecInput.from_file(EXAMPLES_DATA / "w7x.json").model_copy(
+        update={
+            "pres_scale": 2.0,
+            "ns_array": np.array([25, 51, 99], dtype=np.int64),
+            "ftol_array": np.array([1.0e-11, 1.0e-11, 1.0e-11]),
+            "niter_array": np.array([2000, 2000, 4000], dtype=np.int64),
+        }
+    )
+    outputs = {}
+    for style in ("vmec_8_52", "parvmec"):
+        inp = base.model_copy(update={"iteration_style": style})
+        outputs[style] = vmecpp.run(inp, max_threads=1, verbose=False)
+
+    rr_852 = np.asarray(outputs["vmec_8_52"].wout.restart_reason_timetrace)
+    rr_par = np.asarray(outputs["parvmec"].wout.restart_reason_timetrace)
+    assert np.sum(rr_852 == RestartReason.BAD_JACOBIAN) >= 4
+    assert np.sum(rr_par == RestartReason.BAD_JACOBIAN) == 0
+    assert len(rr_par) < 0.8 * len(rr_852)
+
+    ref = outputs["vmec_8_52"].wout
+    par = outputs["parvmec"].wout
+    assert par.volume_p == pytest.approx(ref.volume_p, rel=1.0e-8)
+    assert par.betatotal == pytest.approx(ref.betatotal, rel=1.0e-4)
+    assert par.wb == pytest.approx(ref.wb, rel=1.0e-6)
 
 
 def test_iteration_styles_diverge_on_stiff_case():

@@ -167,6 +167,18 @@ class HandoverStorage {
   // [nZnT] vacuum magnetic pressure |B_vac^2|/2 at the plasma boundary
   Eigen::VectorXd vacuum_magnetic_pressure;
 
+  // [nZnT] R * (vacuum pressure + edge kinetic pressure) / deltaS at the LCFS:
+  // the free-boundary contribution to the MHD force at the boundary (rbsq in
+  // Fortran VMEC). Lives here, not in IdealMhdModel, because it must persist
+  // across multigrid steps: the first force evaluation of a new multigrid step
+  // runs before the vacuum solve and must use the previous step's value, like
+  // the persistent rbsq module array in Fortran VMEC (PARVMEC even broadcasts
+  // it explicitly in initialize_radial). Zeroing it at a multigrid transition
+  // leaves the edge force unbalanced by the full vacuum pressure term, which
+  // scales with ns and can trip the huge-initial-forces heuristic (irst=4)
+  // and its fatal axis reguess at large ns.
+  Eigen::VectorXd rBSq_LCFS;
+
   // [nZnT] cylindrical B^R of Nestor's vacuum magnetic field
   Eigen::VectorXd vacuum_b_r;
 

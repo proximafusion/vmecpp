@@ -926,8 +926,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     const int iter2 = force_iteration - bad_resets;
     // ADVANCE FOURIER AMPLITUDES OF R, Z, AND LAMBDA
     absl::StatusOr<bool> reached_checkpoint =
-        Evolve(checkpoint, iterations_before_checkpointing, fc_.delt0r,
-               thread_id, /*m_liter_flag=*/m_liter_flag);
+        Evolve(checkpoint, iterations_before_checkpointing, thread_id,
+               /*m_liter_flag=*/m_liter_flag);
     if (!reached_checkpoint.ok()) {
       return reached_checkpoint.status();
     }
@@ -1037,7 +1037,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         // fc_.ijacob is incremented in RestartIteration
         const double scale = fc_.ijacob < 50 ? 0.98 : 0.96;
 
-        fc_.delt0r = scale * indata_.delt;
+        // PARVMEC commented this reset out ("!changed in restart" in its
+        // eqsolve.f): only restart_iter's delt0r * 0.9 applies there.
+        if (indata_.iteration_style != IterationStyle::PARVMEC) {
+          fc_.delt0r = scale * indata_.delt;
+        }
 
         if (verbose_) {
           std::cout
@@ -1068,77 +1072,65 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
+    // For the PARVMEC iteration style, the time-step control already ran
+    // inside Evolve (between the convergence check and the descent step, as in
+    // PARVMEC's evolve.f), so the whole post-step control below is skipped.
+    if (indata_.iteration_style != IterationStyle::PARVMEC) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-    {
-      // TIME STEP CONTROL
+      {
+        // TIME STEP CONTROL
 
-      if (iter2 == iter1_ || fc_.res0 == -1) {
-        // if res0 has never been assigned (-1), give it the current value of
-        // fsq
-        fc_.res0 = fc_.fsq;
-      }
-
-      // res0 is the best force residual we got so far
-      fc_.res0 = std::min(fc_.res0, fc_.fsq);
-
-      // PARVMEC additionally tracks the invariant residual minimum res1. Keep
-      // it (and its inputs) off the vmec_8_52 path so the default control stays
-      // byte-for-byte unchanged.
-      if (indata_.iteration_style == IterationStyle::PARVMEC) {
-        const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
-        if (iter2 == iter1_ || fc_.res1 == -1) {
-          fc_.res1 = fsq_invariant;
+        if (iter2 == iter1_ || fc_.res0 == -1) {
+          // if res0 has never been assigned (-1), give it the current value of
+          // fsq
+          fc_.res0 = fc_.fsq;
         }
-        fc_.res1 = std::min(fc_.res1, fsq_invariant);
-      }
-    }
 
-    if (indata_.iteration_style == IterationStyle::PARVMEC) {
-      // PARVMEC control: store when both residual minima improve; revert via
-      // BAD_PROGRESS (delt0r /= 1.03, no ijacob) when either exceeds 1e4 * its
-      // minimum after 10 steps.
-      const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
-      if (fc_.fsq <= fc_.res0 && fsq_invariant <= fc_.res1) {
+        // res0 is the best force residual we got so far
+        fc_.res0 = std::min(fc_.res0, fc_.fsq);
+      }
+
+      if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
+        // Store current state (restart_reason=NO_RESTART)
+        // --> was able to reduce force consistenly over at least 10 iterations
         RestartIteration(fc_.delt0r, thread_id);
-      } else if ((iter2 - iter1_) > 10 && (fc_.fsq > 1.0e4 * fc_.res0 ||
-                                           fsq_invariant > 1.0e4 * fc_.res1)) {
+      } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
+        // Residuals are growing in time, reduce time step
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+      } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
+                 iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
+                 fc_.fsqr + fc_.fsqz > 1.0e-2) {
+        // quite some iterations and quite large forces
+        // --> restart with different timestep
+
+        // TODO(jons): maybe the threshold 0.01 is too large nowadays (at high
+        // resolution)
+        // --> this could help fix the cases where VMEC gets stuck immediately
+        // at ~2e-3
+        // --> lower threshold, e.g. 1e-4 ?
+
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
         fc_.restart_reason = RestartReason::BAD_PROGRESS;
       }
-    } else if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
-      // Store current state (restart_reason=NO_RESTART)
-      // --> was able to reduce force consistenly over at least 10 iterations
-      RestartIteration(fc_.delt0r, thread_id);
-    } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
-      // Residuals are growing in time, reduce time step
+    }  // iteration_style != PARVMEC
 
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-      fc_.restart_reason = RestartReason::BAD_JACOBIAN;
-    } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
-               iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
-               fc_.fsqr + fc_.fsqz > 1.0e-2) {
-      // quite some iterations and quite large forces
-      // --> restart with different timestep
-
-      // TODO(jons): maybe the threshold 0.01 is too large nowadays (at high
-      // resolution)
-      // --> this could help fix the cases where VMEC gets stuck immediately
-      // at ~2e-3
-      // --> lower threshold, e.g. 1e-4 ?
-
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-      fc_.restart_reason = RestartReason::BAD_PROGRESS;
-    }
-
-    const RestartReason restart_reason = fc_.restart_reason;
+    // For PARVMEC, any pending restart was consumed inside Evolve; the
+    // remaining reason can only be HUGE_INITIAL_FORCES (already handled by the
+    // axis-reguess path above or stored by the control), so never revert here
+    // and always take the printout/increment branch, matching PARVMEC's
+    // eqsolve, where iter2 advances on every pass.
+    const RestartReason restart_reason =
+        indata_.iteration_style == IterationStyle::PARVMEC
+            ? RestartReason::NO_RESTART
+            : fc_.restart_reason;
 // protect read of restart_reason above from write (in different thread) below
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1300,10 +1292,97 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 #endif  // _OPENMP
 }
 
+// PARVMEC's TimeStepControl (evolve.f in ORNL-Fusion/PARVMEC). Unlike the
+// VMEC 8.52 control, which runs at the end of an eqsolve iteration (after the
+// descent step), this runs between the force evaluation and the descent step:
+// decisions are made on the residuals of the current, just-evaluated state,
+// and the stored state is one whose residuals are known to have improved.
+// (PARVMEC moved the control here "TO AVOID STORING A POSSIBLE irst=2 STATE".)
+// Note that fc_.fsq still holds the *previous* iteration's preconditioned
+// residual sum at this point; it is only updated to the current one in the
+// damping section of Evolve afterwards, exactly as in the Fortran.
+// Returns true if a checkpoint was reached inside the forward-model
+// re-evaluation that follows a revert.
+absl::StatusOr<bool> Vmec::ParvmecTimeStepControl(
+    VmecCheckpoint checkpoint, int iterations_before_checkpointing,
+    int thread_id) {
+  const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    // first iteration of a time-step segment: seed both residual minima
+    parvmec_segment_start_ = (iter2_ == iter1_ || fc_.res0 == -1);
+    if (parvmec_segment_start_) {
+      fc_.res0 = fc_.fsq;
+      fc_.res1 = fsq_invariant;
+    }
+    fc_.res0 = std::min(fc_.res0, fc_.fsq);
+    fc_.res1 = std::min(fc_.res1, fsq_invariant);
+  }  // (the implicit barrier publishes res0/res1 and parvmec_segment_start_)
+
+  if (parvmec_segment_start_) {
+    // PARVMEC calls restart_iter here: store the segment's initial state, or
+    // revert it immediately if the forward model just flagged a bad Jacobian.
+    RestartIteration(fc_.delt0r, thread_id);
+  }
+
+  if (fc_.fsq <= fc_.res0 && fsq_invariant <= fc_.res1 &&
+      fc_.restart_reason == RestartReason::NO_RESTART) {
+    // both residual minima improved: store the current (pre-step) state
+    RestartIteration(fc_.delt0r, thread_id);
+  } else if ((iter2_ - iter1_) > 10 &&
+             (fc_.fsq > 1.0e4 * fc_.res0 || fsq_invariant > 1.0e4 * fc_.res1)) {
+    // residuals are growing: revert gently (delt0r /= 1.03, no ijacob).
+    // As in the Fortran, this may downgrade a pending BAD_JACOBIAN revert
+    // (delt0r * 0.9 and ijacob++) to the gentle BAD_PROGRESS one.
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    fc_.restart_reason = RestartReason::BAD_PROGRESS;
+  }
+
+  const RestartReason restart_reason = fc_.restart_reason;
+// protect the read of restart_reason above from its reset inside
+// RestartIteration below (performed by a potentially different thread)
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  if (restart_reason != RestartReason::NO_RESTART) {
+    // Retrieve the previous good state (or, for HUGE_INITIAL_FORCES, store
+    // the current one -- restart_iter's default branch does that too), then
+    // immediately re-evaluate the MHD forces at the restored state so that
+    // the descent step in Evolve starts from a consistent state/force pair.
+    RestartIteration(fc_.delt0r, thread_id);
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    iter1_ = iter2_;
+
+    absl::StatusOr<bool> reached_checkpoint = UpdateForwardModel(
+        checkpoint, iterations_before_checkpointing, thread_id);
+    if (!reached_checkpoint.ok() || *reached_checkpoint == true) {
+      return reached_checkpoint;
+    }
+
+    if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
+      // "Logic error in TimeStepControl!" in PARVMEC: the state that was
+      // stored as good no longer has a valid Jacobian.
+      return absl::InternalError(
+          "PARVMEC time-step control: Jacobian still bad after reverting to "
+          "the last good state");
+    }
+  }
+
+  return false;
+}
+
 absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
                                   int iterations_before_checkpointing,
-                                  double time_step, int thread_id,
-                                  bool& m_liter_flag) {
+                                  int thread_id, bool& m_liter_flag) {
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -1346,6 +1425,24 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   }
 
   // ...else no error and not converged --> keep going...
+
+  if (indata_.iteration_style == IterationStyle::PARVMEC) {
+    // PARVMEC runs its time-step control HERE, between the convergence check
+    // and the descent step (TimeStepControl in PARVMEC's evolve.f); the
+    // VMEC 8.52 control instead runs after the descent step, at the end of the
+    // iteration in SolveEquilibriumLoop.
+    absl::StatusOr<bool> control_reached_checkpoint = ParvmecTimeStepControl(
+        checkpoint, iterations_before_checkpointing, thread_id);
+    if (!control_reached_checkpoint.ok() ||
+        *control_reached_checkpoint == true) {
+      return control_reached_checkpoint;
+    }
+  }
+
+  // Read the time step only after the control: a PARVMEC revert reduces
+  // fc_.delt0r, and the damping and descent step below must see the updated
+  // value (in PARVMEC, TimeStepControl and evolve share delt0r).
+  const double time_step = fc_.delt0r;
 
   // COMPUTE DAMPING PARAMETER (DTAU) AND
   // EVOLVE R, Z, AND LAMBDA ARRAYS IN FOURIER SPACE
