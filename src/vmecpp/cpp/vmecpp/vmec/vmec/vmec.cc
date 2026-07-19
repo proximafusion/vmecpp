@@ -260,6 +260,14 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   fc_.ns_old = 0;
   fc_.delt0r = indata_.delt;
 
+  // Set when the solver gives up on a fundamentally broken equilibrium (e.g.
+  // persistently bad Jacobian) while
+  // indata_.return_outputs_even_if_not_converged is set: breaks out of both
+  // multigrid loops below so we fall through to ComputeOutputQuantities() with
+  // best-effort (likely unphysical) state, instead of hard-erroring, for
+  // debugging purposes.
+  bool giving_up = false;
+
   // retry with ns=3 if immediately fails at lowest radial resolution
   for (jacob_off_ = 0; jacob_off_ < 2; ++jacob_off_) {
     // jacob_off=1 indicates that an initial run with ns=3 shall be inserted
@@ -353,12 +361,25 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // not reach convergence
       if (status_ != VmecStatus::NORMAL_TERMINATION &&
           status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
-        const auto msg = absl::StrFormat(
-            "FATAL ERROR in SolveEquilibrium: %s\n"
-            "VmecINDATA had these contents:\n%s",
-            VmecStatusAsString(status_), *indata_.ToJson());
+        if (!indata_.return_outputs_even_if_not_converged) {
+          const auto msg = absl::StrFormat(
+              "FATAL ERROR in SolveEquilibrium: %s\n"
+              "VmecINDATA had these contents:\n%s",
+              VmecStatusAsString(status_), *indata_.ToJson());
 
-        return absl::InternalError(msg);
+          return absl::InternalError(msg);
+        }
+
+        if (verbose_) {
+          std::cout << absl::StrFormat(
+              "WARNING: FATAL ERROR in SolveEquilibrium: %s\n"
+              "return_outputs_even_if_not_converged is set, so returning "
+              "best-effort (likely unphysical) output for debugging "
+              "purposes.\n",
+              VmecStatusAsString(status_));
+        }
+        giving_up = true;
+        break;
       }
 
       // TODO(jons): insert lgiveup/fgiveup logic here
@@ -366,6 +387,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // If this point is reached, the current multi-grid step should have
       // properly converged.
     }  // igrid
+
+    if (giving_up) {
+      break;
+    }
 
     // if did not converge only because jacobian was bad
     // and the intermediate ns=3 run was not performed yet (jacob_off is still
@@ -748,6 +773,12 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
   absl::Status status_of_all_threads = absl::OkStatus();
   bool any_checkpoint_reached = false;
+  // Whether every thread that reported an error reported a kFailedPrecondition
+  // (a physical inconsistency that indata_.return_outputs_even_if_not_converged
+  // can recover from), as opposed to e.g. kInternal (a genuine code bug).
+  // Tracked independently of status_of_all_threads, which always collapses to
+  // kInternal once aggregated (see UpdateStatusForThread).
+  bool all_errors_are_recoverable = true;
 
   // Shared communication variable for all threads. Used to signal an early exit
   // of the main iteration loop.
@@ -801,6 +832,8 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
       if (s.ok()) {
         any_checkpoint_reached |= (*s == SolveEqLoopStatus::CHECKPOINT_REACHED);
       } else {
+        all_errors_are_recoverable &=
+            (s.status().code() == absl::StatusCode::kFailedPrecondition);
         UpdateStatusForThread(status_of_all_threads, thread_id, s.status());
       }
     }
@@ -811,6 +844,25 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   }
 
   if (!status_of_all_threads.ok()) {
+    if (indata_.return_outputs_even_if_not_converged &&
+        all_errors_are_recoverable) {
+      // A physical inconsistency (not a code bug) was detected deep in the
+      // MHD model, with no retry strategy available. Since outputs were
+      // requested even if not converged, don't hard-error here: record it as
+      // an unrecoverable status and let run() fall through to
+      // ComputeOutputQuantities() with best-effort (likely unphysical)
+      // state, for debugging purposes.
+      if (verbose_) {
+        std::cout << absl::StrFormat(
+            "WARNING: %s\n"
+            "return_outputs_even_if_not_converged is set, so returning "
+            "best-effort (likely unphysical) output for debugging "
+            "purposes.\n",
+            status_of_all_threads.message());
+      }
+      status_ = VmecStatus::UNRECOVERABLE_ERROR;
+      return false;
+    }
     return status_of_all_threads;
   }
 
@@ -930,12 +982,21 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
                status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
       // if something went totally wrong even in this initial steps, do not
       // continue at all
-      const auto msg = absl::StrFormat(
-          "FATAL ERROR in thread=%d. The solver failed during the first "
-          "iterations. This may happen if the initial boundary is poorly "
-          "shaped or if it isn't spectrally condensed enough.",
-          thread_id);
-      return absl::UnknownError(msg);
+      if (!indata_.return_outputs_even_if_not_converged) {
+        const auto msg = absl::StrFormat(
+            "FATAL ERROR in thread=%d. The solver failed during the first "
+            "iterations. This may happen if the initial boundary is poorly "
+            "shaped or if it isn't spectrally condensed enough.",
+            thread_id);
+        return absl::UnknownError(msg);
+      }
+
+      // return_outputs_even_if_not_converged: stop iterating on this thread
+      // instead of hard-erroring, so run() falls through to
+      // ComputeOutputQuantities() with best-effort (likely unphysical)
+      // state, for debugging purposes. status_ still reflects the failure
+      // (e.g. BAD_JACOBIAN), so run() will still surface a warning about it.
+      return SolveEqLoopStatus::NORMAL_TERMINATION;
     }
 
     if (checkpoint == VmecCheckpoint::EVOLVE &&
