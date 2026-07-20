@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784548185948,
+  "lastUpdate": 1784548680304,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -11094,6 +11094,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.61114909666666,
             "range": "stddev: 0.013952360354998276",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c3f8826592bbb1871367781559973834292fd5ac",
+          "message": "Near axis test (#670)\n\n* Near axis test\n\n* Fix CI: add test data file referenced by near-axis iota test\n\nThe test references near_axis_iota_nfp4.json but the previous commit\nadded the orphaned iota_05_near_axis.json instead, causing a\nFileNotFoundError. Commit the file the test actually uses and drop\nthe unreferenced one.",
+          "timestamp": "2026-07-20T13:53:13+02:00",
+          "tree_id": "833fb20c5884899df8ff6dfe900c8787cdadd58a",
+          "url": "https://github.com/proximafusion/vmecpp/commit/c3f8826592bbb1871367781559973834292fd5ac"
+        },
+        "date": 1784548678888,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.36849818860000594,
+            "range": "stddev: 0.0037482874490110665",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.37062464800000045,
+            "range": "stddev: 0.010062588555572387",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.2929564046666733,
+            "range": "stddev: 0.015273216556690028",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.3140115933333334,
+            "range": "stddev: 0.005563952424243056",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.055133224000002,
+            "range": "stddev: 0.024775841778895042",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.306187560000003,
+            "range": "stddev: 0.008211437262716136",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 9.041516684999996,
+            "range": "stddev: 0.03089525999183018",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
