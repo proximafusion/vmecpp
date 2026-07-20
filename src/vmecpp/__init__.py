@@ -529,6 +529,24 @@ class VmecInput(BaseModelWithNumpy):
                         ntor_new=ntor_final,
                     ),
                 )
+
+        # The 1D magnetic-axis arrays must have length ntor+1. Shorter arrays
+        # simply omit trailing (zero) coefficients and are silently zero-padded;
+        # longer arrays are rejected rather than silently truncated.
+        ntor_plus_one_fields = ["raxis_c", "zaxis_s"]
+        if self.lasym:
+            ntor_plus_one_fields.extend(["raxis_s", "zaxis_c"])
+        expected_axis_len = ntor_final + 1
+        for field in ntor_plus_one_fields:
+            current_value = getattr(self, field)
+            if current_value is None:
+                continue
+            if np.size(current_value) != expected_axis_len:
+                setattr(
+                    self,
+                    field,
+                    VmecInput.resize_1d_axis_coeff(current_value, ntor_new=ntor_final),
+                )
         return self
 
     @pydantic.model_validator(mode="after")
@@ -547,6 +565,38 @@ class VmecInput(BaseModelWithNumpy):
                     )
                     raise ValueError(msg)
         return self
+
+    @staticmethod
+    def resize_1d_axis_coeff(
+        coeff: jt.Float[np.ndarray, "ntor_plus_1"],
+        ntor_new: int,
+    ) -> jt.Float[np.ndarray, "ntor_new_plus_1"]:
+        """Resizes a 1D magnetic-axis Fourier coefficient array to length ntor_new+1.
+
+        Arrays shorter than ntor_new+1 are zero-padded (the omitted trailing
+        coefficients are implicitly zero). Arrays longer than ntor_new+1 are
+        rejected to avoid silently truncating user-data.
+
+        Args:
+            coeff: A 1D NumPy array of axis coefficients (length ntor+1).
+            ntor_new: The new number of toroidal modes.
+
+        Examples:
+            >>> VmecInput.resize_1d_axis_coeff(np.array([1.0, 2.0]), ntor_new=3)
+            array([1., 2., 0., 0.])
+        """
+        assert ntor_new >= 0
+        coeff = np.asarray(coeff, dtype=float).ravel()
+        new_len = ntor_new + 1
+        if coeff.size > new_len:
+            msg = (
+                f"length of axis coefficient array ({coeff.size}) exceeds ntor+1 ({new_len}). "
+                f"Please truncate r_axis_c and zaxis_s to a size consistent with ntor={ntor_new}."
+            )
+            raise ValueError(msg)
+        resized_coeff = np.zeros(new_len)
+        resized_coeff[: coeff.size] = coeff
+        return resized_coeff
 
     @staticmethod
     def resize_2d_coeff(

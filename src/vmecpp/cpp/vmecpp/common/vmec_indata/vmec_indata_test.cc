@@ -244,6 +244,60 @@ TEST(TestVmecINDATA, ToJson) {
   }
 }  // ToJson
 
+TEST(TestVmecINDATA, ShortAxisArraysArePadded) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+
+  json j = json::parse(*indata_json);
+  ASSERT_EQ(j.at("ntor"), 4);
+
+  // Drop the two trailing coefficients from each axis array; the omitted
+  // coefficients should be silently zero-padded back to length ntor+1.
+  const std::vector<double> short_raxis_c = {
+      0.786037734951267, -0.0302978726119071, 0.000915258048528683};
+  const std::vector<double> short_zaxis_s = {0.0, 0.0273158409510113,
+                                             -0.000937096584979097};
+  j["raxis_c"] = short_raxis_c;
+  j["zaxis_s"] = short_zaxis_s;
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(j.dump());
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  ASSERT_EQ(indata->raxis_c.size(), indata->ntor + 1);
+  ASSERT_EQ(indata->zaxis_s.size(), indata->ntor + 1);
+  EXPECT_THAT(indata->raxis_c, ElementsAre(DoubleEq(0.786037734951267),
+                                           DoubleEq(-0.0302978726119071),
+                                           DoubleEq(0.000915258048528683),
+                                           DoubleEq(0.0), DoubleEq(0.0)));
+  EXPECT_THAT(indata->zaxis_s,
+              ElementsAre(DoubleEq(0.0), DoubleEq(0.0273158409510113),
+                          DoubleEq(-0.000937096584979097), DoubleEq(0.0),
+                          DoubleEq(0.0)));
+
+  EXPECT_TRUE(IsConsistent(*indata, /*enable_info_messages=*/false).ok());
+}  // ShortAxisArraysArePadded
+
+TEST(TestVmecINDATA, OverlongAxisArraysAreRejected) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+
+  json j = json::parse(*indata_json);
+  ASSERT_EQ(j.at("ntor"), 4);
+
+  // Append an extra coefficient beyond ntor+1: this must be rejected rather
+  // than silently truncated, since truncation would drop user-provided data.
+  std::vector<double> long_raxis_c = j.at("raxis_c").get<std::vector<double>>();
+  long_raxis_c.push_back(1.0e-7);
+  j["raxis_c"] = long_raxis_c;
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(j.dump());
+  ASSERT_FALSE(indata.ok());
+  EXPECT_THAT(std::string(indata.status().message()),
+              testing::HasSubstr("exceeds ntor+1"));
+}  // OverlongAxisArraysAreRejected
+
 TEST(TestVmecINDATA, HDF5IO) {
   // setup
   absl::StatusOr<std::string> indata_json =
