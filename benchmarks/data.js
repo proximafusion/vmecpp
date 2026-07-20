@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784472442164,
+  "lastUpdate": 1784548055077,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -11021,6 +11021,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 7.148560834999974,
             "range": "stddev: 0.00778780271957266",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "204ab37f987c67a588da552b066ff283060671ac",
+          "message": "Allow axis coefficients in input file to be smaller than ntor (pad silently instead of raising) (#672)",
+          "timestamp": "2026-07-20T13:43:01+02:00",
+          "tree_id": "b19e6525e2db142b2c2c91d89b4aff8c94b493ec",
+          "url": "https://github.com/proximafusion/vmecpp/commit/204ab37f987c67a588da552b066ff283060671ac"
+        },
+        "date": 1784548053846,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3842214152000224,
+            "range": "stddev: 0.005629146191740354",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3865268016000073,
+            "range": "stddev: 0.004776448556860936",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.130077806999983,
+            "range": "stddev: 0.02667596060747959",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2711025169999932,
+            "range": "stddev: 0.0010997610891597743",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.0485689770000213,
+            "range": "stddev: 0.04279919736861728",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.0616729709999695,
+            "range": "stddev: 0.013620603979495273",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.61114909666666,
+            "range": "stddev: 0.013952360354998276",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
