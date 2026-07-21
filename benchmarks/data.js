@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784548821348,
+  "lastUpdate": 1784635077840,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -11167,6 +11167,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 9.041516684999996,
             "range": "stddev: 0.03089525999183018",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f5dbf764fb3627cfaea72747a06a77fcc32e7938",
+          "message": "Add QUASR free-boundary integration tests (#656)\n\n* Add QUASR free-boundary integration tests\n\nUse QUASR SIMSOPT configurations (surfaces + coils) as a free-boundary\nconvergence test bed. For each configuration three physics regimes are\nexercised (vacuum, ~1% beta, ~2% beta with net toroidal current) at\nns=[8,24,71], mpol=ntor=10.\n\n- boundary from the outermost QUASR flux surface,\n- external field via VMEC++'s own mgrid response table (built once per\n  config and reused across profiles); the makegrid coils file is written\n  directly so the field computation stays inside VMEC++,\n- phiedge from the enclosed vacuum toroidal flux (Biot-Savart).\n\nNon-convergence surfaces as a test failure on purpose: the suite doubles\nas a convergence diagnostic. Marked 'slow'; resolution and config IDs are\noverridable via environment variables for a cheaper tier.\n\n* Check in QUASR configs via Git LFS for network-free CI\n\nCommit the 13 QUASR SIMSOPT serial files under tests/data/quasr (tracked\nwith Git LFS) so the free-boundary suite runs without network access. The\nloader prefers the checked-in copy and falls back to downloading from the\nQUASR database only if a requested ID is missing locally. The default ID set\nnow covers all checked-in configurations.\n\nExclude the data directory from the whitespace/EOL pre-commit fixers so the\nserial files stay byte-exact.\n\n* Add physics-correctness assertions to QUASR free-boundary tests\n\nFor converged runs, validate the physics rather than convergence alone:\n\n- vacuum: the free-boundary LCFS reproduces the QUASR boundary, compared by\n  enclosed volume (a parametrisation-invariant geometric measure; absolute\n  shape agreement is mgrid-resolution limited),\n- finite beta: the magnetic axis shifts outboard (Shafranov shift) relative to\n  the vacuum axis,\n- net current: the prescribed curtor appears in the equilibrium,\n- new cross-check test: the vacuum free-boundary equilibrium agrees with an\n  independent fixed-boundary equilibrium on the same boundary (magnetic axis\n  and volume).\n\nSolves are memoised in a module-scoped cache so each (config, profile) runs at\nmost once even when reused across assertions (e.g. the Shafranov comparison\nagainst the vacuum axis).\n\n* Fix CI: deselect slow QUASR tests by default; exact phiedge; hardcode defaults\n\n- Deselect the long-running 'slow' suite by default (pytest addopts\n  -m 'not slow'); it was running in CI and timing out. Run explicitly with\n  'pytest -m slow'.\n- Compute phiedge exactly as the coil vector-potential line integral\n  (oint A.dl, Stokes) instead of a masked grid integral of B_phi, which was\n  biased ~5% low and shrank the free-boundary plasma; the vacuum LCFS now\n  reproduces the QUASR boundary to <1% in volume (verified NESTOR and\n  only_coils agree, so the residual is not a NESTOR artifact). This also drops\n  the matplotlib dependency.\n- Import SIMSOPT unconditionally (fail loudly if missing) rather than\n  importorskip; the slow marker is the guard.\n- Remove the VMECPP_QUASR_* environment overrides now that good defaults are\n  fixed in the module; widen the mgrid margin so current-carrying LCFS stay\n  inside the grid.\n\n* Run QUASR free-boundary suite in CI; xfail on non-convergence\n\nThe slow suite is deselected from the normal test workflow, so add a\ndedicated workflow that runs 'pytest -m slow tests/test_free_boundary_quasr.py'\non every push to main and on manual dispatch (workflow_dispatch).\n\nNon-convergence is now marked xfail instead of failing, so the job stays green\nwhile remaining a convergence-diagnostic bed: a configuration that starts\nconverging (e.g. after a solver improvement) surfaces as an xpass. Converged-\nbut-unphysical results still fail hard. The Shafranov check is skipped (not\nfailed) when only its vacuum reference is unavailable.\n\n* Add example: QUASR free-boundary cross-section plots + summary table\n\nexamples/free_boundary_quasr_cross_sections.py solves the three profiles for\neach QUASR configuration (reusing the integration-test module's setup), saves a\ncross-section PNG per config overlaying each converged LCFS on the QUASR target\nboundary (magnetic axes marked), and prints/writes a summary table (status,\nvolume, vol/target, magnetic-axis R, Shafranov shift, beta, ctor). Resolution,\nconfig IDs and OpenMP threads are CLI options so it can run cheaply.",
+          "timestamp": "2026-07-21T11:53:01Z",
+          "tree_id": "ba011a35bab17c80276cd7e541c131a00764e749",
+          "url": "https://github.com/proximafusion/vmecpp/commit/f5dbf764fb3627cfaea72747a06a77fcc32e7938"
+        },
+        "date": 1784635075780,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.40932175860002645,
+            "range": "stddev: 0.003873625372726814",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.4128469784000117,
+            "range": "stddev: 0.009977715879278298",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.1822960123333055,
+            "range": "stddev: 0.025394590737103807",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2805593303333087,
+            "range": "stddev: 0.007286912887140572",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.078171268999995,
+            "range": "stddev: 0.07177041644894143",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.08552493099999,
+            "range": "stddev: 0.01854050337635264",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.769586464666665,
+            "range": "stddev: 0.03370160580854951",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
