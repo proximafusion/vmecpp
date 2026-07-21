@@ -63,6 +63,14 @@ Documentation = "https://github.com/proximafusion/vmecpp#readme"
 Issues = "https://github.com/proximafusion/vmecpp/issues"
 Source = "https://github.com/proximafusion/vmecpp"
 
+[tool.pytest.ini_options]
+# Long-running integration tests are deselected by default; run them explicitly
+# with `pytest -m slow`.
+addopts = "-m 'not slow'"
+markers = [
+  "slow: long-running integration tests (run with '-m slow')",
+]
+
 [tool.scikit-build]
 # To build with debug symbols, change this to "RelWithDebInfo".
 cmake.build-type = "Release" # "RelWithDebInfo"
