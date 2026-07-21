@@ -174,6 +174,33 @@ if(VMECPP_USE_CUDA)
   message(STATUS "VMECPP_USE_CUDA: enabled, CUDA arches=${CMAKE_CUDA_ARCHITECTURES}")
 endif()
 
+# HIP/ROCm-backed toroidal FFT (optional): the AMD backend of the same GPU
+# iteration body. Set BEFORE add_subdirectory, as for the CUDA option.
+option(VMECPP_USE_HIP "Use HIP/ROCm-backed toroidal FFT kernels (requires ROCm + hipFFT)" OFF)
+if(VMECPP_USE_HIP)
+  if(VMECPP_USE_CUDA)
+    message(FATAL_ERROR
+            "VMECPP_USE_CUDA and VMECPP_USE_HIP are mutually exclusive: they "
+            "are two backends for the same GPU iteration body. Enable one.")
+  endif()
+  if(MSVC)
+    message(FATAL_ERROR "VMECPP_USE_HIP is supported on Linux only.")
+  endif()
+  enable_language(HIP)
+  find_package(hip REQUIRED)
+  find_package(hipfft REQUIRED)
+  set(CMAKE_HIP_STANDARD 20)
+  set(CMAKE_HIP_STANDARD_REQUIRED ON)
+  # hipError_t is [[nodiscard]] where cudaError_t is not; these kernels check
+  # status through a trailing cuda_check(cudaGetLastError()).
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -fPIC -Wno-unused-value")
+  if(NOT DEFINED CMAKE_HIP_ARCHITECTURES)
+    # gfx90a covers MI210/MI250, gfx942 covers MI300.
+    set(CMAKE_HIP_ARCHITECTURES "gfx90a;gfx942")
+  endif()
+  message(STATUS "VMECPP_USE_HIP: enabled, HIP arches=${CMAKE_HIP_ARCHITECTURES}")
+endif()
+
 # Assemble the VMEC++ source tree.
 # Start out with ABSCAB sources - no need for a separate library for ABSCAB.
 set(vmecpp_sources ${abscab_sources})
@@ -225,6 +252,22 @@ if(VMECPP_USE_CUDA)
   target_link_libraries(vmecpp_core PRIVATE CUDA::cudart CUDA::cufft CUDA::cublas)
   target_compile_definitions(vmecpp_core PUBLIC VMECPP_USE_CUDA)
   message(STATUS "VMECPP_USE_CUDA: linked CUDA::cudart + CUDA::cufft + CUDA::cublas")
+endif()
+
+# HIP-backed toroidal FFT (links hipFFT + the HIP runtime). VMECPP_USE_CUDA
+# marks that the GPU iteration body is built, which is what the host dispatch
+# sites test; VMECPP_USE_HIP selects the backend within the GPU sources.
+if(VMECPP_USE_HIP)
+  # The GPU units carry the .cu suffix, which CMake would route to a CUDA
+  # compiler.
+  set(_vmecpp_gpu_sources ${vmecpp_sources})
+  list(FILTER _vmecpp_gpu_sources INCLUDE REGEX "\\.cu$")
+  set_source_files_properties(${_vmecpp_gpu_sources} PROPERTIES LANGUAGE HIP)
+  # hip::host, not hip::device: the latter propagates -x hip to every source
+  # of this mixed target, including the .cc files.
+  target_link_libraries(vmecpp_core PRIVATE hip::host hip::hipfft)
+  target_compile_definitions(vmecpp_core PUBLIC VMECPP_USE_CUDA VMECPP_USE_HIP)
+  message(STATUS "VMECPP_USE_HIP: linked hip::host + hip::hipfft")
 endif()
 
 target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synchronization absl::strings absl::str_format absl::log absl::string_view absl::check absl::status absl::statusor)

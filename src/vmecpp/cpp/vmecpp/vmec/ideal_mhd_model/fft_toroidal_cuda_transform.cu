@@ -983,6 +983,27 @@ void FourierToReal3DSymmFastPoloidalCuda(
                              "7-bit limbs, exact s32 accumulation)\n");
       }
     }
+#ifdef VMECPP_USE_HIP
+    // Not built under HIP; clear the gates so a set variable falls back to
+    // the production scatter instead of an empty dispatch arm.
+    if (scatter_custom_gemm_wmma_env || scatter_i8gemm_env ||
+        scatter_i8ozaki_env || scatter_cublas_fp32_env ||
+        scatter_cublas_ozaki_env) {
+      static bool hip_annex_warned = false;
+      if (!hip_annex_warned) {
+        hip_annex_warned = true;
+        std::fprintf(stderr,
+                     "[fft_toroidal_cuda] the tensor-core / cuBLAS scatter "
+                     "experiments are NVIDIA-only and are not built under "
+                     "HIP; using the production scatter\n");
+      }
+      scatter_custom_gemm_wmma_env = 0;
+      scatter_i8gemm_env = 0;
+      scatter_i8ozaki_env = 0;
+      scatter_cublas_fp32_env = 0;
+      scatter_cublas_ozaki_env = 0;
+    }
+#endif  // VMECPP_USE_HIP
     // The wmma tile geometry admits mpol up to 12 (4 * mpol <= K_PAD)
     // and nThetaReduced up to 16 (M_TILE); larger inputs stay on the
     // production scatter with a one-time notice.
@@ -1068,6 +1089,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
                      nZeta, n_cfg * ns_local);
       dim3 dd_tpb(TPB_L, 1, 1);
       if (scatter_i8gemm_env) {
+#ifndef VMECPP_USE_HIP  // not built under HIP; gate cleared above
         const int K_g = 16 * mpol;
         const int N_g = 16 * nThetaReduced;
         const int B_g = n_cfg * ns_local * nZeta;
@@ -1152,7 +1174,9 @@ void FourierToReal3DSymmFastPoloidalCuda(
           cuda_check(cudaGetLastError(),
                      "k_scatter_rcon_zcon_fp64 launch (i8gemm path)");
         }
+#endif  // VMECPP_USE_HIP
       } else if (scatter_i8ozaki_env) {
+#ifndef VMECPP_USE_HIP  // not built under HIP; gate cleared above
         // int8 tensor-core dispatch with exact s32 accumulation; the
         // FP64 output needs no scalar recovery pass. One warp per band.
         const int TPB_I8 = 32 * i8_limbs;
@@ -1199,7 +1223,9 @@ void FourierToReal3DSymmFastPoloidalCuda(
             S.d_rCon, S.d_zCon);
         cuda_check(cudaGetLastError(),
                    "k_scatter_rcon_zcon_fp64 launch (i8ozaki path)");
+#endif  // VMECPP_USE_HIP
       } else if (scatter_custom_gemm_wmma_env) {
+#ifndef VMECPP_USE_HIP  // not built under HIP; gate cleared above
         // TF32 tensor-core dispatch via wmma::mma_sync. One block per
         // (cfg*ns_local, k) tile; 256 threads (8 warps). 3-slice Ozaki
         // produces 9 cross-product wmma chains × 6 K-chunks = 54
@@ -1244,6 +1270,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
             S.d_rCon, S.d_zCon);
         cuda_check(cudaGetLastError(),
                    "k_scatter_rcon_zcon_fp64 launch (wmma path)");
+#endif  // VMECPP_USE_HIP
       } else if (scatter_custom_gemm_env) {
         // Custom Veltkamp-Dekker Tile GEMM. One block per (cfg*ns_local,
         // k) tile; TPB_CG threads cover the l-axis within nThetaReduced.
@@ -1268,6 +1295,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
         cuda_check(cudaGetLastError(),
                    "k_scatter_main_and_con_custom_gemm launch");
       } else if (scatter_cublas_ozaki_env) {
+#ifndef VMECPP_USE_HIP  // not built under HIP; gate cleared above
         // 4-GEMM Ozaki at GEMM level. Each FP64 operand split into FP32
         // hi/lo; 4 cuBLAS calls produce the four cross-products; DD-pair
         // unpack reassembles ~48-bit precision per output.
@@ -1381,7 +1409,9 @@ void FourierToReal3DSymmFastPoloidalCuda(
             S.d_rCon, S.d_zCon);
         cuda_check(cudaGetLastError(),
                    "k_scatter_rcon_zcon_fp64 launch");
+#endif  // VMECPP_USE_HIP
       } else if (scatter_cublas_fp32_env) {
+#ifndef VMECPP_USE_HIP  // not built under HIP; gate cleared above
         // Lazy cuBLAS init.
         if (!S.cublas) {
           if (cublasCreate(&S.cublas) != CUBLAS_STATUS_SUCCESS) {
@@ -1493,6 +1523,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
             S.d_xmpq, S.d_sqrtSF,
             S.d_rCon, S.d_zCon);
         cuda_check(cudaGetLastError(), "k_scatter_rcon_zcon_fp64 launch");
+#endif  // VMECPP_USE_HIP
       } else if (scatter_dd_fp64mul_env) {
         k_scatter_main_and_con_dd_fp64mul<<<dd_blocks, dd_tpb, 0, st>>>(
             S.n_config_max, ns_local, mpol, nZeta, nThetaReduced, nThetaEff,

@@ -7183,6 +7183,9 @@ __global__ __launch_bounds__(64, 4) void k_scatter_main_and_con_custom_gemm(
 
 
 
+// To the end of k_i8b_row_exp: the TF32 wmma scatter and its int8 staging
+// kernels, NVIDIA-only through nvcuda::wmma.
+#ifndef VMECPP_USE_HIP
 // TF32 truncation: round an FP32 value to 10-bit mantissa (TF32 format).
 // wmma::mma_sync applies this truncation internally; doing it explicitly
 // at slice-construction time keeps the slice magnitudes consistent.
@@ -7682,6 +7685,8 @@ __global__ void k_i8b_row_exp(int n_config, int ns_local, int mpol,
 }
 
 
+
+#endif  // VMECPP_USE_HIP (TF32 wmma scatter + int8 staging kernels)
 
 // k_tau_minmax: one block per config; threads cooperate to find min and max of
 // tau across the per-config half-grid tau array, write 2 scalars [min, max]

@@ -53,6 +53,41 @@ neither is used by the CUDA path. At runtime the vcpkg and CUDA `bin`
 directories must be on the module loader's search path; from Python, add them
 with `os.add_dll_directory` before importing `vmecpp`.
 
+### AMD GPUs (HIP/ROCm)
+
+The same GPU iteration body builds for AMD GPUs through HIP, selected by a
+separate option (Linux only, mutually exclusive with `VMECPP_USE_CUDA`):
+
+```sh
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DVMECPP_USE_HIP=ON
+cmake --build build
+```
+
+Requirements: ROCm with `hipcc` and hipFFT. `CMAKE_HIP_ARCHITECTURES`
+defaults to `gfx90a;gfx942` (MI210/MI250 and MI300).
+
+The `.cu` translation units are compiled as HIP; `hip_compat.cuh` maps the
+CUDA runtime, cuFFT, and warp-intrinsic surface they use onto HIP, 1:1 for
+the runtime, stream, event, graph, and FFT calls. The masked `__shfl_*_sync`
+intrinsics map to the width-32 legacy forms, which partition the 64-lane
+wavefront into 32-lane groups and preserve the 32-lane warp semantics the
+kernels assume; `__syncwarp` maps to a wave-level barrier. The second
+`__launch_bounds__` parameter is min blocks per multiprocessor in CUDA and
+min waves per execution unit in HIP, so only the first parameter is kept and
+the occupancy hint is left to the AMD register allocator.
+
+The five tensor-core and cuBLAS scatter experiments
+(`VMECPP_SCATTER_CUSTOM_GEMM_WMMA`, `VMECPP_SCATTER_I8GEMM`,
+`VMECPP_SCATTER_I8OZAKI`, `VMECPP_SCATTER_CUBLAS_FP32`,
+`VMECPP_SCATTER_CUBLAS_OZAKI`) are NVIDIA-only and compiled out; setting one
+falls back to the production scatter with a one-time notice. The remaining
+runtime controls, the batched mode, and the graphs apply unchanged.
+
+The HIP build defines `VMECPP_USE_CUDA`, which every host dispatch site tests
+to mean the GPU iteration body is built, together with `VMECPP_USE_HIP`,
+which selects the backend inside the GPU translation units. The host solver
+code is identical between the two backends.
+
 ## Scope
 
 The CUDA build supports fixed-boundary and free-boundary,

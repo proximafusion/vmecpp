@@ -7,7 +7,9 @@ list (APPEND vmecpp_sources
   ${CMAKE_CURRENT_SOURCE_DIR}/ideal_mhd_model.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ideal_mhd_model.h
 )
-if(VMECPP_USE_CUDA)
+# The GPU iteration body; one set of units for both backends, tagged
+# LANGUAGE HIP by the parent CMakeLists under VMECPP_USE_HIP.
+if(VMECPP_USE_CUDA OR VMECPP_USE_HIP)
   list(APPEND vmecpp_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/fft_toroidal_cuda.h
     ${CMAKE_CURRENT_SOURCE_DIR}/fft_toroidal_cuda_common.cuh
@@ -18,5 +20,8 @@ if(VMECPP_USE_CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/fft_toroidal_cuda_control.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/fft_toroidal_cuda_io.cu
   )
+  if(VMECPP_USE_HIP)
+    list(APPEND vmecpp_sources ${CMAKE_CURRENT_SOURCE_DIR}/hip_compat.cuh)
+  endif()
 endif()
 set (vmecpp_sources "${vmecpp_sources}" PARENT_SCOPE)
