@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784635077840,
+  "lastUpdate": 1784635228135,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -35514,6 +35514,162 @@ window.BENCHMARK_DATA = {
             "value": 0.00494906618878558,
             "unit": "seconds",
             "extra": "iterations: 286\ncpu: 0.004930181003496504 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f5dbf764fb3627cfaea72747a06a77fcc32e7938",
+          "message": "Add QUASR free-boundary integration tests (#656)\n\n* Add QUASR free-boundary integration tests\n\nUse QUASR SIMSOPT configurations (surfaces + coils) as a free-boundary\nconvergence test bed. For each configuration three physics regimes are\nexercised (vacuum, ~1% beta, ~2% beta with net toroidal current) at\nns=[8,24,71], mpol=ntor=10.\n\n- boundary from the outermost QUASR flux surface,\n- external field via VMEC++'s own mgrid response table (built once per\n  config and reused across profiles); the makegrid coils file is written\n  directly so the field computation stays inside VMEC++,\n- phiedge from the enclosed vacuum toroidal flux (Biot-Savart).\n\nNon-convergence surfaces as a test failure on purpose: the suite doubles\nas a convergence diagnostic. Marked 'slow'; resolution and config IDs are\noverridable via environment variables for a cheaper tier.\n\n* Check in QUASR configs via Git LFS for network-free CI\n\nCommit the 13 QUASR SIMSOPT serial files under tests/data/quasr (tracked\nwith Git LFS) so the free-boundary suite runs without network access. The\nloader prefers the checked-in copy and falls back to downloading from the\nQUASR database only if a requested ID is missing locally. The default ID set\nnow covers all checked-in configurations.\n\nExclude the data directory from the whitespace/EOL pre-commit fixers so the\nserial files stay byte-exact.\n\n* Add physics-correctness assertions to QUASR free-boundary tests\n\nFor converged runs, validate the physics rather than convergence alone:\n\n- vacuum: the free-boundary LCFS reproduces the QUASR boundary, compared by\n  enclosed volume (a parametrisation-invariant geometric measure; absolute\n  shape agreement is mgrid-resolution limited),\n- finite beta: the magnetic axis shifts outboard (Shafranov shift) relative to\n  the vacuum axis,\n- net current: the prescribed curtor appears in the equilibrium,\n- new cross-check test: the vacuum free-boundary equilibrium agrees with an\n  independent fixed-boundary equilibrium on the same boundary (magnetic axis\n  and volume).\n\nSolves are memoised in a module-scoped cache so each (config, profile) runs at\nmost once even when reused across assertions (e.g. the Shafranov comparison\nagainst the vacuum axis).\n\n* Fix CI: deselect slow QUASR tests by default; exact phiedge; hardcode defaults\n\n- Deselect the long-running 'slow' suite by default (pytest addopts\n  -m 'not slow'); it was running in CI and timing out. Run explicitly with\n  'pytest -m slow'.\n- Compute phiedge exactly as the coil vector-potential line integral\n  (oint A.dl, Stokes) instead of a masked grid integral of B_phi, which was\n  biased ~5% low and shrank the free-boundary plasma; the vacuum LCFS now\n  reproduces the QUASR boundary to <1% in volume (verified NESTOR and\n  only_coils agree, so the residual is not a NESTOR artifact). This also drops\n  the matplotlib dependency.\n- Import SIMSOPT unconditionally (fail loudly if missing) rather than\n  importorskip; the slow marker is the guard.\n- Remove the VMECPP_QUASR_* environment overrides now that good defaults are\n  fixed in the module; widen the mgrid margin so current-carrying LCFS stay\n  inside the grid.\n\n* Run QUASR free-boundary suite in CI; xfail on non-convergence\n\nThe slow suite is deselected from the normal test workflow, so add a\ndedicated workflow that runs 'pytest -m slow tests/test_free_boundary_quasr.py'\non every push to main and on manual dispatch (workflow_dispatch).\n\nNon-convergence is now marked xfail instead of failing, so the job stays green\nwhile remaining a convergence-diagnostic bed: a configuration that starts\nconverging (e.g. after a solver improvement) surfaces as an xpass. Converged-\nbut-unphysical results still fail hard. The Shafranov check is skipped (not\nfailed) when only its vacuum reference is unavailable.\n\n* Add example: QUASR free-boundary cross-section plots + summary table\n\nexamples/free_boundary_quasr_cross_sections.py solves the three profiles for\neach QUASR configuration (reusing the integration-test module's setup), saves a\ncross-section PNG per config overlaying each converged LCFS on the QUASR target\nboundary (magnetic axes marked), and prints/writes a summary table (status,\nvolume, vol/target, magnetic-axis R, Shafranov shift, beta, ctor). Resolution,\nconfig IDs and OpenMP threads are CLI options so it can run cheaply.",
+          "timestamp": "2026-07-21T11:53:01Z",
+          "tree_id": "ba011a35bab17c80276cd7e541c131a00764e749",
+          "url": "https://github.com/proximafusion/vmecpp/commit/f5dbf764fb3627cfaea72747a06a77fcc32e7938"
+        },
+        "date": 1784635227842,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00003282273190934991,
+            "unit": "seconds",
+            "extra": "iterations: 39299\ncpu: 3.281660507900965e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00004141162393672802,
+            "unit": "seconds",
+            "extra": "iterations: 33824\ncpu: 4.140430478358563e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0006004191994818016,
+            "unit": "seconds",
+            "extra": "iterations: 2369\ncpu: 0.0006002868725200507 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014339665897556994,
+            "unit": "seconds",
+            "extra": "iterations: 976\ncpu: 0.0014338428493852464 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.000158569889231337,
+            "unit": "seconds",
+            "extra": "iterations: 6798\ncpu: 0.00015856829685201532 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00013921337284848197,
+            "unit": "seconds",
+            "extra": "iterations: 10073\ncpu: 0.0001391920827955922 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00032242444634300387,
+            "unit": "seconds",
+            "extra": "iterations: 4345\ncpu: 0.00032232657054085165 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002836377048858563,
+            "unit": "seconds",
+            "extra": "iterations: 4949\ncpu: 0.0002835728872499495 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005160048329487564,
+            "unit": "seconds",
+            "extra": "iterations: 2714\ncpu: 0.0005159970386882832 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0004521463103968688,
+            "unit": "seconds",
+            "extra": "iterations: 3168\ncpu: 0.0004520482048611114 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017599682741611254,
+            "unit": "seconds",
+            "extra": "iterations: 791\ncpu: 0.0017599312313527193 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0019436444720348936,
+            "unit": "seconds",
+            "extra": "iterations: 721\ncpu: 0.0019435699708737872 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00006438623452121778,
+            "unit": "seconds",
+            "extra": "iterations: 21338\ncpu: 6.440154063173665e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00049985383846971,
+            "unit": "seconds",
+            "extra": "iterations: 2811\ncpu: 0.0004998432813945163 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0029982832761911247,
+            "unit": "seconds",
+            "extra": "iterations: 468\ncpu: 0.002998187797008523 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00006153665596804143,
+            "unit": "seconds",
+            "extra": "iterations: 22979\ncpu: 6.15502105835797e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0004910428573603196,
+            "unit": "seconds",
+            "extra": "iterations: 2933\ncpu: 0.000491003053187882 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.002925304189386727,
+            "unit": "seconds",
+            "extra": "iterations: 478\ncpu: 0.0029251429916318334 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.0002874919471928177,
+            "unit": "seconds",
+            "extra": "iterations: 4884\ncpu: 0.0002874788622031123 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0011831348537897444,
+            "unit": "seconds",
+            "extra": "iterations: 1189\ncpu: 0.0011830988687973095 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005344189760339169,
+            "unit": "seconds",
+            "extra": "iterations: 262\ncpu: 0.005343880232824425 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.004569320802968177,
+            "unit": "seconds",
+            "extra": "iterations: 307\ncpu: 0.004554848416938112 seconds\nthreads: 1"
           }
         ]
       }
