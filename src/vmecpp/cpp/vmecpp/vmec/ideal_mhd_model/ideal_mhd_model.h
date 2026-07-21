@@ -9,6 +9,7 @@
 #include <climits>
 #include <memory>
 #include <span>
+#include <vector>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -51,15 +52,16 @@ class IdealMhdModel {
                 const FourierBasisFastPoloidal* t, RadialProfiles* m_p,
                 const VmecConstants* constants, ThreadLocalStorage* m_ls,
                 HandoverStorage* m_h, const RadialPartitioning* r,
-                FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
+                const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
+                int vac_num_threads, int signOfJacobian, int nvacskip,
                 VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
 
 #ifdef VMECPP_USE_CUDA
   // Batched free-boundary: one vacuum solver per configuration slot
-  // (entry 0 is the solver also held by m_fb_). The vacuum block in
-  // update() loops the geometry handover, vacuum solve, and edge
+  // (entry 0 is the full-grid solver fb_vac_[0] owned by Vmec). The vacuum
+  // block in update() loops the geometry handover, vacuum solve, and edge
   // pressure over the configurations when this is populated.
   void SetPerCfgFreeBoundary(std::vector<FreeBoundaryBase*> fbs) {
     fb_per_cfg_ = std::move(fbs);
@@ -95,7 +97,11 @@ class IdealMhdModel {
       bool& m_need_restart, int& m_last_preconditioner_update,
       int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
       const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
-      const int iterations_before_checkpointing = INT_MAX, bool verbose = true);
+      const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
+      bool always_fix_m1_gauge = false);
+
+  std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
+  void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
@@ -440,8 +446,16 @@ class IdealMhdModel {
   ThreadLocalStorage& m_ls_;
   HandoverStorage& m_h_;
   const RadialPartitioning& r_;
-  FreeBoundaryBase* m_fb_;
+  // Free-boundary vacuum solvers, shared across all radial threads and sized to
+  // m_vac_num_threads_ (decoupled from the radial thread count). The vacuum
+  // solve is driven from a nested parallel region in update(): a single radial
+  // thread spawns a team of m_vac_num_threads_ threads, each invoking
+  // (*m_fb_vac_)[vac_thread_id]->update() on its tangential slice. Owned by
+  // Vmec; may be nullptr / empty for fixed-boundary runs.
+  const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac_;
+  int m_vac_num_threads_;
   VacuumPressureState& m_vacuum_pressure_state_;
+  std::int64_t force_evaluation_count_ = 0;
 #ifdef VMECPP_USE_CUDA
   std::vector<FreeBoundaryBase*> fb_per_cfg_;
   // Asynchronous NESTOR worker (VMECPP_FB_ASYNC_NESTOR); null unless the env
@@ -462,9 +476,6 @@ class IdealMhdModel {
 
   // 1/4: 1/2 from d(sHalf)/ds and 1/2 from interpolation
   static constexpr double dSHalfDsInterp = 0.25;
-
-  // TODO(jons): understand what this is (related to radial preconditioner)
-  static constexpr double dampingFactor = 2.0;
 
   // from INDATA: flag to select between constrained-iota and
   // constrained-toroidal-current

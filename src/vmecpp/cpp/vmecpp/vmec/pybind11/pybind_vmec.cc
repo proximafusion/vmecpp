@@ -246,8 +246,11 @@ class VmecModel {
   // lambda-constraint components. That raw gradient is what gradient-based
   // optimizers minimizing the MHD energy functional need; mhd_energy is already
   // set earlier in update(), so it is valid at the checkpoint too.
-  void Evaluate(int iter1, int iter2, bool precondition = true) {
-    ++force_eval_count_;
+  // The native iteration leaves the m=1 gauge free until the previous Z
+  // residual crosses its threshold. External evaluations fix it immediately so
+  // F(x) does not depend on the previously evaluated state.
+  void Evaluate(int iter1, int iter2, bool precondition = true,
+                bool always_fix_m1_gauge = true) {
     bool need_restart = false;
     std::string error_message;
     const vmecpp::VmecCheckpoint checkpoint =
@@ -275,7 +278,7 @@ class VmecModel {
           *vmec_->decomposed_f_[0], *vmec_->physical_f_[0], need_restart,
           last_preconditioner_update_, last_full_update_nestor_, vmec_->fc_,
           iter1, iter2, checkpoint, checkpoint_after,
-          /*verbose=*/false);
+          /*verbose=*/false, always_fix_m1_gauge);
       if (!s.ok()) {
         error_message = std::string(s.status().message());
       }
@@ -290,8 +293,12 @@ class VmecModel {
   // Total forward-model (force) evaluations since construction or the last
   // reset. Counts every Evaluate, including those inside hessian_vector_product
   // and preconditioner assembly, for a fair cross-optimizer cost comparison.
-  long force_eval_count() const { return force_eval_count_; }
-  void reset_force_eval_count() { force_eval_count_ = 0; }
+  std::int64_t force_eval_count() const {
+    return vmec_->m_[0]->forceEvaluationCount();
+  }
+  void reset_force_eval_count() const {
+    vmec_->m_[0]->resetForceEvaluationCount();
+  }
 
   // The Garabedian-style time step (PerformTimeStep): for each Fourier
   // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
@@ -358,7 +365,8 @@ class VmecModel {
   // multi-grid sequencing; call this between solve_equilibrium calls to drive
   // the coarse->fine ramp from Python. `new_ns` must be finer than the current
   // ns (multi-grid only refines).
-  void RefineTo(int new_ns) {
+  void RefineTo(int new_ns, std::optional<vmecpp::MultigridInterpolationScheme>
+                                interpolation = std::nullopt) {
     vmecpp::Vmec &v = *vmec_;
     if (new_ns <= v.fc_.ns) {
       throw std::runtime_error("VmecModel.refine_to: new_ns (" +
@@ -396,7 +404,7 @@ class VmecModel {
     // InitializeRadial (rmsPhiP accumulates in evalRadialProfiles).
     v.constants_.reset();
     v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, new_ns, ns_old,
-                       delt0, std::nullopt);
+                       delt0, std::nullopt, interpolation);
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
   }
@@ -542,7 +550,6 @@ class VmecModel {
   int last_preconditioner_update_ = 0;
   int last_full_update_nestor_ = 0;
   bool last_need_restart_ = false;
-  long force_eval_count_ = 0;
 };
 
 }  // anonymous namespace
@@ -685,6 +692,14 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::native_enum<vmecpp::IterationStyle>(m, "IterationStyle", "enum.Enum")
       .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52)
       .value("PARVMEC", vmecpp::IterationStyle::PARVMEC)
+      .export_values()
+      .finalize();
+
+  py::native_enum<vmecpp::MultigridInterpolationScheme>(
+      m, "MultigridInterpolationScheme", "enum.Enum")
+      .value("LINEAR", vmecpp::MultigridInterpolationScheme::kLinear)
+      .value("CUBIC", vmecpp::MultigridInterpolationScheme::kCubic)
+      .value("CUBIC_RHO", vmecpp::MultigridInterpolationScheme::kCubicRho)
       .export_values()
       .finalize();
 
@@ -3094,7 +3109,8 @@ configuration slot.
       .def_static("create", &VmecModel::Create, py::arg("indata"),
                   py::arg("ns"), py::arg("initial_state") = std::nullopt)
       .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
-           py::arg("precondition") = true)
+           py::arg("precondition") = true,
+           py::arg("always_fix_m1_gauge") = true)
       .def_property_readonly("need_restart", &VmecModel::need_restart)
       .def("perform_time_step", &VmecModel::PerformTimeStep,
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
@@ -3105,7 +3121,8 @@ configuration slot.
       .def("reset_to_initial_guess", &VmecModel::ResetToInitialGuess)
       .def("recompute_axis", &VmecModel::RecomputeAxis)
       .def("reinitialize", &VmecModel::Reinitialize)
-      .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"))
+      .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"),
+           py::arg("interpolation") = py::none())
       .def("solve", &VmecModel::Solve)
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))

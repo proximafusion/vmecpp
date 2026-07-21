@@ -21,6 +21,7 @@
 #include <omp.h>
 #endif  // _OPENMP
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -77,7 +78,8 @@ TEST(TestVmec, CheckErrorOnNonConvergence) {
   const absl::StatusOr<bool> status = vmec.run();
 
   CHECK(!status.ok());
-  CHECK_EQ(status.status().message(), "VMEC++ did not converge");
+  CHECK(
+      absl::StrContains(status.status().message(), "VMEC++ did not converge"));
 }  // CheckErrorOnNonConvergence
 
 TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
@@ -189,8 +191,14 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   ASSERT_TRUE(indata.ok());
   ASSERT_EQ(indata->ns_array.size(), 2u);
 
-  const auto output = vmecpp::run(*indata);
+  const auto output = vmecpp::run(*indata, std::nullopt, 1);
   ASSERT_TRUE(output.ok());
+
+  // Regression guard for issue #330/#640 and other changes to the multigrid
+  // convergence path. 344 with the historical unbalanced stage entry; 321
+  // since the vacuum state is seeded across multigrid transitions (the
+  // second stage enters force-balanced instead of kicking the boundary).
+  EXPECT_EQ(output->wout.niter, 321);
 }  // MultiGridFreeBoundary
 
 // nThetaReduced > 32 (here 44, from ntheta = 86) exercises the multi-warp

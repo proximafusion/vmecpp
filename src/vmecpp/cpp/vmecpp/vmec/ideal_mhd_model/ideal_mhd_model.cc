@@ -48,6 +48,10 @@ std::vector<double>& MutableFsqrPerCfgCache();
 #endif
 
 using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingMaxPower;
+using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingReferenceM;
+using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerDampingFactor;
+using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerZeroGuard;
 using vmecpp::vmec_algorithm_constants::kOddParity;
 
 namespace {
@@ -203,7 +207,8 @@ IdealMhdModel::IdealMhdModel(
     FlowControl* m_fc, const Sizes* s, const FourierBasisFastPoloidal* t,
     RadialProfiles* m_p, const VmecConstants* constants,
     ThreadLocalStorage* m_ls, HandoverStorage* m_h, const RadialPartitioning* r,
-    FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
+    const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
+    int vac_num_threads, int signOfJacobian, int nvacskip,
     VacuumPressureState* m_vacuum_pressure_state)
     : m_fc_(*m_fc),
       s_(*s),
@@ -213,7 +218,8 @@ IdealMhdModel::IdealMhdModel(
       m_ls_(*m_ls),
       m_h_(*m_h),
       r_(*r),
-      m_fb_(m_fb),
+      m_fb_vac_(m_fb_vac),
+      m_vac_num_threads_(vac_num_threads),
       m_vacuum_pressure_state_(*m_vacuum_pressure_state),
 #ifdef VMECPP_USE_FFTX
       fft_plans_(s->nZeta, s->nfp, s->mpol),
@@ -224,8 +230,10 @@ IdealMhdModel::IdealMhdModel(
   CHECK_GE(nvacskip, 0)
       << "Should never happen: should be checked by VmecINDATA";
   if (m_fc_.lfreeb) {
-    CHECK(m_fb_ != nullptr)
+    CHECK(m_fb_vac_ != nullptr && !m_fb_vac_->empty())
         << "Free-boundary configuration requires a Free-boundary solver";
+    CHECK_GT(m_vac_num_threads_, 0)
+        << "Free-boundary configuration requires vac_num_threads > 0";
   }
 
   // init members
@@ -603,9 +611,15 @@ absl::StatusOr<bool> IdealMhdModel::update(
     bool& m_need_restart, int& m_last_preconditioner_update,
     int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
     const int iter2, const VmecCheckpoint& checkpoint,
-    const int iterations_before_checkpointing, bool verbose) {
+    const int iterations_before_checkpointing, bool verbose,
+    bool always_fix_m1_gauge) {
   VMECPP_PHASE_TIMER("update");
+  ++force_evaluation_count_;
+
 #ifdef VMECPP_USE_CUDA
+  // The device path applies zeroZForceForM1 unconditionally (see
+  // DecomposeAndConstrainCuda below), which subsumes always_fix_m1_gauge.
+  (void)always_fix_m1_gauge;
   // Stage the per-configuration active mask to the device. The implementation
   // is a no-op at single-configuration execution; under multi-configuration
   // execution it transfers the host-side mask vector to the device-resident
@@ -939,8 +953,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // back in funct3d, free-boundary force contribution active?
   // This can even happen in the first iteration when hot-restarted.
-  if (m_fc_.lfreeb &&
-      (iter2 > 1 || m_vacuum_pressure_state_ != VacuumPressureState::kOff)) {
+  if (m_fc_.lfreeb && (iter2 > 1 || m_vacuum_pressure_state_ ==
+                                        VacuumPressureState::kInitialized)) {
 // protect read of m_vacuum_pressure_state_ below from write above
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1065,8 +1079,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
         m_need_restart = false;
       } else {
         for (int vac_cfg = 0; vac_cfg < n_vac_cfg; ++vac_cfg) {
-          FreeBoundaryBase* fb_cfg =
-              fb_per_cfg_.empty() ? m_fb_ : fb_per_cfg_[vac_cfg];
+          // Under the CUDA build the vacuum solve is not partitioned
+          // (vac_num_threads_ == 1; see Vmec::SetupVacuumSolvers), so
+          // (*m_fb_vac_)[0] is the full-tangential-grid solver.
+          FreeBoundaryBase* fb_cfg = fb_per_cfg_.empty() ? (*m_fb_vac_)[0].get()
+                                                         : fb_per_cfg_[vac_cfg];
           vmecpp::FlushVacuumHostDataCuda(vac_cfg, r_, s_, r1_e, r1_o, z1_e,
                                           totalPressure, m_p_.presH, m_p_.bucoH,
                                           m_p_.bvcoH);
@@ -1255,13 +1272,52 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #pragma omp barrier
 #endif  // _OPENMP
       const double netToroidalCurrent = m_h_.cTor / MU_0;
-      bool reached_checkpoint = m_fb_->update(
-          m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
-          m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
-          signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
-          &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
-          iter2 >= iterations_before_checkpointing);
-      if (reached_checkpoint) {
+      const bool at_checkpoint_iteration =
+          iter2 >= iterations_before_checkpointing;
+
+      // Run the free-boundary vacuum solve in a parallel region nested inside
+      // the persistent radial parallel region. This gives the vacuum solve its
+      // own thread count (m_vac_num_threads_), decoupled from the radial thread
+      // count (which is capped at ns/2). A single radial thread drives it; the
+      // other radial threads wait at the implicit barrier at the end of the
+      // 'omp single'. NESTOR reads its inputs from and writes its outputs to
+      // shared handover storage (m_h_), so the nested team - not the radial
+      // team - performs the whole solve.
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+#ifdef _OPENMP
+#pragma omp parallel num_threads(m_vac_num_threads_)
+#endif  // _OPENMP
+        {
+          int vac_thread_id = 0;
+#ifdef _OPENMP
+          vac_thread_id = omp_get_thread_num();
+          // Correctness depends on the nested team being granted exactly
+          // m_vac_num_threads_ threads: the tangential slices only cover the
+          // whole grid if every vac_thread_id runs. Fail loudly rather than
+          // silently under-cover the grid.
+          CHECK_EQ(omp_get_num_threads(), m_vac_num_threads_)
+              << "Nested vacuum parallel region was not granted the requested "
+                 "number of threads";
+#endif  // _OPENMP
+          const bool rc = (*m_fb_vac_)[vac_thread_id]->update(
+              m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
+              m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
+              signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
+              &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
+              at_checkpoint_iteration);
+          // All nested threads follow identical control flow and compute the
+          // same checkpoint result; record it once for the radial team.
+          if (vac_thread_id == 0) {
+            m_h_.vacuum_reached_checkpoint = rc;
+          }
+        }
+      }
+      // The 'omp single' implicit barrier publishes the shared vacuum outputs
+      // and the broadcast flag to all radial threads.
+      if (m_h_.vacuum_reached_checkpoint) {
         return true;
       }
 
@@ -1291,12 +1347,16 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
       if (m_h_.rBtor * m_h_.bSubVVac < 0.0) {
-        return absl::InternalError(
+        // A physical inconsistency, not a code bug: kFailedPrecondition (as
+        // opposed to kInternal) marks this as a condition that
+        // indata.return_outputs_even_if_not_converged can recover from by
+        // returning best-effort output instead of hard-erroring.
+        return absl::FailedPreconditionError(
             "IdealMHDModel::update: rbtor and bsubvvac must have the same "
             "sign - maybe flip the sign of phiedge or the sign of the coil "
             "currents");
       } else if (fabs((m_h_.cTor - m_h_.bSubUVac) / m_h_.rBtor) > 0.01) {
-        return absl::InternalError(
+        return absl::FailedPreconditionError(
             "IdealMHDModel::update: VAC-VMEC I_TOR MISMATCH : BOUNDARY MAY "
             "ENCLOSE EXT. COIL");
       }
@@ -1429,9 +1489,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #ifdef VMECPP_USE_CUDA
     // Device-side composition of decomposeInto, m1Constraint, and
     // zeroZForceForM1. The wrapper applies zeroZForceForM1 on every
-    // lthreed iteration, where the CPU path gates it on fsqz < 1e-6 or
-    // iter2 < 2; the unconditional form holds the m = 1 constraint
-    // exactly throughout and leaves the convergence direction unchanged.
+    // lthreed iteration, where the CPU path gates it on
+    // always_fix_m1_gauge, fsqz < 1e-6, or iter2 < 2; the unconditional
+    // form holds the m = 1 constraint exactly throughout and leaves the
+    // convergence direction unchanged.
     DecomposeAndConstrainCuda(
         r_, s_, m_fc_, 1.0 / std::numbers::sqrt2, m_p_.scalxc,
         m_decomposed_f.frcc.data(), m_decomposed_f.frss.data(),
@@ -1447,7 +1508,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
     m_decomposed_f.m1Constraint(1.0 / std::numbers::sqrt2);
 
     // v8.50: ADD iter2<2 so reset=<WOUT_FILE> works
-    if (m_fc.fsqz < 1.0e-6 || iter2 < 2) {
+    const bool fix_m1_gauge =
+        always_fix_m1_gauge || m_fc.fsqz < 1.0e-6 || iter2 < 2;
+    if (fix_m1_gauge) {
       // ensure that the m=1 constraint is satisfied exactly
       // --> the corresponding m=1 coeffs of R,Z are constrained to be zero
       //     and thus must not be "forced" (by the time evol using gc) away from
@@ -2646,18 +2709,21 @@ void IdealMhdModel::updateRadialPreconditioner() {
 void IdealMhdModel::updateLambdaPreconditioner() {
 #ifdef VMECPP_USE_CUDA
   {
-    UpdateLambdaPreconditionerCuda(r_, s_, dampingFactor, constants_.lamscale,
-                                   bLambda.data(), dLambda.data(),
-                                   cLambda.data(), lambdaPreconditioner.data());
+    UpdateLambdaPreconditionerCuda(r_, s_, kLambdaPreconditionerDampingFactor,
+                                   constants_.lamscale, bLambda.data(),
+                                   dLambda.data(), cLambda.data(),
+                                   lambdaPreconditioner.data());
     return;
   }
 #endif  // VMECPP_USE_CUDA
   // bLambda, dLambda, cLambda
   // lambdaPreconditioner
 
-  // TODO(jons): what is this ?
-  const double pFactor =
-      dampingFactor / (4.0 * constants_.lamscale * constants_.lamscale);
+  // 1/lamscale^2 converts the stiffness of the internally rescaled lambda
+  // coefficients; the remaining kLambdaPreconditionerDampingFactor / 4 = 0.5
+  // is an inherited, unexplained damping (see vmec_algorithm_constants.h).
+  const double pFactor = kLambdaPreconditionerDampingFactor /
+                         (4.0 * constants_.lamscale * constants_.lamscale);
 
   // evaluate preconditioning matrix elements on half-grid
   // on every accessible half-grid point
@@ -2725,21 +2791,23 @@ void IdealMhdModel::updateLambdaPreconditioner() {
 
         int tmm = m * m;
 
-        // TODO(jons): what is this ? (see below)
-        double pwr = std::min(tmm / (16.0 * 16.0), 8.0);
+        // sqrt(s)^pwr high-m damping; ~1 for m << kLambdaHighMDampingReferenceM
+        double pwr = std::min(tmm / (kLambdaHighMDampingReferenceM *
+                                     kLambdaHighMDampingReferenceM),
+                              kLambdaHighMDampingMaxPower);
         double tmn = 2.0 * m * n * s_.nfp;
 
+        // diagonal of the second variation of the magnetic energy with
+        // respect to lambda_mn, with flux-surface-averaged metric coefficients
         double faclam =
             tnn * bLambda[jF - r_.nsMinF] +
             tmn * copysign(dLambda[jF - r_.nsMinF], bLambda[jF - r_.nsMinF]) +
             tmm * cLambda[jF - r_.nsMinF];
 
-        // avoid zero eigenvalue (TODO(jons): what is this ?)
         if (faclam == 0.0) {
-          faclam = -1.0e-10;
+          faclam = kLambdaPreconditionerZeroGuard;
         }
 
-        // Damps m > 16 modes (TODO(jons): why ?)
         // NOTE: This also computes the inverse of each entry in
         // lambdaPreconditioner !
         lambdaPreconditioner[idx_mn] =
@@ -2941,10 +3009,15 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
     }
 
     if (arNorm == 0.0) {
-      return absl::InternalError("arNorm should never be 0.0.");
+      // A degenerate (e.g. self-intersecting) flux surface, not a code bug:
+      // kFailedPrecondition (as opposed to kInternal) marks this as a
+      // condition that indata.return_outputs_even_if_not_converged can
+      // recover from by returning best-effort output instead of
+      // hard-erroring.
+      return absl::FailedPreconditionError("arNorm should never be 0.0.");
     }
     if (azNorm == 0.0) {
-      return absl::InternalError("azNorm should never be 0.0.");
+      return absl::FailedPreconditionError("azNorm should never be 0.0.");
     }
 
     double tcon_base =

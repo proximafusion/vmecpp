@@ -5,6 +5,8 @@
 #include "vmecpp/vmec/vmec/vmec.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <limits>
@@ -350,6 +352,14 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   fc_.ResizeForBatch(vmecpp::GetNConfigMaxCuda());
 #endif  // VMECPP_USE_CUDA
 
+  // Set when the solver gives up on a fundamentally broken equilibrium (e.g.
+  // persistently bad Jacobian) while
+  // indata_.return_outputs_even_if_not_converged is set: breaks out of both
+  // multigrid loops below so we fall through to ComputeOutputQuantities() with
+  // best-effort (likely unphysical) state, instead of hard-erroring, for
+  // debugging purposes.
+  bool giving_up = false;
+
   // retry with ns=3 if immediately fails at lowest radial resolution
   for (jacob_off_ = 0; jacob_off_ < 2; ++jacob_off_) {
     // jacob_off=1 indicates that an initial run with ns=3 shall be inserted
@@ -452,12 +462,25 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // not reach convergence
       if (status_ != VmecStatus::NORMAL_TERMINATION &&
           status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
-        const auto msg = absl::StrFormat(
-            "FATAL ERROR in SolveEquilibrium: %s\n"
-            "VmecINDATA had these contents:\n%s",
-            VmecStatusAsString(status_), *indata_.ToJson());
+        if (!indata_.return_outputs_even_if_not_converged) {
+          const auto msg = absl::StrFormat(
+              "FATAL ERROR in SolveEquilibrium: %s\n"
+              "VmecINDATA had these contents:\n%s",
+              VmecStatusAsString(status_), *indata_.ToJson());
 
-        return absl::InternalError(msg);
+          return absl::InternalError(msg);
+        }
+
+        if (verbose_) {
+          std::cout << absl::StrFormat(
+              "WARNING: FATAL ERROR in SolveEquilibrium: %s\n"
+              "return_outputs_even_if_not_converged is set, so returning "
+              "best-effort (likely unphysical) output for debugging "
+              "purposes.\n",
+              VmecStatusAsString(status_));
+        }
+        giving_up = true;
+        break;
       }
 
       // TODO(jons): insert lgiveup/fgiveup logic here
@@ -465,6 +488,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // If this point is reached, the current multi-grid step should have
       // properly converged.
     }  // igrid
+
+    if (giving_up) {
+      break;
+    }
 
     // if did not converge only because jacobian was bad
     // and the intermediate ns=3 run was not performed yet (jacob_off is still
@@ -480,7 +507,17 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 
   if (status_ != VmecStatus::SUCCESSFUL_TERMINATION &&
       !indata_.return_outputs_even_if_not_converged) {
-    const auto msg = "VMEC++ did not converge";
+    // By the time we get here, a bad-Jacobian-type status has already been
+    // reported (with more specific diagnostics) from inside the multigrid
+    // loop above, so status_ is always NORMAL_TERMINATION: the last
+    // multigrid stage exhausted its iteration budget without reaching
+    // ftol. Diagnostics help distinguish 'almost-converged' runs from 'failing'
+    const auto msg = absl::StrFormat(
+        "VMEC++ did not converge: %s. Completed %d/%d iterations at ns = "
+        "%d without meeting ftol = %.3e; final force residuals were "
+        "fsqr = %.3e, fsqz = %.3e, fsql = %.3e.",
+        VmecStatusAsString(status_), iter2_ - 1, fc_.niterv, fc_.nsval,
+        fc_.ftolv, fc_.fsqr, fc_.fsqz, fc_.fsql);
     return absl::InternalError(msg);
   }
 
@@ -544,11 +581,143 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   return false;
 }  // run
 
+void Vmec::SetupVacuumSolvers() {
+  // Compute the vacuum thread count once; it is ns-independent (depends only on
+  // the tangential grid size nZnT and the thread budget).
+#ifdef VMECPP_USE_CUDA
+  // The CUDA iteration body drives the vacuum solve serially on the host,
+  // one full-tangential-grid solver call per configuration (see the vacuum
+  // block in IdealMhdModel::update), so the tangential grid is not
+  // partitioned and fb_vac_[0] is the full-grid solver.
+  vac_num_threads_ = 1;
+#else
+  vac_num_threads_ = vmec_adjust_vacuum_num_threads(fc_.max_threads(), s_.nZnT);
+#endif  // VMECPP_USE_CUDA
+
+#ifdef _OPENMP
+  // The vacuum solve runs in a parallel region nested inside the persistent
+  // radial parallel region (see IdealMhdModel::update). Allow at least two
+  // active parallel levels so the nested team is actually granted its threads
+  // rather than being serialized to one.
+  // omp_set_nested is deprecated but still needed by older libgomp runtimes.
+  omp_set_nested(1);
+  omp_set_max_active_levels(2);
+#endif  // _OPENMP
+
+  fb_vac_.resize(vac_num_threads_);
+  tp_vac_.resize(vac_num_threads_);
+
+  for (int vac_thread_id = 0; vac_thread_id < vac_num_threads_;
+       ++vac_thread_id) {
+    tp_vac_[vac_thread_id] = std::make_unique<TangentialPartitioning>(
+        s_.nZnT, vac_num_threads_, vac_thread_id);
+
+    if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
+      fb_vac_[vac_thread_id] = std::make_unique<Nestor>(
+          &s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          std::span<double>(matrixShare.data(), matrixShare.size()),
+          std::span<double>(bvecShare.data(), bvecShare.size()),
+          std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                            h_.vacuum_magnetic_pressure.size()),
+          std::span<int>(iPiv.data(), iPiv.size()),
+          std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+          std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+    } else if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS) {
+      fb_vac_[vac_thread_id] = std::make_unique<OnlyCoils>(
+          &s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                            h_.vacuum_magnetic_pressure.size()),
+          std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+          std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+    } else {
+      LOG(FATAL) << absl::StrCat("free boundary method '",
+                                 ToString(indata_.free_boundary_method),
+                                 "' not implemented yet");
+    }  // indata_.free_boundary_method
+  }  // vac_thread_id
+
+#ifdef VMECPP_USE_CUDA
+  // Batched free-boundary: one further NESTOR instance per configuration
+  // slot, each with its own persistent response matrix, right-hand side,
+  // and pivots. They share the mgrid provider and the HandoverStorage
+  // output spans; the vacuum loop in IdealMhdModel::update consumes each
+  // configuration's outputs before the next solver call overwrites them.
+  // Like fb_vac_, the instances persist across multigrid stages. All spans
+  // captured here are sized in the Vmec constructor (ns-independent).
+  const int n_cfg_fb = vmecpp::GetNConfigMaxCuda();
+  if (n_cfg_fb > 1 &&
+      indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
+    const int nf = s_.ntor;
+    const int mf = s_.mpol + 1;
+    const int mnpd = (2 * nf + 1) * (mf + 1);
+    fb_matrix_per_cfg_.resize(n_cfg_fb - 1);
+    fb_ipiv_per_cfg_.resize(n_cfg_fb - 1);
+    fb_bvec_per_cfg_.resize(n_cfg_fb - 1);
+    fb_extra_cfg_.resize(n_cfg_fb - 1);
+    for (int c = 0; c + 1 < n_cfg_fb; ++c) {
+      fb_matrix_per_cfg_[c].setZero(mnpd * mnpd);
+      fb_ipiv_per_cfg_[c].setZero(mnpd);
+      fb_bvec_per_cfg_[c].setZero(mnpd);
+      fb_extra_cfg_[c] = std::make_unique<Nestor>(
+          &s_, tp_vac_[0].get(), &mgrid_,
+          std::span<double>(fb_matrix_per_cfg_[c].data(),
+                            fb_matrix_per_cfg_[c].size()),
+          std::span<double>(fb_bvec_per_cfg_[c].data(),
+                            fb_bvec_per_cfg_[c].size()),
+          std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                            h_.vacuum_magnetic_pressure.size()),
+          std::span<int>(fb_ipiv_per_cfg_[c].data(),
+                         fb_ipiv_per_cfg_[c].size()),
+          std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+          std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+    }
+  }
+
+  // Asynchronous NESTOR (single configuration): a thread-private Nestor
+  // with its own response matrix, right-hand side, pivots, and
+  // field/pressure output buffers, so the worker thread can run it
+  // concurrently with the device iteration without racing the shared
+  // HandoverStorage. Persists across multigrid stages like fb_vac_. The
+  // async NESTOR overlap is on by default for single-configuration NESTOR
+  // free-boundary runs; set VMECPP_FB_ASYNC_NESTOR=0 to force the
+  // synchronous path.
+  const char* async_env = std::getenv("VMECPP_FB_ASYNC_NESTOR");
+  const bool async_disabled =
+      (async_env != nullptr && std::atoi(async_env) == 0);
+  if (n_cfg_fb == 1 && !async_disabled &&
+      indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
+    const int nf = s_.ntor;
+    const int mf = s_.mpol + 1;
+    const int mnpd = (2 * nf + 1) * (mf + 1);
+    fb_async_matrix_.setZero(mnpd * mnpd);
+    fb_async_ipiv_.setZero(mnpd);
+    fb_async_bvec_.setZero(mnpd);
+    fb_async_bsqvac_.setZero(h_.vacuum_magnetic_pressure.size());
+    fb_async_br_.setZero(h_.vacuum_b_r.size());
+    fb_async_bphi_.setZero(h_.vacuum_b_phi.size());
+    fb_async_bz_.setZero(h_.vacuum_b_z.size());
+    fb_async_ = std::make_unique<Nestor>(
+        &s_, tp_vac_[0].get(), &mgrid_,
+        std::span<double>(fb_async_matrix_.data(), fb_async_matrix_.size()),
+        std::span<double>(fb_async_bvec_.data(), fb_async_bvec_.size()),
+        std::span<double>(fb_async_bsqvac_.data(), fb_async_bsqvac_.size()),
+        std::span<int>(fb_async_ipiv_.data(), fb_async_ipiv_.size()),
+        std::span<double>(fb_async_br_.data(), fb_async_br_.size()),
+        std::span<double>(fb_async_bphi_.data(), fb_async_bphi_.size()),
+        std::span<double>(fb_async_bz_.data(), fb_async_bz_.size()));
+  }
+#endif  // VMECPP_USE_CUDA
+}  // SetupVacuumSolvers
+
 // initialize_radial quantities, return true if a checkpoint was reached
 bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
-    const std::optional<HotRestartState>& initial_state) {
+    const std::optional<HotRestartState>& initial_state,
+    std::optional<MultigridInterpolationScheme> interpolation_scheme) {
   // Stage info output is now handled by logger_.BeginStage() in run().
 
   // Set timestep control parameters
@@ -562,6 +731,24 @@ bool Vmec::InitializeRadial(
   fc_.res0 = -1;
   fc_.res1 = -1;
   m_delt0 = indata_.delt;
+
+  // On a free-boundary multigrid continuation stage, the vacuum solution of
+  // the converged coarser stage is still exactly valid, because the radial
+  // interpolation changes neither the angular grid nor the LCFS geometry.
+  // Re-marking the vacuum state as kInitialized here (mirroring the
+  // hot-restart path in run()) makes the first iteration of the new stage
+  // run the free-boundary block, so the LCFS force enters balanced by the
+  // vacuum magnetic pressure. Otherwise iteration 1 skips the vacuum update
+  // (the `iter2 > 1` gate in IdealMhdModel::update) and applies the edge
+  // force with rBSq = 0 -- the raw, unbalanced plasma pressure -- which
+  // kicks the boundary in a single step and costs a long NESTOR ring-down
+  // afterwards (stage-entry FSQR ~ 9 instead of the interpolation-error
+  // level, W_MHD -12 percent in one step, DELBSQ ~ 400x its converged
+  // value).
+  if (fc_.lfreeb && ns_old != 0 && ns_old < nsval &&
+      vacuum_pressure_state_ == VacuumPressureState::kActive) {
+    vacuum_pressure_state_ = VacuumPressureState::kInitialized;
+  }
 
   // INITIALIZE MESH-DEPENDENT SCALARS
 
@@ -645,11 +832,21 @@ bool Vmec::InitializeRadial(
                                            fc_.num_surfaces_to_distribute);
 #endif  // VMECPP_USE_CUDA
 
+    // Set up the free-boundary vacuum solvers exactly once. Their thread count
+    // (vac_num_threads_) is decoupled from the radial num_threads_ and is
+    // ns-independent: the vacuum solve is parallelized over the tangential grid
+    // (nZnT), so it can use the full thread budget even at coarse multigrid
+    // steps where num_threads_ is capped at ns/2. The solvers (and their
+    // accumulated vacuum response matrix/RHS, which live in ns-independent
+    // Fourier space) persist across multigrid steps, reproducing Fortran VMEC's
+    // persistent vacuum state.
+    if (fc_.lfreeb && fb_vac_.empty()) {
+      SetupVacuumSolvers();
+    }
+
     r_.resize(num_threads_);
     ls_.resize(num_threads_);
     p_.resize(num_threads_);
-    fb_.resize(num_threads_);
-    tp_.resize(num_threads_);
     m_.resize(num_threads_);
     decomposed_x_.resize(num_threads_);
     physical_x_backup_.resize(num_threads_);
@@ -699,135 +896,19 @@ bool Vmec::InitializeRadial(
       }
 #endif
 
-      // setup free-boundary solver
-      if (fc_.lfreeb) {
-        // Keep the existing free-boundary solver (and its accumulated vacuum
-        // response matrix and RHS, which live in ns-independent Fourier space)
-        // across multi-grid steps, reproducing Fortran VMEC's persistent vacuum
-        // state. On the first grid step there is no solver yet and it is built;
-        // later steps reuse it.
-        const bool reuse_solver = fb_[thread_id] != nullptr;
-        if (!reuse_solver) {
-          tp_[thread_id] = std::make_unique<TangentialPartitioning>(
-              s_.nZnT, num_threads_, thread_id);
-
-          if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
-            fb_[thread_id] = std::make_unique<Nestor>(
-                &s_, tp_[thread_id].get(), &mgrid_,
-                std::span<double>(matrixShare.data(), matrixShare.size()),
-                std::span<double>(bvecShare.data(), bvecShare.size()),
-                std::span<double>(h_.vacuum_magnetic_pressure.data(),
-                                  h_.vacuum_magnetic_pressure.size()),
-                std::span<int>(iPiv.data(), iPiv.size()),
-                std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-                std::span<double>(h_.vacuum_b_phi.data(),
-                                  h_.vacuum_b_phi.size()),
-                std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
-          } else if (indata_.free_boundary_method ==
-                     FreeBoundaryMethod::ONLY_COILS) {
-            fb_[thread_id] = std::make_unique<OnlyCoils>(
-                &s_, tp_[thread_id].get(), &mgrid_,
-                std::span<double>(h_.vacuum_magnetic_pressure.data(),
-                                  h_.vacuum_magnetic_pressure.size()),
-                std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-                std::span<double>(h_.vacuum_b_phi.data(),
-                                  h_.vacuum_b_phi.size()),
-                std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
-          } else {
-            LOG(FATAL) << absl::StrCat("free boundary method '",
-                                       ToString(indata_.free_boundary_method),
-                                       "' not implemented yet");
-          }  // indata_.free_boundary_method
-
-#ifdef VMECPP_USE_CUDA
-          // Batched free-boundary: one further NESTOR instance per
-          // configuration slot, each with its own persistent response
-          // matrix, right-hand side, and pivots. They share the mgrid
-          // provider and the HandoverStorage output spans; the vacuum
-          // loop in IdealMhdModel::update consumes each configuration's
-          // outputs before the next solver call overwrites them. Like
-          // fb_, the instances persist across multigrid stages.
-          const int n_cfg_fb = vmecpp::GetNConfigMaxCuda();
-          if (n_cfg_fb > 1 &&
-              indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
-            const int nf = s_.ntor;
-            const int mf = s_.mpol + 1;
-            const int mnpd = (2 * nf + 1) * (mf + 1);
-            fb_matrix_per_cfg_.resize(n_cfg_fb - 1);
-            fb_ipiv_per_cfg_.resize(n_cfg_fb - 1);
-            fb_bvec_per_cfg_.resize(n_cfg_fb - 1);
-            fb_extra_cfg_.resize(n_cfg_fb - 1);
-            for (int c = 0; c + 1 < n_cfg_fb; ++c) {
-              fb_matrix_per_cfg_[c].setZero(mnpd * mnpd);
-              fb_ipiv_per_cfg_[c].setZero(mnpd);
-              fb_bvec_per_cfg_[c].setZero(mnpd);
-              fb_extra_cfg_[c] = std::make_unique<Nestor>(
-                  &s_, tp_[thread_id].get(), &mgrid_,
-                  std::span<double>(fb_matrix_per_cfg_[c].data(),
-                                    fb_matrix_per_cfg_[c].size()),
-                  std::span<double>(fb_bvec_per_cfg_[c].data(),
-                                    fb_bvec_per_cfg_[c].size()),
-                  std::span<double>(h_.vacuum_magnetic_pressure.data(),
-                                    h_.vacuum_magnetic_pressure.size()),
-                  std::span<int>(fb_ipiv_per_cfg_[c].data(),
-                                 fb_ipiv_per_cfg_[c].size()),
-                  std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-                  std::span<double>(h_.vacuum_b_phi.data(),
-                                    h_.vacuum_b_phi.size()),
-                  std::span<double>(h_.vacuum_b_z.data(),
-                                    h_.vacuum_b_z.size()));
-            }
-          }
-
-          // Asynchronous NESTOR (single configuration): a thread-private
-          // Nestor with its own response matrix, right-hand side, pivots, and
-          // field/pressure output buffers, so the worker thread can run it
-          // concurrently with the device iteration without racing the shared
-          // HandoverStorage. Persists across multigrid stages like fb_.
-          // The async NESTOR overlap is on by default for single-configuration
-          // NESTOR free-boundary runs; set VMECPP_FB_ASYNC_NESTOR=0 to force
-          // the synchronous path.
-          const char* async_env = std::getenv("VMECPP_FB_ASYNC_NESTOR");
-          const bool async_disabled =
-              (async_env != nullptr && std::atoi(async_env) == 0);
-          if (n_cfg_fb == 1 && !async_disabled &&
-              indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
-            const int nf = s_.ntor;
-            const int mf = s_.mpol + 1;
-            const int mnpd = (2 * nf + 1) * (mf + 1);
-            fb_async_matrix_.setZero(mnpd * mnpd);
-            fb_async_ipiv_.setZero(mnpd);
-            fb_async_bvec_.setZero(mnpd);
-            fb_async_bsqvac_.setZero(h_.vacuum_magnetic_pressure.size());
-            fb_async_br_.setZero(h_.vacuum_b_r.size());
-            fb_async_bphi_.setZero(h_.vacuum_b_phi.size());
-            fb_async_bz_.setZero(h_.vacuum_b_z.size());
-            fb_async_ = std::make_unique<Nestor>(
-                &s_, tp_[thread_id].get(), &mgrid_,
-                std::span<double>(fb_async_matrix_.data(),
-                                  fb_async_matrix_.size()),
-                std::span<double>(fb_async_bvec_.data(), fb_async_bvec_.size()),
-                std::span<double>(fb_async_bsqvac_.data(),
-                                  fb_async_bsqvac_.size()),
-                std::span<int>(fb_async_ipiv_.data(), fb_async_ipiv_.size()),
-                std::span<double>(fb_async_br_.data(), fb_async_br_.size()),
-                std::span<double>(fb_async_bphi_.data(), fb_async_bphi_.size()),
-                std::span<double>(fb_async_bz_.data(), fb_async_bz_.size()));
-          }
-#endif
-        }  // !reuse_solver
-      }  // lfreeb
-
-      // setup MHD model
+      // setup MHD model. The free-boundary vacuum solvers (fb_vac_) are shared
+      // across all radial threads and driven from a nested parallel region, so
+      // the whole vector - not a per-thread solver - is handed to the model.
       m_[thread_id] = std::make_unique<IdealMhdModel>(
           &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
-          ls_[thread_id].get(), &h_, r_[thread_id].get(), fb_[thread_id].get(),
-          kSignOfJacobian, indata_.nvacskip, &vacuum_pressure_state_);
+          ls_[thread_id].get(), &h_, r_[thread_id].get(), &fb_vac_,
+          vac_num_threads_, kSignOfJacobian, indata_.nvacskip,
+          &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0);
 #ifdef VMECPP_USE_CUDA
       if (!fb_extra_cfg_.empty()) {
         std::vector<FreeBoundaryBase*> fb_ptrs;
-        fb_ptrs.push_back(fb_[thread_id].get());
+        fb_ptrs.push_back(fb_vac_[0].get());
         for (auto& fb : fb_extra_cfg_) {
           fb_ptrs.push_back(fb.get());
         }
@@ -959,27 +1040,31 @@ bool Vmec::InitializeRadial(
       return true;
     }
 
-    // restart_reason == NO_RESTART at entry of restart_iter means to store xc
-    // in xstore
-    for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
-      fc_.restart_reason = RestartReason::NO_RESTART;
-
-      // TODO(jons): what exactly happens here?
-      // Why do we mask potential changes on `indata_.delt` by passing a copy?
-      double delt_for_restart_iter = indata_.delt;
-      RestartIteration(delt_for_restart_iter, thread_id);
-    }
-
     // INTERPOLATE FROM COARSE (ns_old) TO NEXT FINER (ns) RADIAL GRID
     if (linterp) {
       InterpolateToNextMultigridStep(fc_.ns, fc_.ns_old, p_, r_, old_r_,
-                                     decomposed_x_, old_xc_scaled_);
+                                     decomposed_x_, old_xc_scaled_,
+                                     interpolation_scheme);
 
       // TODO(jons): check for max_multigrid_steps
       // TODO(jons): maybe need `&& iter2_ >= maximum_iterations) {` ?
       if (checkpoint == VmecCheckpoint::INTERP) {
         return true;
       }
+    }
+
+    // restart_reason == NO_RESTART at entry of restart_iter means to store xc
+    // in xstore. The backup is taken AFTER the multigrid interpolation, so
+    // that the first rollback target of a continuation stage is the
+    // interpolated coarse-grid solution, not the cold boundary+axis initial
+    // guess that the interpolation overwrites. Fortran VMEC 8.52 backed up
+    // before the interpolation; PARVMEC/VMEC2000 moved the backup after it
+    // ("SPH 012417" in initialize_radial.f), which is what VMEC++ follows.
+    for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+      fc_.restart_reason = RestartReason::NO_RESTART;
+
+      // RestartIteration does not modify the time step when NO_RESTART.
+      RestartIteration(indata_.delt, thread_id);
     }
 
     fc_.ns_old = fc_.ns;
@@ -999,6 +1084,12 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
   absl::Status status_of_all_threads = absl::OkStatus();
   bool any_checkpoint_reached = false;
+  // Whether every thread that reported an error reported a kFailedPrecondition
+  // (a physical inconsistency that indata_.return_outputs_even_if_not_converged
+  // can recover from), as opposed to e.g. kInternal (a genuine code bug).
+  // Tracked independently of status_of_all_threads, which always collapses to
+  // kInternal once aggregated (see UpdateStatusForThread).
+  bool all_errors_are_recoverable = true;
 
   // Shared communication variable for all threads. Used to signal an early exit
   // of the main iteration loop.
@@ -1052,6 +1143,8 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
       if (s.ok()) {
         any_checkpoint_reached |= (*s == SolveEqLoopStatus::CHECKPOINT_REACHED);
       } else {
+        all_errors_are_recoverable &=
+            (s.status().code() == absl::StatusCode::kFailedPrecondition);
         UpdateStatusForThread(status_of_all_threads, thread_id, s.status());
       }
     }
@@ -1062,6 +1155,25 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   }
 
   if (!status_of_all_threads.ok()) {
+    if (indata_.return_outputs_even_if_not_converged &&
+        all_errors_are_recoverable) {
+      // A physical inconsistency (not a code bug) was detected deep in the
+      // MHD model, with no retry strategy available. Since outputs were
+      // requested even if not converged, don't hard-error here: record it as
+      // an unrecoverable status and let run() fall through to
+      // ComputeOutputQuantities() with best-effort (likely unphysical)
+      // state, for debugging purposes.
+      if (verbose_) {
+        std::cout << absl::StrFormat(
+            "WARNING: %s\n"
+            "return_outputs_even_if_not_converged is set, so returning "
+            "best-effort (likely unphysical) output for debugging "
+            "purposes.\n",
+            status_of_all_threads.message());
+      }
+      status_ = VmecStatus::UNRECOVERABLE_ERROR;
+      return false;
+    }
     return status_of_all_threads;
   }
 
@@ -1190,12 +1302,21 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
                status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
       // if something went totally wrong even in this initial steps, do not
       // continue at all
-      const auto msg = absl::StrFormat(
-          "FATAL ERROR in thread=%d. The solver failed during the first "
-          "iterations. This may happen if the initial boundary is poorly "
-          "shaped or if it isn't spectrally condensed enough.",
-          thread_id);
-      return absl::UnknownError(msg);
+      if (!indata_.return_outputs_even_if_not_converged) {
+        const auto msg = absl::StrFormat(
+            "FATAL ERROR in thread=%d. The solver failed during the first "
+            "iterations. This may happen if the initial boundary is poorly "
+            "shaped or if it isn't spectrally condensed enough.",
+            thread_id);
+        return absl::UnknownError(msg);
+      }
+
+      // return_outputs_even_if_not_converged: stop iterating on this thread
+      // instead of hard-erroring, so run() falls through to
+      // ComputeOutputQuantities() with best-effort (likely unphysical)
+      // state, for debugging purposes. status_ still reflects the failure
+      // (e.g. BAD_JACOBIAN), so run() will still surface a warning about it.
+      return SolveEqLoopStatus::NORMAL_TERMINATION;
     }
 
     if (checkpoint == VmecCheckpoint::EVOLVE &&
@@ -2575,7 +2696,8 @@ void Vmec::InterpolateToNextMultigridStep(
     const std::vector<std::unique_ptr<RadialPartitioning>>& r_new,
     const std::vector<std::unique_ptr<RadialPartitioning>>& r_old,
     std::vector<std::unique_ptr<FourierGeometry>>& m_x_new,
-    std::vector<std::unique_ptr<FourierGeometry>>& m_x_old) {
+    std::vector<std::unique_ptr<FourierGeometry>>& m_x_old,
+    std::optional<MultigridInterpolationScheme> interpolation_scheme) {
   // INTERPOLATE R,Z AND LAMBDA ON FULL GRID
   // (EXTRAPOLATE M=1 MODES,OVER SQRT(S), TO ORIGIN)
   // ON ENTRY, XOLD = X(COARSE MESH) * SCALXC(COARSE MESH)
@@ -2670,133 +2792,114 @@ void Vmec::InterpolateToNextMultigridStep(
   // ------------------------
   // radial interpolation from old, coarse state vector to new, finer state
   // vector
+  std::vector<std::span<double> FourierGeometry::*> coefficient_members = {
+      &FourierGeometry::rmncc, &FourierGeometry::zmnsc,
+      &FourierGeometry::lmnsc};
+  if (s_.lthreed) {
+    coefficient_members.push_back(&FourierGeometry::rmnss);
+    coefficient_members.push_back(&FourierGeometry::zmncs);
+    coefficient_members.push_back(&FourierGeometry::lmncs);
+  }
+  if (s_.lasym) {
+    coefficient_members.push_back(&FourierGeometry::rmnsc);
+    coefficient_members.push_back(&FourierGeometry::zmncc);
+    coefficient_members.push_back(&FourierGeometry::lmncc);
+    if (s_.lthreed) {
+      coefficient_members.push_back(&FourierGeometry::rmncs);
+      coefficient_members.push_back(&FourierGeometry::zmnss);
+      coefficient_members.push_back(&FourierGeometry::lmnss);
+    }
+  }
 
-  sj.resize(ns_new);
-  js1.resize(ns_new);
-  js2.resize(ns_new);
-  s1.resize(ns_new);
-  xint.resize(ns_new);
+  const MultigridInterpolationScheme scheme =
+      interpolation_scheme.value_or(MultigridInterpolationScheme::kLinear);
 
   for (int thread_id = 0; thread_id < num_threads_new; ++thread_id) {
     for (int jNew = r_new[thread_id]->nsMinF1; jNew < r_new[thread_id]->nsMaxF1;
          ++jNew) {
-      sj[jNew] = jNew / (ns_new - 1.0);
+      const double sj = jNew / (ns_new - 1.0);
 
-      // entries around radial position of jNew on old grid
-      js1[jNew] = (jNew * (ns_old - 1)) / (ns_new - 1);
-      js2[jNew] = std::min(js1[jNew] + 1, ns_old - 1);
+      // old-grid interval [js1, js2] around the new radial position
+      const int js1 = (jNew * (ns_old - 1)) / (ns_new - 1);
+      const int js2 = std::min(js1 + 1, ns_old - 1);
 
-      s1[jNew] = js1[jNew] * hs_old;
+      // interpolation stencil on the old radial grid and its weights
+      std::array<int, 4> stencil{};
+      std::array<double, 4> weight{};
+      int stencil_size = 0;
 
-      // interpolation weight
-      xint[jNew] = (sj[jNew] - s1[jNew]) / hs_old;
-      xint[jNew] = std::min(1.0, xint[jNew]);
-      xint[jNew] = std::max(0.0, xint[jNew]);
-
-      // now need to figure out source threads, which have js1 and js2
-      // and the target thread that has jNew
-      int thread_with_js1 = 0;
-      int thread_with_js2 = 0;
-      for (int old_thread_id = 0; old_thread_id < num_threads_old;
-           ++old_thread_id) {
-        const int nsMinF1 = r_old[old_thread_id]->nsMinF1;
-        const int nsMaxF1 = r_old[old_thread_id]->nsMaxF1;
-        if (nsMinF1 <= js1[jNew] && js1[jNew] < nsMaxF1) {
-          thread_with_js1 = old_thread_id;
+      if (scheme == MultigridInterpolationScheme::kLinear || ns_old < 4) {
+        double xint = (sj - js1 * hs_old) / hs_old;
+        xint = std::min(1.0, std::max(0.0, xint));
+        stencil = {js1, js2, 0, 0};
+        weight = {1.0 - xint, xint, 0.0, 0.0};
+        stencil_size = 2;
+      } else {
+        // 4-point Lagrange stencil around [js1, js2], shifted inward at the
+        // radial-domain ends; reproduces old-grid values exactly when the new
+        // position coincides with an old grid point (e.g. at the LCFS).
+        const int base = std::min(std::max(js1 - 1, 0), ns_old - 4);
+        std::array<double, 4> node{};
+        double target = sj;
+        for (int k = 0; k < 4; ++k) {
+          stencil[k] = base + k;
+          node[k] = stencil[k] * hs_old;
         }
-        if (nsMinF1 <= js2[jNew] && js2[jNew] < nsMaxF1) {
-          thread_with_js2 = old_thread_id;
+        if (scheme == MultigridInterpolationScheme::kCubicRho) {
+          target = std::sqrt(sj);
+          for (int k = 0; k < 4; ++k) {
+            node[k] = std::sqrt(node[k]);
+          }
         }
-      }  // old_thread_id
+        for (int k = 0; k < 4; ++k) {
+          double w = 1.0;
+          for (int l = 0; l < 4; ++l) {
+            if (l != k) {
+              w *= (target - node[l]) / (node[k] - node[l]);
+            }
+          }
+          weight[k] = w;
+        }
+        stencil_size = 4;
+      }
+
+      // owning old-partitioning thread for every stencil point
+      std::array<int, 4> source_thread{};
+      for (int k = 0; k < stencil_size; ++k) {
+        for (int old_thread_id = 0; old_thread_id < num_threads_old;
+             ++old_thread_id) {
+          if (r_old[old_thread_id]->nsMinF1 <= stencil[k] &&
+              stencil[k] < r_old[old_thread_id]->nsMaxF1) {
+            source_thread[k] = old_thread_id;
+          }
+        }  // old_thread_id
+      }  // k
 
       // now can actually perform interpolation
       for (int m = 0; m < s_.mpol; ++m) {
-        for (int n = 0; n < s_.ntor + 1; ++n) {
-          const int m_parity = m % 2;
+        const int m_parity = m % 2;
+        const double scalxc =
+            p[thread_id]
+                ->scalxc[(jNew - r_new[thread_id]->nsMinF1) * 2 + m_parity];
 
-          const int idx_fc_js1 =
-              ((js1[jNew] - m_x_old[thread_with_js1]->nsMin()) * s_.mpol + m) *
-                  (s_.ntor + 1) +
-              n;
-          const int idx_fc_js2 =
-              ((js2[jNew] - m_x_old[thread_with_js2]->nsMin()) * s_.mpol + m) *
-                  (s_.ntor + 1) +
-              n;
+        for (int n = 0; n < s_.ntor + 1; ++n) {
           const int idx_fc_jNew =
               ((jNew - m_x_new[thread_id]->nsMin()) * s_.mpol + m) *
                   (s_.ntor + 1) +
               n;
 
-          const double scalxc =
-              p[thread_id]
-                  ->scalxc[(jNew - r_new[thread_id]->nsMinF1) * 2 + m_parity];
-
-          m_x_new[thread_id]->rmncc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
-                   m_x_old[thread_with_js1]->rmncc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->rmncc[idx_fc_js2]) /
-              scalxc;
-          m_x_new[thread_id]->zmnsc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
-                   m_x_old[thread_with_js1]->zmnsc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->zmnsc[idx_fc_js2]) /
-              scalxc;
-          m_x_new[thread_id]->lmnsc[idx_fc_jNew] =
-              ((1.0 - xint[jNew]) *
-                   m_x_old[thread_with_js1]->lmnsc[idx_fc_js1] +
-               xint[jNew] * m_x_old[thread_with_js2]->lmnsc[idx_fc_js2]) /
-              scalxc;
-          if (s_.lthreed) {
-            m_x_new[thread_id]->rmnss[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->rmnss[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->rmnss[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->zmncs[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->zmncs[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->zmncs[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->lmncs[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->lmncs[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->lmncs[idx_fc_js2]) /
-                scalxc;
-          }
-          if (s_.lasym) {
-            m_x_new[thread_id]->rmnsc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->rmnsc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->rmnsc[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->zmncc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->zmncc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->zmncc[idx_fc_js2]) /
-                scalxc;
-            m_x_new[thread_id]->lmncc[idx_fc_jNew] =
-                ((1.0 - xint[jNew]) *
-                     m_x_old[thread_with_js1]->lmncc[idx_fc_js1] +
-                 xint[jNew] * m_x_old[thread_with_js2]->lmncc[idx_fc_js2]) /
-                scalxc;
-            if (s_.lthreed) {
-              m_x_new[thread_id]->rmncs[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
-                       m_x_old[thread_with_js1]->rmncs[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->rmncs[idx_fc_js2]) /
-                  scalxc;
-              m_x_new[thread_id]->zmnss[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
-                       m_x_old[thread_with_js1]->zmnss[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->zmnss[idx_fc_js2]) /
-                  scalxc;
-              m_x_new[thread_id]->lmnss[idx_fc_jNew] =
-                  ((1.0 - xint[jNew]) *
-                       m_x_old[thread_with_js1]->lmnss[idx_fc_js1] +
-                   xint[jNew] * m_x_old[thread_with_js2]->lmnss[idx_fc_js2]) /
-                  scalxc;
-            }
-          }
+          for (const auto member : coefficient_members) {
+            double value = 0.0;
+            for (int k = 0; k < stencil_size; ++k) {
+              const FourierGeometry& source = *m_x_old[source_thread[k]];
+              const int idx_fc_k =
+                  ((stencil[k] - source.nsMin()) * s_.mpol + m) *
+                      (s_.ntor + 1) +
+                  n;
+              value += weight[k] * (source.*member)[idx_fc_k];
+            }  // k
+            ((*m_x_new[thread_id]).*member)[idx_fc_jNew] = value / scalxc;
+          }  // member
         }  // n
       }  // m
     }  // jNew
