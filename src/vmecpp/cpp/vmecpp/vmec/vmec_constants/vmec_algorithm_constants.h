@@ -192,6 +192,33 @@ static constexpr int kJacobianIterationThreshold = 75;
  */
 static constexpr int kPreconditionerUpdateInterval = 25;
 
+// ========== Parallelization Constants ==========
+
+/**
+ * Equivalent number of extra "work surfaces" carried by the axis-owning
+ * thread (tid 0) beyond the regular per-surface cost. The axis thread
+ * does degenerate-case initialisation at j=0 (`r1e_i`/`r1o_i` setup),
+ * axis handover for NESTOR, and similar one-shot work that does not
+ * scale with slice size. The radial partitioner subtracts this many
+ * surfaces from the axis thread's slice and rebalances them across
+ * the other threads, so every thread's *effective* work
+ * (per-surface cost + boundary overhead) ends up balanced.
+ *
+ * Approximately in line with FLOPS estimates of the axis-only init
+ * paths. Override at runtime via `VMECPP_AXIS_SURFACES_OFF` env var.
+ */
+static constexpr int kBoundarySurfacesOffAxis = 2;
+
+/**
+ * Equivalent number of extra "work surfaces" carried by the LCFS-owning
+ * thread (tid N-1). Free-boundary handover (`rzConIntoVolume`,
+ * NESTOR-related boundary computation) makes the LCFS thread slower by
+ * a roughly constant per-call amount. See `kBoundarySurfacesOffAxis`
+ * for the partitioning mechanism. Override via
+ * `VMECPP_LCFS_SURFACES_OFF` env var.
+ */
+static constexpr int kBoundarySurfacesOffLcfs = 1;
+
 // ========== Array Size Constants ==========
 
 /**
