@@ -1,0 +1,82 @@
+name: V&V against reference VMEC
+
+# Runs the Verification & Validation suite from proximafusion/vmecpp-validation
+# against reference Fortran VMEC2000, using the vmecpp version built from this
+# commit rather than the version pinned on PyPI/GitHub.
+#
+# - On every push to main: a short run (a handful of configs, a few minutes)
+#   so regressions are caught immediately.
+# - On release and on manual request: the full run (all ~219 configurations,
+#   ~8h) -- too expensive to run on every push.
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+jobs:
+  validation:
+    name: Run VMEC++ validation
+    runs-on: ubuntu-22.04
+    # The full parameter scan runs ~219 configurations, each computing a reference
+    # wout with Fortran VMEC2000 in Docker plus one with VMEC++: budget generously.
+    # The short run finishes in minutes and won't come close to this limit.
+    timeout-minutes: 360
+    steps:
+      - name: Check out VMEC++
+        uses: actions/checkout@v4
+        with:
+          path: vmecpp
+          lfs: true
+
+      - name: Check out vmecpp-validation
+        uses: actions/checkout@v4
+        with:
+          repository: proximafusion/vmecpp-validation
+          path: vmecpp-validation
+          lfs: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install required system packages for Ubuntu
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            build-essential cmake libnetcdf-dev liblapack-dev liblapacke-dev libopenmpi-dev \
+            libomp-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
+
+      - name: Install vmecpp-validation's Python requirements
+        run: |
+          cd vmecpp-validation
+          # Install everything except vmecpp itself: we build and install vmecpp
+          # from this commit below instead of the version pinned in requirements.txt.
+          grep -v '^vmecpp@' requirements.txt > requirements.no-vmecpp.txt
+          python -m pip install -r requirements.no-vmecpp.txt
+
+      - name: Install VMEC++ from this commit
+        run: python -m pip install ./vmecpp
+
+      - name: Run short validation
+        if: github.event_name == 'push'
+        working-directory: vmecpp-validation
+        run: python validate_vmec.py --short
+
+      - name: Run full validation
+        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+        working-directory: vmecpp-validation
+        run: python validate_vmec.py
+
+      - name: Upload V&V results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnvresults
+          path: vmecpp-validation/vnvresults_*/
+          retention-days: 30

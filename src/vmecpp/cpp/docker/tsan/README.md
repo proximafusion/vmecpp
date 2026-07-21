@@ -1,6 +1,6 @@
 # OpenMP-aware ThreadSanitizer
 
-This is a tutorial how to build `clang` and `libomp` with ThreadSanitizer (TSan)
+This is a tutorial on how to build `clang` and `libomp` with ThreadSanitizer (TSan)
 support for being able to check OpenMP-parallelized C/C++ code.
 
 ## Perform ThreadSanitizer runs on code in the Proxima Fusion monorepo

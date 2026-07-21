@@ -198,10 +198,11 @@ class FlowControl {
   // of how often each recovery path was invoked and at which iterations.
   std::vector<RestartReason> restart_reasons;
 
-  // Reference residual against which the time-step controller measures
-  // relative residual decay. Updated when the iteration enters a new
-  // multigrid stage or when restart_reason transitions back to NO_RESTART.
+  // Running minimum of the preconditioned residual sum (fsq).
   double res0;
+  // Running minimum of the invariant residual sum (fsqr + fsqz + fsql); used
+  // only by the PARVMEC time-step control.
+  double res1;
 
   // Component-wise vector form of the invariant residuals fsqr, fsqz, fsql,
   // packaged for callers that consume the three components together

@@ -125,42 +125,55 @@ def test_interpolate_fourier_pad_and_truncate(solovev_output: vmecpp.VmecOutput)
 # --- continuation driver -----------------------------------------------------
 
 
-def test_single_step_continuation_matches_direct_run(cma_input: vmecpp.VmecInput):
-    """A single-resolution continuation invokes exactly one solve and must be bit-for-
-    bit identical to calling ``run`` on the same single-grid input."""
-    ns_final = int(np.asarray(cma_input.ns_array)[-1])
+def test_mpol_ntor_length_one_sequence_collapses_to_scalar(
+    cma_input: vmecpp.VmecInput,
+):
+    """A length-1 mpol/ntor sequence is equivalent to a scalar and is stored as a plain
+    int, so it takes the direct (non-continuation) code path.
 
-    single_grid = cma_input.model_copy(deep=True)
-    single_grid.ns_array = np.asarray([ns_final], dtype=np.int64)
-    single_grid.ftol_array = np.asarray([1e-12], dtype=float)
-    single_grid.niter_array = np.asarray([60000], dtype=np.int64)
-    direct = vmecpp.run(single_grid, verbose=False, max_threads=1)
-
-    continued = vmecpp.run_continuation(
-        cma_input,
-        ns_array=[ns_final],
-        ftol_array=[1e-12],
-        niter_array=[60000],
-        verbose=False,
-        max_threads=1,
-    )
-    for field in ("rmnc", "zmns", "lmns_full"):
-        np.testing.assert_array_equal(
-            np.asarray(getattr(continued.wout, field)),
-            np.asarray(getattr(direct.wout, field)),
-        )
-    np.testing.assert_array_equal(
-        np.asarray(continued.wout.iotaf), np.asarray(direct.wout.iotaf)
-    )
+    This coercion runs during validation (construction / model_validate), like all of
+    VmecInput's other validators; it goes through vmecpp.VmecInput.model_validate here
+    rather than a bare attribute assignment for that reason.
+    """
+    data = cma_input.model_dump(mode="json")
+    data["mpol"] = [int(cma_input.mpol)]
+    data["ntor"] = [int(cma_input.ntor)]
+    single_step = vmecpp.VmecInput.model_validate(data)
+    assert isinstance(single_step.mpol, int)
+    assert isinstance(single_step.ntor, int)
+    assert single_step.mpol == cma_input.mpol
+    assert single_step.ntor == cma_input.ntor
 
 
-def test_run_continuation_reproduces_direct(
+def test_mpol_length_mismatch_raises(cma_input: vmecpp.VmecInput):
+    """A mpol/ntor schedule that doesn't match ns_array's length is rejected with a
+    clear error, rather than silently misaligning steps."""
+    mismatched = cma_input.model_copy(deep=True)
+    mismatched.ns_array = np.asarray([15, 31], dtype=np.int64)
+    mismatched.ftol_array = np.asarray([1e-8, 1e-10], dtype=float)
+    mismatched.niter_array = np.asarray([100, 100], dtype=np.int64)
+    mismatched.mpol = np.asarray([3, 4, 5], dtype=np.int64)  # 3 entries, ns_array has 2
+
+    with pytest.raises(ValueError, match="mpol"):
+        vmecpp.run(mismatched, verbose=False, max_threads=1)
+
+
+def test_ns_only_continuation_reproduces_direct_multigrid(
     cma_input: vmecpp.VmecInput, cma_direct: vmecpp.VmecOutput
 ):
-    """The default Python continuation reaches the same equilibrium as the C++
-    multi-grid: identical resolution, a converged force balance, a bit-identical
-    plasma volume, and geometry agreeing at the convergence level."""
-    continued = vmecpp.run_continuation(cma_input, verbose=False, max_threads=1)
+    """A continuation schedule with a constant (array-valued) mpol/ntor reaches the same
+    equilibrium as the C++ multi-grid: identical resolution, a converged force balance,
+    a bit-identical plasma volume, and geometry agreeing at the convergence level."""
+    n_steps = len(np.asarray(cma_input.ns_array))
+    continuation_input = cma_input.model_copy(deep=True)
+    continuation_input.mpol = np.asarray(
+        [int(cma_input.mpol)] * n_steps, dtype=np.int64
+    )
+    continuation_input.ntor = np.asarray(
+        [int(cma_input.ntor)] * n_steps, dtype=np.int64
+    )
+
+    continued = vmecpp.run(continuation_input, verbose=False, max_threads=1)
 
     assert int(continued.wout.ns) == int(cma_direct.wout.ns)
     # Converged to a force residual comparable to the direct solve.
@@ -184,14 +197,23 @@ def test_continuation_agreement_tightens_with_ftol(cma_input: vmecpp.VmecInput):
     """As the force-balance tolerance tightens, the continuation and the direct multi-
     grid converge toward the same geometry -- the signature of a shared equilibrium
     rather than a defect in the continuation."""
+    n_steps = len(np.asarray(cma_input.ns_array))
 
     def max_geometry_diff(ftol_array: list[float]) -> float:
         reference = cma_input.model_copy(deep=True)
         reference.ftol_array = np.asarray(ftol_array, dtype=float)
         direct = vmecpp.run(reference, verbose=False, max_threads=1)
-        continued = vmecpp.run_continuation(
-            cma_input, ftol_array=ftol_array, verbose=False, max_threads=1
+
+        continuation_input = cma_input.model_copy(deep=True)
+        continuation_input.mpol = np.asarray(
+            [int(cma_input.mpol)] * n_steps, dtype=np.int64
         )
+        continuation_input.ntor = np.asarray(
+            [int(cma_input.ntor)] * n_steps, dtype=np.int64
+        )
+        continuation_input.ftol_array = np.asarray(ftol_array, dtype=float)
+        continued = vmecpp.run(continuation_input, verbose=False, max_threads=1)
+
         return float(
             np.max(
                 np.abs(np.asarray(direct.wout.rmnc) - np.asarray(continued.wout.rmnc))
@@ -214,16 +236,18 @@ def test_fourier_continuation_converges(
     ftol_final = float(np.asarray(cma_input.ftol_array)[-1])
     niter_final = int(np.asarray(cma_input.niter_array)[-1])
 
-    continued = vmecpp.run_continuation(
-        cma_input,
-        ns_array=[ns_final, ns_final],
-        mpol_array=[max(2, mpol_final - 2), mpol_final],
-        ntor_array=[ntor, ntor],
-        ftol_array=[ftol_final, ftol_final],
-        niter_array=[niter_final, niter_final],
-        verbose=False,
-        max_threads=1,
+    continuation_input = cma_input.model_copy(deep=True)
+    continuation_input.ns_array = np.asarray([ns_final, ns_final], dtype=np.int64)
+    continuation_input.mpol = np.asarray(
+        [max(2, mpol_final - 2), mpol_final], dtype=np.int64
     )
+    continuation_input.ntor = ntor  # scalar broadcasts to every step
+    continuation_input.ftol_array = np.asarray([ftol_final, ftol_final], dtype=float)
+    continuation_input.niter_array = np.asarray(
+        [niter_final, niter_final], dtype=np.int64
+    )
+
+    continued = vmecpp.run(continuation_input, verbose=False, max_threads=1)
 
     assert int(continued.wout.mpol) == mpol_final
     assert _final_force_residual(continued) < 1e-5
@@ -236,3 +260,36 @@ def test_fourier_continuation_converges(
         atol=4e-3,
         rtol=1e-2,
     )
+
+
+def test_fourier_continuation_hot_restarts_first_step_from_restart_from(
+    cma_input: vmecpp.VmecInput,
+):
+    """restart_from seeds the first continuation step (interpolated to its resolution)
+    instead of a cold start, when input.mpol/.ntor is a sequence."""
+    ns_final = int(np.asarray(cma_input.ns_array)[-1])
+    mpol_final = int(cma_input.mpol)
+    ntor = int(cma_input.ntor)
+
+    warm_start_input = cma_input.model_copy(deep=True)
+    warm_start_input.ns_array = np.asarray([ns_final], dtype=np.int64)
+    warm_start = vmecpp.run(warm_start_input, verbose=False, max_threads=1)
+
+    continuation_input = cma_input.model_copy(deep=True)
+    continuation_input.ns_array = np.asarray([ns_final, ns_final], dtype=np.int64)
+    continuation_input.mpol = np.asarray(
+        [max(2, mpol_final - 2), mpol_final], dtype=np.int64
+    )
+    continuation_input.ntor = ntor
+    continuation_input.ftol_array = np.asarray([1e-8, 1e-10], dtype=float)
+    continuation_input.niter_array = np.asarray([2000, 2000], dtype=np.int64)
+
+    continued = vmecpp.run(
+        continuation_input,
+        verbose=False,
+        max_threads=1,
+        restart_from=warm_start,
+    )
+
+    assert int(continued.wout.mpol) == mpol_final
+    assert _final_force_residual(continued) < 1e-5
