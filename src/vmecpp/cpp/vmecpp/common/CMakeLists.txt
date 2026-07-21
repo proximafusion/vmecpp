@@ -1,3 +1,4 @@
+add_subdirectory(block_tridiagonal)
 add_subdirectory(composed_types_definition)
 add_subdirectory(composed_types_lib)
 add_subdirectory(flow_control)

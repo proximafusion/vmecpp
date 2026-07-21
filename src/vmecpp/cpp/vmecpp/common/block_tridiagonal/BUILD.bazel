@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "block_tridiagonal",
+    srcs = ["block_tridiagonal.cc"],
+    hdrs = ["block_tridiagonal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "@eigen",
+    ],
+)
+
+cc_test(
+    name = "block_tridiagonal_test",
+    srcs = ["block_tridiagonal_test.cc"],
+    deps = [
+        ":block_tridiagonal",
+        "@eigen",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
