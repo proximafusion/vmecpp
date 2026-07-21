@@ -68,17 +68,19 @@ Panel B shows a `nfp = 2` case where both versions converge on
 `ns_array = [8, 16, 31]`, but 0.7.0 needs fewer iterations
 (`input.quasr29346_8-16-31`, `mgrid_quasr0029346.nc`):
 
-| version | ns=8 | ns=16 | ns=31 | cumulative |
-|---------|------|-------|-------|------------|
-| 0.6.1   | 739  | 789   | 779   | 2307 |
-| 0.7.0   | 739  | 292   | 274   | 1305 |
+| code        | ns=8 | ns=16 | ns=31 | cumulative |
+|-------------|------|-------|-------|------------|
+| vmecpp 0.6.1 | 739  | 789   | 779   | 2307 |
+| vmecpp 0.7.0 | 739  | 292   | 274   | 1305 |
+| PARVMEC      | 722  | 365   | 365   | 1452 |
 
-The `ns=8` stage is identical (no transition has happened yet); the fix pays
-off at each subsequent transition -- ~1.8x fewer total iterations (2.8x on the
-final grid). (At `ns=[12,50,201]` this same config is another fail->converge
-case for vmecpp, though PARVMEC happens to converge on it -- an illustration
-of the "fractal" nature of the stability boundary: the codes share the
-`iter2>1` bug but differ elsewhere, so their failure sets differ.)
+All three converge here. The `ns=8` stage is essentially identical (no
+transition has happened yet); the fix pays off at each subsequent transition,
+bringing vmecpp from ~1.8x slower than 0.6.1 to faster than PARVMEC. (At
+`ns=[12,50,201]` this same config is another fail->converge case for vmecpp,
+while PARVMEC still converges on it -- an illustration of the "fractal" nature
+of the stability boundary: the codes share the `iter2>1` bug but differ
+elsewhere, so their failure sets differ.)
 
 ## Reproducing
 

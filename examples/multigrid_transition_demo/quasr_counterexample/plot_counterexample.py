@@ -57,27 +57,9 @@ fig, (axA, axB) = plt.subplots(2, 1, figsize=(10, 9))
 
 # ---- Panel A: counterexample 65579 ----
 series = [
-    (
-        f"{base}/vmecpp061_ns12-50-201.log",
-        VP_NS,
-        VP,
-        "vmecpp 0.6.1 (bug) -- FAILS",
-        "#d62728",
-    ),
-    (
-        f"{base}/vmecpp070_ns12-50-201.log",
-        VP_NS,
-        VP,
-        "vmecpp 0.7.0 (fix) -- converges",
-        "#2ca02c",
-    ),
-    (
-        f"{base}/parvmec_ns12-50-201.log",
-        PV_NS,
-        PV,
-        "PARVMEC (stock) -- FAILS",
-        "#1f77b4",
-    ),
+    (f"{base}/vmecpp061_ns12-50-201.log", VP_NS, VP, "vmecpp 0.6.1", "#d62728"),
+    (f"{base}/vmecpp070_ns12-50-201.log", VP_NS, VP, "vmecpp 0.7.0", "#2ca02c"),
+    (f"{base}/parvmec_ns12-50-201.log", PV_NS, PV, "PARVMEC", "#1f77b4"),
 ]
 allb = None
 for path, ns_re, it_re, label, color in series:
@@ -93,17 +75,19 @@ axA.axhline(1e-9, color="gray", lw=0.6, ls=":", label="ftol = 1e-9")
 axA.set_ylim(1e-10, 1e7)
 axA.set_ylabel("FSQR (radial force residual)")
 axA.set_title(
-    "QUASR-0065579 (nfp=4), free boundary, ns_array=[12,50,201]: "
-    "cold start fails, multigrid required"
+    "QUASR-0065579 (nfp=4), free boundary, ns=[12,50,201]\n"
+    "cold start fails; multigrid required"
 )
 axA.legend(fontsize=8, loc="center right")
 
 # ---- Panel B: just-faster 29346 ----
-for path, label, color in [
-    (f"{base}/vmecpp061_29346_ns8-16-31.log", "vmecpp 0.6.1", "#d62728"),
-    (f"{base}/vmecpp070_29346_ns8-16-31.log", "vmecpp 0.7.0", "#2ca02c"),
-]:
-    st = parse(path, VP_NS, VP)
+seriesB = [
+    (f"{base}/vmecpp061_29346_ns8-16-31.log", VP_NS, VP, "vmecpp 0.6.1", "#d62728"),
+    (f"{base}/vmecpp070_29346_ns8-16-31.log", VP_NS, VP, "vmecpp 0.7.0", "#2ca02c"),
+    (f"{base}/parvmec_29346_ns8-16-31.log", PV_NS, PV, "PARVMEC", "#1f77b4"),
+]
+for path, ns_re, it_re, label, color in seriesB:
+    st = parse(path, ns_re, it_re)
     git, fsqr, bounds = flatten(st)
     axB.semilogy(git, fsqr, label=label, color=color, lw=0.9)
     if "0.7.0" in label:
@@ -115,8 +99,8 @@ axB.set_ylim(1e-10, 1e1)
 axB.set_ylabel("FSQR")
 axB.set_xlabel("cumulative iteration")
 axB.set_title(
-    "QUASR-0029346 (nfp=2), free boundary, ns_array=[8,16,31]: both converge, "
-    "0.7.0 ~1.8x fewer total iters (2.8x on the final ns=31 grid)"
+    "QUASR-0029346 (nfp=2), free boundary, ns=[8,16,31]\n"
+    "all converge; vmecpp 0.7.0 ~1.8x fewer total iters than 0.6.1"
 )
 axB.legend(fontsize=8, loc="upper right")
 
