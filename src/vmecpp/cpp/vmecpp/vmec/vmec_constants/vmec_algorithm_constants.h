@@ -81,6 +81,45 @@ static constexpr double kLambdaPreconditionerDampingFactor = 2.0;
  */
 static constexpr double kLambdaPreconditionerZeroGuard = -1.0e-10;
 
+// ========== VMEC++ Iteration Scheme (IterationStyle::VMECPP) ==========
+// Hyperparameters of the native iteration scheme; see
+// docs/convergence_study.md (Findings 6-14) for the measurements behind each
+// value. Only active for iteration_style = "vmecpp".
+
+/**
+ * Time step at which multigrid continuation stages (and cold starts with
+ * delt > 1) enter the force iteration: min(0.5 * delt, 0.5). Stages entered
+ * at the full user delt are linearly unstable for their first iterations,
+ * which destroys the interpolated seed; 0.5 was found to be a universal
+ * stable entry step across equilibria and ns-jump sizes (Finding 9). The
+ * time-step recovery grows delt back afterwards.
+ */
+static constexpr double kVmecppStageEntryDelt = 0.5;
+
+/**
+ * Per-accepted-store growth factor of the time step back towards the user
+ * delt after a restart reduced it (2 percent per store). Without recovery,
+ * any delt reduction is permanent for the remainder of the stage.
+ */
+static constexpr double kVmecppDeltRecoveryGrowth = 1.02;
+
+/**
+ * A restart marks the failing time step as a stability ceiling at this
+ * safety factor below the step that just proved unstable; recovery never
+ * grows past the ceiling. The ratchet is one-directional: letting the
+ * ceiling drift back up creates a probe/fail limit cycle that costs more
+ * than running marginally hotter earns (measured, Finding 10).
+ */
+static constexpr double kVmecppDeltCeilingSafety = 0.95;
+
+/**
+ * Stagnation guard: if no new preconditioned-residual minimum appears for
+ * this many iterations, roll back to the best state and reduce the time
+ * step gently. Catches a weakly unstable delt whose slow residual growth
+ * stays below the 100x blow-up leash for hundreds of iterations.
+ */
+static constexpr int kVmecppStagnationGuardIterations = 100;
+
 // ========== Mathematical Constants ==========
 
 /**

@@ -19,6 +19,7 @@ import pytest
 
 import vmecpp
 from vmecpp import RestartReason
+from vmecpp._iteration import solve_equilibrium
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -66,7 +67,7 @@ def test_python_iteration_reproduces_cpp_inner_solve(
     reference.solve()
 
     model = _vmecpp.VmecModel.create(cpp_indata, ns)
-    result = vmecpp.solve_equilibrium(model)
+    result = solve_equilibrium(model)
 
     assert result.converged
     assert not result.failed
@@ -95,7 +96,7 @@ def test_python_iteration_recovers_from_bad_initial_jacobian():
     loop must recompute the magnetic axis and still converge to force balance."""
     cpp_indata = _single_resolution_indata("cma", 15, 1.0e-10, 8000)
     model = _vmecpp.VmecModel.create(cpp_indata, 15)
-    result = vmecpp.solve_equilibrium(model)
+    result = solve_equilibrium(model)
 
     assert result.converged
     assert not result.failed
@@ -116,13 +117,16 @@ def test_styles_agree_when_no_restart():
     """
     cpp_indata = _single_resolution_indata("cth_like_fixed_bdy", 25, 1.0e-10, 300)
     states = {}
-    for style in ("vmec_8_52", "parvmec", "robust"):
+    for style in ("vmec_8_52", "parvmec", "robust", "delt_recovery"):
         model = _vmecpp.VmecModel.create(cpp_indata, 25)
-        result = vmecpp.solve_equilibrium(model, style=style)
+        result = solve_equilibrium(model, style=style)
         assert result.restarts == 0, style
         states[style] = np.asarray(model.get_state())
     assert np.array_equal(states["vmec_8_52"], states["parvmec"])
     assert np.array_equal(states["vmec_8_52"], states["robust"])
+    # delt_recovery only acts after a revert (the step already sits at the user
+    # delt, so recovery has nothing to grow): without reverts it is bit-identical
+    assert np.array_equal(states["vmec_8_52"], states["delt_recovery"])
 
 
 @pytest.mark.parametrize(
@@ -160,7 +164,7 @@ def test_python_iteration_matches_cpp_restart_path(
     reference.solve()
 
     model = _vmecpp.VmecModel.create(cpp_indata, ns)
-    result = vmecpp.solve_equilibrium(model)
+    result = solve_equilibrium(model)
 
     assert not result.failed
 
@@ -184,7 +188,7 @@ def test_python_iteration_matches_cpp_restart_path(
 
 
 def test_alternative_styles_converge_cma():
-    """All three time-step-control styles converge cma to the same tolerance.
+    """All four time-step-control styles converge cma to the same tolerance.
 
     They differ only in how a growing residual is handled, so on a case that descends
     smoothly they take very similar paths (only a couple of reverts); the test guards
@@ -193,9 +197,9 @@ def test_alternative_styles_converge_cma():
     """
     cpp_indata = _single_resolution_indata("cma", 15, 1.0e-8, 8000)
     results = {}
-    for style in ("vmec_8_52", "parvmec", "robust"):
+    for style in ("vmec_8_52", "parvmec", "robust", "delt_recovery"):
         model = _vmecpp.VmecModel.create(cpp_indata, 15)
-        results[style] = vmecpp.solve_equilibrium(model, style=style)
+        results[style] = solve_equilibrium(model, style=style)
 
     for style, result in results.items():
         assert result.converged, style
@@ -205,6 +209,14 @@ def test_alternative_styles_converge_cma():
         # No style should thrash now that the restart reason is cleared each
         # evaluation (a sticky HUGE_INITIAL_FORCES used to force ~20 reverts).
         assert result.restarts < 10, style
+
+    # delt_recovery only arms on stages entered at a reduced step (multigrid
+    # continuation stages); this is a cold start, so it must take exactly the
+    # 8.52 path -- no regression on easy cases, even ones with reverts.
+    assert (
+        results["delt_recovery"].num_iterations == results["vmec_8_52"].num_iterations
+    )
+    assert results["delt_recovery"].restarts == results["vmec_8_52"].restarts
     assert results["parvmec"].restarts == 0
 
 
@@ -250,7 +262,7 @@ def test_native_parvmec_matches_python_parvmec():
     reference.solve()
 
     model = _vmecpp.VmecModel.create(cpp_indata, 72)
-    result = vmecpp.solve_equilibrium(model, style="parvmec")
+    result = solve_equilibrium(model, style="parvmec")
 
     assert not result.failed
     np.testing.assert_array_equal(
@@ -412,7 +424,7 @@ def test_callback_records_iteration_state():
     model = _vmecpp.VmecModel.create(cpp_indata, 15)
 
     states: list[vmecpp.IterationState] = []
-    result = vmecpp.solve_equilibrium(model, style="vmec_8_52", callback=states.append)
+    result = solve_equilibrium(model, style="vmec_8_52", callback=states.append)
 
     assert result.converged
     # One snapshot per recorded force iteration.
@@ -504,19 +516,19 @@ def test_refine_to_multigrid_ramp_converges():
     cpp_indata = _single_resolution_indata("cma", 15, 1.0e-10, 8000)
 
     model = _vmecpp.VmecModel.create(cpp_indata, 9)
-    coarse = vmecpp.solve_equilibrium(model, style="vmec_8_52")
+    coarse = solve_equilibrium(model, style="vmec_8_52")
     assert coarse.converged
     assert model.ns == 9
 
     model.refine_to(15)
     assert model.ns == 15
-    ramped = vmecpp.solve_equilibrium(model, style="vmec_8_52")
+    ramped = solve_equilibrium(model, style="vmec_8_52")
     assert ramped.converged
     assert ramped.fsqr <= 1.0e-10
 
     # A cold solve straight at ns=15 needs a revert and more steps; the ramped fine
     # solve, seeded by the interpolated coarse solution, needs none.
-    cold = vmecpp.solve_equilibrium(
+    cold = solve_equilibrium(
         _vmecpp.VmecModel.create(cpp_indata, 15), style="vmec_8_52"
     )
     assert cold.converged

@@ -30,7 +30,6 @@ from vmecpp._iteration import (
     IterationState,
     RestartReason,
     iterate,
-    solve_equilibrium,
     solve_multigrid,
 )
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
@@ -147,6 +146,11 @@ class IterationStyle(str, enum.Enum):
 
     PARVMEC = "parvmec"
     """The PARVMEC / VMEC2000 9.0 control."""
+
+    VMECPP = "vmecpp"
+    """The VMEC++ native scheme: VMEC 8.52 control plus cubic multigrid transfer and
+    reduced-delt stage entry with time-step recovery and seed preservation
+    (docs/convergence_study.md)."""
 
 
 class OutputMode(enum.Enum):
@@ -408,8 +412,8 @@ class VmecInput(BaseModelWithNumpy):
         pydantic.BeforeValidator(_validate_iteration_style),
         pydantic.Field(),
     ] = IterationStyle.VMEC_8_52
-    """Time-step / restart control scheme for the equilibrium iteration (``"vmec_8_52"``
-    or ``"parvmec"``)."""
+    """Time-step / restart control scheme for the equilibrium iteration
+    (``"vmec_8_52"``, ``"parvmec"`` or ``"vmecpp"``)."""
 
     nstep: int = 10
     """Printout interval at which convergence progress is logged."""
@@ -420,7 +424,12 @@ class VmecInput(BaseModelWithNumpy):
     """Radial flux zoning profile coefficients."""
 
     delt: float = 1.0
-    """Initial value for artificial time step in iterative solver."""
+    """Initial value for artificial time step in iterative solver.
+
+    Valid range is ]0, 10]. The preconditioner normalizes the stiffest mode to O(1), so
+    the stability boundary sits near 1 and useful values rarely exceed a few; an over-
+    large step is walked down automatically at runtime.
+    """
 
     tcon0: float = 1.0
     """Constraint force scaling factor for ns --> 0."""
@@ -2623,7 +2632,6 @@ __all__ = [  # noqa: RUF022
     "IterationStyle",
     "set_profile",
     "iterate",
-    "solve_equilibrium",
     "solve_multigrid",
     "IterationResult",
     "IterationState",

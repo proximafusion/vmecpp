@@ -52,7 +52,19 @@ enum class IterationStyle : std::uint8_t {
   VMEC_8_52,
 
   // PARVMEC (~same as hiddenSymmetries/VMEC2000) - version 9.0
-  PARVMEC
+  PARVMEC,
+
+  // VMEC++ native scheme: VMEC 8.52 time-step control plus
+  // - 4-point Lagrange (cubic) radial interpolation at multigrid transitions,
+  // - reduced-delt entry into continuation stages with time-step recovery
+  //   towards the user delt (bounded by a stability ceiling learned from
+  //   restarts) and a stagnation guard,
+  // - preservation of the interpolated seed on early-stage instabilities,
+  // - a stiffness correction for the lambda preconditioner on the first
+  //   evolved flux surface.
+  // On a cold start with delt <= 1 it is identical to VMEC_8_52 except for
+  // the lambda preconditioner correction. See docs/convergence_study.md.
+  VMECPP
 };
 
 int IterationStyleCode(IterationStyle iteration_style);
