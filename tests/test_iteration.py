@@ -526,3 +526,92 @@ def test_refine_to_multigrid_ramp_converges():
     # refine_to only refines: refining to the current (or a coarser) ns is rejected.
     with pytest.raises(RuntimeError):
         model.refine_to(15)
+
+
+# Reference iota profile computed at mpol=ntor=12, ns=100 and checked against DESC
+_NEAR_AXIS_IOTA_REF = np.array(
+    [
+        0.93251064,
+        0.93768053,
+        0.94379914,
+        0.95133729,
+        0.959599,
+        0.9682665,
+        0.97719904,
+        0.98633394,
+        0.99564078,
+        1.00510428,
+        1.01471576,
+        1.02447019,
+        1.03436449,
+        1.04439665,
+        1.05456505,
+        1.06486852,
+        1.07530608,
+        1.08587711,
+        1.09658106,
+        1.10741765,
+        1.11838687,
+        1.12948938,
+        1.14072651,
+        1.15210051,
+        1.16361445,
+        1.17527258,
+        1.18708031,
+        1.19904448,
+        1.21117309,
+        1.22347586,
+        1.23596437,
+        1.24865227,
+        1.26155479,
+        1.27468905,
+        1.28807442,
+        1.30173244,
+        1.31568768,
+        1.32997111,
+        1.34461747,
+        1.35966254,
+        1.37514758,
+        1.39112224,
+        1.40764441,
+        1.42477868,
+        1.44259131,
+        1.46115143,
+        1.48053357,
+        1.50080447,
+        1.52201594,
+        1.54413113,
+        1.5666683,
+    ]
+)
+
+
+def test_near_axis_iota_profile():
+    """To resolve iota produced by high shaping, we need more fourier modes.
+
+    Highly shaped config from near axis expansion that has iota >0.5 on axis to
+    1.5 on edge. On axis behavior is sensitive to extrapolation,
+    """
+
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA / "near_axis_iota_nfp4.json")
+    error_arrays = []
+    for fourier_resolution in [7, 8, 10]:
+        updated_resolution_input = vmec_input.model_copy()
+        updated_resolution_input.ntor = fourier_resolution
+        updated_resolution_input.mpol = fourier_resolution
+        wout = vmecpp.run(updated_resolution_input, max_threads=4).wout
+
+        iotaf = np.asarray(wout.iotaf)
+        s_full = np.linspace(0.0, 1.0, len(iotaf))
+        iota_at_ref = np.interp(
+            np.linspace(0.0, 1.0, len(_NEAR_AXIS_IOTA_REF)), s_full, iotaf
+        )
+        error_arrays.append(iota_at_ref - _NEAR_AXIS_IOTA_REF)
+        np.testing.assert_allclose(
+            iota_at_ref,
+            _NEAR_AXIS_IOTA_REF,
+            rtol=0.2,  # Huge tolerance, since the low resolution is not converged yet
+            err_msg=f"at mpol=ntor={fourier_resolution} the iota profile deviates strongly",
+        )
+    for i in range(1, len(error_arrays)):
+        assert np.linalg.norm(error_arrays[i]) < np.linalg.norm(error_arrays[i - 1])

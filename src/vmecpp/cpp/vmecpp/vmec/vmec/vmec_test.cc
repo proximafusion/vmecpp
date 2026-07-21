@@ -194,6 +194,8 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   ASSERT_TRUE(output.ok());
 
   // Regression guard for issue #330/#640 and other changes to the multigrid
-  // convergence path
-  EXPECT_EQ(output->wout.niter, 344);
+  // convergence path. 344 with the historical unbalanced stage entry; 321
+  // since the vacuum state is seeded across multigrid transitions (the
+  // second stage enters force-balanced instead of kicking the boundary).
+  EXPECT_EQ(output->wout.niter, 321);
 }  // MultiGridFreeBoundary

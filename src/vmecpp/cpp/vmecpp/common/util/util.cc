@@ -32,6 +32,11 @@ std::string VmecStatusAsString(const VmecStatus vmec_status) {
              "self-intersecting. This "
              "can mean that your prescribed boundary is too shaped for VMEC to "
              "resolve ";
+    case VmecStatus::UNRECOVERABLE_ERROR:
+      return "UNRECOVERABLE_ERROR: a physical inconsistency was detected "
+             "in the MHD model (e.g. a degenerate flux-surface geometry or "
+             "a free-boundary current mismatch) that the solver could not "
+             "recover from";
     case VmecStatus::SUCCESSFUL_TERMINATION:
       return "SUCCESSFUL_TERMINATION";
   }
