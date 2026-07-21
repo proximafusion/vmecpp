@@ -105,39 +105,6 @@ fig.tight_layout()
 fig.savefig("multigrid_transition_comparison.png", dpi=150)
 print("wrote multigrid_transition_comparison.png")
 
-stage_labels = []
-before_vals = []
-after_vals = []
-parvmec_vals = []
-for i in range(1, len(vmecpp_before)):
-    ns_prev = vmecpp_before[i - 1][0]
-    ns = vmecpp_before[i][0]
-    stage_labels.append(f"{ns_prev}->{ns}")
-    before_vals.append(
-        vmecpp_before[i][1][0][1] if vmecpp_before[i][1] else float("nan")
-    )
-    after_vals.append(vmecpp_after[i][1][0][1] if vmecpp_after[i][1] else float("nan"))
-    parvmec_vals.append(
-        parvmec[i][1][0][1] if i < len(parvmec) and parvmec[i][1] else float("nan")
-    )
-
-fig2, ax2 = plt.subplots(figsize=(7, 4.5))
-x = range(len(stage_labels))
-width = 0.25
-ax2.bar([i - width for i in x], before_vals, width, label="vmecpp, bug present")
-ax2.bar(x, after_vals, width, label="vmecpp, fixed")
-ax2.bar([i + width for i in x], parvmec_vals, width, label="PARVMEC (Fortran)")
-ax2.set_yscale("log")
-ax2.set_xticks(list(x))
-ax2.set_xticklabels([f"ns {s}" for s in stage_labels])
-ax2.set_ylabel("FSQR at iteration 1 of new stage")
-ax2.set_title("Force-residual spike at multigrid stage entry, W7-X free boundary")
-ax2.axhline(1e-2, color="gray", lw=0.5, ls=":")
-ax2.legend(fontsize=9)
-fig2.tight_layout()
-fig2.savefig("stage_entry_fsqr_bars.png", dpi=150)
-print("wrote stage_entry_fsqr_bars.png")
-
 # print a compact summary table of the stage-entry (iter==1) FSQR spikes
 print()
 print(f"{'ns transition':<16}{'vmecpp before':>16}{'vmecpp after':>16}{'PARVMEC':>16}")

@@ -77,5 +77,4 @@ that seeding the vacuum state across transitions removes it in both
 codes' shared mechanism.
 
 See `multigrid_transition_comparison.png` for the full per-iteration
-force-residual history, and `stage_entry_fsqr_bars.png` for the bar-chart
-summary above.
+force-residual history.
