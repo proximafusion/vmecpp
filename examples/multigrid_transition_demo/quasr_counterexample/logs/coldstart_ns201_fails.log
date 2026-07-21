@@ -1,0 +1,4 @@
+
+EXCEPTION: RuntimeError: Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.Thread 0:
+	FATAL ERROR in thread=0. The solver failed during the first iterations. This may happen if the initial boundary is poorly shaped or if it isn't spectrally condensed enough.
