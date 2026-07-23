@@ -21,11 +21,14 @@ repos:
       - id: check-yaml
       - id: debug-statements
       - id: end-of-file-fixer
+        exclude: '^tests/data/quasr/.*\.json$'
       - id: mixed-line-ending
+        exclude: '^tests/data/quasr/.*\.json$'
       - id: name-tests-test
         args: ["--pytest-test-first"]
       - id: requirements-txt-fixer
       - id: trailing-whitespace
+        exclude: '^tests/data/quasr/.*\.json$'
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v20.1.0
     hooks:

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
 """Generalized resolution interpolation and the Python-side continuation driver.
 
 VMEC++ converges much more reliably when a hard equilibrium is approached through
@@ -159,11 +162,10 @@ def _remap_modes(
     """
     values = np.asarray(values, dtype=float)
     src_index = {
-        (int(m), int(n)): i
-        for i, (m, n) in enumerate(zip(src_xm, src_xn, strict=False))
+        (int(m), int(n)): i for i, (m, n) in enumerate(zip(src_xm, src_xn, strict=True))
     }
     out = np.zeros((len(dst_xm), *values.shape[1:]), dtype=float)
-    for i, (m, n) in enumerate(zip(dst_xm, dst_xn, strict=False)):
+    for i, (m, n) in enumerate(zip(dst_xm, dst_xn, strict=True)):
         j = src_index.get((int(m), int(n)))
         if j is not None:
             out[i] = values[j]

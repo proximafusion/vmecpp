@@ -53,12 +53,33 @@ static constexpr double kVacuumPermeability = 4.0e-7 * M_PI;
  */
 static constexpr double kIonLarmorRadiusCoefficient = 3.2e-3;
 
+// ========== Lambda Preconditioner Hyperparameters ==========
+//
+// The lambda preconditioner (IdealMhdModel::updateLambdaPreconditioner) is a
+// per-(m,n,surface) diagonal approximation of the lambda-force stiffness,
+// 1 / (n^2 nfp^2 <g_uu/sqrt(g)> + 2 m n nfp <g_uv/sqrt(g)> + m^2
+// <g_vv/sqrt(g)>), inherited from Fortran VMEC (lamcal in bcovar.f) with
+// several undocumented scalings. These scalings are the natural tuning
+// hyperparameters for the tail convergence rate (see
+// docs/convergence_study.md); they are collected here to make them visible
+// and adjustable in one place.
+
 /**
- * Eigenvalue avoidance factor for numerical stability.
- * Used in: ideal_mhd_model.cc to avoid singular matrix systems
- * Context: Prevents division by zero in eigenvalue computations
+ * Overall lambda preconditioner scale: the assembled diagonal is multiplied
+ * by kLambdaPreconditionerDampingFactor / (4 lamscale^2). The 1/lamscale^2
+ * converts between the internally rescaled lambda coefficients and the
+ * physical ones; the remaining factor 0.5 is inherited and unexplained.
  */
-static constexpr double kEigenvalueAvoidanceFactor = -1.0e-10;
+static constexpr double kLambdaPreconditionerDampingFactor = 2.0;
+
+/**
+ * Guard value substituted when an assembled lambda stiffness element is
+ * exactly zero, to avoid dividing by zero when the preconditioner inverts
+ * it. Negative by convention; the stiffness elements are negative for the
+ * VMEC sign of the Jacobian, so the guard keeps the sign of the
+ * neighboring elements.
+ */
+static constexpr double kLambdaPreconditionerZeroGuard = -1.0e-10;
 
 // ========== Mathematical Constants ==========
 
@@ -230,8 +251,24 @@ static constexpr double kEdgePedestalFactor = 0.05;
  * Used in: ideal_mhd_model.cc for suppressing unstable modes
  * Context: Prevents numerical instabilities in Fourier space
  */
-static constexpr double kModeDampingLarge = 16.0 * 16.0;
-static constexpr double kModeDampingSmall = 8.0;
+static constexpr double kLambdaHighMDampingMaxPower = 8.0;
+
+/**
+ * Reference poloidal mode number for the high-m lambda damping: each lambda
+ * preconditioner element is additionally multiplied by
+ * sqrt(s)^min((m/kLambdaHighMDampingReferenceM)^2,
+ * kLambdaHighMDampingMaxPower), which is ~1 for m << 16 and suppresses the
+ * lambda step of high-m modes towards the axis (sqrt(s) < 1).
+ * Relevant only when mpol approaches 16.
+ */
+static constexpr double kLambdaHighMDampingReferenceM = 16.0;
+
+/**
+ * Eigenvalue avoidance factor for numerical stability.
+ * Used in: ideal_mhd_model.cc to avoid singular matrix systems
+ * Context: Prevents division by zero in eigenvalue computations
+ */
+static constexpr double kEigenvalueAvoidanceFactor = -1.0e-10;
 
 /**
  * Vacuum frequency adjustment factors.

@@ -7,7 +7,9 @@
 
 #include <Eigen/Dense>
 #include <climits>
+#include <memory>
 #include <span>
+#include <vector>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -49,7 +51,8 @@ class IdealMhdModel {
                 const FourierBasisFastPoloidal* t, RadialProfiles* m_p,
                 const VmecConstants* constants, ThreadLocalStorage* m_ls,
                 HandoverStorage* m_h, const RadialPartitioning* r,
-                FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
+                const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
+                int vac_num_threads, int signOfJacobian, int nvacskip,
                 VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
@@ -469,7 +472,14 @@ class IdealMhdModel {
   ThreadLocalStorage& m_ls_;
   HandoverStorage& m_h_;
   const RadialPartitioning& r_;
-  FreeBoundaryBase* m_fb_;
+  // Free-boundary vacuum solvers, shared across all radial threads and sized to
+  // m_vac_num_threads_ (decoupled from the radial thread count). The vacuum
+  // solve is driven from a nested parallel region in update(): a single radial
+  // thread spawns a team of m_vac_num_threads_ threads, each invoking
+  // (*m_fb_vac_)[vac_thread_id]->update() on its tangential slice. Owned by
+  // Vmec; may be nullptr / empty for fixed-boundary runs.
+  const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac_;
+  int m_vac_num_threads_;
   VacuumPressureState& m_vacuum_pressure_state_;
   std::int64_t force_evaluation_count_ = 0;
 
@@ -484,9 +494,6 @@ class IdealMhdModel {
 
   // 1/4: 1/2 from d(sHalf)/ds and 1/2 from interpolation
   static constexpr double dSHalfDsInterp = 0.25;
-
-  // TODO(jons): understand what this is (related to radial preconditioner)
-  static constexpr double dampingFactor = 2.0;
 
   // from INDATA: flag to select between constrained-iota and
   // constrained-toroidal-current

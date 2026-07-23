@@ -3,14 +3,37 @@
 # SPDX-License-Identifier: MIT
 import argparse
 import importlib.metadata
+import sys
 from pathlib import Path
 
 import vmecpp
 
 
-def parse_arguments() -> argparse.Namespace:
+def _parse_convert_arguments(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="VMEC++ is a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks."
+        prog="vmecpp convert",
+        description="Convert a Fortran indata file to VMEC++'s JSON format.",
+    )
+    p.add_argument(
+        "input_file",
+        help="A VMEC input file either in the classic Fortran 'indata' format or in VMEC++'s JSON format.",
+        type=Path,
+    )
+    args = p.parse_args(argv)
+    args.command = "convert"
+    return args
+
+
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if argv and argv[0] == "convert":
+        return _parse_convert_arguments(argv[1:])
+
+    p = argparse.ArgumentParser(
+        description="VMEC++ is a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks.",
+        epilog="Run 'vmecpp convert <input_file>' to convert an input file to VMEC++'s JSON format.",
     )
     p.add_argument(
         "input_file",
@@ -41,11 +64,21 @@ def parse_arguments() -> argparse.Namespace:
         help="Show the legacy table output instead of animated progress bars.",
         action="store_true",
     )
-    return p.parse_args()
+    args = p.parse_args(argv)
+    args.command = "run"
+    return args
 
 
 def main() -> None:
     args = parse_arguments()
+
+    if args.command == "convert":
+        vmec_input = vmecpp.VmecInput.from_file(args.input_file)
+        json_name = args.input_file.name.replace("input.", "")
+        json_file = Path(f"{args.input_file.parent}/{json_name}.json")
+        vmec_input.save(json_file, indent=4)
+        print(f"Converted {args.input_file} to {json_file}")  # noqa: T201
+        return
 
     if args.quiet:
         verbose = 0
@@ -58,8 +91,8 @@ def main() -> None:
         )
         vmecpp._progress_tip_shown = True
 
-    input = vmecpp.VmecInput.from_file(args.input_file)
-    output = vmecpp.run(input, max_threads=args.max_threads, verbose=verbose)
+    vmec_input = vmecpp.VmecInput.from_file(args.input_file)
+    output = vmecpp.run(vmec_input, max_threads=args.max_threads, verbose=verbose)
 
     configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)
     wout_file = Path(f"wout_{configuration_name}.nc")

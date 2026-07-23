@@ -345,7 +345,8 @@ class VmecModel {
   // multi-grid sequencing; call this between solve_equilibrium calls to drive
   // the coarse->fine ramp from Python. `new_ns` must be finer than the current
   // ns (multi-grid only refines).
-  void RefineTo(int new_ns) {
+  void RefineTo(int new_ns, std::optional<vmecpp::MultigridInterpolationScheme>
+                                interpolation = std::nullopt) {
     vmecpp::Vmec &v = *vmec_;
     if (new_ns <= v.fc_.ns) {
       throw std::runtime_error("VmecModel.refine_to: new_ns (" +
@@ -383,7 +384,7 @@ class VmecModel {
     // InitializeRadial (rmsPhiP accumulates in evalRadialProfiles).
     v.constants_.reset();
     v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, new_ns, ns_old,
-                       delt0, std::nullopt);
+                       delt0, std::nullopt, interpolation);
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
   }
@@ -671,6 +672,14 @@ PYBIND11_MODULE(_vmecpp, m) {
   py::native_enum<vmecpp::IterationStyle>(m, "IterationStyle", "enum.Enum")
       .value("VMEC_8_52", vmecpp::IterationStyle::VMEC_8_52)
       .value("PARVMEC", vmecpp::IterationStyle::PARVMEC)
+      .export_values()
+      .finalize();
+
+  py::native_enum<vmecpp::MultigridInterpolationScheme>(
+      m, "MultigridInterpolationScheme", "enum.Enum")
+      .value("LINEAR", vmecpp::MultigridInterpolationScheme::kLinear)
+      .value("CUBIC", vmecpp::MultigridInterpolationScheme::kCubic)
+      .value("CUBIC_RHO", vmecpp::MultigridInterpolationScheme::kCubicRho)
       .export_values()
       .finalize();
 
@@ -1278,7 +1287,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("reset_to_initial_guess", &VmecModel::ResetToInitialGuess)
       .def("recompute_axis", &VmecModel::RecomputeAxis)
       .def("reinitialize", &VmecModel::Reinitialize)
-      .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"))
+      .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"),
+           py::arg("interpolation") = py::none())
       .def("solve", &VmecModel::Solve)
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))

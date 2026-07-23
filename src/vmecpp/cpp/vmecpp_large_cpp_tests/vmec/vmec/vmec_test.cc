@@ -34,7 +34,6 @@ using file_io::ReadFile;
 using testing::IsCloseRelAbs;
 
 using ::testing::DoubleNear;
-using ::testing::ElementsAreArray;
 using ::testing::Pointwise;
 using ::testing::TestWithParam;
 using ::testing::Values;
@@ -425,12 +424,6 @@ TEST_P(InterpTest, CheckInterp) {
   ASSERT_TRUE(ifs_interp.is_open())
       << "failed to open reference file: " << filename;
   json interp = json::parse(ifs_interp);
-
-  EXPECT_THAT(vmec.sj, ElementsAreArray(interp["sj"]));
-  EXPECT_THAT(vmec.js1, ElementsAreArray(interp["js1"]));
-  EXPECT_THAT(vmec.js2, ElementsAreArray(interp["js2"]));
-  EXPECT_THAT(vmec.s1, ElementsAreArray(interp["s1"]));
-  EXPECT_THAT(vmec.xint, ElementsAreArray(interp["xint"]));
 
   // test previous xc
   std::size_t num_threads_old = vmec.old_xc_scaled_.size();

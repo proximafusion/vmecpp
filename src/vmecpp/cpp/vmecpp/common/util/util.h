@@ -150,6 +150,10 @@ enum class VmecStatus : std::uint8_t {
   NORMAL_TERMINATION = 0,
   BAD_JACOBIAN = 1,
   JACOBIAN_75_TIMES_BAD = 4,
+  // A physical inconsistency was detected deep in the MHD model (e.g. a
+  // degenerate flux-surface geometry or a free-boundary current mismatch)
+  // that the solver has no retry strategy for.
+  UNRECOVERABLE_ERROR = 5,
   // everything went well, VMEC++ converged
   SUCCESSFUL_TERMINATION = 11
 };
@@ -236,6 +240,17 @@ void TridiagonalSolveOpenMP(
 // Compute the maximum allowed number of threads for a VMEC++ run with given
 // radial resolution and adjust the number of OpenMP threads accordingly.
 int vmec_adjust_num_threads(int max_threads, int num_surfaces_to_distribute);
+
+// Compute the number of threads to use for the free-boundary (NESTOR) vacuum
+// solve. The vacuum solve is parallelized over the tangential boundary grid
+// (nZnT points), so - unlike the radial solve, which is capped at ns/2 - it can
+// use as many threads as there are tangential grid points. This count is
+// deliberately decoupled from the radial thread count so the vacuum solve can
+// use the full thread budget even at coarse multigrid steps (small ns).
+// Unlike vmec_adjust_num_threads, this does NOT call omp_set_num_threads: the
+// vacuum solve runs in a nested parallel region with an explicit num_threads()
+// clause.
+int vmec_adjust_vacuum_num_threads(int max_threads, int n_znt);
 
 }  // namespace vmecpp
 

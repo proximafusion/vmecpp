@@ -8,6 +8,7 @@
 #include <cassert>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "H5Cpp.h"
 #include "absl/log/log.h"
@@ -894,6 +895,27 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
 
   // -----------------------------------------------
 
+  // Axis Fourier coefficient arrays must have length ntor+1. Arrays that are
+  // too short are silently zero-padded (a shorter array simply omits trailing
+  // zero coefficients). Arrays that are too long are rejected, because
+  // truncating them would silently discard user-provided coefficients.
+  const int expected_axis_size = vmec_indata.ntor + 1;
+  auto pad_or_reject_axis = [expected_axis_size](
+                                Eigen::VectorXd& m_axis,
+                                const char* name) -> absl::Status {
+    if (m_axis.size() > expected_axis_size) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("length of %s (%ld) exceeds ntor+1 (%d)\n", name,
+                          m_axis.size(), expected_axis_size));
+    }
+    if (m_axis.size() < expected_axis_size) {
+      Eigen::VectorXd padded = Eigen::VectorXd::Zero(expected_axis_size);
+      padded.head(m_axis.size()) = m_axis;
+      m_axis = std::move(padded);
+    }
+    return absl::OkStatus();
+  };
+
   auto maybe_raxis_c = JsonReadVectorDouble(j, "raxis_c");
   if (!maybe_raxis_c.ok()) {
     return maybe_raxis_c.status();
@@ -902,10 +924,9 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.raxis_c = maybe_raxis_c->value();
   }
 
-  if (vmec_indata.raxis_c.size() != vmec_indata.ntor + 1) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("length of raxis_c (%ld) does not match ntor+1 (%d)\n",
-                        vmec_indata.raxis_c.size(), vmec_indata.ntor + 1));
+  if (absl::Status status = pad_or_reject_axis(vmec_indata.raxis_c, "raxis_c");
+      !status.ok()) {
+    return status;
   }
 
   auto maybe_zaxis_s = JsonReadVectorDouble(j, "zaxis_s");
@@ -916,10 +937,9 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.zaxis_s = maybe_zaxis_s->value();
   }
 
-  if (vmec_indata.zaxis_s.size() != vmec_indata.ntor + 1) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("length of zaxis_s (%ld) does not match ntor+1 (%d)\n",
-                        vmec_indata.zaxis_s.size(), vmec_indata.ntor + 1));
+  if (absl::Status status = pad_or_reject_axis(vmec_indata.zaxis_s, "zaxis_s");
+      !status.ok()) {
+    return status;
   }
 
   if (vmec_indata.lasym) {
@@ -931,10 +951,10 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
       vmec_indata.raxis_s = maybe_raxis_s->value();
     }
 
-    if (vmec_indata.raxis_s->size() != vmec_indata.ntor + 1) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "length of raxis_s (%ld) does not match ntor+1 (%d)\n",
-          vmec_indata.raxis_s->size(), vmec_indata.ntor + 1));
+    if (absl::Status status =
+            pad_or_reject_axis(vmec_indata.raxis_s.value(), "raxis_s");
+        !status.ok()) {
+      return status;
     }
 
     auto maybe_zaxis_c = JsonReadVectorDouble(j, "zaxis_c");
@@ -945,10 +965,10 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
       vmec_indata.zaxis_c = maybe_zaxis_c->value();
     }
 
-    if (vmec_indata.zaxis_c->size() != vmec_indata.ntor + 1) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "length of zaxis_c (%ld) does not match ntor+1 (%d)\n",
-          vmec_indata.zaxis_c->size(), vmec_indata.ntor + 1));
+    if (absl::Status status =
+            pad_or_reject_axis(vmec_indata.zaxis_c.value(), "zaxis_c");
+        !status.ok()) {
+      return status;
     }
   }
 
@@ -1454,9 +1474,9 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // assume data is ok; will see when the physics starts to run...
 
   // delt
-  if (vmec_indata.delt <= 0.0 || vmec_indata.delt > 1.0) {
+  if (vmec_indata.delt <= 0.0 || vmec_indata.delt > 10.0) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'delt' has to be in the range ]0.0, 1.0], but is %g\n",
+        "input variable 'delt' has to be in the range ]0.0, 10.0], but is %g\n",
         vmec_indata.delt));
   }
 
