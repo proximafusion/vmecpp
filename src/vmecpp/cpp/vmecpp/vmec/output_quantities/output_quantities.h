@@ -361,8 +361,14 @@ struct CovariantBDerivatives {
 
 struct JxBOutFileContents {
   // (num_full, nZnT)
+  // sqrt(g) * j^theta
   RowMatrixXd itheta;
+
+  // (num_full, nZnT)
+  // sqrt(g) * j^phi
   RowMatrixXd izeta;
+
+  // sqrt(g) * (j^theta B_theta + j^phi * B_phi) = sqrt(g) * j.B
   RowMatrixXd bdotk;
 
   Eigen::VectorXd amaxfor;
@@ -417,17 +423,20 @@ struct MercierStabilityIntermediateQuantities {
   // normalized toroidal flux on full-grid
   Eigen::VectorXd s;
 
-  // magnetic shear == radial derivative of iota on full grid
+  // magnetic shear == radial derivative of iota
+  // d(iota)/dPhi on full grid
   Eigen::VectorXd shear;
 
-  // magnetic well == d^2V/ds^2 on full grid
+  // magnetic well
+  // d(VP)/d(PHI) = d^2(V)/d(Phi)^2 on full grid
   Eigen::VectorXd vpp;
 
-  // radial derivative of kinetic pressure on full grid
-  Eigen::VectorXd d_pressure_d_s;
+  // radial derivative of kinetic pressure
+  // dp/dPhi on full grid
+  Eigen::VectorXd d_pressure_d_phi;
 
-  // d(I_tor)/ds on full grid
-  Eigen::VectorXd d_toroidal_current_d_s;
+  // d(I_tor)/dPhi on full grid
+  Eigen::VectorXd d_toroidal_current_d_phi;
 
   // real, physical d(phi)/ds on half-grid
   Eigen::VectorXd phip_realH;
@@ -439,33 +448,32 @@ struct MercierStabilityIntermediateQuantities {
   // toroidal current on half-grid
   Eigen::VectorXd torcur;
 
-  // Jacobian on full-grid
+  // Jacobian on full-grid; first s-based, later flux-based (phi)
   // (num_full, nZnT)
   RowMatrixXd gsqrt_full;
 
-  // B \cdot j on full-grid
+  // mu_0 * j.B on full-grid
   // (num_full, nZnT)
   RowMatrixXd bdotj;
 
-  // 1.0 / gpp on full-grid
+  // 1.0 / |grad Phi|^2 on full-grid
   // (num_full, nZnT)
-  // TODO(jons): figure out what this really is
   RowMatrixXd gpp;
 
   // |B|^2 on half grid
   // (num_half, nZnT)
   RowMatrixXd b2;
 
-  // <1/B**2> on full-grid
+  // <1/B^2> on full-grid
   Eigen::VectorXd tpp;
 
-  // <b*b/|grad-phi|**3> on full-grid
+  // <B.B/|grad-phi|^2> = <B^2/|grad-phi|^2> on full-grid
   Eigen::VectorXd tbb;
 
-  // <j*b/|grad-phi|**3>
+  // <j.B/|grad-phi|^2> on full-grid
   Eigen::VectorXd tjb;
 
-  // <(j*b)2/b**2*|grad-phi|**3>
+  // // <(j.B)^2/(B^2 * |grad-phi|^2)> on full-grid
   Eigen::VectorXd tjj;
 
   bool operator==(const MercierStabilityIntermediateQuantities&) const =
@@ -498,43 +506,50 @@ struct MercierFileContents {
   // rotational transform on full grid
   Eigen::VectorXd iota;
 
-  // magnetic shear == radial derivative of iota on full grid
+  // magnetic shear == radial derivative of iota
+  // d(iota)/dPhi / dV/dPhi = d(iota)/dV on full grid
   Eigen::VectorXd shear;
 
-  // dV/ds on full grid
-  Eigen::VectorXd d_volume_d_s;
+  // dV/dPhi on full grid
+  Eigen::VectorXd d_volume_d_phi;
 
-  // magnetic well == d^2V/ds^2 on full grid
+  // magnetic well
+  // -signgs * d^2(V)/d(Phi)^2 on full grid
   Eigen::VectorXd well;
 
   // I_tor on full grid
   Eigen::VectorXd toroidal_current;
 
-  // d(I_tor)/ds on full grid
-  Eigen::VectorXd d_toroidal_current_d_s;
+  // d(I_tor)/ds / dV/dPhi = d(I_tor)/dV on full grid
+  Eigen::VectorXd d_toroidal_current_d_volume;
 
   // kinetic pressure on full grid
   Eigen::VectorXd pressure;
 
-  // radial derivative of kinetic pressure on full grid
-  Eigen::VectorXd d_pressure_d_s;
+  // radial derivative of kinetic pressure
+  // dp/dPhi / dV/dPhi = dp/dV on full grid
+  Eigen::VectorXd d_pressure_d_volume;
 
   // -------------------
 
-  // Mercier criterion on full grid
-  Eigen::VectorXd DMerc;
-
-  // shear contribution to Mercier criterion on full grid
+  // shear contribution to Mercier criterion
+  // (iota')^2 / 4 on full grid
   Eigen::VectorXd Dshear;
 
-  // magnetic well contribution to Mercier criterion on full grid
-  Eigen::VectorXd Dwell;
-
-  // toroidal current contribution to Mercier criterion on full grid
+  // toroidal current contribution to Mercier criterion
+  // -iota' * [<j.B/|grad-phi|^2> - I' * <B^2/|grad-phi|^2>] on full grid
   Eigen::VectorXd Dcurr;
 
-  // geodesic curvature contribution to Mercier criterion on full grid
+  // magnetic well contribution to Mercier criterion
+  // p' * [V'' - p' * <1/B^2>] * <B^2/|grad-phi|^2> on full grid
+  Eigen::VectorXd Dwell;
+
+  // geodesic curvature contribution to Mercier criterion
+  // ( <j.B/|grad-phi|^2> )^2 - <B^2/|grad-phi|^2> * <(j.B)^2/(B^2 * |grad-phi|^2)> on full grid
   Eigen::VectorXd Dgeod;
+
+  // Mercier criterion on full grid
+  Eigen::VectorXd DMerc;
 
   bool operator==(const MercierFileContents&) const = default;
   bool operator!=(const MercierFileContents& o) const { return !(*this == o); }
