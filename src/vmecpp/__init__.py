@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 import tempfile
+import types
 import typing
 from collections.abc import Generator
 from pathlib import Path
@@ -1415,6 +1416,22 @@ class VmecWOut(BaseModelWithNumpy):
             )
             raise ValueError(msg)
 
+        # Write to a temporary file in the target directory and atomically move
+        # it into place at the end, so that a failed save never leaves a
+        # partial wout file behind at out_path.
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            dir=out_path.parent, prefix=out_path.name + ".", suffix=".tmp"
+        )
+        os.close(tmp_fd)
+        try:
+            self._save_to_netcdf3(tmp_name)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
+        Path(tmp_name).replace(out_path)
+
+    def _save_to_netcdf3(self, out_path: str | Path) -> None:
+        """Write the NetCDF3 wout representation of this object to out_path."""
         with netCDF4.Dataset(out_path, "w", format="NETCDF3_CLASSIC") as fnc:
             # create dimensions (in the same order as VMEC2000)
             # Dimensions that are not in use yet, written for compatibility
@@ -1507,19 +1524,34 @@ class VmecWOut(BaseModelWithNumpy):
                     shape_string = tuple(
                         [f"dim_{dim:05d}" for dim in value_array.shape]
                     )
-                    if (
-                        field_info is not None  # is a model field
-                        and field_info.annotation is not None  # has an annotation
-                        and issubclass(
-                            field_info.annotation,
-                            jt.AbstractArray,
+                    # Asymmetric arrays are annotated as `<array type> | None`;
+                    # unwrap such unions to recover the jaxtyping array
+                    # annotation that carries the dimension names.
+                    annotation = (
+                        field_info.annotation if field_info is not None else None
+                    )
+                    if typing.get_origin(annotation) in (
+                        typing.Union,
+                        types.UnionType,
+                    ):
+                        non_none_args = [
+                            arg
+                            for arg in typing.get_args(annotation)
+                            if arg is not type(None)
+                        ]
+                        annotation = (
+                            non_none_args[0] if len(non_none_args) == 1 else None
                         )
+                    if (
+                        annotation is not None
+                        and isinstance(annotation, type)
+                        and issubclass(annotation, jt.AbstractArray)
                     ):
                         # Extract the dimension names used for NetCDF wout when available
-                        annotation_dim_names = field_info.annotation.dim_str.split()
+                        annotation_dim_names = annotation.dim_str.split()
                         inferred_shape: list[str] = []
                         for dim, dim_default_name, annotation_dim_name in zip(
-                            field_info.annotation.dims,
+                            annotation.dims,
                             shape_string,
                             annotation_dim_names,
                             strict=True,

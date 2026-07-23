@@ -1778,7 +1778,18 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
         int idx_local = (jF - nsMinF) * s.nZnT + kl;
         int idx_local1 = (jF - nsMinF1) * s.nZnT + kl;
 
-        results.bsubvF(idx_global) = m.blmn_e[idx_local] * unlamscale;
+        double blmn_e_full = m.blmn_e[idx_local];
+        if (s.lasym) {
+          // symforce splits blmn in place for the forward DFT: on the reduced
+          // theta interval, blmn_e holds the standard-parity half and
+          // blmn_asym_e the reversed-parity half; their sum restores the
+          // pre-split value (the reflected interval is left untouched).
+          const int l = kl % s.nThetaEff;
+          if (l < s.nThetaReduced) {
+            blmn_e_full += m.blmn_asym_e[idx_local];
+          }
+        }
+        results.bsubvF(idx_global) = blmn_e_full * unlamscale;
 
         // from inv-DFT
         results.r_e(idx_global) = m.r1_e[idx_local1];
@@ -4828,49 +4839,49 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             const double cmu = cosmui[ml];
             const double smu = t.sinmui[ml];
 
-            const double g = m_vmec_internal_results.gsqrt(idx_kl);
-            const double mp = magnetic_pressure[idx_kl];
-            const double bu = m_vmec_internal_results.bsubu(idx_kl);
-            const double bv = m_vmec_internal_results.bsubv(idx_kl);
-            const double bpu = m_vmec_internal_results.bsupu(idx_kl);
-            const double bpv = m_vmec_internal_results.bsupv(idx_kl);
-            const double bs = bsubs_half.bsubs_half(idx_kl);
-
-            fc_gsqrt += cmu * g;
-            fs_gsqrt += smu * g;
-            fc_bmnc += cmu * mp;
-            fs_bmnc += smu * mp;
-            fc_bsubu += cmu * bu;
-            fs_bsubu += smu * bu;
-            fc_bsubv += cmu * bv;
-            fs_bsubv += smu * bv;
-            fc_bsupu += cmu * bpu;
-            fs_bsupu += smu * bpu;
-            fc_bsupv += cmu * bpv;
-            fs_bsupv += smu * bpv;
-            fc_bsubs += cmu * bs;
-            fs_bsubs += smu * bs;
+            double g = m_vmec_internal_results.gsqrt(idx_kl);
+            double mp = magnetic_pressure[idx_kl];
+            double bu = m_vmec_internal_results.bsubu(idx_kl);
+            double bv = m_vmec_internal_results.bsubv(idx_kl);
+            double bpu = m_vmec_internal_results.bsupu(idx_kl);
+            double bpv = m_vmec_internal_results.bsupv(idx_kl);
+            double bs = bsubs_half.bsubs_half(idx_kl);
 
             if (s.lasym) {
+              // symoutput: on the reduced theta interval, the cos(mu-nv)
+              // coefficients come from the stellarator-symmetric projection
+              // 0.5 * (F(u,v) + F(-u,-v)) and the sin(mu-nv) coefficients
+              // from the antisymmetric projection 0.5 * (F(u,v) - F(-u,-v));
+              // for bsubs the parities are reversed.
               const int l_rev = (s.nThetaEff - l) % s.nThetaEff;
               const int idx_kl_rev =
                   (jH * s.nZeta + k_rev) * s.nThetaEff + l_rev;
-              // Asymmetric parts: difference (or sum for bsubs) of
-              // stellarator-symmetric pairs.
-              const double g_a =
-                  0.5 * (g - m_vmec_internal_results.gsqrt(idx_kl_rev));
-              const double mp_a = 0.5 * (mp - magnetic_pressure[idx_kl_rev]);
-              const double bu_a =
-                  0.5 * (bu - m_vmec_internal_results.bsubu(idx_kl_rev));
-              const double bv_a =
-                  0.5 * (bv - m_vmec_internal_results.bsubv(idx_kl_rev));
-              const double bpu_a =
-                  0.5 * (bpu - m_vmec_internal_results.bsupu(idx_kl_rev));
-              const double bpv_a =
-                  0.5 * (bpv - m_vmec_internal_results.bsupv(idx_kl_rev));
-              // bsubs uses + (cos-parity symmetry).
-              const double bs_a =
-                  0.5 * (bs + bsubs_half.bsubs_half(idx_kl_rev));
+
+              const double g_rev = m_vmec_internal_results.gsqrt(idx_kl_rev);
+              const double mp_rev = magnetic_pressure[idx_kl_rev];
+              const double bu_rev = m_vmec_internal_results.bsubu(idx_kl_rev);
+              const double bv_rev = m_vmec_internal_results.bsubv(idx_kl_rev);
+              const double bpu_rev = m_vmec_internal_results.bsupu(idx_kl_rev);
+              const double bpv_rev = m_vmec_internal_results.bsupv(idx_kl_rev);
+              const double bs_rev = bsubs_half.bsubs_half(idx_kl_rev);
+
+              const double g_a = 0.5 * (g - g_rev);
+              const double mp_a = 0.5 * (mp - mp_rev);
+              const double bu_a = 0.5 * (bu - bu_rev);
+              const double bv_a = 0.5 * (bv - bv_rev);
+              const double bpu_a = 0.5 * (bpu - bpu_rev);
+              const double bpv_a = 0.5 * (bpv - bpv_rev);
+              // bsubs uses + (cos-parity asymmetric part).
+              const double bs_a = 0.5 * (bs + bs_rev);
+
+              g = 0.5 * (g + g_rev);
+              mp = 0.5 * (mp + mp_rev);
+              bu = 0.5 * (bu + bu_rev);
+              bv = 0.5 * (bv + bv_rev);
+              bpu = 0.5 * (bpu + bpu_rev);
+              bpv = 0.5 * (bpv + bpv_rev);
+              // bsubs uses - (sin-parity symmetric part).
+              bs = 0.5 * (bs - bs_rev);
 
               fc_gsqrt_a += cmu * g_a;
               fs_gsqrt_a += smu * g_a;
@@ -4887,6 +4898,21 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               fc_bsubs_a += cmu * bs_a;
               fs_bsubs_a += smu * bs_a;
             }
+
+            fc_gsqrt += cmu * g;
+            fs_gsqrt += smu * g;
+            fc_bmnc += cmu * mp;
+            fs_bmnc += smu * mp;
+            fc_bsubu += cmu * bu;
+            fs_bsubu += smu * bu;
+            fc_bsubv += cmu * bv;
+            fs_bsubv += smu * bv;
+            fc_bsupu += cmu * bpu;
+            fs_bsupu += smu * bpu;
+            fc_bsupv += cmu * bpv;
+            fs_bsupv += smu * bpv;
+            fc_bsubs += cmu * bs;
+            fs_bsubs += smu * bs;
           }  // l
 
           const int idx_mk = m_nzeta_p1 + k;
@@ -5033,6 +5059,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     wout.bsubsmns(mn_nyq, 0) =
         2.0 * wout.bsubsmns(mn_nyq, 1) - wout.bsubsmns(mn_nyq, 2);
   }  // mn_nyq
+  if (s.lasym) {
+    for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
+      wout.bsubsmnc(mn_nyq, 0) =
+          2.0 * wout.bsubsmnc(mn_nyq, 1) - wout.bsubsmnc(mn_nyq, 2);
+    }  // mn_nyq
+  }
 
   // -------------------
   // Full-grid covariant B_s Fourier coefficients (bsubsmns_full).
@@ -5043,6 +5075,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // commutes with the angular DFT, bsubsmns_full(:, jF) for interior jF equals
   // 0.5 * (bsubsmns(:, jF+1) + bsubsmns(:, jF)).
   wout.bsubsmns_full = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  if (s.lasym) {
+    wout.bsubsmnc_full = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  }
   // Use the same two-phase separable DFT as the half-grid loop above,
   // parallelised over full-grid surfaces jF.
 #ifdef _OPENMP
@@ -5051,6 +5086,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 #endif
     std::vector<double> Fc_bsubs_full(partial_sum_size),
         Fs_bsubs_full(partial_sum_size);
+    // Asymmetric partial sums (only populated when lasym=true).
+    std::vector<double> Fc_bsubs_full_a, Fs_bsubs_full_a;
+    if (s.lasym) {
+      Fc_bsubs_full_a.resize(partial_sum_size);
+      Fs_bsubs_full_a.resize(partial_sum_size);
+    }
 
 #ifdef _OPENMP
 #pragma omp for
@@ -5058,21 +5099,47 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     for (int jF = 0; jF < fc.ns; ++jF) {
       std::fill(Fc_bsubs_full.begin(), Fc_bsubs_full.end(), 0.0);
       std::fill(Fs_bsubs_full.begin(), Fs_bsubs_full.end(), 0.0);
+      if (s.lasym) {
+        std::fill(Fc_bsubs_full_a.begin(), Fc_bsubs_full_a.end(), 0.0);
+        std::fill(Fs_bsubs_full_a.begin(), Fs_bsubs_full_a.end(), 0.0);
+      }
 
       // Phase 1: poloidal partial DFT
       for (int m = 0; m <= s.mnyq; ++m) {
         const int m_nzeta = m * s.nZeta;
         for (int k = 0; k < s.nZeta; ++k) {
           double fc = 0.0, fs = 0.0;
+          double fc_a = 0.0, fs_a = 0.0;
+          int k_rev = 0;
+          if (s.lasym) {
+            k_rev = (s.nZeta - k) % s.nZeta;
+          }
           for (int l = 0; l < s.nThetaReduced; ++l) {
             const int ml = m * s.nThetaReduced + l;
             const int idx_kl = (jF * s.nZeta + k) * s.nThetaEff + l;
-            const double bs = bsubs_full.bsubs_full(idx_kl);
+            double bs = bsubs_full.bsubs_full(idx_kl);
+            if (s.lasym) {
+              // symoutput parity split for B_s: the sin(mu-nv) coefficients
+              // come from 0.5 * (F(u,v) - F(-u,-v)) and the cos(mu-nv)
+              // coefficients from 0.5 * (F(u,v) + F(-u,-v)).
+              const int l_rev = (s.nThetaEff - l) % s.nThetaEff;
+              const int idx_kl_rev =
+                  (jF * s.nZeta + k_rev) * s.nThetaEff + l_rev;
+              const double bs_rev = bsubs_full.bsubs_full(idx_kl_rev);
+              const double bs_a = 0.5 * (bs + bs_rev);
+              bs = 0.5 * (bs - bs_rev);
+              fc_a += cosmui[ml] * bs_a;
+              fs_a += t.sinmui[ml] * bs_a;
+            }
             fc += cosmui[ml] * bs;
             fs += t.sinmui[ml] * bs;
           }  // l
           Fc_bsubs_full[m_nzeta + k] = fc;
           Fs_bsubs_full[m_nzeta + k] = fs;
+          if (s.lasym) {
+            Fc_bsubs_full_a[m_nzeta + k] = fc_a;
+            Fs_bsubs_full_a[m_nzeta + k] = fs_a;
+          }
         }  // k
       }  // m
 
@@ -5089,14 +5156,23 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         const int m_nzeta = m * s.nZeta;
 
         double acc = 0.0;
+        double acc_a = 0.0;
         for (int k = 0; k < s.nZeta; ++k) {
           const int kn = k * (s.nnyq2 + 1) + abs_n;
           const int idx_mk = m_nzeta + k;
           // sin(mu-nv) kernel: cosnv*Fs - sign_n*sinnv*Fc
           acc += cosnv[kn] * Fs_bsubs_full[idx_mk] -
                  sign_n * t.sinnv[kn] * Fc_bsubs_full[idx_mk];
+          if (s.lasym) {
+            // cos(mu-nv) kernel: cosnv*Fc + sign_n*sinnv*Fs
+            acc_a += cosnv[kn] * Fc_bsubs_full_a[idx_mk] +
+                     sign_n * t.sinnv[kn] * Fs_bsubs_full_a[idx_mk];
+          }
         }  // k
         wout.bsubsmns_full(mn_nyq, jF) = dmult * acc;
+        if (s.lasym) {
+          wout.bsubsmnc_full(mn_nyq, jF) = dmult * acc_a;
+        }
       }  // mn_nyq
     }  // jF
 
@@ -5112,8 +5188,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     wout.zaxis_cc = threed1_axis.zaxis_asym;
 
     // MUST CONVERT m=1 MODES... FROM INTERNAL TO PHYSICAL FORM
-    // Extrapolation of m=0 Lambda (cs) modes, which are not evolved at j=1,
-    // done in CONVERT
     for (int jF = 0; jF < fc.ns; ++jF) {
       for (int n = 0; n < s.ntor + 1; ++n) {
         const int m = 1;
@@ -5146,27 +5220,14 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         mn++;
         const int idx_fc = (jF * (s.ntor + 1) + n) * s.mpol + m_0;
         const double t1 = t.mscale[m_0] * t.nscale[n];
-        rmns1[mn] = t1 * m_vmec_internal_results.rmnsc(idx_fc);
+        zmnc1[mn] = t1 * m_vmec_internal_results.zmncc(idx_fc);
+        lmnc1[mn] = t1 * m_vmec_internal_results.lmncc(idx_fc);
         if (s.lthreed) {
-          zmnc1[mn] = -t1 * m_vmec_internal_results.zmncc(idx_fc);
-          lmnc1[mn] = -t1 * m_vmec_internal_results.lmncc(idx_fc);
+          rmns1[mn] = -t1 * m_vmec_internal_results.rmncs(idx_fc);
         }
-        // NOTE: Z and lambda do not have m=0 contributions in 2D,
-        // since cos(m * theta) == 0 for m = 0
+        // NOTE: R does not have m=0 contributions in 2D,
+        // since sin(m * theta) == 0 for m = 0 and sin(n * zeta) == 0 for n = 0
       }  // n
-
-      // extrapolate to axis if 3D
-      if (s.lthreed && jF == 0) {
-        int mn = -1;
-        for (int n = 0; n <= s.ntor; ++n) {
-          mn++;
-          const int idx_ns_1 = (1 * (s.ntor + 1) + n) * s.mpol + m_0;
-          const int idx_ns_2 = (2 * (s.ntor + 1) + n) * s.mpol + m_0;
-          const double t1 = t.mscale[m_0] * t.nscale[n];
-          lmnc1[mn] = -t1 * (2.0 * m_vmec_internal_results.lmncc(idx_ns_1) -
-                             m_vmec_internal_results.lmncc(idx_ns_2));
-        }  // n
-      }
 
       // now come the m>0, n=-ntor, ..., ntor entries
       for (int m = 1; m < s.mpol; ++m) {
@@ -5185,11 +5246,11 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             lmnc1[mn] = t1 * m_vmec_internal_results.lmncc(idx_fc) / 2.0;
             if (s.lthreed) {
               const int sign_n = signum(n);
-              rmns1[mn] +=
+              rmns1[mn] -=
                   t1 * sign_n * m_vmec_internal_results.rmncs(idx_fc) / 2.0;
-              zmnc1[mn] -=
+              zmnc1[mn] +=
                   t1 * sign_n * m_vmec_internal_results.zmnss(idx_fc) / 2.0;
-              lmnc1[mn] -=
+              lmnc1[mn] +=
                   t1 * sign_n * m_vmec_internal_results.lmnss(idx_fc) / 2.0;
             }
           }
@@ -5227,9 +5288,13 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         }
 
         if (wout.xm[mn] % 2 == 0) {
-          wout.lmnc(mn, jH + 1) = (lmnc_inside + lmnc_outside) * 0.5;
+          // m is even
+          wout.lmnc(mn, jH + 1) = (lmnc_outside + lmnc_inside) / 2.0;
         } else {
-          wout.lmnc(mn, jH + 1) = (lmnc_outside - lmnc_inside) * 0.5;
+          // m is odd
+          const double sm = m_vmec_internal_results.sm[jH];
+          const double sp = m_vmec_internal_results.sp[jH];
+          wout.lmnc(mn, jH + 1) = (sm * lmnc_outside + sp * lmnc_inside) / 2.0;
         }
       }  // mn
     }  // jH
@@ -5317,7 +5382,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                    sqrt_s_half_inner * wout.bsubsmnc(mn, j_f)) /
                   sqrt_s_full;
 
-            const double bu0a = wout.bsubumns(mn, j_f) / sqrt_s_half_outer;
+            const double bu0a = wout.bsubumns(mn, j_f) / sqrt_s_half_inner;
             const double bu1a = wout.bsubumns(mn, j_f + 1) / sqrt_s_half_outer;
             t2a = ohs * (bu1a - bu0a) * sqrt_s_full +
                   0.25 * (bu0a + bu1a) / sqrt_s_full;
