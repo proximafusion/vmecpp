@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784635228135,
+  "lastUpdate": 1785193937659,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -11240,6 +11240,79 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
             "value": 8.769586464666665,
             "range": "stddev: 0.03370160580854951",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3000df8f465645df4ad7d08b27b3acb270efe180",
+          "message": "free_boundary: non-stellarator-symmetric (lasym) free-boundary support (#538)\n\n* free_boundary: non-stellarator-symmetric (lasym) free-boundary support\n\n* output_quantities: correct lasym Nyquist normalization; tighten degenerate test\n\n* vmec_test: tighten lasym axisymmetric educational check\n\nDrop the accept-unconverged flag (the case converges to the 1e-11 force\ntolerance, identically across thread counts), tighten the scalar bound\n1e-4 -> 1e-5, and assert the asymmetric physics directly: the\nb0 = rbtor0/Raxis on-axis-field identity (which guards the tmult = 0.5\nNyquist normalization), nonzero rmns/zmnc, and the off-midplane magnetic\naxis against the educational_VMEC reference.\n\n* vmec_indata: allocate asymmetric arrays in SetMpolNtor\n\nSetMpolNtor accesses the asymmetric coefficient arrays (raxis_s,\nzaxis_c, rbs, zbc) through std::optional::value() when lasym is set. An\nobject assembled field-by-field via the Python bindings reaches it with\nthose arrays still unset, so a lasym input threw \"bad optional access\",\nor, when mpol/ntor were unchanged, left them unallocated for the caller.\n\nAllocate them to their zero defaults at the current resolution when\nlasym is set and they are missing, before the early return and the\nresize, so both the resize and downstream indexing are well-defined\nregardless of how the object was built.\n\n* tests: add lasym exact-equivalence tests\n\nDrive a stellarator-symmetric configuration through transformations that\nneed the asymmetric representation but reproduce the symmetric\nequilibrium's physics: lasym with zero asymmetric content (2D and 3D), a\nrigid z-shift, and a small toroidal rotation that mixes symmetric modes\ninto asymmetric ones. Each compares volume, beta, and the iota profile\nagainst the symmetric run.\n\n* test_lasym: assert full rmnc/zmns geometry match in the reduces-to-symmetric tests\n\n* test_lasym: single-line the _assert_same_geometry docstring\n\n* outputs: fix lasym wout coefficients and save(); add rotation-law regressions\n\nFixes proximafusion/vmecpp#675: the asymmetric rmns/zmnc/lmnc conversion\nnow matches convert.f (m=0 sources and signs, m>0 cross-term signs, sm/sp\nlmnc half-mesh interpolation); the derived-coefficient transforms\nsymmetrize the real-space fields before the cos-parity projection\n(symoutput); the bsubsmnc axis extrapolation and bsubsmnc_full are added;\nbsubvF now restores the pre-symforce blmn value, fixing bsubvmnc/bsubvmns\nand the derived currents against PARVMEC; the currvmns inner-point\nsqrt(s) denominator is fixed; save() handles the union-typed asymmetric\nannotations and writes atomically through a temp file so a failed save\nleaves no partial wout file. Regressions: off-grid boundary\nreconstruction of the rotated cth_like case, the rigid-rotation law\nacross all wout Fourier pairs with PARVMEC-calibrated tolerances, a\ncomplete save/load round trip asserting every asymmetric array, and\nno-partial-file-on-failure.\n\n* ci: retrigger after runner loss in ubsan job",
+          "timestamp": "2026-07-28T01:07:52+02:00",
+          "tree_id": "b50e638dc8f0deefae258a64cfa7b93f4aebd8d7",
+          "url": "https://github.com/proximafusion/vmecpp/commit/3000df8f465645df4ad7d08b27b3acb270efe180"
+        },
+        "date": 1785193935882,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3353532378000068,
+            "range": "stddev: 0.0037841831610882664",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.33523893900000984,
+            "range": "stddev: 0.0018632723540991502",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.621915402666673,
+            "range": "stddev: 0.00029456066297097545",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.260286301333328,
+            "range": "stddev: 0.0024505438125115827",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.9358751776666736,
+            "range": "stddev: 0.021924150966144564",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.8811782659999967,
+            "range": "stddev: 0.015092433808435604",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.884561359666672,
+            "range": "stddev: 0.004309489951497431",
             "unit": "seconds",
             "extra": "rounds: 3"
           }
