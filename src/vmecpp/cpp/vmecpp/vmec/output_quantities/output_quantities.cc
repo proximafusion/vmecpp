@@ -5694,5 +5694,63 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
       CHECK(IsCloseRelAbs(expected_wout.zaxis_cc[n], test_wout.zaxis_cc[n],
                           tolerance));
     }  // n
+
+    for (int jF = 0; jF < ns; ++jF) {
+      for (int mn = 0; mn < test_wout.mnmax; ++mn) {
+        CHECK(IsCloseRelAbs(expected_wout.rmns(mn, jF), test_wout.rmns(mn, jF),
+                            tolerance))
+            << "jF = " << jF << " mn = " << mn;
+        CHECK(IsCloseRelAbs(expected_wout.zmnc(mn, jF), test_wout.zmnc(mn, jF),
+                            tolerance))
+            << "jF = " << jF << " mn = " << mn;
+      }  // mn
+    }  // jF
+
+    for (int jF = 0; jF < ns; ++jF) {
+      for (int mn = 0; mn < test_wout.mnmax; ++mn) {
+        CHECK(IsCloseRelAbs(expected_wout.lmnc(mn, jF), test_wout.lmnc(mn, jF),
+                            tolerance))
+            << "jF = " << jF << " mn = " << mn;
+      }  // mn
+    }  // jF
+
+    for (int jF = 0; jF < ns; ++jF) {
+      for (int mn_nyq = 0; mn_nyq < test_wout.mnmax_nyq; ++mn_nyq) {
+        CHECK(IsCloseRelAbs(expected_wout.gmns(mn_nyq, jF),
+                            test_wout.gmns(mn_nyq, jF), tolerance))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+        CHECK(IsCloseRelAbs(expected_wout.bmns(mn_nyq, jF),
+                            test_wout.bmns(mn_nyq, jF), tolerance))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+        CHECK(IsCloseRelAbs(expected_wout.bsubumns(mn_nyq, jF),
+                            test_wout.bsubumns(mn_nyq, jF), tolerance))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+        CHECK(IsCloseRelAbs(expected_wout.bsubvmns(mn_nyq, jF),
+                            test_wout.bsubvmns(mn_nyq, jF), tolerance))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+        CHECK(IsCloseRelAbs(expected_wout.bsubsmnc(mn_nyq, jF),
+                            test_wout.bsubsmnc(mn_nyq, jF), tolerance))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+        CHECK(IsCloseRelAbs(expected_wout.bsupumns(mn_nyq, jF),
+                            test_wout.bsupumns(mn_nyq, jF), tolerance))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+        CHECK(IsCloseRelAbs(expected_wout.bsupvmns(mn_nyq, jF),
+                            test_wout.bsupvmns(mn_nyq, jF), tolerance))
+            << "jF = " << jF << " mn_nyq = " << mn_nyq;
+        // See comment above on currumnc/currvmnc for why these are skipped
+        // when the base tolerance is loose or the arrays are empty.
+        if (expected_wout.currumns.size() > 0 &&
+            test_wout.currumns.size() > 0 && jF > 0 && jF < ns - 1 &&
+            tolerance < 1.0e-2) {
+          const double curr_tol = std::max(tolerance * 10.0, 1.0e-4);
+          CHECK(IsCloseRelAbs(expected_wout.currumns(mn_nyq, jF),
+                              test_wout.currumns(mn_nyq, jF), curr_tol))
+              << "jF = " << jF << " mn_nyq = " << mn_nyq;
+          CHECK(IsCloseRelAbs(expected_wout.currvmns(mn_nyq, jF),
+                              test_wout.currvmns(mn_nyq, jF), curr_tol))
+              << "jF = " << jF << " mn_nyq = " << mn_nyq;
+        }
+      }  // mn_nyq
+    }  // jF
   }
 }
