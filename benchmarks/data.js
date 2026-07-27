@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785193937659,
+  "lastUpdate": 1785194078513,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -35743,6 +35743,162 @@ window.BENCHMARK_DATA = {
             "value": 0.004569320802968177,
             "unit": "seconds",
             "extra": "iterations: 307\ncpu: 0.004554848416938112 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3000df8f465645df4ad7d08b27b3acb270efe180",
+          "message": "free_boundary: non-stellarator-symmetric (lasym) free-boundary support (#538)\n\n* free_boundary: non-stellarator-symmetric (lasym) free-boundary support\n\n* output_quantities: correct lasym Nyquist normalization; tighten degenerate test\n\n* vmec_test: tighten lasym axisymmetric educational check\n\nDrop the accept-unconverged flag (the case converges to the 1e-11 force\ntolerance, identically across thread counts), tighten the scalar bound\n1e-4 -> 1e-5, and assert the asymmetric physics directly: the\nb0 = rbtor0/Raxis on-axis-field identity (which guards the tmult = 0.5\nNyquist normalization), nonzero rmns/zmnc, and the off-midplane magnetic\naxis against the educational_VMEC reference.\n\n* vmec_indata: allocate asymmetric arrays in SetMpolNtor\n\nSetMpolNtor accesses the asymmetric coefficient arrays (raxis_s,\nzaxis_c, rbs, zbc) through std::optional::value() when lasym is set. An\nobject assembled field-by-field via the Python bindings reaches it with\nthose arrays still unset, so a lasym input threw \"bad optional access\",\nor, when mpol/ntor were unchanged, left them unallocated for the caller.\n\nAllocate them to their zero defaults at the current resolution when\nlasym is set and they are missing, before the early return and the\nresize, so both the resize and downstream indexing are well-defined\nregardless of how the object was built.\n\n* tests: add lasym exact-equivalence tests\n\nDrive a stellarator-symmetric configuration through transformations that\nneed the asymmetric representation but reproduce the symmetric\nequilibrium's physics: lasym with zero asymmetric content (2D and 3D), a\nrigid z-shift, and a small toroidal rotation that mixes symmetric modes\ninto asymmetric ones. Each compares volume, beta, and the iota profile\nagainst the symmetric run.\n\n* test_lasym: assert full rmnc/zmns geometry match in the reduces-to-symmetric tests\n\n* test_lasym: single-line the _assert_same_geometry docstring\n\n* outputs: fix lasym wout coefficients and save(); add rotation-law regressions\n\nFixes proximafusion/vmecpp#675: the asymmetric rmns/zmnc/lmnc conversion\nnow matches convert.f (m=0 sources and signs, m>0 cross-term signs, sm/sp\nlmnc half-mesh interpolation); the derived-coefficient transforms\nsymmetrize the real-space fields before the cos-parity projection\n(symoutput); the bsubsmnc axis extrapolation and bsubsmnc_full are added;\nbsubvF now restores the pre-symforce blmn value, fixing bsubvmnc/bsubvmns\nand the derived currents against PARVMEC; the currvmns inner-point\nsqrt(s) denominator is fixed; save() handles the union-typed asymmetric\nannotations and writes atomically through a temp file so a failed save\nleaves no partial wout file. Regressions: off-grid boundary\nreconstruction of the rotated cth_like case, the rigid-rotation law\nacross all wout Fourier pairs with PARVMEC-calibrated tolerances, a\ncomplete save/load round trip asserting every asymmetric array, and\nno-partial-file-on-failure.\n\n* ci: retrigger after runner loss in ubsan job",
+          "timestamp": "2026-07-28T01:07:52+02:00",
+          "tree_id": "b50e638dc8f0deefae258a64cfa7b93f4aebd8d7",
+          "url": "https://github.com/proximafusion/vmecpp/commit/3000df8f465645df4ad7d08b27b3acb270efe180"
+        },
+        "date": 1785194078325,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00003240781983262614,
+            "unit": "seconds",
+            "extra": "iterations: 43776\ncpu: 3.240695751096491e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00004238246561883759,
+            "unit": "seconds",
+            "extra": "iterations: 32954\ncpu: 4.238140656672939e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.000598344806933719,
+            "unit": "seconds",
+            "extra": "iterations: 2339\ncpu: 0.0005983489581017527 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014204079112831963,
+            "unit": "seconds",
+            "extra": "iterations: 983\ncpu: 0.001420379216683621 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.0001621971791431997,
+            "unit": "seconds",
+            "extra": "iterations: 8627\ncpu: 0.0001621914605308914 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.0001341804859147393,
+            "unit": "seconds",
+            "extra": "iterations: 10366\ncpu: 0.00013417107871888868 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003136231691398248,
+            "unit": "seconds",
+            "extra": "iterations: 4393\ncpu: 0.00031360811267926246 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.00027351566023555985,
+            "unit": "seconds",
+            "extra": "iterations: 5110\ncpu: 0.00027350755185909985 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005300412159908862,
+            "unit": "seconds",
+            "extra": "iterations: 2630\ncpu: 0.0005300074087452477 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00043033450385497965,
+            "unit": "seconds",
+            "extra": "iterations: 3069\ncpu: 0.0004301505281850767 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0018692042032877607,
+            "unit": "seconds",
+            "extra": "iterations: 750\ncpu: 0.0018690801253333335 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0015544774797227648,
+            "unit": "seconds",
+            "extra": "iterations: 900\ncpu: 0.0015543902511111127 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.0000607229777330107,
+            "unit": "seconds",
+            "extra": "iterations: 22995\ncpu: 6.073100661013218e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00046021538208390167,
+            "unit": "seconds",
+            "extra": "iterations: 3033\ncpu: 0.0004602450563798242 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0027707414664769835,
+            "unit": "seconds",
+            "extra": "iterations: 506\ncpu: 0.0027706337371541435 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000056317201320670566,
+            "unit": "seconds",
+            "extra": "iterations: 24898\ncpu: 5.631080412081604e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00044282612764290753,
+            "unit": "seconds",
+            "extra": "iterations: 3152\ncpu: 0.000442835242385793 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0027153813609219215,
+            "unit": "seconds",
+            "extra": "iterations: 467\ncpu: 0.0027152164710920325 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00027727067505896243,
+            "unit": "seconds",
+            "extra": "iterations: 5059\ncpu: 0.00027726138545167015 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0011937484107054106,
+            "unit": "seconds",
+            "extra": "iterations: 1173\ncpu: 0.0011936791236146628 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005281623083216544,
+            "unit": "seconds",
+            "extra": "iterations: 262\ncpu: 0.005281396721374045 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.004805954870899108,
+            "unit": "seconds",
+            "extra": "iterations: 291\ncpu: 0.00478748571477663 seconds\nthreads: 1"
           }
         ]
       }
