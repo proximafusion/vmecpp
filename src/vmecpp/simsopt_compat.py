@@ -146,8 +146,9 @@ class Vmec(Optimizable):
             # object, but the mpol/ntor values of either the vmec object
             # or the boundary surface object can be changed independently
             # by the user.
+            mpol, ntor = self._last_mpol_ntor(self.indata)
             mpol_for_surfacerzfourier, ntor_for_surfacerzfourier = (
-                self._surface_rzfourier_resolution(self.indata.mpol, self.indata.ntor)
+                self._surface_rzfourier_resolution(mpol, ntor)
             )
             self._boundary = SurfaceRZFourier.from_nphi_ntheta(
                 nfp=self.indata.nfp,
@@ -162,8 +163,8 @@ class Vmec(Optimizable):
 
             # Transfer boundary shape data from indata to _boundary:
             vi = self.indata
-            for m in range(vi.mpol):
-                for n in range(2 * vi.ntor + 1):
+            for m in range(mpol):
+                for n in range(2 * ntor + 1):
                     self._boundary.rc[m, n] = vi.rbc[m, n]
                     self._boundary.zs[m, n] = vi.zbs[m, n]
                     if vi.lasym:
@@ -436,6 +437,18 @@ class Vmec(Optimizable):
             self.need_to_run_code = True
 
     @staticmethod
+    def _last_mpol_ntor(indata: vmecpp.VmecInput) -> tuple[int, int]:
+        """(indata.mpol, indata.ntor) as plain ints.
+
+        VmecInput.mpol/.ntor may also be a Fourier-resolution continuation schedule (a
+        sequence); SIMSOPT's SurfaceRZFourier only has a single resolution, so the last
+        (finest, target) entry of the schedule is used.
+        """
+        mpol = indata.mpol if isinstance(indata.mpol, int) else int(indata.mpol[-1])
+        ntor = indata.ntor if isinstance(indata.ntor, int) else int(indata.ntor[-1])
+        return mpol, ntor
+
+    @staticmethod
     def _surface_rzfourier_resolution(mpol: int, ntor: int) -> tuple[int, int]:
         # SurfaceRZFourier uses m up to mpol inclusive, unlike VMEC++.
         return mpol - 1, ntor
@@ -462,9 +475,8 @@ class Vmec(Optimizable):
             raise RuntimeError(msg)
         assert self.indata is not None
         vi = self.indata  # Shorthand
-        target_mpol, target_ntor = self._surface_rzfourier_resolution(
-            self.indata.mpol, self.indata.ntor
-        )
+        mpol, ntor = self._last_mpol_ntor(self.indata)
+        target_mpol, target_ntor = self._surface_rzfourier_resolution(mpol, ntor)
         boundary_RZFourier = self._resize_surface_rzfourier(
             self.boundary.to_RZFourier().copy(),
             target_mpol,
@@ -483,8 +495,7 @@ class Vmec(Optimizable):
             zbc.fill(0.0)
 
         # Transfer boundary shape data from the surface object to VMEC:
-        ntor = self.indata.ntor
-        for m in range(self.indata.mpol):
+        for m in range(mpol):
             for n in range(2 * ntor + 1):
                 vi.rbc[m, n] = boundary_RZFourier.get_rc(m, n - ntor)
                 vi.zbs[m, n] = boundary_RZFourier.get_zs(m, n - ntor)

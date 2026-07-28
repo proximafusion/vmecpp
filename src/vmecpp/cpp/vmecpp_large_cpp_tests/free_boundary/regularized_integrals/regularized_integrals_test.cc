@@ -72,8 +72,8 @@ TEST_P(TanuTanvTest, CheckTanuTanv) {
         << "failed to open reference file: " << filename;
     json vac1n_precal = json::parse(ifs_vac1n_precal);
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
       const RegularizedIntegrals& ri = n.GetRegularizedIntegrals();
 
       for (int l = 0; l < s.nThetaEven; ++l) {
@@ -135,8 +135,8 @@ TEST_P(GreenFTest, CheckGreenF) {
     // accumulate contributions from all threads
     // in order to compare against Fortran single-threaded data
     std::vector<double> gstore(s.nZeta * s.nThetaEven);
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
       const RegularizedIntegrals& ri = n.GetRegularizedIntegrals();
       for (int kl = 0; kl < s.nZeta * s.nThetaEven; ++kl) {
         gstore[kl] += ri.gstore[kl];
@@ -158,9 +158,9 @@ TEST_P(GreenFTest, CheckGreenF) {
                                 tolerance));
     }
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
-      const TangentialPartitioning& tp = *vmec.tp_[thread_id];
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
+      const TangentialPartitioning& tp = *vmec.tp_vac_[thread_id];
       const RegularizedIntegrals& ri = n.GetRegularizedIntegrals();
 
       for (int klp = tp.ztMin; klp < tp.ztMax; ++klp) {

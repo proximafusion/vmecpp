@@ -79,8 +79,8 @@ TEST_P(CmnsTest, CheckCmns) {
     // included in cmns that must be accounted for in this test.
     const double alp = 2.0 * M_PI / s.nfp;
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
       const SingularIntegrals& si = n.GetSingularIntegrals();
 
       const int nf = s.ntor;
@@ -146,10 +146,10 @@ TEST_P(AnalytTest, CheckAnalyt) {
     const int mnfull = (2 * nf + 1) * (mf + 1);
     std::vector<double> bvec_sin(mnfull, 0.0);
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
 
-      const TangentialPartitioning& tp = *vmec.tp_[thread_id];
+      const TangentialPartitioning& tp = *vmec.tp_vac_[thread_id];
       const int numLocal = tp.ztMax - tp.ztMin;
 
       const SingularIntegrals& si = n.GetSingularIntegrals();
