@@ -555,6 +555,13 @@ TEST(TestVmec, PoloidalResolutionAbove32) {
 
   indata->ntheta = 86;  // nThetaReduced = 44 > 32
 
+  // A stale poloidal point diverges the run within its first iterations, so
+  // twenty of them catch what this guards. Converging at this resolution costs
+  // four times the default case instead of matching it, which the tsan suite
+  // cannot afford: it passes in 268 s of a 300 s budget without this test.
+  indata->niter_array[0] = 20;
+  indata->return_outputs_even_if_not_converged = true;
+
   const auto output = vmecpp::run(*indata);
   ASSERT_TRUE(output.ok());
 }  // PoloidalResolutionAbove32
