@@ -51,6 +51,10 @@ cc_test(
         "//util/testing:numerical_comparison_lib",
     ],
     size = "medium",
+    # Instrumented builds run the solves an order of magnitude slower: this
+    # target takes 268 s of the 300 s a medium test gets under ThreadSanitizer.
+    # The clock is raised without moving the target out of its resource class.
+    timeout = "long",
 )
 
 cc_test(
