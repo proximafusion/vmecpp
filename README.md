@@ -152,7 +152,7 @@ Ubuntu 22.04 and 24.04, as well as Debian 12 are officially supported.
 
 1. Install required system packages:
 ```shell
-sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev python3-dev
+sudo apt-get install -y build-essential cmake gfortran libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev python3-dev
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
