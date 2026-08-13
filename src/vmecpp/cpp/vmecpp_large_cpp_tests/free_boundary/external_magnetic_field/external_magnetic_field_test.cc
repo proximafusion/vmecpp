@@ -72,9 +72,9 @@ TEST_P(ExternalMagneticFieldTest, CheckExternalMagneticField) {
     ASSERT_TRUE(ifs_vac1n_bextern.is_open());
     json vac1n_bextern = json::parse(ifs_vac1n_bextern);
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const FreeBoundaryBase& n = *vmec.fb_[thread_id];
-      const TangentialPartitioning& tp = *vmec.tp_[thread_id];
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const FreeBoundaryBase& n = *vmec.fb_vac_[thread_id];
+      const TangentialPartitioning& tp = *vmec.tp_vac_[thread_id];
       const ExternalMagneticField& ef = n.GetExternalMagneticField();
 
       // current along magnetic axis in Amperes

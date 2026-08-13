@@ -34,6 +34,10 @@
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
 using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingMaxPower;
+using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingReferenceM;
+using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerDampingFactor;
+using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerZeroGuard;
 using vmecpp::vmec_algorithm_constants::kOddParity;
 
 namespace {
@@ -94,6 +98,21 @@ void vmecpp::deAliasConstraintForce(
     Eigen::VectorXd& m_gcs, Eigen::VectorXd& m_gCon) {
   absl::c_fill_n(m_gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
 
+  // For non-stellarator-symmetric runs the spectral-condensation constraint
+  // force carries an antisymmetric parity as well. Following educational_VMEC
+  // alias.f90, accumulate the antisymmetric toroidal coefficients (gcc, gss)
+  // and the antisymmetric real-space force (gcona) per flux surface, then
+  // extend the odd-parity constraint force onto the full poloidal interval
+  // (symrzl convention). The stellarator-symmetric path is left unchanged.
+  const bool lasym = s_.lasym;
+  Eigen::VectorXd gcc, gss, gcona, refl;
+  if (lasym) {
+    gcc.setZero(s_.ntor + 1);
+    gss.setZero(s_.ntor + 1);
+    gcona.setZero(s_.nZnT);
+    refl.setZero(s_.nThetaReduced);
+  }
+
   // no constraint on axis --> has no poloidal angle
   int jMin = 0;
   if (rp.nsMinF == 0) {
@@ -101,9 +120,16 @@ void vmecpp::deAliasConstraintForce(
   }
 
   for (int jF = std::max(jMin, rp.nsMinF); jF < rp.nsMaxF; ++jF) {
+    if (lasym) {
+      absl::c_fill_n(gcona, s_.nZnT, 0);
+    }
     for (int m = 1; m < s_.mpol - 1; ++m) {
       absl::c_fill_n(m_gsc, s_.ntor + 1, 0);
       absl::c_fill_n(m_gcs, s_.ntor + 1, 0);
+      if (lasym) {
+        absl::c_fill_n(gcc, s_.ntor + 1, 0);
+        absl::c_fill_n(gss, s_.ntor + 1, 0);
+      }
 
       for (int k = 0; k < s_.nZeta; ++k) {
         // fwd transform in poloidal direction
@@ -119,14 +145,39 @@ void vmecpp::deAliasConstraintForce(
         double w0 = gConEff_seg.dot(sinmui_seg);
         double w1 = gConEff_seg.dot(cosmui_seg);
 
-        // forward Fourier transform in toroidal direction for full set of mode
-        // numbers (n = 0, 1, ..., ntor)
-        for (int n = 0; n < s_.ntor + 1; ++n) {
-          int idx_kn = k * (s_.nnyq2 + 1) + n;
+        const double tc = tcon[jF - rp.nsMinF];
 
-          // NOTE: `tcon` comes into play here
-          m_gsc[n] += fb.cosnv[idx_kn] * w0 * tcon[jF - rp.nsMinF];
-          m_gcs[n] += fb.sinnv[idx_kn] * w1 * tcon[jF - rp.nsMinF];
+        if (!lasym) {
+          // forward Fourier transform in toroidal direction for full set of
+          // mode numbers (n = 0, 1, ..., ntor)
+          for (int n = 0; n < s_.ntor + 1; ++n) {
+            int idx_kn = k * (s_.nnyq2 + 1) + n;
+
+            // NOTE: `tcon` comes into play here
+            m_gsc[n] += fb.cosnv[idx_kn] * w0 * tc;
+            m_gcs[n] += fb.sinnv[idx_kn] * w1 * tc;
+          }
+        } else {
+          // effective force at the reflected point (theta -> 2pi - theta,
+          // zeta -> 2pi - zeta), sampled over the reduced poloidal interval
+          const int kRev = (s_.nZeta - k) % s_.nZeta;
+          const int refl_base =
+              ((jF - rp.nsMinF) * s_.nZeta + kRev) * s_.nThetaEff;
+          for (int l = 0; l < s_.nThetaReduced; ++l) {
+            const int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
+            refl[l] = gConEff[refl_base + lRev];
+          }
+          double w3 = refl.dot(cosmui_seg);
+          double w4 = refl.dot(sinmui_seg);
+          for (int n = 0; n < s_.ntor + 1; ++n) {
+            int idx_kn = k * (s_.nnyq2 + 1) + n;
+            const double cosnv = fb.cosnv[idx_kn];
+            const double sinnv = fb.sinnv[idx_kn];
+            m_gcs[n] += 0.5 * tc * sinnv * (w1 - w3);
+            m_gsc[n] += 0.5 * tc * cosnv * (w0 - w4);
+            gss[n] += 0.5 * tc * sinnv * (w0 + w4);
+            gcc[n] += 0.5 * tc * cosnv * (w1 + w3);
+          }
         }
       }  // k
 
@@ -150,6 +201,17 @@ void vmecpp::deAliasConstraintForce(
         double w0 = m_gsc_seg.dot(cosnv_seg);
         double w1 = m_gcs_seg.dot(sinnv_seg);
 
+        double a0 = 0.0;
+        double a1 = 0.0;
+        if (lasym) {
+          auto gcc_seg =
+              Eigen::Map<const Eigen::VectorXd>(gcc.data(), s_.ntor + 1);
+          auto gss_seg =
+              Eigen::Map<const Eigen::VectorXd>(gss.data(), s_.ntor + 1);
+          a0 = gcc_seg.dot(cosnv_seg);
+          a1 = gss_seg.dot(sinnv_seg);
+        }
+
         // inv transform in poloidal direction
         for (int l = 0; l < s_.nThetaReduced; ++l) {
           int idx_kl = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
@@ -158,9 +220,36 @@ void vmecpp::deAliasConstraintForce(
           // NOTE: `faccon` comes into play here
           m_gCon[idx_kl] +=
               faccon[m] * (w0 * fb.sinmu[idx_ml] + w1 * fb.cosmu[idx_ml]);
+          if (lasym) {
+            const int within = k * s_.nThetaEff + l;
+            gcona[within] +=
+                faccon[m] * (a0 * fb.cosmu[idx_ml] + a1 * fb.sinmu[idx_ml]);
+          }
         }  // l
       }  // k
     }  // m
+
+    if (lasym) {
+      // Extend the odd-parity constraint force onto theta in [pi, 2pi[ as the
+      // parity-signed reflection (-sym + asym), then add the antisymmetric
+      // piece on [0, pi] (alias.f90 / symrzl). The extension reads the reduced
+      // interval, which still holds the pure symmetric values here.
+      const int surf_base = (jF - rp.nsMinF) * s_.nZnT;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int kRev = (s_.nZeta - k) % s_.nZeta;
+        for (int l = s_.nThetaReduced; l < s_.nThetaEven; ++l) {
+          const int jl = surf_base + k * s_.nThetaEff + l;
+          const int within_rev = kRev * s_.nThetaEff + (s_.nThetaEven - l);
+          m_gCon[jl] = -m_gCon[surf_base + within_rev] + gcona[within_rev];
+        }
+      }
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int within = k * s_.nThetaEff + l;
+          m_gCon[surf_base + within] += gcona[within];
+        }
+      }
+    }
   }
 }
 
@@ -170,7 +259,8 @@ IdealMhdModel::IdealMhdModel(
     FlowControl* m_fc, const Sizes* s, const FourierBasisFastPoloidal* t,
     RadialProfiles* m_p, const VmecConstants* constants,
     ThreadLocalStorage* m_ls, HandoverStorage* m_h, const RadialPartitioning* r,
-    FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
+    const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
+    int vac_num_threads, int signOfJacobian, int nvacskip,
     VacuumPressureState* m_vacuum_pressure_state)
     : m_fc_(*m_fc),
       s_(*s),
@@ -180,7 +270,8 @@ IdealMhdModel::IdealMhdModel(
       m_ls_(*m_ls),
       m_h_(*m_h),
       r_(*r),
-      m_fb_(m_fb),
+      m_fb_vac_(m_fb_vac),
+      m_vac_num_threads_(vac_num_threads),
       m_vacuum_pressure_state_(*m_vacuum_pressure_state),
 #ifdef VMECPP_USE_FFTX
       fft_plans_(s->nZeta, s->nfp, s->mpol),
@@ -191,8 +282,10 @@ IdealMhdModel::IdealMhdModel(
   CHECK_GE(nvacskip, 0)
       << "Should never happen: should be checked by VmecINDATA";
   if (m_fc_.lfreeb) {
-    CHECK(m_fb_ != nullptr)
+    CHECK(m_fb_vac_ != nullptr && !m_fb_vac_->empty())
         << "Free-boundary configuration requires a Free-boundary solver";
+    CHECK_GT(m_vac_num_threads_, 0)
+        << "Free-boundary configuration requires vac_num_threads > 0";
   }
 
   // init members
@@ -335,6 +428,54 @@ IdealMhdModel::IdealMhdModel(
   fzcon_o.setZero(nrzt);
 
   jMin.setZero(s_.mpol * (s_.ntor + 1));
+
+  // Non-stellarator-symmetric (lasym) scratch arrays. Sized like their
+  // symmetric counterparts; they hold the antisymmetric-parity contributions
+  // that symrzl / symforce combine into the full poloidal range.
+  if (s_.lasym) {
+    r1_asym_e.setZero(nrzt1);
+    r1_asym_o.setZero(nrzt1);
+    ru_asym_e.setZero(nrzt1);
+    ru_asym_o.setZero(nrzt1);
+    z1_asym_e.setZero(nrzt1);
+    z1_asym_o.setZero(nrzt1);
+    zu_asym_e.setZero(nrzt1);
+    zu_asym_o.setZero(nrzt1);
+    lu_asym_e.setZero(nrzt1);
+    lu_asym_o.setZero(nrzt1);
+    rCon_asym.setZero(nrztIncludingBoundary);
+    zCon_asym.setZero(nrztIncludingBoundary);
+
+    armn_asym_e.setZero(nrzt);
+    armn_asym_o.setZero(nrzt);
+    brmn_asym_e.setZero(nrzt);
+    brmn_asym_o.setZero(nrzt);
+    azmn_asym_e.setZero(nrzt);
+    azmn_asym_o.setZero(nrzt);
+    bzmn_asym_e.setZero(nrzt);
+    bzmn_asym_o.setZero(nrzt);
+    blmn_asym_e.setZero(nrztIncludingBoundary);
+    blmn_asym_o.setZero(nrztIncludingBoundary);
+    frcon_asym_e.setZero(nrzt);
+    frcon_asym_o.setZero(nrzt);
+    fzcon_asym_e.setZero(nrzt);
+    fzcon_asym_o.setZero(nrzt);
+
+    if (s_.lthreed) {
+      rv_asym_e.setZero(nrzt1);
+      rv_asym_o.setZero(nrzt1);
+      zv_asym_e.setZero(nrzt1);
+      zv_asym_o.setZero(nrzt1);
+      lv_asym_e.setZero(nrzt1);
+      lv_asym_o.setZero(nrzt1);
+      crmn_asym_e.setZero(nrzt);
+      crmn_asym_o.setZero(nrzt);
+      czmn_asym_e.setZero(nrzt);
+      czmn_asym_o.setZero(nrzt);
+      clmn_asym_e.setZero(nrztIncludingBoundary);
+      clmn_asym_o.setZero(nrztIncludingBoundary);
+    }
+  }
 }
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
@@ -423,6 +564,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
     const int iter2, const VmecCheckpoint& checkpoint,
     const int iterations_before_checkpointing, bool verbose,
     bool always_fix_m1_gauge) {
+  ++force_evaluation_count_;
+
   // An axis re-guess after a bad Jacobian can repopulate high geometry modes
   // directly, bypassing the force mask; clear them on the state each iteration.
   if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
@@ -594,8 +737,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // back in funct3d, free-boundary force contribution active?
   // This can even happen in the first iteration when hot-restarted.
-  if (m_fc_.lfreeb &&
-      (iter2 > 1 || m_vacuum_pressure_state_ != VacuumPressureState::kOff)) {
+  if (m_fc_.lfreeb && (iter2 > 1 || m_vacuum_pressure_state_ ==
+                                        VacuumPressureState::kInitialized)) {
 // protect read of m_vacuum_pressure_state_ below from write above
 #ifdef _OPENMP
 #pragma omp barrier
@@ -668,13 +811,52 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #pragma omp barrier
 #endif  // _OPENMP
       const double netToroidalCurrent = m_h_.cTor / MU_0;
-      bool reached_checkpoint = m_fb_->update(
-          m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
-          m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
-          signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
-          &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
-          iter2 >= iterations_before_checkpointing);
-      if (reached_checkpoint) {
+      const bool at_checkpoint_iteration =
+          iter2 >= iterations_before_checkpointing;
+
+      // Run the free-boundary vacuum solve in a parallel region nested inside
+      // the persistent radial parallel region. This gives the vacuum solve its
+      // own thread count (m_vac_num_threads_), decoupled from the radial thread
+      // count (which is capped at ns/2). A single radial thread drives it; the
+      // other radial threads wait at the implicit barrier at the end of the
+      // 'omp single'. NESTOR reads its inputs from and writes its outputs to
+      // shared handover storage (m_h_), so the nested team - not the radial
+      // team - performs the whole solve.
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+#ifdef _OPENMP
+#pragma omp parallel num_threads(m_vac_num_threads_)
+#endif  // _OPENMP
+        {
+          int vac_thread_id = 0;
+#ifdef _OPENMP
+          vac_thread_id = omp_get_thread_num();
+          // Correctness depends on the nested team being granted exactly
+          // m_vac_num_threads_ threads: the tangential slices only cover the
+          // whole grid if every vac_thread_id runs. Fail loudly rather than
+          // silently under-cover the grid.
+          CHECK_EQ(omp_get_num_threads(), m_vac_num_threads_)
+              << "Nested vacuum parallel region was not granted the requested "
+                 "number of threads";
+#endif  // _OPENMP
+          const bool rc = (*m_fb_vac_)[vac_thread_id]->update(
+              m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
+              m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
+              signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
+              &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
+              at_checkpoint_iteration);
+          // All nested threads follow identical control flow and compute the
+          // same checkpoint result; record it once for the radial team.
+          if (vac_thread_id == 0) {
+            m_h_.vacuum_reached_checkpoint = rc;
+          }
+        }
+      }
+      // The 'omp single' implicit barrier publishes the shared vacuum outputs
+      // and the broadcast flag to all radial threads.
+      if (m_h_.vacuum_reached_checkpoint) {
         return true;
       }
 
@@ -704,12 +886,16 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
       if (m_h_.rBtor * m_h_.bSubVVac < 0.0) {
-        return absl::InternalError(
+        // A physical inconsistency, not a code bug: kFailedPrecondition (as
+        // opposed to kInternal) marks this as a condition that
+        // indata.return_outputs_even_if_not_converged can recover from by
+        // returning best-effort output instead of hard-erroring.
+        return absl::FailedPreconditionError(
             "IdealMHDModel::update: rbtor and bsubvvac must have the same "
             "sign - maybe flip the sign of phiedge or the sign of the coil "
             "currents");
       } else if (fabs((m_h_.cTor - m_h_.bSubUVac) / m_h_.rBtor) > 0.01) {
-        return absl::InternalError(
+        return absl::FailedPreconditionError(
             "IdealMHDModel::update: VAC-VMEC I_TOR MISMATCH : BOUNDARY MAY "
             "ENCLOSE EXT. COIL");
       }
@@ -940,17 +1126,12 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
   }
 
   if (s_.lasym) {
-    // FIXME(jons): implement non-symmetric DFT variants
-    std::cerr << "asymmetric inv-DFT not implemented yet\n";
-
-    // FIXME(jons): implement symrzl
-    std::cerr << "symrzl not implemented yet\n";
-
-#ifdef _OPENMP
-    abort();
-#else
-    exit(-1);
-#endif  // _OPENMP
+    if (s_.lthreed) {
+      dft_FourierToReal_3d_asymm(physical_x);
+    } else {
+      dft_FourierToReal_2d_asymm(physical_x);
+    }
+    symrzl();
   }  // lasym
 
   // related post-processing:
@@ -1020,6 +1201,29 @@ void IdealMhdModel::dft_FourierToReal_3d_symm(
 #else
   FourierToReal3DSymmFastPoloidal(physical_x, xmpq, r_, s_, m_p_, t_, geometry);
 #endif
+}
+
+void IdealMhdModel::dft_FourierToReal_3d_asymm(
+    const FourierGeometry& physical_x) {
+  auto geometry = RealSpaceGeometry{.r1_e = r1_asym_e,
+                                    .r1_o = r1_asym_o,
+                                    .ru_e = ru_asym_e,
+                                    .ru_o = ru_asym_o,
+                                    .rv_e = rv_asym_e,
+                                    .rv_o = rv_asym_o,
+                                    .z1_e = z1_asym_e,
+                                    .z1_o = z1_asym_o,
+                                    .zu_e = zu_asym_e,
+                                    .zu_o = zu_asym_o,
+                                    .zv_e = zv_asym_e,
+                                    .zv_o = zv_asym_o,
+                                    .lu_e = lu_asym_e,
+                                    .lu_o = lu_asym_o,
+                                    .lv_e = lv_asym_e,
+                                    .lv_o = lv_asym_o,
+                                    .rCon = rCon_asym,
+                                    .zCon = zCon_asym};
+  FourierToReal3DAsymFastPoloidal(physical_x, xmpq, r_, s_, m_p_, t_, geometry);
 }
 
 // compute inv-DFTs on unique radial grid points
@@ -1190,6 +1394,212 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
     }  // m
   }  // jF
 }  // dft_FourierToReal_2d_symm
+
+// Inverse-DFT of the non-stellarator-symmetric (lasym) contributions, 2D
+// axisymmetric case. R += rmnsc*sin(m theta), Z += zmncc*cos(m theta),
+// lambda += lmncc*cos(m theta), plus poloidal derivatives. Mirrors
+// dft_FourierToReal_2d_symm with the cos<->sin basis swapped; results go into
+// the *_asym scratch arrays on the reduced poloidal interval [0, pi].
+void IdealMhdModel::dft_FourierToReal_2d_asymm(
+    const FourierGeometry& physical_x) {
+  const int num_realsp = (r_.nsMaxF1 - r_.nsMinF1) * s_.nThetaEff;
+
+  for (auto* v : {&r1_asym_e, &r1_asym_o, &ru_asym_e, &ru_asym_o, &z1_asym_e,
+                  &z1_asym_o, &zu_asym_e, &zu_asym_o, &lu_asym_e, &lu_asym_o}) {
+    absl::c_fill_n(*v, num_realsp, 0);
+  }
+
+  int num_con = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nThetaEff;
+  absl::c_fill_n(rCon_asym, num_con, 0);
+  absl::c_fill_n(zCon_asym, num_con, 0);
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+    double* src_rsc = &(physical_x.rmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* src_zcc = &(physical_x.zmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* src_lcc = &(physical_x.lmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+
+    for (int l = 0; l < s_.nThetaReduced; ++l) {
+      std::array<double, 2> rnksc = {0.0, 0.0};
+      std::array<double, 2> rnksc_m = {0.0, 0.0};
+      std::array<double, 2> znkcc = {0.0, 0.0};
+      std::array<double, 2> znkcc_m = {0.0, 0.0};
+      std::array<double, 2> lnkcc_m = {0.0, 0.0};
+
+      int num_m = s_.mpol;
+      if (jF == 0) {
+        num_m = 2;
+      }
+
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        rnksc[m_parity] += src_rsc[m] * t_.sinmu[idx_ml];
+      }
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        rnksc_m[m_parity] += src_rsc[m] * t_.cosmum[idx_ml];
+      }
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        znkcc[m_parity] += src_zcc[m] * t_.cosmu[idx_ml];
+      }
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        znkcc_m[m_parity] += src_zcc[m] * t_.sinmum[idx_ml];
+      }
+      for (int m = 0; m < num_m; ++m) {
+        const int m_parity = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        lnkcc_m[m_parity] += src_lcc[m] * t_.sinmum[idx_ml];
+      }
+
+      const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
+      r1_asym_e[idx_jl] += rnksc[kEvenParity];
+      ru_asym_e[idx_jl] += rnksc_m[kEvenParity];
+      z1_asym_e[idx_jl] += znkcc[kEvenParity];
+      zu_asym_e[idx_jl] += znkcc_m[kEvenParity];
+      lu_asym_e[idx_jl] += lnkcc_m[kEvenParity];
+      r1_asym_o[idx_jl] += rnksc[kOddParity];
+      ru_asym_o[idx_jl] += rnksc_m[kOddParity];
+      z1_asym_o[idx_jl] += znkcc[kOddParity];
+      zu_asym_o[idx_jl] += znkcc_m[kOddParity];
+      lu_asym_o[idx_jl] += lnkcc_m[kOddParity];
+    }  // l
+  }  // jF
+
+  // rCon_asym / zCon_asym, mirroring the symmetric scale convention.
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    double* src_rsc = &(physical_x.rmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* src_zcc = &(physical_x.zmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+
+    int num_m = s_.mpol;
+    if (jF == 0) {
+      num_m = 2;
+    }
+
+    for (int m = 0; m < num_m; ++m) {
+      const int m_parity = m % 2;
+      const double scale =
+          xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]);
+
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        rCon_asym[idx_con] += src_rsc[m] * t_.sinmu[idx_ml] * scale;
+      }  // l
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        zCon_asym[idx_con] += src_zcc[m] * t_.cosmu[idx_ml] * scale;
+      }  // l
+    }  // m
+  }  // jF
+}  // dft_FourierToReal_2d_asymm
+
+// Combine the symmetric and antisymmetric real-space geometry contributions
+// over the full poloidal interval (educational_VMEC symrzl). The reduced
+// interval [0, pi] gets sym + asym; the extended interval ]pi, 2pi[ is the
+// parity-signed reflection (theta -> 2pi - theta) of the reduced values. R, Zu,
+// Lu, rCon (and 3D Zv, Lv) are even (+sym - asym); Ru, Z, zCon (and 3D Rv) are
+// odd (-sym + asym). In 2D nZeta == 1, so there is no toroidal reflection.
+void IdealMhdModel::symrzl() {
+  // Combine the symmetric and antisymmetric real-space contributions over the
+  // full poloidal interval. The reduced interval [0,pi] gets sym + asym; the
+  // extended interval ]pi,2pi[ is the parity-signed reflection (theta ->
+  // 2pi-theta, zeta -> 2pi-zeta) of the reduced (sym) values. Even (+sym -asym
+  // under the reflection): R, Zu, Lu, Zv, Lv, rCon. Odd (-sym +asym): Ru, Z,
+  // Rv, zCon. nZeta == 1 (2D) collapses the toroidal reflection to identity.
+  const int nThetaEff = s_.nThetaEff;
+  const bool lthreed = s_.lthreed;
+
+  // geometry arrays span the radial range [nsMinF1, nsMaxF1)
+  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+    const int base = (jF - r_.nsMinF1) * s_.nZnT;
+
+    // extended interval first, while the reduced arrays still hold pure sym
+    for (int k = 0; k < s_.nZeta; ++k) {
+      const int kRev = (s_.nZeta - k) % s_.nZeta;
+      for (int l = s_.nThetaReduced; l < s_.nThetaEven; ++l) {
+        const int jl = base + k * nThetaEff + l;
+        const int jlRev = base + kRev * nThetaEff + (s_.nThetaEven - l);
+
+        r1_e[jl] = r1_e[jlRev] - r1_asym_e[jlRev];
+        r1_o[jl] = r1_o[jlRev] - r1_asym_o[jlRev];
+        zu_e[jl] = zu_e[jlRev] - zu_asym_e[jlRev];
+        zu_o[jl] = zu_o[jlRev] - zu_asym_o[jlRev];
+        lu_e[jl] = lu_e[jlRev] - lu_asym_e[jlRev];
+        lu_o[jl] = lu_o[jlRev] - lu_asym_o[jlRev];
+
+        ru_e[jl] = -ru_e[jlRev] + ru_asym_e[jlRev];
+        ru_o[jl] = -ru_o[jlRev] + ru_asym_o[jlRev];
+        z1_e[jl] = -z1_e[jlRev] + z1_asym_e[jlRev];
+        z1_o[jl] = -z1_o[jlRev] + z1_asym_o[jlRev];
+
+        if (lthreed) {
+          zv_e[jl] = zv_e[jlRev] - zv_asym_e[jlRev];
+          zv_o[jl] = zv_o[jlRev] - zv_asym_o[jlRev];
+          lv_e[jl] = lv_e[jlRev] - lv_asym_e[jlRev];
+          lv_o[jl] = lv_o[jlRev] - lv_asym_o[jlRev];
+          rv_e[jl] = -rv_e[jlRev] + rv_asym_e[jlRev];
+          rv_o[jl] = -rv_o[jlRev] + rv_asym_o[jlRev];
+        }
+      }  // l
+    }  // k
+
+    // reduced interval: sym + asym
+    for (int k = 0; k < s_.nZeta; ++k) {
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int jl = base + k * nThetaEff + l;
+        r1_e[jl] += r1_asym_e[jl];
+        r1_o[jl] += r1_asym_o[jl];
+        ru_e[jl] += ru_asym_e[jl];
+        ru_o[jl] += ru_asym_o[jl];
+        z1_e[jl] += z1_asym_e[jl];
+        z1_o[jl] += z1_asym_o[jl];
+        zu_e[jl] += zu_asym_e[jl];
+        zu_o[jl] += zu_asym_o[jl];
+        lu_e[jl] += lu_asym_e[jl];
+        lu_o[jl] += lu_asym_o[jl];
+        if (lthreed) {
+          rv_e[jl] += rv_asym_e[jl];
+          rv_o[jl] += rv_asym_o[jl];
+          zv_e[jl] += zv_asym_e[jl];
+          zv_o[jl] += zv_asym_o[jl];
+          lv_e[jl] += lv_asym_e[jl];
+          lv_o[jl] += lv_asym_o[jl];
+        }
+      }  // l
+    }  // k
+  }  // jF
+
+  // rCon / zCon span the radial range [nsMinF, nsMaxFIncludingLcfs)
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    const int base = (jF - r_.nsMinF) * s_.nZnT;
+    for (int k = 0; k < s_.nZeta; ++k) {
+      const int kRev = (s_.nZeta - k) % s_.nZeta;
+      for (int l = s_.nThetaReduced; l < s_.nThetaEven; ++l) {
+        const int jl = base + k * nThetaEff + l;
+        const int jlRev = base + kRev * nThetaEff + (s_.nThetaEven - l);
+        rCon[jl] = rCon[jlRev] - rCon_asym[jlRev];
+        zCon[jl] = -zCon[jlRev] + zCon_asym[jlRev];
+      }
+    }
+    for (int k = 0; k < s_.nZeta; ++k) {
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int jl = base + k * nThetaEff + l;
+        rCon[jl] += rCon_asym[jl];
+        zCon[jl] += zCon_asym[jl];
+      }
+    }
+  }  // jF
+}  // symrzl
 
 /** extrapolate (r,z)Con from boundary into volume.
  * Only called on initialization/soft reset to set (r,z)Con0 to a large value.
@@ -1777,9 +2187,11 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // bLambda, dLambda, cLambda
   // lambdaPreconditioner
 
-  // TODO(jons): what is this ?
-  const double pFactor =
-      dampingFactor / (4.0 * constants_.lamscale * constants_.lamscale);
+  // 1/lamscale^2 converts the stiffness of the internally rescaled lambda
+  // coefficients; the remaining kLambdaPreconditionerDampingFactor / 4 = 0.5
+  // is an inherited, unexplained damping (see vmec_algorithm_constants.h).
+  const double pFactor = kLambdaPreconditionerDampingFactor /
+                         (4.0 * constants_.lamscale * constants_.lamscale);
 
   // evaluate preconditioning matrix elements on half-grid
   // on every accessible half-grid point
@@ -1847,21 +2259,23 @@ void IdealMhdModel::updateLambdaPreconditioner() {
 
         int tmm = m * m;
 
-        // TODO(jons): what is this ? (see below)
-        double pwr = std::min(tmm / (16.0 * 16.0), 8.0);
+        // sqrt(s)^pwr high-m damping; ~1 for m << kLambdaHighMDampingReferenceM
+        double pwr = std::min(tmm / (kLambdaHighMDampingReferenceM *
+                                     kLambdaHighMDampingReferenceM),
+                              kLambdaHighMDampingMaxPower);
         double tmn = 2.0 * m * n * s_.nfp;
 
+        // diagonal of the second variation of the magnetic energy with
+        // respect to lambda_mn, with flux-surface-averaged metric coefficients
         double faclam =
             tnn * bLambda[jF - r_.nsMinF] +
             tmn * copysign(dLambda[jF - r_.nsMinF], bLambda[jF - r_.nsMinF]) +
             tmm * cLambda[jF - r_.nsMinF];
 
-        // avoid zero eigenvalue (TODO(jons): what is this ?)
         if (faclam == 0.0) {
-          faclam = -1.0e-10;
+          faclam = kLambdaPreconditionerZeroGuard;
         }
 
-        // Damps m > 16 modes (TODO(jons): why ?)
         // NOTE: This also computes the inverse of each entry in
         // lambdaPreconditioner !
         lambdaPreconditioner[idx_mn] =
@@ -2040,10 +2454,15 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
     }
 
     if (arNorm == 0.0) {
-      return absl::InternalError("arNorm should never be 0.0.");
+      // A degenerate (e.g. self-intersecting) flux surface, not a code bug:
+      // kFailedPrecondition (as opposed to kInternal) marks this as a
+      // condition that indata.return_outputs_even_if_not_converged can
+      // recover from by returning best-effort output instead of
+      // hard-erroring.
+      return absl::FailedPreconditionError("arNorm should never be 0.0.");
     }
     if (azNorm == 0.0) {
-      return absl::InternalError("azNorm should never be 0.0.");
+      return absl::FailedPreconditionError("azNorm should never be 0.0.");
     }
 
     double tcon_base =
@@ -2117,6 +2536,12 @@ void IdealMhdModel::assembleTotalForces() {
 }
 
 void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
+  if (s_.lasym) {
+    // Split the real-space forces into their standard- and reversed-parity
+    // halves before the symmetric forward DFT consumes the standard half.
+    symforce();
+  }
+
   // symmetric contribution is always needed
   if (s_.lthreed) {
     dft_ForcesToFourier_3d_symm(m_physical_f);
@@ -2125,18 +2550,12 @@ void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
   }
 
   if (s_.lasym) {
-    // FIXME(jons): implement non-symmetric DFT variants
-    std::cerr << "asymmetric fwd-DFT not implemented yet\n";
-
-    // FIXME(jons): implement symforce
-    std::cerr << "symforce not implemented yet\n";
-
-#ifdef _OPENMP
-    abort();
-#else
-    exit(-1);
-#endif  // _OPENMP
-  }  // lasym
+    if (s_.lthreed) {
+      dft_ForcesToFourier_3d_asymm(m_physical_f);
+    } else {
+      dft_ForcesToFourier_2d_asymm(m_physical_f);
+    }
+  }
 }
 
 void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
@@ -2176,6 +2595,33 @@ void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
   ForcesToFourier3DSymmFastPoloidal(input_data, xmpq, r_, m_fc_, s_, t_,
                                     m_vacuum_pressure_state_, m_physical_f);
 #endif
+}
+
+void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {
+  const auto input_data = RealSpaceForces{
+      .armn_e = armn_asym_e,
+      .armn_o = armn_asym_o,
+      .azmn_e = azmn_asym_e,
+      .azmn_o = azmn_asym_o,
+      .blmn_e = blmn_asym_e,
+      .blmn_o = blmn_asym_o,
+      .brmn_e = brmn_asym_e,
+      .brmn_o = brmn_asym_o,
+      .bzmn_e = bzmn_asym_e,
+      .bzmn_o = bzmn_asym_o,
+      .clmn_e = clmn_asym_e,
+      .clmn_o = clmn_asym_o,
+      .crmn_e = crmn_asym_e,
+      .crmn_o = crmn_asym_o,
+      .czmn_e = czmn_asym_e,
+      .czmn_o = czmn_asym_o,
+      .frcon_e = frcon_asym_e,
+      .frcon_o = frcon_asym_o,
+      .fzcon_e = fzcon_asym_e,
+      .fzcon_o = fzcon_asym_o,
+  };
+  ForcesToFourier3DAsymFastPoloidal(input_data, xmpq, r_, m_fc_, s_, t_,
+                                    m_vacuum_pressure_state_, m_physical_f);
 }
 
 void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
@@ -2264,6 +2710,150 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
     }  // l
   }  // jF
 }  // dft_ForcesToFourier_2d_symm
+
+// Split each real-space force into its standard- and reversed-parity halves
+// over the reduced poloidal interval by folding f(theta) with f(2pi - theta).
+// The reversed-parity half goes into the *_asym scratch; the symmetric arrays
+// are overwritten with the standard-parity half, ready for the symmetric
+// forward DFT. (educational_VMEC symforce.) 2D: nZeta == 1, no zeta reflection.
+// Standard parity (asym = 1/2 (f - fRev)): armn, bzmn, blmn, frcon.
+// Reversed parity (asym = 1/2 (f + fRev)): brmn, azmn, fzcon.
+void IdealMhdModel::symforce() {
+  const int nThetaEff = s_.nThetaEff;
+  const bool lthreed = s_.lthreed;
+
+  // Fold f(theta, zeta) with f(2pi-theta, 2pi-zeta) into a standard-parity and
+  // a reversed-parity half on the reduced poloidal interval (educational_VMEC
+  // symforce). Two passes avoid in-place aliasing at the self-reflecting theta
+  // lines (0 and pi) once the zeta reflection couples distinct k: first the
+  // reversed-parity half fa (reading the original full-range forces), then the
+  // standard-parity half overwrites f as f -= fa, which is exact for either
+  // convention (std: fa = 1/2(f - fRev), f -> f - fa = 1/2(f + fRev); rev: fa =
+  // 1/2(f + fRev), f -> f - fa = 1/2(f - fRev)) and purely local.
+  auto fold = [&](Eigen::VectorXd& f, Eigen::VectorXd& fa, int jLo, int jHi,
+                  bool std_parity) {
+    for (int jF = jLo; jF < jHi; ++jF) {
+      const int base = (jF - r_.nsMinF) * s_.nZnT;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int kRev = (s_.nZeta - k) % s_.nZeta;
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int jl = base + k * nThetaEff + l;
+          const int jlRev =
+              base + kRev * nThetaEff + ((s_.nThetaEven - l) % s_.nThetaEven);
+          fa[jl] =
+              std_parity ? 0.5 * (f[jl] - f[jlRev]) : 0.5 * (f[jl] + f[jlRev]);
+        }
+      }
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int jl = base + k * nThetaEff + l;
+          f[jl] -= fa[jl];
+        }
+      }
+    }
+  };
+
+  const int jRZ = r_.nsMaxF;
+  const int jL = r_.nsMaxFIncludingLcfs;
+
+  // R/Z MHD forces and spectral-condensation forces.
+  fold(armn_e, armn_asym_e, r_.nsMinF, jRZ, /*std_parity=*/true);
+  fold(armn_o, armn_asym_o, r_.nsMinF, jRZ, true);
+  fold(brmn_e, brmn_asym_e, r_.nsMinF, jRZ, false);
+  fold(brmn_o, brmn_asym_o, r_.nsMinF, jRZ, false);
+  fold(azmn_e, azmn_asym_e, r_.nsMinF, jRZ, false);
+  fold(azmn_o, azmn_asym_o, r_.nsMinF, jRZ, false);
+  fold(bzmn_e, bzmn_asym_e, r_.nsMinF, jRZ, true);
+  fold(bzmn_o, bzmn_asym_o, r_.nsMinF, jRZ, true);
+  fold(frcon_e, frcon_asym_e, r_.nsMinF, jRZ, true);
+  fold(frcon_o, frcon_asym_o, r_.nsMinF, jRZ, true);
+  fold(fzcon_e, fzcon_asym_e, r_.nsMinF, jRZ, false);
+  fold(fzcon_o, fzcon_asym_o, r_.nsMinF, jRZ, false);
+
+  // lambda force has a different radial range.
+  fold(blmn_e, blmn_asym_e, r_.nsMinF, jL, true);
+  fold(blmn_o, blmn_asym_o, r_.nsMinF, jL, true);
+
+  if (lthreed) {
+    fold(crmn_e, crmn_asym_e, r_.nsMinF, jRZ, false);
+    fold(crmn_o, crmn_asym_o, r_.nsMinF, jRZ, false);
+    fold(czmn_e, czmn_asym_e, r_.nsMinF, jRZ, true);
+    fold(czmn_o, czmn_asym_o, r_.nsMinF, jRZ, true);
+    fold(clmn_e, clmn_asym_e, r_.nsMinF, jL, true);
+    fold(clmn_o, clmn_asym_o, r_.nsMinF, jL, true);
+  }
+}  // symforce
+
+// Forward-DFT of the antisymmetric-parity force halves, 2D axisymmetric case.
+// Projects the *_asym halves onto the frsc / fzcc / flcc coefficients, the
+// cos<->sin mirror of dft_ForcesToFourier_2d_symm. (educational_VMEC tomnspa.)
+void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
+  int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  if (m_fc_.lfreeb &&
+      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
+       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+    jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
+  }
+
+  for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
+    int num_m = s_.mpol;
+    if (jF == 0) {
+      num_m = 1;
+    }
+
+    for (int m = 0; m < num_m; ++m) {
+      const bool m_even = m % 2 == 0;
+      const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
+
+      const auto& armn = m_even ? armn_asym_e : armn_asym_o;
+      const auto& brmn = m_even ? brmn_asym_e : brmn_asym_o;
+      const auto& azmn = m_even ? azmn_asym_e : azmn_asym_o;
+      const auto& bzmn = m_even ? bzmn_asym_e : bzmn_asym_o;
+      const auto& frcon = m_even ? frcon_asym_e : frcon_asym_o;
+      const auto& fzcon = m_even ? fzcon_asym_e : fzcon_asym_o;
+
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
+
+        const double rnksc = armn[idx_jl];
+        const double rnksc_m = brmn[idx_jl];
+        const double znkcc = azmn[idx_jl];
+        const double znkcc_m = bzmn[idx_jl];
+        const double rcon_sc = frcon[idx_jl];
+        const double zcon_cc = fzcon[idx_jl];
+
+        const int idx_ml = m * s_.nThetaReduced + l;
+        const double cosmui = t_.cosmui[idx_ml];
+        const double sinmui = t_.sinmui[idx_ml];
+        const double cosmumi = t_.cosmumi[idx_ml];
+        const double sinmumi = t_.sinmumi[idx_ml];
+
+        const double _rsc = rnksc + xmpq[m] * rcon_sc;
+        m_physical_f.frsc[idx_jm] += _rsc * sinmui + rnksc_m * cosmumi;
+
+        const double _zcc = znkcc + xmpq[m] * zcon_cc;
+        m_physical_f.fzcc[idx_jm] += _zcc * cosmui + znkcc_m * sinmumi;
+      }  // l
+    }  // m
+  }  // jF
+
+  // lambda force coefficients (different radial range).
+  for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    for (int m = 0; m < s_.mpol; ++m) {
+      const int m_even = m % 2 == 0;
+      const auto& blmn = m_even ? blmn_asym_e : blmn_asym_o;
+      const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
+
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
+        const double lnkcc_m = blmn[idx_jl];
+
+        const double sinmumi = t_.sinmumi[m * s_.nThetaReduced + l];
+        m_physical_f.flcc[idx_jm] += lnkcc_m * sinmumi;
+      }  // l
+    }  // m
+  }  // jF
+}  // dft_ForcesToFourier_2d_asymm
 
 // ---------------------------
 

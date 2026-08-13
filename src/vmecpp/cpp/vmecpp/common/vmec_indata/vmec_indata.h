@@ -219,8 +219,10 @@ class VmecINDATA {
   // based on)
   IterationStyle iteration_style;
 
-  // If true, return the outputs even if VMEC++ did not converge.
-  // Otherwise (default = false), an absl::InternalError will be returned.
+  // If true, return a wout even if VMEC++ did not converge.
+  // Intended for debugging convergence issues only: the
+  // returned quantities are computed from whatever internal state the solver
+  // was in when it gave up, and can be arbitrarily unphysical.
   bool return_outputs_even_if_not_converged;
 
   // ---------------------------------
