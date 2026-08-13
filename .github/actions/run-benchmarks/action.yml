@@ -118,7 +118,7 @@ runs:
         for target in "${TARGETS[@]}"; do
           name="${target##*:}"
           bazel run --config=perf -- "${target}" \
-            --benchmark_min_time=0.2s \
+            --benchmark_min_time=1.0s \
             --benchmark_format=json \
             --benchmark_out="${TMP_DIR}/${name}.json"
         done

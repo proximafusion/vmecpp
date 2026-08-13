@@ -242,12 +242,16 @@ void SurfaceGeometry::inverseDFT(
 
         // ----------------
 
-        if (lMin <= l && l <= lMax) {
-          // TODO(jons): in asymmetric case, some processors will have local
-          // poloidal ranges outside the first half-module
-          // --> these would be excluded here, but they still need to do some
-          // work here!
-
+        // For lasym, every thread builds the poloidal derivatives over the full
+        // reduced range [0, nThetaReduced) (see the ungated write below and the
+        // symrzl mirror), so the m-derivative accumulation must run for every l
+        // regardless of this thread's tangential slice. Gating it by the
+        // thread-local [lMin, lMax] (correct for the symmetric case, where each
+        // thread only writes its own slice) left the out-of-slice l with zero
+        // poloidal derivatives, driving guu = rub^2 + zub^2 to zero at those
+        // points and making the analytic singular integral (T0 ~ 1/log)
+        // diverge.
+        if (s_.lasym || (lMin <= l && l <= lMax)) {
           double cosmum = fb_.cosmum[l * (s_.mnyq2 + 1) + m];
           double sinmum = fb_.sinmum[l * (s_.mnyq2 + 1) + m];
           double cosmumm = -mSq * fb_.cosmu[l * (s_.mnyq2 + 1) + m];
