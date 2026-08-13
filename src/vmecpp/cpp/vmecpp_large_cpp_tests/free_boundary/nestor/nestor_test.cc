@@ -179,9 +179,9 @@ TEST_P(BsqVacTest, CheckBsqVac) {
     ASSERT_TRUE(ifs_vac1n_bsqvac.is_open());
     json vac1n_bsqvac = json::parse(ifs_vac1n_bsqvac);
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
-      const TangentialPartitioning& tp = *vmec.tp_[thread_id];
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
+      const TangentialPartitioning& tp = *vmec.tp_vac_[thread_id];
 
       for (int kl = tp.ztMin; kl < tp.ztMax; ++kl) {
         const int l = kl / s.nZeta;

@@ -81,10 +81,10 @@ TEST_P(FourPTest, CheckFourP) {
     const int nf = s.ntor;
     const int mf = s.mpol + 1;
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
 
-      const TangentialPartitioning& tp = *vmec.tp_[thread_id];
+      const TangentialPartitioning& tp = *vmec.tp_vac_[thread_id];
       const int numLocal = tp.ztMax - tp.ztMin;
 
       const SingularIntegrals& si = n.GetSingularIntegrals();
@@ -197,8 +197,8 @@ TEST_P(FourISymmTest, CheckFourISymm) {
     // in order to compare against Fortran single-threaded data
     std::vector<double> gstore_symm(s.nThetaReduced * s.nZeta);
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
 
       const LaplaceSolver& ls = n.GetLaplaceSolver();
 
@@ -274,10 +274,10 @@ TEST_P(FourIAccumulateGrpmnTest, CheckFourIAccumulateGrpmn) {
     const int nf = s.ntor;
     const int mf = s.mpol + 1;
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
 
-      const TangentialPartitioning& tp = *vmec.tp_[thread_id];
+      const TangentialPartitioning& tp = *vmec.tp_vac_[thread_id];
       const int numLocal = tp.ztMax - tp.ztMin;
 
       const LaplaceSolver& ls = n.GetLaplaceSolver();
@@ -377,8 +377,8 @@ TEST_P(FourIKvDftTest, CheckFourIKvDft) {
     const int size_a_temp = mnpd * (2 * nf + 1) * s.nThetaEff;
     std::vector<double> actemp_full(size_a_temp, 0.0);
     std::vector<double> astemp_full(size_a_temp);
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
 
       const LaplaceSolver& ls = n.GetLaplaceSolver();
 
@@ -522,8 +522,8 @@ TEST_P(FourIKuDftTest, CheckFourIKuDft) {
     // there must construct it here as well for testing
     std::vector<double> bvec_sin(mnpd);
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
 
       const LaplaceSolver& ls = n.GetLaplaceSolver();
       const SingularIntegrals& si = n.GetSingularIntegrals();
@@ -634,8 +634,8 @@ TEST_P(SolverInputsTest, CheckSolverInputs) {
     // there must construct it here as well for testing
     std::vector<double> bvec_sin(mnpd);
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
 
       const LaplaceSolver& ls = n.GetLaplaceSolver();
       const SingularIntegrals& si = n.GetSingularIntegrals();

@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 import tempfile
+import types
 import typing
 from collections.abc import Generator
 from pathlib import Path
@@ -429,9 +430,15 @@ class VmecInput(BaseModelWithNumpy):
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
     return_outputs_even_if_not_converged: bool = False
-    """If true, return the outputs even if VMEC++ did not converge.
+    """If true, return a wout even if VMEC++ did not converge, instead of raising a
+    RuntimeError.
 
-    Otherwise a RuntimeError will be raised.
+    This is intended for debugging purposes (e.g. inspecting how far the geometry
+    got, or where the force residuals blew up) since the returned quantities are
+    computed from whatever internal state the solver was in when it gave up, and
+    can be arbitrarily unphysical. Always check `wout.ier_flag` / the accompanying
+    log warning to see why the run did not converge before interpreting any
+    physical quantity in the output.
     """
 
     raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = pydantic.Field(
@@ -523,6 +530,24 @@ class VmecInput(BaseModelWithNumpy):
                         ntor_new=ntor_final,
                     ),
                 )
+
+        # The 1D magnetic-axis arrays must have length ntor+1. Shorter arrays
+        # simply omit trailing (zero) coefficients and are silently zero-padded;
+        # longer arrays are rejected rather than silently truncated.
+        ntor_plus_one_fields = ["raxis_c", "zaxis_s"]
+        if self.lasym:
+            ntor_plus_one_fields.extend(["raxis_s", "zaxis_c"])
+        expected_axis_len = ntor_final + 1
+        for field in ntor_plus_one_fields:
+            current_value = getattr(self, field)
+            if current_value is None:
+                continue
+            if np.size(current_value) != expected_axis_len:
+                setattr(
+                    self,
+                    field,
+                    VmecInput.resize_1d_axis_coeff(current_value, ntor_new=ntor_final),
+                )
         return self
 
     @pydantic.model_validator(mode="after")
@@ -541,6 +566,38 @@ class VmecInput(BaseModelWithNumpy):
                     )
                     raise ValueError(msg)
         return self
+
+    @staticmethod
+    def resize_1d_axis_coeff(
+        coeff: jt.Float[np.ndarray, "ntor_plus_1"],
+        ntor_new: int,
+    ) -> jt.Float[np.ndarray, "ntor_new_plus_1"]:
+        """Resizes a 1D magnetic-axis Fourier coefficient array to length ntor_new+1.
+
+        Arrays shorter than ntor_new+1 are zero-padded (the omitted trailing
+        coefficients are implicitly zero). Arrays longer than ntor_new+1 are
+        rejected to avoid silently truncating user-data.
+
+        Args:
+            coeff: A 1D NumPy array of axis coefficients (length ntor+1).
+            ntor_new: The new number of toroidal modes.
+
+        Examples:
+            >>> VmecInput.resize_1d_axis_coeff(np.array([1.0, 2.0]), ntor_new=3)
+            array([1., 2., 0., 0.])
+        """
+        assert ntor_new >= 0
+        coeff = np.asarray(coeff, dtype=float).ravel()
+        new_len = ntor_new + 1
+        if coeff.size > new_len:
+            msg = (
+                f"length of axis coefficient array ({coeff.size}) exceeds ntor+1 ({new_len}). "
+                f"Please truncate r_axis_c and zaxis_s to a size consistent with ntor={ntor_new}."
+            )
+            raise ValueError(msg)
+        resized_coeff = np.zeros(new_len)
+        resized_coeff[: coeff.size] = coeff
+        return resized_coeff
 
     @staticmethod
     def resize_2d_coeff(
@@ -1359,6 +1416,22 @@ class VmecWOut(BaseModelWithNumpy):
             )
             raise ValueError(msg)
 
+        # Write to a temporary file in the target directory and atomically move
+        # it into place at the end, so that a failed save never leaves a
+        # partial wout file behind at out_path.
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            dir=out_path.parent, prefix=out_path.name + ".", suffix=".tmp"
+        )
+        os.close(tmp_fd)
+        try:
+            self._save_to_netcdf3(tmp_name)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
+        Path(tmp_name).replace(out_path)
+
+    def _save_to_netcdf3(self, out_path: str | Path) -> None:
+        """Write the NetCDF3 wout representation of this object to out_path."""
         with netCDF4.Dataset(out_path, "w", format="NETCDF3_CLASSIC") as fnc:
             # create dimensions (in the same order as VMEC2000)
             # Dimensions that are not in use yet, written for compatibility
@@ -1451,19 +1524,34 @@ class VmecWOut(BaseModelWithNumpy):
                     shape_string = tuple(
                         [f"dim_{dim:05d}" for dim in value_array.shape]
                     )
-                    if (
-                        field_info is not None  # is a model field
-                        and field_info.annotation is not None  # has an annotation
-                        and issubclass(
-                            field_info.annotation,
-                            jt.AbstractArray,
+                    # Asymmetric arrays are annotated as `<array type> | None`;
+                    # unwrap such unions to recover the jaxtyping array
+                    # annotation that carries the dimension names.
+                    annotation = (
+                        field_info.annotation if field_info is not None else None
+                    )
+                    if typing.get_origin(annotation) in (
+                        typing.Union,
+                        types.UnionType,
+                    ):
+                        non_none_args = [
+                            arg
+                            for arg in typing.get_args(annotation)
+                            if arg is not type(None)
+                        ]
+                        annotation = (
+                            non_none_args[0] if len(non_none_args) == 1 else None
                         )
+                    if (
+                        annotation is not None
+                        and isinstance(annotation, type)
+                        and issubclass(annotation, jt.AbstractArray)
                     ):
                         # Extract the dimension names used for NetCDF wout when available
-                        annotation_dim_names = field_info.annotation.dim_str.split()
+                        annotation_dim_names = annotation.dim_str.split()
                         inferred_shape: list[str] = []
                         for dim, dim_default_name, annotation_dim_name in zip(
-                            field_info.annotation.dims,
+                            annotation.dims,
                             shape_string,
                             annotation_dim_names,
                             strict=True,
@@ -1601,14 +1689,19 @@ class VmecWOut(BaseModelWithNumpy):
             attrs = {}
             for var_name, variable in fnc.variables.items():
                 if variable.dtype is str or variable.dtype == "S1":
-                    # Remove both zero-padding and whitespaces.
-                    attrs[var_name] = (
-                        fnc[var_name][()]
-                        .tobytes()
-                        .decode("ascii")
-                        .strip("\x00")
-                        .strip()
-                    )
+                    raw_bytes = fnc[var_name][()].tobytes()
+                    try:
+                        # Remove both zero-padding and whitespaces.
+                        attrs[var_name] = (
+                            raw_bytes.decode("ascii").strip("\x00").strip()
+                        )
+                    except UnicodeDecodeError:
+                        logger.warning(
+                            "Could not decode variable '%s' as ascii text; "
+                            "replacing it with an empty string.",
+                            var_name,
+                        )
+                        attrs[var_name] = ""
                 elif variable.ndim == 2:
                     # We transpose the 2D arrays to map from
                     # Column-major convention (Fortran) to Row-major (Python, C++)

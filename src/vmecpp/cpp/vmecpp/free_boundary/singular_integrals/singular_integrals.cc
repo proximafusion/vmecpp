@@ -390,11 +390,18 @@ void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
             const int k = kl % s_.nZeta;
             const int klRel = kl - tp_.ztMin;
 
-            const int idx_lm = l * (s_.mnyq2 + 1) + m;
+            // The poloidal basis cosmu/sinmu is stored only on the reduced
+            // theta range [0, nThetaReduced). The lasym free-boundary path
+            // integrates over the full theta range, so for l >= nThetaReduced
+            // reflect via stellarator symmetry (theta -> -theta): cos(m*theta)
+            // is even, sin(m*theta) is odd.
+            const int lr = (l < s_.nThetaReduced) ? l : (s_.nThetaEven - l);
+            const double sgnmu = (l < s_.nThetaReduced) ? 1.0 : -1.0;
+            const int idx_lm = lr * (s_.mnyq2 + 1) + m;
             const int idx_nk = n * s_.nZeta + k;
 
             // sin(mu - |n|v) * cmns(l,n,m)
-            const double sinp = (fb_.sinmu[idx_lm] * fb_.cosnv[idx_nk] -
+            const double sinp = (sgnmu * fb_.sinmu[idx_lm] * fb_.cosnv[idx_nk] -
                                  fb_.cosmu[idx_lm] * fb_.sinnv[idx_nk]) *
                                 cmns_factor;
 
@@ -407,9 +414,10 @@ void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
 
             if (s_.lasym) {
               // cos(mu - |n|v) * cmns(l,n,m)
-              const double cosp = (fb_.cosmu[idx_lm] * fb_.cosnv[idx_nk] +
-                                   fb_.sinmu[idx_lm] * fb_.sinnv[idx_nk]) *
-                                  cmns_factor;
+              const double cosp =
+                  (fb_.cosmu[idx_lm] * fb_.cosnv[idx_nk] +
+                   sgnmu * fb_.sinmu[idx_lm] * fb_.sinnv[idx_nk]) *
+                  cmns_factor;
 
               bvec_cos[idx_m_posn] += (Tlp[fl][klRel] + Tlm[fl][klRel]) *
                                       bDotN[klRel] * s_.wInt[l] * cosp;
@@ -426,10 +434,14 @@ void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
           for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
             const int l = kl / s_.nZeta;
             int k = kl % s_.nZeta;
-            const int idx_lm = l * (s_.mnyq2 + 1) + m;
+            // Reflect onto the reduced theta range for l >= nThetaReduced
+            // (sin(m*theta) is odd under theta -> -theta).
+            const int lr = (l < s_.nThetaReduced) ? l : (s_.nThetaEven - l);
+            const double sgnmu = (l < s_.nThetaReduced) ? 1.0 : -1.0;
+            const int idx_lm = lr * (s_.mnyq2 + 1) + m;
             const int remaining = std::min(s_.nZeta - k, tp_.ztMax - kl);
 
-            const double coeff1 = fb_.sinmu[idx_lm] * cmns_factor;
+            const double coeff1 = sgnmu * fb_.sinmu[idx_lm] * cmns_factor;
             const double coeff2 = fb_.cosmu[idx_lm] * cmns_factor;
 
             std::array<double, 4> buf_m_posn{};
@@ -509,7 +521,7 @@ void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
                 const int idx_nk = n * s_.nZeta + k;
 
                 const double coeff1 =
-                    fb_.sinmu[idx_lm] * fb_.cosnv[idx_nk] * cmns_factor;
+                    sgnmu * fb_.sinmu[idx_lm] * fb_.cosnv[idx_nk] * cmns_factor;
                 const double coeff2 =
                     fb_.cosmu[idx_lm] * fb_.sinnv[idx_nk] * cmns_factor;
 
@@ -542,13 +554,17 @@ void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
               const int k = kl % s_.nZeta;
               const int klRel = kl - tp_.ztMin;
 
-              const int idx_lm = l * (s_.mnyq2 + 1) + m;
+              // Reflect onto the reduced theta range for l >= nThetaReduced
+              // (sin(m*theta) is odd under theta -> -theta).
+              const int lr = (l < s_.nThetaReduced) ? l : (s_.nThetaEven - l);
+              const double sgnmu = (l < s_.nThetaReduced) ? 1.0 : -1.0;
+              const int idx_lm = lr * (s_.mnyq2 + 1) + m;
               const int idx_nk = n * s_.nZeta + k;
 
               const double coeff1 =
                   fb_.cosmu[idx_lm] * fb_.cosnv[idx_nk] * cmns_factor;
               const double coeff2 =
-                  fb_.sinmu[idx_lm] * fb_.sinnv[idx_nk] * cmns_factor;
+                  sgnmu * fb_.sinmu[idx_lm] * fb_.sinnv[idx_nk] * cmns_factor;
 
               // cos(mu + |n|v) * cmns(l,n,m)
               const double cosm = coeff1 - coeff2;

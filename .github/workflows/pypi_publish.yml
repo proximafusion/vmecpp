@@ -73,7 +73,7 @@ jobs:
             "ubuntu:22.04",
             "archlinux/archlinux",
             "debian:12",
-            "debian:testing-20250224",
+            # "debian:testing-20250224", # TODO(jurasic): re-enable when 3.14 support unblocked
             "fedora:41",
           ]
     runs-on: ubuntu-24.04
