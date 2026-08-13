@@ -152,7 +152,7 @@ Ubuntu 22.04 and 24.04, as well as Debian 12 are officially supported.
 
 1. Install required system packages:
 ```shell
-sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev python3-dev
+sudo apt-get install -y build-essential cmake gfortran libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev python3-dev
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
@@ -279,24 +279,24 @@ VMEC++ on a configuration that is very similar to the converged equilibrium.
 ```python
 import vmecpp
 
-input = vmecpp.VmecInput.from_file("w7x.json")
+vmec_input = vmecpp.VmecInput.from_file("w7x.json")
 
 # Base run
-output = vmecpp.run(input)
+vmec_output = vmecpp.run(vmec_input)
 
 # Now let's perturb the plasma boundary a little bit...
-input.rbc[0, 0] *= 0.8
-input.rbc[1, 0] *= 1.2
+vmec_input.rbc[0, 0] *= 0.8
+vmec_input.rbc[1, 0] *= 1.2
 # ...and fix up the multigrid steps: hot-restarted runs only allow a single step
-input.ns_array = input.ns_array[-1:]
-input.ftol_array = input.ftol_array[-1:]
-input.niter_array = input.niter_array[-1:]
+vmec_input.ns_array = vmec_input.ns_array[-1:]
+vmec_input.ftol_array = vmec_input.ftol_array[-1:]
+vmec_input.niter_array = vmec_input.niter_array[-1:]
 
 # We can now run with hot restart:
-# passing the previously obtained output ensures that
+# passing the previously obtained vmec_output ensures that
 # the run starts already close to the equilibrium, so it will take
 # very few iterations to converge this time!
-hot_restarted_output = vmecpp.run(input, restart_from=output)
+hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 ```
 
 ## Full tests and validation against the reference Fortran VMEC v8.52
