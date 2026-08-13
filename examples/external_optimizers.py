@@ -42,7 +42,7 @@ from pathlib import Path
 
 import numpy as np
 from scipy.optimize import newton_krylov
-from scipy.sparse.linalg import LinearOperator, lgmres
+from scipy.sparse.linalg import LinearOperator, gmres, lgmres
 
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
@@ -211,15 +211,15 @@ def solve_newton_krylov_preconditioned(input_path=DEFAULT_INPUT, ns=11, tol=1e-9
     return solve_newton_krylov(input_path, ns, tol, preconditioned=True)
 
 
-def solve_newton_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80):
-    """Globalized Newton-Krylov using VMEC++'s finite-difference Hessian-vector product.
+def solve_newton_hvp(
+    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80, inner_tol=1e-3
+):
+    """Globalized Newton-Krylov using VMEC++'s own Hessian-vector product.
 
-    Each Newton step solves H dx = -F with GMRES preconditioned by M^-1 (VMEC's
-    approximate inverse Hessian), with Eisenstat-Walker adaptive inner forcing and a
-    backtracking line search. H v is hessian_vector_product (a central difference of the
-    analytic force; two force evaluations per matvec). Same solver as
-    solve_newton_exact_hvp but with the FD HVP, for a like-for-like comparison of the
-    HVP backends.
+    Each Newton step solves H dx = -F with GMRES, where H v is hessian_vector_product
+    (the analytic force's directional derivative computed inside VMEC++) and the inner
+    solve is preconditioned by M^-1. A backtracking line search on ||F|| globalizes the
+    step, which is required on stiff 3D cases where the full Newton step overshoots.
     """
     model = make_model(input_path, ns)
     F = residual(model)
@@ -228,17 +228,12 @@ def solve_newton_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80):
     model.reset_force_eval_count()
     t0 = time.perf_counter()
     it = 0
-    prev_norm = None
-    eta = 0.5
     for _ in range(max_newton):
         fk = F(x)
         norm0 = np.linalg.norm(fk)
         if norm0 < tol:
             break
         it += 1
-        if prev_norm is not None:
-            eta = min(0.5, max(1e-4, 0.9 * (norm0 / prev_norm) ** 2))
-        prev_norm = norm0
         model.set_state(np.ascontiguousarray(x))
         model.evaluate(2, 2, True)  # assemble M at the current iterate
         h_op = LinearOperator(  # type: ignore[call-overload]
@@ -253,7 +248,7 @@ def solve_newton_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80):
                 model.apply_preconditioner(np.ascontiguousarray(b)), float
             ),
         )
-        dx, _ = lgmres(h_op, -fk, M=m_op, rtol=eta, maxiter=200)
+        dx, _ = gmres(h_op, -fk, M=m_op, rtol=inner_tol, maxiter=100)
         # Backtracking line search: accept the largest step that reduces ||F||.
         alpha = 1.0
         for _ in range(30):
@@ -387,8 +382,8 @@ def solve_newton_ptc(
 
 EXTERNAL_SOLVERS = (
     solve_preconditioned_descent,
-    solve_newton_krylov,
     solve_newton_krylov_preconditioned,
+    solve_newton_krylov,
     solve_newton_hvp,
 )
 

@@ -176,6 +176,14 @@ class HandoverStorage {
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
   Eigen::VectorXd vacuum_b_z;
 
+  // Whether the free-boundary vacuum solve requested an early exit at a
+  // debug checkpoint (VmecCheckpoint). The vacuum solve now runs in a nested
+  // parallel region driven by a single radial thread, so this shared flag
+  // broadcasts that thread's checkpoint result to the whole radial team (which
+  // reads it after the enclosing 'omp single' barrier). Always false during
+  // normal runs (checkpoint == NONE).
+  bool vacuum_reached_checkpoint = false;
+
  private:
   const Sizes& s_;
 

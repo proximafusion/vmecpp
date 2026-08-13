@@ -99,7 +99,7 @@ print(vmec_output.mercier.iota)
 vmec_output.wout.save("wout_w7x.nc")
 ```
 
-All other output files are accessible via members of the `output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
+All other output files are accessible via members of the `vmec_output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
 
 ### With SIMSOPT
 
@@ -328,7 +328,7 @@ VMEC++:
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
 - employs the same parallelization strategy as Fortran VMEC, but VMEC++ leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization: as a consequence it cannot parallelize over multiple nodes
 - Uses FFT kernels optimized for small mode numbers [generated using FFTX](https://github.com/spiral-software/fftx) instead of DFT for supported resolutions. They give a 10-20% speedup relative to the DFT counterparts.
-- implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
+- implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa. One deliberate exception: at multigrid grid transitions, the rollback backup of the state vector is taken *after* the radial interpolation of the coarse-grid solution (matching PARVMEC/VMEC2000 since 2017-01-24, "SPH 012417"), not before it as in VMEC 8.52 -- with the 8.52 ordering, the first restart of a stage silently discards the interpolated state and the finer stages effectively re-solve from a cold start
 
 ### Limitations with respect to the Fortran implementations
 - non-stellarator-symmetric terms (`lasym == true`) are not supported yet
