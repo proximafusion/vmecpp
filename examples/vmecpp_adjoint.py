@@ -35,6 +35,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+from scipy.optimize import root
 from scipy.sparse.linalg import LinearOperator, gmres
 
 from vmecpp.cpp import _vmecpp  # type: ignore
@@ -98,31 +99,36 @@ def _interior_operators(model, x, interior, exact=False):
 def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=80):
     """Converge the interior to force balance with the boundary held fixed.
 
-    Preconditioned Newton-Krylov on the interior residual with a backtracking line
-    search; the line search is required for stiff 3D equilibria, where the full Newton
-    step overshoots.
+    Use SciPy's Newton-Krylov implementation so the solver and line-search policy remain
+    interchangeable with other SciPy root methods.
     """
-    x = np.asarray(x0, float).copy()
-    x[boundary] = x_boundary
-    for _ in range(max_newton):
-        f = _raw_force(model, x)
-        norm0 = np.linalg.norm(f[interior])
-        if norm0 < tol:
-            break
-        model.set_state(np.ascontiguousarray(x))
-        model.evaluate(2, 2, True)  # assemble preconditioner + set base state
-        h_op, m_op = _interior_operators(model, x, interior)
-        dxi, _ = gmres(h_op, -f[interior], M=m_op, rtol=1e-4, maxiter=300)
-        alpha = 1.0
-        for _ in range(30):
-            xt = x.copy()
-            xt[interior] += alpha * dxi
-            if np.linalg.norm(_raw_force(model, xt)[interior]) < norm0:
-                break
-            alpha *= 0.5
-        else:
-            break  # no decrease found; stop
-        x[interior] += alpha * dxi
+    x_template = np.asarray(x0, float).copy()
+    x_template[boundary] = x_boundary
+
+    def residual(xi):
+        x = x_template.copy()
+        x[interior] = xi
+        return _raw_force(model, x)[interior]
+
+    solution = root(
+        residual,
+        x_template[interior],
+        method="krylov",
+        options={
+            "fatol": tol,
+            "line_search": "armijo",
+            "maxiter": max_newton,
+        },
+    )
+
+    x = x_template.copy()
+    x[interior] = solution.x
+    if not solution.success:
+        error_message = (
+            f"Interior solve failed: {solution.message}; "
+            f"max|F|={np.max(np.abs(solution.fun)):.3e}"
+        )
+        raise RuntimeError(error_message)
     return x
 
 
