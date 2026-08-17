@@ -130,50 +130,99 @@ def _interior_operators(model, x, interior, exact=False):
     )
 
 
+def _safeguarded_interior_solve(model, x_template, interior, residual, tol, max_newton):
+    """Use public SciPy Krylov primitives with a VMEC-aware backtracking safeguard."""
+    xi = x_template[interior].copy()
+    force = np.zeros(interior.size)
+    for _ in range(max_newton):
+        force = residual(xi)
+        norm0 = np.linalg.norm(force)
+        if np.max(np.abs(force)) <= tol:
+            x_template[interior] = xi
+            return x_template
+        x_template[interior] = xi
+        model.set_state(np.ascontiguousarray(x_template))
+        model.evaluate(2, 2, True)
+        hessian, preconditioner = _interior_operators(model, x_template, interior)
+        step, info = gmres(
+            hessian,
+            -force,
+            M=preconditioner,
+            rtol=1e-4,
+            maxiter=300,
+        )
+        if info != 0:
+            error_message = f"Interior Krylov solve failed with info={info}"
+            raise RuntimeError(error_message)
+        for backtrack in range(30):
+            trial = xi + 2.0**-backtrack * step
+            if np.linalg.norm(residual(trial)) < norm0:
+                xi = trial
+                break
+        else:
+            error_message = (
+                "Interior solve failed to reduce residual; "
+                f"max|F|={np.max(np.abs(force)):.3e}"
+            )
+            raise RuntimeError(error_message)
+    error_message = (
+        f"Interior solve failed: maximum iterations; max|F|={np.max(np.abs(force)):.3e}"
+    )
+    raise RuntimeError(error_message)
+
+
 def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=80):
     """Converge the interior to force balance with the boundary held fixed.
 
-    Use SciPy's Newton-Krylov implementation with VMEC's adaptive preconditioner.
-
-    SciPy owns the nonlinear iteration, inner Krylov solve, and line search. VMEC supplies
-    the state-dependent preconditioner through SciPy's public ``inner_M`` interface.
+    SciPy's public Newton-Krylov root solver handles normal updates. For stiff large
+    boundary updates, fall back to public SciPy Krylov primitives with VMEC's adaptive
+    preconditioner and an explicit residual-decreasing line search.
     """
     x_template = np.asarray(x0, float).copy()
     x_template[boundary] = x_boundary
-    preconditioner = _VmecPreconditioner(model, x_template, interior)
-    preconditioner.update(x_template[interior], np.zeros(interior.size))
 
     def residual(xi):
         x = x_template.copy()
         x[interior] = xi
         return _raw_force(model, x)[interior]
 
-    solution = root(
-        residual,
-        x_template[interior],
-        method="krylov",
-        options={
-            "fatol": tol,
-            "line_search": "armijo",
-            "maxiter": max_newton,
-            "jac_options": {
-                "method": "lgmres",
-                "inner_M": preconditioner,
-                "inner_rtol": 1e-4,
-                "inner_maxiter": 300,
-            },
-        },
-    )
+    initial_xi = x_template[interior].copy()
+    initial_residual = residual(initial_xi)
+    if np.max(np.abs(initial_residual)) <= tol:
+        return x_template
 
-    x = x_template.copy()
-    x[interior] = solution.x
-    if not solution.success:
-        error_message = (
-            f"Interior solve failed: {solution.message}; "
-            f"max|F|={np.max(np.abs(solution.fun)):.3e}"
+    preconditioner = _VmecPreconditioner(model, x_template, interior)
+    preconditioner.update(initial_xi, initial_residual)
+    try:
+        solution = root(
+            residual,
+            initial_xi,
+            method="krylov",
+            options={
+                "fatol": tol,
+                "line_search": "armijo",
+                "maxiter": max_newton,
+                "jac_options": {
+                    "method": "lgmres",
+                    "inner_M": preconditioner,
+                    "inner_rtol": 1e-4,
+                    "inner_maxiter": 300,
+                },
+            },
         )
-        raise RuntimeError(error_message)
-    return x
+    except ValueError:
+        solution = None
+
+    if (
+        solution is not None
+        and solution.success
+        and np.max(np.abs(solution.fun)) <= tol
+    ):
+        x_template[interior] = solution.x
+        return x_template
+    return _safeguarded_interior_solve(
+        model, x_template, interior, residual, tol, max_newton
+    )
 
 
 def objective_state_gradient(model, x, objective, h=1e-6):
