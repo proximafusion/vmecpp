@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from simsopt._core import Optimizable
+from simsopt._core.derivative import Derivative, OptimizableDefaultDict, derivative_dec
 from vmecpp_adjoint import (
     DEFAULT_INPUT,
     boundary_gradient,
@@ -74,14 +76,6 @@ class VmecBoundaryProblem:
 
 def make_simsopt_optimizable(problem: VmecBoundaryProblem):
     """Wrap the problem as a SIMSOPT Optimizable exposing an analytic gradient."""
-    # Imported lazily so the rest of the module (and the gradient benchmark) work
-    # without SIMSOPT installed.
-    from simsopt._core import Optimizable  # noqa: PLC0415
-    from simsopt._core.derivative import (  # noqa: PLC0415
-        Derivative,
-        OptimizableDefaultDict,
-        derivative_dec,
-    )
 
     class VmecEnergy(Optimizable):
         def __init__(self):

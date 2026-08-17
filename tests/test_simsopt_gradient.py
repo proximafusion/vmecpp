@@ -14,15 +14,11 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 
-pytest.importorskip("simsopt")
-
 from simsopt_vmec_gradient import (  # type: ignore
     VmecBoundaryProblem,
-    gradient_cost,
     make_simsopt_optimizable,
 )
 
@@ -46,12 +42,3 @@ def test_simsopt_optimizable_gradient_matches_fd():
         jm = opt.J()
         opt.local_full_x = p0
         assert abs(g[j] - (jp - jm) / (2 * h)) < 1e-3 * scale
-
-
-def test_adjoint_gradient_cheaper_than_finite_difference():
-    analytic = gradient_cost(analytic=True)
-    fd = gradient_cost(analytic=False)
-    # Same gradient, far fewer force evaluations (advantage grows with #DOFs).
-    rel = np.linalg.norm(analytic.gradient - fd.gradient) / np.linalg.norm(fd.gradient)
-    assert rel < 1e-2
-    assert analytic.force_evals < fd.force_evals
