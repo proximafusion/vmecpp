@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787007461035,
+  "lastUpdate": 1787007609722,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -36444,6 +36444,162 @@ window.BENCHMARK_DATA = {
             "value": 0.004822049703862932,
             "unit": "seconds",
             "extra": "iterations: 288\ncpu: 0.004816567319444445 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "14c522e8aa8fcd2e4bba1bdd561ec9a2bc983e4b",
+          "message": "examples: adjoint boundary sensitivities + SIMSOPT analytic gradient (#581)\n\n* examples: adjoint boundary sensitivities; SIMSOPT analytic gradient\n\nAdd the implicit-function adjoint that turns VMEC++ into a\ngradient-providing equilibrium component for SIMSOPT, the original goal.\n\nvmecpp_adjoint.py: for a converged fixed-boundary equilibrium F_I(x)=0,\nthe boundary sensitivity of a scalar objective J follows from\nH_II lambda = dJ/dx_I, dJ/dx_B = dJ/dx_B - (dF_I/dx_B)^T lambda, with H\nthe symmetric Hessian of the augmented functional. It is matrix-free via\nhessian_vector_product and apply_preconditioner (the SPD interior system\nis solved with preconditioned CG). One Hessian solve gives the whole\nboundary gradient, versus one equilibrium re-solve per boundary DOF for\nfinite differences.\n\nsimsopt_vmec_gradient.py: VmecEnergy wraps this as a SIMSOPT Optimizable\nwhose dJ is the adjoint gradient, plus a gradient-cost benchmark.\n\nVerified: the adjoint gradient matches brute-force re-solve finite\ndifferences (rel 2.4e-4) and the SIMSOPT Optimizable's dJ matches finite\ndifferences of J (rel ~1e-6). On solovev (ns=11, 18 boundary DOFs) the\nadjoint boundary gradient costs 762 force evaluations versus 9112 for\nfinite differences (12x), and the gap grows with the boundary DOF count.\n\n* examples: fix adjoint on 3D (GMRES for indefinite Hessian) + globalize\n\nTwo correctness fixes for stiff 3D equilibria (cth_like):\n\n- VMEC's augmented-Lagrangian Hessian is symmetric *indefinite* (the lambda\n  constraint makes it a saddle, not a minimum), so CG silently gives the\n  wrong adjoint there. Use GMRES, which handles indefinite systems, for the\n  H_II solve and the interior Newton solve. With a loose, restarted tolerance\n  the adjoint solve stays cheap.\n- Add a backtracking line search to solve_interior so the interior re-solve\n  (used by the SIMSOPT wrapper and the finite-difference reference) converges\n  on 3D instead of overshooting.\n\nVerified with a directional-derivative check against a re-converged\nfinite-difference reference: solovev 1.5e-4, cth_like 2.2e-2 relative; both\npreviously agreed only in 2D. Boundary-gradient cost on solovev: 626 force\nevaluations (analytic adjoint) versus 10460 (finite differences).\n\n* Fix adjoint checks on current main\n\n* Improve docstring formatting in simsopt_vmec_gradient.py\n\nFix formatting in docstring for clarity.\n\n* Use SciPy root and benchmark adjoint gradient\n\n* Use adaptive VMEC preconditioning with SciPy root",
+          "timestamp": "2026-08-18T00:52:51+02:00",
+          "tree_id": "5b813e3fd4b87449a5490dd955d0b9d82d851729",
+          "url": "https://github.com/proximafusion/vmecpp/commit/14c522e8aa8fcd2e4bba1bdd561ec9a2bc983e4b"
+        },
+        "date": 1787007609478,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000031923932530737226,
+            "unit": "seconds",
+            "extra": "iterations: 43643\ncpu: 3.192253685585317e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000042094581428615534,
+            "unit": "seconds",
+            "extra": "iterations: 33234\ncpu: 4.209359011855329e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0006098939986999879,
+            "unit": "seconds",
+            "extra": "iterations: 2338\ncpu: 0.0006098500543199316 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014162076348289451,
+            "unit": "seconds",
+            "extra": "iterations: 935\ncpu: 0.001416123806417112 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00016255659933379741,
+            "unit": "seconds",
+            "extra": "iterations: 8597\ncpu: 0.00016250266895428638 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.0001341900642575299,
+            "unit": "seconds",
+            "extra": "iterations: 10453\ncpu: 0.00013415255668229215 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003143873449932834,
+            "unit": "seconds",
+            "extra": "iterations: 4460\ncpu: 0.00031427784977578485 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002743955734453349,
+            "unit": "seconds",
+            "extra": "iterations: 5101\ncpu: 0.0002743073017055479 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.000538389221960757,
+            "unit": "seconds",
+            "extra": "iterations: 2618\ncpu: 0.0005382899805194805 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0004552540292309401,
+            "unit": "seconds",
+            "extra": "iterations: 3301\ncpu: 0.0004490012256891853 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0018669544855753582,
+            "unit": "seconds",
+            "extra": "iterations: 750\ncpu: 0.001866808052000001 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0015687958417135034,
+            "unit": "seconds",
+            "extra": "iterations: 899\ncpu: 0.001568724074527251 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.000060665332767092686,
+            "unit": "seconds",
+            "extra": "iterations: 23088\ncpu: 6.067653079521858e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0004612141774897917,
+            "unit": "seconds",
+            "extra": "iterations: 3033\ncpu: 0.000461265938015162 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0027945017622363184,
+            "unit": "seconds",
+            "extra": "iterations: 496\ncpu: 0.0027945523931451636 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00005674030107181076,
+            "unit": "seconds",
+            "extra": "iterations: 24698\ncpu: 5.6739755445783966e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0004464276288661152,
+            "unit": "seconds",
+            "extra": "iterations: 3151\ncpu: 0.00044647448270390883 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0027392281068337933,
+            "unit": "seconds",
+            "extra": "iterations: 444\ncpu: 0.0027391998130630755 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.0002757504928943723,
+            "unit": "seconds",
+            "extra": "iterations: 5074\ncpu: 0.000275745525620812 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.001194201779161763,
+            "unit": "seconds",
+            "extra": "iterations: 1170\ncpu: 0.0011941481632478633 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005415920257568359,
+            "unit": "seconds",
+            "extra": "iterations: 250\ncpu: 0.005415640812 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.007493535677591961,
+            "unit": "seconds",
+            "extra": "iterations: 288\ncpu: 0.007470402736111111 seconds\nthreads: 1"
           }
         ]
       }
