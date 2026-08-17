@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787007609722,
+  "lastUpdate": 1787010748073,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -11545,6 +11545,93 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.39286613499984924,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3cd22131ee9d99670609f3f70dbf16bd37a7c633",
+          "message": "tests: compare the QUASR free-vs-fixed magnetic axis as a curve, not coefficient-wise (#682)\n\n* tests: xfail the QUASR free-vs-fixed axis comparisons that never passed\n\ntest_free_boundary_matches_fixed_boundary has been red for five\nconfigurations (954, 9914, 19940, 29346, 65579) since it was merged: the\nsame five fail in the very first CI run of the test (2026-07-21), and they\nfail identically with the pre-lasym solver and with the previously pinned\npydantic, so neither a solver change nor a dependency update is involved.\n\nThe assertion compares raxis_cc coefficient by coefficient with a purely\nrelative tolerance. Those coefficients span five orders of magnitude, so\nrtol=0.01 on the high-n ones demands the free- and fixed-boundary axes agree\nto ~1e-7 in absolute position, while the two equilibria genuinely differ\n(the free-boundary LCFS is set by the coil field rather than imposed). The\naxis curve R_axis(phi) itself agrees to ~0.3%.\n\nMark the five known-failing configurations xfail (non-strict, so an\nimprovement surfaces as an xpass) instead of leaving the job red, and record\nwhy in a comment next to the id list.\n\n* tests: compare the QUASR axis curve instead of its Fourier coefficients\n\nReplaces the xfail marks from the previous commit: comparing R_axis(phi)\nrather than raxis_cc coefficient by coefficient makes all five previously\nfailing configurations pass with margin, so nothing has to be xfailed.\n\nraxis_cc spans five orders of magnitude, and a purely relative tolerance on\nthe smallest coefficients constrains the axis position far below the level at\nwhich the free- and fixed-boundary equilibria genuinely agree (the worst\ncoefficients are off by 27x and 34x, so no small tolerance bump helps). The\naxis curve itself agrees to 0.02% - 0.76% of the major radius; assert 2%.",
+          "timestamp": "2026-08-18T01:47:22+02:00",
+          "tree_id": "96aaa4e6728a50b1b497ca9445ab7b86a8cf8e62",
+          "url": "https://github.com/proximafusion/vmecpp/commit/3cd22131ee9d99670609f3f70dbf16bd37a7c633"
+        },
+        "date": 1787010745644,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3773947637999754,
+            "range": "stddev: 0.0025912169298283093",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3812210183999696,
+            "range": "stddev: 0.001954730349941055",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.0773216283333418,
+            "range": "stddev: 0.0379521347422409",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2763788589999951,
+            "range": "stddev: 0.004970010826175332",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.8555561820000246,
+            "range": "stddev: 0.008379209029510627",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.087509908333383,
+            "range": "stddev: 0.03975543241418787",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.668190024666652,
+            "range": "stddev: 0.02115773674966951",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.170941642999992,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4706488819999777,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
