@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787010748073,
+  "lastUpdate": 1787010903081,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -36687,6 +36687,162 @@ window.BENCHMARK_DATA = {
             "value": 0.007493535677591961,
             "unit": "seconds",
             "extra": "iterations: 288\ncpu: 0.007470402736111111 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3cd22131ee9d99670609f3f70dbf16bd37a7c633",
+          "message": "tests: compare the QUASR free-vs-fixed magnetic axis as a curve, not coefficient-wise (#682)\n\n* tests: xfail the QUASR free-vs-fixed axis comparisons that never passed\n\ntest_free_boundary_matches_fixed_boundary has been red for five\nconfigurations (954, 9914, 19940, 29346, 65579) since it was merged: the\nsame five fail in the very first CI run of the test (2026-07-21), and they\nfail identically with the pre-lasym solver and with the previously pinned\npydantic, so neither a solver change nor a dependency update is involved.\n\nThe assertion compares raxis_cc coefficient by coefficient with a purely\nrelative tolerance. Those coefficients span five orders of magnitude, so\nrtol=0.01 on the high-n ones demands the free- and fixed-boundary axes agree\nto ~1e-7 in absolute position, while the two equilibria genuinely differ\n(the free-boundary LCFS is set by the coil field rather than imposed). The\naxis curve R_axis(phi) itself agrees to ~0.3%.\n\nMark the five known-failing configurations xfail (non-strict, so an\nimprovement surfaces as an xpass) instead of leaving the job red, and record\nwhy in a comment next to the id list.\n\n* tests: compare the QUASR axis curve instead of its Fourier coefficients\n\nReplaces the xfail marks from the previous commit: comparing R_axis(phi)\nrather than raxis_cc coefficient by coefficient makes all five previously\nfailing configurations pass with margin, so nothing has to be xfailed.\n\nraxis_cc spans five orders of magnitude, and a purely relative tolerance on\nthe smallest coefficients constrains the axis position far below the level at\nwhich the free- and fixed-boundary equilibria genuinely agree (the worst\ncoefficients are off by 27x and 34x, so no small tolerance bump helps). The\naxis curve itself agrees to 0.02% - 0.76% of the major radius; assert 2%.",
+          "timestamp": "2026-08-18T01:47:22+02:00",
+          "tree_id": "96aaa4e6728a50b1b497ca9445ab7b86a8cf8e62",
+          "url": "https://github.com/proximafusion/vmecpp/commit/3cd22131ee9d99670609f3f70dbf16bd37a7c633"
+        },
+        "date": 1787010902725,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00003217980227920675,
+            "unit": "seconds",
+            "extra": "iterations: 43482\ncpu: 3.217805958787544e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00004362207892926706,
+            "unit": "seconds",
+            "extra": "iterations: 32121\ncpu: 4.362059640110832e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0006013519251152503,
+            "unit": "seconds",
+            "extra": "iterations: 2334\ncpu: 0.0006013296216795202 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014019520982863412,
+            "unit": "seconds",
+            "extra": "iterations: 1008\ncpu: 0.0014019185575396824 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.0001617447167597244,
+            "unit": "seconds",
+            "extra": "iterations: 8691\ncpu: 0.0001617363810838799 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00013906907158826518,
+            "unit": "seconds",
+            "extra": "iterations: 10065\ncpu: 0.00013906562901142572 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003212638071018574,
+            "unit": "seconds",
+            "extra": "iterations: 4355\ncpu: 0.00032125944822043625 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002816420364533268,
+            "unit": "seconds",
+            "extra": "iterations: 4974\ncpu: 0.0002816268940490551 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005258054568849762,
+            "unit": "seconds",
+            "extra": "iterations: 2668\ncpu: 0.0005257887826086956 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00045990172629249595,
+            "unit": "seconds",
+            "extra": "iterations: 2813\ncpu: 0.0004598763899751159 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017754980474522558,
+            "unit": "seconds",
+            "extra": "iterations: 793\ncpu: 0.0017754270655737688 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.001960929190174917,
+            "unit": "seconds",
+            "extra": "iterations: 712\ncpu: 0.0019608229620786525 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00006461934693424076,
+            "unit": "seconds",
+            "extra": "iterations: 21395\ncpu: 6.463520158915617e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0004960864993697363,
+            "unit": "seconds",
+            "extra": "iterations: 2820\ncpu: 0.0004961187648936174 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0029998016563844887,
+            "unit": "seconds",
+            "extra": "iterations: 462\ncpu: 0.0029996859480519553 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00006130753744282944,
+            "unit": "seconds",
+            "extra": "iterations: 23131\ncpu: 6.131289308720159e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00050048094529372,
+            "unit": "seconds",
+            "extra": "iterations: 2925\ncpu: 0.0005000627511111047 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0029236882116202277,
+            "unit": "seconds",
+            "extra": "iterations: 479\ncpu: 0.0029236120981210286 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00028633958355510407,
+            "unit": "seconds",
+            "extra": "iterations: 4853\ncpu: 0.00028633221800947845 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.001165176054355599,
+            "unit": "seconds",
+            "extra": "iterations: 1199\ncpu: 0.001165169962468725 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005224941381767615,
+            "unit": "seconds",
+            "extra": "iterations: 268\ncpu: 0.005224854257462691 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.006314107901070111,
+            "unit": "seconds",
+            "extra": "iterations: 309\ncpu: 0.006155322779935276 seconds\nthreads: 1"
           }
         ]
       }
