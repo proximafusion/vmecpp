@@ -96,11 +96,36 @@ def _interior_operators(model, x, interior, exact=False):
     )
 
 
+class _VmecPreconditioner(LinearOperator):
+    """Adaptive VMEC preconditioner for SciPy's Newton-Krylov solver."""
+
+    def __init__(self, model, x_template, interior):
+        self._model = model
+        self._x_template = x_template
+        self._interior = interior
+        self._x = x_template.copy()
+        super().__init__(dtype=float, shape=(interior.size, interior.size))
+
+    def update(self, x, _f):
+        self._x = self._x_template.copy()
+        self._x[self._interior] = x
+        self._model.set_state(np.ascontiguousarray(self._x))
+        self._model.evaluate(2, 2, True)
+
+    def _matvec(self, x):
+        v = np.zeros_like(self._x)
+        v[self._interior] = x
+        self._model.set_state(np.ascontiguousarray(self._x))
+        return np.asarray(self._model.apply_preconditioner(v), float)[self._interior]
+
+
 def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=80):
     """Converge the interior to force balance with the boundary held fixed.
 
-    Use SciPy's Newton-Krylov implementation so the solver and line-search policy remain
-    interchangeable with other SciPy root methods.
+    Use SciPy's Newton-Krylov implementation with VMEC's adaptive preconditioner.
+
+    SciPy owns the nonlinear iteration, inner Krylov solve, and line search. VMEC supplies
+    the state-dependent preconditioner through SciPy's public ``inner_M`` interface.
     """
     x_template = np.asarray(x0, float).copy()
     x_template[boundary] = x_boundary
@@ -110,6 +135,8 @@ def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_new
         x[interior] = xi
         return _raw_force(model, x)[interior]
 
+    preconditioner = _VmecPreconditioner(model, x_template, interior)
+    preconditioner.update(x_template[interior], np.zeros(interior.size))
     solution = root(
         residual,
         x_template[interior],
@@ -118,6 +145,12 @@ def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_new
             "fatol": tol,
             "line_search": "armijo",
             "maxiter": max_newton,
+            "jac_options": {
+                "method": "lgmres",
+                "inner_M": preconditioner,
+                "inner_rtol": 1e-4,
+                "inner_maxiter": 300,
+            },
         },
     )
 
