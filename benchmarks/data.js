@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785936519150,
+  "lastUpdate": 1787007461035,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -11461,6 +11461,93 @@ window.BENCHMARK_DATA = {
             "range": "stddev: 0.016699538643229855",
             "unit": "seconds",
             "extra": "rounds: 3"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "14c522e8aa8fcd2e4bba1bdd561ec9a2bc983e4b",
+          "message": "examples: adjoint boundary sensitivities + SIMSOPT analytic gradient (#581)\n\n* examples: adjoint boundary sensitivities; SIMSOPT analytic gradient\n\nAdd the implicit-function adjoint that turns VMEC++ into a\ngradient-providing equilibrium component for SIMSOPT, the original goal.\n\nvmecpp_adjoint.py: for a converged fixed-boundary equilibrium F_I(x)=0,\nthe boundary sensitivity of a scalar objective J follows from\nH_II lambda = dJ/dx_I, dJ/dx_B = dJ/dx_B - (dF_I/dx_B)^T lambda, with H\nthe symmetric Hessian of the augmented functional. It is matrix-free via\nhessian_vector_product and apply_preconditioner (the SPD interior system\nis solved with preconditioned CG). One Hessian solve gives the whole\nboundary gradient, versus one equilibrium re-solve per boundary DOF for\nfinite differences.\n\nsimsopt_vmec_gradient.py: VmecEnergy wraps this as a SIMSOPT Optimizable\nwhose dJ is the adjoint gradient, plus a gradient-cost benchmark.\n\nVerified: the adjoint gradient matches brute-force re-solve finite\ndifferences (rel 2.4e-4) and the SIMSOPT Optimizable's dJ matches finite\ndifferences of J (rel ~1e-6). On solovev (ns=11, 18 boundary DOFs) the\nadjoint boundary gradient costs 762 force evaluations versus 9112 for\nfinite differences (12x), and the gap grows with the boundary DOF count.\n\n* examples: fix adjoint on 3D (GMRES for indefinite Hessian) + globalize\n\nTwo correctness fixes for stiff 3D equilibria (cth_like):\n\n- VMEC's augmented-Lagrangian Hessian is symmetric *indefinite* (the lambda\n  constraint makes it a saddle, not a minimum), so CG silently gives the\n  wrong adjoint there. Use GMRES, which handles indefinite systems, for the\n  H_II solve and the interior Newton solve. With a loose, restarted tolerance\n  the adjoint solve stays cheap.\n- Add a backtracking line search to solve_interior so the interior re-solve\n  (used by the SIMSOPT wrapper and the finite-difference reference) converges\n  on 3D instead of overshooting.\n\nVerified with a directional-derivative check against a re-converged\nfinite-difference reference: solovev 1.5e-4, cth_like 2.2e-2 relative; both\npreviously agreed only in 2D. Boundary-gradient cost on solovev: 626 force\nevaluations (analytic adjoint) versus 10460 (finite differences).\n\n* Fix adjoint checks on current main\n\n* Improve docstring formatting in simsopt_vmec_gradient.py\n\nFix formatting in docstring for clarity.\n\n* Use SciPy root and benchmark adjoint gradient\n\n* Use adaptive VMEC preconditioning with SciPy root",
+          "timestamp": "2026-08-18T00:52:51+02:00",
+          "tree_id": "5b813e3fd4b87449a5490dd955d0b9d82d851729",
+          "url": "https://github.com/proximafusion/vmecpp/commit/14c522e8aa8fcd2e4bba1bdd561ec9a2bc983e4b"
+        },
+        "date": 1787007458461,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3391950140000063,
+            "range": "stddev: 0.0029188548398642314",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3420144999999593,
+            "range": "stddev: 0.0022491471720055955",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.641659153666675,
+            "range": "stddev: 0.008887650198672863",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.27372758599995,
+            "range": "stddev: 0.007489033145098123",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.9277758143333206,
+            "range": "stddev: 0.021606885289626048",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.9023699596666575,
+            "range": "stddev: 0.027308325509660076",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.99365262099991,
+            "range": "stddev: 0.018829849266078662",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.363319707999835,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.39286613499984924,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
           }
         ]
       }
