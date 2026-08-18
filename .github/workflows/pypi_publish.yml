@@ -7,6 +7,12 @@ on:
   release:
     types: [published]
 
+# Constrain CI installs away from known-broken third-party artifacts.
+# See .github/constraints.txt. Deliberately not in pyproject.toml, so it
+# does not propagate to users installing vmecpp.
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+
 jobs:
   main:
     name: Build wheels on ${{ matrix.os }}
@@ -26,7 +32,16 @@ jobs:
         uses: pypa/cibuildwheel@v3.3.1
         # All the settings for cibuildwheel are in pyproject.toml
         env:
+          # Constrain the installs cibuildwheel performs (in particular the test
+          # environment) away from known-broken third-party wheels. See
+          # .github/constraints.txt. Linux builds run in a container with the
+          # project mounted at /project, macOS builds run directly on the runner.
+          CIBW_ENVIRONMENT_LINUX: >
+            PIP_CONSTRAINT=/project/.github/constraints.txt
+            UV_CONSTRAINT=/project/.github/constraints.txt
           CIBW_ENVIRONMENT_MACOS: >
+            PIP_CONSTRAINT=${{ github.workspace }}/.github/constraints.txt
+            UV_CONSTRAINT=${{ github.workspace }}/.github/constraints.txt
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '15.0' }}
             DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
             FC=gfortran-14

@@ -1,0 +1,14 @@
+# pip constraints applied to CI installs only, via PIP_CONSTRAINT.
+#
+# These are deliberately NOT in pyproject.toml: they work around broken
+# third-party artifacts rather than expressing real incompatibilities of
+# VMEC++, so they must not propagate to anyone installing vmecpp.
+#
+# simsopt 1.11.0: the manylinux_2_28_x86_64 wheel is compiled with AVX-512
+# emitted unconditionally, so "import simsoptpp" dies with SIGILL on any
+# x86_64 CPU without AVX-512, including the GitHub Actions runners. simsopt's
+# CMakeLists.txt falls back to "-march=native" for the wheel builds, so the
+# instruction set of a released wheel depends on whichever builder CPU the
+# release happened to land on. Drop this line once upstream ships a fixed
+# release.
+simsopt!=1.11.0

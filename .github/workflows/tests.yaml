@@ -12,6 +12,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
+# Constrain CI installs away from known-broken third-party artifacts.
+# See .github/constraints.txt. Deliberately not in pyproject.toml, so it
+# does not propagate to users installing vmecpp.
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+
 jobs:
   pre-commit:
     env:
