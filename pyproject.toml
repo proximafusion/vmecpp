@@ -36,10 +36,6 @@ dependencies = [
   "jax!=0.5.2", # To prevent a circular import bug in jax on arch Linux
   "jax!=0.5.1", # To prevent a circular import bug in jax on arch Linux
   "simsopt>=1.8.1",
-  # The simsopt 1.11.0 x86_64 manylinux wheel is compiled with AVX-512
-  # instructions and crashes with SIGILL at import on CPUs without them
-  # (including the GitHub Actions ubuntu runners).
-  "simsopt!=1.11.0",
 ]
 
 [project.scripts]
