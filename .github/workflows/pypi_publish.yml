@@ -9,7 +9,6 @@ on:
 
 # CI-only dependency workaround, see .github/constraints.txt
 env:
-  # UV_CONSTRAINT too: cibuildwheel builds with uv (build-frontend = build[uv]).
   PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
   UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
 

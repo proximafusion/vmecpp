@@ -19,6 +19,7 @@ concurrency:
 # CI-only dependency workaround, see .github/constraints.txt
 env:
   PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
 
 jobs:
   benchmark:
