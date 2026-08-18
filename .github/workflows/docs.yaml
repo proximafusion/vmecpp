@@ -16,9 +16,7 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
-# Constrain CI installs away from known-broken third-party artifacts.
-# See .github/constraints.txt. Deliberately not in pyproject.toml, so it
-# does not propagate to users installing vmecpp.
+# CI-only dependency workaround, see .github/constraints.txt
 env:
   PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
 
