@@ -1,4 +1,2 @@
-# CI-only, deliberately not in pyproject.toml so it does not reach users.
-# simsopt 1.11.0's x86_64 wheel is built with AVX-512 and SIGILLs on the
-# GitHub runners. Drop this once upstream ships a fixed release.
+# Block simsopt 1.11.0 in CI because prebuilt wheels contain unsupported avx512 instructions
 simsopt!=1.11.0
