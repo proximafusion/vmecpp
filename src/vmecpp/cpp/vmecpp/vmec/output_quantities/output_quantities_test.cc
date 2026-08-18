@@ -884,7 +884,8 @@ TEST(SolovevFreeBoundaryLforbal, MatchesEducationalVmecGolden) {
   };
 
   scalar("volume_p", NetcdfReadDouble(ncid, "volume_p").value(), wout.volume);
-  scalar("betatotal", NetcdfReadDouble(ncid, "betatotal").value(), wout.betatotal);
+  scalar("betatotal", NetcdfReadDouble(ncid, "betatotal").value(),
+         wout.betatotal);
   scalar("aspect", NetcdfReadDouble(ncid, "aspect").value(), wout.aspect);
   scalar("b0", NetcdfReadDouble(ncid, "b0").value(), wout.b0);
   scalar("rbtor", NetcdfReadDouble(ncid, "rbtor").value(), wout.rbtor);
