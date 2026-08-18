@@ -11,7 +11,7 @@ import numpy as np
 import pydantic
 
 try:
-    import dapper
+    import dapper  # pyright: ignore[reportMissingImports]
 except ImportError:
     dapper = None
 
