@@ -10,67 +10,80 @@ import jaxtyping as jt
 import numpy as np
 import pydantic
 
+try:
+    import dapper
+except ImportError:
+    dapper = None
 
-class BaseModelWithNumpy(pydantic.BaseModel):
-    """A minimal layer on top of pydantic to help with serialization and de-
-    serialization of classes with numpy arrays, annotated with jaxtyping.
+if dapper is not None:
+    # BaseModelWithNumpy is a small subset of an internal Proxima library, dapper.
+    # Use it directly when available instead of redefining the same behavior.
+    BaseModelWithNumpy = dapper.DapperData
+else:
 
-    Does checks on the shape and type of arrays, may do casting if needed.
-    """
+    class BaseModelWithNumpy(pydantic.BaseModel):
+        """A minimal layer on top of pydantic to help with serialization and de-
+        serialization of classes with numpy arrays, annotated with jaxtyping.
 
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=True,
-        # Serialize NaN and infinite floats as strings in JSON output.
-        # Due to a bug in Pydantic, this setting is ignored by model_dump(mode="json"),
-        # so we override it below to also convert values to string there.
-        ser_json_inf_nan="strings",
-    )
+        Does checks on the shape and type of arrays, may do casting if needed.
+        """
 
-    @pydantic.field_serializer("*", mode="wrap", when_used="json")
-    def _serialize_field(
-        self,
-        value: typing.Any,
-        default_handler: pydantic.SerializerFunctionWrapHandler,
-        info: pydantic.FieldSerializationInfo,
-        # Note: Do NOT annotate return type with "-> Any" here, since that removes types
-        # from the JSON schema of all fields (in serialization mode).
-    ):
-        value = serialize_special_field(type(self), info.field_name, value)
-        return default_handler(value)
+        model_config = pydantic.ConfigDict(
+            arbitrary_types_allowed=True,
+            # Serialize NaN and infinite floats as strings in JSON output.
+            # Due to a bug in Pydantic, this setting is ignored by
+            # model_dump(mode="json"), so we override it below to also convert values
+            # to string there.
+            ser_json_inf_nan="strings",
+        )
 
-    @pydantic.field_validator("*", mode="wrap")
-    @classmethod
-    def _validate_field(
-        cls,
-        value: typing.Any,
-        default_handler: pydantic.ValidatorFunctionWrapHandler,
-        info: pydantic.ValidationInfo,
-    ) -> typing.Any:
-        assert info.field_name is not None
-        # We consciously *ignore* info.mode_is_json() here to allow validating from
-        # JSON-like dicts without having to go through strings. This is consistent with
-        # Pydantic's default behavior: while serializers retain Python objects in
-        # model_dump, but convert them to JSON values in model_dump_json, validators
-        # are lenient and accept JSON values in both modes.
-        value = deserialize_special_field(cls, info.field_name, value)
-        return default_handler(value)
+        @pydantic.field_serializer("*", mode="wrap", when_used="json")
+        def _serialize_field(
+            self,
+            value: typing.Any,
+            default_handler: pydantic.SerializerFunctionWrapHandler,
+            info: pydantic.FieldSerializationInfo,
+            # Note: Do NOT annotate return type with "-> Any" here, since that removes
+            # types from the JSON schema of all fields (in serialization mode).
+        ):
+            value = serialize_special_field(type(self), info.field_name, value)
+            return default_handler(value)
 
-    # This override is necessary to make also `model_dump(mode="json")` respect the
-    # ser_json_inf_nan="strings" setting in model_config. Without this fix, Pydantic
-    # would keep returning NaN/Inf as Python floats from this function, which leads to
-    # invalid JSON, e.g. when the output is used with `json.dumps`.
-    # This bug will probably only be fixed in Pydantic V3, since they consider it a
-    # breaking change.
-    # See: https://github.com/pydantic/pydantic/issues/10037#issuecomment-2314751795
-    # Hide the override from the type system to "pass through" docstring and parameter
-    # types and defaults.
-    if not typing.TYPE_CHECKING:
+        @pydantic.field_validator("*", mode="wrap")
+        @classmethod
+        def _validate_field(
+            cls,
+            value: typing.Any,
+            default_handler: pydantic.ValidatorFunctionWrapHandler,
+            info: pydantic.ValidationInfo,
+        ) -> typing.Any:
+            assert info.field_name is not None
+            # We consciously *ignore* info.mode_is_json() here to allow validating from
+            # JSON-like dicts without having to go through strings. This is consistent
+            # with Pydantic's default behavior: while serializers retain Python objects
+            # in model_dump, but convert them to JSON values in model_dump_json,
+            # validators are lenient and accept JSON values in both modes.
+            value = deserialize_special_field(cls, info.field_name, value)
+            return default_handler(value)
 
-        def model_dump(self, *, mode: str = "python", **kwargs: Any) -> dict[str, Any]:
-            output_dict = super().model_dump(mode=mode, **kwargs)
-            if mode == "json":
-                sanitize_floats_in_container(output_dict)
-            return output_dict
+        # This override is necessary to make also `model_dump(mode="json")` respect the
+        # ser_json_inf_nan="strings" setting in model_config. Without this fix, Pydantic
+        # would keep returning NaN/Inf as Python floats from this function, which leads
+        # to invalid JSON, e.g. when the output is used with `json.dumps`.
+        # This bug will probably only be fixed in Pydantic V3, since they consider it a
+        # breaking change.
+        # See: https://github.com/pydantic/pydantic/issues/10037#issuecomment-2314751795
+        # Hide the override from the type system to "pass through" docstring and
+        # parameter types and defaults.
+        if not typing.TYPE_CHECKING:
+
+            def model_dump(
+                self, *, mode: str = "python", **kwargs: Any
+            ) -> dict[str, Any]:
+                output_dict = super().model_dump(mode=mode, **kwargs)
+                if mode == "json":
+                    sanitize_floats_in_container(output_dict)
+                return output_dict
 
 
 """This module handles special cases for serialization of BaseModelWithNumpy types.
