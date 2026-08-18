@@ -20,6 +20,24 @@ cc_library(
     ],
 )
 
+cc_binary(
+    name = "output_quantities_bench",
+    srcs = ["output_quantities_bench.cc"],
+    data = [
+        "//vmecpp/test_data:cma",
+    ],
+    deps = [
+        ":output_quantities",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:str_format",
+        "@google_benchmark//:benchmark_main",
+        "//util/file_io:file_io",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+)
+
 cc_test(
     name = "output_quantities_io_test",
     srcs = ["output_quantities_io_test.cc", "test_helpers.h"],

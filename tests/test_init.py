@@ -8,7 +8,9 @@ Physics correctness is checked at the level of the C++ core.
 """
 
 import json
+import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -51,8 +53,7 @@ def test_run(max_threads, input_file, verbose):
     [
         ("cma.json", RuntimeError),  # Invalid netcdf
         ("does_not_exist", RuntimeError),
-        # TODO(jurasic) Enable test after switching netcdf_io to absl::Status
-        # ("wout_cma.nc", RuntimeError),  # Valid netcdf, but invalid mgrid
+        ("wout_cma.nc", RuntimeError),  # Valid netcdf, but invalid mgrid
     ],
 )
 def test_raise_invalid_mgrid(mgrid_path: str, expected_exception):
@@ -116,6 +117,28 @@ def test_vmecwout_load_from_fortran():
     wout_filename = REPO_ROOT / "examples" / "data" / "wout_cth_like_fixed_bdy.nc"
     loaded_wout = vmecpp.VmecWOut.from_wout_file(wout_filename)
     assert loaded_wout is not None
+
+
+def test_vmecwout_load_tolerates_corrupted_string_variable(tmp_path, caplog):
+    """Robust against uninitialized/non-ASCII bytes.
+
+    Such garbage should not prevent loading the rest of an otherwise-valid wout file.
+    """
+    wout_filename = REPO_ROOT / "examples" / "data" / "wout_cth_like_fixed_bdy.nc"
+    corrupted_wout_filename = tmp_path / "wout_corrupted_string.nc"
+    shutil.copyfile(wout_filename, corrupted_wout_filename)
+
+    with netCDF4.Dataset(corrupted_wout_filename, "r+") as fnc:
+        raw = bytearray(fnc.variables["mgrid_file"][:].tobytes())
+        raw[3] = 0xDD  # not valid ASCII/UTF-8
+        fnc.variables["mgrid_file"][:] = np.frombuffer(bytes(raw), dtype="S1")
+
+    with caplog.at_level(logging.WARNING):
+        loaded_wout = vmecpp.VmecWOut.from_wout_file(corrupted_wout_filename)
+
+    assert loaded_wout is not None
+    assert loaded_wout.mgrid_file == ""
+    assert "mgrid_file" in caplog.text
 
 
 def test_vmecinput_io():
@@ -615,8 +638,6 @@ def test_vmec_input_validation():
     # The test_file json may exclude fields that have default values,
     # while the parsed versions should have all fields populated.
     indata_dict_from_json = json.loads(vmec_input._to_cpp_vmecindata().to_json())
-    # TODO(jurasic): iteration_style is not yet present in VmecInput, since there's only one option atm.
-    del indata_dict_from_json["iteration_style"]
     vmec_input_dict_from_json = json.loads(vmec_input.model_dump_json())
 
     if not vmec_input.lasym:

@@ -329,4 +329,45 @@ TEST(TestUtil, CheckTridiagonalSolveOpenMP) {
   }  // omp parallel
 }  // CheckTridiagonalSolveOpenMP
 
+// The radial solve is capped at floor(ns / 2) threads (>=2 flux surfaces per
+// thread), while the free-boundary vacuum solve is parallelized over the
+// tangential grid and only capped at nZnT. These tests pin that difference so
+// the vacuum solve keeps its own, larger thread count independent of the
+// radial one (see vmec_adjust_vacuum_num_threads / IdealMhdModel::update).
+TEST(TestUtil, VacuumNumThreadsIsMinOfMaxThreadsAndGrid) {
+  // Large tangential grid: capped by the thread budget.
+  EXPECT_EQ(vmec_adjust_vacuum_num_threads(/*max_threads=*/16, /*n_znt=*/4096),
+            16);
+  EXPECT_EQ(vmec_adjust_vacuum_num_threads(/*max_threads=*/1, /*n_znt=*/4096),
+            1);
+  // Tiny tangential grid: capped by the grid size.
+  EXPECT_EQ(vmec_adjust_vacuum_num_threads(/*max_threads=*/16, /*n_znt=*/3), 3);
+  EXPECT_EQ(vmec_adjust_vacuum_num_threads(/*max_threads=*/16, /*n_znt=*/16),
+            16);
+}
+
+TEST(TestUtil, VacuumThreadCountDecoupledFromRadialThreadCount) {
+  // At the first multigrid step ns=5, the radial solve is limited to
+  // floor(5 / 2) = 2 threads even with a budget of 16 ...
+  const int max_threads = 16;
+  const int radial_threads =
+      vmec_adjust_num_threads(max_threads, /*num_surfaces_to_distribute=*/5);
+  EXPECT_EQ(radial_threads, 2);
+
+  // ... but the vacuum solve, parallelized over a realistically sized
+  // tangential grid, still uses the full budget. This is the regression this
+  // test guards: the two counts must not be tied together.
+  const int n_znt = 4096;
+  const int vacuum_threads = vmec_adjust_vacuum_num_threads(max_threads, n_znt);
+  EXPECT_EQ(vacuum_threads, max_threads);
+  EXPECT_GT(vacuum_threads, radial_threads);
+
+  // The vacuum thread count is ns-independent: it does not change as the radial
+  // grid is refined across multigrid steps.
+  for (int ns : {5, 12, 21, 51, 99}) {
+    EXPECT_EQ(vmec_adjust_vacuum_num_threads(max_threads, n_znt), max_threads)
+        << "vacuum thread count must not depend on ns=" << ns;
+  }
+}
+
 }  // namespace vmecpp
