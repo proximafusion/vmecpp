@@ -61,7 +61,7 @@ jobs:
           python -m pip install -r requirements.no-vmecpp.txt
 
       - name: Install VMEC++ from this commit
-        run: python -m pip install ./vmecpp
+        run: python -m pip install "./vmecpp" "numpy<2.1"
 
       - name: Run short validation
         if: github.event_name == 'push'
