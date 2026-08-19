@@ -33,6 +33,9 @@ jobs:
     # wout with Fortran VMEC2000 in Docker plus one with VMEC++: budget generously.
     # The short run finishes in minutes and won't come close to this limit.
     timeout-minutes: 360
+    env:
+      PIP_CONSTRAINT: ${{ github.workspace }}/vmecpp/.github/constraints.txt
+      UV_CONSTRAINT: ${{ github.workspace }}/vmecpp/.github/constraints.txt
     steps:
       - name: Check out VMEC++
         uses: actions/checkout@v4
