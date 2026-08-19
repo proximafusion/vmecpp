@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787097196999,
+  "lastUpdate": 1787124581235,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -11806,6 +11806,93 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4612956179998946,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "198982749+Copilot@users.noreply.github.com",
+            "name": "Copilot",
+            "username": "Copilot"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5ad1758d77ebafffe05a27c9672186263bfb3a3e",
+          "message": "Fix validation workflow constraint path for nested checkout (#689)\n\n* Initial plan\n\n* Fix validation job constraint path for nested checkout\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n---------\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-08-19T09:23:42+02:00",
+          "tree_id": "4b2e43d3f9ddf8c22ef6268f5aec3bada165a55f",
+          "url": "https://github.com/proximafusion/vmecpp/commit/5ad1758d77ebafffe05a27c9672186263bfb3a3e"
+        },
+        "date": 1787124579574,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.36913798680000126,
+            "range": "stddev: 0.0021217279306456156",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3718835203999788,
+            "range": "stddev: 0.0024401115027152275",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.0481559046666766,
+            "range": "stddev: 0.029277120187113308",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.2818271703332964,
+            "range": "stddev: 0.01496584250889325",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.8597380556666394,
+            "range": "stddev: 0.021964597456965593",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.096433142999975,
+            "range": "stddev: 0.0432704327337961",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 8.676411217666669,
+            "range": "stddev: 0.009383604377943146",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.112604010000041,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.46459103199993024,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
