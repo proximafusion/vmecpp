@@ -101,6 +101,10 @@ class Vmec {
   Vmec(Vmec&&) = delete;
   Vmec& operator=(Vmec&&) = delete;
 
+  // Tears down the IdealMhdModel instances (joining the asynchronous NESTOR
+  // workers) before this Vmec's vacuum buffers are destroyed. See vmec.cc.
+  ~Vmec();
+
   // sign of Jacobian between cylindrical and flux coordinates
   // This is called `signgs` in Fortran VMEC.
   static constexpr int kSignOfJacobian = -1;
@@ -210,6 +214,16 @@ class Vmec {
   std::vector<std::unique_ptr<RadialPartitioning>> r_;
   std::vector<std::unique_ptr<ThreadLocalStorage>> ls_;
   std::vector<std::unique_ptr<RadialProfiles>> p_;
+  // Per-configuration INDATA for a distinct-mode batched GPU run. The
+  // run_batched_gpu binding sets this on the seed Vmec before run(); the run
+  // consumes it to build the per-config RadialProfiles below, so each
+  // configuration's plasma profiles are honored on the device instead of the
+  // seed's being broadcast. Empty for ordinary runs.
+  std::vector<VmecINDATA> batch_indata_;
+  // Per-configuration RadialProfiles for a distinct-mode batched run, built
+  // from batch_indata_ and mirroring p_ across multigrid levels so the device
+  // stages each configuration's profiles instead of broadcasting the seed's.
+  std::vector<std::unique_ptr<RadialProfiles>> p_percfg_;
   std::vector<std::unique_ptr<FreeBoundaryBase>> fb_vac_;
   std::vector<std::unique_ptr<TangentialPartitioning>> tp_vac_;
   std::vector<std::unique_ptr<IdealMhdModel>> m_;
@@ -226,6 +240,32 @@ class Vmec {
   Eigen::VectorXd matrixShare;
   Eigen::VectorXi iPiv;
   Eigen::VectorXd bvecShare;
+
+#ifdef VMECPP_USE_CUDA
+  // Batched free-boundary: one vacuum solver per configuration beyond
+  // configuration zero (which uses fb_vac_[0]), each with its own persistent
+  // response matrix, right-hand side, and pivot workspace. The mgrid
+  // provider and the HandoverStorage output spans are shared; the
+  // vacuum loop consumes each configuration's outputs before the next
+  // solver call overwrites them.
+  std::vector<std::unique_ptr<FreeBoundaryBase>> fb_extra_cfg_;
+  std::vector<Eigen::VectorXd> fb_matrix_per_cfg_;
+  std::vector<Eigen::VectorXi> fb_ipiv_per_cfg_;
+  std::vector<Eigen::VectorXd> fb_bvec_per_cfg_;
+
+  // Asynchronous NESTOR (VMECPP_FB_ASYNC_NESTOR, single configuration): a
+  // thread-private vacuum solver with its own response matrix, right-hand
+  // side, pivots, and field/pressure output buffers, run by the worker thread
+  // inside IdealMhdModel while the device iterates.
+  std::unique_ptr<FreeBoundaryBase> fb_async_;
+  Eigen::VectorXd fb_async_matrix_;
+  Eigen::VectorXi fb_async_ipiv_;
+  Eigen::VectorXd fb_async_bvec_;
+  Eigen::VectorXd fb_async_bsqvac_;
+  Eigen::VectorXd fb_async_br_;
+  Eigen::VectorXd fb_async_bphi_;
+  Eigen::VectorXd fb_async_bz_;
+#endif
 
  private:
   enum class SolveEqLoopStatus : std::uint8_t {
@@ -282,6 +322,20 @@ class Vmec {
 
   // iter2 at last full update (ivacskip = 0) of Nestor
   int last_full_update_nestor_;
+
+  // Run-scoped caches of per-run environment gates: reset to a sentinel at the
+  // start of each Vmec::run and lazily read from the environment on first use,
+  // so successive runs in one process can carry different settings. Formerly
+  // file-scope statics; scoping them to the Vmec keeps this run state on the
+  // object.
+  int per_cfg_niter_cap_ = -1;  // VMECPP_PER_CFG_NITER_CAP
+#ifdef VMECPP_USE_CUDA
+  // True while the current iteration runs with elided host syncs
+  // (VMECPP_SYNC_ELIDE=K, non-boundary iteration); written in Evolve, read by
+  // the convergence gate and restart/store bookkeeping in SolveEquilibriumLoop.
+  bool sync_elided_iter_ = false;
+  int sync_elide_k_ = -2;  // VMECPP_SYNC_ELIDE
+#endif
 };
 
 }  // namespace vmecpp

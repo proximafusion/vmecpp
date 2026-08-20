@@ -10,6 +10,7 @@ cc_library(
         "@abseil-cpp//absl/log:log",
         "@abseil-cpp//absl/algorithm:container",
         "//vmecpp/common/util:util",
+        "//vmecpp/common/util:os_compat",
         "//vmecpp/common/sizes:sizes",
         "//vmecpp/vmec/radial_partitioning:radial_partitioning",
         "//vmecpp/vmec/handover_storage:handover_storage",
