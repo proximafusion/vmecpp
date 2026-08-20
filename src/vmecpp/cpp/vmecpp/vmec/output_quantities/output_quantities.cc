@@ -5756,7 +5756,7 @@ void vmecpp::CompareWOut(const WOutFileContents& test_wout,
 }
 
 
-void OutputQuantities::Rescale(double b_scale, double r_scale, bool scale_pressure) {
+void vmecpp::OutputQuantities::Rescale(double b_scale, double r_scale, bool scale_pressure) {
   // 1. Scale INDATA parameters
   indata.phiedge *= b_scale * r_scale * r_scale;
   if (scale_pressure) {
