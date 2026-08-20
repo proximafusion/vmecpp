@@ -12,6 +12,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
+# CI-only dependency workaround, see .github/constraints.txt
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+
 jobs:
   pre-commit:
     env:
@@ -32,7 +37,7 @@ jobs:
         matrix:
             os: [ubuntu-22.04, macos-14]
             editable: [true, false]
-            python-version: ["3.10", "3.11", "3.12", "3.13"]
+            python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
         with:

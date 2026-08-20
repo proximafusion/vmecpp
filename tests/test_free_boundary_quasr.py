@@ -373,6 +373,15 @@ def _magnetic_axis_major_radius(wout) -> float:
     return float(np.sum(wout.raxis_cc))
 
 
+def _magnetic_axis_curve(wout, n_phi: int = 64) -> np.ndarray:
+    """The magnetic axis R_axis(phi) = sum_n raxis_cc[n] cos(n * nfp * phi), sampled
+    over one field period."""
+    raxis_cc = np.asarray(wout.raxis_cc)
+    n = np.arange(len(raxis_cc))
+    phi = np.linspace(0.0, 2.0 * np.pi / wout.nfp, n_phi, endpoint=False)
+    return raxis_cc @ np.cos(np.outer(n * wout.nfp, phi))
+
+
 def _enclosed_volume(surface_rz) -> float:
     """Absolute plasma volume enclosed by a SIMSOPT SurfaceRZFourier.
 
@@ -693,12 +702,17 @@ def test_free_boundary_matches_fixed_boundary(
         pytest.xfail(f"fixed-boundary reference did not converge: {_first_line(exc)}")
 
     # Same profiles and (nearly) the same boundary -> the interior equilibria
-    # should agree. The magnetic axis is well-determined and matches tightly; the
-    # volume can differ slightly because the free-boundary LCFS is set by the coil
-    # field rather than imposed exactly.
+    # should agree. Both the axis position and the volume can differ slightly
+    # because the free-boundary LCFS is set by the coil field rather than imposed
+    # exactly. The axis is compared as the curve R_axis(phi) rather than coefficient
+    # by coefficient: the coefficients span five orders of magnitude, so a relative
+    # tolerance on the smallest ones says nothing about the axis position.
 
     np.testing.assert_allclose(
-        free.wout.raxis_cc, fixed.wout.raxis_cc, rtol=0.01, atol=0.0
+        _magnetic_axis_curve(free.wout),
+        _magnetic_axis_curve(fixed.wout),
+        rtol=0.02,
+        atol=0.0,
     )
     assert abs(free.wout.volume) == pytest.approx(abs(fixed.wout.volume), rel=0.05)
 

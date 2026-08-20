@@ -11,6 +11,11 @@ on:
         paths:
             - .github/workflows/copilot-setup-steps.yml
 
+# CI-only dependency workaround, see .github/constraints.txt
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+
 jobs:
     # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
     copilot-setup-steps:

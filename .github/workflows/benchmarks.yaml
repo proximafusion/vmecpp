@@ -8,6 +8,11 @@ permissions:
   contents: read
   pull-requests: write
 
+# CI-only dependency workaround, see .github/constraints.txt
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+
 jobs:
   benchmark:
     runs-on: ubuntu-22.04
