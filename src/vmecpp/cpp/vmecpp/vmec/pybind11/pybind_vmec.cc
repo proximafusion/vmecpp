@@ -1098,6 +1098,12 @@ PYBIND11_MODULE(_vmecpp, m) {
                     &vmecpp::OutputQuantities::threed1_shafranov_integrals)
       .def_readonly("wout", &vmecpp::OutputQuantities::wout)
       .def_readonly("indata", &vmecpp::OutputQuantities::indata)
+      .def("rescale", &vmecpp::OutputQuantities::Rescale,
+           "Rescale the equilibrium state in-place. "
+           "b_scale: factor to scale the magnetic field by. "
+           "r_scale: factor to scale the major radius by. "
+           "scale_pressure: whether to scale pressure to maintain force balance (default: true).",
+           py::arg("b_scale"), py::arg("r_scale"), py::arg("scale_pressure") = true)
       .def(
           "save",
           [](const vmecpp::OutputQuantities &oq,
