@@ -1362,12 +1362,13 @@ struct OutputQuantities {
       const std::filesystem::path& path);
 
   // Rescale the equilibrium state in-place.
-  // This scales the underlying geometry and inputs (indata) to represent an equilibrium
-  // with a scaled major radius R -> r_scale * R and magnetic field B -> b_scale * B.
-  // Note: Only the minimal set of parameters required for a hot-restart (wout geometry
-  // and INDATA) are rescaled. To obtain a fully consistent OutputQuantities object with
-  // all derived parameters properly rescaled, one should run VMEC for 0 iterations
-  // starting from this rescaled state.
+  // This scales the underlying geometry and inputs (indata) to represent an
+  // equilibrium with a scaled major radius R -> r_scale * R and magnetic field
+  // B -> b_scale * B. Note: Only the minimal set of parameters required for a
+  // hot-restart (wout geometry and INDATA) are rescaled. To obtain a fully
+  // consistent OutputQuantities object with all derived parameters properly
+  // rescaled, one should run VMEC for 0 iterations starting from this rescaled
+  // state.
   void Rescale(double b_scale, double r_scale, bool scale_pressure = true);
 };
 

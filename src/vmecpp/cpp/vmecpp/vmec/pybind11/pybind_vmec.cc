@@ -1102,8 +1102,10 @@ PYBIND11_MODULE(_vmecpp, m) {
            "Rescale the equilibrium state in-place. "
            "b_scale: factor to scale the magnetic field by. "
            "r_scale: factor to scale the major radius by. "
-           "scale_pressure: whether to scale pressure to maintain force balance (default: true).",
-           py::arg("b_scale"), py::arg("r_scale"), py::arg("scale_pressure") = true)
+           "scale_pressure: whether to scale pressure to maintain force "
+           "balance (default: true).",
+           py::arg("b_scale"), py::arg("r_scale"),
+           py::arg("scale_pressure") = true)
       .def(
           "save",
           [](const vmecpp::OutputQuantities &oq,
