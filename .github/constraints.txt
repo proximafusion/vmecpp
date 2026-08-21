@@ -1,0 +1,2 @@
+# Block simsopt 1.11.0 in CI because prebuilt wheels contain unsupported avx512 instructions
+simsopt!=1.11.0
