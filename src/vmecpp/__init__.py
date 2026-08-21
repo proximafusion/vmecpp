@@ -22,6 +22,7 @@ import pydantic
 
 from vmecpp import _util
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
+from vmecpp._rescale import rescale
 from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
     MakegridParameters,
@@ -2643,6 +2644,7 @@ populate_raw_profile = set_profile
 __all__ = [  # noqa: RUF022
     "run",
     "interpolate_solution",
+    "rescale",
     "VmecInput",
     "VmecOutput",
     "VmecWOut",
