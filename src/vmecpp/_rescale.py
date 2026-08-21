@@ -55,8 +55,9 @@ def rescale(
 
     # Force exactly 1 iteration with high tolerance so it exits immediately
     # (niter_array > 0 is strictly required by the underlying C++ solver)
-    scaled_input.niter_array = np.ones_like(scaled_input.niter_array)
-    scaled_input.ftol_array = np.full_like(scaled_input.ftol_array, 1.0)
+    scaled_input.ns_array = np.array([scaled_input.ns_array[-1]])
+    scaled_input.niter_array = np.array([1])
+    scaled_input.ftol_array = np.array([1.0])
 
     # Scale WOUT geometry
     scaled_wout = output.wout.model_copy(deep=True)
@@ -69,7 +70,7 @@ def rescale(
 
     # Create intermediate VmecOutput for restart_from
     # (The C++ side only uses wout and indata for HotRestartState, so it's fine if the rest is unscaled)
-    intermediate_output = output.model_copy(deep=True)
+    intermediate_output = output.model_copy(deep=False)
     intermediate_output.input = scaled_input
     intermediate_output.wout = scaled_wout
 
