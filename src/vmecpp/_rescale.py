@@ -53,8 +53,10 @@ def rescale(
     if scaled_input.zaxis_c is not None:
         scaled_input.zaxis_c *= r_scale
 
-    # Force 0 iterations for the restart
-    scaled_input.niter_array = np.zeros_like(scaled_input.niter_array)
+    # Force exactly 1 iteration with high tolerance so it exits immediately
+    # (niter_array > 0 is strictly required by the underlying C++ solver)
+    scaled_input.niter_array = np.ones_like(scaled_input.niter_array)
+    scaled_input.ftol_array = np.full_like(scaled_input.ftol_array, 1.0)
 
     # Scale WOUT geometry
     scaled_wout = output.wout.model_copy(deep=True)
