@@ -22,7 +22,6 @@ import pydantic
 
 from vmecpp import _util
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
-from vmecpp._rescale import rescale
 from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
     MakegridParameters,
@@ -36,6 +35,7 @@ from vmecpp._iteration import (
     solve_multigrid,
 )
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
+from vmecpp._rescale import rescale
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
 logger = logging.getLogger(__name__)

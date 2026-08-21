@@ -1,6 +1,7 @@
-import copy
 import numpy as np
+
 from . import VmecOutput, run
+
 
 def rescale(
     output: VmecOutput,
@@ -12,23 +13,23 @@ def rescale(
 
     This scales the underlying geometry and inputs to represent an equilibrium
     with a scaled major radius R -> r_scale * R and magnetic field B -> b_scale * B.
-    
+
     Args:
         output: a converged VmecOutput instance.
         b_scale: factor to scale the magnetic field by.
         r_scale: factor to scale the major radius by.
         scale_pressure: whether to scale pressure to maintain force balance (default: True).
-        
+
     Returns:
         A new VmecOutput object with all derived parameters properly rescaled.
     """
     # Scale INDATA parameters
     scaled_input = output.input.model_copy(deep=True)
-    scaled_input.phiedge *= b_scale * (r_scale ** 2)
-    
+    scaled_input.phiedge *= b_scale * (r_scale**2)
+
     if scale_pressure:
-        scaled_input.pres_scale *= (b_scale ** 2)
-        
+        scaled_input.pres_scale *= b_scale**2
+
     scaled_input.curtor *= b_scale * r_scale
 
     scaled_input.rbc *= r_scale
@@ -37,7 +38,7 @@ def rescale(
         scaled_input.rbs *= r_scale
     if scaled_input.zbc is not None:
         scaled_input.zbc *= r_scale
-        
+
     scaled_input.raxis_c *= r_scale
     scaled_input.zaxis_s *= r_scale
     if scaled_input.raxis_s is not None:
@@ -62,6 +63,6 @@ def rescale(
     intermediate_output = output.model_copy(deep=True)
     intermediate_output.input = scaled_input
     intermediate_output.wout = scaled_wout
-    
+
     # Call run with 0 iterations
     return run(scaled_input, restart_from=intermediate_output)
