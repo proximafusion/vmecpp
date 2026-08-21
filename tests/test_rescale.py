@@ -38,17 +38,17 @@ def test_equilibrium_rescale():
 
     # Volume should scale as r_scale^3
     np.testing.assert_allclose(
-        oq_rescaled.wout.volume_p, oq_initial.wout.volume_p * (r_scale**3), rtol=1e-9, atol=1e-10
+        oq_rescaled.wout.volume_p, oq_initial.wout.volume_p * (r_scale**3), rtol=1e-9, atol=1e-10 * (r_scale**3)
     )
 
     # Pressure should scale as b_scale^2
     np.testing.assert_allclose(
-        oq_rescaled.wout.pres, oq_initial.wout.pres * (b_scale**2), rtol=1e-9, atol=1e-10
+        oq_rescaled.wout.pres, oq_initial.wout.pres * (b_scale**2), rtol=1e-9, atol=1e-10 * (b_scale**2)
     )
 
     # Magnetic field should scale as b_scale
     np.testing.assert_allclose(
-        oq_rescaled.wout.bmnc, oq_initial.wout.bmnc * b_scale, rtol=1e-9, atol=1e-10
+        oq_rescaled.wout.bmnc, oq_initial.wout.bmnc * b_scale, rtol=1e-9, atol=1e-10 * b_scale
     )
 
     # Betas should be invariant under this scaling (pressure ~ B^2)
@@ -56,6 +56,6 @@ def test_equilibrium_rescale():
         oq_rescaled.wout.betatotal, oq_initial.wout.betatotal, rtol=1e-9, atol=1e-10
     )
 
-    np.testing.assert_allclose(oq_rescaled.wout.bmnc, oq_full_run.wout.bmnc, rtol=1e-9, atol=1e-10)
-    np.testing.assert_allclose(oq_rescaled.wout.rmnc, oq_full_run.wout.rmnc, rtol=1e-9, atol=1e-10)
-    np.testing.assert_allclose(oq_rescaled.wout.zmns, oq_full_run.wout.zmns, rtol=1e-9, atol=1e-10)
+    np.testing.assert_allclose(oq_rescaled.wout.bmnc, oq_full_run.wout.bmnc, rtol=1e-9, atol=1e-10 * b_scale)
+    np.testing.assert_allclose(oq_rescaled.wout.rmnc, oq_full_run.wout.rmnc, rtol=1e-9, atol=1e-10 * r_scale)
+    np.testing.assert_allclose(oq_rescaled.wout.zmns, oq_full_run.wout.zmns, rtol=1e-9, atol=1e-10 * r_scale)
