@@ -1,14 +1,21 @@
+from __future__ import annotations
+
+import typing
+
 import numpy as np
 
-from . import VmecOutput, run
+if typing.TYPE_CHECKING:
+    from vmecpp import VmecOutput
 
 
 def rescale(
-    output: VmecOutput,
+    output: "VmecOutput",
     b_scale: float,
     r_scale: float,
     scale_pressure: bool = True,
-) -> VmecOutput:
+) -> "VmecOutput":
+    from . import run  # noqa: PLC0415
+
     """Rescale the equilibrium state.
 
     This scales the underlying geometry and inputs to represent an equilibrium
