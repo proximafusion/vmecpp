@@ -58,7 +58,7 @@ def _enable_lasym(vmec_input, **overrides):
 
 
 def _assert_same_physics(ref, test, vol_rtol, beta_atol, iota_atol):
-    assert abs(test.volume_p - ref.volume_p) <= vol_rtol * abs(ref.volume_p)
+    assert abs(test.volume - ref.volume) <= vol_rtol * abs(ref.volume)
     assert abs(test.betatotal - ref.betatotal) <= beta_atol
     assert np.max(np.abs(np.asarray(test.iotaf) - np.asarray(ref.iotaf))) <= iota_atol
 
@@ -71,7 +71,7 @@ def _assert_same_geometry(ref, test, atol):
 
 def test_lasym_reduces_to_symmetric_2d():
     """2D: lasym=True with zero asymmetric content reproduces the symmetric run."""
-    base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    base = vmecpp.VmecINDATA.from_file(TEST_DATA_DIR / "solovev.json")
     sym = _run(base)
     asym = _run(_enable_lasym(base))
     assert np.max(np.abs(np.asarray(asym.rmns))) < 1e-12
@@ -81,7 +81,7 @@ def test_lasym_reduces_to_symmetric_2d():
 
 def test_lasym_reduces_to_symmetric_3d():
     """3D: lasym=True with zero asymmetric content reproduces the symmetric run."""
-    base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    base = vmecpp.VmecINDATA.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
     sym = _run(base)
     asym = _run(_enable_lasym(base))
     assert np.max(np.abs(np.asarray(asym.rmns))) < 1e-12
@@ -92,7 +92,7 @@ def test_lasym_reduces_to_symmetric_3d():
 def test_z_shift_preserves_physics():
     """A rigid z-shift needs the asymmetric zbc[0,0] but leaves the physics
     unchanged."""
-    base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    base = vmecpp.VmecINDATA.from_file(TEST_DATA_DIR / "solovev.json")
     sym = _run(base)
     dz = 0.05
     zbc = np.zeros_like(np.asarray(base.zbs))
@@ -130,7 +130,7 @@ class CthRotation:
     """Shared toroidally-rotated CTH-like lasym run and its analytic inputs."""
 
     def __init__(self):
-        base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+        base = vmecpp.VmecINDATA.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
         # converge tightly so iota is resolved well below the rotation's numerical
         # drift (the shipped input only asks for ftol 1e-6)
         base = base.model_copy(
@@ -238,7 +238,7 @@ def test_lasym_wout_save_roundtrip(cth_rotation, tmp_path):
         assert "raxis_cs" in fnc.variables
         assert "zaxis_cc" in fnc.variables
 
-    reloaded = vmecpp.VmecWOut.from_wout_file(out_path)
+    reloaded = vmecpp.WOutFileContents.from_wout_file(out_path)
     for name in [
         *ASYMMETRIC_WOUT_ARRAYS,
         "rmnc",

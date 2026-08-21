@@ -307,7 +307,7 @@ def _make_input(
     ns_array: np.ndarray,
     *,
     free_boundary: bool = True,
-) -> vmecpp.VmecInput:
+) -> vmecpp.VmecINDATA:
     """Assemble a VmecInput for a configuration/profile.
 
     With ``free_boundary=False`` the same profiles and boundary are used to build
@@ -316,7 +316,7 @@ def _make_input(
     """
     rbc, zbs, r_axis_guess = _boundary_coefficients(config.boundary, MPOL, NTOR)
 
-    vmec_input = vmecpp.VmecInput.default()
+    vmec_input = vmecpp.VmecINDATA.default()
     vmec_input.lasym = False
     vmec_input.nfp = config.nfp
     vmec_input.mpol = MPOL
@@ -552,7 +552,7 @@ def solve_cache() -> dict:
 
 def _solve_free_boundary(
     config: QuasrConfig, profile: Profile, ns_array: np.ndarray, cache: dict
-) -> vmecpp.VmecOutput:
+) -> vmecpp.cpp._vmecpp.OutputQuantities:
     """Run (or fetch the cached) free-boundary solve; re-raise on non-convergence."""
     key = (config.config_id, profile.name, tuple(int(n) for n in ns_array))
     if key not in cache:

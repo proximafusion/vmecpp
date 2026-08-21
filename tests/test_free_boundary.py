@@ -39,7 +39,7 @@ def test_run_free_boundary_from_response_table():
     response = vmecpp.MagneticFieldResponseTable.from_coils_file(
         TEST_DATA_DIR / "coils.cth_like", makegrid_params
     )
-    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vmec_input = vmecpp.VmecINDATA.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
     vmec_output = vmecpp.run(vmec_input, response, verbose=False)
     assert vmec_output.wout.volume == pytest.approx(0.307512, 1e-5, 1e-5)
 
@@ -79,7 +79,7 @@ def test_raise_invalid_nzeta():
     response = vmecpp.MagneticFieldResponseTable.from_coils_file(
         TEST_DATA_DIR / "coils.cth_like", makegrid_params
     )
-    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vmec_input = vmecpp.VmecINDATA.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
     assert vmec_input.nzeta != makegrid_params.number_of_phi_grid_points
     with pytest.raises(AttributeError, match=r"MGridProvider has \d"):
         vmecpp.run(vmec_input, response, verbose=False)

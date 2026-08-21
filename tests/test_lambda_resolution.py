@@ -26,9 +26,9 @@ def _modes_first(array: np.ndarray, mnmax: int) -> np.ndarray:
     return a if a.shape[0] == mnmax else a.T
 
 
-def _cma(mpol_geometry: int = -1, ntor_geometry: int = -1) -> vmecpp.VmecInput:
+def _cma(mpol_geometry: int = -1, ntor_geometry: int = -1) -> vmecpp.VmecINDATA:
     """Cma capped at (mpol_geometry, ntor_geometry), run for a few iterations."""
-    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json").model_copy(
+    return vmecpp.VmecINDATA.from_file(TEST_DATA_DIR / "cma.json").model_copy(
         update={
             "mpol_geometry": mpol_geometry,
             "ntor_geometry": ntor_geometry,

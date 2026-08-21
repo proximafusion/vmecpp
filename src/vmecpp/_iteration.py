@@ -552,7 +552,7 @@ def solve_multigrid(
     Returns ``(model, results)``: the model holds the final stage's geometry
     and ``results`` is the per-stage list of :class:`IterationResult`.
     """
-    cpp_indata = vmec_input._to_cpp_vmecindata()
+    cpp_indata = vmec_input
     if iteration_style in (_VMEC_8_52, _PARVMEC):
         cpp_indata.iteration_style = getattr(
             _vmecpp.IterationStyle, iteration_style.upper()
@@ -627,7 +627,7 @@ def iterate(
     """
     if ns is None:
         ns = int(np.asarray(vmec_input.ns_array)[-1])
-    cpp_indata = vmec_input._to_cpp_vmecindata()
+    cpp_indata = vmec_input
     # vmec_8_52 and parvmec are C++ IterationStyle values; "robust" is a
     # Python-only common-ground scheme on the (style-agnostic) forward model, so
     # only the former two set the enum -- the style is always passed to the loop.

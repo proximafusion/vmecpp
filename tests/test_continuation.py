@@ -16,30 +16,30 @@ TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 
 @pytest.fixture(scope="module")
-def solovev_output() -> vmecpp.VmecOutput:
-    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+def solovev_output() -> vmecpp.cpp._vmecpp.OutputQuantities:
+    vmec_input = vmecpp.VmecINDATA.from_file(TEST_DATA_DIR / "solovev.json")
     return vmecpp.run(vmec_input, verbose=False, max_threads=1)
 
 
 @pytest.fixture(scope="module")
-def cma_input() -> vmecpp.VmecInput:
-    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+def cma_input() -> vmecpp.VmecINDATA:
+    return vmecpp.VmecINDATA.from_file(TEST_DATA_DIR / "cma.json")
 
 
 @pytest.fixture(scope="module")
-def cma_direct(cma_input: vmecpp.VmecInput) -> vmecpp.VmecOutput:
+def cma_direct(cma_input: vmecpp.VmecINDATA) -> vmecpp.cpp._vmecpp.OutputQuantities:
     """The reference equilibrium, solved with the built-in (C++) multi-grid."""
     return vmecpp.run(cma_input, verbose=False, max_threads=1)
 
 
-def _final_force_residual(output: vmecpp.VmecOutput) -> float:
+def _final_force_residual(output: vmecpp.cpp._vmecpp.OutputQuantities) -> float:
     return float(np.asarray(output.wout.fsqt)[-1])
 
 
 # --- interpolation -----------------------------------------------------------
 
 
-def test_state_mode_table_matches_wout(solovev_output: vmecpp.VmecOutput):
+def test_state_mode_table_matches_wout(solovev_output: vmecpp.cpp._vmecpp.OutputQuantities):
     """The generated state mode table must match the ordering VMEC++ writes out."""
     wout = solovev_output.wout
     xm, xn = _state_mode_table(wout.mpol, wout.ntor, wout.nfp)
@@ -47,7 +47,7 @@ def test_state_mode_table_matches_wout(solovev_output: vmecpp.VmecOutput):
     np.testing.assert_array_equal(xn, np.asarray(wout.xn))
 
 
-def test_interpolate_identity_is_a_noop(solovev_output: vmecpp.VmecOutput):
+def test_interpolate_identity_is_a_noop(solovev_output: vmecpp.cpp._vmecpp.OutputQuantities):
     """Interpolating to the same resolution reproduces the source geometry."""
     same = vmecpp.interpolate_solution(solovev_output, solovev_output.input)
     for field in ("rmnc", "zmns", "lmns_full"):
@@ -61,7 +61,7 @@ def test_interpolate_identity_is_a_noop(solovev_output: vmecpp.VmecOutput):
     )
 
 
-def test_interpolate_radial_upsample(solovev_output: vmecpp.VmecOutput):
+def test_interpolate_radial_upsample(solovev_output: vmecpp.cpp._vmecpp.OutputQuantities):
     """Radial up-sampling keeps the endpoints and produces the requested shape."""
     wout = solovev_output.wout
     ns_new = int(wout.ns) * 2 - 1
@@ -86,7 +86,7 @@ def test_interpolate_radial_upsample(solovev_output: vmecpp.VmecOutput):
     )
 
 
-def test_interpolate_fourier_pad_and_truncate(solovev_output: vmecpp.VmecOutput):
+def test_interpolate_fourier_pad_and_truncate(solovev_output: vmecpp.cpp._vmecpp.OutputQuantities):
     """Padding adds zero modes; truncating drops modes; shared modes are carried."""
     wout = solovev_output.wout
     mpol0, ntor0, ns0 = int(wout.mpol), int(wout.ntor), int(wout.ns)
@@ -126,29 +126,29 @@ def test_interpolate_fourier_pad_and_truncate(solovev_output: vmecpp.VmecOutput)
 
 
 def test_mpol_ntor_length_one_sequence_collapses_to_scalar(
-    cma_input: vmecpp.VmecInput,
+    cma_input: vmecpp.VmecINDATA,
 ):
     """A length-1 mpol/ntor sequence is equivalent to a scalar and is stored as a plain
     int, so it takes the direct (non-continuation) code path.
 
     This coercion runs during validation (construction / model_validate), like all of
-    VmecInput's other validators; it goes through vmecpp.VmecInput.model_validate here
+    VmecInput's other validators; it goes through vmecpp.VmecINDATA.model_validate here
     rather than a bare attribute assignment for that reason.
     """
     data = cma_input.model_dump(mode="json")
     data["mpol"] = [int(cma_input.mpol)]
     data["ntor"] = [int(cma_input.ntor)]
-    single_step = vmecpp.VmecInput.model_validate(data)
+    single_step = vmecpp.VmecINDATA.model_validate(data)
     assert isinstance(single_step.mpol, int)
     assert isinstance(single_step.ntor, int)
     assert single_step.mpol == cma_input.mpol
     assert single_step.ntor == cma_input.ntor
 
 
-def test_mpol_length_mismatch_raises(cma_input: vmecpp.VmecInput):
+def test_mpol_length_mismatch_raises(cma_input: vmecpp.VmecINDATA):
     """A mpol/ntor schedule that doesn't match ns_array's length is rejected with a
     clear error, rather than silently misaligning steps."""
-    mismatched = cma_input.model_copy(deep=True)
+    mismatched = cma_input.copy()
     mismatched.ns_array = np.asarray([15, 31], dtype=np.int64)
     mismatched.ftol_array = np.asarray([1e-8, 1e-10], dtype=float)
     mismatched.niter_array = np.asarray([100, 100], dtype=np.int64)
@@ -159,13 +159,13 @@ def test_mpol_length_mismatch_raises(cma_input: vmecpp.VmecInput):
 
 
 def test_ns_only_continuation_reproduces_direct_multigrid(
-    cma_input: vmecpp.VmecInput, cma_direct: vmecpp.VmecOutput
+    cma_input: vmecpp.VmecINDATA, cma_direct: vmecpp.cpp._vmecpp.OutputQuantities
 ):
     """A continuation schedule with a constant (array-valued) mpol/ntor reaches the same
     equilibrium as the C++ multi-grid: identical resolution, a converged force balance,
     a bit-identical plasma volume, and geometry agreeing at the convergence level."""
     n_steps = len(np.asarray(cma_input.ns_array))
-    continuation_input = cma_input.model_copy(deep=True)
+    continuation_input = cma_input.copy()
     continuation_input.mpol = np.asarray(
         [int(cma_input.mpol)] * n_steps, dtype=np.int64
     )
@@ -193,18 +193,18 @@ def test_ns_only_continuation_reproduces_direct_multigrid(
     )
 
 
-def test_continuation_agreement_tightens_with_ftol(cma_input: vmecpp.VmecInput):
+def test_continuation_agreement_tightens_with_ftol(cma_input: vmecpp.VmecINDATA):
     """As the force-balance tolerance tightens, the continuation and the direct multi-
     grid converge toward the same geometry -- the signature of a shared equilibrium
     rather than a defect in the continuation."""
     n_steps = len(np.asarray(cma_input.ns_array))
 
     def max_geometry_diff(ftol_array: list[float]) -> float:
-        reference = cma_input.model_copy(deep=True)
+        reference = cma_input.copy()
         reference.ftol_array = np.asarray(ftol_array, dtype=float)
         direct = vmecpp.run(reference, verbose=False, max_threads=1)
 
-        continuation_input = cma_input.model_copy(deep=True)
+        continuation_input = cma_input.copy()
         continuation_input.mpol = np.asarray(
             [int(cma_input.mpol)] * n_steps, dtype=np.int64
         )
@@ -226,7 +226,7 @@ def test_continuation_agreement_tightens_with_ftol(cma_input: vmecpp.VmecInput):
 
 
 def test_fourier_continuation_converges(
-    cma_input: vmecpp.VmecInput, cma_direct: vmecpp.VmecOutput
+    cma_input: vmecpp.VmecINDATA, cma_direct: vmecpp.cpp._vmecpp.OutputQuantities
 ):
     """Increasing the poloidal resolution along the schedule reaches the same
     equilibrium as a direct solve at full resolution."""
@@ -236,7 +236,7 @@ def test_fourier_continuation_converges(
     ftol_final = float(np.asarray(cma_input.ftol_array)[-1])
     niter_final = int(np.asarray(cma_input.niter_array)[-1])
 
-    continuation_input = cma_input.model_copy(deep=True)
+    continuation_input = cma_input.copy()
     continuation_input.ns_array = np.asarray([ns_final, ns_final], dtype=np.int64)
     continuation_input.mpol = np.asarray(
         [max(2, mpol_final - 2), mpol_final], dtype=np.int64
@@ -263,7 +263,7 @@ def test_fourier_continuation_converges(
 
 
 def test_fourier_continuation_hot_restarts_first_step_from_restart_from(
-    cma_input: vmecpp.VmecInput,
+    cma_input: vmecpp.VmecINDATA,
 ):
     """restart_from seeds the first continuation step (interpolated to its resolution)
     instead of a cold start, when input.mpol/.ntor is a sequence."""
@@ -271,11 +271,11 @@ def test_fourier_continuation_hot_restarts_first_step_from_restart_from(
     mpol_final = int(cma_input.mpol)
     ntor = int(cma_input.ntor)
 
-    warm_start_input = cma_input.model_copy(deep=True)
+    warm_start_input = cma_input.copy()
     warm_start_input.ns_array = np.asarray([ns_final], dtype=np.int64)
     warm_start = vmecpp.run(warm_start_input, verbose=False, max_threads=1)
 
-    continuation_input = cma_input.model_copy(deep=True)
+    continuation_input = cma_input.copy()
     continuation_input.ns_array = np.asarray([ns_final, ns_final], dtype=np.int64)
     continuation_input.mpol = np.asarray(
         [max(2, mpol_final - 2), mpol_final], dtype=np.int64
