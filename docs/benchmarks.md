@@ -14,6 +14,24 @@ A small but representative set of benchmarks runs automatically on every push to
 | `test_bench_response_table_from_coils` | Magnetic field response table creation from coils file |
 | `test_bench_free_boundary` | Free-boundary solve with pre-computed response table |
 
+### Dynamic-dispatch verification
+
+To compare dispatch and non-dispatch builds directly, use
+`VMECPP_DISABLE_TARGET_CLONES` to disable `VMECPP_TARGET_CLONES`.
+
+Results below are mean wall-clock time (3 rounds, full suite run in order),
+measured with `simsopt==1.8.1`:
+
+| Benchmark | no `-march`, clones disabled | `-march=x86-64-v3`, clones disabled | clones enabled | clones enabled vs x86-64-v3 |
+|-----------|-----------------------------:|-------------------------------------:|---------------:|-----------------------------:|
+| cli_startup | 466 ms | 466 ms | 473 ms | +1.7% |
+| cli_invalid_input | 480 ms | 477 ms | 462 ms | -3.1% |
+| fixed_boundary_cma | 1,169 ms | 1,163 ms | 1,162 ms | -0.1% |
+| fixed_boundary_cma_6x8 | 2,049 ms | 2,057 ms | 2,059 ms | +0.1% |
+| response_table_from_coils | 1,987 ms | 1,981 ms | 1,978 ms | -0.2% |
+| fixed_boundary_w7x | 2,991 ms | 3,014 ms | 3,008 ms | -0.2% |
+| free_boundary | 8,433 ms | 8,400 ms | 8,451 ms | +0.6% |
+
 ## Microbenchmark suite (C++)
 
 These target individual hot functions so a regression can be attributed to a specific kernel rather than only showing up in the end-to-end timings above. Each is a Google Benchmark `cc_binary` under `src/vmecpp/cpp/`, swept over several `(mpol, ntor)` resolutions.
