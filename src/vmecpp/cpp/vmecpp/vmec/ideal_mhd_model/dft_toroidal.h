@@ -10,6 +10,7 @@
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/util/cpu_dispatch.h"
 #include "vmecpp/vmec/fourier_forces/fourier_forces.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_data.h"

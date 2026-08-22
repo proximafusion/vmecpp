@@ -19,6 +19,7 @@ cc_library(
         "//vmecpp/common/flow_control:flow_control",
         "//vmecpp/common/fourier_basis_fast_poloidal",
         "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/util:util",
         "//vmecpp/vmec/fourier_forces:fourier_forces",
         "//vmecpp/vmec/fourier_geometry:fourier_geometry",
         "//vmecpp/vmec/radial_partitioning:radial_partitioning",

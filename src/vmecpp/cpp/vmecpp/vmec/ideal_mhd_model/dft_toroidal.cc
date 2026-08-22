@@ -11,6 +11,7 @@
 
 namespace vmecpp {
 
+VMECPP_TARGET_CLONES
 void ForcesToFourier3DSymmFastPoloidal(
     const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
@@ -174,6 +175,7 @@ void ForcesToFourier3DSymmFastPoloidal(
   }  // jF
 }
 
+VMECPP_TARGET_CLONES
 void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
                                      const Eigen::VectorXd& xmpq,
                                      const RadialPartitioning& r,
@@ -342,6 +344,7 @@ void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
 //   lambda += lmncc*cos(mu)cos(nv) + lmnss*sin(mu)sin(nv),
 // plus the matching theta/zeta derivatives. Writes into the *_asym arrays
 // carried by m_geometry on the reduced poloidal interval.
+VMECPP_TARGET_CLONES
 void FourierToReal3DAsymFastPoloidal(const FourierGeometry& physical_x,
                                      const Eigen::VectorXd& xmpq,
                                      const RadialPartitioning& r,
@@ -491,6 +494,7 @@ void FourierToReal3DAsymFastPoloidal(const FourierGeometry& physical_x,
 // antisymmetric-parity force halves onto the frsc / frcs / fzcc / fzss / flcc /
 // flss coefficients (educational_VMEC tomnspa). The force arrays in d are the
 // reversed-parity halves produced by symforce.
+VMECPP_TARGET_CLONES
 void ForcesToFourier3DAsymFastPoloidal(
     const RealSpaceForces& d, const Eigen::VectorXd& xmpq,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,

@@ -37,6 +37,7 @@
 namespace vmecpp {
 
 // Implemented as a free function for easier testing and benchmarking.
+VMECPP_TARGET_CLONES
 void deAliasConstraintForce(const RadialPartitioning& rp,
                             const FourierBasisFastPoloidal& fb, const Sizes& s_,
                             const Eigen::VectorXd& faccon,

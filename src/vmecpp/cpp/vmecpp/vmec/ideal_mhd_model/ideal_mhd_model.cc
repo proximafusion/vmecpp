@@ -90,6 +90,7 @@ void HandOverMagneticAxis(vmecpp::HandoverStorage& m_h,
 }  // namespace
 
 // Implemented as a free function for easier testing and benchmarking.
+VMECPP_TARGET_CLONES
 void vmecpp::deAliasConstraintForce(
     const vmecpp::RadialPartitioning& rp,
     const vmecpp::FourierBasisFastPoloidal& fb, const vmecpp::Sizes& s_,
