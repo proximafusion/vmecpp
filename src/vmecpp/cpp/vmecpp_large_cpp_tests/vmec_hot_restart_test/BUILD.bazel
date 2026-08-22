@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_test(
+    name = "vmec_hot_restart_test",
+    srcs = ["vmec_hot_restart_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp_large_cpp_tests/test_data:solovev",
+        "//vmecpp_large_cpp_tests/test_data:cma",
+        "//vmecpp_large_cpp_tests/test_data:cth_like_fixed_bdy",
+        "//vmecpp_large_cpp_tests/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "//vmecpp/vmec/output_quantities:output_quantities",
+        "//vmecpp/common/makegrid_lib",
+    ],
+)

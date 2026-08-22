@@ -21,7 +21,7 @@ class FourierForces : public FourierCoeffs {
   FourierForces& operator=(FourierForces&& other) noexcept;
 
   void zeroZForceForM1();
-  void residuals(Eigen::VectorXd& fRes, bool includeEdgeRZ) const;
+  void residuals(Eigen::Vector3d& fRes, bool includeEdgeRZ) const;
 
   // appropriately-named variables for the data in FourierCoeffs
   std::span<double> frcc;

@@ -12,6 +12,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
+# CI-only dependency workaround, see .github/constraints.txt
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+
 jobs:
   test-conda-env:
     name: Test conda env

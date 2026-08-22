@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 import tempfile
+import types
 import typing
 from collections.abc import Generator
 from pathlib import Path
@@ -20,6 +21,7 @@ import numpy as np
 import pydantic
 
 from vmecpp import _util
+from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
 from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
     MakegridParameters,
@@ -30,6 +32,7 @@ from vmecpp._iteration import (
     RestartReason,
     iterate,
     solve_equilibrium,
+    solve_multigrid,
 )
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
@@ -75,6 +78,32 @@ SerializeIntAsFloat: typing.TypeAlias = typing.Annotated[
     pydantic.BeforeValidator(lambda x: np.array(x).astype(np.int64)),
 ]
 
+
+def _coerce_mpol_ntor(value: typing.Any) -> int | np.ndarray:
+    """Normalizes an ``mpol``/``ntor`` field value.
+
+    A length-1 sequence is equivalent to a scalar and is collapsed to one; anything
+    longer is kept as an int array representing a per-``ns_array``-step Fourier
+    resolution continuation schedule.
+    """
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    array = np.atleast_1d(np.asarray(value, dtype=np.int64))
+    return int(array[0]) if array.size == 1 else array
+
+
+MpolNtorField: typing.TypeAlias = typing.Annotated[
+    int | jt.Int[np.ndarray, "num_fourier_steps"],
+    pydantic.BeforeValidator(_coerce_mpol_ntor),
+]
+
+
+def _final_resolution(value: int | np.ndarray) -> int:
+    """The target Fourier resolution: itself if scalar, else the schedule's last
+    (finest) entry."""
+    return value if isinstance(value, int) else int(value[-1])
+
+
 AuxFType = typing.Annotated[
     _ArrayType,
     pydantic.BeforeValidator(lambda x: _util.right_pad(x, ndfmax, 0.0)),
@@ -111,6 +140,16 @@ class FreeBoundaryMethod(str, enum.Enum):
     """Boundary Integral Equation Solver for Toroidal systems."""
 
 
+class IterationStyle(str, enum.Enum):
+    """Time-step / restart control scheme for the equilibrium iteration."""
+
+    VMEC_8_52 = "vmec_8_52"
+    """The Fortran VMEC 8.52 control (the default)."""
+
+    PARVMEC = "parvmec"
+    """The PARVMEC / VMEC2000 9.0 control."""
+
+
 class OutputMode(enum.Enum):
     """Controls the output format of iteration logging.."""
 
@@ -134,6 +173,15 @@ def _validate_free_boundary_method(
     if isinstance(value, _vmecpp.FreeBoundaryMethod):
         return FreeBoundaryMethod(value.name.lower())  # pyright: ignore[reportAttributeAccessIssue]
     return FreeBoundaryMethod(str(value))
+
+
+def _validate_iteration_style(
+    value: _vmecpp.IterationStyle | str | IterationStyle,
+) -> IterationStyle:
+    """Convert various representations to IterationStyle."""
+    if isinstance(value, _vmecpp.IterationStyle):
+        return IterationStyle(value.name.lower())  # pyright: ignore[reportAttributeAccessIssue]
+    return IterationStyle(str(value))
 
 
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
@@ -167,12 +215,37 @@ class VmecInput(BaseModelWithNumpy):
     nfp: int = 1
     """Number of toroidal field periods (=1 for Tokamak)"""
 
-    mpol: int = 6
-    """Number of poloidal Fourier harmonics; m = 0, 1, ..., (mpol-1)"""
+    mpol: MpolNtorField = 6
+    """Number of poloidal Fourier harmonics; m = 0, 1, ..., (mpol-1).
 
-    ntor: int = 0
+    May also be a sequence of ints, with one entry per ``ns_array`` step (a scalar
+    broadcasts to every step), to request continuation in Fourier resolution:
+    ``vmecpp.run()`` then solves each step in turn, hot-restarting from the
+    previous step's solution interpolated to the new resolution (see
+    :func:`interpolate_solution`). The boundary coefficients (``rbc``, ``zbs``, ...)
+    are always defined at the final (largest-index) entry's resolution.
+    """
+
+    ntor: MpolNtorField = 0
     """Number of toroidal Fourier harmonics; n = -ntor, -ntor+1, ..., -1, 0, 1, ...,
-    ntor-1, ntor."""
+    ntor-1, ntor.
+
+    May be a sequence of ints, analogous to :attr:`mpol`; see its docstring.
+    """
+
+    mpol_geometry: int = -1
+    """Optional reduced poloidal resolution for the geometry (R, Z).
+
+    If in [1, mpol), R/Z modes with m >= mpol_geometry are held fixed while lambda keeps
+    the full mpol. < 0 (default) means geometry uses mpol.
+    """
+
+    ntor_geometry: int = -1
+    """Optional reduced toroidal resolution for the geometry (R, Z).
+
+    If in [0, ntor), R/Z modes with n > ntor_geometry are held fixed while lambda keeps
+    the full ntor. < 0 (default) means geometry uses ntor.
+    """
 
     ntheta: int = 0
     """Number of poloidal grid points (ntheta >= 0).
@@ -331,6 +404,14 @@ class VmecInput(BaseModelWithNumpy):
     ] = FreeBoundaryMethod.NESTOR
     """Method for handling free-boundary conditions."""
 
+    iteration_style: typing.Annotated[
+        IterationStyle,
+        pydantic.BeforeValidator(_validate_iteration_style),
+        pydantic.Field(),
+    ] = IterationStyle.VMEC_8_52
+    """Time-step / restart control scheme for the equilibrium iteration (``"vmec_8_52"``
+    or ``"parvmec"``)."""
+
     nstep: int = 10
     """Printout interval at which convergence progress is logged."""
 
@@ -349,9 +430,15 @@ class VmecInput(BaseModelWithNumpy):
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
     return_outputs_even_if_not_converged: bool = False
-    """If true, return the outputs even if VMEC++ did not converge.
+    """If true, return a wout even if VMEC++ did not converge, instead of raising a
+    RuntimeError.
 
-    Otherwise a RuntimeError will be raised.
+    This is intended for debugging purposes (e.g. inspecting how far the geometry
+    got, or where the force residuals blew up) since the returned quantities are
+    computed from whatever internal state the solver was in when it gave up, and
+    can be arbitrarily unphysical. Always check `wout.ier_flag` / the accompanying
+    log warning to see why the run did not converge before interpreting any
+    physical quantity in the output.
     """
 
     raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = pydantic.Field(
@@ -422,7 +509,9 @@ class VmecInput(BaseModelWithNumpy):
         if self.lasym:
             mpol_two_ntor_plus_one_fields.extend(["rbs", "zbc"])
 
-        expected_shape = (self.mpol, 2 * self.ntor + 1)
+        mpol_final = _final_resolution(self.mpol)
+        ntor_final = _final_resolution(self.ntor)
+        expected_shape = (mpol_final, 2 * ntor_final + 1)
         for field in mpol_two_ntor_plus_one_fields:
             current_value = getattr(self, field)
 
@@ -437,9 +526,27 @@ class VmecInput(BaseModelWithNumpy):
                     field,
                     VmecInput.resize_2d_coeff(
                         current_value,
-                        mpol_new=self.mpol,
-                        ntor_new=self.ntor,
+                        mpol_new=mpol_final,
+                        ntor_new=ntor_final,
                     ),
+                )
+
+        # The 1D magnetic-axis arrays must have length ntor+1. Shorter arrays
+        # simply omit trailing (zero) coefficients and are silently zero-padded;
+        # longer arrays are rejected rather than silently truncated.
+        ntor_plus_one_fields = ["raxis_c", "zaxis_s"]
+        if self.lasym:
+            ntor_plus_one_fields.extend(["raxis_s", "zaxis_c"])
+        expected_axis_len = ntor_final + 1
+        for field in ntor_plus_one_fields:
+            current_value = getattr(self, field)
+            if current_value is None:
+                continue
+            if np.size(current_value) != expected_axis_len:
+                setattr(
+                    self,
+                    field,
+                    VmecInput.resize_1d_axis_coeff(current_value, ntor_new=ntor_final),
                 )
         return self
 
@@ -459,6 +566,38 @@ class VmecInput(BaseModelWithNumpy):
                     )
                     raise ValueError(msg)
         return self
+
+    @staticmethod
+    def resize_1d_axis_coeff(
+        coeff: jt.Float[np.ndarray, "ntor_plus_1"],
+        ntor_new: int,
+    ) -> jt.Float[np.ndarray, "ntor_new_plus_1"]:
+        """Resizes a 1D magnetic-axis Fourier coefficient array to length ntor_new+1.
+
+        Arrays shorter than ntor_new+1 are zero-padded (the omitted trailing
+        coefficients are implicitly zero). Arrays longer than ntor_new+1 are
+        rejected to avoid silently truncating user-data.
+
+        Args:
+            coeff: A 1D NumPy array of axis coefficients (length ntor+1).
+            ntor_new: The new number of toroidal modes.
+
+        Examples:
+            >>> VmecInput.resize_1d_axis_coeff(np.array([1.0, 2.0]), ntor_new=3)
+            array([1., 2., 0., 0.])
+        """
+        assert ntor_new >= 0
+        coeff = np.asarray(coeff, dtype=float).ravel()
+        new_len = ntor_new + 1
+        if coeff.size > new_len:
+            msg = (
+                f"length of axis coefficient array ({coeff.size}) exceeds ntor+1 ({new_len}). "
+                f"Please truncate r_axis_c and zaxis_s to a size consistent with ntor={ntor_new}."
+            )
+            raise ValueError(msg)
+        resized_coeff = np.zeros(new_len)
+        resized_coeff[: coeff.size] = coeff
+        return resized_coeff
 
     @staticmethod
     def resize_2d_coeff(
@@ -575,7 +714,10 @@ class VmecInput(BaseModelWithNumpy):
         }
 
         for attr in VmecInput.model_fields:
-            if attr in readonly_attrs or attr == "free_boundary_method":
+            if attr in readonly_attrs or attr in (
+                "free_boundary_method",
+                "iteration_style",
+            ):
                 continue  # these must be set separately
             setattr(cpp_indata, attr, getattr(self, attr))
 
@@ -583,9 +725,14 @@ class VmecInput(BaseModelWithNumpy):
         cpp_indata.free_boundary_method = getattr(
             _vmecpp.FreeBoundaryMethod, self.free_boundary_method.upper()
         )
+        cpp_indata.iteration_style = getattr(
+            _vmecpp.IterationStyle, self.iteration_style.upper()
+        )
 
         # this also resizes the readonly_attrs
-        cpp_indata._set_mpol_ntor(self.mpol, self.ntor)
+        cpp_indata._set_mpol_ntor(
+            _final_resolution(self.mpol), _final_resolution(self.ntor)
+        )
         for attr in readonly_attrs - {"mpol", "ntor"}:
             # now we can set the elements of the readonly_attrs
             value = getattr(self, attr)
@@ -1064,31 +1211,31 @@ class VmecWOut(BaseModelWithNumpy):
     piota_type: ProfileType
     """Parametrization of iota profile (copied from input)."""
 
-    am: jt.Float[np.ndarray, "preset"]
+    am: jt.Float[np.ndarray, "_preset"]
     """Mass/pressure profile coefficients (copied from input)."""
 
-    ac: jt.Float[np.ndarray, "preset"]
+    ac: jt.Float[np.ndarray, "_preset"]
     """Enclosed toroidal current profile coefficients (copied from input)."""
 
-    ai: jt.Float[np.ndarray, "preset"]
+    ai: jt.Float[np.ndarray, "_preset"]
     """Iota profile coefficients (copied from input)."""
 
-    am_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    am_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline mass/pressure profile: knot locations in ``s`` (copied from input)."""
 
-    am_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    am_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline mass/pressure profile: values at knots (copied from input)."""
 
-    ac_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    ac_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline toroidal current profile: knot locations in ``s`` (copied from input)."""
 
-    ac_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    ac_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline toroidal current profile: values at knots (copied from input)."""
 
-    ai_aux_s: AuxSType[jt.Float[np.ndarray, "ndfmax"]]
+    ai_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline iota profile: knot locations in ``s`` (copied from input)."""
 
-    ai_aux_f: AuxFType[jt.Float[np.ndarray, "ndfmax"]]
+    ai_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
     """Spline iota profile: values at knots (copied from input)."""
 
     gamma: float
@@ -1269,6 +1416,22 @@ class VmecWOut(BaseModelWithNumpy):
             )
             raise ValueError(msg)
 
+        # Write to a temporary file in the target directory and atomically move
+        # it into place at the end, so that a failed save never leaves a
+        # partial wout file behind at out_path.
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            dir=out_path.parent, prefix=out_path.name + ".", suffix=".tmp"
+        )
+        os.close(tmp_fd)
+        try:
+            self._save_to_netcdf3(tmp_name)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
+        Path(tmp_name).replace(out_path)
+
+    def _save_to_netcdf3(self, out_path: str | Path) -> None:
+        """Write the NetCDF3 wout representation of this object to out_path."""
         with netCDF4.Dataset(out_path, "w", format="NETCDF3_CLASSIC") as fnc:
             # create dimensions (in the same order as VMEC2000)
             # Dimensions that are not in use yet, written for compatibility
@@ -1296,6 +1459,24 @@ class VmecWOut(BaseModelWithNumpy):
                 ): field_info
                 for field, field_info in VmecWOut.model_fields.items()
             }
+            # jaxtyping does not expose a stable public API for dimension marker
+            # types. Older versions expose `_AnonymousDim`, while newer versions
+            # expose `_anonymous_dim` (instance). Resolve both for compatibility.
+            array_types = getattr(jt, "_array_types", None)
+            named_dim_type = (
+                getattr(array_types, "_NamedDim", None)
+                if array_types is not None
+                else None
+            )
+            anonymous_dim_type = (
+                getattr(array_types, "_AnonymousDim", None)
+                if array_types is not None
+                else None
+            )
+            if anonymous_dim_type is None and array_types is not None:
+                anonymous_dim_instance = getattr(array_types, "_anonymous_dim", None)
+                if anonymous_dim_instance is not None:
+                    anonymous_dim_type = type(anonymous_dim_instance)
 
             # Operates under the assumption that the order of the fields in
             # model_fields and model_dump are the same.
@@ -1343,27 +1524,55 @@ class VmecWOut(BaseModelWithNumpy):
                     shape_string = tuple(
                         [f"dim_{dim:05d}" for dim in value_array.shape]
                     )
-                    if (
-                        field_info is not None  # is a model field
-                        and field_info.annotation is not None  # has an annotation
-                        and issubclass(
-                            field_info.annotation,
-                            jt.AbstractArray,
+                    # Asymmetric arrays are annotated as `<array type> | None`;
+                    # unwrap such unions to recover the jaxtyping array
+                    # annotation that carries the dimension names.
+                    annotation = (
+                        field_info.annotation if field_info is not None else None
+                    )
+                    if typing.get_origin(annotation) in (
+                        typing.Union,
+                        types.UnionType,
+                    ):
+                        non_none_args = [
+                            arg
+                            for arg in typing.get_args(annotation)
+                            if arg is not type(None)
+                        ]
+                        annotation = (
+                            non_none_args[0] if len(non_none_args) == 1 else None
                         )
+                    if (
+                        annotation is not None
+                        and isinstance(annotation, type)
+                        and issubclass(annotation, jt.AbstractArray)
                     ):
                         # Extract the dimension names used for NetCDF wout when available
-                        shape_string = tuple(
-                            [
-                                map_dimension_names.get(dim.name, str(dim.name))
-                                if isinstance(dim, jt._array_types._NamedDim)
+                        annotation_dim_names = annotation.dim_str.split()
+                        inferred_shape: list[str] = []
+                        for dim, dim_default_name, annotation_dim_name in zip(
+                            annotation.dims,
+                            shape_string,
+                            annotation_dim_names,
+                            strict=True,
+                        ):
+                            dim_name: str | None = None
+                            if named_dim_type is not None and isinstance(
+                                dim, named_dim_type
+                            ):
+                                dim_name = str(dim.name).lstrip("_")
+                            elif (
+                                anonymous_dim_type is not None
+                                and isinstance(dim, anonymous_dim_type)
+                                and annotation_dim_name.startswith("_")
+                            ):
+                                dim_name = annotation_dim_name.lstrip("_")
+                            inferred_shape.append(
+                                map_dimension_names.get(dim_name, dim_name)
+                                if dim_name is not None
                                 else dim_default_name
-                                for dim, dim_default_name in zip(
-                                    field_info.annotation.dims,
-                                    shape_string,
-                                    strict=True,
-                                )
-                            ]
-                        )
+                            )
+                        shape_string = tuple(inferred_shape)
 
                     for dim_name, dim_size in zip(
                         shape_string, value_array.shape, strict=True
@@ -1480,14 +1689,19 @@ class VmecWOut(BaseModelWithNumpy):
             attrs = {}
             for var_name, variable in fnc.variables.items():
                 if variable.dtype is str or variable.dtype == "S1":
-                    # Remove both zero-padding and whitespaces.
-                    attrs[var_name] = (
-                        fnc[var_name][()]
-                        .tobytes()
-                        .decode("ascii")
-                        .strip("\x00")
-                        .strip()
-                    )
+                    raw_bytes = fnc[var_name][()].tobytes()
+                    try:
+                        # Remove both zero-padding and whitespaces.
+                        attrs[var_name] = (
+                            raw_bytes.decode("ascii").strip("\x00").strip()
+                        )
+                    except UnicodeDecodeError:
+                        logger.warning(
+                            "Could not decode variable '%s' as ascii text; "
+                            "replacing it with an empty string.",
+                            var_name,
+                        )
+                        attrs[var_name] = ""
                 elif variable.ndim == 2:
                     # We transpose the 2D arrays to map from
                     # Column-major convention (Fortran) to Row-major (Python, C++)
@@ -2154,6 +2368,14 @@ def run(
         restart_from: if present, VMEC++ is initialized using the converged equilibrium from the
             provided VmecOutput. This can dramatically decrease the number of iterations to
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
+            If `input.mpol`/`input.ntor` is a sequence (see below), this is used to hot-restart
+            only the first continuation step; later steps always hot-restart from the previous one.
+
+    If `input.mpol` and/or `input.ntor` is a sequence rather than a plain int, `run` performs
+    continuation in Fourier resolution: each entry pairs with the corresponding `input.ns_array`
+    entry (a scalar mpol/ntor broadcasts to every step), and each step is solved in turn,
+    hot-restarting from the previous step's solution interpolated to the new resolution (see
+    `interpolate_solution`).
 
     Example:
         >>> import vmecpp
@@ -2164,6 +2386,16 @@ def run(
         0.2033313711
     """
     input = VmecInput.model_validate(input)
+
+    if not isinstance(input.mpol, int) or not isinstance(input.ntor, int):
+        return _run_fourier_continuation(
+            input,
+            magnetic_field,
+            max_threads=max_threads,
+            verbose=verbose,
+            restart_from=restart_from,
+        )
+
     cpp_indata = input._to_cpp_vmecindata()
 
     if restart_from is None:
@@ -2410,6 +2642,7 @@ populate_raw_profile = set_profile
 # items in the generated documentation.
 __all__ = [  # noqa: RUF022
     "run",
+    "interpolate_solution",
     "VmecInput",
     "VmecOutput",
     "VmecWOut",
@@ -2419,9 +2652,11 @@ __all__ = [  # noqa: RUF022
     "MakegridParameters",
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
+    "IterationStyle",
     "set_profile",
     "iterate",
     "solve_equilibrium",
+    "solve_multigrid",
     "IterationResult",
     "IterationState",
 ]

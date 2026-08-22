@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_test(
+    name = "sizes_test",
+    srcs = ["sizes_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:solovev_analytical",
+        "//vmecpp/test_data:solovev_no_axis",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        "@googletest//:gtest_main",
+        "@bazel_tools//tools/cpp/runfiles",
+        "//vmecpp/common/sizes",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+    ],
+    size = "small",
+)

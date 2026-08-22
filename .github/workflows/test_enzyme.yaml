@@ -1,0 +1,77 @@
+name: Enzyme AD smoke test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# Cancel currently running job if a new one comes along for the same branch or tag.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+env:
+  # Clang/LLVM toolchain and the matching pinned Enzyme release. v0.0.264 is the
+  # version this stack is developed against; it builds ClangEnzyme-21 against
+  # LLVM 21.
+  LLVM_VERSION: "21"
+  ENZYME_REF: "v0.0.264"
+
+jobs:
+  enzyme-smoke:
+    name: Build ClangEnzyme and run the bazel enzyme smoke test
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Clang/LLVM ${{ env.LLVM_VERSION }} and build tools
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "${LLVM_VERSION}"
+          sudo apt-get install -y \
+            "llvm-${LLVM_VERSION}-dev" "clang-${LLVM_VERSION}" "libclang-${LLVM_VERSION}-dev" \
+            cmake ninja-build
+
+      - name: Cache the ClangEnzyme plugin build
+        id: enzyme-cache
+        uses: actions/cache@v4
+        with:
+          path: enzyme-build
+          key: enzyme-${{ env.ENZYME_REF }}-llvm${{ env.LLVM_VERSION }}
+
+      - name: Build the ClangEnzyme plugin (pinned ${{ env.ENZYME_REF }})
+        if: steps.enzyme-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "${ENZYME_REF}" \
+            https://github.com/EnzymeAD/Enzyme.git enzyme-src
+          # Enzyme's buildable CMake project lives in the repo's enzyme/ subdir
+          # and needs both the LLVM and the Clang CMake packages.
+          cmake -G Ninja -S enzyme-src/enzyme -B enzyme-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR="$(llvm-config-${LLVM_VERSION} --cmakedir)" \
+            -DClang_DIR="$(llvm-config-${LLVM_VERSION} --prefix)/lib/cmake/clang"
+          ninja -C enzyme-build "ClangEnzyme-${LLVM_VERSION}"
+
+      - name: Locate the built plugin
+        run: |
+          plugin="$(find "${PWD}/enzyme-build" -name "ClangEnzyme-${LLVM_VERSION}.so" | head -1)"
+          test -n "${plugin}"
+          echo "ENZYME_PLUGIN=${plugin}" >> "${GITHUB_ENV}"
+
+      - name: Mount bazel cache
+        uses: actions/cache@v4
+        with:
+          path: "~/.cache/bazel"
+          key: bazel-enzyme
+
+      - name: Run the enzyme smoke test via bazel
+        run: |
+          cd src/vmecpp/cpp
+          bazel test --config=enzyme \
+            --repo_env=CC="clang-${LLVM_VERSION}" \
+            --repo_env=CXX="clang++-${LLVM_VERSION}" \
+            --copt="-fplugin=${ENZYME_PLUGIN}" \
+            --test_output=all \
+            //vmecpp/common/enzyme:enzyme_smoke_test

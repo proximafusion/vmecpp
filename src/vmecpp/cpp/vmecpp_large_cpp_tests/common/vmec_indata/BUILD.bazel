@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_test(
+    name = "vmec_indata_test",
+    srcs = ["vmec_indata_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:solovev_analytical",
+        "//vmecpp/test_data:solovev_no_axis",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp_large_cpp_tests/test_data:solovev",
+        "//vmecpp_large_cpp_tests/test_data:solovev_analytical",
+        "//vmecpp_large_cpp_tests/test_data:solovev_no_axis",
+        "//vmecpp_large_cpp_tests/test_data:cth_like_fixed_bdy",
+        "//vmecpp_large_cpp_tests/test_data:cth_like_fixed_bdy_nzeta_37",
+        "//vmecpp_large_cpp_tests/test_data:cma",
+        "//vmecpp_large_cpp_tests/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        "//vmecpp/common/vmec_indata",
+        "//vmecpp/common/vmec_indata:boundary_from_json",
+        "@googletest//:gtest_main",
+        "@bazel_tools//tools/cpp/runfiles",
+        "//util/file_io:file_io",
+        "//vmecpp/common/composed_types_lib:composed_types_lib",
+    ],
+    size = "small",
+)

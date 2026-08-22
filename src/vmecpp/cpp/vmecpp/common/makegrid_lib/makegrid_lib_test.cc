@@ -509,19 +509,23 @@ TEST_P(CheckComputeMagneticFieldResponseTable, MatchesFortranReference) {
   int ncid = 0;
   ASSERT_EQ(nc_open(p.reference_nc_file.c_str(), NC_NOWRITE, &ncid), NC_NOERR);
 
-  EXPECT_EQ(NetcdfReadInt(ncid, "nfp"),
+  EXPECT_EQ(NetcdfReadInt(ncid, "nfp").value(),
             makegrid_parameters.number_of_field_periods);
-  EXPECT_EQ(NetcdfReadInt(ncid, "ir"),
+  EXPECT_EQ(NetcdfReadInt(ncid, "ir").value(),
             makegrid_parameters.number_of_r_grid_points);
-  EXPECT_EQ(NetcdfReadDouble(ncid, "rmin"), makegrid_parameters.r_grid_minimum);
-  EXPECT_EQ(NetcdfReadDouble(ncid, "rmax"), makegrid_parameters.r_grid_maximum);
-  EXPECT_EQ(NetcdfReadInt(ncid, "jz"),
+  EXPECT_EQ(NetcdfReadDouble(ncid, "rmin").value(),
+            makegrid_parameters.r_grid_minimum);
+  EXPECT_EQ(NetcdfReadDouble(ncid, "rmax").value(),
+            makegrid_parameters.r_grid_maximum);
+  EXPECT_EQ(NetcdfReadInt(ncid, "jz").value(),
             makegrid_parameters.number_of_z_grid_points);
-  EXPECT_EQ(NetcdfReadDouble(ncid, "zmin"), makegrid_parameters.z_grid_minimum);
-  EXPECT_EQ(NetcdfReadDouble(ncid, "zmax"), makegrid_parameters.z_grid_maximum);
-  EXPECT_EQ(NetcdfReadInt(ncid, "kp"),
+  EXPECT_EQ(NetcdfReadDouble(ncid, "zmin").value(),
+            makegrid_parameters.z_grid_minimum);
+  EXPECT_EQ(NetcdfReadDouble(ncid, "zmax").value(),
+            makegrid_parameters.z_grid_maximum);
+  EXPECT_EQ(NetcdfReadInt(ncid, "kp").value(),
             makegrid_parameters.number_of_phi_grid_points);
-  EXPECT_EQ(NetcdfReadInt(ncid, "nextcur"), number_of_serial_circuits);
+  EXPECT_EQ(NetcdfReadInt(ncid, "nextcur").value(), number_of_serial_circuits);
 
   for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
        ++circuit_index) {
@@ -537,11 +541,14 @@ TEST_P(CheckComputeMagneticFieldResponseTable, MatchesFortranReference) {
 
     // load mgrid data from NetCDF file
     std::vector<std::vector<std::vector<double>>> b_r_contribution =
-        NetcdfReadArray3D(ncid, absl::StrFormat("br_%03d", circuit_index + 1));
+        NetcdfReadArray3D(ncid, absl::StrFormat("br_%03d", circuit_index + 1))
+            .value();
     std::vector<std::vector<std::vector<double>>> b_p_contribution =
-        NetcdfReadArray3D(ncid, absl::StrFormat("bp_%03d", circuit_index + 1));
+        NetcdfReadArray3D(ncid, absl::StrFormat("bp_%03d", circuit_index + 1))
+            .value();
     std::vector<std::vector<std::vector<double>>> b_z_contribution =
-        NetcdfReadArray3D(ncid, absl::StrFormat("bz_%03d", circuit_index + 1));
+        NetcdfReadArray3D(ncid, absl::StrFormat("bz_%03d", circuit_index + 1))
+            .value();
 
     // perform comparison of points that are not explicitly excluded from the
     // comparison
@@ -647,31 +654,31 @@ TEST_P(CheckComputeVectorPotentialCache, MatchesFortranReference) {
   int ncid = 0;
   ASSERT_EQ(nc_open(p.reference_nc_file.c_str(), NC_NOWRITE, &ncid), NC_NOERR);
 
-  const int nfp = NetcdfReadInt(ncid, "nfp");
+  const int nfp = NetcdfReadInt(ncid, "nfp").value();
   EXPECT_EQ(nfp, makegrid_parameters.number_of_field_periods);
 
-  const int numR = NetcdfReadInt(ncid, "ir");
+  const int numR = NetcdfReadInt(ncid, "ir").value();
   EXPECT_EQ(numR, makegrid_parameters.number_of_r_grid_points);
 
-  const double minR = NetcdfReadDouble(ncid, "rmin");
+  const double minR = NetcdfReadDouble(ncid, "rmin").value();
   EXPECT_EQ(minR, makegrid_parameters.r_grid_minimum);
 
-  const double maxR = NetcdfReadDouble(ncid, "rmax");
+  const double maxR = NetcdfReadDouble(ncid, "rmax").value();
   EXPECT_EQ(maxR, makegrid_parameters.r_grid_maximum);
 
-  const int numZ = NetcdfReadInt(ncid, "jz");
+  const int numZ = NetcdfReadInt(ncid, "jz").value();
   EXPECT_EQ(numZ, makegrid_parameters.number_of_z_grid_points);
 
-  const double minZ = NetcdfReadDouble(ncid, "zmin");
+  const double minZ = NetcdfReadDouble(ncid, "zmin").value();
   EXPECT_EQ(minZ, makegrid_parameters.z_grid_minimum);
 
-  const double maxZ = NetcdfReadDouble(ncid, "zmax");
+  const double maxZ = NetcdfReadDouble(ncid, "zmax").value();
   EXPECT_EQ(maxZ, makegrid_parameters.z_grid_maximum);
 
-  const int numPhi = NetcdfReadInt(ncid, "kp");
+  const int numPhi = NetcdfReadInt(ncid, "kp").value();
   EXPECT_EQ(numPhi, makegrid_parameters.number_of_phi_grid_points);
 
-  const int nextcur = NetcdfReadInt(ncid, "nextcur");
+  const int nextcur = NetcdfReadInt(ncid, "nextcur").value();
   EXPECT_EQ(nextcur, number_of_serial_circuits);
 
   for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
@@ -688,11 +695,14 @@ TEST_P(CheckComputeVectorPotentialCache, MatchesFortranReference) {
 
     // load mgrid data from NetCDF file
     std::vector<std::vector<std::vector<double>>> a_r_contribution =
-        NetcdfReadArray3D(ncid, absl::StrFormat("ar_%03d", circuit_index + 1));
+        NetcdfReadArray3D(ncid, absl::StrFormat("ar_%03d", circuit_index + 1))
+            .value();
     std::vector<std::vector<std::vector<double>>> a_p_contribution =
-        NetcdfReadArray3D(ncid, absl::StrFormat("ap_%03d", circuit_index + 1));
+        NetcdfReadArray3D(ncid, absl::StrFormat("ap_%03d", circuit_index + 1))
+            .value();
     std::vector<std::vector<std::vector<double>>> a_z_contribution =
-        NetcdfReadArray3D(ncid, absl::StrFormat("az_%03d", circuit_index + 1));
+        NetcdfReadArray3D(ncid, absl::StrFormat("az_%03d", circuit_index + 1))
+            .value();
 
     // perform comparison of points that are not explicitly excluded from the
     // comparison

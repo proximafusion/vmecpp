@@ -1,0 +1,6 @@
+# LibreOffice lock files
+.~lock*
+
+# wout_solovev.nc is ignored at the repo root (it's a common dev output),
+# but the test_data copy is reference data that must be tracked.
+!wout_solovev.nc

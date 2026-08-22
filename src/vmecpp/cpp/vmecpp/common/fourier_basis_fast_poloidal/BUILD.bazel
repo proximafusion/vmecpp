@@ -3,15 +3,10 @@
 # SPDX-License-Identifier: MIT
 cc_library(
     name = "fourier_basis_fast_poloidal",
-    srcs = ["fourier_basis_fast_poloidal.cc"],
     hdrs = ["fourier_basis_fast_poloidal.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/strings:str_format",
-        "//vmecpp/common/util:util",
-        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis",
     ],
 )
 

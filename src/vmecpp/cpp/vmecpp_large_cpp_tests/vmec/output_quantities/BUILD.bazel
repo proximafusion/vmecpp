@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_test(
+    name = "output_quantities_test",
+    srcs = ["output_quantities_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:solovev_no_axis",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp_large_cpp_tests/test_data:solovev",
+        "//vmecpp_large_cpp_tests/test_data:solovev_no_axis",
+        "//vmecpp_large_cpp_tests/test_data:cth_like_fixed_bdy",
+        "//vmecpp_large_cpp_tests/test_data:cth_like_fixed_bdy_nzeta_37",
+        "//vmecpp_large_cpp_tests/test_data:cma",
+        "//vmecpp_large_cpp_tests/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        "//vmecpp/vmec/output_quantities",
+        "@googletest//:gtest_main",
+        "@nlohmann_json//:json",
+        "//util/file_io:file_io",
+        "//util/netcdf_io:netcdf_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/common/util:util",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "large",
+)

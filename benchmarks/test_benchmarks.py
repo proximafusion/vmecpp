@@ -10,7 +10,10 @@ Run locally with:
 
 import subprocess
 import sys
+from collections.abc import Callable
+from importlib import import_module
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -19,6 +22,7 @@ import vmecpp
 REPO_ROOT = Path(__file__).parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 EXAMPLES_DATA_DIR = REPO_ROOT / "examples" / "data"
+sys.path.insert(0, str(EXAMPLES_DATA_DIR.parent))
 
 
 # ---------------------------------------------------------------------------
@@ -165,3 +169,37 @@ def test_bench_free_boundary(benchmark, free_boundary_input, response_table):
         warmup_rounds=1,
     )
     assert result.wout.volume == pytest.approx(0.3075, rel=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# SIMSOPT adjoint gradient benchmarks
+# ---------------------------------------------------------------------------
+
+
+def _gradient_cost(*, analytic):
+    module = import_module("simsopt_vmec_gradient")
+    gradient_cost = cast(Callable[..., Any], module.gradient_cost)
+
+    return gradient_cost(analytic=analytic)
+
+
+def test_bench_simsopt_adjoint_gradient(benchmark):
+    """Track the analytic adjoint gradient cost without timing assertions."""
+    result = benchmark.pedantic(
+        _gradient_cost,
+        kwargs={"analytic": True},
+        rounds=1,
+        warmup_rounds=0,
+    )
+    assert result.force_evals > 0
+
+
+def test_bench_simsopt_finite_difference_gradient(benchmark):
+    """Track the finite-difference reference cost for comparison."""
+    result = benchmark.pedantic(
+        _gradient_cost,
+        kwargs={"analytic": False},
+        rounds=1,
+        warmup_rounds=0,
+    )
+    assert result.force_evals > 0

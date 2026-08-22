@@ -13,6 +13,17 @@ build:asan  -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-DNDEBUG" --feat
 # Undefined behavior sanitization is quite slow, to compensate we compile in opt mode
 build:ubsan -c opt --copt="-fopenmp" --linkopt="-lgomp" --features=ubsan --strip=never
 
+# Opt-in Enzyme autodiff smoke test (//vmecpp/common/enzyme:enzyme_smoke_test).
+# Enzyme differentiates LLVM IR through a Clang plugin, so this needs a Clang
+# toolchain and the matching ClangEnzyme plugin; it stays out of the default
+# GCC build (the test target is tagged "manual"). Select Clang with CC/CXX and
+# pass the plugin path the way -DVMECPP_ENZYME_PLUGIN did under CMake:
+#   CC=clang CXX=clang++ bazel test --config=enzyme \
+#     --copt=-fplugin=/path/to/ClangEnzyme-NN.so \
+#     //vmecpp/common/enzyme:enzyme_smoke_test
+# Enzyme runs as an optimization-time pass, so -O2 must be on for it to fire.
+build:enzyme --copt="-O2"
+
 # Use our custom-configured c++ toolchain.
 # Use --cpu as a differentiator.
 # Use the default Bazel C++ toolchain to build the tools used during the build.

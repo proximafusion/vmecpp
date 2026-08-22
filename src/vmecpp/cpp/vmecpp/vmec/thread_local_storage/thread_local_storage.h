@@ -52,6 +52,26 @@ class ThreadLocalStorage {
   Eigen::VectorXd gbubu_i;  // gsqrt * bsupu * bsupu
   Eigen::VectorXd gbubv_i;  // gsqrt * bsupu * bsupv
   Eigen::VectorXd gbvbv_i;  // gsqrt * bsupv * bsupv
+
+  // Outboard ("_o") counterparts of the half-grid quantities above, plus the
+  // surface averages used in computeMHDForces.
+  Eigen::VectorXd P_o;
+  Eigen::VectorXd rup_o;
+  Eigen::VectorXd zup_o;
+  Eigen::VectorXd rsp_o;
+  Eigen::VectorXd zsp_o;
+  Eigen::VectorXd taup_o;
+  Eigen::VectorXd gbubu_o;
+  Eigen::VectorXd gbubv_o;
+  Eigen::VectorXd gbvbv_o;
+  Eigen::VectorXd P_avg;       // 0.5 (P_o + P_i)
+  Eigen::VectorXd P_wavg;      // 0.5 (P_o/sqrtSHo + P_i/sqrtSHi)
+  Eigen::VectorXd gbubu_avg;   // 0.5 (gbubu_o + gbubu_i)
+  Eigen::VectorXd gbubu_wavg;  // 0.5 (gbubu_o sqrtSHo + gbubu_i sqrtSHi)
+  Eigen::VectorXd gbvbv_avg;   // 0.5 (gbvbv_o + gbvbv_i)
+  Eigen::VectorXd gbvbv_wavg;  // 0.5 (gbvbv_o sqrtSHo + gbvbv_i sqrtSHi)
+  Eigen::VectorXd gbubv_avg;   // 0.5 (gbubv_o + gbubv_i)   [3D only]
+  Eigen::VectorXd gbubv_wavg;  // 0.5 (gbubv_o sqrtSHo + gbubv_i sqrtSHi) [3D]
 };
 
 }  // namespace vmecpp

@@ -38,6 +38,7 @@ from __future__ import annotations
 import enum
 import logging
 import math
+import typing
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -259,7 +260,7 @@ def solve_equilibrium(
             iter2 = force_iteration - bad_resets
 
             # Evolve: forward model, then convergence / damping / time step.
-            model.evaluate(iter1, iter2)
+            model.evaluate(iter1, iter2, precondition=True, always_fix_m1_gauge=False)
             fsqr, fsqz, fsql = model.fsqr, model.fsqz, model.fsql
             rr = model.restart_reason
             finite = math.isfinite(fsqr) and math.isfinite(fsqz) and math.isfinite(fsql)
@@ -299,7 +300,16 @@ def solve_equilibrium(
                 trace_l.append(fsql)
                 trace_rr.append(int(rr))
 
-                otav = inv_tau.sum() / _NDAMP
+                # Sequential left-to-right sum, matching Eigen's scalar
+                # VectorXd::sum() bit for bit. numpy's pairwise summation
+                # associates differently; the last-bit difference in the
+                # damping average amplifies through the early force
+                # transient on cold-start cases and shifts the convergence
+                # iteration against the C++ loop.
+                otav = 0.0
+                for _v in inv_tau:
+                    otav += float(_v)
+                otav /= _NDAMP
                 dtau = delt0r * otav / 2.0
                 model.perform_time_step(1.0 / (1.0 + dtau), 1.0 - dtau, delt0r)
 
@@ -506,6 +516,91 @@ def solve_equilibrium(
         force_residual_lambda=trace_l,
         restart_reasons=trace_rr,
     )
+
+
+def solve_multigrid(
+    vmec_input,
+    *,
+    iteration_style: str | None = None,
+    interpolation: typing.Literal["linear", "cubic", "cubic_rho"] | None = None,
+    verbose: bool = False,
+    callback: Callable[[IterationState], None] | None = None,
+):
+    """Drive the full coarse-to-fine multi-grid ramp of ``vmec_input`` from
+    Python, mirroring the multi-grid loop of the C++ ``Vmec::run``.
+
+    Walks ``ns_array`` in order: entries coarser than the finest resolution
+    solved so far are skipped (the C++ ``ns_min`` rule), each remaining stage
+    is solved to its ``ftol_array`` / ``niter_array`` tolerance with
+    :func:`solve_equilibrium`, and the converged geometry is interpolated onto
+    the next stage's radial grid with ``VmecModel.refine_to`` (the C++
+    ``InterpolateToNextMultigridStep``). ``interpolation`` selects the radial
+    interpolant for those transfers: ``"linear"`` (2-point, VMEC 8.52
+    behavior), ``"cubic"`` (4-point Lagrange in s) or ``"cubic_rho"`` (4-point
+    Lagrange in rho = sqrt(s)); the higher-order interpolants reduce the
+    interpolation-added error of the stage seed down to the coarse grid's own
+    discretization error. ``None`` (default) keeps the linear scheme. A stage
+    that exhausts its iteration budget without converging proceeds to the next
+    stage, exactly as the C++ run does; a stage that hard-fails (unrecoverable
+    bad Jacobian, the ijacob >= 75 give-up) stops the ramp.
+
+    ``ftol_array`` / ``niter_array`` entries are matched to ``ns_array``
+    entries by ns value (``VmecModel.create`` / ``refine_to`` semantics);
+    repeated ns values in ``ns_array`` are not supported because the model
+    only refines to strictly finer grids.
+
+    Returns ``(model, results)``: the model holds the final stage's geometry
+    and ``results`` is the per-stage list of :class:`IterationResult`.
+    """
+    cpp_indata = vmec_input._to_cpp_vmecindata()
+    if iteration_style in (_VMEC_8_52, _PARVMEC):
+        cpp_indata.iteration_style = getattr(
+            _vmecpp.IterationStyle, iteration_style.upper()
+        )
+
+    interpolation_scheme = None
+    if interpolation is not None:
+        try:
+            interpolation_scheme = getattr(
+                _vmecpp.MultigridInterpolationScheme, interpolation.upper()
+            )
+        except AttributeError:
+            msg = (
+                "solve_multigrid: unknown interpolation scheme "
+                f"'{interpolation}' (expected 'linear', 'cubic' or 'cubic_rho')"
+            )
+            raise ValueError(msg) from None
+
+    ns_array = [int(ns) for ns in np.asarray(cpp_indata.ns_array)]
+    if len(set(ns_array)) != len(ns_array):
+        msg = (
+            "solve_multigrid: repeated ns values in ns_array are not "
+            f"supported (got {ns_array})"
+        )
+        raise ValueError(msg)
+
+    model = None
+    results: list[IterationResult] = []
+    ns_min = 3  # FlowControl::ns_min -- no refinement downward
+    for ns in ns_array:
+        if ns < ns_min:
+            # mirror the C++ run: skip entries coarser than already solved
+            continue
+        ns_min = ns
+        if model is None:
+            model = _vmecpp.VmecModel.create(cpp_indata, ns)
+        else:
+            model.refine_to(ns, interpolation=interpolation_scheme)
+        result = solve_equilibrium(
+            model, style=iteration_style, verbose=verbose, callback=callback
+        )
+        results.append(result)
+        if result.failed:
+            break
+    if model is None:
+        msg = f"solve_multigrid: no usable ns_array entries (got {ns_array})"
+        raise ValueError(msg)
+    return model, results
 
 
 def iterate(

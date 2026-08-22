@@ -303,6 +303,11 @@ def test_ensure_vmec2000_input_from_vmecpp_input():
         if varname[1:-1] == "axis_":
             # these are called differently in VMEC2000, e.g. raxis_c -> raxis_cc
             varname_vmec2000 = f"{varname[:-1]}c{varname[-1]}"
+        if not hasattr(vmec2000.indata, varname_vmec2000):
+            # vmecpp-only field (e.g. free_boundary_method) with no counterpart
+            # in the legacy VMEC2000 INDATA namelist; not part of the common
+            # subset under test.
+            continue
         vmec2000_var = getattr(vmec2000.indata, varname_vmec2000)
 
         if vmecpp_var is None:

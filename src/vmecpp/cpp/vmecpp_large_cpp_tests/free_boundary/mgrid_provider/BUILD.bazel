@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_test(
+    name = "mgrid_provider_test",
+    srcs = ["mgrid_provider_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp_large_cpp_tests/test_data:cth_like_free_bdy",
+    ],
+    deps = [
+        "//vmecpp/free_boundary/mgrid_provider",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/common/magnetic_configuration_lib:magnetic_configuration_lib",
+        "//vmecpp/common/magnetic_field_provider:magnetic_field_provider_lib",
+    ],
+)

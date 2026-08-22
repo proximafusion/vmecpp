@@ -88,15 +88,15 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   int ncid;
   ASSERT_EQ(nc_open(filename.c_str(), NC_NOWRITE, &ncid), NC_NOERR);
 
-  EXPECT_EQ(wout.signgs, NetcdfReadInt(ncid, "signgs"));
+  EXPECT_EQ(wout.signgs, NetcdfReadInt(ncid, "signgs").value());
 
-  EXPECT_EQ(wout.gamma, NetcdfReadDouble(ncid, "gamma"));
+  EXPECT_EQ(wout.gamma, NetcdfReadDouble(ncid, "gamma").value());
 
-  EXPECT_EQ(wout.pcurr_type, NetcdfReadString(ncid, "pcurr_type"));
-  EXPECT_EQ(wout.pmass_type, NetcdfReadString(ncid, "pmass_type"));
-  EXPECT_EQ(wout.piota_type, NetcdfReadString(ncid, "piota_type"));
+  EXPECT_EQ(wout.pcurr_type, NetcdfReadString(ncid, "pcurr_type").value());
+  EXPECT_EQ(wout.pmass_type, NetcdfReadString(ncid, "pmass_type").value());
+  EXPECT_EQ(wout.piota_type, NetcdfReadString(ncid, "piota_type").value());
 
-  std::vector<double> reference_am = NetcdfReadArray1D(ncid, "am");
+  std::vector<double> reference_am = NetcdfReadArray1D(ncid, "am").value();
   // remove zero-padding at end
   reference_am.resize(wout.am.size());
   EXPECT_THAT(wout.am, ElementsAreArray(reference_am));
@@ -105,37 +105,37 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   if (vmec_indata->ncurr == 0) {
     // constrained-iota; ignore current profile coefficients
     // TODO(jons): check for spline profiles -> need to check ai_aux_*
-    std::vector<double> reference_ai = NetcdfReadArray1D(ncid, "ai");
+    std::vector<double> reference_ai = NetcdfReadArray1D(ncid, "ai").value();
     // remove zero-padding at end
     reference_ai.resize(wout.ai.size());
     EXPECT_THAT(wout.ai, ElementsAreArray(reference_ai));
   } else {
     // constrained-current
     // TODO(jons): check for spline profiles -> need to check ac_aux_*
-    std::vector<double> reference_ac = NetcdfReadArray1D(ncid, "ac");
+    std::vector<double> reference_ac = NetcdfReadArray1D(ncid, "ac").value();
     reference_ac.resize(wout.ac.size());
     EXPECT_THAT(wout.ac, ElementsAreArray(reference_ac));
 
     if (wout.ai.size() > 0) {
       // iota profile (if present) taken as initial guess for first iteration
       // TODO(jons): check for spline profiles -> need to check ai_aux_*
-      std::vector<double> reference_ai = NetcdfReadArray1D(ncid, "ai");
+      std::vector<double> reference_ai = NetcdfReadArray1D(ncid, "ai").value();
       // remove zero-padding at end
       reference_ai.resize(wout.ai.size());
       EXPECT_THAT(wout.ai, ElementsAreArray(reference_ai));
     }
   }
 
-  EXPECT_EQ(wout.nfp, NetcdfReadInt(ncid, "nfp"));
-  EXPECT_EQ(wout.mpol, NetcdfReadInt(ncid, "mpol"));
-  EXPECT_EQ(wout.ntor, NetcdfReadInt(ncid, "ntor"));
-  EXPECT_EQ(wout.lasym, NetcdfReadBool(ncid, "lasym"));
+  EXPECT_EQ(wout.nfp, NetcdfReadInt(ncid, "nfp").value());
+  EXPECT_EQ(wout.mpol, NetcdfReadInt(ncid, "mpol").value());
+  EXPECT_EQ(wout.ntor, NetcdfReadInt(ncid, "ntor").value());
+  EXPECT_EQ(wout.lasym, NetcdfReadBool(ncid, "lasym").value());
 
-  EXPECT_EQ(wout.ns, NetcdfReadInt(ncid, "ns"));
-  EXPECT_EQ(wout.ftolv, NetcdfReadDouble(ncid, "ftolv"));
-  EXPECT_EQ(wout.niter, NetcdfReadInt(ncid, "niter"));
+  EXPECT_EQ(wout.ns, NetcdfReadInt(ncid, "ns").value());
+  EXPECT_EQ(wout.ftolv, NetcdfReadDouble(ncid, "ftolv").value());
+  EXPECT_EQ(wout.niter, NetcdfReadInt(ncid, "niter").value());
 
-  EXPECT_EQ(wout.lfreeb, NetcdfReadBool(ncid, "lfreeb"));
+  EXPECT_EQ(wout.lfreeb, NetcdfReadBool(ncid, "lfreeb").value());
   if (wout.lfreeb) {
     // The reference data is generated using educational_VMEC,
     // which is run from within //vmecpp/test_data.
@@ -147,88 +147,99 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
     // //vmecpp/test_data/regenerate_test_data.sh.
     EXPECT_EQ(wout.mgrid_file,
               absl::StrCat("vmecpp/test_data/",
-                           NetcdfReadString(ncid, "mgrid_file")));
-    std::vector<double> reference_extcur = NetcdfReadArray1D(ncid, "extcur");
+                           NetcdfReadString(ncid, "mgrid_file").value()));
+    std::vector<double> reference_extcur =
+        NetcdfReadArray1D(ncid, "extcur").value();
     EXPECT_THAT(wout.extcur, ElementsAreArray(reference_extcur));
     EXPECT_EQ(wout.nextcur, static_cast<int>(reference_extcur.size()));
   }
-  EXPECT_EQ(wout.mgrid_mode, NetcdfReadString(ncid, "mgrid_mode"));
+  EXPECT_EQ(wout.mgrid_mode, NetcdfReadString(ncid, "mgrid_mode").value());
 
   // -------------------
   // scalar quantities
 
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "wb"), wout.wb, tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "wp"), wout.wp, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(NetcdfReadDouble(ncid, "wb").value(), wout.wb, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(NetcdfReadDouble(ncid, "wp").value(), wout.wp, tolerance));
 
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "rmax_surf"), wout.rmax_surf,
-                            tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "rmin_surf"), wout.rmin_surf,
-                            tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "zmax_surf"), wout.zmax_surf,
-                            tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "rmax_surf").value(),
+                            wout.rmax_surf, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "rmin_surf").value(),
+                            wout.rmin_surf, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "zmax_surf").value(),
+                            wout.zmax_surf, tolerance));
 
-  EXPECT_EQ(wout.mnmax, NetcdfReadInt(ncid, "mnmax"));
-  EXPECT_EQ(wout.mnmax_nyq, NetcdfReadInt(ncid, "mnmax_nyq"));
+  EXPECT_EQ(wout.mnmax, NetcdfReadInt(ncid, "mnmax").value());
+  EXPECT_EQ(wout.mnmax_nyq, NetcdfReadInt(ncid, "mnmax_nyq").value());
 
-  EXPECT_EQ(wout.ier_flag, NetcdfReadInt(ncid, "ier_flag"));
+  EXPECT_EQ(wout.ier_flag, NetcdfReadInt(ncid, "ier_flag").value());
+
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "aspect").value(),
+                            wout.aspect, tolerance));
+
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betatotal").value(),
+                            wout.betatotal, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betapol").value(),
+                            wout.betapol, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betator").value(),
+                            wout.betator, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betaxis").value(),
+                            wout.betaxis, tolerance));
 
   EXPECT_TRUE(
-      IsCloseRelAbs(NetcdfReadDouble(ncid, "aspect"), wout.aspect, tolerance));
+      IsCloseRelAbs(NetcdfReadDouble(ncid, "b0").value(), wout.b0, tolerance));
 
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betatotal"), wout.betatotal,
-                            tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betapol"), wout.betapol,
-                            tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betator"), wout.betator,
-                            tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "betaxis"), wout.betaxis,
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "rbtor0").value(),
+                            wout.rbtor0, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "rbtor").value(), wout.rbtor,
                             tolerance));
 
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "b0"), wout.b0, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "IonLarmor").value(),
+                            wout.IonLarmor, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "volavgB").value(),
+                            wout.volavgB, tolerance));
 
-  EXPECT_TRUE(
-      IsCloseRelAbs(NetcdfReadDouble(ncid, "rbtor0"), wout.rbtor0, tolerance));
-  EXPECT_TRUE(
-      IsCloseRelAbs(NetcdfReadDouble(ncid, "rbtor"), wout.rbtor, tolerance));
-
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "IonLarmor"), wout.IonLarmor,
-                            tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "volavgB"), wout.volavgB,
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "ctor").value(), wout.ctor,
                             tolerance));
 
-  EXPECT_TRUE(
-      IsCloseRelAbs(NetcdfReadDouble(ncid, "ctor"), wout.ctor, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "Aminor_p").value(),
+                            wout.Aminor_p, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "Rmajor_p").value(),
+                            wout.Rmajor_p, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "volume_p").value(),
+                            wout.volume, tolerance));
 
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "Aminor_p"), wout.Aminor_p,
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "fsqr").value(), wout.fsqr,
                             tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "Rmajor_p"), wout.Rmajor_p,
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "fsqz").value(), wout.fsqz,
                             tolerance));
-  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "volume_p"), wout.volume,
+  EXPECT_TRUE(IsCloseRelAbs(NetcdfReadDouble(ncid, "fsql").value(), wout.fsql,
                             tolerance));
-
-  EXPECT_TRUE(
-      IsCloseRelAbs(NetcdfReadDouble(ncid, "fsqr"), wout.fsqr, tolerance));
-  EXPECT_TRUE(
-      IsCloseRelAbs(NetcdfReadDouble(ncid, "fsqz"), wout.fsqz, tolerance));
-  EXPECT_TRUE(
-      IsCloseRelAbs(NetcdfReadDouble(ncid, "fsql"), wout.fsql, tolerance));
 
   // -------------------
   // one-dimensional array quantities
 
-  std::vector<double> reference_iota_full = NetcdfReadArray1D(ncid, "iotaf");
+  std::vector<double> reference_iota_full =
+      NetcdfReadArray1D(ncid, "iotaf").value();
   std::vector<double> reference_safety_factor =
-      NetcdfReadArray1D(ncid, "q_factor");
+      NetcdfReadArray1D(ncid, "q_factor").value();
   std::vector<double> reference_pressure_full =
-      NetcdfReadArray1D(ncid, "presf");
-  std::vector<double> reference_toroidal_flux = NetcdfReadArray1D(ncid, "phi");
-  std::vector<double> reference_poloidal_flux = NetcdfReadArray1D(ncid, "chi");
-  std::vector<double> reference_phipf = NetcdfReadArray1D(ncid, "phipf");
-  std::vector<double> reference_chipf = NetcdfReadArray1D(ncid, "chipf");
-  std::vector<double> reference_jcuru = NetcdfReadArray1D(ncid, "jcuru");
-  std::vector<double> reference_jcurv = NetcdfReadArray1D(ncid, "jcurv");
+      NetcdfReadArray1D(ncid, "presf").value();
+  std::vector<double> reference_toroidal_flux =
+      NetcdfReadArray1D(ncid, "phi").value();
+  std::vector<double> reference_poloidal_flux =
+      NetcdfReadArray1D(ncid, "chi").value();
+  std::vector<double> reference_phipf =
+      NetcdfReadArray1D(ncid, "phipf").value();
+  std::vector<double> reference_chipf =
+      NetcdfReadArray1D(ncid, "chipf").value();
+  std::vector<double> reference_jcuru =
+      NetcdfReadArray1D(ncid, "jcuru").value();
+  std::vector<double> reference_jcurv =
+      NetcdfReadArray1D(ncid, "jcurv").value();
   std::vector<double> reference_spectral_width =
-      NetcdfReadArray1D(ncid, "specw");
+      NetcdfReadArray1D(ncid, "specw").value();
   for (int jF = 0; jF < fc.ns; ++jF) {
     EXPECT_TRUE(
         IsCloseRelAbs(reference_iota_full[jF], wout.iotaf[jF], tolerance));
@@ -248,15 +259,21 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
         IsCloseRelAbs(reference_spectral_width[jF], wout.specw[jF], tolerance));
   }  // jF
 
-  std::vector<double> reference_iota_half = NetcdfReadArray1D(ncid, "iotas");
-  std::vector<double> reference_mass_half = NetcdfReadArray1D(ncid, "mass");
-  std::vector<double> reference_pressure_half = NetcdfReadArray1D(ncid, "pres");
-  std::vector<double> reference_beta = NetcdfReadArray1D(ncid, "beta_vol");
-  std::vector<double> reference_buco = NetcdfReadArray1D(ncid, "buco");
-  std::vector<double> reference_bvco = NetcdfReadArray1D(ncid, "bvco");
-  std::vector<double> reference_dVds = NetcdfReadArray1D(ncid, "vp");
-  std::vector<double> reference_phips = NetcdfReadArray1D(ncid, "phips");
-  std::vector<double> reference_overr = NetcdfReadArray1D(ncid, "over_r");
+  std::vector<double> reference_iota_half =
+      NetcdfReadArray1D(ncid, "iotas").value();
+  std::vector<double> reference_mass_half =
+      NetcdfReadArray1D(ncid, "mass").value();
+  std::vector<double> reference_pressure_half =
+      NetcdfReadArray1D(ncid, "pres").value();
+  std::vector<double> reference_beta =
+      NetcdfReadArray1D(ncid, "beta_vol").value();
+  std::vector<double> reference_buco = NetcdfReadArray1D(ncid, "buco").value();
+  std::vector<double> reference_bvco = NetcdfReadArray1D(ncid, "bvco").value();
+  std::vector<double> reference_dVds = NetcdfReadArray1D(ncid, "vp").value();
+  std::vector<double> reference_phips =
+      NetcdfReadArray1D(ncid, "phips").value();
+  std::vector<double> reference_overr =
+      NetcdfReadArray1D(ncid, "over_r").value();
   for (int jF = 0; jF < fc.ns; ++jF) {
     EXPECT_TRUE(
         IsCloseRelAbs(reference_iota_half[jF], wout.iotas[jF], tolerance));
@@ -273,10 +290,12 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
     EXPECT_TRUE(IsCloseRelAbs(reference_overr[jF], wout.over_r[jF], tolerance));
   }  // jF
 
-  std::vector<double> reference_jdotb = NetcdfReadArray1D(ncid, "jdotb");
-  std::vector<double> reference_bdotb = NetcdfReadArray1D(ncid, "bdotb");
+  std::vector<double> reference_jdotb =
+      NetcdfReadArray1D(ncid, "jdotb").value();
+  std::vector<double> reference_bdotb =
+      NetcdfReadArray1D(ncid, "bdotb").value();
   std::vector<double> reference_bdotgradv =
-      NetcdfReadArray1D(ncid, "bdotgradv");
+      NetcdfReadArray1D(ncid, "bdotgradv").value();
   for (int jF = 0; jF < fc.ns; ++jF) {
     EXPECT_TRUE(
         IsCloseRelAbs(reference_jdotb[jF], wout.jdotb[jF], 10 * tolerance));
@@ -285,11 +304,16 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
         IsCloseRelAbs(reference_bdotgradv[jF], wout.bdotgradv[jF], tolerance));
   }  // jF
 
-  std::vector<double> reference_DMerc = NetcdfReadArray1D(ncid, "DMerc");
-  std::vector<double> reference_Dshear = NetcdfReadArray1D(ncid, "DShear");
-  std::vector<double> reference_Dwell = NetcdfReadArray1D(ncid, "DWell");
-  std::vector<double> reference_Dcurr = NetcdfReadArray1D(ncid, "DCurr");
-  std::vector<double> reference_Dgeod = NetcdfReadArray1D(ncid, "DGeod");
+  std::vector<double> reference_DMerc =
+      NetcdfReadArray1D(ncid, "DMerc").value();
+  std::vector<double> reference_Dshear =
+      NetcdfReadArray1D(ncid, "DShear").value();
+  std::vector<double> reference_Dwell =
+      NetcdfReadArray1D(ncid, "DWell").value();
+  std::vector<double> reference_Dcurr =
+      NetcdfReadArray1D(ncid, "DCurr").value();
+  std::vector<double> reference_Dgeod =
+      NetcdfReadArray1D(ncid, "DGeod").value();
   for (int jF = 0; jF < fc.ns; ++jF) {
     EXPECT_TRUE(IsCloseRelAbs(reference_DMerc[jF], wout.DMerc[jF], tolerance));
     EXPECT_TRUE(
@@ -299,7 +323,8 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
     EXPECT_TRUE(IsCloseRelAbs(reference_Dgeod[jF], wout.DGeod[jF], tolerance));
   }  // jF
 
-  std::vector<double> reference_equif = NetcdfReadArray1D(ncid, "equif");
+  std::vector<double> reference_equif =
+      NetcdfReadArray1D(ncid, "equif").value();
   for (int jF = 0; jF < fc.ns; ++jF) {
     EXPECT_TRUE(IsCloseRelAbs(reference_equif[jF], wout.equif[jF], tolerance));
   }
@@ -309,15 +334,17 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   // -------------------
   // mode numbers for Fourier coefficient arrays below
 
-  std::vector<double> reference_xm = NetcdfReadArray1D(ncid, "xm");
-  std::vector<double> reference_xn = NetcdfReadArray1D(ncid, "xn");
+  std::vector<double> reference_xm = NetcdfReadArray1D(ncid, "xm").value();
+  std::vector<double> reference_xn = NetcdfReadArray1D(ncid, "xn").value();
   for (int mn = 0; mn < wout.mnmax; ++mn) {
     EXPECT_EQ(wout.xm[mn], reference_xm[mn]);
     EXPECT_EQ(wout.xn[mn], reference_xn[mn]);
   }  // mn
 
-  std::vector<double> reference_xm_nyq = NetcdfReadArray1D(ncid, "xm_nyq");
-  std::vector<double> reference_xn_nyq = NetcdfReadArray1D(ncid, "xn_nyq");
+  std::vector<double> reference_xm_nyq =
+      NetcdfReadArray1D(ncid, "xm_nyq").value();
+  std::vector<double> reference_xn_nyq =
+      NetcdfReadArray1D(ncid, "xn_nyq").value();
   for (int mn_nyq = 0; mn_nyq < wout.mnmax_nyq; ++mn_nyq) {
     EXPECT_EQ(wout.xm_nyq[mn_nyq], reference_xm_nyq[mn_nyq]);
     EXPECT_EQ(wout.xn_nyq[mn_nyq], reference_xn_nyq[mn_nyq]);
@@ -326,8 +353,10 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   // -------------------
   // stellarator-symmetric Fourier coefficients
 
-  std::vector<double> reference_raxis_cc = NetcdfReadArray1D(ncid, "raxis_cc");
-  std::vector<double> reference_zaxis_cs = NetcdfReadArray1D(ncid, "zaxis_cs");
+  std::vector<double> reference_raxis_cc =
+      NetcdfReadArray1D(ncid, "raxis_cc").value();
+  std::vector<double> reference_zaxis_cs =
+      NetcdfReadArray1D(ncid, "zaxis_cs").value();
   for (int n = 0; n <= wout.ntor; ++n) {
     EXPECT_TRUE(
         IsCloseRelAbs(reference_raxis_cc[n], wout.raxis_cc[n], tolerance));
@@ -336,9 +365,9 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   }  // n
 
   std::vector<std::vector<double>> reference_rmnc =
-      NetcdfReadArray2D(ncid, "rmnc");
+      NetcdfReadArray2D(ncid, "rmnc").value();
   std::vector<std::vector<double>> reference_zmns =
-      NetcdfReadArray2D(ncid, "zmns");
+      NetcdfReadArray2D(ncid, "zmns").value();
   for (int jF = 0; jF < fc.ns; ++jF) {
     for (int mn = 0; mn < s.mnmax; ++mn) {
       EXPECT_TRUE(
@@ -349,7 +378,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   }  // jF
 
   std::vector<std::vector<double>> reference_lmns =
-      NetcdfReadArray2D(ncid, "lmns");
+      NetcdfReadArray2D(ncid, "lmns").value();
   for (int jF = 0; jF < fc.ns; ++jF) {
     for (int mn = 0; mn < s.mnmax; ++mn) {
       EXPECT_TRUE(
@@ -358,19 +387,19 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   }  // jF
 
   std::vector<std::vector<double>> reference_gmnc =
-      NetcdfReadArray2D(ncid, "gmnc");
+      NetcdfReadArray2D(ncid, "gmnc").value();
   std::vector<std::vector<double>> reference_bmnc =
-      NetcdfReadArray2D(ncid, "bmnc");
+      NetcdfReadArray2D(ncid, "bmnc").value();
   std::vector<std::vector<double>> reference_bsubumnc =
-      NetcdfReadArray2D(ncid, "bsubumnc");
+      NetcdfReadArray2D(ncid, "bsubumnc").value();
   std::vector<std::vector<double>> reference_bsubvmnc =
-      NetcdfReadArray2D(ncid, "bsubvmnc");
+      NetcdfReadArray2D(ncid, "bsubvmnc").value();
   std::vector<std::vector<double>> reference_bsubsmns =
-      NetcdfReadArray2D(ncid, "bsubsmns");
+      NetcdfReadArray2D(ncid, "bsubsmns").value();
   std::vector<std::vector<double>> reference_bsupumnc =
-      NetcdfReadArray2D(ncid, "bsupumnc");
+      NetcdfReadArray2D(ncid, "bsupumnc").value();
   std::vector<std::vector<double>> reference_bsupvmnc =
-      NetcdfReadArray2D(ncid, "bsupvmnc");
+      NetcdfReadArray2D(ncid, "bsupvmnc").value();
   for (int jF = 0; jF < fc.ns; ++jF) {
     for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
       EXPECT_TRUE(IsCloseRelAbs(reference_gmnc[jF][mn_nyq],
@@ -395,9 +424,9 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
 
   if (s.lasym) {
     std::vector<double> reference_raxis_cs =
-        NetcdfReadArray1D(ncid, "raxis_cs");
+        NetcdfReadArray1D(ncid, "raxis_cs").value();
     std::vector<double> reference_zaxis_cc =
-        NetcdfReadArray1D(ncid, "zaxis_cc");
+        NetcdfReadArray1D(ncid, "zaxis_cc").value();
     for (int n = 0; n <= wout.ntor; ++n) {
       EXPECT_TRUE(
           IsCloseRelAbs(reference_raxis_cs[n], wout.raxis_cs[n], tolerance));
@@ -556,16 +585,17 @@ TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
   };
 
   // scalar physics quantities
-  scalar("volume_p", NetcdfReadDouble(ncid, "volume_p"), wout.volume);
-  scalar("betatotal", NetcdfReadDouble(ncid, "betatotal"), wout.betatotal);
-  scalar("aspect", NetcdfReadDouble(ncid, "aspect"), wout.aspect);
-  scalar("b0", NetcdfReadDouble(ncid, "b0"), wout.b0);
-  scalar("wp", NetcdfReadDouble(ncid, "wp"), wout.wp);
-  scalar("wb", NetcdfReadDouble(ncid, "wb"), wout.wb);
-  scalar("rbtor", NetcdfReadDouble(ncid, "rbtor"), wout.rbtor);
-  scalar("ctor", NetcdfReadDouble(ncid, "ctor"), wout.ctor);
-  scalar("Aminor_p", NetcdfReadDouble(ncid, "Aminor_p"), wout.Aminor_p);
-  scalar("Rmajor_p", NetcdfReadDouble(ncid, "Rmajor_p"), wout.Rmajor_p);
+  scalar("volume_p", NetcdfReadDouble(ncid, "volume_p").value(), wout.volume);
+  scalar("betatotal", NetcdfReadDouble(ncid, "betatotal").value(),
+         wout.betatotal);
+  scalar("aspect", NetcdfReadDouble(ncid, "aspect").value(), wout.aspect);
+  scalar("b0", NetcdfReadDouble(ncid, "b0").value(), wout.b0);
+  scalar("wp", NetcdfReadDouble(ncid, "wp").value(), wout.wp);
+  scalar("wb", NetcdfReadDouble(ncid, "wb").value(), wout.wb);
+  scalar("rbtor", NetcdfReadDouble(ncid, "rbtor").value(), wout.rbtor);
+  scalar("ctor", NetcdfReadDouble(ncid, "ctor").value(), wout.ctor);
+  scalar("Aminor_p", NetcdfReadDouble(ncid, "Aminor_p").value(), wout.Aminor_p);
+  scalar("Rmajor_p", NetcdfReadDouble(ncid, "Rmajor_p").value(), wout.Rmajor_p);
 
   // 1D radial profiles, including the spline-driven pressure
   std::vector<double> wpresf(fc.ns), wpres(fc.ns), wmass(fc.ns), wiotaf(fc.ns),
@@ -578,38 +608,38 @@ TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
     wiotas[jF] = wout.iotas[jF];
     wjcurv[jF] = wout.jcurv[jF];
   }
-  compare("presf", NetcdfReadArray1D(ncid, "presf"), wpresf);
-  compare("pres", NetcdfReadArray1D(ncid, "pres"), wpres);
-  compare("mass", NetcdfReadArray1D(ncid, "mass"), wmass);
-  compare("iotaf", NetcdfReadArray1D(ncid, "iotaf"), wiotaf);
-  compare("iotas", NetcdfReadArray1D(ncid, "iotas"), wiotas);
-  compare("jcurv", NetcdfReadArray1D(ncid, "jcurv"), wjcurv);
+  compare("presf", NetcdfReadArray1D(ncid, "presf").value(), wpresf);
+  compare("pres", NetcdfReadArray1D(ncid, "pres").value(), wpres);
+  compare("mass", NetcdfReadArray1D(ncid, "mass").value(), wmass);
+  compare("iotaf", NetcdfReadArray1D(ncid, "iotaf").value(), wiotaf);
+  compare("iotas", NetcdfReadArray1D(ncid, "iotas").value(), wiotas);
+  compare("jcurv", NetcdfReadArray1D(ncid, "jcurv").value(), wjcurv);
 
   // flux-surface geometry
   auto [r_ref, r_val] =
-      flatten(NetcdfReadArray2D(ncid, "rmnc"), fc.ns, s.mnmax,
+      flatten(NetcdfReadArray2D(ncid, "rmnc").value(), fc.ns, s.mnmax,
               [&](int mn, int jF) { return wout.rmnc(mn, jF); });
   compare("rmnc", r_ref, r_val);
   auto [z_ref, z_val] =
-      flatten(NetcdfReadArray2D(ncid, "zmns"), fc.ns, s.mnmax,
+      flatten(NetcdfReadArray2D(ncid, "zmns").value(), fc.ns, s.mnmax,
               [&](int mn, int jF) { return wout.zmns(mn, jF); });
   compare("zmns", z_ref, z_val);
   auto [l_ref, l_val] =
-      flatten(NetcdfReadArray2D(ncid, "lmns"), fc.ns, s.mnmax,
+      flatten(NetcdfReadArray2D(ncid, "lmns").value(), fc.ns, s.mnmax,
               [&](int mn, int jF) { return wout.lmns(mn, jF); });
   compare("lmns", l_ref, l_val);
 
   // magnetic field on the Nyquist mode set
   auto [b_ref, b_val] =
-      flatten(NetcdfReadArray2D(ncid, "bmnc"), fc.ns, s.mnmax_nyq,
+      flatten(NetcdfReadArray2D(ncid, "bmnc").value(), fc.ns, s.mnmax_nyq,
               [&](int mn, int jF) { return wout.bmnc(mn, jF); });
   compare("bmnc", b_ref, b_val);
   auto [bu_ref, bu_val] =
-      flatten(NetcdfReadArray2D(ncid, "bsubumnc"), fc.ns, s.mnmax_nyq,
+      flatten(NetcdfReadArray2D(ncid, "bsubumnc").value(), fc.ns, s.mnmax_nyq,
               [&](int mn, int jF) { return wout.bsubumnc(mn, jF); });
   compare("bsubumnc", bu_ref, bu_val);
   auto [bv_ref, bv_val] =
-      flatten(NetcdfReadArray2D(ncid, "bsubvmnc"), fc.ns, s.mnmax_nyq,
+      flatten(NetcdfReadArray2D(ncid, "bsubvmnc").value(), fc.ns, s.mnmax_nyq,
               [&](int mn, int jF) { return wout.bsubvmnc(mn, jF); });
   compare("bsubvmnc", bv_ref, bv_val);
 
@@ -704,17 +734,18 @@ TEST(SolovevFreeBoundary, MatchesEducationalVmecGolden) {
   };
 
   // scalar physics quantities
-  scalar("volume_p", NetcdfReadDouble(ncid, "volume_p"), wout.volume);
-  scalar("betatotal", NetcdfReadDouble(ncid, "betatotal"), wout.betatotal);
-  scalar("aspect", NetcdfReadDouble(ncid, "aspect"), wout.aspect);
-  scalar("b0", NetcdfReadDouble(ncid, "b0"), wout.b0);
-  scalar("wp", NetcdfReadDouble(ncid, "wp"), wout.wp);
-  scalar("wb", NetcdfReadDouble(ncid, "wb"), wout.wb);
-  scalar("rbtor", NetcdfReadDouble(ncid, "rbtor"), wout.rbtor);
-  scalar("ctor", NetcdfReadDouble(ncid, "ctor"), wout.ctor);
-  scalar("Aminor_p", NetcdfReadDouble(ncid, "Aminor_p"), wout.Aminor_p);
-  scalar("Rmajor_p", NetcdfReadDouble(ncid, "Rmajor_p"), wout.Rmajor_p);
-  scalar("volavgB", NetcdfReadDouble(ncid, "volavgB"), wout.volavgB);
+  scalar("volume_p", NetcdfReadDouble(ncid, "volume_p").value(), wout.volume);
+  scalar("betatotal", NetcdfReadDouble(ncid, "betatotal").value(),
+         wout.betatotal);
+  scalar("aspect", NetcdfReadDouble(ncid, "aspect").value(), wout.aspect);
+  scalar("b0", NetcdfReadDouble(ncid, "b0").value(), wout.b0);
+  scalar("wp", NetcdfReadDouble(ncid, "wp").value(), wout.wp);
+  scalar("wb", NetcdfReadDouble(ncid, "wb").value(), wout.wb);
+  scalar("rbtor", NetcdfReadDouble(ncid, "rbtor").value(), wout.rbtor);
+  scalar("ctor", NetcdfReadDouble(ncid, "ctor").value(), wout.ctor);
+  scalar("Aminor_p", NetcdfReadDouble(ncid, "Aminor_p").value(), wout.Aminor_p);
+  scalar("Rmajor_p", NetcdfReadDouble(ncid, "Rmajor_p").value(), wout.Rmajor_p);
+  scalar("volavgB", NetcdfReadDouble(ncid, "volavgB").value(), wout.volavgB);
 
   // 1D radial profiles (pressure and rotational transform)
   std::vector<double> wpresf(fc.ns), wpres(fc.ns), wiotaf(fc.ns), wiotas(fc.ns);
@@ -724,36 +755,36 @@ TEST(SolovevFreeBoundary, MatchesEducationalVmecGolden) {
     wiotaf[jF] = wout.iotaf[jF];
     wiotas[jF] = wout.iotas[jF];
   }
-  compare("presf", NetcdfReadArray1D(ncid, "presf"), wpresf);
-  compare("pres", NetcdfReadArray1D(ncid, "pres"), wpres);
-  compare("iotaf", NetcdfReadArray1D(ncid, "iotaf"), wiotaf);
-  compare("iotas", NetcdfReadArray1D(ncid, "iotas"), wiotas);
+  compare("presf", NetcdfReadArray1D(ncid, "presf").value(), wpresf);
+  compare("pres", NetcdfReadArray1D(ncid, "pres").value(), wpres);
+  compare("iotaf", NetcdfReadArray1D(ncid, "iotaf").value(), wiotaf);
+  compare("iotas", NetcdfReadArray1D(ncid, "iotas").value(), wiotas);
 
   // flux-surface geometry
   auto [r_ref, r_val] =
-      flatten(NetcdfReadArray2D(ncid, "rmnc"), fc.ns, s.mnmax,
+      flatten(NetcdfReadArray2D(ncid, "rmnc").value(), fc.ns, s.mnmax,
               [&](int mn, int jF) { return wout.rmnc(mn, jF); });
   compare("rmnc", r_ref, r_val);
   auto [z_ref, z_val] =
-      flatten(NetcdfReadArray2D(ncid, "zmns"), fc.ns, s.mnmax,
+      flatten(NetcdfReadArray2D(ncid, "zmns").value(), fc.ns, s.mnmax,
               [&](int mn, int jF) { return wout.zmns(mn, jF); });
   compare("zmns", z_ref, z_val);
   auto [l_ref, l_val] =
-      flatten(NetcdfReadArray2D(ncid, "lmns"), fc.ns, s.mnmax,
+      flatten(NetcdfReadArray2D(ncid, "lmns").value(), fc.ns, s.mnmax,
               [&](int mn, int jF) { return wout.lmns(mn, jF); });
   compare("lmns", l_ref, l_val);
 
   // magnetic field on the Nyquist mode set
   auto [b_ref, b_val] =
-      flatten(NetcdfReadArray2D(ncid, "bmnc"), fc.ns, s.mnmax_nyq,
+      flatten(NetcdfReadArray2D(ncid, "bmnc").value(), fc.ns, s.mnmax_nyq,
               [&](int mn, int jF) { return wout.bmnc(mn, jF); });
   compare("bmnc", b_ref, b_val);
   auto [bu_ref, bu_val] =
-      flatten(NetcdfReadArray2D(ncid, "bsubumnc"), fc.ns, s.mnmax_nyq,
+      flatten(NetcdfReadArray2D(ncid, "bsubumnc").value(), fc.ns, s.mnmax_nyq,
               [&](int mn, int jF) { return wout.bsubumnc(mn, jF); });
   compare("bsubumnc", bu_ref, bu_val);
   auto [bv_ref, bv_val] =
-      flatten(NetcdfReadArray2D(ncid, "bsubvmnc"), fc.ns, s.mnmax_nyq,
+      flatten(NetcdfReadArray2D(ncid, "bsubvmnc").value(), fc.ns, s.mnmax_nyq,
               [&](int mn, int jF) { return wout.bsubvmnc(mn, jF); });
   compare("bsubvmnc", bv_ref, bv_val);
 
@@ -764,8 +795,8 @@ TEST(SolovevFreeBoundary, MatchesEducationalVmecGolden) {
     wjcuru[jF] = wout.jcuru[jF];
     wjcurv[jF] = wout.jcurv[jF];
   }
-  compare("jcuru", NetcdfReadArray1D(ncid, "jcuru"), wjcuru);
-  compare("jcurv", NetcdfReadArray1D(ncid, "jcurv"), wjcurv);
+  compare("jcuru", NetcdfReadArray1D(ncid, "jcuru").value(), wjcuru);
+  compare("jcurv", NetcdfReadArray1D(ncid, "jcurv").value(), wjcurv);
 
   ASSERT_EQ(nc_close(ncid), NC_NOERR);
 

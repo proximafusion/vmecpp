@@ -19,6 +19,7 @@
 
 [![CI](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml)
 [![C++ core tests](https://github.com/proximafusion/vmecpp/actions/workflows/test_bazel.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/test_bazel.yaml)
+[![Full V&V against reference VMEC](https://github.com/proximafusion/vmecpp/actions/workflows/full_validation.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/full_validation.yaml)
 [![Publish wheels to PyPI](https://github.com/proximafusion/vmecpp/actions/workflows/pypi_publish.yml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/pypi_publish.yml)
 
 VMEC++ is a Python-friendly, from-scratch reimplementation in C++ of the Variational Moments Equilibrium Code (VMEC),
@@ -98,7 +99,7 @@ print(vmec_output.mercier.iota)
 vmec_output.wout.save("wout_w7x.nc")
 ```
 
-All other output files are accessible via members of the `output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
+All other output files are accessible via members of the `vmec_output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
 
 ### With SIMSOPT
 
@@ -151,7 +152,7 @@ Ubuntu 22.04 and 24.04, as well as Debian 12 are officially supported.
 
 1. Install required system packages:
 ```shell
-sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev python3-dev
+sudo apt-get install -y build-essential cmake gfortran libnetcdf-dev liblapack-dev libomp-dev libhdf5-dev python3-dev
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
@@ -278,35 +279,46 @@ VMEC++ on a configuration that is very similar to the converged equilibrium.
 ```python
 import vmecpp
 
-input = vmecpp.VmecInput.from_file("w7x.json")
+vmec_input = vmecpp.VmecInput.from_file("w7x.json")
 
 # Base run
-output = vmecpp.run(input)
+vmec_output = vmecpp.run(vmec_input)
 
 # Now let's perturb the plasma boundary a little bit...
-input.rbc[0, 0] *= 0.8
-input.rbc[1, 0] *= 1.2
+vmec_input.rbc[0, 0] *= 0.8
+vmec_input.rbc[1, 0] *= 1.2
 # ...and fix up the multigrid steps: hot-restarted runs only allow a single step
-input.ns_array = input.ns_array[-1:]
-input.ftol_array = input.ftol_array[-1:]
-input.niter_array = input.niter_array[-1:]
+vmec_input.ns_array = vmec_input.ns_array[-1:]
+vmec_input.ftol_array = vmec_input.ftol_array[-1:]
+vmec_input.niter_array = vmec_input.niter_array[-1:]
 
 # We can now run with hot restart:
-# passing the previously obtained output ensures that
+# passing the previously obtained vmec_output ensures that
 # the run starts already close to the equilibrium, so it will take
 # very few iterations to converge this time!
-hot_restarted_output = vmecpp.run(input, restart_from=output)
+hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 ```
 
 ## Full tests and validation against the reference Fortran VMEC v8.52
 
 When developing the C++ core, it's advisable to locally run the full C++ tests for debugging or to validate changes before submitting them.
-The full tests are not stored in the sources of this repo, but in a separate repo: https://github.com/proximafusion/vmecpp_large_cpp_tests .
-See the instructions there for how to run those tests locally. The CI of this repo includes those tests too.
+The full C++ tests live in [`src/vmecpp/cpp/vmecpp_large_cpp_tests`](https://github.com/proximafusion/vmecpp/blob/main/src/vmecpp/cpp/vmecpp_large_cpp_tests) and use [Git LFS](https://git-lfs.com/) for large test data files.
+To run them locally (after cloning with `git lfs pull` to fetch the LFS objects):
+
+```shell
+cd src/vmecpp/cpp
+bazel test --config=opt //vmecpp/... //vmecpp_large_cpp_tests/...
+```
+
+The CI of this repo runs these tests automatically.
 
 The single-thread runtimes as well as the contents of the "wout" file produced by VMEC++ can be compared with those of Fortran VMEC v8.52.
 The full validation test can be found at https://github.com/proximafusion/vmecpp-validation, including a set of sensible input configurations,
 parameter scan values and tolerances that make the comparison pass. See that repo for more information.
+
+This full validation (~219 input configurations) is run against every commit to `main` and can also be triggered
+on demand from the [Full V&V against reference VMEC](https://github.com/proximafusion/vmecpp/actions/workflows/full_validation.yaml) workflow
+(click "Run workflow"). It builds `vmecpp` from the corresponding commit rather than using the version pinned by `vmecpp-validation`.
 
 ## Differences with respect to PARVMEC/VMEC2000
 
@@ -316,7 +328,7 @@ VMEC++:
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
 - employs the same parallelization strategy as Fortran VMEC, but VMEC++ leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization: as a consequence it cannot parallelize over multiple nodes
 - Uses FFT kernels optimized for small mode numbers [generated using FFTX](https://github.com/spiral-software/fftx) instead of DFT for supported resolutions. They give a 10-20% speedup relative to the DFT counterparts.
-- implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa
+- implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa. One deliberate exception: at multigrid grid transitions, the rollback backup of the state vector is taken *after* the radial interpolation of the coarse-grid solution (matching PARVMEC/VMEC2000 since 2017-01-24, "SPH 012417"), not before it as in VMEC 8.52 -- with the 8.52 ordering, the first restart of a stage silently discards the interpolated state and the finer stages effectively re-solve from a cold start
 
 ### Limitations with respect to the Fortran implementations
 - non-stellarator-symmetric terms (`lasym == true`) are not supported yet
@@ -368,7 +380,6 @@ Some items we do not plan to work on, but where community ownership is welcome:
 ## Related repositories
 
 * [`proximafusion/vmecpp-validation`](https://github.com/proximafusion/vmecpp-validation) - Validation tests for VMEC++
-* [`proximafusion/vmecpp_large_cpp_tests`](https://github.com/proximafusion/vmecpp_large_cpp_tests) - Large C++ tests for VMEC++
 * [`proximafusion/the_numerics_of_vmecpp`](https://github.com/proximafusion/the_numerics_of_vmecpp) - Documentation of the numerical details of VMEC++
 * [`proximafusion/vmecpp-benchmarks`](https://github.com/proximafusion/vmecpp-benchmarks) - Performance benchmarks comparing VMEC++ and VMEC2000
 
