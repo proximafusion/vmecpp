@@ -14,24 +14,6 @@ A small but representative set of benchmarks runs automatically on every push to
 | `test_bench_response_table_from_coils` | Magnetic field response table creation from coils file |
 | `test_bench_free_boundary` | Free-boundary solve with pre-computed response table |
 
-### Dynamic-dispatch verification
-
-The `VMECPP_TARGET_CLONES` kernels add one AVX2 clone and one default clone in the
-same binary, with a one-time resolver selecting the best path at load time.
-On this host, the dynamic-dispatch baseline (`-O3`) tracks the fully AVX2 build
-(`-march=x86-64-v3`) closely across the full suite (mean wall-clock, 3 rounds, run
-in order), so no additional hot-loop profiling was required.
-
-| Benchmark | Baseline -O3 | -march=native | -march=x86-64-v3 | x86-64-v3 vs. baseline |
-|-----------|-------------:|--------------:|------------------:|-------------:|
-| cli_startup | 457 ms | 448 ms | 456 ms | 0% |
-| cli_invalid_input | 458 ms | 446 ms | 475 ms | +4% |
-| fixed_boundary_cma | 1,210 ms | 1,216 ms | 1,216 ms | 0% |
-| fixed_boundary_cma_6x8 | 2,027 ms | 2,015 ms | 1,995 ms | -2% |
-| response_table_from_coils | 2,230 ms | 2,225 ms | 2,230 ms | 0% |
-| fixed_boundary_w7x | 3,080 ms | 3,070 ms | 3,163 ms | +3% |
-| free_boundary | 8,722 ms | 8,709 ms | 8,762 ms | 0% |
-
 ## Microbenchmark suite (C++)
 
 These target individual hot functions so a regression can be attributed to a specific kernel rather than only showing up in the end-to-end timings above. Each is a Google Benchmark `cc_binary` under `src/vmecpp/cpp/`, swept over several `(mpol, ntor)` resolutions.
