@@ -22,7 +22,7 @@ On this host, the dynamic-dispatch baseline (`-O3`) tracks the fully AVX2 build
 (`-march=x86-64-v3`) closely across the full suite (mean wall-clock, 3 rounds, run
 in order), so no additional hot-loop profiling was required.
 
-| Benchmark | Baseline -O3 | -march=native | -march=x86-64-v3 | vs. baseline |
+| Benchmark | Baseline -O3 | -march=native | -march=x86-64-v3 | x86-64-v3 vs. baseline |
 |-----------|-------------:|--------------:|------------------:|-------------:|
 | cli_startup | 457 ms | 448 ms | 456 ms | 0% |
 | cli_invalid_input | 458 ms | 446 ms | 475 ms | +4% |
