@@ -12,6 +12,20 @@ set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-math-errno")
 
+# LTO: cross-TU inlining and dead-code elimination, ~1/3 smaller binaries.
+include(CheckIPOSupported)
+check_ipo_supported(RESULT VMECPP_IPO_SUPPORTED OUTPUT VMECPP_IPO_ERROR)
+if(VMECPP_IPO_SUPPORTED)
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+else()
+  message(STATUS "LTO unavailable, building without it: ${VMECPP_IPO_ERROR}")
+endif()
+
+# -march raises Eigen's EIGEN_MAX_ALIGN_BYTES from 16 to 32, which changes
+# Eigen::aligned_allocator and is ABI-affecting. Pin it so cores built with
+# different -march settings stay interchangeable.
+add_compile_definitions(EIGEN_MAX_ALIGN_BYTES=32 EIGEN_MAX_STATIC_ALIGN_BYTES=32)
+
 # use ccache if available
 find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
 if(EXISTS ${CCACHE_COMMAND})
@@ -109,12 +123,49 @@ include_directories(${PROJECT_SOURCE_DIR}/src/vmecpp/cpp)
 set(vmecpp_sources ${abscab_sources})
 add_subdirectory(src)
 
-# Define a static library for the actual computation core of VMEC++.
-add_library(vmecpp_core STATIC ${vmecpp_sources})
-target_link_libraries(vmecpp_core PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES})
-target_link_libraries(vmecpp_core PRIVATE ${netCDF_LIBRARIES})
-target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
-target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
+# The computation core, built once per target ISA. Variants share one SONAME and
+# are told apart by directory, so the loader can substitute them (see the
+# glibc-hwcaps install rules below).
+function(vmecpp_add_core target)
+  cmake_parse_arguments(CORE "" "HWCAPS_SUBDIR" "COMPILE_OPTIONS" ${ARGN})
+
+  add_library(${target} SHARED ${vmecpp_sources})
+  set_target_properties(${target} PROPERTIES OUTPUT_NAME vmecpp_core)
+  if(CORE_HWCAPS_SUBDIR)
+    set_target_properties(${target} PROPERTIES
+      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/glibc-hwcaps/${CORE_HWCAPS_SUBDIR}")
+  endif()
+  target_compile_options(${target} PRIVATE ${CORE_COMPILE_OPTIONS})
+
+  target_link_libraries(${target} PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES})
+  target_link_libraries(${target} PRIVATE ${netCDF_LIBRARIES})
+  target_link_libraries(${target} PRIVATE nlohmann_json::nlohmann_json)
+  target_link_libraries(${target} PRIVATE LAPACK::LAPACK)
+  target_link_libraries(${target} PRIVATE absl::algorithm absl::base
+    absl::synchronization absl::strings absl::str_format absl::log
+    absl::string_view absl::check absl::status absl::statusor)
+
+  if(VMECPP_USE_FFTX)
+    # Built per variant: the codelets must match the ISA of the core linking them.
+    add_library(${target}_fftx STATIC ${_fftx_iprdft_srcs} ${_fftx_prdft_srcs})
+    target_include_directories(${target}_fftx PUBLIC
+      "${_fftx_dir}"                                                 # for <include/omega64.h>
+      "${_fftx_dir}/include"                                         # for fftx_minimal.hpp
+      "${_fftx_dir}/lib_fftx_iprdftbat_cpu_srcs"
+      "${_fftx_dir}/lib_fftx_prdftbat_cpu_srcs")
+    target_compile_options(${target}_fftx PRIVATE -fPIC ${CORE_COMPILE_OPTIONS})
+    target_link_libraries(${target} PRIVATE ${target}_fftx)
+    target_compile_definitions(${target} PUBLIC VMECPP_USE_FFTX)
+  endif()
+
+  if(OpenMP_CXX_FOUND)
+    target_link_libraries(${target} PRIVATE OpenMP::OpenMP_CXX)
+  endif()
+
+  # We multithread at the outer loop level, not for the individual Eigen operations
+  # https://libeigen.gitlab.io/eigen/docs-3.3/TopicMultiThreading.html
+  target_compile_definitions(${target} PRIVATE EIGEN_DONT_PARALLELIZE)
+endfunction()
 
 # FFTX (SPIRAL-generated batched IPRDFT/PRDFT) for the toroidal FFT hot path.
 # The codelets are vendored under src/vmecpp/cpp/third_party/fftx_codelets/;
@@ -127,35 +178,25 @@ if(VMECPP_USE_FFTX)
        "${_fftx_dir}/lib_fftx_iprdftbat_cpu_srcs/*.cpp")
   file(GLOB _fftx_prdft_srcs  CONFIGURE_DEPENDS
        "${_fftx_dir}/lib_fftx_prdftbat_cpu_srcs/*.cpp")
-  add_library(fftx_codelets STATIC ${_fftx_iprdft_srcs} ${_fftx_prdft_srcs})
-  target_include_directories(fftx_codelets PUBLIC
-    "${_fftx_dir}"                                                 # for <include/omega64.h>
-    "${_fftx_dir}/include"                                         # for fftx_minimal.hpp
-    "${_fftx_dir}/lib_fftx_iprdftbat_cpu_srcs"
-    "${_fftx_dir}/lib_fftx_prdftbat_cpu_srcs")
-  # Match vmecpp's release flags; codelets are >30k lines and benefit from -O3.
-  target_compile_options(fftx_codelets PRIVATE -fPIC)
-  target_link_libraries(vmecpp_core PRIVATE fftx_codelets)
-  target_compile_definitions(vmecpp_core PUBLIC VMECPP_USE_FFTX)
   list(LENGTH _fftx_iprdft_srcs _n_iprdft)
   list(LENGTH _fftx_prdft_srcs  _n_prdft)
   message(STATUS "FFTX vendored codelets: ${_n_iprdft} iprdft + ${_n_prdft} prdft sources")
 endif()
-target_link_libraries(vmecpp_core PRIVATE absl::algorithm absl::base absl::synchronization absl::strings absl::str_format absl::log absl::string_view absl::check absl::status absl::statusor)
 
-if(OpenMP_CXX_FOUND)
-  target_link_libraries(vmecpp_core PRIVATE OpenMP::OpenMP_CXX)
+vmecpp_add_core(vmecpp_core)
+
+option(VMECPP_HWCAPS_DISPATCH
+       "Also build x86-64-v3 core variant selected at load time via glibc-hwcaps" ON)
+if(VMECPP_HWCAPS_DISPATCH)
+  vmecpp_add_core(vmecpp_core_v3 HWCAPS_SUBDIR x86-64-v3
+                  COMPILE_OPTIONS -march=x86-64-v3)
 endif()
-
-# We multithread at the outer loop level, not for the individual Eigen operations
-# https://libeigen.gitlab.io/eigen/docs-3.3/TopicMultiThreading.html
-target_compile_definitions(vmecpp_core PRIVATE EIGEN_DONT_PARALLELIZE)
 
 
 # Now also add the vmec_standalone executable.
 add_executable(vmec_standalone ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/vmec_standalone/vmec_standalone.cc)
 target_link_libraries(vmec_standalone vmecpp_core)
-target_link_libraries(vmecpp_core PRIVATE absl::strings)
+set_target_properties(vmec_standalone PROPERTIES BUILD_RPATH "$ORIGIN")
 
 # Now add the pybind11 module for VMEC++.
 FetchContent_MakeAvailable(pybind11)
@@ -172,7 +213,15 @@ if(OpenMP_CXX_FOUND)
   target_link_libraries(_vmecpp PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
+set_target_properties(_vmecpp PROPERTIES INSTALL_RPATH "$ORIGIN")
 install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
+# glibc >= 2.33 prefers glibc-hwcaps/ subdirectories; older loaders ignore
+# them and pick up the baseline next to the extension module.
+install(TARGETS vmecpp_core LIBRARY DESTINATION vmecpp/cpp/.)
+if(VMECPP_HWCAPS_DISPATCH)
+  install(TARGETS vmecpp_core_v3
+          LIBRARY DESTINATION vmecpp/cpp/glibc-hwcaps/x86-64-v3/.)
+endif()
 install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
 
 # Optional Enzyme automatic-differentiation target: exact autodiff (forward and
