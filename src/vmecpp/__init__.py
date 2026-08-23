@@ -7,8 +7,8 @@ This module is the public interface of the package; it only re-exports the names
 defined in the core modules:
 
 - :mod:`vmecpp._types`: shared pydantic field types, the enums and array dimensions
-- :mod:`vmecpp._indata`: :class:`VmecInput` and the profile helpers
-- :mod:`vmecpp._input_files`: INDATA / VMEC++ JSON input-file handling
+- :mod:`vmecpp._indata`: :class:`VmecInput`, the profile helpers and the
+  INDATA / VMEC++ JSON input-file handling
 - :mod:`vmecpp._wout`: the output data models (wout, jxbout, mercier, threed1)
 - :mod:`vmecpp._output`: :class:`VmecOutput`
 - :mod:`vmecpp._run`: :func:`run`, the main entry point
@@ -30,13 +30,11 @@ from vmecpp._free_boundary import (
 )
 from vmecpp._indata import (
     VmecInput,
-    populate_raw_profile,  # noqa: F401
-    set_profile,
-)
-from vmecpp._input_files import (
     ensure_vmec2000_input,  # noqa: F401
     ensure_vmecpp_input,  # noqa: F401
     is_vmec2000_input,  # noqa: F401
+    populate_raw_profile,  # noqa: F401
+    set_profile,
 )
 from vmecpp._iteration import (
     IterationResult,

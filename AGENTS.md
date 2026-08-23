@@ -67,7 +67,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 **Python Interface Layer** (`src/vmecpp/`): `__init__.py` only re-exports the public
 API; every definition lives in one of the core modules:
 - **VmecInput** (`_indata.py`): Pydantic model for input validation (profiles, boundary,
-  parameters), plus `set_profile`
+  parameters), plus `set_profile` and the INDATA vs. VMEC++ JSON input-file handling
 - **VmecWOut and the jxbout/mercier/threed1 tables** (`_wout.py`): output data structures
   with equilibrium results
 - **VmecOutput** (`_output.py`): the container bundling all outputs of a run
@@ -75,7 +75,6 @@ API; every definition lives in one of the core modules:
   continuation driver
 - **Shared field types, enums and array dimensions** (`_types.py`): used by both the input
   and the output models
-- **Input file handling** (`_input_files.py`): INDATA vs. VMEC++ JSON detection/conversion
 - **Free Boundary Support** (`_free_boundary.py`): external magnetic field handling
 - **Force-balance iteration** (`_iteration.py`) and **resolution interpolation**
   (`_continuation.py`)
