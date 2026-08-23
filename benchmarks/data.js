@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787487150281,
+  "lastUpdate": 1787487430868,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -37902,6 +37902,162 @@ window.BENCHMARK_DATA = {
             "value": 0.018320326805114747,
             "unit": "seconds",
             "extra": "iterations: 100\ncpu: 0.015517722390000002 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "43a5a527d54c3696ec1717105dea79a2ddb1476a",
+          "message": "Compile AVX2 variant selected at load based on CPU support (#695)\n\nbuild: ship x86-64-v3 core selected at load time via glibc-hwcaps\n\nBuilds the computation core twice and lets the dynamic loader choose: baseline\nat vmecpp/cpp/libvmecpp_core.so, optimized at\nvmecpp/cpp/glibc-hwcaps/x86-64-v3/. glibc >= 2.33 searches the subdirectory\nfirst; older loaders do not know about it and resolve the baseline instead, so\none wheel serves both without any dispatch code.\n\nvmecpp_core becomes SHARED (glibc-hwcaps cannot apply to the extension module,\nwhich CPython opens by exact path) and is instantiated per ISA through a\nvmecpp_add_core() helper. The FFTX codelets are the toroidal-transform hot path\nand are built per variant so they match the ISA of the core linking them.\n\nMeasured against a baseline build (paired runs, 12 reps, pinned P-cores):\nw7x -15.8%, free-boundary -10.2%, small fixed-boundary -5.4%. That matches a\nwhole-program -march=x86-64-v3 build within 1.6%; making the core shared costs\nabout nothing. Iteration counts and energies are unchanged.\n\nAlso pins EIGEN_MAX_ALIGN_BYTES=32: -march raises Eigen's alignment guarantee\nfrom 16 to 32, which changes Eigen::aligned_allocator and is ABI-affecting.\nWithout the pin, mixing cores built with different -march settings gives\ncorrect results and then corrupts the heap at teardown.",
+          "timestamp": "2026-08-23T14:07:36+02:00",
+          "tree_id": "b3fb2cd98bc3a3deb57d9cce844b7a736d43c3af",
+          "url": "https://github.com/proximafusion/vmecpp/commit/43a5a527d54c3696ec1717105dea79a2ddb1476a"
+        },
+        "date": 1787487430661,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000022140954685258007,
+            "unit": "seconds",
+            "extra": "iterations: 63137\ncpu: 2.2139784310309328e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000029253005503622646,
+            "unit": "seconds",
+            "extra": "iterations: 47901\ncpu: 2.925209603139809e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0003949831054134183,
+            "unit": "seconds",
+            "extra": "iterations: 3585\ncpu: 0.00039495709093444913 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.000930857928413935,
+            "unit": "seconds",
+            "extra": "iterations: 1501\ncpu: 0.0009307999500333108 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00012058406093109666,
+            "unit": "seconds",
+            "extra": "iterations: 11583\ncpu: 0.00012055431364931367 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.0000926835742282122,
+            "unit": "seconds",
+            "extra": "iterations: 15223\ncpu: 9.265596682651251e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00023544922068312365,
+            "unit": "seconds",
+            "extra": "iterations: 5920\ncpu: 0.00023530856030405407 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.000192433521172233,
+            "unit": "seconds",
+            "extra": "iterations: 7202\ncpu: 0.00019237240169397385 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.00037649370638442723,
+            "unit": "seconds",
+            "extra": "iterations: 3665\ncpu: 0.00037647031596180073 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0002892519222957062,
+            "unit": "seconds",
+            "extra": "iterations: 4993\ncpu: 0.0002885541578209494 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0012965533162133766,
+            "unit": "seconds",
+            "extra": "iterations: 1081\ncpu: 0.0012965086836262722 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0010340920396848512,
+            "unit": "seconds",
+            "extra": "iterations: 1353\ncpu: 0.0010340453348115309 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00005546441190485326,
+            "unit": "seconds",
+            "extra": "iterations: 25222\ncpu: 5.547390321941145e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0003622348103465359,
+            "unit": "seconds",
+            "extra": "iterations: 3871\ncpu: 0.000362251035133042 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0018471699591362382,
+            "unit": "seconds",
+            "extra": "iterations: 758\ncpu: 0.001847264967018479 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00005156808935713176,
+            "unit": "seconds",
+            "extra": "iterations: 27306\ncpu: 5.1557400974144534e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0003559977325423887,
+            "unit": "seconds",
+            "extra": "iterations: 3921\ncpu: 0.0003560253555215545 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0018674432457267466,
+            "unit": "seconds",
+            "extra": "iterations: 770\ncpu: 0.0018673318818181572 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00018698686084365275,
+            "unit": "seconds",
+            "extra": "iterations: 7339\ncpu: 0.00018697463837035014 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0008341662889476017,
+            "unit": "seconds",
+            "extra": "iterations: 1668\ncpu: 0.0008341105065947237 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.004466695170248709,
+            "unit": "seconds",
+            "extra": "iterations: 310\ncpu: 0.004466418064516129 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.003022660513292567,
+            "unit": "seconds",
+            "extra": "iterations: 466\ncpu: 0.0030023696266094414 seconds\nthreads: 1"
           }
         ]
       }
