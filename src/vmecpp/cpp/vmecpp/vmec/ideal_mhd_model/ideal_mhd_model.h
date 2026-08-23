@@ -46,6 +46,8 @@ void deAliasConstraintForce(const RadialPartitioning& rp,
                             Eigen::VectorXd& m_gsc, Eigen::VectorXd& m_gcs,
                             Eigen::VectorXd& m_gCon);
 
+struct LocalForceComposition;
+
 class IdealMhdModel {
  public:
   IdealMhdModel(FlowControl* m_fc, const Sizes* s,
@@ -214,6 +216,17 @@ class IdealMhdModel {
   void exactForceDensityTangent(const double* geomP, const double* dgeom,
                                 int geom_stride, double* dforce_out);
 
+  // Tangent of the six half-grid fields SIMSOPT's QS residual consumes (gsqrt,
+  // total_pressure, bsupu, bsupv, bsubu, bsubv) from one Enzyme forward pass.
+  // These fields are intermediates of the force-density composition, so their
+  // tangent falls out of the same forward JVP that applyExactForceJacobian uses
+  // (read from the work-buffer shadow); no extra autodiff and no finite
+  // difference. dfields_out holds 6 blocks of (nsMaxH-nsMinH)*nZnT, in the
+  // order above. Composed with the analytic QS-harmonics adjoint and the linear
+  // geometry tangent T v, this gives an exact dQS/dx with no FD.
+  void exactQsFieldTangent(const double* geomP, const double* dgeom,
+                           int geom_stride, double* dfields_out);
+
   // Freeze/unfreeze the constraint-force multiplier tcon (see the member).
   void setFreezeConstraintMultiplier(bool freeze) {
     freeze_constraint_multiplier_ = freeze;
@@ -225,10 +238,6 @@ class IdealMhdModel {
   // by one Enzyme reverse pass. The transpose of exactForceDensityTangent.
   void exactForceDensityCotangent(const double* geomP, const double* force_bar,
                                   int geom_stride, double* geom_bar_out);
-
-  // Fill the local force-density composition descriptor shared by the exact
-  // forward/reverse force-density passes (geom_stride sized blocks).
-  LocalForceComposition makeLocalForceComposition(int geom_stride);
 
   // Transpose of applyExactForceJacobian: H^T w. Given a decomposed-force
   // cotangent (the space applyExactForceJacobian writes), apply C^T (transpose
@@ -558,6 +567,11 @@ class IdealMhdModel {
   Eigen::VectorXd fzcon_asym_e, fzcon_asym_o;
 
  private:
+  // Shared setup for the Enzyme force-density composition (geom -> force), used
+  // by applyExactForceJacobian, exactForceDensityTangent, exactQsFieldTangent
+  // and composedForceResidual so the context is built in exactly one place.
+  LocalForceComposition makeLocalForceComposition(int geom_stride) const;
+
   FlowControl& m_fc_;
   const Sizes& s_;
   const FourierBasisFastPoloidal& t_;

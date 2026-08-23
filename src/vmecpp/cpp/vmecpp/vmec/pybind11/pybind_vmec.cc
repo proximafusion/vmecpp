@@ -734,16 +734,13 @@ class VmecModel {
   // (gmnc, bmnc, bsub{u,v}mnc, bsup{u,v}mnc), computed from the current state
   // by the flat-buffer ComputeQsHarmonics kernel (no Eigen heap temporaries).
   // Call evaluate() first. Each array has shape (mnmax_nyq, nsH).
-  py::dict qs_harmonics() const {
+  // Fills a QsHarmonicsConfig from the current model/basis (pointers reference
+  // model-owned arrays, valid while the model is). Returns nsH via out-param.
+  vmecpp::QsHarmonicsConfig makeQsConfig(int& nsH) const {
     vmecpp::IdealMhdModel& m = *vmec_->m_[0];
     const vmecpp::Sizes& s = vmec_->s_;
     const vmecpp::FourierBasisFastPoloidal& t = vmec_->t_;
-    const vmecpp::RadialProfiles& rp = *vmec_->p_[0];
-    const int nZnT = s.nZnT;
-    const int nsH = static_cast<int>(m.gsqrt.size()) / nZnT;
-    const int nh = s.mnmax_nyq * nsH;
-    std::vector<double> gmnc(nh), bmnc(nh), bsubumnc(nh), bsubvmnc(nh),
-        bsupumnc(nh), bsupvmnc(nh);
+    nsH = static_cast<int>(m.gsqrt.size()) / s.nZnT;
     vmecpp::QsHarmonicsConfig c{};
     c.nsH = nsH;
     c.nZeta = s.nZeta;
@@ -763,6 +760,18 @@ class VmecModel {
     c.sinmui = t.sinmui.data();
     c.cosnv = t.cosnv.data();
     c.sinnv = t.sinnv.data();
+    return c;
+  }
+
+  py::dict qs_harmonics() const {
+    vmecpp::IdealMhdModel& m = *vmec_->m_[0];
+    const vmecpp::Sizes& s = vmec_->s_;
+    const vmecpp::RadialProfiles& rp = *vmec_->p_[0];
+    int nsH;
+    vmecpp::QsHarmonicsConfig c = makeQsConfig(nsH);
+    const int nh = s.mnmax_nyq * nsH;
+    std::vector<double> gmnc(nh), bmnc(nh), bsubumnc(nh), bsubvmnc(nh),
+        bsupumnc(nh), bsupvmnc(nh);
     vmecpp::ComputeQsHarmonics(m.gsqrt.data(), m.totalPressure.data(),
                                rp.presH.data(), m.bsupu.data(), m.bsupv.data(),
                                m.bsubu.data(), m.bsubv.data(), gmnc.data(),
@@ -789,6 +798,134 @@ class VmecModel {
         py::array_t<double>(static_cast<py::ssize_t>(nsH), rp.bucoH.data());
     return out;
   }
+
+#ifdef VMECPP_ENABLE_ENZYME
+  // Exact dQS/dx (objective-state gradient) for a quasisymmetry objective whose
+  // derivative w.r.t. the QS harmonics is supplied in harm_bar (six
+  // (mnmax_nyq, nsH) blocks: gmnc, bmnc, bsubumnc, bsubvmnc, bsupumnc,
+  // bsupvmnc). Every link is analytic except geometry->fields: the analytic
+  // harmonics adjoint gives the field cotangent, and one Enzyme forward pass
+  // per state DOF gives the field tangent (exactQsFieldTangent); their
+  // contraction is the gradient component. No finite differences. State
+  // restored on return.
+  Eigen::VectorXd ExactQsObjectiveStateGradient(const py::dict& harm_bar) {
+    vmecpp::IdealMhdModel& m = *vmec_->m_[0];
+    const vmecpp::RadialProfiles& rp = *vmec_->p_[0];
+    int nsH;
+    vmecpp::QsHarmonicsConfig c = makeQsConfig(nsH);
+    const int nH = nsH * vmec_->s_.nZnT;
+    const int nh = vmec_->s_.mnmax_nyq * nsH;
+
+    auto block = [&](const char* k) {
+      auto a = harm_bar[k]
+                   .cast<py::array_t<double, py::array::c_style |
+                                                 py::array::forcecast>>();
+      if (static_cast<int>(a.size()) != nh)
+        throw std::runtime_error("qs harm_bar block has wrong size");
+      std::vector<double> v(nh);
+      std::copy(a.data(), a.data() + nh, v.begin());
+      return v;
+    };
+    const std::vector<double> gmnc_b = block("gmnc"), bmnc_b = block("bmnc"),
+                              bsubu_b = block("bsubumnc"),
+                              bsubv_b = block("bsubvmnc"),
+                              bsupu_b = block("bsupumnc"),
+                              bsupv_b = block("bsupvmnc");
+
+    // Analytic harmonics adjoint -> field cotangents (each nH).
+    std::vector<double> gsqrt_bar(nH), tp_bar(nH), bsupu_bar(nH), bsupv_bar(nH),
+        bsubu_bar(nH), bsubv_bar(nH);
+    vmecpp::ComputeQsHarmonicsVjp(
+        gmnc_b.data(), bmnc_b.data(), bsubu_b.data(), bsubv_b.data(),
+        bsupu_b.data(), bsupv_b.data(), m.totalPressure.data(), rp.presH.data(),
+        gsqrt_bar.data(), tp_bar.data(), bsupu_bar.data(), bsupv_bar.data(),
+        bsubu_bar.data(), bsubv_bar.data(), &c);
+
+    const int gS = static_cast<int>(m.r1_e.size());
+    Eigen::VectorXd primal = Eigen::VectorXd::Zero(20 * gS);
+    m.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                   primal.data(), gS, /*primal=*/true);
+
+    const Eigen::VectorXd x =
+        FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
+    const int n = static_cast<int>(x.size());
+    Eigen::VectorXd dj(n);
+    Eigen::VectorXd ei = Eigen::VectorXd::Zero(n);
+    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
+    std::vector<double> dfields(6 * nH);
+    // exactQsFieldTangent block order: gsqrt, bsupu, bsupv, bsubu, bsubv, tp;
+    // pair each with the matching field cotangent.
+    const double* fb[6] = {gsqrt_bar.data(), bsupu_bar.data(), bsupv_bar.data(),
+                           bsubu_bar.data(), bsubv_bar.data(), tp_bar.data()};
+    for (int i = 0; i < n; ++i) {
+      ei[i] = 1.0;
+      vmec_->physical_x_backup_[0]->setZero();
+      UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, ei);
+      m.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
+                     dgeom.data(), gS, /*primal=*/false);
+      m.exactQsFieldTangent(primal.data(), dgeom.data(), gS, dfields.data());
+      double g = 0.0;
+      for (int b = 0; b < 6; ++b) {
+        const double* df = dfields.data() + b * nH;
+        for (int j = 0; j < nH; ++j) g += fb[b][j] * df[j];
+      }
+      dj[i] = g;
+      ei[i] = 0.0;
+    }
+    UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
+    return dj;
+  }
+
+  // Forward tangent of the QS harmonics w.r.t. a state perturbation: the six
+  // (mnmax_nyq, nsH) harmonic-block tangents for a decomposed-state direction.
+  // One Enzyme forward pass gives the field tangents (exactQsFieldTangent); the
+  // analytic harmonics tangent projects them (|B| through total pressure). This
+  // is the forward counterpart of ExactQsObjectiveStateGradient and feeds an
+  // exact Gauss-Newton residual Jacobian (one tangent per boundary DOF). No
+  // finite differences. State restored on return.
+  py::dict ExactQsHarmonicsTangent(const Eigen::VectorXd& v) {
+    vmecpp::IdealMhdModel& m = *vmec_->m_[0];
+    const vmecpp::RadialProfiles& rp = *vmec_->p_[0];
+    int nsH;
+    vmecpp::QsHarmonicsConfig c = makeQsConfig(nsH);
+    const int nH = nsH * vmec_->s_.nZnT;
+    const int nh = vmec_->s_.mnmax_nyq * nsH;
+    const int gS = static_cast<int>(m.r1_e.size());
+
+    Eigen::VectorXd primal = Eigen::VectorXd::Zero(20 * gS);
+    m.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                   primal.data(), gS, /*primal=*/true);
+    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
+    vmec_->physical_x_backup_[0]->setZero();
+    UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, v);
+    m.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
+                   dgeom.data(), gS, /*primal=*/false);
+    std::vector<double> dfields(6 * nH);
+    // block order: gsqrt, bsupu, bsupv, bsubu, bsubv, tp.
+    m.exactQsFieldTangent(primal.data(), dgeom.data(), gS, dfields.data());
+
+    std::vector<double> gmnc_t(nh), bmnc_t(nh), bsubu_t(nh), bsubv_t(nh),
+        bsupu_t(nh), bsupv_t(nh);
+    vmecpp::ComputeQsHarmonicsTangent(
+        dfields.data() + 0 * nH, dfields.data() + 5 * nH,
+        dfields.data() + 1 * nH, dfields.data() + 2 * nH,
+        dfields.data() + 3 * nH, dfields.data() + 4 * nH,
+        m.totalPressure.data(), rp.presH.data(), gmnc_t.data(), bmnc_t.data(),
+        bsubu_t.data(), bsubv_t.data(), bsupu_t.data(), bsupv_t.data(), &c);
+
+    auto out = py::dict();
+    auto pack = [&](const char* k, std::vector<double>& a) {
+      out[k] = py::array_t<double>(static_cast<py::ssize_t>(nh), a.data());
+    };
+    pack("gmnc", gmnc_t);
+    pack("bmnc", bmnc_t);
+    pack("bsubumnc", bsubu_t);
+    pack("bsubvmnc", bsubv_t);
+    pack("bsupumnc", bsupu_t);
+    pack("bsupvmnc", bsupv_t);
+    return out;
+  }
+#endif  // VMECPP_ENABLE_ENZYME
 
   int restart_reason() const {
     return static_cast<int>(vmec_->fc_.restart_reason);
@@ -1632,6 +1769,10 @@ PYBIND11_MODULE(_vmecpp, m) {
            &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"))
       .def("composed_force_residual", &VmecModel::ComposedForceResidual)
       .def("force_density_jvp_residual", &VmecModel::ForceDensityJvpResidual,
+           py::arg("v"))
+      .def("exact_qs_objective_state_gradient",
+           &VmecModel::ExactQsObjectiveStateGradient, py::arg("harm_bar"))
+      .def("exact_qs_harmonics_tangent", &VmecModel::ExactQsHarmonicsTangent,
            py::arg("v"))
       .def("_kernel_jvp", &VmecModel::KernelJvp, py::arg("dgeom"))
       .def("_kernel_vjp", &VmecModel::KernelVjp, py::arg("force_bar"))

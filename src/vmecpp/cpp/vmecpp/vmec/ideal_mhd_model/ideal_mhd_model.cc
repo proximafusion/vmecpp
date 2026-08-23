@@ -2688,7 +2688,7 @@ void IdealMhdModel::packGeometry(FourierGeometry& m_decomposed,
 }
 
 LocalForceComposition IdealMhdModel::makeLocalForceComposition(
-    int geom_stride) {
+    int geom_stride) const {
   LocalForceComposition comp;
   comp.nZnT = s_.nZnT;
   comp.geom_stride = geom_stride;
@@ -2810,6 +2810,29 @@ void IdealMhdModel::exactForceDensityTangent(const double* geomP,
   std::vector<double> force(20 * nForce, 0.0);
   ExactForceDensityJvp(geomP, dgeom, work.data(), dwork.data(), force.data(),
                        dforce_out, &comp);
+}
+
+void IdealMhdModel::exactQsFieldTangent(const double* geomP,
+                                        const double* dgeom, int geom_stride,
+                                        double* dfields_out) {
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nForce = comp.force_stride;
+  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
+  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 2 * (s_.ntor + 1);
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> dwork(nWork, 0.0);
+  std::vector<double> force(20 * nForce, 0.0);
+  std::vector<double> dforce(20 * nForce, 0.0);
+  // One forward pass through the force-density composition. The QS fields are
+  // intermediates of that composition, so their tangents land in dwork at the
+  // ComputeLocalForceDensity work offsets: gsqrt=6, bsupu=10, bsupv=11,
+  // bsubu=12, bsubv=13, tp=14 (each block nH long).
+  ExactForceDensityJvp(geomP, dgeom, work.data(), dwork.data(), force.data(),
+                       dforce.data(), &comp);
+  const int off[6] = {6, 10, 11, 12, 13, 14};
+  for (int b = 0; b < 6; ++b)
+    std::copy(dwork.data() + off[b] * nH, dwork.data() + (off[b] + 1) * nH,
+              dfields_out + b * nH);
 }
 
 void IdealMhdModel::exactForceDensityCotangent(const double* geomP,
@@ -3247,48 +3270,8 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
 // current state, to isolate composition bugs from the transform/tangent path.
 double IdealMhdModel::composedForceResidual(const double* geomP,
                                             int geom_stride) {
-  LocalForceComposition comp;
-  comp.nZnT = s_.nZnT;
-  comp.geom_stride = geom_stride;
-  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
-  comp.force_stride = nForce;
-  comp.nsMinF = r_.nsMinF;
-  comp.nsMinF1 = r_.nsMinF1;
-  comp.nsMinH = r_.nsMinH;
-  comp.nsMaxH = r_.nsMaxH;
-  comp.jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
-  comp.nsMaxFIncludingLcfs = r_.nsMaxFIncludingLcfs;
-  comp.sqrtSF = m_p_.sqrtSF.data();
-  comp.sqrtSH = m_p_.sqrtSH.data();
-  comp.chipH = m_p_.chipH.data();
-  comp.presH = m_p_.presH.data();
-  comp.radialBlending = m_p_.radialBlending.data();
-  comp.deltaS = m_fc_.deltaS;
-  comp.dSHalfDsInterp = dSHalfDsInterp;
-  comp.lamscale = constants_.lamscale;
-  comp.lthreed = s_.lthreed;
-  comp.with_constraint = true;
-  comp.nsMaxF = r_.nsMaxF;
-  comp.nZeta = s_.nZeta;
-  comp.nThetaEff = s_.nThetaEff;
-  comp.ncurr = ncurr;
-  comp.currH = m_p_.currH.data();
-  comp.wInt = s_.wInt.data();
-  comp.nThetaReduced = s_.nThetaReduced;
-  comp.mpol = s_.mpol;
-  comp.ntor = s_.ntor;
-  comp.nnyq2 = s_.nnyq2;
-  comp.rCon0 = rCon0.data();
-  comp.zCon0 = zCon0.data();
-  comp.faccon = faccon.data();
-  comp.tcon = tcon.data();
-  comp.sinmui = t_.sinmui.data();
-  comp.cosmui = t_.cosmui.data();
-  comp.cosnv = t_.cosnv.data();
-  comp.sinnv = t_.sinnv.data();
-  comp.sinmu = t_.sinmu.data();
-  comp.cosmu = t_.cosmu.data();
-
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nForce = comp.force_stride;
   const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
   const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 2 * (s_.ntor + 1);
   std::vector<double> work(nWork, 0.0);

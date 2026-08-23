@@ -50,13 +50,24 @@ def make_model(input_path: Path = DEFAULT_INPUT, ns: int = 11):
 
 
 def partition(model, ns: int):
-    """Indices of the interior (free) and boundary (LCFS) state components."""
+    """Indices of the interior (free) and boundary (LCFS) state components.
+
+    The flat state lays the spans out as R-group, Z-group, lambda-group (see
+    pybind ActiveSpans), each group holding 1 + lthreed + lasym (+ both) spans,
+    each span surface-major (the LCFS surface is the last k entries). The fixed
+    boundary is the LCFS of the R and Z geometry only: lambda at the boundary is
+    a free, solved DOF, not pinned. Including the lambda-LCFS blocks (as a naive
+    last-block-of-every-span partition does) wrongly fixes free DOFs; the MHD
+    energy hides it (dW/d(lambda_LCFS) ~ 0 at equilibrium) but a quasisymmetry
+    objective does not.
+    """
     k = model.mpol * (model.ntor + 1)
     n = np.asarray(model.get_state()).size
     per_span = ns * k
     n_span = n // per_span
+    rz_spans = 2 * (n_span // 3)  # R and Z spans; trailing lambda spans stay interior
     boundary = []
-    for s in range(n_span):
+    for s in range(rz_spans):
         boundary.extend(range(s * per_span + (ns - 1) * k, s * per_span + ns * k))
     boundary = np.array(sorted(boundary))
     interior = np.setdiff1d(np.arange(n), boundary)
@@ -67,6 +78,29 @@ def _raw_force(model, x):
     model.set_state(np.ascontiguousarray(x))
     model.evaluate(2, 2, False)
     return np.asarray(model.get_forces(), float)
+
+
+class _VmecPreconditioner(LinearOperator):
+    """Adaptive VMEC preconditioner for SciPy's Newton-Krylov solver."""
+
+    def __init__(self, model, x_template, interior):
+        self._model = model
+        self._x_template = x_template
+        self._interior = interior
+        self._x = x_template.copy()
+        super().__init__(dtype=float, shape=(interior.size, interior.size))
+
+    def update(self, x, _f):
+        self._x = self._x_template.copy()
+        self._x[self._interior] = x
+        self._model.set_state(np.ascontiguousarray(self._x))
+        self._model.evaluate(2, 2, True)
+
+    def _matvec(self, x):
+        v = np.zeros_like(self._x)
+        v[self._interior] = x
+        self._model.set_state(np.ascontiguousarray(self._x))
+        return np.asarray(self._model.apply_preconditioner(v), float)[self._interior]
 
 
 def _interior_operators(model, x, interior, exact=False):
@@ -94,29 +128,6 @@ def _interior_operators(model, x, interior, exact=False):
         LinearOperator((ni, ni), matvec=hii),  # type: ignore[call-overload]
         LinearOperator((ni, ni), matvec=mii),  # type: ignore[call-overload]
     )
-
-
-class _VmecPreconditioner(LinearOperator):
-    """Adaptive VMEC preconditioner for SciPy's Newton-Krylov solver."""
-
-    def __init__(self, model, x_template, interior):
-        self._model = model
-        self._x_template = x_template
-        self._interior = interior
-        self._x = x_template.copy()
-        super().__init__(dtype=float, shape=(interior.size, interior.size))
-
-    def update(self, x, _f):
-        self._x = self._x_template.copy()
-        self._x[self._interior] = x
-        self._model.set_state(np.ascontiguousarray(self._x))
-        self._model.evaluate(2, 2, True)
-
-    def _matvec(self, x):
-        v = np.zeros_like(self._x)
-        v[self._interior] = x
-        self._model.set_state(np.ascontiguousarray(self._x))
-        return np.asarray(self._model.apply_preconditioner(v), float)[self._interior]
 
 
 def _safeguarded_interior_solve(model, x_template, interior, residual, tol, max_newton):
@@ -383,3 +394,41 @@ def adjoint_boundary_gradient(
     embedded[keep] = lam
     coupling = ht(embedded)[boundary]
     return dj[boundary] - coupling, info
+
+
+# Quasi-axisymmetry quality measure J = 0.5 sum_mn bmnc^2 (asymmetry of |B| in
+# the |B| spectrum). Its boundary gradient is the quantity a QS optimization
+# needs, and the whole chain below is finite-difference-free.
+_QS_KEYS = ("gmnc", "bmnc", "bsubumnc", "bsubvmnc", "bsupumnc", "bsupvmnc")
+
+
+def qs_quality(model):
+    b = np.asarray(model.qs_harmonics()["bmnc"], float)
+    return 0.5 * float(np.sum(b**2))
+
+
+def qs_state_cotangent(model):
+    """Exact dJ_QS/dx over the full state, by autodiff (no finite differences).
+
+    dJ/dbmnc = bmnc is the only nonzero harmonic cotangent; the analytic harmonics VJP
+    propagates it to the state through the same field tangents the force Jacobian uses.
+    """
+    h = model.qs_harmonics()
+    harm_bar = {k: np.zeros_like(np.asarray(h[k], float)) for k in _QS_KEYS}
+    harm_bar["bmnc"] = np.ascontiguousarray(np.asarray(h["bmnc"], float))
+    return np.asarray(model.exact_qs_objective_state_gradient(harm_bar), float)
+
+
+def qs_boundary_gradient(model, x_star, interior, boundary, exact=True, **kw):
+    """Exact finite-difference-free dJ_QS/dx_B at the converged equilibrium.
+
+    The state cotangent dJ/dx is the exact autodiff QS gradient (qs_state_cotangent).
+    When the build exposes the transposed Hessian-vector product, the equilibrium
+    response uses the O(1) reverse adjoint; otherwise it falls back to the forward
+    sensitivities (one solve per boundary DOF). Both are finite-difference-free and use
+    the exact autodiff Hessian-vector product.
+    """
+    dj = qs_state_cotangent(model)
+    if hasattr(model, "exact_hessian_vector_product_transpose"):
+        return adjoint_boundary_gradient(model, x_star, interior, boundary, dj, **kw)
+    return forward_boundary_gradient(model, x_star, interior, boundary, dj, exact, **kw)
