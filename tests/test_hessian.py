@@ -137,9 +137,21 @@ def test_exact_derivatives_reject_lforbal():
     m.evaluate(2, 2, False)
     x = np.asarray(m.get_state(), float).copy()
     v = np.zeros_like(x)
+    harmonics = m.qs_harmonics()
+    qs_keys = (
+        "gmnc",
+        "bmnc",
+        "bsubumnc",
+        "bsubvmnc",
+        "bsupumnc",
+        "bsupvmnc",
+    )
+    harm_bar = {key: np.zeros_like(np.asarray(harmonics[key])) for key in qs_keys}
     calls = (
         lambda: m.exact_hessian_vector_product(v),
         lambda: m.exact_hessian_vector_product_transpose(v),
+        lambda: m.exact_qs_harmonics_tangent(v),
+        lambda: m.exact_qs_objective_state_gradient(harm_bar),
     )
     for call in calls:
         with pytest.raises(RuntimeError, match="lforbal=true"):
