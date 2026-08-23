@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787505518379,
+  "lastUpdate": 1787506211416,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -12241,6 +12241,93 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3469920360000742,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "gandushduushguu@gmail.com",
+            "name": "gandush",
+            "username": "duushgu"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "65d99155091ff94891269dcac9db76b5e7041205",
+          "message": "Add equilibrium rescaling support via HotRestartState (#690)\n\n* Add equilibrium rescaling support via HotRestartState\n\n* Fix namespace in Rescale method\n\n* Fix clang-format warnings from pre-commit\n\n* Move rescaling logic to pure Python as requested by maintainers\n\n* Auto-format python code with ruff\n\n* Fix circular import in rescale\n\n* Fix niter_array strict positivity validation by using 1 step with large ftol\n\n* Address review: optimize hot restart array lengths, use shallow copy, tighten tolerances with atol, and remove redundant comments\n\n* Scale absolute tolerances mathematically to ensure robust testing for arbitrary scale factors\n\n* Format code with ruff to fix pre-commit checks\n\n---------\n\nCo-authored-by: dush <gandushduushguu@mail.com>\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-08-23T19:21:16+02:00",
+          "tree_id": "48cbaf8f52fa4c7e7f86024d9e73b69d08ec69e7",
+          "url": "https://github.com/proximafusion/vmecpp/commit/65d99155091ff94891269dcac9db76b5e7041205"
+        },
+        "date": 1787506209588,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3758201434000057,
+            "range": "stddev: 0.0036649856345113184",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.37641427180000164,
+            "range": "stddev: 0.0050395622204572115",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.6335992289999695,
+            "range": "stddev: 0.02691311529844954",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1386031569999961,
+            "range": "stddev: 0.016930035550019432",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6428001516666768,
+            "range": "stddev: 0.018007135551017423",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.3345101500000283,
+            "range": "stddev: 0.05297651107143706",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.546070460666651,
+            "range": "stddev: 0.018186985497619823",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.767597021000029,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3835507339999822,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
