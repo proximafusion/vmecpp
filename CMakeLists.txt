@@ -137,11 +137,11 @@ function(vmecpp_add_core target)
   endif()
   target_compile_options(${target} PRIVATE ${CORE_COMPILE_OPTIONS})
 
-  target_link_libraries(${target} PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES})
-  target_link_libraries(${target} PRIVATE ${netCDF_LIBRARIES})
-  target_link_libraries(${target} PRIVATE nlohmann_json::nlohmann_json)
-  target_link_libraries(${target} PRIVATE LAPACK::LAPACK)
-  target_link_libraries(${target} PRIVATE absl::algorithm absl::base
+  target_link_libraries(${target} PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES})
+  target_link_libraries(${target} PUBLIC ${netCDF_LIBRARIES})
+  target_link_libraries(${target} PUBLIC nlohmann_json::nlohmann_json)
+  target_link_libraries(${target} PUBLIC LAPACK::LAPACK)
+  target_link_libraries(${target} PUBLIC absl::algorithm absl::base
     absl::synchronization absl::strings absl::str_format absl::log
     absl::string_view absl::check absl::status absl::statusor)
 
@@ -159,7 +159,7 @@ function(vmecpp_add_core target)
   endif()
 
   if(OpenMP_CXX_FOUND)
-    target_link_libraries(${target} PRIVATE OpenMP::OpenMP_CXX)
+    target_link_libraries(${target} PUBLIC OpenMP::OpenMP_CXX)
   endif()
 
   # We multithread at the outer loop level, not for the individual Eigen operations
@@ -185,9 +185,19 @@ endif()
 
 vmecpp_add_core(vmecpp_core)
 
+set(VMECPP_HWCAPS_DISPATCH_DEFAULT OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+  set(VMECPP_HWCAPS_DISPATCH_DEFAULT ON)
+endif()
 option(VMECPP_HWCAPS_DISPATCH
-       "Also build x86-64-v3 core variant selected at load time via glibc-hwcaps" ON)
+       "Also build x86-64-v3 core variant selected at load time via glibc-hwcaps"
+       ${VMECPP_HWCAPS_DISPATCH_DEFAULT})
 if(VMECPP_HWCAPS_DISPATCH)
+  if(NOT VMECPP_HWCAPS_DISPATCH_DEFAULT)
+    message(FATAL_ERROR
+      "VMECPP_HWCAPS_DISPATCH requires Linux on an x86-64 processor")
+  endif()
   vmecpp_add_core(vmecpp_core_v3 HWCAPS_SUBDIR x86-64-v3
                   COMPILE_OPTIONS -march=x86-64-v3)
 endif()
