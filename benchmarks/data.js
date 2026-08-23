@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787504550364,
+  "lastUpdate": 1787505171653,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -12154,6 +12154,93 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.471043639999948,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "137cbe5854c3bcf97925cec2f09afe969ba17b08",
+          "message": "Repair shared-core and HWCAPS regressions (#699)\n\n* Repair shared-core consumer builds\n\n* Make wdot decay calculation alias-safe\n\n* Use the native loader path on macOS\n\n* Let Python 3.14 use the fixed SIMSOPT source release\n\n* Update test_init.py\n\n* Update test_init.py\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-08-23T18:58:08+02:00",
+          "tree_id": "15cb3599db61c6e08ef87aa676536801d0f12359",
+          "url": "https://github.com/proximafusion/vmecpp/commit/137cbe5854c3bcf97925cec2f09afe969ba17b08"
+        },
+        "date": 1787505170045,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.32893548600000033,
+            "range": "stddev: 0.010515268718929719",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.33670127460002275,
+            "range": "stddev: 0.011102317694095773",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.360601752666677,
+            "range": "stddev: 0.060995568462758804",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0522939933333078,
+            "range": "stddev: 0.006110686210208329",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.5037697143333162,
+            "range": "stddev: 0.020091555604620646",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.091378751333309,
+            "range": "stddev: 0.00433078080474043",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.039374622666666,
+            "range": "stddev: 0.02320988568591433",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.50781947400003,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3469920360000742,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
