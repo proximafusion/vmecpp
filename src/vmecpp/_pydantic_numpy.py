@@ -98,7 +98,7 @@ Before adding a special case to this module, consider one of these two alternati
 
 1) Wrap the type definition and add Pydantic serializers and validators directly:
    `Annotated[<type>, pydantic.PlainSerializer(...), pydantic.BeforeValidator(...)]`
-   Example can be found here: vmecpp/src/vmecpp/__init__.py
+   Example can be found here: vmecpp/src/vmecpp/_indata.py
 
 2) Convert/wrap the unsupported class in a BaseModelWithNumpy class and provide a
    @pydantic.field_serializer and @pydantic.field_validator method on that class.

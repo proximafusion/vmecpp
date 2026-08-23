@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from vmecpp._indata import VmecInput
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 
@@ -519,7 +520,7 @@ def solve_equilibrium(
 
 
 def solve_multigrid(
-    vmec_input,
+    vmec_input: VmecInput,
     *,
     iteration_style: str | None = None,
     interpolation: typing.Literal["linear", "cubic", "cubic_rho"] | None = None,
@@ -604,7 +605,7 @@ def solve_multigrid(
 
 
 def iterate(
-    vmec_input,
+    vmec_input: VmecInput,
     ns: int | None = None,
     *,
     iteration_style: str | None = None,
