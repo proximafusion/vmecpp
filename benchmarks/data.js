@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787510463457,
+  "lastUpdate": 1787510822283,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -39117,6 +39117,162 @@ window.BENCHMARK_DATA = {
             "value": 0.006571004841778729,
             "unit": "seconds",
             "extra": "iterations: 370\ncpu: 0.006546865072972973 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "100dca407c6a41bc9e07df4b67f0ca97f11189c0",
+          "message": "vmec_indata: warn when the input boundary is spectrally dense (#600)\n\n* vmec_indata: warn when the input boundary is spectrally dense\n\nFixed-boundary runs whose boundary carries a lot of high-poloidal-mode\ncontent tend to fail to initialize or converge poorly, and the only\nsignal today is a late, generic solver abort. IsConsistent now computes\nthe boundary spectral width <M> (the wout.specw / ComputeSpectralWidth\nquantity, evaluated on the input coefficients) and warns above a\ncalibrated threshold before the solve, for fixed-boundary runs only.\n\nThe threshold (6) is set from ripple sweeps on a tokamak and a 3D\nstellarator: fixed-boundary runs converge for <M> below ~6 and fail\nfrom ~7.2, while all bundled inputs stay below 1.75.\n\n* Update src/vmecpp/cpp/vmecpp/common/vmec_indata/vmec_indata.cc\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>\n\n* Share one spectral-width implementation between the geometry and the boundary check\n\nExtract the per-surface spectral width out of FourierGeometry::ComputeSpectralWidth into common/spectral_width and call it from both the geometry and a new Boundaries::ComputeSpectralWidth. The boundary warning moves to Boundaries::setupFromIndata, which is the lowest layer that can reach the shared implementation, and its threshold is 2.0.\n\n* Keep the shared spectral width in the Fourier basis target instead of its own\n\nThe function weights coefficients by the mscale and nscale that FourierBasisFastPoloidal defines, so it belongs beside them; both callers already depended on that target. Drops the separate common/spectral_width library and its CMake entry.\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-08-23T20:35:28+02:00",
+          "tree_id": "929f1e38d09611f5d5f521307d70f662d8ff7f7a",
+          "url": "https://github.com/proximafusion/vmecpp/commit/100dca407c6a41bc9e07df4b67f0ca97f11189c0"
+        },
+        "date": 1787510821932,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000033070917698086434,
+            "unit": "seconds",
+            "extra": "iterations: 39199\ncpu: 3.306641296971861e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00004412826728635511,
+            "unit": "seconds",
+            "extra": "iterations: 31911\ncpu: 4.41243867005108e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0006160074503633989,
+            "unit": "seconds",
+            "extra": "iterations: 2292\ncpu: 0.0006159659864746947 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.001422695028103464,
+            "unit": "seconds",
+            "extra": "iterations: 984\ncpu: 0.001422574445121951 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00015710907390066692,
+            "unit": "seconds",
+            "extra": "iterations: 8890\ncpu: 0.00015708252272215973 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00014382222067082048,
+            "unit": "seconds",
+            "extra": "iterations: 9632\ncpu: 0.00014381152969269103 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003245942240213826,
+            "unit": "seconds",
+            "extra": "iterations: 4384\ncpu: 0.0003244493090784672 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.00029151726716009606,
+            "unit": "seconds",
+            "extra": "iterations: 4834\ncpu: 0.0002913869389739347 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005234732665052389,
+            "unit": "seconds",
+            "extra": "iterations: 2693\ncpu: 0.000523231862235425 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00046017893587057586,
+            "unit": "seconds",
+            "extra": "iterations: 3130\ncpu: 0.00045996418690095835 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.001870195648314301,
+            "unit": "seconds",
+            "extra": "iterations: 757\ncpu: 0.0018701099616908858 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0019933151250535793,
+            "unit": "seconds",
+            "extra": "iterations: 704\ncpu: 0.0019931330369318194 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00007043604943183997,
+            "unit": "seconds",
+            "extra": "iterations: 19865\ncpu: 7.045109609866618e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0005392195861463601,
+            "unit": "seconds",
+            "extra": "iterations: 2595\ncpu: 0.0005392966042389128 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0032434315517030914,
+            "unit": "seconds",
+            "extra": "iterations: 435\ncpu: 0.0032434370551724305 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00006637202190789722,
+            "unit": "seconds",
+            "extra": "iterations: 21127\ncpu: 6.638173976428453e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0005368107777560277,
+            "unit": "seconds",
+            "extra": "iterations: 2679\ncpu: 0.0005365963366928099 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0031510602295129007,
+            "unit": "seconds",
+            "extra": "iterations: 442\ncpu: 0.003151037660633462 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.0002795562017277918,
+            "unit": "seconds",
+            "extra": "iterations: 5012\ncpu: 0.00027953871747805274 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.001190853605051616,
+            "unit": "seconds",
+            "extra": "iterations: 1177\ncpu: 0.001190800826677996 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.00459584938024137,
+            "unit": "seconds",
+            "extra": "iterations: 303\ncpu: 0.004595549551155114 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.004829009648027092,
+            "unit": "seconds",
+            "extra": "iterations: 290\ncpu: 0.004819219793103449 seconds\nthreads: 1"
           }
         ]
       }
