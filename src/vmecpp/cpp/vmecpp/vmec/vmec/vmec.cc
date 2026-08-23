@@ -644,7 +644,8 @@ bool Vmec::InitializeRadial(
           ls_[thread_id].get(), &h_, r_[thread_id].get(), &fb_vac_,
           vac_num_threads_, kSignOfJacobian, indata_.nvacskip,
           &vacuum_pressure_state_);
-      m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0);
+      m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
+                                   indata_.lforbal);
     }  // thread_id
 
     if (checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
