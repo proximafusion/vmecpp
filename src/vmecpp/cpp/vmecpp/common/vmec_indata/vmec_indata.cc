@@ -1669,9 +1669,8 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     if (boundary_spectral_width > kSpectrallyDenseBoundaryThreshold) {
       LOG(WARNING) << absl::StrFormat(
           "Input boundary is spectrally dense (spectral width <M> = %.1f). "
-          "Fixed-boundary runs with high spectral content may converge poorly; "
-          "consider spectral condensation of the boundary or reducing its "
-          "high-m Fourier content.",
+          "Runs with high spectral content may converge poorly or incorrectly resolve the physics.  "
+          "consider spectral condensation of the boundary first, e.g. using simsopt.geo.surfacerzfourier.condense_spectrum",
           boundary_spectral_width);
     }
   }
