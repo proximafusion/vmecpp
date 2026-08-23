@@ -443,6 +443,15 @@ class VmecModel {
   }
 
 #ifdef VMECPP_ENABLE_ENZYME
+  void RequireLforbalDisabledForExactDerivatives() const {
+    if (vmec_->m_[0]->lforbal) {
+      throw std::runtime_error(
+          "Exact derivative operators do not support lforbal=true because "
+          "the LFORBAL force replacement has no JVP/VJP; use "
+          "lforbal=false or a finite-difference derivative.");
+    }
+  }
+
   // Exact Hessian-vector product H v = T^T J_g T v of the augmented
   // functional, computed with one Enzyme forward pass through the local
   // force-density composition (J_g) wrapped by the linear spectral transforms.
@@ -456,6 +465,7 @@ class VmecModel {
   // set_freeze_constraint_multiplier(True). The model state is restored to x on
   // return.
   Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd& v) {
+    RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel& model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
     Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
@@ -486,6 +496,7 @@ class VmecModel {
   // scaled gradient), so the adjoint boundary gradient needs H^T, not H. Uses
   // the same cached primal geometry as ExactHessianVectorProduct.
   Eigen::VectorXd ExactHessianVectorProductTranspose(const Eigen::VectorXd& w) {
+    RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel& model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
     if (!exact_primal_valid_ ||

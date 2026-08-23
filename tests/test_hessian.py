@@ -34,6 +34,12 @@ def _model(ns: int = 11):
     return _vmecpp.VmecModel.create(_vmecpp.VmecINDATA.from_file(str(SOLOVEV)), ns)
 
 
+def _model_with_lforbal(lforbal: bool, ns: int = 11):
+    indata = _vmecpp.VmecINDATA.from_file(str(SOLOVEV))
+    indata.lforbal = lforbal
+    return _vmecpp.VmecModel.create(indata, ns)
+
+
 def _raw_force(model, x):
     model.set_state(np.ascontiguousarray(x))
     model.evaluate(2, 2, False)
@@ -121,3 +127,51 @@ def test_exact_hvp_matches_force_jacobian_when_tcon_frozen(
     eps = 1e-6
     fd = (_raw_force(m, x + eps * v) - _raw_force(m, x - eps * v)) / (2 * eps)
     assert np.linalg.norm(he - fd) < 1e-3 * np.linalg.norm(fd)
+
+
+def test_exact_derivatives_reject_lforbal():
+    m = _model_with_lforbal(True)
+    if not hasattr(m, "exact_hessian_vector_product"):
+        pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
+
+    m.evaluate(2, 2, False)
+    x = np.asarray(m.get_state(), float).copy()
+    v = np.zeros_like(x)
+    calls = (
+        lambda: m.exact_hessian_vector_product(v),
+        lambda: m.exact_hessian_vector_product_transpose(v),
+    )
+    for call in calls:
+        with pytest.raises(RuntimeError, match="lforbal=true"):
+            call()
+        np.testing.assert_array_equal(np.asarray(m.get_state(), float), x)
+
+
+def test_exact_derivatives_supported_path_zero_fd_and_duality():
+    m = _model_with_lforbal(False)
+    if not hasattr(m, "exact_hessian_vector_product"):
+        pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
+
+    m.solve()
+    m.evaluate(2, 2, True)
+    m.set_freeze_constraint_multiplier(True)
+    x = np.asarray(m.get_state(), float).copy()
+    zero = np.zeros_like(x)
+    np.testing.assert_array_equal(m.exact_hessian_vector_product(zero), zero)
+
+    rng = np.random.default_rng(582626)
+    v = rng.standard_normal(x.size)
+    v /= np.linalg.norm(v)
+    w = rng.standard_normal(x.size)
+    hv = np.asarray(m.exact_hessian_vector_product(np.ascontiguousarray(v)), float)
+    htw = np.asarray(
+        m.exact_hessian_vector_product_transpose(np.ascontiguousarray(w)), float
+    )
+    eps = 1e-7 * (1.0 + np.linalg.norm(x))
+    fd = (_raw_force(m, x + eps * v) - _raw_force(m, x - eps * v)) / (2 * eps)
+    m.set_state(np.ascontiguousarray(x))
+    m.evaluate(2, 2, False)
+
+    assert np.linalg.norm(hv - fd) < 2e-8 * np.linalg.norm(fd)
+    np.testing.assert_allclose(np.dot(w, hv), np.dot(v, htw), rtol=1e-12)
+    np.testing.assert_array_equal(np.asarray(m.get_state(), float), x)

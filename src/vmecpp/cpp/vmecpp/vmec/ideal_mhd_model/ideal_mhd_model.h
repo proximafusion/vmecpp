@@ -186,7 +186,9 @@ class IdealMhdModel {
   // decomposed force tangent in m_decomposed_hv. The constraint multiplier tcon
   // is held frozen; freeze it in the raw force too
   // (freeze_constraint_multiplier_) for an exactly consistent Jacobian. Used by
-  // the exact internal Newton-Krylov Hessian-vector product.
+  // the exact internal Newton-Krylov Hessian-vector product. This low-level
+  // kernel does not differentiate the state-dependent LFORBAL replacement;
+  // public callers must reject lforbal=true.
   void applyExactForceJacobian(const double* geomP, const double* dgeom,
                                int geom_stride, FourierForces& m_physical_f,
                                FourierForces& m_decomposed_hv,
@@ -235,7 +237,9 @@ class IdealMhdModel {
   // in m_decomposed_out. The two spectral transforms are reused as each other's
   // adjoint with the poloidal integration weight; the rest of the linear chain
   // (decomposeInto, m1Constraint, zeroZForceForM1, extrapolateTowardsAxis,
-  // ruFull/zuFull, lamscale) is transposed analytically.
+  // ruFull/zuFull, lamscale) is transposed analytically. This low-level kernel
+  // does not transpose the state-dependent LFORBAL replacement; public callers
+  // must reject lforbal=true.
   void applyExactForceJacobianTranspose(const double* geomP, int geom_stride,
                                         FourierForces& m_decomposed_in,
                                         FourierForces& m_physical_f,
