@@ -259,7 +259,6 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
             assert (
                 test_dataset.dimensions[d].size == expected_dataset.dimensions[d].size
             )
-
         # np.asarray is needed to convert the masked array to a regular array.
         # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
         # Current density coefficients are computed via finite differences of
