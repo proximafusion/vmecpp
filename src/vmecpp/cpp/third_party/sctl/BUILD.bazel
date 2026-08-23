@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+#
+# SCTL is fetched as the @sctl repository (see non_module_deps.bzl); this
+# package only holds the build overlay.
+exports_files([
+    "cxx20.patch",
+    "sctl.BUILD",
+])

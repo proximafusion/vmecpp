@@ -60,6 +60,10 @@ include_directories(${eigen_SOURCE_DIR})
 FetchContent_Declare(nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
 FetchContent_MakeAvailable(nlohmann_json)
 
+# Pin the reference (netlib) BLAS/LAPACK: with MKL installed, CMake would
+# otherwise select MKL with libiomp5, which clashes with the libgomp OpenMP
+# runtime used by VMEC++.
+set(BLA_VENDOR Generic)
 find_package(LAPACK REQUIRED)
 
 
@@ -104,6 +108,53 @@ include_directories(${abseil-cpp_SOURCE_DIR})
 # specified relative to `${PROJECT_SOURCE_DIR}/src/vmecpp/cpp`.
 include_directories(${PROJECT_SOURCE_DIR}/src/vmecpp/cpp)
 
+# BIEST and SCTL (fetched, pinned; see src/vmecpp/cpp/third_party/biest/README.md)
+# for the BIEST free-boundary solver. SCTL needs an FFT provider and LAPACKE;
+# without an FFT its fallback builds dense DFT matrices and runs out of memory.
+# The FFTW3 API is provided by Intel MKL's FFTW interface -- FFTW itself is
+# GPL and cannot be linked into the MIT-licensed VMEC++.
+FetchContent_Declare(
+  biest
+  URL https://github.com/dmalhotra/BIEST/archive/97329a2e76799aed158266dedf28e3cfa7323df4.tar.gz
+  URL_HASH SHA256=4cd84deb60ba26b9a97bf4ee231faed9c2debca60dbc99b1c4b11cc0ed034987
+  # --forward || true: the patch is already applied on re-configures
+  PATCH_COMMAND patch -p1 --forward -i ${CMAKE_CURRENT_SOURCE_DIR}/src/vmecpp/cpp/third_party/biest/warm_start.patch || true
+)
+FetchContent_Declare(
+  sctl
+  URL https://github.com/dmalhotra/SCTL/archive/af59e54adaf0e3bd25643df2d32967bd05f370fa.tar.gz
+  URL_HASH SHA256=5c6337010f3bfd4aeb0dbd81d0af479d6aa9f8abcfbddb771f6ba123f79f13bd
+  PATCH_COMMAND patch -p1 --forward -i ${CMAKE_CURRENT_SOURCE_DIR}/src/vmecpp/cpp/third_party/sctl/cxx20.patch || true
+)
+FetchContent_MakeAvailable(biest sctl)
+# BIEST's archive embeds a stale copy of SCTL; put the real SCTL first on the
+# include path.
+include_directories(${sctl_SOURCE_DIR}/include ${biest_SOURCE_DIR}/include)
+
+# Intel MKL's FFTW3 interface (Ubuntu: libmkl-dev) and LAPACKE (liblapacke-dev)
+find_path(MKL_FFTW3_INCLUDE_DIR fftw3.h
+  PATHS /usr/include/mkl/fftw $ENV{MKLROOT}/include/fftw
+)
+# Explicit GNU-threading link chain: mkl_rt's runtime layer detection fails
+# under libgomp-based processes.
+find_library(MKL_GF_LIBRARY mkl_gf_lp64 PATHS $ENV{MKLROOT}/lib/intel64)
+find_library(MKL_GNU_THREAD_LIBRARY mkl_gnu_thread PATHS $ENV{MKLROOT}/lib/intel64)
+find_library(MKL_CORE_LIBRARY mkl_core PATHS $ENV{MKLROOT}/lib/intel64)
+set(MKL_RT_LIBRARY ${MKL_GF_LIBRARY} ${MKL_GNU_THREAD_LIBRARY} ${MKL_CORE_LIBRARY})
+if(NOT MKL_FFTW3_INCLUDE_DIR OR NOT MKL_GF_LIBRARY OR NOT MKL_GNU_THREAD_LIBRARY OR NOT MKL_CORE_LIBRARY)
+  message(FATAL_ERROR "Intel MKL with its FFTW3 interface is required for the "
+          "BIEST/Vac2 free-boundary solvers (Ubuntu: apt install libmkl-dev). "
+          "FFTW itself is GPL and cannot be linked into the MIT-licensed VMEC++.")
+endif()
+include_directories(${MKL_FFTW3_INCLUDE_DIR})
+
+add_compile_definitions(
+  SCTL_GLOBAL_MEM_BUFF=0
+  SCTL_QUAD_T=__float128
+  SCTL_HAVE_LAPACK
+  SCTL_HAVE_FFTW
+)
+
 # Assemble the VMEC++ source tree.
 # Start out with ABSCAB sources - no need for a separate library for ABSCAB.
 set(vmecpp_sources ${abscab_sources})
@@ -115,6 +166,8 @@ target_link_libraries(vmecpp_core PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES
 target_link_libraries(vmecpp_core PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(vmecpp_core PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(vmecpp_core PRIVATE LAPACK::LAPACK)
+# for the BIEST free-boundary solver (SCTL)
+target_link_libraries(vmecpp_core PRIVATE lapacke ${MKL_RT_LIBRARY})
 
 # FFTX (SPIRAL-generated batched IPRDFT/PRDFT) for the toroidal FFT hot path.
 # The codelets are vendored under src/vmecpp/cpp/third_party/fftx_codelets/;
