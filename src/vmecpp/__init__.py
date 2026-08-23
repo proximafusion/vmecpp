@@ -39,6 +39,7 @@ from vmecpp._pydantic_numpy import (
     BaseModelWithNumpy,
     own_model_fields,
 )
+from vmecpp._rescale import rescale
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
 logger = logging.getLogger(__name__)
@@ -2673,6 +2674,7 @@ populate_raw_profile = set_profile
 __all__ = [  # noqa: RUF022
     "run",
     "interpolate_solution",
+    "rescale",
     "VmecInput",
     "VmecOutput",
     "VmecWOut",
