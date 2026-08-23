@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787487430868,
+  "lastUpdate": 1787504177282,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -12067,6 +12067,93 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.22962656800001469,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2a4e75331b2ed08e1cb7e532044d4924fabb7cc9",
+          "message": "test_data: correct wdot in the reference wout files (#700)\n\nThe checked-in wdot histories in wout_cma.nc and wout_cth_like_free_bdy.nc\nwere produced by the aliased in-place Eigen assignment in\nComputeWOutFileContents and are not energy decay rates: they alternate small\nnegatives with values pinned near 1.0.\n\nPatch wdot in place in both files, leaving every other variable bit-identical.\nThe corrected values were verified to belong to the same energy history the\ngoldens already encoded: inverting the known corruption pattern and\nre-applying the correct decay formula reproduces them to 2.8e-12 (cma) and\n1.3e-11 (cth_like_free_bdy) max absolute difference.\n\nThe code-side fix is in #699.",
+          "timestamp": "2026-08-23T18:50:10+02:00",
+          "tree_id": "655cf479bcb2f5355647451384b9df192b84504f",
+          "url": "https://github.com/proximafusion/vmecpp/commit/2a4e75331b2ed08e1cb7e532044d4924fabb7cc9"
+        },
+        "date": 1787504175678,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3901048758000115,
+            "range": "stddev: 0.003677624544448313",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3874168343999941,
+            "range": "stddev: 0.002386185305608925",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.522615830666666,
+            "range": "stddev: 0.011889579530403588",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.108821353333326,
+            "range": "stddev: 0.00902045347166004",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.5864704890000023,
+            "range": "stddev: 0.044689087675295",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.0684573626666634,
+            "range": "stddev: 0.043332292958328196",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.257492142333319,
+            "range": "stddev: 0.008943323018387303",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.891903551999974,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.471043639999948,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
