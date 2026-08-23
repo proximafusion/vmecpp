@@ -67,10 +67,20 @@ class VmecBoundaryProblem:
         self.model.evaluate(2, 2, False)
         return self.model.mhd_energy
 
-    def gradient(self, p):
+    def gradient(self, p, exact=None):
+        # Use the exact autodiff HVP when the extension was built with Enzyme,
+        # otherwise fall back to the finite-difference HVP so the default build
+        # still works.
+        if exact is None:
+            exact = hasattr(self.model, "exact_hessian_vector_product")
         self._resolve(p)
         return boundary_gradient(
-            self.model, self._x_full, self.interior, self.boundary, mhd_energy
+            self.model,
+            self._x_full,
+            self.interior,
+            self.boundary,
+            mhd_energy,
+            exact=exact,
         )
 
 

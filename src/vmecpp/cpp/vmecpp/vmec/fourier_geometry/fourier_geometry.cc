@@ -351,6 +351,47 @@ void FourierGeometry::extrapolateTowardsAxis() {
   }  // n
 }
 
+void FourierGeometry::extrapolateTowardsAxisTranspose() {
+  if (nsMin_ > 0) {
+    return;
+  }
+  int axis = 0;
+  int firstSurface = 1;
+  for (int n = 0; n < s_.ntor + 1; ++n) {
+    int m0 = 0;
+    int m1 = 1;
+    int axis0 = (axis * s_.mpol + m0) * (s_.ntor + 1) + n;
+    int axis1 = (axis * s_.mpol + m1) * (s_.ntor + 1) + n;
+    int firstSurface0 = (firstSurface * s_.mpol + m0) * (s_.ntor + 1) + n;
+    int firstSurface1 = (firstSurface * s_.mpol + m1) * (s_.ntor + 1) + n;
+
+    auto fold = [](std::span<double> c, int axisIdx, int firstIdx) {
+      c[firstIdx] += c[axisIdx];
+      c[axisIdx] = 0.0;
+    };
+    fold(rmncc, axis1, firstSurface1);
+    fold(zmnsc, axis1, firstSurface1);
+    fold(lmnsc, axis1, firstSurface1);
+    if (s_.lthreed) {
+      fold(rmnss, axis1, firstSurface1);
+      fold(zmncs, axis1, firstSurface1);
+      fold(lmncs, axis1, firstSurface1);
+      fold(lmncs, axis0, firstSurface0);
+    }
+    if (s_.lasym) {
+      fold(rmnsc, axis1, firstSurface1);
+      fold(zmncc, axis1, firstSurface1);
+      fold(lmncc, axis1, firstSurface1);
+      fold(lmncc, axis0, firstSurface0);
+      if (s_.lthreed) {
+        fold(rmncs, axis1, firstSurface1);
+        fold(zmnss, axis1, firstSurface1);
+        fold(lmnss, axis1, firstSurface1);
+      }
+    }
+  }  // n
+}
+
 void FourierGeometry::ComputeSpectralWidth(
     const FourierBasisFastPoloidal& fourier_basis,
     RadialProfiles& m_radial_profiles, const int p, const int q) const {
