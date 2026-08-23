@@ -81,6 +81,17 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   const OutputQuantities& output_quantities = vmec.output_quantities_;
   const WOutFileContents& wout = output_quantities.wout;
 
+  ASSERT_EQ(wout.wdot.size(), fc.mhd_energy.size());
+  ASSERT_FALSE(fc.mhd_energy.empty());
+  EXPECT_DOUBLE_EQ(wout.wdot(0), fc.mhd_energy[0]);
+  for (size_t i = 1; i < fc.mhd_energy.size(); ++i) {
+    const double expected_decay_rate =
+        (fc.mhd_energy[i] - fc.mhd_energy[i - 1]) / fc.mhd_energy[i];
+    EXPECT_DOUBLE_EQ(wout.wdot(static_cast<Eigen::Index>(i)),
+                     expected_decay_rate)
+        << "i = " << i;
+  }
+
   // Note that the actual `wout` file itself is taken as reference here.
   filename =
       absl::StrFormat("vmecpp/test_data/wout_%s.nc", data_source_.identifier);
