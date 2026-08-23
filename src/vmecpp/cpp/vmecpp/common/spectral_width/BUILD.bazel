@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "spectral_width",
+    srcs = ["spectral_width.cc"],
+    hdrs = ["spectral_width.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/sizes:sizes",
+        "@eigen",
+    ],
+)
+
+cc_test(
+    name = "spectral_width_test",
+    srcs = ["spectral_width_test.cc"],
+    deps = [
+        ":spectral_width",
+        "//vmecpp/common/fourier_basis_fast_poloidal",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
