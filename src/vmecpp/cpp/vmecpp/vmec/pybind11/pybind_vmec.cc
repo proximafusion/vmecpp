@@ -809,6 +809,7 @@ class VmecModel {
   // contraction is the gradient component. No finite differences. State
   // restored on return.
   Eigen::VectorXd ExactQsObjectiveStateGradient(const py::dict& harm_bar) {
+    RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel& m = *vmec_->m_[0];
     const vmecpp::RadialProfiles& rp = *vmec_->p_[0];
     int nsH;
@@ -884,6 +885,7 @@ class VmecModel {
   // exact Gauss-Newton residual Jacobian (one tangent per boundary DOF). No
   // finite differences. State restored on return.
   py::dict ExactQsHarmonicsTangent(const Eigen::VectorXd& v) {
+    RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel& m = *vmec_->m_[0];
     const vmecpp::RadialProfiles& rp = *vmec_->p_[0];
     int nsH;
