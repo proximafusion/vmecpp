@@ -8,7 +8,6 @@
 #include <utility>
 #include <vector>
 
-#include "vmecpp/common/spectral_width/spectral_width.h"
 #include "vmecpp/common/util/util.h"
 
 namespace vmecpp {

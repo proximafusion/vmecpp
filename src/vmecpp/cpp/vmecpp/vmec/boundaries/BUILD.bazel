@@ -20,7 +20,6 @@ cc_library(
         ":guess_magnetic_axis",
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",
-        "//vmecpp/common/spectral_width:spectral_width",
         "//vmecpp/common/fourier_basis_fast_poloidal",
         "//vmecpp/common/vmec_indata:vmec_indata",
         "@abseil-cpp//absl/algorithm:container",

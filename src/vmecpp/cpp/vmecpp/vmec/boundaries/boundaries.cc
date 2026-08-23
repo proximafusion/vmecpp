@@ -10,7 +10,6 @@
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
-#include "vmecpp/common/spectral_width/spectral_width.h"
 #include "vmecpp/vmec/boundaries/guess_magnetic_axis.h"
 
 namespace vmecpp {
