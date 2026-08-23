@@ -102,7 +102,7 @@ void vmecpp::deAliasConstraintForce(
   if (!s_.lasym) {
     // Arithmetic lives in the shared, allocation-free kernel
     // (constraint_force_kernel.h) so the solver and the Enzyme autodiff path
-    // use one implementation.
+    // use one implementation for stellarator-symmetric configurations.
     ComputeDeAliasConstraintForce(
         gConEff.data(), faccon.data(), tcon.data(), fb.sinmui.data(),
         fb.cosmui.data(), fb.cosnv.data(), fb.sinnv.data(), fb.sinmu.data(),
