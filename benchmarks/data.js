@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787506588858,
+  "lastUpdate": 1787507224880,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -12328,6 +12328,93 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3835507339999822,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "46216bb1acf457908bf6ebf57b9cbe8ebed822fb",
+          "message": "Drop duplicate files from large test data (#701)\n\n* Drop duplicated fixed-boundary JSON inputs from large test data\n\nThe six fixed-boundary JSON inputs in //vmecpp_large_cpp_tests/test_data\nwere byte-identical to the copies in //vmecpp/test_data. They were also\nlisted in no filegroup here, so nothing could reach them: the tests in\nthis tree already take their inputs from the \"//vmecpp/test_data:...\"\ndata deps and only take the educational_VMEC reference dumps from the\nlocal test_data.\n\nregenerate_test_data.sh re-creates these files by running indata2json on\nthe local input.* files, so they are gitignored rather than merely\ndeleted, to keep them from coming back on the next regeneration.\n\nDeliberately untouched:\n- The wout_*.nc files. Despite the shared names, no two are identical:\n  the ones here come from Fortran educational_VMEC (currumnc, currvmnc,\n  input_extension, 1001-element aux arrays) while those in\n  //vmecpp/test_data are VMEC++'s own output (lmns_full, fsqt,\n  force_residual_*). Sharing them would make these tests compare VMEC++\n  against itself instead of against an independent reference.\n- The local input.* files, which carry the dump_* flags that make\n  educational_VMEC emit the reference data.\n- The free-boundary files (coils.*, mgrid_solovev.nc and the\n  solovev_free_bdy set), left as-is by request.\n\n* Update .gitignore\n\n* Drop duplicated mgrid_solovev.nc from large test data\n\n//vmecpp/test_data/mgrid_solovev.nc and the copy under\n//vmecpp_large_cpp_tests/test_data were byte-identical. Both were already\nLFS-tracked and both pointers referenced the same OID\n(f17260704b9f6ca96c0f7202cc99dbfe8bdb625d1103d4597fd8ca5197b96fb1), so\ngit and LFS were already storing the 25 MB object only once; the cost was\na second 25 MB copy in every checkout.\n\nThe surviving copy is the one that is actually wired up: it is reached\nvia the //vmecpp/test_data:solovev_free_bdy and :solovev_free_bdy_lforbal\nfilegroups by output_quantities_test and vmec_in_memory_mgrid_test, and\n//vmecpp/test_data/solovev_free_bdy.json names that path in mgrid_file.\nNothing referenced the large-tree copy: it sat in no filegroup, because\nthe solovev_free_bdy case was never wired up in this tree.\n\nThe unused solovev_free_bdy.json here still names the removed path, but\nit is equally unwired, and regenerate_test_data.sh rebuilds the mgrid\nfrom coils.solovev via makegrid if that case is ever enabled.",
+          "timestamp": "2026-08-23T19:33:24+02:00",
+          "tree_id": "82d77771b01b862edf4dbd3203733d8f0252a675",
+          "url": "https://github.com/proximafusion/vmecpp/commit/46216bb1acf457908bf6ebf57b9cbe8ebed822fb"
+        },
+        "date": 1787507222596,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.29516311539998696,
+            "range": "stddev: 0.003074976194065509",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.29654811500000733,
+            "range": "stddev: 0.0036177737962288055",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.052844680333332,
+            "range": "stddev: 0.033053388308594216",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8990081320000248,
+            "range": "stddev: 0.0071128246426823225",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.2639229653333548,
+            "range": "stddev: 0.011278584050541253",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.7969787593333233,
+            "range": "stddev: 0.044775487562660685",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.970609982666701,
+            "range": "stddev: 0.02229623551553104",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.118537376000006,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.29796693599996615,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
