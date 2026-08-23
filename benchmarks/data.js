@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787507541003,
+  "lastUpdate": 1787510463457,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -12415,6 +12415,93 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.29796693599996615,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "100dca407c6a41bc9e07df4b67f0ca97f11189c0",
+          "message": "vmec_indata: warn when the input boundary is spectrally dense (#600)\n\n* vmec_indata: warn when the input boundary is spectrally dense\n\nFixed-boundary runs whose boundary carries a lot of high-poloidal-mode\ncontent tend to fail to initialize or converge poorly, and the only\nsignal today is a late, generic solver abort. IsConsistent now computes\nthe boundary spectral width <M> (the wout.specw / ComputeSpectralWidth\nquantity, evaluated on the input coefficients) and warns above a\ncalibrated threshold before the solve, for fixed-boundary runs only.\n\nThe threshold (6) is set from ripple sweeps on a tokamak and a 3D\nstellarator: fixed-boundary runs converge for <M> below ~6 and fail\nfrom ~7.2, while all bundled inputs stay below 1.75.\n\n* Update src/vmecpp/cpp/vmecpp/common/vmec_indata/vmec_indata.cc\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>\n\n* Share one spectral-width implementation between the geometry and the boundary check\n\nExtract the per-surface spectral width out of FourierGeometry::ComputeSpectralWidth into common/spectral_width and call it from both the geometry and a new Boundaries::ComputeSpectralWidth. The boundary warning moves to Boundaries::setupFromIndata, which is the lowest layer that can reach the shared implementation, and its threshold is 2.0.\n\n* Keep the shared spectral width in the Fourier basis target instead of its own\n\nThe function weights coefficients by the mscale and nscale that FourierBasisFastPoloidal defines, so it belongs beside them; both callers already depended on that target. Drops the separate common/spectral_width library and its CMake entry.\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-08-23T20:35:28+02:00",
+          "tree_id": "929f1e38d09611f5d5f521307d70f662d8ff7f7a",
+          "url": "https://github.com/proximafusion/vmecpp/commit/100dca407c6a41bc9e07df4b67f0ca97f11189c0"
+        },
+        "date": 1787510461766,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3541248687999996,
+            "range": "stddev: 0.0011270005859863545",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.35513289799998804,
+            "range": "stddev: 0.0006871119773160861",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.501626379333326,
+            "range": "stddev: 0.02121865015794113",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1284729530000088,
+            "range": "stddev: 0.002638753541589008",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.674359599000032,
+            "range": "stddev: 0.017415971254080852",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.2953350693333427,
+            "range": "stddev: 0.010686473033233845",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.409244024999983,
+            "range": "stddev: 0.01564940767937375",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.578187017000005,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.37994597799996654,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
