@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787511459275,
+  "lastUpdate": 1787511723540,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -39360,6 +39360,162 @@ window.BENCHMARK_DATA = {
             "value": 0.004829009648027092,
             "unit": "seconds",
             "extra": "iterations: 290\ncpu: 0.004819219793103449 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1d7e09941c89210be95b6b20f4d4d555f0a63096",
+          "message": "Fix VmecWOut.from_wout_file failing to validate wout aliases (#702)\n\nVmecWOut.from_wout_file() builds a dict keyed by the wout file's native\nvariable names (e.g. lasym__logical__) and validates it with\nmodel_validate(attrs, by_alias=True), expecting the by_alias override to\napply. But VmecWOut.model_config set validate_by_alias=False, and with a\nmodel_validator(mode=\"wrap\") present (used to scope jaxtyping axis checks\nto the model), a runtime by_alias/by_name override passed to\nmodel_validate() is silently dropped -- a known pydantic-core bug\n(pydantic/pydantic#13661), fixed upstream but not yet in a pinned release.\n\nSet validate_by_alias=True directly in VmecWOut.model_config instead of\nrelying on the call-time override, which works correctly regardless.",
+          "timestamp": "2026-08-23T20:53:22+02:00",
+          "tree_id": "521e81bb0c7d907ca138142a7d9fd061faaab3aa",
+          "url": "https://github.com/proximafusion/vmecpp/commit/1d7e09941c89210be95b6b20f4d4d555f0a63096"
+        },
+        "date": 1787511723352,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000021541501101205668,
+            "unit": "seconds",
+            "extra": "iterations: 61774\ncpu: 2.154070644607764e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.0000284108465055767,
+            "unit": "seconds",
+            "extra": "iterations: 49271\ncpu: 2.8410279251486685e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0003798751602443029,
+            "unit": "seconds",
+            "extra": "iterations: 3671\ncpu: 0.0003798585320076274 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0009228041451373607,
+            "unit": "seconds",
+            "extra": "iterations: 1468\ncpu: 0.0009227797465940056 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00012316576952133866,
+            "unit": "seconds",
+            "extra": "iterations: 10789\ncpu: 0.0001231406446380573 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00008958964974162151,
+            "unit": "seconds",
+            "extra": "iterations: 15592\ncpu: 8.958302366598257e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00022840457392843505,
+            "unit": "seconds",
+            "extra": "iterations: 6173\ncpu: 0.00022831506074842055 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.00018507907818297975,
+            "unit": "seconds",
+            "extra": "iterations: 7531\ncpu: 0.0001850692894701899 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.00037306853780104925,
+            "unit": "seconds",
+            "extra": "iterations: 3538\ncpu: 0.0003730469007914076 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00029025165927915313,
+            "unit": "seconds",
+            "extra": "iterations: 4979\ncpu: 0.0002896935926892953 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0012665306596451155,
+            "unit": "seconds",
+            "extra": "iterations: 1095\ncpu: 0.001266223406392693 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0010107576761066827,
+            "unit": "seconds",
+            "extra": "iterations: 1386\ncpu: 0.0010104912698412707 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00005457649650408726,
+            "unit": "seconds",
+            "extra": "iterations: 24737\ncpu: 5.457910106318487e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.0003636141487710829,
+            "unit": "seconds",
+            "extra": "iterations: 3962\ncpu: 0.0003635977794043391 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0017973292119724234,
+            "unit": "seconds",
+            "extra": "iterations: 776\ncpu: 0.001797340766752569 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00005227921654020677,
+            "unit": "seconds",
+            "extra": "iterations: 28102\ncpu: 5.2261476193865806e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0003439748988432043,
+            "unit": "seconds",
+            "extra": "iterations: 4012\ncpu: 0.0003439678068295192 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0018632972941679115,
+            "unit": "seconds",
+            "extra": "iterations: 782\ncpu: 0.0018632836598465722 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00017868015687289997,
+            "unit": "seconds",
+            "extra": "iterations: 7831\ncpu: 0.000178675542204061 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0008495916193778361,
+            "unit": "seconds",
+            "extra": "iterations: 1744\ncpu: 0.0008495524896788984 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.004340165150091516,
+            "unit": "seconds",
+            "extra": "iterations: 322\ncpu: 0.004339878742236027 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.006735393746954497,
+            "unit": "seconds",
+            "extra": "iterations: 488\ncpu: 0.006165126448770492 seconds\nthreads: 1"
           }
         ]
       }
