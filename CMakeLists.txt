@@ -206,7 +206,13 @@ endif()
 # Now also add the vmec_standalone executable.
 add_executable(vmec_standalone ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/vmec_standalone/vmec_standalone.cc)
 target_link_libraries(vmec_standalone vmecpp_core)
-set_target_properties(vmec_standalone PROPERTIES BUILD_RPATH "$ORIGIN")
+if(APPLE)
+  set(_vmecpp_loader_path "@loader_path")
+else()
+  set(_vmecpp_loader_path "$ORIGIN")
+endif()
+set_target_properties(vmec_standalone PROPERTIES
+                      BUILD_RPATH "${_vmecpp_loader_path}")
 
 # Now add the pybind11 module for VMEC++.
 FetchContent_MakeAvailable(pybind11)
@@ -223,7 +229,8 @@ if(OpenMP_CXX_FOUND)
   target_link_libraries(_vmecpp PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
-set_target_properties(_vmecpp PROPERTIES INSTALL_RPATH "$ORIGIN")
+set_target_properties(_vmecpp PROPERTIES
+                      INSTALL_RPATH "${_vmecpp_loader_path}")
 install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
 # glibc >= 2.33 prefers glibc-hwcaps/ subdirectories; older loaders ignore
 # them and pick up the baseline next to the extension module.
