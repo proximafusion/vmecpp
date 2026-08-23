@@ -137,11 +137,11 @@ function(vmecpp_add_core target)
   endif()
   target_compile_options(${target} PRIVATE ${CORE_COMPILE_OPTIONS})
 
-  target_link_libraries(${target} PRIVATE ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES})
-  target_link_libraries(${target} PRIVATE ${netCDF_LIBRARIES})
-  target_link_libraries(${target} PRIVATE nlohmann_json::nlohmann_json)
-  target_link_libraries(${target} PRIVATE LAPACK::LAPACK)
-  target_link_libraries(${target} PRIVATE absl::algorithm absl::base
+  target_link_libraries(${target} PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES})
+  target_link_libraries(${target} PUBLIC ${netCDF_LIBRARIES})
+  target_link_libraries(${target} PUBLIC nlohmann_json::nlohmann_json)
+  target_link_libraries(${target} PUBLIC LAPACK::LAPACK)
+  target_link_libraries(${target} PUBLIC absl::algorithm absl::base
     absl::synchronization absl::strings absl::str_format absl::log
     absl::string_view absl::check absl::status absl::statusor)
 
@@ -159,7 +159,7 @@ function(vmecpp_add_core target)
   endif()
 
   if(OpenMP_CXX_FOUND)
-    target_link_libraries(${target} PRIVATE OpenMP::OpenMP_CXX)
+    target_link_libraries(${target} PUBLIC OpenMP::OpenMP_CXX)
   endif()
 
   # We multithread at the outer loop level, not for the individual Eigen operations
@@ -185,9 +185,19 @@ endif()
 
 vmecpp_add_core(vmecpp_core)
 
+set(VMECPP_HWCAPS_DISPATCH_DEFAULT OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+  set(VMECPP_HWCAPS_DISPATCH_DEFAULT ON)
+endif()
 option(VMECPP_HWCAPS_DISPATCH
-       "Also build x86-64-v3 core variant selected at load time via glibc-hwcaps" ON)
+       "Also build x86-64-v3 core variant selected at load time via glibc-hwcaps"
+       ${VMECPP_HWCAPS_DISPATCH_DEFAULT})
 if(VMECPP_HWCAPS_DISPATCH)
+  if(NOT VMECPP_HWCAPS_DISPATCH_DEFAULT)
+    message(FATAL_ERROR
+      "VMECPP_HWCAPS_DISPATCH requires Linux on an x86-64 processor")
+  endif()
   vmecpp_add_core(vmecpp_core_v3 HWCAPS_SUBDIR x86-64-v3
                   COMPILE_OPTIONS -march=x86-64-v3)
 endif()
@@ -247,20 +257,60 @@ if(VMECPP_ENABLE_ENZYME)
   endif()
   # The Enzyme pass is an LLVM-version-specific plugin. icx/icpx (IntelLLVM)
   # cannot load a plugin built against a different upstream LLVM. Enzyme's output
-  # is an ordinary object file, though, so for such compilers the single Enzyme
-  # TU (exact_force_jvp.cc) can be precompiled with a matching ClangEnzyme and
-  # linked in via VMECPP_ENZYME_OBJECT, while the rest is built with icx.
+  # is an ordinary object file, though, so for such compilers the two Enzyme TUs
+  # can be precompiled with a matching ClangEnzyme and linked in, while the rest
+  # is built with icx.
+  set(VMECPP_ENZYME_JVP_OBJECT "" CACHE FILEPATH
+    "Prebuilt exact_force_jvp object (compiled with a matching ClangEnzyme)")
+  set(VMECPP_ENZYME_VJP_OBJECT "" CACHE FILEPATH
+    "Prebuilt exact_force_vjp object (compiled with a matching ClangEnzyme)")
+  # Backward-compatible name for the original JVP-only input. Keep its meaning
+  # explicit: the cotangent implementation must still be supplied separately.
   set(VMECPP_ENZYME_OBJECT "" CACHE FILEPATH
-    "Prebuilt exact_force_jvp object (compiled elsewhere with a matching ClangEnzyme)")
+    "Deprecated JVP-only alias for VMECPP_ENZYME_JVP_OBJECT")
+  set(VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT "${VMECPP_ENZYME_JVP_OBJECT}")
   if(VMECPP_ENZYME_OBJECT)
-    if(NOT EXISTS "${VMECPP_ENZYME_OBJECT}")
-      message(FATAL_ERROR "VMECPP_ENZYME_OBJECT not found: ${VMECPP_ENZYME_OBJECT}")
+    if(VMECPP_ENZYME_JVP_OBJECT AND
+       NOT "${VMECPP_ENZYME_JVP_OBJECT}" STREQUAL "${VMECPP_ENZYME_OBJECT}")
+      message(FATAL_ERROR
+        "VMECPP_ENZYME_OBJECT and VMECPP_ENZYME_JVP_OBJECT name different "
+        "files; remove the deprecated VMECPP_ENZYME_OBJECT setting")
     endif()
-    message(STATUS "Enzyme: linking prebuilt object ${VMECPP_ENZYME_OBJECT}")
-    set_source_files_properties("${VMECPP_ENZYME_OBJECT}" PROPERTIES
+    message(DEPRECATION
+      "VMECPP_ENZYME_OBJECT supplies only the JVP and is deprecated; use "
+      "VMECPP_ENZYME_JVP_OBJECT together with VMECPP_ENZYME_VJP_OBJECT")
+    set(VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT "${VMECPP_ENZYME_OBJECT}")
+  endif()
+  if(VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT OR VMECPP_ENZYME_VJP_OBJECT)
+    if(NOT VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT)
+      message(FATAL_ERROR
+        "Prebuilt Enzyme mode requires VMECPP_ENZYME_JVP_OBJECT")
+    endif()
+    if(NOT VMECPP_ENZYME_VJP_OBJECT)
+      message(FATAL_ERROR
+        "Prebuilt Enzyme mode requires VMECPP_ENZYME_VJP_OBJECT; the "
+        "deprecated VMECPP_ENZYME_OBJECT supplies only the JVP")
+    endif()
+    foreach(VMECPP_ENZYME_PREBUILT_OBJECT
+            IN ITEMS "${VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT}"
+                     "${VMECPP_ENZYME_VJP_OBJECT}")
+      if(NOT EXISTS "${VMECPP_ENZYME_PREBUILT_OBJECT}")
+        message(FATAL_ERROR
+          "Prebuilt Enzyme object not found: ${VMECPP_ENZYME_PREBUILT_OBJECT}")
+      endif()
+    endforeach()
+    set(VMECPP_ENZYME_PREBUILT_OBJECTS
+      "${VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT}"
+      "${VMECPP_ENZYME_VJP_OBJECT}")
+    message(STATUS
+      "Enzyme: linking prebuilt JVP object ${VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT}")
+    message(STATUS
+      "Enzyme: linking prebuilt VJP object ${VMECPP_ENZYME_VJP_OBJECT}")
+    set_source_files_properties(${VMECPP_ENZYME_PREBUILT_OBJECTS} PROPERTIES
       EXTERNAL_OBJECT TRUE GENERATED TRUE)
     foreach(VMECPP_ENZYME_CORE_TARGET IN LISTS VMECPP_ENZYME_CORE_TARGETS)
-      target_sources(${VMECPP_ENZYME_CORE_TARGET} PRIVATE "${VMECPP_ENZYME_OBJECT}")
+      target_sources(${VMECPP_ENZYME_CORE_TARGET} PRIVATE
+        ${VMECPP_ENZYME_PREBUILT_OBJECTS})
       target_compile_definitions(${VMECPP_ENZYME_CORE_TARGET}
         PUBLIC VMECPP_ENABLE_ENZYME)
     endforeach()
@@ -269,7 +319,8 @@ if(VMECPP_ENABLE_ENZYME)
       message(FATAL_ERROR
         "VMECPP_ENABLE_ENZYME=ON requires "
         "-DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so "
-        "(or -DVMECPP_ENZYME_OBJECT=/path/to/exact_force_jvp.o for icx)")
+        "(or both VMECPP_ENZYME_JVP_OBJECT and VMECPP_ENZYME_VJP_OBJECT "
+        "for prebuilt objects)")
     endif()
     message(STATUS "Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
     enable_testing()
