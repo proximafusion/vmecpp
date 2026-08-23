@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787391550627,
+  "lastUpdate": 1787487150281,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -11980,6 +11980,93 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.46903815600001053,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "43a5a527d54c3696ec1717105dea79a2ddb1476a",
+          "message": "Compile AVX2 variant selected at load based on CPU support (#695)\n\nbuild: ship x86-64-v3 core selected at load time via glibc-hwcaps\n\nBuilds the computation core twice and lets the dynamic loader choose: baseline\nat vmecpp/cpp/libvmecpp_core.so, optimized at\nvmecpp/cpp/glibc-hwcaps/x86-64-v3/. glibc >= 2.33 searches the subdirectory\nfirst; older loaders do not know about it and resolve the baseline instead, so\none wheel serves both without any dispatch code.\n\nvmecpp_core becomes SHARED (glibc-hwcaps cannot apply to the extension module,\nwhich CPython opens by exact path) and is instantiated per ISA through a\nvmecpp_add_core() helper. The FFTX codelets are the toroidal-transform hot path\nand are built per variant so they match the ISA of the core linking them.\n\nMeasured against a baseline build (paired runs, 12 reps, pinned P-cores):\nw7x -15.8%, free-boundary -10.2%, small fixed-boundary -5.4%. That matches a\nwhole-program -march=x86-64-v3 build within 1.6%; making the core shared costs\nabout nothing. Iteration counts and energies are unchanged.\n\nAlso pins EIGEN_MAX_ALIGN_BYTES=32: -march raises Eigen's alignment guarantee\nfrom 16 to 32, which changes Eigen::aligned_allocator and is ABI-affecting.\nWithout the pin, mixing cores built with different -march settings gives\ncorrect results and then corrupts the heap at teardown.",
+          "timestamp": "2026-08-23T14:07:36+02:00",
+          "tree_id": "b3fb2cd98bc3a3deb57d9cce844b7a736d43c3af",
+          "url": "https://github.com/proximafusion/vmecpp/commit/43a5a527d54c3696ec1717105dea79a2ddb1476a"
+        },
+        "date": 1787487148584,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.27958637159999855,
+            "range": "stddev: 0.004966644531594783",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.2793615247999924,
+            "range": "stddev: 0.005982304367793371",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.1796057746666597,
+            "range": "stddev: 0.0325827785587414",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8642118233333159,
+            "range": "stddev: 0.003577987378817621",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.5369414726666832,
+            "range": "stddev: 0.027038773374083162",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4328868896666904,
+            "range": "stddev: 0.06891070468956126",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.510656171000012,
+            "range": "stddev: 0.05875913664345234",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.495080932999997,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.22962656800001469,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
