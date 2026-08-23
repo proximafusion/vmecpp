@@ -5,14 +5,6 @@
 # but the test_data copy is reference data that must be tracked.
 !wout_solovev.nc
 
-# regenerate_test_data.sh runs indata2json on the local input.* files, which
-# re-creates these fixed-boundary JSON inputs. They are byte-identical to the
-# canonical copies in //vmecpp/test_data, which is where the tests here already
-# get them from (see the "//vmecpp/test_data:..." data deps in the test BUILD
-# files), so the local copies are pure duplication. Keep them untracked.
-# NOTE: the free-boundary JSONs (solovev_free_bdy.json, cth_like_free_bdy.json)
-# are deliberately NOT listed: indata2json bakes a different mgrid_file path
-# into them via --mgrid_folder, so those genuinely differ and stay tracked.
 /cma.json
 /cth_like_fixed_bdy.json
 /cth_like_fixed_bdy_nzeta_37.json
