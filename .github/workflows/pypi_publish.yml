@@ -7,6 +7,11 @@ on:
   release:
     types: [published]
 
+# CI-only dependency workaround, see .github/constraints.txt
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+
 jobs:
   main:
     name: Build wheels on ${{ matrix.os }}
@@ -26,6 +31,11 @@ jobs:
         uses: pypa/cibuildwheel@v3.3.1
         # All the settings for cibuildwheel are in pyproject.toml
         env:
+          # Linux builds run in a container, where PIP_CONSTRAINT above does not
+          # apply and the repo is mounted at /project.
+          CIBW_ENVIRONMENT_LINUX: >
+            PIP_CONSTRAINT=/project/.github/constraints.txt
+            UV_CONSTRAINT=/project/.github/constraints.txt
           CIBW_ENVIRONMENT_MACOS: >
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '15.0' }}
             DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
@@ -73,7 +83,7 @@ jobs:
             "ubuntu:22.04",
             "archlinux/archlinux",
             "debian:12",
-            "debian:testing-20250224",
+            # "debian:testing-20250224", # TODO(jurasic): re-enable when 3.14 support unblocked
             "fedora:41",
           ]
     runs-on: ubuntu-24.04

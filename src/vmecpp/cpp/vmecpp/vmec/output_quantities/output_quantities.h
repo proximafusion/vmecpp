@@ -1521,10 +1521,15 @@ WOutFileContents ComputeWOutFileContents(
 // Compare the contents of a test wout object against a reference wout object,
 // exiting with an error in case of mismatches.
 // The comparison is performed using the specified tolerance in the "relabs"
-// metric.
+// metric. The current densities jcuru, jcurv are curl(B) quantities that
+// amplify the rounding of the converged state; under vectorized/optimized
+// builds they do not reproduce to the same tolerance as the profiles across
+// machines. Pass current_density_tolerance > 0 to compare those two with a
+// looser bound while keeping every other quantity at tolerance.
 void CompareWOut(const WOutFileContents& test_wout,
                  const WOutFileContents& expected_wout, double tolerance,
-                 bool check_equal_niter = true);
+                 bool check_equal_niter = true,
+                 double current_density_tolerance = 0.0);
 }  // namespace vmecpp
 
 #endif  // VMECPP_VMEC_OUTPUT_QUANTITIES_OUTPUT_QUANTITIES_H_

@@ -12,6 +12,14 @@ filegroup(
 )
 
 filegroup(
+    name = "up_down_asym",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "up_down_asym.json",
+    ],
+)
+
+filegroup(
     name = "solovev_analytical",
     visibility = ["//visibility:public"],
     srcs = [
@@ -77,6 +85,15 @@ filegroup(
 )
 
 filegroup(
+    name = "cth_like_free_bdy_asym",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "cth_like_free_bdy_asym.json",
+        "mgrid_cth_like_asym.nc",
+    ],
+)
+
+filegroup(
     name = "solovev_free_bdy",
     visibility = ["//visibility:public"],
     srcs = [
@@ -86,6 +103,16 @@ filegroup(
         "input.solovev_free_bdy",
         "mgrid_solovev.nc",
         "wout_solovev_free_bdy.nc",
+    ],
+)
+
+filegroup(
+    name = "solovev_free_bdy_lforbal",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "solovev_free_bdy_lforbal.json",
+        "mgrid_solovev.nc",
+        "wout_solovev_free_bdy_T.nc",
     ],
 )
 

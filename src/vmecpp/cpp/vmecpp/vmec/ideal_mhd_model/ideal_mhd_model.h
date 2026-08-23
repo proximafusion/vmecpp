@@ -7,7 +7,9 @@
 
 #include <Eigen/Dense>
 #include <climits>
+#include <memory>
 #include <span>
+#include <vector>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -49,10 +51,12 @@ class IdealMhdModel {
                 const FourierBasisFastPoloidal* t, RadialProfiles* m_p,
                 const VmecConstants* constants, ThreadLocalStorage* m_ls,
                 HandoverStorage* m_h, const RadialPartitioning* r,
-                FreeBoundaryBase* m_fb, int signOfJacobian, int nvacskip,
+                const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
+                int vac_num_threads, int signOfJacobian, int nvacskip,
                 VacuumPressureState* m_vacuum_pressure_state);
 
-  void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
+  void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
+                     bool lforbal);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -70,7 +74,11 @@ class IdealMhdModel {
       bool& m_need_restart, int& m_last_preconditioner_update,
       int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
       const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
-      const int iterations_before_checkpointing = INT_MAX, bool verbose = true);
+      const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
+      bool always_fix_m1_gauge = false);
+
+  std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
+  void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
@@ -83,9 +91,23 @@ class IdealMhdModel {
   // Dispatching dft_FourierToReal_3d_symm
   void dft_FourierToReal_3d_symm(const FourierGeometry& physical_x);
 
+  // Inverse-DFT of the non-stellarator-symmetric (lasym) contributions, 3D
+  // case. Accumulates the antisymmetric-parity pieces into the *_asym arrays.
+  void dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x);
+
   // Inverse-DFT for flux surface geometry and lambda, 2D axisymmetric (Tokamak)
   // case
   void dft_FourierToReal_2d_symm(const FourierGeometry& physical_x);
+
+  // Inverse-DFT of the non-stellarator-symmetric (lasym) contributions to flux
+  // surface geometry and lambda, 2D axisymmetric case. Accumulates the
+  // antisymmetric-parity pieces into the *_asym scratch arrays on the reduced
+  // poloidal interval [0, pi].
+  void dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x);
+
+  // Combine the symmetric and antisymmetric real-space geometry contributions
+  // over the full poloidal interval [0, 2pi[ (educational_VMEC symrzl).
+  void symrzl();
 
   // Extrapolates ingredients for the spectral condensation force
   // from the LCFS into the plasma volume.
@@ -159,8 +181,22 @@ class IdealMhdModel {
   // Dispatching dft_ForcesToFourier_3d_symm
   void dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f);
 
+  // Forward-DFT of the non-stellarator-symmetric (lasym) force contributions,
+  // 3D case. Projects the antisymmetric-parity halves onto frsc/frcs/fzcc/etc.
+  void dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f);
+
   // Computes the forward-DFT of forces for the 2D axisymmetric (Tokamak) case.
   void dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f);
+
+  // Split the real-space forces into their standard- and reversed-parity halves
+  // on the reduced poloidal interval, storing the reversed-parity halves in the
+  // *_asym scratch arrays (educational_VMEC symforce).
+  void symforce();
+
+  // Forward-DFT of the non-stellarator-symmetric (lasym) force contributions,
+  // 2D axisymmetric case. Projects the antisymmetric-parity halves onto the
+  // frsc / fzcc / flcc coefficients.
+  void dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f);
 
   // Checks if the radial preconditioner matrix elements should be updated.
   // They don't change so much during iterations, so one can get away with
@@ -180,7 +216,8 @@ class IdealMhdModel {
       const Eigen::VectorXd& xu_e, const Eigen::VectorXd& xu_o,
       const Eigen::VectorXd& x1_o, Eigen::VectorXd& m_axm,
       Eigen::VectorXd& m_axd, Eigen::VectorXd& m_bxm, Eigen::VectorXd& m_bxd,
-      Eigen::VectorXd& m_cxd);
+      Eigen::VectorXd& m_cxd, const Eigen::VectorXd& trigmult,
+      Eigen::VectorXd& m_eqfactor);
 
   // Applies the radial preconditioner for the m=1 Fourier coefficients of R and
   // Z.
@@ -255,6 +292,21 @@ class IdealMhdModel {
 
   // initial constraint force contribution Y on full-grid
   Eigen::VectorXd zCon0;
+
+  // Non-stellarator-symmetric (lasym) real-space geometry scratch. These hold
+  // the antisymmetric-parity contributions on the reduced poloidal interval
+  // [0, pi]; symrzl combines them with the symmetric arrays above to fill the
+  // full interval [0, 2pi[. Only allocated when lasym is enabled.
+  Eigen::VectorXd r1_asym_e, r1_asym_o;
+  Eigen::VectorXd ru_asym_e, ru_asym_o;
+  Eigen::VectorXd rv_asym_e, rv_asym_o;
+  Eigen::VectorXd z1_asym_e, z1_asym_o;
+  Eigen::VectorXd zu_asym_e, zu_asym_o;
+  Eigen::VectorXd zv_asym_e, zv_asym_o;
+  Eigen::VectorXd lu_asym_e, lu_asym_o;
+  Eigen::VectorXd lv_asym_e, lv_asym_o;
+  Eigen::VectorXd rCon_asym;
+  Eigen::VectorXd zCon_asym;
 
   // dRdTheta combined on full-grid
   Eigen::VectorXd ruFull;
@@ -340,6 +392,18 @@ class IdealMhdModel {
   Eigen::VectorXd clmn_e;
   Eigen::VectorXd clmn_o;
 
+  // Non-stellarator-symmetric (lasym) real-space force scratch: the
+  // reversed-parity halves produced by symforce. Only allocated when lasym is
+  // enabled.
+  Eigen::VectorXd armn_asym_e, armn_asym_o;
+  Eigen::VectorXd brmn_asym_e, brmn_asym_o;
+  Eigen::VectorXd crmn_asym_e, crmn_asym_o;
+  Eigen::VectorXd azmn_asym_e, azmn_asym_o;
+  Eigen::VectorXd bzmn_asym_e, bzmn_asym_o;
+  Eigen::VectorXd czmn_asym_e, czmn_asym_o;
+  Eigen::VectorXd blmn_asym_e, blmn_asym_o;
+  Eigen::VectorXd clmn_asym_e, clmn_asym_o;
+
   /**********************************************/
 
   // lambda preconditioner
@@ -363,6 +427,18 @@ class IdealMhdModel {
   Eigen::VectorXd bzd;
   // crd == czd --> cxd
   Eigen::VectorXd cxd;
+
+  // lforbal: when set, the flux-averaged radial force balance evolves the
+  // m=1,n=0 R,Z components (non-variational). cos01/sin01 are the m=1 trig
+  // weights; rzu_fac/rru_fac/frcc_fac/fzsc_fac are the force-balance factors
+  // derived from the R,Z preconditioner diagonals. All unused when lforbal off.
+  bool lforbal = false;
+  Eigen::VectorXd cos01;
+  Eigen::VectorXd sin01;
+  Eigen::VectorXd rzu_fac;
+  Eigen::VectorXd rru_fac;
+  Eigen::VectorXd frcc_fac;
+  Eigen::VectorXd fzsc_fac;
 
   Eigen::VectorXd ar;
   Eigen::VectorXd dr;
@@ -397,6 +473,10 @@ class IdealMhdModel {
   Eigen::VectorXd fzcon_e;
   Eigen::VectorXd fzcon_o;
 
+  // lasym reversed-parity constraint-force halves (symforce).
+  Eigen::VectorXd frcon_asym_e, frcon_asym_o;
+  Eigen::VectorXd fzcon_asym_e, fzcon_asym_o;
+
  private:
   FlowControl& m_fc_;
   const Sizes& s_;
@@ -406,8 +486,16 @@ class IdealMhdModel {
   ThreadLocalStorage& m_ls_;
   HandoverStorage& m_h_;
   const RadialPartitioning& r_;
-  FreeBoundaryBase* m_fb_;
+  // Free-boundary vacuum solvers, shared across all radial threads and sized to
+  // m_vac_num_threads_ (decoupled from the radial thread count). The vacuum
+  // solve is driven from a nested parallel region in update(): a single radial
+  // thread spawns a team of m_vac_num_threads_ threads, each invoking
+  // (*m_fb_vac_)[vac_thread_id]->update() on its tangential slice. Owned by
+  // Vmec; may be nullptr / empty for fixed-boundary runs.
+  const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac_;
+  int m_vac_num_threads_;
   VacuumPressureState& m_vacuum_pressure_state_;
+  std::int64_t force_evaluation_count_ = 0;
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
@@ -420,9 +508,6 @@ class IdealMhdModel {
 
   // 1/4: 1/2 from d(sHalf)/ds and 1/2 from interpolation
   static constexpr double dSHalfDsInterp = 0.25;
-
-  // TODO(jons): understand what this is (related to radial preconditioner)
-  static constexpr double dampingFactor = 2.0;
 
   // from INDATA: flag to select between constrained-iota and
   // constrained-toroidal-current

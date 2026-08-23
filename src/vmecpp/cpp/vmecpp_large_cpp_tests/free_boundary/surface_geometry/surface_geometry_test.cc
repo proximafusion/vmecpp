@@ -77,9 +77,9 @@ TEST_P(SurfaceGeometryTest, CheckSurfaceGeometry) {
     ASSERT_TRUE(ifs_vac1n_surface.is_open());
     json vac1n_surface = json::parse(ifs_vac1n_surface);
 
-    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_[thread_id]);
-      const TangentialPartitioning& tp = *vmec.tp_[thread_id];
+    for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
+      const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
+      const TangentialPartitioning& tp = *vmec.tp_vac_[thread_id];
       const SurfaceGeometry& sg = n.GetSurfaceGeometry();
 
       // full-surface quantities

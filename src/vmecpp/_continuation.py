@@ -1,10 +1,19 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
 """Generalized resolution interpolation and the Python-side continuation driver.
 
 VMEC++ converges much more reliably when a hard equilibrium is approached through
-a sequence of increasing resolutions (the classic ``ns_array`` multi-grid, and now
-also ``mpol_array`` / ``ntor_array`` Fourier continuation). Each step solves a single
-resolution and hot-restarts from the previous step's solution, interpolated to the
-new resolution by :func:`interpolate_solution`.
+a sequence of increasing resolutions (the classic ``ns_array`` multi-grid, and also
+Fourier continuation via a sequence-valued ``VmecInput.mpol`` / ``.ntor``). Each step
+solves a single resolution and hot-restarts from the previous step's solution,
+interpolated to the new resolution by :func:`interpolate_solution`.
+
+:func:`vmecpp.run` dispatches to :func:`_run_fourier_continuation` (this module)
+whenever ``input.mpol`` and/or ``input.ntor`` is a sequence rather than a plain int;
+:func:`interpolate_solution` itself is public API and can also be used directly, e.g.
+to hand-roll a custom continuation schedule (see
+``examples/fourier_resolution_increase.py``).
 
 The interpolation is purely a Python operation on a converged :class:`VmecOutput`:
 the flux-surface geometry is interpolated radially along the normalized toroidal
@@ -22,7 +31,8 @@ import typing
 import numpy as np
 
 if typing.TYPE_CHECKING:
-    from vmecpp import VmecInput, VmecOutput
+    from vmecpp import OutputMode, VmecInput, VmecOutput
+    from vmecpp._free_boundary import MagneticFieldResponseTable
 
 # State-vector geometry arrays, shape [mn_mode, n_surfaces]. These are the only
 # quantities VMEC++ reads back when hot-restarting, so they must be interpolated.
@@ -152,11 +162,10 @@ def _remap_modes(
     """
     values = np.asarray(values, dtype=float)
     src_index = {
-        (int(m), int(n)): i
-        for i, (m, n) in enumerate(zip(src_xm, src_xn, strict=False))
+        (int(m), int(n)): i for i, (m, n) in enumerate(zip(src_xm, src_xn, strict=True))
     }
     out = np.zeros((len(dst_xm), *values.shape[1:]), dtype=float)
-    for i, (m, n) in enumerate(zip(dst_xm, dst_xn, strict=False)):
+    for i, (m, n) in enumerate(zip(dst_xm, dst_xn, strict=True)):
         j = src_index.get((int(m), int(n)))
         if j is not None:
             out[i] = values[j]
@@ -285,63 +294,59 @@ def _step_input(
     return step
 
 
-def run_continuation(
+def _run_fourier_continuation(
     input: VmecInput,
+    magnetic_field: MagneticFieldResponseTable | None,
     *,
-    ns_array: typing.Sequence[int] | None = None,
-    mpol_array: typing.Sequence[int] | None = None,
-    ntor_array: typing.Sequence[int] | None = None,
-    ftol_array: typing.Sequence[float] | None = None,
-    niter_array: typing.Sequence[int] | None = None,
-    **run_kwargs: typing.Any,
+    max_threads: int | None,
+    verbose: bool | int | OutputMode,
+    restart_from: VmecOutput | None,
 ) -> VmecOutput:
-    """Solve an equilibrium by continuation in radial and Fourier resolution.
+    """Solves an equilibrium by continuation in Fourier resolution.
 
+    Called by :func:`vmecpp.run` whenever ``input.mpol`` and/or ``input.ntor`` is a
+    sequence rather than a plain int. Each entry pairs with the corresponding
+    ``input.ns_array`` entry (a scalar ``mpol``/``ntor`` broadcasts to every step).
     Each step solves a single ``(ns, mpol, ntor)`` resolution and hot-restarts from
     the previous step's solution interpolated to the new resolution (see
-    :func:`interpolate_solution`). This drives the classic ``ns_array`` multi-grid and,
-    by also increasing ``mpol`` / ``ntor`` along the schedule, Fourier continuation,
-    entirely from Python.
+    :func:`interpolate_solution`); if ``restart_from`` is given, it seeds the first
+    step instead of a cold start.
 
     Args:
-        input: the target configuration. Its boundary is the final-resolution boundary;
-            each step truncates it. Schedule arrays default to the corresponding fields
-            of ``input``; ``mpol_array`` / ``ntor_array`` default to constant
-            ``input.mpol`` / ``input.ntor`` (i.e. the classic fixed-Fourier multi-grid).
-        ns_array, mpol_array, ntor_array, ftol_array, niter_array: per-step schedules.
-            All provided arrays must share one length (a length-1 array is broadcast).
-        **run_kwargs: forwarded to :func:`vmecpp.run` for every step (e.g. ``verbose``,
-            ``max_threads``).
+        input: the target configuration. Its boundary is the final-resolution
+            boundary; each step truncates or zero-pads it to that step's resolution.
+        magnetic_field, max_threads, verbose, restart_from: forwarded to
+            :func:`vmecpp.run` for every step (``restart_from`` only seeds the first).
 
     Returns:
-        The converged :class:`VmecOutput` at the final resolution.
+        The converged :class:`VmecOutput` at the final resolution, with ``input`` set
+        to the original (full-schedule) ``input`` argument.
     """
     import vmecpp  # noqa: PLC0415  (lazy import avoids a circular import)
 
-    ns_schedule = [int(x) for x in (input.ns_array if ns_array is None else ns_array)]
+    ns_schedule = [int(x) for x in input.ns_array]
     n_steps = len(ns_schedule)
-    if n_steps == 0:
-        msg = "ns_array must have at least one entry"
-        raise ValueError(msg)
 
-    def _resolve(values: typing.Sequence[float] | None, default: list) -> list:
-        resolved = list(default) if values is None else list(values)
-        if len(resolved) == 1:
-            resolved = resolved * n_steps
+    def _resolve(value: int | np.ndarray, name: str) -> list[int]:
+        if isinstance(value, int):
+            return [value] * n_steps
+        resolved = [int(x) for x in value]
         if len(resolved) != n_steps:
             msg = (
-                f"continuation schedule length {len(resolved)} does not match "
-                f"ns_array length {n_steps}"
+                f"'{name}' has {len(resolved)} entries, but 'ns_array' has "
+                f"{n_steps}; a Fourier-resolution continuation schedule must have "
+                "one entry per ns_array step (or be a scalar, broadcast to every "
+                "step)."
             )
             raise ValueError(msg)
         return resolved
 
-    mpol_schedule = _resolve(mpol_array, [int(input.mpol)] * n_steps)
-    ntor_schedule = _resolve(ntor_array, [int(input.ntor)] * n_steps)
-    ftol_schedule = _resolve(ftol_array, list(np.asarray(input.ftol_array)))
-    niter_schedule = _resolve(niter_array, list(np.asarray(input.niter_array)))
+    mpol_schedule = _resolve(input.mpol, "mpol")
+    ntor_schedule = _resolve(input.ntor, "ntor")
+    ftol_schedule = [float(x) for x in input.ftol_array]
+    niter_schedule = [int(x) for x in input.niter_array]
 
-    output: VmecOutput | None = None
+    output = restart_from
     for i in range(n_steps):
         step_input = _step_input(
             input,
@@ -351,10 +356,14 @@ def run_continuation(
             ftol_schedule[i],
             niter_schedule[i],
         )
-        if output is None:
-            output = vmecpp.run(step_input, **run_kwargs)
-        else:
-            guess = interpolate_solution(output, step_input)
-            output = vmecpp.run(step_input, restart_from=guess, **run_kwargs)
+        guess = None if output is None else interpolate_solution(output, step_input)
+        output = vmecpp.run(
+            step_input,
+            magnetic_field,
+            max_threads=max_threads,
+            verbose=verbose,
+            restart_from=guess,
+        )
+
     assert output is not None  # n_steps >= 1, so the loop always assigns output
-    return output
+    return output.model_copy(update={"input": input})

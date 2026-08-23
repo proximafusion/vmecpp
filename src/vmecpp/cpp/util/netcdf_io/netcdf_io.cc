@@ -7,156 +7,213 @@
 #include <string>
 #include <vector>
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
 #include "netcdf.h"
 
 namespace netcdf_io {
 
-bool NetcdfReadBool(int ncid, const std::string& variable_name) {
+namespace {
+
+absl::StatusOr<int> FindVariableId(int ncid, const std::string& variable_name) {
+  int variable_id = 0;
+  if (nc_inq_varid(ncid, variable_name.c_str(), &variable_id) != NC_NOERR) {
+    return absl::NotFoundError(
+        absl::StrFormat("variable '%s' not found", variable_name));
+  }
+  return variable_id;
+}
+
+absl::StatusOr<int> GetVariableRank(int ncid, int variable_id,
+                                    const std::string& variable_name) {
+  int rank = 0;
+  if (nc_inq_varndims(ncid, variable_id, &rank) != NC_NOERR) {
+    return absl::InternalError(absl::StrFormat(
+        "could not determine rank of variable '%s'", variable_name));
+  }
+  return rank;
+}
+
+absl::StatusOr<std::vector<size_t> > GetVariableDimensions(
+    int ncid, int variable_id, int rank, const std::string& variable_name) {
+  std::vector<int> dimension_ids(rank, 0);
+  if (nc_inq_vardimid(ncid, variable_id, dimension_ids.data()) != NC_NOERR) {
+    return absl::InternalError(absl::StrFormat(
+        "could not determine dimension ids of variable '%s'", variable_name));
+  }
+
+  std::vector<size_t> dimensions(rank, 0);
+  for (int i = 0; i < rank; ++i) {
+    size_t dimension = 0;
+    if (nc_inq_dimlen(ncid, dimension_ids[i], &dimension) != NC_NOERR) {
+      return absl::InternalError(
+          absl::StrFormat("could not determine dimension %d of variable '%s'",
+                          i, variable_name));
+    }
+    dimensions[i] = dimension;
+  }
+  return dimensions;
+}
+
+}  // namespace
+
+absl::StatusOr<bool> NetcdfReadBool(int ncid,
+                                    const std::string& variable_name) {
   // VMEC uses `int` to store booleans: 0 means false, otherwise true.
   // Also, the actual variable name is `<variable_name>__logical__`.
   // AFAIK this is because NetCDF3 did not have a `boolean` data type.
+  const std::string logical_variable_name = variable_name + "__logical__";
 
-  // find variable ID for given variable name
-  int variable_id = 0;
-  CHECK_EQ(
-      nc_inq_varid(ncid, (variable_name + "__logical__").c_str(), &variable_id),
-      NC_NOERR)
-      << "variable '" << variable_name << "' not found";
+  absl::StatusOr<int> variable_id = FindVariableId(ncid, logical_variable_name);
+  if (!variable_id.ok()) {
+    return variable_id.status();
+  }
 
-  // figure out rank of data, i.e., how many dimensions does it have
-  int rank = 0;
-  CHECK_EQ(nc_inq_varndims(ncid, variable_id, &rank), NC_NOERR);
+  absl::StatusOr<int> rank =
+      GetVariableRank(ncid, *variable_id, logical_variable_name);
+  if (!rank.ok()) {
+    return rank.status();
+  }
+  if (*rank != 0) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Not a rank-0 array: %s", logical_variable_name));
+  }
 
-  // only accept zero-dimensional array for scalar
-  CHECK_EQ(rank, 0) << "Not a rank-0 array: " << variable_name;
-
-  // actually read data
   int variable_data = 0;
-  CHECK_EQ(nc_get_var_int(ncid, variable_id, &variable_data), NC_NOERR);
+  if (nc_get_var_int(ncid, *variable_id, &variable_data) != NC_NOERR) {
+    return absl::InternalError(
+        absl::StrFormat("could not read variable '%s'", logical_variable_name));
+  }
 
-  return (variable_data != 0);
+  return variable_data != 0;
 }  // NetcdfReadBool
 
-char NetcdfReadChar(int ncid, const std::string& variable_name) {
-  // find variable ID for given variable name
-  int variable_id = 0;
-  CHECK_EQ(nc_inq_varid(ncid, variable_name.c_str(), &variable_id), NC_NOERR)
-      << "variable '" << variable_name << "' not found";
+absl::StatusOr<char> NetcdfReadChar(int ncid,
+                                    const std::string& variable_name) {
+  absl::StatusOr<int> variable_id = FindVariableId(ncid, variable_name);
+  if (!variable_id.ok()) {
+    return variable_id.status();
+  }
 
-  // figure out rank of data, i.e., how many dimensions does it have
-  int rank = 1;
-  CHECK_EQ(nc_inq_varndims(ncid, variable_id, &rank), NC_NOERR);
+  absl::StatusOr<int> rank = GetVariableRank(ncid, *variable_id, variable_name);
+  if (!rank.ok()) {
+    return rank.status();
+  }
+  if (*rank != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Not a rank-1 array: %s", variable_name));
+  }
 
-  // only accept zero-dimensional array for scalar
-  CHECK_EQ(rank, 1) << "Not a rank-1 array: " << variable_name;
-
-  // figure out the dimension IDs
-  std::vector<int> dimension_ids(rank, 0);
-  CHECK_EQ(nc_inq_vardimid(ncid, variable_id, dimension_ids.data()), NC_NOERR);
-
-  // figure out dimension of data, i.e., length of string
-  std::vector<size_t> dimensions(rank, 0);
-  size_t total_element_count = 1;
-  for (int i = 0; i < rank; ++i) {
-    size_t dimension = 0;
-    CHECK_EQ(nc_inq_dimlen(ncid, dimension_ids[i], &dimension), NC_NOERR);
-    dimensions[i] = dimension;
-    total_element_count *= dimension;
+  absl::StatusOr<std::vector<size_t> > dimensions =
+      GetVariableDimensions(ncid, *variable_id, *rank, variable_name);
+  if (!dimensions.ok()) {
+    return dimensions.status();
   }
 
   // for a single char, make sure that the array dimension is 1
-  CHECK_EQ(dimensions[0], (size_t)1)
-      << "Not a length-1 array: " << variable_name;
+  if ((*dimensions)[0] != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Not a length-1 array: %s", variable_name));
+  }
 
   // actually read data
-  std::vector<size_t> read_start_indices(rank, 0);
-  std::vector<char> variable_data(total_element_count, 0);
-  CHECK_EQ(nc_get_vara(ncid, variable_id, read_start_indices.data(),
-                       dimensions.data(), variable_data.data()),
-           NC_NOERR);
+  std::vector<size_t> read_start_indices(*rank, 0);
+  std::vector<char> variable_data(1, 0);
+  if (nc_get_vara(ncid, *variable_id, read_start_indices.data(),
+                  dimensions->data(), variable_data.data()) != NC_NOERR) {
+    return absl::InternalError(
+        absl::StrFormat("could not read variable '%s'", variable_name));
+  }
 
   return variable_data[0];
 }  // NetcdfReadChar
 
-int NetcdfReadInt(int ncid, const std::string& variable_name) {
-  // find variable ID for given variable name
-  int variable_id = 0;
-  CHECK_EQ(nc_inq_varid(ncid, variable_name.c_str(), &variable_id), NC_NOERR)
-      << "variable '" << variable_name << "' not found";
+absl::StatusOr<int> NetcdfReadInt(int ncid, const std::string& variable_name) {
+  absl::StatusOr<int> variable_id = FindVariableId(ncid, variable_name);
+  if (!variable_id.ok()) {
+    return variable_id.status();
+  }
 
-  // figure out rank of data, i.e., how many dimensions does it have
-  int rank = 0;
-  CHECK_EQ(nc_inq_varndims(ncid, variable_id, &rank), NC_NOERR);
+  absl::StatusOr<int> rank = GetVariableRank(ncid, *variable_id, variable_name);
+  if (!rank.ok()) {
+    return rank.status();
+  }
+  if (*rank != 0) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Not a rank-0 array: %s", variable_name));
+  }
 
-  // only accept zero-dimensional array for scalar
-  CHECK_EQ(rank, 0) << "Not a rank-0 array: " << variable_name;
-
-  // actually read data
   int variable_data = 0;
-  CHECK_EQ(nc_get_var_int(ncid, variable_id, &variable_data), NC_NOERR);
+  if (nc_get_var_int(ncid, *variable_id, &variable_data) != NC_NOERR) {
+    return absl::InternalError(
+        absl::StrFormat("could not read variable '%s'", variable_name));
+  }
 
   return variable_data;
 }  // NetcdfReadInt
 
-double NetcdfReadDouble(int ncid, const std::string& variable_name) {
-  // find variable ID for given variable name
-  int variable_id = 0;
-  CHECK_EQ(nc_inq_varid(ncid, variable_name.c_str(), &variable_id), NC_NOERR)
-      << "variable '" << variable_name << "' not found";
+absl::StatusOr<double> NetcdfReadDouble(int ncid,
+                                        const std::string& variable_name) {
+  absl::StatusOr<int> variable_id = FindVariableId(ncid, variable_name);
+  if (!variable_id.ok()) {
+    return variable_id.status();
+  }
 
-  // figure out rank of data, i.e., how many dimensions does it have
-  int rank = 0;
-  CHECK_EQ(nc_inq_varndims(ncid, variable_id, &rank), NC_NOERR);
+  absl::StatusOr<int> rank = GetVariableRank(ncid, *variable_id, variable_name);
+  if (!rank.ok()) {
+    return rank.status();
+  }
+  if (*rank != 0) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Not a rank-0 array: %s", variable_name));
+  }
 
-  // only accept zero-dimensional array for scalar
-  CHECK_EQ(rank, 0) << "Not a rank-0 array: " << variable_name;
-
-  // actually read data
   double variable_data = 0;
-  CHECK_EQ(nc_get_var_double(ncid, variable_id, &variable_data), NC_NOERR);
+  if (nc_get_var_double(ncid, *variable_id, &variable_data) != NC_NOERR) {
+    return absl::InternalError(
+        absl::StrFormat("could not read variable '%s'", variable_name));
+  }
 
   return variable_data;
 }  // NetcdfReadDouble
 
-std::string NetcdfReadString(int ncid, const std::string& variable_name) {
-  // find variable ID for given variable name
-  int varid = 0;
-  CHECK_EQ(nc_inq_varid(ncid, variable_name.c_str(), &varid), NC_NOERR)
-      << "variable '" << variable_name << "' not found";
-
-  // figure out rank of data, i.e., how many dimensions does it have
-  int rank = 0;
-  CHECK_EQ(nc_inq_varndims(ncid, varid, &rank), NC_NOERR);
-
-  // only accept one-dimensional array of CHAR for strings
-  CHECK_EQ(rank, 1) << "Not a rank-1 array: " << variable_name;
-
-  // figure out the dimension IDs
-  std::vector<int> dimension_ids(rank, 0);
-  CHECK_EQ(nc_inq_vardimid(ncid, varid, dimension_ids.data()), NC_NOERR);
-
-  // figure out dimension of data, i.e., length of string
-  std::vector<size_t> dimensions(rank, 0);
-  size_t total_element_count = 1;
-  for (int i = 0; i < rank; ++i) {
-    size_t dimension = 0;
-    CHECK_EQ(nc_inq_dimlen(ncid, dimension_ids[i], &dimension), NC_NOERR);
-    dimensions[i] = dimension;
-    total_element_count *= dimension;
+absl::StatusOr<std::string> NetcdfReadString(int ncid,
+                                             const std::string& variable_name) {
+  absl::StatusOr<int> variable_id = FindVariableId(ncid, variable_name);
+  if (!variable_id.ok()) {
+    return variable_id.status();
   }
 
+  absl::StatusOr<int> rank = GetVariableRank(ncid, *variable_id, variable_name);
+  if (!rank.ok()) {
+    return rank.status();
+  }
+  // only accept one-dimensional array of CHAR for strings
+  if (*rank != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Not a rank-1 array: %s", variable_name));
+  }
+
+  absl::StatusOr<std::vector<size_t> > dimensions =
+      GetVariableDimensions(ncid, *variable_id, *rank, variable_name);
+  if (!dimensions.ok()) {
+    return dimensions.status();
+  }
+
+  size_t total_element_count = (*dimensions)[0];
+
   // actually read data
-  std::vector<size_t> read_start_indices(rank, 0);
+  std::vector<size_t> read_start_indices(*rank, 0);
   // one extra element that stays at 0 in order to properly zero-terminate the
   // string
   std::vector<char> variable_data(total_element_count + 1, 0);
-  CHECK_EQ(nc_get_vara(ncid, varid, read_start_indices.data(),
-                       dimensions.data(), variable_data.data()),
-           NC_NOERR);
+  if (nc_get_vara(ncid, *variable_id, read_start_indices.data(),
+                  dimensions->data(), variable_data.data()) != NC_NOERR) {
+    return absl::InternalError(
+        absl::StrFormat("could not read variable '%s'", variable_name));
+  }
   std::string string_from_char_array = std::string(variable_data.data());
 
   // Strings are usually whitespace-padded when coming from Fortran
@@ -164,78 +221,73 @@ std::string NetcdfReadString(int ncid, const std::string& variable_name) {
   return std::string(absl::StripAsciiWhitespace(string_from_char_array));
 }  // NetcdfReadString
 
-std::vector<double> NetcdfReadArray1D(int ncid,
-                                      const std::string& variable_name) {
-  // find variable ID for given variable name
-  int variable_id = 0;
-  CHECK_EQ(nc_inq_varid(ncid, variable_name.c_str(), &variable_id), NC_NOERR)
-      << "variable '" << variable_name << "' not found";
-
-  // figure out rank of data, i.e., how many dimensions does it have
-  int rank = 1;
-  CHECK_EQ(nc_inq_varndims(ncid, variable_id, &rank), NC_NOERR);
-
-  // only accept zero-dimensional array for scalar
-  CHECK_EQ(rank, 1) << "Not a rank-1 array: " << variable_name;
-
-  // figure out the dimension IDs
-  std::vector<int> dimension_ids(rank, 0);
-  CHECK_EQ(nc_inq_vardimid(ncid, variable_id, dimension_ids.data()), NC_NOERR);
-
-  // figure out dimension of data, i.e., length of string
-  std::vector<size_t> dimensions(rank, 0);
-  size_t total_element_count = 1;
-  for (int i = 0; i < rank; ++i) {
-    size_t dimension = 0;
-    CHECK_EQ(nc_inq_dimlen(ncid, dimension_ids[i], &dimension), NC_NOERR);
-    dimensions[i] = dimension;
-    total_element_count *= dimension;
+absl::StatusOr<std::vector<double> > NetcdfReadArray1D(
+    int ncid, const std::string& variable_name) {
+  absl::StatusOr<int> variable_id = FindVariableId(ncid, variable_name);
+  if (!variable_id.ok()) {
+    return variable_id.status();
   }
 
-  // actually read data
-  std::vector<size_t> read_start_indices(rank, 0);
+  absl::StatusOr<int> rank = GetVariableRank(ncid, *variable_id, variable_name);
+  if (!rank.ok()) {
+    return rank.status();
+  }
+  if (*rank != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Not a rank-1 array: %s", variable_name));
+  }
+
+  absl::StatusOr<std::vector<size_t> > dimensions =
+      GetVariableDimensions(ncid, *variable_id, *rank, variable_name);
+  if (!dimensions.ok()) {
+    return dimensions.status();
+  }
+
+  size_t total_element_count = (*dimensions)[0];
+
+  std::vector<size_t> read_start_indices(*rank, 0);
   std::vector<double> variable_data(total_element_count, 0.0);
-  CHECK_EQ(nc_get_vara(ncid, variable_id, read_start_indices.data(),
-                       dimensions.data(), variable_data.data()),
-           NC_NOERR);
+  if (nc_get_vara(ncid, *variable_id, read_start_indices.data(),
+                  dimensions->data(), variable_data.data()) != NC_NOERR) {
+    return absl::InternalError(
+        absl::StrFormat("could not read variable '%s'", variable_name));
+  }
 
   return variable_data;
 }  // NetcdfReadArray1D
 
-std::vector<std::vector<double> > NetcdfReadArray2D(
+absl::StatusOr<std::vector<std::vector<double> > > NetcdfReadArray2D(
     int ncid, const std::string& variable_name) {
-  // find variable ID for given variable name
-  int variable_id = 0;
-  CHECK_EQ(nc_inq_varid(ncid, variable_name.c_str(), &variable_id), NC_NOERR)
-      << "variable '" << variable_name << "' not found";
-
-  // figure out rank of data, i.e., how many dimensions does it have
-  int rank = 1;
-  CHECK_EQ(nc_inq_varndims(ncid, variable_id, &rank), NC_NOERR);
-
-  // only accept zero-dimensional array for scalar
-  CHECK_EQ(rank, 2) << "Not a rank-2 array: " << variable_name;
-
-  // figure out the dimension IDs
-  std::vector<int> dimension_ids(rank, 0);
-  CHECK_EQ(nc_inq_vardimid(ncid, variable_id, dimension_ids.data()), NC_NOERR);
-
-  // figure out dimension of data, i.e., length of string
-  std::vector<size_t> dimensions(rank, 0);
-  size_t total_element_count = 1;
-  for (int i = 0; i < rank; ++i) {
-    size_t dimension = 0;
-    CHECK_EQ(nc_inq_dimlen(ncid, dimension_ids[i], &dimension), NC_NOERR);
-    dimensions[i] = dimension;
-    total_element_count *= dimension;
+  absl::StatusOr<int> variable_id = FindVariableId(ncid, variable_name);
+  if (!variable_id.ok()) {
+    return variable_id.status();
   }
 
-  // actually read data
-  std::vector<size_t> read_start_indices(rank, 0);
+  absl::StatusOr<int> rank = GetVariableRank(ncid, *variable_id, variable_name);
+  if (!rank.ok()) {
+    return rank.status();
+  }
+  if (*rank != 2) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Not a rank-2 array: %s", variable_name));
+  }
+
+  absl::StatusOr<std::vector<size_t> > dimensions_or =
+      GetVariableDimensions(ncid, *variable_id, *rank, variable_name);
+  if (!dimensions_or.ok()) {
+    return dimensions_or.status();
+  }
+  auto dimensions = dimensions_or.value();
+
+  size_t total_element_count = dimensions[0] * dimensions[1];
+
+  std::vector<size_t> read_start_indices(*rank, 0);
   std::vector<double> variable_data(total_element_count, 0.0);
-  CHECK_EQ(nc_get_vara(ncid, variable_id, read_start_indices.data(),
-                       dimensions.data(), variable_data.data()),
-           NC_NOERR);
+  if (nc_get_vara(ncid, *variable_id, read_start_indices.data(),
+                  dimensions.data(), variable_data.data()) != NC_NOERR) {
+    return absl::InternalError(
+        absl::StrFormat("could not read variable '%s'", variable_name));
+  }
 
   // copy from flattened vector into two-dimensional vector of vectors
   std::vector<std::vector<double> > two_dimensional_data(dimensions[0]);
@@ -249,40 +301,37 @@ std::vector<std::vector<double> > NetcdfReadArray2D(
   return two_dimensional_data;
 }  // NetcdfReadArray2D
 
-std::vector<std::vector<std::vector<double> > > NetcdfReadArray3D(
-    int ncid, const std::string& variable_name) {
-  // find variable ID for given variable name
-  int variable_id = 0;
-  CHECK_EQ(nc_inq_varid(ncid, variable_name.c_str(), &variable_id), NC_NOERR)
-      << "variable '" << variable_name << "' not found";
-
-  // figure out rank of data, i.e., how many dimensions does it have
-  int rank = 1;
-  CHECK_EQ(nc_inq_varndims(ncid, variable_id, &rank), NC_NOERR);
-
-  // only accept zero-dimensional array for scalar
-  CHECK_EQ(rank, 3) << "Not a rank-3 array: " << variable_name;
-
-  // figure out the dimension IDs
-  std::vector<int> dimension_ids(rank, 0);
-  CHECK_EQ(nc_inq_vardimid(ncid, variable_id, dimension_ids.data()), NC_NOERR);
-
-  // figure out dimension of data, i.e., length of string
-  std::vector<size_t> dimensions(rank, 0);
-  size_t total_element_count = 1;
-  for (int i = 0; i < rank; ++i) {
-    size_t dimension = 0;
-    CHECK_EQ(nc_inq_dimlen(ncid, dimension_ids[i], &dimension), NC_NOERR);
-    dimensions[i] = dimension;
-    total_element_count *= dimension;
+absl::StatusOr<std::vector<std::vector<std::vector<double> > > >
+NetcdfReadArray3D(int ncid, const std::string& variable_name) {
+  absl::StatusOr<int> variable_id = FindVariableId(ncid, variable_name);
+  if (!variable_id.ok()) {
+    return variable_id.status();
   }
 
-  // actually read data
-  std::vector<size_t> read_start_indices(rank, 0);
+  absl::StatusOr<int> rank = GetVariableRank(ncid, *variable_id, variable_name);
+  if (!rank.ok()) {
+    return rank.status();
+  }
+  if (*rank != 3) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Not a rank-3 array: %s", variable_name));
+  }
+
+  absl::StatusOr<std::vector<size_t> > dimensions_or =
+      GetVariableDimensions(ncid, *variable_id, *rank, variable_name);
+  if (!dimensions_or.ok()) {
+    return dimensions_or.status();
+  }
+  auto dimensions = dimensions_or.value();
+
+  size_t total_element_count = dimensions[0] * dimensions[1] * dimensions[2];
+  std::vector<size_t> read_start_indices(*rank, 0);
   std::vector<double> variable_data(total_element_count, 0.0);
-  CHECK_EQ(nc_get_vara(ncid, variable_id, read_start_indices.data(),
-                       dimensions.data(), variable_data.data()),
-           NC_NOERR);
+  if (nc_get_vara(ncid, *variable_id, read_start_indices.data(),
+                  dimensions.data(), variable_data.data()) != NC_NOERR) {
+    return absl::InternalError(
+        absl::StrFormat("could not read variable '%s'", variable_name));
+  }
 
   // copy from flattened vector into three-dimensional vector of vectors
   std::vector<std::vector<std::vector<double> > > three_dimensional_data(

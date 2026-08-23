@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "fourier_basis",
+    srcs = ["fourier_basis.cc"],
+    hdrs = ["fourier_basis.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings:str_format",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+    ],
+)

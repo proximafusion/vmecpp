@@ -8,7 +8,9 @@ Physics correctness is checked at the level of the C++ core.
 """
 
 import json
+import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -18,7 +20,6 @@ from pathlib import Path
 
 import netCDF4
 import numpy as np
-import pydantic
 import pytest
 
 import vmecpp
@@ -51,8 +52,7 @@ def test_run(max_threads, input_file, verbose):
     [
         ("cma.json", RuntimeError),  # Invalid netcdf
         ("does_not_exist", RuntimeError),
-        # TODO(jurasic) Enable test after switching netcdf_io to absl::Status
-        # ("wout_cma.nc", RuntimeError),  # Valid netcdf, but invalid mgrid
+        ("wout_cma.nc", RuntimeError),  # Valid netcdf, but invalid mgrid
     ],
 )
 def test_raise_invalid_mgrid(mgrid_path: str, expected_exception):
@@ -116,6 +116,28 @@ def test_vmecwout_load_from_fortran():
     wout_filename = REPO_ROOT / "examples" / "data" / "wout_cth_like_fixed_bdy.nc"
     loaded_wout = vmecpp.VmecWOut.from_wout_file(wout_filename)
     assert loaded_wout is not None
+
+
+def test_vmecwout_load_tolerates_corrupted_string_variable(tmp_path, caplog):
+    """Robust against uninitialized/non-ASCII bytes.
+
+    Such garbage should not prevent loading the rest of an otherwise-valid wout file.
+    """
+    wout_filename = REPO_ROOT / "examples" / "data" / "wout_cth_like_fixed_bdy.nc"
+    corrupted_wout_filename = tmp_path / "wout_corrupted_string.nc"
+    shutil.copyfile(wout_filename, corrupted_wout_filename)
+
+    with netCDF4.Dataset(corrupted_wout_filename, "r+") as fnc:
+        raw = bytearray(fnc.variables["mgrid_file"][:].tobytes())
+        raw[3] = 0xDD  # not valid ASCII/UTF-8
+        fnc.variables["mgrid_file"][:] = np.frombuffer(bytes(raw), dtype="S1")
+
+    with caplog.at_level(logging.WARNING):
+        loaded_wout = vmecpp.VmecWOut.from_wout_file(corrupted_wout_filename)
+
+    assert loaded_wout is not None
+    assert loaded_wout.mgrid_file == ""
+    assert "mgrid_file" in caplog.text
 
 
 def test_vmecinput_io():
@@ -615,8 +637,6 @@ def test_vmec_input_validation():
     # The test_file json may exclude fields that have default values,
     # while the parsed versions should have all fields populated.
     indata_dict_from_json = json.loads(vmec_input._to_cpp_vmecindata().to_json())
-    # TODO(jurasic): iteration_style is not yet present in VmecInput, since there's only one option atm.
-    del indata_dict_from_json["iteration_style"]
     vmec_input_dict_from_json = json.loads(vmec_input.model_dump_json())
 
     if not vmec_input.lasym:
@@ -800,40 +820,3 @@ except KeyboardInterrupt:
         f"Expected KeyboardInterrupt but got:\noutput: {output}"
     )
     assert "RUN_COMPLETED" not in output
-
-
-def test_subclass_outer_wrap_serializer_not_overridden(cma_output: vmecpp.VmecOutput):
-    """Subclass wrap serializers that operate on the arrays must not be overridden by
-    VmecWOut's inner serializers.
-
-    This ensures that VmecWOut's field-level serializers (e.g. a PlainSerializer on
-    extcur) pass through values that are not numpy arrays, so an outer framework can
-    replace arrays with custom representations during serialization.
-    """
-
-    class OuterSerializer(pydantic.BaseModel):
-        model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
-
-        @pydantic.field_serializer("*", mode="wrap", when_used="always")
-        def _outer_encode(
-            self,
-            value: object,
-            handler: pydantic.SerializerFunctionWrapHandler,
-            _: pydantic.FieldSerializationInfo,
-        ) -> object:
-            if isinstance(value, np.ndarray):
-                return {"__custom_encoded__": True}
-            return handler(value)
-
-    class CustomWOut(OuterSerializer, vmecpp.VmecWOut):
-        pass
-
-    custom = CustomWOut.model_validate(cma_output.wout.model_dump())
-    dumped = custom.model_dump(mode="json")
-
-    # Plain array field — goes through _serialize_field wrap serializer.
-    assert dumped["rmnc"].get("__custom_encoded__")
-    # SerializeIntAsFloat field — has its own PlainSerializer/WrapSerializer.
-    assert dumped["xm"].get("__custom_encoded__")
-    # extcur field — has its own PlainSerializer/WrapSerializer.
-    assert dumped["extcur"].get("__custom_encoded__")

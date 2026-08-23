@@ -1,6 +1,7 @@
 add_subdirectory(composed_types_definition)
 add_subdirectory(composed_types_lib)
 add_subdirectory(flow_control)
+add_subdirectory(fourier_basis)
 add_subdirectory(fourier_basis_fast_poloidal)
 add_subdirectory(fourier_basis_fast_toroidal)
 add_subdirectory(magnetic_configuration_definition)

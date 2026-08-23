@@ -7,8 +7,8 @@ cc_library(
     hdrs = ["netcdf_io.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/log:log",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:str_format",
         "//third_party/netcdf4",
@@ -31,6 +31,7 @@ cc_test(
     ],
     deps = [
         ":netcdf_io",
+        "@abseil-cpp//absl/status",
         "@googletest//:gtest_main",
     ],
 )
