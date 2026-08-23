@@ -12,6 +12,15 @@ set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-math-errno")
 
+# LTO: cross-TU inlining and dead-code elimination, ~1/3 smaller binaries.
+include(CheckIPOSupported)
+check_ipo_supported(RESULT VMECPP_IPO_SUPPORTED OUTPUT VMECPP_IPO_ERROR)
+if(VMECPP_IPO_SUPPORTED)
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+else()
+  message(STATUS "LTO unavailable, building without it: ${VMECPP_IPO_ERROR}")
+endif()
+
 # use ccache if available
 find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
 if(EXISTS ${CCACHE_COMMAND})
