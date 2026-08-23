@@ -4464,9 +4464,10 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   if (wout.wdot.size() > 1) {
     // Compute decay rate wdot = -W/dt = (W[1:] - W[0:]) / W[1:]
     wout.wdot.tail(wout.wdot.size() - 1) =
-        (wout.wdot.tail(wout.wdot.size() - 1) -
-         wout.wdot.head(wout.wdot.size() - 1))
-            .cwiseQuotient(wout.wdot.tail(wout.wdot.size() - 1));
+        ((wout.wdot.tail(wout.wdot.size() - 1) -
+          wout.wdot.head(wout.wdot.size() - 1))
+             .cwiseQuotient(wout.wdot.tail(wout.wdot.size() - 1)))
+            .eval();
   }
   // -------------------
   // one-dimensional array quantities
