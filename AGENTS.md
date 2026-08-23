@@ -64,11 +64,24 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 - **Free Boundary Solver** (`free_boundary/`): NESTOR/BIEST methods for plasma-vacuum interface
 - **Geometry Engine** (`vmec/fourier_geometry/`): Flux surface geometry and coordinate transformations
 
-**Python Interface Layer** (`src/vmecpp/`):
-- **VmecInput**: Pydantic model for input validation (profiles, boundary, parameters)
-- **VmecOutput/VmecWOut**: Output data structures with equilibrium results
-- **run()**: Primary entry point for computations
-- **Free Boundary Support**: External magnetic field handling
+**Python Interface Layer** (`src/vmecpp/`): `__init__.py` only re-exports the public
+API; every definition lives in one of the core modules:
+- **VmecInput** (`_indata.py`): Pydantic model for input validation (profiles, boundary,
+  parameters), plus `set_profile` and the INDATA vs. VMEC++ JSON input-file handling
+- **VmecWOut and the jxbout/mercier/threed1 tables** (`_wout.py`): output data structures
+  with equilibrium results
+- **VmecOutput** (`_output.py`): the container bundling all outputs of a run
+- **run()** (`_run.py`): primary entry point for computations, and the Fourier-resolution
+  continuation driver
+- **Shared field types, enums and array dimensions** (`_types.py`): used by both the input
+  and the output models
+- **Free Boundary Support** (`_free_boundary.py`): external magnetic field handling
+- **Force-balance iteration** (`_iteration.py`) and **resolution interpolation**
+  (`_continuation.py`)
+
+Dependencies between these modules point one way only, from the shared base
+(`_types`, `_util`, `_pydantic_numpy`) outward to `_run` and then `__init__`. Keep it
+that way: no function-local and no `TYPE_CHECKING`-only imports to break a cycle.
 
 **Python-C++ Bridge** (`src/vmecpp/cpp/vmecpp/vmec/pybind11/`):
 - Automatic NumPy ↔ Eigen conversion

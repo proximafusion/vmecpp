@@ -179,6 +179,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# The package root is nothing but re-exports; names not in __all__ are kept
+# importable from `vmecpp` for backwards compatibility.
+"src/vmecpp/__init__.py" = ["F401"]
 "tests/**" = ["T20"]
 "**/*_test.py" = ["T20"]
 "examples/**" = ["T201"]
