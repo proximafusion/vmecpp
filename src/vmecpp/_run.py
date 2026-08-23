@@ -30,6 +30,16 @@ from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 _progress_tip_shown = False
 
 
+def suppress_progress_tip() -> None:
+    """Stop :func:`run` from printing the ``verbose=1`` tip in this process.
+
+    For callers that already tell the user about the classic table output, such as
+    the ``vmecpp`` command line interface.
+    """
+    global _progress_tip_shown  # noqa: PLW0603
+    _progress_tip_shown = True
+
+
 def _print_progress_tip_once() -> None:
     global _progress_tip_shown  # noqa: PLW0603
     if not _progress_tip_shown:

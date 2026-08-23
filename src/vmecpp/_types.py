@@ -135,6 +135,25 @@ class IterationStyle(str, enum.Enum):
     """The PARVMEC / VMEC2000 9.0 control."""
 
 
+class RestartReason(enum.IntEnum):
+    """Why the equilibrium iteration reverted the geometry and restarted.
+
+    Mirrors the C++ ``irst`` flow-control values; recorded per iteration by the
+    force-balance loop (:mod:`vmecpp._iteration`) and reported by
+    :attr:`vmecpp.VmecWOut.restart_reasons`.
+    """
+
+    BAD_JACOBIAN = 2
+    """Irst == 2, bad Jacobian, flux surfaces are overlapping."""
+
+    BAD_PROGRESS = 3
+    """Irst == 3, bad progress, residuals not decaying as expected."""
+
+    HUGE_INITIAL_FORCES = 4
+    """Irst == 4, huge initial forces, flux surfaces are too close to each other (but
+    not overlapping yet)"""
+
+
 class OutputMode(enum.Enum):
     """Controls the output format of iteration logging.."""
 

@@ -79,9 +79,9 @@ API; every definition lives in one of the core modules:
 - **Force-balance iteration** (`_iteration.py`) and **resolution interpolation**
   (`_continuation.py`)
 
-The import order of these modules is acyclic (`_types` -> `_indata` -> `_iteration` ->
-`_wout` -> `_output` -> `_continuation` -> `_run`); keep it that way rather than
-reintroducing function-local imports.
+Dependencies between these modules point one way only, from the shared base
+(`_types`, `_util`, `_pydantic_numpy`) outward to `_run` and then `__init__`. Keep it
+that way: no function-local and no `TYPE_CHECKING`-only imports to break a cycle.
 
 **Python-C++ Bridge** (`src/vmecpp/cpp/vmecpp/vmec/pybind11/`):
 - Automatic NumPy ↔ Eigen conversion

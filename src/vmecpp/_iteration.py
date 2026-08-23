@@ -35,7 +35,6 @@ schemes (like ``"robust"``) without touching the C++ core.
 
 from __future__ import annotations
 
-import enum
 import logging
 import math
 import typing
@@ -45,20 +44,8 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from vmecpp._indata import VmecInput
+from vmecpp._types import RestartReason
 from vmecpp.cpp import _vmecpp  # type: ignore
-
-
-class RestartReason(enum.IntEnum):
-    BAD_JACOBIAN = 2
-    """Irst == 2, bad Jacobian, flux surfaces are overlapping."""
-
-    BAD_PROGRESS = 3
-    """Irst == 3, bad progress, residuals not decaying as expected."""
-
-    HUGE_INITIAL_FORCES = 4
-    """Irst == 4, huge initial forces, flux surfaces are too close to each other (but
-    not overlapping yet)"""
-
 
 # Vmec::kNDamp -- history length for the 1/tau time-step damping average.
 _NDAMP = 10

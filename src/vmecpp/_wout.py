@@ -17,13 +17,13 @@ import netCDF4
 import numpy as np
 import pydantic
 
-from vmecpp._iteration import RestartReason
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
 from vmecpp._types import (
     AuxFType,
     AuxSType,
     MgridModeType,
     ProfileType,
+    RestartReason,
     SerializeIntAsFloat,
 )
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core

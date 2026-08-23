@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 import vmecpp
-from vmecpp import _run
+from vmecpp import _util
+from vmecpp._run import suppress_progress_tip
 
 
 def _parse_convert_arguments(argv: list[str]) -> argparse.Namespace:
@@ -91,12 +92,12 @@ def main() -> None:
             "Tip: Use the --legacy flag for classic table output."
         )
         # The tip is printed here already, so don't let run() print it again.
-        _run._progress_tip_shown = True
+        suppress_progress_tip()
 
     vmec_input = vmecpp.VmecInput.from_file(args.input_file)
     output = vmecpp.run(vmec_input, max_threads=args.max_threads, verbose=verbose)
 
-    configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)
+    configuration_name = _util.get_vmec_configuration_name(args.input_file)
     wout_file = Path(f"wout_{configuration_name}.nc")
     output.wout.save(wout_file)
 

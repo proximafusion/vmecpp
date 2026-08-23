@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Generalized resolution interpolation and the Python-side continuation driver.
+"""Generalized resolution interpolation for the continuation schedules.
 
 VMEC++ converges much more reliably when a hard equilibrium is approached through
 a sequence of increasing resolutions (the classic ``ns_array`` multi-grid, and also
@@ -9,9 +9,8 @@ Fourier continuation via a sequence-valued ``VmecInput.mpol`` / ``.ntor``). Each
 solves a single resolution and hot-restarts from the previous step's solution,
 interpolated to the new resolution by :func:`interpolate_solution`.
 
-:func:`vmecpp.run` dispatches to the continuation driver
-(``vmecpp._run._run_fourier_continuation``) whenever ``input.mpol`` and/or
-``input.ntor`` is a sequence rather than a plain int; this module holds the
+:func:`vmecpp.run` dispatches to its continuation driver whenever ``input.mpol``
+and/or ``input.ntor`` is a sequence rather than a plain int; this module holds the
 resolution-mapping machinery that driver builds each step from.
 :func:`interpolate_solution` itself is public API and can also be used directly, e.g.
 to hand-roll a custom continuation schedule (see
