@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787507224880,
+  "lastUpdate": 1787507541003,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -38874,6 +38874,162 @@ window.BENCHMARK_DATA = {
             "value": 0.004895905584408431,
             "unit": "seconds",
             "extra": "iterations: 287\ncpu: 0.004869398602787456 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "46216bb1acf457908bf6ebf57b9cbe8ebed822fb",
+          "message": "Drop duplicate files from large test data (#701)\n\n* Drop duplicated fixed-boundary JSON inputs from large test data\n\nThe six fixed-boundary JSON inputs in //vmecpp_large_cpp_tests/test_data\nwere byte-identical to the copies in //vmecpp/test_data. They were also\nlisted in no filegroup here, so nothing could reach them: the tests in\nthis tree already take their inputs from the \"//vmecpp/test_data:...\"\ndata deps and only take the educational_VMEC reference dumps from the\nlocal test_data.\n\nregenerate_test_data.sh re-creates these files by running indata2json on\nthe local input.* files, so they are gitignored rather than merely\ndeleted, to keep them from coming back on the next regeneration.\n\nDeliberately untouched:\n- The wout_*.nc files. Despite the shared names, no two are identical:\n  the ones here come from Fortran educational_VMEC (currumnc, currvmnc,\n  input_extension, 1001-element aux arrays) while those in\n  //vmecpp/test_data are VMEC++'s own output (lmns_full, fsqt,\n  force_residual_*). Sharing them would make these tests compare VMEC++\n  against itself instead of against an independent reference.\n- The local input.* files, which carry the dump_* flags that make\n  educational_VMEC emit the reference data.\n- The free-boundary files (coils.*, mgrid_solovev.nc and the\n  solovev_free_bdy set), left as-is by request.\n\n* Update .gitignore\n\n* Drop duplicated mgrid_solovev.nc from large test data\n\n//vmecpp/test_data/mgrid_solovev.nc and the copy under\n//vmecpp_large_cpp_tests/test_data were byte-identical. Both were already\nLFS-tracked and both pointers referenced the same OID\n(f17260704b9f6ca96c0f7202cc99dbfe8bdb625d1103d4597fd8ca5197b96fb1), so\ngit and LFS were already storing the 25 MB object only once; the cost was\na second 25 MB copy in every checkout.\n\nThe surviving copy is the one that is actually wired up: it is reached\nvia the //vmecpp/test_data:solovev_free_bdy and :solovev_free_bdy_lforbal\nfilegroups by output_quantities_test and vmec_in_memory_mgrid_test, and\n//vmecpp/test_data/solovev_free_bdy.json names that path in mgrid_file.\nNothing referenced the large-tree copy: it sat in no filegroup, because\nthe solovev_free_bdy case was never wired up in this tree.\n\nThe unused solovev_free_bdy.json here still names the removed path, but\nit is equally unwired, and regenerate_test_data.sh rebuilds the mgrid\nfrom coils.solovev via makegrid if that case is ever enabled.",
+          "timestamp": "2026-08-23T19:33:24+02:00",
+          "tree_id": "82d77771b01b862edf4dbd3203733d8f0252a675",
+          "url": "https://github.com/proximafusion/vmecpp/commit/46216bb1acf457908bf6ebf57b9cbe8ebed822fb"
+        },
+        "date": 1787507540698,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000026005223266677657,
+            "unit": "seconds",
+            "extra": "iterations: 54544\ncpu: 2.600434194411851e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00003430669044768796,
+            "unit": "seconds",
+            "extra": "iterations: 40350\ncpu: 3.430404567534078e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.00047690397666224444,
+            "unit": "seconds",
+            "extra": "iterations: 2958\ncpu: 0.0004768813928329952 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0011308401029277368,
+            "unit": "seconds",
+            "extra": "iterations: 1239\ncpu: 0.0011307891912832927 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.0001237688151262885,
+            "unit": "seconds",
+            "extra": "iterations: 8691\ncpu: 0.00012376634345875043 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00011386129608477736,
+            "unit": "seconds",
+            "extra": "iterations: 12266\ncpu: 0.00011385608829284201 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00025394373926623115,
+            "unit": "seconds",
+            "extra": "iterations: 5510\ncpu: 0.00025393288820326675 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002309483263253813,
+            "unit": "seconds",
+            "extra": "iterations: 6081\ncpu: 0.00023070927018582475 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.000407762732437936,
+            "unit": "seconds",
+            "extra": "iterations: 3443\ncpu: 0.0004077377676444962 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00036090760651030074,
+            "unit": "seconds",
+            "extra": "iterations: 3860\ncpu: 0.000360886721761658 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0014825148903644149,
+            "unit": "seconds",
+            "extra": "iterations: 965\ncpu: 0.0014824749398963729 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.001639518302274253,
+            "unit": "seconds",
+            "extra": "iterations: 854\ncpu: 0.0016394634695550353 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.000054681287174336395,
+            "unit": "seconds",
+            "extra": "iterations: 25650\ncpu: 5.4696704795322005e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.000419415288896703,
+            "unit": "seconds",
+            "extra": "iterations: 3350\ncpu: 0.00041946378656716114 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0024929924791817987,
+            "unit": "seconds",
+            "extra": "iterations: 562\ncpu: 0.0024930666565836364 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00005133188698615514,
+            "unit": "seconds",
+            "extra": "iterations: 27227\ncpu: 5.1339551217544026e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0004100626753549028,
+            "unit": "seconds",
+            "extra": "iterations: 3463\ncpu: 0.00041008794917701005 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.002497875354659389,
+            "unit": "seconds",
+            "extra": "iterations: 568\ncpu: 0.002497357383802786 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.0002268048686305979,
+            "unit": "seconds",
+            "extra": "iterations: 6158\ncpu: 0.00022680176648262411 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0009457242955402163,
+            "unit": "seconds",
+            "extra": "iterations: 1482\ncpu: 0.0009456844298245612 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.003653342616904065,
+            "unit": "seconds",
+            "extra": "iterations: 379\ncpu: 0.0036531924854881223 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.006571004841778729,
+            "unit": "seconds",
+            "extra": "iterations: 370\ncpu: 0.006546865072972973 seconds\nthreads: 1"
           }
         ]
       }
