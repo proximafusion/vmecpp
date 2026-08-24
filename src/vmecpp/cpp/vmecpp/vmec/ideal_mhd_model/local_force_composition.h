@@ -64,8 +64,10 @@ struct LocalForceComposition {
   // recomputed in place from the live geometry (so they are differentiated);
   // tcon is held frozen (see freeze_constraint_multiplier_).
   bool with_constraint = false;
+  bool lasym = false;
   int nsMaxF = 0;  // constraint RZ range upper bound
-  int nZeta = 0, nThetaReduced = 0, mpol = 0, ntor = 0, nnyq2 = 0;
+  int nZeta = 0, nThetaEven = 0, nThetaReduced = 0, mpol = 0, ntor = 0,
+      nnyq2 = 0;
   const double* rCon0 = nullptr;
   const double* zCon0 = nullptr;
   const double* faccon = nullptr;
@@ -78,7 +80,8 @@ struct LocalForceComposition {
   const double* cosmu = nullptr;
 };
 
-// work must hold 15*nHalf + 30*nZnT doubles, where nHalf=(nsMaxH-nsMinH)*nZnT.
+// work must hold 15*nHalf + 30*nZnT plus the constraint scratch described
+// below, where nHalf=(nsMaxH-nsMinH)*nZnT.
 inline void ComputeLocalForceDensity(const double* geom, double* work,
                                      double* force,
                                      const LocalForceComposition* c) {
@@ -287,6 +290,14 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
     s += c->ntor + 1;
     double* gcs = s;
     s += c->ntor + 1;
+    double* gcc = s;
+    s += c->ntor + 1;
+    double* gss = s;
+    s += c->ntor + 1;
+    double* gConAsym = s;
+    s += nZnT;
+    double* refl = s;
+    s += c->nThetaReduced;
     // Constraint reference rCon0/zCon0 extrapolated from the LCFS into the
     // volume (rzConIntoVolume): rCon0[jF] = rCon[LCFS] * s_full. This is linear
     // in the geometry, so computing it here (rather than freezing it) keeps the
@@ -310,7 +321,8 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
     ComputeDeAliasConstraintForce(
         gConEff, c->faccon, c->tcon, c->sinmui, c->cosmui, c->cosnv, c->sinnv,
         c->sinmu, c->cosmu, c->nsMinF, c->nsMaxF, c->nZeta, c->nThetaEff,
-        c->nThetaReduced, c->mpol, c->ntor, c->nnyq2, gsc, gcs, gCon);
+        c->nThetaReduced, c->nThetaEven, c->mpol, c->ntor, c->nnyq2, c->lasym,
+        gsc, gcs, gcc, gss, gConAsym, refl, gCon);
     double* frcon_e = force + 16 * fS;
     double* frcon_o = force + 17 * fS;
     double* fzcon_e = force + 18 * fS;
