@@ -18,7 +18,6 @@ from pathlib import Path
 
 import numpy as np
 import vmecpp_adjoint as va
-from scipy.sparse.linalg import LinearOperator, gmres
 
 DATA = Path(__file__).resolve().parent / "data"
 CASES = [
@@ -29,39 +28,8 @@ OBJ = va.mhd_energy
 
 
 def adjoint_grad(model, x_star, interior, boundary, exact):
-    """va.boundary_gradient with a selectable HVP backend."""
-    n = x_star.size
-    dj = va.objective_state_gradient(model, x_star, OBJ)
-    hvp = model.exact_hessian_vector_product if exact else model.hessian_vector_product
-    model.set_state(np.ascontiguousarray(x_star))
-    model.evaluate(2, 2, True)
-    ni = interior.size
-
-    def hii(vi):
-        v = np.zeros(n)
-        v[interior] = vi
-        return np.asarray(hvp(np.ascontiguousarray(v)), float)[interior]
-
-    def mii(bi):
-        v = np.zeros(n)
-        v[interior] = bi
-        return np.asarray(model.apply_preconditioner(np.ascontiguousarray(v)), float)[
-            interior
-        ]
-
-    lam, _ = gmres(
-        LinearOperator((ni, ni), matvec=hii),  # type: ignore[call-overload]
-        dj[interior],
-        M=LinearOperator((ni, ni), matvec=mii),  # type: ignore[call-overload]
-        rtol=1e-6,
-        restart=100,
-        maxiter=30,
-    )
-    emb = np.zeros(n)
-    emb[interior] = lam
-    model.set_state(np.ascontiguousarray(x_star))
-    model.evaluate(2, 2, False)
-    return dj[boundary] - np.asarray(hvp(np.ascontiguousarray(emb)), float)[boundary]
+    """Call the shared library gradient with a selectable HVP backend."""
+    return va.boundary_gradient(model, x_star, interior, boundary, OBJ, exact=exact)
 
 
 for case, path, ns in CASES:

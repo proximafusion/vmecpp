@@ -100,9 +100,6 @@ void vmecpp::deAliasConstraintForce(
     const Eigen::VectorXd& gConEff, Eigen::VectorXd& m_gsc,
     Eigen::VectorXd& m_gcs, Eigen::VectorXd& m_gCon) {
   if (!s_.lasym) {
-    // Arithmetic lives in the shared, allocation-free kernel
-    // (constraint_force_kernel.h) so the solver and the Enzyme autodiff path
-    // use one implementation.
     ComputeDeAliasConstraintForce(
         gConEff.data(), faccon.data(), tcon.data(), fb.sinmui.data(),
         fb.cosmui.data(), fb.cosnv.data(), fb.sinnv.data(), fb.sinmu.data(),
@@ -111,162 +108,35 @@ void vmecpp::deAliasConstraintForce(
         m_gcs.data(), m_gCon.data());
     return;
   }
-
-  absl::c_fill_n(m_gCon, (rp.nsMaxF - rp.nsMinF) * s_.nZnT, 0);
-
-  // For non-stellarator-symmetric runs the spectral-condensation constraint
-  // force carries an antisymmetric parity as well. Following educational_VMEC
-  // alias.f90, accumulate the antisymmetric toroidal coefficients (gcc, gss)
-  // and the antisymmetric real-space force (gcona) per flux surface, then
-  // extend the odd-parity constraint force onto the full poloidal interval
-  // (symrzl convention). The stellarator-symmetric path is left unchanged.
-  const bool lasym = s_.lasym;
-  Eigen::VectorXd gcc, gss, gcona, refl;
-  if (lasym) {
+  Eigen::VectorXd gcc;
+  Eigen::VectorXd gss;
+  Eigen::VectorXd gConAsym;
+  Eigen::VectorXd refl;
+  if (s_.lasym) {
     gcc.setZero(s_.ntor + 1);
     gss.setZero(s_.ntor + 1);
-    gcona.setZero(s_.nZnT);
+    gConAsym.setZero(s_.nZnT);
     refl.setZero(s_.nThetaReduced);
   }
+  deAliasConstraintForce(rp, fb, s_, faccon, tcon, gConEff, m_gsc, m_gcs, gcc,
+                         gss, gConAsym, refl, m_gCon);
+}
 
-  // no constraint on axis --> has no poloidal angle
-  int jMin = 0;
-  if (rp.nsMinF == 0) {
-    jMin = 1;
-  }
-
-  for (int jF = std::max(jMin, rp.nsMinF); jF < rp.nsMaxF; ++jF) {
-    if (lasym) {
-      absl::c_fill_n(gcona, s_.nZnT, 0);
-    }
-    for (int m = 1; m < s_.mpol - 1; ++m) {
-      absl::c_fill_n(m_gsc, s_.ntor + 1, 0);
-      absl::c_fill_n(m_gcs, s_.ntor + 1, 0);
-      if (lasym) {
-        absl::c_fill_n(gcc, s_.ntor + 1, 0);
-        absl::c_fill_n(gss, s_.ntor + 1, 0);
-      }
-
-      for (int k = 0; k < s_.nZeta; ++k) {
-        // fwd transform in poloidal direction
-        // integrate poloidally to get m-th poloidal Fourier coefficient
-        const int kl_base = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
-        const int ml_base = m * s_.nThetaReduced;
-
-        auto gConEff_seg = Eigen::Map<const Eigen::VectorXd>(
-            gConEff.data() + kl_base, s_.nThetaReduced);
-        auto sinmui_seg = fb.sinmui.segment(ml_base, s_.nThetaReduced);
-        auto cosmui_seg = fb.cosmui.segment(ml_base, s_.nThetaReduced);
-
-        double w0 = gConEff_seg.dot(sinmui_seg);
-        double w1 = gConEff_seg.dot(cosmui_seg);
-
-        const double tc = tcon[jF - rp.nsMinF];
-
-        if (!lasym) {
-          // forward Fourier transform in toroidal direction for full set of
-          // mode numbers (n = 0, 1, ..., ntor)
-          for (int n = 0; n < s_.ntor + 1; ++n) {
-            int idx_kn = k * (s_.nnyq2 + 1) + n;
-
-            // NOTE: `tcon` comes into play here
-            m_gsc[n] += fb.cosnv[idx_kn] * w0 * tc;
-            m_gcs[n] += fb.sinnv[idx_kn] * w1 * tc;
-          }
-        } else {
-          // effective force at the reflected point (theta -> 2pi - theta,
-          // zeta -> 2pi - zeta), sampled over the reduced poloidal interval
-          const int kRev = (s_.nZeta - k) % s_.nZeta;
-          const int refl_base =
-              ((jF - rp.nsMinF) * s_.nZeta + kRev) * s_.nThetaEff;
-          for (int l = 0; l < s_.nThetaReduced; ++l) {
-            const int lRev = (s_.nThetaEven - l) % s_.nThetaEven;
-            refl[l] = gConEff[refl_base + lRev];
-          }
-          double w3 = refl.dot(cosmui_seg);
-          double w4 = refl.dot(sinmui_seg);
-          for (int n = 0; n < s_.ntor + 1; ++n) {
-            int idx_kn = k * (s_.nnyq2 + 1) + n;
-            const double cosnv = fb.cosnv[idx_kn];
-            const double sinnv = fb.sinnv[idx_kn];
-            m_gcs[n] += 0.5 * tc * sinnv * (w1 - w3);
-            m_gsc[n] += 0.5 * tc * cosnv * (w0 - w4);
-            gss[n] += 0.5 * tc * sinnv * (w0 + w4);
-            gcc[n] += 0.5 * tc * cosnv * (w1 + w3);
-          }
-        }
-      }  // k
-
-      // ------------------------------------------
-      // need to "wait" (= finish k loop) here
-      // to get Fourier coefficients fully defined!
-      // ------------------------------------------
-
-      // inverse Fourier-transform from reduced set of mode numbers
-      for (int k = 0; k < s_.nZeta; ++k) {
-        // collect contribution to current grid point from n-th toroidal mode
-        const int kn_base = k * (s_.nnyq2 + 1);
-        auto cosnv_seg = fb.cosnv.segment(kn_base, s_.ntor + 1);
-        auto sinnv_seg = fb.sinnv.segment(kn_base, s_.ntor + 1);
-
-        auto m_gsc_seg =
-            Eigen::Map<const Eigen::VectorXd>(m_gsc.data(), s_.ntor + 1);
-        auto m_gcs_seg =
-            Eigen::Map<const Eigen::VectorXd>(m_gcs.data(), s_.ntor + 1);
-
-        double w0 = m_gsc_seg.dot(cosnv_seg);
-        double w1 = m_gcs_seg.dot(sinnv_seg);
-
-        double a0 = 0.0;
-        double a1 = 0.0;
-        if (lasym) {
-          auto gcc_seg =
-              Eigen::Map<const Eigen::VectorXd>(gcc.data(), s_.ntor + 1);
-          auto gss_seg =
-              Eigen::Map<const Eigen::VectorXd>(gss.data(), s_.ntor + 1);
-          a0 = gcc_seg.dot(cosnv_seg);
-          a1 = gss_seg.dot(sinnv_seg);
-        }
-
-        // inv transform in poloidal direction
-        for (int l = 0; l < s_.nThetaReduced; ++l) {
-          int idx_kl = ((jF - rp.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
-          const int idx_ml = m * s_.nThetaReduced + l;
-
-          // NOTE: `faccon` comes into play here
-          m_gCon[idx_kl] +=
-              faccon[m] * (w0 * fb.sinmu[idx_ml] + w1 * fb.cosmu[idx_ml]);
-          if (lasym) {
-            const int within = k * s_.nThetaEff + l;
-            gcona[within] +=
-                faccon[m] * (a0 * fb.cosmu[idx_ml] + a1 * fb.sinmu[idx_ml]);
-          }
-        }  // l
-      }  // k
-    }  // m
-
-    if (lasym) {
-      // Extend the odd-parity constraint force onto theta in [pi, 2pi[ as the
-      // parity-signed reflection (-sym + asym), then add the antisymmetric
-      // piece on [0, pi] (alias.f90 / symrzl). The extension reads the reduced
-      // interval, which still holds the pure symmetric values here.
-      const int surf_base = (jF - rp.nsMinF) * s_.nZnT;
-      for (int k = 0; k < s_.nZeta; ++k) {
-        const int kRev = (s_.nZeta - k) % s_.nZeta;
-        for (int l = s_.nThetaReduced; l < s_.nThetaEven; ++l) {
-          const int jl = surf_base + k * s_.nThetaEff + l;
-          const int within_rev = kRev * s_.nThetaEff + (s_.nThetaEven - l);
-          m_gCon[jl] = -m_gCon[surf_base + within_rev] + gcona[within_rev];
-        }
-      }
-      for (int k = 0; k < s_.nZeta; ++k) {
-        for (int l = 0; l < s_.nThetaReduced; ++l) {
-          const int within = k * s_.nThetaEff + l;
-          m_gCon[surf_base + within] += gcona[within];
-        }
-      }
-    }
-  }
+void vmecpp::deAliasConstraintForce(
+    const vmecpp::RadialPartitioning& rp,
+    const vmecpp::FourierBasisFastPoloidal& fb, const vmecpp::Sizes& s_,
+    const Eigen::VectorXd& faccon, const Eigen::VectorXd& tcon,
+    const Eigen::VectorXd& gConEff, Eigen::VectorXd& m_gsc,
+    Eigen::VectorXd& m_gcs, Eigen::VectorXd& m_gcc, Eigen::VectorXd& m_gss,
+    Eigen::VectorXd& m_gConAsym, Eigen::VectorXd& m_refl,
+    Eigen::VectorXd& m_gCon) {
+  ComputeDeAliasConstraintForce(
+      gConEff.data(), faccon.data(), tcon.data(), fb.sinmui.data(),
+      fb.cosmui.data(), fb.cosnv.data(), fb.sinnv.data(), fb.sinmu.data(),
+      fb.cosmu.data(), rp.nsMinF, rp.nsMaxF, s_.nZeta, s_.nThetaEff,
+      s_.nThetaReduced, s_.nThetaEven, s_.mpol, s_.ntor, s_.nnyq2, s_.lasym,
+      m_gsc.data(), m_gcs.data(), m_gcc.data(), m_gss.data(), m_gConAsym.data(),
+      m_refl.data(), m_gCon.data());
 }
 
 namespace vmecpp {
@@ -436,6 +306,12 @@ IdealMhdModel::IdealMhdModel(
   gConEff.setZero(nrztIncludingBoundary);
   gsc.setZero(s_.ntor + 1);
   gcs.setZero(s_.ntor + 1);
+  if (s_.lasym) {
+    gcc.setZero(s_.ntor + 1);
+    gss.setZero(s_.ntor + 1);
+    gConAsym.setZero(s_.nZnT);
+    refl.setZero(s_.nThetaReduced);
+  }
   gCon.setZero(nrztIncludingBoundary);
 
   frcon_e.setZero(nrzt);
@@ -2598,7 +2474,7 @@ void IdealMhdModel::effectiveConstraintForce() {
 // and apply scaling (tcon[j]) and preconditioning (faccon[m])
 void IdealMhdModel::deAliasConstraintForce() {
   vmecpp::deAliasConstraintForce(r_, t_, s_, faccon, tcon, gConEff, gsc, gcs,
-                                 gCon);
+                                 gcc, gss, gConAsym, refl, gCon);
 }
 
 // add constraint force to MHD force
@@ -2709,12 +2585,14 @@ LocalForceComposition IdealMhdModel::makeLocalForceComposition(
   comp.lamscale = constants_.lamscale;
   comp.lthreed = s_.lthreed;
   comp.with_constraint = true;
+  comp.lasym = s_.lasym;
   comp.nsMaxF = r_.nsMaxF;
   comp.nZeta = s_.nZeta;
   comp.nThetaEff = s_.nThetaEff;
   comp.ncurr = ncurr;
   comp.currH = m_p_.currH.data();
   comp.wInt = s_.wInt.data();
+  comp.nThetaEven = s_.nThetaEven;
   comp.nThetaReduced = s_.nThetaReduced;
   comp.mpol = s_.mpol;
   comp.ntor = s_.ntor;
@@ -2742,9 +2620,9 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   const int nForce = comp.force_stride;
 
   const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
-  // work holds the half-grid and per-point scratch plus the constraint scratch
-  // (gConEff, gCon, gsc, gcs).
-  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 2 * (s_.ntor + 1);
+  // work holds the half-grid and per-point scratch plus the constraint scratch.
+  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 4 * (s_.ntor + 1) +
+                    s_.nZnT + s_.nThetaReduced;
   std::vector<double> work(nWork, 0.0);
   std::vector<double> dwork(nWork, 0.0);
   std::vector<double> force(20 * nForce, 0.0);
@@ -2804,7 +2682,8 @@ void IdealMhdModel::exactForceDensityTangent(const double* geomP,
   LocalForceComposition comp = makeLocalForceComposition(geom_stride);
   const int nForce = comp.force_stride;
   const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
-  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 2 * (s_.ntor + 1);
+  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 4 * (s_.ntor + 1) +
+                    s_.nZnT + s_.nThetaReduced;
   std::vector<double> work(nWork, 0.0);
   std::vector<double> dwork(nWork, 0.0);
   std::vector<double> force(20 * nForce, 0.0);
@@ -2819,7 +2698,8 @@ void IdealMhdModel::exactForceDensityCotangent(const double* geomP,
   LocalForceComposition comp = makeLocalForceComposition(geom_stride);
   const int nForce = comp.force_stride;
   const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
-  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 2 * (s_.ntor + 1);
+  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 4 * (s_.ntor + 1) +
+                    s_.nZnT + s_.nThetaReduced;
   std::vector<double> work(nWork, 0.0);
   std::vector<double> work_bar(nWork, 0.0);
   std::vector<double> force(20 * nForce, 0.0);
@@ -3268,12 +3148,14 @@ double IdealMhdModel::composedForceResidual(const double* geomP,
   comp.lamscale = constants_.lamscale;
   comp.lthreed = s_.lthreed;
   comp.with_constraint = true;
+  comp.lasym = s_.lasym;
   comp.nsMaxF = r_.nsMaxF;
   comp.nZeta = s_.nZeta;
   comp.nThetaEff = s_.nThetaEff;
   comp.ncurr = ncurr;
   comp.currH = m_p_.currH.data();
   comp.wInt = s_.wInt.data();
+  comp.nThetaEven = s_.nThetaEven;
   comp.nThetaReduced = s_.nThetaReduced;
   comp.mpol = s_.mpol;
   comp.ntor = s_.ntor;
@@ -3290,7 +3172,8 @@ double IdealMhdModel::composedForceResidual(const double* geomP,
   comp.cosmu = t_.cosmu.data();
 
   const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
-  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 2 * (s_.ntor + 1);
+  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 4 * (s_.ntor + 1) +
+                    s_.nZnT + s_.nThetaReduced;
   std::vector<double> work(nWork, 0.0);
   std::vector<double> force(20 * nForce, 0.0);
   ComputeLocalForceDensity(geomP, work.data(), force.data(), &comp);
