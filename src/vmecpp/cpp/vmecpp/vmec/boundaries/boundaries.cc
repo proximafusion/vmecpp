@@ -5,11 +5,20 @@
 #include "vmecpp/vmec/boundaries/boundaries.h"
 
 #include <iostream>
+#include <span>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_format.h"
 #include "vmecpp/vmec/boundaries/guess_magnetic_axis.h"
 
 namespace vmecpp {
+
+namespace {
+std::span<const double> AsSpan(const Eigen::VectorXd& coefficients) {
+  return {coefficients.data(), static_cast<size_t>(coefficients.size())};
+}
+}  // namespace
 
 Boundaries::Boundaries(const Sizes* s, const FourierBasisFastPoloidal* t,
                        const int sign_of_jacobian)
@@ -51,8 +60,43 @@ bool Boundaries::setupFromIndata(const VmecINDATA& id, bool verbose) {
   // activate m=1-constraint
   ensureM1Constrained(0.5);
 
+  // A boundary carrying a lot of high-poloidal-mode content is still a valid
+  // input, so this is a warning rather than an error. A free-boundary run
+  // relaxes the initial boundary, so only fixed-boundary inputs are flagged.
+  if (verbose && !id.lfreeb) {
+    const double spectral_width = ComputeSpectralWidth();
+    if (spectral_width > kSpectrallyDenseBoundaryThreshold) {
+      LOG(WARNING) << absl::StrFormat(
+          "Input boundary is spectrally dense (spectral width <M> = %.1f). "
+          "Runs with high spectral content may converge poorly or incorrectly "
+          "resolve the physics. Consider spectral condensation of the boundary "
+          "first, e.g. using simsopt.geo.surfacerzfourier.condense_spectrum",
+          spectral_width);
+    }
+  }
+
   return haveToFlipTheta;
 }
+
+double Boundaries::ComputeSpectralWidth(const int p, const int q) const {
+  // The boundary coefficients are plain Fourier amplitudes, whereas
+  // FourierGeometry holds them divided by mscale * nscale; unit scales make
+  // SpectralWidth weight both representations the same way.
+  const Eigen::VectorXd unit_mscale = Eigen::VectorXd::Ones(s_.mpol);
+  const Eigen::VectorXd unit_nscale = Eigen::VectorXd::Ones(s_.ntor + 1);
+
+  const SurfaceFourierGeometry boundary = {.rmncc = AsSpan(rbcc),
+                                           .rmnss = AsSpan(rbss),
+                                           .rmnsc = AsSpan(rbsc),
+                                           .rmncs = AsSpan(rbcs),
+                                           .zmnsc = AsSpan(zbsc),
+                                           .zmncs = AsSpan(zbcs),
+                                           .zmncc = AsSpan(zbcc),
+                                           .zmnss = AsSpan(zbss)};
+
+  return SpectralWidth(boundary, s_, AsSpan(unit_mscale), AsSpan(unit_nscale),
+                       p, q);
+}  // ComputeSpectralWidth
 
 void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
   // copy over axis from INDATA to this class

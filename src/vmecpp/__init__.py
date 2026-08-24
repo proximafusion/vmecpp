@@ -34,7 +34,12 @@ from vmecpp._iteration import (
     solve_equilibrium,
     solve_multigrid,
 )
-from vmecpp._pydantic_numpy import BaseModelWithNumpy
+from vmecpp._pydantic_numpy import (
+    _DAPPER_TYPE_FIELD,
+    BaseModelWithNumpy,
+    own_model_fields,
+)
+from vmecpp._rescale import rescale
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
 logger = logging.getLogger(__name__)
@@ -111,6 +116,14 @@ AuxFType = typing.Annotated[
 AuxSType = typing.Annotated[
     _ArrayType,
     pydantic.BeforeValidator(lambda x: _util.right_pad(x, ndfmax, -1.0)),
+]
+# `VmecWOut.am`/`ac`/`ai` share one axis ("_preset") and so must all agree on
+# length; right-pad to the classic fixed VMEC size (like AuxFType/AuxSType
+# already do for the aux profile arrays) instead of leaving them at whatever
+# length the user's profile happened to be.
+ProfileCoeffType = typing.Annotated[
+    _ArrayType,
+    pydantic.BeforeValidator(lambda x: _util.right_pad(x, preset, 0.0)),
 ]
 
 MgridModeType: typing.TypeAlias = typing.Annotated[
@@ -681,7 +694,7 @@ class VmecInput(BaseModelWithNumpy):
         # VmecInput does _not_ have any default values.
         vmec_input_dict = {
             attr_name: getattr(vmecindata, attr_name)
-            for attr_name in VmecInput.model_fields
+            for attr_name in own_model_fields(VmecInput)
         }
         vmec_input_dict["ns_array"] = vmec_input_dict["ns_array"].astype(np.int64)
         vmec_input_dict["niter_array"] = vmec_input_dict["niter_array"].astype(np.int64)
@@ -713,7 +726,7 @@ class VmecInput(BaseModelWithNumpy):
             "zbc",
         }
 
-        for attr in VmecInput.model_fields:
+        for attr in own_model_fields(VmecInput):
             if attr in readonly_attrs or attr in (
                 "free_boundary_method",
                 "iteration_style",
@@ -795,10 +808,10 @@ class VmecWOut(BaseModelWithNumpy):
     """
 
     # We use alias names to map to the wout keys, when they differ from the variable
-    # names in Python (e.g. lasym__logical__ instead of lasym). By default, we want
-    # to use the nicer Python names and explicitly opt in to use the wout names.
+    # names in Python (e.g. lasym__logical__ instead of lasym). Accept both the
+    # Python names and the wout aliases when validating.
     model_config = pydantic.ConfigDict(
-        validate_by_alias=False,
+        validate_by_alias=True,
         validate_by_name=True,
         serialize_by_alias=False,
         # Allow for variables in the wout file even if VMEC++ doesn't use them.
@@ -1211,13 +1224,13 @@ class VmecWOut(BaseModelWithNumpy):
     piota_type: ProfileType
     """Parametrization of iota profile (copied from input)."""
 
-    am: jt.Float[np.ndarray, "_preset"]
+    am: ProfileCoeffType[jt.Float[np.ndarray, "_preset"]]
     """Mass/pressure profile coefficients (copied from input)."""
 
-    ac: jt.Float[np.ndarray, "_preset"]
+    ac: ProfileCoeffType[jt.Float[np.ndarray, "_preset"]]
     """Enclosed toroidal current profile coefficients (copied from input)."""
 
-    ai: jt.Float[np.ndarray, "_preset"]
+    ai: ProfileCoeffType[jt.Float[np.ndarray, "_preset"]]
     """Iota profile coefficients (copied from input)."""
 
     am_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
@@ -1449,7 +1462,7 @@ class VmecWOut(BaseModelWithNumpy):
 
             # Convert VmeWOut to its NetCDF3 compatible representation
             # (wout compatible names and datatypes)
-            dumped_fields = self.model_dump(by_alias=True)
+            dumped_fields = self.model_dump(by_alias=True, exclude={_DAPPER_TYPE_FIELD})
 
             # Make a dictionary of alias names to field info, from
             # model_fields (dictionary of non-alias names)
@@ -1457,7 +1470,7 @@ class VmecWOut(BaseModelWithNumpy):
                 (
                     field_info.alias if field_info.alias is not None else field
                 ): field_info
-                for field, field_info in VmecWOut.model_fields.items()
+                for field, field_info in own_model_fields(VmecWOut).items()
             }
             # jaxtyping does not expose a stable public API for dimension marker
             # types. Older versions expose `_AnonymousDim`, while newer versions
@@ -1612,7 +1625,7 @@ class VmecWOut(BaseModelWithNumpy):
         attrs = {}
 
         # These attributes are the same in VMEC++ and in Fortran VMEC
-        for field in VmecWOut.model_fields:
+        for field in own_model_fields(VmecWOut):
             if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
                 attrs[field] = getattr(cpp_wout, field)
 
@@ -1645,7 +1658,7 @@ class VmecWOut(BaseModelWithNumpy):
         cpp_wout = _vmecpp.WOutFileContents()
 
         # These attributes are the same in VMEC++ and in Fortran VMEC
-        for field in VmecWOut.model_fields:
+        for field in own_model_fields(VmecWOut):
             if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
                 setattr(cpp_wout, field, getattr(self, field))
 
@@ -1782,7 +1795,7 @@ class Threed1Volumetrics(BaseModelWithNumpy):
         threed1volumetrics = Threed1Volumetrics(
             **{
                 attr: getattr(cpp_threed1volumetrics, attr)
-                for attr in Threed1Volumetrics.model_fields
+                for attr in own_model_fields(Threed1Volumetrics)
             }
         )
 
@@ -1847,7 +1860,7 @@ class Threed1FirstTable(BaseModelWithNumpy):
         return Threed1FirstTable(
             **{
                 attr: getattr(cpp_threed1_first_table, attr)
-                for attr in Threed1FirstTable.model_fields
+                for attr in own_model_fields(Threed1FirstTable)
             }
         )
 
@@ -1958,20 +1971,25 @@ class Threed1GeometricAndMagneticQuantities(BaseModelWithNumpy):
     psi: jt.Float[np.ndarray, "num_full"]
     """Poloidal magnetic flux on the full grid."""
 
-    ygeo: jt.Float[np.ndarray, "num_full"]
-    """Geometric minor radius profile."""
+    ygeo: jt.Float[np.ndarray, "two_num_full"]
+    """Geometric minor radius profile, concatenated for the phi=0 and phi=pi symmetry
+    planes."""
 
-    yinden: jt.Float[np.ndarray, "num_full"]
-    """Geometric indentation profile."""
+    yinden: jt.Float[np.ndarray, "two_num_full"]
+    """Geometric indentation profile, concatenated for the phi=0 and phi=pi symmetry
+    planes."""
 
-    yellip: jt.Float[np.ndarray, "num_full"]
-    """Geometric ellipticity profile."""
+    yellip: jt.Float[np.ndarray, "two_num_full"]
+    """Geometric ellipticity profile, concatenated for the phi=0 and phi=pi symmetry
+    planes."""
 
-    ytrian: jt.Float[np.ndarray, "num_full"]
-    """Geometric triangularity profile."""
+    ytrian: jt.Float[np.ndarray, "two_num_full"]
+    """Geometric triangularity profile, concatenated for the phi=0 and phi=pi symmetry
+    planes."""
 
-    yshift: jt.Float[np.ndarray, "num_full"]
-    """Geometric shift measured from the magnetic axis."""
+    yshift: jt.Float[np.ndarray, "two_num_full"]
+    """Geometric shift measured from the magnetic axis, concatenated for the phi=0 and
+    phi=pi symmetry planes."""
 
     loc_jpar_perp: jt.Float[np.ndarray, "num_full"]
     """Local parallel/perpendicular current ratio profile."""
@@ -1986,7 +2004,7 @@ class Threed1GeometricAndMagneticQuantities(BaseModelWithNumpy):
         return Threed1GeometricAndMagneticQuantities(
             **{
                 attr: getattr(cpp_threed1_geometric_and_magnetic, attr)
-                for attr in Threed1GeometricAndMagneticQuantities.model_fields
+                for attr in own_model_fields(Threed1GeometricAndMagneticQuantities)
             }
         )
 
@@ -2004,22 +2022,35 @@ class Threed1AxisGeometry(BaseModelWithNumpy):
     zaxis_symm: jt.Float[np.ndarray, "ntor_plus_1"]
     """Stellarator-symmetric axis coefficients `Z * sin(n * zeta)`."""
 
-    raxis_asym: jt.Float[np.ndarray, "ntor_plus_1"]
-    """Non-stellarator-symmetric axis coefficients `R * sin(n * zeta)`."""
+    raxis_asym: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
+    """Non-stellarator-symmetric axis coefficients `R * sin(n * zeta)`.
 
-    zaxis_asym: jt.Float[np.ndarray, "ntor_plus_1"]
-    """Non-stellarator-symmetric axis coefficients `Z * cos(n * zeta)`."""
+    `None` when `lasym=False`.
+    """
+
+    zaxis_asym: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
+    """Non-stellarator-symmetric axis coefficients `Z * cos(n * zeta)`.
+
+    `None` when `lasym=False`.
+    """
 
     @staticmethod
     def _from_cpp_threed1_axis_geometry(
         cpp_threed1_axis: _vmecpp.Threed1AxisGeometry,
     ) -> Threed1AxisGeometry:
-        return Threed1AxisGeometry(
-            **{
-                attr: getattr(cpp_threed1_axis, attr)
-                for attr in Threed1AxisGeometry.model_fields
-            }
-        )
+        attrs = {
+            attr: getattr(cpp_threed1_axis, attr)
+            for attr in own_model_fields(Threed1AxisGeometry)
+            if attr not in ("raxis_asym", "zaxis_asym")
+        }
+        # raxis_asym/zaxis_asym are only populated (non-empty) when lasym=True;
+        # they keep their `None` default otherwise (C++ leaves them as
+        # default-constructed, empty vectors, which don't fit the "ntor_plus_1"
+        # shape).
+        if cpp_threed1_axis.raxis_asym.size > 0:
+            attrs["raxis_asym"] = cpp_threed1_axis.raxis_asym
+            attrs["zaxis_asym"] = cpp_threed1_axis.zaxis_asym
+        return Threed1AxisGeometry(**attrs)
 
 
 class Threed1Betas(BaseModelWithNumpy):
@@ -2052,7 +2083,7 @@ class Threed1Betas(BaseModelWithNumpy):
         return Threed1Betas(
             **{
                 attr: getattr(cpp_threed1_betas, attr)
-                for attr in Threed1Betas.model_fields
+                for attr in own_model_fields(Threed1Betas)
             }
         )
 
@@ -2121,7 +2152,7 @@ class Threed1ShafranovIntegrals(BaseModelWithNumpy):
     ) -> Threed1ShafranovIntegrals:
         # `lambda_` maps to the C++ member `lambda` (a Python keyword).
         values = {}
-        for field_name in Threed1ShafranovIntegrals.model_fields:
+        for field_name in own_model_fields(Threed1ShafranovIntegrals):
             cpp_name = "lambda" if field_name == "lambda_" else field_name
             values[field_name] = getattr(cpp_threed1_shafranov_integrals, cpp_name)
         return Threed1ShafranovIntegrals(**values)
@@ -2178,7 +2209,7 @@ class Mercier(BaseModelWithNumpy):
     @staticmethod
     def _from_cpp_mercier(cpp_mercier: _vmecpp.Mercier) -> Mercier:
         mercier = Mercier(
-            **{attr: getattr(cpp_mercier, attr) for attr in Mercier.model_fields}
+            **{attr: getattr(cpp_mercier, attr) for attr in own_model_fields(Mercier)}
         )
 
         return mercier
@@ -2187,13 +2218,13 @@ class Mercier(BaseModelWithNumpy):
 class JxBOut(BaseModelWithNumpy):
     model_config = pydantic.ConfigDict(extra="forbid")
 
-    itheta: jt.Float[np.ndarray, "num_half nZnT"]
+    itheta: jt.Float[np.ndarray, "num_full nZnT"]
     r"""Poloidal surface current.
 
     :math:`itheta = (\frac{\partial B_s}{\partial \Phi} - \frac{\partial B_\phi}{\partial s}) / \mu_0`
     """
 
-    izeta: jt.Float[np.ndarray, "num_half nZnT"]
+    izeta: jt.Float[np.ndarray, "num_full nZnT"]
     r"""Toroidal surface current.
 
     :math:`izeta = (-\frac{\partial B_s}{\partial \Theta} + \frac{\partial
@@ -2277,7 +2308,7 @@ class JxBOut(BaseModelWithNumpy):
     @staticmethod
     def _from_cpp_jxbout(cpp_jxbout: _vmecpp.JxBOutFileContents) -> JxBOut:
         jxbout = JxBOut(
-            **{attr: getattr(cpp_jxbout, attr) for attr in JxBOut.model_fields}
+            **{attr: getattr(cpp_jxbout, attr) for attr in own_model_fields(JxBOut)}
         )
 
         return jxbout
@@ -2643,6 +2674,7 @@ populate_raw_profile = set_profile
 __all__ = [  # noqa: RUF022
     "run",
     "interpolate_solution",
+    "rescale",
     "VmecInput",
     "VmecOutput",
     "VmecWOut",
