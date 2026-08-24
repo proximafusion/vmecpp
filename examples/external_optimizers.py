@@ -92,6 +92,24 @@ def residual(model):
     return F
 
 
+def _hvp_operators(model, hvp_fn, n_dof, shift=0.0):
+    """Build the HVP and VMEC preconditioner operators for one iterate."""
+
+    def h_matvec(v):
+        result = np.asarray(hvp_fn(np.ascontiguousarray(v)), float)
+        if shift:
+            result = result + shift * v
+        return result
+
+    def m_matvec(b):
+        return np.asarray(model.apply_preconditioner(np.ascontiguousarray(b)), float)
+
+    return (
+        LinearOperator((n_dof, n_dof), matvec=h_matvec),  # type: ignore[call-overload]
+        LinearOperator((n_dof, n_dof), matvec=m_matvec),  # type: ignore[call-overload]
+    )
+
+
 @dataclass
 class Result:
     name: str
@@ -236,18 +254,7 @@ def solve_newton_hvp(
         it += 1
         model.set_state(np.ascontiguousarray(x))
         model.evaluate(2, 2, True)  # assemble M at the current iterate
-        h_op = LinearOperator(  # type: ignore[call-overload]
-            (n_dof, n_dof),
-            matvec=lambda v: np.asarray(  # type: ignore[call-overload]
-                model.hessian_vector_product(np.ascontiguousarray(v)), float
-            ),
-        )
-        m_op = LinearOperator(  # type: ignore[call-overload]
-            (n_dof, n_dof),
-            matvec=lambda b: np.asarray(  # type: ignore[call-overload]
-                model.apply_preconditioner(np.ascontiguousarray(b)), float
-            ),
-        )
+        h_op, m_op = _hvp_operators(model, model.hessian_vector_product, n_dof)
         dx, _ = gmres(h_op, -fk, M=m_op, rtol=inner_tol, maxiter=100)
         # Backtracking line search: accept the largest step that reduces ||F||.
         alpha = 1.0
@@ -300,19 +307,7 @@ def solve_newton_exact_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton
         prev_norm = norm0
         model.set_state(np.ascontiguousarray(x))
         model.evaluate(2, 2, True)
-        h_op = LinearOperator(  # type: ignore[call-overload]
-            (n_dof, n_dof),
-            matvec=lambda v: np.asarray(  # type: ignore[call-overload]
-                model.exact_hessian_vector_product(np.ascontiguousarray(v)),
-                float,
-            ),
-        )
-        m_op = LinearOperator(  # type: ignore[call-overload]
-            (n_dof, n_dof),
-            matvec=lambda b: np.asarray(  # type: ignore[call-overload]
-                model.apply_preconditioner(np.ascontiguousarray(b)), float
-            ),
-        )
+        h_op, m_op = _hvp_operators(model, model.exact_hessian_vector_product, n_dof)
         dx, _ = lgmres(h_op, -fk, M=m_op, rtol=eta, maxiter=200)
         alpha = 1.0
         for _ in range(30):
@@ -358,20 +353,8 @@ def solve_newton_ptc(
         model.set_state(np.ascontiguousarray(x))
         model.evaluate(2, 2, True)
         shift = 1.0 / dt
-        a_op = LinearOperator(  # type: ignore[call-overload]
-            (n_dof, n_dof),
-            matvec=lambda v, s=shift: (  # type: ignore[call-arg]
-                np.asarray(  # type: ignore[call-overload]
-                    model.exact_hessian_vector_product(np.ascontiguousarray(v)), float
-                )
-                + s * v
-            ),
-        )
-        m_op = LinearOperator(  # type: ignore[call-overload]
-            (n_dof, n_dof),
-            matvec=lambda b: np.asarray(  # type: ignore[call-overload]
-                model.apply_preconditioner(np.ascontiguousarray(b)), float
-            ),
+        a_op, m_op = _hvp_operators(
+            model, model.exact_hessian_vector_product, n_dof, shift=shift
         )
         dx, _ = lgmres(a_op, -f, M=m_op, rtol=inner, maxiter=60)
         x = x + dx

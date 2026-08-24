@@ -45,6 +45,15 @@ void deAliasConstraintForce(const RadialPartitioning& rp,
                             const Eigen::VectorXd& gConEff,
                             Eigen::VectorXd& m_gsc, Eigen::VectorXd& m_gcs,
                             Eigen::VectorXd& m_gCon);
+void deAliasConstraintForce(const RadialPartitioning& rp,
+                            const FourierBasisFastPoloidal& fb, const Sizes& s_,
+                            const Eigen::VectorXd& faccon,
+                            const Eigen::VectorXd& tcon,
+                            const Eigen::VectorXd& gConEff,
+                            Eigen::VectorXd& m_gsc, Eigen::VectorXd& m_gcs,
+                            Eigen::VectorXd& m_gcc, Eigen::VectorXd& m_gss,
+                            Eigen::VectorXd& m_gConAsym,
+                            Eigen::VectorXd& m_refl, Eigen::VectorXd& m_gCon);
 
 struct LocalForceComposition;
 
@@ -551,6 +560,10 @@ class IdealMhdModel {
   // Fourier coefficients of constraint force - used during de-aliasing
   Eigen::VectorXd gsc;
   Eigen::VectorXd gcs;
+  Eigen::VectorXd gcc;
+  Eigen::VectorXd gss;
+  Eigen::VectorXd gConAsym;
+  Eigen::VectorXd refl;
 
   // de-aliased constraint force - what enters the Fourier coefficients of the
   // forces

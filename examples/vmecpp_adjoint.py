@@ -35,7 +35,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from scipy.optimize import root
 from scipy.sparse.linalg import LinearOperator, gmres
 
 from vmecpp.cpp import _vmecpp  # type: ignore
@@ -131,7 +130,7 @@ def _interior_operators(model, x, interior, exact=False):
 
 
 def _safeguarded_interior_solve(model, x_template, interior, residual, tol, max_newton):
-    """Use public SciPy Krylov primitives with a VMEC-aware backtracking safeguard."""
+    """Solve the interior force balance with Newton-GMRES and backtracking."""
     xi = x_template[interior].copy()
     force = np.zeros(interior.size)
     for _ in range(max_newton):
@@ -174,9 +173,8 @@ def _safeguarded_interior_solve(model, x_template, interior, residual, tol, max_
 def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=80):
     """Converge the interior to force balance with the boundary held fixed.
 
-    SciPy's public Newton-Krylov root solver handles normal updates. For stiff large
-    boundary updates, fall back to public SciPy Krylov primitives with VMEC's adaptive
-    preconditioner and an explicit residual-decreasing line search.
+    The hand-written Newton-GMRES loop keeps VMEC's preconditioner synchronized with
+    every iterate and uses an explicit residual-decreasing line search.
     """
     x_template = np.asarray(x0, float).copy()
     x_template[boundary] = x_boundary
@@ -186,40 +184,6 @@ def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_new
         x[interior] = xi
         return _raw_force(model, x)[interior]
 
-    initial_xi = x_template[interior].copy()
-    initial_residual = residual(initial_xi)
-    if np.max(np.abs(initial_residual)) <= tol:
-        return x_template
-
-    preconditioner = _VmecPreconditioner(model, x_template, interior)
-    preconditioner.update(initial_xi, initial_residual)
-    try:
-        solution = root(
-            residual,
-            initial_xi,
-            method="krylov",
-            options={
-                "fatol": tol,
-                "line_search": "armijo",
-                "maxiter": max_newton,
-                "jac_options": {
-                    "method": "lgmres",
-                    "inner_M": preconditioner,
-                    "inner_rtol": 1e-4,
-                    "inner_maxiter": 300,
-                },
-            },
-        )
-    except ValueError:
-        solution = None
-
-    if (
-        solution is not None
-        and solution.success
-        and np.max(np.abs(solution.fun)) <= tol
-    ):
-        x_template[interior] = solution.x
-        return x_template
     return _safeguarded_interior_solve(
         model, x_template, interior, residual, tol, max_newton
     )
