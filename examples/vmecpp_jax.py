@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: MIT
 """Compose a VMEC boundary solve with arbitrary JAX objectives.
 
-The VMEC solve is deliberately kept outside JAX. ``make_boundary_solve`` wraps
+The VMEC solve is deliberately kept outside JAX. ``BoundarySolve`` wraps
 the solve-like map in ``vmecpp.make_custom_vjp_solve``; the objective can then
 be written entirely in JAX over the returned geometry state. On an Enzyme
 build, the callback VJP is VMEC++'s exact transposed-HVP adjoint.
@@ -114,3 +114,25 @@ def boundary_geometry(
     r = jnp.sum(rcc * cos_m * cos_n + rss * sin_m * sin_n, axis=(-2, -1))
     z = jnp.sum(zsc * sin_m * cos_n + zcs * cos_m * sin_n, axis=(-2, -1))
     return r, z
+
+
+def qs_geometry_objective(
+    state,
+    ns: int,
+    mpol: int,
+    ntor: int,
+    theta,
+    zeta,
+):
+    """Return a differentiable geometry-only quasi-axisymmetry proxy.
+
+    The objective intentionally consumes only the geometry state. Researchers can
+    replace this proxy with a QI, turbulence, or magnetic-QS residual while retaining
+    the same custom-VJP solve boundary.
+    """
+    radius, height = boundary_geometry(state, ns, mpol, ntor, theta, zeta)
+    radius_axisymmetric = jnp.mean(radius, axis=-1, keepdims=True)
+    height_axisymmetric = jnp.mean(height, axis=-1, keepdims=True)
+    return 0.5 * jnp.mean(
+        (radius - radius_axisymmetric) ** 2 + (height - height_axisymmetric) ** 2
+    )
