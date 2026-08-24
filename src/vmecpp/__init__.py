@@ -36,6 +36,7 @@ from vmecpp._iteration import (
 )
 from vmecpp._pydantic_numpy import BaseModelWithNumpy
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
+from vmecpp.jax_interface import make_custom_vjp_solve
 
 logger = logging.getLogger(__name__)
 
@@ -2659,4 +2660,5 @@ __all__ = [  # noqa: RUF022
     "solve_multigrid",
     "IterationResult",
     "IterationState",
+    "make_custom_vjp_solve",
 ]
