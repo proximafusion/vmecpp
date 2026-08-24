@@ -2736,6 +2736,12 @@ void IdealMhdModel::exactForceDensityCotangent(const double* geomP,
                        force.data(), fbar.data(), &comp);
 }
 
+#endif  // VMECPP_ENABLE_ENZYME
+
+// The four transform transposes below are also useful as standalone linear
+// operators, so keep them available in non-Enzyme builds for direct adjoint
+// identity tests. The nonlinear force-chain wrappers resume below.
+
 // (forcesToFourier)^T for the 2D case: scatter a decomposed-force Fourier
 // cotangent (frcc, fzsc, flsc) back to the real-space force-density members
 // through the same weighted basis the forward projection uses. Transpose of
@@ -3045,6 +3051,7 @@ void IdealMhdModel::dft_FourierToRealTranspose_3d_symm(
   }  // jF
 }
 
+#ifdef VMECPP_ENABLE_ENZYME
 void IdealMhdModel::applyExactForceJacobianTranspose(
     const double* geomP, int geom_stride, FourierForces& m_decomposed_in,
     FourierForces& m_physical_f, FourierGeometry& m_physical_scratch,
