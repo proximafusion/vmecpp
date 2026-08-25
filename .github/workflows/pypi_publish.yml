@@ -21,8 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ubuntu-24.04-arm not currently supported
-        os: [ubuntu-24.04, macos-14, macos-15-intel]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14, macos-15-intel]
 
     steps:
       - name: Checkout repository
@@ -81,6 +80,7 @@ jobs:
         distro:
           [
             "ubuntu:24.04",
+            "ubuntu-24.04-arm",
             "ubuntu:22.04",
             "archlinux/archlinux",
             "debian:12",
