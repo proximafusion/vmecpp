@@ -80,14 +80,21 @@ jobs:
         distro:
           [
             "ubuntu:24.04",
-            "ubuntu-24.04-arm",
             "ubuntu:22.04",
             "archlinux/archlinux",
             "debian:12",
             # "debian:testing-20250224", # TODO(jurasic): re-enable when 3.14 support unblocked
             "fedora:41",
           ]
-    runs-on: ubuntu-24.04
+        runner: [ubuntu-24.04]
+        include:
+          # Exercise the aarch64 wheels too, on a native arm64 runner. One
+          # distro is enough here -- this job is about testing the wheel
+          # actually works on a plain distro, and the multi-distro matrix
+          # above already covers distro-specific quirks on x86_64.
+          - distro: "ubuntu:24.04"
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     container: ${{ matrix.distro }}
 
     steps:
@@ -137,7 +144,10 @@ jobs:
 
           $PYTHON -m venv venv
           . venv/bin/activate
-          wheel_filename=$(find wheelhouse/$($PYTHON --version | awk '{print $2}' | awk -F. '{printf "vmecpp*-cp%s%s-*manylinux*.whl", $1, $2}'))
+          # Both x86_64 and aarch64 wheels land in the same merged wheelhouse/,
+          # so the glob must pin down the architecture too, not just the
+          # Python version, or it can match (and pip-install) the wrong one.
+          wheel_filename=$(find wheelhouse/$($PYTHON --version | awk '{print $2}' | awk -F. '{printf "vmecpp*-cp%s%s-*manylinux*", $1, $2}')"_$(uname -m).whl")
           echo "Found matching wheel: $wheel_filename"
           pip install $wheel_filename
 
