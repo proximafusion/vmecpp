@@ -4,6 +4,8 @@ on:
   # allows running workflows manually
   workflow_dispatch:
 
+  pull_request:
+
   release:
     types: [published]
 
