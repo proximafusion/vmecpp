@@ -369,12 +369,12 @@ Some of the things we are planning for VMEC++'s future:
 - [x] free-boundary hot-restart in Python
 - [X] open-sourcing the full VMEC++ test suite (including the Verification&Validation part that compares `wout` contents)
 - [x] open-sourcing the source code to reproduce VMEC++'s performance benchmarks
-- [ ] VMEC++ usable as a C++ bazel module
+- [x] VMEC++ usable as a C++ bazel module
 
 Some items we do not plan to work on, but where community ownership is welcome:
 - [ ] packaging VMEC++ for platforms or package managers other than pip (e.g. conda, homebrew, ...)
 - [ ] native Windows support
-- [ ] ARM support
+- [x] ARM support
 - [ ] 2D preconditioner using [`bcyclic_plus_plus`](https://code.ornl.gov/m4c/bcyclic_plus_plus)
 
 ## Related repositories
