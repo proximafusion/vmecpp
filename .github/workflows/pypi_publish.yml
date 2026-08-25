@@ -134,22 +134,17 @@ jobs:
           merge-multiple: true
           path: ./wheelhouse/
       - name: Install wheel
-        # Install the appropriate file for vmecpp from the wheelhouse directory.
-        # --no-index prevents installing from PyPi, so we don't accidentally install
-        # a published version instead of the newly built ones. At the same time it prevents
-        # loading dependencies from PyPi, so the first installation fails. We only use the console output
-        # from this command to get the appropriate .whl file for this platform and environment.
         run: |
           ls wheelhouse/
 
           $PYTHON -m venv venv
           . venv/bin/activate
-          # Both x86_64 and aarch64 wheels land in the same merged wheelhouse/,
-          # so the glob must pin down the architecture too, not just the
-          # Python version, or it can match (and pip-install) the wrong one.
-          wheel_filename=$(find wheelhouse/$($PYTHON --version | awk '{print $2}' | awk -F. '{printf "vmecpp*-cp%s%s-*manylinux*", $1, $2}')"_$(uname -m).whl")
+          # Let pip's own tag matching pick the single wheel compatible with this
+          # interpreter and architecture; --no-index keeps it from reaching PyPi.
+          pip download --no-index --no-deps --find-links=wheelhouse/ --dest selected-wheel/ vmecpp
+          wheel_filename=$(ls selected-wheel/*.whl)
           echo "Found matching wheel: $wheel_filename"
-          pip install $wheel_filename
+          pip install "$wheel_filename"
 
           pip install pytest
           python -m pytest tests/
