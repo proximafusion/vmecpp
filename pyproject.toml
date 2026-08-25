@@ -121,14 +121,14 @@ test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/te
 # static, DAP-disabled libraries (mirroring the Bazel dev/test build), and
 # installs them into VMECPP_DEPS_PREFIX below, which CMAKE_PREFIX_PATH then
 # points `find_package(HDF5)`/`find_package(netCDF)` at.
-before-build = "yum install -y lapack-devel zlib-devel && {package}/ci/build_native_deps.sh $VMECPP_DEPS_PREFIX"
+before-build = "yum install -y zlib-devel && {package}/ci/build_native_deps.sh $VMECPP_DEPS_PREFIX"
 
 [tool.cibuildwheel.linux.environment]
 VMECPP_DEPS_PREFIX = "/opt/vmecpp-deps"
 CMAKE_PREFIX_PATH = "/opt/vmecpp-deps"
 
 [tool.cibuildwheel.macos]
-before-build = "brew install gcc lapack netcdf hdf5 libomp"
+before-build = "brew install gcc netcdf hdf5 libomp"
 
 [tool.coverage.run]
 source_pkgs = ["vmecpp", "tests"]
