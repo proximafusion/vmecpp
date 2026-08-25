@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787648328295,
+  "lastUpdate": 1787652658361,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -12676,6 +12676,93 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.29461553499999127,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7ee7bbb2720f4b9d5110922b53ce0665add1e8fc",
+          "message": "Remove vendored LAPACK dependency: replace dgetrf_/dgetrs_ with Eigen::PartialPivLU (#706)\n\nvmecpp's calls exactly two LAPACK routines, dgetrf_ and dgetrs_ in LaplaceSolver. Because of that, we bundle a full LAPACK library with the wheel.\n\nThis PR replaces both calls with Eigen::PartialPivLUEigen::MatrixXd, removing one more dependency.\n\nBenchmarks continue to report similar numbers.",
+          "timestamp": "2026-08-25T12:05:23+02:00",
+          "tree_id": "0d3e8fe923dcf932a903d0218452c45f34734cb3",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7ee7bbb2720f4b9d5110922b53ce0665add1e8fc"
+        },
+        "date": 1787652656484,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3555713179999998,
+            "range": "stddev: 0.0052383338621874226",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3601832194000053,
+            "range": "stddev: 0.006678532935689655",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.5510831119999957,
+            "range": "stddev: 0.033061992462316996",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1312890706666394,
+            "range": "stddev: 0.0011289170852328727",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.7039172523333452,
+            "range": "stddev: 0.029055789748712695",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.3301225896666438,
+            "range": "stddev: 0.010959910062628898",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.509613582999957,
+            "range": "stddev: 0.1573267690967952",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.6307801540000355,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.38223561099994185,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
