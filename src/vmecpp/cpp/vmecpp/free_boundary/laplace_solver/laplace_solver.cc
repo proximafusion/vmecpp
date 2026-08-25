@@ -5,33 +5,26 @@
 #include "vmecpp/free_boundary/laplace_solver/laplace_solver.h"
 
 #include <cmath>
-#include <iostream>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 
-///  LU factorization of a general M-by-N matrix A
-extern "C" void dgetrf_(int* m, int* n, double* a, int* lda, int* ipiv,
-                        int* info);
-///  Solves a system of linear equations using the LU factorization.
-extern "C" void dgetrs_(char* transpose, int* num_rows, int* num_columns,
-                        double* matrix, int* leading_dim, int* pivot, double* y,
-                        int* y_leading_dim, int* info);
-
 namespace vmecpp {
 
-LaplaceSolver::LaplaceSolver(const Sizes* s, const FourierBasisFastToroidal* fb,
-                             const TangentialPartitioning* tp, int nf, int mf,
-                             std::span<double> matrixShare, std::span<int> iPiv,
-                             std::span<double> bvecShare)
+LaplaceSolver::LaplaceSolver(
+    const Sizes* s, const FourierBasisFastToroidal* fb,
+    const TangentialPartitioning* tp, int nf, int mf,
+    std::span<double> matrixShare,
+    Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
+    std::span<double> bvecShare)
     : s_(*s),
       fb_(*fb),
       tp_(*tp),
       nf(nf),
       mf(mf),
       matrixShare(matrixShare),
-      iPiv(iPiv),
+      lu_decomposition_(lu_decomposition),
       bvecShare(bvecShare) {
   // thread-local tangential grid point range
   numLocal = tp_.ztMax - tp_.ztMin;
@@ -578,28 +571,17 @@ void LaplaceSolver::BuildMatrix() {
 
 void LaplaceSolver::DecomposeMatrix() {
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  int mnpd_dim = s_.lasym ? 2 * mnpd : mnpd;
-
-  // NOTE:
-  // As soon as LAPACK starts working on `matrixShare`,
-  // it is not consistent with the value on entry anymore
-  // and thus cannot be used for testing anymore.
+  const int mnpd_dim = s_.lasym ? 2 * mnpd : mnpd;
 
   // perform LU factorization of the matrix
   // (only needed when matrix is updated --> every nvacskip iterations)
-  int info;
-  dgetrf_(&mnpd_dim, &mnpd_dim, matrixShare.data(), &mnpd_dim, iPiv.data(),
-          &info);
+  Eigen::Map<const Eigen::MatrixXd> matrix_map(matrixShare.data(), mnpd_dim,
+                                               mnpd_dim);
+  lu_decomposition_->compute(matrix_map);
 
-  if (info < 0) {
-    std::cout << -info << "-th argument to dgetrf is wrong\n";
-  } else if (info > 0) {
-    std::cout << absl::StrFormat(
-        "U(%d,%d) is exactly zero in dgetrf --> singular matrix!\n", info,
-        info);
-  }
-
-  CHECK_EQ(info, 0) << "dgetrf error";
+  // A zero diagonal entry in the U factor means an exactly singular matrix.
+  CHECK((lu_decomposition_->matrixLU().diagonal().array() != 0.0).all())
+      << "singular matrix in LaplaceSolver::DecomposeMatrix";
 }  // DecomposeMatrix
 
 void LaplaceSolver::SolveForPotential(
@@ -653,19 +635,13 @@ void LaplaceSolver::SolveForPotential(
       }
     }
 
-    // solve for given RHS
-    int one = 1;
-    int info;
-    char no_transpose = 'N';
-    int n = mnpd_dim;
-    dgetrs_(&no_transpose, &n, &one, matrixShare.data(), &n, iPiv.data(),
-            bvecShare.data(), &n, &info);
-
-    if (info < 0) {
-      std::cout << -info << "-th argument to dgetrs wrong\n";
-    }
-
-    CHECK_EQ(info, 0) << "dgetrs error";
+    // solve for given RHS using the factorization computed in
+    // DecomposeMatrix(). Use a temporary for the result: bvecShare is both
+    // the right-hand side and the destination, and aliasing it directly
+    // against the input of PartialPivLU::solve() is not guaranteed safe.
+    Eigen::Map<const Eigen::VectorXd> rhs(bvecShare.data(), mnpd_dim);
+    const Eigen::VectorXd solution = lu_decomposition_->solve(rhs);
+    Eigen::Map<Eigen::VectorXd>(bvecShare.data(), mnpd_dim) = solution;
   }
 #ifdef _OPENMP
 #pragma omp barrier
