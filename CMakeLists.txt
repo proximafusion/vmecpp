@@ -62,6 +62,9 @@ set(_native_deps_cmake_args
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
   -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+  # Use the same cmake binary as the main build, don't find your own.
+  # Matters when multiple cmake binaries are available, e.g. cibuildwheel.
+  -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
   -DBUILD_SHARED_LIBS=OFF
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
   -DBUILD_TESTING=OFF)
