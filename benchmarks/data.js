@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787656718903,
+  "lastUpdate": 1787699394617,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -12850,6 +12850,93 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4639195810000274,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7dd37ac777cf1b01f6ed9035fa621bc31558bf12",
+          "message": "Build HDF5/netCDF-C from source (DAP off) for Linux wheels (#704)\n\n## Problem\n\n~76% of the `vmecpp` wheel is transitive shared libs. The biggest chunk is netCDF's OPeNDAP logic, for remote access which we don't even use.\n\nReduces wheel size 13MB -> 9MB\n\n## Root cause\n`[tool.cibuildwheel.linux].before-build` installed manylinux_2_28's distro `netcdf-devel`/`hdf5-devel` packages. Those distro packages are themselves built *with* DAP/OPeNDAP support enabled, which is what drags in libcurl and its whole TLS/Kerberos/LDAP dependency closure.\n\nThe repo's Bazel build (`src/vmecpp/cpp/third_party/hdf5/BUILD.bazel`, `third_party/netcdf4/BUILD.bazel`) already builds both libraries from source, static, with DAP fully disabled -- this is a proven, working recipe already used for local dev/test builds - but it was never wired into the CMake-based wheel-build path.",
+          "timestamp": "2026-08-26T01:03:25+02:00",
+          "tree_id": "6c46ba547c48c502294b052b717a35189b8181e4",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7dd37ac777cf1b01f6ed9035fa621bc31558bf12"
+        },
+        "date": 1787699392624,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3378801771999861,
+            "range": "stddev: 0.0019858910653856943",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
+            "value": 0.3403245853999806,
+            "range": "stddev: 0.0010966059396025415",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.877566493666658,
+            "range": "stddev: 0.021385511064479498",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1259571039999894,
+            "range": "stddev: 0.0039029591631398143",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.8098441479999867,
+            "range": "stddev: 0.054322004335740894",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.8049136216666664,
+            "range": "stddev: 0.012980032919922082",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.695224627999987,
+            "range": "stddev: 0.01302443546447644",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.261453921999987,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3569666439999537,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
