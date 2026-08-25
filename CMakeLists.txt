@@ -60,12 +60,18 @@ set(_native_deps_cmake_args
   -DCMAKE_INSTALL_LIBDIR=lib
   -DCMAKE_PREFIX_PATH=${_native_deps_prefix}
   -DCMAKE_BUILD_TYPE=Release
-  # Not forwarding CMAKE_C_COMPILER/CXX: macOS CI's CC=brew gcc-14 chokes on
-  # Apple's SDK math.h for plain C (HDF5). Let each sub-build auto-detect.
   -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
   -DBUILD_SHARED_LIBS=OFF
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
   -DBUILD_TESTING=OFF)
+
+if(APPLE)
+  # CC=brew's gcc-14 (set by some CI jobs) chokes on Apple's SDK math.h for
+  # plain C. -D always wins over the CC/CXX env vars, unlike omitting it.
+  list(APPEND _native_deps_cmake_args
+    -DCMAKE_C_COMPILER=/usr/bin/cc
+    -DCMAKE_CXX_COMPILER=/usr/bin/c++)
+endif()
 
 ExternalProject_Add(hdf5_native
   URL "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_3.tar.gz"
