@@ -33,9 +33,16 @@ jobs:
         env:
           # Linux builds run in a container, where PIP_CONSTRAINT above does not
           # apply and the repo is mounted at /project.
+          # NOTE: this fully replaces [tool.cibuildwheel.linux.environment] from
+          # pyproject.toml (env vars take precedence over the config file), so
+          # VMECPP_DEPS_PREFIX/CMAKE_PREFIX_PATH (used by ci/build_native_deps.sh
+          # and CMake's find_package(HDF5)/find_package(netCDF)) must be repeated
+          # here too.
           CIBW_ENVIRONMENT_LINUX: >
             PIP_CONSTRAINT=/project/.github/constraints.txt
             UV_CONSTRAINT=/project/.github/constraints.txt
+            VMECPP_DEPS_PREFIX=/opt/vmecpp-deps
+            CMAKE_PREFIX_PATH=/opt/vmecpp-deps
           CIBW_ENVIRONMENT_MACOS: >
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '15.0' }}
             DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH

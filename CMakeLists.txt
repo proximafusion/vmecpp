@@ -38,7 +38,12 @@ endif()
 # First check if required libraries are installed locally
 find_package(OpenMP REQUIRED)
 
-find_package(HDF5 REQUIRED COMPONENTS C CXX)
+# HL ("high level") is requested here even though vmecpp's own code never
+# calls it directly: when netCDF is a static library (as it is for the
+# wheel build, see ci/build_native_deps.sh) its object files reference HL
+# symbols internally (H5DS* dimension-scale calls used for netCDF-4
+# support), so HDF5_HL_LIBRARIES must be linked in explicitly below.
+find_package(HDF5 REQUIRED COMPONENTS C HL CXX)
 include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
 
 find_package(netCDF)
@@ -137,8 +142,13 @@ function(vmecpp_add_core target)
   endif()
   target_compile_options(${target} PRIVATE ${CORE_COMPILE_OPTIONS})
 
-  target_link_libraries(${target} PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES})
+  # Order matters for static linking: netCDF_LIBRARIES (which internally
+  # references HDF5 HL and C symbols) must come before the HDF5 libraries
+  # that resolve them, and HDF5_HL_LIBRARIES (HL depends on the C library)
+  # before HDF5_LIBRARIES. With shared libraries link order is irrelevant,
+  # so this also works unchanged against a system/distro HDF5+netCDF.
   target_link_libraries(${target} PUBLIC ${netCDF_LIBRARIES})
+  target_link_libraries(${target} PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
   target_link_libraries(${target} PUBLIC nlohmann_json::nlohmann_json)
   target_link_libraries(${target} PUBLIC LAPACK::LAPACK)
   target_link_libraries(${target} PUBLIC absl::algorithm absl::base

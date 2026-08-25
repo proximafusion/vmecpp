@@ -111,7 +111,21 @@ test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/test_free_boundary.py"
 
 [tool.cibuildwheel.linux]
-before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel"
+# We no longer install the distro's netcdf-devel/hdf5-devel packages: on
+# manylinux_2_28 those are built with OPeNDAP/DAP (remote access) support
+# enabled, which pulls in libcurl and its whole TLS/Kerberos/LDAP dependency
+# closure (libssl, libcrypto, libkrb5, libldap, libsasl2, libgssapi,
+# libnghttp2, libidn2, libpsl, libssh, libunistring) into the wheel via
+# auditwheel, even though vmecpp only ever does local-file netCDF/HDF5 I/O.
+# Instead, ci/build_native_deps.sh builds both libraries from source as
+# static, DAP-disabled libraries (mirroring the Bazel dev/test build), and
+# installs them into VMECPP_DEPS_PREFIX below, which CMAKE_PREFIX_PATH then
+# points `find_package(HDF5)`/`find_package(netCDF)` at.
+before-build = "yum install -y lapack-devel zlib-devel && {package}/ci/build_native_deps.sh $VMECPP_DEPS_PREFIX"
+
+[tool.cibuildwheel.linux.environment]
+VMECPP_DEPS_PREFIX = "/opt/vmecpp-deps"
+CMAKE_PREFIX_PATH = "/opt/vmecpp-deps"
 
 [tool.cibuildwheel.macos]
 before-build = "brew install gcc lapack netcdf hdf5 libomp"
