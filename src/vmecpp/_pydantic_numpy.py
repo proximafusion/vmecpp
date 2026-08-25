@@ -133,8 +133,7 @@ For example, you can declare `value: jt.Float[np.ndarray, ...]` instead of
 The mechanism for serialization is to convert "special" fields to JSON-serializable
 values and then let Pydantic take care of the rest.
 In practice:
-- If the field is "special", (e.g. `np.ndarray`) it is converted to either a primitive
-  list.
+- If the field is "special", (e.g. `np.ndarray`) it is converted to a primitive list.
 - If the field is a generic/composed type such as a list, an optional or a union,
   recurse and do the same for the inner types.
 - Otherwise just return the field as is.
