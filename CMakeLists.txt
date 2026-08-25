@@ -50,6 +50,11 @@ set(_native_deps_include "${_native_deps_prefix}/include")
 # INTERFACE_INCLUDE_DIRECTORIES below must exist already at generate time.
 file(MAKE_DIRECTORY "${_native_deps_include}")
 
+# HDF5 is built with zlib support (required by netCDF-4), but as a static
+# lib it doesn't bundle zlib's own object code, so it must be linked in
+# explicitly wherever hdf5_c is used.
+find_package(ZLIB REQUIRED)
+
 set(_native_deps_cmake_args
   -DCMAKE_INSTALL_PREFIX=${_native_deps_prefix}
   -DCMAKE_INSTALL_LIBDIR=lib
@@ -98,7 +103,8 @@ ExternalProject_Add(netcdf_native
 add_library(hdf5_c STATIC IMPORTED GLOBAL)
 set_target_properties(hdf5_c PROPERTIES
   IMPORTED_LOCATION "${_native_deps_lib}/libhdf5.a"
-  INTERFACE_INCLUDE_DIRECTORIES "${_native_deps_include}")
+  INTERFACE_INCLUDE_DIRECTORIES "${_native_deps_include}"
+  INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
 add_dependencies(hdf5_c hdf5_native)
 
 add_library(hdf5_hl STATIC IMPORTED GLOBAL)

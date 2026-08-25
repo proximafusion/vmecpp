@@ -111,16 +111,6 @@ test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/test_free_boundary.py"
 
 [tool.cibuildwheel.linux]
-# We no longer install the distro's netcdf-devel/hdf5-devel packages: on
-# manylinux_2_28 those are built with OPeNDAP/DAP (remote access) support
-# enabled, which pulls in libcurl and its whole TLS/Kerberos/LDAP dependency
-# closure (libssl, libcrypto, libkrb5, libldap, libsasl2, libgssapi,
-# libnghttp2, libidn2, libpsl, libssh, libunistring) into the wheel via
-# auditwheel, even though vmecpp only ever does local-file netCDF/HDF5 I/O.
-# CMakeLists.txt now always builds both from source instead, as static,
-# DAP-disabled libraries, mirroring the Bazel dev/test build. zlib-devel is
-# still needed: HDF5 links against the system zlib, which doesn't carry
-# OPeNDAP/libcurl's dependency bloat.
 before-build = "yum install -y zlib-devel"
 
 [tool.cibuildwheel.macos]
