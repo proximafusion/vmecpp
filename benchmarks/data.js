@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787699394617,
+  "lastUpdate": 1787699758244,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -40332,6 +40332,162 @@ window.BENCHMARK_DATA = {
             "value": 0.004849669017593754,
             "unit": "seconds",
             "extra": "iterations: 289\ncpu: 0.004829571903114186 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7dd37ac777cf1b01f6ed9035fa621bc31558bf12",
+          "message": "Build HDF5/netCDF-C from source (DAP off) for Linux wheels (#704)\n\n## Problem\n\n~76% of the `vmecpp` wheel is transitive shared libs. The biggest chunk is netCDF's OPeNDAP logic, for remote access which we don't even use.\n\nReduces wheel size 13MB -> 9MB\n\n## Root cause\n`[tool.cibuildwheel.linux].before-build` installed manylinux_2_28's distro `netcdf-devel`/`hdf5-devel` packages. Those distro packages are themselves built *with* DAP/OPeNDAP support enabled, which is what drags in libcurl and its whole TLS/Kerberos/LDAP dependency closure.\n\nThe repo's Bazel build (`src/vmecpp/cpp/third_party/hdf5/BUILD.bazel`, `third_party/netcdf4/BUILD.bazel`) already builds both libraries from source, static, with DAP fully disabled -- this is a proven, working recipe already used for local dev/test builds - but it was never wired into the CMake-based wheel-build path.",
+          "timestamp": "2026-08-26T01:03:25+02:00",
+          "tree_id": "6c46ba547c48c502294b052b717a35189b8181e4",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7dd37ac777cf1b01f6ed9035fa621bc31558bf12"
+        },
+        "date": 1787699758018,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000032320820229125663,
+            "unit": "seconds",
+            "extra": "iterations: 38953\ncpu: 3.2318935332323574e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00004269367116841914,
+            "unit": "seconds",
+            "extra": "iterations: 32576\ncpu: 4.269184025049116e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0006005694456030913,
+            "unit": "seconds",
+            "extra": "iterations: 2331\ncpu: 0.0006005369395109394 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014238609275236953,
+            "unit": "seconds",
+            "extra": "iterations: 985\ncpu: 0.001423778519796954 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00016321653956054917,
+            "unit": "seconds",
+            "extra": "iterations: 8548\ncpu: 0.00016319768834815163 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00013538146264207237,
+            "unit": "seconds",
+            "extra": "iterations: 10403\ncpu: 0.0001353523137556474 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003140916550507137,
+            "unit": "seconds",
+            "extra": "iterations: 4423\ncpu: 0.0003140315896450374 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.00028411015130737496,
+            "unit": "seconds",
+            "extra": "iterations: 5092\ncpu: 0.00028408927769049496 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005302589951139508,
+            "unit": "seconds",
+            "extra": "iterations: 2640\ncpu: 0.0005302243526515154 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0004401474597587885,
+            "unit": "seconds",
+            "extra": "iterations: 3314\ncpu: 0.0004401065540132773 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0018718367454989646,
+            "unit": "seconds",
+            "extra": "iterations: 745\ncpu: 0.0018717504442953034 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0015645950500454222,
+            "unit": "seconds",
+            "extra": "iterations: 896\ncpu: 0.0015645648214285706 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.000031622085164093554,
+            "unit": "seconds",
+            "extra": "iterations: 44218\ncpu: 3.16394752363287e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00018427356729431514,
+            "unit": "seconds",
+            "extra": "iterations: 7661\ncpu: 0.00018431183448636197 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.000969085262881385,
+            "unit": "seconds",
+            "extra": "iterations: 1440\ncpu: 0.0009691638263889007 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000028019745810512568,
+            "unit": "seconds",
+            "extra": "iterations: 49953\ncpu: 2.8028407823355554e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00017124870928322396,
+            "unit": "seconds",
+            "extra": "iterations: 8200\ncpu: 0.00017125881329267857 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0009028640587049183,
+            "unit": "seconds",
+            "extra": "iterations: 1478\ncpu: 0.0009028795818673867 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00028996541633369017,
+            "unit": "seconds",
+            "extra": "iterations: 4830\ncpu: 0.00028995970559006213 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.001215391758224727,
+            "unit": "seconds",
+            "extra": "iterations: 1146\ncpu: 0.0012153374022687605 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005318072358918281,
+            "unit": "seconds",
+            "extra": "iterations: 263\ncpu: 0.0053176984942965725 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.004833223068550842,
+            "unit": "seconds",
+            "extra": "iterations: 292\ncpu: 0.004824783808219179 seconds\nthreads: 1"
           }
         ]
       }
