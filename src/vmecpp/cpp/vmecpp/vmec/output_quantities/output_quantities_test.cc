@@ -81,6 +81,17 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   const OutputQuantities& output_quantities = vmec.output_quantities_;
   const WOutFileContents& wout = output_quantities.wout;
 
+  ASSERT_EQ(wout.wdot.size(), fc.mhd_energy.size());
+  ASSERT_FALSE(fc.mhd_energy.empty());
+  EXPECT_DOUBLE_EQ(wout.wdot(0), fc.mhd_energy[0]);
+  for (size_t i = 1; i < fc.mhd_energy.size(); ++i) {
+    const double expected_decay_rate =
+        (fc.mhd_energy[i] - fc.mhd_energy[i - 1]) / fc.mhd_energy[i];
+    EXPECT_DOUBLE_EQ(wout.wdot(static_cast<Eigen::Index>(i)),
+                     expected_decay_rate)
+        << "i = " << i;
+  }
+
   // Note that the actual `wout` file itself is taken as reference here.
   filename =
       absl::StrFormat("vmecpp/test_data/wout_%s.nc", data_source_.identifier);
@@ -803,6 +814,137 @@ TEST(SolovevFreeBoundary, MatchesEducationalVmecGolden) {
   std::cout << "[solovev-free-bdy-vs-golden] worst_abs=" << worst_abs
             << " worst_norm=" << worst_norm << " (" << worst_norm_field << ")"
             << std::endl;
+}
+
+// lforbal free-boundary regression. With lforbal = true the flux-averaged
+// radial force balance evolves the m=1, n=0 R,Z components, so the converged
+// equilibrium differs from the variational one; this checks the converged wout
+// against an educational_VMEC lforbal = true golden for the solovev
+// free-boundary case (axisymmetric, ntor = 0).
+TEST(SolovevFreeBoundaryLforbal, MatchesEducationalVmecGolden) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev_free_bdy_lforbal.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  ASSERT_TRUE(vmec_indata->lfreeb);
+  ASSERT_TRUE(vmec_indata->lforbal);
+  ASSERT_EQ(vmec_indata->ntor, 0);
+
+  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);  // ran to convergence
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+
+  int ncid;
+  ASSERT_EQ(
+      nc_open("vmecpp/test_data/wout_solovev_free_bdy_T.nc", NC_NOWRITE, &ncid),
+      NC_NOERR);
+
+  // The flux-surface geometry, magnetic field, and integrated scalars agree
+  // with the VMEC 8.52 lforbal reference to within kTight. The current-density
+  // profiles are the most edge-sensitive derived quantity and are held to the
+  // looser kCurrent.
+  const double kTight = 5.0e-5;
+  const double kCurrent = 2.0e-3;
+  double tolerance = kTight;  // mutated below; captured by reference
+  double worst_abs = 0.0;
+  double worst_norm = 0.0;
+  std::string worst_norm_field;
+
+  auto compare = [&](const std::string& name, const std::vector<double>& ref,
+                     const std::vector<double>& val) {
+    double peak = 1e-300;
+    for (double r : ref) {
+      peak = std::max(peak, std::abs(r));
+    }
+    for (size_t i = 0; i < ref.size(); ++i) {
+      EXPECT_TRUE(IsCloseRelAbs(ref[i], val[i], tolerance))
+          << name << "[" << i << "]: ref=" << ref[i] << " val=" << val[i];
+      const double abs_dev = std::abs(ref[i] - val[i]);
+      worst_abs = std::max(worst_abs, abs_dev);
+      if (abs_dev / peak > worst_norm) {
+        worst_norm = abs_dev / peak;
+        worst_norm_field = name;
+      }
+    }
+  };
+  auto scalar = [&](const std::string& name, double ref, double val) {
+    compare(name, {ref}, {val});
+  };
+  auto flatten = [&](const std::vector<std::vector<double>>& ref2d, int rows,
+                     int cols, auto getter) {
+    std::vector<double> ref;
+    std::vector<double> val;
+    ref.reserve(static_cast<size_t>(rows) * cols);
+    val.reserve(static_cast<size_t>(rows) * cols);
+    for (int jF = 0; jF < rows; ++jF) {
+      for (int mn = 0; mn < cols; ++mn) {
+        ref.push_back(ref2d[jF][mn]);
+        val.push_back(getter(mn, jF));
+      }
+    }
+    return std::make_pair(ref, val);
+  };
+
+  scalar("volume_p", NetcdfReadDouble(ncid, "volume_p").value(), wout.volume);
+  scalar("betatotal", NetcdfReadDouble(ncid, "betatotal").value(),
+         wout.betatotal);
+  scalar("aspect", NetcdfReadDouble(ncid, "aspect").value(), wout.aspect);
+  scalar("b0", NetcdfReadDouble(ncid, "b0").value(), wout.b0);
+  scalar("rbtor", NetcdfReadDouble(ncid, "rbtor").value(), wout.rbtor);
+  scalar("ctor", NetcdfReadDouble(ncid, "ctor").value(), wout.ctor);
+  scalar("Aminor_p", NetcdfReadDouble(ncid, "Aminor_p").value(), wout.Aminor_p);
+  scalar("Rmajor_p", NetcdfReadDouble(ncid, "Rmajor_p").value(), wout.Rmajor_p);
+  scalar("volavgB", NetcdfReadDouble(ncid, "volavgB").value(), wout.volavgB);
+
+  std::vector<double> wpresf(fc.ns), wiotaf(fc.ns);
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    wpresf[jF] = wout.presf[jF];
+    wiotaf[jF] = wout.iotaf[jF];
+  }
+  compare("presf", NetcdfReadArray1D(ncid, "presf").value(), wpresf);
+  compare("iotaf", NetcdfReadArray1D(ncid, "iotaf").value(), wiotaf);
+
+  auto [r_ref, r_val] =
+      flatten(NetcdfReadArray2D(ncid, "rmnc").value(), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.rmnc(mn, jF); });
+  compare("rmnc", r_ref, r_val);
+  auto [z_ref, z_val] =
+      flatten(NetcdfReadArray2D(ncid, "zmns").value(), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.zmns(mn, jF); });
+  compare("zmns", z_ref, z_val);
+  auto [l_ref, l_val] =
+      flatten(NetcdfReadArray2D(ncid, "lmns").value(), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.lmns(mn, jF); });
+  compare("lmns", l_ref, l_val);
+
+  auto [b_ref, b_val] =
+      flatten(NetcdfReadArray2D(ncid, "bmnc").value(), fc.ns, s.mnmax_nyq,
+              [&](int mn, int jF) { return wout.bmnc(mn, jF); });
+  compare("bmnc", b_ref, b_val);
+
+  tolerance = kCurrent;
+  std::vector<double> wjcuru(fc.ns), wjcurv(fc.ns);
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    wjcuru[jF] = wout.jcuru[jF];
+    wjcurv[jF] = wout.jcurv[jF];
+  }
+  compare("jcuru", NetcdfReadArray1D(ncid, "jcuru").value(), wjcuru);
+  compare("jcurv", NetcdfReadArray1D(ncid, "jcurv").value(), wjcurv);
+
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  std::cout << "[lforbal-vs-Fortran-golden] worst abs dev = " << worst_abs
+            << ", worst dev normalized by field peak = " << worst_norm << " ("
+            << worst_norm_field << ")" << std::endl;
 }
 
 }  // namespace vmecpp

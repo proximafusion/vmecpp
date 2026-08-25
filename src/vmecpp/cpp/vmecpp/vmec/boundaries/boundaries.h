@@ -14,6 +14,11 @@
 
 namespace vmecpp {
 
+// Boundary spectral width above which setupFromIndata warns that a
+// fixed-boundary run may converge poorly or resolve the physics incorrectly.
+// Every input bundled with VMEC++ stays below this.
+inline constexpr double kSpectrallyDenseBoundaryThreshold = 2.0;
+
 /** radial boundaries: magnetic axis and last closed flux surface */
 class Boundaries {
  public:
@@ -22,6 +27,11 @@ class Boundaries {
 
   bool setupFromIndata(const VmecINDATA& id, bool verbose = true);
   void ensureM1Constrained(double scaling_factor);
+
+  // Spectral width <M> of the boundary, the same quantity VMEC++ reports for
+  // each flux surface in the <M> column of the iteration table. Only meaningful
+  // once setupFromIndata has filled the coefficients below.
+  double ComputeSpectralWidth(int p = 4, int q = 1) const;
 
   // This object is initialized with an initial guess for the magnetic axis
   // geometry via setupFromIndata() that is provided by the user. This method
