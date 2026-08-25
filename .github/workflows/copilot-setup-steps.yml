@@ -43,7 +43,6 @@ jobs:
                       build-essential \
                       cmake \
                       libnetcdf-dev \
-                      liblapack-dev \
                       libomp-dev \
                       libhdf5-dev \
                       python3-dev

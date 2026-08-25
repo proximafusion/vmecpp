@@ -70,12 +70,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(eigen)
 include_directories(${eigen_SOURCE_DIR})
+# The only dense linear solve in this project (LaplaceSolver::DecomposeMatrix/
+# SolveForPotential) uses Eigen::PartialPivLU, which is pure C++ with no
+# external LAPACK/BLAS dependency as long as EIGEN_USE_LAPACKE/EIGEN_USE_BLAS/
+# EIGEN_USE_MKL are never defined. Do not define those macros without
+# reintroducing an explicit LAPACK/BLAS dependency here.
 
 FetchContent_Declare(nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
 FetchContent_MakeAvailable(nlohmann_json)
-
-find_package(LAPACK REQUIRED)
-
 
 FetchContent_Declare(
   abseil-cpp
@@ -140,7 +142,6 @@ function(vmecpp_add_core target)
   target_link_libraries(${target} PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES})
   target_link_libraries(${target} PUBLIC ${netCDF_LIBRARIES})
   target_link_libraries(${target} PUBLIC nlohmann_json::nlohmann_json)
-  target_link_libraries(${target} PUBLIC LAPACK::LAPACK)
   target_link_libraries(${target} PUBLIC absl::algorithm absl::base
     absl::synchronization absl::strings absl::str_format absl::log
     absl::string_view absl::check absl::status absl::statusor)
