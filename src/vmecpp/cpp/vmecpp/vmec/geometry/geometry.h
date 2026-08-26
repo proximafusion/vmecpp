@@ -40,8 +40,13 @@ struct Geometry {
   GeometryCoefficients coefficients;
 };
 
-// Value and first derivatives with respect to (s, theta, zeta).
-using GeometryJet = std::array<double, 4>;
+// Value and derivatives with respect to (s, theta, zeta).
+//
+// The entries are ordered as value, ds, dtheta, dzeta, dss, ds_dtheta,
+// ds_dzeta, dtheta2, dtheta_dzeta, and dzeta2.  Keeping the jet in a fixed
+// array makes the C ABI and the JAX representation identical.
+inline constexpr int kGeometryJetSize = 10;
+using GeometryJet = std::array<double, kGeometryJetSize>;
 
 struct GeometryPoint {
   GeometryJet r;

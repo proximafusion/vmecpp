@@ -41,7 +41,7 @@ double Contract(const GeometryPoint& left, const GeometryPoint& right) {
   for (const auto member :
        {&GeometryPoint::r, &GeometryPoint::z, &GeometryPoint::lambda,
         &GeometryPoint::toroidal_flux, &GeometryPoint::poloidal_flux}) {
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < kGeometryJetSize; ++i)
       result += (left.*member)[i] * (right.*member)[i];
   }
   return result;
@@ -62,8 +62,13 @@ TEST(GeometryTest, EvaluatesKnownFourierSeriesAndDerivatives) {
   EXPECT_NEAR(point.r[1], 1.0 + 2.0 * ct * cp, 1e-14);
   EXPECT_NEAR(point.r[2], -(2.0 + 2.0 * s) * st * cp, 1e-14);
   EXPECT_NEAR(point.r[3], -3.0 * (2.0 + 2.0 * s) * ct * sp, 1e-14);
+  EXPECT_NEAR(point.r[4], 0.0, 1e-14);
+  EXPECT_NEAR(point.r[7], -(2.0 + 2.0 * s) * ct * cp, 1e-14);
+  EXPECT_NEAR(point.r[9], -9.0 * (2.0 + 2.0 * s) * ct * cp, 1e-14);
   EXPECT_NEAR(point.z[0], (1.0 + 2.0 * s) * st, 1e-14);
   EXPECT_NEAR(point.z[1], 2.0 * st, 1e-14);
+  EXPECT_NEAR(point.z[5], 2.0 * ct, 1e-14);
+  EXPECT_NEAR(point.z[7], -(1.0 + 2.0 * s) * st, 1e-14);
   EXPECT_NEAR(point.lambda[0], (0.1 + 0.2 * s) * st, 1e-14);
   EXPECT_DOUBLE_EQ(point.toroidal_flux[0], 2.0 * s);
   EXPECT_DOUBLE_EQ(point.toroidal_flux[1], 2.0);
@@ -92,11 +97,11 @@ TEST(GeometryTest, VjpMatchesIndependentDirectionalDerivative) {
   const double theta = 0.4;
   const double zeta = 0.23;
   GeometryPoint seed{};
-  seed.r = {0.2, -0.3, 0.7, 0.1};
-  seed.z = {-0.4, 0.5, 0.2, -0.1};
-  seed.lambda = {0.3, -0.2, 0.1, 0.4};
-  seed.toroidal_flux = {0.6, -0.7, 0.0, 0.0};
-  seed.poloidal_flux = {-0.1, 0.8, 0.0, 0.0};
+  seed.r = {0.2, -0.3, 0.7, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  seed.z = {-0.4, 0.5, 0.2, -0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  seed.lambda = {0.3, -0.2, 0.1, 0.4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  seed.toroidal_flux = {0.6, -0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  seed.poloidal_flux = {-0.1, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
   const GeometryVjp vjp = EvaluateGeometryVjp(geometry, s, theta, zeta, seed);
 
   Geometry direction = geometry;
