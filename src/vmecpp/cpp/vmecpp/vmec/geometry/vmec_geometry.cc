@@ -37,10 +37,34 @@ void ScaleLambda(std::vector<double>& m_coefficients,
   }
 }
 
+void ConvertM1ToPhysical(GeometryCoefficients& m_coefficients,
+                         const VmecINDATA& indata, int num_full) {
+  auto convert = [num_full, &indata](std::vector<double>& m_r,
+                                     std::vector<double>& m_z) {
+    if (m_r.empty() || m_z.empty()) return;
+    for (int j = 0; j < num_full; ++j) {
+      for (int n = 0; n <= indata.ntor; ++n) {
+        const int index = (j * indata.mpol + 1) * (indata.ntor + 1) + n;
+        const double old_r = m_r[index];
+        m_r[index] = old_r + m_z[index];
+        m_z[index] = old_r - m_z[index];
+      }
+    }
+  };
+
+  if (indata.mpol > 1 && indata.ntor > 0) {
+    convert(m_coefficients.r_ss, m_coefficients.z_cs);
+  }
+  if (indata.mpol > 1 && indata.lasym) {
+    convert(m_coefficients.r_sc, m_coefficients.z_cc);
+  }
+}
+
 }  // namespace
 
 Geometry MakeGeometry(const VmecINDATA& indata,
-                      const VmecInternalResults& internal) {
+                      const VmecInternalResults& internal,
+                      GeometryCoefficientState state) {
   Geometry result{
       .dimensions = {.ns = internal.num_full,
                      .mpol = indata.mpol,
@@ -102,6 +126,10 @@ Geometry MakeGeometry(const VmecINDATA& indata,
   ScaleLambda(coefficients.lambda_cs, internal, modes_per_surface);
   ScaleLambda(coefficients.lambda_cc, internal, modes_per_surface);
   ScaleLambda(coefficients.lambda_ss, internal, modes_per_surface);
+
+  if (state == GeometryCoefficientState::kSolver) {
+    ConvertM1ToPhysical(coefficients, indata, internal.num_full);
+  }
 
   return result;
 }

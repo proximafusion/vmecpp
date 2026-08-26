@@ -45,5 +45,49 @@ TEST(VmecGeometryTest, ConvertsInternalScalingWithoutWout) {
   EXPECT_NEAR(point.poloidal_flux[1], -1.6 * M_PI, 1e-14);
 }
 
+TEST(VmecGeometryTest, SolverAndPhysicalStatesAgree) {
+  VmecINDATA indata;
+  indata.mpol = 2;
+  indata.ntor = 1;
+  VmecInternalResults solver;
+  solver.sign_of_jacobian = 1;
+  solver.lamscale = 1.0;
+  solver.num_full = 2;
+  solver.phiF = Eigen::Vector2d(0.0, 1.0);
+  solver.phipF = Eigen::Vector2d(1.0, 1.0);
+  solver.phipH = Eigen::VectorXd::Ones(1);
+  solver.iotaH = Eigen::VectorXd::Constant(1, 0.4);
+  solver.rmncc = RowMatrixXd::Zero(2, 4);
+  solver.zmnsc = RowMatrixXd::Zero(2, 4);
+  solver.lmnsc = RowMatrixXd::Zero(2, 4);
+  solver.rmnss = RowMatrixXd::Zero(2, 4);
+  solver.zmncs = RowMatrixXd::Zero(2, 4);
+  solver.lmncs = RowMatrixXd::Zero(2, 4);
+  solver.rmnss << 0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0, 0.5;
+  solver.zmncs << 0.0, -0.1, 0.0, 0.6, 0.0, -0.2, 0.0, 0.7;
+
+  VmecInternalResults physical = solver;
+  for (int j = 0; j < solver.num_full; ++j) {
+    for (int n = 0; n <= indata.ntor; ++n) {
+      const double old_r = solver.rmnss(j, n * indata.mpol + 1);
+      const double old_z = solver.zmncs(j, n * indata.mpol + 1);
+      physical.rmnss(j, n * indata.mpol + 1) = old_r + old_z;
+      physical.zmncs(j, n * indata.mpol + 1) = old_r - old_z;
+    }
+  }
+
+  const Geometry from_solver = MakeGeometry(indata, solver);
+  const Geometry from_physical =
+      MakeGeometry(indata, physical, GeometryCoefficientState::kPhysical);
+  ASSERT_EQ(from_solver.coefficients.r_ss.size(),
+            from_physical.coefficients.r_ss.size());
+  for (std::size_t i = 0; i < from_solver.coefficients.r_ss.size(); ++i) {
+    EXPECT_DOUBLE_EQ(from_solver.coefficients.r_ss[i],
+                     from_physical.coefficients.r_ss[i]);
+    EXPECT_DOUBLE_EQ(from_solver.coefficients.z_cs[i],
+                     from_physical.coefficients.z_cs[i]);
+  }
+}
+
 }  // namespace
 }  // namespace vmecpp

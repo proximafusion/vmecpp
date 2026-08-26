@@ -11,8 +11,17 @@
 
 namespace vmecpp {
 
-Geometry MakeGeometry(const VmecINDATA& indata,
-                      const VmecInternalResults& internal);
+// State of the R/Z product-basis coefficients supplied to MakeGeometry.
+// GatherDataFromThreads returns the solver's m=1-constrained state, whereas
+// ComputeOutputQuantities returns the physical coefficients after conversion.
+enum class GeometryCoefficientState {
+  kSolver,
+  kPhysical,
+};
+
+Geometry MakeGeometry(
+    const VmecINDATA& indata, const VmecInternalResults& internal,
+    GeometryCoefficientState state = GeometryCoefficientState::kSolver);
 
 }  // namespace vmecpp
 
