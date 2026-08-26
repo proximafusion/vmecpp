@@ -48,6 +48,7 @@ Geometry MakeGeometry(const VmecINDATA& indata,
       .toroidal_flux = std::vector<double>(
           internal.phiF.data(), internal.phiF.data() + internal.num_full),
       .poloidal_flux = std::vector<double>(internal.num_full, 0.0),
+      .coefficients = {},
   };
   const double delta_s = 1.0 / (internal.num_full - 1);
   for (int j = 1; j < internal.num_full; ++j) {

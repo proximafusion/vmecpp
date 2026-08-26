@@ -317,6 +317,9 @@ install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
 # glibc >= 2.33 prefers glibc-hwcaps/ subdirectories; older loaders ignore
 # them and pick up the baseline next to the extension module.
 install(TARGETS vmecpp_core LIBRARY DESTINATION vmecpp/cpp/.)
+install(FILES
+  ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/geometry/geometry_c_api.h
+  DESTINATION vmecpp/include)
 if(VMECPP_HWCAPS_DISPATCH)
   install(TARGETS vmecpp_core_v3
           LIBRARY DESTINATION vmecpp/cpp/glibc-hwcaps/x86-64-v3/.)
