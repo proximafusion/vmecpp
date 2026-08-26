@@ -5,6 +5,8 @@
 #ifndef VMECPP_VMEC_GEOMETRY_VMEC_GEOMETRY_H_
 #define VMECPP_VMEC_GEOMETRY_VMEC_GEOMETRY_H_
 
+#include <cstdint>
+
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/geometry/geometry.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
@@ -14,7 +16,7 @@ namespace vmecpp {
 // State of the R/Z product-basis coefficients supplied to MakeGeometry.
 // GatherDataFromThreads returns the solver's m=1-constrained state, whereas
 // ComputeOutputQuantities returns the physical coefficients after conversion.
-enum class GeometryCoefficientState {
+enum class GeometryCoefficientState : std::uint8_t {
   kSolver,
   kPhysical,
 };
