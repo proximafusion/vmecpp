@@ -18,7 +18,7 @@ std::vector<double> Scale(const RowMatrixXd& source, int mpol, int ntor) {
         const int index = (j * mpol + m) * (ntor + 1) + n;
         const double mscale = m == 0 ? 1.0 : std::sqrt(2.0);
         const double nscale = n == 0 ? 1.0 : std::sqrt(2.0);
-        result[index] = source(index) * mscale * nscale;
+        result[index] = source(j, n * mpol + m) * mscale * nscale;
       }
     }
   }
