@@ -202,7 +202,6 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     // mnpd2 = 2 * mnpd (analog of mnpd2 in the Fortran vacmod / scalpot).
     int mnpd_dim = s_.lasym ? 2 * mnpd : mnpd;
     matrixShare.setZero(mnpd_dim * mnpd_dim);
-    iPiv.setZero(mnpd_dim);
     bvecShare.setZero(mnpd_dim);
 
     h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
@@ -485,7 +484,7 @@ void Vmec::SetupVacuumSolvers() {
           std::span<double>(bvecShare.data(), bvecShare.size()),
           std::span<double>(h_.vacuum_magnetic_pressure.data(),
                             h_.vacuum_magnetic_pressure.size()),
-          std::span<int>(iPiv.data(), iPiv.size()),
+          &lu_decomposition,
           std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
           std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
           std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));

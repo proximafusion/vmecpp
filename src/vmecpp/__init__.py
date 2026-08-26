@@ -808,10 +808,10 @@ class VmecWOut(BaseModelWithNumpy):
     """
 
     # We use alias names to map to the wout keys, when they differ from the variable
-    # names in Python (e.g. lasym__logical__ instead of lasym). By default, we want
-    # to use the nicer Python names and explicitly opt in to use the wout names.
+    # names in Python (e.g. lasym__logical__ instead of lasym). Accept both the
+    # Python names and the wout aliases when validating.
     model_config = pydantic.ConfigDict(
-        validate_by_alias=False,
+        validate_by_alias=True,
         validate_by_name=True,
         serialize_by_alias=False,
         # Allow for variables in the wout file even if VMEC++ doesn't use them.
