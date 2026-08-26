@@ -33,6 +33,8 @@ typedef struct vmecpp_geometry_metadata {
   double major_radius;
 } vmecpp_geometry_metadata;
 
+// Create a geometry handle from a VMEC++ input file. This runs VMEC++ in
+// memory and retains the resulting geometry; no wout file is read or written.
 // Returns zero on success. On failure, vmecpp_geometry_error() describes the
 // error for the calling thread.
 int vmecpp_geometry_create(const char* input_path,
