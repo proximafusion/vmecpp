@@ -259,17 +259,6 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
             assert (
                 test_dataset.dimensions[d].size == expected_dataset.dimensions[d].size
             )
-
-        if varname == "wdot":
-            # This golden contains values produced by the old overlapping Eigen
-            # assignment. The decay formula is checked directly against the MHD
-            # energy history in output_quantities_test.cc; round-trip I/O was
-            # checked above.
-            assert test_value.dtype == expected_value.dtype, (
-                error_msg + f" (dtype {test_value.dtype} != {expected_value.dtype})"
-            )
-            continue
-
         # np.asarray is needed to convert the masked array to a regular array.
         # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
         # Current density coefficients are computed via finite differences of
@@ -351,17 +340,6 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
             assert (
                 test_dataset.dimensions[d].size == expected_dataset.dimensions[d].size
             )
-
-        if varname == "wdot":
-            # See the scalar energy-history oracle in output_quantities_test.cc;
-            # the checked-in golden records the former overlapping assignment.
-            np.testing.assert_equal(
-                np.asarray(test_value[:]), fortran_wout.wdot, err_msg=error_msg
-            )
-            assert test_value.dtype == expected_value.dtype, (
-                error_msg + f" (dtype {test_value.dtype} != {expected_value.dtype})"
-            )
-            continue
 
         rtol = enlarged_tolerances.get(varname, {"rtol": 1.0e-6})["rtol"]
         atol = enlarged_tolerances.get(varname, {"atol": 1.0e-7})["atol"]
