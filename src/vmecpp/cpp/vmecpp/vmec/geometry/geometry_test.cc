@@ -70,6 +70,22 @@ TEST(GeometryTest, EvaluatesKnownFourierSeriesAndDerivatives) {
   EXPECT_DOUBLE_EQ(point.poloidal_flux[0], 0.8 * s);
 }
 
+TEST(GeometryTest, CubicRadialProfileHasExactValueAndDerivative) {
+  Geometry geometry{
+      .dimensions = {.ns = 4, .mpol = 1, .ntor = 0, .nfp = 1},
+      .toroidal_flux = {0.0, 1.0 / 27.0, 8.0 / 27.0, 1.0},
+      .poloidal_flux = {0.0, 0.0, 0.0, 0.0},
+  };
+  geometry.coefficients.r_cc.assign(4, 1.0);
+  geometry.coefficients.z_sc.assign(4, 0.0);
+  geometry.coefficients.lambda_sc.assign(4, 0.0);
+
+  const double s = 0.43;
+  const GeometryPoint point = EvaluateGeometry(geometry, s, 0.0, 0.0);
+  EXPECT_NEAR(point.toroidal_flux[0], s * s * s, 1e-14);
+  EXPECT_NEAR(point.toroidal_flux[1], 3.0 * s * s, 1e-14);
+}
+
 TEST(GeometryTest, VjpMatchesIndependentDirectionalDerivative) {
   const Geometry geometry = ExampleGeometry();
   const double s = 0.37;
