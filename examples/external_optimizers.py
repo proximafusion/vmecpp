@@ -18,11 +18,8 @@ This module wires that residual to several solvers and is shared by the
 benchmark ``main`` below and by the tests:
 
 * preconditioned descent (VMEC's own update direction),
-* Jacobian-free Newton-Krylov, plain and preconditioned,
-* Newton-Krylov driven by VMEC++'s own Hessian-vector product (finite-
-  difference or exact autodiff), and
-* pseudo-transient continuation (``solve_newton_ptc``) with the exact HVP, which
-  targets stiff 3D stellarators where unshifted Newton-Krylov can stall.
+* Jacobian-free Newton-Krylov, plain and preconditioned, and
+* Newton-Krylov driven by VMEC++'s finite-difference Hessian-vector product.
 
 All methods report the same raw internal-basis force norm and MHD energy. Force
 evaluations are counted inside VMEC++ (``force_eval_count``), including the
@@ -42,7 +39,7 @@ from pathlib import Path
 
 import numpy as np
 from scipy.optimize import newton_krylov
-from scipy.sparse.linalg import LinearOperator, gmres, lgmres
+from scipy.sparse.linalg import LinearOperator, gmres
 
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
@@ -90,24 +87,6 @@ def residual(model):
         return np.asarray(model.get_forces(), dtype=float)
 
     return F
-
-
-def _hvp_operators(model, hvp_fn, n_dof, shift=0.0):
-    """Build the HVP and VMEC preconditioner operators for one iterate."""
-
-    def h_matvec(v):
-        result = np.asarray(hvp_fn(np.ascontiguousarray(v)), float)
-        if shift:
-            result = result + shift * v
-        return result
-
-    def m_matvec(b):
-        return np.asarray(model.apply_preconditioner(np.ascontiguousarray(b)), float)
-
-    return (
-        LinearOperator((n_dof, n_dof), matvec=h_matvec),  # type: ignore[call-overload]
-        LinearOperator((n_dof, n_dof), matvec=m_matvec),  # type: ignore[call-overload]
-    )
 
 
 @dataclass
@@ -254,7 +233,18 @@ def solve_newton_hvp(
         it += 1
         model.set_state(np.ascontiguousarray(x))
         model.evaluate(2, 2, True)  # assemble M at the current iterate
-        h_op, m_op = _hvp_operators(model, model.hessian_vector_product, n_dof)
+        h_op = LinearOperator(  # type: ignore[call-overload]
+            (n_dof, n_dof),
+            matvec=lambda v: np.asarray(  # type: ignore[call-overload]
+                model.hessian_vector_product(np.ascontiguousarray(v)), float
+            ),
+        )
+        m_op = LinearOperator(  # type: ignore[call-overload]
+            (n_dof, n_dof),
+            matvec=lambda b: np.asarray(  # type: ignore[call-overload]
+                model.apply_preconditioner(np.ascontiguousarray(b)), float
+            ),
+        )
         dx, _ = gmres(h_op, -fk, M=m_op, rtol=inner_tol, maxiter=100)
         # Backtracking line search: accept the largest step that reduces ||F||.
         alpha = 1.0
@@ -266,101 +256,6 @@ def solve_newton_hvp(
             break  # no decrease found; stop
         x = x + alpha * dx
     return _finish(model, "Newton (VMEC++ HVP + M^-1)", x, it, t0)
-
-
-def solve_newton_exact_hvp(input_path=DEFAULT_INPUT, ns=11, tol=1e-9, max_newton=80):
-    """Globalized Newton-Krylov using VMEC++'s exact autodiff Hessian-vector product
-    (``exact_hessian_vector_product``, one Enzyme forward pass) instead of the finite-
-    difference HVP. Requires an Enzyme-enabled build; raises AttributeError otherwise.
-
-    The inner GMRES tolerance is set adaptively (Eisenstat-Walker forcing): the
-    augmented-Lagrangian Hessian is indefinite, so solving it tightly every step wastes
-    hundreds of matvecs early on. Loose-early/tight-late forcing cuts the total matvec
-    count several-fold while preserving the asymptotic convergence, which is what
-    dominates wall-clock (each matvec is cheap but there are many).
-    """
-    model = make_model(input_path, ns)
-    # The exact HVP freezes the constraint multiplier tcon (it depends on the
-    # preconditioner, not just the geometry). Freeze it in the raw force too so
-    # the residual and its exact Jacobian are one consistent map; otherwise the
-    # HVP drifts from the force on stellarators where the constraint force is
-    # significant. The unfrozen evaluation here populates tcon before freezing.
-    model.evaluate(2, 2, True)
-    model.set_freeze_constraint_multiplier(True)
-    F = residual(model)
-    x = np.asarray(model.get_state(), float).copy()
-    n_dof = x.size
-    model.reset_force_eval_count()
-    t0 = time.perf_counter()
-    it = 0
-    prev_norm = None
-    eta = 0.5
-    for _ in range(max_newton):
-        fk = F(x)
-        norm0 = np.linalg.norm(fk)
-        if norm0 < tol:
-            break
-        it += 1
-        # Eisenstat-Walker choice 2 for the inner forcing term.
-        if prev_norm is not None:
-            eta = min(0.5, max(1e-4, 0.9 * (norm0 / prev_norm) ** 2))
-        prev_norm = norm0
-        model.set_state(np.ascontiguousarray(x))
-        model.evaluate(2, 2, True)
-        h_op, m_op = _hvp_operators(model, model.exact_hessian_vector_product, n_dof)
-        dx, _ = lgmres(h_op, -fk, M=m_op, rtol=eta, maxiter=200)
-        alpha = 1.0
-        for _ in range(30):
-            if np.linalg.norm(F(x + alpha * dx)) < norm0:
-                break
-            alpha *= 0.5
-        else:
-            break
-        x = x + alpha * dx
-    return _finish(model, "Newton (exact autodiff HVP + M^-1)", x, it, t0)
-
-
-def solve_newton_ptc(
-    input_path=DEFAULT_INPUT, ns=11, tol=1e-9, dt0=1.0, max_it=120, inner=1e-2
-):
-    """Pseudo-transient continuation (Psi-tc) with the exact autodiff HVP.
-
-    Each step solves (H + I/dt) dx = -F with GMRES preconditioned by M^-1, then grows
-    the pseudo-time step by switched evolution relaxation, dt = dt0 * ||F0||/||F||. The
-    I/dt shift is implicit-Euler damping at large residual -- the same physics as VMEC's
-    damped descent -- and also regularizes the indefinite, ill-conditioned augmented-
-    Lagrangian Hessian. The cma regression exercises this shifted solver. As ||F|| -> 0
-    the shift vanishes and it becomes the exact Newton step. Needs an Enzyme-enabled
-    build.
-    """
-    model = make_model(input_path, ns)
-    model.evaluate(2, 2, True)
-    model.set_freeze_constraint_multiplier(True)
-    F = residual(model)
-    x = np.asarray(model.get_state(), float).copy()
-    n_dof = x.size
-    model.reset_force_eval_count()
-    t0 = time.perf_counter()
-    f = F(x)
-    norm0 = np.linalg.norm(f)
-    dt = dt0
-    it = 0
-    for _ in range(max_it):
-        nf = np.linalg.norm(f)
-        if nf < tol:
-            break
-        it += 1
-        model.set_state(np.ascontiguousarray(x))
-        model.evaluate(2, 2, True)
-        shift = 1.0 / dt
-        a_op, m_op = _hvp_operators(
-            model, model.exact_hessian_vector_product, n_dof, shift=shift
-        )
-        dx, _ = lgmres(a_op, -f, M=m_op, rtol=inner, maxiter=60)
-        x = x + dx
-        f = F(x)
-        dt = min(dt0 * norm0 / max(np.linalg.norm(f), 1e-300), 1e6)
-    return _finish(model, "PTC (exact HVP, I/dt + M^-1)", x, it, t0)
 
 
 EXTERNAL_SOLVERS = (

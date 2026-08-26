@@ -13,31 +13,14 @@ with an independent finite difference of the force, and it restores the state.
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 SOLOVEV = Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
-CMA = (
-    Path(__file__).resolve().parents[1]
-    / "src"
-    / "vmecpp"
-    / "cpp"
-    / "vmecpp"
-    / "test_data"
-    / "cma.json"
-)
-_BAD_JACOBIAN = 2
 
 
 def _model(ns: int = 11):
     return _vmecpp.VmecModel.create(_vmecpp.VmecINDATA.from_file(str(SOLOVEV)), ns)
-
-
-def _model_with_lforbal(lforbal: bool, ns: int = 11):
-    indata = _vmecpp.VmecINDATA.from_file(str(SOLOVEV))
-    indata.lforbal = lforbal
-    return _vmecpp.VmecModel.create(indata, ns)
 
 
 def _raw_force(model, x):
@@ -79,111 +62,3 @@ def test_hvp_restores_state():
     v = rng.standard_normal(x0.size)
     m.hessian_vector_product(np.ascontiguousarray(v))
     assert np.allclose(np.asarray(m.get_state(), float), x0)
-
-
-@pytest.fixture(scope="module")
-def cma_states():
-    if not hasattr(_vmecpp.VmecModel, "exact_hessian_vector_product"):
-        pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
-
-    indata = _vmecpp.VmecINDATA.from_file(str(CMA))
-    initial_model = _vmecpp.VmecModel.create(indata, 25)
-    initial_state = np.asarray(initial_model.get_state(), float).copy()
-    converged_model = _vmecpp.VmecModel.create(indata, 25)
-    converged_model.solve()
-    converged_state = np.asarray(converged_model.get_state(), float).copy()
-    return initial_state, converged_state
-
-
-@pytest.mark.parametrize(
-    ("state_index", "high_residual"),
-    [pytest.param(0, True, id="initial"), pytest.param(1, False, id="converged")],
-)
-def test_exact_hvp_matches_force_jacobian_when_tcon_frozen(
-    cma_states, state_index, high_residual
-):
-    m = _vmecpp.VmecModel.create(_vmecpp.VmecINDATA.from_file(str(CMA)), 25)
-    if not hasattr(m, "exact_hessian_vector_product"):
-        pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
-
-    m.set_state(np.ascontiguousarray(cma_states[state_index]))
-    m.evaluate(2, 2, True)
-    if m.restart_reason == _BAD_JACOBIAN:
-        m.reinitialize()
-        m.evaluate(2, 2, True)
-    if high_residual:
-        assert m.fsqz >= 1.0e-6
-    else:
-        assert m.fsqz < 1.0e-6
-    m.set_freeze_constraint_multiplier(True)
-
-    x = np.asarray(m.get_state(), float)
-    rng = np.random.default_rng(0)
-    v = rng.standard_normal(x.size)
-    v /= np.linalg.norm(v)
-
-    m.set_state(np.ascontiguousarray(x))
-    he = np.asarray(m.exact_hessian_vector_product(np.ascontiguousarray(v)), float)
-    eps = 1e-6
-    fd = (_raw_force(m, x + eps * v) - _raw_force(m, x - eps * v)) / (2 * eps)
-    assert np.linalg.norm(he - fd) < 1e-3 * np.linalg.norm(fd)
-
-
-def test_exact_derivatives_reject_lforbal():
-    m = _model_with_lforbal(True)
-    if not hasattr(m, "exact_hessian_vector_product"):
-        pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
-
-    m.evaluate(2, 2, False)
-    x = np.asarray(m.get_state(), float).copy()
-    v = np.zeros_like(x)
-    harmonics = m.qs_harmonics()
-    qs_keys = (
-        "gmnc",
-        "bmnc",
-        "bsubumnc",
-        "bsubvmnc",
-        "bsupumnc",
-        "bsupvmnc",
-    )
-    harm_bar = {key: np.zeros_like(np.asarray(harmonics[key])) for key in qs_keys}
-    calls = (
-        lambda: m.exact_hessian_vector_product(v),
-        lambda: m.exact_hessian_vector_product_transpose(v),
-        lambda: m.exact_qs_harmonics_tangent(v),
-        lambda: m.exact_qs_objective_state_gradient(harm_bar),
-    )
-    for call in calls:
-        with pytest.raises(RuntimeError, match="lforbal=true"):
-            call()
-        np.testing.assert_array_equal(np.asarray(m.get_state(), float), x)
-
-
-def test_exact_derivatives_supported_path_zero_fd_and_duality():
-    m = _model_with_lforbal(False)
-    if not hasattr(m, "exact_hessian_vector_product"):
-        pytest.skip("requires an Enzyme-enabled build (VMECPP_ENABLE_ENZYME)")
-
-    m.solve()
-    m.evaluate(2, 2, True)
-    m.set_freeze_constraint_multiplier(True)
-    x = np.asarray(m.get_state(), float).copy()
-    zero = np.zeros_like(x)
-    np.testing.assert_array_equal(m.exact_hessian_vector_product(zero), zero)
-
-    rng = np.random.default_rng(582626)
-    v = rng.standard_normal(x.size)
-    v /= np.linalg.norm(v)
-    w = rng.standard_normal(x.size)
-    hv = np.asarray(m.exact_hessian_vector_product(np.ascontiguousarray(v)), float)
-    htw = np.asarray(
-        m.exact_hessian_vector_product_transpose(np.ascontiguousarray(w)), float
-    )
-    eps = 1e-7 * (1.0 + np.linalg.norm(x))
-    fd = (_raw_force(m, x + eps * v) - _raw_force(m, x - eps * v)) / (2 * eps)
-    m.set_state(np.ascontiguousarray(x))
-    m.evaluate(2, 2, False)
-
-    assert np.linalg.norm(hv - fd) < 2e-8 * np.linalg.norm(fd)
-    np.testing.assert_allclose(np.dot(w, hv), np.dot(v, htw), rtol=1e-12)
-    np.testing.assert_array_equal(np.asarray(m.get_state(), float), x)
