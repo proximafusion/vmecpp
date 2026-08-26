@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/geometry/vmec_geometry.h"
 
+#include <algorithm>
 #include <numbers>
 #include <vector>
 
@@ -45,12 +46,30 @@ Geometry MakeGeometry(const VmecINDATA& indata,
                      .mpol = indata.mpol,
                      .ntor = indata.ntor,
                      .nfp = indata.nfp},
-      .toroidal_flux = std::vector<double>(
-          internal.phiF.data(), internal.phiF.data() + internal.num_full),
+      .toroidal_flux = std::vector<double>(internal.num_full, 0.0),
       .poloidal_flux = std::vector<double>(internal.num_full, 0.0),
       .coefficients = {},
   };
   const double delta_s = 1.0 / (internal.num_full - 1);
+  const bool has_toroidal_flux =
+      internal.phiF.size() == internal.num_full &&
+      std::any_of(internal.phiF.data(),
+                  internal.phiF.data() + internal.phiF.size(),
+                  [](double value) { return value != 0.0; });
+  if (has_toroidal_flux) {
+    std::copy(internal.phiF.data(), internal.phiF.data() + internal.num_full,
+              result.toroidal_flux.begin());
+  } else {
+    // GatherDataFromThreads exposes phipF but leaves phiF for the output
+    // post-processing stage. Derive the enclosed toroidal flux here so the
+    // geometry adapter is identical for a solved model and a completed run.
+    for (int j = 1; j < internal.num_full; ++j) {
+      result.toroidal_flux[j] =
+          result.toroidal_flux[j - 1] + internal.sign_of_jacobian * 2.0 *
+                                            std::numbers::pi * delta_s *
+                                            internal.phipF[j - 1];
+    }
+  }
   for (int j = 1; j < internal.num_full; ++j) {
     result.poloidal_flux[j] = result.poloidal_flux[j - 1] +
                               internal.sign_of_jacobian * 2.0 *
