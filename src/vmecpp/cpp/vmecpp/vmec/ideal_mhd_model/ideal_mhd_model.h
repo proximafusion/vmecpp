@@ -54,7 +54,6 @@ void deAliasConstraintForce(const RadialPartitioning& rp,
                             Eigen::VectorXd& m_gcc, Eigen::VectorXd& m_gss,
                             Eigen::VectorXd& m_gConAsym,
                             Eigen::VectorXd& m_refl, Eigen::VectorXd& m_gCon);
-
 struct LocalForceComposition;
 
 class IdealMhdModel {

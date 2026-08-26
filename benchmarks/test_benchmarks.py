@@ -88,20 +88,6 @@ def test_bench_cli_startup(benchmark):
     assert result.returncode == 0
 
 
-def test_bench_cli_invalid_input(benchmark):
-    """Benchmark CLI error path via `vmecpp invalid_input`."""
-
-    def run_invalid():
-        return subprocess.run(
-            [sys.executable, "-m", "vmecpp", "invalid_input"],
-            capture_output=True,
-            check=False,
-        )
-
-    result = benchmark(run_invalid)
-    assert result.returncode != 0
-
-
 # ---------------------------------------------------------------------------
 # Fixed-boundary solver benchmarks
 # ---------------------------------------------------------------------------

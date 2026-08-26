@@ -17,9 +17,18 @@ namespace vmecpp {
 
 class LaplaceSolver {
  public:
+  // lu_decomposition is a non-owning pointer to a LU decomposition object
+  // that is shared across all per-thread LaplaceSolver instances of a given
+  // vacuum solve, exactly like matrixShare/bvecShare are spans into shared
+  // backing storage: DecomposeMatrix() (called by exactly one thread, guarded
+  // by an outer `#pragma omp single`) may run on a different LaplaceSolver
+  // object than the one whose SolveForPotential() (also single-threaded
+  // internally) later reads the factorization, so the decomposition itself
+  // must live outside any individual LaplaceSolver instance.
   LaplaceSolver(const Sizes* s, const FourierBasisFastToroidal* fb,
                 const TangentialPartitioning* tp, int nf, int mf,
-                std::span<double> matrixShare, std::span<int> iPiv,
+                std::span<double> matrixShare,
+                Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
                 std::span<double> bvecShare);
 
   void TransformGreensFunctionDerivative(const Eigen::VectorXd& greenp);
@@ -96,10 +105,13 @@ class LaplaceSolver {
   int nf;
   int mf;
 
-  // needed for LAPACK's dgetrf
+  // needed for the dense linear solve (BuildMatrix/DecomposeMatrix/
+  // SolveForPotential)
   // non-owning pointers
   std::span<double> matrixShare;
-  std::span<int> iPiv;
+  // Shared LU decomposition object; see the constructor comment for why this
+  // cannot be a plain member of LaplaceSolver.
+  Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition_;
   std::span<double> bvecShare;
 
   // ----------------

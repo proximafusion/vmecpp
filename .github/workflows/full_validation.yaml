@@ -57,8 +57,8 @@ jobs:
       - name: Install required system packages for Ubuntu
         run: |
           sudo apt-get update && sudo apt-get install -y \
-            build-essential cmake libnetcdf-dev liblapack-dev liblapacke-dev libopenmpi-dev \
-            libomp-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
+            build-essential cmake zlib1g-dev libopenmpi-dev \
+            libomp-dev libeigen3-dev nlohmann-json3-dev
 
       - name: Install vmecpp-validation's Python requirements
         run: |
@@ -104,8 +104,8 @@ jobs:
       - name: Install required packages for Ubuntu
         run: |
           sudo apt-get update && sudo apt-get install -y \
-            build-essential cmake libnetcdf-dev liblapack-dev liblapacke-dev libopenmpi-dev \
-            libomp-dev libeigen3-dev nlohmann-json3-dev libhdf5-dev
+            build-essential cmake zlib1g-dev libopenmpi-dev \
+            libomp-dev libeigen3-dev nlohmann-json3-dev
       - name: Install package
         run: python -m pip install -v .[test]
       - name: Run slow QUASR free-boundary tests

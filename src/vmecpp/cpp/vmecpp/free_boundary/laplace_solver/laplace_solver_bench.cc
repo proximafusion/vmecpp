@@ -7,8 +7,8 @@
 //
 // The dense linear system assembled and factorized here is the dominant
 // free-boundary cost when NESTOR performs a full update: an
-// mnpd x mnpd  (mnpd = (mf+1)*(2*nf+1))  matrix is built, LU-factorized via
-// LAPACK dgetrf, and back-substituted via dgetrs.  We benchmark:
+// mnpd x mnpd  (mnpd = (mf+1)*(2*nf+1))  matrix is built, LU-factorized, and
+// back-substituted via Eigen::PartialPivLU.  We benchmark:
 //
 //   * TransformGreensFunctionDerivative -- the largest of the Fourier
 //     transforms feeding the source term (uses the manufactured single-mode
@@ -53,8 +53,8 @@ constexpr ResParams kResolutions[] = {
 
 // ----------------------------------------------------------------------------
 // Fixture matching laplace_solver_test.cc's minimal single-threaded setup:
-// a non-mocked LaplaceSolver with flat matrixShare / iPiv / bvecShare backing
-// storage.
+// a non-mocked LaplaceSolver with flat matrixShare / bvecShare backing
+// storage and a shared LU decomposition object.
 // ----------------------------------------------------------------------------
 struct BenchFixture {
   Sizes s;
@@ -66,8 +66,8 @@ struct BenchFixture {
   int mnpd;
 
   std::vector<double> matrixShare;
-  std::vector<int> iPiv;
   std::vector<double> bvecShare;
+  Eigen::PartialPivLU<Eigen::MatrixXd> lu_decomposition;
 
   std::unique_ptr<LaplaceSolver> ls;
 
@@ -87,16 +87,16 @@ struct BenchFixture {
         mf(mpol + 1),
         mnpd((mf + 1) * (2 * nf + 1)),
         matrixShare(mnpd * mnpd, 0.0),
-        iPiv(mnpd, 0),
         bvecShare(mnpd, 0.0) {
     ls = std::make_unique<LaplaceSolver>(
-        &s, &fb, &tp, nf, mf, std::span<double>(matrixShare),
-        std::span<int>(iPiv), std::span<double>(bvecShare));
+        &s, &fb, &tp, nf, mf, std::span<double>(matrixShare), &lu_decomposition,
+        std::span<double>(bvecShare));
 
     std::mt19937 rng(42);
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
 
-    // Diagonally-dominant matrix so dgetrf never hits a singular pivot.
+    // Diagonally-dominant matrix so the LU factorization never hits a
+    // singular pivot.
     amat_seed.resize(mnpd * mnpd);
     for (int col = 0; col < mnpd; ++col) {
       for (int row = 0; row < mnpd; ++row) {
@@ -129,9 +129,8 @@ struct BenchFixture {
     }
   }
 
-  // Re-seed the LaplaceSolver's system state to the well-conditioned baseline.
-  // dgetrf destroys matrixShare in place, so this must run before each
-  // decompose+solve iteration.
+  // Re-seed the LaplaceSolver's system state to the well-conditioned
+  // baseline before each decompose+solve iteration.
   void ResetSystem() {
     ls->amat_sin_sin = amat_seed;
     ls->bvec_sin = Eigen::VectorXd::Zero(mnpd);
@@ -156,7 +155,7 @@ void BM_LaplaceSolve(benchmark::State& state) {
   state.SetLabel(kResolutions[kIdx].label);
 }
 
-// Just the LU factorization (dgetrf), the O(mnpd^3) hotspot.
+// Just the LU factorization, the O(mnpd^3) hotspot.
 template <int kIdx>
 void BM_LaplaceDecompose(benchmark::State& state) {
   static BenchFixture fx(kResolutions[kIdx].nfp, kResolutions[kIdx].mpol,
