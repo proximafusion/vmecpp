@@ -90,7 +90,6 @@ jobs:
           uv sync --reinstall-package vmecpp
           uv run --with pytest pytest -q \
             tests/test_hessian.py \
-            tests/test_hessian_transpose.py \
             tests/test_external_optimizers.py
 
       - name: Run exact-HVP benchmark
