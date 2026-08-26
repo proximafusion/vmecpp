@@ -8,6 +8,7 @@
 #include <exception>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
@@ -27,8 +28,8 @@ std::string& ErrorMessage() {
 }
 
 void Copy(const vmecpp::GeometryJet& source,
-          double (&m_target)[VMECPP_GEOMETRY_JET_SIZE]) {
-  std::copy(source.begin(), source.end(), m_target);
+          std::span<double, vmecpp::kGeometryJetSize> m_target) {
+  std::copy(source.begin(), source.end(), m_target.begin());
 }
 
 int Fail(const std::string& message) {
