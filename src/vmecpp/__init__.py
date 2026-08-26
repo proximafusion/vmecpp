@@ -41,7 +41,6 @@ from vmecpp._pydantic_numpy import (
 )
 from vmecpp._rescale import rescale
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
-from vmecpp.jax_interface import make_custom_vjp_solve
 
 logger = logging.getLogger(__name__)
 
@@ -2692,5 +2691,4 @@ __all__ = [  # noqa: RUF022
     "solve_multigrid",
     "IterationResult",
     "IterationState",
-    "make_custom_vjp_solve",
 ]

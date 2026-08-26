@@ -176,11 +176,10 @@ def test_python_iteration_matches_cpp_restart_path(
 
     # The residual traces track tightly; the only non-bit-exact operation left
     # is the order of additions in the damping average, whose last-bit noise
-    # can grow through long chaotic transients. x86-64-v3 release builds reach
-    # 1.05e-9 in this early window, so keep a 2e-9 cross-ISA envelope.
+    # can grow through long chaotic transients.
     cpp_r = np.asarray(reference.force_residual_r)
     py_r = np.asarray(result.force_residual_r)
-    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=2.0e-9, atol=1e-15)
+    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
     np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
 
 
