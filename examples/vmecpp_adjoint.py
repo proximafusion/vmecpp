@@ -130,29 +130,6 @@ def _interior_operators(model, x, interior, exact=False):
     )
 
 
-class _VmecPreconditioner(LinearOperator):
-    """Adaptive VMEC preconditioner for SciPy's Newton-Krylov solver."""
-
-    def __init__(self, model, x_template, interior):
-        self._model = model
-        self._x_template = x_template
-        self._interior = interior
-        self._x = x_template.copy()
-        super().__init__(dtype=float, shape=(interior.size, interior.size))
-
-    def update(self, x, _f):
-        self._x = self._x_template.copy()
-        self._x[self._interior] = x
-        self._model.set_state(np.ascontiguousarray(self._x))
-        self._model.evaluate(2, 2, True)
-
-    def _matvec(self, x):
-        v = np.zeros_like(self._x)
-        v[self._interior] = x
-        self._model.set_state(np.ascontiguousarray(self._x))
-        return np.asarray(self._model.apply_preconditioner(v), float)[self._interior]
-
-
 def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=80):
     """Converge the interior to force balance with the boundary held fixed.
 
