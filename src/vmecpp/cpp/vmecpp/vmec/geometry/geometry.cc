@@ -136,6 +136,7 @@ GeometryJet EvaluateProfile(const std::vector<double>& profile,
   for (int i = 0; i < radial.count; ++i) {
     result[0] += radial.value[i] * profile[radial.indices[i]];
     result[1] += radial.first[i] * profile[radial.indices[i]];
+    result[4] += radial.second[i] * profile[radial.indices[i]];
   }
   return result;
 }
@@ -195,6 +196,12 @@ void AddBasis(const std::vector<double>& coefficients, bool sine_m, bool sine_n,
   m_value[1] += basis.ds;
   m_value[2] += basis.dtheta;
   m_value[3] += basis.dzeta;
+  m_value[4] += basis.ds2;
+  m_value[5] += basis.ds_dtheta;
+  m_value[6] += basis.ds_dzeta;
+  m_value[7] += basis.dtheta2;
+  m_value[8] += basis.dtheta_dzeta;
+  m_value[9] += basis.dzeta2;
 }
 
 void AddCoefficientVjp(std::vector<double>& m_coefficients, bool sine_m,
@@ -217,11 +224,20 @@ void AddCoefficientVjp(std::vector<double>& m_coefficients, bool sine_m,
 
   const double angular_bar = cotangent[0] * poloidal[0] * toroidal[0] +
                              cotangent[2] * poloidal[1] * toroidal[0] +
-                             cotangent[3] * poloidal[0] * toroidal[1];
+                             cotangent[3] * poloidal[0] * toroidal[1] +
+                             cotangent[4] * poloidal[0] * toroidal[0] +
+                             cotangent[5] * poloidal[1] * toroidal[0] +
+                             cotangent[6] * poloidal[0] * toroidal[1] +
+                             cotangent[7] * poloidal[2] * toroidal[0] +
+                             cotangent[8] * poloidal[1] * toroidal[1] +
+                             cotangent[9] * poloidal[0] * toroidal[2];
+  const double radial_bar = cotangent[1] * poloidal[0] * toroidal[0] +
+                            cotangent[5] * poloidal[1] * toroidal[0] +
+                            cotangent[6] * poloidal[0] * toroidal[1];
   for (int i = 0; i < radial.count; ++i) {
     m_coefficients[indices[i]] =
-        radial.value[i] * angular_bar +
-        radial.first[i] * cotangent[1] * poloidal[0] * toroidal[0];
+        radial.value[i] * angular_bar + radial.first[i] * radial_bar +
+        radial.second[i] * cotangent[4] * poloidal[0] * toroidal[0];
   }
 
   m_coordinate_bar[0] += cotangent[0] * basis.ds + cotangent[1] * basis.ds2 +
@@ -306,6 +322,17 @@ GeometryVjp EvaluateGeometryVjp(const Geometry& geometry, double s,
                                 double theta, double zeta,
                                 const GeometryPoint& cotangent) {
   Validate(geometry);
+  for (const GeometryJet& seed :
+       {cotangent.r, cotangent.z, cotangent.lambda, cotangent.toroidal_flux,
+        cotangent.poloidal_flux}) {
+    for (int i = 4; i < kGeometryJetSize; ++i) {
+      if (seed[i] != 0.0) {
+        throw std::invalid_argument(
+            "EvaluateGeometryVjp supports value and first-derivative seeds "
+            "only");
+      }
+    }
+  }
   const RadialWeights radial = GetRadialWeights(geometry.dimensions.ns, s);
   GeometryVjp result{.geometry = geometry, .coordinates = {0.0, 0.0, 0.0}};
   ZeroLike(result.geometry.toroidal_flux);

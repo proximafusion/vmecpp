@@ -415,6 +415,20 @@ class VmecModel {
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
 
+  // Return the output-independent geometry representation of the current
+  // in-memory state. This gathers only the geometry-layer data; it does not
+  // read or write a wout file.
+  vmecpp::Geometry GetGeometry() const {
+    if (vmec_->r_.empty()) {
+      throw std::runtime_error(
+          "VmecModel.get_geometry: model is not initialized");
+    }
+    const vmecpp::VmecInternalResults internal = vmecpp::GatherDataFromThreads(
+        vmecpp::Vmec::kSignOfJacobian, vmec_->s_, vmec_->fc_, vmec_->constants_,
+        vmec_->r_, vmec_->decomposed_x_, vmec_->m_, vmec_->p_);
+    return vmecpp::MakeGeometry(vmec_->indata_, internal);
+  }
+
   // Finite-difference approximation to the force Jacobian applied to v. This
   // is retained as a fallback when VMEC++ is built without Enzyme. The force
   // Jacobian is generally not symmetric, so adjoints must use the exact
@@ -1558,6 +1572,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
       .def("get_forces", &VmecModel::GetForces)
+      .def("get_geometry", &VmecModel::GetGeometry)
       .def("apply_preconditioner", &VmecModel::ApplyPreconditioner,
            py::arg("v"))
       .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
