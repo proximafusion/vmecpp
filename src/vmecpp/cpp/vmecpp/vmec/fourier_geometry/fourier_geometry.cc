@@ -12,6 +12,19 @@
 
 namespace vmecpp {
 
+namespace {
+// The coefficients of one flux surface, or an empty span for a component the
+// symmetry flags exclude and which therefore was never allocated.
+std::span<const double> SurfaceOf(std::span<const double> coefficients,
+                                  int surface_offset,
+                                  int coefficients_per_surface) {
+  if (coefficients.empty()) {
+    return {};
+  }
+  return coefficients.subspan(surface_offset, coefficients_per_surface);
+}
+}  // namespace
+
 FourierGeometry::FourierGeometry(const Sizes* s, const RadialPartitioning* r,
                                  int ns)
     : FourierCoeffs(s, r, r->nsMinF1, r->nsMaxF1, ns),
@@ -403,80 +416,29 @@ void FourierGeometry::ComputeSpectralWidth(
     m_radial_profiles.spectral_width[nsMin_ - r_.nsMinF1] = 1.0;
   }
 
+  const int coefficients_per_surface = s_.mpol * (s_.ntor + 1);
+
+  const std::span<const double> mscale(fourier_basis.mscale.data(),
+                                       fourier_basis.mscale.size());
+  const std::span<const double> nscale(fourier_basis.nscale.data(),
+                                       fourier_basis.nscale.size());
+
   // compute only on unique full-grid points
   for (int jF = minimum_j; jF < nsMax_; ++jF) {
-    double spectral_width_numerator = 0.0;
-    double spectral_width_denominator = 0.0;
+    const int surface_offset = (jF - nsMin_) * coefficients_per_surface;
 
-    // note that we exclude m = 0
-    for (int m = 1; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        int fourier_index = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
-
-        const double basis_norm =
-            fourier_basis.mscale[m] * fourier_basis.nscale[n];
-
-        // Use Eigen for vectorized norm computation
-        Eigen::Vector4d r_coefficients = Eigen::Vector4d::Zero();
-        Eigen::Vector4d z_coefficients = Eigen::Vector4d::Zero();
-        int basis_dimension = 0;
-
-        r_coefficients[basis_dimension] = rmncc[fourier_index];
-        z_coefficients[basis_dimension] = zmnsc[fourier_index];
-        basis_dimension++;
-
-        // CONVERT FROM INTERNAL XC REPRESENTATION FOR m=1 MODES,
-        // R+(at rsc) = .5(rsc + zcc),
-        // R-(at zcc) = .5(rsc - zcc),
-        // TO REQUIRED rsc, zcc FORMS
-        if (s_.lthreed) {
-          if (m == 1) {
-            const double r_plus = rmnss[fourier_index];
-            const double r_minus = zmncs[fourier_index];
-            // rmnss
-            r_coefficients[basis_dimension] = r_plus + r_minus;
-            // zmncs
-            z_coefficients[basis_dimension] = r_plus - r_minus;
-          } else {
-            r_coefficients[basis_dimension] = rmnss[fourier_index];
-            z_coefficients[basis_dimension] = zmncs[fourier_index];
-          }
-          basis_dimension++;
-        }
-        if (s_.lasym) {
-          if (m == 1) {
-            const double r_plus = rmnsc[fourier_index];
-            const double r_minus = zmncc[fourier_index];
-            // rmnsc
-            r_coefficients[basis_dimension] = r_plus + r_minus;
-            // zmncc
-            z_coefficients[basis_dimension] = r_plus - r_minus;
-          } else {
-            r_coefficients[basis_dimension] = rmnsc[fourier_index];
-            z_coefficients[basis_dimension] = zmncc[fourier_index];
-          }
-          basis_dimension++;
-        }
-
-        if (s_.lasym && s_.lthreed) {
-          r_coefficients[basis_dimension] = rmncs[fourier_index];
-          z_coefficients[basis_dimension] = zmnss[fourier_index];
-          basis_dimension++;
-        }
-
-        // Vectorized squared norm computation
-        double coefficient_norm =
-            r_coefficients.head(basis_dimension).squaredNorm() +
-            z_coefficients.head(basis_dimension).squaredNorm();
-        coefficient_norm *= basis_norm * basis_norm;
-
-        spectral_width_numerator += coefficient_norm * std::pow(m, p + q);
-        spectral_width_denominator += coefficient_norm * std::pow(m, p);
-      }  // m
-    }  // n
+    const SurfaceFourierGeometry surface = {
+        .rmncc = SurfaceOf(rmncc, surface_offset, coefficients_per_surface),
+        .rmnss = SurfaceOf(rmnss, surface_offset, coefficients_per_surface),
+        .rmnsc = SurfaceOf(rmnsc, surface_offset, coefficients_per_surface),
+        .rmncs = SurfaceOf(rmncs, surface_offset, coefficients_per_surface),
+        .zmnsc = SurfaceOf(zmnsc, surface_offset, coefficients_per_surface),
+        .zmncs = SurfaceOf(zmncs, surface_offset, coefficients_per_surface),
+        .zmncc = SurfaceOf(zmncc, surface_offset, coefficients_per_surface),
+        .zmnss = SurfaceOf(zmnss, surface_offset, coefficients_per_surface)};
 
     m_radial_profiles.spectral_width[jF - r_.nsMinF1] =
-        spectral_width_numerator / spectral_width_denominator;
+        SpectralWidth(surface, s_, mscale, nscale, p, q);
   }  // jF
 }  // ComputeSpectralWidth
 

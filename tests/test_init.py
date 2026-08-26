@@ -555,7 +555,10 @@ def test_threed1_geometric_magnetic_bindings(cma_output: vmecpp.VmecOutput):
 
 def test_threed1_axis_bindings(cma_output: vmecpp.VmecOutput):
     for varname in ["raxis_symm", "zaxis_symm", "raxis_asym", "zaxis_asym"]:
-        assert len(getattr(cma_output.threed1_axis, varname).shape) == 1
+        if "asym" in varname:
+            assert getattr(cma_output.threed1_axis, varname) is None
+        else:
+            assert len(getattr(cma_output.threed1_axis, varname).shape) == 1
 
 
 def test_threed1_betas_bindings(cma_output: vmecpp.VmecOutput):

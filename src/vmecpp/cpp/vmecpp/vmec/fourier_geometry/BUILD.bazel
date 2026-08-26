@@ -9,6 +9,7 @@ cc_library(
     deps = [
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_poloidal",
         "//vmecpp/vmec/radial_partitioning:radial_partitioning",
         "//vmecpp/vmec/handover_storage:handover_storage",
         "//vmecpp/vmec/boundaries:boundaries",

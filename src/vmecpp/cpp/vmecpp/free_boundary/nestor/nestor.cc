@@ -11,7 +11,8 @@ namespace vmecpp {
 Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
                const MGridProvider* mgrid, std::span<double> matrixShare,
                std::span<double> bvecShare, std::span<double> bSqVacShare,
-               std::span<int> iPiv, std::span<double> vacuum_b_r_share,
+               Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
+               std::span<double> vacuum_b_r_share,
                std::span<double> vacuum_b_phi_share,
                std::span<double> vacuum_b_z_share)
     : FreeBoundaryBase(s, tp, mgrid, bSqVacShare, vacuum_b_r_share,
@@ -20,7 +21,7 @@ Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
       mf(s_.mpol + 1),
       si_(s, &fb_, tp, &sg_, nf, mf),
       ri_(s, tp, &sg_),
-      ls_(s, &fb_, tp, nf, mf, matrixShare, iPiv, bvecShare),
+      ls_(s, &fb_, tp, nf, mf, matrixShare, lu_decomposition, bvecShare),
       bvecShare(bvecShare) {
   int numLocal = tp_.ztMax - tp_.ztMin;
 

@@ -224,7 +224,11 @@ class Vmec {
   std::vector<std::unique_ptr<RadialPartitioning>> old_r_;
 
   Eigen::VectorXd matrixShare;
-  Eigen::VectorXi iPiv;
+  // LU decomposition of matrixShare, shared across all vac_num_threads_
+  // Nestor/LaplaceSolver instances (mirroring how matrixShare/bvecShare are
+  // spans into shared backing storage). See LaplaceSolver's constructor for
+  // why this must be a single object rather than a per-thread member.
+  Eigen::PartialPivLU<Eigen::MatrixXd> lu_decomposition;
   Eigen::VectorXd bvecShare;
 
  private:

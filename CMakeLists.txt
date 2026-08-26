@@ -38,23 +38,105 @@ endif()
 # First check if required libraries are installed locally
 find_package(OpenMP REQUIRED)
 
-find_package(HDF5 REQUIRED COMPONENTS C CXX)
-include_directories(${HDF5_INCLUDE_DIRS} ${HDF5_CXX_INCLUDE_DIRS})
+# HDF5 and netCDF-C are built from source, as static libraries, rather than
+# relying on whatever happens to be installed on the system. This is to
+# ensure reproducibility and minimize binary size by turning off netcdf
+# features we don't use. Versions must stay in sync with the Bazel build's
+# src/vmecpp/cpp/third_party/non_module_deps.bzl.
+include(ExternalProject)
+set(_native_deps_prefix "${CMAKE_BINARY_DIR}/native-deps")
+set(_native_deps_lib "${_native_deps_prefix}/lib")
+set(_native_deps_include "${_native_deps_prefix}/include")
+# INTERFACE_INCLUDE_DIRECTORIES below must exist already at generate time.
+file(MAKE_DIRECTORY "${_native_deps_include}")
 
-find_package(netCDF)
-if(NOT netCDF_FOUND)
-  # Finds the netCDF installation using CMake's PkgConfig
-  set(netCDF_PC_FILE netcdf)
-  find_package(PkgConfig REQUIRED)
-  set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH TRUE)
-  pkg_check_modules(netCDF REQUIRED ${netCDF_PC_FILE}>=4.3.0 IMPORTED_TARGET)
-  pkg_get_variable(netCDF_PREFIX ${netCDF_PC_FILE} prefix)
-  message(STATUS "netCDF prefix: ${netCDF_PREFIX}")
-  message(STATUS "netCDF include dirs: ${netCDF_INCLUDE_DIRS}")
-  message(STATUS "netCDF libraries: ${netCDF_LIBRARIES}")
+# HDF5 is built with zlib support (required by netCDF-4), but as a static
+# lib it doesn't bundle zlib's own object code, so it must be linked in
+# explicitly wherever hdf5_c is used.
+find_package(ZLIB REQUIRED)
+
+set(_native_deps_cmake_args
+  -DCMAKE_INSTALL_PREFIX=${_native_deps_prefix}
+  -DCMAKE_INSTALL_LIBDIR=lib
+  -DCMAKE_PREFIX_PATH=${_native_deps_prefix}
+  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+  -DBUILD_SHARED_LIBS=OFF
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+  -DBUILD_TESTING=OFF)
+
+if(APPLE)
+  # CC=brew's gcc-14 (set by some CI jobs) chokes on Apple's SDK math.h for
+  # plain C. -D always wins over the CC/CXX env vars, unlike omitting it.
+  list(APPEND _native_deps_cmake_args
+    -DCMAKE_C_COMPILER=/usr/bin/cc
+    -DCMAKE_CXX_COMPILER=/usr/bin/c++)
 endif()
 
-include_directories(${netCDF_INCLUDE_DIRS})
+ExternalProject_Add(hdf5_native
+  URL "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_3.tar.gz"
+  URL_HASH SHA256=df5ee33c74d5efb59738075ef96f4201588e1f1eeb233f047ac7fd1072dee1f6
+  CMAKE_ARGS
+    ${_native_deps_cmake_args}
+    -DHDF5_BUILD_CPP_LIB=ON
+    -DHDF5_ENABLE_Z_LIB_SUPPORT=ON
+    -DHDF5_ENABLE_SZIP_SUPPORT=OFF
+    -DHDF5_ENABLE_SZIP_ENCODING=OFF
+    -DHDF5_BUILD_EXAMPLES=OFF
+    -DHDF5_BUILD_TOOLS=OFF
+  BUILD_BYPRODUCTS
+    "${_native_deps_lib}/libhdf5.a"
+    "${_native_deps_lib}/libhdf5_cpp.a"
+    "${_native_deps_lib}/libhdf5_hl.a")
+
+ExternalProject_Add(netcdf_native
+  DEPENDS hdf5_native
+  URL "https://github.com/Unidata/netcdf-c/archive/refs/tags/v4.9.3.tar.gz"
+  URL_HASH SHA256=990f46d49525d6ab5dc4249f8684c6deeaf54de6fec63a187e9fb382cc0ffdff
+  CMAKE_ARGS
+    ${_native_deps_cmake_args}
+    -DNETCDF_ENABLE_DAP=OFF
+    -DNETCDF_ENABLE_DAP2=OFF
+    -DNETCDF_ENABLE_DAP4=OFF
+    -DNETCDF_ENABLE_NCZARR=OFF
+    -DNETCDF_ENABLE_NCZARR_ZIP=OFF
+    -DNETCDF_ENABLE_TESTS=OFF
+    -DNETCDF_BUILD_UTILITIES=OFF
+  BUILD_BYPRODUCTS
+    "${_native_deps_lib}/libnetcdf.a")
+
+# Imported targets pointing at the static libraries the ExternalProjects
+# above install at build time
+add_library(hdf5_c STATIC IMPORTED GLOBAL)
+set_target_properties(hdf5_c PROPERTIES
+  IMPORTED_LOCATION "${_native_deps_lib}/libhdf5.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${_native_deps_include}"
+  INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
+add_dependencies(hdf5_c hdf5_native)
+
+add_library(hdf5_hl STATIC IMPORTED GLOBAL)
+set_target_properties(hdf5_hl PROPERTIES
+  IMPORTED_LOCATION "${_native_deps_lib}/libhdf5_hl.a"
+  INTERFACE_LINK_LIBRARIES hdf5_c)
+add_dependencies(hdf5_hl hdf5_native)
+
+add_library(hdf5_cpp STATIC IMPORTED GLOBAL)
+set_target_properties(hdf5_cpp PROPERTIES
+  IMPORTED_LOCATION "${_native_deps_lib}/libhdf5_cpp.a"
+  INTERFACE_LINK_LIBRARIES hdf5_c)
+add_dependencies(hdf5_cpp hdf5_native)
+
+# netCDF's static lib references HDF5 HL symbols internally, so link it in
+# too even though vmecpp's own code never calls it directly.
+add_library(netcdf STATIC IMPORTED GLOBAL)
+set_target_properties(netcdf PROPERTIES
+  IMPORTED_LOCATION "${_native_deps_lib}/libnetcdf.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${_native_deps_include}"
+  INTERFACE_LINK_LIBRARIES "hdf5_hl;hdf5_c")
+add_dependencies(netcdf netcdf_native)
+
+add_library(vmecpp_hdf5_netcdf INTERFACE)
+target_link_libraries(vmecpp_hdf5_netcdf INTERFACE netcdf hdf5_cpp hdf5_hl hdf5_c)
 
 # Fetch all the remote dependencies
 include(FetchContent)
@@ -70,12 +152,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(eigen)
 include_directories(${eigen_SOURCE_DIR})
+# The only dense linear solve in this project (LaplaceSolver::DecomposeMatrix/
+# SolveForPotential) uses Eigen::PartialPivLU, which is pure C++ with no
+# external LAPACK/BLAS dependency as long as EIGEN_USE_LAPACKE/EIGEN_USE_BLAS/
+# EIGEN_USE_MKL are never defined. Do not define those macros without
+# reintroducing an explicit LAPACK/BLAS dependency here.
 
 FetchContent_Declare(nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
 FetchContent_MakeAvailable(nlohmann_json)
-
-find_package(LAPACK REQUIRED)
-
 
 FetchContent_Declare(
   abseil-cpp
@@ -137,10 +221,8 @@ function(vmecpp_add_core target)
   endif()
   target_compile_options(${target} PRIVATE ${CORE_COMPILE_OPTIONS})
 
-  target_link_libraries(${target} PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_LIBRARIES})
-  target_link_libraries(${target} PUBLIC ${netCDF_LIBRARIES})
+  target_link_libraries(${target} PUBLIC vmecpp_hdf5_netcdf)
   target_link_libraries(${target} PUBLIC nlohmann_json::nlohmann_json)
-  target_link_libraries(${target} PUBLIC LAPACK::LAPACK)
   target_link_libraries(${target} PUBLIC absl::algorithm absl::base
     absl::synchronization absl::strings absl::str_format absl::log
     absl::string_view absl::check absl::status absl::statusor)

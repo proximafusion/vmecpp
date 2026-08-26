@@ -9,7 +9,7 @@ import jaxtyping as jt
 import numpy as np
 import pydantic
 
-from vmecpp._pydantic_numpy import BaseModelWithNumpy
+from vmecpp._pydantic_numpy import BaseModelWithNumpy, own_model_fields
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 
@@ -48,13 +48,16 @@ class MakegridParameters(BaseModelWithNumpy):
         cpp_obj: _vmecpp.MakegridParameters,
     ) -> MakegridParameters:
         makegrid_parameters = MakegridParameters(
-            **{attr: getattr(cpp_obj, attr) for attr in MakegridParameters.model_fields}
+            **{
+                attr: getattr(cpp_obj, attr)
+                for attr in own_model_fields(MakegridParameters)
+            }
         )
         return makegrid_parameters
 
     def _to_cpp_makegrid_parameters(self) -> _vmecpp.MakegridParameters:
         return _vmecpp.MakegridParameters(
-            *[getattr(self, attr) for attr in MakegridParameters.model_fields]
+            *[getattr(self, attr) for attr in own_model_fields(MakegridParameters)]
         )
 
     @staticmethod
@@ -122,8 +125,8 @@ class MagneticFieldResponseTable(BaseModelWithNumpy):
         """Convert the Pydantic object to a C++ MagneticFieldResponseTable object,
         avoiding a copy if possible."""
         # If vmecpp.MagneticFieldResponseTable was created from a C++ object, the
-        # arrays be views to the memory of the C++ object. We don't need to create
-        # a new object and just return the underling one.
+        # arrays are views to the memory of the C++ object. We don't need to create
+        # a new object and just return the underlying one.
         underlying = self.b_r.base
         if (
             isinstance(underlying, _vmecpp.MagneticFieldResponseTable)

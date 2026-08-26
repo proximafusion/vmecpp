@@ -4,6 +4,8 @@ on:
   # allows running workflows manually
   workflow_dispatch:
 
+  pull_request:
+
   release:
     types: [published]
 
@@ -19,8 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ubuntu-24.04-arm not supported due to lack of netcdf-devel hdf5-devel
-        os: [ubuntu-24.04, macos-14, macos-15-intel]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14, macos-15-intel]
 
     steps:
       - name: Checkout repository
@@ -40,7 +41,6 @@ jobs:
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '15.0' }}
             DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
             FC=gfortran-14
-            HDF5_ROOT=$(brew --prefix hdf5)
             OpenMP_ROOT=$(brew --prefix)/opt/libomp
         with:
           package-dir: .
@@ -86,7 +86,15 @@ jobs:
             # "debian:testing-20250224", # TODO(jurasic): re-enable when 3.14 support unblocked
             "fedora:41",
           ]
-    runs-on: ubuntu-24.04
+        runner: [ubuntu-24.04]
+        include:
+          # Exercise the aarch64 wheels too, on a native arm64 runner. One
+          # distro is enough here -- this job is about testing the wheel
+          # actually works on a plain distro, and the multi-distro matrix
+          # above already covers distro-specific quirks on x86_64.
+          - distro: "ubuntu:24.04"
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     container: ${{ matrix.distro }}
 
     steps:
@@ -126,19 +134,17 @@ jobs:
           merge-multiple: true
           path: ./wheelhouse/
       - name: Install wheel
-        # Install the appropriate file for vmecpp from the wheelhouse directory.
-        # --no-index prevents installing from PyPi, so we don't accidentally install
-        # a published version instead of the newly built ones. At the same time it prevents
-        # loading dependencies from PyPi, so the first installation fails. We only use the console output
-        # from this command to get the appropriate .whl file for this platform and environment.
         run: |
           ls wheelhouse/
 
           $PYTHON -m venv venv
           . venv/bin/activate
-          wheel_filename=$(find wheelhouse/$($PYTHON --version | awk '{print $2}' | awk -F. '{printf "vmecpp*-cp%s%s-*manylinux*.whl", $1, $2}'))
+          # Let pip's own tag matching pick the single wheel compatible with this
+          # interpreter and architecture; --no-index keeps it from reaching PyPi.
+          pip download --no-index --no-deps --find-links=wheelhouse/ --dest selected-wheel/ vmecpp
+          wheel_filename=$(ls selected-wheel/*.whl)
           echo "Found matching wheel: $wheel_filename"
-          pip install $wheel_filename
+          pip install "$wheel_filename"
 
           pip install pytest
           python -m pytest tests/

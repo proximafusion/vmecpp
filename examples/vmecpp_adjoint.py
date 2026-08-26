@@ -35,6 +35,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+from scipy.optimize import root
 from scipy.sparse.linalg import LinearOperator, gmres
 
 from vmecpp.cpp import _vmecpp  # type: ignore
@@ -95,52 +96,36 @@ def _interior_operators(model, x, interior, exact=False):
     )
 
 
-def _safeguarded_interior_solve(model, x_template, interior, residual, tol, max_newton):
-    """Solve the interior force balance with Newton-GMRES and backtracking."""
-    xi = x_template[interior].copy()
-    force = np.zeros(interior.size)
-    for _ in range(max_newton):
-        force = residual(xi)
-        norm0 = np.linalg.norm(force)
-        if np.max(np.abs(force)) <= tol:
-            x_template[interior] = xi
-            return x_template
-        x_template[interior] = xi
-        model.set_state(np.ascontiguousarray(x_template))
-        model.evaluate(2, 2, True)
-        hessian, preconditioner = _interior_operators(model, x_template, interior)
-        step, info = gmres(
-            hessian,
-            -force,
-            M=preconditioner,
-            rtol=1e-4,
-            maxiter=300,
-        )
-        if info != 0:
-            error_message = f"Interior Krylov solve failed with info={info}"
-            raise RuntimeError(error_message)
-        for backtrack in range(30):
-            trial = xi + 2.0**-backtrack * step
-            if np.linalg.norm(residual(trial)) < norm0:
-                xi = trial
-                break
-        else:
-            error_message = (
-                "Interior solve failed to reduce residual; "
-                f"max|F|={np.max(np.abs(force)):.3e}"
-            )
-            raise RuntimeError(error_message)
-    error_message = (
-        f"Interior solve failed: maximum iterations; max|F|={np.max(np.abs(force)):.3e}"
-    )
-    raise RuntimeError(error_message)
+class _VmecPreconditioner(LinearOperator):
+    """Adaptive VMEC preconditioner for SciPy's Newton-Krylov solver."""
+
+    def __init__(self, model, x_template, interior):
+        self._model = model
+        self._x_template = x_template
+        self._interior = interior
+        self._x = x_template.copy()
+        super().__init__(dtype=float, shape=(interior.size, interior.size))
+
+    def update(self, x, _f):
+        self._x = self._x_template.copy()
+        self._x[self._interior] = x
+        self._model.set_state(np.ascontiguousarray(self._x))
+        self._model.evaluate(2, 2, True)
+
+    def _matvec(self, x):
+        v = np.zeros_like(self._x)
+        v[self._interior] = x
+        self._model.set_state(np.ascontiguousarray(self._x))
+        return np.asarray(self._model.apply_preconditioner(v), float)[self._interior]
 
 
 def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_newton=80):
     """Converge the interior to force balance with the boundary held fixed.
 
-    The hand-written Newton-GMRES loop keeps VMEC's preconditioner synchronized with
-    every iterate and uses an explicit residual-decreasing line search.
+    Use SciPy's Newton-Krylov implementation with VMEC's adaptive preconditioner.
+
+    SciPy owns the nonlinear iteration, inner Krylov solve, and line search. VMEC supplies
+    the state-dependent preconditioner through SciPy's public ``inner_M`` interface.
     """
     x_template = np.asarray(x0, float).copy()
     x_template[boundary] = x_boundary
@@ -150,9 +135,34 @@ def solve_interior(model, x0, interior, boundary, x_boundary, tol=1e-10, max_new
         x[interior] = xi
         return _raw_force(model, x)[interior]
 
-    return _safeguarded_interior_solve(
-        model, x_template, interior, residual, tol, max_newton
+    preconditioner = _VmecPreconditioner(model, x_template, interior)
+    preconditioner.update(x_template[interior], np.zeros(interior.size))
+    solution = root(
+        residual,
+        x_template[interior],
+        method="krylov",
+        options={
+            "fatol": tol,
+            "line_search": "armijo",
+            "maxiter": max_newton,
+            "jac_options": {
+                "method": "lgmres",
+                "inner_M": preconditioner,
+                "inner_rtol": 1e-4,
+                "inner_maxiter": 300,
+            },
+        },
     )
+
+    x = x_template.copy()
+    x[interior] = solution.x
+    if not solution.success:
+        error_message = (
+            f"Interior solve failed: {solution.message}; "
+            f"max|F|={np.max(np.abs(solution.fun)):.3e}"
+        )
+        raise RuntimeError(error_message)
+    return x
 
 
 def objective_state_gradient(model, x, objective, h=1e-6):

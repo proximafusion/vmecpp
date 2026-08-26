@@ -23,5 +23,23 @@ cc_library(
         "//vmecpp/common/fourier_basis_fast_poloidal",
         "//vmecpp/common/vmec_indata:vmec_indata",
         "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/log:log",
+        "@abseil-cpp//absl/strings:str_format",
     ],
+)
+
+cc_test(
+    name = "boundaries_test",
+    srcs = ["boundaries_test.cc"],
+    data = [
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:solovev",
+    ],
+    deps = [
+        ":boundaries",
+        "//vmecpp/vmec/vmec_constants:vmec_constants",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
 )

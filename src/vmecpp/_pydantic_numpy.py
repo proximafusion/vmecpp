@@ -86,6 +86,25 @@ else:
                 return output_dict
 
 
+# Outside Proxima, BaseModelWithNumpy has no extra fields and this is a no-op.
+# When dapper is installed, BaseModelWithNumpy gains a "dapper_type" field that
+# has no meaning to VMEC++ itself, so it must never be forwarded to/from the
+# C++ bindings or written to non-dapper file formats (e.g. NetCDF wout files).
+_DAPPER_TYPE_FIELD = "dapper_type"
+
+
+def own_model_fields(
+    cls: type[pydantic.BaseModel],
+) -> dict[str, pydantic.fields.FieldInfo]:
+    """Like `cls.model_fields`, but excludes `dapper_type`.
+
+    Use this instead of `cls.model_fields` wherever fields are bridged to the C++
+    bindings or to a non-dapper file format. For `model.model_dump(...)` calls
+    with the same need, pass `exclude={_DAPPER_TYPE_FIELD}` directly instead.
+    """
+    return {k: v for k, v in cls.model_fields.items() if k != _DAPPER_TYPE_FIELD}
+
+
 """This module handles special cases for serialization of BaseModelWithNumpy types.
 
 Any data type that pydantic cannot natively handle can be supported by
@@ -114,8 +133,7 @@ For example, you can declare `value: jt.Float[np.ndarray, ...]` instead of
 The mechanism for serialization is to convert "special" fields to JSON-serializable
 values and then let Pydantic take care of the rest.
 In practice:
-- If the field is "special", (e.g. `np.ndarray`) it is converted to either a primitive
-  list.
+- If the field is "special", (e.g. `np.ndarray`) it is converted to a primitive list.
 - If the field is a generic/composed type such as a list, an optional or a union,
   recurse and do the same for the inner types.
 - Otherwise just return the field as is.
