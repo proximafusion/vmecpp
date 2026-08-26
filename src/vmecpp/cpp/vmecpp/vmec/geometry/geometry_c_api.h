@@ -15,14 +15,16 @@ extern "C" {
 // NOLINTNEXTLINE(modernize-use-using)
 typedef struct vmecpp_geometry_handle vmecpp_geometry_handle;
 
-// Entries are value, d/ds, d/dtheta, and d/dzeta.
+// Entries are value, d/ds, d/dtheta, d/dzeta, d2/ds2, d2/(ds dtheta),
+// d2/(ds dzeta), d2/dtheta2, d2/(dtheta dzeta), and d2/dzeta2.
+#define VMECPP_GEOMETRY_JET_SIZE 10
 // NOLINTNEXTLINE(modernize-use-using,readability-identifier-naming)
 typedef struct vmecpp_geometry_point {
-  double r[4];
-  double z[4];
-  double lambda[4];
-  double toroidal_flux[4];
-  double poloidal_flux[4];
+  double r[VMECPP_GEOMETRY_JET_SIZE];
+  double z[VMECPP_GEOMETRY_JET_SIZE];
+  double lambda[VMECPP_GEOMETRY_JET_SIZE];
+  double toroidal_flux[VMECPP_GEOMETRY_JET_SIZE];
+  double poloidal_flux[VMECPP_GEOMETRY_JET_SIZE];
 } vmecpp_geometry_point;
 
 // NOLINTNEXTLINE(modernize-use-using,readability-identifier-naming)

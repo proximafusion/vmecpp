@@ -30,12 +30,20 @@ TEST(GeometryCApiTest, BoundaryMatchesInputWithoutWout) {
       << vmecpp_geometry_error();
   double expected_r = 0.0;
   double expected_z = 0.0;
+  double expected_r_theta2 = 0.0;
+  double expected_z_theta2 = 0.0;
   for (int m = 0; m < indata.mpol; ++m) {
     expected_r += indata.rbc(m, indata.ntor) * std::cos(m * theta);
     expected_z += indata.zbs(m, indata.ntor) * std::sin(m * theta);
+    expected_r_theta2 -=
+        m * m * indata.rbc(m, indata.ntor) * std::cos(m * theta);
+    expected_z_theta2 -=
+        m * m * indata.zbs(m, indata.ntor) * std::sin(m * theta);
   }
   EXPECT_NEAR(point.r[0], expected_r, 2e-12);
   EXPECT_NEAR(point.z[0], expected_z, 2e-12);
+  EXPECT_NEAR(point.r[7], expected_r_theta2, 2e-12);
+  EXPECT_NEAR(point.z[7], expected_z_theta2, 2e-12);
   vmecpp_geometry_destroy(handle);
 }
 

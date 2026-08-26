@@ -27,7 +27,7 @@ std::string& ErrorMessage() {
 }
 
 void Copy(const vmecpp::GeometryJet& source,
-          double (&m_target)[4]) {  // NOLINT(modernize-avoid-c-arrays)
+          double (&m_target)[VMECPP_GEOMETRY_JET_SIZE]) {
   std::copy(source.begin(), source.end(), m_target);
 }
 
