@@ -126,7 +126,7 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
 absl::Status vmecpp::VmecInternalResults::LoadInto(
     vmecpp::VmecInternalResults& m_obj, H5::H5File& from_file) {
   READMEMBER(sign_of_jacobian);
-  if (H5Lexists(from_file.getId(), "/vmecinternalresults/lamscale", 0) == 1) {
+  if (from_file.nameExists(absl::StrFormat("%s/%s", H5key, "lamscale"))) {
     READMEMBER(lamscale);
   } else {
     m_obj.lamscale = 1.0;
