@@ -51,7 +51,8 @@ extern "C" int vmecpp_geometry_create(const char* input_path,
     if (!result.ok()) return Fail(std::string(result.status().message()));
     auto handle = std::make_unique<vmecpp_geometry_handle>();
     handle->geometry =
-        vmecpp::MakeGeometry(indata, result->vmec_internal_results);
+        vmecpp::MakeGeometry(indata, result->vmec_internal_results,
+                             vmecpp::GeometryCoefficientState::kPhysical);
     *output = handle.release();
     ErrorMessage().clear();
     return 0;
