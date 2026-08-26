@@ -21,14 +21,18 @@ struct vmecpp_geometry_handle {
 
 namespace {
 
-thread_local std::string error_message;
+std::string& ErrorMessage() {
+  thread_local std::string message;
+  return message;
+}
 
-void Copy(const vmecpp::GeometryJet& source, double (&m_target)[4]) {
+void Copy(const vmecpp::GeometryJet& source,
+          double (&m_target)[4]) {  // NOLINT(modernize-avoid-c-arrays)
   std::copy(source.begin(), source.end(), m_target);
 }
 
 int Fail(const std::string& message) {
-  error_message = message;
+  ErrorMessage() = message;
   return 1;
 }
 
@@ -49,7 +53,7 @@ extern "C" int vmecpp_geometry_create(const char* input_path,
     handle->geometry =
         vmecpp::MakeGeometry(indata, result->vmec_internal_results);
     *output = handle.release();
-    error_message.clear();
+    ErrorMessage().clear();
     return 0;
   } catch (const std::exception& error) {
     return Fail(error.what());
@@ -59,7 +63,7 @@ extern "C" int vmecpp_geometry_create(const char* input_path,
 }
 
 extern "C" void vmecpp_geometry_destroy(vmecpp_geometry_handle* handle) {
-  delete handle;
+  delete handle;  // NOLINT(cppcoreguidelines-owning-memory)
 }
 
 extern "C" int vmecpp_geometry_get_metadata(
@@ -73,7 +77,7 @@ extern "C" int vmecpp_geometry_get_metadata(
   const int boundary_r00 =
       (dimensions.ns - 1) * dimensions.mpol * (dimensions.ntor + 1);
   output->major_radius = geometry.coefficients.r_cc[boundary_r00];
-  error_message.clear();
+  ErrorMessage().clear();
   return 0;
 }
 
@@ -91,7 +95,7 @@ extern "C" int vmecpp_geometry_evaluate(const vmecpp_geometry_handle* handle,
     Copy(point.lambda, output->lambda);
     Copy(point.toroidal_flux, output->toroidal_flux);
     Copy(point.poloidal_flux, output->poloidal_flux);
-    error_message.clear();
+    ErrorMessage().clear();
     return 0;
   } catch (const std::exception& error) {
     return Fail(error.what());
@@ -101,5 +105,5 @@ extern "C" int vmecpp_geometry_evaluate(const vmecpp_geometry_handle* handle,
 }
 
 extern "C" const char* vmecpp_geometry_error(void) {
-  return error_message.c_str();
+  return ErrorMessage().c_str();
 }

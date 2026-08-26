@@ -11,21 +11,24 @@
 extern "C" {
 #endif
 
-typedef struct vmecpp_geometry_handle vmecpp_geometry_handle;
+// C ABI names and arrays intentionally follow C conventions.
+typedef struct vmecpp_geometry_handle
+    vmecpp_geometry_handle;  // NOLINT(modernize-use-using)
 
 // Entries are value, d/ds, d/dtheta, and d/dzeta.
-typedef struct vmecpp_geometry_point {
+typedef struct vmecpp_geometry_point {  // NOLINT(readability-identifier-naming)
   double r[4];
   double z[4];
   double lambda[4];
   double toroidal_flux[4];
   double poloidal_flux[4];
-} vmecpp_geometry_point;
+} vmecpp_geometry_point;  // NOLINT(modernize-use-using)
 
-typedef struct vmecpp_geometry_metadata {
+typedef struct
+    vmecpp_geometry_metadata {  // NOLINT(readability-identifier-naming)
   int nfp;
   double major_radius;
-} vmecpp_geometry_metadata;
+} vmecpp_geometry_metadata;  // NOLINT(modernize-use-using)
 
 // Returns zero on success. On failure, vmecpp_geometry_error() describes the
 // error for the calling thread.
