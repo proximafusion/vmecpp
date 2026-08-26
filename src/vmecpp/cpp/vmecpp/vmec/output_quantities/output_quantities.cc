@@ -126,7 +126,11 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
 absl::Status vmecpp::VmecInternalResults::LoadInto(
     vmecpp::VmecInternalResults& m_obj, H5::H5File& from_file) {
   READMEMBER(sign_of_jacobian);
-  READMEMBER(lamscale);
+  if (H5Lexists(from_file.getId(), "/vmecinternalresults/lamscale", 0) == 1) {
+    READMEMBER(lamscale);
+  } else {
+    m_obj.lamscale = 1.0;
+  }
   READMEMBER(num_full);
   READMEMBER(num_half);
   READMEMBER(nZnT_reduced);
