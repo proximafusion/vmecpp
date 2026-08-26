@@ -5,11 +5,33 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "vmec_geometry",
+    srcs = ["vmec_geometry.cc"],
+    hdrs = ["vmec_geometry.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":geometry",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/output_quantities:output_quantities",
+    ],
+)
+
 cc_test(
     name = "geometry_test",
     srcs = ["geometry_test.cc"],
     deps = [
         ":geometry",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "vmec_geometry_test",
+    srcs = ["vmec_geometry_test.cc"],
+    deps = [
+        ":geometry",
+        ":vmec_geometry",
         "@googletest//:gtest_main",
     ],
 )
