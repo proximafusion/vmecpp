@@ -103,28 +103,6 @@ Geometry MakeGeometry(const VmecINDATA& indata,
   ScaleLambda(coefficients.lambda_cc, internal, modes_per_surface);
   ScaleLambda(coefficients.lambda_ss, internal, modes_per_surface);
 
-  // Undo the solver's m=1 constraint to recover physical product-basis
-  // coefficients.
-  if (indata.mpol > 1 && indata.ntor > 0) {
-    for (int j = 0; j < internal.num_full; ++j) {
-      for (int n = 0; n <= indata.ntor; ++n) {
-        const int index = (j * indata.mpol + 1) * (indata.ntor + 1) + n;
-        const double old_r_ss = coefficients.r_ss[index];
-        coefficients.r_ss[index] = old_r_ss + coefficients.z_cs[index];
-        coefficients.z_cs[index] = old_r_ss - coefficients.z_cs[index];
-      }
-    }
-  }
-  if (indata.mpol > 1 && indata.lasym) {
-    for (int j = 0; j < internal.num_full; ++j) {
-      for (int n = 0; n <= indata.ntor; ++n) {
-        const int index = (j * indata.mpol + 1) * (indata.ntor + 1) + n;
-        const double old_r_sc = coefficients.r_sc[index];
-        coefficients.r_sc[index] = old_r_sc + coefficients.z_cc[index];
-        coefficients.z_cc[index] = old_r_sc - coefficients.z_cc[index];
-      }
-    }
-  }
   return result;
 }
 
