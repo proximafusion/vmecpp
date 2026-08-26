@@ -336,26 +336,121 @@ install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
 #   -DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so
 option(VMECPP_ENABLE_ENZYME "Build Enzyme autodiff targets" OFF)
 if(VMECPP_ENABLE_ENZYME)
-  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
     message(FATAL_ERROR
-      "VMECPP_ENABLE_ENZYME requires a Clang compiler (got "
-      "${CMAKE_CXX_COMPILER_ID}); Enzyme attaches as a Clang plugin.")
+      "VMECPP_ENABLE_ENZYME requires a Clang-based compiler (got "
+      "${CMAKE_CXX_COMPILER_ID}); Enzyme attaches as a Clang plugin. "
+      "Intel oneAPI icx/icpx (IntelLLVM) is Clang-based and supported.")
   endif()
   set(VMECPP_ENZYME_PLUGIN "" CACHE FILEPATH "Path to ClangEnzyme-NN.so")
-  if(NOT VMECPP_ENZYME_PLUGIN OR NOT EXISTS "${VMECPP_ENZYME_PLUGIN}")
-    message(FATAL_ERROR
-      "VMECPP_ENABLE_ENZYME=ON requires "
-      "-DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so")
+  set(VMECPP_ENZYME_CORE_TARGETS vmecpp_core)
+  if(VMECPP_HWCAPS_DISPATCH)
+    list(APPEND VMECPP_ENZYME_CORE_TARGETS vmecpp_core_v3)
   endif()
-  message(STATUS "Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
-  enable_testing()
-  # Self-contained over flat buffers; checks Jv and J^T u against finite
-  # differences and against each other (adjoint identity). Enzyme runs as an
-  # optimization-time pass, so it needs -O2 and the plugin attached. -O2 also
-  # guards against a Debug (-O0) configuration where the AD pass would not run.
-  add_executable(jacobian_kernel_autodiff_test
-    ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/jacobian_kernel_autodiff_test.cc)
-  target_compile_options(jacobian_kernel_autodiff_test PRIVATE
-    -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
-  add_test(NAME jacobian_kernel_autodiff COMMAND jacobian_kernel_autodiff_test)
+  # The Enzyme pass is an LLVM-version-specific plugin. icx/icpx (IntelLLVM)
+  # cannot load a plugin built against a different upstream LLVM. Enzyme's output
+  # is an ordinary object file, though, so for such compilers the two Enzyme TUs
+  # can be precompiled with a matching ClangEnzyme and linked in, while the rest
+  # is built with icx.
+  set(VMECPP_ENZYME_JVP_OBJECT "" CACHE FILEPATH
+    "Prebuilt exact_force_jvp object (compiled with a matching ClangEnzyme)")
+  set(VMECPP_ENZYME_VJP_OBJECT "" CACHE FILEPATH
+    "Prebuilt exact_force_vjp object (compiled with a matching ClangEnzyme)")
+  # Backward-compatible name for the original JVP-only input. Keep its meaning
+  # explicit: the cotangent implementation must still be supplied separately.
+  set(VMECPP_ENZYME_OBJECT "" CACHE FILEPATH
+    "Deprecated JVP-only alias for VMECPP_ENZYME_JVP_OBJECT")
+  set(VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT "${VMECPP_ENZYME_JVP_OBJECT}")
+  if(VMECPP_ENZYME_OBJECT)
+    if(VMECPP_ENZYME_JVP_OBJECT AND
+       NOT "${VMECPP_ENZYME_JVP_OBJECT}" STREQUAL "${VMECPP_ENZYME_OBJECT}")
+      message(FATAL_ERROR
+        "VMECPP_ENZYME_OBJECT and VMECPP_ENZYME_JVP_OBJECT name different "
+        "files; remove the deprecated VMECPP_ENZYME_OBJECT setting")
+    endif()
+    message(DEPRECATION
+      "VMECPP_ENZYME_OBJECT supplies only the JVP and is deprecated; use "
+      "VMECPP_ENZYME_JVP_OBJECT together with VMECPP_ENZYME_VJP_OBJECT")
+    set(VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT "${VMECPP_ENZYME_OBJECT}")
+  endif()
+  if(VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT OR VMECPP_ENZYME_VJP_OBJECT)
+    if(NOT VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT)
+      message(FATAL_ERROR
+        "Prebuilt Enzyme mode requires VMECPP_ENZYME_JVP_OBJECT")
+    endif()
+    if(NOT VMECPP_ENZYME_VJP_OBJECT)
+      message(FATAL_ERROR
+        "Prebuilt Enzyme mode requires VMECPP_ENZYME_VJP_OBJECT; the "
+        "deprecated VMECPP_ENZYME_OBJECT supplies only the JVP")
+    endif()
+    foreach(VMECPP_ENZYME_PREBUILT_OBJECT
+            IN ITEMS "${VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT}"
+                     "${VMECPP_ENZYME_VJP_OBJECT}")
+      if(NOT EXISTS "${VMECPP_ENZYME_PREBUILT_OBJECT}")
+        message(FATAL_ERROR
+          "Prebuilt Enzyme object not found: ${VMECPP_ENZYME_PREBUILT_OBJECT}")
+      endif()
+    endforeach()
+    set(VMECPP_ENZYME_PREBUILT_OBJECTS
+      "${VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT}"
+      "${VMECPP_ENZYME_VJP_OBJECT}")
+    message(STATUS
+      "Enzyme: linking prebuilt JVP object ${VMECPP_ENZYME_EFFECTIVE_JVP_OBJECT}")
+    message(STATUS
+      "Enzyme: linking prebuilt VJP object ${VMECPP_ENZYME_VJP_OBJECT}")
+    set_source_files_properties(${VMECPP_ENZYME_PREBUILT_OBJECTS} PROPERTIES
+      EXTERNAL_OBJECT TRUE GENERATED TRUE)
+    foreach(VMECPP_ENZYME_CORE_TARGET IN LISTS VMECPP_ENZYME_CORE_TARGETS)
+      target_sources(${VMECPP_ENZYME_CORE_TARGET} PRIVATE
+        ${VMECPP_ENZYME_PREBUILT_OBJECTS})
+      target_compile_definitions(${VMECPP_ENZYME_CORE_TARGET}
+        PUBLIC VMECPP_ENABLE_ENZYME)
+    endforeach()
+  else()
+    if(NOT VMECPP_ENZYME_PLUGIN OR NOT EXISTS "${VMECPP_ENZYME_PLUGIN}")
+      message(FATAL_ERROR
+        "VMECPP_ENABLE_ENZYME=ON requires "
+        "-DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so "
+        "(or both VMECPP_ENZYME_JVP_OBJECT and VMECPP_ENZYME_VJP_OBJECT "
+        "for prebuilt objects)")
+    endif()
+    message(STATUS "Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
+    enable_testing()
+    # Exact autodiff (forward and reverse) of a real VMEC nonlinear kernel: the
+    # half-grid Jacobian. Enzyme runs as an optimization-time pass, so it needs
+    # -O2 and the plugin attached.
+    add_executable(jacobian_kernel_autodiff_test
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/jacobian_kernel_autodiff_test.cc)
+    target_compile_options(jacobian_kernel_autodiff_test PRIVATE
+      -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+    add_test(NAME jacobian_kernel_autodiff COMMAND jacobian_kernel_autodiff_test)
+    # Exact Hessian of the composed local force map (all six force-chain kernels):
+    # forward/reverse Jacobian vs finite differences, and JVP cost vs FD-HVP.
+    add_executable(local_force_hessian_test
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/local_force_hessian_test.cc
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc)
+    target_compile_options(local_force_hessian_test PRIVATE
+      -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+    add_test(NAME local_force_hessian COMMAND local_force_hessian_test)
+
+    # Wire the exact force Hessian-vector product into the core library and the
+    # Python extension. Every runtime-selectable core variant must export these
+    # functions. The Enzyme translation units are compiled with the plugin; the
+    # rest of each core stays normally compiled.
+    foreach(VMECPP_ENZYME_CORE_TARGET IN LISTS VMECPP_ENZYME_CORE_TARGETS)
+      target_sources(${VMECPP_ENZYME_CORE_TARGET} PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
+        ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_vjp.cc)
+      target_compile_definitions(${VMECPP_ENZYME_CORE_TARGET}
+        PUBLIC VMECPP_ENABLE_ENZYME)
+    endforeach()
+    # Enzyme does not support the AVX mask intrinsics emitted for x86-64-v3.
+    # Compile these two translation units for the baseline ISA in every core;
+    # the rest of vmecpp_core_v3 remains optimized for x86-64-v3.
+    set_source_files_properties(
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
+      ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_vjp.cc
+      PROPERTIES COMPILE_OPTIONS
+        "-march=x86-64;-O2;-fplugin=${VMECPP_ENZYME_PLUGIN}")
+  endif()
 endif()
