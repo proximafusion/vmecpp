@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/geometry/vmec_geometry.h"
 
-#include <cmath>
+#include <numbers>
 #include <vector>
 
 namespace vmecpp {
@@ -16,8 +16,8 @@ std::vector<double> Scale(const RowMatrixXd& source, int mpol, int ntor) {
     for (int m = 0; m < mpol; ++m) {
       for (int n = 0; n <= ntor; ++n) {
         const int index = (j * mpol + m) * (ntor + 1) + n;
-        const double mscale = m == 0 ? 1.0 : std::sqrt(2.0);
-        const double nscale = n == 0 ? 1.0 : std::sqrt(2.0);
+        const double mscale = m == 0 ? 1.0 : std::numbers::sqrt2;
+        const double nscale = n == 0 ? 1.0 : std::numbers::sqrt2;
         result[index] = source(j, n * mpol + m) * mscale * nscale;
       }
     }
@@ -53,7 +53,8 @@ Geometry MakeGeometry(const VmecINDATA& indata,
   const double delta_s = 1.0 / (internal.num_full - 1);
   for (int j = 1; j < internal.num_full; ++j) {
     result.poloidal_flux[j] = result.poloidal_flux[j - 1] +
-                              internal.sign_of_jacobian * 2.0 * M_PI * delta_s *
+                              internal.sign_of_jacobian * 2.0 *
+                                  std::numbers::pi * delta_s *
                                   internal.phipH[j - 1] * internal.iotaH[j - 1];
   }
 
