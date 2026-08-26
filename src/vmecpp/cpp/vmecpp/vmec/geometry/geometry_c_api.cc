@@ -62,6 +62,21 @@ extern "C" void vmecpp_geometry_destroy(vmecpp_geometry_handle* handle) {
   delete handle;
 }
 
+extern "C" int vmecpp_geometry_get_metadata(
+    const vmecpp_geometry_handle* handle, vmecpp_geometry_metadata* output) {
+  if (handle == nullptr || output == nullptr) {
+    return Fail("handle and output must not be null");
+  }
+  const vmecpp::Geometry& geometry = handle->geometry;
+  const vmecpp::GeometryDimensions& dimensions = geometry.dimensions;
+  output->nfp = dimensions.nfp;
+  const int boundary_r00 =
+      (dimensions.ns - 1) * dimensions.mpol * (dimensions.ntor + 1);
+  output->major_radius = geometry.coefficients.r_cc[boundary_r00];
+  error_message.clear();
+  return 0;
+}
+
 extern "C" int vmecpp_geometry_evaluate(const vmecpp_geometry_handle* handle,
                                         double s, double theta, double zeta,
                                         vmecpp_geometry_point* output) {

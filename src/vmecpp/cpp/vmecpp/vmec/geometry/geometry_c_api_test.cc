@@ -18,6 +18,12 @@ TEST(GeometryCApiTest, BoundaryMatchesInputWithoutWout) {
   ASSERT_EQ(vmecpp_geometry_create(kInput, &handle), 0)
       << vmecpp_geometry_error();
 
+  vmecpp_geometry_metadata metadata{};
+  ASSERT_EQ(vmecpp_geometry_get_metadata(handle, &metadata), 0)
+      << vmecpp_geometry_error();
+  EXPECT_EQ(metadata.nfp, indata.nfp);
+  EXPECT_NEAR(metadata.major_radius, indata.rbc(0, indata.ntor), 2e-12);
+
   const double theta = 0.37;
   vmecpp_geometry_point point{};
   ASSERT_EQ(vmecpp_geometry_evaluate(handle, 1.0, theta, 0.0, &point), 0)

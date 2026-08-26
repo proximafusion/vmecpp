@@ -22,11 +22,18 @@ typedef struct vmecpp_geometry_point {
   double poloidal_flux[4];
 } vmecpp_geometry_point;
 
+typedef struct vmecpp_geometry_metadata {
+  int nfp;
+  double major_radius;
+} vmecpp_geometry_metadata;
+
 // Returns zero on success. On failure, vmecpp_geometry_error() describes the
 // error for the calling thread.
 int vmecpp_geometry_create(const char* input_path,
                            vmecpp_geometry_handle** output);
 void vmecpp_geometry_destroy(vmecpp_geometry_handle* handle);
+int vmecpp_geometry_get_metadata(const vmecpp_geometry_handle* handle,
+                                 vmecpp_geometry_metadata* output);
 int vmecpp_geometry_evaluate(const vmecpp_geometry_handle* handle, double s,
                              double theta, double zeta,
                              vmecpp_geometry_point* output);
