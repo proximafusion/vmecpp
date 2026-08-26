@@ -16,11 +16,11 @@ namespace vmecpp {
 namespace {
 
 struct RadialWeights {
-  int inner;
-  int outer;
-  double inner_weight;
-  double outer_weight;
-  double derivative_scale;
+  std::array<int, 4> indices;
+  std::array<double, 4> value;
+  std::array<double, 4> first;
+  std::array<double, 4> second;
+  int count;
 };
 
 RadialWeights GetRadialWeights(int ns, double s) {
@@ -30,14 +30,58 @@ RadialWeights GetRadialWeights(int ns, double s) {
   if (s < 0.0 || s > 1.0) {
     throw std::out_of_range("s must be in [0, 1]");
   }
-  const double scaled = s * (ns - 1);
-  const int inner = std::min(static_cast<int>(scaled), ns - 2);
-  const double outer_weight = scaled - inner;
-  return {.inner = inner,
-          .outer = inner + 1,
-          .inner_weight = 1.0 - outer_weight,
-          .outer_weight = outer_weight,
-          .derivative_scale = static_cast<double>(ns - 1)};
+  const double scale = ns - 1;
+  const double scaled = s * scale;
+  if (ns < 4) {
+    const int inner = std::min(static_cast<int>(scaled), ns - 2);
+    const double outer_weight = scaled - inner;
+    return {.indices = {inner, inner + 1, 0, 0},
+            .value = {1.0 - outer_weight, outer_weight, 0.0, 0.0},
+            .first = {-scale, scale, 0.0, 0.0},
+            .second = {0.0, 0.0, 0.0, 0.0},
+            .count = 2};
+  }
+  const int start = std::clamp(static_cast<int>(scaled) - 1, 0, ns - 4);
+  const double x = scaled - start;
+  RadialWeights result{.indices = {start, start + 1, start + 2, start + 3},
+                       .value = {},
+                       .first = {},
+                       .second = {},
+                       .count = 4};
+  for (int i = 0; i < 4; ++i) {
+    double denominator = 1.0;
+    for (int j = 0; j < 4; ++j) {
+      if (j != i) denominator *= i - j;
+    }
+    double value = 1.0;
+    for (int j = 0; j < 4; ++j) {
+      if (j != i) value *= x - j;
+    }
+    double first = 0.0;
+    double second = 0.0;
+    for (int omitted = 0; omitted < 4; ++omitted) {
+      if (omitted == i) continue;
+      double term = 1.0;
+      for (int j = 0; j < 4; ++j) {
+        if (j != i && j != omitted) term *= x - j;
+      }
+      first += term;
+      for (int omitted_second = 0; omitted_second < 4; ++omitted_second) {
+        if (omitted_second == i || omitted_second == omitted) continue;
+        double second_term = 1.0;
+        for (int j = 0; j < 4; ++j) {
+          if (j != i && j != omitted && j != omitted_second) {
+            second_term *= x - j;
+          }
+        }
+        second += second_term;
+      }
+    }
+    result.value[i] = value / denominator;
+    result.first[i] = scale * first / denominator;
+    result.second[i] = scale * scale * second / denominator;
+  }
+  return result;
 }
 
 int CoefficientIndex(const GeometryDimensions& dimensions, int radial_index,
@@ -88,11 +132,12 @@ std::array<double, 3> TrigDerivatives(bool sine, int mode, double angle) {
 
 GeometryJet EvaluateProfile(const std::vector<double>& profile,
                             const RadialWeights& radial) {
-  return {
-      radial.inner_weight * profile[radial.inner] +
-          radial.outer_weight * profile[radial.outer],
-      radial.derivative_scale * (profile[radial.outer] - profile[radial.inner]),
-      0.0, 0.0};
+  GeometryJet result{};
+  for (int i = 0; i < radial.count; ++i) {
+    result[0] += radial.value[i] * profile[radial.indices[i]];
+    result[1] += radial.first[i] * profile[radial.indices[i]];
+  }
+  return result;
 }
 
 struct BasisJet {
@@ -105,16 +150,21 @@ struct BasisJet {
   double dtheta2;
   double dtheta_dzeta;
   double dzeta2;
+  double ds2;
 };
 
 BasisJet MakeBasisJet(const std::array<double, 3>& poloidal,
                       const std::array<double, 3>& toroidal,
-                      double coefficient_inner, double coefficient_outer,
+                      const std::array<double, 4>& coefficients,
                       const RadialWeights& radial) {
-  const double coefficient = radial.inner_weight * coefficient_inner +
-                             radial.outer_weight * coefficient_outer;
-  const double coefficient_s =
-      radial.derivative_scale * (coefficient_outer - coefficient_inner);
+  double coefficient = 0.0;
+  double coefficient_s = 0.0;
+  double coefficient_ss = 0.0;
+  for (int i = 0; i < radial.count; ++i) {
+    coefficient += radial.value[i] * coefficients[i];
+    coefficient_s += radial.first[i] * coefficients[i];
+    coefficient_ss += radial.second[i] * coefficients[i];
+  }
   return {.value = coefficient * poloidal[0] * toroidal[0],
           .ds = coefficient_s * poloidal[0] * toroidal[0],
           .dtheta = coefficient * poloidal[1] * toroidal[0],
@@ -123,7 +173,8 @@ BasisJet MakeBasisJet(const std::array<double, 3>& poloidal,
           .ds_dzeta = coefficient_s * poloidal[0] * toroidal[1],
           .dtheta2 = coefficient * poloidal[2] * toroidal[0],
           .dtheta_dzeta = coefficient * poloidal[1] * toroidal[1],
-          .dzeta2 = coefficient * poloidal[0] * toroidal[2]};
+          .dzeta2 = coefficient * poloidal[0] * toroidal[2],
+          .ds2 = coefficient_ss * poloidal[0] * toroidal[0]};
 }
 
 void AddBasis(const std::vector<double>& coefficients, bool sine_m, bool sine_n,
@@ -133,10 +184,13 @@ void AddBasis(const std::vector<double>& coefficients, bool sine_m, bool sine_n,
   if (coefficients.empty()) return;
   const auto poloidal = TrigDerivatives(sine_m, m, theta);
   const auto toroidal = TrigDerivatives(sine_n, n * dimensions.nfp, zeta);
-  const BasisJet basis = MakeBasisJet(
-      poloidal, toroidal,
-      coefficients[CoefficientIndex(dimensions, radial.inner, m, n)],
-      coefficients[CoefficientIndex(dimensions, radial.outer, m, n)], radial);
+  std::array<double, 4> radial_coefficients{};
+  for (int i = 0; i < radial.count; ++i) {
+    radial_coefficients[i] =
+        coefficients[CoefficientIndex(dimensions, radial.indices[i], m, n)];
+  }
+  const BasisJet basis =
+      MakeBasisJet(poloidal, toroidal, radial_coefficients, radial);
   m_value[0] += basis.value;
   m_value[1] += basis.ds;
   m_value[2] += basis.dtheta;
@@ -152,21 +206,25 @@ void AddCoefficientVjp(std::vector<double>& m_coefficients, bool sine_m,
   if (m_coefficients.empty()) return;
   const auto poloidal = TrigDerivatives(sine_m, m, theta);
   const auto toroidal = TrigDerivatives(sine_n, n * dimensions.nfp, zeta);
-  const int inner_index = CoefficientIndex(dimensions, radial.inner, m, n);
-  const int outer_index = CoefficientIndex(dimensions, radial.outer, m, n);
-  const double inner = m_coefficients[inner_index];
-  const double outer = m_coefficients[outer_index];
-  const BasisJet basis = MakeBasisJet(poloidal, toroidal, inner, outer, radial);
+  std::array<int, 4> indices{};
+  std::array<double, 4> radial_coefficients{};
+  for (int i = 0; i < radial.count; ++i) {
+    indices[i] = CoefficientIndex(dimensions, radial.indices[i], m, n);
+    radial_coefficients[i] = m_coefficients[indices[i]];
+  }
+  const BasisJet basis =
+      MakeBasisJet(poloidal, toroidal, radial_coefficients, radial);
 
   const double angular_bar = cotangent[0] * poloidal[0] * toroidal[0] +
                              cotangent[2] * poloidal[1] * toroidal[0] +
                              cotangent[3] * poloidal[0] * toroidal[1];
-  const double radial_bar =
-      cotangent[1] * radial.derivative_scale * poloidal[0] * toroidal[0];
-  m_coefficients[inner_index] = radial.inner_weight * angular_bar - radial_bar;
-  m_coefficients[outer_index] = radial.outer_weight * angular_bar + radial_bar;
+  for (int i = 0; i < radial.count; ++i) {
+    m_coefficients[indices[i]] =
+        radial.value[i] * angular_bar +
+        radial.first[i] * cotangent[1] * poloidal[0] * toroidal[0];
+  }
 
-  m_coordinate_bar[0] += cotangent[0] * basis.ds +
+  m_coordinate_bar[0] += cotangent[0] * basis.ds + cotangent[1] * basis.ds2 +
                          cotangent[2] * basis.ds_dtheta +
                          cotangent[3] * basis.ds_dzeta;
   m_coordinate_bar[1] +=
@@ -214,12 +272,12 @@ void ZeroLike(std::vector<double>& m_values) {
 void AddProfileVjp(const std::vector<double>& profile,
                    const RadialWeights& radial, const GeometryJet& cotangent,
                    std::vector<double>& m_profile_bar, double& m_s_bar) {
-  m_profile_bar[radial.inner] += radial.inner_weight * cotangent[0] -
-                                 radial.derivative_scale * cotangent[1];
-  m_profile_bar[radial.outer] += radial.outer_weight * cotangent[0] +
-                                 radial.derivative_scale * cotangent[1];
-  m_s_bar += radial.derivative_scale *
-             (profile[radial.outer] - profile[radial.inner]) * cotangent[0];
+  for (int i = 0; i < radial.count; ++i) {
+    m_profile_bar[radial.indices[i]] +=
+        radial.value[i] * cotangent[0] + radial.first[i] * cotangent[1];
+    m_s_bar += profile[radial.indices[i]] * (radial.first[i] * cotangent[0] +
+                                             radial.second[i] * cotangent[1]);
+  }
 }
 
 }  // namespace
@@ -269,8 +327,8 @@ GeometryVjp EvaluateGeometryVjp(const Geometry& geometry, double s,
   ZeroLike(result.geometry.coefficients.lambda_cc);
   ZeroLike(result.geometry.coefficients.lambda_ss);
 
-  // AddCoefficientVjp overwrites the two active radial entries, so use a
-  // temporary and accumulate those entries into the result.
+  // AddCoefficientVjp overwrites the active radial entries, so use a
+  // temporary and accumulate them into the result.
   auto accumulate_quantity = [&](const std::vector<double>& primal,
                                  std::vector<double>& bar, bool sine_m,
                                  bool sine_n, int m, int n,
@@ -279,10 +337,11 @@ GeometryVjp EvaluateGeometryVjp(const Geometry& geometry, double s,
     std::vector<double> contribution = primal;
     AddCoefficientVjp(contribution, sine_m, sine_n, m, n, theta, zeta,
                       geometry.dimensions, radial, seed, result.coordinates);
-    const int inner = CoefficientIndex(geometry.dimensions, radial.inner, m, n);
-    const int outer = CoefficientIndex(geometry.dimensions, radial.outer, m, n);
-    bar[inner] += contribution[inner];
-    bar[outer] += contribution[outer];
+    for (int i = 0; i < radial.count; ++i) {
+      const int index =
+          CoefficientIndex(geometry.dimensions, radial.indices[i], m, n);
+      bar[index] += contribution[index];
+    }
   };
   for (int m = 0; m < geometry.dimensions.mpol; ++m) {
     for (int n = 0; n <= geometry.dimensions.ntor; ++n) {
