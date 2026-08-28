@@ -12,6 +12,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
+# Demo commit: no C++ sources touched here, so the ccache cache key below is
+# unchanged from the parent commit and every matrix leg should get an exact
+# ccache hit, restoring the cache this branch's previous run saved.
+
 # CI-only dependency workaround, see .github/constraints.txt
 env:
   PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
