@@ -49,14 +49,25 @@ jobs:
       - name: Install required packages for MacOS
         if: ${{ contains(matrix.os, 'macos') }}
         run: |
-          brew install ninja libomp eigen git
+          brew install ninja libomp eigen git ccache
       - name: Install required packages for Ubuntu
         if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
           # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test).
           # VMEC2000 itself gets libopenblas-dev/libscalapack-mpi-dev below, which cover its
           # LAPACK needs; VMEC++ no longer links LAPACK at all.
-          sudo apt-get update && sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev
+          sudo apt-get update && sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev ccache
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          # Keyed on the C++ sources: unchanged sources -> exact hit for every
+          # matrix leg (they all share this one key, so only the leg that
+          # misses ends up saving). restore-keys falls back to the closest
+          # prior cache when sources did change, for partial ccache hits.
+          key: ccache-${{ matrix.os }}-${{ hashFiles('CMakeLists.txt', 'src/vmecpp/cpp/**') }}
+          restore-keys: |
+            ccache-${{ matrix.os }}-
       - name: Cache the VMEC2000 wheel
         if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.10' }}
         uses: actions/cache@v4
@@ -85,6 +96,8 @@ jobs:
           # fail loudly here if the binding is still broken, not in the test step
           python -c "import vmec; print('VMEC2000 import OK')"
       - name: Install package
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
         run: |
           # on Ubuntu we would not need this, but on MacOS we need to point CMake to gfortran-14 and gcc-14
           export FC=$(which gfortran-14 || which gfortran)
@@ -97,6 +110,7 @@ jobs:
           else
             python -m pip install -v .[test]
           fi
+          ccache -s
       - name: Test package
         run: python -m pytest tests/
       - name: Test docstring examples
@@ -118,8 +132,17 @@ jobs:
           cache: 'pip'
       - name: Install required packages for Ubuntu
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev
+          sudo apt-get update && sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev ccache
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-ubuntu-22.04-${{ hashFiles('CMakeLists.txt', 'src/vmecpp/cpp/**') }}
+          restore-keys: |
+            ccache-ubuntu-22.04-
       - name: Install package
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
         run: python -m pip install .[test]
       - name: Test example scripts
         run: |

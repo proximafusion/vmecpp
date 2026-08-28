@@ -30,6 +30,7 @@ add_compile_definitions(EIGEN_MAX_ALIGN_BYTES=32 EIGEN_MAX_STATIC_ALIGN_BYTES=32
 find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
 if(EXISTS ${CCACHE_COMMAND})
   message(STATUS "Found ccache: ${CCACHE_COMMAND}")
+  set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_COMMAND})
   set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_COMMAND})
 else()
   message(STATUS "Could NOT find ccache")
@@ -64,6 +65,16 @@ set(_native_deps_cmake_args
   -DBUILD_SHARED_LIBS=OFF
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
   -DBUILD_TESTING=OFF)
+
+if(EXISTS ${CCACHE_COMMAND})
+  # ExternalProject_Add runs its own separate CMake configure, so it does not
+  # inherit the top-level CMAKE_CXX_COMPILER_LAUNCHER set above; without this,
+  # HDF5 and netCDF (the most expensive part of a from-source build) never
+  # touch ccache at all.
+  list(APPEND _native_deps_cmake_args
+    -DCMAKE_C_COMPILER_LAUNCHER=${CCACHE_COMMAND}
+    -DCMAKE_CXX_COMPILER_LAUNCHER=${CCACHE_COMMAND})
+endif()
 
 if(APPLE)
   # CC=brew's gcc-14 (set by some CI jobs) chokes on Apple's SDK math.h for
