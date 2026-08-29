@@ -41,19 +41,20 @@ void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
                            const absl::Status& thread_status) {
   CHECK(!thread_status.ok()) << "UpdateStatusForThread expects an error status";
 
-  auto thread_msg =
-      absl::StrFormat("Thread %i:\n\t%s", thread_id, thread_status.message());
+  const auto thread_msg =
+      absl::StrFormat("Thread %i:\n\t%s\n", thread_id, thread_status.message());
 
+  // The aggregate deliberately collapses to kInternal; SolveEquilibrium tracks
+  // recoverability separately in all_errors_are_recoverable.
   if (m_status_of_all_threads.ok()) {
-    auto msg =
-        "There was an error in one or more threads during a VMEC++ run:\n" +
-        thread_msg;
-    m_status_of_all_threads = absl::InternalError(std::move(thread_msg));
+    m_status_of_all_threads = absl::InternalError(absl::StrCat(
+        "There was an error in one or more threads during a VMEC++ run:\n",
+        thread_msg));
+    return;
   }
 
-  const auto new_msg =
-      std::string(m_status_of_all_threads.message()) + thread_msg;
-  m_status_of_all_threads = absl::InternalError(new_msg);
+  m_status_of_all_threads = absl::InternalError(
+      absl::StrCat(m_status_of_all_threads.message(), thread_msg));
 }
 
 // Check preconditions on (initial_state, indata) pair passed to Vmec::run
