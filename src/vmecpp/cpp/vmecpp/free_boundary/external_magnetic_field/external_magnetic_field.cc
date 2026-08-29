@@ -47,15 +47,22 @@ ExternalMagneticField::ExternalMagneticField(const Sizes* s,
 }
 
 // rAxis, zAxis are provided over a single module
-void ExternalMagneticField::update(const std::span<const double> rAxis,
-                                   const std::span<const double> zAxis,
-                                   double netToroidalCurrent) {
+absl::Status ExternalMagneticField::update(const std::span<const double> rAxis,
+                                           const std::span<const double> zAxis,
+                                           double netToroidalCurrent) {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
 
-  mgrid_.interpolate(tp_.ztMin, tp_.ztMax, s_.nZeta, sg_.r1b, sg_.z1b, interpBr,
-                     interpBp, interpBz);
+  // An out-of-grid boundary is reported rather than returned here: the barriers
+  // below are collective over the vacuum team, and only the threads whose own
+  // tangential slice left the grid would see the error, so returning early
+  // would leave the rest of the team waiting forever. The interpolated field is
+  // clamped and therefore finite, so the remainder of this function is safe to
+  // run on it; the caller discards the result once it observes the status.
+  absl::Status interpolation_status =
+      mgrid_.interpolate(tp_.ztMin, tp_.ztMax, s_.nZeta, s_.nZnT, sg_.r1b,
+                         sg_.z1b, interpBr, interpBp, interpBz);
 
 #ifdef _OPENMP
 #pragma omp barrier
@@ -76,6 +83,8 @@ void ExternalMagneticField::update(const std::span<const double> rAxis,
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+
+  return interpolation_status;
 }
 
 // add in contribution from net toroidal current along magnetic axis

@@ -8,6 +8,7 @@
 #include <Eigen/Dense>
 #include <span>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
@@ -21,8 +22,14 @@ class ExternalMagneticField {
   ExternalMagneticField(const Sizes* s, const TangentialPartitioning* tp,
                         const SurfaceGeometry* sg, const MGridProvider* mgrid);
 
-  void update(const std::span<const double> rAxis,
-              const std::span<const double> zAxis, double netToroidalCurrent);
+  // Returns a kFailedPrecondition status if the plasma boundary left the
+  // vacuum field grid on this thread's tangential slice. The outputs are still
+  // computed in that case, on a field clamped to the grid edge, so that the
+  // collective barriers inside stay uniform across the vacuum team; the caller
+  // must reduce the status across the team before acting on it.
+  [[nodiscard]] absl::Status update(const std::span<const double> rAxis,
+                                    const std::span<const double> zAxis,
+                                    double netToroidalCurrent);
 
   // axis geometry around whole machine
   Eigen::VectorXd axisXYZ;

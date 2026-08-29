@@ -10,6 +10,7 @@
 #include <span>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
@@ -183,6 +184,15 @@ class HandoverStorage {
   // reads it after the enclosing 'omp single' barrier). Always false during
   // normal runs (checkpoint == NONE).
   bool vacuum_reached_checkpoint = false;
+
+  // First error reported by any thread of the nested vacuum team during the
+  // current free-boundary update, for example an out-of-grid plasma boundary.
+  // The vacuum threads must reach all of their collective barriers before
+  // returning, so the error cannot propagate out of the nested region on the
+  // call stack; it is reduced into this shared slot instead and read by the
+  // whole radial team after the enclosing 'omp single' barrier. Reset to OK
+  // before each vacuum solve.
+  absl::Status vacuum_status = absl::OkStatus();
 
  private:
   const Sizes& s_;

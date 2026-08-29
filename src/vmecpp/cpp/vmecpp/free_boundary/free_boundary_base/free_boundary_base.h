@@ -8,6 +8,7 @@
 #include <span>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
@@ -36,7 +37,15 @@ class FreeBoundaryBase {
         vacuum_b_phi_share_(vacuum_b_phi_share),
         vacuum_b_z_share_(vacuum_b_z_share) {}
 
-  virtual bool update(
+  // Returns true if the solve stopped early at the requested debug checkpoint.
+  //
+  // Returns an error status if the vacuum solve cannot produce a meaningful
+  // field for this boundary, for example because the boundary left the domain
+  // of the vacuum field grid. Implementations run inside the nested vacuum
+  // OpenMP team and must therefore reach every collective barrier before
+  // returning such a status, which means carrying it to the end of the call
+  // rather than returning at the point of detection.
+  virtual absl::StatusOr<bool> update(
       const std::span<const double> rCC, const std::span<const double> rSS,
       const std::span<const double> rSC, const std::span<const double> rCS,
       const std::span<const double> zSC, const std::span<const double> zCS,

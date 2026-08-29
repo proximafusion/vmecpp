@@ -8,6 +8,7 @@
 #include <Eigen/Dense>
 #include <filesystem>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/sizes/sizes.h"
 
@@ -30,10 +31,30 @@ class MGridProvider {
                              const Eigen::VectorXd& fixed_bp,
                              const Eigen::VectorXd& fixed_bz);
 
-  void interpolate(int ztMin, int ztMax, int nZeta, const Eigen::VectorXd& r,
-                   const Eigen::VectorXd& z, Eigen::VectorXd& m_interpBr,
-                   Eigen::VectorXd& m_interpBp,
-                   Eigen::VectorXd& m_interpBz) const;
+  // Interpolate the vacuum magnetic field onto the tangential grid points
+  // [ztMin, ztMax) of the plasma boundary. nZnT is the number of tangential
+  // grid points on the whole boundary, of which [ztMin, ztMax) is this
+  // thread's slice.
+  //
+  // Returns a kFailedPrecondition status if the boundary left the domain of
+  // the vacuum field grid. The interpolated field is still written in that
+  // case, clamped to the grid edge, so that the caller sees finite values and
+  // can carry the status to a safe place before acting on it; the clamped
+  // field is not physically meaningful and must not be used to advance the
+  // equilibrium.
+  //
+  // The status describes this thread's tangential slice only. The caller runs
+  // this inside the nested vacuum OpenMP team, so the result has to be reduced
+  // across that team before it is acted upon. The extents named in the error
+  // message, on the other hand, are taken over the whole boundary [0, nZnT),
+  // so that every thread that reports produces the same message no matter
+  // which one wins the reduction.
+  [[nodiscard]] absl::Status interpolate(int ztMin, int ztMax, int nZeta,
+                                         int nZnT, const Eigen::VectorXd& r,
+                                         const Eigen::VectorXd& z,
+                                         Eigen::VectorXd& m_interpBr,
+                                         Eigen::VectorXd& m_interpBp,
+                                         Eigen::VectorXd& m_interpBz) const;
 
   // mgrid internals below
 
