@@ -288,8 +288,7 @@ TEST_F(MGridInterpolationTest, BoundaryInsideGridIsAccepted) {
   }
 }
 
-// The bounds check is inclusive, so a boundary that just touches the outermost
-// grid line is still interpolated from real data.
+// The bounds check is inclusive, so the outermost grid line is still inside.
 TEST_F(MGridInterpolationTest, BoundaryExactlyOnGridEdgeIsAccepted) {
   Eigen::VectorXd r;
   Eigen::VectorXd z;
@@ -332,8 +331,7 @@ TEST_F(MGridInterpolationTest, BoundaryOutsideGridInRIsAnError) {
   EXPECT_THAT(message, HasSubstr("R: boundary"));
   EXPECT_THAT(message, Not(HasSubstr("Z: boundary")));
 
-  // The clamped field is still written, so that a thread running inside the
-  // vacuum team can carry the status past its collective barriers.
+  // The clamped field is still written, so the status can be carried.
   for (int index = 0; index < kNumTangentialPoints; ++index) {
     EXPECT_TRUE(std::isfinite(b_r[index]));
     EXPECT_TRUE(std::isfinite(b_p[index]));
@@ -384,9 +382,7 @@ TEST_F(MGridInterpolationTest, ErrorNamesTheBoundaryAndTheGridExtents) {
   EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", mgrid_.minZ)));
 }
 
-// Pins the behaviour the error status describes: the returned field is the one
-// belonging to the nearest point on the grid boundary, not the field of the
-// requested point.
+// The returned field is the grid edge's, not the requested point's.
 TEST_F(MGridInterpolationTest, FieldOutsideGridIsClampedToTheGridEdge) {
   Eigen::VectorXd r;
   Eigen::VectorXd z;
@@ -419,8 +415,7 @@ TEST_F(MGridInterpolationTest, FieldOutsideGridIsClampedToTheGridEdge) {
   }
 }
 
-// Each thread of the vacuum team interpolates one tangential slice, so the
-// status a call returns describes that slice and no other.
+// The status describes the requested slice and no other.
 TEST_F(MGridInterpolationTest, OnlyTheRequestedTangentialSliceIsChecked) {
   const int num_points = 2 * kNumTangentialPoints;
   Eigen::VectorXd r;
@@ -442,18 +437,13 @@ TEST_F(MGridInterpolationTest, OnlyTheRequestedTangentialSliceIsChecked) {
   EXPECT_EQ(second_slice.code(), absl::StatusCode::kFailedPrecondition);
 }
 
-// Which thread of the vacuum team wins the reduction in IdealMhdModel is a
-// race, so the extents named in the message are taken over the whole boundary
-// rather than over the reporting thread's slice. Anything slice-local here
-// would name a minimum that is not the boundary's and would make the error a
-// user sees change from run to run.
+// Which thread wins the reduction is a race, so the extents must be global.
 TEST_F(MGridInterpolationTest, ReportedExtentsDoNotDependOnTheReportingSlice) {
   const int num_points = 2 * kNumTangentialPoints;
   Eigen::VectorXd r;
   Eigen::VectorXd z;
   FillInsideGrid(num_points, r, z);
-  // One point in each half of the boundary leaves the grid, so both slices
-  // report. The boundary's minimum R lies in the second slice only.
+  // Both slices report, but the boundary's minimum R is in the second only.
   r[0] = OutsideR();
   r[num_points - 1] = OutsideR() + 0.01;
 
@@ -478,11 +468,7 @@ TEST_F(MGridInterpolationTest, ReportedExtentsDoNotDependOnTheReportingSlice) {
 }
 
 #ifdef _OPENMP
-// The barrier at the end of interpolate is collective over the vacuum team, so
-// a thread whose own slice left the grid has to reach it along with everyone
-// else. This splits a boundary that leaves the grid at one end only across a
-// team, which is the case that hangs if the barrier is ever made conditional
-// on the slice being inside the grid.
+// Hangs if the barrier is ever made conditional on the slice being in grid.
 TEST_F(MGridInterpolationTest, MixedInAndOutOfGridSlicesDoNotDeadlock) {
   constexpr int kNumThreads = 4;
   const int num_points = kNumThreads * kNumTangentialPoints;
@@ -524,8 +510,7 @@ TEST_F(MGridInterpolationTest, MixedInAndOutOfGridSlicesDoNotDeadlock) {
 }
 #endif  // _OPENMP
 
-// A fixed field is handed over per tangential grid point rather than
-// interpolated, so there is no vacuum field grid to leave.
+// A fixed field is handed over per point, so there is no grid to leave.
 TEST_F(MGridInterpolationTest, FixedFieldIgnoresGridBounds) {
   const Eigen::VectorXd fixed_b_r =
       Eigen::VectorXd::Constant(kNumTangentialPoints, 1.0);

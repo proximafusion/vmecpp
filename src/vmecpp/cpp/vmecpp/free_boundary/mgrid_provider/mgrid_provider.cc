@@ -333,8 +333,7 @@ absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
 
   if (has_fixed_field_) {
     // quick return: just copy into target storage
-    // Every thread of the vacuum team takes this branch together, so skipping
-    // the barrier at the end of this function is uniform across the team.
+    // Uniform across the team, so skipping the barrier below is safe.
 
     for (int kl = ztMin; kl < ztMax; ++kl) {
       m_interpBr[kl - ztMin] = fixed_br_[kl];
@@ -396,25 +395,13 @@ absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
 
   absl::Status status = absl::OkStatus();
   if (exceedGridSizeR || exceedGridSizeZ) {
-    // The field written above is clamped to the grid edge, so it no longer
-    // represents the coils outside the grid. Continuing on it silently biases
-    // the free-boundary force and moves the converged boundary; reporting it
-    // as an error is what keeps that from being mistaken for a physical or a
-    // solver effect.
-    //
+    // The clamped field no longer represents the coils outside the grid.
     // TODO(jons): automatically evaluate B outside of grid based on coil
     // definitions and Biot-Savart
     // --> will only get slower, but more robust (and accurate?)
     // --> would also require to always have coil geometry inside mgrid file for
     // on-the-fly re-evaluation...
-    //
-    // The extents below are taken over the whole boundary rather than over
-    // [ztMin, ztMax): rLCFS and zLCFS are full-surface and hold the same values
-    // on every thread of the vacuum team, so reporting them globally makes the
-    // message independent of which thread's slice left the grid and of which
-    // thread happens to win the reduction. Reporting a single slice instead
-    // would name a minimum that is not the boundary's and would vary from run
-    // to run.
+    // Global, not per-slice, so the message is the same whoever reports.
     double min_r = DBL_MAX;
     double max_r = -DBL_MAX;
     double min_z = DBL_MAX;
@@ -438,9 +425,7 @@ absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
           max_z, minZ, maxZ);
     }
 
-    // A configuration problem, not a code bug: kFailedPrecondition marks this
-    // as a condition that indata.return_outputs_even_if_not_converged can
-    // recover from by returning best-effort output instead of hard-erroring.
+    // kFailedPrecondition so return_outputs_even_if_not_converged recovers.
     status = absl::FailedPreconditionError(absl::StrFormat(
         "MGridProvider::interpolate: the plasma boundary exceeded the vacuum "
         "field grid, so the interpolated field was clamped to the grid edge "
@@ -449,8 +434,7 @@ absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
         exceeded_extents));
   }
 
-  // Unconditional: every thread of the vacuum team must reach this barrier,
-  // including the ones whose slice left the grid, or the team deadlocks.
+  // Unconditional: every thread must reach this barrier or the team deadlocks.
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP

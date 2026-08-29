@@ -22,11 +22,7 @@ class ExternalMagneticField {
   ExternalMagneticField(const Sizes* s, const TangentialPartitioning* tp,
                         const SurfaceGeometry* sg, const MGridProvider* mgrid);
 
-  // Returns a kFailedPrecondition status if the plasma boundary left the
-  // vacuum field grid on this thread's tangential slice. The outputs are still
-  // computed in that case, on a field clamped to the grid edge, so that the
-  // collective barriers inside stay uniform across the vacuum team; the caller
-  // must reduce the status across the team before acting on it.
+  // Returns kFailedPrecondition if this thread's slice left the vacuum grid.
   [[nodiscard]] absl::Status update(const std::span<const double> rAxis,
                                     const std::span<const double> zAxis,
                                     double netToroidalCurrent);

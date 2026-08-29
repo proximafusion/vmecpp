@@ -31,9 +31,7 @@ absl::StatusOr<bool> OnlyCoils::update(
 
   // blindly assume netToroidalCurrent == 0.0,
   // since checked for that during initialization
-  // The status is carried to the end of this function for the same reason as
-  // in Nestor::update: the collective regions below must be reached by the
-  // whole vacuum team, not just the threads that saw an out-of-grid boundary.
+  // Carried to the end for the same reason as in Nestor::update.
   const absl::Status external_field_status = ef_.update(rAxis, zAxis, 0.0);
 
   // compute net covariant magnetic field components on surface

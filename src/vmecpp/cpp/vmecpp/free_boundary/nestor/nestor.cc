@@ -55,11 +55,7 @@ absl::StatusOr<bool> Nestor::update(
     return true;
   }
 
-  // Carried to the end of this function rather than returned here: the vacuum
-  // team runs collective barriers and 'omp single' regions below, and only the
-  // threads whose own tangential slice left the vacuum grid observe the error.
-  // The clamped field is finite, so the remaining stages run harmlessly on it
-  // and their result is discarded by the caller.
+  // Carried to the end: collective regions below must be reached by all.
   const absl::Status external_field_status =
       ef_.update(rAxis, zAxis, netToroidalCurrent);
   if (vmec_checkpoint == VmecCheckpoint::VAC1_BEXTERN &&
@@ -267,9 +263,7 @@ absl::StatusOr<bool> Nestor::update(
   // TODO(jons): could move bSubUVac, bSubVVac collection here to spare on
   // barrier
 
-  // Every collective region above has been executed by the whole vacuum team,
-  // so it is now safe for the threads that saw an out-of-grid boundary to
-  // report it.
+  // All collective regions are done, so it is safe to report now.
   if (!external_field_status.ok()) {
     return external_field_status;
   }

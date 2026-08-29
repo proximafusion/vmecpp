@@ -44,8 +44,7 @@ void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
   const auto thread_msg =
       absl::StrFormat("Thread %i:\n\t%s\n", thread_id, thread_status.message());
 
-  // The aggregate deliberately collapses to kInternal; SolveEquilibrium tracks
-  // recoverability separately in all_errors_are_recoverable.
+  // Collapses to kInternal; recoverability is tracked separately.
   if (m_status_of_all_threads.ok()) {
     m_status_of_all_threads = absl::InternalError(absl::StrCat(
         "There was an error in one or more threads during a VMEC++ run:\n",

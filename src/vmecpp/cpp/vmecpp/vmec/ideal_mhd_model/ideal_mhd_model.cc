@@ -763,9 +763,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
               signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
               &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
               at_checkpoint_iteration);
-          // A failure is specific to the tangential slice that saw it, so it is
-          // reduced across the nested team rather than broadcast from thread 0.
-          // The first error wins; they all describe the same boundary.
+          // Reduced across the team; the first error wins.
           if (!rc.ok()) {
 #ifdef _OPENMP
 #pragma omp critical
@@ -783,8 +781,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
           }
         }
       }
-      // The 'omp single' implicit barrier publishes the shared vacuum outputs,
-      // the broadcast flag, and the reduced status to all radial threads.
+      // The 'omp single' barrier publishes the outputs, flag, and status.
       if (!m_h_.vacuum_status.ok()) {
         return m_h_.vacuum_status;
       }
