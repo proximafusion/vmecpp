@@ -28,6 +28,9 @@ namespace vmecpp {
 struct VmecInternalResults {
   int sign_of_jacobian;
 
+  // Scale that converts the solver's lambda variable to physical lambda.
+  double lamscale;
+
   // total number of full-grid points
   int num_full;
 
