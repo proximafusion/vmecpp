@@ -2630,7 +2630,8 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
           vmec_internal_results.bsubv(jHi * s.nZnT + kl);
 
       kperpu[kl] = 0.5 * (bsubv_outside + bsubv_inside) * pprime / sqgb2[kl];
-      kperpv[kl] = 0.5 * (bsubu_outside + bsubu_inside) * pprime / sqgb2[kl];
+      // J_perp = (B x grad p)/|B|^2, so the v component carries a minus sign.
+      kperpv[kl] = -0.5 * (bsubu_outside + bsubu_inside) * pprime / sqgb2[kl];
 
       // --------
 
