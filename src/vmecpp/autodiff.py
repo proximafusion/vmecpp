@@ -450,9 +450,7 @@ def make_solver(vmec_input) -> DifferentiableVmec:
         from vmecpp import autodiff
 
         solver = autodiff.make_solver(input)
-        objective = lambda boundary: qs.quasisymmetry_residual(
-            solver(boundary), 0.6
-        )
+        objective = lambda boundary: qs.quasisymmetry_total(solver(boundary), [0.6])
         value, gradient = jax.value_and_grad(objective)(boundary)
 
     Forward execution and the VJP both invoke VMEC++ in memory. The VJP is

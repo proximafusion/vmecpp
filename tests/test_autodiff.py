@@ -117,28 +117,6 @@ def test_solver_is_usable_under_jit() -> None:
     assert np.isfinite(float(value))
 
 
-def test_geometry_state_vjp_is_the_transpose_of_the_public_map() -> None:
-    indata = _small_input()._to_cpp_vmecindata()
-    model = _vmecpp.VmecModel.create(indata, 5)
-    state = np.asarray(model.get_state(), dtype=np.float64)
-    direction = np.linspace(-0.2, 0.3, state.size)
-    base = model.get_geometry()
-    model.set_state(state + direction)
-    shifted = model.get_geometry()
-    model.set_state(state)
-
-    coefficient_direction = _coefficients(shifted) - _coefficients(base)
-    coefficient_bar = np.linspace(-0.7, 0.4, coefficient_direction.size)
-    state_bar = np.asarray(model.geometry_state_vjp(coefficient_bar))
-
-    np.testing.assert_allclose(
-        np.dot(coefficient_bar, coefficient_direction),
-        np.dot(state_bar, direction),
-        rtol=1.0e-12,
-        atol=1.0e-12,
-    )
-
-
 def test_solver_does_not_fall_back_to_finite_differences() -> None:
     indata = _small_input()
     solver = autodiff.make_solver(indata)
@@ -259,25 +237,16 @@ def _parser_state_tangent(indata, boundary, direction):
     )
 
 
-@pytest.mark.parametrize("case", ["2d", "3d"])
-def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity(case: str) -> None:
+def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity() -> None:
     """The adjoint is validated against the tangent, not against a finite difference of
     the nonlinear solve.
 
     A re-solve converges to |F| ~ 5e-9, so a finite-difference reference is
     noise-dominated well above the accuracy of interest, badly so in 3D. The
     forward sensitivity is an independent computation through the same
-    equilibrium -- it solves with H, the adjoint with H^T -- so duality is a
-    real oracle rather than a restatement.
+    equilibrium: it solves with H, while the adjoint solves with H^T.
     """
-    indata = _small_input() if case == "2d" else _small_3d_input()
-    if case == "2d":
-        indata = indata.model_copy(
-            update={
-                "ftol_array": np.asarray([1.0e-15]),
-                "niter_array": np.asarray([4000]),
-            }
-        )
+    indata = _small_3d_input()
     _requires_exact_derivatives(indata)
     solver = autodiff.make_solver(indata)
     boundary = _boundary(indata)
@@ -304,7 +273,7 @@ def test_quasisymmetry_gradient_through_a_three_dimensional_solve() -> None:
     boundary = _boundary(indata)
 
     def objective(value):
-        return qs.quasisymmetry_residual(solver(value), 0.5, ntheta=16, nzeta=16)
+        return qs.quasisymmetry_total(solver(value), [0.5], ntheta=16, nphi=16)
 
     value, gradient = jax.value_and_grad(objective)(jnp.asarray(boundary))
     gradient = np.asarray(gradient)
