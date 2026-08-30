@@ -20,6 +20,8 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/vmec/geometry/geometry.h"
+#include "vmecpp/vmec/geometry/vmec_geometry.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
@@ -1125,6 +1127,46 @@ PYBIND11_MODULE(_vmecpp, m) {
         }
         return maybe_oq.value();
       });
+
+  // The output-independent geometry contract. These bindings expose the
+  // product-basis representation and the C++ evaluator; the differentiable
+  // evaluator lives in Python (vmecpp.geometry) and uses the C++ one as an
+  // independent oracle in its tests.
+  py::class_<vmecpp::GeometryDimensions>(m, "GeometryDimensions")
+      .def_readonly("ns", &vmecpp::GeometryDimensions::ns)
+      .def_readonly("mpol", &vmecpp::GeometryDimensions::mpol)
+      .def_readonly("ntor", &vmecpp::GeometryDimensions::ntor)
+      .def_readonly("nfp", &vmecpp::GeometryDimensions::nfp);
+  py::class_<vmecpp::GeometryCoefficients>(m, "GeometryCoefficients")
+      .def_readonly("r_cc", &vmecpp::GeometryCoefficients::r_cc)
+      .def_readonly("r_ss", &vmecpp::GeometryCoefficients::r_ss)
+      .def_readonly("r_sc", &vmecpp::GeometryCoefficients::r_sc)
+      .def_readonly("r_cs", &vmecpp::GeometryCoefficients::r_cs)
+      .def_readonly("z_sc", &vmecpp::GeometryCoefficients::z_sc)
+      .def_readonly("z_cs", &vmecpp::GeometryCoefficients::z_cs)
+      .def_readonly("z_cc", &vmecpp::GeometryCoefficients::z_cc)
+      .def_readonly("z_ss", &vmecpp::GeometryCoefficients::z_ss)
+      .def_readonly("lambda_sc", &vmecpp::GeometryCoefficients::lambda_sc)
+      .def_readonly("lambda_cs", &vmecpp::GeometryCoefficients::lambda_cs)
+      .def_readonly("lambda_cc", &vmecpp::GeometryCoefficients::lambda_cc)
+      .def_readonly("lambda_ss", &vmecpp::GeometryCoefficients::lambda_ss);
+  py::class_<vmecpp::GeometryPoint>(m, "GeometryPoint")
+      .def_readonly("r", &vmecpp::GeometryPoint::r)
+      .def_readonly("z", &vmecpp::GeometryPoint::z)
+      .def_readonly("lambda_", &vmecpp::GeometryPoint::lambda)
+      .def_readonly("toroidal_flux", &vmecpp::GeometryPoint::toroidal_flux)
+      .def_readonly("poloidal_flux", &vmecpp::GeometryPoint::poloidal_flux);
+  py::class_<vmecpp::Geometry>(m, "Geometry")
+      .def_readonly("dimensions", &vmecpp::Geometry::dimensions)
+      .def_readonly("toroidal_flux", &vmecpp::Geometry::toroidal_flux)
+      .def_readonly("poloidal_flux", &vmecpp::Geometry::poloidal_flux)
+      .def_readonly("coefficients", &vmecpp::Geometry::coefficients)
+      .def("evaluate", &vmecpp::EvaluateGeometry, py::arg("s"),
+           py::arg("theta"), py::arg("zeta"));
+  m.def("make_geometry", [](const vmecpp::OutputQuantities &output) {
+    return vmecpp::MakeGeometry(output.indata, output.vmec_internal_results,
+                                vmecpp::GeometryCoefficientState::kPhysical);
+  });
 
   py::class_<vmecpp::HotRestartState>(m, "HotRestartState")
       .def(py::init(&MakeHotRestartState), "wout"_a, "indata"_a)
