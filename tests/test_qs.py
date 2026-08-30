@@ -53,3 +53,43 @@ def test_qs_objective_is_differentiable_through_geometry() -> None:
     assert float(value) > 0.0
     assert np.isfinite(float(derivative))
     assert abs(float(derivative)) > 0.0
+
+
+def test_reconstructed_field_strength_matches_the_vmec_spectrum() -> None:
+    """|B| rebuilt from the geometry jets must be VMEC's own |B|.
+
+    The axisymmetry test above cannot establish this: a zeta-independent
+    equilibrium gives zero non-quasi-axisymmetric power for any zeta-independent
+    function of the geometry, correct or not. VMEC's ``bmnc`` spectrum is an
+    independent oracle for the reconstruction itself.
+
+    ``bmnc`` is a half-grid quantity while the geometry evaluator interpolates on
+    the full grid, so the comparison carries a first-order radial offset; a wrong
+    reconstruction would be off by tens of percent, not by a fraction of one.
+    """
+    source = vmecpp.VmecInput.from_file("examples/data/solovev.json")
+    indata = source.model_copy(
+        update={
+            "ns_array": np.asarray([51]),
+            "ftol_array": np.asarray([1.0e-14]),
+            "niter_array": np.asarray([20000]),
+        }
+    )
+    output = _vmecpp.run(indata._to_cpp_vmecindata(), verbose=_vmecpp.OutputMode.SILENT)
+    wout = output.wout
+    jax_geometry = geometry.from_cpp(_vmecpp.make_geometry(output))
+
+    bmnc = np.asarray(wout.bmnc)
+    if bmnc.shape[1] == wout.ns:
+        bmnc = bmnc.T
+    xm = np.asarray(wout.xm_nyq)
+    xn = np.asarray(wout.xn_nyq)
+
+    surface = int(0.6 * (wout.ns - 1))
+    s = (surface + 0.5) / (wout.ns - 1)  # the half-grid location of bmnc[surface]
+    for theta, zeta in ((0.3, 0.2), (1.1, -0.4), (2.4, 0.9)):
+        expected = float(np.sum(bmnc[surface] * np.cos(xm * theta - xn * zeta)))
+        actual = float(
+            qs.magnetic_field_strength(jax_geometry, jnp.asarray([s, theta, zeta]))
+        )
+        assert abs(actual - expected) / abs(expected) < 4.0e-3
