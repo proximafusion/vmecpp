@@ -571,6 +571,45 @@ class VmecModel {
     }
   }
 
+  // Exact Hessian-vector product H v = T^T J_g T v of the augmented
+  // functional, computed with one Enzyme forward pass through the local
+  // force-density composition (J_g) wrapped by the linear spectral transforms.
+  // J_g covers the MHD force, the hybrid lambda force, and the spectral-
+  // condensation constraint force (effective force, Fourier bandpass and
+  // assembly). The geometry tangent T v is obtained exactly from the linearity
+  // of geometryFromFourier: T v = geom(x+v) - geom(x), so no finite-difference
+  // step enters. The constraint multiplier tcon is held frozen (it depends on
+  // the preconditioner diagonal, not just the geometry); for an exactly
+  // consistent Jacobian, freeze it in the raw force too via
+  // set_freeze_constraint_multiplier(True). The model state is restored to x on
+  // return.
+  Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
+    RequireLforbalDisabledForExactDerivatives();
+    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    const int gS = static_cast<int>(model.r1_e.size());
+    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
+    // The primal geometry depends only on the current state, not on v, so cache
+    // it: a Krylov solve calls this many times at the same state. SetState
+    // invalidates the cache. The geometry tangent is the same linear pre-chain
+    // applied to v directly (exact, no finite difference, no full update); the
+    // single nonlinear step is the Enzyme JVP inside applyExactForceJacobian.
+    if (!exact_primal_valid_ ||
+        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
+      exact_primal_.setZero(20 * gS);
+      model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                         exact_primal_.data(), gS, /*primal=*/true);
+      exact_primal_valid_ = true;
+    }
+    vmec_->physical_x_backup_[0]->setZero();
+    UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, v);
+    model.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
+                       dgeom.data(), gS, /*primal=*/false);
+    model.applyExactForceJacobian(
+        exact_primal_.data(), dgeom.data(), gS, *vmec_->physical_f_[0],
+        *vmec_->decomposed_f_[0], /*fix_m1_gauge=*/true);
+    return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+  }
+
   // Transpose of the exact Hessian-vector product: H^T w, in the decomposed
   // internal basis. The force Jacobian is non-symmetric (VMEC's force is a
   // scaled gradient), so the adjoint boundary gradient needs H^T, not H. Uses
@@ -1520,7 +1559,12 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
            py::arg("v"), py::arg("eps_rel") = 1e-7)
 #ifdef VMECPP_ENABLE_ENZYME
-      .def("force_jacobian_transpose_vector_product",
+      // Both directions are required: the reverse adjoint needs H^T, and
+      // deflating the augmented Hessian's structural null space needs both a
+      // row and a column probe.
+      .def("exact_hessian_vector_product",
+           &VmecModel::ExactHessianVectorProduct, py::arg("v"))
+      .def("exact_hessian_vector_product_transpose",
            &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"))
 #endif  // VMECPP_ENABLE_ENZYME
       .def("set_freeze_constraint_multiplier",

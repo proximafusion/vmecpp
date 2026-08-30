@@ -207,6 +207,58 @@ def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
     return result
 
 
+def _structural_nullfree_interior(
+    model, interior: np.ndarray, n_probe: int = 6, tol: float = 1.0e-9, seed: int = 0
+) -> np.ndarray:
+    """Interior DOFs that actually enter the force.
+
+    The augmented Hessian has a structural null space: state-independent gauge
+    and parity modes that no force depends on and that produce no force. They
+    make the transposed interior system singular, and the objective cotangent
+    generally has a component outside its range, so the adjoint solve is
+    inconsistent and stagnates rather than converging. In two dimensions the
+    surviving null directions happen to stay orthogonal to the cotangent; in
+    three dimensions the extra ``r_ss``, ``z_cs`` and ``lambda_cs`` blocks bring
+    in modes that do not, which is why this deflation is not optional there.
+
+    A DOF is kept when both its Hessian column and its row are nonzero. Column
+    ``i`` is zero iff ``(H^T v)[i] = 0`` for random ``v``, and row ``i`` is zero
+    iff ``(H v)[i] = 0``, so a handful of probes finds every structural zero. The
+    set depends only on the mode structure, not on the state, so it is detected
+    once per model and reused across adjoint solves.
+    """
+    state_size = int(np.asarray(model.get_state()).size)
+    generator = np.random.default_rng(seed)
+    column = np.zeros(state_size)
+    row = np.zeros(state_size)
+    for _ in range(n_probe):
+        probe = np.ascontiguousarray(generator.standard_normal(state_size))
+        column = np.maximum(
+            column,
+            np.abs(
+                np.asarray(
+                    model.exact_hessian_vector_product_transpose(probe),
+                    dtype=np.float64,
+                )
+            ),
+        )
+        row = np.maximum(
+            row,
+            np.abs(
+                np.asarray(model.exact_hessian_vector_product(probe), dtype=np.float64)
+            ),
+        )
+    threshold = tol * max(column.max(), row.max(), 1.0)
+    keep = [i for i in interior if column[i] > threshold and row[i] > threshold]
+    if not keep:
+        error_message = (
+            "VMEC++ adjoint: the interior force operator is entirely structurally "
+            "null; the model is not in a differentiable state"
+        )
+        raise RuntimeError(error_message)
+    return np.asarray(keep, dtype=np.int64)
+
+
 def _implicit_boundary_vjp(model, geometry_bar: np.ndarray) -> np.ndarray:
     if not getattr(model, "has_exact_force_jacobian", False):
         error_message = (
@@ -224,10 +276,13 @@ def _implicit_boundary_vjp(model, geometry_bar: np.ndarray) -> np.ndarray:
         model.set_freeze_constraint_multiplier(True)
         model.evaluate(2, 2, True)
         state_size = state.size
+        # Deflate the structural null space; without this the transposed
+        # interior system is singular and inconsistent in 3D.
+        interior = _structural_nullfree_interior(model, interior)
 
         def transpose(value: np.ndarray) -> np.ndarray:
             return np.asarray(
-                model.force_jacobian_transpose_vector_product(
+                model.exact_hessian_vector_product_transpose(
                     np.ascontiguousarray(value)
                 ),
                 dtype=np.float64,
