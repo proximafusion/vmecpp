@@ -1680,8 +1680,6 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         output_quantities.threed1_geometric_magnetic,
         output_quantities.threed1_axis, output_quantities.threed1_betas,
         output_quantities.threed1_free_boundary, vmec_status, iter2);
-
-
   }
 
   output_quantities.threed1_free_boundary = ComputeThreed1FreeBoundary(
