@@ -62,7 +62,7 @@ class RadialProfiles {
   // some parameterizations of the current profile need to be radially
   // integrated and some not, which is what `shouldIntegrate` is then used for.
   // Which profile parameterization is integrated and which not is documented in
-  // the body of `RadialProfiles::setupProfileParameterizations`, where `I`
+  // the body of `BuildProfileParameterizations`, where `I`
   // refers to the profile parameterization specifying the enclosed toroidal
   // current profile already (hence no integration is needed), and `I-prime`
   // indicating that the given profile parameterization needs to be integrated.
@@ -192,10 +192,7 @@ class RadialProfiles {
   const int signOfJacobian;
   const double pDamp;
 
-  std::vector<ProfileParameterizationData> ALL_PARAMS;
-
   /** one entry for every value of ProfileParameterization */
-  void setupProfileParameterizations();
 };
 
 }  // namespace vmecpp
