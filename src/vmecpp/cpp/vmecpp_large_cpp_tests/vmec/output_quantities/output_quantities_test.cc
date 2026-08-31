@@ -6,6 +6,8 @@
 
 #include <netcdf.h>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -532,6 +534,74 @@ TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
     }  // k
   }  // jF
 }  // CheckJxBOutputContents
+
+// bsubuv and bsubvu are accumulated on the reduced poloidal grid and read on
+// the full one, so before they were recombined the asymmetric jsups3 was partly
+// zero and partly read from the wrong poloidal position. A stellarator
+// symmetric boundary carries no antisymmetric content, so running it through
+// the lasym path has to reproduce the symmetric run at the poloidal points the
+// two grids share. The tolerance is what two convergence paths into the same
+// equilibrium can hold for a curl(B) quantity, and is far tighter than the
+// defect it guards, which left 44% of the grid at exactly zero.
+TEST(JxBOutput, LasymPathReproducesTheSymmetricJsups3) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_FALSE(indata->lasym);
+
+  auto maybe_symmetric = vmecpp::Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_symmetric.ok());
+  vmecpp::Vmec& symmetric = **maybe_symmetric;
+  ASSERT_TRUE(symmetric.run().ok());
+
+  VmecINDATA asymmetric_indata = *indata;
+  asymmetric_indata.lasym = true;
+  asymmetric_indata.raxis_s = Eigen::VectorXd::Zero(indata->raxis_c.size());
+  asymmetric_indata.zaxis_c = Eigen::VectorXd::Zero(indata->zaxis_s.size());
+  asymmetric_indata.rbs =
+      vmecpp::RowMatrixXd::Zero(indata->rbc.rows(), indata->rbc.cols());
+  asymmetric_indata.zbc =
+      vmecpp::RowMatrixXd::Zero(indata->zbs.rows(), indata->zbs.cols());
+
+  auto maybe_asymmetric = vmecpp::Vmec::FromIndata(asymmetric_indata);
+  ASSERT_TRUE(maybe_asymmetric.ok());
+  vmecpp::Vmec& asymmetric = **maybe_asymmetric;
+  ASSERT_TRUE(asymmetric.run().ok());
+
+  const auto& sym_sizes = symmetric.s_;
+  const auto& asym_sizes = asymmetric.s_;
+  ASSERT_EQ(sym_sizes.nThetaReduced, asym_sizes.nThetaReduced);
+  ASSERT_GT(asym_sizes.nThetaEff, sym_sizes.nThetaEff);
+
+  const auto& sym_jsups3 = symmetric.output_quantities_.jxbout.jsups3;
+  const auto& asym_jsups3 = asymmetric.output_quantities_.jxbout.jsups3;
+  const int num_half =
+      symmetric.output_quantities_.vmec_internal_results.num_half;
+
+  double worst_difference = 0.0;
+  double scale = 0.0;
+  for (int jH = 0; jH < num_half - 1; ++jH) {
+    for (int k = 0; k < sym_sizes.nZeta; ++k) {
+      for (int l = 0; l < sym_sizes.nThetaReduced; ++l) {
+        const int sym_index =
+            jH * sym_sizes.nZnT + (k * sym_sizes.nThetaEff + l);
+        const int asym_index =
+            jH * asym_sizes.nZnT + (k * asym_sizes.nThetaEff + l);
+        const double from_asymmetric = asym_jsups3.data()[asym_index];
+        const double from_symmetric = sym_jsups3.data()[sym_index];
+        worst_difference = std::max(worst_difference,
+                                    std::abs(from_asymmetric - from_symmetric));
+        scale = std::max(scale, std::abs(from_symmetric));
+      }  // l
+    }  // k
+  }  // jH
+
+  ASSERT_GT(scale, 0.0);
+  EXPECT_LT(worst_difference / scale, 1.0e-3)
+      << "worst " << worst_difference << " against a scale of " << scale;
+}
 
 // TODO(jons): Clarify below guess.
 // I suspect these are so bad because J x B is close to 0
