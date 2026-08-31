@@ -504,12 +504,8 @@ TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
     EXPECT_TRUE(IsCloseRelAbs(jxbout["jpar2"][jF],
                               output_quantities.jxbout.jpar2[jF], tolerance));
 
-    // catastrophic cancellation
-    // TODO(jons): Can we make this more accurate?
-    // FIXME(jons): This looks SO MUCH off that there actually could be an error
-    // still present...
     EXPECT_TRUE(IsCloseRelAbs(jxbout["jperp2"][jF],
-                              output_quantities.jxbout.jperp2[jF], 0.2));
+                              output_quantities.jxbout.jperp2[jF], tolerance));
   }  // jF
 
   // The loop in jxbforce.f90:594 goes over js=2,ns1,
@@ -990,12 +986,11 @@ TEST_P(Threed1GeometricMagneticQuantitiesTest,
     EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["jPS2"][jF - 1],
                               intermediate.jPS2[jF], tolerance));
   }  // jF
-  // TODO(jons): Is this catastrophic cancellation again?
-  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["s2"], intermediate.s2, 0.2));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["s2"], intermediate.s2, tolerance));
   EXPECT_TRUE(
-      IsCloseRelAbs(threed1_geomag["jpar_perp"], result.jpar_perp, 0.15));
-  EXPECT_TRUE(
-      IsCloseRelAbs(threed1_geomag["jparPS_perp"], result.jparPS_perp, 0.1));
+      IsCloseRelAbs(threed1_geomag["jpar_perp"], result.jpar_perp, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["jparPS_perp"], result.jparPS_perp,
+                            tolerance));
 
   for (int jF = 0; jF < fc.ns; ++jF) {
     EXPECT_TRUE(
