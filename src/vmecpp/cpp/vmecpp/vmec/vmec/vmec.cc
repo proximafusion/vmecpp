@@ -309,9 +309,11 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         fc_.ftolv = 1.0e-4;
         // niterv taken from niter_array[0] in INDATA, I guess?
 
-        // fully restart vacuum
-        // TODO(jons): why then assign vacuum_pressure_state=kInitialized then
-        // above?
+        // Fully restart the vacuum. The assignment to kInitialized above
+        // applies to a hot restart, where the vacuum solution carried in with
+        // the initial state can be reused. This branch is the jacob_off
+        // recovery pass, which drops back to a three-surface mesh, so that
+        // solution no longer corresponds to the geometry being solved.
         vacuum_pressure_state_ = VacuumPressureState::kOff;
       } else {
         // proceed regularly with ns values from ns_array
@@ -718,9 +720,10 @@ bool Vmec::InitializeRadial(
       return true;
     }
 
-    // TODO(jons): lreset .and. .not.linter?
-    // If xc is overwritten by interp() anyway, why bother to initialize it in
-    // profil3d()?
+    // The state profil3d() sets up is what is actually used whenever there is
+    // nothing to interpolate from: the first multigrid step, and a hot restart
+    // with ns_old == 0. InterpolateToNextMultigridStep only runs from the
+    // second step onwards, under linterp.
     if (initial_state.has_value() && ns_old == 0) {
       // ns_old == 0 means we hot restart only on the very first multigrid step
       for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
@@ -755,7 +758,10 @@ bool Vmec::InitializeRadial(
                                      interpolation_scheme);
 
       // TODO(jons): check for max_multigrid_steps
-      // TODO(jons): maybe need `&& iter2_ >= maximum_iterations) {` ?
+      //
+      // No iteration guard here, unlike the checkpoints inside the solver
+      // loop: this one sits between multigrid steps and fires once per step,
+      // so a condition on the iteration counter would not mean anything.
       if (checkpoint == VmecCheckpoint::INTERP) {
         return true;
       }
@@ -1145,11 +1151,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // quite some iterations and quite large forces
       // --> restart with different timestep
 
-      // TODO(jons): maybe the threshold 0.01 is too large nowadays (at high
-      // resolution)
-      // --> this could help fix the cases where VMEC gets stuck immediately
-      // at ~2e-3
-      // --> lower threshold, e.g. 1e-4 ?
+      // Lowering this threshold is a behaviour change, not a tuning knob: it
+      // makes the restart fire earlier, which changes the iteration path and
+      // so the converged state. Against the reference outputs, 1e-3 moves 3 of
+      // the 45 test targets outside tolerance and 1e-4 moves 10. It may still
+      // be the right thing for cases that stall at ~2e-3, but it needs the
+      // reference outputs regenerated with it.
 
 #ifdef _OPENMP
 #pragma omp single
@@ -1179,8 +1186,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // first iteration or
       // iterations cancelled already (last iteration)
       if (iter2 % indata_.nstep == 0 || iter2 == 1 || !m_liter_flag) {
-        // TODO(jons): why compute spectral width from backup and not current
-        // gc (== physical xc) --> <M> includes scalxc ???
+        // The backup holds the last accepted state, which is the one whose
+        // force residuals are printed on this same line; decomposed_x_ has
+        // already been advanced by the current time step. It is the decomposed
+        // state, so the odd-m amplitudes carry the scalxc factor and <M> is
+        // the spectral width of the scaled coefficients, as in Fortran VMEC,
+        // which takes its spectrum from xc.
         physical_x_backup_[thread_id]->ComputeSpectralWidth(t_, *p_[thread_id]);
 
         // NOTE: IIRC, this still needs to be called to keep the spectral width

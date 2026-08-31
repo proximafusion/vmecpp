@@ -1038,7 +1038,10 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
   // outermost value of enclosed current profile -->
   const double edgeCurrent = evalCurrProfile(1.0);
   Itor = 0.0;
-  // TODO(jons): eps*currv instead of eps*curtor?
+  // Fortran profil1d.f90 compares against EPSILON(pedge)*curtor in the same
+  // way. The guard exists to keep the division below from blowing up on a
+  // vanishing edge value; currv differs from curtor only by MU_0, so which of
+  // the two sets the scale makes no practical difference.
   if (std::abs(edgeCurrent) > std::abs(DBL_EPSILON * id_.curtor)) {
     // FACTOR OF SIGNGS NEEDED HERE, SINCE MATCH IS MADE TO LINE INTEGRAL OF
     // BSUBU (IN GETIOTA) ~ SIGNGS * CURTOR
@@ -1112,9 +1115,13 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     const double toroidalFlux = std::min(torflux(fullGridPos), 1.0);
     iotaF[jF1 - r_.nsMinF1] = evalIotaProfile(toroidalFlux);
 
-    // TODO(jons): this is still weird
-    // TODO(jons): The particular amount of 2*pDamp can sometimes be adjusted in
-    // the range 0...1 to yield faster convergence.
+    // Fortran bdamp, from profil1d.f90. A linear ramp from 2*pDamp at the axis
+    // to 0 at the boundary, which with pDamp = 0.05 is 0.1 to 0. bcovar.f90
+    // uses it as lvv, the weight blending the two estimates of the covariant
+    // B_v on the full grid; hybridLambdaForce does the same here. That a
+    // time-step parameter sets a radial blending weight is odd, and the
+    // reference says so too. The amount can be adjusted in 0...1 to trade
+    // convergence speed.
     radialBlending[jF1 - r_.nsMinF1] = 2.0 * pDamp * (1.0 - fullGridPos);
 
     // even-m: no scaling
