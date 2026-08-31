@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788188828821,
+  "lastUpdate": 1788190984944,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -13751,6 +13751,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3854038089999676,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6113168f5f9a04d843b2af397b37d17dfa5f6846",
+          "message": "Report Nestor's scalar magnetic potential as wout potvac (#718)\n\n* Report Nestor's scalar magnetic potential as wout potvac\n\n* Report the potvac mode numbers as xm_pot and xn_pot\n\n* Rename to xmpot and xnpot and expose the vacuum potential in VmecWOut\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-08-31T17:34:59+02:00",
+          "tree_id": "138aae5a93259b2a1ef7051f0e25591c70cbae86",
+          "url": "https://github.com/proximafusion/vmecpp/commit/6113168f5f9a04d843b2af397b37d17dfa5f6846"
+        },
+        "date": 1788190982264,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3754979569999932,
+            "range": "stddev: 0.009756278525079464",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.453239442333332,
+            "range": "stddev: 0.021567157774100103",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.085974976999978,
+            "range": "stddev: 0.0006851893434732338",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.615765900333334,
+            "range": "stddev: 0.014385028177955003",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.029255029666672,
+            "range": "stddev: 0.0022193291284095186",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.1496336783333545,
+            "range": "stddev: 0.02197604109765345",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.903598465000016,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4645570990000465,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
