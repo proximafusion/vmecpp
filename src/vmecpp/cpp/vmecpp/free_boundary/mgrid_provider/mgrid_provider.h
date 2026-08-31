@@ -66,6 +66,24 @@ class MGridProvider {
   bool IsLoaded() const { return has_mgrid_loaded_; }
 
  private:
+  // Size the accumulation arrays to the current grid and clear them.
+  void ResetAccumulatedField();
+
+  // Add one circuit's contribution, weighted by its current.
+  // `contribution_at(linear_index)` returns that circuit's {b_r, b_p, b_z} at
+  // one grid point. LoadFile and LoadFields differ only in where the
+  // contribution comes from, so the weighting lives here once.
+  template <typename ContributionAt>
+  void AccumulateCircuit(double coil_current, ContributionAt contribution_at) {
+    const int num_grid_points = numPhi * numZ * numR;
+    for (int linear_index = 0; linear_index < num_grid_points; ++linear_index) {
+      const auto [b_r, b_p, b_z] = contribution_at(linear_index);
+      bR[linear_index] += b_r * coil_current;
+      bP[linear_index] += b_p * coil_current;
+      bZ[linear_index] += b_z * coil_current;
+    }  // linear_index
+  }
+
   bool has_mgrid_loaded_;
   bool has_fixed_field_;
 
