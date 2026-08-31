@@ -1487,14 +1487,6 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // lfreeb
   // nothing to check here: lfreeb can be true or false and both are valid...
   if (vmec_indata.lfreeb) {
-    // mgrid_file, extcur
-    //
-    // Both consistency checks need the mgrid, which this function does not
-    // have, so they live where it is available instead. Vmec::run compares
-    // MGridProvider::numPhi against nzeta, and MGridProvider::LoadFile and
-    // LoadFields each compare the number of coil currents against the number
-    // of response tables they found.
-
     // nvacskip
     if (vmec_indata.nvacskip < 1) {
       return absl::InvalidArgumentError(absl::StrFormat(
