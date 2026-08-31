@@ -1512,6 +1512,16 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
                           "'nestor' or 'only_coils', but is %s\n",
                           ToString(vmec_indata.free_boundary_method)));
     }
+
+    // 'only_coils' takes the field from the coils alone, so the plasma must
+    // carry neither current nor pressure.
+    if (vmec_indata.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
+        (vmec_indata.curtor != 0.0 || vmec_indata.pres_scale != 0.0)) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "input variables 'curtor' and 'pres_scale' must be zero when "
+          "'free_boundary_method' is 'only_coils', but are %g and %g\n",
+          vmec_indata.curtor, vmec_indata.pres_scale));
+    }
   }
 
   /* --------------------------------- */

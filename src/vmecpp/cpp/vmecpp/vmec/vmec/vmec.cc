@@ -208,15 +208,6 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     h_.vacuum_b_r.setZero(s_.nZnT);
     h_.vacuum_b_phi.setZero(s_.nZnT);
     h_.vacuum_b_z.setZero(s_.nZnT);
-
-    // TODO(jons): move this check to better-suited place
-    if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
-        (indata_.curtor != 0.0 || indata_.pres_scale != 0.0)) {
-      throw std::invalid_argument(
-          absl::StrCat("curtor and pres_scale must be zero when using "
-                       "'only_coils' free boundary method, but were ",
-                       indata_.curtor, " and ", indata_.pres_scale));
-    }  // check that cutor==0 and pres_scale==0 for only_coils
   }
 }
 
