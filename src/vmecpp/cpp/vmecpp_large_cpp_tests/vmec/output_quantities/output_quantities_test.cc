@@ -533,11 +533,14 @@ TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
   }  // jF
 }  // CheckJxBOutputContents
 
-// TODO(jons): Clarify below guess.
-// I suspect these are so bad because J x B is close to 0
-// in case of an equilibrium with small toroidal current.
-// cth_like_fixed_bdy has a large toroidal current,
-// so I suspect that J x B is more well-defined in that case...
+// The tolerances track beta rather than the toroidal current. From the
+// reference wout files: cma carries no current at all (ctor = -6e-11) and
+// betator = 0, and needs the loosest tolerance; solovev has the largest current
+// of the three (ctor = -4.4e5) but betator = 4.1e-6, and sits in between;
+// cth_like_fixed_bdy has the smallest current (ctor = 4.3e4) and the largest
+// betator = 2.1e-3, and takes the tightest. J x B is what is being compared,
+// and it needs a pressure gradient as much as a current, so it is beta that
+// orders these.
 INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantities, JxBOutputContentsTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 2.0e-5},
