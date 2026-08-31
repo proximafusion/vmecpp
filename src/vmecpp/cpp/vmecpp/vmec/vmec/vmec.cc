@@ -423,6 +423,22 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     return absl::InternalError(msg);
   }
 
+  // A converged free-boundary result must not rest on a vacuum field that was
+  // clamped to the grid edge. h_.vacuum_status holds the last vacuum solve, so
+  // a boundary that only left the grid transiently has already cleared it.
+  if (!h_.vacuum_status.ok()) {
+    if (!indata_.return_outputs_even_if_not_converged) {
+      return h_.vacuum_status;
+    }
+    if (verbose_) {
+      std::cout << absl::StrFormat(
+          "WARNING: %s\n"
+          "return_outputs_even_if_not_converged is set, so returning "
+          "best-effort (likely unphysical) output for debugging purposes.\n",
+          h_.vacuum_status.message());
+    }
+  }
+
   // compute output file quantities, but do not write them to output file yet
   // (for creating the output file, use WriteOutputFile())
   output_quantities_ = vmecpp::ComputeOutputQuantities(

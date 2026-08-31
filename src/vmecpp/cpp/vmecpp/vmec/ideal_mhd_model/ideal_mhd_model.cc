@@ -782,8 +782,14 @@ absl::StatusOr<bool> IdealMhdModel::update(
         }
       }
       // The 'omp single' barrier publishes the outputs, flag, and status.
-      if (!m_h_.vacuum_status.ok()) {
-        return m_h_.vacuum_status;
+      // Only a warning here: the boundary may leave the grid transiently while
+      // the equilibrium is still moving. Vmec::run turns a still-outside
+      // boundary into an error once the run has converged.
+      if (!m_h_.vacuum_status.ok() && verbose) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        std::cout << "WARNING: " << m_h_.vacuum_status.message() << "\n";
       }
       if (m_h_.vacuum_reached_checkpoint) {
         return true;

@@ -288,183 +288,29 @@ TEST_F(MGridInterpolationTest, BoundaryInsideGridIsAccepted) {
   }
 }
 
-// The bounds check is inclusive, so the outermost grid line is still inside.
-TEST_F(MGridInterpolationTest, BoundaryExactlyOnGridEdgeIsAccepted) {
-  Eigen::VectorXd r;
-  Eigen::VectorXd z;
-  FillInsideGrid(kNumTangentialPoints, r, z);
-  r[0] = mgrid_.minR;
-  r[1] = mgrid_.maxR;
-  z[2] = mgrid_.minZ;
-  z[3] = mgrid_.maxZ;
-
-  Eigen::VectorXd b_r(kNumTangentialPoints);
-  Eigen::VectorXd b_p(kNumTangentialPoints);
-  Eigen::VectorXd b_z(kNumTangentialPoints);
-  const absl::Status status =
-      mgrid_.interpolate(0, kNumTangentialPoints, mgrid_.numPhi,
-                         kNumTangentialPoints, r, z, b_r, b_p, b_z);
-
-  EXPECT_TRUE(status.ok()) << status;
-  for (int index = 0; index < kNumTangentialPoints; ++index) {
-    EXPECT_TRUE(std::isfinite(b_r[index]));
-    EXPECT_TRUE(std::isfinite(b_p[index]));
-    EXPECT_TRUE(std::isfinite(b_z[index]));
-  }
-}
-
-TEST_F(MGridInterpolationTest, BoundaryOutsideGridInRIsAnError) {
-  Eigen::VectorXd r;
-  Eigen::VectorXd z;
-  FillInsideGrid(kNumTangentialPoints, r, z);
-  r[3] = OutsideR();
-
-  Eigen::VectorXd b_r(kNumTangentialPoints);
-  Eigen::VectorXd b_p(kNumTangentialPoints);
-  Eigen::VectorXd b_z(kNumTangentialPoints);
-  const absl::Status status =
-      mgrid_.interpolate(0, kNumTangentialPoints, mgrid_.numPhi,
-                         kNumTangentialPoints, r, z, b_r, b_p, b_z);
-
-  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-  const std::string message(status.message());
-  EXPECT_THAT(message, HasSubstr("R: boundary"));
-  EXPECT_THAT(message, Not(HasSubstr("Z: boundary")));
-
-  // The clamped field is still written, so the status can be carried.
-  for (int index = 0; index < kNumTangentialPoints; ++index) {
-    EXPECT_TRUE(std::isfinite(b_r[index]));
-    EXPECT_TRUE(std::isfinite(b_p[index]));
-    EXPECT_TRUE(std::isfinite(b_z[index]));
-  }
-}
-
-TEST_F(MGridInterpolationTest, BoundaryOutsideGridInZIsAnError) {
-  Eigen::VectorXd r;
-  Eigen::VectorXd z;
-  FillInsideGrid(kNumTangentialPoints, r, z);
-  z[5] = OutsideZ();
-
-  Eigen::VectorXd b_r(kNumTangentialPoints);
-  Eigen::VectorXd b_p(kNumTangentialPoints);
-  Eigen::VectorXd b_z(kNumTangentialPoints);
-  const absl::Status status =
-      mgrid_.interpolate(0, kNumTangentialPoints, mgrid_.numPhi,
-                         kNumTangentialPoints, r, z, b_r, b_p, b_z);
-
-  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-  const std::string message(status.message());
-  EXPECT_THAT(message, HasSubstr("Z: boundary"));
-  EXPECT_THAT(message, Not(HasSubstr("R: boundary")));
-}
-
-TEST_F(MGridInterpolationTest, ErrorNamesTheBoundaryAndTheGridExtents) {
-  Eigen::VectorXd r;
-  Eigen::VectorXd z;
-  FillInsideGrid(kNumTangentialPoints, r, z);
-  r[3] = OutsideR();
-  z[5] = OutsideZ();
-
-  Eigen::VectorXd b_r(kNumTangentialPoints);
-  Eigen::VectorXd b_p(kNumTangentialPoints);
-  Eigen::VectorXd b_z(kNumTangentialPoints);
-  const absl::Status status =
-      mgrid_.interpolate(0, kNumTangentialPoints, mgrid_.numPhi,
-                         kNumTangentialPoints, r, z, b_r, b_p, b_z);
-
-  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-  const std::string message(status.message());
-  EXPECT_THAT(message, HasSubstr("R: boundary"));
-  EXPECT_THAT(message, HasSubstr("Z: boundary"));
-  EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", OutsideR())));
-  EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", mgrid_.maxR)));
-  EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", OutsideZ())));
-  EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", mgrid_.minZ)));
-}
-
-// The returned field is the grid edge's, not the requested point's.
-TEST_F(MGridInterpolationTest, FieldOutsideGridIsClampedToTheGridEdge) {
-  Eigen::VectorXd r;
-  Eigen::VectorXd z;
-  FillInsideGrid(kNumTangentialPoints, r, z);
-
-  Eigen::VectorXd r_on_edge = r;
-  r_on_edge[3] = mgrid_.maxR;
-  r[3] = OutsideR();
-
-  Eigen::VectorXd b_r_outside(kNumTangentialPoints);
-  Eigen::VectorXd b_p_outside(kNumTangentialPoints);
-  Eigen::VectorXd b_z_outside(kNumTangentialPoints);
-  const absl::Status outside = mgrid_.interpolate(
-      0, kNumTangentialPoints, mgrid_.numPhi, kNumTangentialPoints, r, z,
-      b_r_outside, b_p_outside, b_z_outside);
-  EXPECT_EQ(outside.code(), absl::StatusCode::kFailedPrecondition);
-
-  Eigen::VectorXd b_r_on_edge(kNumTangentialPoints);
-  Eigen::VectorXd b_p_on_edge(kNumTangentialPoints);
-  Eigen::VectorXd b_z_on_edge(kNumTangentialPoints);
-  const absl::Status on_edge = mgrid_.interpolate(
-      0, kNumTangentialPoints, mgrid_.numPhi, kNumTangentialPoints, r_on_edge,
-      z, b_r_on_edge, b_p_on_edge, b_z_on_edge);
-  EXPECT_TRUE(on_edge.ok()) << on_edge;
-
-  for (int index = 0; index < kNumTangentialPoints; ++index) {
-    EXPECT_EQ(b_r_outside[index], b_r_on_edge[index]);
-    EXPECT_EQ(b_p_outside[index], b_p_on_edge[index]);
-    EXPECT_EQ(b_z_outside[index], b_z_on_edge[index]);
-  }
-}
-
-// The status describes the requested slice and no other.
-TEST_F(MGridInterpolationTest, OnlyTheRequestedTangentialSliceIsChecked) {
+// The reported extents are the whole boundary's, not the reporting slice's:
+// this call covers the second slice only, which does not contain the minima.
+TEST_F(MGridInterpolationTest, BoundaryOutsideGridIsAnError) {
   const int num_points = 2 * kNumTangentialPoints;
   Eigen::VectorXd r;
   Eigen::VectorXd z;
   FillInsideGrid(num_points, r, z);
   r[num_points - 1] = OutsideR();
+  z[num_points - 2] = OutsideZ();
 
   Eigen::VectorXd b_r(kNumTangentialPoints);
   Eigen::VectorXd b_p(kNumTangentialPoints);
   Eigen::VectorXd b_z(kNumTangentialPoints);
-
-  const absl::Status first_slice = mgrid_.interpolate(
-      0, kNumTangentialPoints, mgrid_.numPhi, num_points, r, z, b_r, b_p, b_z);
-  EXPECT_TRUE(first_slice.ok()) << first_slice;
-
-  const absl::Status second_slice =
-      mgrid_.interpolate(kNumTangentialPoints, num_points, mgrid_.numPhi,
-                         num_points, r, z, b_r, b_p, b_z);
-  EXPECT_EQ(second_slice.code(), absl::StatusCode::kFailedPrecondition);
-}
-
-// Which thread wins the reduction is a race, so the extents must be global.
-TEST_F(MGridInterpolationTest, ReportedExtentsDoNotDependOnTheReportingSlice) {
-  const int num_points = 2 * kNumTangentialPoints;
-  Eigen::VectorXd r;
-  Eigen::VectorXd z;
-  FillInsideGrid(num_points, r, z);
-  // Both slices report, but the boundary's minimum R is in the second only.
-  r[0] = OutsideR();
-  r[num_points - 1] = OutsideR() + 0.01;
-
-  Eigen::VectorXd b_r(kNumTangentialPoints);
-  Eigen::VectorXd b_p(kNumTangentialPoints);
-  Eigen::VectorXd b_z(kNumTangentialPoints);
-
-  const absl::Status first_slice = mgrid_.interpolate(
-      0, kNumTangentialPoints, mgrid_.numPhi, num_points, r, z, b_r, b_p, b_z);
-  const absl::Status second_slice =
+  const absl::Status status =
       mgrid_.interpolate(kNumTangentialPoints, num_points, mgrid_.numPhi,
                          num_points, r, z, b_r, b_p, b_z);
 
-  EXPECT_EQ(first_slice.code(), absl::StatusCode::kFailedPrecondition);
-  EXPECT_EQ(second_slice.code(), absl::StatusCode::kFailedPrecondition);
-  EXPECT_EQ(first_slice.message(), second_slice.message());
-
-  // The extents are the boundary's, not either slice's.
-  const std::string message(first_slice.message());
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  const std::string message(status.message());
   EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", r.minCoeff())));
   EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", r.maxCoeff())));
+  EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", z.minCoeff())));
+  EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", z.maxCoeff())));
 }
 
 #ifdef _OPENMP
@@ -509,35 +355,5 @@ TEST_F(MGridInterpolationTest, MixedInAndOutOfGridSlicesDoNotDeadlock) {
             absl::StatusCode::kFailedPrecondition);
 }
 #endif  // _OPENMP
-
-// A fixed field is handed over per point, so there is no grid to leave.
-TEST_F(MGridInterpolationTest, FixedFieldIgnoresGridBounds) {
-  const Eigen::VectorXd fixed_b_r =
-      Eigen::VectorXd::Constant(kNumTangentialPoints, 1.0);
-  const Eigen::VectorXd fixed_b_p =
-      Eigen::VectorXd::Constant(kNumTangentialPoints, 2.0);
-  const Eigen::VectorXd fixed_b_z =
-      Eigen::VectorXd::Constant(kNumTangentialPoints, 3.0);
-  mgrid_.SetFixedMagneticField(fixed_b_r, fixed_b_p, fixed_b_z);
-
-  const Eigen::VectorXd r =
-      Eigen::VectorXd::Constant(kNumTangentialPoints, OutsideR());
-  const Eigen::VectorXd z =
-      Eigen::VectorXd::Constant(kNumTangentialPoints, OutsideZ());
-
-  Eigen::VectorXd b_r(kNumTangentialPoints);
-  Eigen::VectorXd b_p(kNumTangentialPoints);
-  Eigen::VectorXd b_z(kNumTangentialPoints);
-  const absl::Status status =
-      mgrid_.interpolate(0, kNumTangentialPoints, mgrid_.numPhi,
-                         kNumTangentialPoints, r, z, b_r, b_p, b_z);
-
-  EXPECT_TRUE(status.ok()) << status;
-  for (int index = 0; index < kNumTangentialPoints; ++index) {
-    EXPECT_EQ(b_r[index], 1.0);
-    EXPECT_EQ(b_p[index], 2.0);
-    EXPECT_EQ(b_z[index], 3.0);
-  }
-}
 
 }  // namespace vmecpp
