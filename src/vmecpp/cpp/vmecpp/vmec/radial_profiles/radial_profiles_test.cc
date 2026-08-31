@@ -464,4 +464,143 @@ TEST_F(RadialProfilesTest, AnalyticProfilesRouteThroughDispatch) {
   }
 }
 
+// ---- aphi: the radial coordinate reparameterization ------------------------
+//
+// aphi maps the radial coordinate onto enclosed toroidal flux. Every case in
+// the test suite leaves it at its default of {1}, where torflux is the identity
+// and torfluxDeriv is one, so none of the arithmetic below is otherwise
+// exercised.
+
+namespace {
+
+// phi(x) = x * sum_i aphi[i] x^i, the exact integral of TorfluxDerivClosedForm.
+double TorfluxClosedForm(const Eigen::VectorXd& aphi, double x) {
+  double sum = 0.0;
+  for (Eigen::Index i = 0; i < aphi.size(); ++i) {
+    sum += aphi[i] * std::pow(x, static_cast<double>(i));
+  }
+  return x * sum;
+}
+
+// d(phi)/dx = sum_i (i + 1) aphi[i] x^i
+double TorfluxDerivClosedForm(const Eigen::VectorXd& aphi, double x) {
+  double sum = 0.0;
+  for (Eigen::Index i = 0; i < aphi.size(); ++i) {
+    sum += (i + 1) * aphi[i] * std::pow(x, static_cast<double>(i));
+  }
+  return sum;
+}
+
+}  // namespace
+
+TEST_F(RadialProfilesTest, TorfluxMatchesTheClosedFormPolynomial) {
+  for (const Eigen::VectorXd& aphi :
+       {Vec({1.0}), Vec({1.0, 0.5}), Vec({1.0, 0.0, 0.5}),
+        Vec({0.5, 1.0, -0.3, 0.2})}) {
+    indata_.aphi = aphi;
+    for (double x : {0.0, 0.13, 0.5, 0.77, 1.0}) {
+      EXPECT_NEAR(profiles_->torflux(x), TorfluxClosedForm(aphi, x), 1e-14)
+          << "torflux at x=" << x << " for aphi of size " << aphi.size();
+      EXPECT_NEAR(profiles_->torfluxDeriv(x), TorfluxDerivClosedForm(aphi, x),
+                  1e-14)
+          << "torfluxDeriv at x=" << x << " for aphi of size " << aphi.size();
+    }
+  }
+}
+
+// The default leaves the radial coordinate equal to the normalized toroidal
+// flux, which is what the rest of the suite relies on.
+TEST_F(RadialProfilesTest, DefaultAphiLeavesTorfluxAsTheIdentity) {
+  indata_.aphi = Vec({1.0});
+  for (double x : {0.0, 0.25, 0.6, 1.0}) {
+    EXPECT_NEAR(profiles_->torflux(x), x, 1e-15);
+    EXPECT_NEAR(profiles_->torfluxDeriv(x), 1.0, 1e-15);
+  }
+}
+
+// maxToroidalFlux scales torfluxDeriv into phipf, so the enclosed flux at the
+// edge is maxToroidalFlux * integral of torfluxDeriv over [0, 1]. Dividing by
+// torflux(1) makes that come out at exactly signOfJacobian * phiedge / 2 pi.
+// This is why torflux evaluates the integral in closed form rather than by the
+// 100-interval trapezoid educational_VMEC uses in magnetic_fluxes.f90: the
+// trapezoid is exact only while torfluxDeriv is linear, and beyond that it
+// would normalize the profile by a value the profile does not integrate to.
+TEST_F(RadialProfilesTest, MaxToroidalFluxNormalizesTheEdgeFluxToPhiedge) {
+  indata_.pmass_type = "power_series";
+  indata_.piota_type = "power_series";
+  indata_.pcurr_type = "power_series";
+  indata_.phiedge = 2.7;
+
+  for (const Eigen::VectorXd& aphi :
+       {Vec({1.0}), Vec({1.0, 0.0, 0.5}), Vec({0.5, 1.0, -0.3, 0.2})}) {
+    indata_.aphi = aphi;
+    profiles_->setupInputProfiles();
+
+    const double enclosed_flux_at_edge =
+        profiles_->maxToroidalFlux * TorfluxClosedForm(aphi, 1.0);
+    EXPECT_NEAR(enclosed_flux_at_edge, -indata_.phiedge / (2.0 * M_PI), 1e-14)
+        << "aphi of size " << aphi.size();
+  }
+}
+
+// polfluxDeriv evaluates iota at the enclosed toroidal flux, not at the radial
+// position, and clamps that argument at 1. With aphi = {0, 1} the two differ:
+// torflux(x) = x^2 and torfluxDeriv(x) = 2x.
+TEST_F(RadialProfilesTest, PolfluxDerivEvaluatesIotaAtTheToroidalFlux) {
+  indata_.pmass_type = "power_series";
+  indata_.piota_type = "power_series";
+  indata_.pcurr_type = "power_series";
+  // iota(t) = t, so a wrong argument shows up directly in the result.
+  indata_.ai = Vec({0.0, 1.0});
+  indata_.aphi = Vec({0.0, 1.0});
+  profiles_->setupInputProfiles();
+
+  for (double x : {0.2, 0.5, 0.9}) {
+    // iota(x^2) * 2x
+    EXPECT_NEAR(profiles_->polfluxDeriv(x), x * x * 2.0 * x, 1e-14)
+        << "polfluxDeriv at x=" << x;
+    // Evaluating iota at x instead would give this, which must not happen.
+    EXPECT_GT(std::abs(profiles_->polfluxDeriv(x) - x * 2.0 * x), 1e-3)
+        << "polfluxDeriv at x=" << x;
+  }
+
+  // At the edge the toroidal flux is 1 as well, so the two arguments coincide
+  // there and only the value can be checked.
+  EXPECT_NEAR(profiles_->polfluxDeriv(1.0), 2.0, 1e-14);
+
+  // Past x = 1 the toroidal flux exceeds 1 and the iota argument is clamped.
+  EXPECT_NEAR(profiles_->polfluxDeriv(1.2), 1.0 * 2.0 * 1.2, 1e-14);
+}
+
+// polflux integrates polfluxDeriv. For a constant iota profile the integrand is
+// iota * torfluxDeriv, so the result is iota * torflux; with aphi of at most
+// two coefficients torfluxDeriv is linear and the trapezoid is exact, which
+// pins the quadrature against a closed form.
+TEST_F(RadialProfilesTest, PolfluxIsIotaTimesTorfluxForConstantIota) {
+  indata_.pmass_type = "power_series";
+  indata_.piota_type = "power_series";
+  indata_.pcurr_type = "power_series";
+  static constexpr double kIota = 0.42;
+  indata_.ai = Vec({kIota});
+
+  for (const Eigen::VectorXd& aphi : {Vec({1.0}), Vec({1.0, 0.5})}) {
+    indata_.aphi = aphi;
+    profiles_->setupInputProfiles();
+
+    for (double x : {0.3, 0.65, 1.0}) {
+      EXPECT_NEAR(profiles_->polflux(x), kIota * TorfluxClosedForm(aphi, x),
+                  1e-12)
+          << "polflux at x=" << x << " for aphi of size " << aphi.size();
+    }
+
+    // maxPoloidalFlux divides maxToroidalFlux by polflux(1), which for a
+    // constant iota profile is iota times the edge toroidal flux.
+    EXPECT_NEAR(
+        profiles_->maxPoloidalFlux,
+        profiles_->maxToroidalFlux / (kIota * TorfluxClosedForm(aphi, 1.0)),
+        1e-12)
+        << "maxPoloidalFlux for aphi of size " << aphi.size();
+  }
+}
+
 }  // namespace vmecpp

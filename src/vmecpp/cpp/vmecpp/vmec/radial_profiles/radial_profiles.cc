@@ -341,9 +341,10 @@ void RadialProfiles::computeMagneticFluxes() {
     maxToroidalFlux /= edgeToroidalFluxFromProfile;
   }
 
-  // only required for lRFP == true (TODO) ...later...
-  // This assumes that the same scaling factor (=phiedge) is used for phi' and
-  // chi'.
+  // Mirrors polflux_edge in educational_VMEC's profil1d.f90, which computes it
+  // the same way and likewise does not consume it: chips and chipf are built
+  // from maxToroidalFlux * polfluxDeriv. The scaling assumes that phiedge is
+  // the scaling factor for both phi' and chi'.
   maxPoloidalFlux = maxToroidalFlux;
   double edgePoloidalFluxFromProfile = polflux(1.0);
   if (edgePoloidalFluxFromProfile != 0.0) {
@@ -372,7 +373,12 @@ double RadialProfiles::torfluxDeriv(double x) {
  */
 double RadialProfiles::torflux(double x) {
   //  Analytic evaluation of the polynomial (0 at x=0)
-  //  using Horner's method
+  //  using Horner's method.
+  //  educational_VMEC integrates torflux_deriv with a 100-interval trapezoid in
+  //  magnetic_fluxes.f90, which is exact only while torflux_deriv is linear, so
+  //  the two differ once aphi carries three or more coefficients. The closed
+  //  form is what makes maxToroidalFlux divide by the value the profile it
+  //  scales actually integrates to.
   double torflux = 0.0;
   for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
     torflux = x * torflux + id_.aphi[i];
