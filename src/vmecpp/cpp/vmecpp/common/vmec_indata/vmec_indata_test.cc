@@ -206,6 +206,59 @@ TEST(TestVmecINDATA, CheckDeltBounds) {
   EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
+// An unusable profile parameterization silently evaluates to zero in the
+// solver, so it has to be rejected here instead.
+TEST(TestVmecINDATA, CheckProfileParameterizationNames) {
+  VmecINDATA indata;
+  ASSERT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // unknown name
+  indata.pmass_type = "power_serise";
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // known, but not applicable to the pressure profile
+  indata.pmass_type = "sum_atan";
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.pmass_type = "power_series";
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // iota parameterization is only consulted for ncurr == 0
+  indata.ncurr = 0;
+  indata.piota_type = "power_series_i";  // current-only
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.piota_type = "power_series";
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // current parameterization is only consulted for ncurr == 1
+  indata.ncurr = 1;
+  indata.pcurr_type = "two_lorentz";  // pressure-only
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.pcurr_type = "power_series";
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// A spline profile cannot be evaluated without its knots. The polynomial
+// coefficient arrays, by contrast, are zero-padded on read, so an empty one is
+// a valid way to ask for a zero profile.
+TEST(TestVmecINDATA, CheckSplineProfilesNeedKnots) {
+  VmecINDATA indata;
+  indata.pmass_type = "cubic_spline";
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.am_aux_s = Eigen::VectorXd::LinSpaced(4, 0.0, 1.0);
+  indata.am_aux_f = Eigen::VectorXd::Zero(3);
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.am_aux_f = Eigen::VectorXd::Zero(4);
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // empty polynomial coefficients stay acceptable
+  indata.pmass_type = "power_series";
+  indata.am = Eigen::VectorXd();
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
 TEST(TestVmecINDATA, ToJson) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
