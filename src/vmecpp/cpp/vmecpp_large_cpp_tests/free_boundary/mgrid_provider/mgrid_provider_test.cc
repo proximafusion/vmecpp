@@ -25,6 +25,7 @@
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 #include "vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h"
+#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 
@@ -355,5 +356,60 @@ TEST_F(MGridInterpolationTest, MixedInAndOutOfGridSlicesDoNotDeadlock) {
             absl::StatusCode::kFailedPrecondition);
 }
 #endif  // _OPENMP
+
+// LoadFile and LoadFields each reject a coil-current count that disagrees with
+// the number of response tables they hold. VmecINDATA::IsConsistent cannot make
+// this check, because it never sees the mgrid.
+TEST(MGridProviderValidation, LoadFileRejectsWrongNumberOfCurrents) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok()) << indata_json.status();
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  MGridProvider mgrid;
+
+  // one too few
+  Eigen::VectorXd too_few = indata->extcur.head(indata->extcur.size() - 1);
+  const absl::Status short_status = mgrid.LoadFile(indata->mgrid_file, too_few);
+  EXPECT_EQ(short_status.code(), absl::StatusCode::kInvalidArgument);
+
+  // one too many
+  Eigen::VectorXd too_many(indata->extcur.size() + 1);
+  too_many.head(indata->extcur.size()) = indata->extcur;
+  too_many[indata->extcur.size()] = 1.0;
+  const absl::Status long_status = mgrid.LoadFile(indata->mgrid_file, too_many);
+  EXPECT_EQ(long_status.code(), absl::StatusCode::kInvalidArgument);
+
+  // the matching count still loads
+  EXPECT_TRUE(mgrid.LoadFile(indata->mgrid_file, indata->extcur).ok());
+}
+
+TEST(MGridProviderValidation, LoadFieldsRejectsWrongNumberOfCurrents) {
+  // A response table with two circuits on a small grid; only the shapes matter
+  // here, not the field values.
+  makegrid::MagneticFieldResponseTable response_table;
+  response_table.parameters = {.normalize_by_currents = false,
+                               .assume_stellarator_symmetry = false,
+                               .number_of_field_periods = 1,
+                               .r_grid_minimum = 1.0,
+                               .r_grid_maximum = 2.0,
+                               .number_of_r_grid_points = 3,
+                               .z_grid_minimum = -1.0,
+                               .z_grid_maximum = 1.0,
+                               .number_of_z_grid_points = 3,
+                               .number_of_phi_grid_points = 2};
+  const int num_grid_points = 2 * 3 * 3;
+  response_table.b_r = RowMatrixXd::Zero(2, num_grid_points);
+  response_table.b_p = RowMatrixXd::Zero(2, num_grid_points);
+  response_table.b_z = RowMatrixXd::Zero(2, num_grid_points);
+
+  MGridProvider mgrid;
+  EXPECT_EQ(mgrid.LoadFields(response_table, Eigen::VectorXd::Ones(1)).code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(mgrid.LoadFields(response_table, Eigen::VectorXd::Ones(3)).code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(mgrid.LoadFields(response_table, Eigen::VectorXd::Ones(2)).ok());
+}
 
 }  // namespace vmecpp
