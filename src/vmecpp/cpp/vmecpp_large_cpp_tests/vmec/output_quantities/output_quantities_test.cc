@@ -8,7 +8,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -1394,5 +1396,74 @@ INSTANTIATE_TEST_SUITE_P(
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 1.0e-4},
            DataSource{.identifier = "cma", .tolerance = 1.0e-4}));
+
+// Nestor's converged scalar magnetic potential is reported as wout `potvac`.
+TEST(TestOutputQuantities, CheckVacuumPotential) {
+  static constexpr double kTolerance = 1.0e-11;
+  const std::string identifier = "cth_like_free_bdy";
+
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", identifier));
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  ASSERT_TRUE(vmec_indata->lfreeb);
+
+  Vmec vmec(*vmec_indata);
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+
+  int ncid = 0;
+  const std::string reference_filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/wout_%s.nc", identifier);
+  ASSERT_EQ(nc_open(reference_filename.c_str(), NC_NOWRITE, &ncid), NC_NOERR)
+      << "failed to open reference file: " << reference_filename;
+  const std::vector<double> reference_potvac =
+      NetcdfReadArray1D(ncid, "potvac").value();
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  ASSERT_EQ(static_cast<int>(reference_potvac.size()), wout.potvac.size());
+  for (int i = 0; i < wout.potvac.size(); ++i) {
+    EXPECT_TRUE(IsCloseRelAbs(reference_potvac[i], wout.potvac[i], kTolerance))
+        << "potvac index " << i;
+  }
+
+  // Fortran VMEC does not write the potvac mode numbers, so they are checked
+  // against Nestor's ordering rather than against the reference file.
+  const int nfp = vmec_indata->nfp;
+  const int nf = vmec_indata->ntor;
+  const int mf = vmec_indata->mpol + 1;
+  const int mnpd = (2 * nf + 1) * (mf + 1);
+  ASSERT_EQ(wout.potvac.size(), 2 * mnpd);
+  ASSERT_EQ(wout.xmpot.size(), mnpd);
+  ASSERT_EQ(wout.xnpot.size(), mnpd);
+
+  // A stellarator-symmetric run solves only the sin(mu - nv) half.
+  for (int i = mnpd; i < wout.potvac.size(); ++i) {
+    EXPECT_EQ(wout.potvac[i], 0.0) << "potvac cos half, index " << i;
+  }
+
+  // Each (m, n) of the rectangle m in [0, mf], n in [-nf, nf] appears once.
+  std::set<std::pair<int, int>> modes;
+  for (int mn = 0; mn < mnpd; ++mn) {
+    EXPECT_EQ(wout.xnpot[mn] % nfp, 0) << "xnpot index " << mn;
+    modes.insert({wout.xmpot[mn], wout.xnpot[mn] / nfp});
+  }
+  EXPECT_EQ(static_cast<int>(modes.size()), mnpd);
+  for (int m = 0; m <= mf; ++m) {
+    for (int n = -nf; n <= nf; ++n) {
+      EXPECT_EQ(modes.count({m, n}), 1U) << "missing m=" << m << " n=" << n;
+    }
+  }
+
+  // m advances fastest, so the first mf + 1 entries all carry n = -nf.
+  for (int m = 0; m <= mf; ++m) {
+    EXPECT_EQ(wout.xmpot[m], m);
+    EXPECT_EQ(wout.xnpot[m], -nf * nfp);
+  }
+}
 
 }  // namespace vmecpp

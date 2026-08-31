@@ -29,8 +29,8 @@ cc_test(
     ],
     deps = [
         ":makegrid_lib",
-        "@googletest//:gtest_main",
         "@abseil-cpp//absl/status:status",
+        "@googletest//:gtest_main",
         "//util/file_io",
         "//util/netcdf_io",
         "//util/testing:numerical_comparison_lib",
