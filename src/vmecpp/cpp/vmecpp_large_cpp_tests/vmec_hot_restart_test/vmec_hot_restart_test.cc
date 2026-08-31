@@ -2,6 +2,8 @@
 // <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -32,6 +34,33 @@ using vmecpp::Vmec;
 using vmecpp::VmecCheckpoint;
 using vmecpp::VmecINDATA;
 namespace fs = std::filesystem;
+
+// Largest relative difference over a few representative wout quantities.
+// CompareWOut cannot serve here: it aborts on a mismatch instead of reporting
+// one, so it can assert agreement but never difference.
+double MaxRelativeDifference(const vmecpp::WOutFileContents& a,
+                             const vmecpp::WOutFileContents& b) {
+  double worst = 0.0;
+  const auto consider = [&worst](double x, double y) {
+    const double scale = std::max(std::abs(x), std::abs(y));
+    if (scale > 0.0) {
+      worst = std::max(worst, std::abs(x - y) / scale);
+    }
+  };
+  consider(a.volume, b.volume);
+  consider(a.aspect, b.aspect);
+  consider(a.betatotal, b.betatotal);
+  consider(a.rbtor, b.rbtor);
+  consider(a.volavgB, b.volavgB);
+  consider(a.Rmajor_p, b.Rmajor_p);
+  consider(a.Aminor_p, b.Aminor_p);
+  if (a.rmnc.size() == b.rmnc.size()) {
+    for (int i = 0; i < a.rmnc.size(); ++i) {
+      consider(a.rmnc.data()[i], b.rmnc.data()[i]);
+    }
+  }
+  return worst;
+}
 
 // used to specify case-specific tolerances
 // and which iterations to test
@@ -732,11 +761,23 @@ TEST(HotRestartIntegration, FreeBoundary) {
                       displaced_fromscratch_output->wout, tolerance,
                       check_equal_maximum_iterations);
 
-  // TODO(eguiraud): we'd like to use these to test that the displaced output
-  // _is_ different, but the current CompareWOut implementation simply aborts in
-  // that case. vmecpp::CompareWOut(displaced_fromscratch_output->wout,
-  //                     original_output->wout, tolerance);
+  // The comparison above only says the two runs agree with each other. It says
+  // nothing about whether displacing the coils did anything: a hot restart that
+  // silently ignored the new field would agree with a from-scratch run that did
+  // the same. CompareWOut cannot be used the other way round, since it aborts
+  // on a mismatch rather than reporting one, so measure the difference here.
+  const double displacement_effect = MaxRelativeDifference(
+      original_output->wout, displaced_fromscratch_output->wout);
+  EXPECT_GT(displacement_effect, 1.0e-6)
+      << "displacing the coils by " << radial_coil_displacement
+      << " changed the equilibrium by only " << displacement_effect
+      << " relative; the comparison above would not notice a run that ignored "
+         "the displaced field";
 
-  // vmecpp::CompareWOut(displaced_hotrestarted_output->wout,
-  //                     original_output->wout, tolerance);
+  const double hot_restart_effect = MaxRelativeDifference(
+      original_output->wout, displaced_hotrestarted_output->wout);
+  EXPECT_GT(hot_restart_effect, 1.0e-6)
+      << "the hot-restarted run reproduced the original equilibrium to "
+      << hot_restart_effect
+      << " relative, so it may not have picked up the displaced field";
 }
