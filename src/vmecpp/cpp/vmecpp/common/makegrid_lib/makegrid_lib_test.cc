@@ -804,9 +804,11 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.normalize_by_currents ? "Scaled" : "Raw";
     });
 
-// TODO(jons): implement test of non-stellarator-symmetric mgrid file
 // TODO(jons): implement test of stellarator-symmetric mgrid file using
-// symmetric C++ implementation
+// symmetric C++ implementation. mgrid_test_symmetric_odd.nc is the reference,
+// but MakeCylindricalGrid rejects an odd number_of_phi_grid_points whenever
+// stellarator symmetry is requested, so the half-period mirror needs to handle
+// a grid with no exact midpoint first.
 
 // TODO(jons): add test of WriteMakegridNetCDFFile
 // -> in particular, make sure that the consistency of number of serial circuits
