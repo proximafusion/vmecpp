@@ -930,8 +930,7 @@ struct Threed1FreeBoundary {
   static absl::Status LoadInto(Threed1FreeBoundary& m_obj,
                                H5::H5File& from_file);
 
-  // NOLINTNEXTLINE(modernize-avoid-c-arrays,readability-identifier-naming)
-  static constexpr char H5key[] = "/threed1_free_boundary";
+  static constexpr const char* H5key = "/threed1_free_boundary";
 };
 
 // beta values from volume averages over plasma
