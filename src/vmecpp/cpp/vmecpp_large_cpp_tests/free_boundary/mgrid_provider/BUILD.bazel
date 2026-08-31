@@ -16,6 +16,7 @@ cc_test(
         "//util/testing:numerical_comparison_lib",
         "//vmecpp/common/magnetic_configuration_lib:magnetic_configuration_lib",
         "//vmecpp/common/magnetic_field_provider:magnetic_field_provider_lib",
+        "//vmecpp/common/makegrid_lib:makegrid_lib",
         "//vmecpp/common/vmec_indata:vmec_indata",
     ],
 )

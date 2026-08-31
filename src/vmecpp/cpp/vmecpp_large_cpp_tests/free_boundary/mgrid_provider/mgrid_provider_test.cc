@@ -4,9 +4,11 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifdef _OPENMP
@@ -25,6 +27,7 @@
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 #include "vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h"
+#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 
@@ -355,5 +358,205 @@ TEST_F(MGridInterpolationTest, MixedInAndOutOfGridSlicesDoNotDeadlock) {
             absl::StatusCode::kFailedPrecondition);
 }
 #endif  // _OPENMP
+
+// A field that is exactly bilinear in R and Z on each phi plane is reproduced
+// exactly by bilinear interpolation, so an error in the corner weights, in the
+// linear index arithmetic, or in which of R and Z a weight belongs to shows up
+// as a mismatch at points inside the grid.
+class MGridBilinearInterpolationTest : public ::testing::Test {
+ protected:
+  // The two resolutions differ so that a transposed linear index is caught.
+  static constexpr int kNumR = 5;
+  static constexpr int kNumZ = 7;
+  static constexpr int kNumPhi = 3;
+
+  static constexpr double kMinR = 0.8;
+  static constexpr double kMaxR = 1.6;
+  static constexpr double kMinZ = -0.5;
+  static constexpr double kMaxZ = 0.7;
+
+  static constexpr double kTolerance = 1.0e-12;
+
+  // The three components differ from one another, and every phi plane differs
+  // from every other, so a component or a plane taken from the wrong place does
+  // not go unnoticed.
+  static double ReferenceBr(double r, double z, int index_phi) {
+    return 1.0 + 2.0 * r - 3.0 * z + 4.0 * r * z + 10.0 * index_phi;
+  }
+  static double ReferenceBp(double r, double z, int index_phi) {
+    return -0.5 + 1.5 * r + 2.5 * z - 3.5 * r * z + 20.0 * index_phi;
+  }
+  static double ReferenceBz(double r, double z, int index_phi) {
+    return 7.0 - 6.0 * r + 5.0 * z + 0.25 * r * z + 30.0 * index_phi;
+  }
+
+  void SetUp() override {
+    makegrid::MagneticFieldResponseTable response_table;
+    response_table.parameters = {.normalize_by_currents = false,
+                                 .assume_stellarator_symmetry = false,
+                                 .number_of_field_periods = 1,
+                                 .r_grid_minimum = kMinR,
+                                 .r_grid_maximum = kMaxR,
+                                 .number_of_r_grid_points = kNumR,
+                                 .z_grid_minimum = kMinZ,
+                                 .z_grid_maximum = kMaxZ,
+                                 .number_of_z_grid_points = kNumZ,
+                                 .number_of_phi_grid_points = kNumPhi};
+
+    const int num_grid_points = kNumPhi * kNumZ * kNumR;
+    response_table.b_r.resize(1, num_grid_points);
+    response_table.b_p.resize(1, num_grid_points);
+    response_table.b_z.resize(1, num_grid_points);
+
+    const double delta_r = (kMaxR - kMinR) / (kNumR - 1.0);
+    const double delta_z = (kMaxZ - kMinZ) / (kNumZ - 1.0);
+    for (int index_phi = 0; index_phi < kNumPhi; ++index_phi) {
+      for (int index_z = 0; index_z < kNumZ; ++index_z) {
+        for (int index_r = 0; index_r < kNumR; ++index_r) {
+          const int linear_index =
+              (index_phi * kNumZ + index_z) * kNumR + index_r;
+          const double r = kMinR + index_r * delta_r;
+          const double z = kMinZ + index_z * delta_z;
+          response_table.b_r(0, linear_index) = ReferenceBr(r, z, index_phi);
+          response_table.b_p(0, linear_index) = ReferenceBp(r, z, index_phi);
+          response_table.b_z(0, linear_index) = ReferenceBz(r, z, index_phi);
+        }  // index_r
+      }  // index_z
+    }  // index_phi
+
+    Eigen::VectorXd coil_currents(1);
+    coil_currents[0] = 1.0;
+    const absl::Status status =
+        mgrid_.LoadFields(response_table, coil_currents);
+    ASSERT_TRUE(status.ok()) << status;
+  }
+
+  // Lays the given (R, Z) samples out so that every sample is evaluated on
+  // every phi plane: interpolate() takes the plane of point kl to be
+  // kl % nZeta.
+  static void SpreadOverPhiPlanes(
+      const std::vector<std::pair<double, double> >& samples,
+      Eigen::VectorXd& m_r, Eigen::VectorXd& m_z) {
+    const int num_points = static_cast<int>(samples.size()) * kNumPhi;
+    m_r.resize(num_points);
+    m_z.resize(num_points);
+    for (int kl = 0; kl < num_points; ++kl) {
+      m_r[kl] = samples[kl / kNumPhi].first;
+      m_z[kl] = samples[kl / kNumPhi].second;
+    }  // kl
+  }
+
+  MGridProvider mgrid_;
+};
+
+TEST_F(MGridBilinearInterpolationTest, ReproducesABilinearFieldExactly) {
+  // Grid nodes, including both extreme corners, cell centers, and points at no
+  // particular position within a cell.
+  const std::vector<std::pair<double, double> > samples = {
+      {kMinR, kMinZ},  // lower left corner node
+      {kMaxR, kMaxZ},  // upper right corner node
+      {kMaxR, kMinZ},  // lower right corner node
+      {1.2, -0.1},     // interior node
+      {0.9, -0.4},     // center of the first cell
+      {1.5, 0.6},      // center of the last cell
+      {1.13, 0.02},    // no particular position
+      {0.85, 0.65},    // against the inner R edge, high Z
+  };
+
+  Eigen::VectorXd r;
+  Eigen::VectorXd z;
+  SpreadOverPhiPlanes(samples, r, z);
+  const int num_points = static_cast<int>(r.size());
+
+  Eigen::VectorXd b_r(num_points);
+  Eigen::VectorXd b_p(num_points);
+  Eigen::VectorXd b_z(num_points);
+  const absl::Status status = mgrid_.interpolate(
+      0, num_points, kNumPhi, num_points, r, z, b_r, b_p, b_z);
+  ASSERT_TRUE(status.ok()) << status;
+
+  for (int kl = 0; kl < num_points; ++kl) {
+    const int index_phi = kl % kNumPhi;
+    EXPECT_NEAR(b_r[kl], ReferenceBr(r[kl], z[kl], index_phi), kTolerance)
+        << "b_r at point " << kl;
+    EXPECT_NEAR(b_p[kl], ReferenceBp(r[kl], z[kl], index_phi), kTolerance)
+        << "b_p at point " << kl;
+    EXPECT_NEAR(b_z[kl], ReferenceBz(r[kl], z[kl], index_phi), kTolerance)
+        << "b_z at point " << kl;
+  }  // kl
+}
+
+TEST_F(MGridBilinearInterpolationTest, OutOfGridPointsAreClampedToTheEdge) {
+  // The status is covered above; what is checked here is the value returned
+  // alongside it, so that a point past a corner picks up that corner rather
+  // than an extrapolation.
+  const std::vector<std::pair<double, double> > samples = {
+      {kMinR - 0.3, 0.1},          // outside in R only
+      {1.1, kMaxZ + 0.4},          // outside in Z only
+      {kMaxR + 0.2, kMinZ - 0.2},  // outside in both, past a corner
+  };
+
+  Eigen::VectorXd r;
+  Eigen::VectorXd z;
+  SpreadOverPhiPlanes(samples, r, z);
+  const int num_points = static_cast<int>(r.size());
+
+  Eigen::VectorXd b_r(num_points);
+  Eigen::VectorXd b_p(num_points);
+  Eigen::VectorXd b_z(num_points);
+  const absl::Status status = mgrid_.interpolate(
+      0, num_points, kNumPhi, num_points, r, z, b_r, b_p, b_z);
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+
+  for (int kl = 0; kl < num_points; ++kl) {
+    const int index_phi = kl % kNumPhi;
+    const double clamped_r = std::max(kMinR, std::min(r[kl], kMaxR));
+    const double clamped_z = std::max(kMinZ, std::min(z[kl], kMaxZ));
+    EXPECT_NEAR(b_r[kl], ReferenceBr(clamped_r, clamped_z, index_phi),
+                kTolerance)
+        << "b_r at point " << kl;
+    EXPECT_NEAR(b_p[kl], ReferenceBp(clamped_r, clamped_z, index_phi),
+                kTolerance)
+        << "b_p at point " << kl;
+    EXPECT_NEAR(b_z[kl], ReferenceBz(clamped_r, clamped_z, index_phi),
+                kTolerance)
+        << "b_z at point " << kl;
+  }  // kl
+}
+
+TEST_F(MGridBilinearInterpolationTest, AFixedFieldIsCopiedAndTakesPrecedence) {
+  // SetFixedMagneticField overrides the response table loaded in SetUp, and
+  // hands back the requested slice verbatim instead of interpolating it.
+  constexpr int kNumPoints = 6;
+  constexpr int kZtMin = 2;
+  constexpr int kZtMax = 5;
+
+  Eigen::VectorXd fixed_b_r(kNumPoints);
+  Eigen::VectorXd fixed_b_p(kNumPoints);
+  Eigen::VectorXd fixed_b_z(kNumPoints);
+  for (int kl = 0; kl < kNumPoints; ++kl) {
+    fixed_b_r[kl] = 1.0 + kl;
+    fixed_b_p[kl] = 10.0 + kl;
+    fixed_b_z[kl] = 100.0 + kl;
+  }  // kl
+  mgrid_.SetFixedMagneticField(fixed_b_r, fixed_b_p, fixed_b_z);
+
+  // Far outside the grid, so that an interpolated result would be an error.
+  Eigen::VectorXd r = Eigen::VectorXd::Constant(kNumPoints, 100.0);
+  Eigen::VectorXd z = Eigen::VectorXd::Constant(kNumPoints, -100.0);
+
+  Eigen::VectorXd b_r(kZtMax - kZtMin);
+  Eigen::VectorXd b_p(kZtMax - kZtMin);
+  Eigen::VectorXd b_z(kZtMax - kZtMin);
+  const absl::Status status = mgrid_.interpolate(
+      kZtMin, kZtMax, kNumPhi, kNumPoints, r, z, b_r, b_p, b_z);
+  ASSERT_TRUE(status.ok()) << status;
+
+  for (int kl = kZtMin; kl < kZtMax; ++kl) {
+    EXPECT_EQ(b_r[kl - kZtMin], fixed_b_r[kl]);
+    EXPECT_EQ(b_p[kl - kZtMin], fixed_b_p[kl]);
+    EXPECT_EQ(b_z[kl - kZtMin], fixed_b_z[kl]);
+  }  // kl
+}
 
 }  // namespace vmecpp
