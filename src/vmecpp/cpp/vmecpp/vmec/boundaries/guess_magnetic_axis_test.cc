@@ -56,27 +56,28 @@ void ExpectGeometryMatchesTheFourierSeries(const Sizes& s, const Boundaries& b,
           const double cos_n_zeta = std::cos(n * kTwoPi * k / s.nZeta);
           const double sin_n_zeta = std::sin(n * kTwoPi * k / s.nZeta);
 
-          // the m = 1 constraint is undone before the transform
-          const double rss =
-              m == 1 ? b.rbss[idx_mn] + b.zbcs[idx_mn] : b.rbss[idx_mn];
-          const double zcs =
-              m == 1 ? b.rbss[idx_mn] - b.zbcs[idx_mn] : b.zbcs[idx_mn];
-          const double rsc =
-              m == 1 ? b.rbsc[idx_mn] + b.zbcc[idx_mn] : b.rbsc[idx_mn];
-          const double zcc =
-              m == 1 ? b.rbsc[idx_mn] - b.zbcc[idx_mn] : b.zbcc[idx_mn];
-
           r += b.rbcc[idx_mn] * cos_m_theta * cos_n_zeta;
           z += b.zbsc[idx_mn] * sin_m_theta * cos_n_zeta;
           d_r_d_theta -= m * b.rbcc[idx_mn] * sin_m_theta * cos_n_zeta;
           d_z_d_theta += m * b.zbsc[idx_mn] * cos_m_theta * cos_n_zeta;
           if (s.lthreed) {
+            // Boundaries allocates these only for lthreed, and the m = 1
+            // constraint is undone before the transform.
+            const double rss =
+                m == 1 ? b.rbss[idx_mn] + b.zbcs[idx_mn] : b.rbss[idx_mn];
+            const double zcs =
+                m == 1 ? b.rbss[idx_mn] - b.zbcs[idx_mn] : b.zbcs[idx_mn];
             r += rss * sin_m_theta * sin_n_zeta;
             z += zcs * cos_m_theta * sin_n_zeta;
             d_r_d_theta += m * rss * cos_m_theta * sin_n_zeta;
             d_z_d_theta -= m * zcs * sin_m_theta * sin_n_zeta;
           }
           if (s.lasym) {
+            // likewise allocated only for lasym
+            const double rsc =
+                m == 1 ? b.rbsc[idx_mn] + b.zbcc[idx_mn] : b.rbsc[idx_mn];
+            const double zcc =
+                m == 1 ? b.rbsc[idx_mn] - b.zbcc[idx_mn] : b.zbcc[idx_mn];
             r += rsc * sin_m_theta * cos_n_zeta;
             z += zcc * cos_m_theta * cos_n_zeta;
             d_r_d_theta += m * rsc * cos_m_theta * cos_n_zeta;
