@@ -787,14 +787,18 @@ absl::Status WriteMakegridNetCDFFile(
 
   // number of response tables in this mgrid file
   const int n_serial_circuits = static_cast<int>(response_table_b.b_r.rows());
-  CHECK_GT(n_serial_circuits, 0)
-      << "No magnetic field cache present to be written.";
+  if (n_serial_circuits <= 0) {
+    return absl::InvalidArgumentError(
+        "No magnetic field cache present to be written.");
+  }
 
   const int n_circuit_currents = static_cast<int>(circuit_currents.size());
-  CHECK_EQ(n_circuit_currents, n_serial_circuits) << absl::StrFormat(
-      "number of provided circuit currents (%d) has to equal number of serial "
-      "circuits(%d)",
-      n_circuit_currents, n_serial_circuits);
+  if (n_circuit_currents != n_serial_circuits) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "number of provided circuit currents (%d) has to equal number of "
+        "serial circuits (%d)",
+        n_circuit_currents, n_serial_circuits));
+  }
 
   int ncid = 0;
   CHECK_EQ(nc_create(makegrid_filename.c_str(), NC_CLOBBER, &ncid), NC_NOERR);
