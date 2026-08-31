@@ -270,7 +270,10 @@ IdealMhdModel::IdealMhdModel(
     clmn_o.setZero(nrztIncludingBoundary);
   }
 
-  // TODO(jons): +1 only if at LCFS
+  // The extra element is the ghost point beyond the LCFS that lamcal.f90
+  // zeroes (blam(ns+1) = clam(ns+1) = dlam(ns+1) = 0). Only the thread holding
+  // the LCFS ever reads it; every thread allocates it so that the half-grid
+  // indexing below is the same expression everywhere.
   bLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
   dLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
   cLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
@@ -430,7 +433,9 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 #endif  // _OPENMP
   {
     // set new values
-    // TODO(jons): what is `r1scale`?
+    // Fortran residue.f90: r1 = 1 / (2 * r0scale)**2, handed to getfsq as
+    // r1*fnorm. r0scale is 1 here, so the factor is 1/4. It applies to the R
+    // and Z residuals only; lambda carries fNormL instead.
     constexpr double r1scale = 0.25;
 
     m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * r1scale;
@@ -588,9 +593,12 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
     // This computes the net toroidal current enclosed by the LCFS (cTor).
     // net toroidal current input to NESTOR
-    // TODO(jons): if add_fluxed always works, could use curtor instead and not
-    // have to wait for MHD routines to finish for calling NESTOR - more
-    // parallelization possible!
+    //
+    // curtor cannot stand in for this. add_fluxes constrains the enclosed
+    // current to the prescribed profile only for ncurr == 1, by solving Eqn.
+    // (11) of the ORMEC paper per surface; for ncurr == 0 it sets chips =
+    // iotas * phips and the enclosed current is an outcome of the solve rather
+    // than an input. So NESTOR has to wait for the MHD routines here.
     m_h_.cTor = (1.5 * m_p_.bucoH[r_.nsMaxH - 1 - r_.nsMinH] -
                  0.5 * m_p_.bucoH[r_.nsMaxH - 2 - r_.nsMinH]) *
                 signOfJacobian * 2.0 * M_PI;
@@ -931,7 +939,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // ----- start of residue
 
   // re-establish m=1 constraint
-  // TODO(jons): why 1/sqrt(2) and not 1/2 ?
+  // 1/sqrt(2) rather than 1/2 because (1/sqrt(2)) * [[1, 1], [1, -1]] is
+  // orthogonal: the change of variables leaves the residual norm that fsqr and
+  // fsqz measure unchanged, and is its own inverse. With 1/2 the map would
+  // instead halve the residuals on every application. Fortran residue.f90
+  // constrain_m1 uses osqrt2 for the same reason.
   m_decomposed_f.m1Constraint(1.0 / std::numbers::sqrt2);
 
   // v8.50: ADD iter2<2 so reset=<WOUT_FILE> works
@@ -967,9 +979,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // contribution in the first few iterations, preventing termination, to
   // ensure the free-boundary forces have "enough time" to propagate through
   // to the inner surfaces.
-  // TODO(jurasic) the hard-coded 50 and 1e-6 are only here for backwards
-  // compatibility, ideally vacuum-pressure should always part of the
-  // force-balance
+  // The 50 and the 1e-6 are Fortran residue.f90, which gates the same edge
+  // contribution on `delIter .lt. 50 .and. fsqrz .lt. 1.E-6`. They are here for
+  // backwards compatibility; ideally the vacuum pressure would always be part
+  // of the force balance.
   bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
   // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
   // wouldn't trigger without special handling for the hot-restart case.
@@ -2192,7 +2205,12 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   }
 
   // assemble lambda preconditioning matrix
-  // TODO(jons): maybe not needed, since direct assignments below?
+  //
+  // The loop below starts at jMin, so on the thread holding the axis the jF = 0
+  // row is never assigned. That row has to stay zero, which it already is from
+  // the setZero at construction, so dropping this fill leaves every test
+  // unchanged. It is kept so the invariant does not depend on nothing else ever
+  // writing into that row.
   absl::c_fill_n(lambdaPreconditioner,
                  (r_.nsMaxFIncludingLcfs - r_.nsMinF) * (s_.ntor + 1) * s_.mpol,
                  0);
@@ -2262,8 +2280,8 @@ void IdealMhdModel::computePreconditioningMatrix(
     temp_h.setZero(r_.nsMaxH - r_.nsMinH);
   }
 
-  // restored in v8.51
-  // TODO(jons): what is this?
+  // Fortran precondn.f90: pfactor = -4 * r0scale**2, restored in v8.51 after
+  // v8.50 had used -2 * r0scale**2. r0scale is 1 here.
   double pFactor = -4.0;
 
   // zero intermediate work arrays
@@ -2421,14 +2439,16 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
   }
   // tcon
 
-  // TODO(jons): some parabola in ns,
-  // but why these specific values of the parameters ?
+  // Fortran bcovar.f90, verbatim. The quadratic ramp in ns is an empirical
+  // choice; the reference gives no derivation for the 1/60 and 1/(200*120)
+  // either. It grows the constraint-force multiplier by about a factor 3
+  // between ns = 15 and ns = 99.
   double tcon_multiplier =
       tcon0 * (1.0 + m_fc_.ns * (1.0 / 60.0 + m_fc_.ns / (200.0 * 120.0)));
 
-  // Scaling of ard, azd (2*r0scale**2);
-  // Scaling of cos**2 in alias (4*r0scale**2)
-  // TODO(jons): what is this?
+  // Fortran bcovar.f90: tcon_mul / (4 * r0scale**2)**2, undoing the scaling of
+  // ard and azd (2*r0scale**2) and of cos**2 in alias (4*r0scale**2). r0scale
+  // is 1 here, so the divisor is 16.
   tcon_multiplier /= (4.0 * 4.0);
 
   // compute constraint force multiplier profile on forces full-grid except axis
@@ -2463,18 +2483,17 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
         std::min(fabs(ard[(jF - r_.nsMinF) * 2 + kEvenParity] / arNorm),
                  fabs(azd[(jF - r_.nsMinF) * 2 + kEvenParity] / azNorm));
 
-    // TODO(jons): why the last term ?
-    // --> could be to cancel some terms in ard, azd
-    // 32 == 4*4 * 2
+    // Fortran bcovar.f90: tcon(js) = min(...) * tcon_mul * (32*hs)**2, with hs
+    // the radial step. The two factors here are that (32 * deltaS)**2.
     tcon[jF - r_.nsMinF] =
         tcon_base * tcon_multiplier * 32 * m_fc_.deltaS * 32 * m_fc_.deltaS;
   }  // j
 
   // nsMaxF1 will always include bdy, even in fixed-bdy mode
   if (r_.nsMaxF1 == m_fc_.ns) {
-    // TODO(jons): what is this?
-    // maybe related to boundary only having MHD force contributions from the
-    // inside and not from both sides?
+    // Fortran bcovar.f90: tcon(ns) = 0.5 * tcon(ns-1). The boundary surface
+    // receives MHD force contributions from the inside only, not from both
+    // sides, so it carries half the weight of an interior surface.
     tcon[r_.nsMaxF1 - 1 - r_.nsMinF] = 0.5 * tcon[r_.nsMaxF1 - 2 - r_.nsMinF];
   }
 
@@ -3662,9 +3681,10 @@ void IdealMhdModel::assembleRZPreconditioner() {
           }
 
           if (jF == 1 && m == 1) {
-            // TODO(jons): maybe this is not actually needed ???
-            // related to m=1 constraint ???
-            // only at innermost flux surface ???
+            // Fortran scalfor.f90: dx(2,n,1) = dx(2,n,1) + bx(2,n,1). The m=1
+            // amplitude at the axis is not an independent unknown, so the
+            // coupling to it folds into the diagonal of the innermost surface
+            // instead of staying on the sub-diagonal.
             dr[idx_mn] += br[idx_mn];
             dz[idx_mn] += bz[idx_mn];
           }
