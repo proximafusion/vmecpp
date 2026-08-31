@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h"
 
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <tuple>
@@ -692,9 +693,127 @@ TEST(TestMagneticField, CheckFourierFilament) {
 // No test for vector potential of InfiniteStraightFilament,
 // because the vector potential of an infinite straight filament is not defined.
 
+namespace {
+
+// Complete elliptic integrals of the first and second kind, of the parameter
+// m = k^2, by the arithmetic-geometric mean. Written out here rather than taken
+// from <cmath> because std::comp_ellint_* is a libstdc++ extension that libc++
+// does not provide.
+struct CompleteEllipticIntegrals {
+  double k;
+  double e;
+};
+
+CompleteEllipticIntegrals EllipticKE(double m) {
+  double a = 1.0;
+  double b = std::sqrt(1.0 - m);
+  double c = std::sqrt(m);
+  double sum = 0.5 * c * c;
+  double power_of_two = 1.0;
+  for (int iteration = 0; iteration < 64 && std::abs(c) > 1.0e-16;
+       ++iteration) {
+    const double next_a = 0.5 * (a + b);
+    const double next_b = std::sqrt(a * b);
+    c = 0.5 * (a - b);
+    a = next_a;
+    b = next_b;
+    sum += power_of_two * c * c;
+    power_of_two *= 2.0;
+  }
+  const double k_integral = M_PI / (2.0 * a);
+  return {k_integral, k_integral * (1.0 - sum)};
+}
+
+// Azimuthal component of the vector potential of a circular filament of radius
+// `radius` in the z = 0 plane, centred on the origin, carrying `current`.
+// Jackson, Classical Electrodynamics, eq. 5.37. Positive for a positive
+// current, so A is parallel to the current that produces it.
+double CircularFilamentVectorPotentialPhi(double radius, double current,
+                                          double r, double z) {
+  const double denominator = (radius + r) * (radius + r) + z * z;
+  const double m = 4.0 * radius * r / denominator;
+  const CompleteEllipticIntegrals integrals = EllipticKE(m);
+  return 1.0e-7 * current * (4.0 * radius / std::sqrt(denominator)) *
+         ((2.0 - m) * integrals.k - 2.0 * integrals.e) / m;
+}
+
+}  // namespace
+
+// The AGM implementation above is only useful if it is right, so pin it to
+// known values before using it as a reference.
+TEST(TestVectorPotential, CheckEllipticIntegrals) {
+  static constexpr double kTolerance = 1.0e-13;
+
+  const CompleteEllipticIntegrals at_zero = EllipticKE(0.0);
+  EXPECT_TRUE(IsCloseRelAbs(M_PI / 2.0, at_zero.k, kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(M_PI / 2.0, at_zero.e, kTolerance));
+
+  const CompleteEllipticIntegrals at_half = EllipticKE(0.5);
+  EXPECT_TRUE(IsCloseRelAbs(1.8540746773013719, at_half.k, kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(1.3506438810476755, at_half.e, kTolerance));
+}  // VectorPotential: CheckEllipticIntegrals
+
+// Reference calculation for the vector potential of a circular filament,
+// independent of ABSCAB.
 TEST(TestVectorPotential, CheckCircularFilament) {
-  // TODO(jons): find and implement a meaningful reference calculation for the
-  // vector potential of a circular filament
+  static constexpr double kTolerance = 1.0e-10;
+  static constexpr double kCurrent = 17.0;
+  static constexpr double kRadius = 1.23;
+  static constexpr int kNumEvaluationLocations = 30;
+
+  CircularFilament circular_filament;
+  circular_filament.set_radius(kRadius);
+  Vector3d *center = circular_filament.mutable_center();
+  center->set_x(0.0);
+  center->set_y(0.0);
+  center->set_z(0.0);
+  Vector3d *normal = circular_filament.mutable_normal();
+  normal->set_x(0.0);
+  normal->set_y(0.0);
+  normal->set_z(1.0);
+
+  // Stay off the filament itself, where the potential diverges.
+  std::vector<std::vector<double> > evaluation_positions(
+      kNumEvaluationLocations);
+  const double delta_r = 2.0 / (kNumEvaluationLocations - 1.0);
+  const double delta_z = 5.0 / (kNumEvaluationLocations - 1.0);
+  for (int i = 0; i < kNumEvaluationLocations; ++i) {
+    evaluation_positions[i].resize(3);
+    evaluation_positions[i][0] = -1.0 + delta_r * i;
+    evaluation_positions[i][1] = 1.0 - delta_r * i;
+    evaluation_positions[i][2] = -2.5 + delta_z * i;
+  }
+
+  std::vector<std::vector<double> > vector_potential(kNumEvaluationLocations);
+  for (int i = 0; i < kNumEvaluationLocations; ++i) {
+    vector_potential[i].resize(3, 0.0);
+  }
+
+  const absl::Status status = VectorPotential(
+      circular_filament, kCurrent, evaluation_positions, vector_potential);
+  ASSERT_EQ(status, absl::OkStatus());
+
+  for (int i = 0; i < kNumEvaluationLocations; ++i) {
+    const double x = evaluation_positions[i][0];
+    const double y = evaluation_positions[i][1];
+    const double z = evaluation_positions[i][2];
+    const double r = std::sqrt(x * x + y * y);
+    const double cos_phi = x / r;
+    const double sin_phi = y / r;
+
+    const double a_phi =
+        CircularFilamentVectorPotentialPhi(kRadius, kCurrent, r, z);
+
+    // A purely azimuthal vector, in Cartesian components.
+    EXPECT_TRUE(
+        IsCloseRelAbs(-a_phi * sin_phi, vector_potential[i][0], kTolerance))
+        << "A_x at index " << i;
+    EXPECT_TRUE(
+        IsCloseRelAbs(a_phi * cos_phi, vector_potential[i][1], kTolerance))
+        << "A_y at index " << i;
+    EXPECT_TRUE(IsCloseRelAbs(0.0, vector_potential[i][2], kTolerance))
+        << "A_z at index " << i;
+  }
 }  // VectorPotential: CheckCircularFilament
 
 TEST(TestVectorPotential, CheckCircularFilamentAgainstDirectAbscab) {
@@ -758,8 +877,8 @@ TEST(TestVectorPotential, CheckCircularFilamentAgainstDirectAbscab) {
   EXPECT_EQ(status, absl::OkStatus());
 
   // reference computation using ABSCAB directly
-  // FIXME(jons): Figure out what the actual sign definition must be.
-  // For now, adjusted to agree with MAKEGRID.
+  // Negated to match the sign convention of MagneticFieldProvider; see
+  // the comment on the abscab call in VectorPotential.
   abscab::vectorPotentialCircularFilament(
       center.data(), normal.data(), kRadius, -kCurrent, kNumEvaluationLocations,
       evaluation_positions_reference.data(), vector_potential_reference.data());
@@ -832,8 +951,8 @@ TEST(TestVectorPotential, CheckPolygonFilament) {
   std::vector<double> center = {0.0, 0.0, 0.0};
   std::vector<double> normal = {0.0, 0.0, 1.0};
 
-  // FIXME(jons): Figure out what the actual sign definition must be.
-  // For now, adjusted to agree with MAKEGRID.
+  // Negated to match the sign convention of MagneticFieldProvider; see
+  // the comment on the abscab call in VectorPotential.
   abscab::vectorPotentialCircularFilament(
       center.data(), normal.data(), kRadius, -kCurrent, kNumEvaluationLocations,
       evaluation_positions_reference.data(), vector_potential_reference.data());
@@ -2168,8 +2287,8 @@ TEST_F(VectorPotentialNumWindingsTest, CheckNoNumWindingsSpecified) {
   EXPECT_TRUE(status.ok());
 
   // reference computation using ABSCAB directly
-  // FIXME(jons): Figure out what the actual sign definition must be.
-  // For now, adjusted to agree with MAKEGRID.
+  // Negated to match the sign convention of MagneticFieldProvider; see
+  // the comment on the abscab call in VectorPotential.
   abscab::vectorPotentialCircularFilament(
       center_.data(), normal_.data(), kRadius, -current,
       kNumEvaluationLocations, evaluation_positions_reference_.data(),
@@ -2213,8 +2332,8 @@ TEST_F(VectorPotentialNumWindingsTest, CheckZeroNumWindingsSpecified) {
   EXPECT_TRUE(status.ok());
 
   // reference computation using ABSCAB directly
-  // FIXME(jons): Figure out what the actual sign definition must be.
-  // For now, adjusted to agree with MAKEGRID.
+  // Negated to match the sign convention of MagneticFieldProvider; see
+  // the comment on the abscab call in VectorPotential.
   abscab::vectorPotentialCircularFilament(
       center_.data(), normal_.data(), kRadius, -current,
       kNumEvaluationLocations, evaluation_positions_reference_.data(),
@@ -2245,8 +2364,8 @@ TEST_F(VectorPotentialNumWindingsTest, CheckNonZeroNumWindingsSpecified) {
   EXPECT_TRUE(status.ok());
 
   // reference computation using ABSCAB directly
-  // FIXME(jons): Figure out what the actual sign definition must be.
-  // For now, adjusted to agree with MAKEGRID.
+  // Negated to match the sign convention of MagneticFieldProvider; see
+  // the comment on the abscab call in VectorPotential.
   abscab::vectorPotentialCircularFilament(
       center_.data(), normal_.data(), kRadius, -current,
       kNumEvaluationLocations, evaluation_positions_reference_.data(),

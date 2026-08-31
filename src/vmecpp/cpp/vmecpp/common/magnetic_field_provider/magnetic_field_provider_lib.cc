@@ -385,8 +385,11 @@ absl::Status VectorPotential(
   // as abscab methods only add and do not initialize
   std::vector<double> vector_potential_1d(number_evaluation_positions * 3, 0.0);
 
-  // FIXME(jons): Figure out what the actual sign definition must be.
-  // For now, adjusted to agree with MAKEGRID.
+  // Negated because abscab's circular-filament vector potential has the
+  // opposite sign convention to its polygon-filament one and to both of its
+  // magnetic-field routines. With the negation, A is parallel to the current
+  // that produces it, which agrees with MAKEGRID and with the closed form
+  // checked in VectorPotential.CheckCircularFilament.
   abscab::vectorPotentialCircularFilament(center.data(), normal.data(), radius,
                                           -current, number_evaluation_positions,
                                           evaluation_positions_1d.data(),
