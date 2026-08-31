@@ -430,13 +430,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     if (!indata_.return_outputs_even_if_not_converged) {
       return h_.vacuum_status;
     }
-    if (verbose_) {
-      std::cout << absl::StrFormat(
-          "WARNING: %s\n"
-          "return_outputs_even_if_not_converged is set, so returning "
-          "best-effort (likely unphysical) output for debugging purposes.\n",
-          h_.vacuum_status.message());
-    }
+    status_ = VmecStatus::UNRECOVERABLE_ERROR;
   }
 
   // compute output file quantities, but do not write them to output file yet
