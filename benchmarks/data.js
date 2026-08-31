@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788113938401,
+  "lastUpdate": 1788156545480,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -13431,6 +13431,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.29251918500006013,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d0bfad2fe7fc73d96087e94070b9cf9dc5dd84e5",
+          "message": "ci: skip the CPython 3.14 Intel macOS wheel (#717)\n\njaxlib publishes no macOS x86_64 wheels for CPython 3.14, and simsopt\ndepends on jaxlib, so cibuildwheel's test install of the freshly built\ncp314-macosx_x86_64 wheel fails to resolve and reddens every PR.\n\nSkip only that one build. Intel macOS keeps building and testing wheels\nfor CPython 3.10 through 3.13, and arm64 macOS is unaffected.\n\nClaude-Session: https://claude.ai/code/session_01Tt1qwjDt7AVCt55QfgbsSr",
+          "timestamp": "2026-08-31T08:02:25+02:00",
+          "tree_id": "ac6808d74ecf839a717bfaf7f9c104e659bfc1cb",
+          "url": "https://github.com/proximafusion/vmecpp/commit/d0bfad2fe7fc73d96087e94070b9cf9dc5dd84e5"
+        },
+        "date": 1788156542953,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3409925671999872,
+            "range": "stddev: 0.0024766300384173926",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.8967948080000574,
+            "range": "stddev: 0.06273704975729111",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1442843363333093,
+            "range": "stddev: 0.010199925217014629",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.9192853176666251,
+            "range": "stddev: 0.023434249871169693",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.8089214816666679,
+            "range": "stddev: 0.0328083177396144",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.721077984999965,
+            "range": "stddev: 0.033986085912383335",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.917131327999982,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.35336532099995566,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
