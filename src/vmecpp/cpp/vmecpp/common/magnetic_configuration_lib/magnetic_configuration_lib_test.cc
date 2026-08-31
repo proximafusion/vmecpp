@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 
+#include <cmath>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -15,6 +16,7 @@
 
 namespace magnetics {
 
+using composed_types::CurveRZFourier;
 using composed_types::FourierCoefficient1D;
 using composed_types::Vector3d;
 
@@ -1372,5 +1374,123 @@ TEST(TestMagneticConfigurationLib,
             "present "
             "in the MagneticConfiguration");
 }  // CheckMoveRadiallyOutwardMagneticConfiguration
+
+// The vertices ToPolygonFilament produces have to be the curve itself,
+// evaluated independently here from the coefficients rather than compared
+// against another call into the same conversion.
+TEST(TestMagneticConfigurationLib, CheckToPolygonFilamentSampling) {
+  static constexpr double kTolerance = 1.0e-14;
+  static constexpr int kNumSamplingPoints = 37;
+
+  // R(phi) and Z(phi) both carry an m = 0 offset and an m = 1 shaping term,
+  // with all four cos and sin coefficients distinct and non-zero, so dropping
+  // any one of them changes the geometry.
+  static constexpr double kRCos0 = 1.5;
+  static constexpr double kZCos0 = 0.2;
+  static constexpr double kRCos1 = 0.3;
+  static constexpr double kRSin1 = 0.1;
+  static constexpr double kZCos1 = 0.05;
+  static constexpr double kZSin1 = 0.4;
+
+  FourierFilament fourier_filament;
+  fourier_filament.set_name("shaped");
+  fourier_filament.set_num_sampling_points(kNumSamplingPoints);
+
+  CurveRZFourier *geometry = fourier_filament.mutable_geometry();
+
+  FourierCoefficient1D *coefficient_r0 = geometry->add_r();
+  coefficient_r0->set_mode_number(0);
+  coefficient_r0->set_fc_cos(kRCos0);
+  coefficient_r0->set_fc_sin(0.0);
+  FourierCoefficient1D *coefficient_z0 = geometry->add_z();
+  coefficient_z0->set_mode_number(0);
+  coefficient_z0->set_fc_cos(kZCos0);
+  coefficient_z0->set_fc_sin(0.0);
+
+  FourierCoefficient1D *coefficient_r1 = geometry->add_r();
+  coefficient_r1->set_mode_number(1);
+  coefficient_r1->set_fc_cos(kRCos1);
+  coefficient_r1->set_fc_sin(kRSin1);
+  FourierCoefficient1D *coefficient_z1 = geometry->add_z();
+  coefficient_z1->set_mode_number(1);
+  coefficient_z1->set_fc_cos(kZCos1);
+  coefficient_z1->set_fc_sin(kZSin1);
+
+  absl::StatusOr<PolygonFilament> polygon_filament =
+      ToPolygonFilament(fourier_filament);
+  ASSERT_TRUE(polygon_filament.ok()) << polygon_filament.status().message();
+  ASSERT_EQ(polygon_filament->vertices_size(), kNumSamplingPoints);
+  EXPECT_EQ(polygon_filament->name(), "shaped");
+
+  const double delta_phi = 2.0 * M_PI / (kNumSamplingPoints - 1.0);
+  for (int vertex_index = 0; vertex_index < kNumSamplingPoints;
+       ++vertex_index) {
+    const double phi = vertex_index * delta_phi;
+    const double expected_r =
+        kRCos0 + kRCos1 * std::cos(phi) + kRSin1 * std::sin(phi);
+    const double expected_z =
+        kZCos0 + kZCos1 * std::cos(phi) + kZSin1 * std::sin(phi);
+
+    const Vector3d &vertex = polygon_filament->vertices(vertex_index);
+    EXPECT_TRUE(
+        IsCloseRelAbs(expected_r * std::cos(phi), vertex.x(), kTolerance))
+        << "vertex " << vertex_index;
+    EXPECT_TRUE(
+        IsCloseRelAbs(expected_r * std::sin(phi), vertex.y(), kTolerance))
+        << "vertex " << vertex_index;
+    EXPECT_TRUE(IsCloseRelAbs(expected_z, vertex.z(), kTolerance))
+        << "vertex " << vertex_index;
+  }
+
+  // The polygon closes: the last vertex repeats the first.
+  const Vector3d &first_vertex = polygon_filament->vertices(0);
+  const Vector3d &last_vertex =
+      polygon_filament->vertices(kNumSamplingPoints - 1);
+  EXPECT_TRUE(IsCloseRelAbs(first_vertex.x(), last_vertex.x(), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(first_vertex.y(), last_vertex.y(), kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(first_vertex.z(), last_vertex.z(), kTolerance));
+}  // CheckToPolygonFilamentSampling
+
+// A FourierFilament missing any of its required parts is rejected, and the
+// rejection reaches IsMagneticConfigurationFullyPopulated.
+TEST(TestMagneticConfigurationLib, CheckIsFourierFilamentFullyPopulated) {
+  FourierFilament fourier_filament;
+  EXPECT_FALSE(IsFourierFilamentFullyPopulated(fourier_filament).ok());
+
+  CurveRZFourier *geometry = fourier_filament.mutable_geometry();
+  FourierCoefficient1D *coefficient_r = geometry->add_r();
+  coefficient_r->set_mode_number(0);
+  coefficient_r->set_fc_cos(1.0);
+  coefficient_r->set_fc_sin(0.0);
+  FourierCoefficient1D *coefficient_z = geometry->add_z();
+  coefficient_z->set_mode_number(0);
+  coefficient_z->set_fc_cos(0.0);
+  coefficient_z->set_fc_sin(0.0);
+
+  // Geometry alone is not enough: the sampling count is still missing.
+  EXPECT_FALSE(IsFourierFilamentFullyPopulated(fourier_filament).ok());
+
+  fourier_filament.set_num_sampling_points(2);
+  EXPECT_FALSE(IsFourierFilamentFullyPopulated(fourier_filament).ok());
+
+  fourier_filament.set_num_sampling_points(3);
+  EXPECT_TRUE(IsFourierFilamentFullyPopulated(fourier_filament).ok());
+
+  MagneticConfiguration magnetic_configuration;
+  SerialCircuit *serial_circuit = magnetic_configuration.add_serial_circuits();
+  serial_circuit->set_current(1.0);
+  Coil *coil = serial_circuit->add_coils();
+  coil->set_num_windings(1.0);
+  CurrentCarrier *current_carrier = coil->add_current_carriers();
+  current_carrier->set_fourier_filament(fourier_filament);
+
+  ASSERT_TRUE(current_carrier->has_fourier_filament());
+  EXPECT_TRUE(
+      IsMagneticConfigurationFullyPopulated(magnetic_configuration).ok());
+
+  current_carrier->mutable_fourier_filament()->clear_num_sampling_points();
+  EXPECT_FALSE(
+      IsMagneticConfigurationFullyPopulated(magnetic_configuration).ok());
+}  // CheckIsFourierFilamentFullyPopulated
 
 }  // namespace magnetics

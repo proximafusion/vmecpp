@@ -4,7 +4,9 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <string>
 #include <tuple>
@@ -25,6 +27,7 @@ namespace magnetics {
 
 using composed_types::CurveRZFourier;
 using composed_types::CurveRZFourierFromCsv;
+using composed_types::FourierCoefficient1D;
 using composed_types::Vector3d;
 using file_io::ReadFile;
 
@@ -684,9 +687,230 @@ TEST(TestMagneticField, CheckPolygonFilamentAgainstDirectAbscab) {
   }
 }  // MagneticField: CheckPolygonFilamentAgainstDirectAbscab
 
+namespace {
+
+// A FourierFilament describing a circle of the given radius in the plane
+// z = z_offset, centered on the machine axis. Only the m = 0 coefficients are
+// populated, so R(phi) and Z(phi) are constant and the curve is exactly the
+// circle a CircularFilament with the same radius describes. That makes the
+// closed-form circular filament an independent reference for it.
+FourierFilament CircleAsFourierFilament(double radius, double z_offset,
+                                        int num_sampling_points) {
+  FourierFilament fourier_filament;
+  fourier_filament.set_num_sampling_points(num_sampling_points);
+
+  CurveRZFourier *geometry = fourier_filament.mutable_geometry();
+
+  FourierCoefficient1D *coefficient_r = geometry->add_r();
+  coefficient_r->set_mode_number(0);
+  coefficient_r->set_fc_cos(radius);
+  coefficient_r->set_fc_sin(0.0);
+
+  FourierCoefficient1D *coefficient_z = geometry->add_z();
+  coefficient_z->set_mode_number(0);
+  coefficient_z->set_fc_cos(z_offset);
+  coefficient_z->set_fc_sin(0.0);
+
+  return fourier_filament;
+}
+
+// The CircularFilament the above describes.
+CircularFilament CircleAsCircularFilament(double radius, double z_offset) {
+  CircularFilament circular_filament;
+  circular_filament.set_radius(radius);
+
+  Vector3d *center = circular_filament.mutable_center();
+  center->set_x(0.0);
+  center->set_y(0.0);
+  center->set_z(z_offset);
+
+  Vector3d *normal = circular_filament.mutable_normal();
+  normal->set_x(0.0);
+  normal->set_y(0.0);
+  normal->set_z(1.0);
+
+  return circular_filament;
+}
+
+// Evaluation locations well away from the filament, where a polygon
+// discretization of it converges quickly.
+std::vector<std::vector<double> > EvaluationLocationsAroundCircle() {
+  return {
+      {0.0, 0.0, 0.0}, {0.0, 0.0, 1.5},     {0.5, 0.25, 0.75},
+      {2.5, 0.0, 0.0}, {-1.75, 1.25, -2.0}, {0.1, -0.2, 3.0},
+  };
+}
+
+std::vector<std::vector<double> > ZeroedTarget(std::size_t size) {
+  return std::vector<std::vector<double> >(size, std::vector<double>(3, 0.0));
+}
+
+// Largest absolute deviation between two point sets.
+double MaximumDeviation(const std::vector<std::vector<double> > &actual,
+                        const std::vector<std::vector<double> > &expected) {
+  double maximum_deviation = 0.0;
+  for (std::size_t i = 0; i < actual.size(); ++i) {
+    for (int j = 0; j < 3; ++j) {
+      maximum_deviation =
+          std::max(maximum_deviation, std::abs(actual[i][j] - expected[i][j]));
+    }
+  }
+  return maximum_deviation;
+}
+
+}  // namespace
+
+// A FourierFilament that describes a circle has to reproduce the closed form
+// for a circular loop as the sampling is refined. The polygon through n points
+// on a circle has a segment length proportional to 1/n, so the error falls off
+// as 1/n^2: an eightfold refinement has to buy about a factor of 64.
 TEST(TestMagneticField, CheckFourierFilament) {
-  // TODO(jons): implement
+  static constexpr double kCurrent = 17.4;
+  static constexpr double kRadius = 1.23;
+  static constexpr double kZOffset = 0.37;
+  static constexpr int kCoarseSamplingPoints = 64;
+  static constexpr int kFineSamplingPoints =
+      8 * (kCoarseSamplingPoints - 1) + 1;
+
+  const std::vector<std::vector<double> > evaluation_positions =
+      EvaluationLocationsAroundCircle();
+
+  std::vector<std::vector<double> > magnetic_field_reference =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_TRUE(MagneticField(CircleAsCircularFilament(kRadius, kZOffset),
+                            kCurrent, evaluation_positions,
+                            magnetic_field_reference)
+                  .ok());
+
+  // The reference is not trivially zero.
+  EXPECT_GT(MaximumDeviation(magnetic_field_reference,
+                             ZeroedTarget(evaluation_positions.size())),
+            1.0e-7);
+
+  std::vector<std::vector<double> > magnetic_field_coarse =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_TRUE(
+      MagneticField(
+          CircleAsFourierFilament(kRadius, kZOffset, kCoarseSamplingPoints),
+          kCurrent, evaluation_positions, magnetic_field_coarse)
+          .ok());
+
+  std::vector<std::vector<double> > magnetic_field_fine =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_TRUE(MagneticField(CircleAsFourierFilament(kRadius, kZOffset,
+                                                    kFineSamplingPoints),
+                            kCurrent, evaluation_positions, magnetic_field_fine)
+                  .ok());
+
+  const double coarse_deviation =
+      MaximumDeviation(magnetic_field_coarse, magnetic_field_reference);
+  const double fine_deviation =
+      MaximumDeviation(magnetic_field_fine, magnetic_field_reference);
+
+  EXPECT_GT(coarse_deviation, 0.0);
+  EXPECT_LT(fine_deviation, coarse_deviation / 32.0)
+      << "coarse=" << coarse_deviation << " fine=" << fine_deviation;
+  EXPECT_LT(fine_deviation, 1.0e-9);
 }  // MagneticField: CheckFourierFilament
+
+// A FourierFilament is evaluated as the closed polygon through its sampling
+// points, so it has to agree exactly with that polygon rather than only
+// approximately.
+TEST(TestMagneticField, CheckFourierFilamentMatchesItsPolygon) {
+  static constexpr double kCurrent = -3.5;
+  static constexpr int kNumSamplingPoints = 41;
+
+  // A non-circular curve, so the comparison is not degenerate: R and Z both
+  // carry an m = 1 shaping term on top of the m = 0 offset.
+  FourierFilament fourier_filament =
+      CircleAsFourierFilament(1.5, 0.2, kNumSamplingPoints);
+  CurveRZFourier *geometry = fourier_filament.mutable_geometry();
+
+  FourierCoefficient1D *coefficient_r = geometry->add_r();
+  coefficient_r->set_mode_number(1);
+  coefficient_r->set_fc_cos(0.3);
+  coefficient_r->set_fc_sin(0.1);
+
+  FourierCoefficient1D *coefficient_z = geometry->add_z();
+  coefficient_z->set_mode_number(1);
+  coefficient_z->set_fc_cos(0.05);
+  coefficient_z->set_fc_sin(0.4);
+
+  absl::StatusOr<PolygonFilament> polygon_filament =
+      ToPolygonFilament(fourier_filament);
+  ASSERT_TRUE(polygon_filament.ok());
+  EXPECT_EQ(polygon_filament->vertices_size(), kNumSamplingPoints);
+
+  // The polygon closes: the last vertex repeats the first.
+  const Vector3d &first_vertex = polygon_filament->vertices(0);
+  const Vector3d &last_vertex =
+      polygon_filament->vertices(kNumSamplingPoints - 1);
+  EXPECT_TRUE(IsCloseRelAbs(first_vertex.x(), last_vertex.x(), 1.0e-14));
+  EXPECT_TRUE(IsCloseRelAbs(first_vertex.y(), last_vertex.y(), 1.0e-14));
+  EXPECT_TRUE(IsCloseRelAbs(first_vertex.z(), last_vertex.z(), 1.0e-14));
+
+  const std::vector<std::vector<double> > evaluation_positions =
+      EvaluationLocationsAroundCircle();
+
+  std::vector<std::vector<double> > magnetic_field_fourier =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_TRUE(MagneticField(fourier_filament, kCurrent, evaluation_positions,
+                            magnetic_field_fourier)
+                  .ok());
+
+  std::vector<std::vector<double> > magnetic_field_polygon =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_TRUE(MagneticField(*polygon_filament, kCurrent, evaluation_positions,
+                            magnetic_field_polygon)
+                  .ok());
+
+  EXPECT_GT(MaximumDeviation(magnetic_field_polygon,
+                             ZeroedTarget(evaluation_positions.size())),
+            1.0e-7);
+
+  for (std::size_t i = 0; i < evaluation_positions.size(); ++i) {
+    for (int j = 0; j < 3; ++j) {
+      EXPECT_EQ(magnetic_field_fourier[i][j], magnetic_field_polygon[i][j]);
+    }
+  }
+}  // MagneticField: CheckFourierFilamentMatchesItsPolygon
+
+// An underspecified FourierFilament is rejected, and nothing is written to the
+// target when it is.
+TEST(TestMagneticField, CheckFourierFilamentRejectsIncompleteInput) {
+  static constexpr double kCurrent = 1.0;
+
+  const std::vector<std::vector<double> > evaluation_positions =
+      EvaluationLocationsAroundCircle();
+
+  // No geometry.
+  FourierFilament without_geometry;
+  without_geometry.set_num_sampling_points(16);
+  std::vector<std::vector<double> > magnetic_field =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_FALSE(MagneticField(without_geometry, kCurrent, evaluation_positions,
+                             magnetic_field)
+                   .ok());
+  EXPECT_EQ(MaximumDeviation(magnetic_field,
+                             ZeroedTarget(evaluation_positions.size())),
+            0.0);
+
+  // No sampling point count.
+  FourierFilament without_sampling_points =
+      CircleAsFourierFilament(1.0, 0.0, 16);
+  without_sampling_points.clear_num_sampling_points();
+  EXPECT_FALSE(MagneticField(without_sampling_points, kCurrent,
+                             evaluation_positions, magnetic_field)
+                   .ok());
+
+  // Too few sampling points to enclose anything.
+  EXPECT_FALSE(MagneticField(CircleAsFourierFilament(1.0, 0.0, 2), kCurrent,
+                             evaluation_positions, magnetic_field)
+                   .ok());
+  EXPECT_EQ(MaximumDeviation(magnetic_field,
+                             ZeroedTarget(evaluation_positions.size())),
+            0.0);
+}  // MagneticField: CheckFourierFilamentRejectsIncompleteInput
 
 // ---------------------
 
@@ -1054,9 +1278,105 @@ TEST(TestVectorPotential, CheckPolygonFilamentAgainstDirectAbscab) {
   }
 }  // VectorPotential: CheckPolygonFilamentAgainstDirectAbscab
 
+// The same two checks for the magnetic vector potential: convergence to the
+// closed form for a circular loop, and exact agreement with the polygon the
+// filament is sampled into.
 TEST(TestVectorPotential, CheckFourierFilament) {
-  // TODO(jons): implement
+  static constexpr double kCurrent = 17.4;
+  static constexpr double kRadius = 1.23;
+  static constexpr double kZOffset = 0.37;
+  static constexpr int kCoarseSamplingPoints = 64;
+  static constexpr int kFineSamplingPoints =
+      8 * (kCoarseSamplingPoints - 1) + 1;
+
+  const std::vector<std::vector<double> > evaluation_positions =
+      EvaluationLocationsAroundCircle();
+
+  std::vector<std::vector<double> > vector_potential_reference =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_TRUE(VectorPotential(CircleAsCircularFilament(kRadius, kZOffset),
+                              kCurrent, evaluation_positions,
+                              vector_potential_reference)
+                  .ok());
+
+  EXPECT_GT(MaximumDeviation(vector_potential_reference,
+                             ZeroedTarget(evaluation_positions.size())),
+            1.0e-7);
+
+  std::vector<std::vector<double> > vector_potential_coarse =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_TRUE(
+      VectorPotential(
+          CircleAsFourierFilament(kRadius, kZOffset, kCoarseSamplingPoints),
+          kCurrent, evaluation_positions, vector_potential_coarse)
+          .ok());
+
+  std::vector<std::vector<double> > vector_potential_fine =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_TRUE(
+      VectorPotential(
+          CircleAsFourierFilament(kRadius, kZOffset, kFineSamplingPoints),
+          kCurrent, evaluation_positions, vector_potential_fine)
+          .ok());
+
+  const double coarse_deviation =
+      MaximumDeviation(vector_potential_coarse, vector_potential_reference);
+  const double fine_deviation =
+      MaximumDeviation(vector_potential_fine, vector_potential_reference);
+
+  EXPECT_GT(coarse_deviation, 0.0);
+  EXPECT_LT(fine_deviation, coarse_deviation / 32.0)
+      << "coarse=" << coarse_deviation << " fine=" << fine_deviation;
+  EXPECT_LT(fine_deviation, 1.0e-9);
 }  // VectorPotential: CheckFourierFilament
+
+TEST(TestVectorPotential, CheckFourierFilamentMatchesItsPolygon) {
+  static constexpr double kCurrent = -3.5;
+  static constexpr int kNumSamplingPoints = 41;
+
+  FourierFilament fourier_filament =
+      CircleAsFourierFilament(1.5, 0.2, kNumSamplingPoints);
+  CurveRZFourier *geometry = fourier_filament.mutable_geometry();
+
+  FourierCoefficient1D *coefficient_r = geometry->add_r();
+  coefficient_r->set_mode_number(1);
+  coefficient_r->set_fc_cos(0.3);
+  coefficient_r->set_fc_sin(0.1);
+
+  FourierCoefficient1D *coefficient_z = geometry->add_z();
+  coefficient_z->set_mode_number(1);
+  coefficient_z->set_fc_cos(0.05);
+  coefficient_z->set_fc_sin(0.4);
+
+  absl::StatusOr<PolygonFilament> polygon_filament =
+      ToPolygonFilament(fourier_filament);
+  ASSERT_TRUE(polygon_filament.ok());
+
+  const std::vector<std::vector<double> > evaluation_positions =
+      EvaluationLocationsAroundCircle();
+
+  std::vector<std::vector<double> > vector_potential_fourier =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_TRUE(VectorPotential(fourier_filament, kCurrent, evaluation_positions,
+                              vector_potential_fourier)
+                  .ok());
+
+  std::vector<std::vector<double> > vector_potential_polygon =
+      ZeroedTarget(evaluation_positions.size());
+  EXPECT_TRUE(VectorPotential(*polygon_filament, kCurrent, evaluation_positions,
+                              vector_potential_polygon)
+                  .ok());
+
+  EXPECT_GT(MaximumDeviation(vector_potential_polygon,
+                             ZeroedTarget(evaluation_positions.size())),
+            1.0e-7);
+
+  for (std::size_t i = 0; i < evaluation_positions.size(); ++i) {
+    for (int j = 0; j < 3; ++j) {
+      EXPECT_EQ(vector_potential_fourier[i][j], vector_potential_polygon[i][j]);
+    }
+  }
+}  // VectorPotential: CheckFourierFilamentMatchesItsPolygon
 
 // ------------------
 

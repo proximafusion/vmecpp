@@ -266,6 +266,32 @@ absl::Status MagneticField(
 }  // MagneticField for PolygonFilament
 
 absl::Status MagneticField(
+    const FourierFilament& fourier_filament, double current,
+    const std::vector<std::vector<double>>& evaluation_positions,
+    std::vector<std::vector<double>>& m_magnetic_field,
+    bool check_current_carrier) {
+  if (check_current_carrier) {
+    absl::Status status = IsFourierFilamentFullyPopulated(fourier_filament);
+    if (!status.ok()) {
+      // Do not modify m_magnetic_field if the current carrier is not
+      // well-defined.
+      return status;
+    }
+  }
+
+  // ToPolygonFilament validates the filament again, which is what makes it safe
+  // to call with check_current_carrier set to false.
+  absl::StatusOr<PolygonFilament> polygon_filament =
+      ToPolygonFilament(fourier_filament);
+  if (!polygon_filament.ok()) {
+    return polygon_filament.status();
+  }
+
+  return MagneticField(*polygon_filament, current, evaluation_positions,
+                       m_magnetic_field, /*check_current_carrier=*/false);
+}  // MagneticField for FourierFilament
+
+absl::Status MagneticField(
     const MagneticConfiguration& magnetic_configuration,
     const std::vector<std::vector<double>>& evaluation_positions,
     std::vector<std::vector<double>>& m_magnetic_field,
@@ -313,6 +339,11 @@ absl::Status MagneticField(
             break;
           case CurrentCarrier::TypeCase::kPolygonFilament:
             CHECK_OK(MagneticField(current_carrier.polygon_filament(), current,
+                                   evaluation_positions, m_magnetic_field,
+                                   false));
+            break;
+          case CurrentCarrier::TypeCase::kFourierFilament:
+            CHECK_OK(MagneticField(current_carrier.fourier_filament(), current,
                                    evaluation_positions, m_magnetic_field,
                                    false));
             break;
@@ -462,6 +493,30 @@ absl::Status VectorPotential(
 }  // VectorPotential for PolygonFilament
 
 absl::Status VectorPotential(
+    const FourierFilament& fourier_filament, double current,
+    const std::vector<std::vector<double>>& evaluation_positions,
+    std::vector<std::vector<double>>& m_vector_potential,
+    bool check_current_carrier) {
+  if (check_current_carrier) {
+    absl::Status status = IsFourierFilamentFullyPopulated(fourier_filament);
+    if (!status.ok()) {
+      // Do not modify m_vector_potential if the current carrier is not
+      // well-defined.
+      return status;
+    }
+  }
+
+  absl::StatusOr<PolygonFilament> polygon_filament =
+      ToPolygonFilament(fourier_filament);
+  if (!polygon_filament.ok()) {
+    return polygon_filament.status();
+  }
+
+  return VectorPotential(*polygon_filament, current, evaluation_positions,
+                         m_vector_potential, /*check_current_carrier=*/false);
+}  // VectorPotential for FourierFilament
+
+absl::Status VectorPotential(
     const MagneticConfiguration& magnetic_configuration,
     const std::vector<std::vector<double>>& evaluation_positions,
     std::vector<std::vector<double>>& m_vector_potential,
@@ -528,6 +583,11 @@ absl::Status VectorPotential(
             break;
           case CurrentCarrier::TypeCase::kPolygonFilament:
             CHECK_OK(VectorPotential(current_carrier.polygon_filament(),
+                                     current, evaluation_positions,
+                                     m_vector_potential, false));
+            break;
+          case CurrentCarrier::TypeCase::kFourierFilament:
+            CHECK_OK(VectorPotential(current_carrier.fourier_filament(),
                                      current, evaluation_positions,
                                      m_vector_potential, false));
             break;
