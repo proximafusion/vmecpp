@@ -11,9 +11,11 @@ cc_test(
     deps = [
         "//vmecpp/free_boundary/mgrid_provider",
         "@googletest//:gtest_main",
+        "@abseil-cpp//absl/status:status",
         "//util/file_io:file_io",
         "//util/testing:numerical_comparison_lib",
         "//vmecpp/common/magnetic_configuration_lib:magnetic_configuration_lib",
         "//vmecpp/common/magnetic_field_provider:magnetic_field_provider_lib",
+        "//vmecpp/common/vmec_indata:vmec_indata",
     ],
 )

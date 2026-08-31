@@ -8,6 +8,7 @@
 #include <span>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
@@ -36,7 +37,8 @@ class FreeBoundaryBase {
         vacuum_b_phi_share_(vacuum_b_phi_share),
         vacuum_b_z_share_(vacuum_b_z_share) {}
 
-  virtual bool update(
+  // True at the debug checkpoint; error status if the vacuum solve failed.
+  virtual absl::StatusOr<bool> update(
       const std::span<const double> rCC, const std::span<const double> rSS,
       const std::span<const double> rSC, const std::span<const double> rCS,
       const std::span<const double> zSC, const std::span<const double> zCS,

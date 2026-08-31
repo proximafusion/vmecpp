@@ -47,15 +47,17 @@ ExternalMagneticField::ExternalMagneticField(const Sizes* s,
 }
 
 // rAxis, zAxis are provided over a single module
-void ExternalMagneticField::update(const std::span<const double> rAxis,
-                                   const std::span<const double> zAxis,
-                                   double netToroidalCurrent) {
+absl::Status ExternalMagneticField::update(const std::span<const double> rAxis,
+                                           const std::span<const double> zAxis,
+                                           double netToroidalCurrent) {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
 
-  mgrid_.interpolate(tp_.ztMin, tp_.ztMax, s_.nZeta, sg_.r1b, sg_.z1b, interpBr,
-                     interpBp, interpBz);
+  // Not returned here: the barriers below are collective over the team.
+  absl::Status interpolation_status =
+      mgrid_.interpolate(tp_.ztMin, tp_.ztMax, s_.nZeta, s_.nZnT, sg_.r1b,
+                         sg_.z1b, interpBr, interpBp, interpBz);
 
 #ifdef _OPENMP
 #pragma omp barrier
@@ -76,6 +78,8 @@ void ExternalMagneticField::update(const std::span<const double> rAxis,
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+
+  return interpolation_status;
 }
 
 // add in contribution from net toroidal current along magnetic axis

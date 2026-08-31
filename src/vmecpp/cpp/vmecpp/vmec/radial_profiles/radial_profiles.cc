@@ -232,8 +232,6 @@ RadialProfiles::RadialProfiles(const RadialPartitioning* r,
   piotaType = ProfileParameterization::INVALID_PARAM;
   pcurrType = ProfileParameterization::INVALID_PARAM;
 
-  setupProfileParameterizations();
-
   // half-grid
   phipH.resize(r_.nsMaxH - r_.nsMinH);
   chipH.resize(r_.nsMaxH - r_.nsMinH);
@@ -285,121 +283,20 @@ void RadialProfiles::setupInputProfiles() {
   computeMagneticFluxes();
 }
 
-void RadialProfiles::setupProfileParameterizations() {
-  // clang-format off
-  //                       current | iota | pressure
-  //                       --------+------+---------
-  // INVALID_PARAM                 |      |
-  // POWER_SERIES          I-prime |   X  |     X
-  // POWER_SERIES_I        I       |      |
-  // GAUSS_TRUNC           I-prime |      |     X
-  // SUM_ATAN              I       |   X  |
-  // TWO_LORENTZ                   |      |     X
-  // TWO_POWER             I-prime |      |     X
-  // TWO_POWER_GS          I-prime |      |     X
-  // AKIMA_SPLINE                  |   X  |     X
-  // AKIMA_SPLINE_I        I       |      |
-  // AKIMA_SPLINE_IP       I-prime |      |
-  // CUBIC_SPLINE                  |   X  |     X
-  // CUBIC_SPLINE_I        I       |      |
-  // CUBIC_SPLINE_IP       I-prime |      |
-  // PEDESTAL              I       |      |     X
-  // RATIONAL              I       |   X  |     X
-  // LINE_SEGMENT                  |   X  |     X
-  // LINE_SEGMENT_I        I       |      |
-  // LINE_SEGMENT_IP       I-prime |      |
-  // NICE_QUADRATIC                |   X  |
-  // SUM_COSSQ_S           I-prime |      |
-  // SUM_COSSQ_SQRTS       I-prime |      |
-  // SUM_COSSQ_S_FREE      I-prime |      |
-  // clang-format on
-
-  ALL_PARAMS.reserve(NUM_PARAM);
-  ALL_PARAMS.emplace_back("---invalid---", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ false, /*allowedForIota*/ false,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("power_series", /*allowedForPres=*/true,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ true,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("power_series_i", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("gauss_trunc", /*allowedForPres=*/true,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("sum_atan", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ true,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("two_lorentz", /*allowedForPres=*/true,
-                          /*allowedForCurr*/ false, /*allowedForIota*/ false,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("two_power", /*allowedForPres=*/true,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("two_power_gs", /*allowedForPres=*/true,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("akima_spline", /*allowedForPres=*/true,
-                          /*allowedForCurr*/ false, /*allowedForIota*/ true,
-                          /*needsSplineData*/ true);
-  ALL_PARAMS.emplace_back("akima_spline_i", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ true);
-  ALL_PARAMS.emplace_back("akima_spline_ip", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ true);
-  ALL_PARAMS.emplace_back("cubic_spline", /*allowedForPres=*/true,
-                          /*allowedForCurr*/ false, /*allowedForIota*/ true,
-                          /*needsSplineData*/ true);
-  ALL_PARAMS.emplace_back("cubic_spline_i", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ true);
-  ALL_PARAMS.emplace_back("cubic_spline_ip", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ true);
-  ALL_PARAMS.emplace_back("pedestal", /*allowedForPres=*/true,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("rational", /*allowedForPres=*/true,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ true,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("line_segment", /*allowedForPres=*/true,
-                          /*allowedForCurr*/ false, /*allowedForIota*/ true,
-                          /*needsSplineData*/ true);
-  ALL_PARAMS.emplace_back("line_segment_i", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ true);
-  ALL_PARAMS.emplace_back("line_segment_ip", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ true);
-  ALL_PARAMS.emplace_back("nice_quadratic", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ false, /*allowedForIota*/ true,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("sum_cossq_s", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("sum_cossq_sqrts", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ false);
-  ALL_PARAMS.emplace_back("sum_cossq_s_free", /*allowedForPres=*/false,
-                          /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                          /*needsSplineData*/ false);
-}
-
 ProfileParameterization RadialProfiles::findParameterization(
     const std::string& name, ProfileType intendedType) {
   for (int i = 0; i < NUM_PARAM; ++i) {
-    if (name == ALL_PARAMS[i].Name()) {
+    if (name == AllProfileParameterizations()[i].Name()) {
       bool isApplicable = false;
       switch (intendedType) {
         case ProfileType::PRESSURE:
-          isApplicable = ALL_PARAMS[i].IsAllowedFor().pres;
+          isApplicable = AllProfileParameterizations()[i].IsAllowedFor().pres;
           break;
         case ProfileType::CURRENT:
-          isApplicable = ALL_PARAMS[i].IsAllowedFor().curr;
+          isApplicable = AllProfileParameterizations()[i].IsAllowedFor().curr;
           break;
         case ProfileType::IOTA:
-          isApplicable = ALL_PARAMS[i].IsAllowedFor().iota;
+          isApplicable = AllProfileParameterizations()[i].IsAllowedFor().iota;
           break;
         default:
           std::cerr << absl::StrFormat("unknown profile: %s",
@@ -411,7 +308,7 @@ ProfileParameterization RadialProfiles::findParameterization(
       if (!isApplicable) {
         std::cerr << absl::StrFormat(
                          "profile name '%s' is not applicable for %s profile",
-                         ALL_PARAMS[i].Name(),
+                         AllProfileParameterizations()[i].Name(),
                          profileTypeToString(intendedType))
                   << '\n';
         return ProfileParameterization::INVALID_PARAM;
@@ -603,10 +500,11 @@ double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
     case ProfileParameterization::SUM_COSSQ_SQRTS:
     case ProfileParameterization::SUM_COSSQ_S_FREE:
     default:
-      std::cerr << absl::StrFormat(
-                       "profile parameterization '%s' not implemented yet",
-                       ALL_PARAMS[static_cast<int>(param)].Name())
-                << '\n';
+      std::cerr
+          << absl::StrFormat(
+                 "profile parameterization '%s' not implemented yet",
+                 AllProfileParameterizations()[static_cast<int>(param)].Name())
+          << '\n';
   }
 
   return 0.0;

@@ -23,6 +23,7 @@ cc_library(
     deps = [
         ":boundary_from_json",
         "//vmecpp/common/util:util",
+        "//vmecpp/vmec/profile_parameterization_data",
         "//util/hdf5_io",
         "//util/file_io",
         "@abseil-cpp//absl/algorithm:container",
