@@ -437,6 +437,12 @@ absl::StatusOr<std::vector<bool>> IsTooCloseToCurrentCarrierForComparison(
 struct MakegridReferenceTestParams {
   bool normalize_by_currents;
   std::string reference_nc_file;
+  // Defaults describe coils.test_symmetric_even; the other cases override them
+  // to match their own MGRID_NLI namelist.
+  std::string coils_file =
+      "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_even";
+  bool assume_stellarator_symmetry = true;
+  int number_of_phi_grid_points = 18;
 };
 
 // Shared setup used by both B-field and vector-potential parameterized suites.
@@ -446,17 +452,19 @@ struct MakegridReferenceTestFixture
     : public ::testing::TestWithParam<MakegridReferenceTestParams> {
   // NOTE: These parameters have to be consistent with the MGRID_NLI namelist
   // in the `coils.test_*` input files.
-  static MakegridParameters MakeParams(bool normalize_by_currents) {
-    return {.normalize_by_currents = normalize_by_currents,
-            .assume_stellarator_symmetry = true,
-            .number_of_field_periods = 5,
-            .r_grid_minimum = 1.0,
-            .r_grid_maximum = 2.0,
-            .number_of_r_grid_points = 11,
-            .z_grid_minimum = -0.6,
-            .z_grid_maximum = 0.6,
-            .number_of_z_grid_points = 13,
-            .number_of_phi_grid_points = 18};
+  static MakegridParameters MakeParams(
+      const MakegridReferenceTestParams& test_params) {
+    return {
+        .normalize_by_currents = test_params.normalize_by_currents,
+        .assume_stellarator_symmetry = test_params.assume_stellarator_symmetry,
+        .number_of_field_periods = 5,
+        .r_grid_minimum = 1.0,
+        .r_grid_maximum = 2.0,
+        .number_of_r_grid_points = 11,
+        .z_grid_minimum = -0.6,
+        .z_grid_maximum = 0.6,
+        .number_of_z_grid_points = 13,
+        .number_of_phi_grid_points = test_params.number_of_phi_grid_points};
   }
 };
 
@@ -469,11 +477,11 @@ TEST_P(CheckComputeMagneticFieldResponseTable, MatchesFortranReference) {
   static constexpr double kTolerance = 1.0e-6;
 
   const MakegridReferenceTestParams& p = GetParam();
-  const MakegridParameters makegrid_parameters =
-      MakeParams(p.normalize_by_currents);
+  const MakegridParameters makegrid_parameters = MakeParams(p);
 
   ASSERT_EQ(makegrid_parameters.normalize_by_currents, p.normalize_by_currents);
-  ASSERT_TRUE(makegrid_parameters.assume_stellarator_symmetry);
+  ASSERT_EQ(makegrid_parameters.assume_stellarator_symmetry,
+            p.assume_stellarator_symmetry);
   ASSERT_EQ(makegrid_parameters.number_of_field_periods, 5);
   ASSERT_EQ(makegrid_parameters.r_grid_minimum, 1.0);
   ASSERT_EQ(makegrid_parameters.r_grid_maximum, 2.0);
@@ -481,11 +489,11 @@ TEST_P(CheckComputeMagneticFieldResponseTable, MatchesFortranReference) {
   ASSERT_EQ(makegrid_parameters.z_grid_minimum, -0.6);
   ASSERT_EQ(makegrid_parameters.z_grid_maximum, 0.6);
   ASSERT_EQ(makegrid_parameters.number_of_z_grid_points, 13);
-  ASSERT_EQ(makegrid_parameters.number_of_phi_grid_points, 18);
+  ASSERT_EQ(makegrid_parameters.number_of_phi_grid_points,
+            p.number_of_phi_grid_points);
 
   absl::StatusOr<MagneticConfiguration> magnetic_configuration =
-      ImportMagneticConfigurationFromCoilsFile(
-          "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_even");
+      ImportMagneticConfigurationFromCoilsFile(p.coils_file);
   ASSERT_OK(magnetic_configuration);
 
   const int number_of_serial_circuits =
@@ -614,6 +622,22 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.normalize_by_currents ? "Scaled" : "Raw";
     });
 
+// The stellarator symmetry of the coil set is not exploited here, so the whole
+// toroidal range is evaluated directly rather than mirrored from a half period.
+INSTANTIATE_TEST_SUITE_P(
+    NonSymmetric, CheckComputeMagneticFieldResponseTable,
+    ::testing::Values(MakegridReferenceTestParams{
+        .normalize_by_currents = false,
+        .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                             "mgrid_test_non_symmetric.nc",
+        .coils_file =
+            "vmecpp/common/makegrid_lib/test_data/coils.test_non_symmetric",
+        .assume_stellarator_symmetry = false,
+        .number_of_phi_grid_points = 18}),
+    [](const ::testing::TestParamInfo<MakegridReferenceTestParams>& info) {
+      return info.param.normalize_by_currents ? "Scaled" : "Raw";
+    });
+
 // Parameterized test: vector-potential cache vs. Fortran MAKEGRID reference.
 // Covers both mgrid_mode='R' (raw, normalize_by_currents=false) and
 // mgrid_mode='S' (scaled, normalize_by_currents=true).
@@ -623,12 +647,10 @@ TEST_P(CheckComputeVectorPotentialCache, MatchesFortranReference) {
   static constexpr double kTolerance = 1.0e-6;
 
   const MakegridReferenceTestParams& p = GetParam();
-  const MakegridParameters makegrid_parameters =
-      MakeParams(p.normalize_by_currents);
+  const MakegridParameters makegrid_parameters = MakeParams(p);
 
   absl::StatusOr<MagneticConfiguration> magnetic_configuration =
-      ImportMagneticConfigurationFromCoilsFile(
-          "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_even");
+      ImportMagneticConfigurationFromCoilsFile(p.coils_file);
   ASSERT_OK(magnetic_configuration);
 
   const int number_of_serial_circuits =
@@ -768,9 +790,25 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.normalize_by_currents ? "Scaled" : "Raw";
     });
 
-// TODO(jons): implement test of non-stellarator-symmetric mgrid file
+INSTANTIATE_TEST_SUITE_P(
+    NonSymmetric, CheckComputeVectorPotentialCache,
+    ::testing::Values(MakegridReferenceTestParams{
+        .normalize_by_currents = false,
+        .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                             "mgrid_test_non_symmetric.nc",
+        .coils_file =
+            "vmecpp/common/makegrid_lib/test_data/coils.test_non_symmetric",
+        .assume_stellarator_symmetry = false,
+        .number_of_phi_grid_points = 18}),
+    [](const ::testing::TestParamInfo<MakegridReferenceTestParams>& info) {
+      return info.param.normalize_by_currents ? "Scaled" : "Raw";
+    });
+
 // TODO(jons): implement test of stellarator-symmetric mgrid file using
-// symmetric C++ implementation
+// symmetric C++ implementation. mgrid_test_symmetric_odd.nc is the reference,
+// but MakeCylindricalGrid rejects an odd number_of_phi_grid_points whenever
+// stellarator symmetry is requested, so the half-period mirror needs to handle
+// a grid with no exact midpoint first.
 
 // TODO(jons): add test of WriteMakegridNetCDFFile
 // -> in particular, make sure that the consistency of number of serial circuits
