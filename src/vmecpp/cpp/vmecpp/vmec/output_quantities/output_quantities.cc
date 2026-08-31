@@ -894,8 +894,8 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(equif);
   WRITEMEMBER(curlabel);
   WRITEMEMBER(potvac);
-  WRITEMEMBER(xm_pot);
-  WRITEMEMBER(xn_pot);
+  WRITEMEMBER(xmpot);
+  WRITEMEMBER(xnpot);
   WRITEMEMBER(xm);
   WRITEMEMBER(xn);
   WRITEMEMBER(xm_nyq);
@@ -1064,8 +1064,8 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(equif);
   READMEMBER(curlabel);
   READMEMBER(potvac);
-  READMEMBER_OPTIONAL(xm_pot);
-  READMEMBER_OPTIONAL(xn_pot);
+  READMEMBER_OPTIONAL(xmpot);
+  READMEMBER_OPTIONAL(xnpot);
   READMEMBER(xm);
   READMEMBER(xn);
   READMEMBER(xm_nyq);
@@ -4554,12 +4554,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       wout.potvac.head(vacuum_potential.size()) = vacuum_potential;
     }
 
-    // Nestor walks mn with m fastest; xn_pot carries the nfp factor, like xn.
-    wout.xm_pot = Eigen::VectorXi::Zero(mnpd);
-    wout.xn_pot = Eigen::VectorXi::Zero(mnpd);
+    // Nestor walks mn with m fastest; xnpot carries the nfp factor, like xn.
+    wout.xmpot = Eigen::VectorXi::Zero(mnpd);
+    wout.xnpot = Eigen::VectorXi::Zero(mnpd);
     for (int mn = 0; mn < mnpd; ++mn) {
-      wout.xm_pot[mn] = mn % (mf + 1);
-      wout.xn_pot[mn] = (mn / (mf + 1) - nf) * s.nfp;
+      wout.xmpot[mn] = mn % (mf + 1);
+      wout.xnpot[mn] = (mn / (mf + 1) - nf) * s.nfp;
     }
   }
 

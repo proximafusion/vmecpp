@@ -1039,8 +1039,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("curlabel", &vmecpp::WOutFileContents::curlabel)
       //
       .def_readwrite("potvac", &vmecpp::WOutFileContents::potvac)
-      .def_readwrite("xm_pot", &vmecpp::WOutFileContents::xm_pot)
-      .def_readwrite("xn_pot", &vmecpp::WOutFileContents::xn_pot)
+      .def_readwrite("xmpot", &vmecpp::WOutFileContents::xmpot)
+      .def_readwrite("xnpot", &vmecpp::WOutFileContents::xnpot)
       //
       .def_readwrite("xm", &vmecpp::WOutFileContents::xm)
       .def_readwrite("xn", &vmecpp::WOutFileContents::xn)

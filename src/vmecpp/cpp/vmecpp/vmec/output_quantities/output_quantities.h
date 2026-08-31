@@ -1203,8 +1203,8 @@ struct WOutFileContents {
   Eigen::VectorXd potvac;
 
   // [mnpd] mode numbers of potvac; not written by Fortran VMEC.
-  Eigen::VectorXi xm_pot;
-  Eigen::VectorXi xn_pot;
+  Eigen::VectorXi xmpot;
+  Eigen::VectorXi xnpot;
 
   // -------------------
   // mode numbers for Fourier coefficient arrays below

@@ -1438,8 +1438,8 @@ TEST(TestOutputQuantities, CheckVacuumPotential) {
   const int mf = vmec_indata->mpol + 1;
   const int mnpd = (2 * nf + 1) * (mf + 1);
   ASSERT_EQ(wout.potvac.size(), 2 * mnpd);
-  ASSERT_EQ(wout.xm_pot.size(), mnpd);
-  ASSERT_EQ(wout.xn_pot.size(), mnpd);
+  ASSERT_EQ(wout.xmpot.size(), mnpd);
+  ASSERT_EQ(wout.xnpot.size(), mnpd);
 
   // A stellarator-symmetric run solves only the sin(mu - nv) half.
   for (int i = mnpd; i < wout.potvac.size(); ++i) {
@@ -1449,8 +1449,8 @@ TEST(TestOutputQuantities, CheckVacuumPotential) {
   // Each (m, n) of the rectangle m in [0, mf], n in [-nf, nf] appears once.
   std::set<std::pair<int, int>> modes;
   for (int mn = 0; mn < mnpd; ++mn) {
-    EXPECT_EQ(wout.xn_pot[mn] % nfp, 0) << "xn_pot index " << mn;
-    modes.insert({wout.xm_pot[mn], wout.xn_pot[mn] / nfp});
+    EXPECT_EQ(wout.xnpot[mn] % nfp, 0) << "xnpot index " << mn;
+    modes.insert({wout.xmpot[mn], wout.xnpot[mn] / nfp});
   }
   EXPECT_EQ(static_cast<int>(modes.size()), mnpd);
   for (int m = 0; m <= mf; ++m) {
@@ -1461,8 +1461,8 @@ TEST(TestOutputQuantities, CheckVacuumPotential) {
 
   // m advances fastest, so the first mf + 1 entries all carry n = -nf.
   for (int m = 0; m <= mf; ++m) {
-    EXPECT_EQ(wout.xm_pot[m], m);
-    EXPECT_EQ(wout.xn_pot[m], -nf * nfp);
+    EXPECT_EQ(wout.xmpot[m], m);
+    EXPECT_EQ(wout.xnpot[m], -nf * nfp);
   }
 }
 
