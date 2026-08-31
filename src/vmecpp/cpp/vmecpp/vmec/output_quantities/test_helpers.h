@@ -91,6 +91,8 @@ inline void CheckWOutEquality(const vmecpp::WOutFileContents& wout1,
   EXPECT_EQ(wout1.equif, wout2.equif);
   EXPECT_EQ(wout1.curlabel, wout2.curlabel);
   EXPECT_EQ(wout1.potvac, wout2.potvac);
+  EXPECT_EQ(wout1.xm_pot, wout2.xm_pot);
+  EXPECT_EQ(wout1.xn_pot, wout2.xn_pot);
   EXPECT_EQ(wout1.xm, wout2.xm);
   EXPECT_EQ(wout1.xn, wout2.xn);
   EXPECT_EQ(wout1.xm_nyq, wout2.xm_nyq);

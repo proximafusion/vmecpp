@@ -1199,8 +1199,12 @@ struct WOutFileContents {
 
   std::vector<std::string> curlabel;
 
-  // currently unused
+  // [2 * mnpd] sin(mu - nv) coefficients, then cos(mu - nv).
   Eigen::VectorXd potvac;
+
+  // [mnpd] mode numbers of potvac; not written by Fortran VMEC.
+  Eigen::VectorXi xm_pot;
+  Eigen::VectorXi xn_pot;
 
   // -------------------
   // mode numbers for Fourier coefficient arrays below
