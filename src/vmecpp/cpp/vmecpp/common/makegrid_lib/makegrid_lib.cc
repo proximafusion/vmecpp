@@ -306,12 +306,11 @@ absl::StatusOr<RowMatrix3Xd> MakeCylindricalGrid(
 
   int num_phi_effective = num_phi;
   if (makegrid_parameters.assume_stellarator_symmetry) {
-    if (num_phi % 2 != 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "number of toroidal grid points has to be even for being able to "
-          "make use to stellarator symmetry in makegrid, but was num_phi=",
-          num_phi));
-    }
+    // Points 0 .. num_phi/2 are computed and the rest are mirrored onto them by
+    // phi -> -phi, which is index num_phi - idx_phi. An even num_phi puts a
+    // grid point on the half-period plane, where that map is the identity; an
+    // odd one has no such point, and every mirrored index still lands inside
+    // the computed range.
     num_phi_effective = num_phi / 2 + 1;
   }
 
