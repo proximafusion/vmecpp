@@ -728,13 +728,17 @@ bool Vmec::InitializeRadial(
           // free-boundary hot restart: use all flux surfaces from initial state
           decomposed_x_[thread_id]->InitFromState(
               t_, initial_state->wout.rmnc, initial_state->wout.zmns,
-              initial_state->wout.lmns_full, *p_[thread_id], constants_);
+              initial_state->wout.lmns_full, initial_state->wout.rmns,
+              initial_state->wout.zmnc, initial_state->wout.lmnc_full,
+              *p_[thread_id], constants_);
         } else {
           // fixed-boundary hot restart: use inner flux surfaces from initial
           // state, and LCFS geometry from Boundaries (from INDATA)
           decomposed_x_[thread_id]->InitFromState(
               t_, initial_state->wout.rmnc, initial_state->wout.zmns,
-              initial_state->wout.lmns_full, *p_[thread_id], constants_, &b_);
+              initial_state->wout.lmns_full, initial_state->wout.rmns,
+              initial_state->wout.zmnc, initial_state->wout.lmnc_full,
+              *p_[thread_id], constants_, &b_);
         }
       }
     } else {

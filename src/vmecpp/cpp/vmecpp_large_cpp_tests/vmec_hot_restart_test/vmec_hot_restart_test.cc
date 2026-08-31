@@ -101,10 +101,11 @@ TEST_P(GeometryInitializationTest, CheckGeometryInitialization) {
 
     // use another FourierGeometry to represent the WOutFileContents
     vmecpp::FourierGeometry ref_fg(&s, &rp, ns);
-    ref_fg.InitFromState(vmec.t_, output_quantities.wout.rmnc,
-                         output_quantities.wout.zmns,
-                         output_quantities.wout.lmns_full, *vmec.p_[thread_id],
-                         vmec.constants_, &(vmec.b_));
+    ref_fg.InitFromState(
+        vmec.t_, output_quantities.wout.rmnc, output_quantities.wout.zmns,
+        output_quantities.wout.lmns_full, output_quantities.wout.rmns,
+        output_quantities.wout.zmnc, output_quantities.wout.lmnc_full,
+        *vmec.p_[thread_id], vmec.constants_, &(vmec.b_));
 
     for (int jF = nsMinF1; jF < nsMaxF1; ++jF) {
       for (int m = 0; m < s.mpol; ++m) {
