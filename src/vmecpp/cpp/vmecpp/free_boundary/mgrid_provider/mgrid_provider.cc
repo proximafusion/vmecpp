@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <fstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -60,6 +61,13 @@ absl::Status ValidateFieldContributionShape(
 }
 
 }  // namespace
+
+void MGridProvider::ResetAccumulatedField() {
+  const int num_grid_points = numPhi * numZ * numR;
+  bR.setZero(num_grid_points);
+  bP.setZero(num_grid_points);
+  bZ.setZero(num_grid_points);
+}
 
 MGridProvider::MGridProvider() {
   nfp = -1;
@@ -174,11 +182,8 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
 
   mgrid_mode = *mgrid_mode_or;
 
-  // Resize and make sure that the accumulation arrays are reset to zeros
-  // if they contained previous contents from an earlier call to this routine.
-  bR.setZero(numPhi * numZ * numR);
-  bP.setZero(numPhi * numZ * numR);
-  bZ.setZero(numPhi * numZ * numR);
+  // Reset in case an earlier call left contents behind.
+  ResetAccumulatedField();
 
   // combine coil contributions, weighted by coil currents
   for (int i = 0; i < nextcur; ++i) {
@@ -226,21 +231,14 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
       return with_context(shape_status);
     }
 
-    for (int index_phi = 0; index_phi < numPhi; ++index_phi) {
-      for (int index_z = 0; index_z < numZ; ++index_z) {
-        for (int index_r = 0; index_r < numR; ++index_r) {
-          const int linear_index =
-              (index_phi * numZ + index_z) * numR + index_r;
-
-          bR[linear_index] +=
-              b_r_contribution[index_phi][index_z][index_r] * coil_currents[i];
-          bP[linear_index] +=
-              b_p_contribution[index_phi][index_z][index_r] * coil_currents[i];
-          bZ[linear_index] +=
-              b_z_contribution[index_phi][index_z][index_r] * coil_currents[i];
-        }  // index_r
-      }  // index_z
-    }  // index_phi
+    AccumulateCircuit(coil_currents[i], [&](int linear_index) {
+      const int index_r = linear_index % numR;
+      const int index_z = (linear_index / numR) % numZ;
+      const int index_phi = linear_index / (numZ * numR);
+      return std::make_tuple(b_r_contribution[index_phi][index_z][index_r],
+                             b_p_contribution[index_phi][index_z][index_r],
+                             b_z_contribution[index_phi][index_z][index_r]);
+    });
   }  // nextcur
 
   if (nc_close(ncid) != NC_NOERR) {
@@ -286,22 +284,15 @@ absl::Status MGridProvider::LoadFields(
     mgrid_mode = "R";
   }
 
-  // TODO(eguiraud): factor out this part that is duplicated
-  const int num_grid_points = numPhi * numZ * numR;
-  bR.setZero(num_grid_points);
-  bP.setZero(num_grid_points);
-  bZ.setZero(num_grid_points);
+  ResetAccumulatedField();
 
   // combine coil contributions, weighted by coil currents
   for (int i = 0; i < nextcur; ++i) {
-    for (int linear_index = 0; linear_index < num_grid_points; ++linear_index) {
-      bR[linear_index] +=
-          magnetic_response_table.b_r(i, linear_index) * coil_currents[i];
-      bP[linear_index] +=
-          magnetic_response_table.b_p(i, linear_index) * coil_currents[i];
-      bZ[linear_index] +=
-          magnetic_response_table.b_z(i, linear_index) * coil_currents[i];
-    }  // linear_index
+    AccumulateCircuit(coil_currents[i], [&](int linear_index) {
+      return std::make_tuple(magnetic_response_table.b_r(i, linear_index),
+                             magnetic_response_table.b_p(i, linear_index),
+                             magnetic_response_table.b_z(i, linear_index));
+    });
   }  // nextcur
 
   has_mgrid_loaded_ = true;
