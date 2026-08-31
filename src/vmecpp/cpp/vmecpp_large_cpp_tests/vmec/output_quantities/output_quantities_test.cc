@@ -652,7 +652,86 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
   const MercierFileContents& mercier_file_contents =
       vmec.output_quantities_.mercier;
 
-  // TODO(jons): check the first table in the Mercier output file
+  // first table in Mercier output file
+  //
+  // The reference carries the intermediate quantities rather than the table
+  // itself, so what is checked here is the assembly: the half-grid to
+  // full-grid averaging, the running sum for the toroidal flux, the divisions
+  // by dV/ds, and the sign on the magnetic well.
+  const VmecInternalResults& internal_results =
+      output_quantities.vmec_internal_results;
+  const int sign_of_jacobian = internal_results.sign_of_jacobian;
+
+  double toroidal_flux_reference = 0.0;
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    const int jHi = jF - 1;
+    const int jHo = jF;
+
+    const double vp_full = (static_cast<double>(mercier["vp_real"][jHo]) +
+                            static_cast<double>(mercier["vp_real"][jHi])) /
+                           2.0;
+
+    // The running sum advances even on surfaces the assembly skips, and is
+    // scaled by deltaS only at the end, as the assembly does.
+    toroidal_flux_reference += static_cast<double>(mercier["phip_real"][jF]);
+
+    EXPECT_TRUE(IsCloseRelAbs(mercier["sj"][jF], mercier_file_contents.s[jF],
+                              tolerance))
+        << "s at jF = " << jF;
+
+    if (vp_full == 0.0) {
+      // dV/ds vanishes here, so the assembly leaves this surface at zero.
+      continue;
+    }
+
+    EXPECT_TRUE(IsCloseRelAbs(toroidal_flux_reference * fc.deltaS,
+                              mercier_file_contents.toroidal_flux[jF],
+                              tolerance))
+        << "toroidal_flux at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(vp_full, mercier_file_contents.d_volume_d_s[jF],
+                              tolerance))
+        << "d_volume_d_s at jF = " << jF;
+
+    EXPECT_TRUE(
+        IsCloseRelAbs(static_cast<double>(mercier["shear"][jF - 1]) / vp_full,
+                      mercier_file_contents.shear[jF], tolerance))
+        << "shear at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(
+        -static_cast<double>(mercier["vpp"][jF - 1]) * sign_of_jacobian,
+        mercier_file_contents.well[jF], tolerance))
+        << "well at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs((static_cast<double>(mercier["torcur"][jHo]) +
+                               static_cast<double>(mercier["torcur"][jHi])) /
+                                  2.0,
+                              mercier_file_contents.toroidal_current[jF],
+                              tolerance))
+        << "toroidal_current at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(
+        static_cast<double>(mercier["ip"][jF - 1]) / vp_full,
+        mercier_file_contents.d_toroidal_current_d_s[jF], tolerance))
+        << "d_toroidal_current_d_s at jF = " << jF;
+
+    EXPECT_TRUE(
+        IsCloseRelAbs(static_cast<double>(mercier["presp"][jF - 1]) / vp_full,
+                      mercier_file_contents.d_pressure_d_s[jF], tolerance))
+        << "d_pressure_d_s at jF = " << jF;
+
+    // iota and pressure are averaged from half-grid profiles that the
+    // reference does not carry, so only the averaging itself is checked.
+    EXPECT_TRUE(IsCloseRelAbs(
+        (internal_results.iotaH[jHo] + internal_results.iotaH[jHi]) / 2.0,
+        mercier_file_contents.iota[jF], tolerance))
+        << "iota at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(
+        (internal_results.presH[jHo] + internal_results.presH[jHi]) / 2.0,
+        mercier_file_contents.pressure[jF], tolerance))
+        << "pressure at jF = " << jF;
+  }  // jF
 
   // second table in Mercier output file
   for (int jF = 1; jF < fc.ns - 1; ++jF) {
