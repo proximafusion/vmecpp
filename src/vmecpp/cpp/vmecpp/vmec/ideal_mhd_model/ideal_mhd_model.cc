@@ -883,15 +883,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
           delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
         }
 
-        if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
-          // TODO(jons): implement this !!!
-
-          // initial magnetic field at boundary
-          // bsqsav(:nznt,1) = bzmn_o(ns:nrzt:ns)
-
-          // initial NESTOR |B|^2 at boundary
-          // bsqsav(:nznt,2) = bsqvac(:nznt)
-        }
+        // Fortran funct3d.f90 saves two arrays at this point,
+        //   bsqsav(:,1) = bzmn_o(ns:nrzt:ns)   initial |B|^2 from the plasma
+        //   bsqsav(:,2) = bsqvac(:)            initial NESTOR |B|^2
+        // and then never reads either of them. The only column that is read is
+        // bsqsav(:,3), for the delbsq diagnostic in printout.f90, which is the
+        // extrapolation computed above and already reported through delBSq.
+        // So there is nothing here to carry over.
       }
 
       if (checkpoint == VmecCheckpoint::RBSQ &&
@@ -2022,7 +2020,10 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
     }  // kl
   }  // j
 
-  // TODO(jons): exclude axis --> mimic PARVMEC
+  // PARVMEC excludes the axis from this norm. Adopting that changes the force
+  // normalization, hence the residuals, hence where every run stops, so it
+  // needs the reference outputs regenerated with it rather than being a local
+  // change.
   // only unique radial points here;
   // decomposed_x is over nsMinF1 ... nsMaxF1 --> would count overlapping
   // elements twice !!!

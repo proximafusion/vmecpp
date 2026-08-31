@@ -1556,8 +1556,11 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         output_quantities.threed1_axis, output_quantities.threed1_betas,
         vmec_status, iter2);
 
-    // TODO(jons): freeb_data output to be implemented when free-boundary test
-    // case is set up
+    // The free-boundary cases the marker was waiting on now exist. What
+    // Fortran freeb_data.f90 writes is the edge field, brv, bphiv and bzv,
+    // together with the vacuum potential, to a legacy unit-number file. The
+    // potential half of that landed here as potvac, xmpot and xnpot; the edge
+    // field components are what is still missing.
   }
 
   output_quantities.indata = indata;
@@ -4335,6 +4338,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   WOutFileContents wout;
 
   // take version from educational_VMEC for now
+  // Bumping this means matching PARVMEC, not editing the string; left until
+  // that is true.
   // TODO(jons): Upgrade VMEC++ to match PARVMEC and then change version to
   // "9.0".
   wout.version_ = 8.52;
@@ -4563,7 +4568,10 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     }
   }
 
-  // TODO(jons): curlabel: the mgrid coil-group names are not read back yet
+  // curlabel would be the mgrid coil-group names, which MGridProvider does
+  // not read back out of the file. That is the reading half of the same gap
+  // the writing side has in makegrid_lib: the names live in the coils file and
+  // reach neither end.
 
   // -------------------
   // mode numbers for Fourier coefficient arrays below

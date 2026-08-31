@@ -385,7 +385,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         break;
       }
 
-      // TODO(jons): insert lgiveup/fgiveup logic here
+      // lgiveup/fgiveup, the early-abandonment heuristic, does not exist in
+      // educational_VMEC, which is what the outputs here are validated
+      // against. Adding it would introduce a termination rule with no
+      // reference to match it to.
 
       // If this point is reached, the current multi-grid step should have
       // properly converged.
