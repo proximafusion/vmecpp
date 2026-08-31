@@ -725,7 +725,18 @@ TEST(HotRestartIntegration, FreeBoundary) {
   ASSERT_TRUE(displaced_fromscratch_output.ok());
 
   // COMPARE RUN FROM SCRATCH AND HOT-RESTARTED RUN
-  // FIXME(jons): How realistic are these tolerances?
+  //
+  // 0.1 is close to the floor here, not an arbitrary loose bound: 8e-2 passes
+  // and 5e-2 does not. What binds is DCurr, one of the Mercier terms, then
+  // jdotb, then jcuru; splitting the current densities off behind
+  // current_density_tolerance does not help, because DCurr fails first. Those
+  // are all derivative diagnostics of the converged state, and they amplify
+  // the difference between two convergence paths.
+  //
+  // The two runs do not land on the same point to ftol. Even rmax_surf, a
+  // plain geometric quantity, only agrees to about 1e-6, so the agreement
+  // being asked for here is between two paths into the same shallow minimum
+  // rather than between two evaluations of one state.
   const double tolerance = 0.1;
   const bool check_equal_maximum_iterations = false;
   vmecpp::CompareWOut(displaced_hotrestarted_output->wout,
