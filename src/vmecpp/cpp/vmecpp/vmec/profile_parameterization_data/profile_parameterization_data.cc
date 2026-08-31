@@ -131,10 +131,10 @@ AllowedFor ProfileParameterizationData::IsAllowedFor() const {
 }
 
 const std::vector<ProfileParameterizationData>& AllProfileParameterizations() {
-  static const std::vector<ProfileParameterizationData>* const all =
+  static const std::vector<ProfileParameterizationData>* const kAll =
       new std::vector<ProfileParameterizationData>(
           BuildProfileParameterizations());
-  return *all;
+  return *kAll;
 }
 
 const ProfileParameterizationData* FindProfileParameterization(

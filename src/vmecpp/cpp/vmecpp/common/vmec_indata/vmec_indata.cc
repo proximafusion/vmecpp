@@ -1423,13 +1423,11 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   /* --------------------------------- */
 
   // pmass_type, am_aux_s, am_aux_f
-  {
-    const absl::Status status = CheckProfile(
-        "pmass_type", vmec_indata.pmass_type, ProfileType::PRESSURE, "am",
-        vmec_indata.am_aux_s, vmec_indata.am_aux_f);
-    if (!status.ok()) {
-      return status;
-    }
+  if (absl::Status status = CheckProfile(
+          "pmass_type", vmec_indata.pmass_type, ProfileType::PRESSURE, "am",
+          vmec_indata.am_aux_s, vmec_indata.am_aux_f);
+      !status.ok()) {
+    return status;
   }
 
   // pres_scale
@@ -1455,15 +1453,24 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
 
   /* --------------------------------- */
 
-  if (vmec_indata.ncurr == 0) {
-    // piota_type, ai_aux_s, ai_aux_f
-    const absl::Status status =
-        CheckProfile("piota_type", vmec_indata.piota_type, ProfileType::IOTA,
-                     "ai", vmec_indata.ai_aux_s, vmec_indata.ai_aux_f);
-    if (!status.ok()) {
-      return status;
-    }
+  // piota_type, ai_aux_s, ai_aux_f. Checked for either ncurr: piota is the
+  // initial guess for the iota profile even in a current-constrained run.
+  if (absl::Status status =
+          CheckProfile("piota_type", vmec_indata.piota_type, ProfileType::IOTA,
+                       "ai", vmec_indata.ai_aux_s, vmec_indata.ai_aux_f);
+      !status.ok()) {
+    return status;
+  }
 
+  // pcurr_type, ac_aux_s, ac_aux_f. Ignored for ncurr == 0, still checked.
+  if (absl::Status status = CheckProfile(
+          "pcurr_type", vmec_indata.pcurr_type, ProfileType::CURRENT, "ac",
+          vmec_indata.ac_aux_s, vmec_indata.ac_aux_f);
+      !status.ok()) {
+    return status;
+  }
+
+  if (vmec_indata.ncurr == 0) {
     if (vmec_indata.bloat != 1.0) {
       // bloat != 1 is only allowed when ncurr == 1 (constrained toroidal
       // current)
@@ -1472,20 +1479,8 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
           "'bloat' must be 1.0 for ncurr == 0 (constrained-iota), but is %g\n",
           vmec_indata.bloat));
     }
-
-  } else if (vmec_indata.ncurr == 1) {
-    // pcurr_type, ac_aux_s, ac_aux_f
-    const absl::Status status =
-        CheckProfile("pcurr_type", vmec_indata.pcurr_type, ProfileType::CURRENT,
-                     "ac", vmec_indata.ac_aux_s, vmec_indata.ac_aux_f);
-    if (!status.ok()) {
-      return status;
-    }
-
-    // curtor --> any value is ok
-
-    // bloat --> any value is ok
   }
+  // ncurr == 1: curtor and bloat may take any value.
 
   /* --------------------------------- */
 

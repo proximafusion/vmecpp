@@ -223,17 +223,25 @@ TEST(TestVmecINDATA, CheckProfileParameterizationNames) {
   indata.pmass_type = "power_series";
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 
-  // iota parameterization is only consulted for ncurr == 0
-  indata.ncurr = 0;
-  indata.piota_type = "power_series_i";  // current-only
-  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
-  indata.piota_type = "power_series";
-  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  // All three are checked for either ncurr: piota is the initial guess for the
+  // iota profile even when the run is current-constrained.
+  for (const int ncurr : {0, 1}) {
+    indata.ncurr = ncurr;
+    ASSERT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << "ncurr=" << ncurr;
 
-  // current parameterization is only consulted for ncurr == 1
+    indata.piota_type = "power_series_i";  // current-only
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << "ncurr=" << ncurr;
+    indata.piota_type = "power_series";
+
+    indata.pcurr_type = "two_lorentz";  // pressure-only
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << "ncurr=" << ncurr;
+    indata.pcurr_type = "power_series";
+  }
+
   indata.ncurr = 1;
-  indata.pcurr_type = "two_lorentz";  // pressure-only
-  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
   indata.pcurr_type = "power_series";
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
