@@ -370,10 +370,8 @@ TEST(TestMagneticField, CheckCircularFilament) {
   static constexpr int kNumEvaluationLocations = 30;
 
   // centered at the origin, normal along z axis
-  std::vector<double> center = {
-      0.0, 0.0, 0.0};  // TODO(jons): make const once ABSCAB supports this
-  std::vector<double> normal = {
-      0.0, 0.0, 1.0};  // TODO(jons): make const once ABSCAB supports this
+  const std::vector<double> center = {0.0, 0.0, 0.0};
+  const std::vector<double> normal = {0.0, 0.0, 1.0};
 
   CircularFilament circular_filament;
 
@@ -457,10 +455,10 @@ TEST(TestMagneticField, CheckCircularFilamentAgainstDirectAbscab) {
   static constexpr double kRadius = 2.71;
   static constexpr int kNumEvaluationLocations = 3;
 
-  std::vector<double> center = {
-      1.23, 4.56, 7.89};  // TODO(jons): make const once ABSCAB supports this
-  std::vector<double> normal = {
-      9.87, 6.54, 3.21};  // TODO(jons): make const once ABSCAB supports this
+  // not const: abscab takes double*, and this pair is handed to it directly
+  // below
+  std::vector<double> center = {1.23, 4.56, 7.89};
+  std::vector<double> normal = {9.87, 6.54, 3.21};
 
   CircularFilament circular_filament;
 
@@ -580,6 +578,8 @@ TEST(TestMagneticField, CheckPolygonFilament) {
   // ABSCAB
   std::vector<double> magnetic_field_reference(kNumEvaluationLocations * 3,
                                                0.0);
+  // not const: abscab takes double*, and this pair is handed to it directly
+  // below
   std::vector<double> center = {0.0, 0.0, 0.0};
   std::vector<double> normal = {0.0, 0.0, 1.0};
   abscab::magneticFieldCircularFilament(
@@ -823,10 +823,10 @@ TEST(TestVectorPotential, CheckCircularFilamentAgainstDirectAbscab) {
   static constexpr double kRadius = 2.71;
   static constexpr int kNumEvaluationLocations = 3;
 
-  std::vector<double> center = {
-      1.23, 4.56, 7.89};  // TODO(jons): make const once ABSCAB supports this
-  std::vector<double> normal = {
-      9.87, 6.54, 3.21};  // TODO(jons): make const once ABSCAB supports this
+  // not const: abscab takes double*, and this pair is handed to it directly
+  // below
+  std::vector<double> center = {1.23, 4.56, 7.89};
+  std::vector<double> normal = {9.87, 6.54, 3.21};
 
   CircularFilament circular_filament;
 
@@ -948,6 +948,8 @@ TEST(TestVectorPotential, CheckPolygonFilament) {
   // ABSCAB
   std::vector<double> vector_potential_reference(kNumEvaluationLocations * 3,
                                                  0.0);
+  // not const: abscab takes double*, and this pair is handed to it directly
+  // below
   std::vector<double> center = {0.0, 0.0, 0.0};
   std::vector<double> normal = {0.0, 0.0, 1.0};
 
@@ -1135,10 +1137,8 @@ MagneticConfiguration MakeMagneticConfiguration(
   static constexpr double kRadius = 2.71;
 
   // centered at the origin, normal along z axis
-  std::vector<double> center = {
-      0.0, 0.0, 0.0};  // TODO(jons): make const once ABSCAB supports this
-  std::vector<double> normal = {
-      0.0, 0.0, 1.0};  // TODO(jons): make const once ABSCAB supports this
+  const std::vector<double> center = {0.0, 0.0, 0.0};
+  const std::vector<double> normal = {0.0, 0.0, 1.0};
 
   SerialCircuit *serial_circuit_1 =
       magnetic_configuration.add_serial_circuits();
@@ -1972,10 +1972,8 @@ class MagneticFieldNumWindingsTest : public Test {
   void SetNumWindings(int num_windings) {
     coil_->set_num_windings(num_windings);
   }
-  std::vector<double> center_ = {
-      1.23, 4.56, 7.89};  // TODO(jons): make const once ABSCAB supports this
-  std::vector<double> normal_ = {
-      9.87, 6.54, 3.21};  // TODO(jons): make const once ABSCAB supports this
+  std::vector<double> center_ = {1.23, 4.56, 7.89};
+  std::vector<double> normal_ = {9.87, 6.54, 3.21};
   MagneticConfiguration magnetic_configuration_;
   Coil *coil_;
   std::vector<std::vector<double> > evaluation_positions_;
@@ -2264,10 +2262,8 @@ class VectorPotentialNumWindingsTest : public Test {
   void SetNumWindings(int num_windings) {
     coil_->set_num_windings(num_windings);
   }
-  std::vector<double> center_ = {
-      1.23, 4.56, 7.89};  // TODO(jons): make const once ABSCAB supports this
-  std::vector<double> normal_ = {
-      9.87, 6.54, 3.21};  // TODO(jons): make const once ABSCAB supports this
+  std::vector<double> center_ = {1.23, 4.56, 7.89};
+  std::vector<double> normal_ = {9.87, 6.54, 3.21};
   MagneticConfiguration magnetic_configuration_;
   Coil *coil_;
   std::vector<std::vector<double> > evaluation_positions_;

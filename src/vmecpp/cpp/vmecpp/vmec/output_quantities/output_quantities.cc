@@ -810,7 +810,9 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   file.createGroup(this->H5key);
 
   WRITEMEMBER(version_);
-  // TODO(jurasic) input_extension
+  // input_extension is deliberately absent: it names the Fortran INDATA file a
+  // run came from, and VMEC++ runs from JSON. WOutFileContents sets it to the
+  // empty string for the same reason.
   WRITEMEMBER(signgs);
   WRITEMEMBER(gamma);
   WRITEMEMBER(pcurr_type);
@@ -948,7 +950,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
                   from_file);
     m_obj.version_ = std::stod(version_str);
   }
-  // TODO(jurasic) input_extension
+  // input_extension is not written; see WriteTo
   READMEMBER_COMPAT(signgs, "sign_of_jacobian");
   READMEMBER(gamma);
   READMEMBER(pcurr_type);
@@ -3595,10 +3597,9 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
   //
   // b poloidals (cylindrical estimates)
 
-  // TODO(jons): rcenin (not used anywhere?)
-  // TODO(jons): aminr2in (not used anywhere?)
-  // TODO(jons): bminz2in (not used anywhere?)
-  // TODO(jons): bminz2 (not used anywhere?)
+  // Fortran eqfor.f90 also forms rcenin, aminr2in, bminz2in and bminz2 here.
+  // Their only consumers are the add_real calls in its debug dump, and
+  // bminz2in and bminz2 are the same expression, so nothing depends on them.
 
   // cylindrical estimates for beta poloidal
   double sump_sum = 0.0;
@@ -3660,10 +3661,8 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
   intermediate.delphid_exact *= intermediate.anorm;
   intermediate.rshaf = intermediate.rshaf1 / intermediate.rshaf2;
 
-  // TODO(jons): could also use threed1_first_table_intermediate.bvcof[0]
-  // directly...
-  intermediate.fpsi0 = 1.5 * threed1_first_table_intermediate.bvcoH[0] -
-                       0.5 * threed1_first_table_intermediate.bvcoH[1];
+  // bvcof[0] is this same extrapolation of bvcoH to the axis
+  intermediate.fpsi0 = threed1_first_table_intermediate.bvcof[0];
 
   intermediate.redge = VectorXd::Zero(s.nZnT);
   for (int kl = 0; kl < s.nZnT; ++kl) {
@@ -4000,14 +3999,13 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
     for (int jF = 1; jF < fc.ns; ++jF) {
       double minimum_z = DBL_MAX;
       double maximum_z = -DBL_MAX;
-      // TODO(jons): rename to ..._r
-      double minimum_x = DBL_MAX;
-      // TODO(jons): rename to ..._r
-      double maximum_x = -DBL_MAX;
+      double minimum_r = DBL_MAX;
+      double maximum_r = -DBL_MAX;
 
       double rzmax = 0.0;
 
-      // TODO(jons): these seem to not be used anywhere in Fortran VMEC?
+      // Fortran eqfor.f90 assigns rzmin, zxmax and zxmin alongside rzmax in
+      // the loop below and then reads none of them, so they are left out here.
       // double rzmin = 0.0;
       // double zxmax = 0.0;
       // double zxmin = 0.0;
@@ -4043,13 +4041,13 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
             // rzmin = yr1u;
           }
 
-          if (yr1u >= maximum_x) {
-            maximum_x = yr1u;
+          if (yr1u >= maximum_r) {
+            maximum_r = yr1u;
 
             // TODO(jons): these seem to not be used anywhere  in Fortran VMEC?
             // zxmax = yz1u;
-          } else if (yr1u <= minimum_x) {
-            minimum_x = yr1u;
+          } else if (yr1u <= minimum_r) {
+            minimum_r = yr1u;
 
             // TODO(jons): these seem to not be used anywhere in Fortran VMEC?
             // zxmin = yz1u;
@@ -4075,17 +4073,17 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
       result.ygeo[nplanes * fc.ns + jF] = (xmidb - xmida) / 2.0;
 
       result.yinden[nplanes * fc.ns + jF] =
-          (xmida - minimum_x) / (maximum_x - minimum_x);
+          (xmida - minimum_r) / (maximum_r - minimum_r);
 
       result.yellip[nplanes * fc.ns + jF] =
-          (maximum_z - minimum_z) / (maximum_x - minimum_x);
+          (maximum_z - minimum_z) / (maximum_r - minimum_r);
 
       result.ytrian[nplanes * fc.ns + jF] =
-          (rgeo - rzmax) / (maximum_x - minimum_x);
+          (rgeo - rzmax) / (maximum_r - minimum_r);
 
       const double r_axis = vmec_internal_results.r_e(k * s.nThetaEff + 0);
       result.yshift[nplanes * fc.ns + jF] =
-          (r_axis - rgeo) / (maximum_x - minimum_x);
+          (r_axis - rgeo) / (maximum_r - minimum_r);
     }  // jF
   }  // nplanes
 
