@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788187024488,
+  "lastUpdate": 1788187840839,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -13591,6 +13591,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.20962053700009164,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4059f6f4038a7feb78d492df98dff90bdddea5ae",
+          "message": "Cover the non-stellarator-symmetric makegrid reference case (#720)\n\n* Cover the non-stellarator-symmetric makegrid reference case\n\n* Drop the non-symmetric mgrid TODO this test resolves",
+          "timestamp": "2026-08-31T16:29:56+02:00",
+          "tree_id": "6d1bd73a636fd6b22c1767d40aa90540655dce44",
+          "url": "https://github.com/proximafusion/vmecpp/commit/4059f6f4038a7feb78d492df98dff90bdddea5ae"
+        },
+        "date": 1788187838520,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.37943859580000205,
+            "range": "stddev: 0.004947179887002866",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.622539462333331,
+            "range": "stddev: 0.033549613993859126",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1265698223333327,
+            "range": "stddev: 0.004916145396269157",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.666141929333321,
+            "range": "stddev: 0.03529388350577783",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.3414059363333686,
+            "range": "stddev: 0.06616814177714878",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.596545128333332,
+            "range": "stddev: 0.061791593432299334",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.159442351000052,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.377699444999962,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
