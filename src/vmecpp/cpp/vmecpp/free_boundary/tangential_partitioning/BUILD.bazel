@@ -11,3 +11,13 @@ cc_library(
         "//vmecpp/common/sizes:sizes",
     ],
 )
+
+cc_test(
+    name = "tangential_partitioning_test",
+    srcs = ["tangential_partitioning_test.cc"],
+    deps = [
+        ":tangential_partitioning",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
