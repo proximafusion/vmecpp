@@ -638,6 +638,22 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.normalize_by_currents ? "Scaled" : "Raw";
     });
 
+// An odd toroidal grid puts no point on the half-period plane, so every
+// mirrored index is distinct from every computed one.
+INSTANTIATE_TEST_SUITE_P(
+    SymmetricOdd, CheckComputeMagneticFieldResponseTable,
+    ::testing::Values(MakegridReferenceTestParams{
+        .normalize_by_currents = false,
+        .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                             "mgrid_test_symmetric_odd.nc",
+        .coils_file =
+            "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_odd",
+        .assume_stellarator_symmetry = true,
+        .number_of_phi_grid_points = 19}),
+    [](const ::testing::TestParamInfo<MakegridReferenceTestParams>& info) {
+      return info.param.normalize_by_currents ? "Scaled" : "Raw";
+    });
+
 // Parameterized test: vector-potential cache vs. Fortran MAKEGRID reference.
 // Covers both mgrid_mode='R' (raw, normalize_by_currents=false) and
 // mgrid_mode='S' (scaled, normalize_by_currents=true).
@@ -804,11 +820,19 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.normalize_by_currents ? "Scaled" : "Raw";
     });
 
-// TODO(jons): implement test of stellarator-symmetric mgrid file using
-// symmetric C++ implementation. mgrid_test_symmetric_odd.nc is the reference,
-// but MakeCylindricalGrid rejects an odd number_of_phi_grid_points whenever
-// stellarator symmetry is requested, so the half-period mirror needs to handle
-// a grid with no exact midpoint first.
+INSTANTIATE_TEST_SUITE_P(
+    SymmetricOdd, CheckComputeVectorPotentialCache,
+    ::testing::Values(MakegridReferenceTestParams{
+        .normalize_by_currents = false,
+        .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                             "mgrid_test_symmetric_odd.nc",
+        .coils_file =
+            "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_odd",
+        .assume_stellarator_symmetry = true,
+        .number_of_phi_grid_points = 19}),
+    [](const ::testing::TestParamInfo<MakegridReferenceTestParams>& info) {
+      return info.param.normalize_by_currents ? "Scaled" : "Raw";
+    });
 
 // TODO(jons): add test of WriteMakegridNetCDFFile
 // -> in particular, make sure that the consistency of number of serial circuits
