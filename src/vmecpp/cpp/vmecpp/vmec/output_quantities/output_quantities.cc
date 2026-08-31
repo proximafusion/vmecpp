@@ -2159,7 +2159,26 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
   covariant_b_derivatives.bsubsv =
       RowMatrixXd::Zero(m_vmec_internal_results.num_full, s.nZnT);
 
-  // TODO(jons): no split into (non-)stellarator-symmetric contributions?
+  // These two are the exception, and it costs them: unlike bsubu, bsubv,
+  // bsubsu and bsubsv, they are not split into symmetric and antisymmetric
+  // parts, and so they never get the recombination onto the full poloidal
+  // interval that the split exists for. They are allocated here on the full
+  // grid, written below at reduced-layout indices (jH * nZnT_reduced +
+  // k * nThetaReduced + l), and read in ComputeJxBOutputFileContents at
+  // full-layout indices (jH * nZnT + kl). The two layouts coincide only when
+  // nThetaEff == nThetaReduced, which is to say only without lasym.
+  //
+  // For an asymmetric run the result is that jsups3, the one consumer, is
+  // wrong: on up_down_asym, with nZnT = 16 and nZnT_reduced = 9, 112 of its
+  // 256 entries come back exactly zero, which is 1 - 9/16 of the grid, and the
+  // rest are read from the wrong poloidal position. Symmetric runs are
+  // unaffected. Nothing outside jsups3 reads these.
+  //
+  // Fixing it means giving them the same _s and _a scratch the others use and
+  // recombining with the parity of a d/dzeta and a d/dtheta derivative. The
+  // symmetric half of that parity can be pinned by running a symmetric
+  // boundary through the lasym path, but the antisymmetric half cannot be
+  // checked against anything in this repository.
   covariant_b_derivatives.bsubuv =
       RowMatrixXd::Zero(m_vmec_internal_results.num_half, s.nZnT);
   covariant_b_derivatives.bsubvu =
