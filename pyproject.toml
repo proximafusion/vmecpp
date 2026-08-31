@@ -104,7 +104,11 @@ version_file = "src/vmecpp/__about__.py"
 
 [tool.cibuildwheel]
 archs = ["native"]
-skip = ["*-musllinux*"]
+# jaxlib, a transitive dependency of simsopt, publishes no macOS x86_64 wheels
+# for CPython 3.14, so installing the built wheel to test it cannot resolve
+# there. Skip both the GIL and free-threaded variants. Intel macOS still builds
+# and tests CPython 3.10-3.13.
+skip = ["*-musllinux*", "cp314*-macosx_x86_64"]
 build-frontend = "build[uv]" # More modern package manager than pip, with faster builds
 test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/test_free_boundary.py"
