@@ -35,6 +35,7 @@ cc_test(
         "//vmecpp/test_data:cma",
         "//vmecpp/test_data:cth_like_fixed_bdy",
         "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
+        "//vmecpp/test_data:cth_like_free_bdy_asym",
         "//vmecpp/test_data:solovev",
     ],
     deps = [
