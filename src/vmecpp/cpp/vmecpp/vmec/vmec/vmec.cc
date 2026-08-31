@@ -423,6 +423,11 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     return absl::InternalError(msg);
   }
 
+  // Hand Nestor's converged scalar potential over for the wout `potvac` field.
+  if (fc_.lfreeb) {
+    h_.vacuum_potential = bvecShare;
+  }
+
   // compute output file quantities, but do not write them to output file yet
   // (for creating the output file, use WriteOutputFile())
   output_quantities_ = vmecpp::ComputeOutputQuantities(

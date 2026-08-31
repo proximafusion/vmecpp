@@ -1400,4 +1400,39 @@ INSTANTIATE_TEST_SUITE_P(
                       .tolerance = 1.0e-4},
            DataSource{.identifier = "cma", .tolerance = 1.0e-4}));
 
+// Nestor's converged scalar magnetic potential is reported as wout `potvac`.
+TEST(TestOutputQuantities, CheckVacuumPotential) {
+  static constexpr double kTolerance = 1.0e-11;
+  const std::string identifier = "cth_like_free_bdy";
+
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", identifier));
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  ASSERT_TRUE(vmec_indata->lfreeb);
+
+  Vmec vmec(*vmec_indata);
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+
+  int ncid = 0;
+  const std::string reference_filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/wout_%s.nc", identifier);
+  ASSERT_EQ(nc_open(reference_filename.c_str(), NC_NOWRITE, &ncid), NC_NOERR)
+      << "failed to open reference file: " << reference_filename;
+  const std::vector<double> reference_potvac =
+      NetcdfReadArray1D(ncid, "potvac").value();
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  ASSERT_EQ(static_cast<int>(reference_potvac.size()), wout.potvac.size());
+  for (int i = 0; i < wout.potvac.size(); ++i) {
+    EXPECT_TRUE(IsCloseRelAbs(reference_potvac[i], wout.potvac[i], kTolerance))
+        << "potvac index " << i;
+  }
+}
+
 }  // namespace vmecpp

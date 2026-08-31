@@ -4531,7 +4531,21 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   wout.equif = threed1_first_table.radial_force;
 
-  // TODO(jons): curlabel, potvac: once free-boundary works
+  // potvac is stored at the lasym size 2 * mnpd; the cos(mu-nv) half stays zero
+  // for a stellarator-symmetric run, matching the Fortran wout layout. A
+  // fixed-boundary run leaves it empty, as Fortran VMEC does.
+  const Eigen::VectorXd& vacuum_potential = handover_storage.vacuum_potential;
+  if (vacuum_potential.size() > 0) {
+    const int nf = s.ntor;
+    const int mf = s.mpol + 1;
+    const int mnpd = (2 * nf + 1) * (mf + 1);
+    wout.potvac = VectorXd::Zero(2 * mnpd);
+    if (vacuum_potential.size() <= wout.potvac.size()) {
+      wout.potvac.head(vacuum_potential.size()) = vacuum_potential;
+    }
+  }
+
+  // TODO(jons): curlabel: the mgrid coil-group names are not read back yet
 
   // -------------------
   // mode numbers for Fourier coefficient arrays below

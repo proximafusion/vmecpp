@@ -176,6 +176,10 @@ class HandoverStorage {
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
   Eigen::VectorXd vacuum_b_z;
 
+  // Fourier coefficients of Nestor's scalar magnetic potential; empty unless
+  // this is a free-boundary run. Reported as `potvac` in the wout file.
+  Eigen::VectorXd vacuum_potential;
+
   // Whether the free-boundary vacuum solve requested an early exit at a
   // debug checkpoint (VmecCheckpoint). The vacuum solve now runs in a nested
   // parallel region driven by a single radial thread, so this shared flag
