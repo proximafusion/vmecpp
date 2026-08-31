@@ -29,6 +29,10 @@ using netcdf_io::NetcdfReadString;
 
 namespace {
 
+// Fixed width of each name in the mgrid coil_group variable, matching
+// kStringSize in makegrid_lib.
+constexpr int kMgridStringSize = 30;
+
 absl::Status ValidateFieldContributionShape(
     const std::vector<std::vector<std::vector<double> > >& field_contribution,
     const std::string& variable_name, int num_phi, int num_z, int num_r) {
@@ -164,6 +168,30 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
   numPhi = *num_phi_or;
 
   nextcur = *nextcur_or;
+
+  // coil_group is a [nextcur][kMgridStringSize] character array, each name
+  // padded on the right by MAKEGRID.
+  coil_group_names.clear();
+  {
+    int id_coil_group = 0;
+    if (nc_inq_varid(ncid, "coil_group", &id_coil_group) == NC_NOERR) {
+      std::vector<char> raw(static_cast<size_t>(nextcur) * kMgridStringSize);
+      if (nc_get_var_text(ncid, id_coil_group, raw.data()) == NC_NOERR) {
+        coil_group_names.reserve(nextcur);
+        for (int i = 0; i < nextcur; ++i) {
+          std::string name(
+              raw.data() + static_cast<size_t>(i) * kMgridStringSize,
+              kMgridStringSize);
+          size_t end = name.size();
+          while (end > 0 && name[end - 1] <= 0x20) {
+            --end;
+          }
+          name.erase(end);
+          coil_group_names.push_back(name);
+        }
+      }
+    }
+  }
   if (coil_currents.size() != nextcur) {
     nc_close(ncid);
     return absl::InvalidArgumentError(
@@ -279,6 +307,9 @@ absl::Status MGridProvider::LoadFields(
   numPhi = mgrid_params.number_of_phi_grid_points;
 
   nextcur = static_cast<int>(coil_currents.size());
+
+  // an in-memory response table carries no coil group names
+  coil_group_names.clear();
 
   if (mgrid_params.normalize_by_currents) {
     mgrid_mode = "S";

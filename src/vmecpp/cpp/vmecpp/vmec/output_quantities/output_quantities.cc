@@ -1375,6 +1375,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     const FlowControl& fc, const VmecConstants& constants,
     const FourierBasisFastPoloidal& t, const HandoverStorage& h,
     const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
     const std::vector<std::unique_ptr<RadialPartitioning>>& radial_partitioning,
     const std::vector<std::unique_ptr<FourierGeometry>>& decomposed_x,
     const std::vector<std::unique_ptr<IdealMhdModel>>& models_from_threads,
@@ -1546,7 +1547,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     // and setup a stand-alone test case to figure out what went wrong
     // and how to prevent that crash in the future.
     output_quantities.wout = ComputeWOutFileContents(
-        indata, s, t, fc, constants, h, mgrid_mode,
+        indata, s, t, fc, constants, h, mgrid_mode, coil_group_names,
         /*m_vmec_internal_results=*/output_quantities.vmec_internal_results,
         output_quantities.bsubs_half, output_quantities.bsubs_full,
         output_quantities.mercier, output_quantities.jxbout,
@@ -4317,6 +4318,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     const VmecINDATA& indata, const Sizes& s, const FourierBasisFastPoloidal& t,
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
     VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
     const BSubSFull& bsubs_full, const MercierFileContents& mercier,
     const JxBOutFileContents& jxbout,
@@ -4563,7 +4565,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     }
   }
 
-  // TODO(jons): curlabel: the mgrid coil-group names are not read back yet
+  // coil group names, one per external current, as read from the mgrid file
+  wout.curlabel = coil_group_names;
 
   // -------------------
   // mode numbers for Fourier coefficient arrays below
