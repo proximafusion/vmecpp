@@ -468,6 +468,22 @@ TEST(TestVmec, Lasym3DFreeBoundaryDegeneratesToSymmetric) {
 // the reference scalars below are from that run. This is the non-degenerate
 // validation of the antisymmetric NESTOR free-boundary path: the vacuum solver
 // runs with genuinely non-zero antisymmetric content.
+TEST(TestVmec, ZeroMaximumMultiGridStepIsRejected) {
+  // Without the guard the multigrid loop runs no steps at all and run()
+  // returns false with an OK status, so nothing is solved and nothing says so.
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  Vmec vmec(*indata);
+  const absl::StatusOr<bool> reached =
+      vmec.run(VmecCheckpoint::NONE, INT_MAX, /*maximum_multi_grid_step=*/0);
+  ASSERT_FALSE(reached.ok());
+  EXPECT_EQ(reached.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
 TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   const std::string filename = "vmecpp/test_data/cth_like_free_bdy_asym.json";
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
