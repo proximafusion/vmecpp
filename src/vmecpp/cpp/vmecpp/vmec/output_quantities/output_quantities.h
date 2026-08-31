@@ -898,6 +898,41 @@ struct Threed1AxisGeometry {
   static constexpr char H5key[] = "/threed1_axis_geometry";
 };
 
+// Edge quantities reported for a free-boundary run: the boundary geometry, the
+// plasma-side and vacuum-side pressures both as first established and as
+// converged, and the cylindrical field components on either side of the
+// boundary. freeb_data in Fortran VMEC. Every array is (nZeta,
+// nThetaReduced), and all are zero for a fixed-boundary run.
+struct Threed1FreeBoundary {
+  RowMatrixXd rb;
+  RowMatrixXd phib;
+  RowMatrixXd zb;
+  RowMatrixXd bsqmhdi;
+  RowMatrixXd bsqvaci;
+  RowMatrixXd bsqmhdf;
+  RowMatrixXd bsqvacf;
+  RowMatrixXd bredge;
+  RowMatrixXd bpedge;
+  RowMatrixXd bzedge;
+  RowMatrixXd brv;
+  RowMatrixXd bphiv;
+  RowMatrixXd bzv;
+
+  bool operator==(const Threed1FreeBoundary&) const = default;
+  bool operator!=(const Threed1FreeBoundary& o) const { return !(*this == o); }
+
+  // Write object to the specified HDF5 file, under key this->H5key.
+  absl::Status WriteTo(H5::H5File& file) const;
+
+  // Load contents of `from_file` into the specified instance.
+  // The file is expected to have the same schema as the one produced by
+  // WriteTo.
+  static absl::Status LoadInto(Threed1FreeBoundary& m_obj,
+                               H5::H5File& from_file);
+
+  static constexpr char H5key[] = "/threed1_free_boundary";
+};
+
 // beta values from volume averages over plasma
 struct Threed1Betas {
   // beta total
@@ -1348,6 +1383,7 @@ struct OutputQuantities {
   Threed1Volumetrics threed1_volumetrics;
   Threed1AxisGeometry threed1_axis;
   Threed1Betas threed1_betas;
+  Threed1FreeBoundary threed1_free_boundary;
   Threed1ShafranovIntegrals threed1_shafranov_integrals;
   WOutFileContents wout;
   VmecINDATA indata;
@@ -1369,6 +1405,14 @@ struct OutputQuantities {
 // Compute the output quantities of VMEC++.
 // With respect to Fortran VMEC, this is equivalent to the fileout subroutine,
 // but without the actual file writing routines.
+// Assemble the free-boundary edge quantities. The arrays stay zero unless the
+// run is free-boundary.
+Threed1FreeBoundary ComputeThreed1FreeBoundary(
+    const Sizes& s, const FlowControl& fc,
+    const HandoverStorage& handover_storage,
+    const VmecInternalResults& vmec_internal_results,
+    const CylindricalComponentsOfB& b_cylindrical);
+
 OutputQuantities ComputeOutputQuantities(
     int sign_of_jacobian, const VmecINDATA& indata, const Sizes& s,
     const FlowControl& fc, const VmecConstants& constants,
@@ -1520,7 +1564,8 @@ WOutFileContents ComputeWOutFileContents(
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,
     const Threed1AxisGeometry& threed1_axis, const Threed1Betas& threed1_betas,
-    VmecStatus vmec_status, int iter2);
+    const Threed1FreeBoundary& threed1_free_boundary, VmecStatus vmec_status,
+    int iter2);
 
 // Compare the contents of a test wout object against a reference wout object,
 // exiting with an error in case of mismatches.

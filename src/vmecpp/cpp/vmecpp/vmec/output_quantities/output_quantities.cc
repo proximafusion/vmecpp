@@ -741,6 +741,47 @@ absl::Status vmecpp::Threed1AxisGeometry::LoadInto(Threed1AxisGeometry& m_obj,
   return absl::OkStatus();
 }
 
+absl::Status vmecpp::Threed1FreeBoundary::WriteTo(H5::H5File& file) const {
+  file.createGroup(this->H5key);
+  WRITEMEMBER(rb);
+  WRITEMEMBER(phib);
+  WRITEMEMBER(zb);
+  WRITEMEMBER(bsqmhdi);
+  WRITEMEMBER(bsqvaci);
+  WRITEMEMBER(bsqmhdf);
+  WRITEMEMBER(bsqvacf);
+  WRITEMEMBER(bredge);
+  WRITEMEMBER(bpedge);
+  WRITEMEMBER(bzedge);
+  WRITEMEMBER(brv);
+  WRITEMEMBER(bphiv);
+  WRITEMEMBER(bzv);
+
+  return absl::OkStatus();
+}
+
+absl::Status vmecpp::Threed1FreeBoundary::LoadInto(Threed1FreeBoundary& m_obj,
+                                                   H5::H5File& from_file) {
+  // Files written before this group existed do not have it.
+  if (H5Lexists(from_file.getId(), H5key, 0) != 1) {
+    return absl::OkStatus();
+  }
+  READMEMBER(rb);
+  READMEMBER(phib);
+  READMEMBER(zb);
+  READMEMBER(bsqmhdi);
+  READMEMBER(bsqvaci);
+  READMEMBER(bsqmhdf);
+  READMEMBER(bsqvacf);
+  READMEMBER(bredge);
+  READMEMBER(bpedge);
+  READMEMBER(bzedge);
+  READMEMBER(brv);
+  READMEMBER(bphiv);
+  READMEMBER(bzv);
+  return absl::OkStatus();
+}
+
 absl::Status vmecpp::Threed1Betas::WriteTo(H5::H5File& file) const {
   file.createGroup(this->H5key);
   WRITEMEMBER(betatot);
@@ -1233,6 +1274,11 @@ absl::Status vmecpp::OutputQuantities::Save(
     return status;
   }
 
+  status = threed1_free_boundary.WriteTo(file);
+  if (!status.ok()) {
+    return status;
+  }
+
   status = threed1_betas.WriteTo(file);
   if (!status.ok()) {
     return status;
@@ -1346,6 +1392,12 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
     return status;
   }
 
+  status = decltype(oq.threed1_free_boundary)::LoadInto(
+      oq.threed1_free_boundary, file);
+  if (!status.ok()) {
+    return status;
+  }
+
   status = decltype(oq.threed1_betas)::LoadInto(oq.threed1_betas, file);
   if (!status.ok()) {
     return status;
@@ -1369,6 +1421,79 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
 
   return oq;
 }
+
+vmecpp::Threed1FreeBoundary vmecpp::ComputeThreed1FreeBoundary(
+    const Sizes& s, const FlowControl& fc,
+    const HandoverStorage& handover_storage,
+    const VmecInternalResults& vmec_internal_results,
+    const CylindricalComponentsOfB& b_cylindrical) {
+  Threed1FreeBoundary result;
+
+  const int num_zeta = s.nZeta;
+  const int num_theta = s.nThetaReduced;
+  result.rb = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.phib = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.zb = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bsqmhdi = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bsqvaci = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bsqmhdf = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bsqvacf = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bredge = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bpedge = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bzedge = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.brv = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bphiv = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bzv = RowMatrixXd::Zero(num_zeta, num_theta);
+
+  // A fixed-boundary run has no vacuum side; the arrays stay allocated and
+  // zero, as potvac does.
+  if (handover_storage.vacuum_magnetic_pressure.size() != s.nZnT) {
+    return result;
+  }
+
+  const int last_full = fc.ns - 1;
+  const int last_half = fc.ns - 2;
+  const int previous_half = fc.ns - 3;
+
+  for (int k = 0; k < num_zeta; ++k) {
+    const double zeta = 2.0 * M_PI * k / (num_zeta * s.nfp);
+    for (int l = 0; l < num_theta; ++l) {
+      // fast-poloidal within-surface index, and the fast-toroidal one Nestor
+      // hands its results back in
+      const int kl = k * s.nThetaEff + l;
+      const int lk = l * num_zeta + k;
+
+      const int boundary = last_full * s.nZnT + kl;
+      result.rb(k, l) = vmec_internal_results.r_e(boundary) +
+                        vmec_internal_results.r_o(boundary);
+      result.zb(k, l) = vmec_internal_results.z_e(boundary) +
+                        vmec_internal_results.z_o(boundary);
+      result.phib(k, l) = zeta;
+
+      result.bsqmhdi(k, l) =
+          handover_storage.initial_plasma_pressure_at_boundary[kl];
+      result.bsqvaci(k, l) =
+          handover_storage.initial_vacuum_pressure_at_boundary[lk];
+      result.bsqmhdf(k, l) = handover_storage.edge_total_pressure[kl];
+      result.bsqvacf(k, l) = handover_storage.vacuum_magnetic_pressure[lk];
+
+      // the plasma-side field lives on the half grid, so extrapolate the two
+      // outermost surfaces onto the boundary
+      result.bredge(k, l) = 1.5 * b_cylindrical.b_r(last_half, kl) -
+                            0.5 * b_cylindrical.b_r(previous_half, kl);
+      result.bpedge(k, l) = 1.5 * b_cylindrical.b_phi(last_half, kl) -
+                            0.5 * b_cylindrical.b_phi(previous_half, kl);
+      result.bzedge(k, l) = 1.5 * b_cylindrical.b_z(last_half, kl) -
+                            0.5 * b_cylindrical.b_z(previous_half, kl);
+
+      result.brv(k, l) = handover_storage.vacuum_b_r[lk];
+      result.bphiv(k, l) = handover_storage.vacuum_b_phi[lk];
+      result.bzv(k, l) = handover_storage.vacuum_b_z[lk];
+    }  // l
+  }  // k
+
+  return result;
+}  // ComputeThreed1FreeBoundary
 
 vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     const int sign_of_jacobian, const VmecINDATA& indata, const Sizes& s,
@@ -1554,11 +1679,14 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         output_quantities.threed1_first_table,
         output_quantities.threed1_geometric_magnetic,
         output_quantities.threed1_axis, output_quantities.threed1_betas,
-        vmec_status, iter2);
+        output_quantities.threed1_free_boundary, vmec_status, iter2);
 
-    // TODO(jons): freeb_data output to be implemented when free-boundary test
-    // case is set up
+
   }
+
+  output_quantities.threed1_free_boundary = ComputeThreed1FreeBoundary(
+      s, fc, h, output_quantities.vmec_internal_results,
+      output_quantities.b_cylindrical);
 
   output_quantities.indata = indata;
 
@@ -4324,7 +4452,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,
     const Threed1AxisGeometry& threed1_axis, const Threed1Betas& threed1_betas,
-    VmecStatus vmec_status, int iter2) {
+    const Threed1FreeBoundary& threed1_free_boundary, VmecStatus vmec_status,
+    int iter2) {
   // THIS SUBROUTINE CREATES THE FILE WOUT.
   // IT CONTAINS THE CYLINDRICAL COORDINATE SPECTRAL COEFFICIENTS
   // RMN,ZMN (full), LMN (half_mesh - CONVERTED FROM INTERNAL full

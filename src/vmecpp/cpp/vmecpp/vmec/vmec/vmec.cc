@@ -205,6 +205,9 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     bvecShare.setZero(mnpd_dim);
 
     h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
+    h_.initial_plasma_pressure_at_boundary.setZero(s_.nZnT);
+    h_.initial_vacuum_pressure_at_boundary.setZero(s_.nZnT);
+    h_.edge_total_pressure.setZero(s_.nZnT);
     h_.vacuum_b_r.setZero(s_.nZnT);
     h_.vacuum_b_phi.setZero(s_.nZnT);
     h_.vacuum_b_z.setZero(s_.nZnT);
