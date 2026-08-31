@@ -930,6 +930,9 @@ struct Threed1FreeBoundary {
   static absl::Status LoadInto(Threed1FreeBoundary& m_obj,
                                H5::H5File& from_file);
 
+  // Named H5key like the other serializable structs here: WRITEMEMBER and
+  // READMEMBER expand the name unqualified.
+  // NOLINTNEXTLINE(readability-identifier-naming)
   static constexpr const char* H5key = "/threed1_free_boundary";
 };
 
