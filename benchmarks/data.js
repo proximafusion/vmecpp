@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788187937474,
+  "lastUpdate": 1788188691767,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -13671,6 +13671,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.377699444999962,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f1af1433d3375e9b4baeede8720942852f6b7760",
+          "message": "Make the vacuum-grid overrun an error instead of a stderr warning (#715)\n\n* Return an error when the plasma boundary leaves the vacuum field grid\n\n* Fix duplicated per-thread messages and the dropped header in the error aggregate\n\n* Shorten the vacuum-grid bounds comments to one line each\n\n* Warn on a transient out-of-grid boundary and error only at convergence\n\n* Record the clamped-vacuum recovery in status_ instead of a warning\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-08-31T16:56:03+02:00",
+          "tree_id": "fd16c147682794aa974180a3767ce557ab9b6360",
+          "url": "https://github.com/proximafusion/vmecpp/commit/f1af1433d3375e9b4baeede8720942852f6b7760"
+        },
+        "date": 1788188689933,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3656259798000292,
+            "range": "stddev: 0.004395007475837568",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.5840269296666443,
+            "range": "stddev: 0.03260194519953594",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1363900136666796,
+            "range": "stddev: 0.01508744035047221",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6661147486666625,
+            "range": "stddev: 0.05268960305364649",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.354086830666688,
+            "range": "stddev: 0.05600279019470025",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.48750304666665,
+            "range": "stddev: 0.0092744663924712",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.45683558799999,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3854038089999676,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
