@@ -741,6 +741,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #pragma omp single
 #endif  // _OPENMP
       {
+        m_h_.vacuum_status = absl::OkStatus();
 #ifdef _OPENMP
 #pragma omp parallel num_threads(m_vac_num_threads_)
 #endif  // _OPENMP
@@ -756,21 +757,40 @@ absl::StatusOr<bool> IdealMhdModel::update(
               << "Nested vacuum parallel region was not granted the requested "
                  "number of threads";
 #endif  // _OPENMP
-          const bool rc = (*m_fb_vac_)[vac_thread_id]->update(
+          const absl::StatusOr<bool> rc = (*m_fb_vac_)[vac_thread_id]->update(
               m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
               m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
               signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
               &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
               at_checkpoint_iteration);
+          // Reduced across the team; the first error wins.
+          if (!rc.ok()) {
+#ifdef _OPENMP
+#pragma omp critical
+#endif  // _OPENMP
+            {
+              if (m_h_.vacuum_status.ok()) {
+                m_h_.vacuum_status = rc.status();
+              }
+            }
+          }
           // All nested threads follow identical control flow and compute the
           // same checkpoint result; record it once for the radial team.
           if (vac_thread_id == 0) {
-            m_h_.vacuum_reached_checkpoint = rc;
+            m_h_.vacuum_reached_checkpoint = rc.ok() && *rc;
           }
         }
       }
-      // The 'omp single' implicit barrier publishes the shared vacuum outputs
-      // and the broadcast flag to all radial threads.
+      // The 'omp single' barrier publishes the outputs, flag, and status.
+      // Only a warning here: the boundary may leave the grid transiently while
+      // the equilibrium is still moving. Vmec::run turns a still-outside
+      // boundary into an error once the run has converged.
+      if (!m_h_.vacuum_status.ok() && verbose) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        std::cout << "WARNING: " << m_h_.vacuum_status.message() << "\n";
+      }
       if (m_h_.vacuum_reached_checkpoint) {
         return true;
       }

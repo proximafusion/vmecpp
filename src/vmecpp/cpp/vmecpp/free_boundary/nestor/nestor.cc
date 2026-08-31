@@ -32,7 +32,7 @@ Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
   bSubV.setZero(numLocal);
 }
 
-bool Nestor::update(
+absl::StatusOr<bool> Nestor::update(
     const std::span<const double> rCC, const std::span<const double> rSS,
     const std::span<const double> rSC, const std::span<const double> rCS,
     const std::span<const double> zSC, const std::span<const double> zCS,
@@ -55,7 +55,9 @@ bool Nestor::update(
     return true;
   }
 
-  ef_.update(rAxis, zAxis, netToroidalCurrent);
+  // Carried to the end: collective regions below must be reached by all.
+  const absl::Status external_field_status =
+      ef_.update(rAxis, zAxis, netToroidalCurrent);
   if (vmec_checkpoint == VmecCheckpoint::VAC1_BEXTERN &&
       at_checkpoint_iteration) {
     return true;
@@ -260,6 +262,11 @@ bool Nestor::update(
 
   // TODO(jons): could move bSubUVac, bSubVVac collection here to spare on
   // barrier
+
+  // All collective regions are done, so it is safe to report now.
+  if (!external_field_status.ok()) {
+    return external_field_status;
+  }
 
   return false;
 }

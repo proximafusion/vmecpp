@@ -8,6 +8,7 @@
 #include <Eigen/Dense>
 #include <filesystem>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/sizes/sizes.h"
 
@@ -30,10 +31,13 @@ class MGridProvider {
                              const Eigen::VectorXd& fixed_bp,
                              const Eigen::VectorXd& fixed_bz);
 
-  void interpolate(int ztMin, int ztMax, int nZeta, const Eigen::VectorXd& r,
-                   const Eigen::VectorXd& z, Eigen::VectorXd& m_interpBr,
-                   Eigen::VectorXd& m_interpBp,
-                   Eigen::VectorXd& m_interpBz) const;
+  // Interpolate [ztMin, ztMax) of nZnT points; error if outside the grid.
+  [[nodiscard]] absl::Status interpolate(int ztMin, int ztMax, int nZeta,
+                                         int nZnT, const Eigen::VectorXd& r,
+                                         const Eigen::VectorXd& z,
+                                         Eigen::VectorXd& m_interpBr,
+                                         Eigen::VectorXd& m_interpBp,
+                                         Eigen::VectorXd& m_interpBz) const;
 
   // mgrid internals below
 

@@ -14,7 +14,7 @@ OnlyCoils::OnlyCoils(const Sizes* s, const TangentialPartitioning* tp,
     : FreeBoundaryBase(s, tp, mgrid, bSqVacShare, vacuum_b_r_share,
                        vacuum_b_phi_share, vacuum_b_z_share) {}  // OnlyCoils
 
-bool OnlyCoils::update(
+absl::StatusOr<bool> OnlyCoils::update(
     const std::span<const double> rCC, const std::span<const double> rSS,
     const std::span<const double> rSC, const std::span<const double> rCS,
     const std::span<const double> zSC, const std::span<const double> zCS,
@@ -31,7 +31,8 @@ bool OnlyCoils::update(
 
   // blindly assume netToroidalCurrent == 0.0,
   // since checked for that during initialization
-  ef_.update(rAxis, zAxis, 0.0);
+  // Carried to the end for the same reason as in Nestor::update.
+  const absl::Status external_field_status = ef_.update(rAxis, zAxis, 0.0);
 
   // compute net covariant magnetic field components on surface
   double local_bsubuvac = 0.0;
@@ -86,6 +87,10 @@ bool OnlyCoils::update(
 
   // TODO(jons): could move bSubUVac, bSubVVac collection here to spare on
   // barrier
+
+  if (!external_field_status.ok()) {
+    return external_field_status;
+  }
 
   return false;
 }  // update

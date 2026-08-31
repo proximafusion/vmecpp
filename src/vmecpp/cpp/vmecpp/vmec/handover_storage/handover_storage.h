@@ -10,6 +10,7 @@
 #include <span>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
@@ -183,6 +184,9 @@ class HandoverStorage {
   // reads it after the enclosing 'omp single' barrier). Always false during
   // normal runs (checkpoint == NONE).
   bool vacuum_reached_checkpoint = false;
+
+  // First error from the nested vacuum team; reset to OK before each solve.
+  absl::Status vacuum_status = absl::OkStatus();
 
  private:
   const Sizes& s_;
