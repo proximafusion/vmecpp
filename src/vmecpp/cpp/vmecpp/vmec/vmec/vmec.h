@@ -119,11 +119,16 @@ class Vmec {
       OutputMode verbose = OutputMode::kLegacy,
       InterruptCallback interrupt_callback = nullptr);
 
+  // checkpoint_multi_grid_step selects which entry of ns_array the checkpoints
+  // taken in InitializeRadial fire on, counting from 1. Without it those
+  // checkpoints always stop the run in the first multi-grid step, which leaves
+  // the setup of every later step unreachable.
   absl::StatusOr<bool> run(
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       int iterations_before_checkpointing = INT_MAX,
       int maximum_multi_grid_step = 500,
-      std::optional<HotRestartState> initial_state = std::nullopt);
+      std::optional<HotRestartState> initial_state = std::nullopt,
+      int checkpoint_multi_grid_step = 1);
 
   // -------------------
 
@@ -133,12 +138,15 @@ class Vmec {
   // multigrid steps.
   void SetupVacuumSolvers();
 
+  // is_checkpoint_step says whether the multi-grid step being initialized is
+  // the one the caller asked to checkpoint in.
   bool InitializeRadial(
       VmecCheckpoint checkpoint, int maximum_iterations, int nsval, int ns_old,
       double& m_delt0,
       const std::optional<HotRestartState>& initial_state = std::nullopt,
       std::optional<MultigridInterpolationScheme> interpolation_scheme =
-          std::nullopt);
+          std::nullopt,
+      bool is_checkpoint_step = true);
   absl::StatusOr<bool> SolveEquilibrium(VmecCheckpoint checkpoint,
                                         int maximum_iterations);
   void RestartIteration(double& m_delt0r, int thread_id);
