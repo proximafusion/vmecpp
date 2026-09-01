@@ -1487,13 +1487,6 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // lfreeb
   // nothing to check here: lfreeb can be true or false and both are valid...
   if (vmec_indata.lfreeb) {
-    // mgrid_file
-    // TODO(jons): if mgrid read, check for consistent nzeta
-
-    // extcur
-    // TODO(jons): check that number of coil currents matches number of response
-    // tables in mgrid file
-
     // nvacskip
     if (vmec_indata.nvacskip < 1) {
       return absl::InvalidArgumentError(absl::StrFormat(

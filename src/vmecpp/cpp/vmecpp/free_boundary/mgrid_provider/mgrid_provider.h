@@ -7,6 +7,8 @@
 
 #include <Eigen/Dense>
 #include <filesystem>
+#include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -62,6 +64,11 @@ class MGridProvider {
   int nextcur;
 
   std::string mgrid_mode;
+
+  // Names of the coil groups, one per response table, as written by MAKEGRID
+  // into the mgrid file's coil_group variable. Empty when the field came from
+  // an in-memory response table, which carries no names.
+  std::vector<std::string> coil_group_names;
 
   bool IsLoaded() const { return has_mgrid_loaded_; }
 

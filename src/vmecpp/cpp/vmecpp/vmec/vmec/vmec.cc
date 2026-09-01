@@ -442,8 +442,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   // (for creating the output file, use WriteOutputFile())
   output_quantities_ = vmecpp::ComputeOutputQuantities(
       kSignOfJacobian, indata_, s_, fc_, constants_, t_, h_, mgrid_.mgrid_mode,
-      r_, decomposed_x_, m_, p_, checkpoint, vacuum_pressure_state_, status_,
-      iter2_);
+      mgrid_.coil_group_names, r_, decomposed_x_, m_, p_, checkpoint,
+      vacuum_pressure_state_, status_, iter2_);
 
   {
     const auto& w = output_quantities_.wout;
