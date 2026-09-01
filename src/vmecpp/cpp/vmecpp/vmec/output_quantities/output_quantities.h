@@ -1522,6 +1522,32 @@ WOutFileContents ComputeWOutFileContents(
     const Threed1AxisGeometry& threed1_axis, const Threed1Betas& threed1_betas,
     VmecStatus vmec_status, int iter2);
 
+// One low-order rational surface inside the plasma, together with the
+// resonant harmonic of |B| there. VMEC's nested-surface ansatz cannot open an
+// island, so where the real field would, the resonance instead shows up as a
+// locally enhanced (m, n) harmonic pinned to its rational surface.
+struct IslandDiagnostic {
+  // resonant mode numbers, with the field periodicity in n
+  int poloidal_mode_number;
+  int toroidal_mode_number;
+  // radial position of the rational surface iota = n/m
+  double s;
+  // resonant |B| harmonic at s, normalized by |B|_{00} there
+  double amplitude;
+  // median of the same harmonic over the off-resonance surfaces, same norm
+  double background;
+  // quasi-linear island full width in s: 4 sqrt(amplitude / (m |iota'|))
+  double width_estimate;
+};
+
+// Scan the rotational transform profile for crossings of low-order rationals
+// n/m with n a multiple of nfp, gcd(m, n/nfp) = 1 and m up to
+// max_poloidal_mode_number, and evaluate the resonant |B| harmonic at each.
+// The result is sorted by s. An amplitude well above its background marks an
+// equilibrium whose field wants an island chain the ansatz suppresses.
+std::vector<IslandDiagnostic> ComputeIslandDiagnostics(
+    const WOutFileContents& wout, int max_poloidal_mode_number = 6);
+
 // Compare the contents of a test wout object against a reference wout object,
 // exiting with an error in case of mismatches.
 // The comparison is performed using the specified tolerance in the "relabs"

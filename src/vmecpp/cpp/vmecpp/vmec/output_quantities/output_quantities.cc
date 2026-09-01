@@ -6,12 +6,18 @@
 
 #include <Eigen/Dense>  // VectorXd
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <iostream>
+#include <limits>
 #include <memory>
+#include <numeric>  // gcd
 #include <string>
 #include <vector>
 
 #include "H5Cpp.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "util/hdf5_io/hdf5_io.h"
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/util/util.h"
@@ -1372,6 +1378,147 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
   return oq;
 }
 
+namespace {
+
+// Median of the entries of `values`; 0 for an empty vector.
+double Median(std::vector<double> values) {
+  if (values.empty()) {
+    return 0.0;
+  }
+  const auto middle =
+      values.begin() + static_cast<std::ptrdiff_t>(values.size() / 2);
+  std::nth_element(values.begin(), middle, values.end());
+  return *middle;
+}
+
+}  // namespace
+
+std::vector<vmecpp::IslandDiagnostic> vmecpp::ComputeIslandDiagnostics(
+    const WOutFileContents& wout, int max_poloidal_mode_number) {
+  std::vector<IslandDiagnostic> diagnostics;
+
+  const int ns = wout.ns;
+  if (ns < 4 || wout.iotaf.size() < ns || wout.bmnc.size() == 0) {
+    return diagnostics;
+  }
+
+  double iota_min = wout.iotaf[0];
+  double iota_max = wout.iotaf[0];
+  for (int jF = 0; jF < ns; ++jF) {
+    iota_min = std::min(iota_min, wout.iotaf[jF]);
+    iota_max = std::max(iota_max, wout.iotaf[jF]);
+  }
+
+  // |B|_{00}(s) on the half grid, for normalization.
+  int index_00 = -1;
+  for (int mn = 0; mn < wout.mnmax_nyq; ++mn) {
+    if (wout.xm_nyq[mn] == 0 && wout.xn_nyq[mn] == 0) {
+      index_00 = mn;
+      break;
+    }
+  }
+  if (index_00 < 0) {
+    return diagnostics;
+  }
+
+  for (int m = 1; m <= max_poloidal_mode_number; ++m) {
+    // Enumerate the field-period-compatible rationals n/m = k nfp / m inside
+    // the iota range; gcd(m, k) > 1 repeats a lower-order chain.
+    const int k_min =
+        static_cast<int>(std::ceil(m * iota_min / wout.nfp - 1.0e-12));
+    const int k_max =
+        static_cast<int>(std::floor(m * iota_max / wout.nfp + 1.0e-12));
+    for (int k = k_min; k <= k_max; ++k) {
+      if (k == 0 || std::gcd(m, std::abs(k)) != 1) {
+        continue;
+      }
+      const int n = k * wout.nfp;
+      const double rational = static_cast<double>(n) / m;
+
+      // The resonant harmonic must exist on the Nyquist grid.
+      int index_mn = -1;
+      for (int mn = 0; mn < wout.mnmax_nyq; ++mn) {
+        if (wout.xm_nyq[mn] == m && wout.xn_nyq[mn] == n) {
+          index_mn = mn;
+          break;
+        }
+      }
+      if (index_mn < 0) {
+        continue;
+      }
+
+      for (int jF = 0; jF < ns - 1; ++jF) {
+        const double left = wout.iotaf[jF] - rational;
+        const double right = wout.iotaf[jF + 1] - rational;
+        if (!(left == 0.0 ? right != 0.0 : left * right < 0.0)) {
+          continue;
+        }
+        const double s_res = (jF + left / (left - right)) / (ns - 1.0);
+        const double d_iota_d_s =
+            (wout.iotaf[jF + 1] - wout.iotaf[jF]) * (ns - 1.0);
+
+        // Resonant amplitude and normalization at s_res, linearly
+        // interpolated between the two enclosing half-grid surfaces.
+        auto harmonic = [&](int index, double s) {
+          const double j_half = s * (ns - 1.0) - 0.5;
+          const int j_lo =
+              std::clamp(static_cast<int>(std::floor(j_half)), 0, ns - 3);
+          const double weight = std::clamp(j_half - j_lo, 0.0, 1.0);
+          auto value = [&](int j) {
+            double a = wout.bmnc(index, j + 1);
+            if (wout.lasym) {
+              a = std::hypot(a, wout.bmns(index, j + 1));
+            }
+            return std::abs(a);
+          };
+          return (1.0 - weight) * value(j_lo) + weight * value(j_lo + 1);
+        };
+        const double b_00 = harmonic(index_00, s_res);
+        if (b_00 == 0.0) {
+          continue;
+        }
+        const double amplitude = harmonic(index_mn, s_res) / b_00;
+
+        // Off-resonance level of the same harmonic: the median over the
+        // half-grid surfaces at least 0.15 away from the rational surface.
+        std::vector<double> off_resonance;
+        for (int jH = 1; jH < ns; ++jH) {
+          const double s_half = (jH - 0.5) / (ns - 1.0);
+          if (std::abs(s_half - s_res) < 0.15) {
+            continue;
+          }
+          double a = wout.bmnc(index_mn, jH);
+          if (wout.lasym) {
+            a = std::hypot(a, wout.bmns(index_mn, jH));
+          }
+          off_resonance.push_back(std::abs(a) / b_00);
+        }
+        const double background = Median(std::move(off_resonance));
+
+        const double width_estimate =
+            d_iota_d_s == 0.0
+                ? std::numeric_limits<double>::infinity()
+                : 4.0 * std::sqrt(amplitude / (m * std::abs(d_iota_d_s)));
+
+        diagnostics.push_back(IslandDiagnostic{
+            .poloidal_mode_number = m,
+            .toroidal_mode_number = n,
+            .s = s_res,
+            .amplitude = amplitude,
+            .background = background,
+            .width_estimate = width_estimate,
+        });
+      }  // jF
+    }  // k
+  }  // m
+
+  std::sort(diagnostics.begin(), diagnostics.end(),
+            [](const IslandDiagnostic& a, const IslandDiagnostic& b) {
+              return a.s < b.s;
+            });
+  return diagnostics;
+}  // ComputeIslandDiagnostics
+
 vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     const int sign_of_jacobian, const VmecINDATA& indata, const Sizes& s,
     const FlowControl& fc, const VmecConstants& constants,
@@ -1560,6 +1707,24 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
 
     // TODO(jons): freeb_data output to be implemented when free-boundary test
     // case is set up
+
+    // A resonant |B| harmonic well above its off-resonance level marks a
+    // rational surface where the field wants an island chain the
+    // nested-surface ansatz suppresses.
+    constexpr double kIslandWarningRatio = 2.0;
+    for (const IslandDiagnostic& island :
+         ComputeIslandDiagnostics(output_quantities.wout)) {
+      if (island.background > 0.0 &&
+          island.amplitude >= kIslandWarningRatio * island.background) {
+        std::cout << absl::StrFormat(
+            "WARNING: iota crosses %d/%d at s = %.3f and the resonant |B| "
+            "harmonic there is %.1fx its off-resonance level; the equilibrium "
+            "may want an island chain here (quasi-linear width estimate in s: "
+            "%.3f)\n",
+            island.toroidal_mode_number, island.poloidal_mode_number, island.s,
+            island.amplitude / island.background, island.width_estimate);
+      }
+    }
   }
 
   output_quantities.indata = indata;

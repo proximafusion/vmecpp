@@ -6,6 +6,7 @@
 
 #include <netcdf.h>
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -945,6 +946,77 @@ TEST(SolovevFreeBoundaryLforbal, MatchesEducationalVmecGolden) {
   std::cout << "[lforbal-vs-Fortran-golden] worst abs dev = " << worst_abs
             << ", worst dev normalized by field peak = " << worst_norm << " ("
             << worst_norm_field << ")" << std::endl;
+}
+
+// cma's rotational transform runs from 0.569 to 0.623, so among the
+// field-period-compatible rationals n/m with n a multiple of nfp = 2 it
+// crosses only 4/7. The diagnostic must find exactly that crossing when m = 7
+// is admitted and nothing at the default bound of 6, and a resonant harmonic
+// artificially pinned to the rational surface must raise the
+// amplitude-over-background ratio the island warning triggers on.
+TEST(IslandDiagnostics, CmaCrossesFourSevenths) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cma.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+
+  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+
+  EXPECT_TRUE(ComputeIslandDiagnostics(wout).empty());
+
+  const std::vector<IslandDiagnostic> diagnostics =
+      ComputeIslandDiagnostics(wout, /*max_poloidal_mode_number=*/8);
+  ASSERT_EQ(diagnostics.size(), 1);
+  const IslandDiagnostic& island = diagnostics[0];
+  EXPECT_EQ(island.poloidal_mode_number, 7);
+  EXPECT_EQ(island.toroidal_mode_number, 4);
+  EXPECT_GT(island.s, 0.0);
+  EXPECT_LT(island.s, 1.0);
+  EXPECT_GT(island.background, 0.0);
+  EXPECT_GT(island.width_estimate, 0.0);
+  EXPECT_TRUE(std::isfinite(island.width_estimate));
+
+  // The reported surface is where iotaf actually crosses 4/7.
+  const double rational = 4.0 / 7.0;
+  const int ns = wout.ns;
+  bool found = false;
+  for (int jF = 0; jF < ns - 1; ++jF) {
+    const double left = wout.iotaf[jF] - rational;
+    const double right = wout.iotaf[jF + 1] - rational;
+    if (left * right < 0.0) {
+      const double s_res = (jF + left / (left - right)) / (ns - 1.0);
+      EXPECT_TRUE(IsCloseRelAbs(s_res, island.s, 1.0e-12));
+      found = true;
+    }
+  }
+  EXPECT_TRUE(found);
+
+  // Pin a bump of the resonant harmonic to the rational surface: the
+  // amplitude rises against an unchanged background.
+  WOutFileContents perturbed = wout;
+  for (int mn = 0; mn < perturbed.mnmax_nyq; ++mn) {
+    if (perturbed.xm_nyq[mn] == 7 && perturbed.xn_nyq[mn] == 4) {
+      for (int jH = 1; jH < ns; ++jH) {
+        const double s_half = (jH - 0.5) / (ns - 1.0);
+        const double distance = (s_half - island.s) / 0.05;
+        perturbed.bmnc(mn, jH) +=
+            0.1 * wout.b0 * std::exp(-distance * distance);
+      }
+    }
+  }
+  const std::vector<IslandDiagnostic> flagged =
+      ComputeIslandDiagnostics(perturbed, /*max_poloidal_mode_number=*/8);
+  ASSERT_EQ(flagged.size(), 1);
+  EXPECT_GT(flagged[0].amplitude, island.amplitude);
+  EXPECT_GE(flagged[0].amplitude, 2.0 * flagged[0].background);
 }
 
 }  // namespace vmecpp
