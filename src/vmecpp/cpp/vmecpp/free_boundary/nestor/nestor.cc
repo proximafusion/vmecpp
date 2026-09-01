@@ -205,16 +205,10 @@ absl::StatusOr<bool> Nestor::update(
 #pragma omp barrier
 #endif  // _OPENMP
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
+  AddInThreadOrder(tp_.get_thread_id(), tp_.get_num_threads(), [&] {
     *bSubUVac += local_bSubUVac;
     *bSubVVac += local_bSubVVac;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  });
 
   // compute magnetic pressure from co- and contravariant B_vac components
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
