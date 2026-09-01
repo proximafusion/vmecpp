@@ -11,6 +11,7 @@ Reference <api/vmecpp>
 Examples <examples_overview>
 Fourier Basis Details <fourier_basis_implementation>
 Benchmarks <benchmarks>
+Proof-Carrying Equilibria <proof_carrying_equilibria>
 ```
 
 ![MIT license](https://img.shields.io/badge/license-MIT-blue)
