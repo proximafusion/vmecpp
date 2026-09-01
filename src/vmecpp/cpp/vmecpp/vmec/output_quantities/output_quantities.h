@@ -447,9 +447,8 @@ struct MercierStabilityIntermediateQuantities {
   // (num_full, nZnT)
   RowMatrixXd bdotj;
 
-  // 1.0 / gpp on full-grid
+  // 1 / |grad(s)|^2 on full-grid, formed as sqrt(g)^2 / |e_theta x e_zeta|^2
   // (num_full, nZnT)
-  // TODO(jons): figure out what this really is
   RowMatrixXd gpp;
 
   // |B|^2 on half grid
@@ -559,8 +558,8 @@ struct Threed1FirstTableIntermediate {
   // [num_half] surface-averaged beta profile
   Eigen::VectorXd beta_vol;
 
-  // [num_half] <tau / R> / V'
-  // TODO(jons): figure out what this really is
+  // [num_half] <tau / R> / V', which is the flux-surface average of 1/R;
+  // written to wout as over_r
   Eigen::VectorXd overr;
 
   // plasma beta on magnetic axis
