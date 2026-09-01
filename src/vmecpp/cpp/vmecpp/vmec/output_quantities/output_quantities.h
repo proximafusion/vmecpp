@@ -1530,10 +1530,6 @@ WOutFileContents ComputeWOutFileContents(
 // builds they do not reproduce to the same tolerance as the profiles across
 // machines. Pass current_density_tolerance > 0 to compare those two with a
 // looser bound while keeping every other quantity at tolerance.
-void CompareWOut(const WOutFileContents& test_wout,
-                 const WOutFileContents& expected_wout, double tolerance,
-                 bool check_equal_niter = true,
-                 double current_density_tolerance = 0.0);
 }  // namespace vmecpp
 
 #endif  // VMECPP_VMEC_OUTPUT_QUANTITIES_OUTPUT_QUANTITIES_H_

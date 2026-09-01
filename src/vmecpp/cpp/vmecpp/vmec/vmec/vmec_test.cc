@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/vmec/vmec.h"
+#include "vmecpp/vmec/output_quantities/test_helpers.h"
 
 #include <fstream>
 #include <string>
@@ -169,7 +170,7 @@ TEST(TestVmec, CheckInMemoryMgrid) {
   ASSERT_TRUE(output_with_inmemory_mgrid.ok());
 
   // compare wout contents
-  vmecpp::CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
+  CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
                       /*tolerance=*/1e-7);
 }  // CheckInMemoryMgrid
 
