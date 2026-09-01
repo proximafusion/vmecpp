@@ -15,6 +15,7 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/output_quantities/test_helpers.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
 using ::testing::ElementsAreArray;
@@ -79,9 +80,9 @@ TEST(TestVmec, CheckInMemoryMgrid) {
   // compare wout contents. jcuru/jcurv are curl(B) currents whose two solve
   // paths diverge by ~1.03e-7 across optimized/vectorized builds; keep every
   // other quantity at 1e-7 and compare those two at 2e-7.
-  vmecpp::CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
-                      /*tolerance=*/1e-7, /*check_equal_niter=*/true,
-                      /*current_density_tolerance=*/2e-7);
+  CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
+              /*tolerance=*/1e-7, /*check_equal_niter=*/true,
+              /*current_density_tolerance=*/2e-7);
 }
 
 // Axisymmetric (ntor = 0, nzeta = 1) free-boundary tokamak (solovev_free_bdy).
@@ -127,7 +128,7 @@ TEST(TestVmec, SolovevFreeBoundaryAxisymmetric) {
   // jcuru/jcurv are curl(B) currents whose two solve paths diverge by ~1.03e-7
   // across optimized/vectorized builds; keep every other quantity at 1e-7 and
   // compare those two at 2e-7.
-  vmecpp::CompareWOut(inmemory_output->wout, disk_output->wout,
-                      /*tolerance=*/1e-7, /*check_equal_niter=*/true,
-                      /*current_density_tolerance=*/2e-7);
+  CompareWOut(inmemory_output->wout, disk_output->wout,
+              /*tolerance=*/1e-7, /*check_equal_niter=*/true,
+              /*current_density_tolerance=*/2e-7);
 }

@@ -33,11 +33,6 @@ using magnetics::NumWindingsToCircuitCurrents;
 using magnetics::SetCircuitCurrents;
 using magnetics::VectorPotential;
 
-// TODO(jons): implement stellarator-symmetric grid and follow-up flip-mirroring
-// of magnetic quantities NOTE: For now, everything here is computed as
-// non-stellarator-symmetric,
-//       so there is a factor of ~2 speedup around the corner.
-
 absl::Status IsValidMakegridParameters(
     const MakegridParameters& makegrid_parameters) {
   // number of field periods has to be at least 1

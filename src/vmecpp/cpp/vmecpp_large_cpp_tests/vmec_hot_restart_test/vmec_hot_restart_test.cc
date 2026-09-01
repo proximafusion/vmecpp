@@ -16,6 +16,7 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/output_quantities/test_helpers.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
 using ::testing::ElementsAreArray;
@@ -659,8 +660,8 @@ TEST(HotRestartIntegration, MultigridContinuation) {
   // Results at the finest grid should agree to high tolerance.
   const double tolerance = 1.0e-4;
   const bool check_equal_maximum_iterations = false;
-  vmecpp::CompareWOut(multigrid_output->wout, cold_output->wout, tolerance,
-                      check_equal_maximum_iterations);
+  CompareWOut(multigrid_output->wout, cold_output->wout, tolerance,
+              check_equal_maximum_iterations);
 }
 
 TEST(HotRestartIntegration, FreeBoundary) {
@@ -728,15 +729,15 @@ TEST(HotRestartIntegration, FreeBoundary) {
   // FIXME(jons): How realistic are these tolerances?
   const double tolerance = 0.1;
   const bool check_equal_maximum_iterations = false;
-  vmecpp::CompareWOut(displaced_hotrestarted_output->wout,
-                      displaced_fromscratch_output->wout, tolerance,
-                      check_equal_maximum_iterations);
+  CompareWOut(displaced_hotrestarted_output->wout,
+              displaced_fromscratch_output->wout, tolerance,
+              check_equal_maximum_iterations);
 
   // TODO(eguiraud): we'd like to use these to test that the displaced output
   // _is_ different, but the current CompareWOut implementation simply aborts in
-  // that case. vmecpp::CompareWOut(displaced_fromscratch_output->wout,
+  // that case. CompareWOut(displaced_fromscratch_output->wout,
   //                     original_output->wout, tolerance);
 
-  // vmecpp::CompareWOut(displaced_hotrestarted_output->wout,
+  // CompareWOut(displaced_hotrestarted_output->wout,
   //                     original_output->wout, tolerance);
 }
