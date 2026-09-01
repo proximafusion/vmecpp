@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -189,6 +190,19 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       last_full_update_nestor_(0) {
   // remainder of readin()
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
+
+  // Opt-in Anderson acceleration through the environment, mirroring
+  // SetAndersonAcceleration for callers that cannot reach the C++ object,
+  // such as the standalone executable.
+  if (const char* spec = std::getenv("VMECPP_ANDERSON"); spec != nullptr) {
+    int window = 0;
+    int start = 25;
+    int frequency = 1;
+    int zero_velocity = 1;
+    std::sscanf(spec, "%d,%d,%d,%d", &window, &start, &frequency,
+                &zero_velocity);
+    SetAndersonAcceleration(window, start, frequency, zero_velocity != 0);
+  }
 
   if (fc_.lfreeb) {
     // tangential Fourier resolution
@@ -627,6 +641,18 @@ bool Vmec::InitializeRadial(
     decomposed_f_.resize(num_threads_);
     physical_f_.resize(num_threads_);
     decomposed_v_.resize(num_threads_);
+    if (anderson_window_ > 0) {
+      anderson_.resize(num_threads_);
+      for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+        anderson_[thread_id] =
+            std::make_unique<AndersonAcceleration>(&s_, anderson_window_);
+      }
+      anderson_reduction_slots_.setZero(
+          static_cast<Eigen::Index>(num_threads_) * anderson_window_ *
+          (anderson_window_ + 1));
+      anderson_last_iter1_ = -1;
+      anderson_last_iter2_ = -1;
+    }
 
     // single-threaded creation of objects used in parallel threads
     for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
@@ -1321,6 +1347,96 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 #endif  // _OPENMP
 }
 
+void Vmec::SetAndersonAcceleration(int window, int start_iteration,
+                                   int frequency, bool zero_velocity_on_jump) {
+  anderson_window_ = std::max(window, 0);
+  anderson_start_ = std::max(start_iteration, 1);
+  anderson_frequency_ = std::max(frequency, 1);
+  anderson_zero_velocity_ = zero_velocity_on_jump;
+}
+
+void Vmec::AndersonPreStep(int thread_id) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    // The history only extrapolates a settled, uninterrupted iteration:
+    // anything that moved iter1_ (a restart, a new multigrid step) or skipped
+    // an iteration invalidates it.
+    anderson_reset_ = (iter1_ != anderson_last_iter1_) ||
+                      (iter2_ != anderson_last_iter2_ + 1);
+    anderson_last_iter1_ = iter1_;
+    anderson_last_iter2_ = iter2_;
+  }  // implicit barrier
+
+  AndersonAcceleration& acceleration = *anderson_[thread_id];
+  if (anderson_reset_) {
+    acceleration.Reset();
+  }
+  acceleration.CapturePreStep(*decomposed_x_[thread_id]);
+}
+
+void Vmec::AndersonPostStep(int thread_id) {
+  AndersonAcceleration& acceleration = *anderson_[thread_id];
+  acceleration.PushPostStep(*decomposed_x_[thread_id]);
+
+  const int k = acceleration.NumDifferences();
+  // The extrapolation pays off while the invariant residual sits above about
+  // 1e-8; below that, its differences carry mostly roundoff, and the momentum
+  // iteration handles the tail better, so the tail is handed back to it. The
+  // ftolv term keeps a loosely converged run from engaging right at its
+  // target.
+  const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
+  const double disengage_floor = std::max(1.0e3 * fc_.ftolv, 1.0e-8);
+  if (k < 1 || (iter2_ - iter1_) < anderson_start_ ||
+      iter2_ % anderson_frequency_ != 0 || fsq_invariant <= disengage_floor) {
+    return;
+  }
+
+  // Reduce the normal equations of the least-squares problem over the team.
+  // Every thread contributes the inner products of its own slice; the fixed
+  // tree keeps the sums reproducible.
+  const int width = k * k + k;
+  std::vector<double> local(width);
+  acceleration.LocalNormalEquations(local.data(), local.data() + k * k);
+  const int row_stride = anderson_window_ * (anderson_window_ + 1);
+  SumInFixedTree(anderson_reduction_slots_.data(), row_stride, width, thread_id,
+                 num_threads_, local.data());
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    Eigen::Map<
+        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+        gram(anderson_reduction_slots_.data(), k, k);
+    Eigen::Map<Eigen::VectorXd> rhs(anderson_reduction_slots_.data() + k * k,
+                                    k);
+    // Tikhonov-regularize against a rank-deficient history.
+    const double regularization = 1.0e-12 * gram.trace() / k;
+    Eigen::MatrixXd lhs = gram;
+    lhs.diagonal().array() += regularization;
+    anderson_gamma_ = lhs.ldlt().solve(rhs);
+    // An unreliable extrapolation is skipped rather than damped: the plain
+    // step already taken stands.
+    anderson_apply_ = anderson_gamma_.allFinite() &&
+                      anderson_gamma_.lpNorm<Eigen::Infinity>() < 1.0e2;
+  }  // implicit barrier
+
+  if (!anderson_apply_) {
+    return;
+  }
+
+  acceleration.ApplyCombination(anderson_gamma_.data(),
+                                *decomposed_x_[thread_id]);
+  if (anderson_zero_velocity_) {
+    decomposed_v_[thread_id]->setZero();
+  }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+}
+
 absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
                                   int iterations_before_checkpointing,
                                   double time_step, int thread_id,
@@ -1437,7 +1553,18 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   // THIS IS THE TIME-STEP ALGORITHM. IT IS ESSENTIALLY A CONJUGATE
   // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
   // BASED ON A METHOD GIVEN BY P. GARABEDIAN
+  // Free-boundary runs are excluded: the vacuum field is frozen between
+  // NESTOR updates, so the fixed-point map changes discontinuously every
+  // nvacskip iterations, and extrapolating across those refreshes lengthened
+  // the measured cth_like_free_bdy run rather than shortening it.
+  const bool accelerate = anderson_window_ > 0 && !fc_.lfreeb;
+  if (accelerate) {
+    AndersonPreStep(thread_id);
+  }
   PerformTimeStep(fac, b1, time_step, thread_id);
+  if (accelerate) {
+    AndersonPostStep(thread_id);
+  }
 
   return false;
 }

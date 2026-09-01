@@ -29,6 +29,7 @@
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
+#include "vmecpp/vmec/vmec/anderson_acceleration.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
 namespace vmecpp {
@@ -145,6 +146,17 @@ class Vmec {
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
                               double time_step, int thread_id,
                               bool& m_liter_flag);
+  // Opt-in Anderson acceleration of the descent iteration. `window` previous
+  // iterates enter each extrapolation (0 disables, the default);
+  // `start_iteration` delays engagement until the transients of a fresh
+  // (multigrid) step have passed; the correction is applied every `frequency`
+  // iterations; `zero_velocity_on_jump` restarts the Garabedian momentum after
+  // each accelerated jump. Also configurable through the environment variable
+  // VMECPP_ANDERSON="window[,start[,frequency[,zero_velocity]]]".
+  void SetAndersonAcceleration(int window, int start_iteration = 25,
+                               int frequency = 1,
+                               bool zero_velocity_on_jump = true);
+
   void Printout(double delt0r, int thread_id, int iter2);
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
@@ -277,6 +289,23 @@ class Vmec {
   int iter1_;
 
   // history size for averaging of 1/tau
+  // Anderson acceleration (see SetAndersonAcceleration); disabled at 0.
+  int anderson_window_ = 0;
+  int anderson_start_ = 25;
+  int anderson_frequency_ = 1;
+  bool anderson_zero_velocity_ = true;
+  std::vector<std::unique_ptr<AndersonAcceleration>> anderson_;
+  // Shared scratch for the cross-thread reduction of the normal equations and
+  // for broadcasting the solved combination coefficients.
+  Eigen::VectorXd anderson_reduction_slots_;
+  Eigen::VectorXd anderson_gamma_;
+  bool anderson_apply_ = false;
+  bool anderson_reset_ = false;
+  int anderson_last_iter1_ = -1;
+  int anderson_last_iter2_ = -1;
+  void AndersonPreStep(int thread_id);
+  void AndersonPostStep(int thread_id);
+
   static constexpr int kNDamp = 10;
 
   Eigen::VectorXd invTau_;
