@@ -57,8 +57,8 @@ class AndersonAcceleration {
  private:
   void Pack(const FourierGeometry& x, Eigen::VectorXd& m_out) const;
 
-  const Sizes& s_;
-  const int window_;
+  const Sizes* s_;
+  int window_;
 
   Eigen::VectorXd pre_step_;
   std::deque<Eigen::VectorXd> map_outputs_;

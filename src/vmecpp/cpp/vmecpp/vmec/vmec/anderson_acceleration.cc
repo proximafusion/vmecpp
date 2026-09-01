@@ -42,7 +42,7 @@ std::array<std::span<double>, 12> StateSpans(const vmecpp::FourierGeometry& x,
 }  // namespace
 
 vmecpp::AndersonAcceleration::AndersonAcceleration(const Sizes* s, int window)
-    : s_(*s), window_(window) {}
+    : s_(s), window_(window) {}
 
 void vmecpp::AndersonAcceleration::Reset() {
   map_outputs_.clear();
@@ -52,7 +52,7 @@ void vmecpp::AndersonAcceleration::Reset() {
 void vmecpp::AndersonAcceleration::Pack(const FourierGeometry& x,
                                         Eigen::VectorXd& m_out) const {
   int num_spans = 0;
-  const auto spans = StateSpans(x, s_, num_spans);
+  const auto spans = StateSpans(x, *s_, num_spans);
   Eigen::Index total = 0;
   for (int i = 0; i < num_spans; ++i) {
     total += static_cast<Eigen::Index>(spans[i].size());
@@ -109,7 +109,7 @@ void vmecpp::AndersonAcceleration::ApplyCombination(
   }
 
   int num_spans = 0;
-  const auto spans = StateSpans(m_x, s_, num_spans);
+  const auto spans = StateSpans(m_x, *s_, num_spans);
   Eigen::Index offset = 0;
   for (int i = 0; i < num_spans; ++i) {
     for (double& value : spans[i]) {
