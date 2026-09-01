@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788207641153,
+  "lastUpdate": 1788262964518,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -14231,6 +14231,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3841508909999902,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d0a2775a0d000353b28112fc90f09f4529e04c77",
+          "message": "Report every wout difference instead of aborting on the first (#762)\n\n* Report every wout difference instead of aborting on the first\n\n* Keep the comparison helper usings out of including translation units\n\n* Exclude the gtest-including test helper header from clang-tidy review",
+          "timestamp": "2026-09-01T13:35:41+02:00",
+          "tree_id": "a57ba720b0e1289dee75f76779b0be13c71a7b2b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/d0a2775a0d000353b28112fc90f09f4529e04c77"
+        },
+        "date": 1788262962732,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3808182874000067,
+            "range": "stddev: 0.006760766506316451",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.4715193099999624,
+            "range": "stddev: 0.015676474785903213",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0976139553333724,
+            "range": "stddev: 0.009812961351925721",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.581077066666656,
+            "range": "stddev: 0.02579454315007968",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.0418899923333433,
+            "range": "stddev: 0.009450090004815264",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.181275147333319,
+            "range": "stddev: 0.026729578004766462",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.501019481999947,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4681959579999102,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
