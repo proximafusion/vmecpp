@@ -22,9 +22,6 @@ using testing::IsCloseRelAbs;
 // For now, these are written manually here, since at the time of implementing
 // these tests, the corresponding outputs were not written yet to debugging
 // output files.
-// Turning these into one parameterized test needs educational_VMEC to dump the
-// Sizes values, which it does not, so there is nothing to parameterize over
-// until that dump exists.
 
 TEST(TestSizes, CheckSolovev) {
   double tolerance = 1.0e-30;
