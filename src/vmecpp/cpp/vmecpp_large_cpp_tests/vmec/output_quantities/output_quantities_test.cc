@@ -44,6 +44,12 @@ namespace fs = std::filesystem;
 namespace vmecpp {
 
 // used to specify case-specific tolerances
+//
+// Each tolerance is set from the worst deviation actually observed for that
+// case, rounded up to at least five times it. The measurement covers the opt,
+// asan and ubsan builds this repository tests in CI, which agree bit-for-bit
+// with each other, and one built with -march=native, which shifts individual
+// comparisons by up to a factor of four.
 struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
@@ -1028,8 +1034,9 @@ INSTANTIATE_TEST_SUITE_P(
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-9},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 5.0e-9},
-           DataSource{.identifier = "cma", .tolerance = 1.0e-6},
-           DataSource{.identifier = "cth_like_free_bdy", .tolerance = 1.0e-6}));
+           DataSource{.identifier = "cma", .tolerance = 5.0e-06},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 5.0e-06}));
 
 class Threed1VolumetricsTest : public TestWithParam<DataSource> {
  protected:
@@ -1311,10 +1318,10 @@ INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantities, Threed1ShafranovIntegralsTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-11},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-11},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-11},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-10},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 5.0e-11},
-           DataSource{.identifier = "cma", .tolerance = 5.0e-11},
+                      .tolerance = 5.0e-10},
+           DataSource{.identifier = "cma", .tolerance = 5.0e-10},
            DataSource{.identifier = "cth_like_free_bdy", .tolerance = 5.0e-5})
     // NOTE: vacuum_b_phi likely largest influence here!
 );
