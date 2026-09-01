@@ -146,14 +146,24 @@ class Vmec {
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
                               double time_step, int thread_id,
                               bool& m_liter_flag);
-  // Opt-in Anderson acceleration of the descent iteration. `window` previous
-  // iterates enter each extrapolation (0 disables, the default);
+  // Anderson acceleration of the descent iteration, which the input flag
+  // `anderson_acceleration` switches on with the defaults below. `window`
+  // previous iterates enter each extrapolation (0 disables);
   // `start_iteration` delays engagement until the transients of a fresh
   // (multigrid) step have passed; the correction is applied every `frequency`
   // iterations; `zero_velocity_on_jump` restarts the Garabedian momentum after
-  // each accelerated jump. Also configurable through the environment variable
-  // VMECPP_ANDERSON="window[,start[,frequency[,zero_velocity]]]".
-  void SetAndersonAcceleration(int window, int start_iteration = 25,
+  // each accelerated jump. The extrapolation acts in the nonlinear early
+  // phase of each multigrid stage only: it disengages once the invariant
+  // residual fsqr + fsqz + fsql falls below kAndersonFloor, below
+  // kAndersonRelativeFloor times the residual at stage entry, or below
+  // 1e3 ftol, whichever is largest, and the momentum descent finishes the
+  // tail on its own.
+  static constexpr int kAndersonWindow = 2;
+  static constexpr int kAndersonStartIteration = 25;
+  static constexpr double kAndersonFloor = 1.0e-4;
+  static constexpr double kAndersonRelativeFloor = 1.0e-3;
+  void SetAndersonAcceleration(int window,
+                               int start_iteration = kAndersonStartIteration,
                                int frequency = 1,
                                bool zero_velocity_on_jump = true);
 
@@ -288,10 +298,9 @@ class Vmec {
   // represents how many steps we are into the current optimization "branch".
   int iter1_;
 
-  // history size for averaging of 1/tau
   // Anderson acceleration (see SetAndersonAcceleration); disabled at 0.
   int anderson_window_ = 0;
-  int anderson_start_ = 25;
+  int anderson_start_ = kAndersonStartIteration;
   int anderson_frequency_ = 1;
   bool anderson_zero_velocity_ = true;
   std::vector<std::unique_ptr<AndersonAcceleration>> anderson_;
@@ -303,9 +312,13 @@ class Vmec {
   bool anderson_reset_ = false;
   int anderson_last_iter1_ = -1;
   int anderson_last_iter2_ = -1;
+  // invariant residual at the entry of the current multigrid stage
+  int anderson_stage_ns_ = -1;
+  double anderson_stage_fsq0_ = 0.0;
   void AndersonPreStep(int thread_id);
   void AndersonPostStep(int thread_id);
 
+  // history size for averaging of 1/tau
   static constexpr int kNDamp = 10;
 
   Eigen::VectorXd invTau_;

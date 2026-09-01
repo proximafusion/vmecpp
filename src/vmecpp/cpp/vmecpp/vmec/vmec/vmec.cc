@@ -8,7 +8,6 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -191,17 +190,8 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
   // remainder of readin()
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
 
-  // Opt-in Anderson acceleration through the environment, mirroring
-  // SetAndersonAcceleration for callers that cannot reach the C++ object,
-  // such as the standalone executable.
-  if (const char* spec = std::getenv("VMECPP_ANDERSON"); spec != nullptr) {
-    int window = 0;
-    int start = 25;
-    int frequency = 1;
-    int zero_velocity = 1;
-    std::sscanf(spec, "%d,%d,%d,%d", &window, &start, &frequency,
-                &zero_velocity);
-    SetAndersonAcceleration(window, start, frequency, zero_velocity != 0);
+  if (indata_.anderson_acceleration) {
+    SetAndersonAcceleration(kAndersonWindow, kAndersonStartIteration);
   }
 
   if (fc_.lfreeb) {
@@ -652,6 +642,8 @@ bool Vmec::InitializeRadial(
           (anderson_window_ + 1));
       anderson_last_iter1_ = -1;
       anderson_last_iter2_ = -1;
+      anderson_stage_ns_ = -1;
+      anderson_stage_fsq0_ = 0.0;
     }
 
     // single-threaded creation of objects used in parallel threads
@@ -1367,6 +1359,10 @@ void Vmec::AndersonPreStep(int thread_id) {
                       (iter2_ != anderson_last_iter2_ + 1);
     anderson_last_iter1_ = iter1_;
     anderson_last_iter2_ = iter2_;
+    if (fc_.ns != anderson_stage_ns_) {
+      anderson_stage_ns_ = fc_.ns;
+      anderson_stage_fsq0_ = fc_.fsqr + fc_.fsqz + fc_.fsql;
+    }
   }  // implicit barrier
 
   AndersonAcceleration& acceleration = *anderson_[thread_id];
@@ -1381,13 +1377,17 @@ void Vmec::AndersonPostStep(int thread_id) {
   acceleration.PushPostStep(*decomposed_x_[thread_id]);
 
   const int k = acceleration.NumDifferences();
-  // The extrapolation pays off while the invariant residual sits above about
-  // 1e-8; below that, its differences carry mostly roundoff, and the momentum
-  // iteration handles the tail better, so the tail is handed back to it. The
-  // ftolv term keeps a loosely converged run from engaging right at its
-  // target.
+  // The extrapolation pays off in the nonlinear early phase of a stage, where
+  // the descent is still finding the basin. Once the invariant residual is
+  // small the fixed-point map is linear and the momentum iteration already
+  // converges at its optimal rate, and extrapolating there holds the residual
+  // in a limit cycle instead (measured on the QUASR fixed-boundary cases at
+  // ftol 1e-9), so the tail is handed back to the descent. The ftolv term
+  // keeps a loosely converged run from engaging right at its target.
   const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
-  const double disengage_floor = std::max(1.0e3 * fc_.ftolv, 1.0e-8);
+  const double disengage_floor =
+      std::max({kAndersonFloor, kAndersonRelativeFloor * anderson_stage_fsq0_,
+                1.0e3 * fc_.ftolv});
   if (k < 1 || (iter2_ - iter1_) < anderson_start_ ||
       iter2_ % anderson_frequency_ != 0 || fsq_invariant <= disengage_floor) {
     return;
@@ -1553,11 +1553,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   // THIS IS THE TIME-STEP ALGORITHM. IT IS ESSENTIALLY A CONJUGATE
   // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
   // BASED ON A METHOD GIVEN BY P. GARABEDIAN
-  // Free-boundary runs are excluded: the vacuum field is frozen between
-  // NESTOR updates, so the fixed-point map changes discontinuously every
-  // nvacskip iterations, and extrapolating across those refreshes lengthened
-  // the measured cth_like_free_bdy run rather than shortening it.
-  const bool accelerate = anderson_window_ > 0 && !fc_.lfreeb;
+  const bool accelerate = anderson_window_ > 0;
   if (accelerate) {
     AndersonPreStep(thread_id);
   }

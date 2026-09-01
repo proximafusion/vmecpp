@@ -228,6 +228,7 @@ VmecINDATA::VmecINDATA() {
   tcon0 = 1.0;
   lforbal = false;
   iteration_style = IterationStyle::VMEC_8_52;
+  anderson_acceleration = false;
   return_outputs_even_if_not_converged = false;
 
   // zero-initialized magnetic axis
@@ -352,6 +353,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
+  WriteH5Dataset(anderson_acceleration, "/indata/anderson_acceleration", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
 
@@ -454,6 +456,15 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
+
+  // Added after the initial schema; files written before it load the
+  // default.
+  if (H5Lexists(from_file.getId(), "/indata/anderson_acceleration", 0) == 1) {
+    ReadH5Dataset(m_indata.anderson_acceleration,
+                  "/indata/anderson_acceleration", from_file);
+  } else {
+    m_indata.anderson_acceleration = false;
+  }
 
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(),
@@ -944,6 +955,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     }
   }
 
+  auto maybe_anderson_acceleration = JsonReadBool(j, "anderson_acceleration");
+  if (!maybe_anderson_acceleration.ok()) {
+    return maybe_anderson_acceleration.status();
+  }
+  if (maybe_anderson_acceleration->has_value()) {
+    vmec_indata.anderson_acceleration = maybe_anderson_acceleration->value();
+  }
+
   auto maybe_return_outputs_even_if_not_converged =
       JsonReadBool(j, "return_outputs_even_if_not_converged");
   if (!maybe_return_outputs_even_if_not_converged.ok()) {
@@ -1254,6 +1273,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
   output["iteration_style"] = ToString(iteration_style);
+  output["anderson_acceleration"] = anderson_acceleration;
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;
 
