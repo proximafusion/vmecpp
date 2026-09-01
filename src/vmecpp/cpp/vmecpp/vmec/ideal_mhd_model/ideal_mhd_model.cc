@@ -1847,9 +1847,10 @@ void IdealMhdModel::pressureAndEnergies() {
   // --> could introduce signOfJacobian, but abs() does the job here as well
   localMagneticEnergy = fabs(localMagneticEnergy) * m_fc_.deltaS;
 
-  const double local_energies[2] = {localThermalEnergy, localMagneticEnergy};
+  const std::array<double, 2> local_energies = {localThermalEnergy,
+                                                localMagneticEnergy};
   SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 2, r_.get_thread_id(),
-                 r_.get_num_threads(), local_energies);
+                 r_.get_num_threads(), local_energies.data());
 
 #ifdef _OPENMP
 #pragma omp single
@@ -1971,10 +1972,10 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
   double localForceNorm1 =
       decomposed_x.rzNorm(false, nsMinHere, r_.nsMaxFIncludingLcfs);
 
-  const double local_norms[3] = {localForceNormSumRZ, localForceNormSumL,
-                                 localForceNorm1};
+  const std::array<double, 3> local_norms = {
+      localForceNormSumRZ, localForceNormSumL, localForceNorm1};
   SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 3, r_.get_thread_id(),
-                 r_.get_num_threads(), local_norms);
+                 r_.get_num_threads(), local_norms.data());
 
 #ifdef _OPENMP
 #pragma omp single

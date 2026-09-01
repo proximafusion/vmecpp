@@ -1171,10 +1171,11 @@ void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
     }
   }  // jH
 
-  const double local_sw[2] = {spectral_width_contribution.numerator,
-                              spectral_width_contribution.denominator};
+  const std::array<double, 2> local_sw = {
+      spectral_width_contribution.numerator,
+      spectral_width_contribution.denominator};
   SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 2, r_.get_thread_id(),
-                 r_.get_num_threads(), local_sw);
+                 r_.get_num_threads(), local_sw.data());
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
