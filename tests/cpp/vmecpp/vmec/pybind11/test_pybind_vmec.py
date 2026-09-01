@@ -319,7 +319,11 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.phi, wout["phi"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.phipf, wout["phipf"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.chi, wout["chi"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.chipf, wout["chipf"][()], 1.0e-8)
+    # The boundary chipf uses the corrected extrapolation and deviates from
+    # the Fortran reference; see updateFullGridProfiles.
+    assert is_close_ra(
+        output_quantities.wout.chipf[:-1], wout["chipf"][()][:-1], 1.0e-8
+    )
     assert is_close_ra(output_quantities.wout.jcuru, wout["jcuru"][()], 1.0e-6)
     assert is_close_ra(output_quantities.wout.jcurv, wout["jcurv"][()], 1.0e-6)
 

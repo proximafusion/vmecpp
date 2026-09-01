@@ -1795,28 +1795,16 @@ void IdealMhdModel::computeBContra() {
         0.5 * (m_p_.chipH[jFi - r_.nsMinH] + m_p_.chipH[jFi - 1 - r_.nsMinH]);
   }
   if (r_.nsMaxF1 == m_fc_.ns) {
-    // Fortran add_fluxes.f90: chipf(ns) = 2*chips(ns) - chips(ns1). That is a
-    // different extrapolation from the one iotaF gets below, which uses
-    // 1.5/-0.5, for the same boundary point.
-    //
-    // The half-grid point nearest the boundary lies half a step inside it and
-    // the one before that 1.5 steps inside, so 1.5*f_last - 0.5*f_prev is the
-    // linear extrapolation onto the boundary; 2*f_last - f_prev reaches a full
-    // step past the last half-grid point instead. The two disagree by
-    // 0.5*(f_last - f_prev).
-    //
-    // It shows in the output: iota = chi'/phi' holds to 2e-16 at every
-    // interior full-grid point of the bundled cases and fails at the boundary
-    // by exactly 0.5*(iotaH_last - iotaH_prev), which is 2.5e-2 absolute, 2.8%
-    // relative, on cth_like_free_bdy and 1.4e-2 on cth_like_fixed_bdy. phip is
-    // constant for these, which is why the closed form is exact.
-    //
-    // Left as it is: chipF is consumed by the threed1 first table and the wout
-    // chipf, not by the force balance, and changing it would move those
-    // outputs off Fortran VMEC.
+    // 1.5*f_last - 0.5*f_prev is the linear extrapolation from the half grid
+    // onto the boundary, the same rule iotaF gets below. add_fluxes.f90 uses
+    // 2*chips(ns) - chips(ns1) here, which lands a full step past the last
+    // half-grid point and breaks iota = chi'/phi' at the boundary by
+    // 0.5*(iotaH_last - iotaH_prev), 2.8% on cth_like_free_bdy. chipF feeds
+    // the threed1 first table and wout chipf only, so the converged
+    // equilibrium is unchanged.
     m_p_.chipF[r_.nsMaxF1 - 1 - r_.nsMinF1] =
-        2.0 * m_p_.chipH[r_.nsMaxH - 1 - r_.nsMinH] -
-        m_p_.chipH[r_.nsMaxH - 2 - r_.nsMinH];
+        1.5 * m_p_.chipH[r_.nsMaxH - 1 - r_.nsMinH] -
+        0.5 * m_p_.chipH[r_.nsMaxH - 2 - r_.nsMinH];
   }
 
   // update full-grid iota

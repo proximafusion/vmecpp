@@ -263,7 +263,12 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
     EXPECT_TRUE(
         IsCloseRelAbs(reference_poloidal_flux[jF], wout.chi[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_phipf[jF], wout.phipf[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_chipf[jF], wout.chipf[jF], tolerance));
+    if (jF < fc.ns - 1) {
+      // The boundary chipf uses the corrected extrapolation and deviates from
+      // the Fortran reference; see updateFullGridProfiles.
+      EXPECT_TRUE(
+          IsCloseRelAbs(reference_chipf[jF], wout.chipf[jF], tolerance));
+    }
     EXPECT_TRUE(IsCloseRelAbs(reference_jcuru[jF], wout.jcuru[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_jcurv[jF], wout.jcurv[jF], tolerance));
     EXPECT_TRUE(
