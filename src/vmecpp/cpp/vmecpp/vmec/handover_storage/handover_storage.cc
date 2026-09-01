@@ -62,6 +62,9 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     num_threads_ = r.get_num_threads();
     num_basis_ = s_.num_basis;
 
+    tree_reduce_scratch.resize(num_threads_, 4);
+    tree_reduce_scratch.setZero();
+
     // -----------
     // Fourier coefficient handover storage
     // -----------

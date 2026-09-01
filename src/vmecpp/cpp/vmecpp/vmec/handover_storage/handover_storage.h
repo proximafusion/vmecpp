@@ -97,6 +97,11 @@ class HandoverStorage {
   Eigen::VectorXd rCon_LCFS;
   Eigen::VectorXd zCon_LCFS;
 
+  // Shared rows for SumInFixedTree: [num_threads, 4], reused by every
+  // cross-thread sum of the radial team. Consecutive reductions are separated
+  // by the barrier the fold ends on.
+  RowMatrixXd tree_reduce_scratch;
+
   // Inter-thread handover storage: RowMatrixXd [num_threads, mnsize]
   // _i arrays: inside boundary, _o arrays: outside boundary
 

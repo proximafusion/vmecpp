@@ -1171,9 +1171,15 @@ void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
     }
   }  // jH
 
-  AddInThreadOrder(r_.get_thread_id(), r_.get_num_threads(), [&] {
-    m_h_.RegisterSpectralWidthContribution(spectral_width_contribution);
-  });
+  const double local_sw[2] = {spectral_width_contribution.numerator,
+                              spectral_width_contribution.denominator};
+  SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 2, r_.get_thread_id(),
+                 r_.get_num_threads(), local_sw);
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  m_h_.RegisterSpectralWidthContribution(SpectralWidthContribution{
+      m_h_.tree_reduce_scratch(0, 0), m_h_.tree_reduce_scratch(0, 1)});
 }  // AccumulateVolumeAveragedSpectralWidth
 
 }  // namespace vmecpp

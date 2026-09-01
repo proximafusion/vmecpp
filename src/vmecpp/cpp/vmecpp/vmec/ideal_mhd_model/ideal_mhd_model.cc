@@ -401,22 +401,19 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
 }
 
 void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  {
-    m_fc_.fResInvar.setZero();
-  }
-
-  // The barrier the accumulation ends on also protects reads of fResInvar and
-  // the writes to m_fc.fsqz, which is read before this call.
-  AddInThreadOrder(r_.get_thread_id(), r_.get_num_threads(),
-                   [&] { m_fc_.fResInvar += localFResInvar; });
+  // The barrier the fold starts with also protects the writes to m_fc.fsqz,
+  // which is read before this call.
+  SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 3, r_.get_thread_id(),
+                 r_.get_num_threads(), localFResInvar.data());
 
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
   {
+    m_fc_.fResInvar[0] = m_h_.tree_reduce_scratch(0, 0);
+    m_fc_.fResInvar[1] = m_h_.tree_reduce_scratch(0, 1);
+    m_fc_.fResInvar[2] = m_h_.tree_reduce_scratch(0, 2);
+
     // set new values
     // TODO(jons): what is `r1scale`?
     constexpr double r1scale = 0.25;
@@ -428,20 +425,17 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 }
 
 void IdealMhdModel::evalFResPrecd(const Eigen::Vector3d& localFResPrecd) {
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  {
-    m_fc_.fResPrecd.setZero();
-  }
-
-  AddInThreadOrder(r_.get_thread_id(), r_.get_num_threads(),
-                   [&] { m_fc_.fResPrecd += localFResPrecd; });
+  SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 3, r_.get_thread_id(),
+                 r_.get_num_threads(), localFResPrecd.data());
 
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
   {
+    m_fc_.fResPrecd[0] = m_h_.tree_reduce_scratch(0, 0);
+    m_fc_.fResPrecd[1] = m_h_.tree_reduce_scratch(0, 1);
+    m_fc_.fResPrecd[2] = m_h_.tree_reduce_scratch(0, 2);
+
     m_fc_.fsqr1 = m_fc_.fResPrecd[0] * m_h_.fNorm1;
     m_fc_.fsqz1 = m_fc_.fResPrecd[1] * m_h_.fNorm1;
     m_fc_.fsql1 = m_fc_.fResPrecd[2] * m_fc_.deltaS;
@@ -1637,17 +1631,13 @@ void IdealMhdModel::computeInitialVolume() {
   }
   localPlasmaVolume *= m_fc_.deltaS;
 
+  const double local_voli = localPlasmaVolume * (2.0 * M_PI) * (2.0 * M_PI);
+  SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 1, r_.get_thread_id(),
+                 r_.get_num_threads(), &local_voli);
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-  m_h_.voli = 0.0;
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-  AddInThreadOrder(r_.get_thread_id(), r_.get_num_threads(), [&] {
-    m_h_.voli += localPlasmaVolume * (2.0 * M_PI) * (2.0 * M_PI);
-  });
+  m_h_.voli = m_h_.tree_reduce_scratch(0, 0);
 }  // computeInitialVolume
 
 void IdealMhdModel::updateVolume() {
@@ -1663,16 +1653,12 @@ void IdealMhdModel::updateVolume() {
   }
   localPlasmaVolume *= m_fc_.deltaS;
 
+  SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 1, r_.get_thread_id(),
+                 r_.get_num_threads(), &localPlasmaVolume);
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-  m_h_.plasmaVolume = 0.0;
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-  AddInThreadOrder(r_.get_thread_id(), r_.get_num_threads(),
-                   [&] { m_h_.plasmaVolume += localPlasmaVolume; });
+  m_h_.plasmaVolume = m_h_.tree_reduce_scratch(0, 0);
 }  // updateVolume
 
 /**
@@ -1861,28 +1847,21 @@ void IdealMhdModel::pressureAndEnergies() {
   // --> could introduce signOfJacobian, but abs() does the job here as well
   localMagneticEnergy = fabs(localMagneticEnergy) * m_fc_.deltaS;
 
+  const double local_energies[2] = {localThermalEnergy, localMagneticEnergy};
+  SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 2, r_.get_thread_id(),
+                 r_.get_num_threads(), local_energies);
+
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
   {
-    m_h_.thermalEnergy = 0.0;
-    m_h_.magneticEnergy = 0.0;
+    m_h_.thermalEnergy = m_h_.tree_reduce_scratch(0, 0);
+    m_h_.magneticEnergy = m_h_.tree_reduce_scratch(0, 1);
+
+    // compute MHD energy from individual volume integrals
+    m_h_.mhdEnergy =
+        m_h_.magneticEnergy + m_h_.thermalEnergy / (adiabaticIndex - 1.0);
   }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-  AddInThreadOrder(r_.get_thread_id(), r_.get_num_threads(), [&] {
-    m_h_.thermalEnergy += localThermalEnergy;
-    m_h_.magneticEnergy += localMagneticEnergy;
-  });
-
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  // compute MHD energy from individual volume integrals
-  m_h_.mhdEnergy =
-      m_h_.magneticEnergy + m_h_.thermalEnergy / (adiabaticIndex - 1.0);
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -1992,29 +1971,19 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
   double localForceNorm1 =
       decomposed_x.rzNorm(false, nsMinHere, r_.nsMaxFIncludingLcfs);
 
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  {
-    // re-use target array elements for global accumulation
-    m_h_.fNormRZ = 0.0;
-    m_h_.fNormL = 0.0;
-    m_h_.fNorm1 = 0.0;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-  AddInThreadOrder(r_.get_thread_id(), r_.get_num_threads(), [&] {
-    m_h_.fNormRZ += localForceNormSumRZ;
-    m_h_.fNormL += localForceNormSumL;
-    m_h_.fNorm1 += localForceNorm1;
-  });
+  const double local_norms[3] = {localForceNormSumRZ, localForceNormSumL,
+                                 localForceNorm1};
+  SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 3, r_.get_thread_id(),
+                 r_.get_num_threads(), local_norms);
 
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
   {
+    m_h_.fNormRZ = m_h_.tree_reduce_scratch(0, 0);
+    m_h_.fNormL = m_h_.tree_reduce_scratch(0, 1);
+    m_h_.fNorm1 = m_h_.tree_reduce_scratch(0, 2);
+
     m_h_.fNormRZ = 1.0 / (m_h_.fNormRZ * energyDensity * energyDensity);
     m_h_.fNormL =
         1.0 / (m_h_.fNormL * constants_.lamscale * constants_.lamscale);

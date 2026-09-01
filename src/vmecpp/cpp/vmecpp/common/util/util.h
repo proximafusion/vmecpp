@@ -35,6 +35,42 @@ namespace vmecpp {
 using RowMatrixXd =
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
+// Sums each thread's `width` contributions by a fixed binary tree over the
+// team. Thread t parks its values in row t of `m_slots`; at strides 1, 2, 4,
+// ... thread t with t % (2*stride) == 0 adds row t+stride into row t. The
+// pairing depends only on thread ids, never on arrival order, so the
+// floating-point result is reproducible, and the fold costs
+// ceil(log2(num_threads)) barriers where taking turns costs num_threads.
+// Row 0 holds the team total after the call, which ends on a barrier.
+//
+// `m_slots` must provide num_threads rows of `row_stride` doubles of shared
+// storage (row_stride >= width), and every thread of the team must call this
+// together with the same arguments apart from `local`.
+inline void SumInFixedTree(double *m_slots, int row_stride, int width,
+                           int thread_id, int num_threads,
+                           const double *local) {
+  double *row = m_slots + static_cast<std::ptrdiff_t>(thread_id) * row_stride;
+  for (int i = 0; i < width; ++i) {
+    row[i] = local[i];
+  }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  for (int stride = 1; stride < num_threads; stride *= 2) {
+    if (thread_id % (2 * stride) == 0 && thread_id + stride < num_threads) {
+      const double *other =
+          m_slots +
+          static_cast<std::ptrdiff_t>(thread_id + stride) * row_stride;
+      for (int i = 0; i < width; ++i) {
+        row[i] += other[i];
+      }
+    }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  }
+}
+
 // Runs `add` on every thread of the team, one thread at a time, in ascending
 // thread order.
 //
