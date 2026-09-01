@@ -18,6 +18,7 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/output_quantities/test_helpers.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
 using ::testing::ElementsAreArray;
@@ -688,8 +689,8 @@ TEST(HotRestartIntegration, MultigridContinuation) {
   // Results at the finest grid should agree to high tolerance.
   const double tolerance = 1.0e-4;
   const bool check_equal_maximum_iterations = false;
-  vmecpp::CompareWOut(multigrid_output->wout, cold_output->wout, tolerance,
-                      check_equal_maximum_iterations);
+  CompareWOut(multigrid_output->wout, cold_output->wout, tolerance,
+              check_equal_maximum_iterations);
 }
 
 TEST(HotRestartIntegration, FreeBoundary) {
@@ -757,9 +758,9 @@ TEST(HotRestartIntegration, FreeBoundary) {
   // FIXME(jons): How realistic are these tolerances?
   const double tolerance = 0.1;
   const bool check_equal_maximum_iterations = false;
-  vmecpp::CompareWOut(displaced_hotrestarted_output->wout,
-                      displaced_fromscratch_output->wout, tolerance,
-                      check_equal_maximum_iterations);
+  CompareWOut(displaced_hotrestarted_output->wout,
+              displaced_fromscratch_output->wout, tolerance,
+              check_equal_maximum_iterations);
 
   // The comparison above only says the two runs agree with each other. It says
   // nothing about whether displacing the coils did anything: a hot restart that
