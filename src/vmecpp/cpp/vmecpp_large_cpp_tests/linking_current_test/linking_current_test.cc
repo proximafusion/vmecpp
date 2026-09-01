@@ -22,7 +22,7 @@ using magnetics::MagneticConfiguration;
 using testing::IsCloseRelAbs;
 
 TEST(TestLinkingCurrent, CheckForW7X) {
-  static constexpr double kTolerance = 2.0e-02;
+  static constexpr double kTolerance = 5.0e-3;
 
   std::filesystem::path makegrid_coils_filename(
       "vmecpp_large_cpp_tests/test_data/coils.w7x");
