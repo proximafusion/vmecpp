@@ -21,6 +21,11 @@ import numpy as np
 import pydantic
 
 from vmecpp import _util
+from vmecpp._bootstrap import (
+    BootstrapConsistentResult,
+    bootstrap_consistent,
+    redl_bootstrap_current,
+)
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
 from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
@@ -2712,6 +2717,9 @@ populate_raw_profile = set_profile
 __all__ = [  # noqa: RUF022
     "run",
     "interpolate_solution",
+    "bootstrap_consistent",
+    "redl_bootstrap_current",
+    "BootstrapConsistentResult",
     "rescale",
     "VmecInput",
     "VmecOutput",
