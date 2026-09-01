@@ -211,152 +211,6 @@ def test_output_quantities():
 
     jxbout.close()
 
-    # -------------------
-    # threed1 debugging output
-    #
-    # The physics behind these quantities is compared against the same
-    # educational_VMEC dumps in vmecpp_large_cpp_tests/vmec/output_quantities.
-    # What is checked here is the pybind11 layer: that every member the module
-    # exposes carries the value it is supposed to.
-
-    # The first table stores several of its columns in the form they are
-    # printed in, so the reference has to be rescaled to compare. fac and the
-    # MU_0 divisions follow ComputeThreed1FirstTable in output_quantities.cc.
-    first_table = load_threed1(case_name, "threed1_firstTable")
-    fac = 2.0 * np.pi * output_quantities.wout.signgs
-    vpphi = np.asarray(first_table["vpphi"])
-    phipf_loc = np.asarray(first_table["phipf_loc"])
-
-    t1 = output_quantities.threed1_first_table
-    for member, reference in [
-        ("radial_force", np.asarray(first_table["equif"])),
-        ("toroidal_flux", fac * np.asarray(first_table["phi1"])),
-        ("iota", np.asarray(first_table["iotaf"])),
-        ("avg_jsupu", np.asarray(first_table["jcuru"]) / vpphi / MU_0),
-        ("avg_jsupv", np.asarray(first_table["jcurv"]) / vpphi / MU_0),
-        ("d_volume_d_phi", fac * vpphi * 2.0 * np.pi / phipf_loc),
-        (
-            "d_pressure_d_phi",
-            np.asarray(first_table["presgrad"]) / phipf_loc / MU_0,
-        ),
-        ("spectral_width", np.asarray(first_table["specw"])),
-        ("pressure", np.asarray(first_table["presf"]) / MU_0),
-        ("buco_full", np.asarray(first_table["bucof"])),
-        ("bvco_full", np.asarray(first_table["bvcof"])),
-        ("j_dot_b", np.asarray(first_table["jdotb"])),
-        ("b_dot_b", np.asarray(first_table["bdotb"])),
-    ]:
-        assert is_close_ra(getattr(t1, member), reference, 1.0e-6), member
-
-    geometric_magnetic = load_threed1(case_name, "threed1_geomag")
-    gm = output_quantities.threed1_geometric_magnetic
-    for member in [
-        "toroidal_flux",
-        "circum_p",
-        "surf_area_p",
-        "cross_area_p",
-        "volume_p",
-        "Rmajor_p",
-        "Aminor_p",
-        "aspect",
-        "kappa_p",
-        "rcen",
-        "aminr1",
-        "pavg",
-        "b0",
-        "rmax_surf",
-        "rmin_surf",
-        "zmax_surf",
-        "waist",
-        "height",
-        "betapol",
-        "betatot",
-        "betator",
-        "VolAvgB",
-        "IonLarmor",
-        "jpar_perp",
-        "jparPS_perp",
-        "psi",
-    ]:
-        assert is_close_ra(getattr(gm, member), geometric_magnetic[member], 1.0e-6), (
-            member
-        )
-
-    # These are stored flat over (number of cross sections, ns). The reference
-    # drops the magnetic axis for everything but ygeo, which is why the four
-    # below are compared from the second flux surface on.
-    ns = output_quantities.wout.ns
-    for member, first_surface in [
-        ("ygeo", 0),
-        ("yinden", 1),
-        ("yellip", 1),
-        ("ytrian", 1),
-        ("yshift", 1),
-    ]:
-        cross_sections = np.reshape(np.asarray(getattr(gm, member)), (-1, ns))
-        assert is_close_ra(
-            cross_sections[:, first_surface:],
-            np.asarray(geometric_magnetic[member]),
-            1.0e-6,
-        ), member
-
-    volumetrics = load_threed1(case_name, "threed1_volquant")
-    vq = output_quantities.threed1_volumetrics
-    for member in [
-        "int_p",
-        "avg_p",
-        "int_bpol",
-        "avg_bpol",
-        "int_btor",
-        "avg_btor",
-        "int_modb",
-        "avg_modb",
-        "int_ekin",
-        "avg_ekin",
-    ]:
-        assert is_close_ra(getattr(vq, member), volumetrics[member], 1.0e-6), member
-
-    axis = load_threed1(case_name, "threed1_axis")
-    ax = output_quantities.threed1_axis
-    for member, key in [
-        ("raxis_symm", "rax_symm"),
-        ("zaxis_symm", "zax_symm"),
-    ]:
-        assert is_close_ra(getattr(ax, member), axis[key], 1.0e-6), member
-
-    # cma is stellarator-symmetric, so VMEC++ leaves the antisymmetric axis
-    # arrays empty where the reference carries explicit zeros.
-    for member, key in [("raxis_asym", "rax_asym"), ("zaxis_asym", "zax_asym")]:
-        assert np.size(getattr(ax, member)) == 0, member
-        assert not np.any(axis[key]), key
-
-    betas = load_threed1(case_name, "threed1_beta")
-    bt = output_quantities.threed1_betas
-    for member in ["betatot", "betapol", "betator", "rbtor", "betaxis", "betstr"]:
-        assert is_close_ra(getattr(bt, member), betas[member], 1.0e-6), member
-
-    shafranov = load_threed1(case_name, "threed1_shafrint")
-    si = output_quantities.threed1_shafranov_integrals
-    for member, key in [
-        ("scaling_ratio", "scaling_ratio"),
-        ("r_lao", "rlao"),
-        ("f_lao", "flao"),
-        ("f_geo", "fgeo"),
-        ("smaleli", "smaleli"),
-        ("betai", "betai"),
-        ("musubi", "musubi"),
-        ("lambda", "lambda"),
-        ("s11", "s11"),
-        ("s12", "s12"),
-        ("s13", "s13"),
-        ("s2", "s2"),
-        ("s3", "s3"),
-        ("delta1", "delta1"),
-        ("delta2", "delta2"),
-        ("delta3", "delta3"),
-    ]:
-        assert is_close_ra(getattr(si, member), shafranov[key], 1.0e-6), member
-
     wout = Dataset(TEST_DATA_DIR / f"wout_{case_name}.nc", "r")
 
     # mercier
@@ -588,6 +442,170 @@ def test_output_quantities():
     # the non-stellarator-symmetric parts implemented
 
     wout.close()
+
+
+def _threed1_dumps_available(case_name="cma"):
+    """Whether the threed1 reference dumps have their git-lfs content."""
+    paths = list(
+        (THREED1_DATA_DIR / case_name / "threed1_axis").glob(f"*.{case_name}.json")
+    )
+    if len(paths) != 1:
+        return False
+    with open(paths[0]) as f:
+        return not f.read(64).startswith("version https://git-lfs.github.com/spec/")
+
+
+@pytest.mark.skipif(
+    not _threed1_dumps_available(),
+    reason="the threed1 reference dumps are stored in git-lfs",
+)
+def test_threed1_output_quantities():
+    """Check the threed1 structures the module exposes against educational_VMEC.
+
+    The physics behind these quantities is compared against the same dumps in
+    vmecpp_large_cpp_tests/vmec/output_quantities. What is checked here is the
+    pybind11 layer: that every member the module exposes carries the value it
+    is supposed to.
+    """
+    case_name = "cma"
+
+    indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / f"{case_name}.json")
+    output_quantities = vmec.run(indata)
+
+    first_table = load_threed1(case_name, "threed1_firstTable")
+    fac = 2.0 * np.pi * output_quantities.wout.signgs
+    vpphi = np.asarray(first_table["vpphi"])
+    phipf_loc = np.asarray(first_table["phipf_loc"])
+
+    t1 = output_quantities.threed1_first_table
+    for member, reference in [
+        ("radial_force", np.asarray(first_table["equif"])),
+        ("toroidal_flux", fac * np.asarray(first_table["phi1"])),
+        ("iota", np.asarray(first_table["iotaf"])),
+        ("avg_jsupu", np.asarray(first_table["jcuru"]) / vpphi / MU_0),
+        ("avg_jsupv", np.asarray(first_table["jcurv"]) / vpphi / MU_0),
+        ("d_volume_d_phi", fac * vpphi * 2.0 * np.pi / phipf_loc),
+        (
+            "d_pressure_d_phi",
+            np.asarray(first_table["presgrad"]) / phipf_loc / MU_0,
+        ),
+        ("spectral_width", np.asarray(first_table["specw"])),
+        ("pressure", np.asarray(first_table["presf"]) / MU_0),
+        ("buco_full", np.asarray(first_table["bucof"])),
+        ("bvco_full", np.asarray(first_table["bvcof"])),
+        ("j_dot_b", np.asarray(first_table["jdotb"])),
+        ("b_dot_b", np.asarray(first_table["bdotb"])),
+    ]:
+        assert is_close_ra(getattr(t1, member), reference, 1.0e-6), member
+
+    geometric_magnetic = load_threed1(case_name, "threed1_geomag")
+    gm = output_quantities.threed1_geometric_magnetic
+    for member in [
+        "toroidal_flux",
+        "circum_p",
+        "surf_area_p",
+        "cross_area_p",
+        "volume_p",
+        "Rmajor_p",
+        "Aminor_p",
+        "aspect",
+        "kappa_p",
+        "rcen",
+        "aminr1",
+        "pavg",
+        "b0",
+        "rmax_surf",
+        "rmin_surf",
+        "zmax_surf",
+        "waist",
+        "height",
+        "betapol",
+        "betatot",
+        "betator",
+        "VolAvgB",
+        "IonLarmor",
+        "jpar_perp",
+        "jparPS_perp",
+        "psi",
+    ]:
+        assert is_close_ra(getattr(gm, member), geometric_magnetic[member], 1.0e-6), (
+            member
+        )
+
+    # These are stored flat over (number of cross sections, ns). The reference
+    # drops the magnetic axis for everything but ygeo, which is why the four
+    # below are compared from the second flux surface on.
+    ns = output_quantities.wout.ns
+    for member, first_surface in [
+        ("ygeo", 0),
+        ("yinden", 1),
+        ("yellip", 1),
+        ("ytrian", 1),
+        ("yshift", 1),
+    ]:
+        cross_sections = np.reshape(np.asarray(getattr(gm, member)), (-1, ns))
+        assert is_close_ra(
+            cross_sections[:, first_surface:],
+            np.asarray(geometric_magnetic[member]),
+            1.0e-6,
+        ), member
+
+    volumetrics = load_threed1(case_name, "threed1_volquant")
+    vq = output_quantities.threed1_volumetrics
+    for member in [
+        "int_p",
+        "avg_p",
+        "int_bpol",
+        "avg_bpol",
+        "int_btor",
+        "avg_btor",
+        "int_modb",
+        "avg_modb",
+        "int_ekin",
+        "avg_ekin",
+    ]:
+        assert is_close_ra(getattr(vq, member), volumetrics[member], 1.0e-6), member
+
+    axis = load_threed1(case_name, "threed1_axis")
+    ax = output_quantities.threed1_axis
+    for member, key in [
+        ("raxis_symm", "rax_symm"),
+        ("zaxis_symm", "zax_symm"),
+    ]:
+        assert is_close_ra(getattr(ax, member), axis[key], 1.0e-6), member
+
+    # cma is stellarator-symmetric, so VMEC++ leaves the antisymmetric axis
+    # arrays empty where the reference carries explicit zeros.
+    for member, key in [("raxis_asym", "rax_asym"), ("zaxis_asym", "zax_asym")]:
+        assert np.size(getattr(ax, member)) == 0, member
+        assert not np.any(axis[key]), key
+
+    betas = load_threed1(case_name, "threed1_beta")
+    bt = output_quantities.threed1_betas
+    for member in ["betatot", "betapol", "betator", "rbtor", "betaxis", "betstr"]:
+        assert is_close_ra(getattr(bt, member), betas[member], 1.0e-6), member
+
+    shafranov = load_threed1(case_name, "threed1_shafrint")
+    si = output_quantities.threed1_shafranov_integrals
+    for member, key in [
+        ("scaling_ratio", "scaling_ratio"),
+        ("r_lao", "rlao"),
+        ("f_lao", "flao"),
+        ("f_geo", "fgeo"),
+        ("smaleli", "smaleli"),
+        ("betai", "betai"),
+        ("musubi", "musubi"),
+        ("lambda", "lambda"),
+        ("s11", "s11"),
+        ("s12", "s12"),
+        ("s13", "s13"),
+        ("s2", "s2"),
+        ("s3", "s3"),
+        ("delta1", "delta1"),
+        ("delta2", "delta2"),
+        ("delta3", "delta3"),
+    ]:
+        assert is_close_ra(getattr(si, member), shafranov[key], 1.0e-6), member
 
 
 def test_vmecpp_run_from_inmemory_mgrid():
