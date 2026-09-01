@@ -3,7 +3,6 @@
 //
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/vmec/vmec.h"
-#include "vmecpp/vmec/output_quantities/test_helpers.h"
 
 #include <fstream>
 #include <string>
@@ -15,6 +14,7 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/output_quantities/test_helpers.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 
 #ifdef _OPENMP
@@ -171,7 +171,7 @@ TEST(TestVmec, CheckInMemoryMgrid) {
 
   // compare wout contents
   CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
-                      /*tolerance=*/1e-7);
+              /*tolerance=*/1e-7);
 }  // CheckInMemoryMgrid
 
 // A stellarator-symmetric, axisymmetric equilibrium (solovev) must converge to

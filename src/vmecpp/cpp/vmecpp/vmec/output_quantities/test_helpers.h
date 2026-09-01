@@ -9,9 +9,6 @@
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 
-using testing::IsCloseRelAbs;
-using testing::IsVectorCloseRelAbs;
-
 // check for equality of two `WOutFileContents` using the Google test framework
 inline void CheckWOutEquality(const vmecpp::WOutFileContents& wout1,
                               const vmecpp::WOutFileContents& wout2) {
@@ -139,6 +136,9 @@ inline void CompareWOut(const vmecpp::WOutFileContents& test_wout,
                         const vmecpp::WOutFileContents& expected_wout,
                         double tolerance, bool check_equal_niter = true,
                         double current_density_tolerance = 0.0) {
+  using testing::IsCloseRelAbs;
+  using testing::IsVectorCloseRelAbs;
+
   // jcuru, jcurv compare looser only if the caller opts in; otherwise
   // tolerance.
   const double current_tolerance =
