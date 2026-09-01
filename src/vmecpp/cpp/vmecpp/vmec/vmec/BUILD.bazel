@@ -51,7 +51,9 @@ cc_test(
         "//util/file_io:file_io",
         "//util/testing:numerical_comparison_lib",
     ],
-    size = "medium",
+    # The four fixed-boundary flag-combination cases roughly double what this
+    # target solves, which puts it over the 300s a medium test gets under tsan.
+    size = "large",
 )
 
 cc_test(
