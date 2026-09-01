@@ -463,9 +463,9 @@ def test_threed1_output_quantities():
     """Check the threed1 structures the module exposes against educational_VMEC.
 
     These quantities are compared member by member against the same dumps in
-    vmecpp_large_cpp_tests/vmec/output_quantities. What is checked here is that
-    the pybind11 layer exposes each structure and carries its values through,
-    so a few members of each are enough.
+    vmecpp_large_cpp_tests/vmec/output_quantities. What is checked here is that the
+    pybind11 layer exposes each structure and carries its values through, so a few
+    members of each are enough.
     """
     case_name = "cma"
 
