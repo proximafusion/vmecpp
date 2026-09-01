@@ -725,7 +725,11 @@ TEST(HotRestartIntegration, FreeBoundary) {
   ASSERT_TRUE(displaced_fromscratch_output.ok());
 
   // COMPARE RUN FROM SCRATCH AND HOT-RESTARTED RUN
-  // FIXME(jons): How realistic are these tolerances?
+  //
+  // The bound is set by jdotb, which differs by 2.8e-2 between the two runs,
+  // and jcuru at 1.6e-2. Everything else stays at or below 1.8e-3 (DMerc),
+  // with the geometry and field coefficients at 1e-5 and the integrated
+  // scalars at 1e-10 or tighter.
   const double tolerance = 0.1;
   const bool check_equal_maximum_iterations = false;
   vmecpp::CompareWOut(displaced_hotrestarted_output->wout,
