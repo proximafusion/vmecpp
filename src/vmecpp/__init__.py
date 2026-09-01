@@ -2707,10 +2707,38 @@ def set_profile(
 populate_raw_profile = set_profile
 
 
+def boozer_transform(
+    wout: VmecWOut,
+    mboz: int,
+    nboz: int,
+    surfaces: typing.Sequence[int] | None = None,
+) -> _vmecpp.BoozerCoordinates:
+    """Boozer coordinates of the flux surfaces of a converged equilibrium.
+
+    Returns the Boozer spectra of |B| (``bmnc_b``), R (``rmnc_b``), Z
+    (``zmns_b``), the angle transformation function nu (``numns_b``, with
+    zeta_B = zeta + nu and theta_B = theta + lambda + iota nu) and the Boozer
+    Jacobian (``gmnc_b``, the expansion of (G + iota I) / |B|^2, whose radial
+    coordinate is the toroidal flux per radian, as booz_xform reports it), each
+    of shape ``(mnboz, num_surfaces)`` with the mode numbers
+    ``xm_b`` and ``xn_b`` in the wout convention. ``mboz`` poloidal and ``nboz``
+    toroidal modes per field period are computed on the half-grid surfaces
+    given by their wout columns (``surfaces``, default all of them, 1..ns-1).
+    ``jacobian_spread`` reports, per surface, the relative variation of
+    sqrt(g_B) |B|^2 over the surface, which vanishes for exact Boozer
+    coordinates and measures the residual of the transformation. Only
+    stellarator-symmetric equilibria are supported.
+    """
+    return _vmecpp.boozer_transform(
+        wout._to_cpp_wout(), mboz, nboz, list(surfaces) if surfaces is not None else []
+    )
+
+
 # Ordered this way to ensure run, VmecInput, and VmecOutput are the first three
 # items in the generated documentation.
 __all__ = [  # noqa: RUF022
     "run",
+    "boozer_transform",
     "interpolate_solution",
     "rescale",
     "VmecInput",

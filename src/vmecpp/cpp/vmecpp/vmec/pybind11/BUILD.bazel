@@ -12,6 +12,7 @@ pybind_extension(
         "//vmecpp/common/vmec_indata",
         "//vmecpp/common/magnetic_configuration_lib",
         "//vmecpp/vmec/output_quantities",
+        "//vmecpp/vmec/boozer",
         "//vmecpp/vmec/vmec",
     ],
 )

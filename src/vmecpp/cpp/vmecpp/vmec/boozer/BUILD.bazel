@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "boozer",
+    srcs = ["boozer.cc"],
+    hdrs = ["boozer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status:status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:str_format",
+        "@eigen",
+        "//vmecpp/common/util:util",
+        "//vmecpp/vmec/output_quantities:output_quantities",
+    ],
+)
+
+cc_test(
+    name = "boozer_test",
+    srcs = ["boozer_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:solovev",
+    ],
+    deps = [
+        ":boozer",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec:vmec",
+    ],
+    size = "small",
+)

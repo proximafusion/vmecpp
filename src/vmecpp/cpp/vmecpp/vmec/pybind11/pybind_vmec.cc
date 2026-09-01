@@ -20,6 +20,7 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/vmec/boozer/boozer.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
@@ -1130,6 +1131,38 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def(py::init(&MakeHotRestartState), "wout"_a, "indata"_a)
       .def_readwrite("wout", &vmecpp::HotRestartState::wout)
       .def_readwrite("indata", &vmecpp::HotRestartState::indata);
+
+  auto pyboozer = py::class_<vmecpp::BoozerCoordinates>(m, "BoozerCoordinates")
+                      .def_readonly("nfp", &vmecpp::BoozerCoordinates::nfp)
+                      .def_readonly("mboz", &vmecpp::BoozerCoordinates::mboz)
+                      .def_readonly("nboz", &vmecpp::BoozerCoordinates::nboz);
+  DefEigenProperty(pyboozer, "xm_b", &vmecpp::BoozerCoordinates::xm_b);
+  DefEigenProperty(pyboozer, "xn_b", &vmecpp::BoozerCoordinates::xn_b);
+  DefEigenProperty(pyboozer, "surfaces", &vmecpp::BoozerCoordinates::surfaces);
+  DefEigenProperty(pyboozer, "iota_b", &vmecpp::BoozerCoordinates::iota_b);
+  DefEigenProperty(pyboozer, "g_b", &vmecpp::BoozerCoordinates::g_b);
+  DefEigenProperty(pyboozer, "i_b", &vmecpp::BoozerCoordinates::i_b);
+  DefEigenProperty(pyboozer, "jacobian_spread",
+                   &vmecpp::BoozerCoordinates::jacobian_spread);
+  DefEigenProperty(pyboozer, "bmnc_b", &vmecpp::BoozerCoordinates::bmnc_b);
+  DefEigenProperty(pyboozer, "rmnc_b", &vmecpp::BoozerCoordinates::rmnc_b);
+  DefEigenProperty(pyboozer, "zmns_b", &vmecpp::BoozerCoordinates::zmns_b);
+  DefEigenProperty(pyboozer, "numns_b", &vmecpp::BoozerCoordinates::numns_b);
+  DefEigenProperty(pyboozer, "gmnc_b", &vmecpp::BoozerCoordinates::gmnc_b);
+
+  m.def(
+      "boozer_transform",
+      [](const vmecpp::WOutFileContents &wout, int mboz, int nboz,
+         const std::vector<int> &surfaces) -> vmecpp::BoozerCoordinates {
+        absl::StatusOr<vmecpp::BoozerCoordinates> boozer =
+            vmecpp::BoozerTransform(wout, mboz, nboz, surfaces);
+        return GetValueOrThrow(boozer);
+      },
+      py::arg("wout"), py::arg("mboz"), py::arg("nboz"),
+      py::arg("surfaces") = std::vector<int>(),
+      "Boozer coordinates of the half-grid flux surfaces of a converged "
+      "stellarator-symmetric equilibrium: the Boozer spectra of |B|, R, Z, "
+      "the angle transformation function nu and the Boozer Jacobian.");
 
   m.def(
       "run",
