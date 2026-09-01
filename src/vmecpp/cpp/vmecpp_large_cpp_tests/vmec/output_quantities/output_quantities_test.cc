@@ -654,7 +654,69 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
   const MercierFileContents& mercier_file_contents =
       vmec.output_quantities_.mercier;
 
-  // TODO(jons): check the first table in the Mercier output file
+  // first table in Mercier output file
+  //
+  // These columns are the intermediate quantities checked above, combined the
+  // way ComputeMercierStability does it: dV/ds is the full-grid average of its
+  // half-grid values, and shear, ITOR' and PRES' are normalized by it. IOTA and
+  // PRES are left out, because they come from the half-grid iota and pressure
+  // profiles rather than from anything in this reference file.
+  const double sign_of_jacobian = mercier["sign_jac"];
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    const double volume_derivative =
+        (mercier["vp_real"][jF].get<double>() +
+         mercier["vp_real"][jF - 1].get<double>()) /
+        2.0;
+    if (volume_derivative == 0.0) {
+      // ComputeMercierStability skips such a surface and leaves it at zero
+      continue;
+    }
+
+    EXPECT_TRUE(IsCloseRelAbs(mercier["sj"][jF], mercier_file_contents.s[jF],
+                              tolerance))
+        << "s at jF = " << jF;
+
+    double enclosed_toroidal_flux = 0.0;
+    for (int jF_prime = 1; jF_prime <= jF; ++jF_prime) {
+      enclosed_toroidal_flux += mercier["phip_real"][jF_prime].get<double>();
+    }
+    enclosed_toroidal_flux *= fc.deltaS;
+    EXPECT_TRUE(IsCloseRelAbs(enclosed_toroidal_flux,
+                              mercier_file_contents.toroidal_flux[jF],
+                              tolerance))
+        << "toroidal_flux at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(
+        volume_derivative, mercier_file_contents.d_volume_d_s[jF], tolerance))
+        << "d_volume_d_s at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(
+        mercier["shear"][jF - 1].get<double>() / volume_derivative,
+        mercier_file_contents.shear[jF], tolerance))
+        << "shear at jF = " << jF;
+
+    EXPECT_TRUE(
+        IsCloseRelAbs(-mercier["vpp"][jF - 1].get<double>() * sign_of_jacobian,
+                      mercier_file_contents.well[jF], tolerance))
+        << "well at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs((mercier["torcur"][jF].get<double>() +
+                               mercier["torcur"][jF - 1].get<double>()) /
+                                  2.0,
+                              mercier_file_contents.toroidal_current[jF],
+                              tolerance))
+        << "toroidal_current at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(
+        mercier["ip"][jF - 1].get<double>() / volume_derivative,
+        mercier_file_contents.d_toroidal_current_d_s[jF], tolerance))
+        << "d_toroidal_current_d_s at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(
+        mercier["presp"][jF - 1].get<double>() / volume_derivative,
+        mercier_file_contents.d_pressure_d_s[jF], tolerance))
+        << "d_pressure_d_s at jF = " << jF;
+  }  // jF
 
   // second table in Mercier output file
   for (int jF = 1; jF < fc.ns - 1; ++jF) {
