@@ -45,12 +45,15 @@ cc_test(
         "//vmecpp/test_data:cth_like_free_bdy_multigrid",
     ],
     deps = [
+        "//vmecpp/vmec/output_quantities:test_helpers",
         "//vmecpp/vmec/vmec",
         "@googletest//:gtest_main",
         "//util/file_io:file_io",
         "//util/testing:numerical_comparison_lib",
     ],
-    size = "medium",
+    # The four fixed-boundary flag-combination cases roughly double what this
+    # target solves, which puts it over the 300s a medium test gets under tsan.
+    size = "large",
 )
 
 cc_test(
@@ -75,6 +78,7 @@ cc_test(
         "//vmecpp/test_data:solovev_free_bdy",
     ],
     deps = [
+        "//vmecpp/vmec/output_quantities:test_helpers",
         "@googletest//:gtest_main",
         "//util/file_io:file_io",
         "//util/testing:numerical_comparison_lib",
