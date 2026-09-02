@@ -3886,26 +3886,26 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
     result.zmax_surf = std::max(result.zmax_surf, std::abs(z));
   }  // kl
 
-  result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaReduced) * DBL_MAX;
-  result.bmax = RowMatrixXd::Zero(fc.ns - 1, s.nThetaReduced);
+  // One column per stored poloidal point: the reduced range for a
+  // stellarator-symmetric run, the full range for lasym.
+  result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaEff) * DBL_MAX;
+  result.bmax = RowMatrixXd::Zero(fc.ns - 1, s.nThetaEff);
 
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int k = 0; k < s.nZeta; ++k) {
-      for (int l = 0; l < s.nThetaReduced; ++l) {
-        // total_pressure is stored with the full nThetaEff within-surface
-        // stride; bmax/bmin only need the reduced poloidal range.
+      for (int l = 0; l < s.nThetaEff; ++l) {
         const int kl = k * s.nThetaEff + l;
         const int index_half = jH * s.nZnT + kl;
 
         const double mod_b =
             std::sqrt(2.0 * (vmec_internal_results.total_pressure(index_half) -
                              vmec_internal_results.presH[jH]));
-        result.bmax(jH * s.nThetaReduced + l) =
-            std::max(result.bmax(jH * s.nThetaReduced + l), mod_b);
-        result.bmin(jH * s.nThetaReduced + l) =
-            std::min(result.bmin(jH * s.nThetaReduced + l), mod_b);
-      }  // k
-    }  // l
+        result.bmax(jH * s.nThetaEff + l) =
+            std::max(result.bmax(jH * s.nThetaEff + l), mod_b);
+        result.bmin(jH * s.nThetaEff + l) =
+            std::min(result.bmin(jH * s.nThetaEff + l), mod_b);
+      }  // l
+    }  // k
   }  // jH
 
   // Compute Waist thickness and height in \f$\varphi = 0, \pi\f$ symmetry
