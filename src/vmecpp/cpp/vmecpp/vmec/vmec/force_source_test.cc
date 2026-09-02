@@ -130,9 +130,13 @@ TEST(ForceSource, SlicingIsIndependentOfThreadCount) {
     }
     const Eigen::VectorXd delta =
         EvaluateOnce(indata, ns, max_threads, source) - bare_n;
-    // Everything the source passes through before this point is linear and
-    // thread-local, so the difference is exact rather than close.
-    EXPECT_EQ((delta - single).cwiseAbs().maxCoeff(), 0.0)
+    // A source added to the wrong surfaces would move an entry by its own
+    // size, so the bound is relative to the source. It is not exact equality:
+    // the m = 1 gauge rotation mixes the two coefficients of a pair, and the
+    // force it mixes in differs in its last bits between thread counts,
+    // because the scalars feeding it are reduced in thread order.
+    const double scale = single.cwiseAbs().maxCoeff();
+    EXPECT_LT((delta - single).cwiseAbs().maxCoeff(), 1.0e-12 * scale)
         << "the source lands differently on " << threads << " threads";
   }
 }

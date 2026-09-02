@@ -1394,10 +1394,9 @@ def study_solve(
     niter=40000,
     lasym=False,
     current=None,
+    style=None,
 ):
     """Solve the modified problem and measure the distance to the mapping."""
-    from vmecpp import _iteration  # noqa: PLC0415
-
     print(f"bulk = surfaces with s >= {smin} and at least {edge} inside the boundary")
     print(
         f"{'ns':>6} {'fsq':>11} {'R, Z':>12} {'order':>7} {'lambda m>=1':>12} "
@@ -1421,7 +1420,7 @@ def study_solve(
         fa = project_force(model, case, sgrid, mpol, ntor, nu=nu, nw=nw, lasym=lasym)
         m.set_force_source(flatten(masked_source(fa, ns, lasym), lasym))
         install_state(m, case, ns, mpol, ntor, lasym)
-        _iteration.solve_equilibrium(GaugeFixed(m), verbose=False)
+        solve_as_far_as_it_goes(m, style)
 
         v = state_error(
             m, case, ns, mpol, ntor, ntheta, nzeta, smin, edge, lasym, current
@@ -1469,7 +1468,23 @@ def _freeb_force(case, ns, mpol, ntor, ntheta, nzeta, mgrid, source=None):
     return unflatten(m.get_forces(), ns, mpol, ntor), m
 
 
-def study_freeb(mpol, ntor, ntheta, nzeta, ns_list, smin=0.1, nu=96, nw=96):
+def solve_as_far_as_it_goes(m, style=None):
+    """Drive the modified problem to force balance, keeping a run that stops
+    short: the table reports the residual it reached, which is the statement."""
+    import contextlib  # noqa: PLC0415
+
+    from vmecpp import _iteration  # noqa: PLC0415
+
+    # A run that stops short of ftol keeps whatever state it reached, and the
+    # residual it reached is reported beside the distance to the mapping.
+    with contextlib.suppress(RuntimeError):
+        _iteration.solve_equilibrium(GaugeFixed(m), style=style, verbose=False)
+    return m.fsqr + m.fsqz + m.fsql
+
+
+def study_freeb(
+    mpol, ntor, ntheta, nzeta, ns_list, smin=0.1, nu=96, nw=96, style="robust"
+):
     """The free-boundary force and what the source leaves of it.
 
     The last radial node is where the free boundary differs: its force is
@@ -1515,6 +1530,34 @@ def study_freeb(mpol, ntor, ntheta, nzeta, ns_list, smin=0.1, nu=96, nw=96):
             print(f"{ns:6d} " + " ".join(cols) + f" {b:12.3e} {a / b:10.1f}")
             prev = (volume, edge)
 
+        print()
+        print("Converged discrete state against the mapping")
+        print(
+            f"{'ns':>6} {'fsq':>11} {'R, Z':>12} {'order':>7} "
+            f"{'lambda m>=1':>12} {'order':>7} {'lambda m=0':>12} {'order':>7}"
+        )
+        prev = None
+        for ns in ns_list:
+            fa = freeb_source(model, case, vac, mpol, ntor, ns, nu=nu, nw=nw)
+            m = _model_at(case, ns, mpol, ntor, ntheta, nzeta, mgrid=mgrid)
+            # Bring the vacuum contribution up on the unmodified problem first.
+            # The source cancels the edge term, which is not switched on until
+            # the vacuum state reaches kActive, so installing it from the first
+            # iteration leaves that term uncancelled and kicks the boundary far
+            # enough for the VAC-VMEC current check to reject the run.
+            for iteration in range(1, 6):
+                install_state(m, case, ns, mpol, ntor)
+                m.evaluate(1, iteration, False, True)
+            m.set_force_source(flatten(masked_source(fa, ns, lfreeb=True)))
+            install_state(m, case, ns, mpol, ntor)
+            fsq = solve_as_far_as_it_goes(m, style)
+            v = state_error(m, case, ns, mpol, ntor, ntheta, nzeta, smin, 3, False)
+            cols = []
+            for i, x in enumerate(v):
+                o = "" if prev is None else f"{np.log(prev[i] / x) / np.log(2.0):7.2f}"
+                cols.append(f"{x:12.3e} {o:>7}")
+            print(f"{ns:6d} {fsq:11.3e} " + " ".join(cols))
+            prev = v
     finally:
         Path(mgrid).unlink(missing_ok=True)
 
@@ -1583,6 +1626,13 @@ def main():
         help="angular grid the truncation study measures against",
     )
     ap.add_argument(
+        "--style",
+        default=None,
+        choices=["vmec_8_52", "parvmec", "robust"],
+        help="time-step control for --study solve; the free-boundary solve "
+        "uses robust, which vmec_8_52's leash does not reach",
+    )
+    ap.add_argument(
         "--ncurr",
         type=int,
         default=0,
@@ -1643,7 +1693,7 @@ def main():
         print()
     if args.study in ("solve", "all"):
         print("Converged discrete state against the mapping")
-        study_solve(*common, **kw, **proj)
+        study_solve(*common, **kw, **proj, style=args.style)
         print()
     if args.study in ("angular", "all"):
         print("Angular truncation of the discrete force at fixed ns, unfitted mapping")
