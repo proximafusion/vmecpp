@@ -829,7 +829,9 @@ TEST_P(Threed1FirstTableTest, CheckThreed1FirstTable) {
     EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["chi1"][jF],
                               threed1_first_table_intermediate.chi1[jF],
                               tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["chi"][jF],
+    // The Fortran reference writes chi without the sign of the Jacobian; see
+    // ComputeThreed1FirstTableIntermediate.
+    EXPECT_TRUE(IsCloseRelAbs(-threed1_firstTable["chi"][jF].get<double>(),
                               threed1_first_table_intermediate.chi[jF],
                               tolerance));
 
