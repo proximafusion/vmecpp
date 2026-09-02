@@ -16,7 +16,8 @@ Environment layout per point (must match theories/Physics.v):
   0 s | 1 u | 2 v | 3 phip | 4..7 sfull | 8..11 shalf | 12..15 iota
   16..36 am | 37+0..4K-1 R | +4K Z | +8K L      (K = mnmax)
 
-Usage:  python make_cert.py wout_X.nc cert_X.txt  [--bands 6] [--nu 8] [--nv 4]
+Usage:  python make_equilibrium_certificate.py [wout_X.nc [cert_X.txt]] [--bands 6] [--nu 8] [--nv 4]
+Without arguments it certifies the shipped wout_solovev.nc into cert_solovev.txt.
 """
 
 import argparse
@@ -223,13 +224,19 @@ def residual_ref(w, band, s, u, vv, phip):
 def main():
     """Read the wout, choose the bounds, write the certificate."""
     ap = argparse.ArgumentParser()
-    ap.add_argument("wout")
-    ap.add_argument("out")
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    default_wout = (
+        repo / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data" / "wout_solovev.nc"
+    )
+    ap.add_argument("wout", nargs="?", default=str(default_wout))
+    ap.add_argument("out", nargs="?", default=None)
     ap.add_argument("--bands", type=int, default=6)
     ap.add_argument("--nu", type=int, default=8)
     ap.add_argument("--nv", type=int, default=4)
     ap.add_argument("--slack", type=float, default=1.5)
     a = ap.parse_args()
+    if a.out is None:
+        a.out = f"cert_{pathlib.Path(a.wout).stem.removeprefix('wout_')}.txt"
 
     w = Wout(a.wout)
     K = len(w.xm)
