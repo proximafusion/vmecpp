@@ -30,6 +30,13 @@ well as a solution of the continuum problem.
 Requires sympy and, for --study fit, scipy.  Neither is a dependency of the
 solver.
 
+The defaults are a short run at the coarsest resolutions that still separate
+first order from second.  The tables in the pull request come from the same
+script with
+
+    --mpol 5 --ntor 3 --ntheta 24 --nzeta 24 --ns 25 51 101 201
+    --projection 96 --angular 16 18 20 22 24 26 --angular-reference 96
+
 Usage:
     python manufactured_solution.py [--study energy|force|source|solve|angular|fit|all]
 """
@@ -196,12 +203,12 @@ class Case:
     # ------------------------------------------------------------- profiles
     @property
     def phip(self):
-        """dPhi/ds, constant for the default aphi = [1]."""
+        """The toroidal flux derivative dPhi/ds, constant for the default aphi."""
         return self.sign_jacobian * self.phiedge / (2.0 * sp.pi)
 
     @property
     def lamscale(self):
-        """sqrt(rmsPhiP * deltaS) = |phip| for the default aphi."""
+        """The lambda scaling sqrt(rmsPhiP * deltaS), which is |phip| here."""
         return abs(float(self.phip))
 
     def iota(self, x):
@@ -576,8 +583,8 @@ def install_state(model, case, ns, mpol, ntor, lasym=False):
 def _parity_projections(dens, mpol, ntor):
     """Exact trigonometric projections of a periodic field via one FFT.
 
-    Returns cc/ss/sc/cs, entry [m, n] being the mean of dens * cos(m u) cos(n w)
-    and so on over the (u, w) torus.
+    Returns cc/ss/sc/cs, entry [m, n] being the mean of dens * cos(m u) cos(n w) and so
+    on over the (u, w) torus.
     """
     nu, nw = dens.shape
     a = np.fft.fft2(dens) / (nu * nw)
@@ -752,14 +759,14 @@ def fit_parameters(base=None, mpol=5, ntor=3, nsfit=8, nu=48, nw=48, maxiter=40)
     fa0 = project_force(
         Model(case0), case0, srho, mpol, ntor, nu=nu, nw=nw, endpoint_half=False
     )
-    scale = max(float(np.max(np.abs(fa0[k]))) for k in GEOM_SPANS)
+    scale = max(float(np.max(np.abs(fa0[k]))) for k in spans(False))
 
     def residual(p):
         case = build_case(p, base)
         fa = project_force(
             Model(case), case, srho, mpol, ntor, nu=nu, nw=nw, endpoint_half=False
         )
-        return np.concatenate([fa[k].reshape(-1) for k in GEOM_SPANS]) / scale
+        return np.concatenate([fa[k].reshape(-1) for k in spans(False)]) / scale
 
     sol = least_squares(
         residual,
@@ -782,8 +789,8 @@ def _indata(
 ):
     """A VMEC++ input carrying the mapping's boundary, axis and profiles.
 
-    The boundary is the mapping at s = 1 and the axis is the mapping at s = 0,
-    both taken from the same combined-basis conversion the state uses.
+    The boundary is the mapping at s = 1 and the axis is the mapping at s = 0, both
+    taken from the same combined-basis conversion the state uses.
     """
     edge = combined_coefficients(case, np.array([1.0]), mpol, ntor)
     axis = combined_coefficients(case, np.array([0.0]), mpol, ntor)
@@ -892,9 +899,9 @@ def solved_mask(ns, mpol, ntor, lasym=False):
 class GaugeFixed:
     """Hold the m = 1 poloidal-origin gauge fixed on every force evaluation.
 
-    The continuum force is exactly orthogonal to that gauge direction, so
-    leaving it free makes the modified problem singular along it.  The solver
-    fixes it only once fsqz < 1e-6, which a source-augmented run need not reach.
+    The continuum force is exactly orthogonal to that gauge direction, so leaving it
+    free makes the modified problem singular along it.  The solver fixes it only once
+    fsqz < 1e-6, which a source-augmented run need not reach.
     """
 
     def __init__(self, model):
@@ -1074,11 +1081,11 @@ def study_solve(
 
 
 def study_angular(mpol, ntor, ns, grids, fine=96):
-    """Angular truncation, isolated from the radial error by comparing grids at
-    one radial resolution.
+    """Angular truncation, isolated from the radial error by comparing grids at one
+    radial resolution.
 
-    This uses the unfitted mapping.  The fitted one is close to force balance,
-    so its force is near zero and a relative measure of it says nothing.
+    This uses the unfitted mapping.  The fitted one is close to force balance, so its
+    force is near zero and a relative measure of it says nothing.
     """
     case = Case()
     ref, _ = discrete_force(case, ns, mpol, ntor, fine, fine)
@@ -1103,11 +1110,30 @@ def main():
         default="all",
         choices=["energy", "force", "source", "solve", "angular", "fit", "all"],
     )
-    ap.add_argument("--mpol", type=int, default=5)
-    ap.add_argument("--ntor", type=int, default=3)
-    ap.add_argument("--ntheta", type=int, default=24)
-    ap.add_argument("--nzeta", type=int, default=24)
-    ap.add_argument("--ns", type=int, nargs="+", default=[25, 51, 101, 201])
+    ap.add_argument("--mpol", type=int, default=4)
+    ap.add_argument("--ntor", type=int, default=2)
+    ap.add_argument("--ntheta", type=int, default=18)
+    ap.add_argument("--nzeta", type=int, default=16)
+    ap.add_argument("--ns", type=int, nargs="+", default=[13, 25, 49])
+    ap.add_argument(
+        "--projection",
+        type=int,
+        default=32,
+        help="angular resolution at which the continuum force is projected",
+    )
+    ap.add_argument(
+        "--angular",
+        type=int,
+        nargs="+",
+        default=[16, 18, 20],
+        help="angular grids compared in the truncation study",
+    )
+    ap.add_argument(
+        "--angular-reference",
+        type=int,
+        default=48,
+        help="angular grid the truncation study measures against",
+    )
     ap.add_argument(
         "--lasym",
         action="store_true",
@@ -1138,25 +1164,28 @@ def main():
     )
 
     common = (case, model, args.mpol, args.ntor, args.ntheta, args.nzeta, args.ns)
+    proj = {"nu": args.projection, "nw": args.projection}
     if args.study in ("energy", "all"):
         print("Discrete MHD energy against the continuum energy of the mapping")
         study_energy(*common, lasym=lasym)
         print()
     if args.study in ("force", "all"):
         print("Discrete spectral force against the continuum ideal-MHD force")
-        study_force(*common, lasym=lasym)
+        study_force(*common, lasym=lasym, **proj)
         print()
     if args.study in ("source", "all"):
         print("Force left at the mapping once the source is installed")
-        study_source(*common, lasym=lasym)
+        study_source(*common, lasym=lasym, **proj)
         print()
     if args.study in ("solve", "all"):
         print("Converged discrete state against the mapping")
-        study_solve(*common, lasym=lasym)
+        study_solve(*common, lasym=lasym, **proj)
         print()
     if args.study in ("angular", "all"):
         print("Angular truncation of the discrete force at fixed ns, unfitted mapping")
-        study_angular(args.mpol, args.ntor, args.ns[-1], [16, 18, 20, 22, 24, 26])
+        study_angular(
+            args.mpol, args.ntor, args.ns[-1], args.angular, fine=args.angular_reference
+        )
 
 
 if __name__ == "__main__":

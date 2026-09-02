@@ -460,7 +460,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   return false;
 }  // run
 
-absl::Status Vmec::SetForceSource(const Eigen::VectorXd& source) {
+absl::Status Vmec::SetForceSource(const Eigen::VectorXd& source) const {
   for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
     absl::Status s = m_[thread_id]->SetForceSource(source);
     if (!s.ok()) {

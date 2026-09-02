@@ -169,8 +169,8 @@ def test_wrong_source_length_is_rejected(case_and_model):
 
 
 def test_state_survives_the_fourier_round_trip(case_and_model):
-    """set_state_from_fourier and get_state_as_fourier are inverses, so the
-    example never has to know the solver's internal basis."""
+    """set_state_from_fourier and get_state_as_fourier are inverses, so the example
+    never has to know the solver's internal basis."""
     case, _ = case_and_model
     ns = 25
     m = mms._model_at(case, ns, MPOL, NTOR, NTHETA, NZETA)
@@ -181,9 +181,9 @@ def test_state_survives_the_fourier_round_trip(case_and_model):
 
 
 def test_asymmetric_path_reproduces_the_symmetric_result(case_and_model):
-    """A stellarator-symmetric mapping run through the lasym code path must give
-    the same answer, which is the invariant AGENTS.md asks for, here against a
-    continuum reference rather than against another run."""
+    """A stellarator-symmetric mapping run through the lasym code path must give the
+    same answer, which is the invariant AGENTS.md asks for, here against a continuum
+    reference rather than against another run."""
     case, model = case_and_model
     ns = 25
     exact = mms.continuum_energy(model, nrho=120, nu=32, nw=32)
