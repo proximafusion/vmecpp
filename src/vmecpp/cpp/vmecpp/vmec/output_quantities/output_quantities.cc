@@ -3883,7 +3883,10 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
         vmec_internal_results.z_e(lcfs_kl) + vmec_internal_results.z_o(lcfs_kl);
     result.rmax_surf = std::max(result.rmax_surf, r);
     result.rmin_surf = std::min(result.rmin_surf, r);
-    result.zmax_surf = std::max(result.zmax_surf, z);
+    // Only the reduced poloidal range is stored for a stellarator-symmetric
+    // run, so the extremum of Z over the whole boundary is that of |Z| over
+    // the stored half; Fortran VMEC (eqfor.f90) takes MAXVAL(ABS(z1)) as well.
+    result.zmax_surf = std::max(result.zmax_surf, std::abs(z));
   }  // kl
 
   result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaReduced) * DBL_MAX;
