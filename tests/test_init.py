@@ -268,8 +268,7 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
         actual = np.asarray(test_value[:])
         desired = np.asarray(expected_value[:])
         if varname == "chi":
-            # The Fortran reference writes chi without the sign of the Jacobian,
-            # so it is the negative of the corrected chi.
+            # The Fortran reference writes chi without the sign of the Jacobian.
             desired = -desired
         np.testing.assert_allclose(
             actual,
@@ -355,8 +354,7 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
         actual = np.asarray(test_value[:])
         desired = np.asarray(expected_value[:])
         if varname == "chi":
-            # The Fortran reference writes chi without the sign of the Jacobian,
-            # so it is the negative of the corrected chi.
+            # The Fortran reference writes chi without the sign of the Jacobian.
             desired = -desired
         np.testing.assert_allclose(
             actual,
