@@ -1018,18 +1018,18 @@ TEST_P(Threed1GeometricMagneticQuantitiesTest,
       IsCloseRelAbs(threed1_geomag["zmax_surf"], result.zmax_surf, tolerance));
 
   EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["bmin_1_ns"],
-                            result.bmin((fc.ns - 2) * s.nThetaReduced + 0),
+                            result.bmin((fc.ns - 2) * s.nThetaEff + 0),
                             tolerance));
   EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["bmax_1_ns"],
-                            result.bmax((fc.ns - 2) * s.nThetaReduced + 0),
+                            result.bmax((fc.ns - 2) * s.nThetaEff + 0),
                             tolerance));
   EXPECT_TRUE(IsCloseRelAbs(
       threed1_geomag["bmin_ntheta2_ns"],
-      result.bmin((fc.ns - 2) * s.nThetaReduced + (s.nThetaReduced - 1)),
+      result.bmin((fc.ns - 2) * s.nThetaEff + (s.nThetaReduced - 1)),
       tolerance));
   EXPECT_TRUE(IsCloseRelAbs(
       threed1_geomag["bmax_ntheta2_ns"],
-      result.bmax((fc.ns - 2) * s.nThetaReduced + (s.nThetaReduced - 1)),
+      result.bmax((fc.ns - 2) * s.nThetaEff + (s.nThetaReduced - 1)),
       tolerance));
 
   EXPECT_TRUE(

@@ -3886,29 +3886,29 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
         vmec_internal_results.z_e(lcfs_kl) + vmec_internal_results.z_o(lcfs_kl);
     result.rmax_surf = std::max(result.rmax_surf, r);
     result.rmin_surf = std::min(result.rmin_surf, r);
-    result.zmax_surf = std::max(result.zmax_surf, z);
+    result.zmax_surf = std::max(result.zmax_surf, std::abs(z));
   }  // kl
 
-  result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaReduced) * DBL_MAX;
-  result.bmax = RowMatrixXd::Zero(fc.ns - 1, s.nThetaReduced);
+  // One column per stored poloidal point: the reduced range for a
+  // stellarator-symmetric run, the full range for lasym.
+  result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaEff) * DBL_MAX;
+  result.bmax = RowMatrixXd::Zero(fc.ns - 1, s.nThetaEff);
 
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int k = 0; k < s.nZeta; ++k) {
-      for (int l = 0; l < s.nThetaReduced; ++l) {
-        // total_pressure is stored with the full nThetaEff within-surface
-        // stride; bmax/bmin only need the reduced poloidal range.
+      for (int l = 0; l < s.nThetaEff; ++l) {
         const int kl = k * s.nThetaEff + l;
         const int index_half = jH * s.nZnT + kl;
 
         const double mod_b =
             std::sqrt(2.0 * (vmec_internal_results.total_pressure(index_half) -
                              vmec_internal_results.presH[jH]));
-        result.bmax(jH * s.nThetaReduced + l) =
-            std::max(result.bmax(jH * s.nThetaReduced + l), mod_b);
-        result.bmin(jH * s.nThetaReduced + l) =
-            std::min(result.bmin(jH * s.nThetaReduced + l), mod_b);
-      }  // k
-    }  // l
+        result.bmax(jH * s.nThetaEff + l) =
+            std::max(result.bmax(jH * s.nThetaEff + l), mod_b);
+        result.bmin(jH * s.nThetaEff + l) =
+            std::min(result.bmin(jH * s.nThetaEff + l), mod_b);
+      }  // l
+    }  // k
   }  // jH
 
   // Compute Waist thickness and height in \f$\varphi = 0, \pi\f$ symmetry
@@ -4031,11 +4031,13 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
       // double zxmax = 0.0;
       // double zxmin = 0.0;
 
-      // Only theta in [0, pi] is stored under stellarator symmetry. The
-      // second pass takes the reflected plane 2 pi - zeta with Z -> -Z, which
-      // supplies the missing half of the cross-section, so that the extrema
-      // searched for below are those of the complete closed contour.
-      for (int icount = 0; icount < 2; ++icount) {
+      // Under stellarator symmetry only theta in [0, pi] is stored, and the
+      // second pass takes the reflected plane 2 pi - zeta with Z -> -Z to
+      // supply the other half of the cross-section. A lasym run stores the
+      // complete contour, which is scanned in a single pass.
+      const int num_passes = s.lasym ? 1 : 2;
+      const int num_theta = s.lasym ? s.nThetaEff : s.nThetaReduced;
+      for (int icount = 0; icount < num_passes; ++icount) {
         int k1 = k;
         int t1 = 1;
         if (icount == 1) {
@@ -4044,7 +4046,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
           t1 = -1;
         }
 
-        for (int l = 0; l < s.nThetaReduced; ++l) {
+        for (int l = 0; l < num_theta; ++l) {
           const int l_off = (jF * s.nZeta + k1) * s.nThetaEff + l;
 
           const double yr1u = vmec_internal_results.r_e(l_off) +

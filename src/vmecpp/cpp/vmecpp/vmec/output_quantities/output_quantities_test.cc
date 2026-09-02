@@ -111,9 +111,25 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   // remove zero-padding at end
   reference_am.resize(wout.am.size());
   EXPECT_THAT(wout.am, ElementsAreArray(reference_am));
-  // The spline knots are checked where a spline case actually runs, in
-  // SplineProfileEquilibrium below. The Fortran reference for these cases
-  // carries no am_aux_* to compare against.
+
+  // The spline knots and values are written for every profile whether or not
+  // the corresponding profile is a spline; the unused ones are filled with -1
+  // knots and zero values. The reference is trimmed the same way the profile
+  // coefficients above are, because the array length is the ndatafmax the
+  // reference was built with rather than anything about the equilibrium.
+  for (const auto& [name, aux] :
+       {std::pair<const char*, const Eigen::VectorXd&>{"am_aux_s",
+                                                       wout.am_aux_s},
+        {"am_aux_f", wout.am_aux_f},
+        {"ai_aux_s", wout.ai_aux_s},
+        {"ai_aux_f", wout.ai_aux_f},
+        {"ac_aux_s", wout.ac_aux_s},
+        {"ac_aux_f", wout.ac_aux_f}}) {
+    std::vector<double> reference = NetcdfReadArray1D(ncid, name).value();
+    ASSERT_GE(reference.size(), static_cast<size_t>(aux.size())) << name;
+    reference.resize(aux.size());
+    EXPECT_THAT(aux, ElementsAreArray(reference)) << name;
+  }
 
   if (vmec_indata->ncurr == 0) {
     // constrained-iota; ignore current profile coefficients
@@ -511,6 +527,8 @@ INSTANTIATE_TEST_SUITE_P(
     Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-7},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-7},
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-6},
+           DataSource{.identifier = "cth_like_fixed_bdy_spline_pressure",
+                      .tolerance = 1.0e-6},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 1.0e-6},
            DataSource{.identifier = "cma", .tolerance = 1.0e-6},
