@@ -4028,11 +4028,13 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
       // double zxmax = 0.0;
       // double zxmin = 0.0;
 
-      // Only theta in [0, pi] is stored under stellarator symmetry. The
-      // second pass takes the reflected plane 2 pi - zeta with Z -> -Z, which
-      // supplies the missing half of the cross-section, so that the extrema
-      // searched for below are those of the complete closed contour.
-      for (int icount = 0; icount < 2; ++icount) {
+      // Under stellarator symmetry only theta in [0, pi] is stored, and the
+      // second pass takes the reflected plane 2 pi - zeta with Z -> -Z to
+      // supply the other half of the cross-section. A lasym run stores the
+      // complete contour, which is scanned in a single pass.
+      const int num_passes = s.lasym ? 1 : 2;
+      const int num_theta = s.lasym ? s.nThetaEff : s.nThetaReduced;
+      for (int icount = 0; icount < num_passes; ++icount) {
         int k1 = k;
         int t1 = 1;
         if (icount == 1) {
@@ -4041,7 +4043,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
           t1 = -1;
         }
 
-        for (int l = 0; l < s.nThetaReduced; ++l) {
+        for (int l = 0; l < num_theta; ++l) {
           const int l_off = (jF * s.nZeta + k1) * s.nThetaEff + l;
 
           const double yr1u = vmec_internal_results.r_e(l_off) +
