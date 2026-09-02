@@ -1792,6 +1792,10 @@ void IdealMhdModel::computeBContra() {
   }
 
   // update full-grid chi'
+  if (r_.nsMinF1 == 0) {
+    // The axis value is extrapolated the same way as iotaF below.
+    m_p_.chipF[0] = 1.5 * m_p_.chipH[0] - 0.5 * m_p_.chipH[1];
+  }
   for (int jFi = r_.nsMinFi; jFi < r_.nsMaxFi; ++jFi) {
     m_p_.chipF[jFi - r_.nsMinF1] =
         0.5 * (m_p_.chipH[jFi - r_.nsMinH] + m_p_.chipH[jFi - 1 - r_.nsMinH]);

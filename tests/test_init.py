@@ -265,9 +265,15 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
         # covariant B field Fourier coefficients, which amplifies floating-point
         # non-determinism (e.g., from OpenMP reduction order).
         rtol = 1e-3 if varname in ("currumnc", "currvmnc") else 1e-6
+        actual = np.asarray(test_value[:])
+        desired = np.asarray(expected_value[:])
+        if varname == "chipf":
+            # The Fortran reference leaves the axis chipf at zero; see computeBContra.
+            actual = actual[..., 1:]
+            desired = desired[..., 1:]
         np.testing.assert_allclose(
-            np.asarray(test_value[:]),
-            np.asarray(expected_value[:]),
+            actual,
+            desired,
             err_msg=error_msg,
             rtol=rtol,
             atol=1e-7,
@@ -346,9 +352,15 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
 
         # np.asarray is needed to convert the masked array to a regular array.
         # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
+        actual = np.asarray(test_value[:])
+        desired = np.asarray(expected_value[:])
+        if varname == "chipf":
+            # The Fortran reference leaves the axis chipf at zero; see computeBContra.
+            actual = actual[..., 1:]
+            desired = desired[..., 1:]
         np.testing.assert_allclose(
-            np.asarray(test_value[:]),
-            np.asarray(expected_value[:]),
+            actual,
+            desired,
             err_msg=error_msg,
             rtol=rtol,
             atol=atol,
