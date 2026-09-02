@@ -2071,44 +2071,6 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
 #endif  // _OPENMP
 }
 
-namespace {
-// The active force parities, in FourierForces order.
-std::vector<std::span<double>> ActiveForceSpans(FourierForces& m_f,
-                                                const Sizes& s) {
-  std::vector<std::span<double>> out = {m_f.frcc};
-  if (s.lthreed) {
-    out.push_back(m_f.frss);
-  }
-  if (s.lasym) {
-    out.push_back(m_f.frsc);
-  }
-  if (s.lasym && s.lthreed) {
-    out.push_back(m_f.frcs);
-  }
-  out.push_back(m_f.fzsc);
-  if (s.lthreed) {
-    out.push_back(m_f.fzcs);
-  }
-  if (s.lasym) {
-    out.push_back(m_f.fzcc);
-  }
-  if (s.lasym && s.lthreed) {
-    out.push_back(m_f.fzss);
-  }
-  out.push_back(m_f.flsc);
-  if (s.lthreed) {
-    out.push_back(m_f.flcs);
-  }
-  if (s.lasym) {
-    out.push_back(m_f.flcc);
-  }
-  if (s.lasym && s.lthreed) {
-    out.push_back(m_f.flss);
-  }
-  return out;
-}
-}  // namespace
-
 absl::Status IdealMhdModel::SetForceSource(const Eigen::VectorXd& source) {
   if (source.size() == 0) {
     force_source_.resize(0);
@@ -2134,8 +2096,7 @@ void IdealMhdModel::addForceSource(FourierForces& m_decomposed_f) const {
   }
   const int mnsize = s_.mpol * (s_.ntor + 1);
   const int block = m_fc_.ns * mnsize;
-  const std::vector<std::span<double>> targets =
-      ActiveForceSpans(m_decomposed_f, s_);
+  const std::vector<std::span<double>> targets = m_decomposed_f.ActiveSpans();
   for (size_t parity = 0; parity < targets.size(); ++parity) {
     const double* src =
         force_source_.data() + static_cast<Eigen::Index>(parity) * block;

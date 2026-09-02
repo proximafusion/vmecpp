@@ -183,7 +183,10 @@ class Vmec {
 
   // Install an additive spectral force source on every radial thread; see
   // IdealMhdModel::SetForceSource for the layout. An empty vector clears it.
-  absl::Status SetForceSource(const Eigen::VectorXd& source) const;
+  // The source belongs to the radial resolution it was installed at and is
+  // reinstalled after every InitializeRadial, which an axis reguess and each
+  // multi-grid step trigger.
+  absl::Status SetForceSource(const Eigen::VectorXd& source);
 
   int get_ivac() const { return static_cast<int>(vacuum_pressure_state_); }
   int get_num_eqsolve_retries() const { return num_eqsolve_retries_; }
@@ -217,6 +220,13 @@ class Vmec {
   std::vector<std::unique_ptr<FreeBoundaryBase>> fb_vac_;
   std::vector<std::unique_ptr<TangentialPartitioning>> tp_vac_;
   std::vector<std::unique_ptr<IdealMhdModel>> m_;
+
+  // The force source SetForceSource was last given, kept so InitializeRadial
+  // can put it back onto the models it rebuilds. Empty when none is installed.
+  Eigen::VectorXd force_source_;
+
+  // Push a source onto every radial thread's model without storing it.
+  absl::Status InstallForceSource(const Eigen::VectorXd& source) const;
   std::vector<std::unique_ptr<FourierGeometry>> decomposed_x_;
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_backup_;
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_;

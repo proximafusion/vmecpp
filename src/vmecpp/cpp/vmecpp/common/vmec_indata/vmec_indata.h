@@ -214,6 +214,11 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // Permit an additive spectral force source (VmecModel.set_force_source). A
+  // run that carries one solves a modified problem rather than ideal MHD, so
+  // installing one is refused unless the input asks for it.
+  bool enable_force_source;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)

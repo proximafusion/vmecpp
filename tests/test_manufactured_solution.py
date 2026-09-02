@@ -168,16 +168,90 @@ def test_wrong_source_length_is_rejected(case_and_model):
         m.set_force_source(np.ones(7))
 
 
-def test_state_survives_the_fourier_round_trip(case_and_model):
-    """set_state_from_fourier and get_state_as_fourier are inverses, so the example
-    never has to know the solver's internal basis."""
-    case, _ = case_and_model
+def test_source_is_refused_unless_the_input_asks_for_it(case_and_model):
+    """A run that did not ask for a source solves ideal MHD, not a modified problem, so
+    installing one has to fail rather than change the answer."""
+    case, model = case_and_model
+    ns = 25
+    m = mms._model_at(case, ns, MPOL, NTOR, NTHETA, NZETA, enable_force_source=False)
+    sgrid = np.linspace(0.0, 1.0, ns)
+    fa = mms.project_force(model, case, sgrid, MPOL, NTOR, nu=32, nw=32)
+    with pytest.raises(RuntimeError, match="enable_force_source"):
+        m.set_force_source(mms.flatten(mms.masked_source(fa, ns)))
+
+
+def test_source_survives_a_reinitialization(case_and_model):
+    """InitializeRadial rebuilds the per-thread models, which an axis reguess does mid-
+    solve; the source has to come back with them."""
+    case, model = case_and_model
     ns = 25
     m = mms._model_at(case, ns, MPOL, NTOR, NTHETA, NZETA)
-    want = mms.install_state(m, case, ns, MPOL, NTOR)
-    got = m.get_state_as_fourier()
-    for i, key in enumerate(("rmnc", "zmns", "lmns")):
-        np.testing.assert_allclose(got[i], want[key], rtol=1e-12, atol=1e-14)
+    sgrid = np.linspace(0.0, 1.0, ns)
+    fa = mms.project_force(model, case, sgrid, MPOL, NTOR, nu=32, nw=32)
+    m.set_force_source(mms.flatten(mms.masked_source(fa, ns)))
+
+    mms.install_state(m, case, ns, MPOL, NTOR)
+    m.evaluate(1, 1, False, True)
+    before = m.fsqr + m.fsqz + m.fsql
+
+    m.reinitialize()
+    mms.install_state(m, case, ns, MPOL, NTOR)
+    m.evaluate(1, 1, False, True)
+    assert m.fsqr + m.fsqz + m.fsql == pytest.approx(before, rel=1e-9)
+
+
+def test_constrained_current_force_is_second_order(case_and_model):
+    """The same order holds when the solver derives iota from a prescribed toroidal
+    current instead of reading an iota profile (ncurr = 1)."""
+    case, model = case_and_model
+    current = mms.current_constraint(model, case, nknots=33, nu=32, nw=32)
+    errors = []
+    for ns in NS:
+        fv, _ = mms.discrete_force(case, ns, MPOL, NTOR, NTHETA, NZETA, current=current)
+        sgrid = np.linspace(0.0, 1.0, ns)
+        fa = mms.hat_force_to_decomposed(
+            mms.project_force(model, case, sgrid, MPOL, NTOR, nu=32, nw=32), MPOL
+        )
+        errors.append(max(mms._force_by_parity(fv, fa, ns, MPOL, SMIN, False)))
+    assert errors == sorted(errors, reverse=True), errors
+    assert _order(errors) > 1.7, errors
+
+
+def test_free_boundary_force_is_second_order():
+    """The free-boundary edge term and the one-sided force at the last radial node
+    converge at the same order as the volume.
+
+    only_coils takes the vacuum field straight from the mgrid, and a field bilinear in
+    (R, Z) is interpolated exactly, so the vacuum pressure the solver uses is analytic
+    and the only error left is the discretization.
+    """
+    import tempfile  # noqa: PLC0415
+    from pathlib import Path as _Path  # noqa: PLC0415
+
+    with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as fh:
+        mgrid = fh.name
+    try:
+        case, model, vac, _ = mms.freeb_setup(NZETA, mgrid)
+        volume, edge = [], []
+        for ns in (13, 25):
+            fa = mms.freeb_source(model, case, vac, MPOL, NTOR, ns, nu=32, nw=32)
+            m = mms._model_at(case, ns, MPOL, NTOR, NTHETA, NZETA, mgrid=mgrid)
+            for iteration in range(1, 6):
+                mms.install_state(m, case, ns, MPOL, NTOR)
+                m.evaluate(1, iteration, False, True)
+            fv = mms.unflatten(m.get_forces(), ns, MPOL, NTOR)
+            dec = mms.hat_force_to_decomposed(fa, MPOL)
+            volume.append(max(mms._force_by_parity(fv, dec, ns, MPOL, SMIN, False)))
+            num = sum(
+                float(np.sum((fv[k][ns - 1] + dec[k][ns - 1]) ** 2))
+                for k in mms.spans(False)
+            )
+            den = sum(float(np.sum(dec[k][ns - 1] ** 2)) for k in mms.spans(False))
+            edge.append(float(np.sqrt(num / den)))
+        assert _order(volume) > 1.7, volume
+        assert _order(edge) > 1.7, edge
+    finally:
+        _Path(mgrid).unlink(missing_ok=True)
 
 
 def test_asymmetric_path_reproduces_the_symmetric_result(case_and_model):

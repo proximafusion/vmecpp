@@ -442,6 +442,13 @@ class VmecInput(BaseModelWithNumpy):
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
+    enable_force_source: bool = False
+    """Permit an additive spectral force source (``VmecModel.set_force_source``).
+
+    A run that carries one solves a modified problem rather than ideal MHD, so
+    installing a source is refused unless this is set.
+    """
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.

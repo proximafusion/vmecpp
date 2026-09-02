@@ -158,4 +158,38 @@ void FourierForces::residuals(Eigen::Vector3d& fRes,
   fRes[2] = local_fResL;
 }
 
+std::vector<std::span<double>> FourierForces::ActiveSpans() {
+  std::vector<std::span<double>> out = {frcc};
+  if (s_.lthreed) {
+    out.push_back(frss);
+  }
+  if (s_.lasym) {
+    out.push_back(frsc);
+  }
+  if (s_.lasym && s_.lthreed) {
+    out.push_back(frcs);
+  }
+  out.push_back(fzsc);
+  if (s_.lthreed) {
+    out.push_back(fzcs);
+  }
+  if (s_.lasym) {
+    out.push_back(fzcc);
+  }
+  if (s_.lasym && s_.lthreed) {
+    out.push_back(fzss);
+  }
+  out.push_back(flsc);
+  if (s_.lthreed) {
+    out.push_back(flcs);
+  }
+  if (s_.lasym) {
+    out.push_back(flcc);
+  }
+  if (s_.lasym && s_.lthreed) {
+    out.push_back(flss);
+  }
+  return out;
+}
+
 }  // namespace vmecpp

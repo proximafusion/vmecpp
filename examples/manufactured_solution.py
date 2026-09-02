@@ -27,6 +27,18 @@ poloidal-origin gauge condition, so the frozen combination of the m = 1
 coefficients is zero.  It is therefore an admissible state of the solver as
 well as a solution of the continuum problem.
 
+The file is in four parts, which can be read independently:
+
+  1. Case and Model: the analytic mapping, the solver's own energy density read
+     off its kernels, and the continuum Euler-Lagrange force sympy derives from
+     it.  Nothing here knows about the solver.
+  2. The mapping as a VMEC++ state: the mode ordering and the projection of the
+     continuum force onto the solver's normalized basis.  The basis conventions
+     themselves live in C++ (FourierGeometry::InitFromState).
+  3. Free boundary: the analytic vacuum field, the mgrid that holds it, and
+     what the last radial node needs beyond the volume source.
+  4. The studies, one per table, and main.
+
 Requires sympy and, for --study fit, scipy.  Neither is a dependency of the
 solver.
 
@@ -38,7 +50,7 @@ script with
     --projection 96 --angular 16 18 20 22 24 26 --angular-reference 96
 
 Usage:
-    python manufactured_solution.py [--study energy|force|source|solve|angular|fit|all]
+    python manufactured_solution.py [--study STUDY] [--ncurr 1] [--lasym]
 """
 
 from __future__ import annotations
@@ -662,6 +674,168 @@ def hat_force_to_decomposed(hat, mpol, zero_z_m1=True):
 
 
 # ----------------------------------------------------------------------------
+# Free boundary
+# ----------------------------------------------------------------------------
+
+# A vacuum field whose cylindrical components are bilinear in (R, Z),
+#
+#     B_R = a Z,    B_phi = b + c R,    B_Z = 0,
+#
+# is reproduced exactly by MGridProvider::interpolate, which is bilinear in
+# (R, Z) at a fixed toroidal plane.  free_boundary_method = "only_coils" takes
+# the vacuum field straight from the mgrid with no Laplace solve, so the vacuum
+# magnetic pressure the solver works with is the analytic |B|^2 / 2 to machine
+# precision and the free-boundary problem is as manufacturable as the fixed one.
+# only_coils requires zero pressure and zero net input current.
+
+
+def vacuum_pressure(vac, r, z):
+    """The magnetic pressure |B|^2 / 2 of the bilinear vacuum field."""
+    a, b, c = vac
+    return 0.5 * ((a * z) ** 2 + (b + c * r) ** 2)
+
+
+def _boundary_fields(model, nu, nw):
+    """The mapping and its first derivatives on the boundary surface."""
+    u = np.linspace(0.0, 2.0 * np.pi, nu, endpoint=False)
+    w = np.linspace(0.0, 2.0 * np.pi, nw, endpoint=False)
+    uu, ww = np.meshgrid(u, w, indexing="ij")
+    one = np.ones_like(uu)
+    keys = ("R|", "R|u", "R|v", "Z|", "Z|u", "Z|v")
+    return uu, ww, {k: model.fn[k](1.0, uu, ww) * one for k in keys}
+
+
+def tune_vacuum_field(model, case, c=0.0, nu=64, nw=64):
+    """Choose a vacuum field the solver will run this plasma against.
+
+    Two conditions are enforced before the first vacuum iteration is accepted:
+    the vacuum-side R B_phi must carry the sign of the plasma's, and the
+    vacuum-side poloidal field must reproduce the plasma's net toroidal current
+    to within one per cent of R B_phi.  Both surface averages are linear in the
+    field's coefficients, so both are solved rather than searched: a carries the
+    current and b matches R B_phi.  c is free shaping and defaults to zero.
+    """
+    uu, ww, f = _boundary_fields(model, nu, nw)
+    one = np.ones_like(uu)
+    g = {
+        k: model.aux_at(k, 1.0, uu, ww) * one
+        for k in ("guu", "guv", "gvv", "bsupu", "bsupv")
+    }
+    sgn = case.sign_jacobian
+    b_sub_u = g["guu"] * g["bsupu"] + g["guv"] * g["bsupv"]
+    b_sub_v = g["guv"] * g["bsupu"] + g["gvv"] * g["bsupv"]
+    ctor = 2.0 * np.pi * sgn * float(np.mean(b_sub_u))
+    rbtor = float(np.mean(b_sub_v))
+    # B_vac . e_u = a Z R_u, and the solver scales that average by sign * 2 pi
+    a = ctor / (2.0 * np.pi * sgn * float(np.mean(f["Z|"] * f["R|u"])))
+    # B_vac . e_v = a Z R_v + b R + c R^2
+    b = (
+        rbtor
+        - a * float(np.mean(f["Z|"] * f["R|v"]))
+        - c * float(np.mean(f["R|"] ** 2))
+    ) / float(np.mean(f["R|"]))
+    return (a, b, c), {"ctor": ctor, "rbtor": rbtor}
+
+
+def boundary_box(model, margin=0.3, nu=64, nw=64):
+    """A cylindrical grid box around the plasma, with room for it to move."""
+    _, _, f = _boundary_fields(model, nu, nw)
+    r, z = f["R|"], f["Z|"]
+    dr = margin * (r.max() - r.min())
+    dz = margin * max(z.max() - z.min(), r.max() - r.min())
+    return (r.min() - dr, r.max() + dr, z.min() - dz, z.max() + dz)
+
+
+def write_mgrid(path, vac, nfp, nzeta, box, nr=48, nz=48):
+    """Write the bilinear field as an mgrid file the solver can load."""
+    import netCDF4  # noqa: PLC0415
+
+    rmin, rmax, zmin, zmax = box
+    rr, zz = np.meshgrid(
+        np.linspace(rmin, rmax, nr), np.linspace(zmin, zmax, nz), indexing="xy"
+    )
+    a, b, c = vac
+    fields = {
+        "br_001": np.broadcast_to(a * zz, (nzeta, nz, nr)).copy(),
+        "bp_001": np.broadcast_to(b + c * rr, (nzeta, nz, nr)).copy(),
+        "bz_001": np.zeros((nzeta, nz, nr)),
+    }
+    with netCDF4.Dataset(path, "w", format="NETCDF3_CLASSIC") as ds:
+        ds.createDimension("stringsize", 30)
+        ds.createDimension("external_coil_groups", 1)
+        ds.createDimension("dim_00001", 1)
+        ds.createDimension("external_coils", 1)
+        ds.createDimension("rad", nr)
+        ds.createDimension("zee", nz)
+        ds.createDimension("phi", nzeta)
+        for name, value in (
+            ("ir", nr),
+            ("jz", nz),
+            ("kp", nzeta),
+            ("nfp", nfp),
+            ("nextcur", 1),
+        ):
+            ds.createVariable(name, "i4")[...] = value
+        for name, value in (
+            ("rmin", rmin),
+            ("rmax", rmax),
+            ("zmin", zmin),
+            ("zmax", zmax),
+        ):
+            ds.createVariable(name, "f8")[...] = value
+        ds.createVariable("mgrid_mode", "S1", ("dim_00001",))[:] = np.array(
+            ["R"], dtype="S1"
+        )
+        ds.createVariable("coil_group", "S1", ("external_coil_groups", "stringsize"))[
+            :
+        ] = np.array([list("manufactured".ljust(30))], dtype="S1")
+        ds.createVariable("raw_coil_cur", "f8", ("external_coils",))[:] = np.array(
+            [1.0]
+        )
+        for tag, data in fields.items():
+            ds.createVariable(tag, "f8", ("phi", "zee", "rad"))[:] = data
+    return path
+
+
+def lcfs_source(model, vac, mpol, ntor, ns, nu=96, nw=96):
+    """What the source at the last radial node needs beyond the volume density.
+
+    Only the half-grid cell inside the boundary exists there, so the kernel's
+    radial difference is one-sided and the local terms are averaged over one
+    cell rather than two.  Writing w for the energy density, the node's force is
+
+        (1 / ds) dw/dx_s + (1 / 2) EL(w) + edge
+
+    to first order in ds, against EL(w) at an interior node, and the free-
+    boundary edge term of assembleTotalForces is z_u R p_vac / ds in R and
+    -r_u R p_vac / ds in Z.  project_force already halves the endpoint, so what
+    is missing is the first and the third, and their sum is the pressure jump
+
+        (1 / ds) R (p_total - p_vac) (z_u, -r_u)
+
+    which is what a free-boundary equilibrium drives to zero.
+    """
+    uu, ww, f = _boundary_fields(model, nu, nw)
+    q = model.q_at(1.0, uu, ww)
+    args = [q[n] for n in Q_NAMES] + list(model.profiles(1.0))
+    one = np.ones_like(uu)
+    p_vac = vacuum_pressure(vac, f["R|"], f["Z|"])
+    ds = 1.0 / (ns - 1.0)
+    dens = {
+        "R": -(model.grad["Rs"](*args) * one + f["Z|u"] * f["R|"] * p_vac) / ds,
+        "Z": -(model.grad["Zs"](*args) * one - f["R|u"] * f["R|"] * p_vac) / ds,
+    }
+    out = empty(ns, mpol, ntor)
+    sc_mn = np.array([[scale(m, n) for n in range(ntor + 1)] for m in range(mpol)])
+    proj = {field: _parity_projections(d, mpol, ntor) for field, d in dens.items()}
+    for kind in spans(False):
+        field, parity = BASIS[kind]
+        if field in proj:
+            out[kind][ns - 1] = sc_mn * proj[field][parity]
+    return out
+
+
+# ----------------------------------------------------------------------------
 # The mapping the studies use
 # ----------------------------------------------------------------------------
 
@@ -718,19 +892,59 @@ ASYM = {
 }
 
 
-def build_case(p, base=None, asym=None):
-    """Assemble a Case from the flat parameter vector used by the fit."""
+# The free-boundary mapping.  only_coils requires zero pressure and zero net
+# input current, and the free-boundary path decays the spectral-condensation
+# baseline by 0.9 an iteration once the vacuum is on, so the mapping is
+# restricted to m <= 1, where the constraint force is identically zero however
+# far that baseline decays.  These coefficients are the same fit as FITTED_P,
+# run against the zero-pressure density (--study fit --freeb).
+FREEB_P = [
+    4.503194764934e-04,
+    -2.960561972701e-07,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    -3.177003067965e-02,
+    -5.102561557074e-03,
+    8.564742390844e-03,
+    -1.311420568630e-06,
+]
+
+
+def freeb_base():
+    """FITTED_BASE at the zero pressure only_coils requires."""
+    base = dict(FITTED_BASE)
+    base["pres_scale"] = 0.0
+    base["am"] = (0.0,)
+    return base
+
+
+def build_case(p, base=None, asym=None, m2=True):
+    """Assemble a Case from the flat parameter vector used by the fit.
+
+    With m2 false the mapping carries no m = 2 shaping at all, which the free-
+    boundary path needs: it decays the spectral-condensation baseline by 0.9 an
+    iteration, and only a mapping whose constraint force is identically zero,
+    rather than merely equal to the baseline, survives that.
+    """
     base = FITTED_BASE if base is None else base
     kw = dict(base)
     kw["r00"] = (base["r00"][0], p[0], p[1])
-    kw["m2"] = {
-        ("rcc", 0): p[2],
-        ("rcc", 1): p[3],
-        ("rss", 1): p[4],
-        ("zsc", 0): p[5],
-        ("zsc", 1): p[6],
-        ("zcs", 1): p[7],
-    }
+    kw["m2"] = (
+        {
+            ("rcc", 0): p[2],
+            ("rcc", 1): p[3],
+            ("rss", 1): p[4],
+            ("zsc", 0): p[5],
+            ("zsc", 1): p[6],
+            ("zcs", 1): p[7],
+        }
+        if m2
+        else None
+    )
     # No m = 0 lambda.  FourierGeometry::extrapolateTowardsAxis copies that
     # component from the first interior surface onto the magnetic axis, and the
     # force transform does not transpose the copy, so the solver fixes it by an
@@ -745,7 +959,9 @@ def build_case(p, base=None, asym=None):
     return Case(**kw)
 
 
-def fit_parameters(base=None, mpol=5, ntor=3, nsfit=8, nu=48, nw=48, maxiter=40):
+def fit_parameters(
+    base=None, mpol=5, ntor=3, nsfit=8, nu=48, nw=48, maxiter=40, m2=True
+):
     """Minimize the continuum force over the mapping's free parameters."""
     from scipy.optimize import least_squares  # noqa: PLC0415
 
@@ -755,14 +971,14 @@ def fit_parameters(base=None, mpol=5, ntor=3, nsfit=8, nu=48, nw=48, maxiter=40)
     srho = rho * rho
     p0 = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.005, 0.0, 0.0, 0.0])
 
-    case0 = build_case(p0, base)
+    case0 = build_case(p0, base, m2=m2)
     fa0 = project_force(
         Model(case0), case0, srho, mpol, ntor, nu=nu, nw=nw, endpoint_half=False
     )
     scale = max(float(np.max(np.abs(fa0[k]))) for k in spans(False))
 
     def residual(p):
-        case = build_case(p, base)
+        case = build_case(p, base, m2=m2)
         fa = project_force(
             Model(case), case, srho, mpol, ntor, nu=nu, nw=nw, endpoint_half=False
         )
@@ -785,7 +1001,20 @@ def fit_parameters(base=None, mpol=5, ntor=3, nsfit=8, nu=48, nw=48, maxiter=40)
 
 
 def _indata(
-    case, ns, mpol, ntor, ntheta, nzeta, ftol=1e-16, niter=40000, delt=0.9, lasym=False
+    case,
+    ns,
+    mpol,
+    ntor,
+    ntheta,
+    nzeta,
+    ftol=1e-16,
+    niter=40000,
+    delt=0.9,
+    lasym=False,
+    mgrid=None,
+    tcon0=1.0,
+    enable_force_source=True,
+    current=None,
 ):
     """A VMEC++ input carrying the mapping's boundary, axis and profiles.
 
@@ -821,7 +1050,7 @@ def _indata(
         "ftol_array": [ftol],
         "niter_array": [niter],
         "delt": delt,
-        "tcon0": 1.0,
+        "tcon0": tcon0,
         "aphi": [1.0],
         "phiedge": case.phiedge,
         "nstep": 200,
@@ -836,11 +1065,15 @@ def _indata(
         "pcurr_type": "power_series",
         "ac": [0.0],
         "curtor": 0.0,
+        "ac_aux_s": [],
+        "ac_aux_f": [],
         "bloat": 1.0,
         "lfreeb": False,
         "mgrid_file": "NONE",
         "nvacskip": 1,
         "lforbal": False,
+        # the studies install a source, which a run has to ask for
+        "enable_force_source": enable_force_source,
         "raxis_c": axis_array("rmnc"),
         "zaxis_s": axis_array("zmns"),
         "rbc": entries("rmnc"),
@@ -851,6 +1084,18 @@ def _indata(
         d["zaxis_c"] = axis_array("zmnc")
         d["rbs"] = entries("rmns")
         d["zbc"] = entries("zmnc")
+    if current is not None:
+        knots, values, curtor = current
+        d["ncurr"] = 1
+        d["pcurr_type"] = "cubic_spline_i"
+        d["ac_aux_s"] = [float(x) for x in knots]
+        d["ac_aux_f"] = [float(x) for x in values]
+        d["curtor"] = float(curtor)
+    if mgrid is not None:
+        d["lfreeb"] = True
+        d["mgrid_file"] = str(mgrid)
+        d["extcur"] = [1.0]
+        d["free_boundary_method"] = "only_coils"
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
         json.dump(d, fh)
         path = fh.name
@@ -860,34 +1105,69 @@ def _indata(
         Path(path).unlink(missing_ok=True)
 
 
+def current_constraint(model, case, nknots=65, nu=64, nw=64):
+    """The mapping's own enclosed toroidal current, as an ncurr = 1 input.
+
+    With ncurr = 1 the solver does not read the iota profile: it solves
+    chi' from the constraint currH(s) = <B_u>(s) on every half-grid surface
+    (ideal_mhd_model, the ncurr == 1 branch of computeBContra), where currH is
+    the prescribed profile scaled to curtor. Prescribing the mapping's own
+    <B_u> therefore returns the mapping's own iota, and the continuum force is
+    unchanged; what changes is which profile the discrete problem holds fixed.
+
+    Returned as (knots, values, curtor) for a "cubic_spline_i" current profile,
+    which VMEC evaluates as the enclosed current directly rather than as its
+    derivative.
+    """
+    u = np.linspace(0.0, 2.0 * np.pi, nu, endpoint=False)
+    w = np.linspace(0.0, 2.0 * np.pi, nw, endpoint=False)
+    uu, ww = np.meshgrid(u, w, indexing="ij")
+    one = np.ones_like(uu)
+    knots = np.linspace(0.0, 1.0, nknots)
+    values = []
+    for s in knots:
+        g = {
+            k: model.aux_at(k, max(float(s), 1.0e-12), uu, ww) * one
+            for k in ("guu", "guv", "bsupu", "bsupv")
+        }
+        values.append(float(np.mean(g["guu"] * g["bsupu"] + g["guv"] * g["bsupv"])))
+    values = np.array(values)
+    curtor = 2.0 * np.pi * values[-1] / (MU_0 * case.sign_jacobian)
+    return knots, values, curtor
+
+
 def _model_at(case, ns, mpol, ntor, ntheta, nzeta, lasym=False, **kw):
     return _vmecpp.VmecModel.create(
         _indata(case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym, **kw), ns
     )
 
 
-def masked_source(fa, ns, lasym=False):
+def masked_source(fa, ns, lasym=False, lfreeb=False):
     """Zero the source where the solver computes no force, so that the frozen
     parts of the state keep the values the mapping gives them: the fixed
-    boundary, the m >= 1 coefficients on the axis, and lambda on the axis."""
+    boundary, the m >= 1 coefficients on the axis, and lambda on the axis.
+
+    A free-boundary run solves for the boundary, so its geometry there is kept.
+    """
     src = {k: v.copy() for k, v in fa.items()}
     for k in spans(lasym):
         if BASIS[k][0] == "L":
             src[k][0] = 0.0
         else:
-            src[k][ns - 1] = 0.0
+            if not lfreeb:
+                src[k][ns - 1] = 0.0
             src[k][0, 1:, :] = 0.0
     return src
 
 
-def solved_mask(ns, mpol, ntor, lasym=False):
+def solved_mask(ns, mpol, ntor, lasym=False, lfreeb=False):
     """True where the state is determined by the modified force balance."""
     m = {k: np.ones((ns, mpol, ntor + 1), dtype=bool) for k in spans(lasym)}
     for k in spans(lasym):
         if BASIS[k][0] == "L":
             m[k][0] = False
         else:
-            m[k][ns - 1] = False
+            m[k][ns - 1] = not lfreeb
             m[k][0, 1:, :] = False
     if mpol > 1:
         for _, z_key in M1_PAIRS:
@@ -937,8 +1217,10 @@ def continuum_energy(model, nrho=200, nu=64, nw=64):
     )
 
 
-def discrete_force(case, ns, mpol, ntor, ntheta, nzeta, source=None, lasym=False):
-    m = _model_at(case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym)
+def discrete_force(
+    case, ns, mpol, ntor, ntheta, nzeta, source=None, lasym=False, current=None
+):
+    m = _model_at(case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym, current=current)
     if source is not None:
         m.set_force_source(source)
     install_state(m, case, ns, mpol, ntor, lasym)
@@ -946,7 +1228,9 @@ def discrete_force(case, ns, mpol, ntor, ntheta, nzeta, source=None, lasym=False
     return unflatten(m.get_forces(), ns, mpol, ntor, lasym), m
 
 
-def study_energy(case, model, mpol, ntor, ntheta, nzeta, ns_list, lasym=False):
+def study_energy(
+    case, model, mpol, ntor, ntheta, nzeta, ns_list, lasym=False, current=None
+):
     w_exact = continuum_energy(model)
     print(f"continuum energy of the mapping: {w_exact:.12e}")
     print(
@@ -954,7 +1238,7 @@ def study_energy(case, model, mpol, ntor, ntheta, nzeta, ns_list, lasym=False):
     )
     prev = None
     for ns in ns_list:
-        m = _model_at(case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym)
+        m = _model_at(case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym, current=current)
         install_state(m, case, ns, mpol, ntor, lasym)
         m.evaluate(1, 1, False, True)
         rel = abs(m.mhd_energy / w_exact - 1.0)
@@ -964,33 +1248,53 @@ def study_energy(case, model, mpol, ntor, ntheta, nzeta, ns_list, lasym=False):
 
 
 def _force_by_parity(fv, fa, ns, mpol, smin, lasym):
-    """Worst relative deviation, split into R/Z, lambda m >= 1, lambda m = 0."""
+    """Relative L2 deviation, split into R/Z, lambda m >= 1, lambda m = 0.
+
+    An L2 norm over the retained surfaces and modes rather than a maximum: the
+    maximum is set by whichever single coefficient happens to be worst at a
+    given resolution, and its ratio between two resolutions is correspondingly
+    noisy.
+    """
     sgrid = np.linspace(0.0, 1.0, ns)
     sel = slice(2, ns - 2)
     keep = sgrid[sel] >= smin
-    scale = max(float(np.max(np.abs(fa[k][sel]))) for k in spans(lasym))
-    out = [0.0, 0.0, 0.0]
+    num = [0.0, 0.0, 0.0]
+    den = 0.0
     for k in spans(lasym):
         # the solver's force is + dW/dx; the projected continuum force is - dW/dx
-        d = np.abs(fv[k][sel] + fa[k][sel])[keep]
+        d = (fv[k][sel] + fa[k][sel])[keep]
+        a = fa[k][sel][keep]
+        den += float(np.sum(a * a))
         for m in range(mpol):
-            v = float(np.max(d[:, m, :])) / scale
             i = 0 if BASIS[k][0] != "L" else (1 if m else 2)
-            out[i] = max(out[i], v)
-    return out
+            num[i] += float(np.sum(d[:, m, :] ** 2))
+    return [float(np.sqrt(x / den)) for x in num]
 
 
 def study_force(
-    case, model, mpol, ntor, ntheta, nzeta, ns_list, smin=0.1, nu=96, nw=96, lasym=False
+    case,
+    model,
+    mpol,
+    ntor,
+    ntheta,
+    nzeta,
+    ns_list,
+    smin=0.1,
+    nu=96,
+    nw=96,
+    lasym=False,
+    current=None,
 ):
-    print(f"worst relative deviation over s >= {smin}")
+    print(f"relative L2 deviation over s >= {smin}")
     print(
         f"{'ns':>6} {'R, Z':>12} {'order':>7} {'lambda m>=1':>12} {'order':>7} "
         f"{'lambda m=0':>12} {'order':>7}"
     )
     prev = None
     for ns in ns_list:
-        fv, _ = discrete_force(case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym)
+        fv, _ = discrete_force(
+            case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym, current=current
+        )
         sgrid = np.linspace(0.0, 1.0, ns)
         fa = hat_force_to_decomposed(
             project_force(model, case, sgrid, mpol, ntor, nu=nu, nw=nw, lasym=lasym),
@@ -1006,7 +1310,17 @@ def study_force(
 
 
 def study_source(
-    case, model, mpol, ntor, ntheta, nzeta, ns_list, nu=96, nw=96, lasym=False
+    case,
+    model,
+    mpol,
+    ntor,
+    ntheta,
+    nzeta,
+    ns_list,
+    nu=96,
+    nw=96,
+    lasym=False,
+    current=None,
 ):
     """Install the source and report what force is left at the mapping."""
     print(f"{'ns':>6} {'fsq, no source':>16} {'fsq, with source':>18} {'ratio':>11}")
@@ -1014,13 +1328,54 @@ def study_source(
         sgrid = np.linspace(0.0, 1.0, ns)
         fa = project_force(model, case, sgrid, mpol, ntor, nu=nu, nw=nw, lasym=lasym)
         src = flatten(masked_source(fa, ns, lasym), lasym)
-        _, m0 = discrete_force(case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym)
+        _, m0 = discrete_force(
+            case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym, current=current
+        )
         _, m1 = discrete_force(
-            case, ns, mpol, ntor, ntheta, nzeta, source=src, lasym=lasym
+            case,
+            ns,
+            mpol,
+            ntor,
+            ntheta,
+            nzeta,
+            source=src,
+            lasym=lasym,
+            current=current,
         )
         a = m0.fsqr + m0.fsqz + m0.fsql
         b = m1.fsqr + m1.fsqz + m1.fsql
         print(f"{ns:6d} {a:16.3e} {b:18.3e} {a / b:11.1f}")
+
+
+def state_error(
+    m, case, ns, mpol, ntor, ntheta, nzeta, smin, edge, lasym, current=None
+):
+    """Relative L2 distance from the mapping, in the solver's own basis.
+
+    The mapping is installed into a second model and both states are read as they are
+    held internally, so the comparison needs no second implementation of the basis
+    conventions and both sides carry the m = 1 gauge and the sqrt(s) scaling
+    identically.
+    """
+    reference = _model_at(
+        case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym, current=current
+    )
+    install_state(reference, case, ns, mpol, ntor, lasym)
+    want = unflatten(reference.get_state(), ns, mpol, ntor, lasym)
+    got = unflatten(m.get_state(), ns, mpol, ntor, lasym)
+    sgrid = np.linspace(0.0, 1.0, ns)
+    keep = (sgrid >= smin) & (np.arange(ns) < ns - edge)
+    keep[0] = False  # the axis and the boundary are not solved for
+    num = [0.0, 0.0, 0.0]
+    den = 0.0
+    for k in spans(lasym):
+        d = got[k][keep] - want[k][keep]
+        if BASIS[k][0] != "L":
+            den += float(np.sum(want[k][keep] ** 2))
+        for mm in range(mpol):
+            i = 0 if BASIS[k][0] != "L" else (1 if mm else 2)
+            num[i] += float(np.sum(d[:, mm, :] ** 2))
+    return [float(np.sqrt(x / den)) for x in num]
 
 
 def study_solve(
@@ -1038,6 +1393,7 @@ def study_solve(
     ftol=1e-16,
     niter=40000,
     lasym=False,
+    current=None,
 ):
     """Solve the modified problem and measure the distance to the mapping."""
     from vmecpp import _iteration  # noqa: PLC0415
@@ -1050,7 +1406,16 @@ def study_solve(
     prev = None
     for ns in ns_list:
         m = _model_at(
-            case, ns, mpol, ntor, ntheta, nzeta, lasym=lasym, ftol=ftol, niter=niter
+            case,
+            ns,
+            mpol,
+            ntor,
+            ntheta,
+            nzeta,
+            lasym=lasym,
+            ftol=ftol,
+            niter=niter,
+            current=current,
         )
         sgrid = np.linspace(0.0, 1.0, ns)
         fa = project_force(model, case, sgrid, mpol, ntor, nu=nu, nw=nw, lasym=lasym)
@@ -1058,26 +1423,100 @@ def study_solve(
         install_state(m, case, ns, mpol, ntor, lasym)
         _iteration.solve_equilibrium(GaugeFixed(m), verbose=False)
 
-        got = m.get_state_as_fourier()
-        want = combined_coefficients(case, sgrid, mpol, ntor)
-        keys = ["rmnc", "zmns", "lmns"] + (["rmns", "zmnc", "lmnc"] if lasym else [])
-        modes = mode_order(mpol, ntor)
-        keep = (sgrid >= smin) & (np.arange(ns) < ns - edge)
-        # the boundary and the axis are not solved for
-        keep[0] = False
-        scale = max(float(np.max(np.abs(want[k]))) for k in ("rmnc", "zmns"))
-        v = [0.0, 0.0, 0.0]
-        for idx, key in enumerate(keys):
-            d = np.abs(got[idx][:, keep] - want[key][:, keep]) / scale
-            for i, (mm, _n) in enumerate(modes):
-                j = 0 if not key.startswith("l") else (1 if mm else 2)
-                v[j] = max(v[j], float(np.max(d[i])))
+        v = state_error(
+            m, case, ns, mpol, ntor, ntheta, nzeta, smin, edge, lasym, current
+        )
         cols = []
         for i, x in enumerate(v):
             o = "" if prev is None else f"{np.log(prev[i] / x) / np.log(2.0):7.2f}"
             cols.append(f"{x:12.3e} {o:>7}")
         print(f"{ns:6d} {m.fsqr + m.fsqz + m.fsql:11.3e} " + " ".join(cols))
         prev = v
+
+
+def freeb_setup(nzeta, path):
+    """The free-boundary mapping, its vacuum field and the mgrid holding it."""
+    case = build_case(FREEB_P, freeb_base(), m2=False)
+    model = Model(case)
+    vac, surface = tune_vacuum_field(model, case)
+    write_mgrid(path, vac, case.nfp, nzeta, boundary_box(model))
+    return case, model, vac, surface
+
+
+def freeb_source(model, case, vac, mpol, ntor, ns, nu=96, nw=96):
+    """The volume source, plus what the last radial node needs on top of it."""
+    sgrid = np.linspace(0.0, 1.0, ns)
+    fa = project_force(model, case, sgrid, mpol, ntor, nu=nu, nw=nw)
+    edge = lcfs_source(model, vac, mpol, ntor, ns, nu=nu, nw=nw)
+    for k in spans(False):
+        fa[k][ns - 1] = fa[k][ns - 1] + edge[k][ns - 1]
+    return fa
+
+
+def _freeb_force(case, ns, mpol, ntor, ntheta, nzeta, mgrid, source=None):
+    """One force evaluation at the mapping, with the vacuum contribution live.
+
+    The vacuum pressure state advances kOff -> kInitializing -> kInitialized -> kActive
+    over the first iterations, so the state is re-installed and the model re-evaluated
+    until the edge term is switched on.
+    """
+    m = _model_at(case, ns, mpol, ntor, ntheta, nzeta, mgrid=mgrid)
+    if source is not None:
+        m.set_force_source(source)
+    for iteration in range(1, 6):
+        install_state(m, case, ns, mpol, ntor)
+        m.evaluate(1, iteration, False, True)
+    return unflatten(m.get_forces(), ns, mpol, ntor), m
+
+
+def study_freeb(mpol, ntor, ntheta, nzeta, ns_list, smin=0.1, nu=96, nw=96):
+    """The free-boundary force and what the source leaves of it.
+
+    The last radial node is where the free boundary differs: its force is
+    one-sided, it carries the vacuum edge term, and it is a solved degree of
+    freedom rather than a frozen one.  It is reported apart from the volume.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as fh:
+        mgrid = fh.name
+    try:
+        case, model, vac, surface = freeb_setup(nzeta, mgrid)
+        print(
+            f"vacuum field B_R = {vac[0]:.4f} Z, B_phi = {vac[1]:.4f}, B_Z = 0; "
+            f"plasma R B_phi = {surface['rbtor']:.4f}, "
+            f"net toroidal current = {surface['ctor']:.4e}"
+        )
+        print(
+            f"{'ns':>6} {'volume':>12} {'order':>7} {'last node':>12} {'order':>7} "
+            f"{'fsq, source':>12} {'ratio':>10}"
+        )
+        prev = None
+        for ns in ns_list:
+            fa = freeb_source(model, case, vac, mpol, ntor, ns, nu=nu, nw=nw)
+            fv, _ = _freeb_force(case, ns, mpol, ntor, ntheta, nzeta, mgrid)
+            dec = hat_force_to_decomposed(fa, mpol)
+            volume = max(_force_by_parity(fv, dec, ns, mpol, smin, False))
+            edge_num = sum(
+                float(np.sum((fv[k][ns - 1] + dec[k][ns - 1]) ** 2))
+                for k in spans(False)
+            )
+            edge_den = sum(float(np.sum(dec[k][ns - 1] ** 2)) for k in spans(False))
+            edge = float(np.sqrt(edge_num / edge_den))
+            src = flatten(masked_source(fa, ns, lfreeb=True))
+            _, bare = _freeb_force(case, ns, mpol, ntor, ntheta, nzeta, mgrid)
+            _, with_source = _freeb_force(
+                case, ns, mpol, ntor, ntheta, nzeta, mgrid, source=src
+            )
+            a = bare.fsqr + bare.fsqz + bare.fsql
+            b = with_source.fsqr + with_source.fsqz + with_source.fsql
+            cols = []
+            for i, x in enumerate((volume, edge)):
+                o = "" if prev is None else f"{np.log(prev[i] / x) / np.log(2.0):7.2f}"
+                cols.append(f"{x:12.3e} {o:>7}")
+            print(f"{ns:6d} " + " ".join(cols) + f" {b:12.3e} {a / b:10.1f}")
+            prev = (volume, edge)
+
+    finally:
+        Path(mgrid).unlink(missing_ok=True)
 
 
 def study_angular(mpol, ntor, ns, grids, fine=96):
@@ -1108,7 +1547,16 @@ def main():
     ap.add_argument(
         "--study",
         default="all",
-        choices=["energy", "force", "source", "solve", "angular", "fit", "all"],
+        choices=[
+            "energy",
+            "force",
+            "source",
+            "solve",
+            "angular",
+            "freeb",
+            "fit",
+            "all",
+        ],
     )
     ap.add_argument("--mpol", type=int, default=4)
     ap.add_argument("--ntor", type=int, default=2)
@@ -1135,6 +1583,19 @@ def main():
         help="angular grid the truncation study measures against",
     )
     ap.add_argument(
+        "--ncurr",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="1 prescribes the mapping's own enclosed toroidal current instead "
+        "of its iota profile, so the solver derives iota from the constraint",
+    )
+    ap.add_argument(
+        "--freeb",
+        action="store_true",
+        help="with --study fit, fit the free-boundary mapping instead",
+    )
+    ap.add_argument(
         "--lasym",
         action="store_true",
         help="run the mapping through the non-stellarator-symmetric "
@@ -1149,7 +1610,7 @@ def main():
     args = ap.parse_args()
 
     if args.study == "fit":
-        p = fit_parameters()
+        p = fit_parameters(freeb_base() if args.freeb else None, m2=not args.freeb)
         np.set_printoptions(precision=9)
         print("fitted parameters:", repr(p))
         return
@@ -1159,33 +1620,40 @@ def main():
     model = Model(case)
     print(
         f"nfp = {case.nfp}, mpol = {args.mpol}, ntor = {args.ntor}, "
-        f"grid = {args.ntheta} x {args.nzeta}, lasym = {lasym}"
+        f"grid = {args.ntheta} x {args.nzeta}, lasym = {lasym}, "
+        f"ncurr = {args.ncurr}"
         f"{', degenerate' if args.lasym_degenerate else ''}\n"
     )
 
     common = (case, model, args.mpol, args.ntor, args.ntheta, args.nzeta, args.ns)
     proj = {"nu": args.projection, "nw": args.projection}
+    current = current_constraint(model, case) if args.ncurr == 1 else None
+    kw = {"lasym": lasym, "current": current}
     if args.study in ("energy", "all"):
         print("Discrete MHD energy against the continuum energy of the mapping")
-        study_energy(*common, lasym=lasym)
+        study_energy(*common, **kw)
         print()
     if args.study in ("force", "all"):
         print("Discrete spectral force against the continuum ideal-MHD force")
-        study_force(*common, lasym=lasym, **proj)
+        study_force(*common, **kw, **proj)
         print()
     if args.study in ("source", "all"):
         print("Force left at the mapping once the source is installed")
-        study_source(*common, lasym=lasym, **proj)
+        study_source(*common, **kw, **proj)
         print()
     if args.study in ("solve", "all"):
         print("Converged discrete state against the mapping")
-        study_solve(*common, lasym=lasym, **proj)
+        study_solve(*common, **kw, **proj)
         print()
     if args.study in ("angular", "all"):
         print("Angular truncation of the discrete force at fixed ns, unfitted mapping")
         study_angular(
             args.mpol, args.ntor, args.ns[-1], args.angular, fine=args.angular_reference
         )
+        print()
+    if args.study in ("freeb", "all"):
+        print("Free boundary: the discrete force against the continuum one")
+        study_freeb(args.mpol, args.ntor, args.ntheta, args.nzeta, args.ns, **proj)
 
 
 if __name__ == "__main__":
