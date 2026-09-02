@@ -430,8 +430,32 @@ def test_output_quantities():
     # -------------------
     # non-stellarator-symmetric Fourier coefficients
 
-    # TODO(jons): implement these once VMEC++ has
-    # the non-stellarator-symmetric parts implemented
+    # cma and every reference wout file shipped with the tests are
+    # stellarator-symmetric, so there is no Fortran output here to compare the
+    # antisymmetric arrays against. Those are checked against educational_VMEC
+    # in vmecpp/vmec/vmec:vmec_test and against the exact rigid-rotation law in
+    # tests/test_lasym.py. What a symmetric case does pin down is the other
+    # side of the contract: with lasym false each antisymmetric array must be
+    # empty rather than a zero-filled array of the symmetric size.
+    for name in (
+        "raxis_cs",
+        "zaxis_cc",
+        "rmns",
+        "zmnc",
+        "lmnc_full",
+        "lmnc",
+        "gmns",
+        "bmns",
+        "bsubumns",
+        "bsubvmns",
+        "bsubsmnc",
+        "bsubsmnc_full",
+        "bsupumns",
+        "bsupvmns",
+        "currumns",
+        "currvmns",
+    ):
+        assert np.size(getattr(output_quantities.wout, name)) == 0, name
 
     wout.close()
 

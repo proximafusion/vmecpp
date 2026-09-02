@@ -111,25 +111,24 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   // remove zero-padding at end
   reference_am.resize(wout.am.size());
   EXPECT_THAT(wout.am, ElementsAreArray(reference_am));
-  // TODO(jons): check for spline profiles -> need to check am_aux_*
+  // The spline knots are checked where a spline case actually runs, in
+  // SplineProfileEquilibrium below. The Fortran reference for these cases
+  // carries no am_aux_* to compare against.
 
   if (vmec_indata->ncurr == 0) {
     // constrained-iota; ignore current profile coefficients
-    // TODO(jons): check for spline profiles -> need to check ai_aux_*
     std::vector<double> reference_ai = NetcdfReadArray1D(ncid, "ai").value();
     // remove zero-padding at end
     reference_ai.resize(wout.ai.size());
     EXPECT_THAT(wout.ai, ElementsAreArray(reference_ai));
   } else {
     // constrained-current
-    // TODO(jons): check for spline profiles -> need to check ac_aux_*
     std::vector<double> reference_ac = NetcdfReadArray1D(ncid, "ac").value();
     reference_ac.resize(wout.ac.size());
     EXPECT_THAT(wout.ac, ElementsAreArray(reference_ac));
 
     if (wout.ai.size() > 0) {
       // iota profile (if present) taken as initial guess for first iteration
-      // TODO(jons): check for spline profiles -> need to check ai_aux_*
       std::vector<double> reference_ai = NetcdfReadArray1D(ncid, "ai").value();
       // remove zero-padding at end
       reference_ai.resize(wout.ai.size());
@@ -543,6 +542,21 @@ TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
 
   const bool reached_checkpoint = vmec.run().value();
   ASSERT_FALSE(reached_checkpoint);  // ran to convergence
+
+  // The spline knots are an input echo: the pressure spline the run was given
+  // has to come back out in the wout, since nothing else records it. This is
+  // the am_aux_* check the parameterized wout comparison cannot make, there
+  // being no Fortran reference that carries spline knots.
+  const WOutFileContents& spline_wout = vmec.output_quantities_.wout;
+  ASSERT_GT(vmec_indata->am_aux_s.size(), 0);
+  ASSERT_EQ(spline_wout.am_aux_s.size(), vmec_indata->am_aux_s.size());
+  ASSERT_EQ(spline_wout.am_aux_f.size(), vmec_indata->am_aux_f.size());
+  for (int i = 0; i < vmec_indata->am_aux_s.size(); ++i) {
+    EXPECT_EQ(spline_wout.am_aux_s[i], vmec_indata->am_aux_s[i])
+        << "knot " << i;
+    EXPECT_EQ(spline_wout.am_aux_f[i], vmec_indata->am_aux_f[i])
+        << "knot " << i;
+  }
 
   const WOutFileContents& wout = vmec.output_quantities_.wout;
 
