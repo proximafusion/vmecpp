@@ -207,11 +207,13 @@ TEST_P(LoadMGridTest, CheckLoadMGrid) {
   // trust: reflecting a plane onto (2 pi / nfp - phi, R, -Z) has to leave B_phi
   // and B_Z alone and flip the sign of B_R.
   //
-  // The coil geometry in `coils.cth_like` is not perfectly
-  // stellarator-symmetric, so the field is not either. The residual below is
-  // that asymmetry, and it reaches 6.9e-5 of the largest field component. The
-  // bound is a factor of three above it. Both sides of this comparison are read
-  // from the same file, so the arithmetic is the same everywhere.
+  // The helical filament in `coils.cth_like` is written with six significant
+  // digits, so its vertices are symmetric only to 6e-6, and the grid reaches
+  // within a few centimetres of the inner leg, where that rounding shows in the
+  // field at 6.9e-5 of the largest component. Only the mid-period plane can
+  // show it: the planes past the half period are mirror copies of the first
+  // half. The bound is a factor of three above the measured residual, and both
+  // sides of the comparison are read from the same file.
   double largest_field_component = 0.0;
   for (int linear_index = 0; linear_index < mgrid.bR.size(); ++linear_index) {
     largest_field_component = std::max(
