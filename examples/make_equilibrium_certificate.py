@@ -4,19 +4,23 @@ The checker that validates the certificate is built from
 https://github.com/CharlesCNorton/stellarocq; see
 docs/proof_carrying_equilibria.md.
 
-The certificate states, for a set of evaluation points, that the mu0-scaled
-ideal-MHD force residual of the equilibrium reconstructed from the wout
-coefficients (by the rule fixed in theories/Physics.v) lies within the
-claimed per-component bounds.  Every numeric input is an IEEE double from
-the wout, emitted exactly as a dyadic rational m*2^e; the checker encloses
-the true real arithmetic with proven-sound interval arithmetic, so a VALID
-verdict is a theorem about these exact inputs.
+The certificate states, for a set of full-grid nodes and angles, that the
+mu0-scaled ideal-MHD force residual of the equilibrium reconstructed from the
+wout coefficients by VMEC's own half-grid rule (fixed in theories/Physics.v of
+Stellarocq) lies within the claimed per-component bounds: r_s at the node from
+the centered differences of its two half points, r_u and r_v at the outer half
+point.  Every numeric input is an IEEE double from the wout, emitted exactly as
+a dyadic rational m*2^e; the checker encloses the true real arithmetic with
+proven-sound interval arithmetic, so a VALID verdict is a theorem about these
+exact inputs.
 
 Environment layout per point (must match theories/Physics.v):
-  0 s | 1 u | 2 v | 3 phip | 4..7 sfull | 8..11 shalf | 12..15 iota
-  16..36 am | 37+0..4K-1 R | +4K Z | +8K L      (K = mnmax)
+  0 s_j | 1 u | 2 v | 3 phip | 4..6 s_{j-1} s_j s_{j+1} | 7..8 s_{j-1/2} s_{j+1/2}
+  9..10 iota(h-) iota(h+) | 11..31 am | 32+0..3K-1 R (rows j-1, j, j+1)
+  +3K Z | +6K lambda (rows h-, h+)      (K = mnmax)
+  32+8K..   scratch slots the checker fills with shared subexpressions
 
-Usage:  python make_equilibrium_certificate.py [wout_X.nc [cert_X.txt]] [--bands 6] [--nu 8] [--nv 4]
+Usage:  python make_equilibrium_certificate.py [wout_X.nc [cert_X.txt]] [--nodes 6] [--nu 8] [--nv 4]
 Without arguments it certifies the shipped wout_solovev.nc into cert_solovev.txt.
 """
 
@@ -61,10 +65,10 @@ class Wout:
         self.ns = int(v["ns"][:])
         self.xm = g("xm").astype(int)
         self.xn = g("xn").astype(int)
-        self.rmnc = g("rmnc")
+        self.rmnc = g("rmnc")  # (ns, mnmax), full grid
         self.zmns = g("zmns")
-        self.lmns = g("lmns")
-        self.iotas = g("iotas")
+        self.lmns = g("lmns")  # (ns, mnmax), half grid: row j is s_{j-1/2}
+        self.iotas = g("iotas")  # half grid, same indexing
         self.phips = g("phips")
         self.am = g("am")
         ptype = v["pmass_type"][:].tobytes().decode().replace("\x00", "").strip()
@@ -74,108 +78,67 @@ class Wout:
         d.close()
         self.h = 1.0 / (self.ns - 1)
         self.s_full = np.arange(self.ns) * self.h
-        self.s_half = (
-            np.arange(1, self.ns) - 0.5
-        ) * self.h  # nodes of lmns[1:], iotas[1:]
+        self.s_half = (np.arange(self.ns) - 0.5) * self.h  # row j of lmns, iotas
 
 
-def band_tables(w, i):
-    """Stencils for an evaluation point in full-grid band [s_i, s_{i+1}].
-
-    Full grid stencil: nodes i-1..i+2 of s_full (coefficients rmnc/zmns).
-    Half grid: the eval point s* = midpoint of the band lies exactly on
-    half node j = i (0-based into lmns[1:]); stencil j-1..j+2.
-    """
-    sf = w.s_full[i - 1 : i + 3]
-    sh = w.s_half[i - 1 : i + 3]
-    R = w.rmnc[i - 1 : i + 3, :]
-    Z = w.zmns[i - 1 : i + 3, :]
-    L = w.lmns[1:][i - 1 : i + 3, :]
-    IO = w.iotas[1:][i - 1 : i + 3]
-    return sf, sh, R, Z, L, IO
+# ----- float reference of the same rule, for choosing eps -----------------
 
 
-# ----- float reference evaluation (same rule), for choosing eps -------------
+def half_coefs(w, j_in, j_out, s_h, coefs):
+    """C(h) and c'(h) of every mode between full nodes j_in and j_out, by VMEC's parity-
+    aware rule."""
+    ya, yb = coefs[j_in], coefs[j_out]
+    s_a, s_b = w.s_full[j_in], w.s_full[j_out]
+    odd = (w.xm % 2) == 1
+    c = 0.5 * (ya + yb)
+    cs = (yb - ya) / (s_b - s_a)
+    qa, qb = ya / np.sqrt(s_a), yb / np.sqrt(s_b)
+    c_odd = np.sqrt(s_h) * 0.5 * (qa + qb)
+    cs_odd = np.sqrt(s_h) * (qb - qa) / (s_b - s_a) + c_odd / (2.0 * s_h)
+    return np.where(odd, c_odd, c), np.where(odd, cs_odd, cs)
 
 
-def hermite_rho(sn, y, s):
-    """Value, d/ds, d2/ds2 of the Hermite-in-rho profile at s."""
-    r = np.sqrt(sn)
-    rr = np.sqrt(s)
-    h = r[2] - r[1]
-    t = (rr - r[1]) / h
-    d1 = (y[2] - y[0]) / (r[2] - r[0])
-    d2 = (y[3] - y[1]) / (r[3] - r[1])
-    h00 = 2 * t**3 - 3 * t**2 + 1
-    h10 = t**3 - 2 * t**2 + t
-    h01 = -2 * t**3 + 3 * t**2
-    h11 = t**3 - t**2
-    val = h00 * y[1] + h10 * h * d1 + h01 * y[2] + h11 * h * d2
-    dh00 = (6 * t**2 - 6 * t) / h
-    dh10 = 3 * t**2 - 4 * t + 1
-    dh01 = (-6 * t**2 + 6 * t) / h
-    dh11 = 3 * t**2 - 2 * t
-    drho = dh00 * y[1] + dh10 * d1 + dh01 * y[2] + dh11 * d2
-    d2h00 = (12 * t - 6) / h**2
-    d2h10 = (6 * t - 4) / h
-    d2h01 = (-12 * t + 6) / h**2
-    d2h11 = (6 * t - 2) / h
-    d2rho = d2h00 * y[1] + d2h10 * d1 + d2h01 * y[2] + d2h11 * d2
-    ds = drho / (2 * rr)
-    dss = d2rho / (4 * s) - drho / (4 * s * rr)
-    return val, ds, dss
-
-
-def residual_ref(w, band, s, u, vv, phip):
-    """Float reference of the residual at one point, for choosing bounds."""
-    sf, sh, Rn, Zn, Ln, IOn = band
-    m = w.xm
-    n = w.xn
+def half_point(w, j_in, j_out, row_l, u, vv, phip):
+    """B^u, B^v, B_u, B_v, d_u B_s, d_v B_s and mu0 sqrtg J^s at the half point."""
+    m, n = w.xm, w.xn
+    s_h = w.s_half[row_l]
+    cR, cRs = half_coefs(w, j_in, j_out, s_h, w.rmnc)
+    cZ, cZs = half_coefs(w, j_in, j_out, s_h, w.zmns)
+    cL = w.lmns[row_l]
+    iota = float(w.iotas[row_l])
     ang = m * u - n * vv
     c = np.cos(ang)
-    sn_ = np.sin(ang)
-    rv, rd, rdd = hermite_rho(sf, Rn, s)
-    zv, zd, zdd = hermite_rho(sf, Zn, s)
-    lv, ld, _ = hermite_rho(sh, Ln, s)
-    iot, iotp, _ = hermite_rho(sh, IOn.reshape(4, 1), s)
-    iot = float(iot[0])
-    iotp = float(iotp[0])
+    sn = np.sin(ang)
 
     def S(cf, k):
         return float(np.dot(cf, k))
 
-    R = S(rv, c)
-    Z_s = S(zd, sn_)
-    lam_u = S(lv, m * c)
-    R_s = S(rd, c)
-    Z_ss = S(zdd, sn_)
-    lam_v = S(lv, -n * c)
-    R_ss = S(rdd, c)
-    Z_u = S(zv, m * c)
-    lam_su = S(ld, m * c)
-    R_u = S(rv, -m * sn_)
-    Z_v = S(zv, -n * c)
-    lam_sv = S(ld, -n * c)
-    R_v = S(rv, n * sn_)
-    Z_su = S(zd, m * c)
-    lam_uu = S(lv, -m * m * sn_)
-    R_su = S(rd, -m * sn_)
-    Z_sv = S(zd, -n * c)
-    lam_uv = S(lv, m * n * sn_)
-    R_sv = S(rd, n * sn_)
-    Z_uu = S(zv, -m * m * sn_)
-    lam_vv = S(lv, -n * n * sn_)
-    R_uu = S(rv, -m * m * c)
-    Z_uv = S(zv, m * n * sn_)
-    R_uv = S(rv, m * n * c)
-    Z_vv = S(zv, -n * n * sn_)
-    R_vv = S(rv, -n * n * c)
+    R = S(cR, c)
+    R_s = S(cRs, c)
+    R_u = S(cR, -m * sn)
+    R_v = S(cR, n * sn)
+    R_su = S(cRs, -m * sn)
+    R_sv = S(cRs, n * sn)
+    R_uu = S(cR, -m * m * c)
+    R_uv = S(cR, m * n * c)
+    R_vv = S(cR, -n * n * c)
+    Z_s = S(cZs, sn)
+    Z_u = S(cZ, m * c)
+    Z_v = S(cZ, -n * c)
+    Z_su = S(cZs, m * c)
+    Z_sv = S(cZs, -n * c)
+    Z_uu = S(cZ, -m * m * sn)
+    Z_uv = S(cZ, m * n * sn)
+    Z_vv = S(cZ, -n * n * sn)
+    L_u = S(cL, m * c)
+    L_v = S(cL, -n * c)
+    L_uu = S(cL, -m * m * sn)
+    L_uv = S(cL, m * n * sn)
+    L_vv = S(cL, -n * n * sn)
     tau = R_u * Z_s - R_s * Z_u
     sqrtg = R * tau
-    tau_s = R_su * Z_s + R_u * Z_ss - R_ss * Z_u - R_s * Z_su
     tau_u = R_uu * Z_s + R_u * Z_su - R_su * Z_u - R_s * Z_uu
     tau_v = R_uv * Z_s + R_u * Z_sv - R_sv * Z_u - R_s * Z_uv
-    g_s = R_s * tau + R * tau_s
     g_u = R_u * tau + R * tau_u
     g_v = R_v * tau + R * tau_v
     guu = R_u**2 + Z_u**2
@@ -183,9 +146,6 @@ def residual_ref(w, band, s, u, vv, phip):
     gvv = R_v**2 + Z_v**2 + R**2
     gsu = R_s * R_u + Z_s * Z_u
     gsv = R_s * R_v + Z_s * Z_v
-    guu_s = 2 * (R_u * R_su + Z_u * Z_su)
-    guv_s = R_su * R_v + R_u * R_sv + Z_su * Z_v + Z_u * Z_sv
-    gvv_s = 2 * (R_v * R_sv + Z_v * Z_sv + R * R_s)
     gsu_u = R_su * R_u + R_s * R_uu + Z_su * Z_u + Z_s * Z_uu
     gsu_v = R_sv * R_u + R_s * R_uv + Z_sv * Z_u + Z_s * Z_uv
     gsv_u = R_su * R_v + R_s * R_uv + Z_su * Z_v + Z_s * Z_uv
@@ -194,31 +154,51 @@ def residual_ref(w, band, s, u, vv, phip):
     guv_u = R_uu * R_v + R_u * R_uv + Z_uu * Z_v + Z_u * Z_uv
     guv_v = R_uv * R_v + R_u * R_vv + Z_uv * Z_v + Z_u * Z_vv
     gvv_u = 2 * (R_v * R_uv + Z_v * Z_uv + R * R_u)
-    bu = iot - lam_v
-    bv = 1.0 + lam_u
+    bu = iota - L_v
+    bv = 1.0 + L_u
     Bu = phip * bu / sqrtg
     Bv = phip * bv / sqrtg
-    bu_s = iotp - lam_sv
-    bv_s = lam_su
-    Bu_s = phip * (bu_s * sqrtg - bu * g_s) / sqrtg**2
-    Bv_s = phip * (bv_s * sqrtg - bv * g_s) / sqrtg**2
-    Bu_u = phip * (-lam_uv * sqrtg - bu * g_u) / sqrtg**2
-    Bv_u = phip * (lam_uu * sqrtg - bv * g_u) / sqrtg**2
-    Bu_v = phip * (-lam_vv * sqrtg - bu * g_v) / sqrtg**2
-    Bv_v = phip * (lam_uv * sqrtg - bv * g_v) / sqrtg**2
-    B_u_s = guu_s * Bu + guu * Bu_s + guv_s * Bv + guv * Bv_s
-    B_v_s = guv_s * Bu + guv * Bu_s + gvv_s * Bv + gvv * Bv_s
+    Bu_u = phip * (-L_uv * sqrtg - bu * g_u) / sqrtg**2
+    Bv_u = phip * (L_uu * sqrtg - bv * g_u) / sqrtg**2
+    Bu_v = phip * (-L_vv * sqrtg - bu * g_v) / sqrtg**2
+    Bv_v = phip * (L_uv * sqrtg - bv * g_v) / sqrtg**2
+    B_u = guu * Bu + guv * Bv
+    B_v = guv * Bu + gvv * Bv
     B_s_u = gsu_u * Bu + gsu * Bu_u + gsv_u * Bv + gsv * Bv_u
     B_s_v = gsu_v * Bu + gsu * Bu_v + gsv_v * Bv + gsv * Bv_v
     B_u_v = guu_v * Bu + guu * Bu_v + guv_v * Bv + guv * Bv_v
     B_v_u = guv_u * Bu + guv * Bu_u + gvv_u * Bv + gvv * Bv_u
-    pp = sum(k * a * s ** (k - 1) for k, a in enumerate(w.am) if k > 0)
-    rs = (B_s_v - B_v_s) * Bv - (B_u_s - B_s_u) * Bu - MU0 * pp
     mu0Js = B_v_u - B_u_v
-    ru = -mu0Js * Bv
-    rv_ = mu0Js * Bu
-    B2 = Bu * (guu * Bu + guv * Bv) + Bv * (guv * Bu + gvv * Bv)
-    return rs, ru, rv_, B2
+    B2 = Bu * B_u + Bv * B_v
+    return {
+        "Bu": Bu,
+        "Bv": Bv,
+        "B_u": B_u,
+        "B_v": B_v,
+        "B_s_u": B_s_u,
+        "B_s_v": B_s_v,
+        "mu0Js": mu0Js,
+        "B2": B2,
+    }
+
+
+def residual_ref(w, j, u, vv, phip):
+    """Float reference of the residual at node j, for choosing bounds."""
+    qm = half_point(w, j - 1, j, j, u, vv, phip)  # h- = row j of the half grid
+    qp = half_point(w, j, j + 1, j + 1, u, vv, phip)  # h+ = row j+1
+    h = w.s_half[j + 1] - w.s_half[j]
+    avg = lambda k: 0.5 * (qm[k] + qp[k])  # noqa: E731
+    dif = lambda k: (qp[k] - qm[k]) / h  # noqa: E731
+    s = w.s_full[j]
+    pp = sum(k * a * s ** (k - 1) for k, a in enumerate(w.am) if k > 0)
+    rs = (
+        (avg("B_s_v") - dif("B_v")) * avg("Bv")
+        - (dif("B_u") - avg("B_s_u")) * avg("Bu")
+        - MU0 * pp
+    )
+    ru = -qp["mu0Js"] * qp["Bv"]
+    rv_ = qp["mu0Js"] * qp["Bu"]
+    return rs, ru, rv_, max(qm["B2"], qp["B2"])
 
 
 def main():
@@ -230,10 +210,16 @@ def main():
     )
     ap.add_argument("wout", nargs="?", default=str(default_wout))
     ap.add_argument("out", nargs="?", default=None)
-    ap.add_argument("--bands", type=int, default=6)
+    ap.add_argument("--nodes", type=int, default=6)
     ap.add_argument("--nu", type=int, default=8)
     ap.add_argument("--nv", type=int, default=4)
     ap.add_argument("--slack", type=float, default=1.5)
+    ap.add_argument(
+        "--prec",
+        type=int,
+        default=53,
+        help="working precision of the interval arithmetic in bits",
+    )
     a = ap.parse_args()
     if a.out is None:
         a.out = f"cert_{pathlib.Path(a.wout).stem.removeprefix('wout_')}.txt"
@@ -247,9 +233,10 @@ def main():
     three_d = (w.xn != 0).any()
     nv = a.nv if three_d else 1
 
-    # evaluation bands: interior full-grid bands, evenly spread
-    lo, hi = 2, w.ns - 4
-    idx = np.unique(np.linspace(lo, hi, a.bands).astype(int))
+    # certified nodes: interior full-grid nodes with both neighbors off the
+    # axis, evenly spread
+    lo, hi = 2, w.ns - 2
+    idx = np.unique(np.linspace(lo, hi, a.nodes).astype(int))
     # angles: exact doubles
     us = [float(2 * np.pi * k / a.nu) for k in range(a.nu)]
     vs = [float(2 * np.pi * k / (nfp * nv)) for k in range(nv)]
@@ -258,27 +245,25 @@ def main():
     # choose eps from the float reference
     worst = np.zeros(3)
     scale = 0.0
-    per_band = []
-    for i in idx:
-        bt = band_tables(w, i)
-        s = float(w.s_half[i])  # midpoint of band [s_i, s_{i+1}]
+    per_node = []
+    for j in idx:
         mx = np.zeros(3)
         for u, v in angles:
-            rs, ru, rv_, B2 = residual_ref(w, bt, s, u, v, phip)
+            rs, ru, rv_, B2 = residual_ref(w, j, u, v, phip)
             mx = np.maximum(mx, np.abs([rs, ru, rv_]))
             scale = max(scale, abs(B2))
-        per_band.append((i, s, mx))
+        per_node.append((j, w.s_full[j], mx))
         worst = np.maximum(worst, mx)
     # Floor: interval evaluation carries genuine rounding width, so a claimed
     # bound must sit above it. 1e-10 of the field-energy scale is far above
-    # the enclosure width of ~1e5 double operations and far below any
-    # physical residual of interest.
+    # the enclosure width of the evaluation and far below any physical residual
+    # of interest.
     eps = np.maximum(worst * a.slack, 1e-10 * scale)
 
     lines = []
     P = lines.append
-    P("STELLAROCQ-CERT 1")
-    P("PREC 80")
+    P("STELLAROCQ-CERT 2")
+    P(f"PREC {a.prec}")
     P(f"MODES {K}")
     for m, n in zip(w.xm, w.xn, strict=True):
         P(f"{m} {n}")
@@ -292,22 +277,28 @@ def main():
     P(f"NANGLES {len(angles)}")
     for u, v in angles:
         P("{} {} {} {}".format(*dyadic(u), *dyadic(v)))
-    P(f"NBANDS {len(idx)}")
-    for i in idx:
-        sf, sh, Rn, Zn, Ln, IOn = band_tables(w, i)
-        P("BAND")
-        P("S {} {}".format(*dyadic(w.s_half[i])))
-        P("SFULL " + " ".join("{} {}".format(*dyadic(x)) for x in sf))
-        P("SHALF " + " ".join("{} {}".format(*dyadic(x)) for x in sh))
-        P("IOTA " + " ".join("{} {}".format(*dyadic(x)) for x in IOn))
-        for tag, M in (("RNODES", Rn), ("ZNODES", Zn), ("LNODES", Ln)):
+    P(f"NNODES {len(idx)}")
+    for j in idx:
+        P("NODE")
+        P("S {} {}".format(*dyadic(w.s_full[j])))
+        P(
+            "SNODES "
+            + " ".join("{} {}".format(*dyadic(x)) for x in w.s_full[j - 1 : j + 2])
+        )
+        P("SHALF " + " ".join("{} {}".format(*dyadic(x)) for x in w.s_half[j : j + 2]))
+        P("IOTA " + " ".join("{} {}".format(*dyadic(x)) for x in w.iotas[j : j + 2]))
+        for tag, M in (
+            ("RNODES", w.rmnc[j - 1 : j + 2]),
+            ("ZNODES", w.zmns[j - 1 : j + 2]),
+            ("LHALF", w.lmns[j : j + 2]),
+        ):
             P(tag)
-            for row in M:  # 4 stencil rows
+            for row in M:
                 P(" ".join("{} {}".format(*dyadic(x)) for x in row))
     pathlib.Path(a.out).write_text("\n".join(lines) + "\n")
 
     print(
-        f"wrote {a.out}: {len(idx)} bands x {len(angles)} angles = "
+        f"wrote {a.out}: {len(idx)} nodes x {len(angles)} angles = "
         f"{len(idx) * len(angles)} points, K={K}"
     )
     print(
@@ -318,8 +309,8 @@ def main():
         f"reference B^2 scale {scale:.3e}  ->  normalized r_s bound "
         f"{eps[0] / scale:.3e}"
     )
-    for i, s, mx in per_band:
-        print(f"  band {i:3d}  s={s:.4f}  |r|max = {mx[0]:.3e} {mx[1]:.3e} {mx[2]:.3e}")
+    for j, s, mx in per_node:
+        print(f"  node {j:3d}  s={s:.4f}  |r|max = {mx[0]:.3e} {mx[1]:.3e} {mx[2]:.3e}")
 
 
 if __name__ == "__main__":
