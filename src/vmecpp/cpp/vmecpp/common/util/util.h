@@ -180,11 +180,11 @@ int VmecStatusCode(const VmecStatus vmec_status);
 
 std::string VmecStatusAsString(const VmecStatus vmec_status);
 
-// Vacuum magnetic permeability in Vs/Am. This is the pre-2019 SI definition,
-// which fixed mu_0 at exactly 4 pi x 10^-7. The 2019 redefinition made it a
-// measured quantity, CODATA-2018 1.25663706212(19)e-6, larger by 5.4e-10
-// relative. Fortran VMEC uses the exact value, so this one is kept for 1:1
-// comparison against it.
+// vacuum magnetic permeability in Vs/Am (CODATA-2018)
+// TODO(jons): In the long term, we should use the CODATA value,
+// as it is the official value after re-definition of the SI system.
+// However, for now, use the old definition for 1:1 comparison against Fortran
+// VMEC.
 // static constexpr double MU_0 = 1.25663706212e-6;
 static constexpr double MU_0 = 4.0e-7 * M_PI;
 
