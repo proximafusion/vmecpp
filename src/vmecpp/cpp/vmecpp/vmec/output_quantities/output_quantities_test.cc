@@ -263,8 +263,8 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
         IsCloseRelAbs(reference_poloidal_flux[jF], wout.chi[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_phipf[jF], wout.phipf[jF], tolerance));
     if (jF > 0) {
-      // The axis chipf is extrapolated like iotaf and deviates from the
-      // Fortran reference, which leaves it at zero; see computeBContra.
+      // The Fortran reference leaves the axis chipf at zero; see
+      // computeBContra.
       EXPECT_TRUE(
           IsCloseRelAbs(reference_chipf[jF], wout.chipf[jF], tolerance));
     }

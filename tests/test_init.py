@@ -268,8 +268,7 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
         actual = np.asarray(test_value[:])
         desired = np.asarray(expected_value[:])
         if varname == "chipf":
-            # The axis chipf is extrapolated like iotaf and deviates from the
-            # Fortran reference, which leaves it at zero; see computeBContra.
+            # The Fortran reference leaves the axis chipf at zero; see computeBContra.
             actual = actual[..., 1:]
             desired = desired[..., 1:]
         np.testing.assert_allclose(
@@ -356,8 +355,7 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
         actual = np.asarray(test_value[:])
         desired = np.asarray(expected_value[:])
         if varname == "chipf":
-            # The axis chipf is extrapolated like iotaf and deviates from the
-            # Fortran reference, which leaves it at zero; see computeBContra.
+            # The Fortran reference leaves the axis chipf at zero; see computeBContra.
             actual = actual[..., 1:]
             desired = desired[..., 1:]
         np.testing.assert_allclose(
