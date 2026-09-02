@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <iostream>
 #include <memory>
@@ -36,6 +37,40 @@
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 
 namespace {
+
+// Sums each thread's `width` contributions by a fixed binary tree over the
+// team. Thread t parks its values in row t of `m_slots`; at strides 1, 2, 4,
+// ... thread t with t % (2*stride) == 0 adds row t+stride into row t. The
+// pairing depends only on thread ids, never on arrival order, so the
+// floating-point result is reproducible at a fixed thread count. Row 0 holds
+// the team total after the call, which ends on a barrier.
+//
+// `m_slots` must provide num_threads rows of `row_stride` doubles of shared
+// storage (row_stride >= width), and every thread of the team must call this
+// together with the same arguments apart from `local`.
+void SumInFixedTree(double* m_slots, int row_stride, int width, int thread_id,
+                    int num_threads, const double* local) {
+  double* row = m_slots + static_cast<std::ptrdiff_t>(thread_id) * row_stride;
+  for (int i = 0; i < width; ++i) {
+    row[i] = local[i];
+  }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  for (int stride = 1; stride < num_threads; stride *= 2) {
+    if (thread_id % (2 * stride) == 0 && thread_id + stride < num_threads) {
+      const double* other =
+          m_slots +
+          static_cast<std::ptrdiff_t>(thread_id + stride) * row_stride;
+      for (int i = 0; i < width; ++i) {
+        row[i] += other[i];
+      }
+    }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  }
+}
 
 void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
                            const absl::Status& thread_status) {
