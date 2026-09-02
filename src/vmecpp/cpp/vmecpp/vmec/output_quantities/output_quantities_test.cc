@@ -561,6 +561,21 @@ TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
   const bool reached_checkpoint = vmec.run().value();
   ASSERT_FALSE(reached_checkpoint);  // ran to convergence
 
+  // The spline knots are an input echo: the pressure spline the run was given
+  // has to come back out in the wout, since nothing else records it. This is
+  // the am_aux_* check the parameterized wout comparison cannot make, there
+  // being no Fortran reference that carries spline knots.
+  const WOutFileContents& spline_wout = vmec.output_quantities_.wout;
+  ASSERT_GT(vmec_indata->am_aux_s.size(), 0);
+  ASSERT_EQ(spline_wout.am_aux_s.size(), vmec_indata->am_aux_s.size());
+  ASSERT_EQ(spline_wout.am_aux_f.size(), vmec_indata->am_aux_f.size());
+  for (int i = 0; i < vmec_indata->am_aux_s.size(); ++i) {
+    EXPECT_EQ(spline_wout.am_aux_s[i], vmec_indata->am_aux_s[i])
+        << "knot " << i;
+    EXPECT_EQ(spline_wout.am_aux_f[i], vmec_indata->am_aux_f[i])
+        << "knot " << i;
+  }
+
   const WOutFileContents& wout = vmec.output_quantities_.wout;
 
   int ncid;

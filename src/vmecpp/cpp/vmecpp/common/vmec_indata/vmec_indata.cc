@@ -373,8 +373,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(raxis_c, "/indata/raxis_c", file);
   WriteH5Dataset(zaxis_s, "/indata/zaxis_s", file);
   if (lasym) {
-    WriteH5Dataset(raxis_s->value(), "/indata/raxis_s", file);
-    WriteH5Dataset(zaxis_c->value(), "/indata/zaxis_c", file);
+    WriteH5Dataset(*raxis_s, "/indata/raxis_s", file);
+    WriteH5Dataset(*zaxis_c, "/indata/zaxis_c", file);
   }
 
   // 2D matrices
@@ -382,8 +382,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(rbc, "/indata/rbc", file);
   WriteH5Dataset(zbs, "/indata/zbs", file);
   if (lasym) {
-    WriteH5Dataset(rbs->value(), "/indata/rbs", file);
-    WriteH5Dataset(zbc->value(), "/indata/zbc", file);
+    WriteH5Dataset(*rbs, "/indata/rbs", file);
+    WriteH5Dataset(*zbc, "/indata/zbc", file);
   }
 
   return absl::OkStatus();
@@ -1261,8 +1261,8 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["raxis_c"] = raxis_c;
   output["zaxis_s"] = zaxis_s;
   if (lasym) {
-    output["raxis_s"] = raxis_s->value();
-    output["zaxis_c"] = zaxis_c->value();
+    output["raxis_s"] = *raxis_s;
+    output["zaxis_c"] = *zaxis_c;
   }
 
   // (Initial Guess for) Boundary Geometry
@@ -1487,13 +1487,6 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // lfreeb
   // nothing to check here: lfreeb can be true or false and both are valid...
   if (vmec_indata.lfreeb) {
-    // mgrid_file
-    // TODO(jons): if mgrid read, check for consistent nzeta
-
-    // extcur
-    // TODO(jons): check that number of coil currents matches number of response
-    // tables in mgrid file
-
     // nvacskip
     if (vmec_indata.nvacskip < 1) {
       return absl::InvalidArgumentError(absl::StrFormat(
@@ -1511,6 +1504,16 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
           absl::StrFormat("input variable 'free_boundary_method' must be "
                           "'nestor' or 'only_coils', but is %s\n",
                           ToString(vmec_indata.free_boundary_method)));
+    }
+
+    // 'only_coils' takes the field from the coils alone, so the plasma must
+    // carry neither current nor pressure.
+    if (vmec_indata.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
+        (vmec_indata.curtor != 0.0 || vmec_indata.pres_scale != 0.0)) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "input variables 'curtor' and 'pres_scale' must be zero when "
+          "'free_boundary_method' is 'only_coils', but are %g and %g\n",
+          vmec_indata.curtor, vmec_indata.pres_scale));
     }
   }
 

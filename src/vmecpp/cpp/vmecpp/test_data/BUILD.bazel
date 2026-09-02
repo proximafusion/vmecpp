@@ -15,7 +15,9 @@ filegroup(
     name = "up_down_asym",
     visibility = ["//visibility:public"],
     srcs = [
+        "input.up_down_asym_current",
         "up_down_asym.json",
+        "up_down_asym_current.json",
     ],
 )
 
@@ -44,10 +46,16 @@ filegroup(
     visibility = ["//visibility:public"],
     srcs = [
         "cth_like_fixed_bdy.json",
+        "cth_like_fixed_bdy_asym.json",
+        "cth_like_fixed_bdy_asym_iota.json",
+        "cth_like_fixed_bdy_iota.json",
         "cth_like_fixed_bdy_spline_pressure.json",
         "input.cth_like_fixed_bdy_spline_pressure",
         "wout_cth_like_fixed_bdy_spline_pressure.nc",
         "input.cth_like_fixed_bdy",
+        "input.cth_like_fixed_bdy_asym",
+        "input.cth_like_fixed_bdy_asym_iota",
+        "input.cth_like_fixed_bdy_iota",
         "wout_cth_like_fixed_bdy.nc",
     ],
 )
