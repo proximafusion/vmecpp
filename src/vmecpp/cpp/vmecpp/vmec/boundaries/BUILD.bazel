@@ -29,6 +29,26 @@ cc_library(
 )
 
 cc_test(
+    name = "guess_magnetic_axis_test",
+    srcs = ["guess_magnetic_axis_test.cc"],
+    data = [
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
+        "//vmecpp/test_data:solovev",
+    ],
+    deps = [
+        ":boundaries",
+        ":guess_magnetic_axis",
+        "//vmecpp/vmec/vmec_constants:vmec_constants",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:str_format",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
     name = "boundaries_test",
     srcs = ["boundaries_test.cc"],
     data = [

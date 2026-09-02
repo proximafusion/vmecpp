@@ -35,7 +35,7 @@ jobs:
           # entry, so clang-tidy cannot resolve <gtest/gtest.h> /
           # <benchmark/benchmark.h> (both are Bazel-only deps); exclude them
           # from review
-          exclude: "./src/vmecpp/cpp/bazel-*,./src/vmecpp/cpp/external,./src/vmecpp/cpp/third_party,*_test.cc,*_bench.cc"
+          exclude: "./src/vmecpp/cpp/bazel-*,./src/vmecpp/cpp/external,./src/vmecpp/cpp/third_party,*_test.cc,*_bench.cc,*test_helpers.h"
           # turn off "LGTM" comments: we only want pings about warnings/errors
           lgtm_comment_body: ""
         # If there are any comments, fail the check
