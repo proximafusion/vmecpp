@@ -14,6 +14,7 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/output_quantities/test_helpers.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 
 #ifdef _OPENMP
@@ -169,8 +170,8 @@ TEST(TestVmec, CheckInMemoryMgrid) {
   ASSERT_TRUE(output_with_inmemory_mgrid.ok());
 
   // compare wout contents
-  vmecpp::CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
-                      /*tolerance=*/1e-7);
+  CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
+              /*tolerance=*/1e-7);
 }  // CheckInMemoryMgrid
 
 // A stellarator-symmetric, axisymmetric equilibrium (solovev) must converge to
@@ -279,6 +280,164 @@ TEST(TestVmec, LasymAxisymmetricDegeneratesToSymmetric) {
   EXPECT_LT(rel_zero(asym.bsubsmnc, sym.bsubsmns), kTol) << "bsubsmnc";
 }  // LasymAxisymmetricDegeneratesToSymmetric
 
+// ---- the (lasym, lthreed, ncurr, lfreeb) matrix ----------------------------
+//
+// vmecpp_large_cpp_tests/test_data/README.md asks for every combination of
+// free boundary, constrained current, three-dimensionality and
+// non-stellarator-symmetry to be covered. The cases below fill in four
+// fixed-boundary cells that had none. Each was run through educational_VMEC
+// (VMEC 8.52) to convergence with no Jacobian resets, and the scalars here are
+// that run's output.
+
+namespace {
+
+struct FlagCombinationCase {
+  const char* filename;
+  bool lasym;
+  bool lthreed;
+  int ncurr;
+  double aspect;
+  double volume;
+  double Rmajor_p;
+  double Aminor_p;
+  double rbtor;
+  double rbtor0;
+  double volavgB;
+};
+
+void CheckFlagCombinationAgainstEducationalVmec(const FlagCombinationCase& c) {
+  absl::StatusOr<std::string> indata_json = ReadFile(c.filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  // The case is only worth anything if it really sits in the cell it claims.
+  ASSERT_EQ(indata->lasym, c.lasym);
+  ASSERT_EQ(indata->ntor > 0, c.lthreed);
+  ASSERT_EQ(indata->ncurr, c.ncurr);
+  ASSERT_FALSE(indata->lfreeb);
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+  const auto& w = output->wout;
+
+  const double tol = 1.0e-5;
+  EXPECT_TRUE(IsCloseRelAbs(c.aspect, w.aspect, tol)) << "aspect=" << w.aspect;
+  EXPECT_TRUE(IsCloseRelAbs(c.volume, w.volume, tol)) << "volume=" << w.volume;
+  EXPECT_TRUE(IsCloseRelAbs(c.Rmajor_p, w.Rmajor_p, tol))
+      << "Rmajor=" << w.Rmajor_p;
+  EXPECT_TRUE(IsCloseRelAbs(c.Aminor_p, w.Aminor_p, tol))
+      << "Aminor=" << w.Aminor_p;
+  EXPECT_TRUE(IsCloseRelAbs(c.rbtor, w.rbtor, tol)) << "rbtor=" << w.rbtor;
+  EXPECT_TRUE(IsCloseRelAbs(c.rbtor0, w.rbtor0, tol)) << "rbtor0=" << w.rbtor0;
+  EXPECT_TRUE(IsCloseRelAbs(c.volavgB, w.volavgB, tol))
+      << "volavgB=" << w.volavgB;
+
+  EXPECT_EQ(w.lasym, c.lasym);
+  if (c.lasym) {
+    EXPECT_GT(w.rmns.cwiseAbs().maxCoeff(), 1.0e-3) << "rmns must be non-zero";
+    EXPECT_GT(w.zmnc.cwiseAbs().maxCoeff(), 1.0e-3) << "zmnc must be non-zero";
+  }
+}
+
+// With ncurr = 0 the rotational transform is prescribed rather than solved for,
+// so the half-grid profile has to be the ai polynomial evaluated at the
+// half-grid flux positions. Index 0 of iotas is unused.
+void CheckPrescribedIotaProfile(const vmecpp::WOutFileContents& w,
+                                const Eigen::VectorXd& ai) {
+  ASSERT_GT(w.ns, 1);
+  ASSERT_EQ(w.iotas.size(), w.ns);
+  const double delta_s = 1.0 / (w.ns - 1.0);
+  for (int j = 1; j < w.ns; ++j) {
+    const double s = (j - 0.5) * delta_s;
+    double expected = 0.0;
+    for (Eigen::Index i = ai.size() - 1; i >= 0; --i) {
+      expected = s * expected + ai[i];
+    }
+    EXPECT_NEAR(w.iotas[j], expected, 1.0e-12) << "iotas at j=" << j;
+  }
+}
+
+}  // namespace
+
+// lasym = F, lthreed = T, ncurr = 0, lfreeb = F.
+// Every other three-dimensional case in the suite constrains the current, so
+// this is the only place the constrained-iota path runs in 3D.
+TEST(TestVmec, ThreeDimensionalConstrainedIotaMatchesEducationalVmec) {
+  const FlagCombinationCase kCase = {
+      /*filename=*/"vmecpp/test_data/cth_like_fixed_bdy_iota.json",
+      /*lasym=*/false,
+      /*lthreed=*/true,
+      /*ncurr=*/0,
+      /*aspect=*/5.48582995348779,
+      /*volume=*/0.315396710123312,
+      /*Rmajor_p=*/0.783436919078514,
+      /*Aminor_p=*/0.142811010498132,
+      /*rbtor=*/-0.451317819328199,
+      /*rbtor0=*/-0.461019928760768,
+      /*volavgB=*/0.5666316420317945};
+  CheckFlagCombinationAgainstEducationalVmec(kCase);
+
+  absl::StatusOr<std::string> indata_json = ReadFile(kCase.filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+  CheckPrescribedIotaProfile(output->wout, indata->ai);
+}
+
+// lasym = T, lthreed = F, ncurr = 1, lfreeb = F.
+TEST(TestVmec, AsymmetricTokamakConstrainedCurrentMatchesEducationalVmec) {
+  const FlagCombinationCase kCase = {
+      /*filename=*/"vmecpp/test_data/up_down_asym_current.json",
+      /*lasym=*/true,
+      /*lthreed=*/false,
+      /*ncurr=*/1,
+      /*aspect=*/10.1,
+      /*volume=*/43.0630579228331,
+      /*Rmajor_p=*/6.06,
+      /*Aminor_p=*/0.6,
+      /*rbtor=*/31.9581912180759,
+      /*rbtor0=*/32.0674722883524,
+      /*volavgB=*/5.29648456676457};
+  CheckFlagCombinationAgainstEducationalVmec(kCase);
+}
+
+// lasym = T, lthreed = T, ncurr = 1, lfreeb = F.
+TEST(TestVmec, AsymmetricStellaratorConstrainedCurrentMatchesEducationalVmec) {
+  const FlagCombinationCase kCase = {
+      /*filename=*/"vmecpp/test_data/cth_like_fixed_bdy_asym.json",
+      /*lasym=*/true,
+      /*lthreed=*/true,
+      /*ncurr=*/1,
+      /*aspect=*/5.51459955489889,
+      /*volume=*/0.311959643944142,
+      /*Rmajor_p=*/0.783307369710139,
+      /*Aminor_p=*/0.142042475054111,
+      /*rbtor=*/-0.456903029831871,
+      /*rbtor0=*/-0.466702565409973,
+      /*volavgB=*/0.573224626419241};
+  CheckFlagCombinationAgainstEducationalVmec(kCase);
+}
+
+// lasym = T, lthreed = T, ncurr = 0, lfreeb = F.
+TEST(TestVmec, AsymmetricStellaratorConstrainedIotaMatchesEducationalVmec) {
+  const FlagCombinationCase kCase = {
+      /*filename=*/"vmecpp/test_data/cth_like_fixed_bdy_asym_iota.json",
+      /*lasym=*/true,
+      /*lthreed=*/true,
+      /*ncurr=*/0,
+      /*aspect=*/5.51459955489889,
+      /*volume=*/0.311959643944142,
+      /*Rmajor_p=*/0.783307369710139,
+      /*Aminor_p=*/0.142042475054111,
+      /*rbtor=*/-0.456526156320673,
+      /*rbtor0=*/-0.466540212041614,
+      /*volavgB=*/0.573164827790394};
+  CheckFlagCombinationAgainstEducationalVmec(kCase);
+}
+
 // A genuinely up-down-asymmetric tokamak (lasym=true with nonzero rbs): the
 // converged equilibrium must match a VMEC 8.52 (educational_VMEC) reference for
 // the same input. The reference scalars are taken from threed1.up_down_asym,
@@ -329,10 +488,39 @@ TEST(TestVmec, LasymAxisymmetricTokamakMatchesEducationalVmec) {
   EXPECT_TRUE(IsCloseRelAbs(w.rbtor0 / w.raxis_cc[0], w.b0, 1.0e-3))
       << "b0=" << w.b0 << " rbtor0/Raxis=" << (w.rbtor0 / w.raxis_cc[0]);
 
-  // Genuine asymmetry: the antisymmetric Fourier geometry is clearly non-zero
-  // (a stellarator-symmetric run produces exactly zero here).
-  EXPECT_GT(w.rmns.cwiseAbs().maxCoeff(), 1.0e-3) << "rmns must be non-zero";
-  EXPECT_GT(w.zmnc.cwiseAbs().maxCoeff(), 1.0e-3) << "zmnc must be non-zero";
+  // Genuine asymmetry: every antisymmetric wout array is sized and carries
+  // content. A stellarator-symmetric run leaves all of them empty, so the size
+  // and the floor together pin each array to the asymmetric solve. The floors
+  // sit one to two orders below the values this equilibrium produces.
+  auto expect_asym = [&w](const vmecpp::RowMatrixXd& a, int rows, double floor,
+                          const char* name) {
+    EXPECT_EQ(a.rows(), rows) << name;
+    EXPECT_EQ(a.cols(), w.ns) << name;
+    if (a.size() > 0) {
+      EXPECT_GT(a.cwiseAbs().maxCoeff(), floor) << name << " must be non-zero";
+    }
+  };
+  expect_asym(w.rmns, w.mnmax, 1.0e-3, "rmns");
+  expect_asym(w.zmnc, w.mnmax, 1.0e-3, "zmnc");
+  expect_asym(w.lmnc_full, w.mnmax, 1.0e-2, "lmnc_full");
+  expect_asym(w.lmnc, w.mnmax, 1.0e-2, "lmnc");
+  expect_asym(w.gmns, w.mnmax_nyq, 1.0e-2, "gmns");
+  expect_asym(w.bmns, w.mnmax_nyq, 1.0e-2, "bmns");
+  expect_asym(w.bsubumns, w.mnmax_nyq, 1.0e-2, "bsubumns");
+  // B_zeta is the near-vacuum 1/R field of a tokamak and so is almost up-down
+  // symmetric; its antisymmetric half is four orders below the rest.
+  expect_asym(w.bsubvmns, w.mnmax_nyq, 1.0e-6, "bsubvmns");
+  expect_asym(w.bsubsmnc, w.mnmax_nyq, 1.0e-3, "bsubsmnc");
+  expect_asym(w.bsubsmnc_full, w.mnmax_nyq, 1.0e-3, "bsubsmnc_full");
+  expect_asym(w.bsupumns, w.mnmax_nyq, 1.0e-2, "bsupumns");
+  expect_asym(w.bsupvmns, w.mnmax_nyq, 1.0e-3, "bsupvmns");
+  expect_asym(w.currumns, w.mnmax_nyq, 1.0, "currumns");
+  expect_asym(w.currvmns, w.mnmax_nyq, 1.0, "currvmns");
+
+  // raxis_cs multiplies sin(n * zeta) and this case has ntor = 0, so it is
+  // structurally zero rather than merely small.
+  ASSERT_EQ(w.raxis_cs.size(), 1);
+  EXPECT_EQ(w.raxis_cs[0], 0.0) << "raxis_cs is sin(0 * zeta)";
 
   // The asymmetry pushes the magnetic axis off the midplane: zaxis_cc is the
   // cos(n*zeta) (here n=0) antisymmetric axis amplitude, exactly zero for a

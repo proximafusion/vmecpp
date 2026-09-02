@@ -5,6 +5,7 @@
 #ifndef VMECPP_COMMON_MAGNETIC_FIELD_PROVIDER_MAGNETIC_FIELD_PROVIDER_LIB_H_
 #define VMECPP_COMMON_MAGNETIC_FIELD_PROVIDER_MAGNETIC_FIELD_PROVIDER_LIB_H_
 
+#include <Eigen/Dense>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -13,6 +14,10 @@
 #include "vmecpp/common/magnetic_configuration_definition/magnetic_configuration.h"
 
 namespace magnetics {
+
+// A set of n points or vectors in Cartesian coordinates, row 0 holding x, row 1
+// y and row 2 z. This is the layout VMEC++ uses for point sets elsewhere.
+using RowMatrix3Xd = Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::RowMajor>;
 
 // Compute the magnetic field due to a given InfiniteStraightFilament and a
 // given current at given set of evaluation locations. A fatal error occurs if
@@ -69,6 +74,13 @@ absl::Status MagneticField(
     std::vector<std::vector<double> > &m_magnetic_field,
     bool check_current_carrier = true);
 
+// As above, with the evaluation locations and the result in the (3, n) layout.
+// Both must carry the same number of columns.
+absl::Status MagneticField(const MagneticConfiguration &magnetic_configuration,
+                           const RowMatrix3Xd &evaluation_positions,
+                           RowMatrix3Xd &m_magnetic_field,
+                           bool check_current_carrier = true);
+
 // ----------------
 
 // The magnetic vector potential diverges for an infinite straight filament,
@@ -117,6 +129,13 @@ absl::Status VectorPotential(
     const MagneticConfiguration &magnetic_configuration,
     const std::vector<std::vector<double> > &evaluation_positions,
     std::vector<std::vector<double> > &m_vector_potential,
+    bool check_current_carrier = true);
+
+// As above, with the evaluation locations and the result in the (3, n) layout.
+// Both must carry the same number of columns.
+absl::Status VectorPotential(
+    const MagneticConfiguration &magnetic_configuration,
+    const RowMatrix3Xd &evaluation_positions, RowMatrix3Xd &m_vector_potential,
     bool check_current_carrier = true);
 
 // Compute the linking current between a given magnetic configuration
