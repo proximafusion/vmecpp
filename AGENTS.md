@@ -138,7 +138,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 - A symmetric equilibrium run through the asymmetric code paths must reproduce the symmetric result to machine precision (`tests/test_lasym.py`)
 - Match tolerances to the numerics; compare Fourier coefficients directly, a scalar such as the volume is not a physics check
 - Validate changes to the iteration on the force-residual progression, not on the converged state
-- Symmetric cases alone do not establish correctness; include asymmetric, three-dimensional and high-beta cases
+- Axisymmetric cases alone do not establish correctness; include asymmetric, three-dimensional and high-beta cases.
 
 **Tests**:
 - Turn derived invariants into unit tests
