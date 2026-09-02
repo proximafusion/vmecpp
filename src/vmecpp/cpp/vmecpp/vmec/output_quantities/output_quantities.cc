@@ -2076,10 +2076,12 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
     // bs_a(v,u) = .5*( bs(v,u) + bs(-v,-u) )     ! * COS(mu - nv)
     for (int jF = 0; jF < vmec_internal_results.num_full; ++jF) {
       for (int kl = 0; kl < vmec_internal_results.nZnT_reduced; ++kl) {
-        const int source_index = jF * s.nZnT + kl;
-
         const int k = kl / s.nThetaReduced;
         const int l = kl % s.nThetaReduced;
+
+        // bsubs_full is stored in the full (nThetaEff) poloidal layout, so the
+        // within-surface offset has to use nThetaEven, as for bsubu below.
+        const int source_index = jF * s.nZnT + (k * s.nThetaEven + l);
 
         const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
         const int k_reversed = (s.nZeta - k) % s.nZeta;
@@ -2186,6 +2188,17 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
   if (s.lasym) {
     bsubu_filtered_a.resize(m_vmec_internal_results.num_half * s.nZnT);
     bsubv_filtered_a.resize(m_vmec_internal_results.num_half * s.nZnT);
+  }
+
+  // d(B_v)/d(theta) and d(B_u)/d(zeta), accumulated per parity in the reduced
+  // (nThetaReduced) poloidal layout and extended to the full range below.
+  std::vector<double> bsubvu_s(m_vmec_internal_results.num_half * s.nZnT, 0.0);
+  std::vector<double> bsubuv_s(m_vmec_internal_results.num_half * s.nZnT, 0.0);
+  std::vector<double> bsubvu_a;
+  std::vector<double> bsubuv_a;
+  if (s.lasym) {
+    bsubvu_a.resize(m_vmec_internal_results.num_half * s.nZnT);
+    bsubuv_a.resize(m_vmec_internal_results.num_half * s.nZnT);
   }
 
   // FOURIER LOW-PASS FILTER bsubs
@@ -2365,13 +2378,11 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
             const double tsinm1 = t.sinmum[idx_ml] * t.cosnv[idx_kn];
             const double tsinm2 = t.cosmum[idx_ml] * t.sinnv[idx_kn];
-            covariant_b_derivatives.bsubvu(target_index) +=
-                tsinm1 * bsubvmn1 + tsinm2 * bsubvmn2;
+            bsubvu_s[target_index] += tsinm1 * bsubvmn1 + tsinm2 * bsubvmn2;
 
             const double tsinn1 = t.cosmu[idx_ml] * t.sinnvn[idx_kn];
             const double tsinn2 = t.sinmu[idx_ml] * t.cosnvn[idx_kn];
-            covariant_b_derivatives.bsubuv(target_index) +=
-                tsinn1 * bsubumn1 + tsinn2 * bsubumn2;
+            bsubuv_s[target_index] += tsinn1 * bsubumn1 + tsinn2 * bsubumn2;
 
             if (s.lasym) {
               const double tsin1 = t.sinmu[idx_ml] * t.cosnv[idx_kn];
@@ -2383,13 +2394,11 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
               const double tcosm1 = t.cosmum[idx_ml] * t.cosnv[idx_kn];
               const double tcosm2 = t.sinmum[idx_ml] * t.sinnv[idx_kn];
-              covariant_b_derivatives.bsubvu(target_index) +=
-                  tcosm1 * bsubvmn3 + tcosm2 * bsubvmn4;
+              bsubvu_a[target_index] += tcosm1 * bsubvmn3 + tcosm2 * bsubvmn4;
 
               const double tcosn1 = t.sinmu[idx_ml] * t.sinnvn[idx_kn];
               const double tcosn2 = t.cosmu[idx_ml] * t.cosnvn[idx_kn];
-              covariant_b_derivatives.bsubuv(target_index) +=
-                  tcosn1 * bsubumn3 + tcosn2 * bsubumn4;
+              bsubuv_a[target_index] += tcosn1 * bsubumn3 + tcosn2 * bsubumn4;
             }  // lasym
           }  // l
         }  // k
@@ -2439,6 +2448,50 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
         const int idx_kl = jH * s.nZnT + kl;
         m_vmec_internal_results.bsubu(idx_kl) = bsubu_filtered_s[idx_kl];
         m_vmec_internal_results.bsubv(idx_kl) = bsubv_filtered_s[idx_kl];
+      }  // kl
+    }  // jH
+  }
+
+  // EXTEND bsubvu, bsubuv TO NTHETA3 MESH
+  // The stellarator-symmetric parts of d(B_v)/d(theta) and d(B_u)/d(zeta) are
+  // odd under (theta, zeta) -> (-theta, -zeta), the non-symmetric parts are
+  // even, so the reflected half carries -s + a.
+  if (s.lasym) {
+    const int nZnT_reduced = m_vmec_internal_results.nZnT_reduced;
+    for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
+      for (int k = 0; k < s.nZeta; ++k) {
+        const int k_reversed = (s.nZeta - k) % s.nZeta;
+        for (int l = 0; l < s.nThetaReduced; ++l) {
+          const int source_index =
+              jH * nZnT_reduced + (k * s.nThetaReduced + l);
+          const int target_index = jH * s.nZnT + (k * s.nThetaEff + l);
+
+          covariant_b_derivatives.bsubvu(target_index) =
+              bsubvu_s[source_index] + bsubvu_a[source_index];
+          covariant_b_derivatives.bsubuv(target_index) =
+              bsubuv_s[source_index] + bsubuv_a[source_index];
+        }  // l
+        for (int l = s.nThetaReduced; l < s.nThetaEven; ++l) {
+          const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
+          const int source_index_reversed =
+              jH * nZnT_reduced + (k_reversed * s.nThetaReduced + l_reversed);
+          const int target_index = jH * s.nZnT + (k * s.nThetaEff + l);
+
+          covariant_b_derivatives.bsubvu(target_index) =
+              -bsubvu_s[source_index_reversed] +
+              bsubvu_a[source_index_reversed];
+          covariant_b_derivatives.bsubuv(target_index) =
+              -bsubuv_s[source_index_reversed] +
+              bsubuv_a[source_index_reversed];
+        }  // l
+      }  // k
+    }  // jH
+  } else {
+    for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
+      for (int kl = 0; kl < s.nZnT; ++kl) {
+        const int idx_kl = jH * s.nZnT + kl;
+        covariant_b_derivatives.bsubvu(idx_kl) = bsubvu_s[idx_kl];
+        covariant_b_derivatives.bsubuv(idx_kl) = bsubuv_s[idx_kl];
       }  // kl
     }  // jH
   }
@@ -3927,8 +3980,10 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
     const double r_outboard = vmec_internal_results.r_e(index_outboard) +
                               vmec_internal_results.r_o(index_outboard);
 
+    // theta = pi sits at l = nThetaReduced - 1 in both poloidal layouts; the
+    // within-surface stride is nThetaEff, as for the outboard point above.
     const int index_inboard =
-        ((fc.ns - 1) * s.nZeta + k) * s.nThetaReduced + (s.nThetaReduced - 1);
+        ((fc.ns - 1) * s.nZeta + k) * s.nThetaEff + (s.nThetaReduced - 1);
     const double r_inboard = vmec_internal_results.r_e(index_inboard) +
                              vmec_internal_results.r_o(index_inboard);
 
