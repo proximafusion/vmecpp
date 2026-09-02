@@ -181,6 +181,10 @@ class Vmec {
                        const FourierForces& decomposed_f,
                        HandoverStorage& m_h_) const;
 
+  // Install an additive spectral force source on every radial thread; see
+  // IdealMhdModel::SetForceSource for the layout. An empty vector clears it.
+  absl::Status SetForceSource(const Eigen::VectorXd& source);
+
   int get_ivac() const { return static_cast<int>(vacuum_pressure_state_); }
   int get_num_eqsolve_retries() const { return num_eqsolve_retries_; }
   VmecStatus get_status() const { return status_; }

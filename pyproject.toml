@@ -45,6 +45,9 @@ vmecpp = "vmecpp.__main__:main"
 [project.optional-dependencies]
 test = [
   "pytest",
+  # tests/test_manufactured_solution.py differentiates the ideal-MHD energy
+  # density symbolically; the solver itself does not use it
+  "sympy",
 ]
 benchmark = [
   "pytest",

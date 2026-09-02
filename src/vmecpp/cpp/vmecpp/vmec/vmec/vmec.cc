@@ -460,6 +460,16 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   return false;
 }  // run
 
+absl::Status Vmec::SetForceSource(const Eigen::VectorXd& source) {
+  for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+    absl::Status s = m_[thread_id]->SetForceSource(source);
+    if (!s.ok()) {
+      return s;
+    }
+  }
+  return absl::OkStatus();
+}
+
 void Vmec::SetupVacuumSolvers() {
   // Compute the vacuum thread count once; it is ns-independent (depends only on
   // the tangential grid size nZnT and the thread budget).

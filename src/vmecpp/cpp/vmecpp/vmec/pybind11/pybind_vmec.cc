@@ -12,7 +12,9 @@
 #include <Eigen/Dense>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
+#include <tuple>
 #include <type_traits>  // std::is_same_v
 #include <utility>      // std::move
 
@@ -147,6 +149,21 @@ void UnflattenActive(FourierObject &m_x, const vmecpp::Sizes &s,
     const Eigen::Index n = static_cast<Eigen::Index>(sp.size());
     Eigen::Map<Eigen::VectorXd>(sp.data(), n) = flat.segment(offset, n);
     offset += n;
+  }
+}
+
+inline std::span<const double> AsSpan(const Eigen::VectorXd &v) {
+  return {v.data(), static_cast<size_t>(v.size())};
+}
+
+inline void CheckFourierShape(const vmecpp::RowMatrixXd &m, const char *name,
+                              int mnmax, int ns) {
+  if (m.rows() != mnmax || m.cols() != ns) {
+    throw std::runtime_error(std::string("VmecModel.set_state_from_fourier: ") +
+                             name + " has shape (" + std::to_string(m.rows()) +
+                             ", " + std::to_string(m.cols()) + "), expected (" +
+                             std::to_string(mnmax) + ", " + std::to_string(ns) +
+                             ")");
   }
 }
 
@@ -398,11 +415,194 @@ class VmecModel {
   }
 
   // Flat decision vector (decomposed, i.e. preconditioner-scaled coefficients).
+  void SetForceSource(const Eigen::VectorXd &source) {
+    const absl::Status s = vmec_->SetForceSource(source);
+    if (!s.ok()) {
+      throw std::runtime_error(std::string(s.message()));
+    }
+  }
   Eigen::VectorXd GetState() const {
     return FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
   }
   void SetState(const Eigen::VectorXd &flat) const {
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
+  }
+
+  // Set the state from Fourier coefficients in the combined basis the wout file
+  // uses, R = sum rmnc cos(m u - n v) [+ rmns sin(m u - n v)] and likewise for
+  // Z and lambda, each an [mnmax, ns] array in the standard mode ordering. The
+  // three conventions that separate that basis from the internal one live here
+  // rather than in the caller: the mscale/nscale basis normalization, the m = 1
+  // poloidal-origin gauge rotation, and lambda's scaling by phip / lamscale.
+  // The asymmetric arrays are ignored for a stellarator-symmetric run and
+  // required for a lasym one.
+  void SetStateFromFourier(const vmecpp::RowMatrixXd &rmnc,
+                           const vmecpp::RowMatrixXd &zmns,
+                           const vmecpp::RowMatrixXd &lmns,
+                           const vmecpp::RowMatrixXd &rmns,
+                           const vmecpp::RowMatrixXd &zmnc,
+                           const vmecpp::RowMatrixXd &lmnc) const {
+    const vmecpp::Sizes &s = vmec_->s_;
+    const int ns = vmec_->fc_.ns;
+    const int mnsize = s.mpol * (s.ntor + 1);
+    CheckFourierShape(rmnc, "rmnc", s.mnmax, ns);
+    CheckFourierShape(zmns, "zmns", s.mnmax, ns);
+    CheckFourierShape(lmns, "lmns", s.mnmax, ns);
+    if (s.lasym) {
+      CheckFourierShape(rmns, "rmns", s.mnmax, ns);
+      CheckFourierShape(zmnc, "zmnc", s.mnmax, ns);
+      CheckFourierShape(lmnc, "lmnc", s.mnmax, ns);
+    }
+
+    vmecpp::FourierGeometry &x = *vmec_->decomposed_x_[0];
+    const vmecpp::FourierBasisFastPoloidal &fb = vmec_->t_;
+    const double lamscale = vmec_->constants_.lamscale;
+    std::vector<double> a(mnsize), b(mnsize), c(mnsize), d(mnsize);
+    Eigen::VectorXd column(s.mnmax);
+
+    for (int j = 0; j < ns; ++j) {
+      const int off = j * mnsize;
+      const double lam_factor = vmec_->p_[0]->phipF[j] / lamscale;
+
+      column = rmnc.col(j);
+      fb.cos_to_cc_ss(AsSpan(column), a, b, s.ntor, s.mpol);  // -> rcc, rss
+      column = zmns.col(j);
+      fb.sin_to_sc_cs(AsSpan(column), c, d, s.ntor, s.mpol);  // -> zsc, zcs
+      for (int i = 0; i < mnsize; ++i) {
+        x.rmncc[off + i] = a[i];
+        x.zmnsc[off + i] = c[i];
+      }
+      if (s.lthreed) {
+        // undo the m = 1 gauge rotation: it stores the sum and the difference
+        for (int i = 0; i < mnsize; ++i) {
+          const bool m1 = (i / (s.ntor + 1)) == 1;
+          x.rmnss[off + i] = m1 ? 0.5 * (b[i] + d[i]) : b[i];
+          x.zmncs[off + i] = m1 ? 0.5 * (b[i] - d[i]) : d[i];
+        }
+      }
+
+      column = lmns.col(j);
+      fb.sin_to_sc_cs(AsSpan(column), c, d, s.ntor, s.mpol);
+      for (int i = 0; i < mnsize; ++i) {
+        x.lmnsc[off + i] = lam_factor * c[i];
+      }
+      if (s.lthreed) {
+        for (int i = 0; i < mnsize; ++i) {
+          x.lmncs[off + i] = lam_factor * d[i];
+        }
+      }
+
+      if (!s.lasym) {
+        continue;
+      }
+      column = rmns.col(j);
+      fb.sin_to_sc_cs(AsSpan(column), a, b, s.ntor, s.mpol);  // -> rsc, rcs
+      column = zmnc.col(j);
+      fb.cos_to_cc_ss(AsSpan(column), c, d, s.ntor, s.mpol);  // -> zcc, zss
+      for (int i = 0; i < mnsize; ++i) {
+        const bool m1 = (i / (s.ntor + 1)) == 1;
+        x.rmnsc[off + i] = m1 ? 0.5 * (a[i] + c[i]) : a[i];
+        x.zmncc[off + i] = m1 ? 0.5 * (a[i] - c[i]) : c[i];
+      }
+      if (s.lthreed) {
+        for (int i = 0; i < mnsize; ++i) {
+          x.rmncs[off + i] = b[i];
+          x.zmnss[off + i] = d[i];
+        }
+      }
+      column = lmnc.col(j);
+      fb.cos_to_cc_ss(AsSpan(column), c, d, s.ntor, s.mpol);
+      for (int i = 0; i < mnsize; ++i) {
+        x.lmncc[off + i] = lam_factor * c[i];
+      }
+      if (s.lthreed) {
+        for (int i = 0; i < mnsize; ++i) {
+          x.lmnss[off + i] = lam_factor * d[i];
+        }
+      }
+    }
+  }
+
+  // The inverse of SetStateFromFourier: (rmnc, zmns, lmns, rmns, zmnc, lmnc),
+  // each [mnmax, ns]; the asymmetric three are empty for a symmetric run.
+  std::tuple<vmecpp::RowMatrixXd, vmecpp::RowMatrixXd, vmecpp::RowMatrixXd,
+             vmecpp::RowMatrixXd, vmecpp::RowMatrixXd, vmecpp::RowMatrixXd>
+  GetStateAsFourier() const {
+    const vmecpp::Sizes &s = vmec_->s_;
+    const int ns = vmec_->fc_.ns;
+    const int mnsize = s.mpol * (s.ntor + 1);
+    const vmecpp::FourierGeometry &x = *vmec_->decomposed_x_[0];
+    const vmecpp::FourierBasisFastPoloidal &fb = vmec_->t_;
+    const double lamscale = vmec_->constants_.lamscale;
+
+    vmecpp::RowMatrixXd rmnc(s.mnmax, ns), zmns(s.mnmax, ns), lmns(s.mnmax, ns);
+    const int asym_rows = s.lasym ? s.mnmax : 0;
+    const int asym_cols = s.lasym ? ns : 0;
+    vmecpp::RowMatrixXd rmns(asym_rows, asym_cols), zmnc(asym_rows, asym_cols),
+        lmnc(asym_rows, asym_cols);
+
+    std::vector<double> a(mnsize), b(mnsize), c(mnsize), d(mnsize);
+    std::vector<double> combined(s.mnmax);
+    for (int j = 0; j < ns; ++j) {
+      const int off = j * mnsize;
+      const double lam_factor = lamscale / vmec_->p_[0]->phipF[j];
+      for (int i = 0; i < mnsize; ++i) {
+        const bool m1 = (i / (s.ntor + 1)) == 1;
+        a[i] = x.rmncc[off + i];
+        c[i] = x.zmnsc[off + i];
+        // redo the m = 1 gauge rotation
+        b[i] = s.lthreed ? (m1 ? x.rmnss[off + i] + x.zmncs[off + i]
+                               : x.rmnss[off + i])
+                         : 0.0;
+        d[i] = s.lthreed ? (m1 ? x.rmnss[off + i] - x.zmncs[off + i]
+                               : x.zmncs[off + i])
+                         : 0.0;
+      }
+      fb.cc_ss_to_cos(a, b, combined, s.ntor, s.mpol);
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        rmnc(mn, j) = combined[mn];
+      }
+      fb.sc_cs_to_sin(c, d, combined, s.ntor, s.mpol);
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        zmns(mn, j) = combined[mn];
+      }
+      for (int i = 0; i < mnsize; ++i) {
+        c[i] = lam_factor * x.lmnsc[off + i];
+        d[i] = s.lthreed ? lam_factor * x.lmncs[off + i] : 0.0;
+      }
+      fb.sc_cs_to_sin(c, d, combined, s.ntor, s.mpol);
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        lmns(mn, j) = combined[mn];
+      }
+
+      if (!s.lasym) {
+        continue;
+      }
+      for (int i = 0; i < mnsize; ++i) {
+        const bool m1 = (i / (s.ntor + 1)) == 1;
+        a[i] = m1 ? x.rmnsc[off + i] + x.zmncc[off + i] : x.rmnsc[off + i];
+        c[i] = m1 ? x.rmnsc[off + i] - x.zmncc[off + i] : x.zmncc[off + i];
+        b[i] = s.lthreed ? x.rmncs[off + i] : 0.0;
+        d[i] = s.lthreed ? x.zmnss[off + i] : 0.0;
+      }
+      fb.sc_cs_to_sin(a, b, combined, s.ntor, s.mpol);
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        rmns(mn, j) = combined[mn];
+      }
+      fb.cc_ss_to_cos(c, d, combined, s.ntor, s.mpol);
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        zmnc(mn, j) = combined[mn];
+      }
+      for (int i = 0; i < mnsize; ++i) {
+        c[i] = lam_factor * x.lmncc[off + i];
+        d[i] = s.lthreed ? lam_factor * x.lmnss[off + i] : 0.0;
+      }
+      fb.cc_ss_to_cos(c, d, combined, s.ntor, s.mpol);
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        lmnc(mn, j) = combined[mn];
+      }
+    }
+    return {rmnc, zmns, lmns, rmns, zmnc, lmnc};
   }
   // Flat force vector (decomposed/preconditioned), valid after Evaluate().
   Eigen::VectorXd GetForces() const {
@@ -1294,7 +1494,14 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("solve", &VmecModel::Solve)
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
+      .def("set_state_from_fourier", &VmecModel::SetStateFromFourier,
+           py::arg("rmnc"), py::arg("zmns"), py::arg("lmns"),
+           py::arg("rmns") = vmecpp::RowMatrixXd(),
+           py::arg("zmnc") = vmecpp::RowMatrixXd(),
+           py::arg("lmnc") = vmecpp::RowMatrixXd())
+      .def("get_state_as_fourier", &VmecModel::GetStateAsFourier)
       .def("get_forces", &VmecModel::GetForces)
+      .def("set_force_source", &VmecModel::SetForceSource, py::arg("source"))
       .def("apply_preconditioner", &VmecModel::ApplyPreconditioner,
            py::arg("v"))
       .def("hessian_vector_product", &VmecModel::HessianVectorProduct,

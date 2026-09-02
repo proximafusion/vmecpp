@@ -928,6 +928,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   m_physical_f.decomposeInto(m_decomposed_f, m_p_.scalxc);
 
+  addForceSource(m_decomposed_f);
+
   // ----- start of residue
 
   // re-establish m=1 constraint
@@ -2067,6 +2069,87 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+}
+
+namespace {
+// The active force parities, in FourierForces order.
+std::vector<std::span<double>> ActiveForceSpans(FourierForces& m_f,
+                                                const Sizes& s) {
+  std::vector<std::span<double>> out = {m_f.frcc};
+  if (s.lthreed) {
+    out.push_back(m_f.frss);
+  }
+  if (s.lasym) {
+    out.push_back(m_f.frsc);
+  }
+  if (s.lasym && s.lthreed) {
+    out.push_back(m_f.frcs);
+  }
+  out.push_back(m_f.fzsc);
+  if (s.lthreed) {
+    out.push_back(m_f.fzcs);
+  }
+  if (s.lasym) {
+    out.push_back(m_f.fzcc);
+  }
+  if (s.lasym && s.lthreed) {
+    out.push_back(m_f.fzss);
+  }
+  out.push_back(m_f.flsc);
+  if (s.lthreed) {
+    out.push_back(m_f.flcs);
+  }
+  if (s.lasym) {
+    out.push_back(m_f.flcc);
+  }
+  if (s.lasym && s.lthreed) {
+    out.push_back(m_f.flss);
+  }
+  return out;
+}
+}  // namespace
+
+absl::Status IdealMhdModel::SetForceSource(const Eigen::VectorXd& source) {
+  if (source.size() == 0) {
+    force_source_.resize(0);
+    return absl::OkStatus();
+  }
+  const int mnsize = s_.mpol * (s_.ntor + 1);
+  const int num_parities = s_.num_basis * 3;
+  const Eigen::Index expected =
+      static_cast<Eigen::Index>(num_parities) * m_fc_.ns * mnsize;
+  if (source.size() != expected) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "force source has %d entries, but %d are required for %d parities on "
+        "ns=%d with mpol=%d, ntor=%d",
+        source.size(), expected, num_parities, m_fc_.ns, s_.mpol, s_.ntor));
+  }
+  force_source_ = source;
+  return absl::OkStatus();
+}
+
+void IdealMhdModel::addForceSource(FourierForces& m_decomposed_f) const {
+  if (force_source_.size() == 0) {
+    return;
+  }
+  const int mnsize = s_.mpol * (s_.ntor + 1);
+  const int block = m_fc_.ns * mnsize;
+  const std::vector<std::span<double>> targets =
+      ActiveForceSpans(m_decomposed_f, s_);
+  for (size_t parity = 0; parity < targets.size(); ++parity) {
+    const double* src =
+        force_source_.data() + static_cast<Eigen::Index>(parity) * block;
+    std::span<double> dst = targets[parity];
+    // FourierCoeffs allocates through the LCFS when this thread owns it, which
+    // is one row beyond nsMax(); that row carries the lambda force.
+    const int rows = static_cast<int>(dst.size()) / mnsize;
+    for (int row = 0; row < rows; ++row) {
+      const int global = (m_decomposed_f.nsMin() + row) * mnsize;
+      for (int i = 0; i < mnsize; ++i) {
+        dst[row * mnsize + i] += src[global + i];
+      }
+    }
+  }
 }
 
 void IdealMhdModel::computeMHDForces() {
