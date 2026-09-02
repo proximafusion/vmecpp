@@ -1377,6 +1377,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     const FlowControl& fc, const VmecConstants& constants,
     const FourierBasisFastPoloidal& t, const HandoverStorage& h,
     const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
     const std::vector<std::unique_ptr<RadialPartitioning>>& radial_partitioning,
     const std::vector<std::unique_ptr<FourierGeometry>>& decomposed_x,
     const std::vector<std::unique_ptr<IdealMhdModel>>& models_from_threads,
@@ -1548,7 +1549,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     // and setup a stand-alone test case to figure out what went wrong
     // and how to prevent that crash in the future.
     output_quantities.wout = ComputeWOutFileContents(
-        indata, s, t, fc, constants, h, mgrid_mode,
+        indata, s, t, fc, constants, h, mgrid_mode, coil_group_names,
         /*m_vmec_internal_results=*/output_quantities.vmec_internal_results,
         output_quantities.bsubs_half, output_quantities.bsubs_full,
         output_quantities.mercier, output_quantities.jxbout,
@@ -3026,7 +3027,12 @@ vmecpp::ComputeIntermediateMercierQuantities(
       const double gpp_numerator = mercier_intermediate.gsqrt_full(index_full) *
                                    mercier_intermediate.gsqrt_full(index_full);
 
-      // TODO(jons): figure out what this really is
+      // The denominator is |e_theta x e_zeta|^2. In the cylindrical frame
+      // e_theta x e_zeta = -R z_theta rhat + (r_zeta z_theta - r_theta z_zeta)
+      // phihat + R r_theta zhat, so its square is R^2 g_theta,theta plus the
+      // square of the toroidal component below. With grad(s) = (e_theta x
+      // e_zeta) / sqrt(g), the quotient formed here is sqrt(g)^2 /
+      // |e_theta x e_zeta|^2 = 1 / |grad(s)|^2.
       const double gpp_denominator_ingredient = rtf * zzf - rzf * ztf;
       const double gpp_denominator =
           gtt * r1f * r1f +
@@ -3584,7 +3590,9 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     const double zv = vmec_internal_results.zv_e(lcfs_kl) +
                       vmec_internal_results.zv_o(lcfs_kl);
 
-    // TODO(jons): figure out what this really is
+    // toroidal component of e_theta x e_zeta; together with the R^2 g_uu
+    // term below, the square root is |e_theta x e_zeta|, the area element of
+    // the boundary surface.
     const double rv_zu_minus_zv_ru = rv * zu0 - zv * ru0;
 
     intermediate.surf_area[kl] =
@@ -3627,7 +3635,11 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     for (int kl = 0; kl < s.nZnT; ++kl) {
       const int index_half = jH * s.nZnT + kl;
 
-      // TODO(jons): assumes B_tor ~ 1/R ???
+      // In the vacuum region R B_phi is constant, so the vacuum toroidal
+      // field is rBtor / R. That is exact for an axisymmetric external field
+      // and an approximation for a stellarator coil set; it enters the
+      // Shafranov integrals below, which are a diagnostic. Fortran eqfor.f90
+      // does the same.
       intermediate.btor_vac[kl] =
           handover_storage.rBtor / vmec_internal_results.r12(index_half);
 
@@ -3750,7 +3762,9 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     intermediate.s2 += jxbout.jperp2[jF] * two_dVds_full;
   }  // jH
 
-  // TODO(jons): figure out what fac is and assign a better name
+  // Poloidal flux increment per radial step: chi' = iota * phi', so
+  // r3v = fac * phipH * iotaH accumulates into psi below. The 2 pi is the
+  // toroidal angle period and the Jacobian sign fixes the orientation.
   intermediate.fac =
       2.0 * M_PI * fc.deltaS * vmec_internal_results.sign_of_jacobian;
   intermediate.r3v = VectorXd::Zero(fc.ns - 1);
@@ -3869,29 +3883,29 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
         vmec_internal_results.z_e(lcfs_kl) + vmec_internal_results.z_o(lcfs_kl);
     result.rmax_surf = std::max(result.rmax_surf, r);
     result.rmin_surf = std::min(result.rmin_surf, r);
-    result.zmax_surf = std::max(result.zmax_surf, z);
+    result.zmax_surf = std::max(result.zmax_surf, std::abs(z));
   }  // kl
 
-  result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaReduced) * DBL_MAX;
-  result.bmax = RowMatrixXd::Zero(fc.ns - 1, s.nThetaReduced);
+  // One column per stored poloidal point: the reduced range for a
+  // stellarator-symmetric run, the full range for lasym.
+  result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaEff) * DBL_MAX;
+  result.bmax = RowMatrixXd::Zero(fc.ns - 1, s.nThetaEff);
 
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int k = 0; k < s.nZeta; ++k) {
-      for (int l = 0; l < s.nThetaReduced; ++l) {
-        // total_pressure is stored with the full nThetaEff within-surface
-        // stride; bmax/bmin only need the reduced poloidal range.
+      for (int l = 0; l < s.nThetaEff; ++l) {
         const int kl = k * s.nThetaEff + l;
         const int index_half = jH * s.nZnT + kl;
 
         const double mod_b =
             std::sqrt(2.0 * (vmec_internal_results.total_pressure(index_half) -
                              vmec_internal_results.presH[jH]));
-        result.bmax(jH * s.nThetaReduced + l) =
-            std::max(result.bmax(jH * s.nThetaReduced + l), mod_b);
-        result.bmin(jH * s.nThetaReduced + l) =
-            std::min(result.bmin(jH * s.nThetaReduced + l), mod_b);
-      }  // k
-    }  // l
+        result.bmax(jH * s.nThetaEff + l) =
+            std::max(result.bmax(jH * s.nThetaEff + l), mod_b);
+        result.bmin(jH * s.nThetaEff + l) =
+            std::min(result.bmin(jH * s.nThetaEff + l), mod_b);
+      }  // l
+    }  // k
   }  // jH
 
   // Compute Waist thickness and height in \f$\varphi = 0, \pi\f$ symmetry
@@ -3938,7 +3952,9 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   result.betator = intermediate.sump20 / intermediate.sumbtor;
   result.VolAvgB = std::sqrt(std::abs(intermediate.sumbtot / result.volume_p));
 
-  // TODO(jons): which ion is assumed here ?
+  // A 1 keV proton at its thermal speed: sqrt(m_p k T) / e = 3.23e-3 T m,
+  // which is the constant to two digits. Fortran eqfor.f90 carries the same
+  // number without naming the species.
   result.IonLarmor = 3.2e-3 / result.VolAvgB;
 
   if (intermediate.s2 != 0.0) {
@@ -3966,8 +3982,10 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   for (int jF = 1; jF < fc.ns; ++jF) {
     double jperp2 = DBL_EPSILON;
     if (jxbout.jperp2[jF] != 0.0) {
-      // TODO(jons): Actually, in-place overwrite within Fortran VMEC.
-      // -> need to do in-place overwrite for follow-up quanties?
+      // Fortran VMEC substitutes the epsilon into jperp2 in place. Nothing
+      // computed after this point reads jxbout.jperp2 again, so the local
+      // copy is equivalent for every consumer except the value written to the
+      // jxbout output, which stays 0 here where Fortran would write epsilon.
       jperp2 = jxbout.jperp2[jF];
     }
 
@@ -4010,9 +4028,13 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
       // double zxmax = 0.0;
       // double zxmin = 0.0;
 
-      // Theta = 0 to pi in upper half of X-Z plane
-      // TODO(jons): why second loop over toroidal offset ?
-      for (int icount = 0; icount < 2; ++icount) {
+      // Under stellarator symmetry only theta in [0, pi] is stored, and the
+      // second pass takes the reflected plane 2 pi - zeta with Z -> -Z to
+      // supply the other half of the cross-section. A lasym run stores the
+      // complete contour, which is scanned in a single pass.
+      const int num_passes = s.lasym ? 1 : 2;
+      const int num_theta = s.lasym ? s.nThetaEff : s.nThetaReduced;
+      for (int icount = 0; icount < num_passes; ++icount) {
         int k1 = k;
         int t1 = 1;
         if (icount == 1) {
@@ -4021,7 +4043,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
           t1 = -1;
         }
 
-        for (int l = 0; l < s.nThetaReduced; ++l) {
+        for (int l = 0; l < num_theta; ++l) {
           const int l_off = (jF * s.nZeta + k1) * s.nThetaEff + l;
 
           const double yr1u = vmec_internal_results.r_e(l_off) +
@@ -4177,7 +4199,10 @@ vmecpp::Threed1Betas vmecpp::ComputeThreed1Betas(
   result.betapol = threed1_geomag.betapol;
   result.betator = threed1_geomag.betator;
 
-  // TODO(jons): should this maybe be bsubvvac ?
+  // rBtor, not bSubVVac: the two are the plasma-side and vacuum-side
+  // estimates of the same R B_phi at the boundary, and the solver already
+  // requires them to agree in sign. Only rBtor exists for a fixed-boundary
+  // run, where nothing fills bSubVVac.
   result.rbtor = handover_storage.rBtor;
   result.betaxis = threed1_first_table_intermediate.beta_axis;
   result.betstr =
@@ -4315,6 +4340,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     const VmecINDATA& indata, const Sizes& s, const FourierBasisFastPoloidal& t,
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
     VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
     const BSubSFull& bsubs_full, const MercierFileContents& mercier,
     const JxBOutFileContents& jxbout,
@@ -4395,8 +4421,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.ns = fc.ns;
   wout.ftolv = fc.ftolv;
 
-  // TODO(jons): Technically, this is not an input but an output (should go into
-  // output data section).
+  // niter is an output rather than an input echo. It stays in this group
+  // because the wout layout is fixed by what Fortran VMEC writes.
   wout.niter = iter2;
 
   wout.lfreeb = indata.lfreeb;
@@ -4561,7 +4587,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     }
   }
 
-  // TODO(jons): curlabel: the mgrid coil-group names are not read back yet
+  // coil group names, one per external current, as read from the mgrid file
+  wout.curlabel = coil_group_names;
 
   // -------------------
   // mode numbers for Fourier coefficient arrays below

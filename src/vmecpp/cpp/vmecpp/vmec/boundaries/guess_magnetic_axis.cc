@@ -454,7 +454,8 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   // in order to always have a full toroidal module for the Fourier transform
   // below
   if (!s.lasym) {
-    for (int k = 1; k < s.nZeta / 2; ++k) {
+    // mirror image along zeta, for even and odd nZeta
+    for (int k = 1; k <= (s.nZeta - 1) / 2; ++k) {
       const int k_reversed = (s.nZeta - k) % s.nZeta;
       w.new_r_axis[k_reversed] = w.new_r_axis[k];
       w.new_z_axis[k_reversed] = -w.new_z_axis[k];

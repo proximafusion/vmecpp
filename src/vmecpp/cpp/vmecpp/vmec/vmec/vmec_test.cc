@@ -488,10 +488,39 @@ TEST(TestVmec, LasymAxisymmetricTokamakMatchesEducationalVmec) {
   EXPECT_TRUE(IsCloseRelAbs(w.rbtor0 / w.raxis_cc[0], w.b0, 1.0e-3))
       << "b0=" << w.b0 << " rbtor0/Raxis=" << (w.rbtor0 / w.raxis_cc[0]);
 
-  // Genuine asymmetry: the antisymmetric Fourier geometry is clearly non-zero
-  // (a stellarator-symmetric run produces exactly zero here).
-  EXPECT_GT(w.rmns.cwiseAbs().maxCoeff(), 1.0e-3) << "rmns must be non-zero";
-  EXPECT_GT(w.zmnc.cwiseAbs().maxCoeff(), 1.0e-3) << "zmnc must be non-zero";
+  // Genuine asymmetry: every antisymmetric wout array is sized and carries
+  // content. A stellarator-symmetric run leaves all of them empty, so the size
+  // and the floor together pin each array to the asymmetric solve. The floors
+  // sit one to two orders below the values this equilibrium produces.
+  auto expect_asym = [&w](const vmecpp::RowMatrixXd& a, int rows, double floor,
+                          const char* name) {
+    EXPECT_EQ(a.rows(), rows) << name;
+    EXPECT_EQ(a.cols(), w.ns) << name;
+    if (a.size() > 0) {
+      EXPECT_GT(a.cwiseAbs().maxCoeff(), floor) << name << " must be non-zero";
+    }
+  };
+  expect_asym(w.rmns, w.mnmax, 1.0e-3, "rmns");
+  expect_asym(w.zmnc, w.mnmax, 1.0e-3, "zmnc");
+  expect_asym(w.lmnc_full, w.mnmax, 1.0e-2, "lmnc_full");
+  expect_asym(w.lmnc, w.mnmax, 1.0e-2, "lmnc");
+  expect_asym(w.gmns, w.mnmax_nyq, 1.0e-2, "gmns");
+  expect_asym(w.bmns, w.mnmax_nyq, 1.0e-2, "bmns");
+  expect_asym(w.bsubumns, w.mnmax_nyq, 1.0e-2, "bsubumns");
+  // B_zeta is the near-vacuum 1/R field of a tokamak and so is almost up-down
+  // symmetric; its antisymmetric half is four orders below the rest.
+  expect_asym(w.bsubvmns, w.mnmax_nyq, 1.0e-6, "bsubvmns");
+  expect_asym(w.bsubsmnc, w.mnmax_nyq, 1.0e-3, "bsubsmnc");
+  expect_asym(w.bsubsmnc_full, w.mnmax_nyq, 1.0e-3, "bsubsmnc_full");
+  expect_asym(w.bsupumns, w.mnmax_nyq, 1.0e-2, "bsupumns");
+  expect_asym(w.bsupvmns, w.mnmax_nyq, 1.0e-3, "bsupvmns");
+  expect_asym(w.currumns, w.mnmax_nyq, 1.0, "currumns");
+  expect_asym(w.currvmns, w.mnmax_nyq, 1.0, "currvmns");
+
+  // raxis_cs multiplies sin(n * zeta) and this case has ntor = 0, so it is
+  // structurally zero rather than merely small.
+  ASSERT_EQ(w.raxis_cs.size(), 1);
+  EXPECT_EQ(w.raxis_cs[0], 0.0) << "raxis_cs is sin(0 * zeta)";
 
   // The asymmetry pushes the magnetic axis off the midplane: zaxis_cc is the
   // cos(n*zeta) (here n=0) antisymmetric axis amplitude, exactly zero for a

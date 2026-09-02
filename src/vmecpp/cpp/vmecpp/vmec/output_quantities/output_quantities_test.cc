@@ -117,25 +117,40 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   // remove zero-padding at end
   reference_am.resize(wout.am.size());
   EXPECT_THAT(wout.am, ElementsAreArray(reference_am));
-  // TODO(jons): check for spline profiles -> need to check am_aux_*
+
+  // The spline knots and values are written for every profile whether or not
+  // the corresponding profile is a spline; the unused ones are filled with -1
+  // knots and zero values. The reference is trimmed the same way the profile
+  // coefficients above are, because the array length is the ndatafmax the
+  // reference was built with rather than anything about the equilibrium.
+  for (const auto& [name, aux] :
+       {std::pair<const char*, const Eigen::VectorXd&>{"am_aux_s",
+                                                       wout.am_aux_s},
+        {"am_aux_f", wout.am_aux_f},
+        {"ai_aux_s", wout.ai_aux_s},
+        {"ai_aux_f", wout.ai_aux_f},
+        {"ac_aux_s", wout.ac_aux_s},
+        {"ac_aux_f", wout.ac_aux_f}}) {
+    std::vector<double> reference = NetcdfReadArray1D(ncid, name).value();
+    ASSERT_GE(reference.size(), static_cast<size_t>(aux.size())) << name;
+    reference.resize(aux.size());
+    EXPECT_THAT(aux, ElementsAreArray(reference)) << name;
+  }
 
   if (vmec_indata->ncurr == 0) {
     // constrained-iota; ignore current profile coefficients
-    // TODO(jons): check for spline profiles -> need to check ai_aux_*
     std::vector<double> reference_ai = NetcdfReadArray1D(ncid, "ai").value();
     // remove zero-padding at end
     reference_ai.resize(wout.ai.size());
     EXPECT_THAT(wout.ai, ElementsAreArray(reference_ai));
   } else {
     // constrained-current
-    // TODO(jons): check for spline profiles -> need to check ac_aux_*
     std::vector<double> reference_ac = NetcdfReadArray1D(ncid, "ac").value();
     reference_ac.resize(wout.ac.size());
     EXPECT_THAT(wout.ac, ElementsAreArray(reference_ac));
 
     if (wout.ai.size() > 0) {
       // iota profile (if present) taken as initial guess for first iteration
-      // TODO(jons): check for spline profiles -> need to check ai_aux_*
       std::vector<double> reference_ai = NetcdfReadArray1D(ncid, "ai").value();
       // remove zero-padding at end
       reference_ai.resize(wout.ai.size());
@@ -516,6 +531,8 @@ INSTANTIATE_TEST_SUITE_P(
     Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-7},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-7},
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-06},
+           DataSource{.identifier = "cth_like_fixed_bdy_spline_pressure",
+                      .tolerance = 1.0e-6},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 5.0e-06},
            DataSource{.identifier = "cma", .tolerance = 5.0e-06},
@@ -550,6 +567,21 @@ TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
 
   const bool reached_checkpoint = vmec.run().value();
   ASSERT_FALSE(reached_checkpoint);  // ran to convergence
+
+  // The spline knots are an input echo: the pressure spline the run was given
+  // has to come back out in the wout, since nothing else records it. This is
+  // the am_aux_* check the parameterized wout comparison cannot make, there
+  // being no Fortran reference that carries spline knots.
+  const WOutFileContents& spline_wout = vmec.output_quantities_.wout;
+  ASSERT_GT(vmec_indata->am_aux_s.size(), 0);
+  ASSERT_EQ(spline_wout.am_aux_s.size(), vmec_indata->am_aux_s.size());
+  ASSERT_EQ(spline_wout.am_aux_f.size(), vmec_indata->am_aux_f.size());
+  for (int i = 0; i < vmec_indata->am_aux_s.size(); ++i) {
+    EXPECT_EQ(spline_wout.am_aux_s[i], vmec_indata->am_aux_s[i])
+        << "knot " << i;
+    EXPECT_EQ(spline_wout.am_aux_f[i], vmec_indata->am_aux_f[i])
+        << "knot " << i;
+  }
 
   const WOutFileContents& wout = vmec.output_quantities_.wout;
 

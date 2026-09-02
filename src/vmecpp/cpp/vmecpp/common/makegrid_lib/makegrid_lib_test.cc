@@ -989,10 +989,6 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.normalize_by_currents ? "Scaled" : "Raw";
     });
 
-// TODO(jons): add test of WriteMakegridNetCDFFile
-// -> in particular, make sure that the consistency of number of serial circuits
-// in the response table and the number of circuit currents is properly checked
-
 TEST(TestMakegridLib,
      CheckNormalizeByCurrentsScalesMagneticFieldResponseTable) {
   static constexpr double kTolerance = 1.0e-6;
@@ -1088,5 +1084,175 @@ TEST(TestMakegridLib,
     }  // grid_index
   }  // circuit_index
 }  // CheckNormalizeByCurrentsScalesMagneticFieldResponseTable
+
+namespace {
+
+// A single circular filament on a small grid, enough to write a complete mgrid
+// file without making the test slow.
+MakegridParameters SmallMakegridParameters() {
+  return MakegridParameters{.normalize_by_currents = false,
+                            .assume_stellarator_symmetry = false,
+                            .number_of_field_periods = 1,
+                            .r_grid_minimum = 1.0,
+                            .r_grid_maximum = 2.0,
+                            .number_of_r_grid_points = 3,
+                            .z_grid_minimum = -0.5,
+                            .z_grid_maximum = 0.5,
+                            .number_of_z_grid_points = 3,
+                            .number_of_phi_grid_points = 4};
+}
+
+MagneticConfiguration SingleCircularFilament(double current) {
+  MagneticConfiguration magnetic_configuration;
+  SerialCircuit* serial_circuit = magnetic_configuration.add_serial_circuits();
+  serial_circuit->set_current(current);
+
+  Coil* coil = serial_circuit->add_coils();
+  coil->set_num_windings(1.0);
+
+  CurrentCarrier* current_carrier = coil->add_current_carriers();
+  CircularFilament* circular_filament =
+      current_carrier->mutable_circular_filament();
+  circular_filament->set_radius(1.5);
+
+  Vector3d* center = circular_filament->mutable_center();
+  center->set_x(0.0);
+  center->set_y(0.0);
+  center->set_z(0.0);
+
+  Vector3d* normal = circular_filament->mutable_normal();
+  normal->set_x(0.0);
+  normal->set_y(0.0);
+  normal->set_z(1.0);
+
+  return magnetic_configuration;
+}
+
+}  // namespace
+
+// Everything WriteMakegridNetCDFFile puts in the file has to come back out of
+// it unchanged, since MGridProvider reads exactly these variables.
+TEST(TestMakegridLib, CheckWriteMakegridNetCDFFileRoundTrip) {
+  static constexpr double kTolerance = 1.0e-15;
+  static constexpr double kCurrent = 5.0;
+
+  const MakegridParameters makegrid_parameters = SmallMakegridParameters();
+  const MagneticConfiguration magnetic_configuration =
+      SingleCircularFilament(kCurrent);
+
+  const absl::StatusOr<MagneticFieldResponseTable> response_table =
+      ComputeMagneticFieldResponseTable(makegrid_parameters,
+                                        magnetic_configuration);
+  ASSERT_OK(response_table);
+
+  Eigen::VectorXd circuit_currents(1);
+  circuit_currents[0] = kCurrent;
+
+  const std::string filename =
+      ::testing::TempDir() + "/mgrid_write_round_trip.nc";
+  const absl::Status write_status =
+      WriteMakegridNetCDFFile(filename, makegrid_parameters, circuit_currents,
+                              *response_table, std::nullopt);
+  ASSERT_TRUE(write_status.ok()) << write_status;
+
+  int ncid = 0;
+  ASSERT_EQ(nc_open(filename.c_str(), NC_NOWRITE, &ncid), NC_NOERR);
+
+  EXPECT_EQ(NetcdfReadInt(ncid, "nfp").value(),
+            makegrid_parameters.number_of_field_periods);
+  EXPECT_EQ(NetcdfReadInt(ncid, "ir").value(),
+            makegrid_parameters.number_of_r_grid_points);
+  EXPECT_EQ(NetcdfReadInt(ncid, "jz").value(),
+            makegrid_parameters.number_of_z_grid_points);
+  EXPECT_EQ(NetcdfReadInt(ncid, "kp").value(),
+            makegrid_parameters.number_of_phi_grid_points);
+  EXPECT_EQ(NetcdfReadInt(ncid, "nextcur").value(), 1);
+
+  EXPECT_TRUE(IsCloseRelAbs(makegrid_parameters.r_grid_minimum,
+                            NetcdfReadDouble(ncid, "rmin").value(),
+                            kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(makegrid_parameters.r_grid_maximum,
+                            NetcdfReadDouble(ncid, "rmax").value(),
+                            kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(makegrid_parameters.z_grid_minimum,
+                            NetcdfReadDouble(ncid, "zmin").value(),
+                            kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(makegrid_parameters.z_grid_maximum,
+                            NetcdfReadDouble(ncid, "zmax").value(),
+                            kTolerance));
+
+  // The field itself, in the (phi, z, r) layout MGridProvider expects.
+  const std::vector<std::vector<std::vector<double>>> b_r =
+      NetcdfReadArray3D(ncid, "br_001").value();
+  const std::vector<std::vector<std::vector<double>>> b_p =
+      NetcdfReadArray3D(ncid, "bp_001").value();
+  const std::vector<std::vector<std::vector<double>>> b_z =
+      NetcdfReadArray3D(ncid, "bz_001").value();
+
+  const int num_r = makegrid_parameters.number_of_r_grid_points;
+  const int num_z = makegrid_parameters.number_of_z_grid_points;
+  const int num_phi = makegrid_parameters.number_of_phi_grid_points;
+  ASSERT_EQ(static_cast<int>(b_r.size()), num_phi);
+  ASSERT_EQ(static_cast<int>(b_r[0].size()), num_z);
+  ASSERT_EQ(static_cast<int>(b_r[0][0].size()), num_r);
+
+  for (int index_phi = 0; index_phi < num_phi; ++index_phi) {
+    for (int index_z = 0; index_z < num_z; ++index_z) {
+      for (int index_r = 0; index_r < num_r; ++index_r) {
+        const int linear_index =
+            (index_phi * num_z + index_z) * num_r + index_r;
+        EXPECT_TRUE(IsCloseRelAbs(response_table->b_r(0, linear_index),
+                                  b_r[index_phi][index_z][index_r],
+                                  kTolerance));
+        EXPECT_TRUE(IsCloseRelAbs(response_table->b_p(0, linear_index),
+                                  b_p[index_phi][index_z][index_r],
+                                  kTolerance));
+        EXPECT_TRUE(IsCloseRelAbs(response_table->b_z(0, linear_index),
+                                  b_z[index_phi][index_z][index_r],
+                                  kTolerance));
+      }  // index_r
+    }  // index_z
+  }  // index_phi
+
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+}  // CheckWriteMakegridNetCDFFileRoundTrip
+
+// A circuit-current count that disagrees with the response table used to be a
+// CHECK, which aborted the process instead of telling the caller.
+TEST(TestMakegridLib, CheckWriteMakegridNetCDFFileRejectsInconsistentCurrents) {
+  const MakegridParameters makegrid_parameters = SmallMakegridParameters();
+  const absl::StatusOr<MagneticFieldResponseTable> response_table =
+      ComputeMagneticFieldResponseTable(makegrid_parameters,
+                                        SingleCircularFilament(5.0));
+  ASSERT_OK(response_table);
+
+  const std::string filename =
+      ::testing::TempDir() + "/mgrid_write_inconsistent.nc";
+
+  // Two currents for a single serial circuit.
+  Eigen::VectorXd too_many_currents(2);
+  too_many_currents << 5.0, 6.0;
+  EXPECT_EQ(
+      WriteMakegridNetCDFFile(filename, makegrid_parameters, too_many_currents,
+                              *response_table, std::nullopt)
+          .code(),
+      absl::StatusCode::kInvalidArgument);
+
+  // No currents at all.
+  const Eigen::VectorXd no_currents;
+  EXPECT_EQ(WriteMakegridNetCDFFile(filename, makegrid_parameters, no_currents,
+                                    *response_table, std::nullopt)
+                .code(),
+            absl::StatusCode::kInvalidArgument);
+
+  // An empty response table has nothing to write.
+  const MagneticFieldResponseTable empty_response_table;
+  Eigen::VectorXd one_current(1);
+  one_current[0] = 5.0;
+  EXPECT_EQ(WriteMakegridNetCDFFile(filename, makegrid_parameters, one_current,
+                                    empty_response_table, std::nullopt)
+                .code(),
+            absl::StatusCode::kInvalidArgument);
+}  // CheckWriteMakegridNetCDFFileRejectsInconsistentCurrents
 
 }  // namespace makegrid

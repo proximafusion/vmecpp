@@ -19,6 +19,7 @@
 #include "vmecpp/vmec/vmec/vmec.h"
 
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 using ::testing::TestWithParam;
 using ::testing::Values;
 
@@ -31,6 +32,46 @@ using vmecpp::Vmec;
 using vmecpp::VmecCheckpoint;
 using vmecpp::VmecINDATA;
 namespace fs = std::filesystem;
+
+// The toroidal resolution of the vacuum field and of the solver have to agree.
+// VmecINDATA::IsConsistent cannot check this, because it never sees the mgrid,
+// so Vmec::run does it once the provider is loaded.
+TEST(TestVmec, InMemoryMgridWithMismatchedNzetaIsRejected) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const VmecINDATA& indata = maybe_indata.value();
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+
+  auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  makegrid::MakegridParameters makegrid_params = *maybe_makegrid_params;
+
+  // Half the toroidal resolution the input asks for, on a coarse R-Z grid so
+  // that building the table stays cheap. Still even, which the symmetric grid
+  // requires.
+  ASSERT_EQ(makegrid_params.number_of_phi_grid_points, indata.nzeta);
+  makegrid_params.number_of_phi_grid_points = indata.nzeta / 2;
+  makegrid_params.number_of_r_grid_points = 5;
+  makegrid_params.number_of_z_grid_points = 5;
+
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok());
+
+  const auto output = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_FALSE(output.ok());
+  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(output.status().message()),
+              ::testing::HasSubstr("phi grid points"));
+}
 
 TEST(TestVmec, CheckInMemoryMgrid) {
   // test the constructor that takes an in-memory mgrid
