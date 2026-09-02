@@ -3883,7 +3883,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
         vmec_internal_results.z_e(lcfs_kl) + vmec_internal_results.z_o(lcfs_kl);
     result.rmax_surf = std::max(result.rmax_surf, r);
     result.rmin_surf = std::min(result.rmin_surf, r);
-    result.zmax_surf = std::max(result.zmax_surf, z);
+    result.zmax_surf = std::max(result.zmax_surf, std::abs(z));
   }  // kl
 
   result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaReduced) * DBL_MAX;
