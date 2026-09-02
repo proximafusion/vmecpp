@@ -1964,10 +1964,10 @@ class Threed1GeometricAndMagneticQuantities(BaseModelWithNumpy):
     zmax_surf: float
     """Maximum height on the boundary."""
 
-    bmin: jt.Float[np.ndarray, "num_half nThetaReduced"]
+    bmin: jt.Float[np.ndarray, "num_half nThetaEff"]
     """Minimum `|B|` per half-grid surface and poloidal angle."""
 
-    bmax: jt.Float[np.ndarray, "num_half nThetaReduced"]
+    bmax: jt.Float[np.ndarray, "num_half nThetaEff"]
     """Maximum `|B|` per half-grid surface and poloidal angle."""
 
     waist: jt.Float[np.ndarray, "n_symmetry_planes"]

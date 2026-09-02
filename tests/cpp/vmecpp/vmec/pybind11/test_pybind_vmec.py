@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 """Tests for VMEC++ pybind11 Python bindings."""
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,21 @@ from vmecpp.cpp import _vmecpp as vmec  # type: ignore[import]
 # I'm very open to alternative solutions :)
 REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
+
+# The threed1 reference dumps written by educational_VMEC live with the large
+# C++ tests rather than next to the netCDF references above.
+THREED1_DATA_DIR = (
+    REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp_large_cpp_tests" / "test_data"
+)
+
+MU_0 = 4.0e-7 * np.pi
+
+
+def load_threed1(case_name, subdirectory):
+    """Load the single threed1 reference dump held in the given subdirectory."""
+    (path,) = (THREED1_DATA_DIR / case_name / subdirectory).glob(f"*.{case_name}.json")
+    with open(path) as f:
+        return json.load(f)
 
 
 def is_close_ra(actual, expected, tolerance, context=""):
@@ -195,14 +211,6 @@ def test_output_quantities():
 
     jxbout.close()
 
-    # TODO(jons): implement tests against JSON debugging output
-    # threed1_first_table
-    # threed1_geometric_magnetic
-    # threed1_volumetrics
-    # threed1_axis
-    # threed1_betas
-    # threed1_shafranov_integrals
-
     wout = Dataset(TEST_DATA_DIR / f"wout_{case_name}.nc", "r")
 
     # mercier
@@ -319,7 +327,8 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.phi, wout["phi"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.phipf, wout["phipf"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.chi, wout["chi"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.chipf, wout["chipf"][()], 1.0e-8)
+    # The Fortran reference leaves the axis chipf at zero; see computeBContra.
+    assert is_close_ra(output_quantities.wout.chipf[1:], wout["chipf"][()][1:], 1.0e-8)
     assert is_close_ra(output_quantities.wout.jcuru, wout["jcuru"][()], 1.0e-6)
     assert is_close_ra(output_quantities.wout.jcurv, wout["jcurv"][()], 1.0e-6)
 
@@ -430,10 +439,110 @@ def test_output_quantities():
     # -------------------
     # non-stellarator-symmetric Fourier coefficients
 
-    # TODO(jons): implement these once VMEC++ has
-    # the non-stellarator-symmetric parts implemented
+    # cma and every reference wout file shipped with the tests are
+    # stellarator-symmetric, so there is no Fortran output here to compare the
+    # antisymmetric arrays against. Those are checked against educational_VMEC
+    # in vmecpp/vmec/vmec:vmec_test and against the exact rigid-rotation law in
+    # tests/test_lasym.py. What a symmetric case does pin down is the other
+    # side of the contract: with lasym false each antisymmetric array must be
+    # empty rather than a zero-filled array of the symmetric size.
+    for name in (
+        "raxis_cs",
+        "zaxis_cc",
+        "rmns",
+        "zmnc",
+        "lmnc_full",
+        "lmnc",
+        "gmns",
+        "bmns",
+        "bsubumns",
+        "bsubvmns",
+        "bsubsmnc",
+        "bsubsmnc_full",
+        "bsupumns",
+        "bsupvmns",
+        "currumns",
+        "currvmns",
+    ):
+        assert np.size(getattr(output_quantities.wout, name)) == 0, name
 
     wout.close()
+
+
+def _threed1_dumps_available(case_name="cma"):
+    """Whether the threed1 reference dumps have their git-lfs content."""
+    paths = list(
+        (THREED1_DATA_DIR / case_name / "threed1_axis").glob(f"*.{case_name}.json")
+    )
+    if len(paths) != 1:
+        return False
+    with open(paths[0]) as f:
+        return not f.read(64).startswith("version https://git-lfs.github.com/spec/")
+
+
+@pytest.mark.skipif(
+    not _threed1_dumps_available(),
+    reason="the threed1 reference dumps are stored in git-lfs",
+)
+def test_threed1_output_quantities():
+    """Check the threed1 structures the module exposes against educational_VMEC.
+
+    These quantities are compared member by member against the same dumps in
+    vmecpp_large_cpp_tests/vmec/output_quantities. What is checked here is that the
+    pybind11 layer exposes each structure and carries its values through, so a few
+    members of each are enough.
+    """
+    case_name = "cma"
+
+    indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / f"{case_name}.json")
+    output_quantities = vmec.run(indata)
+
+    # The first table stores some columns in the form they are printed in, so
+    # pressure is compared against presf / mu_0, following
+    # ComputeThreed1FirstTable in output_quantities.cc.
+    first_table = load_threed1(case_name, "threed1_firstTable")
+    t1 = output_quantities.threed1_first_table
+    assert is_close_ra(t1.iota, first_table["iotaf"], 1.0e-6)
+    assert is_close_ra(t1.j_dot_b, first_table["jdotb"], 1.0e-6)
+    assert is_close_ra(t1.pressure, np.asarray(first_table["presf"]) / MU_0, 1.0e-6)
+
+    geometric_magnetic = load_threed1(case_name, "threed1_geomag")
+    gm = output_quantities.threed1_geometric_magnetic
+    for member in ["volume_p", "aspect", "b0", "VolAvgB"]:
+        assert is_close_ra(getattr(gm, member), geometric_magnetic[member], 1.0e-6), (
+            member
+        )
+
+    # ygeo is stored flat over (number of cross sections, ns) and nested in the
+    # reference.
+    ns = output_quantities.wout.ns
+    assert is_close_ra(
+        np.reshape(np.asarray(gm.ygeo), (-1, ns)),
+        np.asarray(geometric_magnetic["ygeo"]),
+        1.0e-6,
+    )
+
+    volumetrics = load_threed1(case_name, "threed1_volquant")
+    vq = output_quantities.threed1_volumetrics
+    for member in ["int_modb", "avg_modb"]:
+        assert is_close_ra(getattr(vq, member), volumetrics[member], 1.0e-6), member
+
+    betas = load_threed1(case_name, "threed1_beta")
+    assert is_close_ra(output_quantities.threed1_betas.rbtor, betas["rbtor"], 1.0e-6)
+
+    shafranov = load_threed1(case_name, "threed1_shafrint")
+    si = output_quantities.threed1_shafranov_integrals
+    for member in ["smaleli", "musubi"]:
+        assert is_close_ra(getattr(si, member), shafranov[member], 1.0e-6), member
+
+    axis = load_threed1(case_name, "threed1_axis")
+    ax = output_quantities.threed1_axis
+    assert is_close_ra(ax.raxis_symm, axis["rax_symm"], 1.0e-6)
+    assert is_close_ra(ax.zaxis_symm, axis["zax_symm"], 1.0e-6)
+    # cma is stellarator-symmetric, so the antisymmetric axis arrays are empty
+    # where the reference carries explicit zeros.
+    assert np.size(ax.raxis_asym) == 0
+    assert np.size(ax.zaxis_asym) == 0
 
 
 def test_vmecpp_run_from_inmemory_mgrid():
