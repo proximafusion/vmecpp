@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788335115540,
+  "lastUpdate": 1788354078595,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -14951,6 +14951,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4702376319999644,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "aa7f4ce11b2f7f74690ddff1f811420f665f6926",
+          "message": "Take the extremum of |Z| for zmax_surf (#774)\n\n* Take the extremum of |Z| for zmax_surf\n\n* Update src/vmecpp/cpp/vmecpp/vmec/output_quantities/output_quantities.cc\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-09-02T14:54:50+02:00",
+          "tree_id": "60a14cdbf4eab76a345a37392b83dec1ea0a868d",
+          "url": "https://github.com/proximafusion/vmecpp/commit/aa7f4ce11b2f7f74690ddff1f811420f665f6926"
+        },
+        "date": 1788354076484,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.34119649200001734,
+            "range": "stddev: 0.0014342610640945624",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.67666743399991,
+            "range": "stddev: 0.011396860810789325",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1043945516666251,
+            "range": "stddev: 0.002034514226496328",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.7619259226667054,
+            "range": "stddev: 0.010596769198975446",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.7515786990000681,
+            "range": "stddev: 0.0052277908951338685",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.9673757056666545,
+            "range": "stddev: 0.0056956886883782224",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.462877144999993,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.29289953800002877,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
