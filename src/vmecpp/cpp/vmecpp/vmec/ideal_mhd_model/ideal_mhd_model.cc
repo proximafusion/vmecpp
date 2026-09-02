@@ -858,8 +858,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
         }
 
         for (int kl = 0; kl < s_.nZnT; ++kl) {
-          // extrapolate total pressure (from inside) to LCFS
-          // TODO(jons): mark that this is bsqsav(lk,3)
+          // extrapolate total pressure (from inside) to LCFS; this is
+          // bsqsav(:,3) in Fortran VMEC
           insideTotalPressure[kl] =
               1.5 * totalPressure[(r_.nsMaxH - 1 - r_.nsMinH) * s_.nZnT + kl] -
               0.5 * totalPressure[(r_.nsMaxH - 2 - r_.nsMinH) * s_.nZnT + kl];
