@@ -454,10 +454,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   // in order to always have a full toroidal module for the Fourier transform
   // below
   if (!s.lasym) {
-    // The search above covered 0 .. nZeta / 2. Every remaining plane is the
-    // mirror image of one of those: for an even number of toroidal grid points
-    // the half-period plane is its own mirror and is already done, for an odd
-    // number it is not, and its mirror is the first plane past the half period.
+    // mirror image along zeta, for even and odd nZeta
     for (int k = 1; k <= (s.nZeta - 1) / 2; ++k) {
       const int k_reversed = (s.nZeta - k) % s.nZeta;
       w.new_r_axis[k_reversed] = w.new_r_axis[k];
