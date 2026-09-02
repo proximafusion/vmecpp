@@ -27,5 +27,5 @@ cc_test(
         "//vmecpp/common/flow_control:flow_control",
         "//vmecpp/vmec/vmec:vmec",
     ],
-    size = "enormous",
+    size = "small",
 )
