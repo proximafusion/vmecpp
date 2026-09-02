@@ -433,9 +433,7 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 #endif  // _OPENMP
   {
     // set new values
-    // Fortran residue.f90: r1 = 1 / (2 * r0scale)**2, handed to getfsq as
-    // r1*fnorm. r0scale is 1 here, so the factor is 1/4. It applies to the R
-    // and Z residuals only; lambda carries fNormL instead.
+    // TODO(jons): what is `r1scale`?
     constexpr double r1scale = 0.25;
 
     m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * r1scale;
@@ -979,10 +977,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // contribution in the first few iterations, preventing termination, to
   // ensure the free-boundary forces have "enough time" to propagate through
   // to the inner surfaces.
-  // The 50 and the 1e-6 are Fortran residue.f90, which gates the same edge
-  // contribution on `delIter .lt. 50 .and. fsqrz .lt. 1.E-6`. They are here for
-  // backwards compatibility; ideally the vacuum pressure would always be part
-  // of the force balance.
+  // TODO(jurasic) the hard-coded 50 and 1e-6 are only here for backwards
+  // compatibility, ideally vacuum-pressure should always part of the
+  // force-balance
   bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
   // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
   // wouldn't trigger without special handling for the hot-restart case.
@@ -2204,17 +2201,13 @@ void IdealMhdModel::updateLambdaPreconditioner() {
         0.5 * (cLambda[jF + 1 - r_.nsMinH] + cLambda[jF - r_.nsMinH]);
   }
 
-  // assemble lambda preconditioning matrix
-  //
-  // The loop below starts at jMin, so on the thread holding the axis the jF = 0
-  // row is never assigned. That row has to stay zero, which it already is from
-  // the setZero at construction, so dropping this fill leaves every test
-  // unchanged. It is kept so the invariant does not depend on nothing else ever
-  // writing into that row.
-  absl::c_fill_n(lambdaPreconditioner,
-                 (r_.nsMaxFIncludingLcfs - r_.nsMinF) * (s_.ntor + 1) * s_.mpol,
-                 0);
-
+  // Assemble the lambda preconditioning matrix. Every element the loop below
+  // skips has to be zero, and already is: lambdaPreconditioner is zeroed once
+  // at construction and this loop is the only thing that ever writes it. The
+  // two skipped sets are the jF = 0 row, when this thread holds the axis and
+  // jMin is 1, and the (m, n) = (0, 0) element on every surface. Both stay
+  // zero for the life of the model, which is what zeroes the corresponding
+  // lambda forces in applyLambdaPreconditioner.
   for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
     for (int n = 0; n < s_.ntor + 1; ++n) {
       double tnn = n * s_.nfp * n * s_.nfp;
@@ -2280,8 +2273,16 @@ void IdealMhdModel::computePreconditioningMatrix(
     temp_h.setZero(r_.nsMaxH - r_.nsMinH);
   }
 
-  // Fortran precondn.f90: pfactor = -4 * r0scale**2, restored in v8.51 after
-  // v8.50 had used -2 * r0scale**2. r0scale is 1 here.
+  // The coefficient of the second-radial-derivative terms of the MHD forces,
+  // Section 5.14 of docs/the_numerics_of_vmecpp.pdf, which writes them as
+  // FR = -D_RR d2R/drho2 + D_RZ d2Z/drho2 + ... with D_RR = Ztheta^2 d0 and
+  // d0 = R |B|^2 / (mu0 tau) = 2 R PB / tau (Eqns. 5.256 to 5.261). pTau below
+  // is pFactor * r12 * totalPressure / tau * wInt, and its middle factor is
+  // d0 / 2 once the pressure part, which carries no second radial derivative,
+  // is dropped. So pFactor = -4 makes pTau = -2 d0 wInt: the sign is the one
+  // in FR above, which leaves the assembled tridiagonal as dF/dx rather than
+  // its negative, and the 4 pairs with the 1/4 the half-grid averages below
+  // carry, as the cx line notes where 0.25 * pFactor is exactly -1.
   double pFactor = -4.0;
 
   // zero intermediate work arrays
@@ -2439,10 +2440,8 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
   }
   // tcon
 
-  // Fortran bcovar.f90, verbatim. The quadratic ramp in ns is an empirical
-  // choice; the reference gives no derivation for the 1/60 and 1/(200*120)
-  // either. It grows the constraint-force multiplier by about a factor 3
-  // between ns = 15 and ns = 99.
+  // TODO(jons): some parabola in ns,
+  // but why these specific values of the parameters ?
   double tcon_multiplier =
       tcon0 * (1.0 + m_fc_.ns * (1.0 / 60.0 + m_fc_.ns / (200.0 * 120.0)));
 
