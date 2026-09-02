@@ -32,16 +32,16 @@ def distribution_root() -> Path:
     package_root, but doesn't have to be.
 
     The two differ in editable installations, where package_root() will point to the
-    source files, and distribution will point the /site-packages/vmecpp folder of your
-    python environment. It is the correct path to use for accessing shared libraries and
-    executables that come with vmecpp.
+    source files, and distribution will point to the /site-packages/vmecpp folder of
+    your python environment. It is the correct path to use for accessing shared
+    libraries and executables that come with vmecpp.
     """
     return Path(importlib.metadata.distribution("vmecpp").locate_file("vmecpp"))  # type: ignore
 
 
 @contextlib.contextmanager
 def change_working_directory_to(path: Path) -> Generator[None, None, None]:
-    """Changes the working director within a context manager.
+    """Changes the working directory within a context manager.
 
     Args:
         path: The path to change the working directory to.
@@ -170,7 +170,7 @@ def indata_to_json(
 # adapted from https://github.com/jonathanschilling/indata2json/blob/4274976/json2indata
 def vmecpp_json_to_indata(vmecpp_json: dict[str, Any]) -> str:
     """Convert a dictionary with the contents of a VMEC++ JSON input file to the
-    corresponding conents of a VMEC2000 INDATA file."""
+    corresponding contents of a VMEC2000 INDATA file."""
 
     indata: str = "&INDATA\n"
 

@@ -1,3 +1,2 @@
-# Block simsopt 1.11.0 wheels with unsupported AVX-512 instructions. Python 3.14
-# has no wheel and must use the corrected 1.11.0 source distribution.
-simsopt!=1.11.0; python_version != "3.14"
+# Block simsopt 1.11.0 wheels with unsupported AVX-512 instructions.
+simsopt!=1.11.0

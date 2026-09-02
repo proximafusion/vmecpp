@@ -823,6 +823,10 @@ class VmecWOut(BaseModelWithNumpy):
     )
 
     _CPP_WOUT_SPECIAL_HANDLING: typing.ClassVar[list[str]] = [
+        # Free-boundary-only fields (None when lfreeb=False)
+        "potvac",
+        "xmpot",
+        "xnpot",
         # Asymmetric-only fields (None when lasym=False)
         "raxis_cs",
         "zaxis_cc",
@@ -1073,6 +1077,24 @@ class VmecWOut(BaseModelWithNumpy):
 
     equif: jt.Float[np.ndarray, "n_surfaces"]
     """Radial force balance residual on full-grid."""
+
+    potvac: jt.Float[np.ndarray, "mnpd"] | None = None
+    """Fourier coefficients of Nestor's scalar magnetic potential, ``sin(mu - nv)``
+    followed by ``cos(mu - nv)``. ``None`` for a fixed-boundary run."""
+
+    xmpot: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_pot"]] | None = None
+    """Poloidal mode numbers ``m`` for the ``potvac`` coefficients.
+
+    ``None`` for a
+    fixed-boundary run.
+    """
+
+    xnpot: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_pot"]] | None = None
+    """Toroidal mode numbers times number of toroidal field periods ``n * nfp`` for the
+    ``potvac`` coefficients.
+
+    ``None`` for a fixed-boundary run.
+    """
 
     # In wout these are stored as float64, although they only take integer values.
     xm: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode"]]
@@ -1451,8 +1473,8 @@ class VmecWOut(BaseModelWithNumpy):
         """Write the NetCDF3 wout representation of this object to out_path."""
         with netCDF4.Dataset(out_path, "w", format="NETCDF3_CLASSIC") as fnc:
             # create dimensions (in the same order as VMEC2000)
-            # Dimensions that are not in use yet, written for compatibility
-            fnc.createDimension("mn_mode_pot", 100)
+            # Dimensions that are not in use yet, written for compatibility.
+            # mn_mode_pot is sized from xmpot when a free-boundary run writes it.
             fnc.createDimension("current_label", 30)
             fnc.createDimension("dim_00006", 6)
 
@@ -1559,6 +1581,10 @@ class VmecWOut(BaseModelWithNumpy):
                         annotation = (
                             non_none_args[0] if len(non_none_args) == 1 else None
                         )
+                    # Pydantic strips Annotated for a bare field, but not when it
+                    # sits inside a union, as in `SerializeIntAsFloat[...] | None`.
+                    if typing.get_origin(annotation) is typing.Annotated:
+                        annotation = typing.get_args(annotation)[0]
                     if (
                         annotation is not None
                         and isinstance(annotation, type)
@@ -1633,6 +1659,12 @@ class VmecWOut(BaseModelWithNumpy):
             if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
                 attrs[field] = getattr(cpp_wout, field)
 
+        # The vacuum potential and its mode numbers exist only for a
+        # free-boundary run; the C++ side leaves them empty otherwise.
+        for field in ["potvac", "xmpot", "xnpot"]:
+            value = getattr(cpp_wout, field)
+            attrs[field] = value if len(value) > 0 else None
+
         # Asymmetric attributes are only populated when lasym=True
         # All of them are defaulted to None when lasym=False
         if cpp_wout.lasym:
@@ -1665,6 +1697,12 @@ class VmecWOut(BaseModelWithNumpy):
         for field in own_model_fields(VmecWOut):
             if field not in VmecWOut._CPP_WOUT_SPECIAL_HANDLING:
                 setattr(cpp_wout, field, getattr(self, field))
+
+        # Free-boundary fields; left empty on the C++ side when absent.
+        for field in ["potvac", "xmpot", "xnpot"]:
+            value = getattr(self, field)
+            if value is not None:
+                setattr(cpp_wout, field, value)
 
         # Asymmetric fields (only set when lasym=True)
         if self.lasym:
@@ -1930,10 +1968,10 @@ class Threed1GeometricAndMagneticQuantities(BaseModelWithNumpy):
     zmax_surf: float
     """Maximum height on the boundary."""
 
-    bmin: jt.Float[np.ndarray, "num_half nThetaReduced"]
+    bmin: jt.Float[np.ndarray, "num_half nThetaEff"]
     """Minimum `|B|` per half-grid surface and poloidal angle."""
 
-    bmax: jt.Float[np.ndarray, "num_half nThetaReduced"]
+    bmax: jt.Float[np.ndarray, "num_half nThetaEff"]
     """Maximum `|B|` per half-grid surface and poloidal angle."""
 
     waist: jt.Float[np.ndarray, "n_symmetry_planes"]

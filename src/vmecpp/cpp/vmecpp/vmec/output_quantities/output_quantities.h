@@ -447,9 +447,8 @@ struct MercierStabilityIntermediateQuantities {
   // (num_full, nZnT)
   RowMatrixXd bdotj;
 
-  // 1.0 / gpp on full-grid
+  // 1 / |grad(s)|^2 on full-grid, formed as sqrt(g)^2 / |e_theta x e_zeta|^2
   // (num_full, nZnT)
-  // TODO(jons): figure out what this really is
   RowMatrixXd gpp;
 
   // |B|^2 on half grid
@@ -559,8 +558,8 @@ struct Threed1FirstTableIntermediate {
   // [num_half] surface-averaged beta profile
   Eigen::VectorXd beta_vol;
 
-  // [num_half] <tau / R> / V'
-  // TODO(jons): figure out what this really is
+  // [num_half] <tau / R> / V', which is the flux-surface average of 1/R;
+  // written to wout as over_r
   Eigen::VectorXd overr;
 
   // plasma beta on magnetic axis
@@ -1199,8 +1198,12 @@ struct WOutFileContents {
 
   std::vector<std::string> curlabel;
 
-  // currently unused
+  // [2 * mnpd] sin(mu - nv) coefficients, then cos(mu - nv).
   Eigen::VectorXd potvac;
+
+  // [mnpd] mode numbers of potvac; not written by Fortran VMEC.
+  Eigen::VectorXi xmpot;
+  Eigen::VectorXi xnpot;
 
   // -------------------
   // mode numbers for Fourier coefficient arrays below
@@ -1370,6 +1373,7 @@ OutputQuantities ComputeOutputQuantities(
     const FlowControl& fc, const VmecConstants& constants,
     const FourierBasisFastPoloidal& t, const HandoverStorage& h,
     const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
     const std::vector<std::unique_ptr<RadialPartitioning> >&
         radial_partitioning,
     const std::vector<std::unique_ptr<FourierGeometry> >& decomposed_x,
@@ -1543,6 +1547,7 @@ WOutFileContents ComputeWOutFileContents(
     const VmecINDATA& indata, const Sizes& s, const FourierBasisFastPoloidal& t,
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
     VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
     const BSubSFull& bsubs_full, const MercierFileContents& mercier,
     const JxBOutFileContents& jxbout,
@@ -1560,10 +1565,6 @@ WOutFileContents ComputeWOutFileContents(
 // builds they do not reproduce to the same tolerance as the profiles across
 // machines. Pass current_density_tolerance > 0 to compare those two with a
 // looser bound while keeping every other quantity at tolerance.
-void CompareWOut(const WOutFileContents& test_wout,
-                 const WOutFileContents& expected_wout, double tolerance,
-                 bool check_equal_niter = true,
-                 double current_density_tolerance = 0.0);
 }  // namespace vmecpp
 
 #endif  // VMECPP_VMEC_OUTPUT_QUANTITIES_OUTPUT_QUANTITIES_H_

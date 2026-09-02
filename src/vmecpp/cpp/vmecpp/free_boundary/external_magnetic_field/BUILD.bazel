@@ -14,5 +14,6 @@ cc_library(
         "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
         "@abscab_cpp//abscab:abscab",
         "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/status:status",
     ],
 )

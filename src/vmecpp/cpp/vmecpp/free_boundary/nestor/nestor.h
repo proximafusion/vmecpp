@@ -31,7 +31,7 @@ class Nestor : public FreeBoundaryBase {
          std::span<double> vacuum_b_phi_share,
          std::span<double> vacuum_b_z_share);
 
-  bool update(
+  absl::StatusOr<bool> update(
       const std::span<const double> rCC, const std::span<const double> rSS,
       const std::span<const double> rSC, const std::span<const double> rCS,
       const std::span<const double> zSC, const std::span<const double> zCS,

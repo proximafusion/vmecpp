@@ -104,17 +104,20 @@ version_file = "src/vmecpp/__about__.py"
 
 [tool.cibuildwheel]
 archs = ["native"]
-skip = ["*-musllinux*"]
-test-skip = ["cp314-*", "cp314t-*"] # Skip tests on Python 3.14 until all our dependencies start supporting it. The wheels are still valid, and become installable the moment simsopt releases 3.14 support.
+# jaxlib, a transitive dependency of simsopt, publishes no macOS x86_64 wheels
+# for CPython 3.14, so installing the built wheel to test it cannot resolve
+# there. Skip both the GIL and free-threaded variants. Intel macOS still builds
+# and tests CPython 3.10-3.13.
+skip = ["*-musllinux*", "cp314*-macosx_x86_64"]
 build-frontend = "build[uv]" # More modern package manager than pip, with faster builds
 test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/test_free_boundary.py"
 
 [tool.cibuildwheel.linux]
-before-build = "yum install -y netcdf-devel hdf5-devel"
+before-build = "yum install -y zlib-devel"
 
 [tool.cibuildwheel.macos]
-before-build = "brew install gcc netcdf hdf5 libomp"
+before-build = "brew install gcc libomp"
 
 [tool.coverage.run]
 source_pkgs = ["vmecpp", "tests"]

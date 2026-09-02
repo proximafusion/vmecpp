@@ -7,13 +7,16 @@
 #include <netcdf.h>
 
 #include <algorithm>
+#include <array>
 #include <cfloat>  // DBL_MAX
 #include <cstdio>
 #include <fstream>
-#include <iostream>
+#include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "util/netcdf_io/netcdf_io.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -59,6 +62,13 @@ absl::Status ValidateFieldContributionShape(
 }
 
 }  // namespace
+
+void MGridProvider::ResetAccumulatedField() {
+  const int num_grid_points = numPhi * numZ * numR;
+  bR.setZero(num_grid_points);
+  bP.setZero(num_grid_points);
+  bZ.setZero(num_grid_points);
+}
 
 MGridProvider::MGridProvider() {
   nfp = -1;
@@ -163,6 +173,37 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
   numPhi = *num_phi_or;
 
   nextcur = *nextcur_or;
+
+  // coil_group is a [nextcur][string width] character array, each name padded
+  // on the right. The width is whatever the file declares, so a writer that
+  // does not use MAKEGRID's 30 still reads correctly.
+  coil_group_names.clear();
+  {
+    int id_coil_group = 0;
+    std::array<int, 2> coil_group_dimensions = {0, 0};
+    size_t string_width = 0;
+    if (nc_inq_varid(ncid, "coil_group", &id_coil_group) == NC_NOERR &&
+        nc_inq_vardimid(ncid, id_coil_group, coil_group_dimensions.data()) ==
+            NC_NOERR &&
+        nc_inq_dimlen(ncid, coil_group_dimensions[1], &string_width) ==
+            NC_NOERR &&
+        string_width > 0) {
+      std::vector<char> raw(static_cast<size_t>(nextcur) * string_width);
+      if (nc_get_var_text(ncid, id_coil_group, raw.data()) == NC_NOERR) {
+        coil_group_names.reserve(nextcur);
+        for (int i = 0; i < nextcur; ++i) {
+          std::string name(raw.data() + static_cast<size_t>(i) * string_width,
+                           string_width);
+          size_t end = name.size();
+          while (end > 0 && name[end - 1] <= 0x20) {
+            --end;
+          }
+          name.erase(end);
+          coil_group_names.push_back(name);
+        }
+      }
+    }
+  }
   if (coil_currents.size() != nextcur) {
     nc_close(ncid);
     return absl::InvalidArgumentError(
@@ -173,11 +214,8 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
 
   mgrid_mode = *mgrid_mode_or;
 
-  // Resize and make sure that the accumulation arrays are reset to zeros
-  // if they contained previous contents from an earlier call to this routine.
-  bR.setZero(numPhi * numZ * numR);
-  bP.setZero(numPhi * numZ * numR);
-  bZ.setZero(numPhi * numZ * numR);
+  // Reset in case an earlier call left contents behind.
+  ResetAccumulatedField();
 
   // combine coil contributions, weighted by coil currents
   for (int i = 0; i < nextcur; ++i) {
@@ -225,21 +263,14 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
       return with_context(shape_status);
     }
 
-    for (int index_phi = 0; index_phi < numPhi; ++index_phi) {
-      for (int index_z = 0; index_z < numZ; ++index_z) {
-        for (int index_r = 0; index_r < numR; ++index_r) {
-          const int linear_index =
-              (index_phi * numZ + index_z) * numR + index_r;
-
-          bR[linear_index] +=
-              b_r_contribution[index_phi][index_z][index_r] * coil_currents[i];
-          bP[linear_index] +=
-              b_p_contribution[index_phi][index_z][index_r] * coil_currents[i];
-          bZ[linear_index] +=
-              b_z_contribution[index_phi][index_z][index_r] * coil_currents[i];
-        }  // index_r
-      }  // index_z
-    }  // index_phi
+    AccumulateCircuit(coil_currents[i], [&](int linear_index) {
+      const int index_r = linear_index % numR;
+      const int index_z = (linear_index / numR) % numZ;
+      const int index_phi = linear_index / (numZ * numR);
+      return std::make_tuple(b_r_contribution[index_phi][index_z][index_r],
+                             b_p_contribution[index_phi][index_z][index_r],
+                             b_z_contribution[index_phi][index_z][index_r]);
+    });
   }  // nextcur
 
   if (nc_close(ncid) != NC_NOERR) {
@@ -279,28 +310,24 @@ absl::Status MGridProvider::LoadFields(
 
   nextcur = static_cast<int>(coil_currents.size());
 
+  // an in-memory response table carries no coil group names
+  coil_group_names.clear();
+
   if (mgrid_params.normalize_by_currents) {
     mgrid_mode = "S";
   } else {
     mgrid_mode = "R";
   }
 
-  // TODO(eguiraud): factor out this part that is duplicated
-  const int num_grid_points = numPhi * numZ * numR;
-  bR.setZero(num_grid_points);
-  bP.setZero(num_grid_points);
-  bZ.setZero(num_grid_points);
+  ResetAccumulatedField();
 
   // combine coil contributions, weighted by coil currents
   for (int i = 0; i < nextcur; ++i) {
-    for (int linear_index = 0; linear_index < num_grid_points; ++linear_index) {
-      bR[linear_index] +=
-          magnetic_response_table.b_r(i, linear_index) * coil_currents[i];
-      bP[linear_index] +=
-          magnetic_response_table.b_p(i, linear_index) * coil_currents[i];
-      bZ[linear_index] +=
-          magnetic_response_table.b_z(i, linear_index) * coil_currents[i];
-    }  // linear_index
+    AccumulateCircuit(coil_currents[i], [&](int linear_index) {
+      return std::make_tuple(magnetic_response_table.b_r(i, linear_index),
+                             magnetic_response_table.b_p(i, linear_index),
+                             magnetic_response_table.b_z(i, linear_index));
+    });
   }  // nextcur
 
   has_mgrid_loaded_ = true;
@@ -322,16 +349,17 @@ void MGridProvider::SetFixedMagneticField(const Eigen::VectorXd& fixed_br,
 }  // SetFixedMagneticField
 
 // interpolate mgrid file at current flux surface
-void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
-                                const Eigen::VectorXd& rLCFS,
-                                const Eigen::VectorXd& zLCFS,
-                                Eigen::VectorXd& m_interpBr,
-                                Eigen::VectorXd& m_interpBp,
-                                Eigen::VectorXd& m_interpBz) const {
+absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
+                                        int nZnT, const Eigen::VectorXd& rLCFS,
+                                        const Eigen::VectorXd& zLCFS,
+                                        Eigen::VectorXd& m_interpBr,
+                                        Eigen::VectorXd& m_interpBp,
+                                        Eigen::VectorXd& m_interpBz) const {
   CHECK(has_mgrid_loaded_) << "no mgrid loaded";
 
   if (has_fixed_field_) {
     // quick return: just copy into target storage
+    // Uniform across the team, so skipping the barrier below is safe.
 
     for (int kl = ztMin; kl < ztMax; ++kl) {
       m_interpBr[kl - ztMin] = fixed_br_[kl];
@@ -339,25 +367,13 @@ void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
       m_interpBz[kl - ztMin] = fixed_bz_[kl];
     }  // kl
 
-    return;
+    return absl::OkStatus();
   }
-
-  double min_r = DBL_MAX;
-  double max_r = -DBL_MAX;
-
-  double min_z = DBL_MAX;
-  double max_z = -DBL_MAX;
 
   bool exceedGridSizeR = false;
   bool exceedGridSizeZ = false;
   for (int kl = ztMin; kl < ztMax; ++kl) {
     int k = kl % nZeta;
-
-    min_r = std::min(min_r, rLCFS[kl]);
-    max_r = std::max(max_r, rLCFS[kl]);
-
-    min_z = std::min(min_z, zLCFS[kl]);
-    max_z = std::max(max_z, zLCFS[kl]);
 
     // check if plasma boundary exceeds pre-computed grid
     if (rLCFS[kl] < minR || rLCFS[kl] > maxR) {
@@ -403,30 +419,53 @@ void MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
         w11 * bZ[kj_i_] + w12 * bZ[kj1i_] + w21 * bZ[kj_i1] + w22 * bZ[kj1i1];
   }  // kl
 
+  absl::Status status = absl::OkStatus();
   if (exceedGridSizeR || exceedGridSizeZ) {
+    // The clamped field no longer represents the coils outside the grid.
     // TODO(jons): automatically evaluate B outside of grid based on coil
     // definitions and Biot-Savart
     // --> will only get slower, but more robust (and accurate?)
     // --> would also require to always have coil geometry inside mgrid file for
     // on-the-fly re-evaluation...
-    // NOTE: This is not suppressed by the `verbose` flag (vmec.cc:Vmec), since
-    // it is considered an error message.
-    std::cerr << "WARNING: Plasma Boundary exceeded Vacuum Grid Size\n";
+    // Global, not per-slice, so the message is the same whoever reports.
+    double min_r = DBL_MAX;
+    double max_r = -DBL_MAX;
+    double min_z = DBL_MAX;
+    double max_z = -DBL_MAX;
+    for (int kl = 0; kl < nZnT; ++kl) {
+      min_r = std::min(min_r, rLCFS[kl]);
+      max_r = std::max(max_r, rLCFS[kl]);
+      min_z = std::min(min_z, zLCFS[kl]);
+      max_z = std::max(max_z, zLCFS[kl]);
+    }  // kl
 
+    std::string exceeded_extents;
     if (exceedGridSizeR) {
-      std::cout << absl::StrFormat("  R: min = % .3e  max = % .3e\n", min_r,
-                                   max_r);
+      exceeded_extents += absl::StrFormat(
+          " R: boundary [% .6e, % .6e] against grid [% .6e, % .6e].", min_r,
+          max_r, minR, maxR);
+    }
+    if (exceedGridSizeZ) {
+      exceeded_extents += absl::StrFormat(
+          " Z: boundary [% .6e, % .6e] against grid [% .6e, % .6e].", min_z,
+          max_z, minZ, maxZ);
     }
 
-    if (exceedGridSizeZ) {
-      std::cout << absl::StrFormat("  Z: min = % .3e  max = % .3e\n", min_z,
-                                   max_z);
-    }
+    // kFailedPrecondition so return_outputs_even_if_not_converged recovers.
+    status = absl::FailedPreconditionError(absl::StrFormat(
+        "MGridProvider::interpolate: the plasma boundary exceeded the vacuum "
+        "field grid, so the interpolated field was clamped to the grid edge "
+        "and is not physically meaningful.%s Enlarge the mgrid domain so that "
+        "it contains the plasma boundary at every iteration.",
+        exceeded_extents));
   }
 
+  // Unconditional: every thread must reach this barrier or the team deadlocks.
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+
+  return status;
 }
 
 }  // namespace vmecpp

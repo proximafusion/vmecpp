@@ -33,11 +33,6 @@ using magnetics::NumWindingsToCircuitCurrents;
 using magnetics::SetCircuitCurrents;
 using magnetics::VectorPotential;
 
-// TODO(jons): implement stellarator-symmetric grid and follow-up flip-mirroring
-// of magnetic quantities NOTE: For now, everything here is computed as
-// non-stellarator-symmetric,
-//       so there is a factor of ~2 speedup around the corner.
-
 absl::Status IsValidMakegridParameters(
     const MakegridParameters& makegrid_parameters) {
   // number of field periods has to be at least 1
@@ -306,12 +301,11 @@ absl::StatusOr<RowMatrix3Xd> MakeCylindricalGrid(
 
   int num_phi_effective = num_phi;
   if (makegrid_parameters.assume_stellarator_symmetry) {
-    if (num_phi % 2 != 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "number of toroidal grid points has to be even for being able to "
-          "make use to stellarator symmetry in makegrid, but was num_phi=",
-          num_phi));
-    }
+    // Points 0 .. num_phi/2 are computed and the rest are mirrored onto them by
+    // phi -> -phi, which is index num_phi - idx_phi. An even num_phi puts a
+    // grid point on the half-period plane, where that map is the identity; an
+    // odd one has no such point, and every mirrored index still lands inside
+    // the computed range.
     num_phi_effective = num_phi / 2 + 1;
   }
 
@@ -515,26 +509,9 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
       continue;
     }
 
-    // Evaluation result B (n, 3) in cartesian coordinates
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> magnetic_field_stl(
-        number_of_evaluation_points);
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      magnetic_field_stl[i].resize(3, 0.0);
-    }
-
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> cylindrical_grid_stl{
-        static_cast<std::size_t>(maybe_cylindrical_grid.value().cols())};
-    CHECK_EQ(static_cast<std::size_t>(number_of_evaluation_points),
-             cylindrical_grid_stl.size());
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      cylindrical_grid_stl[i].resize(3);
-      for (int j = 0; j < 3; ++j) {
-        cylindrical_grid_stl[i][j] = maybe_cylindrical_grid.value()(j, i);
-      }
-    }
-    CHECK_EQ(magnetic_field_stl.size(), cylindrical_grid_stl.size());
+    // Evaluation result B (3, n) in cartesian coordinates
+    RowMatrix3Xd magnetic_field =
+        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
 
     // We parallelize over linear index of evaluation locations, since that
     // allows us to use more CPUs and parallelize also for configurations with
@@ -543,15 +520,12 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     // independent circuits but few evaluation locations. This is done inside of
     // ABSCAB, which is used within this call to `MagneticField`.
     absl::Status magnetic_field_status =
-        MagneticField(m_magnetic_configuration, cylindrical_grid_stl,
-                      /*m_magnetic_field=*/magnetic_field_stl);
+        MagneticField(m_magnetic_configuration, maybe_cylindrical_grid.value(),
+                      /*m_magnetic_field=*/magnetic_field);
     if (!magnetic_field_status.ok()) {
       status[circuit_index] = magnetic_field_status;
       continue;
     }
-    RowMatrix3Xd magnetic_field =
-        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
-    magnetic_field = vmecpp::ToEigenMatrix(magnetic_field_stl).transpose();
     CartesianToCylindricalField(cos_phi, sin_phi, magnetic_field, num_z, num_r,
                                 number_of_evaluation_points,
                                 response_table_b.b_r.row(circuit_index),
@@ -677,22 +651,9 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
       continue;
     }
 
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> vector_potential_stl(
-        number_of_evaluation_points);
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      vector_potential_stl[i].resize(3, 0.0);
-    }
-
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> cylindrical_grid_stl{
-        static_cast<std::size_t>(maybe_cylindrical_grid.value().cols())};
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      cylindrical_grid_stl[i].resize(3);
-      for (int j = 0; j < 3; ++j) {
-        cylindrical_grid_stl[i][j] = maybe_cylindrical_grid.value()(j, i);
-      }
-    }
+    // Evaluation result A (3, n) in cartesian coordinates
+    RowMatrix3Xd vector_potential =
+        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
 
     // We parallelize over linear index of evaluation locations, since that
     // allows us to use more CPUs and parallelize also for configurations with
@@ -700,16 +661,13 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     // independent circuits and many evaluation locations, rather than many
     // independent circuits but few evaluation locations. This is done inside of
     // ABSCAB, which is used within this call to `VectorPotential`.
-    absl::Status vector_potential_status =
-        VectorPotential(m_magnetic_configuration, cylindrical_grid_stl,
-                        /*m_vector_potential=*/vector_potential_stl);
+    absl::Status vector_potential_status = VectorPotential(
+        m_magnetic_configuration, maybe_cylindrical_grid.value(),
+        /*m_vector_potential=*/vector_potential);
     if (!vector_potential_status.ok()) {
       status[circuit_index] = vector_potential_status;
       continue;
     }
-    RowMatrix3Xd vector_potential =
-        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
-    vector_potential = vmecpp::ToEigenMatrix(vector_potential_stl).transpose();
 
     // ABSCAB computes the Cartesian components of the vector potential,
     // so we need to convert the x and y componets into r and phi
@@ -787,14 +745,18 @@ absl::Status WriteMakegridNetCDFFile(
 
   // number of response tables in this mgrid file
   const int n_serial_circuits = static_cast<int>(response_table_b.b_r.rows());
-  CHECK_GT(n_serial_circuits, 0)
-      << "No magnetic field cache present to be written.";
+  if (n_serial_circuits <= 0) {
+    return absl::InvalidArgumentError(
+        "No magnetic field cache present to be written.");
+  }
 
   const int n_circuit_currents = static_cast<int>(circuit_currents.size());
-  CHECK_EQ(n_circuit_currents, n_serial_circuits) << absl::StrFormat(
-      "number of provided circuit currents (%d) has to equal number of serial "
-      "circuits(%d)",
-      n_circuit_currents, n_serial_circuits);
+  if (n_circuit_currents != n_serial_circuits) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "number of provided circuit currents (%d) has to equal number of "
+        "serial circuits (%d)",
+        n_circuit_currents, n_serial_circuits));
+  }
 
   int ncid = 0;
   CHECK_EQ(nc_create(makegrid_filename.c_str(), NC_CLOBBER, &ncid), NC_NOERR);

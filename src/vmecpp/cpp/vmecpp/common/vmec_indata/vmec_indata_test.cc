@@ -207,6 +207,67 @@ TEST(TestVmecINDATA, CheckDeltBounds) {
   EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
+// An unusable profile parameterization silently evaluates to zero in the
+// solver, so it has to be rejected here instead.
+TEST(TestVmecINDATA, CheckProfileParameterizationNames) {
+  VmecINDATA indata;
+  ASSERT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // unknown name
+  indata.pmass_type = "power_serise";
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // known, but not applicable to the pressure profile
+  indata.pmass_type = "sum_atan";
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.pmass_type = "power_series";
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // All three are checked for either ncurr: piota is the initial guess for the
+  // iota profile even when the run is current-constrained.
+  for (const int ncurr : {0, 1}) {
+    indata.ncurr = ncurr;
+    ASSERT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << "ncurr=" << ncurr;
+
+    indata.piota_type = "power_series_i";  // current-only
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << "ncurr=" << ncurr;
+    indata.piota_type = "power_series";
+
+    indata.pcurr_type = "two_lorentz";  // pressure-only
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << "ncurr=" << ncurr;
+    indata.pcurr_type = "power_series";
+  }
+
+  indata.ncurr = 1;
+  indata.pcurr_type = "power_series";
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// A spline profile cannot be evaluated without its knots. The polynomial
+// coefficient arrays, by contrast, are zero-padded on read, so an empty one is
+// a valid way to ask for a zero profile.
+TEST(TestVmecINDATA, CheckSplineProfilesNeedKnots) {
+  VmecINDATA indata;
+  indata.pmass_type = "cubic_spline";
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.am_aux_s = Eigen::VectorXd::LinSpaced(4, 0.0, 1.0);
+  indata.am_aux_f = Eigen::VectorXd::Zero(3);
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.am_aux_f = Eigen::VectorXd::Zero(4);
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // empty polynomial coefficients stay acceptable
+  indata.pmass_type = "power_series";
+  indata.am = Eigen::VectorXd();
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
 TEST(TestVmecINDATA, ToJson) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
@@ -299,10 +360,11 @@ TEST(TestVmecINDATA, OverlongAxisArraysAreRejected) {
               testing::HasSubstr("exceeds ntor+1"));
 }  // OverlongAxisArraysAreRejected
 
-TEST(TestVmecINDATA, HDF5IO) {
+// The asymmetric coefficients are only populated when lasym is set, so the
+// round trip has to be checked for both symmetry classes.
+void CheckHdf5RoundTrip(const std::string& filename) {
   // setup
-  absl::StatusOr<std::string> indata_json =
-      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
   const absl::StatusOr<VmecINDATA> maybe_indata =
@@ -375,7 +437,49 @@ TEST(TestVmecINDATA, HDF5IO) {
   EXPECT_EQ(indata.zbs, indata_from_file.zbs);
   EXPECT_EQ(indata.rbs, indata_from_file.rbs);
   EXPECT_EQ(indata.zbc, indata_from_file.zbc);
+}  // CheckHdf5RoundTrip
+
+TEST(TestVmecINDATA, HDF5IO) {
+  CheckHdf5RoundTrip("vmecpp/test_data/cth_like_free_bdy.json");
 }  // HDF5IO
+
+TEST(TestVmecINDATA, HDF5IOAsymmetric) {
+  CheckHdf5RoundTrip("vmecpp/test_data/up_down_asym.json");
+}  // HDF5IOAsymmetric
+
+// ToJson has to emit what FromJson accepts, for both symmetry classes.
+void CheckJsonRoundTrip(const std::string& filename) {
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> maybe_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok()) << maybe_indata.status();
+  const VmecINDATA& indata = *maybe_indata;
+
+  const absl::StatusOr<std::string> written = indata.ToJson();
+  ASSERT_TRUE(written.ok()) << written.status();
+
+  const absl::StatusOr<VmecINDATA> read_back = VmecINDATA::FromJson(*written);
+  ASSERT_TRUE(read_back.ok()) << read_back.status();
+
+  EXPECT_EQ(indata.lasym, read_back->lasym);
+  EXPECT_EQ(indata.raxis_c, read_back->raxis_c);
+  EXPECT_EQ(indata.zaxis_s, read_back->zaxis_s);
+  EXPECT_EQ(indata.raxis_s, read_back->raxis_s);
+  EXPECT_EQ(indata.zaxis_c, read_back->zaxis_c);
+  EXPECT_EQ(indata.rbc, read_back->rbc);
+  EXPECT_EQ(indata.zbs, read_back->zbs);
+  EXPECT_EQ(indata.rbs, read_back->rbs);
+  EXPECT_EQ(indata.zbc, read_back->zbc);
+}  // CheckJsonRoundTrip
+
+TEST(TestVmecINDATA, JsonRoundTrip) {
+  CheckJsonRoundTrip("vmecpp/test_data/cth_like_free_bdy.json");
+}  // JsonRoundTrip
+
+TEST(TestVmecINDATA, JsonRoundTripAsymmetric) {
+  CheckJsonRoundTrip("vmecpp/test_data/up_down_asym.json");
+}  // JsonRoundTripAsymmetric
 
 TEST(TestVmecINDATA, SetMpolNtor) {
   VmecINDATA indata =
@@ -507,5 +611,29 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.rbs, indata.rbs);
   EXPECT_EQ(copy.zbc, indata.zbc);
 }  // CopyMethod
+
+TEST(TestVmecINDATA, CheckOnlyCoilsRejectsCurrentAndPressure) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_TRUE(indata->lfreeb);
+
+  VmecINDATA only_coils = *indata;
+  only_coils.free_boundary_method = FreeBoundaryMethod::ONLY_COILS;
+  only_coils.curtor = 0.0;
+  only_coils.pres_scale = 0.0;
+  EXPECT_TRUE(IsConsistent(only_coils, /*enable_info_messages=*/false).ok());
+
+  only_coils.curtor = 1.0e3;
+  EXPECT_EQ(IsConsistent(only_coils, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  only_coils.curtor = 0.0;
+  only_coils.pres_scale = 1.0;
+  EXPECT_EQ(IsConsistent(only_coils, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+}
 
 }  // namespace vmecpp

@@ -41,19 +41,19 @@ void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
                            const absl::Status& thread_status) {
   CHECK(!thread_status.ok()) << "UpdateStatusForThread expects an error status";
 
-  auto thread_msg =
-      absl::StrFormat("Thread %i:\n\t%s", thread_id, thread_status.message());
+  const auto thread_msg =
+      absl::StrFormat("Thread %i:\n\t%s\n", thread_id, thread_status.message());
 
+  // Collapses to kInternal; recoverability is tracked separately.
   if (m_status_of_all_threads.ok()) {
-    auto msg =
-        "There was an error in one or more threads during a VMEC++ run:\n" +
-        thread_msg;
-    m_status_of_all_threads = absl::InternalError(std::move(thread_msg));
+    m_status_of_all_threads = absl::InternalError(absl::StrCat(
+        "There was an error in one or more threads during a VMEC++ run:\n",
+        thread_msg));
+    return;
   }
 
-  const auto new_msg =
-      std::string(m_status_of_all_threads.message()) + thread_msg;
-  m_status_of_all_threads = absl::InternalError(new_msg);
+  m_status_of_all_threads = absl::InternalError(
+      absl::StrCat(m_status_of_all_threads.message(), thread_msg));
 }
 
 // Check preconditions on (initial_state, indata) pair passed to Vmec::run
@@ -208,15 +208,6 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     h_.vacuum_b_r.setZero(s_.nZnT);
     h_.vacuum_b_phi.setZero(s_.nZnT);
     h_.vacuum_b_z.setZero(s_.nZnT);
-
-    // TODO(jons): move this check to better-suited place
-    if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
-        (indata_.curtor != 0.0 || indata_.pres_scale != 0.0)) {
-      throw std::invalid_argument(
-          absl::StrCat("curtor and pres_scale must be zero when using "
-                       "'only_coils' free boundary method, but were ",
-                       indata_.curtor, " and ", indata_.pres_scale));
-    }  // check that cutor==0 and pres_scale==0 for only_coils
   }
 }
 
@@ -423,12 +414,27 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     return absl::InternalError(msg);
   }
 
+  // A converged free-boundary result must not rest on a vacuum field that was
+  // clamped to the grid edge. h_.vacuum_status holds the last vacuum solve, so
+  // a boundary that only left the grid transiently has already cleared it.
+  if (!h_.vacuum_status.ok()) {
+    if (!indata_.return_outputs_even_if_not_converged) {
+      return h_.vacuum_status;
+    }
+    status_ = VmecStatus::UNRECOVERABLE_ERROR;
+  }
+
+  // Hand Nestor's converged scalar potential over for the wout `potvac` field.
+  if (fc_.lfreeb) {
+    h_.vacuum_potential = bvecShare;
+  }
+
   // compute output file quantities, but do not write them to output file yet
   // (for creating the output file, use WriteOutputFile())
   output_quantities_ = vmecpp::ComputeOutputQuantities(
       kSignOfJacobian, indata_, s_, fc_, constants_, t_, h_, mgrid_.mgrid_mode,
-      r_, decomposed_x_, m_, p_, checkpoint, vacuum_pressure_state_, status_,
-      iter2_);
+      mgrid_.coil_group_names, r_, decomposed_x_, m_, p_, checkpoint,
+      vacuum_pressure_state_, status_, iter2_);
 
   {
     const auto& w = output_quantities_.wout;
@@ -713,13 +719,17 @@ bool Vmec::InitializeRadial(
           // free-boundary hot restart: use all flux surfaces from initial state
           decomposed_x_[thread_id]->InitFromState(
               t_, initial_state->wout.rmnc, initial_state->wout.zmns,
-              initial_state->wout.lmns_full, *p_[thread_id], constants_);
+              initial_state->wout.lmns_full, initial_state->wout.rmns,
+              initial_state->wout.zmnc, initial_state->wout.lmnc_full,
+              *p_[thread_id], constants_);
         } else {
           // fixed-boundary hot restart: use inner flux surfaces from initial
           // state, and LCFS geometry from Boundaries (from INDATA)
           decomposed_x_[thread_id]->InitFromState(
               t_, initial_state->wout.rmnc, initial_state->wout.zmns,
-              initial_state->wout.lmns_full, *p_[thread_id], constants_, &b_);
+              initial_state->wout.lmns_full, initial_state->wout.rmns,
+              initial_state->wout.zmnc, initial_state->wout.lmnc_full,
+              *p_[thread_id], constants_, &b_);
         }
       }
     } else {

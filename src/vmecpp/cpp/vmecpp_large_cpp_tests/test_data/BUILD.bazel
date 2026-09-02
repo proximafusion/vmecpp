@@ -88,6 +88,7 @@ filegroup(
         "jxbout_cth_like_free_bdy.nc",
         "mercier.cth_like_free_bdy",
         "threed1.cth_like_free_bdy",
+        "wout_cth_like_free_bdy.nc",
     ] + glob(["cth_like_free_bdy/**/*.json"]),
 )
 

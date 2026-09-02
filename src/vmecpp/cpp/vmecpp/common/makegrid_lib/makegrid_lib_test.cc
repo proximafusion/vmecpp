@@ -6,10 +6,12 @@
 
 #include <netcdf.h>
 
+#include <cmath>
 #include <string>
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "gtest/gtest.h"
@@ -236,9 +238,9 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
     evaluation_location.set_y(evaluation_locations[i][1]);
     evaluation_location.set_z(evaluation_locations[i][2]);
 
-    // connection vector from evaluation position to center of loop
+    // connection vector from center of loop to evaluation position
     Vector3d delta_eval_origin =
-        Subtract(circular_filament.center(), evaluation_location);
+        Subtract(evaluation_location, circular_filament.center());
 
     // distance between evaluation position and center of loop, parallel to
     // filament direction
@@ -260,7 +262,7 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
     const double normalized_rho = evaluation_position_radius / radius;
 
     if (normalized_rho < kRhoMin ||
-        (normalized_z < kZMax && kRhoZMin < normalized_rho &&
+        (std::abs(normalized_z) < kZMax && kRhoZMin < normalized_rho &&
          normalized_rho < kRhoZMax)) {
       m_exclude_from_comparison[i] = true;
     }
@@ -269,8 +271,75 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
   return absl::OkStatus();
 }  // DetermineIfTooCloseToCurrentCarrierForComparison
 
-// TODO(jons): write a test for
-// DetermineIfTooCloseToCurrentCarrierForComparison(CircularFilament ...)
+// A unit circular filament in the z = 0 plane, centered on the origin.
+CircularFilament UnitCircularFilament() {
+  CircularFilament circular_filament;
+  circular_filament.set_radius(1.0);
+  circular_filament.mutable_center()->set_x(0.0);
+  circular_filament.mutable_center()->set_y(0.0);
+  circular_filament.mutable_center()->set_z(0.0);
+  circular_filament.mutable_normal()->set_x(0.0);
+  circular_filament.mutable_normal()->set_y(0.0);
+  circular_filament.mutable_normal()->set_z(1.0);
+  return circular_filament;
+}
+
+TEST(TestMakegridLib, CheckTooCloseToCircularFilament) {
+  // Excluded is the loop axis, where e_phi has no defined direction, and a box
+  // of half-width kTooCloseDistance around the wire in both rho' and z'.
+  const std::vector<std::vector<double>> evaluation_locations = {
+      {0.0, 0.0, 0.3},     // on the axis
+      {1.0, 0.0, 0.0},     // on the wire
+      {1.0, 0.0, 0.005},   // just above the wire
+      {1.0, 0.0, -0.005},  // just below the wire
+      {1.0, 0.0, 0.5},     // above the wire, outside the box
+      {1.0, 0.0, -0.5},    // below the wire, outside the box
+      {1.5, 0.0, 0.0},     // outside the loop
+      {0.5, 0.0, 0.0},     // inside the loop
+  };
+  const std::vector<bool> expected = {true,  true,  true,  true,
+                                      false, false, false, false};
+
+  std::vector<bool> exclude_from_comparison(evaluation_locations.size(), false);
+  const absl::Status status = DetermineIfTooCloseToCurrentCarrierForComparison(
+      UnitCircularFilament(), evaluation_locations,
+      /*m_exclude_from_comparison=*/exclude_from_comparison);
+  ASSERT_TRUE(status.ok()) << status;
+
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(exclude_from_comparison[i], expected[i]) << "at location " << i;
+  }
+}
+
+TEST(TestMakegridLib, CheckTooCloseToTiltedCircularFilament) {
+  // Same criterion for a loop that is neither centered on the origin nor
+  // aligned with a coordinate axis, and whose normal is not of unit length.
+  CircularFilament circular_filament;
+  circular_filament.set_radius(2.0);
+  circular_filament.mutable_center()->set_x(1.0);
+  circular_filament.mutable_center()->set_y(2.0);
+  circular_filament.mutable_center()->set_z(3.0);
+  circular_filament.mutable_normal()->set_x(0.0);
+  circular_filament.mutable_normal()->set_y(3.0);
+  circular_filament.mutable_normal()->set_z(0.0);
+
+  const std::vector<std::vector<double>> evaluation_locations = {
+      {3.0, 2.0, 3.0},  // on the wire
+      {1.0, 5.0, 3.0},  // on the axis
+      {3.0, 3.0, 3.0},  // at rho' = 1, half a radius off the loop plane
+  };
+  const std::vector<bool> expected = {true, true, false};
+
+  std::vector<bool> exclude_from_comparison(evaluation_locations.size(), false);
+  const absl::Status status = DetermineIfTooCloseToCurrentCarrierForComparison(
+      circular_filament, evaluation_locations,
+      /*m_exclude_from_comparison=*/exclude_from_comparison);
+  ASSERT_TRUE(status.ok()) << status;
+
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(exclude_from_comparison[i], expected[i]) << "at location " << i;
+  }
+}
 
 // For a PolygonFilament made up of multiple straight wire segments,
 // check for every segment and an evaluation point at rho' = rho / L, z' = z /
@@ -311,8 +380,8 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
       const double length = Length(segment);
       Vector3d direction = Normalize(segment);
 
-      // connection vector from evaluation position to start of segment
-      Vector3d delta_eval_origin = Subtract(origin, evaluation_location);
+      // connection vector from start of segment to evaluation position
+      Vector3d delta_eval_origin = Subtract(evaluation_location, origin);
 
       // distance between evaluation position and segment, parallel to filament
       // direction
@@ -346,8 +415,92 @@ absl::Status DetermineIfTooCloseToCurrentCarrierForComparison(
   return absl::OkStatus();
 }  // DetermineIfTooCloseToCurrentCarrierForComparison
 
-// TODO(jons): write a test for
-// DetermineIfTooCloseToCurrentCarrierForComparison(PolygonFilament ...)
+// A single straight segment of unit length, from the origin along +x.
+PolygonFilament UnitSegmentFilament() {
+  PolygonFilament polygon_filament;
+  Vector3d* start = polygon_filament.add_vertices();
+  start->set_x(0.0);
+  start->set_y(0.0);
+  start->set_z(0.0);
+  Vector3d* end = polygon_filament.add_vertices();
+  end->set_x(1.0);
+  end->set_y(0.0);
+  end->set_z(0.0);
+  return polygon_filament;
+}
+
+TEST(TestMakegridLib, CheckTooCloseToPolygonFilament) {
+  // Excluded is a tube of radius kTooCloseDistance around the segment, running
+  // from z' = -kTooCloseDistance to z' = 1 + kTooCloseDistance.
+  const std::vector<std::vector<double>> evaluation_locations = {
+      {0.5, 0.0, 0.0},     // on the segment
+      {0.5, 0.005, 0.0},   // just off the segment
+      {-0.005, 0.0, 0.0},  // just before the start
+      {1.005, 0.0, 0.0},   // just past the end
+      {0.5, 0.5, 0.0},     // off the segment in rho'
+      {-0.5, 0.0, 0.0},    // on the segment's line, before the start
+      {1.5, 0.0, 0.0},     // on the segment's line, past the end
+  };
+  const std::vector<bool> expected = {true,  true,  true, true,
+                                      false, false, false};
+
+  std::vector<bool> exclude_from_comparison(evaluation_locations.size(), false);
+  const absl::Status status = DetermineIfTooCloseToCurrentCarrierForComparison(
+      UnitSegmentFilament(), evaluation_locations,
+      /*m_exclude_from_comparison=*/exclude_from_comparison);
+  ASSERT_TRUE(status.ok()) << status;
+
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(exclude_from_comparison[i], expected[i]) << "at location " << i;
+  }
+}
+
+TEST(TestMakegridLib, CheckTooCloseToPolygonFilamentOverAllSegments) {
+  // Being too close to any one segment is enough, and flags already set by an
+  // earlier current carrier are left alone.
+  PolygonFilament polygon_filament;
+  const std::vector<std::vector<double>> vertices = {
+      {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {1.0, 1.0, 0.0}};
+  for (const std::vector<double>& vertex : vertices) {
+    Vector3d* v = polygon_filament.add_vertices();
+    v->set_x(vertex[0]);
+    v->set_y(vertex[1]);
+    v->set_z(vertex[2]);
+  }
+
+  const std::vector<std::vector<double>> evaluation_locations = {
+      {0.5, 0.0, 0.0},  // on the first segment
+      {1.0, 0.5, 0.0},  // on the second segment
+      {0.5, 0.5, 0.0},  // close to neither
+      {5.0, 5.0, 5.0},  // far away, but already excluded on entry
+  };
+  const std::vector<bool> expected = {true, true, false, true};
+
+  std::vector<bool> exclude_from_comparison = {false, false, false, true};
+  const absl::Status status = DetermineIfTooCloseToCurrentCarrierForComparison(
+      polygon_filament, evaluation_locations,
+      /*m_exclude_from_comparison=*/exclude_from_comparison);
+  ASSERT_TRUE(status.ok()) << status;
+
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(exclude_from_comparison[i], expected[i]) << "at location " << i;
+  }
+}
+
+TEST(TestMakegridLib, CheckTooCloseRejectsEmptyEvaluationLocations) {
+  std::vector<bool> exclude_from_comparison;
+
+  EXPECT_EQ(DetermineIfTooCloseToCurrentCarrierForComparison(
+                UnitCircularFilament(), {},
+                /*m_exclude_from_comparison=*/exclude_from_comparison)
+                .code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(DetermineIfTooCloseToCurrentCarrierForComparison(
+                UnitSegmentFilament(), {},
+                /*m_exclude_from_comparison=*/exclude_from_comparison)
+                .code(),
+            absl::StatusCode::kInvalidArgument);
+}
 
 // We need to exclude points which are too close to the current carrier
 // filaments, as the Biot-Savart routines used in MAKEGRID do not feature the
@@ -437,6 +590,12 @@ absl::StatusOr<std::vector<bool>> IsTooCloseToCurrentCarrierForComparison(
 struct MakegridReferenceTestParams {
   bool normalize_by_currents;
   std::string reference_nc_file;
+  // Defaults describe coils.test_symmetric_even; the other cases override them
+  // to match their own MGRID_NLI namelist.
+  std::string coils_file =
+      "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_even";
+  bool assume_stellarator_symmetry = true;
+  int number_of_phi_grid_points = 18;
 };
 
 // Shared setup used by both B-field and vector-potential parameterized suites.
@@ -446,17 +605,19 @@ struct MakegridReferenceTestFixture
     : public ::testing::TestWithParam<MakegridReferenceTestParams> {
   // NOTE: These parameters have to be consistent with the MGRID_NLI namelist
   // in the `coils.test_*` input files.
-  static MakegridParameters MakeParams(bool normalize_by_currents) {
-    return {.normalize_by_currents = normalize_by_currents,
-            .assume_stellarator_symmetry = true,
-            .number_of_field_periods = 5,
-            .r_grid_minimum = 1.0,
-            .r_grid_maximum = 2.0,
-            .number_of_r_grid_points = 11,
-            .z_grid_minimum = -0.6,
-            .z_grid_maximum = 0.6,
-            .number_of_z_grid_points = 13,
-            .number_of_phi_grid_points = 18};
+  static MakegridParameters MakeParams(
+      const MakegridReferenceTestParams& test_params) {
+    return {
+        .normalize_by_currents = test_params.normalize_by_currents,
+        .assume_stellarator_symmetry = test_params.assume_stellarator_symmetry,
+        .number_of_field_periods = 5,
+        .r_grid_minimum = 1.0,
+        .r_grid_maximum = 2.0,
+        .number_of_r_grid_points = 11,
+        .z_grid_minimum = -0.6,
+        .z_grid_maximum = 0.6,
+        .number_of_z_grid_points = 13,
+        .number_of_phi_grid_points = test_params.number_of_phi_grid_points};
   }
 };
 
@@ -469,11 +630,11 @@ TEST_P(CheckComputeMagneticFieldResponseTable, MatchesFortranReference) {
   static constexpr double kTolerance = 1.0e-6;
 
   const MakegridReferenceTestParams& p = GetParam();
-  const MakegridParameters makegrid_parameters =
-      MakeParams(p.normalize_by_currents);
+  const MakegridParameters makegrid_parameters = MakeParams(p);
 
   ASSERT_EQ(makegrid_parameters.normalize_by_currents, p.normalize_by_currents);
-  ASSERT_TRUE(makegrid_parameters.assume_stellarator_symmetry);
+  ASSERT_EQ(makegrid_parameters.assume_stellarator_symmetry,
+            p.assume_stellarator_symmetry);
   ASSERT_EQ(makegrid_parameters.number_of_field_periods, 5);
   ASSERT_EQ(makegrid_parameters.r_grid_minimum, 1.0);
   ASSERT_EQ(makegrid_parameters.r_grid_maximum, 2.0);
@@ -481,18 +642,24 @@ TEST_P(CheckComputeMagneticFieldResponseTable, MatchesFortranReference) {
   ASSERT_EQ(makegrid_parameters.z_grid_minimum, -0.6);
   ASSERT_EQ(makegrid_parameters.z_grid_maximum, 0.6);
   ASSERT_EQ(makegrid_parameters.number_of_z_grid_points, 13);
-  ASSERT_EQ(makegrid_parameters.number_of_phi_grid_points, 18);
+  ASSERT_EQ(makegrid_parameters.number_of_phi_grid_points,
+            p.number_of_phi_grid_points);
 
   absl::StatusOr<MagneticConfiguration> magnetic_configuration =
-      ImportMagneticConfigurationFromCoilsFile(
-          "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_even");
+      ImportMagneticConfigurationFromCoilsFile(p.coils_file);
   ASSERT_OK(magnetic_configuration);
 
   const int number_of_serial_circuits =
       magnetic_configuration->serial_circuits_size();
 
+  // The response table and the reference file both cover the whole field
+  // period, so the exclusion mask has to as well: with stellarator symmetry
+  // MakeCylindricalGrid only emits the half it computes, and the mirrored half
+  // would go uncompared.
+  MakegridParameters full_period_parameters = makegrid_parameters;
+  full_period_parameters.assume_stellarator_symmetry = false;
   absl::StatusOr<RowMatrix3Xd> cylindrical_grid_eigen =
-      MakeCylindricalGrid(makegrid_parameters);
+      MakeCylindricalGrid(full_period_parameters);
   ASSERT_OK(cylindrical_grid_eigen);
   absl::StatusOr<std::vector<std::vector<double>>> cylindrical_grid =
       EigenToStl(cylindrical_grid_eigen.value().transpose());
@@ -552,14 +719,10 @@ TEST_P(CheckComputeMagneticFieldResponseTable, MatchesFortranReference) {
 
     // perform comparison of points that are not explicitly excluded from the
     // comparison
-    // FIXME(jons): allocate `exclude_from_comparison` on the whole field
-    // period and actually check the whole field period.
     int number_of_tested_evaluation_locations = 0;
-    int num_phi_effective = makegrid_parameters.number_of_phi_grid_points;
-    if (makegrid_parameters.assume_stellarator_symmetry) {
-      num_phi_effective = num_phi_effective / 2 + 1;
-    }
-    for (int index_phi = 0; index_phi < num_phi_effective; ++index_phi) {
+    for (int index_phi = 0;
+         index_phi < makegrid_parameters.number_of_phi_grid_points;
+         ++index_phi) {
       for (int index_z = 0;
            index_z < makegrid_parameters.number_of_z_grid_points; ++index_z) {
         for (int index_r = 0;
@@ -614,6 +777,38 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.normalize_by_currents ? "Scaled" : "Raw";
     });
 
+// The stellarator symmetry of the coil set is not exploited here, so the whole
+// toroidal range is evaluated directly rather than mirrored from a half period.
+INSTANTIATE_TEST_SUITE_P(
+    NonSymmetric, CheckComputeMagneticFieldResponseTable,
+    ::testing::Values(MakegridReferenceTestParams{
+        .normalize_by_currents = false,
+        .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                             "mgrid_test_non_symmetric.nc",
+        .coils_file =
+            "vmecpp/common/makegrid_lib/test_data/coils.test_non_symmetric",
+        .assume_stellarator_symmetry = false,
+        .number_of_phi_grid_points = 18}),
+    [](const ::testing::TestParamInfo<MakegridReferenceTestParams>& info) {
+      return info.param.normalize_by_currents ? "Scaled" : "Raw";
+    });
+
+// An odd toroidal grid puts no point on the half-period plane, so every
+// mirrored index is distinct from every computed one.
+INSTANTIATE_TEST_SUITE_P(
+    SymmetricOdd, CheckComputeMagneticFieldResponseTable,
+    ::testing::Values(MakegridReferenceTestParams{
+        .normalize_by_currents = false,
+        .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                             "mgrid_test_symmetric_odd.nc",
+        .coils_file =
+            "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_odd",
+        .assume_stellarator_symmetry = true,
+        .number_of_phi_grid_points = 19}),
+    [](const ::testing::TestParamInfo<MakegridReferenceTestParams>& info) {
+      return info.param.normalize_by_currents ? "Scaled" : "Raw";
+    });
+
 // Parameterized test: vector-potential cache vs. Fortran MAKEGRID reference.
 // Covers both mgrid_mode='R' (raw, normalize_by_currents=false) and
 // mgrid_mode='S' (scaled, normalize_by_currents=true).
@@ -623,19 +818,21 @@ TEST_P(CheckComputeVectorPotentialCache, MatchesFortranReference) {
   static constexpr double kTolerance = 1.0e-6;
 
   const MakegridReferenceTestParams& p = GetParam();
-  const MakegridParameters makegrid_parameters =
-      MakeParams(p.normalize_by_currents);
+  const MakegridParameters makegrid_parameters = MakeParams(p);
 
   absl::StatusOr<MagneticConfiguration> magnetic_configuration =
-      ImportMagneticConfigurationFromCoilsFile(
-          "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_even");
+      ImportMagneticConfigurationFromCoilsFile(p.coils_file);
   ASSERT_OK(magnetic_configuration);
 
   const int number_of_serial_circuits =
       magnetic_configuration->serial_circuits_size();
 
+  // The exclusion mask has to cover the whole field period; see the same
+  // comment in CheckComputeMagneticFieldResponseTable above.
+  MakegridParameters full_period_parameters = makegrid_parameters;
+  full_period_parameters.assume_stellarator_symmetry = false;
   absl::StatusOr<RowMatrix3Xd> cylindrical_grid_eigen =
-      MakeCylindricalGrid(makegrid_parameters);
+      MakeCylindricalGrid(full_period_parameters);
   ASSERT_OK(cylindrical_grid_eigen);
 
   // MakeCylindricalGrid() returns a 3xN matrix, instead of Nx3, so we tranpose
@@ -706,14 +903,10 @@ TEST_P(CheckComputeVectorPotentialCache, MatchesFortranReference) {
 
     // perform comparison of points that are not explicitly excluded from the
     // comparison
-    // FIXME(jons): allocate `exclude_from_comparison` on the whole field
-    // period and actually check the whole field period.
     int number_of_tested_evaluation_locations = 0;
-    int num_phi_effective = makegrid_parameters.number_of_phi_grid_points;
-    if (makegrid_parameters.assume_stellarator_symmetry) {
-      num_phi_effective = num_phi_effective / 2 + 1;
-    }
-    for (int index_phi = 0; index_phi < num_phi_effective; ++index_phi) {
+    for (int index_phi = 0;
+         index_phi < makegrid_parameters.number_of_phi_grid_points;
+         ++index_phi) {
       for (int index_z = 0;
            index_z < makegrid_parameters.number_of_z_grid_points; ++index_z) {
         for (int index_r = 0;
@@ -768,13 +961,33 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.normalize_by_currents ? "Scaled" : "Raw";
     });
 
-// TODO(jons): implement test of non-stellarator-symmetric mgrid file
-// TODO(jons): implement test of stellarator-symmetric mgrid file using
-// symmetric C++ implementation
+INSTANTIATE_TEST_SUITE_P(
+    NonSymmetric, CheckComputeVectorPotentialCache,
+    ::testing::Values(MakegridReferenceTestParams{
+        .normalize_by_currents = false,
+        .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                             "mgrid_test_non_symmetric.nc",
+        .coils_file =
+            "vmecpp/common/makegrid_lib/test_data/coils.test_non_symmetric",
+        .assume_stellarator_symmetry = false,
+        .number_of_phi_grid_points = 18}),
+    [](const ::testing::TestParamInfo<MakegridReferenceTestParams>& info) {
+      return info.param.normalize_by_currents ? "Scaled" : "Raw";
+    });
 
-// TODO(jons): add test of WriteMakegridNetCDFFile
-// -> in particular, make sure that the consistency of number of serial circuits
-// in the response table and the number of circuit currents is properly checked
+INSTANTIATE_TEST_SUITE_P(
+    SymmetricOdd, CheckComputeVectorPotentialCache,
+    ::testing::Values(MakegridReferenceTestParams{
+        .normalize_by_currents = false,
+        .reference_nc_file = "vmecpp/common/makegrid_lib/test_data/"
+                             "mgrid_test_symmetric_odd.nc",
+        .coils_file =
+            "vmecpp/common/makegrid_lib/test_data/coils.test_symmetric_odd",
+        .assume_stellarator_symmetry = true,
+        .number_of_phi_grid_points = 19}),
+    [](const ::testing::TestParamInfo<MakegridReferenceTestParams>& info) {
+      return info.param.normalize_by_currents ? "Scaled" : "Raw";
+    });
 
 TEST(TestMakegridLib,
      CheckNormalizeByCurrentsScalesMagneticFieldResponseTable) {
@@ -871,5 +1084,175 @@ TEST(TestMakegridLib,
     }  // grid_index
   }  // circuit_index
 }  // CheckNormalizeByCurrentsScalesMagneticFieldResponseTable
+
+namespace {
+
+// A single circular filament on a small grid, enough to write a complete mgrid
+// file without making the test slow.
+MakegridParameters SmallMakegridParameters() {
+  return MakegridParameters{.normalize_by_currents = false,
+                            .assume_stellarator_symmetry = false,
+                            .number_of_field_periods = 1,
+                            .r_grid_minimum = 1.0,
+                            .r_grid_maximum = 2.0,
+                            .number_of_r_grid_points = 3,
+                            .z_grid_minimum = -0.5,
+                            .z_grid_maximum = 0.5,
+                            .number_of_z_grid_points = 3,
+                            .number_of_phi_grid_points = 4};
+}
+
+MagneticConfiguration SingleCircularFilament(double current) {
+  MagneticConfiguration magnetic_configuration;
+  SerialCircuit* serial_circuit = magnetic_configuration.add_serial_circuits();
+  serial_circuit->set_current(current);
+
+  Coil* coil = serial_circuit->add_coils();
+  coil->set_num_windings(1.0);
+
+  CurrentCarrier* current_carrier = coil->add_current_carriers();
+  CircularFilament* circular_filament =
+      current_carrier->mutable_circular_filament();
+  circular_filament->set_radius(1.5);
+
+  Vector3d* center = circular_filament->mutable_center();
+  center->set_x(0.0);
+  center->set_y(0.0);
+  center->set_z(0.0);
+
+  Vector3d* normal = circular_filament->mutable_normal();
+  normal->set_x(0.0);
+  normal->set_y(0.0);
+  normal->set_z(1.0);
+
+  return magnetic_configuration;
+}
+
+}  // namespace
+
+// Everything WriteMakegridNetCDFFile puts in the file has to come back out of
+// it unchanged, since MGridProvider reads exactly these variables.
+TEST(TestMakegridLib, CheckWriteMakegridNetCDFFileRoundTrip) {
+  static constexpr double kTolerance = 1.0e-15;
+  static constexpr double kCurrent = 5.0;
+
+  const MakegridParameters makegrid_parameters = SmallMakegridParameters();
+  const MagneticConfiguration magnetic_configuration =
+      SingleCircularFilament(kCurrent);
+
+  const absl::StatusOr<MagneticFieldResponseTable> response_table =
+      ComputeMagneticFieldResponseTable(makegrid_parameters,
+                                        magnetic_configuration);
+  ASSERT_OK(response_table);
+
+  Eigen::VectorXd circuit_currents(1);
+  circuit_currents[0] = kCurrent;
+
+  const std::string filename =
+      ::testing::TempDir() + "/mgrid_write_round_trip.nc";
+  const absl::Status write_status =
+      WriteMakegridNetCDFFile(filename, makegrid_parameters, circuit_currents,
+                              *response_table, std::nullopt);
+  ASSERT_TRUE(write_status.ok()) << write_status;
+
+  int ncid = 0;
+  ASSERT_EQ(nc_open(filename.c_str(), NC_NOWRITE, &ncid), NC_NOERR);
+
+  EXPECT_EQ(NetcdfReadInt(ncid, "nfp").value(),
+            makegrid_parameters.number_of_field_periods);
+  EXPECT_EQ(NetcdfReadInt(ncid, "ir").value(),
+            makegrid_parameters.number_of_r_grid_points);
+  EXPECT_EQ(NetcdfReadInt(ncid, "jz").value(),
+            makegrid_parameters.number_of_z_grid_points);
+  EXPECT_EQ(NetcdfReadInt(ncid, "kp").value(),
+            makegrid_parameters.number_of_phi_grid_points);
+  EXPECT_EQ(NetcdfReadInt(ncid, "nextcur").value(), 1);
+
+  EXPECT_TRUE(IsCloseRelAbs(makegrid_parameters.r_grid_minimum,
+                            NetcdfReadDouble(ncid, "rmin").value(),
+                            kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(makegrid_parameters.r_grid_maximum,
+                            NetcdfReadDouble(ncid, "rmax").value(),
+                            kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(makegrid_parameters.z_grid_minimum,
+                            NetcdfReadDouble(ncid, "zmin").value(),
+                            kTolerance));
+  EXPECT_TRUE(IsCloseRelAbs(makegrid_parameters.z_grid_maximum,
+                            NetcdfReadDouble(ncid, "zmax").value(),
+                            kTolerance));
+
+  // The field itself, in the (phi, z, r) layout MGridProvider expects.
+  const std::vector<std::vector<std::vector<double>>> b_r =
+      NetcdfReadArray3D(ncid, "br_001").value();
+  const std::vector<std::vector<std::vector<double>>> b_p =
+      NetcdfReadArray3D(ncid, "bp_001").value();
+  const std::vector<std::vector<std::vector<double>>> b_z =
+      NetcdfReadArray3D(ncid, "bz_001").value();
+
+  const int num_r = makegrid_parameters.number_of_r_grid_points;
+  const int num_z = makegrid_parameters.number_of_z_grid_points;
+  const int num_phi = makegrid_parameters.number_of_phi_grid_points;
+  ASSERT_EQ(static_cast<int>(b_r.size()), num_phi);
+  ASSERT_EQ(static_cast<int>(b_r[0].size()), num_z);
+  ASSERT_EQ(static_cast<int>(b_r[0][0].size()), num_r);
+
+  for (int index_phi = 0; index_phi < num_phi; ++index_phi) {
+    for (int index_z = 0; index_z < num_z; ++index_z) {
+      for (int index_r = 0; index_r < num_r; ++index_r) {
+        const int linear_index =
+            (index_phi * num_z + index_z) * num_r + index_r;
+        EXPECT_TRUE(IsCloseRelAbs(response_table->b_r(0, linear_index),
+                                  b_r[index_phi][index_z][index_r],
+                                  kTolerance));
+        EXPECT_TRUE(IsCloseRelAbs(response_table->b_p(0, linear_index),
+                                  b_p[index_phi][index_z][index_r],
+                                  kTolerance));
+        EXPECT_TRUE(IsCloseRelAbs(response_table->b_z(0, linear_index),
+                                  b_z[index_phi][index_z][index_r],
+                                  kTolerance));
+      }  // index_r
+    }  // index_z
+  }  // index_phi
+
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+}  // CheckWriteMakegridNetCDFFileRoundTrip
+
+// A circuit-current count that disagrees with the response table used to be a
+// CHECK, which aborted the process instead of telling the caller.
+TEST(TestMakegridLib, CheckWriteMakegridNetCDFFileRejectsInconsistentCurrents) {
+  const MakegridParameters makegrid_parameters = SmallMakegridParameters();
+  const absl::StatusOr<MagneticFieldResponseTable> response_table =
+      ComputeMagneticFieldResponseTable(makegrid_parameters,
+                                        SingleCircularFilament(5.0));
+  ASSERT_OK(response_table);
+
+  const std::string filename =
+      ::testing::TempDir() + "/mgrid_write_inconsistent.nc";
+
+  // Two currents for a single serial circuit.
+  Eigen::VectorXd too_many_currents(2);
+  too_many_currents << 5.0, 6.0;
+  EXPECT_EQ(
+      WriteMakegridNetCDFFile(filename, makegrid_parameters, too_many_currents,
+                              *response_table, std::nullopt)
+          .code(),
+      absl::StatusCode::kInvalidArgument);
+
+  // No currents at all.
+  const Eigen::VectorXd no_currents;
+  EXPECT_EQ(WriteMakegridNetCDFFile(filename, makegrid_parameters, no_currents,
+                                    *response_table, std::nullopt)
+                .code(),
+            absl::StatusCode::kInvalidArgument);
+
+  // An empty response table has nothing to write.
+  const MagneticFieldResponseTable empty_response_table;
+  Eigen::VectorXd one_current(1);
+  one_current[0] = 5.0;
+  EXPECT_EQ(WriteMakegridNetCDFFile(filename, makegrid_parameters, one_current,
+                                    empty_response_table, std::nullopt)
+                .code(),
+            absl::StatusCode::kInvalidArgument);
+}  // CheckWriteMakegridNetCDFFileRejectsInconsistentCurrents
 
 }  // namespace makegrid

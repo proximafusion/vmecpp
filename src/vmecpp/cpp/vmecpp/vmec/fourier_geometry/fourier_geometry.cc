@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "vmecpp/common/util/util.h"
 
 namespace vmecpp {
@@ -183,13 +184,22 @@ void FourierGeometry::interpFromBoundaryAndAxis(
   }  // j
 }
 
-void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
-                                    const RowMatrixXd& rmnc,
-                                    const RowMatrixXd& zmns,
-                                    const RowMatrixXd& lmns_full,
-                                    const RadialProfiles& p,
-                                    const VmecConstants& constants,
-                                    const Boundaries* b) {
+void FourierGeometry::InitFromState(
+    const FourierBasisFastPoloidal& fb, const RowMatrixXd& rmnc,
+    const RowMatrixXd& zmns, const RowMatrixXd& lmns_full,
+    const RowMatrixXd& rmns, const RowMatrixXd& zmnc,
+    const RowMatrixXd& lmnc_full, const RadialProfiles& p,
+    const VmecConstants& constants, const Boundaries* b) {
+  if (s_.lasym) {
+    // The antisymmetric half must be present, or the restart would silently
+    // begin from the stellarator-symmetric projection of the given state.
+    CHECK_EQ(rmns.cols(), rmnc.cols())
+        << "InitFromState: lasym is set but rmns is missing";
+    CHECK_EQ(zmnc.cols(), zmns.cols())
+        << "InitFromState: lasym is set but zmnc is missing";
+    CHECK_EQ(lmnc_full.cols(), lmns_full.cols())
+        << "InitFromState: lasym is set but lmnc_full is missing";
+  }
   // b == nullptr -> free-boundary -> we also initialize the last surface;
   // otherwise skip the last surface here and grab it from b later
   const int max_ns_to_set_rz_on_from_state = (b == nullptr) ? ns : ns - 1;
@@ -212,6 +222,27 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
     fb.sin_to_sc_cs(zmns_col_vector, zmnsc_at_jF, zmncs_at_jF, s_.ntor,
                     s_.mpol);
 
+    // Antisymmetric half: R is written to the wout in the combined sine basis
+    // and Z in the combined cosine basis, i.e. mirrored with respect to the
+    // symmetric half above, so the two conversions swap accordingly.
+    std::vector<double> rmnsc_at_jF(s_.mpol * (s_.ntor + 1));
+    std::vector<double> rmncs_at_jF(s_.mpol * (s_.ntor + 1));
+    std::vector<double> zmncc_at_jF(s_.mpol * (s_.ntor + 1));
+    std::vector<double> zmnss_at_jF(s_.mpol * (s_.ntor + 1));
+    if (s_.lasym) {
+      const Eigen::VectorXd rmns_col = rmns.col(jF);
+      const std::vector<double> rmns_col_vector(
+          rmns_col.data(), rmns_col.data() + rmns_col.size());
+      fb.sin_to_sc_cs(rmns_col_vector, rmnsc_at_jF, rmncs_at_jF, s_.ntor,
+                      s_.mpol);
+
+      const Eigen::VectorXd zmnc_col = zmnc.col(jF);
+      const std::vector<double> zmnc_col_vector(
+          zmnc_col.data(), zmnc_col.data() + zmnc_col.size());
+      fb.cos_to_cc_ss(zmnc_col_vector, zmncc_at_jF, zmnss_at_jF, s_.ntor,
+                      s_.mpol);
+    }
+
     for (int m = 0; m < s_.mpol; ++m) {
       for (int n = 0; n < s_.ntor + 1; ++n) {
         const int idx_mn = m * (s_.ntor + 1) + n;
@@ -221,6 +252,14 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
         if (s_.lthreed) {
           rmnss[idx_jmn] = rmnss_at_jF[idx_mn];
           zmncs[idx_jmn] = zmncs_at_jF[idx_mn];
+        }
+        if (s_.lasym) {
+          rmnsc[idx_jmn] = rmnsc_at_jF[idx_mn];
+          zmncc[idx_jmn] = zmncc_at_jF[idx_mn];
+          if (s_.lthreed) {
+            rmncs[idx_jmn] = rmncs_at_jF[idx_mn];
+            zmnss[idx_jmn] = zmnss_at_jF[idx_mn];
+          }
         }
       }
     }
@@ -239,6 +278,16 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
     fb.sin_to_sc_cs(lmns_col_vector, lmnsc_at_jF, lmncs_at_jF, s_.ntor,
                     s_.mpol);
 
+    std::vector<double> lmncc_at_jF(s_.mpol * (s_.ntor + 1));
+    std::vector<double> lmnss_at_jF(s_.mpol * (s_.ntor + 1));
+    if (s_.lasym) {
+      const Eigen::VectorXd lmnc_col = lmnc_full.col(jF);
+      const std::vector<double> lmnc_col_vector(
+          lmnc_col.data(), lmnc_col.data() + lmnc_col.size());
+      fb.cos_to_cc_ss(lmnc_col_vector, lmncc_at_jF, lmnss_at_jF, s_.ntor,
+                      s_.mpol);
+    }
+
     for (int m = 0; m < s_.mpol; ++m) {
       for (int n = 0; n < s_.ntor + 1; ++n) {
         const int idx_mn = m * (s_.ntor + 1) + n;
@@ -252,6 +301,12 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
         lmnsc[idx_jmn] = lmnsc_at_jF[idx_mn] / lambda_unscaling;
         if (s_.lthreed) {
           lmncs[idx_jmn] = lmncs_at_jF[idx_mn] / lambda_unscaling;
+        }
+        if (s_.lasym) {
+          lmncc[idx_jmn] = lmncc_at_jF[idx_mn] / lambda_unscaling;
+          if (s_.lthreed) {
+            lmnss[idx_jmn] = lmnss_at_jF[idx_mn] / lambda_unscaling;
+          }
         }
       }
     }
@@ -277,6 +332,26 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
       std::copy(b->zbcs.begin(), b->zbcs.begin() + mnsize, zmncs_begin);
     }
 
+    if (s_.lasym) {
+      auto rmnsc_begin =
+          rmnsc.begin() + (jF - nsMin_) * s_.mpol * (s_.ntor + 1);
+      std::copy(b->rbsc.begin(), b->rbsc.begin() + mnsize, rmnsc_begin);
+
+      auto zmncc_begin =
+          zmncc.begin() + (jF - nsMin_) * s_.mpol * (s_.ntor + 1);
+      std::copy(b->zbcc.begin(), b->zbcc.begin() + mnsize, zmncc_begin);
+
+      if (s_.lthreed) {
+        auto rmncs_begin =
+            rmncs.begin() + (jF - nsMin_) * s_.mpol * (s_.ntor + 1);
+        std::copy(b->rbcs.begin(), b->rbcs.begin() + mnsize, rmncs_begin);
+
+        auto zmnss_begin =
+            zmnss.begin() + (jF - nsMin_) * s_.mpol * (s_.ntor + 1);
+        std::copy(b->zbss.begin(), b->zbss.begin() + mnsize, zmnss_begin);
+      }
+    }
+
     for (int m = 0; m < s_.mpol; ++m) {
       for (int n = 0; n < s_.ntor + 1; ++n) {
         int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
@@ -289,6 +364,14 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
         if (s_.lthreed) {
           rmnss[idx_fc] *= basis_norm;
           zmncs[idx_fc] *= basis_norm;
+        }
+        if (s_.lasym) {
+          rmnsc[idx_fc] *= basis_norm;
+          zmncc[idx_fc] *= basis_norm;
+          if (s_.lthreed) {
+            rmncs[idx_fc] *= basis_norm;
+            zmnss[idx_fc] *= basis_norm;
+          }
         }
       }
     }
@@ -313,6 +396,12 @@ void FourierGeometry::InitFromState(const FourierBasisFastPoloidal& fb,
       lmnsc[idx_fc] = 0.0;
       if (s_.lthreed) {
         lmncs[idx_fc] = 0.0;
+      }
+      if (s_.lasym) {
+        lmncc[idx_fc] = 0.0;
+        if (s_.lthreed) {
+          lmnss[idx_fc] = 0.0;
+        }
       }
     }
   }
@@ -359,6 +448,47 @@ void FourierGeometry::extrapolateTowardsAxis() {
         rmncs[axis1] = rmncs[firstSurface1];
         zmnss[axis1] = zmnss[firstSurface1];
         lmnss[axis1] = lmnss[firstSurface1];
+      }
+    }
+  }  // n
+}
+
+void FourierGeometry::extrapolateTowardsAxisTranspose() {
+  if (nsMin_ > 0) {
+    return;
+  }
+  int axis = 0;
+  int firstSurface = 1;
+  for (int n = 0; n < s_.ntor + 1; ++n) {
+    int m0 = 0;
+    int m1 = 1;
+    int axis0 = (axis * s_.mpol + m0) * (s_.ntor + 1) + n;
+    int axis1 = (axis * s_.mpol + m1) * (s_.ntor + 1) + n;
+    int firstSurface0 = (firstSurface * s_.mpol + m0) * (s_.ntor + 1) + n;
+    int firstSurface1 = (firstSurface * s_.mpol + m1) * (s_.ntor + 1) + n;
+
+    auto fold = [](std::span<double> c, int axisIdx, int firstIdx) {
+      c[firstIdx] += c[axisIdx];
+      c[axisIdx] = 0.0;
+    };
+    fold(rmncc, axis1, firstSurface1);
+    fold(zmnsc, axis1, firstSurface1);
+    fold(lmnsc, axis1, firstSurface1);
+    if (s_.lthreed) {
+      fold(rmnss, axis1, firstSurface1);
+      fold(zmncs, axis1, firstSurface1);
+      fold(lmncs, axis1, firstSurface1);
+      fold(lmncs, axis0, firstSurface0);
+    }
+    if (s_.lasym) {
+      fold(rmnsc, axis1, firstSurface1);
+      fold(zmncc, axis1, firstSurface1);
+      fold(lmncc, axis1, firstSurface1);
+      fold(lmncc, axis0, firstSurface0);
+      if (s_.lthreed) {
+        fold(rmncs, axis1, firstSurface1);
+        fold(zmnss, axis1, firstSurface1);
+        fold(lmnss, axis1, firstSurface1);
       }
     }
   }  // n

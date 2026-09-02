@@ -43,7 +43,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "-t",
         "--max-threads",
-        help="Maximum number of threads that VMEC++ should spawn. The actual number might still be lower that this in case there are too few flux surfaces to keep these many threads busy.",
+        help="Maximum number of threads that VMEC++ should spawn. The actual number might still be lower than this in case there are too few flux surfaces to keep these many threads busy.",
         type=int,
     )
     p.add_argument(

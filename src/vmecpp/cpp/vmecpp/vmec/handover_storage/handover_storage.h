@@ -10,6 +10,7 @@
 #include <span>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
@@ -176,6 +177,10 @@ class HandoverStorage {
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
   Eigen::VectorXd vacuum_b_z;
 
+  // Fourier coefficients of Nestor's scalar magnetic potential; empty unless
+  // this is a free-boundary run. Reported as `potvac` in the wout file.
+  Eigen::VectorXd vacuum_potential;
+
   // Whether the free-boundary vacuum solve requested an early exit at a
   // debug checkpoint (VmecCheckpoint). The vacuum solve now runs in a nested
   // parallel region driven by a single radial thread, so this shared flag
@@ -183,6 +188,9 @@ class HandoverStorage {
   // reads it after the enclosing 'omp single' barrier). Always false during
   // normal runs (checkpoint == NONE).
   bool vacuum_reached_checkpoint = false;
+
+  // First error from the nested vacuum team; reset to OK before each solve.
+  absl::Status vacuum_status = absl::OkStatus();
 
  private:
   const Sizes& s_;
