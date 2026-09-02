@@ -123,6 +123,44 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 
 **Incremental development**: Make small, focused changes that can be validated independently
 
+## Contribution Principles
+
+**Scope**:
+- VMEC++ is an ideal-MHD equilibrium solver with minimal dependencies; optimization, coordinate transforms, profile self-consistency and stability diagnostics belong in downstream libraries or examples
+- Build on the public API where possible; functionality that can live outside the solver does not go inside it
+- Propose a new numerical method with measurements: iteration counts, runtime share, behavior across a range of configurations, and the failure modes it resolves
+- Reuse validated components before writing new ones
+
+**Validation**:
+- VMEC++ reproduces VMEC 8.52; the reference files are educational_VMEC output, which reports `version_ = 8.52`, and PARVMEC 10.0 differs in documented conventions such as the full-grid `bsubsmns` and the `chipf` endpoints
+- Keep historical behavior for compatibility; fix a confirmed bug of the original and mark the deviation in the tests
+- Fix a Fortran-side bug in educational_VMEC first, with a test that fails before and passes after, then regenerate the reference files
+- A symmetric equilibrium run through the asymmetric code paths must reproduce the symmetric result to machine precision (`tests/test_lasym.py`)
+- Match tolerances to the numerics; compare Fourier coefficients directly, a scalar such as the volume is not a physics check
+- Validate changes to the iteration on the force-residual progression, not on the converged state
+- Symmetric cases alone do not establish correctness; include asymmetric, three-dimensional and high-beta cases
+
+**Tests**:
+- Turn derived invariants into unit tests
+- Keep coverage proportionate; simple, already verified logic is not tested separately
+
+**Code**:
+- Use Eigen types where the file uses Eigen; keep fixed-size locals on the stack
+- Reuse existing logic rather than duplicating it
+
+**Comments**:
+- Describe the code as it is, briefly; history and rationale go in the pull request description
+
+**Configuration and errors**:
+- Toggle features through fields of `VmecInput`, not environment variables
+- Warn on transient conditions; error on a result that would be wrong at convergence (the zero-crash policy at the level of a single check)
+
+**Process**:
+- One concern per pull request; unrelated changes, including CI, go separately
+- Address review comments before merge
+- Back performance claims with local measurements; the benchmark job is part of review
+- When an issue already has linked work, state why a different approach is taken
+
 ## Physics Domain Knowledge
 
 **Essential Reading for Fourier Operations**: `docs/fourier_basis_implementation.md` provides comprehensive coverage of DFT implementation, basis conversions, and mathematical foundations. Required reading before working with any Fourier-related code.
