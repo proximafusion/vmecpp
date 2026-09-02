@@ -519,12 +519,9 @@ TEST_F(RadialProfilesTest, DefaultAphiLeavesTorfluxAsTheIdentity) {
 }
 
 // maxToroidalFlux scales torfluxDeriv into phipf, so the enclosed flux at the
-// edge is maxToroidalFlux * integral of torfluxDeriv over [0, 1]. Dividing by
-// torflux(1) makes that come out at exactly signOfJacobian * phiedge / 2 pi.
-// This is why torflux evaluates the integral in closed form rather than by the
-// 100-interval trapezoid educational_VMEC uses in magnetic_fluxes.f90: the
-// trapezoid is exact only while torfluxDeriv is linear, and beyond that it
-// would normalize the profile by a value the profile does not integrate to.
+// edge is maxToroidalFlux times the integral of torfluxDeriv over [0, 1].
+// Dividing by torflux(1), which is that integral in closed form, makes it come
+// out at exactly signOfJacobian * phiedge / 2 pi whatever aphi is.
 TEST_F(RadialProfilesTest, MaxToroidalFluxNormalizesTheEdgeFluxToPhiedge) {
   indata_.pmass_type = "power_series";
   indata_.piota_type = "power_series";
