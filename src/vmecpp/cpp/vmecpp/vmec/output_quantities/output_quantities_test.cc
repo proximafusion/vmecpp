@@ -259,8 +259,11 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
         IsCloseRelAbs(reference_pressure_full[jF], wout.presf[jF], tolerance));
     EXPECT_TRUE(
         IsCloseRelAbs(reference_toroidal_flux[jF], wout.phi[jF], tolerance));
-    EXPECT_TRUE(
-        IsCloseRelAbs(reference_poloidal_flux[jF], wout.chi[jF], tolerance));
+    // The Fortran reference writes chi without the sign of the Jacobian, so
+    // it is the negative of the corrected chi; see
+    // ComputeThreed1FirstTableIntermediate.
+    EXPECT_TRUE(IsCloseRelAbs(-reference_poloidal_flux[jF], wout.chi[jF],
+                              tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_phipf[jF], wout.phipf[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_chipf[jF], wout.chipf[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_jcuru[jF], wout.jcuru[jF], tolerance));

@@ -3328,8 +3328,12 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
         (vmec_internal_results.phipH[jHi] * vmec_internal_results.iotaH[jHi]) *
             fc.deltaS;
 
+    // phi (phiF), phipf and chipf all carry the sign of the Jacobian; chi has
+    // to carry it as well so that iota = d(chi)/d(phi) holds between the wout
+    // profiles. Fortran VMEC (eqfor.f) writes chi = twopi*chi1 without it.
     threed1_first_table_intermediate.chi[jF] =
-        2.0 * M_PI * threed1_first_table_intermediate.chi1[jF];
+        2.0 * M_PI * vmec_internal_results.sign_of_jacobian *
+        threed1_first_table_intermediate.chi1[jF];
   }  // jF
 
   // calc_fbal

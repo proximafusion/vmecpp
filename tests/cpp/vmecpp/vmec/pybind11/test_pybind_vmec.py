@@ -318,7 +318,9 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.presf, wout["presf"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.phi, wout["phi"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.phipf, wout["phipf"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.chi, wout["chi"][()], 1.0e-8)
+    # The Fortran reference writes chi without the sign of the Jacobian, so it
+    # is the negative of the corrected chi.
+    assert is_close_ra(output_quantities.wout.chi, -wout["chi"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.chipf, wout["chipf"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.jcuru, wout["jcuru"][()], 1.0e-6)
     assert is_close_ra(output_quantities.wout.jcurv, wout["jcurv"][()], 1.0e-6)
