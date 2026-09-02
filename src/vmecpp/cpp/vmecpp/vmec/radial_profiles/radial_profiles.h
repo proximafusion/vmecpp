@@ -33,7 +33,9 @@ class RadialProfiles {
   // Call this for every thread, one after another (ideally from a single
   // thread), providing thread_id = 0, 1, ..., (num_threads-1), where
   // num_threads is what is used in RadialPartitioning.
-  void evalRadialProfiles(bool haveToFlipTheta, VmecConstants& m_vmecconst);
+  // Writes phip^2 of each unique half-grid surface into row jH of the shared
+  // surface scratch; the caller folds those rows into VmecConstants::rmsPhiP.
+  void evalRadialProfiles(bool haveToFlipTheta);
 
   ProfileParameterization findParameterization(const std::string& name,
                                                ProfileType intendedType);

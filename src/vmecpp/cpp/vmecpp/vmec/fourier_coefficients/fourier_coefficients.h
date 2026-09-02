@@ -36,12 +36,10 @@ class FourierCoeffs {
   // while lambda keeps the full mpol/ntor resolution.
   void maskGeometryAbove(int mpolGeom, int ntorGeom);
 
-  // Get the sum of squared coefficients for R and Z.
+  // Get the sum of squared coefficients for R and Z on flux surface jF.
   // If includeOffset is false, the (0,0)-coefficients for cos(mu)*cos(nv) are
-  // left out. The range of flux surface to count in is specified as [nsMinHere,
-  // nsMaxHere[ in order to allow to not count stuff twice at the borders in
-  // different threads.
-  double rzNorm(bool includeOffset, int nsMinHere, int nsMaxHere) const;
+  // left out.
+  double rzNorm(bool includeOffset, int jF) const;
 
   double GetXcElement(int rzl, int basis_index, int j, int n, int m) const;
 

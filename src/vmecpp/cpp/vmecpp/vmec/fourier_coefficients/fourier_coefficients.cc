@@ -234,39 +234,35 @@ void FourierCoeffs::maskGeometryAbove(int mpolGeom, int ntorGeom) {
   }  // j
 }
 
-double FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
-                             int nsMaxHere) const {
-  // accumulator for local thread
-  double local_norm2 = 0.0;
+double FourierCoeffs::rzNorm(bool include_offset, int jF) const {
+  double norm2 = 0.0;
 
-  for (int jF = nsMinHere; jF < nsMaxHere; ++jF) {
-    for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+  for (int m = 0; m < s_.mpol; ++m) {
+    for (int n = 0; n < s_.ntor + 1; ++n) {
+      int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
 
+      if (n > 0 || m > 0 || include_offset) {
+        norm2 += rcc[idx_fc] * rcc[idx_fc];
+      }
+      norm2 += zsc[idx_fc] * zsc[idx_fc];
+      if (s_.lthreed) {
+        norm2 += rss[idx_fc] * rss[idx_fc];
+        norm2 += zcs[idx_fc] * zcs[idx_fc];
+      }
+      if (s_.lasym) {
+        norm2 += rsc[idx_fc] * rsc[idx_fc];
         if (n > 0 || m > 0 || include_offset) {
-          local_norm2 += rcc[idx_fc] * rcc[idx_fc];
+          norm2 += zcc[idx_fc] * zcc[idx_fc];
         }
-        local_norm2 += zsc[idx_fc] * zsc[idx_fc];
         if (s_.lthreed) {
-          local_norm2 += rss[idx_fc] * rss[idx_fc];
-          local_norm2 += zcs[idx_fc] * zcs[idx_fc];
+          norm2 += rcs[idx_fc] * rcs[idx_fc];
+          norm2 += zss[idx_fc] * zss[idx_fc];
         }
-        if (s_.lasym) {
-          local_norm2 += rsc[idx_fc] * rsc[idx_fc];
-          if (n > 0 || m > 0 || include_offset) {
-            local_norm2 += zcc[idx_fc] * zcc[idx_fc];
-          }
-          if (s_.lthreed) {
-            local_norm2 += rcs[idx_fc] * rcs[idx_fc];
-            local_norm2 += zss[idx_fc] * zss[idx_fc];
-          }
-        }
-      }  // n
-    }  // m
-  }  // j
+      }
+    }  // n
+  }  // m
 
-  return local_norm2;
+  return norm2;
 }
 
 double FourierCoeffs::GetXcElement(int rzl, int idx_basis, int jF, int n,

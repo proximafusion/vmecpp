@@ -1024,8 +1024,7 @@ double RadialProfiles::evalNiceQuadratic(const Eigen::VectorXd& coeffs,
          4.0 * Coef(coeffs, 2) * x * (1.0 - x);
 }
 
-void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
-                                        VmecConstants& m_vmecconst) {
+void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta) {
   // R_00 of initial boundary is ~ major radius
   // and used as normalization factor for mass profile
   const double r00 = id_.rbc(0, id_.ntor);
@@ -1044,8 +1043,6 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     // BSUBU (IN GETIOTA) ~ SIGNGS * CURTOR
     Itor = signOfJacobian * currv / (2.0 * M_PI * edgeCurrent);
   }
-
-  double local_rmsPhiP = 0.0;
 
   // half-grid
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
@@ -1087,13 +1084,12 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     // This must be done over UNIQUE half-grid points !!!
     // --> The standard partitioning has half-grid points between
     //     neighboring ranks that are handled by both ranks.
+    // The caller folds these rows in surface order into rmsPhiP.
     if (jH < r_.nsMaxH - 1 || jH == fc_.ns - 2) {
-      local_rmsPhiP += phipH[jH - r_.nsMinH] * phipH[jH - r_.nsMinH];
+      m_h_.surface_reduce_scratch(jH, 0) =
+          phipH[jH - r_.nsMinH] * phipH[jH - r_.nsMinH];
     }
   }
-
-  // global accumulation of rmsPhiP
-  m_vmecconst.rmsPhiP += local_rmsPhiP;
 
   // ------------------------------------------
 
@@ -1149,9 +1145,6 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
 }  // evalRadialProfiles
 
 void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
-  SpectralWidthContribution spectral_width_contribution = {.numerator = 0.0,
-                                                           .denominator = 0.0};
-
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // This must be done over UNIQUE half-grid points !!!
     // --> The standard partitioning has half-grid points between
@@ -1164,23 +1157,25 @@ void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
           (spectral_width[jFo - r_.nsMinF1] +
            spectral_width[jFi - r_.nsMinF1]) /
           2.0;
-      spectral_width_contribution.numerator +=
+      m_h_.surface_reduce_scratch(jH, 0) =
           spectral_width_on_half_grid * dVdsH[jH - r_.nsMinH];
-
-      spectral_width_contribution.denominator += dVdsH[jH - r_.nsMinH];
+      m_h_.surface_reduce_scratch(jH, 1) = dVdsH[jH - r_.nsMinH];
     }
   }  // jH
 
-  const std::array<double, 2> local_sw = {
-      spectral_width_contribution.numerator,
-      spectral_width_contribution.denominator};
-  SumInFixedTree(m_h_.tree_reduce_scratch.data(), 4, 2, r_.get_thread_id(),
-                 r_.get_num_threads(), local_sw.data());
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-  m_h_.RegisterSpectralWidthContribution(SpectralWidthContribution{
-      m_h_.tree_reduce_scratch(0, 0), m_h_.tree_reduce_scratch(0, 1)});
+  {
+    std::array<double, 2> totals = {0.0, 0.0};
+    SumSurfaceRows(m_h_.surface_reduce_scratch.data(), 4, 2, fc_.ns,
+                   totals.data());
+    m_h_.RegisterSpectralWidthContribution(
+        SpectralWidthContribution{totals[0], totals[1]});
+  }
 }  // AccumulateVolumeAveragedSpectralWidth
 
 }  // namespace vmecpp

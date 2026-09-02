@@ -35,39 +35,25 @@ namespace vmecpp {
 using RowMatrixXd =
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
-// Sums each thread's `width` contributions by a fixed binary tree over the
-// team. Thread t parks its values in row t of `m_slots`; at strides 1, 2, 4,
-// ... thread t with t % (2*stride) == 0 adds row t+stride into row t. The
-// pairing depends only on thread ids, never on arrival order, so the
-// floating-point result is reproducible, and the fold costs
-// ceil(log2(num_threads)) barriers where taking turns costs num_threads.
-// Row 0 holds the team total after the call, which ends on a barrier.
-//
-// `m_slots` must provide num_threads rows of `row_stride` doubles of shared
-// storage (row_stride >= width), and every thread of the team must call this
-// together with the same arguments apart from `local`.
-inline void SumInFixedTree(double *m_slots, int row_stride, int width,
-                           int thread_id, int num_threads,
-                           const double *local) {
-  double *row = m_slots + static_cast<std::ptrdiff_t>(thread_id) * row_stride;
+// Folds one partial per radial surface into a total in ascending surface
+// order. Every thread first writes the rows of `m_slots` for the surfaces it
+// owns, one row of `row_stride` doubles per surface with `width` values used,
+// and the team meets at a barrier; one thread then calls this to sum rows
+// 0 .. num_rows-1 into `out` and clear them for the next reduction. The
+// grouping of the floating-point sum follows the surface index alone, so the
+// total is the same for any number of threads. A row no thread wrote is still
+// zero from the previous clear (or from the allocation).
+inline void SumSurfaceRows(double *m_slots, int row_stride, int width,
+                           int num_rows, double *out) {
   for (int i = 0; i < width; ++i) {
-    row[i] = local[i];
+    out[i] = 0.0;
   }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-  for (int stride = 1; stride < num_threads; stride *= 2) {
-    if (thread_id % (2 * stride) == 0 && thread_id + stride < num_threads) {
-      const double *other =
-          m_slots +
-          static_cast<std::ptrdiff_t>(thread_id + stride) * row_stride;
-      for (int i = 0; i < width; ++i) {
-        row[i] += other[i];
-      }
+  for (int j = 0; j < num_rows; ++j) {
+    double *row = m_slots + static_cast<std::ptrdiff_t>(j) * row_stride;
+    for (int i = 0; i < width; ++i) {
+      out[i] += row[i];
+      row[i] = 0.0;
     }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
   }
 }
 

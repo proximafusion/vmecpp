@@ -706,11 +706,13 @@ bool Vmec::InitializeRadial(
 
     // COMPUTE INITIAL R, Z AND MAGNETIC FLUX PROFILES
     for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
-      p_[thread_id]->evalRadialProfiles(fc_.haveToFlipTheta, constants_);
+      p_[thread_id]->evalRadialProfiles(fc_.haveToFlipTheta);
     }
 
-    // Now that all contributions to lamscale have been accumulated in
-    // VmecConstants::rmsPhiP, can update lamscale.
+    // Every thread has written phip^2 of its half-grid surfaces into a row of
+    // the shared scratch; fold them in surface order for lamscale.
+    SumSurfaceRows(h_.surface_reduce_scratch.data(), 4, 1, fc_.ns,
+                   &constants_.rmsPhiP);
     constants_.lamscale = sqrt(constants_.rmsPhiP * fc_.deltaS);
 
     if (checkpoint == VmecCheckpoint::RADIAL_PROFILES_EVAL &&
