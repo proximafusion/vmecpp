@@ -1071,7 +1071,7 @@ TEST_P(ContravariantMagneticFieldTest, CheckContravariantMagneticField) {
       for (int jFi = nsMinFi; jFi < jMaxIncludingBoundary; ++jFi) {
         if (jFi < fc.ns - 1) {
           // The boundary chipf uses the corrected extrapolation and deviates
-          // from the reference; see updateFullGridProfiles.
+          // from the reference; see computeBContra.
           EXPECT_TRUE(IsCloseRelAbs(add_fluxes["chipf"][jFi],
                                     vmec.p_[thread_id]->chipF[jFi - nsMinF1],
                                     tolerance));

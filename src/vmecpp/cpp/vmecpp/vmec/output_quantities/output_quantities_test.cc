@@ -278,9 +278,9 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
     EXPECT_TRUE(
         IsCloseRelAbs(reference_poloidal_flux[jF], wout.chi[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_phipf[jF], wout.phipf[jF], tolerance));
-    if (jF < fc.ns - 1) {
-      // The boundary chipf uses the corrected extrapolation and deviates from
-      // the Fortran reference; see updateFullGridProfiles.
+    if (jF > 0 && jF < fc.ns - 1) {
+      // The axis and the boundary entries of chipf follow PARVMEC rather than
+      // the 8.52 lineage the references come from; see computeBContra.
       EXPECT_TRUE(
           IsCloseRelAbs(reference_chipf[jF], wout.chipf[jF], tolerance));
     }
