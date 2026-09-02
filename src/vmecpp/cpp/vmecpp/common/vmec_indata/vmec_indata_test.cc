@@ -609,4 +609,28 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.zbc, indata.zbc);
 }  // CopyMethod
 
+TEST(TestVmecINDATA, CheckOnlyCoilsRejectsCurrentAndPressure) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_TRUE(indata->lfreeb);
+
+  VmecINDATA only_coils = *indata;
+  only_coils.free_boundary_method = FreeBoundaryMethod::ONLY_COILS;
+  only_coils.curtor = 0.0;
+  only_coils.pres_scale = 0.0;
+  EXPECT_TRUE(IsConsistent(only_coils, /*enable_info_messages=*/false).ok());
+
+  only_coils.curtor = 1.0e3;
+  EXPECT_EQ(IsConsistent(only_coils, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  only_coils.curtor = 0.0;
+  only_coils.pres_scale = 1.0;
+  EXPECT_EQ(IsConsistent(only_coils, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
 }  // namespace vmecpp
