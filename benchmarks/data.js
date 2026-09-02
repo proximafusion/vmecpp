@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788361672714,
+  "lastUpdate": 1788369449595,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -15271,6 +15271,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.47459276299997555,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0e1613553bdc9e573adb3bf82ac80bc5358c9464",
+          "message": "Fix the poloidal layout of the lasym covariant-B derivatives in the output stage (#771)\n\n* Fix the poloidal layout of the lasym covariant-B derivatives in the output stage\n\n* Compare every output quantity of the degenerate lasym run with the symmetric run",
+          "timestamp": "2026-09-02T19:10:01+02:00",
+          "tree_id": "8fceec8ac156bc7d517b9c054a6ca0d813c33e3b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/0e1613553bdc9e573adb3bf82ac80bc5358c9464"
+        },
+        "date": 1788369447340,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3866208641999947,
+            "range": "stddev: 0.0026619316464669214",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.512137973666654,
+            "range": "stddev: 0.03472101266914928",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0845870773333293,
+            "range": "stddev: 0.0017399296162415865",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6004129696666876,
+            "range": "stddev: 0.011930972216747777",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.9792586036666837,
+            "range": "stddev: 0.0026715595998522686",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.20340982266661,
+            "range": "stddev: 0.0034125706336719706",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.493291577000036,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.47349845199994434,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
