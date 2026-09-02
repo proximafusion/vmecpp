@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788370558703,
+  "lastUpdate": 1788381407461,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -15431,6 +15431,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.26227027000004455,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1f706f297ee33d804cc2c216ec0f3565586f83e5",
+          "message": "Extrapolate chipF onto the axis like iotaF (#773)\n\n* Extrapolate chipF onto the axis like iotaF\n\n* Apply ruff format\n\n* Shorten the comments",
+          "timestamp": "2026-09-02T22:30:29+02:00",
+          "tree_id": "52471c9247fce45140794521afe38464666238eb",
+          "url": "https://github.com/proximafusion/vmecpp/commit/1f706f297ee33d804cc2c216ec0f3565586f83e5"
+        },
+        "date": 1788381405249,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.29118301400000063,
+            "range": "stddev: 0.004346753171013415",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.039192986666668,
+            "range": "stddev: 0.029644131587682216",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8906024409999796,
+            "range": "stddev: 0.004290791128911759",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.308460883333358,
+            "range": "stddev: 0.022025331159695627",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.7371681166666804,
+            "range": "stddev: 0.013417769036921786",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.943427117666658,
+            "range": "stddev: 0.023130222124273382",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.0049795360000076,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.29781231099997285,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
