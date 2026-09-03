@@ -158,6 +158,22 @@ TEST_P(GuessMagneticAxisTest, CheckAsymmetricRunSearchesEveryPlane) {
   }  // k
 }
 
+TEST_P(GuessMagneticAxisTest, CheckAsymmetricRunFillsEveryPoloidalPoint) {
+  ASSERT_FALSE(sizes_->lasym);
+  const RecomputeAxisWorkspace w = RecomputeAsAsymmetric();
+
+  // The poloidal basis is tabulated on the reduced theta interval, and the
+  // mirror that fills the rest for a symmetric run does not hold for an
+  // asymmetric one. A point left out keeps R at zero, which drags the lower
+  // edge of the search grid to the axis of the machine.
+  for (int k = 0; k < sizes_->nZeta; ++k) {
+    for (int l = 0; l < sizes_->nThetaEven; ++l) {
+      EXPECT_GT(w.r_lcfs[k][l], 0.0) << "plane " << k << ", theta point " << l;
+      EXPECT_GT(w.r_half[k][l], 0.0) << "plane " << k << ", theta point " << l;
+    }  // l
+  }  // k
+}
+
 INSTANTIATE_TEST_SUITE_P(
     TestGuessMagneticAxis, GuessMagneticAxisTest,
     Values(
