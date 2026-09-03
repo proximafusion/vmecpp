@@ -228,22 +228,31 @@ bool Boundaries::checkSignOfJacobian() {
 
   double rTest = 0.0;
   double zTest = 0.0;
+  double rTestAsym = 0.0;
+  double zTestAsym = 0.0;
   for (int n = 0; n < s_.ntor + 1; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
     rTest += rbcc[idx_mn];
     zTest += zbsc[idx_mn];
+    if (s_.lasym) {
+      rTestAsym += rbsc[idx_mn];
+      zTestAsym += zbcc[idx_mn];
+    }
   }
 
-  // TODO(jons): potentially more robust version of this
-  // - eval boundary in a given poloidal plane at equal theta intervals, enough
-  // to satisfy Nyquist requirement
-  // - compute signed polygon area
-  // --> handedness of polygon is given by sign of polygon area
+  // An asymmetric boundary has been rotated in the poloidal angle by
+  // parseToInternalArrays, to put it into the representation with
+  // RBS(m=1) = ZBC(m=1). The product rTest*zTest is not invariant under that
+  // rotation, which can leave it at zero for a boundary that does need
+  // flipping. This determinant is the signed area of the m=1 ellipse, so it is
+  // invariant under the rotation and changes sign with the poloidal direction.
+  // It reduces to rTest*zTest for a stellarator-symmetric boundary.
+  const double handedness = rTest * zTest - rTestAsym * zTestAsym;
 
-  // for signOfJacobian == -1, need to flip when rTest*zTest < 0
+  // for signOfJacobian == -1, need to flip when the handedness is negative
   // ---> this is true when the total sign is positive
-  return (rTest * zTest * sign_of_jacobian_ > 0.0);
+  return (handedness * sign_of_jacobian_ > 0.0);
 }
 
 void Boundaries::flipTheta() {
