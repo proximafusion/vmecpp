@@ -20,6 +20,15 @@ Environment layout per point (must match theories/Physics.v):
   +3K Z | +6K lambda (rows h-, h+)      (K = mnmax)
   32+8K..   scratch slots the checker fills with shared subexpressions
 
+With --cells the certificate instead claims its bounds over cells of angles, so
+that a VALID verdict covers the continuum between the sampled angles and not
+only the samples. The bounds of a cell certificate are written by the checker
+itself:
+
+  python make_equilibrium_certificate.py wout_X.nc cell_X.txt --cells --nu 8192
+  stellarocq-check --tighten cell_X.txt cert_X.txt
+  stellarocq-check cert_X.txt
+
 Usage:  python make_equilibrium_certificate.py [wout_X.nc [cert_X.txt]] [--nodes 6] [--nu 8] [--nv 4]
 Without arguments it certifies the shipped wout_solovev.nc into cert_solovev.txt.
 """
@@ -201,6 +210,103 @@ def residual_ref(w, j, u, vv, phip):
     return rs, ru, rv_, max(qm["B2"], qp["B2"])
 
 
+ANGLE_EXP = -50
+
+
+def dyadic_at(x, e=ANGLE_EXP):
+    """X on the fixed dyadic grid of step 2^e, as (mantissa, e).
+
+    The angles have to share a fine exponent: the checker varies the mantissa
+    of the angle slot, so one mantissa unit is 2^e radians, and taking whatever
+    exponent the double happens to carry makes the unit meaningless (u = 0 has
+    exponent 0, one unit of which is a radian).
+    """
+    return round(float(x) / 2.0**e), e
+
+
+def write_ccert(a, w, K, phip, idx, us, vs, nv, three_d):
+    """Write a cell certificate: every angle of every cell is covered.
+
+    A cell spans half a spacing either side of its centre angle, so the cells
+    of an axisymmetric case tile the whole angular torus and those of a
+    three-dimensional case tile u in [0, 2 pi) at each of nv toroidal angles.
+    The half-widths are carried in units of the mantissa of the centre angle,
+    which is what the checker varies, and the bounds are left to
+    "main --tighten".
+    """
+    wu = a.wscale * np.pi / len(us)
+    # An axisymmetric equilibrium has every n zero, so the v derivative of the
+    # residual encloses to zero and one cell covers the whole toroidal angle.
+    # A three-dimensional one needs the v extent resolved as finely as the u
+    # extent, which squares the cell count, so its cells are u segments at nv
+    # toroidal angles instead.
+    wv = a.wscale * np.pi if not three_d else 0.0
+    lines = []
+    P = lines.append
+    P("STELLAROCQ-CCERT 3")
+    P(f"PREC {a.prec}")
+    P(f"MODES {K}")
+    for m, n in zip(w.xm, w.xn, strict=True):
+        P(f"{m} {n}")
+    P("PHIP {} {}".format(*dyadic(phip)))
+    P("AM 21")
+    for j in range(21):
+        am_j = w.am[j] if j < len(w.am) else 0.0
+        P("{} {}".format(*dyadic(am_j)))
+
+    angles = [(u, v) for u in us for v in vs]
+    P(f"NANGLES {len(angles)}")
+    for u, v in angles:
+        mu, eu = dyadic_at(u)
+        mv, ev = dyadic_at(v)
+        # Half-width in mantissa units, rounded up. The rounding of a centre
+        # onto the grid moves it by at most half a unit, so rounding the
+        # half-width up by a whole one leaves the cells overlapping rather
+        # than gapped, and their union is the whole angle.
+        du = int(np.ceil(wu / 2.0**eu)) if wu > 0 else 0
+        dv = int(np.ceil(wv / 2.0**ev)) if wv > 0 else 0
+        P(f"{mu} {eu} {mv} {ev} {du} {dv}")
+
+    P(f"NNODES {len(idx)}")
+    for j in idx:
+        P("NODE")
+        P("S {} {}".format(*dyadic(w.s_full[j])))
+        P(
+            "SNODES "
+            + " ".join("{} {}".format(*dyadic(x)) for x in w.s_full[j - 1 : j + 2])
+        )
+        P("SHALF " + " ".join("{} {}".format(*dyadic(x)) for x in w.s_half[j : j + 2]))
+        P("IOTA " + " ".join("{} {}".format(*dyadic(x)) for x in w.iotas[j : j + 2]))
+        for tag, M in (
+            ("RNODES", w.rmnc[j - 1 : j + 2]),
+            ("ZNODES", w.zmns[j - 1 : j + 2]),
+            ("LHALF", w.lmns[j : j + 2]),
+        ):
+            P(tag)
+            for row in M:
+                P(" ".join("{} {}".format(*dyadic(x)) for x in row))
+        P(f"CELLS {len(angles)}")
+        # The bounds are placeholders that "main --tighten" replaces with the
+        # enclosures the checker computes, because the width of an interval
+        # enclosure of a cancelling expression is a property of the arithmetic
+        # and cannot be predicted from a float sample of the function.
+        for _ in angles:
+            for _ in range(3):
+                P("1 0 1 0 1 0 4 0")
+    pathlib.Path(a.out).write_text("\n".join(lines) + "\n")
+    print(
+        f"wrote {a.out}: {len(idx)} nodes x {len(angles)} cells = "
+        f"{len(idx) * len(angles)} cells, K={K}"
+    )
+    cover = (
+        "the cells tile the whole angular torus"
+        if not three_d
+        else f"the cells tile u in [0, 2 pi) at each of {nv} toroidal angles"
+    )
+    print(f"cell half-widths: u {wu:.4e} rad, v {wv:.4e} rad; {cover}")
+    print("run 'stellarocq-check --tighten' on it to set the bounds, then check it")
+
+
 def main():
     """Read the wout, choose the bounds, write the certificate."""
     ap = argparse.ArgumentParser()
@@ -210,7 +316,26 @@ def main():
     )
     ap.add_argument("wout", nargs="?", default=str(default_wout))
     ap.add_argument("out", nargs="?", default=None)
+    ap.add_argument(
+        "--cells",
+        action="store_true",
+        help="emit a cell certificate: the bound holds at every angle of each "
+        "cell, not only at its centre",
+    )
+    ap.add_argument(
+        "--wscale",
+        type=float,
+        default=1.0,
+        help="scale the cell half-widths. 1 makes the cells tile the angular "
+        "torus exactly; smaller leaves gaps and is for diagnosis only.",
+    )
     ap.add_argument("--nodes", type=int, default=6)
+    ap.add_argument(
+        "--node",
+        type=int,
+        default=None,
+        help="certify this single full-grid node instead of a spread of them",
+    )
     ap.add_argument("--nu", type=int, default=8)
     ap.add_argument("--nv", type=int, default=4)
     ap.add_argument("--slack", type=float, default=1.5)
@@ -236,11 +361,29 @@ def main():
     # certified nodes: interior full-grid nodes with both neighbors off the
     # axis, evenly spread
     lo, hi = 2, w.ns - 2
-    idx = np.unique(np.linspace(lo, hi, a.nodes).astype(int))
+    if a.node is not None:
+        if not lo <= a.node <= hi:
+            msg = f"--node must lie in [{lo}, {hi}]"
+            raise SystemExit(msg)
+        idx = np.array([a.node])
+    else:
+        idx = np.unique(np.linspace(lo, hi, a.nodes).astype(int))
     # angles: exact doubles
     us = [float(2 * np.pi * k / a.nu) for k in range(a.nu)]
     vs = [float(2 * np.pi * k / (nfp * nv)) for k in range(nv)]
     angles = [(u, v) for u in us for v in vs]
+
+    if a.cells:
+        # the field-energy scale the bounds are read against, from a coarse
+        # subset of the angles: the cell bounds themselves come from the
+        # checker, so the reference is needed for scale only
+        coarse = angles[:: max(1, len(angles) // 64)]
+        scale = max(
+            abs(residual_ref(w, j, u, v, phip)[3]) for j in idx for u, v in coarse
+        )
+        write_ccert(a, w, K, phip, idx, us, vs, nv, three_d)
+        print(f"reference B^2 scale {scale:.3e}")
+        return
 
     # choose eps from the float reference
     worst = np.zeros(3)
