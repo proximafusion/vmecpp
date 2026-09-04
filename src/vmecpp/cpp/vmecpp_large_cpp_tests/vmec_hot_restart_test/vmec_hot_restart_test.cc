@@ -757,10 +757,20 @@ TEST(HotRestartIntegration, FreeBoundary) {
 
   // COMPARE RUN FROM SCRATCH AND HOT-RESTARTED RUN
   //
-  // The bound is set by jdotb, which differs by 2.8e-2 between the two runs,
-  // and jcuru at 1.6e-2. Everything else stays at or below 1.8e-3 (DMerc),
-  // with the geometry and field coefficients at 1e-5 and the integrated
-  // scalars at 1e-10 or tighter.
+  // 0.1 is close to the floor. The largest deviation the comparison sees is
+  // 5.9e-2, on DCurr at jF = 13, with 4.4e-2 on jF = 12; then jdotb at 2.8e-2,
+  // jcuru at 1.6e-2, DWell at 1.3e-2 and DGeod at 1.2e-2. DMerc, equif and
+  // DShear follow at 1.2e-3 to 1.8e-3, and the geometry and field coefficients
+  // sit at 1e-5 with the integrated scalars below that. Splitting the current
+  // densities off behind current_density_tolerance does not lower the bound,
+  // since that applies to jcuru and jcurv alone while DCurr fails first.
+  //
+  // Those are all derivative diagnostics of the converged state, and they
+  // amplify the difference between two convergence paths. The two runs do not
+  // land on the same point to ftol: even rmax_surf, a plain geometric
+  // quantity, agrees only to 1.6e-5. What is being asked for here is agreement
+  // between two paths into the same shallow minimum, not between two
+  // evaluations of one state.
   const double tolerance = 0.1;
   const bool check_equal_maximum_iterations = false;
   CompareWOut(displaced_hotrestarted_output->wout,
