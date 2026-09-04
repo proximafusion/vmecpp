@@ -1255,4 +1255,13 @@ TEST(TestMakegridLib, CheckWriteMakegridNetCDFFileRejectsInconsistentCurrents) {
             absl::StatusCode::kInvalidArgument);
 }  // CheckWriteMakegridNetCDFFileRejectsInconsistentCurrents
 
+// A parameters file that cannot be read is reported through the return value.
+TEST(TestMakegridLib, CheckImportMakegridParametersReportsUnreadableFile) {
+  const absl::StatusOr<MakegridParameters> parameters =
+      ImportMakegridParametersFromFile(
+          "vmecpp/test_data/no_such_makegrid_parameters.json");
+  ASSERT_FALSE(parameters.ok());
+  EXPECT_EQ(parameters.status().code(), absl::StatusCode::kNotFound);
+}  // CheckImportMakegridParametersReportsUnreadableFile
+
 }  // namespace makegrid
