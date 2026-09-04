@@ -442,6 +442,10 @@ class VmecInput(BaseModelWithNumpy):
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
+    lbsubs: bool = False
+    """If true, recompute the full-grid covariant B_s by solving radial force balance
+    (lbsubs flag in Fortran VMEC)."""
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.
