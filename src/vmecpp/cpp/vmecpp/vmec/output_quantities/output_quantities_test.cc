@@ -2,6 +2,8 @@
 // <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
+#include "vmecpp/vmec/output_quantities/output_quantities.h"
+
 #include <netcdf.h>
 
 #include <algorithm>
@@ -21,7 +23,6 @@
 #include "util/netcdf_io/netcdf_io.h"
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/util/util.h"
-#include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
 using nlohmann::json;
