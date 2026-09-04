@@ -25,6 +25,25 @@
 
 namespace vmecpp {
 
+// The lasym cos halves of grpmn and bvec are not compared against
+// educational_VMEC anywhere, because it dumps no cos-part reference. Measured,
+// that leaves them thinly covered: with the sin half of the vacuum right-hand
+// side scaled by 0.5, ten test targets fail, but with the cos half scaled by
+// 0.5 the entire suite still passes, and only zeroing it outright is noticed,
+// by TestVmec.LasymFreeBoundaryMatchesEducationalVmec alone.
+//
+// Tightening that test is not enough to close the gap. It holds at 1e-5 and
+// fails at 5e-6, while the halved-cos run fails at 1e-5, so the separation is
+// under a factor of two, which is too little to rely on across builds when the
+// residual there already limit-cycles near 1e-8.
+//
+// What would close it is a reference-free property that moves content between
+// the two halves: shifting the poloidal origin of an asymmetric boundary leaves
+// the equilibrium alone but redistributes it between the sin and cos parts, so
+// a mis-scaled cos half stops reproducing the unshifted run.
+// tests/test_lasym.py already applies that idea to the toroidal angle for fixed
+// boundary.
+
 using nlohmann::json;
 
 using file_io::ReadFile;
@@ -137,8 +156,11 @@ TEST_P(FourPTest, CheckFourP) {
                   static_cast<double>(vac1n_fourp["grpmn"][m][nf - n][k][l]) -
                   grpmn_sin_singular_negn;
 
-              // TODO(jons): for lasym, need cos-part of grpmn from
-              // educational_VMEC
+              // Only the sin part is compared here. The cos part would need
+              // educational_VMEC to dump grpmn_cos, which it does not, so
+              // there is nothing to compare against at this level. What that
+              // leaves uncovered is measured in the note at the head of this
+              // file.
               EXPECT_TRUE(IsCloseRelAbs(grpmn_sin_reference_posn,
                                         grpmn_sin_regular_posn, tolerance));
               EXPECT_TRUE(IsCloseRelAbs(grpmn_sin_reference_negn,
@@ -309,8 +331,11 @@ TEST_P(FourIAccumulateGrpmnTest, CheckFourIAccumulateGrpmn) {
                   scale_to_match_fortran_regular *
                   ls.grpmn_sin[idx_m_negn * numLocal + klRel];
 
-              // TODO(jons): for lasym, need cos-part of grpmn from
-              // educational_VMEC
+              // Only the sin part is compared here. The cos part would need
+              // educational_VMEC to dump grpmn_cos, which it does not, so
+              // there is nothing to compare against at this level. What that
+              // leaves uncovered is measured in the note at the head of this
+              // file.
               EXPECT_TRUE(IsCloseRelAbs(vac1n_fourp["grpmn"][m][nf + n][k][l],
                                         grpmn_sin_regular_posn, tolerance));
               EXPECT_TRUE(IsCloseRelAbs(vac1n_fourp["grpmn"][m][nf - n][k][l],
