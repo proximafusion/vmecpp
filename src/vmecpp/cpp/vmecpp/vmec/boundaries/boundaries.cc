@@ -235,12 +235,6 @@ bool Boundaries::checkSignOfJacobian() {
     zTest += zbsc[idx_mn];
   }
 
-  // TODO(jons): potentially more robust version of this
-  // - eval boundary in a given poloidal plane at equal theta intervals, enough
-  // to satisfy Nyquist requirement
-  // - compute signed polygon area
-  // --> handedness of polygon is given by sign of polygon area
-
   // for signOfJacobian == -1, need to flip when rTest*zTest < 0
   // ---> this is true when the total sign is positive
   return (rTest * zTest * sign_of_jacobian_ > 0.0);
