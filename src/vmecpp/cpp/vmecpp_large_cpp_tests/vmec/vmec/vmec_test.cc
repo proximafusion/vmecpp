@@ -54,6 +54,11 @@ struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
   std::vector<int> iter2_to_test = {1, 2};
+  // One tolerance per entry of ns_array, for the tests that walk every
+  // multi-grid step. The deviation from the reference grows with each step, so
+  // a single bound sized for the first one is too tight for the later ones.
+  // Empty means every step uses `tolerance`.
+  std::vector<double> multigrid_tolerances = {};
 };
 
 class PrintoutTest : public TestWithParam<DataSource> {
@@ -300,8 +305,6 @@ class MultigridResultTest : public TestWithParam<DataSource> {
 };
 
 TEST_P(MultigridResultTest, CheckMultigridResult) {
-  const double tolerance = data_source_.tolerance;
-
   static constexpr int kR = 0;
   static constexpr int kZ = 1;
   static constexpr int kL = 2;
@@ -315,70 +318,96 @@ TEST_P(MultigridResultTest, CheckMultigridResult) {
       VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
 
-  Vmec vmec(*vmec_indata);
-  const Sizes& s = vmec.s_;
-  const FlowControl& fc = vmec.fc_;
+  // educational_VMEC dumps a multigrid_result for every entry of ns_array, so
+  // each multi-grid step is checked, not only the first. iter2 restarts at 1 in
+  // InitializeRadial, so the iteration count in the filename is the one for
+  // that step alone.
+  const int num_multi_grid_steps =
+      static_cast<int>(vmec_indata->ns_array.size());
+  ASSERT_GT(num_multi_grid_steps, 0);
 
-  // run until convergence
-  // TODO(jons): need to limit for first multi-grid step for now ...
-  bool reached_checkpoint = vmec.run(VmecCheckpoint::NONE, INT_MAX, 1).value();
-  ASSERT_FALSE(reached_checkpoint);
+  for (int multi_grid_step = 1; multi_grid_step <= num_multi_grid_steps;
+       ++multi_grid_step) {
+    const double tolerance =
+        data_source_.multigrid_tolerances.empty()
+            ? data_source_.tolerance
+            : data_source_.multigrid_tolerances.at(multi_grid_step - 1);
 
-  // Here, we implicitly test for correct number of iterations until convergence
-  // by constructing the filename based on the number of iterations VMEC++ took.
-  filename = absl::StrFormat(
-      "vmecpp_large_cpp_tests/test_data/%s/multigrid_result/"
-      "multigrid_result_%05d_%06d_%02d.%s.json",
-      data_source_.identifier, fc.ns, vmec.get_iter2(), vmec.get_jacob_off(),
-      data_source_.identifier);
+    Vmec vmec(*vmec_indata);
+    const Sizes& s = vmec.s_;
+    const FlowControl& fc = vmec.fc_;
 
-  std::ifstream ifs_multigrid_result(filename);
-  ASSERT_TRUE(ifs_multigrid_result.is_open())
-      << "failed to open reference file: " << filename;
-  json multigrid_result = json::parse(ifs_multigrid_result);
+    // run until convergence of this multi-grid step
+    bool reached_checkpoint =
+        vmec.run(VmecCheckpoint::NONE, INT_MAX, multi_grid_step).value();
+    ASSERT_FALSE(reached_checkpoint);
 
-  // perform testing outside of multi-threaded region to avoid overlapping error
-  // messages
-  for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-    const RadialPartitioning& radial_partitioning = *vmec.r_[thread_id];
+    // Here, we implicitly test for correct number of iterations until
+    // convergence by constructing the filename based on the number of
+    // iterations VMEC++ took.
+    filename = absl::StrFormat(
+        "vmecpp_large_cpp_tests/test_data/%s/multigrid_result/"
+        "multigrid_result_%05d_%06d_%02d.%s.json",
+        data_source_.identifier, fc.ns, vmec.get_iter2(), vmec.get_jacob_off(),
+        data_source_.identifier);
 
-    const int nsMinF = radial_partitioning.nsMinF;
-    const int nsMaxFIncludingLcfs = radial_partitioning.nsMaxFIncludingLcfs;
+    std::ifstream ifs_multigrid_result(filename);
+    ASSERT_TRUE(ifs_multigrid_result.is_open())
+        << "failed to open reference file: " << filename;
+    json multigrid_result = json::parse(ifs_multigrid_result);
 
-    for (int idx_basis = 0; idx_basis < s.num_basis; ++idx_basis) {
-      for (int jF = nsMinF; jF < nsMaxFIncludingLcfs; ++jF) {
-        for (int n = 0; n < s.ntor + 1; ++n) {
-          for (int m = 0; m < s.mpol; ++m) {
-            EXPECT_TRUE(
-                IsCloseRelAbs(multigrid_result["xc"][kR][idx_basis][jF][n][m],
-                              vmec.decomposed_x_[thread_id]->GetXcElement(
-                                  kR, idx_basis, jF, n, m),
-                              tolerance));
-            EXPECT_TRUE(
-                IsCloseRelAbs(multigrid_result["xc"][kZ][idx_basis][jF][n][m],
-                              vmec.decomposed_x_[thread_id]->GetXcElement(
-                                  kZ, idx_basis, jF, n, m),
-                              tolerance));
-            EXPECT_TRUE(
-                IsCloseRelAbs(multigrid_result["xc"][kL][idx_basis][jF][n][m],
-                              vmec.decomposed_x_[thread_id]->GetXcElement(
-                                  kL, idx_basis, jF, n, m),
-                              tolerance));
-          }  // m
-        }  // n
-      }  // jF
-    }  // idx_basis
-  }  // thread_id
+    // perform testing outside of multi-threaded region to avoid overlapping
+    // error messages
+    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
+      const RadialPartitioning& radial_partitioning = *vmec.r_[thread_id];
+
+      const int nsMinF = radial_partitioning.nsMinF;
+      const int nsMaxFIncludingLcfs = radial_partitioning.nsMaxFIncludingLcfs;
+
+      for (int idx_basis = 0; idx_basis < s.num_basis; ++idx_basis) {
+        for (int jF = nsMinF; jF < nsMaxFIncludingLcfs; ++jF) {
+          for (int n = 0; n < s.ntor + 1; ++n) {
+            for (int m = 0; m < s.mpol; ++m) {
+              EXPECT_TRUE(
+                  IsCloseRelAbs(multigrid_result["xc"][kR][idx_basis][jF][n][m],
+                                vmec.decomposed_x_[thread_id]->GetXcElement(
+                                    kR, idx_basis, jF, n, m),
+                                tolerance))
+                  << "ns=" << fc.ns;
+              EXPECT_TRUE(
+                  IsCloseRelAbs(multigrid_result["xc"][kZ][idx_basis][jF][n][m],
+                                vmec.decomposed_x_[thread_id]->GetXcElement(
+                                    kZ, idx_basis, jF, n, m),
+                                tolerance))
+                  << "ns=" << fc.ns;
+              EXPECT_TRUE(
+                  IsCloseRelAbs(multigrid_result["xc"][kL][idx_basis][jF][n][m],
+                                vmec.decomposed_x_[thread_id]->GetXcElement(
+                                    kL, idx_basis, jF, n, m),
+                                tolerance))
+                  << "ns=" << fc.ns;
+            }  // m
+          }  // n
+        }  // jF
+      }  // idx_basis
+    }  // thread_id
+  }  // multi_grid_step
 }  // CheckMultigridResult
 
 INSTANTIATE_TEST_SUITE_P(
     TestVmec, MultigridResultTest,
-    Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-15},
-           DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-15},
+    Values(DataSource{.identifier = "solovev",
+                      .tolerance = 5.0e-15,
+                      .multigrid_tolerances = {5.0e-15, 1.0e-12, 5.0e-11}},
+           DataSource{.identifier = "solovev_no_axis",
+                      .tolerance = 5.0e-15,
+                      .multigrid_tolerances = {5.0e-15, 2.0e-13}},
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-13},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 1.0e-13},
-           DataSource{.identifier = "cma", .tolerance = 1.0e-11},
+           DataSource{.identifier = "cma",
+                      .tolerance = 1.0e-11,
+                      .multigrid_tolerances = {1.0e-11, 1.0e-10}},
            DataSource{.identifier = "cth_like_free_bdy",
                       .tolerance = 1.0e-11}));
 

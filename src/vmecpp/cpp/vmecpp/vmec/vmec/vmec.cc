@@ -216,7 +216,8 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
 absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                const int iterations_before_checkpointing,
                                const int maximum_multi_grid_step,
-                               std::optional<HotRestartState> initial_state) {
+                               std::optional<HotRestartState> initial_state,
+                               const int checkpoint_multi_grid_step) {
   if (indata_.lfreeb) {
     if (!mgrid_.IsLoaded()) {
       // Fallback: load mgrid from file if constructed directly via the public
@@ -339,8 +340,12 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
       // value
+      // igrid is the index into ns_array; the inserted ns=3 stage runs at
+      // igrid = -1 and is never a checkpoint step.
+      const bool is_checkpoint_step = igrid == checkpoint_multi_grid_step - 1;
       if (InitializeRadial(checkpoint, iterations_before_checkpointing,
-                           fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state)) {
+                           fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state,
+                           std::nullopt, is_checkpoint_step)) {
         return true;
       }
 
@@ -515,7 +520,8 @@ bool Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
     const std::optional<HotRestartState>& initial_state,
-    std::optional<MultigridInterpolationScheme> interpolation_scheme) {
+    std::optional<MultigridInterpolationScheme> interpolation_scheme,
+    bool is_checkpoint_step) {
   // Stage info output is now handled by logger_.BeginStage() in run().
 
   // Set timestep control parameters
@@ -653,7 +659,8 @@ bool Vmec::InitializeRadial(
                                    indata_.lforbal);
     }  // thread_id
 
-    if (checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
+    if (is_checkpoint_step &&
+        checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
         iterations_before_checkpointing <= 1) {
       // break the loop over thread_id here to check spectral constraint static
       // data; need to have all "threads" initialized before being able to test
@@ -704,7 +711,8 @@ bool Vmec::InitializeRadial(
     // VmecConstants::rmsPhiP, can update lamscale.
     constants_.lamscale = sqrt(constants_.rmsPhiP * fc_.deltaS);
 
-    if (checkpoint == VmecCheckpoint::RADIAL_PROFILES_EVAL &&
+    if (is_checkpoint_step &&
+        checkpoint == VmecCheckpoint::RADIAL_PROFILES_EVAL &&
         iterations_before_checkpointing <= 1) {
       return true;
     }
@@ -738,7 +746,8 @@ bool Vmec::InitializeRadial(
                                                             *p_[thread_id]);
       }
     }
-    if (checkpoint == VmecCheckpoint::SETUP_INITIAL_STATE &&
+    if (is_checkpoint_step &&
+        checkpoint == VmecCheckpoint::SETUP_INITIAL_STATE &&
         iterations_before_checkpointing <= 1) {
       return true;
     }
@@ -751,6 +760,9 @@ bool Vmec::InitializeRadial(
 
       // TODO(jons): check for max_multigrid_steps
       // TODO(jons): maybe need `&& iter2_ >= maximum_iterations) {` ?
+      // Not gated on the checkpoint step: INTERP is only reached when
+      // interpolating from a coarser grid, so it cannot occur in the first
+      // multi-grid step at all.
       if (checkpoint == VmecCheckpoint::INTERP) {
         return true;
       }
