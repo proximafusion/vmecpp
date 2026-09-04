@@ -2,10 +2,10 @@
 // <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
-#include "vmecpp/vmec/output_quantities/output_quantities.h"
-
 #include <netcdf.h>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -21,6 +21,7 @@
 #include "util/netcdf_io/netcdf_io.h"
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/util/util.h"
+#include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
 using nlohmann::json;
@@ -548,6 +549,76 @@ INSTANTIATE_TEST_SUITE_P(
 // This is the seam the leaf and dispatch tests cannot reach: a spline profile
 // driving a real solve to the Fortran-referenced equilibrium. Input-echo fields
 // (pmass_type, am) legitimately differ for a spline input and are not compared.
+// The cross-section height reported in the threed1 geometric table is twice
+// the largest |Z| on the boundary contour of the reported plane. Z is
+// reconstructed here from the wout spectrum at the stored poloidal points, so
+// the check needs no reference file; the asymmetric cases have no
+// educational_VMEC threed1 dump to compare against.
+class Threed1HeightTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(Threed1HeightTest, HeightIsTwiceTheLargestAbsoluteZ) {
+  const std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+
+  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  const Sizes& s = vmec.s_;
+
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);  // ran to convergence
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+  const Threed1GeometricAndMagneticQuantities& geomag =
+      vmec.output_quantities_.threed1_geometric_magnetic;
+
+  // The reported planes are zeta = 0 and, for a three-dimensional case, the
+  // plane at toroidal index nZeta / 2.
+  std::vector<int> plane_indices = {0};
+  if (s.ntor > 0) {
+    plane_indices.push_back(s.nZeta / 2);
+  }
+  ASSERT_EQ(geomag.height.size(), static_cast<int>(plane_indices.size()));
+
+  const int j_boundary = wout.ns - 1;
+  for (size_t plane = 0; plane < plane_indices.size(); ++plane) {
+    const double zeta = 2.0 * M_PI * plane_indices[plane] / (s.nfp * s.nZeta);
+
+    double largest_absolute_z = 0.0;
+    for (int l = 0; l < s.nThetaEff; ++l) {
+      const double theta = 2.0 * M_PI * l / s.nThetaEven;
+      double z = 0.0;
+      for (int mn = 0; mn < wout.mnmax; ++mn) {
+        const double kernel = wout.xm[mn] * theta - wout.xn[mn] * zeta;
+        z += wout.zmns(mn, j_boundary) * std::sin(kernel);
+        if (s.lasym) {
+          z += wout.zmnc(mn, j_boundary) * std::cos(kernel);
+        }
+      }
+      largest_absolute_z = std::max(largest_absolute_z, std::abs(z));
+    }
+
+    EXPECT_TRUE(IsCloseRelAbs(2.0 * largest_absolute_z, geomag.height[plane],
+                              data_source_.tolerance))
+        << "plane index " << plane_indices[plane];
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, Threed1HeightTest,
+    Values(DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-10},
+           DataSource{.identifier = "cth_like_fixed_bdy_asym",
+                      .tolerance = 1.0e-10}));
+
 TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_fixed_bdy_spline_pressure.json");

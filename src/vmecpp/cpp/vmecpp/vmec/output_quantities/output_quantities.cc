@@ -2,10 +2,9 @@
 // <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
-#include "vmecpp/vmec/output_quantities/output_quantities.h"
-
 #include <Eigen/Dense>  // VectorXd
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,6 +14,7 @@
 #include "util/hdf5_io/hdf5_io.h"
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/util/util.h"
+#include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
 using Eigen::VectorXd;
@@ -3989,13 +3989,16 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
 
     result.waist[symmetry_plane_index] = r_outboard - r_inboard;
 
+    // The extremum is taken over |Z|: a lasym run stores the whole poloidal
+    // contour, whose lower half can reach further from the midplane than its
+    // upper half.
     result.height[symmetry_plane_index] = 0.0;
     for (int l = 0; l < s.nThetaEff; ++l) {
       const int index_zeta = ((fc.ns - 1) * s.nZeta + k) * s.nThetaEff + l;
       const double z = vmec_internal_results.z_e(index_zeta) +
                        vmec_internal_results.z_o(index_zeta);
       result.height[symmetry_plane_index] =
-          std::max(result.height[symmetry_plane_index], z);
+          std::max(result.height[symmetry_plane_index], std::abs(z));
     }  // l
     result.height[symmetry_plane_index] *= 2.0;
 
