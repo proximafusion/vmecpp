@@ -1545,4 +1545,61 @@ TEST(TestOutputQuantities, CheckVacuumPotential) {
   }
 }
 
+// freeb_data in Fortran VMEC: the boundary geometry, the plasma-side and
+// vacuum-side pressures as first established and as converged, and the
+// cylindrical field on either side of the boundary.
+TEST(Threed1FreeBoundary, MatchesEducationalVmec) {
+  const std::string identifier = "cth_like_free_bdy";
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", identifier));
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_TRUE(indata->lfreeb);
+
+  auto maybe_vmec = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  ASSERT_TRUE(vmec.run().ok());
+
+  const std::string filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/freeb_data/"
+      "freeb_data_%05d_000000_01.%s.json",
+      identifier, vmec.fc_.ns, identifier);
+  std::ifstream ifs(filename);
+  ASSERT_TRUE(ifs.is_open()) << "failed to open reference file: " << filename;
+  const json reference = json::parse(ifs);
+
+  const Threed1FreeBoundary& threed1_free_boundary =
+      vmec.output_quantities_.threed1_free_boundary;
+  const Sizes& s = vmec.s_;
+  ASSERT_EQ(threed1_free_boundary.rb.rows(), s.nZeta);
+  ASSERT_EQ(threed1_free_boundary.rb.cols(), s.nThetaReduced);
+
+  static constexpr double kTolerance = 1.0e-10;
+  const auto compare = [&](const char* name, const RowMatrixXd& value) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaReduced; ++l) {
+        EXPECT_TRUE(IsCloseRelAbs(static_cast<double>(reference[name][k][l]),
+                                  value(k, l), kTolerance))
+            << name << " at zeta index " << k << ", theta index " << l;
+      }  // l
+    }  // k
+  };
+
+  compare("rb", threed1_free_boundary.rb);
+  compare("phib", threed1_free_boundary.phib);
+  compare("zb", threed1_free_boundary.zb);
+  compare("bsqmhdi", threed1_free_boundary.bsqmhdi);
+  compare("bsqvaci", threed1_free_boundary.bsqvaci);
+  compare("bsqmhdf", threed1_free_boundary.bsqmhdf);
+  compare("bsqvacf", threed1_free_boundary.bsqvacf);
+  compare("bredge", threed1_free_boundary.bredge);
+  compare("bpedge", threed1_free_boundary.bpedge);
+  compare("bzedge", threed1_free_boundary.bzedge);
+  compare("brv", threed1_free_boundary.brv);
+  compare("bphiv", threed1_free_boundary.bphiv);
+  compare("bzv", threed1_free_boundary.bzv);
+}
+
 }  // namespace vmecpp
