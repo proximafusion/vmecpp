@@ -8,6 +8,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vmecpp/common/vmec_indata:vmec_indata",
+        "//vmecpp/vmec/vmec_constants:vmec_constants",
         "@abseil-cpp//absl/log",
     ],
 )
@@ -17,6 +18,7 @@ cc_test(
     srcs = ["radial_partitioning_test.cc"],
     deps = [
         ":radial_partitioning",
+        "//vmecpp/vmec/vmec_constants:vmec_constants",
         "@googletest//:gtest_main",
     ],
     size = "small",
