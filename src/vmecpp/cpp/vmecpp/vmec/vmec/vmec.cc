@@ -460,6 +460,32 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   return false;
 }  // run
 
+absl::Status Vmec::SetForceSource(const Eigen::VectorXd& source) {
+  if (source.size() != 0 && !indata_.enable_force_source) {
+    return absl::FailedPreconditionError(
+        "a force source may only be installed when the input sets "
+        "'enable_force_source'");
+  }
+  absl::Status status = InstallForceSource(source);
+  if (!status.ok()) {
+    return status;
+  }
+  // InitializeRadial rebuilds the per-thread models, which an axis reguess and
+  // every multi-grid step do, so the source is kept here and reinstalled there.
+  force_source_ = source;
+  return absl::OkStatus();
+}
+
+absl::Status Vmec::InstallForceSource(const Eigen::VectorXd& source) const {
+  for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+    absl::Status s = m_[thread_id]->SetForceSource(source);
+    if (!s.ok()) {
+      return s;
+    }
+  }
+  return absl::OkStatus();
+}
+
 void Vmec::SetupVacuumSolvers() {
   // Compute the vacuum thread count once; it is ns-independent (depends only on
   // the tangential grid size nZnT and the thread budget).
@@ -772,6 +798,20 @@ bool Vmec::InitializeRadial(
 
     fc_.ns_old = fc_.ns;
     fc_.neqs_old = fc_.neqs;
+  }
+
+  // The models were rebuilt above, so an installed force source has to be put
+  // back onto them. A source belongs to one radial resolution; if this step
+  // changed it, the source no longer applies and is dropped rather than
+  // silently added to the wrong surfaces.
+  if (force_source_.size() != 0) {
+    if (!InstallForceSource(force_source_).ok()) {
+      LOG(WARNING) << "dropping the force source: it was installed for a "
+                      "different radial resolution than ns="
+                   << fc_.ns;
+      force_source_.resize(0);
+      CHECK_OK(InstallForceSource(force_source_));
+    }
   }
 
   return false;

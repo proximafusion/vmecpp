@@ -89,6 +89,24 @@ class IdealMhdModel {
   std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
   void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
+  // Add a fixed spectral force to every force evaluation.
+  //
+  // The source is laid out over the whole radial grid as
+  // ((jF * mpol + m) * (ntor + 1) + n), one block of ns * mpol * (ntor + 1)
+  // entries per active Fourier parity, in the order
+  //   frcc [frss] [frsc] [frcs] fzsc [fzcs] [fzcc] [fzss] flsc [flcs] ...
+  // matching FourierForces. It is added to the decomposed force before the
+  // m = 1 gauge rotation, so it passes through the same chain as the force it
+  // augments and a state whose total force vanishes is a fixed point of the
+  // iteration. An empty vector clears the source.
+  //
+  // This makes the discretization testable by the method of manufactured
+  // solutions: with the source set to the negative of the continuum ideal-MHD
+  // force of a chosen analytic mapping, that mapping is the exact solution of
+  // the modified problem and the distance to the converged discrete state
+  // measures the discretization error.
+  absl::Status SetForceSource(const Eigen::VectorXd& source);
+
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
   // coefficients. Also computes the net dR/dTheta and dZ/dTheta, without the
@@ -589,6 +607,12 @@ class IdealMhdModel {
   int m_vac_num_threads_;
   VacuumPressureState& m_vacuum_pressure_state_;
   std::int64_t force_evaluation_count_ = 0;
+
+  // Optional additive spectral force source; see SetForceSource.
+  Eigen::VectorXd force_source_;
+
+  // Add the radial slice of force_source_ owned by this thread.
+  void addForceSource(FourierForces& m_decomposed_f) const;
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
