@@ -223,9 +223,17 @@ void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
       auto& lu = m_even ? m_geometry.lu_e : m_geometry.lu_o;
       auto& lv = m_even ? m_geometry.lv_e : m_geometry.lv_o;
 
-      // axis only gets contributions up to m=1
-      // --> all larger m contributions enter only from j=1 onwards
-      // TODO(jons): why does the axis need m=1?
+      // The axis only gets contributions from m = 0 and m = 1; larger m enter
+      // from j = 1 onwards.
+      //
+      // R at the axis cannot depend on theta, so every m > 0 mode has to vanish
+      // there. The odd-parity arrays carry the coefficients divided by
+      // sqrt(s), which turns the physical rho^m into rho^(m-1), so the m = 1
+      // amplitude stays finite at the axis while m >= 3 still vanish; the
+      // innermost half-grid point interpolates the full-grid values at j = 0
+      // and j = 1 and does read that finite m = 1 value. Even-m modes are not
+      // suppressed by any sqrt(s) factor, so only m = 0, the axis position
+      // itself, may be nonzero among them.
       int jMin = 1;
       if (m == 0 || m == 1) {
         jMin = 0;
