@@ -3381,8 +3381,11 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
         (vmec_internal_results.phipH[jHi] * vmec_internal_results.iotaH[jHi]) *
             fc.deltaS;
 
+    // phi, phipf and chipf carry the sign of the Jacobian, so chi does too;
+    // iota = d(chi)/d(phi) then holds between the wout profiles.
     threed1_first_table_intermediate.chi[jF] =
-        2.0 * M_PI * threed1_first_table_intermediate.chi1[jF];
+        2.0 * M_PI * vmec_internal_results.sign_of_jacobian *
+        threed1_first_table_intermediate.chi1[jF];
   }  // jF
 
   // calc_fbal

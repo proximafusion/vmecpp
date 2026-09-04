@@ -267,6 +267,9 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
         rtol = 1e-3 if varname in ("currumnc", "currvmnc") else 1e-6
         actual = np.asarray(test_value[:])
         desired = np.asarray(expected_value[:])
+        if varname == "chi":
+            # The Fortran reference writes chi without the sign of the Jacobian.
+            desired = -desired
         if varname == "chipf":
             # The Fortran reference leaves the axis chipf at zero; see computeBContra.
             actual = actual[..., 1:]
@@ -354,6 +357,9 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
         # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
         actual = np.asarray(test_value[:])
         desired = np.asarray(expected_value[:])
+        if varname == "chi":
+            # The Fortran reference writes chi without the sign of the Jacobian.
+            desired = -desired
         if varname == "chipf":
             # The Fortran reference leaves the axis chipf at zero; see computeBContra.
             actual = actual[..., 1:]
