@@ -225,6 +225,30 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   // end: interpolate Fourier coefficients between initial guess for axis and
   // boundary
 
+  // The poloidal basis is tabulated on [0, pi] only, so the transforms below
+  // evaluate the reduced interval and the extended one ]pi, 2pi[ follows from
+  // it. That requires the antisymmetric part of each quantity separately from
+  // the symmetric part, so it is accumulated here rather than added straight
+  // into the arrays. Stays zero under stellarator symmetry.
+  std::vector<std::vector<double> > asym_r_lcfs(s.nZeta);
+  std::vector<std::vector<double> > asym_z_lcfs(s.nZeta);
+  std::vector<std::vector<double> > asym_d_r_d_theta_lcfs(s.nZeta);
+  std::vector<std::vector<double> > asym_d_z_d_theta_lcfs(s.nZeta);
+  std::vector<std::vector<double> > asym_r_half(s.nZeta);
+  std::vector<std::vector<double> > asym_z_half(s.nZeta);
+  std::vector<std::vector<double> > asym_d_r_d_theta_half(s.nZeta);
+  std::vector<std::vector<double> > asym_d_z_d_theta_half(s.nZeta);
+  for (int k = 0; k < s.nZeta; ++k) {
+    asym_r_lcfs[k].resize(s.nThetaEven);
+    asym_z_lcfs[k].resize(s.nThetaEven);
+    asym_d_r_d_theta_lcfs[k].resize(s.nThetaEven);
+    asym_d_z_d_theta_lcfs[k].resize(s.nThetaEven);
+    asym_r_half[k].resize(s.nThetaEven);
+    asym_z_half[k].resize(s.nThetaEven);
+    asym_d_r_d_theta_half[k].resize(s.nThetaEven);
+    asym_d_z_d_theta_half[k].resize(s.nThetaEven);
+  }  // k
+
   // inverse Fourier transforms:
   // evaluate R, Z, dR/dTheta and dZ/dTheta at radial locations ns12 and ns-1
   for (int k = 0; k < s.nZeta; ++k) {
@@ -284,41 +308,41 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
                                         t.sinmum[idx_ml] * t.sinnv[idx_kn];
           }
           if (s.lasym) {
-            w.r_lcfs[k][l] += basis_norm * rsc_boundary[m][n] *
-                              t.sinmu[idx_ml] * t.cosnv[idx_kn];
-            w.z_lcfs[k][l] += basis_norm * zcc_boundary[m][n] *
-                              t.cosmu[idx_ml] * t.cosnv[idx_kn];
-            w.d_r_d_theta_lcfs[k][l] += basis_norm * rsc_boundary[m][n] *
-                                        t.cosmum[idx_ml] * t.cosnv[idx_kn];
-            w.d_z_d_theta_lcfs[k][l] += basis_norm * zcc_boundary[m][n] *
-                                        t.sinmum[idx_ml] * t.cosnv[idx_kn];
+            asym_r_lcfs[k][l] += basis_norm * rsc_boundary[m][n] *
+                                 t.sinmu[idx_ml] * t.cosnv[idx_kn];
+            asym_z_lcfs[k][l] += basis_norm * zcc_boundary[m][n] *
+                                 t.cosmu[idx_ml] * t.cosnv[idx_kn];
+            asym_d_r_d_theta_lcfs[k][l] += basis_norm * rsc_boundary[m][n] *
+                                           t.cosmum[idx_ml] * t.cosnv[idx_kn];
+            asym_d_z_d_theta_lcfs[k][l] += basis_norm * zcc_boundary[m][n] *
+                                           t.sinmum[idx_ml] * t.cosnv[idx_kn];
 
-            w.r_half[k][l] +=
+            asym_r_half[k][l] +=
                 basis_norm * rsc_half[m][n] * t.sinmu[idx_ml] * t.cosnv[idx_kn];
-            w.z_half[k][l] +=
+            asym_z_half[k][l] +=
                 basis_norm * zcc_half[m][n] * t.cosmu[idx_ml] * t.cosnv[idx_kn];
-            w.d_r_d_theta_half[k][l] += basis_norm * rsc_half[m][n] *
-                                        t.cosmum[idx_ml] * t.cosnv[idx_kn];
-            w.d_z_d_theta_half[k][l] += basis_norm * zcc_half[m][n] *
-                                        t.sinmum[idx_ml] * t.cosnv[idx_kn];
+            asym_d_r_d_theta_half[k][l] += basis_norm * rsc_half[m][n] *
+                                           t.cosmum[idx_ml] * t.cosnv[idx_kn];
+            asym_d_z_d_theta_half[k][l] += basis_norm * zcc_half[m][n] *
+                                           t.sinmum[idx_ml] * t.cosnv[idx_kn];
             if (s.lthreed) {
-              w.r_lcfs[k][l] +=
+              asym_r_lcfs[k][l] +=
                   basis_norm * rbcs[idx_mn] * t.cosmu[idx_ml] * t.sinnv[idx_kn];
-              w.z_lcfs[k][l] +=
+              asym_z_lcfs[k][l] +=
                   basis_norm * zbss[idx_mn] * t.sinmu[idx_ml] * t.sinnv[idx_kn];
-              w.d_r_d_theta_lcfs[k][l] += basis_norm * rbcs[idx_mn] *
-                                          t.sinmum[idx_ml] * t.sinnv[idx_kn];
-              w.d_z_d_theta_lcfs[k][l] += basis_norm * zbss[idx_mn] *
-                                          t.cosmum[idx_ml] * t.sinnv[idx_kn];
+              asym_d_r_d_theta_lcfs[k][l] += basis_norm * rbcs[idx_mn] *
+                                             t.sinmum[idx_ml] * t.sinnv[idx_kn];
+              asym_d_z_d_theta_lcfs[k][l] += basis_norm * zbss[idx_mn] *
+                                             t.cosmum[idx_ml] * t.sinnv[idx_kn];
 
-              w.r_half[k][l] += basis_norm * rcs_half[m][n] * t.cosmu[idx_ml] *
-                                t.sinnv[idx_kn];
-              w.z_half[k][l] += basis_norm * zss_half[m][n] * t.sinmu[idx_ml] *
-                                t.sinnv[idx_kn];
-              w.d_r_d_theta_half[k][l] += basis_norm * rcs_half[m][n] *
-                                          t.sinmum[idx_ml] * t.sinnv[idx_kn];
-              w.d_z_d_theta_half[k][l] += basis_norm * zss_half[m][n] *
-                                          t.cosmum[idx_ml] * t.sinnv[idx_kn];
+              asym_r_half[k][l] += basis_norm * rcs_half[m][n] *
+                                   t.cosmu[idx_ml] * t.sinnv[idx_kn];
+              asym_z_half[k][l] += basis_norm * zss_half[m][n] *
+                                   t.sinmu[idx_ml] * t.sinnv[idx_kn];
+              asym_d_r_d_theta_half[k][l] += basis_norm * rcs_half[m][n] *
+                                             t.sinmum[idx_ml] * t.sinnv[idx_kn];
+              asym_d_z_d_theta_half[k][l] += basis_norm * zss_half[m][n] *
+                                             t.cosmum[idx_ml] * t.sinnv[idx_kn];
             }
           }
         }  // n
@@ -329,30 +353,60 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
           (w.d_r_d_theta_lcfs[k][l] + w.d_r_d_theta_half[k][l]) / 2.0;
       w.d_z_d_theta_half[k][l] =
           (w.d_z_d_theta_lcfs[k][l] + w.d_z_d_theta_half[k][l]) / 2.0;
+
+      // the averaging is linear, so it applies to each part on its own
+      asym_d_r_d_theta_half[k][l] =
+          (asym_d_r_d_theta_lcfs[k][l] + asym_d_r_d_theta_half[k][l]) / 2.0;
+      asym_d_z_d_theta_half[k][l] =
+          (asym_d_z_d_theta_lcfs[k][l] + asym_d_z_d_theta_half[k][l]) / 2.0;
     }  // l
   }  // k
 
-  // flip-mirror geometry into non-stellarator-symmetric half in case of
-  // stellarator symmetry
-  if (!s.lasym) {
-    for (int k = 0; k < s.nZeta; ++k) {
-      const int k_reversed = (s.nZeta - k) % s.nZeta;
+  // Fill the extended poloidal interval from the reduced one, then add the
+  // antisymmetric part into the reduced interval (educational_VMEC symrzl).
+  // R and dZ/dTheta are even under (theta, zeta) -> (-theta, -zeta), Z and
+  // dR/dTheta are odd. The extended interval has to be formed first, while the
+  // arrays still hold the symmetric part alone. Under stellarator symmetry the
+  // antisymmetric part is zero and this is the plain mirror.
+  for (int k = 0; k < s.nZeta; ++k) {
+    const int k_reversed = (s.nZeta - k) % s.nZeta;
 
-      for (int l = 1; l < s.nThetaReduced - 1; ++l) {
-        const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
+    for (int l = s.nThetaReduced; l < s.nThetaEven; ++l) {
+      const int l_reversed = s.nThetaEven - l;
 
-        w.r_lcfs[k_reversed][l_reversed] = w.r_lcfs[k][l];
-        w.z_lcfs[k_reversed][l_reversed] = -w.z_lcfs[k][l];
-        w.d_r_d_theta_lcfs[k_reversed][l_reversed] = -w.d_r_d_theta_lcfs[k][l];
-        w.d_z_d_theta_lcfs[k_reversed][l_reversed] = w.d_z_d_theta_lcfs[k][l];
+      w.r_lcfs[k][l] = w.r_lcfs[k_reversed][l_reversed] -
+                       asym_r_lcfs[k_reversed][l_reversed];
+      w.z_lcfs[k][l] = -w.z_lcfs[k_reversed][l_reversed] +
+                       asym_z_lcfs[k_reversed][l_reversed];
+      w.d_r_d_theta_lcfs[k][l] = -w.d_r_d_theta_lcfs[k_reversed][l_reversed] +
+                                 asym_d_r_d_theta_lcfs[k_reversed][l_reversed];
+      w.d_z_d_theta_lcfs[k][l] = w.d_z_d_theta_lcfs[k_reversed][l_reversed] -
+                                 asym_d_z_d_theta_lcfs[k_reversed][l_reversed];
 
-        w.r_half[k_reversed][l_reversed] = w.r_half[k][l];
-        w.z_half[k_reversed][l_reversed] = -w.z_half[k][l];
-        w.d_r_d_theta_half[k_reversed][l_reversed] = -w.d_r_d_theta_half[k][l];
-        w.d_z_d_theta_half[k_reversed][l_reversed] = w.d_z_d_theta_half[k][l];
-      }  // l
-    }  // k
-  }  // !lasym
+      w.r_half[k][l] = w.r_half[k_reversed][l_reversed] -
+                       asym_r_half[k_reversed][l_reversed];
+      w.z_half[k][l] = -w.z_half[k_reversed][l_reversed] +
+                       asym_z_half[k_reversed][l_reversed];
+      w.d_r_d_theta_half[k][l] = -w.d_r_d_theta_half[k_reversed][l_reversed] +
+                                 asym_d_r_d_theta_half[k_reversed][l_reversed];
+      w.d_z_d_theta_half[k][l] = w.d_z_d_theta_half[k_reversed][l_reversed] -
+                                 asym_d_z_d_theta_half[k_reversed][l_reversed];
+    }  // l
+  }  // k
+
+  for (int k = 0; k < s.nZeta; ++k) {
+    for (int l = 0; l < s.nThetaReduced; ++l) {
+      w.r_lcfs[k][l] += asym_r_lcfs[k][l];
+      w.z_lcfs[k][l] += asym_z_lcfs[k][l];
+      w.d_r_d_theta_lcfs[k][l] += asym_d_r_d_theta_lcfs[k][l];
+      w.d_z_d_theta_lcfs[k][l] += asym_d_z_d_theta_lcfs[k][l];
+
+      w.r_half[k][l] += asym_r_half[k][l];
+      w.z_half[k][l] += asym_z_half[k][l];
+      w.d_r_d_theta_half[k][l] += asym_d_r_d_theta_half[k][l];
+      w.d_z_d_theta_half[k][l] += asym_d_z_d_theta_half[k][l];
+    }  // l
+  }  // k
 
   // inverse Fourier transform for current axis geometry
   // axis has m = 0
@@ -379,7 +433,12 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
 
   // main loop in which, for each poloidal cutplane,
   // the new axis position is estimated
-  for (int k = 0; k < s.nZeta / 2 + 1; ++k) {
+  //
+  // Under stellarator symmetry the planes past the half period are the mirror
+  // images of the ones below it and are filled in after the search. Without it
+  // no plane follows from another, so every one has to be searched.
+  const int number_of_searched_planes = s.lasym ? s.nZeta : s.nZeta / 2 + 1;
+  for (int k = 0; k < number_of_searched_planes; ++k) {
     // compute grid extent
     const double min_r =
         *std::min_element(w.r_lcfs[k].begin(), w.r_lcfs[k].end());
@@ -413,8 +472,11 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
     for (int index_z = 0; index_z < kNumberOfGridPoints; ++index_z) {
       double z_grid = min_z + index_z * delta_z;
 
-      // early exit in some cases(?)
-      if (!s.lasym && (k == 0 || k == s.nZeta / 2)) {
+      // A plane that is its own mirror image under zeta -> -zeta has its axis
+      // in the symmetry plane, so only z = 0 has to be tried there. That is
+      // zeta = 0, and the half-period plane when a grid point falls on it,
+      // which happens only for an even number of toroidal grid points.
+      if (!s.lasym && (k == 0 || (s.nZeta % 2 == 0 && k == s.nZeta / 2))) {
         z_grid = 0.0;
         if (index_z > 0) {
           break;
@@ -454,7 +516,10 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   // in order to always have a full toroidal module for the Fourier transform
   // below
   if (!s.lasym) {
-    // mirror image along zeta, for even and odd nZeta
+    // The search above covered 0 .. nZeta / 2. Every remaining plane is the
+    // mirror image of one of those: for an even number of toroidal grid points
+    // the half-period plane is its own mirror and is already done, for an odd
+    // number it is not, and its mirror is the first plane past the half period.
     for (int k = 1; k <= (s.nZeta - 1) / 2; ++k) {
       const int k_reversed = (s.nZeta - k) % s.nZeta;
       w.new_r_axis[k_reversed] = w.new_r_axis[k];
