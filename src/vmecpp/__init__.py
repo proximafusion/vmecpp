@@ -860,11 +860,11 @@ class VmecWOut(BaseModelWithNumpy):
     @property
     def reason(self) -> str:
         return {
-            0: "no fatal error but convergence was not reached",
+            0: "normal termination: converged, or returned without convergence because return_outputs_even_if_not_converged was set",
             1: "initially bad Jacobian",
             3: "NCURR_NE_1_BLOAT_NE_1",
             4: "Jacobian reset 75 times, the geometry isn't well defined",
-            5: "input parsing error",
+            5: "unrecoverable error: a physical inconsistency in the MHD model, such as a degenerate flux-surface geometry or a free-boundary current mismatch, with no retry strategy",
             8: "NS array must not be all zeroes",
             9: "miscellaneous error, can happen in mgrid_mod",
             10: "vacuum VMEC and ITOR mismatch",
@@ -1964,10 +1964,10 @@ class Threed1GeometricAndMagneticQuantities(BaseModelWithNumpy):
     zmax_surf: float
     """Maximum height on the boundary."""
 
-    bmin: jt.Float[np.ndarray, "num_half nThetaReduced"]
+    bmin: jt.Float[np.ndarray, "num_half nThetaEff"]
     """Minimum `|B|` per half-grid surface and poloidal angle."""
 
-    bmax: jt.Float[np.ndarray, "num_half nThetaReduced"]
+    bmax: jt.Float[np.ndarray, "num_half nThetaEff"]
     """Maximum `|B|` per half-grid surface and poloidal angle."""
 
     waist: jt.Float[np.ndarray, "n_symmetry_planes"]

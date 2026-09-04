@@ -174,9 +174,11 @@ void TridiagonalSolveOpenMP(
 
   for (int j = nsMinF; j < std::min(jMax, nsMaxF); ++j) {
     for (int mn = 0; mn < mnmax; ++mn) {
+      // forward elimination reaches back one surface, so it can only start
+      // one past jMin
       if (j < jMin[mn] + 1) {
         continue;
-      }  // TODO(jons)
+      }
 
       int idx_mn_0 = (j - nsMinF) * mnmax + mn;      //  0
       int idx_mn_m = (j - 1 - nsMinF) * mnmax + mn;  // -1
@@ -259,9 +261,11 @@ void TridiagonalSolveOpenMP(
 
   for (int j = std::min(jMax - 2, nsMaxF - 1); j >= nsMinF; --j) {
     for (int mn = 0; mn < mnmax; ++mn) {
+      // back substitution reaches forward instead, so it runs down to jMin
+      // itself
       if (j < jMin[mn]) {
         continue;
-      }  // TODO(jons)
+      }
 
       int idx_mn_p = (j + 1 - nsMinF) * mnmax + mn;  // +1
       int idx_mn_0 = (j - nsMinF) * mnmax + mn;      //  0

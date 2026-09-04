@@ -412,4 +412,24 @@ TEST(MGridProviderValidation, LoadFieldsRejectsWrongNumberOfCurrents) {
   EXPECT_TRUE(mgrid.LoadFields(response_table, Eigen::VectorXd::Ones(2)).ok());
 }
 
+// The coil group names MAKEGRID writes into the mgrid file are what wout
+// reports as curlabel. mgrid_cth_like.nc carries two of them.
+TEST(MGridProviderValidation, LoadFileReadsCoilGroupNames) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok()) << indata_json.status();
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  MGridProvider mgrid;
+  ASSERT_TRUE(mgrid.LoadFile(indata->mgrid_file, indata->extcur).ok());
+
+  ASSERT_EQ(static_cast<int>(mgrid.coil_group_names.size()), mgrid.nextcur);
+  for (const std::string& name : mgrid.coil_group_names) {
+    EXPECT_FALSE(name.empty());
+    EXPECT_EQ(name.find_last_not_of(' '), name.size() - 1)
+        << "name '" << name << "' still carries padding";
+  }
+}
+
 }  // namespace vmecpp
