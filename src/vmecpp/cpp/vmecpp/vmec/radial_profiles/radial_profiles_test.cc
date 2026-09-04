@@ -136,6 +136,32 @@ TEST_F(RadialProfilesTest, SplineTooFewPointsReturnsZero) {
   EXPECT_EQ(profiles_->evalCubicIntegrated(knots, values, 0.5), 0.0);
 }
 
+// ---- line_segment: interpolate on the knot interval that brackets x ---------
+// Inside [k_i, k_{i+1}] the value is the linear interpolation between those two
+// knots, the knots themselves are reproduced, and outside the knot range the
+// profile is clamped to the end values.
+TEST_F(RadialProfilesTest, LineSegmentInterpolatesOnBracketingInterval) {
+  const Eigen::VectorXd knots = Vec({0.0, 0.25, 0.5, 0.75, 1.0});
+  const Eigen::VectorXd values = Vec({1.0, 0.9, 0.6, 0.2, 0.0});
+  struct Pt {
+    double x;
+    double expected;
+  };
+  for (const Pt& p : {Pt{0.1, 0.96}, Pt{0.3, 0.84}, Pt{0.6, 0.44},
+                      Pt{0.8, 0.16}, Pt{0.95, 0.04}}) {
+    EXPECT_NEAR(profiles_->evalLineSegment(knots, values, p.x), p.expected,
+                1e-12)
+        << "line_segment x=" << p.x;
+  }
+  for (int i = 0; i < knots.size(); ++i) {
+    EXPECT_NEAR(profiles_->evalLineSegment(knots, values, knots[i]), values[i],
+                1e-12)
+        << "line_segment knot " << i;
+  }
+  EXPECT_EQ(profiles_->evalLineSegment(knots, values, -0.1), values[0]);
+  EXPECT_EQ(profiles_->evalLineSegment(knots, values, 1.2), values[4]);
+}
+
 // ---- corrected Akima right edge: the interpolant is reflection-symmetric ---
 // educational_VMEC's spline_akima.f reuses the left-edge curvature on the right
 // edge, so its interpolant depends on the orientation of the data. The
