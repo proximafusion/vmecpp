@@ -3187,9 +3187,12 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
     // S
     mercier.s[jF] = mercier_intermediate.s[jF];
 
+    // mercier.f90 forms this as sqs = 0.5*(vp_real(i) + vp_real(i+1))*sign_jac
+    // and divides SHEAR, ITOR' and PRES' by it, so the Jacobian sign belongs
+    // here rather than only on WELL.
     const double vp_full = (mercier_intermediate.vp_real[jHo] +
                             mercier_intermediate.vp_real[jHi]) /
-                           2.0;
+                           2.0 * vmec_internal_results.sign_of_jacobian;
     if (vp_full == 0.0) {
       // skip this surface
       continue;

@@ -671,7 +671,7 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
 
     const double vp_full = (static_cast<double>(mercier["vp_real"][jHo]) +
                             static_cast<double>(mercier["vp_real"][jHi])) /
-                           2.0;
+                           2.0 * sign_of_jacobian;
 
     // The running sum advances even on surfaces the assembly skips, and is
     // scaled by deltaS only at the end, as the assembly does.
