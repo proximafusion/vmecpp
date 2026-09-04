@@ -269,7 +269,9 @@ absl::StatusOr<MakegridParameters> ImportMakegridParametersFromFile(
     const std::filesystem::path& makegrid_parameters_file) {
   const auto maybe_makegrid_params_json =
       file_io::ReadFile(makegrid_parameters_file);
-  CHECK_OK(maybe_makegrid_params_json);
+  if (!maybe_makegrid_params_json.ok()) {
+    return maybe_makegrid_params_json.status();
+  }
   const auto& makegrid_params_json = *maybe_makegrid_params_json;
   return ImportMakegridParametersFromJson(makegrid_params_json);
 }  // ImportMakegridParametersFromFile
