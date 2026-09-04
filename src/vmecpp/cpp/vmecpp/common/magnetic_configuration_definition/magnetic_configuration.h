@@ -220,6 +220,77 @@ struct InfiniteStraightFilament {
   }
 };  // InfiniteStraightFilament
 
+struct FourierFilament {
+  // a human-readable name, e.g., for plotting
+  bool has_name_ = false;
+  std::string name_;
+
+  // Fourier coefficients of R and Z along the closed curve the current flows
+  // along, in the curve parameter phi. phi is also the cylindrical angle, so
+  // the curve runs once around the machine as phi goes from 0 to 2 pi.
+  bool has_geometry_ = false;
+  composed_types::CurveRZFourier geometry_;
+
+  // Number of vertices the curve is sampled at when it is evaluated. The last
+  // vertex coincides with the first, so the polygon closes. There is no useful
+  // default: resolving the Fourier series is not the same as resolving the
+  // field near the filament, and how finely the latter has to be sampled
+  // depends on how close the evaluation locations come to the current carrier.
+  bool has_num_sampling_points_ = false;
+  int num_sampling_points_ = 0;
+
+  // name
+  bool has_name() const { return has_name_; }
+  const std::string& name() const { return name_; }
+  void set_name(const std::string& value) {
+    name_ = value;
+    has_name_ = true;
+  }
+  void set_name(std::string&& value) {
+    name_ = std::move(value);
+    has_name_ = true;
+  }
+  void clear_name() {
+    name_.clear();
+    has_name_ = false;
+  }
+
+  // geometry
+  bool has_geometry() const { return has_geometry_; }
+  const composed_types::CurveRZFourier& geometry() const { return geometry_; }
+  composed_types::CurveRZFourier* mutable_geometry() {
+    has_geometry_ = true;
+    return &geometry_;
+  }
+  void set_geometry(const composed_types::CurveRZFourier& value) {
+    geometry_ = value;
+    has_geometry_ = true;
+  }
+  void clear_geometry() {
+    geometry_ = composed_types::CurveRZFourier();
+    has_geometry_ = false;
+  }
+
+  // num_sampling_points
+  bool has_num_sampling_points() const { return has_num_sampling_points_; }
+  int num_sampling_points() const { return num_sampling_points_; }
+  void set_num_sampling_points(int value) {
+    num_sampling_points_ = value;
+    has_num_sampling_points_ = true;
+  }
+  void clear_num_sampling_points() {
+    num_sampling_points_ = 0;
+    has_num_sampling_points_ = false;
+  }
+
+  // Clear the entire structure
+  void Clear() {
+    clear_name();
+    clear_geometry();
+    clear_num_sampling_points();
+  }
+};  // FourierFilament
+
 struct CurrentCarrier {
   // oneof type
   enum TypeCase : std::uint8_t {
@@ -237,6 +308,7 @@ struct CurrentCarrier {
     InfiniteStraightFilament infinite_straight_filament_;
     CircularFilament circular_filament_;
     PolygonFilament polygon_filament_;
+    FourierFilament fourier_filament_;
   };
 
  public:
@@ -262,6 +334,11 @@ struct CurrentCarrier {
         std::construct_at(std::addressof(polygon_filament_),
                           other.polygon_filament_);
       } break;
+      case kFourierFilament: {
+        type_case_ = kFourierFilament;
+        std::construct_at(std::addressof(fourier_filament_),
+                          other.fourier_filament_);
+      } break;
       default:
         type_case_ = kTypeNotSet;
         break;
@@ -285,6 +362,11 @@ struct CurrentCarrier {
         type_case_ = kPolygonFilament;
         std::construct_at(std::addressof(polygon_filament_),
                           std::move(other.polygon_filament_));
+      } break;
+      case kFourierFilament: {
+        type_case_ = kFourierFilament;
+        std::construct_at(std::addressof(fourier_filament_),
+                          std::move(other.fourier_filament_));
       } break;
       default:
         type_case_ = kTypeNotSet;
@@ -312,6 +394,11 @@ struct CurrentCarrier {
           type_case_ = kPolygonFilament;
           std::construct_at(std::addressof(polygon_filament_),
                             other.polygon_filament_);
+        } break;
+        case kFourierFilament: {
+          type_case_ = kFourierFilament;
+          std::construct_at(std::addressof(fourier_filament_),
+                            other.fourier_filament_);
         } break;
         default:
           type_case_ = kTypeNotSet;
@@ -341,6 +428,11 @@ struct CurrentCarrier {
           std::construct_at(std::addressof(polygon_filament_),
                             std::move(other.polygon_filament_));
         } break;
+        case kFourierFilament: {
+          type_case_ = kFourierFilament;
+          std::construct_at(std::addressof(fourier_filament_),
+                            std::move(other.fourier_filament_));
+        } break;
         default:
           type_case_ = kTypeNotSet;
           break;
@@ -360,6 +452,9 @@ struct CurrentCarrier {
         break;
       case kPolygonFilament:
         polygon_filament_.~PolygonFilament();
+        break;
+      case kFourierFilament:
+        fourier_filament_.~FourierFilament();
         break;
       default:
         break;
@@ -422,6 +517,23 @@ struct CurrentCarrier {
     Clear();
     type_case_ = kPolygonFilament;
     std::construct_at(std::addressof(polygon_filament_), value);
+  }
+
+  // FourierFilament
+  bool has_fourier_filament() const { return type_case_ == kFourierFilament; }
+  const FourierFilament& fourier_filament() const { return fourier_filament_; }
+  FourierFilament* mutable_fourier_filament() {
+    if (type_case_ != kFourierFilament) {
+      Clear();
+      type_case_ = kFourierFilament;
+      std::construct_at(std::addressof(fourier_filament_));
+    }
+    return &fourier_filament_;
+  }
+  void set_fourier_filament(const FourierFilament& value) {
+    Clear();
+    type_case_ = kFourierFilament;
+    std::construct_at(std::addressof(fourier_filament_), value);
   }
 
   TypeCase type_case() const { return type_case_; }

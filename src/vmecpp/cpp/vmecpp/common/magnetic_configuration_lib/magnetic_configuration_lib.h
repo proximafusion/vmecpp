@@ -91,12 +91,30 @@ absl::Status IsCircularFilamentFullyPopulated(
 absl::Status IsPolygonFilamentFullyPopulated(
     const PolygonFilament& polygon_filament);
 
+// Check if the given FourierFilament is fully populated.
+// Returns true if all required parameters in the current carrier, most of which
+// are optional in the specification, are provided. Note that this does NOT
+// check if the FourierFilament is physically reasonable.
+absl::Status IsFourierFilamentFullyPopulated(
+    const FourierFilament& fourier_filament);
+
 // Check if the given MagneticConfiguration is fully populated.
 // Returns true if all required parameters in the current carriers, most of
 // which are optional in the specification, are provided. Note that this does
 // NOT check if the MagneticConfiguration is physically reasonable.
 absl::Status IsMagneticConfigurationFullyPopulated(
     const MagneticConfiguration& magnetic_configuration);
+
+// ------------------
+
+// Sample a FourierFilament into the closed polygon that passes through its
+// sampling points. R and Z are evaluated on a uniform grid in the curve
+// parameter, and the last vertex repeats the first so that the polygon closes.
+// This is how a FourierFilament is evaluated everywhere in VMEC++: the
+// discretization is the filament, not an approximation of a separately defined
+// object.
+absl::StatusOr<PolygonFilament> ToPolygonFilament(
+    const FourierFilament& fourier_filament);
 
 // ------------------
 
@@ -117,6 +135,12 @@ void PrintCircularFilament(const CircularFilament& circular_filament,
 // Note: Array contents are omitted for brevity. Instead, array dimensions are
 // printed.
 void PrintPolygonFilament(const PolygonFilament& polygon_filament,
+                          int indentation = 0);
+
+// Print a human-readable summary of the given FourierFilament to std::cout.
+// Note: Array contents are omitted for brevity. Instead, array dimensions are
+// printed.
+void PrintFourierFilament(const FourierFilament& fourier_filament,
                           int indentation = 0);
 
 // Print a human-readable summary of the given CurrentCarrier to std::cout.

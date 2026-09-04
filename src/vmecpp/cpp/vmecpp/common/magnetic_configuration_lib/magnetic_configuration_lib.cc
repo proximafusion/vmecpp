@@ -28,6 +28,7 @@
 
 namespace magnetics {
 
+using composed_types::CurveRZFourier;
 using composed_types::FourierCoefficient1D;
 using composed_types::OrthonormalFrameAroundAxis;
 using composed_types::Vector3d;
@@ -406,6 +407,15 @@ std::string CurrentCarrierIdentifier(const PolygonFilament& polygon_filament) {
   return current_carrier_identifier.str();
 }
 
+std::string CurrentCarrierIdentifier(const FourierFilament& fourier_filament) {
+  std::stringstream current_carrier_identifier;
+  current_carrier_identifier << "FourierFilament";
+  if (fourier_filament.has_name()) {
+    current_carrier_identifier << " " << fourier_filament.name();
+  }
+  return current_carrier_identifier.str();
+}
+
 absl::Status IsInfiniteStraightFilamentFullyPopulated(
     const InfiniteStraightFilament& infinite_straight_filament) {
   if (!infinite_straight_filament.has_origin()) {
@@ -513,6 +523,101 @@ absl::Status IsPolygonFilamentFullyPopulated(
   return absl::OkStatus();
 }  // IsPolygonFilamentFullyPopulated
 
+absl::Status IsFourierFilamentFullyPopulated(
+    const FourierFilament& fourier_filament) {
+  if (!fourier_filament.has_geometry()) {
+    std::stringstream error_message;
+    error_message << CurrentCarrierIdentifier(fourier_filament);
+    error_message << " has no geometry.";
+    return absl::NotFoundError(error_message.str());
+  }
+
+  absl::Status status = composed_types::IsCurveRZFourierFullyPopulated(
+      fourier_filament.geometry());
+  if (!status.ok()) {
+    return status;
+  }
+
+  if (!fourier_filament.has_num_sampling_points()) {
+    std::stringstream error_message;
+    error_message << CurrentCarrierIdentifier(fourier_filament);
+    error_message << " has no num_sampling_points.";
+    return absl::NotFoundError(error_message.str());
+  }
+
+  // Two vertices would be the first one and its repetition, which encloses no
+  // area and carries no current path.
+  if (fourier_filament.num_sampling_points() < 3) {
+    std::stringstream error_message;
+    error_message << CurrentCarrierIdentifier(fourier_filament);
+    error_message << " has too few sampling points ("
+                  << fourier_filament.num_sampling_points()
+                  << "); need at least 3.";
+    return absl::InvalidArgumentError(error_message.str());
+  }
+
+  return absl::OkStatus();
+}  // IsFourierFilamentFullyPopulated
+
+absl::StatusOr<PolygonFilament> ToPolygonFilament(
+    const FourierFilament& fourier_filament) {
+  absl::Status status = IsFourierFilamentFullyPopulated(fourier_filament);
+  if (!status.ok()) {
+    return status;
+  }
+
+  const CurveRZFourier& geometry = fourier_filament.geometry();
+  const int num_coefficients = geometry.r_size();
+  const int num_vertices = fourier_filament.num_sampling_points();
+
+  // The last vertex repeats the first, so the curve parameter advances over
+  // num_vertices - 1 steps to come back around to where it started.
+  const double delta_phi = 2.0 * M_PI / (num_vertices - 1.0);
+
+  PolygonFilament polygon_filament;
+  if (fourier_filament.has_name()) {
+    polygon_filament.set_name(fourier_filament.name());
+  }
+
+  for (int vertex_index = 0; vertex_index < num_vertices; ++vertex_index) {
+    const double phi = vertex_index * delta_phi;
+
+    double curve_r = 0.0;
+    double curve_z = 0.0;
+    for (int coefficient_index = 0; coefficient_index < num_coefficients;
+         ++coefficient_index) {
+      const FourierCoefficient1D& coefficient_r = geometry.r(coefficient_index);
+      const FourierCoefficient1D& coefficient_z = geometry.z(coefficient_index);
+
+      // mode numbers have been checked to be the same for R and Z in
+      // `IsCurveRZFourierFullyPopulated`
+      const double kernel = coefficient_r.mode_number() * phi;
+      const double cos_kernel = std::cos(kernel);
+      const double sin_kernel = std::sin(kernel);
+
+      if (coefficient_r.has_fc_cos()) {
+        curve_r += coefficient_r.fc_cos() * cos_kernel;
+      }
+      if (coefficient_r.has_fc_sin()) {
+        curve_r += coefficient_r.fc_sin() * sin_kernel;
+      }
+      if (coefficient_z.has_fc_cos()) {
+        curve_z += coefficient_z.fc_cos() * cos_kernel;
+      }
+      if (coefficient_z.has_fc_sin()) {
+        curve_z += coefficient_z.fc_sin() * sin_kernel;
+      }
+    }
+
+    Vector3d* vertex = polygon_filament.add_vertices();
+    vertex->set_x(curve_r * std::cos(phi));
+    vertex->set_y(curve_r * std::sin(phi));
+    vertex->set_z(curve_z);
+  }
+
+  return polygon_filament;
+}  // ToPolygonFilament
+
 absl::Status IsMagneticConfigurationFullyPopulated(
     const MagneticConfiguration& magnetic_configuration) {
   for (const SerialCircuit& serial_circuit :
@@ -532,6 +637,10 @@ absl::Status IsMagneticConfigurationFullyPopulated(
           case CurrentCarrier::TypeCase::kPolygonFilament:
             status = IsPolygonFilamentFullyPopulated(
                 current_carrier.polygon_filament());
+            break;
+          case CurrentCarrier::TypeCase::kFourierFilament:
+            status = IsFourierFilamentFullyPopulated(
+                current_carrier.fourier_filament());
             break;
           case CurrentCarrier::TypeCase::kTypeNotSet:
             // consider as empty CurrentCarrier -> ignore
@@ -658,6 +767,39 @@ void PrintPolygonFilament(const PolygonFilament& polygon_filament,
   std::cout << prefix << "}" << '\n';
 }  // PrintPolygonFilament
 
+void PrintFourierFilament(const FourierFilament& fourier_filament,
+                          int indentation) {
+  std::string prefix;
+  for (int i = 0; i < indentation; ++i) {
+    prefix += " ";
+  }
+
+  std::cout << prefix << "FourierFilament {" << '\n';
+
+  if (fourier_filament.has_name()) {
+    std::cout << prefix << "  name: '" << fourier_filament.name() << "'"
+              << '\n';
+  } else {
+    std::cout << prefix << "  name: none" << '\n';
+  }
+
+  if (fourier_filament.has_geometry()) {
+    std::cout << prefix << "  geometry: ["
+              << fourier_filament.geometry().r_size() << "]" << '\n';
+  } else {
+    std::cout << prefix << "  geometry: none" << '\n';
+  }
+
+  if (fourier_filament.has_num_sampling_points()) {
+    std::cout << prefix << "  num_sampling_points: "
+              << fourier_filament.num_sampling_points() << '\n';
+  } else {
+    std::cout << prefix << "  num_sampling_points: none" << '\n';
+  }
+
+  std::cout << prefix << "}" << '\n';
+}  // PrintFourierFilament
+
 void PrintCurrentCarrier(const CurrentCarrier& current_carrier,
                          int indentation) {
   std::string prefix;
@@ -678,6 +820,9 @@ void PrintCurrentCarrier(const CurrentCarrier& current_carrier,
       break;
     case CurrentCarrier::TypeCase::kPolygonFilament:
       PrintPolygonFilament(current_carrier.polygon_filament(), indentation + 2);
+      break;
+    case CurrentCarrier::TypeCase::kFourierFilament:
+      PrintFourierFilament(current_carrier.fourier_filament(), indentation + 2);
       break;
     case CurrentCarrier::TypeCase::kTypeNotSet:
       // consider as empty CurrentCarrier -> ignore
