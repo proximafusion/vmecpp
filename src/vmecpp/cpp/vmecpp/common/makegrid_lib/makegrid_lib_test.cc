@@ -2,6 +2,8 @@
 // <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
+#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
+
 #include <netcdf.h>
 
 #include <cmath>
@@ -18,7 +20,6 @@
 #include "util/netcdf_io/netcdf_io.h"
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/composed_types_lib/composed_types_lib.h"
-#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #define ASSERT_OK(quantity) ASSERT_TRUE((quantity).ok()) << (quantity).status();
 
 namespace makegrid {
