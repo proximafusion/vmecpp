@@ -422,19 +422,40 @@ void LaplaceSolver::PerformPoloidalFourierTransforms() {
         astemp_l[l] = astemp[base_idx + l];
       }
 
-      Eigen::VectorXd result_ss = sinmui_scaled.transpose() * actemp_l -
-                                  cosmui_scaled.transpose() * astemp_l;
-
-      for (int m = 0; m < mf + 1; ++m) {
-        const int idx_amat = (all_n * (mf + 1) + m) * mnpd + mn;
-        amat_sin_sin[idx_amat] = result_ss[m];
-      }
-
-      if (s_.lasym) {
-        Eigen::VectorXd result_sc = cosmui_scaled.transpose() * actemp_l +
-                                    sinmui_scaled.transpose() * astemp_l;
+      if (!s_.lasym) {
+        Eigen::VectorXd result_ss = sinmui_scaled.transpose() * actemp_l -
+                                    cosmui_scaled.transpose() * astemp_l;
         for (int m = 0; m < mf + 1; ++m) {
           const int idx_amat = (all_n * (mf + 1) + m) * mnpd + mn;
+          amat_sin_sin[idx_amat] = result_ss[m];
+        }
+      } else {
+        // The sin-source kernel grpmn_sin is evaluated on the full theta range
+        // as well, so its poloidal projection folds about theta -> -theta the
+        // same way as the cos-source kernel below: the sin-projection takes
+        // the part of actemp that is odd under the reflection and the part of
+        // astemp that is even, the cos-projection the other two parts.
+        Eigen::VectorXd ac_odd(s_.nThetaReduced), as_even(s_.nThetaReduced);
+        Eigen::VectorXd ac_even(s_.nThetaReduced), as_odd(s_.nThetaReduced);
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int rl = (s_.nThetaEven - l) % s_.nThetaEven;
+          const double a = actemp[base_idx + l];
+          const double ar = actemp[base_idx + rl];
+          const double b = astemp[base_idx + l];
+          const double br = astemp[base_idx + rl];
+          ac_odd[l] = 0.5 * (a - ar);
+          as_even[l] = 0.5 * (b + br);
+          ac_even[l] = 0.5 * (a + ar);
+          as_odd[l] = 0.5 * (b - br);
+        }
+
+        Eigen::VectorXd result_ss = sinmui_scaled.transpose() * ac_odd -
+                                    cosmui_scaled.transpose() * as_even;
+        Eigen::VectorXd result_sc = cosmui_scaled.transpose() * ac_even +
+                                    sinmui_scaled.transpose() * as_odd;
+        for (int m = 0; m < mf + 1; ++m) {
+          const int idx_amat = (all_n * (mf + 1) + m) * mnpd + mn;
+          amat_sin_sin[idx_amat] = result_ss[m];
           amat_sin_cos[idx_amat] = result_sc[m];
         }
 
