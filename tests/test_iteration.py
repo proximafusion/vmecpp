@@ -303,6 +303,29 @@ def test_run_honors_iteration_style_flag():
     assert par.wb == pytest.approx(ref.wb, rel=1.0e-5)  # magnetic energy
 
 
+def test_run_honors_anderson_acceleration_flag():
+    """vmecpp.run() honors the anderson_acceleration input flag through the native
+    solver.
+
+    The accelerated iteration reaches the same equilibrium in fewer iterations. The two
+    paths end at different points of the force-tolerance ball of the case (ftol 1e-6),
+    so the magnetic energy is held to that ball, and the global geometry and the
+    toroidal current, which the boundary and the current profile pin, tightly.
+    """
+    base = vmecpp.VmecInput.from_file(TEST_DATA / "cth_like_fixed_bdy.json")
+    assert not base.anderson_acceleration
+    accelerated_input = base.model_copy(update={"anderson_acceleration": True})
+    assert accelerated_input._to_cpp_vmecindata().anderson_acceleration
+
+    plain = vmecpp.run(base, max_threads=1, verbose=False).wout
+    accelerated = vmecpp.run(accelerated_input, max_threads=1, verbose=False).wout
+    assert accelerated.niter < plain.niter
+    assert accelerated.volume_p == pytest.approx(plain.volume_p, rel=1.0e-10)
+    assert accelerated.aspect == pytest.approx(plain.aspect, rel=1.0e-10)
+    assert accelerated.ctor == pytest.approx(plain.ctor, rel=1.0e-13)
+    assert accelerated.wb == pytest.approx(plain.wb, rel=1.0e-4)
+
+
 @pytest.mark.parametrize("case", ["cth_like_fixed_bdy", "solovev"])
 def test_parvmec_matches_parvmec_reference(case):
     """The PARVMEC iteration style reproduces the ORNL-Fusion/PARVMEC wout.

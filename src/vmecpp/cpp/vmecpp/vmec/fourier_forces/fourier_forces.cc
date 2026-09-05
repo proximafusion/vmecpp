@@ -102,8 +102,9 @@ void FourierForces::zeroZForceForM1() {
   }  // j
 }
 
-/** Compute the force residuals and write them into the provided [3] array. */
-void FourierForces::residuals(Eigen::Vector3d& fRes,
+/** Write each surface's squared force residuals into its row of
+ * m_surface_rows: R, Z and lambda in columns 0, 1 and 2. */
+void FourierForces::residuals(double* m_surface_rows, int row_stride,
                               bool includeEdgeRZForces) const {
   int jMaxRZ = std::min(nsMax_, ns - 1);
   if (includeEdgeRZForces && r_.nsMaxF1 == ns) {
@@ -115,47 +116,48 @@ void FourierForces::residuals(Eigen::Vector3d& fRes,
     jMaxIncludeBoundary = ns;
   }
 
-  double local_fResR = 0.0;
-  double local_fResZ = 0.0;
-  double local_fResL = 0.0;
   for (int jF = nsMin_; jF < jMaxIncludeBoundary; ++jF) {
+    double fResR = 0.0;
+    double fResZ = 0.0;
+    double fResL = 0.0;
     for (int m = 0; m < s_.mpol; ++m) {
       for (int n = 0; n < s_.ntor + 1; ++n) {
         int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
 
         if (jF < jMaxRZ) {
-          local_fResR += frcc[idx_fc] * frcc[idx_fc];
-          local_fResZ += fzsc[idx_fc] * fzsc[idx_fc];
+          fResR += frcc[idx_fc] * frcc[idx_fc];
+          fResZ += fzsc[idx_fc] * fzsc[idx_fc];
         }
-        local_fResL += flsc[idx_fc] * flsc[idx_fc];
+        fResL += flsc[idx_fc] * flsc[idx_fc];
         if (s_.lthreed) {
           if (jF < jMaxRZ) {
-            local_fResR += frss[idx_fc] * frss[idx_fc];
-            local_fResZ += fzcs[idx_fc] * fzcs[idx_fc];
+            fResR += frss[idx_fc] * frss[idx_fc];
+            fResZ += fzcs[idx_fc] * fzcs[idx_fc];
           }
-          local_fResL += flcs[idx_fc] * flcs[idx_fc];
+          fResL += flcs[idx_fc] * flcs[idx_fc];
         }
         if (s_.lasym) {
           if (jF < jMaxRZ) {
-            local_fResR += frsc[idx_fc] * frsc[idx_fc];
-            local_fResZ += fzcc[idx_fc] * fzcc[idx_fc];
+            fResR += frsc[idx_fc] * frsc[idx_fc];
+            fResZ += fzcc[idx_fc] * fzcc[idx_fc];
           }
-          local_fResL += flcc[idx_fc] * flcc[idx_fc];
+          fResL += flcc[idx_fc] * flcc[idx_fc];
           if (s_.lthreed) {
             if (jF < jMaxRZ) {
-              local_fResR += frcs[idx_fc] * frcs[idx_fc];
-              local_fResZ += fzss[idx_fc] * fzss[idx_fc];
+              fResR += frcs[idx_fc] * frcs[idx_fc];
+              fResZ += fzss[idx_fc] * fzss[idx_fc];
             }
-            local_fResL += flss[idx_fc] * flss[idx_fc];
+            fResL += flss[idx_fc] * flss[idx_fc];
           }
         }
       }  // n
     }  // m
-  }  // j
 
-  fRes[0] = local_fResR;
-  fRes[1] = local_fResZ;
-  fRes[2] = local_fResL;
+    double* row = m_surface_rows + jF * row_stride;
+    row[0] = fResR;
+    row[1] = fResZ;
+    row[2] = fResL;
+  }  // j
 }
 
 }  // namespace vmecpp

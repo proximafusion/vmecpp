@@ -219,6 +219,11 @@ class VmecINDATA {
   // based on)
   IterationStyle iteration_style;
 
+  // Anderson acceleration of the descent iteration: a short history of
+  // iterates extrapolates the fixed-point map of the Garabedian time step
+  // (see Vmec::SetAndersonAcceleration). Off by default.
+  bool anderson_acceleration;
+
   // If true, return a wout even if VMEC++ did not converge.
   // Intended for debugging convergence issues only: the
   // returned quantities are computed from whatever internal state the solver

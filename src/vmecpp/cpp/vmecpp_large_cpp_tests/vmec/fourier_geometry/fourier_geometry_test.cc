@@ -17,6 +17,7 @@
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/boundaries/boundaries.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
@@ -173,6 +174,7 @@ void CheckInitFromState(const VmecINDATA& indata, const WOutFileContents& wout,
   fc.haveToFlipTheta = b.setupFromIndata(indata, /*verbose=*/false);
 
   HandoverStorage h(&s);
+  h.allocate(rp, fc.ns);
 
   const int signOfJacobian = -1;
   const double pDamp = 0.05;
@@ -184,10 +186,12 @@ void CheckInitFromState(const VmecINDATA& indata, const WOutFileContents& wout,
   VmecConstants constants;
   constants.reset();
 
-  p.evalRadialProfiles(fc.haveToFlipTheta, constants);
+  p.evalRadialProfiles(fc.haveToFlipTheta);
 
-  // Now that all contributions to lamscale have been accumulated in
-  // VmecConstants::rmsPhiP, can update lamscale.
+  // Fold the per-surface phip^2 rows into rmsPhiP, as Vmec::InitializeRadial
+  // does, then set lamscale.
+  SumSurfaceRows(h.surface_reduce_scratch.data(), 4, 1, fc.ns,
+                 &constants.rmsPhiP);
   constants.lamscale = sqrt(constants.rmsPhiP * fc.deltaS);
 
   FourierGeometry g(&s, &rp, fc.ns);

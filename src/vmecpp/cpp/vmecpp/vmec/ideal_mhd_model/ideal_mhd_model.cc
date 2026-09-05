@@ -400,27 +400,9 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
   }
 }
 
-void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  {
-    m_fc_.fResInvar[0] = 0.0;
-    m_fc_.fResInvar[1] = 0.0;
-    m_fc_.fResInvar[2] = 0.0;
-  }
-
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    m_fc_.fResInvar[0] += localFResInvar[0];
-    m_fc_.fResInvar[1] += localFResInvar[1];
-    m_fc_.fResInvar[2] += localFResInvar[2];
-  }
-
-// this is protecting reads of fResInvar as well as
-// writes to m_fc.fsqz which is read before this call
+void IdealMhdModel::evalFResInvar() {
+// Every thread has written the rows of its surfaces. This barrier also
+// protects the writes to m_fc.fsqz, which is read before this call.
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -429,6 +411,9 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 #pragma omp single
 #endif  // _OPENMP
   {
+    SumSurfaceRows(m_h_.surface_reduce_scratch.data(), 4, 3, m_fc_.ns,
+                   m_fc_.fResInvar.data());
+
     // set new values
     // TODO(jons): what is `r1scale`?
     constexpr double r1scale = 0.25;
@@ -439,24 +424,7 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
   }
 }
 
-void IdealMhdModel::evalFResPrecd(const Eigen::Vector3d& localFResPrecd) {
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  {
-    m_fc_.fResPrecd[0] = 0.0;
-    m_fc_.fResPrecd[1] = 0.0;
-    m_fc_.fResPrecd[2] = 0.0;
-  }
-
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    m_fc_.fResPrecd[0] += localFResPrecd[0];
-    m_fc_.fResPrecd[1] += localFResPrecd[1];
-    m_fc_.fResPrecd[2] += localFResPrecd[2];
-  }
+void IdealMhdModel::evalFResPrecd() {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -465,6 +433,9 @@ void IdealMhdModel::evalFResPrecd(const Eigen::Vector3d& localFResPrecd) {
 #pragma omp single
 #endif  // _OPENMP
   {
+    SumSurfaceRows(m_h_.surface_reduce_scratch.data(), 4, 3, m_fc_.ns,
+                   m_fc_.fResPrecd.data());
+
     m_fc_.fsqr1 = m_fc_.fResPrecd[0] * m_h_.fNorm1;
     m_fc_.fsqz1 = m_fc_.fResPrecd[1] * m_h_.fNorm1;
     m_fc_.fsql1 = m_fc_.fResPrecd[2] * m_fc_.deltaS;
@@ -977,11 +948,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
                                         VacuumPressureState::kInitialized);
   bool includeEdgeRZForces =
       ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
-  Eigen::Vector3d localFResInvar;
-  localFResInvar.setZero();
-  m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
-
-  evalFResInvar(localFResInvar);
+  m_decomposed_f.residuals(m_h_.surface_reduce_scratch.data(), 4,
+                           includeEdgeRZForces);
+  evalFResInvar();
 
   if (checkpoint == VmecCheckpoint::INVARIANT_RESIDUALS &&
       iter2 >= iterations_before_checkpointing) {
@@ -1020,11 +989,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
     m_decomposed_f.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
   }
 
-  Eigen::Vector3d localFResPrecd;
-  localFResPrecd.setZero();
-  m_decomposed_f.residuals(localFResPrecd, true);
-
-  evalFResPrecd(localFResPrecd);
+  m_decomposed_f.residuals(m_h_.surface_reduce_scratch.data(), 4, true);
+  evalFResPrecd();
 
   if (checkpoint == VmecCheckpoint::PRECONDITIONED_RESIDUALS &&
       iter2 >= iterations_before_checkpointing) {
@@ -1648,63 +1614,54 @@ void IdealMhdModel::updateDifferentialVolume() {
 
 // first iteration of a multi-grid step
 void IdealMhdModel::computeInitialVolume() {
-  double localPlasmaVolume = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // radial integral to get plasma volume
     // This must be done over UNIQUE half-grid points !!!
     // --> The standard partitioning has half-grid points between
     //     neighboring ranks that are handled by both ranks.
     if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
-      localPlasmaVolume += m_p_.dVdsH[jH - r_.nsMinH];
+      m_h_.surface_reduce_scratch(jH, 0) = m_p_.dVdsH[jH - r_.nsMinH];
     }
   }
-  localPlasmaVolume *= m_fc_.deltaS;
 
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-  m_h_.voli = 0.0;
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  m_h_.voli += localPlasmaVolume * (2.0 * M_PI) * (2.0 * M_PI);
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  {
+    double plasma_volume = 0.0;
+    SumSurfaceRows(m_h_.surface_reduce_scratch.data(), 4, 1, m_fc_.ns,
+                   &plasma_volume);
+    plasma_volume *= m_fc_.deltaS;
+    m_h_.voli = plasma_volume * (2.0 * M_PI) * (2.0 * M_PI);
+  }
 }  // computeInitialVolume
 
 void IdealMhdModel::updateVolume() {
-  double localPlasmaVolume = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // radial integral to get plasma volume
     // This must be done over UNIQUE half-grid points !!!
     // --> The standard partitioning has half-grid points between
     //     neighboring ranks that are handled by both ranks.
     if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
-      localPlasmaVolume += m_p_.dVdsH[jH - r_.nsMinH];
+      m_h_.surface_reduce_scratch(jH, 0) = m_p_.dVdsH[jH - r_.nsMinH];
     }
   }
-  localPlasmaVolume *= m_fc_.deltaS;
 
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-  m_h_.plasmaVolume = 0.0;
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  m_h_.plasmaVolume += localPlasmaVolume;
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  {
+    double plasma_volume = 0.0;
+    SumSurfaceRows(m_h_.surface_reduce_scratch.data(), 4, 1, m_fc_.ns,
+                   &plasma_volume);
+    m_h_.plasmaVolume = plasma_volume * m_fc_.deltaS;
+  }
 }  // updateVolume
 
 /**
@@ -1843,7 +1800,6 @@ void IdealMhdModel::pressureAndEnergies() {
   // presH, totalPressure
   // thermalEnergy, magneticEnergy, mhdEnergy
 
-  double localThermalEnergy = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // compute pressure from mass, dV/ds and adiabatic index (gamma)
     m_p_.presH[jH - r_.nsMinH] =
@@ -1855,14 +1811,10 @@ void IdealMhdModel::pressureAndEnergies() {
     // --> The standard partitioning has half-grid points between
     //     neighboring ranks that are handled by both ranks.
     if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
-      localThermalEnergy +=
+      m_h_.surface_reduce_scratch(jH, 0) =
           m_p_.presH[jH - r_.nsMinH] * m_p_.dVdsH[jH - r_.nsMinH];
     }
   }  // jH
-
-  // 1/(ns-1) is the radial integration differential
-  // --> multiply it in here for thermal energy
-  localThermalEnergy *= m_fc_.deltaS;
 
   // magnetic pressure is |B|^2/2 = 0.5*(B^u*B_u + B^v*B_v)
   // Compute as a vectorized operation over all half-grid points
@@ -1873,18 +1825,19 @@ void IdealMhdModel::pressureAndEnergies() {
                           totalPressure.data());
 
   // Accumulate magnetic energy and add kinetic pressure per surface
-  double localMagneticEnergy = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     const int offset = (jH - r_.nsMinH) * s_.nZnT;
 
     // perform volume integral over magnetic pressure for magnetic energy
     // This must be done over UNIQUE half-grid points !!!
     if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
+      double magnetic_energy_on_surface = 0.0;
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         int l = kl % s_.nThetaEff;
-        localMagneticEnergy +=
+        magnetic_energy_on_surface +=
             gsqrt[offset + kl] * totalPressure[offset + kl] * s_.wInt[l];
       }
+      m_h_.surface_reduce_scratch(jH, 1) = magnetic_energy_on_surface;
     }
 
     // now ADD KINETIC PRESSURE to magnetic pressure in order to compute the
@@ -1893,38 +1846,28 @@ void IdealMhdModel::pressureAndEnergies() {
         m_p_.presH[jH - r_.nsMinH];
   }  // jH
 
-  // magneticEnergy could be negative due to negative sign of Jacobian (gsqrt)
-  // --> could introduce signOfJacobian, but abs() does the job here as well
-  localMagneticEnergy = fabs(localMagneticEnergy) * m_fc_.deltaS;
-
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
   {
-    m_h_.thermalEnergy = 0.0;
-    m_h_.magneticEnergy = 0.0;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+    std::array<double, 2> energies = {0.0, 0.0};
+    SumSurfaceRows(m_h_.surface_reduce_scratch.data(), 4, 2, m_fc_.ns,
+                   energies.data());
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    m_h_.thermalEnergy += localThermalEnergy;
-    m_h_.magneticEnergy += localMagneticEnergy;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+    // 1/(ns-1) is the radial integration differential
+    m_h_.thermalEnergy = energies[0] * m_fc_.deltaS;
+    // magneticEnergy could be negative due to negative sign of Jacobian
+    // (gsqrt) --> could introduce signOfJacobian, but abs() does the job here
+    // as well
+    m_h_.magneticEnergy = fabs(energies[1]) * m_fc_.deltaS;
 
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  // compute MHD energy from individual volume integrals
-  m_h_.mhdEnergy =
-      m_h_.magneticEnergy + m_h_.thermalEnergy / (adiabaticIndex - 1.0);
+    // compute MHD energy from individual volume integrals
+    m_h_.mhdEnergy =
+        m_h_.magneticEnergy + m_h_.thermalEnergy / (adiabaticIndex - 1.0);
+  }
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -2005,64 +1948,49 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
   double energyDensity =
       std::max(m_h_.magneticEnergy, m_h_.thermalEnergy) / m_h_.plasmaVolume;
 
-  double localForceNormSumRZ = 0.0;
-  double localForceNormSumL = 0.0;
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-
-      // perform volume integral over magnetic pressure for magnetic energy
-      // This must be done over UNIQUE half-grid points !!!
-      // --> The standard partitioning has half-grid points between
-      //     neighboring ranks that are handled by both ranks.
-      if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
+    // perform volume integral over magnetic pressure for magnetic energy
+    // This must be done over UNIQUE half-grid points !!!
+    // --> The standard partitioning has half-grid points between
+    //     neighboring ranks that are handled by both ranks.
+    if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
+      double norm_rz_on_surface = 0.0;
+      double norm_l_on_surface = 0.0;
+      for (int kl = 0; kl < s_.nZnT; ++kl) {
+        int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
         int l = kl % s_.nThetaEff;
-        localForceNormSumRZ +=
-            guu[iHalf] * r12[iHalf] * r12[iHalf] * s_.wInt[l];
-        localForceNormSumL +=
+        norm_rz_on_surface += guu[iHalf] * r12[iHalf] * r12[iHalf] * s_.wInt[l];
+        norm_l_on_surface +=
             (bsubu[iHalf] * bsubu[iHalf] + bsubv[iHalf] * bsubv[iHalf]) *
             s_.wInt[l];
-      }
-    }  // kl
+      }  // kl
+      m_h_.surface_reduce_scratch(jH, 0) = norm_rz_on_surface;
+      m_h_.surface_reduce_scratch(jH, 1) = norm_l_on_surface;
+    }
   }  // j
 
   // TODO(jons): exclude axis --> mimic PARVMEC
   // only unique radial points here;
   // decomposed_x is over nsMinF1 ... nsMaxF1 --> would count overlapping
   // elements twice !!!
-  const int nsMinHere = r_.nsMinF;
-  double localForceNorm1 =
-      decomposed_x.rzNorm(false, nsMinHere, r_.nsMaxFIncludingLcfs);
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    m_h_.surface_reduce_scratch(jF, 2) = decomposed_x.rzNorm(false, jF);
+  }
 
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
   {
-    // re-use target array elements for global accumulation
-    m_h_.fNormRZ = 0.0;
-    m_h_.fNormL = 0.0;
-    m_h_.fNorm1 = 0.0;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+    std::array<double, 3> norms = {0.0, 0.0, 0.0};
+    SumSurfaceRows(m_h_.surface_reduce_scratch.data(), 4, 3, m_fc_.ns,
+                   norms.data());
+    m_h_.fNormRZ = norms[0];
+    m_h_.fNormL = norms[1];
+    m_h_.fNorm1 = norms[2];
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    m_h_.fNormRZ += localForceNormSumRZ;
-    m_h_.fNormL += localForceNormSumL;
-    m_h_.fNorm1 += localForceNorm1;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  {
     m_h_.fNormRZ = 1.0 / (m_h_.fNormRZ * energyDensity * energyDensity);
     m_h_.fNormL =
         1.0 / (m_h_.fNormL * constants_.lamscale * constants_.lamscale);

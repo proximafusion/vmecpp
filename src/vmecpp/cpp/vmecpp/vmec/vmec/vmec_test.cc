@@ -358,6 +358,60 @@ void CheckPrescribedIotaProfile(const vmecpp::WOutFileContents& w,
   }
 }
 
+// Anderson acceleration is opt-in and must reach the same equilibrium as the
+// plain Garabedian iteration, in fewer iterations. Two independent
+// convergence paths agree at the size of the force-tolerance ball, so each
+// bound below is at least five times the deviation measured between the
+// accelerated and the plain converged state; the curl-derived diagnostics
+// (jcuru, jdotb, the Mercier terms) amplify that ball beyond usefulness and
+// are covered by their own reference tests instead.
+TEST(TestVmec, AndersonAcceleratedCthMatchesPlainIteration) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  auto maybe_plain = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_plain.ok());
+  Vmec& plain = **maybe_plain;
+  ASSERT_FALSE(plain.run().value());
+
+  auto maybe_accelerated = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_accelerated.ok());
+  Vmec& accelerated = **maybe_accelerated;
+  accelerated.SetAndersonAcceleration(/*window=*/4, /*start_iteration=*/25);
+  ASSERT_FALSE(accelerated.run().value());
+
+  const vmecpp::WOutFileContents& p = plain.output_quantities_.wout;
+  const vmecpp::WOutFileContents& a = accelerated.output_quantities_.wout;
+
+  EXPECT_LT(a.niter, p.niter);
+
+  using testing::IsCloseRelAbs;
+  EXPECT_TRUE(IsCloseRelAbs(p.wb, a.wb, 5.0e-7));
+  EXPECT_TRUE(IsCloseRelAbs(p.volume, a.volume, 1.0e-10));
+  EXPECT_TRUE(IsCloseRelAbs(p.aspect, a.aspect, 1.0e-10));
+  EXPECT_TRUE(IsCloseRelAbs(p.ctor, a.ctor, 1.0e-13));
+  EXPECT_TRUE(IsCloseRelAbs(p.rbtor, a.rbtor, 2.0e-4));
+  EXPECT_TRUE(IsCloseRelAbs(p.b0, a.b0, 5.0e-3));
+
+  ASSERT_EQ(a.ns, p.ns);
+  for (int jF = 0; jF < p.ns; ++jF) {
+    EXPECT_TRUE(IsCloseRelAbs(p.phi[jF], a.phi[jF], 1.0e-10));
+    EXPECT_TRUE(IsCloseRelAbs(p.iotaf[jF], a.iotaf[jF], 2.0e-2));
+  }
+
+  ASSERT_EQ(a.mnmax, p.mnmax);
+  for (int jF = 0; jF < p.ns; ++jF) {
+    for (int mn = 0; mn < p.mnmax; ++mn) {
+      EXPECT_TRUE(IsCloseRelAbs(p.rmnc(mn, jF), a.rmnc(mn, jF), 5.0e-3));
+      EXPECT_TRUE(IsCloseRelAbs(p.zmns(mn, jF), a.zmns(mn, jF), 2.0e-3));
+      EXPECT_TRUE(IsCloseRelAbs(p.lmns(mn, jF), a.lmns(mn, jF), 1.0e-1));
+    }
+  }
+}
+
 }  // namespace
 
 // lasym = F, lthreed = T, ncurr = 0, lfreeb = F.

@@ -488,10 +488,11 @@ void LaplaceSolver::BuildMatrix() {
   // lasym = false this is a flat add; for lasym = true the four blocks
   // (sin-sin, sin-cos, cos-sin, cos-cos) are placed into the four quadrants
   // of the column-major 2 * mnpd matrix (Fortran NESTOR/fouri.f90 amatsq).
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
+  //
+  // Taking turns rather than folding a fixed tree: a tree needs a shared row
+  // of scratch per thread, and matrixShare is mnpd_dim squared. This runs
+  // once per vacuum solve, so the extra barriers do not matter.
+  AddInThreadOrder(tp_.get_thread_id(), tp_.get_num_threads(), [&] {
     if (!s_.lasym) {
       Eigen::Map<Eigen::VectorXd> matrix_map(matrixShare.data(), mnpd * mnpd);
       matrix_map += amat_sin_sin;
@@ -511,10 +512,7 @@ void LaplaceSolver::BuildMatrix() {
         }
       }
     }
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  });
 
 #ifdef _OPENMP
 #pragma omp single
@@ -599,10 +597,8 @@ void LaplaceSolver::SolveForPotential(
 #pragma omp barrier
 #endif  // _OPENMP
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
+  // Turn-taking for the same reasons as in BuildMatrix.
+  AddInThreadOrder(tp_.get_thread_id(), tp_.get_num_threads(), [&] {
     Eigen::Map<Eigen::VectorXd> bvec_sin_share(bvecShare.data(), mnpd);
     Eigen::Map<const Eigen::VectorXd> singular_sin(bvec_sin_singular.data(),
                                                    mnpd);
@@ -614,10 +610,7 @@ void LaplaceSolver::SolveForPotential(
                                                      mnpd);
       bvec_cos_share += bvec_cos + singular_cos * inv_nfp;
     }
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  });
 
 #ifdef _OPENMP
 #pragma omp single

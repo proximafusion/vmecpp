@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <iostream>
 #include <memory>
@@ -36,6 +37,40 @@
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 
 namespace {
+
+// Sums each thread's `width` contributions by a fixed binary tree over the
+// team. Thread t parks its values in row t of `m_slots`; at strides 1, 2, 4,
+// ... thread t with t % (2*stride) == 0 adds row t+stride into row t. The
+// pairing depends only on thread ids, never on arrival order, so the
+// floating-point result is reproducible at a fixed thread count. Row 0 holds
+// the team total after the call, which ends on a barrier.
+//
+// `m_slots` must provide num_threads rows of `row_stride` doubles of shared
+// storage (row_stride >= width), and every thread of the team must call this
+// together with the same arguments apart from `local`.
+void SumInFixedTree(double* m_slots, int row_stride, int width, int thread_id,
+                    int num_threads, const double* local) {
+  double* row = m_slots + static_cast<std::ptrdiff_t>(thread_id) * row_stride;
+  for (int i = 0; i < width; ++i) {
+    row[i] = local[i];
+  }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  for (int stride = 1; stride < num_threads; stride *= 2) {
+    if (thread_id % (2 * stride) == 0 && thread_id + stride < num_threads) {
+      const double* other =
+          m_slots +
+          static_cast<std::ptrdiff_t>(thread_id + stride) * row_stride;
+      for (int i = 0; i < width; ++i) {
+        row[i] += other[i];
+      }
+    }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  }
+}
 
 void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
                            const absl::Status& thread_status) {
@@ -189,6 +224,10 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       last_full_update_nestor_(0) {
   // remainder of readin()
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
+
+  if (indata_.anderson_acceleration) {
+    SetAndersonAcceleration(kAndersonWindow, kAndersonStartIteration);
+  }
 
   if (fc_.lfreeb) {
     // tangential Fourier resolution
@@ -618,6 +657,20 @@ bool Vmec::InitializeRadial(
     decomposed_f_.resize(num_threads_);
     physical_f_.resize(num_threads_);
     decomposed_v_.resize(num_threads_);
+    if (anderson_window_ > 0) {
+      anderson_.resize(num_threads_);
+      for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+        anderson_[thread_id] =
+            std::make_unique<AndersonAcceleration>(&s_, anderson_window_);
+      }
+      anderson_reduction_slots_.setZero(
+          static_cast<Eigen::Index>(num_threads_) * anderson_window_ *
+          (anderson_window_ + 1));
+      anderson_last_iter1_ = -1;
+      anderson_last_iter2_ = -1;
+      anderson_stage_ns_ = -1;
+      anderson_stage_fsq0_ = 0.0;
+    }
 
     // single-threaded creation of objects used in parallel threads
     for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
@@ -697,11 +750,13 @@ bool Vmec::InitializeRadial(
 
     // COMPUTE INITIAL R, Z AND MAGNETIC FLUX PROFILES
     for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
-      p_[thread_id]->evalRadialProfiles(fc_.haveToFlipTheta, constants_);
+      p_[thread_id]->evalRadialProfiles(fc_.haveToFlipTheta);
     }
 
-    // Now that all contributions to lamscale have been accumulated in
-    // VmecConstants::rmsPhiP, can update lamscale.
+    // Every thread has written phip^2 of its half-grid surfaces into a row of
+    // the shared scratch; fold them in surface order for lamscale.
+    SumSurfaceRows(h_.surface_reduce_scratch.data(), 4, 1, fc_.ns,
+                   &constants_.rmsPhiP);
     constants_.lamscale = sqrt(constants_.rmsPhiP * fc_.deltaS);
 
     if (checkpoint == VmecCheckpoint::RADIAL_PROFILES_EVAL &&
@@ -1314,6 +1369,104 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 #endif  // _OPENMP
 }
 
+void Vmec::SetAndersonAcceleration(int window, int start_iteration,
+                                   int frequency, bool zero_velocity_on_jump) {
+  anderson_window_ = std::max(window, 0);
+  anderson_start_ = std::max(start_iteration, 1);
+  anderson_frequency_ = std::max(frequency, 1);
+  anderson_zero_velocity_ = zero_velocity_on_jump;
+}
+
+void Vmec::AndersonPreStep(int thread_id) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    // The history only extrapolates a settled, uninterrupted iteration:
+    // anything that moved iter1_ (a restart, a new multigrid step) or skipped
+    // an iteration invalidates it.
+    anderson_reset_ = (iter1_ != anderson_last_iter1_) ||
+                      (iter2_ != anderson_last_iter2_ + 1);
+    anderson_last_iter1_ = iter1_;
+    anderson_last_iter2_ = iter2_;
+    if (fc_.ns != anderson_stage_ns_) {
+      anderson_stage_ns_ = fc_.ns;
+      anderson_stage_fsq0_ = fc_.fsqr + fc_.fsqz + fc_.fsql;
+    }
+  }  // implicit barrier
+
+  AndersonAcceleration& acceleration = *anderson_[thread_id];
+  if (anderson_reset_) {
+    acceleration.Reset();
+  }
+  acceleration.CapturePreStep(*decomposed_x_[thread_id]);
+}
+
+void Vmec::AndersonPostStep(int thread_id) {
+  AndersonAcceleration& acceleration = *anderson_[thread_id];
+  acceleration.PushPostStep(*decomposed_x_[thread_id]);
+
+  const int k = acceleration.NumDifferences();
+  // The extrapolation pays off in the nonlinear early phase of a stage, where
+  // the descent is still finding the basin. Once the invariant residual is
+  // small the fixed-point map is linear and the momentum iteration already
+  // converges at its optimal rate, and extrapolating there holds the residual
+  // in a limit cycle instead (measured on the QUASR fixed-boundary cases at
+  // ftol 1e-9), so the tail is handed back to the descent. The ftolv term
+  // keeps a loosely converged run from engaging right at its target.
+  const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
+  const double disengage_floor =
+      std::max({kAndersonFloor, kAndersonRelativeFloor * anderson_stage_fsq0_,
+                1.0e3 * fc_.ftolv});
+  if (k < 1 || (iter2_ - iter1_) < anderson_start_ ||
+      iter2_ % anderson_frequency_ != 0 || fsq_invariant <= disengage_floor) {
+    return;
+  }
+
+  // Reduce the normal equations of the least-squares problem over the team.
+  // Every thread contributes the inner products of its own slice; the fixed
+  // tree keeps the sums reproducible.
+  const int width = k * k + k;
+  std::vector<double> local(width);
+  acceleration.LocalNormalEquations(local.data(), local.data() + k * k);
+  const int row_stride = anderson_window_ * (anderson_window_ + 1);
+  SumInFixedTree(anderson_reduction_slots_.data(), row_stride, width, thread_id,
+                 num_threads_, local.data());
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    Eigen::Map<
+        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+        gram(anderson_reduction_slots_.data(), k, k);
+    Eigen::Map<Eigen::VectorXd> rhs(anderson_reduction_slots_.data() + k * k,
+                                    k);
+    // Tikhonov-regularize against a rank-deficient history.
+    const double regularization = 1.0e-12 * gram.trace() / k;
+    Eigen::MatrixXd lhs = gram;
+    lhs.diagonal().array() += regularization;
+    anderson_gamma_ = lhs.ldlt().solve(rhs);
+    // An unreliable extrapolation is skipped rather than damped: the plain
+    // step already taken stands.
+    anderson_apply_ = anderson_gamma_.allFinite() &&
+                      anderson_gamma_.lpNorm<Eigen::Infinity>() < 1.0e2;
+  }  // implicit barrier
+
+  if (!anderson_apply_) {
+    return;
+  }
+
+  acceleration.ApplyCombination(anderson_gamma_.data(),
+                                *decomposed_x_[thread_id]);
+  if (anderson_zero_velocity_) {
+    decomposed_v_[thread_id]->setZero();
+  }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+}
+
 absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
                                   int iterations_before_checkpointing,
                                   double time_step, int thread_id,
@@ -1430,7 +1583,14 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   // THIS IS THE TIME-STEP ALGORITHM. IT IS ESSENTIALLY A CONJUGATE
   // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
   // BASED ON A METHOD GIVEN BY P. GARABEDIAN
+  const bool accelerate = anderson_window_ > 0;
+  if (accelerate) {
+    AndersonPreStep(thread_id);
+  }
   PerformTimeStep(fac, b1, time_step, thread_id);
+  if (accelerate) {
+    AndersonPostStep(thread_id);
+  }
 
   return false;
 }
