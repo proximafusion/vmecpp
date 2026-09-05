@@ -130,24 +130,11 @@ TEST_P(LoadMGridTest, CheckLoadMGrid) {
 
   ASSERT_EQ(nc_close(ncid), NC_NOERR);
 
-  // TODO(jons): A flag if stellarator symmetry was used in computing a given
-  // mgrid file is not stored in the mgrid file. For now, hard-code this to
-  // `true`, since all our test cases assume stellarator symmetry. To be revised
-  // when a) we use non-stellarator-symmetric coil sets _and_ b) we have
-  // transitioned to only using our own `makegrid`, in which we can define new
-  // output variables and have the MakegridParameters at hand anyways.
-  bool assume_stellarator_symmetry = true;
-
-  // NOTE: The coil geometry in `coils.cth_like` was found to not be perfectly
-  // stellarator-symmetric. Therefore, the resulting magnetic field is also not
-  // perfectly stellarator symmetric. We ignore this issue for now and assume
-  // both in `makegrid` and here the field to be perfectly
-  // stellarator-symmetric. Therefore, we also only check the first
-  // half-field-period for a stellarator-symmetric case as `cth_like`.
-  int num_phi_effective = number_of_phi_grid_points;
-  if (assume_stellarator_symmetry) {
-    num_phi_effective = number_of_phi_grid_points / 2 + 1;
-  }
+  // The mgrid file does not record whether it was computed assuming
+  // stellarator symmetry, so the point-wise comparison below covers the first
+  // half field period, where the stored field is an independent evaluation.
+  // The assumption itself is checked further down against the stored data.
+  const int num_phi_effective = number_of_phi_grid_points / 2 + 1;
 
   // Build the cylindrical grid based on mgrid dimensions.
   // The loop setup is re-used to also allocate the magnetic_field vectors.
@@ -212,6 +199,53 @@ TEST_P(LoadMGridTest, CheckLoadMGrid) {
         EXPECT_TRUE(IsCloseRelAbs(b_r, mgrid.bR[linear_index], tolerance));
         EXPECT_TRUE(IsCloseRelAbs(b_p, mgrid.bP[linear_index], tolerance));
         EXPECT_TRUE(IsCloseRelAbs(b_z, mgrid.bZ[linear_index], tolerance));
+      }  // index_r
+    }  // index_z
+  }  // index_phi
+
+  // What makes the planes past the half field period redundant is that the
+  // stored field is stellarator-symmetric, so check that rather than take it on
+  // trust: reflecting a plane onto (2 pi / nfp - phi, R, -Z) has to leave B_phi
+  // and B_Z alone and flip the sign of B_R.
+  //
+  // The helical filament in `coils.cth_like` is written with six significant
+  // digits, so its vertices are symmetric only to 6e-6, and the grid reaches
+  // within a few centimetres of the inner leg, where that rounding shows in the
+  // field at 6.9e-5 of the largest component. Only the mid-period plane can
+  // show it: the planes past the half period are mirror copies of the first
+  // half. The bound is a factor of three above the measured residual, and both
+  // sides of the comparison are read from the same file.
+  double largest_field_component = 0.0;
+  for (int linear_index = 0; linear_index < mgrid.bR.size(); ++linear_index) {
+    largest_field_component = std::max(
+        {largest_field_component, std::abs(mgrid.bR[linear_index]),
+         std::abs(mgrid.bP[linear_index]), std::abs(mgrid.bZ[linear_index])});
+  }
+  ASSERT_GT(largest_field_component, 0.0);
+  const double symmetry_tolerance = 2.0e-4 * largest_field_component;
+
+  for (int index_phi = 0; index_phi < mgrid.numPhi; ++index_phi) {
+    const int reflected_phi = (mgrid.numPhi - index_phi) % mgrid.numPhi;
+    for (int index_z = 0; index_z < mgrid.numZ; ++index_z) {
+      const int reflected_z = mgrid.numZ - 1 - index_z;
+      for (int index_r = 0; index_r < mgrid.numR; ++index_r) {
+        const int linear_index =
+            (index_phi * mgrid.numZ + index_z) * mgrid.numR + index_r;
+        const int reflected_index =
+            (reflected_phi * mgrid.numZ + reflected_z) * mgrid.numR + index_r;
+
+        EXPECT_NEAR(mgrid.bR[reflected_index], -mgrid.bR[linear_index],
+                    symmetry_tolerance)
+            << "B_R at phi = " << index_phi << ", z = " << index_z
+            << ", r = " << index_r;
+        EXPECT_NEAR(mgrid.bP[reflected_index], mgrid.bP[linear_index],
+                    symmetry_tolerance)
+            << "B_phi at phi = " << index_phi << ", z = " << index_z
+            << ", r = " << index_r;
+        EXPECT_NEAR(mgrid.bZ[reflected_index], mgrid.bZ[linear_index],
+                    symmetry_tolerance)
+            << "B_Z at phi = " << index_phi << ", z = " << index_z
+            << ", r = " << index_r;
       }  // index_r
     }  // index_z
   }  // index_phi
