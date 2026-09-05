@@ -25,17 +25,22 @@ struct AllowedFor {
 
 class ProfileParameterizationData {
  public:
+  // `implemented` is false for a name that Fortran VMEC accepts but
+  // evalProfileFunction has no case for; such a name must be rejected at input
+  // validation, since the evaluator would return zero for it.
   ProfileParameterizationData(const std::string& name, bool allowedForPres,
                               bool allowedForCurr, bool allowedForIota,
-                              bool needsSplineData);
+                              bool needsSplineData, bool implemented = true);
 
   const std::string& Name() const;
   bool NeedsSplineData() const;
   AllowedFor IsAllowedFor() const;
+  bool IsImplemented() const;
 
  private:
   const std::string name_;
   bool needsSplineData_;
+  bool implemented_;
   AllowedFor allowedFor_;
 };
 

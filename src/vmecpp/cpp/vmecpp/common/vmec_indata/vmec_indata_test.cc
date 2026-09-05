@@ -246,6 +246,27 @@ TEST(TestVmecINDATA, CheckProfileParameterizationNames) {
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
+// The sum_cossq_* current profiles are named in the parameterization table
+// because Fortran VMEC accepts them, but evalProfileFunction has no case for
+// them and would return zero for every s. A zero current profile leaves the
+// prescribed curtor unapplied and the run still reports convergence, so these
+// names have to be rejected here.
+TEST(TestVmecINDATA, CheckUnimplementedProfileParameterizationNames) {
+  VmecINDATA indata;
+  indata.ncurr = 1;
+  ASSERT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  for (const char* name :
+       {"sum_cossq_s", "sum_cossq_sqrts", "sum_cossq_s_free"}) {
+    indata.pcurr_type = name;
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << "unimplemented pcurr_type accepted: " << name;
+  }
+
+  indata.pcurr_type = "power_series";
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
 // A spline profile cannot be evaluated without its knots. The polynomial
 // coefficient arrays, by contrast, are zero-padded on read, so an empty one is
 // a valid way to ask for a zero profile.
