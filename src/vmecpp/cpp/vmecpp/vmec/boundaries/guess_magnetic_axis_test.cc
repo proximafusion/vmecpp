@@ -62,6 +62,31 @@ class GuessMagneticAxisTest : public TestWithParam<AxisGuessCase> {
         boundaries_->zaxis_c);
   }
 
+  // The same boundary declared asymmetric, with every non-stellarator-symmetric
+  // coefficient zero, which is the same equilibrium.
+  RecomputeAxisWorkspace RecomputeAsAsymmetric() const {
+    VmecINDATA asym = indata_;
+    asym.lasym = true;
+    asym.raxis_s = Eigen::VectorXd::Zero(asym.raxis_c.size());
+    asym.zaxis_c = Eigen::VectorXd::Zero(asym.zaxis_s.size());
+    asym.rbs = RowMatrixXd::Zero(asym.rbc.rows(), asym.rbc.cols());
+    asym.zbc = RowMatrixXd::Zero(asym.zbs.rows(), asym.zbs.cols());
+
+    Sizes sizes(asym);
+    FourierBasisFastPoloidal fourier_basis(&sizes);
+    Boundaries boundaries(&sizes, &fourier_basis,
+                          vmec_algorithm_constants::kSignOfJacobian);
+    boundaries.setupFromIndata(asym, /*verbose=*/false);
+
+    return RecomputeMagneticAxisToFixJacobianSign(
+        GetParam().number_of_flux_surfaces,
+        vmec_algorithm_constants::kSignOfJacobian, sizes, fourier_basis,
+        boundaries.rbcc, boundaries.rbss, boundaries.rbsc, boundaries.rbcs,
+        boundaries.zbsc, boundaries.zbcs, boundaries.zbcc, boundaries.zbss,
+        boundaries.raxis_c, boundaries.raxis_s, boundaries.zaxis_s,
+        boundaries.zaxis_c);
+  }
+
   VmecINDATA indata_;
   std::optional<Sizes> sizes_;
   std::optional<FourierBasisFastPoloidal> fourier_basis_;
@@ -106,6 +131,47 @@ TEST_P(GuessMagneticAxisTest, CheckStellaratorSymmetryMirrorsTheAxisGuess) {
   // The zeta = 0 plane is its own mirror image, so the axis sits in the
   // symmetry plane there.
   EXPECT_EQ(w.new_z_axis[0], 0.0);
+}
+
+TEST_P(GuessMagneticAxisTest, CheckAsymmetricRunSearchesEveryPlane) {
+  ASSERT_FALSE(sizes_->lasym);
+  const RecomputeAxisWorkspace w = RecomputeAsAsymmetric();
+
+  // The mirror that fills the second half of the toroidal range for a
+  // symmetric run does not hold for an asymmetric one, so every plane has to
+  // be searched. A plane left out keeps the axis at the origin, outside the
+  // boundary.
+  for (int k = 0; k < sizes_->nZeta; ++k) {
+    const double min_r =
+        *std::min_element(w.r_lcfs[k].begin(), w.r_lcfs[k].end());
+    const double max_r =
+        *std::max_element(w.r_lcfs[k].begin(), w.r_lcfs[k].end());
+    const double min_z =
+        *std::min_element(w.z_lcfs[k].begin(), w.z_lcfs[k].end());
+    const double max_z =
+        *std::max_element(w.z_lcfs[k].begin(), w.z_lcfs[k].end());
+
+    EXPECT_GT(w.new_r_axis[k], min_r) << "plane " << k;
+    EXPECT_LT(w.new_r_axis[k], max_r) << "plane " << k;
+    EXPECT_GE(w.new_z_axis[k], min_z) << "plane " << k;
+    EXPECT_LE(w.new_z_axis[k], max_z) << "plane " << k;
+  }  // k
+}
+
+TEST_P(GuessMagneticAxisTest, CheckAsymmetricRunFillsEveryPoloidalPoint) {
+  ASSERT_FALSE(sizes_->lasym);
+  const RecomputeAxisWorkspace w = RecomputeAsAsymmetric();
+
+  // The poloidal basis is tabulated on the reduced theta interval, and the
+  // mirror that fills the rest for a symmetric run does not hold for an
+  // asymmetric one. A point left out keeps R at zero, which drags the lower
+  // edge of the search grid to the axis of the machine.
+  for (int k = 0; k < sizes_->nZeta; ++k) {
+    for (int l = 0; l < sizes_->nThetaEven; ++l) {
+      EXPECT_GT(w.r_lcfs[k][l], 0.0) << "plane " << k << ", theta point " << l;
+      EXPECT_GT(w.r_half[k][l], 0.0) << "plane " << k << ", theta point " << l;
+    }  // l
+  }  // k
 }
 
 INSTANTIATE_TEST_SUITE_P(
