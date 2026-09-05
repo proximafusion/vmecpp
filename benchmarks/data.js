@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788618369807,
+  "lastUpdate": 1788619194595,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -15991,6 +15991,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4701328249998369,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5611d9f3c39b73b5706845e481037a9b54322d45",
+          "message": "Cover the full angular range in the axis guess of an asymmetric run (#787)\n\n* Search every toroidal plane for the axis guess of an asymmetric run\n\n* Fill every poloidal point of the axis-guess boundary for an asymmetric run",
+          "timestamp": "2026-09-05T16:23:40+02:00",
+          "tree_id": "58f7a16b51e1811f289c37a94612d9629b72adfc",
+          "url": "https://github.com/proximafusion/vmecpp/commit/5611d9f3c39b73b5706845e481037a9b54322d45"
+        },
+        "date": 1788619192229,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.36996341159997426,
+            "range": "stddev: 0.0017184997041223313",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.4562528230001135,
+            "range": "stddev: 0.049379731183835096",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0837019300000368,
+            "range": "stddev: 0.001845977859811215",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6198612836667508,
+            "range": "stddev: 0.057760265950657176",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.9799084969999967,
+            "range": "stddev: 0.004521735487955674",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.1376798653333635,
+            "range": "stddev: 0.02646056695282852",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.197331364000092,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.47512357900018287,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
