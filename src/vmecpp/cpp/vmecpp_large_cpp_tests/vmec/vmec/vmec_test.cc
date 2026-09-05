@@ -50,6 +50,12 @@ namespace fs = std::filesystem;
 
 // used to specify case-specific tolerances
 // and which iterations to test
+//
+// Each tolerance is set from the worst deviation actually observed for that
+// case, rounded up to at least five times it. The measurement covers the opt,
+// asan and ubsan builds this repository tests in CI, which agree bit-for-bit
+// with each other, and one built with -march=native, which shifts individual
+// comparisons by up to a factor of four.
 struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
@@ -282,11 +288,11 @@ TEST_P(EvolveTest, CheckEvolve) {
 
 INSTANTIATE_TEST_SUITE_P(
     TestVmec, EvolveTest,
-    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-15},
-           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-15},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 2.0e-14},
+    Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-15},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-15},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-13},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 2.0e-14},
+                      .tolerance = 1.0e-13},
            DataSource{
                .identifier = "cma", .tolerance = 5.0e-13, .iter2_to_test = {1}},
            DataSource{.identifier = "cth_like_free_bdy",

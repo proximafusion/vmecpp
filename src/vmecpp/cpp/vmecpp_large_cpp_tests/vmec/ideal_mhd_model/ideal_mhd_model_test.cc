@@ -428,6 +428,12 @@ TEST(IdealMhdModelTransposeTest, DirectThreeDimensionalAdjointIdentities) {
 
 // used to specify case-specific tolerances
 // and which iterations to test
+//
+// Each tolerance is set from the worst deviation actually observed for that
+// case, rounded up to at least five times it. The measurement covers the opt,
+// asan and ubsan builds this repository tests in CI, which agree bit-for-bit
+// with each other, and one built with -march=native, which shifts individual
+// comparisons by up to a factor of four.
 struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
@@ -565,9 +571,9 @@ INSTANTIATE_TEST_SUITE_P(
     TestIdealMhdModel, FourierGeometryToStartWithTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-15},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-15},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-14},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-14},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 1.0e-14},
+                      .tolerance = 5.0e-14},
            DataSource{
                .identifier = "cma", .tolerance = 2.0e-13, .iter2_to_test = {1}},
            DataSource{.identifier = "cth_like_free_bdy",
@@ -726,8 +732,8 @@ TEST_P(InverseFourierTransformGeometryTest,
 
 INSTANTIATE_TEST_SUITE_P(
     TestIdealMHDModel, InverseFourierTransformGeometryTest,
-    Values(DataSource{.identifier = "solovev", .tolerance = 2.0e-15},
-           DataSource{.identifier = "solovev_no_axis", .tolerance = 2.0e-15},
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-14},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-14},
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 6.0e-14},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 6.0e-14},
@@ -816,11 +822,11 @@ TEST_P(JacobianTest, CheckJacobian) {
 
 INSTANTIATE_TEST_SUITE_P(
     TestIdealMHDModel, JacobianTest,
-    Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-15},
-           DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-15},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 2.0e-14},
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-13},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-13},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-13},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 2.0e-14},
+                      .tolerance = 1.0e-13},
            DataSource{
                .identifier = "cma", .tolerance = 2.0e-13, .iter2_to_test = {1}},
            DataSource{.identifier = "cth_like_free_bdy",
@@ -972,13 +978,13 @@ TEST_P(VolumeTest, CheckVolume) {
 
 INSTANTIATE_TEST_SUITE_P(
     TestIdealMHDModel, VolumeTest,
-    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-15},
-           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-15},
+    Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-15},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-15},
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-16},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 5.0e-16},
            DataSource{
-               .identifier = "cma", .tolerance = 1.0e-15, .iter2_to_test = {1}},
+               .identifier = "cma", .tolerance = 5.0e-15, .iter2_to_test = {1}},
            DataSource{.identifier = "cth_like_free_bdy",
                       .tolerance = 1.0e-13,
                       .iter2_to_test = {1, 2, 53, 54}}));
@@ -1181,8 +1187,8 @@ TEST_P(CovariantMagneticFieldTest, CheckCovariantMagneticField) {
 
 INSTANTIATE_TEST_SUITE_P(
     TestIdealMHDModel, CovariantMagneticFieldTest,
-    Values(DataSource{.identifier = "solovev", .tolerance = 2.0e-15},
-           DataSource{.identifier = "solovev_no_axis", .tolerance = 2.0e-15},
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-14},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-14},
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-13},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 5.0e-13},
@@ -1356,13 +1362,13 @@ INSTANTIATE_TEST_SUITE_P(
     TestIdealMHDModel, RadialForceBalanceTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-14},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-14},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-12},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 1.0e-12},
+                      .tolerance = 5.0e-12},
            DataSource{
                .identifier = "cma", .tolerance = 2.0e-11, .iter2_to_test = {1}},
            DataSource{.identifier = "cth_like_free_bdy",
-                      .tolerance = 1.0e-12,
+                      .tolerance = 5.0e-12,
                       .iter2_to_test = {1, 2, 53, 54}}));
 
 class HybridLambdaForceTest : public TestWithParam<DataSource> {
@@ -1834,13 +1840,13 @@ INSTANTIATE_TEST_SUITE_P(
     TestIdealMHDModel, ConstraintForceMultiplierTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 2.0e-15},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 2.0e-15},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-13},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-13},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 1.0e-13},
+                      .tolerance = 5.0e-13},
            DataSource{
                .identifier = "cma", .tolerance = 1.0e-11, .iter2_to_test = {1}},
            DataSource{.identifier = "cth_like_free_bdy",
-                      .tolerance = 1.0e-13,
+                      .tolerance = 5.0e-13,
                       .iter2_to_test = {1, 2, 53, 54}}));
 
 // NOTE: Along the forward model evaluation, this is where Nestor
@@ -2256,9 +2262,9 @@ INSTANTIATE_TEST_SUITE_P(
     TestIdealMHDModel, ForwardTransformForcesTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-15},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-15},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-13},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-13},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 1.0e-13},
+                      .tolerance = 5.0e-13},
            DataSource{
                .identifier = "cma", .tolerance = 5.0e-11, .iter2_to_test = {1}},
            DataSource{.identifier = "cth_like_free_bdy",
@@ -2346,9 +2352,9 @@ INSTANTIATE_TEST_SUITE_P(
     TestIdealMHDModel, PhysicalForcesTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-15},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-15},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-13},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-13},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 1.0e-13},
+                      .tolerance = 5.0e-13},
            DataSource{
                .identifier = "cma", .tolerance = 5.0e-11, .iter2_to_test = {1}},
            DataSource{.identifier = "cth_like_free_bdy",
@@ -2491,9 +2497,9 @@ INSTANTIATE_TEST_SUITE_P(
     TestIdealMHDModel, ApplyM1PreconditionerTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-15},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-15},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-13},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-13},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 1.0e-13},
+                      .tolerance = 5.0e-13},
            DataSource{
                .identifier = "cma", .tolerance = 5.0e-11, .iter2_to_test = {1}},
            DataSource{.identifier = "cth_like_free_bdy",

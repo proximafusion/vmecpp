@@ -21,7 +21,11 @@ class FourierForces : public FourierCoeffs {
   FourierForces& operator=(FourierForces&& other) noexcept;
 
   void zeroZForceForM1();
-  void residuals(Eigen::Vector3d& fRes, bool includeEdgeRZ) const;
+  // Writes each surface's squared force residuals into row jF of
+  // `m_surface_rows` (`row_stride` doubles per row): R, Z and lambda in
+  // columns 0, 1 and 2.
+  void residuals(double* m_surface_rows, int row_stride,
+                 bool includeEdgeRZ) const;
 
   // appropriately-named variables for the data in FourierCoeffs
   std::span<double> frcc;

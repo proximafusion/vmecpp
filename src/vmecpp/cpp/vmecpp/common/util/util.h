@@ -35,6 +35,54 @@ namespace vmecpp {
 using RowMatrixXd =
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
+// Folds one partial per radial surface into a total in ascending surface
+// order. Every thread first writes the rows of `m_slots` for the surfaces it
+// owns, one row of `row_stride` doubles per surface with `width` values used,
+// and the team meets at a barrier; one thread then calls this to sum rows
+// 0 .. num_rows-1 into `out` and clear them for the next reduction. The
+// grouping of the floating-point sum follows the surface index alone, so the
+// total is the same for any number of threads. A row no thread wrote is still
+// zero from the previous clear (or from the allocation).
+inline void SumSurfaceRows(double *m_slots, int row_stride, int width,
+                           int num_rows, double *out) {
+  for (int i = 0; i < width; ++i) {
+    out[i] = 0.0;
+  }
+  for (int j = 0; j < num_rows; ++j) {
+    double *row = m_slots + static_cast<std::ptrdiff_t>(j) * row_stride;
+    for (int i = 0; i < width; ++i) {
+      out[i] += row[i];
+      row[i] = 0.0;
+    }
+  }
+}
+
+// Runs `add` on every thread of the team, one thread at a time, in ascending
+// thread order.
+//
+// This is how a per-thread contribution is folded into a shared accumulator.
+// A critical section admits the threads in whichever order they arrive, so the
+// floating-point sum it produces varies from run to run; taking turns by thread
+// id fixes the summation order and makes the result reproducible. The turns
+// cost one barrier per thread, which is negligible beside the work being
+// reduced.
+//
+// Every thread of the team must call this with the same `num_threads`, since
+// each turn ends in a barrier. The last turn's barrier is also the one that
+// publishes the finished sum, so no further barrier is needed before reading
+// the accumulator.
+template <typename AddFunction>
+inline void AddInThreadOrder(int thread_id, int num_threads, AddFunction add) {
+  for (int turn = 0; turn < num_threads; ++turn) {
+    if (turn == thread_id) {
+      add();
+    }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  }
+}
+
 inline Eigen::VectorXd ToEigenVector(const std::vector<double> &v) {
   return Eigen::Map<const Eigen::VectorXd>(v.data(),
                                            static_cast<Eigen::Index>(v.size()));
