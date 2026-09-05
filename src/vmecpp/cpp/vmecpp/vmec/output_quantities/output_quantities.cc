@@ -62,6 +62,7 @@ VectorXd NonEmptyVectorOr(const Eigen::VectorXd& vec, const double val) {
 absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
   file.createGroup(H5key);
   WRITEMEMBER(sign_of_jacobian);
+  WRITEMEMBER(lamscale);
   WRITEMEMBER(num_full);
   WRITEMEMBER(num_half);
   WRITEMEMBER(nZnT_reduced);
@@ -131,6 +132,11 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
 absl::Status vmecpp::VmecInternalResults::LoadInto(
     vmecpp::VmecInternalResults& m_obj, H5::H5File& from_file) {
   READMEMBER(sign_of_jacobian);
+  if (from_file.nameExists(absl::StrFormat("%s/%s", H5key, "lamscale"))) {
+    READMEMBER(lamscale);
+  } else {
+    m_obj.lamscale = 1.0;
+  }
   READMEMBER(num_full);
   READMEMBER(num_half);
   READMEMBER(nZnT_reduced);
@@ -1579,6 +1585,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
   VmecInternalResults results;
 
   results.sign_of_jacobian = sign_of_jacobian;
+  results.lamscale = constants.lamscale;
 
   results.num_half = fc.ns - 1;
   results.num_full = fc.ns;
