@@ -1,0 +1,137 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#include "vmecpp/vmec/geometry/vmec_geometry.h"
+
+#include <algorithm>
+#include <numbers>
+#include <vector>
+
+namespace vmecpp {
+namespace {
+
+std::vector<double> Scale(const RowMatrixXd& source, int mpol, int ntor) {
+  std::vector<double> result(source.size());
+  for (int j = 0; j < source.rows(); ++j) {
+    for (int m = 0; m < mpol; ++m) {
+      for (int n = 0; n <= ntor; ++n) {
+        const int index = (j * mpol + m) * (ntor + 1) + n;
+        const double mscale = m == 0 ? 1.0 : std::numbers::sqrt2;
+        const double nscale = n == 0 ? 1.0 : std::numbers::sqrt2;
+        result[index] = source(j, n * mpol + m) * mscale * nscale;
+      }
+    }
+  }
+  return result;
+}
+
+void ScaleLambda(std::vector<double>& m_coefficients,
+                 const VmecInternalResults& internal, int modes_per_surface) {
+  if (m_coefficients.empty()) return;
+  for (int j = 0; j < internal.num_full; ++j) {
+    const double factor = internal.lamscale / internal.phipF[j];
+    for (int mode = 0; mode < modes_per_surface; ++mode) {
+      m_coefficients[j * modes_per_surface + mode] *= factor;
+    }
+  }
+}
+
+void ConvertM1ToPhysical(GeometryCoefficients& m_coefficients,
+                         const VmecINDATA& indata, int num_full) {
+  auto convert = [num_full, &indata](std::vector<double>& m_r,
+                                     std::vector<double>& m_z) {
+    if (m_r.empty() || m_z.empty()) return;
+    for (int j = 0; j < num_full; ++j) {
+      for (int n = 0; n <= indata.ntor; ++n) {
+        const int index = (j * indata.mpol + 1) * (indata.ntor + 1) + n;
+        const double old_r = m_r[index];
+        m_r[index] = old_r + m_z[index];
+        m_z[index] = old_r - m_z[index];
+      }
+    }
+  };
+
+  if (indata.mpol > 1 && indata.ntor > 0) {
+    convert(m_coefficients.r_ss, m_coefficients.z_cs);
+  }
+  if (indata.mpol > 1 && indata.lasym) {
+    convert(m_coefficients.r_sc, m_coefficients.z_cc);
+  }
+}
+
+}  // namespace
+
+Geometry MakeGeometry(const VmecINDATA& indata,
+                      const VmecInternalResults& internal,
+                      GeometryCoefficientState state) {
+  Geometry result{
+      .dimensions = {.ns = internal.num_full,
+                     .mpol = indata.mpol,
+                     .ntor = indata.ntor,
+                     .nfp = indata.nfp},
+      .toroidal_flux = std::vector<double>(internal.num_full, 0.0),
+      .poloidal_flux = std::vector<double>(internal.num_full, 0.0),
+      .coefficients = {},
+  };
+  const double delta_s = 1.0 / (internal.num_full - 1);
+  const bool has_toroidal_flux =
+      internal.phiF.size() == internal.num_full &&
+      std::any_of(internal.phiF.data(),
+                  internal.phiF.data() + internal.phiF.size(),
+                  [](double value) { return value != 0.0; });
+  if (has_toroidal_flux) {
+    std::copy(internal.phiF.data(), internal.phiF.data() + internal.num_full,
+              result.toroidal_flux.begin());
+  } else {
+    // GatherDataFromThreads exposes phipF but leaves phiF for the output
+    // post-processing stage. Derive the enclosed toroidal flux here so the
+    // geometry adapter is identical for a solved model and a completed run.
+    for (int j = 1; j < internal.num_full; ++j) {
+      result.toroidal_flux[j] =
+          result.toroidal_flux[j - 1] + internal.sign_of_jacobian * 2.0 *
+                                            std::numbers::pi * delta_s *
+                                            internal.phipF[j - 1];
+    }
+  }
+  for (int j = 1; j < internal.num_full; ++j) {
+    result.poloidal_flux[j] = result.poloidal_flux[j - 1] +
+                              internal.sign_of_jacobian * 2.0 *
+                                  std::numbers::pi * delta_s *
+                                  internal.phipH[j - 1] * internal.iotaH[j - 1];
+  }
+
+  GeometryCoefficients& coefficients = result.coefficients;
+  coefficients.r_cc = Scale(internal.rmncc, indata.mpol, indata.ntor);
+  coefficients.z_sc = Scale(internal.zmnsc, indata.mpol, indata.ntor);
+  coefficients.lambda_sc = Scale(internal.lmnsc, indata.mpol, indata.ntor);
+  if (indata.ntor > 0) {
+    coefficients.r_ss = Scale(internal.rmnss, indata.mpol, indata.ntor);
+    coefficients.z_cs = Scale(internal.zmncs, indata.mpol, indata.ntor);
+    coefficients.lambda_cs = Scale(internal.lmncs, indata.mpol, indata.ntor);
+  }
+  if (indata.lasym) {
+    coefficients.r_sc = Scale(internal.rmnsc, indata.mpol, indata.ntor);
+    coefficients.z_cc = Scale(internal.zmncc, indata.mpol, indata.ntor);
+    coefficients.lambda_cc = Scale(internal.lmncc, indata.mpol, indata.ntor);
+    if (indata.ntor > 0) {
+      coefficients.r_cs = Scale(internal.rmncs, indata.mpol, indata.ntor);
+      coefficients.z_ss = Scale(internal.zmnss, indata.mpol, indata.ntor);
+      coefficients.lambda_ss = Scale(internal.lmnss, indata.mpol, indata.ntor);
+    }
+  }
+
+  const int modes_per_surface = indata.mpol * (indata.ntor + 1);
+  ScaleLambda(coefficients.lambda_sc, internal, modes_per_surface);
+  ScaleLambda(coefficients.lambda_cs, internal, modes_per_surface);
+  ScaleLambda(coefficients.lambda_cc, internal, modes_per_surface);
+  ScaleLambda(coefficients.lambda_ss, internal, modes_per_surface);
+
+  if (state == GeometryCoefficientState::kSolver) {
+    ConvertM1ToPhysical(coefficients, indata, internal.num_full);
+  }
+
+  return result;
+}
+
+}  // namespace vmecpp

@@ -32,7 +32,14 @@ void hdf5_io::WriteH5Dataset(const std::vector<std::string>& vs,
   H5::DataSpace dataspace(/*rank=*/1, /*dims=*/&size);
   H5::StrType str_type(H5::PredType::C_S1, H5T_VARIABLE);
   H5::DataSet dataset = file.createDataSet(name, str_type, dataspace);
-  dataset.write(vs.data(), str_type);
+  // A variable-length string dataset is written from an array of pointers to
+  // the characters, not from the std::string objects themselves.
+  std::vector<const char*> pointers;
+  pointers.reserve(vs.size());
+  for (const std::string& s : vs) {
+    pointers.push_back(s.c_str());
+  }
+  dataset.write(pointers.data(), str_type);
 }
 
 void hdf5_io::WriteH5Dataset(const std::string& str, const std::string& name,
@@ -64,9 +71,21 @@ void hdf5_io::ReadH5Dataset(std::vector<std::string>& vs,
   hsize_t size;
   space.getSimpleExtentDims(&size);
 
-  vs.resize(size);
   H5::StrType str_type(H5::PredType::C_S1, H5T_VARIABLE);
-  ds.read(vs.data(), str_type);
+  // HDF5 allocates one buffer per element and hands back the pointers, which
+  // have to be copied into the strings and then released.
+  std::vector<char*> pointers(size, nullptr);
+  ds.read(pointers.data(), str_type);
+
+  vs.resize(size);
+  for (hsize_t i = 0; i < size; ++i) {
+    vs[i] = pointers[i] == nullptr ? std::string() : std::string(pointers[i]);
+  }
+  if (size > 0) {
+    H5::DataSpace space_for_reclaim = ds.getSpace();
+    H5::DataSet::vlenReclaim(str_type, space_for_reclaim,
+                             H5::DSetMemXferPropList::DEFAULT, pointers.data());
+  }
 }
 
 void hdf5_io::ReadH5Dataset(std::string& str, const std::string& dataset,

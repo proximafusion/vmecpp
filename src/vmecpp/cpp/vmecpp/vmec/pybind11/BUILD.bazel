@@ -11,6 +11,8 @@ pybind_extension(
     deps = [
         "//vmecpp/common/vmec_indata",
         "//vmecpp/common/magnetic_configuration_lib",
+        "//vmecpp/vmec/geometry",
+        "//vmecpp/vmec/geometry:vmec_geometry",
         "//vmecpp/vmec/output_quantities",
         "//vmecpp/vmec/vmec",
     ],
