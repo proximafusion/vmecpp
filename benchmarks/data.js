@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788535961063,
+  "lastUpdate": 1788618213934,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -15911,6 +15911,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.46705902600001536,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "bc8e66fb362ad87f08fbf84480d94b9a1d8a5498",
+          "message": "geometry: expose the output-independent evaluator and VMEC adapter (#584)\n\ngeometry: add the output-independent evaluator and VMEC adapter\n\nIntroduce the product-basis geometry layer and its adapter from the VMEC\ninternal state. The layer is deliberately free of any client-specific code:\nit defines the R, Z, lambda, toroidal-flux and poloidal-flux representation,\nevaluates values plus analytic first and second spatial derivatives, and\ngathers the physical geometry from VmecInternalResults without any wout\ncoupling.\n\nVmecInternalResults gains lamscale so the adapter can rescale the solver's\nlambda variable to physical lambda; the HDF5 reader defaults it to 1.0 for\nfiles written before this field existed.\n\nNo Python, pybind or C bindings are added here, and no evaluation transpose:\neach consumer layer adds only the surface it actually uses.",
+          "timestamp": "2026-09-05T16:16:29+02:00",
+          "tree_id": "6fd188b622ea54b8396d1ba8f22f197a8f2b0022",
+          "url": "https://github.com/proximafusion/vmecpp/commit/bc8e66fb362ad87f08fbf84480d94b9a1d8a5498"
+        },
+        "date": 1788618211522,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3722695410000142,
+            "range": "stddev: 0.00390654876434468",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.4488790783332965,
+            "range": "stddev: 0.018150462813570304",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0843088650000634,
+            "range": "stddev: 0.0014177359511935923",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.59208341133323,
+            "range": "stddev: 0.04384856092546834",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.9783753686666994,
+            "range": "stddev: 0.012309336188679366",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.150535449333272,
+            "range": "stddev: 0.034575099105768524",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.4921575170001233,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4701328249998369,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
