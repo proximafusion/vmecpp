@@ -73,6 +73,13 @@ absl::Status CheckProfile(const std::string& type_key,
         type_key, type_name, ProfileTypeName(profile_type)));
   }
 
+  if (!parameterization->IsImplemented()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable '%s' is '%s', which Fortran VMEC supports but VMEC++ "
+        "does not implement\n",
+        type_key, type_name));
+  }
+
   if (parameterization->NeedsSplineData()) {
     if (aux_s.size() == 0 || aux_f.size() == 0) {
       return absl::InvalidArgumentError(absl::StrFormat(

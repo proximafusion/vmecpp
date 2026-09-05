@@ -352,6 +352,8 @@ VMEC++:
    * `sum_cossq_s`
    * `sum_cossq_sqrts`
    * `sum_cossq_s_free`
+
+   The `sum_cossq_*` family has no evaluator at all, so those three names are rejected at input validation instead of evaluating to a zero profile.
 - some (rarely used) free-boundary-related output quantities are not implemented yet:
    * `curlabel` - declared but not populated yet
    * `potvac` - declared but not populated yet

@@ -97,15 +97,19 @@ std::vector<ProfileParameterizationData> BuildProfileParameterizations() {
   all.emplace_back("nice_quadratic", /*allowedForPres=*/false,
                    /*allowedForCurr*/ false, /*allowedForIota*/ true,
                    /*needsSplineData*/ false);
+  // The three sum_cossq_* current profiles exist in PARVMEC
+  // (Sources/Initialization_Cleanup/profile_functions.f) but have no case in
+  // evalProfileFunction, so they are registered as not implemented and are
+  // rejected at input validation rather than evaluating to zero in the solver.
   all.emplace_back("sum_cossq_s", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*needsSplineData*/ false);
+                   /*needsSplineData*/ false, /*implemented=*/false);
   all.emplace_back("sum_cossq_sqrts", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*needsSplineData*/ false);
+                   /*needsSplineData*/ false, /*implemented=*/false);
   all.emplace_back("sum_cossq_s_free", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*needsSplineData*/ false);
+                   /*needsSplineData*/ false, /*implemented=*/false);
   return all;
 }
 
@@ -113,9 +117,10 @@ std::vector<ProfileParameterizationData> BuildProfileParameterizations() {
 
 ProfileParameterizationData::ProfileParameterizationData(
     const std::string& name, bool allowedForPres, bool allowedForCurr,
-    bool allowedForIota, bool needsSplineData)
+    bool allowedForIota, bool needsSplineData, bool implemented)
     : name_(name),
       needsSplineData_(needsSplineData),
+      implemented_(implemented),
       allowedFor_({.pres = allowedForPres,
                    .curr = allowedForCurr,
                    .iota = allowedForIota}) {}
@@ -129,6 +134,8 @@ bool ProfileParameterizationData::NeedsSplineData() const {
 AllowedFor ProfileParameterizationData::IsAllowedFor() const {
   return allowedFor_;
 }
+
+bool ProfileParameterizationData::IsImplemented() const { return implemented_; }
 
 const std::vector<ProfileParameterizationData>& AllProfileParameterizations() {
   static const std::vector<ProfileParameterizationData>* const kAll =
