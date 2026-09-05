@@ -322,11 +322,8 @@ class VmecModel {
     vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(
         vmec_->fc_.nsval, vmecpp::Vmec::kSignOfJacobian);
     double delt0 = vmec_->indata_.delt;
-    // Vmec::run resets the accumulated constants before every
-    // InitializeRadial (the rmsPhiP -> lamscale accumulation in
-    // evalRadialProfiles is additive); without this reset a second
-    // InitializeRadial doubles rmsPhiP and rescales the entire lambda
-    // sector by sqrt(2).
+    // Vmec::run resets the constants before every InitializeRadial; do the
+    // same here so a second InitializeRadial starts from the same state.
     vmec_->constants_.reset();
     vmec_->InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX,
                             vmec_->fc_.nsval, /*ns_old=*/0, delt0,
@@ -383,7 +380,7 @@ class VmecModel {
 
     double delt0 = v.indata_.delt;
     // Same per-multi-grid-step constants reset Vmec::run performs before
-    // InitializeRadial (rmsPhiP accumulates in evalRadialProfiles).
+    // InitializeRadial.
     v.constants_.reset();
     v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, new_ns, ns_old,
                        delt0, std::nullopt, interpolation);
