@@ -1799,10 +1799,17 @@ void IdealMhdModel::computeBContra() {
         0.5 * (m_p_.chipH[jFi - r_.nsMinH] + m_p_.chipH[jFi - 1 - r_.nsMinH]);
   }
   if (r_.nsMaxF1 == m_fc_.ns) {
-    // TODO(jons): inconsistent extrapolation ??? (see below)
+    // The linear extrapolation of a half-grid array onto the boundary, the
+    // same rule iotaF gets below. The 8.52 lineage uses 2*chips(ns) -
+    // chips(ns1), which lands a full step past the last half-grid point and
+    // breaks iota = chi'/phi' there by 0.5*(iotaH_last - iotaH_prev), 2.8% on
+    // cth_like_free_bdy. PARVMEC replaced it with this rule in add_fluxes.f90
+    // ("SPH FIXED THIS 4-8-16"), the same 2016 change that added the axis
+    // entry above. chipF feeds the threed1 first table and wout chipf only, so
+    // the converged equilibrium is unchanged.
     m_p_.chipF[r_.nsMaxF1 - 1 - r_.nsMinF1] =
-        2.0 * m_p_.chipH[r_.nsMaxH - 1 - r_.nsMinH] -
-        m_p_.chipH[r_.nsMaxH - 2 - r_.nsMinH];
+        1.5 * m_p_.chipH[r_.nsMaxH - 1 - r_.nsMinH] -
+        0.5 * m_p_.chipH[r_.nsMaxH - 2 - r_.nsMinH];
   }
 
   // update full-grid iota
@@ -1814,7 +1821,8 @@ void IdealMhdModel::computeBContra() {
         0.5 * (m_p_.iotaH[jFi - r_.nsMinH] + m_p_.iotaH[jFi - 1 - r_.nsMinH]);
   }
   if (r_.nsMaxF1 == m_fc_.ns) {
-    // TODO(jons): inconsistent extrapolation ??? (see above)
+    // The linear extrapolation of a half-grid array onto the boundary, the
+    // same form used at the axis above and for chipF.
     m_p_.iotaF[r_.nsMaxF1 - 1 - r_.nsMinF1] =
         1.5 * m_p_.iotaH[r_.nsMaxH - 1 - r_.nsMinH] -
         0.5 * m_p_.iotaH[r_.nsMaxH - 2 - r_.nsMinH];
