@@ -281,6 +281,11 @@ class VmecModel {
   void reset_force_eval_count() const {
     vmec_->m_[0]->resetForceEvaluationCount();
   }
+  // Freeze/unfreeze the constraint-force multiplier tcon. Freezing makes the
+  // raw force a function of the state alone, consistent with the exact HVP.
+  void SetFreezeConstraintMultiplier(bool freeze) const {
+    vmec_->m_[0]->setFreezeConstraintMultiplier(freeze);
+  }
 
   // The Garabedian-style time step (PerformTimeStep): for each Fourier
   // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
@@ -405,10 +410,128 @@ class VmecModel {
   }
   void SetState(const Eigen::VectorXd &flat) const {
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
+    exact_primal_valid_ = false;  // primal geometry cache is stale
   }
   // Flat force vector (decomposed/preconditioned), valid after Evaluate().
   Eigen::VectorXd GetForces() const {
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+  }
+
+  // Return the output-independent geometry representation of the current
+  // in-memory state. This gathers only the geometry-layer data; it does not
+  // read or write a wout file.
+  vmecpp::Geometry GetGeometry() const {
+    if (vmec_->r_.empty()) {
+      throw std::runtime_error(
+          "VmecModel.get_geometry: model is not initialized");
+    }
+    const vmecpp::VmecInternalResults internal = vmecpp::GatherDataFromThreads(
+        vmecpp::Vmec::kSignOfJacobian, vmec_->s_, vmec_->fc_, vmec_->constants_,
+        vmec_->r_, vmec_->decomposed_x_, vmec_->m_, vmec_->p_);
+    return vmecpp::MakeGeometry(vmec_->indata_, internal);
+  }
+
+  // Transpose of the linear state-to-geometry coefficient map used by
+  // MakeGeometry. The input contains twelve dense coefficient blocks in the
+  // same order as GeometryCoefficients (r_cc, r_ss, r_sc, r_cs, z_sc, z_cs,
+  // z_cc, z_ss, lambda_sc, lambda_cs, lambda_cc, lambda_ss), each with
+  // surface-major (j, m, n) storage. Flux cotangents are intentionally not
+  // part of this low-level map: with ncurr=0 both flux profiles are prescribed
+  // input profiles and therefore have zero state derivative.
+  Eigen::VectorXd GeometryStateVjp(const Eigen::VectorXd &coefficient_bar) {
+    if (vmec_->indata_.lfreeb) {
+      throw std::runtime_error(
+          "VmecModel.geometry_state_vjp currently supports fixed-boundary "
+          "models only");
+    }
+    if (vmec_->indata_.lasym) {
+      throw std::runtime_error(
+          "VmecModel.geometry_state_vjp currently supports stellarator-"
+          "symmetric models only");
+    }
+    if (vmec_->indata_.ncurr != 0) {
+      throw std::runtime_error(
+          "VmecModel.geometry_state_vjp requires ncurr=0; current-constrained "
+          "flux derivatives are not yet exposed");
+    }
+    const int modes_per_surface = vmec_->s_.mpol * (vmec_->s_.ntor + 1);
+    const int coefficient_size = vmec_->fc_.ns * modes_per_surface;
+    if (coefficient_bar.size() != 12 * coefficient_size) {
+      throw std::runtime_error(
+          "VmecModel.geometry_state_vjp: coefficient cotangent has wrong "
+          "length");
+    }
+
+    vmecpp::FourierGeometry state_bar(&vmec_->s_, vmec_->r_[0].get(),
+                                      vmec_->fc_.ns);
+    state_bar.setZero();
+    const double lambda_scale = vmec_->constants_.lamscale;
+    const Eigen::VectorXd &phip_f = vmec_->p_[0]->phipF;
+
+    auto coefficient_scale = [&](int j, int m, int n, bool lambda) -> double {
+      double scale = (m == 0 ? 1.0 : std::numbers::sqrt2) *
+                     (n == 0 ? 1.0 : std::numbers::sqrt2);
+      if (lambda) {
+        if (j >= phip_f.size() || phip_f[j] == 0.0) {
+          throw std::runtime_error(
+              "VmecModel.geometry_state_vjp: invalid lambda scale");
+        }
+        scale *= lambda_scale / phip_f[j];
+      }
+      return scale;
+    };
+
+    auto add_block = [&](std::span<double> destination, int bar_block,
+                         bool lambda, int skipped_mode = -1) {
+      const int block_offset = bar_block * coefficient_size;
+      for (int j = 0; j < vmec_->fc_.ns; ++j) {
+        for (int m = 0; m < vmec_->s_.mpol; ++m) {
+          if (m == skipped_mode) continue;
+          for (int n = 0; n <= vmec_->s_.ntor; ++n) {
+            const int index =
+                (j * vmec_->s_.mpol + m) * (vmec_->s_.ntor + 1) + n;
+            destination[index] += coefficient_scale(j, m, n, lambda) *
+                                  coefficient_bar[block_offset + index];
+          }
+        }
+      }
+    };
+
+    auto add_m1_pair = [&](std::span<double> first, std::span<double> second,
+                           int first_bar_block, int second_bar_block) {
+      const int first_offset = first_bar_block * coefficient_size;
+      const int second_offset = second_bar_block * coefficient_size;
+      for (int j = 0; j < vmec_->fc_.ns; ++j) {
+        for (int n = 0; n <= vmec_->s_.ntor; ++n) {
+          const int index = (j * vmec_->s_.mpol + 1) * (vmec_->s_.ntor + 1) + n;
+          const double scale = coefficient_scale(j, 1, n, false);
+          first[index] += scale * (coefficient_bar[first_offset + index] +
+                                   coefficient_bar[second_offset + index]);
+          second[index] += scale * (coefficient_bar[first_offset + index] -
+                                    coefficient_bar[second_offset + index]);
+        }
+      }
+    };
+
+    add_block(state_bar.rmncc, 0, false);
+    if (vmec_->s_.lthreed) {
+      if (vmec_->s_.mpol > 1) {
+        add_block(state_bar.rmnss, 1, false, 1);
+        add_block(state_bar.zmncs, 5, false, 1);
+        add_m1_pair(state_bar.rmnss, state_bar.zmncs, 1,
+                    5);  // r_ss, z_cs
+      } else {
+        add_block(state_bar.rmnss, 1, false);
+      }
+    }
+    add_block(state_bar.zmnsc, 4, false);
+    if (vmec_->s_.lthreed) {
+      if (vmec_->s_.mpol == 1) add_block(state_bar.zmncs, 5, false);
+    }
+
+    add_block(state_bar.lmnsc, 8, true);
+    if (vmec_->s_.lthreed) add_block(state_bar.lmncs, 9, true);
+    return FlattenActive(state_bar, vmec_->s_);
   }
 
   // Hessian-vector product of VMEC's augmented functional, computed inside
@@ -437,6 +560,81 @@ class VmecModel {
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, x);
     return (fp - fm) / (2.0 * eps);
   }
+
+#ifdef VMECPP_ENABLE_ENZYME
+  void RequireLforbalDisabledForExactDerivatives() const {
+    if (vmec_->m_[0]->lforbal) {
+      throw std::runtime_error(
+          "Exact derivative operators do not support lforbal=true because "
+          "the LFORBAL force replacement has no JVP/VJP; use "
+          "lforbal=false or a finite-difference derivative.");
+    }
+  }
+
+  // Exact Hessian-vector product H v = T^T J_g T v of the augmented
+  // functional, computed with one Enzyme forward pass through the local
+  // force-density composition (J_g) wrapped by the linear spectral transforms.
+  // J_g covers the MHD force, the hybrid lambda force, and the spectral-
+  // condensation constraint force (effective force, Fourier bandpass and
+  // assembly). The geometry tangent T v is obtained exactly from the linearity
+  // of geometryFromFourier: T v = geom(x+v) - geom(x), so no finite-difference
+  // step enters. The constraint multiplier tcon is held frozen (it depends on
+  // the preconditioner diagonal, not just the geometry); for an exactly
+  // consistent Jacobian, freeze it in the raw force too via
+  // set_freeze_constraint_multiplier(True). The model state is restored to x on
+  // return.
+  Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
+    RequireLforbalDisabledForExactDerivatives();
+    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    const int gS = static_cast<int>(model.r1_e.size());
+    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
+    // The primal geometry depends only on the current state, not on v, so cache
+    // it: a Krylov solve calls this many times at the same state. SetState
+    // invalidates the cache. The geometry tangent is the same linear pre-chain
+    // applied to v directly (exact, no finite difference, no full update); the
+    // single nonlinear step is the Enzyme JVP inside applyExactForceJacobian.
+    if (!exact_primal_valid_ ||
+        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
+      exact_primal_.setZero(20 * gS);
+      model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                         exact_primal_.data(), gS, /*primal=*/true);
+      exact_primal_valid_ = true;
+    }
+    vmec_->physical_x_backup_[0]->setZero();
+    UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, v);
+    model.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
+                       dgeom.data(), gS, /*primal=*/false);
+    model.applyExactForceJacobian(
+        exact_primal_.data(), dgeom.data(), gS, *vmec_->physical_f_[0],
+        *vmec_->decomposed_f_[0], /*fix_m1_gauge=*/true);
+    return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
+  }
+
+  // Transpose of the exact Hessian-vector product: H^T w, in the decomposed
+  // internal basis. The force Jacobian is non-symmetric (VMEC's force is a
+  // scaled gradient), so the adjoint boundary gradient needs H^T, not H. Uses
+  // the same cached primal geometry as ExactHessianVectorProduct.
+  Eigen::VectorXd ExactHessianVectorProductTranspose(const Eigen::VectorXd &w) {
+    RequireLforbalDisabledForExactDerivatives();
+    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    const int gS = static_cast<int>(model.r1_e.size());
+    if (!exact_primal_valid_ ||
+        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
+      exact_primal_.setZero(20 * gS);
+      model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                         exact_primal_.data(), gS, /*primal=*/true);
+      exact_primal_valid_ = true;
+    }
+    vmec_->decomposed_f_[0]->setZero();
+    UnflattenActive(*vmec_->decomposed_f_[0], vmec_->s_, w);
+    vmec_->physical_x_backup_[0]->setZero();
+    model.applyExactForceJacobianTranspose(
+        exact_primal_.data(), gS, *vmec_->decomposed_f_[0],
+        *vmec_->physical_f_[0], *vmec_->physical_x_[0],
+        *vmec_->physical_x_backup_[0], /*fix_m1_gauge=*/true);
+    return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
+  }
+#endif  // VMECPP_ENABLE_ENZYME
 
   // Apply VMEC's preconditioner M^-1 to a vector in the decomposed internal
   // basis, mirroring the native apply sequence (m=1, radial, lambda). This is
@@ -491,6 +689,14 @@ class VmecModel {
   int ntor() const { return vmec_->s_.ntor; }
   bool lthreed() const { return vmec_->s_.lthreed; }
   bool lasym() const { return vmec_->s_.lasym; }
+  bool have_to_flip_theta() const { return vmec_->fc_.haveToFlipTheta; }
+  bool has_exact_force_jacobian() const {
+#ifdef VMECPP_ENABLE_ENZYME
+    return !vmec_->m_[0]->lforbal;
+#else
+    return false;
+#endif
+  }
 
   // Invariant force-residual traces recorded during the C++ Solve().
   std::vector<double> force_residual_r() const {
@@ -525,6 +731,12 @@ class VmecModel {
   }
 
   std::unique_ptr<vmecpp::Vmec> vmec_;
+
+  // Cached primal geometry for the exact force-Jacobian transpose: it depends
+  // only on the state, so it is reused across Krylov matvecs and invalidated by
+  // SetState. Mutable so SetState (const) can clear it.
+  mutable Eigen::VectorXd exact_primal_;
+  mutable bool exact_primal_valid_ = false;
 
   // Preconditioner / Nestor update bookkeeping, mirroring the like-named Vmec
   // members; the Python loop drives the iteration counters via Evaluate, so the
@@ -1322,6 +1534,8 @@ PYBIND11_MODULE(_vmecpp, m) {
            py::arg("precondition") = true,
            py::arg("always_fix_m1_gauge") = true)
       .def_property_readonly("need_restart", &VmecModel::need_restart)
+      .def_property_readonly("have_to_flip_theta",
+                             &VmecModel::have_to_flip_theta)
       .def("perform_time_step", &VmecModel::PerformTimeStep,
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
            py::arg("time_step"))
@@ -1337,10 +1551,24 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
       .def("get_forces", &VmecModel::GetForces)
+      .def("get_geometry", &VmecModel::GetGeometry)
+      .def("geometry_state_vjp", &VmecModel::GeometryStateVjp,
+           py::arg("coefficient_bar"))
       .def("apply_preconditioner", &VmecModel::ApplyPreconditioner,
            py::arg("v"))
       .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
            py::arg("v"), py::arg("eps_rel") = 1e-7)
+#ifdef VMECPP_ENABLE_ENZYME
+      // Both directions are required: the reverse adjoint needs H^T, and
+      // deflating the augmented Hessian's structural null space needs both a
+      // row and a column probe.
+      .def("exact_hessian_vector_product",
+           &VmecModel::ExactHessianVectorProduct, py::arg("v"))
+      .def("exact_hessian_vector_product_transpose",
+           &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"))
+#endif  // VMECPP_ENABLE_ENZYME
+      .def("set_freeze_constraint_multiplier",
+           &VmecModel::SetFreezeConstraintMultiplier, py::arg("freeze"))
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
       .def_property_readonly("fsqr", &VmecModel::fsqr)
@@ -1362,6 +1590,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("ntor", &VmecModel::ntor)
       .def_property_readonly("lthreed", &VmecModel::lthreed)
       .def_property_readonly("lasym", &VmecModel::lasym)
+      .def_property_readonly("has_exact_force_jacobian",
+                             &VmecModel::has_exact_force_jacobian)
       .def_property_readonly("force_residual_r", &VmecModel::force_residual_r)
       .def_property_readonly("force_residual_z", &VmecModel::force_residual_z)
       .def_property_readonly("force_residual_lambda",
