@@ -147,6 +147,14 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
     const makegrid::MagneticFieldResponseTable* magnetic_response_table,
     std::optional<int> max_threads, OutputMode verbose,
     InterruptCallback interrupt_callback) {
+  // check the input before the constructor builds Sizes from it; the
+  // informational messages are left to the check in run()
+  absl::Status is_indata_consistent =
+      IsConsistent(indata, /*enable_info_messages=*/false);
+  if (!is_indata_consistent.ok()) {
+    return is_indata_consistent;
+  }
+
   auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
                                   std::move(interrupt_callback));
 
