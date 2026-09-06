@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788727401988,
+  "lastUpdate": 1788728157878,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16631,6 +16631,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.355773408999994,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5188ba2ba74ab44cf5ac8a8d55cd110093bbb1e1",
+          "message": "Test the Jacobian orientation with a quantity the lasym rotation preserves (#789)",
+          "timestamp": "2026-09-06T22:47:06+02:00",
+          "tree_id": "0467f70f51ff3be7193dfb6d00ae2e3c4dd15988",
+          "url": "https://github.com/proximafusion/vmecpp/commit/5188ba2ba74ab44cf5ac8a8d55cd110093bbb1e1"
+        },
+        "date": 1788728151753,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3387407550000262,
+            "range": "stddev: 0.0016275251250678585",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.582220759999965,
+            "range": "stddev: 0.019771880975996265",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0663743373333243,
+            "range": "stddev: 0.0071657800848678775",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.7340015599999863,
+            "range": "stddev: 0.053189989631455534",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.6963232220000464,
+            "range": "stddev: 0.006747512026749759",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.777085165333308,
+            "range": "stddev: 0.006559594998641423",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.994005424000079,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.27798902299991823,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
