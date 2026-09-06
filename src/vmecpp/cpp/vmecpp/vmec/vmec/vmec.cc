@@ -236,6 +236,12 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
           "are consistent.",
           mgrid_.numPhi, indata_.nzeta));
     }
+    if (mgrid_.nfp != indata_.nfp) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "MGridProvider has %d field periods, but VmecINDATA has nfp = %d. "
+          "Please ensure that the two are consistent.",
+          mgrid_.nfp, indata_.nfp));
+    }
   }
 
   auto is_indata_consistent =

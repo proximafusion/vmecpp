@@ -4096,9 +4096,9 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   }  // jH
 
   // Compute Waist thickness and height in \f$\varphi = 0, \pi\f$ symmetry
-  // planes.
+  // planes; the second plane exists only on a toroidal grid.
   int symmetry_planes_count = 1;
-  if (s.ntor > 0) {
+  if (s.nZeta > 1) {
     symmetry_planes_count = 2;
   }
   result.waist = VectorXd::Zero(symmetry_planes_count);

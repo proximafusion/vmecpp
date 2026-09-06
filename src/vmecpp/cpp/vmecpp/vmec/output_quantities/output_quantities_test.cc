@@ -582,10 +582,10 @@ TEST_P(Threed1HeightTest, HeightIsTwiceTheLargestAbsoluteZ) {
   const Threed1GeometricAndMagneticQuantities& geomag =
       vmec.output_quantities_.threed1_geometric_magnetic;
 
-  // The reported planes are zeta = 0 and, for a three-dimensional case, the
-  // plane at toroidal index nZeta / 2.
+  // The reported planes are zeta = 0 and, on a toroidal grid, the plane at
+  // toroidal index nZeta / 2.
   std::vector<int> plane_indices = {0};
-  if (s.ntor > 0) {
+  if (s.nZeta > 1) {
     plane_indices.push_back(s.nZeta / 2);
   }
   ASSERT_EQ(geomag.height.size(), static_cast<int>(plane_indices.size()));
