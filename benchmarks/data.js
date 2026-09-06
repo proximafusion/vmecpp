@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788726424412,
+  "lastUpdate": 1788727245824,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16551,6 +16551,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.39214847400000963,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "918ffce9bddd888cc38d57f513d57c7e86c1a596",
+          "message": "Symmetrize the cth_like helical coil to the file's own precision and regenerate its mgrid and free-boundary references (#781)\n\n* Symmetrize the cth_like helical coil to the file's own precision and regenerate its mgrid and free-boundary references\n\n* Strip the trailing whitespace from the regenerated threed1 output\n\n* End the regenerated threed1 output with a single newline",
+          "timestamp": "2026-09-06T22:34:06+02:00",
+          "tree_id": "f6e5a698eac22a092c3da143779e33a7d1aaa3ca",
+          "url": "https://github.com/proximafusion/vmecpp/commit/918ffce9bddd888cc38d57f513d57c7e86c1a596"
+        },
+        "date": 1788727238768,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3363447643999734,
+            "range": "stddev: 0.003088365259083118",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.828882210999988,
+            "range": "stddev: 0.015112780401449796",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1202028130000297,
+            "range": "stddev: 0.001147416104808732",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.8491113669999777,
+            "range": "stddev: 0.02497148091792758",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.7139529436667544,
+            "range": "stddev: 0.0036601255526307014",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.664593577000081,
+            "range": "stddev: 0.004395479566776124",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.9903694290001113,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.355773408999994,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
