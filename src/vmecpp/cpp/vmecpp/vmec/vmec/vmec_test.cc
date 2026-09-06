@@ -340,6 +340,77 @@ void CheckFlagCombinationAgainstEducationalVmec(const FlagCombinationCase& c) {
   }
 }
 
+TEST(TestVmec, ColdJacobianRecoveryMatchesExplicitCoarseBootstrap) {
+  const auto contents =
+      ReadFile("vmecpp/test_data/initial_jacobian_recovery.json");
+  ASSERT_TRUE(contents.ok());
+  auto indata = VmecINDATA::FromJson(*contents);
+  ASSERT_TRUE(indata.ok());
+
+  VmecINDATA coarse_indata = *indata;
+  coarse_indata.ns_array.resize(4);
+  coarse_indata.ns_array << 3, 8, 16, 31;
+  coarse_indata.ftol_array.resize(4);
+  coarse_indata.ftol_array << 1.0e-4, 1.0e-9, 1.0e-9, 1.0e-9;
+  coarse_indata.niter_array = Eigen::VectorXi::Constant(4, 4000);
+  auto coarse =
+      Vmec::FromIndata(coarse_indata, nullptr, 1, vmecpp::OutputMode::kSilent);
+  ASSERT_TRUE(coarse.ok());
+  ASSERT_TRUE((*coarse)->run().ok());
+  ASSERT_EQ((*coarse)->get_status(),
+            vmecpp::VmecStatus::SUCCESSFUL_TERMINATION);
+  ASSERT_EQ((*coarse)->get_jacob_off(), 0);
+  const auto& expected = (*coarse)->output_quantities_.wout;
+
+  for (const auto mode :
+       {vmecpp::OutputMode::kSilent, vmecpp::OutputMode::kLegacy,
+        vmecpp::OutputMode::kProgress, vmecpp::OutputMode::kProgressNonTTY}) {
+    for (const bool return_unconverged : {false, true}) {
+      indata->return_outputs_even_if_not_converged = return_unconverged;
+      auto automatic = Vmec::FromIndata(*indata, nullptr, 1, mode);
+      ASSERT_TRUE(automatic.ok());
+      const auto status = (*automatic)->run();
+      ASSERT_TRUE(status.ok()) << status.status();
+      ASSERT_EQ((*automatic)->get_status(),
+                vmecpp::VmecStatus::SUCCESSFUL_TERMINATION);
+      EXPECT_EQ((*automatic)->get_jacob_off(), 1);
+      EXPECT_EQ((*automatic)->indata_.ns_array.size(), 3);
+      const auto& actual = (*automatic)->output_quantities_.wout;
+      EXPECT_EQ(actual.ns, 31);
+      EXPECT_LE(actual.fsqr, 1.0e-9);
+      EXPECT_LE(actual.fsqz, 1.0e-9);
+      EXPECT_LE(actual.fsql, 1.0e-9);
+      EXPECT_EQ((actual.rmnc - expected.rmnc).cwiseAbs().maxCoeff(), 0.0);
+      EXPECT_EQ((actual.zmns - expected.zmns).cwiseAbs().maxCoeff(), 0.0);
+      EXPECT_EQ((actual.lmns_full - expected.lmns_full).cwiseAbs().maxCoeff(),
+                0.0);
+      EXPECT_EQ(actual.force_residual_r, expected.force_residual_r);
+      EXPECT_EQ(actual.force_residual_z, expected.force_residual_z);
+      EXPECT_EQ(actual.force_residual_lambda, expected.force_residual_lambda);
+    }
+  }
+}
+
+TEST(TestVmec, CoarseBootstrapDoesNotRelaxFinalConvergence) {
+  const auto contents =
+      ReadFile("vmecpp/test_data/initial_jacobian_recovery.json");
+  ASSERT_TRUE(contents.ok());
+  auto indata = VmecINDATA::FromJson(*contents);
+  ASSERT_TRUE(indata.ok());
+  for (const auto mode :
+       {vmecpp::OutputMode::kSilent, vmecpp::OutputMode::kLegacy,
+        vmecpp::OutputMode::kProgress, vmecpp::OutputMode::kProgressNonTTY}) {
+    for (const int coarse_budget : {1, 4000}) {
+      indata->niter_array << coarse_budget, coarse_budget, 1;
+      auto automatic = Vmec::FromIndata(*indata, nullptr, 1, mode);
+      ASSERT_TRUE(automatic.ok());
+      EXPECT_FALSE((*automatic)->run().ok());
+      EXPECT_NE((*automatic)->get_status(),
+                vmecpp::VmecStatus::SUCCESSFUL_TERMINATION);
+    }
+  }
+}
+
 // With ncurr = 0 the rotational transform is prescribed rather than solved for,
 // so the half-grid profile has to be the ai polynomial evaluated at the
 // half-grid flux positions. Index 0 of iotas is unused.

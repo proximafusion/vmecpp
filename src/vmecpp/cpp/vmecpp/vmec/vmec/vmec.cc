@@ -333,8 +333,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       }
 
       // notify logger of the next multigrid stage
-      logger_.BeginStage(igrid, max_grids + jacob_off_, fc_.nsval, s_.mnmax,
-                         fc_.ftolv, fc_.niterv, fc_.lfreeb);
+      logger_.BeginStage(igrid + jacob_off_, max_grids + jacob_off_, fc_.nsval,
+                         s_.mnmax, fc_.ftolv, fc_.niterv, fc_.lfreeb);
 
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
@@ -345,8 +345,12 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       }
 
       // *HERE* is the *ACTUAL* call to the equilibrium solver !
+      const bool allow_initial_jacobian_retry = jacob_off_ == 0 && igrid == 0 &&
+                                                indata_.ns_array[0] > 3 &&
+                                                !initial_state.has_value();
       const absl::StatusOr<bool> reached_checkpoint =
-          SolveEquilibrium(checkpoint, iterations_before_checkpointing);
+          SolveEquilibriumStage(checkpoint, iterations_before_checkpointing,
+                                allow_initial_jacobian_retry);
       if (!reached_checkpoint.ok() || *reached_checkpoint == true) {
         return reached_checkpoint;
       }
@@ -355,6 +359,14 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // not reach convergence
       if (status_ != VmecStatus::NORMAL_TERMINATION &&
           status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
+        if (status_ == VmecStatus::BAD_JACOBIAN &&
+            allow_initial_jacobian_retry) {
+          // Retry from the input axis on a cold three-surface mesh.
+          fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
+          fc_.ns_old = 0;
+          fc_.neqs_old = 0;
+          break;
+        }
         if (!indata_.return_outputs_even_if_not_converged) {
           const auto msg = absl::StrFormat(
               "FATAL ERROR in SolveEquilibrium: %s\n"
@@ -783,6 +795,13 @@ bool Vmec::InitializeRadial(
 // resetting the time step.
 absl::StatusOr<bool> Vmec::SolveEquilibrium(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing) {
+  return SolveEquilibriumStage(checkpoint, iterations_before_checkpointing,
+                               false);
+}
+
+absl::StatusOr<bool> Vmec::SolveEquilibriumStage(
+    VmecCheckpoint checkpoint, int iterations_before_checkpointing,
+    bool allow_initial_jacobian_retry) {
   // Table header output is now handled by logger_.BeginStage() in run().
 
   absl::Status status_of_all_threads = absl::OkStatus();
@@ -831,7 +850,8 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
       s = SolveEquilibriumLoop(
           thread_id, iterations_before_checkpointing, checkpoint,
-          /*m_lreset_internal=*/m_lreset_internal, /*m_liter_flag=*/liter_flag);
+          /*m_lreset_internal=*/m_lreset_internal, /*m_liter_flag=*/liter_flag,
+          allow_initial_jacobian_retry);
     }
 // nowait because critical below has an implicit barrier
 #ifdef _OPENMP
@@ -890,7 +910,8 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
 absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     int thread_id, int iterations_before_checkpointing,
-    VmecCheckpoint checkpoint, bool& m_lreset_internal, bool& m_liter_flag) {
+    VmecCheckpoint checkpoint, bool& m_lreset_internal, bool& m_liter_flag,
+    bool allow_initial_jacobian_retry) {
   // RECOMPUTE INITIAL PROFILE, BUT WITH IMPROVED AXIS
   // OR
   // RESTART FROM INITIAL PROFILE, BUT WITH A SMALLER TIME-STEP
@@ -994,6 +1015,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       return SolveEqLoopStatus::MUST_RETRY;
     } else if (status_ != VmecStatus::NORMAL_TERMINATION &&
                status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
+      if (status_ == VmecStatus::BAD_JACOBIAN && allow_initial_jacobian_retry) {
+        return SolveEqLoopStatus::NORMAL_TERMINATION;
+      }
       // if something went totally wrong even in this initial steps, do not
       // continue at all
       if (!indata_.return_outputs_even_if_not_converged) {

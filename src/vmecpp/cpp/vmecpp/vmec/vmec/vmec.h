@@ -239,9 +239,13 @@ class Vmec {
   };
 
   // Inner multi-thread loop logic for SolveEquilibrium
+  absl::StatusOr<bool> SolveEquilibriumStage(VmecCheckpoint checkpoint,
+                                             int maximum_iterations,
+                                             bool allow_initial_jacobian_retry);
   absl::StatusOr<SolveEqLoopStatus> SolveEquilibriumLoop(
       int thread_id, int maximum_iterations, VmecCheckpoint checkpoint,
-      bool& m_lreset_internal, bool& m_liter_flag);
+      bool& m_lreset_internal, bool& m_liter_flag,
+      bool allow_initial_jacobian_retry);
 
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
