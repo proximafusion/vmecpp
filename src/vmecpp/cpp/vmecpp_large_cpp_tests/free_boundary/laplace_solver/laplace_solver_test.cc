@@ -137,8 +137,7 @@ TEST_P(FourPTest, CheckFourP) {
                   static_cast<double>(vac1n_fourp["grpmn"][m][nf - n][k][l]) -
                   grpmn_sin_singular_negn;
 
-              // TODO(jons): for lasym, need cos-part of grpmn from
-              // educational_VMEC
+              // Only the sin part; educational_VMEC dumps no cos part of grpmn.
               EXPECT_TRUE(IsCloseRelAbs(grpmn_sin_reference_posn,
                                         grpmn_sin_regular_posn, tolerance));
               EXPECT_TRUE(IsCloseRelAbs(grpmn_sin_reference_negn,
@@ -309,8 +308,7 @@ TEST_P(FourIAccumulateGrpmnTest, CheckFourIAccumulateGrpmn) {
                   scale_to_match_fortran_regular *
                   ls.grpmn_sin[idx_m_negn * numLocal + klRel];
 
-              // TODO(jons): for lasym, need cos-part of grpmn from
-              // educational_VMEC
+              // Only the sin part; educational_VMEC dumps no cos part of grpmn.
               EXPECT_TRUE(IsCloseRelAbs(vac1n_fourp["grpmn"][m][nf + n][k][l],
                                         grpmn_sin_regular_posn, tolerance));
               EXPECT_TRUE(IsCloseRelAbs(vac1n_fourp["grpmn"][m][nf - n][k][l],

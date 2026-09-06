@@ -205,8 +205,7 @@ TEST_P(AnalytTest, CheckAnalyt) {
               // cmns in Fortran has alp (= 2 pi / nfp) in it; VMEC++ does not
               const double scale_to_match_fortran = 2.0 * M_PI / s.nfp;
 
-              // TODO(jons): for lasym, need cos-part of grpmn from
-              // educational_VMEC
+              // Only the sin part; educational_VMEC dumps no cos part of grpmn.
               EXPECT_TRUE(
                   IsCloseRelAbs(vac1n_analyt["grpmn"][m][nf + n][k][l],
                                 scale_to_match_fortran *
@@ -233,7 +232,7 @@ TEST_P(AnalytTest, CheckAnalyt) {
         const double scale_to_match_fortran =
             2.0 * M_PI / s.nfp * 4.0 * M_PI * M_PI;
 
-        // TODO(jons): for lasym, need cos-part of bvec from educational_VMEC
+        // Only the sin part; educational_VMEC dumps no cos part of bvec.
 
         // Fortran order along n in bvec: -nf, -nf+1, ..., -1, 0, 1, ..., nf-1,
         // nf
