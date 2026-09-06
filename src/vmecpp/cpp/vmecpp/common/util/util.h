@@ -204,9 +204,13 @@ enum class VacuumPressureState : std::int8_t {
   // process of reducing rCon0,zCon0 *= 0.9;
   kInitialized = 1,
 
-  // vacuum pressure turned on
-  // in the process of reducing rCon0,zCon0 *= 0.9;
-  kActive = 2
+  // vacuum pressure turned on, R and Z force residuals still above 1e-3
+  // full vacuum update in every iteration; ivac == 2 in VMEC 8.52
+  kActive = 2,
+
+  // vacuum pressure turned on, R and Z force residuals below 1e-3
+  // vacuum update every nvacskip iterations; ivac > 2 in VMEC 8.52
+  kSettled = 3
 };
 
 int VmecStatusCode(const VmecStatus vmec_status);
