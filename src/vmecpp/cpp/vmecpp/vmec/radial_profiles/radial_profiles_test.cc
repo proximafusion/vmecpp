@@ -490,4 +490,30 @@ TEST_F(RadialProfilesTest, AnalyticProfilesRouteThroughDispatch) {
   }
 }
 
+// ---- the integrated line segments are the exact area under them ------------
+TEST_F(RadialProfilesTest, LineSegmentIntegralIsExact) {
+  const Eigen::VectorXd knots = Vec({0.1, 0.3, 0.6, 1.0});
+  const Eigen::VectorXd values = Vec({1.0, 0.7, 0.5, 0.2});
+
+  // area from 0 to x under the interpolant, which extrapolates the end
+  // segments outside the knots
+  auto area = [&](double x) {
+    const int samples = 2000001;
+    const double h = x / (samples - 1);
+    double sum = 0.0;
+    for (int i = 0; i < samples; ++i) {
+      const double weight = (i == 0 || i == samples - 1) ? 0.5 : 1.0;
+      sum += weight * profiles_->evalLineSegment(knots, values, i * h);
+    }
+    return sum * h;
+  };
+
+  // between knots, on knots, before the first and past the last
+  for (double x : {0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.85, 1.0, 1.3}) {
+    EXPECT_NEAR(profiles_->evalLineSegmentIntegrated(knots, values, x), area(x),
+                1e-10)
+        << "x = " << x;
+  }
+}
+
 }  // namespace vmecpp

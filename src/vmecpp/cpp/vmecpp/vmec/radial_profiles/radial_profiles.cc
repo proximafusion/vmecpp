@@ -982,37 +982,32 @@ double RadialProfiles::evalLineSegmentIntegrated(
   }
 
   auto integrate_segment = [](double x0, double x1, double y0, double y1) {
+    if (x1 == x0) {
+      return 0.0;
+    }
     const double m = (y1 - y0) / (x1 - x0);
     const double b = y0 - m * x0;
     return m * 0.5 * (x1 * x1 - x0 * x0) + b * (x1 - x0);
   };
+  auto value_at = [&](double s) {
+    return evalLineSegment(splineKnots, splineValues, s);
+  };
 
-  double xi = x;
+  // integrate the interpolant from 0 to x, one straight piece at a time
+  double lower = 0.0;
   double result = 0.0;
-
-  if (xi <= splineKnots[0]) {
-    result += integrate_segment(0.0, xi, splineValues[0],
-                                evalLineSegment(splineKnots, splineValues, xi));
-    return result;
+  for (int i = 0; i < n; ++i) {
+    const double knot = splineKnots[i];
+    if (knot <= lower) {
+      continue;
+    }
+    if (knot >= x) {
+      break;
+    }
+    result += integrate_segment(lower, knot, value_at(lower), splineValues[i]);
+    lower = knot;
   }
-
-  int idx = 0;
-  while (idx < n - 1 && xi > splineKnots[idx + 1]) {
-    result += integrate_segment(splineKnots[idx], splineKnots[idx + 1],
-                                splineValues[idx], splineValues[idx + 1]);
-    ++idx;
-  }
-
-  const double x0 = splineKnots[idx];
-  const double x1 = std::min(xi, splineKnots[idx + 1]);
-  const double y0 = splineValues[idx];
-  const double y1 = splineValues[idx + 1];
-  result += integrate_segment(x0, x1, y0, y1);
-
-  if (xi > splineKnots[n - 1]) {
-    result += integrate_segment(splineKnots[n - 1], xi, splineValues[n - 1],
-                                evalLineSegment(splineKnots, splineValues, xi));
-  }
+  result += integrate_segment(lower, x, value_at(lower), value_at(x));
 
   return result;
 }
