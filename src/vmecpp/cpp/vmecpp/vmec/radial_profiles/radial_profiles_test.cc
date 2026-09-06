@@ -238,6 +238,31 @@ TEST_F(RadialProfilesTest, NiceQuadratic) {
   EXPECT_NEAR(profiles_->evalNiceQuadratic(c, 0.5), 1.2, 1e-12);
 }
 
+// ---- sum_atan --------------------------------------------------------------
+// Each arctangent term carries the factor 2/pi, so it rises from 0 at s = 0 to
+// its amplitude at s = 1, where the closed-form branch sums the amplitudes.
+TEST_F(RadialProfilesTest, SumAtanTermsScaledByTwoOverPi) {
+  // iota(s) = a0 + (2/pi) * a1 * atan(a2 * s^a3 / (1 - s)^a4)
+  const Eigen::VectorXd c = Vec({0.3, 0.8, 1.0, 1.0, 1.0});
+  EXPECT_NEAR(profiles_->evalSumAtan(c, 0.0), 0.3, 1e-12);
+  // atan(1) = pi/4: the term is at half its amplitude at s = 1/2
+  EXPECT_NEAR(profiles_->evalSumAtan(c, 0.5), 0.3 + 0.4, 1e-12);
+  EXPECT_NEAR(profiles_->evalSumAtan(c, 0.25),
+              0.3 + 0.8 * 2.0 / M_PI * std::atan(0.25 / 0.75), 1e-12);
+  EXPECT_NEAR(profiles_->evalSumAtan(c, 1.0), 1.1, 1e-12);
+  EXPECT_NEAR(profiles_->evalSumAtan(c, 1.0 - 1e-9), 1.1, 1e-8);
+
+  // two terms with general exponents
+  const Eigen::VectorXd d = Vec({0.1, 0.5, 2.0, 1.5, 0.5, -0.2, 3.0, 2.0, 1.0});
+  const double x = 0.4;
+  const double expected =
+      0.1 + 2.0 / M_PI *
+                (0.5 * std::atan(2.0 * std::pow(x, 1.5) / std::pow(0.6, 0.5)) -
+                 0.2 * std::atan(3.0 * std::pow(x, 2.0) / std::pow(0.6, 1.0)));
+  EXPECT_NEAR(profiles_->evalSumAtan(d, x), expected, 1e-12);
+  EXPECT_NEAR(profiles_->evalSumAtan(d, 1.0), 0.1 + 0.5 - 0.2, 1e-12);
+}
+
 // ---- rational --------------------------------------------------------------
 TEST_F(RadialProfilesTest, Rational) {
   // numerator = 1 + 2x (c0,c1), denominator = 3 (c10) -> (1 + 2x)/3.

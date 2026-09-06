@@ -567,6 +567,8 @@ double RadialProfiles::evalGaussTrunc(const Eigen::VectorXd& coeffs, double x,
 }
 
 double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
+  // c0 + (2/pi) * sum_i c_i * atan(c_{i+1} * x^c_{i+2} / (1 - x)^c_{i+3}) for
+  // i = 1, 5, 9, 13, 17; each term rises from 0 at x = 0 to c_i at x = 1.
   double ret = 0.0;
 
   if (coeffs.size() > 0) {
@@ -590,26 +592,28 @@ double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
       ret += coeffs[17];
     }
   } else {
+    double atan_sum = 0.0;
     if (coeffs.size() >= 5) {
-      ret += coeffs[1] * std::atan(coeffs[2] * std::pow(x, coeffs[3]) /
-                                   std::pow(1 - x, coeffs[4]));
+      atan_sum += coeffs[1] * std::atan(coeffs[2] * std::pow(x, coeffs[3]) /
+                                        std::pow(1 - x, coeffs[4]));
     }
     if (coeffs.size() >= 9) {
-      ret += coeffs[5] * std::atan(coeffs[6] * std::pow(x, coeffs[7]) /
-                                   std::pow(1 - x, coeffs[8]));
+      atan_sum += coeffs[5] * std::atan(coeffs[6] * std::pow(x, coeffs[7]) /
+                                        std::pow(1 - x, coeffs[8]));
     }
     if (coeffs.size() >= 13) {
-      ret += coeffs[9] * std::atan(coeffs[10] * std::pow(x, coeffs[11]) /
-                                   std::pow(1 - x, coeffs[12]));
+      atan_sum += coeffs[9] * std::atan(coeffs[10] * std::pow(x, coeffs[11]) /
+                                        std::pow(1 - x, coeffs[12]));
     }
     if (coeffs.size() >= 17) {
-      ret += coeffs[13] * std::atan(coeffs[14] * std::pow(x, coeffs[15]) /
-                                    std::pow(1 - x, coeffs[16]));
+      atan_sum += coeffs[13] * std::atan(coeffs[14] * std::pow(x, coeffs[15]) /
+                                         std::pow(1 - x, coeffs[16]));
     }
     if (coeffs.size() >= 21) {
-      ret += coeffs[17] * std::atan(coeffs[18] * std::pow(x, coeffs[19]) /
-                                    std::pow(1 - x, coeffs[20]));
+      atan_sum += coeffs[17] * std::atan(coeffs[18] * std::pow(x, coeffs[19]) /
+                                         std::pow(1 - x, coeffs[20]));
     }
+    ret += 2.0 / M_PI * atan_sum;
   }
 
   return ret;
