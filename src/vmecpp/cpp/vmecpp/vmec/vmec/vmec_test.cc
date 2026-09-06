@@ -795,3 +795,49 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   // second stage enters force-balanced instead of kicking the boundary).
   EXPECT_EQ(output->wout.niter, 321);
 }  // MultiGridFreeBoundary
+
+// The free-boundary threed1 section covers the poloidal range the run is solved
+// on, which is the full one for an asymmetric equilibrium, so the boundary it
+// reports must reproduce the wout Fourier series at every point of that range.
+TEST(TestVmec, Threed1FreeBoundaryCoversTheAsymmetricPoloidalRange) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_TRUE(indata->lasym);
+
+  auto maybe_vmec = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  ASSERT_TRUE(vmec.run().ok());
+
+  const Sizes& s = vmec.s_;
+  const vmecpp::Threed1FreeBoundary& free_boundary =
+      vmec.output_quantities_.threed1_free_boundary;
+  ASSERT_EQ(free_boundary.rb.rows(), s.nZeta);
+  ASSERT_EQ(free_boundary.rb.cols(), s.nThetaEff);
+  ASSERT_GT(s.nThetaEff, s.nThetaReduced);
+
+  const vmecpp::WOutFileContents& wout = vmec.output_quantities_.wout;
+  const int boundary = wout.ns - 1;
+  for (int k = 0; k < s.nZeta; ++k) {
+    const double zeta = 2.0 * M_PI * k / (s.nZeta * s.nfp);
+    for (int l = 0; l < s.nThetaEff; ++l) {
+      const double theta = 2.0 * M_PI * l / s.nThetaEff;
+      double r = 0.0;
+      double z = 0.0;
+      for (int mn = 0; mn < wout.mnmax; ++mn) {
+        const double angle = wout.xm[mn] * theta - wout.xn[mn] * zeta;
+        r += wout.rmnc(mn, boundary) * std::cos(angle) +
+             wout.rmns(mn, boundary) * std::sin(angle);
+        z += wout.zmns(mn, boundary) * std::sin(angle) +
+             wout.zmnc(mn, boundary) * std::cos(angle);
+      }  // mn
+      EXPECT_TRUE(IsCloseRelAbs(r, free_boundary.rb(k, l), 1.0e-10))
+          << "zeta index " << k << ", theta index " << l;
+      EXPECT_TRUE(IsCloseRelAbs(z, free_boundary.zb(k, l), 1.0e-10))
+          << "zeta index " << k << ", theta index " << l;
+    }  // l
+  }  // k
+}  // Threed1FreeBoundaryCoversTheAsymmetricPoloidalRange

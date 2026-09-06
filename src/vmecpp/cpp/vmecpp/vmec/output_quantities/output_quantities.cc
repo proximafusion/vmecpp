@@ -1439,7 +1439,8 @@ vmecpp::Threed1FreeBoundary vmecpp::ComputeThreed1FreeBoundary(
   Threed1FreeBoundary result;
 
   const int num_zeta = s.nZeta;
-  const int num_theta = s.nThetaReduced;
+  // the full poloidal range of an asymmetric run, the half range otherwise
+  const int num_theta = s.nThetaEff;
   result.rb = RowMatrixXd::Zero(num_zeta, num_theta);
   result.phib = RowMatrixXd::Zero(num_zeta, num_theta);
   result.zb = RowMatrixXd::Zero(num_zeta, num_theta);
