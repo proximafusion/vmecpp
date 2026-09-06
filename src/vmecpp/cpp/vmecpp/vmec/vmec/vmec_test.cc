@@ -841,3 +841,32 @@ TEST(TestVmec, Threed1FreeBoundaryCoversTheAsymmetricPoloidalRange) {
     }  // l
   }  // k
 }  // Threed1FreeBoundaryCoversTheAsymmetricPoloidalRange
+
+// The enclosed toroidal flux is the integral of the aphi polynomial, normalized
+// to phiedge at the boundary. A linear dphi/ds is integrated exactly.
+TEST(TestVmec, ToroidalFluxFollowsTheAphiPolynomial) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  const int ns = 9;
+  indata->ns_array = Eigen::VectorXi::Constant(1, ns);
+  indata->ftol_array = Eigen::VectorXd::Constant(1, 1.0e-8);
+  indata->niter_array = Eigen::VectorXi::Constant(1, 4000);
+  // phi(s) = phiedge * (s + s^2 / 2) / (3 / 2)
+  indata->aphi = Eigen::VectorXd(2);
+  indata->aphi << 1.0, 0.5;
+
+  const auto output = vmecpp::run(*indata, std::nullopt, 1);
+  ASSERT_TRUE(output.ok());
+
+  const Eigen::VectorXd& phi = output->wout.phi;
+  ASSERT_EQ(phi.size(), ns);
+  for (int jF = 0; jF < ns; ++jF) {
+    const double s = static_cast<double>(jF) / (ns - 1);
+    const double expected = indata->phiedge * (s + 0.5 * s * s) / 1.5;
+    EXPECT_TRUE(IsCloseRelAbs(expected, phi[jF], 1.0e-13)) << "jF = " << jF;
+  }
+}  // ToroidalFluxFollowsTheAphiPolynomial
