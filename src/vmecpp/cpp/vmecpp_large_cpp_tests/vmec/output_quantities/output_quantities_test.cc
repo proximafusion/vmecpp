@@ -416,8 +416,10 @@ INSTANTIATE_TEST_SUITE_P(
     Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-12},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-12},
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 2.0e-14},
+           // the deviation is 2e-15 to 5e-15 depending on the compiler, so this
+           // case carries the same tolerance as the one above it
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 5.0e-15},
+                      .tolerance = 2.0e-14},
            DataSource{.identifier = "cma", .tolerance = 1.0e-11},
            DataSource{.identifier = "cth_like_free_bdy",
                       .tolerance = 5.0e-12}));
@@ -517,10 +519,9 @@ TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
       for (int l = 0; l < s.nThetaEff; ++l) {
         const int idx_kl = (jH * s.nZeta + k) * s.nThetaEff + l;
 
-        // catastrophic cancellation
         EXPECT_TRUE(IsCloseRelAbs(jxbout["jsups3"][jH + 1][k][l],
                                   output_quantities.jxbout.jsups3(idx_kl),
-                                  5.0e-3));
+                                  tolerance));
 
         EXPECT_TRUE(IsCloseRelAbs(jxbout["bsubu3"][jH + 1][k][l],
                                   output_quantities.jxbout.bsubu3(idx_kl),
