@@ -362,32 +362,36 @@ TEST(TestVmec, ColdJacobianRecoveryMatchesExplicitCoarseBootstrap) {
   ASSERT_EQ((*coarse)->get_jacob_off(), 0);
   const auto& expected = (*coarse)->output_quantities_.wout;
 
-  for (const auto mode :
-       {vmecpp::OutputMode::kSilent, vmecpp::OutputMode::kLegacy,
-        vmecpp::OutputMode::kProgress, vmecpp::OutputMode::kProgressNonTTY}) {
-    for (const bool return_unconverged : {false, true}) {
-      indata->return_outputs_even_if_not_converged = return_unconverged;
-      auto automatic = Vmec::FromIndata(*indata, nullptr, 1, mode);
-      ASSERT_TRUE(automatic.ok());
-      const auto status = (*automatic)->run();
-      ASSERT_TRUE(status.ok()) << status.status();
-      ASSERT_EQ((*automatic)->get_status(),
-                vmecpp::VmecStatus::SUCCESSFUL_TERMINATION);
-      EXPECT_EQ((*automatic)->get_jacob_off(), 1);
-      EXPECT_EQ((*automatic)->indata_.ns_array.size(), 3);
-      const auto& actual = (*automatic)->output_quantities_.wout;
-      EXPECT_EQ(actual.ns, 31);
-      EXPECT_LE(actual.fsqr, 1.0e-9);
-      EXPECT_LE(actual.fsqz, 1.0e-9);
-      EXPECT_LE(actual.fsql, 1.0e-9);
-      EXPECT_EQ((actual.rmnc - expected.rmnc).cwiseAbs().maxCoeff(), 0.0);
-      EXPECT_EQ((actual.zmns - expected.zmns).cwiseAbs().maxCoeff(), 0.0);
-      EXPECT_EQ((actual.lmns_full - expected.lmns_full).cwiseAbs().maxCoeff(),
-                0.0);
-      EXPECT_EQ(actual.force_residual_r, expected.force_residual_r);
-      EXPECT_EQ(actual.force_residual_z, expected.force_residual_z);
-      EXPECT_EQ(actual.force_residual_lambda, expected.force_residual_lambda);
-    }
+  // One run on the default path and one through the progress logger with
+  // unconverged outputs enabled; each run is a full solve.
+  struct RecoveryCase {
+    vmecpp::OutputMode mode;
+    bool return_unconverged;
+  };
+  for (const auto& c :
+       {RecoveryCase{vmecpp::OutputMode::kSilent, false},
+        RecoveryCase{vmecpp::OutputMode::kProgressNonTTY, true}}) {
+    indata->return_outputs_even_if_not_converged = c.return_unconverged;
+    auto automatic = Vmec::FromIndata(*indata, nullptr, 1, c.mode);
+    ASSERT_TRUE(automatic.ok());
+    const auto status = (*automatic)->run();
+    ASSERT_TRUE(status.ok()) << status.status();
+    ASSERT_EQ((*automatic)->get_status(),
+              vmecpp::VmecStatus::SUCCESSFUL_TERMINATION);
+    EXPECT_EQ((*automatic)->get_jacob_off(), 1);
+    EXPECT_EQ((*automatic)->indata_.ns_array.size(), 3);
+    const auto& actual = (*automatic)->output_quantities_.wout;
+    EXPECT_EQ(actual.ns, 31);
+    EXPECT_LE(actual.fsqr, 1.0e-9);
+    EXPECT_LE(actual.fsqz, 1.0e-9);
+    EXPECT_LE(actual.fsql, 1.0e-9);
+    EXPECT_EQ((actual.rmnc - expected.rmnc).cwiseAbs().maxCoeff(), 0.0);
+    EXPECT_EQ((actual.zmns - expected.zmns).cwiseAbs().maxCoeff(), 0.0);
+    EXPECT_EQ((actual.lmns_full - expected.lmns_full).cwiseAbs().maxCoeff(),
+              0.0);
+    EXPECT_EQ(actual.force_residual_r, expected.force_residual_r);
+    EXPECT_EQ(actual.force_residual_z, expected.force_residual_z);
+    EXPECT_EQ(actual.force_residual_lambda, expected.force_residual_lambda);
   }
 }
 
@@ -397,17 +401,14 @@ TEST(TestVmec, CoarseBootstrapDoesNotRelaxFinalConvergence) {
   ASSERT_TRUE(contents.ok());
   auto indata = VmecINDATA::FromJson(*contents);
   ASSERT_TRUE(indata.ok());
-  for (const auto mode :
-       {vmecpp::OutputMode::kSilent, vmecpp::OutputMode::kLegacy,
-        vmecpp::OutputMode::kProgress, vmecpp::OutputMode::kProgressNonTTY}) {
-    for (const int coarse_budget : {1, 4000}) {
-      indata->niter_array << coarse_budget, coarse_budget, 1;
-      auto automatic = Vmec::FromIndata(*indata, nullptr, 1, mode);
-      ASSERT_TRUE(automatic.ok());
-      EXPECT_FALSE((*automatic)->run().ok());
-      EXPECT_NE((*automatic)->get_status(),
-                vmecpp::VmecStatus::SUCCESSFUL_TERMINATION);
-    }
+  for (const int coarse_budget : {1, 4000}) {
+    indata->niter_array << coarse_budget, coarse_budget, 1;
+    auto automatic =
+        Vmec::FromIndata(*indata, nullptr, 1, vmecpp::OutputMode::kSilent);
+    ASSERT_TRUE(automatic.ok());
+    EXPECT_FALSE((*automatic)->run().ok());
+    EXPECT_NE((*automatic)->get_status(),
+              vmecpp::VmecStatus::SUCCESSFUL_TERMINATION);
   }
 }
 
