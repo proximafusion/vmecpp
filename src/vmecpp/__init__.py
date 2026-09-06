@@ -797,6 +797,56 @@ preset = 21
 ndfmax = 101
 
 
+def _lambda_on_full_grid(
+    lambda_half: np.ndarray,
+    xm: np.ndarray,
+    phipf: np.ndarray,
+    extrapolate_axis: bool = True,
+) -> np.ndarray:
+    """Invert the radial interpolation that writes lambda onto the half grid."""
+    n_surfaces = lambda_half.shape[1]
+    if n_surfaces < 2:
+        return np.zeros_like(lambda_half)
+
+    sqrt_s_full = np.sqrt(np.arange(n_surfaces, dtype=float) / (n_surfaces - 1.0))
+    sqrt_s_full[-1] = 1.0
+    sqrt_s_half = np.sqrt(
+        (np.arange(n_surfaces - 1, dtype=float) + 0.5) / (n_surfaces - 1.0)
+    )
+    # odd-m interpolation weights of the outer and inner surface
+    outer = sqrt_s_half / sqrt_s_full[1:]
+    inner = np.empty_like(outer)
+    inner[1:] = sqrt_s_half[1:] / sqrt_s_full[1:-1]
+    inner[0] = outer[0]
+
+    odd = xm.astype(int) % 2 == 1
+    even = ~odd
+    from_outside = xm <= 1
+
+    lambda_full = np.zeros_like(lambda_half)
+    first = lambda_half[:, 1]
+    lambda_full[even & from_outside, 1] = first[even & from_outside]
+    lambda_full[odd & from_outside, 1] = (
+        2.0 * first[odd & from_outside] / (outer[0] + inner[0])
+    )
+    lambda_full[even & ~from_outside, 1] = 2.0 * first[even & ~from_outside]
+    lambda_full[odd & ~from_outside, 1] = 2.0 * first[odd & ~from_outside] / outer[0]
+    for j in range(1, n_surfaces - 1):
+        lambda_full[even, j + 1] = 2.0 * lambda_half[even, j + 1] - lambda_full[even, j]
+        lambda_full[odd, j + 1] = (
+            2.0 * lambda_half[odd, j + 1] - inner[j] * lambda_full[odd, j]
+        ) / outer[j]
+
+    # the axis value of the m = 0 modes is not represented on the half grid
+    if extrapolate_axis and n_surfaces > 2 and phipf[0] != 0.0:
+        m_zero = xm == 0
+        lambda_full[m_zero, 0] = (
+            2.0 * lambda_full[m_zero, 1] * phipf[1] - lambda_full[m_zero, 2] * phipf[2]
+        ) / phipf[0]
+
+    return lambda_full
+
+
 # NOTE: in the future we want to change the C++ WOutFileContents layout so that it
 # matches the classic Fortran one, so most of the compatibility layer here could
 # disappear.
@@ -1760,13 +1810,27 @@ class VmecWOut(BaseModelWithNumpy):
                 else:
                     attrs[var_name] = fnc[var_name][()]
 
-        # Special handling for variables only present in VMEC++
-        # For now, only special case for lambda coefficients: lambda = 0 is a physically meaningful fall-back value
+        # Fortran VMEC stores lambda on the half grid only.
         mnmax = attrs["mnmax"]
         ns = attrs["ns"]
-        attrs.setdefault("lmns_full", np.zeros([mnmax, ns]))
-        if attrs["lasym__logical__"]:
-            attrs.setdefault("lmnc_full", np.zeros([mnmax, ns]))
+        recoverable = {"lmns", "xm", "phipf"} <= attrs.keys()
+        if "lmns_full" not in attrs:
+            attrs["lmns_full"] = (
+                _lambda_on_full_grid(attrs["lmns"], attrs["xm"], attrs["phipf"])
+                if recoverable
+                else np.zeros([mnmax, ns])
+            )
+        if attrs["lasym__logical__"] and "lmnc_full" not in attrs:
+            attrs["lmnc_full"] = (
+                _lambda_on_full_grid(
+                    attrs["lmnc"],
+                    attrs["xm"],
+                    attrs["phipf"],
+                    extrapolate_axis=False,
+                )
+                if recoverable and "lmnc" in attrs
+                else np.zeros([mnmax, ns])
+            )
 
         # Backwards compatibility: lrfp flag may not exist in older wout files
         attrs.setdefault("lrfp__logical__", 0)

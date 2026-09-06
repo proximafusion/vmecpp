@@ -835,3 +835,86 @@ except KeyboardInterrupt:
         f"Expected KeyboardInterrupt but got:\noutput: {output}"
     )
     assert "RUN_COMPLETED" not in output
+
+
+def _wout_without_full_grid_lambda(source: Path, target: Path) -> None:
+    """Copy a wout file, dropping the full-grid lambda arrays only VMEC++ writes."""
+    dropped = {"lmns_full", "lmnc_full"}
+    with netCDF4.Dataset(source) as src, netCDF4.Dataset(target, "w") as dst:
+        for name, dimension in src.dimensions.items():
+            dst.createDimension(
+                name, None if dimension.isunlimited() else len(dimension)
+            )
+        for name, variable in src.variables.items():
+            if name in dropped:
+                continue
+            src.set_auto_mask(False)
+            created = dst.createVariable(name, variable.datatype, variable.dimensions)
+            created.setncatts({k: variable.getncattr(k) for k in variable.ncattrs()})
+            created[...] = src[name][()]
+
+
+def test_wout_recovers_full_grid_lambda_from_half_grid():
+    """The full-grid lambda is recovered from a wout that stores only the half grid."""
+    wout_path = TEST_DATA_DIR / "wout_cth_like_fixed_bdy_spline_pressure.nc"
+    with netCDF4.Dataset(wout_path) as fnc:
+        assert "lmns_full" not in fnc.variables
+
+    loaded = vmecpp.VmecWOut.from_wout_file(wout_path)
+    computed = vmecpp.run(
+        vmecpp.VmecInput.from_file(
+            TEST_DATA_DIR / "cth_like_fixed_bdy_spline_pressure.json"
+        ),
+        max_threads=1,
+        verbose=False,
+    ).wout
+
+    peak = np.abs(computed.lmns_full).max()
+    assert peak > 0.1
+    np.testing.assert_allclose(loaded.lmns_full, computed.lmns_full, atol=1.0e-8 * peak)
+
+
+def test_wout_recovers_full_grid_lambda_for_asymmetric_equilibrium(tmp_path):
+    """The recovery covers both lambda halves of an asymmetric equilibrium."""
+    computed = vmecpp.run(
+        vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy_asym.json"),
+        max_threads=1,
+        verbose=False,
+    ).wout
+    assert computed.lasym
+
+    full = tmp_path / "wout_asym.nc"
+    computed.save(full)
+    half_only = tmp_path / "wout_asym_half_grid_lambda.nc"
+    _wout_without_full_grid_lambda(full, half_only)
+
+    loaded = vmecpp.VmecWOut.from_wout_file(half_only)
+    for recovered, reference in (
+        (loaded.lmns_full, computed.lmns_full),
+        (loaded.lmnc_full, computed.lmnc_full),
+    ):
+        peak = np.abs(reference).max()
+        assert peak > 0.0
+        np.testing.assert_allclose(recovered, reference, atol=1.0e-10 * peak)
+
+
+def test_hot_restart_from_a_wout_without_full_grid_lambda(tmp_path):
+    """A restart from a wout with half-grid lambda only converges at once."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    cold = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    full = tmp_path / "wout_cth.nc"
+    cold.wout.save(full)
+    half_only = tmp_path / "wout_cth_half_grid_lambda.nc"
+    _wout_without_full_grid_lambda(full, half_only)
+
+    restart_from = cold.model_copy(deep=True)
+    restart_from.wout = vmecpp.VmecWOut.from_wout_file(half_only)
+
+    hot_input = vmec_input.model_copy(deep=True)
+    hot_input.ns_array = vmec_input.ns_array[-1:]
+    hot_input.ftol_array = vmec_input.ftol_array[-1:]
+    hot_input.niter_array = vmec_input.niter_array[-1:]
+    hot = vmecpp.run(hot_input, restart_from=restart_from, max_threads=1, verbose=False)
+
+    assert hot.wout.niter < 10
