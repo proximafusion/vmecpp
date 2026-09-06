@@ -168,6 +168,19 @@ class HandoverStorage {
   // [nZnT] vacuum magnetic pressure |B_vac^2|/2 at the plasma boundary
   Eigen::VectorXd vacuum_magnetic_pressure;
 
+  // [nZnT] total pressure of the plasma at the boundary at the moment the
+  // vacuum solution was first established, bsqsav(:,1) in Fortran VMEC.
+  // Fast-poloidal layout, like totalPressure.
+  Eigen::VectorXd initial_plasma_pressure_at_boundary;
+
+  // [nZnT] Nestor's vacuum magnetic pressure at that same moment,
+  // bsqsav(:,2). Fast-toroidal layout, like vacuum_magnetic_pressure.
+  Eigen::VectorXd initial_vacuum_pressure_at_boundary;
+
+  // [nZnT] total pressure extrapolated from inside onto the boundary,
+  // bsqsav(:,3). Fast-poloidal layout.
+  Eigen::VectorXd edge_total_pressure;
+
   // [nZnT] cylindrical B^R of Nestor's vacuum magnetic field
   Eigen::VectorXd vacuum_b_r;
 

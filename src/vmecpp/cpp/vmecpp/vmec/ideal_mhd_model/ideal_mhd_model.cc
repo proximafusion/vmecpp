@@ -881,16 +881,23 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
           // for printout: global mismatch between inside and outside pressure
           delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
+
+          // bsqsav(:,3): the extrapolated edge pressure, reported by
+          // freeb_data
+          m_h_.edge_total_pressure[kl] = insideTotalPressure[kl];
         }
 
         if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
-          // TODO(jons): implement this !!!
-
-          // initial magnetic field at boundary
-          // bsqsav(:nznt,1) = bzmn_o(ns:nrzt:ns)
-
-          // initial NESTOR |B|^2 at boundary
-          // bsqsav(:nznt,2) = bsqvac(:nznt)
+          // bsqsav(:,1) and bsqsav(:,2): the plasma-side and vacuum-side
+          // pressures at the boundary as they stood when the vacuum solution
+          // was first established. freeb_data reports them beside the final
+          // ones, so they are snapshotted once here.
+          for (int kl = 0; kl < s_.nZnT; ++kl) {
+            m_h_.initial_plasma_pressure_at_boundary[kl] =
+                totalPressure[(r_.nsMaxH - 1 - r_.nsMinH) * s_.nZnT + kl];
+            m_h_.initial_vacuum_pressure_at_boundary[kl] =
+                m_h_.vacuum_magnetic_pressure[kl];
+          }  // kl
         }
       }
 
