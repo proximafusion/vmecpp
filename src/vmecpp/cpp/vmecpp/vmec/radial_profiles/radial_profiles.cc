@@ -954,8 +954,8 @@ double RadialProfiles::evalRational(const Eigen::VectorXd& coeffs, double x) {
                               : std::numeric_limits<double>::max();
 }
 
-// Linear interpolation between the two knots that bracket x.
-// Clamp the profile if x is outside the range of knots.
+// Linear interpolation between the two knots that bracket x, continued along
+// the first or last segment for an x outside the knots.
 double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
                                        const Eigen::VectorXd& splineValues,
                                        double x) {
@@ -963,26 +963,25 @@ double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
   if (n < 2 || n != static_cast<int>(splineValues.size())) {
     return 0.0;
   }
-  if (x <= splineKnots[0]) {
-    return splineValues[0];
-  }
+  int ilow = 0;
   if (x >= splineKnots[n - 1]) {
-    return splineValues[n - 1];
+    ilow = n - 2;
+  } else if (x > splineKnots[0]) {
+    // the first knot strictly above x, so the interval below it encloses x and
+    // has positive length
+    const auto upper =
+        std::upper_bound(splineKnots.begin(), splineKnots.end(), x);
+    ilow = static_cast<int>(std::distance(splineKnots.begin(), upper)) - 1;
   }
-  // The first knot strictly above x and the knot before it, which is the last
-  // one at or below x, enclose x, so the interval has positive length.
-  const auto upper =
-      std::upper_bound(splineKnots.begin(), splineKnots.end(), x);
-  const int ihigh = static_cast<int>(std::distance(splineKnots.begin(), upper));
-  const int ilow = ihigh - 1;
   const double x0 = splineKnots[ilow];
-  const double x1 = splineKnots[ihigh];
+  const double x1 = splineKnots[ilow + 1];
   const double y0 = splineValues[ilow];
-  const double y1 = splineValues[ihigh];
+  const double y1 = splineValues[ilow + 1];
   const double t = (x - x0) / (x1 - x0);
   return (1.0 - t) * y0 + t * y1;
 }
 
+// Integral of evalLineSegment from 0 to x.
 double RadialProfiles::evalLineSegmentIntegrated(
     const Eigen::VectorXd& splineKnots, const Eigen::VectorXd& splineValues,
     double x) {
@@ -991,38 +990,24 @@ double RadialProfiles::evalLineSegmentIntegrated(
     return 0.0;
   }
 
-  auto integrate_segment = [](double x0, double x1, double y0, double y1) {
-    const double m = (y1 - y0) / (x1 - x0);
-    const double b = y0 - m * x0;
-    return m * 0.5 * (x1 * x1 - x0 * x0) + b * (x1 - x0);
+  const auto value_at = [this, &splineKnots, &splineValues](double xi) {
+    return evalLineSegment(splineKnots, splineValues, xi);
   };
 
-  double xi = x;
+  // The interpolant is linear between consecutive knots and along the
+  // continued end segments outside them, so the trapezoidal rule is exact on
+  // every piece the knots inside (0, x) cut the interval into.
   double result = 0.0;
-
-  if (xi <= splineKnots[0]) {
-    result += integrate_segment(0.0, xi, splineValues[0],
-                                evalLineSegment(splineKnots, splineValues, xi));
-    return result;
+  double lower = 0.0;
+  for (int i = 0; i < n && splineKnots[i] < x; ++i) {
+    if (splineKnots[i] <= lower) {
+      continue;
+    }
+    const double upper = splineKnots[i];
+    result += 0.5 * (upper - lower) * (value_at(lower) + value_at(upper));
+    lower = upper;
   }
-
-  int idx = 0;
-  while (idx < n - 1 && xi > splineKnots[idx + 1]) {
-    result += integrate_segment(splineKnots[idx], splineKnots[idx + 1],
-                                splineValues[idx], splineValues[idx + 1]);
-    ++idx;
-  }
-
-  const double x0 = splineKnots[idx];
-  const double x1 = std::min(xi, splineKnots[idx + 1]);
-  const double y0 = splineValues[idx];
-  const double y1 = splineValues[idx + 1];
-  result += integrate_segment(x0, x1, y0, y1);
-
-  if (xi > splineKnots[n - 1]) {
-    result += integrate_segment(splineKnots[n - 1], xi, splineValues[n - 1],
-                                evalLineSegment(splineKnots, splineValues, xi));
-  }
+  result += 0.5 * (x - lower) * (value_at(lower) + value_at(x));
 
   return result;
 }
