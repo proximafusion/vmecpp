@@ -341,9 +341,10 @@ void RadialProfiles::computeMagneticFluxes() {
     maxToroidalFlux /= edgeToroidalFluxFromProfile;
   }
 
-  // only required for lRFP == true (TODO) ...later...
-  // This assumes that the same scaling factor (=phiedge) is used for phi' and
-  // chi'.
+  // maxPoloidalFlux is set here and then never read: chips and chipf are built
+  // from maxToroidalFlux * polfluxDeriv, so nothing in the solver consumes it,
+  // and only the reference comparison of profil1d does. Scaling it from
+  // maxToroidalFlux assumes phiedge scales both phi' and chi'.
   maxPoloidalFlux = maxToroidalFlux;
   double edgePoloidalFluxFromProfile = polflux(1.0);
   if (edgePoloidalFluxFromProfile != 0.0) {
@@ -371,8 +372,13 @@ double RadialProfiles::torfluxDeriv(double x) {
  * @return
  */
 double RadialProfiles::torflux(double x) {
-  //  Analytic evaluation of the polynomial (0 at x=0)
-  //  using Horner's method
+  //  Analytic evaluation of the polynomial (0 at x=0) using Horner's method.
+  //  This is the exact integral of torfluxDeriv, which is what keeps the
+  //  normalization consistent: phipf is built from torfluxDeriv and
+  //  maxToroidalFlux divides by torflux(1), so the profile is scaled by the
+  //  value it actually integrates to and the enclosed flux at the edge comes
+  //  out at signOfJacobian * phiedge / 2 pi for any aphi. Approximating this
+  //  integral by a quadrature would divide by something else and miss it.
   double torflux = 0.0;
   for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
     torflux = x * torflux + id_.aphi[i];
@@ -567,6 +573,8 @@ double RadialProfiles::evalGaussTrunc(const Eigen::VectorXd& coeffs, double x,
 }
 
 double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
+  // c0 + (2/pi) * sum_i c_i * atan(c_{i+1} * x^c_{i+2} / (1 - x)^c_{i+3}) for
+  // i = 1, 5, 9, 13, 17; each term rises from 0 at x = 0 to c_i at x = 1.
   double ret = 0.0;
 
   if (coeffs.size() > 0) {
@@ -590,26 +598,28 @@ double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
       ret += coeffs[17];
     }
   } else {
+    double atan_sum = 0.0;
     if (coeffs.size() >= 5) {
-      ret += coeffs[1] * std::atan(coeffs[2] * std::pow(x, coeffs[3]) /
-                                   std::pow(1 - x, coeffs[4]));
+      atan_sum += coeffs[1] * std::atan(coeffs[2] * std::pow(x, coeffs[3]) /
+                                        std::pow(1 - x, coeffs[4]));
     }
     if (coeffs.size() >= 9) {
-      ret += coeffs[5] * std::atan(coeffs[6] * std::pow(x, coeffs[7]) /
-                                   std::pow(1 - x, coeffs[8]));
+      atan_sum += coeffs[5] * std::atan(coeffs[6] * std::pow(x, coeffs[7]) /
+                                        std::pow(1 - x, coeffs[8]));
     }
     if (coeffs.size() >= 13) {
-      ret += coeffs[9] * std::atan(coeffs[10] * std::pow(x, coeffs[11]) /
-                                   std::pow(1 - x, coeffs[12]));
+      atan_sum += coeffs[9] * std::atan(coeffs[10] * std::pow(x, coeffs[11]) /
+                                        std::pow(1 - x, coeffs[12]));
     }
     if (coeffs.size() >= 17) {
-      ret += coeffs[13] * std::atan(coeffs[14] * std::pow(x, coeffs[15]) /
-                                    std::pow(1 - x, coeffs[16]));
+      atan_sum += coeffs[13] * std::atan(coeffs[14] * std::pow(x, coeffs[15]) /
+                                         std::pow(1 - x, coeffs[16]));
     }
     if (coeffs.size() >= 21) {
-      ret += coeffs[17] * std::atan(coeffs[18] * std::pow(x, coeffs[19]) /
-                                    std::pow(1 - x, coeffs[20]));
+      atan_sum += coeffs[17] * std::atan(coeffs[18] * std::pow(x, coeffs[19]) /
+                                         std::pow(1 - x, coeffs[20]));
     }
+    ret += 2.0 / M_PI * atan_sum;
   }
 
   return ret;
@@ -944,7 +954,7 @@ double RadialProfiles::evalRational(const Eigen::VectorXd& coeffs, double x) {
                               : std::numeric_limits<double>::max();
 }
 
-// Linear interpolation between closest points and associated knots.
+// Linear interpolation between the two knots that bracket x.
 // Clamp the profile if x is outside the range of knots.
 double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
                                        const Eigen::VectorXd& splineValues,
@@ -953,20 +963,22 @@ double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
   if (n < 2 || n != static_cast<int>(splineValues.size())) {
     return 0.0;
   }
-  auto it = std::lower_bound(splineKnots.begin(), splineKnots.end(), x);
-  if (it >= (splineKnots.end() - 1)) {
-    // x is out of bounds (or x1 = it+1 would be out of bounds)
-    return splineValues[n - 1];
-  }
-  if (it == splineKnots.begin()) {
-    // x is below the first knot
+  if (x <= splineKnots[0]) {
     return splineValues[0];
   }
-  const double x0 = *it;
-  const double x1 = *(it + 1);
-  int ilow = static_cast<int>(std::distance(splineKnots.begin(), it));
+  if (x >= splineKnots[n - 1]) {
+    return splineValues[n - 1];
+  }
+  // The first knot strictly above x and the knot before it, which is the last
+  // one at or below x, enclose x, so the interval has positive length.
+  const auto upper =
+      std::upper_bound(splineKnots.begin(), splineKnots.end(), x);
+  const int ihigh = static_cast<int>(std::distance(splineKnots.begin(), upper));
+  const int ilow = ihigh - 1;
+  const double x0 = splineKnots[ilow];
+  const double x1 = splineKnots[ihigh];
   const double y0 = splineValues[ilow];
-  const double y1 = splineValues[ilow + 1];
+  const double y1 = splineValues[ihigh];
   const double t = (x - x0) / (x1 - x0);
   return (1.0 - t) * y0 + t * y1;
 }
