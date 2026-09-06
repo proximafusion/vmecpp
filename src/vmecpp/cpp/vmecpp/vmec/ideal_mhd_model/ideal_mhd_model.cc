@@ -881,16 +881,23 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
           // for printout: global mismatch between inside and outside pressure
           delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
+
+          // bsqsav(:,3): the extrapolated edge pressure, reported by
+          // freeb_data
+          m_h_.edge_total_pressure[kl] = insideTotalPressure[kl];
         }
 
         if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
-          // TODO(jons): implement this !!!
-
-          // initial magnetic field at boundary
-          // bsqsav(:nznt,1) = bzmn_o(ns:nrzt:ns)
-
-          // initial NESTOR |B|^2 at boundary
-          // bsqsav(:nznt,2) = bsqvac(:nznt)
+          // bsqsav(:,1) and bsqsav(:,2): the plasma-side and vacuum-side
+          // pressures at the boundary as they stood when the vacuum solution
+          // was first established. freeb_data reports them beside the final
+          // ones, so they are snapshotted once here.
+          for (int kl = 0; kl < s_.nZnT; ++kl) {
+            m_h_.initial_plasma_pressure_at_boundary[kl] =
+                totalPressure[(r_.nsMaxH - 1 - r_.nsMinH) * s_.nZnT + kl];
+            m_h_.initial_vacuum_pressure_at_boundary[kl] =
+                m_h_.vacuum_magnetic_pressure[kl];
+          }  // kl
         }
       }
 
@@ -1164,16 +1171,16 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(
 // compute inv-DFTs on unique radial grid points
 void IdealMhdModel::dft_FourierToReal_2d_symm(
     const FourierGeometry& physical_x) {
-  // can safely assume lthreed == false in here
+  // ntor == 0: no toroidal modes, but nZeta may exceed 1
 
-  const int num_realsp = (r_.nsMaxF1 - r_.nsMinF1) * s_.nThetaEff;
+  const int num_realsp = (r_.nsMaxF1 - r_.nsMinF1) * s_.nZnT;
 
   for (auto* v :
        {&r1_e, &r1_o, &ru_e, &ru_o, &z1_e, &z1_o, &zu_e, &zu_o, &lu_e, &lu_o}) {
     absl::c_fill_n(*v, num_realsp, 0);
   }
 
-  int num_con = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nThetaEff;
+  int num_con = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
   absl::c_fill_n(rCon, num_con, 0);
   absl::c_fill_n(zCon, num_con, 0);
 
@@ -1247,17 +1254,21 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
         lnksc_m[m_parity] += src_lsc[m] * cosmum;
       }
 
-      const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
-      r1_e[idx_jl] += rnkcc[kEvenParity];
-      ru_e[idx_jl] += rnkcc_m[kEvenParity];
-      z1_e[idx_jl] += znksc[kEvenParity];
-      zu_e[idx_jl] += znksc_m[kEvenParity];
-      lu_e[idx_jl] += lnksc_m[kEvenParity];
-      r1_o[idx_jl] += rnkcc[kOddParity];
-      ru_o[idx_jl] += rnkcc_m[kOddParity];
-      z1_o[idx_jl] += znksc[kOddParity];
-      zu_o[idx_jl] += znksc_m[kOddParity];
-      lu_o[idx_jl] += lnksc_m[kOddParity];
+      // ntor == 0: the same values go into every toroidal plane
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int idx_jkl =
+            ((jF - r_.nsMinF1) * s_.nZeta + k) * s_.nThetaEff + l;
+        r1_e[idx_jkl] += rnkcc[kEvenParity];
+        ru_e[idx_jkl] += rnkcc_m[kEvenParity];
+        z1_e[idx_jkl] += znksc[kEvenParity];
+        zu_e[idx_jkl] += znksc_m[kEvenParity];
+        lu_e[idx_jkl] += lnksc_m[kEvenParity];
+        r1_o[idx_jkl] += rnkcc[kOddParity];
+        ru_o[idx_jkl] += rnkcc_m[kOddParity];
+        z1_o[idx_jkl] += znksc[kOddParity];
+        zu_o[idx_jkl] += znksc_m[kOddParity];
+        lu_o[idx_jkl] += lnksc_m[kOddParity];
+      }  // k
     }  // l
   }  // j
 
@@ -1313,19 +1324,25 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
       const double scale =
           xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]);
 
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_ml = m * s_.nThetaReduced + l;
-        const double cosmu = t_.cosmu[idx_ml];
-        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        rCon[idx_con] += src_rcc[m] * cosmu * scale;
-      }  // l
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_ml = m * s_.nThetaReduced + l;
+          const double cosmu = t_.cosmu[idx_ml];
+          const int idx_con =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          rCon[idx_con] += src_rcc[m] * cosmu * scale;
+        }  // l
+      }  // k
 
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_ml = m * s_.nThetaReduced + l;
-        const double sinmu = t_.sinmu[idx_ml];
-        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        zCon[idx_con] += src_zsc[m] * sinmu * scale;
-      }  // l
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_ml = m * s_.nThetaReduced + l;
+          const double sinmu = t_.sinmu[idx_ml];
+          const int idx_con =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          zCon[idx_con] += src_zsc[m] * sinmu * scale;
+        }  // l
+      }  // k
     }  // m
   }  // jF
 }  // dft_FourierToReal_2d_symm
@@ -1337,14 +1354,14 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
 // the *_asym scratch arrays on the reduced poloidal interval [0, pi].
 void IdealMhdModel::dft_FourierToReal_2d_asymm(
     const FourierGeometry& physical_x) {
-  const int num_realsp = (r_.nsMaxF1 - r_.nsMinF1) * s_.nThetaEff;
+  const int num_realsp = (r_.nsMaxF1 - r_.nsMinF1) * s_.nZnT;
 
   for (auto* v : {&r1_asym_e, &r1_asym_o, &ru_asym_e, &ru_asym_o, &z1_asym_e,
                   &z1_asym_o, &zu_asym_e, &zu_asym_o, &lu_asym_e, &lu_asym_o}) {
     absl::c_fill_n(*v, num_realsp, 0);
   }
 
-  int num_con = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nThetaEff;
+  int num_con = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
   absl::c_fill_n(rCon_asym, num_con, 0);
   absl::c_fill_n(zCon_asym, num_con, 0);
 
@@ -1395,17 +1412,21 @@ void IdealMhdModel::dft_FourierToReal_2d_asymm(
         lnkcc_m[m_parity] += src_lcc[m] * t_.sinmum[idx_ml];
       }
 
-      const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
-      r1_asym_e[idx_jl] += rnksc[kEvenParity];
-      ru_asym_e[idx_jl] += rnksc_m[kEvenParity];
-      z1_asym_e[idx_jl] += znkcc[kEvenParity];
-      zu_asym_e[idx_jl] += znkcc_m[kEvenParity];
-      lu_asym_e[idx_jl] += lnkcc_m[kEvenParity];
-      r1_asym_o[idx_jl] += rnksc[kOddParity];
-      ru_asym_o[idx_jl] += rnksc_m[kOddParity];
-      z1_asym_o[idx_jl] += znkcc[kOddParity];
-      zu_asym_o[idx_jl] += znkcc_m[kOddParity];
-      lu_asym_o[idx_jl] += lnkcc_m[kOddParity];
+      // ntor == 0: the same values go into every toroidal plane
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int idx_jkl =
+            ((jF - r_.nsMinF1) * s_.nZeta + k) * s_.nThetaEff + l;
+        r1_asym_e[idx_jkl] += rnksc[kEvenParity];
+        ru_asym_e[idx_jkl] += rnksc_m[kEvenParity];
+        z1_asym_e[idx_jkl] += znkcc[kEvenParity];
+        zu_asym_e[idx_jkl] += znkcc_m[kEvenParity];
+        lu_asym_e[idx_jkl] += lnkcc_m[kEvenParity];
+        r1_asym_o[idx_jkl] += rnksc[kOddParity];
+        ru_asym_o[idx_jkl] += rnksc_m[kOddParity];
+        z1_asym_o[idx_jkl] += znkcc[kOddParity];
+        zu_asym_o[idx_jkl] += znkcc_m[kOddParity];
+        lu_asym_o[idx_jkl] += lnkcc_m[kOddParity];
+      }  // k
     }  // l
   }  // jF
 
@@ -1424,16 +1445,22 @@ void IdealMhdModel::dft_FourierToReal_2d_asymm(
       const double scale =
           xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]);
 
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_ml = m * s_.nThetaReduced + l;
-        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        rCon_asym[idx_con] += src_rsc[m] * t_.sinmu[idx_ml] * scale;
-      }  // l
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_ml = m * s_.nThetaReduced + l;
-        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        zCon_asym[idx_con] += src_zcc[m] * t_.cosmu[idx_ml] * scale;
-      }  // l
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_ml = m * s_.nThetaReduced + l;
+          const int idx_con =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          rCon_asym[idx_con] += src_rsc[m] * t_.sinmu[idx_ml] * scale;
+        }  // l
+      }  // k
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_ml = m * s_.nThetaReduced + l;
+          const int idx_con =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          zCon_asym[idx_con] += src_zcc[m] * t_.cosmu[idx_ml] * scale;
+        }  // l
+      }  // k
     }  // m
   }  // jF
 }  // dft_FourierToReal_2d_asymm
@@ -1799,10 +1826,17 @@ void IdealMhdModel::computeBContra() {
         0.5 * (m_p_.chipH[jFi - r_.nsMinH] + m_p_.chipH[jFi - 1 - r_.nsMinH]);
   }
   if (r_.nsMaxF1 == m_fc_.ns) {
-    // TODO(jons): inconsistent extrapolation ??? (see below)
+    // The linear extrapolation of a half-grid array onto the boundary, the
+    // same rule iotaF gets below. The 8.52 lineage uses 2*chips(ns) -
+    // chips(ns1), which lands a full step past the last half-grid point and
+    // breaks iota = chi'/phi' there by 0.5*(iotaH_last - iotaH_prev), 2.8% on
+    // cth_like_free_bdy. PARVMEC replaced it with this rule in add_fluxes.f90
+    // ("SPH FIXED THIS 4-8-16"), the same 2016 change that added the axis
+    // entry above. chipF feeds the threed1 first table and wout chipf only, so
+    // the converged equilibrium is unchanged.
     m_p_.chipF[r_.nsMaxF1 - 1 - r_.nsMinF1] =
-        2.0 * m_p_.chipH[r_.nsMaxH - 1 - r_.nsMinH] -
-        m_p_.chipH[r_.nsMaxH - 2 - r_.nsMinH];
+        1.5 * m_p_.chipH[r_.nsMaxH - 1 - r_.nsMinH] -
+        0.5 * m_p_.chipH[r_.nsMaxH - 2 - r_.nsMinH];
   }
 
   // update full-grid iota
@@ -1814,7 +1848,8 @@ void IdealMhdModel::computeBContra() {
         0.5 * (m_p_.iotaH[jFi - r_.nsMinH] + m_p_.iotaH[jFi - 1 - r_.nsMinH]);
   }
   if (r_.nsMaxF1 == m_fc_.ns) {
-    // TODO(jons): inconsistent extrapolation ??? (see above)
+    // The linear extrapolation of a half-grid array onto the boundary, the
+    // same form used at the axis above and for chipF.
     m_p_.iotaF[r_.nsMaxF1 - 1 - r_.nsMinF1] =
         1.5 * m_p_.iotaH[r_.nsMaxH - 1 - r_.nsMinH] -
         0.5 * m_p_.iotaH[r_.nsMaxH - 2 - r_.nsMinH];
@@ -2770,20 +2805,23 @@ void IdealMhdModel::dft_ForcesToFourierTranspose_2d_symm(
       const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
       const double fr = m_coeff_bar.frcc[idx_jm];
       const double fz = m_coeff_bar.fzsc[idx_jm];
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        const int idx_ml = m * s_.nThetaReduced + l;
-        const double cosmui = t_.cosmui[idx_ml];
-        const double sinmumi = t_.sinmumi[idx_ml];
-        const double sinmui = t_.sinmui[idx_ml];
-        const double cosmumi = t_.cosmumi[idx_ml];
-        armn[idx_jl] += fr * cosmui;
-        brmn[idx_jl] += fr * sinmumi;
-        frcon[idx_jl] += fr * xmpq[m] * cosmui;
-        azmn[idx_jl] += fz * sinmui;
-        bzmn[idx_jl] += fz * cosmumi;
-        fzcon[idx_jl] += fz * xmpq[m] * sinmui;
-      }  // l
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_jl =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          const int idx_ml = m * s_.nThetaReduced + l;
+          const double cosmui = t_.cosmui[idx_ml];
+          const double sinmumi = t_.sinmumi[idx_ml];
+          const double sinmui = t_.sinmui[idx_ml];
+          const double cosmumi = t_.cosmumi[idx_ml];
+          armn[idx_jl] += fr * cosmui;
+          brmn[idx_jl] += fr * sinmumi;
+          frcon[idx_jl] += fr * xmpq[m] * cosmui;
+          azmn[idx_jl] += fz * sinmui;
+          bzmn[idx_jl] += fz * cosmumi;
+          fzcon[idx_jl] += fz * xmpq[m] * sinmui;
+        }  // l
+      }  // k
     }  // m
   }  // jF
   for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
@@ -2792,11 +2830,14 @@ void IdealMhdModel::dft_ForcesToFourierTranspose_2d_symm(
       auto& blmn = m_even ? blmn_e : blmn_o;
       const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
       const double fl = m_coeff_bar.flsc[idx_jm];
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        const double cosmumi = t_.cosmumi[m * s_.nThetaReduced + l];
-        blmn[idx_jl] += fl * cosmumi;
-      }  // l
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_jl =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          const double cosmumi = t_.cosmumi[m * s_.nThetaReduced + l];
+          blmn[idx_jl] += fl * cosmumi;
+        }  // l
+      }  // k
     }  // m
   }  // jF
 }
@@ -2811,27 +2852,30 @@ void IdealMhdModel::dft_FourierToRealTranspose_2d_symm(
     double* dst_rcc = &(m_coeff_bar_out.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
     double* dst_zsc = &(m_coeff_bar_out.zmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
     double* dst_lsc = &(m_coeff_bar_out.lmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
-    for (int l = 0; l < s_.nThetaReduced; ++l) {
-      const int idx_jl = (jF - r_.nsMinF1) * s_.nThetaEff + l;
-      const double r1eb = r1_e[idx_jl], rueb = ru_e[idx_jl],
-                   z1eb = z1_e[idx_jl], zueb = zu_e[idx_jl],
-                   lueb = lu_e[idx_jl];
-      const double r1ob = r1_o[idx_jl], ruob = ru_o[idx_jl],
-                   z1ob = z1_o[idx_jl], zuob = zu_o[idx_jl],
-                   luob = lu_o[idx_jl];
-      const int num_m = (jF == 0) ? 2 : s_.mpol;
-      for (int m = 0; m < num_m; ++m) {
-        const int p = m % 2;
-        const int idx_ml = m * s_.nThetaReduced + l;
-        const double cosmu = t_.cosmu[idx_ml];
-        const double sinmum = t_.sinmum[idx_ml];
-        const double sinmu = t_.sinmu[idx_ml];
-        const double cosmum = t_.cosmum[idx_ml];
-        dst_rcc[m] += (p ? r1ob : r1eb) * cosmu + (p ? ruob : rueb) * sinmum;
-        dst_zsc[m] += (p ? z1ob : z1eb) * sinmu + (p ? zuob : zueb) * cosmum;
-        dst_lsc[m] += (p ? luob : lueb) * cosmum;
-      }  // m
-    }  // l
+    for (int k = 0; k < s_.nZeta; ++k) {
+      for (int l = 0; l < s_.nThetaReduced; ++l) {
+        const int idx_jl =
+            ((jF - r_.nsMinF1) * s_.nZeta + k) * s_.nThetaEff + l;
+        const double r1eb = r1_e[idx_jl], rueb = ru_e[idx_jl],
+                     z1eb = z1_e[idx_jl], zueb = zu_e[idx_jl],
+                     lueb = lu_e[idx_jl];
+        const double r1ob = r1_o[idx_jl], ruob = ru_o[idx_jl],
+                     z1ob = z1_o[idx_jl], zuob = zu_o[idx_jl],
+                     luob = lu_o[idx_jl];
+        const int num_m = (jF == 0) ? 2 : s_.mpol;
+        for (int m = 0; m < num_m; ++m) {
+          const int p = m % 2;
+          const int idx_ml = m * s_.nThetaReduced + l;
+          const double cosmu = t_.cosmu[idx_ml];
+          const double sinmum = t_.sinmum[idx_ml];
+          const double sinmu = t_.sinmu[idx_ml];
+          const double cosmum = t_.cosmum[idx_ml];
+          dst_rcc[m] += (p ? r1ob : r1eb) * cosmu + (p ? ruob : rueb) * sinmum;
+          dst_zsc[m] += (p ? z1ob : z1eb) * sinmu + (p ? zuob : zueb) * cosmum;
+          dst_lsc[m] += (p ? luob : lueb) * cosmum;
+        }  // m
+      }  // l
+    }  // k
   }  // jF
   for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
     double* dst_rcc = &(m_coeff_bar_out.rmncc[(jF - r_.nsMinF1) * s_.mnsize]);
@@ -2840,12 +2884,15 @@ void IdealMhdModel::dft_FourierToRealTranspose_2d_symm(
     for (int m = 0; m < num_m; ++m) {
       const int p = m % 2;
       const double scale = xmpq[m] * (1 - p + p * m_p_.sqrtSF[jF - r_.nsMinF1]);
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_ml = m * s_.nThetaReduced + l;
-        const int idx_con = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        dst_rcc[m] += rCon[idx_con] * t_.cosmu[idx_ml] * scale;
-        dst_zsc[m] += zCon[idx_con] * t_.sinmu[idx_ml] * scale;
-      }  // l
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_ml = m * s_.nThetaReduced + l;
+          const int idx_con =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          dst_rcc[m] += rCon[idx_con] * t_.cosmu[idx_ml] * scale;
+          dst_zsc[m] += zCon[idx_con] * t_.sinmu[idx_ml] * scale;
+        }  // l
+      }  // k
     }  // m
   }  // jF
 }
@@ -3340,7 +3387,7 @@ void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {
 }
 
 void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
-  // in here, we can safely assume lthreed == false
+  // ntor == 0: no toroidal modes, but nZeta may exceed 1
 
   // fill target force arrays with zeros
   m_physical_f.setZero();
@@ -3378,30 +3425,33 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
       const auto& frcon = m_even ? frcon_e : frcon_o;
       const auto& fzcon = m_even ? fzcon_e : fzcon_o;
 
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_jl =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
 
-        const double rnkcc = armn[idx_jl];
-        const double rnkcc_m = brmn[idx_jl];
-        const double znksc = azmn[idx_jl];
-        const double znksc_m = bzmn[idx_jl];
+          const double rnkcc = armn[idx_jl];
+          const double rnkcc_m = brmn[idx_jl];
+          const double znksc = azmn[idx_jl];
+          const double znksc_m = bzmn[idx_jl];
 
-        const double rcon_cc = frcon[idx_jl];
-        const double zcon_sc = fzcon[idx_jl];
+          const double rcon_cc = frcon[idx_jl];
+          const double zcon_sc = fzcon[idx_jl];
 
-        const int idx_ml = m * s_.nThetaReduced + l;
-        const double cosmui = t_.cosmui[idx_ml];
-        const double sinmumi = t_.sinmumi[idx_ml];
-        const double sinmui = t_.sinmui[idx_ml];
-        const double cosmumi = t_.cosmumi[idx_ml];
-        // assemble effective R and Z forces from MHD and spectral condensation
-        // contributions
-        const double _rcc = rnkcc + xmpq[m] * rcon_cc;
-        m_physical_f.frcc[idx_jm] += _rcc * cosmui + rnkcc_m * sinmumi;
+          const int idx_ml = m * s_.nThetaReduced + l;
+          const double cosmui = t_.cosmui[idx_ml];
+          const double sinmumi = t_.sinmumi[idx_ml];
+          const double sinmui = t_.sinmui[idx_ml];
+          const double cosmumi = t_.cosmumi[idx_ml];
+          // assemble effective R and Z forces from MHD and spectral
+          // condensation contributions
+          const double _rcc = rnkcc + xmpq[m] * rcon_cc;
+          m_physical_f.frcc[idx_jm] += _rcc * cosmui + rnkcc_m * sinmumi;
 
-        const double _zsc = znksc + xmpq[m] * zcon_sc;
-        m_physical_f.fzsc[idx_jm] += _zsc * sinmui + znksc_m * cosmumi;
-      }  // m
+          const double _zsc = znksc + xmpq[m] * zcon_sc;
+          m_physical_f.fzsc[idx_jm] += _zsc * sinmui + znksc_m * cosmumi;
+        }  // l
+      }  // k
     }  // l
   }  // jF
 
@@ -3415,13 +3465,16 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
       const auto& blmn = m_even ? blmn_e : blmn_o;
       const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
 
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        const double lnksc_m = blmn[idx_jl];
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_jl =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          const double lnksc_m = blmn[idx_jl];
 
-        const double cosmumi = t_.cosmumi[m * s_.nThetaReduced + l];
-        m_physical_f.flsc[idx_jm] += lnksc_m * cosmumi;
-      }  // m
+          const double cosmumi = t_.cosmumi[m * s_.nThetaReduced + l];
+          m_physical_f.flsc[idx_jm] += lnksc_m * cosmumi;
+        }  // l
+      }  // k
     }  // l
   }  // jF
 }  // dft_ForcesToFourier_2d_symm
@@ -3527,28 +3580,31 @@ void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
       const auto& frcon = m_even ? frcon_asym_e : frcon_asym_o;
       const auto& fzcon = m_even ? fzcon_asym_e : fzcon_asym_o;
 
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_jl =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
 
-        const double rnksc = armn[idx_jl];
-        const double rnksc_m = brmn[idx_jl];
-        const double znkcc = azmn[idx_jl];
-        const double znkcc_m = bzmn[idx_jl];
-        const double rcon_sc = frcon[idx_jl];
-        const double zcon_cc = fzcon[idx_jl];
+          const double rnksc = armn[idx_jl];
+          const double rnksc_m = brmn[idx_jl];
+          const double znkcc = azmn[idx_jl];
+          const double znkcc_m = bzmn[idx_jl];
+          const double rcon_sc = frcon[idx_jl];
+          const double zcon_cc = fzcon[idx_jl];
 
-        const int idx_ml = m * s_.nThetaReduced + l;
-        const double cosmui = t_.cosmui[idx_ml];
-        const double sinmui = t_.sinmui[idx_ml];
-        const double cosmumi = t_.cosmumi[idx_ml];
-        const double sinmumi = t_.sinmumi[idx_ml];
+          const int idx_ml = m * s_.nThetaReduced + l;
+          const double cosmui = t_.cosmui[idx_ml];
+          const double sinmui = t_.sinmui[idx_ml];
+          const double cosmumi = t_.cosmumi[idx_ml];
+          const double sinmumi = t_.sinmumi[idx_ml];
 
-        const double _rsc = rnksc + xmpq[m] * rcon_sc;
-        m_physical_f.frsc[idx_jm] += _rsc * sinmui + rnksc_m * cosmumi;
+          const double _rsc = rnksc + xmpq[m] * rcon_sc;
+          m_physical_f.frsc[idx_jm] += _rsc * sinmui + rnksc_m * cosmumi;
 
-        const double _zcc = znkcc + xmpq[m] * zcon_cc;
-        m_physical_f.fzcc[idx_jm] += _zcc * cosmui + znkcc_m * sinmumi;
-      }  // l
+          const double _zcc = znkcc + xmpq[m] * zcon_cc;
+          m_physical_f.fzcc[idx_jm] += _zcc * cosmui + znkcc_m * sinmumi;
+        }  // l
+      }  // k
     }  // m
   }  // jF
 
@@ -3559,13 +3615,16 @@ void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
       const auto& blmn = m_even ? blmn_asym_e : blmn_asym_o;
       const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
 
-      for (int l = 0; l < s_.nThetaReduced; ++l) {
-        const int idx_jl = (jF - r_.nsMinF) * s_.nThetaEff + l;
-        const double lnkcc_m = blmn[idx_jl];
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_jl =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          const double lnkcc_m = blmn[idx_jl];
 
-        const double sinmumi = t_.sinmumi[m * s_.nThetaReduced + l];
-        m_physical_f.flcc[idx_jm] += lnkcc_m * sinmumi;
-      }  // l
+          const double sinmumi = t_.sinmumi[m * s_.nThetaReduced + l];
+          m_physical_f.flcc[idx_jm] += lnkcc_m * sinmumi;
+        }  // l
+      }  // k
     }  // m
   }  // jF
 }  // dft_ForcesToFourier_2d_asymm
