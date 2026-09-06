@@ -360,6 +360,75 @@ void CheckPrescribedIotaProfile(const vmecpp::WOutFileContents& w,
 
 }  // namespace
 
+// A run without toroidal modes gives the same equilibrium on a toroidal grid
+// as on a single plane: the 2D transforms fill and sum every plane, as totzsps
+// and tomnsps do for nzeta > 1 with ntor = 0.
+TEST(TestVmec, AxisymmetricRunIsIndependentOfNzeta) {
+  struct Case {
+    std::string filename;
+    int nzeta;
+  };
+  for (const Case& c : {Case{"vmecpp/test_data/solovev.json", 8},
+                        Case{"vmecpp/test_data/up_down_asym.json", 6}}) {
+    absl::StatusOr<std::string> indata_json = ReadFile(c.filename);
+    ASSERT_TRUE(indata_json.ok());
+    absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+    ASSERT_TRUE(indata.ok());
+    ASSERT_EQ(indata->ntor, 0);
+
+    const auto single_plane = vmecpp::run(*indata);
+    ASSERT_TRUE(single_plane.ok()) << c.filename;
+
+    VmecINDATA indata_planes = *indata;
+    indata_planes.nzeta = c.nzeta;
+    const auto planes = vmecpp::run(indata_planes);
+    ASSERT_TRUE(planes.ok()) << c.filename << ": " << planes.status();
+
+    const auto& a = single_plane->wout;
+    const auto& b = planes->wout;
+
+    // The sum over identical planes changes the round-off, which the descent
+    // carries into lambda at the 1e-9 level.
+    const double kTol = 1.0e-8;
+    auto rel_max = [](const auto& x, const auto& y) -> double {
+      const double peak = x.cwiseAbs().maxCoeff();
+      return (x - y).cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
+    };
+    EXPECT_TRUE(IsCloseRelAbs(a.wb, b.wb, kTol)) << c.filename;
+    EXPECT_TRUE(IsCloseRelAbs(a.volume, b.volume, kTol)) << c.filename;
+    EXPECT_LT(rel_max(a.rmnc, b.rmnc), kTol) << c.filename;
+    EXPECT_LT(rel_max(a.zmns, b.zmns), kTol) << c.filename;
+    EXPECT_LT(rel_max(a.lmns_full, b.lmns_full), kTol) << c.filename;
+    EXPECT_LT(rel_max(a.iotaf, b.iotaf), kTol) << c.filename;
+    EXPECT_LT(rel_max(a.jcurv, b.jcurv), kTol) << c.filename;
+    if (indata->lasym) {
+      EXPECT_LT(rel_max(a.rmns, b.rmns), kTol) << c.filename;
+      EXPECT_LT(rel_max(a.zmnc, b.zmnc), kTol) << c.filename;
+      EXPECT_LT(rel_max(a.lmnc_full, b.lmnc_full), kTol) << c.filename;
+    }
+
+    // The Nyquist spectrum grows with nzeta: its n = 0 rows follow the
+    // single-plane spectrum in order, and the other rows stay at zero.
+    const double b_peak = a.bmnc.cwiseAbs().maxCoeff();
+    int mn_single = 0;
+    for (int mn = 0; mn < b.mnmax_nyq; ++mn) {
+      if (b.xn_nyq[mn] != 0) {
+        EXPECT_LT(b.bmnc.row(mn).cwiseAbs().maxCoeff() / b_peak, kTol)
+            << c.filename;
+        continue;
+      }
+      ASSERT_LT(mn_single, a.mnmax_nyq);
+      ASSERT_EQ(b.xm_nyq[mn], a.xm_nyq[mn_single]);
+      EXPECT_LT((a.bmnc.row(mn_single) - b.bmnc.row(mn)).cwiseAbs().maxCoeff() /
+                    b_peak,
+                kTol)
+          << c.filename;
+      mn_single++;
+    }
+    EXPECT_EQ(mn_single, a.mnmax_nyq);
+  }
+}
+
 // lasym = F, lthreed = T, ncurr = 0, lfreeb = F.
 // Every other three-dimensional case in the suite constrains the current, so
 // this is the only place the constrained-iota path runs in 3D.
