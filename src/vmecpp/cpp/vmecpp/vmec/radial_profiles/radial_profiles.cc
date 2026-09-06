@@ -944,7 +944,7 @@ double RadialProfiles::evalRational(const Eigen::VectorXd& coeffs, double x) {
                               : std::numeric_limits<double>::max();
 }
 
-// Linear interpolation between closest points and associated knots.
+// Linear interpolation between the two knots that bracket x.
 // Clamp the profile if x is outside the range of knots.
 double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
                                        const Eigen::VectorXd& splineValues,
@@ -953,20 +953,22 @@ double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
   if (n < 2 || n != static_cast<int>(splineValues.size())) {
     return 0.0;
   }
-  auto it = std::lower_bound(splineKnots.begin(), splineKnots.end(), x);
-  if (it >= (splineKnots.end() - 1)) {
-    // x is out of bounds (or x1 = it+1 would be out of bounds)
-    return splineValues[n - 1];
-  }
-  if (it == splineKnots.begin()) {
-    // x is below the first knot
+  if (x <= splineKnots[0]) {
     return splineValues[0];
   }
-  const double x0 = *it;
-  const double x1 = *(it + 1);
-  int ilow = static_cast<int>(std::distance(splineKnots.begin(), it));
+  if (x >= splineKnots[n - 1]) {
+    return splineValues[n - 1];
+  }
+  // The first knot strictly above x and the knot before it, which is the last
+  // one at or below x, enclose x, so the interval has positive length.
+  const auto upper =
+      std::upper_bound(splineKnots.begin(), splineKnots.end(), x);
+  const int ihigh = static_cast<int>(std::distance(splineKnots.begin(), upper));
+  const int ilow = ihigh - 1;
+  const double x0 = splineKnots[ilow];
+  const double x1 = splineKnots[ihigh];
   const double y0 = splineValues[ilow];
-  const double y1 = splineValues[ilow + 1];
+  const double y1 = splineValues[ihigh];
   const double t = (x - x0) / (x1 - x0);
   return (1.0 - t) * y0 + t * y1;
 }
