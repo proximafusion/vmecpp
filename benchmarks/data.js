@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788723875967,
+  "lastUpdate": 1788724648131,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -16391,6 +16391,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.21319518500001777,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "279bfc0989958193e58d265baeeec7c811ebc5eb",
+          "message": "Scale the sum_atan arctangent terms by 2/pi (#800)",
+          "timestamp": "2026-09-06T21:37:55+02:00",
+          "tree_id": "c44e7d669afb007e1297a7373f53af3467cd4ca7",
+          "url": "https://github.com/proximafusion/vmecpp/commit/279bfc0989958193e58d265baeeec7c811ebc5eb"
+        },
+        "date": 1788724646122,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.37709338820004634,
+            "range": "stddev: 0.007429048744255755",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.664332153333286,
+            "range": "stddev: 0.047129506048892315",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1250304870000036,
+            "range": "stddev: 0.007476546166092158",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6329094849999894,
+            "range": "stddev: 0.037191797330625484",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.254905854666655,
+            "range": "stddev: 0.02467751660414337",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.446569231000012,
+            "range": "stddev: 0.01868203021193988",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.278568425000003,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.383867572999975,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
