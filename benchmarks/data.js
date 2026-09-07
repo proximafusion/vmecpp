@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788769841734,
+  "lastUpdate": 1788770648083,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17031,6 +17031,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.2381792110000447,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "72d0c76f2ab84b5edaaf54f3d85f03a6308df26d",
+          "message": "Answer the open questions in ideal_mhd_model (#731)\n\n* Answer the open questions in ideal_mhd_model\n\n* Drop the redundant lambda preconditioner fill and derive pFactor from the numerics writeup",
+          "timestamp": "2026-09-07T10:35:00+02:00",
+          "tree_id": "ba8e0cf6885419c2fa23120e78daa9aa7bd1fada",
+          "url": "https://github.com/proximafusion/vmecpp/commit/72d0c76f2ab84b5edaaf54f3d85f03a6308df26d"
+        },
+        "date": 1788770643451,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3582675922000135,
+            "range": "stddev: 0.0021521844617265304",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.573539118333296,
+            "range": "stddev: 0.04253799490151599",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.139828914333312,
+            "range": "stddev: 0.01348903546766555",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6775447103333363,
+            "range": "stddev: 0.06433639655162057",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.2453779753333265,
+            "range": "stddev: 0.008213175752155036",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.538419886000004,
+            "range": "stddev: 0.007545008536892965",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.6532505499999957,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3943828000000167,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
