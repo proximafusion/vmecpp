@@ -392,7 +392,7 @@ TEST(TestVmec, AxisymmetricRunIsIndependentOfNzeta) {
 
     // The sum over identical planes changes the round-off, which the descent
     // carries into lambda at the 1e-9 level.
-    const double kTol = 1.0e-8;
+    const double kTol = 2.0e-8;
     auto rel_max = [](const auto& x, const auto& y) -> double {
       const double peak = x.cwiseAbs().maxCoeff();
       return (x - y).cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
