@@ -229,10 +229,10 @@ def vmecpp_json_to_indata(vmecpp_json: dict[str, Any]) -> str:
     indata += _int_to_namelist("nvacskip", vmecpp_json)
 
     indata += "\n  ! initial guess for magnetic axis\n"
-    indata += _float_array_to_namelist("raxis_cc", vmecpp_json)
-    indata += _float_array_to_namelist("zaxis_cs", vmecpp_json)
-    indata += _float_array_to_namelist("raxis_cs", vmecpp_json)
-    indata += _float_array_to_namelist("zaxis_cc", vmecpp_json)
+    indata += _float_array_to_namelist("raxis_c", vmecpp_json, namelist_name="raxis_cc")
+    indata += _float_array_to_namelist("zaxis_s", vmecpp_json, namelist_name="zaxis_cs")
+    indata += _float_array_to_namelist("raxis_s", vmecpp_json, namelist_name="raxis_cs")
+    indata += _float_array_to_namelist("zaxis_c", vmecpp_json, namelist_name="zaxis_cc")
 
     indata += "\n  ! (initial guess for) boundary shape\n"
     indata += _fourier_coefficients_to_namelist("rbc", vmecpp_json)
@@ -284,14 +284,16 @@ def _int_array_to_namelist(varname: str, vmecpp_json: dict[str, Any]) -> str:
     return ""
 
 
-def _float_array_to_namelist(varname: str, vmecpp_json: dict[str, Any]) -> str:
+def _float_array_to_namelist(
+    varname: str, vmecpp_json: dict[str, Any], namelist_name: str | None = None
+) -> str:
     if (
         varname in vmecpp_json
         and vmecpp_json[varname] is not None
         and len(vmecpp_json[varname]) > 0
     ):
         elements = ", ".join([f"{x:.20e}" for x in vmecpp_json[varname]])
-        return f"  {varname} = {elements}\n"
+        return f"  {namelist_name or varname} = {elements}\n"
     return ""
 
 
