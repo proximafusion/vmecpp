@@ -267,6 +267,49 @@ TEST(TestVmecINDATA, CheckSplineProfilesNeedKnots) {
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
+// Below its knot count a spline evaluator returns zero for every s, so the run
+// converges to an equilibrium without the requested profile. The cubic and
+// Akima families need four knots, the line segments two.
+TEST(TestVmecINDATA, CheckSplineProfilesNeedEnoughKnots) {
+  struct Case {
+    std::string name;
+    int minimum;
+  };
+  for (const Case& c : {Case{"akima_spline", 4}, Case{"cubic_spline", 4},
+                        Case{"line_segment", 2}}) {
+    VmecINDATA indata;
+    indata.pmass_type = c.name;
+
+    indata.am_aux_s = Eigen::VectorXd::LinSpaced(c.minimum - 1, 0.0, 1.0);
+    indata.am_aux_f = Eigen::VectorXd::Zero(c.minimum - 1);
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+
+    indata.am_aux_s = Eigen::VectorXd::LinSpaced(c.minimum, 0.0, 1.0);
+    indata.am_aux_f = Eigen::VectorXd::Zero(c.minimum);
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+  }
+
+  // the current and iota profiles are held to the same counts
+  for (const Case& c :
+       {Case{"akima_spline_ip", 4}, Case{"line_segment_i", 2}}) {
+    VmecINDATA indata;
+    indata.ncurr = 1;
+    indata.pcurr_type = c.name;
+    indata.ac_aux_s = Eigen::VectorXd::LinSpaced(c.minimum - 1, 0.0, 1.0);
+    indata.ac_aux_f = Eigen::VectorXd::Zero(c.minimum - 1);
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+  }
+
+  VmecINDATA iota_indata;
+  iota_indata.piota_type = "cubic_spline";
+  iota_indata.ai_aux_s = Eigen::VectorXd::LinSpaced(3, 0.0, 1.0);
+  iota_indata.ai_aux_f = Eigen::VectorXd::Zero(3);
+  EXPECT_FALSE(IsConsistent(iota_indata, /*enable_info_messages=*/false).ok());
+}
+
 TEST(TestVmecINDATA, ToJson) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_free_bdy.json");

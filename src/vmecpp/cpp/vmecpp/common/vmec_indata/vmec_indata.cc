@@ -86,6 +86,13 @@ absl::Status CheckProfile(const std::string& type_key,
           "but have %d and %d\n",
           aux_key, aux_key, aux_s.size(), aux_f.size()));
     }
+    const int minimum_points = parameterization->MinimumSplinePoints();
+    if (aux_s.size() < minimum_points) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "'%s' is '%s', which needs at least %d spline points, but "
+          "'%s_aux_s' has %d\n",
+          type_key, type_name, minimum_points, aux_key, aux_s.size()));
+    }
   }
 
   return absl::OkStatus();

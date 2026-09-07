@@ -27,15 +27,18 @@ class ProfileParameterizationData {
  public:
   ProfileParameterizationData(const std::string& name, bool allowedForPres,
                               bool allowedForCurr, bool allowedForIota,
-                              bool needsSplineData);
+                              int minimumSplinePoints);
 
   const std::string& Name() const;
+  // Number of knots the evaluator needs; 0 for a parameterization that takes
+  // polynomial coefficients instead.
+  int MinimumSplinePoints() const;
   bool NeedsSplineData() const;
   AllowedFor IsAllowedFor() const;
 
  private:
   const std::string name_;
-  bool needsSplineData_;
+  int minimumSplinePoints_;
   AllowedFor allowedFor_;
 };
 
