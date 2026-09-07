@@ -3,7 +3,8 @@ import jax.numpy as jnp
 import numpy as np
 
 import vmecpp
-from vmecpp import geometry, qs
+from vmecpp import geometry
+from vmecpp import simsopt_compat as qs
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 jax.config.update("jax_enable_x64", True)
