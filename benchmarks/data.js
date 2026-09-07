@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788786937906,
+  "lastUpdate": 1788822244450,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17351,6 +17351,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4971617809999884,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "94db0496c8468b48d79a13ab7340831090207ab5",
+          "message": "Scale extcur with the magnetic field when rescaling a free-boundary equilibrium (#824)\n\n* Scale extcur with the magnetic field when rescaling a free-boundary equilibrium\n\nCo-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_01QG1y5xASoAYZtrdSLwTrPN\n\n* Build the free-boundary rescale tests from the coils file and pass the response table through rescale\n\n---------\n\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-09-08T00:57:08+02:00",
+          "tree_id": "94d2171b6a2e8c1b4c2d9d0076cc6fd34a94cecc",
+          "url": "https://github.com/proximafusion/vmecpp/commit/94db0496c8468b48d79a13ab7340831090207ab5"
+        },
+        "date": 1788822237689,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.33705177619998494,
+            "range": "stddev: 0.0014706558743681406",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.8646453626666926,
+            "range": "stddev: 0.011235734380268175",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.129381016000006,
+            "range": "stddev: 0.0047770947436276846",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.933204035000017,
+            "range": "stddev: 0.06400079306491198",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.7309607930000084,
+            "range": "stddev: 0.020960081063857328",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.67292742766665,
+            "range": "stddev: 0.019247316112490025",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.098436088999961,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.36385983699994995,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
