@@ -2033,11 +2033,12 @@ void vmecpp::FixupPoloidalCurrent(
 
 void vmecpp::RecomputeToroidalFlux(
     const FlowControl& fc, VmecInternalResults& m_vmec_internal_results) {
-  // quadrature in radial direction
+  // radial quadrature over the half-grid dphi/ds between the two full-grid
+  // surfaces, which is exact for a linear dphi/ds
   m_vmec_internal_results.phiF[0] = 0.0;
   for (int jF = 1; jF < fc.ns; ++jF) {
     m_vmec_internal_results.phiF[jF] = m_vmec_internal_results.phiF[jF - 1] +
-                                       m_vmec_internal_results.phipF[jF - 1];
+                                       m_vmec_internal_results.phipH[jF - 1];
   }  // jF
 
   // now apply scaling
@@ -2985,7 +2986,11 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     // The loop in jxbforce.f90:594 goes over js=2,ns1,
     // which means that the last half-grid point is not touched.
     for (int jH = 0; jH < vmec_internal_results.num_half - 1; ++jH) {
-      const double ovp = 1.0 / vmec_internal_results.dVdsH[jH] / dnorm1;
+      // row jH holds the full-grid surface jF = jH + 1
+      const double ovp = 2.0 /
+                         (vmec_internal_results.dVdsH[jH + 1] +
+                          vmec_internal_results.dVdsH[jH]) /
+                         dnorm1;
 
       for (int kl = 0; kl < s.nZnT; ++kl) {
         const int target_index = jH * s.nZnT + kl;
