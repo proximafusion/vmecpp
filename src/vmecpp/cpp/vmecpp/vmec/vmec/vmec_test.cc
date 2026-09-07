@@ -903,3 +903,57 @@ TEST(TestVmec, InconsistentIndataIsRejectedBeforeConstruction) {
     }
   }
 }  // InconsistentIndataIsRejectedBeforeConstruction
+
+// The nvacskip cadence only starts once the R and Z force residuals have
+// settled, so two free-boundary runs that differ only in nvacskip share the
+// same force-residual history up to that evaluation.
+TEST(TestVmec, VacuumUpdateCadenceStartsWhenResidualsSettle) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  // a single grid step, to keep the multi-grid transitions out of it
+  auto solve = [&](int nvacskip) {
+    VmecINDATA indata = *base_indata;
+    indata.ns_array = Eigen::VectorXi::Constant(1, 16);
+    indata.ftol_array = Eigen::VectorXd::Constant(1, 1.0e-10);
+    indata.niter_array = Eigen::VectorXi::Constant(1, 5000);
+    indata.nvacskip = nvacskip;
+    return vmecpp::run(indata, std::nullopt, 1);
+  };
+
+  const auto every_iteration = solve(1);
+  ASSERT_TRUE(every_iteration.ok());
+  const auto strided = solve(24);
+  ASSERT_TRUE(strided.ok());
+
+  const Eigen::VectorXd& fsqr = every_iteration->wout.force_residual_r;
+  const Eigen::VectorXd& fsqz = every_iteration->wout.force_residual_z;
+  const Eigen::VectorXd& fsqr_strided = strided->wout.force_residual_r;
+  const Eigen::VectorXd& fsqz_strided = strided->wout.force_residual_z;
+
+  // The vacuum pressure is switched on at the first evaluation below the
+  // threshold; the cadence can first take effect at the second one.
+  int below_threshold = 0;
+  int settled = -1;
+  for (int i = 0; i < fsqr.size(); ++i) {
+    if (fsqr(i) + fsqz(i) < 1.0e-3) {
+      ++below_threshold;
+      if (below_threshold == 2) {
+        settled = i;
+        break;
+      }
+    }
+  }
+  ASSERT_GE(settled, 20) << "the free-boundary transient is too short to "
+                            "distinguish the two cadences";
+  ASSERT_LE(settled, fsqr_strided.size());
+
+  for (int i = 0; i < settled; ++i) {
+    EXPECT_EQ(fsqr(i), fsqr_strided(i)) << "evaluation " << i;
+    EXPECT_EQ(fsqz(i), fsqz_strided(i)) << "evaluation " << i;
+  }
+}  // VacuumUpdateCadenceStartsWhenResidualsSettle
