@@ -145,6 +145,7 @@ TEST_P(AnalytTest, CheckAnalyt) {
     const int mf = s.mpol + 1;
     const int mnfull = (2 * nf + 1) * (mf + 1);
     std::vector<double> bvec_sin(mnfull, 0.0);
+    std::vector<double> bvec_cos(mnfull, 0.0);
 
     for (int thread_id = 0; thread_id < vmec.vac_num_threads_; ++thread_id) {
       const Nestor& n = static_cast<const Nestor&>(*vmec.fb_vac_[thread_id]);
@@ -172,6 +173,9 @@ TEST_P(AnalytTest, CheckAnalyt) {
       // --> accumulate contributions to Fourier transform from all threads
       for (int mn = 0; mn < mnfull; ++mn) {
         bvec_sin[mn] += si.bvec_sin[mn];
+        if (s.lasym) {
+          bvec_cos[mn] += si.bvec_cos[mn];
+        }
       }
 
       if (vmec.m_[0]->get_ivacskip() == 0) {
@@ -205,7 +209,6 @@ TEST_P(AnalytTest, CheckAnalyt) {
               // cmns in Fortran has alp (= 2 pi / nfp) in it; VMEC++ does not
               const double scale_to_match_fortran = 2.0 * M_PI / s.nfp;
 
-              // Only the sin part; educational_VMEC dumps no cos part of grpmn.
               EXPECT_TRUE(
                   IsCloseRelAbs(vac1n_analyt["grpmn"][m][nf + n][k][l],
                                 scale_to_match_fortran *
@@ -216,6 +219,21 @@ TEST_P(AnalytTest, CheckAnalyt) {
                                 scale_to_match_fortran *
                                     si.grpmn_sin[idx_m_negn * numLocal + klRel],
                                 tolerance));
+
+              if (s.lasym) {
+                EXPECT_TRUE(IsCloseRelAbs(
+                    vac1n_analyt["grpmn_cos"][m][nf + n][k][l],
+                    scale_to_match_fortran *
+                        si.grpmn_cos[idx_m_posn * numLocal + klRel],
+                    tolerance))
+                    << "m = " << m << ", n = " << n << ", kl = " << kl;
+                EXPECT_TRUE(IsCloseRelAbs(
+                    vac1n_analyt["grpmn_cos"][m][nf - n][k][l],
+                    scale_to_match_fortran *
+                        si.grpmn_cos[idx_m_negn * numLocal + klRel],
+                    tolerance))
+                    << "m = " << m << ", n = " << n << ", kl = " << kl;
+              }
             }  // kl
           }  // m
         }  // n
@@ -232,8 +250,6 @@ TEST_P(AnalytTest, CheckAnalyt) {
         const double scale_to_match_fortran =
             2.0 * M_PI / s.nfp * 4.0 * M_PI * M_PI;
 
-        // Only the sin part; educational_VMEC dumps no cos part of bvec.
-
         // Fortran order along n in bvec: -nf, -nf+1, ..., -1, 0, 1, ..., nf-1,
         // nf
         EXPECT_TRUE(IsCloseRelAbs(vac1n_analyt["bvec"][m][nf + n],
@@ -242,6 +258,17 @@ TEST_P(AnalytTest, CheckAnalyt) {
         EXPECT_TRUE(IsCloseRelAbs(vac1n_analyt["bvec"][m][nf - n],
                                   scale_to_match_fortran * bvec_sin[idx_m_negn],
                                   tolerance));
+
+        if (s.lasym) {
+          EXPECT_TRUE(IsCloseRelAbs(
+              vac1n_analyt["bvec_cos"][m][nf + n],
+              scale_to_match_fortran * bvec_cos[idx_m_posn], tolerance))
+              << "m = " << m << ", n = " << n;
+          EXPECT_TRUE(IsCloseRelAbs(
+              vac1n_analyt["bvec_cos"][m][nf - n],
+              scale_to_match_fortran * bvec_cos[idx_m_negn], tolerance))
+              << "m = " << m << ", n = " << n;
+        }
       }  // m
     }  // n
   }
@@ -250,6 +277,10 @@ TEST_P(AnalytTest, CheckAnalyt) {
 INSTANTIATE_TEST_SUITE_P(TestSingularIntegrals, AnalytTest,
                          Values(DataSource{.identifier = "cth_like_free_bdy",
                                            .tolerance = 1.0e-9,
-                                           .iter2_to_test = {53, 54}}));
+                                           .iter2_to_test = {53, 54}},
+                                DataSource{
+                                    .identifier = "cth_like_free_bdy_asym",
+                                    .tolerance = 1.0e-9,
+                                    .iter2_to_test = {53}}));
 
 }  // namespace vmecpp
