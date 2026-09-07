@@ -596,29 +596,22 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // NOTE: No need to return here in case of iequi != 0,
   // since we don't overwrite stuff in-place in VMEC++.
 
-  if (adaptive_preconditioner_update_ &&
-      m_fc_.res0_at_last_preconditioner_update <= 0.0 && m_fc_.res0 > 0.0) {
-#ifdef _OPENMP
-#pragma omp single nowait
-#endif  // _OPENMP
-    {
-      m_fc_.res0_at_last_preconditioner_update = m_fc_.res0;
-    }
-  }
+  const bool do_precond_update = shouldUpdateRadialPreconditioner(
+      iter1, iter2, m_last_preconditioner_update);
 
-  if (shouldUpdateRadialPreconditioner(iter1, iter2,
-                                       m_last_preconditioner_update)) {
-#ifdef _OPENMP
-#pragma omp single nowait
-#endif  // _OPENMP
-    {
-      m_last_preconditioner_update = iter2;
-      m_fc_.res0_at_last_preconditioner_update = m_fc_.res0;
-    }
-
+  if (do_precond_update) {
     updateRadialPreconditioner();
     if (checkpoint == VmecCheckpoint::UPDATE_RADIAL_PRECONDITIONER &&
         iter2 >= iterations_before_checkpointing) {
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        m_last_preconditioner_update = iter2;
+      }
       return true;
     }
 
@@ -629,6 +622,15 @@ absl::StatusOr<bool> IdealMhdModel::update(
     computeForceNorms(m_decomposed_x);
     if (checkpoint == VmecCheckpoint::UPDATE_FORCE_NORMS &&
         iter2 >= iterations_before_checkpointing) {
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        m_last_preconditioner_update = iter2;
+      }
       return true;
     }
 
@@ -638,7 +640,26 @@ absl::StatusOr<bool> IdealMhdModel::update(
     }
     if (checkpoint == VmecCheckpoint::UPDATE_TCON &&
         iter2 >= iterations_before_checkpointing) {
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        m_last_preconditioner_update = iter2;
+      }
       return true;
+    }
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    {
+      m_last_preconditioner_update = iter2;
     }
   }  // update radial preconditioner?
 

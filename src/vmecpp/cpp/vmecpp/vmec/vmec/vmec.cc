@@ -1105,6 +1105,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // res0 is the best force residual we got so far
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
 
+      if (last_preconditioner_update_ == iter2 ||
+          fc_.res0_at_last_preconditioner_update <= 0.0) {
+        fc_.res0_at_last_preconditioner_update = fc_.res0;
+      }
+
       // PARVMEC additionally tracks the invariant residual minimum res1. Keep
       // it (and its inputs) off the vmec_8_52 path so the default control stays
       // byte-for-byte unchanged.
