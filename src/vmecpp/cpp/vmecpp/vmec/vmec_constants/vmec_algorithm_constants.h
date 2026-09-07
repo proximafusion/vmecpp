@@ -73,6 +73,13 @@ static constexpr double kIonLarmorRadiusCoefficient = 3.2e-3;
 static constexpr double kLambdaPreconditionerDampingFactor = 2.0;
 
 /**
+ * Lambda preconditioner scale with the inherited factor dropped, so that the
+ * assembled diagonal is multiplied by 1 / lamscale^2 and nothing further.
+ * Selected by VmecINDATA::undamped_lambda_preconditioner.
+ */
+static constexpr double kLambdaPreconditionerUndampedFactor = 4.0;
+
+/**
  * Guard value substituted when an assembled lambda stiffness element is
  * exactly zero, to avoid dividing by zero when the preconditioner inverts
  * it. Negative by convention; the stiffness elements are negative for the

@@ -874,6 +874,82 @@ TEST(TestVmec, ToroidalFluxFollowsTheAphiPolynomial) {
   }
 }  // ToroidalFluxFollowsTheAphiPolynomial
 
+// The lambda preconditioner scale multiplies an already assembled force, so it
+// cannot move the invariant residual of the first step.
+TEST(TestVmec, UndampedLambdaPreconditionerLeavesTheFirstForceResidual) {
+  for (const std::string& case_name :
+       {"solovev", "cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"}) {
+    const absl::StatusOr<std::string> indata_json =
+        ReadFile("vmecpp/test_data/" + case_name + ".json");
+    ASSERT_TRUE(indata_json.ok()) << case_name;
+    const absl::StatusOr<VmecINDATA> base_indata =
+        VmecINDATA::FromJson(*indata_json);
+    ASSERT_TRUE(base_indata.ok()) << case_name;
+    const double ftol =
+        base_indata->ftol_array(base_indata->ftol_array.size() - 1);
+
+    VmecINDATA damped = *base_indata;
+    damped.undamped_lambda_preconditioner = false;
+    const auto damped_output = vmecpp::run(damped, std::nullopt, 1);
+    ASSERT_TRUE(damped_output.ok()) << case_name;
+
+    VmecINDATA undamped = *base_indata;
+    undamped.undamped_lambda_preconditioner = true;
+    const auto undamped_output = vmecpp::run(undamped, std::nullopt, 1);
+    ASSERT_TRUE(undamped_output.ok()) << case_name;
+
+    const auto& a = damped_output->wout;
+    const auto& b = undamped_output->wout;
+    ASSERT_GT(a.itfsq, 0) << case_name;
+    ASSERT_GT(b.itfsq, 0) << case_name;
+    EXPECT_EQ(a.fsqt(0), b.fsqt(0)) << case_name;
+    // fsqt sums the three force components that convergence tests one by one,
+    // so it lands within a factor of three of the tolerance.
+    EXPECT_LT(a.fsqt(a.itfsq - 1), 3.0 * ftol) << case_name;
+    EXPECT_LT(b.fsqt(b.itfsq - 1), 3.0 * ftol) << case_name;
+  }
+}  // UndampedLambdaPreconditionerLeavesTheFirstForceResidual
+
+// Both runs are held to ftol 1e-12 because the residual fixes how closely they
+// agree; what remains there is the spectral-condensation angle gauge, which
+// moves the poloidal spectrum without moving the flux surfaces. The bounds are
+// five times the measured deviation.
+TEST(TestVmec, UndampedLambdaPreconditionerConvergesToTheSameEquilibrium) {
+  for (const std::string& case_name :
+       {"solovev", "cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"}) {
+    const absl::StatusOr<std::string> indata_json =
+        ReadFile("vmecpp/test_data/" + case_name + ".json");
+    ASSERT_TRUE(indata_json.ok()) << case_name;
+    absl::StatusOr<VmecINDATA> base_indata = VmecINDATA::FromJson(*indata_json);
+    ASSERT_TRUE(base_indata.ok()) << case_name;
+    base_indata->ftol_array =
+        Eigen::VectorXd::Constant(base_indata->ftol_array.size(), 1.0e-12);
+
+    VmecINDATA damped = *base_indata;
+    damped.undamped_lambda_preconditioner = false;
+    const auto damped_output = vmecpp::run(damped, std::nullopt, 1);
+    ASSERT_TRUE(damped_output.ok()) << case_name;
+
+    VmecINDATA undamped = *base_indata;
+    undamped.undamped_lambda_preconditioner = true;
+    const auto undamped_output = vmecpp::run(undamped, std::nullopt, 1);
+    ASSERT_TRUE(undamped_output.ok()) << case_name;
+
+    const auto& a = damped_output->wout;
+    const auto& b = undamped_output->wout;
+    ASSERT_EQ(a.ns, b.ns) << case_name;
+
+    auto rel_max = [](const auto& x, const auto& y) -> double {
+      const double peak = x.cwiseAbs().maxCoeff();
+      return (x - y).cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
+    };
+    EXPECT_LT(rel_max(a.rmnc, b.rmnc), 2.2e-4) << case_name << " rmnc";
+    EXPECT_LT(rel_max(a.zmns, b.zmns), 1.5e-3) << case_name << " zmns";
+    EXPECT_LT(rel_max(a.iotaf, b.iotaf), 2.6e-5) << case_name << " iotaf";
+    EXPECT_TRUE(IsCloseRelAbs(a.wb, b.wb, 1.2e-7)) << case_name << " wb";
+  }
+}  // UndampedLambdaPreconditionerConvergesToTheSameEquilibrium
+
 // An inconsistent VmecINDATA must come back as a status from the factory:
 // constructing first ends the process instead of reporting the input error.
 TEST(TestVmec, InconsistentIndataIsRejectedBeforeConstruction) {
