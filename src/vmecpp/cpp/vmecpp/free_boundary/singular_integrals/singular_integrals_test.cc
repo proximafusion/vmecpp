@@ -265,3 +265,145 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 }  // namespace vmecpp
+
+namespace vmecpp {
+
+// Reference 2D Fourier coefficients of the tangent-plane kernels that
+// RegularizedIntegrals subtracts, for one set of metric (a, b2, c) and
+// second-fundamental-form (A, B2, C) coefficients:
+//   F1(m, n) = int cos(m du - n dv) / sqrt(a tu^2 + b2 tu tv + c tv^2)
+//   F2(m, n) = int cos(m du - n dv) (A tu^2 + B2 tu tv + C tv^2)
+//                  / (a tu^2 + b2 tu tv + c tv^2)^{3/2}
+// over (du, dv) in (-pi, pi)^2 with tu = 2 tan(du/2), tv = 2 tan(dv/2).
+// The integrands are 1/r singular at the origin; polar coordinates about it
+// make r * kernel smooth, and a tensor Gauss-Legendre rule on eight angular
+// panels (the square's corners are panel boundaries) converges geometrically.
+static std::pair<double, double> TangentPlaneKernelReference(
+    int m, int n, double a, double b2, double c, double A, double B2,
+    double C) {
+  double f1 = 0.0;
+  double f2 = 0.0;
+  for (int panel = 0; panel < 8; ++panel) {
+    const double p0 = panel * M_PI / 4.0;
+    const double p1 = (panel + 1) * M_PI / 4.0;
+    for (const auto& [wp, xp] : kGaussLegendre64) {
+      const double psi = 0.5 * (p1 - p0) * xp + 0.5 * (p1 + p0);
+      const double wpsi = 0.5 * (p1 - p0) * wp;
+      const double cp = std::cos(psi);
+      const double sp = std::sin(psi);
+      const double rmax = M_PI / std::max(std::abs(cp), std::abs(sp));
+      for (const auto& [wr, xr] : kGaussLegendre64) {
+        const double r = 0.5 * rmax * (xr + 1.0);
+        const double w = wpsi * 0.5 * rmax * wr * r;
+        const double du = r * cp;
+        const double dv = r * sp;
+        const double tu = 2.0 * std::tan(du / 2.0);
+        const double tv = 2.0 * std::tan(dv / 2.0);
+        const double q1 = a * tu * tu + b2 * tu * tv + c * tv * tv;
+        const double q2 = A * tu * tu + B2 * tu * tv + C * tv * tv;
+        const double cs = std::cos(m * du - n * dv);
+        f1 += w * cs / std::sqrt(q1);
+        f2 += w * cs * q2 / (q1 * std::sqrt(q1));
+      }
+    }
+  }
+  return {f1, f2};
+}
+
+// The analytic add-back must reproduce the Fourier coefficients of exactly
+// the kernels subtracted numerically, including the metric and curvature
+// cross terms (guv, auv) that are non-zero on any non-axisymmetric surface.
+// With a delta source at grid point (l0, k0), bvec_sin[(m, n)] and
+// grpmn_sin[(m, n), kl0] equal F1(m, n) / (2 pi) * sin(m u0 - n v0) and
+// F2(m, n) / (2 pi) * sin(m u0 - n v0).
+class AnalyticAddBackTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(AnalyticAddBackTest, MatchesSubtractedKernels) {
+  static constexpr double kTolerance = 1.0e-6;
+
+  const bool lasym = GetParam();
+  const int nfp = 2;
+  const int mpol = 8;
+  const int ntor = 4;
+  const int ntheta = 0;
+  const int nzeta = 24;
+
+  Sizes s(lasym, nfp, mpol, ntor, ntheta, nzeta);
+  FourierBasisFastToroidal fb(&s);
+  TangentialPartitioning tp(s.nZnT);
+  SurfaceGeometry sg(&s, &fb, &tp);
+
+  const int nf = ntor;
+  const int mf = mpol + 1;
+  SingularIntegrals si(&s, &fb, &tp, &sg, nf, mf);
+
+  // coefficients of a helically deformed circular torus (R0 = 1, a = 0.3,
+  // 0.05 cos(theta - 2 phi) deformation) at one surface point
+  const double a = 0.100265;
+  const double b2 = -0.012765;
+  const double c = 0.387789;
+  const double A = 0.062236;
+  const double B2 = -0.004955;
+  const double C = 0.050789;
+
+  const int numLocal = tp.ztMax - tp.ztMin;
+  sg.guu = Eigen::VectorXd::Constant(numLocal, a);
+  sg.guv = Eigen::VectorXd::Constant(numLocal, b2);
+  sg.gvv = Eigen::VectorXd::Constant(numLocal, c);
+  sg.auu = Eigen::VectorXd::Constant(numLocal, A);
+  sg.auv = Eigen::VectorXd::Constant(numLocal, B2);
+  sg.avv = Eigen::VectorXd::Constant(numLocal, C);
+
+  const int l0 = 3;
+  const int k0 = 5;
+  const int kl0 = l0 * s.nZeta + k0;
+  Eigen::VectorXd bDotN = Eigen::VectorXd::Zero(numLocal);
+  bDotN[kl0] = 1.0 / s.wInt[l0];
+  si.update(bDotN, /*fullUpdate=*/true);
+
+  const double u0 = 2.0 * M_PI * l0 / s.nThetaEven;
+  const double v0 = 2.0 * M_PI * k0 / s.nZeta;
+  int checked = 0;
+  for (int n = -nf; n <= nf; ++n) {
+    for (int m = 0; m <= mf; ++m) {
+      // m = 0 keeps only n >= 0 in NESTOR's basis
+      if (m == 0 && n < 0) continue;
+      const double sn = std::sin(m * u0 - n * v0);
+      if (std::abs(sn) < 0.2) continue;
+      const auto [f1, f2] = TangentPlaneKernelReference(m, n, a, b2, c, A, B2, C);
+      const int idx = (nf + n) * (mf + 1) + m;
+      const double expected_bvec = f1 / (2.0 * M_PI) * sn;
+      const double expected_grpmn = f2 / (2.0 * M_PI) * sn;
+      if (lasym) {
+        const double cs = std::cos(m * u0 - n * v0);
+        EXPECT_TRUE(IsCloseRelAbs(f1 / (2.0 * M_PI) * cs, si.bvec_cos[idx],
+                                  kTolerance))
+            << "bvec_cos at (m, n) = (" << m << ", " << n << ")";
+        EXPECT_TRUE(IsCloseRelAbs(
+            f2 / (2.0 * M_PI) * cs,
+            si.grpmn_cos[static_cast<std::size_t>(idx) * numLocal + kl0],
+            kTolerance))
+            << "grpmn_cos at (m, n) = (" << m << ", " << n << ")";
+      }
+      EXPECT_TRUE(IsCloseRelAbs(expected_bvec, si.bvec_sin[idx], kTolerance))
+          << "bvec_sin at (m, n) = (" << m << ", " << n
+          << "): expected " << expected_bvec << ", got " << si.bvec_sin[idx];
+      EXPECT_TRUE(IsCloseRelAbs(
+          expected_grpmn,
+          si.grpmn_sin[static_cast<std::size_t>(idx) * numLocal + kl0],
+          kTolerance))
+          << "grpmn_sin at (m, n) = (" << m << ", " << n << "): expected "
+          << expected_grpmn << ", got "
+          << si.grpmn_sin[static_cast<std::size_t>(idx) * numLocal + kl0];
+      ++checked;
+    }
+  }
+  EXPECT_GT(checked, 40);
+}
+
+INSTANTIATE_TEST_SUITE_P(Symmetry, AnalyticAddBackTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "lasym" : "symmetric";
+                         });
+
+}  // namespace vmecpp

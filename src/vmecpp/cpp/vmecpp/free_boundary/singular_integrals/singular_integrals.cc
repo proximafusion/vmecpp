@@ -159,7 +159,15 @@ void SingularIntegrals::update(const Eigen::VectorXd& bDotN, bool fullUpdate) {
 #pragma omp barrier
 #endif  // _OPENMP
 
-  prepareUpdate(sg_.guu, sg_.guv, sg_.gvv, sg_.auu, sg_.auv, sg_.avv,
+  // The analytic Fourier coefficients of the tangent-plane kernels are
+  // evaluated with the metric and curvature cross terms negated, so that they
+  // match the kernels subtracted in RegularizedIntegrals mode by mode; with
+  // the cross terms as stored, the coefficient of mode (m, n) is the one of
+  // (m, -n), an error that is first order in the non-axisymmetric shaping
+  // and independent of the resolution.
+  const Eigen::VectorXd guv_neg = -sg_.guv;
+  const Eigen::VectorXd auv_neg = -sg_.auv;
+  prepareUpdate(sg_.guu, guv_neg, sg_.gvv, sg_.auu, auv_neg, sg_.avv,
                 fullUpdate);
 
 #ifdef _OPENMP
