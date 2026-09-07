@@ -17,7 +17,8 @@ linear; a newly loaded input file without the field uses the current default.
 A frozen study compared the two methods at the same plasma resolution, profiles,
 coil currents and final force tolerances. The symmetric cases used 1e-14;
 asymmetric CTH used its original 1e-8 tolerance and the W7-X timing comparison
-used its original 1e-12 tolerance. The baseline was `4e0eefb`.
+used its original 1e-12 tolerance. The results below were confirmed against
+upstream `98aaaea`, following an initial study against `4e0eefb`.
 
 For cases with source coils, all table sizes were derived from one finer table
 computed from identical polygonal/circular filaments. An independent
@@ -28,21 +29,30 @@ B, removing differences due solely to flux-coordinate parametrisation.
 
 | Case | Relative B difference, linear 101 | Relative B difference, cubic 51 | Cubic/linear runtime at the original table size |
 |---|---:|---:|---:|
-| CTH, finite pressure/current | 2.96e-5 | 4.35e-7 | 0.985 |
-| Free-boundary Solovev | 1.41e-4 | 1.42e-6 | 1.060 |
-| QUASR 954 | 7.62e-5 | 4.85e-6 | 1.040 |
-| QUASR 65579 | 6.88e-5 | 4.21e-6 | 1.002 |
-| Asymmetric CTH | See below | See below | 0.989 |
-| W7-X, finite pressure, held out | See below | See below | 1.018 |
+| CTH, finite pressure/current | 2.96e-5 | 4.35e-7 | 1.003 |
+| Free-boundary Solovev | 1.41e-4 | 1.42e-6 | 1.061 |
+| QUASR 954 | 7.62e-5 | 4.85e-6 | 1.037 |
+| QUASR 65579 | 6.88e-5 | 4.21e-6 | 1.010 |
+| Asymmetric CTH | See below | See below | 1.014 |
+| W7-X, finite pressure, held out | See below | See below | 1.004 |
 
-The timing ratios are medians of eight adjacent, process-isolated pairs on an
-Apple M4 Mac (10 CPU cores, 16 GB RAM) with four OpenMP threads. All 160 confirmation solves
-converged; the table includes the original-size comparisons. Individual
-small-sample confidence intervals remain wider than the medians: their upper
-limits exceed 1.10 for Solovev and QUASR 954. These measurements support an
-accuracy improvement at similar solver cost, rather than a speedup claim.
+The timing ratios are medians of six adjacent, process-isolated pairs on an
+Apple M4 Mac (10 CPU cores, 16 GB RAM) with four OpenMP threads. All 120 current-upstream
+confirmation solves converged; the table includes the original-size comparisons.
+The largest median slowdown was 6.1%. Bootstrap intervals from these small samples
+are estimates, not hard bounds on future runtime. An earlier eight-pair study also
+found similar solver cost, with wider uncertainty in some cases. The improvement
+is in field-table accuracy; these measurements do not establish a solver speedup.
 
-The supplied asymmetric CTH and W7-X tables had no independent finer coil table.
+A separate regression matrix used all 12 bundled QUASR configurations with their
+original resolution and stage budgets, in vacuum and with two prescribed
+pressure/current profiles. Both methods converged on the same five of 36 problems;
+neither converged on any of the finite-pressure variants at these budgets. All
+failures were retained. The converged controls received independent bulk-field
+checks; finite-pressure accuracy is instead supported by CTH and W7-X.
+
+The supplied-table coarsening study, run against `4e0eefb`, used asymmetric CTH
+and W7-X tables without independent finer coil tables.
 At original table nodes withheld from a coarser 61-by-61 W7-X table, cubic
 interpolation reduced field error by about 80 times compared with bilinear at
 that same resolution. Complete equilibria also approached the finest supplied
@@ -54,6 +64,9 @@ polygonal approximation of a smooth coil remain separate error sources. Sampled
 bulk force-balance error was mostly unchanged when plasma resolution dominated.
 Both methods stalled when asymmetric CTH was pushed from its supplied 1e-8
 force tolerance to 1e-14; that stricter failure is not counted as convergence.
+
+The [recorded observations](../benchmarks/mgrid_interpolation_results.json) include
+paired timings, binary/input hashes, physical checks and all QUASR outcomes.
 
 ## Reproduce a comparison
 
