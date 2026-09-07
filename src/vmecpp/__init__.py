@@ -425,6 +425,15 @@ class VmecInput(BaseModelWithNumpy):
     """Time-step / restart control scheme for the equilibrium iteration (``"vmec_8_52"``
     or ``"parvmec"``)."""
 
+    anderson_acceleration: bool = False
+    """Accelerate the equilibrium iteration by Anderson extrapolation of the Garabedian
+    time step from a short history of iterates.
+
+    The extrapolation acts in the nonlinear early phase of each multigrid stage and
+    hands the tail back to the plain descent. The accelerated and the plain iteration
+    converge to the same equilibrium within the force tolerance.
+    """
+
     nstep: int = 10
     """Printout interval at which convergence progress is logged."""
 
