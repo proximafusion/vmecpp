@@ -1341,6 +1341,13 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
                         vmec_indata.nzeta));
   }
 
+  // the free-boundary case additionally requires nvacskip >= 1; see below
+  if (vmec_indata.nvacskip < 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'nvacskip' needs to be >= 0, but is %d\n",
+        vmec_indata.nvacskip));
+  }
+
   /* --------------------------------- */
 
   const int NS_MIN = 3;

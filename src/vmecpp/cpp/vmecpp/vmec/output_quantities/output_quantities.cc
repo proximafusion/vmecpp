@@ -2033,11 +2033,12 @@ void vmecpp::FixupPoloidalCurrent(
 
 void vmecpp::RecomputeToroidalFlux(
     const FlowControl& fc, VmecInternalResults& m_vmec_internal_results) {
-  // quadrature in radial direction
+  // radial quadrature over the half-grid dphi/ds between the two full-grid
+  // surfaces, which is exact for a linear dphi/ds
   m_vmec_internal_results.phiF[0] = 0.0;
   for (int jF = 1; jF < fc.ns; ++jF) {
     m_vmec_internal_results.phiF[jF] = m_vmec_internal_results.phiF[jF - 1] +
-                                       m_vmec_internal_results.phipF[jF - 1];
+                                       m_vmec_internal_results.phipH[jF - 1];
   }  // jF
 
   // now apply scaling
