@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <string>
@@ -429,6 +430,91 @@ TEST(MGridProviderValidation, LoadFileReadsCoilGroupNames) {
     EXPECT_FALSE(name.empty());
     EXPECT_EQ(name.find_last_not_of(' '), name.size() - 1)
         << "name '" << name << "' still carries padding";
+  }
+}
+
+TEST(MGridPolynomialInterpolation,
+     ReproducesTensorPolynomialsAndSmallGridFallback) {
+  for (const int num_r : {2, 3, 4, 7}) {
+    for (const int num_z : {2, 3, 4, 8}) {
+      for (const bool cubic_polynomial : {false, true}) {
+        makegrid::MagneticFieldResponseTable table;
+        auto& parameters = table.parameters;
+        parameters.normalize_by_currents = false;
+        parameters.number_of_field_periods = 3;
+        parameters.r_grid_minimum = 1.0;
+        parameters.r_grid_maximum = 3.0;
+        parameters.z_grid_minimum = -0.7;
+        parameters.z_grid_maximum = 0.9;
+        parameters.number_of_r_grid_points = num_r;
+        parameters.number_of_z_grid_points = num_z;
+        parameters.number_of_phi_grid_points = 5;
+        const int num_cells = num_r * num_z * 5;
+        table.b_r.resize(2, num_cells);
+        table.b_p.resize(2, num_cells);
+        table.b_z.resize(2, num_cells);
+        const auto polynomial = [cubic_polynomial](double r, double z, int k) {
+          return cubic_polynomial ? r * r * r + 2 * z * z * z + r * r * z * z +
+                                        0.3 * r * z + k
+                                  : r + z + r * z + k;
+        };
+        for (int k = 0; k < 5; ++k) {
+          for (int j = 0; j < num_z; ++j) {
+            for (int i = 0; i < num_r; ++i) {
+              const double value = polynomial(1.0 + 2.0 * i / (num_r - 1),
+                                              -0.7 + 1.6 * j / (num_z - 1), k);
+              const int index = (k * num_z + j) * num_r + i;
+              table.b_r(0, index) = value;
+              table.b_p(0, index) = 2 * value;
+              table.b_z(0, index) = -value;
+              table.b_r(1, index) = 3 * value;
+              table.b_p(1, index) = 6 * value;
+              table.b_z(1, index) = -3 * value;
+            }
+          }
+        }
+        Eigen::VectorXd currents(2);
+        currents << 2.0, -0.25;
+        for (const auto scheme :
+             {MGridInterpolation::kLinear, MGridInterpolation::kCubic}) {
+          SCOPED_TRACE(absl::StrFormat("nr=%d nz=%d polynomial=%d scheme=%s",
+                                       num_r, num_z, cubic_polynomial,
+                                       ToString(scheme)));
+          MGridProvider provider(scheme);
+          ASSERT_TRUE(provider.LoadFields(table, currents).ok());
+          Eigen::VectorXd r(205), z(205), br(205), bp(205), bz(205);
+          for (int i = 0; i < 205; ++i) {
+            r[i] = 1.0 + 2.0 * (((i * 37) % 205) + 0.5) / 205.0;
+            z[i] = -0.7 + 1.6 * (((i * 71) % 205) + 0.5) / 205.0;
+          }
+          r[0] = 1.0;
+          z[0] = -0.7;
+          r[1] = 3.0;
+          z[1] = 0.9;
+          r[2] = 3.0;
+          z[2] = -0.7;
+          r[3] = 1.0;
+          z[3] = 0.9;
+          ASSERT_TRUE(
+              provider.interpolate(0, 205, 5, 205, r, z, br, bp, bz).ok());
+          double error = 0.0;
+          for (int i = 0; i < 205; ++i) {
+            const double expected = 1.25 * polynomial(r[i], z[i], i % 5);
+            error = std::max({error, std::abs(br[i] - expected),
+                              std::abs(bp[i] - 2 * expected),
+                              std::abs(bz[i] + expected)});
+          }
+          const bool exact =
+              !cubic_polynomial || (scheme == MGridInterpolation::kCubic &&
+                                    num_r >= 4 && num_z >= 4);
+          if (exact) {
+            EXPECT_LT(error, 1e-11);
+          } else {
+            EXPECT_GT(error, 1e-4);
+          }
+        }
+      }
+    }
   }
 }
 

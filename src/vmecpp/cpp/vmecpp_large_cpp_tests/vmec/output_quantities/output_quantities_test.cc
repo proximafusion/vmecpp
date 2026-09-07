@@ -63,9 +63,9 @@ TEST_P(GatherDataFromThreadsTest, CheckGatherDataFromThreads) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -126,9 +126,9 @@ TEST_P(GatherDataFromThreadsTest, CheckMatrixElementOrder) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -188,9 +188,9 @@ TEST_P(BSSRoutineOutputsTest, CheckBSSRoutineOutputs) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -280,9 +280,9 @@ TEST_P(LowpassFilterBSubsSTest, CheckLowpassFilterBSubsS) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -374,9 +374,9 @@ TEST_P(ExtrapolateBSubsSTest, CheckExtrapolateBSubsS) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -438,9 +438,9 @@ TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -563,9 +563,9 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -775,9 +775,9 @@ TEST_P(Threed1FirstTableTest, CheckThreed1FirstTable) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const FlowControl& fc = vmec.fc_;
@@ -905,9 +905,9 @@ TEST_P(Threed1GeometricMagneticQuantitiesTest,
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -1125,9 +1125,9 @@ TEST_P(Threed1VolumetricsTest, CheckThreed1Volumetrics) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
 
@@ -1203,9 +1203,9 @@ TEST_P(Threed1AxisTest, CheckThreed1Axis) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -1267,9 +1267,9 @@ TEST_P(Threed1BetasTest, CheckThreed1Betas) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const FlowControl& fc = vmec.fc_;
@@ -1330,9 +1330,9 @@ TEST_P(Threed1ShafranovIntegralsTest, CheckThreed1ShafranovIntegrals) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const FlowControl& fc = vmec.fc_;
@@ -1485,9 +1485,9 @@ TEST(TestOutputQuantities, CheckVacuumPotential) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", identifier));
   ASSERT_TRUE(indata_json.ok());
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
   ASSERT_TRUE(vmec_indata->lfreeb);
 
   Vmec vmec(*vmec_indata);
@@ -1554,8 +1554,9 @@ TEST(Threed1FreeBoundary, MatchesEducationalVmec) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", identifier));
   ASSERT_TRUE(indata_json.ok());
-  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(indata.ok());
+  indata->mgrid_interpolation = MGridInterpolation::kLinear;
   ASSERT_TRUE(indata->lfreeb);
 
   auto maybe_vmec = Vmec::FromIndata(*indata);

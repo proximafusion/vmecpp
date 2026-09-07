@@ -10,6 +10,7 @@
 Reference <api/vmecpp>
 Examples <examples_overview>
 Fourier Basis Details <fourier_basis_implementation>
+Vacuum Field Interpolation <vacuum_field_interpolation>
 Benchmarks <benchmarks>
 ```
 

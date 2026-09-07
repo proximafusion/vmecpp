@@ -40,6 +40,8 @@ def test_run_free_boundary_from_response_table():
         TEST_DATA_DIR / "coils.cth_like", makegrid_params
     )
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    # This numerical reference uses historical bilinear interpolation.
+    vmec_input.mgrid_interpolation = vmecpp.MGridInterpolation.LINEAR
     vmec_output = vmecpp.run(vmec_input, response, verbose=False)
     assert vmec_output.wout.volume == pytest.approx(0.307512, 1e-5, 1e-5)
 

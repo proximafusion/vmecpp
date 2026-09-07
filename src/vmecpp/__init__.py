@@ -153,6 +153,16 @@ class FreeBoundaryMethod(str, enum.Enum):
     """Boundary Integral Equation Solver for Toroidal systems."""
 
 
+class MGridInterpolation(str, enum.Enum):
+    """Interpolation of the external magnetic field in R and Z."""
+
+    LINEAR = "linear"
+    """Bilinear interpolation used by historical Fortran VMEC."""
+
+    CUBIC = "cubic"
+    """Tensor cubic interpolation, falling back to linear below four grid points."""
+
+
 class IterationStyle(str, enum.Enum):
     """Time-step / restart control scheme for the equilibrium iteration."""
 
@@ -186,6 +196,16 @@ def _validate_free_boundary_method(
     if isinstance(value, _vmecpp.FreeBoundaryMethod):
         return FreeBoundaryMethod(value.name.lower())  # pyright: ignore[reportAttributeAccessIssue]
     return FreeBoundaryMethod(str(value))
+
+
+def _validate_mgrid_interpolation(
+    value: _vmecpp.MGridInterpolation | str | MGridInterpolation,
+) -> MGridInterpolation:
+    if isinstance(value, MGridInterpolation):
+        return value
+    if isinstance(value, _vmecpp.MGridInterpolation):
+        return MGridInterpolation(value.name.lower())  # pyright: ignore[reportAttributeAccessIssue]
+    return MGridInterpolation(str(value))
 
 
 def _validate_iteration_style(
@@ -416,6 +436,18 @@ class VmecInput(BaseModelWithNumpy):
         pydantic.Field(),
     ] = FreeBoundaryMethod.NESTOR
     """Method for handling free-boundary conditions."""
+
+    mgrid_interpolation: typing.Annotated[
+        MGridInterpolation,
+        pydantic.BeforeValidator(_validate_mgrid_interpolation),
+    ] = MGridInterpolation.CUBIC
+    """Vacuum field interpolation in R and Z.
+
+    Cubic uses four points in each
+    direction; grids with fewer than four points use bilinear interpolation.
+    Choose ``"linear"`` to reproduce historical Fortran VMEC calculations.
+    Toroidal planes and the supplied coil field samples are unchanged.
+    """
 
     iteration_style: typing.Annotated[
         IterationStyle,
@@ -729,6 +761,7 @@ class VmecInput(BaseModelWithNumpy):
         for attr in own_model_fields(VmecInput):
             if attr in readonly_attrs or attr in (
                 "free_boundary_method",
+                "mgrid_interpolation",
                 "iteration_style",
             ):
                 continue  # these must be set separately
@@ -737,6 +770,9 @@ class VmecInput(BaseModelWithNumpy):
         # Convert Python enum to C++ enum
         cpp_indata.free_boundary_method = getattr(
             _vmecpp.FreeBoundaryMethod, self.free_boundary_method.upper()
+        )
+        cpp_indata.mgrid_interpolation = getattr(
+            _vmecpp.MGridInterpolation, self.mgrid_interpolation.upper()
         )
         cpp_indata.iteration_style = getattr(
             _vmecpp.IterationStyle, self.iteration_style.upper()
@@ -2355,6 +2391,18 @@ class JxBOut(BaseModelWithNumpy):
 class VmecOutput(BaseModelWithNumpy):
     """Container for the full output of a VMEC run."""
 
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def _restore_historical_interpolation(cls, value: typing.Any) -> typing.Any:
+        if isinstance(value, dict) and isinstance(value.get("input"), dict):
+            inputs = value["input"]
+            if "mgrid_interpolation" not in inputs:
+                return {
+                    **value,
+                    "input": {**inputs, "mgrid_interpolation": "linear"},
+                }
+        return value
+
     input: VmecInput
     """The input to the VMEC run that produced this output."""
 
@@ -2722,6 +2770,7 @@ __all__ = [  # noqa: RUF022
     "MakegridParameters",
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
+    "MGridInterpolation",
     "IterationStyle",
     "set_profile",
     "iterate",

@@ -13,12 +13,15 @@
 #include "absl/status/status.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/vmec_indata/vmec_indata.h"
 
 namespace vmecpp {
 
 class MGridProvider {
  public:
-  MGridProvider();
+  // Vmec supplies its input scheme; standalone providers retain their default.
+  explicit MGridProvider(
+      MGridInterpolation interpolation = MGridInterpolation::kLinear);
 
   absl::Status LoadFile(const std::filesystem::path& filename,
                         const Eigen::VectorXd& coil_currents);
@@ -73,6 +76,8 @@ class MGridProvider {
   bool IsLoaded() const { return has_mgrid_loaded_; }
 
  private:
+  MGridInterpolation interpolation_;
+
   // Size the accumulation arrays to the current grid and clear them.
   void ResetAccumulatedField();
 

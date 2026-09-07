@@ -13,6 +13,7 @@ cc_library(
         "//util/netcdf_io:netcdf_io",
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/vmec_indata",
         "//vmecpp/common/fourier_basis_fast_toroidal",
         "//vmecpp/common/makegrid_lib",
         "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",

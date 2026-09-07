@@ -70,7 +70,8 @@ void MGridProvider::ResetAccumulatedField() {
   bZ.setZero(num_grid_points);
 }
 
-MGridProvider::MGridProvider() {
+MGridProvider::MGridProvider(MGridInterpolation interpolation)
+    : interpolation_(interpolation) {
   nfp = -1;
 
   numR = -1;
@@ -386,6 +387,38 @@ absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
     // crop to available grid
     double r = std::max(minR, std::min(rLCFS[kl], maxR));
     double z = std::max(minZ, std::min(zLCFS[kl], maxZ));
+
+    if (interpolation_ == MGridInterpolation::kCubic && numR >= 4 &&
+        numZ >= 4) {
+      const double r_index = (r - minR) / deltaR;
+      const double z_index = (z - minZ) / deltaZ;
+      const int r_start =
+          std::clamp(static_cast<int>(floor(r_index)) - 1, 0, numR - 4);
+      const int z_start =
+          std::clamp(static_cast<int>(floor(z_index)) - 1, 0, numZ - 4);
+      const auto weights = [](double u) -> std::array<double, 4> {
+        return {-(u - 1) * (u - 2) * (u - 3) / 6, u * (u - 2) * (u - 3) / 2,
+                -u * (u - 1) * (u - 3) / 2, u * (u - 1) * (u - 2) / 6};
+      };
+      const auto r_weights = weights(r_index - r_start);
+      const auto z_weights = weights(z_index - z_start);
+      double br = 0.0;
+      double bp = 0.0;
+      double bz = 0.0;
+      for (int j = 0; j < 4; ++j) {
+        for (int i = 0; i < 4; ++i) {
+          const int index = (k * numZ + z_start + j) * numR + r_start + i;
+          const double weight = r_weights[i] * z_weights[j];
+          br += weight * bR[index];
+          bp += weight * bP[index];
+          bz += weight * bZ[index];
+        }
+      }
+      m_interpBr[kl - ztMin] = br;
+      m_interpBp[kl - ztMin] = bp;
+      m_interpBz[kl - ztMin] = bz;
+      continue;
+    }
 
     // DETERMINE INTEGER INDICES (IR,JZ) FOR LOWER LEFT R, Z CORNER GRID POINT
     int ir = static_cast<int>(floor((r - minR) / deltaR));

@@ -65,9 +65,9 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
   ASSERT_TRUE(maybe_vmec.ok());
@@ -780,9 +780,9 @@ TEST(SolovevFreeBoundary, MatchesEducationalVmecGolden) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/solovev_free_bdy.json");
   ASSERT_TRUE(indata_json.ok());
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
   ASSERT_TRUE(vmec_indata->lfreeb);
   ASSERT_EQ(vmec_indata->ntor, 0);
 
@@ -934,9 +934,9 @@ TEST(SolovevFreeBoundaryLforbal, MatchesEducationalVmecGolden) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/solovev_free_bdy_lforbal.json");
   ASSERT_TRUE(indata_json.ok());
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
   ASSERT_TRUE(vmec_indata->lfreeb);
   ASSERT_TRUE(vmec_indata->lforbal);
   ASSERT_EQ(vmec_indata->ntor, 0);

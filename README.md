@@ -361,6 +361,7 @@ VMEC++:
   neither are the associated input fields `precon_type` and `prec2d_threshold`
 - VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
 - The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
+- VMEC++ uses cubic interpolation of vacuum-field tables in R and Z by default. Set `mgrid_interpolation = vmecpp.MGridInterpolation.LINEAR` for historical bilinear results. See [vacuum-field interpolation](docs/vacuum_field_interpolation.md) for accuracy measurements and reproduction commands.
 - The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
 
 ## Roadmap

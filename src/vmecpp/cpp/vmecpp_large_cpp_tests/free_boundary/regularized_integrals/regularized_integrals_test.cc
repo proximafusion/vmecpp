@@ -108,9 +108,9 @@ TEST_P(GreenFTest, CheckGreenF) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);

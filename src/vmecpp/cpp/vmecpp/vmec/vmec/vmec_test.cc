@@ -785,8 +785,9 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   const absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(indata.ok());
+  indata->mgrid_interpolation = vmecpp::MGridInterpolation::kLinear;
   ASSERT_EQ(indata->ns_array.size(), 2u);
 
   const auto output = vmecpp::run(*indata, std::nullopt, 1);
