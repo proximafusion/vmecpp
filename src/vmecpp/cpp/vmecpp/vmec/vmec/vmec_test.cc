@@ -387,9 +387,12 @@ TEST(TestVmec, AxisymmetricRunIsIndependentOfNzeta) {
     const auto& a = single_plane->wout;
     const auto& b = planes->wout;
 
-    // The sum over identical planes changes the round-off, which the descent
-    // carries into lambda at the 1e-9 level.
+    // The sum over identical planes changes the round-off, and the descent
+    // carries that into lambda, the softest direction: it measures between
+    // 2e-13 and 1.5e-08 over the opt, asan and ubsan builds at 1 to 16
+    // threads, where the geometry stays below 3e-12.
     const double kTol = 1.0e-8;
+    const double kLambdaTol = 1.0e-6;
     auto rel_max = [](const auto& x, const auto& y) -> double {
       const double peak = x.cwiseAbs().maxCoeff();
       return (x - y).cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
@@ -398,13 +401,13 @@ TEST(TestVmec, AxisymmetricRunIsIndependentOfNzeta) {
     EXPECT_TRUE(IsCloseRelAbs(a.volume, b.volume, kTol)) << c.filename;
     EXPECT_LT(rel_max(a.rmnc, b.rmnc), kTol) << c.filename;
     EXPECT_LT(rel_max(a.zmns, b.zmns), kTol) << c.filename;
-    EXPECT_LT(rel_max(a.lmns_full, b.lmns_full), kTol) << c.filename;
+    EXPECT_LT(rel_max(a.lmns_full, b.lmns_full), kLambdaTol) << c.filename;
     EXPECT_LT(rel_max(a.iotaf, b.iotaf), kTol) << c.filename;
     EXPECT_LT(rel_max(a.jcurv, b.jcurv), kTol) << c.filename;
     if (indata->lasym) {
       EXPECT_LT(rel_max(a.rmns, b.rmns), kTol) << c.filename;
       EXPECT_LT(rel_max(a.zmnc, b.zmnc), kTol) << c.filename;
-      EXPECT_LT(rel_max(a.lmnc_full, b.lmnc_full), kTol) << c.filename;
+      EXPECT_LT(rel_max(a.lmnc_full, b.lmnc_full), kLambdaTol) << c.filename;
     }
 
     // The Nyquist spectrum grows with nzeta: its n = 0 rows follow the
