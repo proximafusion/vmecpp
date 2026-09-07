@@ -139,7 +139,7 @@ TEST_F(RadialProfilesTest, SplineTooFewPointsReturnsZero) {
 // ---- line_segment: interpolate on the knot interval that brackets x ---------
 // Inside [k_i, k_{i+1}] the value is the linear interpolation between those two
 // knots, the knots themselves are reproduced, and outside the knot range the
-// profile is clamped to the end values.
+// first and last segments continue.
 TEST_F(RadialProfilesTest, LineSegmentInterpolatesOnBracketingInterval) {
   const Eigen::VectorXd knots = Vec({0.0, 0.25, 0.5, 0.75, 1.0});
   const Eigen::VectorXd values = Vec({1.0, 0.9, 0.6, 0.2, 0.0});
@@ -158,8 +158,44 @@ TEST_F(RadialProfilesTest, LineSegmentInterpolatesOnBracketingInterval) {
                 1e-12)
         << "line_segment knot " << i;
   }
-  EXPECT_EQ(profiles_->evalLineSegment(knots, values, -0.1), values[0]);
-  EXPECT_EQ(profiles_->evalLineSegment(knots, values, 1.2), values[4]);
+  // outside the knots the first and last segments continue
+  EXPECT_NEAR(profiles_->evalLineSegment(knots, values, -0.1), 1.04, 1e-12);
+  EXPECT_NEAR(profiles_->evalLineSegment(knots, values, 1.2), -0.16, 1e-12);
+}
+
+// ---- line_segment integral: the integral of that same interpolant ----------
+// evalLineSegmentIntegrated returns the integral from 0 to x of the profile
+// evalLineSegment evaluates, so it carries the piece below the first knot and
+// the continued end segments and agrees with a fine quadrature of that profile.
+TEST_F(RadialProfilesTest, LineSegmentIntegralFollowsTheInterpolant) {
+  // knots reaching neither end of [0, 1], so both continued segments and the
+  // piece below the first knot enter the integral
+  const Eigen::VectorXd knots = Vec({0.2, 0.35, 0.6, 0.8});
+  const Eigen::VectorXd values = Vec({1.0, 0.7, 0.5, 0.2});
+
+  // the first segment continues to y(0) = 1.4, so the integral up to the first
+  // knot is 1.4 * 0.2 - 0.2^2
+  EXPECT_NEAR(profiles_->evalLineSegmentIntegrated(knots, values, 0.2), 0.24,
+              1e-12);
+
+  const auto quadrature = [&](double x) {
+    const int num_panels = 200000;
+    double sum = 0.0;
+    for (int i = 0; i < num_panels; ++i) {
+      const double xa = x * i / num_panels;
+      const double xb = x * (i + 1) / num_panels;
+      sum += 0.5 * (xb - xa) *
+             (profiles_->evalLineSegment(knots, values, xa) +
+              profiles_->evalLineSegment(knots, values, xb));
+    }
+    return sum;
+  };
+
+  for (const double x : {0.05, 0.2, 0.3, 0.35, 0.5, 0.6, 0.7, 0.8, 1.0, 1.3}) {
+    EXPECT_NEAR(profiles_->evalLineSegmentIntegrated(knots, values, x),
+                quadrature(x), 1e-9)
+        << "line_segment integral x=" << x;
+  }
 }
 
 // ---- corrected Akima right edge: the interpolant is reflection-symmetric ---
