@@ -413,20 +413,11 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
     m_fc_.fResInvar[2] = 0.0;
   }
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    m_fc_.fResInvar[0] += localFResInvar[0];
-    m_fc_.fResInvar[1] += localFResInvar[1];
-    m_fc_.fResInvar[2] += localFResInvar[2];
-  }
-
-// this is protecting reads of fResInvar as well as
-// writes to m_fc.fsqz which is read before this call
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  // the barrier inside also protects writes to m_fc.fsqz, which is read before
+  // this call
+  SumOverThreads(localFResInvar.data(), 3, r_.get_thread_id(),
+                 r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                 m_fc_.fResInvar.data());
 
 #ifdef _OPENMP
 #pragma omp single
@@ -452,17 +443,9 @@ void IdealMhdModel::evalFResPrecd(const Eigen::Vector3d& localFResPrecd) {
     m_fc_.fResPrecd[2] = 0.0;
   }
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    m_fc_.fResPrecd[0] += localFResPrecd[0];
-    m_fc_.fResPrecd[1] += localFResPrecd[1];
-    m_fc_.fResPrecd[2] += localFResPrecd[2];
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(localFResPrecd.data(), 3, r_.get_thread_id(),
+                 r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                 m_fc_.fResPrecd.data());
 
 #ifdef _OPENMP
 #pragma omp single
@@ -657,8 +640,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // end of bcovar
 
   // back in funct3d, free-boundary force contribution active?
-  // This can even happen in the first iteration when hot-restarted.
-  if (m_fc_.lfreeb && (iter2 > 1 || m_vacuum_pressure_state_ ==
+  // in the first iteration only when the vacuum pressure is already on
+  if (m_fc_.lfreeb && (iter2 > 1 || m_vacuum_pressure_state_ >=
                                         VacuumPressureState::kInitialized)) {
 // protect read of m_vacuum_pressure_state_ below from write above
 #ifdef _OPENMP
@@ -667,22 +650,25 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
     ivacskip = (iter2 - iter1) % nvacskip;
     // when R+Z force residuals are <1e-3, enable vacuum contribution
-    if (m_vacuum_pressure_state_ != VacuumPressureState::kActive &&
+    if (m_vacuum_pressure_state_ != VacuumPressureState::kSettled &&
         m_fc_.fsqr + m_fc_.fsqz < 1.0e-3) {
-// protect read of m_vacuum_pressure_state_ below from write above
+// protect read of m_vacuum_pressure_state_ in the condition above from the
+// write below
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
 
-      // vacuum pressure not fully turned on yet
-      // Do full vacuum calc on every iteration
-      ivacskip = 0;
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-      // Increment ivac, never exceeding VacuumPressureState::kActive
+      // Increment ivac, never exceeding VacuumPressureState::kSettled
       m_vacuum_pressure_state_ = static_cast<VacuumPressureState>(
           static_cast<int>(m_vacuum_pressure_state_) + 1);
+    }
+
+    // full vacuum calc on every iteration until the residuals have settled
+    if (m_vacuum_pressure_state_ <= VacuumPressureState::kActive) {
+      ivacskip = 0;
     }
 
     // EXTEND NVACSKIP AS EQUILIBRIUM CONVERGES
@@ -1697,21 +1683,9 @@ void IdealMhdModel::computeInitialVolume() {
   }
   localPlasmaVolume *= m_fc_.deltaS;
 
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  m_h_.voli = 0.0;
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  m_h_.voli += localPlasmaVolume * (2.0 * M_PI) * (2.0 * M_PI);
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  const double localVolume = localPlasmaVolume * (2.0 * M_PI) * (2.0 * M_PI);
+  SumOverThreads(&localVolume, 1, r_.get_thread_id(), r_.get_num_threads(),
+                 m_h_.thread_reduce_slots.data(), &m_h_.voli);
 }  // computeInitialVolume
 
 void IdealMhdModel::updateVolume() {
@@ -1727,21 +1701,9 @@ void IdealMhdModel::updateVolume() {
   }
   localPlasmaVolume *= m_fc_.deltaS;
 
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  m_h_.plasmaVolume = 0.0;
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  m_h_.plasmaVolume += localPlasmaVolume;
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(&localPlasmaVolume, 1, r_.get_thread_id(),
+                 r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                 &m_h_.plasmaVolume);
 }  // updateVolume
 
 /**
@@ -1949,20 +1911,13 @@ void IdealMhdModel::pressureAndEnergies() {
     m_h_.thermalEnergy = 0.0;
     m_h_.magneticEnergy = 0.0;
   }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    m_h_.thermalEnergy += localThermalEnergy;
-    m_h_.magneticEnergy += localMagneticEnergy;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(&localThermalEnergy, 1, r_.get_thread_id(),
+                 r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                 &m_h_.thermalEnergy);
+  SumOverThreads(&localMagneticEnergy, 1, r_.get_thread_id(),
+                 r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                 &m_h_.magneticEnergy);
 
 #ifdef _OPENMP
 #pragma omp single
@@ -2088,21 +2043,15 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
     m_h_.fNormL = 0.0;
     m_h_.fNorm1 = 0.0;
   }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    m_h_.fNormRZ += localForceNormSumRZ;
-    m_h_.fNormL += localForceNormSumL;
-    m_h_.fNorm1 += localForceNorm1;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(&localForceNormSumRZ, 1, r_.get_thread_id(),
+                 r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                 &m_h_.fNormRZ);
+  SumOverThreads(&localForceNormSumL, 1, r_.get_thread_id(),
+                 r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                 &m_h_.fNormL);
+  SumOverThreads(&localForceNorm1, 1, r_.get_thread_id(), r_.get_num_threads(),
+                 m_h_.thread_reduce_slots.data(), &m_h_.fNorm1);
 
 #ifdef _OPENMP
 #pragma omp single
@@ -2562,8 +2511,7 @@ void IdealMhdModel::assembleTotalForces() {
 
   // free-boundary contribution: include force on boundary from NESTOR
   if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive) &&
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized &&
       r_.nsMaxF1 == m_fc_.ns) {
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int idx_kl = (r_.nsMaxF - 1 - r_.nsMinF) * s_.nZnT + kl;
@@ -2806,8 +2754,7 @@ void IdealMhdModel::dft_ForcesToFourierTranspose_2d_symm(
   }
   int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
   if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized) {
     jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
   }
   for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
@@ -2930,8 +2877,7 @@ void IdealMhdModel::dft_ForcesToFourierTranspose_3d_symm(
   const int ntorp1 = s_.ntor + 1;
   int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
   if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized) {
     jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
   }
   const int jMinL = 1;
@@ -3416,8 +3362,7 @@ void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
 
   int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
   if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized) {
     // free-boundary: up to jMaxRZ=ns
     jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
   }
@@ -3576,8 +3521,7 @@ void IdealMhdModel::symforce() {
 void IdealMhdModel::dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f) {
   int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
   if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized) {
     jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
   }
 
@@ -3706,8 +3650,7 @@ void IdealMhdModel::assembleRZPreconditioner() {
 
   int jMax = m_fc_.ns - 1;
   if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized) {
     jMax = m_fc_.ns;
   }
 
@@ -3872,8 +3815,7 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
 
   int jMax = m_fc_.ns - 1;
   if (m_fc_.lfreeb &&
-      (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized ||
-       m_vacuum_pressure_state_ == VacuumPressureState::kActive)) {
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized) {
     jMax = m_fc_.ns;
   }
 
@@ -4029,7 +3971,7 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
 double IdealMhdModel::get_delbsq() const {
   double delBSqAvg = 0.0;
   if (m_fc_.lfreeb &&
-      m_vacuum_pressure_state_ == VacuumPressureState::kActive) {
+      m_vacuum_pressure_state_ >= VacuumPressureState::kActive) {
     double delBSqNorm = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int l = kl % s_.nThetaEff;

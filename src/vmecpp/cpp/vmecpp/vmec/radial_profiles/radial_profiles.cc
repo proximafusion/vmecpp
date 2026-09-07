@@ -1168,15 +1168,13 @@ void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
     }
   }  // jH
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-
-  m_h_.RegisterSpectralWidthContribution(spectral_width_contribution);
-
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(&spectral_width_contribution.numerator, 1, r_.get_thread_id(),
+                 r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                 m_h_.SpectralWidthNumerator());
+  SumOverThreads(&spectral_width_contribution.denominator, 1,
+                 r_.get_thread_id(), r_.get_num_threads(),
+                 m_h_.thread_reduce_slots.data(),
+                 m_h_.SpectralWidthDenominator());
 }  // AccumulateVolumeAveragedSpectralWidth
 
 }  // namespace vmecpp

@@ -35,6 +35,39 @@ namespace vmecpp {
 using RowMatrixXd =
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
+// Folds one contribution per thread into a shared total: every thread writes
+// its own row of `m_slots`, then a single thread sums the rows in thread order.
+//
+// A critical section admits the threads in whichever order they arrive, so the
+// floating-point sum it produces varies from run to run. The order here is the
+// thread id, so the total is the same on every run at a given thread count.
+//
+// Every thread of the team must call this with the same arguments. The barrier
+// that ends the fold publishes `m_total`, so no further barrier is needed
+// before reading it.
+inline void SumOverThreads(const double *contribution, int width, int thread_id,
+                           int num_threads, double *m_slots, double *m_total) {
+  double *row = m_slots + thread_id * width;
+  for (int i = 0; i < width; ++i) {
+    row[i] = contribution[i];
+  }
+#ifdef _OPENMP
+#pragma omp barrier
+#pragma omp single
+#endif  // _OPENMP
+  {
+    for (int i = 0; i < width; ++i) {
+      m_total[i] = 0.0;
+    }
+    for (int t = 0; t < num_threads; ++t) {
+      const double *slot = m_slots + t * width;
+      for (int i = 0; i < width; ++i) {
+        m_total[i] += slot[i];
+      }
+    }
+  }
+}
+
 inline Eigen::VectorXd ToEigenVector(const std::vector<double> &v) {
   return Eigen::Map<const Eigen::VectorXd>(v.data(),
                                            static_cast<Eigen::Index>(v.size()));
@@ -171,9 +204,13 @@ enum class VacuumPressureState : std::int8_t {
   // process of reducing rCon0,zCon0 *= 0.9;
   kInitialized = 1,
 
-  // vacuum pressure turned on
-  // in the process of reducing rCon0,zCon0 *= 0.9;
-  kActive = 2
+  // vacuum pressure turned on, R and Z force residuals still above 1e-3
+  // full vacuum update in every iteration; ivac == 2 in VMEC 8.52
+  kActive = 2,
+
+  // vacuum pressure turned on, R and Z force residuals below 1e-3
+  // vacuum update every nvacskip iterations; ivac > 2 in VMEC 8.52
+  kSettled = 3
 };
 
 int VmecStatusCode(const VmecStatus vmec_status);
