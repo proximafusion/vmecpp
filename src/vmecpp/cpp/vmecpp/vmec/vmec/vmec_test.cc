@@ -5,7 +5,10 @@
 #include "vmecpp/vmec/vmec/vmec.h"
 
 #include <fstream>
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -844,3 +847,33 @@ TEST(TestVmec, Threed1FreeBoundaryCoversTheAsymmetricPoloidalRange) {
     }  // l
   }  // k
 }  // Threed1FreeBoundaryCoversTheAsymmetricPoloidalRange
+
+// An inconsistent VmecINDATA must come back as a status from the factory:
+// constructing first ends the process instead of reporting the input error.
+TEST(TestVmec, InconsistentIndataIsRejectedBeforeConstruction) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  for (const auto& [description, mutate] :
+       std::vector<std::pair<std::string, std::function<void(VmecINDATA&)>>>{
+           {"nfp = 0", [](VmecINDATA& indata) { indata.nfp = 0; }},
+           {"nfp = -1", [](VmecINDATA& indata) { indata.nfp = -1; }},
+           {"mpol = 0", [](VmecINDATA& indata) { indata.mpol = 0; }},
+           {"mpol = 1", [](VmecINDATA& indata) { indata.mpol = 1; }},
+           {"nvacskip = -1",
+            [](VmecINDATA& indata) { indata.nvacskip = -1; }}}) {
+    VmecINDATA indata = *base_indata;
+    mutate(indata);
+    const absl::StatusOr<std::unique_ptr<Vmec>> maybe_vmec =
+        Vmec::FromIndata(indata);
+    EXPECT_FALSE(maybe_vmec.ok()) << description;
+    if (!maybe_vmec.ok()) {
+      EXPECT_EQ(maybe_vmec.status().code(), absl::StatusCode::kInvalidArgument)
+          << description;
+    }
+  }
+}  // InconsistentIndataIsRejectedBeforeConstruction
