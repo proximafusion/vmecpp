@@ -335,7 +335,9 @@ std::string RadialProfiles::profileTypeToString(ProfileType profileType) {
 
 /** Compute the maximum toroidal and poloidal magnetic fluxes. */
 void RadialProfiles::computeMagneticFluxes() {
-  maxToroidalFlux = signOfJacobian * id_.phiedge / (2.0 * M_PI);
+  // the bloating factor scales the enclosed toroidal flux
+  const double phiedge = id_.phiedge * id_.bloat;
+  maxToroidalFlux = signOfJacobian * phiedge / (2.0 * M_PI);
   double edgeToroidalFluxFromProfile = torflux(1.0);
   if (edgeToroidalFluxFromProfile != 0.0) {
     maxToroidalFlux /= edgeToroidalFluxFromProfile;
