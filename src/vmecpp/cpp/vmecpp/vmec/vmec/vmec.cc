@@ -552,6 +552,7 @@ bool Vmec::InitializeRadial(
   fc_.restart_reason = RestartReason::NO_RESTART;
   fc_.res0 = -1;
   fc_.res1 = -1;
+  fc_.res0_at_last_preconditioner_update = -1.0;
   m_delt0 = indata_.delt;
 
   // INITIALIZE MESH-DEPENDENT SCALARS
@@ -655,8 +656,9 @@ bool Vmec::InitializeRadial(
           ls_[thread_id].get(), &h_, r_[thread_id].get(), &fb_vac_,
           vac_num_threads_, kSignOfJacobian, indata_.nvacskip,
           &vacuum_pressure_state_);
-      m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
-                                   indata_.lforbal);
+      m_[thread_id]->setFromINDATA(
+          indata_.ncurr, indata_.gamma, indata_.tcon0, indata_.lforbal,
+          indata_.adaptive_preconditioner_update);
     }  // thread_id
 
     if (checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&

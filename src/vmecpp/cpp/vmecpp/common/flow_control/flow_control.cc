@@ -61,6 +61,7 @@ FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
   restart_reason = RestartReason::NO_RESTART;
   res0 = -1;
   res1 = -1;
+  res0_at_last_preconditioner_update = -1.0;
   delt0r = delt;
   multi_ns_grid = num_grids;
   neqs_old = 0;

@@ -617,3 +617,33 @@ def test_near_axis_iota_profile():
         )
     for i in range(1, len(error_arrays)):
         assert np.linalg.norm(error_arrays[i]) < np.linalg.norm(error_arrays[i - 1])
+
+
+@pytest.mark.parametrize(
+    "case_name",
+    ["solovev", "circular_tokamak", "cth_like_fixed_bdy"],
+)
+def test_adaptive_preconditioner_matches_equilibrium(case_name: str):
+    """RAD-P adaptive preconditioning converges to the same physical equilibrium.
+
+    Changing the preconditioning update cadence alters the optimization path
+    through the parameter space, but preserves the stationary point F(x) = 0.
+    """
+    json_path = TEST_DATA / f"{case_name}.json"
+    indata_base = vmecpp.VmecInput.from_file(json_path)
+    indata_base.adaptive_preconditioner_update = False
+    out_base = vmecpp.run(indata_base, verbose=0, max_threads=1)
+    assert out_base.wout.ier_flag == 0
+
+    indata_radp = vmecpp.VmecInput.from_file(json_path)
+    indata_radp.adaptive_preconditioner_update = True
+    out_radp = vmecpp.run(indata_radp, verbose=0, max_threads=1)
+    assert out_radp.wout.ier_flag == 0
+
+    np.testing.assert_allclose(
+        np.array(out_radp.wout.rmnc),
+        np.array(out_base.wout.rmnc),
+        atol=1e-3,
+        rtol=1e-3,
+        err_msg=f"RAD-P geometry deviated on {case_name}",
+    )

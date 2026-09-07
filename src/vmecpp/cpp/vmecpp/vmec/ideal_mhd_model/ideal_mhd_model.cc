@@ -374,10 +374,12 @@ IdealMhdModel::IdealMhdModel(
 }
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
-                                  double tcon0, bool lforbal) {
+                                  double tcon0, bool lforbal,
+                                  bool adaptive_preconditioner_update) {
   this->ncurr = ncurr;
   this->adiabaticIndex = adiabaticIndex;
   this->tcon0 = tcon0;
+  this->adaptive_preconditioner_update_ = adaptive_preconditioner_update;
   // The m=1 trig weights below are built on the reduced poloidal grid, so the
   // force-balance modification is restricted to the stellarator-symmetric case.
   this->lforbal = lforbal && !s_.lasym;
@@ -594,12 +596,24 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // NOTE: No need to return here in case of iequi != 0,
   // since we don't overwrite stuff in-place in VMEC++.
 
-  if (shouldUpdateRadialPreconditioner(iter1, iter2)) {
+  if (adaptive_preconditioner_update_ &&
+      m_fc_.res0_at_last_preconditioner_update <= 0.0 && m_fc_.res0 > 0.0) {
+#ifdef _OPENMP
+#pragma omp single nowait
+#endif  // _OPENMP
+    {
+      m_fc_.res0_at_last_preconditioner_update = m_fc_.res0;
+    }
+  }
+
+  if (shouldUpdateRadialPreconditioner(iter1, iter2,
+                                       m_last_preconditioner_update)) {
 #ifdef _OPENMP
 #pragma omp single nowait
 #endif  // _OPENMP
     {
       m_last_preconditioner_update = iter2;
+      m_fc_.res0_at_last_preconditioner_update = m_fc_.res0;
     }
 
     updateRadialPreconditioner();
@@ -2095,9 +2109,56 @@ void IdealMhdModel::computeMHDForces() {
       czmn_o.data());
 }
 
-bool IdealMhdModel::shouldUpdateRadialPreconditioner(int iter1,
-                                                     int iter2) const {
-  return ((iter2 - iter1) % m_fc_.kPreconditionerUpdateInterval == 0);
+bool IdealMhdModel::shouldUpdateRadialPreconditioner(
+    int iter1, int iter2, int last_preconditioner_update) const {
+  if (!adaptive_preconditioner_update_) {
+    return ((iter2 - iter1) % m_fc_.kPreconditionerUpdateInterval == 0);
+  }
+
+  // Adaptive Preconditioner Update (RAD-P: Residual-Aware Dynamic Preconditioning):
+  // 1. Always update at the very first step of each multigrid stage.
+  if (iter2 == iter1 || last_preconditioner_update <= 0) {
+    return true;
+  }
+
+  const int delta_k = iter2 - last_preconditioner_update;
+
+  // 2. Minimum quench interval: give momentum and artificial time-step damping
+  // at least 5 iterations to stabilize along the new preconditioned metric.
+  if (delta_k < 5) {
+    return false;
+  }
+
+  // 3. Safety ceiling: ensure preconditioner is refreshed at least every 50 iterations.
+  if (delta_k >= 50) {
+    return true;
+  }
+
+  // 4. Curvature jump: if current force residual spikes significantly above the best
+  // achieved state, the metric is invalid for the local Hessian. Trigger an immediate
+  // update before BAD_JACOBIAN resets occur (which trigger at 100 * res0).
+  if (m_fc_.res0 > 0.0 && m_fc_.fsq > 10.0 * m_fc_.res0) {
+    return true;
+  }
+
+  // 5. Stagnation: if after at least 15 iterations the best residual has failed
+  // to drop by 2% relative to the residual at the last update.
+  if (delta_k >= 15 && m_fc_.res0_at_last_preconditioner_update > 0.0) {
+    if (m_fc_.res0 > 0.98 * m_fc_.res0_at_last_preconditioner_update) {
+      return true;
+    }
+  }
+
+  // 6. Cadence fallback: at 25 iterations, update unless convergence is exceptionally
+  // rapid (> 90% reduction in res0 since last update).
+  if (delta_k >= 25) {
+    if (m_fc_.res0_at_last_preconditioner_update <= 0.0 ||
+        m_fc_.res0 > 0.10 * m_fc_.res0_at_last_preconditioner_update) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 void IdealMhdModel::updateRadialPreconditioner() {

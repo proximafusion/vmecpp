@@ -66,7 +66,7 @@ class IdealMhdModel {
                 VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
-                     bool lforbal);
+                     bool lforbal, bool adaptive_preconditioner_update = false);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -288,9 +288,11 @@ class IdealMhdModel {
   void dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f);
 
   // Checks if the radial preconditioner matrix elements should be updated.
-  // They don't change so much during iterations, so one can get away with
-  // computing them only ever so often (as of now: every 25 iterations).
-  bool shouldUpdateRadialPreconditioner(int iter1, int iter2) const;
+  // When adaptive_preconditioner_update is enabled, triggers dynamically on
+  // force residual stagnation and curvature changes. Otherwise uses a fixed
+  // interval (every 25 iterations).
+  bool shouldUpdateRadialPreconditioner(
+      int iter1, int iter2, int last_preconditioner_update = -1) const;
 
   // Computes the radial preconditioner matrix elements for R and Z.
   void updateRadialPreconditioner();
@@ -522,6 +524,7 @@ class IdealMhdModel {
   // weights; rzu_fac/rru_fac/frcc_fac/fzsc_fac are the force-balance factors
   // derived from the R,Z preconditioner diagonals. All unused when lforbal off.
   bool lforbal = false;
+  bool adaptive_preconditioner_update_ = false;
   Eigen::VectorXd cos01;
   Eigen::VectorXd sin01;
   Eigen::VectorXd rzu_fac;
