@@ -1388,6 +1388,19 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
                         vmec_indata.ns_array.size()));
   }
 
+  if (vmec_indata.ftol_array.size() < vmec_indata.ns_array.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'ftol_array' needs an entry for every 'ns_array' "
+        "entry, but has %ld against %ld\n",
+        vmec_indata.ftol_array.size(), vmec_indata.ns_array.size()));
+  }
+  if (vmec_indata.niter_array.size() < vmec_indata.ns_array.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'niter_array' needs an entry for every 'ns_array' "
+        "entry, but has %ld against %ld\n",
+        vmec_indata.niter_array.size(), vmec_indata.ns_array.size()));
+  }
+
   // ftol_array
   for (Eigen::VectorXi::Index idx = 0; idx < vmec_indata.ns_array.size();
        ++idx) {
