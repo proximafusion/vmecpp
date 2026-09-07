@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788823376769,
+  "lastUpdate": 1788824265400,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17511,6 +17511,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4825556520000873,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0618c408d9198e825b125382e247527ae3f38698",
+          "message": "Cover the lasym cos part of the vacuum grpmn and bvec (#738)\n\n* Say why the lasym cos halves are not compared in the vacuum tests\n\n* Cover the lasym cos part of the vacuum grpmn and bvec",
+          "timestamp": "2026-09-07T23:31:51Z",
+          "tree_id": "289884671c57904a69539dcc7aa702256bc4ef83",
+          "url": "https://github.com/proximafusion/vmecpp/commit/0618c408d9198e825b125382e247527ae3f38698"
+        },
+        "date": 1788824260237,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.2600930970000263,
+            "range": "stddev: 0.003929458999389955",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.182622315000041,
+            "range": "stddev: 0.01901686743307852",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.880323728666705,
+            "range": "stddev: 0.02821413414638429",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.7068635343333274,
+            "range": "stddev: 0.05002226532255382",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.334850273666613,
+            "range": "stddev: 0.013358280950431418",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.56754031866664,
+            "range": "stddev: 0.0685286571493995",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.0621199219999653,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.22992493799984004,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
