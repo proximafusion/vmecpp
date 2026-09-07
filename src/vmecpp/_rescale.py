@@ -5,7 +5,7 @@ import typing
 import numpy as np
 
 if typing.TYPE_CHECKING:
-    from vmecpp import VmecOutput
+    from vmecpp import MagneticFieldResponseTable, VmecOutput
 
 
 def rescale(
@@ -13,6 +13,7 @@ def rescale(
     b_scale: float,
     r_scale: float,
     scale_pressure: bool = True,
+    magnetic_field: "MagneticFieldResponseTable | None" = None,
 ) -> "VmecOutput":
     from . import run  # noqa: PLC0415
 
@@ -26,6 +27,8 @@ def rescale(
         b_scale: factor to scale the magnetic field by.
         r_scale: factor to scale the major radius by.
         scale_pressure: whether to scale pressure to maintain force balance (default: True).
+        magnetic_field: the in-memory response table of a free-boundary run, when the
+            equilibrium was computed from one instead of from the mgrid file in its input.
 
     Returns:
         A new VmecOutput object with all derived parameters properly rescaled.
@@ -89,4 +92,6 @@ def rescale(
     intermediate_output.wout = scaled_wout
 
     # Call run with 0 iterations
-    return run(scaled_input, restart_from=intermediate_output)
+    return run(
+        scaled_input, magnetic_field=magnetic_field, restart_from=intermediate_output
+    )

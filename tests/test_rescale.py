@@ -11,10 +11,20 @@ TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 @pytest.fixture(scope="module")
 def cth_like_free_boundary():
-    """A converged three-dimensional free-boundary equilibrium and its input."""
+    """A converged three-dimensional free-boundary equilibrium, its input and the coil
+    response table it was computed from (built from the coils file, so the test does not
+    depend on the git-lfs mgrid file)."""
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_params.number_of_r_grid_points = 31
+    makegrid_params.number_of_phi_grid_points = 36
+    makegrid_params.number_of_z_grid_points = 20
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    vmec_input.mgrid_file = str((TEST_DATA_DIR / "mgrid_cth_like.nc").resolve())
-    return vmec_input, vmecpp.run(vmec_input, verbose=False)
+    return vmec_input, response, vmecpp.run(vmec_input, response, verbose=False)
 
 
 def test_equilibrium_rescale():
@@ -89,10 +99,12 @@ def test_rescale_free_boundary_scales_the_coil_currents(cth_like_free_boundary):
     """The vacuum field is produced by the coil currents, so B -> b_scale * B holds only
     if extcur scales with it; otherwise the rescaled state is not in force balance
     against the unchanged external field."""
-    vmec_input, oq_initial = cth_like_free_boundary
+    vmec_input, response, oq_initial = cth_like_free_boundary
     b_scale = 1.5
 
-    oq_rescaled = vmecpp.rescale(oq_initial, b_scale=b_scale, r_scale=1.0)
+    oq_rescaled = vmecpp.rescale(
+        oq_initial, b_scale=b_scale, r_scale=1.0, magnetic_field=response
+    )
 
     np.testing.assert_allclose(
         oq_rescaled.input.extcur,
@@ -115,7 +127,7 @@ def test_rescale_rejects_radial_scaling_of_a_free_boundary_equilibrium(
 ):
     """The mgrid fixes the grid extent and the coil geometry, so r_scale cannot be
     applied to a free-boundary equilibrium."""
-    _, oq_initial = cth_like_free_boundary
+    _, _, oq_initial = cth_like_free_boundary
 
     with pytest.raises(ValueError, match="mgrid"):
         vmecpp.rescale(oq_initial, b_scale=1.0, r_scale=2.0)
