@@ -21,7 +21,7 @@ class OnlyCoils : public FreeBoundaryBase {
             const MGridProvider* mgrid, std::span<double> bSqVacShare,
             std::span<double> vacuum_b_r_share,
             std::span<double> vacuum_b_phi_share,
-            std::span<double> vacuum_b_z_share);
+            std::span<double> vacuum_b_z_share, std::span<double> reduce_slots);
 
   absl::StatusOr<bool> update(
       const std::span<const double> rCC, const std::span<const double> rSS,
@@ -33,6 +33,10 @@ class OnlyCoils : public FreeBoundaryBase {
       double netToroidalCurrent, int ivacskip,
       const VmecCheckpoint& vmec_checkpoint = VmecCheckpoint::NONE,
       bool at_checkpoint_iteration = false) final;
+
+ private:
+  // one row per thread for SumOverThreads
+  std::span<double> reduce_slots_;
 };
 
 }  // namespace vmecpp
