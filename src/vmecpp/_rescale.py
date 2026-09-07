@@ -32,12 +32,26 @@ def rescale(
     """
     # Scale INDATA parameters
     scaled_input = output.input.model_copy(deep=True)
+
+    if scaled_input.lfreeb and r_scale != 1.0:
+        msg = (
+            "rescale cannot apply r_scale != 1 to a free-boundary equilibrium: the "
+            "vacuum field comes from the mgrid file, whose grid extent and coil "
+            "geometry would have to be scaled as well. Regenerate the mgrid for the "
+            "scaled coils and run from that input instead."
+        )
+        raise ValueError(msg)
+
     scaled_input.phiedge *= b_scale * (r_scale**2)
 
     if scale_pressure:
         scaled_input.pres_scale *= b_scale**2
 
     scaled_input.curtor *= b_scale * r_scale
+
+    # the vacuum field scales with the coil currents that produce it
+    if scaled_input.lfreeb:
+        scaled_input.extcur = np.asarray(scaled_input.extcur, dtype=float) * b_scale
 
     scaled_input.rbc *= r_scale
     scaled_input.zbs *= r_scale

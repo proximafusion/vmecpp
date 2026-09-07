@@ -1,11 +1,20 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import vmecpp
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
+
+
+@pytest.fixture(scope="module")
+def cth_like_free_boundary():
+    """A converged three-dimensional free-boundary equilibrium and its input."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vmec_input.mgrid_file = str((TEST_DATA_DIR / "mgrid_cth_like.nc").resolve())
+    return vmec_input, vmecpp.run(vmec_input, verbose=False)
 
 
 def test_equilibrium_rescale():
@@ -74,3 +83,39 @@ def test_equilibrium_rescale():
     np.testing.assert_allclose(
         oq_rescaled.wout.zmns, oq_full_run.wout.zmns, rtol=1e-9, atol=1e-10 * r_scale
     )
+
+
+def test_rescale_free_boundary_scales_the_coil_currents(cth_like_free_boundary):
+    """The vacuum field is produced by the coil currents, so B -> b_scale * B holds only
+    if extcur scales with it; otherwise the rescaled state is not in force balance
+    against the unchanged external field."""
+    vmec_input, oq_initial = cth_like_free_boundary
+    b_scale = 1.5
+
+    oq_rescaled = vmecpp.rescale(oq_initial, b_scale=b_scale, r_scale=1.0)
+
+    np.testing.assert_allclose(
+        oq_rescaled.input.extcur,
+        np.asarray(vmec_input.extcur, dtype=float) * b_scale,
+        rtol=1e-12,
+    )
+    np.testing.assert_allclose(
+        oq_rescaled.wout.bmnc,
+        np.asarray(oq_initial.wout.bmnc) * b_scale,
+        rtol=1e-9,
+        atol=1e-10 * b_scale,
+    )
+    # still an equilibrium: leaving extcur unscaled leaves fsqr at order 1 here
+    assert oq_rescaled.wout.fsqr < 1.0e-6
+    assert oq_rescaled.wout.fsqz < 1.0e-6
+
+
+def test_rescale_rejects_radial_scaling_of_a_free_boundary_equilibrium(
+    cth_like_free_boundary,
+):
+    """The mgrid fixes the grid extent and the coil geometry, so r_scale cannot be
+    applied to a free-boundary equilibrium."""
+    _, oq_initial = cth_like_free_boundary
+
+    with pytest.raises(ValueError, match="mgrid"):
+        vmecpp.rescale(oq_initial, b_scale=1.0, r_scale=2.0)
