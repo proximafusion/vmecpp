@@ -1,5 +1,8 @@
 """Quasisymmetry objectives built only from the public geometry API.
 
+Re-exported from vmecpp.simsopt_compat, next to the SIMSOPT wrapper this
+mirrors; not part of the solver.
+
 The metric is the one SIMSOPT's ``QuasisymmetryRatioResidual`` implements: for
 quasisymmetry the ratio ``(B x grad B . grad psi) / (B . grad B)`` is constant
 on a flux surface, so
