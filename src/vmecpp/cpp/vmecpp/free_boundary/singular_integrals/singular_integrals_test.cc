@@ -370,14 +370,15 @@ TEST_P(AnalyticAddBackTest, MatchesSubtractedKernels) {
       if (m == 0 && n < 0) continue;
       const double sn = std::sin(m * u0 - n * v0);
       if (std::abs(sn) < 0.2) continue;
-      const auto [f1, f2] = TangentPlaneKernelReference(m, n, a, b2, c, A, B2, C);
+      const auto [f1, f2] =
+          TangentPlaneKernelReference(m, n, a, b2, c, A, B2, C);
       const int idx = (nf + n) * (mf + 1) + m;
       const double expected_bvec = f1 / (2.0 * M_PI) * sn;
       const double expected_grpmn = f2 / (2.0 * M_PI) * sn;
       if (lasym) {
         const double cs = std::cos(m * u0 - n * v0);
-        EXPECT_TRUE(IsCloseRelAbs(f1 / (2.0 * M_PI) * cs, si.bvec_cos[idx],
-                                  kTolerance))
+        EXPECT_TRUE(
+            IsCloseRelAbs(f1 / (2.0 * M_PI) * cs, si.bvec_cos[idx], kTolerance))
             << "bvec_cos at (m, n) = (" << m << ", " << n << ")";
         EXPECT_TRUE(IsCloseRelAbs(
             f2 / (2.0 * M_PI) * cs,
@@ -386,8 +387,8 @@ TEST_P(AnalyticAddBackTest, MatchesSubtractedKernels) {
             << "grpmn_cos at (m, n) = (" << m << ", " << n << ")";
       }
       EXPECT_TRUE(IsCloseRelAbs(expected_bvec, si.bvec_sin[idx], kTolerance))
-          << "bvec_sin at (m, n) = (" << m << ", " << n
-          << "): expected " << expected_bvec << ", got " << si.bvec_sin[idx];
+          << "bvec_sin at (m, n) = (" << m << ", " << n << "): expected "
+          << expected_bvec << ", got " << si.bvec_sin[idx];
       EXPECT_TRUE(IsCloseRelAbs(
           expected_grpmn,
           si.grpmn_sin[static_cast<std::size_t>(idx) * numLocal + kl0],

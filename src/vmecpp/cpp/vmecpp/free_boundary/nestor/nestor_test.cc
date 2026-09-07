@@ -151,7 +151,8 @@ TEST(TestNestor, InteriorDipoleLineGivesZeroFieldOnHelicalTorus) {
   }
   const double err_rms = std::sqrt(err_sum / s.nZnT);
   // 4.9e-3 with the cross-term sign defect in the analytic add-back
-  EXPECT_LT(err_rms / ref_rms, 1.0e-4) << "|B|^2/2 residual relative to |B_ext|^2/2: " << err_rms / ref_rms;
+  EXPECT_LT(err_rms / ref_rms, 1.0e-4)
+      << "|B|^2/2 residual relative to |B_ext|^2/2: " << err_rms / ref_rms;
 }
 
 }  // namespace vmecpp
