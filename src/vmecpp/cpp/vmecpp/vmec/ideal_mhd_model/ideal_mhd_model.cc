@@ -2136,7 +2136,8 @@ bool IdealMhdModel::shouldUpdateRadialPreconditioner(
     return ((iter2 - iter1) % m_fc_.kPreconditionerUpdateInterval == 0);
   }
 
-  // Adaptive Preconditioner Update (RAD-P: Residual-Aware Dynamic Preconditioning):
+  // Adaptive Preconditioner Update (RAD-P: Residual-Aware Dynamic
+  // Preconditioning):
   // 1. Always update at the very first step of each multigrid stage.
   if (iter2 == iter1 || last_preconditioner_update <= 0) {
     return true;
@@ -2150,14 +2151,16 @@ bool IdealMhdModel::shouldUpdateRadialPreconditioner(
     return false;
   }
 
-  // 3. Safety ceiling: ensure preconditioner is refreshed at least every 50 iterations.
+  // 3. Safety ceiling: ensure preconditioner is refreshed at least every 50
+  // iterations.
   if (delta_k >= 50) {
     return true;
   }
 
-  // 4. Curvature jump: if current force residual spikes significantly above the best
-  // achieved state, the metric is invalid for the local Hessian. Trigger an immediate
-  // update before BAD_JACOBIAN resets occur (which trigger at 100 * res0).
+  // 4. Curvature jump: if current force residual spikes significantly above the
+  // best achieved state, the metric is invalid for the local Hessian. Trigger
+  // an immediate update before BAD_JACOBIAN resets occur (which trigger at 100
+  // * res0).
   if (m_fc_.res0 > 0.0 && m_fc_.fsq > 10.0 * m_fc_.res0) {
     return true;
   }
@@ -2170,8 +2173,8 @@ bool IdealMhdModel::shouldUpdateRadialPreconditioner(
     }
   }
 
-  // 6. Cadence fallback: at 25 iterations, update unless convergence is exceptionally
-  // rapid (> 90% reduction in res0 since last update).
+  // 6. Cadence fallback: at 25 iterations, update unless convergence is
+  // exceptionally rapid (> 90% reduction in res0 since last update).
   if (delta_k >= 25) {
     if (m_fc_.res0_at_last_preconditioner_update <= 0.0 ||
         m_fc_.res0 > 0.10 * m_fc_.res0_at_last_preconditioner_update) {

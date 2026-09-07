@@ -626,8 +626,8 @@ def test_near_axis_iota_profile():
 def test_adaptive_preconditioner_matches_equilibrium(case_name: str):
     """RAD-P adaptive preconditioning converges to the same physical equilibrium.
 
-    Changing the preconditioning update cadence alters the optimization path
-    through the parameter space, but preserves the stationary point F(x) = 0.
+    Changing the preconditioning update cadence alters the optimization path through the
+    parameter space, but preserves the stationary point F(x) = 0.
     """
     json_path = TEST_DATA / f"{case_name}.json"
     indata_base = vmecpp.VmecInput.from_file(json_path)

@@ -457,8 +457,8 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
-  if (H5Lexists(from_file.getId(),
-                "/indata/adaptive_preconditioner_update", 0) == 1) {
+  if (H5Lexists(from_file.getId(), "/indata/adaptive_preconditioner_update",
+                0) == 1) {
     ReadH5Dataset(m_indata.adaptive_preconditioner_update,
                   "/indata/adaptive_preconditioner_update", from_file);
   } else {
@@ -1587,7 +1587,8 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // nothing to check here: lforbal can be true or false and both are valid...
 
   // adaptive_preconditioner_update
-  // nothing to check here: adaptive_preconditioner_update can be true or false and both are valid...
+  // nothing to check here: adaptive_preconditioner_update can be true or false
+  // and both are valid...
 
   // iteration_style
   // VMEC_8_52 and PARVMEC are both implemented in Vmec::SolveEquilibriumLoop.

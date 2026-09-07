@@ -981,6 +981,6 @@ TEST(TestVmec, AdaptivePreconditionerMatchesEquilibrium) {
   const double tolerance = 1.0e-5;
   for (int i = 0; i < base_run->wout.rmnc.size(); ++i) {
     EXPECT_TRUE(IsCloseRelAbs(base_run->wout.rmnc(i), radp_run->wout.rmnc(i),
-                             tolerance));
+                              tolerance));
   }
 }
