@@ -28,7 +28,10 @@ class FourierCoeffs {
   void setZero();
 
   void decomposeInto(FourierCoeffs& m_x, const Eigen::VectorXd& scalxc) const;
-  void m1Constraint(double scalingFactor,
+  // m = 1 polar constraint: rss <- f (rss + sigma zcs), zcs <- f (sigma rss -
+  // zcs), and rsc, zcc alike, with sigma = -sign_of_jacobian; self-inverse up
+  // to f.
+  void m1Constraint(double scalingFactor, int sign_of_jacobian,
                     std::optional<int> jMax = std::nullopt);
 
   // Zero R and Z coefficients with m >= mpolGeom or n > ntorGeom; lambda is

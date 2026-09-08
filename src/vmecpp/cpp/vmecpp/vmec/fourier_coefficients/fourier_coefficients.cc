@@ -173,8 +173,9 @@ void FourierCoeffs::decomposeInto(FourierCoeffs& m_x,
 }
 
 /** (un)do m=1 constraint to couple R_ss,Z_cs as well as R_sc,Z_cc */
-void FourierCoeffs::m1Constraint(double scalingFactor,
+void FourierCoeffs::m1Constraint(double scalingFactor, int sign_of_jacobian,
                                  std::optional<int> jMax) {
+  const double sigma = -sign_of_jacobian;
   int nsMaxToUse = nsMax_;
   if (jMax.has_value()) {
     nsMaxToUse = std::min(jMax.value(), nsMaxToUse);
@@ -186,13 +187,13 @@ void FourierCoeffs::m1Constraint(double scalingFactor,
       int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
       if (s_.lthreed) {
         double old_rss = rss[idx_fc];
-        rss[idx_fc] = (old_rss + zcs[idx_fc]) * scalingFactor;
-        zcs[idx_fc] = (old_rss - zcs[idx_fc]) * scalingFactor;
+        rss[idx_fc] = (old_rss + sigma * zcs[idx_fc]) * scalingFactor;
+        zcs[idx_fc] = (sigma * old_rss - zcs[idx_fc]) * scalingFactor;
       }
       if (s_.lasym) {
         double old_rsc = rsc[idx_fc];
-        rsc[idx_fc] = (old_rsc + zcc[idx_fc]) * scalingFactor;
-        zcc[idx_fc] = (old_rsc - zcc[idx_fc]) * scalingFactor;
+        rsc[idx_fc] = (old_rsc + sigma * zcc[idx_fc]) * scalingFactor;
+        zcc[idx_fc] = (sigma * old_rsc - zcc[idx_fc]) * scalingFactor;
       }
     }  // n
   }  // j

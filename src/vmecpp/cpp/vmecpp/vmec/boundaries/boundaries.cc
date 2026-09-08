@@ -290,18 +290,21 @@ void Boundaries::flipTheta() {
  * origin.
  */
 void Boundaries::ensureM1Constrained(const double scaling_factor) {
+  // same map as FourierCoeffs::m1Constraint: the frozen combination is
+  // rss = sigma zcs with sigma = -sign_of_jacobian
+  const double sigma = -sign_of_jacobian_;
   for (int n = 0; n <= s_.ntor; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
     if (s_.lthreed) {
       double backup_rss = rbss[idx_mn];
-      rbss[idx_mn] = (backup_rss + zbcs[idx_mn]) * scaling_factor;
-      zbcs[idx_mn] = (backup_rss - zbcs[idx_mn]) * scaling_factor;
+      rbss[idx_mn] = (backup_rss + sigma * zbcs[idx_mn]) * scaling_factor;
+      zbcs[idx_mn] = (sigma * backup_rss - zbcs[idx_mn]) * scaling_factor;
     }
     if (s_.lasym) {
       double backup_rsc = rbsc[idx_mn];
-      rbsc[idx_mn] = (backup_rsc + zbcc[idx_mn]) * scaling_factor;
-      zbcc[idx_mn] = (backup_rsc - zbcc[idx_mn]) * scaling_factor;
+      rbsc[idx_mn] = (backup_rsc + sigma * zbcc[idx_mn]) * scaling_factor;
+      zbcc[idx_mn] = (sigma * backup_rsc - zbcc[idx_mn]) * scaling_factor;
     }
   }  // n
 }

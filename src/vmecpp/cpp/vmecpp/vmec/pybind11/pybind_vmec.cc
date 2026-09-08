@@ -307,8 +307,8 @@ class VmecModel {
                                                        *vmec_->p_[0]);
   }
   void RecomputeAxis() const {
-    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(
-        vmec_->fc_.nsval, vmecpp::Vmec::kSignOfJacobian);
+    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(vmec_->fc_.nsval,
+                                                     vmec_->indata_.signgs);
   }
 
   // Recompute the magnetic axis to fix the Jacobian sign, then re-initialize
@@ -319,8 +319,8 @@ class VmecModel {
   // single continuous parallel region tolerates but a step-by-step driver does
   // not.
   void Reinitialize() {
-    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(
-        vmec_->fc_.nsval, vmecpp::Vmec::kSignOfJacobian);
+    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(vmec_->fc_.nsval,
+                                                     vmec_->indata_.signgs);
     double delt0 = vmec_->indata_.delt;
     // Vmec::run resets the accumulated constants before every
     // InitializeRadial (the rmsPhiP -> lamscale accumulation in
@@ -612,6 +612,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("mgrid_file", &VmecINDATA::mgrid_file);
   DefEigenProperty(pyindata, "extcur", &VmecINDATA::extcur);
   pyindata.def_readwrite("nvacskip", &VmecINDATA::nvacskip)
+      .def_readwrite("signgs", &VmecINDATA::signgs)
       .def_readwrite("free_boundary_method", &VmecINDATA::free_boundary_method)
 
       // tweaking parameters
