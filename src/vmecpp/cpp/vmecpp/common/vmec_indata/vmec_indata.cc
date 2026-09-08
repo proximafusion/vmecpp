@@ -1341,6 +1341,13 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
                         vmec_indata.nzeta));
   }
 
+  // the free-boundary case additionally requires nvacskip >= 1; see below
+  if (vmec_indata.nvacskip < 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'nvacskip' needs to be >= 0, but is %d\n",
+        vmec_indata.nvacskip));
+  }
+
   /* --------------------------------- */
 
   const int NS_MIN = 3;
@@ -1379,6 +1386,19 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         absl::StrFormat("input variable 'ns_array' needs to have at least one "
                         "entry, but size is %ld\n",
                         vmec_indata.ns_array.size()));
+  }
+
+  if (vmec_indata.ftol_array.size() < vmec_indata.ns_array.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'ftol_array' needs an entry for every 'ns_array' "
+        "entry, but has %ld against %ld\n",
+        vmec_indata.ftol_array.size(), vmec_indata.ns_array.size()));
+  }
+  if (vmec_indata.niter_array.size() < vmec_indata.ns_array.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'niter_array' needs an entry for every 'ns_array' "
+        "entry, but has %ld against %ld\n",
+        vmec_indata.niter_array.size(), vmec_indata.ns_array.size()));
   }
 
   // ftol_array
