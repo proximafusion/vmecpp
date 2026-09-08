@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788870261794,
+  "lastUpdate": 1788870393597,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -54978,6 +54978,162 @@ window.BENCHMARK_DATA = {
             "value": 0.004883607502641349,
             "unit": "seconds",
             "extra": "iterations: 290\ncpu: 0.004860455710344828 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3f4a44731d89736a0fe6d29494c87f3f3419291b",
+          "message": "qs: implement quasisymmetry as a Python geometry objective (#707)\n\n* geometry: add the output-independent evaluator and VMEC adapter\n\nIntroduce the product-basis geometry layer and its adapter from the VMEC\ninternal state. The layer is deliberately free of any client-specific code:\nit defines the R, Z, lambda, toroidal-flux and poloidal-flux representation,\nevaluates values plus analytic first and second spatial derivatives, and\ngathers the physical geometry from VmecInternalResults without any wout\ncoupling.\n\nVmecInternalResults gains lamscale so the adapter can rescale the solver's\nlambda variable to physical lambda; the HDF5 reader defaults it to 1.0 for\nfiles written before this field existed.\n\nNo Python, pybind or C bindings are added here, and no evaluation transpose:\neach consumer layer adds only the surface it actually uses.\n\n* geometry: expose the product-basis contract to Python and JAX\n\nBind the geometry contract from the previous commit into Python and add the\ndifferentiable view on top of it.\n\nThe pybind layer exposes the product-basis coefficients and the C++\nevaluator. vmecpp.geometry re-expresses the same contract as a JAX pytree and\nevaluates values plus analytic first and second spatial jets without nested\nautodiff, so downstream objectives are ordinary JAX functions of geometry.\n\nThe C++ evaluator is not merely re-exported: the test uses it as an\nindependent oracle for the JAX implementation on a real solved equilibrium.\n\nOnly the binding surface used by vmecpp.geometry is added.\n\n* qs: implement quasisymmetry as a Python geometry objective\n\nFirst client of the geometry contract, and the demonstration that the\ncontract is the right one: quasisymmetry is written entirely in Python and\nJAX on top of vmecpp.geometry.\n\n|B| is reconstructed from R, Z, lambda and the flux jets, and the objective\nis the normalized non-quasisymmetric Fourier power for quasi-axisymmetry or a\nselected helicity.\n\nThis commit adds no C++, no pybind and no Enzyme code at all. Any other\nobjective -- a different QI definition, a turbulence proxy -- is written the\nsame way, without touching VMEC++.\n\n* qs: check the reconstructed |B| against VMEC's own spectrum\n\nThe existing tests could not establish that the field strength rebuilt from\nthe geometry jets is correct. A zero non-quasi-axisymmetric residual on an\naxisymmetric equilibrium follows for any zeta-independent function of the\ngeometry, right or wrong, and the differentiability test only needs the\nobjective to vary.\n\nCompare against wout's bmnc instead, which is an independent oracle for the\nreconstruction. bmnc is a half-grid quantity and the evaluator interpolates on\nthe full grid, so the agreement is first order in the radial spacing: the\nrelative difference at one point falls 5.19e-3, 2.59e-3, 1.33e-3, 6.62e-4 for\nns = 31, 61, 121, 241, with both values converging to the same limit. A wrong\nreconstruction would be off by tens of percent.\n\n* qs: compute SIMSOPT's quasisymmetry ratio residual\n\nThe first version was a simpler proxy than the objective it replaced: an\nunweighted FFT of |B| on a single flux surface, with no Jacobian in the\nsurface average. That is not the metric the C++ path fed, so its numbers were\nnot comparable to anything.\n\nImplement the actual objective instead, still in pure Python and JAX:\n\n    f = sum_j w_j < [ (1/B^3) ( (N - iota M) B x grad B . grad psi\n                                - (M G + N I) B . grad B ) ]^2 >\n\nwith the flux-surface average discretized as SIMSOPT does, carrying the\nnfp dtheta dphi sqrt(g) / V' measure, summed over a list of surfaces with\nweights, for any helicity. The measure is not cosmetic: dropping it changes\nthe objective, and getting its derivative wrong is one of the two errors that\nonly show up end to end.\n\nAll of it comes from the geometry contract. The covariant basis gives sqrt(g)\nand the field components, the |B| angular derivatives come from\ndifferentiating the reconstruction with JAX, and G, I and iota are surface\naverages of the same quantities. VMEC++ pins the sign of the Jacobian and\nstores the field components with the opposite sign to the raw flux\nderivatives; that convention is applied in one place so the two terms of the\nresidual stay consistent.\n\nSIMSOPT is the oracle, not a sibling autodiff form: against\nQuasisymmetryRatioResidual on a 3D case the residual vectors agree to\ncos = 0.9999993 and the totals to 1.7e-5, stable across ns = 51, 101, 201.\nAlso added the check that the reconstructed |B| is VMEC's own bmnc.\n\n* Update and rename qs.py to _qs.py\n\n* Apply suggestion from @jurasic-pf  (known partially broken state, fixed in followup)",
+          "timestamp": "2026-09-08T14:18:46+02:00",
+          "tree_id": "a7b4184da65c66ef47ac86ace92877c86b591876",
+          "url": "https://github.com/proximafusion/vmecpp/commit/3f4a44731d89736a0fe6d29494c87f3f3419291b"
+        },
+        "date": 1788870393321,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00002186290053605312,
+            "unit": "seconds",
+            "extra": "iterations: 64788\ncpu: 2.1862748533679083e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00002421435570940053,
+            "unit": "seconds",
+            "extra": "iterations: 57256\ncpu: 2.4214678339388013e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0004053371243496354,
+            "unit": "seconds",
+            "extra": "iterations: 3426\ncpu: 0.0004053432597781669 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0010581070481382345,
+            "unit": "seconds",
+            "extra": "iterations: 1326\ncpu: 0.0010581475957767725 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.0001303093142368244,
+            "unit": "seconds",
+            "extra": "iterations: 10839\ncpu: 0.00013031231515822492 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00010255311866361933,
+            "unit": "seconds",
+            "extra": "iterations: 13695\ncpu: 0.0001025582625775831 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00025024846133939887,
+            "unit": "seconds",
+            "extra": "iterations: 5507\ncpu: 0.00025025878881423637 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.000210567281163972,
+            "unit": "seconds",
+            "extra": "iterations: 6496\ncpu: 0.0002105757752463054 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0004060442024717656,
+            "unit": "seconds",
+            "extra": "iterations: 3433\ncpu: 0.0004060570544713079 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00033288578437063143,
+            "unit": "seconds",
+            "extra": "iterations: 3979\ncpu: 0.0003324967423975876 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0013848339982807931,
+            "unit": "seconds",
+            "extra": "iterations: 1015\ncpu: 0.0013848489871921177 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.001166444865778052,
+            "unit": "seconds",
+            "extra": "iterations: 1223\ncpu: 0.0011664780940310703 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00002628994975810137,
+            "unit": "seconds",
+            "extra": "iterations: 53391\ncpu: 2.6304019179262383e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00015924187881075964,
+            "unit": "seconds",
+            "extra": "iterations: 9029\ncpu: 0.00015925152951600432 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0007990579583279329,
+            "unit": "seconds",
+            "extra": "iterations: 1748\ncpu: 0.0007991620320366076 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000022161879670967986,
+            "unit": "seconds",
+            "extra": "iterations: 64157\ncpu: 2.2175178421684935e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00013740657710898491,
+            "unit": "seconds",
+            "extra": "iterations: 10226\ncpu: 0.00013741777078036583 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0007367436151344453,
+            "unit": "seconds",
+            "extra": "iterations: 1847\ncpu: 0.0007368012024905386 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00021298150317720872,
+            "unit": "seconds",
+            "extra": "iterations: 6608\ncpu: 0.00021298734549031473 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.000899827334470927,
+            "unit": "seconds",
+            "extra": "iterations: 1553\ncpu: 0.0008998621043142309 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.004836044509518106,
+            "unit": "seconds",
+            "extra": "iterations: 289\ncpu: 0.004836188242214524 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.0036733299882853935,
+            "unit": "seconds",
+            "extra": "iterations: 383\ncpu: 0.003661369754569191 seconds\nthreads: 1"
           }
         ]
       }
