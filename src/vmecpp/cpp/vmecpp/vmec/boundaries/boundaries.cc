@@ -126,8 +126,24 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
 
     // The shift puts the boundary into the gauge rbs(m=1, n=0) = sigma *
     // zbc(m=1, n=0), the frozen combination of ensureM1Constrained, with
-    // sigma = -sign_of_jacobian.
-    const double sigma = -sign_of_jacobian_;
+    // sigma = -sign_of_jacobian. flipTheta, applied afterwards when the input
+    // runs in the other poloidal direction, negates zbc relative to rbs, so
+    // the shift targets the opposite sign in that case. The poloidal direction
+    // is read from the signed area of the m = 1 ellipse, which the shift does
+    // not change (see checkSignOfJacobian).
+    double r_test = 0.0;
+    double z_test = 0.0;
+    double r_test_asym = 0.0;
+    double z_test_asym = 0.0;
+    for (int nn = -s_.ntor; nn <= s_.ntor; ++nn) {
+      r_test += id.rbc(m, s_.ntor + nn);
+      z_test += id.zbs(m, s_.ntor + nn);
+      r_test_asym += (*id.rbs)(m, s_.ntor + nn);
+      z_test_asym += (*id.zbc)(m, s_.ntor + nn);
+    }
+    const double handedness = r_test * z_test - r_test_asym * z_test_asym;
+    const bool will_flip_theta = (handedness * sign_of_jacobian_ > 0.0);
+    const double sigma = -sign_of_jacobian_ * (will_flip_theta ? -1.0 : 1.0);
     delta = atan2((*id.rbs)(m, s_.ntor + n) - sigma * (*id.zbc)(m, s_.ntor + n),
                   id.rbc(m, s_.ntor + n) + sigma * id.zbs(m, s_.ntor + n));
 

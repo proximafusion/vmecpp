@@ -243,14 +243,17 @@ def test_hot_restart_from_a_right_handed_state():
     )
 
 
-def test_flipping_signgs_alone_relabels_theta():
+@pytest.mark.parametrize(
+    "case", ["cth_like_fixed_bdy", "cth_like_fixed_bdy_asym", "up_down_asym"]
+)
+def test_flipping_signgs_alone_relabels_theta(case: str):
     """With only signgs changed, the boundary is flipped in theta to match the.
 
     requested handedness, so the wout describes the same equilibrium in the poloidal
-    angle pi - theta: coefficient (m, n) becomes (-1)^m times coefficient (m, -n), the
-    rotational transform changes sign and the current does not.
+    angle pi - theta: coefficient (m, n) becomes (-1)^m times coefficient (m, -n), with
+    Z reversed, the rotational transform changes sign and the current does not.
     """
-    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{case}.json")
     wout = vmecpp.run(vmec_input, verbose=False).wout
     flipped_input = vmec_input.model_copy(deep=True)
     flipped_input.signgs = 1
@@ -273,12 +276,12 @@ def test_flipping_signgs_alone_relabels_theta():
         return parity[:, None] * np.asarray(coefficients)[relabelled, :]
 
     # R and lambda are relabelled as they stand; Z reverses with the poloidal
-    # direction on top of that
-    for name, sine, sign in (
-        ("rmnc", False, 1.0),
-        ("zmns", True, -1.0),
-        ("lmns", True, 1.0),
-    ):
+    # direction on top of that. The antisymmetric halves follow the same rule
+    # with the sine and cosine roles exchanged.
+    arrays = [("rmnc", False, 1.0), ("zmns", True, -1.0), ("lmns", True, 1.0)]
+    if vmec_input.lasym:
+        arrays += [("rmns", True, -1.0), ("zmnc", False, 1.0), ("lmnc", False, -1.0)]
+    for name, sine, sign in arrays:
         expected = np.asarray(getattr(wout, name))
         np.testing.assert_allclose(
             sign * relabel(getattr(flipped, name), sine),
