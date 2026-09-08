@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788875178629,
+  "lastUpdate": 1788877057891,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -17991,6 +17991,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4935600279999335,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "albert@tugraz.at",
+            "name": "Christopher Albert",
+            "username": "krystophny"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b823d614f3fc37738bf5df1b893812a807375bb1",
+          "message": "autodiff: run VMEC++ with an implicit geometry VJP (#710)\n\n* geometry: add the output-independent evaluator and VMEC adapter\n\nIntroduce the product-basis geometry layer and its adapter from the VMEC\ninternal state. The layer is deliberately free of any client-specific code:\nit defines the R, Z, lambda, toroidal-flux and poloidal-flux representation,\nevaluates values plus analytic first and second spatial derivatives, and\ngathers the physical geometry from VmecInternalResults without any wout\ncoupling.\n\nVmecInternalResults gains lamscale so the adapter can rescale the solver's\nlambda variable to physical lambda; the HDF5 reader defaults it to 1.0 for\nfiles written before this field existed.\n\nNo Python, pybind or C bindings are added here, and no evaluation transpose:\neach consumer layer adds only the surface it actually uses.\n\n* geometry: expose the product-basis contract to Python and JAX\n\nBind the geometry contract from the previous commit into Python and add the\ndifferentiable view on top of it.\n\nThe pybind layer exposes the product-basis coefficients and the C++\nevaluator. vmecpp.geometry re-expresses the same contract as a JAX pytree and\nevaluates values plus analytic first and second spatial jets without nested\nautodiff, so downstream objectives are ordinary JAX functions of geometry.\n\nThe C++ evaluator is not merely re-exported: the test uses it as an\nindependent oracle for the JAX implementation on a real solved equilibrium.\n\nOnly the binding surface used by vmecpp.geometry is added.\n\n* qs: implement quasisymmetry as a Python geometry objective\n\nFirst client of the geometry contract, and the demonstration that the\ncontract is the right one: quasisymmetry is written entirely in Python and\nJAX on top of vmecpp.geometry.\n\n|B| is reconstructed from R, Z, lambda and the flux jets, and the objective\nis the normalized non-quasisymmetric Fourier power for quasi-axisymmetry or a\nselected helicity.\n\nThis commit adds no C++, no pybind and no Enzyme code at all. Any other\nobjective -- a different QI definition, a turbulence proxy -- is written the\nsame way, without touching VMEC++.\n\n* qs: check the reconstructed |B| against VMEC's own spectrum\n\nThe existing tests could not establish that the field strength rebuilt from\nthe geometry jets is correct. A zero non-quasi-axisymmetric residual on an\naxisymmetric equilibrium follows for any zeta-independent function of the\ngeometry, right or wrong, and the differentiability test only needs the\nobjective to vary.\n\nCompare against wout's bmnc instead, which is an independent oracle for the\nreconstruction. bmnc is a half-grid quantity and the evaluator interpolates on\nthe full grid, so the agreement is first order in the radial spacing: the\nrelative difference at one point falls 5.19e-3, 2.59e-3, 1.33e-3, 6.62e-4 for\nns = 31, 61, 121, 241, with both values converging to the same limit. A wrong\nreconstruction would be off by tens of percent.\n\n* qs: compute SIMSOPT's quasisymmetry ratio residual\n\nThe first version was a simpler proxy than the objective it replaced: an\nunweighted FFT of |B| on a single flux surface, with no Jacobian in the\nsurface average. That is not the metric the C++ path fed, so its numbers were\nnot comparable to anything.\n\nImplement the actual objective instead, still in pure Python and JAX:\n\n    f = sum_j w_j < [ (1/B^3) ( (N - iota M) B x grad B . grad psi\n                                - (M G + N I) B . grad B ) ]^2 >\n\nwith the flux-surface average discretized as SIMSOPT does, carrying the\nnfp dtheta dphi sqrt(g) / V' measure, summed over a list of surfaces with\nweights, for any helicity. The measure is not cosmetic: dropping it changes\nthe objective, and getting its derivative wrong is one of the two errors that\nonly show up end to end.\n\nAll of it comes from the geometry contract. The covariant basis gives sqrt(g)\nand the field components, the |B| angular derivatives come from\ndifferentiating the reconstruction with JAX, and G, I and iota are surface\naverages of the same quantities. VMEC++ pins the sign of the Jacobian and\nstores the field components with the opposite sign to the raw flux\nderivatives; that convention is applied in one place so the two terms of the\nresidual stay consistent.\n\nSIMSOPT is the oracle, not a sibling autodiff form: against\nQuasisymmetryRatioResidual on a 3D case the residual vectors agree to\ncos = 0.9999993 and the totals to 1.7e-5, stable across ns = 51, 101, 201.\nAlso added the check that the reconstructed |B| is VMEC's own bmnc.\n\n* autodiff: run VMEC++ with an implicit geometry VJP\n\nClose the loop: run the real solve and give JAX an exact reverse-mode rule\nfor it, so any objective written against vmecpp.geometry differentiates\nthrough a VMEC++ equilibrium.\n\nThe solver stays outside the JAX trace. The forward callback runs VMEC++ in\nmemory and returns solved product-basis geometry; the reverse callback maps\ngeometry cotangents through the exact force-residual transpose and an\nimplicit interior solve. Without Enzyme it fails loudly rather than silently\nfalling back to finite differences.\n\nThe first parameterization is deliberately small: fixed-boundary,\nstellarator-symmetric, ncurr=0. Profile, asymmetric, current-constrained and\nfree-boundary VJPs stay explicit follow-up work until their residual\nderivatives are exposed.\n\nThe pybind surface added here is exactly what vmecpp.autodiff calls, and\nnothing else.\n\n* autodiff: deflate the structural null space in the adjoint solve\n\nThe implicit VJP solved the transposed interior system on the raw interior DOF\nset. The augmented Hessian has a structural null space -- state-independent\ngauge and parity modes that no force depends on and that produce no force --\nso that system is singular, the objective cotangent generally has a component\noutside its range, and the solve is inconsistent: GMRES stagnates instead of\nconverging. It is not a conditioning or tolerance problem, and no Krylov\nmethod fixes it.\n\nIn 2D the surviving null directions happen to stay orthogonal to the cotangent,\nso nothing showed. In 3D the r_ss, z_cs and lambda_cs blocks bring in modes\nthat do not, and the adjoint failed outright with info=400 on every\nstellarator case, with a stagnation floor exactly proportional to the 3D\namplitude. On the case used here the deflation removes 149 of 312 interior\ndirections.\n\nDeflate as the validated adjoint path did: probe with a few random vectors and\nkeep a DOF only when both its Hessian row and column are nonzero. This needs\nthe force Jacobian in both directions, so bind the forward exact\nHessian-vector product next to the transpose.\n\nValidated against the forward sensitivity rather than a finite difference: a\nre-solve converges to |F| ~ 5e-9, so an FD reference is noise-dominated well\nabove the accuracy of interest, badly so in 3D. Tangent-adjoint duality now\nholds to 1.3e-9 in 2D and 3.1e-8 in 3D.\n\nTests: the geometry transpose identity in 3D (the shipped one only ever ran a\n2D case, leaving the lthreed branch uncovered), tangent-adjoint duality in\nboth 2D and 3D, and the end-to-end quasisymmetry gradient through a 3D solve.\nAll three fail without the deflation.\n\n* autodiff: follow the quasisymmetry objective rename\n\nqs.quasisymmetry_residual became quasisymmetry_residuals plus the scalar\nquasisymmetry_total when the metric gained the flux-surface measure and the\nmulti-surface sum. Update the docstring example and the end-to-end test.\n\n* Update src/vmecpp/autodiff.py",
+          "timestamp": "2026-09-08T14:10:26Z",
+          "tree_id": "4b8d8c39536dd84e8a7af642cb7fea1a8c576bce",
+          "url": "https://github.com/proximafusion/vmecpp/commit/b823d614f3fc37738bf5df1b893812a807375bb1"
+        },
+        "date": 1788877050788,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3778664370000115,
+            "range": "stddev: 0.004501989688542758",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.194848569333317,
+            "range": "stddev: 0.021592242968911005",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1410461536666692,
+            "range": "stddev: 0.0013334570652487662",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.1136685873333363,
+            "range": "stddev: 0.07972964356163911",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.7357404106666838,
+            "range": "stddev: 0.007524194355812975",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.956131017,
+            "range": "stddev: 0.004848282805146505",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.3587628820000077,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.37345521699995743,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
