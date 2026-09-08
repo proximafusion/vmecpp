@@ -960,3 +960,33 @@ TEST(TestVmec, VacuumUpdateCadenceStartsWhenResidualsSettle) {
     EXPECT_EQ(fsqz(i), fsqz_strided(i)) << "evaluation " << i;
   }
 }  // VacuumUpdateCadenceStartsWhenResidualsSettle
+
+// The bloating factor scales the enclosed toroidal flux, so the edge value of
+// phi comes out as phiedge * bloat.
+TEST(TestVmec, BloatScalesTheEnclosedToroidalFlux) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  // bloat is only accepted for a constrained toroidal current
+  ASSERT_EQ(base_indata->ncurr, 1);
+
+  for (const double bloat : {1.0, 1.5, 0.5}) {
+    VmecINDATA indata = *base_indata;
+    indata.ns_array = Eigen::VectorXi::Constant(1, 9);
+    indata.ftol_array = Eigen::VectorXd::Constant(1, 1.0e-8);
+    indata.niter_array = Eigen::VectorXi::Constant(1, 4000);
+    indata.bloat = bloat;
+
+    const auto output = vmecpp::run(indata, std::nullopt, 1);
+    ASSERT_TRUE(output.ok()) << "bloat = " << bloat;
+
+    const Eigen::VectorXd& phi = output->wout.phi;
+    EXPECT_TRUE(
+        IsCloseRelAbs(indata.phiedge * bloat, phi[phi.size() - 1], 1.0e-14))
+        << "bloat = " << bloat;
+  }
+}  // BloatScalesTheEnclosedToroidalFlux

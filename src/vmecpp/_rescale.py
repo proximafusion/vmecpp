@@ -5,7 +5,7 @@ import typing
 import numpy as np
 
 if typing.TYPE_CHECKING:
-    from vmecpp import VmecOutput
+    from vmecpp import MagneticFieldResponseTable, VmecOutput
 
 
 def rescale(
@@ -13,6 +13,7 @@ def rescale(
     b_scale: float,
     r_scale: float,
     scale_pressure: bool = True,
+    magnetic_field: "MagneticFieldResponseTable | None" = None,
 ) -> "VmecOutput":
     from . import run  # noqa: PLC0415
 
@@ -26,18 +27,34 @@ def rescale(
         b_scale: factor to scale the magnetic field by.
         r_scale: factor to scale the major radius by.
         scale_pressure: whether to scale pressure to maintain force balance (default: True).
+        magnetic_field: the in-memory response table of a free-boundary run, when the
+            equilibrium was computed from one instead of from the mgrid file in its input.
 
     Returns:
         A new VmecOutput object with all derived parameters properly rescaled.
     """
     # Scale INDATA parameters
     scaled_input = output.input.model_copy(deep=True)
+
+    if scaled_input.lfreeb and r_scale != 1.0:
+        msg = (
+            "rescale cannot apply r_scale != 1 to a free-boundary equilibrium: the "
+            "vacuum field comes from the mgrid file, whose grid extent and coil "
+            "geometry would have to be scaled as well. Regenerate the mgrid for the "
+            "scaled coils and run from that input instead."
+        )
+        raise ValueError(msg)
+
     scaled_input.phiedge *= b_scale * (r_scale**2)
 
     if scale_pressure:
         scaled_input.pres_scale *= b_scale**2
 
     scaled_input.curtor *= b_scale * r_scale
+
+    # the vacuum field scales with the coil currents that produce it
+    if scaled_input.lfreeb:
+        scaled_input.extcur = np.asarray(scaled_input.extcur, dtype=float) * b_scale
 
     scaled_input.rbc *= r_scale
     scaled_input.zbs *= r_scale
@@ -75,4 +92,6 @@ def rescale(
     intermediate_output.wout = scaled_wout
 
     # Call run with 0 iterations
-    return run(scaled_input, restart_from=intermediate_output)
+    return run(
+        scaled_input, magnetic_field=magnetic_field, restart_from=intermediate_output
+    )
