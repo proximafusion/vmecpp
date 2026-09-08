@@ -118,6 +118,39 @@ TEST(TestVmec, InMemoryMgridWithMismatchedNfpIsRejected) {
               ::testing::HasSubstr("field periods"));
 }
 
+// Two runs of one input in one process take the same thread teams, so their
+// reductions group identically and the states agree bit for bit. Seven
+// surfaces admit three radial threads; the vacuum team takes the full budget.
+TEST(TestVmec, ConsecutiveRunsAreBitIdentical) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  indata.ns_array.setConstant(7);
+  indata.niter_array.setConstant(60);
+  indata.return_outputs_even_if_not_converged = true;
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+  const auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      *maybe_makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok());
+
+  const auto first = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_TRUE(first.ok()) << first.status();
+  const auto second = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_TRUE(second.ok()) << second.status();
+  CompareWOut(second->wout, first->wout, /*tolerance=*/0.0,
+              /*check_equal_niter=*/true);
+}
+
 // The stellarator-symmetry operation maps toroidal plane k onto (kp - k) % kp
 // and Z onto -Z, negates B_R and leaves B_phi and B_Z unchanged; the
 // stellarator-symmetric mgrid_cth_like.nc satisfies that relation to 2e-15.
