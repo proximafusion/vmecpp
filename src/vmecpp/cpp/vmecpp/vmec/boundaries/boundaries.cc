@@ -124,8 +124,12 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
     int m = 1;
     int n = 0;
 
-    delta = atan2((*id.rbs)(m, s_.ntor + n) - (*id.zbc)(m, s_.ntor + n),
-                  id.rbc(m, s_.ntor + n) + id.zbs(m, s_.ntor + n));
+    // The shift puts the boundary into the gauge rbs(m=1, n=0) = sigma *
+    // zbc(m=1, n=0), the frozen combination of ensureM1Constrained, with
+    // sigma = -sign_of_jacobian.
+    const double sigma = -sign_of_jacobian_;
+    delta = atan2((*id.rbs)(m, s_.ntor + n) - sigma * (*id.zbc)(m, s_.ntor + n),
+                  id.rbc(m, s_.ntor + n) + sigma * id.zbs(m, s_.ntor + n));
 
     if (verbose && delta != 0.0) {
       std::cout << "need to shift theta by delta = " << delta << "\n";
