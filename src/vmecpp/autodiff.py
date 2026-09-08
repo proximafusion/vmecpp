@@ -447,10 +447,12 @@ def make_solver(vmec_input) -> DifferentiableVmec:
 
     Example:
 
-        from vmecpp import autodiff
+        from vmecpp import autodiff, simsopt_compat
 
         solver = autodiff.make_solver(input)
-        objective = lambda boundary: qs.quasisymmetry_total(solver(boundary), [0.6])
+        objective = lambda boundary: simsopt_compat.quasisymmetry_total(
+            solver(boundary), [0.6]
+        )
         value, gradient = jax.value_and_grad(objective)(boundary)
 
     Forward execution and the VJP both invoke VMEC++ in memory. The VJP is
