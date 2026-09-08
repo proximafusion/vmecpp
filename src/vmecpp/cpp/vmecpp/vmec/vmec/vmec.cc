@@ -91,6 +91,81 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 
   return absl::OkStatus();
 }
+
+// Largest rms antisymmetric part of the external field, relative to the rms of
+// the field, that a run with lasym = false accepts.
+constexpr double kMaxExternalFieldAsymmetry = 1.0e-4;
+
+// The rms of the part of the external field on the initial boundary that is odd
+// under the stellarator symmetry (R, phi, Z) -> (R, -phi, -Z), relative to the
+// rms of the field. The boundary is sampled on the reduced poloidal grid of the
+// vacuum solver; its mirror image is the same surface, since the boundary is
+// stellarator symmetric.
+absl::StatusOr<double> StellaratorAsymmetryOfExternalField(
+    const vmecpp::VmecINDATA& indata, const vmecpp::Sizes& s,
+    const vmecpp::MGridProvider& mgrid) {
+  const int num_points = s.nThetaReduced * s.nZeta;
+  Eigen::VectorXd r(num_points);
+  Eigen::VectorXd z(num_points);
+  Eigen::VectorXd r_mirror(num_points);
+  Eigen::VectorXd z_mirror(num_points);
+  for (int l = 0; l < s.nThetaReduced; ++l) {
+    const double theta = 2.0 * M_PI * l / s.nThetaEven;
+    for (int k = 0; k < s.nZeta; ++k) {
+      const double zeta = 2.0 * M_PI * k / (s.nfp * s.nZeta);
+      double r_lk = 0.0;
+      double z_lk = 0.0;
+      for (int m = 0; m < indata.mpol; ++m) {
+        for (int n = -indata.ntor; n <= indata.ntor; ++n) {
+          const double arg = m * theta - n * s.nfp * zeta;
+          r_lk += indata.rbc(m, indata.ntor + n) * std::cos(arg);
+          z_lk += indata.zbs(m, indata.ntor + n) * std::sin(arg);
+        }
+      }
+      r[l * s.nZeta + k] = r_lk;
+      z[l * s.nZeta + k] = z_lk;
+      const int k_mirror = (s.nZeta - k) % s.nZeta;
+      r_mirror[l * s.nZeta + k_mirror] = r_lk;
+      z_mirror[l * s.nZeta + k_mirror] = -z_lk;
+    }
+  }
+
+  Eigen::VectorXd b_r(num_points);
+  Eigen::VectorXd b_p(num_points);
+  Eigen::VectorXd b_z(num_points);
+  Eigen::VectorXd b_r_mirror(num_points);
+  Eigen::VectorXd b_p_mirror(num_points);
+  Eigen::VectorXd b_z_mirror(num_points);
+  absl::Status status = mgrid.interpolate(0, num_points, s.nZeta, num_points, r,
+                                          z, b_r, b_p, b_z);
+  if (!status.ok()) {
+    return status;
+  }
+  status = mgrid.interpolate(0, num_points, s.nZeta, num_points, r_mirror,
+                             z_mirror, b_r_mirror, b_p_mirror, b_z_mirror);
+  if (!status.ok()) {
+    return status;
+  }
+
+  double field = 0.0;
+  double difference = 0.0;
+  for (int l = 0; l < s.nThetaReduced; ++l) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      const int kl = l * s.nZeta + k;
+      const int kl_mirror = l * s.nZeta + (s.nZeta - k) % s.nZeta;
+      const double d_r = b_r_mirror[kl_mirror] + b_r[kl];
+      const double d_p = b_p_mirror[kl_mirror] - b_p[kl];
+      const double d_z = b_z_mirror[kl_mirror] - b_z[kl];
+      difference += d_r * d_r + d_p * d_p + d_z * d_z;
+      field += b_r[kl] * b_r[kl] + b_p[kl] * b_p[kl] + b_z[kl] * b_z[kl];
+    }
+  }
+  if (field == 0.0) {
+    return 0.0;
+  }
+  // the mirrored field minus the field is twice the antisymmetric part
+  return 0.5 * std::sqrt(difference / field);
+}
 }  // namespace
 
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
@@ -249,6 +324,21 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
           "MGridProvider has %d field periods, but VmecINDATA has nfp = %d. "
           "Please ensure that the two are consistent.",
           mgrid_.nfp, indata_.nfp));
+    }
+    if (!indata_.lasym) {
+      // A boundary outside the vacuum grid is reported by the vacuum solver.
+      const absl::StatusOr<double> asymmetry =
+          StellaratorAsymmetryOfExternalField(indata_, s_, mgrid_);
+      if (asymmetry.ok() && *asymmetry > kMaxExternalFieldAsymmetry) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "The external magnetic field is not stellarator symmetric on the "
+            "initial boundary: its antisymmetric part is %.1e of the field, "
+            "above the limit of %.0e. With lasym = false the field is sampled "
+            "on half of the boundary and mirrored, which converges to the "
+            "equilibrium of a different field. Set lasym = true, or "
+            "symmetrize the field.",
+            *asymmetry, kMaxExternalFieldAsymmetry));
+      }
     }
   }
 
