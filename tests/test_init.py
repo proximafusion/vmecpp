@@ -637,6 +637,8 @@ def test_ensure_vmec2000_input_keeps_axis():
         np.testing.assert_allclose(
             getattr(round_trip, name), getattr(reference, name), rtol=1e-15, atol=0
         )
+
+
 def test_ensure_vmecpp_input_keeps_trailing_zero_spline_value():
     # a spline profile whose last value is exactly zero keeps all its knots
     vmec2000_input_file = TEST_DATA_DIR / "input.cth_like_fixed_bdy_spline_pressure"
