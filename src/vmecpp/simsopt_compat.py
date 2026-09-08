@@ -21,6 +21,11 @@ from vmecpp import (  # noqa: F401
     ensure_vmecpp_input,
     is_vmec2000_input,
 )
+from vmecpp._qs import (  # noqa: F401
+    magnetic_field_strength,
+    quasisymmetry_residuals,
+    quasisymmetry_total,
+)
 
 logger = logging.getLogger(__name__)
 
