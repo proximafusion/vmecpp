@@ -356,3 +356,69 @@ TEST(TestVmec, SolovevFreeBoundaryAxisymmetric) {
               /*tolerance=*/1e-7, /*check_equal_niter=*/true,
               /*current_density_tolerance=*/2e-7);
 }
+
+// A finite edge pressure is balanced by a jump of the magnetic pressure across
+// the plasma boundary: B_vac^2/2 = p_edge + B_in^2/2 at the converged state.
+TEST(TestVmec, EdgePressureIsBalancedByTheMagneticPressureJump) {
+  const std::string filename = "vmecpp/test_data/cth_like_free_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA& indata = maybe_indata.value();
+
+  // p = 2000 (1 - s / 2) Pa, so 1 kPa at the boundary, 0.7% of B^2 / 2 mu0
+  indata.pmass_type = "power_series";
+  indata.am = Eigen::VectorXd(2);
+  indata.am << 1.0, -0.5;
+  indata.pres_scale = 2000.0;
+  const double mu0_edge_pressure = vmecpp::MU_0 * 1000.0;
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+  auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  makegrid::MakegridParameters makegrid_params = *maybe_makegrid_params;
+  // The plasma expands beyond the shipped box once the edge pressure is
+  // balanced by the field, so widen the grid.
+  makegrid_params.r_grid_minimum = 0.35;
+  makegrid_params.r_grid_maximum = 1.25;
+  makegrid_params.number_of_r_grid_points = 61;
+  makegrid_params.z_grid_minimum = -0.4;
+  makegrid_params.z_grid_maximum = 0.4;
+  makegrid_params.number_of_z_grid_points = 61;
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok());
+
+  const auto output = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_TRUE(output.ok()) << output.status();
+
+  const vmecpp::Threed1FreeBoundary& fb = output->threed1_free_boundary;
+  double magnetic_pressure_jump = 0.0;
+  double total_pressure_jump = 0.0;
+  for (int k = 0; k < fb.brv.rows(); ++k) {
+    for (int l = 0; l < fb.brv.cols(); ++l) {
+      const double vacuum =
+          0.5 * (fb.brv(k, l) * fb.brv(k, l) + fb.bphiv(k, l) * fb.bphiv(k, l) +
+                 fb.bzv(k, l) * fb.bzv(k, l));
+      const double plasma = 0.5 * (fb.bredge(k, l) * fb.bredge(k, l) +
+                                   fb.bpedge(k, l) * fb.bpedge(k, l) +
+                                   fb.bzedge(k, l) * fb.bzedge(k, l));
+      magnetic_pressure_jump += vacuum - plasma;
+      total_pressure_jump += fb.bsqvacf(k, l) - fb.bsqmhdf(k, l);
+    }
+  }
+  const double num_points = static_cast<double>(fb.brv.size());
+  magnetic_pressure_jump /= num_points;
+  total_pressure_jump /= num_points;
+
+  // the field carries the kinetic pressure jump, and the total pressure is
+  // continuous; the remainder is the O(delta s) slope of the profile
+  EXPECT_NEAR(magnetic_pressure_jump, mu0_edge_pressure,
+              0.05 * mu0_edge_pressure);
+  EXPECT_LT(std::abs(total_pressure_jump), 0.02 * mu0_edge_pressure);
+}
