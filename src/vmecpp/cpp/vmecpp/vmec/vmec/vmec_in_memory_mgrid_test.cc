@@ -320,7 +320,12 @@ TEST(TestVmec, VacuumPotentialCutoffsAboveThePlasmaResolution) {
   ASSERT_TRUE(indata_json.ok());
   absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(maybe_indata.ok());
-  const VmecINDATA& indata = *maybe_indata;
+  VmecINDATA indata = *maybe_indata;
+  // The comparisons below hold at this tolerance, and the four runs then fit
+  // the sanitizer budget of this test binary. The runs share a thread count
+  // so that the two solves with the plasma's cutoffs take the same path.
+  indata.ftol_array.setConstant(1.0e-8);
+  constexpr int kThreads = 4;
 
   const auto maybe_magnetic_configuration =
       magnetics::ImportMagneticConfigurationFromCoilsFile(
@@ -333,21 +338,24 @@ TEST(TestVmec, VacuumPotentialCutoffsAboveThePlasmaResolution) {
       *maybe_makegrid_params, *maybe_magnetic_configuration);
   ASSERT_TRUE(maybe_response_table.ok());
 
-  const auto base = vmecpp::run(indata, *maybe_response_table);
+  const auto base =
+      vmecpp::run(indata, *maybe_response_table, std::nullopt, kThreads);
   ASSERT_TRUE(base.ok()) << base.status();
   EXPECT_EQ(base->wout.potvac.size(), 2 * (5 + 2) * (2 * 4 + 1));
 
   VmecINDATA explicit_cutoffs = indata;
   explicit_cutoffs.vacuum_mpol = indata.mpol;
   explicit_cutoffs.vacuum_ntor = indata.ntor;
-  const auto same = vmecpp::run(explicit_cutoffs, *maybe_response_table);
+  const auto same = vmecpp::run(explicit_cutoffs, *maybe_response_table,
+                                std::nullopt, kThreads);
   ASSERT_TRUE(same.ok()) << same.status();
   CompareWOut(same->wout, base->wout, /*tolerance=*/0.0,
               /*check_equal_niter=*/true);
 
   VmecINDATA toroidal = indata;
   toroidal.vacuum_ntor = 8;
-  const auto wider = vmecpp::run(toroidal, *maybe_response_table);
+  const auto wider =
+      vmecpp::run(toroidal, *maybe_response_table, std::nullopt, kThreads);
   ASSERT_TRUE(wider.ok()) << wider.status();
   EXPECT_EQ(wider->wout.potvac.size(), 2 * (5 + 2) * (2 * 8 + 1));
   EXPECT_EQ(wider->wout.mnmax, base->wout.mnmax);
@@ -358,7 +366,8 @@ TEST(TestVmec, VacuumPotentialCutoffsAboveThePlasmaResolution) {
   VmecINDATA both = indata;
   both.vacuum_mpol = 8;
   both.vacuum_ntor = 8;
-  const auto finer = vmecpp::run(both, *maybe_response_table);
+  const auto finer =
+      vmecpp::run(both, *maybe_response_table, std::nullopt, kThreads);
   ASSERT_TRUE(finer.ok()) << finer.status();
   EXPECT_EQ(finer->wout.potvac.size(), 2 * (8 + 2) * (2 * 8 + 1));
   EXPECT_EQ(finer->wout.mnmax, base->wout.mnmax);
