@@ -44,17 +44,19 @@ std::string ProfileTypeName(vmecpp::ProfileType profile_type) {
 }
 
 // Checks that `type_name` names a profile parameterization that may be used for
-// `profile_type`, and that a spline parameterization was given its knots. An
-// unrecognized name otherwise reaches the solver as a zero profile, which
-// converges to a silently wrong equilibrium.
+// `profile_type`, that a spline parameterization was given its knots, and that
+// a closed-form parameterization was given the coefficients it needs. An
+// unrecognized name or a profile short of its data otherwise reaches the
+// solver as a zero profile, which converges to a silently wrong equilibrium.
 //
-// The polynomial coefficient arrays are deliberately not required to be
-// non-empty: they are zero-padded on read, so an empty array is a valid way to
-// specify a zero profile.
+// The polynomial coefficient arrays are zero-padded on read, so an empty
+// array is a valid way to specify a zero power series; the closed forms that
+// raise to a coefficient or divide by one need their full set.
 absl::Status CheckProfile(const std::string& type_key,
                           const std::string& type_name,
                           vmecpp::ProfileType profile_type,
-                          const std::string& aux_key,
+                          const std::string& coefficient_key,
+                          const Eigen::VectorXd& coefficients,
                           const Eigen::VectorXd& aux_s,
                           const Eigen::VectorXd& aux_f) {
   const vmecpp::ProfileParameterizationData* const parameterization =
@@ -73,25 +75,55 @@ absl::Status CheckProfile(const std::string& type_key,
         type_key, type_name, ProfileTypeName(profile_type)));
   }
 
+  const int minimum_coefficients = parameterization->MinimumCoefficients();
+  if (coefficients.size() < minimum_coefficients) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "'%s' is '%s', which needs at least %d coefficients, but '%s' has "
+        "%d\n",
+        type_key, type_name, minimum_coefficients, coefficient_key,
+        coefficients.size()));
+  }
+
   if (parameterization->NeedsSplineData()) {
     if (aux_s.size() == 0 || aux_f.size() == 0) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "'%s' is '%s', which is a spline profile, so '%s_aux_s' and "
           "'%s_aux_f' must be given\n",
-          type_key, type_name, aux_key, aux_key));
+          type_key, type_name, coefficient_key, coefficient_key));
     }
     if (aux_s.size() != aux_f.size()) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "'%s_aux_s' and '%s_aux_f' must have the same number of entries, "
           "but have %d and %d\n",
-          aux_key, aux_key, aux_s.size(), aux_f.size()));
+          coefficient_key, coefficient_key, aux_s.size(), aux_f.size()));
     }
     const int minimum_points = parameterization->MinimumSplinePoints();
     if (aux_s.size() < minimum_points) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "'%s' is '%s', which needs at least %d spline points, but "
           "'%s_aux_s' has %d\n",
-          type_key, type_name, minimum_points, aux_key, aux_s.size()));
+          type_key, type_name, minimum_points, coefficient_key, aux_s.size()));
+    }
+    for (Eigen::Index i = 1; i < aux_s.size(); ++i) {
+      if (aux_s[i] <= aux_s[i - 1]) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "'%s_aux_s' must increase strictly, but entries %d and %d are "
+            "%g and %g\n",
+            coefficient_key, i - 1, i, aux_s[i - 1], aux_s[i]));
+      }
+    }
+    // The Akima and cubic evaluators return zero outside their knots; the
+    // line segments continue their end segments instead.
+    const bool zero_outside_knots =
+        type_name.compare(0, 12, "akima_spline") == 0 ||
+        type_name.compare(0, 12, "cubic_spline") == 0;
+    if (zero_outside_knots &&
+        (aux_s[0] > 0.0 || aux_s[aux_s.size() - 1] < 1.0)) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "'%s' is '%s', which is evaluated only inside its knots, so "
+          "'%s_aux_s' must run from 0 to 1, but runs from %g to %g\n",
+          type_key, type_name, coefficient_key, aux_s[0],
+          aux_s[aux_s.size() - 1]));
     }
   }
 
@@ -1432,7 +1464,7 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // pmass_type, am_aux_s, am_aux_f
   if (absl::Status status = CheckProfile(
           "pmass_type", vmec_indata.pmass_type, ProfileType::PRESSURE, "am",
-          vmec_indata.am_aux_s, vmec_indata.am_aux_f);
+          vmec_indata.am, vmec_indata.am_aux_s, vmec_indata.am_aux_f);
       !status.ok()) {
     return status;
   }
@@ -1462,9 +1494,9 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
 
   // piota_type, ai_aux_s, ai_aux_f. Checked for either ncurr: piota is the
   // initial guess for the iota profile even in a current-constrained run.
-  if (absl::Status status =
-          CheckProfile("piota_type", vmec_indata.piota_type, ProfileType::IOTA,
-                       "ai", vmec_indata.ai_aux_s, vmec_indata.ai_aux_f);
+  if (absl::Status status = CheckProfile(
+          "piota_type", vmec_indata.piota_type, ProfileType::IOTA, "ai",
+          vmec_indata.ai, vmec_indata.ai_aux_s, vmec_indata.ai_aux_f);
       !status.ok()) {
     return status;
   }
@@ -1472,7 +1504,7 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // pcurr_type, ac_aux_s, ac_aux_f. Ignored for ncurr == 0, still checked.
   if (absl::Status status = CheckProfile(
           "pcurr_type", vmec_indata.pcurr_type, ProfileType::CURRENT, "ac",
-          vmec_indata.ac_aux_s, vmec_indata.ac_aux_f);
+          vmec_indata.ac, vmec_indata.ac_aux_s, vmec_indata.ac_aux_f);
       !status.ok()) {
     return status;
   }

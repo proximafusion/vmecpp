@@ -7,6 +7,7 @@
 #include <H5File.h>
 
 #include <filesystem>
+#include <initializer_list>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -308,6 +309,71 @@ TEST(TestVmecINDATA, CheckSplineProfilesNeedEnoughKnots) {
   iota_indata.ai_aux_s = Eigen::VectorXd::LinSpaced(3, 0.0, 1.0);
   iota_indata.ai_aux_f = Eigen::VectorXd::Zero(3);
   EXPECT_FALSE(IsConsistent(iota_indata, /*enable_info_messages=*/false).ok());
+}
+
+// Below its coefficient count a closed-form evaluator returns zero for every
+// s, so the run converges to an equilibrium without the requested profile.
+// gauss_trunc needs 2 coefficients, two_power and two_power_gs 3 and
+// two_lorentz 8; the zero-padded power series accept any count.
+TEST(TestVmecINDATA, CheckClosedFormProfilesNeedEnoughCoefficients) {
+  struct Case {
+    std::string name;
+    int minimum;
+  };
+  for (const Case& c : {Case{"gauss_trunc", 2}, Case{"two_power", 3},
+                        Case{"two_power_gs", 3}, Case{"two_lorentz", 8}}) {
+    VmecINDATA indata;
+    indata.pmass_type = c.name;
+    indata.am = Eigen::VectorXd::Ones(c.minimum - 1);
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+    indata.am = Eigen::VectorXd::Ones(c.minimum);
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+  }
+
+  // the current profile is held to the same counts
+  VmecINDATA current_indata;
+  current_indata.ncurr = 1;
+  current_indata.pcurr_type = "two_power";
+  current_indata.ac = Eigen::VectorXd::Ones(2);
+  EXPECT_FALSE(
+      IsConsistent(current_indata, /*enable_info_messages=*/false).ok());
+  current_indata.ac = Eigen::VectorXd::Ones(3);
+  EXPECT_TRUE(
+      IsConsistent(current_indata, /*enable_info_messages=*/false).ok());
+}
+
+// The spline evaluators walk the knots in order and, for the Akima and cubic
+// families, return zero outside them where Fortran VMEC stops; the line
+// segments continue their end segments and may stop short of the radius.
+TEST(TestVmecINDATA, CheckSplineKnotsIncreaseAndSpanTheRadius) {
+  const auto knots = [](std::initializer_list<double> values) {
+    Eigen::VectorXd v(static_cast<Eigen::Index>(values.size()));
+    Eigen::Index i = 0;
+    for (double value : values) v[i++] = value;
+    return v;
+  };
+  VmecINDATA indata;
+  indata.pmass_type = "cubic_spline";
+  indata.am_aux_f = Eigen::VectorXd::Zero(5);
+  indata.am_aux_s = knots({0.0, 0.25, 0.5, 0.75, 1.0});
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.0, 0.5, 0.25, 0.75, 1.0});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.0, 0.25, 0.25, 0.75, 1.0});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.0, 0.2, 0.4, 0.6, 0.9});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.1, 0.3, 0.5, 0.7, 1.0});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.pmass_type = "line_segment";
+  indata.am_aux_f = Eigen::VectorXd::Zero(3);
+  indata.am_aux_s = knots({0.1, 0.5, 0.9});
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.1, 0.9, 0.5});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
 TEST(TestVmecINDATA, ToJson) {

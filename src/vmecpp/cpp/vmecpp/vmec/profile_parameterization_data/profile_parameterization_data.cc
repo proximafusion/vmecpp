@@ -39,73 +39,96 @@ std::vector<ProfileParameterizationData> BuildProfileParameterizations() {
   all.reserve(NUM_PARAM);
   all.emplace_back("---invalid---", /*allowedForPres=*/false,
                    /*allowedForCurr*/ false, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("power_series", /*allowedForPres=*/true,
                    /*allowedForCurr*/ true, /*allowedForIota*/ true,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("power_series_i", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("gauss_trunc", /*allowedForPres=*/true,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 2);
   all.emplace_back("sum_atan", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ true,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("two_lorentz", /*allowedForPres=*/true,
                    /*allowedForCurr*/ false, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 8);
   all.emplace_back("two_power", /*allowedForPres=*/true,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 3);
   all.emplace_back("two_power_gs", /*allowedForPres=*/true,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 3);
   all.emplace_back("akima_spline", /*allowedForPres=*/true,
                    /*allowedForCurr*/ false, /*allowedForIota*/ true,
-                   /*minimumSplinePoints*/ 4);
+                   /*minimumSplinePoints*/ 4,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("akima_spline_i", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 4);
+                   /*minimumSplinePoints*/ 4,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("akima_spline_ip", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 4);
+                   /*minimumSplinePoints*/ 4,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("cubic_spline", /*allowedForPres=*/true,
                    /*allowedForCurr*/ false, /*allowedForIota*/ true,
-                   /*minimumSplinePoints*/ 4);
+                   /*minimumSplinePoints*/ 4,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("cubic_spline_i", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 4);
+                   /*minimumSplinePoints*/ 4,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("cubic_spline_ip", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 4);
+                   /*minimumSplinePoints*/ 4,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("pedestal", /*allowedForPres=*/true,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("rational", /*allowedForPres=*/true,
                    /*allowedForCurr*/ true, /*allowedForIota*/ true,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("line_segment", /*allowedForPres=*/true,
                    /*allowedForCurr*/ false, /*allowedForIota*/ true,
-                   /*minimumSplinePoints*/ 2);
+                   /*minimumSplinePoints*/ 2,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("line_segment_i", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 2);
+                   /*minimumSplinePoints*/ 2,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("line_segment_ip", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 2);
+                   /*minimumSplinePoints*/ 2,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("nice_quadratic", /*allowedForPres=*/false,
                    /*allowedForCurr*/ false, /*allowedForIota*/ true,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("sum_cossq_s", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("sum_cossq_sqrts", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("sum_cossq_s_free", /*allowedForPres=*/false,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
-                   /*minimumSplinePoints*/ 0);
+                   /*minimumSplinePoints*/ 0,
+                   /*minimumCoefficients*/ 0);
   return all;
 }
 
@@ -113,9 +136,10 @@ std::vector<ProfileParameterizationData> BuildProfileParameterizations() {
 
 ProfileParameterizationData::ProfileParameterizationData(
     const std::string& name, bool allowedForPres, bool allowedForCurr,
-    bool allowedForIota, int minimumSplinePoints)
+    bool allowedForIota, int minimumSplinePoints, int minimumCoefficients)
     : name_(name),
       minimumSplinePoints_(minimumSplinePoints),
+      minimumCoefficients_(minimumCoefficients),
       allowedFor_({.pres = allowedForPres,
                    .curr = allowedForCurr,
                    .iota = allowedForIota}) {}
@@ -124,6 +148,10 @@ const std::string& ProfileParameterizationData::Name() const { return name_; }
 
 int ProfileParameterizationData::MinimumSplinePoints() const {
   return minimumSplinePoints_;
+}
+
+int ProfileParameterizationData::MinimumCoefficients() const {
+  return minimumCoefficients_;
 }
 
 bool ProfileParameterizationData::NeedsSplineData() const {
