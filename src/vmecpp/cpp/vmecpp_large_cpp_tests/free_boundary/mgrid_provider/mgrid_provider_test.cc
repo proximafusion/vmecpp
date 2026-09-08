@@ -434,10 +434,10 @@ TEST(MGridProviderValidation, LoadFileReadsCoilGroupNames) {
 }
 
 TEST(MGridPolynomialInterpolation,
-     ReproducesTensorPolynomialsAndSmallGridFallback) {
+     ReproducesTensorPolynomialsOnAvailableStencil) {
   for (const int num_r : {2, 3, 4, 7}) {
     for (const int num_z : {2, 3, 4, 8}) {
-      for (const bool cubic_polynomial : {false, true}) {
+      for (const int degree : {1, 2, 3}) {
         makegrid::MagneticFieldResponseTable table;
         auto& parameters = table.parameters;
         parameters.normalize_by_currents = false;
@@ -453,10 +453,9 @@ TEST(MGridPolynomialInterpolation,
         table.b_r.resize(2, num_cells);
         table.b_p.resize(2, num_cells);
         table.b_z.resize(2, num_cells);
-        const auto polynomial = [cubic_polynomial](double r, double z, int k) {
-          return cubic_polynomial ? r * r * r + 2 * z * z * z + r * r * z * z +
-                                        0.3 * r * z + k
-                                  : r + z + r * z + k;
+        const auto polynomial = [degree](double r, double z, int k) {
+          return std::pow(r, degree) + 2 * std::pow(z, degree) +
+                 std::pow(r * z, degree) + 0.3 * r * z + k;
         };
         for (int k = 0; k < 5; ++k) {
           for (int j = 0; j < num_z; ++j) {
@@ -475,43 +474,37 @@ TEST(MGridPolynomialInterpolation,
         }
         Eigen::VectorXd currents(2);
         currents << 2.0, -0.25;
-        for (const auto scheme :
-             {MGridInterpolation::kLinear, MGridInterpolation::kCubic}) {
-          SCOPED_TRACE(absl::StrFormat("nr=%d nz=%d polynomial=%d scheme=%s",
-                                       num_r, num_z, cubic_polynomial,
-                                       ToString(scheme)));
-          MGridProvider provider(scheme);
-          ASSERT_TRUE(provider.LoadFields(table, currents).ok());
-          Eigen::VectorXd r(205), z(205), br(205), bp(205), bz(205);
-          for (int i = 0; i < 205; ++i) {
-            r[i] = 1.0 + 2.0 * (((i * 37) % 205) + 0.5) / 205.0;
-            z[i] = -0.7 + 1.6 * (((i * 71) % 205) + 0.5) / 205.0;
-          }
-          r[0] = 1.0;
-          z[0] = -0.7;
-          r[1] = 3.0;
-          z[1] = 0.9;
-          r[2] = 3.0;
-          z[2] = -0.7;
-          r[3] = 1.0;
-          z[3] = 0.9;
-          ASSERT_TRUE(
-              provider.interpolate(0, 205, 5, 205, r, z, br, bp, bz).ok());
-          double error = 0.0;
-          for (int i = 0; i < 205; ++i) {
-            const double expected = 1.25 * polynomial(r[i], z[i], i % 5);
-            error = std::max({error, std::abs(br[i] - expected),
-                              std::abs(bp[i] - 2 * expected),
-                              std::abs(bz[i] + expected)});
-          }
-          const bool exact =
-              !cubic_polynomial || (scheme == MGridInterpolation::kCubic &&
-                                    num_r >= 4 && num_z >= 4);
-          if (exact) {
-            EXPECT_LT(error, 1e-11);
-          } else {
-            EXPECT_GT(error, 1e-4);
-          }
+        SCOPED_TRACE(
+            absl::StrFormat("nr=%d nz=%d polynomial=%d", num_r, num_z, degree));
+        MGridProvider provider;
+        ASSERT_TRUE(provider.LoadFields(table, currents).ok());
+        Eigen::VectorXd r(205), z(205), br(205), bp(205), bz(205);
+        for (int i = 0; i < 205; ++i) {
+          r[i] = 1.0 + 2.0 * (((i * 37) % 205) + 0.5) / 205.0;
+          z[i] = -0.7 + 1.6 * (((i * 71) % 205) + 0.5) / 205.0;
+        }
+        r[0] = 1.0;
+        z[0] = -0.7;
+        r[1] = 3.0;
+        z[1] = 0.9;
+        r[2] = 3.0;
+        z[2] = -0.7;
+        r[3] = 1.0;
+        z[3] = 0.9;
+        ASSERT_TRUE(
+            provider.interpolate(0, 205, 5, 205, r, z, br, bp, bz).ok());
+        double error = 0.0;
+        for (int i = 0; i < 205; ++i) {
+          const double expected = 1.25 * polynomial(r[i], z[i], i % 5);
+          error = std::max({error, std::abs(br[i] - expected),
+                            std::abs(bp[i] - 2 * expected),
+                            std::abs(bz[i] + expected)});
+        }
+        const bool exact = num_r > degree && num_z > degree;
+        if (exact) {
+          EXPECT_LT(error, 1e-11);
+        } else {
+          EXPECT_GT(error, 1e-4);
         }
       }
     }

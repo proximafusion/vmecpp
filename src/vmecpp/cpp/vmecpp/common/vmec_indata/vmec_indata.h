@@ -44,12 +44,6 @@ absl::StatusOr<FreeBoundaryMethod> FreeBoundaryMethodFromString(
     const std::string& free_boundary_method_string);
 std::string ToString(FreeBoundaryMethod free_boundary_method);
 
-enum class MGridInterpolation : std::uint8_t { kLinear, kCubic };
-
-absl::StatusOr<MGridInterpolation> MGridInterpolationFromString(
-    const std::string& interpolation);
-std::string ToString(MGridInterpolation interpolation);
-
 // Use this to switch the overall program flow/iteration style
 // between VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
 // based on) and PARVMEC (~same as hiddenSymmetries/VMEC2000) - version 9.0.
@@ -200,9 +194,6 @@ class VmecINDATA {
   // indicates which method to use
   // for the free-boundary force contribution
   FreeBoundaryMethod free_boundary_method;
-
-  // Tensor-product interpolation of the vacuum field in R and Z.
-  MGridInterpolation mgrid_interpolation;
 
   // ---------------------------------
   // tweaking parameters

@@ -613,7 +613,6 @@ PYBIND11_MODULE(_vmecpp, m) {
   DefEigenProperty(pyindata, "extcur", &VmecINDATA::extcur);
   pyindata.def_readwrite("nvacskip", &VmecINDATA::nvacskip)
       .def_readwrite("free_boundary_method", &VmecINDATA::free_boundary_method)
-      .def_readwrite("mgrid_interpolation", &VmecINDATA::mgrid_interpolation)
 
       // tweaking parameters
       .def_readwrite("nstep", &VmecINDATA::nstep);
@@ -662,12 +661,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       .value("ONLY_COILS", vmecpp::FreeBoundaryMethod::ONLY_COILS)
       .value("BIEST", vmecpp::FreeBoundaryMethod::BIEST)
       .export_values()
-      .finalize();
-
-  py::native_enum<vmecpp::MGridInterpolation>(m, "MGridInterpolation",
-                                              "enum.Enum")
-      .value("LINEAR", vmecpp::MGridInterpolation::kLinear)
-      .value("CUBIC", vmecpp::MGridInterpolation::kCubic)
       .finalize();
 
   py::native_enum<vmecpp::OutputMode>(m, "OutputMode", "enum.IntEnum")

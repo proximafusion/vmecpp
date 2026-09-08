@@ -422,7 +422,6 @@ void CheckHdf5RoundTrip(const std::string& filename) {
   EXPECT_EQ(indata.extcur, indata_from_file.extcur);
   EXPECT_EQ(indata.nvacskip, indata_from_file.nvacskip);
   EXPECT_EQ(indata.free_boundary_method, indata_from_file.free_boundary_method);
-  EXPECT_EQ(indata.mgrid_interpolation, indata_from_file.mgrid_interpolation);
   EXPECT_EQ(indata.nstep, indata_from_file.nstep);
   EXPECT_EQ(indata.aphi, indata_from_file.aphi);
   EXPECT_EQ(indata.delt, indata_from_file.delt);
@@ -436,29 +435,7 @@ void CheckHdf5RoundTrip(const std::string& filename) {
   EXPECT_EQ(indata.zbs, indata_from_file.zbs);
   EXPECT_EQ(indata.rbs, indata_from_file.rbs);
   EXPECT_EQ(indata.zbc, indata_from_file.zbc);
-
-  ASSERT_EQ(H5Ldelete(file.getId(), "/indata/mgrid_interpolation", H5P_DEFAULT),
-            0);
-  VmecINDATA historical;
-  ASSERT_TRUE(VmecINDATA::LoadInto(historical, file).ok());
-  EXPECT_EQ(historical.mgrid_interpolation, MGridInterpolation::kLinear);
 }  // CheckHdf5RoundTrip
-
-TEST(TestVmecINDATA, MGridInterpolationJson) {
-  for (const auto scheme :
-       {MGridInterpolation::kLinear, MGridInterpolation::kCubic}) {
-    const auto parsed = VmecINDATA::FromJson(
-        json{{"mgrid_interpolation", ToString(scheme)}}.dump());
-    ASSERT_TRUE(parsed.ok()) << parsed.status();
-    EXPECT_EQ(parsed->mgrid_interpolation, scheme);
-    const auto written = parsed->ToJson();
-    ASSERT_TRUE(written.ok()) << written.status();
-    EXPECT_EQ(json::parse(*written)["mgrid_interpolation"], ToString(scheme));
-  }
-  const auto invalid =
-      VmecINDATA::FromJson(R"({"mgrid_interpolation":"nearest"})");
-  EXPECT_FALSE(invalid.ok());
-}
 
 TEST(TestVmecINDATA, HDF5IO) {
   CheckHdf5RoundTrip("vmecpp/test_data/cth_like_free_bdy.json");

@@ -70,8 +70,7 @@ void MGridProvider::ResetAccumulatedField() {
   bZ.setZero(num_grid_points);
 }
 
-MGridProvider::MGridProvider(MGridInterpolation interpolation)
-    : interpolation_(interpolation) {
+MGridProvider::MGridProvider() {
   nfp = -1;
 
   numR = -1;
@@ -388,68 +387,47 @@ absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
     double r = std::max(minR, std::min(rLCFS[kl], maxR));
     double z = std::max(minZ, std::min(zLCFS[kl], maxZ));
 
-    if (interpolation_ == MGridInterpolation::kCubic && numR >= 4 &&
-        numZ >= 4) {
-      const double r_index = (r - minR) / deltaR;
-      const double z_index = (z - minZ) / deltaZ;
-      const int r_start =
-          std::clamp(static_cast<int>(floor(r_index)) - 1, 0, numR - 4);
-      const int z_start =
-          std::clamp(static_cast<int>(floor(z_index)) - 1, 0, numZ - 4);
-      const auto weights = [](double u) -> std::array<double, 4> {
+    // Use a centred four-node stencil, shifted inward at the grid edges.
+    // Smaller tables use the polynomial supported by their available nodes.
+    const int r_nodes = std::min(4, numR);
+    const int z_nodes = std::min(4, numZ);
+    const double r_index = (r - minR) / deltaR;
+    const double z_index = (z - minZ) / deltaZ;
+    const int r_start =
+        std::clamp(static_cast<int>(floor(r_index)) - 1, 0, numR - r_nodes);
+    const int z_start =
+        std::clamp(static_cast<int>(floor(z_index)) - 1, 0, numZ - z_nodes);
+    const auto weights = [](double u, int nodes) -> std::array<double, 4> {
+      if (nodes == 4) {
         return {-(u - 1) * (u - 2) * (u - 3) / 6, u * (u - 2) * (u - 3) / 2,
                 -u * (u - 1) * (u - 3) / 2, u * (u - 1) * (u - 2) / 6};
-      };
-      const auto r_weights = weights(r_index - r_start);
-      const auto z_weights = weights(z_index - z_start);
-      double br = 0.0;
-      double bp = 0.0;
-      double bz = 0.0;
-      for (int j = 0; j < 4; ++j) {
-        for (int i = 0; i < 4; ++i) {
-          const int index = (k * numZ + z_start + j) * numR + r_start + i;
-          const double weight = r_weights[i] * z_weights[j];
-          br += weight * bR[index];
-          bp += weight * bP[index];
-          bz += weight * bZ[index];
+      }
+      std::array<double, 4> result{};
+      for (int i = 0; i < nodes; ++i) {
+        result[i] = 1.0;
+        for (int j = 0; j < nodes; ++j) {
+          if (i != j) result[i] *= (u - j) / (i - j);
         }
       }
-      m_interpBr[kl - ztMin] = br;
-      m_interpBp[kl - ztMin] = bp;
-      m_interpBz[kl - ztMin] = bz;
-      continue;
+      return result;
+    };
+    const auto r_weights = weights(r_index - r_start, r_nodes);
+    const auto z_weights = weights(z_index - z_start, z_nodes);
+    double br = 0.0;
+    double bp = 0.0;
+    double bz = 0.0;
+    for (int j = 0; j < z_nodes; ++j) {
+      for (int i = 0; i < r_nodes; ++i) {
+        const int index = (k * numZ + z_start + j) * numR + r_start + i;
+        const double weight = r_weights[i] * z_weights[j];
+        br += weight * bR[index];
+        bp += weight * bP[index];
+        bz += weight * bZ[index];
+      }
     }
-
-    // DETERMINE INTEGER INDICES (IR,JZ) FOR LOWER LEFT R, Z CORNER GRID POINT
-    int ir = static_cast<int>(floor((r - minR) / deltaR));
-    int jz = static_cast<int>(floor((z - minZ) / deltaZ));
-    int ir1 = std::min(numR - 1, ir + 1);
-    int jz1 = std::min(numZ - 1, jz + 1);
-
-    // COMPUTE RI, ZJ AND PR, QZ AT GRID POINT (IR , JZ)
-    double ri = minR + ir * deltaR;
-    double zj = minZ + jz * deltaZ;
-    double pr = (r - ri) / deltaR;
-    double qz = (z - zj) / deltaZ;
-
-    // COMPUTE WEIGHTS WIJ FOR 4 CORNER GRID POINTS
-    double w22 = pr * qz;                //    p *   q
-    double w21 = pr - w22;               //    p *(1-q) = p - p*q
-    double w12 = qz - w22;               // (1-p)*   q  = q - p*q
-    double w11 = 1.0 + w22 - (pr + qz);  // (1-p)*(1-q) = 1 + p*q - (p + q)
-
-    // COMPUTE B FIELD AT R, PHI, Z BY INTERPOLATION
-    int kj_i_ = (k * numZ + jz) * numR + ir;
-    int kj1i_ = (k * numZ + jz1) * numR + ir;
-    int kj_i1 = (k * numZ + jz) * numR + ir1;
-    int kj1i1 = (k * numZ + jz1) * numR + ir1;
-
-    m_interpBr[kl - ztMin] =
-        w11 * bR[kj_i_] + w12 * bR[kj1i_] + w21 * bR[kj_i1] + w22 * bR[kj1i1];
-    m_interpBp[kl - ztMin] =
-        w11 * bP[kj_i_] + w12 * bP[kj1i_] + w21 * bP[kj_i1] + w22 * bP[kj1i1];
-    m_interpBz[kl - ztMin] =
-        w11 * bZ[kj_i_] + w12 * bZ[kj1i_] + w21 * bZ[kj_i1] + w22 * bZ[kj1i1];
+    m_interpBr[kl - ztMin] = br;
+    m_interpBp[kl - ztMin] = bp;
+    m_interpBz[kl - ztMin] = bz;
   }  // kl
 
   absl::Status status = absl::OkStatus();

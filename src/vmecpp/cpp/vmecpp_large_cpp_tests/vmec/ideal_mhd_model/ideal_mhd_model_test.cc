@@ -507,9 +507,9 @@ TEST_P(FourierGeometryToStartWithTest, CheckFourierGeometryToStartWith) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -589,9 +589,9 @@ TEST_P(InverseFourierTransformGeometryTest,
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -751,9 +751,9 @@ TEST_P(JacobianTest, CheckJacobian) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -841,9 +841,9 @@ TEST_P(MetricTest, CheckMetric) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -928,9 +928,9 @@ TEST_P(VolumeTest, CheckVolume) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -997,9 +997,9 @@ TEST_P(ContravariantMagneticFieldTest, CheckContravariantMagneticField) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -1135,9 +1135,9 @@ TEST_P(CovariantMagneticFieldTest, CheckCovariantMagneticField) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -1210,9 +1210,9 @@ TEST_P(TotalPressureAndEnergiesTest, CheckTotalPressureAndEnergies) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -1292,9 +1292,9 @@ TEST_P(RadialForceBalanceTest, CheckRadialForceBalance) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -1383,9 +1383,9 @@ TEST_P(HybridLambdaForceTest, CheckHybridLambdaForce) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -1865,9 +1865,9 @@ TEST_P(RBsqTest, CheckRBsq) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -1930,9 +1930,9 @@ TEST_P(AliasTest, CheckAlias) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -2051,9 +2051,9 @@ TEST_P(RealspaceForcesTest, CheckRealspaceForces) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -2160,9 +2160,9 @@ TEST_P(ForwardTransformForcesTest, CheckForwardTransformForces) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -2287,9 +2287,9 @@ TEST_P(PhysicalForcesTest, CheckPhysicalForces) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -2373,9 +2373,9 @@ TEST_P(InvariantResidualsTest, CheckInvariantResiduals) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -2436,9 +2436,9 @@ TEST_P(ApplyM1PreconditionerTest, CheckApplyM1Preconditioner) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -2623,9 +2623,9 @@ TEST_P(ApplyPreconditionerTest, CheckApplyPreconditioner) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -2800,9 +2800,9 @@ TEST_P(PreconditionedResidualsTest, CheckPreconditionedResiduals) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);

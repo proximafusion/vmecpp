@@ -297,7 +297,6 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
 def test_against_reference_wout(indata_file, reference_wout_file, path_type):
     indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / indata_file)
     if indata.lfreeb:
-        indata.mgrid_interpolation = vmecpp.MGridInterpolation.LINEAR
         indata.mgrid_file = str(
             REPO_ROOT / "src" / "vmecpp" / "cpp" / indata.mgrid_file
         )

@@ -189,9 +189,9 @@ TEST_P(EvolveTest, CheckEvolve) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = vmecpp::MGridInterpolation::kLinear;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
@@ -311,9 +311,9 @@ TEST_P(MultigridResultTest, CheckMultigridResult) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  vmec_indata->mgrid_interpolation = vmecpp::MGridInterpolation::kLinear;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;

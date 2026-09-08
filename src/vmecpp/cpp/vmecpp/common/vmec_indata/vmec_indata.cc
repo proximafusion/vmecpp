@@ -138,25 +138,6 @@ std::string ToString(FreeBoundaryMethod free_boundary_method) {
   }
 }  // ToString
 
-absl::StatusOr<MGridInterpolation> MGridInterpolationFromString(
-    const std::string& interpolation) {
-  if (interpolation == "linear") return MGridInterpolation::kLinear;
-  if (interpolation == "cubic") return MGridInterpolation::kCubic;
-  return absl::InvalidArgumentError(
-      absl::StrCat("mgrid_interpolation must be 'linear' or 'cubic', got '",
-                   interpolation, "'"));
-}
-
-std::string ToString(MGridInterpolation interpolation) {
-  switch (interpolation) {
-    case MGridInterpolation::kLinear:
-      return "linear";
-    case MGridInterpolation::kCubic:
-      return "cubic";
-  }
-  return "unknown";
-}
-
 int IterationStyleCode(IterationStyle iteration_style) {
   // from https://stackoverflow.com/a/11421471
   return static_cast<std::underlying_type_t<IterationStyle>>(iteration_style);
@@ -238,7 +219,6 @@ VmecINDATA::VmecINDATA() {
   // extcur is left empty
   nvacskip = 1;
   free_boundary_method = FreeBoundaryMethod::NESTOR;
-  mgrid_interpolation = MGridInterpolation::kCubic;
 
   // tweaking parameters
   nstep = 10;
@@ -366,8 +346,6 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   // special treatment for enums
   WriteH5Dataset(ToString(free_boundary_method), "/indata/free_boundary_method",
                  file);
-  WriteH5Dataset(ToString(mgrid_interpolation), "/indata/mgrid_interpolation",
-                 file);
   WriteH5Dataset(ToString(iteration_style), "/indata/iteration_style", file);
 
   WriteH5Dataset(nstep, "/indata/nstep", file);
@@ -454,17 +432,6 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
     return maybe_fbdy_method.status();
   }
   m_indata.free_boundary_method = maybe_fbdy_method.value();
-
-  if (from_file.nameExists("/indata/mgrid_interpolation")) {
-    std::string interpolation;
-    ReadH5Dataset(interpolation, "/indata/mgrid_interpolation", from_file);
-    const auto parsed = MGridInterpolationFromString(interpolation);
-    if (!parsed.ok()) return parsed.status();
-    m_indata.mgrid_interpolation = *parsed;
-  } else {
-    // Historical output files were computed with bilinear interpolation.
-    m_indata.mgrid_interpolation = MGridInterpolation::kLinear;
-  }
 
   // Legacy way of checking for dataset existence
   // TODO(jons) replace with from_file.nameExists when we get a newer HDF5
@@ -907,14 +874,6 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.nvacskip = maybe_nvacskip->value();
   }
 
-  const auto maybe_interpolation = JsonReadString(j, "mgrid_interpolation");
-  if (!maybe_interpolation.ok()) return maybe_interpolation.status();
-  if (maybe_interpolation->has_value()) {
-    const auto parsed = MGridInterpolationFromString(**maybe_interpolation);
-    if (!parsed.ok()) return parsed.status();
-    vmec_indata.mgrid_interpolation = *parsed;
-  }
-
   auto maybe_free_boundary_method = JsonReadString(j, "free_boundary_method");
   if (!maybe_free_boundary_method.ok()) {
     return maybe_free_boundary_method.status();
@@ -1287,7 +1246,6 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["extcur"] = extcur;
   output["nvacskip"] = nvacskip;
   output["free_boundary_method"] = ToString(free_boundary_method);
-  output["mgrid_interpolation"] = ToString(mgrid_interpolation);
 
   // Tweaking Parameters
   output["nstep"] = nstep;
@@ -1532,12 +1490,6 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // ncurr == 1: curtor and bloat may take any value.
 
   /* --------------------------------- */
-
-  if (vmec_indata.mgrid_interpolation != MGridInterpolation::kLinear &&
-      vmec_indata.mgrid_interpolation != MGridInterpolation::kCubic) {
-    return absl::InvalidArgumentError(
-        "input variable 'mgrid_interpolation' must be 'linear' or 'cubic'");
-  }
 
   // lfreeb
   // nothing to check here: lfreeb can be true or false and both are valid...
