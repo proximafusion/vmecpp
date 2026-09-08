@@ -195,6 +195,8 @@ class Vmec {
 
   VmecINDATA indata_;
   Sizes s_;
+  // Fourier cutoffs of the vacuum potential on the plasma's tangential grid
+  Sizes vacuum_s_;
   FourierBasisFastPoloidal t_;
   Boundaries b_;
   VmecConstants constants_;

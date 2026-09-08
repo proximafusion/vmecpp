@@ -309,6 +309,65 @@ TEST(TestVmec, CheckInMemoryMgrid) {
               /*current_density_tolerance=*/2e-7);
 }
 
+// The vacuum potential may be expanded beyond the plasma's cutoffs. Setting
+// them to the plasma's reproduces the run bit for bit; a larger toroidal
+// cutoff keeps the tangential grid and moves this low-beta boundary by
+// micrometres; a larger poloidal cutoff refines the poloidal grid to carry it
+// and changes the equilibrium by that discretization alone.
+TEST(TestVmec, VacuumPotentialCutoffsAboveThePlasmaResolution) {
+  const std::string filename = "vmecpp/test_data/cth_like_free_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const VmecINDATA& indata = *maybe_indata;
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+  const auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      *maybe_makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok());
+
+  const auto base = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_TRUE(base.ok()) << base.status();
+  EXPECT_EQ(base->wout.potvac.size(), 2 * (5 + 2) * (2 * 4 + 1));
+
+  VmecINDATA explicit_cutoffs = indata;
+  explicit_cutoffs.vacuum_mpol = indata.mpol;
+  explicit_cutoffs.vacuum_ntor = indata.ntor;
+  const auto same = vmecpp::run(explicit_cutoffs, *maybe_response_table);
+  ASSERT_TRUE(same.ok()) << same.status();
+  CompareWOut(same->wout, base->wout, /*tolerance=*/0.0,
+              /*check_equal_niter=*/true);
+
+  VmecINDATA toroidal = indata;
+  toroidal.vacuum_ntor = 8;
+  const auto wider = vmecpp::run(toroidal, *maybe_response_table);
+  ASSERT_TRUE(wider.ok()) << wider.status();
+  EXPECT_EQ(wider->wout.potvac.size(), 2 * (5 + 2) * (2 * 8 + 1));
+  EXPECT_EQ(wider->wout.mnmax, base->wout.mnmax);
+  EXPECT_NEAR(wider->wout.rmax_surf, base->wout.rmax_surf, 1e-4);
+  EXPECT_NEAR(wider->wout.rmin_surf, base->wout.rmin_surf, 1e-4);
+  EXPECT_NEAR(wider->wout.zmax_surf, base->wout.zmax_surf, 1e-4);
+
+  VmecINDATA both = indata;
+  both.vacuum_mpol = 8;
+  both.vacuum_ntor = 8;
+  const auto finer = vmecpp::run(both, *maybe_response_table);
+  ASSERT_TRUE(finer.ok()) << finer.status();
+  EXPECT_EQ(finer->wout.potvac.size(), 2 * (8 + 2) * (2 * 8 + 1));
+  EXPECT_EQ(finer->wout.mnmax, base->wout.mnmax);
+  EXPECT_NEAR(finer->wout.volume, base->wout.volume, 1e-3 * base->wout.volume);
+  const double rmnc_scale = base->wout.rmnc.cwiseAbs().maxCoeff();
+  EXPECT_LT((finer->wout.rmnc - base->wout.rmnc).cwiseAbs().maxCoeff(),
+            1e-3 * rmnc_scale);
+}
+
 // Axisymmetric (ntor = 0, nzeta = 1) free-boundary tokamak (solovev_free_bdy).
 // The committed-mgrid run is validated field-by-field against the
 // educational_VMEC golden in WOutFileContentsTest (output_quantities_test).

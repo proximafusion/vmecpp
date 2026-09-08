@@ -176,10 +176,23 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
 }
 
 // initialize based on input file contents
+namespace {
+// Fourier cutoffs of the vacuum potential: the plasma's unless raised.
+int VacuumMpol(const vmecpp::VmecINDATA& indata) {
+  return std::max(indata.vacuum_mpol, indata.mpol);
+}
+int VacuumNtor(const vmecpp::VmecINDATA& indata) {
+  return std::max(indata.vacuum_ntor, indata.ntor);
+}
+}  // namespace
+
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
            OutputMode verbose, InterruptCallback interrupt_callback)
     : indata_(indata),
       s_(indata_),
+      vacuum_s_(indata_.lasym, indata_.nfp, VacuumMpol(indata_),
+                VacuumNtor(indata_), s_.ntheta, s_.nZeta, VacuumMpol(indata_),
+                VacuumNtor(indata_)),
       t_(&s_),
       b_(&s_, &t_, kSignOfJacobian),
       h_(&s_),
@@ -199,11 +212,11 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
 
   if (fc_.lfreeb) {
-    // tangential Fourier resolution
+    // tangential Fourier resolution of the vacuum potential
     // 0 : ntor
-    int nf = s_.ntor;
+    int nf = vacuum_s_.ntor;
     // 0 : (mpol + 1)
-    int mf = s_.mpol + 1;
+    int mf = vacuum_s_.mpol + 1;
     int mnpd = (2 * nf + 1) * (mf + 1);
     // For lasym = true the scalar potential carries both sin(mu-nv) and
     // cos(mu-nv) coefficients, doubling the Nestor linear system to
@@ -212,6 +225,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     matrixShare.setZero(mnpd_dim * mnpd_dim);
     bvecShare.setZero(mnpd_dim);
 
+    h_.SetVacuumCutoffs(vacuum_s_.mpol, vacuum_s_.ntor);
     h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
     h_.initial_plasma_pressure_at_boundary.setZero(s_.nZnT);
     h_.initial_vacuum_pressure_at_boundary.setZero(s_.nZnT);
@@ -505,7 +519,7 @@ void Vmec::SetupVacuumSolvers() {
 
     if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
       fb_vac_[vac_thread_id] = std::make_unique<Nestor>(
-          &s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          &vacuum_s_, tp_vac_[vac_thread_id].get(), &mgrid_,
           std::span<double>(matrixShare.data(), matrixShare.size()),
           std::span<double>(bvecShare.data(), bvecShare.size()),
           std::span<double>(h_.vacuum_magnetic_pressure.data(),
@@ -518,7 +532,7 @@ void Vmec::SetupVacuumSolvers() {
                             vacuum_reduce_slots_.size()));
     } else if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS) {
       fb_vac_[vac_thread_id] = std::make_unique<OnlyCoils>(
-          &s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          &vacuum_s_, tp_vac_[vac_thread_id].get(), &mgrid_,
           std::span<double>(h_.vacuum_magnetic_pressure.data(),
                             h_.vacuum_magnetic_pressure.size()),
           std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),

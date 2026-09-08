@@ -267,6 +267,45 @@ TEST(TestVmecINDATA, CheckSplineProfilesNeedKnots) {
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
+// The vacuum potential's cutoffs default to the plasma's, may only exceed
+// them, and the toroidal grid has to carry the toroidal one.
+TEST(TestVmecINDATA, VacuumCutoffsStayAboveThePlasmaResolution) {
+  const absl::StatusOr<std::string> json =
+      file_io::ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(json.ok());
+  absl::StatusOr<VmecINDATA> maybe = VmecINDATA::FromJson(*json);
+  ASSERT_TRUE(maybe.ok());
+  VmecINDATA indata = *maybe;  // mpol 5, ntor 4, nzeta 36
+  EXPECT_EQ(indata.vacuum_mpol, 0);
+  EXPECT_EQ(indata.vacuum_ntor, 0);
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.vacuum_mpol = 4;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.vacuum_mpol = 8;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.vacuum_ntor = 3;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  // 2 * 16 + 4 = 36 planes fit, 2 * 17 + 4 = 38 do not
+  indata.vacuum_ntor = 16;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.vacuum_ntor = 17;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  indata.vacuum_ntor = 8;
+  const absl::StatusOr<std::string> round_trip_json = indata.ToJson();
+  ASSERT_TRUE(round_trip_json.ok());
+  const absl::StatusOr<VmecINDATA> round_trip =
+      VmecINDATA::FromJson(*round_trip_json);
+  ASSERT_TRUE(round_trip.ok());
+  EXPECT_EQ(round_trip->vacuum_mpol, 8);
+  EXPECT_EQ(round_trip->vacuum_ntor, 8);
+}
+
 TEST(TestVmecINDATA, ToJson) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
