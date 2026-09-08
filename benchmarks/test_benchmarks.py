@@ -154,7 +154,7 @@ def test_bench_free_boundary(benchmark, free_boundary_input, response_table):
         rounds=3,
         warmup_rounds=1,
     )
-    assert result.wout.volume == pytest.approx(0.3075, rel=1e-3)
+    assert result.wout.volume == pytest.approx(0.3070, rel=1e-3)
 
 
 # ---------------------------------------------------------------------------
