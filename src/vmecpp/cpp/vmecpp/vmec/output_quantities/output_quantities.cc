@@ -1525,6 +1525,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
 
   if (vmec_status == VmecStatus::NORMAL_TERMINATION ||
       vmec_status == VmecStatus::SUCCESSFUL_TERMINATION ||
+      vmec_status == VmecStatus::MORE_ITERATIONS_NEEDED ||
       indata.return_outputs_even_if_not_converged) {
     MeshBledingBSubZeta(
         s, fc,
@@ -1702,6 +1703,108 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
   return output_quantities;
 }  // ComputeOutputQuantities
 
+namespace {
+
+// size the spectral state of results for num_full full-grid surfaces
+void AllocateStateVector(const vmecpp::Sizes& s, int num_full,
+                         vmecpp::VmecInternalResults& m_results) {
+  m_results.rmncc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  m_results.zmnsc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  m_results.lmnsc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  if (s.lthreed) {
+    m_results.rmnss = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.zmncs = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.lmncs = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  }
+  if (s.lasym) {
+    m_results.rmnsc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.zmncc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.lmncc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    if (s.lthreed) {
+      m_results.rmncs = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+      m_results.zmnss = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+      m_results.lmnss = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    }
+  }
+}
+
+// copy the spectral coefficients of full-grid surface jF from the thread that
+// holds it into the gathered results
+void GatherStateVectorOfSurface(const vmecpp::Sizes& s,
+                                const vmecpp::RadialPartitioning& r,
+                                const vmecpp::FourierGeometry& decomposed_x,
+                                int jF,
+                                vmecpp::VmecInternalResults& m_results) {
+  for (int n = 0; n < s.ntor + 1; ++n) {
+    for (int m = 0; m < s.mpol; ++m) {
+      const int source_index =
+          ((jF - r.nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
+      const int target_index = (jF * (s.ntor + 1) + n) * s.mpol + m;
+
+      m_results.rmncc(target_index) = decomposed_x.rmncc[source_index];
+      m_results.zmnsc(target_index) = decomposed_x.zmnsc[source_index];
+      m_results.lmnsc(target_index) = decomposed_x.lmnsc[source_index];
+      if (s.lthreed) {
+        m_results.rmnss(target_index) = decomposed_x.rmnss[source_index];
+        m_results.zmncs(target_index) = decomposed_x.zmncs[source_index];
+        m_results.lmncs(target_index) = decomposed_x.lmncs[source_index];
+      }
+      if (s.lasym) {
+        m_results.rmnsc(target_index) = decomposed_x.rmnsc[source_index];
+        m_results.zmncc(target_index) = decomposed_x.zmncc[source_index];
+        m_results.lmncc(target_index) = decomposed_x.lmncc[source_index];
+        if (s.lthreed) {
+          m_results.rmncs(target_index) = decomposed_x.rmncs[source_index];
+          m_results.zmnss(target_index) = decomposed_x.zmnss[source_index];
+          m_results.lmnss(target_index) = decomposed_x.lmnss[source_index];
+        }
+      }
+    }  // m
+  }  // n
+}
+
+}  // namespace
+
+vmecpp::VmecInternalResults vmecpp::GatherSpectralStateFromThreads(
+    const int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
+    const VmecConstants& constants,
+    const std::vector<std::unique_ptr<RadialPartitioning>>& radial_partitioning,
+    const std::vector<std::unique_ptr<FourierGeometry>>& decomposed_x,
+    const std::vector<std::unique_ptr<RadialProfiles>>& radial_profiles) {
+  VmecInternalResults results;
+
+  results.sign_of_jacobian = sign_of_jacobian;
+  results.lamscale = constants.lamscale;
+  results.num_half = fc.ns - 1;
+  results.num_full = fc.ns;
+
+  results.phipF = VectorXd::Zero(results.num_full);
+  results.phipH = VectorXd::Zero(results.num_half);
+  results.iotaH = VectorXd::Zero(results.num_half);
+  AllocateStateVector(s, results.num_full, results);
+
+  const std::size_t num_threads = radial_partitioning.size();
+  for (std::size_t thread_id = 0; thread_id < num_threads; ++thread_id) {
+    const RadialPartitioning& r = *radial_partitioning[thread_id];
+    const RadialProfiles& p = *radial_profiles[thread_id];
+
+    for (int jH = r.nsMinH; jH < r.nsMaxH; ++jH) {
+      // half-grid points are overlapping --> only take unique ones !
+      if (jH < r.nsMaxH - 1 || jH == fc.ns - 2) {
+        results.phipH[jH] = p.phipH[jH - r.nsMinH];
+        results.iotaH[jH] = p.iotaH[jH - r.nsMinH];
+      }
+    }  // jH
+
+    for (int jF = r.nsMinF; jF < r.nsMaxFIncludingLcfs; ++jF) {
+      results.phipF[jF] = p.phipF[jF - r.nsMinF1];
+      GatherStateVectorOfSurface(s, r, *decomposed_x[thread_id], jF, results);
+    }  // jF
+  }  // thread_id
+
+  return results;
+}
+
 vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
     const int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
     const VmecConstants& constants,
@@ -1743,25 +1846,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
   results.iotaH = VectorXd::Zero(results.num_half);
   results.currH = VectorXd::Zero(results.num_half);
 
-  // state vector
-  results.rmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  results.zmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  results.lmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  if (s.lthreed) {
-    results.rmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.zmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.lmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  }
-  if (s.lasym) {
-    results.rmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.zmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.lmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    if (s.lthreed) {
-      results.rmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-      results.zmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-      results.lmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    }
-  }
+  AllocateStateVector(s, results.num_full, results);
 
   // from inv-DFTs
   results.r_e = RowMatrixXd::Zero(results.num_full, s.nZnT);
@@ -1874,46 +1959,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
       results.iotaF[jF] = p.iotaF[jF - r.nsMinF1];
       results.spectral_width[jF] = p.spectral_width[jF - r.nsMinF1];
 
-      // state vector
-      for (int n = 0; n < s.ntor + 1; ++n) {
-        for (int m = 0; m < s.mpol; ++m) {
-          // FIXME(eguiraud) slow loop
-          const int source_index =
-              ((jF - nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
-          const int target_index = (jF * (s.ntor + 1) + n) * s.mpol + m;
-
-          results.rmncc(target_index) =
-              decomposed_x[thread_id]->rmncc[source_index];
-          results.zmnsc(target_index) =
-              decomposed_x[thread_id]->zmnsc[source_index];
-          results.lmnsc(target_index) =
-              decomposed_x[thread_id]->lmnsc[source_index];
-          if (s.lthreed) {
-            results.rmnss(target_index) =
-                decomposed_x[thread_id]->rmnss[source_index];
-            results.zmncs(target_index) =
-                decomposed_x[thread_id]->zmncs[source_index];
-            results.lmncs(target_index) =
-                decomposed_x[thread_id]->lmncs[source_index];
-          }
-          if (s.lasym) {
-            results.rmnsc(target_index) =
-                decomposed_x[thread_id]->rmnsc[source_index];
-            results.zmncc(target_index) =
-                decomposed_x[thread_id]->zmncc[source_index];
-            results.lmncc(target_index) =
-                decomposed_x[thread_id]->lmncc[source_index];
-            if (s.lthreed) {
-              results.rmncs(target_index) =
-                  decomposed_x[thread_id]->rmncs[source_index];
-              results.zmnss(target_index) =
-                  decomposed_x[thread_id]->zmnss[source_index];
-              results.lmnss(target_index) =
-                  decomposed_x[thread_id]->lmnss[source_index];
-            }
-          }
-        }  // m
-      }  // n
+      GatherStateVectorOfSurface(s, r, *decomposed_x[thread_id], jF, results);
 
       double unlamscale = 1.0;
       if (jF > 0) {

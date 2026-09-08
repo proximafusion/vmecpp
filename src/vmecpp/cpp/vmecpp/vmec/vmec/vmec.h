@@ -23,6 +23,7 @@
 #include "vmecpp/vmec/fourier_forces/fourier_forces.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/fourier_velocity/fourier_velocity.h"
+#include "vmecpp/vmec/geometry/geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/ideal_mhd_model.h"
 #include "vmecpp/vmec/iteration_logger/iteration_logger.h"
@@ -63,13 +64,46 @@ struct HotRestartState {
 // Called periodically from the iteration loop.
 using InterruptCallback = std::function<bool()>;
 
+// The state of the force iteration that just completed, handed to an
+// IterationCallback by the master thread while the other threads wait.
+struct IterationSnapshot {
+  // iteration counter of the current multigrid stage, as printed
+  int iteration;
+  // index into ns_array of the current stage; -1 for the inserted ns = 3 stage
+  int multigrid_step;
+  int ns;
+  // invariant force residuals of R, Z and lambda, the ones tested against ftol
+  double fsqr;
+  double fsqz;
+  double fsql;
+  double ftol;
+  // current time step
+  double delt;
+  // RestartReason of this iteration; NO_RESTART unless the state was reverted
+  // to the last backup
+  RestartReason restart_reason;
+  // Jacobian resets so far in this stage
+  int jacobian_resets;
+  // whether the vacuum pressure is part of the force balance yet
+  bool vacuum_pressure_active;
+  // MHD energy of the state
+  double mhd_energy;
+  // R, Z and lambda coefficients of the state, as MakeGeometry lays them out
+  Geometry geometry;
+};
+
+// Called once per force iteration; return false to stop the run, which then
+// returns the output quantities of the state reached.
+using IterationCallback = std::function<bool(const IterationSnapshot&)>;
+
 // This is the preferred way to run VMEC++.
 absl::StatusOr<OutputQuantities> run(
     const VmecINDATA& indata,
     std::optional<HotRestartState> initial_state = std::nullopt,
     std::optional<int> max_threads = std::nullopt,
     OutputMode verbose = OutputMode::kLegacy,
-    InterruptCallback interrupt_callback = nullptr);
+    InterruptCallback interrupt_callback = nullptr,
+    IterationCallback iteration_callback = nullptr);
 
 // This overload enables free-boundary runs with an in-memory mgrid file.
 // The mgrid_file entry in `indata` will be ignored.
@@ -81,7 +115,8 @@ absl::StatusOr<OutputQuantities> run(
     std::optional<HotRestartState> initial_state = std::nullopt,
     std::optional<int> max_threads = std::nullopt,
     OutputMode verbose = OutputMode::kLegacy,
-    InterruptCallback interrupt_callback = nullptr);
+    InterruptCallback interrupt_callback = nullptr,
+    IterationCallback iteration_callback = nullptr);
 
 class Vmec {
  public:
@@ -91,7 +126,8 @@ class Vmec {
   explicit Vmec(const VmecINDATA& indata,
                 std::optional<int> max_threads = std::nullopt,
                 OutputMode verbose = OutputMode::kLegacy,
-                InterruptCallback interrupt_callback = nullptr);
+                InterruptCallback interrupt_callback = nullptr,
+                IterationCallback iteration_callback = nullptr);
 
   // Vmec must not be moved or copied because members (t_, b_, h_) store
   // raw pointers to sibling members (s_, t_). Moving would leave those
@@ -117,7 +153,8 @@ class Vmec {
           nullptr,
       std::optional<int> max_threads = std::nullopt,
       OutputMode verbose = OutputMode::kLegacy,
-      InterruptCallback interrupt_callback = nullptr);
+      InterruptCallback interrupt_callback = nullptr,
+      IterationCallback iteration_callback = nullptr);
 
   absl::StatusOr<bool> run(
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
@@ -246,6 +283,14 @@ class Vmec {
       int thread_id, int maximum_iterations, VmecCheckpoint checkpoint,
       bool& m_lreset_internal, bool& m_liter_flag);
 
+  // Hand the iteration that just completed to iteration_callback_. Runs on
+  // the master thread while the other threads wait at a barrier.
+  void NotifyIterationCallback(int iter2, RestartReason restart_reason,
+                               bool& m_liter_flag);
+
+  // The R, Z and lambda coefficients of the current state as a Geometry.
+  Geometry CurrentGeometry() const;
+
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
 
@@ -257,6 +302,15 @@ class Vmec {
 
   // set to true when the interrupt callback signals an interrupt
   bool interrupted_ = false;
+
+  // optional callback that receives every force iteration
+  IterationCallback iteration_callback_;
+
+  // set to true when the iteration callback asks to stop the run
+  bool stopped_by_callback_ = false;
+
+  // index into ns_array of the multigrid stage being solved
+  int multigrid_step_ = 0;
 
   // initialization state counter for Nestor. Called ivac in Fortran VMEC.
   VacuumPressureState vacuum_pressure_state_;

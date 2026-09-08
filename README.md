@@ -101,6 +101,22 @@ vmec_output.wout.save("wout_w7x.nc")
 
 All other output files are accessible via members of the `vmec_output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
 
+### Watching a solve
+
+`vmecpp.watch` runs the same solve as `vmecpp.run` and draws the flux surfaces and the
+force residuals of every iteration while it runs, in a window or into an animation file:
+
+```python
+import vmecpp
+
+vmec_input = vmecpp.VmecInput.from_file("examples/data/solovev.json")
+output = vmecpp.watch(vmec_input, save="solve.gif")
+```
+
+The per-iteration data behind it is available to any script through the
+`iteration_callback` argument of `vmecpp.run`, which receives an `IterationSnapshot` with
+the force residuals, the flow-control state and the geometry of every iteration.
+
 ### With SIMSOPT
 
 [SIMSOPT](https://simsopt.readthedocs.io) is a popular stellarator optimization framework.

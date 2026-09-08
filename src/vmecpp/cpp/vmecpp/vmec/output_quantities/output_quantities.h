@@ -1442,6 +1442,16 @@ VmecInternalResults GatherDataFromThreads(
     const std::vector<std::unique_ptr<IdealMhdModel> >& models_from_threads,
     const std::vector<std::unique_ptr<RadialProfiles> >& radial_profiles);
 
+// gather the spectral state and the flux profiles MakeGeometry needs, without
+// the real-space fields; a view of the state during the iteration
+VmecInternalResults GatherSpectralStateFromThreads(
+    int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
+    const VmecConstants& constants,
+    const std::vector<std::unique_ptr<RadialPartitioning> >&
+        radial_partitioning,
+    const std::vector<std::unique_ptr<FourierGeometry> >& decomposed_x,
+    const std::vector<std::unique_ptr<RadialProfiles> >& radial_profiles);
+
 // mesh blending for B_zeta back to half-grid
 void MeshBledingBSubZeta(const Sizes& s, const FlowControl& fc,
                          VmecInternalResults& m_vmec_internal_results);

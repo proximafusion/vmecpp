@@ -182,6 +182,9 @@ enum class VmecStatus : std::uint8_t {
   // no fatal error but convergence was not reached
   NORMAL_TERMINATION = 0,
   BAD_JACOBIAN = 1,
+  // the iteration callback stopped the run before convergence; more_iter_flag
+  // in VMEC 8.52
+  MORE_ITERATIONS_NEEDED = 2,
   JACOBIAN_75_TIMES_BAD = 4,
   // A physical inconsistency was detected deep in the MHD model (e.g. a
   // degenerate flux-surface geometry or a free-boundary current mismatch)

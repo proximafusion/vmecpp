@@ -40,6 +40,7 @@ from vmecpp._pydantic_numpy import (
     own_model_fields,
 )
 from vmecpp._rescale import rescale
+from vmecpp._watch import watch
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
 logger = logging.getLogger(__name__)
@@ -862,6 +863,7 @@ class VmecWOut(BaseModelWithNumpy):
         return {
             0: "normal termination: converged, or returned without convergence because return_outputs_even_if_not_converged was set",
             1: "initially bad Jacobian",
+            2: "stopped by the iteration callback before convergence",
             3: "NCURR_NE_1_BLOAT_NE_1",
             4: "Jacobian reset 75 times, the geometry isn't well defined",
             5: "unrecoverable error: a physical inconsistency in the MHD model, such as a degenerate flux-surface geometry or a free-boundary current mismatch, with no retry strategy",
@@ -2411,6 +2413,21 @@ def _print_progress_tip_once() -> None:
         )
 
 
+IterationSnapshot = _vmecpp.IterationSnapshot
+"""The state of one force iteration, handed to the ``iteration_callback`` of
+:func:`run`.
+
+Its attributes are ``iteration`` (the counter of the current multigrid stage, as
+printed), ``multigrid_step`` (the index into ``ns_array``, -1 for the inserted
+ns = 3 stage), ``ns``, the invariant force residuals ``fsqr``, ``fsqz``, ``fsql``
+and the ``ftol`` they are tested against, the time step ``delt``,
+``restart_reason`` (1 no restart, 2 bad Jacobian, 3 bad progress, 4 huge initial
+forces), ``jacobian_resets``, ``vacuum_pressure_active``, ``mhd_energy`` and
+``geometry``, the R, Z and lambda coefficients of the state as a ``Geometry`` that
+``vmecpp.geometry.from_cpp`` reads.
+"""
+
+
 def run(
     input: VmecInput,
     magnetic_field: MagneticFieldResponseTable | None = None,
@@ -2418,6 +2435,7 @@ def run(
     max_threads: int | None = None,
     verbose: bool | int | OutputMode = OutputMode.PROGRESS,
     restart_from: VmecOutput | None = None,
+    iteration_callback: typing.Callable[[IterationSnapshot], bool | None] | None = None,
 ) -> VmecOutput:
     """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
     and free-boundary calculations.
@@ -2439,6 +2457,11 @@ def run(
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
             If `input.mpol`/`input.ntor` is a sequence (see below), this is used to hot-restart
             only the first continuation step; later steps always hot-restart from the previous one.
+        iteration_callback: called once per force iteration with an :class:`IterationSnapshot`
+            of the state just reached, after every thread has finished the step. Returning
+            ``False`` stops the run, which then returns the outputs of that state with
+            ``wout.ier_flag`` reporting no convergence; returning ``None`` or ``True`` continues.
+            An exception raised inside the callback stops the run and propagates.
 
     If `input.mpol` and/or `input.ntor` is a sequence rather than a plain int, `run` performs
     continuation in Fourier resolution: each entry pairs with the corresponding `input.ns_array`
@@ -2463,6 +2486,7 @@ def run(
             max_threads=max_threads,
             verbose=verbose,
             restart_from=restart_from,
+            iteration_callback=iteration_callback,
         )
 
     cpp_indata = input._to_cpp_vmecindata()
@@ -2499,6 +2523,7 @@ def run(
             initial_state=initial_state,
             max_threads=max_threads,
             verbose=_verbose.value,
+            iteration_callback=iteration_callback,
         )
     else:
         # magnetic_response_table takes precedence anyway, but let's be explicit, to ensure
@@ -2510,6 +2535,7 @@ def run(
             initial_state=initial_state,
             max_threads=max_threads,
             verbose=_verbose.value,
+            iteration_callback=iteration_callback,
         )
 
     cpp_wout = cpp_output_quantities.wout
@@ -2729,4 +2755,6 @@ __all__ = [  # noqa: RUF022
     "solve_multigrid",
     "IterationResult",
     "IterationState",
+    "IterationSnapshot",
+    "watch",
 ]

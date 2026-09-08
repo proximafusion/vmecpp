@@ -20,6 +20,9 @@ std::string VmecStatusAsString(const VmecStatus vmec_status) {
   switch (vmec_status) {
     case VmecStatus::NORMAL_TERMINATION:
       return "NORMAL_TERMINATION";
+    case VmecStatus::MORE_ITERATIONS_NEEDED:
+      return "MORE_ITERATIONS_NEEDED: the iteration callback stopped the run "
+             "before convergence";
     case VmecStatus::BAD_JACOBIAN:
       return "BAD_JACOBIAN: the Jacobian of the flux-surface geometry "
              "changed sign, i.e. flux surfaces overlap. This can happen "
