@@ -267,6 +267,38 @@ TEST(TestVmecINDATA, CheckSplineProfilesNeedKnots) {
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
+// The sum_cossq current profiles read their hump layout from ac: a hump count
+// in ac[0] for the equidistant forms and a half-width per hump for the free
+// form.
+TEST(TestVmecINDATA, CheckSumCossqProfilesNeedAValidHumpLayout) {
+  VmecINDATA indata;
+  indata.ncurr = 1;
+  for (const std::string type : {"sum_cossq_s", "sum_cossq_sqrts"}) {
+    indata.pcurr_type = type;
+    for (double num_humps : {1.0, 2.5, 21.0}) {
+      indata.ac = Eigen::VectorXd::Constant(4, 1.0);
+      indata.ac[0] = num_humps;
+      EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+                absl::StatusCode::kInvalidArgument)
+          << type << " with ac[0] = " << num_humps;
+    }
+    indata.ac[0] = 3.0;
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << type;
+  }
+
+  indata.pcurr_type = "sum_cossq_s_free";
+  indata.ac = Eigen::VectorXd(3);
+  indata.ac << 1.0, 0.5, 0.0;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.ac << 1.0, 0.5, 0.1;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  // a hump of zero amplitude may have zero width
+  indata.ac << 0.0, 0.5, 0.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
 TEST(TestVmecINDATA, ToJson) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_free_bdy.json");

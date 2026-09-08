@@ -505,8 +505,11 @@ double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
     case ProfileParameterization::NICE_QUADRATIC:
       return evalNiceQuadratic(coeffs, normX);
     case ProfileParameterization::SUM_COSSQ_S:
+      return evalSumCossqS(coeffs, normX);
     case ProfileParameterization::SUM_COSSQ_SQRTS:
+      return evalSumCossqSqrts(coeffs, normX);
     case ProfileParameterization::SUM_COSSQ_S_FREE:
+      return evalSumCossqSFree(coeffs, normX);
     default:
       std::cerr
           << absl::StrFormat(
@@ -1021,6 +1024,95 @@ double RadialProfiles::evalNiceQuadratic(const Eigen::VectorXd& coeffs,
   // Ported from Fortran VMEC piota 'nice_quadratic'.
   return Coef(coeffs, 0) * (1.0 - x) + Coef(coeffs, 1) * x +
          4.0 * Coef(coeffs, 2) * x * (1.0 - x);
+}
+
+namespace {
+// Integral from lower to upper of cos^2(pi (t - center) / (2 half_width)), the
+// enclosed current of one cos^2 hump of the sum_cossq profiles.
+double CosSqHumpIntegral(double center, double half_width, double lower,
+                         double upper) {
+  const auto primitive = [center, half_width](double t) {
+    return 0.5 * (t - center) + half_width / (2.0 * M_PI) *
+                                    std::sin(M_PI * (t - center) / half_width);
+  };
+  return primitive(upper) - primitive(lower);
+}
+}  // namespace
+
+// Enclosed current of coeffs[0] cos^2 humps in s of half-width
+// delta = 1 / (coeffs[0] - 1), centred on (i - 1) delta with amplitude
+// coeffs[i] for i = 1, ..., coeffs[0]; the two end humps are cut at s = 0 and
+// s = 1. Ported from Fortran VMEC pcurr 'sum_cossq_s'.
+double RadialProfiles::evalSumCossqS(const Eigen::VectorXd& coeffs, double x) {
+  const int num_humps = static_cast<int>(Coef(coeffs, 0));
+  if (num_humps < 2) {
+    return 0.0;
+  }
+  const double delta = 1.0 / (num_humps - 1);
+  double current = 0.0;
+  for (int i = 1; i <= num_humps; ++i) {
+    const double center = (i - 1) * delta;
+    const double lower = std::max(0.0, center - delta);
+    const double upper = std::min(x, std::min(center + delta, 1.0));
+    if (upper > lower) {
+      current +=
+          Coef(coeffs, i) * CosSqHumpIntegral(center, delta, lower, upper);
+    }
+  }
+  return current;
+}
+
+// The same humps placed in rho = sqrt(s), so the enclosed current is the
+// integral of hump times rho up to sqrt(s). Ported from Fortran VMEC pcurr
+// 'sum_cossq_sqrts'.
+double RadialProfiles::evalSumCossqSqrts(const Eigen::VectorXd& coeffs,
+                                         double x) {
+  const int num_humps = static_cast<int>(Coef(coeffs, 0));
+  if (num_humps < 2) {
+    return 0.0;
+  }
+  const double delta = 1.0 / (num_humps - 1);
+  const double rho = std::sqrt(std::max(x, 0.0));
+  double current = 0.0;
+  for (int i = 1; i <= num_humps; ++i) {
+    const double center = (i - 1) * delta;
+    const double lower = std::max(0.0, center - delta);
+    const double upper = std::min(rho, std::min(center + delta, 1.0));
+    if (upper <= lower) {
+      continue;
+    }
+    // antiderivative of t cos^2(pi (t - center) / (2 delta))
+    const auto primitive = [center, delta](double t) {
+      const double angle = M_PI * (t - center) / delta;
+      return 0.25 * t * t + delta * t / (2.0 * M_PI) * std::sin(angle) +
+             delta * delta / (2.0 * M_PI * M_PI) * std::cos(angle);
+    };
+    current += Coef(coeffs, i) * (primitive(upper) - primitive(lower));
+  }
+  return current;
+}
+
+// Up to seven cos^2 humps in s with their own amplitude coeffs[3 i], centre
+// coeffs[3 i + 1] and half-width coeffs[3 i + 2], each cut at s = 0 and
+// s = 1. Ported from Fortran VMEC pcurr 'sum_cossq_s_free'.
+double RadialProfiles::evalSumCossqSFree(const Eigen::VectorXd& coeffs,
+                                         double x) {
+  double current = 0.0;
+  for (int i = 0; i < 7; ++i) {
+    const double amplitude = Coef(coeffs, 3 * i);
+    const double center = Coef(coeffs, 3 * i + 1);
+    const double half_width = Coef(coeffs, 3 * i + 2);
+    if (amplitude == 0.0 || half_width <= 0.0) {
+      continue;
+    }
+    const double lower = std::max(0.0, center - half_width);
+    const double upper = std::min(x, std::min(center + half_width, 1.0));
+    if (upper > lower) {
+      current +=
+          amplitude * CosSqHumpIntegral(center, half_width, lower, upper);
+    }
+  }
+  return current;
 }
 
 void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,

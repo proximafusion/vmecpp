@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -88,6 +89,36 @@ absl::Status CheckProfile(const std::string& type_key,
     }
   }
 
+  return absl::OkStatus();
+}
+
+// The sum_cossq_s and sum_cossq_sqrts current profiles take the number of
+// cos^2 humps from ac[0], which sets their spacing 1 / (ac[0] - 1), and
+// sum_cossq_s_free takes a half-width per hump from ac[3 i + 2]; a hump count
+// below two or a non-positive half-width cannot be evaluated.
+absl::Status CheckSumCossqCoefficients(const std::string& pcurr_type,
+                                       const Eigen::VectorXd& ac) {
+  const auto coefficient = [&ac](int i) { return i < ac.size() ? ac[i] : 0.0; };
+  if (pcurr_type == "sum_cossq_s" || pcurr_type == "sum_cossq_sqrts") {
+    const double num_humps = coefficient(0);
+    if (num_humps != std::floor(num_humps) || num_humps < 2.0 ||
+        num_humps > 20.0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "input variable 'pcurr_type' is '%s', so 'ac[0]' must be the "
+          "number of cos^2 humps, an integer from 2 to 20, but is %g\n",
+          pcurr_type, num_humps));
+    }
+  } else if (pcurr_type == "sum_cossq_s_free") {
+    for (int i = 0; i < 7; ++i) {
+      if (coefficient(3 * i) != 0.0 && coefficient(3 * i + 2) <= 0.0) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "input variable 'pcurr_type' is 'sum_cossq_s_free', so 'ac[%d]' "
+            "must be the positive half-width of the hump with amplitude "
+            "'ac[%d]' = %g, but is %g\n",
+            3 * i + 2, 3 * i, coefficient(3 * i), coefficient(3 * i + 2)));
+      }
+    }
+  }
   return absl::OkStatus();
 }
 }  // namespace
@@ -1486,6 +1517,11 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   if (absl::Status status = CheckProfile(
           "pcurr_type", vmec_indata.pcurr_type, ProfileType::CURRENT, "ac",
           vmec_indata.ac_aux_s, vmec_indata.ac_aux_f);
+      !status.ok()) {
+    return status;
+  }
+  if (absl::Status status =
+          CheckSumCossqCoefficients(vmec_indata.pcurr_type, vmec_indata.ac);
       !status.ok()) {
     return status;
   }

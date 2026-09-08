@@ -105,6 +105,9 @@ class RadialProfiles {
                                    const Eigen::VectorXd& splineValues,
                                    double x);
   double evalNiceQuadratic(const Eigen::VectorXd& coeffs, double x);
+  double evalSumCossqS(const Eigen::VectorXd& coeffs, double x);
+  double evalSumCossqSqrts(const Eigen::VectorXd& coeffs, double x);
+  double evalSumCossqSFree(const Eigen::VectorXd& coeffs, double x);
 
   // Accumulate contributions to volume-averaged spectral width <M>.
   void AccumulateVolumeAveragedSpectralWidth() const;
