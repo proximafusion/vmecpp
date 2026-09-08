@@ -11,6 +11,7 @@ Reference <api/vmecpp>
 Examples <examples_overview>
 Fourier Basis Details <fourier_basis_implementation>
 Benchmarks <benchmarks>
+Enzyme Wheel Packaging Proposal <enzyme_wheel_packaging>
 ```
 
 ![MIT license](https://img.shields.io/badge/license-MIT-blue)
