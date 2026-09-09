@@ -1586,10 +1586,6 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // lforbal
   // nothing to check here: lforbal can be true or false and both are valid...
 
-  // adaptive_preconditioner_update
-  // nothing to check here: adaptive_preconditioner_update can be true or false
-  // and both are valid...
-
   // iteration_style
   // VMEC_8_52 and PARVMEC are both implemented in Vmec::SolveEquilibriumLoop.
   if (vmec_indata.iteration_style != IterationStyle::VMEC_8_52 &&

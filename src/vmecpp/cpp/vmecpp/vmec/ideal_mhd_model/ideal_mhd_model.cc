@@ -2136,8 +2136,6 @@ bool IdealMhdModel::shouldUpdateRadialPreconditioner(
     return ((iter2 - iter1) % m_fc_.kPreconditionerUpdateInterval == 0);
   }
 
-  // Adaptive Preconditioner Update (RAD-P: Residual-Aware Dynamic
-  // Preconditioning):
   // 1. Always update at the very first step of each multigrid stage.
   if (iter2 == iter1 || last_preconditioner_update <= 0) {
     return true;
