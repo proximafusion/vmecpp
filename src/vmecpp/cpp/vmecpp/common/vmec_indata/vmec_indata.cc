@@ -230,6 +230,8 @@ VmecINDATA::VmecINDATA() {
   lforbal = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
+  lgiveup = false;
+  fgiveup = 30.0;
 
   // zero-initialized magnetic axis
   raxis_c.setZero(ntor + 1);
@@ -356,6 +358,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
+  WriteH5Dataset(lgiveup, "/indata/lgiveup", file);
+  WriteH5Dataset(fgiveup, "/indata/fgiveup", file);
 
   // 1D arrays
   WriteH5Dataset(ns_array, "/indata/ns_array", file);
@@ -467,6 +471,10 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
                   "/indata/return_outputs_even_if_not_converged", from_file);
   } else {
     m_indata.return_outputs_even_if_not_converged = false;
+  }
+  if (from_file.nameExists("/indata/lgiveup")) {
+    ReadH5Dataset(m_indata.lgiveup, "/indata/lgiveup", from_file);
+    ReadH5Dataset(m_indata.fgiveup, "/indata/fgiveup", from_file);
   }
 
   // 1D arrays
@@ -967,6 +975,22 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
         maybe_return_outputs_even_if_not_converged->value();
   }
 
+  auto maybe_lgiveup = JsonReadBool(j, "lgiveup");
+  if (!maybe_lgiveup.ok()) {
+    return maybe_lgiveup.status();
+  }
+  if (maybe_lgiveup->has_value()) {
+    vmec_indata.lgiveup = maybe_lgiveup->value();
+  }
+
+  auto maybe_fgiveup = JsonReadDouble(j, "fgiveup");
+  if (!maybe_fgiveup.ok()) {
+    return maybe_fgiveup.status();
+  }
+  if (maybe_fgiveup->has_value()) {
+    vmec_indata.fgiveup = maybe_fgiveup->value();
+  }
+
   // -----------------------------------------------
 
   // Axis Fourier coefficient arrays must have length ntor+1. Arrays that are
@@ -1270,6 +1294,8 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;
+  output["lgiveup"] = lgiveup;
+  output["fgiveup"] = fgiveup;
 
   // Initial Guess for Magnetic Axis Geometry
   output["raxis_c"] = raxis_c;
@@ -1573,6 +1599,13 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     return absl::InvalidArgumentError(absl::StrFormat(
         "input variable 'delt' has to be in the range ]0.0, 10.0], but is %g\n",
         vmec_indata.delt));
+  }
+
+  if (vmec_indata.lgiveup && vmec_indata.fgiveup <= 0.0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'fgiveup' is a multiple of ftol and must be positive "
+        "when 'lgiveup' is set, but is %g\n",
+        vmec_indata.fgiveup));
   }
 
   // tcon0
