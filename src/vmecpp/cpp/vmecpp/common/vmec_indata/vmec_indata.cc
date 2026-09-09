@@ -227,6 +227,7 @@ VmecINDATA::VmecINDATA() {
   aphi[0] = 1.0;
   delt = 1.0;
   tcon0 = 1.0;
+  geometry_tolerance = 0.0;
   lforbal = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
@@ -353,6 +354,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(nstep, "/indata/nstep", file);
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
+  WriteH5Dataset(geometry_tolerance, "/indata/geometry_tolerance", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
@@ -458,6 +460,10 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.nstep, "/indata/nstep", from_file);
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
+  if (from_file.nameExists("/indata/geometry_tolerance")) {
+    ReadH5Dataset(m_indata.geometry_tolerance, "/indata/geometry_tolerance",
+                  from_file);
+  }
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
 
   // Legacy way of checking for dataset existence
@@ -935,6 +941,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.tcon0 = maybe_tcon0->value();
   }
 
+  auto maybe_geometry_tolerance = JsonReadDouble(j, "geometry_tolerance");
+  if (!maybe_geometry_tolerance.ok()) {
+    return maybe_geometry_tolerance.status();
+  }
+  if (maybe_geometry_tolerance->has_value()) {
+    vmec_indata.geometry_tolerance = maybe_geometry_tolerance->value();
+  }
+
   auto maybe_lforbal = JsonReadBool(j, "lforbal");
   if (!maybe_lforbal.ok()) {
     return maybe_lforbal.status();
@@ -1266,6 +1280,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["aphi"] = aphi;
   output["delt"] = delt;
   output["tcon0"] = tcon0;
+  output["geometry_tolerance"] = geometry_tolerance;
   output["lforbal"] = lforbal;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
@@ -1573,6 +1588,13 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     return absl::InvalidArgumentError(absl::StrFormat(
         "input variable 'delt' has to be in the range ]0.0, 10.0], but is %g\n",
         vmec_indata.delt));
+  }
+
+  if (vmec_indata.geometry_tolerance < 0.0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'geometry_tolerance' is a distance and cannot be "
+        "negative, but is %g\n",
+        vmec_indata.geometry_tolerance));
   }
 
   // tcon0

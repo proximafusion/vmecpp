@@ -349,6 +349,13 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         fc_.restart_reasons.reserve(cap);
       }
 
+      // The radial grid changes between stages, so the geometry of the previous
+      // stage is not something this one can be compared against.
+      for (auto& geometry : geometry_at_last_printout_) {
+        geometry.reset();
+      }
+      fc_.geometry_change = -1.0;
+
       // notify logger of the next multigrid stage
       logger_.BeginStage(igrid, max_grids + jacob_off_, fc_.nsval, s_.mnmax,
                          fc_.ftolv, fc_.niterv, fc_.lfreeb);
@@ -624,6 +631,7 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     p_.resize(num_threads_);
     m_.resize(num_threads_);
     decomposed_x_.resize(num_threads_);
+    geometry_at_last_printout_.resize(num_threads_);
     physical_x_backup_.resize(num_threads_);
     physical_x_.resize(num_threads_);
     decomposed_f_.resize(num_threads_);
@@ -1363,8 +1371,12 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
       // first iteration and Jacobian was not computed correctly
       status_ = VmecStatus::BAD_JACOBIAN;
     } else if (fc_.fsqr <= fc_.ftolv && fc_.fsqz <= fc_.ftolv &&
-               fc_.fsql <= fc_.ftolv) {
-      // converged to desired tolerance
+               fc_.fsql <= fc_.ftolv &&
+               (indata_.geometry_tolerance <= 0.0 ||
+                (fc_.geometry_change >= 0.0 &&
+                 fc_.geometry_change <= indata_.geometry_tolerance))) {
+      // converged to desired tolerance, and where a geometry tolerance is set,
+      // the flux surfaces have stopped moving as well
 
       m_liter_flag = false;
       status_ = VmecStatus::SUCCESSFUL_TERMINATION;
@@ -1452,6 +1464,56 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   return false;
 }
 
+void Vmec::AccumulateGeometryChange(int thread_id) {
+  const FourierGeometry& x = *decomposed_x_[thread_id];
+  const RadialPartitioning& r = *r_[thread_id];
+  const int mnsize = s_.mnsize;
+  const int offset = (r.nsMinF - x.nsMin()) * mnsize;
+  const int count = (r.nsMaxFIncludingLcfs - r.nsMinF) * mnsize;
+
+  // Surfaces [nsMinF, nsMaxFIncludingLcfs) partition the plasma across the
+  // team, so no surface is counted twice and the measure does not depend on
+  // how many threads run.
+  const std::array<std::span<double>, 8> now = {
+      x.rmncc, x.rmnss, x.rmnsc, x.rmncs, x.zmnsc, x.zmncs, x.zmncc, x.zmnss};
+  double contribution = 0.0;
+  const FourierGeometry* previous = geometry_at_last_printout_[thread_id].get();
+  if (previous != nullptr) {
+    const std::array<std::span<double>, 8> before = {
+        previous->rmncc, previous->rmnss, previous->rmnsc, previous->rmncs,
+        previous->zmnsc, previous->zmncs, previous->zmncc, previous->zmnss};
+    for (size_t block = 0; block < now.size(); ++block) {
+      if (now[block].size() != before[block].size() ||
+          static_cast<int>(now[block].size()) < offset + count) {
+        continue;
+      }
+      for (int i = offset; i < offset + count; ++i) {
+        const double difference = now[block][i] - before[block][i];
+        contribution += difference * difference;
+      }
+    }
+  }
+
+  SumOverThreads(&contribution, 1, thread_id, r.get_num_threads(),
+                 h_.thread_reduce_slots.data(), h_.GeometryChangeAccumulator());
+
+#ifdef _OPENMP
+#pragma omp single nowait
+#endif  // _OPENMP
+  {
+    // Every thread creates its copy in the same pass, so this test is the same
+    // on all of them and it does not matter which one runs the block.
+    fc_.geometry_change = previous == nullptr ? -1.0 : h_.GeometryChange();
+  }
+
+  if (previous == nullptr) {
+    geometry_at_last_printout_[thread_id] =
+        std::make_unique<FourierGeometry>(x);
+  } else {
+    *geometry_at_last_printout_[thread_id] = x;
+  }
+}
+
 void Vmec::Printout(double delt0r, int thread_id, int iter2) {
 #ifdef _OPENMP
 #pragma omp single
@@ -1460,6 +1522,7 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
     h_.ResetSpectralWidthAccumulators();
   }
   p_[thread_id]->AccumulateVolumeAveragedSpectralWidth();
+  AccumulateGeometryChange(thread_id);
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
