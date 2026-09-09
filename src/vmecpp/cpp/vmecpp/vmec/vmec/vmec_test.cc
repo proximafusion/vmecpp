@@ -89,6 +89,9 @@ TEST(TestVmec, CheckErrorOnNonConvergence) {
 // not cap the thread budget that a later run, or another OpenMP user in the
 // process, reads from the runtime.
 TEST(TestVmec, RunLeavesTheProcessThreadCountUnchanged) {
+#ifndef _OPENMP
+  GTEST_SKIP() << "a process-wide thread count exists only in an OpenMP build";
+#else
   const std::string filename = "vmecpp/test_data/solovev.json";
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
@@ -107,6 +110,7 @@ TEST(TestVmec, RunLeavesTheProcessThreadCountUnchanged) {
 
   ASSERT_TRUE(vmecpp::run(indata, std::nullopt, /*max_threads=*/1).ok());
   EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+#endif  // _OPENMP
 }  // RunLeavesTheProcessThreadCountUnchanged
 
 TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {

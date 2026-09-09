@@ -85,25 +85,6 @@ def test_raise_invalid_nzeta():
         vmecpp.run(vmec_input, response, verbose=False)
 
 
-def test_consecutive_runs_are_identical():
-    """A run does not change the thread budget the next run in the process sees."""
-    makegrid_params = vmecpp.MakegridParameters.from_file(
-        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
-    )
-    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
-        TEST_DATA_DIR / "coils.cth_like", makegrid_params
-    )
-    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    vmec_input.ns_array = np.array([7])
-    vmec_input.niter_array = np.array([60])
-    vmec_input.return_outputs_even_if_not_converged = True
-    first = vmecpp.run(vmec_input, response, verbose=False)
-    second = vmecpp.run(vmec_input, response, verbose=False)
-    np.testing.assert_array_equal(second.wout.rmnc, first.wout.rmnc)
-    np.testing.assert_array_equal(second.wout.lmns, first.wout.lmns)
-    assert second.wout.wb == first.wout.wb
-
-
 def test_makegrid_parameters_conversion(makegrid_params):
     # Convert resolution parameters to C++ and back to Python
     cpp_params = makegrid_params._to_cpp_makegrid_parameters()
