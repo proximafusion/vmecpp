@@ -6,6 +6,7 @@
 from pathlib import Path
 
 import jax
+import jax.numpy as jnp
 import matplotlib as mpl
 import numpy as np
 import pytest
@@ -169,14 +170,14 @@ def test_surface_curves_match_the_geometry_evaluator(case):
             for k, t in enumerate(theta):
                 jet = np.asarray(
                     vmec_geometry.evaluate(
-                        jax_geometry, np.array([j / (ns - 1), t, zeta])
+                        jax_geometry, jnp.array([j / (ns - 1), t, zeta])
                     )
                 )
                 assert abs(r[i, k] - jet[0, 0]) < 1.0e-12
                 assert abs(z[i, k] - jet[1, 0]) < 1.0e-12
         r_axis, z_axis = _watch.magnetic_axis(geometry, zeta)
         axis = np.asarray(
-            vmec_geometry.evaluate(jax_geometry, np.array([0.0, 0.0, zeta]))
+            vmec_geometry.evaluate(jax_geometry, jnp.array([0.0, 0.0, zeta]))
         )
         assert abs(r_axis - axis[0, 0]) < 1.0e-12
         assert abs(z_axis - axis[1, 0]) < 1.0e-12
@@ -195,7 +196,7 @@ def test_watch_records_the_solve(tmp_path):
     iterations = output.wout.fsqt.size + len(vmec_input.ns_array)
     frames = iterations // 25 + (1 if iterations % 25 else 0)
     with Image.open(path) as image:
-        assert image.n_frames == frames
+        assert getattr(image, "n_frames") == frames  # noqa: B009
 
 
 def test_watch_without_a_window_or_a_file_is_refused():

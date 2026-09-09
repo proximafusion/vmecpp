@@ -2413,7 +2413,7 @@ def _print_progress_tip_once() -> None:
         )
 
 
-IterationSnapshot = _vmecpp.IterationSnapshot
+IterationSnapshot: typing.TypeAlias = _vmecpp.IterationSnapshot
 """The state of one force iteration, handed to the ``iteration_callback`` of
 :func:`run`.
 

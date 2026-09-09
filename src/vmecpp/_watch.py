@@ -130,7 +130,7 @@ def watch(
 
 def surface_curves(
     geometry,
-    surface_indices: Sequence[int],
+    surface_indices: Sequence[int] | np.ndarray,
     theta: np.ndarray,
     zeta: float,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -226,7 +226,7 @@ def _backend_is_interactive() -> bool:
 
     backend = mpl.get_backend().lower()
     try:
-        from matplotlib.backends import (  # noqa: PLC0415
+        from matplotlib.backends.registry import (  # noqa: PLC0415
             BackendFilter,
             backend_registry,
         )
