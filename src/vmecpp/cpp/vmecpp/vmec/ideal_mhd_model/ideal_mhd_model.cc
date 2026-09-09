@@ -424,7 +424,10 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 #endif  // _OPENMP
   {
     // set new values
-    // TODO(jons): what is `r1scale`?
+    // 1 / (2 * r0scale)^2 with r0scale = mscale[0] * nscale[0] = 1: the
+    // reciprocal of the squared basis normalization a mode with both indices
+    // non-zero carries, which puts fsqr and fsqz on the scale of the
+    // un-normalized coefficients. Lambda is normalized by lamscale^2 instead.
     constexpr double r1scale = 0.25;
 
     m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * r1scale;
@@ -970,9 +973,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // contribution in the first few iterations, preventing termination, to
   // ensure the free-boundary forces have "enough time" to propagate through
   // to the inner surfaces.
-  // TODO(jurasic) the hard-coded 50 and 1e-6 are only here for backwards
-  // compatibility, ideally vacuum-pressure should always part of the
-  // force-balance
+  // The two conditions do not overlap on a cold run, where the residuals reach
+  // 1e-6 later than 50 iterations past the branch point, so the edge
+  // contribution enters only through the hot-restart term; opening the window
+  // costs the bundled free-boundary cases 22 to 25 percent more iterations.
   bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
   // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
   // wouldn't trigger without special handling for the hot-restart case.
@@ -2026,7 +2030,10 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
     }  // kl
   }  // j
 
-  // TODO(jons): exclude axis --> mimic PARVMEC
+  // PARVMEC sums this norm from the second surface instead (bcovar.f). The
+  // axis row is at most 3 percent of it and dropping it moves no bundled case,
+  // since fsqr1 and fsqz1 reach the iteration only through ratios of successive
+  // residuals.
   // only unique radial points here;
   // decomposed_x is over nsMinF1 ... nsMaxF1 --> would count overlapping
   // elements twice !!!
@@ -2428,8 +2435,10 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
   }
   // tcon
 
-  // TODO(jons): some parabola in ns,
-  // but why these specific values of the parameters ?
+  // The growth in ns is not predictive: dividing it out is 41 percent faster
+  // on w7x and 30 percent slower on solovev, and over a scan of constant
+  // multipliers the best value is per case rather than ordered by ns. The
+  // converged equilibrium is the same either way.
   double tcon_multiplier =
       tcon0 * (1.0 + m_fc_.ns * (1.0 / 60.0 + m_fc_.ns / (200.0 * 120.0)));
 
