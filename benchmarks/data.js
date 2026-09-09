@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788914198389,
+  "lastUpdate": 1788915982892,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18151,6 +18151,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3130508850000524,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5fe8ed0480673ccde07697e3ba6f3cbd7d2ecb34",
+          "message": "Carry signgs in the m = 1 polar constraint (#828)\n\n* Make signgs an input and carry it in the m = 1 polar constraint\n\n* Carry signgs in the asymmetric boundary shift and the axis guess, and test the asymmetric and free-boundary mirrors\n\n* Compute the poloidal shift of an asymmetric boundary for the direction theta is flipped to",
+          "timestamp": "2026-09-09T00:59:23Z",
+          "tree_id": "aef669febc6e122277c7e33ca1137410f5bf2deb",
+          "url": "https://github.com/proximafusion/vmecpp/commit/5fe8ed0480673ccde07697e3ba6f3cbd7d2ecb34"
+        },
+        "date": 1788915978966,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.37095700999996095,
+            "range": "stddev: 0.0008580959131416142",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.476445916666686,
+            "range": "stddev: 0.01827053461440901",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0914008503333434,
+            "range": "stddev: 0.003866815247053501",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6882946933333567,
+            "range": "stddev: 0.05849488145192321",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.9739250523333187,
+            "range": "stddev: 0.011346499988501282",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.102401128333365,
+            "range": "stddev: 0.014654141003417998",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 5.008985452000047,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4853697050000392,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
