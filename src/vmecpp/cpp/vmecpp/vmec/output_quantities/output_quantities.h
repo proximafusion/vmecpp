@@ -28,6 +28,9 @@ namespace vmecpp {
 struct VmecInternalResults {
   int sign_of_jacobian;
 
+  // Scale that converts the solver's lambda variable to physical lambda.
+  double lamscale;
+
   // total number of full-grid points
   int num_full;
 
@@ -447,9 +450,8 @@ struct MercierStabilityIntermediateQuantities {
   // (num_full, nZnT)
   RowMatrixXd bdotj;
 
-  // 1.0 / gpp on full-grid
+  // 1 / |grad(s)|^2 on full-grid, formed as sqrt(g)^2 / |e_theta x e_zeta|^2
   // (num_full, nZnT)
-  // TODO(jons): figure out what this really is
   RowMatrixXd gpp;
 
   // |B|^2 on half grid
@@ -559,8 +561,8 @@ struct Threed1FirstTableIntermediate {
   // [num_half] surface-averaged beta profile
   Eigen::VectorXd beta_vol;
 
-  // [num_half] <tau / R> / V'
-  // TODO(jons): figure out what this really is
+  // [num_half] <tau / R> / V', which is the flux-surface average of 1/R;
+  // written to wout as over_r
   Eigen::VectorXd overr;
 
   // plasma beta on magnetic axis
@@ -896,6 +898,44 @@ struct Threed1AxisGeometry {
                                H5::H5File& from_file);
 
   static constexpr char H5key[] = "/threed1_axis_geometry";
+};
+
+// Edge quantities reported for a free-boundary run: the boundary geometry, the
+// plasma-side and vacuum-side pressures both as first established and as
+// converged, and the cylindrical field components on either side of the
+// boundary. freeb_data in Fortran VMEC. Every array is (nZeta,
+// nThetaReduced), and all are zero for a fixed-boundary run.
+struct Threed1FreeBoundary {
+  RowMatrixXd rb;
+  RowMatrixXd phib;
+  RowMatrixXd zb;
+  RowMatrixXd bsqmhdi;
+  RowMatrixXd bsqvaci;
+  RowMatrixXd bsqmhdf;
+  RowMatrixXd bsqvacf;
+  RowMatrixXd bredge;
+  RowMatrixXd bpedge;
+  RowMatrixXd bzedge;
+  RowMatrixXd brv;
+  RowMatrixXd bphiv;
+  RowMatrixXd bzv;
+
+  bool operator==(const Threed1FreeBoundary&) const = default;
+  bool operator!=(const Threed1FreeBoundary& o) const { return !(*this == o); }
+
+  // Write object to the specified HDF5 file, under key this->H5key.
+  absl::Status WriteTo(H5::H5File& file) const;
+
+  // Load contents of `from_file` into the specified instance.
+  // The file is expected to have the same schema as the one produced by
+  // WriteTo.
+  static absl::Status LoadInto(Threed1FreeBoundary& m_obj,
+                               H5::H5File& from_file);
+
+  // Named H5key like the other serializable structs here: WRITEMEMBER and
+  // READMEMBER expand the name unqualified.
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  static constexpr const char* H5key = "/threed1_free_boundary";
 };
 
 // beta values from volume averages over plasma
@@ -1348,6 +1388,7 @@ struct OutputQuantities {
   Threed1Volumetrics threed1_volumetrics;
   Threed1AxisGeometry threed1_axis;
   Threed1Betas threed1_betas;
+  Threed1FreeBoundary threed1_free_boundary;
   Threed1ShafranovIntegrals threed1_shafranov_integrals;
   WOutFileContents wout;
   VmecINDATA indata;
@@ -1369,11 +1410,20 @@ struct OutputQuantities {
 // Compute the output quantities of VMEC++.
 // With respect to Fortran VMEC, this is equivalent to the fileout subroutine,
 // but without the actual file writing routines.
+// Assemble the free-boundary edge quantities. The arrays stay zero unless the
+// run is free-boundary.
+Threed1FreeBoundary ComputeThreed1FreeBoundary(
+    const Sizes& s, const FlowControl& fc,
+    const HandoverStorage& handover_storage,
+    const VmecInternalResults& vmec_internal_results,
+    const CylindricalComponentsOfB& b_cylindrical);
+
 OutputQuantities ComputeOutputQuantities(
     int sign_of_jacobian, const VmecINDATA& indata, const Sizes& s,
     const FlowControl& fc, const VmecConstants& constants,
     const FourierBasisFastPoloidal& t, const HandoverStorage& h,
     const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
     const std::vector<std::unique_ptr<RadialPartitioning> >&
         radial_partitioning,
     const std::vector<std::unique_ptr<FourierGeometry> >& decomposed_x,
@@ -1513,6 +1563,7 @@ WOutFileContents ComputeWOutFileContents(
     const VmecINDATA& indata, const Sizes& s, const FourierBasisFastPoloidal& t,
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
     VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
     const BSubSFull& bsubs_full, const MercierFileContents& mercier,
     const JxBOutFileContents& jxbout,
@@ -1520,7 +1571,8 @@ WOutFileContents ComputeWOutFileContents(
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,
     const Threed1AxisGeometry& threed1_axis, const Threed1Betas& threed1_betas,
-    VmecStatus vmec_status, int iter2);
+    const Threed1FreeBoundary& threed1_free_boundary, VmecStatus vmec_status,
+    int iter2);
 
 // Compare the contents of a test wout object against a reference wout object,
 // exiting with an error in case of mismatches.
@@ -1530,10 +1582,6 @@ WOutFileContents ComputeWOutFileContents(
 // builds they do not reproduce to the same tolerance as the profiles across
 // machines. Pass current_density_tolerance > 0 to compare those two with a
 // looser bound while keeping every other quantity at tolerance.
-void CompareWOut(const WOutFileContents& test_wout,
-                 const WOutFileContents& expected_wout, double tolerance,
-                 bool check_equal_niter = true,
-                 double current_density_tolerance = 0.0);
 }  // namespace vmecpp
 
 #endif  // VMECPP_VMEC_OUTPUT_QUANTITIES_OUTPUT_QUANTITIES_H_

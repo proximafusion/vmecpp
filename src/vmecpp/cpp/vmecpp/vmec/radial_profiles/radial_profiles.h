@@ -10,6 +10,7 @@
 #include <cmath>
 #include <string>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
@@ -48,6 +49,11 @@ class RadialProfiles {
   double evalMassProfile(double x);
   double evalIotaProfile(double x);
   double evalCurrProfile(double x);
+
+  // With ncurr = 1 the enclosed current profile is a shape scaled to curtor by
+  // its value at the boundary, so a profile that encloses no net current there
+  // while carrying current inside cannot be imposed.
+  absl::Status CheckCurrentProfileEnclosesEdgeCurrent();
 
   // Evaluate the radial profile function specified by the given
   // parameterization, which can be either an analytical function (in which case

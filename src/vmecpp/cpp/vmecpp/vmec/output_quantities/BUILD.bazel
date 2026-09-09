@@ -20,6 +20,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "test_helpers",
+    testonly = True,
+    hdrs = ["test_helpers.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":output_quantities",
+        "@googletest//:gtest",
+        "//util/testing:numerical_comparison_lib",
+    ],
+)
+
 cc_binary(
     name = "output_quantities_bench",
     srcs = ["output_quantities_bench.cc"],
@@ -40,11 +52,12 @@ cc_binary(
 
 cc_test(
     name = "output_quantities_io_test",
-    srcs = ["output_quantities_io_test.cc", "test_helpers.h"],
+    srcs = ["output_quantities_io_test.cc"],
     data = [
         "//vmecpp/test_data:cth_like_fixed_bdy",
     ],
     deps = [
+        ":test_helpers",
         ":output_quantities",
         "@googletest//:gtest_main",
         "//util/file_io:file_io",

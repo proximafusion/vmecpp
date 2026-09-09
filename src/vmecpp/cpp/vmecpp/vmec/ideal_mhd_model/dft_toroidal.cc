@@ -24,9 +24,7 @@ void ForcesToFourier3DSymmFastPoloidal(
 
   int jMaxRZ = std::min(rp.nsMaxF, fc.ns - 1);
 
-  if (fc.lfreeb &&
-      (vacuum_pressure_state == VacuumPressureState::kInitialized ||
-       vacuum_pressure_state == VacuumPressureState::kActive)) {
+  if (fc.lfreeb && vacuum_pressure_state >= VacuumPressureState::kInitialized) {
     // free-boundary: up to jMaxRZ=ns
     jMaxRZ = std::min(rp.nsMaxF, fc.ns);
   }
@@ -500,9 +498,7 @@ void ForcesToFourier3DAsymFastPoloidal(
   // can safely assume lthreed == true in here
 
   int jMaxRZ = std::min(rp.nsMaxF, fc.ns - 1);
-  if (fc.lfreeb &&
-      (vacuum_pressure_state == VacuumPressureState::kInitialized ||
-       vacuum_pressure_state == VacuumPressureState::kActive)) {
+  if (fc.lfreeb && vacuum_pressure_state >= VacuumPressureState::kInitialized) {
     jMaxRZ = std::min(rp.nsMaxF, fc.ns);
   }
 

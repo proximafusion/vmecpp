@@ -140,7 +140,7 @@ class Vmec {
 
   // is_checkpoint_step says whether the multi-grid step being initialized is
   // the one the caller asked to checkpoint in.
-  bool InitializeRadial(
+  absl::StatusOr<bool> InitializeRadial(
       VmecCheckpoint checkpoint, int maximum_iterations, int nsval, int ns_old,
       double& m_delt0,
       const std::optional<HotRestartState>& initial_state = std::nullopt,
@@ -238,6 +238,9 @@ class Vmec {
   // why this must be a single object rather than a per-thread member.
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_decomposition;
   Eigen::VectorXd bvecShare;
+  // One row per vacuum thread for SumOverThreads, wide enough for the widest
+  // sum of the vacuum team, which is the response matrix.
+  Eigen::VectorXd vacuum_reduce_slots_;
 
  private:
   enum class SolveEqLoopStatus : std::uint8_t {

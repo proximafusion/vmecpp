@@ -147,6 +147,14 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
     const makegrid::MagneticFieldResponseTable* magnetic_response_table,
     std::optional<int> max_threads, OutputMode verbose,
     InterruptCallback interrupt_callback) {
+  // check the input before the constructor builds Sizes from it; the
+  // informational messages are left to the check in run()
+  absl::Status is_indata_consistent =
+      IsConsistent(indata, /*enable_info_messages=*/false);
+  if (!is_indata_consistent.ok()) {
+    return is_indata_consistent;
+  }
+
   auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
                                   std::move(interrupt_callback));
 
@@ -173,7 +181,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     : indata_(indata),
       s_(indata_),
       t_(&s_),
-      b_(&s_, &t_, kSignOfJacobian),
+      b_(&s_, &t_, indata_.signgs),
       h_(&s_),
       fc_(indata_.lfreeb, indata_.delt,
           static_cast<int>(indata_.ns_array.size()), max_threads),
@@ -205,18 +213,12 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     bvecShare.setZero(mnpd_dim);
 
     h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
+    h_.initial_plasma_pressure_at_boundary.setZero(s_.nZnT);
+    h_.initial_vacuum_pressure_at_boundary.setZero(s_.nZnT);
+    h_.edge_total_pressure.setZero(s_.nZnT);
     h_.vacuum_b_r.setZero(s_.nZnT);
     h_.vacuum_b_phi.setZero(s_.nZnT);
     h_.vacuum_b_z.setZero(s_.nZnT);
-
-    // TODO(jons): move this check to better-suited place
-    if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
-        (indata_.curtor != 0.0 || indata_.pres_scale != 0.0)) {
-      throw std::invalid_argument(
-          absl::StrCat("curtor and pres_scale must be zero when using "
-                       "'only_coils' free boundary method, but were ",
-                       indata_.curtor, " and ", indata_.pres_scale));
-    }  // check that cutor==0 and pres_scale==0 for only_coils
   }
 }
 
@@ -242,6 +244,12 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
           "has %d nzeta grid points. Please ensure that the two "
           "are consistent.",
           mgrid_.numPhi, indata_.nzeta));
+    }
+    if (mgrid_.nfp != indata_.nfp) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "MGridProvider has %d field periods, but VmecINDATA has nfp = %d. "
+          "Please ensure that the two are consistent.",
+          mgrid_.nfp, indata_.nfp));
     }
   }
 
@@ -352,9 +360,13 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // igrid is the index into ns_array; the inserted ns=3 stage runs at
       // igrid = -1 and is never a checkpoint step.
       const bool is_checkpoint_step = igrid == checkpoint_multi_grid_step - 1;
-      if (InitializeRadial(checkpoint, iterations_before_checkpointing,
-                           fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state,
-                           std::nullopt, is_checkpoint_step)) {
+      const absl::StatusOr<bool> initialized = InitializeRadial(
+          checkpoint, iterations_before_checkpointing, fc_.nsval, fc_.ns_old,
+          fc_.delt0r, initial_state, std::nullopt, is_checkpoint_step);
+      if (!initialized.ok()) {
+        return initialized.status();
+      }
+      if (*initialized) {
         return true;
       }
 
@@ -446,9 +458,9 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   // compute output file quantities, but do not write them to output file yet
   // (for creating the output file, use WriteOutputFile())
   output_quantities_ = vmecpp::ComputeOutputQuantities(
-      kSignOfJacobian, indata_, s_, fc_, constants_, t_, h_, mgrid_.mgrid_mode,
-      r_, decomposed_x_, m_, p_, checkpoint, vacuum_pressure_state_, status_,
-      iter2_);
+      indata_.signgs, indata_, s_, fc_, constants_, t_, h_, mgrid_.mgrid_mode,
+      mgrid_.coil_group_names, r_, decomposed_x_, m_, p_, checkpoint,
+      vacuum_pressure_state_, status_, iter2_);
 
   {
     const auto& w = output_quantities_.wout;
@@ -489,6 +501,9 @@ void Vmec::SetupVacuumSolvers() {
   omp_set_max_active_levels(2);
 #endif  // _OPENMP
 
+  vacuum_reduce_slots_.setZero(static_cast<Eigen::Index>(vac_num_threads_) *
+                               matrixShare.size());
+
   fb_vac_.resize(vac_num_threads_);
   tp_vac_.resize(vac_num_threads_);
 
@@ -507,7 +522,9 @@ void Vmec::SetupVacuumSolvers() {
           &lu_decomposition,
           std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
           std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
-          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()),
+          std::span<double>(vacuum_reduce_slots_.data(),
+                            vacuum_reduce_slots_.size()));
     } else if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS) {
       fb_vac_[vac_thread_id] = std::make_unique<OnlyCoils>(
           &s_, tp_vac_[vac_thread_id].get(), &mgrid_,
@@ -515,7 +532,9 @@ void Vmec::SetupVacuumSolvers() {
                             h_.vacuum_magnetic_pressure.size()),
           std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
           std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
-          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()));
+          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()),
+          std::span<double>(vacuum_reduce_slots_.data(),
+                            vacuum_reduce_slots_.size()));
     } else {
       LOG(FATAL) << absl::StrCat("free boundary method '",
                                  ToString(indata_.free_boundary_method),
@@ -525,7 +544,7 @@ void Vmec::SetupVacuumSolvers() {
 }  // SetupVacuumSolvers
 
 // initialize_radial quantities, return true if a checkpoint was reached
-bool Vmec::InitializeRadial(
+absl::StatusOr<bool> Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
     const std::optional<HotRestartState>& initial_state,
@@ -544,24 +563,6 @@ bool Vmec::InitializeRadial(
   fc_.res0 = -1;
   fc_.res1 = -1;
   m_delt0 = indata_.delt;
-
-  // On a free-boundary multigrid continuation stage, the vacuum solution of
-  // the converged coarser stage is still exactly valid, because the radial
-  // interpolation changes neither the angular grid nor the LCFS geometry.
-  // Re-marking the vacuum state as kInitialized here (mirroring the
-  // hot-restart path in run()) makes the first iteration of the new stage
-  // run the free-boundary block, so the LCFS force enters balanced by the
-  // vacuum magnetic pressure. Otherwise iteration 1 skips the vacuum update
-  // (the `iter2 > 1` gate in IdealMhdModel::update) and applies the edge
-  // force with rBSq = 0 -- the raw, unbalanced plasma pressure -- which
-  // kicks the boundary in a single step and costs a long NESTOR ring-down
-  // afterwards (stage-entry FSQR ~ 9 instead of the interpolation-error
-  // level, W_MHD -12 percent in one step, DELBSQ ~ 400x its converged
-  // value).
-  if (fc_.lfreeb && ns_old != 0 && ns_old < nsval &&
-      vacuum_pressure_state_ == VacuumPressureState::kActive) {
-    vacuum_pressure_state_ = VacuumPressureState::kInitialized;
-  }
 
   // INITIALIZE MESH-DEPENDENT SCALARS
 
@@ -651,7 +652,7 @@ bool Vmec::InitializeRadial(
       ls_[thread_id] = std::make_unique<ThreadLocalStorage>(&s_);
 
       p_[thread_id] = std::make_unique<RadialProfiles>(
-          r_[thread_id].get(), &h_, &indata_, &fc_, kSignOfJacobian, kPDamp);
+          r_[thread_id].get(), &h_, &indata_, &fc_, indata_.signgs, kPDamp);
 
       // update profile parameterizations based on p****_type strings
       p_[thread_id]->setupInputProfiles();
@@ -662,11 +663,17 @@ bool Vmec::InitializeRadial(
       m_[thread_id] = std::make_unique<IdealMhdModel>(
           &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
           ls_[thread_id].get(), &h_, r_[thread_id].get(), &fb_vac_,
-          vac_num_threads_, kSignOfJacobian, indata_.nvacskip,
+          vac_num_threads_, indata_.signgs, indata_.nvacskip,
           &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
                                    indata_.lforbal);
     }  // thread_id
+
+    absl::Status current_profile_status =
+        p_[0]->CheckCurrentProfileEnclosesEdgeCurrent();
+    if (!current_profile_status.ok()) {
+      return current_profile_status;
+    }
 
     if (is_checkpoint_step &&
         checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
@@ -736,13 +743,17 @@ bool Vmec::InitializeRadial(
           // free-boundary hot restart: use all flux surfaces from initial state
           decomposed_x_[thread_id]->InitFromState(
               t_, initial_state->wout.rmnc, initial_state->wout.zmns,
-              initial_state->wout.lmns_full, *p_[thread_id], constants_);
+              initial_state->wout.lmns_full, initial_state->wout.rmns,
+              initial_state->wout.zmnc, initial_state->wout.lmnc_full,
+              *p_[thread_id], constants_, indata_.signgs);
         } else {
           // fixed-boundary hot restart: use inner flux surfaces from initial
           // state, and LCFS geometry from Boundaries (from INDATA)
           decomposed_x_[thread_id]->InitFromState(
               t_, initial_state->wout.rmnc, initial_state->wout.zmns,
-              initial_state->wout.lmns_full, *p_[thread_id], constants_, &b_);
+              initial_state->wout.lmns_full, initial_state->wout.rmns,
+              initial_state->wout.zmnc, initial_state->wout.lmnc_full,
+              *p_[thread_id], constants_, indata_.signgs, &b_);
         }
       }
     } else {
@@ -991,7 +1002,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
           std::cout << " TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS\n";
         }
 
-        b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, kSignOfJacobian);
+        b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, indata_.signgs);
         fc_.ijacob = 1;
 
         // prepare parameters to functions that get called due to

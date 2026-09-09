@@ -66,4 +66,48 @@ TEST(TestBoundaries, BundledInputsAreNotSpectrallyDense) {
   }
 }
 
+namespace {
+// theta -> pi - theta on an ntor = 0 boundary. The surface is unchanged as a
+// point set and only the poloidal direction reverses, so the orientation check
+// has to notice and flip it back.
+VmecINDATA RelabelledByPiMinusTheta(const VmecINDATA& indata) {
+  VmecINDATA out = indata;
+  const int n0 = out.ntor;  // column of n = 0
+  for (int m = 0; m < out.rbc.rows(); ++m) {
+    const double s = (m % 2 == 0) ? 1.0 : -1.0;
+    out.rbc(m, n0) *= s;
+    out.zbs(m, n0) *= -s;
+    if (out.rbs.has_value()) {
+      (*out.rbs)(m, n0) *= -s;
+    }
+    if (out.zbc.has_value()) {
+      (*out.zbc)(m, n0) *= s;
+    }
+  }
+  return out;
+}
+
+// Whether the orientation check asks for the poloidal angle to be flipped.
+bool AsksForThetaFlip(const VmecINDATA& indata) {
+  const Sizes sizes(indata);
+  const FourierBasisFastPoloidal fourier_basis(&sizes);
+  Boundaries boundaries(&sizes, &fourier_basis,
+                        vmec_algorithm_constants::kSignOfJacobian);
+  return boundaries.setupFromIndata(indata, /*verbose=*/false);
+}
+}  // namespace
+
+TEST(TestBoundaries, RelabelledAsymmetricBoundaryIsFlippedBack) {
+  const VmecINDATA indata =
+      VmecINDATA::FromFile("vmecpp/test_data/up_down_asym_current.json");
+  ASSERT_TRUE(indata.lasym);
+  ASSERT_EQ(indata.ntor, 0);
+
+  // The boundary as given is already traversed the right way round.
+  EXPECT_FALSE(AsksForThetaFlip(indata));
+
+  // Reversing the poloidal direction of the same surface has to be caught.
+  EXPECT_TRUE(AsksForThetaFlip(RelabelledByPiMinusTheta(indata)));
+}
+
 }  // namespace vmecpp

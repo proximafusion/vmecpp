@@ -7,6 +7,7 @@
 #include <netcdf.h>
 
 #include <algorithm>
+#include <array>
 #include <cfloat>  // DBL_MAX
 #include <cstdio>
 #include <fstream>
@@ -172,6 +173,37 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
   numPhi = *num_phi_or;
 
   nextcur = *nextcur_or;
+
+  // coil_group is a [nextcur][string width] character array, each name padded
+  // on the right. The width is whatever the file declares, so a writer that
+  // does not use MAKEGRID's 30 still reads correctly.
+  coil_group_names.clear();
+  {
+    int id_coil_group = 0;
+    std::array<int, 2> coil_group_dimensions = {0, 0};
+    size_t string_width = 0;
+    if (nc_inq_varid(ncid, "coil_group", &id_coil_group) == NC_NOERR &&
+        nc_inq_vardimid(ncid, id_coil_group, coil_group_dimensions.data()) ==
+            NC_NOERR &&
+        nc_inq_dimlen(ncid, coil_group_dimensions[1], &string_width) ==
+            NC_NOERR &&
+        string_width > 0) {
+      std::vector<char> raw(static_cast<size_t>(nextcur) * string_width);
+      if (nc_get_var_text(ncid, id_coil_group, raw.data()) == NC_NOERR) {
+        coil_group_names.reserve(nextcur);
+        for (int i = 0; i < nextcur; ++i) {
+          std::string name(raw.data() + static_cast<size_t>(i) * string_width,
+                           string_width);
+          size_t end = name.size();
+          while (end > 0 && name[end - 1] <= 0x20) {
+            --end;
+          }
+          name.erase(end);
+          coil_group_names.push_back(name);
+        }
+      }
+    }
+  }
   if (coil_currents.size() != nextcur) {
     nc_close(ncid);
     return absl::InvalidArgumentError(
@@ -277,6 +309,9 @@ absl::Status MGridProvider::LoadFields(
   numPhi = mgrid_params.number_of_phi_grid_points;
 
   nextcur = static_cast<int>(coil_currents.size());
+
+  // an in-memory response table carries no coil group names
+  coil_group_names.clear();
 
   if (mgrid_params.normalize_by_currents) {
     mgrid_mode = "S";

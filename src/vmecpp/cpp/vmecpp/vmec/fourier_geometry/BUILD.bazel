@@ -15,5 +15,6 @@ cc_library(
         "//vmecpp/vmec/boundaries:boundaries",
         "//vmecpp/vmec/radial_profiles:radial_profiles",
         "//vmecpp/vmec/fourier_coefficients:fourier_coefficients",
+        "@abseil-cpp//absl/log:check",
     ],
 )

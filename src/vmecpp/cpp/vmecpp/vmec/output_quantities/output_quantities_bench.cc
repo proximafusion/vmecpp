@@ -70,8 +70,8 @@ void BM_ComputeOutputQuantities(benchmark::State& state) {
   for (auto _ : state) {
     OutputQuantities output_quantities = ComputeOutputQuantities(
         kSignOfJacobian, vmec.indata_, vmec.s_, vmec.fc_, vmec.constants_,
-        vmec.t_, vmec.h_, vmec.mgrid_.mgrid_mode, vmec.r_, vmec.decomposed_x_,
-        vmec.m_, vmec.p_, VmecCheckpoint::NONE,
+        vmec.t_, vmec.h_, vmec.mgrid_.mgrid_mode, vmec.mgrid_.coil_group_names,
+        vmec.r_, vmec.decomposed_x_, vmec.m_, vmec.p_, VmecCheckpoint::NONE,
         static_cast<VacuumPressureState>(vmec.get_ivac()), vmec.get_status(),
         vmec.get_iter2());
     benchmark::DoNotOptimize(output_quantities.wout.volume);

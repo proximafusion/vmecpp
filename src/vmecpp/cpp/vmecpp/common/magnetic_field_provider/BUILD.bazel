@@ -12,6 +12,7 @@ cc_library(
         "//vmecpp/common/magnetic_configuration_definition:magnetic_configuration",
         "//vmecpp/common/magnetic_configuration_lib:magnetic_configuration_lib",
         "@abscab_cpp//abscab:abscab",
+        "@eigen",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/log:log",

@@ -33,11 +33,6 @@ using magnetics::NumWindingsToCircuitCurrents;
 using magnetics::SetCircuitCurrents;
 using magnetics::VectorPotential;
 
-// TODO(jons): implement stellarator-symmetric grid and follow-up flip-mirroring
-// of magnetic quantities NOTE: For now, everything here is computed as
-// non-stellarator-symmetric,
-//       so there is a factor of ~2 speedup around the corner.
-
 absl::Status IsValidMakegridParameters(
     const MakegridParameters& makegrid_parameters) {
   // number of field periods has to be at least 1
@@ -274,7 +269,9 @@ absl::StatusOr<MakegridParameters> ImportMakegridParametersFromFile(
     const std::filesystem::path& makegrid_parameters_file) {
   const auto maybe_makegrid_params_json =
       file_io::ReadFile(makegrid_parameters_file);
-  CHECK_OK(maybe_makegrid_params_json);
+  if (!maybe_makegrid_params_json.ok()) {
+    return maybe_makegrid_params_json.status();
+  }
   const auto& makegrid_params_json = *maybe_makegrid_params_json;
   return ImportMakegridParametersFromJson(makegrid_params_json);
 }  // ImportMakegridParametersFromFile
@@ -514,26 +511,9 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
       continue;
     }
 
-    // Evaluation result B (n, 3) in cartesian coordinates
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> magnetic_field_stl(
-        number_of_evaluation_points);
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      magnetic_field_stl[i].resize(3, 0.0);
-    }
-
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> cylindrical_grid_stl{
-        static_cast<std::size_t>(maybe_cylindrical_grid.value().cols())};
-    CHECK_EQ(static_cast<std::size_t>(number_of_evaluation_points),
-             cylindrical_grid_stl.size());
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      cylindrical_grid_stl[i].resize(3);
-      for (int j = 0; j < 3; ++j) {
-        cylindrical_grid_stl[i][j] = maybe_cylindrical_grid.value()(j, i);
-      }
-    }
-    CHECK_EQ(magnetic_field_stl.size(), cylindrical_grid_stl.size());
+    // Evaluation result B (3, n) in cartesian coordinates
+    RowMatrix3Xd magnetic_field =
+        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
 
     // We parallelize over linear index of evaluation locations, since that
     // allows us to use more CPUs and parallelize also for configurations with
@@ -542,15 +522,12 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     // independent circuits but few evaluation locations. This is done inside of
     // ABSCAB, which is used within this call to `MagneticField`.
     absl::Status magnetic_field_status =
-        MagneticField(m_magnetic_configuration, cylindrical_grid_stl,
-                      /*m_magnetic_field=*/magnetic_field_stl);
+        MagneticField(m_magnetic_configuration, maybe_cylindrical_grid.value(),
+                      /*m_magnetic_field=*/magnetic_field);
     if (!magnetic_field_status.ok()) {
       status[circuit_index] = magnetic_field_status;
       continue;
     }
-    RowMatrix3Xd magnetic_field =
-        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
-    magnetic_field = vmecpp::ToEigenMatrix(magnetic_field_stl).transpose();
     CartesianToCylindricalField(cos_phi, sin_phi, magnetic_field, num_z, num_r,
                                 number_of_evaluation_points,
                                 response_table_b.b_r.row(circuit_index),
@@ -676,22 +653,9 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
       continue;
     }
 
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> vector_potential_stl(
-        number_of_evaluation_points);
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      vector_potential_stl[i].resize(3, 0.0);
-    }
-
-    // TODO(jurasic) Remove after Eigen refactor
-    std::vector<std::vector<double>> cylindrical_grid_stl{
-        static_cast<std::size_t>(maybe_cylindrical_grid.value().cols())};
-    for (int i = 0; i < number_of_evaluation_points; ++i) {
-      cylindrical_grid_stl[i].resize(3);
-      for (int j = 0; j < 3; ++j) {
-        cylindrical_grid_stl[i][j] = maybe_cylindrical_grid.value()(j, i);
-      }
-    }
+    // Evaluation result A (3, n) in cartesian coordinates
+    RowMatrix3Xd vector_potential =
+        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
 
     // We parallelize over linear index of evaluation locations, since that
     // allows us to use more CPUs and parallelize also for configurations with
@@ -699,16 +663,13 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     // independent circuits and many evaluation locations, rather than many
     // independent circuits but few evaluation locations. This is done inside of
     // ABSCAB, which is used within this call to `VectorPotential`.
-    absl::Status vector_potential_status =
-        VectorPotential(m_magnetic_configuration, cylindrical_grid_stl,
-                        /*m_vector_potential=*/vector_potential_stl);
+    absl::Status vector_potential_status = VectorPotential(
+        m_magnetic_configuration, maybe_cylindrical_grid.value(),
+        /*m_vector_potential=*/vector_potential);
     if (!vector_potential_status.ok()) {
       status[circuit_index] = vector_potential_status;
       continue;
     }
-    RowMatrix3Xd vector_potential =
-        RowMatrix3Xd::Zero(3, number_of_evaluation_points);
-    vector_potential = vmecpp::ToEigenMatrix(vector_potential_stl).transpose();
 
     // ABSCAB computes the Cartesian components of the vector potential,
     // so we need to convert the x and y componets into r and phi
@@ -774,6 +735,19 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
   return response_table_a;
 }  // ComputeVectorPotentialCache
 
+// Report a netCDF failure through the return value of the enclosing function,
+// carrying the library's own message, and close the file being written.
+#define VMECPP_RETURN_IF_NETCDF_ERROR(nc_call)                               \
+  do {                                                                       \
+    const int nc_status = (nc_call);                                         \
+    if (nc_status != NC_NOERR) {                                             \
+      nc_close(ncid);                                                        \
+      return absl::InternalError(absl::StrFormat("could not write '%s': %s", \
+                                                 makegrid_filename,          \
+                                                 nc_strerror(nc_status)));   \
+    }                                                                        \
+  } while (0)
+
 absl::Status WriteMakegridNetCDFFile(
     const std::string& makegrid_filename,
     const MakegridParameters& makegrid_parameters,
@@ -786,107 +760,114 @@ absl::Status WriteMakegridNetCDFFile(
 
   // number of response tables in this mgrid file
   const int n_serial_circuits = static_cast<int>(response_table_b.b_r.rows());
-  CHECK_GT(n_serial_circuits, 0)
-      << "No magnetic field cache present to be written.";
+  if (n_serial_circuits <= 0) {
+    return absl::InvalidArgumentError(
+        "No magnetic field cache present to be written.");
+  }
 
   const int n_circuit_currents = static_cast<int>(circuit_currents.size());
-  CHECK_EQ(n_circuit_currents, n_serial_circuits) << absl::StrFormat(
-      "number of provided circuit currents (%d) has to equal number of serial "
-      "circuits(%d)",
-      n_circuit_currents, n_serial_circuits);
+  if (n_circuit_currents != n_serial_circuits) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "number of provided circuit currents (%d) has to equal number of "
+        "serial circuits (%d)",
+        n_circuit_currents, n_serial_circuits));
+  }
 
   int ncid = 0;
-  CHECK_EQ(nc_create(makegrid_filename.c_str(), NC_CLOBBER, &ncid), NC_NOERR);
+  const int create_status =
+      nc_create(makegrid_filename.c_str(), NC_CLOBBER, &ncid);
+  if (create_status != NC_NOERR) {
+    return absl::InternalError(absl::StrFormat("could not create '%s': %s",
+                                               makegrid_filename,
+                                               nc_strerror(create_status)));
+  }
 
   // create dimensions
   int id_dimension_stringsize = 0;
-  CHECK_EQ(
-      nc_def_dim(ncid, "stringsize", kStringSize, &id_dimension_stringsize),
-      NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_dim(ncid, "stringsize", kStringSize, &id_dimension_stringsize));
 
   int id_dimension_external_coil_groups = 0;
-  CHECK_EQ(nc_def_dim(ncid, "external_coil_groups", n_serial_circuits,
-                      &id_dimension_external_coil_groups),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_dim(ncid, "external_coil_groups",
+                                           n_serial_circuits,
+                                           &id_dimension_external_coil_groups));
 
   int id_dimension_dim_00001 = 0;
-  CHECK_EQ(nc_def_dim(ncid, "dim_00001", 1, &id_dimension_dim_00001), NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_dim(ncid, "dim_00001", 1, &id_dimension_dim_00001));
 
   int id_dimension_external_coils = 0;
-  CHECK_EQ(nc_def_dim(ncid, "external_coils", n_serial_circuits,
-                      &id_dimension_external_coils),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_dim(
+      ncid, "external_coils", n_serial_circuits, &id_dimension_external_coils));
 
   int id_dimension_rad = 0;
-  CHECK_EQ(nc_def_dim(ncid, "rad", makegrid_parameters.number_of_r_grid_points,
-                      &id_dimension_rad),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_dim(ncid, "rad", makegrid_parameters.number_of_r_grid_points,
+                 &id_dimension_rad));
 
   int id_dimension_zee = 0;
-  CHECK_EQ(nc_def_dim(ncid, "zee", makegrid_parameters.number_of_z_grid_points,
-                      &id_dimension_zee),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_dim(ncid, "zee", makegrid_parameters.number_of_z_grid_points,
+                 &id_dimension_zee));
 
   int id_dimension_phi = 0;
-  CHECK_EQ(
+  VMECPP_RETURN_IF_NETCDF_ERROR(
       nc_def_dim(ncid, "phi", makegrid_parameters.number_of_phi_grid_points,
-                 &id_dimension_phi),
-      NC_NOERR);
+                 &id_dimension_phi));
 
   // create variables
   int id_variable_ir = 0;
-  CHECK_EQ(nc_def_var(ncid, "ir", NC_INT, 0, nullptr, &id_variable_ir),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_var(ncid, "ir", NC_INT, 0, nullptr, &id_variable_ir));
 
   int id_variable_jz = 0;
-  CHECK_EQ(nc_def_var(ncid, "jz", NC_INT, 0, nullptr, &id_variable_jz),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_var(ncid, "jz", NC_INT, 0, nullptr, &id_variable_jz));
 
   int id_variable_kp = 0;
-  CHECK_EQ(nc_def_var(ncid, "kp", NC_INT, 0, nullptr, &id_variable_kp),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_var(ncid, "kp", NC_INT, 0, nullptr, &id_variable_kp));
 
   int id_variable_nfp = 0;
-  CHECK_EQ(nc_def_var(ncid, "nfp", NC_INT, 0, nullptr, &id_variable_nfp),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_var(ncid, "nfp", NC_INT, 0, nullptr, &id_variable_nfp));
 
   int id_variable_nextcur = 0;
-  CHECK_EQ(
-      nc_def_var(ncid, "nextcur", NC_INT, 0, nullptr, &id_variable_nextcur),
-      NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_var(ncid, "nextcur", NC_INT, 0, nullptr, &id_variable_nextcur));
 
   int id_variable_rmin = 0;
-  CHECK_EQ(nc_def_var(ncid, "rmin", NC_DOUBLE, 0, nullptr, &id_variable_rmin),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_var(ncid, "rmin", NC_DOUBLE, 0, nullptr, &id_variable_rmin));
 
   int id_variable_rmax = 0;
-  CHECK_EQ(nc_def_var(ncid, "rmax", NC_DOUBLE, 0, nullptr, &id_variable_rmax),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_var(ncid, "rmax", NC_DOUBLE, 0, nullptr, &id_variable_rmax));
 
   int id_variable_zmin = 0;
-  CHECK_EQ(nc_def_var(ncid, "zmin", NC_DOUBLE, 0, nullptr, &id_variable_zmin),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_var(ncid, "zmin", NC_DOUBLE, 0, nullptr, &id_variable_zmin));
 
   int id_variable_zmax = 0;
-  CHECK_EQ(nc_def_var(ncid, "zmax", NC_DOUBLE, 0, nullptr, &id_variable_zmax),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_def_var(ncid, "zmax", NC_DOUBLE, 0, nullptr, &id_variable_zmax));
 
   int id_variable_coil_group = 0;
   std::array<int, 2> coil_group_dimensions = {id_dimension_external_coil_groups,
                                               id_dimension_stringsize};
-  CHECK_EQ(nc_def_var(ncid, "coil_group", NC_CHAR, 2,
-                      coil_group_dimensions.data(), &id_variable_coil_group),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_var(ncid, "coil_group", NC_CHAR, 2,
+                                           coil_group_dimensions.data(),
+                                           &id_variable_coil_group));
 
   int id_variable_mgrid_mode = 0;
-  CHECK_EQ(nc_def_var(ncid, "mgrid_mode", NC_CHAR, 1, &id_dimension_dim_00001,
-                      &id_variable_mgrid_mode),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_var(ncid, "mgrid_mode", NC_CHAR, 1,
+                                           &id_dimension_dim_00001,
+                                           &id_variable_mgrid_mode));
 
   int id_variable_raw_coil_cur = 0;
-  CHECK_EQ(nc_def_var(ncid, "raw_coil_cur", NC_DOUBLE, 1,
-                      &id_dimension_external_coils, &id_variable_raw_coil_cur),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_var(ncid, "raw_coil_cur", NC_DOUBLE, 1,
+                                           &id_dimension_external_coils,
+                                           &id_variable_raw_coil_cur));
 
   std::vector<int> ids_variable_br(n_serial_circuits, 0);
   std::vector<int> ids_variable_bp(n_serial_circuits, 0);
@@ -901,86 +882,79 @@ absl::Status WriteMakegridNetCDFFile(
 
     std::string br_name = absl::StrFormat("br_%03d", circuit_index + 1);
     int id_variable_br = 0;
-    CHECK_EQ(nc_def_var(ncid, br_name.c_str(), NC_DOUBLE, 3,
-                        grid_dimension.data(), &id_variable_br),
-             NC_NOERR);
+    VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_var(ncid, br_name.c_str(), NC_DOUBLE,
+                                             3, grid_dimension.data(),
+                                             &id_variable_br));
     ids_variable_br[circuit_index] = id_variable_br;
 
     std::string bp_name = absl::StrFormat("bp_%03d", circuit_index + 1);
     int id_variable_bp = 0;
-    CHECK_EQ(nc_def_var(ncid, bp_name.c_str(), NC_DOUBLE, 3,
-                        grid_dimension.data(), &id_variable_bp),
-             NC_NOERR);
+    VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_var(ncid, bp_name.c_str(), NC_DOUBLE,
+                                             3, grid_dimension.data(),
+                                             &id_variable_bp));
     ids_variable_bp[circuit_index] = id_variable_bp;
 
     std::string bz_name = absl::StrFormat("bz_%03d", circuit_index + 1);
     int id_variable_bz = 0;
-    CHECK_EQ(nc_def_var(ncid, bz_name.c_str(), NC_DOUBLE, 3,
-                        grid_dimension.data(), &id_variable_bz),
-             NC_NOERR);
+    VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_var(ncid, bz_name.c_str(), NC_DOUBLE,
+                                             3, grid_dimension.data(),
+                                             &id_variable_bz));
     ids_variable_bz[circuit_index] = id_variable_bz;
 
     if (response_table_a.has_value()) {
       std::string ar_name = absl::StrFormat("ar_%03d", circuit_index + 1);
       int id_variable_ar = 0;
-      CHECK_EQ(nc_def_var(ncid, ar_name.c_str(), NC_DOUBLE, 3,
-                          grid_dimension.data(), &id_variable_ar),
-               NC_NOERR);
+      VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_var(ncid, ar_name.c_str(), NC_DOUBLE,
+                                               3, grid_dimension.data(),
+                                               &id_variable_ar));
       ids_variable_ar[circuit_index] = id_variable_ar;
 
       std::string ap_name = absl::StrFormat("ap_%03d", circuit_index + 1);
       int id_variable_ap = 0;
-      CHECK_EQ(nc_def_var(ncid, ap_name.c_str(), NC_DOUBLE, 3,
-                          grid_dimension.data(), &id_variable_ap),
-               NC_NOERR);
+      VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_var(ncid, ap_name.c_str(), NC_DOUBLE,
+                                               3, grid_dimension.data(),
+                                               &id_variable_ap));
       ids_variable_ap[circuit_index] = id_variable_ap;
 
       std::string az_name = absl::StrFormat("az_%03d", circuit_index + 1);
       int id_variable_az = 0;
-      CHECK_EQ(nc_def_var(ncid, az_name.c_str(), NC_DOUBLE, 3,
-                          grid_dimension.data(), &id_variable_az),
-               NC_NOERR);
+      VMECPP_RETURN_IF_NETCDF_ERROR(nc_def_var(ncid, az_name.c_str(), NC_DOUBLE,
+                                               3, grid_dimension.data(),
+                                               &id_variable_az));
       ids_variable_az[circuit_index] = id_variable_az;
     }
   }  // number_of_serial_circuits
 
   // explicitly end "define mode" and switch over to "data writing mode"
-  CHECK_EQ(nc_enddef(ncid), NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_enddef(ncid));
 
   // write actual data
-  CHECK_EQ(nc_put_var(ncid, id_variable_ir,
-                      &(makegrid_parameters.number_of_r_grid_points)),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_put_var(
+      ncid, id_variable_ir, &(makegrid_parameters.number_of_r_grid_points)));
 
-  CHECK_EQ(nc_put_var(ncid, id_variable_jz,
-                      &(makegrid_parameters.number_of_z_grid_points)),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_put_var(
+      ncid, id_variable_jz, &(makegrid_parameters.number_of_z_grid_points)));
 
-  CHECK_EQ(nc_put_var(ncid, id_variable_kp,
-                      &(makegrid_parameters.number_of_phi_grid_points)),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_put_var(
+      ncid, id_variable_kp, &(makegrid_parameters.number_of_phi_grid_points)));
 
-  CHECK_EQ(nc_put_var(ncid, id_variable_nfp,
-                      &(makegrid_parameters.number_of_field_periods)),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_put_var(
+      ncid, id_variable_nfp, &(makegrid_parameters.number_of_field_periods)));
 
-  CHECK_EQ(nc_put_var(ncid, id_variable_nextcur, &n_serial_circuits), NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_put_var(ncid, id_variable_nextcur, &n_serial_circuits));
 
-  CHECK_EQ(
-      nc_put_var(ncid, id_variable_rmin, &(makegrid_parameters.r_grid_minimum)),
-      NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_put_var(
+      ncid, id_variable_rmin, &(makegrid_parameters.r_grid_minimum)));
 
-  CHECK_EQ(
-      nc_put_var(ncid, id_variable_rmax, &(makegrid_parameters.r_grid_maximum)),
-      NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_put_var(
+      ncid, id_variable_rmax, &(makegrid_parameters.r_grid_maximum)));
 
-  CHECK_EQ(
-      nc_put_var(ncid, id_variable_zmin, &(makegrid_parameters.z_grid_minimum)),
-      NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_put_var(
+      ncid, id_variable_zmin, &(makegrid_parameters.z_grid_minimum)));
 
-  CHECK_EQ(
-      nc_put_var(ncid, id_variable_zmax, &(makegrid_parameters.z_grid_maximum)),
-      NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(nc_put_var(
+      ncid, id_variable_zmax, &(makegrid_parameters.z_grid_maximum)));
 
   // This is a flat storage of all coil group names.
   // The NetCDF writing routines will interpret this as a two-dimensional array
@@ -1000,47 +974,55 @@ absl::Status WriteMakegridNetCDFFile(
     absl::StrAppend(&coil_group_names,
                     absl::StrFormat("%-30s", coil_group_name));
   }  // number_of_serial_circuits
-  CHECK_EQ(nc_put_var(ncid, id_variable_coil_group, coil_group_names.c_str()),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_put_var(ncid, id_variable_coil_group, coil_group_names.c_str()));
 
   if (makegrid_parameters.normalize_by_currents) {
-    CHECK_EQ(nc_put_var(ncid, id_variable_mgrid_mode, &kNormalizeByCurrents),
-             NC_NOERR);
+    VMECPP_RETURN_IF_NETCDF_ERROR(
+        nc_put_var(ncid, id_variable_mgrid_mode, &kNormalizeByCurrents));
   } else {
-    CHECK_EQ(nc_put_var(ncid, id_variable_mgrid_mode, &kRawCurrents), NC_NOERR);
+    VMECPP_RETURN_IF_NETCDF_ERROR(
+        nc_put_var(ncid, id_variable_mgrid_mode, &kRawCurrents));
   }
 
-  CHECK_EQ(nc_put_var(ncid, id_variable_raw_coil_cur, circuit_currents.data()),
-           NC_NOERR);
+  VMECPP_RETURN_IF_NETCDF_ERROR(
+      nc_put_var(ncid, id_variable_raw_coil_cur, circuit_currents.data()));
 
   for (int circuit_index = 0; circuit_index < n_serial_circuits;
        ++circuit_index) {
-    CHECK_EQ(nc_put_var(ncid, ids_variable_br[circuit_index],
-                        response_table_b.b_r.row(circuit_index).data()),
-             NC_NOERR);
-    CHECK_EQ(nc_put_var(ncid, ids_variable_bp[circuit_index],
-                        response_table_b.b_p.row(circuit_index).data()),
-             NC_NOERR);
-    CHECK_EQ(nc_put_var(ncid, ids_variable_bz[circuit_index],
-                        response_table_b.b_z.row(circuit_index).data()),
-             NC_NOERR);
+    VMECPP_RETURN_IF_NETCDF_ERROR(
+        nc_put_var(ncid, ids_variable_br[circuit_index],
+                   response_table_b.b_r.row(circuit_index).data()));
+    VMECPP_RETURN_IF_NETCDF_ERROR(
+        nc_put_var(ncid, ids_variable_bp[circuit_index],
+                   response_table_b.b_p.row(circuit_index).data()));
+    VMECPP_RETURN_IF_NETCDF_ERROR(
+        nc_put_var(ncid, ids_variable_bz[circuit_index],
+                   response_table_b.b_z.row(circuit_index).data()));
 
     if (response_table_a.has_value()) {
-      CHECK_EQ(nc_put_var(ncid, ids_variable_ar[circuit_index],
-                          response_table_a->a_r.row(circuit_index).data()),
-               NC_NOERR);
-      CHECK_EQ(nc_put_var(ncid, ids_variable_ap[circuit_index],
-                          response_table_a->a_p.row(circuit_index).data()),
-               NC_NOERR);
-      CHECK_EQ(nc_put_var(ncid, ids_variable_az[circuit_index],
-                          response_table_a->a_z.row(circuit_index).data()),
-               NC_NOERR);
+      VMECPP_RETURN_IF_NETCDF_ERROR(
+          nc_put_var(ncid, ids_variable_ar[circuit_index],
+                     response_table_a->a_r.row(circuit_index).data()));
+      VMECPP_RETURN_IF_NETCDF_ERROR(
+          nc_put_var(ncid, ids_variable_ap[circuit_index],
+                     response_table_a->a_p.row(circuit_index).data()));
+      VMECPP_RETURN_IF_NETCDF_ERROR(
+          nc_put_var(ncid, ids_variable_az[circuit_index],
+                     response_table_a->a_z.row(circuit_index).data()));
     }
   }  // number_of_serial_circuits
 
-  CHECK_EQ(nc_close(ncid), NC_NOERR);
+  const int close_status = nc_close(ncid);
+  if (close_status != NC_NOERR) {
+    return absl::InternalError(absl::StrFormat("could not close '%s': %s",
+                                               makegrid_filename,
+                                               nc_strerror(close_status)));
+  }
 
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
+
+#undef VMECPP_RETURN_IF_NETCDF_ERROR
 
 }  // namespace makegrid

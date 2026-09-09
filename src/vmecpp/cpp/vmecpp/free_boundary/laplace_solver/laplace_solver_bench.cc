@@ -67,6 +67,7 @@ struct BenchFixture {
 
   std::vector<double> matrixShare;
   std::vector<double> bvecShare;
+  std::vector<double> reduce_slots;
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_decomposition;
 
   std::unique_ptr<LaplaceSolver> ls;
@@ -87,10 +88,11 @@ struct BenchFixture {
         mf(mpol + 1),
         mnpd((mf + 1) * (2 * nf + 1)),
         matrixShare(mnpd * mnpd, 0.0),
-        bvecShare(mnpd, 0.0) {
+        bvecShare(mnpd, 0.0),
+        reduce_slots(mnpd * mnpd, 0.0) {
     ls = std::make_unique<LaplaceSolver>(
         &s, &fb, &tp, nf, mf, std::span<double>(matrixShare), &lu_decomposition,
-        std::span<double>(bvecShare));
+        std::span<double>(bvecShare), std::span<double>(reduce_slots));
 
     std::mt19937 rng(42);
     std::uniform_real_distribution<double> dist(-1.0, 1.0);

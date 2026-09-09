@@ -15,6 +15,7 @@ cc_test(
         "//vmecpp_large_cpp_tests/test_data:cth_like_free_bdy",
     ],
     deps = [
+        "//vmecpp/vmec/output_quantities:test_helpers",
         "@abseil-cpp//absl/log:check",
         "@googletest//:gtest_main",
         "//util/file_io:file_io",

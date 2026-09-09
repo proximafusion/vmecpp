@@ -21,6 +21,13 @@ from vmecpp import (  # noqa: F401
     ensure_vmecpp_input,
     is_vmec2000_input,
 )
+from vmecpp._qs import (  # noqa: F401
+    # Quasisymmetry objectives, the VMEC++ counterpart to
+    # simsopt.mhd.vmec_diagnostics.QuasisymmetryRatioResidual.
+    magnetic_field_strength,
+    quasisymmetry_residuals,
+    quasisymmetry_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -430,7 +437,7 @@ class Vmec(Optimizable):
     @boundary.setter
     def boundary(self, boundary: SurfaceRZFourier) -> None:
         if boundary is not self._boundary:
-            logging.debug("Replacing surface in boundary setter")
+            logger.debug("Replacing surface in boundary setter")
             self.remove_parent(self._boundary)
             self._boundary = boundary
             self.append_parent(boundary)
