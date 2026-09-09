@@ -228,6 +228,7 @@ VmecINDATA::VmecINDATA() {
   delt = 1.0;
   tcon0 = 1.0;
   lforbal = false;
+  adaptive_preconditioner_update = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
 
@@ -354,6 +355,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
+  WriteH5Dataset(adaptive_preconditioner_update,
+                 "/indata/adaptive_preconditioner_update", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
 
@@ -459,6 +462,13 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
+  if (H5Lexists(from_file.getId(), "/indata/adaptive_preconditioner_update",
+                0) == 1) {
+    ReadH5Dataset(m_indata.adaptive_preconditioner_update,
+                  "/indata/adaptive_preconditioner_update", from_file);
+  } else {
+    m_indata.adaptive_preconditioner_update = false;
+  }
 
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(),
@@ -943,6 +953,16 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.lforbal = maybe_lforbal->value();
   }
 
+  auto maybe_adaptive_preconditioner_update =
+      JsonReadBool(j, "adaptive_preconditioner_update");
+  if (!maybe_adaptive_preconditioner_update.ok()) {
+    return maybe_adaptive_preconditioner_update.status();
+  }
+  if (maybe_adaptive_preconditioner_update->has_value()) {
+    vmec_indata.adaptive_preconditioner_update =
+        maybe_adaptive_preconditioner_update->value();
+  }
+
   auto maybe_iteration_style = JsonReadString(j, "iteration_style");
   if (!maybe_iteration_style.ok()) {
     return maybe_iteration_style.status();
@@ -1267,6 +1287,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["delt"] = delt;
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
+  output["adaptive_preconditioner_update"] = adaptive_preconditioner_update;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;

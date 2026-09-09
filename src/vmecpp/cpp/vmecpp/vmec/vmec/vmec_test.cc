@@ -1008,3 +1008,30 @@ TEST(TestVmec, BloatScalesTheEnclosedToroidalFlux) {
         << "bloat = " << bloat;
   }
 }  // BloatScalesTheEnclosedToroidalFlux
+
+TEST(TestVmec, AdaptivePreconditionerMatchesEquilibrium) {
+  const absl::StatusOr<std::string> maybe_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(maybe_json.ok());
+  const absl::StatusOr<VmecINDATA> maybe_indata =
+      VmecINDATA::FromJson(*maybe_json);
+  ASSERT_TRUE(maybe_indata.ok());
+
+  VmecINDATA indata_base = *maybe_indata;
+  indata_base.adaptive_preconditioner_update = false;
+  const auto base_run = vmecpp::run(indata_base, std::nullopt, 1);
+  ASSERT_TRUE(base_run.ok());
+  EXPECT_EQ(base_run->wout.ier_flag, 0);
+
+  VmecINDATA indata_radp = *maybe_indata;
+  indata_radp.adaptive_preconditioner_update = true;
+  const auto radp_run = vmecpp::run(indata_radp, std::nullopt, 1);
+  ASSERT_TRUE(radp_run.ok());
+  EXPECT_EQ(radp_run->wout.ier_flag, 0);
+
+  const double tolerance = 1.0e-5;
+  for (int i = 0; i < base_run->wout.rmnc.size(); ++i) {
+    EXPECT_TRUE(IsCloseRelAbs(base_run->wout.rmnc(i), radp_run->wout.rmnc(i),
+                              tolerance));
+  }
+}  // AdaptivePreconditionerMatchesEquilibrium

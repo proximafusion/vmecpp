@@ -557,6 +557,7 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
   fc_.restart_reason = RestartReason::NO_RESTART;
   fc_.res0 = -1;
   fc_.res1 = -1;
+  fc_.res0_at_last_preconditioner_update = -1.0;
   m_delt0 = indata_.delt;
 
   // INITIALIZE MESH-DEPENDENT SCALARS
@@ -661,7 +662,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
           vac_num_threads_, indata_.signgs, indata_.nvacskip,
           &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
-                                   indata_.lforbal);
+                                   indata_.lforbal,
+                                   indata_.adaptive_preconditioner_update);
     }  // thread_id
 
     absl::Status current_profile_status =
@@ -1113,6 +1115,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
       // res0 is the best force residual we got so far
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
+
+      if (last_preconditioner_update_ == iter2 ||
+          fc_.res0_at_last_preconditioner_update <= 0.0) {
+        fc_.res0_at_last_preconditioner_update = fc_.res0;
+      }
 
       // PARVMEC additionally tracks the invariant residual minimum res1. Keep
       // it (and its inputs) off the vmec_8_52 path so the default control stays

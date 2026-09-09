@@ -113,6 +113,9 @@ class FlowControl {
   // only by the PARVMEC time-step control.
   double res1;
 
+  // Running minimum of fsq recorded at the last radial preconditioner update.
+  double res0_at_last_preconditioner_update;
+
   Eigen::Vector3d fResInvar;
   Eigen::Vector3d fResPrecd;
 

@@ -449,6 +449,10 @@ class VmecInput(BaseModelWithNumpy):
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
+    adaptive_preconditioner_update: bool = False
+    """If true, dynamically trigger radial preconditioner updates based on force
+    residual stagnation and curvature changes rather than a fixed 25-step interval."""
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.

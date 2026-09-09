@@ -219,6 +219,10 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // Dynamically trigger preconditioner updates based on residual stagnation
+  // rather than a fixed periodic interval.
+  bool adaptive_preconditioner_update;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)
