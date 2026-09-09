@@ -932,9 +932,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(phips);
   WRITEMEMBER(over_r);
   WRITEMEMBER(jdotb);
-  // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
-  // reference files with all quantities once that is done
-  //  WRITEMEMBER(bdotb);
+  WRITEMEMBER(bdotb);
   WRITEMEMBER(bdotgradv);
   WRITEMEMBER(DMerc);
   WRITEMEMBER(DShear);
@@ -1102,9 +1100,8 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
     ReadHalfGridCompat(m_obj.over_r, "overr");
   }
   READMEMBER(jdotb);
-  // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
-  // reference files with all quantities once that is done
-  //  READMEMBER(bdotb);
+  // Files written before bdotb was serialized carry no such dataset.
+  READMEMBER_OPTIONAL(bdotb);
   READMEMBER(bdotgradv);
   READMEMBER(DMerc);
   READMEMBER_COMPAT(DShear, "Dshear");
