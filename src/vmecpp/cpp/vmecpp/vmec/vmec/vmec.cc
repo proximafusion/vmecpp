@@ -228,6 +228,12 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                const int iterations_before_checkpointing,
                                const int maximum_multi_grid_step,
                                std::optional<HotRestartState> initial_state) {
+  if (maximum_multi_grid_step < 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("maximum_multi_grid_step must be at least 1, but is %d",
+                        maximum_multi_grid_step));
+  }
+
   if (indata_.lfreeb) {
     if (!mgrid_.IsLoaded()) {
       // Fallback: load mgrid from file if constructed directly via the public
