@@ -281,12 +281,6 @@ class VmecModel {
   void reset_force_eval_count() const {
     vmec_->m_[0]->resetForceEvaluationCount();
   }
-  // Freeze/unfreeze the constraint-force multiplier tcon. Freezing makes the
-  // raw force a function of the state alone, consistent with the exact HVP.
-  void SetFreezeConstraintMultiplier(bool freeze) const {
-    vmec_->m_[0]->setFreezeConstraintMultiplier(freeze);
-  }
-
   // The Garabedian-style time step (PerformTimeStep): for each Fourier
   // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
   void PerformTimeStep(double velocity_scale, double conjugation_parameter,
@@ -578,11 +572,9 @@ class VmecModel {
   // condensation constraint force (effective force, Fourier bandpass and
   // assembly). The geometry tangent T v is obtained exactly from the linearity
   // of geometryFromFourier: T v = geom(x+v) - geom(x), so no finite-difference
-  // step enters. The constraint multiplier tcon is held frozen (it depends on
-  // the preconditioner diagonal, not just the geometry); for an exactly
-  // consistent Jacobian, freeze it in the raw force too via
-  // set_freeze_constraint_multiplier(True). The model state is restored to x on
-  // return.
+  // step enters. The constraint multiplier tcon is recomputed from the geometry
+  // inside the composition, as the raw force recomputes it from the state. The
+  // model state is restored to x on return.
   Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
     RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
@@ -1567,8 +1559,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("exact_hessian_vector_product_transpose",
            &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"))
 #endif  // VMECPP_ENABLE_ENZYME
-      .def("set_freeze_constraint_multiplier",
-           &VmecModel::SetFreezeConstraintMultiplier, py::arg("freeze"))
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
       .def_property_readonly("fsqr", &VmecModel::fsqr)
