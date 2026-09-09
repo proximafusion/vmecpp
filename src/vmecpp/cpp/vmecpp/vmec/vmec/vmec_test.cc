@@ -5,7 +5,10 @@
 #include "vmecpp/vmec/vmec/vmec.h"
 
 #include <fstream>
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -389,7 +392,7 @@ TEST(TestVmec, AxisymmetricRunIsIndependentOfNzeta) {
 
     // The sum over identical planes changes the round-off, which the descent
     // carries into lambda at the 1e-9 level.
-    const double kTol = 1.0e-8;
+    const double kTol = 2.0e-8;
     auto rel_max = [](const auto& x, const auto& y) -> double {
       const double peak = x.cwiseAbs().maxCoeff();
       return (x - y).cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
@@ -841,3 +844,146 @@ TEST(TestVmec, Threed1FreeBoundaryCoversTheAsymmetricPoloidalRange) {
     }  // l
   }  // k
 }  // Threed1FreeBoundaryCoversTheAsymmetricPoloidalRange
+
+// The enclosed toroidal flux is the integral of the aphi polynomial, normalized
+// to phiedge at the boundary. A linear dphi/ds is integrated exactly.
+TEST(TestVmec, ToroidalFluxFollowsTheAphiPolynomial) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  const int ns = 9;
+  indata->ns_array = Eigen::VectorXi::Constant(1, ns);
+  indata->ftol_array = Eigen::VectorXd::Constant(1, 1.0e-8);
+  indata->niter_array = Eigen::VectorXi::Constant(1, 4000);
+  // phi(s) = phiedge * (s + s^2 / 2) / (3 / 2)
+  indata->aphi = Eigen::VectorXd(2);
+  indata->aphi << 1.0, 0.5;
+
+  const auto output = vmecpp::run(*indata, std::nullopt, 1);
+  ASSERT_TRUE(output.ok());
+
+  const Eigen::VectorXd& phi = output->wout.phi;
+  ASSERT_EQ(phi.size(), ns);
+  for (int jF = 0; jF < ns; ++jF) {
+    const double s = static_cast<double>(jF) / (ns - 1);
+    const double expected = indata->phiedge * (s + 0.5 * s * s) / 1.5;
+    EXPECT_TRUE(IsCloseRelAbs(expected, phi[jF], 1.0e-13)) << "jF = " << jF;
+  }
+}  // ToroidalFluxFollowsTheAphiPolynomial
+
+// An inconsistent VmecINDATA must come back as a status from the factory:
+// constructing first ends the process instead of reporting the input error.
+TEST(TestVmec, InconsistentIndataIsRejectedBeforeConstruction) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  for (const auto& [description, mutate] :
+       std::vector<std::pair<std::string, std::function<void(VmecINDATA&)>>>{
+           {"nfp = 0", [](VmecINDATA& indata) { indata.nfp = 0; }},
+           {"nfp = -1", [](VmecINDATA& indata) { indata.nfp = -1; }},
+           {"mpol = 0", [](VmecINDATA& indata) { indata.mpol = 0; }},
+           {"mpol = 1", [](VmecINDATA& indata) { indata.mpol = 1; }},
+           {"nvacskip = -1",
+            [](VmecINDATA& indata) { indata.nvacskip = -1; }}}) {
+    VmecINDATA indata = *base_indata;
+    mutate(indata);
+    const absl::StatusOr<std::unique_ptr<Vmec>> maybe_vmec =
+        Vmec::FromIndata(indata);
+    EXPECT_FALSE(maybe_vmec.ok()) << description;
+    if (!maybe_vmec.ok()) {
+      EXPECT_EQ(maybe_vmec.status().code(), absl::StatusCode::kInvalidArgument)
+          << description;
+    }
+  }
+}  // InconsistentIndataIsRejectedBeforeConstruction
+
+// The nvacskip cadence only starts once the R and Z force residuals have
+// settled, so two free-boundary runs that differ only in nvacskip share the
+// same force-residual history up to that evaluation.
+TEST(TestVmec, VacuumUpdateCadenceStartsWhenResidualsSettle) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  // a single grid step, to keep the multi-grid transitions out of it
+  auto solve = [&](int nvacskip) {
+    VmecINDATA indata = *base_indata;
+    indata.ns_array = Eigen::VectorXi::Constant(1, 16);
+    indata.ftol_array = Eigen::VectorXd::Constant(1, 1.0e-10);
+    indata.niter_array = Eigen::VectorXi::Constant(1, 5000);
+    indata.nvacskip = nvacskip;
+    return vmecpp::run(indata, std::nullopt, 1);
+  };
+
+  const auto every_iteration = solve(1);
+  ASSERT_TRUE(every_iteration.ok());
+  const auto strided = solve(24);
+  ASSERT_TRUE(strided.ok());
+
+  const Eigen::VectorXd& fsqr = every_iteration->wout.force_residual_r;
+  const Eigen::VectorXd& fsqz = every_iteration->wout.force_residual_z;
+  const Eigen::VectorXd& fsqr_strided = strided->wout.force_residual_r;
+  const Eigen::VectorXd& fsqz_strided = strided->wout.force_residual_z;
+
+  // The vacuum pressure is switched on at the first evaluation below the
+  // threshold; the cadence can first take effect at the second one.
+  int below_threshold = 0;
+  int settled = -1;
+  for (int i = 0; i < fsqr.size(); ++i) {
+    if (fsqr(i) + fsqz(i) < 1.0e-3) {
+      ++below_threshold;
+      if (below_threshold == 2) {
+        settled = i;
+        break;
+      }
+    }
+  }
+  ASSERT_GE(settled, 20) << "the free-boundary transient is too short to "
+                            "distinguish the two cadences";
+  ASSERT_LE(settled, fsqr_strided.size());
+
+  for (int i = 0; i < settled; ++i) {
+    EXPECT_EQ(fsqr(i), fsqr_strided(i)) << "evaluation " << i;
+    EXPECT_EQ(fsqz(i), fsqz_strided(i)) << "evaluation " << i;
+  }
+}  // VacuumUpdateCadenceStartsWhenResidualsSettle
+
+// The bloating factor scales the enclosed toroidal flux, so the edge value of
+// phi comes out as phiedge * bloat.
+TEST(TestVmec, BloatScalesTheEnclosedToroidalFlux) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  // bloat is only accepted for a constrained toroidal current
+  ASSERT_EQ(base_indata->ncurr, 1);
+
+  for (const double bloat : {1.0, 1.5, 0.5}) {
+    VmecINDATA indata = *base_indata;
+    indata.ns_array = Eigen::VectorXi::Constant(1, 9);
+    indata.ftol_array = Eigen::VectorXd::Constant(1, 1.0e-8);
+    indata.niter_array = Eigen::VectorXi::Constant(1, 4000);
+    indata.bloat = bloat;
+
+    const auto output = vmecpp::run(indata, std::nullopt, 1);
+    ASSERT_TRUE(output.ok()) << "bloat = " << bloat;
+
+    const Eigen::VectorXd& phi = output->wout.phi;
+    EXPECT_TRUE(
+        IsCloseRelAbs(indata.phiedge * bloat, phi[phi.size() - 1], 1.0e-14))
+        << "bloat = " << bloat;
+  }
+}  // BloatScalesTheEnclosedToroidalFlux

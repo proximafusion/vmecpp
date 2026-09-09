@@ -2033,11 +2033,12 @@ void vmecpp::FixupPoloidalCurrent(
 
 void vmecpp::RecomputeToroidalFlux(
     const FlowControl& fc, VmecInternalResults& m_vmec_internal_results) {
-  // quadrature in radial direction
+  // radial quadrature over the half-grid dphi/ds between the two full-grid
+  // surfaces, which is exact for a linear dphi/ds
   m_vmec_internal_results.phiF[0] = 0.0;
   for (int jF = 1; jF < fc.ns; ++jF) {
     m_vmec_internal_results.phiF[jF] = m_vmec_internal_results.phiF[jF - 1] +
-                                       m_vmec_internal_results.phipF[jF - 1];
+                                       m_vmec_internal_results.phipH[jF - 1];
   }  // jF
 
   // now apply scaling
@@ -3877,7 +3878,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     intermediate.redge[kl] =
         vmec_internal_results.r_e(lcfs_kl) + vmec_internal_results.r_o(lcfs_kl);
   }  // kl
-  if (fc.lfreeb && vacuum_pressure_state == VacuumPressureState::kActive) {
+  if (fc.lfreeb && vacuum_pressure_state >= VacuumPressureState::kActive) {
     for (int k = 0; k < s.nZeta; ++k) {
       for (int l = 0; l < s.nThetaEff; ++l) {
         // FIXME(eguiraud) slow loop for nestor
@@ -4430,7 +4431,7 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
   // Phys. Fluids B, Vol 5 (1993) p 3121, Eq. 9a-9d
   std::vector<double> bpol2vac(s.nZnT, 0.0);
   if (fc.lfreeb &&
-      vacuum_pressure_state == vmecpp::VacuumPressureState::kActive) {
+      vacuum_pressure_state >= vmecpp::VacuumPressureState::kActive) {
     for (int l = 0; l < s.nThetaEff; ++l) {
       for (int k = 0; k < s.nZeta; ++k) {
         // FIXME(eguiraud) slow loop for nestor
