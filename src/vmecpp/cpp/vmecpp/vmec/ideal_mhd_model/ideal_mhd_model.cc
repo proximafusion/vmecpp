@@ -972,8 +972,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // contribution in the first few iterations, preventing termination, to
   // ensure the free-boundary forces have "enough time" to propagate through
   // to the inner surfaces.
-  // The residuals reach 1e-6 later than 50 iterations past a branch point, so
-  // on a cold run the edge force enters through the hot-restart term alone.
+  // TODO(jurasic) the hard-coded 50 and 1e-6 are only here for backwards
+  // compatibility, ideally vacuum-pressure should always part of the
+  // force-balance
+  // iter1 is set at the start of a multigrid stage and at every bad-Jacobian
+  // restart, so the window counts iterations since whichever came last.
   bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
   // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
   // wouldn't trigger without special handling for the hot-restart case.
@@ -2027,7 +2030,8 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
     }  // kl
   }  // j
 
-  // The sum starts at the axis, whose row is at most 3 percent of it.
+  // The sum starts at the axis, whose row is under 3 percent of it on the
+  // bundled cases.
   // only unique radial points here;
   // decomposed_x is over nsMinF1 ... nsMaxF1 --> would count overlapping
   // elements twice !!!
