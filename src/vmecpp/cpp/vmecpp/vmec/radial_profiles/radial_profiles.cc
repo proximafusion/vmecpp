@@ -463,6 +463,29 @@ double RadialProfiles::evalCurrProfile(double x) {
   return p;
 }
 
+absl::Status RadialProfiles::CheckCurrentProfileEnclosesEdgeCurrent() {
+  if (id_.ncurr != 1) {
+    return absl::OkStatus();
+  }
+  const double edge_current = std::abs(evalCurrProfile(1.0));
+  double largest_current = edge_current;
+  static constexpr int kSamples = 100;
+  for (int i = 1; i < kSamples; ++i) {
+    largest_current =
+        std::max(largest_current,
+                 std::abs(evalCurrProfile(static_cast<double>(i) / kSamples)));
+  }
+  if (largest_current > 0.0 && edge_current <= 1.0e-10 * largest_current) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "the current profile '%s' encloses no net current at the boundary "
+        "(I(1) = %.3e against max |I| = %.3e), so it cannot be scaled to "
+        "curtor; give a profile with I(1) != 0 or prescribe iota with ncurr = "
+        "0",
+        id_.pcurr_type, edge_current, largest_current));
+  }
+  return absl::OkStatus();
+}
+
 double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
                                            const Eigen::VectorXd& coeffs,
                                            const Eigen::VectorXd& splineKnots,

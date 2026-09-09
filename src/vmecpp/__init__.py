@@ -410,6 +410,13 @@ class VmecInput(BaseModelWithNumpy):
     nvacskip: int = 1
     """Number of iterations between full vacuum calculations."""
 
+    signgs: int = -1
+    """Sign of the Jacobian of the (s, theta, zeta) coordinates: -1 for the left-handed
+    system of Fortran VMEC, +1 for a right-handed one.
+
+    The input boundary is flipped in theta to match it.
+    """
+
     free_boundary_method: typing.Annotated[
         FreeBoundaryMethod,
         pydantic.BeforeValidator(_validate_free_boundary_method),
