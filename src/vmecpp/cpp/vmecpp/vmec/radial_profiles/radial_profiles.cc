@@ -335,15 +335,18 @@ std::string RadialProfiles::profileTypeToString(ProfileType profileType) {
 
 /** Compute the maximum toroidal and poloidal magnetic fluxes. */
 void RadialProfiles::computeMagneticFluxes() {
-  maxToroidalFlux = signOfJacobian * id_.phiedge / (2.0 * M_PI);
+  // the bloating factor scales the enclosed toroidal flux
+  const double phiedge = id_.phiedge * id_.bloat;
+  maxToroidalFlux = signOfJacobian * phiedge / (2.0 * M_PI);
   double edgeToroidalFluxFromProfile = torflux(1.0);
   if (edgeToroidalFluxFromProfile != 0.0) {
     maxToroidalFlux /= edgeToroidalFluxFromProfile;
   }
 
-  // only required for lRFP == true (TODO) ...later...
-  // This assumes that the same scaling factor (=phiedge) is used for phi' and
-  // chi'.
+  // maxPoloidalFlux is set here and then never read: chips and chipf are built
+  // from maxToroidalFlux * polfluxDeriv, so nothing in the solver consumes it,
+  // and only the reference comparison of profil1d does. Scaling it from
+  // maxToroidalFlux assumes phiedge scales both phi' and chi'.
   maxPoloidalFlux = maxToroidalFlux;
   double edgePoloidalFluxFromProfile = polflux(1.0);
   if (edgePoloidalFluxFromProfile != 0.0) {
@@ -371,8 +374,13 @@ double RadialProfiles::torfluxDeriv(double x) {
  * @return
  */
 double RadialProfiles::torflux(double x) {
-  //  Analytic evaluation of the polynomial (0 at x=0)
-  //  using Horner's method
+  //  Analytic evaluation of the polynomial (0 at x=0) using Horner's method.
+  //  This is the exact integral of torfluxDeriv, which is what keeps the
+  //  normalization consistent: phipf is built from torfluxDeriv and
+  //  maxToroidalFlux divides by torflux(1), so the profile is scaled by the
+  //  value it actually integrates to and the enclosed flux at the edge comes
+  //  out at signOfJacobian * phiedge / 2 pi for any aphi. Approximating this
+  //  integral by a quadrature would divide by something else and miss it.
   double torflux = 0.0;
   for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
     torflux = x * torflux + id_.aphi[i];
@@ -453,6 +461,29 @@ double RadialProfiles::evalCurrProfile(double x) {
                                  /*shouldIntegrate=*/true, normX);
 
   return p;
+}
+
+absl::Status RadialProfiles::CheckCurrentProfileEnclosesEdgeCurrent() {
+  if (id_.ncurr != 1) {
+    return absl::OkStatus();
+  }
+  const double edge_current = std::abs(evalCurrProfile(1.0));
+  double largest_current = edge_current;
+  static constexpr int kSamples = 100;
+  for (int i = 1; i < kSamples; ++i) {
+    largest_current =
+        std::max(largest_current,
+                 std::abs(evalCurrProfile(static_cast<double>(i) / kSamples)));
+  }
+  if (largest_current > 0.0 && edge_current <= 1.0e-10 * largest_current) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "the current profile '%s' encloses no net current at the boundary "
+        "(I(1) = %.3e against max |I| = %.3e), so it cannot be scaled to "
+        "curtor; give a profile with I(1) != 0 or prescribe iota with ncurr = "
+        "0",
+        id_.pcurr_type, edge_current, largest_current));
+  }
+  return absl::OkStatus();
 }
 
 double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
@@ -567,6 +598,8 @@ double RadialProfiles::evalGaussTrunc(const Eigen::VectorXd& coeffs, double x,
 }
 
 double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
+  // c0 + (2/pi) * sum_i c_i * atan(c_{i+1} * x^c_{i+2} / (1 - x)^c_{i+3}) for
+  // i = 1, 5, 9, 13, 17; each term rises from 0 at x = 0 to c_i at x = 1.
   double ret = 0.0;
 
   if (coeffs.size() > 0) {
@@ -590,26 +623,28 @@ double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
       ret += coeffs[17];
     }
   } else {
+    double atan_sum = 0.0;
     if (coeffs.size() >= 5) {
-      ret += coeffs[1] * std::atan(coeffs[2] * std::pow(x, coeffs[3]) /
-                                   std::pow(1 - x, coeffs[4]));
+      atan_sum += coeffs[1] * std::atan(coeffs[2] * std::pow(x, coeffs[3]) /
+                                        std::pow(1 - x, coeffs[4]));
     }
     if (coeffs.size() >= 9) {
-      ret += coeffs[5] * std::atan(coeffs[6] * std::pow(x, coeffs[7]) /
-                                   std::pow(1 - x, coeffs[8]));
+      atan_sum += coeffs[5] * std::atan(coeffs[6] * std::pow(x, coeffs[7]) /
+                                        std::pow(1 - x, coeffs[8]));
     }
     if (coeffs.size() >= 13) {
-      ret += coeffs[9] * std::atan(coeffs[10] * std::pow(x, coeffs[11]) /
-                                   std::pow(1 - x, coeffs[12]));
+      atan_sum += coeffs[9] * std::atan(coeffs[10] * std::pow(x, coeffs[11]) /
+                                        std::pow(1 - x, coeffs[12]));
     }
     if (coeffs.size() >= 17) {
-      ret += coeffs[13] * std::atan(coeffs[14] * std::pow(x, coeffs[15]) /
-                                    std::pow(1 - x, coeffs[16]));
+      atan_sum += coeffs[13] * std::atan(coeffs[14] * std::pow(x, coeffs[15]) /
+                                         std::pow(1 - x, coeffs[16]));
     }
     if (coeffs.size() >= 21) {
-      ret += coeffs[17] * std::atan(coeffs[18] * std::pow(x, coeffs[19]) /
-                                    std::pow(1 - x, coeffs[20]));
+      atan_sum += coeffs[17] * std::atan(coeffs[18] * std::pow(x, coeffs[19]) /
+                                         std::pow(1 - x, coeffs[20]));
     }
+    ret += 2.0 / M_PI * atan_sum;
   }
 
   return ret;
@@ -944,8 +979,8 @@ double RadialProfiles::evalRational(const Eigen::VectorXd& coeffs, double x) {
                               : std::numeric_limits<double>::max();
 }
 
-// Linear interpolation between closest points and associated knots.
-// Clamp the profile if x is outside the range of knots.
+// Linear interpolation between the two knots that bracket x, continued along
+// the first or last segment for an x outside the knots.
 double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
                                        const Eigen::VectorXd& splineValues,
                                        double x) {
@@ -953,24 +988,25 @@ double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
   if (n < 2 || n != static_cast<int>(splineValues.size())) {
     return 0.0;
   }
-  auto it = std::lower_bound(splineKnots.begin(), splineKnots.end(), x);
-  if (it >= (splineKnots.end() - 1)) {
-    // x is out of bounds (or x1 = it+1 would be out of bounds)
-    return splineValues[n - 1];
+  int ilow = 0;
+  if (x >= splineKnots[n - 1]) {
+    ilow = n - 2;
+  } else if (x > splineKnots[0]) {
+    // the first knot strictly above x, so the interval below it encloses x and
+    // has positive length
+    const auto upper =
+        std::upper_bound(splineKnots.begin(), splineKnots.end(), x);
+    ilow = static_cast<int>(std::distance(splineKnots.begin(), upper)) - 1;
   }
-  if (it == splineKnots.begin()) {
-    // x is below the first knot
-    return splineValues[0];
-  }
-  const double x0 = *it;
-  const double x1 = *(it + 1);
-  int ilow = static_cast<int>(std::distance(splineKnots.begin(), it));
+  const double x0 = splineKnots[ilow];
+  const double x1 = splineKnots[ilow + 1];
   const double y0 = splineValues[ilow];
   const double y1 = splineValues[ilow + 1];
   const double t = (x - x0) / (x1 - x0);
   return (1.0 - t) * y0 + t * y1;
 }
 
+// Integral of evalLineSegment from 0 to x.
 double RadialProfiles::evalLineSegmentIntegrated(
     const Eigen::VectorXd& splineKnots, const Eigen::VectorXd& splineValues,
     double x) {
@@ -979,38 +1015,24 @@ double RadialProfiles::evalLineSegmentIntegrated(
     return 0.0;
   }
 
-  auto integrate_segment = [](double x0, double x1, double y0, double y1) {
-    const double m = (y1 - y0) / (x1 - x0);
-    const double b = y0 - m * x0;
-    return m * 0.5 * (x1 * x1 - x0 * x0) + b * (x1 - x0);
+  const auto value_at = [this, &splineKnots, &splineValues](double xi) {
+    return evalLineSegment(splineKnots, splineValues, xi);
   };
 
-  double xi = x;
+  // The interpolant is linear between consecutive knots and along the
+  // continued end segments outside them, so the trapezoidal rule is exact on
+  // every piece the knots inside (0, x) cut the interval into.
   double result = 0.0;
-
-  if (xi <= splineKnots[0]) {
-    result += integrate_segment(0.0, xi, splineValues[0],
-                                evalLineSegment(splineKnots, splineValues, xi));
-    return result;
+  double lower = 0.0;
+  for (int i = 0; i < n && splineKnots[i] < x; ++i) {
+    if (splineKnots[i] <= lower) {
+      continue;
+    }
+    const double upper = splineKnots[i];
+    result += 0.5 * (upper - lower) * (value_at(lower) + value_at(upper));
+    lower = upper;
   }
-
-  int idx = 0;
-  while (idx < n - 1 && xi > splineKnots[idx + 1]) {
-    result += integrate_segment(splineKnots[idx], splineKnots[idx + 1],
-                                splineValues[idx], splineValues[idx + 1]);
-    ++idx;
-  }
-
-  const double x0 = splineKnots[idx];
-  const double x1 = std::min(xi, splineKnots[idx + 1]);
-  const double y0 = splineValues[idx];
-  const double y1 = splineValues[idx + 1];
-  result += integrate_segment(x0, x1, y0, y1);
-
-  if (xi > splineKnots[n - 1]) {
-    result += integrate_segment(splineKnots[n - 1], xi, splineValues[n - 1],
-                                evalLineSegment(splineKnots, splineValues, xi));
-  }
+  result += 0.5 * (x - lower) * (value_at(lower) + value_at(x));
 
   return result;
 }
@@ -1171,15 +1193,13 @@ void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
     }
   }  // jH
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-
-  m_h_.RegisterSpectralWidthContribution(spectral_width_contribution);
-
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(&spectral_width_contribution.numerator, 1, r_.get_thread_id(),
+                 r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                 m_h_.SpectralWidthNumerator());
+  SumOverThreads(&spectral_width_contribution.denominator, 1,
+                 r_.get_thread_id(), r_.get_num_threads(),
+                 m_h_.thread_reduce_slots.data(),
+                 m_h_.SpectralWidthDenominator());
 }  // AccumulateVolumeAveragedSpectralWidth
 
 }  // namespace vmecpp

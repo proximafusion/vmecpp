@@ -135,7 +135,7 @@ TEST_P(GeometryInitializationTest, CheckGeometryInitialization) {
         vmec.t_, output_quantities.wout.rmnc, output_quantities.wout.zmns,
         output_quantities.wout.lmns_full, output_quantities.wout.rmns,
         output_quantities.wout.zmnc, output_quantities.wout.lmnc_full,
-        *vmec.p_[thread_id], vmec.constants_, &(vmec.b_));
+        *vmec.p_[thread_id], vmec.constants_, vmec.indata_.signgs, &(vmec.b_));
 
     for (int jF = nsMinF1; jF < nsMaxF1; ++jF) {
       for (int m = 0; m < s.mpol; ++m) {
@@ -757,10 +757,10 @@ TEST(HotRestartIntegration, FreeBoundary) {
 
   // COMPARE RUN FROM SCRATCH AND HOT-RESTARTED RUN
   //
-  // The bound is set by jdotb, which differs by 2.8e-2 between the two runs,
-  // and jcuru at 1.6e-2. Everything else stays at or below 1.8e-3 (DMerc),
-  // with the geometry and field coefficients at 1e-5 and the integrated
-  // scalars at 1e-10 or tighter.
+  // 0.1 is close to the floor: DCurr differs by 5.9e-2 between the two runs,
+  // jdotb by 2.8e-2 and jcuru by 1.6e-2, while the geometry and field
+  // coefficients sit at 1e-5. Those are derivative diagnostics of two
+  // convergence paths into the same shallow minimum, not of one state.
   const double tolerance = 0.1;
   const bool check_equal_maximum_iterations = false;
   CompareWOut(displaced_hotrestarted_output->wout,

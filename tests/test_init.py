@@ -268,9 +268,11 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
         actual = np.asarray(test_value[:])
         desired = np.asarray(expected_value[:])
         if varname == "chipf":
-            # The Fortran reference leaves the axis chipf at zero; see computeBContra.
-            actual = actual[..., 1:]
-            desired = desired[..., 1:]
+            # The axis and the boundary entries of chipf follow PARVMEC
+            # rather than the 8.52 lineage the references come from; see
+            # computeBContra.
+            actual = actual[..., 1:-1]
+            desired = desired[..., 1:-1]
         np.testing.assert_allclose(
             actual,
             desired,
@@ -355,9 +357,11 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
         actual = np.asarray(test_value[:])
         desired = np.asarray(expected_value[:])
         if varname == "chipf":
-            # The Fortran reference leaves the axis chipf at zero; see computeBContra.
-            actual = actual[..., 1:]
-            desired = desired[..., 1:]
+            # The axis and the boundary entries of chipf follow PARVMEC
+            # rather than the 8.52 lineage the references come from; see
+            # computeBContra.
+            actual = actual[..., 1:-1]
+            desired = desired[..., 1:-1]
         np.testing.assert_allclose(
             actual,
             desired,
@@ -613,6 +617,26 @@ def test_ensure_vmec2000_input_with_null():
             indata_namelist = converted_indata_file.read_text()
             assert "rbs" not in indata_namelist
             assert "rbc" in indata_namelist, indata_namelist
+
+
+def test_ensure_vmec2000_input_keeps_axis():
+    # the JSON axis keys differ from the namelist names
+    reference = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "cth_like_fixed_bdy_asym.json"
+    )
+    assert reference.raxis_s is not None
+    assert reference.zaxis_c is not None
+    reference.raxis_s[1] = 1.0e-3
+    reference.zaxis_c[0] = -2.0e-3
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        vmecpp_input_file = Path(tmp_dir) / "axis.json"
+        reference.save(vmecpp_input_file)
+        with vmecpp.ensure_vmec2000_input(vmecpp_input_file) as indata_file:
+            round_trip = vmecpp.VmecInput.from_file(indata_file)
+    for name in ("raxis_c", "zaxis_s", "raxis_s", "zaxis_c"):
+        np.testing.assert_allclose(
+            getattr(round_trip, name), getattr(reference, name), rtol=1e-15, atol=0
+        )
 
 
 def test_ensure_vmecpp_input_noop():

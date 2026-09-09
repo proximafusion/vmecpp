@@ -112,8 +112,9 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
     }
   }
 
-  // undo m=1 constraint
+  // undo m=1 constraint; same map as FourierCoeffs::m1Constraint
   const double scalingFactor = 1.0;
+  const double sigma = -sign_of_jacobian;
   std::vector<std::vector<double> > rss_boundary;  // lthreed
   std::vector<std::vector<double> > zcs_boundary;  // lthreed
   std::vector<std::vector<double> > rsc_boundary;  // lasym
@@ -127,8 +128,10 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
       for (int n = 0; n <= s.ntor; ++n) {
         int idx_mn = m * (s.ntor + 1) + n;
         if (m == 1) {
-          rss_boundary[m][n] = (rbss[idx_mn] + zbcs[idx_mn]) * scalingFactor;
-          zcs_boundary[m][n] = (rbss[idx_mn] - zbcs[idx_mn]) * scalingFactor;
+          rss_boundary[m][n] =
+              (rbss[idx_mn] + sigma * zbcs[idx_mn]) * scalingFactor;
+          zcs_boundary[m][n] =
+              (sigma * rbss[idx_mn] - zbcs[idx_mn]) * scalingFactor;
         } else {
           rss_boundary[m][n] = rbss[idx_mn];
           zcs_boundary[m][n] = zbcs[idx_mn];
@@ -145,8 +148,10 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
       for (int n = 0; n <= s.ntor; ++n) {
         int idx_mn = m * (s.ntor + 1) + n;
         if (m == 1) {
-          rsc_boundary[m][n] = (rbsc[idx_mn] + zbcc[idx_mn]) * scalingFactor;
-          zcc_boundary[m][n] = (rbsc[idx_mn] - zbcc[idx_mn]) * scalingFactor;
+          rsc_boundary[m][n] =
+              (rbsc[idx_mn] + sigma * zbcc[idx_mn]) * scalingFactor;
+          zcc_boundary[m][n] =
+              (sigma * rbsc[idx_mn] - zbcc[idx_mn]) * scalingFactor;
         } else {
           rsc_boundary[m][n] = rbsc[idx_mn];
           zcc_boundary[m][n] = zbcc[idx_mn];
@@ -228,7 +233,15 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
   // inverse Fourier transforms:
   // evaluate R, Z, dR/dTheta and dZ/dTheta at radial locations ns12 and ns-1
   for (int k = 0; k < s.nZeta; ++k) {
-    for (int l = 0; l < s.nThetaReduced; ++l) {
+    // The poloidal basis is tabulated on the reduced theta interval. A
+    // stellarator-symmetric run takes the upper half from the mirror below;
+    // an asymmetric one has to evaluate there, which is the same sum read at
+    // the reflected basis index with sin(m theta) and its derivative negated.
+    const int n_theta_to_fill = s.lasym ? s.nThetaEven : s.nThetaReduced;
+    for (int l = 0; l < n_theta_to_fill; ++l) {
+      const bool reflected = l >= s.nThetaReduced;
+      const int l_basis = reflected ? (s.nThetaEven - l) % s.nThetaEven : l;
+      const double theta_parity = reflected ? -1.0 : 1.0;
       // set target storage to zero
       w.r_lcfs[k][l] = 0.0;
       w.z_lcfs[k][l] = 0.0;
@@ -242,7 +255,7 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
 
       for (int m = 0; m < s.mpol; ++m) {
         for (int n = 0; n <= s.ntor; ++n) {
-          int idx_ml = m * s.nThetaReduced + l;
+          int idx_ml = m * s.nThetaReduced + l_basis;
           int idx_kn = k * (s.nnyq2 + 1) + n;
           int idx_mn = m * (s.ntor + 1) + n;
 
@@ -250,73 +263,80 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
 
           w.r_lcfs[k][l] +=
               basis_norm * rbcc[idx_mn] * t.cosmu[idx_ml] * t.cosnv[idx_kn];
-          w.z_lcfs[k][l] +=
-              basis_norm * zbsc[idx_mn] * t.sinmu[idx_ml] * t.cosnv[idx_kn];
-          w.d_r_d_theta_lcfs[k][l] +=
-              basis_norm * rbcc[idx_mn] * t.sinmum[idx_ml] * t.cosnv[idx_kn];
+          w.z_lcfs[k][l] += basis_norm * zbsc[idx_mn] * theta_parity *
+                            t.sinmu[idx_ml] * t.cosnv[idx_kn];
+          w.d_r_d_theta_lcfs[k][l] += basis_norm * rbcc[idx_mn] * theta_parity *
+                                      t.sinmum[idx_ml] * t.cosnv[idx_kn];
           w.d_z_d_theta_lcfs[k][l] +=
               basis_norm * zbsc[idx_mn] * t.cosmum[idx_ml] * t.cosnv[idx_kn];
           w.r_half[k][l] +=
               basis_norm * rcc_half[m][n] * t.cosmu[idx_ml] * t.cosnv[idx_kn];
-          w.z_half[k][l] +=
-              basis_norm * zsc_half[m][n] * t.sinmu[idx_ml] * t.cosnv[idx_kn];
-          w.d_r_d_theta_half[k][l] +=
-              basis_norm * rcc_half[m][n] * t.sinmum[idx_ml] * t.cosnv[idx_kn];
+          w.z_half[k][l] += basis_norm * zsc_half[m][n] * theta_parity *
+                            t.sinmu[idx_ml] * t.cosnv[idx_kn];
+          w.d_r_d_theta_half[k][l] += basis_norm * rcc_half[m][n] *
+                                      theta_parity * t.sinmum[idx_ml] *
+                                      t.cosnv[idx_kn];
           w.d_z_d_theta_half[k][l] +=
               basis_norm * zsc_half[m][n] * t.cosmum[idx_ml] * t.cosnv[idx_kn];
           if (s.lthreed) {
-            w.r_lcfs[k][l] += basis_norm * rss_boundary[m][n] *
+            w.r_lcfs[k][l] += basis_norm * rss_boundary[m][n] * theta_parity *
                               t.sinmu[idx_ml] * t.sinnv[idx_kn];
             w.z_lcfs[k][l] += basis_norm * zcs_boundary[m][n] *
                               t.cosmu[idx_ml] * t.sinnv[idx_kn];
             w.d_r_d_theta_lcfs[k][l] += basis_norm * rss_boundary[m][n] *
                                         t.cosmum[idx_ml] * t.sinnv[idx_kn];
             w.d_z_d_theta_lcfs[k][l] += basis_norm * zcs_boundary[m][n] *
-                                        t.sinmum[idx_ml] * t.sinnv[idx_kn];
+                                        theta_parity * t.sinmum[idx_ml] *
+                                        t.sinnv[idx_kn];
 
-            w.r_half[k][l] +=
-                basis_norm * rss_half[m][n] * t.sinmu[idx_ml] * t.sinnv[idx_kn];
+            w.r_half[k][l] += basis_norm * rss_half[m][n] * theta_parity *
+                              t.sinmu[idx_ml] * t.sinnv[idx_kn];
             w.z_half[k][l] +=
                 basis_norm * zcs_half[m][n] * t.cosmu[idx_ml] * t.sinnv[idx_kn];
             w.d_r_d_theta_half[k][l] += basis_norm * rss_half[m][n] *
                                         t.cosmum[idx_ml] * t.sinnv[idx_kn];
             w.d_z_d_theta_half[k][l] += basis_norm * zcs_half[m][n] *
-                                        t.sinmum[idx_ml] * t.sinnv[idx_kn];
+                                        theta_parity * t.sinmum[idx_ml] *
+                                        t.sinnv[idx_kn];
           }
           if (s.lasym) {
-            w.r_lcfs[k][l] += basis_norm * rsc_boundary[m][n] *
+            w.r_lcfs[k][l] += basis_norm * rsc_boundary[m][n] * theta_parity *
                               t.sinmu[idx_ml] * t.cosnv[idx_kn];
             w.z_lcfs[k][l] += basis_norm * zcc_boundary[m][n] *
                               t.cosmu[idx_ml] * t.cosnv[idx_kn];
             w.d_r_d_theta_lcfs[k][l] += basis_norm * rsc_boundary[m][n] *
                                         t.cosmum[idx_ml] * t.cosnv[idx_kn];
             w.d_z_d_theta_lcfs[k][l] += basis_norm * zcc_boundary[m][n] *
-                                        t.sinmum[idx_ml] * t.cosnv[idx_kn];
+                                        theta_parity * t.sinmum[idx_ml] *
+                                        t.cosnv[idx_kn];
 
-            w.r_half[k][l] +=
-                basis_norm * rsc_half[m][n] * t.sinmu[idx_ml] * t.cosnv[idx_kn];
+            w.r_half[k][l] += basis_norm * rsc_half[m][n] * theta_parity *
+                              t.sinmu[idx_ml] * t.cosnv[idx_kn];
             w.z_half[k][l] +=
                 basis_norm * zcc_half[m][n] * t.cosmu[idx_ml] * t.cosnv[idx_kn];
             w.d_r_d_theta_half[k][l] += basis_norm * rsc_half[m][n] *
                                         t.cosmum[idx_ml] * t.cosnv[idx_kn];
             w.d_z_d_theta_half[k][l] += basis_norm * zcc_half[m][n] *
-                                        t.sinmum[idx_ml] * t.cosnv[idx_kn];
+                                        theta_parity * t.sinmum[idx_ml] *
+                                        t.cosnv[idx_kn];
             if (s.lthreed) {
               w.r_lcfs[k][l] +=
                   basis_norm * rbcs[idx_mn] * t.cosmu[idx_ml] * t.sinnv[idx_kn];
-              w.z_lcfs[k][l] +=
-                  basis_norm * zbss[idx_mn] * t.sinmu[idx_ml] * t.sinnv[idx_kn];
+              w.z_lcfs[k][l] += basis_norm * zbss[idx_mn] * theta_parity *
+                                t.sinmu[idx_ml] * t.sinnv[idx_kn];
               w.d_r_d_theta_lcfs[k][l] += basis_norm * rbcs[idx_mn] *
-                                          t.sinmum[idx_ml] * t.sinnv[idx_kn];
+                                          theta_parity * t.sinmum[idx_ml] *
+                                          t.sinnv[idx_kn];
               w.d_z_d_theta_lcfs[k][l] += basis_norm * zbss[idx_mn] *
                                           t.cosmum[idx_ml] * t.sinnv[idx_kn];
 
               w.r_half[k][l] += basis_norm * rcs_half[m][n] * t.cosmu[idx_ml] *
                                 t.sinnv[idx_kn];
-              w.z_half[k][l] += basis_norm * zss_half[m][n] * t.sinmu[idx_ml] *
-                                t.sinnv[idx_kn];
+              w.z_half[k][l] += basis_norm * zss_half[m][n] * theta_parity *
+                                t.sinmu[idx_ml] * t.sinnv[idx_kn];
               w.d_r_d_theta_half[k][l] += basis_norm * rcs_half[m][n] *
-                                          t.sinmum[idx_ml] * t.sinnv[idx_kn];
+                                          theta_parity * t.sinmum[idx_ml] *
+                                          t.sinnv[idx_kn];
               w.d_z_d_theta_half[k][l] += basis_norm * zss_half[m][n] *
                                           t.cosmum[idx_ml] * t.sinnv[idx_kn];
             }
@@ -379,7 +399,10 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
 
   // main loop in which, for each poloidal cutplane,
   // the new axis position is estimated
-  for (int k = 0; k < s.nZeta / 2 + 1; ++k) {
+  // A symmetric run takes the second half of the toroidal range from the
+  // mirror below, which does not hold for an asymmetric one.
+  const int number_of_planes_to_search = s.lasym ? s.nZeta : s.nZeta / 2 + 1;
+  for (int k = 0; k < number_of_planes_to_search; ++k) {
     // compute grid extent
     const double min_r =
         *std::min_element(w.r_lcfs[k].begin(), w.r_lcfs[k].end());
