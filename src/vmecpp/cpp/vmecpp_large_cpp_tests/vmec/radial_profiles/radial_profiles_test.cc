@@ -44,6 +44,11 @@ using ::testing::Values;
 struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
+  // One tolerance per entry of ns_array. The profiles of a later multi-grid
+  // step are built from the interpolated solution of the previous one, so they
+  // carry a little more rounding than the first step does. Empty means every
+  // step uses `tolerance`.
+  std::vector<double> multigrid_tolerances = {};
 };
 
 TEST(TestRadialProfiles, CheckSolovevSingleThreaded) {
@@ -149,8 +154,6 @@ class RadialProfilesTest : public TestWithParam<DataSource> {
 };
 
 TEST_P(RadialProfilesTest, CheckRadialProfiles) {
-  const double tolerance = data_source_.tolerance;
-
   std::string filename =
       absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
@@ -159,119 +162,139 @@ TEST_P(RadialProfilesTest, CheckRadialProfiles) {
   absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
 
-  Vmec vmec(*vmec_indata);
-  const Sizes& s = vmec.s_;
-  const FlowControl& fc = vmec.fc_;
-  const VmecConstants& vmec_consts = vmec.constants_;
+  // educational_VMEC dumps profil1d and profil3d for every entry of ns_array,
+  // so each multi-grid step is checked, not only the first.
+  const int num_multi_grid_steps =
+      static_cast<int>(vmec_indata->ns_array.size());
+  ASSERT_GT(num_multi_grid_steps, 0);
 
-  // run to SETUP_INITIAL_STATE in order to also get scalxc computed
-  bool reached_checkpoint =
-      vmec.run(VmecCheckpoint::SETUP_INITIAL_STATE, 1).value();
-  ASSERT_TRUE(reached_checkpoint);
+  for (int multi_grid_step = 1; multi_grid_step <= num_multi_grid_steps;
+       ++multi_grid_step) {
+    const double tolerance =
+        data_source_.multigrid_tolerances.empty()
+            ? data_source_.tolerance
+            : data_source_.multigrid_tolerances.at(multi_grid_step - 1);
 
-  filename = absl::StrFormat(
-      "vmecpp_large_cpp_tests/test_data/%s/profil1d/"
-      "profil1d_%05d_000001_%02d.%s.json",
-      data_source_.identifier, fc.ns, vmec.get_num_eqsolve_retries(),
-      data_source_.identifier);
+    Vmec vmec(*vmec_indata);
+    const Sizes& s = vmec.s_;
+    const FlowControl& fc = vmec.fc_;
+    const VmecConstants& vmec_consts = vmec.constants_;
 
-  std::ifstream ifs_profil1d(filename);
-  ASSERT_TRUE(ifs_profil1d.is_open());
-  json profil1d = json::parse(ifs_profil1d);
+    // run to SETUP_INITIAL_STATE of the requested multi-grid step in order to
+    // also get scalxc computed
+    bool reached_checkpoint =
+        vmec.run(VmecCheckpoint::SETUP_INITIAL_STATE, 1, multi_grid_step,
+                 std::nullopt, multi_grid_step)
+            .value();
+    ASSERT_TRUE(reached_checkpoint);
 
-  // TODO(jons): load data for current ns value, once this test runs for all
-  // entries in ns_array
-  filename = absl::StrFormat(
-      "vmecpp_large_cpp_tests/test_data/%s/profil3d/"
-      "profil3d_%05d_000001_%02d.%s.json",
-      data_source_.identifier, fc.ns, vmec.get_num_eqsolve_retries(),
-      data_source_.identifier);
-  std::ifstream ifs_profil3d(filename);
-  ASSERT_TRUE(ifs_profil3d.is_open());
-  json profil3d = json::parse(ifs_profil3d);
+    // The trailing index counts eq-solve retries within the multi-grid step.
+    // At a SETUP_INITIAL_STATE checkpoint the step has not solved yet, so it is
+    // always zero; get_num_eqsolve_retries() is cumulative over earlier steps
+    // and would not name the reference file.
+    filename = absl::StrFormat(
+        "vmecpp_large_cpp_tests/test_data/%s/profil1d/"
+        "profil1d_%05d_000001_00.%s.json",
+        data_source_.identifier, fc.ns, data_source_.identifier);
 
-  for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
-    const RadialPartitioning& r = *vmec.r_[thread_id];
-    const RadialProfiles& p = *(vmec.p_[thread_id]);
+    std::ifstream ifs_profil1d(filename);
+    ASSERT_TRUE(ifs_profil1d.is_open()) << filename;
+    json profil1d = json::parse(ifs_profil1d);
 
-    const int nsMinH = r.nsMinH;
-    const int nsMaxH = r.nsMaxH;
+    filename = absl::StrFormat(
+        "vmecpp_large_cpp_tests/test_data/%s/profil3d/"
+        "profil3d_%05d_000001_00.%s.json",
+        data_source_.identifier, fc.ns, data_source_.identifier);
+    std::ifstream ifs_profil3d(filename);
+    ASSERT_TRUE(ifs_profil3d.is_open());
+    json profil3d = json::parse(ifs_profil3d);
 
-    const int nsMinF1 = r.nsMinF1;
-    const int nsMaxF1 = r.nsMaxF1;
+    for (int thread_id = 0; thread_id < vmec.num_threads_; ++thread_id) {
+      const RadialPartitioning& r = *vmec.r_[thread_id];
+      const RadialProfiles& p = *(vmec.p_[thread_id]);
 
-    EXPECT_TRUE(
-        IsCloseRelAbs(profil1d["torflux_edge"], p.maxToroidalFlux, tolerance));
-    EXPECT_TRUE(
-        IsCloseRelAbs(profil1d["polflux_edge"], p.maxPoloidalFlux, tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(
-        profil1d["r00"], vmec_indata->rbc(0, vmec_indata->ntor), tolerance));
-    // now in HandoverStorage!
-    EXPECT_TRUE(
-        IsCloseRelAbs(profil1d["lamscale"], vmec_consts.lamscale, tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(profil1d["currv"], p.currv, tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(profil1d["Itor"], p.Itor, tolerance));
+      const int nsMinH = r.nsMinH;
+      const int nsMaxH = r.nsMaxH;
 
-    // half-grid profiles
-    for (int jH = nsMinH; jH < nsMaxH; ++jH) {
-      EXPECT_TRUE(IsCloseRelAbs(profil1d["shalf"][jH + 1],
-                                p.sqrtSH[jH - nsMinH], tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(profil1d["phips"][jH + 1], p.phipH[jH - nsMinH],
+      const int nsMinF1 = r.nsMinF1;
+      const int nsMaxF1 = r.nsMaxF1;
+
+      EXPECT_TRUE(IsCloseRelAbs(profil1d["torflux_edge"], p.maxToroidalFlux,
                                 tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(profil1d["chips"][jH], p.chipH[jH - nsMinH],
+      EXPECT_TRUE(IsCloseRelAbs(profil1d["polflux_edge"], p.maxPoloidalFlux,
                                 tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(profil1d["iotas"][jH], p.iotaH[jH - nsMinH],
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(profil1d["icurv"][jH], p.currH[jH - nsMinH],
-                                tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(
+          profil1d["r00"], vmec_indata->rbc(0, vmec_indata->ntor), tolerance));
+      // now in HandoverStorage!
       EXPECT_TRUE(
-          IsCloseRelAbs(profil1d["mass"][jH], p.massH[jH - nsMinH], tolerance));
+          IsCloseRelAbs(profil1d["lamscale"], vmec_consts.lamscale, tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(profil1d["currv"], p.currv, tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(profil1d["Itor"], p.Itor, tolerance));
 
-      EXPECT_TRUE(
-          IsCloseRelAbs(profil1d["sp"][jH + 1], p.sp[jH - nsMinH], tolerance));
-      EXPECT_TRUE(
-          IsCloseRelAbs(profil1d["sm"][jH + 1], p.sm[jH - nsMinH], tolerance));
-    }
+      // half-grid profiles
+      for (int jH = nsMinH; jH < nsMaxH; ++jH) {
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["shalf"][jH + 1],
+                                  p.sqrtSH[jH - nsMinH], tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["phips"][jH + 1],
+                                  p.phipH[jH - nsMinH], tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["chips"][jH], p.chipH[jH - nsMinH],
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["iotas"][jH], p.iotaH[jH - nsMinH],
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["icurv"][jH], p.currH[jH - nsMinH],
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["mass"][jH], p.massH[jH - nsMinH],
+                                  tolerance));
 
-    // full-grid profiles
-    for (int jF = nsMinF1; jF < nsMaxF1; ++jF) {
-      EXPECT_TRUE(IsCloseRelAbs(profil1d["sqrts"][jF], p.sqrtSF[jF - nsMinF1],
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(profil1d["phipf"][jF], p.phipF[jF - nsMinF1],
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(profil1d["chipf"][jF], p.chipF[jF - nsMinF1],
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(profil1d["iotaf"][jF], p.iotaF[jF - nsMinF1],
-                                tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(profil1d["bdamp"][jF],
-                                p.radialBlending[jF - nsMinF1], tolerance));
-    }
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["sp"][jH + 1], p.sp[jH - nsMinH],
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["sm"][jH + 1], p.sm[jH - nsMinH],
+                                  tolerance));
+      }
 
-    // scalxc is in profil3d output in educational_VMEC,
-    // but is computed in RadialProfiles in VMEC++, so test it here.
-    for (int jF = nsMinF1; jF < nsMaxF1; ++jF) {
-      for (int n = 0; n < s.ntor + 1; ++n) {
-        for (int m = 0; m < s.mpol; ++m) {
-          if (m % 2 == 0) {
-            // m is even
-            EXPECT_TRUE(IsCloseRelAbs(
-                profil3d["scalxc"][jF][n][m],
-                p.scalxc[(jF - nsMinF1) * 2 + kEvenParity], tolerance));
-          } else {
-            // m is odd
-            EXPECT_TRUE(IsCloseRelAbs(profil3d["scalxc"][jF][n][m],
-                                      p.scalxc[(jF - nsMinF1) * 2 + kOddParity],
-                                      tolerance));
-          }
-        }  // m
-      }  // n
-    }
-  }  // thread_id
+      // full-grid profiles
+      for (int jF = nsMinF1; jF < nsMaxF1; ++jF) {
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["sqrts"][jF], p.sqrtSF[jF - nsMinF1],
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["phipf"][jF], p.phipF[jF - nsMinF1],
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["chipf"][jF], p.chipF[jF - nsMinF1],
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["iotaf"][jF], p.iotaF[jF - nsMinF1],
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(profil1d["bdamp"][jF],
+                                  p.radialBlending[jF - nsMinF1], tolerance));
+      }
+
+      // scalxc is in profil3d output in educational_VMEC,
+      // but is computed in RadialProfiles in VMEC++, so test it here.
+      for (int jF = nsMinF1; jF < nsMaxF1; ++jF) {
+        for (int n = 0; n < s.ntor + 1; ++n) {
+          for (int m = 0; m < s.mpol; ++m) {
+            if (m % 2 == 0) {
+              // m is even
+              EXPECT_TRUE(IsCloseRelAbs(
+                  profil3d["scalxc"][jF][n][m],
+                  p.scalxc[(jF - nsMinF1) * 2 + kEvenParity], tolerance));
+            } else {
+              // m is odd
+              EXPECT_TRUE(IsCloseRelAbs(
+                  profil3d["scalxc"][jF][n][m],
+                  p.scalxc[(jF - nsMinF1) * 2 + kOddParity], tolerance));
+            }
+          }  // m
+        }  // n
+      }
+    }  // thread_id
+  }  // multi_grid_step
 }  // CheckSolovevMultiThreaded
 
 INSTANTIATE_TEST_SUITE_P(
     TestRadialProfiles, RadialProfilesTest,
-    Values(DataSource{.identifier = "solovev", .tolerance = DBL_EPSILON / 2},
+    Values(DataSource{.identifier = "solovev",
+                      .tolerance = DBL_EPSILON / 2,
+                      .multigrid_tolerances = {DBL_EPSILON / 2, 5.0e-16,
+                                               5.0e-16}},
            DataSource{.identifier = "solovev_analytical", .tolerance = 1.0e-15},
            DataSource{.identifier = "solovev_no_axis",
                       .tolerance = DBL_EPSILON / 2},
