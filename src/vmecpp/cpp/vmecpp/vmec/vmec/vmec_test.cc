@@ -1006,3 +1006,18 @@ TEST(TestVmec, BloatScalesTheEnclosedToroidalFlux) {
         << "bloat = " << bloat;
   }
 }  // BloatScalesTheEnclosedToroidalFlux
+
+// A multigrid step count below one solves nothing and is rejected.
+TEST(TestVmec, ZeroMaximumMultiGridStepIsRejected) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  Vmec vmec(*indata);
+  const absl::StatusOr<bool> reached =
+      vmec.run(VmecCheckpoint::NONE, INT_MAX, /*maximum_multi_grid_step=*/0);
+  ASSERT_FALSE(reached.ok());
+  EXPECT_EQ(reached.status().code(), absl::StatusCode::kInvalidArgument);
+}  // ZeroMaximumMultiGridStepIsRejected
