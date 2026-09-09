@@ -133,7 +133,7 @@ class Vmec {
   // multigrid steps.
   void SetupVacuumSolvers();
 
-  bool InitializeRadial(
+  absl::StatusOr<bool> InitializeRadial(
       VmecCheckpoint checkpoint, int maximum_iterations, int nsval, int ns_old,
       double& m_delt0,
       const std::optional<HotRestartState>& initial_state = std::nullopt,

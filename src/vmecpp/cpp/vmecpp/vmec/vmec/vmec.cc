@@ -356,8 +356,13 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
       // value
-      if (InitializeRadial(checkpoint, iterations_before_checkpointing,
-                           fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state)) {
+      const absl::StatusOr<bool> initialized =
+          InitializeRadial(checkpoint, iterations_before_checkpointing,
+                           fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state);
+      if (!initialized.ok()) {
+        return initialized.status();
+      }
+      if (*initialized) {
         return true;
       }
 
@@ -535,7 +540,7 @@ void Vmec::SetupVacuumSolvers() {
 }  // SetupVacuumSolvers
 
 // initialize_radial quantities, return true if a checkpoint was reached
-bool Vmec::InitializeRadial(
+absl::StatusOr<bool> Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
     const std::optional<HotRestartState>& initial_state,
@@ -658,6 +663,12 @@ bool Vmec::InitializeRadial(
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
                                    indata_.lforbal);
     }  // thread_id
+
+    absl::Status current_profile_status =
+        p_[0]->CheckCurrentProfileEnclosesEdgeCurrent();
+    if (!current_profile_status.ok()) {
+      return current_profile_status;
+    }
 
     if (checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
         iterations_before_checkpointing <= 1) {
