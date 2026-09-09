@@ -189,7 +189,7 @@ void FourierGeometry::InitFromState(
     const RowMatrixXd& zmns, const RowMatrixXd& lmns_full,
     const RowMatrixXd& rmns, const RowMatrixXd& zmnc,
     const RowMatrixXd& lmnc_full, const RadialProfiles& p,
-    const VmecConstants& constants, const Boundaries* b) {
+    const VmecConstants& constants, int sign_of_jacobian, const Boundaries* b) {
   if (s_.lasym) {
     // The antisymmetric half must be present, or the restart would silently
     // begin from the stellarator-symmetric projection of the given state.
@@ -384,7 +384,7 @@ void FourierGeometry::InitFromState(
   // If performing a free-boundary hot-restart,
   // also the boundary geometry is initialized from the given initial state,
   // and hence the m=1 constraint also needs to be activated on the boundary.
-  this->m1Constraint(0.5, max_ns_to_set_rz_on_from_state);
+  this->m1Constraint(0.5, sign_of_jacobian, max_ns_to_set_rz_on_from_state);
 
   if (nsMin_ == 0) {
     // remove towards-axis-extrapolated m=0 coefficients of lambda (was done

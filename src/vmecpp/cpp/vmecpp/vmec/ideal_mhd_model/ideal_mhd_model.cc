@@ -481,7 +481,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
   }
 
   // undo m=1 constraint
-  m_physical_x.m1Constraint(1.0);
+  m_physical_x.m1Constraint(1.0, signOfJacobian);
 
   m_physical_x.extrapolateTowardsAxis();
 
@@ -935,7 +935,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // fsqz measure unchanged, and is its own inverse. With 1/2 the map would
   // instead halve the residuals on every application. Fortran residue.f90
   // constrain_m1 uses osqrt2 for the same reason.
-  m_decomposed_f.m1Constraint(1.0 / std::numbers::sqrt2);
+  m_decomposed_f.m1Constraint(1.0 / std::numbers::sqrt2, signOfJacobian);
 
   // v8.50: ADD iter2<2 so reset=<WOUT_FILE> works
   const bool fix_m1_gauge =
@@ -2543,7 +2543,7 @@ void IdealMhdModel::packGeometry(FourierGeometry& m_decomposed,
   // tangent it yields the exact geometry tangent (the chain is linear), so no
   // finite difference is needed.
   m_decomposed.decomposeInto(m_physical_scratch, m_p_.scalxc);
-  m_physical_scratch.m1Constraint(1.0);
+  m_physical_scratch.m1Constraint(1.0, signOfJacobian);
   m_physical_scratch.extrapolateTowardsAxis();
   geometryFromFourier(m_physical_scratch);
 
@@ -2691,7 +2691,7 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   // tail of update()
   forcesToFourier(m_physical_f);
   m_physical_f.decomposeInto(m_decomposed_hv, m_p_.scalxc);
-  m_decomposed_hv.m1Constraint(1.0 / std::numbers::sqrt2);
+  m_decomposed_hv.m1Constraint(1.0 / std::numbers::sqrt2, signOfJacobian);
   if (fix_m1_gauge) {
     m_decomposed_hv.zeroZForceForM1();
   }
@@ -3072,7 +3072,7 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
   if (fix_m1_gauge) {
     m_decomposed_in.zeroZForceForM1();
   }
-  m_decomposed_in.m1Constraint(1.0 / std::numbers::sqrt2);
+  m_decomposed_in.m1Constraint(1.0 / std::numbers::sqrt2, signOfJacobian);
   m_decomposed_in.decomposeInto(m_physical_f, m_p_.scalxc);
   if (s_.lthreed) {
     dft_ForcesToFourierTranspose_3d_symm(m_physical_f);
@@ -3161,7 +3161,7 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
     dft_FourierToRealTranspose_2d_symm(m_physical_scratch);
   }
   m_physical_scratch.extrapolateTowardsAxisTranspose();
-  m_physical_scratch.m1Constraint(1.0);
+  m_physical_scratch.m1Constraint(1.0, signOfJacobian);
   m_physical_scratch.decomposeInto(m_decomposed_out, m_p_.scalxc);
 }
 
