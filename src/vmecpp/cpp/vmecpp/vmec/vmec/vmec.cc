@@ -1506,12 +1506,7 @@ void Vmec::AccumulateGeometryChange(int thread_id) {
     fc_.geometry_change = previous == nullptr ? -1.0 : h_.GeometryChange();
   }
 
-  if (previous == nullptr) {
-    geometry_at_last_printout_[thread_id] =
-        std::make_unique<FourierGeometry>(x);
-  } else {
-    *geometry_at_last_printout_[thread_id] = x;
-  }
+  geometry_at_last_printout_[thread_id] = std::make_unique<FourierGeometry>(x);
 }
 
 void Vmec::Printout(double delt0r, int thread_id, int iter2) {
