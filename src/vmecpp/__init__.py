@@ -1960,7 +1960,8 @@ class Threed1GeometricAndMagneticQuantities(BaseModelWithNumpy):
     """Normalization factor used in the threed1 computation."""
 
     b0: float
-    """Magnetic field magnitude on the magnetic axis."""
+    """On-axis R B_phi (``rbtor0``) divided by the major radius of the magnetic axis at
+    phi = 0; the field strength on the axis only for a planar circular axis."""
 
     rmax_surf: float
     """Maximum major radius on the boundary."""
