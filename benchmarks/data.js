@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789076250190,
+  "lastUpdate": 1789077092509,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18551,6 +18551,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4073153019999154,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6f26b803429f622e9cce6c3a199927687c23f352",
+          "message": "Fix the sign of the cross terms in NESTOR's analytic add-back (#825)\n\n* Fix the sign of the cross terms in NESTOR's analytic add-back\n\n* Apply clang-format to the new NESTOR tests\n\n* Regenerate the cth_like_free_bdy references with the corrected NESTOR and update the benchmark volume\n\n* Regenerate the cth_like_free_bdy_asym vacuum references with the corrected NESTOR\n\n* Write the NESTOR fix as the T and S assignment swap in the analysum2 branch\n\n* Regenerate the CTH free-boundary references for cubic vacuum interpolation\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-09-10T23:32:27+02:00",
+          "tree_id": "068989be2c4638090ba663d38e9ad82d69f6f40e",
+          "url": "https://github.com/proximafusion/vmecpp/commit/6f26b803429f622e9cce6c3a199927687c23f352"
+        },
+        "date": 1789077085796,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3367430514000148,
+            "range": "stddev: 0.000896073030370315",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.591840116666674,
+            "range": "stddev: 0.007016846570564325",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0479048623333256,
+            "range": "stddev: 0.0012598176427822947",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.7490557433333531,
+            "range": "stddev: 0.03728032578888556",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.7021734099999815,
+            "range": "stddev: 0.010281272686440315",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.59500993366665,
+            "range": "stddev: 0.005904459455398429",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 6.535987206000016,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.2811660849999953,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
