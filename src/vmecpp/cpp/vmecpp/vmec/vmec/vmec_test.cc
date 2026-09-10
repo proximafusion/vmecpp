@@ -813,11 +813,9 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   const auto output = vmecpp::run(*indata, std::nullopt, 1);
   ASSERT_TRUE(output.ok());
 
-  // Regression guard for issue #330/#640 and other changes to the multigrid
-  // convergence path. 344 with the historical unbalanced stage entry; 321
-  // since the vacuum state is seeded across multigrid transitions (the
-  // second stage enters force-balanced instead of kicking the boundary).
-  EXPECT_EQ(output->wout.niter, 321);
+  // Regression guard for the seeded vacuum state across multigrid transitions
+  // with cubic vacuum field interpolation.
+  EXPECT_EQ(output->wout.niter, 322);
 }  // MultiGridFreeBoundary
 
 // The free-boundary threed1 section covers the poloidal range the run is solved
