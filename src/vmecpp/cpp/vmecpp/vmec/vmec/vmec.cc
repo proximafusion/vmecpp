@@ -32,6 +32,7 @@
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/free_boundary/nestor/nestor.h"
 #include "vmecpp/free_boundary/only_coils/only_coils.h"
+#include "vmecpp/vmec/geometry/vmec_geometry.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 
@@ -96,9 +97,11 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
-    InterruptCallback interrupt_callback) {
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
   auto maybe_vmec = Vmec::FromIndata(indata, nullptr, max_threads, verbose,
-                                     std::move(interrupt_callback));
+                                     std::move(interrupt_callback),
+                                     std::move(iteration_callback));
   if (!maybe_vmec.ok()) {
     return maybe_vmec.status();
   }
@@ -120,10 +123,11 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const makegrid::MagneticFieldResponseTable& magnetic_response_table,
     std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
-    InterruptCallback interrupt_callback) {
-  auto maybe_vmec =
-      Vmec::FromIndata(indata, &magnetic_response_table, max_threads, verbose,
-                       std::move(interrupt_callback));
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
+  auto maybe_vmec = Vmec::FromIndata(
+      indata, &magnetic_response_table, max_threads, verbose,
+      std::move(interrupt_callback), std::move(iteration_callback));
   if (!maybe_vmec.ok()) {
     return maybe_vmec.status();
   }
@@ -146,7 +150,8 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
     const VmecINDATA& indata,
     const makegrid::MagneticFieldResponseTable* magnetic_response_table,
     std::optional<int> max_threads, OutputMode verbose,
-    InterruptCallback interrupt_callback) {
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
   // check the input before the constructor builds Sizes from it; the
   // informational messages are left to the check in run()
   absl::Status is_indata_consistent =
@@ -156,7 +161,8 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
   }
 
   auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
-                                  std::move(interrupt_callback));
+                                  std::move(interrupt_callback),
+                                  std::move(iteration_callback));
 
   // This part of Vmec initialization requires Status handling, and is therefore
   // in this factory method instead of the constructor.
@@ -177,7 +183,8 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
 
 // initialize based on input file contents
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
-           OutputMode verbose, InterruptCallback interrupt_callback)
+           OutputMode verbose, InterruptCallback interrupt_callback,
+           IterationCallback iteration_callback)
     : indata_(indata),
       s_(indata_),
       t_(&s_),
@@ -188,6 +195,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       verbose_(verbose != OutputMode::kSilent),
       logger_(std::cout, verbose),
       interrupt_callback_(std::move(interrupt_callback)),
+      iteration_callback_(std::move(iteration_callback)),
       vacuum_pressure_state_(VacuumPressureState::kOff),
       status_(VmecStatus::NORMAL_TERMINATION),
       iter2_(1),
@@ -271,6 +279,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     }
   }
 
+  stopped_by_callback_ = false;
+
   // !!! THIS must be the ONLY place where this gets set to zero !!!
   num_eqsolve_retries_ = 0;
 
@@ -309,6 +319,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 
     const int max_grids = std::min(fc_.multi_ns_grid, maximum_multi_grid_step);
     for (int igrid = -jacob_off_; igrid < max_grids; igrid++) {
+      multigrid_step_ = igrid;
       constants_.reset();
 
       // retrieve settings for (ns, ftol, niter) for current multi-grid
@@ -379,6 +390,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         return reached_checkpoint;
       }
 
+      if (stopped_by_callback_) {
+        break;
+      }
+
       // break the multi-grid sequence if current number of flux surfaces did
       // not reach convergence
       if (status_ != VmecStatus::NORMAL_TERMINATION &&
@@ -410,7 +425,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // properly converged.
     }  // igrid
 
-    if (giving_up) {
+    if (giving_up || stopped_by_callback_) {
       break;
     }
 
@@ -426,7 +441,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     // if ier_flag .eq. bad_jacobian_flag, repeat once again with ns=3 before
   }  // jacob_off
 
-  if (status_ != VmecStatus::SUCCESSFUL_TERMINATION &&
+  if (status_ != VmecStatus::SUCCESSFUL_TERMINATION && !stopped_by_callback_ &&
       !indata_.return_outputs_even_if_not_converged) {
     // By the time we get here, a bad-Jacobian-type status has already been
     // reported (with more specific diagnostics) from inside the multigrid
@@ -1229,6 +1244,19 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
+    if (iteration_callback_) {
+      // Every thread has finished this iteration's time step; the master
+      // thread hands the state to the callback while the others wait.
+#ifdef _OPENMP
+#pragma omp barrier
+#pragma omp master
+#endif  // _OPENMP
+      NotifyIterationCallback(iter2, restart_reason, m_liter_flag);
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+    }
+
 // protect read of vacuum_pressure_state_ in get_delbsq called by Printout above
 // from write below
 #ifdef _OPENMP
@@ -1456,6 +1484,40 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   PerformTimeStep(fac, b1, time_step, thread_id);
 
   return false;
+}
+
+void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
+                                   bool& m_liter_flag) {
+  const IterationSnapshot snapshot{
+      .iteration = iter2,
+      .multigrid_step = multigrid_step_,
+      .ns = fc_.ns,
+      .fsqr = fc_.fsqr,
+      .fsqz = fc_.fsqz,
+      .fsql = fc_.fsql,
+      .ftol = fc_.ftolv,
+      .delt = fc_.delt0r,
+      .restart_reason = restart_reason,
+      .jacobian_resets = fc_.ijacob,
+      .vacuum_pressure_active =
+          vacuum_pressure_state_ >= VacuumPressureState::kInitialized,
+      .mhd_energy = h_.mhdEnergy * 4.0 * M_PI * M_PI,
+      .geometry = CurrentGeometry(),
+  };
+  if (!iteration_callback_(snapshot)) {
+    m_liter_flag = false;
+    status_ = VmecStatus::MORE_ITERATIONS_NEEDED;
+#ifdef _OPENMP
+#pragma omp atomic write
+#endif  // _OPENMP
+    stopped_by_callback_ = true;
+  }
+}
+
+Geometry Vmec::CurrentGeometry() const {
+  return MakeGeometry(indata_, GatherSpectralStateFromThreads(
+                                   kSignOfJacobian, s_, fc_, constants_, r_,
+                                   decomposed_x_, p_));
 }
 
 void Vmec::Printout(double delt0r, int thread_id, int iter2) {

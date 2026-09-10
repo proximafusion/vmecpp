@@ -74,6 +74,36 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
   return s.value();
 }
 
+// Adapts a Python iteration callback to vmecpp::IterationCallback: the hook
+// acquires the GIL, treats a None return as "keep going", and stops the run
+// on an exception, which Rethrow raises once the run has returned.
+struct PythonIterationCallback {
+  py::object callable;
+  std::optional<py::error_already_set> error;
+
+  vmecpp::IterationCallback Hook() {
+    if (callable.is_none()) {
+      return nullptr;
+    }
+    return [this](const vmecpp::IterationSnapshot &snapshot) -> bool {
+      py::gil_scoped_acquire acquire;
+      try {
+        py::object keep_going = callable(snapshot);
+        return keep_going.is_none() || py::cast<bool>(keep_going);
+      } catch (py::error_already_set &e) {
+        error.emplace(std::move(e));
+        return false;
+      }
+    };
+  }
+
+  void Rethrow() {
+    if (error.has_value()) {
+      throw *error;
+    }
+  }
+};
+
 vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
                                             const vmecpp::VmecINDATA &indata) {
   return vmecpp::HotRestartState(std::move(wout), indata);
@@ -1376,6 +1406,26 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("coefficients", &vmecpp::Geometry::coefficients)
       .def("evaluate", &vmecpp::EvaluateGeometry, py::arg("s"),
            py::arg("theta"), py::arg("zeta"));
+  py::class_<vmecpp::IterationSnapshot>(m, "IterationSnapshot")
+      .def_readonly("iteration", &vmecpp::IterationSnapshot::iteration)
+      .def_readonly("multigrid_step",
+                    &vmecpp::IterationSnapshot::multigrid_step)
+      .def_readonly("ns", &vmecpp::IterationSnapshot::ns)
+      .def_readonly("fsqr", &vmecpp::IterationSnapshot::fsqr)
+      .def_readonly("fsqz", &vmecpp::IterationSnapshot::fsqz)
+      .def_readonly("fsql", &vmecpp::IterationSnapshot::fsql)
+      .def_readonly("ftol", &vmecpp::IterationSnapshot::ftol)
+      .def_readonly("delt", &vmecpp::IterationSnapshot::delt)
+      .def_property_readonly("restart_reason",
+                             [](const vmecpp::IterationSnapshot &snapshot) {
+                               return static_cast<int>(snapshot.restart_reason);
+                             })
+      .def_readonly("jacobian_resets",
+                    &vmecpp::IterationSnapshot::jacobian_resets)
+      .def_readonly("vacuum_pressure_active",
+                    &vmecpp::IterationSnapshot::vacuum_pressure_active)
+      .def_readonly("mhd_energy", &vmecpp::IterationSnapshot::mhd_energy)
+      .def_readonly("geometry", &vmecpp::IterationSnapshot::geometry);
   m.def("make_geometry", [](const vmecpp::OutputQuantities &output) {
     return vmecpp::MakeGeometry(output.indata, output.vmec_internal_results,
                                 vmecpp::GeometryCoefficientState::kPhysical);
@@ -1390,8 +1440,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       "run",
       [](const VmecINDATA &indata,
          std::optional<vmecpp::HotRestartState> initial_state,
-         std::optional<int> max_threads,
-         vmecpp::OutputMode verbose) -> vmecpp::OutputQuantities {
+         std::optional<int> max_threads, vmecpp::OutputMode verbose,
+         py::object iteration_callback) -> vmecpp::OutputQuantities {
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
           if (was_interrupted) {
@@ -1404,12 +1454,15 @@ PYBIND11_MODULE(_vmecpp, m) {
           }
           return false;
         };
+        PythonIterationCallback iteration_hook{iteration_callback,
+                                               std::nullopt};
         absl::StatusOr<vmecpp::OutputQuantities> ret;
         {
           py::gil_scoped_release release;
           ret = vmecpp::run(indata, std::move(initial_state), max_threads,
-                            verbose, interrupt_check);
+                            verbose, interrupt_check, iteration_hook.Hook());
         }
+        iteration_hook.Rethrow();
         if (was_interrupted) {
           throw py::error_already_set();
         }
@@ -1417,7 +1470,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       },
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
-      py::arg("verbose") = vmecpp::OutputMode::kProgress);
+      py::arg("verbose") = vmecpp::OutputMode::kProgress,
+      py::arg("iteration_callback") = py::none());
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,
@@ -1497,7 +1551,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATA &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
          std::optional<vmecpp::HotRestartState> initial_state,
-         std::optional<int> max_threads, vmecpp::OutputMode verbose) {
+         std::optional<int> max_threads, vmecpp::OutputMode verbose,
+         py::object iteration_callback) {
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
           if (was_interrupted) return true;
@@ -1508,13 +1563,16 @@ PYBIND11_MODULE(_vmecpp, m) {
           }
           return false;
         };
+        PythonIterationCallback iteration_hook{iteration_callback,
+                                               std::nullopt};
         absl::StatusOr<vmecpp::OutputQuantities> ret;
         {
           py::gil_scoped_release release;
           ret = vmecpp::run(indata, magnetic_response_table,
                             std::move(initial_state), max_threads, verbose,
-                            interrupt_check);
+                            interrupt_check, iteration_hook.Hook());
         }
+        iteration_hook.Rethrow();
         if (was_interrupted) {
           throw py::error_already_set();
         }
@@ -1523,7 +1581,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("indata"), py::arg("magnetic_response_table"),
       py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
-      py::arg("verbose") = vmecpp::OutputMode::kProgress);
+      py::arg("verbose") = vmecpp::OutputMode::kProgress,
+      py::arg("iteration_callback") = py::none());
 
   // Single-resolution iteration model: exposes the forward model and the
   // time-step / restart primitives so the equilibrium iteration can be driven
