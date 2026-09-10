@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788990202299,
+  "lastUpdate": 1789041665604,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18391,6 +18391,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4848743290000357,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phibog1@gmail.com",
+            "name": "Philipp Bogdan",
+            "username": "philippbogdan"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9bf9270b6bee63295a085b603c0d73e64fc44edd",
+          "message": "Use cubic interpolation for vacuum field tables (#819)\n\n* Use cubic interpolation for vacuum field tables\n\n* Record current-upstream interpolation validation\n\n* Use cubic interpolation unconditionally and refresh reference data\n\n* Refresh new asymmetric vacuum references for cubic interpolation",
+          "timestamp": "2026-09-10T13:53:44+02:00",
+          "tree_id": "a2e5f88cdae1d051f3f6b70b4cbaad7f79197dc5",
+          "url": "https://github.com/proximafusion/vmecpp/commit/9bf9270b6bee63295a085b603c0d73e64fc44edd"
+        },
+        "date": 1789041661599,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.395294417399964,
+            "range": "stddev: 0.010262608736446929",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.582025591000009,
+            "range": "stddev: 0.029949169706545035",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0986029329999762,
+            "range": "stddev: 0.0019606833368643432",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6859824213333543,
+            "range": "stddev: 0.056787297517772284",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.984926084333362,
+            "range": "stddev: 0.005770715338433441",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.32949923999998,
+            "range": "stddev: 0.01630642128320789",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.6474414720000823,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.48296802100003333,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
