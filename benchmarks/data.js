@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789041823092,
+  "lastUpdate": 1789076082844,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18471,6 +18471,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.48296802100003333,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "994d8695404d5b7c572bfdef6e927c45379fbd8c",
+          "message": "Recover the full-grid lambda from the half-grid array when a wout file lacks it (#806)\n\n* Recover the full-grid lambda from the half-grid array when a wout file lacks it\n\n* Fold the two lambda parities into one recursion with per-mode weights",
+          "timestamp": "2026-09-10T23:26:40+02:00",
+          "tree_id": "f8126b5cd2f5db49121c77461d1b3c265de0b1a7",
+          "url": "https://github.com/proximafusion/vmecpp/commit/994d8695404d5b7c572bfdef6e927c45379fbd8c"
+        },
+        "date": 1789076076181,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3531451974000106,
+            "range": "stddev: 0.001139495533210029",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.544679260666669,
+            "range": "stddev: 0.012734855416396008",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.139257826000005,
+            "range": "stddev: 0.003235613882735479",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6669118556666642,
+            "range": "stddev: 0.010346370810638182",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 2.2424990930000113,
+            "range": "stddev: 0.003007790366460568",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.502652980333323,
+            "range": "stddev: 0.024121338249642365",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 6.787835360000031,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4073153019999154,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
