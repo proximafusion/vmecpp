@@ -118,6 +118,68 @@ TEST(TestVmec, InMemoryMgridWithMismatchedNfpIsRejected) {
               ::testing::HasSubstr("field periods"));
 }
 
+// A run with lasym = false samples the external field on half of the boundary
+// and mirrors it, so a field without stellarator symmetry is rejected before
+// the iteration; with lasym = true the same field runs. The cth coils raised
+// by 5 mm carry an antisymmetric part of about one percent on the boundary.
+TEST(TestVmec, ExternalFieldWithoutStellaratorSymmetryNeedsLasym) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const VmecINDATA& indata = maybe_indata.value();
+
+  auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+  for (auto& circuit :
+       *maybe_magnetic_configuration->mutable_serial_circuits()) {
+    for (auto& coil : *circuit.mutable_coils()) {
+      for (auto& carrier : *coil.mutable_current_carriers()) {
+        if (!carrier.has_polygon_filament()) {
+          continue;
+        }
+        for (auto& vertex :
+             *carrier.mutable_polygon_filament()->mutable_vertices()) {
+          vertex.set_z(vertex.z() + 0.005);
+        }
+      }
+    }
+  }
+
+  auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  makegrid::MakegridParameters makegrid_params = *maybe_makegrid_params;
+  makegrid_params.assume_stellarator_symmetry = false;
+  makegrid_params.number_of_r_grid_points = 51;
+  makegrid_params.number_of_z_grid_points = 51;
+
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok()) << maybe_response_table.status();
+
+  const auto output = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_FALSE(output.ok());
+  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(output.status().message()),
+              HasSubstr("not stellarator symmetric"));
+
+  const absl::StatusOr<std::string> asym_indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy_asym.json");
+  ASSERT_TRUE(asym_indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_asym_indata =
+      VmecINDATA::FromJson(*asym_indata_json);
+  ASSERT_TRUE(maybe_asym_indata.ok());
+  VmecINDATA asym_indata = maybe_asym_indata.value();
+  asym_indata.niter_array.setConstant(5);
+  asym_indata.return_outputs_even_if_not_converged = true;
+  const auto asym_output = vmecpp::run(asym_indata, *maybe_response_table);
+  ASSERT_TRUE(asym_output.ok()) << asym_output.status();
+}
+
 // The stellarator-symmetry operation maps toroidal plane k onto (kp - k) % kp
 // and Z onto -Z, negates B_R and leaves B_phi and B_Z unchanged; the
 // stellarator-symmetric mgrid_cth_like.nc satisfies that relation to 2e-15.
