@@ -839,16 +839,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
       if (r_.nsMaxF1 == m_fc_.ns) {
-        // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS PRECONDITIONER!
-        // double edgePressure = 1.5 * p.presH[r.nsMaxH-1 - r.nsMinH] - 0.5 *
-        // p.presH[r.nsMinH - r.nsMinH];
-        double edgePressure =
-            m_p_.evalMassProfile((m_fc_.ns - 1.5) / (m_fc_.ns - 1.0));
-        if (edgePressure != 0.0) {
-          edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
-                         m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH];
-        }
-
         for (int kl = 0; kl < s_.nZnT; ++kl) {
           // extrapolate total pressure (from inside) to LCFS; this is
           // bsqsav(:,3) in Fortran VMEC
@@ -856,15 +846,16 @@ absl::StatusOr<bool> IdealMhdModel::update(
               1.5 * totalPressure[(r_.nsMaxH - 1 - r_.nsMinH) * s_.nZnT + kl] -
               0.5 * totalPressure[(r_.nsMaxH - 2 - r_.nsMinH) * s_.nZnT + kl];
 
-          // net pressure from outside on LCFS
+          // total pressure from outside on LCFS: the vacuum carries no kinetic
+          // pressure, so the boundary settles where B_vac^2/2 = p + B^2/2
           // FIXME(eguiraud) slow loop over Nestor output
           // NOTE: here is the interface between the fast-toroidal setup in
           // Nestor and fast-poloidal setup in VMEC
           const int k = kl / s_.nThetaEff;
           const int l = kl % s_.nThetaEff;
           const int idx_lk = l * s_.nZeta + k;
-          double outsideEdgePressure =
-              m_h_.vacuum_magnetic_pressure[idx_lk] + edgePressure;
+          const double outsideEdgePressure =
+              m_h_.vacuum_magnetic_pressure[idx_lk];
 
           // term to enter MHD forces
           int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
