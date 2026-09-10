@@ -230,6 +230,15 @@ class VmecINDATA {
   // was in when it gave up, and can be arbitrarily unphysical.
   bool return_outputs_even_if_not_converged;
 
+  // Abandon the whole multigrid sequence when a step ends with any residual
+  // still above fgiveup times its tolerance, rather than carrying a state that
+  // far out onto a finer grid. Off by default.
+  bool lgiveup;
+
+  // Multiple of ftol_array a step's residuals must be under for the sequence to
+  // continue when lgiveup is set.
+  double fgiveup;
+
   // ---------------------------------
   // initial guess for magnetic axis
 

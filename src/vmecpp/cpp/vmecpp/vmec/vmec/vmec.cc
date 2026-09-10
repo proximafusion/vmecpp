@@ -404,7 +404,15 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         break;
       }
 
-      // TODO(jons): insert lgiveup/fgiveup logic here
+      // A step that ends this far from its tolerance will not be rescued by a
+      // finer grid, so abandon the sequence rather than interpolate that state
+      // onto one.
+      if (indata_.lgiveup && (fc_.fsqr > fc_.ftolv * indata_.fgiveup ||
+                              fc_.fsqz > fc_.ftolv * indata_.fgiveup ||
+                              fc_.fsql > fc_.ftolv * indata_.fgiveup)) {
+        giving_up = true;
+        break;
+      }
 
       // If this point is reached, the current multi-grid step should have
       // properly converged.
