@@ -226,7 +226,7 @@ VmecINDATA::VmecINDATA() {
   aphi.resize(1);
   aphi[0] = 1.0;
   delt = 1.0;
-  tcon0 = 1.0;
+  tcon0 = 0.5;
   lforbal = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;

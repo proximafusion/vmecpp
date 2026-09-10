@@ -162,7 +162,7 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.nstep, 10);
   EXPECT_THAT(indata.aphi, ElementsAre(1.0));
   EXPECT_EQ(indata.delt, 1.0);
-  EXPECT_EQ(indata.tcon0, 1.0);
+  EXPECT_EQ(indata.tcon0, 0.5);
   EXPECT_EQ(indata.lforbal, false);
 
   // initial guess for magnetic axis
