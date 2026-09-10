@@ -334,7 +334,6 @@ VMEC++:
 
 ### Limitations with respect to the Fortran implementations
 - `lgiveup`/`fgiveup` logic for early termination of a multi-grid sequence is not implemented yet
-- `lbsubs` logic in computing outputs is not implemented yet
 - `lrfp` flag is available for wout compatibility, but RFP-specific physics is not implemented yet - only stellarators/Tokamaks for now
 - several profile parameterizations are not fully implemented yet:
    * `sum_cossq_s`
