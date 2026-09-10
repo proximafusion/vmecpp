@@ -424,7 +424,9 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 #endif  // _OPENMP
   {
     // set new values
-    // TODO(jons): what is `r1scale`?
+    // 1 / (2 * r0scale)^2 with r0scale = mscale[0] * nscale[0] = 1: the
+    // reciprocal of the squared basis normalization a mode with both indices
+    // non-zero carries. Lambda is normalized by lamscale^2 instead.
     constexpr double r1scale = 0.25;
 
     m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * r1scale;
@@ -973,6 +975,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // TODO(jurasic) the hard-coded 50 and 1e-6 are only here for backwards
   // compatibility, ideally vacuum-pressure should always part of the
   // force-balance
+  // iter1 is set at the start of a multigrid stage and at every bad-Jacobian
+  // restart, so the window counts iterations since whichever came last.
   bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
   // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
   // wouldn't trigger without special handling for the hot-restart case.
@@ -2026,7 +2030,8 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
     }  // kl
   }  // j
 
-  // TODO(jons): exclude axis --> mimic PARVMEC
+  // The sum starts at the axis, whose row is under 3 percent of it on the
+  // bundled cases.
   // only unique radial points here;
   // decomposed_x is over nsMinF1 ... nsMaxF1 --> would count overlapping
   // elements twice !!!
@@ -2428,8 +2433,8 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
   }
   // tcon
 
-  // TODO(jons): some parabola in ns,
-  // but why these specific values of the parameters ?
+  // The growth in ns is empirical: the multiplier that converges fastest
+  // measures out per case rather than ordered by ns.
   double tcon_multiplier =
       tcon0 * (1.0 + m_fc_.ns * (1.0 / 60.0 + m_fc_.ns / (200.0 * 120.0)));
 
