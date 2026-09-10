@@ -98,6 +98,12 @@ class FlowControl {
   double fsqr1, fsqz1, fsql1;
   double fsq;
 
+  // How far the boundary-normalized geometry moved over the last `nstep`
+  // iterations, in metres: the Euclidean norm of the change in the R and Z
+  // spectral coefficients. Populated by `Vmec::AccumulateGeometryChange` at
+  // each printout, and negative until two printouts have happened.
+  double geometry_change = -1.0;
+
   std::vector<double> mhd_energy;
 
   // Time-trace of the force at the vacuum boundary (only for free-boundary)

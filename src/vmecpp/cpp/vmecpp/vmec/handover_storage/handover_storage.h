@@ -51,6 +51,11 @@ class HandoverStorage {
   double* SpectralWidthDenominator() { return &spectral_width_denominator_; }
   double VolumeAveragedSpectralWidth() const;
 
+  // Destination of the cross-thread fold of the squared geometry change, and
+  // the distance that fold amounts to.
+  double* GeometryChangeAccumulator() { return &geometry_change_; }
+  double GeometryChange() const;
+
   void SetRadialExtent(const RadialExtent& radial_extent);
   void SetGeometricOffset(const GeometricOffset& geometric_offset);
 
@@ -220,6 +225,7 @@ class HandoverStorage {
 
   double spectral_width_numerator_;
   double spectral_width_denominator_;
+  double geometry_change_;
 
   RadialExtent radial_extent_;
   GeometricOffset geometric_offset_;

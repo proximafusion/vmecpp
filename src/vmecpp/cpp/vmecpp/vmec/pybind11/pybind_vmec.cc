@@ -832,6 +832,7 @@ PYBIND11_MODULE(_vmecpp, m) {
   DefEigenProperty(pyindata, "aphi", &VmecINDATA::aphi);
   pyindata.def_readwrite("delt", &VmecINDATA::delt)
       .def_readwrite("tcon0", &VmecINDATA::tcon0)
+      .def_readwrite("geometry_tolerance", &VmecINDATA::geometry_tolerance)
       .def_readwrite("lforbal", &VmecINDATA::lforbal)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
