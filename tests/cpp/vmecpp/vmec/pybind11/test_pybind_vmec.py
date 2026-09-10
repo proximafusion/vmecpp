@@ -326,7 +326,8 @@ def test_output_quantities():
     assert is_close_ra(output_quantities.wout.presf, wout["presf"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.phi, wout["phi"][()], 1.0e-8)
     assert is_close_ra(output_quantities.wout.phipf, wout["phipf"][()], 1.0e-8)
-    assert is_close_ra(output_quantities.wout.chi, wout["chi"][()], 1.0e-8)
+    # The Fortran reference writes chi without the sign of the Jacobian.
+    assert is_close_ra(output_quantities.wout.chi, -wout["chi"][()], 1.0e-8)
     # The axis and the boundary entries of chipf follow PARVMEC rather than the
     # 8.52 lineage the references come from; see computeBContra.
     assert is_close_ra(
