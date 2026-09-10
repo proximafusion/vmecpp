@@ -639,6 +639,20 @@ def test_ensure_vmec2000_input_keeps_axis():
         )
 
 
+def test_ensure_vmecpp_input_keeps_trailing_zero_spline_value():
+    # a spline profile whose last value is exactly zero keeps all its knots
+    vmec2000_input_file = TEST_DATA_DIR / "input.cth_like_fixed_bdy_spline_pressure"
+    vmec_input = vmecpp.VmecInput.from_file(vmec2000_input_file)
+    reference = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "cth_like_fixed_bdy_spline_pressure.json"
+    )
+    assert len(vmec_input.am_aux_f) == len(vmec_input.am_aux_s) == 201
+    np.testing.assert_array_equal(vmec_input.am_aux_s, reference.am_aux_s)
+    np.testing.assert_allclose(
+        vmec_input.am_aux_f, reference.am_aux_f, rtol=1e-12, atol=0
+    )
+
+
 def test_ensure_vmecpp_input_noop():
     vmecpp_input_file = TEST_DATA_DIR / "cma.json"
 
