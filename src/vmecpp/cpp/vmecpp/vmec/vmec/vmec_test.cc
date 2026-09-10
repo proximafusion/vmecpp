@@ -771,21 +771,23 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   ASSERT_TRUE(w.lasym);
 
   // educational_VMEC (VMEC 8.52) golden scalars for the identical perturbed
-  // mgrid.
+  // mgrid, with the sign of the metric and curvature cross terms in NESTOR's
+  // analytic add-back (analyt.f90 adp/adm, azp1u/azm1u) corrected the same
+  // way as in SingularIntegrals::update.
   const double tol = 1.0e-4;
-  EXPECT_TRUE(IsCloseRelAbs(5.4351302689, w.aspect, tol))
+  EXPECT_TRUE(IsCloseRelAbs(5.4333536171, w.aspect, tol))
       << "aspect=" << w.aspect;
-  EXPECT_TRUE(IsCloseRelAbs(0.3073676511, w.volume, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.3070706936, w.volume, tol))
       << "volume=" << w.volume;
-  EXPECT_TRUE(IsCloseRelAbs(0.7719386349, w.Rmajor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.7715217794, w.Rmajor_p, tol))
       << "Rmajor=" << w.Rmajor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.1420276234, w.Aminor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.1419973434, w.Aminor_p, tol))
       << "Aminor=" << w.Aminor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.0018738865, w.betatotal, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.0018721371, w.betatotal, tol))
       << "beta=" << w.betatotal;
-  EXPECT_TRUE(IsCloseRelAbs(-0.4512430727, w.rbtor, tol))
+  EXPECT_TRUE(IsCloseRelAbs(-0.4512433486, w.rbtor, tol))
       << "rbtor=" << w.rbtor;
-  EXPECT_TRUE(IsCloseRelAbs(0.5742222261, w.volavgB, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.5745086207, w.volavgB, tol))
       << "volavgB=" << w.volavgB;
 
   // Genuine asymmetry: the antisymmetric Fourier content is clearly non-zero.
@@ -813,9 +815,12 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   const auto output = vmecpp::run(*indata, std::nullopt, 1);
   ASSERT_TRUE(output.ok());
 
-  // Regression guard for the seeded vacuum state across multigrid transitions
-  // with cubic vacuum field interpolation.
-  EXPECT_EQ(output->wout.niter, 322);
+  // Regression guard for issue #330/#640 and other changes to the multigrid
+  // convergence path. 344 with the historical unbalanced stage entry; 321
+  // since the vacuum state is seeded across multigrid transitions (the
+  // second stage enters force-balanced instead of kicking the boundary); 328
+  // with the corrected cross-term sign in NESTOR's analytic add-back.
+  EXPECT_EQ(output->wout.niter, 328);
 }  // MultiGridFreeBoundary
 
 // The free-boundary threed1 section covers the poloidal range the run is solved

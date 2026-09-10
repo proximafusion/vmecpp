@@ -430,6 +430,17 @@ void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
 
         } else {
           // analysum2
+          //
+          // T^- and S^- carry sin(mu - |n|v) (mode (m, +|n|)) and T^+ and S^+
+          // carry sin(mu + |n|v) (mode (m, -|n|)): this is the assignment
+          // under which the analytic Fourier coefficients equal those of the
+          // tangent-plane kernels subtracted in RegularizedIntegrals, with the
+          // metric and curvature cross terms as stored. The opposite
+          // assignment (the one PARVMEC's analyt makes by passing slm, tlm,
+          // slp, tlp to analysum2's dummy arguments slp, tlp, slm, tlm) gives
+          // mode (m, n) the coefficient of (m, -n): an error that is first
+          // order in the non-axisymmetric shaping and independent of the
+          // resolution.
 
           for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
             const int l = kl / s_.nZeta;
@@ -468,10 +479,10 @@ void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
               const double sinp3 = coeff1 * fb_.cosnv[idx_nk + 3] -
                                    coeff2 * fb_.sinnv[idx_nk + 3];
 
-              buf_m_posn[0] += Tlp[fl][klRel + 0] * c0 * sinp0;
-              buf_m_posn[1] += Tlp[fl][klRel + 1] * c1 * sinp1;
-              buf_m_posn[2] += Tlp[fl][klRel + 2] * c2 * sinp2;
-              buf_m_posn[3] += Tlp[fl][klRel + 3] * c3 * sinp3;
+              buf_m_posn[0] += Tlm[fl][klRel + 0] * c0 * sinp0;
+              buf_m_posn[1] += Tlm[fl][klRel + 1] * c1 * sinp1;
+              buf_m_posn[2] += Tlm[fl][klRel + 2] * c2 * sinp2;
+              buf_m_posn[3] += Tlm[fl][klRel + 3] * c3 * sinp3;
 
               // sin(mu + |n|v) * cmns(l,n,m)
               const double sinm0 = coeff1 * fb_.cosnv[idx_nk + 0] +
@@ -483,29 +494,29 @@ void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
               const double sinm3 = coeff1 * fb_.cosnv[idx_nk + 3] +
                                    coeff2 * fb_.sinnv[idx_nk + 3];
 
-              buf_m_negn[0] += Tlm[fl][klRel + 0] * c0 * sinm0;
-              buf_m_negn[1] += Tlm[fl][klRel + 1] * c1 * sinm1;
-              buf_m_negn[2] += Tlm[fl][klRel + 2] * c2 * sinm2;
-              buf_m_negn[3] += Tlm[fl][klRel + 3] * c3 * sinm3;
+              buf_m_negn[0] += Tlp[fl][klRel + 0] * c0 * sinm0;
+              buf_m_negn[1] += Tlp[fl][klRel + 1] * c1 * sinm1;
+              buf_m_negn[2] += Tlp[fl][klRel + 2] * c2 * sinm2;
+              buf_m_negn[3] += Tlp[fl][klRel + 3] * c3 * sinm3;
 
               if (fullUpdate) {
                 grpmn_sin[idx_m_posn * numLocal + klRel + 0] +=
-                    Slp[fl][klRel + 0] * sinp0;
+                    Slm[fl][klRel + 0] * sinp0;
                 grpmn_sin[idx_m_posn * numLocal + klRel + 1] +=
-                    Slp[fl][klRel + 1] * sinp1;
+                    Slm[fl][klRel + 1] * sinp1;
                 grpmn_sin[idx_m_posn * numLocal + klRel + 2] +=
-                    Slp[fl][klRel + 2] * sinp2;
+                    Slm[fl][klRel + 2] * sinp2;
                 grpmn_sin[idx_m_posn * numLocal + klRel + 3] +=
-                    Slp[fl][klRel + 3] * sinp3;
+                    Slm[fl][klRel + 3] * sinp3;
 
                 grpmn_sin[idx_m_negn * numLocal + klRel + 0] +=
-                    Slm[fl][klRel + 0] * sinm0;
+                    Slp[fl][klRel + 0] * sinm0;
                 grpmn_sin[idx_m_negn * numLocal + klRel + 1] +=
-                    Slm[fl][klRel + 1] * sinm1;
+                    Slp[fl][klRel + 1] * sinm1;
                 grpmn_sin[idx_m_negn * numLocal + klRel + 2] +=
-                    Slm[fl][klRel + 2] * sinm2;
+                    Slp[fl][klRel + 2] * sinm2;
                 grpmn_sin[idx_m_negn * numLocal + klRel + 3] +=
-                    Slm[fl][klRel + 3] * sinm3;
+                    Slp[fl][klRel + 3] * sinm3;
               }
             }
 
@@ -532,14 +543,14 @@ void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
                 const double sinp = coeff1 - coeff2;
 
                 const double c = bDotN[klRel] * s_.wInt[l];
-                bvec_sin[idx_m_posn] += Tlp[fl][klRel] * c * sinp;
-                bvec_sin[idx_m_negn] += Tlm[fl][klRel] * c * sinm;
+                bvec_sin[idx_m_posn] += Tlm[fl][klRel] * c * sinp;
+                bvec_sin[idx_m_negn] += Tlp[fl][klRel] * c * sinm;
 
                 if (fullUpdate) {
                   grpmn_sin[idx_m_posn * numLocal + klRel] +=
-                      Slp[fl][klRel] * sinp;
+                      Slm[fl][klRel] * sinp;
                   grpmn_sin[idx_m_negn * numLocal + klRel] +=
-                      Slm[fl][klRel] * sinm;
+                      Slp[fl][klRel] * sinm;
                 }
               }
             }
@@ -573,14 +584,14 @@ void SingularIntegrals::performUpdate(const Eigen::VectorXd& bDotN,
               const double cosp = coeff1 + coeff2;
 
               bvec_cos[idx_m_posn] +=
-                  Tlp[fl][klRel] * bDotN[klRel] * s_.wInt[l] * cosp;
+                  Tlm[fl][klRel] * bDotN[klRel] * s_.wInt[l] * cosp;
               bvec_cos[idx_m_negn] +=
-                  Tlm[fl][klRel] * bDotN[klRel] * s_.wInt[l] * cosm;
+                  Tlp[fl][klRel] * bDotN[klRel] * s_.wInt[l] * cosm;
               if (fullUpdate) {
                 grpmn_cos[idx_m_posn * numLocal + klRel] +=
-                    Slp[fl][klRel] * cosp;
+                    Slm[fl][klRel] * cosp;
                 grpmn_cos[idx_m_negn * numLocal + klRel] +=
-                    Slm[fl][klRel] * cosm;
+                    Slp[fl][klRel] * cosm;
               }
             }
           }  // kl
