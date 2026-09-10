@@ -4957,7 +4957,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // COMPUTE |B| = SQRT(|B|**2) and store in bsq, bsqa
   std::vector<double> magnetic_pressure((fc.ns - 1) * s.nZnT, 0.0);
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp parallel for num_threads(fc.max_threads())
 #endif
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
@@ -5026,7 +5026,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   const int partial_sum_size = (s.mnyq + 1) * s.nZeta;
 
 #ifdef _OPENMP
-#pragma omp parallel
+#pragma omp parallel num_threads(fc.max_threads())
   {
 #endif
     std::vector<double> Fc_gsqrt(partial_sum_size), Fs_gsqrt(partial_sum_size),
@@ -5337,7 +5337,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // Use the same two-phase separable DFT as the half-grid loop above,
   // parallelised over full-grid surfaces jF.
 #ifdef _OPENMP
-#pragma omp parallel
+#pragma omp parallel num_threads(fc.max_threads())
   {
 #endif
     std::vector<double> Fc_bsubs_full(partial_sum_size),

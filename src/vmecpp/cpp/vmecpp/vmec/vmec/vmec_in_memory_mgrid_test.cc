@@ -8,6 +8,10 @@
 #include <string>
 #include <vector>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif  // _OPENMP
+
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"  // ElementsAreArray
@@ -116,6 +120,44 @@ TEST(TestVmec, InMemoryMgridWithMismatchedNfpIsRejected) {
   EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(std::string(output.status().message()),
               ::testing::HasSubstr("field periods"));
+}
+
+// The vacuum solve sizes a nested parallel region of its own, on a thread
+// count decoupled from the radial one. Like the radial solve it has to request
+// that team with a num_threads clause: narrowing the process-wide count
+// instead would outlive the run. Seven surfaces admit three radial threads,
+// fewer than most machines have, while the vacuum team takes the full budget.
+TEST(TestVmec, FreeBoundaryRunLeavesTheProcessThreadCountUnchanged) {
+#ifndef _OPENMP
+  GTEST_SKIP() << "a process-wide thread count exists only in an OpenMP build";
+#else
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  indata.ns_array.setConstant(7);
+  indata.niter_array.setConstant(60);
+  indata.return_outputs_even_if_not_converged = true;
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+  const auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      *maybe_makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok());
+
+  const int process_thread_count = omp_get_max_threads();
+
+  const auto output = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_TRUE(output.ok()) << output.status();
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+#endif  // _OPENMP
 }
 
 // The stellarator-symmetry operation maps toroidal plane k onto (kp - k) % kp

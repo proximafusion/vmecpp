@@ -823,7 +823,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
 // NOTE: *THIS* is the main parallel region for the equilibrium solver
 #ifdef _OPENMP
-#pragma omp parallel
+#pragma omp parallel num_threads(num_threads_)
 #endif  // _OPENMP
   {
 #ifdef _OPENMP
