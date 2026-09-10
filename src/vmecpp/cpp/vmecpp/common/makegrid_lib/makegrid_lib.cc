@@ -964,10 +964,10 @@ absl::Status WriteMakegridNetCDFFile(
 
   for (int circuit_index = 0; circuit_index < n_serial_circuits;
        ++circuit_index) {
-    // TODO(jons): Figure out how the name of the coil groups is determined in
-    // MAKEGRID. The challenge is that many coils (with individual names) can
-    // belong to one coil group, but only a single name for a coil group is
-    // written to the mgrid file.
+    // TODO(jons): MAKEGRID names a coil group by the group name on the
+    // terminating line of its coils in the coils file. That name reaches here
+    // only once the MagneticConfiguration is threaded through or the names are
+    // carried on MagneticFieldResponseTable.
     std::string coil_group_name = absl::StrFormat("circuit_%d", circuit_index);
 
     // NOTE: 30 has to be consistent with the value of kStringSize.

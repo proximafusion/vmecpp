@@ -544,10 +544,13 @@ TEST(TestMagneticField, CheckPolygonFilament) {
   const double delta_phi =
       2.0 * M_PI / (kNumPhi - 1);  // spacing between points
 
-  // TODO(jons): understand derivation of alpha for special case of closed
-  // circle |dr/ds| = 2*pi
-  // --> alpha = 1/R * (dr)^2 / 12
-  // == 4 pi^2 / (12 R)
+  // McGreivy correction for a closed circle. The field at the centre of a
+  // regular N-gon of circumradius R is mu_0 I N / (2 pi R) * tan(pi/N), against
+  // mu_0 I / (2 R) for the circle, so the polygon overestimates it by
+  // (N/pi) tan(pi/N) = 1 + delta_phi^2 / 12 + O(delta_phi^4) with delta_phi =
+  // 2 pi / N. The field goes as 1/R, so inflating the radius by that same
+  // factor cancels the excess to fourth order. At N = 100 the exact ratio is
+  // 1.0003291167 and the correction is 1.0003289868.
   const double adjusted_radius = kRadius * (1.0 + delta_phi * delta_phi / 12.0);
 
   PolygonFilament polygon_filament = PolygonCircle(adjusted_radius, kNumPhi);
@@ -914,10 +917,13 @@ TEST(TestVectorPotential, CheckPolygonFilament) {
   const double delta_phi =
       2.0 * M_PI / (kNumPhi - 1);  // spacing between points
 
-  // TODO(jons): understand derivation of alpha for special case of closed
-  // circle |dr/ds| = 2*pi
-  // --> alpha = 1/R * (dr)^2 / 12
-  // == 4 pi^2 / (12 R)
+  // McGreivy correction for a closed circle. The field at the centre of a
+  // regular N-gon of circumradius R is mu_0 I N / (2 pi R) * tan(pi/N), against
+  // mu_0 I / (2 R) for the circle, so the polygon overestimates it by
+  // (N/pi) tan(pi/N) = 1 + delta_phi^2 / 12 + O(delta_phi^4) with delta_phi =
+  // 2 pi / N. The field goes as 1/R, so inflating the radius by that same
+  // factor cancels the excess to fourth order. At N = 100 the exact ratio is
+  // 1.0003291167 and the correction is 1.0003289868.
   const double adjusted_radius = kRadius * (1.0 + delta_phi * delta_phi / 12.0);
 
   PolygonFilament polygon_filament = PolygonCircle(adjusted_radius, kNumPhi);

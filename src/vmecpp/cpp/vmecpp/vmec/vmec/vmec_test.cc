@@ -110,6 +110,27 @@ TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
   CHECK(status.ok());
 }  // CheckNoErrorOnNonConvergenceIfDesired
 
+// With ncurr = 1 the current profile is scaled to curtor by its value at the
+// boundary, so a profile that encloses no net current there cannot be imposed
+// and used to run silently with zero current.
+TEST(TestVmec, RejectsACurrentProfileWithoutEdgeCurrent) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  // I'(s) = 1 - 2 s integrates to zero at the boundary
+  indata.pcurr_type = "power_series";
+  indata.ac = Eigen::VectorXd(2);
+  indata.ac << 1.0, -2.0;
+  const auto output = vmecpp::run(indata);
+  ASSERT_FALSE(output.ok());
+  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(output.status().message()),
+              ::testing::HasSubstr("encloses no net current"));
+}
+
 TEST(TestVmec, CheckFromIndataReturnsErrorForInvalidMgridPath) {
   // Verify that FromIndata returns an error status (rather than throwing)
   // when a free-boundary run specifies a non-existent mgrid file.
@@ -990,3 +1011,18 @@ TEST(TestVmec, BloatScalesTheEnclosedToroidalFlux) {
         << "bloat = " << bloat;
   }
 }  // BloatScalesTheEnclosedToroidalFlux
+
+// A multigrid step count below one solves nothing and is rejected.
+TEST(TestVmec, ZeroMaximumMultiGridStepIsRejected) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  Vmec vmec(*indata);
+  const absl::StatusOr<bool> reached =
+      vmec.run(VmecCheckpoint::NONE, INT_MAX, /*maximum_multi_grid_step=*/0);
+  ASSERT_FALSE(reached.ok());
+  EXPECT_EQ(reached.status().code(), absl::StatusCode::kInvalidArgument);
+}  // ZeroMaximumMultiGridStepIsRejected

@@ -181,7 +181,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     : indata_(indata),
       s_(indata_),
       t_(&s_),
-      b_(&s_, &t_, kSignOfJacobian),
+      b_(&s_, &t_, indata_.signgs),
       h_(&s_),
       fc_(indata_.lfreeb, indata_.delt,
           static_cast<int>(indata_.ns_array.size()), max_threads),
@@ -228,6 +228,12 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                const int iterations_before_checkpointing,
                                const int maximum_multi_grid_step,
                                std::optional<HotRestartState> initial_state) {
+  if (maximum_multi_grid_step < 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("maximum_multi_grid_step must be at least 1, but is %d",
+                        maximum_multi_grid_step));
+  }
+
   if (indata_.lfreeb) {
     if (!mgrid_.IsLoaded()) {
       // Fallback: load mgrid from file if constructed directly via the public
@@ -356,8 +362,13 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
       // value
-      if (InitializeRadial(checkpoint, iterations_before_checkpointing,
-                           fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state)) {
+      const absl::StatusOr<bool> initialized =
+          InitializeRadial(checkpoint, iterations_before_checkpointing,
+                           fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state);
+      if (!initialized.ok()) {
+        return initialized.status();
+      }
+      if (*initialized) {
         return true;
       }
 
@@ -449,7 +460,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   // compute output file quantities, but do not write them to output file yet
   // (for creating the output file, use WriteOutputFile())
   output_quantities_ = vmecpp::ComputeOutputQuantities(
-      kSignOfJacobian, indata_, s_, fc_, constants_, t_, h_, mgrid_.mgrid_mode,
+      indata_.signgs, indata_, s_, fc_, constants_, t_, h_, mgrid_.mgrid_mode,
       mgrid_.coil_group_names, r_, decomposed_x_, m_, p_, checkpoint,
       vacuum_pressure_state_, status_, iter2_);
 
@@ -535,7 +546,7 @@ void Vmec::SetupVacuumSolvers() {
 }  // SetupVacuumSolvers
 
 // initialize_radial quantities, return true if a checkpoint was reached
-bool Vmec::InitializeRadial(
+absl::StatusOr<bool> Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
     const std::optional<HotRestartState>& initial_state,
@@ -642,7 +653,7 @@ bool Vmec::InitializeRadial(
       ls_[thread_id] = std::make_unique<ThreadLocalStorage>(&s_);
 
       p_[thread_id] = std::make_unique<RadialProfiles>(
-          r_[thread_id].get(), &h_, &indata_, &fc_, kSignOfJacobian, kPDamp);
+          r_[thread_id].get(), &h_, &indata_, &fc_, indata_.signgs, kPDamp);
 
       // update profile parameterizations based on p****_type strings
       p_[thread_id]->setupInputProfiles();
@@ -653,11 +664,17 @@ bool Vmec::InitializeRadial(
       m_[thread_id] = std::make_unique<IdealMhdModel>(
           &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
           ls_[thread_id].get(), &h_, r_[thread_id].get(), &fb_vac_,
-          vac_num_threads_, kSignOfJacobian, indata_.nvacskip,
+          vac_num_threads_, indata_.signgs, indata_.nvacskip,
           &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
                                    indata_.lforbal);
     }  // thread_id
+
+    absl::Status current_profile_status =
+        p_[0]->CheckCurrentProfileEnclosesEdgeCurrent();
+    if (!current_profile_status.ok()) {
+      return current_profile_status;
+    }
 
     if (checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
         iterations_before_checkpointing <= 1) {
@@ -727,7 +744,7 @@ bool Vmec::InitializeRadial(
               t_, initial_state->wout.rmnc, initial_state->wout.zmns,
               initial_state->wout.lmns_full, initial_state->wout.rmns,
               initial_state->wout.zmnc, initial_state->wout.lmnc_full,
-              *p_[thread_id], constants_);
+              *p_[thread_id], constants_, indata_.signgs);
         } else {
           // fixed-boundary hot restart: use inner flux surfaces from initial
           // state, and LCFS geometry from Boundaries (from INDATA)
@@ -735,7 +752,7 @@ bool Vmec::InitializeRadial(
               t_, initial_state->wout.rmnc, initial_state->wout.zmns,
               initial_state->wout.lmns_full, initial_state->wout.rmns,
               initial_state->wout.zmnc, initial_state->wout.lmnc_full,
-              *p_[thread_id], constants_, &b_);
+              *p_[thread_id], constants_, indata_.signgs, &b_);
         }
       }
     } else {
@@ -980,7 +997,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
           std::cout << " TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS\n";
         }
 
-        b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, kSignOfJacobian);
+        b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, indata_.signgs);
         fc_.ijacob = 1;
 
         // prepare parameters to functions that get called due to
