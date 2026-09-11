@@ -174,6 +174,8 @@ VmecINDATA::VmecINDATA() {
   mpol = 6;
   ntor = 0;
   mpol_geometry = -1;
+  vacuum_mpol = 0;
+  vacuum_ntor = 0;
   ntor_geometry = -1;
   ntheta = 0;
   nzeta = 0;
@@ -327,6 +329,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(mpol, "/indata/mpol", file);
   WriteH5Dataset(ntor, "/indata/ntor", file);
   WriteH5Dataset(mpol_geometry, "/indata/mpol_geometry", file);
+  WriteH5Dataset(vacuum_mpol, "/indata/vacuum_mpol", file);
+  WriteH5Dataset(vacuum_ntor, "/indata/vacuum_ntor", file);
   WriteH5Dataset(ntor_geometry, "/indata/ntor_geometry", file);
   WriteH5Dataset(ntheta, "/indata/ntheta", file);
   WriteH5Dataset(nzeta, "/indata/nzeta", file);
@@ -409,6 +413,12 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   }
   if (from_file.nameExists("/indata/ntor_geometry")) {
     ReadH5Dataset(m_indata.ntor_geometry, "/indata/ntor_geometry", from_file);
+  }
+  if (from_file.nameExists("/indata/vacuum_mpol")) {
+    ReadH5Dataset(m_indata.vacuum_mpol, "/indata/vacuum_mpol", from_file);
+  }
+  if (from_file.nameExists("/indata/vacuum_ntor")) {
+    ReadH5Dataset(m_indata.vacuum_ntor, "/indata/vacuum_ntor", from_file);
   }
   ReadH5Dataset(m_indata.ntheta, "/indata/ntheta", from_file);
   ReadH5Dataset(m_indata.nzeta, "/indata/nzeta", from_file);
@@ -611,6 +621,22 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
   if (maybe_ntor_geometry->has_value()) {
     vmec_indata.ntor_geometry = maybe_ntor_geometry->value();
+  }
+
+  auto maybe_vacuum_mpol = JsonReadInt(j, "vacuum_mpol");
+  if (!maybe_vacuum_mpol.ok()) {
+    return maybe_vacuum_mpol.status();
+  }
+  if (maybe_vacuum_mpol->has_value()) {
+    vmec_indata.vacuum_mpol = maybe_vacuum_mpol->value();
+  }
+
+  auto maybe_vacuum_ntor = JsonReadInt(j, "vacuum_ntor");
+  if (!maybe_vacuum_ntor.ok()) {
+    return maybe_vacuum_ntor.status();
+  }
+  if (maybe_vacuum_ntor->has_value()) {
+    vmec_indata.vacuum_ntor = maybe_vacuum_ntor->value();
   }
 
   auto maybe_ntheta = JsonReadInt(j, "ntheta");
@@ -1218,6 +1244,8 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["ntor"] = ntor;
   output["mpol_geometry"] = mpol_geometry;
   output["ntor_geometry"] = ntor_geometry;
+  output["vacuum_mpol"] = vacuum_mpol;
+  output["vacuum_ntor"] = vacuum_ntor;
   output["ntheta"] = ntheta;
   output["nzeta"] = nzeta;
 
@@ -1369,6 +1397,32 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   /* --------------------------------- */
+
+  // vacuum_mpol, vacuum_ntor
+  // * 0 means the vacuum potential uses mpol / ntor; otherwise the cutoff may
+  //   only exceed the plasma's, since the boundary has to fit into it
+  // * the toroidal grid has to resolve the potential's toroidal cutoff
+  if (vmec_indata.vacuum_mpol != 0 &&
+      vmec_indata.vacuum_mpol < vmec_indata.mpol) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'vacuum_mpol' must be 0 or at least mpol = %d, but "
+        "is %d\n",
+        vmec_indata.mpol, vmec_indata.vacuum_mpol));
+  }
+  if (vmec_indata.vacuum_ntor != 0 &&
+      vmec_indata.vacuum_ntor < vmec_indata.ntor) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'vacuum_ntor' must be 0 or at least ntor = %d, but "
+        "is %d\n",
+        vmec_indata.ntor, vmec_indata.vacuum_ntor));
+  }
+  if (vmec_indata.vacuum_ntor > vmec_indata.ntor && vmec_indata.nzeta > 0 &&
+      vmec_indata.nzeta < 2 * vmec_indata.vacuum_ntor + 4) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'nzeta' must be at least 2 * vacuum_ntor + 4 = %d to "
+        "carry the vacuum potential's toroidal cutoff, but is %d\n",
+        2 * vmec_indata.vacuum_ntor + 4, vmec_indata.nzeta));
+  }
 
   const int NS_MIN = 3;
 

@@ -260,6 +260,20 @@ class VmecInput(BaseModelWithNumpy):
     the full ntor. < 0 (default) means geometry uses ntor.
     """
 
+    vacuum_mpol: int = 0
+    """Poloidal Fourier cutoff of the vacuum potential in a free-boundary run.
+
+    NESTOR expands the vacuum potential to mpol like the plasma; a value above mpol
+    raises the potential's cutoff alone. 0 (default) means the potential uses mpol.
+    """
+
+    vacuum_ntor: int = 0
+    """Toroidal Fourier cutoff of the vacuum potential in a free-boundary run.
+
+    A value above ntor raises the potential's cutoff alone; nzeta must then be at least
+    2 * vacuum_ntor + 4. 0 (default) means the potential uses ntor.
+    """
+
     ntheta: int = 0
     """Number of poloidal grid points (ntheta >= 0).
 

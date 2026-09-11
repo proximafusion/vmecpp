@@ -784,7 +784,9 @@ PYBIND11_MODULE(_vmecpp, m) {
           .def_readwrite("ntheta", &VmecINDATA::ntheta)
           .def_readwrite("nzeta", &VmecINDATA::nzeta)
           .def_readwrite("mpol_geometry", &VmecINDATA::mpol_geometry)
-          .def_readwrite("ntor_geometry", &VmecINDATA::ntor_geometry);
+          .def_readwrite("ntor_geometry", &VmecINDATA::ntor_geometry)
+          .def_readwrite("vacuum_mpol", &VmecINDATA::vacuum_mpol)
+          .def_readwrite("vacuum_ntor", &VmecINDATA::vacuum_ntor);
 
   // multi-grid steps
   DefEigenProperty(pyindata, "ns_array", &VmecINDATA::ns_array);

@@ -4766,8 +4766,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // fixed-boundary run leaves it empty, as Fortran VMEC does.
   const Eigen::VectorXd& vacuum_potential = handover_storage.vacuum_potential;
   if (vacuum_potential.size() > 0) {
-    const int nf = s.ntor;
-    const int mf = s.mpol + 1;
+    const int nf = handover_storage.vacuum_ntor;
+    const int mf = handover_storage.vacuum_mpol + 1;
     const int mnpd = (2 * nf + 1) * (mf + 1);
     wout.potvac = VectorXd::Zero(2 * mnpd);
     if (vacuum_potential.size() <= wout.potvac.size()) {
