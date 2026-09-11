@@ -164,24 +164,33 @@ TEST(TestSingularIntegrals, CheckConstants) {
 }  // CheckConstants
 
 // Verify that prepareUpdate computes T^{+/-}_l accurately for ALL l in [0, L]
-// at a range of Fourier resolutions.
+// at a range of Fourier resolutions and metric coefficients.
 //
-// Resolutions span the low-kL regime (forward recurrence is accurate, so the
-// forward branch of prepareUpdate is exercised) all the way up to high-kL
-// (Miller backward recurrence fires; forward would lose all digits).
+// The cases span the low-kL regime, where the forward recurrence is accurate,
+// up to kL = 45, where one direction of each recurrence loses all digits and
+// the other has to run backward from a seed far above kL.
 //
 // Reference: 64-point Gauss-Legendre quadrature of the defining integral.
 // This is independent of both recurrence directions and reaches ~1e-13
 // relative accuracy at the chosen coefficients up to l = 45.
-class TlpTlmAccuracyTest
-    : public ::testing::TestWithParam<std::pair<int, int>> {};
+struct TlCase {
+  int mpol;
+  int ntor;
+  // metric coefficients (a, b2, c) = (guu, guv, gvv) of the tangent plane
+  double a;
+  double b2;
+  double c;
+};
+
+class TlpTlmAccuracyTest : public ::testing::TestWithParam<TlCase> {};
 
 TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   // GL-64 reference noise at l near kL is ~1e-13; 1e-11 leaves a safe margin
-  // while staying far below the forward-recurrence error that Miller corrects.
+  // while staying far below the error of a recurrence run in the wrong
+  // direction or started too close above kL.
   static constexpr double kTolerance = 1.0e-11;
 
-  const auto [mpol, ntor] = GetParam();
+  const auto [mpol, ntor, a_val, b2_val, c_val] = GetParam();
 
   const bool lasym = false;
   const int nfp = 5;
@@ -200,21 +209,14 @@ TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   const int kL = mf + nf;
   SingularIntegrals si(&s, &fb, &tp, &sg, nf, mf);
 
-  // Geometry coefficients chosen so am/ap ~ 4.7 and the discriminant
-  // d^2 - ap*am = 0.16 - 2.31 < 0 (so the integrand is smooth on [-1, 1]).
-  //   ap = a + b2 + c = 0.7
-  //   am = a - b2 + c = 3.3
-  //   d  = c - a     = 0.4
-  // At these coefficients the forward recurrence loses ~kL * log10(am/ap)
-  // ~ 0.67 * kL significant digits; for kL >= 15 it loses > 10 digits and the
-  // Miller activation threshold (growth > 1e10) triggers.
-  const double a_val = 0.8;
-  const double b2_val = -1.3;
-  const double c_val = 1.2;
   const double ap = a_val + b2_val + c_val;
   const double am = a_val - b2_val + c_val;
   const double d = c_val - a_val;
-  ASSERT_GT(am, ap) << "test setup: need am > ap to exercise Miller path";
+  // The homogeneous solutions of the T^+ (T^-) recurrence grow by
+  // sqrt(am/ap) (sqrt(ap/am)) per forward step, so one of the two has to run
+  // backward once kL is large enough.
+  ASSERT_GT(std::max(am / ap, ap / am), 2.0)
+      << "test setup: need one unstable forward direction";
   ASSERT_LT(d * d, ap * am) << "test setup: need smooth integrand on [-1,1]";
 
   const int numLocal = tp.ztMax - tp.ztMin;
@@ -253,15 +255,22 @@ TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   }
 }
 
-// (mpol, ntor) pairs spanning the forward-stable regime (kL=15, Miller just
-// barely fires) up to high-kL where forward would lose >30 digits.
+// The first three cases share the coefficients ap = 0.7, am = 3.3, d = 0.4
+// (am/ap = 4.7) at kL = 15, 27 and 45; the last one takes the metric of the
+// cth_like_free_bdy boundary at the point of its largest cross term
+// (ap/am = 2.2) at kL = 33, where a backward pass seeded 50 steps above kL
+// leaves 2e-9 of the seed in T^-_33.
 INSTANTIATE_TEST_SUITE_P(
     ResolutionSweep, TlpTlmAccuracyTest,
-    ::testing::Values(std::pair<int, int>{6, 8}, std::pair<int, int>{12, 14},
-                      std::pair<int, int>{20, 24}),
-    [](const ::testing::TestParamInfo<std::pair<int, int>>& info) {
-      return "mpol" + std::to_string(info.param.first) + "_ntor" +
-             std::to_string(info.param.second);
+    ::testing::Values(TlCase{6, 8, 0.8, -1.3, 1.2},
+                      TlCase{12, 14, 0.8, -1.3, 1.2},
+                      TlCase{20, 24, 0.8, -1.3, 1.2},
+                      TlCase{16, 16, 1.360e-02, 2.241e-02, 4.626e-02}),
+    [](const ::testing::TestParamInfo<TlCase>& info) {
+      return "mpol" + std::to_string(info.param.mpol) + "_ntor" +
+             std::to_string(info.param.ntor) + "_ap" +
+             std::to_string(static_cast<int>(
+                 1000.0 * (info.param.a + info.param.b2 + info.param.c)));
     });
 
 }  // namespace vmecpp
