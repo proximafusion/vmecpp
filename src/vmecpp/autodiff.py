@@ -1,10 +1,17 @@
 """JAX access to an in-memory VMEC++ solve and its implicit VJP.
 
 The solver is deliberately kept outside the JAX trace. A forward call runs
-VMEC++ through the C++ model, while the reverse callback reruns the same model
-and solves the transposed interior force system. This is the usual implicit
+VMEC++ through the C++ model, while the reverse callback solves the transposed
+interior force system at that same converged model. This is the usual implicit
 layer for a differentiable code: JAX differentiates the consumer objective,
 and VMEC++ supplies the producer's residual transpose.
+
+The converged model from a forward call is kept in a small LRU cache keyed by
+the boundary's bytes, so the reverse callback that JAX invokes for the VJP
+reuses it instead of re-solving the equilibrium. ``jax.custom_vjp`` calls the
+forward and backward callbacks with the same primal value, so the cache lookup
+in the backward callback is expected to hit whenever the forward callback ran
+recently enough to still be in the cache; a miss falls back to a fresh solve.
 
 The first public parameterization is the fixed-boundary case, with either a
 prescribed iota or a prescribed toroidal current profile (``ncurr``). The
@@ -18,8 +25,10 @@ dependence is exposed by the exact C++ derivative path.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+import warnings
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 import jax
 import jax.numpy as jnp
@@ -28,6 +37,8 @@ from scipy.sparse.linalg import LinearOperator, gmres
 
 from vmecpp import geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
+
+OnFailure = Literal["raise", "nan"]
 
 _GEOMETRY_COEFFICIENTS = (
     "r_cc",
@@ -107,6 +118,50 @@ def _solve_model(template, boundary: np.ndarray):
             "standalone-convergent at its own ftol_array/niter_array entry."
         )
         raise RuntimeError(error_message)
+    return model
+
+
+class _ModelCache:
+    """A small LRU cache from a boundary's bytes to its converged model.
+
+    The forward callback populates the cache; the backward callback looks the
+    model up so that a gradient does not repeat the nonlinear solve. Keying on
+    ``boundary.tobytes()`` is exact rather than approximate: JAX calls the
+    forward and backward callback with the identical primal array, so an
+    equality miss only happens on genuine eviction.
+    """
+
+    def __init__(self, maxsize: int) -> None:
+        if maxsize < 1:
+            error_message = "cache_size must be at least 1"
+            raise ValueError(error_message)
+        self._maxsize = maxsize
+        self._entries: OrderedDict[bytes, Any] = OrderedDict()
+
+    def get(self, boundary: np.ndarray) -> Any | None:
+        key = np.ascontiguousarray(boundary).tobytes()
+        model = self._entries.get(key)
+        if model is not None:
+            self._entries.move_to_end(key)
+        return model
+
+    def put(self, boundary: np.ndarray, model: Any) -> None:
+        key = np.ascontiguousarray(boundary).tobytes()
+        self._entries[key] = model
+        self._entries.move_to_end(key)
+        while len(self._entries) > self._maxsize:
+            self._entries.popitem(last=False)
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+
+def _solve_model_cached(template, boundary: np.ndarray, cache: _ModelCache):
+    """Return the cached converged model for ``boundary``, solving on a miss."""
+    model = cache.get(boundary)
+    if model is None:
+        model = _solve_model(template, boundary)
+        cache.put(boundary, model)
     return model
 
 
@@ -362,11 +417,22 @@ class DifferentiableVmec:
     current, and flux parameters are intentionally not accepted as hidden
     constants: exposing them requires their residual derivatives in the C++
     contract, rather than a finite-difference fallback.
+
+    The converged model from the forward solve is kept in a small LRU cache
+    (see ``cache_size``) so the reverse-mode callback reuses it instead of
+    re-solving the equilibrium. With ``on_failure="nan"``, a solver failure or
+    a non-converged adjoint solve returns NaN outputs or cotangents with a
+    warning instead of raising, so a single failed evaluation does not kill an
+    optimizer's line search.
     """
 
     vmec_input: Any
+    cache_size: int = 4
+    on_failure: OnFailure = "raise"
+    _cache: _ModelCache = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "_cache", _ModelCache(self.cache_size))
         if self.vmec_input.lfreeb:
             error_message = "DifferentiableVmec currently requires lfreeb=false"
             raise ValueError(error_message)
@@ -385,6 +451,11 @@ class DifferentiableVmec:
         if resolutions.size == 0 or resolutions[-1] < 3:
             error_message = "DifferentiableVmec requires an ns_array entry >= 3"
             raise ValueError(error_message)
+        if self.on_failure not in ("raise", "nan"):
+            error_message = (
+                f"on_failure must be 'raise' or 'nan', got {self.on_failure!r}"
+            )
+            raise ValueError(error_message)
 
     @property
     def parameter_shape(self) -> tuple[int, int, int]:
@@ -397,7 +468,21 @@ class DifferentiableVmec:
         return (2 * ns + len(_GEOMETRY_COEFFICIENTS) * ns * modes,)
 
     def _forward_callback(self, boundary: np.ndarray) -> np.ndarray:
-        model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary)
+        if self.on_failure == "nan":
+            try:
+                model = _solve_model_cached(
+                    self.vmec_input._to_cpp_vmecindata(), boundary, self._cache
+                )
+            except Exception as error:  # noqa: BLE001 - reported as a warning instead
+                warnings.warn(
+                    f"VMEC++ forward solve failed, returning NaN: {error}",
+                    stacklevel=2,
+                )
+                return np.full(self.output_shape, np.nan, dtype=np.float64)
+        else:
+            model = _solve_model_cached(
+                self.vmec_input._to_cpp_vmecindata(), boundary, self._cache
+            )
         return _cpp_geometry_flat(
             model.get_geometry(), model.ns, model.mpol, model.ntor
         )
@@ -405,7 +490,21 @@ class DifferentiableVmec:
     def _backward_callback(
         self, boundary: np.ndarray, geometry_bar: np.ndarray
     ) -> np.ndarray:
-        model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary)
+        if self.on_failure == "nan":
+            try:
+                model = _solve_model_cached(
+                    self.vmec_input._to_cpp_vmecindata(), boundary, self._cache
+                )
+                return _implicit_boundary_vjp(model, geometry_bar)
+            except Exception as error:  # noqa: BLE001 - reported as a warning instead
+                warnings.warn(
+                    f"VMEC++ adjoint solve failed, returning NaN cotangent: {error}",
+                    stacklevel=2,
+                )
+                return np.full(self.parameter_shape, np.nan, dtype=np.float64)
+        model = _solve_model_cached(
+            self.vmec_input._to_cpp_vmecindata(), boundary, self._cache
+        )
         return _implicit_boundary_vjp(model, geometry_bar)
 
     def __call__(self, boundary) -> geometry.Geometry:
@@ -464,7 +563,12 @@ class DifferentiableVmec:
         return geometry.Geometry(*arrays, nfp=self.vmec_input.nfp)
 
 
-def make_solver(vmec_input) -> DifferentiableVmec:
+def make_solver(
+    vmec_input,
+    *,
+    cache_size: int = 4,
+    on_failure: OnFailure = "raise",
+) -> DifferentiableVmec:
     """Return a JAX-compatible callable that runs VMEC++ for vmec_input.
 
     Example:
@@ -480,6 +584,12 @@ def make_solver(vmec_input) -> DifferentiableVmec:
     Forward execution and the VJP both invoke VMEC++ in memory. The VJP is
     available only in an Enzyme-enabled build, because it requires the exact
     transpose of the force residual. No finite-difference derivative is used.
+
+    The converged model for a given boundary is kept in an LRU cache of size
+    ``cache_size`` and reused by the VJP, so a ``jax.value_and_grad`` call
+    only re-solves the equilibrium once. With ``on_failure="nan"``, a solver
+    or adjoint failure warns and returns NaN instead of raising, so it does
+    not abort an optimizer's line search.
     """
     if not _vmecpp.VMECPP_ENABLE_ENZYME:
         error_message = (
@@ -488,7 +598,7 @@ def make_solver(vmec_input) -> DifferentiableVmec:
             "No finite-difference derivative is used."
         )
         raise RuntimeError(error_message)
-    return DifferentiableVmec(vmec_input)
+    return DifferentiableVmec(vmec_input, cache_size=cache_size, on_failure=on_failure)
 
 
 __all__ = ["DifferentiableVmec", "make_solver"]
