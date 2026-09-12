@@ -57,12 +57,14 @@ from typing import Any, Literal
 import jax
 import jax.numpy as jnp
 import numpy as np
-from scipy.sparse.linalg import LinearOperator, gmres
+import scipy.sparse
+from scipy.sparse.linalg import LinearOperator, SuperLU, gmres, splu
 
 from vmecpp import geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 OnFailure = Literal["raise", "nan"]
+AdjointSolver = Literal["direct", "gmres"]
 
 _GEOMETRY_COEFFICIENTS = (
     "r_cc",
@@ -451,29 +453,136 @@ def _structural_nullfree_interior(
     return np.asarray(keep, dtype=np.int64)
 
 
-def _implicit_boundary_vjp(model, geometry_bar: np.ndarray) -> np.ndarray:
-    if not getattr(model, "has_exact_force_jacobian", False):
-        error_message = (
-            "This VMEC++ build has no exact residual transpose. Rebuild with "
-            "VMECPP_ENABLE_ENZYME to differentiate a solved equilibrium. "
-            "No finite-difference derivative is used."
-        )
-        raise RuntimeError(error_message)
-    coefficient_bar = np.asarray(geometry_bar[2 * model.ns :], dtype=np.float64)
-    poloidal_flux_bar = np.asarray(
-        geometry_bar[model.ns : 2 * model.ns], dtype=np.float64
+def _color_groups(layout: StateLayout) -> list[dict[tuple[str, int], np.ndarray]]:
+    """Group ``solved`` indices by ``(surface % 3, (span, local mode))``.
+
+    Returns one dict per color ``c in (0, 1, 2)`` mapping a ``(span, mode)``
+    key to the ``solved`` indices at that mode with ``surface % 3 == c``. Used
+    to build one Hessian-vector probe per group: within a color, no two
+    solved entries at the same mode can be on adjacent surfaces (surfaces of
+    the same color are always at least 2 apart), so a single probe with ones
+    at every such entry does not mix contributions from neighboring columns.
+    """
+    groups: list[dict[tuple[str, int], list[int]]] = [{}, {}, {}]
+    for name, span in layout.spans.items():
+        in_span_mask = (layout.solved >= span.start) & (layout.solved < span.stop)
+        in_span = layout.solved[in_span_mask]
+        if in_span.size == 0:
+            continue
+        local = in_span - span.start
+        surface = layout.surface[name][local]
+        mode = layout.mode[name][local]
+        for index, j, m in zip(in_span, surface, mode, strict=True):
+            key = (name, int(m))
+            groups[int(j) % 3].setdefault(key, []).append(int(index))
+    return [
+        {key: np.asarray(indices, dtype=np.int64) for key, indices in group.items()}
+        for group in groups
+    ]
+
+
+def _surface_of(layout: StateLayout, index: int) -> int:
+    for name, span in layout.spans.items():
+        if span.start <= index < span.stop:
+            return int(layout.surface[name][index - span.start])
+    error_message = f"index {index} is not covered by any span"
+    raise ValueError(error_message)
+
+
+def assemble_block_tridiagonal_hessian(
+    model, layout: StateLayout | None = None
+) -> scipy.sparse.csc_matrix:
+    """Assemble ``H_SS^T`` restricted to ``layout.solved`` as a sparse matrix.
+
+    The force on surface ``j`` depends only on the state at surfaces
+    ``j - 1``, ``j``, and ``j + 1`` (verified by
+    ``test_force_depends_only_on_neighboring_surfaces``), so the transposed
+    interior force operator, restricted to the ``solved`` DOFs, is block
+    tridiagonal in the surface index. This assembles it exactly via
+    Hessian-vector products, using a 3-coloring of surfaces so that one probe
+    per ``(color, mode)`` pair recovers a whole block-diagonal-in-surface
+    slice of columns at once: no two solved entries of the same color and
+    mode are adjacent, so their probed columns cannot overlap in the rows a
+    tridiagonal operator would touch.
+    """
+    if layout is None:
+        layout = state_layout(model)
+    state_size = int(np.asarray(model.get_state()).size)
+    solved = layout.solved
+    position = {int(index): position for position, index in enumerate(solved)}
+    groups = _color_groups(layout)
+
+    rows: list[int] = []
+    cols: list[int] = []
+    data: list[float] = []
+    for color, group in enumerate(groups):
+        for column_indices in group.values():
+            probe = np.zeros(state_size)
+            probe[column_indices] = 1.0
+            result = np.asarray(
+                model.exact_hessian_vector_product_transpose(
+                    np.ascontiguousarray(probe)
+                ),
+                dtype=np.float64,
+            )
+            hits = np.nonzero(result[solved])[0]
+            if hits.size == 0:
+                continue
+            hit_surfaces = np.asarray(
+                [_surface_of(layout, int(solved[h])) for h in hits]
+            )
+            # A hit row on surface i belongs to the probed column on surface
+            # i - (((i - c + 1) % 3) - 1): the unique probed surface among
+            # {i - 1, i, i + 1} whose color is `color`.
+            offsets = ((hit_surfaces - color + 1) % 3) - 1
+            column_surfaces = hit_surfaces - offsets
+            column_index_by_surface = {
+                _surface_of(layout, int(idx)): idx for idx in column_indices
+            }
+            for hit, column_surface in zip(hits, column_surfaces, strict=True):
+                column = column_index_by_surface.get(int(column_surface))
+                if column is None:
+                    continue
+                rows.append(int(hit))
+                cols.append(position[int(column)])
+                data.append(float(result[solved[hit]]))
+
+    size = solved.size
+    return scipy.sparse.csc_matrix(
+        (data, (rows, cols)), shape=(size, size), dtype=np.float64
     )
-    state_bar = np.asarray(
-        model.geometry_state_vjp(coefficient_bar, poloidal_flux_bar), dtype=np.float64
-    )
-    state = np.asarray(model.get_state(), dtype=np.float64)
-    interior, boundary = _interior_and_boundary(model)
-    model.set_state(np.ascontiguousarray(state))
-    model.evaluate(2, 2, True)
-    state_size = state.size
-    # Deflate the structural null space; without this the transposed
-    # interior system is singular and inconsistent in 3D.
-    interior = _structural_nullfree_interior(model, interior)
+
+
+class _AdjointFactorCache:
+    """Caches the sparse LU factorization of ``H_SS^T`` alongside its model.
+
+    Keyed by ``id(model)`` so the factor is reused across repeated adjoint
+    solves against the same converged model (e.g. several cotangents through
+    the same forward solve), and naturally invalidated when the model
+    changes, since a fresh model gets a fresh id.
+    """
+
+    def __init__(self) -> None:
+        self._entries: dict[int, tuple[StateLayout, SuperLU]] = {}
+
+    def get_or_assemble(self, model) -> tuple[StateLayout, SuperLU]:
+        key = id(model)
+        cached = self._entries.get(key)
+        if cached is not None:
+            return cached
+        layout = state_layout(model)
+        matrix = assemble_block_tridiagonal_hessian(model, layout)
+        factor = splu(matrix)
+        self._entries[key] = (layout, factor)
+        return layout, factor
+
+
+_adjoint_factor_cache = _AdjointFactorCache()
+
+
+def _solve_adjoint_gmres(model, interior: np.ndarray, rhs: np.ndarray) -> np.ndarray:
+    """Solve ``H_interior^T lambda = rhs`` with preconditioned GMRES."""
+    state_size = int(np.asarray(model.get_state()).size)
 
     def transpose(value: np.ndarray) -> np.ndarray:
         return np.asarray(
@@ -503,7 +612,7 @@ def _implicit_boundary_vjp(model, geometry_bar: np.ndarray) -> np.ndarray:
     )
     adjoint, info = gmres(
         operator,
-        state_bar[interior],
+        rhs,
         M=preconditioner,
         rtol=1.0e-8,
         restart=200,
@@ -512,9 +621,64 @@ def _implicit_boundary_vjp(model, geometry_bar: np.ndarray) -> np.ndarray:
     if info != 0:
         error_message = f"VMEC++ implicit adjoint solve failed with info={info}"
         raise RuntimeError(error_message)
+    return adjoint
+
+
+def _solve_adjoint_direct(model, rhs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Solve ``H_SS^T lambda = rhs[solved]`` with a cached sparse LU factor.
+
+    Returns ``(solved indices, lambda)``; ``rhs`` outside ``solved`` (the
+    structural zeros and the m=1 gauge rows) is left unsolved-for, matching
+    ``_structural_nullfree_interior``'s deflation.
+    """
+    layout, factor = _adjoint_factor_cache.get_or_assemble(model)
+    adjoint = factor.solve(rhs[layout.solved])
+    return layout.solved, adjoint
+
+
+def _implicit_boundary_vjp(
+    model, geometry_bar: np.ndarray, *, adjoint_solver: AdjointSolver = "direct"
+) -> np.ndarray:
+    if not getattr(model, "has_exact_force_jacobian", False):
+        error_message = (
+            "This VMEC++ build has no exact residual transpose. Rebuild with "
+            "VMECPP_ENABLE_ENZYME to differentiate a solved equilibrium. "
+            "No finite-difference derivative is used."
+        )
+        raise RuntimeError(error_message)
+    coefficient_bar = np.asarray(geometry_bar[2 * model.ns :], dtype=np.float64)
+    poloidal_flux_bar = np.asarray(
+        geometry_bar[model.ns : 2 * model.ns], dtype=np.float64
+    )
+    state_bar = np.asarray(
+        model.geometry_state_vjp(coefficient_bar, poloidal_flux_bar), dtype=np.float64
+    )
+    state = np.asarray(model.get_state(), dtype=np.float64)
+    interior, boundary = _interior_and_boundary(model)
+    model.set_state(np.ascontiguousarray(state))
+    model.evaluate(2, 2, True)
+    state_size = state.size
+
+    if adjoint_solver == "gmres":
+        # Deflate the structural null space; without this the transposed
+        # interior system is singular and inconsistent in 3D.
+        solved = _structural_nullfree_interior(model, interior)
+        adjoint = _solve_adjoint_gmres(model, solved, state_bar[solved])
+    elif adjoint_solver == "direct":
+        solved, adjoint = _solve_adjoint_direct(model, state_bar)
+    else:
+        error_message = (
+            f"adjoint_solver must be 'direct' or 'gmres', got {adjoint_solver!r}"
+        )
+        raise ValueError(error_message)
+
     embedded = np.zeros(state_size)
-    embedded[interior] = adjoint
-    internal_boundary_bar = state_bar[boundary] - transpose(embedded)[boundary]
+    embedded[solved] = adjoint
+    transposed_boundary = np.asarray(
+        model.exact_hessian_vector_product_transpose(np.ascontiguousarray(embedded)),
+        dtype=np.float64,
+    )[boundary]
+    internal_boundary_bar = state_bar[boundary] - transposed_boundary
     full_state_bar = np.zeros(state_size)
     full_state_bar[boundary] = internal_boundary_bar
     return _boundary_from_state_vjp(model, full_state_bar)
@@ -535,11 +699,18 @@ class DifferentiableVmec:
     a non-converged adjoint solve returns NaN outputs or cotangents with a
     warning instead of raising, so a single failed evaluation does not kill an
     optimizer's line search.
+
+    ``adjoint_solver="direct"`` (the default) assembles the transposed
+    interior force operator restricted to the solved DOFs as a block
+    tridiagonal sparse matrix and factorizes it once per model with a sparse
+    LU; ``adjoint_solver="gmres"`` keeps the preconditioned GMRES solve used
+    previously.
     """
 
     vmec_input: Any
     cache_size: int = 4
     on_failure: OnFailure = "raise"
+    adjoint_solver: AdjointSolver = "direct"
     _cache: _ModelCache = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -565,6 +736,12 @@ class DifferentiableVmec:
         if self.on_failure not in ("raise", "nan"):
             error_message = (
                 f"on_failure must be 'raise' or 'nan', got {self.on_failure!r}"
+            )
+            raise ValueError(error_message)
+        if self.adjoint_solver not in ("direct", "gmres"):
+            error_message = (
+                "adjoint_solver must be 'direct' or 'gmres', got "
+                f"{self.adjoint_solver!r}"
             )
             raise ValueError(error_message)
 
@@ -606,7 +783,9 @@ class DifferentiableVmec:
                 model = _solve_model_cached(
                     self.vmec_input._to_cpp_vmecindata(), boundary, self._cache
                 )
-                return _implicit_boundary_vjp(model, geometry_bar)
+                return _implicit_boundary_vjp(
+                    model, geometry_bar, adjoint_solver=self.adjoint_solver
+                )
             except Exception as error:  # noqa: BLE001 - reported as a warning instead
                 warnings.warn(
                     f"VMEC++ adjoint solve failed, returning NaN cotangent: {error}",
@@ -616,7 +795,9 @@ class DifferentiableVmec:
         model = _solve_model_cached(
             self.vmec_input._to_cpp_vmecindata(), boundary, self._cache
         )
-        return _implicit_boundary_vjp(model, geometry_bar)
+        return _implicit_boundary_vjp(
+            model, geometry_bar, adjoint_solver=self.adjoint_solver
+        )
 
     def __call__(self, boundary) -> geometry.Geometry:
         boundary = jnp.asarray(boundary, dtype=jnp.float64)
@@ -679,6 +860,7 @@ def make_solver(
     *,
     cache_size: int = 4,
     on_failure: OnFailure = "raise",
+    adjoint_solver: AdjointSolver = "direct",
 ) -> DifferentiableVmec:
     """Return a JAX-compatible callable that runs VMEC++ for vmec_input.
 
@@ -701,6 +883,11 @@ def make_solver(
     only re-solves the equilibrium once. With ``on_failure="nan"``, a solver
     or adjoint failure warns and returns NaN instead of raising, so it does
     not abort an optimizer's line search.
+
+    ``adjoint_solver="direct"`` (the default) assembles the exact, block
+    tridiagonal transposed force operator and factorizes it with a sparse LU,
+    which at typical resolutions converges in far fewer iterations than the
+    preconditioned GMRES solve kept available as ``adjoint_solver="gmres"``.
     """
     if not _vmecpp.VMECPP_ENABLE_ENZYME:
         error_message = (
@@ -709,7 +896,12 @@ def make_solver(
             "No finite-difference derivative is used."
         )
         raise RuntimeError(error_message)
-    return DifferentiableVmec(vmec_input, cache_size=cache_size, on_failure=on_failure)
+    return DifferentiableVmec(
+        vmec_input,
+        cache_size=cache_size,
+        on_failure=on_failure,
+        adjoint_solver=adjoint_solver,
+    )
 
 
 __all__ = ["DifferentiableVmec", "StateLayout", "make_solver", "state_layout"]
