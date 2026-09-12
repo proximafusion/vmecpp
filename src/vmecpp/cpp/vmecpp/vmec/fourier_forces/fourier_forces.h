@@ -7,6 +7,7 @@
 
 #include <Eigen/Dense>
 #include <span>
+#include <vector>
 
 #include "vmecpp/vmec/fourier_coefficients/fourier_coefficients.h"
 
@@ -22,6 +23,12 @@ class FourierForces : public FourierCoeffs {
 
   void zeroZForceForM1();
   void residuals(Eigen::Vector3d& fRes, bool includeEdgeRZ) const;
+
+  // The parities this run actually carries, in a fixed order: R, then Z, then
+  // lambda, each cc/ss/sc/cs as the symmetry and dimensionality allow. Code
+  // that treats the whole force as one flat object, such as
+  // IdealMhdModel::SetForceSource, uses this so the layout has one definition.
+  std::vector<std::span<double>> ActiveSpans();
 
   // appropriately-named variables for the data in FourierCoeffs
   std::span<double> frcc;
