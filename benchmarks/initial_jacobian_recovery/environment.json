@@ -1,0 +1,60 @@
+{
+  "baseline_commit": "5611d9f3c39b73b5706845e481037a9b54322d45",
+  "python": "3.14.5",
+  "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "packages": {
+    "numpy": "2.5.2",
+    "scipy": "1.18.1",
+    "simsopt": "1.11.1",
+    "scikit-build-core": "0.11.6",
+    "pybind11": "3.1.0",
+    "cmake": "4.4.3",
+    "ninja": "1.13.2"
+  },
+  "clang": "Apple clang version 17.0.0 (clang-1700.6.3.2)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+  "hardware": "Apple M4",
+  "build_threads": 6,
+  "timing_threads": 4,
+  "candidate_binary": {
+    "binaries": {
+      "package-coarse-retry-v4/vmecpp/cpp/libvmecpp_core.dylib": "1a7c1c75ea349004161725842096d51274559ba63849880d707eee823cc42d67",
+      "package-coarse-retry-v4/vmecpp/cpp/_vmecpp.cpython-314-darwin.so": "76744f5f78b5152d61a04d59bc8681fcbc11f167665cfcbf9849776618d44fd5"
+    },
+    "wheel": "vmecpp-0.7.4.dev53+g5611d9f3c.d20260906-cp314-cp314-macosx_14_0_arm64.whl",
+    "wheel_sha256": "174e83edc2ca3ae6e4d8dc4cb8c183806af2699c755746b6664586af33ac115d",
+    "patch_sha256": "f34ea8f0f1ea475ed37ae389b91456b8a5956973b6c68b62eea4da0a0bd9077d"
+  },
+  "baseline_binaries": {
+    "package-baseline/vmecpp/cpp/libvmecpp_core.dylib": "2465dae850eae8a246bb01df229c79b75d4113380c6ef7a9b71a16314e4726b8",
+    "package-baseline/vmecpp/cpp/_vmecpp.cpython-314-darwin.so": "76744f5f78b5152d61a04d59bc8681fcbc11f167665cfcbf9849776618d44fd5"
+  },
+  "fortran_reference_commit": "ce663b20746524f391848f2841fa488bf718c923",
+  "timing_uncertainty": [
+    {
+      "case_id": 954,
+      "geomean_ratio": 0.9972351747335246,
+      "one_sided_95_percent_upper_ratio": 1.064886054868149
+    },
+    {
+      "case_id": 9914,
+      "geomean_ratio": 0.9383547536836525,
+      "one_sided_95_percent_upper_ratio": 1.0626225763147685
+    },
+    {
+      "case_id": 19940,
+      "geomean_ratio": 0.9095540637638277,
+      "one_sided_95_percent_upper_ratio": 0.9926505514498013
+    },
+    {
+      "case_id": 29346,
+      "geomean_ratio": 1.0244720485924825,
+      "one_sided_95_percent_upper_ratio": 1.0966658474911959
+    },
+    {
+      "case_id": 65579,
+      "geomean_ratio": 0.9847143684277179,
+      "one_sided_95_percent_upper_ratio": 1.0145758708701684
+    }
+  ]
+}
