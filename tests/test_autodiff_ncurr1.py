@@ -230,6 +230,10 @@ def test_geometry_state_vjp_poloidal_flux_route_matches_finite_difference() -> N
     assert errors[1.0e-5] < errors[1.0e-4] < errors[1.0e-3]
 
 
+@pytest.mark.skipif(
+    not _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="needs an Enzyme-enabled build for make_solver's exact residual transpose",
+)
 def test_differentiable_vmec_accepts_ncurr1() -> None:
     indata = _ncurr1_input()
     solver = autodiff.make_solver(indata)
