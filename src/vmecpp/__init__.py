@@ -2605,6 +2605,19 @@ def run(
     )
 
 
+def has_exact_force_jacobian() -> bool:
+    """Returns true if this build has the exact force Jacobian (Enzyme plugin).
+
+    This is a static build feature, cheap to query and independent of any
+    particular equilibrium: it does not require creating a `VmecModel`. Use it
+    to check ahead of time whether reverse-mode differentiation through
+    `vmecpp.autodiff` is available in the current installation. A model's
+    `has_exact_force_jacobian` property additionally depends on that model's
+    force-balance formulation and can be false even when this function is true.
+    """
+    return bool(_vmecpp.VMECPP_ENABLE_ENZYME)
+
+
 def is_vmec2000_input(input_file: Path) -> bool:
     """Returns true if the input file looks like a Fortran VMEC/VMEC2000 INDATA file."""
     # we peek at the first few non-blank, non-comment lines in the file:
@@ -2784,4 +2797,5 @@ __all__ = [  # noqa: RUF022
     "solve_multigrid",
     "IterationResult",
     "IterationState",
+    "has_exact_force_jacobian",
 ]

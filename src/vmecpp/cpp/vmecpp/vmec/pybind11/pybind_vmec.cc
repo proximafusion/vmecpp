@@ -747,6 +747,20 @@ class VmecModel {
 PYBIND11_MODULE(_vmecpp, m) {
   m.doc() = "pybind11 VMEC++ plugin";
 
+  // Compile-time build feature: whether this wheel was built with the Enzyme
+  // plugin (CMake option VMECPP_ENABLE_ENZYME). This is a static property of
+  // the build, cheap to query, and does not require creating a VmecModel;
+  // vmecpp.has_exact_force_jacobian() reads it to fail fast, before running
+  // any solve. It does not by itself guarantee
+  // VmecModel.has_exact_force_jacobian is true for a given model: that also
+  // depends on the model's run-time force-balance formulation (see
+  // VmecModel::has_exact_force_jacobian).
+#ifdef VMECPP_ENABLE_ENZYME
+  m.attr("VMECPP_ENABLE_ENZYME") = true;
+#else
+  m.attr("VMECPP_ENABLE_ENZYME") = false;
+#endif
+
   // C++ stdout and stderr cannot easily be captured or redirected from Python.
   // This adds a Python context manager that can be used to redirect them like
   // this:

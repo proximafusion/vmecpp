@@ -453,6 +453,13 @@ def make_solver(vmec_input) -> DifferentiableVmec:
     available only in an Enzyme-enabled build, because it requires the exact
     transpose of the force residual. No finite-difference derivative is used.
     """
+    if not _vmecpp.VMECPP_ENABLE_ENZYME:
+        error_message = (
+            "vmecpp.autodiff.make_solver requires a build with the exact force "
+            "Jacobian; rebuild with the CMake option VMECPP_ENABLE_ENZYME=ON. "
+            "No finite-difference derivative is used."
+        )
+        raise RuntimeError(error_message)
     return DifferentiableVmec(vmec_input)
 
 
