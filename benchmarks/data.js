@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789230896569,
+  "lastUpdate": 1789238495538,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18951,6 +18951,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4917372019999675,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7c60393805914d5a71540de4cc75bb521f755e77",
+          "message": "Bound the force cotangent gather in applyExactForceJacobianTranspose (#860)\n\nThe gather loop copies nForce = nZnT (nsMaxFIncludingLcfs - nsMinF)\nentries from each real-space force member, but armn/azmn/brmn/bzmn,\ncrmn/czmn and frcon/fzcon are allocated with nZnT (nsMaxF - nsMinF): one\nsurface short on the thread holding the LCFS. Reading past the end of the\nEigen vectors is a silent heap over-read in release builds and segfaults\nwhen the allocation ends right before a protected page (intermittent,\nlayout dependent, \"Invalid permissions\" at a page-aligned address in a\nvmovupd load of the gather loop). The out-of-bounds values were never\nconsumed by the reverse kernel, so results are unchanged.\n\nBound the copy by src.size(), as the forward applyExactForceJacobian\nalready does for its scatter.\n\nCo-authored-by: Claude Fable 5.1 <noreply@anthropic.com>",
+          "timestamp": "2026-09-12T20:35:32+02:00",
+          "tree_id": "aab40188be8c4464f3879be87c3c774584cd7db5",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7c60393805914d5a71540de4cc75bb521f755e77"
+        },
+        "date": 1789238488767,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.2877186160000065,
+            "range": "stddev: 0.00556771215350025",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.0633443070000035,
+            "range": "stddev: 0.03860064700715984",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.898655177666645,
+            "range": "stddev: 0.0011144575811379857",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.3418685186666721,
+            "range": "stddev: 0.0425555953663658",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.730526746666688,
+            "range": "stddev: 0.009950076974676255",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.736728264666643,
+            "range": "stddev: 0.024461493960691465",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.5253079999999954,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.31044838500002925,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
