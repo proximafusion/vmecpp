@@ -785,6 +785,17 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       }
     }
 
+    // With the m=1 gauge force zeroed throughout, the gauge stays at its
+    // initial value. Set it from the boundary here so that it does not
+    // carry the hot-restart state or the coarse-grid interpolation (whose
+    // odd-m axis extrapolation does not reproduce the sqrt(s) profile).
+    if (always_fix_m1_gauge_) {
+      for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+        decomposed_x_[thread_id]->setM1GaugeFromBoundary(t_, b_,
+                                                         *p_[thread_id]);
+      }
+    }
+
     // restart_reason == NO_RESTART at entry of restart_iter means to store xc
     // in xstore. The backup is taken AFTER the multigrid interpolation, so
     // that the first rollback target of a continuation stage is the
@@ -1516,7 +1527,8 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
       *decomposed_x_[thread_id], *physical_x_[thread_id],
       *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
       last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
-      iter2_, checkpoint, iterations_before_checkpointing, verbose_);
+      iter2_, checkpoint, iterations_before_checkpointing, verbose_,
+      always_fix_m1_gauge_);
   if (!reached_checkpoint.ok()) {
     return reached_checkpoint;
   }

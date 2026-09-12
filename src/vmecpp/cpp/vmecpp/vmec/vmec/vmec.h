@@ -200,6 +200,13 @@ class Vmec {
   VmecConstants constants_;
   HandoverStorage h_;
   FlowControl fc_;
+  // Zero the m=1 gauge force (FourierForces::zeroZForceForM1) from the first
+  // iteration instead of only once fsqz < 1e-6, and set the gauge from the
+  // boundary in InitializeRadial. The converged gauge then equals the
+  // boundary gauge scaled by sqrt(s) on every surface, independent of the
+  // iteration and multigrid history, and the fixed-gauge force Jacobian is
+  // the linearization of the iterated system.
+  bool always_fix_m1_gauge_ = false;
   MGridProvider mgrid_;
   OutputQuantities output_quantities_;
 
