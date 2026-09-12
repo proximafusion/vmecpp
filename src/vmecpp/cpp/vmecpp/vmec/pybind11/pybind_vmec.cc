@@ -1520,7 +1520,10 @@ PYBIND11_MODULE(_vmecpp, m) {
   // Single-resolution iteration model: exposes the forward model and the
   // time-step / restart primitives so the equilibrium iteration can be driven
   // from Python (see vmecpp._iteration).
-  py::class_<VmecModel>(m, "VmecModel")
+  // py::dynamic_attr() adds a per-instance __dict__ (extra pointer plus a
+  // dict allocated on first use) so Python code can attach its own state,
+  // e.g. a cached factorization or metadata, to a solved model.
+  py::class_<VmecModel>(m, "VmecModel", py::dynamic_attr())
       .def_static("create", &VmecModel::Create, py::arg("indata"),
                   py::arg("ns"), py::arg("initial_state") = std::nullopt)
       .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
