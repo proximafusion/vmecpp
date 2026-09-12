@@ -93,6 +93,10 @@ def _coefficients(value) -> np.ndarray:
     return np.concatenate([array.ravel() for array in arrays])
 
 
+@pytest.mark.skipif(
+    not _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="needs an Enzyme-enabled build for make_solver's exact residual transpose",
+)
 def test_solver_runs_vmecpp_and_matches_native_geometry() -> None:
     indata = _small_input()
     boundary = _boundary(indata)
@@ -109,6 +113,10 @@ def test_solver_runs_vmecpp_and_matches_native_geometry() -> None:
     )
 
 
+@pytest.mark.skipif(
+    not _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="needs an Enzyme-enabled build for make_solver's exact residual transpose",
+)
 def test_solver_is_usable_under_jit() -> None:
     indata = _small_input()
     solver = autodiff.make_solver(indata)
@@ -117,16 +125,14 @@ def test_solver_is_usable_under_jit() -> None:
     assert np.isfinite(float(value))
 
 
+@pytest.mark.skipif(
+    _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="exact Enzyme derivative support is enabled, so make_solver succeeds",
+)
 def test_solver_does_not_fall_back_to_finite_differences() -> None:
     indata = _small_input()
-    solver = autodiff.make_solver(indata)
-    boundary = _boundary(indata)
-    if _vmecpp.VmecModel.create(
-        indata._to_cpp_vmecindata(), 5
-    ).has_exact_force_jacobian:
-        pytest.skip("exact Enzyme derivative support is enabled")
-    with pytest.raises(RuntimeError, match="no exact residual transpose"):
-        solver._backward_callback(boundary, np.zeros(solver.output_shape))
+    with pytest.raises(RuntimeError, match="VMECPP_ENABLE_ENZYME"):
+        autodiff.make_solver(indata)
 
 
 def test_has_exact_force_jacobian_agrees_with_the_model_property() -> None:
