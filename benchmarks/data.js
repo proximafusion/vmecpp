@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789206010980,
+  "lastUpdate": 1789228307423,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18711,6 +18711,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.16822909199999003,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7fa4cf9d4feda50ca5bf982c286755a1d6284851",
+          "message": "Raise when the final multigrid step of a differentiable solve does not converge (#853)\n\n* Fail loudly when a truncated multi-grid schedule does not converge\n\nTruncating a multi-step ns_array to its first steps (e.g. for a cheap\ndifferentiable solve) silently produced an unconverged result:\nautodiff._solve_model called VmecModel.solve() on every step but never\nchecked whether the schedule's last step actually reached its\nftol_array entry. VmecModel.solve() itself only raises on a hard C++\nerror; running out of niter_array at NORMAL_TERMINATION (no fatal\nerror, but ftol not met) is not an error there, because it is the\nexpected outcome for a multi-grid schedule's coarse, non-final steps,\nwhose only job is handing a good initial guess to the next, finer step\n(mirrors Vmec::run, which likewise only checks status after the last\nmulti-grid step). The Python loop is the one that knows which step is\nfinal, so it is the one that must check it.\n\n_solve_model now raises RuntimeError, with the final ftol/force\nresiduals, when the last multi-grid step's status is not\nSUCCESSFUL_TERMINATION. Also documents the ns_array/ftol_array/niter_array\ncontract on _solve_model and on VmecModel.solve's binding: each entry\nconverges to its own ftol_array entry, and only the schedule's actual\nlast step needs to converge standalone.\n\nReproduced on a two-step schedule derived from\nexamples/data/cth_like_fixed_bdy.json (ns_array [9, 15]) truncated to\nits first step alone (ns=9, ftol=1e-16, niter=50, a ftol that was only\nmeant as a hand-over to the ns=15 step): the truncated, single-step\nsolve completed niter=50 iterations at fsqr ~= 8.5e-4, five orders of\nmagnitude above its own ftol, and returned without error before this\nfix.\n\nTests: a truncated single-step schedule with a hand-over-only ftol now\nraises RuntimeError naming \"did not converge\"; a genuine two-step\nschedule whose first step does not converge but whose second step does\nstill succeeds (non-final non-convergence is not an error).\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>\n\n* Update pybind_vmec.cc\n\n---------\n\nCo-authored-by: Claude Sonnet 5 <noreply@anthropic.com>",
+          "timestamp": "2026-09-12T17:44:26+02:00",
+          "tree_id": "c9f0565ba28f97586e765a7b5ae062684aca7513",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7fa4cf9d4feda50ca5bf982c286755a1d6284851"
+        },
+        "date": 1789228300639,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.36666640480000295,
+            "range": "stddev: 0.0017693250392118197",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.4547581473333175,
+            "range": "stddev: 0.026945163301658828",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0964983103333263,
+            "range": "stddev: 0.014831645779554821",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6447101449999952,
+            "range": "stddev: 0.007767603706405222",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.975688651666644,
+            "range": "stddev: 0.009532502885165273",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.910995459666651,
+            "range": "stddev: 0.014574233692703739",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.5998135769999635,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.48042990599992663,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
