@@ -391,6 +391,16 @@ class VmecModel {
   }
 
   // Reference C++ inner iteration (the loop being ported), for verification.
+  // Each call converges the *current* resolution (established by Create() or
+  // RefineTo()) to its own ftol_array/niter_array entry. Exhausting the
+  // iteration budget without reaching ftolv (VmecStatus::NORMAL_TERMINATION)
+  // is not raised here: it is the normal outcome for a multi-grid schedule's
+  // coarse, non-final steps, which only need to hand a good initial guess to
+  // the next, finer step (see Vmec::run, which likewise only checks the
+  // status after the last multi-grid step). This model has no notion of
+  // "last step"; the Python loop that owns the multi-grid sequencing (see
+  // vmecpp.autodiff._solve_model) is the one that must check status/ftolv on
+  // the step it treats as final.
   void Solve() const {
     auto s = vmec_->SolveEquilibrium(vmecpp::VmecCheckpoint::NONE, INT_MAX);
     if (!s.ok()) {
