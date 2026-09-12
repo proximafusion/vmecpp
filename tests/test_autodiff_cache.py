@@ -5,6 +5,12 @@ import pytest
 
 import vmecpp
 from vmecpp import autodiff
+from vmecpp.cpp import _vmecpp  # type: ignore
+
+pytestmark = pytest.mark.skipif(
+    not _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="make_solver needs an Enzyme-enabled build for the exact residual transpose",
+)
 
 
 def _small_input() -> vmecpp.VmecInput:
