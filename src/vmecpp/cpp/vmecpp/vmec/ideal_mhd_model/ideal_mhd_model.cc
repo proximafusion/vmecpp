@@ -2645,8 +2645,8 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   const int nWork = LocalForceWorkSize(comp);
   std::vector<double> work(nWork, 0.0);
   std::vector<double> dwork(nWork, 0.0);
-  std::vector<double> force(20 * nForce, 0.0);
-  std::vector<double> dforce(20 * nForce, 0.0);
+  std::vector<double> force(kLocalForceBlocks * nForce, 0.0);
+  std::vector<double> dforce(kLocalForceBlocks * nForce, 0.0);
 
   // single nonlinear forward pass: J_g . (T v)
   ExactForceDensityJvp(geomP, dgeom, work.data(), dwork.data(), force.data(),
@@ -2704,7 +2704,7 @@ void IdealMhdModel::exactForceDensityTangent(const double* geomP,
   const int nWork = LocalForceWorkSize(comp);
   std::vector<double> work(nWork, 0.0);
   std::vector<double> dwork(nWork, 0.0);
-  std::vector<double> force(20 * nForce, 0.0);
+  std::vector<double> force(kLocalForceBlocks * nForce, 0.0);
   ExactForceDensityJvp(geomP, dgeom, work.data(), dwork.data(), force.data(),
                        dforce_out, &comp);
 }
@@ -2718,10 +2718,10 @@ void IdealMhdModel::exactForceDensityCotangent(const double* geomP,
   const int nWork = LocalForceWorkSize(comp);
   std::vector<double> work(nWork, 0.0);
   std::vector<double> work_bar(nWork, 0.0);
-  std::vector<double> force(20 * nForce, 0.0);
+  std::vector<double> force(kLocalForceBlocks * nForce, 0.0);
   // force_bar is the output cotangent seed; Enzyme consumes (and may clobber)
   // the shadow, so pass a private copy. geom_bar_out is zeroed by the caller.
-  std::vector<double> fbar(force_bar, force_bar + 20 * nForce);
+  std::vector<double> fbar(force_bar, force_bar + kLocalForceBlocks * nForce);
   ExactForceDensityVjp(geomP, geom_bar_out, work.data(), work_bar.data(),
                        force.data(), fbar.data(), &comp);
 }
@@ -3071,8 +3071,8 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
     dft_ForcesToFourierTranspose_2d_symm(m_physical_f);
   }
 
-  // Gather the force-density member cotangents into the 20-block flat layout.
-  std::vector<double> force_bar(20 * nForce, 0.0);
+  // Gather the force-density member cotangents into the flat block layout.
+  std::vector<double> force_bar(kLocalForceBlocks * nForce, 0.0);
   auto gather = [&](int b, const Eigen::VectorXd& src) {
     for (int i = 0; i < nForce; ++i) force_bar[b * nForce + i] = src[i];
   };
@@ -3156,6 +3156,75 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
   m_physical_scratch.decomposeInto(m_decomposed_out, m_p_.scalxc);
 }
 
+// Transpose of the geometry-to-chi' map for ncurr==1: (dchi'/dx)^T chip_bar,
+// in the decomposed internal basis. chip_bar has one entry per half surface
+// (index jH-nsMinH). Seeds the reverse-mode force-density kernel on block 20
+// alone (all force-member cotangents zero) and reuses the B^T untransform of
+// applyExactForceJacobianTranspose, since chi' shares the same nonlinear
+// geometry dependence (guu, bsupu, bsupv, gsqrt) as the force densities.
+void IdealMhdModel::chipStateVjp(const double* geomP, int geom_stride,
+                                 const double* chip_bar,
+                                 FourierGeometry& m_physical_scratch,
+                                 FourierGeometry& m_decomposed_out) {
+  const int gS = geom_stride;
+  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
+  const int nH = r_.nsMaxH - r_.nsMinH;
+
+  std::vector<double> force_bar(kLocalForceBlocks * nForce, 0.0);
+  for (int jH = 0; jH < nH; ++jH) {
+    force_bar[20 * nForce + jH] = chip_bar[jH];
+  }
+
+  std::vector<double> geom_bar(20 * gS, 0.0);
+  exactForceDensityCotangent(geomP, force_bar.data(), gS, geom_bar.data());
+
+  // B^T: transpose of packGeometry's linear pre-chain, restricted to the
+  // blocks chi' actually depends on (r1, ru, zu, lu/lv via bsupu/bsupv; chi'
+  // does not depend on rv/zv, the constraint blocks, or the primal's phipF
+  // shift, which drops out of a tangent/cotangent map).
+  auto scat = [&](int b, Eigen::VectorXd& dst) {
+    const int sz = std::min(gS, static_cast<int>(dst.size()));
+    for (int i = 0; i < sz; ++i) dst[i] = geom_bar[b * gS + i];
+  };
+  scat(0, r1_e);
+  scat(1, r1_o);
+  scat(2, z1_e);
+  scat(3, z1_o);
+  scat(4, ru_e);
+  scat(5, ru_o);
+  scat(6, zu_e);
+  scat(7, zu_o);
+  for (int i = 0; i < gS; ++i) {
+    lu_e[i] = constants_.lamscale * geom_bar[12 * gS + i];
+    lu_o[i] = constants_.lamscale * geom_bar[13 * gS + i];
+  }
+  if (s_.lthreed) {
+    scat(8, rv_e);
+    scat(9, rv_o);
+    scat(10, zv_e);
+    scat(11, zv_o);
+    for (int i = 0; i < gS; ++i) {
+      lv_e[i] = constants_.lamscale * geom_bar[14 * gS + i];
+      lv_o[i] = constants_.lamscale * geom_bar[15 * gS + i];
+    }
+  }
+  // chi' has zero cotangent on the constraint blocks, but the transpose DFT
+  // unconditionally reads rCon/zCon as reused cotangent scratch (see
+  // applyExactForceJacobianTranspose's scat(16, rCon)/scat(17, zCon)); zero
+  // them so a stale primal or cotangent left by an earlier call on this model
+  // does not leak in.
+  rCon.setZero();
+  zCon.setZero();
+  if (s_.lthreed) {
+    dft_FourierToRealTranspose_3d_symm(m_physical_scratch);
+  } else {
+    dft_FourierToRealTranspose_2d_symm(m_physical_scratch);
+  }
+  m_physical_scratch.extrapolateTowardsAxisTranspose();
+  m_physical_scratch.m1Constraint(1.0, signOfJacobian);
+  m_physical_scratch.decomposeInto(m_decomposed_out, m_p_.scalxc);
+}
+
 // Diagnostic: max |composed force density - production force density| at the
 // current state, to isolate composition bugs from the transform/tangent path.
 double IdealMhdModel::composedForceResidual(const double* geomP,
@@ -3163,7 +3232,7 @@ double IdealMhdModel::composedForceResidual(const double* geomP,
   LocalForceComposition comp = makeLocalForceComposition(geom_stride);
   const int nForce = comp.force_stride;
   std::vector<double> work(LocalForceWorkSize(comp), 0.0);
-  std::vector<double> force(20 * nForce, 0.0);
+  std::vector<double> force(kLocalForceBlocks * nForce, 0.0);
   ComputeLocalForceDensity(geomP, work.data(), force.data(), &comp);
 
   double maxd = 0.0;
