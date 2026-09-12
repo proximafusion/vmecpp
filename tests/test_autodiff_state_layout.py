@@ -10,6 +10,11 @@ import vmecpp
 from vmecpp import autodiff
 from vmecpp.cpp import _vmecpp  # type: ignore
 
+pytestmark = pytest.mark.skipif(
+    not _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="state_layout probes the exact residual transpose (Enzyme-enabled build)",
+)
+
 SOLOVEV = Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
 
 
