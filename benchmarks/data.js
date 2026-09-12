@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789228307423,
+  "lastUpdate": 1789228468522,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -57574,6 +57574,162 @@ window.BENCHMARK_DATA = {
             "value": 0.002318241667509871,
             "unit": "seconds",
             "extra": "iterations: 602\ncpu: 0.0023135690348837206 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7fa4cf9d4feda50ca5bf982c286755a1d6284851",
+          "message": "Raise when the final multigrid step of a differentiable solve does not converge (#853)\n\n* Fail loudly when a truncated multi-grid schedule does not converge\n\nTruncating a multi-step ns_array to its first steps (e.g. for a cheap\ndifferentiable solve) silently produced an unconverged result:\nautodiff._solve_model called VmecModel.solve() on every step but never\nchecked whether the schedule's last step actually reached its\nftol_array entry. VmecModel.solve() itself only raises on a hard C++\nerror; running out of niter_array at NORMAL_TERMINATION (no fatal\nerror, but ftol not met) is not an error there, because it is the\nexpected outcome for a multi-grid schedule's coarse, non-final steps,\nwhose only job is handing a good initial guess to the next, finer step\n(mirrors Vmec::run, which likewise only checks status after the last\nmulti-grid step). The Python loop is the one that knows which step is\nfinal, so it is the one that must check it.\n\n_solve_model now raises RuntimeError, with the final ftol/force\nresiduals, when the last multi-grid step's status is not\nSUCCESSFUL_TERMINATION. Also documents the ns_array/ftol_array/niter_array\ncontract on _solve_model and on VmecModel.solve's binding: each entry\nconverges to its own ftol_array entry, and only the schedule's actual\nlast step needs to converge standalone.\n\nReproduced on a two-step schedule derived from\nexamples/data/cth_like_fixed_bdy.json (ns_array [9, 15]) truncated to\nits first step alone (ns=9, ftol=1e-16, niter=50, a ftol that was only\nmeant as a hand-over to the ns=15 step): the truncated, single-step\nsolve completed niter=50 iterations at fsqr ~= 8.5e-4, five orders of\nmagnitude above its own ftol, and returned without error before this\nfix.\n\nTests: a truncated single-step schedule with a hand-over-only ftol now\nraises RuntimeError naming \"did not converge\"; a genuine two-step\nschedule whose first step does not converge but whose second step does\nstill succeeds (non-final non-convergence is not an error).\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>\n\n* Update pybind_vmec.cc\n\n---------\n\nCo-authored-by: Claude Sonnet 5 <noreply@anthropic.com>",
+          "timestamp": "2026-09-12T17:44:26+02:00",
+          "tree_id": "c9f0565ba28f97586e765a7b5ae062684aca7513",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7fa4cf9d4feda50ca5bf982c286755a1d6284851"
+        },
+        "date": 1789228468085,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000024379809300040677,
+            "unit": "seconds",
+            "extra": "iterations: 55791\ncpu: 2.4376712964456636e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00003287815706351083,
+            "unit": "seconds",
+            "extra": "iterations: 42610\ncpu: 3.28728987796292e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0005597492244304507,
+            "unit": "seconds",
+            "extra": "iterations: 2467\ncpu: 0.0005596542026753143 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014647689324542568,
+            "unit": "seconds",
+            "extra": "iterations: 956\ncpu: 0.0014644412186192472 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00016206396342506458,
+            "unit": "seconds",
+            "extra": "iterations: 8669\ncpu: 0.0001620582105202446 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00014042562919125458,
+            "unit": "seconds",
+            "extra": "iterations: 10064\ncpu: 0.0001404209831081081 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003211768728427302,
+            "unit": "seconds",
+            "extra": "iterations: 4337\ncpu: 0.00032116071501037585 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002828182929848028,
+            "unit": "seconds",
+            "extra": "iterations: 4958\ncpu: 0.0002828084150867286 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005264542661271654,
+            "unit": "seconds",
+            "extra": "iterations: 2664\ncpu: 0.0005264273866366368 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00044076739427961715,
+            "unit": "seconds",
+            "extra": "iterations: 2949\ncpu: 0.00044074431773482556 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017693558825722224,
+            "unit": "seconds",
+            "extra": "iterations: 790\ncpu: 0.001769232139240505 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.001963186464952619,
+            "unit": "seconds",
+            "extra": "iterations: 712\ncpu: 0.0019631071474719105 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.000032651582046030415,
+            "unit": "seconds",
+            "extra": "iterations: 43029\ncpu: 3.27064702642413e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00017644575018130855,
+            "unit": "seconds",
+            "extra": "iterations: 8016\ncpu: 0.0001764956534431112 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.000857911230086108,
+            "unit": "seconds",
+            "extra": "iterations: 1627\ncpu: 0.0008579184204056419 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00002749108893238964,
+            "unit": "seconds",
+            "extra": "iterations: 51251\ncpu: 2.751019913757778e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00015430000215972627,
+            "unit": "seconds",
+            "extra": "iterations: 9066\ncpu: 0.0001542079169424252 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0007847083708688912,
+            "unit": "seconds",
+            "extra": "iterations: 1722\ncpu: 0.0007846734105691323 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.0002996145684238576,
+            "unit": "seconds",
+            "extra": "iterations: 4674\ncpu: 0.000299601104835259 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0012268786050059315,
+            "unit": "seconds",
+            "extra": "iterations: 1141\ncpu: 0.0012267655276073618 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005249922641654139,
+            "unit": "seconds",
+            "extra": "iterations: 267\ncpu: 0.005249456322097381 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.004638639182151361,
+            "unit": "seconds",
+            "extra": "iterations: 299\ncpu: 0.004625528678929767 seconds\nthreads: 1"
           }
         ]
       }
