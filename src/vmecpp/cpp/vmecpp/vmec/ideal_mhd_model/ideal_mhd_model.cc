@@ -3072,9 +3072,15 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
   }
 
   // Gather the force-density member cotangents into the flat block layout.
+  // The R/Z/constraint force members (armn/azmn/brmn/bzmn/frcon/fzcon and the
+  // 3d crmn/czmn) are only sized up to nsMaxF, one surface short of nForce's
+  // nsMaxFIncludingLcfs; only blmn/clmn span the full range. Bound the copy by
+  // src.size() so the LCFS slots for the shorter members are left at zero
+  // instead of reading past the end of the Eigen vector.
   std::vector<double> force_bar(kLocalForceBlocks * nForce, 0.0);
   auto gather = [&](int b, const Eigen::VectorXd& src) {
-    for (int i = 0; i < nForce; ++i) force_bar[b * nForce + i] = src[i];
+    const int sz = std::min(nForce, static_cast<int>(src.size()));
+    for (int i = 0; i < sz; ++i) force_bar[b * nForce + i] = src[i];
   };
   gather(0, armn_e);
   gather(1, armn_o);
