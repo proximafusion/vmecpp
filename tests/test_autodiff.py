@@ -129,6 +129,67 @@ def test_solver_does_not_fall_back_to_finite_differences() -> None:
         solver._backward_callback(boundary, np.zeros(solver.output_shape))
 
 
+def test_has_exact_force_jacobian_agrees_with_the_model_property() -> None:
+    indata = _small_input()
+    model = _vmecpp.VmecModel.create(indata._to_cpp_vmecindata(), 5)
+    # The module-level function is a coarser, static build feature (the
+    # compile-time VMECPP_ENABLE_ENZYME macro); the model property additionally
+    # depends on the model's force-balance formulation (lforbal), so a true
+    # build feature does not imply every model has the exact Jacobian.
+    if vmecpp.has_exact_force_jacobian():
+        assert model.has_exact_force_jacobian
+    else:
+        assert not model.has_exact_force_jacobian
+
+
+def test_make_solver_raises_at_construction_without_the_enzyme_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_vmecpp, "VMECPP_ENABLE_ENZYME", False)
+    indata = _small_input()
+    with pytest.raises(RuntimeError, match="VMECPP_ENABLE_ENZYME"):
+        autodiff.make_solver(indata)
+
+
+def test_solve_model_raises_when_the_final_multigrid_step_does_not_converge() -> None:
+    """A schedule truncated to a coarse, non-final step's ftol/niter must fail loudly.
+
+    Reproduces truncating a multi-step ``ns_array`` to its first steps for a cheap solve:
+    the truncated schedule's new last entry keeps the tight ftol that was only meant as a
+    hand-over to a finer step, and does not converge standalone at that ftol within its
+    niter budget.
+    """
+    indata = _small_input().model_copy(
+        update={
+            "ns_array": np.asarray([9]),
+            "ftol_array": np.asarray([1.0e-16]),
+            "niter_array": np.asarray([50]),
+        }
+    )
+    boundary = _boundary(indata)
+    with pytest.raises(RuntimeError, match="did not converge"):
+        autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
+
+
+def test_solve_model_accepts_a_non_final_step_that_does_not_converge() -> None:
+    """A non-final multigrid step is allowed to exhaust its iteration budget.
+
+    Its only job is handing a good initial guess to the next, finer step; only the
+    schedule's final step must actually converge.
+    """
+    indata = _small_input().model_copy(
+        update={
+            "ns_array": np.asarray([9, 15]),
+            "ftol_array": np.asarray([1.0e-16, 1.0e-8]),
+            "niter_array": np.asarray([50, 200]),
+        }
+    )
+    boundary = _boundary(indata)
+    model = autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
+    assert model.ns == 15
+    assert model.fsqr < model.ftolv
+
+
 def test_geometry_state_vjp_is_the_transpose_in_three_dimensions() -> None:
     """The 2D case leaves the ``lthreed`` branch of the map untested."""
     indata = _small_3d_input()._to_cpp_vmecindata()

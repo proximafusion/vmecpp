@@ -66,8 +66,24 @@ def _make_indata(template, boundary: np.ndarray):
     return indata
 
 
+# VmecModel.status's integer value for vmecpp::VmecStatus::SUCCESSFUL_TERMINATION (see
+# common/util/util.h); every other status, including NORMAL_TERMINATION (no fatal
+# error, but the iteration budget was exhausted before ftol was met), means the step
+# did not converge.
+_VMEC_STATUS_SUCCESSFUL_TERMINATION = 11
+
+
 def _solve_model(template, boundary: np.ndarray):
-    """Run all requested VMEC++ resolutions and return the final model."""
+    """Run all requested VMEC++ resolutions and return the final model.
+
+    Each entry of ``ns_array`` converges to its own ``ftol_array`` entry.
+    Coarse, non-final steps are allowed to exhaust their iteration budget
+    without reaching ``ftol``: their only job is to hand a good initial guess
+    to the next, finer step, exactly as ``vmecpp.run`` treats them. The final
+    step is the one that must actually converge; a schedule truncated to its
+    first steps for a cheap solve is only valid if its new last step is
+    standalone-convergent.
+    """
     indata = _make_indata(template, boundary)
     resolutions = [int(value) for value in np.asarray(indata.ns_array)]
     model = None
@@ -82,6 +98,15 @@ def _solve_model(template, boundary: np.ndarray):
     if model is None:
         error_message = "VMEC input has no resolution with ns >= 3"
         raise ValueError(error_message)
+    if model.status != _VMEC_STATUS_SUCCESSFUL_TERMINATION:
+        error_message = (
+            f"VMEC++ did not converge at the final multi-grid step (ns = {model.ns}): "
+            f"status {model.status}, ftol = {model.ftolv:.3e}, final force residuals "
+            f"fsqr = {model.fsqr:.3e}, fsqz = {model.fsqz:.3e}, fsql = {model.fsql:.3e}. "
+            "If ns_array was truncated to its first steps, its new last entry must be "
+            "standalone-convergent at its own ftol_array/niter_array entry."
+        )
+        raise RuntimeError(error_message)
     return model
 
 
@@ -456,6 +481,13 @@ def make_solver(vmec_input) -> DifferentiableVmec:
     available only in an Enzyme-enabled build, because it requires the exact
     transpose of the force residual. No finite-difference derivative is used.
     """
+    if not _vmecpp.VMECPP_ENABLE_ENZYME:
+        error_message = (
+            "vmecpp.autodiff.make_solver requires a build with the exact force "
+            "Jacobian; rebuild with the CMake option VMECPP_ENABLE_ENZYME=ON. "
+            "No finite-difference derivative is used."
+        )
+        raise RuntimeError(error_message)
     return DifferentiableVmec(vmec_input)
 
 
