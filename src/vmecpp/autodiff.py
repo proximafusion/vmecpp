@@ -6,13 +6,14 @@ and solves the transposed interior force system. This is the usual implicit
 layer for a differentiable code: JAX differentiates the consumer objective,
 and VMEC++ supplies the producer's residual transpose.
 
-The first public parameterization is the fixed-boundary, prescribed-iota case.
-The differentiable parameter is one dense array with rows ``rbc`` and ``zbs``
-and shape ``(2, mpol, 2 * ntor + 1)``. This first solver wrapper deliberately
-supports the stellarator-symmetric fixed-boundary, prescribed-iota case. The
-geometry API itself already supports asymmetric snapshots; profile and
-free-boundary parameter VJPs remain explicit unsupported cases until their
-residual dependence is exposed by the exact C++ derivative path.
+The first public parameterization is the fixed-boundary case, with either a
+prescribed iota or a prescribed toroidal current profile (``ncurr``). The
+differentiable parameter is one dense array with rows ``rbc`` and ``zbs`` and
+shape ``(2, mpol, 2 * ntor + 1)``. This first solver wrapper deliberately
+supports the stellarator-symmetric fixed-boundary case. The geometry API
+itself already supports asymmetric snapshots; profile and free-boundary
+parameter VJPs remain explicit unsupported cases until their residual
+dependence is exposed by the exact C++ derivative path.
 """
 
 from __future__ import annotations
@@ -268,7 +269,12 @@ def _implicit_boundary_vjp(model, geometry_bar: np.ndarray) -> np.ndarray:
         )
         raise RuntimeError(error_message)
     coefficient_bar = np.asarray(geometry_bar[2 * model.ns :], dtype=np.float64)
-    state_bar = np.asarray(model.geometry_state_vjp(coefficient_bar), dtype=np.float64)
+    poloidal_flux_bar = np.asarray(
+        geometry_bar[model.ns : 2 * model.ns], dtype=np.float64
+    )
+    state_bar = np.asarray(
+        model.geometry_state_vjp(coefficient_bar, poloidal_flux_bar), dtype=np.float64
+    )
     state = np.asarray(model.get_state(), dtype=np.float64)
     interior, boundary = _interior_and_boundary(model)
     model.set_state(np.ascontiguousarray(state))
@@ -338,9 +344,6 @@ class DifferentiableVmec:
     def __post_init__(self) -> None:
         if self.vmec_input.lfreeb:
             error_message = "DifferentiableVmec currently requires lfreeb=false"
-            raise ValueError(error_message)
-        if self.vmec_input.ncurr != 0:
-            error_message = "DifferentiableVmec currently requires ncurr=0"
             raise ValueError(error_message)
         if self.vmec_input.lasym:
             error_message = (

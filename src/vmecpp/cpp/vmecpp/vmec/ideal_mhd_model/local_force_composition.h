@@ -32,7 +32,10 @@ namespace vmecpp {
 //   r1_e r1_o z1_e z1_o ru_e ru_o zu_e zu_o rv_e rv_o zv_e zv_o lu_e lu_o lv_e
 //   lv_o
 // Force layout (each block ForceStride doubles): the 12 MHD densities then
-//   blmn_e blmn_o clmn_e clmn_o.
+//   blmn_e blmn_o clmn_e clmn_o. Block 20 is the ncurr==1 chi' profile
+//   (index jH-nsMinH, the rest of the block unused), differentiated alongside
+//   the force densities so its state derivative comes out of the same Enzyme
+//   pass; ncurr==0 does not populate it (chi' is a fixed input profile).
 struct LocalForceComposition {
   int nZnT;
   int geom_stride;   // doubles per geometry block (>= (nsMaxF1-nsMinF1)*nZnT)
@@ -84,6 +87,10 @@ struct LocalForceComposition {
   const double* sinmu = nullptr;
   const double* cosmu = nullptr;
 };
+
+// Number of force blocks ComputeLocalForceDensity writes: the 12 MHD/lambda
+// densities, 4 constraint densities, and the ncurr==1 chi' block.
+inline constexpr int kLocalForceBlocks = 21;
 
 // Doubles of work that ComputeLocalForceDensity slices for composition c: the
 // half-grid fields and per-point scratch, plus the constraint scratch when
@@ -165,6 +172,7 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
                         c->nsMinH, c->nsMaxH, gsqrt, guu, guv, gvv);
   ComputeBsupContra(lue, luo, lve, lvo, gsqrt, c->sqrtSH, c->lthreed, nZnT,
                     c->nsMinF1, c->nsMinH, c->nsMaxH, bsupu, bsupv);
+  double* chip_out = force + 20 * fS;
   for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
     // For a prescribed-current profile (ncurr==1), chi' is recomputed from the
     // geometry each step (constrained toroidal current), so differentiate it
@@ -187,6 +195,10 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
       if (avg_guu_gsqrt != 0.0) {
         chip = (c->currH[jH - c->nsMinH] - jvPlasma) / avg_guu_gsqrt;
       }
+      // Expose chi' as its own output block so a cotangent seeded there alone
+      // yields (dchi'/dx)^T through the same reverse pass as the force
+      // cotangent; ncurr==0 leaves this block untouched (chi' is prescribed).
+      chip_out[jH - c->nsMinH] = chip;
     }
     for (int kl = 0; kl < nZnT; ++kl) {
       const int ih = (jH - c->nsMinH) * nZnT + kl;

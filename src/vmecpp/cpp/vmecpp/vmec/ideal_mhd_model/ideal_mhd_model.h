@@ -221,14 +221,16 @@ class IdealMhdModel {
   // current state, to isolate composition bugs from the transform/tangent path.
   double composedForceResidual(const double* geomP, int geom_stride);
 
-  // Raw force-density tangent (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT)
-  // from one Enzyme forward pass, no transform. For isolating the JVP from the
-  // spectral-transform wrapping.
+  // Raw force-density tangent (kLocalForceBlocks blocks of
+  // (nsMaxFIncludingLcfs-nsMinF)*nZnT; block 20 is chi' for ncurr==1, see
+  // local_force_composition.h) from one Enzyme forward pass, no transform. For
+  // isolating the JVP from the spectral-transform wrapping.
   void exactForceDensityTangent(const double* geomP, const double* dgeom,
                                 int geom_stride, double* dforce_out);
 
   // Reverse-mode force-density cotangent: J_g^T applied to the force-density
-  // cotangent force_bar (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT),
+  // cotangent force_bar (kLocalForceBlocks blocks of
+  // (nsMaxFIncludingLcfs-nsMinF)*nZnT; block 20 is the chi' cotangent),
   // accumulated into geom_bar_out (20 blocks of geom_stride, zeroed by caller),
   // by one Enzyme reverse pass. The transpose of exactForceDensityTangent.
   void exactForceDensityCotangent(const double* geomP, const double* force_bar,
@@ -254,6 +256,16 @@ class IdealMhdModel {
                                         FourierGeometry& m_physical_scratch,
                                         FourierGeometry& m_decomposed_out,
                                         bool fix_m1_gauge);
+
+  // (dchi'/dx)^T chip_bar for ncurr==1, in the decomposed internal basis.
+  // chip_bar holds one entry per half surface (index jH-nsMinH, the space
+  // chipH occupies). Reuses the reverse-mode force-density kernel seeded on
+  // its chi' output block alone, and the geometry-side (B^T) half of
+  // applyExactForceJacobianTranspose, since chi' depends on the same geometry
+  // blocks (r1, ru, zu, lu, lv) the force densities do.
+  void chipStateVjp(const double* geomP, int geom_stride,
+                    const double* chip_bar, FourierGeometry& m_physical_scratch,
+                    FourierGeometry& m_decomposed_out);
 
   // Transposes of the spectral transforms, for the transposed exact Hessian.
   // dft_ForcesToFourierTranspose: (forcesToFourier)^T, decomposed-force coeff
