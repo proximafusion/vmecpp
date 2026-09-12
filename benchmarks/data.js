@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789229336816,
+  "lastUpdate": 1789230742059,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18871,6 +18871,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.48208133299999645,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7bd7cdd10dbdb7dfb4f606baacac662e9439dde2",
+          "message": "Skip the make_solver tests on builds without Enzyme (#859)\n\nmake_solver now raises on a build without the exact force Jacobian, so the\ntests that construct a solver unconditionally failed instead of skipping on\nthe default (non-Enzyme) build. Gate them on _vmecpp.VMECPP_ENABLE_ENZYME and\nturn the no-finite-difference-fallback test into a direct check that\nmake_solver raises on such a build.\n\nCo-authored-by: Claude Fable 5.1 <noreply@anthropic.com>",
+          "timestamp": "2026-09-12T18:25:20+02:00",
+          "tree_id": "1e087a336c20961afd0b68b5d583a5878a1beab5",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7bd7cdd10dbdb7dfb4f606baacac662e9439dde2"
+        },
+        "date": 1789230738458,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.39405623399999284,
+            "range": "stddev: 0.006671517773373462",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.5637530630000356,
+            "range": "stddev: 0.015936525890973104",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1050087390000272,
+            "range": "stddev: 0.002821936149993037",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6601586006667048,
+            "range": "stddev: 0.022420473460909657",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.9805358406666755,
+            "range": "stddev: 0.009530322654783614",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.050359108333358,
+            "range": "stddev: 0.018998953528072033",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.932452721000004,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4917372019999675,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
