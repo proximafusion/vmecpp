@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789229189118,
+  "lastUpdate": 1789229336816,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -57810,6 +57810,162 @@ window.BENCHMARK_DATA = {
             "value": 0.004638639182151361,
             "unit": "seconds",
             "extra": "iterations: 299\ncpu: 0.004625528678929767 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "13ce424066b05e494624e8bebb9cf3f1704b6fb9",
+          "message": "Support ncurr=1 (prescribed toroidal current) in the implicit adjoint (#854)\n\nScope: DifferentiableVmec/geometry_state_vjp previously rejected ncurr=1\n(prescribed toroidal current) equilibria outright, even though prescribed\ncurrent is the common case for stellarator design. This makes the\nimplicit adjoint usable there too, without touching the ncurr=0 path.\n\nWhy: for ncurr=1, computeBContra solves the affine Ampere constraint\n<B_theta>_k = currH_k for chi' on each half surface from the live\ngeometry (guu, bsupu, bsupv, gsqrt), rather than reading a fixed iota\nprofile. local_force_composition.h already differentiates that solve as\na side effect of PR #841 (which needed the same chi'-consistent bsupu to\ndifferentiate the constraint-force multiplier tcon), so the Enzyme\nforward/reverse passes already carry d(chi')/dx; only a way to reach it\nfrom geometry_state_vjp's poloidal_flux cotangent was missing.\n\nChange:\n- local_force_composition.h: chi' becomes an explicit 21st output block\n  of ComputeLocalForceDensity, populated only for ncurr==1. No other\n  output changes, so ncurr==0 behavior is unchanged (bit-identical).\n- ideal_mhd_model.{h,cc}: IdealMhdModel::chipStateVjp seeds the existing\n  reverse-mode kernel on that block alone and reuses the geometry-side\n  half of applyExactForceJacobianTranspose to produce (dchi'/dx)^T\n  chip_bar in the decomposed state basis.\n- pybind_vmec.cc: VmecModel.chip_state_vjp exposes chipStateVjp.\n  GeometryStateVjp takes an additional poloidal_flux_bar argument; for\n  ncurr=1 it converts the poloidal-flux cotangent chi_j = sum_{k<j} c_k\n  iota_k (c_k the state-independent flux step) into chip_bar = iota_bar /\n  phipH and adds chip_state_vjp(chip_bar) to the state cotangent. Also\n  adds a chip_h accessor (chipH) used by the new tests.\n- autodiff.py: DifferentiableVmec no longer rejects ncurr=1; the\n  poloidal_flux cotangent is routed to geometry_state_vjp instead of\n  being dropped.\n\nTests and measurements (examples/data/cth_like_fixed_bdy.json, an ncurr=1\nstellarator case, ns=15, ftol=1e-16):\n- Exact HVP vs. central difference of the raw force: relative error\n  1.17e-8 at h=1e-6, O(h^2) convergence (1.17e-4 at 1e-4, 1.17e-6 at\n  1e-5) -- the existing exact_hessian_vector_product already includes\n  the chi' derivative for ncurr=1.\n- Same converged state re-evaluated with ncurr=0 and the converged iota\n  prescribed as a fixed profile: exact HVP differs from the ncurr=1\n  exact HVP by 1.5e-3 relative, at a shared force residual < 1e-6 --\n  confirms the two are genuinely different functionals.\n- chip_state_vjp vs. central difference of chipH(x): relative error\n  1.2e-8 at h=1e-6, clean O(h^2) convergence.\n- geometry_state_vjp's poloidal_flux route (poloidal_flux_bar ->\n  chip_state_vjp) vs. central difference of MakeGeometry's own\n  poloidal_flux: relative error 5.6e-8 at h=1e-5, O(h^2) convergence.\n- End-to-end jax.grad of J = iota_half[mid] + 10*r_cc[mid,1,0]^2 through\n  a re-solved ncurr=1 equilibrium, vs. Richardson-extrapolated central\n  differences (relative step 1e-3/5e-4) of three boundary modes:\n  relative error 3.2e-4, 5.5e-4, 1.5e-3 (the FD reference is noise\n  above ~1e-3 relative on this case; smaller steps drift due to the\n  native m=1 gauge transient rather than improving).\n\ntests/test_hessian.py, tests/test_autodiff.py and tests/test_geometry.py\npass unchanged (11 passed, 1 skipped -- the skip is the pre-existing\nfinite-difference-fallback test, which skips because this build has\nEnzyme enabled). C++ kernel tests via bazel were attempted; see the PR\ndescription for status.\n\nCo-authored-by: Claude Sonnet 5 <noreply@anthropic.com>",
+          "timestamp": "2026-09-12T17:53:13+02:00",
+          "tree_id": "58baebb761a917caabf69264b94c452cc423a7e8",
+          "url": "https://github.com/proximafusion/vmecpp/commit/13ce424066b05e494624e8bebb9cf3f1704b6fb9"
+        },
+        "date": 1789229336342,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000024456186265160157,
+            "unit": "seconds",
+            "extra": "iterations: 56775\ncpu: 2.4455555896081027e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00003212929510345994,
+            "unit": "seconds",
+            "extra": "iterations: 43914\ncpu: 3.21276411850435e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.000566170883178711,
+            "unit": "seconds",
+            "extra": "iterations: 2500\ncpu: 0.0005661103608000002 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014619858133754298,
+            "unit": "seconds",
+            "extra": "iterations: 927\ncpu: 0.0014619224962243796 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00016594795731046734,
+            "unit": "seconds",
+            "extra": "iterations: 8568\ncpu: 0.0001658940734126984 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00013874927786013613,
+            "unit": "seconds",
+            "extra": "iterations: 10081\ncpu: 0.0001387288550739014 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00032239790743747524,
+            "unit": "seconds",
+            "extra": "iterations: 4335\ncpu: 0.0003223524530565167 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002827469344388143,
+            "unit": "seconds",
+            "extra": "iterations: 4959\ncpu: 0.0002826581508368624 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005358533540879107,
+            "unit": "seconds",
+            "extra": "iterations: 2636\ncpu: 0.0005354480789074357 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0004513292970017964,
+            "unit": "seconds",
+            "extra": "iterations: 3177\ncpu: 0.0004510219159584513 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017724537517870725,
+            "unit": "seconds",
+            "extra": "iterations: 791\ncpu: 0.0017721265651074575 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0019473714084678375,
+            "unit": "seconds",
+            "extra": "iterations: 718\ncpu: 0.001947069110027855 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.000032372525793302365,
+            "unit": "seconds",
+            "extra": "iterations: 43092\ncpu: 3.241180274760977e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00017430097098196937,
+            "unit": "seconds",
+            "extra": "iterations: 8041\ncpu: 0.00017437538788708017 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0008579543763143154,
+            "unit": "seconds",
+            "extra": "iterations: 1630\ncpu: 0.0008579337828220842 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000027224620592891135,
+            "unit": "seconds",
+            "extra": "iterations: 51419\ncpu: 2.7249229876115043e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0001564403763706277,
+            "unit": "seconds",
+            "extra": "iterations: 9098\ncpu: 0.00015636434150362544 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0007783210638797644,
+            "unit": "seconds",
+            "extra": "iterations: 1716\ncpu: 0.000778288270396246 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00030029661998370925,
+            "unit": "seconds",
+            "extra": "iterations: 4644\ncpu: 0.0003002688273040481 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0011893741546138642,
+            "unit": "seconds",
+            "extra": "iterations: 1178\ncpu: 0.0011892988293718157 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005267267836663956,
+            "unit": "seconds",
+            "extra": "iterations: 266\ncpu: 0.005266907135338346 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.006501134866141644,
+            "unit": "seconds",
+            "extra": "iterations: 303\ncpu: 0.006481981412541255 seconds\nthreads: 1"
           }
         ]
       }
