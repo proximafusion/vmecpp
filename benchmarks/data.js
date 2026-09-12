@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789077245505,
+  "lastUpdate": 1789205888830,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -18631,6 +18631,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.2811660849999953,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "33ba4df8f6d5c07af77fd6d4aa984c5a73d41bea",
+          "message": "Differentiate the constraint force multiplier in the exact force Jacobian (#841)",
+          "timestamp": "2026-09-12T11:33:18+02:00",
+          "tree_id": "a2795732ca5cbe13e6a7b6069b062a5de18e6c1c",
+          "url": "https://github.com/proximafusion/vmecpp/commit/33ba4df8f6d5c07af77fd6d4aa984c5a73d41bea"
+        },
+        "date": 1789205882751,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.2305606783999906,
+            "range": "stddev: 0.010877385710019493",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 1.5077516063333103,
+            "range": "stddev: 0.033350122462694747",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.6322007770000179,
+            "range": "stddev: 0.013692567118986884",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.9594702689999887,
+            "range": "stddev: 0.026619006430943438",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.3549109416666738,
+            "range": "stddev: 0.02332494188177695",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 4.257895181999989,
+            "range": "stddev: 0.09395509956242808",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.9167225319999943,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.16822909199999003,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
