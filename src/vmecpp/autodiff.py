@@ -25,7 +25,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
 
-from vmecpp import geometry
+from vmecpp import autodiff_wout, geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 _GEOMETRY_COEFFICIENTS = (
@@ -456,4 +456,51 @@ def make_solver(vmec_input) -> DifferentiableVmec:
     return DifferentiableVmec(vmec_input)
 
 
-__all__ = ["DifferentiableVmec", "make_solver"]
+@dataclass(frozen=True)
+class DifferentiableRun:
+    """The result of :func:`run`: ``wout`` arrays and the geometry they derive from."""
+
+    wout: autodiff_wout.WoutArrays
+    geometry: geometry.Geometry
+
+
+jax.tree_util.register_dataclass(
+    DifferentiableRun, data_fields=["wout", "geometry"], meta_fields=[]
+)
+
+
+def run(vmec_input, *, boundary=None) -> DifferentiableRun:
+    """Solve vmec_input and return its ``wout`` arrays as a differentiable pytree.
+
+    Args:
+        vmec_input: A fixed-boundary, stellarator-symmetric, ``ncurr = 0``
+            :class:`vmecpp.VmecInput`.
+        boundary: The boundary coefficients ``stack(rbc, zbs)`` of shape
+            ``(2, mpol, 2 * ntor + 1)``; defaults to the boundary of
+            ``vmec_input``. May be a JAX tracer, so the result can be
+            differentiated with respect to it.
+
+    Example:
+
+        result = autodiff.run(input)
+        gradient = jax.grad(lambda b: autodiff.run(input, boundary=b).wout.aspect)(
+            jnp.stack([input.rbc, input.zbs])
+        )
+
+    The solve runs through :func:`make_solver`; the output stage is the JAX
+    port in :mod:`vmecpp.autodiff_wout`. The VJP needs an Enzyme-enabled build.
+    """
+    solver = make_solver(vmec_input)
+    if boundary is None:
+        boundary = jnp.stack(
+            [
+                jnp.asarray(vmec_input.rbc, dtype=jnp.float64),
+                jnp.asarray(vmec_input.zbs, dtype=jnp.float64),
+            ]
+        )
+    solved = solver(boundary)
+    wout = autodiff_wout.wout_arrays(solved, vmec_input)
+    return DifferentiableRun(wout=wout, geometry=solved)
+
+
+__all__ = ["DifferentiableRun", "DifferentiableVmec", "make_solver", "run"]

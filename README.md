@@ -299,6 +299,35 @@ vmec_input.niter_array = vmec_input.niter_array[-1:]
 hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 ```
 
+## Differentiable runs
+
+`vmecpp.run(vmec_input, differentiable=True)` solves the same equilibrium through
+`vmecpp.autodiff` and returns the `wout` quantities (`rmnc`, `zmns`, `lmns`, `iotaf`,
+`bmnc`, `gmnc`, `bsubumnc`, `bsubvmnc`, `bsupumnc`, `bsupvmnc`, `bsubsmns`, `phi`, `chi`,
+`aspect`, `volume_p`, `volavgB`, `betatotal`, ...) as JAX arrays, so `jax.grad` can
+differentiate an objective written in them with respect to the boundary coefficients.
+The output stage is a JAX port of the C++ one (`vmecpp.autodiff_wout`); the solve and
+the exact adjoint of the force residual run in VMEC++. The path covers fixed-boundary,
+stellarator-symmetric, `ncurr = 0` inputs and the gradient needs a build with
+`-DVMECPP_ENABLE_ENZYME=ON`.
+
+```python
+import jax
+import jax.numpy as jnp
+import vmecpp
+from vmecpp import autodiff
+
+jax.config.update("jax_enable_x64", True)
+
+vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
+result = vmecpp.run(vmec_input, differentiable=True)
+print(result.wout.aspect, result.wout.iotaf)
+
+# d(aspect ratio) / d(rbc, zbs): the boundary array is stack(rbc, zbs)
+boundary = jnp.stack([jnp.asarray(vmec_input.rbc), jnp.asarray(vmec_input.zbs)])
+gradient = jax.grad(lambda b: autodiff.run(vmec_input, boundary=b).wout.aspect)(boundary)
+```
+
 ## Full tests and validation against the reference Fortran VMEC v8.52
 
 When developing the C++ core, it's advisable to locally run the full C++ tests for debugging or to validate changes before submitting them.

@@ -42,6 +42,9 @@ from vmecpp._pydantic_numpy import (
 from vmecpp._rescale import rescale
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
+if typing.TYPE_CHECKING:
+    from vmecpp import autodiff
+
 logger = logging.getLogger(__name__)
 
 
@@ -2466,6 +2469,7 @@ def _print_progress_tip_once() -> None:
         )
 
 
+@typing.overload
 def run(
     input: VmecInput,
     magnetic_field: MagneticFieldResponseTable | None = None,
@@ -2473,7 +2477,31 @@ def run(
     max_threads: int | None = None,
     verbose: bool | int | OutputMode = OutputMode.PROGRESS,
     restart_from: VmecOutput | None = None,
-) -> VmecOutput:
+    differentiable: typing.Literal[False] = False,
+) -> VmecOutput: ...
+
+
+@typing.overload
+def run(
+    input: VmecInput,
+    magnetic_field: MagneticFieldResponseTable | None = None,
+    *,
+    max_threads: int | None = None,
+    verbose: bool | int | OutputMode = OutputMode.PROGRESS,
+    restart_from: VmecOutput | None = None,
+    differentiable: typing.Literal[True],
+) -> autodiff.DifferentiableRun: ...
+
+
+def run(
+    input: VmecInput,
+    magnetic_field: MagneticFieldResponseTable | None = None,
+    *,
+    max_threads: int | None = None,
+    verbose: bool | int | OutputMode = OutputMode.PROGRESS,
+    restart_from: VmecOutput | None = None,
+    differentiable: bool = False,
+) -> VmecOutput | autodiff.DifferentiableRun:
     """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
     and free-boundary calculations.
 
@@ -2494,6 +2522,13 @@ def run(
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
             If `input.mpol`/`input.ntor` is a sequence (see below), this is used to hot-restart
             only the first continuation step; later steps always hot-restart from the previous one.
+        differentiable: if True, solve through the JAX-differentiable path and return a
+            `vmecpp.autodiff.DifferentiableRun` whose `wout` arrays and `geometry` are JAX
+            pytrees; `jax.grad` through it yields derivatives with respect to the boundary
+            coefficients `stack(rbc, zbs)` (see `vmecpp.autodiff.run`). This path covers the
+            fixed-boundary, stellarator-symmetric, `ncurr = 0` case today and needs an
+            Enzyme-enabled build for the gradient; `magnetic_field` and `restart_from` are
+            not supported with it.
 
     If `input.mpol` and/or `input.ntor` is a sequence rather than a plain int, `run` performs
     continuation in Fourier resolution: each entry pairs with the corresponding `input.ns_array`
@@ -2510,6 +2545,14 @@ def run(
         0.2033313711
     """
     input = VmecInput.model_validate(input)
+
+    if differentiable:
+        if magnetic_field is not None or restart_from is not None:
+            msg = "differentiable=True does not support magnetic_field or restart_from"
+            raise ValueError(msg)
+        from vmecpp import autodiff  # noqa: PLC0415
+
+        return autodiff.run(input)
 
     if not isinstance(input.mpol, int) or not isinstance(input.ntor, int):
         return _run_fourier_continuation(
