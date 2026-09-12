@@ -132,7 +132,7 @@ def test_on_failure_nan_warns_and_returns_nan_on_adjoint_failure(monkeypatch) ->
     solver = autodiff.make_solver(indata, on_failure="nan")
     boundary = _boundary(indata)
 
-    def failing_vjp(_model, _geometry_bar):
+    def failing_vjp(_model, _geometry_bar, **_kwargs):
         error_message = "synthetic adjoint failure"
         raise RuntimeError(error_message)
 
