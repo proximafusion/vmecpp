@@ -151,6 +151,45 @@ def test_make_solver_raises_at_construction_without_the_enzyme_build(
         autodiff.make_solver(indata)
 
 
+def test_solve_model_raises_when_the_final_multigrid_step_does_not_converge() -> None:
+    """A schedule truncated to a coarse, non-final step's ftol/niter must fail loudly.
+
+    Reproduces truncating a multi-step ``ns_array`` to its first steps for a cheap solve:
+    the truncated schedule's new last entry keeps the tight ftol that was only meant as a
+    hand-over to a finer step, and does not converge standalone at that ftol within its
+    niter budget.
+    """
+    indata = _small_input().model_copy(
+        update={
+            "ns_array": np.asarray([9]),
+            "ftol_array": np.asarray([1.0e-16]),
+            "niter_array": np.asarray([50]),
+        }
+    )
+    boundary = _boundary(indata)
+    with pytest.raises(RuntimeError, match="did not converge"):
+        autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
+
+
+def test_solve_model_accepts_a_non_final_step_that_does_not_converge() -> None:
+    """A non-final multigrid step is allowed to exhaust its iteration budget.
+
+    Its only job is handing a good initial guess to the next, finer step; only the
+    schedule's final step must actually converge.
+    """
+    indata = _small_input().model_copy(
+        update={
+            "ns_array": np.asarray([9, 15]),
+            "ftol_array": np.asarray([1.0e-16, 1.0e-8]),
+            "niter_array": np.asarray([50, 200]),
+        }
+    )
+    boundary = _boundary(indata)
+    model = autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
+    assert model.ns == 15
+    assert model.fsqr < model.ftolv
+
+
 def test_geometry_state_vjp_is_the_transpose_in_three_dimensions() -> None:
     """The 2D case leaves the ``lthreed`` branch of the map untested."""
     indata = _small_3d_input()._to_cpp_vmecindata()
