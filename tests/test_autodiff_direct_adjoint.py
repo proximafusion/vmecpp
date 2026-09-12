@@ -14,6 +14,11 @@ from vmecpp.cpp import _vmecpp  # type: ignore
 
 jax.config.update("jax_enable_x64", True)
 
+pytestmark = pytest.mark.skipif(
+    not _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="the adjoint solve needs the exact residual transpose (Enzyme-enabled build)",
+)
+
 SOLOVEV = Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
 
 
