@@ -160,66 +160,62 @@ def _tangent_through_the_solve(indata, boundary, seed_state):
     state = np.asarray(model.get_state(), dtype=np.float64)
     interior, edge = autodiff._interior_and_boundary(model)
     model.set_state(np.ascontiguousarray(state))
-    model.set_freeze_constraint_multiplier(True)
-    try:
-        model.evaluate(2, 2, True)
-        keep = autodiff._structural_nullfree_interior(model, interior)
-        size = state.size
+    model.evaluate(2, 2, True)
+    keep = autodiff._structural_nullfree_interior(model, interior)
+    size = state.size
 
-        def forward(value):
-            return np.asarray(
-                model.exact_hessian_vector_product(np.ascontiguousarray(value)),
-                dtype=np.float64,
-            )
-
-        def restricted(value):
-            embedded = np.zeros(size)
-            embedded[keep] = value
-            return forward(embedded)[keep]
-
-        def precondition(value):
-            embedded = np.zeros(size)
-            embedded[keep] = value
-            return np.asarray(
-                model.apply_preconditioner(np.ascontiguousarray(embedded)),
-                dtype=np.float64,
-            )[keep]
-
-        factory: Any = LinearOperator
-        operator = factory((keep.size, keep.size), matvec=restricted, dtype=np.float64)
-        preconditioner = factory(
-            (keep.size, keep.size), matvec=precondition, dtype=np.float64
+    def forward(value):
+        return np.asarray(
+            model.exact_hessian_vector_product(np.ascontiguousarray(value)),
+            dtype=np.float64,
         )
-        seeded = np.zeros(size)
-        seeded[edge] = seed_state[edge]
-        tangent, info = gmres(
-            operator,
-            -forward(seeded)[keep],
-            M=preconditioner,
-            rtol=1.0e-12,
-            restart=200,
-            maxiter=400,
+
+    def restricted(value):
+        embedded = np.zeros(size)
+        embedded[keep] = value
+        return forward(embedded)[keep]
+
+    def precondition(value):
+        embedded = np.zeros(size)
+        embedded[keep] = value
+        return np.asarray(
+            model.apply_preconditioner(np.ascontiguousarray(embedded)),
+            dtype=np.float64,
+        )[keep]
+
+    factory: Any = LinearOperator
+    operator = factory((keep.size, keep.size), matvec=restricted, dtype=np.float64)
+    preconditioner = factory(
+        (keep.size, keep.size), matvec=precondition, dtype=np.float64
+    )
+    seeded = np.zeros(size)
+    seeded[edge] = seed_state[edge]
+    tangent, info = gmres(
+        operator,
+        -forward(seeded)[keep],
+        M=preconditioner,
+        rtol=1.0e-12,
+        restart=200,
+        maxiter=400,
+    )
+    assert info == 0
+    state_tangent = np.zeros(size)
+    state_tangent[keep] = tangent
+    state_tangent[edge] = seed_state[edge]
+
+    step = 1.0e-6  # MakeGeometry is linear in the state, so this is exact
+
+    def flat(value):
+        model.set_state(np.ascontiguousarray(value))
+        return autodiff._cpp_geometry_flat(
+            model.get_geometry(), model.ns, model.mpol, model.ntor
         )
-        assert info == 0
-        state_tangent = np.zeros(size)
-        state_tangent[keep] = tangent
-        state_tangent[edge] = seed_state[edge]
 
-        step = 1.0e-6  # MakeGeometry is linear in the state, so this is exact
-
-        def flat(value):
-            model.set_state(np.ascontiguousarray(value))
-            return autodiff._cpp_geometry_flat(
-                model.get_geometry(), model.ns, model.mpol, model.ntor
-            )
-
-        result = (
-            flat(state + step * state_tangent) - flat(state - step * state_tangent)
-        ) / (2.0 * step)
-        model.set_state(np.ascontiguousarray(state))
-        return result
-    finally:
-        model.set_freeze_constraint_multiplier(False)
+    result = (
+        flat(state + step * state_tangent) - flat(state - step * state_tangent)
+    ) / (2.0 * step)
+    model.set_state(np.ascontiguousarray(state))
+    return result
 
 
 def _parser_state_tangent(indata, boundary, direction):
@@ -281,3 +277,43 @@ def test_quasisymmetry_gradient_through_a_three_dimensional_solve() -> None:
     assert float(value) > 0.0  # a 3D equilibrium is not quasi-axisymmetric
     assert np.all(np.isfinite(gradient))
     assert np.abs(gradient).max() > 0.0
+
+
+def test_exact_hessian_vector_product_is_the_derivative_of_the_force() -> None:
+    """The exact product against a central difference of the raw force, which recomputes
+    the spectral-condensation multiplier from the state on every evaluation.
+
+    A boundary-only direction moves the multiplier the most.
+    """
+    indata = _small_3d_input()
+    _requires_exact_derivatives(indata)
+    model = autodiff._solve_model(indata._to_cpp_vmecindata(), _boundary(indata))
+    state = np.asarray(model.get_state(), dtype=np.float64).copy()
+    interior, boundary = autodiff._interior_and_boundary(model)
+
+    def raw_force(value):
+        model.set_state(np.ascontiguousarray(value))
+        model.evaluate(2, 2, False)
+        return np.asarray(model.get_forces(), dtype=np.float64).copy()
+
+    generator = np.random.default_rng(0)
+    directions = [generator.standard_normal(state.size)]
+    for rows in (boundary, interior):
+        direction = np.zeros(state.size)
+        direction[rows] = generator.standard_normal(rows.size)
+        directions.append(direction)
+    step = 1.0e-6
+    for raw_direction in directions:
+        direction = raw_direction / np.linalg.norm(raw_direction)
+        model.set_state(np.ascontiguousarray(state))
+        model.evaluate(2, 2, True)
+        product = np.asarray(
+            model.exact_hessian_vector_product(np.ascontiguousarray(direction)),
+            dtype=np.float64,
+        )
+        difference = (
+            raw_force(state + step * direction) - raw_force(state - step * direction)
+        ) / (2.0 * step)
+        assert np.linalg.norm(product - difference) < 1.0e-6 * np.linalg.norm(
+            difference
+        )

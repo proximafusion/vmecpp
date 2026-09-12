@@ -2419,24 +2419,21 @@ void IdealMhdModel::computePreconditioningMatrix(
  * Compute constraint force multiplier profile.
  * Note that this needs to have the radial preconditioner updated.
  */
-absl::Status IdealMhdModel::constraintForceMultiplier() {
-  // Freeze: reuse the existing tcon so the raw force is a function of the state
-  // alone, matching the exact HVP (which freezes tcon). Requires a prior
-  // unfrozen evaluation to have populated tcon.
-  if (freeze_constraint_multiplier_) {
-    return absl::OkStatus();
-  }
-  // tcon
-
+double IdealMhdModel::constraintMultiplierScale() const {
   // TODO(jons): some parabola in ns,
   // but why these specific values of the parameters ?
-  double tcon_multiplier =
+  const double tcon_multiplier =
       tcon0 * (1.0 + m_fc_.ns * (1.0 / 60.0 + m_fc_.ns / (200.0 * 120.0)));
 
   // Fortran bcovar.f90: tcon_mul / (4 * r0scale**2)**2, undoing the scaling of
   // ard and azd (2*r0scale**2) and of cos**2 in alias (4*r0scale**2). r0scale
   // is 1 here, so the divisor is 16.
-  tcon_multiplier /= (4.0 * 4.0);
+  return tcon_multiplier / (4.0 * 4.0);
+}
+
+absl::Status IdealMhdModel::constraintForceMultiplier() {
+  // tcon
+  const double tcon_multiplier = constraintMultiplierScale();
 
   // compute constraint force multiplier profile on forces full-grid except axis
   int jMin = 0;
@@ -2625,7 +2622,8 @@ LocalForceComposition IdealMhdModel::makeLocalForceComposition(
   comp.rCon0 = rCon0.data();
   comp.zCon0 = zCon0.data();
   comp.faccon = faccon.data();
-  comp.tcon = tcon.data();
+  comp.ns = m_fc_.ns;
+  comp.tcon_multiplier = constraintMultiplierScale();
   comp.sinmui = t_.sinmui.data();
   comp.cosmui = t_.cosmui.data();
   comp.cosnv = t_.cosnv.data();
@@ -2644,10 +2642,7 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   LocalForceComposition comp = makeLocalForceComposition(geom_stride);
   const int nForce = comp.force_stride;
 
-  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
-  // work holds the half-grid and per-point scratch plus the constraint scratch.
-  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 4 * (s_.ntor + 1) +
-                    s_.nZnT + s_.nThetaReduced;
+  const int nWork = LocalForceWorkSize(comp);
   std::vector<double> work(nWork, 0.0);
   std::vector<double> dwork(nWork, 0.0);
   std::vector<double> force(20 * nForce, 0.0);
@@ -2706,9 +2701,7 @@ void IdealMhdModel::exactForceDensityTangent(const double* geomP,
                                              double* dforce_out) {
   LocalForceComposition comp = makeLocalForceComposition(geom_stride);
   const int nForce = comp.force_stride;
-  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
-  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 4 * (s_.ntor + 1) +
-                    s_.nZnT + s_.nThetaReduced;
+  const int nWork = LocalForceWorkSize(comp);
   std::vector<double> work(nWork, 0.0);
   std::vector<double> dwork(nWork, 0.0);
   std::vector<double> force(20 * nForce, 0.0);
@@ -2722,9 +2715,7 @@ void IdealMhdModel::exactForceDensityCotangent(const double* geomP,
                                                double* geom_bar_out) {
   LocalForceComposition comp = makeLocalForceComposition(geom_stride);
   const int nForce = comp.force_stride;
-  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
-  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 4 * (s_.ntor + 1) +
-                    s_.nZnT + s_.nThetaReduced;
+  const int nWork = LocalForceWorkSize(comp);
   std::vector<double> work(nWork, 0.0);
   std::vector<double> work_bar(nWork, 0.0);
   std::vector<double> force(20 * nForce, 0.0);
@@ -3169,54 +3160,9 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
 // current state, to isolate composition bugs from the transform/tangent path.
 double IdealMhdModel::composedForceResidual(const double* geomP,
                                             int geom_stride) {
-  LocalForceComposition comp;
-  comp.nZnT = s_.nZnT;
-  comp.geom_stride = geom_stride;
-  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
-  comp.force_stride = nForce;
-  comp.nsMinF = r_.nsMinF;
-  comp.nsMinF1 = r_.nsMinF1;
-  comp.nsMinH = r_.nsMinH;
-  comp.nsMaxH = r_.nsMaxH;
-  comp.jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
-  comp.nsMaxFIncludingLcfs = r_.nsMaxFIncludingLcfs;
-  comp.sqrtSF = m_p_.sqrtSF.data();
-  comp.sqrtSH = m_p_.sqrtSH.data();
-  comp.chipH = m_p_.chipH.data();
-  comp.presH = m_p_.presH.data();
-  comp.radialBlending = m_p_.radialBlending.data();
-  comp.deltaS = m_fc_.deltaS;
-  comp.dSHalfDsInterp = dSHalfDsInterp;
-  comp.lamscale = constants_.lamscale;
-  comp.lthreed = s_.lthreed;
-  comp.with_constraint = true;
-  comp.lasym = s_.lasym;
-  comp.nsMaxF = r_.nsMaxF;
-  comp.nZeta = s_.nZeta;
-  comp.nThetaEff = s_.nThetaEff;
-  comp.ncurr = ncurr;
-  comp.currH = m_p_.currH.data();
-  comp.wInt = s_.wInt.data();
-  comp.nThetaEven = s_.nThetaEven;
-  comp.nThetaReduced = s_.nThetaReduced;
-  comp.mpol = s_.mpol;
-  comp.ntor = s_.ntor;
-  comp.nnyq2 = s_.nnyq2;
-  comp.rCon0 = rCon0.data();
-  comp.zCon0 = zCon0.data();
-  comp.faccon = faccon.data();
-  comp.tcon = tcon.data();
-  comp.sinmui = t_.sinmui.data();
-  comp.cosmui = t_.cosmui.data();
-  comp.cosnv = t_.cosnv.data();
-  comp.sinnv = t_.sinnv.data();
-  comp.sinmu = t_.sinmu.data();
-  comp.cosmu = t_.cosmu.data();
-
-  const int nH = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
-  const int nWork = 15 * nH + 30 * s_.nZnT + 4 * nForce + 4 * (s_.ntor + 1) +
-                    s_.nZnT + s_.nThetaReduced;
-  std::vector<double> work(nWork, 0.0);
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nForce = comp.force_stride;
+  std::vector<double> work(LocalForceWorkSize(comp), 0.0);
   std::vector<double> force(20 * nForce, 0.0);
   ComputeLocalForceDensity(geomP, work.data(), force.data(), &comp);
 

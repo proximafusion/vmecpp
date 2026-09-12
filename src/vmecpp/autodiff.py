@@ -271,62 +271,56 @@ def _implicit_boundary_vjp(model, geometry_bar: np.ndarray) -> np.ndarray:
     state_bar = np.asarray(model.geometry_state_vjp(coefficient_bar), dtype=np.float64)
     state = np.asarray(model.get_state(), dtype=np.float64)
     interior, boundary = _interior_and_boundary(model)
-    try:
-        model.set_state(np.ascontiguousarray(state))
-        model.set_freeze_constraint_multiplier(True)
-        model.evaluate(2, 2, True)
-        state_size = state.size
-        # Deflate the structural null space; without this the transposed
-        # interior system is singular and inconsistent in 3D.
-        interior = _structural_nullfree_interior(model, interior)
+    model.set_state(np.ascontiguousarray(state))
+    model.evaluate(2, 2, True)
+    state_size = state.size
+    # Deflate the structural null space; without this the transposed
+    # interior system is singular and inconsistent in 3D.
+    interior = _structural_nullfree_interior(model, interior)
 
-        def transpose(value: np.ndarray) -> np.ndarray:
-            return np.asarray(
-                model.exact_hessian_vector_product_transpose(
-                    np.ascontiguousarray(value)
-                ),
-                dtype=np.float64,
-            )
-
-        def matvec(value: np.ndarray) -> np.ndarray:
-            embedded = np.zeros(state_size)
-            embedded[interior] = value
-            return transpose(embedded)[interior]
-
-        def precondition(value: np.ndarray) -> np.ndarray:
-            embedded = np.zeros(state_size)
-            embedded[interior] = value
-            return np.asarray(
-                model.apply_preconditioner(np.ascontiguousarray(embedded)),
-                dtype=np.float64,
-            )[interior]
-
-        operator_factory: Any = LinearOperator
-        operator = operator_factory(
-            (interior.size, interior.size), matvec=matvec, dtype=np.float64
+    def transpose(value: np.ndarray) -> np.ndarray:
+        return np.asarray(
+            model.exact_hessian_vector_product_transpose(np.ascontiguousarray(value)),
+            dtype=np.float64,
         )
-        preconditioner = operator_factory(
-            (interior.size, interior.size), matvec=precondition, dtype=np.float64
-        )
-        adjoint, info = gmres(
-            operator,
-            state_bar[interior],
-            M=preconditioner,
-            rtol=1.0e-8,
-            restart=200,
-            maxiter=400,
-        )
-        if info != 0:
-            error_message = f"VMEC++ implicit adjoint solve failed with info={info}"
-            raise RuntimeError(error_message)
+
+    def matvec(value: np.ndarray) -> np.ndarray:
         embedded = np.zeros(state_size)
-        embedded[interior] = adjoint
-        internal_boundary_bar = state_bar[boundary] - transpose(embedded)[boundary]
-        full_state_bar = np.zeros(state_size)
-        full_state_bar[boundary] = internal_boundary_bar
-        return _boundary_from_state_vjp(model, full_state_bar)
-    finally:
-        model.set_freeze_constraint_multiplier(False)
+        embedded[interior] = value
+        return transpose(embedded)[interior]
+
+    def precondition(value: np.ndarray) -> np.ndarray:
+        embedded = np.zeros(state_size)
+        embedded[interior] = value
+        return np.asarray(
+            model.apply_preconditioner(np.ascontiguousarray(embedded)),
+            dtype=np.float64,
+        )[interior]
+
+    operator_factory: Any = LinearOperator
+    operator = operator_factory(
+        (interior.size, interior.size), matvec=matvec, dtype=np.float64
+    )
+    preconditioner = operator_factory(
+        (interior.size, interior.size), matvec=precondition, dtype=np.float64
+    )
+    adjoint, info = gmres(
+        operator,
+        state_bar[interior],
+        M=preconditioner,
+        rtol=1.0e-8,
+        restart=200,
+        maxiter=400,
+    )
+    if info != 0:
+        error_message = f"VMEC++ implicit adjoint solve failed with info={info}"
+        raise RuntimeError(error_message)
+    embedded = np.zeros(state_size)
+    embedded[interior] = adjoint
+    internal_boundary_bar = state_bar[boundary] - transpose(embedded)[boundary]
+    full_state_bar = np.zeros(state_size)
+    full_state_bar[boundary] = internal_boundary_bar
+    return _boundary_from_state_vjp(model, full_state_bar)
 
 
 @dataclass(frozen=True)

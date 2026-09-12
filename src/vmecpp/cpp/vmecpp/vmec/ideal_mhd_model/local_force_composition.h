@@ -5,6 +5,9 @@
 #ifndef VMECPP_VMEC_IDEAL_MHD_MODEL_LOCAL_FORCE_COMPOSITION_H_
 #define VMECPP_VMEC_IDEAL_MHD_MODEL_LOCAL_FORCE_COMPOSITION_H_
 
+#include <algorithm>
+#include <cmath>
+
 #include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/constraint_force_kernel.h"
@@ -23,7 +26,7 @@ namespace vmecpp {
 // exact Hessian-vector product. Covers the MHD force and the hybrid lambda
 // force; when with_constraint is set it also computes the spectral-condensation
 // constraint force (effective force, Fourier bandpass, assembly into the R/Z
-// force), holding the multiplier tcon frozen.
+// force) with its multiplier tcon recomputed from the geometry.
 //
 // Geometry layout (each block GeomStride doubles, index (jF-nsMinF1)*nZnT):
 //   r1_e r1_o z1_e z1_o ru_e ru_o zu_e zu_o rv_e rv_o zv_e zv_o lu_e lu_o lv_e
@@ -60,18 +63,20 @@ struct LocalForceComposition {
   // Spectral-condensation constraint force. Enabled only when with_constraint
   // is set; then geometry blocks 16-19 hold rCon, zCon, ruFull, zuFull and
   // force blocks 16-19 receive frcon_e/o, fzcon_e/o. The bandpass uses the
-  // Fourier basis arrays and the tcon/faccon profiles. rCon0/zCon0 are
-  // recomputed in place from the live geometry (so they are differentiated);
-  // tcon is held frozen (see freeze_constraint_multiplier_).
+  // Fourier basis arrays and the faccon profile. rCon0/zCon0 and the
+  // multiplier tcon are recomputed in place from the live geometry, so both
+  // are differentiated; tcon needs ns and the ns-dependent scale
+  // tcon_multiplier of constraintForceMultiplier.
   bool with_constraint = false;
   bool lasym = false;
+  int ns = 0;
   int nsMaxF = 0;  // constraint RZ range upper bound
   int nZeta = 0, nThetaEven = 0, nThetaReduced = 0, mpol = 0, ntor = 0,
       nnyq2 = 0;
+  double tcon_multiplier = 0.0;
   const double* rCon0 = nullptr;
   const double* zCon0 = nullptr;
   const double* faccon = nullptr;
-  const double* tcon = nullptr;
   const double* sinmui = nullptr;
   const double* cosmui = nullptr;
   const double* cosnv = nullptr;
@@ -80,8 +85,21 @@ struct LocalForceComposition {
   const double* cosmu = nullptr;
 };
 
-// work must hold 15*nHalf + 30*nZnT plus the constraint scratch described
-// below, where nHalf=(nsMaxH-nsMinH)*nZnT.
+// Doubles of work that ComputeLocalForceDensity slices for composition c: the
+// half-grid fields and per-point scratch, plus the constraint scratch when
+// with_constraint is set.
+inline int LocalForceWorkSize(const LocalForceComposition& c) {
+  const int nHalf = c.nsMaxH - c.nsMinH;
+  int n = 15 * nHalf * c.nZnT + 30 * c.nZnT;
+  if (c.with_constraint) {
+    const int nFull = c.nsMaxFIncludingLcfs - c.nsMinF;
+    n += 4 * nFull * c.nZnT + 4 * (c.ntor + 1) + c.nZnT + c.nThetaReduced +
+         nFull + 2 * nHalf;
+  }
+  return n;
+}
+
+// work must hold LocalForceWorkSize(*c) doubles.
 inline void ComputeLocalForceDensity(const double* geom, double* work,
                                      double* force,
                                      const LocalForceComposition* c) {
@@ -304,7 +322,60 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
     // exact HVP consistent with re-evaluating rzConIntoVolume each step.
     double* rCon0 = s;
     s += (c->nsMaxFIncludingLcfs - c->nsMinF) * nZnT;
-    double* zCon0 = s;  // last slice of the work buffer
+    double* zCon0 = s;
+    s += (c->nsMaxFIncludingLcfs - c->nsMinF) * nZnT;
+    // Constraint multiplier tcon from the geometry, as
+    // constraintForceMultiplier forms it: the even-parity radial preconditioner
+    // diagonals ard, azd of computePreconditioningMatrix, summed from both
+    // half-grid neighbours of each full-grid surface, over the surface averages
+    // of ruFull^2 and zuFull^2.
+    double* tcon = s;
+    s += c->nsMaxFIncludingLcfs - c->nsMinF;
+    double* ard_h = s;
+    s += c->nsMaxH - c->nsMinH;
+    double* azd_h = s;  // last slice of the work buffer
+    for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
+      double ar = 0.0;
+      double az = 0.0;
+      for (int kl = 0; kl < nZnT; ++kl) {
+        const int ih = (jH - c->nsMinH) * nZnT + kl;
+        // pFactor * r12 * totalPressure / tau * wInt, times (xu12 / deltaS)^2
+        const double pTau =
+            -4.0 * r12[ih] * tp[ih] / tau[ih] * c->wInt[kl % c->nThetaEff];
+        const double zu = zu12[ih] / c->deltaS;
+        const double ru = ru12[ih] / c->deltaS;
+        ar += pTau * zu * zu;
+        az += pTau * ru * ru;
+      }
+      ard_h[jH - c->nsMinH] = ar;
+      azd_h[jH - c->nsMinH] = az;
+    }
+    for (int i = 0; i < c->nsMaxFIncludingLcfs - c->nsMinF; ++i) {
+      tcon[i] = 0.0;
+    }
+    const double tcon_scale =
+        c->tcon_multiplier * 32.0 * c->deltaS * 32.0 * c->deltaS;
+    for (int jF = (c->nsMinF > 0 ? c->nsMinF : 1); jF < c->nsMaxF; ++jF) {
+      double arNorm = 0.0;
+      double azNorm = 0.0;
+      for (int kl = 0; kl < nZnT; ++kl) {
+        const int idx = (jF - c->nsMinF) * nZnT + kl;
+        const double w = c->wInt[kl % c->nThetaEff];
+        arNorm += ruFull[idx] * ruFull[idx] * w;
+        azNorm += zuFull[idx] * zuFull[idx] * w;
+      }
+      const double ard = ard_h[jF - 1 - c->nsMinH] +
+                         (jF < c->ns - 1 ? ard_h[jF - c->nsMinH] : 0.0);
+      const double azd = azd_h[jF - 1 - c->nsMinH] +
+                         (jF < c->ns - 1 ? azd_h[jF - c->nsMinH] : 0.0);
+      tcon[jF - c->nsMinF] =
+          std::min(std::fabs(ard / arNorm), std::fabs(azd / azNorm)) *
+          tcon_scale;
+    }
+    if (c->nsMaxFIncludingLcfs == c->ns) {
+      // The boundary surface carries half the weight of an interior one.
+      tcon[c->ns - 1 - c->nsMinF] = 0.5 * tcon[c->ns - 2 - c->nsMinF];
+    }
     const int lcfs = (c->nsMaxFIncludingLcfs - 1 - c->nsMinF) * nZnT;
     for (int jF = (c->nsMinF > 1 ? c->nsMinF : 1); jF < c->nsMaxFIncludingLcfs;
          ++jF) {
@@ -319,7 +390,7 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
                                     nZnT, c->nsMinF, c->nsMaxFIncludingLcfs,
                                     gConEff);
     ComputeDeAliasConstraintForce(
-        gConEff, c->faccon, c->tcon, c->sinmui, c->cosmui, c->cosnv, c->sinnv,
+        gConEff, c->faccon, tcon, c->sinmui, c->cosmui, c->cosnv, c->sinnv,
         c->sinmu, c->cosmu, c->nsMinF, c->nsMaxF, c->nZeta, c->nThetaEff,
         c->nThetaReduced, c->nThetaEven, c->mpol, c->ntor, c->nnyq2, c->lasym,
         gsc, gcs, gcc, gss, gConAsym, refl, gCon);
