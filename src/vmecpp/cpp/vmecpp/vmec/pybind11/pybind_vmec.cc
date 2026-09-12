@@ -391,6 +391,8 @@ class VmecModel {
   }
 
   // Reference C++ inner iteration (the loop being ported), for verification.
+  // Each call converges the *current* resolution ftol_array entry.
+  // Exhausting the iteration budget does not raise here.
   void Solve() const {
     auto s = vmec_->SolveEquilibrium(vmecpp::VmecCheckpoint::NONE, INT_MAX);
     if (!s.ok()) {
