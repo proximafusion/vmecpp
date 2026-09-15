@@ -8,9 +8,65 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <numbers>
 #include <vector>
 
 namespace vmecpp {
+
+namespace {
+
+// Logarithm of the growth of the homogeneous solutions of the T_l recurrence
+// over a forward pass, sqrt(B/A)^kL, above which the recurrence is run
+// backward instead; a forward pass amplifies the rounding of its inputs by at
+// most this factor, ten.
+constexpr double kMaxForwardLogGrowth = std::numbers::ln10;
+
+// The zero seed of a backward pass contaminates T_l by (A/B)^{(top - l)/2} of
+// T_top; the pass starts far enough above kL to bring that below 1e-17 at kL.
+constexpr double kMinSeedLogDecay = 17.0 * std::numbers::ln10;
+
+// T_l = int_{-1}^{1} t^l / sqrt(A t^2 + 2 d t + B) dt for l = 0, ..., kL at
+// tangential grid point kl from the three-term recurrence
+//   (l + 1) A T_{l+1} + (2 l + 1) d T_l + l B T_{l-1} = sqrtc2 - (-1)^l sqrta2
+// with T_0 given. The characteristic roots of the homogeneous recurrence are a
+// complex pair of modulus sqrt(B/A), so a forward pass amplifies the rounding
+// of T_0 and of the right-hand sides by sqrt(B/A)^l and is used while that
+// stays below exp(kMaxForwardLogGrowth); otherwise the recurrence runs
+// backward from a zero seed, whose contamination decays by sqrt(A/B) per step.
+void ComputeTl(double A, double B, double d, double sqrtc2, double sqrta2,
+               double T0, int kL, int kl, std::vector<Eigen::VectorXd>& m_T) {
+  const auto rhs = [sqrtc2, sqrta2](int l) {
+    return sqrtc2 + (l % 2 == 0 ? -sqrta2 : sqrta2);
+  };
+  m_T[0][kl] = T0;
+  const double log_ratio = std::log(B / A);
+  if (kL * log_ratio <= 2.0 * kMaxForwardLogGrowth) {
+    double T_prev = 0.0;  // T_{-1}
+    for (int l = 0; l < kL; ++l) {
+      const double T_next =
+          (rhs(l) - (2 * l + 1) * d * m_T[l][kl] - l * B * T_prev) /
+          ((l + 1) * A);
+      T_prev = m_T[l][kl];
+      m_T[l + 1][kl] = T_next;
+    }
+    return;
+  }
+  const int tail =
+      static_cast<int>(std::ceil(2.0 * kMinSeedLogDecay / log_ratio));
+  double T_hi = 0.0;   // T_{l+1}
+  double T_cur = 0.0;  // T_l
+  for (int l = kL + tail; l >= 1; --l) {
+    const double T_lo =
+        (rhs(l) - (2 * l + 1) * d * T_cur - (l + 1) * A * T_hi) / (l * B);
+    T_hi = T_cur;
+    T_cur = T_lo;
+    if (1 <= l - 1 && l - 1 <= kL) {
+      m_T[l - 1][kl] = T_lo;
+    }
+  }
+}
+
+}  // namespace
 
 SingularIntegrals::SingularIntegrals(const Sizes* s,
                                      const FourierBasisFastToroidal* fb,
@@ -220,117 +276,9 @@ void SingularIntegrals::prepareUpdate(
                            (sqrtam * sqrta2[kl] - am[kl] + d[kl])) /
                        sqrtam;
 
-    // Fill all Tlp[0..L] and Tlm[0..L] by picking the numerically stable
-    // direction of the three-term recurrence on a per-(+/-), per-kl basis.
-    //
-    // The characteristic roots of the homogeneous recurrence satisfy
-    //   A*r^2 + 2*d*r + B = 0  -> |r1 r2| = B/A.
-    // For T^+: (A, B) = (ap, am), so |r1 r2| = am/ap.
-    // For T^-: (A, B) = (am, ap), so |r1 r2| = ap/am.
-    // If B > A (at least one |r| > 1), forward iteration is unstable and
-    // backward (Miller's algorithm) is used instead; otherwise forward is fine.
-    //
-    // T^{\pm}_0 is analytic (above); T^{\pm}_{-1} = 0. Forward produces
-    // T_{l+1} from T_l and T_{l-1}; backward produces T_{l-1} from T_l and
-    // T_{l+1} via the same recurrence solved in reverse. For backward,
-    // iteration starts from a zero seed far above the required L; the result
-    // is then normalized to match the analytic T^{\pm}_0.
-    //
-    // rhs(l+1) = sqrtc2 + (-1)^{l+1}*sqrta2  (same for T^+ and T^-).
     const int kL = mf + nf;
-    // The spurious solution is damped by (A/B)^kTailExtra per pass.
-    // For the worst realistic ratio (A/B ~ 0.5) suppression is ~0.5^50 ~ 1e-16.
-    const int kTailExtra = 50;
-    const int kLtail = kL + kTailExtra;
-
-    // Only switch to backward when the forward spurious-mode growth
-    // (|r1 r2| = B/A) would actually exceed double precision over kL steps.
-    // Threshold: forward is considered stable as long as (B/A)^kL < 1e10,
-    // i.e. spurious amplitude stays within ~1e10 of the particular solution.
-    // Near-degenerate kl (|r1|~|r2|~1) fall in the forward branch, where
-    // zero-seed Miller is known to misconverge (spurious modes never damp).
-    // Formula: kL * ln(B/A) < ln(1e10) -> B/A < exp(ln(1e10)/kL).
-    constexpr double kLogGrowthThreshold = 10.0 * 2.30258509299;  // ln(1e10)
-    const double logRatioP =
-        (am[kl] > ap[kl] && ap[kl] > 0.0) ? std::log(am[kl] / ap[kl]) : 0.0;
-    const bool useBackwardP =
-        static_cast<double>(kL) * logRatioP > kLogGrowthThreshold;
-    const double logRatioM =
-        (ap[kl] > am[kl] && am[kl] > 0.0) ? std::log(ap[kl] / am[kl]) : 0.0;
-    const bool useBackwardM =
-        static_cast<double>(kL) * logRatioM > kLogGrowthThreshold;
-
-    // --- T^+: A = ap, B = am ---
-    Tlp[0][kl] = T0p;
-    if (useBackwardP) {
-      // forward unstable -> use backward recurrence.
-      double T_hi = 0.0;
-      double T_cur = 1.0e-300;
-      for (int l = kLtail; l >= 1; --l) {
-        const double rhs = sqrtc2[kl] + (l % 2 == 0 ? -1.0 : 1.0) * sqrta2[kl];
-        const double T_lo =
-            (rhs - (2 * l + 1) * d[kl] * T_cur - (l + 1) * ap[kl] * T_hi) /
-            (l * am[kl]);
-        T_hi = T_cur;
-        T_cur = T_lo;
-        if (l - 1 <= kL) {
-          Tlp[l - 1][kl] = T_lo;
-        }
-      }
-      const double scaleP = T0p / Tlp[0][kl];
-      for (int l = 0; l <= kL; ++l) {
-        Tlp[l][kl] *= scaleP;
-      }
-    } else {
-      // forward stable.
-      double T_prev = 0.0;  // T^+_{-1}
-      int sgn = 1;
-      for (int fl = 0; fl < kL; ++fl) {
-        sgn = -sgn;
-        const double rhs = sqrtc2[kl] + sgn * sqrta2[kl];
-        const double T_next =
-            (rhs - (2 * fl + 1) * d[kl] * Tlp[fl][kl] - fl * am[kl] * T_prev) /
-            (ap[kl] * (fl + 1));
-        T_prev = Tlp[fl][kl];
-        Tlp[fl + 1][kl] = T_next;
-      }
-    }
-
-    // --- T^-: A = am, B = ap ---
-    Tlm[0][kl] = T0m;
-    if (useBackwardM) {
-      // forward unstable -> use backward recurrence.
-      double T_hi = 0.0;
-      double T_cur = 1.0e-300;
-      for (int l = kLtail; l >= 1; --l) {
-        const double rhs = sqrtc2[kl] + (l % 2 == 0 ? -1.0 : 1.0) * sqrta2[kl];
-        const double T_lo =
-            (rhs - (2 * l + 1) * d[kl] * T_cur - (l + 1) * am[kl] * T_hi) /
-            (l * ap[kl]);
-        T_hi = T_cur;
-        T_cur = T_lo;
-        if (l - 1 <= kL) {
-          Tlm[l - 1][kl] = T_lo;
-        }
-      }
-      const double scaleM = T0m / Tlm[0][kl];
-      for (int l = 0; l <= kL; ++l) {
-        Tlm[l][kl] *= scaleM;
-      }
-    } else {
-      // forward stable.
-      double T_prev = 0.0;  // T^-_{-1}
-      int sgn = 1;
-      for (int fl = 0; fl < kL; ++fl) {
-        sgn = -sgn;
-        const double rhs = sqrtc2[kl] + sgn * sqrta2[kl];
-        const double T_next =
-            (rhs - (2 * fl + 1) * d[kl] * Tlm[fl][kl] - fl * ap[kl] * T_prev) /
-            (am[kl] * (fl + 1));
-        T_prev = Tlm[fl][kl];
-        Tlm[fl + 1][kl] = T_next;
-      }
-    }
+    ComputeTl(ap[kl], am[kl], d[kl], sqrtc2[kl], sqrta2[kl], T0p, kL, kl, Tlp);
+    ComputeTl(am[kl], ap[kl], d[kl], sqrtc2[kl], sqrta2[kl], T0m, kL, kl, Tlm);
   }  // kl
 }  // prepareUpdate
 
