@@ -25,6 +25,10 @@ import vmecpp
 from vmecpp import autodiff
 from vmecpp.cpp import _vmecpp  # type: ignore
 
+pytestmark = pytest.mark.skipif(
+    vmecpp.has_cuda(), reason="the iteration API drives the host iteration"
+)
+
 jax.config.update("jax_enable_x64", True)
 
 
