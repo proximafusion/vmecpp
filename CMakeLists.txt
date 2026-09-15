@@ -272,10 +272,45 @@ if(VMECPP_USE_CUDA)
   message(STATUS "VMECPP_USE_CUDA: enabled, CUDA arches=${CMAKE_CUDA_ARCHITECTURES}")
 endif()
 
+# HIP/ROCm-backed toroidal FFT (optional): the AMD backend of the same GPU
+# iteration body. Set BEFORE add_subdirectory, as for the CUDA option.
+option(VMECPP_USE_HIP "Use HIP/ROCm-backed toroidal FFT kernels (requires ROCm + hipFFT)" OFF)
+if(VMECPP_USE_HIP)
+  if(VMECPP_USE_CUDA)
+    message(FATAL_ERROR
+            "VMECPP_USE_CUDA and VMECPP_USE_HIP are mutually exclusive: they "
+            "are two backends for the same GPU iteration body. Enable one.")
+  endif()
+  if(MSVC)
+    message(FATAL_ERROR "VMECPP_USE_HIP is supported on Linux only.")
+  endif()
+  enable_language(HIP)
+  find_package(hip REQUIRED)
+  find_package(hipfft REQUIRED)
+  set(CMAKE_HIP_STANDARD 20)
+  set(CMAKE_HIP_STANDARD_REQUIRED ON)
+  # hipError_t is [[nodiscard]] where cudaError_t is not; these kernels check
+  # status through a trailing cuda_check(cudaGetLastError()).
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -fPIC -Wno-unused-value")
+  if(NOT DEFINED CMAKE_HIP_ARCHITECTURES)
+    # gfx90a covers MI210/MI250, gfx942 covers MI300.
+    set(CMAKE_HIP_ARCHITECTURES "gfx90a;gfx942")
+  endif()
+  message(STATUS "VMECPP_USE_HIP: enabled, HIP arches=${CMAKE_HIP_ARCHITECTURES}")
+endif()
+
 # Assemble the VMEC++ source tree.
 # Start out with ABSCAB sources - no need for a separate library for ABSCAB.
 set(vmecpp_sources ${abscab_sources})
 add_subdirectory(src)
+
+if(VMECPP_USE_HIP)
+  # The GPU units carry the .cu suffix, which CMake would route to a CUDA
+  # compiler.
+  set(_vmecpp_gpu_sources ${vmecpp_sources})
+  list(FILTER _vmecpp_gpu_sources INCLUDE REGEX "\\.cu$")
+  set_source_files_properties(${_vmecpp_gpu_sources} PROPERTIES LANGUAGE HIP)
+endif()
 
 # The computation core, built once per target ISA. Variants share one SONAME and
 # are told apart by directory, so the loader can substitute them (see the
@@ -310,6 +345,15 @@ function(vmecpp_add_core target)
     # variant; VMECPP_USE_CUDA is exported so consumers see the CUDA API.
     target_link_libraries(${target} PRIVATE CUDA::cudart CUDA::cufft CUDA::cublas)
     target_compile_definitions(${target} PUBLIC VMECPP_USE_CUDA)
+  endif()
+
+  if(VMECPP_USE_HIP)
+    # hip::host, not hip::device: the latter propagates -x hip to every source
+    # of this mixed target, including the .cc files. VMECPP_USE_CUDA marks that
+    # the GPU iteration body is built, which is what the host dispatch sites
+    # test; VMECPP_USE_HIP selects the backend within the GPU sources.
+    target_link_libraries(${target} PRIVATE hip::host hip::hipfft)
+    target_compile_definitions(${target} PUBLIC VMECPP_USE_CUDA VMECPP_USE_HIP)
   endif()
 
   if(VMECPP_USE_FFTX)
@@ -365,10 +409,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
    CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
   set(VMECPP_HWCAPS_DISPATCH_DEFAULT ON)
 endif()
-# Under the CUDA build the iteration body runs on the device, so a second host
-# ISA variant would only double the CUDA compile; it stays opt-in there.
+# Under a GPU build (CUDA or HIP) the iteration body runs on the device, so a
+# second host ISA variant would only double the device compile; it stays
+# opt-in there.
 set(_hwcaps_option_default ${VMECPP_HWCAPS_DISPATCH_DEFAULT})
-if(VMECPP_USE_CUDA)
+if(VMECPP_USE_CUDA OR VMECPP_USE_HIP)
   set(_hwcaps_option_default OFF)
 endif()
 option(VMECPP_HWCAPS_DISPATCH

@@ -45,11 +45,17 @@
 
 #ifdef VMECPP_USE_CUDA
 
+#ifdef VMECPP_USE_HIP
+// cooperative_groups and mma.h are used only by the NVIDIA-only kernels,
+// which are compiled out below.
+#include "vmecpp/vmec/ideal_mhd_model/hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
 #include <cooperative_groups.h>
 #include <cufft.h>
 #include <cublas_v2.h>
 #include <mma.h>
+#endif  // VMECPP_USE_HIP
 
 #include <climits>
 #include <cmath>
@@ -440,10 +446,13 @@ struct CudaToroidalState {
   // Persistent device buffers + stream.
   cudaStream_t stream = nullptr;
   cufftHandle cufft_plan = 0;
+#ifndef VMECPP_USE_HIP
   // cuBLAS handle for the FP32 GEMM-based scatter (Path 4 of the FP32
   // substitution research). Created lazily when first needed. Stream-bound to
   // S.stream so GEMM ops serialize naturally with the surrounding kernels.
+  // Part of the NVIDIA-only experiments annex; not built under HIP.
   cublasHandle_t cublas = nullptr;
+#endif  // VMECPP_USE_HIP
   // Precomputed basis matrix W[M=mpol*kBatch, N=nThetaReduced*18] for the
   // scatter GEMM. Allocated and populated once per Reshape. FP32 layout.
   float* d_scatter_basis_fp32 = nullptr;
@@ -1296,7 +1305,9 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_scatter_out_ll);
     scatter_basis_M = 0;
     scatter_basis_N = 0;
+#ifndef VMECPP_USE_HIP
     if (cublas) { cublasDestroy(cublas); cublas = nullptr; }
+#endif  // VMECPP_USE_HIP
     cuda_free_if((void*&)d_outputs_block);
     cuda_free_if((void*&)d_geom_scalars);
     cuda_free_if((void*&)d_nscale);
@@ -3866,6 +3877,7 @@ __global__ __launch_bounds__(64, 4) void k_scatter_main_and_con_custom_gemm(
     double* __restrict__ lu_e, double* __restrict__ lu_o,
     double* __restrict__ lv_e, double* __restrict__ lv_o,
     double* __restrict__ rCon, double* __restrict__ zCon);
+#ifndef VMECPP_USE_HIP  // NVIDIA-only; see the definitions in kernels.cu
 __global__ void k_scatter_main_and_con_wmma_tf32(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
     int plain_tf32,
@@ -3893,6 +3905,7 @@ __global__ void k_i8b_slice_w(const double* __restrict__ W, int K, int N,
 __global__ void k_i8b_row_exp(int n_config, int ns_local, int mpol,
                               int nZeta, const double* __restrict__ Y,
                               int* __restrict__ eY);
+#endif  // VMECPP_USE_HIP
 __global__ void k_tau_minmax(int n_config, int total,
                               const double* __restrict__ tau,
                               double* __restrict__ out2,
@@ -4240,6 +4253,9 @@ __global__ void k_scatter_custom_gemm_vd(
     }
   }
 }
+// The three kernels below reach the tensor cores through nvcuda::wmma s8
+// fragments, so they are NVIDIA-only.
+#ifndef VMECPP_USE_HIP
 // k_scatter_main_and_con_i8ozaki: the scatter GEMM on int8 tensor cores
 // with exact integer accumulation (the Ozaki construction). Each FP64
 // operand is scaled per A-row / per B-column to (-0.5, 0.5), split into
@@ -4675,6 +4691,7 @@ __global__ void k_i8b_gemm(
     }
   }
 }
+#endif  // VMECPP_USE_HIP (int8-Ozaki tensor-core kernels)
 
 // Run-scoped and process-scoped globals (defined in fft_toroidal_cuda_state.cu).
 extern bool g_iter_graph_capturing;
