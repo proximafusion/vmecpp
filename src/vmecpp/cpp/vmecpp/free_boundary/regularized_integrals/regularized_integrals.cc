@@ -109,10 +109,11 @@ void RegularizedIntegrals::update(const Eigen::VectorXd& bDotN) {
     // index of toridal field period; 0, 1, ..., (nfp-1)
     int p = 0;
 
-    // xper == xp in first period
-    // yper == yp in first period
-    // sxsave == snr in first period (TODO(jons): really?)
-    // sysave == snv in first period (TODO(jons): really?)
+    // xper, yper are the Cartesian coordinates of the source point rotated
+    // into field period p. sxsave, sysave are the Cartesian x and y components
+    // of the surface normal there: rcosuv and rsinuv carry r1b times the
+    // cosine and sine of the toroidal angle, so dividing by r1b turns
+    // (snr, snv) into the Cartesian pair rotated by that angle.
     double xper = xp * sg_.cos_per[p] - yp * sg_.sin_per[p];
     double yper = xp * sg_.sin_per[p] + yp * sg_.cos_per[p];
 
@@ -175,8 +176,9 @@ void RegularizedIntegrals::update(const Eigen::VectorXd& bDotN) {
         for (int k = k_start; k < k_end; ++k, ++kl) {
           const int ip = ip_idx_base + kl;
 
-          // 2 pi from Laplace equation
-          // 1/nfp to make the toroidal integral below over the whole machine
+          // 2 pi / nfp is the toroidal step of the sum over the nfp
+          // field-period images, which turns that sum into the toroidal
+          // integral over the whole machine.
           greenp[ip] +=
               twopidivnfp * (htemp_buf[k] * ftemp_buf[k] *
                                  (sg_.rcosuv[kl] * sxsave +
@@ -211,8 +213,9 @@ void RegularizedIntegrals::update(const Eigen::VectorXd& bDotN) {
             (gsave[kl] - 2 * (xper * sg_.rcosuv[kl] + yper * sg_.rsinuv[kl]));
         double htemp = sqrt(ftemp);
 
-        // 2 pi from Laplace equation (TODO(jons): really?)
-        // 1/nfp to make the toroidal integral below over the whole machine
+        // 2 pi / nfp is the toroidal step of the sum over the nfp
+        // field-period images, which turns that sum into the toroidal integral
+        // over the whole machine.
         greenp[ip_idx_base + kl] +=
             twopidivnfp * htemp * ftemp *
             (sg_.rcosuv[kl] * sxsave + sg_.rsinuv[kl] * sysave + dsave[kl]);
@@ -237,8 +240,8 @@ void RegularizedIntegrals::updateAxisymmetric(const Eigen::VectorXd& bDotN) {
   absl::c_fill_n(greenp, numLocal * nThetaEven, 0);
   absl::c_fill_n(gstore, nThetaEven, 0);
 
-  // 2 pi from the Laplace equation; 1/nvper_ turns the toroidal image sum into
-  // a toroidal integral over the whole machine.
+  // 2 pi / nvper_ is the toroidal step of the sum over the nvper_ images,
+  // which turns that sum into the toroidal integral over the whole machine.
   const double toroidal_measure = 2.0 * M_PI / nvper_;
 
   for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {

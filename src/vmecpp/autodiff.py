@@ -6,13 +6,14 @@ and solves the transposed interior force system. This is the usual implicit
 layer for a differentiable code: JAX differentiates the consumer objective,
 and VMEC++ supplies the producer's residual transpose.
 
-The first public parameterization is the fixed-boundary, prescribed-iota case.
-The differentiable parameter is one dense array with rows ``rbc`` and ``zbs``
-and shape ``(2, mpol, 2 * ntor + 1)``. This first solver wrapper deliberately
-supports the stellarator-symmetric fixed-boundary, prescribed-iota case. The
-geometry API itself already supports asymmetric snapshots; profile and
-free-boundary parameter VJPs remain explicit unsupported cases until their
-residual dependence is exposed by the exact C++ derivative path.
+The first public parameterization is the fixed-boundary case, with either a
+prescribed iota or a prescribed toroidal current profile (``ncurr``). The
+differentiable parameter is one dense array with rows ``rbc`` and ``zbs`` and
+shape ``(2, mpol, 2 * ntor + 1)``. This first solver wrapper deliberately
+supports the stellarator-symmetric fixed-boundary case. The geometry API
+itself already supports asymmetric snapshots; profile and free-boundary
+parameter VJPs remain explicit unsupported cases until their residual
+dependence is exposed by the exact C++ derivative path.
 """
 
 from __future__ import annotations
@@ -65,8 +66,24 @@ def _make_indata(template, boundary: np.ndarray):
     return indata
 
 
+# VmecModel.status's integer value for vmecpp::VmecStatus::SUCCESSFUL_TERMINATION (see
+# common/util/util.h); every other status, including NORMAL_TERMINATION (no fatal
+# error, but the iteration budget was exhausted before ftol was met), means the step
+# did not converge.
+_VMEC_STATUS_SUCCESSFUL_TERMINATION = 11
+
+
 def _solve_model(template, boundary: np.ndarray):
-    """Run all requested VMEC++ resolutions and return the final model."""
+    """Run all requested VMEC++ resolutions and return the final model.
+
+    Each entry of ``ns_array`` converges to its own ``ftol_array`` entry.
+    Coarse, non-final steps are allowed to exhaust their iteration budget
+    without reaching ``ftol``: their only job is to hand a good initial guess
+    to the next, finer step, exactly as ``vmecpp.run`` treats them. The final
+    step is the one that must actually converge; a schedule truncated to its
+    first steps for a cheap solve is only valid if its new last step is
+    standalone-convergent.
+    """
     indata = _make_indata(template, boundary)
     resolutions = [int(value) for value in np.asarray(indata.ns_array)]
     model = None
@@ -81,6 +98,15 @@ def _solve_model(template, boundary: np.ndarray):
     if model is None:
         error_message = "VMEC input has no resolution with ns >= 3"
         raise ValueError(error_message)
+    if model.status != _VMEC_STATUS_SUCCESSFUL_TERMINATION:
+        error_message = (
+            f"VMEC++ did not converge at the final multi-grid step (ns = {model.ns}): "
+            f"status {model.status}, ftol = {model.ftolv:.3e}, final force residuals "
+            f"fsqr = {model.fsqr:.3e}, fsqz = {model.fsqz:.3e}, fsql = {model.fsql:.3e}. "
+            "If ns_array was truncated to its first steps, its new last entry must be "
+            "standalone-convergent at its own ftol_array/niter_array entry."
+        )
+        raise RuntimeError(error_message)
     return model
 
 
@@ -268,65 +294,64 @@ def _implicit_boundary_vjp(model, geometry_bar: np.ndarray) -> np.ndarray:
         )
         raise RuntimeError(error_message)
     coefficient_bar = np.asarray(geometry_bar[2 * model.ns :], dtype=np.float64)
-    state_bar = np.asarray(model.geometry_state_vjp(coefficient_bar), dtype=np.float64)
+    poloidal_flux_bar = np.asarray(
+        geometry_bar[model.ns : 2 * model.ns], dtype=np.float64
+    )
+    state_bar = np.asarray(
+        model.geometry_state_vjp(coefficient_bar, poloidal_flux_bar), dtype=np.float64
+    )
     state = np.asarray(model.get_state(), dtype=np.float64)
     interior, boundary = _interior_and_boundary(model)
-    try:
-        model.set_state(np.ascontiguousarray(state))
-        model.set_freeze_constraint_multiplier(True)
-        model.evaluate(2, 2, True)
-        state_size = state.size
-        # Deflate the structural null space; without this the transposed
-        # interior system is singular and inconsistent in 3D.
-        interior = _structural_nullfree_interior(model, interior)
+    model.set_state(np.ascontiguousarray(state))
+    model.evaluate(2, 2, True)
+    state_size = state.size
+    # Deflate the structural null space; without this the transposed
+    # interior system is singular and inconsistent in 3D.
+    interior = _structural_nullfree_interior(model, interior)
 
-        def transpose(value: np.ndarray) -> np.ndarray:
-            return np.asarray(
-                model.exact_hessian_vector_product_transpose(
-                    np.ascontiguousarray(value)
-                ),
-                dtype=np.float64,
-            )
-
-        def matvec(value: np.ndarray) -> np.ndarray:
-            embedded = np.zeros(state_size)
-            embedded[interior] = value
-            return transpose(embedded)[interior]
-
-        def precondition(value: np.ndarray) -> np.ndarray:
-            embedded = np.zeros(state_size)
-            embedded[interior] = value
-            return np.asarray(
-                model.apply_preconditioner(np.ascontiguousarray(embedded)),
-                dtype=np.float64,
-            )[interior]
-
-        operator_factory: Any = LinearOperator
-        operator = operator_factory(
-            (interior.size, interior.size), matvec=matvec, dtype=np.float64
+    def transpose(value: np.ndarray) -> np.ndarray:
+        return np.asarray(
+            model.exact_hessian_vector_product_transpose(np.ascontiguousarray(value)),
+            dtype=np.float64,
         )
-        preconditioner = operator_factory(
-            (interior.size, interior.size), matvec=precondition, dtype=np.float64
-        )
-        adjoint, info = gmres(
-            operator,
-            state_bar[interior],
-            M=preconditioner,
-            rtol=1.0e-8,
-            restart=200,
-            maxiter=400,
-        )
-        if info != 0:
-            error_message = f"VMEC++ implicit adjoint solve failed with info={info}"
-            raise RuntimeError(error_message)
+
+    def matvec(value: np.ndarray) -> np.ndarray:
         embedded = np.zeros(state_size)
-        embedded[interior] = adjoint
-        internal_boundary_bar = state_bar[boundary] - transpose(embedded)[boundary]
-        full_state_bar = np.zeros(state_size)
-        full_state_bar[boundary] = internal_boundary_bar
-        return _boundary_from_state_vjp(model, full_state_bar)
-    finally:
-        model.set_freeze_constraint_multiplier(False)
+        embedded[interior] = value
+        return transpose(embedded)[interior]
+
+    def precondition(value: np.ndarray) -> np.ndarray:
+        embedded = np.zeros(state_size)
+        embedded[interior] = value
+        return np.asarray(
+            model.apply_preconditioner(np.ascontiguousarray(embedded)),
+            dtype=np.float64,
+        )[interior]
+
+    operator_factory: Any = LinearOperator
+    operator = operator_factory(
+        (interior.size, interior.size), matvec=matvec, dtype=np.float64
+    )
+    preconditioner = operator_factory(
+        (interior.size, interior.size), matvec=precondition, dtype=np.float64
+    )
+    adjoint, info = gmres(
+        operator,
+        state_bar[interior],
+        M=preconditioner,
+        rtol=1.0e-8,
+        restart=200,
+        maxiter=400,
+    )
+    if info != 0:
+        error_message = f"VMEC++ implicit adjoint solve failed with info={info}"
+        raise RuntimeError(error_message)
+    embedded = np.zeros(state_size)
+    embedded[interior] = adjoint
+    internal_boundary_bar = state_bar[boundary] - transpose(embedded)[boundary]
+    full_state_bar = np.zeros(state_size)
+    full_state_bar[boundary] = internal_boundary_bar
+    return _boundary_from_state_vjp(model, full_state_bar)
 
 
 @dataclass(frozen=True)
@@ -344,9 +369,6 @@ class DifferentiableVmec:
     def __post_init__(self) -> None:
         if self.vmec_input.lfreeb:
             error_message = "DifferentiableVmec currently requires lfreeb=false"
-            raise ValueError(error_message)
-        if self.vmec_input.ncurr != 0:
-            error_message = "DifferentiableVmec currently requires ncurr=0"
             raise ValueError(error_message)
         if self.vmec_input.lasym:
             error_message = (
@@ -459,6 +481,13 @@ def make_solver(vmec_input) -> DifferentiableVmec:
     available only in an Enzyme-enabled build, because it requires the exact
     transpose of the force residual. No finite-difference derivative is used.
     """
+    if not _vmecpp.VMECPP_ENABLE_ENZYME:
+        error_message = (
+            "vmecpp.autodiff.make_solver requires a build with the exact force "
+            "Jacobian; rebuild with the CMake option VMECPP_ENABLE_ENZYME=ON. "
+            "No finite-difference derivative is used."
+        )
+        raise RuntimeError(error_message)
     return DifferentiableVmec(vmec_input)
 
 

@@ -122,7 +122,11 @@ void FourierCoeffs::setZero() {
 /** apply even/odd-m decomposition */
 void FourierCoeffs::decomposeInto(FourierCoeffs& m_x,
                                   const Eigen::VectorXd& scalxc) const {
-  // TODO(jons): understand correct limits in fixed-boundary vs. free-boundary
+  // The boundary row is decomposed on the thread that owns the LCFS. Nothing
+  // downstream reads the R and Z part of it: restricting jMaxRZ to nsMax_
+  // below, the alternative left in the comment, leaves the whole suite
+  // unchanged for fixed and free boundary alike. The one limit is kept so that
+  // R, Z and lambda share it.
   int jMaxIncludingBoundary = nsMax_;
   if (r_.nsMaxF1 == ns) {
     jMaxIncludingBoundary = ns;
