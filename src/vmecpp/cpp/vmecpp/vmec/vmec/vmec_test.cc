@@ -112,6 +112,27 @@ TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
   CHECK(status.ok());
 }  // CheckNoErrorOnNonConvergenceIfDesired
 
+// With ncurr = 1 the current profile is scaled to curtor by its value at the
+// boundary, so a profile that encloses no net current there cannot be imposed
+// and used to run silently with zero current.
+TEST(TestVmec, RejectsACurrentProfileWithoutEdgeCurrent) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  // I'(s) = 1 - 2 s integrates to zero at the boundary
+  indata.pcurr_type = "power_series";
+  indata.ac = Eigen::VectorXd(2);
+  indata.ac << 1.0, -2.0;
+  const auto output = vmecpp::run(indata);
+  ASSERT_FALSE(output.ok());
+  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(output.status().message()),
+              ::testing::HasSubstr("encloses no net current"));
+}
+
 TEST(TestVmec, CheckFromIndataReturnsErrorForInvalidMgridPath) {
   // Verify that FromIndata returns an error status (rather than throwing)
   // when a free-boundary run specifies a non-existent mgrid file.
@@ -825,21 +846,23 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   ASSERT_TRUE(w.lasym);
 
   // educational_VMEC (VMEC 8.52) golden scalars for the identical perturbed
-  // mgrid.
+  // mgrid, with the sign of the metric and curvature cross terms in NESTOR's
+  // analytic add-back (analyt.f90 adp/adm, azp1u/azm1u) corrected the same
+  // way as in SingularIntegrals::update.
   const double tol = 1.0e-4;
-  EXPECT_TRUE(IsCloseRelAbs(5.4351302689, w.aspect, tol))
+  EXPECT_TRUE(IsCloseRelAbs(5.4333536171, w.aspect, tol))
       << "aspect=" << w.aspect;
-  EXPECT_TRUE(IsCloseRelAbs(0.3073676511, w.volume, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.3070706936, w.volume, tol))
       << "volume=" << w.volume;
-  EXPECT_TRUE(IsCloseRelAbs(0.7719386349, w.Rmajor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.7715217794, w.Rmajor_p, tol))
       << "Rmajor=" << w.Rmajor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.1420276234, w.Aminor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.1419973434, w.Aminor_p, tol))
       << "Aminor=" << w.Aminor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.0018738865, w.betatotal, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.0018721371, w.betatotal, tol))
       << "beta=" << w.betatotal;
-  EXPECT_TRUE(IsCloseRelAbs(-0.4512430727, w.rbtor, tol))
+  EXPECT_TRUE(IsCloseRelAbs(-0.4512433486, w.rbtor, tol))
       << "rbtor=" << w.rbtor;
-  EXPECT_TRUE(IsCloseRelAbs(0.5742222261, w.volavgB, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.5745086207, w.volavgB, tol))
       << "volavgB=" << w.volavgB;
 
   // Genuine asymmetry: the antisymmetric Fourier content is clearly non-zero.
@@ -870,8 +893,9 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   // Regression guard for issue #330/#640 and other changes to the multigrid
   // convergence path. 344 with the historical unbalanced stage entry; 321
   // since the vacuum state is seeded across multigrid transitions (the
-  // second stage enters force-balanced instead of kicking the boundary).
-  EXPECT_EQ(output->wout.niter, 321);
+  // second stage enters force-balanced instead of kicking the boundary); 328
+  // with the corrected cross-term sign in NESTOR's analytic add-back.
+  EXPECT_EQ(output->wout.niter, 328);
 }  // MultiGridFreeBoundary
 
 // The free-boundary threed1 section covers the poloidal range the run is solved
@@ -1062,3 +1086,18 @@ TEST(TestVmec, BloatScalesTheEnclosedToroidalFlux) {
         << "bloat = " << bloat;
   }
 }  // BloatScalesTheEnclosedToroidalFlux
+
+// A multigrid step count below one solves nothing and is rejected.
+TEST(TestVmec, ZeroMaximumMultiGridStepIsRejected) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  Vmec vmec(*indata);
+  const absl::StatusOr<bool> reached =
+      vmec.run(VmecCheckpoint::NONE, INT_MAX, /*maximum_multi_grid_step=*/0);
+  ASSERT_FALSE(reached.ok());
+  EXPECT_EQ(reached.status().code(), absl::StatusCode::kInvalidArgument);
+}  // ZeroMaximumMultiGridStepIsRejected

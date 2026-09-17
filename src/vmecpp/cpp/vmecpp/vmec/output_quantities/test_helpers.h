@@ -83,6 +83,7 @@ inline void CheckWOutEquality(const vmecpp::WOutFileContents& wout1,
   EXPECT_EQ(wout1.phips, wout2.phips);
   EXPECT_EQ(wout1.over_r, wout2.over_r);
   EXPECT_EQ(wout1.jdotb, wout2.jdotb);
+  EXPECT_EQ(wout1.bdotb, wout2.bdotb);
   EXPECT_EQ(wout1.bdotgradv, wout2.bdotgradv);
   EXPECT_EQ(wout1.DMerc, wout2.DMerc);
   EXPECT_EQ(wout1.DShear, wout2.DShear);
