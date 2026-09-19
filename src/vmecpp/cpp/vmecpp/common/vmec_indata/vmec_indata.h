@@ -191,6 +191,11 @@ class VmecINDATA {
   // number of iterations between full vacuum calculations
   int nvacskip;
 
+  // sign of the Jacobian of the (s, theta, zeta) coordinates: -1 for the
+  // left-handed system of Fortran VMEC, +1 for a right-handed one; the input
+  // boundary is flipped in theta to match it
+  int signgs;
+
   // indicates which method to use
   // for the free-boundary force contribution
   FreeBoundaryMethod free_boundary_method;

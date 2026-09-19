@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <string>
@@ -130,24 +131,11 @@ TEST_P(LoadMGridTest, CheckLoadMGrid) {
 
   ASSERT_EQ(nc_close(ncid), NC_NOERR);
 
-  // TODO(jons): A flag if stellarator symmetry was used in computing a given
-  // mgrid file is not stored in the mgrid file. For now, hard-code this to
-  // `true`, since all our test cases assume stellarator symmetry. To be revised
-  // when a) we use non-stellarator-symmetric coil sets _and_ b) we have
-  // transitioned to only using our own `makegrid`, in which we can define new
-  // output variables and have the MakegridParameters at hand anyways.
-  bool assume_stellarator_symmetry = true;
-
-  // NOTE: The coil geometry in `coils.cth_like` was found to not be perfectly
-  // stellarator-symmetric. Therefore, the resulting magnetic field is also not
-  // perfectly stellarator symmetric. We ignore this issue for now and assume
-  // both in `makegrid` and here the field to be perfectly
-  // stellarator-symmetric. Therefore, we also only check the first
-  // half-field-period for a stellarator-symmetric case as `cth_like`.
-  int num_phi_effective = number_of_phi_grid_points;
-  if (assume_stellarator_symmetry) {
-    num_phi_effective = number_of_phi_grid_points / 2 + 1;
-  }
+  // The mgrid file does not record whether it was computed assuming
+  // stellarator symmetry, so the point-wise comparison below covers the first
+  // half field period, where the stored field is an independent evaluation.
+  // The assumption itself is checked further down against the stored data.
+  const int num_phi_effective = number_of_phi_grid_points / 2 + 1;
 
   // Build the cylindrical grid based on mgrid dimensions.
   // The loop setup is re-used to also allocate the magnetic_field vectors.
@@ -212,6 +200,47 @@ TEST_P(LoadMGridTest, CheckLoadMGrid) {
         EXPECT_TRUE(IsCloseRelAbs(b_r, mgrid.bR[linear_index], tolerance));
         EXPECT_TRUE(IsCloseRelAbs(b_p, mgrid.bP[linear_index], tolerance));
         EXPECT_TRUE(IsCloseRelAbs(b_z, mgrid.bZ[linear_index], tolerance));
+      }  // index_r
+    }  // index_z
+  }  // index_phi
+
+  // What makes the planes past the half field period redundant is that the
+  // stored field is stellarator-symmetric, so check that rather than take it on
+  // trust: reflecting a plane onto (2 pi / nfp - phi, R, -Z) has to leave B_phi
+  // and B_Z alone and flip the sign of B_R. The measured residual is 4.7e-11 of
+  // the largest field component, on the mid-period plane, which is the only one
+  // that is not a mirror copy of the first half period.
+  double largest_field_component = 0.0;
+  for (int linear_index = 0; linear_index < mgrid.bR.size(); ++linear_index) {
+    largest_field_component = std::max(
+        {largest_field_component, std::abs(mgrid.bR[linear_index]),
+         std::abs(mgrid.bP[linear_index]), std::abs(mgrid.bZ[linear_index])});
+  }
+  ASSERT_GT(largest_field_component, 0.0);
+  const double symmetry_tolerance = 1.0e-9 * largest_field_component;
+
+  for (int index_phi = 0; index_phi < mgrid.numPhi; ++index_phi) {
+    const int reflected_phi = (mgrid.numPhi - index_phi) % mgrid.numPhi;
+    for (int index_z = 0; index_z < mgrid.numZ; ++index_z) {
+      const int reflected_z = mgrid.numZ - 1 - index_z;
+      for (int index_r = 0; index_r < mgrid.numR; ++index_r) {
+        const int linear_index =
+            (index_phi * mgrid.numZ + index_z) * mgrid.numR + index_r;
+        const int reflected_index =
+            (reflected_phi * mgrid.numZ + reflected_z) * mgrid.numR + index_r;
+
+        EXPECT_NEAR(mgrid.bR[reflected_index], -mgrid.bR[linear_index],
+                    symmetry_tolerance)
+            << "B_R at phi = " << index_phi << ", z = " << index_z
+            << ", r = " << index_r;
+        EXPECT_NEAR(mgrid.bP[reflected_index], mgrid.bP[linear_index],
+                    symmetry_tolerance)
+            << "B_phi at phi = " << index_phi << ", z = " << index_z
+            << ", r = " << index_r;
+        EXPECT_NEAR(mgrid.bZ[reflected_index], mgrid.bZ[linear_index],
+                    symmetry_tolerance)
+            << "B_Z at phi = " << index_phi << ", z = " << index_z
+            << ", r = " << index_r;
       }  // index_r
     }  // index_z
   }  // index_phi
@@ -429,6 +458,84 @@ TEST(MGridProviderValidation, LoadFileReadsCoilGroupNames) {
     EXPECT_FALSE(name.empty());
     EXPECT_EQ(name.find_last_not_of(' '), name.size() - 1)
         << "name '" << name << "' still carries padding";
+  }
+}
+
+TEST(MGridPolynomialInterpolation,
+     ReproducesTensorPolynomialsOnAvailableStencil) {
+  for (const int num_r : {2, 3, 4, 7}) {
+    for (const int num_z : {2, 3, 4, 8}) {
+      for (const int degree : {1, 2, 3}) {
+        makegrid::MagneticFieldResponseTable table;
+        auto& parameters = table.parameters;
+        parameters.normalize_by_currents = false;
+        parameters.number_of_field_periods = 3;
+        parameters.r_grid_minimum = 1.0;
+        parameters.r_grid_maximum = 3.0;
+        parameters.z_grid_minimum = -0.7;
+        parameters.z_grid_maximum = 0.9;
+        parameters.number_of_r_grid_points = num_r;
+        parameters.number_of_z_grid_points = num_z;
+        parameters.number_of_phi_grid_points = 5;
+        const int num_cells = num_r * num_z * 5;
+        table.b_r.resize(2, num_cells);
+        table.b_p.resize(2, num_cells);
+        table.b_z.resize(2, num_cells);
+        const auto polynomial = [degree](double r, double z, int k) {
+          return std::pow(r, degree) + 2 * std::pow(z, degree) +
+                 std::pow(r * z, degree) + 0.3 * r * z + k;
+        };
+        for (int k = 0; k < 5; ++k) {
+          for (int j = 0; j < num_z; ++j) {
+            for (int i = 0; i < num_r; ++i) {
+              const double value = polynomial(1.0 + 2.0 * i / (num_r - 1),
+                                              -0.7 + 1.6 * j / (num_z - 1), k);
+              const int index = (k * num_z + j) * num_r + i;
+              table.b_r(0, index) = value;
+              table.b_p(0, index) = 2 * value;
+              table.b_z(0, index) = -value;
+              table.b_r(1, index) = 3 * value;
+              table.b_p(1, index) = 6 * value;
+              table.b_z(1, index) = -3 * value;
+            }
+          }
+        }
+        Eigen::VectorXd currents(2);
+        currents << 2.0, -0.25;
+        SCOPED_TRACE(
+            absl::StrFormat("nr=%d nz=%d polynomial=%d", num_r, num_z, degree));
+        MGridProvider provider;
+        ASSERT_TRUE(provider.LoadFields(table, currents).ok());
+        Eigen::VectorXd r(205), z(205), br(205), bp(205), bz(205);
+        for (int i = 0; i < 205; ++i) {
+          r[i] = 1.0 + 2.0 * (((i * 37) % 205) + 0.5) / 205.0;
+          z[i] = -0.7 + 1.6 * (((i * 71) % 205) + 0.5) / 205.0;
+        }
+        r[0] = 1.0;
+        z[0] = -0.7;
+        r[1] = 3.0;
+        z[1] = 0.9;
+        r[2] = 3.0;
+        z[2] = -0.7;
+        r[3] = 1.0;
+        z[3] = 0.9;
+        ASSERT_TRUE(
+            provider.interpolate(0, 205, 5, 205, r, z, br, bp, bz).ok());
+        double error = 0.0;
+        for (int i = 0; i < 205; ++i) {
+          const double expected = 1.25 * polynomial(r[i], z[i], i % 5);
+          error = std::max({error, std::abs(br[i] - expected),
+                            std::abs(bp[i] - 2 * expected),
+                            std::abs(bz[i] + expected)});
+        }
+        const bool exact = num_r > degree && num_z > degree;
+        if (exact) {
+          EXPECT_LT(error, 1e-11);
+        } else {
+          EXPECT_GT(error, 1e-4);
+        }
+      }
+    }
   }
 }
 

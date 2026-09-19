@@ -14,6 +14,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "util/file_io/file_io.h"
 #include "util/netcdf_io/netcdf_io.h"
@@ -1254,5 +1255,36 @@ TEST(TestMakegridLib, CheckWriteMakegridNetCDFFileRejectsInconsistentCurrents) {
                 .code(),
             absl::StatusCode::kInvalidArgument);
 }  // CheckWriteMakegridNetCDFFileRejectsInconsistentCurrents
+
+// A parameters file that cannot be read is reported through the return value.
+TEST(TestMakegridLib, CheckImportMakegridParametersReportsUnreadableFile) {
+  const absl::StatusOr<MakegridParameters> parameters =
+      ImportMakegridParametersFromFile(
+          "vmecpp/test_data/no_such_makegrid_parameters.json");
+  ASSERT_FALSE(parameters.ok());
+  EXPECT_EQ(parameters.status().code(), absl::StatusCode::kNotFound);
+}  // CheckImportMakegridParametersReportsUnreadableFile
+
+// A file that cannot be created is reported through the return value, in the
+// same way as an inconsistent argument.
+TEST(TestMakegridLib, CheckWriteMakegridNetCDFFileReportsUnwritablePath) {
+  const MakegridParameters makegrid_parameters = SmallMakegridParameters();
+  const absl::StatusOr<MagneticFieldResponseTable> response_table =
+      ComputeMagneticFieldResponseTable(makegrid_parameters,
+                                        SingleCircularFilament(5.0));
+  ASSERT_OK(response_table);
+
+  Eigen::VectorXd one_current(1);
+  one_current[0] = 5.0;
+
+  const std::string filename =
+      ::testing::TempDir() + "/no_such_directory/mgrid_write_unwritable.nc";
+  const absl::Status status =
+      WriteMakegridNetCDFFile(filename, makegrid_parameters, one_current,
+                              *response_table, std::nullopt);
+  ASSERT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(std::string(status.message()), ::testing::HasSubstr(filename));
+}  // CheckWriteMakegridNetCDFFileReportsUnwritablePath
 
 }  // namespace makegrid

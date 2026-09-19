@@ -164,24 +164,33 @@ TEST(TestSingularIntegrals, CheckConstants) {
 }  // CheckConstants
 
 // Verify that prepareUpdate computes T^{+/-}_l accurately for ALL l in [0, L]
-// at a range of Fourier resolutions.
+// at a range of Fourier resolutions and metric coefficients.
 //
-// Resolutions span the low-kL regime (forward recurrence is accurate, so the
-// forward branch of prepareUpdate is exercised) all the way up to high-kL
-// (Miller backward recurrence fires; forward would lose all digits).
+// The cases span the low-kL regime, where the forward recurrence is accurate,
+// up to kL = 45, where one direction of each recurrence loses all digits and
+// the other has to run backward from a seed far above kL.
 //
 // Reference: 64-point Gauss-Legendre quadrature of the defining integral.
 // This is independent of both recurrence directions and reaches ~1e-13
 // relative accuracy at the chosen coefficients up to l = 45.
-class TlpTlmAccuracyTest
-    : public ::testing::TestWithParam<std::pair<int, int>> {};
+struct TlCase {
+  int mpol;
+  int ntor;
+  // metric coefficients (a, b2, c) = (guu, guv, gvv) of the tangent plane
+  double a;
+  double b2;
+  double c;
+};
+
+class TlpTlmAccuracyTest : public ::testing::TestWithParam<TlCase> {};
 
 TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   // GL-64 reference noise at l near kL is ~1e-13; 1e-11 leaves a safe margin
-  // while staying far below the forward-recurrence error that Miller corrects.
+  // while staying far below the error of a recurrence run in the wrong
+  // direction or started too close above kL.
   static constexpr double kTolerance = 1.0e-11;
 
-  const auto [mpol, ntor] = GetParam();
+  const auto [mpol, ntor, a_val, b2_val, c_val] = GetParam();
 
   const bool lasym = false;
   const int nfp = 5;
@@ -200,21 +209,14 @@ TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   const int kL = mf + nf;
   SingularIntegrals si(&s, &fb, &tp, &sg, nf, mf);
 
-  // Geometry coefficients chosen so am/ap ~ 4.7 and the discriminant
-  // d^2 - ap*am = 0.16 - 2.31 < 0 (so the integrand is smooth on [-1, 1]).
-  //   ap = a + b2 + c = 0.7
-  //   am = a - b2 + c = 3.3
-  //   d  = c - a     = 0.4
-  // At these coefficients the forward recurrence loses ~kL * log10(am/ap)
-  // ~ 0.67 * kL significant digits; for kL >= 15 it loses > 10 digits and the
-  // Miller activation threshold (growth > 1e10) triggers.
-  const double a_val = 0.8;
-  const double b2_val = -1.3;
-  const double c_val = 1.2;
   const double ap = a_val + b2_val + c_val;
   const double am = a_val - b2_val + c_val;
   const double d = c_val - a_val;
-  ASSERT_GT(am, ap) << "test setup: need am > ap to exercise Miller path";
+  // The homogeneous solutions of the T^+ (T^-) recurrence grow by
+  // sqrt(am/ap) (sqrt(ap/am)) per forward step, so one of the two has to run
+  // backward once kL is large enough.
+  ASSERT_GT(std::max(am / ap, ap / am), 2.0)
+      << "test setup: need one unstable forward direction";
   ASSERT_LT(d * d, ap * am) << "test setup: need smooth integrand on [-1,1]";
 
   const int numLocal = tp.ztMax - tp.ztMin;
@@ -253,15 +255,165 @@ TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   }
 }
 
-// (mpol, ntor) pairs spanning the forward-stable regime (kL=15, Miller just
-// barely fires) up to high-kL where forward would lose >30 digits.
+// The first three cases share the coefficients ap = 0.7, am = 3.3, d = 0.4
+// (am/ap = 4.7) at kL = 15, 27 and 45; the last one takes the metric of the
+// cth_like_free_bdy boundary at the point of its largest cross term
+// (ap/am = 2.2) at kL = 33, where a backward pass seeded 50 steps above kL
+// leaves 2e-9 of the seed in T^-_33.
 INSTANTIATE_TEST_SUITE_P(
     ResolutionSweep, TlpTlmAccuracyTest,
-    ::testing::Values(std::pair<int, int>{6, 8}, std::pair<int, int>{12, 14},
-                      std::pair<int, int>{20, 24}),
-    [](const ::testing::TestParamInfo<std::pair<int, int>>& info) {
-      return "mpol" + std::to_string(info.param.first) + "_ntor" +
-             std::to_string(info.param.second);
+    ::testing::Values(TlCase{6, 8, 0.8, -1.3, 1.2},
+                      TlCase{12, 14, 0.8, -1.3, 1.2},
+                      TlCase{20, 24, 0.8, -1.3, 1.2},
+                      TlCase{16, 16, 1.360e-02, 2.241e-02, 4.626e-02}),
+    [](const ::testing::TestParamInfo<TlCase>& info) {
+      return "mpol" + std::to_string(info.param.mpol) + "_ntor" +
+             std::to_string(info.param.ntor) + "_ap" +
+             std::to_string(static_cast<int>(
+                 1000.0 * (info.param.a + info.param.b2 + info.param.c)));
     });
+
+}  // namespace vmecpp
+
+namespace vmecpp {
+
+// Reference 2D Fourier coefficients of the tangent-plane kernels that
+// RegularizedIntegrals subtracts, for one set of metric (a, b2, c) and
+// second-fundamental-form (A, B2, C) coefficients:
+//   F1(m, n) = int cos(m du - n dv) / sqrt(a tu^2 + b2 tu tv + c tv^2)
+//   F2(m, n) = int cos(m du - n dv) (A tu^2 + B2 tu tv + C tv^2)
+//                  / (a tu^2 + b2 tu tv + c tv^2)^{3/2}
+// over (du, dv) in (-pi, pi)^2 with tu = 2 tan(du/2), tv = 2 tan(dv/2).
+// The integrands are 1/r singular at the origin; polar coordinates about it
+// make r * kernel smooth, and a tensor Gauss-Legendre rule on eight angular
+// panels (the square's corners are panel boundaries) converges geometrically.
+static std::pair<double, double> TangentPlaneKernelReference(
+    int m, int n, double a, double b2, double c, double A, double B2,
+    double C) {
+  double f1 = 0.0;
+  double f2 = 0.0;
+  for (int panel = 0; panel < 8; ++panel) {
+    const double p0 = panel * M_PI / 4.0;
+    const double p1 = (panel + 1) * M_PI / 4.0;
+    for (const auto& [wp, xp] : kGaussLegendre64) {
+      const double psi = 0.5 * (p1 - p0) * xp + 0.5 * (p1 + p0);
+      const double wpsi = 0.5 * (p1 - p0) * wp;
+      const double cp = std::cos(psi);
+      const double sp = std::sin(psi);
+      const double rmax = M_PI / std::max(std::abs(cp), std::abs(sp));
+      for (const auto& [wr, xr] : kGaussLegendre64) {
+        const double r = 0.5 * rmax * (xr + 1.0);
+        const double w = wpsi * 0.5 * rmax * wr * r;
+        const double du = r * cp;
+        const double dv = r * sp;
+        const double tu = 2.0 * std::tan(du / 2.0);
+        const double tv = 2.0 * std::tan(dv / 2.0);
+        const double q1 = a * tu * tu + b2 * tu * tv + c * tv * tv;
+        const double q2 = A * tu * tu + B2 * tu * tv + C * tv * tv;
+        const double cs = std::cos(m * du - n * dv);
+        f1 += w * cs / std::sqrt(q1);
+        f2 += w * cs * q2 / (q1 * std::sqrt(q1));
+      }
+    }
+  }
+  return {f1, f2};
+}
+
+// The analytic add-back must reproduce the Fourier coefficients of exactly
+// the kernels subtracted numerically, including the metric and curvature
+// cross terms (guv, auv) that are non-zero on any non-axisymmetric surface.
+// With a delta source at grid point (l0, k0), bvec_sin[(m, n)] and
+// grpmn_sin[(m, n), kl0] equal F1(m, n) / (2 pi) * sin(m u0 - n v0) and
+// F2(m, n) / (2 pi) * sin(m u0 - n v0).
+class AnalyticAddBackTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(AnalyticAddBackTest, MatchesSubtractedKernels) {
+  static constexpr double kTolerance = 1.0e-6;
+
+  const bool lasym = GetParam();
+  const int nfp = 2;
+  const int mpol = 8;
+  const int ntor = 4;
+  const int ntheta = 0;
+  const int nzeta = 24;
+
+  Sizes s(lasym, nfp, mpol, ntor, ntheta, nzeta);
+  FourierBasisFastToroidal fb(&s);
+  TangentialPartitioning tp(s.nZnT);
+  SurfaceGeometry sg(&s, &fb, &tp);
+
+  const int nf = ntor;
+  const int mf = mpol + 1;
+  SingularIntegrals si(&s, &fb, &tp, &sg, nf, mf);
+
+  // coefficients of a helically deformed circular torus (R0 = 1, a = 0.3,
+  // 0.05 cos(theta - 2 phi) deformation) at one surface point
+  const double a = 0.100265;
+  const double b2 = -0.012765;
+  const double c = 0.387789;
+  const double A = 0.062236;
+  const double B2 = -0.004955;
+  const double C = 0.050789;
+
+  const int numLocal = tp.ztMax - tp.ztMin;
+  sg.guu = Eigen::VectorXd::Constant(numLocal, a);
+  sg.guv = Eigen::VectorXd::Constant(numLocal, b2);
+  sg.gvv = Eigen::VectorXd::Constant(numLocal, c);
+  sg.auu = Eigen::VectorXd::Constant(numLocal, A);
+  sg.auv = Eigen::VectorXd::Constant(numLocal, B2);
+  sg.avv = Eigen::VectorXd::Constant(numLocal, C);
+
+  const int l0 = 3;
+  const int k0 = 5;
+  const int kl0 = l0 * s.nZeta + k0;
+  Eigen::VectorXd bDotN = Eigen::VectorXd::Zero(numLocal);
+  bDotN[kl0] = 1.0 / s.wInt[l0];
+  si.update(bDotN, /*fullUpdate=*/true);
+
+  const double u0 = 2.0 * M_PI * l0 / s.nThetaEven;
+  const double v0 = 2.0 * M_PI * k0 / s.nZeta;
+  int checked = 0;
+  for (int n = -nf; n <= nf; ++n) {
+    for (int m = 0; m <= mf; ++m) {
+      // m = 0 keeps only n >= 0 in NESTOR's basis
+      if (m == 0 && n < 0) continue;
+      const double sn = std::sin(m * u0 - n * v0);
+      if (std::abs(sn) < 0.2) continue;
+      const auto [f1, f2] =
+          TangentPlaneKernelReference(m, n, a, b2, c, A, B2, C);
+      const int idx = (nf + n) * (mf + 1) + m;
+      const double expected_bvec = f1 / (2.0 * M_PI) * sn;
+      const double expected_grpmn = f2 / (2.0 * M_PI) * sn;
+      if (lasym) {
+        const double cs = std::cos(m * u0 - n * v0);
+        EXPECT_TRUE(
+            IsCloseRelAbs(f1 / (2.0 * M_PI) * cs, si.bvec_cos[idx], kTolerance))
+            << "bvec_cos at (m, n) = (" << m << ", " << n << ")";
+        EXPECT_TRUE(IsCloseRelAbs(
+            f2 / (2.0 * M_PI) * cs,
+            si.grpmn_cos[static_cast<std::size_t>(idx) * numLocal + kl0],
+            kTolerance))
+            << "grpmn_cos at (m, n) = (" << m << ", " << n << ")";
+      }
+      EXPECT_TRUE(IsCloseRelAbs(expected_bvec, si.bvec_sin[idx], kTolerance))
+          << "bvec_sin at (m, n) = (" << m << ", " << n << "): expected "
+          << expected_bvec << ", got " << si.bvec_sin[idx];
+      EXPECT_TRUE(IsCloseRelAbs(
+          expected_grpmn,
+          si.grpmn_sin[static_cast<std::size_t>(idx) * numLocal + kl0],
+          kTolerance))
+          << "grpmn_sin at (m, n) = (" << m << ", " << n << "): expected "
+          << expected_grpmn << ", got "
+          << si.grpmn_sin[static_cast<std::size_t>(idx) * numLocal + kl0];
+      ++checked;
+    }
+  }
+  EXPECT_GT(checked, 40);
+}
+
+INSTANTIATE_TEST_SUITE_P(Symmetry, AnalyticAddBackTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "lasym" : "symmetric";
+                         });
 
 }  // namespace vmecpp

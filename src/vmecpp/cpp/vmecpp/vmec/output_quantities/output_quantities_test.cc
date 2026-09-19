@@ -6,6 +6,8 @@
 
 #include <netcdf.h>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -44,6 +46,12 @@ namespace fs = std::filesystem;
 namespace vmecpp {
 
 // used to specify case-specific tolerances
+//
+// Each tolerance is set from the worst deviation actually observed for that
+// case, rounded up to at least five times it. The measurement covers the opt,
+// asan and ubsan builds this repository tests in CI, which agree bit-for-bit
+// with each other, and one built with -march=native, which shifts individual
+// comparisons by up to a factor of four.
 struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
@@ -278,9 +286,9 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
     EXPECT_TRUE(
         IsCloseRelAbs(reference_poloidal_flux[jF], wout.chi[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_phipf[jF], wout.phipf[jF], tolerance));
-    if (jF > 0) {
-      // The Fortran reference leaves the axis chipf at zero; see
-      // computeBContra.
+    if (jF > 0 && jF < fc.ns - 1) {
+      // The axis and the boundary entries of chipf follow PARVMEC rather than
+      // the 8.52 lineage the references come from; see computeBContra.
       EXPECT_TRUE(
           IsCloseRelAbs(reference_chipf[jF], wout.chipf[jF], tolerance));
     }
@@ -529,13 +537,14 @@ INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantities, WOutFileContentsTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-7},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-7},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-6},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-06},
            DataSource{.identifier = "cth_like_fixed_bdy_spline_pressure",
                       .tolerance = 1.0e-6},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 1.0e-6},
-           DataSource{.identifier = "cma", .tolerance = 1.0e-6},
-           DataSource{.identifier = "cth_like_free_bdy", .tolerance = 1.0e-6}));
+                      .tolerance = 5.0e-06},
+           DataSource{.identifier = "cma", .tolerance = 5.0e-06},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 5.0e-06}));
 
 // End-to-end exercise of the spline profile path through a full equilibrium.
 // cth_like_fixed_bdy_spline_pressure.json is the cth_like_fixed_bdy case with
@@ -548,6 +557,76 @@ INSTANTIATE_TEST_SUITE_P(
 // This is the seam the leaf and dispatch tests cannot reach: a spline profile
 // driving a real solve to the Fortran-referenced equilibrium. Input-echo fields
 // (pmass_type, am) legitimately differ for a spline input and are not compared.
+// The cross-section height reported in the threed1 geometric table is twice
+// the largest |Z| on the boundary contour of the reported plane. Z is
+// reconstructed here from the wout spectrum at the stored poloidal points, so
+// the check needs no reference file; the asymmetric cases have no
+// educational_VMEC threed1 dump to compare against.
+class Threed1HeightTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(Threed1HeightTest, HeightIsTwiceTheLargestAbsoluteZ) {
+  const std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+
+  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  const Sizes& s = vmec.s_;
+
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);  // ran to convergence
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+  const Threed1GeometricAndMagneticQuantities& geomag =
+      vmec.output_quantities_.threed1_geometric_magnetic;
+
+  // The reported planes are zeta = 0 and, on a toroidal grid, the plane at
+  // toroidal index nZeta / 2.
+  std::vector<int> plane_indices = {0};
+  if (s.nZeta > 1) {
+    plane_indices.push_back(s.nZeta / 2);
+  }
+  ASSERT_EQ(geomag.height.size(), static_cast<int>(plane_indices.size()));
+
+  const int j_boundary = wout.ns - 1;
+  for (size_t plane = 0; plane < plane_indices.size(); ++plane) {
+    const double zeta = 2.0 * M_PI * plane_indices[plane] / (s.nfp * s.nZeta);
+
+    double largest_absolute_z = 0.0;
+    for (int l = 0; l < s.nThetaEff; ++l) {
+      const double theta = 2.0 * M_PI * l / s.nThetaEven;
+      double z = 0.0;
+      for (int mn = 0; mn < wout.mnmax; ++mn) {
+        const double kernel = wout.xm[mn] * theta - wout.xn[mn] * zeta;
+        z += wout.zmns(mn, j_boundary) * std::sin(kernel);
+        if (s.lasym) {
+          z += wout.zmnc(mn, j_boundary) * std::cos(kernel);
+        }
+      }
+      largest_absolute_z = std::max(largest_absolute_z, std::abs(z));
+    }
+
+    EXPECT_TRUE(IsCloseRelAbs(2.0 * largest_absolute_z, geomag.height[plane],
+                              data_source_.tolerance))
+        << "plane index " << plane_indices[plane];
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, Threed1HeightTest,
+    Values(DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-10},
+           DataSource{.identifier = "cth_like_fixed_bdy_asym",
+                      .tolerance = 1.0e-10}));
+
 TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_fixed_bdy_spline_pressure.json");

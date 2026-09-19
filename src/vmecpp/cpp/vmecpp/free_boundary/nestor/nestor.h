@@ -29,7 +29,7 @@ class Nestor : public FreeBoundaryBase {
          Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
          std::span<double> vacuum_b_r_share,
          std::span<double> vacuum_b_phi_share,
-         std::span<double> vacuum_b_z_share);
+         std::span<double> vacuum_b_z_share, std::span<double> reduce_slots);
 
   absl::StatusOr<bool> update(
       const std::span<const double> rCC, const std::span<const double> rSS,
@@ -66,6 +66,9 @@ class Nestor : public FreeBoundaryBase {
   LaplaceSolver ls_;
 
   std::span<double> bvecShare;
+
+  // one row per thread for SumOverThreads
+  std::span<double> reduce_slots_;
 };
 
 }  // namespace vmecpp
