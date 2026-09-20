@@ -267,6 +267,54 @@ TEST(TestVmecINDATA, CheckSplineProfilesNeedKnots) {
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
+TEST(TestVmecINDATA, CheckRationalProfilesNeedADenominator) {
+  // evalRational reads coefficients 0 to 9 as the numerator and 10 and above as
+  // the denominator, so the profile is only evaluable from eleven coefficients
+  // on, with a non-zero one past index 9.
+  VmecINDATA indata;
+  indata.pmass_type = "rational";
+
+  indata.am = Eigen::VectorXd::Zero(10);
+  indata.am[0] = 0.125;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  indata.am = Eigen::VectorXd::Zero(11);
+  indata.am[0] = 0.125;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  indata.am[10] = 1.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // the same for the iota and current profiles
+  indata.pmass_type = "power_series";
+  indata.piota_type = "rational";
+  indata.ai = Eigen::VectorXd::Zero(10);
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.ai = Eigen::VectorXd::Zero(11);
+  indata.ai[10] = 1.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.pcurr_type = "rational";
+  indata.ac = Eigen::VectorXd::Zero(10);
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.ac = Eigen::VectorXd::Zero(11);
+  indata.ac[10] = 1.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // the other parameterizations keep accepting a short coefficient array
+  indata.pmass_type = "power_series";
+  indata.piota_type = "power_series";
+  indata.pcurr_type = "power_series";
+  indata.am = Eigen::VectorXd::Zero(2);
+  indata.ai = Eigen::VectorXd::Zero(2);
+  indata.ac = Eigen::VectorXd::Zero(2);
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
 TEST(TestVmecINDATA, ToJson) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
