@@ -169,6 +169,9 @@ class IdealMhdModel {
   // Current working hypothesis: This is used to make the constraint force "look
   // similar" to the MHD forces for improved numerical stability.
   absl::Status constraintForceMultiplier();
+  // The ns-dependent scale of the constraint force multiplier, shared with the
+  // local force composition that recomputes tcon from the geometry.
+  double constraintMultiplierScale() const;
 
   // Computes the effective constraint force that actually enters the iterative
   // scheme.
@@ -193,9 +196,10 @@ class IdealMhdModel {
   // condensation constraint force) by one Enzyme forward pass, then apply the
   // linear forward transform and preconditioner decomposition to obtain the
   // decomposed force tangent in m_decomposed_hv. The constraint multiplier tcon
-  // is held frozen; freeze it in the raw force too
-  // (freeze_constraint_multiplier_) for an exactly consistent Jacobian. Used by
-  // the exact internal Newton-Krylov Hessian-vector product. This low-level
+  // is recomputed from the geometry inside the composition, as the raw force
+  // recomputes it from the state, so the product is the derivative of the
+  // force the iteration drives to zero. Used by the exact internal
+  // Newton-Krylov Hessian-vector product. This low-level
   // kernel does not differentiate the state-dependent LFORBAL replacement;
   // public callers must reject lforbal=true.
   void applyExactForceJacobian(const double* geomP, const double* dgeom,
@@ -217,19 +221,16 @@ class IdealMhdModel {
   // current state, to isolate composition bugs from the transform/tangent path.
   double composedForceResidual(const double* geomP, int geom_stride);
 
-  // Raw force-density tangent (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT)
-  // from one Enzyme forward pass, no transform. For isolating the JVP from the
-  // spectral-transform wrapping.
+  // Raw force-density tangent (kLocalForceBlocks blocks of
+  // (nsMaxFIncludingLcfs-nsMinF)*nZnT; block 20 is chi' for ncurr==1, see
+  // local_force_composition.h) from one Enzyme forward pass, no transform. For
+  // isolating the JVP from the spectral-transform wrapping.
   void exactForceDensityTangent(const double* geomP, const double* dgeom,
                                 int geom_stride, double* dforce_out);
 
-  // Freeze/unfreeze the constraint-force multiplier tcon (see the member).
-  void setFreezeConstraintMultiplier(bool freeze) {
-    freeze_constraint_multiplier_ = freeze;
-  }
-
   // Reverse-mode force-density cotangent: J_g^T applied to the force-density
-  // cotangent force_bar (20 blocks of (nsMaxFIncludingLcfs-nsMinF)*nZnT),
+  // cotangent force_bar (kLocalForceBlocks blocks of
+  // (nsMaxFIncludingLcfs-nsMinF)*nZnT; block 20 is the chi' cotangent),
   // accumulated into geom_bar_out (20 blocks of geom_stride, zeroed by caller),
   // by one Enzyme reverse pass. The transpose of exactForceDensityTangent.
   void exactForceDensityCotangent(const double* geomP, const double* force_bar,
@@ -255,6 +256,16 @@ class IdealMhdModel {
                                         FourierGeometry& m_physical_scratch,
                                         FourierGeometry& m_decomposed_out,
                                         bool fix_m1_gauge);
+
+  // (dchi'/dx)^T chip_bar for ncurr==1, in the decomposed internal basis.
+  // chip_bar holds one entry per half surface (index jH-nsMinH, the space
+  // chipH occupies). Reuses the reverse-mode force-density kernel seeded on
+  // its chi' output block alone, and the geometry-side (B^T) half of
+  // applyExactForceJacobianTranspose, since chi' depends on the same geometry
+  // blocks (r1, ru, zu, lu, lv) the force densities do.
+  void chipStateVjp(const double* geomP, int geom_stride,
+                    const double* chip_bar, FourierGeometry& m_physical_scratch,
+                    FourierGeometry& m_decomposed_out);
 
   // Transposes of the spectral transforms, for the transposed exact Hessian.
   // dft_ForcesToFourierTranspose: (forcesToFourier)^T, decomposed-force coeff
@@ -613,14 +624,6 @@ class IdealMhdModel {
   // 0 -- no spectral condensation constraint force
   // 1 (default) -- full spectral condensation constraint force
   double tcon0;
-
-  // When true, constraintForceMultiplier reuses the existing tcon instead of
-  // recomputing it from the geometry. The exact Hessian-vector product freezes
-  // tcon (it depends on the preconditioner diagonal, not just the geometry), so
-  // freezing it in the raw force too keeps the force and its exact HVP a
-  // consistent function of the state -- the residual a Newton solver drives and
-  // the Jacobian it linearizes with then match.
-  bool freeze_constraint_multiplier_ = false;
 
   // [mnsize] minimum flux surface index for which to apply radial
   // preconditioner for R and Z

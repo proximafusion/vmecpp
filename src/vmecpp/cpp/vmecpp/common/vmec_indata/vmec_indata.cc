@@ -218,6 +218,7 @@ VmecINDATA::VmecINDATA() {
   mgrid_file = "NONE";  // default from Fortran VMEC via indata2json
   // extcur is left empty
   nvacskip = 1;
+  signgs = -1;
   free_boundary_method = FreeBoundaryMethod::NESTOR;
 
   // tweaking parameters
@@ -342,6 +343,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(lfreeb, "/indata/lfreeb", file);
   WriteH5Dataset(mgrid_file, "/indata/mgrid_file", file);
   WriteH5Dataset(nvacskip, "/indata/nvacskip", file);
+  WriteH5Dataset(signgs, "/indata/signgs", file);
 
   // special treatment for enums
   WriteH5Dataset(ToString(free_boundary_method), "/indata/free_boundary_method",
@@ -423,6 +425,9 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.lfreeb, "/indata/lfreeb", from_file);
   ReadH5Dataset(m_indata.mgrid_file, "/indata/mgrid_file", from_file);
   ReadH5Dataset(m_indata.nvacskip, "/indata/nvacskip", from_file);
+  if (from_file.nameExists("/indata/signgs")) {
+    ReadH5Dataset(m_indata.signgs, "/indata/signgs", from_file);
+  }
 
   // special treatment for enums
   std::string fbdy_method_str;
@@ -874,6 +879,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.nvacskip = maybe_nvacskip->value();
   }
 
+  auto maybe_signgs = JsonReadInt(j, "signgs");
+  if (!maybe_signgs.ok()) {
+    return maybe_signgs.status();
+  }
+  if (maybe_signgs->has_value()) {
+    vmec_indata.signgs = maybe_signgs->value();
+  }
+
   auto maybe_free_boundary_method = JsonReadString(j, "free_boundary_method");
   if (!maybe_free_boundary_method.ok()) {
     return maybe_free_boundary_method.status();
@@ -1245,6 +1258,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["mgrid_file"] = mgrid_file;
   output["extcur"] = extcur;
   output["nvacskip"] = nvacskip;
+  output["signgs"] = signgs;
   output["free_boundary_method"] = ToString(free_boundary_method);
 
   // Tweaking Parameters
@@ -1339,6 +1353,12 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     return absl::InvalidArgumentError(
         absl::StrFormat("input variable 'nzeta' needs to be >= 0, but is %d\n",
                         vmec_indata.nzeta));
+  }
+
+  if (vmec_indata.signgs != -1 && vmec_indata.signgs != 1) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'signgs' needs to be -1 or +1, but is %d\n",
+        vmec_indata.signgs));
   }
 
   // the free-boundary case additionally requires nvacskip >= 1; see below

@@ -93,6 +93,10 @@ def _coefficients(value) -> np.ndarray:
     return np.concatenate([array.ravel() for array in arrays])
 
 
+@pytest.mark.skipif(
+    not _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="needs an Enzyme-enabled build for make_solver's exact residual transpose",
+)
 def test_solver_runs_vmecpp_and_matches_native_geometry() -> None:
     indata = _small_input()
     boundary = _boundary(indata)
@@ -109,6 +113,10 @@ def test_solver_runs_vmecpp_and_matches_native_geometry() -> None:
     )
 
 
+@pytest.mark.skipif(
+    not _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="needs an Enzyme-enabled build for make_solver's exact residual transpose",
+)
 def test_solver_is_usable_under_jit() -> None:
     indata = _small_input()
     solver = autodiff.make_solver(indata)
@@ -117,16 +125,75 @@ def test_solver_is_usable_under_jit() -> None:
     assert np.isfinite(float(value))
 
 
+@pytest.mark.skipif(
+    _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="exact Enzyme derivative support is enabled, so make_solver succeeds",
+)
 def test_solver_does_not_fall_back_to_finite_differences() -> None:
     indata = _small_input()
-    solver = autodiff.make_solver(indata)
+    with pytest.raises(RuntimeError, match="VMECPP_ENABLE_ENZYME"):
+        autodiff.make_solver(indata)
+
+
+def test_has_exact_force_jacobian_agrees_with_the_model_property() -> None:
+    indata = _small_input()
+    model = _vmecpp.VmecModel.create(indata._to_cpp_vmecindata(), 5)
+    # The module-level function is a coarser, static build feature (the
+    # compile-time VMECPP_ENABLE_ENZYME macro); the model property additionally
+    # depends on the model's force-balance formulation (lforbal), so a true
+    # build feature does not imply every model has the exact Jacobian.
+    if vmecpp.has_exact_force_jacobian():
+        assert model.has_exact_force_jacobian
+    else:
+        assert not model.has_exact_force_jacobian
+
+
+def test_make_solver_raises_at_construction_without_the_enzyme_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_vmecpp, "VMECPP_ENABLE_ENZYME", False)
+    indata = _small_input()
+    with pytest.raises(RuntimeError, match="VMECPP_ENABLE_ENZYME"):
+        autodiff.make_solver(indata)
+
+
+def test_solve_model_raises_when_the_final_multigrid_step_does_not_converge() -> None:
+    """A schedule truncated to a coarse, non-final step's ftol/niter must fail loudly.
+
+    Reproduces truncating a multi-step ``ns_array`` to its first steps for a cheap solve:
+    the truncated schedule's new last entry keeps the tight ftol that was only meant as a
+    hand-over to a finer step, and does not converge standalone at that ftol within its
+    niter budget.
+    """
+    indata = _small_input().model_copy(
+        update={
+            "ns_array": np.asarray([9]),
+            "ftol_array": np.asarray([1.0e-16]),
+            "niter_array": np.asarray([50]),
+        }
+    )
     boundary = _boundary(indata)
-    if _vmecpp.VmecModel.create(
-        indata._to_cpp_vmecindata(), 5
-    ).has_exact_force_jacobian:
-        pytest.skip("exact Enzyme derivative support is enabled")
-    with pytest.raises(RuntimeError, match="no exact residual transpose"):
-        solver._backward_callback(boundary, np.zeros(solver.output_shape))
+    with pytest.raises(RuntimeError, match="did not converge"):
+        autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
+
+
+def test_solve_model_accepts_a_non_final_step_that_does_not_converge() -> None:
+    """A non-final multigrid step is allowed to exhaust its iteration budget.
+
+    Its only job is handing a good initial guess to the next, finer step; only the
+    schedule's final step must actually converge.
+    """
+    indata = _small_input().model_copy(
+        update={
+            "ns_array": np.asarray([9, 15]),
+            "ftol_array": np.asarray([1.0e-16, 1.0e-8]),
+            "niter_array": np.asarray([50, 200]),
+        }
+    )
+    boundary = _boundary(indata)
+    model = autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
+    assert model.ns == 15
+    assert model.fsqr < model.ftolv
 
 
 def test_geometry_state_vjp_is_the_transpose_in_three_dimensions() -> None:
@@ -160,66 +227,62 @@ def _tangent_through_the_solve(indata, boundary, seed_state):
     state = np.asarray(model.get_state(), dtype=np.float64)
     interior, edge = autodiff._interior_and_boundary(model)
     model.set_state(np.ascontiguousarray(state))
-    model.set_freeze_constraint_multiplier(True)
-    try:
-        model.evaluate(2, 2, True)
-        keep = autodiff._structural_nullfree_interior(model, interior)
-        size = state.size
+    model.evaluate(2, 2, True)
+    keep = autodiff._structural_nullfree_interior(model, interior)
+    size = state.size
 
-        def forward(value):
-            return np.asarray(
-                model.exact_hessian_vector_product(np.ascontiguousarray(value)),
-                dtype=np.float64,
-            )
-
-        def restricted(value):
-            embedded = np.zeros(size)
-            embedded[keep] = value
-            return forward(embedded)[keep]
-
-        def precondition(value):
-            embedded = np.zeros(size)
-            embedded[keep] = value
-            return np.asarray(
-                model.apply_preconditioner(np.ascontiguousarray(embedded)),
-                dtype=np.float64,
-            )[keep]
-
-        factory: Any = LinearOperator
-        operator = factory((keep.size, keep.size), matvec=restricted, dtype=np.float64)
-        preconditioner = factory(
-            (keep.size, keep.size), matvec=precondition, dtype=np.float64
+    def forward(value):
+        return np.asarray(
+            model.exact_hessian_vector_product(np.ascontiguousarray(value)),
+            dtype=np.float64,
         )
-        seeded = np.zeros(size)
-        seeded[edge] = seed_state[edge]
-        tangent, info = gmres(
-            operator,
-            -forward(seeded)[keep],
-            M=preconditioner,
-            rtol=1.0e-12,
-            restart=200,
-            maxiter=400,
+
+    def restricted(value):
+        embedded = np.zeros(size)
+        embedded[keep] = value
+        return forward(embedded)[keep]
+
+    def precondition(value):
+        embedded = np.zeros(size)
+        embedded[keep] = value
+        return np.asarray(
+            model.apply_preconditioner(np.ascontiguousarray(embedded)),
+            dtype=np.float64,
+        )[keep]
+
+    factory: Any = LinearOperator
+    operator = factory((keep.size, keep.size), matvec=restricted, dtype=np.float64)
+    preconditioner = factory(
+        (keep.size, keep.size), matvec=precondition, dtype=np.float64
+    )
+    seeded = np.zeros(size)
+    seeded[edge] = seed_state[edge]
+    tangent, info = gmres(
+        operator,
+        -forward(seeded)[keep],
+        M=preconditioner,
+        rtol=1.0e-12,
+        restart=200,
+        maxiter=400,
+    )
+    assert info == 0
+    state_tangent = np.zeros(size)
+    state_tangent[keep] = tangent
+    state_tangent[edge] = seed_state[edge]
+
+    step = 1.0e-6  # MakeGeometry is linear in the state, so this is exact
+
+    def flat(value):
+        model.set_state(np.ascontiguousarray(value))
+        return autodiff._cpp_geometry_flat(
+            model.get_geometry(), model.ns, model.mpol, model.ntor
         )
-        assert info == 0
-        state_tangent = np.zeros(size)
-        state_tangent[keep] = tangent
-        state_tangent[edge] = seed_state[edge]
 
-        step = 1.0e-6  # MakeGeometry is linear in the state, so this is exact
-
-        def flat(value):
-            model.set_state(np.ascontiguousarray(value))
-            return autodiff._cpp_geometry_flat(
-                model.get_geometry(), model.ns, model.mpol, model.ntor
-            )
-
-        result = (
-            flat(state + step * state_tangent) - flat(state - step * state_tangent)
-        ) / (2.0 * step)
-        model.set_state(np.ascontiguousarray(state))
-        return result
-    finally:
-        model.set_freeze_constraint_multiplier(False)
+    result = (
+        flat(state + step * state_tangent) - flat(state - step * state_tangent)
+    ) / (2.0 * step)
+    model.set_state(np.ascontiguousarray(state))
+    return result
 
 
 def _parser_state_tangent(indata, boundary, direction):
@@ -281,3 +344,43 @@ def test_quasisymmetry_gradient_through_a_three_dimensional_solve() -> None:
     assert float(value) > 0.0  # a 3D equilibrium is not quasi-axisymmetric
     assert np.all(np.isfinite(gradient))
     assert np.abs(gradient).max() > 0.0
+
+
+def test_exact_hessian_vector_product_is_the_derivative_of_the_force() -> None:
+    """The exact product against a central difference of the raw force, which recomputes
+    the spectral-condensation multiplier from the state on every evaluation.
+
+    A boundary-only direction moves the multiplier the most.
+    """
+    indata = _small_3d_input()
+    _requires_exact_derivatives(indata)
+    model = autodiff._solve_model(indata._to_cpp_vmecindata(), _boundary(indata))
+    state = np.asarray(model.get_state(), dtype=np.float64).copy()
+    interior, boundary = autodiff._interior_and_boundary(model)
+
+    def raw_force(value):
+        model.set_state(np.ascontiguousarray(value))
+        model.evaluate(2, 2, False)
+        return np.asarray(model.get_forces(), dtype=np.float64).copy()
+
+    generator = np.random.default_rng(0)
+    directions = [generator.standard_normal(state.size)]
+    for rows in (boundary, interior):
+        direction = np.zeros(state.size)
+        direction[rows] = generator.standard_normal(rows.size)
+        directions.append(direction)
+    step = 1.0e-6
+    for raw_direction in directions:
+        direction = raw_direction / np.linalg.norm(raw_direction)
+        model.set_state(np.ascontiguousarray(state))
+        model.evaluate(2, 2, True)
+        product = np.asarray(
+            model.exact_hessian_vector_product(np.ascontiguousarray(direction)),
+            dtype=np.float64,
+        )
+        difference = (
+            raw_force(state + step * direction) - raw_force(state - step * direction)
+        ) / (2.0 * step)
+        assert np.linalg.norm(product - difference) < 1.0e-6 * np.linalg.norm(
+            difference
+        )

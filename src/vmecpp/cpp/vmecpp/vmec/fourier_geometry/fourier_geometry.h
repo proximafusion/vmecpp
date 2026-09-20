@@ -41,7 +41,7 @@ class FourierGeometry : public FourierCoeffs {
                      const RowMatrixXd& lmns_full, const RowMatrixXd& rmns,
                      const RowMatrixXd& zmnc, const RowMatrixXd& lmnc_full,
                      const RadialProfiles& p, const VmecConstants& constants,
-                     const Boundaries* b = nullptr);
+                     int sign_of_jacobian, const Boundaries* b = nullptr);
 
   void extrapolateTowardsAxis();
 
