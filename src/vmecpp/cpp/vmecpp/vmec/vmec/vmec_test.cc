@@ -1026,3 +1026,38 @@ TEST(TestVmec, ZeroMaximumMultiGridStepIsRejected) {
   ASSERT_FALSE(reached.ok());
   EXPECT_EQ(reached.status().code(), absl::StatusCode::kInvalidArgument);
 }  // ZeroMaximumMultiGridStepIsRejected
+
+// At ns == 3 the axis entry is also the third-from-last entry, so both ends of
+// the current density come from the single interior surface.
+TEST(TestVmec, CurrentDensityEndsAtTheSmallestRadialResolution) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  indata->ns_array = Eigen::VectorXi::Constant(1, 3);
+  indata->ftol_array = Eigen::VectorXd::Constant(1, 1.0e-12);
+  indata->niter_array = Eigen::VectorXi::Constant(1, 2000);
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+
+  const auto& wout = output->wout;
+  ASSERT_EQ(wout.ns, 3);
+  for (int mn = 0; mn < wout.mnmax_nyq; ++mn) {
+    const double interior_u = wout.currumnc(mn, 1);
+    const double interior_v = wout.currvmnc(mn, 1);
+
+    if (wout.xm_nyq[mn] <= 1) {
+      EXPECT_EQ(wout.currumnc(mn, 0), interior_u) << "mn = " << mn;
+      EXPECT_EQ(wout.currvmnc(mn, 0), interior_v) << "mn = " << mn;
+    } else {
+      EXPECT_EQ(wout.currumnc(mn, 0), 0.0) << "mn = " << mn;
+      EXPECT_EQ(wout.currvmnc(mn, 0), 0.0) << "mn = " << mn;
+    }
+
+    EXPECT_EQ(wout.currumnc(mn, 2), interior_u) << "mn = " << mn;
+    EXPECT_EQ(wout.currvmnc(mn, 2), interior_v) << "mn = " << mn;
+  }
+}  // CurrentDensityEndsAtTheSmallestRadialResolution

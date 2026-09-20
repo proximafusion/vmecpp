@@ -34,6 +34,34 @@ VectorXd NonEmptyVectorOr(const Eigen::VectorXd& vec, const double val) {
     return VectorXd::Constant(1, val);
   }
 }  // NonEmptyVectorOr
+
+// Fill the axis and the boundary column of a Fourier coefficient stored as one
+// row of ns full-grid columns per mode, reading interior columns only. The
+// axis column is written for m <= 1 and left at zero otherwise. At ns == 3 the
+// axis column is also the third-from-last column, and the single interior
+// column supplies both ends.
+void ExtrapolateFullGridEnds(int ns, const Eigen::VectorXi& xm,
+                             vmecpp::RowMatrixXd& m_coefficients) {
+  const int num_modes = static_cast<int>(m_coefficients.rows());
+  for (int mn = 0; mn < num_modes; ++mn) {
+    if (ns < 4) {
+      const double interior = m_coefficients(mn, 1);
+      if (xm[mn] <= 1) {
+        m_coefficients(mn, 0) = interior;
+      }
+      m_coefficients(mn, ns - 1) = interior;
+      continue;
+    }
+
+    const double axis = 2.0 * m_coefficients(mn, 1) - m_coefficients(mn, 2);
+    const double boundary =
+        2.0 * m_coefficients(mn, ns - 2) - m_coefficients(mn, ns - 3);
+    if (xm[mn] <= 1) {
+      m_coefficients(mn, 0) = axis;
+    }
+    m_coefficients(mn, ns - 1) = boundary;
+  }  // mn
+}  // ExtrapolateFullGridEnds
 }  // namespace
 
 // Shorthands for the calls required to read/write data members from/to HDF5
@@ -5660,44 +5688,17 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     }  // j_f
 
     // Axis (j_f=0): extrapolate for m <= 1, zero for m > 1
-    for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
-      if (wout.xm_nyq[mn] <= 1) {
-        wout.currumnc(mn, 0) =
-            2.0 * wout.currumnc(mn, 1) - wout.currumnc(mn, 2);
-        wout.currvmnc(mn, 0) =
-            2.0 * wout.currvmnc(mn, 1) - wout.currvmnc(mn, 2);
-      }
-      // m > 1: already zero from initialization
-    }
-
     // Edge (j_f=ns-1): linear extrapolation
-    for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
-      wout.currumnc(mn, fc.ns - 1) =
-          2.0 * wout.currumnc(mn, fc.ns - 2) - wout.currumnc(mn, fc.ns - 3);
-      wout.currvmnc(mn, fc.ns - 1) =
-          2.0 * wout.currvmnc(mn, fc.ns - 2) - wout.currvmnc(mn, fc.ns - 3);
-    }
+    ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currumnc);
+    ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currvmnc);
 
     // Divide by mu_0 to convert to SI units (Amperes)
     wout.currumnc /= MU_0;
     wout.currvmnc /= MU_0;
 
     if (s.lasym) {
-      for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
-        if (wout.xm_nyq[mn] <= 1) {
-          wout.currumns(mn, 0) =
-              2.0 * wout.currumns(mn, 1) - wout.currumns(mn, 2);
-          wout.currvmns(mn, 0) =
-              2.0 * wout.currvmns(mn, 1) - wout.currvmns(mn, 2);
-        }
-      }
-
-      for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
-        wout.currumns(mn, fc.ns - 1) =
-            2.0 * wout.currumns(mn, fc.ns - 2) - wout.currumns(mn, fc.ns - 3);
-        wout.currvmns(mn, fc.ns - 1) =
-            2.0 * wout.currvmns(mn, fc.ns - 2) - wout.currvmns(mn, fc.ns - 3);
-      }
+      ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currumns);
+      ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currvmns);
 
       wout.currumns /= MU_0;
       wout.currvmns /= MU_0;
