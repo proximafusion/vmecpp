@@ -32,21 +32,34 @@ python examples/make_equilibrium_certificate.py --stellarocq stellarocq
 python examples/make_equilibrium_certificate.py --stellarocq stellarocq --cells --nodes 6 --nu 8192
 ```
 
-The example runs VMEC++ on `examples/data/solovev.json`, or on the input file it is given, and saves the wout. It then writes a certificate with `gen/make_cert.py` of the checkout, checks it, and compares it with the wout through `gen/verify_cert.py`. With `--cells` the checker first writes the cell bounds (`--tighten`). The checker is `extract/_build/default/main.exe` of the checkout after `make all` there, or the statically linked x86_64 Linux build on the [Stellarocq releases](https://github.com/CharlesCNorton/stellarocq/releases), each named after the commit it was built from and passed with `--checker`. `STELLAROCQ_JOBS=n` sets the number of worker processes, and the generator needs `numpy` and `netCDF4`.
+The example runs VMEC++ on `examples/data/solovev.json`, or on the input file it is given, and saves the wout. It then writes a certificate with `gen/make_cert.py` of the checkout, checks it, and compares it with the wout through `gen/verify_cert.py`. With `--cells` the checker first writes the cell bounds (`--tighten`). `--mpol`, `--ntor`, `--ns` and `--ftol` override the resolution and the force tolerance of the input before the run. The checker is `extract/_build/default/main.exe` of the checkout after `make all` there, or the statically linked x86_64 Linux build on the [Stellarocq releases](https://github.com/CharlesCNorton/stellarocq/releases), each named after the commit it was built from and passed with `--checker`. `STELLAROCQ_JOBS=n` sets the number of worker processes, and the generator needs `numpy` and `netCDF4`.
 
 ## Results
 
-Certificates of the wout files under `src/vmecpp/cpp/vmecpp/test_data`, and of a run of `up_down_asym.json` there, six nodes per case, 20 worker processes. The field scale is the reference `B^2` scale the generator prints for the point certificate.
+Six nodes per case, 20 worker processes. The bound is the largest of the three component bounds, over the reference `B^2` scale the generator prints for the point certificate.
 
-| case | points | bound on `r_s`, of the field scale | verdict |
+| case | points | largest bound, of the field scale | verdict |
 |---|---|---|---|
-| `wout_solovev` (axisymmetric, ns=55, power series) | 48 | 7.3e-5 | VALID, under 0.1 s |
-| `wout_cma` (3D, nfp=2, 59 modes, ns=51) | 192 | 3.3e-2 | VALID, 0.3 s |
-| `wout_cth_like_fixed_bdy` (3D, nfp=5, 41 modes, ns=25, two-power pressure) | 192 | 7.9e-3 | VALID, 0.2 s |
-| `up_down_asym` (non-stellarator-symmetric, ns=17) | 48 | 6.0e-3 | VALID, under 0.1 s |
+| `wout_solovev` (axisymmetric, ns=55, 6 modes, power series) | 48 | 7.3e-5 | VALID, under 0.1 s |
+| `examples/data/w7x.json` as shipped (3D, nfp=5, 288 modes, ns=99) | 192 | 1.3e-2 | VALID, 3.7 s |
+| `wout_cth_like_fixed_bdy` (3D, nfp=5, 41 modes, ns=25, two-power pressure) | 192 | 1.0e-2 | VALID, 0.2 s |
+| `up_down_asym.json` (non-stellarator-symmetric, ns=17) | 48 | 1.2e-2 | VALID, under 0.1 s |
+| `wout_cma` (3D, nfp=2, 59 modes, ns=51) | 192 | 5.2e-2 | VALID, 0.3 s |
 | solovev with one `rmnc` coefficient of a certified stencil perturbed by 0.1% | 48 | same claim | INVALID, under 0.1 s |
 
 Every stellarator-symmetric case above also certifies through the non-stellarator-symmetric reconstruction with its antisymmetric coefficients set to zero, at the same bounds (`gen/make_cert.py --force-lasym`).
+
+For a three-dimensional equilibrium the bound follows the resolution and the force tolerance of the run. `input.li383_low_res`, which ships with 25 modes, 16 surfaces and a tolerance of 1e-6, run by the example with `--ns 31 --ftol 1e-14` and the Fourier resolution raised:
+
+| `--mpol`, `--ntor` | modes | largest bound, of the field scale |
+|---|---|---|
+| 4, 3 | 25 | 3.0e-1 |
+| 6, 4 | 50 | 4.1e-2 |
+| 8, 6 | 98 | 1.0e-2 |
+| 10, 8 | 162 | 6.8e-3 |
+| 12, 10 | 242 | 5.6e-3 |
+
+With the input's own tolerance the last row is 3.1e-2. Past about two hundred modes the bound stays near 6e-3 at this radial resolution.
 
 | case | cells | worst cell bound | of the field scale | verdict |
 |---|---|---|---|---|
@@ -54,8 +67,9 @@ Every stellarator-symmetric case above also certifies through the non-stellarato
 | `wout_circular_tokamak_reference` (axisymmetric, ns=17) | 49152 | 1.5e-2 | 2.5e-4 | VALID, 48 s |
 | `wout_cma` (3D, nfp=2, 59 modes, ns=51) | 24576 | 1.3e-2 | 4.3e-2 | VALID, 90 s |
 | `wout_li383_low_res_reference` (3D, nfp=3, 25 modes, ns=16) | 24576 | 8.7e-1 | 2.4e-1 | VALID, 39 s |
+| `input.li383_low_res` at `--mpol 12 --ntor 10 --ns 31 --ftol 1e-14` (242 modes) | 24576 | 2.7e-2 | 7.4e-3 | VALID, 628 s |
 
-Tightening the four took 30 s, 33 s, 50 s and 24 s. The two axisymmetric cases carry 6 nodes of 8192 poloidal cells covering the whole angular torus; the two three-dimensional ones carry 3 nodes of 4096 poloidal cells at each of 2 toroidal angles.
+Tightening the five took 30 s, 33 s, 50 s, 24 s and 254 s. The two axisymmetric cases carry 6 nodes of 8192 poloidal cells covering the whole angular torus; the three-dimensional ones carry 3 nodes of 4096 poloidal cells at each of 2 toroidal angles.
 
 An axisymmetric equilibrium has every `n` zero, so its toroidal derivative encloses to zero and one cell spans the whole toroidal angle; the covering of the angular torus is one-dimensional. A three-dimensional one has to resolve the toroidal direction as finely as the poloidal, which squares the cell count, so its cells cover the poloidal angle at each of a few toroidal angles instead.
 
