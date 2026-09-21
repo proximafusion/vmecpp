@@ -2,37 +2,41 @@
 
 Rocq, formerly Coq, is a proof assistant: a program that checks mathematical proofs down to every inference step. When Rocq accepts a theorem, what remains to be trusted is its small proof-checking kernel and the stated assumptions, not the author of the proof and not the code that produced the numbers.
 
-[Stellarocq](https://github.com/CharlesCNorton/stellarocq) uses that machinery to give a VMEC++ equilibrium a certificate. A converged wout ships with a small file, and an independent checker, extracted from a Rocq proof, validates it. The theorem behind the checker says: if the verdict is VALID, then the ideal-MHD force residual of the field reconstructed from these exact coefficients, by VMEC's own half-grid rule, is a genuine real number at every certified point, with magnitude below the stated bound. A division by zero, an invalid square root, or an unlucky rounding anywhere in that evaluation makes the verdict INVALID, because the arithmetic is verified interval arithmetic (CoqInterval, proven against the Flocq formalization of IEEE-754).
+[Stellarocq](https://github.com/CharlesCNorton/stellarocq) applies it to VMEC++ in three ways: it certifies the force balance of a wout, it proves and encloses physical properties of the reconstructed field, and it serves as an oracle for the solver.
+
+## Certificates
+
+A converged wout ships with a small file, and an independent checker, extracted from a Rocq proof, validates it. The theorem behind the checker says: if the verdict is VALID, then the ideal-MHD force residual of the field reconstructed from these exact coefficients, by VMEC's own half-grid rule, is a genuine real number at every certified point, with magnitude below the stated bound. A division by zero, an invalid square root, or an unlucky rounding anywhere in that evaluation makes the verdict INVALID, because the arithmetic is verified interval arithmetic (CoqInterval, proven against the Flocq formalization of IEEE-754).
 
 The value is independence. "This wout satisfies force balance" normally means "VMEC++ says so, and VMEC++ agrees with Fortran VMEC." The checker shares no code with either and does not trust the generator that wrote the certificate: it recomputes everything from the coefficients with proven-sound arithmetic. A wout that passes cannot misstate its residual, whatever bug either solver might contain.
 
-What is certified: the mu0-scaled residual `J x B - grad p` of the field defined by the wout Fourier coefficients under VMEC's half-grid conventions (parity-aware averages of R and Z onto the half grid, the wout's half-grid lambda and iota, centered differences of the covariant field across the node), at a stated set of full-grid nodes, bounded per component. Both symmetry classes are covered. A wout does not store `PRES_SCALE`, so the scale is recovered from the wout's own `pres` and put back into the pressure coefficients, and the certificate is about the pressure the equilibrium balances. The example script reads a power-series or a two-power pressure, and `gen/make_cert.py` of Stellarocq reads the other parameterizations. What is not certified: anything about the solver's internals. The trust base is the Rocq kernel with the classical real axioms and the primitive float and integer specifications of its standard library, extraction and the OCaml compiler, and a parsing driver; `make audit` in Stellarocq prints the axioms behind every theorem.
-
-Beside the certificates, Stellarocq proves identities the reconstruction satisfies rather than assumes. `divergence_free` states that the divergence of the reconstructed field is exactly zero, and `pressure_is_a_flux_function` that dp/ds reads neither angle.
-
-## Points and cells
+What is certified: the mu0-scaled residual `J x B - grad p` of the field defined by the wout Fourier coefficients under VMEC's half-grid conventions (parity-aware averages of R and Z onto the half grid, the wout's half-grid lambda and iota, centered differences of the covariant field across the node), at a stated set of full-grid nodes, bounded per component. Both symmetry classes are covered. A wout does not store `PRES_SCALE`, so the scale is recovered from the wout's own `pres` and put back into the pressure coefficients, and the certificate is about the pressure the equilibrium balances. What is not certified: anything about the solver's internals. The trust base is the Rocq kernel with the classical real axioms and the primitive float and integer specifications of its standard library, extraction and the OCaml compiler, and a parsing driver; `make audit` in Stellarocq prints the axioms behind every theorem.
 
 The angles of a certificate can be certified two ways. A point certificate bounds the residual at the angles it lists. A cell certificate bounds it over cells of angles that abut, so its verdict speaks for a continuum of angles and not for a sample of them: the theorem behind it (`check_ccert_correct`) walks from the centre of a cell to any point of it by a mean-value step in each angle, with the derivative enclosed over the whole cell.
 
 The bounds of a cell certificate are written by the checker, not by the generator. Interval arithmetic over a box loses the cancellation that makes an equilibrium residual small, and how much it loses is a property of the arithmetic that no float sample predicts, so `--tighten` reads back the enclosure the verified code computes for each cell and writes the smallest claim that code accepts. The result is an ordinary certificate, and an ordinary run establishes it.
 
+## Physics
+
+Stellarocq proves identities the reconstruction satisfies rather than assumes. `divergence_free` states that the divergence of the reconstructed field is exactly zero, and `pressure_is_a_flux_function` that dp/ds reads neither angle. The cells that bound the residual also enclose flux-surface integrals, so `dV/ds`, the enclosed currents and the terms of the Mercier criterion come out as intervals, and `mercier_geodesic_nonpositive` proves the sign of the geodesic term by Cauchy-Schwarz where no enclosure decides it. Departure from quasisymmetry is bounded from the field, without Boozer coordinates. A residual component proven bounded away from zero over a cell shows that no field of the certified form is in force balance there. The physical assumptions a statement needs are propositions in `theories/Hypotheses.v`, each with what would falsify it.
+
+## Solver oracle
+
+The checker shares no code with VMEC++ or Fortran VMEC, so a certificate that fails where one has to hold points at the solver. A stellarator-symmetric equilibrium certified through the non-stellarator-symmetric reconstruction, with its antisymmetric coefficients set to zero, has to hold at the same bounds, which is the reduction `tests/test_lasym.py` requires of the solver. Checking that reduction found [#788](https://github.com/proximafusion/vmecpp/issues/788), fixed in [#789](https://github.com/proximafusion/vmecpp/pull/789), and the same defect in educational_VMEC ([#27](https://github.com/jonathanschilling/educational_VMEC/issues/27) there).
+
 ## Usage
 
 ```sh
-python examples/make_equilibrium_certificate.py wout_solovev.nc cert.txt   # --nodes 6 --nu 8 --nv 4 --prec 53
-stellarocq-check cert.txt        # extract/_build/default/main.exe of a Stellarocq build; STELLAROCQ_JOBS=n workers
-python gen/verify_cert.py wout_solovev.nc cert.txt   # in a Stellarocq checkout: the certificate against the wout
+git clone https://github.com/CharlesCNorton/stellarocq
+python examples/make_equilibrium_certificate.py --stellarocq stellarocq
+python examples/make_equilibrium_certificate.py --stellarocq stellarocq --cells --nodes 6 --nu 8192
 ```
 
-```sh
-python examples/make_equilibrium_certificate.py wout_solovev.nc cells.txt --cells --nodes 6 --nu 8192
-stellarocq-check --tighten cells.txt cert.txt
-stellarocq-check cert.txt
-```
+The example runs VMEC++ on `examples/data/solovev.json`, or on the input file it is given, and saves the wout. It then writes a certificate with `gen/make_cert.py` of the checkout, checks it, and compares it with the wout through `gen/verify_cert.py`. With `--cells` the checker first writes the cell bounds (`--tighten`). The checker is `extract/_build/default/main.exe` of the checkout after `make all` there, or the statically linked x86_64 Linux build on the [Stellarocq releases](https://github.com/CharlesCNorton/stellarocq/releases), each named after the commit it was built from and passed with `--checker`. `STELLAROCQ_JOBS=n` sets the number of worker processes, and the generator needs `numpy` and `netCDF4`.
 
 ## Results
 
-Six nodes per case, 20 worker processes. The field scale is the reference `B^2` scale the script prints for the point certificate.
+Certificates of the wout files under `src/vmecpp/cpp/vmecpp/test_data`, and of a run of `up_down_asym.json` there, six nodes per case, 20 worker processes. The field scale is the reference `B^2` scale the generator prints for the point certificate.
 
 | case | points | bound on `r_s`, of the field scale | verdict |
 |---|---|---|---|
@@ -42,7 +46,7 @@ Six nodes per case, 20 worker processes. The field scale is the reference `B^2` 
 | `up_down_asym` (non-stellarator-symmetric, ns=17) | 48 | 6.0e-3 | VALID, under 0.1 s |
 | solovev with one `rmnc` coefficient of a certified stencil perturbed by 0.1% | 48 | same claim | INVALID, under 0.1 s |
 
-Every stellarator-symmetric case above also certifies through the non-stellarator-symmetric reconstruction with its antisymmetric coefficients set to zero, at the same bounds (`gen/make_cert.py --force-lasym` of Stellarocq), which is the reduction `tests/test_lasym.py` requires of the solver.
+Every stellarator-symmetric case above also certifies through the non-stellarator-symmetric reconstruction with its antisymmetric coefficients set to zero, at the same bounds (`gen/make_cert.py --force-lasym`).
 
 | case | cells | worst cell bound | of the field scale | verdict |
 |---|---|---|---|---|
