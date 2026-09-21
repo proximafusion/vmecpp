@@ -14,15 +14,18 @@ Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
                Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
                std::span<double> vacuum_b_r_share,
                std::span<double> vacuum_b_phi_share,
-               std::span<double> vacuum_b_z_share)
+               std::span<double> vacuum_b_z_share,
+               std::span<double> reduce_slots)
     : FreeBoundaryBase(s, tp, mgrid, bSqVacShare, vacuum_b_r_share,
                        vacuum_b_phi_share, vacuum_b_z_share),
       nf(s_.ntor),
       mf(s_.mpol + 1),
       si_(s, &fb_, tp, &sg_, nf, mf),
       ri_(s, tp, &sg_),
-      ls_(s, &fb_, tp, nf, mf, matrixShare, lu_decomposition, bvecShare),
-      bvecShare(bvecShare) {
+      ls_(s, &fb_, tp, nf, mf, matrixShare, lu_decomposition, bvecShare,
+          reduce_slots),
+      bvecShare(bvecShare),
+      reduce_slots_(reduce_slots) {
   int numLocal = tp_.ztMax - tp_.ztMin;
 
   potU.setZero(numLocal);
@@ -201,20 +204,11 @@ absl::StatusOr<bool> Nestor::update(
     *bSubUVac = 0.0;
     *bSubVVac = 0.0;
   }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    *bSubUVac += local_bSubUVac;
-    *bSubVVac += local_bSubVVac;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(&local_bSubUVac, 1, tp_.get_thread_id(), tp_.get_num_threads(),
+                 reduce_slots_.data(), bSubUVac);
+  SumOverThreads(&local_bSubVVac, 1, tp_.get_thread_id(), tp_.get_num_threads(),
+                 reduce_slots_.data(), bSubVVac);
 
   // compute magnetic pressure from co- and contravariant B_vac components
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {

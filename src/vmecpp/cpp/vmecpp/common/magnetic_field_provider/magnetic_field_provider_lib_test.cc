@@ -544,10 +544,13 @@ TEST(TestMagneticField, CheckPolygonFilament) {
   const double delta_phi =
       2.0 * M_PI / (kNumPhi - 1);  // spacing between points
 
-  // TODO(jons): understand derivation of alpha for special case of closed
-  // circle |dr/ds| = 2*pi
-  // --> alpha = 1/R * (dr)^2 / 12
-  // == 4 pi^2 / (12 R)
+  // McGreivy correction for a closed circle. The field at the centre of a
+  // regular N-gon of circumradius R is mu_0 I N / (2 pi R) * tan(pi/N), against
+  // mu_0 I / (2 R) for the circle, so the polygon overestimates it by
+  // (N/pi) tan(pi/N) = 1 + delta_phi^2 / 12 + O(delta_phi^4) with delta_phi =
+  // 2 pi / N. The field goes as 1/R, so inflating the radius by that same
+  // factor cancels the excess to fourth order. At N = 100 the exact ratio is
+  // 1.0003291167 and the correction is 1.0003289868.
   const double adjusted_radius = kRadius * (1.0 + delta_phi * delta_phi / 12.0);
 
   PolygonFilament polygon_filament = PolygonCircle(adjusted_radius, kNumPhi);
@@ -914,10 +917,13 @@ TEST(TestVectorPotential, CheckPolygonFilament) {
   const double delta_phi =
       2.0 * M_PI / (kNumPhi - 1);  // spacing between points
 
-  // TODO(jons): understand derivation of alpha for special case of closed
-  // circle |dr/ds| = 2*pi
-  // --> alpha = 1/R * (dr)^2 / 12
-  // == 4 pi^2 / (12 R)
+  // McGreivy correction for a closed circle. The field at the centre of a
+  // regular N-gon of circumradius R is mu_0 I N / (2 pi R) * tan(pi/N), against
+  // mu_0 I / (2 R) for the circle, so the polygon overestimates it by
+  // (N/pi) tan(pi/N) = 1 + delta_phi^2 / 12 + O(delta_phi^4) with delta_phi =
+  // 2 pi / N. The field goes as 1/R, so inflating the radius by that same
+  // factor cancels the excess to fourth order. At N = 100 the exact ratio is
+  // 1.0003291167 and the correction is 1.0003289868.
   const double adjusted_radius = kRadius * (1.0 + delta_phi * delta_phi / 12.0);
 
   PolygonFilament polygon_filament = PolygonCircle(adjusted_radius, kNumPhi);
@@ -2506,5 +2512,92 @@ TEST(TestVectorPotential, CheckMultipleCoilsWithWindings) {
         IsCloseRelAbs(vector_potential[i][2], vector_potential_z, kTolerance));
   }
 }  // VectorPotential: CheckMultipleCoilsWithWindings
+
+// --------------------
+
+// Evaluation positions in the (3, n) layout, and the same positions as a vector
+// of {x, y, z} triples.
+struct EvaluationPositionsInBothLayouts {
+  std::vector<std::vector<double> > vector_of_vectors;
+  RowMatrix3Xd eigen;
+};
+
+EvaluationPositionsInBothLayouts MakeEvaluationPositions(
+    int number_of_evaluation_locations) {
+  EvaluationPositionsInBothLayouts positions;
+  positions.vector_of_vectors.resize(number_of_evaluation_locations);
+  positions.eigen.resize(3, number_of_evaluation_locations);
+
+  const double delta_r = 2.0 / (number_of_evaluation_locations - 1.0);
+  const double delta_z = 5.0 / (number_of_evaluation_locations - 1.0);
+  for (int i = 0; i < number_of_evaluation_locations; ++i) {
+    positions.vector_of_vectors[i] = {
+        -1.0 + delta_r * i, 0.5 + 1.0 - delta_r * i, -2.5 + delta_z * i};
+    for (int j = 0; j < 3; ++j) {
+      positions.eigen(j, i) = positions.vector_of_vectors[i][j];
+    }
+  }
+  return positions;
+}
+
+// The two layouts feed the same ABSCAB calls in the same order, so the results
+// have to agree exactly rather than only to within a tolerance.
+TEST(TestMagneticField, CheckEigenLayoutMatchesVectorOfVectors) {
+  static constexpr int kNumEvaluationLocations = 17;
+
+  MagneticConfiguration magnetic_configuration = MakeMagneticConfiguration();
+  EvaluationPositionsInBothLayouts positions =
+      MakeEvaluationPositions(kNumEvaluationLocations);
+
+  std::vector<std::vector<double> > magnetic_field(kNumEvaluationLocations,
+                                                   std::vector<double>(3, 0.0));
+  EXPECT_TRUE(MagneticField(magnetic_configuration, positions.vector_of_vectors,
+                            magnetic_field)
+                  .ok());
+
+  RowMatrix3Xd magnetic_field_eigen =
+      RowMatrix3Xd::Zero(3, kNumEvaluationLocations);
+  EXPECT_TRUE(MagneticField(magnetic_configuration, positions.eigen,
+                            magnetic_field_eigen)
+                  .ok());
+
+  // Guard against both results being trivially zero.
+  EXPECT_GT(magnetic_field_eigen.cwiseAbs().maxCoeff(), 0.0);
+
+  for (int i = 0; i < kNumEvaluationLocations; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      EXPECT_EQ(magnetic_field[i][j], magnetic_field_eigen(j, i));
+    }
+  }
+}  // MagneticField: CheckEigenLayoutMatchesVectorOfVectors
+
+TEST(TestVectorPotential, CheckEigenLayoutMatchesVectorOfVectors) {
+  static constexpr int kNumEvaluationLocations = 17;
+
+  MagneticConfiguration magnetic_configuration = MakeMagneticConfiguration();
+  EvaluationPositionsInBothLayouts positions =
+      MakeEvaluationPositions(kNumEvaluationLocations);
+
+  std::vector<std::vector<double> > vector_potential(
+      kNumEvaluationLocations, std::vector<double>(3, 0.0));
+  EXPECT_TRUE(VectorPotential(magnetic_configuration,
+                              positions.vector_of_vectors, vector_potential)
+                  .ok());
+
+  RowMatrix3Xd vector_potential_eigen =
+      RowMatrix3Xd::Zero(3, kNumEvaluationLocations);
+  EXPECT_TRUE(VectorPotential(magnetic_configuration, positions.eigen,
+                              vector_potential_eigen)
+                  .ok());
+
+  // Guard against both results being trivially zero.
+  EXPECT_GT(vector_potential_eigen.cwiseAbs().maxCoeff(), 0.0);
+
+  for (int i = 0; i < kNumEvaluationLocations; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      EXPECT_EQ(vector_potential[i][j], vector_potential_eigen(j, i));
+    }
+  }
+}  // VectorPotential: CheckEigenLayoutMatchesVectorOfVectors
 
 }  // namespace magnetics

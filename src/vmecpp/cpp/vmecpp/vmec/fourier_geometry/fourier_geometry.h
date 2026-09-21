@@ -33,11 +33,15 @@ class FourierGeometry : public FourierCoeffs {
   // instead of from the Fourier coefficient matrices.
   // This latter use case applies to fixed-boundary hot-restart operation of
   // VMEC++.
+  // rmns, zmnc and lmnc_full carry the non-stellarator-symmetric half of the
+  // state and are read only when lasym is set; a stellarator-symmetric run
+  // leaves them empty.
   void InitFromState(const FourierBasisFastPoloidal& fb,
                      const RowMatrixXd& rmnc, const RowMatrixXd& zmns,
-                     const RowMatrixXd& lmns_full, const RadialProfiles& p,
-                     const VmecConstants& constants,
-                     const Boundaries* b = nullptr);
+                     const RowMatrixXd& lmns_full, const RowMatrixXd& rmns,
+                     const RowMatrixXd& zmnc, const RowMatrixXd& lmnc_full,
+                     const RadialProfiles& p, const VmecConstants& constants,
+                     int sign_of_jacobian, const Boundaries* b = nullptr);
 
   void extrapolateTowardsAxis();
 

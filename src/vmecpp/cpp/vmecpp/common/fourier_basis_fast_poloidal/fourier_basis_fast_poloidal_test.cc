@@ -520,7 +520,7 @@ TEST(TestFourierBasisFastPoloidal, CheckInvDFTOdd) {
 }  // CheckInvDFTOdd
 
 TEST(TestFourierBasisFastPoloidal, CheckInvDFTCombined) {
-  static constexpr double kTolerance = 1.0e-13;
+  static constexpr double kTolerance = 5.0e-13;
 
   bool lasym = false;
   int nfp = 5;

@@ -6,6 +6,7 @@
 
 #include <Eigen/Dense>  // VectorXd
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -61,6 +62,7 @@ VectorXd NonEmptyVectorOr(const Eigen::VectorXd& vec, const double val) {
 absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
   file.createGroup(H5key);
   WRITEMEMBER(sign_of_jacobian);
+  WRITEMEMBER(lamscale);
   WRITEMEMBER(num_full);
   WRITEMEMBER(num_half);
   WRITEMEMBER(nZnT_reduced);
@@ -130,6 +132,11 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
 absl::Status vmecpp::VmecInternalResults::LoadInto(
     vmecpp::VmecInternalResults& m_obj, H5::H5File& from_file) {
   READMEMBER(sign_of_jacobian);
+  if (from_file.nameExists(absl::StrFormat("%s/%s", H5key, "lamscale"))) {
+    READMEMBER(lamscale);
+  } else {
+    m_obj.lamscale = 1.0;
+  }
   READMEMBER(num_full);
   READMEMBER(num_half);
   READMEMBER(nZnT_reduced);
@@ -741,6 +748,47 @@ absl::Status vmecpp::Threed1AxisGeometry::LoadInto(Threed1AxisGeometry& m_obj,
   return absl::OkStatus();
 }
 
+absl::Status vmecpp::Threed1FreeBoundary::WriteTo(H5::H5File& file) const {
+  file.createGroup(this->H5key);
+  WRITEMEMBER(rb);
+  WRITEMEMBER(phib);
+  WRITEMEMBER(zb);
+  WRITEMEMBER(bsqmhdi);
+  WRITEMEMBER(bsqvaci);
+  WRITEMEMBER(bsqmhdf);
+  WRITEMEMBER(bsqvacf);
+  WRITEMEMBER(bredge);
+  WRITEMEMBER(bpedge);
+  WRITEMEMBER(bzedge);
+  WRITEMEMBER(brv);
+  WRITEMEMBER(bphiv);
+  WRITEMEMBER(bzv);
+
+  return absl::OkStatus();
+}
+
+absl::Status vmecpp::Threed1FreeBoundary::LoadInto(Threed1FreeBoundary& m_obj,
+                                                   H5::H5File& from_file) {
+  // Files written before this group existed do not have it.
+  if (H5Lexists(from_file.getId(), H5key, 0) != 1) {
+    return absl::OkStatus();
+  }
+  READMEMBER(rb);
+  READMEMBER(phib);
+  READMEMBER(zb);
+  READMEMBER(bsqmhdi);
+  READMEMBER(bsqvaci);
+  READMEMBER(bsqmhdf);
+  READMEMBER(bsqvacf);
+  READMEMBER(bredge);
+  READMEMBER(bpedge);
+  READMEMBER(bzedge);
+  READMEMBER(brv);
+  READMEMBER(bphiv);
+  READMEMBER(bzv);
+  return absl::OkStatus();
+}
+
 absl::Status vmecpp::Threed1Betas::WriteTo(H5::H5File& file) const {
   file.createGroup(this->H5key);
   WRITEMEMBER(betatot);
@@ -884,9 +932,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(phips);
   WRITEMEMBER(over_r);
   WRITEMEMBER(jdotb);
-  // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
-  // reference files with all quantities once that is done
-  //  WRITEMEMBER(bdotb);
+  WRITEMEMBER(bdotb);
   WRITEMEMBER(bdotgradv);
   WRITEMEMBER(DMerc);
   WRITEMEMBER(DShear);
@@ -1054,9 +1100,8 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
     ReadHalfGridCompat(m_obj.over_r, "overr");
   }
   READMEMBER(jdotb);
-  // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
-  // reference files with all quantities once that is done
-  //  READMEMBER(bdotb);
+  // Files written before bdotb was serialized carry no such dataset.
+  READMEMBER_OPTIONAL(bdotb);
   READMEMBER(bdotgradv);
   READMEMBER(DMerc);
   READMEMBER_COMPAT(DShear, "Dshear");
@@ -1235,6 +1280,11 @@ absl::Status vmecpp::OutputQuantities::Save(
     return status;
   }
 
+  status = threed1_free_boundary.WriteTo(file);
+  if (!status.ok()) {
+    return status;
+  }
+
   status = threed1_betas.WriteTo(file);
   if (!status.ok()) {
     return status;
@@ -1348,6 +1398,12 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
     return status;
   }
 
+  status = decltype(oq.threed1_free_boundary)::LoadInto(
+      oq.threed1_free_boundary, file);
+  if (!status.ok()) {
+    return status;
+  }
+
   status = decltype(oq.threed1_betas)::LoadInto(oq.threed1_betas, file);
   if (!status.ok()) {
     return status;
@@ -1372,11 +1428,86 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
   return oq;
 }
 
+vmecpp::Threed1FreeBoundary vmecpp::ComputeThreed1FreeBoundary(
+    const Sizes& s, const FlowControl& fc,
+    const HandoverStorage& handover_storage,
+    const VmecInternalResults& vmec_internal_results,
+    const CylindricalComponentsOfB& b_cylindrical) {
+  Threed1FreeBoundary result;
+
+  const int num_zeta = s.nZeta;
+  // the full poloidal range of an asymmetric run, the half range otherwise
+  const int num_theta = s.nThetaEff;
+  result.rb = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.phib = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.zb = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bsqmhdi = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bsqvaci = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bsqmhdf = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bsqvacf = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bredge = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bpedge = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bzedge = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.brv = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bphiv = RowMatrixXd::Zero(num_zeta, num_theta);
+  result.bzv = RowMatrixXd::Zero(num_zeta, num_theta);
+
+  // A fixed-boundary run has no vacuum side; the arrays stay allocated and
+  // zero, as potvac does.
+  if (handover_storage.vacuum_magnetic_pressure.size() != s.nZnT) {
+    return result;
+  }
+
+  const int last_full = fc.ns - 1;
+  const int last_half = fc.ns - 2;
+  const int previous_half = fc.ns - 3;
+
+  for (int k = 0; k < num_zeta; ++k) {
+    const double zeta = 2.0 * M_PI * k / (num_zeta * s.nfp);
+    for (int l = 0; l < num_theta; ++l) {
+      // fast-poloidal within-surface index, and the fast-toroidal one Nestor
+      // hands its results back in
+      const int kl = k * s.nThetaEff + l;
+      const int lk = l * num_zeta + k;
+
+      const int boundary = last_full * s.nZnT + kl;
+      result.rb(k, l) = vmec_internal_results.r_e(boundary) +
+                        vmec_internal_results.r_o(boundary);
+      result.zb(k, l) = vmec_internal_results.z_e(boundary) +
+                        vmec_internal_results.z_o(boundary);
+      result.phib(k, l) = zeta;
+
+      result.bsqmhdi(k, l) =
+          handover_storage.initial_plasma_pressure_at_boundary[kl];
+      result.bsqvaci(k, l) =
+          handover_storage.initial_vacuum_pressure_at_boundary[lk];
+      result.bsqmhdf(k, l) = handover_storage.edge_total_pressure[kl];
+      result.bsqvacf(k, l) = handover_storage.vacuum_magnetic_pressure[lk];
+
+      // the plasma-side field lives on the half grid, so extrapolate the two
+      // outermost surfaces onto the boundary
+      result.bredge(k, l) = 1.5 * b_cylindrical.b_r(last_half, kl) -
+                            0.5 * b_cylindrical.b_r(previous_half, kl);
+      result.bpedge(k, l) = 1.5 * b_cylindrical.b_phi(last_half, kl) -
+                            0.5 * b_cylindrical.b_phi(previous_half, kl);
+      result.bzedge(k, l) = 1.5 * b_cylindrical.b_z(last_half, kl) -
+                            0.5 * b_cylindrical.b_z(previous_half, kl);
+
+      result.brv(k, l) = handover_storage.vacuum_b_r[lk];
+      result.bphiv(k, l) = handover_storage.vacuum_b_phi[lk];
+      result.bzv(k, l) = handover_storage.vacuum_b_z[lk];
+    }  // l
+  }  // k
+
+  return result;
+}  // ComputeThreed1FreeBoundary
+
 vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     const int sign_of_jacobian, const VmecINDATA& indata, const Sizes& s,
     const FlowControl& fc, const VmecConstants& constants,
     const FourierBasisFastPoloidal& t, const HandoverStorage& h,
     const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
     const std::vector<std::unique_ptr<RadialPartitioning>>& radial_partitioning,
     const std::vector<std::unique_ptr<FourierGeometry>>& decomposed_x,
     const std::vector<std::unique_ptr<IdealMhdModel>>& models_from_threads,
@@ -1548,7 +1679,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     // and setup a stand-alone test case to figure out what went wrong
     // and how to prevent that crash in the future.
     output_quantities.wout = ComputeWOutFileContents(
-        indata, s, t, fc, constants, h, mgrid_mode,
+        indata, s, t, fc, constants, h, mgrid_mode, coil_group_names,
         /*m_vmec_internal_results=*/output_quantities.vmec_internal_results,
         output_quantities.bsubs_half, output_quantities.bsubs_full,
         output_quantities.mercier, output_quantities.jxbout,
@@ -1556,11 +1687,12 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
         output_quantities.threed1_first_table,
         output_quantities.threed1_geometric_magnetic,
         output_quantities.threed1_axis, output_quantities.threed1_betas,
-        vmec_status, iter2);
-
-    // TODO(jons): freeb_data output to be implemented when free-boundary test
-    // case is set up
+        output_quantities.threed1_free_boundary, vmec_status, iter2);
   }
+
+  output_quantities.threed1_free_boundary = ComputeThreed1FreeBoundary(
+      s, fc, h, output_quantities.vmec_internal_results,
+      output_quantities.b_cylindrical);
 
   output_quantities.indata = indata;
 
@@ -1577,6 +1709,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
   VmecInternalResults results;
 
   results.sign_of_jacobian = sign_of_jacobian;
+  results.lamscale = constants.lamscale;
 
   results.num_half = fc.ns - 1;
   results.num_full = fc.ns;
@@ -1897,11 +2030,12 @@ void vmecpp::FixupPoloidalCurrent(
 
 void vmecpp::RecomputeToroidalFlux(
     const FlowControl& fc, VmecInternalResults& m_vmec_internal_results) {
-  // quadrature in radial direction
+  // radial quadrature over the half-grid dphi/ds between the two full-grid
+  // surfaces, which is exact for a linear dphi/ds
   m_vmec_internal_results.phiF[0] = 0.0;
   for (int jF = 1; jF < fc.ns; ++jF) {
     m_vmec_internal_results.phiF[jF] = m_vmec_internal_results.phiF[jF - 1] +
-                                       m_vmec_internal_results.phipF[jF - 1];
+                                       m_vmec_internal_results.phipH[jF - 1];
   }  // jF
 
   // now apply scaling
@@ -2075,10 +2209,12 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
     // bs_a(v,u) = .5*( bs(v,u) + bs(-v,-u) )     ! * COS(mu - nv)
     for (int jF = 0; jF < vmec_internal_results.num_full; ++jF) {
       for (int kl = 0; kl < vmec_internal_results.nZnT_reduced; ++kl) {
-        const int source_index = jF * s.nZnT + kl;
-
         const int k = kl / s.nThetaReduced;
         const int l = kl % s.nThetaReduced;
+
+        // bsubs_full is stored in the full (nThetaEff) poloidal layout, so the
+        // within-surface offset has to use nThetaEven, as for bsubu below.
+        const int source_index = jF * s.nZnT + (k * s.nThetaEven + l);
 
         const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
         const int k_reversed = (s.nZeta - k) % s.nZeta;
@@ -2185,6 +2321,17 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
   if (s.lasym) {
     bsubu_filtered_a.resize(m_vmec_internal_results.num_half * s.nZnT);
     bsubv_filtered_a.resize(m_vmec_internal_results.num_half * s.nZnT);
+  }
+
+  // d(B_v)/d(theta) and d(B_u)/d(zeta), accumulated per parity in the reduced
+  // (nThetaReduced) poloidal layout and extended to the full range below.
+  std::vector<double> bsubvu_s(m_vmec_internal_results.num_half * s.nZnT, 0.0);
+  std::vector<double> bsubuv_s(m_vmec_internal_results.num_half * s.nZnT, 0.0);
+  std::vector<double> bsubvu_a;
+  std::vector<double> bsubuv_a;
+  if (s.lasym) {
+    bsubvu_a.resize(m_vmec_internal_results.num_half * s.nZnT);
+    bsubuv_a.resize(m_vmec_internal_results.num_half * s.nZnT);
   }
 
   // FOURIER LOW-PASS FILTER bsubs
@@ -2364,13 +2511,11 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
             const double tsinm1 = t.sinmum[idx_ml] * t.cosnv[idx_kn];
             const double tsinm2 = t.cosmum[idx_ml] * t.sinnv[idx_kn];
-            covariant_b_derivatives.bsubvu(target_index) +=
-                tsinm1 * bsubvmn1 + tsinm2 * bsubvmn2;
+            bsubvu_s[target_index] += tsinm1 * bsubvmn1 + tsinm2 * bsubvmn2;
 
             const double tsinn1 = t.cosmu[idx_ml] * t.sinnvn[idx_kn];
             const double tsinn2 = t.sinmu[idx_ml] * t.cosnvn[idx_kn];
-            covariant_b_derivatives.bsubuv(target_index) +=
-                tsinn1 * bsubumn1 + tsinn2 * bsubumn2;
+            bsubuv_s[target_index] += tsinn1 * bsubumn1 + tsinn2 * bsubumn2;
 
             if (s.lasym) {
               const double tsin1 = t.sinmu[idx_ml] * t.cosnv[idx_kn];
@@ -2382,13 +2527,11 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
               const double tcosm1 = t.cosmum[idx_ml] * t.cosnv[idx_kn];
               const double tcosm2 = t.sinmum[idx_ml] * t.sinnv[idx_kn];
-              covariant_b_derivatives.bsubvu(target_index) +=
-                  tcosm1 * bsubvmn3 + tcosm2 * bsubvmn4;
+              bsubvu_a[target_index] += tcosm1 * bsubvmn3 + tcosm2 * bsubvmn4;
 
               const double tcosn1 = t.sinmu[idx_ml] * t.sinnvn[idx_kn];
               const double tcosn2 = t.cosmu[idx_ml] * t.cosnvn[idx_kn];
-              covariant_b_derivatives.bsubuv(target_index) +=
-                  tcosn1 * bsubumn3 + tcosn2 * bsubumn4;
+              bsubuv_a[target_index] += tcosn1 * bsubumn3 + tcosn2 * bsubumn4;
             }  // lasym
           }  // l
         }  // k
@@ -2438,6 +2581,50 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
         const int idx_kl = jH * s.nZnT + kl;
         m_vmec_internal_results.bsubu(idx_kl) = bsubu_filtered_s[idx_kl];
         m_vmec_internal_results.bsubv(idx_kl) = bsubv_filtered_s[idx_kl];
+      }  // kl
+    }  // jH
+  }
+
+  // EXTEND bsubvu, bsubuv TO NTHETA3 MESH
+  // The stellarator-symmetric parts of d(B_v)/d(theta) and d(B_u)/d(zeta) are
+  // odd under (theta, zeta) -> (-theta, -zeta), the non-symmetric parts are
+  // even, so the reflected half carries -s + a.
+  if (s.lasym) {
+    const int nZnT_reduced = m_vmec_internal_results.nZnT_reduced;
+    for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
+      for (int k = 0; k < s.nZeta; ++k) {
+        const int k_reversed = (s.nZeta - k) % s.nZeta;
+        for (int l = 0; l < s.nThetaReduced; ++l) {
+          const int source_index =
+              jH * nZnT_reduced + (k * s.nThetaReduced + l);
+          const int target_index = jH * s.nZnT + (k * s.nThetaEff + l);
+
+          covariant_b_derivatives.bsubvu(target_index) =
+              bsubvu_s[source_index] + bsubvu_a[source_index];
+          covariant_b_derivatives.bsubuv(target_index) =
+              bsubuv_s[source_index] + bsubuv_a[source_index];
+        }  // l
+        for (int l = s.nThetaReduced; l < s.nThetaEven; ++l) {
+          const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
+          const int source_index_reversed =
+              jH * nZnT_reduced + (k_reversed * s.nThetaReduced + l_reversed);
+          const int target_index = jH * s.nZnT + (k * s.nThetaEff + l);
+
+          covariant_b_derivatives.bsubvu(target_index) =
+              -bsubvu_s[source_index_reversed] +
+              bsubvu_a[source_index_reversed];
+          covariant_b_derivatives.bsubuv(target_index) =
+              -bsubuv_s[source_index_reversed] +
+              bsubuv_a[source_index_reversed];
+        }  // l
+      }  // k
+    }  // jH
+  } else {
+    for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
+      for (int kl = 0; kl < s.nZnT; ++kl) {
+        const int idx_kl = jH * s.nZnT + kl;
+        covariant_b_derivatives.bsubvu(idx_kl) = bsubvu_s[idx_kl];
+        covariant_b_derivatives.bsubuv(idx_kl) = bsubuv_s[idx_kl];
       }  // kl
     }  // jH
   }
@@ -2796,7 +2983,11 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     // The loop in jxbforce.f90:594 goes over js=2,ns1,
     // which means that the last half-grid point is not touched.
     for (int jH = 0; jH < vmec_internal_results.num_half - 1; ++jH) {
-      const double ovp = 1.0 / vmec_internal_results.dVdsH[jH] / dnorm1;
+      // row jH holds the full-grid surface jF = jH + 1
+      const double ovp = 2.0 /
+                         (vmec_internal_results.dVdsH[jH + 1] +
+                          vmec_internal_results.dVdsH[jH]) /
+                         dnorm1;
 
       for (int kl = 0; kl < s.nZnT; ++kl) {
         const int target_index = jH * s.nZnT + kl;
@@ -3026,7 +3217,12 @@ vmecpp::ComputeIntermediateMercierQuantities(
       const double gpp_numerator = mercier_intermediate.gsqrt_full(index_full) *
                                    mercier_intermediate.gsqrt_full(index_full);
 
-      // TODO(jons): figure out what this really is
+      // The denominator is |e_theta x e_zeta|^2. In the cylindrical frame
+      // e_theta x e_zeta = -R z_theta rhat + (r_zeta z_theta - r_theta z_zeta)
+      // phihat + R r_theta zhat, so its square is R^2 g_theta,theta plus the
+      // square of the toroidal component below. With grad(s) = (e_theta x
+      // e_zeta) / sqrt(g), the quotient formed here is sqrt(g)^2 /
+      // |e_theta x e_zeta|^2 = 1 / |grad(s)|^2.
       const double gpp_denominator_ingredient = rtf * zzf - rzf * ztf;
       const double gpp_denominator =
           gtt * r1f * r1f +
@@ -3584,7 +3780,9 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     const double zv = vmec_internal_results.zv_e(lcfs_kl) +
                       vmec_internal_results.zv_o(lcfs_kl);
 
-    // TODO(jons): figure out what this really is
+    // toroidal component of e_theta x e_zeta; together with the R^2 g_uu
+    // term below, the square root is |e_theta x e_zeta|, the area element of
+    // the boundary surface.
     const double rv_zu_minus_zv_ru = rv * zu0 - zv * ru0;
 
     intermediate.surf_area[kl] =
@@ -3627,7 +3825,11 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     for (int kl = 0; kl < s.nZnT; ++kl) {
       const int index_half = jH * s.nZnT + kl;
 
-      // TODO(jons): assumes B_tor ~ 1/R ???
+      // In the vacuum region R B_phi is constant, so the vacuum toroidal
+      // field is rBtor / R. That is exact for an axisymmetric external field
+      // and an approximation for a stellarator coil set; it enters the
+      // Shafranov integrals below, which are a diagnostic. Fortran eqfor.f90
+      // does the same.
       intermediate.btor_vac[kl] =
           handover_storage.rBtor / vmec_internal_results.r12(index_half);
 
@@ -3670,7 +3872,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     intermediate.redge[kl] =
         vmec_internal_results.r_e(lcfs_kl) + vmec_internal_results.r_o(lcfs_kl);
   }  // kl
-  if (fc.lfreeb && vacuum_pressure_state == VacuumPressureState::kActive) {
+  if (fc.lfreeb && vacuum_pressure_state >= VacuumPressureState::kActive) {
     for (int k = 0; k < s.nZeta; ++k) {
       for (int l = 0; l < s.nThetaEff; ++l) {
         // FIXME(eguiraud) slow loop for nestor
@@ -3750,7 +3952,9 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     intermediate.s2 += jxbout.jperp2[jF] * two_dVds_full;
   }  // jH
 
-  // TODO(jons): figure out what fac is and assign a better name
+  // Poloidal flux increment per radial step: chi' = iota * phi', so
+  // r3v = fac * phipH * iotaH accumulates into psi below. The 2 pi is the
+  // toroidal angle period and the Jacobian sign fixes the orientation.
   intermediate.fac =
       2.0 * M_PI * fc.deltaS * vmec_internal_results.sign_of_jacobian;
   intermediate.r3v = VectorXd::Zero(fc.ns - 1);
@@ -3869,35 +4073,35 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
         vmec_internal_results.z_e(lcfs_kl) + vmec_internal_results.z_o(lcfs_kl);
     result.rmax_surf = std::max(result.rmax_surf, r);
     result.rmin_surf = std::min(result.rmin_surf, r);
-    result.zmax_surf = std::max(result.zmax_surf, z);
+    result.zmax_surf = std::max(result.zmax_surf, std::abs(z));
   }  // kl
 
-  result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaReduced) * DBL_MAX;
-  result.bmax = RowMatrixXd::Zero(fc.ns - 1, s.nThetaReduced);
+  // One column per stored poloidal point: the reduced range for a
+  // stellarator-symmetric run, the full range for lasym.
+  result.bmin = RowMatrixXd::Ones(fc.ns - 1, s.nThetaEff) * DBL_MAX;
+  result.bmax = RowMatrixXd::Zero(fc.ns - 1, s.nThetaEff);
 
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int k = 0; k < s.nZeta; ++k) {
-      for (int l = 0; l < s.nThetaReduced; ++l) {
-        // total_pressure is stored with the full nThetaEff within-surface
-        // stride; bmax/bmin only need the reduced poloidal range.
+      for (int l = 0; l < s.nThetaEff; ++l) {
         const int kl = k * s.nThetaEff + l;
         const int index_half = jH * s.nZnT + kl;
 
         const double mod_b =
             std::sqrt(2.0 * (vmec_internal_results.total_pressure(index_half) -
                              vmec_internal_results.presH[jH]));
-        result.bmax(jH * s.nThetaReduced + l) =
-            std::max(result.bmax(jH * s.nThetaReduced + l), mod_b);
-        result.bmin(jH * s.nThetaReduced + l) =
-            std::min(result.bmin(jH * s.nThetaReduced + l), mod_b);
-      }  // k
-    }  // l
+        result.bmax(jH * s.nThetaEff + l) =
+            std::max(result.bmax(jH * s.nThetaEff + l), mod_b);
+        result.bmin(jH * s.nThetaEff + l) =
+            std::min(result.bmin(jH * s.nThetaEff + l), mod_b);
+      }  // l
+    }  // k
   }  // jH
 
   // Compute Waist thickness and height in \f$\varphi = 0, \pi\f$ symmetry
-  // planes.
+  // planes; the second plane exists only on a toroidal grid.
   int symmetry_planes_count = 1;
-  if (s.ntor > 0) {
+  if (s.nZeta > 1) {
     symmetry_planes_count = 2;
   }
   result.waist = VectorXd::Zero(symmetry_planes_count);
@@ -3913,20 +4117,25 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
     const double r_outboard = vmec_internal_results.r_e(index_outboard) +
                               vmec_internal_results.r_o(index_outboard);
 
+    // theta = pi sits at l = nThetaReduced - 1 in both poloidal layouts; the
+    // within-surface stride is nThetaEff, as for the outboard point above.
     const int index_inboard =
-        ((fc.ns - 1) * s.nZeta + k) * s.nThetaReduced + (s.nThetaReduced - 1);
+        ((fc.ns - 1) * s.nZeta + k) * s.nThetaEff + (s.nThetaReduced - 1);
     const double r_inboard = vmec_internal_results.r_e(index_inboard) +
                              vmec_internal_results.r_o(index_inboard);
 
     result.waist[symmetry_plane_index] = r_outboard - r_inboard;
 
+    // The extremum is taken over |Z|: a lasym run stores the whole poloidal
+    // contour, whose lower half can reach further from the midplane than its
+    // upper half.
     result.height[symmetry_plane_index] = 0.0;
     for (int l = 0; l < s.nThetaEff; ++l) {
       const int index_zeta = ((fc.ns - 1) * s.nZeta + k) * s.nThetaEff + l;
       const double z = vmec_internal_results.z_e(index_zeta) +
                        vmec_internal_results.z_o(index_zeta);
       result.height[symmetry_plane_index] =
-          std::max(result.height[symmetry_plane_index], z);
+          std::max(result.height[symmetry_plane_index], std::abs(z));
     }  // l
     result.height[symmetry_plane_index] *= 2.0;
 
@@ -3938,7 +4147,9 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   result.betator = intermediate.sump20 / intermediate.sumbtor;
   result.VolAvgB = std::sqrt(std::abs(intermediate.sumbtot / result.volume_p));
 
-  // TODO(jons): which ion is assumed here ?
+  // A 1 keV proton at its thermal speed: sqrt(m_p k T) / e = 3.23e-3 T m,
+  // which is the constant to two digits. Fortran eqfor.f90 carries the same
+  // number without naming the species.
   result.IonLarmor = 3.2e-3 / result.VolAvgB;
 
   if (intermediate.s2 != 0.0) {
@@ -3966,8 +4177,10 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   for (int jF = 1; jF < fc.ns; ++jF) {
     double jperp2 = DBL_EPSILON;
     if (jxbout.jperp2[jF] != 0.0) {
-      // TODO(jons): Actually, in-place overwrite within Fortran VMEC.
-      // -> need to do in-place overwrite for follow-up quanties?
+      // Fortran VMEC substitutes the epsilon into jperp2 in place. Nothing
+      // computed after this point reads jxbout.jperp2 again, so the local
+      // copy is equivalent for every consumer except the value written to the
+      // jxbout output, which stays 0 here where Fortran would write epsilon.
       jperp2 = jxbout.jperp2[jF];
     }
 
@@ -4010,9 +4223,13 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
       // double zxmax = 0.0;
       // double zxmin = 0.0;
 
-      // Theta = 0 to pi in upper half of X-Z plane
-      // TODO(jons): why second loop over toroidal offset ?
-      for (int icount = 0; icount < 2; ++icount) {
+      // Under stellarator symmetry only theta in [0, pi] is stored, and the
+      // second pass takes the reflected plane 2 pi - zeta with Z -> -Z to
+      // supply the other half of the cross-section. A lasym run stores the
+      // complete contour, which is scanned in a single pass.
+      const int num_passes = s.lasym ? 1 : 2;
+      const int num_theta = s.lasym ? s.nThetaEff : s.nThetaReduced;
+      for (int icount = 0; icount < num_passes; ++icount) {
         int k1 = k;
         int t1 = 1;
         if (icount == 1) {
@@ -4021,7 +4238,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
           t1 = -1;
         }
 
-        for (int l = 0; l < s.nThetaReduced; ++l) {
+        for (int l = 0; l < num_theta; ++l) {
           const int l_off = (jF * s.nZeta + k1) * s.nThetaEff + l;
 
           const double yr1u = vmec_internal_results.r_e(l_off) +
@@ -4177,7 +4394,10 @@ vmecpp::Threed1Betas vmecpp::ComputeThreed1Betas(
   result.betapol = threed1_geomag.betapol;
   result.betator = threed1_geomag.betator;
 
-  // TODO(jons): should this maybe be bsubvvac ?
+  // rBtor, not bSubVVac: the two are the plasma-side and vacuum-side
+  // estimates of the same R B_phi at the boundary, and the solver already
+  // requires them to agree in sign. Only rBtor exists for a fixed-boundary
+  // run, where nothing fills bSubVVac.
   result.rbtor = handover_storage.rBtor;
   result.betaxis = threed1_first_table_intermediate.beta_axis;
   result.betstr =
@@ -4205,7 +4425,7 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
   // Phys. Fluids B, Vol 5 (1993) p 3121, Eq. 9a-9d
   std::vector<double> bpol2vac(s.nZnT, 0.0);
   if (fc.lfreeb &&
-      vacuum_pressure_state == vmecpp::VacuumPressureState::kActive) {
+      vacuum_pressure_state >= vmecpp::VacuumPressureState::kActive) {
     for (int l = 0; l < s.nThetaEff; ++l) {
       for (int k = 0; k < s.nZeta; ++k) {
         // FIXME(eguiraud) slow loop for nestor
@@ -4315,6 +4535,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     const VmecINDATA& indata, const Sizes& s, const FourierBasisFastPoloidal& t,
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
     VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
     const BSubSFull& bsubs_full, const MercierFileContents& mercier,
     const JxBOutFileContents& jxbout,
@@ -4322,7 +4543,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,
     const Threed1AxisGeometry& threed1_axis, const Threed1Betas& threed1_betas,
-    VmecStatus vmec_status, int iter2) {
+    const Threed1FreeBoundary& threed1_free_boundary, VmecStatus vmec_status,
+    int iter2) {
   // THIS SUBROUTINE CREATES THE FILE WOUT.
   // IT CONTAINS THE CYLINDRICAL COORDINATE SPECTRAL COEFFICIENTS
   // RMN,ZMN (full), LMN (half_mesh - CONVERTED FROM INTERNAL full
@@ -4395,8 +4617,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.ns = fc.ns;
   wout.ftolv = fc.ftolv;
 
-  // TODO(jons): Technically, this is not an input but an output (should go into
-  // output data section).
+  // niter is an output rather than an input echo. It stays in this group
+  // because the wout layout is fixed by what Fortran VMEC writes.
   wout.niter = iter2;
 
   wout.lfreeb = indata.lfreeb;
@@ -4561,7 +4783,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     }
   }
 
-  // TODO(jons): curlabel: the mgrid coil-group names are not read back yet
+  // coil group names, one per external current, as read from the mgrid file
+  wout.curlabel = coil_group_names;
 
   // -------------------
   // mode numbers for Fourier coefficient arrays below
@@ -4605,6 +4828,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // MUST CONVERT m=1 MODES... FROM INTERNAL TO PHYSICAL FORM
   // Extrapolation of m=0 Lambda (cs) modes, which are not evolved at j=1, done
   // in CONVERT
+  // same map as FourierCoeffs::m1Constraint with scaling factor 1
+  const double sigma = -m_vmec_internal_results.sign_of_jacobian;
   if (s.lthreed) {
     for (int jF = 0; jF < fc.ns; ++jF) {
       for (int n = 0; n < s.ntor + 1; ++n) {
@@ -4613,9 +4838,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
         const double old_rss = m_vmec_internal_results.rmnss(idx_fc);
         m_vmec_internal_results.rmnss(idx_fc) =
-            (old_rss + m_vmec_internal_results.zmncs(idx_fc));
+            (old_rss + sigma * m_vmec_internal_results.zmncs(idx_fc));
         m_vmec_internal_results.zmncs(idx_fc) =
-            (old_rss - m_vmec_internal_results.zmncs(idx_fc));
+            (sigma * old_rss - m_vmec_internal_results.zmncs(idx_fc));
       }  // n
     }  // jF
   }
@@ -5226,9 +5451,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
         const double old_rsc = m_vmec_internal_results.rmnsc(idx_fc);
         m_vmec_internal_results.rmnsc(idx_fc) =
-            (old_rsc + m_vmec_internal_results.zmncc(idx_fc));
+            (old_rsc + sigma * m_vmec_internal_results.zmncc(idx_fc));
         m_vmec_internal_results.zmncc(idx_fc) =
-            (old_rsc - m_vmec_internal_results.zmncc(idx_fc));
+            (sigma * old_rsc - m_vmec_internal_results.zmncc(idx_fc));
       }  // n
     }  // jF
 

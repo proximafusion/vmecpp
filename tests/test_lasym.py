@@ -89,6 +89,60 @@ def test_lasym_reduces_to_symmetric_3d():
     _assert_same_physics(sym, asym, vol_rtol=1e-9, beta_atol=1e-9, iota_atol=1e-8)
 
 
+def _numeric_fields(model, prefix=""):
+    """Every numeric field of an output model, recursing into nested models."""
+    fields = {}
+    for name in type(model).model_fields:
+        if name == "input":
+            continue
+        value = getattr(model, name)
+        if hasattr(type(value), "model_fields"):
+            fields.update(_numeric_fields(value, prefix + name + "."))
+        elif isinstance(value, (bool, str)):
+            continue
+        elif isinstance(value, (int, float, np.ndarray)):
+            fields[prefix + name] = np.asarray(value, dtype=float)
+    return fields
+
+
+def test_lasym_reduces_to_symmetric_3d_all_outputs():
+    """3D: every jxbout, Mercier, threed1 and wout quantity of the lasym run
+    reproduces the symmetric run on the shared poloidal range."""
+    base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    sym = vmecpp.run(base, max_threads=1, verbose=False)
+    asym = vmecpp.run(_enable_lasym(base), max_threads=1, verbose=False)
+
+    nzeta = base.nzeta
+    # theta is the fastest index within a surface; the symmetric run stores the
+    # reduced poloidal range, the lasym run the full one
+    n_theta_reduced = sym.jxbout.itheta.shape[1] // nzeta
+    n_theta_full = asym.jxbout.itheta.shape[1] // nzeta
+    assert n_theta_full == 2 * (n_theta_reduced - 1)
+
+    sym_fields = _numeric_fields(sym)
+    asym_fields = _numeric_fields(asym)
+    for name, expected in sym_fields.items():
+        if expected.size == 0:
+            continue
+        actual = asym_fields[name]
+        reference = expected
+        if actual.shape != reference.shape:
+            assert actual.shape[:-1] == reference.shape[:-1], name
+            if reference.shape[-1] == n_theta_reduced:
+                actual = actual[..., :n_theta_reduced]
+            else:
+                assert reference.shape[-1] == nzeta * n_theta_reduced, name
+                actual = actual.reshape((*actual.shape[:-1], nzeta, n_theta_full))
+                actual = actual[..., :n_theta_reduced]
+                reference = reference.reshape(
+                    (*reference.shape[:-1], nzeta, n_theta_reduced)
+                )
+        scale = max(np.max(np.abs(reference)), 1e-300)
+        np.testing.assert_allclose(
+            actual, reference, rtol=1e-8, atol=1e-8 * scale, err_msg=name
+        )
+
+
 def test_z_shift_preserves_physics():
     """A rigid z-shift needs the asymmetric zbc[0,0] but leaves the physics
     unchanged."""

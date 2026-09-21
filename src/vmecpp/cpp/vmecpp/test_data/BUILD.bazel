@@ -50,6 +50,8 @@ filegroup(
         "cth_like_fixed_bdy_asym_iota.json",
         "cth_like_fixed_bdy_iota.json",
         "cth_like_fixed_bdy_spline_pressure.json",
+        "input.cth_like_fixed_bdy_spline_pressure",
+        "wout_cth_like_fixed_bdy_spline_pressure.nc",
         "input.cth_like_fixed_bdy",
         "input.cth_like_fixed_bdy_asym",
         "input.cth_like_fixed_bdy_asym_iota",

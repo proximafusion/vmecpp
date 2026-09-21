@@ -29,7 +29,7 @@ class LaplaceSolver {
                 const TangentialPartitioning* tp, int nf, int mf,
                 std::span<double> matrixShare,
                 Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
-                std::span<double> bvecShare);
+                std::span<double> bvecShare, std::span<double> reduce_slots);
 
   void TransformGreensFunctionDerivative(const Eigen::VectorXd& greenp);
   void SymmetriseSourceTerm(const Eigen::VectorXd& gstore);
@@ -113,6 +113,10 @@ class LaplaceSolver {
   // cannot be a plain member of LaplaceSolver.
   Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition_;
   std::span<double> bvecShare;
+
+  // One row per thread for SumOverThreads, reused by the matrix and the
+  // right-hand-side fold.
+  std::span<double> reduce_slots_;
 
   // ----------------
 
