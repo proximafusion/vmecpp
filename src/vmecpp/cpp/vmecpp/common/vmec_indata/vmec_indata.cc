@@ -1618,6 +1618,15 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   if (vmec_indata.lasym) {
+    // when lasym == true, these arrays have to be set
+    if (!vmec_indata.raxis_s.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'raxis_s' has to be set when 'lasym' is true.");
+    }
+    if (!vmec_indata.zaxis_c.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'zaxis_c' has to be set when 'lasym' is true.");
+    }
     // raxis_s
     if (vmec_indata.raxis_s->size() != expected_axis_size) {
       return absl::InvalidArgumentError(
@@ -1676,6 +1685,15 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   if (vmec_indata.lasym) {
+    // when lasym == true, these arrays have to be set
+    if (!vmec_indata.rbs.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'rbs' has to be set when 'lasym' is true.");
+    }
+    if (!vmec_indata.zbc.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'zbc' has to be set when 'lasym' is true.");
+    }
     // rbs
     if (vmec_indata.rbs->rows() != vmec_indata.mpol) {
       return absl::InvalidArgumentError(
