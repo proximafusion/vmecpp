@@ -65,6 +65,17 @@ std::vector<std::vector<double>> EigenToStl(
   return stl_matrix;
 }
 
+// Malformed JSON is reported through the status of the import.
+TEST(TestMakegridLib, MalformedJsonIsRejected) {
+  const absl::StatusOr<MakegridParameters> makegrid_parameters =
+      ImportMakegridParametersFromJson("{not json");
+  ASSERT_FALSE(makegrid_parameters.ok());
+  EXPECT_EQ(makegrid_parameters.status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(makegrid_parameters.status().message()),
+              ::testing::HasSubstr("not valid JSON"));
+}  // MalformedJsonIsRejected
+
 TEST(TestMakegridLib, CheckMakeCylindricalGridSanityChecks) {
   // Knudge each of these parameters outside their allowed ranges, one at a
   // time, and test if MakeCylindricalGrid is able to detect the error.
