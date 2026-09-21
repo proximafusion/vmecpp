@@ -9,8 +9,8 @@ docs/proof_carrying_equilibria.md.
   python make_equilibrium_certificate.py --stellarocq ~/stellarocq --cells --nu 512
 
 --mpol, --ntor, --ns and --ftol override the resolution and the force tolerance of
-the input before the run, and --nodes, --nu and --nv are passed to
-gen/make_cert.py of Stellarocq.
+the input before the run, --nodes, --nu and --nv are passed to gen/make_cert.py of
+Stellarocq, and --project is passed to the checker.
 """
 
 import argparse
@@ -53,6 +53,12 @@ def certify():
         "--cells",
         action="store_true",
         help="certify over cells of angles instead of at sampled angles",
+    )
+    ap.add_argument(
+        "--project",
+        action="store_true",
+        help="after a point certificate, enclose the harmonics of the residual "
+        "at the modes of the run",
     )
     ap.add_argument(
         "--ftol",
@@ -110,7 +116,8 @@ def certify():
     else:
         status = run(sys.executable, generator, wout, cert, *generator_args)
     # the verdict, then the certificate against the wout it was made from
-    status = status or run(checker, cert)
+    flags = ["--project"] if a.project and not a.cells else []
+    status = status or run(checker, *flags, cert)
     status = status or run(sys.executable, guard, wout, cert)
     sys.exit(status)
 

@@ -32,7 +32,7 @@ python examples/make_equilibrium_certificate.py --stellarocq stellarocq
 python examples/make_equilibrium_certificate.py --stellarocq stellarocq --cells --nodes 6 --nu 8192
 ```
 
-The example runs VMEC++ on `examples/data/solovev.json`, or on the input file it is given, and saves the wout. It then writes a certificate with `gen/make_cert.py` of the checkout, checks it, and compares it with the wout through `gen/verify_cert.py`. With `--cells` the checker first writes the cell bounds (`--tighten`). `--mpol`, `--ntor`, `--ns` and `--ftol` override the resolution and the force tolerance of the input before the run. The checker is `extract/_build/default/main.exe` of the checkout after `make all` there, or the statically linked x86_64 Linux build on the [Stellarocq releases](https://github.com/CharlesCNorton/stellarocq/releases), each named after the commit it was built from and passed with `--checker`. `STELLAROCQ_JOBS=n` sets the number of worker processes, and the generator needs `numpy` and `netCDF4`.
+The example runs VMEC++ on `examples/data/solovev.json`, or on the input file it is given, and saves the wout. It then writes a certificate with `gen/make_cert.py` of the checkout, checks it, and compares it with the wout through `gen/verify_cert.py`. With `--cells` the checker first writes the cell bounds (`--tighten`). `--mpol`, `--ntor`, `--ns` and `--ftol` override the resolution and the force tolerance of the input before the run, and `--project` asks the checker for the harmonics of the residual at the modes of the run. The checker is `extract/_build/default/main.exe` of the checkout after `make all` there, or the statically linked x86_64 Linux build on the [Stellarocq releases](https://github.com/CharlesCNorton/stellarocq/releases), each named after the commit it was built from and passed with `--checker`. `STELLAROCQ_JOBS=n` sets the number of worker processes, and the generator needs `numpy` and `netCDF4`.
 
 ## Results
 
@@ -60,6 +60,13 @@ For a three-dimensional equilibrium the bound follows the resolution and the for
 | 12, 10 | 242 | 5.6e-3 |
 
 With the input's own tolerance the last row is 3.1e-2. Past about two hundred modes the bound stays near 6e-3 at this radial resolution.
+
+A spectral solution balances forces mode by mode over the modes it retains, and what it leaves pointwise is the truncation. `--project` follows a point certificate with the largest mean harmonic of each component over the modes of the run and the angles of a node, a finite sum that `harm_encloses` of Stellarocq encloses. Over 48 by 48 angles per node, of the field scale:
+
+| case | largest pointwise bound | `r_s` harmonic | `r_u` harmonic | `r_v` harmonic |
+|---|---|---|---|---|
+| `input.li383_low_res` at `--mpol 12 --ntor 10 --ns 31 --ftol 1e-14` | 6.7e-3 | 9.0e-4 | 9.7e-5 | 6.1e-5 |
+| `examples/data/w7x.json` as shipped | 1.9e-2 | 2.1e-3 | 3.9e-5 | 7.1e-5 |
 
 | case | cells | worst cell bound | of the field scale | verdict |
 |---|---|---|---|---|
