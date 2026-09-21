@@ -2,11 +2,13 @@
 
 The checker that validates the certificate is built from
 https://github.com/CharlesCNorton/stellarocq; see
-docs/proof_carrying_equilibria.md.
+docs/proof_carrying_equilibria.md. The file written here follows FORMAT.md of
+that repository, point certificates at version 6 and cell certificates at
+version 7.
 
 The certificate states, for a set of full-grid nodes and angles, that the
 mu0-scaled ideal-MHD force residual of the equilibrium reconstructed from the
-wout coefficients by VMEC's own half-grid rule (fixed in theories/Physics.v of
+wout coefficients by VMEC's half-grid rule (fixed in theories/Physics.v of
 Stellarocq) lies within the claimed per-component bounds: r_s at the node from
 the centered differences of its two half points, r_u and r_v at the outer half
 point.  Every numeric input is an IEEE double from the wout, emitted exactly as
@@ -18,7 +20,12 @@ Environment layout per point (must match theories/Physics.v):
   0 s_j | 1 u | 2 v | 3 phip | 4..6 s_{j-1} s_j s_{j+1} | 7..8 s_{j-1/2} s_{j+1/2}
   9..10 iota(h-) iota(h+) | 11..31 am | 32+0..3K-1 R (rows j-1, j, j+1)
   +3K Z | +6K lambda (rows h-, h+)      (K = mnmax)
-  32+8K..   scratch slots the checker fills with shared subexpressions
+  +8K   the antisymmetric R, Z and lambda blocks, when lasym
+  then  scratch slots the checker fills with shared subexpressions
+
+Both symmetry classes are read. The pressure may be a power series or a
+two-power profile; gen/make_cert.py of Stellarocq reads the other
+parameterizations.
 
 With --cells the certificate instead claims its bounds over cells of angles, so
 that a VALID verdict covers the continuum between the sampled angles and not
@@ -41,6 +48,12 @@ import numpy as np
 
 MU0 = 4e-7 * np.pi
 
+CERT_MAGIC = "STELLAROCQ-CERT 6"
+CCERT_MAGIC = "STELLAROCQ-CCERT 7"
+
+# Slots of the am block that scale with PRES_SCALE, per closed form.
+AMPLITUDE_SLOTS = {"POWER": range(21), "TWOPOWER": (0,)}
+
 
 def dyadic(x):
     """Exact (mantissa, exponent) with x = m * 2**e, for a finite double."""
@@ -59,11 +72,79 @@ def dyadic(x):
     return m, e
 
 
+# ----- pressure ------------------------------------------------------------
+
+
+def classify_pressure(ptype, am):
+    """The PROFILE line for a VMEC pmass_type, or a refusal."""
+    if ptype in ("power_series", ""):
+        return "POWER"
+    if ptype == "two_power":
+        exponents = []
+        for x in am[1:3]:
+            if float(x) != int(x) or float(x) < 0:
+                msg = f"two_power needs nonnegative integral exponents, got {float(x)}"
+                raise SystemExit(msg)
+            exponents.append(int(x))
+        return "TWOPOWER {} {}".format(*exponents)
+    msg = (
+        f"pressure parameterization {ptype!r} is not read by this example; "
+        "see gen/make_cert.py of Stellarocq"
+    )
+    raise SystemExit(msg)
+
+
+def _amj(am, j):
+    """Slot j of the am array, which a wout may store short of 21 entries."""
+    return float(am[j]) if j < len(am) else 0.0
+
+
+def pvalue_ref(profile, am, s):
+    """P(s) of the certified profile, in floating point, before PRES_SCALE."""
+    parts = profile.split()
+    if parts[0] == "POWER":
+        return sum(_amj(am, j) * s**j for j in range(21))
+    p, q = (int(x) for x in parts[1:])
+    return _amj(am, 0) * (1.0 - s**p) ** q
+
+
+def pprime_ref(profile, am, s):
+    """Dp/ds of the certified profile, mirroring pprime of theories/Physics.v."""
+    parts = profile.split()
+    if parts[0] == "POWER":
+        return sum(j * _amj(am, j) * s ** (j - 1) for j in range(1, 21))
+    p, q = (int(x) for x in parts[1:])
+    return -_amj(am, 0) * p * q * s ** max(p - 1, 0) * (1.0 - s**p) ** max(q - 1, 0)
+
+
+def calibrate_pressure(w):
+    """Put PRES_SCALE back into the coefficients, from the wout's own pressure.
+
+    VMEC evaluates the profile at the half points, multiplies by PRES_SCALE and
+    stores the result as `pres`, and does not store the scale. The ratio of
+    `pres` at the first half point to the profile there is the scale, and the
+    coefficients linear in it are multiplied by it, so that the certificate is
+    about the pressure the equilibrium balances.
+    """
+    s1 = float(w.s_half[1])
+    raw = pvalue_ref(w.profile, w.am, s1)
+    if raw == 0.0:
+        return 1.0
+    scale = float(w.pres_half[1]) / raw
+    if abs(scale - 1.0) > 1e-12:
+        am = np.array(w.am, dtype=float)
+        for j in AMPLITUDE_SLOTS[w.profile.split()[0]]:
+            if j < len(am):
+                am[j] *= scale
+        w.am = am
+    return scale
+
+
 class Wout:
     """The wout fields the certificate needs."""
 
     def __init__(self, path):
-        """Load the fields and reject unsupported pressure types."""
+        """Load the fields and classify the pressure parameterization."""
         d = netCDF4.Dataset(path)
         d.set_auto_mask(False)
         v = d.variables
@@ -80,10 +161,14 @@ class Wout:
         self.iotas = g("iotas")  # half grid, same indexing
         self.phips = g("phips")
         self.am = g("am")
+        self.pres_half = g("pres")
+        self.lasym = "lasym__logical__" in v and bool(int(v["lasym__logical__"][:]))
+        if self.lasym:
+            self.rmns = g("rmns")
+            self.zmnc = g("zmnc")
+            self.lmnc = g("lmnc")
         ptype = v["pmass_type"][:].tobytes().decode().replace("\x00", "").strip()
-        if ptype != "power_series":
-            msg = f"v1 certifies power_series pressure only, got {ptype!r}"
-            raise SystemExit(msg)
+        self.profile = classify_pressure(ptype, self.am)
         d.close()
         self.h = 1.0 / (self.ns - 1)
         self.s_full = np.arange(self.ns) * self.h
@@ -108,42 +193,44 @@ def half_coefs(w, j_in, j_out, s_h, coefs):
 
 
 def half_point(w, j_in, j_out, row_l, u, vv, phip):
-    """B^u, B^v, B_u, B_v, d_u B_s, d_v B_s and mu0 sqrtg J^s at the half point."""
+    """B^u, B^v, B_u, B_v, d_u B_s, d_v B_s and mu0 sqrtg J^s at the half point.
+
+    Carries both parities: R is a cosine series plus, when lasym, a sine
+    series; Z and lambda are sine series plus cosine series.
+    """
     m, n = w.xm, w.xn
     s_h = w.s_half[row_l]
-    cR, cRs = half_coefs(w, j_in, j_out, s_h, w.rmnc)
-    cZ, cZs = half_coefs(w, j_in, j_out, s_h, w.zmns)
-    cL = w.lmns[row_l]
     iota = float(w.iotas[row_l])
     ang = m * u - n * vv
     c = np.cos(ang)
     sn = np.sin(ang)
 
-    def S(cf, k):
-        return float(np.dot(cf, k))
+    def ser(cf, even):
+        """Value and the five angular derivatives of one parity's series."""
+        k0, k1, su, sv = (c, sn, -m, n) if even else (sn, c, m, -n)
+        kernels = (k0, su * k1, sv * k1, -m * m * k0, m * n * k0, -n * n * k0)
+        return np.array([float(np.dot(cf, k)) for k in kernels])
 
-    R = S(cR, c)
-    R_s = S(cRs, c)
-    R_u = S(cR, -m * sn)
-    R_v = S(cR, n * sn)
-    R_su = S(cRs, -m * sn)
-    R_sv = S(cRs, n * sn)
-    R_uu = S(cR, -m * m * c)
-    R_uv = S(cR, m * n * c)
-    R_vv = S(cR, -n * n * c)
-    Z_s = S(cZs, sn)
-    Z_u = S(cZ, m * c)
-    Z_v = S(cZ, -n * c)
-    Z_su = S(cZs, m * c)
-    Z_sv = S(cZs, -n * c)
-    Z_uu = S(cZ, -m * m * sn)
-    Z_uv = S(cZ, m * n * sn)
-    Z_vv = S(cZ, -n * n * sn)
-    L_u = S(cL, m * c)
-    L_v = S(cL, -n * c)
-    L_uu = S(cL, -m * m * sn)
-    L_uv = S(cL, m * n * sn)
-    L_vv = S(cL, -n * n * sn)
+    def series(sym, anti, even):
+        """A series and its radial derivative, each with both parities."""
+        cf, cfs = half_coefs(w, j_in, j_out, s_h, sym)
+        val, val_s = ser(cf, even), ser(cfs, even)
+        if w.lasym:
+            ca, cas = half_coefs(w, j_in, j_out, s_h, anti)
+            val, val_s = val + ser(ca, not even), val_s + ser(cas, not even)
+        return val, val_s
+
+    (R, R_u, R_v, R_uu, R_uv, R_vv), (R_s, R_su, R_sv, *_) = series(
+        w.rmnc, w.rmns if w.lasym else None, True
+    )
+    (_, Z_u, Z_v, Z_uu, Z_uv, Z_vv), (Z_s, Z_su, Z_sv, *_) = series(
+        w.zmns, w.zmnc if w.lasym else None, False
+    )
+    lam = ser(w.lmns[row_l], False)
+    if w.lasym:
+        lam = lam + ser(w.lmnc[row_l], True)
+    _, L_u, L_v, L_uu, L_uv, L_vv = lam
+
     tau = R_u * Z_s - R_s * Z_u
     sqrtg = R * tau
     tau_u = R_uu * Z_s + R_u * Z_su - R_su * Z_u - R_s * Z_uu
@@ -198,8 +285,7 @@ def residual_ref(w, j, u, vv, phip):
     h = w.s_half[j + 1] - w.s_half[j]
     avg = lambda k: 0.5 * (qm[k] + qp[k])  # noqa: E731
     dif = lambda k: (qp[k] - qm[k]) / h  # noqa: E731
-    s = w.s_full[j]
-    pp = sum(k * a * s ** (k - 1) for k, a in enumerate(w.am) if k > 0)
+    pp = pprime_ref(w.profile, w.am, w.s_full[j])
     rs = (
         (avg("B_s_v") - dif("B_v")) * avg("Bv")
         - (dif("B_u") - avg("B_s_u")) * avg("Bu")
@@ -209,6 +295,8 @@ def residual_ref(w, j, u, vv, phip):
     rv_ = qp["mu0Js"] * qp["Bu"]
     return rs, ru, rv_, max(qm["B2"], qp["B2"])
 
+
+# ----- the certificate file ------------------------------------------------
 
 ANGLE_EXP = -50
 
@@ -224,86 +312,109 @@ def dyadic_at(x, e=ANGLE_EXP):
     return round(float(x) / 2.0**e), e
 
 
-def write_ccert(a, w, K, phip, idx, us, vs, nv, three_d):
+def tile(width, n, e, scale=1.0):
+    """Centres and half-width of n abutting cells of total span >= width.
+
+    Everything is in units of 2**e: cell k is centred at (2k+1)d with half-width
+    d, so consecutive cells share an endpoint exactly and the run covers
+    [0, 2nd], which is the tiling theories/Cover.v of Stellarocq reasons about.
+    `scale` shrinks the half-width without moving the centres, which leaves
+    gaps between the cells.
+    """
+    d = int(np.ceil(width / (2.0 * n) / 2.0**e))
+    return [(2 * k + 1) * d for k in range(n)], max(1, round(d * scale))
+
+
+def pairs(xs):
+    """The dyadic pairs of a run of doubles, on one line."""
+    return " ".join("{} {}".format(*dyadic(x)) for x in xs)
+
+
+def header(a, w, magic, phip):
+    """The lines a certificate opens with, up to the pressure coefficients."""
+    lines = [
+        magic,
+        f"PREC {a.prec}",
+        f"LASYM {1 if w.lasym else 0}",
+        f"PROFILE {w.profile}",
+        "SLOTS 1 2",
+        "OUTPUT residual",
+        f"MODES {len(w.xm)}",
+    ]
+    lines += [f"{m} {n}" for m, n in zip(w.xm, w.xn, strict=True)]
+    lines += ["PHIP " + pairs([phip]), "AM 21"]
+    lines += [pairs([_amj(w.am, j)]) for j in range(21)]
+    return lines
+
+
+def node_block(w, j):
+    """The lines of node j: its radii, iota and coefficient rows."""
+    lines = [
+        "NODE",
+        "S " + pairs([w.s_full[j]]),
+        "SNODES " + pairs(w.s_full[j - 1 : j + 2]),
+        "SHALF " + pairs(w.s_half[j : j + 2]),
+        "IOTA " + pairs(w.iotas[j : j + 2]),
+    ]
+    blocks = [
+        ("RNODES", w.rmnc[j - 1 : j + 2]),
+        ("ZNODES", w.zmns[j - 1 : j + 2]),
+        ("LHALF", w.lmns[j : j + 2]),
+    ]
+    if w.lasym:
+        blocks += [
+            ("RNODES_A", w.rmns[j - 1 : j + 2]),
+            ("ZNODES_A", w.zmnc[j - 1 : j + 2]),
+            ("LHALF_A", w.lmnc[j : j + 2]),
+        ]
+    for tag, rows in blocks:
+        lines.append(tag)
+        lines += [pairs(row) for row in rows]
+    return lines
+
+
+def write_ccert(a, w, phip, idx, nu, vs, three_d):
     """Write a cell certificate: every angle of every cell is covered.
 
-    A cell spans half a spacing either side of its centre angle, so the cells
-    of an axisymmetric case tile the whole angular torus and those of a
-    three-dimensional case tile u in [0, 2 pi) at each of nv toroidal angles.
-    The half-widths are carried in units of the mantissa of the centre angle,
-    which is what the checker varies, and the bounds are left to
-    "main --tighten".
+    The poloidal cells tile [0, 2 pi) exactly. An axisymmetric equilibrium has
+    every n zero, so the v derivative of the residual encloses to zero and one
+    cell covers the whole toroidal angle. A three-dimensional one needs the v
+    extent resolved as finely as the u extent, which squares the cell count, so
+    its cells are u segments at the toroidal angles vs instead. The half-widths
+    are carried in units of the mantissa of the centre angle, which is what the
+    checker varies, and the bounds are left to "stellarocq-check --tighten".
     """
-    wu = a.wscale * np.pi / len(us)
-    # An axisymmetric equilibrium has every n zero, so the v derivative of the
-    # residual encloses to zero and one cell covers the whole toroidal angle.
-    # A three-dimensional one needs the v extent resolved as finely as the u
-    # extent, which squares the cell count, so its cells are u segments at nv
-    # toroidal angles instead.
-    wv = a.wscale * np.pi if not three_d else 0.0
-    lines = []
-    P = lines.append
-    P("STELLAROCQ-CCERT 3")
-    P(f"PREC {a.prec}")
-    P(f"MODES {K}")
-    for m, n in zip(w.xm, w.xn, strict=True):
-        P(f"{m} {n}")
-    P("PHIP {} {}".format(*dyadic(phip)))
-    P("AM 21")
-    for j in range(21):
-        am_j = w.am[j] if j < len(w.am) else 0.0
-        P("{} {}".format(*dyadic(am_j)))
+    ums, du = tile(2.0 * np.pi, nu, ANGLE_EXP, a.wscale)
+    if three_d:
+        vms, dv = [dyadic_at(v)[0] for v in vs], 0
+    else:
+        vms, dv = tile(2.0 * np.pi, 1, ANGLE_EXP, a.wscale)
+    angles = [(mu, mv) for mu in ums for mv in vms]
 
-    angles = [(u, v) for u in us for v in vs]
-    P(f"NANGLES {len(angles)}")
-    for u, v in angles:
-        mu, eu = dyadic_at(u)
-        mv, ev = dyadic_at(v)
-        # Half-width in mantissa units, rounded up. The rounding of a centre
-        # onto the grid moves it by at most half a unit, so rounding the
-        # half-width up by a whole one leaves the cells overlapping rather
-        # than gapped, and their union is the whole angle.
-        du = int(np.ceil(wu / 2.0**eu)) if wu > 0 else 0
-        dv = int(np.ceil(wv / 2.0**ev)) if wv > 0 else 0
-        P(f"{mu} {eu} {mv} {ev} {du} {dv}")
-
-    P(f"NNODES {len(idx)}")
+    lines = header(a, w, CCERT_MAGIC, phip)
+    lines.append(f"NANGLES {len(angles)}")
+    lines += [f"{mu} {ANGLE_EXP} {mv} {ANGLE_EXP} {du} {dv}" for mu, mv in angles]
+    lines.append(f"NNODES {len(idx)}")
     for j in idx:
-        P("NODE")
-        P("S {} {}".format(*dyadic(w.s_full[j])))
-        P(
-            "SNODES "
-            + " ".join("{} {}".format(*dyadic(x)) for x in w.s_full[j - 1 : j + 2])
-        )
-        P("SHALF " + " ".join("{} {}".format(*dyadic(x)) for x in w.s_half[j : j + 2]))
-        P("IOTA " + " ".join("{} {}".format(*dyadic(x)) for x in w.iotas[j : j + 2]))
-        for tag, M in (
-            ("RNODES", w.rmnc[j - 1 : j + 2]),
-            ("ZNODES", w.zmns[j - 1 : j + 2]),
-            ("LHALF", w.lmns[j : j + 2]),
-        ):
-            P(tag)
-            for row in M:
-                P(" ".join("{} {}".format(*dyadic(x)) for x in row))
-        P(f"CELLS {len(angles)}")
-        # The bounds are placeholders that "main --tighten" replaces with the
-        # enclosures the checker computes, because the width of an interval
-        # enclosure of a cancelling expression is a property of the arithmetic
-        # and cannot be predicted from a float sample of the function.
-        for _ in angles:
-            for _ in range(3):
-                P("1 0 1 0 1 0 4 0")
+        lines += node_block(w, j)
+        lines.append(f"CELLS {len(angles)}")
+        # The bounds are placeholders that "stellarocq-check --tighten" replaces
+        # with the enclosures the checker computes, because the width of an
+        # interval enclosure of a cancelling expression is a property of the
+        # arithmetic and cannot be predicted from a float sample of the function.
+        lines += ["1 0 1 0 1 0 4 0"] * (3 * len(angles))
     pathlib.Path(a.out).write_text("\n".join(lines) + "\n")
     print(
         f"wrote {a.out}: {len(idx)} nodes x {len(angles)} cells = "
-        f"{len(idx) * len(angles)} cells, K={K}"
+        f"{len(idx) * len(angles)} cells, K={len(w.xm)}"
     )
     cover = (
-        "the cells tile the whole angular torus"
-        if not three_d
-        else f"the cells tile u in [0, 2 pi) at each of {nv} toroidal angles"
+        f"the cells tile u in [0, 2 pi) at each of {len(vs)} toroidal angles"
+        if three_d
+        else "the cells tile the whole angular torus"
     )
-    print(f"cell half-widths: u {wu:.4e} rad, v {wv:.4e} rad; {cover}")
+    unit = 2.0**ANGLE_EXP
+    print(f"cell half-widths: u {du * unit:.4e} rad, v {dv * unit:.4e} rad; {cover}")
     print("run 'stellarocq-check --tighten' on it to set the bounds, then check it")
 
 
@@ -350,6 +461,9 @@ def main():
         a.out = f"cert_{pathlib.Path(a.wout).stem.removeprefix('wout_')}.txt"
 
     w = Wout(a.wout)
+    pres_scale = calibrate_pressure(w)
+    if abs(pres_scale - 1.0) > 1e-12:
+        print(f"pressure scaled by {pres_scale:.9f}, read off the wout's own pres")
     K = len(w.xm)
     phip = float(w.phips[1])
     nfp = 1
@@ -381,7 +495,7 @@ def main():
         scale = max(
             abs(residual_ref(w, j, u, v, phip)[3]) for j in idx for u, v in coarse
         )
-        write_ccert(a, w, K, phip, idx, us, vs, nv, three_d)
+        write_ccert(a, w, phip, idx, a.nu, vs, three_d)
         print(f"reference B^2 scale {scale:.3e}")
         return
 
@@ -403,41 +517,16 @@ def main():
     # of interest.
     eps = np.maximum(worst * a.slack, 1e-10 * scale)
 
-    lines = []
-    P = lines.append
-    P("STELLAROCQ-CERT 2")
-    P(f"PREC {a.prec}")
-    P(f"MODES {K}")
-    for m, n in zip(w.xm, w.xn, strict=True):
-        P(f"{m} {n}")
-    P("PHIP {} {}".format(*dyadic(phip)))
-    P("AM 21")
-    for j in range(21):
-        am_j = w.am[j] if j < len(w.am) else 0.0
-        P("{} {}".format(*dyadic(am_j)))
-    for tag, e in zip(("EPS_S", "EPS_U", "EPS_V"), eps, strict=True):
-        P("{} {} {}".format(tag, *dyadic(e)))
-    P(f"NANGLES {len(angles)}")
-    for u, v in angles:
-        P("{} {} {} {}".format(*dyadic(u), *dyadic(v)))
-    P(f"NNODES {len(idx)}")
+    lines = header(a, w, CERT_MAGIC, phip)
+    lines += [
+        f"{tag} " + pairs([e])
+        for tag, e in zip(("EPS_S", "EPS_U", "EPS_V"), eps, strict=True)
+    ]
+    lines.append(f"NANGLES {len(angles)}")
+    lines += [pairs([u, v]) for u, v in angles]
+    lines.append(f"NNODES {len(idx)}")
     for j in idx:
-        P("NODE")
-        P("S {} {}".format(*dyadic(w.s_full[j])))
-        P(
-            "SNODES "
-            + " ".join("{} {}".format(*dyadic(x)) for x in w.s_full[j - 1 : j + 2])
-        )
-        P("SHALF " + " ".join("{} {}".format(*dyadic(x)) for x in w.s_half[j : j + 2]))
-        P("IOTA " + " ".join("{} {}".format(*dyadic(x)) for x in w.iotas[j : j + 2]))
-        for tag, M in (
-            ("RNODES", w.rmnc[j - 1 : j + 2]),
-            ("ZNODES", w.zmns[j - 1 : j + 2]),
-            ("LHALF", w.lmns[j : j + 2]),
-        ):
-            P(tag)
-            for row in M:
-                P(" ".join("{} {}".format(*dyadic(x)) for x in row))
+        lines += node_block(w, j)
     pathlib.Path(a.out).write_text("\n".join(lines) + "\n")
 
     print(
