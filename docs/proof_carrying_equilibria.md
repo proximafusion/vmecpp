@@ -6,9 +6,9 @@ Rocq, formerly Coq, is a proof assistant: a program that checks mathematical pro
 
 The value is independence. "This wout satisfies force balance" normally means "VMEC++ says so, and VMEC++ agrees with Fortran VMEC." The checker shares no code with either and does not trust the generator that wrote the certificate: it recomputes everything from the coefficients with proven-sound arithmetic. A wout that passes cannot misstate its residual, whatever bug either solver might contain.
 
-What is certified: the mu0-scaled residual `J x B - grad p` of the field defined by the wout Fourier coefficients under VMEC's half-grid conventions (parity-aware averages of R and Z onto the half grid, the wout's half-grid lambda and iota, centered differences of the covariant field across the node), at a stated set of full-grid nodes, bounded per component. Both symmetry classes are covered, and the pressure may be a power series, a two-power form, a spline piece, a rational function or a truncated Gaussian. What is not certified: anything about the solver's internals. The trust base is the Rocq kernel, the classical real axioms of its standard library, the primitive float and integer specifications, and a thin parsing driver, all listed in the Stellarocq README.
+What is certified: the mu0-scaled residual `J x B - grad p` of the field defined by the wout Fourier coefficients under VMEC's half-grid conventions (parity-aware averages of R and Z onto the half grid, the wout's half-grid lambda and iota, centered differences of the covariant field across the node), at a stated set of full-grid nodes, bounded per component. Both symmetry classes are covered. A wout does not store `PRES_SCALE`, so the scale is recovered from the wout's own `pres` and put back into the pressure coefficients, and the certificate is about the pressure the equilibrium balances. The example script reads a power-series or a two-power pressure, and `gen/make_cert.py` of Stellarocq reads the other parameterizations. What is not certified: anything about the solver's internals. The trust base is the Rocq kernel with the classical real axioms and the primitive float and integer specifications of its standard library, extraction and the OCaml compiler, and a parsing driver; `make audit` in Stellarocq prints the axioms behind every theorem.
 
-Beside the certificates, Stellarocq proves identities the reconstruction satisfies rather than assumes. `divergence_free` states that the divergence of the reconstructed field is exactly zero, and `pressure_is_a_flux_function` that dp/ds reads neither angle; the latter rests on no axioms at all.
+Beside the certificates, Stellarocq proves identities the reconstruction satisfies rather than assumes. `divergence_free` states that the divergence of the reconstructed field is exactly zero, and `pressure_is_a_flux_function` that dp/ds reads neither angle.
 
 ## Points and cells
 
@@ -20,7 +20,8 @@ The bounds of a cell certificate are written by the checker, not by the generato
 
 ```sh
 python examples/make_equilibrium_certificate.py wout_solovev.nc cert.txt   # --nodes 6 --nu 8 --nv 4 --prec 53
-stellarocq-check cert.txt        # the checker binary, built from Stellarocq; STELLAROCQ_JOBS=n workers
+stellarocq-check cert.txt        # extract/_build/default/main.exe of a Stellarocq build; STELLAROCQ_JOBS=n workers
+python gen/verify_cert.py wout_solovev.nc cert.txt   # in a Stellarocq checkout: the certificate against the wout
 ```
 
 ```sh
@@ -31,26 +32,26 @@ stellarocq-check cert.txt
 
 ## Results
 
-Six nodes per case, 20 worker processes.
+Six nodes per case, 20 worker processes. The field scale is the reference `B^2` scale the script prints for the point certificate.
 
-| case | points | worst bound, of the field scale | verdict |
+| case | points | bound on `r_s`, of the field scale | verdict |
 |---|---|---|---|
-| `wout_solovev` (axisymmetric, ns=55, power series) | 48 | 7.3e-5 | VALID, 0.1 s |
-| `wout_cma` (3D, nfp=2, 59 modes, ns=51) | 192 | 3.3e-2 | VALID, 2.8 s on 20 workers |
-| `wout_cth_like_fixed_bdy` (3D, nfp=5, 41 modes, ns=25, two-power pressure) | 192 | 7.9e-3 | VALID, 2.7 s |
-| `up_down_asym` (non-stellarator-symmetric, ns=17) | 48 | 6.0e-3 | VALID, 0.0 s |
-| solovev with one `rmnc` coefficient of a certified stencil perturbed by 0.1% | 48 | same claim | INVALID, 0.1 s |
+| `wout_solovev` (axisymmetric, ns=55, power series) | 48 | 7.3e-5 | VALID, under 0.1 s |
+| `wout_cma` (3D, nfp=2, 59 modes, ns=51) | 192 | 3.3e-2 | VALID, 0.3 s |
+| `wout_cth_like_fixed_bdy` (3D, nfp=5, 41 modes, ns=25, two-power pressure) | 192 | 7.9e-3 | VALID, 0.2 s |
+| `up_down_asym` (non-stellarator-symmetric, ns=17) | 48 | 6.0e-3 | VALID, under 0.1 s |
+| solovev with one `rmnc` coefficient of a certified stencil perturbed by 0.1% | 48 | same claim | INVALID, under 0.1 s |
 
-Every stellarator-symmetric case above also certifies through the non-stellarator-symmetric reconstruction with its antisymmetric coefficients set to zero, at the same bounds, which is the reduction `tests/test_lasym.py` requires of the solver.
+Every stellarator-symmetric case above also certifies through the non-stellarator-symmetric reconstruction with its antisymmetric coefficients set to zero, at the same bounds (`gen/make_cert.py --force-lasym` of Stellarocq), which is the reduction `tests/test_lasym.py` requires of the solver.
 
 | case | cells | worst cell bound | of the field scale | verdict |
 |---|---|---|---|---|
-| `wout_solovev` (axisymmetric, ns=55) | 49152 | 1.3e-5 | 1.9e-4 | VALID, 434 s |
-| `wout_circular_tokamak` (axisymmetric, ns=17) | 49152 | 1.5e-2 | 2.5e-4 | VALID, 902 s |
-| `wout_cma` (3D, nfp=2, 59 modes, ns=51) | 24576 | 1.3e-2 | 4.3e-2 | VALID, 8368 s |
-| `wout_li383_low_res` (3D, nfp=3, 25 modes, ns=16) | 24576 | 8.7e-1 | 2.4e-1 | VALID, 2276 s |
+| `wout_solovev` (axisymmetric, ns=55) | 49152 | 1.3e-5 | 1.9e-4 | VALID, 41 s |
+| `wout_circular_tokamak_reference` (axisymmetric, ns=17) | 49152 | 1.5e-2 | 2.5e-4 | VALID, 48 s |
+| `wout_cma` (3D, nfp=2, 59 modes, ns=51) | 24576 | 1.3e-2 | 4.3e-2 | VALID, 90 s |
+| `wout_li383_low_res_reference` (3D, nfp=3, 25 modes, ns=16) | 24576 | 8.7e-1 | 2.4e-1 | VALID, 39 s |
 
-The two axisymmetric cases carry 6 nodes of 8192 poloidal cells covering the whole angular torus; the two three-dimensional ones carry 3 nodes of 4096 poloidal cells at each of 2 toroidal angles.
+Tightening the four took 30 s, 33 s, 50 s and 24 s. The two axisymmetric cases carry 6 nodes of 8192 poloidal cells covering the whole angular torus; the two three-dimensional ones carry 3 nodes of 4096 poloidal cells at each of 2 toroidal angles.
 
 An axisymmetric equilibrium has every `n` zero, so its toroidal derivative encloses to zero and one cell spans the whole toroidal angle; the covering of the angular torus is one-dimensional. A three-dimensional one has to resolve the toroidal direction as finely as the poloidal, which squares the cell count, so its cells cover the poloidal angle at each of a few toroidal angles instead.
 
