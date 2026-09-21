@@ -1547,13 +1547,25 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     }
 
     // 'only_coils' takes the field from the coils alone, so the plasma must
-    // carry neither current nor pressure.
-    if (vmec_indata.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
-        (vmec_indata.curtor != 0.0 || vmec_indata.pres_scale != 0.0)) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "input variables 'curtor' and 'pres_scale' must be zero when "
-          "'free_boundary_method' is 'only_coils', but are %g and %g\n",
-          vmec_indata.curtor, vmec_indata.pres_scale));
+    // carry neither current nor pressure. The pressure is pres_scale times the
+    // mass profile, which is zero when am and am_aux_f are.
+    if (vmec_indata.free_boundary_method == FreeBoundaryMethod::ONLY_COILS) {
+      if (vmec_indata.curtor != 0.0) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "input variable 'curtor' must be zero when "
+            "'free_boundary_method' is 'only_coils', but is %g\n",
+            vmec_indata.curtor));
+      }
+      const bool mass_profile_is_zero =
+          (vmec_indata.am.array() == 0.0).all() &&
+          (vmec_indata.am_aux_f.array() == 0.0).all();
+      if (vmec_indata.pres_scale != 0.0 && !mass_profile_is_zero) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "the pressure must be zero when 'free_boundary_method' is "
+            "'only_coils', but 'pres_scale' is %g and 'am' or 'am_aux_f' has "
+            "a non-zero entry\n",
+            vmec_indata.pres_scale));
+      }
     }
   }
 

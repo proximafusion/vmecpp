@@ -631,6 +631,10 @@ TEST(TestVmecINDATA, CheckOnlyCoilsRejectsCurrentAndPressure) {
   only_coils.pres_scale = 1.0;
   EXPECT_EQ(IsConsistent(only_coils, /*enable_info_messages=*/false).code(),
             absl::StatusCode::kInvalidArgument);
+
+  // a zero mass profile carries no pressure for any pres_scale
+  only_coils.am.setZero();
+  EXPECT_TRUE(IsConsistent(only_coils, /*enable_info_messages=*/false).ok());
 }
 
 }  // namespace vmecpp
