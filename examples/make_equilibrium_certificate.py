@@ -3,8 +3,7 @@
 The checker that validates the certificate is built from
 https://github.com/CharlesCNorton/stellarocq; see
 docs/proof_carrying_equilibria.md. The file written here follows FORMAT.md of
-that repository, point certificates at version 6 and cell certificates at
-version 7.
+that repository.
 
 The certificate states, for a set of full-grid nodes and angles, that the
 mu0-scaled ideal-MHD force residual of the equilibrium reconstructed from the
@@ -48,8 +47,8 @@ import numpy as np
 
 MU0 = 4e-7 * np.pi
 
-CERT_MAGIC = "STELLAROCQ-CERT 6"
-CCERT_MAGIC = "STELLAROCQ-CCERT 7"
+CERT_MAGIC = "STELLAROCQ-CERT"
+CCERT_MAGIC = "STELLAROCQ-CCERT"
 
 # Slots of the am block that scale with PRES_SCALE, per closed form.
 AMPLITUDE_SLOTS = {"POWER": range(21), "TWOPOWER": (0,)}
