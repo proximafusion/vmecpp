@@ -359,6 +359,33 @@ TEST(TestVmecINDATA, OverlongAxisArraysAreRejected) {
               testing::HasSubstr("exceeds ntor+1"));
 }  // OverlongAxisArraysAreRejected
 
+// An absent raxis_s or zaxis_c is a zero one, as an absent raxis_c or zaxis_s
+// is.
+TEST(TestVmecINDATA, AbsentAsymmetricAxisArraysAreZero) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+
+  json j = json::parse(*indata_json);
+  ASSERT_EQ(j.at("lasym"), true);
+  ASSERT_TRUE(j.contains("raxis_s"));
+  ASSERT_TRUE(j.contains("zaxis_c"));
+  j.erase("raxis_s");
+  j.erase("zaxis_c");
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(j.dump());
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  ASSERT_TRUE(indata->raxis_s.has_value());
+  ASSERT_TRUE(indata->zaxis_c.has_value());
+  ASSERT_EQ(indata->raxis_s->size(), indata->ntor + 1);
+  ASSERT_EQ(indata->zaxis_c->size(), indata->ntor + 1);
+  EXPECT_THAT(*indata->raxis_s, testing::Each(DoubleEq(0.0)));
+  EXPECT_THAT(*indata->zaxis_c, testing::Each(DoubleEq(0.0)));
+
+  EXPECT_TRUE(IsConsistent(*indata, /*enable_info_messages=*/false).ok());
+}  // AbsentAsymmetricAxisArraysAreZero
+
 // The asymmetric coefficients are only populated when lasym is set, so the
 // round trip has to be checked for both symmetry classes.
 void CheckHdf5RoundTrip(const std::string& filename) {
