@@ -243,12 +243,20 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         return status;
       }
     }
-    if (mgrid_.numPhi != indata_.nzeta) {
+    // Sizes raises nzeta to the minimum ntor allows, so s_.nZeta is the
+    // toroidal resolution of the run.
+    if (mgrid_.numPhi != s_.nZeta) {
+      const std::string raised_from =
+          s_.nZeta == indata_.nzeta
+              ? ""
+              : absl::StrFormat(
+                    " (nzeta = %d in VmecINDATA, raised to the "
+                    "minimum for ntor = %d)",
+                    indata_.nzeta, indata_.ntor);
       return absl::InvalidArgumentError(absl::StrFormat(
-          "MGridProvider has %d phi grid points, but VmecINDATA "
-          "has %d nzeta grid points. Please ensure that the two "
-          "are consistent.",
-          mgrid_.numPhi, indata_.nzeta));
+          "MGridProvider has %d phi grid points, but the run has %d toroidal "
+          "grid points%s. Please ensure that the two are consistent.",
+          mgrid_.numPhi, s_.nZeta, raised_from));
     }
     if (mgrid_.nfp != indata_.nfp) {
       return absl::InvalidArgumentError(absl::StrFormat(
