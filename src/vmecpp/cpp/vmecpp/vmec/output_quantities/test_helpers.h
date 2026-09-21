@@ -63,6 +63,14 @@ inline void CheckWOutEquality(const vmecpp::WOutFileContents& wout1,
   EXPECT_EQ(wout1.fsqr, wout2.fsqr);
   EXPECT_EQ(wout1.fsqz, wout2.fsqz);
   EXPECT_EQ(wout1.fsql, wout2.fsql);
+  EXPECT_EQ(wout1.itfsq, wout2.itfsq);
+  EXPECT_EQ(wout1.fsqt, wout2.fsqt);
+  EXPECT_EQ(wout1.force_residual_r, wout2.force_residual_r);
+  EXPECT_EQ(wout1.force_residual_z, wout2.force_residual_z);
+  EXPECT_EQ(wout1.force_residual_lambda, wout2.force_residual_lambda);
+  EXPECT_EQ(wout1.delbsq, wout2.delbsq);
+  EXPECT_EQ(wout1.restart_reason_timetrace, wout2.restart_reason_timetrace);
+  EXPECT_EQ(wout1.wdot, wout2.wdot);
   EXPECT_EQ(wout1.iotaf, wout2.iotaf);
   EXPECT_EQ(wout1.q_factor, wout2.q_factor);
   EXPECT_EQ(wout1.presf, wout2.presf);

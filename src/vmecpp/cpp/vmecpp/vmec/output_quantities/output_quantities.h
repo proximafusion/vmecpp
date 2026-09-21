@@ -1171,7 +1171,7 @@ struct WOutFileContents {
   // Number of "time steps" of the force relaxation that were actually required
   // to achieve convergence. (How many of the maximum niter steps we ended up
   // using.)
-  int itfsq;
+  int itfsq = 0;
 
   // -------------------
   // one-dimensional array quantities

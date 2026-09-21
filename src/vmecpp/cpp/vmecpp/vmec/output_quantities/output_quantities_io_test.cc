@@ -131,6 +131,13 @@ TEST_F(OutputQuantitiesIO, WOut) {
   ASSERT_TRUE(status2.ok());
 
   CheckWOutEquality(wout, wout_fromfile);
+
+  // the convergence traces hold one entry per iteration of the run
+  ASSERT_GT(wout.itfsq, 0);
+  EXPECT_EQ(wout.fsqt.size(), wout.itfsq);
+
+  // operator== covers the members CheckWOutEquality does not name
+  EXPECT_TRUE(wout == wout_fromfile);
 }
 
 TEST_F(OutputQuantitiesIO, OutputQuantities) {
