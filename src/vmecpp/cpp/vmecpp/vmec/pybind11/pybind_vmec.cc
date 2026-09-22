@@ -281,12 +281,6 @@ class VmecModel {
   void reset_force_eval_count() const {
     vmec_->m_[0]->resetForceEvaluationCount();
   }
-  // Freeze/unfreeze the constraint-force multiplier tcon. Freezing makes the
-  // raw force a function of the state alone, consistent with the exact HVP.
-  void SetFreezeConstraintMultiplier(bool freeze) const {
-    vmec_->m_[0]->setFreezeConstraintMultiplier(freeze);
-  }
-
   // The Garabedian-style time step (PerformTimeStep): for each Fourier
   // coefficient, v = velocity_scale*(conjugation*v + dt*force); x += dt*v.
   void PerformTimeStep(double velocity_scale, double conjugation_parameter,
@@ -312,8 +306,8 @@ class VmecModel {
                                                        *vmec_->p_[0]);
   }
   void RecomputeAxis() const {
-    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(
-        vmec_->fc_.nsval, vmecpp::Vmec::kSignOfJacobian);
+    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(vmec_->fc_.nsval,
+                                                     vmec_->indata_.signgs);
   }
 
   // Recompute the magnetic axis to fix the Jacobian sign, then re-initialize
@@ -324,8 +318,8 @@ class VmecModel {
   // single continuous parallel region tolerates but a step-by-step driver does
   // not.
   void Reinitialize() {
-    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(
-        vmec_->fc_.nsval, vmecpp::Vmec::kSignOfJacobian);
+    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(vmec_->fc_.nsval,
+                                                     vmec_->indata_.signgs);
     double delt0 = vmec_->indata_.delt;
     // Vmec::run resets the accumulated constants before every
     // InitializeRadial (the rmsPhiP -> lamscale accumulation in
@@ -397,6 +391,8 @@ class VmecModel {
   }
 
   // Reference C++ inner iteration (the loop being ported), for verification.
+  // Each call converges the *current* resolution ftol_array entry.
+  // Exhausting the iteration budget does not raise here.
   void Solve() const {
     auto s = vmec_->SolveEquilibrium(vmecpp::VmecCheckpoint::NONE, INT_MAX);
     if (!s.ok()) {
@@ -432,13 +428,23 @@ class VmecModel {
   }
 
   // Transpose of the linear state-to-geometry coefficient map used by
-  // MakeGeometry. The input contains twelve dense coefficient blocks in the
-  // same order as GeometryCoefficients (r_cc, r_ss, r_sc, r_cs, z_sc, z_cs,
-  // z_cc, z_ss, lambda_sc, lambda_cs, lambda_cc, lambda_ss), each with
-  // surface-major (j, m, n) storage. Flux cotangents are intentionally not
-  // part of this low-level map: with ncurr=0 both flux profiles are prescribed
-  // input profiles and therefore have zero state derivative.
-  Eigen::VectorXd GeometryStateVjp(const Eigen::VectorXd &coefficient_bar) {
+  // MakeGeometry. coefficient_bar contains twelve dense coefficient blocks in
+  // the same order as GeometryCoefficients (r_cc, r_ss, r_sc, r_cs, z_sc,
+  // z_cs, z_cc, z_ss, lambda_sc, lambda_cs, lambda_cc, lambda_ss), each with
+  // surface-major (j, m, n) storage.
+  //
+  // poloidal_flux_bar is the separate cotangent of MakeGeometry's poloidal_flux
+  // output (one entry per full surface); pass an empty vector where it is
+  // zero. With ncurr=0 both flux profiles are prescribed input profiles and
+  // have zero state derivative, so the toroidal_flux cotangent never enters
+  // this map. With ncurr=1 the toroidal flux is still prescribed, but the
+  // poloidal flux is chi_j = sum_{k<j} c_k iota_k with c_k the (state-
+  // independent) half-grid flux step, and iota_k = chi'_k / phipH_k depends on
+  // the state through the prescribed-current chi' (see
+  // local_force_composition.h); that dependence is added to the state
+  // cotangent here via chip_state_vjp.
+  Eigen::VectorXd GeometryStateVjp(const Eigen::VectorXd &coefficient_bar,
+                                   const Eigen::VectorXd &poloidal_flux_bar) {
     if (vmec_->indata_.lfreeb) {
       throw std::runtime_error(
           "VmecModel.geometry_state_vjp currently supports fixed-boundary "
@@ -449,10 +455,10 @@ class VmecModel {
           "VmecModel.geometry_state_vjp currently supports stellarator-"
           "symmetric models only");
     }
-    if (vmec_->indata_.ncurr != 0) {
+    if (poloidal_flux_bar.size() != 0 &&
+        poloidal_flux_bar.size() != vmec_->fc_.ns) {
       throw std::runtime_error(
-          "VmecModel.geometry_state_vjp requires ncurr=0; current-constrained "
-          "flux derivatives are not yet exposed");
+          "VmecModel.geometry_state_vjp: poloidal_flux_bar has wrong length");
     }
     const int modes_per_surface = vmec_->s_.mpol * (vmec_->s_.ntor + 1);
     const int coefficient_size = vmec_->fc_.ns * modes_per_surface;
@@ -531,7 +537,40 @@ class VmecModel {
 
     add_block(state_bar.lmnsc, 8, true);
     if (vmec_->s_.lthreed) add_block(state_bar.lmncs, 9, true);
-    return FlattenActive(state_bar, vmec_->s_);
+    Eigen::VectorXd result = FlattenActive(state_bar, vmec_->s_);
+
+    if (vmec_->indata_.ncurr != 0 && poloidal_flux_bar.size() != 0 &&
+        poloidal_flux_bar.cwiseAbs().maxCoeff() != 0.0) {
+#ifdef VMECPP_ENABLE_ENZYME
+      // chi_j = sum_{k<j} c_k iotaH_k, c_k = signOfJacobian * 2 pi deltaS
+      // phipH_k (MakeGeometry's poloidal_flux recursion). iotaH_k =
+      // chipH_k / phipH_k, and for ncurr==1 chipH_k is the state-dependent
+      // prescribed-current chi' differentiated in local_force_composition.h.
+      const Eigen::VectorXd &phip_h = vmec_->p_[0]->phipH;
+      const int nHalf = vmec_->fc_.ns - 1;
+      Eigen::VectorXd chip_bar = Eigen::VectorXd::Zero(nHalf);
+      double tail = 0.0;
+      for (int j = vmec_->fc_.ns - 1; j >= 1; --j) {
+        tail += poloidal_flux_bar[j];
+        const int k = j - 1;
+        if (phip_h[k] == 0.0) {
+          throw std::runtime_error(
+              "VmecModel.geometry_state_vjp: invalid phipH for the ncurr=1 "
+              "flux cotangent");
+        }
+        const double c_k = static_cast<double>(vmecpp::Vmec::kSignOfJacobian) *
+                           2.0 * std::numbers::pi * vmec_->fc_.deltaS *
+                           phip_h[k];
+        chip_bar[k] = c_k * tail / phip_h[k];
+      }
+      result += ChipStateVjp(chip_bar);
+#else
+      throw std::runtime_error(
+          "VmecModel.geometry_state_vjp: a nonzero poloidal_flux_bar with "
+          "ncurr=1 requires an Enzyme-enabled build for chi'_state_vjp");
+#endif  // VMECPP_ENABLE_ENZYME
+    }
+    return result;
   }
 
   // Hessian-vector product of VMEC's augmented functional, computed inside
@@ -578,11 +617,9 @@ class VmecModel {
   // condensation constraint force (effective force, Fourier bandpass and
   // assembly). The geometry tangent T v is obtained exactly from the linearity
   // of geometryFromFourier: T v = geom(x+v) - geom(x), so no finite-difference
-  // step enters. The constraint multiplier tcon is held frozen (it depends on
-  // the preconditioner diagonal, not just the geometry); for an exactly
-  // consistent Jacobian, freeze it in the raw force too via
-  // set_freeze_constraint_multiplier(True). The model state is restored to x on
-  // return.
+  // step enters. The constraint multiplier tcon is recomputed from the geometry
+  // inside the composition, as the raw force recomputes it from the state. The
+  // model state is restored to x on return.
   Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
     RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
@@ -632,6 +669,29 @@ class VmecModel {
         exact_primal_.data(), gS, *vmec_->decomposed_f_[0],
         *vmec_->physical_f_[0], *vmec_->physical_x_[0],
         *vmec_->physical_x_backup_[0], /*fix_m1_gauge=*/true);
+    return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
+  }
+
+  // (dchi'/dx)^T chip_bar for ncurr==1, in the decomposed internal basis:
+  // the state cotangent from a chi' cotangent alone (one entry per half
+  // surface), with no force-member cotangent. Uses the same cached primal
+  // geometry as ExactHessianVectorProduct(Transpose). GeometryStateVjp uses
+  // this to convert the poloidal-flux cotangent into a state cotangent when
+  // ncurr==1.
+  Eigen::VectorXd ChipStateVjp(const Eigen::VectorXd &chip_bar) {
+    RequireLforbalDisabledForExactDerivatives();
+    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    const int gS = static_cast<int>(model.r1_e.size());
+    if (!exact_primal_valid_ ||
+        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
+      exact_primal_.setZero(20 * gS);
+      model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                         exact_primal_.data(), gS, /*primal=*/true);
+      exact_primal_valid_ = true;
+    }
+    vmec_->physical_x_backup_[0]->setZero();
+    model.chipStateVjp(exact_primal_.data(), gS, chip_bar.data(),
+                       *vmec_->physical_x_[0], *vmec_->physical_x_backup_[0]);
     return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
   }
 #endif  // VMECPP_ENABLE_ENZYME
@@ -722,6 +782,11 @@ class VmecModel {
 
   int ijacob() const { return vmec_->fc_.ijacob; }
   Eigen::VectorXd raxis_c() const { return vmec_->b_.raxis_c; }
+  // Half-grid chi' (chipH), valid after evaluate(): iota*phip when ncurr=0,
+  // the current-constrained profile computeBContra solves for when ncurr=1.
+  // Exposed to let callers (and tests) check chip_state_vjp and
+  // geometry_state_vjp's ncurr=1 flux route against a finite difference.
+  Eigen::VectorXd chip_h() const { return vmec_->p_[0]->chipH; }
   static bool openmp_enabled() {
 #ifdef _OPENMP
     return true;
@@ -754,6 +819,20 @@ class VmecModel {
 //     (PyInit_example)
 PYBIND11_MODULE(_vmecpp, m) {
   m.doc() = "pybind11 VMEC++ plugin";
+
+  // Compile-time build feature: whether this wheel was built with the Enzyme
+  // plugin (CMake option VMECPP_ENABLE_ENZYME). This is a static property of
+  // the build, cheap to query, and does not require creating a VmecModel;
+  // vmecpp.has_exact_force_jacobian() reads it to fail fast, before running
+  // any solve. It does not by itself guarantee
+  // VmecModel.has_exact_force_jacobian is true for a given model: that also
+  // depends on the model's run-time force-balance formulation (see
+  // VmecModel::has_exact_force_jacobian).
+#ifdef VMECPP_ENABLE_ENZYME
+  m.attr("VMECPP_ENABLE_ENZYME") = true;
+#else
+  m.attr("VMECPP_ENABLE_ENZYME") = false;
+#endif
 
   // C++ stdout and stderr cannot easily be captured or redirected from Python.
   // This adds a Python context manager that can be used to redirect them like
@@ -826,6 +905,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("mgrid_file", &VmecINDATA::mgrid_file);
   DefEigenProperty(pyindata, "extcur", &VmecINDATA::extcur);
   pyindata.def_readwrite("nvacskip", &VmecINDATA::nvacskip)
+      .def_readwrite("signgs", &VmecINDATA::signgs)
       .def_readwrite("free_boundary_method", &VmecINDATA::free_boundary_method)
 
       // tweaking parameters
@@ -1555,7 +1635,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("get_forces", &VmecModel::GetForces)
       .def("get_geometry", &VmecModel::GetGeometry)
       .def("geometry_state_vjp", &VmecModel::GeometryStateVjp,
-           py::arg("coefficient_bar"))
+           py::arg("coefficient_bar"),
+           py::arg("poloidal_flux_bar") = Eigen::VectorXd())
       .def("apply_preconditioner", &VmecModel::ApplyPreconditioner,
            py::arg("v"))
       .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
@@ -1568,9 +1649,8 @@ PYBIND11_MODULE(_vmecpp, m) {
            &VmecModel::ExactHessianVectorProduct, py::arg("v"))
       .def("exact_hessian_vector_product_transpose",
            &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"))
+      .def("chip_state_vjp", &VmecModel::ChipStateVjp, py::arg("chip_bar"))
 #endif  // VMECPP_ENABLE_ENZYME
-      .def("set_freeze_constraint_multiplier",
-           &VmecModel::SetFreezeConstraintMultiplier, py::arg("freeze"))
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
       .def_property_readonly("fsqr", &VmecModel::fsqr)
@@ -1601,5 +1681,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("restart_reasons", &VmecModel::restart_reasons)
       .def_property_readonly("ijacob", &VmecModel::ijacob)
       .def_property_readonly("raxis_c", &VmecModel::raxis_c)
+      .def_property_readonly("chip_h", &VmecModel::chip_h)
       .def_static("openmp_enabled", &VmecModel::openmp_enabled);
 }  // NOLINT(readability/fn_size)

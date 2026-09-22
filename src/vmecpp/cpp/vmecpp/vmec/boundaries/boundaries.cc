@@ -124,8 +124,28 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
     int m = 1;
     int n = 0;
 
-    delta = atan2((*id.rbs)(m, s_.ntor + n) - (*id.zbc)(m, s_.ntor + n),
-                  id.rbc(m, s_.ntor + n) + id.zbs(m, s_.ntor + n));
+    // The shift puts the boundary into the gauge rbs(m=1, n=0) = sigma *
+    // zbc(m=1, n=0), the frozen combination of ensureM1Constrained, with
+    // sigma = -sign_of_jacobian. flipTheta, applied afterwards when the input
+    // runs in the other poloidal direction, negates zbc relative to rbs, so
+    // the shift targets the opposite sign in that case. The poloidal direction
+    // is read from the signed area of the m = 1 ellipse, which the shift does
+    // not change (see checkSignOfJacobian).
+    double r_test = 0.0;
+    double z_test = 0.0;
+    double r_test_asym = 0.0;
+    double z_test_asym = 0.0;
+    for (int nn = -s_.ntor; nn <= s_.ntor; ++nn) {
+      r_test += id.rbc(m, s_.ntor + nn);
+      z_test += id.zbs(m, s_.ntor + nn);
+      r_test_asym += (*id.rbs)(m, s_.ntor + nn);
+      z_test_asym += (*id.zbc)(m, s_.ntor + nn);
+    }
+    const double handedness = r_test * z_test - r_test_asym * z_test_asym;
+    const bool will_flip_theta = (handedness * sign_of_jacobian_ > 0.0);
+    const double sigma = -sign_of_jacobian_ * (will_flip_theta ? -1.0 : 1.0);
+    delta = atan2((*id.rbs)(m, s_.ntor + n) - sigma * (*id.zbc)(m, s_.ntor + n),
+                  id.rbc(m, s_.ntor + n) + sigma * id.zbs(m, s_.ntor + n));
 
     if (verbose && delta != 0.0) {
       std::cout << "need to shift theta by delta = " << delta << "\n";
@@ -290,18 +310,21 @@ void Boundaries::flipTheta() {
  * origin.
  */
 void Boundaries::ensureM1Constrained(const double scaling_factor) {
+  // same map as FourierCoeffs::m1Constraint: the frozen combination is
+  // rss = sigma zcs with sigma = -sign_of_jacobian
+  const double sigma = -sign_of_jacobian_;
   for (int n = 0; n <= s_.ntor; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
     if (s_.lthreed) {
       double backup_rss = rbss[idx_mn];
-      rbss[idx_mn] = (backup_rss + zbcs[idx_mn]) * scaling_factor;
-      zbcs[idx_mn] = (backup_rss - zbcs[idx_mn]) * scaling_factor;
+      rbss[idx_mn] = (backup_rss + sigma * zbcs[idx_mn]) * scaling_factor;
+      zbcs[idx_mn] = (sigma * backup_rss - zbcs[idx_mn]) * scaling_factor;
     }
     if (s_.lasym) {
       double backup_rsc = rbsc[idx_mn];
-      rbsc[idx_mn] = (backup_rsc + zbcc[idx_mn]) * scaling_factor;
-      zbcc[idx_mn] = (backup_rsc - zbcc[idx_mn]) * scaling_factor;
+      rbsc[idx_mn] = (backup_rsc + sigma * zbcc[idx_mn]) * scaling_factor;
+      zbcc[idx_mn] = (sigma * backup_rsc - zbcc[idx_mn]) * scaling_factor;
     }
   }  // n
 }
