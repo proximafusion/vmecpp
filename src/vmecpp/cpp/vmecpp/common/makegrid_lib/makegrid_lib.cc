@@ -23,6 +23,7 @@ namespace makegrid {
 
 using nlohmann::json;
 
+using json_io::JsonParse;
 using json_io::JsonReadBool;
 using json_io::JsonReadDouble;
 using json_io::JsonReadInt;
@@ -88,7 +89,11 @@ absl::Status IsValidMakegridParameters(
 
 absl::StatusOr<MakegridParameters> ImportMakegridParametersFromJson(
     const std::string& makegrid_parameters_json) {
-  json j = json::parse(makegrid_parameters_json);
+  absl::StatusOr<json> maybe_json = JsonParse(makegrid_parameters_json);
+  if (!maybe_json.ok()) {
+    return maybe_json.status();
+  }
+  const json& j = *maybe_json;
 
   MakegridParameters makegrid_parameters;
 
