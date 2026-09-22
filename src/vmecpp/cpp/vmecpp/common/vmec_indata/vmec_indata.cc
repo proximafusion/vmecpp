@@ -96,6 +96,7 @@ namespace vmecpp {
 
 using nlohmann::json;
 
+using json_io::JsonParse;
 using json_io::JsonReadBool;
 using json_io::JsonReadDouble;
 using json_io::JsonReadInt;
@@ -553,7 +554,11 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
 
 absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     const std::string& indata_json) {
-  json j = json::parse(indata_json);
+  absl::StatusOr<json> maybe_json = JsonParse(indata_json);
+  if (!maybe_json.ok()) {
+    return maybe_json.status();
+  }
+  const json& j = *maybe_json;
 
   if (!j.is_object()) {
     return absl::InvalidArgumentError("root JSON element is not an object");
