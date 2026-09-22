@@ -125,6 +125,12 @@ class Vmec {
       int maximum_multi_grid_step = 500,
       std::optional<HotRestartState> initial_state = std::nullopt);
 
+  // Change in iota the bootstrap closure still asked for at its last
+  // evaluation; infinite before its first evaluation on the current multigrid
+  // step.
+  double bootstrap_mismatch() const { return h_.bootstrap_mismatch; }
+  int bootstrap_updates() const { return h_.bootstrap_updates; }
+
   // -------------------
 
   // Build the free-boundary vacuum solvers (fb_vac_/tp_vac_) and compute

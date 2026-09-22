@@ -280,6 +280,12 @@ void RadialProfiles::setupInputProfiles() {
 
   pressureScalingFactor = MU_0 * id_.pres_scale;
 
+  bootstrap_profiles.ne = id_.bootstrap_ne;
+  bootstrap_profiles.te = id_.bootstrap_te;
+  bootstrap_profiles.ti = id_.bootstrap_ti;
+  bootstrap_profiles.zeff = id_.bootstrap_zeff;
+  bootstrap_profiles.helicity_n = id_.bootstrap_helicity_n;
+
   computeMagneticFluxes();
 }
 
@@ -433,6 +439,11 @@ double RadialProfiles::polflux(double x) {
 }
 
 double RadialProfiles::evalMassProfile(double x) {
+  if (id_.bootstrap_current) {
+    // the kinetic pressure of the bootstrap closure stands in for am
+    return KineticPressure(bootstrap_profiles, std::min(std::abs(x), 1.0));
+  }
+
   // apply bloating factor
   // only allowed for current and pressure profile (checked in
   // VmecIndata.sanitize())
@@ -484,6 +495,28 @@ absl::Status RadialProfiles::CheckCurrentProfileEnclosesEdgeCurrent() {
         id_.pcurr_type, edge_current, largest_current));
   }
   return absl::OkStatus();
+}
+
+void RadialProfiles::OverrideEnclosedCurrent(const Eigen::VectorXd& s,
+                                             const Eigen::VectorXd& buco) {
+  const Eigen::Index last = s.size() - 1;
+  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+    const double s_half = (jH + 0.5) / (fc_.ns - 1.0);
+    double value = 0.0;
+    if (s_half <= s[0]) {
+      value = buco[0];
+    } else if (s_half >= s[last]) {
+      value = buco[last];
+    } else {
+      Eigen::Index k = 0;
+      while (k < last - 1 && s[k + 1] <= s_half) {
+        ++k;
+      }
+      const double weight = (s_half - s[k]) / (s[k + 1] - s[k]);
+      value = (1.0 - weight) * buco[k] + weight * buco[k + 1];
+    }
+    currH[jH - r_.nsMinH] = value;
+  }
 }
 
 double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,

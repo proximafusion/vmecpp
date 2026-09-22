@@ -898,8 +898,17 @@ PYBIND11_MODULE(_vmecpp, m) {
   pyindata.def_readwrite("curtor", &VmecINDATA::curtor)
       .def_readwrite("bloat", &VmecINDATA::bloat)
 
-      // free-boundary parameters
-      .def_readwrite("lfreeb", &VmecINDATA::lfreeb)
+      // self-consistent bootstrap current
+      .def_readwrite("bootstrap_current", &VmecINDATA::bootstrap_current)
+      .def_readwrite("bootstrap_zeff", &VmecINDATA::bootstrap_zeff)
+      .def_readwrite("bootstrap_helicity_n", &VmecINDATA::bootstrap_helicity_n)
+      .def_readwrite("bootstrap_tolerance", &VmecINDATA::bootstrap_tolerance);
+  DefEigenProperty(pyindata, "bootstrap_ne", &VmecINDATA::bootstrap_ne);
+  DefEigenProperty(pyindata, "bootstrap_te", &VmecINDATA::bootstrap_te);
+  DefEigenProperty(pyindata, "bootstrap_ti", &VmecINDATA::bootstrap_ti);
+
+  // free-boundary parameters
+  pyindata.def_readwrite("lfreeb", &VmecINDATA::lfreeb)
       .def_readwrite("mgrid_file", &VmecINDATA::mgrid_file);
   DefEigenProperty(pyindata, "extcur", &VmecINDATA::extcur);
   pyindata.def_readwrite("nvacskip", &VmecINDATA::nvacskip)

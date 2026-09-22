@@ -9,6 +9,8 @@ A few cases are available for testing VMEC++ and experimenting with it:
 
 1. `input.nfp4_QH_warm_start` - quasi-helical example for use with SIMSOPT
 
+1. `cth_like_bootstrap.json` - the CTH-like case with the bootstrap current closed inside the solve (`bootstrap_current`), the enclosed current following the Redl closure of the kinetic profiles `bootstrap_ne`, `bootstrap_te` and `bootstrap_ti`
+
 1. `solovev` - axisymmetric Tokamak case, similar to the Solov'ev equilibrium used in the [1983 Hirshman & Whitson article](https://doi.org/10.1063/1.864116)
     1. `input.solovev` - Fortran namelist input file for use with Fortran VMEC
     1. `solovev.json` - JSON input file for VMEC++, derived from `input.solovev` using [`indata2json`](https://github.com/jonathanschilling/indata2json)

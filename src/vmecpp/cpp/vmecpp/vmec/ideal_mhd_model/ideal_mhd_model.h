@@ -21,6 +21,7 @@
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/free_boundary/free_boundary_base/free_boundary_base.h"
+#include "vmecpp/vmec/bootstrap_current/bootstrap_current.h"
 #include "vmecpp/vmec/boundaries/boundaries.h"
 #include "vmecpp/vmec/fourier_forces/fourier_forces.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
@@ -67,6 +68,9 @@ class IdealMhdModel {
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
                      bool lforbal);
+
+  // Enables the bootstrap closure with its kinetic profiles.
+  void setBootstrapCurrent(bool enabled, const BootstrapProfiles& profiles);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -302,6 +306,11 @@ class IdealMhdModel {
   // They don't change so much during iterations, so one can get away with
   // computing them only ever so often (as of now: every 25 iterations).
   bool shouldUpdateRadialPreconditioner(int iter1, int iter2) const;
+
+  // Replaces currH by the relaxed bootstrap current of the present field and
+  // leaves the change in iota the closure still asks for in
+  // m_h_.bootstrap_mismatch. All threads call it together.
+  void updateBootstrapCurrent();
 
   // Computes the radial preconditioner matrix elements for R and Z.
   void updateRadialPreconditioner();
@@ -616,6 +625,10 @@ class IdealMhdModel {
   // from INDATA: flag to select between constrained-iota and
   // constrained-toroidal-current
   int ncurr;
+
+  // from INDATA: replace currH by the bootstrap current of the Redl closure
+  bool bootstrap_enabled_ = false;
+  BootstrapProfiles bootstrap_profiles_;
 
   // from INDATA: adiabatic index == gamma
   double adiabaticIndex;

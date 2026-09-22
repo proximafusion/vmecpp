@@ -1,3 +1,4 @@
+add_subdirectory(bootstrap_current)
 add_subdirectory(boundaries)
 add_subdirectory(fourier_coefficients)
 add_subdirectory(fourier_forces)

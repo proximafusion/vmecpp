@@ -390,6 +390,43 @@ class VmecInput(BaseModelWithNumpy):
     bloat: float = 1.0
     """Bloating factor (for constrained toroidal current)"""
 
+    bootstrap_current: bool = False
+    """Replace the enclosed toroidal current profile by the bootstrap current of the
+    Redl closure during the iteration.
+
+    Needs ``ncurr = 1``. The kinetic profiles ``bootstrap_ne``, ``bootstrap_te`` and
+    ``bootstrap_ti`` then set the pressure ``p = e (n_e T_e + n_i T_i)`` in place of
+    ``am`` and ``pres_scale``, and ``ac`` with ``curtor`` only seed the enclosed
+    current. The run is converged once the force residuals are below ``ftol`` and
+    the closure asks for no change in iota above ``bootstrap_tolerance``.
+    """
+
+    bootstrap_ne: jt.Float[np.ndarray, "bootstrap_ne_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Electron density in 1e20 m^-3, power series in the normalized toroidal flux."""
+
+    bootstrap_te: jt.Float[np.ndarray, "bootstrap_te_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Electron temperature in keV, power series in the normalized toroidal flux."""
+
+    bootstrap_ti: jt.Float[np.ndarray, "bootstrap_ti_len"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Ion temperature in keV, power series in the normalized toroidal flux."""
+
+    bootstrap_zeff: float = 1.0
+    """Effective ion charge; the ion density is ``n_e / zeff``."""
+
+    bootstrap_helicity_n: int = 0
+    """Helicity of the quasi-symmetry the Redl closure assumes: 0 for
+    quasi-axisymmetry, otherwise the toroidal mode number of |B| in units of nfp."""
+
+    bootstrap_tolerance: float = 1.0e-3
+    """Largest change in iota the bootstrap closure may still ask for when the run is
+    declared converged."""
+
     lfreeb: bool = False
     """Flag to indicate free-boundary.
 

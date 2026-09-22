@@ -32,6 +32,7 @@
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/free_boundary/nestor/nestor.h"
 #include "vmecpp/free_boundary/only_coils/only_coils.h"
+#include "vmecpp/vmec/bootstrap_current/bootstrap_current.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 
@@ -638,6 +639,13 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     physical_f_.resize(num_threads_);
     decomposed_v_.resize(num_threads_);
 
+    BootstrapProfiles bootstrap_profiles;
+    bootstrap_profiles.ne = indata_.bootstrap_ne;
+    bootstrap_profiles.te = indata_.bootstrap_te;
+    bootstrap_profiles.ti = indata_.bootstrap_ti;
+    bootstrap_profiles.zeff = indata_.bootstrap_zeff;
+    bootstrap_profiles.helicity_n = indata_.bootstrap_helicity_n;
+
     // single-threaded creation of objects used in parallel threads
     for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
       r_[thread_id] = std::make_unique<RadialPartitioning>();
@@ -670,6 +678,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
           &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
                                    indata_.lforbal);
+      m_[thread_id]->setBootstrapCurrent(indata_.bootstrap_current,
+                                         bootstrap_profiles);
     }  // thread_id
 
     absl::Status current_profile_status =
@@ -723,6 +733,15 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     // COMPUTE INITIAL R, Z AND MAGNETIC FLUX PROFILES
     for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
       p_[thread_id]->evalRadialProfiles(fc_.haveToFlipTheta, constants_);
+    }
+
+    if (indata_.bootstrap_current && h_.bootstrap_history_s.size() > 0) {
+      // continue from the enclosed current the closure reached on the previous
+      // multigrid step
+      for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+        p_[thread_id]->OverrideEnclosedCurrent(h_.bootstrap_history_s,
+                                               h_.bootstrap_history_buco);
+      }
     }
 
     // Now that all contributions to lamscale have been accumulated in
@@ -1380,8 +1399,11 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
       // first iteration and Jacobian was not computed correctly
       status_ = VmecStatus::BAD_JACOBIAN;
     } else if (fc_.fsqr <= fc_.ftolv && fc_.fsqz <= fc_.ftolv &&
-               fc_.fsql <= fc_.ftolv) {
-      // converged to desired tolerance
+               fc_.fsql <= fc_.ftolv &&
+               (!indata_.bootstrap_current ||
+                h_.bootstrap_mismatch <= indata_.bootstrap_tolerance)) {
+      // converged to desired tolerance, and with the bootstrap closure also
+      // to a self-consistent enclosed current
 
       m_liter_flag = false;
       status_ = VmecStatus::SUCCESSFUL_TERMINATION;

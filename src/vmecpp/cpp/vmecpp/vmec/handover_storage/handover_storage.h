@@ -7,6 +7,7 @@
 
 #include <Eigen/Dense>
 #include <cstddef>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -211,6 +212,26 @@ class HandoverStorage {
 
   // First error from the nested vacuum team; reset to OK before each solve.
   absl::Status vacuum_status = absl::OkStatus();
+
+  // Bootstrap closure, one entry per half surface of the current multigrid
+  // step: every thread fills its own surfaces, one thread integrates.
+  Eigen::VectorXd bootstrap_j_dot_b;
+  Eigen::VectorXd bootstrap_g;
+  Eigen::VectorXd bootstrap_dvds;
+  Eigen::VectorXd bootstrap_buco;
+  Eigen::VectorXd bootstrap_iota_per_current;
+  Eigen::VectorXd bootstrap_target;
+
+  // Change in iota the last closure evaluation still asked for; infinite until
+  // the closure has been evaluated on the current multigrid step.
+  double bootstrap_mismatch = std::numeric_limits<double>::infinity();
+  int bootstrap_updates = 0;
+  int bootstrap_skipped = 0;
+
+  // Last target profile with its half-grid positions, carried into the next
+  // multigrid step; empty until the first update.
+  Eigen::VectorXd bootstrap_history_s;
+  Eigen::VectorXd bootstrap_history_buco;
 
  private:
   const Sizes& s_;

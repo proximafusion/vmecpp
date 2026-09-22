@@ -192,6 +192,23 @@ static constexpr int kJacobianIterationThreshold = 75;
  */
 static constexpr int kPreconditionerUpdateInterval = 25;
 
+// ========== Bootstrap Current Closure Constants ==========
+
+/**
+ * Relaxation of the enclosed-current update from the bootstrap closure,
+ * currH <- currH + kBootstrapRelaxation (I_bs - currH) at each update.
+ * Context: 0.5 keeps the fixed-point iteration contracting for any fraction
+ * of the rotational transform the bootstrap current provides.
+ */
+static constexpr double kBootstrapRelaxation = 0.5;
+
+/**
+ * Smallest |\iota - N| at which the Redl closure is evaluated.
+ * Context: the closure scales with 1 / (\iota - N); an update is skipped
+ * while any surface is closer to that resonance.
+ */
+static constexpr double kBootstrapIotaFloor = 1.0e-3;
+
 // ========== Array Size Constants ==========
 
 /**

@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "bootstrap_current",
+    srcs = ["bootstrap_current.cc"],
+    hdrs = ["bootstrap_current.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@eigen",
+        "//vmecpp/vmec/vmec_constants",
+    ],
+)
+
+cc_test(
+    name = "bootstrap_current_test",
+    srcs = ["bootstrap_current_test.cc"],
+    deps = [
+        ":bootstrap_current",
+        "@eigen",
+        "@googletest//:gtest_main",
+    ],
+)

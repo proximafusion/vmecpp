@@ -14,6 +14,7 @@
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/vmec/bootstrap_current/bootstrap_current.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
@@ -54,6 +55,12 @@ class RadialProfiles {
   // its value at the boundary, so a profile that encloses no net current there
   // while carrying current inside cannot be imposed.
   absl::Status CheckCurrentProfileEnclosesEdgeCurrent();
+
+  // Replaces the enclosed toroidal current on this thread's half grid by the
+  // linear interpolation of the profile buco given at the positions s, which
+  // is how the bootstrap closure carries its current across multigrid steps.
+  void OverrideEnclosedCurrent(const Eigen::VectorXd& s,
+                               const Eigen::VectorXd& buco);
 
   // Evaluate the radial profile function specified by the given
   // parameterization, which can be either an analytical function (in which case
@@ -145,6 +152,10 @@ class RadialProfiles {
   double maxPoloidalFlux;
 
   double pressureScalingFactor;
+
+  // kinetic profiles of the bootstrap closure; they set the mass profile when
+  // bootstrap_current is on
+  BootstrapProfiles bootstrap_profiles;
 
   /** sm[j] = sqrt(s_{j-1/2}) / sqrt(s_j) for all force-j (numFull) */
   Eigen::VectorXd sm;

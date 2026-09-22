@@ -12,6 +12,7 @@ cc_library(
         "//vmecpp/common/sizes",
         "//vmecpp/common/vmec_indata",
         "//vmecpp/common/makegrid_lib",
+        "//vmecpp/vmec/bootstrap_current",
         "//vmecpp/vmec/boundaries",
         "//vmecpp/vmec/iteration_logger",
         "//vmecpp/vmec/vmec_constants",

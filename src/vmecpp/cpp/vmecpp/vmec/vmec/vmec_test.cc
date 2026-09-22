@@ -1026,3 +1026,130 @@ TEST(TestVmec, ZeroMaximumMultiGridStepIsRejected) {
   ASSERT_FALSE(reached.ok());
   EXPECT_EQ(reached.status().code(), absl::StatusCode::kInvalidArgument);
 }  // ZeroMaximumMultiGridStepIsRejected
+
+// The bootstrap closure converges to one enclosed current whatever current
+// seeds it and, for a quasi-axisymmetric field, raises |iota| above the
+// zero-current equilibrium of the same pressure. The converged wout also
+// satisfies the identity the closure integrates,
+// mu0 <J.B> = signgs (G I' - I G') / V'. The force tolerance is tightened
+// because the edge iota of this case is not converged at the 1e-6 of the file.
+TEST(TestVmec, BootstrapClosureConvergesAndRaisesIota) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+
+  // n_e = 0.02 (1 - 0.8 s) 1e20 m^-3 and T_e = T_i = 0.65 (1 - 0.8 s) keV give
+  // p = p0 (1 - 0.8 s)^2 with p0 = 417 Pa, close to the 432 Pa of the file.
+  constexpr double kElementaryCharge = 1.602176634e-19;
+  const double p0 = kElementaryCharge * 2.0e18 * 1300.0;
+  VmecINDATA zero_current = *maybe_indata;
+  zero_current.ftol_array.resize(1);
+  zero_current.ftol_array << 1.0e-10;
+  zero_current.curtor = 0.0;
+  zero_current.pmass_type = "power_series";
+  zero_current.am.resize(3);
+  zero_current.am << p0, -1.6 * p0, 0.64 * p0;
+  zero_current.pres_scale = 1.0;
+
+  VmecINDATA bootstrap = zero_current;
+  bootstrap.am.resize(0);
+  bootstrap.bootstrap_current = true;
+  bootstrap.bootstrap_ne.resize(2);
+  bootstrap.bootstrap_ne << 0.02, -0.016;
+  bootstrap.bootstrap_te.resize(2);
+  bootstrap.bootstrap_te << 0.65, -0.52;
+  bootstrap.bootstrap_ti = bootstrap.bootstrap_te;
+  bootstrap.bootstrap_tolerance = 1.0e-3;
+
+  const auto zero_output = vmecpp::run(zero_current);
+  ASSERT_TRUE(zero_output.ok()) << zero_output.status();
+
+  Vmec vmec(bootstrap);
+  const absl::StatusOr<bool> status = vmec.run();
+  ASSERT_TRUE(status.ok()) << status.status();
+  EXPECT_GT(vmec.bootstrap_updates(), 0);
+  EXPECT_LE(vmec.bootstrap_mismatch(), bootstrap.bootstrap_tolerance);
+
+  const auto& w0 = zero_output->wout;
+  const auto& wb = vmec.output_quantities_.wout;
+  const int ns = wb.ns;
+  ASSERT_EQ(w0.ns, ns);
+  std::cout << "bootstrap closure: " << vmec.bootstrap_updates()
+            << " updates, mismatch " << vmec.bootstrap_mismatch() << ", ctor "
+            << wb.ctor << " A, iota edge " << w0.iotaf[ns - 1] << " -> "
+            << wb.iotaf[ns - 1] << ", iota mid " << w0.iotaf[ns / 2] << " -> "
+            << wb.iotaf[ns / 2] << "\n";
+
+  EXPECT_NE(wb.ctor, 0.0);
+  for (int jF = ns / 4; jF < ns; ++jF) {
+    EXPECT_GT(std::abs(wb.iotaf[jF]), std::abs(w0.iotaf[jF])) << jF;
+  }
+  EXPECT_GT(std::abs(wb.iotaf[ns - 1]) - std::abs(w0.iotaf[ns - 1]), 5.0e-2);
+
+  // the same equilibrium from a different seed current with the two_power
+  // shape of the file
+  VmecINDATA seeded = bootstrap;
+  seeded.curtor = 3000.0;
+  const auto seeded_output = vmecpp::run(seeded);
+  ASSERT_TRUE(seeded_output.ok()) << seeded_output.status();
+  const auto& ws = seeded_output->wout;
+  std::cout << "seeded closure: ctor " << ws.ctor << " A, iota edge "
+            << ws.iotaf[ns - 1] << "\n";
+  EXPECT_NEAR(ws.ctor, wb.ctor, 0.01 * std::abs(wb.ctor));
+  for (int jF = 0; jF < ns; ++jF) {
+    EXPECT_NEAR(ws.iotaf[jF], wb.iotaf[jF], 2.0e-3) << jF;
+  }
+
+  // mu0 <J.B> = signgs (G I' - I G') / V' on the interior full grid, with the
+  // half-grid neighbors of each full-grid point averaged and differenced
+  constexpr double kMu0 = 4.0e-7 * M_PI;
+  double max_lhs = 0.0;
+  double max_error = 0.0;
+  for (int jF = 2; jF < ns - 2; ++jF) {
+    const double g_f = 0.5 * (wb.bvco[jF] + wb.bvco[jF + 1]);
+    const double i_f = 0.5 * (wb.buco[jF] + wb.buco[jF + 1]);
+    const double dg = (wb.bvco[jF + 1] - wb.bvco[jF]) * (ns - 1);
+    const double di = (wb.buco[jF + 1] - wb.buco[jF]) * (ns - 1);
+    const double vp_f = 0.5 * (wb.vp[jF] + wb.vp[jF + 1]);
+    const double rhs = wb.signgs * (g_f * di - i_f * dg) / (kMu0 * vp_f);
+    const double lhs = wb.jdotb[jF];
+    max_lhs = std::max(max_lhs, std::abs(lhs));
+    max_error = std::max(max_error, std::abs(lhs - rhs));
+  }
+  std::cout << "parallel current identity: max |<J.B>| " << max_lhs
+            << ", max deviation " << max_error << "\n";
+  EXPECT_LT(max_error, 0.1 * max_lhs);
+}
+
+TEST(TestVmec, BootstrapClosureInputIsValidated) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  json base = json::parse(*indata_json);
+  base["bootstrap_current"] = true;
+  base["bootstrap_ne"] = {0.02, -0.016};
+  base["bootstrap_te"] = {0.65, -0.52};
+  base["bootstrap_ti"] = {0.65, -0.52};
+  base["am"] = json::array();
+  base["pmass_type"] = "power_series";
+  EXPECT_TRUE(VmecINDATA::FromJson(base.dump()).ok());
+
+  json with_am = base;
+  with_am["am"] = {1.0, 5.0, 10.0};
+  with_am["pmass_type"] = "two_power";
+  EXPECT_FALSE(VmecINDATA::FromJson(with_am.dump()).ok());
+
+  json constrained_iota = base;
+  constrained_iota["ncurr"] = 0;
+  EXPECT_FALSE(VmecINDATA::FromJson(constrained_iota.dump()).ok());
+
+  json no_ion_temperature = base;
+  no_ion_temperature["bootstrap_ti"] = json::array();
+  EXPECT_FALSE(VmecINDATA::FromJson(no_ion_temperature.dump()).ok());
+
+  json negative_edge_temperature = base;
+  negative_edge_temperature["bootstrap_te"] = {0.65, -0.7};
+  EXPECT_FALSE(VmecINDATA::FromJson(negative_edge_temperature.dump()).ok());
+}

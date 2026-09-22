@@ -213,6 +213,13 @@ VmecINDATA::VmecINDATA() {
   curtor = 0.0;
   bloat = 1.0;
 
+  // self-consistent bootstrap current
+  bootstrap_current = false;
+  // bootstrap_ne, bootstrap_te and bootstrap_ti left empty
+  bootstrap_zeff = 1.0;
+  bootstrap_helicity_n = 0;
+  bootstrap_tolerance = 1.0e-3;
+
   // free-boundary parameters
   lfreeb = false;
   mgrid_file = "NONE";  // default from Fortran VMEC via indata2json
@@ -340,6 +347,13 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(pcurr_type, "/indata/pcurr_type", file);
   WriteH5Dataset(curtor, "/indata/curtor", file);
   WriteH5Dataset(bloat, "/indata/bloat", file);
+  WriteH5Dataset(bootstrap_current, "/indata/bootstrap_current", file);
+  WriteH5Dataset(bootstrap_ne, "/indata/bootstrap_ne", file);
+  WriteH5Dataset(bootstrap_te, "/indata/bootstrap_te", file);
+  WriteH5Dataset(bootstrap_ti, "/indata/bootstrap_ti", file);
+  WriteH5Dataset(bootstrap_zeff, "/indata/bootstrap_zeff", file);
+  WriteH5Dataset(bootstrap_helicity_n, "/indata/bootstrap_helicity_n", file);
+  WriteH5Dataset(bootstrap_tolerance, "/indata/bootstrap_tolerance", file);
   WriteH5Dataset(lfreeb, "/indata/lfreeb", file);
   WriteH5Dataset(mgrid_file, "/indata/mgrid_file", file);
   WriteH5Dataset(nvacskip, "/indata/nvacskip", file);
@@ -422,6 +436,18 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.pcurr_type, "/indata/pcurr_type", from_file);
   ReadH5Dataset(m_indata.curtor, "/indata/curtor", from_file);
   ReadH5Dataset(m_indata.bloat, "/indata/bloat", from_file);
+  if (H5Lexists(from_file.getId(), "/indata/bootstrap_current", 0) == 1) {
+    ReadH5Dataset(m_indata.bootstrap_current, "/indata/bootstrap_current",
+                  from_file);
+    ReadH5Dataset(m_indata.bootstrap_ne, "/indata/bootstrap_ne", from_file);
+    ReadH5Dataset(m_indata.bootstrap_te, "/indata/bootstrap_te", from_file);
+    ReadH5Dataset(m_indata.bootstrap_ti, "/indata/bootstrap_ti", from_file);
+    ReadH5Dataset(m_indata.bootstrap_zeff, "/indata/bootstrap_zeff", from_file);
+    ReadH5Dataset(m_indata.bootstrap_helicity_n, "/indata/bootstrap_helicity_n",
+                  from_file);
+    ReadH5Dataset(m_indata.bootstrap_tolerance, "/indata/bootstrap_tolerance",
+                  from_file);
+  }
   ReadH5Dataset(m_indata.lfreeb, "/indata/lfreeb", from_file);
   ReadH5Dataset(m_indata.mgrid_file, "/indata/mgrid_file", from_file);
   ReadH5Dataset(m_indata.nvacskip, "/indata/nvacskip", from_file);
@@ -845,6 +871,62 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.bloat = maybe_bloat->value();
   }
 
+  auto maybe_bootstrap_current = JsonReadBool(j, "bootstrap_current");
+  if (!maybe_bootstrap_current.ok()) {
+    return maybe_bootstrap_current.status();
+  }
+  if (maybe_bootstrap_current->has_value()) {
+    vmec_indata.bootstrap_current = maybe_bootstrap_current->value();
+  }
+
+  auto maybe_bootstrap_ne = JsonReadVectorDouble(j, "bootstrap_ne");
+  if (!maybe_bootstrap_ne.ok()) {
+    return maybe_bootstrap_ne.status();
+  }
+  if (maybe_bootstrap_ne->has_value()) {
+    vmec_indata.bootstrap_ne = maybe_bootstrap_ne->value();
+  }
+
+  auto maybe_bootstrap_te = JsonReadVectorDouble(j, "bootstrap_te");
+  if (!maybe_bootstrap_te.ok()) {
+    return maybe_bootstrap_te.status();
+  }
+  if (maybe_bootstrap_te->has_value()) {
+    vmec_indata.bootstrap_te = maybe_bootstrap_te->value();
+  }
+
+  auto maybe_bootstrap_ti = JsonReadVectorDouble(j, "bootstrap_ti");
+  if (!maybe_bootstrap_ti.ok()) {
+    return maybe_bootstrap_ti.status();
+  }
+  if (maybe_bootstrap_ti->has_value()) {
+    vmec_indata.bootstrap_ti = maybe_bootstrap_ti->value();
+  }
+
+  auto maybe_bootstrap_zeff = JsonReadDouble(j, "bootstrap_zeff");
+  if (!maybe_bootstrap_zeff.ok()) {
+    return maybe_bootstrap_zeff.status();
+  }
+  if (maybe_bootstrap_zeff->has_value()) {
+    vmec_indata.bootstrap_zeff = maybe_bootstrap_zeff->value();
+  }
+
+  auto maybe_bootstrap_helicity_n = JsonReadInt(j, "bootstrap_helicity_n");
+  if (!maybe_bootstrap_helicity_n.ok()) {
+    return maybe_bootstrap_helicity_n.status();
+  }
+  if (maybe_bootstrap_helicity_n->has_value()) {
+    vmec_indata.bootstrap_helicity_n = maybe_bootstrap_helicity_n->value();
+  }
+
+  auto maybe_bootstrap_tolerance = JsonReadDouble(j, "bootstrap_tolerance");
+  if (!maybe_bootstrap_tolerance.ok()) {
+    return maybe_bootstrap_tolerance.status();
+  }
+  if (maybe_bootstrap_tolerance->has_value()) {
+    vmec_indata.bootstrap_tolerance = maybe_bootstrap_tolerance->value();
+  }
+
   // -----------------------------------------------
 
   auto maybe_lfreeb = JsonReadBool(j, "lfreeb");
@@ -1253,6 +1335,15 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["curtor"] = curtor;
   output["bloat"] = bloat;
 
+  // Self-Consistent Bootstrap Current
+  output["bootstrap_current"] = bootstrap_current;
+  output["bootstrap_ne"] = bootstrap_ne;
+  output["bootstrap_te"] = bootstrap_te;
+  output["bootstrap_ti"] = bootstrap_ti;
+  output["bootstrap_zeff"] = bootstrap_zeff;
+  output["bootstrap_helicity_n"] = bootstrap_helicity_n;
+  output["bootstrap_tolerance"] = bootstrap_tolerance;
+
   // Free-Boundary Parameters
   output["lfreeb"] = lfreeb;
   output["mgrid_file"] = mgrid_file;
@@ -1521,6 +1612,78 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     }
   }
   // ncurr == 1: curtor and bloat may take any value.
+
+  if (vmec_indata.bootstrap_current) {
+    if (vmec_indata.ncurr != 1) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "'bootstrap_current' prescribes the enclosed toroidal current and "
+          "needs ncurr = 1, but ncurr is %d\n",
+          vmec_indata.ncurr));
+    }
+    if (vmec_indata.gamma != 0.0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "'bootstrap_current' prescribes the pressure and needs gamma = 0, "
+          "but gamma is %g\n",
+          vmec_indata.gamma));
+    }
+    if (vmec_indata.bloat != 1.0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "'bootstrap_current' needs bloat = 1, but bloat is %g\n",
+          vmec_indata.bloat));
+    }
+    if (vmec_indata.am.size() > 0) {
+      return absl::InvalidArgumentError(
+          "with 'bootstrap_current' the pressure is e (n_e T_e + n_i T_i) "
+          "from bootstrap_ne, bootstrap_te and bootstrap_ti; leave am empty\n");
+    }
+    if (vmec_indata.bootstrap_zeff < 1.0) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("'bootstrap_zeff' has to be at least 1, but is %g\n",
+                          vmec_indata.bootstrap_zeff));
+    }
+    if (!(vmec_indata.bootstrap_tolerance > 0.0)) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "'bootstrap_tolerance' has to be positive, but is %g\n",
+          vmec_indata.bootstrap_tolerance));
+    }
+    const auto check_kinetic_profile =
+        [](const std::string& name,
+           const Eigen::VectorXd& coefficients) -> absl::Status {
+      if (coefficients.size() == 0) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "'%s' must be given with 'bootstrap_current'\n", name));
+      }
+      static constexpr int kSamples = 100;
+      for (int i = 0; i <= kSamples; ++i) {
+        const double x = static_cast<double>(i) / kSamples;
+        double value = 0.0;
+        for (Eigen::Index k = coefficients.size() - 1; k >= 0; --k) {
+          value = value * x + coefficients[k];
+        }
+        if (!(value > 0.0)) {
+          return absl::InvalidArgumentError(absl::StrFormat(
+              "'%s' has to be positive on [0, 1], but is %g at %g\n", name,
+              value, x));
+        }
+      }
+      return absl::OkStatus();
+    };
+    if (absl::Status status =
+            check_kinetic_profile("bootstrap_ne", vmec_indata.bootstrap_ne);
+        !status.ok()) {
+      return status;
+    }
+    if (absl::Status status =
+            check_kinetic_profile("bootstrap_te", vmec_indata.bootstrap_te);
+        !status.ok()) {
+      return status;
+    }
+    if (absl::Status status =
+            check_kinetic_profile("bootstrap_ti", vmec_indata.bootstrap_ti);
+        !status.ok()) {
+      return status;
+    }
+  }
 
   /* --------------------------------- */
 

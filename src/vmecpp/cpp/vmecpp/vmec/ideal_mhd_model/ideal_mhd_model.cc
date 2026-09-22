@@ -14,10 +14,12 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
+#include "vmecpp/vmec/bootstrap_current/bootstrap_current.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
@@ -36,7 +38,10 @@
 #include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
+using vmecpp::vmec_algorithm_constants::kBootstrapIotaFloor;
+using vmecpp::vmec_algorithm_constants::kBootstrapRelaxation;
 using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kForceResidualThreshold;
 using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingMaxPower;
 using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingReferenceM;
 using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerDampingFactor;
@@ -403,6 +408,12 @@ void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
   }
 }
 
+void IdealMhdModel::setBootstrapCurrent(bool enabled,
+                                        const BootstrapProfiles& profiles) {
+  bootstrap_enabled_ = enabled;
+  bootstrap_profiles_ = profiles;
+}
+
 void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 #ifdef _OPENMP
 #pragma omp single
@@ -625,6 +636,16 @@ absl::StatusOr<bool> IdealMhdModel::update(
     if (checkpoint == VmecCheckpoint::UPDATE_TCON &&
         iter2 >= iterations_before_checkpointing) {
       return true;
+    }
+
+    // The closure follows the preconditioner cadence once the field has
+    // settled: not on the first update after a restart, and only below
+    // kForceResidualThreshold.
+    if (bootstrap_enabled_ &&
+        iter2 - iter1 >= m_fc_.kPreconditionerUpdateInterval &&
+        std::max({m_fc_.fsqr, m_fc_.fsqz, m_fc_.fsql}) <=
+            kForceResidualThreshold) {
+      updateBootstrapCurrent();
     }
   }  // update radial preconditioner?
 
@@ -2098,6 +2119,112 @@ void IdealMhdModel::computeMHDForces() {
 bool IdealMhdModel::shouldUpdateRadialPreconditioner(int iter1,
                                                      int iter2) const {
   return ((iter2 - iter1) % m_fc_.kPreconditionerUpdateInterval == 0);
+}
+
+void IdealMhdModel::updateBootstrapCurrent() {
+  const int helicity_big_n = bootstrap_profiles_.helicity_n * s_.nfp;
+  // psi_edge in the conventions of the wout file, -phi_edge / (2 pi)
+  const double psi_edge =
+      -signOfJacobian * m_p_.maxToroidalFlux * m_p_.torflux(1.0);
+
+  Eigen::VectorXd b(s_.nZnT);
+  Eigen::VectorXd w(s_.nZnT);
+  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+    // unique half-grid points only; neighboring threads share one
+    if (!(jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2)) {
+      continue;
+    }
+    const int jl = jH - r_.nsMinH;
+    double avg_guu_gsqrt = 0.0;
+    for (int kl = 0; kl < s_.nZnT; ++kl) {
+      const int iHalf = jl * s_.nZnT + kl;
+      const int l = kl % s_.nThetaEff;
+      b[kl] =
+          std::sqrt(bsupu[iHalf] * bsubu[iHalf] + bsupv[iHalf] * bsubv[iHalf]);
+      w[kl] = gsqrt[iHalf] * s_.wInt[l];
+      avg_guu_gsqrt += guu[iHalf] / gsqrt[iHalf] * s_.wInt[l];
+    }
+    const std::span<const double> b_span(b.data(), b.size());
+    const std::span<const double> w_span(w.data(), w.size());
+
+    BootstrapSurface surface;
+    surface.g = m_p_.bvcoH[jl];
+    surface.i = m_p_.bucoH[jl];
+    surface.iota = m_p_.iotaH[jl];
+    SurfaceFieldMoments(b_span, w_span, surface.b_max, surface.b_min,
+                        surface.b2_avg, surface.b_inv_avg);
+    surface.f_t = TrappedFraction(b_span, w_span);
+
+    const double s_half = (jH + 0.5) * m_fc_.deltaS;
+    const double rho = std::min(m_p_.torflux(s_half), 1.0);
+    if (std::abs(surface.iota - helicity_big_n) < kBootstrapIotaFloor) {
+      // the closure is singular at iota = N; the update is skipped below
+      m_h_.bootstrap_j_dot_b[jH] = std::numeric_limits<double>::quiet_NaN();
+    } else {
+      m_h_.bootstrap_j_dot_b[jH] =
+          RedlJDotB(bootstrap_profiles_, surface, rho, psi_edge, s_.nfp);
+    }
+    m_h_.bootstrap_g[jH] = surface.g;
+    m_h_.bootstrap_dvds[jH] = m_p_.dVdsH[jl];
+    m_h_.bootstrap_buco[jH] = m_p_.currH[jl];
+
+    // d iota / d currH from chipH = (currH - jvPlasma) / <guu / sqrt(g)>
+    const double phip = m_p_.phipH[jl];
+    m_h_.bootstrap_iota_per_current[jH] =
+        (phip != 0.0 && avg_guu_gsqrt != 0.0)
+            ? 1.0 / std::abs(phip * avg_guu_gsqrt)
+            : 0.0;
+  }  // jH
+
+#ifdef _OPENMP
+#pragma omp barrier
+#pragma omp single
+#endif  // _OPENMP
+  {
+    const int num_half = m_fc_.ns - 1;
+    bool singular = false;
+    for (int jH = 0; jH < num_half; ++jH) {
+      if (std::isnan(m_h_.bootstrap_j_dot_b[jH])) {
+        singular = true;
+      }
+    }
+    if (singular) {
+      m_h_.bootstrap_skipped += 1;
+      m_h_.bootstrap_mismatch = std::numeric_limits<double>::infinity();
+      m_h_.bootstrap_target = m_h_.bootstrap_buco;
+      LOG(WARNING) << "bootstrap closure not evaluated: a flux surface has "
+                      "|iota - N| below "
+                   << kBootstrapIotaFloor;
+    } else {
+      Eigen::VectorXd integrated(num_half);
+      IntegrateBootstrapCurrent(
+          std::span<const double>(m_h_.bootstrap_j_dot_b.data(), num_half),
+          std::span<const double>(m_h_.bootstrap_g.data(), num_half),
+          std::span<const double>(m_h_.bootstrap_dvds.data(), num_half),
+          m_fc_.deltaS, signOfJacobian,
+          std::span<double>(integrated.data(), num_half));
+      double mismatch = 0.0;
+      for (int jH = 0; jH < num_half; ++jH) {
+        const double delta = integrated[jH] - m_h_.bootstrap_buco[jH];
+        mismatch = std::max(
+            mismatch, std::abs(delta) * m_h_.bootstrap_iota_per_current[jH]);
+        m_h_.bootstrap_target[jH] =
+            m_h_.bootstrap_buco[jH] + kBootstrapRelaxation * delta;
+      }
+      m_h_.bootstrap_mismatch = mismatch;
+      m_h_.bootstrap_updates += 1;
+
+      m_h_.bootstrap_history_s.resize(num_half);
+      for (int jH = 0; jH < num_half; ++jH) {
+        m_h_.bootstrap_history_s[jH] = (jH + 0.5) * m_fc_.deltaS;
+      }
+      m_h_.bootstrap_history_buco = m_h_.bootstrap_target;
+    }
+  }  // omp single, with its implicit barrier
+
+  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+    m_p_.currH[jH - r_.nsMinH] = m_h_.bootstrap_target[jH];
+  }
 }
 
 void IdealMhdModel::updateRadialPreconditioner() {

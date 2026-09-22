@@ -70,6 +70,17 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     thread_reduce_slots.resize(num_threads_, 3);
     thread_reduce_slots.setZero();
 
+    // bootstrap closure, one entry per half surface
+    bootstrap_j_dot_b.setZero(ns - 1);
+    bootstrap_g.setZero(ns - 1);
+    bootstrap_dvds.setZero(ns - 1);
+    bootstrap_buco.setZero(ns - 1);
+    bootstrap_iota_per_current.setZero(ns - 1);
+    bootstrap_target.setZero(ns - 1);
+    bootstrap_mismatch = std::numeric_limits<double>::infinity();
+    bootstrap_updates = 0;
+    bootstrap_skipped = 0;
+
     rmncc_i.resize(num_threads_, mnsize);
     rmncc_i.setZero();
     zmnsc_i.resize(num_threads_, mnsize);

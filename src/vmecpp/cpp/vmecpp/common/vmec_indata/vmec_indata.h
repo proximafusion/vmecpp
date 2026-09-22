@@ -177,6 +177,38 @@ class VmecINDATA {
   double bloat;
 
   // ---------------------------------
+  // self-consistent bootstrap current
+
+  // replace the enclosed toroidal current profile by the bootstrap current of
+  // the Redl closure during the iteration; needs ncurr = 1, and the kinetic
+  // profiles below then also set the pressure p = e (n_e T_e + n_i T_i) in
+  // place of am and pres_scale, while ac and curtor only seed the current
+  bool bootstrap_current;
+
+  // [bootstrap_neLen] electron density in 1e20 m^-3, power series in the
+  // normalized toroidal flux
+  Eigen::VectorXd bootstrap_ne;
+
+  // [bootstrap_teLen] electron temperature in keV, power series in the
+  // normalized toroidal flux
+  Eigen::VectorXd bootstrap_te;
+
+  // [bootstrap_tiLen] ion temperature in keV, power series in the normalized
+  // toroidal flux
+  Eigen::VectorXd bootstrap_ti;
+
+  // effective ion charge; the ion density is n_e / zeff
+  double bootstrap_zeff;
+
+  // helicity of the quasi-symmetry the closure assumes: 0 for
+  // quasi-axisymmetry, otherwise the toroidal mode number of |B| in units of
+  // nfp
+  int bootstrap_helicity_n;
+
+  // largest change in iota the closure may still ask for at convergence
+  double bootstrap_tolerance;
+
+  // ---------------------------------
   // free-boundary parameters
 
   // flag to indicate free-boundary
