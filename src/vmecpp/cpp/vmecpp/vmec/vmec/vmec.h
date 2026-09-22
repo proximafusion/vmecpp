@@ -157,12 +157,18 @@ class Vmec {
                        FourierGeometry& m_x, FourierVelocity& m_v,
                        HandoverStorage& m_h) const;
 
+  // Sets m_start to the start of the last time step, x - dt v, where x and v
+  // are the state and the velocity after the step or its shortening.
+  void StartOfTimeStep(const RadialPartitioning& r, const FourierGeometry& x,
+                       const FourierVelocity& v, FourierGeometry& m_start,
+                       HandoverStorage& m_h) const;
+
   // IdealMhdModel::update of thread_id. With jacobian_safe_step, when the state
   // differs from the last evaluated one by one time step and that step would
   // take the Jacobian below kJacobianRetainedFraction of its value somewhere,
-  // the step is shortened to the largest fraction that does not, together with
-  // the backup when that was taken at the end of the step, and the model is
-  // updated again.
+  // the step is shortened to the largest fraction that does not and the model
+  // is updated again. A backup taken at the end of the step is moved to its
+  // start.
   absl::StatusOr<bool> UpdateModel(int thread_id, bool& m_need_restart,
                                    int& m_last_preconditioner_update,
                                    int& m_last_full_update_nestor, int iter1,

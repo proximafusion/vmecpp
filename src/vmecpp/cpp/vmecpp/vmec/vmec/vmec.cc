@@ -1581,48 +1581,81 @@ void Vmec::PerformTimeStep(double fac, double b1, double time_step,
   }
 }
 
-void Vmec::ShortenTimeStep(double fraction, const RadialPartitioning& r,
-                           FourierGeometry& m_x, FourierVelocity& m_v,
-                           HandoverStorage& m_h) const {
-  // x_new = x_old + dt v, so x_old + fraction dt v = x_new - back v
-  const double back = (1.0 - fraction) * last_time_step_;
-  auto shorten = [&](std::span<double> position, std::span<double> velocity,
-                     int idx_mn1, int idx_mn) {
-    position[idx_mn1] -= back * velocity[idx_mn];
-    velocity[idx_mn] *= fraction;
-  };
+namespace {
+
+// Calls apply(position, velocity, idx_mn1, idx_mn) for every coefficient that
+// performTimeStep advances on the surfaces r owns, with the position indexed
+// from nsMinF1 and the velocity from nsMinF.
+template <typename Velocity, typename Apply>
+void ForEachTimeStepCoefficient(const Sizes& s, const RadialPartitioning& r,
+                                FourierGeometry& m_x, Velocity& v,
+                                const Apply& apply) {
   for (int jF = r.nsMinF; jF < r.nsMaxFIncludingLcfs; ++jF) {
-    for (int m = 0; m < s_.mpol; ++m) {
-      for (int n = 0; n < s_.ntor + 1; ++n) {
-        const int idx_mn = ((jF - r.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
-        const int idx_mn1 =
-            ((jF - r.nsMinF1) * s_.mpol + m) * (s_.ntor + 1) + n;
-        shorten(m_x.rmncc, m_v.vrcc, idx_mn1, idx_mn);
-        shorten(m_x.zmnsc, m_v.vzsc, idx_mn1, idx_mn);
-        shorten(m_x.lmnsc, m_v.vlsc, idx_mn1, idx_mn);
-        if (s_.lthreed) {
-          shorten(m_x.rmnss, m_v.vrss, idx_mn1, idx_mn);
-          shorten(m_x.zmncs, m_v.vzcs, idx_mn1, idx_mn);
-          shorten(m_x.lmncs, m_v.vlcs, idx_mn1, idx_mn);
+    for (int m = 0; m < s.mpol; ++m) {
+      for (int n = 0; n < s.ntor + 1; ++n) {
+        const int idx_mn = ((jF - r.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
+        const int idx_mn1 = ((jF - r.nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
+        apply(m_x.rmncc, v.vrcc, idx_mn1, idx_mn);
+        apply(m_x.zmnsc, v.vzsc, idx_mn1, idx_mn);
+        apply(m_x.lmnsc, v.vlsc, idx_mn1, idx_mn);
+        if (s.lthreed) {
+          apply(m_x.rmnss, v.vrss, idx_mn1, idx_mn);
+          apply(m_x.zmncs, v.vzcs, idx_mn1, idx_mn);
+          apply(m_x.lmncs, v.vlcs, idx_mn1, idx_mn);
         }
-        if (s_.lasym) {
-          shorten(m_x.rmnsc, m_v.vrsc, idx_mn1, idx_mn);
-          shorten(m_x.zmncc, m_v.vzcc, idx_mn1, idx_mn);
-          shorten(m_x.lmncc, m_v.vlcc, idx_mn1, idx_mn);
-          if (s_.lthreed) {
-            shorten(m_x.rmncs, m_v.vrcs, idx_mn1, idx_mn);
-            shorten(m_x.zmnss, m_v.vzss, idx_mn1, idx_mn);
-            shorten(m_x.lmnss, m_v.vlss, idx_mn1, idx_mn);
+        if (s.lasym) {
+          apply(m_x.rmnsc, v.vrsc, idx_mn1, idx_mn);
+          apply(m_x.zmncc, v.vzcc, idx_mn1, idx_mn);
+          apply(m_x.lmncc, v.vlcc, idx_mn1, idx_mn);
+          if (s.lthreed) {
+            apply(m_x.rmncs, v.vrcs, idx_mn1, idx_mn);
+            apply(m_x.zmnss, v.vzss, idx_mn1, idx_mn);
+            apply(m_x.lmnss, v.vlss, idx_mn1, idx_mn);
           }
         }
       }  // n
     }  // m
   }  // jF
+}
+
+}  // namespace
+
+void Vmec::ShortenTimeStep(double fraction, const RadialPartitioning& r,
+                           FourierGeometry& m_x, FourierVelocity& m_v,
+                           HandoverStorage& m_h) const {
+  // x_new = x_old + dt v, so x_old + fraction dt v = x_new - back v
+  const double back = (1.0 - fraction) * last_time_step_;
+  ForEachTimeStepCoefficient(
+      s_, r, m_x, m_v,
+      [&](std::span<double> position, std::span<double> velocity, int idx_mn1,
+          int idx_mn) {
+        position[idx_mn1] -= back * velocity[idx_mn];
+        velocity[idx_mn] *= fraction;
+      });
 
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
   exchangeSatelliteSurfaces(fc_, r, m_x, m_h);
+}
+
+void Vmec::StartOfTimeStep(const RadialPartitioning& r,
+                           const FourierGeometry& x, const FourierVelocity& v,
+                           FourierGeometry& m_start,
+                           HandoverStorage& m_h) const {
+  // a time step and its shortening keep x = x_start + dt v
+  m_start = x;
+  ForEachTimeStepCoefficient(
+      s_, r, m_start, v,
+      [&](std::span<double> position, std::span<const double> velocity,
+          int idx_mn1, int idx_mn) {
+        position[idx_mn1] -= last_time_step_ * velocity[idx_mn];
+      });
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  exchangeSatelliteSurfaces(fc_, r, m_start, m_h);
 }
 
 absl::StatusOr<bool> Vmec::UpdateModel(int thread_id, bool& m_need_restart,
@@ -1658,9 +1691,11 @@ absl::StatusOr<bool> Vmec::UpdateModel(int thread_id, bool& m_need_restart,
     ShortenTimeStep(h_.step_fraction, *r_[thread_id], *decomposed_x_[thread_id],
                     *decomposed_v_[thread_id], h_);
     if (shorten_backup) {
-      // the backup was taken at the end of the step, so it would bring the
-      // unshortened step back on the next restart
-      *physical_x_backup_[thread_id] = *decomposed_x_[thread_id];
+      // the backup holds the end of the unshortened step; a restart goes back
+      // to the start of the step, the last evaluated state
+      StartOfTimeStep(*r_[thread_id], *decomposed_x_[thread_id],
+                      *decomposed_v_[thread_id], *physical_x_backup_[thread_id],
+                      h_);
     }
     reached_checkpoint = m_[thread_id]->update(
         *decomposed_x_[thread_id], *physical_x_[thread_id],
