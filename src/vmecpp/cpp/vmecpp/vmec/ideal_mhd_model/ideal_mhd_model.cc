@@ -494,13 +494,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  // Jacobian step limit: stop before the Jacobian test when the last time step
-  // has to be shortened; the caller shortens it and calls update() again.
-  if (check_step && jacobian_safe_step_ && step_reference_valid_ &&
-      jacobianSafeStepFraction() < 1.0) {
-    return false;
-  }
-
   if (iter2 == iter1 &&
       (m_vacuum_pressure_state_ == VacuumPressureState::kOff ||
        m_vacuum_pressure_state_ == VacuumPressureState::kInitializing)) {
@@ -512,6 +505,18 @@ absl::StatusOr<bool> IdealMhdModel::update(
   if (checkpoint == VmecCheckpoint::JACOBIAN &&
       iter2 >= iterations_before_checkpointing) {
     return true;
+  }
+
+  // Jacobian step limit: when the last time step has to be shortened, the
+  // caller shortens it and calls update() again, so the Jacobian test of the
+  // unshortened step does not count.
+  if (check_step && jacobian_safe_step_ && step_reference_valid_ &&
+      jacobianSafeStepFraction() < 1.0) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    m_fc_.restart_reason = RestartReason::NO_RESTART;
+    return false;
   }
 
   if (m_fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
@@ -1665,8 +1670,8 @@ void IdealMhdModel::setJacobianSafeStep(bool enabled) {
     full->setZero(nrzt1);
   }
   for (Eigen::VectorXd* half :
-       {&step_tau_, &step_tau_end_, &step_tau_delta_, &step_r12_, &step_ru12_,
-        &step_zu12_, &step_rs_, &step_zs_}) {
+       {&step_tau_, &step_tau_delta_, &step_r12_, &step_ru12_, &step_zu12_,
+        &step_rs_, &step_zs_}) {
     half->setZero(num_half);
   }
 }
@@ -1685,15 +1690,38 @@ void IdealMhdModel::storeStepReference() {
 }
 
 double IdealMhdModel::jacobianSafeStepFraction() {
-  // tau at the end of the step
-  ComputeHalfGridJacobian(
-      r1_e.data(), r1_o.data(), z1_e.data(), z1_o.data(), ru_e.data(),
-      ru_o.data(), zu_e.data(), zu_o.data(), m_p_.sqrtSH.data(), m_fc_.deltaS,
-      dSHalfDsInterp, s_.nZnT, r_.nsMinF1, r_.nsMinH, r_.nsMaxH,
-      step_r12_.data(), step_ru12_.data(), step_zu12_.data(), step_rs_.data(),
-      step_zs_.data(), step_tau_end_.data());
+  // tau at the end of the step is what computeJacobian just formed; the step
+  // needs shortening only when that falls below the bound somewhere
+  const int n = static_cast<int>(step_tau_.size());
+  double local_violation = 0.0;
+  for (int i = 0; i < n; ++i) {
+    if (step_tau_[i] != 0.0 &&
+        tau[i] / step_tau_[i] < kJacobianRetainedFraction) {
+      local_violation = 1.0;
+      break;
+    }
+  }
+  const int thread_id = r_.get_thread_id();
+  const int width = static_cast<int>(m_h_.thread_reduce_slots.cols());
+  m_h_.thread_reduce_slots.data()[thread_id * width] = local_violation;
+#ifdef _OPENMP
+#pragma omp barrier
+#pragma omp single
+#endif  // _OPENMP
+  {
+    double violation = 0.0;
+    for (int thread = 0; thread < r_.get_num_threads(); ++thread) {
+      violation =
+          std::max(violation, m_h_.thread_reduce_slots.data()[thread * width]);
+    }
+    m_h_.step_fraction = violation > 0.0 ? 0.0 : 1.0;
+  }  // implicit barrier
+  if (m_h_.step_fraction == 1.0) {
+    return 1.0;
+  }
 
-  // tau of the change in the geometry over the step
+  // tau of the change in the geometry over the step, which makes tau along
+  // the step the quadratic of LargestStepFraction
   step_delta_r1_e_ = r1_e - step_r1_e_;
   step_delta_r1_o_ = r1_o - step_r1_o_;
   step_delta_z1_e_ = z1_e - step_z1_e_;
@@ -1710,13 +1738,11 @@ double IdealMhdModel::jacobianSafeStepFraction() {
       step_r12_.data(), step_ru12_.data(), step_zu12_.data(), step_rs_.data(),
       step_zs_.data(), step_tau_delta_.data());
 
-  const double local_fraction = LargestStepFraction(
-      step_tau_.data(), step_tau_end_.data(), step_tau_delta_.data(),
-      static_cast<int>(step_tau_.size()), kJacobianRetainedFraction);
+  const double local_fraction =
+      LargestStepFraction(step_tau_.data(), tau.data(), step_tau_delta_.data(),
+                          n, kJacobianRetainedFraction);
 
   // minimum over threads
-  const int thread_id = r_.get_thread_id();
-  const int width = static_cast<int>(m_h_.thread_reduce_slots.cols());
   m_h_.thread_reduce_slots.data()[thread_id * width] = local_fraction;
 #ifdef _OPENMP
 #pragma omp barrier

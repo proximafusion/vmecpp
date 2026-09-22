@@ -290,20 +290,24 @@ class VmecModel {
   // Restart primitives (decomposed RestartIteration).
   void SaveBackup() const {
     *vmec_->physical_x_backup_[0] = *vmec_->decomposed_x_[0];
+    vmec_->backup_holds_pending_step_ = vmec_->step_check_pending_;
   }
   void RestoreBackup() const {
     vmec_->decomposed_v_[0]->setZero();
     *vmec_->decomposed_x_[0] = *vmec_->physical_x_backup_[0];
     vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
   }
   void ZeroVelocity() const {
     vmec_->decomposed_v_[0]->setZero();
     vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
   }
 
   // Reset to the (possibly re-guessed) initial profile; used on bad Jacobian.
   void ResetToInitialGuess() const {
     vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
     vmec_->decomposed_x_[0]->setZero();
     vmec_->decomposed_x_[0]->interpFromBoundaryAndAxis(vmec_->t_, vmec_->b_,
                                                        *vmec_->p_[0]);
@@ -409,6 +413,7 @@ class VmecModel {
   }
   void SetState(const Eigen::VectorXd &flat) const {
     vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
     exact_primal_valid_ = false;  // primal geometry cache is stale
   }
@@ -586,6 +591,7 @@ class VmecModel {
   Eigen::VectorXd HessianVectorProduct(const Eigen::VectorXd &v,
                                        double eps_rel = 1e-7) {
     vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
     const Eigen::VectorXd x =
         FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     const double vnorm = v.norm();

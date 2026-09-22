@@ -1026,3 +1026,42 @@ TEST(TestVmec, ZeroMaximumMultiGridStepIsRejected) {
   ASSERT_FALSE(reached.ok());
   EXPECT_EQ(reached.status().code(), absl::StatusCode::kInvalidArgument);
 }  // ZeroMaximumMultiGridStepIsRejected
+
+// A boundary of the ConStellaration dataset (plasma_config_id
+// D3zD6qDAHKSDjVyBVtg9AfA) whose first time steps at delt = 0.7 make flux
+// surfaces cross. Without jacobian_safe_step the run gives up after 75
+// restarts. With it the run converges, to the same state on one thread and on
+// four.
+TEST(TestVmec, JacobianSafeStepConvergesWhereTimeStepsCrossFluxSurfaces) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/constellaration_nfp5.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  const auto unlimited = vmecpp::run(*indata, std::nullopt, /*max_threads=*/1,
+                                     vmecpp::OutputMode::kSilent);
+  ASSERT_FALSE(unlimited.ok());
+  EXPECT_THAT(unlimited.status().message(),
+              ::testing::HasSubstr("JACOBIAN_75_TIMES_BAD"));
+
+  indata->jacobian_safe_step = true;
+  const auto one_thread = vmecpp::run(*indata, std::nullopt, /*max_threads=*/1,
+                                      vmecpp::OutputMode::kSilent);
+  ASSERT_TRUE(one_thread.ok()) << one_thread.status();
+  const auto four_threads = vmecpp::run(
+      *indata, std::nullopt, /*max_threads=*/4, vmecpp::OutputMode::kSilent);
+  ASSERT_TRUE(four_threads.ok()) << four_threads.status();
+
+  const auto& a = one_thread->wout;
+  const auto& b = four_threads->wout;
+  EXPECT_EQ(a.itfsq, b.itfsq);
+  auto rel_max = [](const auto& x, const auto& y) -> double {
+    return (x - y).cwiseAbs().maxCoeff() / x.cwiseAbs().maxCoeff();
+  };
+  // the sums over threads change the round-off, 3e-11 in iota
+  constexpr double kTol = 1.0e-9;
+  EXPECT_LT(rel_max(a.iotaf, b.iotaf), kTol);
+  EXPECT_LT(rel_max(a.rmnc, b.rmnc), kTol);
+  EXPECT_LT(rel_max(a.zmns, b.zmns), kTol);
+}

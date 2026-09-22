@@ -70,10 +70,10 @@ class IdealMhdModel {
 
   // With the Jacobian step limit, every accepted update() keeps its geometry
   // and Jacobian as the start of the next time step, and an update() with
-  // check_step returns false before the Jacobian test when the step from there
-  // would take the Jacobian below kJacobianRetainedFraction of its value at
-  // some half-grid point, with the largest fraction of the step that does not
-  // in m_h_.step_fraction.
+  // check_step returns false after the Jacobian test when the step from there
+  // took the Jacobian below kJacobianRetainedFraction of its value at some
+  // half-grid point, with the largest fraction of the step along which it
+  // stays above that everywhere in m_h_.step_fraction.
   void setJacobianSafeStep(bool enabled);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
@@ -633,12 +633,13 @@ class IdealMhdModel {
       step_delta_z1_o_;
   Eigen::VectorXd step_delta_ru_e_, step_delta_ru_o_, step_delta_zu_e_,
       step_delta_zu_o_;
-  Eigen::VectorXd step_tau_end_, step_tau_delta_;
+  Eigen::VectorXd step_tau_delta_;
   Eigen::VectorXd step_r12_, step_ru12_, step_zu12_, step_rs_, step_zs_;
 
-  // Largest fraction of the step from the reference to the current geometry
-  // that keeps tau above kJacobianRetainedFraction of its reference value,
-  // over all threads; also left in m_h_.step_fraction.
+  // 1 when tau at the current geometry keeps kJacobianRetainedFraction of its
+  // reference value everywhere, else the largest fraction of the step from the
+  // reference to the current geometry along which it does, over all threads;
+  // also left in m_h_.step_fraction. Called after computeJacobian.
   double jacobianSafeStepFraction();
 
   // Keeps the current geometry and tau as the start of the next time step.
