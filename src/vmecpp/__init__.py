@@ -40,7 +40,6 @@ from vmecpp._pydantic_numpy import (
     own_model_fields,
 )
 from vmecpp._rescale import rescale
-from vmecpp._watch import watch
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
 logger = logging.getLogger(__name__)
@@ -2824,6 +2823,5 @@ __all__ = [  # noqa: RUF022
     "IterationResult",
     "IterationState",
     "IterationSnapshot",
-    "watch",
     "has_exact_force_jacobian",
 ]

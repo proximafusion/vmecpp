@@ -1,26 +1,31 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""The per-iteration callback of ``run`` and the live view built on it."""
+"""The per-iteration callback of ``run`` and the live view of examples/watch_solve.py
+built on it."""
 
+import sys
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from PIL import Image
 
 import vmecpp
-from vmecpp import _watch
 from vmecpp import geometry as vmec_geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
+
+REPO_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(REPO_ROOT / "examples"))
+import watch_solve  # type: ignore # noqa: E402
 
 mpl.use("Agg")
 jax.config.update("jax_enable_x64", True)
 
-REPO_ROOT = Path(__file__).parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 SOLOVEV = REPO_ROOT / "examples" / "data" / "solovev.json"
 
@@ -40,9 +45,9 @@ def _collect(vmec_input):
     ids=["solovev", "cth_like_fixed_bdy"],
 )
 def test_callback_sees_every_iteration_of_the_residual_history(case):
-    """One snapshot per force iteration: the residual history of the wout, in
-    order and bit for bit, plus the converged iteration that closes each multigrid
-    stage, which the solver does not record."""
+    """One snapshot per force iteration: the residual history of the wout, in order and
+    bit for bit, plus the converged iteration that closes each multigrid stage, which
+    the solver does not record."""
     vmec_input = vmecpp.VmecInput.from_file(case)
     snapshots, output = _collect(vmec_input)
     wout = output.wout
@@ -152,8 +157,7 @@ def test_exception_in_the_callback_propagates():
     ],
     ids=["symmetric", "asymmetric"],
 )
-def test_surface_curves_match_the_geometry_evaluator(case):
-    """The cross-sections drawn by watch agree with vmecpp.geometry on every surface."""
+def test_drawn_cross_sections_match_the_geometry_evaluator(case):
     vmec_input = vmecpp.VmecInput.from_file(case)
     cpp_output = _vmecpp.run(
         vmec_input._to_cpp_vmecindata(), verbose=_vmecpp.OutputMode.SILENT
@@ -161,21 +165,21 @@ def test_surface_curves_match_the_geometry_evaluator(case):
     geometry = _vmecpp.make_geometry(cpp_output)
     jax_geometry = vmec_geometry.from_cpp(geometry)
     ns = geometry.dimensions.ns
-    rows = _watch.surface_indices(ns, 6)
+    rows = watch_solve.surface_indices(ns, 6)
     assert rows[-1] == ns - 1
     theta = np.linspace(0.0, 2.0 * np.pi, 7)
     for zeta in (0.0, 0.37, np.pi / vmec_input.nfp):
-        r, z = _watch.surface_curves(geometry, rows, theta, zeta)
+        r, z = watch_solve.surface_curves(geometry, rows, theta, zeta)
         for i, j in enumerate(rows):
             for k, t in enumerate(theta):
-                jet = np.asarray(
+                point = np.asarray(
                     vmec_geometry.evaluate(
                         jax_geometry, jnp.array([j / (ns - 1), t, zeta])
                     )
                 )
-                assert abs(r[i, k] - jet[0, 0]) < 1.0e-12
-                assert abs(z[i, k] - jet[1, 0]) < 1.0e-12
-        r_axis, z_axis = _watch.magnetic_axis(geometry, zeta)
+                assert abs(r[i, k] - point[0, 0]) < 1.0e-12
+                assert abs(z[i, k] - point[1, 0]) < 1.0e-12
+        r_axis, z_axis = watch_solve.magnetic_axis(geometry, zeta)
         axis = np.asarray(
             vmec_geometry.evaluate(jax_geometry, jnp.array([0.0, 0.0, zeta]))
         )
@@ -184,9 +188,11 @@ def test_surface_curves_match_the_geometry_evaluator(case):
 
 
 def test_watch_records_the_solve(tmp_path):
+    """The recorded solve is the one run performs, with a frame every 25 iterations and
+    the final state."""
     vmec_input = vmecpp.VmecInput.from_file(SOLOVEV)
     path = tmp_path / "solve.gif"
-    output = vmecpp.watch(vmec_input, save=path, every=25, show=False)
+    output = watch_solve.watch(vmec_input, save=path, every=25, show=False)
     reference = vmecpp.run(vmec_input, verbose=False)
 
     assert output.wout.ier_flag == 0
@@ -194,36 +200,31 @@ def test_watch_records_the_solve(tmp_path):
     np.testing.assert_array_equal(output.wout.fsqt, reference.wout.fsqt)
 
     iterations = output.wout.fsqt.size + len(vmec_input.ns_array)
-    frames = iterations // 25 + (1 if iterations % 25 else 0)
     with Image.open(path) as image:
-        assert getattr(image, "n_frames") == frames  # noqa: B009
+        assert getattr(image, "n_frames") == iterations // 25 + 1  # noqa: B009
 
 
 def test_watch_without_a_window_or_a_file_is_refused():
     vmec_input = vmecpp.VmecInput.from_file(SOLOVEV)
-    with pytest.raises(ValueError, match="nothing to show"):
-        vmecpp.watch(vmec_input, show=False)
+    with pytest.raises(ValueError, match="not interactive"):
+        watch_solve.watch(vmec_input, show=False)
 
 
 def test_closing_the_window_stops_the_solve(monkeypatch):
     vmec_input = vmecpp.VmecInput.from_file(SOLOVEV)
     drawn = []
+    original = watch_solve.SolveView.draw
 
-    def window_open(_view):
-        return len(drawn) < 3
-
-    original = _watch._SolveView.draw
-
-    def draw(self, snapshot, **kwargs):
+    def draw(self, snapshot):
         drawn.append(snapshot.iteration)
-        original(self, snapshot, **kwargs)
+        original(self, snapshot)
 
-    monkeypatch.setattr(_watch._SolveView, "window_open", window_open)
-    monkeypatch.setattr(_watch._SolveView, "draw", draw)
+    monkeypatch.setattr(watch_solve.SolveView, "draw", draw)
     monkeypatch.setattr(
-        _watch._SolveView, "_flush", lambda self: self.fig.canvas.draw()
+        watch_solve.SolveView, "window_open", lambda _view: len(drawn) < 3
     )
-    monkeypatch.setattr(_watch, "_backend_is_interactive", lambda: True)
-    output = vmecpp.watch(vmec_input, every=5, block=False)
+    monkeypatch.setattr(plt, "pause", lambda _interval: None)
+    monkeypatch.setattr(plt, "show", lambda: None)
+    output = watch_solve.watch(vmec_input, every=5, show=True)
     assert output.wout.ier_flag == 2
     assert output.wout.fsqt.size == 15
