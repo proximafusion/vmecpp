@@ -39,7 +39,7 @@ def _mode_index(wout):
     """(m, n) -> column of the coefficient arrays, n in absolute toroidal numbers."""
     xm = np.asarray(wout.xm).astype(int)
     xn = np.asarray(wout.xn).astype(int)
-    return {(int(m), int(n)): k for k, (m, n) in enumerate(zip(xm, xn))}
+    return {(int(m), int(n)): k for k, (m, n) in enumerate(zip(xm, xn, strict=True))}
 
 
 def _assert_coefficients_match(ref, test, ref_rows, test_rows, rtol):
@@ -133,7 +133,8 @@ def test_one_field_period_and_the_whole_torus_agree():
     ref_idx = _mode_index(ref)
     shared = [idx[mn] for mn in ref_idx]
     others = [k for k in range(len(idx)) if k not in set(shared)]
-    assert len(shared) == len(ref_idx) and len(others) == len(idx) - len(shared)
+    assert len(shared) == len(ref_idx)
+    assert len(others) == len(idx) - len(shared)
     _assert_coefficients_match(ref, test, slice(None), shared, rtol=1e-8)
     _assert_coefficients_vanish(test, others, rtol=1e-10)
     np.testing.assert_allclose(
