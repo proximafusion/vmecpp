@@ -449,6 +449,13 @@ class VmecInput(BaseModelWithNumpy):
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
+    jacobian_safe_step: bool = False
+    """Shorten every time step that would take the Jacobian below 1% of its value at
+    some grid point, so that flux surfaces cannot cross during the iteration.
+
+    False keeps the time step of VMEC 8.52.
+    """
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.

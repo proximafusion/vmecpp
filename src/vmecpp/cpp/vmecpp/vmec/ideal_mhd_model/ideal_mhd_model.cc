@@ -31,12 +31,14 @@
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/step_limit_kernel.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 #include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 
 using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kJacobianRetainedFraction;
 using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingMaxPower;
 using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingReferenceM;
 using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerDampingFactor;
@@ -464,7 +466,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
     int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
     const int iter2, const VmecCheckpoint& checkpoint,
     const int iterations_before_checkpointing, bool verbose,
-    bool always_fix_m1_gauge) {
+    bool always_fix_m1_gauge, bool check_step) {
   ++force_evaluation_count_;
 
   // An axis re-guess after a bad Jacobian can repopulate high geometry modes
@@ -492,6 +494,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
+  // Jacobian step limit: stop before the Jacobian test when the last time step
+  // has to be shortened; the caller shortens it and calls update() again.
+  if (check_step && jacobian_safe_step_ && step_reference_valid_ &&
+      jacobianSafeStepFraction() < 1.0) {
+    return false;
+  }
+
   if (iter2 == iter1 &&
       (m_vacuum_pressure_state_ == VacuumPressureState::kOff ||
        m_vacuum_pressure_state_ == VacuumPressureState::kInitializing)) {
@@ -512,6 +521,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
     // --> in that case, ignore bad jacobian
 
     return false;
+  }
+
+  if (jacobian_safe_step_) {
+    storeStepReference();
   }
 
   // start of bcovar (ends in updateForces)
@@ -1633,6 +1646,91 @@ void IdealMhdModel::computeJacobian() {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+}
+
+void IdealMhdModel::setJacobianSafeStep(bool enabled) {
+  jacobian_safe_step_ = enabled;
+  step_reference_valid_ = false;
+  if (!enabled) {
+    return;
+  }
+  const int nrzt1 = s_.nZnT * (r_.nsMaxF1 - r_.nsMinF1);
+  const int num_half = (r_.nsMaxH - r_.nsMinH) * s_.nZnT;
+  for (Eigen::VectorXd* full :
+       {&step_r1_e_, &step_r1_o_, &step_z1_e_, &step_z1_o_, &step_ru_e_,
+        &step_ru_o_, &step_zu_e_, &step_zu_o_, &step_delta_r1_e_,
+        &step_delta_r1_o_, &step_delta_z1_e_, &step_delta_z1_o_,
+        &step_delta_ru_e_, &step_delta_ru_o_, &step_delta_zu_e_,
+        &step_delta_zu_o_}) {
+    full->setZero(nrzt1);
+  }
+  for (Eigen::VectorXd* half :
+       {&step_tau_, &step_tau_end_, &step_tau_delta_, &step_r12_, &step_ru12_,
+        &step_zu12_, &step_rs_, &step_zs_}) {
+    half->setZero(num_half);
+  }
+}
+
+void IdealMhdModel::storeStepReference() {
+  step_r1_e_ = r1_e;
+  step_r1_o_ = r1_o;
+  step_z1_e_ = z1_e;
+  step_z1_o_ = z1_o;
+  step_ru_e_ = ru_e;
+  step_ru_o_ = ru_o;
+  step_zu_e_ = zu_e;
+  step_zu_o_ = zu_o;
+  step_tau_ = tau;
+  step_reference_valid_ = true;
+}
+
+double IdealMhdModel::jacobianSafeStepFraction() {
+  // tau at the end of the step
+  ComputeHalfGridJacobian(
+      r1_e.data(), r1_o.data(), z1_e.data(), z1_o.data(), ru_e.data(),
+      ru_o.data(), zu_e.data(), zu_o.data(), m_p_.sqrtSH.data(), m_fc_.deltaS,
+      dSHalfDsInterp, s_.nZnT, r_.nsMinF1, r_.nsMinH, r_.nsMaxH,
+      step_r12_.data(), step_ru12_.data(), step_zu12_.data(), step_rs_.data(),
+      step_zs_.data(), step_tau_end_.data());
+
+  // tau of the change in the geometry over the step
+  step_delta_r1_e_ = r1_e - step_r1_e_;
+  step_delta_r1_o_ = r1_o - step_r1_o_;
+  step_delta_z1_e_ = z1_e - step_z1_e_;
+  step_delta_z1_o_ = z1_o - step_z1_o_;
+  step_delta_ru_e_ = ru_e - step_ru_e_;
+  step_delta_ru_o_ = ru_o - step_ru_o_;
+  step_delta_zu_e_ = zu_e - step_zu_e_;
+  step_delta_zu_o_ = zu_o - step_zu_o_;
+  ComputeHalfGridJacobian(
+      step_delta_r1_e_.data(), step_delta_r1_o_.data(), step_delta_z1_e_.data(),
+      step_delta_z1_o_.data(), step_delta_ru_e_.data(), step_delta_ru_o_.data(),
+      step_delta_zu_e_.data(), step_delta_zu_o_.data(), m_p_.sqrtSH.data(),
+      m_fc_.deltaS, dSHalfDsInterp, s_.nZnT, r_.nsMinF1, r_.nsMinH, r_.nsMaxH,
+      step_r12_.data(), step_ru12_.data(), step_zu12_.data(), step_rs_.data(),
+      step_zs_.data(), step_tau_delta_.data());
+
+  const double local_fraction = LargestStepFraction(
+      step_tau_.data(), step_tau_end_.data(), step_tau_delta_.data(),
+      static_cast<int>(step_tau_.size()), kJacobianRetainedFraction);
+
+  // minimum over threads
+  const int thread_id = r_.get_thread_id();
+  const int width = static_cast<int>(m_h_.thread_reduce_slots.cols());
+  m_h_.thread_reduce_slots.data()[thread_id * width] = local_fraction;
+#ifdef _OPENMP
+#pragma omp barrier
+#pragma omp single
+#endif  // _OPENMP
+  {
+    double fraction = 1.0;
+    for (int thread = 0; thread < r_.get_num_threads(); ++thread) {
+      fraction =
+          std::min(fraction, m_h_.thread_reduce_slots.data()[thread * width]);
+    }
+    m_h_.step_fraction = fraction;
+  }  // implicit barrier
+  return m_h_.step_fraction;
 }
 
 void IdealMhdModel::computeMetricElements() {

@@ -68,6 +68,14 @@ class IdealMhdModel {
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
                      bool lforbal);
 
+  // With the Jacobian step limit, every accepted update() keeps its geometry
+  // and Jacobian as the start of the next time step, and an update() with
+  // check_step returns false before the Jacobian test when the step from there
+  // would take the Jacobian below kJacobianRetainedFraction of its value at
+  // some half-grid point, with the largest fraction of the step that does not
+  // in m_h_.step_fraction.
+  void setJacobianSafeStep(bool enabled);
+
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
   void evalFResInvar(const Eigen::Vector3d& localFResInvar);
@@ -85,7 +93,7 @@ class IdealMhdModel {
       int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
       const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
-      bool always_fix_m1_gauge = false);
+      bool always_fix_m1_gauge = false, bool check_step = false);
   std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
   void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
@@ -612,6 +620,29 @@ class IdealMhdModel {
 
   // 1/4: 1/2 from d(sHalf)/ds and 1/2 from interpolation
   static constexpr double dSHalfDsInterp = 0.25;
+
+  // The Jacobian step limit: the geometry and the Jacobian tau of the last
+  // accepted update(), where the next time step starts, and scratch for the
+  // half-grid quantities along the step.
+  bool jacobian_safe_step_ = false;
+  bool step_reference_valid_ = false;
+  Eigen::VectorXd step_r1_e_, step_r1_o_, step_z1_e_, step_z1_o_;
+  Eigen::VectorXd step_ru_e_, step_ru_o_, step_zu_e_, step_zu_o_;
+  Eigen::VectorXd step_tau_;
+  Eigen::VectorXd step_delta_r1_e_, step_delta_r1_o_, step_delta_z1_e_,
+      step_delta_z1_o_;
+  Eigen::VectorXd step_delta_ru_e_, step_delta_ru_o_, step_delta_zu_e_,
+      step_delta_zu_o_;
+  Eigen::VectorXd step_tau_end_, step_tau_delta_;
+  Eigen::VectorXd step_r12_, step_ru12_, step_zu12_, step_rs_, step_zs_;
+
+  // Largest fraction of the step from the reference to the current geometry
+  // that keeps tau above kJacobianRetainedFraction of its reference value,
+  // over all threads; also left in m_h_.step_fraction.
+  double jacobianSafeStepFraction();
+
+  // Keeps the current geometry and tau as the start of the next time step.
+  void storeStepReference();
 
   // from INDATA: flag to select between constrained-iota and
   // constrained-toroidal-current

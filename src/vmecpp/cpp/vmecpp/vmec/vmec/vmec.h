@@ -150,6 +150,28 @@ class Vmec {
                                           int maximum_iterations,
                                           int thread_id);
   void PerformTimeStep(double fac, double b1, double time_step, int thread_id);
+
+  // Moves the state back along the last time step to the given fraction of it
+  // and scales the velocity by the same fraction.
+  void ShortenTimeStep(double fraction, int thread_id);
+
+  // IdealMhdModel::update of thread_id. With jacobian_safe_step, when the state
+  // differs from the last evaluated one by one time step and that step would
+  // take the Jacobian below kJacobianRetainedFraction of its value somewhere,
+  // the step is shortened to the largest fraction that does not and the model
+  // is updated again.
+  absl::StatusOr<bool> UpdateModel(int thread_id, bool& m_need_restart,
+                                   int& m_last_preconditioner_update,
+                                   int& m_last_full_update_nestor, int iter1,
+                                   int iter2, VmecCheckpoint checkpoint,
+                                   int iterations_before_checkpointing,
+                                   bool verbose, bool always_fix_m1_gauge);
+
+  // Whether the state differs from the last evaluated one by exactly one time
+  // step, which the Jacobian step limit can check and shorten, and the length
+  // of that step.
+  bool step_check_pending_ = false;
+  double last_time_step_ = 0.0;
   void InterpolateToNextMultigridStep(
       int ns_new, int ns_old,
       const std::vector<std::unique_ptr<RadialProfiles>>& p,
@@ -180,6 +202,12 @@ class Vmec {
                        FourierVelocity& m_decomposed_v,
                        const FourierForces& decomposed_f,
                        HandoverStorage& m_h_) const;
+
+  // Copies the outermost owned surface to the next thread and the innermost to
+  // the previous one, and fills this thread's satellite surfaces from theirs.
+  void exchangeSatelliteSurfaces(const RadialPartitioning& r,
+                                 FourierGeometry& m_decomposed_x,
+                                 HandoverStorage& m_h_) const;
 
   int get_ivac() const { return static_cast<int>(vacuum_pressure_state_); }
   int get_num_eqsolve_retries() const { return num_eqsolve_retries_; }

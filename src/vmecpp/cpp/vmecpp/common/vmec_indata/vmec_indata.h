@@ -219,6 +219,11 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // shorten every time step that would take the Jacobian below
+  // kJacobianRetainedFraction of its value at some grid point, so that flux
+  // surfaces cannot cross during the iteration
+  bool jacobian_safe_step;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)

@@ -212,6 +212,11 @@ class HandoverStorage {
   // First error from the nested vacuum team; reset to OK before each solve.
   absl::Status vacuum_status = absl::OkStatus();
 
+  // Largest fraction of the last time step that keeps the Jacobian above
+  // kJacobianRetainedFraction of its value, from IdealMhdModel::update with
+  // check_step; 1 when the whole step does.
+  double step_fraction = 1.0;
+
  private:
   const Sizes& s_;
 

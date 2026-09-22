@@ -192,6 +192,14 @@ static constexpr int kJacobianIterationThreshold = 75;
  */
 static constexpr int kPreconditionerUpdateInterval = 25;
 
+/**
+ * Fraction of its value the Jacobian keeps at least, at every half-grid point,
+ * over one time step when jacobian_safe_step is set.
+ * Context: the fraction-to-the-boundary rule of interior-point methods; a step
+ * that would take the Jacobian below it is shortened.
+ */
+static constexpr double kJacobianRetainedFraction = 0.01;
+
 // ========== Array Size Constants ==========
 
 /**
