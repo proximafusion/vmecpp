@@ -1065,3 +1065,55 @@ TEST(TestVmec, JacobianSafeStepConvergesWhereTimeStepsCrossFluxSurfaces) {
   EXPECT_LT(rel_max(a.rmnc, b.rmnc), kTol);
   EXPECT_LT(rel_max(a.zmns, b.zmns), kTol);
 }
+
+namespace {
+
+// Runs indata with and without jacobian_safe_step on one thread and expects
+// the same iterations and the same state, bit for bit.
+void ExpectUnchangedByJacobianSafeStep(VmecINDATA indata,
+                                       const std::string& name) {
+  indata.jacobian_safe_step = false;
+  const auto unlimited = vmecpp::run(indata, std::nullopt, /*max_threads=*/1,
+                                     vmecpp::OutputMode::kSilent);
+  ASSERT_TRUE(unlimited.ok()) << name << ": " << unlimited.status();
+  indata.jacobian_safe_step = true;
+  const auto limited = vmecpp::run(indata, std::nullopt, /*max_threads=*/1,
+                                   vmecpp::OutputMode::kSilent);
+  ASSERT_TRUE(limited.ok()) << name << ": " << limited.status();
+
+  const auto& a = unlimited->wout;
+  const auto& b = limited->wout;
+  EXPECT_EQ(a.itfsq, b.itfsq) << name;
+  auto max_difference = [](const auto& x, const auto& y) -> double {
+    return (x - y).cwiseAbs().maxCoeff();
+  };
+  EXPECT_EQ(max_difference(a.rmnc, b.rmnc), 0.0) << name;
+  EXPECT_EQ(max_difference(a.zmns, b.zmns), 0.0) << name;
+  EXPECT_EQ(max_difference(a.lmns, b.lmns), 0.0) << name;
+  EXPECT_EQ(max_difference(a.iotaf, b.iotaf), 0.0) << name;
+}
+
+}  // namespace
+
+// With jacobian_safe_step, a run in which no time step takes the Jacobian
+// below kJacobianRetainedFraction of its value takes the steps of the run
+// without it: the ConStellaration boundary above at delt = 0.35, and
+// cth_like_fixed_bdy.
+TEST(TestVmec, JacobianSafeStepLeavesStepsThatKeepTheBoundUnchanged) {
+  const absl::StatusOr<std::string> constellaration_json =
+      ReadFile("vmecpp/test_data/constellaration_nfp5.json");
+  ASSERT_TRUE(constellaration_json.ok());
+  absl::StatusOr<VmecINDATA> constellaration =
+      VmecINDATA::FromJson(*constellaration_json);
+  ASSERT_TRUE(constellaration.ok()) << constellaration.status();
+  constellaration->delt = 0.35;
+  ExpectUnchangedByJacobianSafeStep(*constellaration, "constellaration_nfp5");
+
+  const absl::StatusOr<std::string> cth_like_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(cth_like_json.ok());
+  const absl::StatusOr<VmecINDATA> cth_like =
+      VmecINDATA::FromJson(*cth_like_json);
+  ASSERT_TRUE(cth_like.ok()) << cth_like.status();
+  ExpectUnchangedByJacobianSafeStep(*cth_like, "cth_like_fixed_bdy");
+}
