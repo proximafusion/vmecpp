@@ -412,6 +412,12 @@ void IdealMhdModel::setBootstrapCurrent(bool enabled,
                                         const BootstrapProfiles& profiles) {
   bootstrap_enabled_ = enabled;
   bootstrap_profiles_ = profiles;
+  bootstrap_kinetic_.clear();
+  bootstrap_closure_jacobian_valid_ = false;
+  if (enabled) {
+    bootstrap_grid_tables_ =
+        SurfaceGridTables(s_.nThetaEven, s_.nThetaEff, s_.nZeta);
+  }
 }
 
 void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
@@ -2123,12 +2129,14 @@ bool IdealMhdModel::shouldUpdateRadialPreconditioner(int iter1,
 
 void IdealMhdModel::updateBootstrapCurrent() {
   const int helicity_big_n = bootstrap_profiles_.helicity_n * s_.nfp;
-  // psi_edge in the conventions of the wout file, -phi_edge / (2 pi)
-  const double psi_edge =
+  // psi_edge = -phi_edge / (2 pi) of the wout file, the Fortran convention
+  const double psi_edge_ref =
       -signOfJacobian * m_p_.maxToroidalFlux * m_p_.torflux(1.0);
+  const SurfaceGrid grid = bootstrap_grid_tables_.grid();
 
   Eigen::VectorXd b(s_.nZnT);
   Eigen::VectorXd w(s_.nZnT);
+  std::vector<double> extrema_work(SurfaceExtremaWorkSize(grid));
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     // unique half-grid points only; neighboring threads share one
     if (!(jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2)) {
@@ -2144,27 +2152,23 @@ void IdealMhdModel::updateBootstrapCurrent() {
       w[kl] = gsqrt[iHalf] * s_.wInt[l];
       avg_guu_gsqrt += guu[iHalf] / gsqrt[iHalf] * s_.wInt[l];
     }
-    const std::span<const double> b_span(b.data(), b.size());
-    const std::span<const double> w_span(w.data(), w.size());
-
-    BootstrapSurface surface;
-    surface.g = m_p_.bvcoH[jl];
-    surface.i = m_p_.bucoH[jl];
-    surface.iota = m_p_.iotaH[jl];
-    SurfaceFieldMoments(b_span, w_span, surface.b_max, surface.b_min,
-                        surface.b2_avg, surface.b_inv_avg);
-    surface.f_t = TrappedFraction(b_span, w_span);
-
+    const double g = m_p_.bvcoH[jl];
+    const double iota = m_p_.iotaH[jl];
     const double s_half = (jH + 0.5) * m_fc_.deltaS;
     const double rho = std::min(m_p_.torflux(s_half), 1.0);
-    if (std::abs(surface.iota - helicity_big_n) < kBootstrapIotaFloor) {
+    if (std::abs(-signOfJacobian * iota - helicity_big_n) <
+        kBootstrapIotaFloor) {
       // the closure is singular at iota = N; the update is skipped below
       m_h_.bootstrap_j_dot_b[jH] = std::numeric_limits<double>::quiet_NaN();
     } else {
-      m_h_.bootstrap_j_dot_b[jH] =
-          RedlJDotB(bootstrap_profiles_, surface, rho, psi_edge, s_.nfp);
+      const KineticPoint kinetic =
+          EvaluateKineticPoint(bootstrap_profiles_, rho);
+      m_h_.bootstrap_j_dot_b[jH] = RedlSurfaceJDotB(
+          b.data(), w.data(), grid, extrema_work.data(), kinetic,
+          bootstrap_profiles_.zeff, helicity_big_n, signOfJacobian, g,
+          m_p_.currH[jl], iota, psi_edge_ref);
     }
-    m_h_.bootstrap_g[jH] = surface.g;
+    m_h_.bootstrap_g[jH] = g;
     m_h_.bootstrap_dvds[jH] = m_p_.dVdsH[jl];
     m_h_.bootstrap_buco[jH] = m_p_.currH[jl];
 
@@ -2710,6 +2714,14 @@ void IdealMhdModel::packGeometry(FourierGeometry& m_decomposed,
   blk(17, zCon);
   blk(18, ruFull);
   blk(19, zuFull);
+  if (primal && ncurr == 1) {
+    // the enclosed current profile, an input of the chi' solve and of the
+    // bootstrap closure
+    const int nHalf = r_.nsMaxH - r_.nsMinH;
+    for (int jl = 0; jl < nHalf; ++jl) {
+      out[20 * gS + jl] = m_p_.currH[jl];
+    }
+  }
 }
 
 LocalForceComposition IdealMhdModel::makeLocalForceComposition(
@@ -2739,7 +2751,6 @@ LocalForceComposition IdealMhdModel::makeLocalForceComposition(
   comp.nZeta = s_.nZeta;
   comp.nThetaEff = s_.nThetaEff;
   comp.ncurr = ncurr;
-  comp.currH = m_p_.currH.data();
   comp.wInt = s_.wInt.data();
   comp.nThetaEven = s_.nThetaEven;
   comp.nThetaReduced = s_.nThetaReduced;
@@ -2757,6 +2768,27 @@ LocalForceComposition IdealMhdModel::makeLocalForceComposition(
   comp.sinnv = t_.sinnv.data();
   comp.sinmu = t_.sinmu.data();
   comp.cosmu = t_.cosmu.data();
+  if (bootstrap_enabled_) {
+    const int nHalf = r_.nsMaxH - r_.nsMinH;
+    if (static_cast<int>(bootstrap_kinetic_.size()) != nHalf) {
+      bootstrap_kinetic_.resize(nHalf);
+      for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+        const double s_half = (jH + 0.5) * m_fc_.deltaS;
+        const double rho = std::min(m_p_.torflux(s_half), 1.0);
+        bootstrap_kinetic_[jH - r_.nsMinH] =
+            EvaluateKineticPoint(bootstrap_profiles_, rho);
+      }
+    }
+    comp.with_bootstrap = true;
+    comp.phipH = m_p_.phipH.data();
+    comp.bootstrap_kinetic = bootstrap_kinetic_.data();
+    comp.bootstrap_zeff = bootstrap_profiles_.zeff;
+    comp.bootstrap_helicity_big_n = bootstrap_profiles_.helicity_n * s_.nfp;
+    comp.bootstrap_psi_edge_ref =
+        -signOfJacobian * m_p_.maxToroidalFlux * m_p_.torflux(1.0);
+    comp.bootstrap_grid = bootstrap_grid_tables_.grid();
+    comp.sign_of_jacobian = signOfJacobian;
+  }
   return comp;
 }
 
@@ -2778,6 +2810,28 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   // single nonlinear forward pass: J_g . (T v)
   ExactForceDensityJvp(geomP, dgeom, work.data(), dwork.data(), force.data(),
                        dforce.data(), &comp);
+
+  if (bootstrap_enabled_) {
+    // dc = (1 - dI_bs/dcurrH)^{-1} dI_bs, then the force response to dc
+    ensureBootstrapClosureJacobian(geomP, geom_stride);
+    const int nHalf = r_.nsMaxH - r_.nsMinH;
+    Eigen::VectorXd di(nHalf);
+    for (int jl = 0; jl < nHalf; ++jl) {
+      di[jl] = dforce[21 * nForce + jl];
+    }
+    const Eigen::VectorXd dc = bootstrap_closure_lu_.solve(di);
+    std::vector<double> dgeom_c(kLocalGeometryBlocks * geom_stride, 0.0);
+    for (int jl = 0; jl < nHalf; ++jl) {
+      dgeom_c[20 * geom_stride + jl] = dc[jl];
+    }
+    std::vector<double> dwork_c(nWork, 0.0);
+    std::vector<double> dforce_c(kLocalForceBlocks * nForce, 0.0);
+    ExactForceDensityJvp(geomP, dgeom_c.data(), work.data(), dwork_c.data(),
+                         force.data(), dforce_c.data(), &comp);
+    for (int i = 0; i < kLocalForceBlocks * nForce; ++i) {
+      dforce[i] += dforce_c[i];
+    }
+  }
 
   // scatter the force-density tangent into the real-space force members
   auto put = [&](int block, Eigen::VectorXd& dst) {
@@ -3233,8 +3287,9 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
   }
 
   // J_g^T: reverse-mode force-density kernel.
-  std::vector<double> geom_bar(20 * gS, 0.0);
+  std::vector<double> geom_bar(kLocalGeometryBlocks * gS, 0.0);
   exactForceDensityCotangent(geomP, force_bar.data(), gS, geom_bar.data());
+  addBootstrapClosureCotangent(geomP, gS, geom_bar);
 
   // B^T: transpose of packGeometry [decompose -> m1 -> extrapolate ->
   // geometryFromFourier -> block pack with lamscale + ruFull/zuFull].
@@ -3308,8 +3363,9 @@ void IdealMhdModel::chipStateVjp(const double* geomP, int geom_stride,
     force_bar[20 * nForce + jH] = chip_bar[jH];
   }
 
-  std::vector<double> geom_bar(20 * gS, 0.0);
+  std::vector<double> geom_bar(kLocalGeometryBlocks * gS, 0.0);
   exactForceDensityCotangent(geomP, force_bar.data(), gS, geom_bar.data());
+  addBootstrapClosureCotangent(geomP, gS, geom_bar);
 
   // B^T: transpose of packGeometry's linear pre-chain, restricted to the
   // blocks chi' actually depends on (r1, ru, zu, lu/lv via bsupu/bsupv; chi'
@@ -3385,6 +3441,75 @@ double IdealMhdModel::composedForceResidual(const double* geomP,
   cmp(12, blmn_e);
   cmp(13, blmn_o);
   return maxd;
+}
+
+void IdealMhdModel::composedBootstrapCurrent(const double* geomP,
+                                             int geom_stride,
+                                             double* m_current) {
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nForce = comp.force_stride;
+  std::vector<double> work(LocalForceWorkSize(comp), 0.0);
+  std::vector<double> force(kLocalForceBlocks * nForce, 0.0);
+  ComputeLocalForceDensity(geomP, work.data(), force.data(), &comp);
+  const int nHalf = r_.nsMaxH - r_.nsMinH;
+  for (int jl = 0; jl < nHalf; ++jl) {
+    m_current[jl] = force[21 * nForce + jl];
+  }
+}
+
+void IdealMhdModel::ensureBootstrapClosureJacobian(const double* geomP,
+                                                   int geom_stride) {
+  if (bootstrap_closure_jacobian_valid_) {
+    return;
+  }
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nForce = comp.force_stride;
+  const int nWork = LocalForceWorkSize(comp);
+  const int nHalf = r_.nsMaxH - r_.nsMinH;
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> dwork(nWork, 0.0);
+  std::vector<double> force(kLocalForceBlocks * nForce, 0.0);
+  std::vector<double> dforce(kLocalForceBlocks * nForce, 0.0);
+  std::vector<double> dgeom(kLocalGeometryBlocks * geom_stride, 0.0);
+  Eigen::MatrixXd matrix = Eigen::MatrixXd::Identity(nHalf, nHalf);
+  for (int j = 0; j < nHalf; ++j) {
+    std::fill(dgeom.begin(), dgeom.end(), 0.0);
+    std::fill(dwork.begin(), dwork.end(), 0.0);
+    std::fill(dforce.begin(), dforce.end(), 0.0);
+    dgeom[20 * geom_stride + j] = 1.0;
+    ExactForceDensityJvp(geomP, dgeom.data(), work.data(), dwork.data(),
+                         force.data(), dforce.data(), &comp);
+    for (int i = 0; i < nHalf; ++i) {
+      matrix(i, j) -= dforce[21 * nForce + i];
+    }
+  }
+  bootstrap_closure_lu_.compute(matrix);
+  bootstrap_closure_jacobian_valid_ = true;
+}
+
+void IdealMhdModel::addBootstrapClosureCotangent(
+    const double* geomP, int geom_stride, std::vector<double>& m_geom_bar) {
+  if (!bootstrap_enabled_) {
+    return;
+  }
+  ensureBootstrapClosureJacobian(geomP, geom_stride);
+  const int nHalf = r_.nsMaxH - r_.nsMinH;
+  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
+  Eigen::VectorXd g(nHalf);
+  for (int jl = 0; jl < nHalf; ++jl) {
+    g[jl] = m_geom_bar[20 * geom_stride + jl];
+  }
+  const Eigen::VectorXd u = bootstrap_closure_lu_.transpose().solve(g);
+  std::vector<double> force_bar(kLocalForceBlocks * nForce, 0.0);
+  for (int jl = 0; jl < nHalf; ++jl) {
+    force_bar[21 * nForce + jl] = u[jl];
+  }
+  std::vector<double> geom_bar_closure(kLocalGeometryBlocks * geom_stride, 0.0);
+  exactForceDensityCotangent(geomP, force_bar.data(), geom_stride,
+                             geom_bar_closure.data());
+  for (int i = 0; i < 20 * geom_stride; ++i) {
+    m_geom_bar[i] += geom_bar_closure[i];
+  }
 }
 #endif  // VMECPP_ENABLE_ENZYME
 

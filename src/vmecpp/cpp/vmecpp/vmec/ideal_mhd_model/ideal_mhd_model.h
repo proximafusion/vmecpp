@@ -71,6 +71,13 @@ class IdealMhdModel {
 
   // Enables the bootstrap closure with its kinetic profiles.
   void setBootstrapCurrent(bool enabled, const BootstrapProfiles& profiles);
+  bool bootstrapClosureActive() const { return bootstrap_enabled_; }
+
+  // The cached Jacobian of the closure with respect to currH depends on the
+  // state; callers that change the state drop it here.
+  void invalidateBootstrapClosureJacobian() {
+    bootstrap_closure_jacobian_valid_ = false;
+  }
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -206,10 +213,21 @@ class IdealMhdModel {
   // Newton-Krylov Hessian-vector product. This low-level
   // kernel does not differentiate the state-dependent LFORBAL replacement;
   // public callers must reject lforbal=true.
+  // With the bootstrap closure on, the product is the derivative of the force
+  // at the self-consistent current: the closure block of the same pass gives
+  // dI_bs, the current tangent dc = (1 - dI_bs/dcurrH)^{-1} dI_bs is solved
+  // with the cached closure Jacobian, and a second pass with dc on the currH
+  // block adds the force response to it.
   void applyExactForceJacobian(const double* geomP, const double* dgeom,
                                int geom_stride, FourierForces& m_physical_f,
                                FourierForces& m_decomposed_hv,
                                bool fix_m1_gauge);
+
+  // The enclosed current of the bootstrap closure evaluated by the local
+  // force composition at the packed primal geometry geomP, one entry per half
+  // surface; the profile the solver iterates to.
+  void composedBootstrapCurrent(const double* geomP, int geom_stride,
+                                double* m_current);
 
   // Linear pre-chain decomposed -> real-space geometry (decomposeInto,
   // m1Constraint, extrapolate, geometryFromFourier) packed into the 20-block
@@ -266,10 +284,23 @@ class IdealMhdModel {
   // chipH occupies). Reuses the reverse-mode force-density kernel seeded on
   // its chi' output block alone, and the geometry-side (B^T) half of
   // applyExactForceJacobianTranspose, since chi' depends on the same geometry
-  // blocks (r1, ru, zu, lu, lv) the force densities do.
+  // blocks (r1, ru, zu, lu, lv) the force densities do. With the bootstrap
+  // closure on, the response of the self-consistent current is included.
   void chipStateVjp(const double* geomP, int geom_stride,
                     const double* chip_bar, FourierGeometry& m_physical_scratch,
                     FourierGeometry& m_decomposed_out);
+
+  // Adds the response of the self-consistent bootstrap current to a geometry
+  // cotangent from one reverse pass: with g the cotangent its currH block
+  // received, u = (1 - dI_bs/dcurrH)^{-T} g, and a reverse pass seeded on the
+  // closure block with u adds (dI_bs/dx)^T u to the geometry blocks.
+  void addBootstrapClosureCotangent(const double* geomP, int geom_stride,
+                                    std::vector<double>& m_geom_bar);
+
+  // dI_bs/dcurrH at the packed primal geometry geomP, one forward pass per
+  // half surface, factorized as 1 - dI_bs/dcurrH; cached until the state
+  // changes.
+  void ensureBootstrapClosureJacobian(const double* geomP, int geom_stride);
 
   // Transposes of the spectral transforms, for the transposed exact Hessian.
   // dft_ForcesToFourierTranspose: (forcesToFourier)^T, decomposed-force coeff
@@ -629,6 +660,11 @@ class IdealMhdModel {
   // from INDATA: replace currH by the bootstrap current of the Redl closure
   bool bootstrap_enabled_ = false;
   BootstrapProfiles bootstrap_profiles_;
+  // the kinetic profiles on this thread's half surfaces, for the composition
+  std::vector<KineticPoint> bootstrap_kinetic_;
+  SurfaceGridTables bootstrap_grid_tables_;
+  bool bootstrap_closure_jacobian_valid_ = false;
+  Eigen::PartialPivLU<Eigen::MatrixXd> bootstrap_closure_lu_;
 
   // from INDATA: adiabatic index == gamma
   double adiabaticIndex;

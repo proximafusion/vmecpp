@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/bootstrap_current/bootstrap_current.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <vector>
@@ -176,6 +177,106 @@ TEST(BootstrapCurrent, RedlClosureVanishesWithoutTrappedParticles) {
   surface.b_inv_avg = 2.0;
   surface.f_t = 0.0;
   EXPECT_EQ(RedlJDotB(profiles, surface, 0.5, 0.035 / (2.0 * M_PI), 5), 0.0);
+}
+
+namespace {
+
+// f on the stored points of grid, zeta-major.
+template <typename Function>
+std::vector<double> Sample(const SurfaceGrid& grid, Function f) {
+  std::vector<double> values(grid.n_theta_eff * grid.n_zeta);
+  for (int k = 0; k < grid.n_zeta; ++k) {
+    for (int l = 0; l < grid.n_theta_eff; ++l) {
+      const double theta = 2.0 * M_PI * l / grid.n_theta_even;
+      const double v = 2.0 * M_PI * k / grid.n_zeta;
+      values[k * grid.n_theta_eff + l] = f(theta, v);
+    }
+  }
+  return values;
+}
+
+// The interpolant of values at every point of the full grid.
+void ExpectInterpolatesGrid(const SurfaceGrid& grid,
+                            const std::vector<double>& values) {
+  const int m_count = SurfaceGridMMax(grid) + 1;
+  const int n_count = 2 * SurfaceGridNMax(grid) + 1;
+  std::vector<double> work(SurfaceExtremaWorkSize(grid));
+  std::vector<double> c(m_count * n_count);
+  std::vector<double> s(m_count * n_count);
+  SurfaceInterpolantKernel(values.data(), grid, work.data(), c.data(),
+                           s.data());
+  for (int k = 0; k < grid.n_zeta; ++k) {
+    for (int l = 0; l < grid.n_theta_even; ++l) {
+      double f = 0.0;
+      double f_t = 0.0;
+      double f_v = 0.0;
+      double f_tt = 0.0;
+      double f_tv = 0.0;
+      double f_vv = 0.0;
+      EvaluateSurfaceInterpolant(
+          c.data(), s.data(), SurfaceGridMMax(grid), SurfaceGridNMax(grid),
+          2.0 * M_PI * l / grid.n_theta_even, 2.0 * M_PI * k / grid.n_zeta,
+          work.data(), f, f_t, f_v, f_tt, f_tv, f_vv);
+      EXPECT_NEAR(f, SurfaceGridValue(values.data(), grid, l, k), 1.0e-13)
+          << l << " " << k;
+    }
+  }
+}
+
+}  // namespace
+
+TEST(BootstrapCurrent, InterpolantReproducesTheGridValues) {
+  // a full poloidal grid with an even and a stellarator-symmetric grid with an
+  // odd number of toroidal points
+  const SurfaceGridTables full(12, 12, 10);
+  std::vector<double> arbitrary(12 * 10);
+  for (std::size_t i = 0; i < arbitrary.size(); ++i) {
+    arbitrary[i] = std::sin(0.7 * i) + 0.1 * std::cos(2.3 * i * i);
+  }
+  ExpectInterpolatesGrid(full.grid(), arbitrary);
+
+  const SurfaceGridTables symmetric(12, 7, 9);
+  ExpectInterpolatesGrid(
+      symmetric.grid(), Sample(symmetric.grid(), [](double theta, double v) {
+        return 1.0 + 0.3 * std::cos(theta) + 0.2 * std::cos(2.0 * theta - v) +
+               0.05 * std::cos(theta + 2.0 * v);
+      }));
+}
+
+// Extrema between grid points: 1 + 0.2 cos(theta - 0.37) + 0.1 cos(v - 1.1)
+// has its maximum 1.3 and minimum 0.7 off the grid.
+TEST(BootstrapCurrent, SurfaceExtremaLieBetweenGridPoints) {
+  const SurfaceGridTables tables(12, 12, 10);
+  const std::vector<double> b =
+      Sample(tables.grid(), [](double theta, double v) {
+        return 1.0 + 0.2 * std::cos(theta - 0.37) + 0.1 * std::cos(v - 1.1);
+      });
+  std::vector<double> work(SurfaceExtremaWorkSize(tables.grid()));
+  double b_max = 0.0;
+  double b_min = 0.0;
+  SurfaceExtremaKernel(b.data(), tables.grid(), work.data(), b_max, b_min);
+  EXPECT_NEAR(b_max, 1.3, 1.0e-13);
+  EXPECT_NEAR(b_min, 0.7, 1.0e-13);
+  EXPECT_GT(b_max, *std::max_element(b.begin(), b.end()));
+  EXPECT_LT(b_min, *std::min_element(b.begin(), b.end()));
+}
+
+// An axisymmetric, stellarator-symmetric surface: 1 - 0.2 cos(theta) +
+// 0.3 cos(2 theta) has its minimum at cos(theta) = 1/6, between grid points,
+// and its maximum 1.5 at theta = pi.
+TEST(BootstrapCurrent, SurfaceExtremaOfAnAxisymmetricSurface) {
+  const SurfaceGridTables tables(16, 9, 1);
+  const std::vector<double> b =
+      Sample(tables.grid(), [](double theta, double /*v*/) {
+        return 1.0 - 0.2 * std::cos(theta) + 0.3 * std::cos(2.0 * theta);
+      });
+  std::vector<double> work(SurfaceExtremaWorkSize(tables.grid()));
+  double b_max = 0.0;
+  double b_min = 0.0;
+  SurfaceExtremaKernel(b.data(), tables.grid(), work.data(), b_max, b_min);
+  const double c = 1.0 / 6.0;
+  EXPECT_NEAR(b_max, 1.5, 1.0e-13);
+  EXPECT_NEAR(b_min, 1.0 - 0.2 * c + 0.3 * (2.0 * c * c - 1.0), 1.0e-13);
 }
 
 // G = 0.45 - 0.02 s, I = 0.003 s^2, dV/ds = 0.2 + 0.05 s: the parallel current

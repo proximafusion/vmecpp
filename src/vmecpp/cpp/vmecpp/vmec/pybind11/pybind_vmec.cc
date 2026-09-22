@@ -407,6 +407,22 @@ class VmecModel {
   void SetState(const Eigen::VectorXd &flat) const {
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
     exact_primal_valid_ = false;  // primal geometry cache is stale
+    vmec_->m_[0]->invalidateBootstrapClosureJacobian();
+  }
+
+  // The enclosed toroidal current profile currH on the half grid; with the
+  // bootstrap closure on, the profile the closure has iterated to.
+  Eigen::VectorXd GetBootstrapCurrentProfile() const {
+    return vmec_->p_[0]->currH;
+  }
+  void SetBootstrapCurrentProfile(const Eigen::VectorXd &profile) const {
+    if (profile.size() != vmec_->p_[0]->currH.size()) {
+      throw std::runtime_error(
+          "VmecModel.set_bootstrap_current_profile: wrong length");
+    }
+    vmec_->p_[0]->currH = profile;
+    exact_primal_valid_ = false;
+    vmec_->m_[0]->invalidateBootstrapClosureJacobian();
   }
   // Flat force vector (decomposed/preconditioned), valid after Evaluate().
   Eigen::VectorXd GetForces() const {
@@ -624,15 +640,16 @@ class VmecModel {
     RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
-    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
+    const int nGeom = vmecpp::kLocalGeometryBlocks * gS;
+    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(nGeom);
     // The primal geometry depends only on the current state, not on v, so cache
     // it: a Krylov solve calls this many times at the same state. SetState
     // invalidates the cache. The geometry tangent is the same linear pre-chain
     // applied to v directly (exact, no finite difference, no full update); the
     // single nonlinear step is the Enzyme JVP inside applyExactForceJacobian.
     if (!exact_primal_valid_ ||
-        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
-      exact_primal_.setZero(20 * gS);
+        exact_primal_.size() != static_cast<Eigen::Index>(nGeom)) {
+      exact_primal_.setZero(nGeom);
       model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
                          exact_primal_.data(), gS, /*primal=*/true);
       exact_primal_valid_ = true;
@@ -655,9 +672,10 @@ class VmecModel {
     RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
+    const int nGeom = vmecpp::kLocalGeometryBlocks * gS;
     if (!exact_primal_valid_ ||
-        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
-      exact_primal_.setZero(20 * gS);
+        exact_primal_.size() != static_cast<Eigen::Index>(nGeom)) {
+      exact_primal_.setZero(nGeom);
       model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
                          exact_primal_.data(), gS, /*primal=*/true);
       exact_primal_valid_ = true;
@@ -682,9 +700,10 @@ class VmecModel {
     RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
+    const int nGeom = vmecpp::kLocalGeometryBlocks * gS;
     if (!exact_primal_valid_ ||
-        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
-      exact_primal_.setZero(20 * gS);
+        exact_primal_.size() != static_cast<Eigen::Index>(nGeom)) {
+      exact_primal_.setZero(nGeom);
       model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
                          exact_primal_.data(), gS, /*primal=*/true);
       exact_primal_valid_ = true;
@@ -693,6 +712,56 @@ class VmecModel {
     model.chipStateVjp(exact_primal_.data(), gS, chip_bar.data(),
                        *vmec_->physical_x_[0], *vmec_->physical_x_backup_[0]);
     return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
+  }
+#endif  // VMECPP_ENABLE_ENZYME
+
+#ifdef VMECPP_ENABLE_ENZYME
+  // The enclosed current of the bootstrap closure at the current state, from
+  // the local force composition.
+  Eigen::VectorXd BootstrapClosureCurrent() {
+    RequireLforbalDisabledForExactDerivatives();
+    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    const int gS = static_cast<int>(model.r1_e.size());
+    const int nGeom = vmecpp::kLocalGeometryBlocks * gS;
+    if (!exact_primal_valid_ ||
+        exact_primal_.size() != static_cast<Eigen::Index>(nGeom)) {
+      exact_primal_.setZero(nGeom);
+      model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                         exact_primal_.data(), gS, /*primal=*/true);
+      exact_primal_valid_ = true;
+    }
+    Eigen::VectorXd current = Eigen::VectorXd::Zero(vmec_->fc_.ns - 1);
+    model.composedBootstrapCurrent(exact_primal_.data(), gS, current.data());
+    return current;
+  }
+
+  // Evaluate the forces at the current state with the enclosed current
+  // iterated to the fixed point of the bootstrap closure, currH = I_bs(x,
+  // currH), by relaxed substitution to the relative tolerance tol. This is the
+  // force the exact products with the closure differentiate.
+  void EvaluateSelfConsistent(int iter1, int iter2, bool precondition,
+                              double tol, int max_iterations) {
+    Evaluate(iter1, iter2, precondition);
+    if (!vmec_->m_[0]->bootstrapClosureActive()) {
+      return;
+    }
+    for (int iteration = 0; iteration < max_iterations; ++iteration) {
+      const Eigen::VectorXd target = BootstrapClosureCurrent();
+      const Eigen::VectorXd current = vmec_->p_[0]->currH;
+      const double scale =
+          std::max(target.cwiseAbs().maxCoeff(), current.cwiseAbs().maxCoeff());
+      const double change = (target - current).cwiseAbs().maxCoeff();
+      vmec_->p_[0]->currH = current + 0.5 * (target - current);
+      exact_primal_valid_ = false;
+      vmec_->m_[0]->invalidateBootstrapClosureJacobian();
+      Evaluate(iter1, iter2, precondition);
+      if (change <= tol * scale) {
+        return;
+      }
+    }
+    throw std::runtime_error(
+        "VmecModel.evaluate_self_consistent: the bootstrap closure did not "
+        "reach its fixed point");
   }
 #endif  // VMECPP_ENABLE_ENZYME
 
@@ -1639,6 +1708,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("solve", &VmecModel::Solve)
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
+      .def("bootstrap_current_profile", &VmecModel::GetBootstrapCurrentProfile)
+      .def("set_bootstrap_current_profile",
+           &VmecModel::SetBootstrapCurrentProfile, py::arg("profile"))
       .def("get_forces", &VmecModel::GetForces)
       .def("get_geometry", &VmecModel::GetGeometry)
       .def("geometry_state_vjp", &VmecModel::GeometryStateVjp,
@@ -1657,6 +1729,10 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("exact_hessian_vector_product_transpose",
            &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"))
       .def("chip_state_vjp", &VmecModel::ChipStateVjp, py::arg("chip_bar"))
+      .def("bootstrap_closure_current", &VmecModel::BootstrapClosureCurrent)
+      .def("evaluate_self_consistent", &VmecModel::EvaluateSelfConsistent,
+           py::arg("iter1"), py::arg("iter2"), py::arg("precondition") = true,
+           py::arg("tol") = 1.0e-13, py::arg("max_iterations") = 400)
 #endif  // VMECPP_ENABLE_ENZYME
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)

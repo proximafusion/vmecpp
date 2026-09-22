@@ -1123,6 +1123,58 @@ TEST(TestVmec, BootstrapClosureConvergesAndRaisesIota) {
   EXPECT_LT(max_error, 0.1 * max_lhs);
 }
 
+namespace {
+
+// cth_like_fixed_bdy with the bootstrap closure and the kinetic profiles of
+// BootstrapClosureConvergesAndRaisesIota.
+VmecINDATA BootstrapInput() {
+  absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  CHECK_OK(indata_json);
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  CHECK_OK(indata);
+  indata->ftol_array.resize(1);
+  indata->ftol_array << 1.0e-10;
+  indata->curtor = 0.0;
+  indata->pmass_type = "power_series";
+  indata->am.resize(0);
+  indata->pres_scale = 1.0;
+  indata->bootstrap_current = true;
+  indata->bootstrap_ne.resize(2);
+  indata->bootstrap_ne << 0.02, -0.016;
+  indata->bootstrap_te.resize(2);
+  indata->bootstrap_te << 0.65, -0.52;
+  indata->bootstrap_ti = indata->bootstrap_te;
+  return *indata;
+}
+
+}  // namespace
+
+// The closure acts in the Fortran convention signgs = -1 whatever the sign of
+// the Jacobian of the run, so both signs converge to the same equilibrium:
+// the same net current and iota of opposite sign. Helicity 1 covers the sign
+// of the quasi-symmetry helicity.
+TEST(TestVmec, BootstrapClosureIsIndependentOfTheSignOfTheJacobian) {
+  for (const int helicity_n : {0, 1}) {
+    VmecINDATA left_handed = BootstrapInput();
+    left_handed.bootstrap_helicity_n = helicity_n;
+    VmecINDATA right_handed = left_handed;
+    left_handed.signgs = -1;
+    right_handed.signgs = 1;
+    const auto left = vmecpp::run(left_handed);
+    ASSERT_TRUE(left.ok()) << left.status();
+    const auto right = vmecpp::run(right_handed);
+    ASSERT_TRUE(right.ok()) << right.status();
+    EXPECT_NEAR(right->wout.ctor, left->wout.ctor,
+                1.0e-9 * std::abs(left->wout.ctor))
+        << helicity_n;
+    for (int jF = 0; jF < left->wout.ns; ++jF) {
+      EXPECT_NEAR(right->wout.iotaf[jF], -left->wout.iotaf[jF], 1.0e-9)
+          << helicity_n << " " << jF;
+    }
+  }
+}
+
 TEST(TestVmec, BootstrapClosureInputIsValidated) {
   const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
   absl::StatusOr<std::string> indata_json = ReadFile(filename);

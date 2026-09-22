@@ -7,6 +7,9 @@
 
 #include <Eigen/Dense>
 #include <span>
+#include <vector>
+
+#include "vmecpp/vmec/bootstrap_current/bootstrap_current_kernel.h"
 
 namespace vmecpp {
 
@@ -41,18 +44,31 @@ struct BootstrapSurface {
   double b_inv_avg = 0.0;
 };
 
-struct RedlCoefficients {
-  double nu_e = 0.0;
-  double nu_i = 0.0;
-  double l31 = 0.0;
-  double l32 = 0.0;
-  double l34 = 0.0;
-  double alpha = 0.0;
+// Owns the tables of a SurfaceGrid.
+class SurfaceGridTables {
+ public:
+  SurfaceGridTables() = default;
+  SurfaceGridTables(int n_theta_even, int n_theta_eff, int n_zeta);
+
+  SurfaceGrid grid() const;
+
+ private:
+  int n_theta_even_ = 0;
+  int n_theta_eff_ = 0;
+  int n_zeta_ = 0;
+  std::vector<double> cos_mt_;
+  std::vector<double> sin_mt_;
+  std::vector<double> cos_nv_;
+  std::vector<double> sin_nv_;
 };
 
 // Value and derivative of \sum_k c_k x^k at x.
 void EvaluatePowerSeries(const Eigen::VectorXd& c, double x, double& m_value,
                          double& m_derivative);
+
+// The kinetic profiles at the normalized toroidal flux rho in SI units.
+KineticPoint EvaluateKineticPoint(const BootstrapProfiles& profiles,
+                                  double rho);
 
 // \mu_0 p at the normalized toroidal flux rho with
 // p = e (n_e T_e + n_i T_i), n_i = n_e / zeff, in the pressure units of the

@@ -4,7 +4,10 @@
 cc_library(
     name = "bootstrap_current",
     srcs = ["bootstrap_current.cc"],
-    hdrs = ["bootstrap_current.h"],
+    hdrs = [
+        "bootstrap_current.h",
+        "bootstrap_current_kernel.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "@eigen",

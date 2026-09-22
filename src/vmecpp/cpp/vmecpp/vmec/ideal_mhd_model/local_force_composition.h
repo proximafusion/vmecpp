@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "vmecpp/vmec/bootstrap_current/bootstrap_current_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/constraint_force_kernel.h"
@@ -36,6 +37,12 @@ namespace vmecpp {
 //   (index jH-nsMinH, the rest of the block unused), differentiated alongside
 //   the force densities so its state derivative comes out of the same Enzyme
 //   pass; ncurr==0 does not populate it (chi' is a fixed input profile).
+//   Block 21 is the enclosed current of the bootstrap closure on the same
+//   layout when with_bootstrap is set.
+// Geometry block 20 carries the enclosed toroidal current profile currH
+//   (index jH-nsMinH, the rest unused) for ncurr==1. It is an input of the
+//   same map as the geometry, so the passes give its derivatives too; a
+//   tangent seeded on it moves the current, a cotangent lands there.
 struct LocalForceComposition {
   int nZnT;
   int geom_stride;   // doubles per geometry block (>= (nsMaxF1-nsMinF1)*nZnT)
@@ -55,13 +62,12 @@ struct LocalForceComposition {
   double lamscale;
   bool lthreed;
 
-  // Constrained-current profile (ncurr==1): chi' is a function of geometry,
-  // recomputed each step, so it is differentiated in place. ncurr==0 uses the
-  // frozen chipH above.
+  // Constrained-current profile (ncurr==1): chi' is a function of geometry
+  // and of the currH block, recomputed each step, so it is differentiated in
+  // place. ncurr==0 uses the frozen chipH above.
   int ncurr = 0;
   int nThetaEff = 0;
-  const double* currH = nullptr;  // index jH-nsMinH
-  const double* wInt = nullptr;   // index kl % nThetaEff
+  const double* wInt = nullptr;  // index kl % nThetaEff
 
   // Spectral-condensation constraint force. Enabled only when with_constraint
   // is set; then geometry blocks 16-19 hold rCon, zCon, ruFull, zuFull and
@@ -86,11 +92,29 @@ struct LocalForceComposition {
   const double* sinnv = nullptr;
   const double* sinmu = nullptr;
   const double* cosmu = nullptr;
+
+  // Bootstrap closure. The Redl closure is evaluated on every half surface
+  // from the fields above, with currH read from geometry block 20 and chi' from
+  // force block 20, and integrated from the axis into force block 21. The
+  // radial integral needs one thread holding every half surface.
+  bool with_bootstrap = false;
+  const double* phipH = nullptr;                    // index jH-nsMinH
+  const KineticPoint* bootstrap_kinetic = nullptr;  // index jH-nsMinH
+  double bootstrap_zeff = 1.0;
+  int bootstrap_helicity_big_n = 0;
+  double bootstrap_psi_edge_ref = 0.0;
+  int sign_of_jacobian = -1;
+  SurfaceGrid bootstrap_grid;
 };
 
 // Number of force blocks ComputeLocalForceDensity writes: the 12 MHD/lambda
-// densities, 4 constraint densities, and the ncurr==1 chi' block.
-inline constexpr int kLocalForceBlocks = 21;
+// densities, 4 constraint densities, the ncurr==1 chi' block and the bootstrap
+// closure block.
+inline constexpr int kLocalForceBlocks = 22;
+
+// Number of geometry blocks ComputeLocalForceDensity reads: the 16 real-space
+// geometry blocks, 4 constraint blocks and the currH block.
+inline constexpr int kLocalGeometryBlocks = 21;
 
 // Doubles of work that ComputeLocalForceDensity slices for composition c: the
 // half-grid fields and per-point scratch, plus the constraint scratch when
@@ -102,6 +126,9 @@ inline int LocalForceWorkSize(const LocalForceComposition& c) {
     const int nFull = c.nsMaxFIncludingLcfs - c.nsMinF;
     n += 4 * nFull * c.nZnT + 4 * (c.ntor + 1) + c.nZnT + c.nThetaReduced +
          nFull + 2 * nHalf;
+  }
+  if (c.with_bootstrap) {
+    n += 3 * nHalf + 2 * c.nZnT + SurfaceExtremaWorkSize(c.bootstrap_grid);
   }
   return n;
 }
@@ -173,6 +200,7 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
   ComputeBsupContra(lue, luo, lve, lvo, gsqrt, c->sqrtSH, c->lthreed, nZnT,
                     c->nsMinF1, c->nsMinH, c->nsMaxH, bsupu, bsupv);
   double* chip_out = force + 20 * fS;
+  const double* currH = geom + 20 * gS;
   for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
     // For a prescribed-current profile (ncurr==1), chi' is recomputed from the
     // geometry each step (constrained toroidal current), so differentiate it
@@ -193,7 +221,7 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
         avg_guu_gsqrt += guu[ih] / gsqrt[ih] * c->wInt[l];
       }
       if (avg_guu_gsqrt != 0.0) {
-        chip = (c->currH[jH - c->nsMinH] - jvPlasma) / avg_guu_gsqrt;
+        chip = (currH[jH - c->nsMinH] - jvPlasma) / avg_guu_gsqrt;
       }
       // Expose chi' as its own output block so a cotangent seeded there alone
       // yields (dchi'/dx)^T through the same reverse pass as the force
@@ -345,7 +373,8 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
     s += c->nsMaxFIncludingLcfs - c->nsMinF;
     double* ard_h = s;
     s += c->nsMaxH - c->nsMinH;
-    double* azd_h = s;  // last slice of the work buffer
+    double* azd_h = s;
+    s += c->nsMaxH - c->nsMinH;
     for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
       double ar = 0.0;
       double az = 0.0;
@@ -414,6 +443,46 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
                         c->sqrtSF, nZnT, c->nsMinF, c->nsMinF1, c->nsMaxF,
                         brmn_e, brmn_o, bzmn_e, bzmn_o, frcon_e, frcon_o,
                         fzcon_e, fzcon_o);
+  }
+
+  if (c->with_bootstrap && c->ncurr == 1) {
+    // The Redl closure on every half surface from the fields above, and the
+    // enclosed current integrated from the axis into force block 21.
+    const int nHalfSurf = c->nsMaxH - c->nsMinH;
+    double* j_dot_b = s;
+    s += nHalfSurf;
+    double* g_avg = s;
+    s += nHalfSurf;
+    double* dvds = s;
+    s += nHalfSurf;
+    double* b_surf = s;
+    s += nZnT;
+    double* w_surf = s;
+    s += nZnT;
+    double* extrema_work = s;
+    for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
+      const int jl = jH - c->nsMinH;
+      double g = 0.0;
+      double vol = 0.0;
+      for (int kl = 0; kl < nZnT; ++kl) {
+        const int ih = jl * nZnT + kl;
+        const double wint = c->wInt[kl % c->nThetaEff];
+        b_surf[kl] = std::sqrt(bsupu[ih] * bsubu[ih] + bsupv[ih] * bsubv[ih]);
+        w_surf[kl] = gsqrt[ih] * wint;
+        g += bsubv[ih] * wint;
+        vol += gsqrt[ih] * wint;
+      }
+      g_avg[jl] = g;
+      dvds[jl] = c->sign_of_jacobian * vol;
+      const double iota = chip_out[jl] / c->phipH[jl];
+      j_dot_b[jl] =
+          RedlSurfaceJDotB(b_surf, w_surf, c->bootstrap_grid, extrema_work,
+                           c->bootstrap_kinetic[jl], c->bootstrap_zeff,
+                           c->bootstrap_helicity_big_n, c->sign_of_jacobian, g,
+                           currH[jl], iota, c->bootstrap_psi_edge_ref);
+    }
+    IntegrateBootstrapCurrentKernel(j_dot_b, g_avg, dvds, nHalfSurf, c->deltaS,
+                                    c->sign_of_jacobian, force + 21 * fS);
   }
 }
 

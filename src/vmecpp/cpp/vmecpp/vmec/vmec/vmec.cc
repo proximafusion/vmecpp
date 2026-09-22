@@ -735,9 +735,20 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       p_[thread_id]->evalRadialProfiles(fc_.haveToFlipTheta, constants_);
     }
 
+    if (indata_.bootstrap_current && h_.bootstrap_history_s.size() == 0 &&
+        initial_state.has_value() && initial_state->wout.buco.size() > 1) {
+      // a hot restart continues from the enclosed current of the equilibrium
+      // it restarts from, wout buco on the half grid behind a leading zero
+      const Eigen::Index num_half = initial_state->wout.buco.size() - 1;
+      h_.bootstrap_history_s.resize(num_half);
+      for (Eigen::Index j = 0; j < num_half; ++j) {
+        h_.bootstrap_history_s[j] = (j + 0.5) / static_cast<double>(num_half);
+      }
+      h_.bootstrap_history_buco = initial_state->wout.buco.tail(num_half);
+    }
     if (indata_.bootstrap_current && h_.bootstrap_history_s.size() > 0) {
       // continue from the enclosed current the closure reached on the previous
-      // multigrid step
+      // multigrid step or in the equilibrium of a hot restart
       for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
         p_[thread_id]->OverrideEnclosedCurrent(h_.bootstrap_history_s,
                                                h_.bootstrap_history_buco);
