@@ -43,6 +43,7 @@ cc_test(
         "//vmecpp/test_data:cth_like_free_bdy",
         "//vmecpp/test_data:cth_like_free_bdy_asym",
         "//vmecpp/test_data:cth_like_free_bdy_multigrid",
+        "//vmecpp/test_data:solovev_free_bdy",
     ],
     deps = [
         "//vmecpp/vmec/output_quantities:test_helpers",

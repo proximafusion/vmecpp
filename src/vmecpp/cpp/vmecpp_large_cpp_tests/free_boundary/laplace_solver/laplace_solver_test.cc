@@ -137,12 +137,44 @@ TEST_P(FourPTest, CheckFourP) {
                   static_cast<double>(vac1n_fourp["grpmn"][m][nf - n][k][l]) -
                   grpmn_sin_singular_negn;
 
-              // TODO(jons): for lasym, need cos-part of grpmn from
-              // educational_VMEC
               EXPECT_TRUE(IsCloseRelAbs(grpmn_sin_reference_posn,
                                         grpmn_sin_regular_posn, tolerance));
               EXPECT_TRUE(IsCloseRelAbs(grpmn_sin_reference_negn,
                                         grpmn_sin_regular_negn, tolerance));
+
+              if (!s.lasym) {
+                continue;
+              }
+
+              // The cos part exists only for an asymmetric equilibrium, where
+              // educational_VMEC writes it as grpmn_cos.
+              const double grpmn_cos_singular_posn =
+                  scale_to_match_fortran_singular *
+                  si.grpmn_cos[idx_m_posn * numLocal + klRel];
+              const double grpmn_cos_singular_negn =
+                  scale_to_match_fortran_singular *
+                  si.grpmn_cos[idx_m_negn * numLocal + klRel];
+              const double grpmn_cos_regular_posn =
+                  scale_to_match_fortran_regular *
+                  ls.grpmn_cos[idx_m_posn * numLocal + klRel];
+              const double grpmn_cos_regular_negn =
+                  scale_to_match_fortran_regular *
+                  ls.grpmn_cos[idx_m_negn * numLocal + klRel];
+              const double grpmn_cos_reference_posn =
+                  static_cast<double>(
+                      vac1n_fourp["grpmn_cos"][m][nf + n][k][l]) -
+                  grpmn_cos_singular_posn;
+              const double grpmn_cos_reference_negn =
+                  static_cast<double>(
+                      vac1n_fourp["grpmn_cos"][m][nf - n][k][l]) -
+                  grpmn_cos_singular_negn;
+
+              EXPECT_TRUE(IsCloseRelAbs(grpmn_cos_reference_posn,
+                                        grpmn_cos_regular_posn, tolerance))
+                  << "m = " << m << ", n = " << n << ", kl = " << kl;
+              EXPECT_TRUE(IsCloseRelAbs(grpmn_cos_reference_negn,
+                                        grpmn_cos_regular_negn, tolerance))
+                  << "m = " << m << ", n = " << n << ", kl = " << kl;
             }  // kl
           }  // m
         }  // n
@@ -154,7 +186,11 @@ TEST_P(FourPTest, CheckFourP) {
 INSTANTIATE_TEST_SUITE_P(TestLaplaceSolver, FourPTest,
                          Values(DataSource{.identifier = "cth_like_free_bdy",
                                            .tolerance = 1.0e-9,
-                                           .iter2_to_test = {53, 54}}));
+                                           .iter2_to_test = {53, 54}},
+                                DataSource{
+                                    .identifier = "cth_like_free_bdy_asym",
+                                    .tolerance = 1.0e-9,
+                                    .iter2_to_test = {53}}));
 
 class FourISymmTest : public TestWithParam<DataSource> {
  protected:
@@ -309,12 +345,32 @@ TEST_P(FourIAccumulateGrpmnTest, CheckFourIAccumulateGrpmn) {
                   scale_to_match_fortran_regular *
                   ls.grpmn_sin[idx_m_negn * numLocal + klRel];
 
-              // TODO(jons): for lasym, need cos-part of grpmn from
-              // educational_VMEC
               EXPECT_TRUE(IsCloseRelAbs(vac1n_fourp["grpmn"][m][nf + n][k][l],
                                         grpmn_sin_regular_posn, tolerance));
               EXPECT_TRUE(IsCloseRelAbs(vac1n_fourp["grpmn"][m][nf - n][k][l],
                                         grpmn_sin_regular_negn, tolerance));
+
+              if (!s.lasym) {
+                continue;
+              }
+
+              // The cos part exists only for an asymmetric equilibrium, where
+              // educational_VMEC writes it as grpmn_cos.
+              const double grpmn_cos_regular_posn =
+                  scale_to_match_fortran_regular *
+                  ls.grpmn_cos[idx_m_posn * numLocal + klRel];
+              const double grpmn_cos_regular_negn =
+                  scale_to_match_fortran_regular *
+                  ls.grpmn_cos[idx_m_negn * numLocal + klRel];
+
+              EXPECT_TRUE(
+                  IsCloseRelAbs(vac1n_fourp["grpmn_cos"][m][nf + n][k][l],
+                                grpmn_cos_regular_posn, tolerance))
+                  << "m = " << m << ", n = " << n << ", kl = " << kl;
+              EXPECT_TRUE(
+                  IsCloseRelAbs(vac1n_fourp["grpmn_cos"][m][nf - n][k][l],
+                                grpmn_cos_regular_negn, tolerance))
+                  << "m = " << m << ", n = " << n << ", kl = " << kl;
             }  // kl
           }  // m
         }  // n
@@ -326,7 +382,11 @@ TEST_P(FourIAccumulateGrpmnTest, CheckFourIAccumulateGrpmn) {
 INSTANTIATE_TEST_SUITE_P(TestLaplaceSolver, FourIAccumulateGrpmnTest,
                          Values(DataSource{.identifier = "cth_like_free_bdy",
                                            .tolerance = 1.0e-9,
-                                           .iter2_to_test = {53, 54}}));
+                                           .iter2_to_test = {53, 54}},
+                                DataSource{
+                                    .identifier = "cth_like_free_bdy_asym",
+                                    .tolerance = 1.0e-9,
+                                    .iter2_to_test = {53}}));
 
 class FourIKvDftTest : public TestWithParam<DataSource> {
  protected:

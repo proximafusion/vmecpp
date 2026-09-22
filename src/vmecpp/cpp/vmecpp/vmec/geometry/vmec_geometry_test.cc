@@ -45,6 +45,46 @@ TEST(VmecGeometryTest, ConvertsInternalScalingWithoutWout) {
   EXPECT_NEAR(point.poloidal_flux[1], -1.6 * M_PI, 1e-14);
 }
 
+// With no phiF to copy, the adapter integrates the enclosed toroidal flux from
+// the half-grid dphi/ds between the two surfaces. That is exact for a linear
+// dphi/ds, where the value at the inner endpoint of each interval is not.
+TEST(VmecGeometryTest, DerivesToroidalFluxFromTheHalfGridDerivative) {
+  VmecINDATA indata;
+  indata.nfp = 1;
+  indata.mpol = 2;
+  indata.ntor = 0;
+
+  const int num_full = 4;
+  const double delta_s = 1.0 / (num_full - 1);
+  VmecInternalResults internal;
+  internal.sign_of_jacobian = 1;
+  internal.lamscale = 1.0;
+  internal.num_full = num_full;
+  // dphi/ds = 1 + 3 s, so the enclosed flux is 2 pi (s + 3 s^2 / 2)
+  internal.phiF = Eigen::VectorXd::Zero(num_full);
+  internal.phipF = Eigen::VectorXd(num_full);
+  for (int jF = 0; jF < num_full; ++jF) {
+    internal.phipF[jF] = 1.0 + 3.0 * jF * delta_s;
+  }
+  internal.phipH = Eigen::VectorXd(num_full - 1);
+  for (int jH = 0; jH < num_full - 1; ++jH) {
+    internal.phipH[jH] = 1.0 + 3.0 * (jH + 0.5) * delta_s;
+  }
+  internal.iotaH = Eigen::VectorXd::Zero(num_full - 1);
+  internal.rmncc = RowMatrixXd::Zero(num_full, 2);
+  internal.zmnsc = RowMatrixXd::Zero(num_full, 2);
+  internal.lmnsc = RowMatrixXd::Zero(num_full, 2);
+
+  const Geometry geometry = MakeGeometry(indata, internal);
+  ASSERT_EQ(geometry.toroidal_flux.size(), static_cast<std::size_t>(num_full));
+  for (int jF = 0; jF < num_full; ++jF) {
+    const double s = jF * delta_s;
+    EXPECT_NEAR(geometry.toroidal_flux[jF], 2.0 * M_PI * (s + 1.5 * s * s),
+                1e-13)
+        << "surface " << jF;
+  }
+}
+
 TEST(VmecGeometryTest, SolverAndPhysicalStatesAgree) {
   VmecINDATA indata;
   indata.mpol = 2;

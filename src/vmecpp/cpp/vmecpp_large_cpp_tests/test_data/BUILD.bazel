@@ -93,6 +93,12 @@ filegroup(
 )
 
 filegroup(
+    name = "cth_like_free_bdy_asym",
+    visibility = ["//visibility:public"],
+    srcs = glob(["cth_like_free_bdy_asym/**/*.json"]),
+)
+
+filegroup(
     name = "w7x",
     visibility = ["//visibility:public"],
     srcs = [

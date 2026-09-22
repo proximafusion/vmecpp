@@ -10,9 +10,11 @@ OnlyCoils::OnlyCoils(const Sizes* s, const TangentialPartitioning* tp,
                      const MGridProvider* mgrid, std::span<double> bSqVacShare,
                      std::span<double> vacuum_b_r_share,
                      std::span<double> vacuum_b_phi_share,
-                     std::span<double> vacuum_b_z_share)
+                     std::span<double> vacuum_b_z_share,
+                     std::span<double> reduce_slots)
     : FreeBoundaryBase(s, tp, mgrid, bSqVacShare, vacuum_b_r_share,
-                       vacuum_b_phi_share, vacuum_b_z_share) {}  // OnlyCoils
+                       vacuum_b_phi_share, vacuum_b_z_share),
+      reduce_slots_(reduce_slots) {}  // OnlyCoils
 
 absl::StatusOr<bool> OnlyCoils::update(
     const std::span<const double> rCC, const std::span<const double> rSS,
@@ -51,20 +53,11 @@ absl::StatusOr<bool> OnlyCoils::update(
     *bSubUVac = 0.0;
     *bSubVVac = 0.0;
   }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    *bSubUVac += local_bsubuvac;
-    *bSubVVac += local_bsubvvac;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(&local_bsubuvac, 1, tp_.get_thread_id(), tp_.get_num_threads(),
+                 reduce_slots_.data(), bSubUVac);
+  SumOverThreads(&local_bsubvvac, 1, tp_.get_thread_id(), tp_.get_num_threads(),
+                 reduce_slots_.data(), bSubVVac);
 
   // compute magnetic pressure from only coils: |B|^2/2
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {

@@ -91,7 +91,7 @@ Geometry MakeGeometry(const VmecINDATA& indata,
       result.toroidal_flux[j] =
           result.toroidal_flux[j - 1] + internal.sign_of_jacobian * 2.0 *
                                             std::numbers::pi * delta_s *
-                                            internal.phipF[j - 1];
+                                            internal.phipH[j - 1];
     }
   }
   for (int j = 1; j < internal.num_full; ++j) {

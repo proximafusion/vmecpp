@@ -46,6 +46,9 @@ class HandoverStorage {
   void ResetSpectralWidthAccumulators();
   void RegisterSpectralWidthContribution(
       const SpectralWidthContribution& spectral_width_contribution);
+  // Destination of the cross-thread fold of the two sums.
+  double* SpectralWidthNumerator() { return &spectral_width_numerator_; }
+  double* SpectralWidthDenominator() { return &spectral_width_denominator_; }
   double VolumeAveragedSpectralWidth() const;
 
   void SetRadialExtent(const RadialExtent& radial_extent);
@@ -96,6 +99,10 @@ class HandoverStorage {
   // TODO(jurasic) this should have a smaller scope.
   Eigen::VectorXd rCon_LCFS;
   Eigen::VectorXd zCon_LCFS;
+
+  // One row per thread for SumOverThreads, wide enough for the widest sum of
+  // the radial team.
+  RowMatrixXd thread_reduce_slots;
 
   // Inter-thread handover storage: RowMatrixXd [num_threads, mnsize]
   // _i arrays: inside boundary, _o arrays: outside boundary

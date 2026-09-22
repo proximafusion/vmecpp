@@ -932,9 +932,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(phips);
   WRITEMEMBER(over_r);
   WRITEMEMBER(jdotb);
-  // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
-  // reference files with all quantities once that is done
-  //  WRITEMEMBER(bdotb);
+  WRITEMEMBER(bdotb);
   WRITEMEMBER(bdotgradv);
   WRITEMEMBER(DMerc);
   WRITEMEMBER(DShear);
@@ -1102,9 +1100,8 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
     ReadHalfGridCompat(m_obj.over_r, "overr");
   }
   READMEMBER(jdotb);
-  // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
-  // reference files with all quantities once that is done
-  //  READMEMBER(bdotb);
+  // Files written before bdotb was serialized carry no such dataset.
+  READMEMBER_OPTIONAL(bdotb);
   READMEMBER(bdotgradv);
   READMEMBER(DMerc);
   READMEMBER_COMPAT(DShear, "Dshear");
@@ -2033,11 +2030,12 @@ void vmecpp::FixupPoloidalCurrent(
 
 void vmecpp::RecomputeToroidalFlux(
     const FlowControl& fc, VmecInternalResults& m_vmec_internal_results) {
-  // quadrature in radial direction
+  // radial quadrature over the half-grid dphi/ds between the two full-grid
+  // surfaces, which is exact for a linear dphi/ds
   m_vmec_internal_results.phiF[0] = 0.0;
   for (int jF = 1; jF < fc.ns; ++jF) {
     m_vmec_internal_results.phiF[jF] = m_vmec_internal_results.phiF[jF - 1] +
-                                       m_vmec_internal_results.phipF[jF - 1];
+                                       m_vmec_internal_results.phipH[jF - 1];
   }  // jF
 
   // now apply scaling
@@ -3874,7 +3872,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     intermediate.redge[kl] =
         vmec_internal_results.r_e(lcfs_kl) + vmec_internal_results.r_o(lcfs_kl);
   }  // kl
-  if (fc.lfreeb && vacuum_pressure_state == VacuumPressureState::kActive) {
+  if (fc.lfreeb && vacuum_pressure_state >= VacuumPressureState::kActive) {
     for (int k = 0; k < s.nZeta; ++k) {
       for (int l = 0; l < s.nThetaEff; ++l) {
         // FIXME(eguiraud) slow loop for nestor
@@ -4427,7 +4425,7 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
   // Phys. Fluids B, Vol 5 (1993) p 3121, Eq. 9a-9d
   std::vector<double> bpol2vac(s.nZnT, 0.0);
   if (fc.lfreeb &&
-      vacuum_pressure_state == vmecpp::VacuumPressureState::kActive) {
+      vacuum_pressure_state >= vmecpp::VacuumPressureState::kActive) {
     for (int l = 0; l < s.nThetaEff; ++l) {
       for (int k = 0; k < s.nZeta; ++k) {
         // FIXME(eguiraud) slow loop for nestor
@@ -4830,6 +4828,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // MUST CONVERT m=1 MODES... FROM INTERNAL TO PHYSICAL FORM
   // Extrapolation of m=0 Lambda (cs) modes, which are not evolved at j=1, done
   // in CONVERT
+  // same map as FourierCoeffs::m1Constraint with scaling factor 1
+  const double sigma = -m_vmec_internal_results.sign_of_jacobian;
   if (s.lthreed) {
     for (int jF = 0; jF < fc.ns; ++jF) {
       for (int n = 0; n < s.ntor + 1; ++n) {
@@ -4838,9 +4838,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
         const double old_rss = m_vmec_internal_results.rmnss(idx_fc);
         m_vmec_internal_results.rmnss(idx_fc) =
-            (old_rss + m_vmec_internal_results.zmncs(idx_fc));
+            (old_rss + sigma * m_vmec_internal_results.zmncs(idx_fc));
         m_vmec_internal_results.zmncs(idx_fc) =
-            (old_rss - m_vmec_internal_results.zmncs(idx_fc));
+            (sigma * old_rss - m_vmec_internal_results.zmncs(idx_fc));
       }  // n
     }  // jF
   }
@@ -5451,9 +5451,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
         const double old_rsc = m_vmec_internal_results.rmnsc(idx_fc);
         m_vmec_internal_results.rmnsc(idx_fc) =
-            (old_rsc + m_vmec_internal_results.zmncc(idx_fc));
+            (old_rsc + sigma * m_vmec_internal_results.zmncc(idx_fc));
         m_vmec_internal_results.zmncc(idx_fc) =
-            (old_rsc - m_vmec_internal_results.zmncc(idx_fc));
+            (sigma * old_rsc - m_vmec_internal_results.zmncc(idx_fc));
       }  // n
     }  // jF
 

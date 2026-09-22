@@ -194,7 +194,7 @@ void CheckInitFromState(const VmecINDATA& indata, const WOutFileContents& wout,
 
   // THIS IS THE CALL UNDER TEST
   g.InitFromState(fb, wout.rmnc, wout.zmns, wout.lmns_full, wout.rmns,
-                  wout.zmnc, wout.lmnc_full, p, constants, &b);
+                  wout.zmnc, wout.lmnc_full, p, constants, signOfJacobian, &b);
 
   const int mnsize = s.mpol * (s.ntor + 1);
 
