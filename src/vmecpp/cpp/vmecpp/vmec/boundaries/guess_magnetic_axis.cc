@@ -112,8 +112,9 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
     }
   }
 
-  // undo m=1 constraint
+  // undo m=1 constraint; same map as FourierCoeffs::m1Constraint
   const double scalingFactor = 1.0;
+  const double sigma = -sign_of_jacobian;
   std::vector<std::vector<double> > rss_boundary;  // lthreed
   std::vector<std::vector<double> > zcs_boundary;  // lthreed
   std::vector<std::vector<double> > rsc_boundary;  // lasym
@@ -127,8 +128,10 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
       for (int n = 0; n <= s.ntor; ++n) {
         int idx_mn = m * (s.ntor + 1) + n;
         if (m == 1) {
-          rss_boundary[m][n] = (rbss[idx_mn] + zbcs[idx_mn]) * scalingFactor;
-          zcs_boundary[m][n] = (rbss[idx_mn] - zbcs[idx_mn]) * scalingFactor;
+          rss_boundary[m][n] =
+              (rbss[idx_mn] + sigma * zbcs[idx_mn]) * scalingFactor;
+          zcs_boundary[m][n] =
+              (sigma * rbss[idx_mn] - zbcs[idx_mn]) * scalingFactor;
         } else {
           rss_boundary[m][n] = rbss[idx_mn];
           zcs_boundary[m][n] = zbcs[idx_mn];
@@ -145,8 +148,10 @@ RecomputeAxisWorkspace RecomputeMagneticAxisToFixJacobianSign(
       for (int n = 0; n <= s.ntor; ++n) {
         int idx_mn = m * (s.ntor + 1) + n;
         if (m == 1) {
-          rsc_boundary[m][n] = (rbsc[idx_mn] + zbcc[idx_mn]) * scalingFactor;
-          zcc_boundary[m][n] = (rbsc[idx_mn] - zbcc[idx_mn]) * scalingFactor;
+          rsc_boundary[m][n] =
+              (rbsc[idx_mn] + sigma * zbcc[idx_mn]) * scalingFactor;
+          zcc_boundary[m][n] =
+              (sigma * rbsc[idx_mn] - zbcc[idx_mn]) * scalingFactor;
         } else {
           rsc_boundary[m][n] = rbsc[idx_mn];
           zcc_boundary[m][n] = zbcc[idx_mn];

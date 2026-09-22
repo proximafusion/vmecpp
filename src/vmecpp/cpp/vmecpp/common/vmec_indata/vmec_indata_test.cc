@@ -299,6 +299,18 @@ TEST(TestVmecINDATA, CheckSumCossqProfilesNeedAValidHumpLayout) {
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
+// FromJson reports malformed JSON through its status, as it does any other
+// unusable input.
+TEST(TestVmecINDATA, MalformedJsonIsRejected) {
+  for (const std::string malformed : {"{not json", "{\"mpol\": 6", ""}) {
+    const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(malformed);
+    ASSERT_FALSE(indata.ok()) << malformed;
+    EXPECT_EQ(indata.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_THAT(std::string(indata.status().message()),
+                testing::HasSubstr("not valid JSON"));
+  }
+}  // MalformedJsonIsRejected
+
 TEST(TestVmecINDATA, ToJson) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
