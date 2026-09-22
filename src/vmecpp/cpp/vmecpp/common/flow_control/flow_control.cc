@@ -18,12 +18,6 @@
 
 namespace vmecpp {
 
-// Maps the integer codes used by the Fortran reference (and by any
-// serialized state that originates from that representation) onto the
-// strongly-typed RestartReason enumeration. The four valid input values
-// correspond one-to-one with the enumeration constants; any other input
-// indicates corrupted state and triggers the compiler's unreachable hint
-// so that the optimizer can elide the default branch.
 RestartReason RestartReasonFromInt(int restart_reason) {
   switch (restart_reason) {
     case 1:
@@ -61,28 +55,12 @@ int get_max_threads(std::optional<int> max_threads) {
   return max_threads.value();
 }
 
-// Constructs the iteration controller state for a single Vmec::run.
-//
-// The residual fields fsq, fsqr, and fsqz are initialized to unity, which
-// is large enough to exceed any reasonable force tolerance and therefore
-// prevents the convergence test from firing prematurely before the first
-// force evaluation has populated them. The force-tolerance field ftolv is
-// likewise initialized to unity so that the controller's stage-startup
-// logic always observes ftolv > fsqr and proceeds with the iteration.
-//
-// The Jacobian-event counter ijacob and the reference residual res0 are
-// initialized to zero and minus one respectively, the latter sentinel
-// indicating that no reference residual has yet been recorded. The
-// restart disposition begins at NO_RESTART, multi_ns_grid records the
-// number of multigrid stages that will execute over the run, and delt0r
-// preserves the input delt so that subsequent reductions remain relative
-// to the original value. The component residual vectors are zeroed for
-// completeness; their values are overwritten at each force evaluation.
 FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
                          std::optional<int> max_threads)
     : lfreeb(lfreeb), max_threads_(get_max_threads(max_threads)) {
-  // INITIALIZE PARAMETERS
   fsq = 1.0;
+
+  // INITIALIZE PARAMETERS
   fsqr = 1.0;
   fsqz = 1.0;
   ftolv = fsqr;
@@ -105,24 +83,8 @@ FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
   niter_max_per_cfg = std::numeric_limits<int>::max();
 }
 
-// Accessor for the effective worker count established at construction.
-// Exposed for code paths that must size auxiliary thread-private buffers
-// consistently with the OpenMP runtime's configuration.
-
 int FlowControl::max_threads() const { return max_threads_; }
 
-// Allocates and initializes the per-configuration state vectors that
-// support the batched CUDA execution mode. The operation is idempotent
-// in the sense that a call whose argument matches the currently allocated
-// length returns immediately without disturbing the contents. A call with
-// n_cfg <= 0 is treated as a request to leave the vectors in their
-// current state.
-//
-// Initial values mirror the single-configuration initialization performed
-// in the constructor: the residual fields are set to unity to suppress
-// premature convergence, the restart disposition starts at NO_RESTART,
-// the active mask marks every configuration as iterating, and the
-// component residual vectors are zeroed.
 namespace {
 // Reads VMECPP_ACTIVE_PER_CFG_OVERRIDE_BITS to produce an initial
 // active-per-cfg mask. The env-var format is a string of ASCII 0/1
@@ -152,6 +114,18 @@ std::vector<std::uint8_t> ResolveInitialActiveMask(int n_cfg) {
 }
 }  // namespace
 
+// Allocates and initializes the per-configuration state vectors that
+// support the batched CUDA execution mode. The operation is idempotent
+// in the sense that a call whose argument matches the currently allocated
+// length returns immediately without disturbing the contents. A call with
+// n_cfg <= 0 is treated as a request to leave the vectors in their
+// current state.
+//
+// Initial values mirror the single-configuration initialization performed
+// in the constructor: the residual fields are set to unity to suppress
+// premature convergence, the restart disposition starts at NO_RESTART,
+// the active mask comes from ResolveInitialActiveMask, and the component
+// residual vectors are zeroed.
 void FlowControl::ResizeForBatch(int n_cfg) {
   if (n_cfg <= 0) return;
   if (static_cast<int>(active_per_cfg.size()) == n_cfg) return;
@@ -173,10 +147,9 @@ void FlowControl::ResizeForBatch(int n_cfg) {
 // Restores active_per_cfg to ones (subject to the
 // VMECPP_ACTIVE_PER_CFG_OVERRIDE_BITS override), zeros iter2_per_cfg,
 // and clears converged_per_cfg. Called at the start of every multigrid
-// stage after the first. Configurations that converged against the
-// coarser-stage tolerance must re-iterate at the finer stage's tighter
-// tolerance, so the active mask is rebuilt rather than carried
-// forward.
+// stage. Configurations that converged against the coarser-stage
+// tolerance must re-iterate at the finer stage's tighter tolerance, so
+// the active mask is rebuilt rather than carried forward.
 void FlowControl::ResetActivePerCfgForNextStage() {
   const int n_cfg = static_cast<int>(active_per_cfg.size());
   if (n_cfg <= 0) return;
