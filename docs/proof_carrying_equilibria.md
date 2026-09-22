@@ -86,6 +86,6 @@ Circular tokamak of the test data, `iota = 0.9 - 0.64 s`, `iota = 1/2` at `s = 0
 
 `wout_nfp4_QH_ns50`: the certified ratios of the harmonics of the two-term defect to those of its product span 1.7 at mid radius, 2e-4 for `wout_solovev`, unchanged from 50 to 162 modes (`gen/quasisym.py`). The Boozer harmonics of `|B|` certified at `s = 0.417` of `wout_solovev` enclose `booz_xform`'s coefficients (`gen/boozer.py --booz`).
 
-One, two and three surfaces of `wout_solovev` have exactly one zero of the collocated residual in a box of radius 1.5e-9 to 4.6e-9 around a centre that Newton's method moved 2.2e-6 to 3.5e-6 from the wout's coefficients; five do not pass the test. The rational surface of the rippled tokamak and the same surface of its control both pass at 33 surfaces, with contraction constants 0.29 and 0.25, and neither at 65, where the Jacobian's condition number is five times larger (`gen/newton_colloc.py`).
+One, two and three surfaces of `wout_solovev` have exactly one zero of the collocated residual in a box shaped to the coefficients, its radii from 5.7e-10 to 6.3e-9, around a centre that Newton's method moved 2.2e-6 to 3.5e-6 from the wout's coefficients; five do not pass the test. The rational surface of the rippled tokamak and the same surface of its control both pass at 33 surfaces, with contraction constants 0.29 and 0.25, and neither at 65, where the Jacobian's condition number is five times larger (`gen/newton_colloc.py`).
 
 Certification is offline and per-wout; nothing runs in CI.
