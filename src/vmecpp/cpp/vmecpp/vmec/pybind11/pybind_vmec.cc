@@ -851,7 +851,13 @@ PYBIND11_MODULE(_vmecpp, m) {
           .def("_set_mpol_ntor", &VmecINDATA::SetMpolNtor, py::arg("new_mpol"),
                py::arg("new_ntor"))
           .def("from_file", &VmecINDATA::FromFile)
-          .def("from_json", &VmecINDATA::FromJson)
+          .def_static(
+              "from_json",
+              [](const std::string &indata_json) {
+                auto maybe_indata = VmecINDATA::FromJson(indata_json);
+                return GetValueOrThrow(maybe_indata);
+              },
+              py::arg("indata_json"))
           .def("to_json", &VmecINDATA::ToJsonOrException)
           .def("copy", &VmecINDATA::Copy)
 
