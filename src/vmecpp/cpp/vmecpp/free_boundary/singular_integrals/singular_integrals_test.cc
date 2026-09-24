@@ -4,8 +4,11 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/singular_integrals/singular_integrals.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -15,10 +18,8 @@ namespace vmecpp {
 
 using testing::IsCloseRelAbs;
 
-// 64-point Gauss-Legendre quadrature on [-1, 1]. Stored as {weight, abscissa}
-// pairs. Exact for polynomials up to degree 127, and for smooth non-polynomial
-// integrands (like t^l / sqrt(am + 2*d*t + ap*t^2) with realistic coefficients)
-// it reaches machine precision long before L = mf + nf = 13.
+// 64-point Gauss-Legendre quadrature on [-1, 1], stored as {weight, abscissa}
+// pairs; exact for polynomials up to degree 127.
 constexpr int kGLNodes = 64;
 constexpr std::array<std::array<double, 2>, kGLNodes> kGaussLegendre64 = {{
     {0.0486909570091397, -0.0243502926634244},
@@ -87,39 +88,54 @@ constexpr std::array<std::array<double, 2>, kGLNodes> kGaussLegendre64 = {{
     {0.0017832807216964, 0.9993050417357722},
 }};
 
-// Reference T^{+/-}_l via numerical quadrature of the defining integral
-//   T^+_l = integral_{-1}^{+1} t^l / sqrt(am + 2*d*t + ap*t^2) dt
-//   T^-_l = integral_{-1}^{+1} t^l / sqrt(ap + 2*d*t + am*t^2) dt
-// (the integrands are smooth on [-1,+1] as long as the discriminant
-// d^2 - ap*am < 0, i.e. b2 != 0).
-// 64-point Gauss-Legendre reaches machine precision for these integrands well
-// beyond l = L = mf + nf of interest (the integrand is analytic in a strip
-// around [-1, 1] whose width scales with the distance from the roots of the
-// square-root radicand; see Trefethen, "Is Gauss Quadrature Better Than
-// Clenshaw-Curtis?").
-static double TlpReference(int l, double ap, double am, double d) {
+// Composite Gauss-Legendre rule on [x0, x1] in num_panels panels.
+template <typename F>
+static double Integrate(F f, double x0, double x1, int num_panels) {
   double sum = 0.0;
-  for (const auto& [w, t] : kGaussLegendre64) {
-    const double tl = std::pow(t, l);
-    const double radicand = am + 2.0 * d * t + ap * t * t;
-    sum += w * tl / std::sqrt(radicand);
+  const double width = (x1 - x0) / num_panels;
+  for (int panel = 0; panel < num_panels; ++panel) {
+    const double mid = x0 + (panel + 0.5) * width;
+    for (const auto& [w, x] : kGaussLegendre64) {
+      sum += 0.5 * width * w * f(mid + 0.5 * width * x);
+    }
   }
   return sum;
 }
 
-static double TlmReference(int l, double ap, double am, double d) {
-  // T^-_l swaps ap <-> am in the radicand (see eq. 6.206 in the numerics doc).
+static double ChebyshevT(int k, double t) {
+  return std::cos(k * std::acos(std::clamp(t, -1.0, 1.0)));
+}
+
+// value at the monomial t^l of a linear functional given on T_0, ..., T_l:
+//   t^l = 2^{1-l} sum_{j=0}^{floor(l/2)} binom(l, j) T_{l-2j},
+// with the T_0 term halved. The coefficients are positive and sum to one.
+static double AtMonomial(int l, const std::vector<double>& at_chebyshev) {
   double sum = 0.0;
-  for (const auto& [w, t] : kGaussLegendre64) {
-    const double tl = std::pow(t, l);
-    const double radicand = ap + 2.0 * d * t + am * t * t;
-    sum += w * tl / std::sqrt(radicand);
+  double binomial = 1.0;
+  for (int j = 0; 2 * j <= l; ++j) {
+    const double weight = (l - 2 * j == 0) ? 0.5 : 1.0;
+    sum += weight * binomial * at_chebyshev[l - 2 * j];
+    binomial *= static_cast<double>(l - j) / (j + 1);
+  }
+  return sum * std::ldexp(1.0, 1 - l);
+}
+
+// sum_k gamma_k(m, n) T_k(t)
+static double AddBackPolynomial(const SingularIntegrals& si, int nf, int mf,
+                                int m, int n, double t) {
+  double sum = 0.0;
+  for (int k = 0; k <= mf + nf; ++k) {
+    const int knm = (k * (nf + 1) + n) * (mf + 1) + m;
+    sum += si.chebyshev_coefficients[knm] * ChebyshevT(k, t);
   }
   return sum;
 }
 
-TEST(TestSingularIntegrals, CheckConstants) {
-  static constexpr double kTolerance = 1.0e-12;
+// The Chebyshev coefficients describe the polynomials whose monomial
+// coefficients are cmns: cmn from its closed form (6.182 in TNOV), cmns from
+// cmn by (6.291). At mf + nf = 13 the monomial form still evaluates to 1e-12.
+TEST(TestSingularIntegrals, ChebyshevCoefficientsReproduceCmns) {
+  static constexpr double kTolerance = 1.0e-11;
 
   const bool lasym = false;
   const int nfp = 5;
@@ -138,56 +154,118 @@ TEST(TestSingularIntegrals, CheckConstants) {
   const int mf = mpol + 1;
   SingularIntegrals si(&s, &fb, &tp, &sg, nf, mf);
 
+  // cmn(l, m, n), zero outside |m - n| <= l <= m + n and for l - m - n odd
+  const auto cmn = [](int l, int m, int n) {
+    if (m < 0 || n < 0 || l < std::abs(m - n) || l > m + n ||
+        (l - m - n) % 2 != 0) {
+      return 0.0;
+    }
+    const int sign = ((l - m + n) / 2) % 2 == 0 ? 1 : -1;
+    // exp(lgamma(n + 1) - lgamma(m + 1)) == n! / m!
+    const double numFac = std::lgamma((m + n + l) / 2 + 1);
+    const double denFac1 = std::lgamma((m + n - l) / 2 + 1);
+    const double denFac2 = std::lgamma((l + std::abs(m - n)) / 2 + 1);
+    const double denFac3 = std::lgamma((l - std::abs(m - n)) / 2 + 1);
+    return sign * std::exp(numFac - denFac1 - denFac2 - denFac3);
+  };
+
   for (int n = 0; n < nf + 1; ++n) {
     for (int m = 0; m < mf + 1; ++m) {
-      for (int l = std::abs(m - n); l <= m + n; l += 2) {
-        const int lnm = (l * (nf + 1) + n) * (mf + 1) + m;
-
-        const int sign = ((l - m + n) / 2) % 2 == 0 ? 1 : -1;
-
-        // need to compute n! / m!
-        // Note: n! = gamma(n + 1)
-        // Note: lgamma(n + 1) == log(n!)
-        // exp(lgamma(n +1) - lgamma(m+1)) == n! / m!
-        const double numFac = std::lgamma((m + n + l) / 2 + 1);
-        const double denFac1 = std::lgamma((m + n - l) / 2 + 1);
-        const double denFac2 = std::lgamma((l + std::abs(m - n)) / 2 + 1);
-        const double denFac3 = std::lgamma((l - std::abs(m - n)) / 2 + 1);
-
-        const double cmnRef =
-            sign * std::exp(numFac - denFac1 - denFac2 - denFac3);
-
-        EXPECT_TRUE(IsCloseRelAbs(cmnRef, si.cmn[lnm], kTolerance));
-      }  // l
+      for (const double t : {-1.0, -0.9, -0.35, 0.2, 0.7, 1.0}) {
+        double expected = 0.0;
+        for (int l = 0; l <= m + n; ++l) {
+          const double cmns = (cmn(l, m, n) + cmn(l, m, n - 1) +
+                               cmn(l, m - 1, n) + cmn(l, m - 1, n - 1)) /
+                              ((m == 0 && n == 0) ? 1.0 : 2.0);
+          expected += cmns * std::pow(t, l);
+        }
+        EXPECT_TRUE(IsCloseRelAbs(
+            expected, AddBackPolynomial(si, nf, mf, m, n, t), kTolerance))
+            << "(m, n) = (" << m << ", " << n << ") at t = " << t;
+      }
     }  // m
   }  // n
-}  // CheckConstants
+}  // ChebyshevCoefficientsReproduceCmns
 
-// Verify that prepareUpdate computes T^{+/-}_l accurately for ALL l in [0, L]
-// at a range of Fourier resolutions.
-//
-// Resolutions span the low-kL regime (forward recurrence is accurate, so the
-// forward branch of prepareUpdate is exercised) all the way up to high-kL
-// (Miller backward recurrence fires; forward would lose all digits).
-//
-// Reference: 64-point Gauss-Legendre quadrature of the defining integral.
-// This is independent of both recurrence directions and reaches ~1e-13
-// relative accuracy at the chosen coefficients up to l = 45.
-class TlpTlmAccuracyTest
-    : public ::testing::TestWithParam<std::pair<int, int>> {};
+// cmns reaches 1e11 at mf + nf = 33 while the polynomial it describes stays
+// below one, which is what the Chebyshev coefficients have to reflect. The
+// radial Zernike polynomial of (m, n) is (-1)^n at t = 1 and (-1)^m at
+// t = -1, so (6.291) leaves p_mn(1) = [n == 0] and p_mn(-1) = [m == 0].
+TEST(TestSingularIntegrals, ChebyshevCoefficientsStayBounded) {
+  static constexpr double kTolerance = 1.0e-13;
 
-TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
-  // GL-64 reference noise at l near kL is ~1e-13; 1e-11 leaves a safe margin
-  // while staying far below the forward-recurrence error that Miller corrects.
-  static constexpr double kTolerance = 1.0e-11;
+  const bool lasym = false;
+  const int nfp = 5;
+  const int mpol = 16;
+  const int ntor = 16;
+  const int ntheta = 0;
+  const int nzeta = 36;
 
-  const auto [mpol, ntor] = GetParam();
+  Sizes s(lasym, nfp, mpol, ntor, ntheta, nzeta);
+  FourierBasisFastToroidal fb(&s);
+  TangentialPartitioning tp(s.nZnT);
+  SurfaceGeometry sg(&s, &fb, &tp);
+
+  const int nf = ntor;
+  const int mf = mpol + 1;
+  SingularIntegrals si(&s, &fb, &tp, &sg, nf, mf);
+
+  EXPECT_LE(si.chebyshev_coefficients.cwiseAbs().maxCoeff(), 1.0 + kTolerance);
+  for (int n = 0; n < nf + 1; ++n) {
+    for (int m = 0; m < mf + 1; ++m) {
+      double at_plus = 0.0;
+      double at_minus = 0.0;
+      for (int k = 0; k <= mf + nf; ++k) {
+        const int knm = (k * (nf + 1) + n) * (mf + 1) + m;
+        at_plus += si.chebyshev_coefficients[knm];
+        at_minus += (k % 2 == 0 ? 1.0 : -1.0) * si.chebyshev_coefficients[knm];
+        if (k > m + n) {
+          EXPECT_EQ(si.chebyshev_coefficients[knm], 0.0);
+        }
+      }
+      EXPECT_TRUE(IsCloseRelAbs(n == 0 ? 1.0 : 0.0, at_plus, kTolerance))
+          << "(m, n) = (" << m << ", " << n << ")";
+      EXPECT_TRUE(IsCloseRelAbs(m == 0 ? 1.0 : 0.0, at_minus, kTolerance))
+          << "(m, n) = (" << m << ", " << n << ")";
+    }  // m
+  }  // n
+}  // ChebyshevCoefficientsStayBounded
+
+// prepareUpdate has to deliver the Chebyshev moments
+//   M^+_k = int_{-1}^{1} T_k(t) / sqrt(ap t^2 + 2 d t + am) dt
+// (M^-_k with ap and am exchanged) for all k in [0, kL], at a range of
+// resolutions and metric coefficients, and the functional of Eq. (A17) on T_k,
+//   S^+_k = int_{-1}^{1} T_k(t) (Ap t^2 + 2 D t + Am) /
+//                        (ap t^2 + 2 d t + am)^{3/2} dt
+// (S^-_k with ap, am and Ap, Am exchanged). The reference is a composite
+// Gauss-Legendre quadrature of the defining integrals, which is independent of
+// the recurrence; the monomial moments T^{+/-}_l that follow from the
+// Chebyshev ones are held to the quadrature of their own integral as well.
+struct MomentCase {
+  int mpol;
+  int ntor;
+  // metric coefficients (a, b2, c) = (guu, 2 guv, gvv) of the tangent plane
+  double a;
+  double b2;
+  double c;
+  // panels of the reference quadrature
+  int panels;
+  double tolerance;
+  // R0 and R1 of Eq. (A17) divide by 4 a c - b2^2
+  double s_tolerance;
+};
+
+class ChebyshevMomentsAccuracyTest
+    : public ::testing::TestWithParam<MomentCase> {};
+
+TEST_P(ChebyshevMomentsAccuracyTest, MatchesQuadrature) {
+  const auto [mpol, ntor, a_val, b2_val, c_val, panels, tolerance,
+              s_tolerance] = GetParam();
 
   const bool lasym = false;
   const int nfp = 5;
   const int ntheta = 0;
-  // Sizes requires nzeta >= 2*ntor+1 (to resolve all toroidal modes).
-  // Pick the smallest power-of-two-friendly value that works for each case.
+  // Sizes requires nzeta >= 2 * ntor + 1
   const int nzeta = 4 * (ntor + 1);
 
   Sizes s(lasym, nfp, mpol, ntor, ntheta, nzeta);
@@ -200,73 +278,194 @@ TEST_P(TlpTlmAccuracyTest, MatchesQuadrature) {
   const int kL = mf + nf;
   SingularIntegrals si(&s, &fb, &tp, &sg, nf, mf);
 
-  // Geometry coefficients chosen so am/ap ~ 4.7 and the discriminant
-  // d^2 - ap*am = 0.16 - 2.31 < 0 (so the integrand is smooth on [-1, 1]).
-  //   ap = a + b2 + c = 0.7
-  //   am = a - b2 + c = 3.3
-  //   d  = c - a     = 0.4
-  // At these coefficients the forward recurrence loses ~kL * log10(am/ap)
-  // ~ 0.67 * kL significant digits; for kL >= 15 it loses > 10 digits and the
-  // Miller activation threshold (growth > 1e10) triggers.
-  const double a_val = 0.8;
-  const double b2_val = -1.3;
-  const double c_val = 1.2;
   const double ap = a_val + b2_val + c_val;
   const double am = a_val - b2_val + c_val;
   const double d = c_val - a_val;
-  ASSERT_GT(am, ap) << "test setup: need am > ap to exercise Miller path";
-  ASSERT_LT(d * d, ap * am) << "test setup: need smooth integrand on [-1,1]";
+  ASSERT_LT(d * d, ap * am) << "test setup: need a positive-definite metric";
 
   const int numLocal = tp.ztMax - tp.ztMin;
   Eigen::VectorXd a = Eigen::VectorXd::Constant(numLocal, a_val);
   Eigen::VectorXd b2 = Eigen::VectorXd::Constant(numLocal, b2_val);
   Eigen::VectorXd c = Eigen::VectorXd::Constant(numLocal, c_val);
-  Eigen::VectorXd A = Eigen::VectorXd::Zero(numLocal);
-  Eigen::VectorXd B2 = Eigen::VectorXd::Zero(numLocal);
-  Eigen::VectorXd C = Eigen::VectorXd::Zero(numLocal);
+  // second-fundamental-form coefficients (A, B2, C), not proportional to the
+  // metric
+  const double A_val = 0.062236;
+  const double B2_val = -0.004955;
+  const double C_val = 0.050789;
+  const double Ap = A_val + B2_val + C_val;
+  const double Am = A_val - B2_val + C_val;
+  const double D = C_val - A_val;
+  Eigen::VectorXd A = Eigen::VectorXd::Constant(numLocal, A_val);
+  Eigen::VectorXd B2 = Eigen::VectorXd::Constant(numLocal, B2_val);
+  Eigen::VectorXd C = Eigen::VectorXd::Constant(numLocal, C_val);
 
-  si.prepareUpdate(a, b2, c, A, B2, C, /*fullUpdate=*/false);
+  si.prepareUpdate(a, b2, c, A, B2, C, /*fullUpdate=*/true);
 
-  // Reference values via Gauss-Legendre, independent of either recurrence.
-  std::vector<double> Tp_ref(kL + 1);
-  std::vector<double> Tm_ref(kL + 1);
-  for (int l = 0; l <= kL; ++l) {
-    Tp_ref[l] = TlpReference(l, ap, am, d);
-    Tm_ref[l] = TlmReference(l, ap, am, d);
+  std::vector<double> moments_p(kL + 1);
+  std::vector<double> moments_m(kL + 1);
+  for (int k = 0; k <= kL; ++k) {
+    const double reference_p = Integrate(
+        [&](double t) {
+          return ChebyshevT(k, t) / std::sqrt(ap * t * t + 2.0 * d * t + am);
+        },
+        -1.0, 1.0, panels);
+    const double reference_m = Integrate(
+        [&](double t) {
+          return ChebyshevT(k, t) / std::sqrt(am * t * t + 2.0 * d * t + ap);
+        },
+        -1.0, 1.0, panels);
+    // Coefficients are uniform, so every kl must give the same value.
+    for (int kl = 0; kl < numLocal; ++kl) {
+      ASSERT_TRUE(
+          IsCloseRelAbs(reference_p, si.chebyshev_moments_p[k][kl], tolerance))
+          << "M^+ at k = " << k << ", kl = " << kl;
+      ASSERT_TRUE(
+          IsCloseRelAbs(reference_m, si.chebyshev_moments_m[k][kl], tolerance))
+          << "M^- at k = " << k << ", kl = " << kl;
+    }
+    moments_p[k] = si.chebyshev_moments_p[k][0];
+    moments_m[k] = si.chebyshev_moments_m[k][0];
   }
 
-  // Check every l in [0, kL], across every local grid point.
-  // Coefficients are uniform, so every kl must give the same value.
   for (int l = 0; l <= kL; ++l) {
-    for (int kl = 0; kl < numLocal; ++kl) {
-      EXPECT_TRUE(IsCloseRelAbs(Tp_ref[l], si.Tlp[l][kl], kTolerance))
-          << "Tlp mismatch at mpol=" << mpol << ", ntor=" << ntor << ", l=" << l
-          << ", kl=" << kl << ": quadrature ref = " << Tp_ref[l]
-          << ", computed = " << si.Tlp[l][kl]
-          << ", abs diff = " << std::abs(Tp_ref[l] - si.Tlp[l][kl]);
-      EXPECT_TRUE(IsCloseRelAbs(Tm_ref[l], si.Tlm[l][kl], kTolerance))
-          << "Tlm mismatch at mpol=" << mpol << ", ntor=" << ntor << ", l=" << l
-          << ", kl=" << kl << ": quadrature ref = " << Tm_ref[l]
-          << ", computed = " << si.Tlm[l][kl]
-          << ", abs diff = " << std::abs(Tm_ref[l] - si.Tlm[l][kl]);
-    }
+    const double reference_p = Integrate(
+        [&](double t) {
+          return std::pow(t, l) / std::sqrt(ap * t * t + 2.0 * d * t + am);
+        },
+        -1.0, 1.0, panels);
+    const double reference_m = Integrate(
+        [&](double t) {
+          return std::pow(t, l) / std::sqrt(am * t * t + 2.0 * d * t + ap);
+        },
+        -1.0, 1.0, panels);
+    EXPECT_TRUE(IsCloseRelAbs(reference_p, AtMonomial(l, moments_p), tolerance))
+        << "T^+ at l = " << l;
+    EXPECT_TRUE(IsCloseRelAbs(reference_m, AtMonomial(l, moments_m), tolerance))
+        << "T^- at l = " << l;
+  }
+
+  for (int k = 0; k <= kL; ++k) {
+    const double reference_p = Integrate(
+        [&](double t) {
+          const double q = ap * t * t + 2.0 * d * t + am;
+          return ChebyshevT(k, t) * (Ap * t * t + 2.0 * D * t + Am) /
+                 (q * std::sqrt(q));
+        },
+        -1.0, 1.0, panels);
+    const double reference_m = Integrate(
+        [&](double t) {
+          const double q = am * t * t + 2.0 * d * t + ap;
+          return ChebyshevT(k, t) * (Am * t * t + 2.0 * D * t + Ap) /
+                 (q * std::sqrt(q));
+        },
+        -1.0, 1.0, panels);
+    EXPECT_TRUE(
+        IsCloseRelAbs(reference_p, si.chebyshev_s_moments_p[k][0], s_tolerance))
+        << "S^+ at k = " << k;
+    EXPECT_TRUE(
+        IsCloseRelAbs(reference_m, si.chebyshev_s_moments_m[k][0], s_tolerance))
+        << "S^- at k = " << k;
   }
 }
 
-// (mpol, ntor) pairs spanning the forward-stable regime (kL=15, Miller just
-// barely fires) up to high-kL where forward would lose >30 digits.
+// The first three cases share ap = 0.7, am = 3.3, d = 0.4 at kL = 15, 27 and
+// 45. The fourth takes the metric of the cth_like_free_bdy boundary at the
+// point of its largest cross term, at kL = 33. The next two have
+// gvv = guu / 100 and guu = gvv / 100 with a cross term at 90 percent of its
+// limit, where the closed form of T_0 cancels. The last has its cross term at
+// 99.995 percent of the limit: the characteristic roots lie within 0.005 of
+// the unit circle, the extent of the boundary-value problem is at its cap, and
+// the integrand is peaked enough to need 1024 panels. The condition number of
+// the problem, max Q / min Q = 4e4, sets the tolerances there.
 INSTANTIATE_TEST_SUITE_P(
-    ResolutionSweep, TlpTlmAccuracyTest,
-    ::testing::Values(std::pair<int, int>{6, 8}, std::pair<int, int>{12, 14},
-                      std::pair<int, int>{20, 24}),
-    [](const ::testing::TestParamInfo<std::pair<int, int>>& info) {
-      return "mpol" + std::to_string(info.param.first) + "_ntor" +
-             std::to_string(info.param.second);
+    ResolutionSweep, ChebyshevMomentsAccuracyTest,
+    ::testing::Values(
+        MomentCase{6, 8, 0.8, -1.3, 1.2, 16, 1.0e-13, 1.0e-13},
+        MomentCase{12, 14, 0.8, -1.3, 1.2, 16, 1.0e-13, 1.0e-13},
+        MomentCase{20, 24, 0.8, -1.3, 1.2, 16, 1.0e-13, 1.0e-13},
+        MomentCase{16, 16, 1.360e-02, 2.241e-02, 4.626e-02, 16, 1.0e-13,
+                   1.0e-11},
+        MomentCase{16, 16, 1.0, 0.18, 1.0e-02, 16, 1.0e-13, 1.0e-11},
+        MomentCase{16, 16, 1.0e-02, -0.18, 1.0, 16, 1.0e-13, 1.0e-11},
+        MomentCase{16, 16, 1.0, 1.9999, 1.0, 1024, 1.0e-11, 1.0e-8}),
+    [](const ::testing::TestParamInfo<MomentCase>& info) {
+      return "case" + std::to_string(info.index) + "_mpol" +
+             std::to_string(info.param.mpol) + "_ntor" +
+             std::to_string(info.param.ntor);
     });
 
-}  // namespace vmecpp
+// The pentadiagonal elimination runs without pivoting and the extent of the
+// boundary-value problem follows the characteristic roots, so the moments are
+// checked over the metrics a boundary can present: gvv / guu from 1e-2 to 1e2
+// and a cross term up to 95 percent of its limit, a different metric at every
+// grid point of one update.
+TEST(TestSingularIntegrals, ChebyshevMomentsOverTheMetricRange) {
+  static constexpr double kTolerance = 1.0e-13;
+  static constexpr int kPanels = 16;
 
-namespace vmecpp {
+  const bool lasym = false;
+  const int nfp = 5;
+  const int mpol = 16;
+  const int ntor = 16;
+  const int ntheta = 0;
+  const int nzeta = 36;
+
+  Sizes s(lasym, nfp, mpol, ntor, ntheta, nzeta);
+  FourierBasisFastToroidal fb(&s);
+  TangentialPartitioning tp(s.nZnT);
+  SurfaceGeometry sg(&s, &fb, &tp);
+
+  const int nf = ntor;
+  const int mf = mpol + 1;
+  const int kL = mf + nf;
+  SingularIntegrals si(&s, &fb, &tp, &sg, nf, mf);
+
+  const int numLocal = tp.ztMax - tp.ztMin;
+  Eigen::VectorXd a(numLocal);
+  Eigen::VectorXd b2(numLocal);
+  Eigen::VectorXd c(numLocal);
+  for (int kl = 0; kl < numLocal; ++kl) {
+    // both ratios sweep their range, at incommensurate rates
+    const double log_ratio = 2.0 * std::sin(0.37 * kl);
+    const double cross = 0.95 * std::sin(1.13 * kl + 0.5);
+    a[kl] = 1.0;
+    c[kl] = std::pow(10.0, log_ratio);
+    b2[kl] = 2.0 * cross * std::sqrt(a[kl] * c[kl]);
+  }
+  Eigen::VectorXd zero = Eigen::VectorXd::Zero(numLocal);
+
+  si.prepareUpdate(a, b2, c, zero, zero, zero, /*fullUpdate=*/false);
+
+  // every 7th point keeps the reference quadrature short
+  int checked = 0;
+  for (int kl = 0; kl < numLocal; kl += 7) {
+    const double ap = a[kl] + b2[kl] + c[kl];
+    const double am = a[kl] - b2[kl] + c[kl];
+    const double d = c[kl] - a[kl];
+    for (int k = 0; k <= kL; ++k) {
+      const double reference_p = Integrate(
+          [&](double t) {
+            return ChebyshevT(k, t) / std::sqrt(ap * t * t + 2.0 * d * t + am);
+          },
+          -1.0, 1.0, kPanels);
+      const double reference_m = Integrate(
+          [&](double t) {
+            return ChebyshevT(k, t) / std::sqrt(am * t * t + 2.0 * d * t + ap);
+          },
+          -1.0, 1.0, kPanels);
+      EXPECT_TRUE(
+          IsCloseRelAbs(reference_p, si.chebyshev_moments_p[k][kl], kTolerance))
+          << "M^+ at k = " << k << " for gvv / guu = " << c[kl]
+          << ", b2 = " << b2[kl];
+      EXPECT_TRUE(
+          IsCloseRelAbs(reference_m, si.chebyshev_moments_m[k][kl], kTolerance))
+          << "M^- at k = " << k << " for gvv / guu = " << c[kl]
+          << ", b2 = " << b2[kl];
+    }
+    ++checked;
+  }
+  EXPECT_GT(checked, 100);
+}  // ChebyshevMomentsOverTheMetricRange
 
 // Reference 2D Fourier coefficients of the tangent-plane kernels that
 // RegularizedIntegrals subtracts, for one set of metric (a, b2, c) and
@@ -276,25 +475,26 @@ namespace vmecpp {
 //                  / (a tu^2 + b2 tu tv + c tv^2)^{3/2}
 // over (du, dv) in (-pi, pi)^2 with tu = 2 tan(du/2), tv = 2 tan(dv/2).
 // The integrands are 1/r singular at the origin; polar coordinates about it
-// make r * kernel smooth, and a tensor Gauss-Legendre rule on eight angular
-// panels (the square's corners are panel boundaries) converges geometrically.
+// make r * kernel smooth, and a tensor Gauss-Legendre rule on angular panels
+// (the square's corners are panel boundaries) converges geometrically. The
+// panels are subdivided with m + |n| so that each carries a few wavelengths
+// of cos(m du - n dv).
 static std::pair<double, double> TangentPlaneKernelReference(
     int m, int n, double a, double b2, double c, double A, double B2,
     double C) {
+  const int subdivisions = 1 + (m + std::abs(n)) / 8;
   double f1 = 0.0;
   double f2 = 0.0;
-  for (int panel = 0; panel < 8; ++panel) {
-    const double p0 = panel * M_PI / 4.0;
-    const double p1 = (panel + 1) * M_PI / 4.0;
+  for (int panel = 0; panel < 8 * subdivisions; ++panel) {
+    const double p0 = panel * M_PI / (4.0 * subdivisions);
+    const double p1 = (panel + 1) * M_PI / (4.0 * subdivisions);
     for (const auto& [wp, xp] : kGaussLegendre64) {
       const double psi = 0.5 * (p1 - p0) * xp + 0.5 * (p1 + p0);
       const double wpsi = 0.5 * (p1 - p0) * wp;
       const double cp = std::cos(psi);
       const double sp = std::sin(psi);
       const double rmax = M_PI / std::max(std::abs(cp), std::abs(sp));
-      for (const auto& [wr, xr] : kGaussLegendre64) {
-        const double r = 0.5 * rmax * (xr + 1.0);
-        const double w = wpsi * 0.5 * rmax * wr * r;
+      const auto radial = [&](double r) {
         const double du = r * cp;
         const double dv = r * sp;
         const double tu = 2.0 * std::tan(du / 2.0);
@@ -302,9 +502,13 @@ static std::pair<double, double> TangentPlaneKernelReference(
         const double q1 = a * tu * tu + b2 * tu * tv + c * tv * tv;
         const double q2 = A * tu * tu + B2 * tu * tv + C * tv * tv;
         const double cs = std::cos(m * du - n * dv);
-        f1 += w * cs / std::sqrt(q1);
-        f2 += w * cs * q2 / (q1 * std::sqrt(q1));
-      }
+        return std::pair<double, double>(r * cs / std::sqrt(q1),
+                                         r * cs * q2 / (q1 * std::sqrt(q1)));
+      };
+      f1 += wpsi * Integrate([&](double r) { return radial(r).first; }, 0.0,
+                             rmax, subdivisions);
+      f2 += wpsi * Integrate([&](double r) { return radial(r).second; }, 0.0,
+                             rmax, subdivisions);
     }
   }
   return {f1, f2};
@@ -316,17 +520,28 @@ static std::pair<double, double> TangentPlaneKernelReference(
 // With a delta source at grid point (l0, k0), bvec_sin[(m, n)] and
 // grpmn_sin[(m, n), kl0] equal F1(m, n) / (2 pi) * sin(m u0 - n v0) and
 // F2(m, n) / (2 pi) * sin(m u0 - n v0).
-class AnalyticAddBackTest : public ::testing::TestWithParam<bool> {};
+//
+// The second resolution has mf + nf = 41. There the monomial coefficients of
+// the add-back polynomials reach 1e14, and a sum over them would leave the
+// highest modes with an error of 1e-3 to 1e-2.
+struct AddBackCase {
+  bool lasym;
+  int mpol;
+  int ntor;
+  int nzeta;
+  // modes with m + |n| below this are skipped
+  int min_band;
+  int min_checked;
+};
+
+class AnalyticAddBackTest : public ::testing::TestWithParam<AddBackCase> {};
 
 TEST_P(AnalyticAddBackTest, MatchesSubtractedKernels) {
-  static constexpr double kTolerance = 1.0e-6;
+  static constexpr double kTolerance = 1.0e-9;
 
-  const bool lasym = GetParam();
+  const auto [lasym, mpol, ntor, nzeta, min_band, min_checked] = GetParam();
   const int nfp = 2;
-  const int mpol = 8;
-  const int ntor = 4;
   const int ntheta = 0;
-  const int nzeta = 24;
 
   Sizes s(lasym, nfp, mpol, ntor, ntheta, nzeta);
   FourierBasisFastToroidal fb(&s);
@@ -368,6 +583,7 @@ TEST_P(AnalyticAddBackTest, MatchesSubtractedKernels) {
     for (int m = 0; m <= mf; ++m) {
       // m = 0 keeps only n >= 0 in NESTOR's basis
       if (m == 0 && n < 0) continue;
+      if (m + std::abs(n) < min_band) continue;
       const double sn = std::sin(m * u0 - n * v0);
       if (std::abs(sn) < 0.2) continue;
       const auto [f1, f2] =
@@ -399,12 +615,19 @@ TEST_P(AnalyticAddBackTest, MatchesSubtractedKernels) {
       ++checked;
     }
   }
-  EXPECT_GT(checked, 40);
+  EXPECT_GT(checked, min_checked);
 }
 
-INSTANTIATE_TEST_SUITE_P(Symmetry, AnalyticAddBackTest, ::testing::Bool(),
-                         [](const ::testing::TestParamInfo<bool>& info) {
-                           return info.param ? "lasym" : "symmetric";
-                         });
+INSTANTIATE_TEST_SUITE_P(
+    Resolutions, AnalyticAddBackTest,
+    ::testing::Values(AddBackCase{false, 8, 4, 24, 0, 40},
+                      AddBackCase{true, 8, 4, 24, 0, 40},
+                      AddBackCase{false, 20, 20, 48, 37, 12},
+                      AddBackCase{true, 20, 20, 48, 37, 12}),
+    [](const ::testing::TestParamInfo<AddBackCase>& info) {
+      return std::string(info.param.lasym ? "lasym" : "symmetric") + "_mpol" +
+             std::to_string(info.param.mpol) + "_ntor" +
+             std::to_string(info.param.ntor);
+    });
 
 }  // namespace vmecpp
