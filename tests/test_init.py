@@ -405,6 +405,33 @@ def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
             )
 
 
+def test_vmecwout_holds_jax_arrays(cma_output: vmecpp.VmecOutput):
+    jnp = pytest.importorskip("jax.numpy")
+    wout = cma_output.wout
+    array_fields = {
+        name: jnp.asarray(value)
+        for name, value in wout.model_dump().items()
+        if isinstance(value, np.ndarray)
+    }
+    jax_wout = vmecpp.VmecWOut.model_validate({**wout.model_dump(), **array_fields})
+    assert isinstance(jax_wout.rmnc, type(array_fields["rmnc"]))
+
+    with (
+        tempfile.NamedTemporaryFile() as np_file,
+        tempfile.NamedTemporaryFile() as jax_file,
+    ):
+        wout.save(np_file.name)
+        jax_wout.save(jax_file.name)
+        with (
+            netCDF4.Dataset(np_file.name, "r") as expected,
+            netCDF4.Dataset(jax_file.name, "r") as actual,
+        ):
+            assert actual.variables.keys() == expected.variables.keys()
+            for varname, expected_value in expected.variables.items():
+                assert actual[varname].dimensions == expected_value.dimensions
+                np.testing.assert_equal(actual[varname][:], expected_value[:])
+
+
 def test_jxbout_bindings(cma_output: vmecpp.VmecOutput):
     for varname in [
         "itheta",
@@ -917,6 +944,8 @@ def test_wout_recovers_full_grid_lambda_for_asymmetric_equilibrium(tmp_path):
         (loaded.lmns_full, computed.lmns_full),
         (loaded.lmnc_full, computed.lmnc_full),
     ):
+        assert recovered is not None
+        assert reference is not None
         peak = np.abs(reference).max()
         assert peak > 0.0
         np.testing.assert_allclose(recovered, reference, atol=1.0e-10 * peak)

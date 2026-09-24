@@ -154,6 +154,9 @@ JAX array handling works as follows:
 """
 NpOrAbstractArray = np.ndarray | jt.AbstractArray
 
+NpOrJax = np.ndarray | jt.Array
+"""Array type for fields that hold numpy arrays, or JAX arrays on the autodiff path."""
+
 AnyJsonValue = dict | list | str | int | float | bool | None
 """Type alias for any value that can be part of a JSON object."""
 

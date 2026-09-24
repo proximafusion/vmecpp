@@ -37,6 +37,7 @@ from vmecpp._iteration import (
 from vmecpp._pydantic_numpy import (
     _DAPPER_TYPE_FIELD,
     BaseModelWithNumpy,
+    NpOrJax,
     own_model_fields,
 )
 from vmecpp._rescale import rescale
@@ -1046,25 +1047,25 @@ class VmecWOut(BaseModelWithNumpy):
     itfsq: int = 0
     """Number of force-balance iterations after which the run terminated."""
 
-    phipf: jt.Float[np.ndarray, "n_surfaces"]
+    phipf: jt.Float[NpOrJax, "n_surfaces"]
     """Radial derivative of enclosed toroidal magnetic flux ``phi'`` on the full-
     grid."""
 
     # Defaulted for backwards compatibility with old wout files
-    chipf: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+    chipf: jt.Float[NpOrJax, "n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Radial derivative of enclosed poloidal magnetic flux ``chi'`` on the full-
     grid."""
 
-    jcuru: jt.Float[np.ndarray, "n_surfaces"]
+    jcuru: jt.Float[NpOrJax, "n_surfaces"]
     """Radial derivative of enclosed poloidal current on full-grid."""
 
-    jcurv: jt.Float[np.ndarray, "n_surfaces"]
+    jcurv: jt.Float[NpOrJax, "n_surfaces"]
     """Radial derivative of enclosed toroidal current on full-grid."""
 
     # Default initialized so reading stays backwards compatible pre v0.4.0
-    fsqt: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    fsqt: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the total force residual along the run.
@@ -1072,28 +1073,28 @@ class VmecWOut(BaseModelWithNumpy):
     This is the sum of ``force_residual_r``, ``force_residual_z``, and ``force_residual_lambda``.
     """
 
-    force_residual_r: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    force_residual_r: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the r radial force residual along the run."""
 
-    force_residual_z: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    force_residual_z: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the z vertical force residual along the run."""
 
-    force_residual_lambda: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    force_residual_lambda: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the lambda force residual along the run."""
 
-    delbsq: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    delbsq: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the force residual at the vacuum boundary along the run."""
 
     restart_reason_timetrace: typing.Annotated[
-        jt.Int[np.ndarray, "time"],
+        jt.Int[NpOrJax, "time"],
         pydantic.Field(alias="restart_reasons"),
         pydantic.BeforeValidator(lambda x: np.array(x).astype(np.int64)),
     ] = pydantic.Field(default_factory=lambda: np.array([], dtype=np.int64))
@@ -1103,41 +1104,41 @@ class VmecWOut(BaseModelWithNumpy):
     instead of integer status codes.
     """
 
-    wdot: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    wdot: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the MHD energy decay along the run."""
 
-    jdotb: jt.Float[np.ndarray, "n_surfaces"]
+    jdotb: jt.Float[NpOrJax, "n_surfaces"]
     r"""Flux-surface-averaged :math:`\langle j \cdot B \rangle` on full-grid."""
 
-    bdotb: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+    bdotb: jt.Float[NpOrJax, "n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Flux-surface-averaged :math:`\langle B \cdot B \rangle` on full-grid."""
 
-    bdotgradv: jt.Float[np.ndarray, "n_surfaces"]
+    bdotgradv: jt.Float[NpOrJax, "n_surfaces"]
     r"""Flux-surface-averaged toroidal magnetic field component :math:`B \cdot \nabla v`
     on full-grid."""
 
-    DMerc: jt.Float[np.ndarray, "n_surfaces"]
+    DMerc: jt.Float[NpOrJax, "n_surfaces"]
     """Full Mercier stability criterion on the full-grid."""
 
-    equif: jt.Float[np.ndarray, "n_surfaces"]
+    equif: jt.Float[NpOrJax, "n_surfaces"]
     """Radial force balance residual on full-grid."""
 
-    potvac: jt.Float[np.ndarray, "mnpd"] | None = None
+    potvac: jt.Float[NpOrJax, "mnpd"] | None = None
     """Fourier coefficients of Nestor's scalar magnetic potential, ``sin(mu - nv)``
     followed by ``cos(mu - nv)``. ``None`` for a fixed-boundary run."""
 
-    xmpot: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_pot"]] | None = None
+    xmpot: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode_pot"]] | None = None
     """Poloidal mode numbers ``m`` for the ``potvac`` coefficients.
 
     ``None`` for a
     fixed-boundary run.
     """
 
-    xnpot: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_pot"]] | None = None
+    xnpot: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode_pot"]] | None = None
     """Toroidal mode numbers times number of toroidal field periods ``n * nfp`` for the
     ``potvac`` coefficients.
 
@@ -1145,85 +1146,85 @@ class VmecWOut(BaseModelWithNumpy):
     """
 
     # In wout these are stored as float64, although they only take integer values.
-    xm: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode"]]
+    xm: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode"]]
     """Poloidal mode numbers ``m`` for the Fourier coefficients in the state vector."""
 
-    xn: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode"]]
+    xn: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode"]]
     """Toroidal mode numbers times number of toroidal field periods ``n * nfp`` for the
     Fourier coefficients in the state vector."""
 
-    xm_nyq: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
+    xm_nyq: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode_nyq"]]
     """Poloidal mode numbers ``m`` for the Fourier coefficients in the Nyquist-
     quantities."""
 
-    xn_nyq: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
+    xn_nyq: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode_nyq"]]
     """Toroidal mode numbers times number of toroidal field periods ``n * nfp`` for the
     Fourier coefficients in the Nyquist-quantities."""
 
-    mass: jt.Float[np.ndarray, "n_surfaces"]
+    mass: jt.Float[NpOrJax, "n_surfaces"]
     """Plasma mass profile ``m`` on half-grid."""
 
-    buco: jt.Float[np.ndarray, "n_surfaces"]
+    buco: jt.Float[NpOrJax, "n_surfaces"]
     """Profile of enclosed toroidal current ``I`` on half-grid."""
 
-    bvco: jt.Float[np.ndarray, "n_surfaces"]
+    bvco: jt.Float[NpOrJax, "n_surfaces"]
     """Profile of enclosed poloidal ribbon current ``G`` on half-grid."""
 
-    phips: jt.Float[np.ndarray, "n_surfaces"]
+    phips: jt.Float[NpOrJax, "n_surfaces"]
     """Radial derivative of enclosed toroidal magnetic flux ``phi'`` on the half-
     grid."""
 
-    bmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     """Fourier coefficients (cos) of the magnetic field strength ``|B|`` on the half-
     grid."""
 
-    gmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    gmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the Jacobian :math:`\sqrt{g}` on the half-grid."""
 
-    bsubumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsubumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the covariant magnetic field component
     :math:`B_{\theta}` on the half-grid."""
 
-    bsubvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsubvmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the covariant magnetic field component
     :math:`B_{\phi}` on the half-grid."""
 
-    bsubsmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsubsmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     """Fourier coefficients (sin) of the covariant magnetic field component
     :math:`B_{s}` on the full- grid."""
 
-    bsupumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsupumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the contravariant magnetic field component
     :math:`B^{\theta}` on the half-grid."""
 
-    bsupvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsupvmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the contravariant magnetic field component
     :math:`B^{\phi}` on the half-grid."""
 
     # Defaulted for backwards compatibility with old wout files
-    currumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] = pydantic.Field(
+    currumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\theta}` on the full-grid."""
 
     # Defaulted for backwards compatibility with old wout files
-    currvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] = pydantic.Field(
+    currvmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\zeta}` on the full-grid."""
 
-    rmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    rmnc: jt.Float[NpOrJax, "mn_mode n_surfaces"]
     """Fourier coefficients (cos) for ``R`` of the geometry of the flux surfaces on the
     full- grid."""
 
-    zmns: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    zmns: jt.Float[NpOrJax, "mn_mode n_surfaces"]
     """Fourier coefficients (sin) for ``Z`` of the geometry of the flux surfaces on the
     full- grid."""
 
-    lmns: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    lmns: jt.Float[NpOrJax, "mn_mode n_surfaces"]
     """Fourier coefficients (sin) for ``lambda`` stream function on the half-grid."""
 
-    lmns_full: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    lmns_full: jt.Float[NpOrJax, "mn_mode n_surfaces"]
     """Fourier coefficients (sin) for ``lambda`` stream function on the full-grid.
 
     This quantity is VMEC++ specific and required for hot-restart to work properly. We
@@ -1231,19 +1232,19 @@ class VmecWOut(BaseModelWithNumpy):
     with lmns.
     """
 
-    rmns: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    rmns: jt.Float[NpOrJax, "mn_mode n_surfaces"] | None = None
     """Fourier coefficients (sin) for `R` of the geometry of the flux surfaces on the
     full-grid; non-stellarator-symmetric."""
 
-    zmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    zmnc: jt.Float[NpOrJax, "mn_mode n_surfaces"] | None = None
     """Fourier coefficients (cos) for `Z` of the geometry of the flux surfaces on the
     full-grid; non-stellarator-symmetric."""
 
-    lmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    lmnc: jt.Float[NpOrJax, "mn_mode n_surfaces"] | None = None
     """Fourier coefficients (cos) for `lambda` stream function on the half-grid; non-
     stellarator-symmetric."""
 
-    lmnc_full: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    lmnc_full: jt.Float[NpOrJax, "mn_mode n_surfaces"] | None = None
     """Fourier coefficients (cos) for `lambda` stream function on the full-grid; non-
     stellarator-symmetric.
 
@@ -1253,39 +1254,39 @@ class VmecWOut(BaseModelWithNumpy):
     configurations).
     """
 
-    gmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    gmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the Jacobian :math:`\sqrt{g}` on the half-grid;
     non-stellarator-symmetric."""
 
-    bmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     """Fourier coefficients (sin) of the magnetic field strength ``|B|`` on the half-
     grid; non-stellarator-symmetric."""
 
-    bsubumns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bsubumns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the covariant magnetic field component
     :math:`B_{\theta}` on the half-grid; non-stellarator-symmetric."""
 
-    bsubvmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bsubvmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the covariant magnetic field component
     :math:`B_{\phi}` on the half-grid; non-stellarator-symmetric."""
 
-    bsubsmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bsubsmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     """Fourier coefficients (cos) of the covariant magnetic field component
     :math:`B_{s}` on the full- grid; non-stellarator-symmetric."""
 
-    bsupumns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bsupumns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the contravariant magnetic field component
     :math:`B^{\theta}` on the half-grid; non-stellarator-symmetric."""
 
-    bsupvmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bsupvmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the contravariant magnetic field component
     :math:`B^{\phi}` on the half-grid; non-stellarator-symmetric."""
 
-    currumns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    currumns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of :math:`\sqrt{g} J^{\theta}` on the full-grid; non-
     stellarator-symmetric."""
 
-    currvmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    currvmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of :math:`\sqrt{g} J^{\zeta}` on the full-grid; non-
     stellarator-symmetric."""
 
@@ -1298,31 +1299,31 @@ class VmecWOut(BaseModelWithNumpy):
     piota_type: ProfileType
     """Parametrization of iota profile (copied from input)."""
 
-    am: ProfileCoeffType[jt.Float[np.ndarray, "_preset"]]
+    am: ProfileCoeffType[jt.Float[NpOrJax, "_preset"]]
     """Mass/pressure profile coefficients (copied from input)."""
 
-    ac: ProfileCoeffType[jt.Float[np.ndarray, "_preset"]]
+    ac: ProfileCoeffType[jt.Float[NpOrJax, "_preset"]]
     """Enclosed toroidal current profile coefficients (copied from input)."""
 
-    ai: ProfileCoeffType[jt.Float[np.ndarray, "_preset"]]
+    ai: ProfileCoeffType[jt.Float[NpOrJax, "_preset"]]
     """Iota profile coefficients (copied from input)."""
 
-    am_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
+    am_aux_s: AuxSType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline mass/pressure profile: knot locations in ``s`` (copied from input)."""
 
-    am_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
+    am_aux_f: AuxFType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline mass/pressure profile: values at knots (copied from input)."""
 
-    ac_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
+    ac_aux_s: AuxSType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline toroidal current profile: knot locations in ``s`` (copied from input)."""
 
-    ac_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
+    ac_aux_f: AuxFType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline toroidal current profile: values at knots (copied from input)."""
 
-    ai_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
+    ai_aux_s: AuxSType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline iota profile: knot locations in ``s`` (copied from input)."""
 
-    ai_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
+    ai_aux_f: AuxFType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline iota profile: values at knots (copied from input)."""
 
     gamma: float
@@ -1335,7 +1336,7 @@ class VmecWOut(BaseModelWithNumpy):
     """Number of external coil currents."""
 
     extcur: typing.Annotated[
-        jt.Float[np.ndarray, "ext_current"],
+        jt.Float[NpOrJax, "ext_current"],
         pydantic.BeforeValidator(lambda x: x if np.shape(x) != () else np.array([])),
         pydantic.WrapSerializer(
             lambda x, handler, _: (
@@ -1355,10 +1356,10 @@ class VmecWOut(BaseModelWithNumpy):
     """Indicates if the mgrid file was normalized to unit currents ("S") or not
     ("R")."""
 
-    iotas: jt.Float[np.ndarray, "n_surfaces"]
+    iotas: jt.Float[NpOrJax, "n_surfaces"]
     r"""Rotational transform :math:`\iota` on the half-grid."""
 
-    iotaf: jt.Float[np.ndarray, "n_surfaces"]
+    iotaf: jt.Float[NpOrJax, "n_surfaces"]
     r"""Rotational transform :math:`\iota` on the full-grid."""
 
     betatotal: float
@@ -1370,30 +1371,30 @@ class VmecWOut(BaseModelWithNumpy):
     )`
     """
 
-    raxis_cc: jt.Float[np.ndarray, "ntor_plus_1"]
+    raxis_cc: jt.Float[NpOrJax, "ntor_plus_1"]
     """Fourier coefficients of :math:`R(phi)` of the magnetic axis geometry."""
 
-    zaxis_cs: jt.Float[np.ndarray, "ntor_plus_1"]
+    zaxis_cs: jt.Float[NpOrJax, "ntor_plus_1"]
     """Fourier coefficients of :math:`Z(phi)` of the magnetic axis geometry."""
 
-    raxis_cs: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
+    raxis_cs: jt.Float[NpOrJax, "ntor_plus_1"] | None = None
     """Fourier coefficients of :math:`R(phi)` of the magnetic axis geometry; non-
     stellarator-symmetric."""
 
-    zaxis_cc: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
+    zaxis_cc: jt.Float[NpOrJax, "ntor_plus_1"] | None = None
     """Fourier coefficients of :math:`Z(phi)` of the magnetic axis geometry; non-
     stellarator-symmetric."""
 
-    vp: jt.Float[np.ndarray, "n_surfaces"]
+    vp: jt.Float[NpOrJax, "n_surfaces"]
     r"""Differential volume :math:`V' = \frac{\partial V}{\partial s}` on half-grid."""
 
-    presf: jt.Float[np.ndarray, "n_surfaces"]
+    presf: jt.Float[NpOrJax, "n_surfaces"]
     """Kinetic pressure ``p`` on the full-grid."""
 
-    pres: jt.Float[np.ndarray, "n_surfaces"]
+    pres: jt.Float[NpOrJax, "n_surfaces"]
     """Kinetic pressure ``p`` on the half-grid."""
 
-    phi: jt.Float[np.ndarray, "n_surfaces"]
+    phi: jt.Float[NpOrJax, "n_surfaces"]
     r"""Enclosed toroidal magnetic flux :math:`\phi` on the full-grid."""
 
     signgs: int
@@ -1404,42 +1405,42 @@ class VmecWOut(BaseModelWithNumpy):
     """Volume-averaged magnetic field strength."""
 
     # Defaulted for backwards compatibility with old wout files.
-    q_factor: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+    q_factor: jt.Float[NpOrJax, "n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Safety factor :math:`q = 1/\iota` on the full-grid."""
 
     # Defaulted for backwards compatibility with old wout files.
-    chi: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+    chi: jt.Float[NpOrJax, "n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Enclosed poloidal magnetic flux :math:`\chi` on the full-grid."""
 
-    specw: jt.Float[np.ndarray, "n_surfaces"]
+    specw: jt.Float[NpOrJax, "n_surfaces"]
     """Spectral width ``M`` on the full-grid."""
 
-    over_r: jt.Float[np.ndarray, "n_surfaces"]
+    over_r: jt.Float[NpOrJax, "n_surfaces"]
     r"""``<\tau / R> / V'`` on half-grid.
 
     :math:`\left\langle \frac{\tau}{R} \right\rangle / V'`
     """
 
-    DShear: jt.Float[np.ndarray, "n_surfaces"]
+    DShear: jt.Float[NpOrJax, "n_surfaces"]
     """Mercier stability criterion contribution due to magnetic shear."""
 
-    DWell: jt.Float[np.ndarray, "n_surfaces"]
+    DWell: jt.Float[NpOrJax, "n_surfaces"]
     """Mercier stability criterion contribution due to magnetic well."""
 
-    DCurr: jt.Float[np.ndarray, "n_surfaces"]
+    DCurr: jt.Float[NpOrJax, "n_surfaces"]
     """Mercier stability criterion contribution due to plasma currents."""
 
-    DGeod: jt.Float[np.ndarray, "n_surfaces"]
+    DGeod: jt.Float[NpOrJax, "n_surfaces"]
     """Mercier stability criterion contribution due to geodesic curvature."""
 
     niter: int
     """Number of force-balance iterations taken to converge."""
 
-    beta_vol: jt.Float[np.ndarray, "n_surfaces"]
+    beta_vol: jt.Float[NpOrJax, "n_surfaces"]
     """Flux-surface averaged plasma beta on half-grid."""
 
     version_: float
@@ -1605,15 +1606,17 @@ class VmecWOut(BaseModelWithNumpy):
                 elif value is None:
                     # Skip None values (e.g., asymmetric arrays when lasym=False)
                     continue
-                elif field_type is np.ndarray or field_type is list:
+                elif isinstance(value, (np.ndarray, list, jt.Array)):
                     value_array = np.array(value)
                     # Fallback to default dimension names like dim_00001, dim_00002, etc.
                     shape_string = tuple(
                         [f"dim_{dim:05d}" for dim in value_array.shape]
                     )
-                    # Asymmetric arrays are annotated as `<array type> | None`;
-                    # unwrap such unions to recover the jaxtyping array
-                    # annotation that carries the dimension names.
+                    # Array fields are annotated as `jt.Float[NpOrJax, ...]`,
+                    # which jaxtyping expands to a union of one array type per
+                    # backend, and asymmetric arrays additionally as `... | None`;
+                    # unwrap such unions to recover a jaxtyping array annotation
+                    # that carries the dimension names.
                     annotation = (
                         field_info.annotation if field_info is not None else None
                     )
@@ -1626,6 +1629,13 @@ class VmecWOut(BaseModelWithNumpy):
                             for arg in typing.get_args(annotation)
                             if arg is not type(None)
                         ]
+                        if all(
+                            isinstance(arg, type)
+                            and issubclass(arg, jt.AbstractArray)
+                            and arg.dim_str == non_none_args[0].dim_str
+                            for arg in non_none_args
+                        ):
+                            non_none_args = non_none_args[:1]
                         annotation = (
                             non_none_args[0] if len(non_none_args) == 1 else None
                         )
