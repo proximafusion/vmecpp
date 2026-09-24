@@ -11,6 +11,11 @@ from vmecpp.cpp import _vmecpp  # type: ignore
 
 jax.config.update("jax_enable_x64", True)
 
+requires_enzyme = pytest.mark.skipif(
+    not vmecpp.has_exact_force_jacobian(),
+    reason="autodiff.run needs an Enzyme-enabled build (VMECPP_ENABLE_ENZYME=ON)",
+)
+
 # Every array of WoutArrays with a counterpart in VmecWOut. The full-grid
 # lambda is compared as lmns_full and, in its classic half-grid form, as lmns.
 _COMPARED_ARRAYS = (
@@ -135,6 +140,7 @@ def test_wout_arrays_accept_a_prescribed_iota(solved_case) -> None:
     np.testing.assert_allclose(np.asarray(actual.bsupumnc), wout.bsupumnc, atol=1.0e-13)
 
 
+@requires_enzyme
 def test_run_matches_vmecpp_run() -> None:
     """The differentiable entry point re-solves through VmecModel; the two solver paths
     agree to the force tolerance."""
@@ -154,6 +160,7 @@ def test_run_matches_vmecpp_run() -> None:
     )
 
 
+@requires_enzyme
 def test_vmecpp_run_differentiable_flag_dispatches() -> None:
     indata = _cth_like_input()
     result = vmecpp.run(indata, differentiable=True)
@@ -166,6 +173,7 @@ def test_vmecpp_run_differentiable_flag_dispatches() -> None:
         )
 
 
+@requires_enzyme
 def test_run_is_usable_under_jit() -> None:
     indata = _cth_like_input()
 
@@ -179,6 +187,7 @@ def test_run_is_usable_under_jit() -> None:
     np.testing.assert_allclose(float(value), float(reference), rtol=1.0e-12)
 
 
+@requires_enzyme
 def test_wout_arrays_are_a_pytree() -> None:
     indata = _cth_like_input()
     result = autodiff.run(indata)
@@ -207,6 +216,7 @@ def _low_mode_direction(indata: vmecpp.VmecInput, seed: int) -> np.ndarray:
     return direction / np.linalg.norm(direction) * 1.0e-3 * np.linalg.norm(boundary)
 
 
+@requires_enzyme
 @pytest.mark.parametrize("seed", [0, 1])
 @pytest.mark.parametrize("objective_name", ["aspect", "quasisymmetry_proxy"])
 def test_gradient_matches_central_differences(objective_name: str, seed: int) -> None:
