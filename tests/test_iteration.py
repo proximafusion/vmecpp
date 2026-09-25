@@ -21,6 +21,10 @@ import vmecpp
 from vmecpp import RestartReason
 from vmecpp.cpp import _vmecpp  # type: ignore
 
+pytestmark = pytest.mark.skipif(
+    vmecpp.has_cuda(), reason="the iteration API drives the host iteration"
+)
+
 REPO_ROOT = Path(__file__).parent.parent
 TEST_DATA = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 EXAMPLES_DATA = REPO_ROOT / "examples" / "data"
