@@ -358,8 +358,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       }
 
       // notify logger of the next multigrid stage
-      logger_.BeginStage(igrid, max_grids + jacob_off_, fc_.nsval, s_.mnmax,
-                         fc_.ftolv, fc_.niterv, fc_.lfreeb);
+      logger_.BeginStage(igrid + jacob_off_, max_grids + jacob_off_, fc_.nsval,
+                         s_.mnmax, fc_.ftolv, fc_.niterv, fc_.lfreeb);
 
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
@@ -385,6 +385,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // not reach convergence
       if (status_ != VmecStatus::NORMAL_TERMINATION &&
           status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
+        if (status_ == VmecStatus::BAD_JACOBIAN && jacob_off_ == 0) {
+          // retried below from a three-surface mesh
+          break;
+        }
         if (!indata_.return_outputs_even_if_not_converged) {
           const auto msg = absl::StrFormat(
               "FATAL ERROR in SolveEquilibrium: %s\n"
@@ -1024,8 +1028,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     } else if (status_ != VmecStatus::NORMAL_TERMINATION &&
                status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
       // if something went totally wrong even in this initial steps, do not
-      // continue at all
-      if (!indata_.return_outputs_even_if_not_converged) {
+      // continue at all; a bad Jacobian on the first pass returns to run(),
+      // which retries from a three-surface mesh
+      const bool retry_from_three_surfaces =
+          status_ == VmecStatus::BAD_JACOBIAN && jacob_off_ == 0;
+      if (!indata_.return_outputs_even_if_not_converged &&
+          !retry_from_three_surfaces) {
         const auto msg = absl::StrFormat(
             "FATAL ERROR in thread=%d. The solver failed during the first "
             "iterations. This may happen if the initial boundary is poorly "
