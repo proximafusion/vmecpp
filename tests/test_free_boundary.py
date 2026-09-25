@@ -85,6 +85,44 @@ def test_raise_invalid_nzeta():
         vmecpp.run(vmec_input, response, verbose=False)
 
 
+def test_external_field_without_stellarator_symmetry_needs_lasym(tmp_path):
+    """The cth coils raised by 5 mm give a field that lasym = false cannot use."""
+    raised_coils = tmp_path / "coils.cth_like_raised"
+    lines = []
+    in_filaments = False
+    for line in (TEST_DATA_DIR / "coils.cth_like").read_text().splitlines():
+        tokens = line.split()
+        if in_filaments and len(tokens) >= 4:
+            x, y, z, current = (float(t) for t in tokens[:4])
+            rest = " ".join(tokens[4:])
+            lines.append(f"{x:.12e} {y:.12e} {z + 0.005:.12e} {current:.12e} {rest}")
+        else:
+            lines.append(line)
+        in_filaments = in_filaments or line.strip().startswith("mirror")
+    raised_coils.write_text("\n".join(lines) + "\n")
+
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_params.assume_stellarator_symmetry = False
+    makegrid_params.number_of_r_grid_points = 51
+    makegrid_params.number_of_z_grid_points = 51
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        raised_coils, makegrid_params
+    )
+
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    with pytest.raises(Exception, match="not stellarator symmetric"):
+        vmecpp.run(vmec_input, response, verbose=False)
+
+    asym_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "cth_like_free_bdy_asym.json"
+    )
+    asym_input.niter_array = np.array([5])
+    asym_input.return_outputs_even_if_not_converged = True
+    vmecpp.run(asym_input, response, verbose=False)
+
+
 def test_makegrid_parameters_conversion(makegrid_params):
     # Convert resolution parameters to C++ and back to Python
     cpp_params = makegrid_params._to_cpp_makegrid_parameters()
