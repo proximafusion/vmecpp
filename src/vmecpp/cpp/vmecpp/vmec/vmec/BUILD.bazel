@@ -34,6 +34,7 @@ cc_test(
     name = "vmec_test",
     srcs = ["vmec_test.cc"],
     data = [
+        "//vmecpp/test_data:initial_jacobian_recovery",
         "//vmecpp/test_data:solovev",
         "//vmecpp/test_data:up_down_asym",
         "//vmecpp/test_data:solovev_no_axis",
