@@ -456,9 +456,9 @@ class VmecInput(BaseModelWithNumpy):
     This is intended for debugging purposes (e.g. inspecting how far the geometry
     got, or where the force residuals blew up) since the returned quantities are
     computed from whatever internal state the solver was in when it gave up, and
-    can be arbitrarily unphysical. Always check `wout.ier_flag` / the accompanying
-    log warning to see why the run did not converge before interpreting any
-    physical quantity in the output.
+    can be arbitrarily unphysical. Always check `wout.ier_flag` and the residuals
+    `wout.fsqr`, `wout.fsqz`, `wout.fsql` against `wout.ftolv` before interpreting
+    any physical quantity in the output.
     """
 
     raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = pydantic.Field(
