@@ -11,7 +11,9 @@
 // two_power_gs, and the analytic endpoints/limits of the closed-form profiles.
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <initializer_list>
 #include <memory>
 
@@ -297,6 +299,109 @@ TEST_F(RadialProfilesTest, SumAtanTermsScaledByTwoOverPi) {
                  0.2 * std::atan(3.0 * std::pow(x, 2.0) / std::pow(0.6, 1.0)));
   EXPECT_NEAR(profiles_->evalSumAtan(d, x), expected, 1e-12);
   EXPECT_NEAR(profiles_->evalSumAtan(d, 1.0), 0.1 + 0.5 - 0.2, 1e-12);
+}
+
+// ---- sum_cossq -------------------------------------------------------------
+
+namespace {
+// Composite Simpson rule for the integral of f from 0 to x.
+double Integrate(const std::function<double(double)>& f, double x) {
+  constexpr int kPanels = 4000;
+  if (x <= 0.0) {
+    return 0.0;
+  }
+  const double h = x / kPanels;
+  double sum = f(0.0) + f(x);
+  for (int i = 1; i < kPanels; ++i) {
+    sum += (i % 2 == 1 ? 4.0 : 2.0) * f(i * h);
+  }
+  return sum * h / 3.0;
+}
+
+// Current density of sum_cossq_s: c[i] cos^2 humps of half-width
+// delta = 1 / (c[0] - 1) centred on (i - 1) delta, cut at 0 and 1. The humps
+// vanish at their edges, so closed intervals do not double count.
+double SumCossqDensity(const Eigen::VectorXd& c, double t) {
+  const int n = static_cast<int>(c[0]);
+  const double delta = 1.0 / (n - 1);
+  double density = 0.0;
+  for (int i = 1; i <= n; ++i) {
+    const double center = (i - 1) * delta;
+    if (t >= std::max(0.0, center - delta) &&
+        t <= std::min(center + delta, 1.0)) {
+      density +=
+          c[i] * std::pow(std::cos(M_PI * (t - center) / (2.0 * delta)), 2);
+    }
+  }
+  return density;
+}
+
+// Current density of sum_cossq_s_free: humps with amplitude c[3 i], centre
+// c[3 i + 1] and half-width c[3 i + 2], cut at 0 and 1.
+double SumCossqFreeDensity(const Eigen::VectorXd& c, double t) {
+  double density = 0.0;
+  for (int i = 0; 3 * i + 2 < c.size(); ++i) {
+    const double center = c[3 * i + 1];
+    const double half_width = c[3 * i + 2];
+    if (c[3 * i] != 0.0 && t >= std::max(0.0, center - half_width) &&
+        t <= std::min(center + half_width, 1.0)) {
+      density +=
+          c[3 * i] *
+          std::pow(std::cos(M_PI * (t - center) / (2.0 * half_width)), 2);
+    }
+  }
+  return density;
+}
+}  // namespace
+
+// The enclosed current of sum_cossq_s is the integral of its humps; the end
+// humps are cut in half by s = 0 and s = 1.
+TEST_F(RadialProfilesTest, SumCossqSIntegratesItsHumps) {
+  // five humps of half-width 1/4
+  const Eigen::VectorXd c = Vec({5.0, 1.0, 0.5, -0.3, 0.8, 0.2});
+  EXPECT_EQ(profiles_->evalSumCossqS(c, 0.0), 0.0);
+  for (double x : {0.1, 0.25, 0.3, 0.5, 0.62, 0.75, 0.9, 1.0}) {
+    EXPECT_NEAR(profiles_->evalSumCossqS(c, x),
+                Integrate([&c](double t) { return SumCossqDensity(c, t); }, x),
+                1e-9)
+        << "x = " << x;
+  }
+  // an interior hump encloses its amplitude times the half-width
+  EXPECT_NEAR(profiles_->evalSumCossqS(c, 1.0),
+              0.25 * (0.5 * 1.0 + 0.5 - 0.3 + 0.8 + 0.5 * 0.2), 1e-12);
+}
+
+// sum_cossq_sqrts places the humps in rho = sqrt(s) and integrates them with
+// the weight rho up to sqrt(s).
+TEST_F(RadialProfilesTest, SumCossqSqrtsIntegratesItsHumpsInRho) {
+  const Eigen::VectorXd c = Vec({5.0, 1.0, 0.5, -0.3, 0.8, 0.2});
+  EXPECT_EQ(profiles_->evalSumCossqSqrts(c, 0.0), 0.0);
+  for (double s : {0.01, 0.0625, 0.2, 0.25, 0.5, 0.64, 0.8, 1.0}) {
+    EXPECT_NEAR(
+        profiles_->evalSumCossqSqrts(c, s),
+        Integrate([&c](double rho) { return SumCossqDensity(c, rho) * rho; },
+                  std::sqrt(s)),
+        1e-9)
+        << "s = " << s;
+  }
+}
+
+// sum_cossq_s_free integrates humps of individual centre and half-width, cut
+// at s = 0 and s = 1, and skips entries with zero amplitude.
+TEST_F(RadialProfilesTest, SumCossqSFreeIntegratesItsHumps) {
+  const Eigen::VectorXd c =
+      Vec({1.0, 0.3, 0.2, -0.5, 0.7, 0.4, 0.8, 0.95, 0.15, 0.0, 0.5, 0.0});
+  EXPECT_EQ(profiles_->evalSumCossqSFree(c, 0.0), 0.0);
+  for (double x : {0.05, 0.1, 0.3, 0.5, 0.8, 0.9, 1.0}) {
+    EXPECT_NEAR(
+        profiles_->evalSumCossqSFree(c, x),
+        Integrate([&c](double t) { return SumCossqFreeDensity(c, t); }, x),
+        1e-9)
+        << "x = " << x;
+  }
+  // a hump inside (0, 1) encloses its amplitude times the half-width
+  const Eigen::VectorXd d = Vec({2.0, 0.5, 0.25});
+  EXPECT_NEAR(profiles_->evalSumCossqSFree(d, 1.0), 0.5, 1e-12);
 }
 
 // ---- rational --------------------------------------------------------------
