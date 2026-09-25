@@ -158,6 +158,46 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
     return with_context(read_status);
   }
 
+  // the grid and the coil count size everything below, so they are held to
+  // what IsValidMakegridParameters requires of a grid
+  absl::Status header_status;
+  if (*nfp_or < 1) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("nfp must be > 0, but is %d", *nfp_or)));
+  }
+  if (*nextcur_or < 1) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("nextcur must be > 0, but is %d", *nextcur_or)));
+  }
+  if (*num_r_or < 2) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("ir must be > 1, but is %d", *num_r_or)));
+  }
+  if (*num_z_or < 2) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("jz must be > 1, but is %d", *num_z_or)));
+  }
+  if (*num_phi_or < 1) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("kp must be > 0, but is %d", *num_phi_or)));
+  }
+  if (*max_r_or <= *min_r_or) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("R grid extent must be positive, but is from rmin = "
+                        "% .3e to rmax = % .3e",
+                        *min_r_or, *max_r_or)));
+  }
+  if (*max_z_or <= *min_z_or) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("Z grid extent must be positive, but is from zmin = "
+                        "% .3e to zmax = % .3e",
+                        *min_z_or, *max_z_or)));
+  }
+  if (!header_status.ok()) {
+    nc_close(ncid);
+    return with_context(header_status);
+  }
+
   nfp = *nfp_or;
 
   numR = *num_r_or;
