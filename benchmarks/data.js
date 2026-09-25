@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790371374268,
+  "lastUpdate": 1790372282684,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -19511,6 +19511,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.24427773200000047,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "32fbec7754c9c9ca47bfaff402488abd8a24dd76",
+          "message": "Test three invariances of the solver (#875)\n\n* Test three invariances of the solver: an axisymmetric input through the 3D path, one field period against the torus, and a restart with the gauge mode of lambda set\n\n* Give zip its strict flag and split the mode-count assertion",
+          "timestamp": "2026-09-25T23:26:15+02:00",
+          "tree_id": "1481eee22fd4d884efce6730dc822f70d3be4e5b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/32fbec7754c9c9ca47bfaff402488abd8a24dd76"
+        },
+        "date": 1790372275070,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.372918886399998,
+            "range": "stddev: 0.0014631097859899881",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.4907164000000344,
+            "range": "stddev: 0.01505557870471872",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0932899453333296,
+            "range": "stddev: 0.006625597422938792",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.639503330000063,
+            "range": "stddev: 0.009235579254581162",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.9742511943333436,
+            "range": "stddev: 0.00537894194786685",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.7423406126666805,
+            "range": "stddev: 0.019012086908060766",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.5467095209999115,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.49058100900003865,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
