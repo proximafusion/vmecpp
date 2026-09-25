@@ -77,6 +77,19 @@ absl::Status IsValidMakegridParameters(
                         makegrid_parameters.number_of_z_grid_points));
   }
 
+  // the planes filled by stellarator symmetry are mirrored through Z = 0
+  if (makegrid_parameters.assume_stellarator_symmetry &&
+      makegrid_parameters.z_grid_minimum !=
+          -makegrid_parameters.z_grid_maximum) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "assume_stellarator_symmetry needs z_grid_minimum = -z_grid_maximum, "
+        "but the Z grid runs from z_grid_minimum = % .3e to z_grid_maximum = "
+        "% .3e, which sum to % .3e",
+        makegrid_parameters.z_grid_minimum, makegrid_parameters.z_grid_maximum,
+        makegrid_parameters.z_grid_minimum +
+            makegrid_parameters.z_grid_maximum));
+  }
+
   // at least a single point in phi direction (one plane)
   if (makegrid_parameters.number_of_phi_grid_points < 1) {
     return absl::InvalidArgumentError(
