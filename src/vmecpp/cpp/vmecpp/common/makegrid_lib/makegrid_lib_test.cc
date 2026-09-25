@@ -112,6 +112,16 @@ TEST(TestMakegridLib, CheckMakeCylindricalGridSanityChecks) {
   auto cylindrical_grid_zmin = MakeCylindricalGrid(makegrid_parameters_zmin);
   ASSERT_FALSE(cylindrical_grid_zmin.ok());
 
+  // a Z grid off Z = 0 is fine, but not with stellarator symmetry
+  MakegridParameters makegrid_parameters_zshift = makegrid_parameters;
+  makegrid_parameters_zshift.z_grid_minimum = -0.5;
+  makegrid_parameters_zshift.z_grid_maximum = 0.7;
+  ASSERT_TRUE(MakeCylindricalGrid(makegrid_parameters_zshift).ok());
+  makegrid_parameters_zshift.assume_stellarator_symmetry = true;
+  auto cylindrical_grid_zshift =
+      MakeCylindricalGrid(makegrid_parameters_zshift);
+  ASSERT_FALSE(cylindrical_grid_zshift.ok());
+
   MakegridParameters makegrid_parameters_numz = makegrid_parameters;
   makegrid_parameters_numz.number_of_z_grid_points = 1;
   auto cylindrical_grid_numz = MakeCylindricalGrid(makegrid_parameters_numz);
