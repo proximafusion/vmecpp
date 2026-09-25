@@ -84,9 +84,10 @@ absl::Status IsValidMakegridParameters(
     return absl::InvalidArgumentError(absl::StrFormat(
         "assume_stellarator_symmetry needs z_grid_minimum = -z_grid_maximum, "
         "but the Z grid runs from z_grid_minimum = % .3e to z_grid_maximum = "
-        "% .3e",
-        makegrid_parameters.z_grid_minimum,
-        makegrid_parameters.z_grid_maximum));
+        "% .3e, which sum to % .3e",
+        makegrid_parameters.z_grid_minimum, makegrid_parameters.z_grid_maximum,
+        makegrid_parameters.z_grid_minimum +
+            makegrid_parameters.z_grid_maximum));
   }
 
   // at least a single point in phi direction (one plane)
