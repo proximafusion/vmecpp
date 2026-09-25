@@ -38,16 +38,19 @@ void ScaleLambda(std::vector<double>& m_coefficients,
 }
 
 void ConvertM1ToPhysical(GeometryCoefficients& m_coefficients,
-                         const VmecINDATA& indata, int num_full) {
-  auto convert = [num_full, &indata](std::vector<double>& m_r,
-                                     std::vector<double>& m_z) {
+                         const VmecINDATA& indata, int num_full,
+                         int sign_of_jacobian) {
+  // same map as FourierCoeffs::m1Constraint with scaling factor 1
+  const double sigma = -sign_of_jacobian;
+  auto convert = [num_full, sigma, &indata](std::vector<double>& m_r,
+                                            std::vector<double>& m_z) {
     if (m_r.empty() || m_z.empty()) return;
     for (int j = 0; j < num_full; ++j) {
       for (int n = 0; n <= indata.ntor; ++n) {
         const int index = (j * indata.mpol + 1) * (indata.ntor + 1) + n;
         const double old_r = m_r[index];
-        m_r[index] = old_r + m_z[index];
-        m_z[index] = old_r - m_z[index];
+        m_r[index] = old_r + sigma * m_z[index];
+        m_z[index] = sigma * old_r - m_z[index];
       }
     }
   };
@@ -128,7 +131,8 @@ Geometry MakeGeometry(const VmecINDATA& indata,
   ScaleLambda(coefficients.lambda_ss, internal, modes_per_surface);
 
   if (state == GeometryCoefficientState::kSolver) {
-    ConvertM1ToPhysical(coefficients, indata, internal.num_full);
+    ConvertM1ToPhysical(coefficients, indata, internal.num_full,
+                        internal.sign_of_jacobian);
   }
 
   return result;
