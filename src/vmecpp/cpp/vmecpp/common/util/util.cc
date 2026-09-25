@@ -329,10 +329,8 @@ int vmec_adjust_num_threads(const int max_threads,
   int num_threads = std::min(max_threads, num_surfaces_to_distribute / 2);
 
 #ifdef _OPENMP
-  // This must be done _before_ the '#pragma omp parallel' is entered.
-  omp_set_num_threads(num_threads);
-
-  // Explicitly turn off dynamic threads.
+  // The parallel regions request their team size with a num_threads clause;
+  // without dynamic adjustment the runtime grants exactly that many threads.
   omp_set_dynamic(0);
 #endif
 
@@ -344,9 +342,7 @@ int vmec_adjust_vacuum_num_threads(const int max_threads, const int n_znt) {
   // (see TangentialPartitioning). There is no minimum-points-per-thread
   // constraint like the radial solve's shared half-grid point, so we can use up
   // to nZnT threads. In practice nZnT >> max_threads, so this returns
-  // max_threads. Deliberately does NOT call omp_set_num_threads: the vacuum
-  // solve runs in a nested parallel region with an explicit num_threads()
-  // clause.
+  // max_threads.
   return std::min(max_threads, n_znt);
 }
 
