@@ -188,6 +188,12 @@ def test_signgs_must_be_a_sign():
         vmecpp.run(vmec_input, verbose=False)
 
 
+def _skip_if_cuda_rejects(vmec_input: vmecpp.VmecInput) -> None:
+    """The CUDA build rejects non-stellarator-symmetric inputs up front."""
+    if vmec_input.lasym and vmecpp.has_cuda():
+        pytest.skip("the CUDA build does not support lasym inputs")
+
+
 # solovev is axisymmetric, li383_low_res starts without an axis guess and recomputes it
 # after a bad initial Jacobian, and the two asymmetric cases pass through the poloidal
 # shift of the boundary and the asymmetric force paths.
@@ -203,6 +209,7 @@ def test_signgs_must_be_a_sign():
 )
 def test_right_handed_coordinates_give_the_mirror_image(case: str):
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{case}.json")
+    _skip_if_cuda_rejects(vmec_input)
     wout = vmecpp.run(vmec_input, verbose=False).wout
     mirrored = vmecpp.run(_mirror_image(vmec_input), verbose=False).wout
     _assert_mirror_image(wout, mirrored)
@@ -217,6 +224,7 @@ def test_right_handed_coordinates_give_the_mirror_image_free_boundary(
 ):
     """The vacuum field of the reflected coils is the reflected response table."""
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{case}.json")
+    _skip_if_cuda_rejects(vmec_input)
     table = _cth_like_response_table(raise_coils_by)
     wout = vmecpp.run(vmec_input, magnetic_field=table, verbose=False).wout
     mirrored = vmecpp.run(
@@ -232,6 +240,7 @@ def test_hot_restart_from_a_right_handed_state():
     vmec_input = _mirror_image(
         vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy_asym.json")
     )
+    _skip_if_cuda_rejects(vmec_input)
     output = vmecpp.run(vmec_input, verbose=False)
     restarted = vmecpp.run(vmec_input, restart_from=output, verbose=False)
     assert restarted.wout.niter <= 3
@@ -254,6 +263,7 @@ def test_flipping_signgs_alone_relabels_theta(case: str):
     Z reversed, the rotational transform changes sign and the current does not.
     """
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{case}.json")
+    _skip_if_cuda_rejects(vmec_input)
     wout = vmecpp.run(vmec_input, verbose=False).wout
     flipped_input = vmec_input.model_copy(deep=True)
     flipped_input.signgs = 1

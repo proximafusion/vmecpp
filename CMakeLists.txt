@@ -8,9 +8,23 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-math-errno")
+if(MSVC)
+  # cl.exe does not accept the GCC/Clang flags below. /bigobj is required:
+  # the CUDA translation units exceed the default object section limit.
+  # _USE_MATH_DEFINES exposes M_PI; NOMINMAX keeps windows.h from defining
+  # min/max macros that clobber std::min/std::max.
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj")
+  set(CMAKE_CXX_FLAGS_RELEASE "/O2 /DNDEBUG")
+  add_compile_definitions(_USE_MATH_DEFINES NOMINMAX)
+  # The vendored abscab dependency uses malloc/free without including
+  # <cstdlib>, relying on transitive inclusion that MSVC does not provide.
+  # Force-include it for C++ sources (CUDA host compilation is unaffected).
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/FIcstdlib>)
+else()
+  set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
+  set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-math-errno")
+endif()
 
 # LTO: cross-TU inlining and dead-code elimination, ~1/3 smaller binaries.
 include(CheckIPOSupported)
@@ -38,6 +52,18 @@ endif()
 # First check if required libraries are installed locally
 find_package(OpenMP REQUIRED)
 
+if(MSVC)
+  # On Windows the HDF5 and netCDF-C libraries come from vcpkg
+  # (vcpkg install hdf5[cpp] netcdf-c zlib); the from-source build below
+  # names the Unix static archives and passes no toolchain to its
+  # sub-builds, so HDF5 would come up without zlib there.
+  find_package(ZLIB REQUIRED)
+  find_package(hdf5 CONFIG REQUIRED)
+  find_package(netCDF CONFIG REQUIRED)
+  add_library(vmecpp_hdf5_netcdf INTERFACE)
+  target_link_libraries(vmecpp_hdf5_netcdf INTERFACE
+    netCDF::netcdf hdf5::hdf5_cpp-shared hdf5::hdf5_hl-shared hdf5::hdf5-shared)
+else()
 # HDF5 and netCDF-C are built from source, as static libraries, rather than
 # relying on whatever happens to be installed on the system. This is to
 # ensure reproducibility and minimize binary size by turning off netcdf
@@ -137,6 +163,7 @@ add_dependencies(netcdf netcdf_native)
 
 add_library(vmecpp_hdf5_netcdf INTERFACE)
 target_link_libraries(vmecpp_hdf5_netcdf INTERFACE netcdf hdf5_cpp hdf5_hl hdf5_c)
+endif()  # MSVC
 
 # Fetch all the remote dependencies
 include(FetchContent)
@@ -193,7 +220,16 @@ set(abscab_sources "${abscab-cpp_SOURCE_DIR}/abscab/abscab.cc" "${abscab-cpp_SOU
 
 # Fix deprecation warning, abseil will change this default soon.
 set(ABSL_PROPAGATE_CXX_STD "ON")
-FetchContent_MakeAvailable(abseil-cpp indata2json)
+if(MSVC)
+  # indata2json is a Fortran tool that converts classic VMEC namelist inputs
+  # to JSON; it is invoked as a subprocess, not linked into any target. Its
+  # Fortran build needs a compiler compatible with the MSVC/Ninja generator,
+  # which is not present on this toolchain, so it is skipped on Windows. The
+  # JSON-input path (VmecInput.from_file) does not require it.
+  FetchContent_MakeAvailable(abseil-cpp)
+else()
+  FetchContent_MakeAvailable(abseil-cpp indata2json)
+endif()
 include_directories(${abseil-cpp_SOURCE_DIR})
 
 # Allow to retain include paths as used for Bazel build.
@@ -201,6 +237,76 @@ include_directories(${abseil-cpp_SOURCE_DIR})
 # which starts including files that want to pull in header files
 # specified relative to `${PROJECT_SOURCE_DIR}/src/vmecpp/cpp`.
 include_directories(${PROJECT_SOURCE_DIR}/src/vmecpp/cpp)
+
+# CUDA-backed toroidal FFT (optional). Must be enabled BEFORE add_subdirectory
+# so the .cu source gets picked up by the ideal_mhd_model subdir's CMakeLists.
+option(VMECPP_USE_CUDA "Use CUDA-backed toroidal FFT kernels (requires CUDA toolkit + cuFFT)" OFF)
+if(VMECPP_USE_CUDA)
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  set(CMAKE_CUDA_STANDARD 20)
+  set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+  # The .cu objects link into vmecpp_core and then into the shared Python
+  # module. On a GCC/Clang host nvcc needs -fPIC; on the MSVC host -fPIC is
+  # not a valid flag, and the host compilation instead needs /bigobj (the
+  # CUDA units are large) and /EHsc passed through -Xcompiler.
+  if(MSVC)
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=/bigobj -Xcompiler=/EHsc")
+    # CMake injects a bare /utf-8 into the nvcc command line for MSVC, which
+    # nvcc misparses as a second input file; no CMake variable suppresses it.
+    # Route nvcc through a launcher that rewraps /utf-8 as -Xcompiler=/utf-8.
+    # Compiler launchers are honored by the Ninja and Makefile generators (use
+    # one of those on Windows, not the Visual Studio generator). find_program
+    # rather than find_package keeps this off pybind11's Python discovery.
+    find_program(VMECPP_LAUNCHER_PYTHON NAMES python3 python py REQUIRED)
+    set(CMAKE_CUDA_COMPILER_LAUNCHER
+        "${VMECPP_LAUNCHER_PYTHON}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nvcc_utf8_launcher.py")
+  elseif(CMAKE_CUDA_COMPILER_ID MATCHES "Clang")
+    # Clang CUDA takes host flags directly; -Xcompiler is nvcc-only syntax. This
+    # keeps the clang CUDA path (used by VMECPP_ENABLE_CUDA_ENZYME) building and
+    # leaves the default nvcc flags untouched.
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -fPIC")
+  else()
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=-fPIC")
+  endif()
+  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    # sm_70 covers V100, sm_80 covers A100/H100, sm_89 covers Ada.
+    set(CMAKE_CUDA_ARCHITECTURES "70;80;89")
+  endif()
+  message(STATUS "VMECPP_USE_CUDA: enabled, CUDA arches=${CMAKE_CUDA_ARCHITECTURES}")
+endif()
+
+# Optional CUDA-Enzyme target: the first proof that a VMEC++ CUDA device kernel
+# (the half-grid Jacobian) can be differentiated by Enzyme on the GPU. OFF by
+# default; the default CPU, CPU-Enzyme, and CUDA builds are unaffected. Requires
+# the CUDA path, a Clang CUDA compiler (Enzyme differentiates Clang's device IR,
+# not nvcc's), and the same ClangEnzyme plugin as the CPU Enzyme path. The test
+# target itself lives in the ideal_mhd_model subdirectory. Enable with:
+#   -DVMECPP_USE_CUDA=ON -DVMECPP_ENABLE_CUDA_ENZYME=ON \
+#   -DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so \
+#   -DCMAKE_CUDA_COMPILER=clang++-NN -DCMAKE_CXX_COMPILER=clang++-NN
+option(VMECPP_ENABLE_CUDA_ENZYME "Build the CUDA-Enzyme Jacobian JVP target" OFF)
+if(VMECPP_ENABLE_CUDA_ENZYME)
+  if(NOT VMECPP_USE_CUDA)
+    message(FATAL_ERROR
+      "VMECPP_ENABLE_CUDA_ENZYME=ON requires VMECPP_USE_CUDA=ON.")
+  endif()
+  if(NOT CMAKE_CUDA_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR
+      "VMECPP_ENABLE_CUDA_ENZYME requires a Clang CUDA compiler (got "
+      "'${CMAKE_CUDA_COMPILER_ID}'); Enzyme differentiates Clang's device IR. "
+      "Configure with -DCMAKE_CUDA_COMPILER=clang++-NN.")
+  endif()
+  set(VMECPP_ENZYME_PLUGIN "" CACHE FILEPATH "Path to ClangEnzyme-NN.so")
+  if(NOT VMECPP_ENZYME_PLUGIN OR NOT EXISTS "${VMECPP_ENZYME_PLUGIN}")
+    message(FATAL_ERROR
+      "VMECPP_ENABLE_CUDA_ENZYME=ON requires "
+      "-DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so")
+  endif()
+  message(STATUS "CUDA-Enzyme plugin: ${VMECPP_ENZYME_PLUGIN}")
+  enable_testing()
+endif()
 
 # Assemble the VMEC++ source tree.
 # Start out with ABSCAB sources - no need for a separate library for ABSCAB.
@@ -213,19 +319,34 @@ add_subdirectory(src)
 function(vmecpp_add_core target)
   cmake_parse_arguments(CORE "" "HWCAPS_SUBDIR" "COMPILE_OPTIONS" ${ARGN})
 
-  add_library(${target} SHARED ${vmecpp_sources})
+  if(MSVC)
+    # A static core on Windows: the shared core exports no symbols without
+    # declspec annotations, and the glibc-hwcaps dispatch is Linux-only.
+    add_library(${target} STATIC ${vmecpp_sources})
+  else()
+    add_library(${target} SHARED ${vmecpp_sources})
+  endif()
   set_target_properties(${target} PROPERTIES OUTPUT_NAME vmecpp_core)
   if(CORE_HWCAPS_SUBDIR)
     set_target_properties(${target} PROPERTIES
       LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/glibc-hwcaps/${CORE_HWCAPS_SUBDIR}")
   endif()
-  target_compile_options(${target} PRIVATE ${CORE_COMPILE_OPTIONS})
+  # Host-compiler options only: nvcc does not accept -march for the CUDA units.
+  target_compile_options(${target} PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${CORE_COMPILE_OPTIONS}>)
 
   target_link_libraries(${target} PUBLIC vmecpp_hdf5_netcdf)
   target_link_libraries(${target} PUBLIC nlohmann_json::nlohmann_json)
   target_link_libraries(${target} PUBLIC absl::algorithm absl::base
     absl::synchronization absl::strings absl::str_format absl::log
     absl::string_view absl::check absl::status absl::statusor)
+
+  if(VMECPP_USE_CUDA)
+    # The CUDA iteration body (cuFFT, cuBLAS) is compiled into every core
+    # variant; VMECPP_USE_CUDA is exported so consumers see the CUDA API.
+    target_link_libraries(${target} PRIVATE CUDA::cudart CUDA::cufft CUDA::cublas)
+    target_compile_definitions(${target} PUBLIC VMECPP_USE_CUDA)
+  endif()
 
   if(VMECPP_USE_FFTX)
     # Built per variant: the codelets must match the ISA of the core linking them.
@@ -253,7 +374,15 @@ endfunction()
 # The codelets are vendored under src/vmecpp/cpp/third_party/fftx_codelets/;
 # see that directory's README.md for what they cover and how to regenerate.
 # Pass -DVMECPP_USE_FFTX=OFF to fall back to the partial-DFT path.
-option(VMECPP_USE_FFTX "Use FFTX/SPIRAL kernels for toroidal transforms" ON)
+# The vendored FFTX codelets are machine-generated code that does not compile
+# under MSVC (over-long string literals, non-standard cast syntax), so the
+# option defaults off on Windows. The CUDA path uses cuFFT and the CPU
+# fallback is the partial-DFT transform, so neither build needs FFTX.
+if(MSVC)
+  option(VMECPP_USE_FFTX "Use FFTX/SPIRAL kernels for toroidal transforms" OFF)
+else()
+  option(VMECPP_USE_FFTX "Use FFTX/SPIRAL kernels for toroidal transforms" ON)
+endif()
 if(VMECPP_USE_FFTX)
   set(_fftx_dir "${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/third_party/fftx_codelets")
   file(GLOB _fftx_iprdft_srcs CONFIGURE_DEPENDS
@@ -272,9 +401,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
    CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
   set(VMECPP_HWCAPS_DISPATCH_DEFAULT ON)
 endif()
+# Under the CUDA build the iteration body runs on the device, so a second host
+# ISA variant would only double the CUDA compile; it stays opt-in there.
+set(_hwcaps_option_default ${VMECPP_HWCAPS_DISPATCH_DEFAULT})
+if(VMECPP_USE_CUDA)
+  set(_hwcaps_option_default OFF)
+endif()
 option(VMECPP_HWCAPS_DISPATCH
        "Also build x86-64-v3 core variant selected at load time via glibc-hwcaps"
-       ${VMECPP_HWCAPS_DISPATCH_DEFAULT})
+       ${_hwcaps_option_default})
 if(VMECPP_HWCAPS_DISPATCH)
   if(NOT VMECPP_HWCAPS_DISPATCH_DEFAULT)
     message(FATAL_ERROR
@@ -316,12 +451,14 @@ set_target_properties(_vmecpp PROPERTIES
 install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
 # glibc >= 2.33 prefers glibc-hwcaps/ subdirectories; older loaders ignore
 # them and pick up the baseline next to the extension module.
-install(TARGETS vmecpp_core LIBRARY DESTINATION vmecpp/cpp/.)
-if(VMECPP_HWCAPS_DISPATCH)
-  install(TARGETS vmecpp_core_v3
-          LIBRARY DESTINATION vmecpp/cpp/glibc-hwcaps/x86-64-v3/.)
+if(NOT MSVC)
+  install(TARGETS vmecpp_core LIBRARY DESTINATION vmecpp/cpp/.)
+  if(VMECPP_HWCAPS_DISPATCH)
+    install(TARGETS vmecpp_core_v3
+            LIBRARY DESTINATION vmecpp/cpp/glibc-hwcaps/x86-64-v3/.)
+  endif()
+  install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
 endif()
-install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
 
 # Optional Enzyme automatic-differentiation target: exact autodiff (forward and
 # reverse) of a real VMEC nonlinear kernel, the half-grid Jacobian. Enzyme

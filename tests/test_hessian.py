@@ -13,8 +13,14 @@ with an independent finite difference of the force, and it restores the state.
 from pathlib import Path
 
 import numpy as np
+import pytest
 
+import vmecpp
 from vmecpp.cpp import _vmecpp  # type: ignore
+
+pytestmark = pytest.mark.skipif(
+    vmecpp.has_cuda(), reason="the iteration API drives the host iteration"
+)
 
 SOLOVEV = Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
 
