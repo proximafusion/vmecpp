@@ -510,6 +510,30 @@ TEST(TestReadCoefficientsFromCsv, CheckReadBoundaryCoefficientsFromCsv) {
   EXPECT_THAT(*z_cos, ElementsAre(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
 }  // CheckReadBoundaryCoefficientsFromCsv
 
+// a file with CRLF line endings reads like one with LF line endings
+TEST(TestReadCoefficientsFromCsv, CheckReadCoefficientsFromCsvWithCrlf) {
+  absl::StatusOr<CurveRZFourier> axis_coefficients = CurveRZFourierFromCsv(
+      "n,raxis_c,zaxis_s,raxis_s,zaxis_c\r\n"
+      "0,3.999,0,0,0\r\n"
+      "1,1.026,1.58,0,0\r\n");
+  ASSERT_TRUE(axis_coefficients.ok()) << axis_coefficients.status();
+  absl::StatusOr<std::vector<double>> axis_r_cos =
+      CoefficientsRCos(*axis_coefficients);
+  ASSERT_TRUE(axis_r_cos.ok()) << axis_r_cos.status();
+  EXPECT_THAT(*axis_r_cos, ElementsAre(3.999, 1.026));
+
+  absl::StatusOr<SurfaceRZFourier> boundary_coefficients =
+      SurfaceRZFourierFromCsv(
+          "n,m,rbc,zbs,rbs,zbc\r\n"
+          "0,0,3.999,0,0,0\r\n"
+          "0,1,1.026,1.58,0,0\r\n");
+  ASSERT_TRUE(boundary_coefficients.ok()) << boundary_coefficients.status();
+  absl::StatusOr<std::vector<double>> boundary_z_sin =
+      CoefficientsZSin(*boundary_coefficients);
+  ASSERT_TRUE(boundary_z_sin.ok()) << boundary_z_sin.status();
+  EXPECT_THAT(*boundary_z_sin, ElementsAre(0.0, 1.58));
+}  // CheckReadCoefficientsFromCsvWithCrlf
+
 // check round-trip serialization/deserialization
 // rely on CheckReadBoundaryCoefficientsFromCsv for de-serialization
 TEST(TestWriteCoefficientsToCsv, CheckWriteCoefficientsToCsv) {
