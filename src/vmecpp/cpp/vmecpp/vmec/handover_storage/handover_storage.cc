@@ -67,6 +67,9 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     // -----------
     // Layout: RowMatrixXd [num_threads, mnsize]
 
+    thread_reduce_slots.resize(num_threads_, 3);
+    thread_reduce_slots.setZero();
+
     rmncc_i.resize(num_threads_, mnsize);
     rmncc_i.setZero();
     zmnsc_i.resize(num_threads_, mnsize);

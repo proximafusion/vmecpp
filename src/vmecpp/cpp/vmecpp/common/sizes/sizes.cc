@@ -64,9 +64,8 @@ void Sizes::computeDerivedSizes() {
 
   // nzeta
   if (ntor == 0 && nZeta < 1) {
-    // Tokamak (ntor=0) needs (at least) nzeta=1
-    // I think this implies that (in principle, not reasonable) one could do an
-    // axisymmetric run with nzeta > 1 ...
+    // Tokamak (ntor=0) needs (at least) nzeta=1; a larger nzeta is allowed and
+    // carries the same geometry in every toroidal plane.
     nZeta = 1;
   }
 

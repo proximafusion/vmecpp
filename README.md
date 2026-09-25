@@ -333,30 +333,13 @@ VMEC++:
 - implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa. One deliberate exception: at multigrid grid transitions, the rollback backup of the state vector is taken *after* the radial interpolation of the coarse-grid solution (matching PARVMEC/VMEC2000 since 2017-01-24, "SPH 012417"), not before it as in VMEC 8.52 -- with the 8.52 ordering, the first restart of a stage silently discards the interpolated state and the finer stages effectively re-solve from a cold start
 
 ### Limitations with respect to the Fortran implementations
-- free-boundary works only for `ntor > 0` - axisymmetric (`ntor = 0`) free-boundary runs don't work yet
 - `lgiveup`/`fgiveup` logic for early termination of a multi-grid sequence is not implemented yet
 - `lbsubs` logic in computing outputs is not implemented yet
 - `lrfp` flag is available for wout compatibility, but RFP-specific physics is not implemented yet - only stellarators/Tokamaks for now
 - several profile parameterizations are not fully implemented yet:
-   * `gauss_trunc`
-   * `two_power_gs`
-   * `akima_spline`
-   * `akima_spline_i`
-   * `akima_spline_ip`
-   * `cubic_spline`
-   * `cubic_spline_i`
-   * `cubic_spline_ip`
-   * `pedestal`
-   * `rational`
-   * `nice_quadratic`
    * `sum_cossq_s`
    * `sum_cossq_sqrts`
    * `sum_cossq_s_free`
-- some (rarely used) free-boundary-related output quantities are not implemented yet:
-   * `curlabel` - declared but not populated yet
-   * `potvac` - declared but not populated yet
-   * `xmpot` - not declared yet
-   * `xnpot` - not declared yet
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
 - VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)

@@ -30,6 +30,12 @@ using ::testing::Values;
 }  // namespace
 
 // used to specify case-specific tolerances
+//
+// Each tolerance is set from the worst deviation actually observed for that
+// case, rounded up to at least five times it. The measurement covers the opt,
+// asan and ubsan builds this repository tests in CI, which agree bit-for-bit
+// with each other, and one built with -march=native, which shifts individual
+// comparisons by up to a factor of four.
 struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
@@ -212,7 +218,7 @@ TEST_P(RecomputeMagneticAxisToFixJacobianSignTest,
 INSTANTIATE_TEST_SUITE_P(
     TestBoundaries, RecomputeMagneticAxisToFixJacobianSignTest,
     Values(DataSource{.identifier = "solovev_analytical", .tolerance = 1.0e-14},
-           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-15},
-           DataSource{.identifier = "cma", .tolerance = 1.0e-15}));
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-15},
+           DataSource{.identifier = "cma", .tolerance = 5.0e-15}));
 
 }  // namespace vmecpp
