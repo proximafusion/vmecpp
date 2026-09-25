@@ -305,14 +305,15 @@ hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 > The autodiff API is not yet stable. We are planning to make autodiff the default
 > behaviour and to release a suitable pip wheel in the upcoming weeks.
 
-`vmecpp.run(vmec_input, differentiable=True)` solves the same equilibrium through
-`vmecpp.autodiff` and returns the `wout` quantities (`rmnc`, `zmns`, `lmns`, `iotaf`,
-`bmnc`, `gmnc`, `bsubumnc`, `bsubvmnc`, `bsupumnc`, `bsupvmnc`, `bsubsmns`, `phi`, `chi`,
-`aspect`, `volume_p`, `volavgB`, `betatotal`, ...) as JAX arrays, so `jax.grad` can
-differentiate an objective written in them with respect to the boundary coefficients.
-The output stage is a JAX port of the C++ one (`vmecpp.autodiff_wout`); the solve and
-the exact adjoint of the force residual run in VMEC++. The path covers fixed-boundary,
-stellarator-symmetric, `ncurr = 0` inputs and the gradient needs a build with
+The `wout` physics quantities of every run come from `vmecpp.autodiff_wout`, a JAX
+port of the C++ output stage. `vmecpp.run` evaluates it on the converged geometry and
+returns NumPy arrays; `vmecpp.autodiff.run` returns the same `VmecWOut` with JAX arrays,
+so `jax.grad` can differentiate an objective written in `wout` quantities with respect
+to the boundary coefficients. `VmecWOut` is a JAX pytree: its leaves are the physics
+fields, while input echoes and solver diagnostics (`niter`, `fsqr`, the residual
+traces, ...) are carried along without keying the `jax.jit` cache. The solve and the
+exact adjoint of the force residual run in VMEC++; the differentiable solve covers
+fixed-boundary, stellarator-symmetric inputs and the gradient needs a build with
 `-DVMECPP_ENABLE_ENZYME=ON`.
 
 ```python
@@ -324,7 +325,7 @@ from vmecpp import autodiff
 jax.config.update("jax_enable_x64", True)
 
 vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
-result = vmecpp.run(vmec_input, differentiable=True)
+result = autodiff.run(vmec_input)
 print(result.wout.aspect, result.wout.iotaf)
 
 # d(aspect ratio) / d(rbc, zbs): the boundary array is stack(rbc, zbs)

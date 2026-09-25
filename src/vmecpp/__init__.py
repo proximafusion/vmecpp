@@ -15,12 +15,14 @@ import typing
 from collections.abc import Generator
 from pathlib import Path
 
+import jax
 import jaxtyping as jt
 import netCDF4
 import numpy as np
 import pydantic
 
-from vmecpp import _util
+from vmecpp import _util, autodiff_wout
+from vmecpp import geometry as _geometry
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
 from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
@@ -37,14 +39,12 @@ from vmecpp._iteration import (
 from vmecpp._pydantic_numpy import (
     _DAPPER_TYPE_FIELD,
     BaseModelWithNumpy,
+    FloatOrJax,
     NpOrJax,
     own_model_fields,
 )
 from vmecpp._rescale import rescale
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
-
-if typing.TYPE_CHECKING:
-    from vmecpp import autodiff
 
 logger = logging.getLogger(__name__)
 
@@ -970,24 +970,24 @@ class VmecWOut(BaseModelWithNumpy):
     ]
     """Flag indicating reversed-field pinch configuration."""
 
-    wb: float
+    wb: FloatOrJax
     """Magnetic energy: volume integral of `|B|^2/(2 mu0)`."""
 
-    wp: float
+    wp: FloatOrJax
     """Kinetic energy: volume integral of `p`."""
 
-    rmax_surf: float
+    rmax_surf: FloatOrJax
     """Maximum ``R`` on the plasma boundary over all grid points."""
 
-    rmin_surf: float
+    rmin_surf: FloatOrJax
     """Minimum ``R`` on the plasma boundary over all grid points."""
 
-    zmax_surf: float
+    zmax_surf: FloatOrJax
     """Maximum ``Z`` on the plasma boundary over all grid points."""
 
-    aspect: float
+    aspect: FloatOrJax
     """Aspect ratio (major radius over minor radius) of the plasma boundary."""
-    betapol: float
+    betapol: FloatOrJax
     r"""Poloidal plasma beta.
 
     The ratio of the total thermal energy of the plasma to the total poloidal magnetic
@@ -995,7 +995,7 @@ class VmecWOut(BaseModelWithNumpy):
     / (2 \mu_0)\, dV \right )`
     """
 
-    betator: float
+    betator: FloatOrJax
     r"""Toroidal plasma beta.
 
     The ratio of the total thermal energy of the plasma to the total toroidal magnetic
@@ -1003,44 +1003,44 @@ class VmecWOut(BaseModelWithNumpy):
     \mu_0)\, dV \right )`
     """
 
-    betaxis: float
+    betaxis: FloatOrJax
     """Plasma beta on the magnetic axis."""
 
-    b0: float
+    b0: FloatOrJax
     """Toroidal magnetic flux density from poloidal current and magnetic axis position
     at ``phi=0``."""
 
-    rbtor0: float
+    rbtor0: FloatOrJax
     """Poloidal ribbon current at the axis."""
 
-    rbtor: float
+    rbtor: FloatOrJax
     """Poloidal ribbon current at the plasma boundary."""
 
-    IonLarmor: float
+    IonLarmor: FloatOrJax
     """Larmor radius of plasma ions."""
 
-    ctor: float
+    ctor: FloatOrJax
     """Net toroidal plasma current."""
 
-    Aminor_p: float
+    Aminor_p: FloatOrJax
     """Minor radius of the plasma."""
 
-    Rmajor_p: float
+    Rmajor_p: FloatOrJax
     """Major radius of the plasma."""
 
-    volume: typing.Annotated[float, pydantic.Field(alias="volume_p")]
+    volume: typing.Annotated[FloatOrJax, pydantic.Field(alias="volume_p")]
     """Plasma volume."""
 
-    fsqr: float
+    fsqr: FloatOrJax
     """Invariant force residual of the force on ``R`` at end of the run."""
 
-    fsqz: float
+    fsqz: FloatOrJax
     """Invariant force residual of the force on ``Z`` at end of the run."""
 
-    fsql: float
+    fsql: FloatOrJax
     """Invariant force residual of the force on ``lambda`` at end of the run."""
 
-    ftolv: float
+    ftolv: FloatOrJax
     """Force tolerance value used to determine convergence."""
 
     # Default initialized so reading stays backwards compatible pre v0.4.0
@@ -1326,7 +1326,7 @@ class VmecWOut(BaseModelWithNumpy):
     ai_aux_f: AuxFType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline iota profile: values at knots (copied from input)."""
 
-    gamma: float
+    gamma: FloatOrJax
     r"""Adiabatic index :math:`\gamma` (copied from input)."""
 
     mgrid_file: typing.Annotated[str, pydantic.Field(max_length=200)]
@@ -1362,7 +1362,7 @@ class VmecWOut(BaseModelWithNumpy):
     iotaf: jt.Float[NpOrJax, "n_surfaces"]
     r"""Rotational transform :math:`\iota` on the full-grid."""
 
-    betatotal: float
+    betatotal: FloatOrJax
     r"""Total plasma beta.
 
     The ratio of the total thermal energy of the plasma to the total magnetic energy.
@@ -1401,7 +1401,7 @@ class VmecWOut(BaseModelWithNumpy):
     """Sign of the Jacobian of the coordinate transform between flux coordinates and
     cylindrical coordinates."""
 
-    volavgB: float
+    volavgB: FloatOrJax
     """Volume-averaged magnetic field strength."""
 
     # Defaulted for backwards compatibility with old wout files.
@@ -1443,7 +1443,7 @@ class VmecWOut(BaseModelWithNumpy):
     beta_vol: jt.Float[NpOrJax, "n_surfaces"]
     """Flux-surface averaged plasma beta on half-grid."""
 
-    version_: float
+    version_: FloatOrJax
     """Version number of VMEC, that this VMEC++ wout file is compatible with.
 
     Some codes change how they interpret values in the wout file depending on this
@@ -1858,6 +1858,55 @@ class VmecWOut(BaseModelWithNumpy):
             attrs.setdefault("ai_aux_s", np.array([]))
             attrs.setdefault("ai_aux_f", np.array([]))
         return VmecWOut.model_validate(attrs, by_alias=True)
+
+
+class _WoutAuxData:
+    """The non-leaf fields of a flattened :class:`VmecWOut`.
+
+    Instances compare equal regardless of content, so ``jax.jit`` does not
+    recompile when only solver diagnostics such as ``niter`` differ. A
+    ``VmecWOut`` returned from a compiled function carries these fields as seen
+    at trace time.
+    """
+
+    __slots__ = ("extra", "fields", "fields_set")
+
+    def __init__(self, fields, extra, fields_set):
+        self.fields = fields
+        self.extra = extra
+        self.fields_set = fields_set
+
+    def __eq__(self, other):
+        return isinstance(other, _WoutAuxData)
+
+    def __hash__(self):
+        return hash(_WoutAuxData)
+
+
+def _flatten_wout(wout: VmecWOut):
+    values = wout.__dict__
+    leaves = tuple(values[name] for name in autodiff_wout.WOUT_QUANTITIES)
+    fields = {
+        name: value for name, value in values.items() if name not in _WOUT_LEAF_NAMES
+    }
+    extra = dict(wout.__pydantic_extra__ or {})
+    return leaves, _WoutAuxData(fields, extra, frozenset(wout.model_fields_set))
+
+
+def _unflatten_wout(aux: _WoutAuxData, leaves) -> VmecWOut:
+    return VmecWOut.model_construct(
+        _fields_set=set(aux.fields_set),
+        **aux.fields,
+        **dict(zip(autodiff_wout.WOUT_QUANTITIES, leaves, strict=True)),
+        **aux.extra,
+    )
+
+
+_WOUT_LEAF_NAMES = frozenset(autodiff_wout.WOUT_QUANTITIES)
+
+# The physics fields are the leaves; input echoes, sizes and solver diagnostics
+# travel as aux data that does not key the jit cache.
+jax.tree_util.register_pytree_node(VmecWOut, _flatten_wout, _unflatten_wout)
 
 
 class Threed1Volumetrics(BaseModelWithNumpy):
@@ -2467,6 +2516,40 @@ class VmecOutput(BaseModelWithNumpy):
     """Python equivalent of VMEC's "wout" file."""
 
 
+@contextlib.contextmanager
+def _float64_on_cpu() -> Generator[None, None, None]:
+    enable_x64 = getattr(jax, "enable_x64", None)
+    if enable_x64 is None:  # jax < 0.7
+        from jax.experimental import (  # noqa: PLC0415
+            enable_x64,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+    with enable_x64(True), jax.default_device(jax.devices("cpu")[0]):
+        yield
+
+
+def _as_numpy(value):
+    if value is None:
+        return None
+    array = np.array(value)
+    return float(array) if array.ndim == 0 else array
+
+
+def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> VmecWOut:
+    """The ``wout`` of a C++ run with its physics fields from the JAX output stage.
+
+    Input echoes, solver diagnostics and the free-boundary vacuum potential come from
+    the C++ run; the mass profile too, so that every profile type is covered.
+    """
+    wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
+    mass_half = np.asarray(wout.mass)[1:] * autodiff_wout.MU_0
+    with _float64_on_cpu():
+        quantities = autodiff_wout.wout_quantities(
+            _geometry.make(cpp_output_quantities), vmec_input, mass_half=mass_half
+        )
+        update = {name: _as_numpy(value) for name, value in quantities.items()}
+    return wout.model_copy(update=update)
+
+
 _progress_tip_shown = False
 
 
@@ -2479,7 +2562,6 @@ def _print_progress_tip_once() -> None:
         )
 
 
-@typing.overload
 def run(
     input: VmecInput,
     magnetic_field: MagneticFieldResponseTable | None = None,
@@ -2487,31 +2569,7 @@ def run(
     max_threads: int | None = None,
     verbose: bool | int | OutputMode = OutputMode.PROGRESS,
     restart_from: VmecOutput | None = None,
-    differentiable: typing.Literal[False] = False,
-) -> VmecOutput: ...
-
-
-@typing.overload
-def run(
-    input: VmecInput,
-    magnetic_field: MagneticFieldResponseTable | None = None,
-    *,
-    max_threads: int | None = None,
-    verbose: bool | int | OutputMode = OutputMode.PROGRESS,
-    restart_from: VmecOutput | None = None,
-    differentiable: typing.Literal[True],
-) -> autodiff.DifferentiableRun: ...
-
-
-def run(
-    input: VmecInput,
-    magnetic_field: MagneticFieldResponseTable | None = None,
-    *,
-    max_threads: int | None = None,
-    verbose: bool | int | OutputMode = OutputMode.PROGRESS,
-    restart_from: VmecOutput | None = None,
-    differentiable: bool = False,
-) -> VmecOutput | autodiff.DifferentiableRun:
+) -> VmecOutput:
     """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
     and free-boundary calculations.
 
@@ -2532,13 +2590,6 @@ def run(
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
             If `input.mpol`/`input.ntor` is a sequence (see below), this is used to hot-restart
             only the first continuation step; later steps always hot-restart from the previous one.
-        differentiable: if True, solve through the JAX-differentiable path and return a
-            `vmecpp.autodiff.DifferentiableRun` whose `wout` arrays and `geometry` are JAX
-            pytrees; `jax.grad` through it yields derivatives with respect to the boundary
-            coefficients `stack(rbc, zbs)` (see `vmecpp.autodiff.run`). This path covers the
-            fixed-boundary, stellarator-symmetric, `ncurr = 0` case today and needs an
-            Enzyme-enabled build for the gradient; `magnetic_field` and `restart_from` are
-            not supported with it.
 
     If `input.mpol` and/or `input.ntor` is a sequence rather than a plain int, `run` performs
     continuation in Fourier resolution: each entry pairs with the corresponding `input.ns_array`
@@ -2555,14 +2606,6 @@ def run(
         0.2033313711
     """
     input = VmecInput.model_validate(input)
-
-    if differentiable:
-        if magnetic_field is not None or restart_from is not None:
-            msg = "differentiable=True does not support magnetic_field or restart_from"
-            raise ValueError(msg)
-        from vmecpp import autodiff  # noqa: PLC0415
-
-        return autodiff.run(input)
 
     if not isinstance(input.mpol, int) or not isinstance(input.ntor, int):
         return _run_fourier_continuation(
@@ -2620,8 +2663,7 @@ def run(
             verbose=_verbose.value,
         )
 
-    cpp_wout = cpp_output_quantities.wout
-    wout = VmecWOut._from_cpp_wout(cpp_wout)
+    wout = _wout_from_output_stage(input, cpp_output_quantities)
     jxbout = JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout)
     mercier = Mercier._from_cpp_mercier(cpp_output_quantities.mercier)
     threed1_volumetrics = Threed1Volumetrics._from_cpp_threed1volumetrics(
