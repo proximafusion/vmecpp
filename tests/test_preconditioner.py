@@ -15,6 +15,13 @@ Krylov/quasi-Newton solvers.
 from pathlib import Path
 
 import numpy as np
+import pytest
+
+import vmecpp
+
+pytestmark = pytest.mark.skipif(
+    vmecpp.has_cuda(), reason="the iteration API drives the host iteration"
+)
 
 try:
     from vmecpp.cpp import _vmecpp
