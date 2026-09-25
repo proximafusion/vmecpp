@@ -82,11 +82,13 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
     return absl::InvalidArgumentError(absl::StrCat(msg_start, "ntor", msg_end));
   }
 
-  // check for matching `ns`
-  if (initial_state.indata.ns_array[initial_state.indata.ns_array.size() - 1] !=
-      indata.ns_array[0]) {
-    return absl::InvalidArgumentError(
-        absl::StrCat(msg_start, "ns_array", msg_end));
+  // check for matching `ns`: the state is read from the wout, one column per
+  // flux surface
+  if (initial_state.wout.ns != indata.ns_array[0]) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%sns_array%s The wout of the initial state has ns = %d, but "
+        "ns_array[0] = %d.",
+        msg_start, msg_end, initial_state.wout.ns, indata.ns_array[0]));
   }
 
   return absl::OkStatus();
