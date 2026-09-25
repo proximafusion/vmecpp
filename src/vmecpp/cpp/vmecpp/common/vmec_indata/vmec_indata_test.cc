@@ -599,6 +599,49 @@ TEST(TestVmecINDATA, SetMpolNtor) {
   }
 }  // SetMpolNtor
 
+// IsConsistent cannot size the asymmetric arrays of a VmecINDATA that was
+// filled in by hand, so lasym without them has to be rejected.
+TEST(TestVmecINDATA, CheckLasymNeedsTheAsymmetricArrays) {
+  VmecINDATA hand_built;
+  ASSERT_TRUE(IsConsistent(hand_built, /*enable_info_messages=*/false).ok());
+
+  hand_built.lasym = true;
+  const absl::Status hand_built_status =
+      IsConsistent(hand_built, /*enable_info_messages=*/false);
+  EXPECT_EQ(hand_built_status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(hand_built_status.message()),
+              testing::HasSubstr("'raxis_s' has to be set"));
+
+  // SetMpolNtor sizes all four of them.
+  hand_built.SetMpolNtor(hand_built.mpol, hand_built.ntor);
+  EXPECT_TRUE(IsConsistent(hand_built, /*enable_info_messages=*/false).ok());
+
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  const auto expect_rejected_without = [&indata](const std::string& name,
+                                                 auto reset) {
+    VmecINDATA without = *indata;
+    reset(without);
+    const absl::Status status =
+        IsConsistent(without, /*enable_info_messages=*/false);
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << name;
+    EXPECT_THAT(std::string(status.message()),
+                testing::HasSubstr("'" + name + "' has to be set"));
+  };
+  expect_rejected_without(
+      "raxis_s", [](VmecINDATA& m_indata) { m_indata.raxis_s.reset(); });
+  expect_rejected_without(
+      "zaxis_c", [](VmecINDATA& m_indata) { m_indata.zaxis_c.reset(); });
+  expect_rejected_without("rbs",
+                          [](VmecINDATA& m_indata) { m_indata.rbs.reset(); });
+  expect_rejected_without("zbc",
+                          [](VmecINDATA& m_indata) { m_indata.zbc.reset(); });
+}  // CheckLasymNeedsTheAsymmetricArrays
+
 TEST(TestVmecINDATA, CopyMethod) {
   const VmecINDATA indata =
       VmecINDATA::FromFile("vmecpp/test_data/cth_like_free_bdy.json");
