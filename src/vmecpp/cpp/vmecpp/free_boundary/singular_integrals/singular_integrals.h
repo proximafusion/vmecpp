@@ -16,6 +16,29 @@
 
 namespace vmecpp {
 
+// Number of tangential grid points whose Chebyshev-moment problems
+// SingularIntegrals eliminates together.
+inline constexpr int kChebyshevMomentBatch = 8;
+
+// Factors and scratch of the boundary-value problems that SingularIntegrals
+// solves for the Chebyshev moments of the tangent-plane kernel.
+struct ChebyshevMomentWorkspace {
+  // k-dependent factors of the five-term moment recurrence, indexed by k
+  std::vector<double> factor_sub2;
+  std::vector<double> factor_sub1;
+  std::vector<double> factor_diag;
+  std::vector<double> factor_sup1;
+  std::vector<double> factor_sup2;
+  std::vector<double> factor_rhs;
+
+  // Rows of the eliminated systems of one batch, [point, k]: the two bands
+  // above the unit diagonal, and the right-hand side, which the back
+  // substitution turns into the moments.
+  Eigen::Array<double, kChebyshevMomentBatch, Eigen::Dynamic> upper1;
+  Eigen::Array<double, kChebyshevMomentBatch, Eigen::Dynamic> upper2;
+  Eigen::Array<double, kChebyshevMomentBatch, Eigen::Dynamic> moments;
+};
+
 class SingularIntegrals {
  public:
   SingularIntegrals(const Sizes* s, const FourierBasisFastToroidal* fb,
@@ -28,8 +51,12 @@ class SingularIntegrals {
   int numCS;
   int nzLen;  // non-zero length
 
-  Eigen::VectorXd cmn;
-  Eigen::VectorXd cmns;
+  // Chebyshev coefficients gamma_k(m, n) of the add-back polynomials
+  //   p_mn(t) = sum_l cmns(l, m, n) t^l = sum_k gamma_k(m, n) T_k(t),
+  // indexed (k * (nf + 1) + n) * (mf + 1) + m. cmns are the coefficients of
+  // (6.291) in TNOV; |p_mn| <= 1 on [-1, 1] and |gamma_k| <= 1, while cmns
+  // reaches 1e11 at m + n = 33.
+  Eigen::VectorXd chebyshev_coefficients;
 
   Eigen::VectorXd ap;
   Eigen::VectorXd am;
@@ -49,34 +76,28 @@ class SingularIntegrals {
   Eigen::VectorXd Ra1p;
   Eigen::VectorXd Ra1m;
 
-  // l-2
-  Eigen::VectorXd Tl2p;
-  // l-2
-  Eigen::VectorXd Tl2m;
-  // l-1
-  Eigen::VectorXd Tl1p;
-  // l-1
-  Eigen::VectorXd Tl1m;
-  // l
-  std::vector<Eigen::VectorXd> Tlp;
-  // l
-  std::vector<Eigen::VectorXd> Tlm;
+  // Chebyshev moments of the tangent-plane kernel along the expansion
+  // variable, [k][kl]:
+  //   M^+_k = int_{-1}^{1} T_k(t) / sqrt(ap t^2 + 2 d t + am) dt,
+  // and M^-_k with ap and am exchanged.
+  std::vector<Eigen::VectorXd> chebyshev_moments_p;
+  std::vector<Eigen::VectorXd> chebyshev_moments_m;
 
-  // l
-  std::vector<Eigen::VectorXd> Slp;
-  // l
-  std::vector<Eigen::VectorXd> Slm;
+  // The functional of Eq. (A17), which maps t^l to S^{+/-}_l, applied to
+  // T_k(t), [k][kl].
+  std::vector<Eigen::VectorXd> chebyshev_s_moments_p;
+  std::vector<Eigen::VectorXd> chebyshev_s_moments_m;
 
-  // sum_kl { Tlm * sin(mu + nv), Tlp * sin(mu - nv) }
+  // sum_kl { M^- * sin(mu - nv), M^+ * sin(mu + nv) } for modes (m, n), (m, -n)
   Eigen::VectorXd bvec_sin;
 
-  // sum_kl { Tlm * cos(mu + nv), Tlp * cos(mu - nv) }
+  // sum_kl { M^- * cos(mu - nv), M^+ * cos(mu + nv) }
   Eigen::VectorXd bvec_cos;
 
-  // Slm * sin(mu + nv), Slp * sin(mu - nv)
+  // S^- * sin(mu - nv), S^+ * sin(mu + nv)
   Eigen::VectorXd grpmn_sin;
 
-  // Slm * cos(mu + nv), Slp * cos(mu - nv)
+  // S^- * cos(mu - nv), S^+ * cos(mu + nv)
   Eigen::VectorXd grpmn_cos;
 
   void prepareUpdate(const Eigen::VectorXd& a, const Eigen::VectorXd& b2,
@@ -96,6 +117,8 @@ class SingularIntegrals {
 
   int nf;
   int mf;
+
+  ChebyshevMomentWorkspace moment_workspace_;
 };
 
 }  // namespace vmecpp
