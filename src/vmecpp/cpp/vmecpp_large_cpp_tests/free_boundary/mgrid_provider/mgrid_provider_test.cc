@@ -143,8 +143,8 @@ TEST_P(LoadMGridTest, CheckLoadMGrid) {
   // The loop setup is re-used to also allocate the magnetic_field vectors.
   const int number_of_grid_points =
       number_of_r_grid_points * number_of_z_grid_points * num_phi_effective;
-  std::vector<std::vector<double>> evaluation_locations(number_of_grid_points);
-  std::vector<std::vector<double>> magnetic_field(number_of_grid_points);
+  std::vector<std::vector<double> > evaluation_locations(number_of_grid_points);
+  std::vector<std::vector<double> > magnetic_field(number_of_grid_points);
   for (int index_phi = 0; index_phi < num_phi_effective; ++index_phi) {
     const double phi = index_phi * phi_grid_increment;
     const double cos_phi = std::cos(phi);
@@ -489,12 +489,13 @@ TEST(MGridProviderValidation, LoadFileReadsMoreCoilGroupsThanNextcur) {
   ASSERT_EQ(nc_def_dim(ncid, "zee", kNumZ, &dim_grid[1]), NC_NOERR);
   ASSERT_EQ(nc_def_dim(ncid, "rad", kNumR, &dim_grid[2]), NC_NOERR);
 
-  const std::vector<std::pair<std::string, int>> int_scalars = {{"ir", kNumR},
-                                                                {"jz", kNumZ},
-                                                                {"kp", kNumPhi},
-                                                                {"nfp", 1},
-                                                                {"nextcur", 1}};
-  const std::vector<std::pair<std::string, double>> double_scalars = {
+  const std::vector<std::pair<std::string, int> > int_scalars = {
+      {"ir", kNumR},
+      {"jz", kNumZ},
+      {"kp", kNumPhi},
+      {"nfp", 1},
+      {"nextcur", 1}};
+  const std::vector<std::pair<std::string, double> > double_scalars = {
       {"rmin", 1.0}, {"rmax", 2.0}, {"zmin", -0.5}, {"zmax", 0.5}};
   std::vector<int> int_ids(int_scalars.size());
   std::vector<int> double_ids(double_scalars.size());
