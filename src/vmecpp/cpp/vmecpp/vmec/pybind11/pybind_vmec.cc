@@ -255,11 +255,9 @@ class VmecModel {
 #pragma omp parallel num_threads(1)
 #endif
     {
-      auto s = vmec_->m_[0]->update(
-          *vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
-          *vmec_->decomposed_f_[0], *vmec_->physical_f_[0], need_restart,
-          last_preconditioner_update_, last_full_update_nestor_, vmec_->fc_,
-          iter1, iter2, checkpoint, checkpoint_after,
+      auto s = vmec_->UpdateModel(
+          /*thread_id=*/0, need_restart, last_preconditioner_update_,
+          last_full_update_nestor_, iter1, iter2, checkpoint, checkpoint_after,
           /*verbose=*/false, always_fix_m1_gauge);
       if (!s.ok()) {
         error_message = std::string(s.status().message());
@@ -292,15 +290,24 @@ class VmecModel {
   // Restart primitives (decomposed RestartIteration).
   void SaveBackup() const {
     *vmec_->physical_x_backup_[0] = *vmec_->decomposed_x_[0];
+    vmec_->backup_holds_pending_step_ = vmec_->step_check_pending_;
   }
   void RestoreBackup() const {
     vmec_->decomposed_v_[0]->setZero();
     *vmec_->decomposed_x_[0] = *vmec_->physical_x_backup_[0];
+    vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
   }
-  void ZeroVelocity() const { vmec_->decomposed_v_[0]->setZero(); }
+  void ZeroVelocity() const {
+    vmec_->decomposed_v_[0]->setZero();
+    vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
+  }
 
   // Reset to the (possibly re-guessed) initial profile; used on bad Jacobian.
   void ResetToInitialGuess() const {
+    vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
     vmec_->decomposed_x_[0]->setZero();
     vmec_->decomposed_x_[0]->interpFromBoundaryAndAxis(vmec_->t_, vmec_->b_,
                                                        *vmec_->p_[0]);
@@ -405,6 +412,8 @@ class VmecModel {
     return FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
   }
   void SetState(const Eigen::VectorXd &flat) const {
+    vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
     exact_primal_valid_ = false;  // primal geometry cache is stale
   }
@@ -583,6 +592,8 @@ class VmecModel {
   // the directional step is finite-differenced. The current state is restored.
   Eigen::VectorXd HessianVectorProduct(const Eigen::VectorXd &v,
                                        double eps_rel = 1e-7) {
+    vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
     const Eigen::VectorXd x =
         FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     const double vnorm = v.norm();
@@ -920,6 +931,7 @@ PYBIND11_MODULE(_vmecpp, m) {
   pyindata.def_readwrite("delt", &VmecINDATA::delt)
       .def_readwrite("tcon0", &VmecINDATA::tcon0)
       .def_readwrite("lforbal", &VmecINDATA::lforbal)
+      .def_readwrite("jacobian_safe_step", &VmecINDATA::jacobian_safe_step)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)

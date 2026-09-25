@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <iostream>
 #include <memory>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -570,6 +571,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
 
   iter2_ = 1;
   iter1_ = iter2_;
+  step_check_pending_ = false;
+  backup_holds_pending_step_ = false;
 
   fc_.ijacob = 0;
   fc_.restart_reason = RestartReason::NO_RESTART;
@@ -680,6 +683,7 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
           &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
                                    indata_.lforbal);
+      m_[thread_id]->setJacobianSafeStep(indata_.jacobian_safe_step);
     }  // thread_id
 
     absl::Status current_profile_status =
@@ -951,6 +955,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #endif  // _OPENMP
     {
       fc_.restart_reason = RestartReason::NO_RESTART;
+      step_check_pending_ = false;
+      backup_holds_pending_step_ = false;
     }
 
     // In the first multigrid iteration (OFF IN v8.50)
@@ -1322,6 +1328,9 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
       iter1_ = iter2_;
 
       fc_.restart_reason = RestartReason::NO_RESTART;
+
+      step_check_pending_ = false;
+      backup_holds_pending_step_ = false;
     }
 
   } else if (fc_.restart_reason == RestartReason::BAD_PROGRESS) {
@@ -1345,6 +1354,9 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
       m_delt0r = m_delt0r / 1.03;
 
       fc_.restart_reason = RestartReason::NO_RESTART;
+
+      step_check_pending_ = false;
+      backup_holds_pending_step_ = false;
     }
   } else {
     // NO_RESTART or HUGE_INITIAL_FORCES
@@ -1352,6 +1364,11 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
 
     // update backup
     *physical_x_backup_[thread_id] = *decomposed_x_[thread_id];
+
+#ifdef _OPENMP
+#pragma omp single nowait
+#endif  // _OPENMP
+    backup_holds_pending_step_ = step_check_pending_;
   }
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1522,11 +1539,11 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
     int thread_id) {
   bool need_restart = false;
 
-  absl::StatusOr<bool> reached_checkpoint = m_[thread_id]->update(
-      *decomposed_x_[thread_id], *physical_x_[thread_id],
-      *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
-      last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
-      iter2_, checkpoint, iterations_before_checkpointing, verbose_);
+  absl::StatusOr<bool> reached_checkpoint =
+      UpdateModel(thread_id, need_restart, last_preconditioner_update_,
+                  last_full_update_nestor_, iter1_, iter2_, checkpoint,
+                  iterations_before_checkpointing, verbose_,
+                  /*always_fix_m1_gauge=*/false);
   if (!reached_checkpoint.ok()) {
     return reached_checkpoint;
   }
@@ -1565,7 +1582,139 @@ void Vmec::PerformTimeStep(double fac, double b1, double time_step,
 
 #ifdef _OPENMP
 #pragma omp barrier
+#pragma omp single
 #endif  // _OPENMP
+  {
+    last_time_step_ = time_step;
+    step_check_pending_ = true;
+    backup_holds_pending_step_ = false;
+  }
+}
+
+namespace {
+
+// Calls apply(position, velocity, idx_mn1, idx_mn) for every coefficient that
+// performTimeStep advances on the surfaces r owns, with the position indexed
+// from nsMinF1 and the velocity from nsMinF.
+template <typename Velocity, typename Apply>
+void ForEachTimeStepCoefficient(const Sizes& s, const RadialPartitioning& r,
+                                FourierGeometry& m_x, Velocity& v,
+                                const Apply& apply) {
+  for (int jF = r.nsMinF; jF < r.nsMaxFIncludingLcfs; ++jF) {
+    for (int m = 0; m < s.mpol; ++m) {
+      for (int n = 0; n < s.ntor + 1; ++n) {
+        const int idx_mn = ((jF - r.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
+        const int idx_mn1 = ((jF - r.nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
+        apply(m_x.rmncc, v.vrcc, idx_mn1, idx_mn);
+        apply(m_x.zmnsc, v.vzsc, idx_mn1, idx_mn);
+        apply(m_x.lmnsc, v.vlsc, idx_mn1, idx_mn);
+        if (s.lthreed) {
+          apply(m_x.rmnss, v.vrss, idx_mn1, idx_mn);
+          apply(m_x.zmncs, v.vzcs, idx_mn1, idx_mn);
+          apply(m_x.lmncs, v.vlcs, idx_mn1, idx_mn);
+        }
+        if (s.lasym) {
+          apply(m_x.rmnsc, v.vrsc, idx_mn1, idx_mn);
+          apply(m_x.zmncc, v.vzcc, idx_mn1, idx_mn);
+          apply(m_x.lmncc, v.vlcc, idx_mn1, idx_mn);
+          if (s.lthreed) {
+            apply(m_x.rmncs, v.vrcs, idx_mn1, idx_mn);
+            apply(m_x.zmnss, v.vzss, idx_mn1, idx_mn);
+            apply(m_x.lmnss, v.vlss, idx_mn1, idx_mn);
+          }
+        }
+      }  // n
+    }  // m
+  }  // jF
+}
+
+}  // namespace
+
+void Vmec::ShortenTimeStep(double fraction, const RadialPartitioning& r,
+                           FourierGeometry& m_x, FourierVelocity& m_v,
+                           HandoverStorage& m_h) const {
+  // x_new = x_old + dt v, so x_old + fraction dt v = x_new - back v
+  const double back = (1.0 - fraction) * last_time_step_;
+  ForEachTimeStepCoefficient(
+      s_, r, m_x, m_v,
+      [&](std::span<double> position, std::span<double> velocity, int idx_mn1,
+          int idx_mn) {
+        position[idx_mn1] -= back * velocity[idx_mn];
+        velocity[idx_mn] *= fraction;
+      });
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  exchangeSatelliteSurfaces(fc_, r, m_x, m_h);
+}
+
+void Vmec::StartOfTimeStep(const RadialPartitioning& r,
+                           const FourierGeometry& x, const FourierVelocity& v,
+                           FourierGeometry& m_start,
+                           HandoverStorage& m_h) const {
+  // a time step and its shortening keep x = x_start + dt v
+  m_start = x;
+  ForEachTimeStepCoefficient(
+      s_, r, m_start, v,
+      [&](std::span<double> position, std::span<const double> velocity,
+          int idx_mn1, int idx_mn) {
+        position[idx_mn1] -= last_time_step_ * velocity[idx_mn];
+      });
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  exchangeSatelliteSurfaces(fc_, r, m_start, m_h);
+}
+
+absl::StatusOr<bool> Vmec::UpdateModel(int thread_id, bool& m_need_restart,
+                                       int& m_last_preconditioner_update,
+                                       int& m_last_full_update_nestor,
+                                       int iter1, int iter2,
+                                       VmecCheckpoint checkpoint,
+                                       int iterations_before_checkpointing,
+                                       bool verbose, bool always_fix_m1_gauge) {
+  const bool check_step = indata_.jacobian_safe_step && step_check_pending_;
+  const bool shorten_backup = check_step && backup_holds_pending_step_;
+  if (indata_.jacobian_safe_step) {
+#ifdef _OPENMP
+    // every thread reads the flags before one thread clears them
+#pragma omp barrier
+#pragma omp single
+#endif  // _OPENMP
+    {
+      h_.step_fraction = 1.0;
+      step_check_pending_ = false;
+      backup_holds_pending_step_ = false;
+    }
+  }
+
+  absl::StatusOr<bool> reached_checkpoint = m_[thread_id]->update(
+      *decomposed_x_[thread_id], *physical_x_[thread_id],
+      *decomposed_f_[thread_id], *physical_f_[thread_id], m_need_restart,
+      m_last_preconditioner_update, m_last_full_update_nestor, fc_, iter1,
+      iter2, checkpoint, iterations_before_checkpointing, verbose,
+      always_fix_m1_gauge, check_step);
+  if (reached_checkpoint.ok() && !*reached_checkpoint && check_step &&
+      h_.step_fraction < 1.0) {
+    ShortenTimeStep(h_.step_fraction, *r_[thread_id], *decomposed_x_[thread_id],
+                    *decomposed_v_[thread_id], h_);
+    if (shorten_backup) {
+      // the backup holds the end of the unshortened step; a restart goes back
+      // to the start of the step, the last evaluated state
+      StartOfTimeStep(*r_[thread_id], *decomposed_x_[thread_id],
+                      *decomposed_v_[thread_id], *physical_x_backup_[thread_id],
+                      h_);
+    }
+    reached_checkpoint = m_[thread_id]->update(
+        *decomposed_x_[thread_id], *physical_x_[thread_id],
+        *decomposed_f_[thread_id], *physical_f_[thread_id], m_need_restart,
+        m_last_preconditioner_update, m_last_full_update_nestor, fc_, iter1,
+        iter2, checkpoint, iterations_before_checkpointing, verbose,
+        always_fix_m1_gauge);
+  }
+  return reached_checkpoint;
 }
 
 // velocity_scale == fac
@@ -1679,6 +1828,13 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
     }  // m
   }  // jF
 
+  exchangeSatelliteSurfaces(fc, r, m_decomposed_x, m_h_);
+}  // performTimeStep
+
+void Vmec::exchangeSatelliteSurfaces(const FlowControl& fc,
+                                     const RadialPartitioning& r,
+                                     FourierGeometry& m_decomposed_x,
+                                     HandoverStorage& m_h_) const {
   // also evolve satellite radial locations: nsMinF1, nsMaxF1-1 in case
   // inside, outside threads exist
   bool hasInside = (r.nsMinF1 > 0);
@@ -1848,7 +2004,7 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
-}  // performTimeStep
+}  // exchangeSatelliteSurfaces
 
 void Vmec::InterpolateToNextMultigridStep(
     int ns_new, int ns_old,
