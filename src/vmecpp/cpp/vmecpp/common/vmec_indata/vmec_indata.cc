@@ -1022,6 +1022,10 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
 
   if (vmec_indata.lasym) {
+    // an absent raxis_s or zaxis_c is a zero one, as for raxis_c and zaxis_s
+    vmec_indata.raxis_s.emplace().setZero(expected_axis_size);
+    vmec_indata.zaxis_c.emplace().setZero(expected_axis_size);
+
     auto maybe_raxis_s = JsonReadVectorDouble(j, "raxis_s");
     if (!maybe_raxis_s.ok()) {
       return maybe_raxis_s.status();
