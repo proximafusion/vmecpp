@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 import vmecpp
+from vmecpp.cpp import _vmecpp  # type: ignore
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
@@ -241,6 +242,40 @@ def test_hot_restart_from_a_right_handed_state():
     np.testing.assert_allclose(
         restarted.wout.zmns, output.wout.zmns, rtol=0, atol=1e-12
     )
+
+
+@pytest.mark.parametrize("case", ["cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"])
+def test_model_geometry_of_a_right_handed_state_matches_the_output(case: str):
+    vmec_input = _mirror_image(
+        vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{case}.json")
+    )
+    indata = vmec_input._to_cpp_vmecindata()
+    output = _vmecpp.run(indata, verbose=_vmecpp.OutputMode.SILENT)
+    model = _vmecpp.VmecModel.create(
+        indata,
+        int(vmec_input.ns_array[-1]),
+        _vmecpp.HotRestartState(output.wout, output.indata),
+    )
+    # an evaluation sets the rotational transform behind the poloidal flux
+    model.evaluate(2, 2, precondition=False, always_fix_m1_gauge=False)
+    from_model = model.get_geometry()
+    from_output = _vmecpp.make_geometry(output)
+    for name in ("r_cc", "r_ss", "r_sc", "z_sc", "z_cs", "z_cc"):
+        np.testing.assert_allclose(
+            getattr(from_model.coefficients, name),
+            getattr(from_output.coefficients, name),
+            rtol=1e-12,
+            atol=1e-13,
+            err_msg=name,
+        )
+    for name in ("toroidal_flux", "poloidal_flux"):
+        np.testing.assert_allclose(
+            getattr(from_model, name),
+            getattr(from_output, name),
+            rtol=1e-12,
+            atol=1e-13,
+            err_msg=name,
+        )
 
 
 @pytest.mark.parametrize(

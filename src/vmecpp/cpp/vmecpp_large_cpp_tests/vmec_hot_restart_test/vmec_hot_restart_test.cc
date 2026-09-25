@@ -652,6 +652,58 @@ INSTANTIATE_TEST_SUITE_P(
            DataSource{.identifier = "cth_like_fixed_bdy",
                       .tolerance = 1.0e-4}));
 
+class HotRestartOntoChangedBoundary : public TestWithParam<DataSource> {};
+
+TEST_P(HotRestartOntoChangedBoundary, KeepsTheFluxSurfacesNested) {
+  // A fixed-boundary hot restart onto a boundary whose R_{1,0} is 2 percent
+  // larger than in the restart state.
+  const auto& ds = GetParam();
+
+  const std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", ds.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const VmecINDATA& indata = maybe_indata.value();
+
+  const auto original_output = vmecpp::run(indata);
+  ASSERT_TRUE(original_output.ok());
+
+  // a hot restart runs the last multigrid step only
+  VmecINDATA changed_indata = indata;
+  const int last_multigrid_step = static_cast<int>(indata.ns_array.size()) - 1;
+  changed_indata.ns_array.resize(1);
+  changed_indata.ns_array[0] = indata.ns_array[last_multigrid_step];
+  changed_indata.ftol_array.resize(1);
+  changed_indata.ftol_array[0] = indata.ftol_array[last_multigrid_step];
+  changed_indata.niter_array.resize(1);
+  changed_indata.niter_array[0] = indata.niter_array[last_multigrid_step];
+  changed_indata.rbc(1, changed_indata.ntor) *= 1.02;
+
+  const auto cold_output = vmecpp::run(changed_indata);
+  ASSERT_TRUE(cold_output.ok());
+
+  const auto hot_output =
+      vmecpp::run(changed_indata, vmecpp::HotRestartState(*original_output));
+  ASSERT_TRUE(hot_output.ok());
+
+  const Eigen::VectorXi& restart_reasons =
+      hot_output->wout.restart_reason_timetrace;
+  const int bad_jacobian_restarts =
+      static_cast<int>((restart_reasons.array() ==
+                        static_cast<int>(vmecpp::RestartReason::BAD_JACOBIAN))
+                           .count());
+  EXPECT_EQ(bad_jacobian_restarts, 0);
+  EXPECT_LT(hot_output->wout.niter, cold_output->wout.niter);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TestHotRestart, HotRestartOntoChangedBoundary,
+    Values(DataSource{.identifier = "solovev"}, DataSource{.identifier = "cma"},
+           DataSource{.identifier = "cth_like_fixed_bdy"}));
+
 TEST(HotRestartIntegration, MultigridContinuation) {
   // Test that a hot restart seeded at the first (coarse) grid and then
   // continued through all remaining multigrid steps produces the same

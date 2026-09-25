@@ -456,9 +456,9 @@ class VmecInput(BaseModelWithNumpy):
     This is intended for debugging purposes (e.g. inspecting how far the geometry
     got, or where the force residuals blew up) since the returned quantities are
     computed from whatever internal state the solver was in when it gave up, and
-    can be arbitrarily unphysical. Always check `wout.ier_flag` / the accompanying
-    log warning to see why the run did not converge before interpreting any
-    physical quantity in the output.
+    can be arbitrarily unphysical. Always check `wout.ier_flag` and the residuals
+    `wout.fsqr`, `wout.fsqz`, `wout.fsql` against `wout.ftolv` before interpreting
+    any physical quantity in the output.
     """
 
     raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = pydantic.Field(
@@ -2007,7 +2007,8 @@ class Threed1GeometricAndMagneticQuantities(BaseModelWithNumpy):
     """Normalization factor used in the threed1 computation."""
 
     b0: float
-    """Magnetic field magnitude on the magnetic axis."""
+    """On-axis R B_phi (``rbtor0``) divided by the major radius of the magnetic axis at
+    phi = 0; the field strength on the axis only for a planar circular axis."""
 
     rmax_surf: float
     """Maximum major radius on the boundary."""
