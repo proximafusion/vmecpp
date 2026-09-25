@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790378189237,
+  "lastUpdate": 1790378930976,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -19911,6 +19911,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.49777291300006254,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ac28bf48012fa2f7dfdd564ae3e52b43374c0a04",
+          "message": "Test lasym invariance under toroidal rotation and poloidal relabeling (#879)\n\n* Test lasym invariance under toroidal rotation and poloidal relabeling\n\nExtrapolate the m=0 lmnc_full axis value as for lmns_full.\n\n* Compare lasym outputs with numpy rtol and atol per field group\n\n* Group all current-derived outputs in the rotation test tolerance",
+          "timestamp": "2026-09-26T01:15:16+02:00",
+          "tree_id": "e2d0d72526a784bbd79d6fab58dbe80b95fd8a0f",
+          "url": "https://github.com/proximafusion/vmecpp/commit/ac28bf48012fa2f7dfdd564ae3e52b43374c0a04"
+        },
+        "date": 1790378923584,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.29672124759997587,
+            "range": "stddev: 0.0019257061411576638",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.0959969423332723,
+            "range": "stddev: 0.0205744412510986",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8951853370000057,
+            "range": "stddev: 0.0017206049448751002",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.320529887999972,
+            "range": "stddev: 0.03762692067952755",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.277927850000007,
+            "range": "stddev: 0.004105348411243993",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.739409998666663,
+            "range": "stddev: 0.012874671488564346",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.1983697030000258,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.32179184099993563,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
