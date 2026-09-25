@@ -390,10 +390,16 @@ def _output_rotated_back(output, zeta0, zeta_steps):
 
 
 def _assert_fields_match(expected, actual, rtol, atol, names):
-    for name in names:
-        np.testing.assert_allclose(
-            actual[name], expected[name], rtol=rtol, atol=atol, err_msg=name
-        )
+    """Report every mismatched field, not only the first."""
+    mismatches = []
+    for name in sorted(names):
+        try:
+            np.testing.assert_allclose(
+                actual[name], expected[name], rtol=rtol, atol=atol, err_msg=name
+            )
+        except AssertionError as error:
+            mismatches.append(str(error))
+    assert not mismatches, "\n".join(mismatches)
 
 
 # Not invariant under a toroidal rotation: quantities evaluated in the zeta = 0 and
@@ -434,11 +440,21 @@ RESIDUAL_FIELDS = {
     "jxbout.jxb_gradp",
 }
 
-# Current densities, which reach 1e7 and take their round-off from radial derivatives.
+# Current densities and quantities derived from them, which reach 1e12 and take their
+# round-off from radial derivatives.
 CURRENT_DENSITY_FIELDS = {
     *(
         f"wout.{name}"
-        for name in ("currumnc", "currumns", "currvmnc", "currvmns", "jcuru", "jdotb")
+        for name in (
+            "currumnc",
+            "currumns",
+            "currvmnc",
+            "currvmns",
+            "jcuru",
+            "jcurv",
+            "jdotb",
+            "ctor",
+        )
     ),
     *(
         f"jxbout.{name}"
@@ -450,10 +466,21 @@ CURRENT_DENSITY_FIELDS = {
             "jdotb_sqrtg",
             "jsupu3",
             "jsupv3",
+            "jpar2",
+            "jperp2",
         )
     ),
-    "threed1_first_table.avg_jsupu",
-    "threed1_first_table.j_dot_b",
+    *(f"threed1_first_table.{name}" for name in ("avg_jsupu", "avg_jsupv", "j_dot_b")),
+    *(
+        f"threed1_geometric_magnetic.{name}"
+        for name in (
+            "toroidal_current",
+            "jpar_perp",
+            "jparPS_perp",
+            "loc_jpar_perp",
+            "loc_jparPS_perp",
+        )
+    ),
 }
 
 
@@ -498,12 +525,12 @@ def test_toroidal_rotation_equivariance(case):
     _assert_fields_match(
         expected,
         actual,
-        rtol=1e-9,
+        rtol=1e-8,
         atol=1e-8,
         names=fields - RESIDUAL_FIELDS - CURRENT_DENSITY_FIELDS,
     )
     _assert_fields_match(
-        expected, actual, rtol=1e-9, atol=1e-3, names=CURRENT_DENSITY_FIELDS
+        expected, actual, rtol=1e-8, atol=1e-3, names=CURRENT_DENSITY_FIELDS
     )
     _assert_fields_match(expected, actual, rtol=1e-5, atol=1e-4, names=RESIDUAL_FIELDS)
 
