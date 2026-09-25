@@ -305,32 +305,42 @@ hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 > The autodiff API is not yet stable. We are planning to make autodiff the default
 > behaviour and to release a suitable pip wheel in the upcoming weeks.
 
-The `wout` physics quantities of every run come from `vmecpp.autodiff_wout`, a JAX
-port of the C++ output stage. `vmecpp.run` evaluates it on the converged geometry and
-returns NumPy arrays; `vmecpp.autodiff.run` returns the same `VmecWOut` with JAX arrays,
-so `jax.grad` can differentiate an objective written in `wout` quantities with respect
-to the boundary coefficients. `VmecWOut` is a JAX pytree: its leaves are the physics
-fields, while input echoes and solver diagnostics (`niter`, `fsqr`, the residual
-traces, ...) are carried along without keying the `jax.jit` cache. The solve and the
-exact adjoint of the force residual run in VMEC++; the differentiable solve covers
-fixed-boundary, stellarator-symmetric inputs and the gradient needs a build with
-`-DVMECPP_ENABLE_ENZYME=ON`.
+The `wout` physics quantities come from `vmecpp.autodiff_wout`, a JAX port of the C++
+output stage, so `jax.grad` can differentiate an objective written in `wout` quantities
+with respect to the boundary coefficients `rbc`, `zbs`. When they are JAX tracers,
+`vmecpp.run` solves through the implicit adjoint of the force residual, which needs a
+build with `-DVMECPP_ENABLE_ENZYME=ON`, and returns the `wout` as JAX arrays; this covers
+fixed-boundary, stellarator-symmetric inputs. Otherwise it returns NumPy arrays as
+before. The computation runs in float64 regardless of `jax_enable_x64`.
+
+`VmecInput`, `VmecWOut` and `VmecOutput` are JAX pytrees. The leaves are the boundary
+and the `wout` physics fields; input settings key the `jax.jit` cache, while solver
+diagnostics (`niter`, `fsqr`, the residual traces, ...) and the jxbout, Mercier and
+threed1 tables are carried along without keying it. Under `jax.jit` these tables are
+`None` and the diagnostics unknown, since the solve runs only when the compiled function
+executes. The command line interface keeps the C++ output stage, which spares each
+invocation the JAX compilation.
 
 ```python
 import jax
 import jax.numpy as jnp
 import vmecpp
-from vmecpp import autodiff
 
+# JAX arrays are float32 by default; vmecpp computes in float64 either way, but a
+# float32 boundary reaches the solver rounded.
 jax.config.update("jax_enable_x64", True)
 
 vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
-result = autodiff.run(vmec_input)
-print(result.wout.aspect, result.wout.iotaf)
 
-# d(aspect ratio) / d(rbc, zbs): the boundary array is stack(rbc, zbs)
-boundary = jnp.stack([jnp.asarray(vmec_input.rbc), jnp.asarray(vmec_input.zbs)])
-gradient = jax.grad(lambda b: autodiff.run(vmec_input, boundary=b).wout.aspect)(boundary)
+
+def aspect(rbc, zbs):
+    boundary = vmec_input.model_copy(update={"rbc": rbc, "zbs": zbs})
+    return vmecpp.run(boundary, verbose=False).wout.aspect
+
+
+rbc = jnp.asarray(vmec_input.rbc)
+zbs = jnp.asarray(vmec_input.zbs)
+d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
 ```
 
 ## Full tests and validation against the reference Fortran VMEC v8.52

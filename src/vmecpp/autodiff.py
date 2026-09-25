@@ -26,7 +26,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
 
-from vmecpp import autodiff_wout, geometry
+from vmecpp import geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 _GEOMETRY_COEFFICIENTS = (
@@ -108,36 +108,6 @@ def _solve_model(template, boundary: np.ndarray):
         )
         raise RuntimeError(error_message)
     return model
-
-
-def _solver_diagnostics(model) -> dict[str, Any]:
-    """The ``VmecWOut`` solver diagnostics of a solved model
-    (ComputeWOutFileContents)."""
-    force_residual_r = np.asarray(model.force_residual_r, dtype=np.float64)
-    force_residual_z = np.asarray(model.force_residual_z, dtype=np.float64)
-    force_residual_lambda = np.asarray(model.force_residual_lambda, dtype=np.float64)
-    fsqt = force_residual_r + force_residual_z + force_residual_lambda
-    # wdot[0] is the starting energy W, then the decay rate (W[i] - W[i-1]) / W[i].
-    wdot = np.asarray(model.mhd_energy_trace, dtype=np.float64).copy()
-    if wdot.size > 1:
-        wdot[1:] = (wdot[1:] - wdot[:-1]) / wdot[1:]
-    status = model.status
-    return {
-        # the wout file reports SUCCESSFUL_TERMINATION as NORMAL_TERMINATION (0)
-        "ier_flag": 0 if status == _VMEC_STATUS_SUCCESSFUL_TERMINATION else status,
-        "niter": model.iteration,
-        "itfsq": int(fsqt.size),
-        "fsqr": model.fsqr,
-        "fsqz": model.fsqz,
-        "fsql": model.fsql,
-        "fsqt": fsqt,
-        "force_residual_r": force_residual_r,
-        "force_residual_z": force_residual_z,
-        "force_residual_lambda": force_residual_lambda,
-        "delbsq": np.asarray(model.delbsq, dtype=np.float64),
-        "restart_reason_timetrace": np.asarray(model.restart_reasons, dtype=np.int64),
-        "wdot": wdot,
-    }
 
 
 def _span_slices(model) -> dict[str, slice]:
@@ -395,10 +365,6 @@ class DifferentiableVmec:
     """
 
     vmec_input: Any
-    # Solver diagnostics of the most recent forward solve, keyed by the boundary.
-    _diagnostics: dict[bytes, dict[str, Any]] = field(
-        default_factory=dict, init=False, repr=False, compare=False
-    )
 
     def __post_init__(self) -> None:
         if self.vmec_input.lfreeb:
@@ -432,10 +398,6 @@ class DifferentiableVmec:
 
     def _forward_callback(self, boundary: np.ndarray) -> np.ndarray:
         model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary)
-        self._diagnostics.clear()
-        self._diagnostics[np.asarray(boundary, dtype=np.float64).tobytes()] = (
-            _solver_diagnostics(model)
-        )
         return _cpp_geometry_flat(
             model.get_geometry(), model.ns, model.mpol, model.ntor
         )
@@ -530,66 +492,36 @@ def make_solver(vmec_input) -> DifferentiableVmec:
 
 
 @dataclass(frozen=True)
-class DifferentiableRun:
-    """The result of :func:`run`: the ``wout`` and the geometry it derives from."""
+class _RunSolver(DifferentiableVmec):
+    """:class:`DifferentiableVmec` whose forward solve is a full ``vmecpp.run``.
 
-    wout: Any
-    geometry: geometry.Geometry
-
-
-jax.tree_util.register_dataclass(
-    DifferentiableRun, data_fields=["wout", "geometry"], meta_fields=[]
-)
-
-
-def run(vmec_input, *, boundary=None) -> DifferentiableRun:
-    """Solve vmec_input and return its ``wout`` as a differentiable pytree.
-
-    Args:
-        vmec_input: A fixed-boundary, stellarator-symmetric
-            :class:`vmecpp.VmecInput`.
-        boundary: The boundary coefficients ``stack(rbc, zbs)`` of shape
-            ``(2, mpol, 2 * ntor + 1)``; defaults to the boundary of
-            ``vmec_input``. May be a JAX tracer, so the result can be
-            differentiated with respect to it.
-
-    Example:
-
-        result = autodiff.run(input)
-        gradient = jax.grad(lambda b: autodiff.run(input, boundary=b).wout.aspect)(
-            jnp.stack([input.rbc, input.zbs])
-        )
-
-    ``wout`` is a :class:`vmecpp.VmecWOut` whose physics fields are JAX arrays.
-    Its solver diagnostics (``niter``, ``fsqr``, the residual traces, ...) are
-    those of the solve when ``boundary`` is concrete, and
-    :data:`vmecpp.autodiff_wout.UNKNOWN_DIAGNOSTICS` under a JAX transformation.
-    The VJP needs an Enzyme-enabled build.
+    The C++ output stage of the forward solve supplies what the JAX output stage
+    does not compute (jxbout, mercier, threed1, the solver diagnostics); the
+    VJP re-solves through ``VmecModel`` as in the base class.
     """
-    import vmecpp  # noqa: PLC0415
 
-    solver = make_solver(vmec_input)
-    if boundary is None:
-        boundary = jnp.stack(
-            [
-                jnp.asarray(vmec_input.rbc, dtype=jnp.float64),
-                jnp.asarray(vmec_input.zbs, dtype=jnp.float64),
-            ]
+    max_threads: int | None = None
+    verbose: int = 0
+    _outputs: list = field(default_factory=list, repr=False, compare=False)
+
+    def _forward_callback(self, boundary: np.ndarray) -> np.ndarray:
+        indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary)
+        output = _vmecpp.run(
+            indata,
+            max_threads=self.max_threads,
+            verbose=_vmecpp.OutputMode(self.verbose),
         )
-    solved = solver(boundary)
-    diagnostics = autodiff_wout.UNKNOWN_DIAGNOSTICS
-    try:
-        key = np.asarray(boundary, dtype=np.float64).tobytes()
-        diagnostics = solver._diagnostics.get(key, diagnostics)
-    except jax.errors.TracerArrayConversionError:
-        pass  # the solve is not observable under a JAX transformation
-    values: dict[str, Any] = {
-        **autodiff_wout.static_fields(vmec_input),
-        **diagnostics,
-        **autodiff_wout.wout_quantities(solved, vmec_input),
-    }
-    wout = vmecpp.VmecWOut.model_construct(**values)
-    return DifferentiableRun(wout=wout, geometry=solved)
+        self._outputs[:] = [output]
+        return _cpp_geometry_flat(
+            _vmecpp.make_geometry(output),
+            int(np.asarray(self.vmec_input.ns_array)[-1]),
+            self.vmec_input.mpol,
+            self.vmec_input.ntor,
+        )
+
+    def last_output(self):
+        """The C++ output of the forward solve, ``None`` while it has not run."""
+        return self._outputs[-1] if self._outputs else None
 
 
-__all__ = ["DifferentiableRun", "DifferentiableVmec", "make_solver", "run"]
+__all__ = ["DifferentiableVmec", "make_solver"]

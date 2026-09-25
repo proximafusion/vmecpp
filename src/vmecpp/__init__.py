@@ -13,6 +13,7 @@ import sys
 import tempfile
 import types
 import typing
+import warnings
 from collections.abc import Generator
 from pathlib import Path
 
@@ -495,12 +496,12 @@ class VmecInput(BaseModelWithNumpy):
     """
 
     rbc: SerializableSparseCoefficientArray[
-        jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+        jt.Float[NpOrJax, "mpol two_ntor_plus_one"]
     ] = pydantic.Field(default_factory=lambda: np.zeros((6, 1)))
     """Boundary coefficients for R ~ cos(m*u - n*v); stellarator-symmetric"""
 
     zbs: SerializableSparseCoefficientArray[
-        jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+        jt.Float[NpOrJax, "mpol two_ntor_plus_one"]
     ] = pydantic.Field(default_factory=lambda: np.zeros((6, 1)))
     """Boundary coefficients for Z ~ sin(m*u - n*v); stellarator-symmetric"""
 
@@ -1861,13 +1862,13 @@ class VmecWOut(BaseModelWithNumpy):
         return VmecWOut.model_validate(attrs, by_alias=True)
 
 
-class _WoutAuxData:
-    """The non-leaf fields of a flattened :class:`VmecWOut`.
+class _UnkeyedAuxData:
+    """Pytree aux data that compares equal regardless of content.
 
-    Instances compare equal regardless of content, so ``jax.jit`` does not
-    recompile when only solver diagnostics such as ``niter`` differ. A
-    ``VmecWOut`` returned from a compiled function carries these fields as seen
-    at trace time.
+    Carries the non-leaf fields of a flattened :class:`VmecWOut` or
+    :class:`VmecOutput`, so ``jax.jit`` does not recompile when only solver
+    diagnostics such as ``niter`` differ. A model returned from a compiled
+    function carries these fields as seen at trace time.
     """
 
     __slots__ = ("extra", "fields", "fields_set")
@@ -1878,36 +1879,41 @@ class _WoutAuxData:
         self.fields_set = fields_set
 
     def __eq__(self, other):
-        return isinstance(other, _WoutAuxData)
+        return isinstance(other, _UnkeyedAuxData)
 
     def __hash__(self):
-        return hash(_WoutAuxData)
+        return hash(_UnkeyedAuxData)
 
 
-def _flatten_wout(wout: VmecWOut):
-    values = wout.__dict__
-    leaves = tuple(values[name] for name in autodiff_wout.WOUT_QUANTITIES)
-    fields = {
-        name: value for name, value in values.items() if name not in _WOUT_LEAF_NAMES
-    }
-    extra = dict(wout.__pydantic_extra__ or {})
-    return leaves, _WoutAuxData(fields, extra, frozenset(wout.model_fields_set))
+def _flatten_model(model: pydantic.BaseModel, leaf_names, aux_type):
+    values = model.__dict__
+    leaves = tuple(values[name] for name in leaf_names)
+    fields = {name: value for name, value in values.items() if name not in leaf_names}
+    extra = dict(model.__pydantic_extra__ or {})
+    return leaves, aux_type(fields, extra, frozenset(model.model_fields_set))
 
 
-def _unflatten_wout(aux: _WoutAuxData, leaves) -> VmecWOut:
-    return VmecWOut.model_construct(
+def _unflatten_model(model_type, leaf_names, aux, leaves):
+    return model_type.model_construct(
         _fields_set=set(aux.fields_set),
         **aux.fields,
-        **dict(zip(autodiff_wout.WOUT_QUANTITIES, leaves, strict=True)),
+        **dict(zip(leaf_names, leaves, strict=True)),
         **aux.extra,
     )
 
 
-_WOUT_LEAF_NAMES = frozenset(autodiff_wout.WOUT_QUANTITIES)
+def _register_model_pytree(model_type, leaf_names, aux_type) -> None:
+    leaf_names = tuple(leaf_names)
+    jax.tree_util.register_pytree_node(
+        model_type,
+        lambda model: _flatten_model(model, leaf_names, aux_type),
+        lambda aux, leaves: _unflatten_model(model_type, leaf_names, aux, leaves),
+    )
+
 
 # The physics fields are the leaves; input echoes, sizes and solver diagnostics
 # travel as aux data that does not key the jit cache.
-jax.tree_util.register_pytree_node(VmecWOut, _flatten_wout, _unflatten_wout)
+_register_model_pytree(VmecWOut, autodiff_wout.WOUT_QUANTITIES, _UnkeyedAuxData)
 
 
 class Threed1Volumetrics(BaseModelWithNumpy):
@@ -2517,6 +2523,44 @@ class VmecOutput(BaseModelWithNumpy):
     """Python equivalent of VMEC's "wout" file."""
 
 
+def _frozen(value):
+    """A hashable stand-in for a VmecInput field value."""
+    if isinstance(value, np.ndarray):
+        return ("ndarray", value.shape, value.dtype.str, value.tobytes())
+    if isinstance(value, list | tuple):
+        return tuple(_frozen(item) for item in value)
+    if isinstance(value, dict):
+        return tuple(sorted((key, _frozen(item)) for key, item in value.items()))
+    return value
+
+
+class _InputAuxData(_UnkeyedAuxData):
+    """Pytree aux data of a :class:`VmecInput`, keyed by the non-boundary fields.
+
+    Every field but the boundary enters a compiled solve as a constant, so differing
+    values must not share a jit cache entry.
+    """
+
+    __slots__ = ("key",)
+
+    def __init__(self, fields, extra, fields_set):
+        super().__init__(fields, extra, fields_set)
+        self.key = _frozen({**fields, **extra})
+
+    def __eq__(self, other):
+        return isinstance(other, _InputAuxData) and self.key == other.key
+
+    def __hash__(self):
+        return hash(self.key)
+
+
+# The boundary is the differentiable input; the other fields key the jit cache.
+_register_model_pytree(VmecInput, ("rbc", "zbs"), _InputAuxData)
+# The input and wout are the leaves; jxbout, mercier and the threed1 tables come
+# from the C++ output stage and travel as aux data.
+_register_model_pytree(VmecOutput, ("input", "wout"), _UnkeyedAuxData)
+
+
 _use_jax_output_stage = contextvars.ContextVar("_use_jax_output_stage", default=True)
 """Whether run() computes the wout physics fields with the JAX output stage.
 
@@ -2525,15 +2569,48 @@ every run, and nothing there differentiates the result.
 """
 
 
-@contextlib.contextmanager
-def _float64_on_cpu() -> Generator[None, None, None]:
+def _float64():
+    """JAX float64 in the current thread, whatever the caller's jax_enable_x64."""
     enable_x64 = getattr(jax, "enable_x64", None)
     if enable_x64 is None:  # jax < 0.7
         from jax.experimental import (  # noqa: PLC0415
             enable_x64,  # pyright: ignore[reportAttributeAccessIssue]
         )
-    with enable_x64(True), jax.default_device(jax.devices("cpu")[0]):
+    return enable_x64(True)
+
+
+@contextlib.contextmanager
+def _float64_on_cpu() -> Generator[None, None, None]:
+    with _float64(), jax.default_device(jax.devices("cpu")[0]):
         yield
+
+
+def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
+    """The VmecOutput members besides input and wout, from a C++ run."""
+    return {
+        "jxbout": JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout),
+        "mercier": Mercier._from_cpp_mercier(cpp_output_quantities.mercier),
+        "threed1_volumetrics": Threed1Volumetrics._from_cpp_threed1volumetrics(
+            cpp_output_quantities.threed1_volumetrics
+        ),
+        "threed1_first_table": Threed1FirstTable._from_cpp_threed1_first_table(
+            cpp_output_quantities.threed1_first_table
+        ),
+        "threed1_geometric_magnetic": Threed1GeometricAndMagneticQuantities._from_cpp_threed1_geometric_and_magnetic_quantities(
+            cpp_output_quantities.threed1_geometric_magnetic
+        ),
+        "threed1_axis": Threed1AxisGeometry._from_cpp_threed1_axis_geometry(
+            cpp_output_quantities.threed1_axis
+        ),
+        "threed1_betas": Threed1Betas._from_cpp_threed1_betas(
+            cpp_output_quantities.threed1_betas
+        ),
+        "threed1_shafranov_integrals": (
+            Threed1ShafranovIntegrals._from_cpp_threed1_shafranov_integrals(
+                cpp_output_quantities.threed1_shafranov_integrals
+            )
+        ),
+    }
 
 
 def _as_numpy(value):
@@ -2557,6 +2634,116 @@ def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> Vme
         )
         update = {name: _as_numpy(value) for name, value in quantities.items()}
     return wout.model_copy(update=update)
+
+
+def _output_mode(verbose: bool | int | OutputMode) -> OutputMode:
+    output_mode = OutputMode(verbose)
+    if output_mode == OutputMode.PROGRESS:
+        # Rich printing has been requested, let's auto detect if the terminal
+        # is TTY capable
+        is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+        if not is_tty:
+            output_mode = OutputMode.PROGRESS_NON_TTY
+    if output_mode in (OutputMode.PROGRESS, OutputMode.PROGRESS_NON_TTY):
+        _print_progress_tip_once()
+    return output_mode
+
+
+def _is_traced(value) -> bool:
+    """Whether value is a JAX tracer, i.e. run() is called under a transformation."""
+    try:
+        np.asarray(value)
+    except jax.errors.TracerArrayConversionError:
+        return True
+    return False
+
+
+def _run_traced(
+    vmec_input: VmecInput,
+    magnetic_field,
+    *,
+    max_threads: int | None,
+    verbose: bool | int | OutputMode,
+    restart_from: VmecOutput | None,
+) -> VmecOutput:
+    """Run() for a boundary ``rbc, zbs`` that JAX differentiates or traces.
+
+    The solve runs through :func:`vmecpp.autodiff.make_solver`, whose VJP needs
+    an Enzyme-enabled build. When the forward solve is observable (eager calls,
+    ``jax.grad``), jxbout, mercier, the threed1 tables and the wout diagnostics
+    come from its C++ output stage; under ``jax.jit`` they are ``None`` and
+    :data:`vmecpp.autodiff_wout.UNKNOWN_DIAGNOSTICS`.
+    """
+    from vmecpp import autodiff  # noqa: PLC0415
+
+    unsupported = {
+        "a free-boundary input": vmec_input.lfreeb,
+        "lasym=True": vmec_input.lasym,
+        "Fourier continuation": not isinstance(vmec_input.mpol, int)
+        or not isinstance(vmec_input.ntor, int),
+        "magnetic_field": magnetic_field is not None,
+        "restart_from": restart_from is not None,
+    }
+    for name, present in unsupported.items():
+        if present:
+            msg = f"run() with a traced boundary does not support {name}"
+            raise NotImplementedError(msg)
+    if any(
+        np.dtype(getattr(value, "dtype", np.float64)) != np.float64
+        for value in (vmec_input.rbc, vmec_input.zbs)
+    ):
+        warnings.warn(
+            "The traced boundary is not float64, so the solve sees it rounded; "
+            "enable jax_enable_x64 to differentiate at full precision.",
+            stacklevel=3,
+        )
+    shape = np.shape(vmec_input.rbc)
+    template = vmec_input.model_copy(
+        update={"rbc": np.zeros(shape), "zbs": np.zeros(shape)}
+    )
+    solver = autodiff._RunSolver(
+        template, max_threads=max_threads, verbose=_output_mode(verbose).value
+    )
+    with _float64():
+        boundary = jax.numpy.stack(
+            [
+                jax.numpy.asarray(vmec_input.rbc, dtype=np.float64),
+                jax.numpy.asarray(vmec_input.zbs, dtype=np.float64),
+            ]
+        )
+        geometry = solver(boundary)
+        jax.effects_barrier()
+        cpp_output = solver.last_output()
+        if cpp_output is None:
+            if vmec_input.gamma != 0.0:
+                msg = "run() under jax.jit does not support gamma != 0"
+                raise NotImplementedError(msg)
+            fields = {
+                **autodiff_wout.static_fields(template),
+                **autodiff_wout.UNKNOWN_DIAGNOSTICS,
+            }
+            mass_half = None
+            others = dict.fromkeys(
+                (
+                    "jxbout",
+                    "mercier",
+                    "threed1_volumetrics",
+                    "threed1_first_table",
+                    "threed1_geometric_magnetic",
+                    "threed1_axis",
+                    "threed1_betas",
+                    "threed1_shafranov_integrals",
+                )
+            )
+        else:
+            fields = dict(VmecWOut._from_cpp_wout(cpp_output.wout).__dict__)
+            mass_half = np.asarray(fields["mass"])[1:] * autodiff_wout.MU_0
+            others = _output_tables_from_cpp(cpp_output)
+        quantities = autodiff_wout.wout_quantities(
+            geometry, template, mass_half=mass_half
+        )
+    wout = VmecWOut.model_construct(**{**fields, **quantities})
+    return VmecOutput.model_construct(input=vmec_input, wout=wout, **others)
 
 
 _progress_tip_shown = False
@@ -2616,6 +2803,15 @@ def run(
     """
     input = VmecInput.model_validate(input)
 
+    if _is_traced(input.rbc) or _is_traced(input.zbs):
+        return _run_traced(
+            input,
+            magnetic_field,
+            max_threads=max_threads,
+            verbose=verbose,
+            restart_from=restart_from,
+        )
+
     if not isinstance(input.mpol, int) or not isinstance(input.ntor, int):
         return _run_fourier_continuation(
             input,
@@ -2642,16 +2838,7 @@ def run(
         )
         raise RuntimeError(msg)
 
-    _verbose = OutputMode(verbose)
-
-    if _verbose == OutputMode.PROGRESS:
-        # Rich printing has been requested, let's auto detect if the terminal
-        # is TTY capable
-        is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
-        if not is_tty:
-            _verbose = OutputMode.PROGRESS_NON_TTY
-    if _verbose in (OutputMode.PROGRESS, OutputMode.PROGRESS_NON_TTY):
-        _print_progress_tip_once()
+    _verbose = _output_mode(verbose)
 
     if magnetic_field is None:
         cpp_output_quantities = _vmecpp.run(
@@ -2676,39 +2863,8 @@ def run(
         wout = _wout_from_output_stage(input, cpp_output_quantities)
     else:
         wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
-    jxbout = JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout)
-    mercier = Mercier._from_cpp_mercier(cpp_output_quantities.mercier)
-    threed1_volumetrics = Threed1Volumetrics._from_cpp_threed1volumetrics(
-        cpp_output_quantities.threed1_volumetrics
-    )
-    threed1_first_table = Threed1FirstTable._from_cpp_threed1_first_table(
-        cpp_output_quantities.threed1_first_table
-    )
-    threed1_geometric_magnetic = Threed1GeometricAndMagneticQuantities._from_cpp_threed1_geometric_and_magnetic_quantities(
-        cpp_output_quantities.threed1_geometric_magnetic
-    )
-    threed1_axis = Threed1AxisGeometry._from_cpp_threed1_axis_geometry(
-        cpp_output_quantities.threed1_axis
-    )
-    threed1_betas = Threed1Betas._from_cpp_threed1_betas(
-        cpp_output_quantities.threed1_betas
-    )
-    threed1_shafranov_integrals = (
-        Threed1ShafranovIntegrals._from_cpp_threed1_shafranov_integrals(
-            cpp_output_quantities.threed1_shafranov_integrals
-        )
-    )
     return VmecOutput(
-        input=input,
-        wout=wout,
-        jxbout=jxbout,
-        mercier=mercier,
-        threed1_volumetrics=threed1_volumetrics,
-        threed1_first_table=threed1_first_table,
-        threed1_geometric_magnetic=threed1_geometric_magnetic,
-        threed1_axis=threed1_axis,
-        threed1_betas=threed1_betas,
-        threed1_shafranov_integrals=threed1_shafranov_integrals,
+        input=input, wout=wout, **_output_tables_from_cpp(cpp_output_quantities)
     )
 
 

@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 import vmecpp
-from vmecpp import autodiff, autodiff_wout, geometry
+from vmecpp import autodiff_wout, geometry
 from vmecpp._pydantic_numpy import own_model_fields
 from vmecpp.cpp import _vmecpp  # type: ignore
 
@@ -21,7 +21,7 @@ TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
 requires_enzyme = pytest.mark.skipif(
     not vmecpp.has_exact_force_jacobian(),
-    reason="autodiff.run needs an Enzyme-enabled build (VMECPP_ENABLE_ENZYME=ON)",
+    reason="the VJP of run() needs an Enzyme-enabled build (VMECPP_ENABLE_ENZYME=ON)",
 )
 
 # The error of a field is measured against the largest entry of the field, or of
@@ -171,21 +171,6 @@ def test_static_fields_match_the_cpp_output_stage(solved_case) -> None:
         _assert_field_close(name, value, getattr(expected, name), expected)
 
 
-@pytest.mark.parametrize("name", ["solovev", "cth_like_fixed_bdy"])
-def test_solver_diagnostics_match_the_cpp_wout(name) -> None:
-    """autodiff.run's diagnostics come from VmecModel; vmecpp.run's from the C++ run."""
-    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{name}.json")
-    expected = vmecpp.run(indata, max_threads=1, verbose=False).wout
-    boundary = np.stack([np.asarray(indata.rbc), np.asarray(indata.zbs)])
-    model = autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
-    diagnostics = autodiff._solver_diagnostics(model)
-    assert set(diagnostics) == set(autodiff_wout.UNKNOWN_DIAGNOSTICS)
-    for field, value in diagnostics.items():
-        np.testing.assert_allclose(
-            value, getattr(expected, field), rtol=1.0e-6, atol=0.0, err_msg=field
-        )
-
-
 def test_run_returns_the_output_stage_wout() -> None:
     indata = _load_input("solovev", 1.0e-12)
     wout = vmecpp.run(indata, max_threads=1, verbose=False).wout
@@ -315,60 +300,97 @@ def _requires_exact_derivatives(indata: vmecpp.VmecInput) -> None:
         pytest.skip("needs an Enzyme-enabled build for the exact residual transpose")
 
 
-@requires_enzyme
-def test_run_matches_vmecpp_run() -> None:
-    """The differentiable entry point re-solves through VmecModel; the two solver paths
-    agree to the force tolerance."""
-    indata = _cth_like_input()
-    reference = vmecpp.run(indata, max_threads=1, verbose=False).wout
-    wout = autodiff.run(indata).wout
-    assert isinstance(wout, vmecpp.VmecWOut)
-    for name in autodiff_wout.WOUT_QUANTITIES:
-        value = getattr(wout, name)
-        expected = getattr(reference, name)
-        if expected is None:
-            assert value is None, name
-            continue
-        scale = max(np.abs(np.asarray(expected)).max(initial=0.0), 1.0e-300)
-        np.testing.assert_allclose(
-            np.asarray(value), expected, rtol=0.0, atol=1.0e-7 * scale, err_msg=name
-        )
-    for name, value in autodiff_wout.static_fields(indata).items():
-        _assert_field_close(name, getattr(wout, name), value, reference)
-    assert wout.ier_flag == 0
-    assert wout.niter > 0
-    assert wout.fsqt.size == wout.itfsq > 0
-    assert max(float(wout.fsqr), float(wout.fsqz), float(wout.fsql)) <= float(
-        indata.ftol_array[-1]
-    )
+def _with_boundary(indata: vmecpp.VmecInput, boundary) -> vmecpp.VmecInput:
+    return indata.model_copy(update={"rbc": boundary[0], "zbs": boundary[1]})
 
 
-@requires_enzyme
-def test_run_is_usable_under_jit() -> None:
+def test_run_under_jit_matches_the_concrete_run() -> None:
+    """A traced boundary solves through the differentiable path; under jax.jit the
+    forward solve is not observable, so only the wout physics fields are set."""
     indata = _cth_like_input()
+    reference = vmecpp.run(indata, max_threads=1, verbose=False)
 
     @jax.jit
     def solve(boundary):
-        return autodiff.run(indata, boundary=boundary).wout
+        return vmecpp.run(
+            _with_boundary(indata, boundary), max_threads=1, verbose=False
+        )
 
-    wout = solve(_boundary(indata))
-    assert np.isfinite(float(wout.aspect))
-    assert wout.ier_flag == autodiff_wout.UNKNOWN_DIAGNOSTICS["ier_flag"]
-    reference = autodiff.run(indata).wout.aspect
-    np.testing.assert_allclose(float(wout.aspect), float(reference), rtol=1.0e-12)
+    output = solve(_boundary(indata))
+    assert isinstance(output, vmecpp.VmecOutput)
+    assert output.jxbout is None
+    assert output.wout.ier_flag == autodiff_wout.UNKNOWN_DIAGNOSTICS["ier_flag"]
+    for name in autodiff_wout.WOUT_QUANTITIES:
+        _assert_field_close(
+            name,
+            getattr(output.wout, name),
+            getattr(reference.wout, name),
+            reference.wout,
+        )
+    for name, value in autodiff_wout.static_fields(indata).items():
+        _assert_field_close(name, getattr(output.wout, name), value, reference.wout)
+
+
+@pytest.mark.parametrize(
+    ("update", "match"),
+    [({"lasym": True}, "lasym"), ({"lfreeb": True}, "free-boundary")],
+)
+def test_run_with_a_traced_boundary_rejects_unsupported_inputs(update, match) -> None:
+    indata = _cth_like_input().model_copy(update=update)
+    with pytest.raises(NotImplementedError, match=match):
+        jax.jit(lambda b: vmecpp.run(_with_boundary(indata, b)).wout.aspect)(
+            _boundary(indata)
+        )
+
+
+def test_input_pytree_keys_the_jit_cache_on_non_boundary_fields() -> None:
+    indata = _cth_like_input()
+
+    @jax.jit
+    def scaled_boundary(vmec_input):
+        return 2.0 * vmec_input.rbc
+
+    scaled_boundary(indata)
+    scaled_boundary(indata.model_copy(update={"rbc": 1.1 * indata.rbc}))
+    assert scaled_boundary._cache_size() == 1  # pyright: ignore[reportAttributeAccessIssue]
+    scaled_boundary(indata.model_copy(update={"phiedge": 2.0 * indata.phiedge}))
+    assert scaled_boundary._cache_size() == 2  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_output_pytree_round_trip() -> None:
+    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    output = vmecpp.run(indata, max_threads=1, verbose=False)
+    leaves, treedef = jax.tree_util.tree_flatten(output)
+    rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
+    assert rebuilt.jxbout is output.jxbout
+    np.testing.assert_array_equal(rebuilt.input.rbc, indata.rbc)
+    np.testing.assert_array_equal(rebuilt.wout.bmnc, output.wout.bmnc)
 
 
 @requires_enzyme
-def test_run_result_is_a_pytree() -> None:
+def test_run_with_a_traced_boundary_fills_the_cpp_outputs() -> None:
+    """Under jax.grad the forward solve runs eagerly, so the non-differentiable members
+    of the output come from its C++ output stage."""
     indata = _cth_like_input()
-    result = autodiff.run(indata)
-    leaves = jax.tree_util.tree_leaves(result)
-    assert all(isinstance(leaf, jax.Array) for leaf in leaves)
-    rebuilt = jax.tree_util.tree_unflatten(jax.tree_util.tree_structure(result), leaves)
-    np.testing.assert_array_equal(
-        np.asarray(rebuilt.wout.bmnc), np.asarray(result.wout.bmnc)
+    reference = vmecpp.run(indata, max_threads=1, verbose=False)
+    captured = {}
+
+    def aspect(boundary):
+        output = vmecpp.run(
+            _with_boundary(indata, boundary), max_threads=1, verbose=False
+        )
+        captured["output"] = output
+        return output.wout.aspect
+
+    jax.grad(aspect)(_boundary(indata))
+    output = captured["output"]
+    assert output.jxbout is not None
+    np.testing.assert_allclose(
+        output.mercier.DMerc, reference.mercier.DMerc, rtol=1.0e-9, atol=1.0e-12
     )
-    assert rebuilt.wout.niter == result.wout.niter
+    assert output.wout.ier_flag == 0
+    assert output.wout.niter == reference.wout.niter
+    np.testing.assert_array_equal(output.wout.fsqt, reference.wout.fsqt)
 
 
 def _quasisymmetry_proxy(wout: vmecpp.VmecWOut) -> jax.Array:
@@ -404,7 +426,7 @@ def test_gradient_matches_central_differences(objective_name: str, seed: int) ->
     _requires_exact_derivatives(indata)
 
     def objective(boundary):
-        wout = autodiff.run(indata, boundary=boundary).wout
+        wout = vmecpp.run(_with_boundary(indata, boundary), verbose=False).wout
         if objective_name == "aspect":
             return wout.aspect
         return _quasisymmetry_proxy(wout)
