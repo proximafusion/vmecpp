@@ -159,25 +159,34 @@ def test_z_shift_preserves_physics():
     assert abs(np.asarray(shifted.zmnc)[0, -1] - dz) < 1e-10
 
 
-def _toroidally_rotated_lasym_input(base, zeta0):
-    """The boundary rotated by zeta0, in the equivalent lasym representation."""
-    nfp, ntor, mpol = base.nfp, base.ntor, base.mpol
-    rbc = np.asarray(base.rbc, float)
-    zbs = np.asarray(base.zbs, float)
-    rbc2 = np.zeros_like(rbc)
-    rbs = np.zeros_like(rbc)
-    zbs2 = np.zeros_like(zbs)
-    zbc = np.zeros_like(zbs)
-    for m in range(mpol):
-        for n in range(-ntor, ntor + 1):
-            j = n + ntor
-            c = np.cos(n * nfp * zeta0)
-            s = np.sin(n * nfp * zeta0)
-            rbc2[m, j] = rbc[m, j] * c
-            rbs[m, j] = rbc[m, j] * s
-            zbs2[m, j] = zbs[m, j] * c
-            zbc[m, j] = -zbs[m, j] * s
-    return _enable_lasym(base, rbc=rbc2, zbs=zbs2, rbs=rbs, zbc=zbc)
+def _toroidally_rotated_input(vmec_input, zeta0):
+    """A lasym input with boundary and axis rotated by zeta0: X'(zeta) = X(zeta +
+    zeta0)."""
+    nfp, ntor = vmec_input.nfp, vmec_input.ntor
+    phase = nfp * np.arange(-ntor, ntor + 1) * zeta0
+    c, s = np.cos(phase), np.sin(phase)
+    rbc, rbs, zbs, zbc = (
+        np.asarray(getattr(vmec_input, name), float)
+        for name in ("rbc", "rbs", "zbs", "zbc")
+    )
+    phase_axis = nfp * np.arange(ntor + 1) * zeta0
+    ca, sa = np.cos(phase_axis), np.sin(phase_axis)
+    raxis_c, raxis_s, zaxis_s, zaxis_c = (
+        np.asarray(getattr(vmec_input, name), float)
+        for name in ("raxis_c", "raxis_s", "zaxis_s", "zaxis_c")
+    )
+    return vmec_input.model_copy(
+        update={
+            "rbc": rbc * c - rbs * s,
+            "rbs": rbs * c + rbc * s,
+            "zbs": zbs * c + zbc * s,
+            "zbc": zbc * c - zbs * s,
+            "raxis_c": raxis_c * ca - raxis_s * sa,
+            "raxis_s": raxis_s * ca + raxis_c * sa,
+            "zaxis_s": zaxis_s * ca + zaxis_c * sa,
+            "zaxis_c": zaxis_c * ca - zaxis_s * sa,
+        }
+    )
 
 
 class CthRotation:
@@ -185,8 +194,8 @@ class CthRotation:
 
     def __init__(self):
         base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
-        # converge tightly so iota is resolved well below the rotation's numerical
-        # drift (the shipped input only asks for ftol 1e-6)
+        # converge tightly so the comparisons are not limited by the iteration
+        # tolerance (the shipped input only asks for ftol 1e-6)
         base = base.model_copy(
             update={
                 "ftol_array": np.full(np.asarray(base.ftol_array).shape, 1e-12),
@@ -200,7 +209,7 @@ class CthRotation:
         self.rbc = np.asarray(base.rbc, float)
         self.zbs = np.asarray(base.zbs, float)
         self.sym = _run(base)
-        self.rotated = _run(_toroidally_rotated_lasym_input(base, self.zeta0))
+        self.rotated = _run(_toroidally_rotated_input(_enable_lasym(base), self.zeta0))
 
     def boundary_reference(self, theta, zeta):
         """Analytic rotated boundary: the input boundary evaluated at zeta+zeta0."""
@@ -228,7 +237,7 @@ def test_toroidal_rotation_preserves_physics(cth_rotation):
     # genuine asymmetric geometry was produced (not gauged away)
     assert np.max(np.abs(np.asarray(rotated.rmns))) > 1e-4
     _assert_same_physics(
-        cth_rotation.sym, rotated, vol_rtol=1e-8, beta_atol=1e-8, iota_atol=1e-5
+        cth_rotation.sym, rotated, vol_rtol=1e-12, beta_atol=1e-12, iota_atol=1e-10
     )
 
 
@@ -307,92 +316,6 @@ def test_lasym_wout_save_roundtrip(cth_rotation, tmp_path):
         np.testing.assert_array_equal(saved, loaded, err_msg=name)
 
 
-# Every wout Fourier pair (cos-array, sin-array) obeys, mode by mode with
-# phi = xn*zeta0, the rigid-rotation law C' = C cos(phi) - S sin(phi),
-# S' = C sin(phi) + S cos(phi). Tolerances are ~3x the discretization-inherent
-# law deviations, which PARVMEC 9.0 reproduces to the printed digit on this
-# case; the lasym output defects fixed for issue #675 violated them by factors
-# of 8 to 230.
-ROTATION_LAW_PAIRS = [
-    ("rmnc", "rmns", "xn", 2e-3),
-    ("zmnc", "zmns", "xn", 2e-3),
-    ("lmnc", "lmns", "xn", 5e-2),
-    ("lmnc_full", "lmns_full", "xn", 8e-2),
-    ("gmnc", "gmns", "xn_nyq", 1e-4),
-    ("bmnc", "bmns", "xn_nyq", 2e-3),
-    ("bsubumnc", "bsubumns", "xn_nyq", 1e-3),
-    ("bsubvmnc", "bsubvmns", "xn_nyq", 5e-3),
-    ("bsubsmnc", "bsubsmns", "xn_nyq", 5e-3),
-    ("bsupumnc", "bsupumns", "xn_nyq", 2e-1),
-    ("bsupvmnc", "bsupvmns", "xn_nyq", 5e-3),
-    ("currumnc", "currumns", "xn_nyq", 1e4),
-    ("currvmnc", "currvmns", "xn_nyq", 5e2),
-]
-
-
-def test_toroidal_rotation_law_all_wout_arrays(cth_rotation):
-    """Every wout Fourier pair obeys the rigid-rotation law on every surface.
-
-    The rotation angle is an integer number of zeta grid steps, so the rotated discrete
-    problem is an exact grid permutation of the symmetric one and the law is exact up to
-    the (code-independent) discretization asymmetry between the reduced-theta symmetric
-    and full-theta lasym representations.
-    """
-    base = cth_rotation.base
-    sym = cth_rotation.sym
-    zeta0 = 3 * (2.0 * np.pi) / (base.nfp * base.nzeta)
-    rotated = _run(_toroidally_rotated_lasym_input(base, zeta0))
-
-    for cos_name, sin_name, xn_name, atol in ROTATION_LAW_PAIRS:
-        cos_sym_attr = getattr(sym, cos_name)
-        sin_sym_attr = getattr(sym, sin_name)
-        ref = np.asarray(cos_sym_attr if cos_sym_attr is not None else sin_sym_attr)
-        cos_sym = (
-            np.asarray(cos_sym_attr) if cos_sym_attr is not None else np.zeros_like(ref)
-        )
-        sin_sym = (
-            np.asarray(sin_sym_attr) if sin_sym_attr is not None else np.zeros_like(ref)
-        )
-        cos_rot = np.asarray(getattr(rotated, cos_name))
-        sin_rot = np.asarray(getattr(rotated, sin_name))
-        phi = (np.asarray(getattr(sym, xn_name), dtype=float) * zeta0)[:, None]
-        cos_pred = cos_sym * np.cos(phi) - sin_sym * np.sin(phi)
-        sin_pred = cos_sym * np.sin(phi) + sin_sym * np.cos(phi)
-        np.testing.assert_allclose(
-            cos_rot, cos_pred, rtol=0, atol=atol, err_msg=cos_name
-        )
-        np.testing.assert_allclose(
-            sin_rot, sin_pred, rtol=0, atol=atol, err_msg=sin_name
-        )
-
-    # axis coefficient pairs follow the m=0 rows of the R and Z laws
-    phi_axis = base.nfp * np.arange(base.ntor + 1, dtype=float) * zeta0
-    np.testing.assert_allclose(
-        np.asarray(rotated.raxis_cc),
-        np.asarray(sym.raxis_cc) * np.cos(phi_axis),
-        rtol=0,
-        atol=1e-4,
-    )
-    np.testing.assert_allclose(
-        np.asarray(rotated.raxis_cs),
-        np.asarray(sym.raxis_cc) * np.sin(phi_axis),
-        rtol=0,
-        atol=1e-4,
-    )
-    np.testing.assert_allclose(
-        np.asarray(rotated.zaxis_cs),
-        np.asarray(sym.zaxis_cs) * np.cos(phi_axis),
-        rtol=0,
-        atol=1e-4,
-    )
-    np.testing.assert_allclose(
-        np.asarray(rotated.zaxis_cc),
-        -np.asarray(sym.zaxis_cs) * np.sin(phi_axis),
-        rtol=0,
-        atol=1e-4,
-    )
-
-
 def test_lasym_wout_save_failure_leaves_no_partial_file(cth_rotation, tmp_path):
     """A failing save() must not leave a partial wout file behind."""
     wout = cth_rotation.rotated
@@ -409,3 +332,345 @@ def test_lasym_wout_save_failure_leaves_no_partial_file(cth_rotation, tmp_path):
     # the previous file contents are untouched and no temporaries are left
     assert out_path.read_bytes() == sentinel
     assert list(tmp_path.glob("*.tmp")) == []
+
+
+# (cos, sin) Fourier pairs of the output and the mode numbers that set their
+# toroidal phase xn * zeta0 (axis: n * nfp * zeta0).
+OUTPUT_FOURIER_PAIRS = [
+    *(
+        (f"wout.{c}", f"wout.{s}", xn)
+        for c, s, xn in [
+            ("rmnc", "rmns", "xn"),
+            ("zmnc", "zmns", "xn"),
+            ("lmnc", "lmns", "xn"),
+            ("lmnc_full", "lmns_full", "xn"),
+            ("gmnc", "gmns", "xn_nyq"),
+            ("bmnc", "bmns", "xn_nyq"),
+            ("bsubumnc", "bsubumns", "xn_nyq"),
+            ("bsubvmnc", "bsubvmns", "xn_nyq"),
+            ("bsubsmnc", "bsubsmns", "xn_nyq"),
+            ("bsupumnc", "bsupumns", "xn_nyq"),
+            ("bsupvmnc", "bsupvmns", "xn_nyq"),
+            ("currumnc", "currumns", "xn_nyq"),
+            ("currvmnc", "currvmns", "xn_nyq"),
+        ]
+    ),
+    ("wout.raxis_cc", "wout.raxis_cs", "axis"),
+    ("wout.zaxis_cc", "wout.zaxis_cs", "axis"),
+    ("threed1_axis.raxis_symm", "threed1_axis.raxis_asym", "axis"),
+    ("threed1_axis.zaxis_asym", "threed1_axis.zaxis_symm", "axis"),
+]
+
+
+def _pair_phases(wout, kind, zeta0):
+    if kind == "axis":
+        return wout.nfp * np.arange(wout.ntor + 1) * zeta0
+    return (np.asarray(getattr(wout, kind), float) * zeta0)[:, np.newaxis]
+
+
+def _output_rotated_back(output, zeta0, zeta_steps):
+    """Every numeric output field, with the toroidal rotation by zeta0 undone.
+
+    Fourier pairs rotate by their mode phase; the real-space jxbout arrays are rolled by
+    zeta_steps grid points along zeta, which requires zeta0 to be a whole number of zeta
+    grid steps.
+    """
+    fields = _numeric_fields(output)
+    for cos_name, sin_name, kind in OUTPUT_FOURIER_PAIRS:
+        phi = _pair_phases(output.wout, kind, zeta0)
+        c, s = fields[cos_name], fields[sin_name]
+        fields[cos_name] = c * np.cos(phi) + s * np.sin(phi)
+        fields[sin_name] = -c * np.sin(phi) + s * np.cos(phi)
+    nzeta = output.input.nzeta
+    for name, value in fields.items():
+        if name.startswith("jxbout.") and value.ndim == 2:
+            grid = value.reshape(value.shape[0], nzeta, -1)
+            fields[name] = np.roll(grid, zeta_steps, axis=1).reshape(value.shape)
+    return fields
+
+
+def _assert_fields_match(expected, actual, rtol, skip=()):
+    """Compare field by field, each against rtol times the magnitude of the field, or of
+    its Fourier pair where the output has one."""
+    scale = {
+        name: np.max(np.abs(value), initial=0.0) for name, value in expected.items()
+    }
+    for cos_name, sin_name, _ in OUTPUT_FOURIER_PAIRS:
+        if cos_name in scale and sin_name in scale:
+            scale[cos_name] = scale[sin_name] = max(scale[cos_name], scale[sin_name])
+    for name, value in expected.items():
+        if name in skip or value.size == 0:
+            continue
+        np.testing.assert_allclose(
+            actual[name], value, rtol=0, atol=rtol * scale[name], err_msg=name
+        )
+
+
+# Not invariant under a toroidal rotation: quantities evaluated in the zeta = 0 and
+# zeta = pi / nfp planes, the jxbout zeta coordinate, and the final force residuals.
+ROTATION_VARIANT_FIELDS = {
+    "wout.b0",
+    "wout.fsqr",
+    "wout.fsqz",
+    "wout.fsql",
+    "wout.fsqt",
+    "jxbout.izeta",
+    *(
+        f"threed1_geometric_magnetic.{name}"
+        for name in (
+            "b0",
+            "rcen",
+            "aminr1",
+            "waist",
+            "height",
+            "ygeo",
+            "yinden",
+            "yellip",
+            "ytrian",
+            "yshift",
+        )
+    ),
+    *(f"threed1_shafranov_integrals.{name}" for name in ("f_geo", "delta2", "s12")),
+}
+
+# Force-balance residuals, which vanish at convergence up to the iteration noise.
+RESIDUAL_FIELDS = {
+    "wout.equif",
+    "threed1_first_table.radial_force",
+    "jxbout.jsups3",
+    "jxbout.amaxfor",
+    "jxbout.aminfor",
+    "jxbout.avforce",
+    "jxbout.jcrossb",
+    "jxbout.jxb_gradp",
+}
+
+
+def _lasym_input(name, **overrides):
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{name}.json")
+    update = {
+        "ftol_array": np.full(len(vmec_input.ftol_array), 1e-12),
+        "niter_array": np.full(len(vmec_input.niter_array), 20000, dtype=np.int64),
+    }
+    update.update(overrides)
+    vmec_input = vmec_input.model_copy(update=update)
+    return vmec_input if vmec_input.lasym else _enable_lasym(vmec_input)
+
+
+# 3D stellarator-symmetric content, a non-stellarator-symmetric boundary, and a
+# beta = 4.3% case.
+ROTATION_CASES = {
+    "cth_like_fixed_bdy": {},
+    "cth_like_fixed_bdy_asym": {},
+    "li383_low_res": {"nzeta": 12},
+}
+
+
+@pytest.mark.parametrize("case", ROTATION_CASES)
+def test_toroidal_rotation_equivariance(case):
+    """Rotating boundary and axis by whole zeta grid steps permutes the discrete
+    problem: undoing the rotation on the output reproduces the unrotated lasym run
+    field by field, and the force-residual progression is the same."""
+    base = _lasym_input(case, **ROTATION_CASES[case])
+    zeta_steps = 3
+    zeta0 = zeta_steps * 2.0 * np.pi / (base.nfp * base.nzeta)
+    reference = vmecpp.run(base, max_threads=1, verbose=False)
+    rotated = vmecpp.run(
+        _toroidally_rotated_input(base, zeta0), max_threads=1, verbose=False
+    )
+
+    assert rotated.wout.itfsq == reference.wout.itfsq
+    np.testing.assert_allclose(rotated.wout.fsqt, reference.wout.fsqt, rtol=1e-4)
+    expected = _numeric_fields(reference)
+    actual = _output_rotated_back(rotated, zeta0, zeta_steps)
+    _assert_fields_match(
+        expected, actual, rtol=1e-9, skip=ROTATION_VARIANT_FIELDS | RESIDUAL_FIELDS
+    )
+    _assert_fields_match(
+        {name: expected[name] for name in RESIDUAL_FIELDS},
+        {name: actual[name] for name in RESIDUAL_FIELDS},
+        rtol=1e-5,
+    )
+
+
+def test_toroidal_rotation_off_grid_preserves_flux_functions():
+    """A rotation by a fraction of a zeta grid step leaves the flux-surface quantities
+    unchanged up to the aliasing of the zeta grid."""
+    base = _lasym_input("cth_like_fixed_bdy")
+    zeta0 = 1.37 * 2.0 * np.pi / (base.nfp * base.nzeta)
+    reference = _run(base)
+    rotated = _run(_toroidally_rotated_input(base, zeta0))
+    for name in [
+        "volume_p",
+        "betatotal",
+        "wb",
+        "wp",
+        "iotaf",
+        "vp",
+        "DWell",
+        "DMerc",
+        "jcurv",
+        "bvco",
+    ]:
+        expected = np.asarray(getattr(reference, name))
+        np.testing.assert_allclose(
+            getattr(rotated, name),
+            expected,
+            rtol=0,
+            atol=1e-8 * np.max(np.abs(expected)),
+            err_msg=name,
+        )
+
+
+def _poloidally_shifted_input(vmec_input, theta0):
+    """The same boundary with theta -> theta + theta0."""
+    phase = np.arange(vmec_input.mpol)[:, np.newaxis] * theta0
+    c, s = np.cos(phase), np.sin(phase)
+    rbc, rbs, zbs, zbc = (
+        np.asarray(getattr(vmec_input, name), float)
+        for name in ("rbc", "rbs", "zbs", "zbc")
+    )
+    return vmec_input.model_copy(
+        update={
+            "rbc": rbc * c + rbs * s,
+            "rbs": rbs * c - rbc * s,
+            "zbs": zbs * c - zbc * s,
+            "zbc": zbc * c + zbs * s,
+        }
+    )
+
+
+def _poloidally_reversed_input(vmec_input):
+    """The same boundary with theta -> -theta: mode (m, n) moves to (m, -n) and the sine
+    coefficients change sign; the m = 0 row does not depend on theta."""
+    update = {}
+    for name, sign in (("rbc", 1.0), ("rbs", -1.0), ("zbs", -1.0), ("zbc", 1.0)):
+        coefficients = np.asarray(getattr(vmec_input, name), float)
+        reversed_coefficients = sign * coefficients[:, ::-1]
+        reversed_coefficients[0] = coefficients[0]
+        update[name] = reversed_coefficients
+    return vmec_input.model_copy(update=update)
+
+
+# simsopt tests/test_files/input.basic_non_stellsym: a vacuum field whose boundary
+# needs both the poloidal shift to rbs(1,0) = zbc(1,0) and the theta flip.
+BASIC_NON_STELLSYM_INDATA = """&INDATA
+  LASYM = T
+  DELT = 0.9
+  NFP = 1
+  NCURR = 1
+  MPOL = 2
+  NTOR = 2
+  NZETA = 10
+  NTHETA = 10
+  NS_ARRAY = 13 25 51
+  FTOL_ARRAY = 1e-08 1e-10 1e-12
+  NITER_ARRAY = 2000 4000 20000
+  NSTEP = 200
+  GAMMA = 0.0
+  PHIEDGE = -119.416456038
+  CURTOR = 0.0
+  SPRES_PED = 1.0
+  RAXIS_CC = 6.698820504223022
+  ZAXIS_CC = 0.5203227532718783
+  RBC(0,0) = 5.0,   ZBS(0,0) = 0.0,   RBS(0,0) = 0.0,  ZBC(0,0) = 0.0
+  RBC(0,1) = 1.25,  ZBS(0,1) = -1.25, RBS(0,1) = 0.1,  ZBC(0,1) = -0.1
+  RBC(1,0) = 1.25,  ZBS(1,0) = -1.5,  RBS(1,0) = 0.1,  ZBC(1,0) = -0.1
+  RBC(1,1) = 0.5,   ZBS(1,1) = -0.5,  RBS(1,1) = 0.5,  ZBC(1,1) = -0.5
+/
+"""
+
+# Current-density outputs of the vacuum case, which are iteration noise.
+VACUUM_CURRENT_FIELDS = {
+    *(
+        f"wout.{name}"
+        for name in (
+            "ctor",
+            "buco",
+            "jcuru",
+            "jcurv",
+            "jdotb",
+            "currumnc",
+            "currumns",
+            "currvmnc",
+            "currvmns",
+        )
+    ),
+    "threed1_geometric_magnetic.toroidal_current",
+    *(
+        f"threed1_first_table.{name}"
+        for name in ("buco_full", "avg_jsupu", "avg_jsupv", "j_dot_b")
+    ),
+    "mercier.toroidal_current",
+    "mercier.d_toroidal_current_d_s",
+    "jxbout.jdotb",
+}
+
+
+@pytest.fixture(scope="module")
+def basic_non_stellsym_input(tmp_path_factory):
+    indata = tmp_path_factory.mktemp("indata") / "input.basic_non_stellsym"
+    indata.write_text(BASIC_NON_STELLSYM_INDATA)
+    return vmecpp.VmecInput.from_file(indata)
+
+
+def _poloidal_case(name, basic_non_stellsym_input):
+    if name == "basic_non_stellsym":
+        return basic_non_stellsym_input, VACUUM_CURRENT_FIELDS
+    return _lasym_input(name), set()
+
+
+def _assert_jacobian_matches_signgs(wout):
+    """Signgs is the sign of the Jacobian sqrt(g) on every surface."""
+    assert np.all(wout.signgs * np.asarray(wout.gmnc)[0, 1:] > 0.0)
+    assert np.all(np.asarray(wout.vp)[1:] > 0.0)
+
+
+@pytest.mark.parametrize("case", ["cth_like_fixed_bdy_asym", "basic_non_stellsym"])
+def test_poloidal_shift_is_gauged_away(case, basic_non_stellsym_input):
+    """A boundary relabelled by theta -> theta + theta0 is shifted back to the gauge
+    rbs(1,0) = zbc(1,0): every output reproduces the unshifted run."""
+    base, noise_fields = _poloidal_case(case, basic_non_stellsym_input)
+    reference = vmecpp.run(base, max_threads=1, verbose=False)
+    shifted = vmecpp.run(
+        _poloidally_shifted_input(base, 0.3), max_threads=1, verbose=False
+    )
+    _assert_jacobian_matches_signgs(shifted.wout)
+    _assert_fields_match(
+        _numeric_fields(reference),
+        _numeric_fields(shifted),
+        rtol=1e-7,
+        skip={"wout.fsqr", "wout.fsqz", "wout.fsql", "wout.fsqt"}
+        | RESIDUAL_FIELDS
+        | noise_fields,
+    )
+
+
+@pytest.mark.parametrize("case", ["cth_like_fixed_bdy_asym", "basic_non_stellsym"])
+def test_poloidal_reversal_preserves_physics(case, basic_non_stellsym_input):
+    """A boundary relabelled by theta -> -theta runs in the opposite poloidal direction,
+    so exactly one of the two runs flips theta -> pi - theta. The outputs differ by
+    theta -> theta + pi, a factor (-1)^m on every Fourier coefficient."""
+    base, noise_fields = _poloidal_case(case, basic_non_stellsym_input)
+    reference = vmecpp.run(base, max_threads=1, verbose=False).wout
+    reversed_ = vmecpp.run(
+        _poloidally_reversed_input(base), max_threads=1, verbose=False
+    ).wout
+    _assert_jacobian_matches_signgs(reference)
+    _assert_jacobian_matches_signgs(reversed_)
+    parity = {
+        len(reference.xm): (-1.0) ** np.asarray(reference.xm),
+        len(reference.xm_nyq): (-1.0) ** np.asarray(reference.xm_nyq),
+    }
+    expected = _numeric_fields(reference)
+    actual = _numeric_fields(reversed_)
+    for name, value in actual.items():
+        if value.ndim == 2:
+            actual[name] = parity[value.shape[0]][:, np.newaxis] * value
+    _assert_fields_match(
+        expected,
+        actual,
+        rtol=1e-7,
+        skip={"fsqr", "fsqz", "fsql", "fsqt", "equif"}
+        | {name.removeprefix("wout.") for name in noise_fields},
+    )
