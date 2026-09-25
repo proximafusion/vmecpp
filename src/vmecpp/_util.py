@@ -189,6 +189,7 @@ def vmecpp_json_to_indata(vmecpp_json: dict[str, Any]) -> str:
     indata += _float_to_namelist("tcon0", vmecpp_json)
     indata += _float_array_to_namelist("aphi", vmecpp_json)
     indata += _bool_to_namelist("lforbal", vmecpp_json)
+    indata += _bool_to_namelist("lbsubs", vmecpp_json)
 
     indata += "\n  ! printout interval\n"
     indata += _int_to_namelist("nstep", vmecpp_json)
