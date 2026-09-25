@@ -446,6 +446,15 @@ class VmecInput(BaseModelWithNumpy):
     tcon0: float = 1.0
     """Constraint force scaling factor for ns --> 0."""
 
+    lgiveup: bool = False
+    """Abandon the whole multigrid sequence when a step ends with any residual still
+    above ``fgiveup`` times its tolerance, rather than carrying a state that far out
+    onto a finer grid."""
+
+    fgiveup: float = 30.0
+    """Multiple of ``ftol_array`` a step's residuals must be under for the sequence to
+    continue when ``lgiveup`` is set."""
+
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 

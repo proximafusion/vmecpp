@@ -333,7 +333,6 @@ VMEC++:
 - implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa. One deliberate exception: at multigrid grid transitions, the rollback backup of the state vector is taken *after* the radial interpolation of the coarse-grid solution (matching PARVMEC/VMEC2000 since 2017-01-24, "SPH 012417"), not before it as in VMEC 8.52 -- with the 8.52 ordering, the first restart of a stage silently discards the interpolated state and the finer stages effectively re-solve from a cold start
 
 ### Limitations with respect to the Fortran implementations
-- `lgiveup`/`fgiveup` logic for early termination of a multi-grid sequence is not implemented yet
 - `lbsubs` logic in computing outputs is not implemented yet
 - `lrfp` flag is available for wout compatibility, but RFP-specific physics is not implemented yet - only stellarators/Tokamaks for now
 - several profile parameterizations are not fully implemented yet:
