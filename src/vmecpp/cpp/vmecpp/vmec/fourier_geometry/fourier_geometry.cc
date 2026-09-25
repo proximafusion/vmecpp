@@ -184,6 +184,29 @@ void FourierGeometry::interpFromBoundaryAndAxis(
   }  // j
 }
 
+void FourierGeometry::setM1GaugeFromBoundary(const FourierBasisFastPoloidal& t,
+                                             const Boundaries& b,
+                                             const RadialProfiles& p) {
+  const int m = 1;
+  if (s_.mpol <= m) {
+    return;
+  }
+  for (int jF = nsMin_; jF < nsMax_; ++jF) {
+    const double interpolationWeight = p.sqrtSF[jF - r_.nsMinF1];
+    for (int n = 0; n < s_.ntor + 1; ++n) {
+      const int idx_bdy = m * (s_.ntor + 1) + n;
+      const int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      const double basis_norm = 1.0 / (t.mscale[m] * t.nscale[n]);
+      if (s_.lthreed) {
+        zmncs[idx_fc] = basis_norm * interpolationWeight * b.zbcs[idx_bdy];
+      }
+      if (s_.lasym) {
+        zmncc[idx_fc] = basis_norm * interpolationWeight * b.zbcc[idx_bdy];
+      }
+    }
+  }
+}
+
 void FourierGeometry::InitFromState(
     const FourierBasisFastPoloidal& fb, const RowMatrixXd& rmnc,
     const RowMatrixXd& zmns, const RowMatrixXd& lmns_full,

@@ -26,6 +26,13 @@ class FourierGeometry : public FourierCoeffs {
   void interpFromBoundaryAndAxis(const FourierBasisFastPoloidal& t,
                                  const Boundaries& b, const RadialProfiles& p);
 
+  // Set the m=1 gauge combinations (the zmncs and, for lasym, zmncc slots
+  // that FourierCoeffs::m1Constraint couples to rmnss / rmnsc) on every
+  // owned surface to their interpFromBoundaryAndAxis value, the boundary
+  // gauge scaled by sqrt(s). Leaves all other coefficients untouched.
+  void setM1GaugeFromBoundary(const FourierBasisFastPoloidal& t,
+                              const Boundaries& b, const RadialProfiles& p);
+
   // Initialize the state of this FourierGeometry with the given Fourier
   // coefficients. If a Boundaries object is specified (defaults to nullptr; in
   // order to avoid a copy when using std::optional), the geometry of the
