@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import enum
 import json
 import logging
@@ -2516,6 +2517,14 @@ class VmecOutput(BaseModelWithNumpy):
     """Python equivalent of VMEC's "wout" file."""
 
 
+_use_jax_output_stage = contextvars.ContextVar("_use_jax_output_stage", default=True)
+"""Whether run() computes the wout physics fields with the JAX output stage.
+
+The CLI turns it off: a one-shot process would pay the stage's compilation on
+every run, and nothing there differentiates the result.
+"""
+
+
 @contextlib.contextmanager
 def _float64_on_cpu() -> Generator[None, None, None]:
     enable_x64 = getattr(jax, "enable_x64", None)
@@ -2663,7 +2672,10 @@ def run(
             verbose=_verbose.value,
         )
 
-    wout = _wout_from_output_stage(input, cpp_output_quantities)
+    if _use_jax_output_stage.get():
+        wout = _wout_from_output_stage(input, cpp_output_quantities)
+    else:
+        wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
     jxbout = JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout)
     mercier = Mercier._from_cpp_mercier(cpp_output_quantities.mercier)
     threed1_volumetrics = Threed1Volumetrics._from_cpp_threed1volumetrics(

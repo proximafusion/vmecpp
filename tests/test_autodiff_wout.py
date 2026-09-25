@@ -1,5 +1,7 @@
 """The JAX output stage against the C++ one, the VmecWOut pytree, and gradients."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 import jax
@@ -195,6 +197,21 @@ def test_run_returns_the_output_stage_wout() -> None:
         value = getattr(wout, name)
         assert value is None or isinstance(value, float | np.ndarray), name
         np.testing.assert_array_equal(value, getattr(reference, name), err_msg=name)
+
+
+def test_cli_uses_the_cpp_output_stage(tmp_path) -> None:
+    script = (
+        "import runpy, sys\n"
+        "import vmecpp\n"
+        "def fail(*args):\n"
+        "    raise AssertionError('the CLI evaluated the JAX output stage')\n"
+        "vmecpp._wout_from_output_stage = fail\n"
+        f"sys.argv = ['vmecpp', {str(TEST_DATA_DIR / 'solovev.json')!r}, '--quiet']\n"
+        "runpy.run_module('vmecpp', run_name='__main__')\n"
+    )
+    subprocess.run([sys.executable, "-c", script], cwd=tmp_path, check=True)
+    wout = vmecpp.VmecWOut.from_wout_file(tmp_path / "wout_solovev.nc")
+    assert wout.ns == 55
 
 
 def test_wout_quantities_accept_a_prescribed_iota(solved_case) -> None:
