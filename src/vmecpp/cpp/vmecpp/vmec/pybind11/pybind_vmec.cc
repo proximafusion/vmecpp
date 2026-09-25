@@ -768,6 +768,11 @@ class VmecModel {
   std::vector<double> force_residual_lambda() const {
     return vmec_->fc_.force_residual_lambda;
   }
+  // Total MHD energy W and the free-boundary delbsq per recorded iteration,
+  // and the iteration counter of the last Solve(); wout's wdot, delbsq, niter.
+  std::vector<double> mhd_energy_trace() const { return vmec_->fc_.mhd_energy; }
+  std::vector<double> delbsq() const { return vmec_->fc_.delbsq; }
+  int iteration() const { return vmec_->get_iter2(); }
   // Per-iteration restart-reason trace recorded alongside the residual traces
   // (one entry per recorded force iteration); NO_RESTART=1, BAD_JACOBIAN=2,
   // BAD_PROGRESS=3, HUGE_INITIAL_FORCES=4.
@@ -1683,6 +1688,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("force_residual_lambda",
                              &VmecModel::force_residual_lambda)
       .def_property_readonly("restart_reasons", &VmecModel::restart_reasons)
+      .def_property_readonly("mhd_energy_trace", &VmecModel::mhd_energy_trace)
+      .def_property_readonly("delbsq", &VmecModel::delbsq)
+      .def_property_readonly("iteration", &VmecModel::iteration)
       .def_property_readonly("ijacob", &VmecModel::ijacob)
       .def_property_readonly("raxis_c", &VmecModel::raxis_c)
       .def_property_readonly("chip_h", &VmecModel::chip_h)
