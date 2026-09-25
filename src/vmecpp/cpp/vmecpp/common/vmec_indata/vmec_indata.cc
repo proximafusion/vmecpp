@@ -1482,10 +1482,10 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         vmec_indata.pres_scale));
   }
 
-  // adiabatic_index
+  // gamma
   if (vmec_indata.gamma == 1.0) {
     return absl::InvalidArgumentError(
-        absl::StrFormat("input variable 'adiabatic_index' must not be 1.0\n"));
+        absl::StrFormat("input variable 'gamma' must not be 1.0\n"));
   }
 
   // spres_ped
